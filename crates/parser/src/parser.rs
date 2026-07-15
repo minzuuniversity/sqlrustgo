@@ -904,8 +904,7 @@ pub fn tpch_reorder_extra_tables(
         // both 'p'). Adding bare-prefixes to `accumulated` would cause
         // false "reachable" hits and corrupt the greedy chain order.
         // Disable reorder when prefix collisions exist.
-        let mut seen_prefix: std::collections::HashSet<String> =
-            std::collections::HashSet::new();
+        let mut seen_prefix: std::collections::HashSet<String> = std::collections::HashSet::new();
         let all_tables: Vec<&str> = base_bare_for_guard
             .iter()
             .chain(extras.iter())
