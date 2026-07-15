@@ -555,7 +555,6 @@ fn test_verify_result_manifest_cloned() {
     assert_eq!(result.manifest.version, 1);
     assert_eq!(result.errors.len(), 0);
     assert_eq!(result.verified_files, 0);
-}
 use sqlrustgo_admin::verify::verify_backup;
 
 #[test]
@@ -738,6 +737,80 @@ fn test_verify_backup_cleans_up_staging() {
         backup_path.file_name().unwrap().to_string_lossy()
     );
     // The staging dir is created in the same directory as the backup
-    let staging_dir = backup_path.parent().unwrap().join(&staging_pattern);
     assert!(!staging_dir.exists() || staging_dir.to_string_lossy().contains("sqlrustgo-verify"));
+}
+
+// ============ physical_backup / physical_restore integration (temp dir) ============
+
+/// Full round-trip: physical_backup creates a .tar.gz, physical_restore unpacks it.
+/// Uses TempDir so both source and target are auto-cleaned.
+#[test]
+fn test_physical_backup_restore_roundtrip() {
+    // --- set up source data directory with some files ---
+    let src = TempDir::new().unwrap();
+    let data_dir = src.path();
+    fs::write(data_dir.join("t1.json"), br#"{"id":1,"name":"alice"}"#).unwrap();
+    fs::write(data_dir.join("t2.json"), br#"{"id":2,"x":42}"#).unwrap();
+    // Subdirectory to exercise recursive scan
+    let sub = data_dir.join("sub");
+    fs::create_dir(&sub).unwrap();
+    fs::write(sub.join("t3.json"), br#"{"id":3,"y":99}"#).unwrap();
+
+    // --- write a WAL file ---
+    let wal_path = data_dir.join("sqlrustgo.wal");
+    fs::write(&wal_path, b"wal-entry-1\nwal-entry-2\n").unwrap();
+
+    // --- run physical_backup ---
+    let out = src.path().join("backup.tar.gz");
+    let result = physical_backup(data_dir, Some(&wal_path), &out).unwrap();
+    assert!(result.manifest.data_files.len() >= 3, "at least 3 data files backed up");
+    assert!(result.manifest.wal_file.is_some(), "WAL recorded in manifest");
+    assert!(out.exists(), "backup file created");
+
+    // --- run physical_restore to a fresh target ---
+    let target = TempDir::new().unwrap();
+    let restore_result = physical_restore(&out, target.path()).unwrap();
+    assert!(restore_result.restored_data_files >= 3, "at least 3 data files restored");
+    assert!(restore_result.restored_wal, "WAL restored");
+
+    // --- verify file content matches originals ---
+    let restored_t1 = target.path().join("data").join("t1.json");
+    let restored_t2 = target.path().join("data").join("t2.json");
+    let restored_t3 = target.path().join("data").join("sub").join("t3.json");
+    let restored_wal = target.path().join("wal").join("sqlrustgo.wal");
+
+    assert_eq!(
+        fs::read(&restored_t1).unwrap(),
+        br#"{"id":1,"name":"alice"}"#
+    );
+    assert_eq!(
+        fs::read(&restored_t2).unwrap(),
+        br#"{"id":2,"x":42}"#
+    );
+    assert_eq!(
+        fs::read(&restored_t3).unwrap(),
+        br#"{"id":3,"y":99}"#
+    );
+    assert_eq!(
+        fs::read(&restored_wal).unwrap(),
+        b"wal-entry-1\nwal-entry-2\n"
+    );
+}
+
+/// physical_backup / physical_restore with no WAL file (None path).
+#[test]
+fn test_physical_backup_restore_no_wal() {
+    let src = TempDir::new().unwrap();
+    fs::write(src.path().join("single.json"), b"{}").unwrap();
+
+    let out = src.path().join("backup.tar.gz");
+    let result = physical_backup(src.path(), None, &out).unwrap();
+    assert!(result.manifest.wal_file.is_none());
+
+    let target = TempDir::new().unwrap();
+    let restore_result = physical_restore(&out, target.path()).unwrap();
+    assert!(!restore_result.restored_wal);
+
+    let restored = target.path().join("data").join("single.json");
+    assert_eq!(fs::read(&restored).unwrap(), b"{}");
 }
