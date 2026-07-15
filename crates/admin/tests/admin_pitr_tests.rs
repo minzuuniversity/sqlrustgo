@@ -2,8 +2,8 @@
 //!
 //! Tests: pitr_replay file-not-found error path, parse_target_time edge cases
 
-use sqlrustgo_admin::pitr::{parse_target_time, pitr_replay};
 use sqlrustgo_admin::backup::BackupError;
+use sqlrustgo_admin::pitr::{parse_target_time, pitr_replay};
 
 #[test]
 fn test_pitr_replay_file_not_found() {
@@ -12,8 +12,11 @@ fn test_pitr_replay_file_not_found() {
     let err = result.unwrap_err();
     // Should be an EntryNotFound or Io error
     let msg = err.to_string();
-    assert!(msg.contains("not found") || msg.contains("Nonexistent") || msg.contains(" WAL"),
-        "expected not-found error, got: {}", msg);
+    assert!(
+        msg.contains("not found") || msg.contains("Nonexistent") || msg.contains(" WAL"),
+        "expected not-found error, got: {}",
+        msg
+    );
 }
 
 #[test]
