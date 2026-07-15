@@ -42,19 +42,39 @@ mod tests {
     fn insert_data(storage: &Arc<RwLock<sqlrustgo::MemoryStorage>>) {
         let mut engine = ExecutionEngine::new(storage.clone());
         // Customers with matching prefix '13'
-        engine.execute("INSERT INTO customer VALUES (1, 'C1', '13-111-1111', 100.00)").unwrap();
-        engine.execute("INSERT INTO customer VALUES (2, 'C2', '13-222-2222', 200.00)").unwrap();
-        engine.execute("INSERT INTO customer VALUES (3, 'C3', '13-333-3333', 300.00)").unwrap();
-        engine.execute("INSERT INTO customer VALUES (4, 'C4', '13-444-4444', 400.00)").unwrap();
-        engine.execute("INSERT INTO customer VALUES (5, 'C5', '13-555-5555', 500.00)").unwrap();
-        engine.execute("INSERT INTO customer VALUES (6, 'C6', '13-666-6666', 600.00)").unwrap();
+        engine
+            .execute("INSERT INTO customer VALUES (1, 'C1', '13-111-1111', 100.00)")
+            .unwrap();
+        engine
+            .execute("INSERT INTO customer VALUES (2, 'C2', '13-222-2222', 200.00)")
+            .unwrap();
+        engine
+            .execute("INSERT INTO customer VALUES (3, 'C3', '13-333-3333', 300.00)")
+            .unwrap();
+        engine
+            .execute("INSERT INTO customer VALUES (4, 'C4', '13-444-4444', 400.00)")
+            .unwrap();
+        engine
+            .execute("INSERT INTO customer VALUES (5, 'C5', '13-555-5555', 500.00)")
+            .unwrap();
+        engine
+            .execute("INSERT INTO customer VALUES (6, 'C6', '13-666-6666', 600.00)")
+            .unwrap();
         // Non-matching prefix
-        engine.execute("INSERT INTO customer VALUES (7, 'C7', '10-777-7777', 1000.00)").unwrap();
+        engine
+            .execute("INSERT INTO customer VALUES (7, 'C7', '10-777-7777', 1000.00)")
+            .unwrap();
         // Matching prefix '18'
-        engine.execute("INSERT INTO customer VALUES (8, 'C8', '18-888-8888', 50.00)").unwrap();
-        engine.execute("INSERT INTO customer VALUES (9, 'C9', '18-999-9999', 800.00)").unwrap();
+        engine
+            .execute("INSERT INTO customer VALUES (8, 'C8', '18-888-8888', 50.00)")
+            .unwrap();
+        engine
+            .execute("INSERT INTO customer VALUES (9, 'C9', '18-999-9999', 800.00)")
+            .unwrap();
         // Matching prefix but has order (excluded by NOT EXISTS)
-        engine.execute("INSERT INTO customer VALUES (10, 'C10', '13-000-0000', 900.00)").unwrap();
+        engine
+            .execute("INSERT INTO customer VALUES (10, 'C10', '13-000-0000', 900.00)")
+            .unwrap();
         engine.execute("INSERT INTO orders VALUES (1, 10)").unwrap();
     }
 
@@ -80,11 +100,7 @@ mod tests {
 
             // cntrycode: column 0
             let cntrycode = row[0].to_sql_string();
-            assert_eq!(
-                cntrycode, *expected_code,
-                "Row {}: cntrycode mismatch",
-                i
-            );
+            assert_eq!(cntrycode, *expected_code, "Row {}: cntrycode mismatch", i);
 
             // numcust: column 1 (COUNT(*) -> Integer)
             match &row[1] {
