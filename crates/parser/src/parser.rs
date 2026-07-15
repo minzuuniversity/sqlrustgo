@@ -571,6 +571,16 @@ pub enum MergeSource {
     Subquery(Box<SelectStatement>),
 }
 
+/// V311-01: Storage engine selection for CREATE TABLE.
+///   - `Heap` = default (MemoryStorage, Vec<Record>-based, no PK ordering)
+///   - `Clustered` = InnoDB-style B+ Tree with rows in leaves ordered by PK
+#[derive(Debug, Clone, PartialEq, Eq, Default)]
+pub enum StorageEngineSpec {
+    #[default]
+    Heap,
+    Clustered,
+}
+
 /// A WHEN clause inside MERGE statement
 #[derive(Debug, Clone, PartialEq)]
 pub struct MergeWhenClause {
@@ -599,6 +609,11 @@ pub struct CreateTableStatement {
     pub columns: Vec<ColumnDefinition>,
     pub constraints: Vec<TableConstraint>,
     pub if_not_exists: bool,
+    /// V311-01: optional storage engine override (default `Heap`).
+    /// Set to `Some(StorageEngineSpec::Clustered)` for InnoDB-style B+ Tree
+    /// clustered primary key storage. The clause is parsed from
+    /// `ENGINE=InnoDB CLUSTERED` syntax.
+    pub storage_engine: Option<StorageEngineSpec>,
 }
 
 /// DROP TABLE statement
@@ -6472,12 +6487,70 @@ impl Parser {
             }
         }
 
+        // V311-01: Parse trailing `ENGINE=<engine> [CLUSTERED]` clause.
+        // ENGINE=InnoDB CLUSTERED → ClusteredIndex B+ Tree storage.
+        // ENGINE=InnoDB (no CLUSTERED) → Heap default storage.
+        let storage_engine = self.parse_table_storage_engine_clause();
+
         Ok(Statement::CreateTable(CreateTableStatement {
             name,
             columns,
             constraints,
             if_not_exists,
+            storage_engine,
         }))
+    }
+
+    /// V311-01: parse trailing `ENGINE=...` clause.
+    /// Recognizes:
+    ///   - `ENGINE=InnoDB CLUSTERED` → Some(StorageEngineSpec::Clustered)
+    ///   - `ENGINE=InnoDB`           → Some(StorageEngineSpec::Heap) (explicit)
+    ///   - absent                    → None (use default Heap)
+    /// Returns `None` when no ENGINE clause is present.
+    fn parse_table_storage_engine_clause(&mut self) -> Option<StorageEngineSpec> {
+        // Tolerate optional whitespace before ENGINE keyword (already lexed
+        // away by the tokenizer). Match either `Token::Identifier("ENGINE")`
+        // or a future `Token::Engine` if we add one — for now just check
+        // the identifier string.
+        match self.current() {
+            Some(Token::Identifier(s)) if s.eq_ignore_ascii_case("ENGINE") => {
+                self.next(); // consume ENGINE
+            }
+            _ => return None,
+        }
+        // Expect `=`
+        if !matches!(self.current(), Some(Token::Equal)) {
+            return None;
+        }
+        self.next(); // consume =
+        // Expect engine name identifier (e.g. INNODB, MEMORY, HEAP)
+        let engine_name = match self.current() {
+            Some(Token::Identifier(s)) => {
+                let n = s.clone();
+                self.next();
+                n
+            }
+            _ => return None,
+        };
+        // CLUSTERED keyword (or clustered identifier, kept as Identifier for now)
+        let mut clustered = false;
+        match self.current() {
+            Some(Token::Identifier(s)) if s.eq_ignore_ascii_case("CLUSTERED") => {
+                self.next();
+                clustered = true;
+            }
+            Some(Token::Semicolon) | None => {}
+            _ => {}
+        }
+        let engine_upper = engine_name.to_uppercase();
+        if clustered {
+            Some(StorageEngineSpec::Clustered)
+        } else if engine_upper == "INNODB" || engine_upper == "MEMORY" || engine_upper == "HEAP" {
+            Some(StorageEngineSpec::Heap)
+        } else {
+            // Unknown engine — ignore silently for backward compat, treat as default
+            None
+        }
     }
 
     fn parse_column_definition(&mut self) -> Result<ColumnDefinition, String> {
