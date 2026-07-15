@@ -156,7 +156,7 @@ pub fn eval_predicate(expr: &Expression, row: &[Value], table_info: &TableInfo) 
                         Value::Boolean(b) => b.to_string(),
                         Value::Null => return Value::Null,
                         Value::Blob(_) => return Value::Null,
-                        Value::Point(_, _) => return Value::Null,
+                            Value::Point(_, _) => return Value::Null,
                     })
                 } else {
                     v
@@ -202,7 +202,7 @@ pub fn eval_predicate(expr: &Expression, row: &[Value], table_info: &TableInfo) 
                         Value::Boolean(b) => b.to_string(),
                         Value::Null => return Value::Null,
                         Value::Blob(_) => return Value::Null,
-                        Value::Point(_, _) => return Value::Null,
+                            Value::Point(_, _) => return Value::Null,
                     })
                 } else {
                     v
@@ -1105,7 +1105,7 @@ fn value_to_literal_string(v: &Value) -> String {
         Value::Float(f) => f.to_string(),
         Value::Text(s) => format!("'{}'", s.replace('\'', "''")),
         Value::Blob(_) => "NULL".to_string(),
-        Value::Point(_, _) => "POINT(...)".to_string(),
+        Value::Point(x, y) => format!("POINT({}, {})", x, y),
     }
 }
 

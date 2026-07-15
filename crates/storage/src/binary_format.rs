@@ -165,7 +165,7 @@ impl BinaryFormat for Value {
                 result
             }
             Value::Point(x, y) => {
-                let mut result = vec![6u8];
+                let mut result = vec![6u8]; // type indicator
                 result.extend_from_slice(&helpers::write_f64(*x));
                 result.extend_from_slice(&helpers::write_f64(*y));
                 result
@@ -191,6 +191,12 @@ impl BinaryFormat for Value {
                 }
                 let blob_data = data[9..9 + len].to_vec();
                 Ok(Value::Blob(blob_data))
+            }
+            6 => {
+                // Read point: x (f64) + y (f64)
+                let x = helpers::read_f64(&data[1..])?;
+                let y = helpers::read_f64(&data[9..])?;
+                Ok(Value::Point(x, y))
             }
             _ => Err(BinaryFormatError::InvalidFormat(format!(
                 "Unknown type indicator: {}",
