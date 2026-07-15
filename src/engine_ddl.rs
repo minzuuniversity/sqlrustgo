@@ -339,6 +339,7 @@ impl<S: StorageEngine + 'static> ExecutionEngine<S> {
             ShowStatement::Columns { table, pattern } => {
                 self.execute_show_columns(table, pattern.as_deref())
             }
+            ShowStatement::Sequences => self.execute_show_sequences(),
         }
     }
 
@@ -354,6 +355,12 @@ impl<S: StorageEngine + 'static> ExecutionEngine<S> {
             vec![vec![Value::Text("default".to_string())]],
             1,
         ))
+    }
+    pub(crate) fn execute_show_sequences(&self) -> SqlResult<ExecutorResult> {
+        let storage = self.storage.read();
+        let names = storage.list_sequences();
+        let rows: Vec<Vec<Value>> = names.into_iter().map(|n| vec![Value::Text(n)]).collect();
+        Ok(ExecutorResult::new(rows, 1))
     }
 
     /// SHOW CREATE TABLE — reconstruct CREATE TABLE from the live schema.
