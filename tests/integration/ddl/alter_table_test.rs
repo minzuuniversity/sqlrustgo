@@ -164,10 +164,21 @@ fn test_alter_table_rename_table() {
          DESC clients;\n\
          .exit\n",
     );
-    assert!(out.contains("Alice"), "SELECT * FROM clients should contain Alice, got:\n{}", out);
-    assert!(out.contains("Bob"), "SELECT * FROM clients should contain Bob, got:\n{}", out);
+    assert!(
+        out.contains("Alice"),
+        "SELECT * FROM clients should contain Alice, got:\n{}",
+        out
+    );
+    assert!(
+        out.contains("Bob"),
+        "SELECT * FROM clients should contain Bob, got:\n{}",
+        out
+    );
     assert!(out.contains("id"), "DESC clients should contain id column");
-    assert!(out.contains("name"), "DESC clients should contain name column");
+    assert!(
+        out.contains("name"),
+        "DESC clients should contain name column"
+    );
 }
 
 #[test]
@@ -183,7 +194,8 @@ fn test_alter_table_rename_table_nonexistent() {
             || combined.to_lowercase().contains("doesn't exist")
             || combined.to_lowercase().contains("error"),
         "Renaming nonexistent table should produce error, got:\nstdout: {}\nstderr: {}",
-        out, _err
+        out,
+        _err
     );
 }
 
@@ -198,9 +210,16 @@ fn test_alter_table_rename_column() {
          .exit\n",
     );
     // Data should be preserved (records are Vec<Value> positional)
-    assert!(out.contains("test_value"), "Data should be preserved after RENAME COLUMN, got:\n{}", out);
+    assert!(
+        out.contains("test_value"),
+        "Data should be preserved after RENAME COLUMN, got:\n{}",
+        out
+    );
     assert!(out.contains("new_name"), "DESC should show new column name");
-    assert!(!out.contains("old_name"), "DESC should not show old column name");
+    assert!(
+        !out.contains("old_name"),
+        "DESC should not show old column name"
+    );
 }
 
 #[test]
@@ -247,12 +266,22 @@ fn test_alter_table_chain_renames() {
          .exit\n",
     );
     // Data should be preserved through all renames
-    assert!(out.contains("original"), "Data should be preserved through chain renames, got:\n{}", out);
+    assert!(
+        out.contains("original"),
+        "Data should be preserved through chain renames, got:\n{}",
+        out
+    );
     // DESC t_chain_v3 should show col_b as the new column name
-    assert!(out.contains("col_b"), "Final column name should be col_b (via DESC), got:\n{}", out);
-    assert!(!out.contains("col_a"), "Original column name should be gone");
+    assert!(
+        out.contains("col_b"),
+        "Final column name should be col_b (via DESC), got:\n{}",
+        out
+    );
+    assert!(
+        !out.contains("col_a"),
+        "Original column name should be gone"
+    );
 }
-
 
 // ============ V311-13 MODIFY COLUMN (N) length + NULL handling ============
 //

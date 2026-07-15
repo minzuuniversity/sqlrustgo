@@ -1,4 +1,3 @@
- 
 // Types Value Tests
 use sqlrustgo_types::Value;
 

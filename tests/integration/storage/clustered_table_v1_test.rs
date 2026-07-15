@@ -41,21 +41,25 @@ fn clustered_table_production_storage_full_lifecycle() {
 
     // Insert 100 rows with random PK ordering
     for i in [50, 25, 75, 10, 90, 1, 100, 33, 67, 42] {
-        ct.insert(vec![
-            Value::Integer(i),
-            Value::Text(format!("row{}", i)),
-        ])
-        .expect("insert must succeed");
+        ct.insert(vec![Value::Integer(i), Value::Text(format!("row{}", i))])
+            .expect("insert must succeed");
     }
     assert_eq!(ct.len(), 10);
 
     // PK lookup O(log N)
-    let row = ct.lookup_pk(&Value::Integer(50)).expect("PK 50 should exist");
+    let row = ct
+        .lookup_pk(&Value::Integer(50))
+        .expect("PK 50 should exist");
     assert_eq!(row[1], Value::Text("row50".to_string()));
 
     // PK range scan O(log N + k)
     let range = ct.range_scan_pk(&Value::Integer(20), &Value::Integer(60));
-    assert_eq!(range.len(), 4, "expected 4 rows in [20, 60]: {}", range.len());
+    assert_eq!(
+        range.len(),
+        4,
+        "expected 4 rows in [20, 60]: {}",
+        range.len()
+    );
     // Should be sorted by PK
     let pks: Vec<i64> = range
         .iter()
@@ -64,10 +68,12 @@ fn clustered_table_production_storage_full_lifecycle() {
     assert_eq!(pks, vec![25, 33, 42, 50]);
 
     // Update preserves ordering
-    assert!(ct.update_pk(&Value::Integer(50), vec![
-        Value::Integer(50),
-        Value::Text("UPDATED".to_string()),
-    ]).unwrap());
+    assert!(ct
+        .update_pk(
+            &Value::Integer(50),
+            vec![Value::Integer(50), Value::Text("UPDATED".to_string()),]
+        )
+        .unwrap());
     assert_eq!(
         ct.lookup_pk(&Value::Integer(50)).unwrap()[1],
         Value::Text("UPDATED".to_string())
@@ -133,5 +139,9 @@ fn clustered_table_empty_operations() {
     assert_eq!(ct.len(), 0);
     assert!(ct.lookup_pk(&Value::Integer(1)).is_none());
     assert_eq!(ct.full_scan().len(), 0);
-    assert_eq!(ct.range_scan_pk(&Value::Integer(0), &Value::Integer(100)).len(), 0);
+    assert_eq!(
+        ct.range_scan_pk(&Value::Integer(0), &Value::Integer(100))
+            .len(),
+        0
+    );
 }

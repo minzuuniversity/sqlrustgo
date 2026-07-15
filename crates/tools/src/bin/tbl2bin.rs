@@ -259,7 +259,7 @@ fn convert_table(
                 let values = parse_tbl_line(&line_buf, &col_types);
                 rows.push(values);
                 line_count += 1;
-                if line_count % 500_000 == 0 {
+                if line_count.is_multiple_of(500_000) {
                     println!("  {}: loaded {} rows", table, line_count);
                 }
             }

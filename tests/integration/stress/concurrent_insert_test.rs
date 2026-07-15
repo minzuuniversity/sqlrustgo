@@ -73,10 +73,10 @@ fn run_repl(script: &str) -> (String, String, i32) {
 /// Run a script N times in separate processes (for concurrency simulation).
 /// Returns number of successful runs (0 errors).
 fn run_concurrent(num_processes: usize, script: &str) -> usize {
-    use std::sync::Arc;
     use std::sync::atomic::{AtomicUsize, Ordering};
+    use std::sync::Arc;
     use std::thread;
-    
+
     let success = Arc::new(AtomicUsize::new(0));
     let handles: Vec<_> = (0..num_processes)
         .map(|i| {
@@ -90,7 +90,7 @@ fn run_concurrent(num_processes: usize, script: &str) -> usize {
             })
         })
         .collect();
-    
+
     for h in handles {
         h.join().ok();
     }
@@ -112,9 +112,21 @@ fn test_insert_ignore_parses() {
          .exit\n",
     );
     // First INSERT succeeds, second INSERT IGNORE skips duplicate
-    assert!(out.contains("a"), "First INSERT should succeed with 'a', got:\n{}", out);
-    assert!(!out.contains("b"), "INSERT IGNORE should skip duplicate, got:\n{}", out);
-    assert!(!out.contains("Parse error"), "INSERT IGNORE should not produce parse error, got:\n{}", out);
+    assert!(
+        out.contains("a"),
+        "First INSERT should succeed with 'a', got:\n{}",
+        out
+    );
+    assert!(
+        !out.contains("b"),
+        "INSERT IGNORE should skip duplicate, got:\n{}",
+        out
+    );
+    assert!(
+        !out.contains("Parse error"),
+        "INSERT IGNORE should not produce parse error, got:\n{}",
+        out
+    );
 }
 
 #[test]
@@ -130,7 +142,10 @@ fn test_insert_ignore_concurrent() {
         .exit\n";
     // Run 4 concurrent processes
     let successes = run_concurrent(4, script);
-    assert_eq!(successes, 4, "All 4 concurrent processes should succeed (0 parse errors)");
+    assert_eq!(
+        successes, 4,
+        "All 4 concurrent processes should succeed (0 parse errors)"
+    );
 }
 
 #[test]
@@ -157,8 +172,16 @@ fn test_on_duplicate_key_update_works() {
     );
     // First INSERT inserted 'first'; second ON DUPLICATE KEY UPDATE overwrites with 'updated'
     // Only 'updated' should be in the output after both INSERTs
-    assert!(out.contains("updated"), "Value should be 'updated' after ODUK, got:\n{}", out);
-    assert!(!out.contains("first"), "Value 'first' should be overwritten by ODUK, got:\n{}", out);
+    assert!(
+        out.contains("updated"),
+        "Value should be 'updated' after ODUK, got:\n{}",
+        out
+    );
+    assert!(
+        !out.contains("first"),
+        "Value 'first' should be overwritten by ODUK, got:\n{}",
+        out
+    );
 }
 
 #[test]
@@ -171,8 +194,16 @@ fn test_replace_into_works() {
          SELECT * FROM ci_test5;\n\
          .exit\n",
     );
-    assert!(out.contains("replaced"), "REPLACE should replace value, got:\n{}", out);
-    assert!(!out.contains("original"), "REPLACE should remove original value, got:\n{}", out);
+    assert!(
+        out.contains("replaced"),
+        "REPLACE should replace value, got:\n{}",
+        out
+    );
+    assert!(
+        !out.contains("original"),
+        "REPLACE should remove original value, got:\n{}",
+        out
+    );
 }
 
 #[test]
@@ -188,6 +219,7 @@ fn test_plain_insert_duplicate_errors() {
     assert!(
         combined.contains("Duplicate entry") || combined.contains("duplicate"),
         "Plain INSERT on duplicate should error, got:\nstdout: {}\nstderr: {}",
-        out, _err
+        out,
+        _err
     );
 }

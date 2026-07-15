@@ -238,7 +238,10 @@ mod tests {
         assert_eq!(ahi.size(), 1);
         assert_eq!(
             ahi.lookup("users", b"alice"),
-            Some(PageLocation { page_id: 1, offset: 100 })
+            Some(PageLocation {
+                page_id: 1,
+                offset: 100
+            })
         );
         assert_eq!(ahi.promoted_count(), 1);
     }
@@ -288,7 +291,7 @@ mod tests {
         let _ = ahi.lookup("users", b"bob"); // miss
         let _ = ahi.lookup("users", b"alice"); // hit
         let _ = ahi.lookup("users", b"alice"); // hit
-        // 2 hits / 3 lookups = 0.6667
+                                               // 2 hits / 3 lookups = 0.6667
         let rate = ahi.hit_rate();
         assert!((rate - 2.0 / 3.0).abs() < 1e-9);
     }
