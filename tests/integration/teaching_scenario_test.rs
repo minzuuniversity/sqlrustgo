@@ -123,6 +123,7 @@ fn test_hash_join_with_condition() {
             foreign_keys: vec![],
             unique_constraints: vec![],
             check_constraints: vec![],
+                compression: None,
             partition_info: None,
         })
         .unwrap();
@@ -150,6 +151,7 @@ fn test_hash_join_with_condition() {
             foreign_keys: vec![],
             unique_constraints: vec![],
             check_constraints: vec![],
+                compression: None,
             partition_info: None,
         })
         .unwrap();
@@ -447,6 +449,7 @@ fn test_multiple_joins() {
             foreign_keys: vec![],
             unique_constraints: vec![],
             check_constraints: vec![],
+                compression: None,
             partition_info: None,
         })
         .unwrap();
@@ -470,6 +473,7 @@ fn test_multiple_joins() {
             foreign_keys: vec![],
             unique_constraints: vec![],
             check_constraints: vec![],
+                compression: None,
             partition_info: None,
         })
         .unwrap();

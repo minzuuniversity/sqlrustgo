@@ -164,7 +164,8 @@ mod tests {
             unique_constraints: vec![],
             check_constraints: vec![],
             partition_info: None,
-        }
+            compression: None,
+}
     }
 
     #[test]

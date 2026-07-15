@@ -34,6 +34,7 @@ fn make_test_storage(rows: usize) -> (FileStorage, TempDir) {
         foreign_keys: vec![],
         unique_constraints: vec![],
         check_constraints: vec![],
+            compression: None,
         partition_info: None,
     };
     storage.create_table(&table_info).expect("create table");

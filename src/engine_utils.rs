@@ -414,6 +414,7 @@ pub fn build_combined_schema(
         unique_constraints: vec![],
         check_constraints: vec![],
         partition_info: None,
+            compression: None,
     })
 }
 
@@ -440,6 +441,7 @@ pub fn build_multi_table_combined_schema(infos: &[TableInfo], prefixes: &[String
         unique_constraints: vec![],
         check_constraints: vec![],
         partition_info: None,
+            compression: None,
     }
 }
 
@@ -551,6 +553,7 @@ pub fn build_aggregate_schema(
         unique_constraints: vec![],
         check_constraints: vec![],
         partition_info: None,
+            compression: None,
     })
 }
 
