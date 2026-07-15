@@ -219,9 +219,7 @@ fn test_wire_error_io_display() {
 fn test_wire_error_protocol_display() {
     let err = WireError::Protocol("unexpected packet".to_string());
     let display = format!("{}", err);
-    assert!(
-        display.contains("unexpected packet") || display.contains("Protocol")
-    );
+    assert!(display.contains("unexpected packet") || display.contains("Protocol"));
 }
 
 #[test]
@@ -234,19 +232,13 @@ fn test_wire_error_debug() {
 
 #[test]
 fn test_wire_error_source() {
-    let err = WireError::Io(std::io::Error::new(
-        std::io::ErrorKind::Other,
-        "inner",
-    ));
+    let err = WireError::Io(std::io::Error::new(std::io::ErrorKind::Other, "inner"));
     let _ = std::error::Error::source(&err);
 }
 
 #[test]
 fn test_wire_error_io_from() {
-    let io_err = std::io::Error::new(
-        std::io::ErrorKind::PermissionDenied,
-        "perm denied",
-    );
+    let io_err = std::io::Error::new(std::io::ErrorKind::PermissionDenied, "perm denied");
     let err = WireError::from(io_err);
     let display = format!("{}", err);
     assert!(display.contains("perm denied") || display.contains("Io"));
