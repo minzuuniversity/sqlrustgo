@@ -1269,6 +1269,8 @@ impl<S: StorageEngine + 'static> ExecutionEngine<S> {
         storage: &parking_lot::RwLockReadGuard<'_, S>,
         table: &str,
     ) -> SqlResult<Vec<sqlrustgo_storage::Record>> {
+        // V311-06 (F-31): notify instrumentation hook before scan
+        self.instrumentation.on_seq_scan_start(table);
         let rows = storage.scan(table)?;
         // Stable FNV-1a-ish hash of table name as synthetic page_id.
         let mut page_id: u64 = 0xcbf29ce484222325;
