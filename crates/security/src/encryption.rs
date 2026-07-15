@@ -263,3 +263,12 @@ mod tests {
         assert!(!format!("{}", err).is_empty());
     }
 }
+
+
+    #[test]
+    fn test_encryption_error_variants() {
+        assert!(!format!("{}", EncryptionError::EncryptionFailed).is_empty());
+        assert!(!format!("{}", EncryptionError::DecryptionFailed).is_empty());
+        assert!(!format!("{}", EncryptionError::KeyNotFound).is_empty());
+        assert!(!format!("{}", EncryptionError::KeyAlreadyExists).is_empty());
+    }
