@@ -31,6 +31,8 @@ const SERVER_VERSION: &str = "8.0.33-SQLRustGo";
 /// honored regardless of whether the binary was built with
 /// `--features parallel-executor`; the engine stores the value and
 /// `LocalExecutor::execute_select_parallel` (feature-gated) reads it.
+#[allow(dead_code)]
+#[allow(dead_code)]
 fn read_executor_parallelism() -> usize {
     std::env::var("SQLRUSTGO_EXECUTOR_PARALLELISM")
         .ok()
@@ -43,6 +45,8 @@ fn read_executor_parallelism() -> usize {
 /// parallelism pre-configured from the CLI flag / env var. Centralizes
 /// the wiring so all engine construction sites pick up parallelism
 /// uniformly.
+#[allow(dead_code)]
+#[allow(dead_code)]
 pub(crate) fn build_engine_with_parallelism<S: StorageEngine + 'static>(
     storage: Arc<parking_lot::RwLock<S>>,
 ) -> ExecutionEngine<S> {
@@ -4471,7 +4475,7 @@ pub mod testing {
         pub addr: SocketAddr,
         pub storage: Arc<parking_lot::RwLock<BoxStorageEngine>>,
         pub tls_config: Arc<rustls::ServerConfig>,
-        pub user_store: UserStore,
+        pub(crate) user_store: UserStore,
     }
 
     /// Bounded worker pool: N worker threads + `sync_channel(N*2)` for
