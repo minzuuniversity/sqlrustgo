@@ -143,3 +143,87 @@ fn test_system_variable() {
     assert_eq!(var.name, "max_connections");
     assert_eq!(var.value, "151");
 }
+
+// ============ Verify Tests ============
+
+#[test]
+fn test_verify_result_empty() {
+    use sqlrustgo_admin::verify::VerifyResult;
+    let result = VerifyResult {
+        manifest: sqlrustgo_admin::manifest::Manifest::new(),
+        errors: vec![],
+        verified_files: 0,
+    };
+    assert!(result.errors.is_empty());
+    assert_eq!(result.verified_files, 0);
+}
+
+#[test]
+fn test_verify_result_with_errors() {
+    use sqlrustgo_admin::verify::VerifyResult;
+    let result = VerifyResult {
+        manifest: sqlrustgo_admin::manifest::Manifest::new(),
+        errors: vec![sqlrustgo_admin::verify::VerifyError {
+            path: "test.txt".to_string(),
+            kind: sqlrustgo_admin::verify::VerifyErrorKind::FileMissing,
+        }],
+        verified_files: 10,
+    };
+    assert_eq!(result.errors.len(), 1);
+    assert_eq!(result.verified_files, 10);
+}
+
+#[test]
+fn test_verify_error_display() {
+    use sqlrustgo_admin::verify::{VerifyError, VerifyErrorKind};
+    let err = VerifyError {
+        path: "missing.txt".to_string(),
+        kind: VerifyErrorKind::FileMissing,
+    };
+    let display = format!("{}", err);
+    assert!(display.contains("missing.txt"));
+    assert!(display.contains("file missing"));
+}
+
+#[test]
+fn test_verify_error_checksum() {
+    use sqlrustgo_admin::verify::{VerifyError, VerifyErrorKind};
+    let err = VerifyError {
+        path: "data.bin".to_string(),
+        kind: VerifyErrorKind::ChecksumMismatch {
+            expected: "abc123".to_string(),
+            actual: "def456".to_string(),
+        },
+    };
+    let display = format!("{}", err);
+    assert!(display.contains("abc123"));
+    assert!(display.contains("def456"));
+}
+
+// ============ RestoreResult Tests ============
+
+#[test]
+fn test_restore_result_struct() {
+    use sqlrustgo_admin::restore::RestoreResult;
+    let manifest = sqlrustgo_admin::manifest::Manifest::new();
+    let result = RestoreResult {
+        manifest,
+        restored_data_files: 5,
+        restored_wal: true,
+    };
+    assert_eq!(result.restored_data_files, 5);
+    assert!(result.restored_wal);
+}
+
+#[test]
+fn test_restore_result_no_wal() {
+    use sqlrustgo_admin::restore::RestoreResult;
+    let manifest = sqlrustgo_admin::manifest::Manifest::new();
+    let result = RestoreResult {
+        manifest,
+        restored_data_files: 3,
+        restored_wal: false,
+    };
+    assert_eq!(result.restored_data_files, 3);
+    assert!(!result.restored_wal);
+}
