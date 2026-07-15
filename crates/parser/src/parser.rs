@@ -7072,6 +7072,12 @@ impl Parser {
                 self.next();
                 ObjectType::Column
             }
+            // If columns is non-empty (we saw a (col_list) before ON) and no
+            // explicit object_type keyword, this is implicitly a column-level
+            // grant (MySQL semantics). Fixes F-36 main-path bug where
+            // `GRANT SELECT(email) ON users TO alice` was being recorded as
+            // a table-level grant and never appearing in get_authorized_columns.
+            _ if !columns.is_empty() => ObjectType::Column,
             _ => ObjectType::Table,
         };
 
