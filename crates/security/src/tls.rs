@@ -190,4 +190,22 @@ mod tests {
         let manager = CertificateManager::new(config);
         assert!(manager.is_err());
     }
+
+    #[test]
+    fn test_tls_config_with_ca() {
+        let config = TlsConfig {
+            cert_path: PathBuf::from("/tmp/cert.pem"),
+            key_path: PathBuf::from("/tmp/key.pem"),
+            ca_cert_path: Some(PathBuf::from("/tmp/ca.pem")),
+            accept_invalid_certs: false,
+            min_tls_version: TlsVersion::TLS1_3,
+        };
+        assert!(config.ca_cert_path.is_some());
+    }
+
+    #[test]
+    fn test_certificate_manager_new_no_identity() {
+        let result = CertificateManager::new(TlsConfig::default());
+        assert!(result.is_err());
+    }
 }
