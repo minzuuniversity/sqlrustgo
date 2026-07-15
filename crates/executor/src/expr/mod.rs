@@ -826,7 +826,7 @@ fn to_f64(v: &Value) -> f64 {
                 0.0
             }
         }
-        Value::Null | Value::Text(_) | Value::Blob(_) => 0.0,
+        Value::Null | Value::Text(_) | Value::Blob(_) | Value::Point(_, _) => 0.0,
     }
 }
 
@@ -840,7 +840,7 @@ fn to_i64(v: &Value) -> i64 {
                 0
             }
         }
-        Value::Null | Value::Float(_) | Value::Text(_) | Value::Blob(_) => 0,
+        Value::Null | Value::Float(_) | Value::Text(_) | Value::Blob(_) | Value::Point(_, _) => 0,
     }
 }
 
