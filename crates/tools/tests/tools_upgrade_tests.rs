@@ -287,3 +287,72 @@ fn test_version_info_edge_zero() {
     assert!(v0.can_upgrade_to(&v1));
     assert!(!v0.can_upgrade_to(&v0));
 }
+
+use sqlrustgo_tools::upgrade::{list_history, show_status};
+
+#[test]
+fn test_show_status_no_history() {
+    let tmp = tempfile::tempdir().unwrap();
+    // No last_upgrade.json exists → prints "No upgrade history found" and returns Ok
+    let result = show_status(tmp.path());
+    assert!(result.is_ok());
+}
+
+#[test]
+fn test_show_status_with_manifest() {
+    use sqlrustgo_tools::upgrade::UpgradeManifest;
+    let tmp = tempfile::tempdir().unwrap();
+    let upgrade_dir = tmp.path().join(".upgrade");
+    std::fs::create_dir_all(&upgrade_dir).unwrap();
+
+    let manifest = UpgradeManifest {
+        from_version: "3.10.0".to_string(),
+        to_version: "3.11.0".to_string(),
+        timestamp: "1234567890".to_string(),
+        status: UpgradeStatus::Completed,
+        backup_path: Some(tmp.path().join("backup")),
+        rollback_enabled: true,
+        steps_completed: 4,
+        total_steps: 4,
+        checksum: "abc123".to_string(),
+    };
+    let json = serde_json::to_string(&manifest).unwrap();
+    std::fs::write(upgrade_dir.join("last_upgrade.json"), json).unwrap();
+
+    let result = show_status(tmp.path());
+    assert!(result.is_ok());
+}
+
+#[test]
+fn test_list_history_empty() {
+    let tmp = tempfile::tempdir().unwrap();
+    // Empty dir → prints "No upgrades found" and returns Ok
+    let result = list_history(tmp.path());
+    assert!(result.is_ok());
+}
+
+#[test]
+fn test_list_history_with_upgrades() {
+    use sqlrustgo_tools::upgrade::UpgradeManifest;
+    let tmp = tempfile::tempdir().unwrap();
+
+    // Create a subdirectory with a manifest
+    let upgrade1 = tmp.path().join("upgrade_001");
+    std::fs::create_dir_all(&upgrade1).unwrap();
+    let manifest = UpgradeManifest {
+        from_version: "3.9.0".to_string(),
+        to_version: "3.10.0".to_string(),
+        timestamp: "1111111111".to_string(),
+        status: UpgradeStatus::Completed,
+        backup_path: None,
+        rollback_enabled: false,
+        steps_completed: 3,
+        total_steps: 3,
+        checksum: "xyz".to_string(),
+    };
+    let json = serde_json::to_string(&manifest).unwrap();
+    std::fs::write(upgrade1.join("manifest.json"), json).unwrap();
+
+    let result = list_history(tmp.path());
+    assert!(result.is_ok());
+}
