@@ -12,7 +12,7 @@
 //! let mut admin = WireAdmin::connect("127.0.0.1", 3306, "root", "", "test")?;
 //! admin.ping()?;
 //! let status = admin.status()?;
-//! let backup_path = admin.logical_backup("/tmp/backup.tar.gz")?;
+//! let backup_path = admin.logical_backup(std::path::Path::new("/tmp/backup.tar.gz"))?;
 //! # Ok::<(), sqlrustgo_admin::wire_client::WireError>(())
 //! ```
 
