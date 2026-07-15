@@ -1,4 +1,3 @@
- 
 //! INT-3 Single Expression Engine — delegation contract tests.
 //!
 //! See `openspec/changes/p0-2-int3-convergence/` for the full spec.

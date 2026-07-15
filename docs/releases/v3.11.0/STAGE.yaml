@@ -31,13 +31,13 @@ issue_plan:
 # 版本信息
 # =============================================================================
 version: "v3.11.0"
-current_stage: "DRAFT"
+current_stage: "ALPHA"
 branch: "develop/v3.11.0"  # created 2026-07-15 from develop/v3.10.0 @ 14979a5f16
 last_transition:
-  from: null
-  to: "DRAFT"
+  from: "DRAFT"
+  to: "ALPHA"
   date: "2026-07-15"
-  reason: "DRAFT init from v3.10.0 GA, starting 22-task debt clearance + feature integration cycle"
+  reason: "DRAFT → ALPHA: B3 clippy+fmt clean, 12/22 tasks done, ALPHA gate B (17/17) PASS"
 
 # =============================================================================
 # 分支保护规则 (v3.11.0 specific)

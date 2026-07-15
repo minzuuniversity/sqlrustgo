@@ -161,17 +161,21 @@ impl InstrumentationHook for CountingInstrumentationHook {
     }
     fn on_filter_start(&self, _table: &str, rows_in: usize) {
         self.filter_count.fetch_add(1, Ordering::Relaxed);
-        self.filter_rows_in_total.fetch_add(rows_in as u64, Ordering::Relaxed);
+        self.filter_rows_in_total
+            .fetch_add(rows_in as u64, Ordering::Relaxed);
     }
     fn on_filter_end(&self, _table: &str, rows_out: usize) {
-        self.filter_rows_out_total.fetch_add(rows_out as u64, Ordering::Relaxed);
+        self.filter_rows_out_total
+            .fetch_add(rows_out as u64, Ordering::Relaxed);
     }
     fn on_project_start(&self, _table: &str, rows_in: usize) {
         self.project_count.fetch_add(1, Ordering::Relaxed);
-        self.project_rows_in_total.fetch_add(rows_in as u64, Ordering::Relaxed);
+        self.project_rows_in_total
+            .fetch_add(rows_in as u64, Ordering::Relaxed);
     }
     fn on_project_end(&self, _table: &str, rows_out: usize) {
-        self.project_rows_out_total.fetch_add(rows_out as u64, Ordering::Relaxed);
+        self.project_rows_out_total
+            .fetch_add(rows_out as u64, Ordering::Relaxed);
     }
     fn on_hash_join_build(&self, _side: &str) {
         self.hash_join_build_count.fetch_add(1, Ordering::Relaxed);
