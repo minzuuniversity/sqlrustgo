@@ -850,7 +850,11 @@ fn substitute_outer_refs_in_expr_with_own(
             subq.clone(),
         ),
         // Literals and other terminal expressions pass through.
-        Expression::Literal(_) | Expression::WindowCall(_) => expr.clone(),
+        // Literals and other terminal expressions pass through.
+        Expression::Literal(_)
+        | Expression::WindowCall(_)
+        | Expression::SequenceNextVal(_)
+        | Expression::SequenceCurrval(_) => expr.clone(),
     }
 }
 
@@ -1084,7 +1088,9 @@ fn substitute_qualified_outer_refs_in_place(
         | Expression::NotRegexp(_, _)
         | Expression::Aggregate(_)
         | Expression::Literal(_)
-        | Expression::WindowCall(_) => {}
+        | Expression::WindowCall(_)
+        | Expression::SequenceNextVal(_)
+        | Expression::SequenceCurrval(_) => {}
     }
 }
 
@@ -1145,7 +1151,9 @@ pub fn where_expr_has_correlated_subquery(expr: &sqlrustgo_parser::Expression) -
         Expression::Literal(_)
         | Expression::Identifier(_)
         | Expression::Aggregate(_)
-        | Expression::WindowCall(_) => false,
+        | Expression::WindowCall(_)
+        | Expression::SequenceNextVal(_)
+        | Expression::SequenceCurrval(_) => false,
     }
 }
 
@@ -1187,6 +1195,8 @@ pub fn where_expr_has_uncorrelated_subquery(expr: &sqlrustgo_parser::Expression)
         | Expression::Identifier(_)
         | Expression::Aggregate(_)
         | Expression::WindowCall(_)
-        | Expression::FunctionCall(_, _) => false,
+        | Expression::FunctionCall(_, _)
+        | Expression::SequenceNextVal(_)
+        | Expression::SequenceCurrval(_) => false,
     }
 }
