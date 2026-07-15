@@ -27,15 +27,14 @@ use sqlrustgo_optimizer::rules::{BinaryOperator, Expr};
 use sqlrustgo_optimizer::unified_cost::UnifiedCostModel;
 use sqlrustgo_optimizer::unified_plan::UnifiedPlan;
 use sqlrustgo_parser::parser::{
-    AggregateCall, AggregateFunction, AlterTableOperation, AlterTableStatement, AlterUserStatement,
-    CallStatement, CreateDatabaseStatement, CreateIndexStatement, CreateProcedureStatement,
-    CreateRoleStatement, CompressionAlgorithm, CreateSequenceStatement, CreateTableStatement,
-    CreateTriggerStatement, CreateViewStatement, DescribeStatement, DropDatabaseStatement,
-    DropIndexStatement, DropRoleStatement, DropSequenceStatement, DropTableStatement, DropViewStatement,
-    ExceptStatement, GrantRoleStatement, GrantStatement, InsertStatement, IntersectStatement,
-    MergeStatement, ObjectType as ParserObjectType, OrderByExpression,
-    Privilege as ParserPrivilege, RevokeRoleStatement, RevokeStatement, SelectStatement,
-    SetRoleStatement, ShowStatement, StorageEngineSpec, StoredProcParam as ParserStoredProcParam,
+    AggregateCall, AggregateFunction, AlterSequenceStatement, AlterTableOperation, AlterTableStatement, AlterUserStatement,
+    CallStatement, CompressionAlgorithm, CreateDatabaseStatement, CreateIndexStatement, CreateProcedureStatement,
+    CreateRoleStatement, CreateSequenceStatement, CreateTableStatement, CreateTriggerStatement, CreateViewStatement,
+    DescribeStatement, DropDatabaseStatement, DropIndexStatement, DropRoleStatement, DropSequenceStatement,
+    DropTableStatement, DropViewStatement, ExceptStatement, GrantRoleStatement, GrantStatement, InsertStatement,
+    IntersectStatement, MergeStatement, ObjectType as ParserObjectType, OrderByExpression,
+    Privilege as ParserPrivilege, RevokeRoleStatement, RevokeStatement, SelectStatement, SetRoleStatement,
+    ShowStatement, StorageEngineSpec, StoredProcParam as ParserStoredProcParam,
     StoredProcParamMode as ParserParamMode, StoredProcStatement as ParserStatement,
     TruncateStatement, UnionStatement,
 };
@@ -570,6 +569,7 @@ impl<S: StorageEngine + 'static> ExecutionEngine<S> {
             Statement::CreateDatabase(ref db) => self.execute_create_database(db),
             Statement::CreateSequence(ref seq) => self.execute_create_sequence(seq),
             Statement::DropSequence(ref seq) => self.execute_drop_sequence(seq),
+            Statement::AlterSequence(ref seq) => self.execute_alter_sequence(seq),
             Statement::UseDatabase(ref name) => self.execute_use_database(name),
             Statement::AlterUser(_) => Err(SqlError::ExecutionError("ALTER USER not yet implemented".to_string())),
          }
@@ -818,6 +818,36 @@ impl<S: StorageEngine + 'static> ExecutionEngine<S> {
         }
 
         storage.drop_sequence(&seq_stmt.name)?;
+        Ok(ExecutorResult::empty())
+    }
+
+    fn execute_alter_sequence(&self, seq_stmt: &AlterSequenceStatement) -> SqlResult<ExecutorResult> {
+        let mut storage = self.storage.write();
+        
+        // Get existing sequence or error
+        let mut seq_info = match storage.get_sequence(&seq_stmt.name) {
+            Some(info) => info,
+            None => {
+                return Err(SqlError::ExecutionError(format!(
+                    "Sequence '{}' not found",
+                    seq_stmt.name
+                )));
+            }
+        };
+        
+        // Handle RESTART [WITH value]
+        if seq_stmt.restart_with.is_some() {
+            let restart_val = seq_stmt.restart_with.as_ref()
+                .and_then(|s| s.parse::<i64>().ok())
+                .unwrap_or(seq_info.start_with);
+            seq_info.current_value = restart_val - seq_info.increment_by;
+        } else {
+            // RESTART without WITH resets to start_value
+            seq_info.current_value = seq_info.start_with - seq_info.increment_by;
+        }
+        
+        // Update the sequence
+        storage.create_sequence(seq_info)?;
         Ok(ExecutorResult::empty())
     }
 
