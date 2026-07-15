@@ -2929,8 +2929,7 @@ impl<S: StorageEngine + 'static> ExecutionEngine<S> {
                     }
                     _ => Value::Null,
                 };
-                scalar_subq_cache().lock()
-                    .insert(cache_key, scalar.clone());
+                scalar_subq_cache().lock().insert(cache_key, scalar.clone());
                 Expression::Literal(scalar.to_string())
             }
             // CASE WHEN / SubqueryField pass through (no substitution needed —
