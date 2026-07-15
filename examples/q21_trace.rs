@@ -1,10 +1,10 @@
 //! Q21 trace - print intermediate state to identify which subquery hangs
+use parking_lot::RwLock;
 use sqlrustgo::{ExecutionEngine, MemoryStorage};
 use sqlrustgo_storage::Record;
 use sqlrustgo_types::Value as SqlValue;
 use std::path::PathBuf;
 use std::sync::Arc;
-use parking_lot::RwLock;
 use std::time::Instant;
 
 fn parse(line: &str, n: usize) -> Option<Record> {

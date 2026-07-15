@@ -68,8 +68,7 @@ fn test_sqlrustgo_sf1_sum_filtered() {
     // SUM with filter
     println!("\nSUM(l_quantity) with filter (SF=1):");
     let start = std::time::Instant::now();
-    let result = engine
-        .execute("SELECT SUM(l_quantity) FROM lineitem WHERE l_quantity < 10");
+    let result = engine.execute("SELECT SUM(l_quantity) FROM lineitem WHERE l_quantity < 10");
     let elapsed = start.elapsed();
 
     match result {
