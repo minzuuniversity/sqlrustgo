@@ -4911,6 +4911,8 @@ pub mod testing {
 /// them; production code outside of `test_helpers` should call them via
 /// the normal API.
 #[doc(hidden)]
+pub use load_data::parse_tbl_line;
+
 pub mod test_helpers {
     pub use crate::parse_stmt_execute_params;
     pub use crate::replace_placeholders;
