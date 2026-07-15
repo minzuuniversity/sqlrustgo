@@ -1126,6 +1126,10 @@ name = "instrumentation_hooks_test"
 path = "tests/integration/executor/instrumentation_hooks_test.rs"
 
 [[test]]
+name = "mysqladmin_e2e_test"
+path = "tests/integration/admin/mysqladmin_e2e_test.rs"
+
+[[test]]
 name = "clustered_table_v1_test"
 path = "tests/integration/storage/clustered_table_v1_test.rs"
 [[test]]
