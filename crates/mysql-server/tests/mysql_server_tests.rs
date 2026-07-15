@@ -298,3 +298,141 @@ fn test_replace_placeholders_multiple_same_value() {
     let result = replace_placeholders(sql, params);
     assert_eq!(result, "SELECT * FROM t WHERE a = 1 OR b = 2 OR c = 3");
 }
+
+// ============ MySqlError Additional Tests ============
+
+#[test]
+fn test_mysql_error_all_variants() {
+    use sqlrustgo_mysql_server::MySqlError;
+    use std::io;
+
+    let variants: Vec<MySqlError> = vec![
+        MySqlError::Io(io::Error::new(io::ErrorKind::Other, "io err")),
+        MySqlError::Protocol("protocol err".to_string()),
+        MySqlError::Sql("sql err".to_string()),
+        MySqlError::Other("other err".to_string()),
+    ];
+
+    for v in variants {
+        let display = format!("{}", v);
+        assert!(!display.is_empty());
+    }
+}
+
+#[test]
+fn test_mysql_error_other_variant() {
+    use sqlrustgo_mysql_server::MySqlError;
+    let err = MySqlError::Other("custom error".to_string());
+    let display = format!("{}", err);
+    assert!(display.contains("custom error"));
+}
+
+#[test]
+fn test_mysql_error_from_io() {
+    use sqlrustgo_mysql_server::MySqlError;
+    use std::io;
+    let io_err = io::Error::new(io::ErrorKind::NotFound, "file not found");
+    let err: MySqlError = MySqlError::from(io_err);
+    let display = format!("{}", err);
+    assert!(display.contains("NotFound") || display.contains("not found"));
+}
+
+// ============ Packet Edge Cases ============
+
+#[test]
+fn test_packet_single_byte_payload() {
+    use sqlrustgo_mysql_server::Packet;
+
+    let pkt = Packet {
+        length: 1,
+        sequence: 0,
+        payload: vec![0xFF],
+    };
+    let mut buf = Vec::new();
+    pkt.write_to(&mut buf).unwrap();
+    assert_eq!(buf.len(), 4 + 1);
+
+    let mut reader = std::io::Cursor::new(&buf);
+    let read_pkt = Packet::read_from(&mut reader).unwrap();
+    assert_eq!(read_pkt.payload, vec![0xFF]);
+}
+
+#[test]
+fn test_packet_max_sequence() {
+    use sqlrustgo_mysql_server::Packet;
+
+    let pkt = Packet {
+        length: 3,
+        sequence: 255,
+        payload: vec![1, 2, 3],
+    };
+    let mut buf = Vec::new();
+    pkt.write_to(&mut buf).unwrap();
+    let mut reader = std::io::Cursor::new(&buf);
+    let read_pkt = Packet::read_from(&mut reader).unwrap();
+    assert_eq!(read_pkt.sequence, 255);
+}
+
+#[test]
+fn test_packet_zero_length() {
+    use sqlrustgo_mysql_server::Packet;
+
+    let pkt = Packet {
+        length: 0,
+        sequence: 0,
+        payload: vec![],
+    };
+    let mut buf = Vec::new();
+    pkt.write_to(&mut buf).unwrap();
+    let mut reader = std::io::Cursor::new(&buf);
+    let read_pkt = Packet::read_from(&mut reader).unwrap();
+    assert_eq!(read_pkt.length, 0);
+    assert!(read_pkt.payload.is_empty());
+}
+
+// ============ parse_stmt_execute_params Edge Cases ============
+
+#[test]
+fn test_parse_stmt_execute_params_zero_count() {
+    use sqlrustgo_mysql_server::parse_stmt_execute_params;
+    // Empty params
+    let params = parse_stmt_execute_params(&[], 0, &[]);
+    assert!(params.is_empty());
+}
+
+#[test]
+fn test_parse_stmt_execute_params_short_payload() {
+    use sqlrustgo_mysql_server::parse_stmt_execute_params;
+    // Payload too short (< 9 bytes header)
+    let short_payload = vec![0x01, 0x02, 0x03];
+    let params = parse_stmt_execute_params(&short_payload, 1, &[]);
+    assert!(params.is_empty());
+}
+
+#[test]
+fn test_parse_stmt_execute_params_null_bitmap_truncated() {
+    use sqlrustgo_mysql_server::parse_stmt_execute_params;
+    // Header ok but null bitmap extends past end
+    let payload = vec![0x01, 0x02, 0x03, 0x04, 0x05, 0x06, 0x07, 0x08, 0x09];
+    let params = parse_stmt_execute_params(&payload, 16, &[]); // needs 2 null bytes
+    assert!(params.is_empty());
+}
+
+#[test]
+fn test_parse_stmt_execute_params_null_param() {
+    use sqlrustgo_mysql_server::parse_stmt_execute_params;
+    // 1 param with null bit set (first param is NULL)
+    // Header (9) + null_bitmap (1) + new_params_flag (1) + type_code (2) = 13
+    // Null bitmap byte 0x01 = param 0 is null
+    let payload = vec![
+        0x01, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, // header
+        0x01, // null_bitmap: param 0 is null
+        0x01, // new_params_bound_flag
+        0xfd, 0x00, // type code for param 0
+    ];
+    let params = parse_stmt_execute_params(&payload, 1, &[0xfd]);
+    assert_eq!(params.len(), 1);
+    assert!(params[0].0.is_empty()); // NULL = empty bytes
+}
+
+
