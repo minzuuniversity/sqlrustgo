@@ -2692,9 +2692,9 @@ impl<S: StorageEngine + 'static> ExecutionEngine<S> {
                     subquery_indexes
                         .get(*cursor)
                         .and_then(|idx| {
-                            self.pre_eval_exists_indexed(wc, outer_row, outer_table_info, idx)
+                            // V311-17: try bloom short-circuit first for NOT EXISTS
+                            self.pre_eval_not_exists_indexed(wc, outer_row, outer_table_info, idx)
                         })
-                        .map(|any| !any)
                 } else {
                     None
                 };
@@ -3542,6 +3542,45 @@ impl<S: StorageEngine + 'static> ExecutionEngine<S> {
             }
         }
         Some(false)
+    }
+
+    /// V311-17: NOT EXISTS fast path. Inverts the semantics of
+    /// `pre_eval_exists_indexed` and adds a bloom-filter short-circuit.
+    ///
+    /// Returns `Some(true)` if NOT EXISTS is true (outer row survives),
+    /// `Some(false)` if NOT EXISTS is false (outer row excluded).
+    fn pre_eval_not_exists_indexed(
+        &self,
+        where_expr: &Expression,
+        outer_row: &[Value],
+        outer_table_info: &TableInfo,
+        index: &SubqueryIndex,
+    ) -> Option<bool> {
+        let lit = find_top_level_equality_literal(where_expr, index.col_idx)?;
+        // Short-circuit 1: if not in qualifying_keys, NOT EXISTS = true.
+        if !index.qualifying_keys.contains(&lit) {
+            return Some(true);
+        }
+        // Short-circuit 2: pure-static residual pre-applied at build time.
+        // Bucket empty after build filter ⇒ no inner row matches ⇒ NOT EXISTS = true.
+        let bucket = index.key_to_rows.get(&lit);
+        if !Self::residual_has_outer_ref(&index.residual) {
+            return Some(bucket.map(|b| b.is_empty()).unwrap_or(true));
+        }
+        // Slow path: residual has outer refs (TPC-H Q21-style).
+        // Walk bucket looking for ANY match (NOT EXISTS is FALSE if found).
+        let bucket = bucket?;
+        for inner in bucket {
+            if inner.len() <= index.col_idx {
+                continue;
+            }
+            let substituted =
+                substitute_outer_refs_in_expr(&index.residual, outer_row, outer_table_info);
+            if eval_predicate(&substituted, inner, /* table_info */ outer_table_info) {
+                return Some(false); // Found a match — NOT EXISTS is false → exclude
+            }
+        }
+        Some(true) // No match found — NOT EXISTS is true → include
     }
 
     /// V311-15 helper: does the residual predicate reference any outer
