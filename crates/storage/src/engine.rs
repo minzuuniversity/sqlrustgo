@@ -705,6 +705,59 @@ impl MemoryStorage {
         }
         out
     }
+
+    /// Load data from a TPC-H `.tbl` file (pipe-delimited format).
+    /// Parses each line according to the table's column definitions and
+    /// inserts records in batches. Returns the number of rows loaded.
+    pub fn bulk_load_tbl_file(&mut self, table_name: &str, path: &str) -> SqlResult<usize> {
+        use std::fs;
+        let content = fs::read_to_string(path)
+            .map_err(|e| SqlError::IoError(e.to_string()))?;
+        let lines: Vec<&str> = content.lines().filter(|l| !l.is_empty()).collect();
+        if lines.is_empty() {
+            return Ok(0);
+        }
+        let info = self.get_table_info(table_name)?;
+        let cols: Vec<&str> = info.columns.iter().map(|c| c.data_type.as_str()).collect();
+        let mut batch: Vec<Record> = Vec::with_capacity(1024);
+        let mut total = 0usize;
+        for line in &lines {
+            let parts: Vec<&str> = line.trim_end_matches('|').split('|').collect();
+            let mut row = Vec::with_capacity(parts.len());
+            for (i, field) in parts.iter().enumerate() {
+                if field.is_empty() || *field == "NULL" || *field == "null" {
+                    row.push(Value::Null);
+                    continue;
+                }
+                let dtype = cols.get(i).copied().unwrap_or("TEXT");
+                let val = match dtype.to_uppercase().as_str() {
+                    "INTEGER" | "INT" | "BIGINT" | "SMALLINT" | "TINYINT" => {
+                        Value::Integer(field.parse::<i64>().map_err(|e| {
+                            SqlError::ExecutionError(format!("parse int at col {i}: {e}"))
+                        })?)
+                    }
+                    "REAL" | "FLOAT" | "DOUBLE" | "DECIMAL" | "NUMERIC" => {
+                        Value::Float(field.parse::<f64>().map_err(|e| {
+                            SqlError::ExecutionError(format!("parse float at col {i}: {e}"))
+                        })?)
+                    }
+                    _ => Value::Text(field.to_string()),
+                };
+                row.push(val);
+            }
+            batch.push(row);
+            if batch.len() >= 1024 {
+                total += batch.len();
+                self.insert(table_name, batch)?;
+                batch = Vec::with_capacity(1024);
+            }
+        }
+        if !batch.is_empty() {
+            total += batch.len();
+            self.insert(table_name, batch)?;
+        }
+        Ok(total)
+    }
 }
 
 impl Default for MemoryStorage {
