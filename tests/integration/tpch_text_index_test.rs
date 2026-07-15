@@ -69,7 +69,9 @@ fn test_text_index() {
                 // Test TEXT range (should NOT use index)
                 println!("\nTest: WHERE l_shipdate <= '1998-09-02' (TEXT range)");
                 let start = std::time::Instant::now();
-                match engine.execute("SELECT COUNT(*) FROM lineitem WHERE l_shipdate <= '1998-09-02'") {
+                match engine
+                    .execute("SELECT COUNT(*) FROM lineitem WHERE l_shipdate <= '1998-09-02'")
+                {
                     Ok(result) => {
                         let elapsed = start.elapsed();
                         println!("  Result: {:?} in {:?}", result.rows, elapsed);
