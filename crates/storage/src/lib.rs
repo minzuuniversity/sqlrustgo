@@ -13,6 +13,7 @@ pub mod file_storage;
 pub mod io_delay;
 pub mod lock;
 pub mod page;
+pub mod restore_filespace;
 pub mod predicate;
 pub mod read_write_split;
 pub mod recovery_engine;
