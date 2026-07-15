@@ -197,3 +197,104 @@ fn test_execution_engine_state_persistence() {
         sqlrustgo_types::Value::Text("updated".to_string())
     );
 }
+
+// ============ Placeholder Substitution Tests ============
+
+#[test]
+fn test_replace_placeholders_basic() {
+    use sqlrustgo_mysql_server::replace_placeholders;
+    use sqlrustgo_mysql_server::StmtParam;
+
+    let sql = "SELECT * FROM t WHERE id = ? AND name = ?";
+    let params: &[StmtParam] = &[
+        (b"42".to_vec(), true),   // numeric
+        (b"Alice".to_vec(), false), // string
+    ];
+    let result = replace_placeholders(sql, params);
+    assert_eq!(result, "SELECT * FROM t WHERE id = 42 AND name = 'Alice'");
+}
+
+#[test]
+fn test_replace_placeholders_null() {
+    use sqlrustgo_mysql_server::replace_placeholders;
+    use sqlrustgo_mysql_server::StmtParam;
+
+    let sql = "INSERT INTO t VALUES (?)";
+    let params: &[StmtParam] = &[(b"".to_vec(), false)];
+    // replacen replaces first ? only; second ? remains
+    let result = replace_placeholders(sql, params);
+    assert_eq!(result, "INSERT INTO t VALUES (NULL)"); // parentheses preserved
+}
+
+#[test]
+fn test_replace_placeholders_single() {
+    use sqlrustgo_mysql_server::replace_placeholders;
+    use sqlrustgo_mysql_server::StmtParam;
+
+    let sql = "SELECT ?";
+    let params: &[StmtParam] = &[(b"hello".to_vec(), false)];
+    let result = replace_placeholders(sql, params);
+    assert_eq!(result, "SELECT 'hello'");
+}
+
+#[test]
+fn test_replace_placeholders_numeric_verbatim() {
+    use sqlrustgo_mysql_server::replace_placeholders;
+    use sqlrustgo_mysql_server::StmtParam;
+
+    let sql = "SELECT ?";
+    let params: &[StmtParam] = &[(b"3.14159".to_vec(), true)];
+    let result = replace_placeholders(sql, params);
+    // is_numeric=true → verbatim (no quotes)
+    assert_eq!(result, "SELECT 3.14159");
+}
+
+#[test]
+fn test_replace_placeholders_escapes_single_quote() {
+    use sqlrustgo_mysql_server::replace_placeholders;
+    use sqlrustgo_mysql_server::StmtParam;
+
+    let sql = "SELECT ?";
+    let params: &[StmtParam] = &[(b"O'Reilly".to_vec(), false)];
+    let result = replace_placeholders(sql, params);
+    assert_eq!(result, "SELECT 'O''Reilly'");
+}
+
+#[test]
+fn test_replace_placeholders_empty_params_no_replacement() {
+    use sqlrustgo_mysql_server::replace_placeholders;
+    use sqlrustgo_mysql_server::StmtParam;
+
+    let sql = "SELECT * FROM t WHERE id = ?";
+    let params: &[StmtParam] = &[];
+    let result = replace_placeholders(sql, params);
+    // No replacement happens, ? stays
+    assert_eq!(result, "SELECT * FROM t WHERE id = ?");
+}
+
+#[test]
+fn test_replace_placeholders_binary_to_null() {
+    use sqlrustgo_mysql_server::replace_placeholders;
+    use sqlrustgo_mysql_server::StmtParam;
+
+    let sql = "SELECT ?";
+    let params: &[StmtParam] = &[(b"\x80\xff".to_vec(), false)];
+    let result = replace_placeholders(sql, params);
+    // Invalid UTF-8 → NULL
+    assert_eq!(result, "SELECT NULL");
+}
+
+#[test]
+fn test_replace_placeholders_multiple_same_value() {
+    use sqlrustgo_mysql_server::replace_placeholders;
+    use sqlrustgo_mysql_server::StmtParam;
+
+    let sql = "SELECT * FROM t WHERE a = ? OR b = ? OR c = ?";
+    let params: &[StmtParam] = &[
+        (b"1".to_vec(), true),
+        (b"2".to_vec(), true),
+        (b"3".to_vec(), true),
+    ];
+    let result = replace_placeholders(sql, params);
+    assert_eq!(result, "SELECT * FROM t WHERE a = 1 OR b = 2 OR c = 3");
+}
