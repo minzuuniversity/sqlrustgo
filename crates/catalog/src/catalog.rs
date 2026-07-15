@@ -501,4 +501,48 @@ mod tests {
         let result = catalog.set_default_schema("nonexistent".to_string());
         assert!(matches!(result, Err(CatalogError::SchemaNotFound(_))));
     }
+
+    #[test]
+    fn test_set_default_database() {
+        let mut catalog = Catalog::new("test");
+        catalog.add_database(Database::new("db1")).unwrap();
+        catalog.set_default_database("db1".to_string()).unwrap();
+        assert_eq!(catalog.default_database(), "db1");
+    }
+
+    #[test]
+    fn test_set_default_database_not_found() {
+        let mut catalog = Catalog::new("test");
+        let result = catalog.set_default_database("nonexistent".to_string());
+        assert!(matches!(result, Err(CatalogError::SchemaNotFound(_))));
+    }
+
+    #[test]
+    fn test_all_schemas() {
+        let mut catalog = create_test_catalog();
+        let schemas: Vec<_> = catalog.all_schemas();
+    }
+
+    #[test]
+    fn test_has_database() {
+        let mut catalog = Catalog::new("test");
+        catalog.add_database(Database::new("db1")).unwrap();
+        assert!(catalog.has_database("db1"));
+        assert!(!catalog.has_database("nonexistent"));
+    }
+
+    #[test]
+    fn test_has_schema() {
+        let mut catalog = create_test_catalog();
+        assert!(catalog.has_schema("public"));
+        assert!(catalog.has_schema("others"));
+        assert!(!catalog.has_schema("nonexistent"));
+    }
+
+    #[test]
+    fn test_remove_stored_procedure_not_found() {
+        let mut catalog = create_test_catalog();
+        let removed = catalog.remove_stored_procedure("nonexistent");
+        assert!(removed.is_none());
+    }
 }
