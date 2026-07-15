@@ -1,156 +1,160 @@
-//! Verify module tests
-//!
-//! Tests: VerifyError, VerifyErrorKind, VerifyResult display/debug
+// Additional admin verify.rs coverage tests
 
-use sqlrustgo_admin::manifest::Manifest;
 use sqlrustgo_admin::verify::{VerifyError, VerifyErrorKind, VerifyResult};
 
+// ============ VerifyErrorKind tests ============
+
 #[test]
-fn test_verify_error_kind_checksum_mismatch() {
-    let kind = VerifyErrorKind::ChecksumMismatch {
+fn test_verify_error_kind_checksum_mismatch_debug() {
+    let err = VerifyErrorKind::ChecksumMismatch {
         expected: "abc123".to_string(),
         actual: "def456".to_string(),
     };
-    assert!(matches!(kind, VerifyErrorKind::ChecksumMismatch { .. }));
+    let debug = format!("{:?}", err);
+    assert!(debug.contains("abc123"));
+    assert!(debug.contains("def456"));
+    assert!(debug.contains("ChecksumMismatch"));
 }
 
 #[test]
-fn test_verify_error_kind_file_missing() {
-    let kind = VerifyErrorKind::FileMissing;
-    assert!(matches!(kind, VerifyErrorKind::FileMissing));
+fn test_verify_error_kind_file_missing_debug() {
+    let err = VerifyErrorKind::FileMissing;
+    let debug = format!("{:?}", err);
+    assert!(debug.contains("FileMissing"));
 }
 
 #[test]
-fn test_verify_error_kind_wal_missing() {
-    let kind = VerifyErrorKind::WalMissing;
-    assert!(matches!(kind, VerifyErrorKind::WalMissing));
+fn test_verify_error_kind_wal_missing_debug() {
+    let err = VerifyErrorKind::WalMissing;
+    let debug = format!("{:?}", err);
+    assert!(debug.contains("WalMissing"));
 }
 
 #[test]
-fn test_verify_error_file_missing() {
+fn test_verify_error_kind_eq() {
+    let k1 = VerifyErrorKind::FileMissing;
+    let k2 = VerifyErrorKind::FileMissing;
+    let k3 = VerifyErrorKind::WalMissing;
+    assert_eq!(k1, k2);
+    assert_ne!(k1, k3);
+}
+
+#[test]
+fn test_verify_error_kind_clone() {
+    let k1 = VerifyErrorKind::ChecksumMismatch {
+        expected: "a".to_string(),
+        actual: "b".to_string(),
+    };
+    let k2 = k1.clone();
+    assert_eq!(k1, k2);
+}
+
+// ============ VerifyError tests ============
+
+#[test]
+fn test_verify_error_display() {
     let err = VerifyError {
-        path: "/data/users.frm".to_string(),
+        path: "data/t1.dat".to_string(),
         kind: VerifyErrorKind::FileMissing,
     };
-    assert_eq!(err.path, "/data/users.frm");
-}
-
-#[test]
-fn test_verify_error_wal_missing() {
-    let err = VerifyError {
-        path: "/wal/0000.log".to_string(),
-        kind: VerifyErrorKind::WalMissing,
-    };
-    assert_eq!(err.path, "/wal/0000.log");
+    let display = format!("{}", err);
+    assert!(display.contains("data/t1.dat"));
+    assert!(display.contains("file missing"));
 }
 
 #[test]
 fn test_verify_error_checksum_mismatch() {
     let err = VerifyError {
-        path: "/data/orders.ibd".to_string(),
+        path: "data/t1.dat".to_string(),
         kind: VerifyErrorKind::ChecksumMismatch {
-            expected: "aaaa".to_string(),
-            actual: "bbbb".to_string(),
+            expected: "hash1".to_string(),
+            actual: "hash2".to_string(),
         },
     };
-    assert_eq!(err.path, "/data/orders.ibd");
-    if let VerifyErrorKind::ChecksumMismatch { expected, actual } = &err.kind {
-        assert_eq!(expected, "aaaa");
-        assert_eq!(actual, "bbbb");
-    }
+    let display = format!("{}", err);
+    assert!(display.contains("hash1"));
+    assert!(display.contains("hash2"));
+}
+
+#[test]
+fn test_verify_error_eq() {
+    let err1 = VerifyError {
+        path: "data/t1.dat".to_string(),
+        kind: VerifyErrorKind::FileMissing,
+    };
+    let err2 = VerifyError {
+        path: "data/t1.dat".to_string(),
+        kind: VerifyErrorKind::FileMissing,
+    };
+    let err3 = VerifyError {
+        path: "data/t2.dat".to_string(),
+        kind: VerifyErrorKind::FileMissing,
+    };
+    assert_eq!(err1, err2);
+    assert_ne!(err1, err3);
 }
 
 #[test]
 fn test_verify_error_clone() {
-    let err = VerifyError {
-        path: "/data/test.frm".to_string(),
+    let err1 = VerifyError {
+        path: "data/t1.dat".to_string(),
         kind: VerifyErrorKind::FileMissing,
     };
-    let c = err.clone();
-    assert_eq!(c.path, err.path);
+    let err2 = err1.clone();
+    assert_eq!(err1, err2);
 }
 
 #[test]
 fn test_verify_error_debug() {
     let err = VerifyError {
-        path: "/data/test.frm".to_string(),
-        kind: VerifyErrorKind::FileMissing,
+        path: "data/t1.dat".to_string(),
+        kind: VerifyErrorKind::WalMissing,
     };
     let debug = format!("{:?}", err);
-    assert!(debug.contains("VerifyError"));
-    assert!(debug.contains("test.frm"));
-}
-
-#[test]
-fn test_verify_error_kind_clone() {
-    let kind = VerifyErrorKind::ChecksumMismatch {
-        expected: "x".to_string(),
-        actual: "y".to_string(),
-    };
-    let c = kind.clone();
-    assert!(matches!(c, VerifyErrorKind::ChecksumMismatch { .. }));
-}
-
-#[test]
-fn test_verify_error_kind_debug() {
-    let kind = VerifyErrorKind::WalMissing;
-    let debug = format!("{:?}", kind);
     assert!(debug.contains("WalMissing"));
 }
 
-#[test]
-fn test_verify_result_empty() {
-    let manifest = Manifest::new();
-    let result = VerifyResult {
-        manifest,
-        errors: vec![],
-        verified_files: 0,
-    };
-    assert!(result.errors.is_empty());
-    assert_eq!(result.verified_files, 0);
-}
-
-#[test]
-fn test_verify_result_with_errors() {
-    let manifest = Manifest::new();
-    let result = VerifyResult {
-        manifest,
-        errors: vec![
-            VerifyError {
-                path: "/data/a.frm".to_string(),
-                kind: VerifyErrorKind::FileMissing,
-            },
-            VerifyError {
-                path: "/data/b.ibd".to_string(),
-                kind: VerifyErrorKind::ChecksumMismatch {
-                    expected: "x".to_string(),
-                    actual: "y".to_string(),
-                },
-            },
-        ],
-        verified_files: 10,
-    };
-    assert_eq!(result.errors.len(), 2);
-    assert_eq!(result.verified_files, 10);
-}
+// ============ VerifyResult tests ============
 
 #[test]
 fn test_verify_result_debug() {
-    let manifest = Manifest::new();
     let result = VerifyResult {
-        manifest,
+        manifest: sqlrustgo_admin::manifest::Manifest::default(),
         errors: vec![],
-        verified_files: 5,
+        verified_files: 0,
     };
     let debug = format!("{:?}", result);
     assert!(debug.contains("VerifyResult"));
 }
 
 #[test]
-fn test_verify_error_kind_equality() {
-    let kind1 = VerifyErrorKind::FileMissing;
-    let kind2 = VerifyErrorKind::FileMissing;
-    let kind3 = VerifyErrorKind::WalMissing;
-    assert_eq!(kind1, kind2);
-    assert_ne!(kind1, kind3);
+fn test_verify_result_with_errors() {
+    let errors = vec![
+        VerifyError {
+            path: "data/t1.dat".to_string(),
+            kind: VerifyErrorKind::FileMissing,
+        },
+        VerifyError {
+            path: "data/t2.dat".to_string(),
+            kind: VerifyErrorKind::WalMissing,
+        },
+    ];
+    let result = VerifyResult {
+        manifest: sqlrustgo_admin::manifest::Manifest::default(),
+        errors,
+        verified_files: 5,
+    };
+    assert_eq!(result.errors.len(), 2);
+    assert_eq!(result.verified_files, 5);
+}
+
+#[test]
+fn test_verify_result_empty() {
+    let result = VerifyResult {
+        manifest: sqlrustgo_admin::manifest::Manifest::default(),
+        errors: vec![],
+        verified_files: 0,
+    };
+    assert!(result.errors.is_empty());
+    assert_eq!(result.verified_files, 0);
 }
