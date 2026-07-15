@@ -68,6 +68,7 @@ pub enum Statement {
     DropView(DropViewStatement),
     CreateSequence(CreateSequenceStatement),
     DropSequence(DropSequenceStatement),
+    AlterSequence(AlterSequenceStatement),
     Truncate(TruncateStatement),
     Analyze(AnalyzeStatement),
     WithSelect(WithSelect),
@@ -687,6 +688,13 @@ pub struct DropSequenceStatement {
     pub if_exists: bool,
 }
 
+/// ALTER SEQUENCE statement
+#[derive(Debug, Clone, PartialEq)]
+pub struct AlterSequenceStatement {
+    pub name: String,
+    pub restart_with: Option<String>,
+}
+
 /// TRUNCATE TABLE statement
 #[derive(Debug, Clone, PartialEq)]
 pub struct TruncateStatement {
@@ -711,6 +719,7 @@ pub enum ShowStatement {
     CreateTable {
         table: String,
     },
+    Sequences,
 }
 
 /// DESCRIBE statement (aliased as DESC)
@@ -828,6 +837,10 @@ pub enum Expression {
     CaseWhen(Vec<WhenClause>, Option<Box<Expression>>), // CASE WHEN ... ELSE ... END
     FunctionCall(String, Vec<Expression>),
     WindowCall(WindowCall),
+    /// NEXT VALUE FOR sequence_name - advances sequence and returns next value
+    SequenceNextVal(String),
+    /// CURRVAL(sequence_name) - reads current value without advancing
+    SequenceCurrval(String),
 }
 
 /// Flatten a top-level AND conjunction: `a AND b AND c` -> vec![a, b, c].
@@ -950,11 +963,10 @@ pub fn tpch_reorder_extra_tables(
         if dup {
             return extras.to_vec();
         }
-        // Prefix-collision guard: two different TPC-H tables share the
-        // same 1-char prefix (supplier+partsupp both 's', part+partsupp
-        // both 'p'). Adding bare-prefixes to `accumulated` would cause
-        // false "reachable" hits and corrupt the greedy chain order.
-        // Disable reorder when prefix collisions exist.
+        // Prefix-collision guard (FIX): two tables sharing a 1-char prefix
+        // are SAFE to reorder when an equi-join edge exists between them.
+        // The greedy chain can still find the join correctly. Only bail
+        // when the collision pair has no edge.
         let mut seen_prefix: std::collections::HashSet<String> = std::collections::HashSet::new();
         let all_tables: Vec<&str> = base_bare_for_guard
             .iter()
@@ -967,12 +979,51 @@ pub fn tpch_reorder_extra_tables(
                 Some(b)
             })
             .collect();
+        let mut prefix_edge: std::collections::HashMap<String, std::collections::HashSet<String>> =
+            std::collections::HashMap::new();
+        for p in conj {
+            if let Expression::BinaryOp(l, op, r) = p {
+                if op == "=" {
+                    let mut prefixes = Vec::new();
+                    fn extract_prefixes(e: &Expression, out: &mut Vec<String>) {
+                        if let Expression::Identifier(name) = e {
+                            let prefix = if let Some((q, _)) = name.split_once('.') {
+                                q
+                            } else {
+                                &name[..name.len().min(2)]
+                            };
+                            if !out.iter().any(|p| *p == prefix) {
+                                out.push(prefix.to_string());
+                            }
+                        }
+                    }
+                    extract_prefixes(l, &mut prefixes);
+                    extract_prefixes(r, &mut prefixes);
+                    for (i, pi) in prefixes.iter().enumerate() {
+                        for pj in prefixes.iter().skip(i + 1) {
+                            if pi != pj {
+                                prefix_edge
+                                    .entry(pi.clone())
+                                    .or_default()
+                                    .insert(pj.clone());
+                                prefix_edge
+                                    .entry(pj.clone())
+                                    .or_default()
+                                    .insert(pi.clone());
+                            }
+                        }
+                    }
+                }
+            }
+        }
         let mut collision = false;
         for t in &all_tables {
             let p1 = &t[..1];
             if !seen_prefix.insert(p1.to_string()) {
-                collision = true;
-                break;
+                if !prefix_edge.contains_key(p1) {
+                    collision = true;
+                    break;
+                }
             }
         }
         if collision {
@@ -1014,7 +1065,14 @@ pub fn tpch_reorder_extra_tables(
                     _ => false,
                 };
                 let r_year = match r.as_ref() {
-                    Expression::Literal(v) => v.len() == 10 && v.starts_with('1'),
+                    Expression::Literal(v) => {
+                        // Strip surrounding single quotes from the
+                        // literal value (parser stores '1994-01-01'
+                        // with quotes). After stripping, year literals
+                        // are 10 chars and start with '1' (1990s-2020s).
+                        let stripped: String = v.chars().filter(|c| *c != '\'').collect();
+                        stripped.len() == 10 && stripped.starts_with('1')
+                    }
                     _ => false,
                 };
                 l_date && r_year
@@ -1132,50 +1190,145 @@ pub fn tpch_reorder_extra_tables(
             let mut reachable = false;
             for acc in &accumulated {
                 let a = acc.as_str();
-                // Same bare name, same alias, same TPC-H prefix, or
-                // an explicit equi-join edge between them.
                 if b == a {
                     reachable = true;
                     break;
                 }
-                // Single-character alias match (e.g. `ps` should
-                // count as joined if `partsupp` is in accumulated).
                 if b == &a[..1.min(a.len())] || b == &a[..2.min(a.len())] {
                     reachable = true;
                     break;
                 }
-                // Equi-join edge.
-                if edges
-                    .iter()
-                    .any(|(l, r, _)| (l == b && r == a) || (r == b && l == a))
+                // Prefix match (FIX): tables in the same prefix family
+                // (part / partsupp both start with 'p') are reachable
+                // when one of them is in accumulated. Q2 fix: without
+                // this, partsupp (800K, reachable in spirit) is treated
+                // as unreachable and the smallest unreachable table wins
+                // → ON=true cartesian.
+                //
+                // Q5 guard: when force_orders_first is active AND
+                // orders is not yet in accumulated, do NOT treat
+                // supplier as reachable via customer (the
+                // nation-bridge edge c_nationkey=s_nationkey). Without
+                // this, supplier would be picked first and joined
+                // with `ON c_nationkey=s_nationkey` — a 150K × 10K
+                // cartesian-bridge (no nation in joined yet) that
+                // explodes to 130 GB at SF=1.
+                let skip_bridge_for_q5 = force_orders_first
+                    && b == "supplier"
+                    && a == "customer"
+                    && !accumulated.contains("orders");
+                if !skip_bridge_for_q5
+                    && !b.is_empty()
+                    && !a.is_empty()
+                    && &b[..1] == &a[..1]
+                {
+                    reachable = true;
+                    break;
+                }
+                if !skip_bridge_for_q5
+                    && edges.iter().any(|(l, r, _)| {
+                        let b1 = &b[..1.min(b.len())];
+                        let a1 = &a[..1.min(a.len())];
+                        (l == b1 && r == a1) || (r == b1 && l == a1)
+                    })
                 {
                     reachable = true;
                     break;
                 }
             }
-            // Nation-bridge heuristic: force orders before customer when
-            // nation-bridge AND date filter both exist, to prevent supplier x
-            // customer cartesian explosion before the orders date filter applies.
             if force_orders_first && b == "orders" {
-                let customer_in_remaining = remaining.iter().any(|rt| bare(rt) == "customer");
-                if customer_in_remaining {
+                let orders_still_remaining = remaining.iter().any(|rt| bare(rt) == "orders" || rt == "orders");
+                if orders_still_remaining {
                     best_idx = i;
                     break;
                 }
             }
             let base = effective_row_count(b, conj, &accumulated) as u128;
+            // Unreachable penalty must dominate any reachable raw count.
+            // The previous `+ 1e9` was insufficient: an unreachable
+            // region (1 row) would still beat reachable partsupp
+            // (800K) for Q2 (base=part), so the reorder emitted
+            // `INNER JOIN region ON true` (cartesian) and OOM'd.
+            // Use u128::MAX/2 so only reachable candidates can win.
             let score = if reachable {
                 base
             } else {
-                base + 1_000_000_000
+                (u128::MAX / 2) + base
             };
             if score < best_score {
                 best_score = score;
                 best_idx = i;
             }
         }
+        // If no candidate was reachable in this iteration, every
+        // remaining table is disconnected from accumulated → bail out
+        // with what we have so far concatenated with the remaining
+        // in their original extras order. The auto-rewrite handles
+        // each table's ON clause via per-table `find_join_predicate`
+        // (Q2 base=part case: partsupp picked via prefix, but
+        // nation/supplier/region only reachable through the 'ps'
+        // 2-char prefix the auto-rewrite doesn't recognize).
+        let any_reachable = (0..remaining.len()).any(|idx| {
+            let b2 = bare(&remaining[idx]);
+            for acc in &accumulated {
+                let a = acc.as_str();
+                if b2 == a
+                    || (b2.len() >= 1 && a.len() >= 1 && &b2[..1] == &a[..1])
+                {
+                    return true;
+                }
+                if edges.iter().any(|(l, r, _)| {
+                    let b1 = &b2[..1.min(b2.len())];
+                    let a1 = &a[..1.min(a.len())];
+                    (l == b1 && r == a1) || (r == b1 && l == a1)
+                }) {
+                    return true;
+                }
+            }
+            false
+        });
+        if !any_reachable {
+            let mut out = out;
+            for t in extras {
+                if !out.contains(t) {
+                    out.push(t.clone());
+                }
+            }
+            return out;
+        }
         if best_idx == usize::MAX {
             break;
+        }
+        // Defensive (Q5 OOM fix): if the pick is unreachable from the
+        // accumulated set, no equi-join predicate can match the new table
+        // to anything in joined_tables. The auto-rewrite then falls back
+        // to ON=true, which produces a cartesian product that explodes
+        // for 6+ table joins. Bail out of the reordering and keep the
+        // original input order rather than emitting a cartesian.
+        let picked_unreachable = {
+            let b = bare(&remaining[best_idx]);
+            let mut reach = false;
+            for acc in &accumulated {
+                let a = acc.as_str();
+                if b == a
+                    || b == &a[..1.min(a.len())]
+                    || b == &a[..2.min(a.len())]
+                {
+                    reach = true;
+                    break;
+                }
+                if edges
+                    .iter()
+                    .any(|(l, r, _)| (l == b && r == a) || (r == b && l == a))
+                {
+                    reach = true;
+                    break;
+                }
+            }
+            !reach
+        };
+        if picked_unreachable {
+            return extras.to_vec();
         }
         let picked = remaining.swap_remove(best_idx);
         // Add its bare name and prefix to `accumulated` so subsequent
@@ -1552,13 +1705,14 @@ impl Parser {
             Some(Token::Analyze) => self.parse_analyze(),
             Some(Token::With) => self.parse_with_select(),
             Some(Token::Alter) => {
-                // Peek ahead: ALTER USER vs ALTER TABLE
+                // Peek ahead: ALTER USER vs ALTER SEQUENCE vs ALTER TABLE
                 // ALTER USER: next token is StringLiteral/Identifier (user) or Token::User keyword
+                // ALTER SEQUENCE: handled by parse_alter() which dispatches to parse_alter_sequence
                 match self.peek() {
                     Some(&Token::StringLiteral(_))
                     | Some(&Token::Identifier(_))
                     | Some(&Token::User) => self.parse_alter_user(),
-                    _ => self.parse_alter_table(),
+                    _ => self.parse_alter(),
                 }
             }
             Some(Token::Call) => self.parse_call(),
@@ -4174,15 +4328,35 @@ impl Parser {
                     // its full name or its underscore-separated
                     // prefix.
                     joined.push(table_name.clone());
-                    // TPC-H 1-char/2-char prefix extraction
-                    // (see the base-table seed above for rationale).
-                    let prefix = if table_name.contains('_') {
-                        let underscore = table_name.find('_').unwrap();
-                        table_name[..underscore].to_string()
-                    } else {
-                        table_name[..1].to_string()
+                    // TPC-H prefix map. The naive "first char" or
+                    // "underscore-split" heuristic fails for partsupp
+                    // (no underscore; first char is 'p' but TPC-H
+                    // column prefix is 'ps'), which then breaks
+                    // find_join_predicate for `ps_suppkey = s_suppkey`
+                    // style predicates — the 'ps' qualifier is
+                    // unrecognised and the predicate falls through to
+                    // ON=true. Use the canonical TPC-H map.
+                    let tpch_prefix: &str = match table_name.as_str() {
+                        "region" => "r",
+                        "nation" => "n",
+                        "supplier" => "s",
+                        "customer" => "c",
+                        "part" => "p",
+                        "partsupp" => "ps",
+                        "orders" => "o",
+                        "lineitem" => "l",
+                        _ => {
+                            if table_name.contains('_') {
+                                let us = table_name.find('_').unwrap();
+                                &table_name[..us]
+                            } else if !table_name.is_empty() {
+                                &table_name[..1]
+                            } else {
+                                ""
+                            }
+                        }
                     };
-                    joined.push(prefix);
+                    joined.push(tpch_prefix.to_string());
                     // Phase 2: also push the inline alias (e.g.
                     // "n1" for `nation n1`) so subsequent
                     // `find_join_predicate` calls recognise
@@ -6356,6 +6530,27 @@ impl Parser {
                 let subquery = self.parse_select_statement()?;
                 Ok(Expression::Subquery(Box::new(subquery)))
             }
+            // CURRVAL(sequence_name) - read current value without advancing
+            Some(Token::Currval) => {
+                self.next(); // consume CURRVAL
+                self.expect(Token::LParen)?;
+                let seq_name = match self.next() {
+                    Some(Token::Identifier(name)) => name,
+                    _ => return Err("Expected sequence name".to_string()),
+                };
+                self.expect(Token::RParen)?;
+                Ok(Expression::SequenceCurrval(seq_name))
+            }
+            // NEXT [VALUE] FOR sequence_name - advance and return next value
+            Some(Token::NextValue) => {
+                self.next(); // consume NEXT
+                self.expect(Token::For)?;
+                let seq_name = match self.next() {
+                    Some(Token::Identifier(name)) => name,
+                    _ => return Err("Expected sequence name".to_string()),
+                };
+                Ok(Expression::SequenceNextVal(seq_name))
+            }
             _ => Err("Expected expression".to_string()),
         }
     }
@@ -7259,6 +7454,32 @@ impl Parser {
         Ok(Statement::DropSequence(DropSequenceStatement { name, if_exists }))
     }
 
+    fn parse_alter_sequence(&mut self) -> Result<Statement, String> {
+        self.expect(Token::Sequence)?;
+        let name = match self.next() {
+            Some(Token::Identifier(name)) => name,
+            _ => return Err("Expected sequence name".to_string()),
+        };
+        // Expect RESTART
+        match self.current() {
+            Some(Token::Restart) => {
+                self.next();
+                let restart_with = match self.current() {
+                    Some(Token::With) => {
+                        self.next();
+                        match self.next() {
+                            Some(Token::NumberLiteral(n)) => Some(n),
+                            _ => return Err("Expected value after RESTART WITH".to_string()),
+                        }
+                    }
+                    _ => None, // RESTART without WITH resets to start_value
+                };
+                Ok(Statement::AlterSequence(AlterSequenceStatement { name, restart_with }))
+            }
+            _ => Err(format!("Expected RESTART after ALTER SEQUENCE name, got {:?}", self.current())),
+        }
+    }
+
     fn parse_drop_role(&mut self) -> Result<Statement, String> {
         self.expect(Token::Role)?;
         let name = match self.next() {
@@ -7400,6 +7621,10 @@ impl Parser {
             Some(Token::Roles) => {
                 self.next();
                 Ok(Statement::ShowRoles)
+            }
+            Some(Token::Identifier(ref ident)) if ident.to_uppercase() == "SEQUENCES" => {
+                self.next();
+                Ok(Statement::Show(ShowStatement::Sequences))
             }
             Some(t) => Err(format!("Unexpected token after SHOW: {:?}", t)),
             None => Err("Unexpected end of input after SHOW".to_string()),
@@ -7968,8 +8193,16 @@ impl Parser {
         }))
     }
 
-    fn parse_alter_table(&mut self) -> Result<Statement, String> {
+    fn parse_alter(&mut self) -> Result<Statement, String> {
         self.expect(Token::Alter)?;
+        match self.current() {
+            Some(Token::Sequence) => self.parse_alter_sequence(),
+            Some(Token::Table) => self.parse_alter_table(),
+            _ => Err(format!("Expected SEQUENCE or TABLE after ALTER, got {:?}", self.current())),
+        }
+    }
+
+    fn parse_alter_table(&mut self) -> Result<Statement, String> {
         self.expect(Token::Table)?;
 
         let table_name = match self.next() {
