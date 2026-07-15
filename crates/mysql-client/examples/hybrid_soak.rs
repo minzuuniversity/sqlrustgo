@@ -533,16 +533,25 @@ fn main() {
     );
     eprintln!("  report_int : {}s", args.report_interval);
 
-    // Baseline row counts (on a fresh connection)
-    let mut baseline_conn =
-        MySqlConnection::connect(&addr, "root", "", "").expect("baseline connect");
-    let _ = baseline_conn.execute("USE `default`");
-    let baseline_orders = count_table(&mut baseline_conn, "orders");
-    let baseline_lineitem = count_table(&mut baseline_conn, "lineitem");
-    let baseline_customer = count_table(&mut baseline_conn, "customer");
-    let baseline_supplier = count_table(&mut baseline_conn, "supplier");
-    let baseline_part = count_table(&mut baseline_conn, "part");
-    let baseline_nation = count_table(&mut baseline_conn, "nation");
+    // Baseline row counts (on a fresh connection, scoped to release connection before workers)
+    let baseline_orders;
+    let baseline_lineitem;
+    let baseline_customer;
+    let baseline_supplier;
+    let baseline_part;
+    let baseline_nation;
+    {
+        let mut baseline_conn =
+            MySqlConnection::connect(&addr, "root", "", "").expect("baseline connect");
+        let _ = baseline_conn.execute("USE `default`");
+        baseline_orders = count_table(&mut baseline_conn, "orders");
+        baseline_lineitem = count_table(&mut baseline_conn, "lineitem");
+        baseline_customer = count_table(&mut baseline_conn, "customer");
+        baseline_supplier = count_table(&mut baseline_conn, "supplier");
+        baseline_part = count_table(&mut baseline_conn, "part");
+        baseline_nation = count_table(&mut baseline_conn, "nation");
+        drop(baseline_conn); // release socket before workers spawn
+    }
     eprintln!(
         "  baseline   : orders={} lineitem={} customer={} supplier={} part={} nation={}",
         baseline_orders,
@@ -553,6 +562,29 @@ fn main() {
         baseline_nation
     );
 
+    // Spawn workers
+    let duration = Duration::from_secs(args.duration_secs);
+    let counters = Arc::new(Counters::default());
+    let report_interval = Duration::from_secs(args.report_interval);
+    let qps_per_thread = args.target_qps / args.threads as f64;
+
+    let start = Instant::now();
+    let handles: Vec<_> = (0..args.threads)
+        .map(|wid| {
+            let ctr = Arc::clone(&counters);
+            let addr = addr;
+            thread::spawn(move || {
+                worker(
+                    wid as u32,
+                    addr,
+                    duration,
+                    args.oltp_ratio,
+                    qps_per_thread,
+                    ctr,
+                )
+            })
+        })
+        .collect();
     // Spawn workers
     let duration = Duration::from_secs(args.duration_secs);
     let counters = Arc::new(Counters::default());
@@ -642,15 +674,26 @@ fn main() {
     let _ = report_handle.join();
     let wall = start.elapsed();
 
-    // Final row counts
-    let final_orders = count_table(&mut baseline_conn, "orders");
-    let final_lineitem = count_table(&mut baseline_conn, "lineitem");
-    let final_customer = count_table(&mut baseline_conn, "customer");
-    let final_supplier = count_table(&mut baseline_conn, "supplier");
-    let final_part = count_table(&mut baseline_conn, "part");
-    let final_nation = count_table(&mut baseline_conn, "nation");
+    // Final row counts (new connection for final snapshot)
+    let final_orders;
+    let final_lineitem;
+    let final_customer;
+    let final_supplier;
+    let final_part;
+    let final_nation;
+    {
+        let mut final_conn =
+            MySqlConnection::connect(&addr, "root", "", "").expect("final connect");
+        let _ = final_conn.execute("USE `default`");
+        final_orders = count_table(&mut final_conn, "orders");
+        final_lineitem = count_table(&mut final_conn, "lineitem");
+        final_customer = count_table(&mut final_conn, "customer");
+        final_supplier = count_table(&mut final_conn, "supplier");
+        final_part = count_table(&mut final_conn, "part");
+        final_nation = count_table(&mut final_conn, "nation");
+    }
 
-    let (oltp_ok, oltp_err, olap_ok, olap_err) = counters.snapshot();
+        let (oltp_ok, oltp_err, olap_ok, olap_err) = counters.snapshot();
     let ins_ok = counters.oltp_insert_ok.load(Ordering::Relaxed);
     let upd_ok = counters.oltp_update_ok.load(Ordering::Relaxed);
     let del_ok = counters.oltp_delete_ok.load(Ordering::Relaxed);
@@ -712,5 +755,4 @@ fn main() {
         final_nation as i64 - baseline_nation as i64
     );
     eprintln!("═══════════════════════════════════════════════════════════════");
-    let _ = baseline_conn.execute("COM_QUIT");
 }
