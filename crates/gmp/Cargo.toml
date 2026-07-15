@@ -11,7 +11,6 @@ sqlrustgo-types = { path = "../types" }
 sqlrustgo-storage = { path = "../storage" }
 sqlrustgo-parser = { path = "../parser" }
 sqlrustgo-planner = { path = "../planner" }
-sqlrustgo-graph = { path = "../graph" }
 sqlrustgo-vector = { path = "../vector" }
 serde = { version = "1.0", features = ["derive"] }
 serde_json = "1.0"

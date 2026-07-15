@@ -618,9 +618,9 @@ perf:
 # (per docs/releases/v3.10.0/ARCHITECTURE_DEBT_ANALYSIS.md §5.2).
 extension_crates:
   - id: agentsql
-    state: SCOPE_DEFERRED
-    target_release: v3.11.0+
-    note: "AI agent SQL generator; no production callers"
+    state: DELETED
+    target_release: v3.11.0
+    note: "V311-19: AI agent SQL generator; 0 callers, archived to archive/v3.11/deleted-crates/agentsql/"
   - id: gmp
     state: SCOPE_DEFERRED
     target_release: v3.11.0+
@@ -630,31 +630,31 @@ extension_crates:
     target_release: v3.11.0+
     note: "RAG pipeline infra; no mysql-server dependency"
   - id: distributed
-    state: FROZEN
-    target_release: TBD
-    note: "Distributed execution prototype; FROZEN since v3.5.0 per docs/architecture/DISTRIBUTED_EXECUTION.md"
+    state: DELETED
+    target_release: v3.11.0
+    note: "V311-19: Distributed execution prototype; 0 callers in production, archived to archive/v3.11/deleted-crates/distributed/"
   - id: graph
-    state: SCOPE_DEFERRED
-    target_release: v3.11.0+
-    note: "Graph query support; 0 callers"
+    state: ARCHIVED
+    target_release: v3.11.0
+    note: "V311-19: Graph query support; 1 test uses it, archived to archive/v3.11/archived-crates/graph/"
   - id: qmd-bridge
-    state: SCOPE_DEFERRED
-    target_release: v3.11.0+
-    note: "Markdown QMD query bridge; uncertain scope"
+    state: DELETED
+    target_release: v3.11.0
+    note: "V311-19: Markdown QMD query bridge; 0 callers, archived to archive/v3.11/deleted-crates/qmd-bridge/"
   - id: evidence-graph
-    state: SCOPE_DEFERRED
-    target_release: v3.11.0+
-    note: "Evidence-graph storage; 0 callers"
+    state: DELETED
+    target_release: v3.11.0
+    note: "V311-19: Evidence-graph storage; 0 callers, archived to archive/v3.11/deleted-crates/evidence-graph/"
   - id: admin
     state: PARTIAL
     target_release: v3.10.0
     note: "V310-14 PR #3795 ships real mysqladmin CLI binary (F-32 shell)."
   - id: unified-query
-    state: SCOPE_DEFERRED
+    state: DELETED
     target_release: v3.11.0+
     note: "Cross-source query facade; 0 callers"
   - id: unified-storage
-    state: SCOPE_DEFERRED
+    state: DELETED
     target_release: v3.11.0+
     note: "Storage backend abstraction; not consumed"
   - id: vector

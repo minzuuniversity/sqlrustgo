@@ -82,7 +82,7 @@ This document is the **SSOT** for v3.11.0's feature checklist, tracking 23 V311-
 
 | ID | 任务 | 工作量 | 优先级 | 状态 | 详情 |
 |----|------|--------|--------|------|------|
-| V311-19 | Extension Crate 决策实施 | 84h | P1 | ⏳ TODO | 5 删 + 3 归档 + 1 集成 + 1 保留 |
+| V311-19 | Extension Crate 决策实施 | 84h | P1 | ✅ DONE 2026-07-15 | 5 删 + 3 归档 + 1 集成 + 1 保留 |
 
 ### 6.1 删除 (5)
 
