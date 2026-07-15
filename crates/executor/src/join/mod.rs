@@ -24,4 +24,5 @@
 //!
 //! Used by `crates/executor/src/lib.rs` re-exports.
 
+pub mod hash_anti_join;
 pub mod hash_join;
