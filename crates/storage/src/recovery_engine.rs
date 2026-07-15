@@ -677,6 +677,11 @@ mod tests {
                     bytes.extend_from_slice(b);
                     bytes.push(0);
                 }
+                Value::Point(x, y) => {
+                    bytes.extend_from_slice(b"P:");
+                    bytes.extend_from_slice(&x.to_bits().to_le_bytes());
+                    bytes.extend_from_slice(&y.to_bits().to_le_bytes());
+                }
             }
         }
 
@@ -872,7 +877,8 @@ mod tests {
             foreign_keys: vec![],
             unique_constraints: vec![],
             check_constraints: vec![],
-            partition_info: None,
+           
+    compression: None, partition_info: None,
         };
         storage.create_table(&table_info).unwrap();
         let id = table_name_to_id("orders");

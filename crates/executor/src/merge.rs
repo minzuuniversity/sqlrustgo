@@ -361,6 +361,7 @@ impl MergeExecutor {
             Value::Boolean(true) => "TRUE".to_string(),
             Value::Boolean(false) => "FALSE".to_string(),
             Value::Blob(_) => "NULL".to_string(),
+            Value::Point(x, y) => format!("POINT({}, {})", x, y),
         }
     }
 }
@@ -1068,6 +1069,7 @@ mod tests {
             foreign_keys: vec![],
             unique_constraints: vec![],
             check_constraints: vec![],
+                compression: None,
             partition_info: None,
         };
         assert_eq!(find_column_index("t.id", &info), Some(0));
@@ -1081,6 +1083,7 @@ mod tests {
             foreign_keys: vec![],
             unique_constraints: vec![],
             check_constraints: vec![],
+                compression: None,
             partition_info: None,
         };
         assert_eq!(find_column_index("id", &info), Some(0));
@@ -1094,6 +1097,7 @@ mod tests {
             foreign_keys: vec![],
             unique_constraints: vec![],
             check_constraints: vec![],
+                compression: None,
             partition_info: None,
         };
         assert_eq!(find_column_index("mycol", &info), Some(0));
@@ -1107,6 +1111,7 @@ mod tests {
             foreign_keys: vec![],
             unique_constraints: vec![],
             check_constraints: vec![],
+                compression: None,
             partition_info: None,
         };
         assert_eq!(find_column_index("name", &info), None);

@@ -2032,11 +2032,9 @@ impl StoredProcExecutor {
             Value::Float(f) => f.to_string(),
             Value::Boolean(b) => if *b { "TRUE" } else { "FALSE" }.to_string(),
             Value::Null => "NULL".to_string(),
-            Value::Blob(b) => b
-                .iter()
-                .map(|&x| x as char)
-                .collect::<String>()
+            Value::Blob(b) => b.iter().map(|&x| x as char).collect::<String>()
                 .replace('\'', "''"),
+            Value::Point(x, y) => format!("POINT({}, {})", x, y),
         }
     }
 
