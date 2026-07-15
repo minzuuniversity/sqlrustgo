@@ -53,8 +53,9 @@ fn create_test_table_info() -> TableInfo {
         ],
         foreign_keys: vec![],
         unique_constraints: vec![],
-        check_constraints: vec![],
-        partition_info: None,
+            check_constraints: vec![],
+            compression: None,
+            partition_info: None,
     }
 }
 
