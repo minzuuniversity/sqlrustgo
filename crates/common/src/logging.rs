@@ -290,4 +290,78 @@ mod tests {
         assert!(logger.should_log(log::Level::Info));
         assert!(!logger.should_log(log::Level::Debug));
     }
+
+    #[test]
+    fn test_init_logging() {
+        let dir = tempfile::tempdir().unwrap();
+        let result = init_logging(
+            dir.path().to_str().unwrap(),
+            LogLevel::Info,
+            LogFormat::Text,
+            1024 * 1024,
+            3,
+        );
+        assert!(result.is_ok());
+    }
+
+    #[test]
+    fn test_log_format_debug() {
+        let fmt = LogFormat::Text;
+        let debug = format!("{:?}", fmt);
+        assert!(debug.contains("Text"));
+    }
+
+    #[test]
+    fn test_log_format_json_debug() {
+        let fmt = LogFormat::Json;
+        let debug = format!("{:?}", fmt);
+        assert!(debug.contains("Json"));
+    }
+
+    #[test]
+    fn test_get_log_filename() {
+        let dir = tempfile::tempdir().unwrap();
+        let logger = RollingLogger::new(
+            dir.path().to_str().unwrap(),
+            LogLevel::Info,
+            LogFormat::Text,
+            1024 * 1024,
+            3,
+        );
+        let filename = logger.get_log_filename();
+        assert!(filename.contains("sqlrustgo_"));
+        assert!(filename.ends_with(".log"));
+    }
+
+    #[test]
+    fn test_should_log_debug_level() {
+        let dir = tempfile::tempdir().unwrap();
+        let logger = RollingLogger::new(
+            dir.path().to_str().unwrap(),
+            LogLevel::Debug,
+            LogFormat::Text,
+            1024 * 1024,
+            3,
+        );
+        assert!(logger.should_log(log::Level::Debug));
+        assert!(logger.should_log(log::Level::Info));
+        assert!(logger.should_log(log::Level::Warn));
+        assert!(logger.should_log(log::Level::Error));
+    }
+
+    #[test]
+    fn test_should_log_error_level() {
+        let dir = tempfile::tempdir().unwrap();
+        let logger = RollingLogger::new(
+            dir.path().to_str().unwrap(),
+            LogLevel::Error,
+            LogFormat::Text,
+            1024 * 1024,
+            3,
+        );
+        assert!(logger.should_log(log::Level::Error));
+        assert!(!logger.should_log(log::Level::Warn));
+        assert!(!logger.should_log(log::Level::Info));
+        assert!(!logger.should_log(log::Level::Debug));
+    }
 }
