@@ -322,7 +322,7 @@ fn worker(
     };
     // Use database so unqualified table refs work (the schema
     // autoloads region/nation/... but orders need a default db).
-    let _ = conn.execute("USE default");
+    let _ = conn.execute("USE `default`");
 
     let mut rng = rand::thread_rng();
     let deadline = Instant::now() + duration;
@@ -343,9 +343,11 @@ fn worker(
                 if wait > Duration::from_millis(2) {
                     thread::sleep(wait);
                 }
+            }
+            if Instant::now() < next_op_at {
                 continue;
             }
-            next_op_at = now + Duration::from_nanos(per_op_nanos);
+            next_op_at = Instant::now() + Duration::from_nanos(per_op_nanos);
         }
 
         let is_oltp = rng.gen::<f64>() < oltp_ratio;
@@ -534,7 +536,7 @@ fn main() {
     // Baseline row counts (on a fresh connection)
     let mut baseline_conn =
         MySqlConnection::connect(&addr, "root", "", "").expect("baseline connect");
-    let _ = baseline_conn.execute("USE default");
+    let _ = baseline_conn.execute("USE `default`");
     let baseline_orders = count_table(&mut baseline_conn, "orders");
     let baseline_lineitem = count_table(&mut baseline_conn, "lineitem");
     let baseline_customer = count_table(&mut baseline_conn, "customer");
