@@ -201,6 +201,7 @@ fn compare_values(col_val: &Value, compare_with: &str, op: &str) -> SqlResult<bo
                 Ok(*b == cmp_bool)
             }
             Value::Blob(_) => Ok(false),
+            Value::Point(_, _) => Ok(false),
         },
         "neq" => Ok(!compare_values(col_val, compare_with, "eq")?),
         "gt" | "gte" | "lt" | "lte" => {
@@ -252,6 +253,7 @@ fn is_zero_or_empty(val: &Value) -> bool {
         Value::Boolean(b) => !*b,
         Value::Null => true,
         Value::Blob(_) => false,
+        Value::Point(_, _) => false,
     }
 }
 

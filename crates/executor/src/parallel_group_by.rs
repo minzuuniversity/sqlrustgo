@@ -365,6 +365,7 @@ fn value_to_key_string(v: &Value) -> String {
         Value::Float(f) => format!("{:?}", f),
         Value::Text(s) => s.clone(),
         Value::Blob(b) => format!("{:?}", b),
+        Value::Point(x, y) => format!("{:?}, {:?}", x, y),
         Value::Boolean(b) => b.to_string(),
     }
 }
