@@ -758,3 +758,79 @@ fn test_engine_grant_column_requires_catalog() {
         err_msg
     );
 }
+
+// ============ V311-02 F-24 AdaptiveHashIndex production engine tests ============
+//
+// These tests verify the AHI is reachable from ExecutionEngine and works
+// end-to-end. The unit tests in crates/storage/src/adaptive_hash_index.rs
+// cover the storage API itself; here we test engine-level integration.
+
+#[test]
+fn test_engine_adaptive_hash_index_default_present() {
+    // Every new ExecutionEngine should have a default AHI with threshold 17.
+    let storage = Arc::new(RwLock::new(MemoryStorage::new()));
+    let engine = ExecutionEngine::new(storage);
+    let ahi = engine.adaptive_hash_index();
+    assert_eq!(ahi.size(), 0, "fresh AHI should be empty");
+    assert_eq!(ahi.total_lookups(), 0);
+    assert_eq!(ahi.hit_rate(), 0.0);
+}
+
+#[test]
+fn test_engine_adaptive_hash_index_record_and_lookup() {
+    // E2E: record_access → lookup returns PageLocation after promotion.
+    let storage = Arc::new(RwLock::new(MemoryStorage::new()));
+    let engine = ExecutionEngine::new(storage);
+    let ahi = engine.adaptive_hash_index();
+
+    // Below threshold: 16 accesses should NOT promote.
+    for _ in 0..16 {
+        ahi.record_access("users", b"alice", 1, 100);
+    }
+    assert_eq!(ahi.size(), 0, "below threshold should not promote");
+    assert!(ahi.lookup("users", b"alice").is_none());
+
+    // 17th access triggers promotion.
+    ahi.record_access("users", b"alice", 1, 100);
+    assert_eq!(ahi.size(), 1);
+    assert_eq!(
+        ahi.lookup("users", b"alice"),
+        Some(sqlrustgo_storage::PageLocation { page_id: 1, offset: 100 })
+    );
+    assert_eq!(ahi.total_hits(), 1);
+}
+
+#[test]
+fn test_engine_adaptive_hash_index_invalidate() {
+    // E2E: invalidate_page removes entries pointing to that page.
+    let storage = Arc::new(RwLock::new(MemoryStorage::new()));
+    let engine = ExecutionEngine::new(storage);
+    let ahi = engine.adaptive_hash_index();
+
+    for _ in 0..17 {
+        ahi.record_access("users", b"alice", 5, 50);
+    }
+    assert_eq!(ahi.size(), 1);
+    ahi.invalidate_page(5);
+    assert_eq!(ahi.size(), 0);
+    assert!(ahi.lookup("users", b"alice").is_none());
+}
+
+#[test]
+fn test_engine_set_adaptive_hash_index_replaces_instance() {
+    // E2E: set_adaptive_hash_index allows tests/main to use a custom AHI
+    // (e.g. with a lower threshold for testing).
+    let storage = Arc::new(RwLock::new(MemoryStorage::new()));
+    let mut engine = ExecutionEngine::new(storage);
+    let custom = sqlrustgo_storage::AdaptiveHashIndex::with_threshold(2)
+        .into_shared();
+    engine.set_adaptive_hash_index(Arc::clone(&custom));
+
+    let ahi = engine.adaptive_hash_index();
+    assert!(Arc::ptr_eq(&ahi, &custom), "engine should expose the custom AHI");
+
+    // With threshold 2, two accesses promote.
+    ahi.record_access("users", b"alice", 1, 100);
+    ahi.record_access("users", b"alice", 1, 100);
+    assert_eq!(ahi.size(), 1);
+}

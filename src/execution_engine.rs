@@ -51,6 +51,7 @@ use sqlrustgo_parser::{
 };
 use sqlrustgo_storage::checkpoint::{CheckpointManager, CheckpointMetadata};
 use sqlrustgo_storage::{
+    adaptive_hash_index::AdaptiveHashIndex,
     clustered_table::ClusteredTable,
     recovery_engine::{RecoveryEngine, RecoveryEngineImpl},
     wal::{FileBackedWalManager, MemoryWalManager},
@@ -94,6 +95,13 @@ pub struct ExecutionEngine<S: StorageEngine> {
     /// Operations on clustered tables are routed through this map.
     pub(crate) clustered_tables:
         parking_lot::RwLock<HashMap<String, Arc<parking_lot::RwLock<ClusteredTable>>>>,
+    /// V311-02 F-24: shared AdaptiveHashIndex instance for hot-page caching.
+    /// The AHI is shared across all queries and is the production-API
+    /// landing point for V311-02 v1. v2 (deferred) will wire AHI into
+    /// the secondary-index lookup path. Until then, callers can
+    /// `record_access()` and `lookup()` directly via
+    /// `engine.adaptive_hash_index()` to test AHI behavior.
+    pub(crate) adaptive_hash_index: Arc<AdaptiveHashIndex>,
 }
 
 /// Transaction status for lifecycle enforcement
@@ -167,6 +175,7 @@ impl<S: StorageEngine + 'static> ExecutionEngine<S> {
             cost_model: parking_lot::RwLock::new(UnifiedCostModel::default_model(0, 0)),
             views: HashMap::new(),
             clustered_tables: parking_lot::RwLock::new(HashMap::new()),
+            adaptive_hash_index: AdaptiveHashIndex::new().into_shared(),
         }
     }
     /// Create a new execution engine with CBO enabled by default
@@ -187,6 +196,19 @@ impl<S: StorageEngine + 'static> ExecutionEngine<S> {
         let mut e = Self::base_with(storage, true);
         e.catalog = Some(catalog);
         e
+    }
+
+    /// V311-02 F-24: Access the shared AdaptiveHashIndex for hot-page
+    /// caching. Use this to call `record_access` after a B+ Tree lookup
+    /// and `lookup` on subsequent reads to amortize point-lookup cost.
+    pub fn adaptive_hash_index(&self) -> Arc<AdaptiveHashIndex> {
+        Arc::clone(&self.adaptive_hash_index)
+    }
+
+    /// V311-02 F-24: Replace the AHI with a custom-configured instance.
+    /// Primarily for tests that need a low promotion threshold.
+    pub fn set_adaptive_hash_index(&mut self, ahi: Arc<AdaptiveHashIndex>) {
+        self.adaptive_hash_index = ahi;
     }
 
     /// Check if CBO is enabled
