@@ -2939,10 +2939,14 @@ impl<S: StorageEngine + 'static> ExecutionEngine<S> {
             Expression::QuantifiedOp(_, _, _) => where_expr.clone(),
             // Terminal expressions and aggregates pass through (no
             // possible subquery subtrees).
+            // Terminal expressions, aggregates, and sequences pass through (no
+            // possible subquery subtrees).
             Expression::Literal(_)
             | Expression::Identifier(_)
             | Expression::Aggregate(_)
-            | Expression::WindowCall(_) => where_expr.clone(),
+            | Expression::WindowCall(_)
+            | Expression::SequenceNextVal(_)
+            | Expression::SequenceCurrval(_) => where_expr.clone(),
         }
     }
 
