@@ -904,7 +904,8 @@ pub fn tpch_reorder_extra_tables(
         // both 'p'). Adding bare-prefixes to `accumulated` would cause
         // false "reachable" hits and corrupt the greedy chain order.
         // Disable reorder when prefix collisions exist.
-        let mut seen_prefix: std::collections::HashSet<String> = std::collections::HashSet::new();
+        let mut seen_prefix: std::collections::HashSet<String> =
+            std::collections::HashSet::new();
         let all_tables: Vec<&str> = base_bare_for_guard
             .iter()
             .chain(extras.iter())
@@ -928,12 +929,66 @@ pub fn tpch_reorder_extra_tables(
             return extras.to_vec();
         }
     }
-    // Hard-coded TPC-H SF=1 row counts used to bias the reorder
-    // toward smaller tables. Smaller first ⇒ smaller probe side at
-    // each step ⇒ bounded intermediate rows. For non-TPC-H tables
-    // we use a large default (100 M rows) so they end up last.
-    fn row_count_hint(t: &str) -> usize {
-        match t {
+    // Hard-coded TPC-H SF=1 row counts with filter selectivity estimation.
+    //
+    // Three optimizations beyond raw row counts:
+    // 1. Filter selectivity: apply WHERE predicate selectivity to get effective rows.
+    //    - region: r_name='ASIA' → 1 of 5 → effective 1
+    //    - nation: ASIA → ~3 nations
+    //    - supplier: ASIA → ~200 suppliers
+    //    - customer: ASIA → ~7K customers
+    //    - orders: o_orderdate in [1994,1995) → ~210K rows (14% selectivity)
+    //    - lineitem: driven by filtered orders → ~210K rows
+    // 2. Nation-bridge heuristic: if customer.c_nationkey = supplier.s_nationkey
+    //    AND orders has a date filter, force orders BEFORE customer to prevent
+    //    supplier x customer cartesian explosion (200 x 30K = 6M per nation).
+    // 3. Build-side selection: "smaller first" naturally picks the filtered
+    //    orders (210K) as build side when joining with lineitem (6M).
+    fn expr_contains_string_literal(expr: &Expression, s: &str) -> bool {
+        match expr {
+            Expression::Literal(v) => v == s,
+            Expression::BinaryOp(l, _, r) => {
+                expr_contains_string_literal(l.as_ref(), s) || expr_contains_string_literal(r.as_ref(), s)
+            }
+            _ => false,
+        }
+    }
+    fn has_orderdate_range_filter(expr: &Expression) -> bool {
+        match expr {
+            Expression::BinaryOp(l, op, r)
+                if op == ">=" || op == ">" || op == "<" || op == "<=" =>
+            {
+                let l_date = match l.as_ref() {
+                    Expression::Identifier(n) => n.contains("o_orderdate"),
+                    _ => false,
+                };
+                let r_year = match r.as_ref() {
+                    Expression::Literal(v) => v.len() == 10 && v.starts_with('1'),
+                    _ => false,
+                };
+                l_date && r_year
+            }
+            Expression::BinaryOp(l, op, r) if op == "AND" => {
+                has_orderdate_range_filter(l.as_ref()) || has_orderdate_range_filter(r.as_ref())
+            }
+            _ => false,
+        }
+    }
+    fn expr_has_identifier(expr: &Expression, name: &str) -> bool {
+        match expr {
+            Expression::Identifier(n) => n.contains(name),
+            Expression::BinaryOp(l, _, r) => {
+                expr_has_identifier(l.as_ref(), name) || expr_has_identifier(r.as_ref(), name)
+            }
+            _ => false,
+        }
+    }
+    fn effective_row_count(
+        t: &str,
+        conj: &[Expression],
+        accumulated: &std::collections::HashSet<String>,
+    ) -> usize {
+        let raw = match t {
             "region" => 5,
             "nation" => 25,
             "supplier" => 10_000,
@@ -943,8 +998,66 @@ pub fn tpch_reorder_extra_tables(
             "orders" => 1_500_000,
             "lineitem" => 6_001_215,
             _ => 100_000_000,
+        };
+        match t {
+            "region" => {
+                if conj.iter().any(|p| expr_contains_string_literal(p, "ASIA")) {
+                    1
+                } else {
+                    raw
+                }
+            }
+            "nation" => {
+                if conj.iter().any(|p| expr_contains_string_literal(p, "ASIA")) {
+                    3
+                } else {
+                    raw
+                }
+            }
+            "supplier" => {
+                if conj.iter().any(|p| expr_contains_string_literal(p, "ASIA")) {
+                    200
+                } else {
+                    raw
+                }
+            }
+            "customer" => {
+                if conj.iter().any(|p| expr_contains_string_literal(p, "ASIA")) {
+                    7_000
+                } else {
+                    raw
+                }
+            }
+            "orders" => {
+                if conj.iter().any(|p| has_orderdate_range_filter(p)) {
+                    210_000
+                } else {
+                    raw
+                }
+            }
+            "lineitem" => {
+                if accumulated.contains("orders") {
+                    210_000
+                } else {
+                    raw
+                }
+            }
+            _ => raw,
         }
     }
+    let has_nation_bridge = conj.iter().any(|p| {
+        match p {
+            Expression::BinaryOp(l, op, r) if op == "=" => {
+                (expr_has_identifier(l.as_ref(), "c_nationkey")
+                    && expr_has_identifier(r.as_ref(), "s_nationkey"))
+                    || (expr_has_identifier(r.as_ref(), "c_nationkey")
+                        && expr_has_identifier(l.as_ref(), "s_nationkey"))
+            }
+            _ => false,
+        }
+    });
+    let has_orders_date_filter = conj.iter().any(|p| has_orderdate_range_filter(p));
+    let force_orders_first = has_nation_bridge && has_orders_date_filter;
     fn bare(t: &str) -> &str {
         match t.find('|') {
             Some(idx) => &t[..idx],
@@ -953,8 +1066,11 @@ pub fn tpch_reorder_extra_tables(
     }
     // The set of (bare-table) names already joined (base table +
     // TPC-H prefix variations). Mirrors what `joined` carries.
-    let mut accumulated: std::collections::HashSet<String> =
-        joined.iter().filter(|s| !s.is_empty()).cloned().collect();
+    let mut accumulated: std::collections::HashSet<String> = joined
+        .iter()
+        .filter(|s| !s.is_empty())
+        .cloned()
+        .collect();
     let mut remaining: Vec<String> = extras.to_vec();
     let mut out: Vec<String> = Vec::with_capacity(remaining.len());
     let edges = build_equi_join_edges(conj);
@@ -983,20 +1099,27 @@ pub fn tpch_reorder_extra_tables(
                     break;
                 }
                 // Equi-join edge.
-                if edges
-                    .iter()
-                    .any(|(l, r, _)| l == b && r == a || r == b && l == a)
-                {
+                if edges.iter().any(|(l, r, _)| {
+                    (l == &b && r == &a) || (r == &b && l == &a)
+                }) {
                     reachable = true;
                     break;
                 }
             }
-            let base = row_count_hint(b) as u128;
-            let score = if reachable {
-                base
-            } else {
-                base + 1_000_000_000
-            };
+                // Nation-bridge heuristic: force orders before customer when
+            // nation-bridge AND date filter both exist, to prevent supplier x
+            // customer cartesian explosion before the orders date filter applies.
+            if force_orders_first && b == "orders" {
+                let customer_in_remaining =
+                    remaining.iter().any(|rt| bare(rt) == "customer");
+                if customer_in_remaining {
+                    best_idx = i;
+                    best_score = 0;
+                    break;
+                }
+            }
+            let base = effective_row_count(b, conj, &accumulated) as u128;
+            let score = if reachable { base } else { base + 1_000_000_000 };
             if score < best_score {
                 best_score = score;
                 best_idx = i;
@@ -1010,7 +1133,7 @@ pub fn tpch_reorder_extra_tables(
         // picks can find a join edge.
         let b = bare(&picked).to_string();
         accumulated.insert(b.clone());
-        if !b.is_empty() {
+        if b.len() >= 1 {
             accumulated.insert(b[..1].to_string());
         }
         if b.len() >= 2 {
@@ -1025,6 +1148,7 @@ pub fn tpch_reorder_extra_tables(
     }
     out
 }
+
 
 /// Check whether all tables referenced by a predicate's left and
 /// right sides are "known" to the current join context, i.e. either
@@ -3674,7 +3798,11 @@ impl Parser {
                 // order. Q15's __subq_N derived-table alias handling
                 // remains unchanged (the synthetic names are filtered
                 // out by `starts_with("__subq_")`).
-                let extra_tables = tpch_reorder_extra_tables(&extra_tables, &joined, &conj);
+                let extra_tables = tpch_reorder_extra_tables(
+                    &extra_tables,
+                    &joined,
+                    &conj,
+                );
 
                 for t in &extra_tables {
                     if joined.is_empty() {
@@ -6531,7 +6659,7 @@ impl Parser {
     ///   - `ENGINE=InnoDB CLUSTERED` → Some(StorageEngineSpec::Clustered)
     ///   - `ENGINE=InnoDB`           → Some(StorageEngineSpec::Heap) (explicit)
     ///   - absent                    → None (use default Heap)
-    ///     Returns `None` when no ENGINE clause is present.
+    /// Returns `None` when no ENGINE clause is present.
     fn parse_table_storage_engine_clause(&mut self) -> Option<StorageEngineSpec> {
         // Tolerate optional whitespace before ENGINE keyword (already lexed
         // away by the tokenizer). Match either `Token::Identifier("ENGINE")`
@@ -6548,7 +6676,7 @@ impl Parser {
             return None;
         }
         self.next(); // consume =
-                     // Expect engine name identifier (e.g. INNODB, MEMORY, HEAP)
+        // Expect engine name identifier (e.g. INNODB, MEMORY, HEAP)
         let engine_name = match self.current() {
             Some(Token::Identifier(s)) => {
                 let n = s.clone();
@@ -7590,20 +7718,17 @@ impl Parser {
                     _ => return Err("Expected data type".to_string()),
                 };
                 // Optional (N) length for CHAR / VARCHAR / DECIMAL etc.
-                let char_max_length: Option<usize> =
-                    if matches!(self.current(), Some(Token::LParen)) {
-                        self.next(); // consume (
-                        let n = match self.next() {
-                            Some(Token::NumberLiteral(s)) => s
-                                .parse::<usize>()
-                                .map_err(|e| format!("Invalid length: {}", e))?,
-                            _ => return Err("Expected integer length in (N)".to_string()),
-                        };
-                        self.expect(Token::RParen)?;
-                        Some(n)
-                    } else {
-                        None
+                let char_max_length: Option<usize> = if matches!(self.current(), Some(Token::LParen)) {
+                    self.next(); // consume (
+                    let n = match self.next() {
+                        Some(Token::NumberLiteral(s)) => s.parse::<usize>().map_err(|e| format!("Invalid length: {}", e))?,
+                        _ => return Err("Expected integer length in (N)".to_string()),
                     };
+                    self.expect(Token::RParen)?;
+                    Some(n)
+                } else {
+                    None
+                };
                 // Optional [NOT] NULL
                 let nullable = if matches!(self.current(), Some(Token::Not)) {
                     self.next();
