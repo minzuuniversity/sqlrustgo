@@ -16,10 +16,33 @@ fn test_change_buffer_main_path_integration() {
     let cb = ChangeBuffer::new();
 
     // Step 1: Defer several secondary index updates
-    cb.defer_update(1, ChangeOp::Insert { key: b"idx_a".to_vec(), value: b"1".to_vec() });
-    cb.defer_update(1, ChangeOp::Update { key: b"idx_a".to_vec(), new_value: b"2".to_vec() });
-    cb.defer_update(2, ChangeOp::Delete { key: b"idx_b".to_vec() });
-    cb.defer_update(3, ChangeOp::Insert { key: b"idx_c".to_vec(), value: b"3".to_vec() });
+    cb.defer_update(
+        1,
+        ChangeOp::Insert {
+            key: b"idx_a".to_vec(),
+            value: b"1".to_vec(),
+        },
+    );
+    cb.defer_update(
+        1,
+        ChangeOp::Update {
+            key: b"idx_a".to_vec(),
+            new_value: b"2".to_vec(),
+        },
+    );
+    cb.defer_update(
+        2,
+        ChangeOp::Delete {
+            key: b"idx_b".to_vec(),
+        },
+    );
+    cb.defer_update(
+        3,
+        ChangeOp::Insert {
+            key: b"idx_c".to_vec(),
+            value: b"3".to_vec(),
+        },
+    );
 
     assert_eq!(cb.pending_count(), 4, "Should have 4 deferred updates");
 
@@ -49,16 +72,28 @@ fn test_change_buffer_flush_integrates() {
 
     // Fill up to just under threshold
     for i in 0..4 {
-        cb.defer_update(i, ChangeOp::Insert {
-            key: format!("key_{}", i).into_bytes(),
-            value: format!("value_{}", i).into_bytes(),
-        });
+        cb.defer_update(
+            i,
+            ChangeOp::Insert {
+                key: format!("key_{}", i).into_bytes(),
+                value: format!("value_{}", i).into_bytes(),
+            },
+        );
     }
 
-    assert!(!cb.should_flush(), "Below threshold (4 < 5), should not flush");
+    assert!(
+        !cb.should_flush(),
+        "Below threshold (4 < 5), should not flush"
+    );
 
     // At threshold
-    cb.defer_update(4, ChangeOp::Insert { key: b"d".to_vec(), value: b"4".to_vec() });
+    cb.defer_update(
+        4,
+        ChangeOp::Insert {
+            key: b"d".to_vec(),
+            value: b"4".to_vec(),
+        },
+    );
     assert!(cb.should_flush(), "At threshold (5 >= 5), should flush");
 
     // Flush returns all entries
@@ -77,12 +112,30 @@ fn test_change_buffer_capacity_threshold() {
     let cb = ChangeBuffer::with_capacity(3);
 
     // Just under threshold
-    cb.defer_update(1, ChangeOp::Insert { key: b"a".to_vec(), value: b"1".to_vec() });
-    cb.defer_update(2, ChangeOp::Insert { key: b"b".to_vec(), value: b"2".to_vec() });
+    cb.defer_update(
+        1,
+        ChangeOp::Insert {
+            key: b"a".to_vec(),
+            value: b"1".to_vec(),
+        },
+    );
+    cb.defer_update(
+        2,
+        ChangeOp::Insert {
+            key: b"b".to_vec(),
+            value: b"2".to_vec(),
+        },
+    );
     assert!(!cb.should_flush(), "Below threshold, should not flush");
 
     // At threshold
-    cb.defer_update(3, ChangeOp::Insert { key: b"c".to_vec(), value: b"3".to_vec() });
+    cb.defer_update(
+        3,
+        ChangeOp::Insert {
+            key: b"c".to_vec(),
+            value: b"3".to_vec(),
+        },
+    );
     assert!(cb.should_flush(), "At threshold, should flush");
 
     // Flush and verify threshold resets
