@@ -24,12 +24,18 @@ fn test_split_single_statement_no_semi() {
 
 #[test]
 fn test_split_two_statements() {
-    assert_eq!(split_sql_statements("SELECT 1; SELECT 2"), vec!["SELECT 1", "SELECT 2"]);
+    assert_eq!(
+        split_sql_statements("SELECT 1; SELECT 2"),
+        vec!["SELECT 1", "SELECT 2"]
+    );
 }
 
 #[test]
 fn test_split_trailing_semicolon() {
-    assert_eq!(split_sql_statements("SELECT 1; SELECT 2;"), vec!["SELECT 1", "SELECT 2"]);
+    assert_eq!(
+        split_sql_statements("SELECT 1; SELECT 2;"),
+        vec!["SELECT 1", "SELECT 2"]
+    );
 }
 
 #[test]
@@ -79,7 +85,10 @@ fn test_split_trims_result() {
 
 #[test]
 fn test_split_multiple_semicolons() {
-    assert_eq!(split_sql_statements("SELECT 1;;SELECT 2"), vec!["SELECT 1", "SELECT 2"]);
+    assert_eq!(
+        split_sql_statements("SELECT 1;;SELECT 2"),
+        vec!["SELECT 1", "SELECT 2"]
+    );
 }
 
 #[test]
@@ -132,7 +141,8 @@ fn test_parse_statements_single() {
 
 #[test]
 fn test_parse_statements_mixed_dml() {
-    let result = parse_statements("CREATE TABLE t (id INT); INSERT INTO t VALUES (1); SELECT * FROM t");
+    let result =
+        parse_statements("CREATE TABLE t (id INT); INSERT INTO t VALUES (1); SELECT * FROM t");
     assert!(result.is_ok());
     assert_eq!(result.unwrap().len(), 3);
 }
