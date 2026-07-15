@@ -344,7 +344,11 @@ fn tpch_sf1_22_in_process_regression() {
         eprintln!("  >>> Q{:>2}: starting query...", n);
         let start = Instant::now();
         let result = client.query_rows(&sql);
-        eprintln!("  >>> Q{:>2}: query complete, {} rows", n, result.as_ref().map(|r| r.len()).unwrap_or(0));
+        eprintln!(
+            "  >>> Q{:>2}: query complete, {} rows",
+            n,
+            result.as_ref().map(|r| r.len()).unwrap_or(0)
+        );
         let elapsed = start.elapsed();
         let notes = match &result {
             Ok(rows) => format!("ok; {} rows", rows.len()),
