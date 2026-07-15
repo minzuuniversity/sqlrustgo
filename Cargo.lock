@@ -4405,6 +4405,7 @@ dependencies = [
  "sqlrustgo-spill",
  "sqlrustgo-storage",
  "sqlrustgo-types",
+ "sqlrustgo_gis",
  "tempfile",
  "thiserror 2.0.18",
  "tracing",
