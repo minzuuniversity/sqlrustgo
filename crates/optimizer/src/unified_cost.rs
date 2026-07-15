@@ -169,11 +169,11 @@ impl UnifiedCostModel {
             UnifiedPlan::Filter {
                 input, predicate, ..
             } => {
-                // Check input first
-                if !self.should_parallelize_with(input, for_update) {
-                    return false;
-                }
-                // Use selectivity to decide
+                // Don't reject Filter just because the input scan is small.
+                // The Filter may itself be the primary computation unit
+                // (e.g., a complex predicate on a small table scan that
+                // still produces many output rows).  Use is_compute_bound
+                // on the actual output row estimate rather than the input scan.
                 self.is_compute_bound(input, predicate)
             }
             UnifiedPlan::IndexScan { table_name, .. } => {
