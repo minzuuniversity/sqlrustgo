@@ -13,7 +13,6 @@ members = [
     "crates/server",
     "crates/telemetry",
     "crates/network",
-    "crates/agentsql",
     "crates/bench",
     "crates/tools",
     "crates/sqlancer",
@@ -27,26 +26,18 @@ members = [
     "crates/gmp",
     "crates/vector",
     "crates/rag",
-    "crates/graph",
-    "crates/distributed",
-    "crates/unified-storage",
     "crates/admin",
     "crates/cache",
     "crates/cli",
-    "crates/evidence-graph",
     "crates/mysql-client",
     "crates/mysql-server",
-    "crates/qmd-bridge",
     "crates/sqlrustgo-cli",
     "crates/security",
     "crates/spill",
     "crates/sql-corpus",
     "crates/sqlrustgo_sqllogictest",
     "crates/types",
-    "crates/unified-query",
     "crates/wal-verification",
-    "tools/graph-cli",
-    "tools/sqlrustgo-gate",
     "tools/xtask",
 ]
 
@@ -74,9 +65,7 @@ sqlrustgo-security = { path = "crates/security" }
 sqlrustgo-telemetry = { path = "crates/telemetry" }
 sqlrustgo-network = { path = "crates/network" }
 sqlrustgo-gmp = { path = "crates/gmp" }
-sqlrustgo-agentsql = { path = "crates/agentsql" }
 sqlrustgo-vector = { path = "crates/vector" }
-sqlrustgo-graph = { path = "crates/graph" }
 sqlrustgo-sql-corpus = { path = "crates/sql-corpus" }
 sqlrustgo-cache = { path = "crates/cache" }
 sqlrustgo-mysql-server = { path = "crates/mysql-server" }
@@ -134,10 +123,7 @@ sqlrustgo-tools = { path = "crates/tools" }
 sqlrustgo-admin = { path = "crates/admin" }
 sqlrustgo-storage = { path = "crates/storage" }
 sqlrustgo-vector = { path = "crates/vector" }
-sqlrustgo-graph = { path = "crates/graph" }
-sqlrustgo-unified-query = { path = "crates/unified-query" }
 sqlrustgo-mysql-server = { path = "crates/mysql-server" }
-sqlrustgo-distributed = { path = "crates/distributed" }
 sha1 = "0.10"
 clap = { version = "4", features = ["derive"] }
 
@@ -1056,9 +1042,6 @@ path = "tests/integration/sql/four_way_harness.rs"
 [[test]]
 name = "g2_substance_parallel_executor_test"
 path = "tests/integration/sql/g2_substance_parallel_executor_test.rs"
-[[test]]
-name = "graph_cypher_integration_test"
-path = "tests/integration/sql/graph_cypher_integration_test.rs"
 [[test]]
 name = "int1_bypass_evidence_test"
 path = "tests/integration/sql/int1_bypass_evidence_test.rs"
