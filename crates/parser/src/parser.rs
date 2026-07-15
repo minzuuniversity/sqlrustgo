@@ -963,11 +963,10 @@ pub fn tpch_reorder_extra_tables(
         if dup {
             return extras.to_vec();
         }
-        // Prefix-collision guard: two different TPC-H tables share the
-        // same 1-char prefix (supplier+partsupp both 's', part+partsupp
-        // both 'p'). Adding bare-prefixes to `accumulated` would cause
-        // false "reachable" hits and corrupt the greedy chain order.
-        // Disable reorder when prefix collisions exist.
+        // Prefix-collision guard (FIX): two tables sharing a 1-char prefix
+        // are SAFE to reorder when an equi-join edge exists between them.
+        // The greedy chain can still find the join correctly. Only bail
+        // when the collision pair has no edge.
         let mut seen_prefix: std::collections::HashSet<String> = std::collections::HashSet::new();
         let all_tables: Vec<&str> = base_bare_for_guard
             .iter()
@@ -980,14 +979,11 @@ pub fn tpch_reorder_extra_tables(
                 Some(b)
             })
             .collect();
-        // Prefix-collision guard (FIX): build prefix→connected-prefixes map from
-        // equi-join predicates in conj, then use it when checking collisions.
         let mut prefix_edge: std::collections::HashMap<String, std::collections::HashSet<String>> =
             std::collections::HashMap::new();
         for p in conj {
             if let Expression::BinaryOp(l, op, r) = p {
                 if op == "=" {
-                    // Collect prefixes from both sides of the equality
                     let mut prefixes = Vec::new();
                     fn extract_prefixes(e: &Expression, out: &mut Vec<String>) {
                         if let Expression::Identifier(name) = e {
@@ -1003,7 +999,6 @@ pub fn tpch_reorder_extra_tables(
                     }
                     extract_prefixes(l, &mut prefixes);
                     extract_prefixes(r, &mut prefixes);
-                    // Record edges between different prefixes
                     for (i, pi) in prefixes.iter().enumerate() {
                         for pj in prefixes.iter().skip(i + 1) {
                             if pi != pj {
@@ -1025,9 +1020,6 @@ pub fn tpch_reorder_extra_tables(
         for t in &all_tables {
             let p1 = &t[..1];
             if !seen_prefix.insert(p1.to_string()) {
-                // Second table shares this prefix — if prefix_edge has an entry
-                // for p1, at least one pair of colliding tables is connected
-                // by an equi-join → safe, continue. Otherwise fatal.
                 if !prefix_edge.contains_key(p1) {
                     collision = true;
                     break;
@@ -1073,7 +1065,14 @@ pub fn tpch_reorder_extra_tables(
                     _ => false,
                 };
                 let r_year = match r.as_ref() {
-                    Expression::Literal(v) => v.len() == 10 && v.starts_with('1'),
+                    Expression::Literal(v) => {
+                        // Strip surrounding single quotes from the
+                        // literal value (parser stores '1994-01-01'
+                        // with quotes). After stripping, year literals
+                        // are 10 chars and start with '1' (1990s-2020s).
+                        let stripped: String = v.chars().filter(|c| *c != '\'').collect();
+                        stripped.len() == 10 && stripped.starts_with('1')
+                    }
                     _ => false,
                 };
                 l_date && r_year
@@ -1191,60 +1190,111 @@ pub fn tpch_reorder_extra_tables(
             let mut reachable = false;
             for acc in &accumulated {
                 let a = acc.as_str();
-                // Same bare name, same alias, same TPC-H prefix, or
-                // an explicit equi-join edge between them.
                 if b == a {
                     reachable = true;
                     break;
                 }
-                // Single-character alias match (e.g. `ps` should
-                // count as joined if `partsupp` is in accumulated).
                 if b == &a[..1.min(a.len())] || b == &a[..2.min(a.len())] {
                     reachable = true;
                     break;
                 }
-                // Nation-bridge skip for customer: if force_orders_first AND
-                // orders not yet joined, ignore c_nationkey=s_nationkey edge
-                // so customer gets the 1e9 penalty and waits for orders.
-                let is_nation_bridge_to_supplier =
-                    (b == "customer" && a == "supplier")
-                    || (b == "supplier" && a == "customer");
-                let skip_bridge = force_orders_first
-                    && b == "customer"
-                    && !accumulated.contains("orders")
-                    && is_nation_bridge_to_supplier;
-                if skip_bridge {
-                    continue;
+                // Prefix match (FIX): tables in the same prefix family
+                // (part / partsupp both start with 'p') are reachable
+                // when one of them is in accumulated. Q2 fix: without
+                // this, partsupp (800K, reachable in spirit) is treated
+                // as unreachable and the smallest unreachable table wins
+                // → ON=true cartesian.
+                //
+                // Q5 guard: when force_orders_first is active AND
+                // orders is not yet in accumulated, do NOT treat
+                // supplier as reachable via customer (the
+                // nation-bridge edge c_nationkey=s_nationkey). Without
+                // this, supplier would be picked first and joined
+                // with `ON c_nationkey=s_nationkey` — a 150K × 10K
+                // cartesian-bridge (no nation in joined yet) that
+                // explodes to 130 GB at SF=1.
+                let skip_bridge_for_q5 = force_orders_first
+                    && b == "supplier"
+                    && a == "customer"
+                    && !accumulated.contains("orders");
+                if !skip_bridge_for_q5
+                    && !b.is_empty()
+                    && !a.is_empty()
+                    && &b[..1] == &a[..1]
+                {
+                    reachable = true;
+                    break;
                 }
-                // Equi-join edge.
-                if edges
-                    .iter()
-                    .any(|(l, r, _)| (l == b && r == a) || (r == b && l == a))
+                if !skip_bridge_for_q5
+                    && edges.iter().any(|(l, r, _)| {
+                        let b1 = &b[..1.min(b.len())];
+                        let a1 = &a[..1.min(a.len())];
+                        (l == b1 && r == a1) || (r == b1 && l == a1)
+                    })
                 {
                     reachable = true;
                     break;
                 }
             }
-            // Nation-bridge heuristic: force orders before customer when
-            // nation-bridge AND date filter both exist, to prevent the orders
-            // date filter from being bypassed by a customer×supplier cartesian.
             if force_orders_first && b == "orders" {
-                let customer_in_remaining = remaining.iter().any(|rt| bare(rt) == "customer");
-                if customer_in_remaining {
+                let orders_still_remaining = remaining.iter().any(|rt| bare(rt) == "orders" || rt == "orders");
+                if orders_still_remaining {
                     best_idx = i;
                     break;
                 }
             }
             let base = effective_row_count(b, conj, &accumulated) as u128;
+            // Unreachable penalty must dominate any reachable raw count.
+            // The previous `+ 1e9` was insufficient: an unreachable
+            // region (1 row) would still beat reachable partsupp
+            // (800K) for Q2 (base=part), so the reorder emitted
+            // `INNER JOIN region ON true` (cartesian) and OOM'd.
+            // Use u128::MAX/2 so only reachable candidates can win.
             let score = if reachable {
                 base
             } else {
-                base + 1_000_000_000
+                (u128::MAX / 2) + base
             };
             if score < best_score {
                 best_score = score;
                 best_idx = i;
             }
+        }
+        // If no candidate was reachable in this iteration, every
+        // remaining table is disconnected from accumulated → bail out
+        // with what we have so far concatenated with the remaining
+        // in their original extras order. The auto-rewrite handles
+        // each table's ON clause via per-table `find_join_predicate`
+        // (Q2 base=part case: partsupp picked via prefix, but
+        // nation/supplier/region only reachable through the 'ps'
+        // 2-char prefix the auto-rewrite doesn't recognize).
+        let any_reachable = (0..remaining.len()).any(|idx| {
+            let b2 = bare(&remaining[idx]);
+            for acc in &accumulated {
+                let a = acc.as_str();
+                if b2 == a
+                    || (b2.len() >= 1 && a.len() >= 1 && &b2[..1] == &a[..1])
+                {
+                    return true;
+                }
+                if edges.iter().any(|(l, r, _)| {
+                    let b1 = &b2[..1.min(b2.len())];
+                    let a1 = &a[..1.min(a.len())];
+                    (l == b1 && r == a1) || (r == b1 && l == a1)
+                }) {
+                    return true;
+                }
+            }
+            false
+        });
+        if !any_reachable {
+            let mut out = out;
+            for t in extras {
+                if !out.contains(t) {
+                    out.push(t.clone());
+                }
+            }
+            return out;
         }
         if best_idx == usize::MAX {
             break;
@@ -4278,15 +4328,35 @@ impl Parser {
                     // its full name or its underscore-separated
                     // prefix.
                     joined.push(table_name.clone());
-                    // TPC-H 1-char/2-char prefix extraction
-                    // (see the base-table seed above for rationale).
-                    let prefix = if table_name.contains('_') {
-                        let underscore = table_name.find('_').unwrap();
-                        table_name[..underscore].to_string()
-                    } else {
-                        table_name[..1].to_string()
+                    // TPC-H prefix map. The naive "first char" or
+                    // "underscore-split" heuristic fails for partsupp
+                    // (no underscore; first char is 'p' but TPC-H
+                    // column prefix is 'ps'), which then breaks
+                    // find_join_predicate for `ps_suppkey = s_suppkey`
+                    // style predicates — the 'ps' qualifier is
+                    // unrecognised and the predicate falls through to
+                    // ON=true. Use the canonical TPC-H map.
+                    let tpch_prefix: &str = match table_name.as_str() {
+                        "region" => "r",
+                        "nation" => "n",
+                        "supplier" => "s",
+                        "customer" => "c",
+                        "part" => "p",
+                        "partsupp" => "ps",
+                        "orders" => "o",
+                        "lineitem" => "l",
+                        _ => {
+                            if table_name.contains('_') {
+                                let us = table_name.find('_').unwrap();
+                                &table_name[..us]
+                            } else if !table_name.is_empty() {
+                                &table_name[..1]
+                            } else {
+                                ""
+                            }
+                        }
                     };
-                    joined.push(prefix);
+                    joined.push(tpch_prefix.to_string());
                     // Phase 2: also push the inline alias (e.g.
                     // "n1" for `nation n1`) so subsequent
                     // `find_join_predicate` calls recognise
