@@ -33,7 +33,7 @@ This document is the **SSOT** for v3.11.0's feature checklist, tracking 23 V311-
 | V311-03 | Change Buffer 主路径集成 | F-25 | 40h | P0 | ⏳ TODO | `tests/change_buffer_main_path_test` |
 | V311-04 | Double-Write Buffer 主路径集成 | F-26 | 50h | P0 | ⏳ TODO | `tests/double_write_main_path_test` |
 | V311-05 | Row-Level Security 主路径集成 | F-29 | 40h | P1 | ⏳ TODO | `tests/row_level_security_test` |
-| V311-06 | Performance Schema hooks | F-31 | 30h | P1 | ⏳ TODO | `tests/perf_schema_hooks_test` |
+| V311-06 | Performance Schema hooks | F-31 | 30h | P1 | ✅ DONE v1 2026-07-15 (trait + Noop + Counting) | `tests/instrumentation_hooks_test` |
 | V311-07 | MySQL Admin 与 mysql-server 集成 | F-32 | 30h | P1 | ⏳ TODO | `tests/admin_e2e_test` |
 | V311-08 | Password Rotation 主路径集成 | F-35 | 20h | P1 | ⏳ TODO | `tests/password_rotation_test` |
 | V311-12 | Table Compression (LZ4/zstd) | F-27 | 50h | P1 | ⏳ TODO | `tests/compression_lz4_test` |

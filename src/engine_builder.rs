@@ -46,6 +46,8 @@ impl ExecutionEngine<MemoryStorage> {
             views: HashMap::new(),
             clustered_tables: parking_lot::RwLock::new(HashMap::new()),
             adaptive_hash_index: AdaptiveHashIndex::new().into_shared(),
+
+            instrumentation: Arc::new(sqlrustgo_executor::instrumentation::NoopInstrumentationHook),
         }
     }
 
@@ -69,6 +71,8 @@ impl ExecutionEngine<MemoryStorage> {
             views: HashMap::new(),
             clustered_tables: parking_lot::RwLock::new(HashMap::new()),
             adaptive_hash_index: AdaptiveHashIndex::new().into_shared(),
+
+            instrumentation: Arc::new(sqlrustgo_executor::instrumentation::NoopInstrumentationHook),
         }
     }
 
@@ -92,6 +96,8 @@ impl ExecutionEngine<MemoryStorage> {
             views: HashMap::new(),
             clustered_tables: parking_lot::RwLock::new(HashMap::new()),
             adaptive_hash_index: AdaptiveHashIndex::new().into_shared(),
+
+            instrumentation: Arc::new(sqlrustgo_executor::instrumentation::NoopInstrumentationHook),
         }
     }
 }
@@ -126,6 +132,8 @@ impl ExecutionEngine<MemoryStorage> {
             views: HashMap::new(),
             clustered_tables: parking_lot::RwLock::new(HashMap::new()),
             adaptive_hash_index: AdaptiveHashIndex::new().into_shared(),
+
+            instrumentation: Arc::new(sqlrustgo_executor::instrumentation::NoopInstrumentationHook),
         }
     }
 }
@@ -165,6 +173,8 @@ impl ExecutionEngine<MemoryStorage> {
             views: HashMap::new(),
             clustered_tables: parking_lot::RwLock::new(HashMap::new()),
             adaptive_hash_index: AdaptiveHashIndex::new().into_shared(),
+
+            instrumentation: Arc::new(sqlrustgo_executor::instrumentation::NoopInstrumentationHook),
         })
     }
 
@@ -199,6 +209,8 @@ impl ExecutionEngine<MemoryStorage> {
             views: HashMap::new(),
             clustered_tables: parking_lot::RwLock::new(HashMap::new()),
             adaptive_hash_index: AdaptiveHashIndex::new().into_shared(),
+
+            instrumentation: Arc::new(sqlrustgo_executor::instrumentation::NoopInstrumentationHook),
         })
     }
 
@@ -234,6 +246,8 @@ impl ExecutionEngine<MemoryStorage> {
             views: HashMap::new(),
             clustered_tables: parking_lot::RwLock::new(HashMap::new()),
             adaptive_hash_index: AdaptiveHashIndex::new().into_shared(),
+
+            instrumentation: Arc::new(sqlrustgo_executor::instrumentation::NoopInstrumentationHook),
         })
     }
 
