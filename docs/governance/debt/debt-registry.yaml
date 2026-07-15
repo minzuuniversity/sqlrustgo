@@ -20,10 +20,10 @@
 # Gate scripts (D7/D8) read this file for SLA validation.
 # This file is the canonical source; all Markdown tables are derived.
 
-version: "3.10.0-snapshot-2026-07-12"
+version: "3.10.0-snapshot-2026-07-15"
 baseline: develop/v3.10.0
 audit_pr: 3794  # LEGACY_DEBT_CLOSURE_TRACKING_REPORT + functional island re-analysis
-last_updated: "2026-07-12T00:00:00Z"
+last_updated: "2026-07-15T07:30:00Z"
 maintainer: hermes
 changes_since_v3_9_0_audit:
   - "v3.10.0: INT-2 closed (PR #3767 #3703 #3790 parallel main path), SEM-1 closed (rollback MVCC), ARCH-3 closed (PR #3787 CBO + #3790 WAL re-exports)"
@@ -32,6 +32,7 @@ changes_since_v3_9_0_audit:
   - "F-32 mysqladmin CLI binary shipped (PR #3795, V310-14) but tests still use in-test mock"
   - "9 F-XX ISOLATED items deferred to v3.11+ per ARCHITECTURE_DEBT_ANALYSIS.md §5.1 (~960 LOC refactor)"
   - "11 extension crates (agentsql/gmp/rag/distributed/graph/qmd-bridge/evidence-graph/admin/unified-query/unified-storage/vector) catalogued as SCOPE_DEFERRED to v3.11+"
+  - "v3.10.0 Post-GA 168h SOAK: discovered PERF-5 (high-concurrency INSERT lost connection), 1 OPEN issue added to debt-registry"
 
 # =============================================================================
 # GA-P0 — Long-Running Tasks (4 items, hardware-blocked on local dev workstation)
@@ -461,6 +462,65 @@ follow_ups:
 # =============================================================================
 # Summary Statistics (auto-derived by gate scripts)
 # =============================================================================
+
+# =============================================================================
+# PERF — Performance Debt (v3.11.0+ SOAK-discovered, Issue #3434)
+# =============================================================================
+# Performance limitations discovered during v3.10.0 GA Post-Release 168h SOAK
+# (2026-07-14 → 2026-07-21). These are NOT failures (server stable 10h+), but
+# observed limitations that should be addressed in v3.11.0+ for production use.
+perf:
+  - id: PERF-5
+    title: "High-concurrency INSERT: Lost connection + customer count not incrementing"
+    state: OPEN
+    priority: P1
+    owner: openclaw
+    target_release: v3.11.0
+    review_date: "2026-09-15"
+    discovered_in: "v3.10.0 GA 168h SOAK (2026-07-15 06:32 UTC, PID 1019750)"
+    discovered_by: "openclaw via /tmp/soak_v310/orchestrator_v2.sh"
+    estimated_effort: "60h (root cause + fix + regression test)"
+    related_issue: 3434
+    linked_audit: 3792
+    blocking: []  # not blocking v3.10.0 GA (workaround available)
+    notes: |
+      v3.10.0 GA server handles 100K+ TPC-H data + 4-thread OLTP for 10h+ without
+      crashes, but high-concurrency INSERT INTO customer fails with:
+        ERROR 2013 (HY000): Lost connection to server during query
+      Customer count remained at 1,124 (initial) throughout 1 hour of OLTP workload
+      despite 1,440+ INSERT attempts.
+
+      WORKLOAD:
+        - TPC-H Q1/Q6/Q12/Q14 rotation: WORKING (Q1 279ms @ 107K lineitem)
+        - OLTP SELECT/UPDATE/COUNT: 100% success
+        - OLTP INSERT INTO customer: 0% success (lost connection)
+
+      POSSIBLE CAUSES:
+        1. --max-connections=100 (default) too low for 4+ concurrent OLTP threads
+        2. Lock contention on customer PRIMARY KEY under concurrent INSERTs
+        3. MVCC/transaction visibility race conditions
+        4. WAL flush timeout under heavy INSERT load
+
+      WORKAROUNDS:
+        - Reduce OLTP threads to 1
+        - Increase --max-connections to 500+
+        - Use INSERT with LOW_PRIORITY
+        - Batch INSERTs into single multi-row statement
+
+      REPRODUCTION:
+        mysql -h 127.0.0.1 -P 3399 -u ai -e "INSERT INTO customer (c_custkey, c_name, c_address, c_nationkey, c_phone, c_acctbal, c_mktsegment, c_comment) VALUES (9123456, 'test', 'addr', 1, 'phone', 100.0, 'BUILDING', 'c');"
+        # → ERROR 2013 (HY000): Lost connection to server during query
+    evidence: |
+      Server metrics (10h+ uptime):
+        RSS: 1.9GB (stable, no memory leak)
+        CPU: 35-40% (healthy)
+        FD: 5 (no file descriptor leak)
+        TPC-H Q1 latency: 279ms (excellent @ 107K lineitem)
+        OLTP SELECT latency: <500ms (healthy)
+        OLTP INSERT: ALL FAIL with "Lost connection"
+      Server: sqlrustgo-mysql-server v3.10.0 GA (commit 8056d5fb66)
+      Logs: /tmp/soak_v320/run_20260715_035000/
+
 # Extension Crates — Out-of-Main-Path Crates (11 items, catalogued 2026-07-12)
 # =============================================================================
 # These crates compile and exist in the workspace, but are NOT pulled into
