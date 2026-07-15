@@ -37,8 +37,8 @@ pub use checkpoint::{CheckpointConfig, CheckpointManager, CheckpointMetadata};
 pub use double_write_buffer::{DoubleWriteBuffer, DwbPage};
 pub use engine::{
     evaluate_check_constraint, ColumnDefinition, ForeignKeyAction, ForeignKeyConstraint,
-    MemoryStorage, Record, RowFilter, RowMutation, SqlResult, StorageEngine, TableData, TableInfo,
-    TriggerEvent, TriggerInfo, TriggerTiming, UniqueConstraint, Value,
+    MemoryStorage, Record, RowFilter, RowMutation, SequenceInfo, SqlResult, StorageEngine, TableData,
+    TableInfo, TriggerEvent, TriggerInfo, TriggerTiming, UniqueConstraint, Value,
 };
 pub use file_storage::FileStorage;
 pub use lock::{GapLock, GapLockManager, GapLockType, IsolationLevel};
