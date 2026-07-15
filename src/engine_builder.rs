@@ -43,6 +43,7 @@ impl ExecutionEngine<MemoryStorage> {
             parallel_degree: 1,
             stmt_cache: sqlrustgo_cache::PreparedStatementCache::new(100),
             views: HashMap::new(),
+            clustered_tables: parking_lot::RwLock::new(HashMap::new()),
         }
     }
 
@@ -64,6 +65,7 @@ impl ExecutionEngine<MemoryStorage> {
             parallel_degree: 1,
             stmt_cache: sqlrustgo_cache::PreparedStatementCache::new(100),
             views: HashMap::new(),
+            clustered_tables: parking_lot::RwLock::new(HashMap::new()),
         }
     }
 
@@ -85,6 +87,7 @@ impl ExecutionEngine<MemoryStorage> {
             parallel_degree: 1,
             stmt_cache: sqlrustgo_cache::PreparedStatementCache::new(100),
             views: HashMap::new(),
+            clustered_tables: parking_lot::RwLock::new(HashMap::new()),
         }
     }
 }
@@ -117,6 +120,7 @@ impl ExecutionEngine<MemoryStorage> {
             parallel_degree: 1,
             stmt_cache: sqlrustgo_cache::PreparedStatementCache::new(100),
             views: HashMap::new(),
+            clustered_tables: parking_lot::RwLock::new(HashMap::new()),
         }
     }
 }
@@ -154,6 +158,7 @@ impl ExecutionEngine<MemoryStorage> {
             parallel_degree: 1,
             stmt_cache: sqlrustgo_cache::PreparedStatementCache::new(100),
             views: HashMap::new(),
+            clustered_tables: parking_lot::RwLock::new(HashMap::new()),
         })
     }
 
@@ -186,6 +191,7 @@ impl ExecutionEngine<MemoryStorage> {
             parallel_degree: 1,
             stmt_cache: sqlrustgo_cache::PreparedStatementCache::new(100),
             views: HashMap::new(),
+            clustered_tables: parking_lot::RwLock::new(HashMap::new()),
         })
     }
 
@@ -219,6 +225,7 @@ impl ExecutionEngine<MemoryStorage> {
             parallel_degree: 1,
             stmt_cache: sqlrustgo_cache::PreparedStatementCache::new(100),
             views: HashMap::new(),
+            clustered_tables: parking_lot::RwLock::new(HashMap::new()),
         })
     }
 
