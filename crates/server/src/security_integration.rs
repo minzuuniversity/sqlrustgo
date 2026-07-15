@@ -301,4 +301,35 @@ mod tests {
         let stats = security.get_security_stats();
         assert_eq!(stats.audit_sql_executions, 1);
     }
+
+    #[test]
+    fn test_security_integration_cleanup_idle() {
+        let security = SecurityIntegration::new();
+        let cleaned = security.cleanup_idle_sessions();
+        assert_eq!(cleaned, 0);
+    }
+
+    #[test]
+    fn test_security_integration_is_session_cancelled() {
+        let security = SecurityIntegration::new();
+        assert!(security.is_session_cancelled(999));
+    }
+
+    #[test]
+    fn test_security_integration_log_error() {
+        let security = SecurityIntegration::new();
+        security.log_error("alice", "permission denied", 1);
+    }
+
+    #[test]
+    fn test_security_integration_log_ddl() {
+        let security = SecurityIntegration::new();
+        security.log_ddl("alice", "CREATE TABLE t (id INT)", 1);
+    }
+
+    #[test]
+    fn test_security_integration_log_grant() {
+        let security = SecurityIntegration::new();
+        security.log_grant("admin", "SELECT", "t", "alice");
+    }
 }
