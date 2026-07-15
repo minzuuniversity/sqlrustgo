@@ -36,6 +36,8 @@ pub enum UnifiedExpr {
         expr: Box<UnifiedExpr>,
         target_type: String,
     },
+    SequenceNextVal(String),
+    SequenceCurrval(String),
 }
 
 impl UnifiedExpr {
@@ -98,6 +100,8 @@ impl UnifiedExpr {
                 let v = expr.evaluate(row, columns);
                 cast_val(&v, target_type)
             }
+            UnifiedExpr::SequenceNextVal(_) => Value::Null,
+            UnifiedExpr::SequenceCurrval(_) => Value::Null,
         }
     }
 
@@ -109,7 +113,6 @@ impl UnifiedExpr {
         cols
     }
 }
-
 fn collect_cols(expr: &UnifiedExpr, acc: &mut Vec<String>) {
     match expr {
         UnifiedExpr::Column(name) => acc.push(name.clone()),
@@ -204,6 +207,8 @@ impl From<&sqlrustgo_parser::Expression> for UnifiedExpr {
                 name: name.clone(),
                 args: args.iter().map(UnifiedExpr::from).collect(),
             },
+            Expression::SequenceNextVal(name) => UnifiedExpr::SequenceNextVal(name.clone()),
+            Expression::SequenceCurrval(name) => UnifiedExpr::SequenceCurrval(name.clone()),
             _ => UnifiedExpr::Literal(Value::Null),
         }
     }
