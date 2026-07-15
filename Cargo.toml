@@ -1106,6 +1106,10 @@ name = "cluster_index_main_path_test"
 path = "tests/integration/storage/cluster_index_main_path_test.rs"
 
 [[test]]
+name = "adaptive_hash_main_path_test"
+path = "tests/integration/storage/adaptive_hash_main_path_test.rs"
+
+[[test]]
 name = "anti_join_main_path_test"
 path = "tests/integration/sql/anti_join_main_path_test.rs"
 
