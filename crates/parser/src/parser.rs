@@ -899,6 +899,35 @@ pub fn tpch_reorder_extra_tables(
         if dup {
             return extras.to_vec();
         }
+        // Prefix-collision guard: two different TPC-H tables share the
+        // same 1-char prefix (supplier+partsupp both 's', part+partsupp
+        // both 'p'). Adding bare-prefixes to `accumulated` would cause
+        // false "reachable" hits and corrupt the greedy chain order.
+        // Disable reorder when prefix collisions exist.
+        let mut seen_prefix: std::collections::HashSet<String> =
+            std::collections::HashSet::new();
+        let all_tables: Vec<&str> = base_bare_for_guard
+            .iter()
+            .chain(extras.iter())
+            .filter_map(|t| {
+                let b = t.find('|').map(|i| &t[..i]).unwrap_or(t);
+                if b.is_empty() || b.starts_with("__") || b.len() < 2 {
+                    return None;
+                }
+                Some(b)
+            })
+            .collect();
+        let mut collision = false;
+        for t in &all_tables {
+            let p1 = &t[..1];
+            if !seen_prefix.insert(p1.to_string()) {
+                collision = true;
+                break;
+            }
+        }
+        if collision {
+            return extras.to_vec();
+        }
     }
     // Hard-coded TPC-H SF=1 row counts used to bias the reorder
     // toward smaller tables. Smaller first ⇒ smaller probe side at
