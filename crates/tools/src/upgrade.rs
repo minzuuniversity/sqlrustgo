@@ -438,7 +438,7 @@ pub fn list_history(dir: &Path) -> Result<()> {
     Ok(())
 }
 
-fn create_upgrade_plan(from: &VersionInfo, to: &VersionInfo) -> Result<UpgradePlan> {
+pub fn create_upgrade_plan(from: &VersionInfo, to: &VersionInfo) -> Result<UpgradePlan> {
     let mut steps = Vec::new();
 
     if from.minor < to.minor {

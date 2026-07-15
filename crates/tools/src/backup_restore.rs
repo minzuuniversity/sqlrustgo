@@ -72,7 +72,7 @@ impl BackupMetadata {
 }
 
 /// Simple datetime string (no external dependency)
-fn chrono_lite_now() -> String {
+pub fn chrono_lite_now() -> String {
     use std::time::{SystemTime, UNIX_EPOCH};
     let now = SystemTime::now()
         .duration_since(UNIX_EPOCH)
@@ -237,7 +237,7 @@ impl BackupManager {
 }
 
 /// Simple MD5 hash (for checksums)
-fn md5_simple(data: &str) -> u32 {
+pub fn md5_simple(data: &str) -> u32 {
     let mut hash: u32 = 0;
     for (i, byte) in data.bytes().enumerate() {
         hash = hash.wrapping_add((byte as u32).wrapping_mul(i as u32 + 1));
@@ -247,7 +247,7 @@ fn md5_simple(data: &str) -> u32 {
 }
 
 /// Simple JSON serialization
-fn serde_json_simple(metadata: &BackupMetadata) -> String {
+pub fn serde_json_simple(metadata: &BackupMetadata) -> String {
     let status_str = match &metadata.status {
         BackupStatus::InProgress => "in_progress".to_string(),
         BackupStatus::Completed => "completed".to_string(),
