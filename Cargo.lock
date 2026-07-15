@@ -4480,6 +4480,7 @@ dependencies = [
  "log",
  "serde",
  "sqlrustgo-common",
+ "sqlrustgo-parser",
  "sqlrustgo-storage",
  "sqlrustgo-types",
  "tempfile",
