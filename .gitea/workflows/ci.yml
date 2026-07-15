@@ -5,18 +5,20 @@ on:
   push:
     branches:
       - develop/v2.8.0
-      - develop/v3.7.0
       - develop/v3.8.0
+      - develop/v3.10.0
+      - develop/v3.11.0
       - beta/v2.8.0
       - ci/gitea-compat
       - ci/v2.8.0-*
       - ci/v3.8.0-*
   pull_request:
     branches:
-      - develop/v2.8.0
       - develop/v3.7.0
       - develop/v3.8.0
       - develop/v3.9.0
+      - develop/v3.10.0
+      - develop/v3.11.0
       - beta/v2.8.0
       - ci/gitea-compat
       - ci/v2.8.0-*
