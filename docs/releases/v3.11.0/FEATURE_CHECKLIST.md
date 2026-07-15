@@ -74,7 +74,7 @@ This document is the **SSOT** for v3.11.0's feature checklist, tracking 23 V311-
 
 | ID | 任务 | PERF | 工作量 | 优先级 | 状态 | 测试方法 |
 |----|------|------|--------|--------|------|----------|
-| V311-23 | High-concurrency INSERT lost connection 修复 | PERF-5 | 60h | P1 | ⏳ TODO | `tests/stress/concurrent_insert_test.rs` |
+| V311-23 | High-concurrency INSERT lost connection 修复 | PERF-5 | 60h | P1 | ✅ DONE (2026-07-15) | `tests/stress/concurrent_insert_test.rs` |
 
 ---
 
@@ -183,7 +183,7 @@ This document is the **SSOT** for v3.11.0's feature checklist, tracking 23 V311-
 | **总计** | **23** | **1** | **0** | **22** |
 
 ```
-完成度: 8.7% (2/23)
+完成度: 13.0% (3/23)
 总工作量: ~1156h
 ALPHA 起点: 2026-07-15 (DRAFT init)\n- V311-13 完成: 2026-07-15
 GA 目标: 2026-10-01
