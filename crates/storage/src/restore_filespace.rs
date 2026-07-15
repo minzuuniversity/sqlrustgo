@@ -19,7 +19,7 @@
 //! let cleaned = cleanup.run()?;
 //! ```
 
-use crate::engine::{SqlResult, StorageEngine, TableInfo};
+use crate::engine::{SqlResult, StorageEngine};
 use std::collections::HashSet;
 use std::fs;
 use std::path::Path;
@@ -80,10 +80,9 @@ impl<'a, S: StorageEngine> FilespaceResync<'a, S> {
             match self.storage.get_table_info(table) {
                 Ok(info) => {
                     if info.columns.is_empty() {
-                        report.tables_with_issues.push(format!(
-                            "{}: table has no columns defined",
-                            table
-                        ));
+                        report
+                            .tables_with_issues
+                            .push(format!("{}: table has no columns defined", table));
                     }
                 }
                 Err(e) => {
@@ -203,15 +202,15 @@ impl<'a, S: StorageEngine> FilespaceCleanup<'a, S> {
 
                     // Remove orphaned table data files (data/json files not in metadata)
                     match path.extension().and_then(|e| e.to_str()) {
-                        Some("data") | Some("json") => {
-                            if !known_tables.contains(&file_name) && !file_name.is_empty() {
-                                if let Ok(meta) = fs::metadata(&path) {
-                                    report.total_bytes_freed += meta.len();
-                                }
-                                let _ = fs::remove_file(&path);
-                                report.stale_table_files_removed += 1;
-                                report.removed_paths.push(path.display().to_string());
+                        Some("data") | Some("json")
+                            if !known_tables.contains(&file_name) && !file_name.is_empty() =>
+                        {
+                            if let Ok(meta) = fs::metadata(&path) {
+                                report.total_bytes_freed += meta.len();
                             }
+                            let _ = fs::remove_file(&path);
+                            report.stale_table_files_removed += 1;
+                            report.removed_paths.push(path.display().to_string());
                         }
                         _ => {}
                     }
