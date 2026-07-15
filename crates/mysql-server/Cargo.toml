@@ -5,6 +5,7 @@ edition = "2021"
 
 [dependencies]
 sqlrustgo = { path = "../.." }
+sqlrustgo-catalog = { path = "../catalog" }
 sqlrustgo-parser = { path = "../parser" }
 sqlrustgo-planner = { path = "../planner" }
 sqlrustgo-executor = { path = "../executor" }

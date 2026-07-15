@@ -400,6 +400,7 @@ impl TriggerExecutor {
                 }
             }
             Value::Blob(b) => format!("X'{}'", String::from_utf8_lossy(b)),
+            Value::Point(x, y) => format!("POINT({}, {})", x, y),
         }
     }
 

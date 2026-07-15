@@ -201,6 +201,7 @@ fn compare_values(col_val: &Value, compare_with: &str, op: &str) -> SqlResult<bo
                 Ok(*b == cmp_bool)
             }
             Value::Blob(_) => Ok(false),
+            Value::Point(_, _) => Ok(false),
         },
         "neq" => Ok(!compare_values(col_val, compare_with, "eq")?),
         "gt" | "gte" | "lt" | "lte" => {
@@ -252,6 +253,7 @@ fn is_zero_or_empty(val: &Value) -> bool {
         Value::Boolean(b) => !*b,
         Value::Null => true,
         Value::Blob(_) => false,
+        Value::Point(_, _) => false,
     }
 }
 
@@ -414,6 +416,9 @@ pub struct TableInfo {
     pub check_constraints: Vec<CheckConstraint>,
     #[serde(skip)]
     pub partition_info: Option<PartitionInfo>,
+    /// V311-12 F-27: table compression specifier (algorithm: "LZ4", "ZSTD", "ZLIB")
+    #[serde(default)]
+    pub compression: Option<String>,
 }
 
 /// Column definition for table schema
@@ -1380,7 +1385,8 @@ mod tests {
             unique_constraints: vec![],
             check_constraints: vec![],
             partition_info: None,
-        };
+            compression: None,
+};
         storage.create_table(&info).unwrap();
         let tables = storage.list_tables();
         assert!(tables.contains(&"users".to_string()));
@@ -1473,7 +1479,8 @@ mod tests {
             unique_constraints: vec![],
             check_constraints: vec![],
             partition_info: None,
-        };
+            compression: None,
+};
 
         storage.create_table(&info).unwrap();
         assert!(storage.has_table("users"));
@@ -1499,7 +1506,8 @@ mod tests {
             unique_constraints: vec![],
             check_constraints: vec![],
             partition_info: None,
-        };
+            compression: None,
+};
 
         storage.create_table(&info).unwrap();
         let retrieved = storage.get_table_info("users").unwrap();
@@ -1555,7 +1563,8 @@ mod tests {
             unique_constraints: vec![],
             check_constraints: vec![],
             partition_info: None,
-        };
+            compression: None,
+};
         let info2 = TableInfo {
             name: "orders".to_string(),
             columns: vec![],
@@ -1563,7 +1572,8 @@ mod tests {
             unique_constraints: vec![],
             check_constraints: vec![],
             partition_info: None,
-        };
+            compression: None,
+};
         storage.create_table(&info1).unwrap();
         storage.create_table(&info2).unwrap();
 
@@ -1585,7 +1595,8 @@ mod tests {
             unique_constraints: vec![],
             check_constraints: vec![],
             partition_info: None,
-        };
+            compression: None,
+};
         storage.create_table(&info).unwrap();
         assert!(storage.has_table("users"));
     }
@@ -1697,7 +1708,8 @@ mod tests {
             unique_constraints: vec![],
             check_constraints: vec![],
             partition_info: None,
-        };
+            compression: None,
+};
         storage.create_table(&info).unwrap();
         storage
             .insert("users", vec![vec![Value::Integer(1)]])
@@ -2257,7 +2269,8 @@ mod tests {
             unique_constraints: vec![],
             check_constraints: vec![],
             partition_info: None,
-        };
+            compression: None,
+};
         s.create_table(&info).unwrap();
         assert!(s.has_table("users"));
     }
@@ -2272,7 +2285,8 @@ mod tests {
             unique_constraints: vec![],
             check_constraints: vec![],
             partition_info: None,
-        };
+            compression: None,
+};
         s.create_table(&info).unwrap();
         s.drop_table("t").unwrap();
         assert!(!s.has_table("t"));
@@ -2288,7 +2302,8 @@ mod tests {
             unique_constraints: vec![],
             check_constraints: vec![],
             partition_info: None,
-        };
+            compression: None,
+};
         s.create_table(&info).unwrap();
         let got = s.get_table_info("t").unwrap();
         assert_eq!(got.name, "t");
@@ -2313,7 +2328,8 @@ mod tests {
                 unique_constraints: vec![],
                 check_constraints: vec![],
                 partition_info: None,
-            };
+                compression: None,
+};
             s.create_table(&info).unwrap();
         }
         let tables = s.list_tables();
@@ -2337,7 +2353,8 @@ mod tests {
             unique_constraints: vec![],
             check_constraints: vec![],
             partition_info: None,
-        };
+            compression: None,
+};
         s.create_table(&info).unwrap();
         s.add_column("t", ColumnDefinition::new("b", "TEXT"))
             .unwrap();
@@ -2362,7 +2379,8 @@ mod tests {
             unique_constraints: vec![],
             check_constraints: vec![],
             partition_info: None,
-        };
+            compression: None,
+};
         s.create_table(&info).unwrap();
         s.insert("old", vec![vec![Value::Integer(1)]]).unwrap();
         s.rename_table("old", "new").unwrap();

@@ -2,6 +2,7 @@
 
 [workspace]
 members = [
+    "crates/gis",
     "crates/common",
     "crates/parser",
     "crates/planner",
@@ -51,6 +52,8 @@ scopeguard = "1"
 sqlrustgo-common = { path = "crates/common" }
 rayon = "1.10"
 flate2 = "1.0"
+lz4 = "1.24"
+zstd = "0.13"
 chrono = "0.4"
 sqlrustgo-types = { path = "crates/types" }
 sqlrustgo-parser = { path = "crates/parser" }
@@ -378,6 +381,9 @@ path = "tests/integration/sql/parallel_executor_test.rs"
 [[test]]
 name = "password_rotation_test"
 path = "tests/integration/sql/password_rotation_test.rs"
+[[test]]
+name = "password_rotation_integration_test"
+path = "tests/integration/sql/password_rotation_integration_test.rs"
 
 [[test]]
 name = "performance_schema_test"
