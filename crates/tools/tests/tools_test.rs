@@ -87,3 +87,41 @@ fn test_backup_manager_get_nonexistent() {
     assert!(result.is_none());
     std::fs::remove_dir_all("/tmp/test-backup-mgr-get").ok();
 }
+
+// ============ Additional BackupManager Tests ============
+
+
+
+#[test]
+fn test_backup_metadata_differential() {
+    use sqlrustgo_tools::backup_restore::{BackupMetadata, BackupType};
+    let mut meta = BackupMetadata::new(
+        "diff-1".to_string(),
+        BackupType::Differential,
+        "testdb".to_string(),
+    );
+    meta.complete(2048, "sha256:diff".to_string());
+    assert!(matches!(meta.backup_type, BackupType::Differential));
+    assert!(matches!(meta.status, BackupStatus::Completed));
+}
+
+#[test]
+fn test_backup_metadata_incremental() {
+    use sqlrustgo_tools::backup_restore::{BackupMetadata, BackupType};
+    let meta = BackupMetadata::new(
+        "incr-1".to_string(),
+        BackupType::Incremental,
+        "testdb".to_string(),
+    );
+    assert!(matches!(meta.backup_type, BackupType::Incremental));
+}
+
+#[test]
+fn test_backup_status_failed_message() {
+    use sqlrustgo_tools::backup_restore::BackupStatus;
+    let status = BackupStatus::Failed("insufficient space".to_string());
+    match status {
+        BackupStatus::Failed(msg) => assert!(msg.contains("space")),
+        _ => panic!("expected Failed"),
+    }
+}
