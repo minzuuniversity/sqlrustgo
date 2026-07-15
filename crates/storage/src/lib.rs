@@ -7,6 +7,7 @@ pub mod binary_storage;
 pub mod bplus_tree;
 pub mod buffer_pool;
 pub mod checkpoint;
+pub mod change_buffer;
 pub mod clustered_table;
 pub mod engine;
 pub mod file_storage;
@@ -37,7 +38,7 @@ pub use engine::{
     TriggerEvent, TriggerInfo, TriggerTiming, UniqueConstraint, Value,
 };
 pub use file_storage::FileStorage;
-pub use io_delay::{io_delay_ms, maybe_delay, IoDelayConfig, IoFaultInjector, LcgRng};
+pub use change_buffer::{ChangeBuffer, ChangeEntry, ChangeOp};
 pub use lock::{GapLock, GapLockManager, GapLockType, IsolationLevel};
 pub use page::Page;
 pub use wal::{FileBackedWalManager, MemoryWalManager, WalManager};
