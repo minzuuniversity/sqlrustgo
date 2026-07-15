@@ -29,12 +29,12 @@ This document is the **SSOT** for v3.11.0's feature checklist, tracking 23 V311-
 | ID | 任务 | F-XX | 工作量 | 优先级 | 状态 | 测试方法 |
 |----|------|------|--------|--------|------|----------|
 | V311-01 | Clustered Index 主路径集成 | F-23 | 80h | P0 | ✅ DONE v1 2026-07-15 (PR #3461) | `tests/clustered_table_v1_test` |
-| V311-02 | Adaptive Hash Index 主路径集成 | F-24 | 60h | P0 | ⏳ TODO | `tests/adaptive_hash_main_path_test` |
+| V311-02 | Adaptive Hash Index 主路径集成 | F-24 | 60h | P0 | ✅ DONE v3 2026-07-15 (PR #3465/#3476/#3478) | `tests/adaptive_hash_main_path_test` |
 | V311-03 | Change Buffer 主路径集成 | F-25 | 40h | P0 | ⏳ TODO | `tests/change_buffer_main_path_test` |
 | V311-04 | Double-Write Buffer 主路径集成 | F-26 | 50h | P0 | ⏳ TODO | `tests/double_write_main_path_test` |
 | V311-05 | Row-Level Security 主路径集成 | F-29 | 40h | P1 | ⏳ TODO | `tests/row_level_security_test` |
 | V311-06 | Performance Schema hooks | F-31 | 30h | P1 | ✅ DONE v1 2026-07-15 (trait + Noop + Counting) | `tests/instrumentation_hooks_test` |
-| V311-07 | MySQL Admin 与 mysql-server 集成 | F-32 | 30h | P1 | ⏳ TODO | `tests/admin_e2e_test` |
+| V311-07 | MySQL Admin 与 mysql-server 集成 | F-32 | 30h | P1 | ✅ DONE (fix/v311-07-f-32-admin-wire-integration) | `tests/admin_e2e_test` |
 | V311-08 | Password Rotation 主路径集成 | F-35 | 20h | P1 | ⏳ TODO | `tests/password_rotation_test` |
 | V311-12 | Table Compression (LZ4/zstd) | F-27 | 50h | P1 | ⏳ TODO | `tests/compression_lz4_test` |
 
@@ -44,7 +44,7 @@ This document is the **SSOT** for v3.11.0's feature checklist, tracking 23 V311-
 
 | ID | 任务 | F-XX | 工作量 | 优先级 | 状态 | 测试方法 |
 |----|------|------|--------|--------|------|----------|
-| V311-09 | 列级权限实现 | F-36 | 40h | P0 | ⏳ TODO | `tests/column_privilege_test` (12/12) |
+| V311-09 | 列级权限实现 | F-36 | 40h | P0 | ✅ DONE 2026-07-15 (PR #3457) | `tests/column_privilege_test` (12/12) |
 | V311-10 | CREATE SEQUENCE 实现 | F-30 | 20h | P1 | ⏳ TODO | `tests/sequence_test` |
 | V311-11 | GIS 空间数据类型 (POINT + WITHIN) | F-03 | 80h | P1 | ⏳ TODO | `tests/gis_basic_test` |
 
@@ -54,7 +54,7 @@ This document is the **SSOT** for v3.11.0's feature checklist, tracking 23 V311-
 
 | ID | 任务 | SEM | 工作量 | 优先级 | 状态 | 测试方法 |
 |----|------|-----|--------|--------|------|----------|
-| V311-13 | ALTER TABLE RENAME/MODIFY 完整 | SEM-3 | 20h | P0 | ⏳ TODO | `tests/alter_table_test` |
+| V311-13 | ALTER TABLE RENAME/MODIFY 完整 | SEM-3 | 20h | P0 | ✅ DONE 2026-07-15 (PR #3444/#3449) | `tests/alter_table_test` |
 | V311-14 | 覆盖率 ≥85% | SEM-4 | 60h | P0 | ⏳ TODO | `cargo llvm-cov --workspace` |
 
 ---
@@ -176,18 +176,50 @@ This document is the **SSOT** for v3.11.0's feature checklist, tracking 23 V311-
 
 | 阶段 | 任务数 | 完成 | 进行中 | TODO |
 |------|--------|------|--------|------|
-| ALPHA (P0) | 6 (V311-01/02/03/04/09/13/15/19/20) | 0 | 0 | 9 |
-| BETA (P1) | 8 (V311-05/06/07/08/10/11/12/16/17/18) | 0 | 0 | 10 |
-| RC (P0/P1) | 3 (V311-14/20/21) | 0 | 0 | 3 |
-| P2 | 1 (V311-22) | 1 | 0 | 0 |
-| **总计** | **23** | **1** | **0** | **22** |
+| ALPHA (P0) | 9 (V311-01/02/03/04/09/13/15/19/20) | **6** (01/02/09/13/15/19) | 0 | 3 (03/04/20) |
+| BETA (P1) | 10 (V311-05/06/07/08/10/11/12/16/17/18) | **4** (06/07/16/17) | 0 | 6 (05/08/10/11/12/18) |
+| RC/Others | 5 (V311-14/20/21/22/23) | **2** (22/23) | 0 | 3 (14/20/21) |
+| **总计** | **24** | **12** | **0** | **12** |
 
 ```
-完成度: 13.0% (3/23)
+完成度: 50.0% (12/24)
 总工作量: ~1156h
-ALPHA 起点: 2026-07-15 (DRAFT init)\n- V311-13 完成: 2026-07-15
+ALPHA 起点: 2026-07-15 (DRAFT init)
 GA 目标: 2026-10-01
 ```
+
+### 已完成 (12)
+
+| # | 任务 | PR/证明 |
+|---|------|---------|
+| V311-01 | F-23 Clustered Index 主路径集成 | PR #3461 |
+| V311-02 | F-24 Adaptive Hash Index 主路径集成 | PR #3465/#3476/#3478 |
+| V311-06 | F-31 Performance Schema hooks | trait + Noop + Counting |
+| V311-07 | F-32 MySQL Admin 与 mysql-server 集成 | fix/v311-07-f-32-admin-wire-integration |
+| V311-09 | F-36 列级权限实现 | PR #3457 |
+| V311-13 | SEM-3 ALTER TABLE RENAME/MODIFY | PR #3444/#3449 |
+| V311-15 | PERF-1 Hash Semi Join 算子 | PR #3455 |
+| V311-16 | PERF-4 Decorrelation optimizer pass | rewrite v2 |
+| V311-17 | PERF-2 Hash Anti Join 算子 | PR |
+| V311-19 | Extension Crate 决策 | 5 删 + 3 归档 + 1 集成 + 1 保留 |
+| V311-22 | 文档架构整理 | plans/INDEX.md |
+| V311-23 | PERF-5 高并发 INSERT 修复 | 从 v3.10.0 SOAK 修复 |
+
+### 剩余 (12)
+
+| # | 任务 | 工作量 | 优先 |
+|---|------|--------|------|
+| V311-03 | F-25 Change Buffer | 40h | P0 |
+| V311-04 | F-26 Double-Write Buffer | 50h | P0 |
+| V311-05 | F-29 Row-Level Security | 40h | P1 |
+| V311-08 | F-35 Password Rotation | 20h | P1 |
+| V311-10 | F-30 CREATE SEQUENCE | 20h | P1 |
+| V311-11 | F-03 GIS (POINT + WITHIN) | 80h | P1 |
+| V311-12 | F-27 Table Compression | 50h | P1 |
+| V311-14 | SEM-4 覆盖率 ≥85% | 60h | P0 |
+| V311-18 | CTE 物化 | 30h | P1 |
+| V311-20 | TPC-H SF=1.0 baseline | 80h | P0 |
+| V311-21 | 168h SOAK v3.11.0 | — | P1 |
 
 ---
 
