@@ -314,6 +314,12 @@ pub fn value_to_bytes(value: &Value) -> Vec<u8> {
             bytes.extend_from_slice(blob);
             bytes
         }
+        Value::Point(x, y) => {
+            let mut bytes = vec![0x07];
+            bytes.extend_from_slice(&x.to_le_bytes());
+            bytes.extend_from_slice(&y.to_le_bytes());
+            bytes
+        }
     }
 }
 
@@ -491,7 +497,7 @@ impl<R: Read> CompressedPageReader<R> {
             // Compressed page
             let mut size_bytes = [0u8; 4];
             self.reader.read_exact(&mut size_bytes)?;
-            let original_size = u32::from_be_bytes(size_bytes) as usize;
+            let _original_size = u32::from_be_bytes(size_bytes) as usize;
             
             self.reader.read_exact(&mut size_bytes)?;
             let compressed_size = u32::from_be_bytes(size_bytes) as usize;
