@@ -67,9 +67,15 @@ PASS=0
 FAIL=0
 
 for crate in $WORKSPACE_CRATES; do
-    echo "--- [$crate] running cargo llvm-cov --lib --json ---"
+    echo "--- [$crate] running cargo llvm-cov test --all-features --tests ---"
     json_path="$OUT_DIR/${crate}-lib.json"
-    if cargo llvm-cov -p "$crate" --lib --json --output-path "$json_path" 2>/dev/null; then
+    # ADR-001 G-04: try --tests first, fallback to --lib
+    if cargo llvm-cov test -p "$crate" --all-features --tests --json --output-path "$json_path" 2>/dev/null | grep -q "^TOTAL"; then
+        method="--tests"
+    elif cargo llvm-cov test -p "$crate" --lib --json --output-path "$json_path" 2>/dev/null; then
+        method="--lib"
+    else
+        echo "  ❌ $crate: cargo llvm-cov failed (both --tests and --lib)"
         pct=$(python3 -c "
 import json, sys
 try:
