@@ -401,3 +401,35 @@ v3.10.0 V310-12 (跨版本债) 中提到的 M-5/M-6/H-2 三项:
 ---
 
 *Created: 2026-07-13 (DRAFT stage init)*
+
+### V311-23 (NEW from v3.10.0 SOAK): PERF-5 High-concurrency INSERT fix
+
+| Field | Value |
+| --- | --- |
+| **Issue** | #3434 (Gitea 250) |
+| **Debt** | `docs/governance/debt/debt-registry.yaml#perf/PERF-5` |
+| **Discovered** | 2026-07-15 06:32 UTC during v3.10.0 168h SOAK |
+| **Priority** | P1 |
+| **Estimated** | 60h |
+
+**Problem**: v3.10.0 server has high-concurrency INSERT failure:
+- TPC-H Q1/Q6/Q12/Q14 rotation: WORKING (Q1 279ms @ 107K lineitem)
+- OLTP SELECT/UPDATE/COUNT: 100% success
+- OLTP INSERT INTO customer: 0% success (ERROR 2013 "Lost connection to server during query")
+- Customer count remains at 1,124 throughout 1h of OLTP workload
+
+**Server is stable** (10h+ uptime, 1.9GB RSS, 35% CPU, no crashes).
+This is a connection management / lock contention issue under high concurrency.
+
+**Tasks**:
+1. (16h) Investigate root cause - reproduce locally with 4+ concurrent OLTP threads
+2. (24h) Fix connection pool / lock contention - may require MVCC visibility fix
+3. (12h) Add regression test in `tests/stress/concurrent_insert_test.rs`
+4. (8h) Update SOAK orchestrator to include high-concurrency INSERT test
+
+**Workaround (immediate)**: Reduce OLTP threads to 1, or increase `--max-connections` to 500+
+
+**Acceptance**:
+- 4-thread concurrent OLTP for 1 hour: 0% INSERT errors
+- Customer count increases by ~2400 rows (80 inserts/min × 60 min × 4 threads / 8 expected per cycle)
+- Server stays stable, no memory growth, no FD leak
