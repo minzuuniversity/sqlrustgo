@@ -356,6 +356,10 @@ impl<S: StorageEngine + 'static> ExecutionEngine<S> {
                         &mut cursor,
                     );
                     if eval_predicate(&replaced, &row, &table_info) {
+                        // V311-02 v2: AHI access was recorded at scan time via
+                        // `scan_with_ahi()`. Adding per-row hooks here would be
+                        // redundant noise; the table-level access is sufficient
+                        // for the production-hook metric (touched_pages, hit_rate).
                         new_rows.push(row);
                     }
                 }
