@@ -39,9 +39,7 @@ pub enum SubqueryPattern {
         inner: Box<Expression>,
     },
     /// SELECT (SELECT AGG(col) FROM t WHERE x = outer.x) — left-join + group-by candidate
-    ScalarAggGroupBy {
-        inner: Box<Expression>,
-    },
+    ScalarAggGroupBy { inner: Box<Expression> },
 }
 
 /// Where in the expression tree the pattern was found.
@@ -182,12 +180,17 @@ fn count_scalar_in(expr: &Expression, count: &mut usize) {
         Subquery(_) | SubqueryField(_, _) => *count += 1,
         In(_, _) | NotIn(_, _) => *count += 1, // these have subquery
         Exists(_) | NotExists(_) => *count += 1, // these have subquery
-        BinaryOp(l, _, r) => { count_scalar_in(l, count); count_scalar_in(r, count); }
+        BinaryOp(l, _, r) => {
+            count_scalar_in(l, count);
+            count_scalar_in(r, count);
+        }
         UnaryOp(_, inner) => count_scalar_in(inner, count),
         IsNull(inner) | IsNotNull(inner) => count_scalar_in(inner, count),
         InList(l, vs) | NotInList(l, vs) => {
             count_scalar_in(l, count);
-            for v in vs { count_scalar_in(v, count); }
+            for v in vs {
+                count_scalar_in(v, count);
+            }
         }
         Between(l, lo, hi) | NotBetween(l, lo, hi) => {
             count_scalar_in(l, count);
@@ -199,12 +202,13 @@ fn count_scalar_in(expr: &Expression, count: &mut usize) {
             count_scalar_in(p, count);
         }
         FunctionCall(_, args) => {
-            for a in args { count_scalar_in(a, count); }
+            for a in args {
+                count_scalar_in(a, count);
+            }
         }
         _ => {}
     }
 }
-
 
 /// V311-16 v2: Try to rewrite a SELECT's WHERE clause to use a join instead of a
 /// subquery. Returns `Some(rewritten_where)` if any decorrelation was applied,
@@ -260,6 +264,7 @@ pub enum DecorrelatedJoinKind {
 }
 
 pub fn try_decorrelate(where_expr: &Expression) -> Option<DecorrelatedWhere> {
+    #[allow(unused_imports)]
     use sqlrustgo_parser::Expression::*;
     let patterns = find_correlated_subqueries(where_expr, &[]);
     if patterns.is_empty() {
@@ -320,9 +325,7 @@ fn rewrite_walk(
             *counter += 1;
             let alias = format!("__decorrelated_{}", counter);
             let (join_kind, select_clone) = match expr {
-                In(_, s) | NotIn(_, s) => {
-                    (DecorrelatedJoinKind::Inner, s.clone())
-                }
+                In(_, s) | NotIn(_, s) => (DecorrelatedJoinKind::Inner, s.clone()),
                 _ => unreachable!(),
             };
             out.push(DecorrelatedInnerSelect {
@@ -337,7 +340,9 @@ fn rewrite_walk(
             let r2 = rewrite_walk(r, out, counter);
             Expression::BinaryOp(Box::new(l2), op.clone(), Box::new(r2))
         }
-        UnaryOp(op, inner) => Expression::UnaryOp(op.clone(), Box::new(rewrite_walk(inner, out, counter))),
+        UnaryOp(op, inner) => {
+            Expression::UnaryOp(op.clone(), Box::new(rewrite_walk(inner, out, counter)))
+        }
         IsNull(inner) => Expression::IsNull(Box::new(rewrite_walk(inner, out, counter))),
         IsNotNull(inner) => Expression::IsNotNull(Box::new(rewrite_walk(inner, out, counter))),
         InList(l, vs) => Expression::InList(
@@ -393,7 +398,10 @@ mod tests {
         let where_expr = select.where_clause.as_ref().unwrap();
         let patterns = find_correlated_subqueries(where_expr, &[]);
         assert_eq!(patterns.len(), 1);
-        assert!(matches!(patterns[0].pattern, SubqueryPattern::ExistsSemi { .. }));
+        assert!(matches!(
+            patterns[0].pattern,
+            SubqueryPattern::ExistsSemi { .. }
+        ));
         assert_eq!(patterns[0].location, SubqueryLocation::Where);
     }
 
@@ -408,7 +416,10 @@ mod tests {
         let where_expr = select.where_clause.as_ref().unwrap();
         let patterns = find_correlated_subqueries(where_expr, &[]);
         assert_eq!(patterns.len(), 1);
-        assert!(matches!(patterns[0].pattern, SubqueryPattern::NotExistsAnti { .. }));
+        assert!(matches!(
+            patterns[0].pattern,
+            SubqueryPattern::NotExistsAnti { .. }
+        ));
     }
 
     #[test]
@@ -422,7 +433,10 @@ mod tests {
         let where_expr = select.where_clause.as_ref().unwrap();
         let patterns = find_correlated_subqueries(where_expr, &[]);
         assert_eq!(patterns.len(), 1);
-        assert!(matches!(patterns[0].pattern, SubqueryPattern::InToInnerJoin { .. }));
+        assert!(matches!(
+            patterns[0].pattern,
+            SubqueryPattern::InToInnerJoin { .. }
+        ));
     }
 
     #[test]
@@ -483,7 +497,11 @@ mod tests {
                     sqlrustgo_parser::Statement::Select(s) => s,
                     _ => panic!("expected SELECT"),
                 };
-                let select_exprs: Vec<E> = select.columns.into_iter().filter_map(|c| c.expression).collect();
+                let select_exprs: Vec<E> = select
+                    .columns
+                    .into_iter()
+                    .filter_map(|c| c.expression)
+                    .collect();
                 let patterns = find_correlated_subqueries(&E::Literal("1".into()), &select_exprs);
                 // Outer SELECT itself can have subquery; we test we find it
                 assert!(patterns.len() >= 1 || select_exprs.is_empty());
@@ -513,9 +531,7 @@ mod tests_v2 {
 
     #[test]
     fn v2_try_decorrelate_exists_returns_inner_select() {
-        let result = try_decorrelate_sql(
-            "SELECT * FROM o WHERE EXISTS (SELECT 1 FROM l)",
-        );
+        let result = try_decorrelate_sql("SELECT * FROM o WHERE EXISTS (SELECT 1 FROM l)");
         assert!(result.is_some());
         let r = result.unwrap();
         assert_eq!(r.inner_selects.len(), 1);
@@ -525,9 +541,7 @@ mod tests_v2 {
 
     #[test]
     fn v2_try_decorrelate_not_exists_returns_anti() {
-        let result = try_decorrelate_sql(
-            "SELECT * FROM o WHERE NOT EXISTS (SELECT 1 FROM l)",
-        );
+        let result = try_decorrelate_sql("SELECT * FROM o WHERE NOT EXISTS (SELECT 1 FROM l)");
         assert!(result.is_some());
         let r = result.unwrap();
         assert_eq!(r.inner_selects[0].join_kind, DecorrelatedJoinKind::Anti);
@@ -535,9 +549,7 @@ mod tests_v2 {
 
     #[test]
     fn v2_try_decorrelate_in_returns_inner() {
-        let result = try_decorrelate_sql(
-            "SELECT * FROM o WHERE o.id IN (SELECT x FROM inner_t)",
-        );
+        let result = try_decorrelate_sql("SELECT * FROM o WHERE o.id IN (SELECT x FROM inner_t)");
         assert!(result.is_some());
         let r = result.unwrap();
         assert_eq!(r.inner_selects[0].join_kind, DecorrelatedJoinKind::Inner);
@@ -545,9 +557,7 @@ mod tests_v2 {
 
     #[test]
     fn v2_try_decorrelate_no_subqueries_returns_none() {
-        let result = try_decorrelate_sql(
-            "SELECT * FROM o WHERE o.id = 1",
-        );
+        let result = try_decorrelate_sql("SELECT * FROM o WHERE o.id = 1");
         assert!(result.is_none());
     }
 
@@ -570,13 +580,16 @@ mod tests_v2 {
     #[test]
     fn v2_rewritten_predicate_contains_literal() {
         // After rewrite, EXISTS becomes Literal("true")
-        let result = try_decorrelate_sql(
-            "SELECT * FROM o WHERE EXISTS (SELECT 1 FROM l) AND o.x > 5",
-        );
+        let result =
+            try_decorrelate_sql("SELECT * FROM o WHERE EXISTS (SELECT 1 FROM l) AND o.x > 5");
         let r = result.unwrap();
         // The rewritten expression should contain Literal("true")
         let count_literals = count_literals(&r.rewritten);
-        assert!(count_literals >= 1, "should have at least 1 Literal(true), got {}", count_literals);
+        assert!(
+            count_literals >= 1,
+            "should have at least 1 Literal(true), got {}",
+            count_literals
+        );
     }
 
     fn count_literals(expr: &E) -> usize {

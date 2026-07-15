@@ -100,6 +100,7 @@ impl DB for SltDb {
 ///
 /// DuckDB outputs: `1`, `hello`  
 /// sqlrustgo Value::Integer(1) via Debug: `Integer(1)`, `Text("hello")`
+#[allow(clippy::ptr_arg)]
 fn strip_debug_format(s: &String) -> String {
     let s = s.trim();
     // Integer(42) -> 42
@@ -237,7 +238,7 @@ async fn async_main() {
                 .collect();
             let normalized_rows: Vec<String> = actual
                 .iter()
-                .map(|row| row.iter().map(|v| norm(v)).collect::<Vec<_>>().join(" "))
+                .map(|row| row.iter().map(norm).collect::<Vec<_>>().join(" "))
                 .collect();
             normalized_rows == expected_results
         });

@@ -34,9 +34,9 @@ use sqlrustgo_parser::parser::{
     DropViewStatement, ExceptStatement, GrantRoleStatement, GrantStatement, InsertStatement,
     IntersectStatement, MergeStatement, ObjectType as ParserObjectType, OrderByExpression,
     Privilege as ParserPrivilege, RevokeRoleStatement, RevokeStatement, SelectStatement,
-    SetRoleStatement, ShowStatement, StoredProcParam as ParserStoredProcParam,
+    SetRoleStatement, ShowStatement, StorageEngineSpec, StoredProcParam as ParserStoredProcParam,
     StoredProcParamMode as ParserParamMode, StoredProcStatement as ParserStatement,
-    StorageEngineSpec, TruncateStatement, UnionStatement,
+    TruncateStatement, UnionStatement,
 };
 use sqlrustgo_parser::transaction::IsolationLevel as ParserIsolationLevel;
 use sqlrustgo_parser::JoinType;
@@ -195,7 +195,9 @@ impl<S: StorageEngine + 'static> ExecutionEngine<S> {
     /// Get the active instrumentation hook. V311-06 (F-31): replace the
     /// default `NoopInstrumentationHook` with a `CountingInstrumentationHook`
     /// (or custom) for tests/monitoring visibility into operator events.
-    pub fn instrumentation(&self) -> &Arc<dyn sqlrustgo_executor::instrumentation::InstrumentationHook> {
+    pub fn instrumentation(
+        &self,
+    ) -> &Arc<dyn sqlrustgo_executor::instrumentation::InstrumentationHook> {
         &self.instrumentation
     }
 
@@ -642,12 +644,11 @@ impl<S: StorageEngine + 'static> ExecutionEngine<S> {
         // - absent / ENGINE=InnoDB (no CLUSTERED) → existing Heap path.
         if matches!(create.storage_engine, Some(StorageEngineSpec::Clustered)) {
             // Find PK column index (must exist for ClusteredTable).
-            let pk_col_idx = columns
-                .iter()
-                .position(|c| c.primary_key)
-                .ok_or_else(|| SqlError::ExecutionError(
-                    "Clustered table requires PRIMARY KEY on a single column".to_string()
-                ))?;
+            let pk_col_idx = columns.iter().position(|c| c.primary_key).ok_or_else(|| {
+                SqlError::ExecutionError(
+                    "Clustered table requires PRIMARY KEY on a single column".to_string(),
+                )
+            })?;
             // Create ClusteredTable
             let ct = ClusteredTable::new(info.clone(), pk_col_idx);
             // Also register with Heap so other code paths (catalog, schema checks) find it
@@ -659,10 +660,9 @@ impl<S: StorageEngine + 'static> ExecutionEngine<S> {
                 check_constraints: vec![],
                 partition_info: None,
             })?;
-            self.clustered_tables.write().insert(
-                create.name.clone(),
-                Arc::new(parking_lot::RwLock::new(ct)),
-            );
+            self.clustered_tables
+                .write()
+                .insert(create.name.clone(), Arc::new(parking_lot::RwLock::new(ct)));
             return Ok(ExecutorResult::empty());
         }
         storage.create_table(&info)?;

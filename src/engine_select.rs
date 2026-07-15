@@ -1347,9 +1347,8 @@ impl<S: StorageEngine + 'static> ExecutionEngine<S> {
         if let Some(where_expr) = select.where_clause.as_ref() {
             // Build the base table's qualified column-name set
             // (TPC-H prefix + bare names).
-            let base_qualified: Vec<String> = table_info.columns.iter()
-                .map(|c| c.name.clone())
-                .collect();
+            let base_qualified: Vec<String> =
+                table_info.columns.iter().map(|c| c.name.clone()).collect();
             let mut base_keys: Vec<String> = vec![
                 base_table.clone(),
                 base_prefix.clone(),
@@ -1357,7 +1356,8 @@ impl<S: StorageEngine + 'static> ExecutionEngine<S> {
             ];
             base_keys.extend(base_qualified);
             let base_preds = self.extract_single_table_predicates(where_expr, &base_keys);
-            let preds_opt = base_preds.get(base_prefix)
+            let preds_opt = base_preds
+                .get(base_prefix)
                 .or_else(|| base_preds.get(&base_table))
                 .or_else(|| base_preds.get(Self::tpch_table_prefix(&base_table)));
             if let Some(preds) = preds_opt {
@@ -1568,7 +1568,6 @@ impl<S: StorageEngine + 'static> ExecutionEngine<S> {
         let where_expr = select.where_clause.as_ref()?;
         let storage = self.storage.read();
 
-
         let (base_bare, base_alias_unwrapped) = match base_table.split_once('|') {
             Some((t, a)) => (t.to_string(), Some(a.to_string())),
             None => (base_table.to_string(), None),
@@ -1753,7 +1752,9 @@ impl<S: StorageEngine + 'static> ExecutionEngine<S> {
                 Some(preds) if !preds.is_empty() => raw_cur_rows
                     .into_iter()
                     .filter(|r| {
-                        preds.iter().all(|p| eval_predicate(p, r, &cur_info_prefixed))
+                        preds
+                            .iter()
+                            .all(|p| eval_predicate(p, r, &cur_info_prefixed))
                     })
                     .collect(),
                 _ => raw_cur_rows,
@@ -2750,12 +2751,10 @@ impl<S: StorageEngine + 'static> ExecutionEngine<S> {
                 let substituted =
                     substitute_outer_refs_in_select(subq, outer_row, outer_table_info);
                 let indexed = if let Some(wc) = substituted.where_clause.as_ref() {
-                    subquery_indexes
-                        .get(*cursor)
-                        .and_then(|idx| {
-                            // V311-17: try bloom short-circuit first for NOT EXISTS
-                            self.pre_eval_not_exists_indexed(wc, outer_row, outer_table_info, idx)
-                        })
+                    subquery_indexes.get(*cursor).and_then(|idx| {
+                        // V311-17: try bloom short-circuit first for NOT EXISTS
+                        self.pre_eval_not_exists_indexed(wc, outer_row, outer_table_info, idx)
+                    })
                 } else {
                     None
                 };

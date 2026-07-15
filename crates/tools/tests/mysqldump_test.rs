@@ -28,10 +28,22 @@ fn test_import_stats_increment() {
 #[test]
 fn test_sql_statement_variants() {
     let stmts: Vec<SqlStatement> = vec![
-        SqlStatement::DropTable { name: "t1".to_string(), if_exists: false },
-        SqlStatement::CreateTable { name: "t2".to_string(), columns: vec![] },
-        SqlStatement::Insert { table: "t3".to_string(), columns: vec![], values: vec![] },
-        SqlStatement::Use { database: "testdb".to_string() },
+        SqlStatement::DropTable {
+            name: "t1".to_string(),
+            if_exists: false,
+        },
+        SqlStatement::CreateTable {
+            name: "t2".to_string(),
+            columns: vec![],
+        },
+        SqlStatement::Insert {
+            table: "t3".to_string(),
+            columns: vec![],
+            values: vec![],
+        },
+        SqlStatement::Use {
+            database: "testdb".to_string(),
+        },
         SqlStatement::Unknown("SET foreign_key_checks=0".to_string()),
     ];
     assert_eq!(stmts.len(), 5);
@@ -78,7 +90,10 @@ fn test_column_def_with_default() {
 
 #[test]
 fn test_foreign_key_ref() {
-    let fk = ForeignKeyRef { table: "orders".to_string(), column: "customer_id".to_string() };
+    let fk = ForeignKeyRef {
+        table: "orders".to_string(),
+        column: "customer_id".to_string(),
+    };
     assert_eq!(fk.table, "orders");
     assert_eq!(fk.column, "customer_id");
 }

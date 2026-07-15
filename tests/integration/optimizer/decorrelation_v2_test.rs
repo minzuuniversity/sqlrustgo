@@ -6,9 +6,7 @@
 //! 3. Handles complex multi-pattern WHERE clauses
 //! 4. Returns None for non-decorrelatable queries
 
-use sqlrustgo_optimizer::decorrelate::{
-    try_decorrelate, DecorrelatedJoinKind,
-};
+use sqlrustgo_optimizer::decorrelate::{try_decorrelate, DecorrelatedJoinKind};
 
 fn parse_where(sql: &str) -> sqlrustgo_parser::Expression {
     let stmt = sqlrustgo_parser::parse(sql).unwrap();
@@ -89,9 +87,7 @@ fn v2_in_subquery_to_inner_join() {
 
 #[test]
 fn v2_plain_where_returns_none() {
-    let where_expr = parse_where(
-        "SELECT * FROM t WHERE a = 1 AND b > 5 AND c LIKE '%test%'",
-    );
+    let where_expr = parse_where("SELECT * FROM t WHERE a = 1 AND b > 5 AND c LIKE '%test%'");
     let result = try_decorrelate(&where_expr);
     assert!(result.is_none());
 }
@@ -122,8 +118,10 @@ fn v2_preserves_inner_select_structure() {
     let inner = &r.inner_selects[0];
     // Verify the inner SELECT has the lineitem table and BETWEEN predicate
     assert_eq!(inner.select.table, "lineitem");
-    assert!(inner.select.where_clause.is_some(),
-            "inner where clause should be captured");
+    assert!(
+        inner.select.where_clause.is_some(),
+        "inner where clause should be captured"
+    );
 }
 
 #[test]
