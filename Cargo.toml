@@ -1113,6 +1113,10 @@ path = "tests/integration/sql/q21_cell_regression_test.rs"
 [[test]]
 name = "q21_exists_hash_path_test"
 path = "tests/integration/sql/q21_exists_hash_path_test.rs"
+
+[[test]]
+name = "q4_hash_semi_join_test"
+path = "tests/integration/tpch/q4_hash_semi_join_test.rs"
 [[test]]
 name = "quick_query"
 path = "tests/integration/sql/quick_query.rs"
