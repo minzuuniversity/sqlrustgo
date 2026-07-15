@@ -34,6 +34,7 @@ fn clustered_table_production_storage_full_lifecycle() {
         foreign_keys: vec![],
         unique_constraints: vec![],
         check_constraints: vec![],
+            compression: None,
         partition_info: None,
     };
 
@@ -111,6 +112,7 @@ fn clustered_table_pk_uniqueness() {
         foreign_keys: vec![],
         unique_constraints: vec![],
         check_constraints: vec![],
+            compression: None,
         partition_info: None,
     };
     let mut ct = ClusteredTable::new(info, 0);
@@ -133,6 +135,7 @@ fn clustered_table_empty_operations() {
         foreign_keys: vec![],
         unique_constraints: vec![],
         check_constraints: vec![],
+            compression: None,
         partition_info: None,
     };
     let ct = ClusteredTable::new(info, 0);
