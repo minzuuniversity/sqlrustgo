@@ -25,7 +25,10 @@ pub mod stored_proc;
 pub mod system_tables;
 pub mod table;
 
-pub use auth::{AuthManager, Privilege, User, UserIdentity};
+pub use auth::{
+    AuthManager, PasswordPolicy, PasswordRotationManager, Privilege, User, UserIdentity,
+    DEFAULT_PASSWORD_HISTORY_SIZE, DEFAULT_PASSWORD_LIFETIME_DAYS,
+};
 pub use catalog::Catalog;
 pub use column::ColumnDefinition;
 pub use data_type::DataType;
