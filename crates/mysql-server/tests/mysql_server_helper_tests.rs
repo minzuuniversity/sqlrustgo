@@ -6,7 +6,10 @@ use sqlrustgo_mysql_server::{MySqlError, StmtParam};
 
 #[test]
 fn test_mysql_error_display_io() {
-    let err = MySqlError::Io(std::io::Error::new(std::io::ErrorKind::NotFound, "file not found"));
+    let err = MySqlError::Io(std::io::Error::new(
+        std::io::ErrorKind::NotFound,
+        "file not found",
+    ));
     let display = format!("{}", err);
     assert!(display.contains("NotFound") || display.contains("file not found"));
 }
@@ -63,7 +66,10 @@ fn test_mysql_error_debug() {
 
 #[test]
 fn test_mysql_error_display_io_permission_denied() {
-    let err = MySqlError::Io(std::io::Error::new(std::io::ErrorKind::PermissionDenied, "access denied"));
+    let err = MySqlError::Io(std::io::Error::new(
+        std::io::ErrorKind::PermissionDenied,
+        "access denied",
+    ));
     let display = format!("{}", err);
     assert!(display.contains("PermissionDenied") || display.contains("access denied"));
 }
@@ -226,9 +232,9 @@ fn test_parse_stmt_execute_params_null_value() {
     // Build a minimal binary protocol payload for 1 null parameter
     // Format: null_bitmap (1 byte for 1 param) + new_params_bound (1 byte = 0x01)
     let payload = vec![
-        0,    // null_bitmap[0] = bit 0 not set = not null
+        0, // null_bitmap[0] = bit 0 not set = not null
         0x01, // new_params_bound_flag = 0x01
-        // No type codes follow since we provide prepared_param_types
+           // No type codes follow since we provide prepared_param_types
     ];
     let type_codes = vec![0x01]; // MYSQL_TYPE_TINY
     let params = sqlrustgo_mysql_server::parse_stmt_execute_params(&payload, 1, &type_codes);
