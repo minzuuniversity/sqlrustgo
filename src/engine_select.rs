@@ -282,6 +282,8 @@ impl<S: StorageEngine + 'static> ExecutionEngine<S> {
             let rows = self.scan_with_ahi(&storage, lookup_table)?;
             let table_info = storage.get_table_info(lookup_table)?;
             drop(storage);
+            // V311-05 F-29: apply RLS row filtering if enabled
+            let rows = self.apply_rls_filter(lookup_table, rows, &table_info)?;
             (rows, table_info)
         };
         // The storage read lock is NOT held past this point, ensuring
@@ -1286,6 +1288,51 @@ impl<S: StorageEngine + 'static> ExecutionEngine<S> {
     /// When v3 FileStorage lands proper page-aware instrumentation, the
     /// caller can pass the actual `(page_id, offset)` from the B+ Tree
     /// page handle.
+
+    /// V311-05 F-29: Apply Row-Level Security filter to scanned rows.
+    /// Checks if RLS is enabled for this table in the catalog, and if so,
+    /// filters rows through the policy catalog's filter_rows() method.
+    fn apply_rls_filter(
+        &self,
+        table: &str,
+        rows: Vec<sqlrustgo_storage::Record>,
+        table_info: &sqlrustgo_storage::TableInfo,
+    ) -> SqlResult<Vec<sqlrustgo_storage::Record>> {
+        let Some(catalog) = &self.catalog else {
+            return Ok(rows); // No catalog = no RLS
+        };
+        let catalog_guard = catalog.read();
+        if !catalog_guard.is_rls_enabled(table) {
+            return Ok(rows); // RLS not enabled for this table
+        }
+        // Convert Record (Vec<Value>) to RLS Row (HashMap<String, Value>)
+        let rls_rows: Vec<std::collections::HashMap<String, Value>> = rows
+            .into_iter()
+            .map(|record| {
+                table_info
+                    .columns
+                    .iter()
+                    .zip(record.into_iter())
+                    .map(|(col, val)| (col.name.clone(), val))
+                    .collect()
+            })
+            .collect();
+        // Filter through RLS policies
+        let filtered = catalog_guard.policy_catalog().filter_rows(table, rls_rows);
+        // Convert back to Record (Vec<Value>)
+        let result: Vec<sqlrustgo_storage::Record> = filtered
+            .into_iter()
+            .map(|row| {
+                table_info
+                    .columns
+                    .iter()
+                    .map(|col| row.get(&col.name).cloned().unwrap_or(Value::Null))
+                    .collect()
+            })
+            .collect();
+        Ok(result)
+    }
+
     /// V311-01 F-23 + V311-02 F-24: scan with ClusteredTable + AHI instrumentation.
     /// Priority: ClusteredTable (if registered) → storage.scan().
     /// AHI records every table-level access for hot-page promotion.
@@ -1365,6 +1412,8 @@ impl<S: StorageEngine + 'static> ExecutionEngine<S> {
         } else {
             raw_info
         };
+        // V311-05 F-29: apply RLS filter to base table scan after table_info is defined
+        rows = self.apply_rls_filter(&base_table, rows, &table_info)?;
         if let Some(where_expr) = select.where_clause.as_ref() {
             // Build the base table's qualified column-name set
             // (TPC-H prefix + bare names).
