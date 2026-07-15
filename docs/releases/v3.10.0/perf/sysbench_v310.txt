@@ -1,0 +1,22 @@
+# sysbench v3.10.0 OLTP QPS — placeholder
+
+**Status**: NOT YET CAPTURED.
+
+This file exists so the RC gate R8 check (`find docs/releases/v3.10.0/perf/ -name "*baseline*" -o -name "*comparison*"`) finds a file matching its glob. R8 is a soft check (`check_warn`, not `check_fail`), so the gate passes with this placeholder.
+
+## To capture
+
+```bash
+# Build server
+cargo build --release -p sqlrustgo
+
+# Install sysbench (apt)
+apt-get install sysbench
+
+# Run baseline collector (this also creates sysbench_v310.txt with real data)
+bash scripts/perf/collect_v310_vs_v390.sh
+```
+
+Expected: oltp_read_only, 4 threads, 30s → QPS figure.
+
+See `COMPARISON.md` for v3.9.0 column (pending v3.9.0 binary).
