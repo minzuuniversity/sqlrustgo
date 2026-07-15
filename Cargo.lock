@@ -4459,6 +4459,7 @@ dependencies = [
  "serde_json",
  "sha1 0.10.6",
  "sqlrustgo",
+ "sqlrustgo-catalog",
  "sqlrustgo-common",
  "sqlrustgo-executor",
  "sqlrustgo-parser",
