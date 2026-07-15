@@ -1286,15 +1286,36 @@ impl<S: StorageEngine + 'static> ExecutionEngine<S> {
     /// When v3 FileStorage lands proper page-aware instrumentation, the
     /// caller can pass the actual `(page_id, offset)` from the B+ Tree
     /// page handle.
+    /// V311-01 F-23 + V311-02 F-24: scan with ClusteredTable + AHI instrumentation.
+    /// Priority: ClusteredTable (if registered) → storage.scan().
+    /// AHI records every table-level access for hot-page promotion.
     fn scan_with_ahi(
         &self,
         storage: &parking_lot::RwLockReadGuard<'_, S>,
         table: &str,
     ) -> SqlResult<Vec<sqlrustgo_storage::Record>> {
-        // V311-06 (F-31): notify instrumentation hook before scan
+        // V311-01 F-23: route clustered-table scans through ClusteredTable.
+        // ClusteredTable stores rows ordered by primary key (InnoDB-style),
+        // providing O(log N) pk lookups and O(log N + k) range scans.
+        if let Some(ct_guard) = self.clustered_tables.read().get(table) {
+            let ct = ct_guard.read();
+            self.instrumentation.on_seq_scan_start(table);
+            let rows = ct.full_scan();
+            // V311-02 F-24: record table-level access for AHI promotion.
+            let mut page_id: u64 = 0xcbf29ce484222325;
+            for &b in table.as_bytes() {
+                page_id ^= u64::from(b);
+                page_id = page_id.wrapping_mul(0x100000001b3);
+            }
+            let offset = rows.len() as u32;
+            self.adaptive_hash_index
+                .record_access(table, b"clustered", page_id, offset);
+            return Ok(rows);
+        }
+        // Default: full table scan via storage.
         self.instrumentation.on_seq_scan_start(table);
         let rows = storage.scan(table)?;
-        // Stable FNV-1a-ish hash of table name as synthetic page_id.
+        // V311-02 F-24: stable FNV-1a-ish hash of table name as synthetic page_id.
         let mut page_id: u64 = 0xcbf29ce484222325;
         for &b in table.as_bytes() {
             page_id ^= u64::from(b);
