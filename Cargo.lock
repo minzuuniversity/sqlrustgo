@@ -4462,6 +4462,7 @@ dependencies = [
  "sqlrustgo-catalog",
  "sqlrustgo-common",
  "sqlrustgo-executor",
+ "sqlrustgo-mysql-client",
  "sqlrustgo-parser",
  "sqlrustgo-planner",
  "sqlrustgo-storage",
