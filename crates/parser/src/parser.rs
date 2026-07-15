@@ -612,10 +612,24 @@ pub struct CreateTableStatement {
     pub constraints: Vec<TableConstraint>,
     pub if_not_exists: bool,
     /// V311-01: optional storage engine override (default `Heap`).
-    /// Set to `Some(StorageEngineSpec::Clustered)` for InnoDB-style B+ Tree
-    /// clustered primary key storage. The clause is parsed from
-    /// `ENGINE=InnoDB CLUSTERED` syntax.
     pub storage_engine: Option<StorageEngineSpec>,
+    /// V311-12 F-27: table compression specifier.
+    /// Syntax: COMPRESS (ALGORITHM=LZ4) or COMPRESS (ALGORITHM=ZSTD)
+    pub compress: Option<CompressionSpec>,
+}
+
+/// Compression specification for table compression (F-27)
+#[derive(Debug, Clone, PartialEq)]
+pub struct CompressionSpec {
+    pub algorithm: CompressionAlgorithm,
+}
+
+/// Compression algorithm type
+#[derive(Debug, Clone, PartialEq, Copy)]
+pub enum CompressionAlgorithm {
+    Lz4,
+    Zstd,
+    Zlib,
 }
 
 /// DROP TABLE statement
@@ -6790,12 +6804,16 @@ impl Parser {
         // ENGINE=InnoDB (no CLUSTERED) → Heap default storage.
         let storage_engine = self.parse_table_storage_engine_clause();
 
+        // V311-12 F-27: Parse trailing `COMPRESS (ALGORITHM=LZ4)` clause.
+        let compress = self.parse_compress_clause();
+
         Ok(Statement::CreateTable(CreateTableStatement {
             name,
             columns,
             constraints,
             if_not_exists,
             storage_engine,
+            compress,
         }))
     }
 
@@ -6850,6 +6868,47 @@ impl Parser {
             // Unknown engine — ignore silently for backward compat, treat as default
             None
         }
+    }
+
+    /// V311-12 F-27: parse trailing `COMPRESS (ALGORITHM=LZ4)` clause.
+    /// Syntax: COMPRESS (ALGORITHM=LZ4) | COMPRESS (ALGORITHM=ZSTD) | COMPRESS (ALGORITHM=zlib)
+    fn parse_compress_clause(&mut self) -> Option<CompressionSpec> {
+        match self.current() {
+            Some(Token::Identifier(s)) if s.eq_ignore_ascii_case("COMPRESS") => {
+                self.next();
+            }
+            _ => return None,
+        }
+        if !matches!(self.current(), Some(Token::LParen)) {
+            return None;
+        }
+        self.next();
+        if !matches!(self.current(), Some(Token::Identifier(s)) if s.eq_ignore_ascii_case("ALGORITHM")) {
+            return None;
+        }
+        self.next();
+        if !matches!(self.current(), Some(Token::Equal)) {
+            return None;
+        }
+        self.next();
+        let algo = match self.current() {
+            Some(Token::Identifier(s)) => {
+                let algo_str = s.to_uppercase();
+                self.next();
+                match algo_str.as_str() {
+                    "LZ4" => CompressionAlgorithm::Lz4,
+                    "ZSTD" => CompressionAlgorithm::Zstd,
+                    "ZLIB" | "DEFLATE" => CompressionAlgorithm::Zlib,
+                    _ => return None,
+                }
+            }
+            _ => return None,
+        };
+        if !matches!(self.current(), Some(Token::RParen)) {
+            return None;
+        }
+        self.next();
+        Some(CompressionSpec { algorithm: algo })
     }
 
     fn parse_column_definition(&mut self) -> Result<ColumnDefinition, String> {
