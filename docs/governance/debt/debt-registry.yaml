@@ -397,11 +397,38 @@ f_xx_not_implemented:  # 完全无实现, 5 项 v3.9.0+ 全量
 
   - id: F-36
     title: "列级权限"
-    state: DEFERRED
-    owner: unassigned
+    state: IN_PROGRESS
+    progress: "70%"
+    owner: openclaw
     target_release: v3.11.0
     review_date: "2027-01-15"
-    note: "0 代码 (无 ColumnLevel/ColumnPrivilege); DEFERRED to v3.11.0 per v3.10.0 RC blocker analysis."
+    progress_metric: |
+      v3.11.0 (verify/v311-09-f36-current-user-state, 2026-07-15):
+      - Catalog API: grant_column_privilege, get_authorized_columns,
+        matches_column, create_user all work. 169/169 catalog tests PASS
+        (164 original + 5 new V311-09 tests in auth.rs).
+      - Parser: GRANT SELECT(col1, col2) ON tbl TO user parses correctly
+        after fix to parse_grant defaulting to ObjectType::Column when
+        columns list is non-empty (MySQL semantics). 248/248 parser tests pass.
+      - DDL executor: execute_grant_columns path works end-to-end via
+        engine.execute("GRANT SELECT(col) ON users TO alice@host"). 3 new
+        e2e tests in execution_engine_tests.rs pass.
+      - Bugs fixed by this verification: parser parse_grant was defaulting
+        to ObjectType::Table even when (col_list) was present, so column-level
+        grants were being recorded as table-level grants (no get_authorized_columns
+        match).
+      REMAINING (V311-09 follow-up, blocked on this verification):
+      - engine_ddl.rs:52 hardcodes host="%" in UserIdentity for GRANT,
+        ignoring alice@host from SQL. Fix should parse user@host.
+      - SELECT path does not call get_authorized_columns — execute_select
+        does not filter columns. Requires ExecutionEngine to know current_user,
+        which needs a separate refactor (Option<UserIdentity> on execute()).
+      - CREATE USER SQL syntax not in v3.11.0 parser (catalog API works).
+      - Wire protocol does not pass current_user to engine.
+      Plan: V311-09 follow-up tracks the 4 remaining items; F-36 will move
+      to CLOSED once SELECT path filters columns based on current_user.
+    closing_pr: []
+    related_change: "V311-09 follow-up (column-level SELECT filtering)"
 
 
   - id: T-19
