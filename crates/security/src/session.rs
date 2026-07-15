@@ -516,4 +516,53 @@ mod tests {
         let closed_session = manager.get_session(id2).unwrap();
         assert_eq!(closed_session.status, SessionStatus::Closed);
     }
+
+    #[test]
+    fn test_session_is_active() {
+        let session = Session::new(1, "alice".to_string(), "127.0.0.1".to_string());
+        assert!(session.is_active());
+    }
+
+    #[test]
+    fn test_session_idle_time() {
+        let session = Session::new(1, "alice".to_string(), "127.0.0.1".to_string());
+        assert_eq!(session.idle_time_seconds(), 0);
+    }
+
+    #[test]
+    fn test_session_can_kill() {
+        let mut session = Session::new(1, "alice".to_string(), "127.0.0.1".to_string());
+        session.grant_privilege(SessionPrivilege::Super);
+        assert!(session.can_kill());
+    }
+
+    #[test]
+    fn test_session_privilege_grant_revoke() {
+        let mut session = Session::new(1, "alice".to_string(), "127.0.0.1".to_string());
+        assert!(!session.has_privilege(SessionPrivilege::Super));
+        session.grant_privilege(SessionPrivilege::Super);
+        assert!(session.has_privilege(SessionPrivilege::Super));
+        session.revoke_privilege(SessionPrivilege::Super);
+        assert!(!session.has_privilege(SessionPrivilege::Super));
+    }
+
+    #[test]
+    fn test_session_cancel_token() {
+        let session = Session::new(1, "alice".to_string(), "127.0.0.1".to_string());
+        assert!(!session.is_query_cancelled());
+    }
+
+    #[test]
+    fn test_session_activity_update() {
+        let mut session = Session::new(1, "alice".to_string(), "127.0.0.1".to_string());
+        session.update_activity();
+        assert_eq!(session.idle_time_seconds(), 0);
+    }
+
+    #[test]
+    fn test_session_status_close() {
+        let mut session = Session::new(1, "alice".to_string(), "127.0.0.1".to_string());
+        session.close();
+        assert!(!session.is_active());
+    }
 }
