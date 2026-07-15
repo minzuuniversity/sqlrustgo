@@ -469,7 +469,6 @@ mod tests {
         MergeExecutor { storage, engine }
     }
 
-
     struct MockEngine;
     impl ExecutionEngine for MockEngine {
         fn execute(&mut self, _ctx: &mut QueryContext) -> Result<ExecutionResult, SqlError> {

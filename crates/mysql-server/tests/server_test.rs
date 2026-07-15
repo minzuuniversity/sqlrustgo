@@ -15,24 +15,30 @@ fn test_parse_tbl_line_basic() {
 #[test]
 fn test_parse_tbl_line_all_null() {
     let result = parse_tbl_line("||||", 4).unwrap();
-    assert_eq!(result, vec![
-        sqlrustgo_types::Value::Null,
-        sqlrustgo_types::Value::Null,
-        sqlrustgo_types::Value::Null,
-        sqlrustgo_types::Value::Null,
-    ]);
+    assert_eq!(
+        result,
+        vec![
+            sqlrustgo_types::Value::Null,
+            sqlrustgo_types::Value::Null,
+            sqlrustgo_types::Value::Null,
+            sqlrustgo_types::Value::Null,
+        ]
+    );
 }
 
 #[test]
 fn test_parse_tbl_line_integers() {
     let result = parse_tbl_line("0|1|2|3|4", 5).unwrap();
-    assert_eq!(result, vec![
-        sqlrustgo_types::Value::Integer(0),
-        sqlrustgo_types::Value::Integer(1),
-        sqlrustgo_types::Value::Integer(2),
-        sqlrustgo_types::Value::Integer(3),
-        sqlrustgo_types::Value::Integer(4),
-    ]);
+    assert_eq!(
+        result,
+        vec![
+            sqlrustgo_types::Value::Integer(0),
+            sqlrustgo_types::Value::Integer(1),
+            sqlrustgo_types::Value::Integer(2),
+            sqlrustgo_types::Value::Integer(3),
+            sqlrustgo_types::Value::Integer(4),
+        ]
+    );
 }
 
 #[test]
@@ -79,16 +85,19 @@ fn test_parse_tbl_line_empty_string_is_null() {
     // "||foo||" → split ['', '', 'foo', '', ''] → strip trailing '' → ['', '', 'foo', '']
     let result = parse_tbl_line("||foo||", 4).unwrap();
     assert_eq!(result.len(), 4);
-    assert_eq!(result[0], sqlrustgo_types::Value::Null);  // empty field
-    assert_eq!(result[1], sqlrustgo_types::Value::Null);  // empty field
+    assert_eq!(result[0], sqlrustgo_types::Value::Null); // empty field
+    assert_eq!(result[1], sqlrustgo_types::Value::Null); // empty field
     assert_eq!(result[2], sqlrustgo_types::Value::Text("foo".to_string()));
-    assert_eq!(result[3], sqlrustgo_types::Value::Null);  // trailing empty after strip
+    assert_eq!(result[3], sqlrustgo_types::Value::Null); // trailing empty after strip
 }
 
 #[test]
 fn test_parse_tbl_line_text_with_special_chars() {
     let result = parse_tbl_line("1|hello world|3.14||", 4).unwrap();
-    assert_eq!(result[1], sqlrustgo_types::Value::Text("hello world".to_string()));
+    assert_eq!(
+        result[1],
+        sqlrustgo_types::Value::Text("hello world".to_string())
+    );
 }
 
 #[test]
