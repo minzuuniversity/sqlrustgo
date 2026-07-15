@@ -1,10 +1,11 @@
+ 
 use std::time::Instant;
 
 #[path = "../../common/mod.rs"]
 mod common;
 use common::tpch_wire_harness::{run_query_timed, start_sf001};
 
-const BASELINE_JSON: &str = include_str!("tpch_hashes_v380.json");
+const BASELINE_JSON: &str = include_str!("../../tpch_hashes_v380.json");
 
 fn expected_hash() -> String {
     let v: serde_json::Value =
