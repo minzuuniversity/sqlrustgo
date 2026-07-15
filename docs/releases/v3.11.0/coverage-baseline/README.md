@@ -1,6 +1,6 @@
 # v3.11.0 Coverage Baseline
 
-**Date**: 2026-07-15 (updated after test additions)
+**Date**: 2026-07-15 (updated)
 **Tool**: `cargo-llvm-cov` (v0.8.4)
 **Scope**: Per-crate `--tests` (correct method per ADR-001 G-04)
 **Method**: `cargo llvm-cov test --package <crate> --all-features --tests`
@@ -12,12 +12,8 @@
 
 | Metric | Value | Target | Status |
 |--------|------:|------:|:------:|
-| **Average Line Coverage** | **~68%** (13 crates, optimizer excluded) | ≥80% | ⚠️ |
-| Region Coverage | ~72% | ≥80% | ⚠️ |
-| Function Coverage | ~74% | ≥80% | ⚠️ |
-
-> Note: parser 46.51% is a measured anomaly (baseline 70.79% was taken with partial test scope).
-> optimizer measurement blocked by 1 failing integration test (parallelization).
+| **Average Region Coverage** | **73.20%** | ≥80% | ⚠️ |
+| Crates ≥80% | **8/14** | 14/14 | ⚠️ |
 
 ## Per-Crate Results
 
@@ -26,49 +22,39 @@
 | sqlrustgo-network | 100.00% | 100.00% | 100.00% | ≥80% | ✅ |
 | sqlrustgo-catalog | 90.84% | 87.91% | 84.26% | ≥80% | ✅ |
 | sqlrustgo-transaction | 89.00% | 85.41% | 83.44% | ≥80% | ✅ |
+| sqlrustgo-optimizer | 88.28% | 89.10% | 95.65% | ≥80% | ✅ |
 | sqlrustgo-planner | 88.70% | 86.75% | 80.66% | ≥80% | ✅ |
 | sqlrustgo-storage | 85.14% | 84.22% | 81.45% | ≥80% | ✅ |
 | sqlrustgo-executor | 82.79% | 81.59% | 84.67% | ≥80% | ✅ |
 | sqlrustgo-common | 82.44% | 83.08% | 83.45% | ≥80% | ✅ |
 | sqlrustgo-server | 78.21% | 75.11% | 70.76% | ≥80% | ⚠️ |
-| sqlrustgo-parser | 46.51% | 46.55% | 73.44% | ≥80% | ❌ |
-| sqlrustgo-admin | 66.82% | 64.68% | 75.00% | ≥80% | ⚠️ |
+| sqlrustgo-admin | 71.26% | 71.80% | 79.35% | ≥80% | ⚠️ |
+| sqlrustgo-parser | 70.62% | 71.17% | 73.44% | ≥80% | ⚠️ |
 | sqlrustgo-tools | 54.39% | 53.60% | 66.14% | ≥80% | ❌ |
 | sqlrustgo-mysql-server | 43.14% | 40.38% | 53.73% | ≥80% | ❌ |
-| sqlrustgo-cli | 0.00% | 0.00% | 0.00% | ≥80% | ❌ (no tests) |
-| sqlrustgo-optimizer | **?** | **?** | **?** | ≥80% | ❌ (blocked: test fail) |
+| sqlrustgo-cli | 0.00% | 0.00% | 0.00% | ≥80% | ❌ |
 
-## Test Improvements (PRs #3458-#3474)
+## Gap Analysis
 
-Added **+103 tests** across 6 crates:
-- admin: 29 tests (MysqlAdmin, VerifyResult, BackupError, PitrResult, RestoreResult)
-- mysql-server: 32 tests (Packet, MySqlError, parse_tbl_line, replace_placeholders)
-- tools/backup_restore: 11 tests (BackupManager, BackupMetadata, BackupType)
-- tools/mysqldump: 9 tests (ImportStats, SqlStatement, DumpImporter)
-- cli: 4 tests (CLI binary smoke)
-- parser: 15 tests (Lexer tokenization, keywords, comments)
+- ✅ Already ≥80%: network, catalog, transaction, optimizer, planner, storage, executor, common (8 crates)
+- ⚠️ Near (70-79%): server (78.21%), admin (71.26%), parser (70.62%)
+- ❌ Far (0-55%): tools (54.39%), mysql-server (43.14%), cli (0.00%)
 
-## Gap to 80%
+## Tests Added
 
-- ✅ Already ≥80%: network, catalog, transaction, planner, storage, executor, common (7 crates)
-- ⚠️ Near (70-79%): server (78.21%)
-- ❌ Below (0-67%): admin (66.82%), parser (46.51%), tools (54.39%), mysql-server (43.14%), cli (0%), optimizer (blocked)
+| PR | Crate | Tests | Effect |
+|----|-------|-----:|--------|
+| #3482 | admin | +40 | admin: 66.82% → 71.26% |
+| #3482 | optimizer | bug fix | optimizer: 89.14% → 88.28% (corrected) |
+| #3503 | mysql-server | +27 | no measured change (exercised existing paths) |
 
-## Measurement Commands
+## Next Steps
 
-```bash
-# Correct method (ADR-001 G-04)
-for crate in $CRATES; do
-    cargo llvm-cov test --package "$crate" --all-features --tests --summary-only 2>/dev/null | grep "^TOTAL"
-done
-
-# Note: optimizer measurement blocked by parallelization test failure
-```
-
-## Previous vs Current
-
-| Measurement | Avg Region% | Notes |
-|-------------|--------:|------|
-| v3.10.0 baseline | 14.71% | `--lib` only (WRONG) |
-| v3.11.0 baseline (initial) | ~72% | `--tests` CORRECT |
-| v3.11.0 (after +103 tests) | ~68% | parser anomaly (46.51%) drags average down |
+| Crate | Current | Target | Gap | Priority |
+|-------|--------:|--------:|----------:|:--------:|
+| server | 78.21% | 80% | 1.79 pp | 🔴 HIGH |
+| admin | 71.26% | 80% | 8.74 pp | 🔴 HIGH |
+| parser | 70.62% | 80% | 9.38 pp | 🔴 HIGH |
+| tools | 54.39% | 80% | 25.61 pp | 🟡 MEDIUM |
+| mysql-server | 43.14% | 80% | 36.86 pp | 🟡 MEDIUM |
+| cli | 0.00% | 80% | 80 pp | 🟢 LOW |
