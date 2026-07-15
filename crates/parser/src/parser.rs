@@ -208,6 +208,7 @@ pub enum AlterTableOperation {
         name: String,
         data_type: String,
         nullable: bool,
+        char_max_length: Option<usize>,
     },
     /// `ALTER TABLE t RENAME TO new_name` — renames the table.
     RenameTo {
@@ -7474,13 +7475,36 @@ impl Parser {
                     Some(Token::Boolean) => "BOOLEAN".to_string(),
                     _ => return Err("Expected data type".to_string()),
                 };
-                let nullable = true;
+                // Optional (N) length for CHAR / VARCHAR / DECIMAL etc.
+                let char_max_length: Option<usize> = if matches!(self.current(), Some(Token::LParen)) {
+                    self.next(); // consume (
+                    let n = match self.next() {
+                        Some(Token::NumberLiteral(s)) => s.parse::<usize>().map_err(|e| format!("Invalid length: {}", e))?,
+                        _ => return Err("Expected integer length in (N)".to_string()),
+                    };
+                    self.expect(Token::RParen)?;
+                    Some(n)
+                } else {
+                    None
+                };
+                // Optional [NOT] NULL
+                let nullable = if matches!(self.current(), Some(Token::Not)) {
+                    self.next();
+                    self.expect(Token::Null)?;
+                    false
+                } else if matches!(self.current(), Some(Token::Null)) {
+                    self.next();
+                    true
+                } else {
+                    true
+                };
                 Ok(Statement::AlterTable(AlterTableStatement {
                     table_name,
                     operation: AlterTableOperation::ModifyColumn {
                         name: col_name,
                         data_type,
                         nullable,
+                        char_max_length,
                     },
                 }))
             }
@@ -8468,10 +8492,12 @@ mod tests {
                         name,
                         data_type,
                         nullable,
+                        char_max_length,
                     } => {
                         assert_eq!(name, "age");
                         assert_eq!(data_type, "INTEGER");
                         assert!(nullable);
+                        assert_eq!(char_max_length, None);
                     }
                     _ => panic!("Expected ModifyColumn operation"),
                 }
