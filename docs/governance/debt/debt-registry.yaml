@@ -402,9 +402,9 @@ f_xx_isolated:  # 测试自包含, 10 项 v3.9.0+ 集成; v3.10.0 中 F-16 主�
 
   - id: F-31
     title: "Performance Schema"
-    state: VERIFIED
-    progress: 7/7
-    progress_metric: "tests/performance_schema_test.rs 7/7 PASS, 孤岛 (无 instrumentation hooks)"
+    state: CLOSED
+    progress: 100%
+    progress_metric: "V311-06 v1: InstrumentationHook trait + Noop + Counting. 11 tests PASS (3 unit + 8 integration)"
     target_release: v3.11.0
   - id: F-32
     title: "MySQL Admin"
