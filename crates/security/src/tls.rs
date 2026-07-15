@@ -208,4 +208,27 @@ mod tests {
         let result = CertificateManager::new(TlsConfig::default());
         assert!(result.is_err());
     }
+
+    #[test]
+    fn test_tls_config_builder_pattern() {
+        let config = TlsConfig::new(
+            PathBuf::from("certs/server.crt"),
+            PathBuf::from("certs/server.key"),
+        )
+        .with_ca_cert(PathBuf::from("certs/ca.crt"))
+        .with_min_tls_version(TlsVersion::TLS1_3)
+        .accept_invalid_certs();
+        assert_eq!(config.min_tls_version, TlsVersion::TLS1_3);
+        assert!(config.accept_invalid_certs);
+        assert!(config.ca_cert_path.is_some());
+    }
+
+    #[test]
+    fn test_tls_version_variants() {
+        assert_eq!(TlsVersion::TLS1_0, TlsVersion::TLS1_0);
+        assert_eq!(TlsVersion::TLS1_1, TlsVersion::TLS1_1);
+        assert_eq!(TlsVersion::TLS1_2, TlsVersion::TLS1_2);
+        assert_eq!(TlsVersion::TLS1_3, TlsVersion::TLS1_3);
+        assert_ne!(TlsVersion::TLS1_2, TlsVersion::TLS1_3);
+    }
 }
