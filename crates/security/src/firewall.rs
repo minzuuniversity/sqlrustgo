@@ -354,3 +354,59 @@ pub type SharedFirewall = Arc<parking_lot::RwLock<SqlFirewall>>;
 pub fn create_shared_firewall(config: FirewallConfig) -> SharedFirewall {
     Arc::new(parking_lot::RwLock::new(SqlFirewall::new(config)))
 }
+
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_sql_firewall_new() {
+        let fw = SqlFirewall::new(FirewallConfig::default());
+        assert!(fw.check_ip("127.0.0.1").is_ok());
+    }
+
+    #[test]
+    fn test_ip_blacklist_basic() {
+        let mut list = IpBlacklist::new();
+        list.add("192.168.1.1");
+        assert!(list.contains("192.168.1.1"));
+        assert!(!list.contains("127.0.0.1"));
+    }
+
+    #[test]
+    fn test_ip_blacklist_remove() {
+        let mut list = IpBlacklist::new();
+        list.add("192.168.1.1");
+        list.remove("192.168.1.1");
+        assert!(!list.contains("192.168.1.1"));
+    }
+
+    #[test]
+    fn test_sql_firewall_builder() {
+        let blacklist: Vec<BlacklistPattern> = vec![BlacklistPattern { pattern: "DROP".to_string(), description: "".to_string(), severity: ThreatSeverity::Medium }];
+        let whitelist: Vec<WhitelistPattern> = vec![WhitelistPattern { sql_pattern: "SELECT".to_string(), description: "".to_string(), enabled: true }];
+        let mut fw = SqlFirewall::new(FirewallConfig::default())
+            .with_whitelist(whitelist)
+            .with_blacklist(blacklist);
+        assert!(fw.check_sql("SELECT 1").is_ok());
+    }
+
+    #[test]
+    fn test_sql_firewall_check_row_limit() {
+        let fw = SqlFirewall::new(FirewallConfig::default());
+        assert!(fw.check_row_limit(1000).is_ok());
+    }
+
+    #[test]
+    fn test_sql_firewall_check_query_timeout() {
+        let fw = SqlFirewall::new(FirewallConfig::default());
+        assert!(fw.check_query_timeout(30).is_ok());
+    }
+
+    #[test]
+    fn test_sql_firewall_check_batch_operation() {
+        let fw = SqlFirewall::new(FirewallConfig::default());
+        assert!(fw.check_batch_operation("SELECT 1").is_ok());
+    }
+}
