@@ -1192,6 +1192,7 @@ impl StoredProcExecutor {
                         name,
                         data_type,
                         nullable: _,
+                        char_max_length: _,
                     } => {
                         // Storage interface doesn't support modify_column yet
                         return Err(format!(
