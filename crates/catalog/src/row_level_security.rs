@@ -359,6 +359,7 @@ fn compare_value_to_literal(val: &Value, lit: &str) -> Result<bool, PredicateErr
                 Err(PredicateError(format!("cannot compare blob to: {}", lit)))
             }
         }
+        Value::Point(_, _) => Err(PredicateError("cannot compare point to literal".to_string())),
     }
 }
 
