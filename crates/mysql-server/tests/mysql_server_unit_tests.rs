@@ -1,7 +1,7 @@
 // mysql-server unit tests for public functions
 
 use sqlrustgo_mysql_server::{
-    replace_placeholders, parse_stmt_execute_params, MySqlError, StmtParam,
+    parse_stmt_execute_params, replace_placeholders, MySqlError, StmtParam,
 };
 
 // ============ replace_placeholders tests ============
@@ -106,11 +106,11 @@ fn test_parse_stmt_execute_params_null_param() {
     // Build: stmt_id(4) + flags(1) + iter_count(4) + null_bitmap(1, 0x01=null) + new_params_bound(1, 0x01) + type(VAR_STRING=15)
     let payload: Vec<u8> = vec![
         0, 0, 0, 0, // stmt_id = 0
-        0,           // flags
-        1, 0, 0, 0, // iteration_count = 1
-        0x01,        // null_bitmap: param 0 is null
-        0x01,        // new_params_bound_flag = 1
-        15, 0,       // VAR_STRING type
+        0, // flags
+        1, 0, 0, 0,    // iteration_count = 1
+        0x01, // null_bitmap: param 0 is null
+        0x01, // new_params_bound_flag = 1
+        15, 0, // VAR_STRING type
     ];
     let params = parse_stmt_execute_params(&payload, 1, &[]);
     assert_eq!(params.len(), 1);
@@ -121,11 +121,11 @@ fn test_parse_stmt_execute_params_null_param() {
 fn test_parse_stmt_execute_params_string_value() {
     let mut payload: Vec<u8> = vec![
         0, 0, 0, 0, // stmt_id
-        0,           // flags
-        1, 0, 0, 0, // iteration_count
-        0x00,        // null_bitmap: not null
-        0x01,        // new_params_bound_flag = 1
-        15, 0,       // VAR_STRING type
+        0, // flags
+        1, 0, 0, 0,    // iteration_count
+        0x00, // null_bitmap: not null
+        0x01, // new_params_bound_flag = 1
+        15, 0, // VAR_STRING type
     ];
     // String value: length-encoded
     payload.push(5); // length
@@ -136,12 +136,14 @@ fn test_parse_stmt_execute_params_string_value() {
     assert!(!params[0].1); // not numeric
 }
 
-
 // ============ MySqlError tests ============
 
 #[test]
 fn test_mysql_error_io_display() {
-    let err = MySqlError::Io(std::io::Error::new(std::io::ErrorKind::NotFound, "file not found"));
+    let err = MySqlError::Io(std::io::Error::new(
+        std::io::ErrorKind::NotFound,
+        "file not found",
+    ));
     let display = format!("{}", err);
     assert!(display.contains("IO") && display.contains("file not found"));
 }
@@ -201,28 +203,28 @@ fn test_mysql_error_debug() {
 
 #[test]
 fn test_active_connections_atomic_init() {
-    use std::sync::atomic::Ordering;
     use sqlrustgo_mysql_server::ACTIVE_CONNECTIONS;
+    use std::sync::atomic::Ordering;
     assert_eq!(ACTIVE_CONNECTIONS.load(Ordering::SeqCst), 0);
 }
 
 #[test]
 fn test_total_connections_atomic_init() {
-    use std::sync::atomic::Ordering;
     use sqlrustgo_mysql_server::TOTAL_CONNECTIONS_ACCEPTED;
+    use std::sync::atomic::Ordering;
     assert_eq!(TOTAL_CONNECTIONS_ACCEPTED.load(Ordering::SeqCst), 0);
 }
 
 #[test]
 fn test_total_queries_atomic_init() {
-    use std::sync::atomic::Ordering;
     use sqlrustgo_mysql_server::TOTAL_QUERIES_SERVED;
+    use std::sync::atomic::Ordering;
     assert_eq!(TOTAL_QUERIES_SERVED.load(Ordering::SeqCst), 0);
 }
 
 #[test]
 fn test_total_errors_atomic_init() {
-    use std::sync::atomic::Ordering;
     use sqlrustgo_mysql_server::TOTAL_QUERY_ERRORS;
+    use std::sync::atomic::Ordering;
     assert_eq!(TOTAL_QUERY_ERRORS.load(Ordering::SeqCst), 0);
 }
