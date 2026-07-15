@@ -1114,6 +1114,10 @@ name = "decorrelation_test"
 path = "tests/integration/optimizer/decorrelation_test.rs"
 
 [[test]]
+name = "decorrelation_v2_test"
+path = "tests/integration/optimizer/decorrelation_v2_test.rs"
+
+[[test]]
 name = "clustered_table_v1_test"
 path = "tests/integration/storage/clustered_table_v1_test.rs"
 [[test]]
