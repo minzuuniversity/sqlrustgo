@@ -77,3 +77,30 @@ fn test_create_upgrade_plan_multiple_patch_steps() {
     let plan = create_upgrade_plan(&from, &to).unwrap();
     assert!(plan.migration_steps.len() >= 2);
 }
+
+// ============ VersionInfo::parse Tests ============
+
+#[test]
+fn test_version_info_parse_valid() {
+    use sqlrustgo_tools::upgrade::VersionInfo;
+    let v = VersionInfo::parse("1.2.3").unwrap();
+    assert_eq!(v.major, 1);
+    assert_eq!(v.minor, 2);
+    assert_eq!(v.patch, 3);
+}
+
+#[test]
+fn test_version_info_parse_with_v_prefix() {
+    use sqlrustgo_tools::upgrade::VersionInfo;
+    let v = VersionInfo::parse("v2.0.1").unwrap();
+    assert_eq!(v.major, 2);
+    assert_eq!(v.minor, 0);
+    assert_eq!(v.patch, 1);
+}
+
+#[test]
+fn test_version_info_parse_leading_whitespace() {
+    use sqlrustgo_tools::upgrade::VersionInfo;
+    // Leading whitespace is NOT trimmed by current implementation
+    assert!(VersionInfo::parse("  v3.1.4").is_err());
+}
