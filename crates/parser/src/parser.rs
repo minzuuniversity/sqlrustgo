@@ -510,6 +510,7 @@ pub struct InsertStatement {
     pub values: Vec<Vec<Expression>>,         // For INSERT VALUES
     pub select: Option<Box<SelectStatement>>, // For INSERT SELECT
     pub is_replace: bool,                     // For REPLACE INTO (MySQL compatibility)
+    pub is_ignore: bool,                      // For INSERT IGNORE (MySQL compatibility, V311-23)
     pub on_duplicate_key_update: Option<Vec<(String, Expression)>>, // For ON DUPLICATE KEY UPDATE
 }
 
@@ -4371,6 +4372,14 @@ impl Parser {
             false
         };
 
+        // Check for INSERT IGNORE (MySQL compatibility, V311-23) - consume Ignore token after Insert
+        let is_ignore = if !is_replace && matches!(self.current(), Some(Token::Ignore)) {
+            self.next(); // consume Ignore
+            true
+        } else {
+            false
+        };
+
         self.expect(Token::Into)?;
 
         let table = match self.next() {
@@ -4518,6 +4527,7 @@ impl Parser {
             values,
             select,
             is_replace,
+            is_ignore,
             on_duplicate_key_update,
         }))
     }
