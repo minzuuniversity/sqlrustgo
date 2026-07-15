@@ -164,6 +164,12 @@ impl BinaryFormat for Value {
                 result.extend_from_slice(b);
                 result
             }
+            Value::Point(x, y) => {
+                let mut result = vec![6u8];
+                result.extend_from_slice(&helpers::write_f64(*x));
+                result.extend_from_slice(&helpers::write_f64(*y));
+                result
+            }
         }
     }
 
