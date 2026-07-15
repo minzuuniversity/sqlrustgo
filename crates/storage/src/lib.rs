@@ -13,6 +13,9 @@ pub mod double_write_buffer;
 pub mod engine;
 pub mod file_storage;
 pub mod io_delay;
+
+// Re-export for integration tests that import via sqlrustgo_storage::
+pub use io_delay::{IoDelayConfig, IoFaultInjector};
 pub mod lock;
 pub mod page;
 pub mod predicate;
