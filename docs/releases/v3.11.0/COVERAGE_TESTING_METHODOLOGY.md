@@ -73,8 +73,8 @@ cargo llvm-cov test --no-clean --ignore-run-fail --workspace
 
 | Package | Line % | Missed | Priority | Primary Blocker |
 |---------|--------:|-------:|:--------:|-----------------|
-| sqlrustgo-executor | 82.10% | 1431 | P1 | `engine.rs` integration-level code (219 missed lines), `parallel_group_by.rs` (30 missed at 62%) |
-| sqlrustgo-security | 76.57% | 242 | P2 | Auth/encryption paths need fixtures |
+| sqlrustgo-executor | 81.63% | 1431 | ≥80% GA | ⚠️ |
+| sqlrustgo-security | 78.85% | 242 | P2 | Auth/encryption paths need fixtures |
 | sqlrustgo-sql-corpus | 75.16% | 79 | P2 | SQL parsing corpus utilities |
 | sqlrustgo-admin | 65.41% | 127 | P1 | `wire_client.rs` needs live MySQL (5.6% coverage, 33 missed lines); `verify.rs` 91% |
 | sqlrustgo-parser | 71.15% | 693 | P1 | `test_parse_create_procedure_inout_params` pre-existing compile failure; many SQL variants fail to parse |
