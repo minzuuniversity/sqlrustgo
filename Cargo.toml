@@ -475,6 +475,10 @@ name = "l3_canonical_binary"
 path = "tests/integration/sql/l3_canonical_binary.rs"
 
 [[test]]
+name = "concurrent_insert_test"
+path = "tests/integration/stress/concurrent_insert_test.rs"
+
+[[test]]
 name = "wire_protocol_smoke"
 path = "tests/integration/wire/wire_protocol_smoke.rs"
 
