@@ -405,9 +405,15 @@ impl<S: StorageEngine + 'static> ExecutionEngine<S> {
             .map(|c| {
                 let null_str = if c.nullable { "YES" } else { "NO" };
                 let key_str = if c.primary_key { "PRI" } else { "" };
+                // Append (N) to data_type when char_max_length is set
+                // (mirrors MySQL's "VARCHAR(10)" / "CHAR(50)" output).
+                let type_str = match c.char_max_length {
+                    Some(n) => format!("{}({})", c.data_type, n),
+                    None => c.data_type.clone(),
+                };
                 vec![
                     Value::Text(c.name.clone()),
-                    Value::Text(c.data_type.clone()),
+                    Value::Text(type_str),
                     Value::Text(null_str.to_string()),
                     Value::Text(key_str.to_string()),
                     Value::Text("NULL".to_string()),
@@ -492,13 +498,14 @@ impl<S: StorageEngine + 'static> ExecutionEngine<S> {
                 name,
                 data_type,
                 nullable,
+                char_max_length,
             } => {
                 let column = ColumnDefinition {
                     name: name.clone(),
                     data_type: data_type.clone(),
                     nullable: *nullable,
                     primary_key: false,
-                    char_max_length: None,
+                    char_max_length: *char_max_length,
                 };
                 storage.modify_column(&alter.table_name, name, column)?;
             }
