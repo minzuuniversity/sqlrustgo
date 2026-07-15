@@ -4,6 +4,7 @@ pub mod backup;
 pub mod binary_format;
 pub mod binary_storage;
 pub mod bplus_tree;
+pub mod clustered_table;
 pub mod buffer_pool;
 pub mod checkpoint;
 pub mod engine;
