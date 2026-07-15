@@ -378,6 +378,9 @@ path = "tests/integration/sql/parallel_executor_test.rs"
 [[test]]
 name = "password_rotation_test"
 path = "tests/integration/sql/password_rotation_test.rs"
+[[test]]
+name = "password_rotation_integration_test"
+path = "tests/integration/sql/password_rotation_integration_test.rs"
 
 [[test]]
 name = "performance_schema_test"
