@@ -1,3 +1,5 @@
+#![allow(dead_code)]
+
 use std::path::Path;
 use walkdir::WalkDir;
 
@@ -147,19 +149,21 @@ fn has_direct_storage_call(path: &Path) -> bool {
     for entry in WalkDir::new(&src_dir)
         .into_iter()
         .filter_map(|e| e.ok())
-        .filter(|e| e.path().extension().map_or(false, |ext| ext == "rs"))
+        .filter(|e| {
+            e.path()
+                .extension()
+                .is_some_and(|ext: &std::ffi::OsStr| ext == "rs")
+        })
     {
         if let Ok(content) = std::fs::read_to_string(entry.path()) {
-            if content.contains("storage.insert")
+            if (content.contains("storage.insert")
                 || content.contains("storage.update")
-                || content.contains("storage.delete")
+                || content.contains("storage.delete"))
+                && !content.contains("txn")
+                && !content.contains("transaction")
+                && !content.contains("wal")
             {
-                if !content.contains("txn")
-                    && !content.contains("transaction")
-                    && !content.contains("wal")
-                {
-                    return true;
-                }
+                return true;
             }
         }
     }

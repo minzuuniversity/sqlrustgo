@@ -711,8 +711,7 @@ impl MemoryStorage {
     /// inserts records in batches. Returns the number of rows loaded.
     pub fn bulk_load_tbl_file(&mut self, table_name: &str, path: &str) -> SqlResult<usize> {
         use std::fs;
-        let content = fs::read_to_string(path)
-            .map_err(|e| SqlError::IoError(e.to_string()))?;
+        let content = fs::read_to_string(path).map_err(|e| SqlError::IoError(e.to_string()))?;
         let lines: Vec<&str> = content.lines().filter(|l| !l.is_empty()).collect();
         if lines.is_empty() {
             return Ok(0);
