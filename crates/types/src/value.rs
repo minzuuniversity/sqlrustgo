@@ -32,6 +32,8 @@ pub enum Value {
     Text(String),
     /// Binary large object
     Blob(Vec<u8>),
+    /// Geographic point (x, y)
+    Point(f64, f64),
 }
 
 impl Hash for Value {
@@ -49,6 +51,7 @@ impl Hash for Value {
             }
             Value::Text(s) => s.hash(state),
             Value::Blob(b) => b.hash(state),
+            Value::Point(x, y) => { x.to_bits().hash(state); y.to_bits().hash(state); }
         }
     }
 }
@@ -62,6 +65,7 @@ impl PartialEq for Value {
             (Value::Float(a), Value::Float(b)) => a == b,
             (Value::Text(a), Value::Text(b)) => a == b,
             (Value::Blob(a), Value::Blob(b)) => a == b,
+            (Value::Point(a1, a2), Value::Point(b1, b2)) => a1 == b1 && a2 == b2,
             _ => false,
         }
     }
@@ -93,6 +97,7 @@ impl Ord for Value {
             Value::Float(_) => 3,
             Value::Text(_) => 4,
             Value::Blob(_) => 5,
+            Value::Point(_, _) => 6,
         };
         match (disc(self), disc(other)) {
             (a, b) if a != b => return a.cmp(&b),
@@ -105,6 +110,12 @@ impl Ord for Value {
             (Value::Float(a), Value::Float(b)) => a.partial_cmp(b).unwrap_or(Ordering::Equal),
             (Value::Text(a), Value::Text(b)) => a.cmp(b),
             (Value::Blob(a), Value::Blob(b)) => a.cmp(b),
+            (Value::Point(a1, a2), Value::Point(b1, b2)) => {
+                match a1.partial_cmp(b1) {
+                    Some(std::cmp::Ordering::Equal) => a2.partial_cmp(b2).unwrap_or(std::cmp::Ordering::Equal),
+                    other => other.unwrap_or(std::cmp::Ordering::Equal),
+                }
+            }
             // Same discriminant but different subtype — unreachable
             // for the current Value enum (each discriminant is unique),
             // but be defensive against future variants.
@@ -131,6 +142,7 @@ impl Value {
             Value::Float(f) => f.to_string(),
             Value::Text(s) => s.clone(),
             Value::Blob(b) => format!("X'{}'", hex::encode(b)),
+            Value::Point(x, y) => format!("POINT({}, {})", x, y),
         }
     }
 
@@ -143,6 +155,7 @@ impl Value {
             Value::Float(_) => "FLOAT",
             Value::Text(_) => "TEXT",
             Value::Blob(_) => "BLOB",
+            Value::Point(_, _) => "POINT",
         }
     }
 
@@ -171,6 +184,7 @@ impl Value {
             Value::Float(_) => 8,
             Value::Text(s) => s.len(),
             Value::Blob(b) => b.len(),
+            Value::Point(_, _) => 16,
         }
     }
 }

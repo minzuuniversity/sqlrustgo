@@ -6,6 +6,7 @@ authors.workspace = true
 license.workspace = true
 
 [dependencies]
+parking_lot.workspace = true
 sqlrustgo-common.workspace = true
 sqlrustgo-types.workspace = true
 serde.workspace = true

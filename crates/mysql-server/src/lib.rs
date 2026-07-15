@@ -1222,6 +1222,7 @@ fn value_to_string(v: &Value) -> String {
         Value::Float(f) => format!("{}", f),
         Value::Text(s) => s.clone(),
         Value::Blob(b) => format!("{:?}", b),
+        Value::Point(x, y) => format!("POINT({} {})", x, y),
     }
 }
 
@@ -1293,6 +1294,11 @@ fn write_binary_row<W: Write>(w: &mut W, row: &[Value], col_types: &[u8]) -> MyS
             }
             Value::Boolean(b) => {
                 buf.write_u8(if *b { 1 } else { 0 })?;
+            }
+            Value::Point(x, y) => {
+                // MySQL binary protocol: 8-byte double for X, 8-byte double for Y
+                buf.write_f64::<LittleEndian>(*x)?;
+                buf.write_f64::<LittleEndian>(*y)?;
             }
         }
     }
@@ -2509,7 +2515,6 @@ fn handle_load_local_infile<S: Read + Write>(
     Ok(total_rows)
 }
 
-#[allow(unused_assignments)]
 fn do_command_loop<S: Read + Write + DrainWrites>(
     stream: &mut S,
     addr: SocketAddr,
@@ -2518,6 +2523,7 @@ fn do_command_loop<S: Read + Write + DrainWrites>(
     cap: u32,
     server_last_sent_seq: &mut u8,
     ps_manager: &mut PreparedStatementManager,
+    authenticated_user: Option<String>,
 ) -> MySqlResult<()> {
     loop {
         let pkt = match Packet::read_from(stream) {
@@ -2665,6 +2671,34 @@ fn do_command_loop<S: Read + Write + DrainWrites>(
                         .as_ref()
                         .ok()
                         .and_then(|s| read_only_stmt(s).map(|_| s));
+                    // G13-OLTP-1: pick read-vs-write lock based on AST.
+                    let is_write_blocked = if !is_read_only.is_some() {
+                        // Task 3.2: check password write blocking before allowing write operations.
+                        // We must NOT hold the engine read lock while checking catalog (deadlock risk
+                        // since catalog → auth_manager needs its own lock).
+                        if let Some(ref user) = authenticated_user {
+                            let catalog = engine.read().catalog();
+                            catalog.and_then(|cat| {
+                                let identity = sqlrustgo_catalog::auth::UserIdentity::new(user, "localhost");
+                                if cat.read().auth_manager().is_password_write_blocked(&identity) {
+                                    Some("Your password has expired. Change it before performing administrative operations.")
+                                } else {
+                                    None
+                                }
+                            })
+                        } else {
+                            None
+                        }
+                    } else {
+                        None
+                    };
+                    if let Some(msg) = is_write_blocked {
+                        make_err_packet(seq, 1820u16, "HY000", msg).write_to(stream)?;
+                        *server_last_sent_seq = seq;
+                        seq = seq.wrapping_add(1);
+                        had_error = true;
+                        continue;
+                    }
                     // G13-OLTP-1: poisoning recovery in both branches.
                     let result = if let Some(stmt) = is_read_only {
                         let rstmt = read_only_stmt(stmt);
@@ -3176,6 +3210,7 @@ fn handle_connection(
                 resp.capability_flags,
                 &mut server_last_sent_seq,
                 &mut ps_manager,
+                Some(resp.username.clone()),
             );
             // Best-effort final flush so the last OK packet (e.g. on
             // COM_QUIT) reaches the client before the connection drops.
@@ -3233,6 +3268,7 @@ fn handle_connection(
         resp.capability_flags,
         &mut server_last_sent_seq,
         &mut ps_manager,
+        Some(resp.username.clone()),
     );
 }
 
