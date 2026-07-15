@@ -379,4 +379,18 @@ mod tests {
         let health = ComponentHealth::new("test", HealthStatus::Healthy);
         assert_eq!(health.latency_ms, None);
     }
+
+    #[test]
+    fn test_health_status_as_str() {
+        assert_eq!(HealthStatus::Healthy.as_str(), "healthy");
+        assert_eq!(HealthStatus::Degraded.as_str(), "degraded");
+        assert_eq!(HealthStatus::Unhealthy.as_str(), "unhealthy");
+    }
+
+    #[test]
+    fn test_component_health_with_message() {
+        let health = ComponentHealth::new("db", HealthStatus::Degraded)
+            .with_message("connection slow");
+        assert_eq!(health.message, Some("connection slow".to_string()));
+    }
 }
