@@ -166,7 +166,10 @@ mod tests {
     use super::*;
 
     fn make_page(id: u64, data: &[u8]) -> DwbPage {
-        DwbPage { id, data: data.to_vec() }
+        DwbPage {
+            id,
+            data: data.to_vec(),
+        }
     }
 
     #[test]
