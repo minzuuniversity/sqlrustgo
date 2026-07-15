@@ -28,7 +28,7 @@ This document is the **SSOT** for v3.11.0's feature checklist, tracking 23 V311-
 
 | ID | 任务 | F-XX | 工作量 | 优先级 | 状态 | 测试方法 |
 |----|------|------|--------|--------|------|----------|
-| V311-01 | Clustered Index 主路径集成 | F-23 | 80h | P0 | ⏳ TODO | `tests/cluster_index_main_path_test` |
+| V311-01 | Clustered Index 主路径集成 | F-23 | 80h | P0 | ✅ DONE v1 2026-07-15 (PR #3461) | `tests/clustered_table_v1_test` |
 | V311-02 | Adaptive Hash Index 主路径集成 | F-24 | 60h | P0 | ⏳ TODO | `tests/adaptive_hash_main_path_test` |
 | V311-03 | Change Buffer 主路径集成 | F-25 | 40h | P0 | ⏳ TODO | `tests/change_buffer_main_path_test` |
 | V311-04 | Double-Write Buffer 主路径集成 | F-26 | 50h | P0 | ⏳ TODO | `tests/double_write_main_path_test` |
