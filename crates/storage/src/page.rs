@@ -418,6 +418,104 @@ impl<W: Write> PageWriter<W> {
     }
 }
 
+/// Compressed page writer - wraps PageWriter with LZ4 compression
+/// 
+/// Compressed page format:
+/// - 4 bytes: COMPRESSED_MAGIC (0x434F4D50)
+/// - 4 bytes: original_size (u32, big-endian)
+/// - 4 bytes: compressed_size (u32, big-endian)  
+/// - N bytes: compressed data
+pub struct CompressedPageWriter<W: Write> {
+    writer: W,
+    use_compression: bool,
+}
+
+const COMPRESSED_MAGIC: u32 = 0x434F4D50;
+
+impl<W: Write> CompressedPageWriter<W> {
+    /// Create a new compressed page writer
+    pub fn new(writer: W, use_compression: bool) -> Self {
+        Self { writer, use_compression }
+    }
+
+    /// Write a page with optional compression
+    pub fn write_page(&mut self, page: &Page) -> std::io::Result<()> {
+        let data = page.to_bytes();
+        
+        if !self.use_compression || data.len() < 64 {
+            // Don't compress small pages or if compression disabled
+            self.writer.write_all(&data)
+        } else {
+            // Compress with LZ4
+            let compressed = sqlrustgo_common::compression::compress_lz4(&data);
+            
+            // Only write compressed if it actually saves space
+            if compressed.len() < data.len() {
+                // Write compressed format
+                let original_size = data.len() as u32;
+                let compressed_size = compressed.len() as u32;
+                
+                self.writer.write_all(&COMPRESSED_MAGIC.to_be_bytes())?;
+                self.writer.write_all(&original_size.to_be_bytes())?;
+                self.writer.write_all(&compressed_size.to_be_bytes())?;
+                self.writer.write_all(&compressed)?;
+                Ok(())
+            } else {
+                // Write uncompressed
+                self.writer.write_all(&data)?;
+                Ok(())
+            }
+        }
+    }
+}
+
+/// Compressed page reader - reads LZ4 compressed pages
+pub struct CompressedPageReader<R: Read> {
+    reader: R,
+}
+
+impl<R: Read> CompressedPageReader<R> {
+    pub fn new(reader: R) -> Self {
+        Self { reader }
+    }
+
+    /// Read a page, decompressing if necessary
+    pub fn read_page(&mut self) -> std::io::Result<Page> {
+        use std::io::Read;
+        
+        let mut magic_bytes = [0u8; 4];
+        self.reader.read_exact(&mut magic_bytes)?;
+        let magic = u32::from_be_bytes(magic_bytes);
+        
+        let data = if magic == COMPRESSED_MAGIC {
+            // Compressed page
+            let mut size_bytes = [0u8; 4];
+            self.reader.read_exact(&mut size_bytes)?;
+            let original_size = u32::from_be_bytes(size_bytes) as usize;
+            
+            self.reader.read_exact(&mut size_bytes)?;
+            let compressed_size = u32::from_be_bytes(size_bytes) as usize;
+            
+            let mut compressed = vec![0u8; compressed_size];
+            self.reader.read_exact(&mut compressed)?;
+            
+            // Decompress
+            sqlrustgo_common::compression::decompress_lz4(&compressed)
+                .map_err(|e| std::io::Error::new(std::io::ErrorKind::InvalidData, e))?
+        } else {
+            // Uncompressed - put magic bytes back and read rest
+            let mut data = vec![0u8; PAGE_SIZE];
+            data[..4].copy_from_slice(&magic_bytes);
+            self.reader.read_exact(&mut data[4..])?;
+            data
+        };
+        
+        Page::from_bytes(data).ok_or_else(|| {
+            std::io::Error::new(std::io::ErrorKind::InvalidData, "Invalid page data")
+        })
+    }
+}
+
 /// Binary page reader for efficient deserialization
 pub struct PageReader<R: Read> {
     reader: R,
