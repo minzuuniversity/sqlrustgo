@@ -36,7 +36,7 @@ use sqlrustgo_parser::parser::{
     Privilege as ParserPrivilege, RevokeRoleStatement, RevokeStatement, SelectStatement,
     SetRoleStatement, ShowStatement, StoredProcParam as ParserStoredProcParam,
     StoredProcParamMode as ParserParamMode, StoredProcStatement as ParserStatement,
-    TruncateStatement, UnionStatement,
+    StorageEngineSpec, TruncateStatement, UnionStatement,
 };
 use sqlrustgo_parser::transaction::IsolationLevel as ParserIsolationLevel;
 use sqlrustgo_parser::JoinType;
@@ -51,6 +51,7 @@ use sqlrustgo_parser::{
 };
 use sqlrustgo_storage::checkpoint::{CheckpointManager, CheckpointMetadata};
 use sqlrustgo_storage::{
+    clustered_table::ClusteredTable,
     recovery_engine::{RecoveryEngine, RecoveryEngineImpl},
     wal::{FileBackedWalManager, MemoryWalManager},
     ColumnDefinition, FileStorage, MemoryStorage, StorageEngine, TableInfo, WalStorage,
@@ -86,6 +87,13 @@ pub struct ExecutionEngine<S: StorageEngine> {
     /// View definitions: view_name → CREATE VIEW SQL text.
     /// Used for SHOW CREATE VIEW and view resolution.
     pub(crate) views: HashMap<String, String>,
+    /// V311-01 F-23: in-memory registry of `ClusteredTable` instances for
+    /// tables opted into clustered primary key storage via
+    /// `CREATE TABLE ... ENGINE=InnoDB CLUSTERED`. The base `storage`
+    /// remains MemoryStorage (or another default) for all other tables.
+    /// Operations on clustered tables are routed through this map.
+    pub(crate) clustered_tables:
+        parking_lot::RwLock<HashMap<String, Arc<parking_lot::RwLock<ClusteredTable>>>>,
 }
 
 /// Transaction status for lifecycle enforcement
@@ -158,6 +166,7 @@ impl<S: StorageEngine + 'static> ExecutionEngine<S> {
             stmt_cache: sqlrustgo_cache::PreparedStatementCache::new(100),
             cost_model: parking_lot::RwLock::new(UnifiedCostModel::default_model(0, 0)),
             views: HashMap::new(),
+            clustered_tables: parking_lot::RwLock::new(HashMap::new()),
         }
     }
     /// Create a new execution engine with CBO enabled by default
@@ -563,12 +572,41 @@ impl<S: StorageEngine + 'static> ExecutionEngine<S> {
             .collect();
         let info = TableInfo {
             name: create.name.clone(),
-            columns,
+            columns: columns.clone(),
             foreign_keys: vec![],
             unique_constraints: vec![],
             check_constraints: vec![],
             partition_info: None,
         };
+
+        // V311-01 F-23: route to ClusteredTable when storage_engine = Clustered.
+        // - ENGINE=InnoDB CLUSTERED → B+ Tree storage with PK ordering.
+        // - absent / ENGINE=InnoDB (no CLUSTERED) → existing Heap path.
+        if matches!(create.storage_engine, Some(StorageEngineSpec::Clustered)) {
+            // Find PK column index (must exist for ClusteredTable).
+            let pk_col_idx = columns
+                .iter()
+                .position(|c| c.primary_key)
+                .ok_or_else(|| SqlError::ExecutionError(
+                    "Clustered table requires PRIMARY KEY on a single column".to_string()
+                ))?;
+            // Create ClusteredTable
+            let ct = ClusteredTable::new(info.clone(), pk_col_idx);
+            // Also register with Heap so other code paths (catalog, schema checks) find it
+            storage.create_table(&TableInfo {
+                name: info.name.clone(),
+                columns,
+                foreign_keys: vec![],
+                unique_constraints: vec![],
+                check_constraints: vec![],
+                partition_info: None,
+            })?;
+            self.clustered_tables.write().insert(
+                create.name.clone(),
+                Arc::new(parking_lot::RwLock::new(ct)),
+            );
+            return Ok(ExecutorResult::empty());
+        }
         storage.create_table(&info)?;
         Ok(ExecutorResult::empty())
     }

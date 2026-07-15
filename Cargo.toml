@@ -1117,6 +1117,14 @@ path = "tests/integration/sql/q21_exists_hash_path_test.rs"
 [[test]]
 name = "q4_hash_semi_join_test"
 path = "tests/integration/tpch/q4_hash_semi_join_test.rs"
+
+[[test]]
+name = "cluster_index_main_path_test"
+path = "tests/integration/storage/cluster_index_main_path_test.rs"
+
+[[test]]
+name = "clustered_table_v1_test"
+path = "tests/integration/storage/clustered_table_v1_test.rs"
 [[test]]
 name = "quick_query"
 path = "tests/integration/sql/quick_query.rs"
