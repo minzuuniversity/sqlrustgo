@@ -22,7 +22,7 @@ use sqlrustgo_parser::{
     get_and_clear_derived_subqueries, AggregateCall, AggregateFunction, Expression,
     JoinClause as ParserJoinClause, JoinType, SelectStatement,
 };
-use sqlrustgo_storage::{StorageEngine, TableInfo};
+use sqlrustgo_storage::{PageLocation, StorageEngine, TableInfo};
 use std::cell::RefCell;
 use std::collections::HashMap;
 use std::sync::{Mutex, OnceLock};
@@ -255,7 +255,9 @@ impl<S: StorageEngine + 'static> ExecutionEngine<S> {
                 .split_once('|')
                 .map(|(t, _)| t)
                 .unwrap_or(&select.table);
-            let rows = storage.scan(lookup_table)?;
+            // V311-02 v2: instrument single-table SELECT via AHI so
+            // repeated scans of the same table get promoted.
+            let rows = self.scan_with_ahi(&storage, lookup_table)?;
             let table_info = storage.get_table_info(lookup_table)?;
             drop(storage);
             (rows, table_info)
@@ -1247,6 +1249,35 @@ impl<S: StorageEngine + 'static> ExecutionEngine<S> {
         Ok(results)
     }
 
+    /// V311-02 v2: scan with AHI instrumentation. Records each scan
+    /// against the shared AdaptiveHashIndex so repeated scans of the
+    /// same table get promoted after the threshold (default 17).
+    ///
+    /// Synthetic page_id/offset: for MemoryStorage, there is no real
+    /// page concept, so we use a stable hash of the table name as the
+    /// page_id and the row count as the offset. This makes the AHI
+    /// tracking a real "table-scan hot-path" counter, not a no-op.
+    /// When v3 FileStorage lands proper page-aware instrumentation, the
+    /// caller can pass the actual `(page_id, offset)` from the B+ Tree
+    /// page handle.
+    fn scan_with_ahi(
+        &self,
+        storage: &parking_lot::RwLockReadGuard<'_, S>,
+        table: &str,
+    ) -> SqlResult<Vec<sqlrustgo_storage::Record>> {
+        let rows = storage.scan(table)?;
+        // Stable FNV-1a-ish hash of table name as synthetic page_id.
+        let mut page_id: u64 = 0xcbf29ce484222325;
+        for &b in table.as_bytes() {
+            page_id ^= u64::from(b);
+            page_id = page_id.wrapping_mul(0x100000001b3);
+        }
+        let offset = rows.len() as u32;
+        self.adaptive_hash_index
+            .record_access(table, b"all", page_id, offset);
+        Ok(rows)
+    }
+
     /// Execute a chain of JOINs: start from the base table, then apply each
     /// JoinClause in order (left-associative: t1 JOIN t2 JOIN t3 → ((t1 JOIN t2) JOIN t3)).
     /// This function only generates joined rows, does NOT apply WHERE/AGG/HAVING.
@@ -1264,7 +1295,9 @@ impl<S: StorageEngine + 'static> ExecutionEngine<S> {
         };
         let base_prefix = base_alias.as_ref().unwrap_or(&base_table);
 
-        let mut rows = storage.scan(&base_table)?;
+        // V311-02 v2: instrument base-table scan via AHI so repeated
+        // SELECTs against the same table get promoted after threshold.
+        let mut rows = self.scan_with_ahi(&storage, &base_table)?;
         // Fast-path base-table predicate pushdown (single-table
         // predicates that reference only the base table). For
         // TPC-H Q2 (`FROM part WHERE p_size = 15 AND p_type LIKE
