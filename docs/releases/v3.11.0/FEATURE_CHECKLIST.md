@@ -65,7 +65,7 @@ This document is the **SSOT** for v3.11.0's feature checklist, tracking 23 V311-
 |----|------|------|--------|--------|------|----------|
 | V311-15 | Q4 相关子查询 Hash Semi Join 算子 | PERF-1 | 80h | P0 | ✅ DONE 2026-07-15 (PR #3455) | `tests/q4_hash_semi_join_test` |
 | V311-16 | Decorrelation optimizer pass | PERF-4 | 60h | P1 | ⏳ TODO | `tests/decorrelation_test` |
-| V311-17 | Hash Anti Join 算子 | PERF-2 | 40h | P1 | ⏳ TODO | `tests/hash_anti_join_test` |
+| V311-17 | Hash Anti Join 算子 | PERF-2 | 40h | P1 | ✅ DONE 2026-07-15 | `tests/anti_join_main_path_test` |
 | V311-18 | CTE 物化 | PERF-3 | 30h | P1 | ⏳ TODO | `tests/cte_materialize_test` |
 
 ---
