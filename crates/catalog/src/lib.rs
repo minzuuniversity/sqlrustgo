@@ -24,6 +24,7 @@ pub mod schema;
 pub mod stored_proc;
 pub mod system_tables;
 pub mod table;
+pub mod row_level_security;
 
 pub use auth::{
     AuthManager, PasswordPolicy, PasswordRotationManager, Privilege, User, UserIdentity,
@@ -38,3 +39,4 @@ pub use stored_proc::{
     HandlerCondition, ParamMode, StoredProcParam, StoredProcStatement, StoredProcedure,
 };
 pub use table::{ForeignKeyAction, ForeignKeyRef, Table};
+pub use row_level_security::{Policy, PolicyCatalog, PolicyCommand};
