@@ -1222,6 +1222,7 @@ fn value_to_string(v: &Value) -> String {
         Value::Float(f) => format!("{}", f),
         Value::Text(s) => s.clone(),
         Value::Blob(b) => format!("{:?}", b),
+        Value::Point(x, y) => format!("POINT({} {})", x, y),
     }
 }
 
@@ -1293,6 +1294,11 @@ fn write_binary_row<W: Write>(w: &mut W, row: &[Value], col_types: &[u8]) -> MyS
             }
             Value::Boolean(b) => {
                 buf.write_u8(if *b { 1 } else { 0 })?;
+            }
+            Value::Point(x, y) => {
+                // MySQL binary protocol: 8-byte double for X, 8-byte double for Y
+                buf.write_f64::<LittleEndian>(*x)?;
+                buf.write_f64::<LittleEndian>(*y)?;
             }
         }
     }
