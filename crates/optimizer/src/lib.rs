@@ -5,6 +5,7 @@
 #![allow(clippy::type_complexity)]
 
 pub mod cost;
+pub mod decorrelate;
 pub mod graph_cost;
 pub mod index_selector;
 pub mod network_cost;
