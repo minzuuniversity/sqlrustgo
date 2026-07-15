@@ -1,0 +1,163 @@
+# Per-Version Stage State -- v3.11.0
+#
+# This file is the **per-version override** of docs/governance/STAGE_CONFIG.yaml.
+# SSOT chain:
+#   1. docs/governance/STAGE_CONFIG.yaml (framework, version-agnostic)
+#   2. docs/releases/vX.Y.Z/STAGE.yaml (per-version, this file)
+#   3. scripts/gate/check_stage.sh (reads both, runs gates)
+#
+# v3.11.0 当前状态: DRAFT (2026-07-15) — 起步于 v3.10.0 GA
+# 战略定位: 债务清零 + 功能孤岛集成 + Q4 性能突破
+# 父版本: v3.10.0 (develop/v3.10.0 @ 14979a5f16, GA 2026-07-13)
+#
+# Maintainer: openclaw
+# Last update: 2026-07-15 (DRAFT init)
+
+# =============================================================================
+# v3.11.0 任务计划 (基于 v3.10.0 GA Post-Release 168h SOAK)
+# =============================================================================
+issue_plan:
+  master: "V311-MASTER"  # Issue #3433 on Gitea 250
+  master_issue: 3433
+  master_issue_url: "http://192.168.0.250:3000/openclaw/sqlrustgo/issues/3433"
+  perf_issue: 3434  # SOAK-discovered high-concurrency INSERT bug
+  perf_issue_url: "http://192.168.0.250:3000/openclaw/sqlrustgo/issues/3434"
+  sub_issues: 23     # V311-01 through V311-23
+  plan_doc: "plans/V311_DEVELOPMENT_PLAN.md"
+  total_effort_h: 1156
+  target_ga: "2026-10-01"
+
+# =============================================================================
+# 版本信息
+# =============================================================================
+version: "v3.11.0"
+current_stage: "DRAFT"
+branch: "develop/v3.11.0"  # created 2026-07-15 from develop/v3.10.0 @ 14979a5f16
+last_transition:
+  from: null
+  to: "DRAFT"
+  date: "2026-07-15"
+  reason: "DRAFT init from v3.10.0 GA, starting 22-task debt clearance + feature integration cycle"
+
+# =============================================================================
+# 分支保护规则 (v3.11.0 specific)
+# =============================================================================
+branch_protection:
+  develop_v3_11_0:
+    gitea_rule: "develop/v3.11.0"
+    priority: 0
+    enable_push: false
+    push_whitelist_usernames: ["openclaw"]
+    enable_force_push: false
+    required_approvals: 2
+    block_on_rejected_reviews: true
+    block_on_outdated_branch: true
+    dismiss_stale_approvals: true
+    enable_status_check: true
+    status_check_contexts: [lint, build, docs-links, cargo-build]
+    require_signed_commits: false
+    block_admin_merge_override: false
+    applied_at: "2026-07-15"
+    applied_via: "POST /api/v1/repos/openclaw/sqlrustgo/branch_protections"
+  feature_X:
+    gitea_rule: "UNPROTECTED"
+    allow_force_push: false
+    allow_deletion: false
+
+# =============================================================================
+# Promotion criteria (v3.11.0 specific)
+# =============================================================================
+promotion_to_ALPHA_requires:
+  - "develop/v3.11.0 branch created from develop/v3.10.0 @ 14979a5f16"
+  - "V311_VERSION_PLAN.md approved"
+  - "V311_DEVELOPMENT_PLAN.md with concrete task breakdown (P0/P1/P2)"
+  - "All 4 phase plans documented (Phase 0/1/2/3)"
+  - "Initial gate: build + clippy + fmt PASS"
+  - "V311-23 (PERF-5 high-concurrency INSERT) investigation started"
+
+promotion_to_BETA_requires:
+  - "ALPHA stage: all ALPHA gates PASS"
+  - "B1 Build release: cargo build --release succeeds"
+  - "B2 WAL Contract: cargo test --test wal_tx_contract_test 42/42 PASS"
+  - "B3 Clippy: cargo clippy --all-features -D warnings 0 errors"
+  - "B4 Format: cargo fmt --check 0 diffs"
+  - "B5 Integration: check_integration_gate.sh PASS, semantic_gate_check.py 5/5 PASS"
+  - "B6 5-Principles: check_5_principles_v311.sh PASS (G-01~G-06)"
+  - "B7 10-Principles: check_10_principles_v311.sh PASS (R1~R10)"
+  - "B8 Governance: check_evidence_binding.sh, check_plan_integrity_v311.sh, check_ssot_duplicate.py all PASS"
+  - "TEST_PLAN.md present (BETA required)"
+  - "FEATURE_CHECKLIST.md present (BETA required)"
+  - "check_beta_v3.11.0.sh created (v3.11.0-specific governance gate script)"
+  - "V311-23 (PERF-5) fix complete and merged"
+
+promotion_to_RC_requires:
+  - "BETA stage: all BETA gates PASS"
+  - "RC gate R1-R8 all PASS (check_rc_gate_v3.11.0.sh)"
+  - "All 22 V311-XX tasks completed"
+  - "Coverage ≥85% per crate"
+  - "TPC-H SF=1 22/22 PASS"
+  - "V311-19 (Extension Crate decision) complete"
+
+promotion_to_GA_requires:
+  - "RC gate R1-R8 all PASS (check_rc_gate_v3.11.0.sh)"
+  - "GA_GATE_REPORT.md created with D1-D5 evidence"
+  - "STAGE.yaml current_stage: RC → GA"
+  - "cargo test --lib 0 failures (with and without all-features)"
+  - "cargo clippy --all-features -- -D warnings 0 errors"
+  - "cargo fmt --check --all 0 diffs"
+  - "Coverage baseline established (cargo llvm-cov --lib)"
+  - "Perf baseline vs v3.10.0 (TPC-H SF=1)"
+  - "All 5 required files present (STAGE.yaml, CHANGELOG.md, RELEASE_NOTES.md, GA_GATE_REPORT.md, GA_RELEASE_TIMELINE.md)"
+  - "All 6 doc artifacts present (ARCHITECTURE.md, TEST_PLAN.md, COMPREHENSIVE_ASSESSMENT_REPORT.md, EVIDENCE_STATUS.md, POST_GA_PLAN.md, RELEASE_GATE_CHECKLIST.md)"
+  - "test_sql_corpus.sh all targets PASS (≥815/818 JOIN cases)"
+  - "sqllogictest runner all targets PASS"
+  - "168h SOAK PASS (Issue #3648)"
+  - "GA tag v3.11.0 cut and pushed to all mirrors"
+  - "All 3 gate scripts up to date (check_*_v3.11.0.sh)"
+  - "branch_protection on rc/v3.11.0 applied (enable_push:false, required_approvals:1)"
+  - "All 23 V311-XX tasks CLOSED"
+  - "Human CA signing log entry: docs/governance/CA_SIGNING_LOG.md"
+
+# =============================================================================
+# 阈值 (v3.11.0 specific)
+# =============================================================================
+thresholds_override:
+  COVERAGE_MIN: 80  # per crate, target ≥85% (Issue #3731)
+  IGNORE_MAX: 10
+  TPC_H_SF1_REQUIRED: 22  # all 22 queries must PASS
+  PARALLEL_EXEC_MIN_SPEEDUP: 1.10  # at least 10% speedup required
+  HIGH_CONCURRENCY_INSERT_REQUIRED: 0  # V311-23 must fix all errors
+
+# =============================================================================
+# 跨版本引用
+# =============================================================================
+# When this file is updated, also update:
+#   - docs/governance/STAGE_CONFIG.yaml (if framework defaults change)
+#   - docs/releases/v3.11.0/CHANGELOG.md (transition entry)
+#   - docs/governance/GOVERNANCE_COMPLIANCE_REPORT.md (transition evidence)
+#   - docs/governance/debt/debt-registry.yaml (blocker issues state)
+#   - docs/releases/v3.11.0/plans/V311_DEVELOPMENT_PLAN.md (task breakdown)
+#   - docs/releases/v3.11.0/plans/V311_DEBT_CLOSURE_PLAN.md (debt clearance plan)
+
+# =============================================================================
+# v3.11.0 Debt 基线 (从 v3.10.0 继承)
+# =============================================================================
+# v3.10.0 移交的债务:
+#   - SEM-3 (ALTER TABLE RENAME/MODIFY) → V311-13
+#   - SEM-4 (Coverage ≥85%) → V311-14
+#   - F-23/24/25/26/27/29/31/35 (8 F-XX ISOLATED) → V311-01/02/03/04/12/05/06/08
+#   - F-36 (列级权限) → V311-09
+#   - F-30 (SEQUENCE) → V311-10
+#   - F-03 (GIS) → V311-11
+#   - 11 extension crates → V311-19
+#   - Q4 相关子查询性能 (PERF-1) → V311-15
+#   - Decorrelation (PERF-4) → V311-16
+#   - Hash Anti Join (PERF-2) → V311-17
+#   - CTE 物化 (PERF-3) → V311-18
+#   - PERF-5 (高并发 INSERT) → V311-23 (NEW from 2026-07-15 SOAK)
+#   - 文档架构整理 → V311-22
+#   - TPC-H SF=1.0 baseline → V311-20
+#   - 168h SOAK v3.11.0 → V311-21
+
+# Total inherited: 23 tasks / ~1156h / 4 阶段
+# GA 目标: 2026-10-01
