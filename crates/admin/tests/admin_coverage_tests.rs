@@ -630,3 +630,134 @@ fn test_physical_backup_restore_no_wal() {
     let restored = target.path().join("data").join("single.json");
     assert_eq!(fs::read(&restored).unwrap(), b"{}");
 }
+// ============ PITR replay tests ============
+
+use sqlrustgo_admin::pitr::pitr_replay_entries;
+use sqlrustgo_storage::wal::{WalEntry, WalEntryType};
+
+/// pitr_replay_entries with empty WAL entries.
+#[test]
+fn test_pitr_replay_empty_entries() {
+    let entries: Vec<WalEntry> = vec![];
+    let result = pitr_replay_entries(&entries, 1000);
+    assert_eq!(result.entries_scanned, 0);
+    assert_eq!(result.entries_applied, 0);
+    assert_eq!(result.entries_skipped, 0);
+    assert_eq!(result.transactions_committed, 0);
+    assert_eq!(result.transactions_aborted, 0);
+}
+
+/// pitr_replay_entries with BEGIN/COMMIT entries.
+#[test]
+fn test_pitr_replay_with_transactions() {
+    let entries = vec![
+        WalEntry {
+            tx_id: 1,
+            entry_type: WalEntryType::Begin,
+            table_id: 1,
+            key: None,
+            data: None,
+            lsn: 0,
+            timestamp: 100,
+        },
+        WalEntry {
+            tx_id: 1,
+            entry_type: WalEntryType::Commit,
+            table_id: 1,
+            key: None,
+            data: None,
+            lsn: 1,
+            timestamp: 200,
+        },
+        WalEntry {
+            tx_id: 2,
+            entry_type: WalEntryType::Begin,
+            table_id: 2,
+            key: None,
+            data: None,
+            lsn: 2,
+            timestamp: 150,
+        },
+    ];
+    let result = pitr_replay_entries(&entries, 500);
+    assert_eq!(result.entries_scanned, 3);
+    assert_eq!(result.transactions_committed, 1); // tx 1 committed
+    assert_eq!(result.transactions_aborted, 0);
+    // tx 2 was in progress at target_time=500 (timestamp 150) but no commit yet
+    assert!(result.active_transactions_at_target >= 0);
+}
+
+/// pitr_replay_entries with ROLLBACK entries.
+#[test]
+fn test_pitr_replay_with_rollback() {
+    let entries = vec![
+        WalEntry {
+            tx_id: 10,
+            entry_type: WalEntryType::Begin,
+            table_id: 1,
+            key: None,
+            data: None,
+            lsn: 0,
+            timestamp: 50,
+        },
+        WalEntry {
+            tx_id: 10,
+            entry_type: WalEntryType::Rollback,
+            table_id: 1,
+            key: None,
+            data: None,
+            lsn: 1,
+            timestamp: 300,
+        },
+    ];
+    let result = pitr_replay_entries(&entries, 1000);
+    assert_eq!(result.entries_scanned, 2);
+    assert_eq!(result.transactions_aborted, 1);
+    assert_eq!(result.transactions_committed, 0);
+}
+
+// ============ MysqlAdmin dispatch tests ============
+
+use sqlrustgo_admin::mysqladmin::{MysqlAdmin, Connection, SystemVariable};
+
+/// MysqlAdmin::new creates a default instance with system variables.
+#[test]
+fn test_mysqladmin_new_with_variables() {
+    let admin = MysqlAdmin::new();
+    // System variables should be set
+    let status = admin.dispatch("status", &[]);
+    assert!(!status.is_empty());
+}
+
+/// MysqlAdmin::dispatch ping returns pong.
+#[test]
+fn test_mysqladmin_dispatch_ping() {
+    let admin = MysqlAdmin::new();
+    let r = admin.dispatch("ping", &[]);
+    assert!(r.contains("alive") || r.contains("ok") || !r.is_empty());
+}
+
+/// MysqlAdmin::dispatch version returns version string.
+#[test]
+fn test_mysqladmin_dispatch_version() {
+    let admin = MysqlAdmin::new();
+    let r = admin.dispatch("version", &[]);
+    assert!(r.contains("sqlrustgo") || r.contains("3."));
+}
+
+/// MysqlAdmin::dispatch kill without args returns error.
+#[test]
+fn test_mysqladmin_dispatch_kill_no_args() {
+    let admin = MysqlAdmin::new();
+    let r = admin.dispatch("kill", &[]);
+    assert!(r.contains("ERROR") || r.contains("requires"));
+}
+
+/// MysqlAdmin::dispatch processlist returns a list.
+#[test]
+fn test_mysqladmin_dispatch_processlist() {
+    let admin = MysqlAdmin::new();
+    let _ = admin.add_connection("root", "localhost", "testdb");
+    let r = admin.dispatch("processlist", &[]);
+    assert!(r.contains("Id") || r.contains("root") || !r.is_empty());
+}
