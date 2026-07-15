@@ -134,6 +134,11 @@ pub fn execute_insert<S: StorageEngine + 'static>(
                     }
                 }
                 if matched && insert.on_duplicate_key_update.is_none() {
+                    // V311-23: INSERT IGNORE skips duplicates instead of erroring
+                    if insert.is_ignore {
+                        odku_handled_indices.insert(new_idx); // Mark as "handled" to skip
+                        continue;
+                    }
                     let pk_repr = table_info
                         .columns
                         .iter()
