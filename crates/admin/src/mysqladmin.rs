@@ -3,6 +3,7 @@ use std::sync::atomic::{AtomicBool, AtomicU64, Ordering};
 use std::sync::{Arc, Mutex};
 use std::time::SystemTime;
 
+#[allow(dead_code)]
 #[derive(Debug, Clone)]
 pub struct Connection {
     pub id: u64,
@@ -15,12 +16,14 @@ pub struct Connection {
     pub info: String,
 }
 
+#[allow(dead_code)]
 #[derive(Debug, Clone)]
 pub struct SystemVariable {
     pub name: String,
     pub value: String,
 }
 
+#[allow(dead_code)]
 pub struct MysqlAdmin {
     start_time: SystemTime,
     connections: Arc<Mutex<HashMap<u64, Connection>>>,
@@ -32,6 +35,7 @@ pub struct MysqlAdmin {
     variables: Arc<Mutex<HashMap<String, String>>>,
 }
 
+#[allow(dead_code)]
 impl MysqlAdmin {
     pub fn new() -> Self {
         let mut vars = HashMap::new();

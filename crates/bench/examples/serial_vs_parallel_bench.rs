@@ -212,7 +212,6 @@ fn create_tables(engine: &mut ExecutionEngine<MemoryStorage>) {
 
 // ── Load .tbl data ────────────────────────────────────────────────────────────
 
-
 /// v3.10.0: Fast .tbl loader — bypasses SQL parser for bulk inserts.
 /// Reads .tbl files and inserts directly via StorageEngine::insert().
 /// ~100x faster than per-row INSERT execution.
@@ -226,7 +225,9 @@ fn fast_load_tbl_data(storage: &Arc<RwLock<MemoryStorage>>, data_dir: &str, _sf:
         if !std::path::Path::new(&path).exists() {
             continue;
         }
-        let Ok(content) = fs::read_to_string(&path) else { continue };
+        let Ok(content) = fs::read_to_string(&path) else {
+            continue;
+        };
         let mut batch: Vec<Vec<Value>> = Vec::with_capacity(100_000);
         for line in content.lines() {
             if line.is_empty() {
@@ -364,7 +365,6 @@ fn generate_synthetic_data(engine: &mut ExecutionEngine<MemoryStorage>, sf: f64)
     let _ = engine.execute("INSERT INTO region VALUES (1, 'EUROPE', ''), (2, 'AMERICA', '')");
 }
 
-
 // ── Run a single query, return (duration_ms, row_count, error) ───────────────
 
 fn run_query(
@@ -412,7 +412,6 @@ fn run_olap_benchmark(sf: f64, degrees: &[usize], runs: u32, data_dir: &str) -> 
 
     eprintln!("[OLAP] Running {} queries", queries.len());
     for (qname, sql) in queries {
-
         eprintln!("[OLAP] {} starting...", qname);
         // Serial (degree=1)
         let mut serial_times = Vec::new();

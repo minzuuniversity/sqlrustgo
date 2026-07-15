@@ -6,7 +6,10 @@ use sqlrustgo_admin::mysqladmin::{Connection, MysqlAdmin, SystemVariable};
 fn test_mysqladmin_new() {
     let admin = MysqlAdmin::new();
     let pl = admin.processlist();
-    assert!(pl.contains("Id") && pl.contains("User"), "processlist should contain header");
+    assert!(
+        pl.contains("Id") && pl.contains("User"),
+        "processlist should contain header"
+    );
 }
 
 #[test]
@@ -44,7 +47,12 @@ fn test_mysqladmin_status() {
     let admin = MysqlAdmin::new();
     let status = admin.status();
     // Status returns a string (either data or empty)
-    assert!(status.is_empty() || status.contains("Uptime") || status.contains("Threads") || status.contains("Queries"));
+    assert!(
+        status.is_empty()
+            || status.contains("Uptime")
+            || status.contains("Threads")
+            || status.contains("Queries")
+    );
 }
 
 #[test]

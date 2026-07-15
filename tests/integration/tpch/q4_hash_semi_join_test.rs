@@ -37,22 +37,34 @@ const Q4_SQL: &str = "SELECT o_orderpriority, COUNT(*) AS order_count \
 fn q4_hash_semi_join_correctness_basic() {
     // Minimal fixture: 2 orders + 4 lineitems
     let mut e = fresh_engine();
-    e.execute("CREATE TABLE orders (o_orderkey INTEGER PRIMARY KEY, \
-              o_orderdate TEXT, o_orderpriority TEXT)").unwrap();
-    e.execute("CREATE TABLE lineitem (l_orderkey INTEGER, \
-              l_receiptdate TEXT, l_commitdate TEXT)").unwrap();
+    e.execute(
+        "CREATE TABLE orders (o_orderkey INTEGER PRIMARY KEY, \
+              o_orderdate TEXT, o_orderpriority TEXT)",
+    )
+    .unwrap();
+    e.execute(
+        "CREATE TABLE lineitem (l_orderkey INTEGER, \
+              l_receiptdate TEXT, l_commitdate TEXT)",
+    )
+    .unwrap();
 
     // Order 1: date in range, EXISTS true
-    e.execute("INSERT INTO orders VALUES (1, '1993-08-15', '1-URGENT')").unwrap();
-    e.execute("INSERT INTO lineitem VALUES (1, '1993-08-20', '1993-08-10')").unwrap();
+    e.execute("INSERT INTO orders VALUES (1, '1993-08-15', '1-URGENT')")
+        .unwrap();
+    e.execute("INSERT INTO lineitem VALUES (1, '1993-08-20', '1993-08-10')")
+        .unwrap();
 
     // Order 2: date in range, EXISTS false (commitdate >= receiptdate)
-    e.execute("INSERT INTO orders VALUES (2, '1993-09-15', '2-HIGH')").unwrap();
-    e.execute("INSERT INTO lineitem VALUES (2, '1993-09-10', '1993-09-20')").unwrap();
+    e.execute("INSERT INTO orders VALUES (2, '1993-09-15', '2-HIGH')")
+        .unwrap();
+    e.execute("INSERT INTO lineitem VALUES (2, '1993-09-10', '1993-09-20')")
+        .unwrap();
 
     // Order 3: date out of range, EXISTS true (should not be counted)
-    e.execute("INSERT INTO orders VALUES (3, '1992-12-31', '3-MEDIUM')").unwrap();
-    e.execute("INSERT INTO lineitem VALUES (3, '1993-01-15', '1993-01-10')").unwrap();
+    e.execute("INSERT INTO orders VALUES (3, '1992-12-31', '3-MEDIUM')")
+        .unwrap();
+    e.execute("INSERT INTO lineitem VALUES (3, '1993-01-15', '1993-01-10')")
+        .unwrap();
 
     let r = e.execute(Q4_SQL).unwrap();
     // Only orders 1 and 2 are in the date range; only order 1 has EXISTS=true
@@ -66,22 +78,40 @@ fn q4_hash_semi_join_correctness_basic() {
 fn q4_hash_semi_join_correctness_multi_order() {
     // Multiple orders per priority
     let mut e = fresh_engine();
-    e.execute("CREATE TABLE orders (o_orderkey INTEGER PRIMARY KEY, \
-              o_orderdate TEXT, o_orderpriority TEXT)").unwrap();
-    e.execute("CREATE TABLE lineitem (l_orderkey INTEGER, \
-              l_receiptdate TEXT, l_commitdate TEXT)").unwrap();
+    e.execute(
+        "CREATE TABLE orders (o_orderkey INTEGER PRIMARY KEY, \
+              o_orderdate TEXT, o_orderpriority TEXT)",
+    )
+    .unwrap();
+    e.execute(
+        "CREATE TABLE lineitem (l_orderkey INTEGER, \
+              l_receiptdate TEXT, l_commitdate TEXT)",
+    )
+    .unwrap();
 
     // 3 orders with priority 1-URGENT, all in date range, all have EXISTS=true
     for i in 1..=3 {
-        e.execute(&format!("INSERT INTO orders VALUES ({}, '1993-08-{:02}', '1-URGENT')", i, i*5))
-            .unwrap();
-        e.execute(&format!("INSERT INTO lineitem VALUES ({}, '1993-08-{:02}', '1993-08-{:02}')",
-            i, (i*5)+5, i*5)).unwrap();
+        e.execute(&format!(
+            "INSERT INTO orders VALUES ({}, '1993-08-{:02}', '1-URGENT')",
+            i,
+            i * 5
+        ))
+        .unwrap();
+        e.execute(&format!(
+            "INSERT INTO lineitem VALUES ({}, '1993-08-{:02}', '1993-08-{:02}')",
+            i,
+            (i * 5) + 5,
+            i * 5
+        ))
+        .unwrap();
     }
     // 2 orders with priority 2-HIGH, only 1 has EXISTS=true
-    e.execute("INSERT INTO orders VALUES (4, '1993-09-01', '2-HIGH')").unwrap();
-    e.execute("INSERT INTO lineitem VALUES (4, '1993-09-10', '1993-09-05')").unwrap();
-    e.execute("INSERT INTO orders VALUES (5, '1993-09-15', '2-HIGH')").unwrap();
+    e.execute("INSERT INTO orders VALUES (4, '1993-09-01', '2-HIGH')")
+        .unwrap();
+    e.execute("INSERT INTO lineitem VALUES (4, '1993-09-10', '1993-09-05')")
+        .unwrap();
+    e.execute("INSERT INTO orders VALUES (5, '1993-09-15', '2-HIGH')")
+        .unwrap();
     // Order 5 has no matching lineitem → EXISTS false
 
     let r = e.execute(Q4_SQL).unwrap();
@@ -105,10 +135,16 @@ fn q4_hash_semi_join_scales_with_inner_table_size() {
     // = O(10) regardless of total inner row count.
 
     let mut e = fresh_engine();
-    e.execute("CREATE TABLE orders (o_orderkey INTEGER PRIMARY KEY, \
-              o_orderdate TEXT, o_orderpriority TEXT)").unwrap();
-    e.execute("CREATE TABLE lineitem (l_orderkey INTEGER, \
-              l_receiptdate TEXT, l_commitdate TEXT)").unwrap();
+    e.execute(
+        "CREATE TABLE orders (o_orderkey INTEGER PRIMARY KEY, \
+              o_orderdate TEXT, o_orderpriority TEXT)",
+    )
+    .unwrap();
+    e.execute(
+        "CREATE TABLE lineitem (l_orderkey INTEGER, \
+              l_receiptdate TEXT, l_commitdate TEXT)",
+    )
+    .unwrap();
 
     // 100 orders in date range
     for i in 1..=100 {
@@ -117,7 +153,8 @@ fn q4_hash_semi_join_scales_with_inner_table_size() {
             i,
             ((i % 28) + 1),
             ["1-URGENT", "2-HIGH", "3-MEDIUM", "4-NOT SPECIFIED", "5-LOW"][i % 5],
-        )).unwrap();
+        ))
+        .unwrap();
         // 10 lineitems per order, half with commitdate < receiptdate (EXISTS true)
         for j in 0..10 {
             let orderkey = i;
@@ -128,7 +165,8 @@ fn q4_hash_semi_join_scales_with_inner_table_size() {
                 orderkey,
                 ((receipt as u32 % 28) + 1).max(1),
                 ((commit as u32 % 28) + 1).max(1),
-            )).unwrap();
+            ))
+            .unwrap();
         }
     }
 
@@ -136,8 +174,11 @@ fn q4_hash_semi_join_scales_with_inner_table_size() {
     let r = e.execute(Q4_SQL).unwrap();
     let elapsed = start.elapsed();
 
-    assert!(r.rows.len() <= 5, "expected ≤5 priority groups, got {}",
-            r.rows.len());
+    assert!(
+        r.rows.len() <= 5,
+        "expected ≤5 priority groups, got {}",
+        r.rows.len()
+    );
 
     // V311-15 perf: 1000 lineitem rows should complete in < 1s.
     // Without the V311-15 fix, this would take ~10s.
@@ -154,20 +195,27 @@ fn q4_hash_semi_join_large_scale() {
     // Larger scale: 1000 orders, 10000 lineitem rows
     // Verify wall time < 5 seconds (much less than v3.10.0's nested-loop)
     let mut e = fresh_engine();
-    e.execute("CREATE TABLE orders (o_orderkey INTEGER PRIMARY KEY, \
-              o_orderdate TEXT, o_orderpriority TEXT)").unwrap();
-    e.execute("CREATE TABLE lineitem (l_orderkey INTEGER, \
-              l_receiptdate TEXT, l_commitdate TEXT)").unwrap();
+    e.execute(
+        "CREATE TABLE orders (o_orderkey INTEGER PRIMARY KEY, \
+              o_orderdate TEXT, o_orderpriority TEXT)",
+    )
+    .unwrap();
+    e.execute(
+        "CREATE TABLE lineitem (l_orderkey INTEGER, \
+              l_receiptdate TEXT, l_commitdate TEXT)",
+    )
+    .unwrap();
 
     // 1000 orders
     for i in 1..=1000 {
         e.execute(&format!(
             "INSERT INTO orders VALUES ({}, '1993-{:02}-{:02}', '{}')",
             i,
-            ((i % 3) + 7),  // months 7-9
+            ((i % 3) + 7), // months 7-9
             ((i % 28) + 1),
             ["1-URGENT", "2-HIGH", "3-MEDIUM", "4-NOT SPECIFIED", "5-LOW"][i % 5],
-        )).unwrap();
+        ))
+        .unwrap();
         // ~10 lineitems per order (10000 total)
         for j in 0..10 {
             e.execute(&format!(
@@ -177,7 +225,8 @@ fn q4_hash_semi_join_large_scale() {
                 ((i % 28) + 1),
                 ((i % 3) + 7),
                 ((j % 28) + 1),
-            )).unwrap();
+            ))
+            .unwrap();
         }
     }
 

@@ -1,8 +1,6 @@
 //! Tools crate additional unit tests
 
-use sqlrustgo_tools::backup_restore::{
-    BackupType, BackupStatus, BackupMetadata, BackupManager,
-};
+use sqlrustgo_tools::backup_restore::{BackupManager, BackupMetadata, BackupStatus, BackupType};
 use std::path::PathBuf;
 
 #[test]
@@ -89,8 +87,6 @@ fn test_backup_manager_get_nonexistent() {
 }
 
 // ============ Additional BackupManager Tests ============
-
-
 
 #[test]
 fn test_backup_metadata_differential() {
