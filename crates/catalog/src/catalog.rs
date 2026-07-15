@@ -12,6 +12,7 @@ use crate::error::{CatalogError, CatalogResult};
 use crate::schema::Schema;
 use crate::stored_proc::StoredProcedure;
 use serde::{Deserialize, Serialize};
+use crate::row_level_security::PolicyCatalog;
 use std::collections::HashMap;
 
 /// The root catalog containing databases and stored procedures.
@@ -29,6 +30,9 @@ pub struct Catalog {
     stored_procedures: HashMap<String, StoredProcedure>,
     #[serde(skip)]
     auth_manager: AuthManager,
+    /// Row-Level Security policies
+    #[serde(skip)]
+    policy_catalog: PolicyCatalog,
 }
 
 impl Catalog {
@@ -42,6 +46,7 @@ impl Catalog {
             default_database: "public".to_string(),
             stored_procedures: HashMap::new(),
             auth_manager: AuthManager::new(),
+            policy_catalog: PolicyCatalog::new(),
         }
     }
 
@@ -56,6 +61,7 @@ impl Catalog {
             default_database: db_name,
             stored_procedures: HashMap::new(),
             auth_manager: AuthManager::new(),
+            policy_catalog: PolicyCatalog::new(),
         }
     }
 
@@ -341,6 +347,49 @@ impl Catalog {
     pub fn find_role_by_name(&self, name: &str) -> Option<&Role> {
         self.auth_manager.find_role_by_name(name)
     }
+
+    // ============ Row-Level Security (V311-05 F-29) ============
+
+    /// Get a reference to the RLS policy catalog
+    pub fn policy_catalog(&self) -> &crate::row_level_security::PolicyCatalog {
+        &self.policy_catalog
+    }
+
+    /// Get a mutable reference to the RLS policy catalog
+    pub fn policy_catalog_mut(&mut self) -> &mut crate::row_level_security::PolicyCatalog {
+        &mut self.policy_catalog
+    }
+
+    /// Create a policy on a table
+    pub fn create_policy(&mut self, policy: crate::row_level_security::Policy) {
+        self.policy_catalog.create_policy(policy);
+    }
+
+    /// Drop a policy by name from a table
+    pub fn drop_policy(&mut self, table: &str, policy_name: &str) -> bool {
+        self.policy_catalog.drop_policy(table, policy_name)
+    }
+
+    /// Enable RLS for a table
+    pub fn enable_rls(&mut self, table: &str) {
+        self.policy_catalog.enable_rls(table);
+    }
+
+    /// Disable RLS for a table
+    pub fn disable_rls(&mut self, table: &str) {
+        self.policy_catalog.disable_rls(table);
+    }
+
+    /// Check if RLS is enabled for a table
+    pub fn is_rls_enabled(&self, table: &str) -> bool {
+        self.policy_catalog.is_rls_enabled(table)
+    }
+
+    /// Get all policies for a table
+    pub fn get_policies(&self, table: &str) -> Vec<crate::row_level_security::Policy> {
+        self.policy_catalog.get_policies(table)
+    }
+
 }
 
 #[cfg(test)]
