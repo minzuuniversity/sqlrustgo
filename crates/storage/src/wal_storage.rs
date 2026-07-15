@@ -120,11 +120,11 @@ impl<S: StorageEngine, T: WalManager> WalStorage<S, T> {
             Value::Float(f) => f.to_bits().to_le_bytes().to_vec(),
             Value::Blob(b) => b.clone(),
             Value::Point(x, y) => {
-                    let mut bytes = vec![0x50]; // "P" for Point
-                    bytes.extend_from_slice(&x.to_bits().to_le_bytes());
-                    bytes.extend_from_slice(&y.to_bits().to_le_bytes());
-                    bytes
-                }
+                let mut bytes = vec![0x07];
+                bytes.extend_from_slice(&x.to_le_bytes());
+                bytes.extend_from_slice(&y.to_le_bytes());
+                bytes
+            },
         }
     }
 
@@ -159,8 +159,8 @@ impl<S: StorageEngine, T: WalManager> WalStorage<S, T> {
                 }
                 Value::Point(x, y) => {
                     bytes.extend_from_slice(b"P:");
-                    bytes.extend_from_slice(&x.to_bits().to_le_bytes());
-                    bytes.extend_from_slice(&y.to_bits().to_le_bytes());
+                    bytes.extend_from_slice(&x.to_le_bytes());
+                    bytes.extend_from_slice(&y.to_le_bytes());
                     bytes.push(0);
                 }
             }
