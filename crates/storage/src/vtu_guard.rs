@@ -206,126 +206,11 @@ mod tests {
     use super::*;
     use crate::ColumnDefinition;
 
-    /// Mock storage for testing
-    struct MockStorage;
-
-    impl MockStorage {
-        fn new() -> Self {
-            Self
-        }
-    }
-
-    impl StorageEngine for MockStorage {
-        fn scan(&self, _table: &str) -> SqlResult<Vec<Record>> {
-            Ok(vec![])
-        }
-
-        fn insert(&mut self, _table: &str, _records: Vec<Record>) -> SqlResult<()> {
-            Ok(())
-        }
-
-        fn delete(&mut self, _table: &str, _filters: &[Value]) -> SqlResult<usize> {
-            Ok(0)
-        }
-
-        fn delete_if(&mut self, _table: &str, _filter: &RowFilter) -> SqlResult<usize> {
-            Ok(0)
-        }
-
-        fn update(
-            &mut self,
-            _table: &str,
-            _filters: &[Value],
-            _updates: &[(usize, Value)],
-        ) -> SqlResult<usize> {
-            Ok(0)
-        }
-
-        fn update_if(
-            &mut self,
-            _table: &str,
-            _filter: &RowFilter,
-            _mutation: &RowMutation,
-        ) -> SqlResult<usize> {
-            Ok(0)
-        }
-        fn create_table(&mut self, _info: &TableInfo) -> SqlResult<()> {
-            Ok(())
-        }
-
-        fn drop_table(&mut self, _table: &str) -> SqlResult<()> {
-            Ok(())
-        }
-
-        fn get_table_info(&self, _table: &str) -> SqlResult<TableInfo> {
-            Ok(TableInfo {
-                name: String::new(),
-                columns: vec![],
-                foreign_keys: vec![],
-                unique_constraints: vec![],
-                check_constraints: vec![],
-                partition_info: None,
-            })
-        }
-
-        fn has_table(&self, _table: &str) -> bool {
-            false
-        }
-
-        fn list_tables(&self) -> Vec<String> {
-            vec![]
-        }
-
-        fn create_index(
-            &mut self,
-            _table: &str,
-            _column: &str,
-            _column_index: usize,
-        ) -> SqlResult<()> {
-            Ok(())
-        }
-
-        fn drop_index(&mut self, _table: &str, _column: &str) -> SqlResult<()> {
-            Ok(())
-        }
-
-        fn add_column(&mut self, _table: &str, _column: ColumnDefinition) -> SqlResult<()> {
-            Ok(())
-        }
-
-        fn rename_table(&mut self, _table: &str, _new_name: &str) -> SqlResult<()> {
-            Ok(())
-        }
-
-        fn create_trigger(&mut self, _info: TriggerInfo) -> SqlResult<()> {
-            Ok(())
-        }
-
-        fn drop_trigger(&mut self, _name: &str) -> SqlResult<()> {
-            Ok(())
-        }
-
-        fn get_trigger(&self, _name: &str) -> Option<TriggerInfo> {
-            None
-        }
-
-        fn list_triggers(&self, _table: &str) -> Vec<TriggerInfo> {
-            vec![]
-        }
-
-        fn list_indexes(&self, _table: &str) -> Vec<(String, String)> {
-            vec![]
-        }
-
-        fn has_view(&self, _name: &str) -> bool {
-            false
-        }
-    }
 
     #[test]
     #[should_panic(expected = "VTU VIOLATION")]
     fn test_vtu_violation_insert() {
-        let storage = MockStorage::new();
+        let storage = crate::MemoryStorage::new();
         let mut guarded = VtuGuard::new(storage, "test_location");
         guarded.insert("test_table", vec![]).unwrap();
     }
@@ -333,7 +218,7 @@ mod tests {
     #[test]
     #[should_panic(expected = "VTU VIOLATION")]
     fn test_vtu_violation_delete() {
-        let storage = MockStorage::new();
+        let storage = crate::MemoryStorage::new();
         let mut guarded = VtuGuard::new(storage, "test_location");
         guarded.delete("test_table", &[]).unwrap();
     }
@@ -341,14 +226,14 @@ mod tests {
     #[test]
     #[should_panic(expected = "VTU VIOLATION")]
     fn test_vtu_violation_update() {
-        let storage = MockStorage::new();
+        let storage = crate::MemoryStorage::new();
         let mut guarded = VtuGuard::new(storage, "test_location");
         guarded.update("test_table", &[], &[]).unwrap();
     }
 
     #[test]
     fn test_vtu_guard_scan_allowed() {
-        let storage = MockStorage::new();
+        let storage = crate::MemoryStorage::new();
         let guarded = VtuGuard::new(storage, "test_location");
         let result = guarded.scan("test_table");
         assert!(result.is_ok());
@@ -356,7 +241,7 @@ mod tests {
 
     #[test]
     fn test_vtu_guard_get_table_info_allowed() {
-        let storage = MockStorage::new();
+        let storage = crate::MemoryStorage::new();
         let guarded = VtuGuard::new(storage, "test_location");
         let result = guarded.get_table_info("test_table");
         assert!(result.is_ok());
@@ -364,7 +249,7 @@ mod tests {
 
     #[test]
     fn test_int4_execute_dml_routes_closure_to_inner() {
-        let mut guarded = VtuGuard::new(MockStorage::new(), "int4_execute_dml");
+        let mut guarded = VtuGuard::new(crate::MemoryStorage::new(), "int4_execute_dml");
         let result: SqlResult<usize> = guarded.execute_dml(|inner| inner.delete("t", &[]));
         assert_eq!(result.unwrap(), 0);
     }
@@ -372,7 +257,7 @@ mod tests {
     #[test]
     #[should_panic(expected = "VTU VIOLATION")]
     fn test_int4_assert_dml_safe_panics_outside_tx() {
-        let guarded = VtuGuard::new(MockStorage::new(), "int4_assert");
+        let guarded = VtuGuard::new(crate::MemoryStorage::new(), "int4_assert");
         guarded.assert_dml_safe("insert", "t");
     }
 
