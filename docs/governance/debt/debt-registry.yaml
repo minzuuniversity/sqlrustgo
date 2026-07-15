@@ -310,9 +310,9 @@ f_xx_isolated:  # 测试自包含, 10 项 v3.9.0+ 集成; v3.10.0 中 F-16 主�
 
   - id: F-23
     title: "Clustered Index"
-    state: VERIFIED
-    progress: 7/7
-    progress_metric: "tests/clustered_index_test.rs 7/7 PASS, 孤岛 (BTreeMap 自包含)"
+    state: CLOSED
+    progress: 15/15
+    progress_metric: "V311-01 v1: ClusteredTable production storage (PR #3461) + parser ENGINE=InnoDB CLUSTERED + 5 unit + 7 integration + 3 production API tests PASS"
     target_release: v3.11.0
 
   - id: F-24
