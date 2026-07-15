@@ -4405,6 +4405,7 @@ dependencies = [
  "sqlrustgo-spill",
  "sqlrustgo-storage",
  "sqlrustgo-types",
+ "sqlrustgo_gis",
  "tempfile",
  "thiserror 2.0.18",
  "tracing",
@@ -4721,6 +4722,13 @@ dependencies = [
  "serde_json",
  "sqlrustgo-storage",
  "tempfile",
+]
+
+[[package]]
+name = "sqlrustgo_gis"
+version = "0.1.0"
+dependencies = [
+ "sqlrustgo-types",
 ]
 
 [[package]]

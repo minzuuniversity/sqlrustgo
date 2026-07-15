@@ -314,6 +314,12 @@ pub fn value_to_bytes(value: &Value) -> Vec<u8> {
             bytes.extend_from_slice(blob);
             bytes
         }
+        Value::Point(x, y) => {
+            let mut bytes = vec![0x07];
+            bytes.extend_from_slice(&x.to_bits().to_le_bytes());
+            bytes.extend_from_slice(&y.to_bits().to_le_bytes());
+            bytes
+        }
     }
 }
 
