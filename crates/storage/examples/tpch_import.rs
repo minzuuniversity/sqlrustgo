@@ -110,6 +110,7 @@ fn create_tables(storage: &mut FileStorage) {
             foreign_keys: vec![],
             unique_constraints: vec![],
             check_constraints: vec![],
+                compression: None,
             partition_info: None,
         })
         .unwrap();
@@ -126,6 +127,7 @@ fn create_tables(storage: &mut FileStorage) {
             foreign_keys: vec![],
             unique_constraints: vec![],
             check_constraints: vec![],
+                compression: None,
             partition_info: None,
         })
         .unwrap();
@@ -146,6 +148,7 @@ fn create_tables(storage: &mut FileStorage) {
             foreign_keys: vec![],
             unique_constraints: vec![],
             check_constraints: vec![],
+                compression: None,
             partition_info: None,
         })
         .unwrap();
@@ -168,6 +171,7 @@ fn create_tables(storage: &mut FileStorage) {
             foreign_keys: vec![],
             unique_constraints: vec![],
             check_constraints: vec![],
+                compression: None,
             partition_info: None,
         })
         .unwrap();
@@ -186,6 +190,7 @@ fn create_tables(storage: &mut FileStorage) {
             foreign_keys: vec![],
             unique_constraints: vec![],
             check_constraints: vec![],
+                compression: None,
             partition_info: None,
         })
         .unwrap();
@@ -207,6 +212,7 @@ fn create_tables(storage: &mut FileStorage) {
             foreign_keys: vec![],
             unique_constraints: vec![],
             check_constraints: vec![],
+                compression: None,
             partition_info: None,
         })
         .unwrap();
@@ -229,6 +235,7 @@ fn create_tables(storage: &mut FileStorage) {
             foreign_keys: vec![],
             unique_constraints: vec![],
             check_constraints: vec![],
+                compression: None,
             partition_info: None,
         })
         .unwrap();
@@ -258,6 +265,7 @@ fn create_tables(storage: &mut FileStorage) {
             foreign_keys: vec![],
             unique_constraints: vec![],
             check_constraints: vec![],
+                compression: None,
             partition_info: None,
         })
         .unwrap();

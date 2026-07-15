@@ -338,7 +338,8 @@ impl FileStorage {
                 foreign_keys: stored.foreign_keys,
                 unique_constraints: stored.unique_constraints,
                 check_constraints: vec![],
-                partition_info: None,
+               
+    compression: None, partition_info: None,
             },
             rows: stored.rows,
         })
@@ -1416,7 +1417,8 @@ mod tests {
             foreign_keys: vec![],
             unique_constraints: vec![],
             check_constraints: vec![],
-            partition_info: None,
+           
+    compression: None, partition_info: None,
         };
         storage.create_table(&info).unwrap();
         let t = storage.get_table_mut("t");
@@ -1438,7 +1440,8 @@ mod tests {
             foreign_keys: vec![],
             unique_constraints: vec![],
             check_constraints: vec![],
-            partition_info: None,
+           
+    compression: None, partition_info: None,
         };
         let data = TableData { info, rows: vec![] };
         storage.insert_table("t1".into(), data).unwrap();
@@ -1454,7 +1457,8 @@ mod tests {
             foreign_keys: vec![],
             unique_constraints: vec![],
             check_constraints: vec![],
-            partition_info: None,
+           
+    compression: None, partition_info: None,
         };
         storage.create_table(&info).unwrap();
         let names = storage.table_names();
@@ -1476,7 +1480,8 @@ mod tests {
             foreign_keys: vec![],
             unique_constraints: vec![],
             check_constraints: vec![],
-            partition_info: None,
+           
+    compression: None, partition_info: None,
         };
         storage.create_table(&info).unwrap();
         assert!(storage.contains_table("x"));
@@ -1507,7 +1512,8 @@ mod tests {
             foreign_keys: vec![],
             unique_constraints: vec![],
             check_constraints: vec![],
-            partition_info: None,
+           
+    compression: None, partition_info: None,
         };
         storage.create_table(&info).unwrap();
         storage.insert("t", vec![vec![Value::Integer(1)]]).unwrap();
@@ -1546,7 +1552,8 @@ mod tests {
             foreign_keys: vec![],
             unique_constraints: vec![],
             check_constraints: vec![],
-            partition_info: None,
+           
+    compression: None, partition_info: None,
         };
         storage.create_table(&info).unwrap();
         storage.force_insert("t", vec![Value::Integer(5)]).unwrap();
@@ -1563,7 +1570,8 @@ mod tests {
             foreign_keys: vec![],
             unique_constraints: vec![],
             check_constraints: vec![],
-            partition_info: None,
+           
+    compression: None, partition_info: None,
         };
         storage.create_table(&info).unwrap();
         storage
@@ -1618,7 +1626,8 @@ mod tests {
             foreign_keys: vec![],
             unique_constraints: vec![],
             check_constraints: vec![],
-            partition_info: None,
+           
+    compression: None, partition_info: None,
         };
         storage.create_table(&info).unwrap();
         storage
@@ -1639,7 +1648,8 @@ mod tests {
             foreign_keys: vec![],
             unique_constraints: vec![],
             check_constraints: vec![],
-            partition_info: None,
+           
+    compression: None, partition_info: None,
         };
         storage.create_table(&info).unwrap();
         assert!(storage.has_table("users"));
@@ -1661,7 +1671,8 @@ mod tests {
             foreign_keys: vec![],
             unique_constraints: vec![],
             check_constraints: vec![],
-            partition_info: None,
+           
+    compression: None, partition_info: None,
         };
         storage.create_table(&info).unwrap();
         assert!(storage.has_table("x"));
@@ -1677,7 +1688,8 @@ mod tests {
             foreign_keys: vec![],
             unique_constraints: vec![],
             check_constraints: vec![],
-            partition_info: None,
+           
+    compression: None, partition_info: None,
         };
         storage.create_table(&info).unwrap();
         let tables = storage.list_tables();
@@ -1693,7 +1705,8 @@ mod tests {
             foreign_keys: vec![],
             unique_constraints: vec![],
             check_constraints: vec![],
-            partition_info: None,
+           
+    compression: None, partition_info: None,
         };
         storage.create_table(&info).unwrap();
         storage
@@ -1726,7 +1739,8 @@ mod tests {
             foreign_keys: vec![],
             unique_constraints: vec![],
             check_constraints: vec![],
-            partition_info: None,
+           
+    compression: None, partition_info: None,
         };
         storage.create_table(&info).unwrap();
         storage.insert("t", vec![vec![Value::Integer(1)]]).unwrap();
@@ -1750,7 +1764,8 @@ mod tests {
             foreign_keys: vec![],
             unique_constraints: vec![],
             check_constraints: vec![],
-            partition_info: None,
+           
+    compression: None, partition_info: None,
         };
         storage.create_table(&info).unwrap();
         storage
@@ -1769,7 +1784,8 @@ mod tests {
             foreign_keys: vec![],
             unique_constraints: vec![],
             check_constraints: vec![],
-            partition_info: None,
+           
+    compression: None, partition_info: None,
         };
         storage.create_table(&info).unwrap();
         storage
@@ -1851,7 +1867,8 @@ mod tests {
             foreign_keys: vec![],
             unique_constraints: vec![],
             check_constraints: vec![],
-            partition_info: None,
+           
+    compression: None, partition_info: None,
         };
         storage.create_table(&info).unwrap();
         storage.insert("t", vec![vec![Value::Integer(1)]]).unwrap();
@@ -1899,7 +1916,8 @@ mod tests {
             foreign_keys: vec![],
             unique_constraints: vec![],
             check_constraints: vec![],
-            partition_info: None,
+           
+    compression: None, partition_info: None,
         };
         storage.create_table(&info).unwrap();
         storage
@@ -1929,7 +1947,8 @@ mod tests {
             foreign_keys: vec![],
             unique_constraints: vec![],
             check_constraints: vec![],
-            partition_info: None,
+           
+    compression: None, partition_info: None,
         };
         storage.create_table(&info).unwrap();
         let result = storage.drop_column("t", "nonexistent");
@@ -1945,7 +1964,8 @@ mod tests {
             foreign_keys: vec![],
             unique_constraints: vec![],
             check_constraints: vec![],
-            partition_info: None,
+           
+    compression: None, partition_info: None,
         };
         storage.create_table(&info).unwrap();
         let new_def = ColumnDefinition {
@@ -1975,7 +1995,8 @@ mod tests {
             foreign_keys: vec![],
             unique_constraints: vec![],
             check_constraints: vec![],
-            partition_info: None,
+           
+    compression: None, partition_info: None,
         };
         storage.create_table(&info).unwrap();
         let new_def = ColumnDefinition::new("nonexistent", "TEXT");
@@ -1992,7 +2013,8 @@ mod tests {
             foreign_keys: vec![],
             unique_constraints: vec![],
             check_constraints: vec![],
-            partition_info: None,
+           
+    compression: None, partition_info: None,
         };
         storage.create_table(&info).unwrap();
         storage.set_current_tx_id(1);
@@ -2013,7 +2035,8 @@ mod tests {
             foreign_keys: vec![],
             unique_constraints: vec![],
             check_constraints: vec![],
-            partition_info: None,
+           
+    compression: None, partition_info: None,
         };
         storage.create_table(&info).unwrap();
         storage.insert("t", vec![vec![Value::Integer(1)]]).unwrap();
@@ -2034,7 +2057,8 @@ mod tests {
             foreign_keys: vec![],
             unique_constraints: vec![],
             check_constraints: vec![],
-            partition_info: None,
+           
+    compression: None, partition_info: None,
         };
         storage.create_table(&info).unwrap();
         storage.set_current_tx_id(1);
@@ -2111,7 +2135,8 @@ mod tests {
             foreign_keys: vec![],
             unique_constraints: vec![],
             check_constraints: vec![],
-            partition_info: None,
+           
+    compression: None, partition_info: None,
         };
         storage.create_table(&info).unwrap();
         storage.insert("t", vec![vec![Value::Integer(1)]]).unwrap();
@@ -2134,7 +2159,8 @@ mod tests {
             foreign_keys: vec![],
             unique_constraints: vec![],
             check_constraints: vec![],
-            partition_info: None,
+           
+    compression: None, partition_info: None,
         };
         storage.create_table(&info).unwrap();
         storage.insert("t", vec![vec![Value::Integer(1)]]).unwrap();
@@ -2165,7 +2191,8 @@ mod tests {
             foreign_keys: vec![],
             unique_constraints: vec![],
             check_constraints: vec![],
-            partition_info: None,
+           
+    compression: None, partition_info: None,
         };
         storage.create_table(&info).unwrap();
         storage
@@ -2190,7 +2217,8 @@ mod tests {
             foreign_keys: vec![],
             unique_constraints: vec![],
             check_constraints: vec![],
-            partition_info: None,
+           
+    compression: None, partition_info: None,
         };
         storage.create_table(&info).unwrap();
         storage
@@ -2210,7 +2238,8 @@ mod tests {
             foreign_keys: vec![],
             unique_constraints: vec![],
             check_constraints: vec![],
-            partition_info: None,
+           
+    compression: None, partition_info: None,
         };
         storage.create_table(&info).unwrap();
         storage
@@ -2242,7 +2271,8 @@ mod tests {
             foreign_keys: vec![],
             unique_constraints: vec![],
             check_constraints: vec![],
-            partition_info: None,
+           
+    compression: None, partition_info: None,
         };
         storage.create_table(&info).unwrap();
         storage
@@ -2266,7 +2296,8 @@ mod tests {
             foreign_keys: vec![],
             unique_constraints: vec![],
             check_constraints: vec![],
-            partition_info: None,
+           
+    compression: None, partition_info: None,
         };
         storage.create_table(&info).unwrap();
         storage.set_current_tx_id(1);
@@ -2298,7 +2329,8 @@ mod tests {
             foreign_keys: vec![],
             unique_constraints: vec![],
             check_constraints: vec![],
-            partition_info: None,
+           
+    compression: None, partition_info: None,
         };
         storage.create_table(&info).unwrap();
         storage
@@ -2326,7 +2358,8 @@ mod tests {
             foreign_keys: vec![],
             unique_constraints: vec![],
             check_constraints: vec![],
-            partition_info: None,
+           
+    compression: None, partition_info: None,
         };
         storage.create_table(&info).unwrap();
         storage
@@ -2360,7 +2393,8 @@ mod tests {
             foreign_keys: vec![],
             unique_constraints: vec![],
             check_constraints: vec![],
-            partition_info: None,
+           
+    compression: None, partition_info: None,
         };
         storage.create_table(&info).unwrap();
         storage
@@ -2381,7 +2415,8 @@ mod tests {
             foreign_keys: vec![],
             unique_constraints: vec![],
             check_constraints: vec![],
-            partition_info: None,
+           
+    compression: None, partition_info: None,
         };
         storage.create_table(&info).unwrap();
         storage
