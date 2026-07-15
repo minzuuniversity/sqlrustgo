@@ -239,9 +239,18 @@ mod tests {
         assert!(result.is_ok());
     }
 
-    #[test]
     fn test_vtu_guard_get_table_info_allowed() {
-        let storage = crate::MemoryStorage::new();
+        let mut storage = crate::MemoryStorage::new();
+        storage
+            .create_table(&TableInfo {
+                name: "test_table".to_string(),
+                columns: vec![],
+                foreign_keys: vec![],
+                unique_constraints: vec![],
+                check_constraints: vec![],
+                partition_info: None,
+            })
+            .unwrap();
         let guarded = VtuGuard::new(storage, "test_location");
         let result = guarded.get_table_info("test_table");
         assert!(result.is_ok());
