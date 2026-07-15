@@ -19,7 +19,6 @@
 //! residual was already applied at build time → bucket contains only matching
 //! rows → Anti Join simplifies to "bucket empty ⇒ include".
 
-use crate::expr::UnifiedExpr;
 use sqlrustgo_types::Value;
 use std::collections::{HashMap, HashSet};
 
@@ -88,6 +87,7 @@ pub struct HashAntiJoin {
     /// Outer row's column index to hash on (lookup key).
     pub probe_key_col: usize,
     /// Inner row contents (built up incrementally).
+    #[allow(dead_code)]
     inner_rows: Vec<Vec<Value>>,
     /// Bloom filter over inner keys.
     bloom: BloomAntiFilter,
@@ -197,9 +197,15 @@ mod tests {
         haj.add_inner_row(row(3));
 
         // Probe key 1 → Matched (inner has row 1)
-        assert!(matches!(haj.probe_outer_key(&pk(&row(1))), ProbeResult::Matched));
+        assert!(matches!(
+            haj.probe_outer_key(&pk(&row(1))),
+            ProbeResult::Matched
+        ));
         // Probe key 99 → Included (no inner row)
-        assert!(matches!(haj.probe_outer_key(&pk(&row(99))), ProbeResult::Included));
+        assert!(matches!(
+            haj.probe_outer_key(&pk(&row(99))),
+            ProbeResult::Included
+        ));
     }
 
     #[test]
@@ -237,7 +243,7 @@ mod tests {
         assert_eq!(r, ProbeResult::Included);
 
         // Outer row with key 1: at least one inner row has key 1
-        // (In real Q4 scenario, residual `l_commitdate < l_receiptdate` 
+        // (In real Q4 scenario, residual `l_commitdate < l_receiptdate`
         //  would have been filtered at build, so bucket could be smaller)
         let r2 = haj.probe_outer_key(&pk(&row(1)));
         // For this unit test, we just verify basic Matched vs Included

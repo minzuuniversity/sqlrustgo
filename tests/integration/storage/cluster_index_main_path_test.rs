@@ -50,7 +50,8 @@ fn clustered_table_supports_insert_and_lookup() {
          ENGINE=InnoDB CLUSTERED",
     )
     .unwrap();
-    e.execute("INSERT INTO orders VALUES (3, 'charlie')").unwrap();
+    e.execute("INSERT INTO orders VALUES (3, 'charlie')")
+        .unwrap();
     e.execute("INSERT INTO orders VALUES (1, 'alice')").unwrap();
     e.execute("INSERT INTO orders VALUES (2, 'bob')").unwrap();
 
@@ -58,7 +59,11 @@ fn clustered_table_supports_insert_and_lookup() {
     let r = e
         .execute("SELECT COUNT(*) FROM orders")
         .expect("COUNT(*) from clustered should work");
-    assert_eq!(r.rows[0][0].to_string(), "3", "expected 3 rows in clustered table");
+    assert_eq!(
+        r.rows[0][0].to_string(),
+        "3",
+        "expected 3 rows in clustered table"
+    );
 }
 
 #[test]
@@ -73,11 +78,7 @@ fn clustered_table_pk_uniqueness_constraint() {
     // Second insert with same PK should fail.
     let r = e.execute("INSERT INTO orders VALUES (1, 'bob')");
     // Note: PK uniqueness on ClusteredTable returns error in v1.
-    assert!(
-        r.is_err(),
-        "duplicate PK should be rejected, got {:?}",
-        r
-    );
+    assert!(r.is_err(), "duplicate PK should be rejected, got {:?}", r);
 }
 
 #[test]
@@ -126,7 +127,8 @@ fn mixed_heap_and_clustered_tables_coexist() {
     )
     .unwrap();
     e.execute("INSERT INTO t_heap VALUES (1, 'h1')").unwrap();
-    e.execute("INSERT INTO t_clustered VALUES (1, 'c1')").unwrap();
+    e.execute("INSERT INTO t_clustered VALUES (1, 'c1')")
+        .unwrap();
 
     let r1 = e.execute("SELECT COUNT(*) FROM t_heap").unwrap();
     let r2 = e.execute("SELECT COUNT(*) FROM t_clustered").unwrap();
