@@ -159,6 +159,7 @@ fn value_to_literal_string_v(v: &Value) -> String {
         Value::Text(s) => s.clone(),
         Value::Boolean(b) => if *b { "TRUE" } else { "FALSE" }.to_string(),
         Value::Blob(b) => format!("BLOB({} bytes)", b.len()),
+            Value::Point(x, y) => format!("POINT({}, {})", x, y),
     }
 }
 
@@ -205,6 +206,7 @@ impl<S: StorageEngine + 'static> ExecutionEngine<S> {
                     unique_constraints: Vec::new(),
                     check_constraints: Vec::new(),
                     partition_info: None,
+                        compression: None,
                 };
                 for col in &subq.columns {
                     let col_name = col.alias.clone().unwrap_or_else(|| col.name.clone());
@@ -224,7 +226,9 @@ impl<S: StorageEngine + 'static> ExecutionEngine<S> {
                                 Value::Text(_) => "TEXT",
                                 Value::Boolean(_) => "BOOLEAN",
                                 Value::Blob(_) => "BLOB",
+                                Value::Point(_, _) => "POINT",
                                 Value::Null => "NULL",
+                                Value::Point(_, _) => "POINT",
                             })
                         })
                         .unwrap_or("TEXT")
@@ -264,6 +268,7 @@ impl<S: StorageEngine + 'static> ExecutionEngine<S> {
                 unique_constraints: Vec::new(),
                 check_constraints: Vec::new(),
                 partition_info: None,
+                    compression: None,
             };
             (vec![Vec::new()], empty_schema)
         } else {
@@ -282,6 +287,8 @@ impl<S: StorageEngine + 'static> ExecutionEngine<S> {
             let rows = self.scan_with_ahi(&storage, lookup_table)?;
             let table_info = storage.get_table_info(lookup_table)?;
             drop(storage);
+            // V311-05 F-29: apply RLS row filtering if enabled
+            let rows = self.apply_rls_filter(lookup_table, rows, &table_info)?;
             (rows, table_info)
         };
         // The storage read lock is NOT held past this point, ensuring
@@ -516,6 +523,7 @@ impl<S: StorageEngine + 'static> ExecutionEngine<S> {
                                         Value::Text(s) => format!("T{}", s),
                                         Value::Boolean(b) => format!("B{}", b as i32),
                                         Value::Blob(b) => format!("X{}", b.len()),
+                                        Value::Point(x, y) => format!("POINT({}, {})", x, y),
                                     }
                                 })
                                 .collect::<Vec<_>>()
@@ -1286,15 +1294,81 @@ impl<S: StorageEngine + 'static> ExecutionEngine<S> {
     /// When v3 FileStorage lands proper page-aware instrumentation, the
     /// caller can pass the actual `(page_id, offset)` from the B+ Tree
     /// page handle.
+
+    /// V311-05 F-29: Apply Row-Level Security filter to scanned rows.
+    /// Checks if RLS is enabled for this table in the catalog, and if so,
+    /// filters rows through the policy catalog's filter_rows() method.
+    fn apply_rls_filter(
+        &self,
+        table: &str,
+        rows: Vec<sqlrustgo_storage::Record>,
+        table_info: &sqlrustgo_storage::TableInfo,
+    ) -> SqlResult<Vec<sqlrustgo_storage::Record>> {
+        let Some(catalog) = &self.catalog else {
+            return Ok(rows); // No catalog = no RLS
+        };
+        let catalog_guard = catalog.read();
+        if !catalog_guard.is_rls_enabled(table) {
+            return Ok(rows); // RLS not enabled for this table
+        }
+        // Convert Record (Vec<Value>) to RLS Row (HashMap<String, Value>)
+        let rls_rows: Vec<std::collections::HashMap<String, Value>> = rows
+            .into_iter()
+            .map(|record| {
+                table_info
+                    .columns
+                    .iter()
+                    .zip(record.into_iter())
+                    .map(|(col, val)| (col.name.clone(), val))
+                    .collect()
+            })
+            .collect();
+        // Filter through RLS policies
+        let filtered = catalog_guard.policy_catalog().filter_rows(table, rls_rows);
+        // Convert back to Record (Vec<Value>)
+        let result: Vec<sqlrustgo_storage::Record> = filtered
+            .into_iter()
+            .map(|row| {
+                table_info
+                    .columns
+                    .iter()
+                    .map(|col| row.get(&col.name).cloned().unwrap_or(Value::Null))
+                    .collect()
+            })
+            .collect();
+        Ok(result)
+    }
+
+    /// V311-01 F-23 + V311-02 F-24: scan with ClusteredTable + AHI instrumentation.
+    /// Priority: ClusteredTable (if registered) → storage.scan().
+    /// AHI records every table-level access for hot-page promotion.
     fn scan_with_ahi(
         &self,
         storage: &parking_lot::RwLockReadGuard<'_, S>,
         table: &str,
     ) -> SqlResult<Vec<sqlrustgo_storage::Record>> {
-        // V311-06 (F-31): notify instrumentation hook before scan
+        // V311-01 F-23: route clustered-table scans through ClusteredTable.
+        // ClusteredTable stores rows ordered by primary key (InnoDB-style),
+        // providing O(log N) pk lookups and O(log N + k) range scans.
+        if let Some(ct_guard) = self.clustered_tables.read().get(table) {
+            let ct = ct_guard.read();
+            self.instrumentation.on_seq_scan_start(table);
+            let rows = ct.full_scan();
+            // V311-02 F-24: record table-level access for AHI promotion.
+            let mut page_id: u64 = 0xcbf29ce484222325;
+            for &b in table.as_bytes() {
+                page_id ^= u64::from(b);
+                page_id = page_id.wrapping_mul(0x100000001b3);
+            }
+            let offset = rows.len() as u32;
+            self.adaptive_hash_index
+                .record_access(table, b"clustered", page_id, offset);
+            return Ok(rows);
+        }
+        // Default: full table scan via storage.
         self.instrumentation.on_seq_scan_start(table);
         let rows = storage.scan(table)?;
-        // Stable FNV-1a-ish hash of table name as synthetic page_id.
+        // V311-02 F-24: stable FNV-1a-ish hash of table name as synthetic page_id.
         let mut page_id: u64 = 0xcbf29ce484222325;
         for &b in table.as_bytes() {
             page_id ^= u64::from(b);
@@ -1344,6 +1418,8 @@ impl<S: StorageEngine + 'static> ExecutionEngine<S> {
         } else {
             raw_info
         };
+        // V311-05 F-29: apply RLS filter to base table scan after table_info is defined
+        rows = self.apply_rls_filter(&base_table, rows, &table_info)?;
         if let Some(where_expr) = select.where_clause.as_ref() {
             // Build the base table's qualified column-name set
             // (TPC-H prefix + bare names).
@@ -1388,6 +1464,7 @@ impl<S: StorageEngine + 'static> ExecutionEngine<S> {
                     unique_constraints: Vec::new(),
                     check_constraints: Vec::new(),
                     partition_info: None,
+                        compression: None,
                 };
                 for col in &subq.columns {
                     let col_name = col.alias.clone().unwrap_or_else(|| col.name.clone());
@@ -1406,7 +1483,9 @@ impl<S: StorageEngine + 'static> ExecutionEngine<S> {
                                 Value::Text(_) => "TEXT",
                                 Value::Boolean(_) => "BOOLEAN",
                                 Value::Blob(_) => "BLOB",
+                                Value::Point(_, _) => "POINT",
                                 Value::Null => "NULL",
+                                Value::Point(_, _) => "POINT",
                             })
                         })
                         .unwrap_or("TEXT")
@@ -2132,6 +2211,7 @@ impl<S: StorageEngine + 'static> ExecutionEngine<S> {
                     unique_constraints: vec![],
                     check_constraints: vec![],
                     partition_info: None,
+                        compression: None,
                 };
                 return Ok((cross, combined_schema));
             }
@@ -3870,6 +3950,7 @@ impl<S: StorageEngine + 'static> ExecutionEngine<S> {
                                     V::Float(f) => f.to_string(),
                                     V::Text(s) => s,
                                     V::Null => "NULL".to_string(),
+                                    V::Point(x, y) => format!("POINT({}, {})", x, y),
                                     V::Boolean(b) => b.to_string(),
                                     V::Blob(_) => "BLOB".to_string(),
                                 };
@@ -3892,6 +3973,7 @@ impl<S: StorageEngine + 'static> ExecutionEngine<S> {
                                     V::Float(f) => f.to_string(),
                                     V::Text(s) => s,
                                     V::Null => "NULL".to_string(),
+                                    V::Point(x, y) => format!("POINT({}, {})", x, y),
                                     V::Boolean(b) => b.to_string(),
                                     V::Blob(_) => "BLOB".to_string(),
                                 };

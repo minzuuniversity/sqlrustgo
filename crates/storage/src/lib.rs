@@ -6,8 +6,8 @@ pub mod binary_format;
 pub mod binary_storage;
 pub mod bplus_tree;
 pub mod buffer_pool;
-pub mod checkpoint;
 pub mod change_buffer;
+pub mod checkpoint;
 pub mod clustered_table;
 pub mod double_write_buffer;
 pub mod engine;
@@ -32,16 +32,16 @@ pub use binary_format::BinaryFormat;
 pub use binary_storage::{BinaryTableStorage, BoxStorageEngine};
 pub use bplus_tree::BPlusTree;
 pub use buffer_pool::BufferPool;
+pub use change_buffer::{ChangeBuffer, ChangeEntry, ChangeOp};
 pub use checkpoint::{CheckpointConfig, CheckpointManager, CheckpointMetadata};
+pub use double_write_buffer::{DoubleWriteBuffer, DwbPage};
 pub use engine::{
     evaluate_check_constraint, ColumnDefinition, ForeignKeyAction, ForeignKeyConstraint,
     MemoryStorage, Record, RowFilter, RowMutation, SequenceInfo, SqlResult, StorageEngine, TableData,
     TableInfo, TriggerEvent, TriggerInfo, TriggerTiming, UniqueConstraint, Value,
 };
 pub use file_storage::FileStorage;
-pub use change_buffer::{ChangeBuffer, ChangeEntry, ChangeOp};
 pub use lock::{GapLock, GapLockManager, GapLockType, IsolationLevel};
 pub use page::Page;
 pub use wal::{FileBackedWalManager, MemoryWalManager, WalManager};
 pub use wal_storage::WalStorage;
-pub use double_write_buffer::{DoubleWriteBuffer, DwbPage};

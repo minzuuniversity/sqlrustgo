@@ -293,6 +293,7 @@ fn test_index_scan_performance_vs_seqscan() {
             foreign_keys: vec![],
             unique_constraints: vec![],
             check_constraints: vec![],
+                compression: None,
             partition_info: None,
         })
         .unwrap();
@@ -354,6 +355,7 @@ fn test_join_performance_hash_join() {
             foreign_keys: vec![],
             unique_constraints: vec![],
             check_constraints: vec![],
+                compression: None,
             partition_info: None,
         })
         .unwrap();
@@ -377,6 +379,7 @@ fn test_join_performance_hash_join() {
             foreign_keys: vec![],
             unique_constraints: vec![],
             check_constraints: vec![],
+                compression: None,
             partition_info: None,
         })
         .unwrap();
@@ -693,6 +696,7 @@ fn test_composite_index() {
             foreign_keys: vec![],
             unique_constraints: vec![],
             check_constraints: vec![],
+                compression: None,
             partition_info: None,
         })
         .unwrap();
@@ -745,6 +749,7 @@ fn test_covering_index() {
             foreign_keys: vec![],
             unique_constraints: vec![],
             check_constraints: vec![],
+                compression: None,
             partition_info: None,
         })
         .unwrap();

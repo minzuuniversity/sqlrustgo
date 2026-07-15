@@ -8,7 +8,8 @@
 
 use serde::{Deserialize, Deserializer, Serialize, Serializer};
 use sqlrustgo_types::SqlResult;
-use std::collections::HashMap;
+use std::collections::{HashMap, VecDeque};
+use std::time::{Duration, SystemTime, UNIX_EPOCH};
 
 /// User identity (username@host)
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]
@@ -74,6 +75,10 @@ pub struct UserAuthInfo {
     pub created_at: u64,
     /// Last update timestamp
     pub updated_at: u64,
+    /// Timestamp of last password change (Unix); 0 = unknown
+    pub password_changed_at: u64,
+    /// Whether password was manually expired via ALTER USER PASSWORD EXPIRE
+    pub password_expired: bool,
 }
 
 /// SCRAM-SHA-256 credential storage
@@ -162,6 +167,248 @@ fn constant_time_eq(a: &[u8], b: &[u8]) -> bool {
     }
     result == 0
 }
+/// Password age tracking
+#[derive(Debug, Clone)]
+pub struct PasswordAge {
+    /// When the password was set
+    pub set_at: SystemTime,
+    /// Unix timestamp of when password was set
+    pub set_at_unix: u64,
+}
+
+impl PasswordAge {
+    /// Create a new PasswordAge with the current timestamp
+    pub fn new() -> Self {
+        let now = SystemTime::now();
+        let unix = now.duration_since(UNIX_EPOCH).unwrap_or_default().as_secs();
+        Self {
+            set_at: now,
+            set_at_unix: unix,
+        }
+    }
+
+    /// Create a PasswordAge with a specific Unix timestamp
+    pub fn from_unix(unix: u64) -> Self {
+        let set_at = UNIX_EPOCH + Duration::from_secs(unix);
+        Self {
+            set_at,
+            set_at_unix: unix,
+        }
+    }
+
+    /// Age of the password in days
+    pub fn age_days(&self) -> u64 {
+        let now = SystemTime::now();
+        match now.duration_since(self.set_at) {
+            Ok(d) => d.as_secs() / 86400,
+            Err(_) => 0,
+        }
+    }
+
+    /// Whether the password is expired given a lifetime in days
+    pub fn is_expired(&self, lifetime_days: u64) -> bool {
+        if lifetime_days == 0 {
+            return false;
+        }
+        self.age_days() >= lifetime_days
+    }
+}
+
+impl Default for PasswordAge {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
+/// Password history to prevent reuse
+#[derive(Debug, Clone)]
+pub struct PasswordHistory {
+    entries: VecDeque<String>,
+    max_size: usize,
+}
+
+impl PasswordHistory {
+    pub fn new(max_size: usize) -> Self {
+        Self {
+            entries: VecDeque::with_capacity(max_size),
+            max_size,
+        }
+    }
+
+    pub fn record(&mut self, password_hash: String) {
+        if self.entries.len() >= self.max_size {
+            self.entries.pop_front();
+        }
+        self.entries.push_back(password_hash);
+    }
+
+    pub fn contains(&self, password_hash: &str) -> bool {
+        self.entries.iter().any(|p| p == password_hash)
+    }
+
+    pub fn len(&self) -> usize {
+        self.entries.len()
+    }
+
+    pub fn is_empty(&self) -> bool {
+        self.entries.is_empty()
+    }
+}
+
+impl Default for PasswordHistory {
+    fn default() -> Self {
+        Self::new(DEFAULT_PASSWORD_HISTORY_SIZE)
+    }
+}
+
+/// Password rotation policy
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct PasswordPolicy {
+    /// Password lifetime in days (0 = disabled)
+    pub lifetime_days: u64,
+    /// Number of historical passwords to retain
+    pub history_size: usize,
+    /// Whether expired passwords block writes
+    pub enforce_on_write: bool,
+}
+
+impl PasswordPolicy {
+    pub fn default_policy() -> Self {
+        Self {
+            lifetime_days: DEFAULT_PASSWORD_LIFETIME_DAYS,
+            history_size: DEFAULT_PASSWORD_HISTORY_SIZE,
+            enforce_on_write: true,
+        }
+    }
+
+    pub fn disabled() -> Self {
+        Self {
+            lifetime_days: 0,
+            history_size: 0,
+            enforce_on_write: false,
+        }
+    }
+}
+
+impl Default for PasswordPolicy {
+    fn default() -> Self {
+        Self::default_policy()
+    }
+}
+
+/// Password rotation manager — tracks age, history, and policy per user
+#[derive(Debug, Clone)]
+pub struct PasswordRotationManager {
+    policy: PasswordPolicy,
+    ages: HashMap<String, PasswordAge>,
+    history: HashMap<String, PasswordHistory>,
+}
+
+impl PasswordRotationManager {
+    pub fn new() -> Self {
+        Self {
+            policy: PasswordPolicy::default(),
+            ages: HashMap::new(),
+            history: HashMap::new(),
+        }
+    }
+
+    pub fn with_policy(policy: PasswordPolicy) -> Self {
+        Self {
+            policy,
+            ages: HashMap::new(),
+            history: HashMap::new(),
+        }
+    }
+
+    /// Record that a user changed their password to the given hash
+    pub fn record_password_change(&mut self, user: &str, password_hash: &str) {
+        self.ages.insert(user.to_string(), PasswordAge::new());
+        if self.policy.history_size > 0 {
+            let history = self
+                .history
+                .entry(user.to_string())
+                .or_insert_with(|| PasswordHistory::new(self.policy.history_size));
+            history.record(password_hash.to_string());
+        }
+    }
+
+    /// Whether the user's password is expired
+    pub fn is_expired(&self, user: &str) -> bool {
+        // First check manual expiration flag (stored in UserAuthInfo, not here)
+        // Then check age-based expiration
+        match self.ages.get(user) {
+            Some(age) => age.is_expired(self.policy.lifetime_days),
+            None => false,
+        }
+    }
+
+    /// Check age-based expiration only (used by AuthManager which tracks manual flag)
+    pub fn is_age_expired(&self, user: &str) -> bool {
+        match self.ages.get(user) {
+            Some(age) => age.is_expired(self.policy.lifetime_days),
+            None => false,
+        }
+    }
+
+    /// Age of user's password in days, or None if unknown
+    pub fn age_days(&self, user: &str) -> Option<u64> {
+        self.ages.get(user).map(|a| a.age_days())
+    }
+
+    /// Mark a user's password as expired immediately (for ALTER USER PASSWORD EXPIRE)
+    /// This sets age to a very old value so is_expired returns true
+    pub fn expire_now(&mut self, user: &str) {
+        self.ages.insert(
+            user.to_string(),
+            PasswordAge {
+                set_at: UNIX_EPOCH + Duration::from_secs(0),
+                set_at_unix: 0,
+            },
+        );
+    }
+
+    /// Whether a user can reuse a given password hash (not in history)
+    pub fn can_reuse(&self, user: &str, password_hash: &str) -> bool {
+        match self.history.get(user) {
+            Some(h) => !h.contains(password_hash),
+            None => true,
+        }
+    }
+
+    pub fn policy(&self) -> PasswordPolicy {
+        self.policy.clone()
+    }
+
+    pub fn set_policy(&mut self, policy: PasswordPolicy) {
+        self.policy = policy;
+    }
+
+    /// Whether writes should be blocked for this user due to password expiration
+    pub fn is_write_blocked(&self, user: &str) -> bool {
+        if !self.policy.enforce_on_write {
+            return false;
+        }
+        self.is_expired(user)
+    }
+
+    /// Set password_changed_at from a Unix timestamp (for deserialization)
+    pub fn set_password_changed_at(&mut self, user: &str, unix: u64) {
+        if unix > 0 {
+            self.ages
+                .insert(user.to_string(), PasswordAge::from_unix(unix));
+        }
+    }
+}
+
+impl Default for PasswordRotationManager {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
+pub const DEFAULT_PASSWORD_LIFETIME_DAYS: u64 = 90;
+pub const DEFAULT_PASSWORD_HISTORY_SIZE: usize = 5;
 
 /// Database privilege types
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize)]
@@ -484,8 +731,9 @@ pub struct AuthManager {
     next_user_id: u64,
     next_role_id: u64,
     next_grant_id: u64,
+    /// Password rotation state (age, history, policy)
+    password_rotation: PasswordRotationManager,
 }
-
 impl AuthManager {
     pub fn new() -> Self {
         let mut auth = Self {
@@ -497,6 +745,7 @@ impl AuthManager {
             next_user_id: 1,
             next_role_id: 1,
             next_grant_id: 1,
+            password_rotation: PasswordRotationManager::new(),
         };
 
         auth.roles
@@ -523,9 +772,34 @@ impl AuthManager {
             is_active: true,
             created_at: current_timestamp(),
             updated_at: current_timestamp(),
+            password_changed_at: current_timestamp(),
+            password_expired: false,
         };
 
-        self.users.insert(identity.clone(), user);
+        self.users.insert(identity.clone(), user.clone());
+        let user_key = format!("{}@{}", identity.username, identity.host);
+        self.password_rotation
+            .record_password_change(&user_key, password_hash);
+        Ok(())
+    }
+    /// Set or change a user's password hash (updates password_changed_at, clears expired flag)
+    pub fn set_password_hash(
+        &mut self,
+        identity: &UserIdentity,
+        password_hash: &str,
+    ) -> AuthResult<()> {
+        let user = self.users.get_mut(identity).ok_or_else(|| AuthError {
+            code: AuthErrorCode::UserNotFound,
+            message: format!("User '{}'@'{}' not found", identity.username, identity.host),
+        })?;
+
+        user.password_hash = password_hash.to_string();
+        user.password_changed_at = current_timestamp();
+        user.password_expired = false;
+
+        let user_key = format!("{}@{}", identity.username, identity.host);
+        self.password_rotation
+            .record_password_change(&user_key, password_hash);
         Ok(())
     }
 
@@ -539,11 +813,25 @@ impl AuthManager {
 
     pub fn authenticate(&self, identity: &UserIdentity, password: &str) -> AuthResult<u64> {
         if let Some(user) = self.users.get(identity) {
+            let user_key = format!("{}@{}", identity.username, identity.host);
+            if user.password_expired || self.password_rotation.is_age_expired(&user_key) {
+                return Err(AuthError {
+                    code: AuthErrorCode::AuthenticationFailed,
+                    message: "Your password has expired. Please change it.".to_string(),
+                });
+            }
             return self.verify_and_return(identity, password, user);
         }
 
         let wildcard_identity = UserIdentity::new(&identity.username, "%");
         if let Some(user) = self.users.get(&wildcard_identity) {
+            let user_key = format!("{}@{}", identity.username, identity.host);
+            if user.password_expired || self.password_rotation.is_age_expired(&user_key) {
+                return Err(AuthError {
+                    code: AuthErrorCode::AuthenticationFailed,
+                    message: "Your password has expired. Please change it.".to_string(),
+                });
+            }
             return self.verify_and_return(identity, password, user);
         }
 
@@ -1102,6 +1390,54 @@ impl AuthManager {
         } else {
             None
         }
+    }
+
+    // === Password Rotation ===
+
+    /// Mark a user's password as expired (ALTER USER ... PASSWORD EXPIRE)
+    pub fn expire_password(&mut self, identity: &UserIdentity) {
+        let user_key = format!("{}@{}", identity.username, identity.host);
+        // Set manual flag
+        if let Some(user) = self.users.get_mut(identity) {
+            user.password_expired = true;
+        }
+        // Set age to 0 so age-based check also returns true
+        self.password_rotation.expire_now(&user_key);
+    }
+
+    /// Whether the given user's password is expired (age-based or manual)
+    pub fn is_password_expired(&self, identity: &UserIdentity) -> bool {
+        let user_key = format!("{}@{}", identity.username, identity.host);
+        // If policy enforcement is disabled, never consider expired
+        if !self.password_rotation.policy().enforce_on_write {
+            return false;
+        }
+        let manual_expired = self
+            .users
+            .get(identity)
+            .map(|u| u.password_expired)
+            .unwrap_or(false);
+        manual_expired || self.password_rotation.is_age_expired(&user_key)
+    }
+    /// Get current password policy
+    pub fn password_policy(&self) -> PasswordPolicy {
+        self.password_rotation.policy()
+    }
+
+    /// Update password policy at runtime
+    pub fn set_password_policy(&mut self, policy: PasswordPolicy) {
+        self.password_rotation.set_policy(policy);
+    }
+    /// Whether a user can reuse a password (not in history)
+    pub fn can_reuse_password(&self, identity: &UserIdentity, password_hash: &str) -> bool {
+        let user_key = format!("{}@{}", identity.username, identity.host);
+        self.password_rotation.can_reuse(&user_key, password_hash)
+    }
+
+    /// Whether writes should be blocked for this user due to expired password
+    pub fn is_password_write_blocked(&self, identity: &UserIdentity) -> bool {
+        let user_key = format!("{}@{}", identity.username, identity.host);
+        self.password_rotation.is_write_blocked(&user_key)
     }
 }
 

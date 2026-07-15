@@ -13,7 +13,10 @@
 use sqlrustgo_storage::{DoubleWriteBuffer, DwbPage};
 
 fn make_page(id: u64, data: &[u8]) -> DwbPage {
-    DwbPage { id, data: data.to_vec() }
+    DwbPage {
+        id,
+        data: data.to_vec(),
+    }
 }
 
 #[test]
@@ -60,7 +63,10 @@ fn test_dwb_crash_recovery() {
     // Recovery: DWB pages take precedence over partial writes
     let recovered = dwb.recover_from_crash();
     assert_eq!(recovered.len(), 2, "Both pages recovered from DWB");
-    assert_eq!(recovered[0].data, b"critical_data", "Correct data recovered");
+    assert_eq!(
+        recovered[0].data, b"critical_data",
+        "Correct data recovered"
+    );
     assert_eq!(dwb.recovery_count(), 1, "recovery_count incremented");
 }
 
@@ -86,7 +92,10 @@ fn test_dwb_capacity_and_eviction() {
     assert_eq!(written, 4);
 
     // Page 0 was evicted and not written
-    assert!(dwb.get_page(0).is_none(), "Evicted page 0 not in final location");
+    assert!(
+        dwb.get_page(0).is_none(),
+        "Evicted page 0 not in final location"
+    );
 }
 
 #[test]

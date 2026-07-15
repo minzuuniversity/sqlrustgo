@@ -463,7 +463,8 @@ mod tests {
                     references: None,
                 },
             ],
-        };
+            compression: None,
+};
 
         let records = vec![
             vec![Value::Integer(1), Value::Text("Alice".to_string())],
@@ -502,7 +503,8 @@ mod tests {
                 auto_increment: false,
                 references: None,
             }],
-        };
+            compression: None,
+};
 
         let records: Vec<Vec<Value>> = (0..100)
             .map(|i| vec![Value::Text(format!("value_{}", i))])
@@ -537,7 +539,8 @@ mod tests {
                 auto_increment: false,
                 references: None,
             }],
-        };
+            compression: None,
+};
 
         let records: Vec<Vec<Value>> = (0..50).map(|i| vec![Value::Integer(i)]).collect();
 
@@ -570,7 +573,8 @@ mod tests {
                 auto_increment: false,
                 references: None,
             }],
-        };
+            compression: None,
+};
 
         let records = vec![
             vec![Value::Integer(10)],
@@ -618,7 +622,8 @@ mod tests {
                     references: None,
                 },
             ],
-        };
+            compression: None,
+};
 
         let mut chunk1 = ColumnChunk::new();
         let mut chunk2 = ColumnChunk::new();

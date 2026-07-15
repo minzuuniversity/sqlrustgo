@@ -119,6 +119,12 @@ impl<S: StorageEngine, T: WalManager> WalStorage<S, T> {
             Value::Null => Vec::new(),
             Value::Float(f) => f.to_bits().to_le_bytes().to_vec(),
             Value::Blob(b) => b.clone(),
+            Value::Point(x, y) => {
+                let mut bytes = vec![0x07];
+                bytes.extend_from_slice(&x.to_le_bytes());
+                bytes.extend_from_slice(&y.to_le_bytes());
+                bytes
+            },
         }
     }
 
@@ -149,6 +155,12 @@ impl<S: StorageEngine, T: WalManager> WalStorage<S, T> {
                 Value::Blob(b) => {
                     bytes.extend_from_slice(b"B:");
                     bytes.extend_from_slice(b);
+                    bytes.push(0);
+                }
+                Value::Point(x, y) => {
+                    bytes.extend_from_slice(b"P:");
+                    bytes.extend_from_slice(&x.to_le_bytes());
+                    bytes.extend_from_slice(&y.to_le_bytes());
                     bytes.push(0);
                 }
             }
@@ -811,7 +823,8 @@ mod tests {
                 foreign_keys: vec![],
                 unique_constraints: vec![],
                 check_constraints: vec![],
-                partition_info: None,
+               
+    compression: None, partition_info: None,
             })
             .unwrap();
 
@@ -930,7 +943,8 @@ mod tests {
             foreign_keys: vec![],
             unique_constraints: vec![],
             check_constraints: vec![],
-            partition_info: None,
+           
+    compression: None, partition_info: None,
         };
         storage.create_table(&info).unwrap();
         storage.insert("t", vec![vec![Value::Integer(1)]]).unwrap();
@@ -966,7 +980,8 @@ mod tests {
             foreign_keys: vec![],
             unique_constraints: vec![],
             check_constraints: vec![],
-            partition_info: None,
+           
+    compression: None, partition_info: None,
         };
         storage.create_table(&info).unwrap();
         storage.insert("t", vec![vec![Value::Integer(1)]]).unwrap();
@@ -985,7 +1000,8 @@ mod tests {
             foreign_keys: vec![],
             unique_constraints: vec![],
             check_constraints: vec![],
-            partition_info: None,
+           
+    compression: None, partition_info: None,
         };
         storage.create_table(&info).unwrap();
         storage.insert("t", vec![vec![Value::Integer(1)]]).unwrap();
@@ -1004,7 +1020,8 @@ mod tests {
             foreign_keys: vec![],
             unique_constraints: vec![],
             check_constraints: vec![],
-            partition_info: None,
+           
+    compression: None, partition_info: None,
         };
         storage.create_table(&info).unwrap();
         storage.insert("t", vec![vec![Value::Integer(1)]]).unwrap();
@@ -1025,7 +1042,8 @@ mod tests {
             foreign_keys: vec![],
             unique_constraints: vec![],
             check_constraints: vec![],
-            partition_info: None,
+           
+    compression: None, partition_info: None,
         };
         storage.create_table(&info).unwrap();
         storage.insert("t", vec![vec![Value::Integer(1)]]).unwrap();
@@ -1045,7 +1063,8 @@ mod tests {
             foreign_keys: vec![],
             unique_constraints: vec![],
             check_constraints: vec![],
-            partition_info: None,
+           
+    compression: None, partition_info: None,
         };
         storage.create_table(&info).unwrap();
         storage.drop_table("t").unwrap();
@@ -1062,7 +1081,8 @@ mod tests {
             foreign_keys: vec![],
             unique_constraints: vec![],
             check_constraints: vec![],
-            partition_info: None,
+           
+    compression: None, partition_info: None,
         };
         storage.create_table(&info).unwrap();
         let got = storage.get_table_info("t").unwrap();
@@ -1080,7 +1100,8 @@ mod tests {
             foreign_keys: vec![],
             unique_constraints: vec![],
             check_constraints: vec![],
-            partition_info: None,
+           
+    compression: None, partition_info: None,
         };
         storage.create_table(&info).unwrap();
         assert!(storage.has_table("t"));
@@ -1099,7 +1120,8 @@ mod tests {
             foreign_keys: vec![],
             unique_constraints: vec![],
             check_constraints: vec![],
-            partition_info: None,
+           
+    compression: None, partition_info: None,
         };
         storage.create_table(&info).unwrap();
         storage.insert("t", vec![vec![Value::Integer(1)]]).unwrap();
@@ -1118,7 +1140,8 @@ mod tests {
             foreign_keys: vec![],
             unique_constraints: vec![],
             check_constraints: vec![],
-            partition_info: None,
+           
+    compression: None, partition_info: None,
         };
         storage.create_table(&info).unwrap();
         storage
