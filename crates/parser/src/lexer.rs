@@ -274,6 +274,7 @@ impl<'a> Lexer<'a> {
                     "FROM" => Token::From,
                     "WHERE" => Token::Where,
                     "INSERT" => Token::Insert,
+                    "IGNORE" => Token::Ignore,
                     "INTO" => Token::Into,
                     "VALUES" => Token::Values,
                     "UPDATE" => Token::Update,

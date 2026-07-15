@@ -47,6 +47,7 @@ pub enum Token {
     Analyze,
     Truncate,
     Replace,
+    Ignore,
 
     // Constraint keywords
     Foreign,
@@ -292,6 +293,7 @@ impl fmt::Display for Token {
             Token::Analyze => write!(f, "ANALYZE"),
             Token::Truncate => write!(f, "TRUNCATE"),
             Token::Replace => write!(f, "REPLACE"),
+            Token::Ignore => write!(f, "IGNORE"),
             Token::Duplicate => write!(f, "DUPLICATE"),
             Token::Database => write!(f, "DATABASE"),
             Token::Use => write!(f, "USE"),
@@ -546,6 +548,7 @@ pub fn from_keyword(s: &str) -> Option<Token> {
         "ANALYZE" => Some(Token::Analyze),
         "TRUNCATE" => Some(Token::Truncate),
         "REPLACE" => Some(Token::Replace),
+            "IGNORE" => Some(Token::Ignore),
         "DUPLICATE" => Some(Token::Duplicate),
         "MODIFY" => Some(Token::Modify),
         "DATABASE" => Some(Token::Database),
@@ -956,6 +959,7 @@ mod tests {
         assert_eq!(Token::Analyze.to_string(), "ANALYZE");
         assert_eq!(Token::Truncate.to_string(), "TRUNCATE");
         assert_eq!(Token::Replace.to_string(), "REPLACE");
+        assert_eq!(Token::Ignore.to_string(), "IGNORE");
         assert_eq!(Token::No.to_string(), "NO");
         assert_eq!(Token::Action.to_string(), "ACTION");
         assert_eq!(Token::AutoIncrement.to_string(), "AUTO_INCREMENT");
