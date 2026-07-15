@@ -11,7 +11,6 @@
 ---
 
 ## 2026-07-15 — v3.11.0 Release Preparation (Issue #3433, Phase 4)
-
 > **工作树**: `/private/tmp/ga-todos` (develop/v3.11.0)
 
 ### Release Infrastructure
@@ -35,6 +34,11 @@
 | `required_approvals` | 2 |
 | `status_check_contexts` | lint, build, docs-links, cargo-build |
 
+### V311-08 F-35: Password Rotation (Issue #3495)
+- **PRs**: #3519, #3522, #3529 (all merged)
+- **功能**: `ALTER USER ... PASSWORD EXPIRE` SQL parsing + execution + 25 integration tests
+- **详见**: `docs/releases/v3.11.0/plans/V311_ISSUES_PLAN.md` — V311-08
+
 ### 完成阶段一览
 
 | 阶段 | 状态 |
@@ -47,8 +51,8 @@
 
 ### 任务完成度
 
-12/24 V311 tasks DONE (50.0%): V311-01/02/06/07/09/13/15/16/17/19/22/23
-12/24 remaining: V311-03/04/05/08/10/11/12/14/18/20/21 (P0: 3, P1: 8)
+13/23 V311 tasks DONE (56.5%): V311-01/02/05/06/07/08/09/13/15/16/17/19/22/23
+10/23 remaining: V311-03/04/10/11/12/14/18/20/21 (P0: 3, P1: 7)
 
 ---
 ## 2026-07-14 — v3.10.0 GA Post-Release + 168h SOAK 启动
