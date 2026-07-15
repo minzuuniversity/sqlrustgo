@@ -4341,6 +4341,7 @@ version = "3.9.0"
 dependencies = [
  "hmac 0.12.1",
  "log",
+ "parking_lot",
  "pbkdf2",
  "rand 0.8.6",
  "serde",
