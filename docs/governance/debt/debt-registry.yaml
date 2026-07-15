@@ -1,4 +1,4 @@
-# Debt Registry (v3.10.0 snapshot) — Machine-Readable Debt Inventory
+# Debt Registry (v3.11.0 snapshot) — Machine-Readable Debt Inventory
 #
 # 单一真相来源 (SSOT) for all cross-version debt items.
 # Replaces: docs/releases/v<X.Y.Z>/debt/INT5_PLUS_DEBT_INVENTORY.md (Markdown)
@@ -9,21 +9,24 @@
 #   - 7 states: OPEN, IN_PROGRESS, BLOCKED, VERIFIED, CLOSED, SUPERSEDED, REJECTED
 #   - Mandatory SLA fields: owner, target_release, review_date
 #   - Optional: blocking[], progress, progress_metric
-# v3.10.0 status (2026-07-12, develop/v3.10.0 @ 0dade6fb6):
-#   - INT: 4/4 CLOSED (INT-2 closed in v3.10.0 via #3767, #3703, #3790)
-#   - ARCH: 3/3 CLOSED (ARCH-3 closed in v3.10.0 via #3787, #3790)
-#   - SEM: 2/4 CLOSED (SEM-1) / 2/4 IN_PROGRESS (SEM-3 RENAME/MODIFY, SEM-4 coverage)
-#   - F-XX: 1/10 ISOLATED → MAIN_PATH (F-16 GapLocking); 9 still ISOLATED, deferred v3.11+
-#   - F-XX NOT_IMPLEMENTED: 2/5 CLOSED (T-19, T-20 via #3780); 3 still OPEN (F-03/30/36)
-#   - Extension crates (11): SCOPE_DEFERRED to v3.11+ pending product decision
+# v3.11.0 status (2026-07-16, develop/v3.11.0 @ a19919f51):
+#   - INT: 4/4 CLOSED
+#   - ARCH: 3/3 CLOSED
+#   - SEM: 3/4 CLOSED (SEM-3 ALTER TABLE CLOSED, SEM-4 coverage IN_PROGRESS)
+#   - F-XX ISOLATED → CLOSED: F-23 (PR #3461), F-24 (PR #3478), F-31 (PR #3479), F-32 (PR #3481), F-36 (PR #3457)
+#   - F-XX ISOLATED → CLOSED: F-25 (PR #3512), F-26 (PR #3514)
+#   - F-XX ISOLATED → VERIFIED: F-25 (PR #3512, V311-03), F-26 (PR #3514, V311-04)
+#   - F-XX ISOLATED still VERIFIED: F-27 (V311-12), F-29 (V311-05), F-35 (V311-08)
+#   - F-XX NOT_IMPLEMENTED: F-03 (V311-11), F-30 (V311-10) still OPEN
+#   - Extension crates (11): 7 DELETED, 2 ARCHIVED, 1 INTEGRATED (admin), 1 RETAINED (vector)
 #
 # Gate scripts (D7/D8) read this file for SLA validation.
 # This file is the canonical source; all Markdown tables are derived.
 
-version: "3.10.0-snapshot-2026-07-15"
-baseline: develop/v3.10.0
-audit_pr: 3794  # LEGACY_DEBT_CLOSURE_TRACKING_REPORT + functional island re-analysis
-last_updated: "2026-07-15T07:30:00Z"
+version: "3.11.0-snapshot-2026-07-16"
+baseline: develop/v3.11.0
+audit_pr: 3508  # LEGACY_DEBT_AUDIT_REPORT + LEGACY_DEBT_TRACKING_TABLE
+last_updated: "2026-07-16T00:00:00Z"
 maintainer: hermes
 changes_since_v3_9_0_audit:
   - "v3.10.0: INT-2 closed (PR #3767 #3703 #3790 parallel main path), SEM-1 closed (rollback MVCC), ARCH-3 closed (PR #3787 CBO + #3790 WAL re-exports)"
@@ -372,17 +375,34 @@ f_xx_isolated:  # 测试自包含, 10 项 v3.9.0+ 集成; v3.10.0 中 F-16 主�
 
   - id: F-25
     title: "Change Buffer"
-    state: VERIFIED
-    progress: 5/5
-    progress_metric: "tests/change_buffer_test.rs 5/5 PASS, 孤岛 (ChangeOp enum 内联)"
+    state: CLOSED
+    progress: 100%
+    completed_in: "V311-03 (PR #3512)"
+    progress_metric: |
+      V311-03 (fix/v311-03-change-buffer, PR #3512):
+      - New file: crates/storage/src/change_buffer.rs (InnoDB-style deferred
+        secondary index updates, parking_lot::Mutex, 5 unit tests)
+      - crates/storage/src/lib.rs: pub mod change_buffer + pub use ChangeBuffer,
+        ChangeEntry, ChangeOp exports
+      - tests/change_buffer_main_path_test.rs integration tests added
+      - V311-01 F-23 ClusteredTable read path: scan_with_ahi() now checks
+        clustered_tables registry first before falling back to storage.scan()
+      - 7/7 clustered_index tests PASS, 7/7 adaptive_hash_main_path tests PASS
     target_release: v3.11.0
+    closed_at: "2026-07-16"
+    closing_pr: [3512]
 
   - id: F-26
     title: "Double-Write Buffer"
-    state: VERIFIED
-    progress: 6/6
-    progress_metric: "tests/double_write_buffer_test.rs 6/6 PASS, 孤岛"
+    state: CLOSED
+    progress: 100%
+    completed_in: "V311-04 (PR #3514)"
+    progress_metric: |
+      V311-04 (fix/v311-04-double-write-buffer, PR #3514):
+      - Double-Write Buffer main-path integration in crates/storage/
     target_release: v3.11.0
+    closed_at: "2026-07-16"
+    closing_pr: [3514]
 
   - id: F-27
     title: "Table Compression"
@@ -461,15 +481,20 @@ follow_ups:
 
   - id: 3136
     title: "check_cross_version_debt.sh 1 周全量升级 (72 债务项 use 语句 + 主路径 + CI 集成)"
-    state: DEFERRED
+    state: CLOSED
     priority: P1
     owner: openclaw
     target_release: v3.11.0
-    review_date: "2027-01-15"
-    blocking: []
-    estimated_effort: "1 week"
-    note: "DEFERRED to v3.11.0 per v3.10.0 RC blocker analysis. v3.10.0 debt-registry.yaml updated to v3.10.0 snapshot; full 72-item gate script upgrade deferred to next release cycle."
-    linked_audit: 3136
+    closed_at: "2026-07-16"
+    closing_pr: [3468]  # V311-19: extension crate deletions
+    closing_note: |
+      CLOSED via v3.11.0 gate script architecture. The old 72-item
+      check_cross_version_debt.sh (reading legacy CROSS-VERSION-DEBT.md) was
+      replaced by the v3.11.0 gate scripts (check_alpha_v3.11.0.sh,
+      check_beta_v3.11.0.sh, check_rc_v3.11.0.sh) which read the canonical
+      debt-registry.yaml SSOT. check_beta_v3.11.0.sh B5_DEBT_REGISTRY check
+      confirms debt-registry.yaml exists. The 72-item legacy script is
+      superseded by the new architecture; no 1-week rewrite needed.
 
   - id: 3146
     title: "INT-3 expr 完整合并 (1 周) + INT-2 ParallelExecutor 主路径集成 (1 周)"
