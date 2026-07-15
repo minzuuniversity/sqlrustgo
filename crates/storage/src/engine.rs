@@ -280,6 +280,34 @@ pub struct TriggerInfo {
     pub body: String,
 }
 
+/// Sequence definition (F-30)
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct SequenceInfo {
+    pub name: String,
+    pub start_with: i64,
+    pub increment_by: i64,
+    pub minvalue: i64,
+    pub maxvalue: i64,
+    pub cache: i64,
+    pub cycle: bool,
+    pub current_value: i64,
+}
+
+impl Default for SequenceInfo {
+    fn default() -> Self {
+        Self {
+            name: String::new(),
+            start_with: 1,
+            increment_by: 1,
+            minvalue: 1,
+            maxvalue: i64::MAX,
+            cache: 1,
+            cycle: false,
+            current_value: 0,
+        }
+    }
+}
+
 /// Partition type
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
 pub enum PartitionType {
@@ -636,6 +664,46 @@ pub trait StorageEngine: Send + Sync {
     fn is_wal_enabled(&self) -> bool {
         false
     }
+
+    // === Sequence support (F-30) ===
+
+    /// Create a new sequence
+    fn create_sequence(&mut self, _seq: SequenceInfo) -> SqlResult<()> {
+        Err(SqlError::ExecutionError(
+            "Sequences not supported by this storage engine".to_string(),
+        ))
+    }
+
+    /// Drop a sequence
+    fn drop_sequence(&mut self, _name: &str) -> SqlResult<()> {
+        Err(SqlError::ExecutionError(
+            "Sequences not supported by this storage engine".to_string(),
+        ))
+    }
+
+    /// Get next value from a sequence
+    fn next_sequence_value(&mut self, _name: &str) -> SqlResult<i64> {
+        Err(SqlError::ExecutionError(
+            "Sequences not supported by this storage engine".to_string(),
+        ))
+    }
+
+    /// Get current value from a sequence (without advancing)
+    fn current_sequence_value(&self, _name: &str) -> SqlResult<i64> {
+        Err(SqlError::ExecutionError(
+            "Sequences not supported by this storage engine".to_string(),
+        ))
+    }
+
+    /// Check if a sequence exists
+    fn has_sequence(&self, _name: &str) -> bool {
+        false
+    }
+
+    /// List all sequences
+    fn list_sequences(&self) -> Vec<String> {
+        Vec::new()
+    }
 }
 
 /// In-memory storage implementation for testing and caching
@@ -644,6 +712,8 @@ pub struct MemoryStorage {
     table_infos: HashMap<String, TableInfo>,
     triggers: HashMap<String, TriggerInfo>,
     views: HashSet<String>,
+    /// Sequence definitions (F-30)
+    sequences: HashMap<String, SequenceInfo>,
     /// 内存中的数据库集合 (CREATE DATABASE 注册的, in-memory 模式)
     databases: HashSet<String>,
     /// Tracks the current transaction ID for VtuGuard::assert_dml_safe.
@@ -669,6 +739,7 @@ impl MemoryStorage {
             table_infos: HashMap::new(),
             triggers: HashMap::new(),
             views: HashSet::new(),
+            sequences: HashMap::new(),
             databases: HashSet::new(),
             current_tx_id: 0,
             next_tx_id: 1,
@@ -1049,6 +1120,73 @@ impl StorageEngine for MemoryStorage {
         self.views.contains(name)
     }
 
+    // === Sequence support (F-30) ===
+
+    fn create_sequence(&mut self, seq: SequenceInfo) -> SqlResult<()> {
+        if self.sequences.contains_key(&seq.name) {
+            return Err(SqlError::ExecutionError(format!(
+                "Sequence '{}' already exists",
+                seq.name
+            )));
+        }
+        self.sequences.insert(seq.name.clone(), seq);
+        Ok(())
+    }
+
+    fn drop_sequence(&mut self, name: &str) -> SqlResult<()> {
+        self.sequences
+            .remove(name)
+            .ok_or_else(|| {
+                SqlError::ExecutionError(format!("Sequence '{}' not found", name))
+            })?;
+        Ok(())
+    }
+
+    fn next_sequence_value(&mut self, name: &str) -> SqlResult<i64> {
+        let seq = self.sequences.get_mut(name).ok_or_else(|| {
+            SqlError::ExecutionError(format!("Sequence '{}' not found", name))
+        })?;
+        let next = seq.current_value + seq.increment_by;
+        if next > seq.maxvalue {
+            if seq.cycle {
+                seq.current_value = seq.minvalue;
+                return Ok(seq.minvalue);
+            } else {
+                return Err(SqlError::ExecutionError(format!(
+                    "Sequence '{}' exhausted: next value {} exceeds MAXVALUE {}",
+                    name, next, seq.maxvalue
+                )));
+            }
+        }
+        if next < seq.minvalue {
+            if seq.cycle {
+                seq.current_value = seq.maxvalue;
+                return Ok(seq.maxvalue);
+            } else {
+                return Err(SqlError::ExecutionError(format!(
+                    "Sequence '{}' exhausted: next value {} below MINVALUE {}",
+                    name, next, seq.minvalue
+                )));
+            }
+        }
+        seq.current_value = next;
+        Ok(next)
+    }
+
+    fn current_sequence_value(&self, name: &str) -> SqlResult<i64> {
+        let seq = self.sequences.get(name).ok_or_else(|| {
+            SqlError::ExecutionError(format!("Sequence '{}' not found", name))
+        })?;
+        Ok(seq.current_value)
+    }
+
+    fn has_sequence(&self, name: &str) -> bool {
+        self.sequences.contains_key(name)
+    }
+
+    fn list_sequences(&self) -> Vec<String> {
+        self.sequences.keys().cloned().collect()
+    }
     fn list_indexes(&self, _table: &str) -> Vec<(String, String)> {
         Vec::new()
     }
