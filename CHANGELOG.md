@@ -1,3 +1,56 @@
+# SQLRustGo v3.11.0 更新日志 — DRAFT
+
+> **版本**: v3.11.0
+> **类型**: Debt Clearance + Feature Island Integration + Performance Breakthrough
+> **分支**: `develop/v3.11.0`
+> **创建日期**: 2026-07-15
+> **前版本**: v3.10.0 (develop/v3.10.0 @ 14979a5f16)
+> **当前阶段**: **DRAFT** (Phase 4/5 Release Preparation)
+> **GA 目标**: 2026-10-01
+
+---
+
+## 2026-07-15 — v3.11.0 Release Preparation (Issue #3433, Phase 4)
+
+> **工作树**: `/private/tmp/ga-todos` (develop/v3.11.0)
+
+### Release Infrastructure
+
+| 文档 | 路径 | 状态 |
+|------|------|------|
+| RELEASE_NOTES.md | `docs/releases/v3.11.0/RELEASE_NOTES.md` | ✅ NEW |
+| STAGE.yaml | `docs/releases/v3.11.0/STAGE.yaml` | ✅ 已有 |
+| FEATURE_CHECKLIST.md | `docs/releases/v3.11.0/FEATURE_CHECKLIST.md` | ✅ 已更新 |
+| V311_VERSION_PLAN.md | `docs/releases/v3.11.0/plans/V311_VERSION_PLAN.md` | ✅ |
+| V311_DEVELOPMENT_PLAN.md | `docs/releases/v3.11.0/plans/V311_DEVELOPMENT_PLAN.md` | ✅ |
+| V311_DEBT_CLOSURE_PLAN.md | `docs/releases/v3.11.0/plans/V311_DEBT_CLOSURE_PLAN.md` | ✅ |
+| V311_DOCS_RESTRUCTURE_PLAN.md | `docs/releases/v3.11.0/plans/V311_DOCS_RESTRUCTURE_PLAN.md` | ✅ |
+| V311_ISSUE_CROSSREF.md | `docs/releases/v3.11.0/plans/V311_ISSUE_CROSSREF.md` | ✅ |
+
+### Branch Protection
+
+| 属性 | 值 |
+|------|-----|
+| `enable_push` | ❌ 禁用 |
+| `required_approvals` | 2 |
+| `status_check_contexts` | lint, build, docs-links, cargo-build |
+
+### 完成阶段一览
+
+| 阶段 | 状态 |
+|------|------|
+| Phase 0: Foundation (5 issues) | ✅ 全部关闭 |
+| Phase 1: Storage Engine (5 issues) | ✅ 全部关闭 |
+| Phase 2: SQL / Protocol (2 issues) | ✅ 全部关闭 |
+| Phase 3: Performance — TPC-H SF=1 | ⏳ 阻塞 (硬件限制, 75GB+ 磁盘) |
+| Phase 4: DevOps / Release Prep | 🔜 #3433 进行中 |
+
+### 任务完成度
+
+12/24 V311 tasks DONE (50.0%): V311-01/02/06/07/09/13/15/16/17/19/22/23
+12/24 remaining: V311-03/04/05/08/10/11/12/14/18/20/21 (P0: 3, P1: 8)
+
+---
 ## 2026-07-14 — v3.10.0 GA Post-Release + 168h SOAK 启动
 
 ### v3.10.0 正式发布
