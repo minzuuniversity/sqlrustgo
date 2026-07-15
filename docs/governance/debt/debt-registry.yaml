@@ -251,15 +251,26 @@ sem:
     progress: 100%
     progress_metric: |
       v3.11.0 V311-13: ALL 5 ALTER TABLE operations verified working in MemoryStorage.
-      9/9 alter_table_test PASS (3 original + 6 new V311-13 tests).
-      rename_table, rename_column, modify_column impls verified in MemoryStorage.
+      v3.11.0 PR #3442 (V311-13 verification): 9/9 alter_table_test PASS
+      (3 original + 6 new tests covering RENAME TABLE / RENAME TABLE nonexistent /
+      RENAME COLUMN / MODIFY COLUMN type / MODIFY COLUMN nullable / chain renames).
+      v3.11.0 PR #3444 (V311-13 follow-up bugfix): 3 real bugs found in
+      `ALTER TABLE MODIFY COLUMN` path fixed:
+      (a) parser dropped (N) length from VARCHAR(100), kept only "VARCHAR"
+      (b) parser hardcoded nullable=true, dropped NOT NULL
+      (c) executor `execute_describe` did not render char_max_length,
+          DESC showed bare "VARCHAR" instead of "VARCHAR(100)"
+      Fixes: AST ModifyColumn gains char_max_length field; parser parses
+      (N) and [NOT] NULL; executor forwards char_max_length to ColumnDefinition;
+      DESC appends "(N)" to data_type. 11/11 alter_table_test PASS after
+      follow-up (3 original + 6 PR #3442 + 2 PR #3444 (N-length and NOT NULL)).
     owner: openclaw
     target_release: v3.11.0
     closed_at: "2026-07-15"
-    closing_pr: ["V311-13"]
+    closing_pr: ["V311-13", 3442, 3444]
     review_date: "2027-01-15"
     blocking: []
-    note: "IN_PROGRESS with target_release=v3.11.0 per 5-Principle P5. ALTER TABLE partial (ADD/DROP/RENAME COLUMN done, RENAME TABLE + MODIFY COLUMN remaining); work continues in v3.11.0."
+    note: "CLOSED 2026-07-15 via V311-13. PR #3442 verified 5 ALTER TABLE operations work in MemoryStorage; PR #3444 fixed 3 parser/executor bugs around MODIFY COLUMN (N) length and [NOT] NULL handling, plus DESC display."
     related_change: "V310-04 (P0, 20h, deferred to v3.11.0)"
 
   - id: SEM-4
