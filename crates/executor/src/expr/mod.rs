@@ -826,7 +826,7 @@ fn to_f64(v: &Value) -> f64 {
                 0.0
             }
         }
-        Value::Null | Value::Text(_) | Value::Blob(_) => 0.0,
+        Value::Null | Value::Text(_) | Value::Blob(_) | Value::Point(_, _) => 0.0,
     }
 }
 
@@ -840,7 +840,7 @@ fn to_i64(v: &Value) -> i64 {
                 0
             }
         }
-        Value::Null | Value::Float(_) | Value::Text(_) | Value::Blob(_) => 0,
+        Value::Null | Value::Float(_) | Value::Text(_) | Value::Blob(_) | Value::Point(_, _) => 0,
     }
 }
 
@@ -1269,6 +1269,29 @@ pub fn eval_fn(name: &str, args: &[Value]) -> Value {
         "GROUPING" => Value::Integer(0),
         // GROUP_CONCAT — aggregate concatenator. Supports SEPARATOR.
         "GROUP_CONCAT" => group_concat(args),
+        // F-03 GIS: ST_WITHIN(point, polygon) — spatial predicate
+        "ST_WITHIN" => {
+            use sqlrustgo_gis::{Point as GisPoint, Polygon as GisPolygon, st_within as gis_st_within};
+            if args.len() != 2 {
+                return Value::Null;
+            }
+            let point = match &args[0] {
+                Value::Point(x, y) => GisPoint::new(*x, *y),
+                Value::Text(s) => match GisPoint::parse(s) {
+                    Some(p) => p,
+                    None => return Value::Null,
+                },
+                _ => return Value::Null,
+            };
+            let polygon = match &args[1] {
+                Value::Text(s) => match GisPolygon::parse(s) {
+                    Some(p) => p,
+                    None => return Value::Null,
+                },
+                _ => return Value::Null,
+            };
+            Value::Boolean(gis_st_within(&point, &polygon))
+        }
         _ => Value::Null,
     }
 }
