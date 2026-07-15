@@ -323,12 +323,24 @@ fn tpch_sf1_22_in_process_regression() {
 
     // 3) Run the 22 TPC-H queries and record results.
     let mut report_rows: Vec<(u8, usize, Duration, String)> = Vec::new();
+    // Optional: run only a single query via TPCH_ONLY_Q=N env var
+    let only_q: Option<u8> = std::env::var("TPCH_ONLY_Q")
+        .ok()
+        .and_then(|v| v.parse().ok());
+
     for n in 1..=22u8 {
+        if let Some(q) = only_q {
+            if n != q {
+                continue;
+            }
+        }
         let sql_path = format!("{}/q{}.sql", QUERIES_DIR, n);
         let sql = std::fs::read_to_string(&sql_path)
             .unwrap_or_else(|e| panic!("read {}: {}", sql_path, e));
+        eprintln!("  >>> Q{:>2}: starting query...", n);
         let start = Instant::now();
         let result = client.query_rows(&sql);
+        eprintln!("  >>> Q{:>2}: query complete, {} rows", n, result.as_ref().map(|r| r.len()).unwrap_or(0));
         let elapsed = start.elapsed();
         let notes = match &result {
             Ok(rows) => format!("ok; {} rows", rows.len()),
