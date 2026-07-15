@@ -474,10 +474,12 @@ follow_ups:
 perf:
   - id: PERF-5
     title: "High-concurrency INSERT: Lost connection + customer count not incrementing"
-    state: OPEN
+    state: CLOSED
     priority: P1
     owner: openclaw
     target_release: v3.11.0
+    closed_at: "2026-07-15"
+    closing_pr: ["V311-23"]
     review_date: "2026-09-15"
     discovered_in: "v3.10.0 GA 168h SOAK (2026-07-15 06:32 UTC, PID 1019750)"
     discovered_by: "openclaw via /tmp/soak_v310/orchestrator_v2.sh"
