@@ -361,6 +361,7 @@ impl MergeExecutor {
             Value::Boolean(true) => "TRUE".to_string(),
             Value::Boolean(false) => "FALSE".to_string(),
             Value::Blob(_) => "NULL".to_string(),
+            Value::Point(x, y) => format!("POINT({}, {})", x, y),
         }
     }
 }
