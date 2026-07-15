@@ -1674,7 +1674,7 @@ impl<S: StorageEngine + 'static> ExecutionEngine<S> {
             let cur_info = storage.get_table_info(cur_bare).ok()?.clone();
             let cur_idx = cur_info.columns.iter().position(|c| c.name == right_col)?;
             let raw_cur_rows = storage.scan(cur_bare).ok()?;
-            let rows_before_filter = raw_cur_rows.len();
+            let _rows_before_filter = raw_cur_rows.len();
             // Build alias-prefixed column names so that
             // `eval_predicate` matches TPC-H-style predicates like
             // `r.r_name = 'EUROPE'` against the aliased columns.
