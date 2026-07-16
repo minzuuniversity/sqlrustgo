@@ -258,4 +258,23 @@ mod tests {
         let m2 = Manifest::read_from(&mf).unwrap();
         assert_eq!(m.version, m2.version);
     }
+
+    #[test]
+    fn test_manifest_default() {
+        let m = Manifest::default();
+        assert_eq!(m.version, 1);
+    }
+
+    #[test]
+    fn test_manifest_to_json_and_back() {
+        let mut m = Manifest::new();
+        m.data_files.push(FileEntry {
+            path: "data/t1.json".to_string(),
+            sha256: "abc123".to_string(),
+            size: 1024,
+        });
+        let json = m.to_json().unwrap();
+        let m2 = Manifest::from_json(&json).unwrap();
+        assert_eq!(m.data_files.len(), m2.data_files.len());
+    }
 }
