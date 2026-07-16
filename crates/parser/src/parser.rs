@@ -274,6 +274,35 @@ pub enum StoredProcParamMode {
 #[derive(Debug, Clone, PartialEq)]
 pub enum StoredProcStatement {
     RawSql(String),
+    If {
+        condition: String,
+        then_body: Vec<StoredProcStatement>,
+        else_body: Vec<StoredProcStatement>,
+    },
+    While {
+        condition: String,
+        body: Vec<StoredProcStatement>,
+    },
+    Loop {
+        body: Vec<StoredProcStatement>,
+    },
+    Leave,
+    Iterate,
+    Set {
+        var_name: String,
+        value: String,
+    },
+    Declare {
+        var_name: String,
+        data_type: String,
+    },
+    Call {
+        procedure_name: String,
+        args: Vec<String>,
+    },
+    NestedBegin {
+        body: Vec<StoredProcStatement>,
+    },
 }
 
 /// CREATE TRIGGER statement
@@ -2284,8 +2313,18 @@ impl Parser {
 
         let name = match self.next() {
             Some(Token::Identifier(name)) => name,
-            // Allow INCREMENT as a procedure name (e.g. CREATE PROCEDURE increment(...))
+            // Allow keywords as procedure names (MySQL allows this)
             Some(Token::Increment) => "increment".to_string(),
+            Some(Token::While) => "while".to_string(),
+            Some(Token::Loop) => "loop".to_string(),
+            Some(Token::Repeat) => "repeat".to_string(),
+            Some(Token::Return) => "return".to_string(),
+            Some(Token::Leave) => "leave".to_string(),
+            Some(Token::Iterate) => "iterate".to_string(),
+            Some(Token::Set) => "set".to_string(),
+            Some(Token::Declare) => "declare".to_string(),
+            Some(Token::Call) => "call".to_string(),
+Some(Token::Out) => "out".to_string(),
             Some(t) => return Err(format!("Expected procedure name, got {:?}", t)),
             None => return Err("Expected procedure name".to_string()),
         };
@@ -2297,6 +2336,14 @@ impl Parser {
                 Some(Token::In) => {
                     self.next();
                     StoredProcParamMode::In
+                }
+                Some(Token::Out) => {
+                    self.next();
+                    StoredProcParamMode::Out
+                }
+                Some(Token::InOut) => {
+                    self.next();
+                    StoredProcParamMode::InOut
                 }
                 Some(Token::Identifier(mode_str))
                     if ["OUT", "INOUT"].contains(&mode_str.to_uppercase().as_str()) =>
@@ -2341,38 +2388,216 @@ impl Parser {
         self.expect(Token::RParen)?;
 
         self.expect(Token::Begin)?;
-        let mut body = Vec::new();
-        let mut current_sql = String::new();
-        while !matches!(self.current(), Some(Token::End) | None) {
-            match self.next() {
-                Some(Token::Semicolon) => {
-                    if !current_sql.is_empty() {
-                        body.push(StoredProcStatement::RawSql(current_sql.trim().to_string()));
-                        current_sql = String::new();
-                    }
-                }
-                Some(Token::Identifier(sql)) => {
-                    current_sql.push_str(&sql);
-                    current_sql.push(' ');
-                }
-                Some(t) => {
-                    current_sql.push_str(&t.to_string());
-                    current_sql.push(' ');
-                }
-                None => return Err("Expected END".to_string()),
-            }
-        }
+        let body = self.parse_sp_body(&[Token::End])?;
         self.expect(Token::End)?;
-
-        if !current_sql.is_empty() {
-            body.push(StoredProcStatement::RawSql(current_sql.trim().to_string()));
-        }
 
         Ok(Statement::CreateProcedure(CreateProcedureStatement {
             name,
             params,
             body,
         }))
+    }
+
+    /// Parse stored procedure body statements until a terminator token
+    fn parse_sp_body(&mut self, terminators: &[Token]) -> Result<Vec<StoredProcStatement>, String> {
+        let mut body = Vec::new();
+        let mut current_sql = String::new();
+
+        loop {
+            match self.current() {
+                None => return Err("Unexpected end of input in procedure body".to_string()),
+                Some(t) if terminators.contains(t) => break,
+                Some(Token::Semicolon) => {
+                    self.next();
+                    if !current_sql.trim().is_empty() {
+                        body.push(StoredProcStatement::RawSql(current_sql.trim().to_string()));
+                    }
+                    current_sql = String::new();
+                }
+                Some(Token::If) => {
+                    if !current_sql.trim().is_empty() {
+                        body.push(StoredProcStatement::RawSql(current_sql.trim().to_string()));
+                        current_sql = String::new();
+                    }
+                    self.next();
+                    let condition = self.read_sp_expression();
+                    self.expect(Token::Then)?;
+                    let then_body = self.parse_sp_body(&[Token::Else, Token::End])?;
+                    let mut else_body = Vec::new();
+                    if matches!(self.current(), Some(Token::Else)) {
+                        self.next();
+                        else_body = self.parse_sp_body(&[Token::End])?;
+                    }
+                    self.expect(Token::End)?;
+                    self.expect(Token::If)?;
+                    body.push(StoredProcStatement::If { condition, then_body, else_body });
+                }
+                Some(Token::While) => {
+                    if !current_sql.trim().is_empty() {
+                        body.push(StoredProcStatement::RawSql(current_sql.trim().to_string()));
+                        current_sql = String::new();
+                    }
+                    self.next();
+                    let condition = self.read_sp_expression();
+                    self.expect(Token::Do)?;
+                    let body_stmts = self.parse_sp_body(&[Token::End])?;
+                    self.expect(Token::End)?;
+                    self.expect(Token::While)?;
+                    body.push(StoredProcStatement::While { condition, body: body_stmts });
+                }
+                Some(Token::Loop) => {
+                    if !current_sql.trim().is_empty() {
+                        body.push(StoredProcStatement::RawSql(current_sql.trim().to_string()));
+                        current_sql = String::new();
+                    }
+                    self.next();
+                    let body_stmts = self.parse_sp_body(&[Token::End])?;
+                    self.expect(Token::End)?;
+                    self.expect(Token::Loop)?;
+                    body.push(StoredProcStatement::Loop { body: body_stmts });
+                }
+                Some(Token::Leave) => {
+                    self.next();
+                    body.push(StoredProcStatement::Leave);
+                }
+                Some(Token::Iterate) => {
+                    self.next();
+                    body.push(StoredProcStatement::Iterate);
+                }
+                Some(Token::Begin) => {
+                    if !current_sql.trim().is_empty() {
+                        body.push(StoredProcStatement::RawSql(current_sql.trim().to_string()));
+                        current_sql = String::new();
+                    }
+                    self.next();
+                    let nested = self.parse_sp_body(&[Token::End])?;
+                    self.expect(Token::End)?;
+                    body.push(StoredProcStatement::NestedBegin { body: nested });
+                }
+                Some(Token::Identifier(_)) => {
+                    // Collect the full statement (identifiers starting with non-keyword words)
+                    let stmt_str = self.collect_sp_statement();
+                    if !stmt_str.trim().is_empty() {
+                        body.push(StoredProcStatement::RawSql(stmt_str.trim().to_string()));
+                    }
+                }
+                Some(Token::Set) | Some(Token::Declare) | Some(Token::Call) => {
+                    // Flush any pending raw SQL and collect full statement
+                    if !current_sql.trim().is_empty() {
+                        body.push(StoredProcStatement::RawSql(current_sql.trim().to_string()));
+                        current_sql = String::new();
+                    }
+                    let stmt_str = self.collect_sp_statement();
+                    if !stmt_str.trim().is_empty() {
+                        let upper = stmt_str.to_uppercase();
+                        if upper.starts_with("SET ") {
+                            let rest = stmt_str[4..].trim();
+                            if let Some(eq_pos) = rest.find('=') {
+                                let var_name = rest[..eq_pos].trim().to_string();
+                                let value = rest[eq_pos + 1..].trim().to_string();
+                                body.push(StoredProcStatement::Set { var_name, value });
+                            } else {
+                                body.push(StoredProcStatement::RawSql(stmt_str));
+                            }
+                        } else if upper.starts_with("DECLARE ") {
+                            let rest = stmt_str[9..].trim();
+                            let space_pos = rest.find(' ').unwrap_or(rest.len());
+                            let var_name = rest[..space_pos].to_string();
+                            let data_type = rest[space_pos..].trim().to_string();
+                            body.push(StoredProcStatement::Declare { var_name, data_type });
+                        } else if upper.starts_with("CALL ") {
+                            let rest = stmt_str[5..].trim();
+                            if let Some(paren_pos) = rest.find('(') {
+                                let proc_name = rest[..paren_pos].to_string();
+                                let args_str = &rest[paren_pos + 1..rest.len() - 1];
+                                let args: Vec<String> = if args_str.trim().is_empty() {
+                                    Vec::new()
+                                } else {
+                                    args_str.split(',').map(|s| s.trim().to_string()).collect()
+                                };
+                                body.push(StoredProcStatement::Call { procedure_name: proc_name, args });
+                            } else {
+                                body.push(StoredProcStatement::RawSql(stmt_str));
+                            }
+                        } else {
+                            body.push(StoredProcStatement::RawSql(stmt_str));
+                        }
+                    }
+                }
+                _ => {
+                    current_sql.push_str(&self.current().unwrap().to_string());
+                    current_sql.push(' ');
+                    self.next();
+                }
+            }
+        }
+
+        if !current_sql.trim().is_empty() {
+            body.push(StoredProcStatement::RawSql(current_sql.trim().to_string()));
+        }
+        Ok(body)
+    }
+
+    /// Read a stored procedure expression (condition or value)
+    fn read_sp_expression(&mut self) -> String {
+        let mut expr = String::new();
+        let mut depth = 0;
+        loop {
+            match self.current() {
+                None => break,
+                Some(Token::Semicolon) | Some(Token::Do) | Some(Token::Then) | Some(Token::End)
+                    if depth == 0 => break,
+                Some(Token::LParen) => {
+                    depth += 1;
+                    expr.push('(');
+                    self.next();
+                }
+                Some(Token::RParen) => {
+                    if depth == 0 {
+                        break;
+                    }
+                    depth -= 1;
+                    expr.push(')');
+                    self.next();
+                }
+                Some(Token::Identifier(s)) => {
+                    expr.push_str(&s);
+                    expr.push(' ');
+                    self.next();
+                }
+                Some(t) => {
+                    expr.push_str(&t.to_string());
+                    expr.push(' ');
+                    self.next();
+                }
+            }
+        }
+        expr.trim().to_string()
+    }
+
+    /// Collect tokens until semicolon for a full statement
+    fn collect_sp_statement(&mut self) -> String {
+        let mut parts = Vec::new();
+        loop {
+            match self.current() {
+                None | Some(Token::Semicolon) => break,
+                Some(Token::End) => break,
+                Some(Token::Else) => break,
+                Some(Token::Identifier(s)) => {
+                    parts.push(s.clone());
+                    self.next();
+                }
+                Some(t) => {
+                    parts.push(t.to_string());
+                    self.next();
+                }
+            }
+        }
+        // Skip trailing semicolon if present
+        if matches!(self.current(), Some(Token::Semicolon)) {
+            self.next();
+        }
+        parts.join(" ")
     }
 
     fn parse_create_trigger(&mut self) -> Result<Statement, String> {
