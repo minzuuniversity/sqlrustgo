@@ -1174,7 +1174,18 @@ pub fn tpch_reorder_extra_tables(
     // The set of (bare-table) names already joined (base table +
     // TPC-H prefix variations). Mirrors what `joined` carries.
     let mut accumulated: std::collections::HashSet<String> =
-        joined.iter().filter(|s| !s.is_empty()).cloned().collect();
+        joined.iter()
+        .filter(|s| !s.is_empty())
+        // Only include entries >= 2 chars in accumulated. The 1-char
+        // prefix entries (like "p" for "part", "s" for "supplier")
+        // are added to joined for column-qualifier resolution in
+        // find_join_predicate, but they must NOT participate in the
+        // greedy loop's prefix-based reachability checks — a 1-char
+        // prefix like "p" would incorrectly match "supplier" via
+        // "supplier".starts_with("p").
+        .filter(|s| s.len() >= 2)
+        .cloned()
+        .collect();
     let mut remaining: Vec<String> = extras.to_vec();
     let mut out: Vec<String> = Vec::with_capacity(remaining.len());
     let edges = build_equi_join_edges(conj);
@@ -1194,7 +1205,14 @@ pub fn tpch_reorder_extra_tables(
                     reachable = true;
                     break;
                 }
-                if b == &a[..1.min(a.len())] || b == &a[..2.min(a.len())] {
+                // b starts with a's prefix → same family (part↔partsupp).
+                // Use starts_with instead of == to correctly detect that
+                // "partsupp" starts with "part"'s 2-char prefix "pa".
+                if !b.is_empty() && !a.is_empty() && b.starts_with(&a[..1.min(a.len())]) {
+                    reachable = true;
+                    break;
+                }
+                if b.len() >= 2 && a.len() >= 2 && b.starts_with(&a[..2.min(b.len())]) {
                     reachable = true;
                     break;
                 }
@@ -1218,9 +1236,9 @@ pub fn tpch_reorder_extra_tables(
                     && a == "customer"
                     && !accumulated.contains("orders");
                 if !skip_bridge_for_q5
-                    && !b.is_empty()
-                    && !a.is_empty()
-                    && &b[..1] == &a[..1]
+                    && b.len() >= 2
+                    && a.len() >= 2
+                    && b.starts_with(&a[..2.min(b.len())])
                 {
                     reachable = true;
                     break;
@@ -1310,10 +1328,8 @@ pub fn tpch_reorder_extra_tables(
             let mut reach = false;
             for acc in &accumulated {
                 let a = acc.as_str();
-                if b == a
-                    || b == &a[..1.min(a.len())]
-                    || b == &a[..2.min(a.len())]
-                {
+                // b is reachable from a if b starts with a's 2+ char prefix.
+                if b.len() >= 2 && a.len() >= 2 && b.starts_with(&a[..2.min(b.len())]) {
                     reach = true;
                     break;
                 }
@@ -1335,9 +1351,9 @@ pub fn tpch_reorder_extra_tables(
         // picks can find a join edge.
         let b = bare(&picked).to_string();
         accumulated.insert(b.clone());
-        if !b.is_empty() {
-            accumulated.insert(b[..1].to_string());
-        }
+        // Only insert 2+ char prefixes to prevent 1-char entries like
+        // "p" or "s" from incorrectly matching full table names like
+        // "supplier" ("supplier".starts_with("p") = True).
         if b.len() >= 2 {
             accumulated.insert(b[..2].to_string());
         }
