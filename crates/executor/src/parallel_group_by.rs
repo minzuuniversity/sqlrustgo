@@ -487,3 +487,35 @@ impl ParallelGroupBy {
             .collect()
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_value_to_key_string_integer() {
+        assert_eq!(value_to_key_string(&Value::Integer(42)), "42");
+    }
+
+    #[test]
+    fn test_value_to_key_string_text() {
+        assert_eq!(value_to_key_string(&Value::Text("hello".to_string())), "hello");
+    }
+
+    #[test]
+    fn test_value_to_key_string_null() {
+        assert_eq!(value_to_key_string(&Value::Null), "NULL");
+    }
+
+    #[test]
+    fn test_value_to_key_string_boolean() {
+        assert_eq!(value_to_key_string(&Value::Boolean(true)), "true");
+        assert_eq!(value_to_key_string(&Value::Boolean(false)), "false");
+    }
+
+    #[test]
+    fn test_partial_slot_count() {
+        let slot = PartialSlot::Count(5);
+        assert!(matches!(slot, PartialSlot::Count(_)));
+    }
+}
