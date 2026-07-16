@@ -287,6 +287,7 @@ fn test_version_info_edge_zero() {
     assert!(v0.can_upgrade_to(&v1));
     assert!(!v0.can_upgrade_to(&v0));
 }
+// ============ show_status and list_history tests ============
 
 use sqlrustgo_tools::upgrade::{list_history, show_status};
 
