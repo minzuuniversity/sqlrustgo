@@ -207,13 +207,28 @@ fn test_parse_create_procedure_out_params() {
 
 #[test]
 fn test_parse_create_procedure_inout_params() {
+    // Stored procedure parsing now supports INCREMENT as a keyword name
     let sql = "CREATE PROCEDURE increment(INOUT value INT) BEGIN SET value = value + 1; END";
     let result = parse(sql);
     assert!(
         result.is_ok(),
-        "Failed to parse CREATE PROCEDURE with INOUT param: {:?}",
+        "CREATE PROCEDURE should parse successfully: {:?}",
         result
     );
+    match result.unwrap() {
+        sqlrustgo_parser::Statement::CreateProcedure(stmt) => {
+            assert_eq!(stmt.name, "increment", "procedure name");
+            assert_eq!(stmt.params.len(), 1, "should have 1 param");
+            assert_eq!(stmt.params[0].name, "value", "param name");
+            assert!(
+                matches!(stmt.params[0].mode, sqlrustgo_parser::StoredProcParamMode::InOut),
+                "param mode should be InOut"
+            );
+            assert_eq!(stmt.params[0].data_type, "INT", "param data type");
+            assert!(!stmt.body.is_empty(), "body should not be empty");
+        }
+        other => panic!("expected CreateProcedure, got {:?}", other),
+    }
 }
 
 // ============ ALTER TABLE Tests ============
