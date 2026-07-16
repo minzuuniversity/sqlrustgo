@@ -1,4 +1,4 @@
-> **更新日期**: 2026-07-14
+> **更新日期**: 2026-07-16
 > **当前开发分支**: `develop/v3.11.0` (规划中, Issue #3835)
 > **最新稳定版**: v3.10.0 (GA, 2026-07-13) — MySQL 5.7 替代
 > **v3.10.0 长跑测试**: 168h SOAK 🔄 IN PROGRESS (2026-07-14 启动, 预计 2026-07-21 完成)
@@ -15,7 +15,7 @@
 
 SQLRustGo 是一个纯 Rust 实现的 SQL 执行引擎，支持完整 SQL-92 语法、窗口函数、CTE、CBO 成本优化器、WAL + MVCC 事务、向量存储与图存储，以及 AI Native GMP 工作流。
 
-> **v3.10.0 当前状态 (2026-07-13)**: **GA — MySQL 5.7 替代** — INT/ARCH/SEM 100% 闭环，F-XX Gap Locking 主路径集成，Parallel Executor 优化（Issue #3792: PARALLEL_MIN_ROWS=2M, 6 项优化），TPC-H 22/22 全通（SF=0.1），TPC-H SF=1 (600K 行) 22/22 PASS (~7.8 min)，21/22 cell-level 匹配 SQLite，性能实测: Q1 1.27x / Q3 1.08x / Q5 1.10x (1M 行, 4 线程), 数据加载 180x 加速 (fast_load_tbl_data)，E2E 8/8 PASS，168h SOAK 🔄 进行中 (2026-07-14 启动, 预计 2026-07-21 完成)。详见 [v3.10.0 发行说明](docs/releases/v3.10.0/RELEASE_NOTES.md) 与 [GA 门禁报告](docs/releases/v3.10.0/GA_GATE_REPORT.md) 与 [任务闭环验证](docs/releases/v3.10.0/V310_TASK_CLOSURE_VERIFICATION.md)。
+> **v3.10.0 当前状态 (2026-07-13)**: **GA — MySQL 5.7 替代** — INT/ARCH/SEM 100% 闭环，F-XX Gap Locking 主路径集成，Parallel Executor 优化（Issue #3792: PARALLEL_MIN_ROWS=2M, 6 项优化），TPC-H 22/22 全通（SF=0.1），TPC-H SF=1 (600K 行) 22/22 PASS (~7.8 min)，21/22 cell-level 匹配 SQLite，性能实测: Q1 1.27x / Q3 1.08x / Q5 1.10x (1M 行, 4 线程), 数据加载 180x 加速 (fast_load_tbl_data)，E2E 8/8 PASS，168h SOAK 🔄 进行中 (2026-07-14 启动, 预计 2026-07-21 完成)。Q2 join ordering bug 已修复 (2026-07-16)，Q2 SF=1 从 OOM 变为 ~13s/20行。详见 [SF1 基线报告](docs/releases/v3.11.0/perf/SF1_BASELINE_REPORT.md)。
 >
 > **v3.11.0 计划 (Issue #3835)**: 23 项债务清零 + 9 项 F-XX 主路径集成 + Q4 Hash Semi Join (<5 min @ SF=3)，预计 2026-10-01 GA。详见 [v3.11.0 计划](docs/releases/v3.11.0/VERSION_PLAN.md)。
 
