@@ -237,4 +237,23 @@ mod tests {
         let d2 = d.clone();
         assert!(!d2.has_violations());
     }
+
+    #[test]
+    fn test_drift_detector_to_cypher_statements() {
+        let d = DriftDetector::new("test".to_string());
+        let stmts = d.to_cypher_statements();
+        assert!(stmts.is_empty());
+    }
+
+    #[test]
+    fn test_drift_detector_has_critical() {
+        let d = DriftDetector::new("test".to_string());
+        assert!(!d.has_critical());
+    }
+
+    #[test]
+    fn test_drift_detector_violations() {
+        let d = DriftDetector::new("test".to_string());
+        assert!(d.violations().is_empty());
+    }
 }

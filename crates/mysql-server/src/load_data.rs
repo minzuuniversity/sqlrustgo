@@ -92,19 +92,6 @@ pub fn bulk_insert<S: StorageEngine + 'static>(
     Ok(n)
 }
 
-// Kept for future use (e.g. tests, debug printing). The hot path now
-// hands pre-parsed records straight to `Storage::insert` and never
-// builds SQL literals.
-#[allow(dead_code)]
-fn sql_value_literal(v: &SqlValue) -> String {
-    match v {
-        SqlValue::Null => "NULL".to_string(),
-        SqlValue::Integer(i) => i.to_string(),
-        SqlValue::Float(f) => f.to_string(),
-        SqlValue::Text(s) => format!("'{}'", s.replace('\'', "''")),
-        _ => format!("'{}'", v),
-    }
-}
 
 #[cfg(test)]
 mod tests {
