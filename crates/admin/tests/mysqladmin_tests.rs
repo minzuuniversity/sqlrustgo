@@ -349,3 +349,41 @@ fn test_inc_slow() {
     admin.inc_slow();
     admin.inc_slow();
 }
+
+#[test]
+fn test_dispatch_kill_no_args() {
+    let admin = MysqlAdmin::new();
+    let result = admin.dispatch("kill", &[]);
+    assert!(result.contains("ERROR: kill requires a connection id"));
+}
+
+#[test]
+fn test_dispatch_kill_invalid_id() {
+    let admin = MysqlAdmin::new();
+    let result = admin.dispatch("kill", &["not-a-number"]);
+    assert!(result.contains("ERROR: invalid id"));
+}
+
+#[test]
+fn test_dispatch_unknown_command() {
+    let admin = MysqlAdmin::new();
+    let result = admin.dispatch("foobar", &[]);
+    assert!(result.contains("ERROR: unknown command"));
+    assert!(result.contains("foobar"));
+}
+
+#[test]
+fn test_variables_user_var() {
+    let admin = MysqlAdmin::new();
+    admin.set_variable("wait_timeout", "3600");
+    let result = admin.variables();
+    assert!(result.contains("wait_timeout"));
+    assert!(result.contains("3600"));
+}
+
+#[test]
+fn test_kill_nonexistent_connection() {
+    let admin = MysqlAdmin::new();
+    let result = admin.kill(99999);
+    assert!(result.contains("Unknown thread id") || result.contains("not found") || result.contains("99999"));
+}
