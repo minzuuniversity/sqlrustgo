@@ -709,6 +709,11 @@ pub trait StorageEngine: Send + Sync {
     fn list_sequences(&self) -> Vec<String> {
         Vec::new()
     }
+
+    /// Get a sequence by name
+    fn get_sequence(&self, _name: &str) -> Option<SequenceInfo> {
+        None
+    }
 }
 
 /// In-memory storage implementation for testing and caching
@@ -1191,6 +1196,10 @@ impl StorageEngine for MemoryStorage {
 
     fn list_sequences(&self) -> Vec<String> {
         self.sequences.keys().cloned().collect()
+    }
+
+    fn get_sequence(&self, name: &str) -> Option<SequenceInfo> {
+        self.sequences.get(name).cloned()
     }
     fn list_indexes(&self, _table: &str) -> Vec<(String, String)> {
         Vec::new()

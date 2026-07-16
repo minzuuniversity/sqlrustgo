@@ -24,34 +24,6 @@ use std::time::Duration;
 
 const SERVER_VERSION: &str = "8.0.33-SQLRustGo";
 
-/// v3.10.0 Issue #3703: read intra-query executor parallelism from
-/// the `SQLRUSTGO_EXECUTOR_PARALLELISM` env var (set by
-/// `run_server_v2` from the `--executor-parallelism` CLI flag).
-/// Defaults to 1 = sequential, zero regression. The env var is
-/// honored regardless of whether the binary was built with
-/// `--features parallel-executor`; the engine stores the value and
-/// `LocalExecutor::execute_select_parallel` (feature-gated) reads it.
-#[allow(dead_code)]
-fn read_executor_parallelism() -> usize {
-    std::env::var("SQLRUSTGO_EXECUTOR_PARALLELISM")
-        .ok()
-        .and_then(|s| s.parse::<usize>().ok())
-        .filter(|n| *n >= 1)
-        .unwrap_or(1)
-}
-
-/// v3.10.0 Issue #3703: build an `ExecutionEngine` with intra-query
-/// parallelism pre-configured from the CLI flag / env var. Centralizes
-/// the wiring so all engine construction sites pick up parallelism
-/// uniformly.
-#[allow(dead_code)]
-pub(crate) fn build_engine_with_parallelism<S: StorageEngine + 'static>(
-    storage: Arc<parking_lot::RwLock<S>>,
-) -> ExecutionEngine<S> {
-    let mut eng = ExecutionEngine::new(storage);
-    eng.set_parallel_degree(read_executor_parallelism());
-    eng
-}
 
 /// Global connection counter for diagnostics. Incremented when a
 /// connection is accepted, decremented when it closes.
@@ -792,20 +764,6 @@ impl<'a> Read for TlsStream<'a> {
 impl<'a> TlsStream<'a> {
     pub fn new(conn: &'a mut rustls::ServerConnection, sock: &'a mut TcpStream) -> Self {
         Self { conn, sock }
-    }
-    /// Drive pending inbound TLS records from the underlying socket
-    /// without blocking on writes. Symmetric counterpart to
-    /// `drive_writes_only`.
-    #[allow(dead_code)]
-    fn drive_reads_only(&mut self) -> std::io::Result<()> {
-        while self.conn.wants_read() {
-            match self.conn.complete_io(self.sock) {
-                Ok(_) => {}
-                Err(e) if e.kind() == std::io::ErrorKind::WouldBlock => break,
-                Err(e) => return Err(e),
-            }
-        }
-        Ok(())
     }
 }
 
