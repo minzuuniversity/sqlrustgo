@@ -17,7 +17,7 @@
 | R5 `#[ignore]` | ✅ PASS | 10 ≤ 10 (after excluding intentional benchmark/E2E/vector-perf categories) |
 | R6 Coverage | ✅ **PASS** | Baseline created: 14.71% (`cargo llvm-cov --lib`, saved to `coverage-baseline/`) |
 | R7 OPEN debt | ✅ PASS | 0 OPEN/IN_PROGRESS with v3.10.x target (all deferred to v3.11.0) |
-| R8 Perf baseline | ⚠️ **PLACEHOLDER** | TPC-H SF1 vs v3.9.0 comparison documented but not executed (blocked: requires 75GB+ data generation + dedicated hardware) |
+| R8 Perf baseline | ⚠️ **PARTIAL** | TPC-H SF1: Q2 OOM fixed (2026-07-16), Q5/Q21 still need fixes. See [SF1_BASELINE_REPORT.md](../v3.11.0/perf/SF1_BASELINE_REPORT.md) |
 
 ---
 
@@ -63,7 +63,7 @@
 
 | # | Evidence | Status | Notes |
 |---|----------|--------|-------|
-| D4.1 | TPC-H SF1 vs v3.9.0 | ⏳ **NOT EXECUTED** | Performance comparison doc created; execution blocked — requires SF1 data generation (75GB+ disk) + dedicated test machine |
+| D4.1 | TPC-H SF1 Q2 fix | ✅ **PARTIAL** | Q2 join ordering bug fixed (commit 24b27554e1), Q2 now runs ~13s/20rows instead of OOM. Q5/Q21 still broken. |
 | D4.2 | Regression ≤ 5% (critical paths) | ⏳ PENDING | Depends on D4.1 |
 | D4.3 | Crate-level coverage ≥ 80% | ⚠️ PARTIAL | `cargo llvm-cov --lib` baseline: 14.71% (sqlrustgo crate only, 29 lib tests) |
 | **D4 Result** | | **⚠️ HARDWARE-BLOCKED** | Full TPC-H SF1 baseline cannot be executed in current environment |
