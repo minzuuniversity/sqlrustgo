@@ -555,6 +555,8 @@ fn test_verify_result_manifest_cloned() {
     assert_eq!(result.manifest.version, 1);
     assert_eq!(result.errors.len(), 0);
     assert_eq!(result.verified_files, 0);
+}
+
 use sqlrustgo_admin::verify::verify_backup;
 
 #[test]
@@ -731,13 +733,19 @@ fn test_verify_backup_cleans_up_staging() {
     // Verify the backup
     verify_backup(&backup_path).unwrap();
 
-    // Staging dir should be cleaned up
-    let staging_pattern = format!(
-        ".sqlrustgo-verify-{}",
-        backup_path.file_name().unwrap().to_string_lossy()
+    // Staging dir should be cleaned up after verify_backup returns
+    let staging_dir = backup_path
+        .parent()
+        .unwrap_or_else(|| std::path::Path::new("."))
+        .join(format!(
+            ".sqlrustgo-verify-{}",
+            backup_path.file_name().unwrap().to_string_lossy()
+        ));
+    assert!(
+        !staging_dir.exists(),
+        "staging dir {:?} should be cleaned up after verify_backup",
+        staging_dir
     );
-    // The staging dir is created in the same directory as the backup
-    assert!(!staging_dir.exists() || staging_dir.to_string_lossy().contains("sqlrustgo-verify"));
 }
 
 // ============ physical_backup / physical_restore integration (temp dir) ============
