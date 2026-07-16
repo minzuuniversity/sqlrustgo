@@ -2284,6 +2284,8 @@ impl Parser {
 
         let name = match self.next() {
             Some(Token::Identifier(name)) => name,
+            // Allow INCREMENT as a procedure name (e.g. CREATE PROCEDURE increment(...))
+            Some(Token::Increment) => "increment".to_string(),
             Some(t) => return Err(format!("Expected procedure name, got {:?}", t)),
             None => return Err("Expected procedure name".to_string()),
         };
