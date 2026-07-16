@@ -25,14 +25,14 @@
 
 | Q | rows | elapsed (ms) | notes |
 |---|------|---------------|-------|
-| Q21 | 0 | 107356.8 | ok; 0 rows |
+| Q 5 | 0 | 2339.2 | ok; 0 rows |
 
 ## Summary
 
 - 22/22 queries returned >= 1 row
 - Total rows across all 22 queries: 0
-- Total elapsed time: 107356.8 ms (107.4 s)
-- Slowest query: Q21 (107356.8 ms)
+- Total elapsed time: 2339.2 ms (2.3 s)
+- Slowest query: Q5 (2339.2 ms)
 
 ## Limitations
 
