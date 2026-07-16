@@ -243,3 +243,53 @@ fn test_wire_error_io_from() {
     let display = format!("{}", err);
     assert!(display.contains("perm denied") || display.contains("Io"));
 }
+
+#[test]
+fn test_wire_error_all_variants_display() {
+    // Connect variant
+    let connect_err = WireError::Connect("connection refused".to_string());
+    let display = format!("{}", connect_err);
+    assert!(display.contains("connection failed") || display.contains("connection refused"));
+    // Query variant
+    let query_err = WireError::Query("syntax error".to_string());
+    let display = format!("{}", query_err);
+    assert!(display.contains("query failed") || display.contains("syntax error"));
+    // Io variant
+    let io_err = WireError::Io(std::io::Error::new(
+        std::io::ErrorKind::PermissionDenied,
+        "access denied",
+    ));
+    let display = format!("{}", io_err);
+    assert!(display.contains("access denied") || display.contains("io error"));
+    // Protocol variant
+    let proto_err = WireError::Protocol("unexpected packet".to_string());
+    let display = format!("{}", proto_err);
+    assert!(display.contains("unexpected shape") || display.contains("Protocol"));
+}
+
+#[test]
+fn test_wire_error_query_variant() {
+    let err = WireError::Query("version query failed".to_string());
+    let display = format!("{}", err);
+    assert!(display.contains("query failed"));
+    let debug = format!("{:?}", err);
+    assert!(debug.contains("Query"));
+}
+
+#[test]
+fn test_wire_error_connect_variant() {
+    let err = WireError::Connect("no addresses for host".to_string());
+    let display = format!("{}", err);
+    assert!(display.contains("connection failed"));
+    let debug = format!("{:?}", err);
+    assert!(debug.contains("Connect"));
+}
+
+#[test]
+fn test_wire_error_protocol_variant() {
+    let err = WireError::Protocol("empty result set".to_string());
+    let display = format!("{}", err);
+    assert!(display.contains("unexpected shape"));
+    let debug = format!("{:?}", err);
+    assert!(debug.contains("Protocol"));
+}
