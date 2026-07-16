@@ -317,4 +317,25 @@ mod tests {
         let err = BinaryFormatError::DataTooLarge(100);
         assert_eq!(format!("{}", err), "Data too large: 100 bytes");
     }
+
+    #[test]
+    fn test_value_roundtrip_point() {
+        use sqlrustgo_types::Value;
+        let value = Value::Point(3.14, 2.71);
+        let bytes = value.to_bytes();
+        let decoded = Value::from_bytes(&bytes).unwrap();
+        let Value::Point(x, y) = decoded else { panic!() };
+        assert!((x - 3.14).abs() < 1e-10 && (y - 2.71).abs() < 1e-10);
+    }
+
+    #[test]
+    fn test_value_roundtrip_blob() {
+        use sqlrustgo_types::Value;
+        let data = vec![1u8, 2, 3, 4, 5];
+        let value = Value::Blob(data.clone());
+        let bytes = value.to_bytes();
+        let decoded = Value::from_bytes(&bytes).unwrap();
+        let Value::Blob(b) = decoded else { panic!() };
+        assert_eq!(&b, &data);
+    }
 }
