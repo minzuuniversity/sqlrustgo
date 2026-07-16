@@ -343,4 +343,30 @@ mod tests {
         assert!(manager.can_truncate(1000));
         assert!(!manager.can_truncate(1500));
     }
+
+    #[test]
+    fn test_safe_truncate_lsn() {
+        use tempfile::TempDir;
+        let tmp = TempDir::new().unwrap();
+        let manager = CheckpointManager::with_dir(tmp.path().join("ckpt")).unwrap();
+        // Before any checkpoint, safe_truncate_lsn should be None
+        assert!(manager.safe_truncate_lsn().is_none());
+    }
+
+    #[test]
+    fn test_last_checkpoint_lsn() {
+        use tempfile::TempDir;
+        let tmp = TempDir::new().unwrap();
+        let manager = CheckpointManager::with_dir(tmp.path().join("ckpt")).unwrap();
+        assert!(manager.last_checkpoint_lsn().is_none());
+    }
+
+    #[test]
+    fn test_list_checkpoints_empty() {
+        use tempfile::TempDir;
+        let tmp = TempDir::new().unwrap();
+        let manager = CheckpointManager::with_dir(tmp.path().join("ckpt")).unwrap();
+        let checkpoints = manager.list_checkpoints().unwrap();
+        assert!(checkpoints.is_empty());
+    }
 }
