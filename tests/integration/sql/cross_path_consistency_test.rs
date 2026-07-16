@@ -120,6 +120,7 @@ fn value_to_compare_string(v: &sqlrustgo_types::Value) -> String {
         Value::Text(s) => s.clone(),
         Value::Boolean(b) => b.to_string(),
         Value::Blob(b) => String::from_utf8_lossy(b).to_string(),
+        Value::Point(x, y) => format!("({}, {})", x, y),
     }
 }
 
