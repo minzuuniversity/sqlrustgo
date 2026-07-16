@@ -191,13 +191,50 @@ fn test_mysql_error_from_str() {
     let display = format!("{}", err);
     assert!(display.contains("direct"));
 }
-
 #[test]
 fn test_mysql_error_debug() {
     let err = MySqlError::Protocol("test".to_string());
     let debug = format!("{:?}", err);
     assert!(debug.contains("Protocol"));
 }
+
+#[test]
+fn test_mysql_error_all_variants_display() {
+    // Io variant
+    let io_err = MySqlError::Io(std::io::Error::new(std::io::ErrorKind::Other, "disk full"));
+    assert!(format!("{}", io_err).contains("disk full"));
+    // Protocol variant
+    let proto_err = MySqlError::Protocol("bad packet".to_string());
+    assert!(format!("{}", proto_err).contains("Protocol"));
+    assert!(format!("{}", proto_err).contains("bad packet"));
+    // Sql variant
+    let sql_err = MySqlError::Sql("syntax error".to_string());
+    assert!(format!("{}", sql_err).contains("SQL"));
+    assert!(format!("{}", sql_err).contains("syntax error"));
+    // Other variant
+    let other_err = MySqlError::Other("custom error".to_string());
+    assert!(format!("{}", other_err).contains("custom error"));
+}
+
+#[test]
+fn test_mysql_error_source() {
+    // Io variant: std::io::Error doesn't expose a source chain in its Error impl
+    let io_err = MySqlError::Io(std::io::Error::new(std::io::ErrorKind::Other, "inner error"));
+    // Io variant's source() returns None (io::Error is flat, no inner cause)
+    assert!(std::error::Error::source(&io_err).is_none());
+    // Protocol variant has no source
+    let proto_err = MySqlError::Protocol("msg".to_string());
+    assert!(std::error::Error::source(&proto_err).is_none());
+    // Sql variant has no source
+    let sql_err = MySqlError::Sql("msg".to_string());
+    assert!(std::error::Error::source(&sql_err).is_none());
+    // Other variant has no source
+    let other_err = MySqlError::Other("msg".to_string());
+    assert!(std::error::Error::source(&other_err).is_none());
+}
+
+
+// Atomic counters tests remain below
 
 // ============ Atomic counters ============
 

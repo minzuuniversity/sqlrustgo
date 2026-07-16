@@ -1040,3 +1040,16 @@ fn test_e2e_subquery_where() {
     }
     conn.execute("DROP TABLE t1").expect("DROP TABLE");
 }
+
+#[test]
+fn test_e2e_connect_refused() {
+    // Connecting to a port with no server should fail gracefully
+    let result = MySqlConnection::connect(
+        &"127.0.0.1:1".parse().unwrap(),
+        "tester",
+        "tester",
+        "",
+    );
+    // Just verify it fails - we don't need to format the error
+    assert!(result.is_err(), "connection to closed port should fail");
+}
