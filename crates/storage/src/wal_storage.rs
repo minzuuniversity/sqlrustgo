@@ -8,10 +8,35 @@ use std::collections::HashMap;
 use std::path::PathBuf;
 use std::sync::{Arc, RwLock};
 
+/// WAL sync mode - controls fsync frequency for performance tuning.
+///
+/// # Performance Trade-offs
+/// - `Every`: Full durability, slowest (~8 TPS on MacMini)
+/// - `Batch(n)`: Batched durability, ~30-50 TPS
+/// - `Off`: No sync, fastest (~100+ TPS), but data loss on crash
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum WalSyncMode {
+    /// Sync after every transaction (default, full durability)
+    Every,
+    /// Sync after N transactions (batch mode)
+    Batch(u32),
+    /// No sync at all (fastest, no durability guarantee)
+    Off,
+}
+
+impl Default for WalSyncMode {
+    fn default() -> Self {
+        Self::Every
+    }
+}
+
 pub struct WalStorage<S: StorageEngine, T: WalManager> {
     inner: S,
     wal: T,
     wal_enabled: bool,
+    sync_mode: WalSyncMode,
+    /// Counter for batch mode: tracks writes since last sync
+    writes_since_sync: u32,
     checkpoint_manager: Option<Arc<RwLock<CheckpointManager>>>,
     /// Active transaction id. The ExecutionEngine pushes the real id here
     /// via `set_current_tx_id`; without this, every WAL entry would carry
@@ -29,13 +54,14 @@ pub struct WalStorage<S: StorageEngine, T: WalManager> {
     /// Empty for autocommit (tx_id=0) — the legacy single-active-tx model.
     active_txs: HashMap<u64, u64>,
 }
-
 impl<S: StorageEngine, T: WalManager> WalStorage<S, T> {
     pub fn new(inner: S, wal: T) -> SqlResult<Self> {
         Ok(Self {
             inner,
             wal,
             wal_enabled: true,
+            sync_mode: WalSyncMode::default(),
+            writes_since_sync: 0,
             checkpoint_manager: None,
             current_tx_id: 0,
             next_lsn: 0,
@@ -43,28 +69,65 @@ impl<S: StorageEngine, T: WalManager> WalStorage<S, T> {
         })
     }
 
-    pub fn with_checkpoint_manager(
-        inner: S,
-        wal: T,
-        checkpoint_manager: Arc<RwLock<CheckpointManager>>,
-    ) -> SqlResult<Self> {
+    /// Create WalStorage with a specific sync mode for performance tuning.
+    ///
+    /// # Example
+    /// ```
+    /// use sqlrustgo_storage::{FileStorage, WalStorage, FileBackedWalManager, WalSyncMode};
+    /// let inner = FileStorage::new("/tmp/db").unwrap();
+    /// let wal = FileBackedWalManager::new("/tmp/wal".into()).unwrap();
+    /// let mut storage = WalStorage::new_with_sync_mode(inner, wal, WalSyncMode::Batch(100));
+    /// ```
+    pub fn new_with_sync_mode(inner: S, wal: T, sync_mode: WalSyncMode) -> SqlResult<Self> {
         Ok(Self {
             inner,
             wal,
             wal_enabled: true,
-            checkpoint_manager: Some(checkpoint_manager),
+            sync_mode,
+            writes_since_sync: 0,
+            checkpoint_manager: None,
             current_tx_id: 0,
             next_lsn: 0,
             active_txs: HashMap::new(),
         })
     }
 
-    /// #3223 Phase 1: Returns true if `tx_id` is currently in an open
-    /// transaction (Begin logged but no Commit/Rollback yet).
-    /// Will be used by `RecoveryEngine` during WAL replay to identify
-    /// uncommitted DML that must be rolled back.
-    pub fn is_tx_active(&self, tx_id: u64) -> bool {
-        self.active_txs.contains_key(&tx_id)
+    /// Create with checkpoint manager and sync mode.
+    pub fn new_with_sync_mode_and_checkpoint(
+        inner: S,
+        wal: T,
+        sync_mode: WalSyncMode,
+        checkpoint_manager: Arc<RwLock<CheckpointManager>>,
+    ) -> SqlResult<Self> {
+        Ok(Self {
+            inner,
+            wal,
+            wal_enabled: true,
+            sync_mode,
+            writes_since_sync: 0,
+            checkpoint_manager: Some(checkpoint_manager),
+            current_tx_id: 0,
+            next_lsn: 0,
+            active_txs: HashMap::new(),
+        })
+    }
+    /// Get current sync mode
+    pub fn sync_mode(&self) -> WalSyncMode {
+        self.sync_mode
+    }
+
+    /// Set sync mode at runtime
+    pub fn set_sync_mode(&mut self, mode: WalSyncMode) {
+        self.sync_mode = mode;
+    }
+
+    /// Force a sync (useful for batch mode)
+    pub fn force_sync(&mut self) -> SqlResult<()> {
+        if self.wal_enabled {
+            self.wal.sync()?;
+            self.writes_since_sync = 0;
+        }
+        Ok(())
     }
 
     /// #3223 Phase 1: Returns snapshot of active tx ids (for tests/diagnostics).
@@ -576,11 +639,24 @@ impl<S: StorageEngine, T: WalManager> StorageEngine for WalStorage<S, T> {
         } else {
             0
         };
-        // sync after commit entry is written
+        // sync after commit entry is written, respecting sync_mode
         if self.wal_enabled {
-            self.wal.sync()?;
+            match self.sync_mode {
+                WalSyncMode::Off => {
+                    // No sync - fastest but no durability
+                }
+                WalSyncMode::Batch(n) => {
+                    self.writes_since_sync += 1;
+                    if self.writes_since_sync >= n {
+                        self.wal.sync()?;
+                        self.writes_since_sync = 0;
+                    }
+                }
+                WalSyncMode::Every => {
+                    self.wal.sync()?;
+                }
+            }
         }
-        // Advance checkpoint so truncation can proceed
         if commit_lsn > 0 {
             if let Some(cp) = &self.checkpoint_manager {
                 if let Ok(guard) = cp.write() {
