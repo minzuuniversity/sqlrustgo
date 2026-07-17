@@ -14,6 +14,7 @@
     renamed_and_removed_lints
 )]
 
+pub mod traits;
 pub mod backup_restore;
 pub mod mysqldump;
 pub mod upgrade;
