@@ -158,3 +158,30 @@ fn test_verify_result_empty() {
     assert!(result.errors.is_empty());
     assert_eq!(result.verified_files, 0);
 }
+
+// ============================================================================
+// verify_extracted tests
+// ============================================================================
+
+#[test]
+fn test_verify_extracted_empty_manifest() {
+    use sqlrustgo_admin::verify::verify_extracted;
+    use sqlrustgo_admin::manifest::Manifest;
+    use tempfile::TempDir;
+    
+    let tmp = TempDir::new().unwrap();
+    let staging = tmp.path();
+    
+    let manifest = Manifest {
+        version: 1,
+        created_at: "2024-01-01T00:00:00Z".to_string(),
+        sqlrustgo_version: "3.10.0".to_string(),
+        data_files: vec![],
+        wal_file: None,
+        total_size_bytes: 0,
+    };
+    
+    let result = verify_extracted(staging, &manifest);
+    assert_eq!(result.errors.len(), 0);
+    assert_eq!(result.verified_files, 0);
+}

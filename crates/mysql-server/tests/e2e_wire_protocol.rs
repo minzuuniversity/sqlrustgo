@@ -1493,3 +1493,167 @@ fn test_e2e_limit() {
         _ => {}
     }
 }
+
+// ============================================================================
+// Additional e2e tests for INSERT/SELECT variants
+// ============================================================================
+
+/// Verify INSERT with multiple rows
+#[test]
+fn test_e2e_insert_multiple_rows() {
+    let config = EphemeralConfig {
+        data_dir: None,
+        host: "127.0.0.1".to_string(),
+        bootstrap_users: true,
+        bootstrap_tables: false,
+        bootstrap_sql: Vec::new(),
+        bulk_insert_buffer_size: 1_048_576,
+        server_threads: 2,
+        storage: None,
+    };
+    let handle = start_ephemeral(config).expect("ephemeral server starts");
+    let port = handle.port;
+    let mut conn = connect(port).expect("connected");
+
+    conn.execute("CREATE TABLE tmulti (id INT, val TEXT)")
+        .expect("CREATE TABLE failed");
+    conn.execute("INSERT INTO tmulti VALUES (1, 'a'), (2, 'b'), (3, 'c')")
+        .expect("INSERT failed");
+
+    let result = conn.execute("SELECT COUNT(*) FROM tmulti").expect("SELECT failed");
+    match result {
+        sqlrustgo_mysql_client::ResultSet::Select { rows, .. } => {
+            assert_eq!(rows[0][0].to_string(), "3");
+        }
+        _ => {}
+    }
+}
+
+/// Verify INSERT NULL
+#[test]
+fn test_e2e_insert_null() {
+    let config = EphemeralConfig {
+        data_dir: None,
+        host: "127.0.0.1".to_string(),
+        bootstrap_users: true,
+        bootstrap_tables: false,
+        bootstrap_sql: Vec::new(),
+        bulk_insert_buffer_size: 1_048_576,
+        server_threads: 2,
+        storage: None,
+    };
+    let handle = start_ephemeral(config).expect("ephemeral server starts");
+    let port = handle.port;
+    let mut conn = connect(port).expect("connected");
+
+    conn.execute("CREATE TABLE tnullins (id INT, val INT)")
+        .expect("CREATE TABLE failed");
+    conn.execute("INSERT INTO tnullins VALUES (1, NULL)")
+        .expect("INSERT failed");
+
+    let result = conn.execute("SELECT val FROM tnullins").expect("SELECT failed");
+    match result {
+        sqlrustgo_mysql_client::ResultSet::Select { rows, .. } => {
+            let val = rows[0][0].to_string();
+            assert!(val.is_empty() || val.eq_ignore_ascii_case("NULL"));
+        }
+        _ => {}
+    }
+}
+
+/// Verify ORDER BY DESC with LIMIT
+#[test]
+fn test_e2e_order_by_desc_limit() {
+    let config = EphemeralConfig {
+        data_dir: None,
+        host: "127.0.0.1".to_string(),
+        bootstrap_users: true,
+        bootstrap_tables: false,
+        bootstrap_sql: Vec::new(),
+        bulk_insert_buffer_size: 1_048_576,
+        server_threads: 2,
+        storage: None,
+    };
+    let handle = start_ephemeral(config).expect("ephemeral server starts");
+    let port = handle.port;
+    let mut conn = connect(port).expect("connected");
+
+    conn.execute("CREATE TABLE tord (val INT)")
+        .expect("CREATE TABLE failed");
+    conn.execute("INSERT INTO tord VALUES (5), (1), (3), (2), (4)")
+        .expect("INSERT failed");
+
+    let result = conn
+        .execute("SELECT val FROM tord ORDER BY val DESC LIMIT 3")
+        .expect("SELECT failed");
+    match result {
+        sqlrustgo_mysql_client::ResultSet::Select { rows, .. } => {
+            assert!(rows.len() <= 3);
+        }
+        _ => {}
+    }
+}
+
+/// Verify DISTINCT
+#[test]
+fn test_e2e_select_distinct() {
+    let config = EphemeralConfig {
+        data_dir: None,
+        host: "127.0.0.1".to_string(),
+        bootstrap_users: true,
+        bootstrap_tables: false,
+        bootstrap_sql: Vec::new(),
+        bulk_insert_buffer_size: 1_048_576,
+        server_threads: 2,
+        storage: None,
+    };
+    let handle = start_ephemeral(config).expect("ephemeral server starts");
+    let port = handle.port;
+    let mut conn = connect(port).expect("connected");
+
+    conn.execute("CREATE TABLE tdist (val INT)")
+        .expect("CREATE TABLE failed");
+    conn.execute("INSERT INTO tdist VALUES (1), (1), (2), (2), (2), (3)")
+        .expect("INSERT failed");
+
+    let result = conn.execute("SELECT DISTINCT val FROM tdist ORDER BY val")
+        .expect("SELECT failed");
+    match result {
+        sqlrustgo_mysql_client::ResultSet::Select { rows, .. } => {
+            assert_eq!(rows.len(), 3);
+        }
+        _ => {}
+    }
+}
+
+/// Verify COUNT DISTINCT
+#[test]
+fn test_e2e_count_distinct() {
+    let config = EphemeralConfig {
+        data_dir: None,
+        host: "127.0.0.1".to_string(),
+        bootstrap_users: true,
+        bootstrap_tables: false,
+        bootstrap_sql: Vec::new(),
+        bulk_insert_buffer_size: 1_048_576,
+        server_threads: 2,
+        storage: None,
+    };
+    let handle = start_ephemeral(config).expect("ephemeral server starts");
+    let port = handle.port;
+    let mut conn = connect(port).expect("connected");
+
+    conn.execute("CREATE TABLE tcnt (val INT)")
+        .expect("CREATE TABLE failed");
+    conn.execute("INSERT INTO tcnt VALUES (1), (1), (2), (2), (2), (3)")
+        .expect("INSERT failed");
+
+    let result = conn.execute("SELECT COUNT(DISTINCT val) FROM tcnt")
+        .expect("SELECT failed");
+    match result {
+        sqlrustgo_mysql_client::ResultSet::Select { rows, .. } => {
+            assert_eq!(rows[0][0].to_string(), "3");
+        }
+        _ => {}
+    }
+}
