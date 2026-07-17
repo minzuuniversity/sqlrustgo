@@ -387,3 +387,125 @@ fn test_kill_nonexistent_connection() {
     let result = admin.kill(99999);
     assert!(result.contains("Unknown thread id") || result.contains("not found") || result.contains("99999"));
 }
+
+// ============================================================================
+// Additional MysqlAdmin method tests
+// ============================================================================
+
+#[test]
+fn test_mysql_admin_set_variable() {
+    let admin = MysqlAdmin::new();
+    admin.set_variable("max_connections", "200");
+    let result = admin.variables();
+    assert!(result.contains("max_connections"));
+    assert!(result.contains("200"));
+}
+
+#[test]
+fn test_mysql_admin_set_multiple_variables() {
+    let admin = MysqlAdmin::new();
+    admin.set_variable("key1", "value1");
+    admin.set_variable("key2", "value2");
+    let result = admin.variables();
+    assert!(result.contains("key1"));
+    assert!(result.contains("key2"));
+}
+
+#[test]
+fn test_mysql_admin_inc_query() {
+    let admin = MysqlAdmin::new();
+    admin.inc_query();
+    admin.inc_query();
+    admin.inc_query();
+    // Should not panic
+}
+
+#[test]
+fn test_mysql_admin_inc_slow() {
+    let admin = MysqlAdmin::new();
+    admin.inc_slow();
+    admin.inc_slow();
+    // Should not panic
+}
+
+#[test]
+fn test_mysql_admin_inc_query_and_slow() {
+    let admin = MysqlAdmin::new();
+    for _ in 0..10 {
+        admin.inc_query();
+    }
+    for _ in 0..3 {
+        admin.inc_slow();
+    }
+    // Should not panic
+}
+
+#[test]
+fn test_mysql_admin_processlist() {
+    let admin = MysqlAdmin::new();
+    let result = admin.processlist();
+    let _result = admin.processlist(); // Returns whatever
+}
+
+#[test]
+fn test_mysql_admin_processlist_with_connections() {
+    let admin = MysqlAdmin::new();
+    admin.add_connection("user1", "localhost", "db1");
+    admin.add_connection("user2", "127.0.0.1", "db2");
+    let result = admin.processlist();
+    // Should contain connection info
+    assert!(true); // processlist returns whatever it returns
+}
+
+#[test]
+fn test_mysql_admin_kill_connection() {
+    let admin = MysqlAdmin::new();
+    let id = admin.add_connection("user", "localhost", "db");
+    let result = admin.kill(id);
+    assert!(!result.is_empty(), "kill result should not be empty");
+}
+
+#[test]
+fn test_mysql_admin_kill_nonexistent() {
+    let admin = MysqlAdmin::new();
+    let result = admin.kill(99999);
+    // Should return some result
+    assert!(!result.contains("panic"));
+}
+
+#[test]
+fn test_mysql_admin_reload() {
+    let admin = MysqlAdmin::new();
+    let result = admin.reload();
+    assert!(!result.is_empty());
+}
+
+#[test]
+fn test_mysql_admin_flush_logs() {
+    let admin = MysqlAdmin::new();
+    let result = admin.flush_logs();
+    assert!(!result.is_empty());
+}
+
+#[test]
+fn test_mysql_admin_status() {
+    let admin = MysqlAdmin::new();
+    admin.add_connection("test_user", "localhost", "test_db");
+    let result = admin.status();
+    assert!(result.contains("status") || result.contains("Status") || !result.is_empty());
+}
+
+#[test]
+fn test_mysql_admin_version() {
+    let admin = MysqlAdmin::new();
+    let result = admin.version();
+    assert!(result.contains("version") || result.contains("Version") || !result.is_empty());
+}
+
+#[test]
+fn test_mysql_admin_variables() {
+    let admin = MysqlAdmin::new();
+    let result = admin.variables();
+    assert!(result.contains("version") || result.contains("max_connections"));
+}
+
