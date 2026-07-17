@@ -293,3 +293,46 @@ fn test_wire_error_protocol_variant() {
     let debug = format!("{:?}", err);
     assert!(debug.contains("Protocol"));
 }
+// ============================================================================
+// WireAdmin connection error tests (without live server)
+// ============================================================================
+
+/// Connecting to a closed port should fail gracefully with WireError::Connect
+#[test]
+fn test_wire_admin_connect_port_refused() {
+    use sqlrustgo_admin::wire_client::WireAdmin;
+    let result = WireAdmin::connect("127.0.0.1", 1, "tester", "tester", "");
+    assert!(result.is_err());
+}
+
+/// Connecting to an unreachable host should fail with DNS resolution error
+#[test]
+fn test_wire_admin_connect_invalid_host() {
+    use sqlrustgo_admin::wire_client::WireAdmin;
+    let result = WireAdmin::connect("invalid-host-xyz", 3306, "root", "", "");
+    assert!(result.is_err());
+}
+
+/// Connecting to port 0 should fail
+#[test]
+fn test_wire_admin_connect_port_zero() {
+    use sqlrustgo_admin::wire_client::WireAdmin;
+    let result = WireAdmin::connect("127.0.0.1", 0, "root", "", "");
+    assert!(result.is_err());
+}
+
+/// Connecting to out-of-range port should fail
+#[test]
+fn test_wire_admin_connect_port_out_of_range() {
+    use sqlrustgo_admin::wire_client::WireAdmin;
+    let result = WireAdmin::connect("127.0.0.1", 65535, "root", "", "");
+    assert!(result.is_err());
+}
+
+/// Connecting with empty host should fail
+#[test]
+fn test_wire_admin_connect_empty_host() {
+    use sqlrustgo_admin::wire_client::WireAdmin;
+    let result = WireAdmin::connect("", 3306, "root", "", "");
+    assert!(result.is_err());
+}
