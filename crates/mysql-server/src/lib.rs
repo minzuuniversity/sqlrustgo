@@ -24,6 +24,50 @@ use std::time::Duration;
 
 const SERVER_VERSION: &str = "8.0.33-SQLRustGo";
 
+/// v3.10.0 Issue #3703: read intra-query executor parallelism from
+/// the `SQLRUSTGO_EXECUTOR_PARALLELISM` env var (set by
+/// `run_server_v2` from the `--executor-parallelism` CLI flag).
+/// Defaults to 1 = sequential, zero regression. The env var is
+/// honored regardless of whether the binary was built with
+/// `--features parallel-executor`; the engine stores the value and
+/// `LocalExecutor::execute_select_parallel` (feature-gated) reads it.
+#[allow(dead_code)]
+fn read_executor_parallelism() -> usize {
+    std::env::var("SQLRUSTGO_EXECUTOR_PARALLELISM")
+        .ok()
+        .and_then(|s| s.parse::<usize>().ok())
+        .filter(|n| *n >= 1)
+        .unwrap_or(1)
+}
+
+/// Parse WAL sync mode from string (from --wal-sync CLI flag).
+/// Formats: "every", "off", "batch:N"
+fn parse_wal_sync_mode(s: &str) -> sqlrustgo_storage::WalSyncMode {
+    let s = s.trim();
+    if s.eq_ignore_ascii_case("off") {
+        tracing::warn!("WAL sync OFF: durability disabled for performance!");
+        sqlrustgo_storage::WalSyncMode::Off
+    } else if s.to_lowercase().starts_with("batch:") {
+        let n: u32 = s[6..].parse().unwrap_or(100);
+        tracing::info!("WAL batch mode: sync every {} transactions", n);
+        sqlrustgo_storage::WalSyncMode::Batch(n)
+    } else {
+        sqlrustgo_storage::WalSyncMode::Every
+    }
+}
+
+/// v3.10.0 Issue #3703: build an `ExecutionEngine` with intra-query
+/// parallelism pre-configured from the CLI flag / env var. Centralizes
+/// the wiring so all engine construction sites pick up parallelism
+/// uniformly.
+#[allow(dead_code)]
+pub(crate) fn build_engine_with_parallelism<S: StorageEngine + 'static>(
+    storage: Arc<parking_lot::RwLock<S>>,
+) -> ExecutionEngine<S> {
+    let mut eng = ExecutionEngine::new(storage);
+    eng.set_parallel_degree(read_executor_parallelism());
+    eng
+}
 
 /// Global connection counter for diagnostics. Incremented when a
 /// connection is accepted, decremented when it closes.
@@ -3251,24 +3295,27 @@ pub fn run_server_v2(
     auth_mode: &str,
     server_threads: usize,
     storage: &str,
+    wal_sync: &str,
     executor_parallelism: usize,
 ) -> MySqlResult<()> {
     let addr = format!("{}:{}", host, port);
     let listener = TcpListener::bind(&addr)?;
     tracing::info!(
-        "MySQL server listening on {} (data_dir={}, max_conn={}, auth={}, server_threads={}, executor_parallelism={})",
+        "MySQL server listening on {} (data_dir={}, max_conn={}, auth={}, server_threads={}, storage={}, wal_sync={})",
         addr,
         data_dir,
         max_connections,
         auth_mode,
         server_threads,
-        executor_parallelism
+        storage,
+        wal_sync
     );
     // Store options in env so the run_server_with_listener path can read them
     std::env::set_var("SQLRUSTGO_DATA_DIR", data_dir);
     std::env::set_var("SQLRUSTGO_MAX_CONN", max_connections.to_string());
     std::env::set_var("SQLRUSTGO_AUTH_MODE", auth_mode);
     std::env::set_var("SQLRUSTGO_STORAGE", storage);
+    std::env::set_var("SQLRUSTGO_WAL_SYNC", wal_sync);
     // v3.10.0 Issue #3703: propagate intra-query executor parallelism.
     // Engine reads this env var on construction (see
     // `ExecutionEngine::new` + `set_parallel_degree`).
@@ -3441,9 +3488,16 @@ pub(crate) fn run_server_with_listener_and_shutdown_with_bootstrap_tables_and_sq
             let wal_manager = FileBackedWalManager::new(wal_path)
                 .map_err(|e| MySqlError::Sql(format!("WAL manager init failed: {}", e)))?;
             let checkpoint_manager = Arc::new(std::sync::RwLock::new(CheckpointManager::default()));
-            let wal_storage =
-                WalStorage::with_checkpoint_manager(file_storage, wal_manager, checkpoint_manager)
-                    .map_err(|e| MySqlError::Sql(format!("WalStorage init failed: {}", e)))?;
+            let wal_sync_mode = std::env::var("SQLRUSTGO_WAL_SYNC").unwrap_or_else(|_| "every".to_string());
+            let sync_mode = parse_wal_sync_mode(&wal_sync_mode);
+            tracing::info!("WAL sync mode: {:?}", sync_mode);
+            let wal_storage = WalStorage::new_with_sync_mode_and_checkpoint(
+                file_storage,
+                wal_manager,
+                sync_mode,
+                checkpoint_manager,
+            )
+            .map_err(|e| MySqlError::Sql(format!("WalStorage init failed: {}", e)))?;
             Arc::new(parking_lot::RwLock::new(BoxStorageEngine::new(wal_storage)))
         }
     };
