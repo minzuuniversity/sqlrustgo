@@ -567,3 +567,65 @@ fn test_mysql_client_error_all_variants_debug() {
     assert!(format!("{:?}", server_err).contains("ServerError"));
     assert!(format!("{:?}", closed_err).contains("ConnectionClosed"));
 }
+
+// ============================================================================
+// ColumnDefinition tests  
+// ============================================================================
+
+#[test]
+fn test_column_definition_debug() {
+    use sqlrustgo_mysql_client::ColumnDefinition;
+    
+    let col = ColumnDefinition {
+        catalog: "def".to_string(),
+        schema: "testdb".to_string(),
+        table: "users".to_string(),
+        org_table: "users".to_string(),
+        name: "id".to_string(),
+        org_name: "id".to_string(),
+        character_set: 0x21,
+        column_length: 11,
+        column_type: 0x03,
+        flags: 0x0020,
+        decimals: 0x00,
+    };
+    
+    let debug = format!("{:?}", col);
+    assert!(debug.contains("ColumnDefinition"));
+    assert!(debug.contains("id"));
+    assert!(debug.contains("testdb"));
+}
+
+// ============================================================================
+// PreparedStatement tests
+// ============================================================================
+
+#[test]
+fn test_prepared_statement_debug() {
+    use sqlrustgo_mysql_client::PreparedStatement;
+    
+    let ps = PreparedStatement {
+        id: 42,
+        param_count: 3,
+        column_count: 1,
+    };
+    
+    let debug = format!("{:?}", ps);
+    assert!(debug.contains("PreparedStatement"));
+    assert!(debug.contains("42"));
+}
+
+#[test]
+fn test_prepared_statement_fields() {
+    use sqlrustgo_mysql_client::PreparedStatement;
+    
+    let ps = PreparedStatement {
+        id: 7,
+        param_count: 5,
+        column_count: 2,
+    };
+    
+    assert_eq!(ps.id, 7);
+    assert_eq!(ps.param_count, 5);
+    assert_eq!(ps.column_count, 2);
+}
