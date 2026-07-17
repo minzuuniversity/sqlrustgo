@@ -243,4 +243,32 @@ mod tests {
 
         assert_eq!(plaintext.to_vec(), decrypted);
     }
+
+    #[test]
+    fn test_key_manager_list_keys() {
+        let manager = KeyManager::new();
+        assert!(manager.list_keys().is_empty());
+    }
+
+    #[test]
+    fn test_key_manager_generate_key() {
+        let manager = KeyManager::new();
+        let key = manager.generate_key("key1").unwrap();
+        assert_eq!(key.len(), 32);
+    }
+
+    #[test]
+    fn test_encryption_error_display() {
+        let err = EncryptionError::InvalidKey;
+        assert!(!format!("{}", err).is_empty());
+    }
 }
+
+
+    #[test]
+    fn test_encryption_error_variants() {
+        assert!(!format!("{}", EncryptionError::EncryptionFailed).is_empty());
+        assert!(!format!("{}", EncryptionError::DecryptionFailed).is_empty());
+        assert!(!format!("{}", EncryptionError::KeyNotFound).is_empty());
+        assert!(!format!("{}", EncryptionError::KeyAlreadyExists).is_empty());
+    }
