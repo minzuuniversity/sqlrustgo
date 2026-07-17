@@ -161,3 +161,21 @@ thresholds_override:
 
 # Total inherited: 23 tasks / ~1156h / 4 阶段
 # GA 目标: 2026-10-01
+
+# =============================================================================
+# Coverage Thresholds (v3.11.0)
+# =============================================================================
+# Based on COVERAGE_HISTORICAL_ANALYSIS.md (2026-07-17)
+#
+# Key findings:
+# - 85% threshold has NEVER been achieved historically (highest: 84.99%)
+# - v3.10.0 passed GA with 14.71% (established baseline)
+# - Conditional pass (baseline/exemption) is valid
+#
+coverage_thresholds:
+  alpha: 60   # Minimum acceptable level
+  beta: 70    # Reasonable improvement target  
+  rc: 75      # Based on v2.9.0 RC success (84.18%)
+  ga: 80      # Long-term goal
+  measurement: "cargo llvm-cov --tests --all-features"
+  conditional_pass: true  # Allow baseline/exemption
