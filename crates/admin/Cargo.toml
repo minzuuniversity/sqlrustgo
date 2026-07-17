@@ -21,6 +21,7 @@ log.workspace = true
 env_logger.workspace = true
 
 [dev-dependencies]
+sqlrustgo-mysql-server = { path = "../mysql-server" }
 tempfile.workspace = true
 
 [lib]

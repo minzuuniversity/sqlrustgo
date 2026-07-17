@@ -4,7 +4,7 @@
 //! the real MySQL wire protocol using sqlrustgo-mysql-client.
 //!
 //! Each test:
-//!   1. Starts an ephemeral server on a random port
+//!   1. Acquires or starts an ephemeral server on a port (pooled if fixed)
 //!   2. Connects via MySqlConnection::connect (real TCP)
 //!   3. Executes queries via execute() / execute_multi()
 //!   4. Verifies result sets round-trip correctly
@@ -12,12 +12,20 @@
 //! Run with: cargo test -p sqlrustgo-mysql-server --test e2e_wire_protocol
 
 use sqlrustgo_mysql_client::{MySqlConnection, MySqlResult};
-use sqlrustgo_mysql_server::testing::{start_ephemeral, EphemeralConfig};
+use sqlrustgo_mysql_server::testing::{start_ephemeral, EphemeralConfig, SERVER_POOL};
 use std::net::TcpStream;
 use std::time::Duration;
 
 /// Connect to the ephemeral server as the default tester user.
+/// - Pool ports (9001-9004): reuse a running server from [`SERVER_POOL`].
+/// - Other ports: caller is responsible for having a server already running.
 fn connect(port: u16) -> MySqlResult<MySqlConnection> {
+    if (9001..=9004).contains(&port) {
+        // Pool path: acquire keeps the server alive across tests.
+        let _handle = SERVER_POOL.acquire(port)?;
+    }
+    // For non-pool ports the caller has already started a server via
+    // start_ephemeral(); we just connect to it.
     let addr = format!("127.0.0.1:{}", port)
         .parse()
         .expect("invalid socket addr");
@@ -29,6 +37,7 @@ fn connect(port: u16) -> MySqlResult<MySqlConnection> {
 fn test_e2e_connect_and_handshake() {
     let config = EphemeralConfig {
         data_dir: None,
+                port: None,
         host: "127.0.0.1".to_string(),
         bootstrap_users: true,
         bootstrap_tables: false,
@@ -56,6 +65,7 @@ fn test_e2e_connect_and_handshake() {
 fn test_e2e_select_simple() {
     let config = EphemeralConfig {
         data_dir: None,
+                port: None,
         host: "127.0.0.1".to_string(),
         bootstrap_users: true,
         bootstrap_tables: false,
@@ -92,6 +102,7 @@ fn test_e2e_select_simple() {
 fn test_e2e_select_multiple_columns_rows() {
     let config = EphemeralConfig {
         data_dir: None,
+                port: None,
         host: "127.0.0.1".to_string(),
         bootstrap_users: true,
         bootstrap_tables: false,
@@ -135,6 +146,7 @@ fn test_e2e_select_multiple_columns_rows() {
 fn test_e2e_create_insert_select() {
     let config = EphemeralConfig {
         data_dir: None,
+                port: None,
         host: "127.0.0.1".to_string(),
         bootstrap_users: true,
         bootstrap_tables: false,
@@ -185,6 +197,7 @@ fn test_e2e_create_insert_select() {
 fn test_e2e_drop_table() {
     let config = EphemeralConfig {
         data_dir: None,
+                port: None,
         host: "127.0.0.1".to_string(),
         bootstrap_users: true,
         bootstrap_tables: false,
@@ -246,6 +259,7 @@ fn test_e2e_drop_table() {
 fn test_e2e_multi_statement() {
     let config = EphemeralConfig {
         data_dir: None,
+                port: None,
         host: "127.0.0.1".to_string(),
         bootstrap_users: true,
         bootstrap_tables: false,
@@ -287,6 +301,7 @@ fn test_e2e_multi_statement() {
 fn test_e2e_null_handling() {
     let config = EphemeralConfig {
         data_dir: None,
+                port: None,
         host: "127.0.0.1".to_string(),
         bootstrap_users: true,
         bootstrap_tables: false,
@@ -332,6 +347,7 @@ fn test_e2e_null_handling() {
 fn test_e2e_arithmetic_expressions() {
     let config = EphemeralConfig {
         data_dir: None,
+                port: None,
         host: "127.0.0.1".to_string(),
         bootstrap_users: true,
         bootstrap_tables: false,
@@ -367,6 +383,7 @@ fn test_e2e_arithmetic_expressions() {
 fn test_e2e_update() {
     let config = EphemeralConfig {
         data_dir: None,
+                port: None,
         host: "127.0.0.1".to_string(),
         bootstrap_users: true,
         bootstrap_tables: false,
@@ -420,6 +437,7 @@ fn test_e2e_update() {
 fn test_e2e_delete() {
     let config = EphemeralConfig {
         data_dir: None,
+                port: None,
         host: "127.0.0.1".to_string(),
         bootstrap_users: true,
         bootstrap_tables: false,
@@ -465,6 +483,7 @@ fn test_e2e_delete() {
 fn test_e2e_order_by() {
     let config = EphemeralConfig {
         data_dir: None,
+                port: None,
         host: "127.0.0.1".to_string(),
         bootstrap_users: true,
         bootstrap_tables: false,
@@ -510,6 +529,7 @@ fn test_e2e_order_by() {
 fn test_e2e_string_functions() {
     let config = EphemeralConfig {
         data_dir: None,
+                port: None,
         host: "127.0.0.1".to_string(),
         bootstrap_users: true,
         bootstrap_tables: false,
@@ -547,6 +567,7 @@ fn test_e2e_string_functions() {
 fn test_e2e_group_by_aggregates() {
     let config = EphemeralConfig {
         data_dir: None,
+                port: None,
         host: "127.0.0.1".to_string(),
         bootstrap_users: true,
         bootstrap_tables: false,
@@ -596,6 +617,7 @@ fn test_e2e_group_by_aggregates() {
 fn test_e2e_ddl_create_table_types() {
     let config = EphemeralConfig {
         data_dir: None,
+                port: None,
         host: "127.0.0.1".to_string(),
         bootstrap_users: true,
         bootstrap_tables: false,
@@ -629,6 +651,7 @@ fn test_e2e_ddl_create_table_types() {
 fn test_e2e_ddl_alter_table() {
     let config = EphemeralConfig {
         data_dir: None,
+                port: None,
         host: "127.0.0.1".to_string(),
         bootstrap_users: true,
         bootstrap_tables: false,
@@ -679,6 +702,7 @@ fn test_e2e_ddl_alter_table() {
 fn test_e2e_ddl_create_index() {
     let config = EphemeralConfig {
         data_dir: None,
+                port: None,
         host: "127.0.0.1".to_string(),
         bootstrap_users: true,
         bootstrap_tables: false,
@@ -712,6 +736,7 @@ fn test_e2e_ddl_create_index() {
 fn test_e2e_transaction_commit() {
     let config = EphemeralConfig {
         data_dir: None,
+                port: None,
         host: "127.0.0.1".to_string(),
         bootstrap_users: true,
         bootstrap_tables: false,
@@ -752,6 +777,7 @@ fn test_e2e_transaction_commit() {
 fn test_e2e_select_system_version() {
     let config = EphemeralConfig {
         data_dir: None,
+                port: None,
         host: "127.0.0.1".to_string(),
         bootstrap_users: true,
         bootstrap_tables: false,
@@ -780,6 +806,7 @@ fn test_e2e_select_system_version() {
 fn test_e2e_select_system_version_comment() {
     let config = EphemeralConfig {
         data_dir: None,
+                port: None,
         host: "127.0.0.1".to_string(),
         bootstrap_users: true,
         bootstrap_tables: false,
@@ -810,6 +837,7 @@ fn test_e2e_select_system_version_comment() {
 fn test_e2e_multi_result_set() {
     let config = EphemeralConfig {
         data_dir: None,
+                port: None,
         host: "127.0.0.1".to_string(),
         bootstrap_users: true,
         bootstrap_tables: false,
@@ -842,6 +870,7 @@ fn test_e2e_multi_result_set() {
 fn test_e2e_syntax_error() {
     let config = EphemeralConfig {
         data_dir: None,
+                port: None,
         host: "127.0.0.1".to_string(),
         bootstrap_users: true,
         bootstrap_tables: false,
@@ -870,6 +899,7 @@ fn test_e2e_syntax_error() {
 fn test_e2e_insert_affected_rows() {
     let config = EphemeralConfig {
         data_dir: None,
+                port: None,
         host: "127.0.0.1".to_string(),
         bootstrap_users: true,
         bootstrap_tables: false,
@@ -901,6 +931,7 @@ fn test_e2e_insert_affected_rows() {
 fn test_e2e_update_affected_rows() {
     let config = EphemeralConfig {
         data_dir: None,
+                port: None,
         host: "127.0.0.1".to_string(),
         bootstrap_users: true,
         bootstrap_tables: false,
@@ -934,6 +965,7 @@ fn test_e2e_update_affected_rows() {
 fn test_e2e_delete_affected_rows() {
     let config = EphemeralConfig {
         data_dir: None,
+                port: None,
         host: "127.0.0.1".to_string(),
         bootstrap_users: true,
         bootstrap_tables: false,
@@ -970,6 +1002,7 @@ fn test_e2e_delete_affected_rows() {
 fn test_e2e_group_by_having() {
     let config = EphemeralConfig {
         data_dir: None,
+                port: None,
         host: "127.0.0.1".to_string(),
         bootstrap_users: true,
         bootstrap_tables: false,
@@ -1011,6 +1044,7 @@ fn test_e2e_group_by_having() {
 fn test_e2e_subquery_where() {
     let config = EphemeralConfig {
         data_dir: None,
+                port: None,
         host: "127.0.0.1".to_string(),
         bootstrap_users: true,
         bootstrap_tables: false,
@@ -1063,6 +1097,7 @@ fn test_e2e_connect_refused() {
 fn test_e2e_update_single_row() {
     let config = EphemeralConfig {
         data_dir: None,
+                port: None,
         host: "127.0.0.1".to_string(),
         bootstrap_users: true,
         bootstrap_tables: false,
@@ -1100,6 +1135,7 @@ fn test_e2e_update_single_row() {
 fn test_e2e_update_no_where() {
     let config = EphemeralConfig {
         data_dir: None,
+                port: None,
         host: "127.0.0.1".to_string(),
         bootstrap_users: true,
         bootstrap_tables: false,
@@ -1135,6 +1171,7 @@ fn test_e2e_update_no_where() {
 fn test_e2e_delete_single_row() {
     let config = EphemeralConfig {
         data_dir: None,
+                port: None,
         host: "127.0.0.1".to_string(),
         bootstrap_users: true,
         bootstrap_tables: false,
@@ -1170,6 +1207,7 @@ fn test_e2e_delete_single_row() {
 fn test_e2e_delete_no_where() {
     let config = EphemeralConfig {
         data_dir: None,
+                port: None,
         host: "127.0.0.1".to_string(),
         bootstrap_users: true,
         bootstrap_tables: false,
@@ -1205,6 +1243,7 @@ fn test_e2e_delete_no_where() {
 fn test_e2e_insert_with_expression() {
     let config = EphemeralConfig {
         data_dir: None,
+                port: None,
         host: "127.0.0.1".to_string(),
         bootstrap_users: true,
         bootstrap_tables: false,
@@ -1244,6 +1283,7 @@ fn test_e2e_insert_with_expression() {
 fn test_e2e_select_nonexistent_table() {
     let config = EphemeralConfig {
         data_dir: None,
+                port: None,
         host: "127.0.0.1".to_string(),
         bootstrap_users: true,
         bootstrap_tables: false,
@@ -1265,6 +1305,7 @@ fn test_e2e_select_nonexistent_table() {
 fn test_e2e_insert_wrong_column_count() {
     let config = EphemeralConfig {
         data_dir: None,
+                port: None,
         host: "127.0.0.1".to_string(),
         bootstrap_users: true,
         bootstrap_tables: false,
@@ -1288,6 +1329,7 @@ fn test_e2e_insert_wrong_column_count() {
 fn test_e2e_invalid_sql_syntax() {
     let config = EphemeralConfig {
         data_dir: None,
+                port: None,
         host: "127.0.0.1".to_string(),
         bootstrap_users: true,
         bootstrap_tables: false,
@@ -1309,6 +1351,7 @@ fn test_e2e_invalid_sql_syntax() {
 fn test_e2e_divide_by_zero() {
     let config = EphemeralConfig {
         data_dir: None,
+                port: None,
         host: "127.0.0.1".to_string(),
         bootstrap_users: true,
         bootstrap_tables: false,
@@ -1334,6 +1377,7 @@ fn test_e2e_divide_by_zero() {
 fn test_e2e_avg_aggregate() {
     let config = EphemeralConfig {
         data_dir: None,
+                port: None,
         host: "127.0.0.1".to_string(),
         bootstrap_users: true,
         bootstrap_tables: false,
@@ -1368,6 +1412,7 @@ fn test_e2e_avg_aggregate() {
 fn test_e2e_min_max_aggregates() {
     let config = EphemeralConfig {
         data_dir: None,
+                port: None,
         host: "127.0.0.1".to_string(),
         bootstrap_users: true,
         bootstrap_tables: false,
@@ -1401,6 +1446,7 @@ fn test_e2e_min_max_aggregates() {
 fn test_e2e_in_operator() {
     let config = EphemeralConfig {
         data_dir: None,
+                port: None,
         host: "127.0.0.1".to_string(),
         bootstrap_users: true,
         bootstrap_tables: false,
@@ -1434,6 +1480,7 @@ fn test_e2e_in_operator() {
 fn test_e2e_is_null() {
     let config = EphemeralConfig {
         data_dir: None,
+                port: None,
         host: "127.0.0.1".to_string(),
         bootstrap_users: true,
         bootstrap_tables: false,
@@ -1467,6 +1514,7 @@ fn test_e2e_is_null() {
 fn test_e2e_limit() {
     let config = EphemeralConfig {
         data_dir: None,
+                port: None,
         host: "127.0.0.1".to_string(),
         bootstrap_users: true,
         bootstrap_tables: false,
@@ -1503,6 +1551,7 @@ fn test_e2e_limit() {
 fn test_e2e_insert_multiple_rows() {
     let config = EphemeralConfig {
         data_dir: None,
+                port: None,
         host: "127.0.0.1".to_string(),
         bootstrap_users: true,
         bootstrap_tables: false,
@@ -1534,6 +1583,7 @@ fn test_e2e_insert_multiple_rows() {
 fn test_e2e_insert_null() {
     let config = EphemeralConfig {
         data_dir: None,
+                port: None,
         host: "127.0.0.1".to_string(),
         bootstrap_users: true,
         bootstrap_tables: false,
@@ -1566,6 +1616,7 @@ fn test_e2e_insert_null() {
 fn test_e2e_order_by_desc_limit() {
     let config = EphemeralConfig {
         data_dir: None,
+                port: None,
         host: "127.0.0.1".to_string(),
         bootstrap_users: true,
         bootstrap_tables: false,
@@ -1599,6 +1650,7 @@ fn test_e2e_order_by_desc_limit() {
 fn test_e2e_select_distinct() {
     let config = EphemeralConfig {
         data_dir: None,
+                port: None,
         host: "127.0.0.1".to_string(),
         bootstrap_users: true,
         bootstrap_tables: false,
@@ -1631,6 +1683,7 @@ fn test_e2e_select_distinct() {
 fn test_e2e_count_distinct() {
     let config = EphemeralConfig {
         data_dir: None,
+                port: None,
         host: "127.0.0.1".to_string(),
         bootstrap_users: true,
         bootstrap_tables: false,
