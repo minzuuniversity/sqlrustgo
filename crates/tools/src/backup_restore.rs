@@ -455,3 +455,17 @@ mod tests {
         assert!(hash > 0);
     }
 }
+
+    #[test]
+    fn test_md5_consistency() {
+        let h1 = md5_simple("hello");
+        let h2 = md5_simple("hello");
+        assert_eq!(h1, h2);
+    }
+
+    #[test]
+    fn test_md5_different_inputs() {
+        let h1 = md5_simple("hello");
+        let h2 = md5_simple("world");
+        assert_ne!(h1, h2);
+    }
