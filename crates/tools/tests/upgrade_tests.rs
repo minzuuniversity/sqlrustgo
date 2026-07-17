@@ -104,3 +104,49 @@ fn test_version_info_parse_leading_whitespace() {
     // Leading whitespace is NOT trimmed by current implementation
     assert!(VersionInfo::parse("  v3.1.4").is_err());
 }
+
+#[test]
+fn test_version_info_can_upgrade_same_major_minor() {
+    let from = VersionInfo { major: 1, minor: 1, patch: 0 };
+    let to = VersionInfo { major: 1, minor: 1, patch: 5 };
+    assert!(from.can_upgrade_to(&to));
+}
+
+#[test]
+fn test_version_info_can_upgrade_same_major_new_minor() {
+    let from = VersionInfo { major: 1, minor: 1, patch: 0 };
+    let to = VersionInfo { major: 1, minor: 2, patch: 0 };
+    assert!(from.can_upgrade_to(&to));
+}
+
+#[test]
+fn test_version_info_can_upgrade_false_different_major() {
+    let from = VersionInfo { major: 1, minor: 1, patch: 0 };
+    let to = VersionInfo { major: 2, minor: 0, patch: 0 };
+    assert!(!from.can_upgrade_to(&to));
+}
+
+#[test]
+fn test_version_info_can_upgrade_false_older() {
+    let from = VersionInfo { major: 1, minor: 2, patch: 0 };
+    let to = VersionInfo { major: 1, minor: 1, patch: 0 };
+    assert!(!from.can_upgrade_to(&to));
+}
+
+#[test]
+fn test_upgrade_plan_struct() {
+    let from = VersionInfo { major: 1, minor: 0, patch: 0 };
+    let to = VersionInfo { major: 1, minor: 1, patch: 0 };
+    let plan = create_upgrade_plan(&from, &to).unwrap();
+    assert!(plan.pre_check_passed);
+    assert_eq!(plan.from_version.major, 1);
+    assert_eq!(plan.to_version.minor, 1);
+}
+
+#[test]
+fn test_upgrade_plan_no_steps_executed() {
+    let from = VersionInfo { major: 1, minor: 0, patch: 0 };
+    let to = VersionInfo { major: 1, minor: 1, patch: 0 };
+    let plan = create_upgrade_plan(&from, &to).unwrap();
+    assert!(plan.migration_steps.iter().all(|s| !s.executed));
+}
