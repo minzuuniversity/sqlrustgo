@@ -90,6 +90,9 @@ enum Command {
         /// Storage engine: "file" (default, WAL+FileStorage) or "binary" (BinaryTableStorage, fast TPC-H load)
         #[arg(long, default_value = "file")]
         storage: String,
+        /// WAL sync mode: "every" (default), "batch:N", or "off"
+        #[arg(long, default_value = "every")]
+        wal_sync: String,
         /// INTRA-QUERY PARALLEL EXECUTOR (Issue #3703, OpenSpec issue-3703-*):
         /// N = number of worker threads for parallel scan/join/agg
         /// pipelines within a single query. Default 1 = sequential
@@ -186,6 +189,7 @@ fn main() -> ExitCode {
         server_threads: 16,
         auth_mode: "none".to_string(),
         storage: "file".to_string(),
+        wal_sync: "every".to_string(),
         executor_parallelism: 1,
         verbose: false,
     });
@@ -199,6 +203,7 @@ fn main() -> ExitCode {
             server_threads,
             auth_mode,
             storage,
+            wal_sync,
             executor_parallelism,
             verbose,
         } => {
@@ -241,6 +246,7 @@ fn main() -> ExitCode {
                 &auth_mode,
                 server_threads,
                 &storage,
+                &wal_sync,
                 executor_parallelism,
             ) {
                 tracing::error!("server error: {e}");
