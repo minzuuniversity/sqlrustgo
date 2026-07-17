@@ -10,6 +10,7 @@ sqlrustgo-catalog.workspace = true
 sqlrustgo-storage.workspace = true
 sqlrustgo-types.workspace = true
 anyhow.workspace = true
+rand = "0.8"
 log.workspace = true
 env_logger.workspace = true
 serde.workspace = true
@@ -30,3 +31,4 @@ path = "src/bin/tbl2bin.rs"
 [[bin]]
 name = "bench_client"
 path = "src/bin/bench_client.rs"
+rand = "0.8"
