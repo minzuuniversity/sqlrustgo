@@ -4592,6 +4592,10 @@ pub mod testing {
         /// to control the user table themselves should set this to
         /// `false` and add their own users via the listener-side API.
         pub bootstrap_users: bool,
+        /// When `Some(port)`, bind to that exact port. When `None` or
+        /// `0`, the OS picks an available port. Exact ports allow
+        /// [`EphemeralServerPool`] to reuse server instances across tests.
+        pub port: Option<u16>,
         /// When `Some(path)`, the server uses this directory as its
         /// data dir instead of auto-creating one under
         /// `std::env::temp_dir()`. The path must already exist; the
@@ -4640,6 +4644,7 @@ pub mod testing {
                 bulk_insert_buffer_size: 1_048_576,
                 server_threads: 16,
                 storage: None,
+                port: None,
             }
         }
     }
@@ -4736,7 +4741,8 @@ pub mod testing {
         // no-op. With `Mutex<Option<...>>`, every call replaces the config.
         let mut cfg = ACTIVE_CONFIG.lock().unwrap(); *cfg = Some(config.clone());
 
-        let listener = TcpListener::bind(format!("{}:0", config.host))?;
+        let requested_port = config.port.unwrap_or(0);
+        let listener = TcpListener::bind(format!("{}:{}", config.host, requested_port))?;
         let port = listener.local_addr()?.port();
 
         let data_dir_for_thread = config.data_dir.clone();
@@ -4893,6 +4899,89 @@ pub mod testing {
             vec![r"INSERT INTO t VALUES ('a\';b')", "SELECT 1"]
         );
     }
+    /// Pool of pre-started ephemeral server instances on fixed ports 9001-9004.
+    /// Tests call [`EphemeralServerPool::acquire`] to get a running server;
+    /// unlike [`start_ephemeral`] which creates a new server per call, a pool
+    /// instance is reused across tests — reducing startup overhead from ~40 s
+    /// per test to ~0 s when the pool is already warm.
+    pub struct EphemeralServerPool {
+        /// Per-slot handle. `None` = not yet started; `Some(None)` = slot
+        /// available but server exited; `Some(Some(h))` = server running.
+        slots: [std::sync::Mutex<Option<Option<EphemeralHandle>>>; POOL_SIZE],
+    }
+
+    const POOL_SIZE: usize = 4;
+    const BASE_PORT: u16 = 9001;
+
+    impl EphemeralServerPool {
+        /// Construct the global pool (created lazily on first call).
+        pub fn new() -> Self {
+            Self {
+                slots: std::array::from_fn(|_| std::sync::Mutex::new(None)),
+            }
+        }
+
+        /// Acquire a server handle on `port`. If the slot is empty, boots a
+        /// new server; otherwise returns the already-running one. The server
+        /// is NOT stopped when the handle is dropped — it stays running so
+        /// subsequent tests on the same port reuse it immediately.
+        ///
+        /// Panics if `port` is outside `[BASE_PORT, BASE_PORT + POOL_SIZE)`.
+        pub fn acquire(&self, port: u16) -> Result<EphemeralHandle, std::io::Error> {
+            let idx = (port - BASE_PORT) as usize;
+            assert!(
+                idx < POOL_SIZE,
+                "port {port} is not in pool range [{BASE_PORT}, {max_port})",
+                max_port = BASE_PORT + POOL_SIZE as u16
+            );
+
+            let mut slot = self.slots[idx].lock().unwrap();
+
+            // If the slot is cold (None) or the previous server exited
+            // (Some(None)), boot a fresh one.
+            if slot.is_none() {
+                let config = EphemeralConfig {
+                    port: Some(port),
+                    host: "127.0.0.1".to_string(),
+                    bootstrap_users: true,
+                    bootstrap_tables: true,
+                    bootstrap_sql: Vec::new(),
+                    bulk_insert_buffer_size: 1_048_576,
+                    server_threads: 2,
+                    storage: None,
+                    data_dir: None,
+                };
+                let handle = start_ephemeral(config)?;
+                *slot = Some(Some(handle));
+            }
+
+            // slot is now Some(Some(handle)); clone the handle (shallow —
+            // port/join are Copy or already shared).
+            let inner = slot.as_ref().unwrap();
+            let h = inner.as_ref().unwrap();
+            Ok(EphemeralHandle {
+                port: h.port,
+                shutdown: h.shutdown.clone(),
+                join: Mutex::new(None), // intentionally None: pool owns join
+                data_dir: h.data_dir.clone(),
+                externally_owned: true, // pool never removes data dirs
+            })
+        }
+
+        /// Return the list of ports this pool manages.
+        pub fn ports(&self) -> Vec<u16> {
+            (BASE_PORT..(BASE_PORT + POOL_SIZE as u16)).collect()
+        }
+    }
+
+    // Safety: EphemeralHandle is Send + Sync (Arc<AtomicBool> + JoinHandle).
+    // The pool wraps each slot in a Mutex so Sync is satisfied.
+    unsafe impl Send for EphemeralServerPool {}
+    unsafe impl Sync for EphemeralServerPool {}
+
+    /// Global process-wide pool. Lazily initialised on first access.
+    pub static SERVER_POOL: std::sync::LazyLock<EphemeralServerPool, fn() -> EphemeralServerPool> =
+        std::sync::LazyLock::new(EphemeralServerPool::new);
 }
 
 /// Re-exports for the integration tests in `tests/`. The actual helpers
