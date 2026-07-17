@@ -44,4 +44,4 @@ pub use file_storage::FileStorage;
 pub use lock::{GapLock, GapLockManager, GapLockType, IsolationLevel};
 pub use page::Page;
 pub use wal::{FileBackedWalManager, MemoryWalManager, WalManager};
-pub use wal_storage::WalStorage;
+pub use wal_storage::{WalStorage, WalSyncMode};
