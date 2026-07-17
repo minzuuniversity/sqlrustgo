@@ -482,3 +482,88 @@ fn test_packet_write_large_but_valid() {
     // Just verify result type
     let _ = result;
 }
+// ============================================================================
+// MySqlClientError extended tests
+// ============================================================================
+
+#[test]
+fn test_mysql_client_error_server_error_display() {
+    let err = MySqlClientError::ServerError(1045, "Access denied for user".to_string());
+    let display = format!("{}", err);
+    assert!(display.contains("Server error"));
+    assert!(display.contains("1045"));
+    assert!(display.contains("Access denied"));
+}
+
+#[test]
+fn test_mysql_client_error_server_error_debug() {
+    let err = MySqlClientError::ServerError(1062, "Duplicate entry".to_string());
+    let debug = format!("{:?}", err);
+    assert!(debug.contains("ServerError"));
+    assert!(debug.contains("1062"));
+    assert!(debug.contains("Duplicate"));
+}
+
+#[test]
+fn test_mysql_client_error_connection_closed_display() {
+    let err = MySqlClientError::ConnectionClosed;
+    let display = format!("{}", err);
+    assert!(display.contains("Connection closed"));
+}
+
+#[test]
+fn test_mysql_client_error_connection_closed_debug() {
+    let err = MySqlClientError::ConnectionClosed;
+    let debug = format!("{:?}", err);
+    assert!(debug.contains("ConnectionClosed"));
+}
+
+#[test]
+fn test_mysql_client_error_auth_display() {
+    let err = MySqlClientError::Auth("bad credentials".to_string());
+    let display = format!("{}", err);
+    assert!(display.contains("Auth error"));
+    assert!(display.contains("bad credentials"));
+}
+
+#[test]
+fn test_mysql_client_error_protocol_display() {
+    let err = MySqlClientError::Protocol("unexpected packet type".to_string());
+    let display = format!("{}", err);
+    assert!(display.contains("Protocol error"));
+    assert!(display.contains("unexpected packet type"));
+}
+
+#[test]
+fn test_mysql_client_error_io_display() {
+    use std::io;
+    let io_err = io::Error::new(io::ErrorKind::Other, "custom io error");
+    let err = MySqlClientError::Io(io_err);
+    let display = format!("{}", err);
+    assert!(display.contains("IO error"));
+    assert!(display.contains("custom io error"));
+}
+
+#[test]
+fn test_mysql_client_error_server_error_zero_code() {
+    let err = MySqlClientError::ServerError(0, "OK".to_string());
+    let display = format!("{}", err);
+    assert!(display.contains("0"));
+    assert!(display.contains("OK"));
+}
+
+#[test]
+fn test_mysql_client_error_all_variants_debug() {
+    use std::io;
+    let io_err = MySqlClientError::Io(io::Error::new(io::ErrorKind::NotFound, "not found"));
+    let proto_err = MySqlClientError::Protocol("proto".to_string());
+    let auth_err = MySqlClientError::Auth("auth".to_string());
+    let server_err = MySqlClientError::ServerError(1, "server".to_string());
+    let closed_err = MySqlClientError::ConnectionClosed;
+    
+    assert!(format!("{:?}", io_err).contains("Io"));
+    assert!(format!("{:?}", proto_err).contains("Protocol"));
+    assert!(format!("{:?}", auth_err).contains("Auth"));
+    assert!(format!("{:?}", server_err).contains("ServerError"));
+    assert!(format!("{:?}", closed_err).contains("ConnectionClosed"));
+}
