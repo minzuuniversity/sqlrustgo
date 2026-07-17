@@ -3149,3 +3149,46 @@ mod parallel_scan_tests {
         let _ = std::fs::remove_dir_all(&temp_dir);
     }
 }
+impl FileStorage {
+    /// Flush dirty tables in parallel using std::thread
+    /// V311-09: Addresses global lock bottleneck - parallel table writes
+    pub fn flush_parallel(&mut self) -> std::io::Result<()> {
+        // Take dirty tables set, leaving empty set behind
+        let dirty: Vec<String> = std::mem::take(&mut self.dirty_tables).into_iter().collect();
+        
+        if dirty.is_empty() {
+            return Ok(());
+        }
+        
+        // For 1-2 tables, sequential is faster (no thread overhead)
+        if dirty.len() <= 2 {
+            return self.flush();
+        }
+        
+        // For 3+ tables, flush in parallel using thread pool
+        let results = std::thread::scope(|s| {
+            let handles: Vec<_> = dirty.iter()
+                .map(|name| {
+                    s.spawn(|| {
+                        if let Some(table_data) = self.tables.get(name) {
+                            self.save_table(name, table_data)
+                        } else {
+                            Ok(())
+                        }
+                    })
+                })
+                .collect();
+            
+            handles.into_iter()
+                .map(|h| h.join().unwrap())
+                .collect::<Vec<_>>()
+        });
+        
+        // Combine all results - return first error if any
+        for result in results {
+            result?;
+        }
+        
+        Ok(())
+    }
+}

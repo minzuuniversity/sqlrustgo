@@ -12,6 +12,12 @@ pub mod clustered_table;
 pub mod double_write_buffer;
 pub mod engine;
 pub mod file_storage;
+pub mod append_only_storage;
+pub mod file_table;
+pub mod table_engine;
+pub mod table_registry;
+pub mod table_level_storage;
+pub mod parallel_wal_storage;
 pub mod io_delay;
 
 // Re-export for integration tests that import via sqlrustgo_storage::
@@ -48,3 +54,4 @@ pub use lock::{GapLock, GapLockManager, GapLockType, IsolationLevel};
 pub use page::Page;
 pub use wal::{FileBackedWalManager, MemoryWalManager, WalManager};
 pub use wal_storage::{WalStorage, WalSyncMode};
+pub use parallel_wal_storage::ParallelWalStorage;
