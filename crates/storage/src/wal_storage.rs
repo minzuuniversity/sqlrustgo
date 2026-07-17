@@ -111,6 +111,20 @@ impl<S: StorageEngine, T: WalManager> WalStorage<S, T> {
             active_txs: HashMap::new(),
         })
     }
+    /// Create with a checkpoint manager (uses default sync mode).
+    pub fn with_checkpoint_manager(
+        inner: S,
+        wal: T,
+        checkpoint_manager: Arc<RwLock<CheckpointManager>>,
+    ) -> SqlResult<Self> {
+        Self::new_with_sync_mode_and_checkpoint(inner, wal, WalSyncMode::default(), checkpoint_manager)
+    }
+
+    /// Returns true if transaction `tx_id` is currently active.
+    pub fn is_tx_active(&self, tx_id: u64) -> bool {
+        self.active_txs.contains_key(&tx_id)
+    }
+
     /// Get current sync mode
     pub fn sync_mode(&self) -> WalSyncMode {
         self.sync_mode
