@@ -516,4 +516,115 @@ mod tests {
         let closed_session = manager.get_session(id2).unwrap();
         assert_eq!(closed_session.status, SessionStatus::Closed);
     }
+
+    #[test]
+    fn test_session_is_active() {
+        let session = Session::new(1, "alice".to_string(), "127.0.0.1".to_string());
+        assert!(session.is_active());
+    }
+
+    #[test]
+    fn test_session_idle_time() {
+        let session = Session::new(1, "alice".to_string(), "127.0.0.1".to_string());
+        assert_eq!(session.idle_time_seconds(), 0);
+    }
+
+    #[test]
+    fn test_session_can_kill() {
+        let mut session = Session::new(1, "alice".to_string(), "127.0.0.1".to_string());
+        session.grant_privilege(SessionPrivilege::Super);
+        assert!(session.can_kill());
+    }
+
+    #[test]
+    fn test_session_privilege_grant_revoke() {
+        let mut session = Session::new(1, "alice".to_string(), "127.0.0.1".to_string());
+        assert!(!session.has_privilege(SessionPrivilege::Super));
+        session.grant_privilege(SessionPrivilege::Super);
+        assert!(session.has_privilege(SessionPrivilege::Super));
+        session.revoke_privilege(SessionPrivilege::Super);
+        assert!(!session.has_privilege(SessionPrivilege::Super));
+    }
+
+    #[test]
+    fn test_session_cancel_token() {
+        let session = Session::new(1, "alice".to_string(), "127.0.0.1".to_string());
+        assert!(!session.is_query_cancelled());
+    }
+
+    #[test]
+    fn test_session_activity_update() {
+        let mut session = Session::new(1, "alice".to_string(), "127.0.0.1".to_string());
+        session.update_activity();
+        assert_eq!(session.idle_time_seconds(), 0);
+    }
+
+    #[test]
+    fn test_session_status_close() {
+        let mut session = Session::new(1, "alice".to_string(), "127.0.0.1".to_string());
+        session.close();
+        assert!(!session.is_active());
+    }
+
+    #[test]
+    fn test_session_can_view_processlist() {
+        let mut session = Session::new(1, "alice".to_string(), "127.0.0.1".to_string());
+        assert!(!session.can_view_processlist());
+        session.grant_privilege(SessionPrivilege::Super);
+        assert!(session.can_view_processlist());
+    }
+
+    #[test]
+
+    #[test]
+    fn test_session_reset_query_cancelled() {
+        let session = Session::new(1, "alice".to_string(), "127.0.0.1".to_string());
+        session.reset_query_cancelled();
+        assert!(!session.is_query_cancelled());
+    }
+
+    #[test]
+    fn test_session_manager_new() {
+        let manager = SessionManager::new();
+        assert_eq!(manager.get_active_sessions().len(), 0);
+    }
+
+    #[test]
+    fn test_session_manager_create_session() {
+        let manager = SessionManager::new();
+        let id = manager.create_session("alice".to_string(), "127.0.0.1".to_string());
+        assert_eq!(id, 1);
+        assert_eq!(manager.get_active_sessions().len(), 1);
+    }
+
+    #[test]
+    fn test_session_manager_get_session() {
+        let manager = SessionManager::new();
+        let id = manager.create_session("alice".to_string(), "127.0.0.1".to_string());
+        let session = manager.get_session(id);
+        assert!(session.is_some());
+    }
+
+    #[test]
+    fn test_session_manager_get_session_not_found() {
+        let manager = SessionManager::new();
+        let session = manager.get_session(999);
+        assert!(session.is_none());
+    }
+
+    #[test]
+    fn test_session_manager_close_session() {
+        let manager = SessionManager::new();
+        let id = manager.create_session("alice".to_string(), "127.0.0.1".to_string());
+        manager.close_session(id);
+        assert_eq!(manager.get_active_sessions().len(), 0);
+    }
+
+    #[test]
+    fn test_session_manager_with_max_idle() {
+        let manager = SessionManager::new().with_max_idle(300);
+        let id = manager.create_session("alice".to_string(), "127.0.0.1".to_string());
+        let session = manager.get_session(id);
+        assert!(session.is_some());
+    }
 }
