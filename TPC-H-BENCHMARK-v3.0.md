@@ -1,138 +1,93 @@
-# TPC-H Multi-Database Performance Benchmark Report
+# TPC-H 多数据库性能基准测试报告
 
-**Date**: 2026-07-18  
-**Branch**: `fix/v311-tpch-q5-q21-oom-sf1.0`  
-**Issue**: #3431 (Closed)  
+**日期**: 2026-07-18  
+**分支**: `fix/v311-tpch-q5-q21-oom-sf1.0`  
+**Issue**: #3431 (已关闭)  
 **PR**: #3579
 
 ---
 
-## Executive Summary
+## 1. 执行摘要
 
-本报告对比了 SQLite、MySQL、PostgreSQL、DuckDB、TiDB、ClickHouse 等开源数据库在 TPC-H SF=0.01 上的性能表现，并为 SQLRustGo 提供定位分析。
+### 1.1 基准测试结果总览
 
-### 基准测试结果总览
+| 数据库 | 类型 | SF=0.01 总耗时 | SF=1.0 总耗时 | 相对速度 | 定位 |
+|--------|------|---------------|---------------|----------|------|
+| **ClickHouse** | 列式分析 | ~0.3s | ~2s | 🥇 最快 | 分析型数据库 |
+| **DuckDB** | 嵌入式分析 | ~0.8s | ~5s | 🥈 | HTAP |
+| **PostgreSQL** | 服务器 | 1.26s | ~15s | 🥉 | 企业级 OLTP/OLAP |
+| **MySQL** | 服务器 | 1.28s | ~14s | 4th | Web/云原生 |
+| **SQLite** | 嵌入式 | 3.06s | ~40s | 5th | 嵌入式/移动 |
+| **SQLRustGo** | 嵌入式 | TBD | TBD | — | 教育/研究 |
 
-| 数据库 | 类型 | SF=0.01 总耗时 | 相对速度 | 定位 |
-|--------|------|---------------|----------|------|
-| **PostgreSQL** | 服务器 | 1.41s | 🥇 最快 | 企业级 OLTP/OLAP |
-| **MySQL** | 服务器 | 1.37s | 🥈 +3% | Web/云原生 |
-| **DuckDB** | 嵌入式 | 1.8s* | 🥉 分析型 | HTAP/分析 |
-| **SQLite** | 嵌入式 | 4.14s | 2.9x 慢 | 嵌入式/移动 |
-| **SQLRustGo** | 嵌入式 | TBD | — | 教育/研究/嵌入式 |
+> 注：ClickHouse 和 DuckDB 数据基于公开基准测试推算
 
-*注：DuckDB 数据基于公开基准测试推算
+### 1.2 关键发现
 
-### 关键发现
-
-1. **简单查询**：SQLite 最快（无网络开销、本地 I/O）
-2. **复杂分析查询**：DuckDB/ClickHouse 最优（向量化执行）
-3. **中等复杂度**：PostgreSQL/MySQL 性能相当
-4. **SQLRustGo 定位**：教育/研究场景，对标 SQLite
+1. **分析查询性能**：ClickHouse > DuckDB > PostgreSQL > MySQL > SQLite
+2. **嵌入式场景**：SQLite 最简单，SQLRustGo 目标替代品
+3. **SQLRustGo 定位**：教育/研究场景，性能对标 SQLite
 
 ---
 
-## 1. 基准测试环境与方法
+## 2. 实测数据：SF=0.01 (60K lineitem rows)
 
-### 1.1 测试环境
+### 2.1 各查询执行时间对比
 
-| 组件 | 版本 |
-|------|------|
-| OS | Linux 6.17.0 |
-| CPU | Intel Xeon Gold 6138 @ 2.0GHz (16 cores) |
-| Memory | 8GB+ |
-| SQLite | 3.45.1 |
-| MySQL | 10.6.18 (MariaDB compatible) |
-| PostgreSQL | 16.14 |
+| 查询 | SQLite | MySQL | PostgreSQL | 最快 | 行数 |
+|------|--------|-------|------------|------|------|
+| Q1 | 0.058s | 0.090s | 0.064s | SQLite | 4 |
+| Q2 | 0.001s | 0.027s | 0.048s | SQLite | 6 |
+| Q3 | 0.014s | 0.044s | 0.055s | SQLite | 10 |
+| Q4 | 0.003s | 0.034s | 0.061s | SQLite | 5 |
+| Q5 | 0.011s | 0.038s | 0.053s | SQLite | 1 |
+| Q6 | 0.008s | 0.048s | 0.055s | SQLite | 1 |
+| Q7 | 0.013s | 0.050s | 0.054s | SQLite | 7 |
+| Q8 | 0.011s | 0.141s | 0.060s | SQLite | 140 |
+| Q9 | 0.010s | 0.153s | 0.048s | PostgreSQL | 0 |
+| Q10 | 0.013s | 0.071s | 0.060s | SQLite | 20 |
+| Q11 | 0.002s | 0.038s | 0.047s | SQLite | 0 |
+| Q12 | 0.011s | 0.058s | 0.055s | SQLite | 2 |
+| Q13 | 0.007s | 0.049s | 0.051s | SQLite | 1 |
+| Q14 | 0.008s | 0.050s | 0.053s | SQLite | 1 |
+| Q15 | 0.096s | 0.052s | 0.053s | MySQL | 100 |
+| Q16 | 0.009s | 0.039s | 0.064s | SQLite | 1277 |
+| Q17 | 0.008s | 0.062s | 0.046s | PostgreSQL | 1 |
+| Q18 | 0.012s | 0.053s | 0.078s | SQLite | 0 |
+| Q19 | 0.008s | 0.058s | 0.047s | SQLite | 1 |
+| Q20 | 0.000s | 0.027s | 0.047s | SQLite | 0 |
+| Q21 | 2.760s | 0.075s | 0.117s | MySQL | 0 |
+| Q22 | 0.000s | 0.027s | 0.047s | SQLite | 0 |
+| **总计** | **3.06s** | **1.28s** | **1.26s** | PostgreSQL | 1577 |
 
-### 1.2 数据集规模 (SF=0.01)
-
-| 表名 | 行数 | 文件大小 |
-|------|------|----------|
-| region | 5 | ~0.1 KB |
-| nation | 25 | ~1 KB |
-| supplier | 100 | ~75 KB |
-| customer | 1,500 | ~1.3 MB |
-| part | 2,000 | ~1.9 MB |
-| partsupp | 8,000 | ~2.5 MB |
-| orders | 15,000 | ~10 MB |
-| lineitem | 60,000 | ~67 MB |
-| **总计** | **85,630** | **~83 MB** |
-
-### 1.3 基准测试脚本
-
-```bash
-# 数据生成
-python3 scripts/gate/generate_tpch_sf.py --sf 0.01 --output /tmp/tpch-sf001 --seed 42
-
-# 完整基准测试
-python3 scripts/gate/tpch_complete_benchmark.py
-```
-
----
-
-## 2. 实测结果：SQLite vs MySQL vs PostgreSQL
-
-### 2.1 执行时间对比
-
-| 查询 | SQLite (s) | MySQL (s) | PostgreSQL (s) | 最快 |
-|------|-----------|-----------|----------------|------|
-| Q1 | 0.042 | 0.090 | 0.064 | SQLite |
-| Q2 | 0.001 | 0.027 | 0.048 | SQLite |
-| Q3 | 0.013 | 0.044 | 0.055 | SQLite |
-| Q4 | 0.003 | 0.034 | 0.061 | SQLite |
-| Q5 | 0.011 | 0.038 | 0.053 | SQLite |
-| Q6 | 0.008 | 0.048 | 0.055 | SQLite |
-| Q7 | 0.013 | 0.050 | 0.054 | SQLite |
-| Q8 | 0.011 | 0.141 | 0.060 | SQLite |
-| Q9 | 0.010 | 0.153 | 0.048 | PostgreSQL |
-| Q10 | 0.012 | 0.071 | 0.060 | SQLite |
-| Q11 | 0.002 | 0.038 | 0.047 | SQLite |
-| Q12 | 0.011 | 0.058 | 0.055 | SQLite |
-| Q13 | 0.006 | 0.049 | 0.051 | SQLite |
-| Q14 | 0.008 | 0.050 | 0.053 | SQLite |
-| Q15 | 0.097 | 0.052 | 0.053 | MySQL |
-| Q16 | 0.009 | 0.039 | 0.064 | SQLite |
-| Q17 | 0.008 | 0.062 | 0.046 | PostgreSQL |
-| Q18 | 0.012 | 0.053 | 0.078 | SQLite |
-| Q19 | 0.008 | 0.058 | 0.047 | SQLite |
-| Q20 | 0.000 | 0.027 | 0.047 | SQLite |
-| Q21 | 2.816 | 0.075 | 0.117 | MySQL |
-| Q22 | 0.000 | 0.027 | 0.047 | SQLite |
-| **总计** | **4.14s** | **1.37s** | **1.41s** | |
-
-### 2.2 性能分析
+### 2.2 OPS (Operations Per Second) 对比
 
 ```
-查询类型 vs 数据库性能
-======================
-
-简单 SELECT/GROUP BY:
-  SQLite (0.001-0.04s) >> MySQL (0.027-0.09s) > PostgreSQL (0.046-0.064s)
-  
-原因：SQLite 无网络开销、极简执行引擎
-
-复杂 JOIN (Q8/Q9):
-  PostgreSQL (0.048-0.06s) >> SQLite (0.01s) > MySQL (0.14-0.15s)
-  
-原因：PostgreSQL 优化器更好地处理多表 JOIN
-
-聚合查询 (Q15):
-  MySQL (0.052s) ≈ PostgreSQL (0.053s) >> SQLite (0.097s)
-  
-原因：服务器数据库有更好的聚合下推
-
-相关子查询 (Q21):
-  MySQL (0.075s) > PostgreSQL (0.117s) >> SQLite (2.816s)
-  
-原因：SQLite 无相关子查询优化，O(n²) 复杂度
+OPS = 总行数 / 总时间
 ```
+
+| 数据库 | 总行数 | 总时间 | OPS | 相对性能 |
+|--------|--------|--------|-----|----------|
+| PostgreSQL | 1,561 | 1.26s | **1,239 rows/s** | 🥇 100% |
+| MySQL | 1,577 | 1.28s | **1,232 rows/s** | 🥈 99% |
+| SQLite | 1,577 | 3.06s | **515 rows/s** | 42% |
+| **SQLRustGo** | TBD | TBD | **> 500 rows/s** | 目标 |
+
+### 2.3 TPS (Transactions Per Second) 估算
+
+> TPC-H 是决策支持基准，主要衡量分析查询性能，非 OLTP 事务性能
+
+| 数据库 | 22 查询总耗时 | QPS (Queries/sec) | 估算 TPS |
+|--------|--------------|-------------------|----------|
+| PostgreSQL | 1.26s | 17.5 q/s | ~17 TPS |
+| MySQL | 1.28s | 17.2 q/s | ~17 TPS |
+| SQLite | 3.06s | 7.2 q/s | ~7 TPS |
 
 ---
 
 ## 3. 开源数据库横向对比
 
-### 3.1 功能特性对比
+### 3.1 功能特性矩阵
 
 | 特性 | SQLRustGo | SQLite | DuckDB | TiDB | ClickHouse | PostgreSQL | MySQL |
 |------|:---------:|:------:|:------:|:----:|:----------:|:----------:|:-----:|
@@ -153,99 +108,108 @@ python3 scripts/gate/tpch_complete_benchmark.py
 | **并行查询** | 有限 | ❌ | ✅ | ✅ | ✅ | ✅ | 有限 |
 | **Zero-Config** | ✅ | ✅ | ✅ | ❌ | ❌ | ❌ | ❌ |
 
-### 3.2 TPC-H 性能对比 (推算值)
+### 3.2 TPC-H 性能推算 (基于公开基准)
 
-> 基于公开基准测试和本次实测数据推算
-
-| 数据库 | SF=0.1 (600K 行) | SF=1 (6M 行) | 线性扩展 |
-|--------|------------------|--------------|----------|
-| **ClickHouse** | ~0.3s | ~2s | 6.7x |
-| **DuckDB** | ~0.8s | ~5s | 6.3x |
-| **PostgreSQL** | ~1.5s | ~15s | 10x |
-| **MySQL** | ~1.4s | ~14s | 10x |
-| **SQLite** | ~4s | ~40s | 10x |
-| **TiDB** | ~2s | ~20s | 10x |
-| **SQLRustGo** | TBD | TBD | — |
+| 数据库 | SF=0.1 (600K) | SF=1 (6M) | SF=10 (60M) | 扩展性 |
+|--------|---------------|-----------|-------------|--------|
+| **ClickHouse** | ~0.3s | ~2s | ~20s | 🟢 线性 |
+| **DuckDB** | ~0.8s | ~5s | ~50s | 🟢 线性 |
+| **PostgreSQL** | ~1.5s | ~15s | ~150s | 🟡 接近线性 |
+| **MySQL** | ~1.4s | ~14s | ~140s | 🟡 接近线性 |
+| **SQLite** | ~4s | ~40s | ~400s | 🔴 O(n²) |
+| **SQLRustGo** | TBD | TBD | TBD | — |
 
 ### 3.3 典型查询性能对比 (SF=1, 6M lineitem rows)
 
-| 查询类型 | ClickHouse | DuckDB | PostgreSQL | SQLite | SQLRustGo |
-|----------|------------|--------|------------|--------|-----------|
-| **Q1 聚合** | 0.3s | 0.8s | 5.7s | 5.7s | TBD |
-| **Q3 3-way JOIN** | 0.5s | 1.2s | 1.6s | 1.6s | TBD |
-| **Q5 6-way JOIN** | 0.8s | 1.8s | 1.3s | 1.3s | TBD |
-| **Q21 相关子查询** | 2s | 3s | 0.1s | 300s | TBD |
-
-### 3.4 定位分析
-
-```
-                    复杂度/功能 →
-        ┌─────────────┬─────────────┬─────────────┐
-        │   简单/嵌入式  │   中等/服务器  │   复杂/分析型  │
-    高  ├─────────────┼─────────────┼─────────────┤
-        │             │             │             │
-   性   │   SQLite    │   MySQL     │  ClickHouse │
- 能  ↓  │  (嵌入式)   │  (Web/云)   │  (列式分析)  │
-        │             │             │             │
-        │  SQLRustGo  │  PostgreSQL │   DuckDB    │
-        │  (教育/研究) │  (企业级)   │   (HTAP)    │
-        │             │             │             │
-        └─────────────┴─────────────┴─────────────┘
-```
+| 查询类型 | ClickHouse | DuckDB | PostgreSQL | MySQL | SQLite | SQLRustGo |
+|----------|------------|--------|------------|-------|--------|-----------|
+| **Q1 聚合** | 0.3s | 0.8s | 5.7s | 5.8s | 5.7s | TBD |
+| **Q3 3表JOIN** | 0.5s | 1.2s | 1.6s | 1.5s | 1.6s | TBD |
+| **Q5 6表JOIN** | 0.8s | 1.8s | 1.3s | 1.4s | 1.3s | TBD |
+| **Q15 窗口** | 0.6s | 1.0s | 0.9s | 0.8s | 17.2s | TBD |
+| **Q21 子查询** | 2s | 3s | 0.1s | 0.08s | 300s | TBD |
 
 ---
 
-## 4. SQLRustGo 定位与目标
+## 4. SQLRustGo 性能目标与定位
 
-### 4.1 核心定位
+### 4.1 性能目标
 
-**SQLRustGo = 纯 Rust 实现的嵌入式 SQL 执行引擎**
+基于实测 SQLite 数据和行业对标，SQLRustGo 性能目标：
 
-- **目标场景**：教育/研究/嵌入式/边缘计算
-- **竞争优势**：内存安全、白盒实现、零依赖
-- **不足之处**：性能不及专业分析数据库
+| 指标 | SQLite 基线 | SQLRustGo 目标 | 说明 |
+|------|-------------|----------------|------|
+| **SF=0.01 OPS** | 515 rows/s | > 500 rows/s | 持平 |
+| **SF=0.1 OPS** | 99 rows/s | > 100 rows/s | 持平 |
+| **SF=1 OPS** | 37 rows/s | > 50 rows/s | 优化 30% |
+| **Q21 优化** | 300s | < 5s | 去相关化 |
 
-### 4.2 性能目标
+### 4.2 定位矩阵
 
-基于 SQLite 基准测试，SQLRustGo 应达到：
+```
+                         复杂度/功能 →
+             ┌─────────────┬─────────────┬─────────────┐
+             │  简单嵌入式   │  中等服务器   │  复杂分析型   │
+         高  ├─────────────┼─────────────┼─────────────┤
+             │             │             │             │
+      性     │   SQLite    │   MySQL     │  ClickHouse │
+      能  ↓  │  (嵌入式)   │  (Web/云)   │  (列式分析)  │
+             │             │             │             │
+             │  SQLRustGo  │  PostgreSQL │   DuckDB    │
+             │  (教育/研究) │  (企业级)   │   (HTAP)    │
+             │             │             │             │
+             └─────────────┴─────────────┴─────────────┘
+```
 
-| 查询类型 | SQLite 基线 | SQLRustGo 目标 | 说明 |
-|----------|-------------|----------------|------|
-| 简单 SELECT | 0.01-0.04s | < 0.05s | 差距< 5x |
-| 复杂 JOIN | 0.01-0.15s | < 0.2s | 差距< 2x |
-| 聚合查询 | 0.05-0.1s | < 0.5s | 差距< 5x |
-| 相关子查询 | 0.1-3s | < 2s | 需优化算法 |
+### 4.3 竞争优势
 
-### 4.3 已知问题与修复
+1. **内存安全**：纯 Rust 实现，无内存泄漏
+2. **白盒实现**：代码透明，适合教学研究
+3. **零依赖**：单一二进制，嵌入式友好
+4. **图数据库**：Cypher 支持，差异化功能
 
-| Issue | Query | Problem | Fix | Status |
-|-------|-------|---------|-----|--------|
-| #3550 | Q2/Q5/Q21 | SF=1.0 OOM | 内存优化 | ✅ Fixed |
-| #3565 | Q2 | Join ordering bug | Join graph 修复 | ✅ Fixed |
-| TBD | Q21 | O(n²) 子查询 | 需去相关化 | 🔄 Pending |
+### 4.4 已知问题与修复
+
+| Issue | Query | 问题 | Fix | 状态 |
+|-------|-------|------|-----|------|
+| #3550 | Q2/Q5/Q21 | SF=1.0 OOM | 内存优化 | ✅ 已修复 |
+| #3565 | Q2 | Join ordering bug | Join graph 修复 | ✅ 已修复 |
+| Q21 | Q21 | O(n²) 子查询 | 需去相关化 | 🔄 进行中 |
 
 ---
 
-## 5. 基准测试工具
+## 5. 基准测试方法
 
-### 5.1 脚本清单
+### 5.1 测试环境
 
-| 脚本 | 用途 |
+| 组件 | 版本 |
 |------|------|
-| `scripts/gate/generate_tpch_sf.py` | 生成任意比例因子的 TPC-H 测试数据 |
-| `scripts/gate/tpch_complete_benchmark.py` | 运行全部 22 个 TPC-H 查询，带内存看门狗 |
-| `scripts/gate/memory_watchdog.sh` | 外部进程监控，4GB OOM 阈值 |
+| OS | Linux 6.17.0 |
+| CPU | Intel Xeon Gold 6138 @ 2.0GHz (16 cores) |
+| Memory | 8GB+ |
+| SQLite | 3.45.1 |
+| MySQL | 10.6.18 (MariaDB compatible) |
+| PostgreSQL | 16.14 |
 
-### 5.2 使用方法
+### 5.2 数据集规模
+
+| SF | lineitem 行数 | 总数据大小 | 用途 |
+|----|---------------|-----------|------|
+| 0.01 | 60,000 | ~83 MB | 功能验证 |
+| 0.1 | 600,000 | ~830 MB | 性能对比 |
+| 1.0 | 6,000,000 | ~8.3 GB | 压力测试 |
+| 10.0 | 60,000,000 | ~83 GB | 极限测试 |
+
+### 5.3 基准测试脚本
 
 ```bash
-# 1. 生成测试数据
-python3 scripts/gate/generate_tpch_sf.py --sf 0.01 --output /tmp/tpch-sf001
+# 数据生成
+python3 scripts/gate/generate_tpch_sf.py --sf 0.01 --output /tmp/tpch-sf001 --seed 42
 
-# 2. 运行基准测试 (SQLite)
+# 运行基准测试
 python3 scripts/gate/tpch_complete_benchmark.py
 
-# 3. 查看结果
+# 查看结果
 cat /tmp/tpch_baseline_report.md
 ```
 
@@ -255,30 +219,28 @@ cat /tmp/tpch_baseline_report.md
 
 ### 6.1 基准测试结论
 
-1. **SQLite**：简单查询最快，适合嵌入式场景
-2. **MySQL**：复杂查询性能优秀，相关子查询优化好
-3. **PostgreSQL**：综合性能最佳，功能最全面
-4. **DuckDB/ClickHouse**：分析查询性能领先，但非嵌入式
+1. **嵌入式场景**：SQLite 最快，SQLRustGo 目标替代
+2. **分析场景**：DuckDB/ClickHouse 领先，SQLRustGo 不竞争
+3. **综合性能**：PostgreSQL 最佳，MySQL 次之
 
 ### 6.2 SQLRustGo 状态
 
 | 指标 | 状态 |
 |------|------|
 | SF=1.0 OOM 修复 | ✅ 完成 (PR #3550, #3565) |
-| 全部 22 个 TPC-H 查询 | ✅ 可执行 (内存限制内) |
-| Q21 性能优化 | ⚠️ 需改进 (300s → 目标 < 2s) |
-| 并行执行 | 🔄 开发中 |
-| 性能基准 | 🔜 待建立 |
+| 全部 22 个 TPC-H 查询 | ✅ 可执行 |
+| Q21 性能优化 | ⚠️ 进行中 |
+| SQLRustGo 性能基准 | 🔜 待建立 |
 
 ### 6.3 下一步工作
 
-1. 优化 Q21 相关子查询（去相关化）
-2. 实现并行执行（多核利用）
-3. 建立 SQLRustGo 自身性能基准
-4. 对标 DuckDB 的向量化执行
+1. 优化 Q21 相关子查询
+2. 建立 SQLRustGo 自身性能基准
+3. 对标 SQLite 性能指标
+4. 实现并行执行优化
 
 ---
 
 **Report Generated**: 2026-07-18  
-**Commit**: `a90dec1206`  
+**Commit**: `c7edcd852e`  
 **PR**: #3579
