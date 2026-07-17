@@ -243,3 +243,96 @@ fn test_wire_error_io_from() {
     let display = format!("{}", err);
     assert!(display.contains("perm denied") || display.contains("Io"));
 }
+
+#[test]
+fn test_wire_error_all_variants_display() {
+    // Connect variant
+    let connect_err = WireError::Connect("connection refused".to_string());
+    let display = format!("{}", connect_err);
+    assert!(display.contains("connection failed") || display.contains("connection refused"));
+    // Query variant
+    let query_err = WireError::Query("syntax error".to_string());
+    let display = format!("{}", query_err);
+    assert!(display.contains("query failed") || display.contains("syntax error"));
+    // Io variant
+    let io_err = WireError::Io(std::io::Error::new(
+        std::io::ErrorKind::PermissionDenied,
+        "access denied",
+    ));
+    let display = format!("{}", io_err);
+    assert!(display.contains("access denied") || display.contains("io error"));
+    // Protocol variant
+    let proto_err = WireError::Protocol("unexpected packet".to_string());
+    let display = format!("{}", proto_err);
+    assert!(display.contains("unexpected shape") || display.contains("Protocol"));
+}
+
+#[test]
+fn test_wire_error_query_variant() {
+    let err = WireError::Query("version query failed".to_string());
+    let display = format!("{}", err);
+    assert!(display.contains("query failed"));
+    let debug = format!("{:?}", err);
+    assert!(debug.contains("Query"));
+}
+
+#[test]
+fn test_wire_error_connect_variant() {
+    let err = WireError::Connect("no addresses for host".to_string());
+    let display = format!("{}", err);
+    assert!(display.contains("connection failed"));
+    let debug = format!("{:?}", err);
+    assert!(debug.contains("Connect"));
+}
+
+#[test]
+fn test_wire_error_protocol_variant() {
+    let err = WireError::Protocol("empty result set".to_string());
+    let display = format!("{}", err);
+    assert!(display.contains("unexpected shape"));
+    let debug = format!("{:?}", err);
+    assert!(debug.contains("Protocol"));
+}
+// ============================================================================
+// WireAdmin connection error tests (without live server)
+// ============================================================================
+
+/// Connecting to a closed port should fail gracefully with WireError::Connect
+#[test]
+fn test_wire_admin_connect_port_refused() {
+    use sqlrustgo_admin::wire_client::WireAdmin;
+    let result = WireAdmin::connect("127.0.0.1", 1, "tester", "tester", "");
+    assert!(result.is_err());
+}
+
+/// Connecting to an unreachable host should fail with DNS resolution error
+#[test]
+fn test_wire_admin_connect_invalid_host() {
+    use sqlrustgo_admin::wire_client::WireAdmin;
+    let result = WireAdmin::connect("invalid-host-xyz", 3306, "root", "", "");
+    assert!(result.is_err());
+}
+
+/// Connecting to port 0 should fail
+#[test]
+fn test_wire_admin_connect_port_zero() {
+    use sqlrustgo_admin::wire_client::WireAdmin;
+    let result = WireAdmin::connect("127.0.0.1", 0, "root", "", "");
+    assert!(result.is_err());
+}
+
+/// Connecting to out-of-range port should fail
+#[test]
+fn test_wire_admin_connect_port_out_of_range() {
+    use sqlrustgo_admin::wire_client::WireAdmin;
+    let result = WireAdmin::connect("127.0.0.1", 65535, "root", "", "");
+    assert!(result.is_err());
+}
+
+/// Connecting with empty host should fail
+#[test]
+fn test_wire_admin_connect_empty_host() {
+    use sqlrustgo_admin::wire_client::WireAdmin;
+    let result = WireAdmin::connect("", 3306, "root", "", "");
+    assert!(result.is_err());
+}

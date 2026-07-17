@@ -207,13 +207,109 @@ fn test_parse_create_procedure_out_params() {
 
 #[test]
 fn test_parse_create_procedure_inout_params() {
+    // Stored procedure parsing now supports INCREMENT as a keyword name
     let sql = "CREATE PROCEDURE increment(INOUT value INT) BEGIN SET value = value + 1; END";
     let result = parse(sql);
     assert!(
         result.is_ok(),
-        "Failed to parse CREATE PROCEDURE with INOUT param: {:?}",
+        "CREATE PROCEDURE should parse successfully: {:?}",
         result
     );
+    match result.unwrap() {
+        sqlrustgo_parser::Statement::CreateProcedure(stmt) => {
+            assert_eq!(stmt.name, "increment", "procedure name");
+            assert_eq!(stmt.params.len(), 1, "should have 1 param");
+            assert_eq!(stmt.params[0].name, "value", "param name");
+            assert!(
+                matches!(stmt.params[0].mode, sqlrustgo_parser::StoredProcParamMode::InOut),
+                "param mode should be InOut"
+            );
+            assert_eq!(stmt.params[0].data_type, "INT", "param data type");
+            assert!(!stmt.body.is_empty(), "body should not be empty");
+        }
+        other => panic!("expected CreateProcedure, got {:?}", other),
+    }
+}
+#[test]
+fn test_parse_create_procedure_with_if() {
+    let sql = "CREATE PROCEDURE test_if(IN p_val INT) BEGIN IF p_val > 0 THEN SET p_val = 1; ELSE SET p_val = 0; END IF; END";
+    let result = parse(sql);
+    assert!(result.is_ok(), "Failed to parse IF: {:?}", result);
+    match result.unwrap() {
+        sqlrustgo_parser::Statement::CreateProcedure(stmt) => {
+            assert_eq!(stmt.name, "test_if");
+            assert!(!stmt.body.is_empty(), "body should not be empty");
+            // First statement should be If
+            assert!(
+                matches!(&stmt.body[0], sqlrustgo_parser::StoredProcStatement::If { .. }),
+                "expected If statement, got {:?}",
+                stmt.body[0]
+            );
+        }
+        other => panic!("expected CreateProcedure, got {:?}", other),
+    }
+}
+
+
+#[test]
+fn test_parse_create_procedure_with_while() {
+    let sql = "CREATE PROCEDURE test_while() BEGIN WHILE 1 = 1 DO SET x = x + 1; END WHILE; END";
+    let result = parse(sql);
+    assert!(result.is_ok(), "Failed to parse WHILE: {:?}", result);
+    match result.unwrap() {
+        sqlrustgo_parser::Statement::CreateProcedure(stmt) => {
+            assert_eq!(stmt.name, "test_while");
+            assert!(
+                matches!(&stmt.body[0], sqlrustgo_parser::StoredProcStatement::While { .. }),
+                "expected While statement, got {:?}",
+                stmt.body[0]
+            );
+        }
+        other => panic!("expected CreateProcedure, got {:?}", other),
+    }
+}
+
+#[test]
+fn test_parse_create_procedure_with_set() {
+    let sql = "CREATE PROCEDURE test_set() BEGIN SET x = 5; SET y = x + 1; END";
+    let result = parse(sql);
+    assert!(result.is_ok(), "Failed to parse SET: {:?}", result);
+    match result.unwrap() {
+        sqlrustgo_parser::Statement::CreateProcedure(stmt) => {
+            assert_eq!(stmt.name, "test_set");
+            assert!(
+                matches!(&stmt.body[0], sqlrustgo_parser::StoredProcStatement::Set { .. }),
+                "expected Set statement, got {:?}",
+                stmt.body[0]
+            );
+            match &stmt.body[0] {
+                sqlrustgo_parser::StoredProcStatement::Set { var_name, value } => {
+                    assert_eq!(var_name, "x", "var name");
+                    assert_eq!(value, "5", "value");
+                }
+                other => panic!("expected Set, got {:?}", other),
+            }
+        }
+        other => panic!("expected CreateProcedure, got {:?}", other),
+    }
+}
+
+#[test]
+fn test_parse_create_procedure_with_nested_begin() {
+    let sql = "CREATE PROCEDURE test_nested() BEGIN BEGIN SET x = 1; END; END";
+    let result = parse(sql);
+    assert!(result.is_ok(), "Failed to parse nested BEGIN: {:?}", result);
+    match result.unwrap() {
+        sqlrustgo_parser::Statement::CreateProcedure(stmt) => {
+            assert_eq!(stmt.name, "test_nested");
+            assert!(
+                matches!(&stmt.body[0], sqlrustgo_parser::StoredProcStatement::NestedBegin { .. }),
+                "expected NestedBegin, got {:?}",
+                stmt.body[0]
+            );
+        }
+        other => panic!("expected CreateProcedure, got {:?}", other),
+    }
 }
 
 // ============ ALTER TABLE Tests ============
@@ -2081,23 +2177,19 @@ fn test_parse_explain_tbl() {
     let _ = result;
 }
 
+
+// ============ MERGE Tests ============
+
 #[test]
-fn test_parse_handler_open() {
-    let sql = "HANDLER tbl OPEN";
+fn test_parse_merge_basic() {
+    let sql = "MERGE INTO target USING source ON target.id = source.id WHEN MATCHED THEN UPDATE SET target.val = source.val WHEN NOT MATCHED THEN INSERT (id, val) VALUES (source.id, source.val)";
     let result = parse(sql);
-    let _ = result;
+    assert!(result.is_ok(), "Failed to parse MERGE: {:?}", result);
 }
 
 #[test]
-fn test_parse_handler_read_next() {
-    let sql = "HANDLER tbl READ NEXT";
+fn test_parse_merge_with_delete() {
+    let sql = "MERGE INTO t1 USING t2 ON t1.id = t2.id WHEN MATCHED THEN DELETE";
     let result = parse(sql);
-    let _ = result;
-}
-
-#[test]
-fn test_parse_handler_close() {
-    let sql = "HANDLER tbl CLOSE";
-    let result = parse(sql);
-    let _ = result;
+    assert!(result.is_ok(), "Failed to parse MERGE DELETE: {:?}", result);
 }

@@ -514,6 +514,54 @@ fn current_timestamp() -> u64 {
         .as_secs()
 }
 
+    #[test]
+    fn test_audit_manager_log_revoke() {
+        let config = AuditConfig::default();
+        let manager = AuditManager::new(config);
+        manager.log_revoke("admin", "DELETE", "mydb.mytable", "alice");
+        let logs = manager.query_logs(&AuditFilter::default());
+        assert!(!logs.is_empty());
+    }
+
+    #[test]
+    fn test_audit_manager_log_logout() {
+        let config = AuditConfig::default();
+        let manager = AuditManager::new(config);
+        manager.log_logout("alice", 1);
+        let logs = manager.query_logs(&AuditFilter::default());
+        assert!(!logs.is_empty());
+    }
+
+    #[test]
+    fn test_audit_manager_log_error() {
+        let config = AuditConfig::default();
+        let manager = AuditManager::new(config);
+        manager.log_error("alice", "access denied", 1);
+        let logs = manager.query_logs(&AuditFilter::default());
+        assert!(!logs.is_empty());
+    }
+
+    #[test]
+    fn test_audit_manager_get_stats() {
+        let config = AuditConfig::default();
+        let manager = AuditManager::new(config);
+        manager.log_login("alice", true, "127.0.0.1");
+        manager.log_sql("bob", "SELECT 1", 10, 5, 2);
+        let stats = manager.get_stats();
+        assert_eq!(stats.logins, 1);
+        assert_eq!(stats.sql_executions, 1);
+    }
+
+    #[test]
+    fn test_audit_manager_get_recent() {
+        let config = AuditConfig::default();
+        let manager = AuditManager::new(config);
+        manager.log_login("alice", true, "127.0.0.1");
+        manager.log_login("bob", false, "127.0.0.2");
+        let recent = manager.get_recent(1);
+        assert_eq!(recent.len(), 1);
+    }
+
 #[cfg(test)]
 mod tests {
     use super::*;
