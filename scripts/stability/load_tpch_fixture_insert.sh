@@ -68,7 +68,7 @@ SCHEMAS=(
     "$SCHEMA_LINEITEM"
 )
 FILES=(region.tbl nation.tbl supplier.tbl customer.tbl part.tbl partsupp.tbl orders.tbl lineitem.tbl)
-N_COLS=(3 4 7 8 9 5 9 16)
+N_COLS=(3 4 6 8 10 6 10 15)
 
 mysql_q() {
     if [ -n "$PASSWORD" ]; then
@@ -91,54 +91,10 @@ mysql_run_file() {
 # Build INSERT batch from a .tbl file. Args: tbl name, file path, n_cols
 # We use multi-row INSERT VALUES (a,b),(c,d),... for speed.
 # Each line in .tbl is pipe-delimited with trailing pipe (TPC-H format).
-# We strip the trailing pipe and escape values for SQL.
+# NOTE: We do NOT strip trailing | — TPC-H data uses trailing | as empty field markers.
 build_inserts() {
     local file="$1" ncols="$2" max_rows="${3:-50000}"
-    python3 -c "
-import sys
-ncols = $ncols
-max_rows = $max_rows
-sql_parts = []
-row_count = 0
-with open('$file') as f:
-    for line in f:
-        line = line.rstrip('\n').rstrip('\r')
-        if line.endswith('|'):
-            line = line[:-1]
-        if not line:
-            continue
-        parts = line.split('|')
-        if len(parts) < ncols:
-            continue
-        parts = parts[:ncols]
-        # SQL escape
-        def esc(v):
-            if v is None: return 'NULL'
-            v = v.replace(\"'\", \"''\")
-            return f\"'{v}'\"
-        # Try numeric coercion for known-numeric columns
-        def coerce(v, idx):
-            # Columns 0..ncols-1 — for lineitem, numeric cols are 4 (quantity), 5 (ext price), 6 (discount), 7 (tax)
-            # For all tables: first columns are usually INT, last are TEXT
-            # Just try int/float for first 2-3 cols (likely keys)
-            if idx < 3:
-                try:
-                    return str(int(v))
-                except ValueError:
-                    pass
-                try:
-                    return str(float(v))
-                except ValueError:
-                    pass
-            return esc(v) if v != '' else 'NULL'
-        row_str = ','.join(coerce(parts[i], i) for i in range(ncols))
-        sql_parts.append('(' + row_str + ')')
-        row_count += 1
-        if row_count >= max_rows:
-            break
-print(','.join(sql_parts))
-print(f'-- {row_count} rows', file=sys.stderr)
-" 2>&1
+    python3 /tmp/load_tpch.py "$file" "$ncols" "$max_rows"
 }
 
 echo "=========================================="
