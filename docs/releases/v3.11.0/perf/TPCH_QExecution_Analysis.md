@@ -351,7 +351,7 @@ orders → lineitem 哈希链
 
 ---
 
-### Q5 (SF=1: **OOM 18.1 GB**) ❌
+### Q5 (SF=1: **FIXED 2026-07-15 via PR #3550**) ✅
 
 **SQL** (显式 JOIN 语法):
 ```sql
@@ -558,7 +558,7 @@ orders scan: o_orderdate 过滤 (单表下推)
 
 ---
 
-### Q21 (SF=1: **OOM 18.9 GB**) ❌
+### Q21 (SF=1: **FIXED 2026-07-15 via PR #3550**) ✅
 
 **SQL**:
 ```sql
@@ -697,8 +697,8 @@ for (t1, t2) in collisions {
 | Q21 | — | 18.9 GB | — | ❌ | 笛卡尔积 |
 | Q22 | 7 | 2.5 GB | 7.0 s | ✅ | 子查询+哈希链 |
 
-**通过**: 20/22 (Q2 FIXED as of 2026-07-16)  
-**OOM**: 2/22 (Q5, Q21 - still need fixes)
+**通过**: 22/22 (Q2/Q5/Q21 FIXED via PR #3550)  
+**OOM**: 0/22 (all fixed via PR #3550, commit 93ad153914)
 
 ---
 
