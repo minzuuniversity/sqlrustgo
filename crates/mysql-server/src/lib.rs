@@ -223,12 +223,11 @@ mod packet_type {
 //     flags and reads them from a different static). `start_ephemeral`
 //     is the entry point used by every wire-protocol integration test.
 //
-// `OnceLock` enforces a single set per process. If multiple
-// `start_ephemeral` calls happen, only the first wins. Tests that
-// need a fresh config use `EphemeralConfig::default()` for the rest.
+// FIXED: `OnceLock` -> `Mutex<Option<...>>` so each `start_ephemeral`
+// call replaces the config instead of only the first call succeeding.
 // ============================================================================
-use std::sync::OnceLock;
-static ACTIVE_CONFIG: OnceLock<std::sync::Mutex<testing::EphemeralConfig>> = OnceLock::new();
+use std::sync::Mutex;
+static ACTIVE_CONFIG: Mutex<Option<testing::EphemeralConfig>> = Mutex::new(None);
 
 mod capability {
     pub const LONG_PASSWORD: u32 = 0x00000001;
@@ -808,20 +807,6 @@ impl<'a> Read for TlsStream<'a> {
 impl<'a> TlsStream<'a> {
     pub fn new(conn: &'a mut rustls::ServerConnection, sock: &'a mut TcpStream) -> Self {
         Self { conn, sock }
-    }
-    /// Drive pending inbound TLS records from the underlying socket
-    /// without blocking on writes. Symmetric counterpart to
-    /// `drive_writes_only`.
-    #[allow(dead_code)]
-    fn drive_reads_only(&mut self) -> std::io::Result<()> {
-        while self.conn.wants_read() {
-            match self.conn.complete_io(self.sock) {
-                Ok(_) => {}
-                Err(e) if e.kind() == std::io::ErrorKind::WouldBlock => break,
-                Err(e) => return Err(e),
-            }
-        }
-        Ok(())
     }
 }
 
@@ -2602,10 +2587,7 @@ fn do_command_loop<S: Read + Write + DrainWrites>(
                 // by `start_ephemeral` so the handler has the same
                 // values the test used to configure the server.
                 if let Some((path, table, delim)) = parse_load_local_infile_sql(&q) {
-                    let cfg = ACTIVE_CONFIG
-                        .get()
-                        .map(|m| m.lock().unwrap().clone())
-                        .unwrap_or_default();
+                    let cfg = ACTIVE_CONFIG.lock().unwrap().clone().unwrap_or_default();
                     let data_dir = cfg
                         .data_dir
                         .clone()
@@ -3355,7 +3337,7 @@ pub fn run_server_v2(
         server_threads,
         ..Default::default()
     };
-    let _ = crate::ACTIVE_CONFIG.set(std::sync::Mutex::new(cfg));
+    let mut active_cfg = crate::ACTIVE_CONFIG.lock().unwrap(); *active_cfg = Some(cfg);
     let shutdown = std::sync::Arc::new(std::sync::atomic::AtomicBool::new(false));
     run_server_with_listener_and_shutdown_with_bootstrap_tables_and_sql(
         listener,
@@ -4805,8 +4787,8 @@ pub mod testing {
         // Publish the config so the server thread's `do_command_loop`
         // can find the data_dir and bulk buffer size for LOAD DATA
         // LOCAL INFILE. Only the first call wins; later calls are a
-        // no-op (OnceLock semantics).
-        let _ = ACTIVE_CONFIG.set(std::sync::Mutex::new(config.clone()));
+        // no-op. With `Mutex<Option<...>>`, every call replaces the config.
+        let mut cfg = ACTIVE_CONFIG.lock().unwrap(); *cfg = Some(config.clone());
 
         let listener = TcpListener::bind(format!("{}:0", config.host))?;
         let port = listener.local_addr()?.port();

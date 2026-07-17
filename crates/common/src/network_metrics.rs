@@ -168,20 +168,20 @@ mod tests {
 
     #[test]
     fn test_network_metrics_creation() {
-        let metrics = NetworkMetrics::new();
+        let mut metrics = NetworkMetrics::new();
         assert_eq!(metrics.connections_active(), 0);
     }
 
     #[test]
     fn test_network_metrics_connection_open() {
-        let metrics = NetworkMetrics::new();
+        let mut metrics = NetworkMetrics::new();
         metrics.record_connection_open();
         assert_eq!(metrics.connections_active(), 1);
     }
 
     #[test]
     fn test_network_metrics_connection_lifecycle() {
-        let metrics = NetworkMetrics::new();
+        let mut metrics = NetworkMetrics::new();
         metrics.record_connection_open();
         metrics.record_connection_close();
         assert_eq!(metrics.connections_active(), 0);
@@ -189,7 +189,7 @@ mod tests {
 
     #[test]
     fn test_network_metrics_bytes_sent_received() {
-        let metrics = NetworkMetrics::new();
+        let mut metrics = NetworkMetrics::new();
         metrics.record_bytes_sent(1024);
         metrics.record_bytes_received(512);
         assert_eq!(metrics.bytes_sent(), 1024);
@@ -198,7 +198,7 @@ mod tests {
 
     #[test]
     fn test_network_metrics_packets() {
-        let metrics = NetworkMetrics::new();
+        let mut metrics = NetworkMetrics::new();
         metrics.record_packet_sent();
         metrics.record_packet_sent();
         metrics.record_packet_received();
@@ -208,7 +208,7 @@ mod tests {
 
     #[test]
     fn test_network_metrics_errors() {
-        let metrics = NetworkMetrics::new();
+        let mut metrics = NetworkMetrics::new();
         metrics.record_error();
         metrics.record_error();
         assert_eq!(metrics.errors_total(), 2);
@@ -216,11 +216,80 @@ mod tests {
 
     #[test]
     fn test_network_metrics_multiple_connections() {
-        let metrics = NetworkMetrics::new();
+        let mut metrics = NetworkMetrics::new();
         metrics.record_connection_open();
         metrics.record_connection_open();
         metrics.record_connection_open();
         assert_eq!(metrics.connections_total(), 3);
         assert_eq!(metrics.connections_active(), 3);
+    }
+
+    #[test]
+    fn test_network_metrics_reset() {
+        let mut metrics = NetworkMetrics::new();
+        metrics.record_connection_open();
+        metrics.record_bytes_sent(1024);
+        metrics.record_packet_sent();
+        metrics.record_error();
+        metrics.reset();
+        assert_eq!(metrics.connections_active(), 0);
+        assert_eq!(metrics.connections_total(), 0);
+        assert_eq!(metrics.bytes_sent(), 0);
+        assert_eq!(metrics.packets_sent(), 0);
+        assert_eq!(metrics.errors_total(), 0);
+    }
+
+    #[test]
+    fn test_network_metrics_get_metric() {
+        let mut metrics = NetworkMetrics::new();
+        metrics.record_connection_open();
+        metrics.record_bytes_sent(512);
+        use crate::metrics::MetricValue;
+        assert!(matches!(metrics.get_metric("connections_active"), Some(MetricValue::Gauge(_))));
+        assert!(matches!(metrics.get_metric("bytes_sent"), Some(MetricValue::Counter(_))));
+        assert!(metrics.get_metric("nonexistent").is_none());
+    }
+
+    #[test]
+    fn test_network_metrics_get_metric_names() {
+        let mut metrics = NetworkMetrics::new();
+        let names = metrics.get_metric_names();
+        assert!(names.contains(&"connections_active".to_string()));
+        assert!(names.contains(&"bytes_sent".to_string()));
+        assert!(names.contains(&"errors_total".to_string()));
+        assert_eq!(names.len(), 8);
+    }
+
+    #[test]
+    fn test_network_metrics_record_error_with_type() {
+        let mut metrics = NetworkMetrics::new();
+        metrics.record_error_with_type("timeout");
+        metrics.record_error_with_type("connection_refused");
+        assert_eq!(metrics.errors_total(), 2);
+    }
+
+    #[test]
+    fn test_network_metrics_record_bytes() {
+        let mut metrics = NetworkMetrics::new();
+        metrics.record_bytes_read(100);
+        metrics.record_bytes_written(200);
+        assert_eq!(metrics.bytes_received(), 100);
+        assert_eq!(metrics.bytes_sent(), 200);
+    }
+
+    #[test]
+    fn test_network_metrics_default() {
+        let metrics = NetworkMetrics::default();
+        assert_eq!(metrics.connections_active(), 0);
+        assert_eq!(metrics.connections_total(), 0);
+    }
+
+    #[test]
+    fn test_network_metrics_connection_closed_counter() {
+        let mut metrics = NetworkMetrics::new();
+        metrics.record_connection_open();
+        metrics.record_connection_close();
+        assert_eq!(metrics.connections_closed(), 1);
+        assert_eq!(metrics.connections_active(), 0);
     }
 }

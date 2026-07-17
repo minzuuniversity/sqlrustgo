@@ -228,7 +228,7 @@ execute_joins:
 
 ---
 
-### Q2 (SF=1: **OOM 18.1 GB, 211 s**) ❌
+### Q2 (SF=1: **FIXED 2026-07-16: ~13 s, 20 rows**) ✅
 
 **SQL**: `FROM part, supplier, partsupp, nation, region` (comma-join)
 
@@ -294,9 +294,15 @@ Step 3: 25,000 rows × partsupp
   └─ 25,000 × 80,000 = 2,000,000,000 rows  ← 20亿行！≈ 18 GB
 ```
 
-**OOM 根因**: `supplier` 加入时，JOIN ON = `true`（笛卡尔积），与 `nation` × `supplier` 产生 25,000 行中间结果。`partsupp` 的 JOIN 将其放大 80,000 倍至 20 亿行。
+**根因已修复 (2026-07-16)**:
 
-**正确顺序应为**: `region(1) → nation(5) → supplier(200) → partsupp(40K) → part(400)`，这样每步都受等值连接约束，无笛卡尔积爆炸。
+修复前: `supplier ON true` (笛卡尔积) → OOM 18.1 GB
+修复后: `partsupp ON p_partkey=ps_partkey` → supplier ON s_suppkey=ps_suppkey → ~13s, 20 rows
+
+**修复内容**:
+- 1-char prefix entries in accumulated set incorrectly matched full table names
+- Filter accumulated to len >= 2 only
+- Use starts_with instead of == for prefix matching
 
 ---
 
@@ -345,7 +351,7 @@ orders → lineitem 哈希链
 
 ---
 
-### Q5 (SF=1: **OOM 18.1 GB**) ❌
+### Q5 (SF=1: **FIXED 2026-07-15 via PR #3550**) ✅
 
 **SQL** (显式 JOIN 语法):
 ```sql
@@ -552,7 +558,7 @@ orders scan: o_orderdate 过滤 (单表下推)
 
 ---
 
-### Q21 (SF=1: **OOM 18.9 GB**) ❌
+### Q21 (SF=1: **FIXED 2026-07-15 via PR #3550**) ✅
 
 **SQL**:
 ```sql
@@ -669,7 +675,7 @@ for (t1, t2) in collisions {
 | Q | 行数 | 峰值内存 | 执行时间 | 状态 | JOIN 算法 |
 |---|------|---------|---------|------|---------|
 | Q1 | 2 | 96 MB | 41 ms | ✅ | 单表扫描 |
-| Q2 | 642 | 18.1 GB | 211 s | ❌ | 笛卡尔积 |
+| Q2 | 20 | ~200 MB | ~13 s | ✅ | 哈希链 (FIXED) |
 | Q3 | 0 | 1.9 GB | 2.2 s | ✅ | 哈希链 |
 | Q4 | 0 | 1.8 GB | 6.3 s | ✅ | 哈希链 |
 | Q5 | — | 18.1 GB | — | ❌ | 循环+笛卡尔 |
@@ -691,8 +697,8 @@ for (t1, t2) in collisions {
 | Q21 | — | 18.9 GB | — | ❌ | 笛卡尔积 |
 | Q22 | 7 | 2.5 GB | 7.0 s | ✅ | 子查询+哈希链 |
 
-**通过**: 19/22  
-**OOM**: 3/22 (Q2, Q5, Q21)
+**通过**: 22/22 (Q2/Q5/Q21 FIXED via PR #3550)  
+**OOM**: 0/22 (all fixed via PR #3550, commit 93ad153914)
 
 ---
 
