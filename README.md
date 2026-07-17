@@ -290,6 +290,28 @@ SELECT region, revenue FROM regional_sales;
 **SF=1 gate test 汇总**：6/10 PASS（parser 限制，非执行引擎故障）
 
 > 详见 [TPC-H SF=1 部分结果说明](docs/releases/v3.9.0/ga/TPC-H_PARTIAL_RESULT.md)
+#### SF=0.01 多数据库对比基准 (2026-07-18) 🆕
+
+> SF=0.01 数据集（60K 行 lineitem）在 SQLite、MySQL、PostgreSQL 上的性能对比：
+
+| 数据库 | 类型 | 总耗时 | 相对速度 |
+|--------|------|--------|----------|
+| PostgreSQL | 服务器 | 1.41s | 🥇 最快 |
+| MySQL | 服务器 | 1.37s | 🥈 +3% |
+| SQLite | 嵌入式 | 4.14s | 🥉 2.9x 慢 |
+
+**关键发现**：
+- 简单查询：SQLite 最快（无网络开销）
+- 复杂查询（Q8/Q9/Q21）：MySQL/PostgreSQL 优 10-40x
+- SQLRustGo 定位：嵌入式场景，对标 SQLite
+
+| 查询 | SQLite | MySQL | PostgreSQL | 最快 |
+|------|--------|-------|------------|------|
+| Q1 | 0.042s | 0.090s | 0.064s | SQLite |
+| Q15 | 0.097s | 0.052s | 0.053s | MySQL |
+| Q21 | 2.816s | 0.075s | 0.117s | MySQL |
+
+> 详细数据: [TPC-H-BENCHMARK-v3.0.md](TPC-H-BENCHMARK-v3.0.md)
 
 #### SF=10（约 2200 万行 lineitem，~10GB）
 
