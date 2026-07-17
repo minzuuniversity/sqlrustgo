@@ -349,34 +349,48 @@ fn worker(
             }
             next_op_at = Instant::now() + Duration::from_nanos(per_op_nanos);
         }
-
         let is_oltp = rng.gen::<f64>() < oltp_ratio;
         if is_oltp {
-            let (cat, gen) = pick_oltp_op(&mut rng);
-            let sql = gen(&mut rng);
-            match conn.execute(&sql) {
-                Ok(_) => {
-                    counters.oltp_ok.fetch_add(1, Ordering::Relaxed);
-                    match cat {
-                        "insert" => counters.oltp_insert_ok.fetch_add(1, Ordering::Relaxed),
-                        "update" => counters.oltp_update_ok.fetch_add(1, Ordering::Relaxed),
-                        "delete" => counters.oltp_delete_ok.fetch_add(1, Ordering::Relaxed),
-                        _ => counters.oltp_select_ok.fetch_add(1, Ordering::Relaxed),
-                    };
+            // Batch multiple DML operations into one transaction
+            if conn.execute("START TRANSACTION").is_err() {
+                continue;
+            }
+
+            let mut batch_ok = 0;
+            let mut batch_err = 0;
+
+            for _ in 0..10 {
+                if Instant::now() >= deadline {
+                    break;
                 }
-                Err(e) => {
-                    counters.oltp_err.fetch_add(1, Ordering::Relaxed);
-                    match cat {
-                        "insert" => counters.oltp_insert_err.fetch_add(1, Ordering::Relaxed),
-                        "update" => counters.oltp_update_err.fetch_add(1, Ordering::Relaxed),
-                        "delete" => counters.oltp_delete_err.fetch_add(1, Ordering::Relaxed),
-                        _ => counters.oltp_select_err.fetch_add(1, Ordering::Relaxed),
-                    };
-                    let n = counters.oltp_err.load(Ordering::Relaxed);
-                    if n <= 3 {
-                        eprintln!("[worker {wid}] OLTP err: {e}  sql={sql}");
+                let (cat, gen) = pick_oltp_op(&mut rng);
+                let sql = gen(&mut rng);
+                match conn.execute(&sql) {
+                    Ok(_) => {
+                        batch_ok += 1;
+                    }
+                    Err(e) => {
+                        batch_err += 1;
+                        if batch_err <= 2 {
+                            eprintln!("[worker {wid}] batch DML err: {e}");
+                        }
+                        let _ = conn.execute("ROLLBACK");
+                        break;
                     }
                 }
+            }
+
+            if batch_err == 0 {
+                if let Err(e) = conn.execute("COMMIT") {
+                    counters.oltp_err.fetch_add(batch_ok as u64, Ordering::Relaxed);
+                    if counters.oltp_err.load(Ordering::Relaxed) <= 3 {
+                        eprintln!("[worker {wid}] COMMIT err: {e}");
+                    }
+                } else {
+                    counters.oltp_ok.fetch_add(batch_ok as u64, Ordering::Relaxed);
+                }
+            } else {
+                counters.oltp_err.fetch_add(batch_err as u64, Ordering::Relaxed);
             }
         } else {
             let (qname, qsql) = OLAP[rng.gen_range(0..OLAP.len())];
@@ -412,7 +426,6 @@ fn count_table(conn: &mut MySqlConnection, tbl: &str) -> u64 {
 // ---------------------------------------------------------------------------
 // Args
 // ---------------------------------------------------------------------------
-
 struct Args {
     host: String,
     port: u16,
@@ -421,6 +434,7 @@ struct Args {
     oltp_ratio: f64,
     target_qps: f64,
     report_interval: u64,
+    batch_size: usize,
 }
 
 fn env_u64(name: &str, default: u64) -> u64 {
@@ -508,6 +522,7 @@ fn parse_args() -> Args {
         oltp_ratio,
         target_qps,
         report_interval,
+        batch_size: 10,
     }
 }
 
