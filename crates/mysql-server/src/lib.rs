@@ -11,6 +11,7 @@ use sqlrustgo_parser::{parse, Statement};
 use sqlrustgo_storage::wal::FileBackedWalManager;
 use sqlrustgo_storage::{
     BinaryTableStorage, BoxStorageEngine, CheckpointManager, FileStorage, MemoryStorage,
+    ParallelWalStorage,
     StorageEngine, WalStorage,
 };
 use sqlrustgo_types::{SqlError, Value};
@@ -3439,9 +3440,47 @@ pub(crate) fn run_server_with_listener_and_shutdown_with_bootstrap_tables_and_sq
             tracing::info!("Loaded .bin tables from data_dir");
             Arc::new(parking_lot::RwLock::new(BoxStorageEngine::new(bin_storage)))
         }
+        Some("parallel") => {
+            // V311-09: ParallelWalStorage with parallel table flush
+            tracing::info!("Storage: parallel (ParallelWalStorage with parallel flush)");
+            let mut file_storage =
+                FileStorage::new_with_wal(wal_data_dir.clone()).map_err(std::io::Error::other)?;
+            let wal_path = wal_data_dir.join("sqlrustgo.wal");
+            // WAL recovery
+            {
+                use sqlrustgo_storage::recovery_engine::{RecoveryEngine, StatefulRecoveryEngine};
+                let mut recovery: StatefulRecoveryEngine<FileStorage> =
+                    StatefulRecoveryEngine::new();
+                let mut wal_manager_for_recovery = FileBackedWalManager::new(wal_path.clone())
+                    .map_err(|e| {
+                        MySqlError::Sql(format!("WAL manager (recovery) init failed: {}", e))
+                    })?;
+                match recovery.recover(&mut file_storage, &mut wal_manager_for_recovery) {
+                    Ok(report) => {
+                        tracing::info!(
+                            "WAL recovery: total={} committed_txns={} rows_inserted={}",
+                            report.entries_total,
+                            report.committed_txns,
+                            report.rows_inserted
+                        );
+                        let _ = file_storage.flush();
+                    }
+                    Err(e) => {
+                        tracing::warn!("WAL recovery skipped: {}", e);
+                    }
+                }
+            }
+            let wal_manager = FileBackedWalManager::new(wal_path)
+                .map_err(|e| MySqlError::Sql(format!("WAL manager init failed: {}", e)))?;
+            let wal_sync_mode = std::env::var("SQLRUSTGO_WAL_SYNC").unwrap_or_else(|_| "every".to_string());
+            let sync_mode = parse_wal_sync_mode(&wal_sync_mode);
+            tracing::info!("WAL sync mode: {:?}", sync_mode);
+            let mut parallel_storage = ParallelWalStorage::new(file_storage, wal_manager);
+            parallel_storage.set_sync_mode(sync_mode);
+            Arc::new(parking_lot::RwLock::new(BoxStorageEngine::new(parallel_storage)))
+        }
         _ => {
             // WalStorage<FileStorage, FileBackedWalManager>
-            // Issue #3257: emit a warning if the WAL file is suspiciously large at startup.
             let mut file_storage =
                 FileStorage::new_with_wal(wal_data_dir.clone()).map_err(std::io::Error::other)?;
             let wal_path = wal_data_dir.join("sqlrustgo.wal");
