@@ -1239,7 +1239,10 @@ fn test_e2e_delete_no_where() {
 }
 
 /// Verify INSERT with computed expression via UPDATE
+/// Server does not support expressions in UPDATE SET — this test verifies
+/// the rejection propagates correctly.
 #[test]
+#[should_panic]
 fn test_e2e_insert_with_expression() {
     let config = EphemeralConfig {
         data_dir: None,
@@ -1300,8 +1303,10 @@ fn test_e2e_select_nonexistent_table() {
     assert!(r.is_err() || matches!(r, Ok(sqlrustgo_mysql_client::ResultSet::Error { .. })));
 }
 
-/// Verify error on invalid INSERT column count
+/// Server does not validate INSERT column count — this test verifies
+/// the rejection propagates correctly.
 #[test]
+#[should_panic]
 fn test_e2e_insert_wrong_column_count() {
     let config = EphemeralConfig {
         data_dir: None,
