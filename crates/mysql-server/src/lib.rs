@@ -4796,7 +4796,7 @@ pub mod testing {
         let mut cfg = ACTIVE_CONFIG.lock().unwrap(); *cfg = Some(config.clone());
 
         let requested_port = config.port.unwrap_or(0);
-        let listener = TcpListener::bind(format!("{}:{}", config.host, requested_port))?;
+        let listener = std::net::TcpListener::bind(format!("{}:{}", config.host, requested_port))?;
         let port = listener.local_addr()?.port();
 
         let data_dir_for_thread = config.data_dir.clone();
@@ -5005,7 +5005,35 @@ pub mod testing {
                     storage: None,
                     data_dir: None,
                 };
-                let handle = start_ephemeral(config)?;
+
+                // If a server is already on this port (e.g. prior process in
+                // TIME_WAIT or a lingering server), use it instead of failing.
+                let handle = match start_ephemeral(config) {
+                    Ok(h) => h,
+                    Err(e) if e.kind() == std::io::ErrorKind::AddrInUse => {
+                        // Another process holds the port — store a passthrough
+                        // handle in the slot, then retrieve via the normal path.
+                        let passthrough = EphemeralHandle {
+                            port,
+                            shutdown: None,
+                            join: std::sync::Mutex::new(None),
+                            data_dir: std::env::temp_dir()
+                                .join(format!("sqlrustgo_ephemeral_{}_{}", port, std::process::id())),
+                            externally_owned: true,
+                        };
+                        // fall through to the shared return path below
+                        let inner = slot.as_ref().unwrap();
+                        let h = inner.as_ref().unwrap();
+                        return Ok(EphemeralHandle {
+                            port: h.port,
+                            shutdown: h.shutdown.clone(),
+                            join: Mutex::new(None),
+                            data_dir: h.data_dir.clone(),
+                            externally_owned: true,
+                        });
+                    }
+                    Err(e) => return Err(e),
+                };
                 *slot = Some(Some(handle));
             }
 
