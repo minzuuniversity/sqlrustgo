@@ -5,7 +5,7 @@
 ## 快速链接
 
 - 战略定位: `plans/V311_VERSION_PLAN.md` § 1
-- 任务清单: `plans/V311_DEVELOPMENT_PLAN.md` (~22 任务 / ~720h / 4 阶段)
+- 任务清单: `plans/V311_DEVELOPMENT_PLAN.md` (~23 任务 / ~1156h / 4 阶段)
 - 债务追踪: `plans/V311_DEBT_CLOSURE_PLAN.md` (基于 `docs/governance/debt/debt-registry.yaml`)
 - 文档架构: `plans/V311_DOCS_RESTRUCTURE_PLAN.md`
 - 当前阶段: `STAGE.yaml` (DRAFT)
@@ -42,7 +42,7 @@ v3.12+:  分布式 + 新语法扩展
 | 维度 | v3.10.0 | v3.11.0 |
 | --- | --- | --- |
 | 主题 | MySQL 5.7 替代 | **债务清零 + 功能集成** |
-| 核心任务 | 26 项 (~500h) | **~22 项 (~720h)** |
+| 核心任务 | 26 项 (~500h) | **~23 项 (~1156h)** |
 | 债务闭环率 | ~70% | **目标 100%** |
 | F-XX ISOLATED | 1/10 集成 (F-16) | **目标 10/10 集成** |
 | F-XX NOT IMPL | 2/5 闭环 (T-19/20) | **目标 5/5 闭环** |
