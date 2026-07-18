@@ -382,15 +382,21 @@ fn worker(
 
             if batch_err == 0 {
                 if let Err(e) = conn.execute("COMMIT") {
-                    counters.oltp_err.fetch_add(batch_ok as u64, Ordering::Relaxed);
+                    counters
+                        .oltp_err
+                        .fetch_add(batch_ok as u64, Ordering::Relaxed);
                     if counters.oltp_err.load(Ordering::Relaxed) <= 3 {
                         eprintln!("[worker {wid}] COMMIT err: {e}");
                     }
                 } else {
-                    counters.oltp_ok.fetch_add(batch_ok as u64, Ordering::Relaxed);
+                    counters
+                        .oltp_ok
+                        .fetch_add(batch_ok as u64, Ordering::Relaxed);
                 }
             } else {
-                counters.oltp_err.fetch_add(batch_err as u64, Ordering::Relaxed);
+                counters
+                    .oltp_err
+                    .fetch_add(batch_err as u64, Ordering::Relaxed);
             }
         } else {
             let (qname, qsql) = OLAP[rng.gen_range(0..OLAP.len())];
@@ -708,7 +714,7 @@ fn main() {
         final_nation = count_table(&mut final_conn, "nation");
     }
 
-        let (oltp_ok, oltp_err, olap_ok, olap_err) = counters.snapshot();
+    let (oltp_ok, oltp_err, olap_ok, olap_err) = counters.snapshot();
     let ins_ok = counters.oltp_insert_ok.load(Ordering::Relaxed);
     let upd_ok = counters.oltp_update_ok.load(Ordering::Relaxed);
     let del_ok = counters.oltp_delete_ok.load(Ordering::Relaxed);

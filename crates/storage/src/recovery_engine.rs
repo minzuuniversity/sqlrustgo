@@ -877,8 +877,9 @@ mod tests {
             foreign_keys: vec![],
             unique_constraints: vec![],
             check_constraints: vec![],
-           
-    compression: None, partition_info: None,
+
+            compression: None,
+            partition_info: None,
         };
         storage.create_table(&table_info).unwrap();
         let id = table_name_to_id("orders");

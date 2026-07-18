@@ -1,6 +1,8 @@
 // Additional mysql-server coverage tests: helper functions and error types
 
-use sqlrustgo_mysql_server::{MySqlError, StmtParam, replace_placeholders, parse_stmt_execute_params};
+use sqlrustgo_mysql_server::{
+    parse_stmt_execute_params, replace_placeholders, MySqlError, StmtParam,
+};
 
 // ============ replace_placeholders tests ============
 
@@ -8,7 +10,7 @@ use sqlrustgo_mysql_server::{MySqlError, StmtParam, replace_placeholders, parse_
 fn test_replace_placeholders_basic() {
     let sql = "SELECT * FROM t WHERE id = ? AND name = ?";
     let params = vec![
-        (b"1".to_vec(), true),   // numeric
+        (b"1".to_vec(), true),      // numeric
         (b"alice".to_vec(), false), // string
     ];
     let result = replace_placeholders(sql, &params);
@@ -127,12 +129,12 @@ fn test_parse_stmt_execute_params_with_new_params_bound() {
     payload[9] = 0x00;
     // new_params_bound_flag
     payload[10] = 0x01;
-    // type codes: LONG (0x08), VARCHAR (0xfc) 
+    // type codes: LONG (0x08), VARCHAR (0xfc)
     payload[11] = 0x08; // INT
     payload[12] = 0x00;
     payload[13] = 0x0c; // VARCHAR
     payload[14] = 0x00;
-    
+
     let type_codes = vec![0x08, 0x0c, 0xfc, 0x00];
     let result = parse_stmt_execute_params(&payload, 2, &type_codes);
     assert_eq!(result.len(), 2);

@@ -156,7 +156,10 @@ fn test_delete_quick() {
 
 #[test]
 fn test_merge_variants() {
-    assert!(parse("MERGE INTO t1 USING t2 ON t1.id = t2.id WHEN MATCHED THEN UPDATE SET t1.name = t2.name").is_ok());
+    assert!(parse(
+        "MERGE INTO t1 USING t2 ON t1.id = t2.id WHEN MATCHED THEN UPDATE SET t1.name = t2.name"
+    )
+    .is_ok());
     assert!(parse("MERGE INTO t1 USING t2 ON t1.id = t2.id WHEN MATCHED THEN UPDATE SET t1.name = t2.name WHEN NOT MATCHED THEN INSERT (id, name) VALUES (t2.id, t2.name)").is_ok());
     assert!(parse("MERGE INTO t1 AS m USING t2 AS s ON m.id = s.id WHEN MATCHED THEN UPDATE SET m.name = s.name").is_ok());
     assert!(parse("MERGE INTO t1 USING t2 ON t1.id = t2.id WHEN MATCHED AND t1.ver < s.ver THEN UPDATE SET t1.name = s.name").is_ok());

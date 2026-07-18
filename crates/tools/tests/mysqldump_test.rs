@@ -29,10 +29,22 @@ fn test_import_stats_increment() {
 #[test]
 fn test_sql_statement_variants() {
     let stmts: Vec<SqlStatement> = vec![
-        SqlStatement::DropTable { name: "t1".to_string(), if_exists: false },
-        SqlStatement::CreateTable { name: "t2".to_string(), columns: vec![] },
-        SqlStatement::Insert { table: "t3".to_string(), columns: vec![], values: vec![] },
-        SqlStatement::Use { database: "testdb".to_string() },
+        SqlStatement::DropTable {
+            name: "t1".to_string(),
+            if_exists: false,
+        },
+        SqlStatement::CreateTable {
+            name: "t2".to_string(),
+            columns: vec![],
+        },
+        SqlStatement::Insert {
+            table: "t3".to_string(),
+            columns: vec![],
+            values: vec![],
+        },
+        SqlStatement::Use {
+            database: "testdb".to_string(),
+        },
         SqlStatement::Unknown("SET foreign_key_checks=0".to_string()),
     ];
     assert_eq!(stmts.len(), 5);
@@ -79,7 +91,10 @@ fn test_column_def_with_default() {
 
 #[test]
 fn test_foreign_key_ref() {
-    let fk = ForeignKeyRef { table: "orders".to_string(), column: "customer_id".to_string() };
+    let fk = ForeignKeyRef {
+        table: "orders".to_string(),
+        column: "customer_id".to_string(),
+    };
     assert_eq!(fk.table, "orders");
     assert_eq!(fk.column, "customer_id");
 }
@@ -127,7 +142,11 @@ fn test_import_reader_insert() {
     assert_eq!(importer.stats().queries_executed, 1);
     assert_eq!(importer.statements().len(), 1);
     match &importer.statements()[0] {
-        SqlStatement::Insert { table, columns, values } => {
+        SqlStatement::Insert {
+            table,
+            columns,
+            values,
+        } => {
             assert_eq!(table, "users");
             assert_eq!(columns, &["id", "name"]);
             assert_eq!(values.len(), 1);
@@ -204,7 +223,10 @@ fn test_import_reader_unlock_tables() {
     let mut importer = DumpImporter::new(ImportMode::Full, false);
     importer.import_reader(Cursor::new(sql)).unwrap();
     assert_eq!(importer.statements().len(), 1);
-    assert!(matches!(&importer.statements()[0], SqlStatement::UnlockTables));
+    assert!(matches!(
+        &importer.statements()[0],
+        SqlStatement::UnlockTables
+    ));
 }
 
 #[test]
@@ -214,7 +236,10 @@ fn test_import_reader_transaction_statements() {
     importer.import_reader(Cursor::new(sql)).unwrap();
     assert_eq!(importer.statements().len(), 3);
     assert!(matches!(&importer.statements()[0], SqlStatement::Begin));
-    assert!(matches!(&importer.statements()[1], SqlStatement::Insert { .. }));
+    assert!(matches!(
+        &importer.statements()[1],
+        SqlStatement::Insert { .. }
+    ));
     assert!(matches!(&importer.statements()[2], SqlStatement::Commit));
 }
 
@@ -224,7 +249,10 @@ fn test_import_reader_unknown_statement() {
     let mut importer = DumpImporter::new(ImportMode::Full, false);
     importer.import_reader(Cursor::new(sql)).unwrap();
     assert_eq!(importer.statements().len(), 1);
-    assert!(matches!(&importer.statements()[0], SqlStatement::Unknown(_)));
+    assert!(matches!(
+        &importer.statements()[0],
+        SqlStatement::Unknown(_)
+    ));
 }
 
 #[test]
@@ -318,12 +346,14 @@ fn test_sql_statement_insert_with_data() {
     let stmt = SqlStatement::Insert {
         table: "employees".to_string(),
         columns: vec!["id".to_string(), "name".to_string()],
-        values: vec![
-            vec!["1".to_string(), "'John'".to_string()],
-        ],
+        values: vec![vec!["1".to_string(), "'John'".to_string()]],
     };
     match &stmt {
-        SqlStatement::Insert { table, columns, values } => {
+        SqlStatement::Insert {
+            table,
+            columns,
+            values,
+        } => {
             assert_eq!(table, "employees");
             assert_eq!(columns.len(), 2);
             assert_eq!(values.len(), 1);
@@ -343,7 +373,10 @@ fn test_sql_statement_lock_unlock_tables() {
         _ => panic!("expected LockTables"),
     }
     let unlock = SqlStatement::UnlockTables;
-    match unlock { SqlStatement::UnlockTables => {} _ => panic!("expected UnlockTables") }
+    match unlock {
+        SqlStatement::UnlockTables => {}
+        _ => panic!("expected UnlockTables"),
+    }
 }
 
 #[test]
