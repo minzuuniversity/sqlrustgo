@@ -1,5 +1,6 @@
 # v3.11.0 历史遗留问题审计报告
 
+> **状态**: ARCHIVED (2026-07-18) - 历史审计报告，已被 PROGRESS.md 替代
 > **生成日期**: 2026-07-16
 > **生成人**: openclaw (Claude Code)
 > **基于**: debt-registry.yaml (v3.10.0 snapshot), FEATURE_CHECKLIST.md, 代码审计
