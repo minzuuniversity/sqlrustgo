@@ -1,7 +1,7 @@
 # TPC-H 多数据库性能对比报告
 
 **日期**: 2026-07-18  
-**分支**: `feature/data-loading-optimization` (commit: `4cf657ba4e`)
+**分支**: `develop/v3.11.0` (✅ merged: PR #3620)
 **Issue**: #3431 (已关闭)
 
 ---
