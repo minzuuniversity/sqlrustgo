@@ -31,11 +31,11 @@ issue_plan:
 # 版本信息
 # =============================================================================
 version: "v3.11.0"
-current_stage: "BETA"
+current_stage: "RC"
 branch: "develop/v3.11.0"  # created 2026-07-15 from develop/v3.10.0 @ 14979a5f16
 last_transition:
   from: "ALPHA"
-  to: "BETA"
+  to: "RC"
   date: "2026-07-18"
   reason: "ALPHA → BETA: All 22 V311-XX tasks done, SOAK passed, RC gates met"
   from: "DRAFT"
