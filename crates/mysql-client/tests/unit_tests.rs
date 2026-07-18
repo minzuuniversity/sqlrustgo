@@ -754,3 +754,67 @@ fn test_parse_handshake_mysql_native_password() {
     let hs = result.unwrap();
     assert_eq!(hs.auth_plugin_name, "mysql_native_password");
 }
+
+// ============================================================================
+// Additional Packet edge case tests
+// ============================================================================
+
+#[test]
+fn test_packet_read_multiple_sequential() {
+    use std::io::Cursor;
+    // Write 3 packets sequentially, read them back
+    let packets = vec![
+        Packet::new(0, vec![0x10]),
+        Packet::new(1, vec![0x11, 0x12]),
+        Packet::new(2, vec![0x13, 0x14, 0x15]),
+    ];
+    let mut buf = Vec::new();
+    for p in &packets {
+        p.write_to(&mut buf).unwrap();
+    }
+    let mut cur = Cursor::new(buf);
+    for expected in &packets {
+        let recovered = Packet::read_from(&mut cur).unwrap();
+        assert_eq!(recovered.length, expected.length);
+        assert_eq!(recovered.sequence, expected.sequence);
+        assert_eq!(recovered.payload, expected.payload);
+    }
+}
+
+#[test]
+fn test_packet_roundtrip_64kb() {
+    use std::io::Cursor;
+    let data: Vec<u8> = (0..=255).cycle().take(65_536).collect();
+    let original = Packet::new(5, data);
+    let mut buf = Vec::new();
+    original.write_to(&mut buf).unwrap();
+    let mut cur = Cursor::new(buf);
+    let recovered = Packet::read_from(&mut cur).unwrap();
+    assert_eq!(recovered.length, 65_536);
+    assert_eq!(recovered.sequence, 5);
+    assert_eq!(recovered.payload[0], 0);
+    assert_eq!(recovered.payload[65_535], 255);
+}
+
+#[test]
+fn test_packet_roundtrip_sequence_all_values() {
+    use std::io::Cursor;
+    for seq in [0u8, 1, 100, 127, 128, 200, 254, 255] {
+        let original = Packet::new(seq, vec![seq.wrapping_add(1)]);
+        let mut buf = Vec::new();
+        original.write_to(&mut buf).unwrap();
+        let mut cur = Cursor::new(buf);
+        let recovered = Packet::read_from(&mut cur).unwrap();
+        assert_eq!(recovered.sequence, seq);
+    }
+}
+
+#[test]
+fn test_packet_read_from_zero_length_header_truncated() {
+    use std::io::Cursor;
+    // 3 bytes (only partial header - need 4 bytes)
+    let truncated = vec![0x00, 0x00, 0x00];
+    let mut cur = Cursor::new(truncated);
+    let result = Packet::read_from(&mut cur);
+    assert!(result.is_err());
+}
