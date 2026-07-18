@@ -1212,6 +1212,21 @@ impl<S: StorageEngine + 'static> ExecutionEngine<S> {
                         ParserIsolationLevel::Serializable => TmIsolationLevel::Serializable,
                     })
                     .unwrap_or(self.default_isolation);
+                // Idempotent START TRANSACTION: if a transaction is already in
+                // progress (e.g. after ROLLBACK or nested START from a retry),
+                // just update isolation/readonly and return OK rather than erroring.
+                // This matches MySQL behavior.
+                if self.current_tx_id.is_some() {
+                    self.tx_readonly = false;
+                    if let Some(ref il) = isolation_level {
+                        self.default_isolation = match il {
+                            // TmIsolationLevel only has SnapshotIsolation and Serializable
+                            ParserIsolationLevel::Serializable => TmIsolationLevel::Serializable,
+                            _ => TmIsolationLevel::SnapshotIsolation,
+                        };
+                    }
+                    return Ok(ExecutorResult::empty());
+                }
                 self.begin_transaction(iso, false)
             }
         }
