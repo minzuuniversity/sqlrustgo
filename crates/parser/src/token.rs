@@ -585,6 +585,7 @@ pub fn is_keyword(s: &str) -> bool {
 }
 
 /// Convert a keyword string to its corresponding Token
+#[allow(unreachable_patterns)]
 pub fn from_keyword(s: &str) -> Option<Token> {
     match s.to_uppercase().as_str() {
         "SELECT" => Some(Token::Select),

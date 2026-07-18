@@ -159,7 +159,7 @@ fn value_to_literal_string_v(v: &Value) -> String {
         Value::Text(s) => s.clone(),
         Value::Boolean(b) => if *b { "TRUE" } else { "FALSE" }.to_string(),
         Value::Blob(b) => format!("BLOB({} bytes)", b.len()),
-            Value::Point(x, y) => format!("POINT({}, {})", x, y),
+        Value::Point(x, y) => format!("POINT({}, {})", x, y),
     }
 }
 
@@ -206,7 +206,7 @@ impl<S: StorageEngine + 'static> ExecutionEngine<S> {
                     unique_constraints: Vec::new(),
                     check_constraints: Vec::new(),
                     partition_info: None,
-                        compression: None,
+                    compression: None,
                 };
                 for col in &subq.columns {
                     let col_name = col.alias.clone().unwrap_or_else(|| col.name.clone());
@@ -228,7 +228,6 @@ impl<S: StorageEngine + 'static> ExecutionEngine<S> {
                                 Value::Blob(_) => "BLOB",
                                 Value::Point(_, _) => "POINT",
                                 Value::Null => "NULL",
-                                Value::Point(_, _) => "POINT",
                             })
                         })
                         .unwrap_or("TEXT")
@@ -268,7 +267,7 @@ impl<S: StorageEngine + 'static> ExecutionEngine<S> {
                 unique_constraints: Vec::new(),
                 check_constraints: Vec::new(),
                 partition_info: None,
-                    compression: None,
+                compression: None,
             };
             (vec![Vec::new()], empty_schema)
         } else {
@@ -1294,7 +1293,6 @@ impl<S: StorageEngine + 'static> ExecutionEngine<S> {
     /// When v3 FileStorage lands proper page-aware instrumentation, the
     /// caller can pass the actual `(page_id, offset)` from the B+ Tree
     /// page handle.
-
     /// V311-05 F-29: Apply Row-Level Security filter to scanned rows.
     /// Checks if RLS is enabled for this table in the catalog, and if so,
     /// filters rows through the policy catalog's filter_rows() method.
@@ -1318,7 +1316,7 @@ impl<S: StorageEngine + 'static> ExecutionEngine<S> {
                 table_info
                     .columns
                     .iter()
-                    .zip(record.into_iter())
+                    .zip(record)
                     .map(|(col, val)| (col.name.clone(), val))
                     .collect()
             })
@@ -1464,7 +1462,7 @@ impl<S: StorageEngine + 'static> ExecutionEngine<S> {
                     unique_constraints: Vec::new(),
                     check_constraints: Vec::new(),
                     partition_info: None,
-                        compression: None,
+                    compression: None,
                 };
                 for col in &subq.columns {
                     let col_name = col.alias.clone().unwrap_or_else(|| col.name.clone());
@@ -1485,7 +1483,6 @@ impl<S: StorageEngine + 'static> ExecutionEngine<S> {
                                 Value::Blob(_) => "BLOB",
                                 Value::Point(_, _) => "POINT",
                                 Value::Null => "NULL",
-                                Value::Point(_, _) => "POINT",
                             })
                         })
                         .unwrap_or("TEXT")
@@ -2211,7 +2208,7 @@ impl<S: StorageEngine + 'static> ExecutionEngine<S> {
                     unique_constraints: vec![],
                     check_constraints: vec![],
                     partition_info: None,
-                        compression: None,
+                    compression: None,
                 };
                 return Ok((cross, combined_schema));
             }

@@ -385,7 +385,11 @@ fn test_variables_user_var() {
 fn test_kill_nonexistent_connection() {
     let admin = MysqlAdmin::new();
     let result = admin.kill(99999);
-    assert!(result.contains("Unknown thread id") || result.contains("not found") || result.contains("99999"));
+    assert!(
+        result.contains("Unknown thread id")
+            || result.contains("not found")
+            || result.contains("99999")
+    );
 }
 
 // ============================================================================
@@ -508,4 +512,3 @@ fn test_mysql_admin_variables() {
     let result = admin.variables();
     assert!(result.contains("version") || result.contains("max_connections"));
 }
-

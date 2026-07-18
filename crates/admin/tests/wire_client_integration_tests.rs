@@ -5,7 +5,10 @@ use sqlrustgo_mysql_server::testing::{start_ephemeral, EphemeralConfig};
 
 /// Start an ephemeral server on `port`. The caller MUST retain the handle
 /// for the duration of the test — dropping it stops the server.
-fn start_server(port: u16, bootstrap_tables: bool) -> sqlrustgo_mysql_server::testing::EphemeralHandle {
+fn start_server(
+    port: u16,
+    bootstrap_tables: bool,
+) -> sqlrustgo_mysql_server::testing::EphemeralHandle {
     let config = EphemeralConfig {
         port: Some(port),
         host: "127.0.0.1".to_string(),
@@ -75,7 +78,10 @@ fn test_wire_admin_logical_backup() {
     assert!(result.is_ok(), "logical_backup failed");
 
     let backup_result = result.unwrap();
-    assert!(backup_result.output_size_bytes > 0, "archive should not be empty");
+    assert!(
+        backup_result.output_size_bytes > 0,
+        "archive should not be empty"
+    );
     assert!(output_path.exists(), "output file should exist");
 }
 

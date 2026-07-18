@@ -7,8 +7,8 @@ use sqlrustgo_types::Value;
 /// A geographic point (x, y) = (longitude, latitude)
 #[derive(Debug, Clone, Copy, PartialEq)]
 pub struct Point {
-    pub x: f64,  // longitude
-    pub y: f64,  // latitude
+    pub x: f64, // longitude
+    pub y: f64, // latitude
 }
 
 impl Point {
@@ -20,7 +20,7 @@ impl Point {
     pub fn parse(s: &str) -> Option<Self> {
         let s = s.trim();
         if s.to_uppercase().starts_with("POINT(") && s.ends_with(')') {
-            let inner = &s[6..s.len()-1];
+            let inner = &s[6..s.len() - 1];
             return Self::parse_coords(inner);
         }
         Self::parse_coords(s)
@@ -33,7 +33,7 @@ impl Point {
         } else {
             s.split_whitespace().collect()
         };
-        
+
         if parts.len() >= 2 {
             let x = parts[0].trim().parse::<f64>().ok()?;
             let y = parts[1].trim().parse::<f64>().ok()?;
@@ -66,18 +66,18 @@ impl Polygon {
     pub fn parse(s: &str) -> Option<Self> {
         let s = s.trim();
         let inner = if s.to_uppercase().starts_with("POLYGON(") && s.ends_with(')') {
-            &s[8..s.len()-1]
+            &s[8..s.len() - 1]
         } else {
             s
         };
-        
+
         let mut vertices = Vec::new();
         for pair in inner.split(',') {
             if let Some(point) = Point::parse(pair) {
                 vertices.push(point);
             }
         }
-        
+
         if vertices.len() >= 3 {
             Some(Self::new(vertices))
         } else {
@@ -90,14 +90,14 @@ impl Polygon {
         let mut min_y = f64::INFINITY;
         let mut max_x = f64::NEG_INFINITY;
         let mut max_y = f64::NEG_INFINITY;
-        
+
         for v in &self.vertices {
             min_x = min_x.min(v.x);
             min_y = min_y.min(v.y);
             max_x = max_x.max(v.x);
             max_y = max_y.max(v.y);
         }
-        
+
         (min_x, min_y, max_x, max_y)
     }
 }
@@ -119,7 +119,7 @@ pub fn st_within_point_polygon(point: &Point, polygon: &Polygon) -> bool {
     for i in 0..n {
         let vi = &polygon.vertices[i];
         let vj = &polygon.vertices[j];
-        
+
         if ((vi.y > point.y) != (vj.y > point.y))
             && (point.x < (vj.x - vi.x) * (point.y - vi.y) / (vj.y - vi.y) + vi.x)
         {
@@ -174,10 +174,10 @@ mod tests {
             Point::new(10.0, 10.0),
             Point::new(0.0, 10.0),
         ]);
-        
+
         let inside = Point::new(5.0, 5.0);
         assert!(st_within(&inside, &poly));
-        
+
         let outside = Point::new(15.0, 15.0);
         assert!(!st_within(&outside, &poly));
     }

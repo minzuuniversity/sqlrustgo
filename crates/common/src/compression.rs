@@ -7,20 +7,15 @@ use std::collections::HashMap;
 use std::io::Write;
 
 /// Compression algorithm type
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
 pub enum CompressionAlgorithm {
     /// LZ4 - fast compression, good for hot data
     Lz4,
     /// Zstd - balanced speed/ratio, good default
+    #[default]
     Zstd,
     /// zlib/DEFLATE - widely compatible
     Zlib,
-}
-
-impl Default for CompressionAlgorithm {
-    fn default() -> Self {
-        CompressionAlgorithm::Zstd
-    }
 }
 
 /// Table compression statistics
@@ -70,7 +65,12 @@ impl TableCompressor {
     }
 
     /// Compress data using the specified algorithm
-    pub fn compress_with(&mut self, table: &str, data: &[u8], algorithm: CompressionAlgorithm) -> usize {
+    pub fn compress_with(
+        &mut self,
+        table: &str,
+        data: &[u8],
+        algorithm: CompressionAlgorithm,
+    ) -> usize {
         let original_size = data.len();
         let compressed = match algorithm {
             CompressionAlgorithm::Lz4 => compress_lz4(data),
@@ -78,19 +78,22 @@ impl TableCompressor {
             CompressionAlgorithm::Zlib => compress_zlib(data),
         };
         let compressed_size = compressed.len();
-        
+
         self.compressed.insert(table.to_string(), compressed);
-        self.stats.insert(table.to_string(), CompressionStats {
-            original_size,
-            compressed_size,
-            ratio: if compressed_size > 0 {
-                original_size as f64 / compressed_size as f64
-            } else {
-                0.0
+        self.stats.insert(
+            table.to_string(),
+            CompressionStats {
+                original_size,
+                compressed_size,
+                ratio: if compressed_size > 0 {
+                    original_size as f64 / compressed_size as f64
+                } else {
+                    0.0
+                },
+                algorithm,
             },
-            algorithm,
-        });
-        
+        );
+
         compressed_size
     }
 
@@ -103,13 +106,13 @@ impl TableCompressor {
     pub fn decompress(&self, table: &str) -> Option<Vec<u8>> {
         let data = self.compressed.get(table)?;
         let stats = self.stats.get(table)?;
-        
+
         let decompressed = match stats.algorithm {
             CompressionAlgorithm::Lz4 => decompress_lz4(data).ok()?,
             CompressionAlgorithm::Zstd => decompress_zstd(data).ok()?,
             CompressionAlgorithm::Zlib => decompress_zlib(data).ok()?,
         };
-        
+
         Some(decompressed)
     }
 
@@ -125,7 +128,10 @@ impl TableCompressor {
 
     /// Get compressed size
     pub fn compressed_size(&self, table: &str) -> usize {
-        self.stats.get(table).map(|s| s.compressed_size).unwrap_or(0)
+        self.stats
+            .get(table)
+            .map(|s| s.compressed_size)
+            .unwrap_or(0)
     }
 
     /// Get original size
@@ -167,8 +173,7 @@ pub fn compress_lz4(data: &[u8]) -> Vec<u8> {
 
 /// Decompress LZ4 data
 pub fn decompress_lz4(data: &[u8]) -> Result<Vec<u8>, std::io::Error> {
-    lz4_flex::decompress_size_prepended(data)
-        .map_err(|e| std::io::Error::new(std::io::ErrorKind::Other, e))
+    lz4_flex::decompress_size_prepended(data).map_err(std::io::Error::other)
 }
 
 // ============================================================================
@@ -182,8 +187,7 @@ pub fn compress_zstd(data: &[u8]) -> Vec<u8> {
 
 /// Decompress zstd data
 pub fn decompress_zstd(data: &[u8]) -> Result<Vec<u8>, std::io::Error> {
-    zstd::decode_all(std::io::Cursor::new(data))
-        .map_err(|e| std::io::Error::new(std::io::ErrorKind::Other, e))
+    zstd::decode_all(std::io::Cursor::new(data)).map_err(std::io::Error::other)
 }
 
 // ============================================================================
@@ -194,7 +198,7 @@ pub fn decompress_zstd(data: &[u8]) -> Result<Vec<u8>, std::io::Error> {
 pub fn compress_zlib(data: &[u8]) -> Vec<u8> {
     use flate2::write::ZlibEncoder;
     use flate2::Compression;
-    
+
     let mut encoder = ZlibEncoder::new(Vec::new(), Compression::default());
     encoder.write_all(data).expect("zlib write failed");
     encoder.finish().expect("zlib finish failed")
@@ -204,7 +208,7 @@ pub fn compress_zlib(data: &[u8]) -> Vec<u8> {
 pub fn decompress_zlib(data: &[u8]) -> Result<Vec<u8>, std::io::Error> {
     use flate2::read::ZlibDecoder;
     use std::io::Read;
-    
+
     let mut decoder = ZlibDecoder::new(data);
     let mut output = Vec::new();
     decoder.read_to_end(&mut output)?;
@@ -267,25 +271,28 @@ mod tests {
         let mut comp = TableCompressor::new();
         let data = vec![b'x'; 1000]; // highly compressible
         comp.compress("t1", &data);
-        
+
         let decompressed = comp.decompress("t1").unwrap();
         assert_eq!(decompressed.as_slice(), data.as_slice());
-        assert!(comp.ratio("t1") > 1.0, "ratio should be > 1 for repetitive data");
+        assert!(
+            comp.ratio("t1") > 1.0,
+            "ratio should be > 1 for repetitive data"
+        );
     }
 
     #[test]
     fn test_table_compressor_multiple_algorithms() {
         let mut comp = TableCompressor::new();
         let data = b"test data for compression";
-        
+
         comp.compress_with("t1", data, CompressionAlgorithm::Lz4);
         comp.compress_with("t2", data, CompressionAlgorithm::Zstd);
         comp.compress_with("t3", data, CompressionAlgorithm::Zlib);
-        
+
         assert_eq!(comp.decompress("t1").unwrap(), data);
         assert_eq!(comp.decompress("t2").unwrap(), data);
         assert_eq!(comp.decompress("t3").unwrap(), data);
-        
+
         assert_eq!(comp.algorithm("t1"), Some(CompressionAlgorithm::Lz4));
         assert_eq!(comp.algorithm("t2"), Some(CompressionAlgorithm::Zstd));
         assert_eq!(comp.algorithm("t3"), Some(CompressionAlgorithm::Zlib));
@@ -296,8 +303,11 @@ mod tests {
         let mut comp = TableCompressor::new();
         let data = vec![b'x'; 1000]; // highly repetitive
         comp.compress("t1", &data);
-        
-        assert!(comp.ratio("t1") > 1.0, "ratio should be > 1 for repetitive data");
+
+        assert!(
+            comp.ratio("t1") > 1.0,
+            "ratio should be > 1 for repetitive data"
+        );
         assert_eq!(comp.original_size("t1"), 1000);
         assert!(comp.compressed_size("t1") < 1000);
     }
