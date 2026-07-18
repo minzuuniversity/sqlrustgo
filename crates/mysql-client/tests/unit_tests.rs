@@ -818,3 +818,126 @@ fn test_packet_read_from_zero_length_header_truncated() {
     let result = Packet::read_from(&mut cur);
     assert!(result.is_err());
 }
+
+// ============================================================================
+// MySqlClientError variant and Display tests
+// ============================================================================
+
+#[test]
+fn test_mysql_client_error_io() {
+    use std::io;
+    use sqlrustgo_mysql_client::MySqlClientError;
+    let io_err = io::Error::new(io::ErrorKind::ConnectionReset, "reset");
+    let err = MySqlClientError::Io(io_err);
+    let msg = format!("{}", err);
+    assert!(msg.contains("IO error"));
+    assert!(msg.contains("reset"));
+}
+
+#[test]
+fn test_mysql_client_error_protocol() {
+    use sqlrustgo_mysql_client::MySqlClientError;
+    let err = MySqlClientError::Protocol("bad packet".to_string());
+    let msg = format!("{}", err);
+    assert!(msg.contains("Protocol error"));
+    assert!(msg.contains("bad packet"));
+}
+
+#[test]
+fn test_mysql_client_error_auth() {
+    use sqlrustgo_mysql_client::MySqlClientError;
+    let err = MySqlClientError::Auth("access denied".to_string());
+    let msg = format!("{}", err);
+    assert!(msg.contains("Auth error"));
+    assert!(msg.contains("access denied"));
+}
+
+#[test]
+fn test_mysql_client_error_server_error() {
+    use sqlrustgo_mysql_client::MySqlClientError;
+    let err = MySqlClientError::ServerError(1062, "Duplicate entry".to_string());
+    let msg = format!("{}", err);
+    assert!(msg.contains("Server error 1062"));
+    assert!(msg.contains("Duplicate entry"));
+}
+
+#[test]
+fn test_mysql_client_error_connection_closed() {
+    use sqlrustgo_mysql_client::MySqlClientError;
+    let err = MySqlClientError::ConnectionClosed;
+    let msg = format!("{}", err);
+    assert!(msg.contains("Connection closed"));
+}
+
+
+// ============================================================================
+// parse_handshake edge cases
+// ============================================================================
+
+#[test]
+fn test_parse_handshake_minimum_valid() {
+    use sqlrustgo_mysql_client::parse_handshake;
+    // Minimum valid handshake: protocol 0x0a, server_version, connection_id,
+    // 8 bytes auth_data, capability lower, charset, status, capability upper,
+    // auth_plugin_data_len=0, 10 reserved bytes
+    let payload = vec![
+        0x0a, // protocol
+        0x35, 0x2e, 0x30, 0x2e, 0x30, 0x00, // "5.0.0\0"
+        0x01, 0x00, 0x00, 0x00, // connection_id = 1
+        0x01, 0x02, 0x03, 0x04, 0x05, 0x06, 0x07, 0x08, // auth_data part1
+        0x00, // filler
+        0x00, 0x00, // capability lower
+        0x08, // charset
+        0x00, 0x00, // status
+        0x00, 0x00, // capability upper
+        0x00, // auth_plugin_data_len = 0
+        0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, // 10 reserved
+    ];
+    let result = parse_handshake(&payload);
+    assert!(result.is_ok());
+    let hs = result.unwrap();
+    assert_eq!(hs.protocol_version, 0x0a);
+    assert_eq!(hs.server_version, "5.0.0");
+    assert_eq!(hs.connection_id, 1);
+    // auth_plugin_data part2 should be zeros (len=0)
+    assert_eq!(hs.auth_plugin_data[8], 0);
+    assert_eq!(hs.auth_plugin_data[19], 0);
+    // PLUGIN_AUTH not set (capability=0), so default auth_plugin_name
+    assert_eq!(hs.auth_plugin_name, "mysql_native_password");
+}
+
+#[test]
+fn test_parse_handshake_protocol_0x01_rejected() {
+    use sqlrustgo_mysql_client::{parse_handshake, MySqlClientError};
+    let payload = vec![0x01]; // wrong protocol
+    let result = parse_handshake(&payload);
+    let err = result.unwrap_err();
+    match err {
+        MySqlClientError::Protocol(msg) => {
+            assert!(msg.contains("Expected protocol 10"));
+            assert!(msg.contains("1"));
+        }
+        _ => panic!("expected Protocol error"),
+    }
+}
+
+#[test]
+fn test_parse_handshake_server_version_with_dots() {
+    use sqlrustgo_mysql_client::parse_handshake;
+    let payload = vec![
+        0x0a,
+        0x38, 0x2e, 0x30, 0x2e, 0x32, 0x30, 0x00, // "8.0.20\0"
+        0x01, 0x00, 0x00, 0x00,
+        0x01, 0x02, 0x03, 0x04, 0x05, 0x06, 0x07, 0x08,
+        0x00,
+        0x00, 0x00,
+        0x08,
+        0x00, 0x00,
+        0x00, 0x00,
+        0x00,
+        0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
+    ];
+    let result = parse_handshake(&payload);
+    assert!(result.is_ok());
+    assert_eq!(result.unwrap().server_version, "8.0.20");
+}
