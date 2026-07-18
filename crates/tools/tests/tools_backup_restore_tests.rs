@@ -196,3 +196,122 @@ fn test_backup_metadata_checksum_none_until_complete() {
     let meta = BackupMetadata::new("id".to_string(), BackupType::Full, "db".to_string());
     assert!(meta.checksum.is_none());
 }
+
+// ============================================================================
+// BackupManager get_backup, restore, delete_backup tests
+// ============================================================================
+
+#[test]
+fn test_backup_manager_get_backup_existing() {
+    use sqlrustgo_tools::backup_restore::BackupManager;
+    use std::collections::HashMap;
+    use tempfile::TempDir;
+
+    let tmp = TempDir::new().unwrap();
+    let mgr = BackupManager::new(tmp.path().join("backups"));
+    let tables: HashMap<String, Vec<HashMap<String, String>>> = HashMap::new();
+    let meta = mgr.create_backup("testdb", tables).unwrap();
+    let backup_id = meta.id.clone();
+
+    let found = mgr.get_backup(&backup_id);
+    assert!(found.is_some());
+    let found = found.unwrap();
+    assert_eq!(found.id, backup_id);
+    assert_eq!(found.database, "testdb");
+}
+
+#[test]
+fn test_backup_manager_get_backup_nonexistent() {
+    use sqlrustgo_tools::backup_restore::BackupManager;
+    use tempfile::TempDir;
+
+    let tmp = TempDir::new().unwrap();
+    let mgr = BackupManager::new(tmp.path().join("backups"));
+    let found = mgr.get_backup("nonexistent_backup_id");
+    assert!(found.is_none());
+}
+
+#[test]
+fn test_backup_manager_delete_backup() {
+    use sqlrustgo_tools::backup_restore::BackupManager;
+    use std::collections::HashMap;
+    use tempfile::TempDir;
+
+    let tmp = TempDir::new().unwrap();
+    let mgr = BackupManager::new(tmp.path().join("backups"));
+    let tables: HashMap<String, Vec<HashMap<String, String>>> = HashMap::new();
+    let meta = mgr.create_backup("testdb", tables).unwrap();
+    let backup_id = meta.id.clone();
+
+    // Verify it exists
+    assert!(mgr.get_backup(&backup_id).is_some());
+
+    // Delete it
+    mgr.delete_backup(&backup_id).unwrap();
+
+    // Verify it's gone
+    assert!(mgr.get_backup(&backup_id).is_none());
+}
+
+#[test]
+fn test_backup_manager_delete_backup_nonexistent() {
+    use sqlrustgo_tools::backup_restore::BackupManager;
+    use tempfile::TempDir;
+
+    let tmp = TempDir::new().unwrap();
+    let mgr = BackupManager::new(tmp.path().join("backups"));
+    let result = mgr.delete_backup("nonexistent_backup_id");
+    // Should fail - backup file doesn't exist
+    assert!(result.is_err());
+}
+
+#[test]
+fn test_backup_manager_restore_existing() {
+    use sqlrustgo_tools::backup_restore::BackupManager;
+    use std::collections::HashMap;
+    use tempfile::TempDir;
+
+    let tmp = TempDir::new().unwrap();
+    let mgr = BackupManager::new(tmp.path().join("backups"));
+    let tables: HashMap<String, Vec<HashMap<String, String>>> = HashMap::new();
+    let meta = mgr.create_backup("testdb", tables).unwrap();
+    let backup_id = meta.id.clone();
+
+    let result = mgr.restore(&backup_id);
+    assert!(result.is_ok());
+    let data = result.unwrap();
+    assert!(data.is_empty()); // no INSERT statements parsed
+}
+
+#[test]
+fn test_backup_manager_restore_nonexistent() {
+    use sqlrustgo_tools::backup_restore::BackupManager;
+    use tempfile::TempDir;
+
+    let tmp = TempDir::new().unwrap();
+    let mgr = BackupManager::new(tmp.path().join("backups"));
+    let result = mgr.restore("nonexistent_backup_id");
+    assert!(result.is_err());
+    let err = result.unwrap_err();
+    assert!(err.contains("not found"));
+}
+
+// Note: chrono_lite_now() is second-precision, so multiple create_backup
+// calls within the same second collide on the same HashMap key.
+// We test list_backups with separate BackupManager instances instead.
+
+#[test]
+fn test_backup_manager_list_backups_single() {
+    use sqlrustgo_tools::backup_restore::BackupManager;
+    use std::collections::HashMap;
+    use tempfile::TempDir;
+
+    let tmp = TempDir::new().unwrap();
+    let mgr = BackupManager::new(tmp.path().join("backups"));
+    let tables: HashMap<String, Vec<HashMap<String, String>>> = HashMap::new();
+    mgr.create_backup("testdb", tables).unwrap();
+
+    let list = mgr.list_backups();
+    assert_eq!(list.len(), 1);
+    assert_eq!(list[0].database, "testdb");
+}
