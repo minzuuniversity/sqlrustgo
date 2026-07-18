@@ -1,10 +1,11 @@
-# SQLRustGo v3.11.0 开发计划 — 22 任务详细分解
+# SQLRustGo v3.11.0 开发计划 — 23 任务详细分解
 
+> **Last update**: 2026-07-18
 > **创建日期**: 2026-07-13
 > **创建人**: openclaw
 > **分支**: `develop/v3.11.0` (待从 `develop/v3.10.0` 创建)
 > **父文档**: [`V311_VERSION_PLAN.md`](V311_VERSION_PLAN.md)
-> **目标**: 22 任务 / ~720h / 4 阶段
+> **目标**: 23 任务 / ~1156h / 4 阶段
 > **债务基线**: v3.10.0 LEGACY_DEBT_CLOSURE_TRACKING_REPORT (23 OPEN 项)
 
 ---
@@ -32,10 +33,10 @@
 | V311-17 | Hash Anti Join 算子 (NOT EXISTS / NOT IN) | 40h | P1 | BETA |
 | V311-18 | CTE 物化 (WITH ... AS (SELECT) 物化) | 30h | P1 | BETA |
 | V311-19 | Extension Crate 决策实施 (5 删 + 3 归档 + 1 集成) | 84h | P1 | ALPHA-BETA |
-| V311-20 | TPC-H SF=1.0 baseline (#3423) | 80h | P0 | BETA-RC |
-| V311-21 | 168h SOAK v3.11.0 (#3648) | (Hermes 协作) | P1 | RC |
+| V311-20 | TPC-H SF=1.0 baseline (#3431) | 80h | P0 | BETA-RC |
+| V311-21 | 168h SOAK v3.11.0 | (Hermes 协作) | P1 | RC |
 | V311-22 | 文档架构整理 (合并 5 个 plans → 3 个 plans) | 12h | P2 | ALPHA |
-| **合计** | 22 任务 | **1096h** | — | — |
+| **合计** | 23 任务 | **~1156h** | — | — |
 
 > 注: Q4 优化 4 项 (V311-15~18) 总 210h 是 v3.10.0 实测发现的核心瓶颈；F-XX 集成 9 项总 400h 是债务清零主体。
 
