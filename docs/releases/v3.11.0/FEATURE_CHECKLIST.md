@@ -55,7 +55,7 @@ This document is the **SSOT** for v3.11.0's feature checklist, tracking 23 V311-
 | ID | 任务 | SEM | 工作量 | 优先级 | 状态 | 测试方法 |
 |----|------|-----|--------|--------|------|----------|
 | V311-13 | ALTER TABLE RENAME/MODIFY 完整 | SEM-3 | 20h | P0 | ✅ DONE 2026-07-15 (PR #3444/#3449) | `tests/alter_table_test` |
-| V311-14 | 覆盖率 ≥85% | SEM-4 | 60h | P0 | ⏳ TODO | `cargo llvm-cov --workspace` |
+| V311-14 | 覆盖率 ≥85% | SEM-4 | 60h | P0 | ⏳ TODO | `cargo llvm-cov test -p <crate>` (per-crate, not `--workspace`) |
 
 ---
 
