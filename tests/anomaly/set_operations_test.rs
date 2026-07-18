@@ -25,7 +25,7 @@ mod tests {
             foreign_keys: vec![],
             unique_constraints: vec![],
             check_constraints: vec![],
-                compression: None,
+            compression: None,
             partition_info: None,
         };
 
@@ -52,7 +52,7 @@ mod tests {
             foreign_keys: vec![],
             unique_constraints: vec![],
             check_constraints: vec![],
-                compression: None,
+            compression: None,
             partition_info: None,
         };
 
@@ -127,7 +127,7 @@ mod tests {
             foreign_keys: vec![],
             unique_constraints: vec![],
             check_constraints: vec![],
-                compression: None,
+            compression: None,
             partition_info: None,
         };
         storage.create_table(&info).ok();
@@ -182,7 +182,7 @@ mod tests {
                 foreign_keys: vec![],
                 unique_constraints: vec![],
                 check_constraints: vec![],
-                    compression: None,
+                compression: None,
                 partition_info: None,
             };
             storage.create_table(&info).ok();

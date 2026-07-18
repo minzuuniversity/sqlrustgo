@@ -324,7 +324,9 @@ mod tests {
         let value = Value::Point(3.14, 2.71);
         let bytes = value.to_bytes();
         let decoded = Value::from_bytes(&bytes).unwrap();
-        let Value::Point(x, y) = decoded else { panic!() };
+        let Value::Point(x, y) = decoded else {
+            panic!()
+        };
         assert!((x - 3.14).abs() < 1e-10 && (y - 2.71).abs() < 1e-10);
     }
 

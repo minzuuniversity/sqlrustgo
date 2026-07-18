@@ -575,7 +575,6 @@ mod tests {
     }
 
     #[test]
-
     #[test]
     fn test_session_reset_query_cancelled() {
         let session = Session::new(1, "alice".to_string(), "127.0.0.1".to_string());

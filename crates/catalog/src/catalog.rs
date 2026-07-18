@@ -9,10 +9,10 @@
 use crate::auth::{AuthManager, ObjectType, Privilege, Role, UserIdentity};
 use crate::database::Database;
 use crate::error::{CatalogError, CatalogResult};
+use crate::row_level_security::PolicyCatalog;
 use crate::schema::Schema;
 use crate::stored_proc::StoredProcedure;
 use serde::{Deserialize, Serialize};
-use crate::row_level_security::PolicyCatalog;
 use std::collections::HashMap;
 
 /// The root catalog containing databases and stored procedures.
@@ -389,7 +389,6 @@ impl Catalog {
     pub fn get_policies(&self, table: &str) -> Vec<crate::row_level_security::Policy> {
         self.policy_catalog.get_policies(table)
     }
-
 }
 
 #[cfg(test)]

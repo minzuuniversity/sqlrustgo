@@ -27,7 +27,7 @@ mod tests {
             foreign_keys: vec![],
             unique_constraints: vec![],
             check_constraints: vec![],
-                compression: None,
+            compression: None,
             partition_info: None,
             ..Default::default()
         };
@@ -57,7 +57,7 @@ mod tests {
             foreign_keys: vec![],
             unique_constraints: vec![],
             check_constraints: vec![],
-                compression: None,
+            compression: None,
             partition_info: None,
             ..Default::default()
         };
@@ -92,7 +92,7 @@ mod tests {
             foreign_keys: vec![],
             unique_constraints: vec![],
             check_constraints: vec![],
-                compression: None,
+            compression: None,
             partition_info: None,
             ..Default::default()
         };
@@ -129,7 +129,7 @@ mod tests {
             foreign_keys: vec![],
             unique_constraints: vec![],
             check_constraints: vec![],
-                compression: None,
+            compression: None,
             partition_info: None,
             ..Default::default()
         };
@@ -164,7 +164,7 @@ mod tests {
             foreign_keys: vec![],
             unique_constraints: vec![],
             check_constraints: vec![],
-                compression: None,
+            compression: None,
             partition_info: None,
             ..Default::default()
         };
@@ -198,7 +198,7 @@ mod tests {
             foreign_keys: vec![],
             unique_constraints: vec![],
             check_constraints: vec![],
-                compression: None,
+            compression: None,
             partition_info: None,
             ..Default::default()
         };
@@ -234,7 +234,7 @@ mod tests {
             foreign_keys: vec![],
             unique_constraints: vec![],
             check_constraints: vec![],
-                compression: None,
+            compression: None,
             partition_info: None,
             ..Default::default()
         };
@@ -303,7 +303,7 @@ mod tests {
             foreign_keys: vec![],
             unique_constraints: vec![],
             check_constraints: vec![],
-                compression: None,
+            compression: None,
             partition_info: None,
             ..Default::default()
         };
@@ -346,7 +346,7 @@ mod tests {
             foreign_keys: vec![],
             unique_constraints: vec![],
             check_constraints: vec![],
-                compression: None,
+            compression: None,
             partition_info: None,
             ..Default::default()
         };

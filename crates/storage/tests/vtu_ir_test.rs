@@ -135,7 +135,7 @@ fn make_table_info(columns: Vec<(&str, &str)>) -> TableInfo {
         check_constraints: vec![],
         partition_info: None,
         compression: None,
-     }
+    }
 }
 
 #[test]
