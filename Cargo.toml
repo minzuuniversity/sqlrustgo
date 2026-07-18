@@ -563,6 +563,10 @@ path = "tests/integration/stress/soak_test.rs"
 [[test]]
 name = "soak_test_harness"
 path = "tests/integration/stress/soak_test_harness.rs"
+# GA-P0 (#3604) — Chaos SOAK Test (fault injection validation)
+[[test]]
+name = "chaos_soak_test"
+path = "tests/integration/stress/chaos_soak_test.rs"
 [[test]]
 name = "g13_oltp1_concurrent_select_test"
 path = "tests/integration/sql/g13_oltp1_concurrent_select_test.rs"
