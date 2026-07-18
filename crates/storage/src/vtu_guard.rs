@@ -247,8 +247,9 @@ mod tests {
                 foreign_keys: vec![],
                 unique_constraints: vec![],
                 check_constraints: vec![],
-               
-    compression: None, partition_info: None,
+
+                compression: None,
+                partition_info: None,
             })
             .unwrap();
         let guarded = VtuGuard::new(storage, "test_location");
@@ -329,8 +330,9 @@ mod tests {
             foreign_keys: vec![],
             unique_constraints: vec![],
             check_constraints: vec![],
-           
-    compression: None, partition_info: None,
+
+            compression: None,
+            partition_info: None,
         };
         storage.create_table(&info).unwrap();
         storage.set_current_tx_id(99);

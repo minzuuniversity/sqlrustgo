@@ -51,7 +51,10 @@ impl Hash for Value {
             }
             Value::Text(s) => s.hash(state),
             Value::Blob(b) => b.hash(state),
-            Value::Point(x, y) => { x.to_bits().hash(state); y.to_bits().hash(state); }
+            Value::Point(x, y) => {
+                x.to_bits().hash(state);
+                y.to_bits().hash(state);
+            }
         }
     }
 }
@@ -110,12 +113,12 @@ impl Ord for Value {
             (Value::Float(a), Value::Float(b)) => a.partial_cmp(b).unwrap_or(Ordering::Equal),
             (Value::Text(a), Value::Text(b)) => a.cmp(b),
             (Value::Blob(a), Value::Blob(b)) => a.cmp(b),
-            (Value::Point(a1, a2), Value::Point(b1, b2)) => {
-                match a1.partial_cmp(b1) {
-                    Some(std::cmp::Ordering::Equal) => a2.partial_cmp(b2).unwrap_or(std::cmp::Ordering::Equal),
-                    other => other.unwrap_or(std::cmp::Ordering::Equal),
+            (Value::Point(a1, a2), Value::Point(b1, b2)) => match a1.partial_cmp(b1) {
+                Some(std::cmp::Ordering::Equal) => {
+                    a2.partial_cmp(b2).unwrap_or(std::cmp::Ordering::Equal)
                 }
-            }
+                other => other.unwrap_or(std::cmp::Ordering::Equal),
+            },
             // Same discriminant but different subtype — unreachable
             // for the current Value enum (each discriminant is unique),
             // but be defensive against future variants.

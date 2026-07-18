@@ -108,7 +108,7 @@ fn bench_insert_multi_column(c: &mut Criterion) {
         foreign_keys: vec![],
         unique_constraints: vec![],
         check_constraints: vec![],
-            compression: None,
+        compression: None,
         partition_info: None,
     };
 
