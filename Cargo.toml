@@ -577,6 +577,10 @@ path = "tests/integration/sql/mixed_workload_deadlock_regression_test.rs"
 [[test]]
 name = "upgrade_test"
 path = "tests/integration/migration/upgrade_test.rs"
+# GA-P0 (#3605) — Upgrade Test v3.10.0 → v3.11.0
+[[test]]
+name = "upgrade_v310_v311_test"
+path = "tests/integration/migration/upgrade_v310_v311_test.rs"
 # P1-4 (#3176) — Upgrade Test Harness (shared helper)
 [[test]]
 name = "upgrade_test_harness"
