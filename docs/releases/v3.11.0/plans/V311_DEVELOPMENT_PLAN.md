@@ -288,10 +288,10 @@
 **实施步骤**:
 1. (16h) 分析 v3.10.0 coverage gap（哪些 module < 80%）
 2. (24h) 为核心算子 (Hash Join, Aggregation, Sort) 补 unit test
-3. (16h) 修正 cargo llvm-cov 测量方法统一
+3. (16h) 修正 cargo llvm-cov 测量方法统一（per-crate, 见 COVERAGE_TESTING_METHODOLOGY.md）
 4. (4h) CI 集成
 
-**验收**: `cargo llvm-cov --workspace --summary-only` 3 crate 均 ≥85%
+**验收**: `cargo llvm-cov test -p <crate> --no-fail-fast` 3 crate 均 ≥85%（per-crate, 不是 `--workspace`）
 
 ### V311-16: 子查询去相关 (decorrelation) optimizer pass
 
@@ -362,7 +362,7 @@
 
 ### V311-14 验证: 覆盖率 ≥85% CI
 
-**目标**: CI gate `check_coverage.sh` 验证 3 crate 均 ≥85%
+**目标**: CI gate `check_coverage.sh` 验证 3 crate 均 ≥85%（使用 per-crate `cargo llvm-cov test -p <crate>`）
 
 ---
 
