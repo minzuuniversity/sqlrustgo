@@ -5,7 +5,12 @@ fn expr_to_str(e: &Expression) -> String {
         Expression::Identifier(n) => n.clone(),
         Expression::Literal(n) => n.clone(),
         Expression::BinaryOp(l, op, r) => {
-            format!("{} {} {}", expr_to_str(l.as_ref()), op, expr_to_str(r.as_ref()))
+            format!(
+                "{} {} {}",
+                expr_to_str(l.as_ref()),
+                op,
+                expr_to_str(r.as_ref())
+            )
         }
         _ => "?".to_string(),
     }

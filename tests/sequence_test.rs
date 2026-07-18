@@ -119,7 +119,7 @@ fn test_drop_sequence_if_exists() {
 #[test]
 fn test_sequence_execution_create() {
     let mut engine = create_engine();
-    
+
     // Create a sequence - should succeed
     let result = engine.execute("CREATE SEQUENCE seq1 START WITH 1 INCREMENT BY 1");
     assert!(result.is_ok(), "CREATE SEQUENCE failed: {:?}", result.err());
@@ -128,10 +128,10 @@ fn test_sequence_execution_create() {
 #[test]
 fn test_sequence_execution_drop() {
     let mut engine = create_engine();
-    
+
     // Create a sequence
     engine.execute("CREATE SEQUENCE seq1").unwrap();
-    
+
     // Drop the sequence
     let result = engine.execute("DROP SEQUENCE seq1");
     assert!(result.is_ok(), "DROP SEQUENCE failed: {:?}", result.err());
@@ -140,15 +140,15 @@ fn test_sequence_execution_drop() {
 #[test]
 fn test_sequence_execution_if_not_exists() {
     let mut engine = create_engine();
-    
+
     // Create sequence first time
     let result = engine.execute("CREATE SEQUENCE seq3");
     assert!(result.is_ok());
-    
+
     // Try to create again without IF NOT EXISTS - should fail
     let result = engine.execute("CREATE SEQUENCE seq3");
     assert!(result.is_err());
-    
+
     // Create with IF NOT EXISTS - should succeed (no-op)
     let result = engine.execute("CREATE SEQUENCE IF NOT EXISTS seq3");
     assert!(result.is_ok());
@@ -157,18 +157,18 @@ fn test_sequence_execution_if_not_exists() {
 #[test]
 fn test_sequence_execution_drop_if_exists() {
     let mut engine = create_engine();
-    
+
     // Create sequence
     engine.execute("CREATE SEQUENCE seq4").unwrap();
-    
+
     // Drop with IF EXISTS - should succeed
     let result = engine.execute("DROP SEQUENCE IF EXISTS seq4");
     assert!(result.is_ok());
-    
+
     // Drop again with IF EXISTS - should succeed (no-op)
     let result = engine.execute("DROP SEQUENCE IF EXISTS seq4");
     assert!(result.is_ok());
-    
+
     // Drop without IF EXISTS - should fail
     let result = engine.execute("DROP SEQUENCE seq4");
     assert!(result.is_err());

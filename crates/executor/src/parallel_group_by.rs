@@ -499,7 +499,10 @@ mod tests {
 
     #[test]
     fn test_value_to_key_string_text() {
-        assert_eq!(value_to_key_string(&Value::Text("hello".to_string())), "hello");
+        assert_eq!(
+            value_to_key_string(&Value::Text("hello".to_string())),
+            "hello"
+        );
     }
 
     #[test]

@@ -508,7 +508,7 @@ fn test_ast_adapter_to_update_plan_uses_all_when_no_where() {
         foreign_keys: vec![],
         unique_constraints: vec![],
         check_constraints: vec![],
-            compression: None,
+        compression: None,
         partition_info: None,
     };
 
@@ -548,7 +548,7 @@ fn test_ast_adapter_to_update_plan_errors_on_unknown_column() {
         foreign_keys: vec![],
         unique_constraints: vec![],
         check_constraints: vec![],
-            compression: None,
+        compression: None,
         partition_info: None,
     };
     let err = sqlrustgo_executor::ast_adapter::AstAdapter::to_update_plan(&stmt, &info)

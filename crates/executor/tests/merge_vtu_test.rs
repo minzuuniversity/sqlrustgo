@@ -107,7 +107,7 @@ fn test_storage_create_table() {
         foreign_keys: vec![],
         unique_constraints: vec![],
         check_constraints: vec![],
-            compression: None,
+        compression: None,
         partition_info: None,
     };
     {
@@ -131,7 +131,7 @@ fn test_storage_insert_and_scan() {
         foreign_keys: vec![],
         unique_constraints: vec![],
         check_constraints: vec![],
-            compression: None,
+        compression: None,
         partition_info: None,
     };
     {
@@ -158,7 +158,7 @@ fn test_storage_delete() {
         foreign_keys: vec![],
         unique_constraints: vec![],
         check_constraints: vec![],
-            compression: None,
+        compression: None,
         partition_info: None,
     };
     {
@@ -201,7 +201,7 @@ fn test_table_info_default() {
         foreign_keys: vec![],
         unique_constraints: vec![],
         check_constraints: vec![],
-            compression: None,
+        compression: None,
         partition_info: None,
     };
     assert_eq!(info.name, "default_t");

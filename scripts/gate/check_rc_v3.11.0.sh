@@ -67,10 +67,10 @@ echo ""
 # C1: Build/Test Pipeline
 # ============================================================
 echo "--- C1: Build/Test Pipeline ---"
-check "C1_BUILD" "cargo build --all-features --quiet"
-check "C1_CLIPPY" "cargo clippy --all-features -- -D warnings --quiet"
-check "C1_FMT" "cargo fmt --check --quiet"
-check "C1_LIB_TESTS" "cargo test --all-features --lib --quiet"
+check "C1_BUILD" "cargo build --all-features"
+check "C1_CLIPPY" "cargo clippy --all-features -- -D warnings"
+check "C1_FMT" "cargo fmt --check"
+check "C1_LIB_TESTS" "cargo test --all-features --lib"
 
 # ============================================================
 # C2: Required Release Files

@@ -156,7 +156,7 @@ pub fn eval_predicate(expr: &Expression, row: &[Value], table_info: &TableInfo) 
                         Value::Boolean(b) => b.to_string(),
                         Value::Null => return Value::Null,
                         Value::Blob(_) => return Value::Null,
-                            Value::Point(_, _) => return Value::Null,
+                        Value::Point(_, _) => return Value::Null,
                     })
                 } else {
                     v
@@ -202,7 +202,7 @@ pub fn eval_predicate(expr: &Expression, row: &[Value], table_info: &TableInfo) 
                         Value::Boolean(b) => b.to_string(),
                         Value::Null => return Value::Null,
                         Value::Blob(_) => return Value::Null,
-                            Value::Point(_, _) => return Value::Null,
+                        Value::Point(_, _) => return Value::Null,
                     })
                 } else {
                     v
@@ -416,7 +416,7 @@ pub fn build_combined_schema(
         unique_constraints: vec![],
         check_constraints: vec![],
         partition_info: None,
-            compression: None,
+        compression: None,
     })
 }
 
@@ -443,7 +443,7 @@ pub fn build_multi_table_combined_schema(infos: &[TableInfo], prefixes: &[String
         unique_constraints: vec![],
         check_constraints: vec![],
         partition_info: None,
-            compression: None,
+        compression: None,
     }
 }
 
@@ -555,7 +555,7 @@ pub fn build_aggregate_schema(
         unique_constraints: vec![],
         check_constraints: vec![],
         partition_info: None,
-            compression: None,
+        compression: None,
     })
 }
 

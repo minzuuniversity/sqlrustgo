@@ -92,7 +92,6 @@ pub fn bulk_insert<S: StorageEngine + 'static>(
     Ok(n)
 }
 
-
 #[cfg(test)]
 mod tests {
     use super::*;

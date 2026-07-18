@@ -279,57 +279,56 @@ mod tests {
     }
 }
 
+#[test]
+fn test_cancel_token_new() {
+    let token = CancelToken::new();
+    assert!(token.is_active());
+    assert!(!token.is_query_cancelled());
+    assert!(!token.is_connection_killed());
+}
 
-    #[test]
-    fn test_cancel_token_new() {
-        let token = CancelToken::new();
-        assert!(token.is_active());
-        assert!(!token.is_query_cancelled());
-        assert!(!token.is_connection_killed());
-    }
+#[test]
+fn test_cancel_token_query_cancelled_flag() {
+    let token = CancelToken::new();
+    let flag = token.query_cancelled_flag();
+    assert!(!flag.load(std::sync::atomic::Ordering::Relaxed));
+}
 
-    #[test]
-    fn test_cancel_token_query_cancelled_flag() {
-        let token = CancelToken::new();
-        let flag = token.query_cancelled_flag();
-        assert!(!flag.load(std::sync::atomic::Ordering::Relaxed));
-    }
+#[test]
+fn test_cancel_token_connection_killed_flag() {
+    let token = CancelToken::new();
+    let flag = token.connection_killed_flag();
+    assert!(!flag.load(std::sync::atomic::Ordering::Relaxed));
+}
 
-    #[test]
-    fn test_cancel_token_connection_killed_flag() {
-        let token = CancelToken::new();
-        let flag = token.connection_killed_flag();
-        assert!(!flag.load(std::sync::atomic::Ordering::Relaxed));
-    }
+#[test]
+fn test_cancel_token_is_active() {
+    let token = CancelToken::new();
+    assert!(token.is_active());
+    token.cancel_query();
+    assert!(!token.is_active());
+}
 
-    #[test]
-    fn test_cancel_token_is_active() {
-        let token = CancelToken::new();
-        assert!(token.is_active());
-        token.cancel_query();
-        assert!(!token.is_active());
-    }
+#[test]
+fn test_cancel_guard_disable() {
+    let token = Arc::new(CancelToken::new());
+    token.cancel_query();
+    let guard = CancelGuard::disable(token);
+    assert!(guard.was_cancelled());
+}
 
-    #[test]
-    fn test_cancel_guard_disable() {
-        let token = Arc::new(CancelToken::new());
-        token.cancel_query();
-        let guard = CancelGuard::disable(token);
-        assert!(guard.was_cancelled());
-    }
+#[test]
+fn test_cancel_guard_reenable() {
+    let token = Arc::new(CancelToken::new());
+    token.cancel_query();
+    let _guard = CancelGuard::disable(Arc::new(CancelToken::new()));
+    // re-enable restores state
+}
 
-    #[test]
-    fn test_cancel_guard_reenable() {
-        let token = Arc::new(CancelToken::new());
-        token.cancel_query();
-        let _guard = CancelGuard::disable(Arc::new(CancelToken::new()));
-        // re-enable restores state
-    }
-
-    #[test]
-    fn test_cancel_token_reset_query_cancelled() {
-        let token = CancelToken::new();
-        token.cancel_query();
-        token.reset_query_cancelled();
-        assert!(!token.is_query_cancelled());
-    }
+#[test]
+fn test_cancel_token_reset_query_cancelled() {
+    let token = CancelToken::new();
+    token.cancel_query();
+    token.reset_query_cancelled();
+    assert!(!token.is_query_cancelled());
+}

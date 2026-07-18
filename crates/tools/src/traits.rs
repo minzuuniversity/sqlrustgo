@@ -18,12 +18,24 @@ pub trait SqlRustGoIo: Send + Sync {
 pub struct RealIo;
 
 impl SqlRustGoIo for RealIo {
-    fn read(&self, path: &Path) -> std::io::Result<Vec<u8>> { std::fs::read(path) }
-    fn write(&self, path: &Path, contents: &[u8]) -> std::io::Result<()> { std::fs::write(path, contents) }
-    fn create_dir_all(&self, path: &Path) -> std::io::Result<()> { std::fs::create_dir_all(path) }
-    fn remove_dir_all(&self, path: &Path) -> std::io::Result<()> { std::fs::remove_dir_all(path) }
-    fn remove_file(&self, path: &Path) -> std::io::Result<()> { std::fs::remove_file(path) }
-    fn exists(&self, path: &Path) -> bool { path.exists() }
+    fn read(&self, path: &Path) -> std::io::Result<Vec<u8>> {
+        std::fs::read(path)
+    }
+    fn write(&self, path: &Path, contents: &[u8]) -> std::io::Result<()> {
+        std::fs::write(path, contents)
+    }
+    fn create_dir_all(&self, path: &Path) -> std::io::Result<()> {
+        std::fs::create_dir_all(path)
+    }
+    fn remove_dir_all(&self, path: &Path) -> std::io::Result<()> {
+        std::fs::remove_dir_all(path)
+    }
+    fn remove_file(&self, path: &Path) -> std::io::Result<()> {
+        std::fs::remove_file(path)
+    }
+    fn exists(&self, path: &Path) -> bool {
+        path.exists()
+    }
 }
 
 // ---------------------------------------------------------------------------
@@ -39,7 +51,9 @@ pub struct MockIo {
 }
 
 impl Default for MockIo {
-    fn default() -> Self { Self::happy() }
+    fn default() -> Self {
+        Self::happy()
+    }
 }
 
 impl MockIo {
