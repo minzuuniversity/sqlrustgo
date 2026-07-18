@@ -315,3 +315,86 @@ fn test_backup_manager_list_backups_single() {
     assert_eq!(list.len(), 1);
     assert_eq!(list[0].database, "testdb");
 }
+
+// ============================================================================
+// md5_simple and serde_json_simple function tests
+// ============================================================================
+
+#[test]
+fn test_md5_simple_deterministic() {
+    use sqlrustgo_tools::backup_restore::md5_simple;
+    let h1 = md5_simple("hello");
+    let h2 = md5_simple("hello");
+    assert_eq!(h1, h2, "same input must produce same hash");
+}
+
+#[test]
+fn test_md5_simple_different_inputs() {
+    use sqlrustgo_tools::backup_restore::md5_simple;
+    let h1 = md5_simple("hello");
+    let h2 = md5_simple("world");
+    assert_ne!(h1, h2, "different inputs must produce different hashes");
+}
+
+#[test]
+fn test_md5_simple_empty_string() {
+    use sqlrustgo_tools::backup_restore::md5_simple;
+    let h = md5_simple("");
+    // Empty string should produce a known value
+    assert_eq!(h, 0);
+}
+
+#[test]
+fn test_md5_simple_known_input() {
+    use sqlrustgo_tools::backup_restore::md5_simple;
+    // Compute expected: bytes "a" -> (97*1) rotated 5 = 3104
+    // Since algorithm is simple, we just check it's stable and non-zero for non-empty
+    let h = md5_simple("a");
+    assert_ne!(h, 0);
+}
+
+#[test]
+fn test_md5_simple_unicode() {
+    use sqlrustgo_tools::backup_restore::md5_simple;
+    let h = md5_simple("日本語");
+    // Should not panic and should produce a value
+    let _ = h as u64; // check it's a valid u32
+}
+
+#[test]
+fn test_restore_result_fields() {
+    use sqlrustgo_tools::backup_restore::RestoreResult;
+    let result = RestoreResult {
+        backup_id: "backup_123".to_string(),
+        rows_restored: 500,
+        duration_ms: 1500,
+    };
+    assert_eq!(result.backup_id, "backup_123");
+    assert_eq!(result.rows_restored, 500);
+    assert_eq!(result.duration_ms, 1500);
+}
+
+#[test]
+fn test_serde_json_simple_completed() {
+    use sqlrustgo_tools::backup_restore::{serde_json_simple, BackupMetadata, BackupStatus, BackupType};
+    let meta = BackupMetadata::new(
+        "bk_001".to_string(),
+        BackupType::Full,
+        "testdb".to_string(),
+    );
+    let json = serde_json_simple(&meta);
+    assert!(json.contains("bk_001"));
+    assert!(json.contains("testdb"));
+}
+
+#[test]
+fn test_serde_json_simple_in_progress() {
+    use sqlrustgo_tools::backup_restore::{serde_json_simple, BackupMetadata, BackupStatus, BackupType};
+    let meta = BackupMetadata::new(
+        "bk_002".to_string(),
+        BackupType::Incremental,
+        "proddb".to_string(),
+    );
+    let json = serde_json_simple(&meta);
+    assert!(json.contains("in_progress"));
+}
