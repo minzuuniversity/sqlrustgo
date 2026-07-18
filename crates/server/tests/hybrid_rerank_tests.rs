@@ -4,8 +4,8 @@
 //!        RerankedItem, ScoreBreakdown, HybridReranker
 
 use sqlrustgo_server::hybrid_rerank::{
-    HybridReranker, ModeWeights, RerankConfig, RerankedItem,
-    ScoreBreakdown, ScoredResult, SearchMode,
+    HybridReranker, ModeWeights, RerankConfig, RerankedItem, ScoreBreakdown, ScoredResult,
+    SearchMode,
 };
 
 // ============ SearchMode tests ============
@@ -228,8 +228,13 @@ fn test_scored_result_debug() {
 #[test]
 fn test_scored_result_with_metadata() {
     let mut result = ScoredResult::new("doc1".to_string(), SearchMode::Sql, 0.9);
-    result.metadata.insert("author".to_string(), serde_json::json!("Alice"));
-    assert_eq!(result.metadata.get("author"), Some(&serde_json::json!("Alice")));
+    result
+        .metadata
+        .insert("author".to_string(), serde_json::json!("Alice"));
+    assert_eq!(
+        result.metadata.get("author"),
+        Some(&serde_json::json!("Alice"))
+    );
 }
 
 #[test]
@@ -437,9 +442,7 @@ fn test_hybrid_reranker_rerank_composite() {
         min_score: None,
     };
     let reranker = HybridReranker::new(config);
-    let results = vec![
-        ScoredResult::new("doc1".to_string(), SearchMode::Sql, 0.9),
-    ];
+    let results = vec![ScoredResult::new("doc1".to_string(), SearchMode::Sql, 0.9)];
     let ranked = reranker.rerank(results);
     assert!(!ranked.is_empty());
 }
@@ -454,9 +457,7 @@ fn test_hybrid_reranker_rerank_unknown_algorithm() {
         min_score: None,
     };
     let reranker = HybridReranker::new(config);
-    let results = vec![
-        ScoredResult::new("doc1".to_string(), SearchMode::Sql, 0.9),
-    ];
+    let results = vec![ScoredResult::new("doc1".to_string(), SearchMode::Sql, 0.9)];
     // Unknown algorithm falls back to RRF
     let ranked = reranker.rerank(results);
     assert!(!ranked.is_empty());

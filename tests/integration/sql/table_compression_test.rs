@@ -1,10 +1,10 @@
 // F-27: Table Compression (LZ4/zstd)
 // Issue: #2828
 // Change: openspec/changes/f-27-table-compression
-// 
+//
 // Real storage integration. Uses sqlrustgo_common::compression.
 
-use sqlrustgo_common::compression::{TableCompressor, CompressionAlgorithm};
+use sqlrustgo_common::compression::{CompressionAlgorithm, TableCompressor};
 
 #[test]
 fn test_compress_basic() {

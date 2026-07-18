@@ -611,7 +611,12 @@ fn test_verify_backup_with_wal() {
     fs::write(wal_dir.join("sqlrustgo.wal"), b"wal-bytes").unwrap();
 
     let backup_path = tmp.path().join("backup.tar.gz");
-    physical_backup(&data_dir, Some(&wal_dir.join("sqlrustgo.wal")), &backup_path).unwrap();
+    physical_backup(
+        &data_dir,
+        Some(&wal_dir.join("sqlrustgo.wal")),
+        &backup_path,
+    )
+    .unwrap();
 
     let result = verify_backup(&backup_path).unwrap();
     assert_eq!(result.errors.len(), 0);
@@ -675,7 +680,12 @@ fn test_physical_restore_success_with_wal() {
     fs::write(wal_dir.join("sqlrustgo.wal"), b"wal-content").unwrap();
 
     let backup_path = tmp.path().join("backup.tar.gz");
-    physical_backup(&data_dir, Some(&wal_dir.join("sqlrustgo.wal")), &backup_path).unwrap();
+    physical_backup(
+        &data_dir,
+        Some(&wal_dir.join("sqlrustgo.wal")),
+        &backup_path,
+    )
+    .unwrap();
 
     // Restore
     let restore_dir = tmp.path().join("restore");
@@ -771,14 +781,23 @@ fn test_physical_backup_restore_roundtrip() {
     // --- run physical_backup ---
     let out = src.path().join("backup.tar.gz");
     let result = physical_backup(data_dir, Some(&wal_path), &out).unwrap();
-    assert!(result.manifest.data_files.len() >= 3, "at least 3 data files backed up");
-    assert!(result.manifest.wal_file.is_some(), "WAL recorded in manifest");
+    assert!(
+        result.manifest.data_files.len() >= 3,
+        "at least 3 data files backed up"
+    );
+    assert!(
+        result.manifest.wal_file.is_some(),
+        "WAL recorded in manifest"
+    );
     assert!(out.exists(), "backup file created");
 
     // --- run physical_restore to a fresh target ---
     let target = TempDir::new().unwrap();
     let restore_result = physical_restore(&out, target.path()).unwrap();
-    assert!(restore_result.restored_data_files >= 3, "at least 3 data files restored");
+    assert!(
+        restore_result.restored_data_files >= 3,
+        "at least 3 data files restored"
+    );
     assert!(restore_result.restored_wal, "WAL restored");
 
     // --- verify file content matches originals ---
@@ -791,14 +810,8 @@ fn test_physical_backup_restore_roundtrip() {
         fs::read(&restored_t1).unwrap(),
         br#"{"id":1,"name":"alice"}"#
     );
-    assert_eq!(
-        fs::read(&restored_t2).unwrap(),
-        br#"{"id":2,"x":42}"#
-    );
-    assert_eq!(
-        fs::read(&restored_t3).unwrap(),
-        br#"{"id":3,"y":99}"#
-    );
+    assert_eq!(fs::read(&restored_t2).unwrap(), br#"{"id":2,"x":42}"#);
+    assert_eq!(fs::read(&restored_t3).unwrap(), br#"{"id":3,"y":99}"#);
     assert_eq!(
         fs::read(&restored_wal).unwrap(),
         b"wal-entry-1\nwal-entry-2\n"
@@ -910,7 +923,7 @@ fn test_pitr_replay_with_rollback() {
 
 // ============ MysqlAdmin dispatch tests ============
 
-use sqlrustgo_admin::mysqladmin::{MysqlAdmin, Connection, SystemVariable};
+use sqlrustgo_admin::mysqladmin::{Connection, MysqlAdmin, SystemVariable};
 
 /// MysqlAdmin::new creates a default instance with system variables.
 #[test]

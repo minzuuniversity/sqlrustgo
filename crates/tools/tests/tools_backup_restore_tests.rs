@@ -376,12 +376,10 @@ fn test_restore_result_fields() {
 
 #[test]
 fn test_serde_json_simple_completed() {
-    use sqlrustgo_tools::backup_restore::{serde_json_simple, BackupMetadata, BackupStatus, BackupType};
-    let meta = BackupMetadata::new(
-        "bk_001".to_string(),
-        BackupType::Full,
-        "testdb".to_string(),
-    );
+    use sqlrustgo_tools::backup_restore::{
+        serde_json_simple, BackupMetadata, BackupStatus, BackupType,
+    };
+    let meta = BackupMetadata::new("bk_001".to_string(), BackupType::Full, "testdb".to_string());
     let json = serde_json_simple(&meta);
     assert!(json.contains("bk_001"));
     assert!(json.contains("testdb"));
@@ -389,7 +387,9 @@ fn test_serde_json_simple_completed() {
 
 #[test]
 fn test_serde_json_simple_in_progress() {
-    use sqlrustgo_tools::backup_restore::{serde_json_simple, BackupMetadata, BackupStatus, BackupType};
+    use sqlrustgo_tools::backup_restore::{
+        serde_json_simple, BackupMetadata, BackupStatus, BackupType,
+    };
     let meta = BackupMetadata::new(
         "bk_002".to_string(),
         BackupType::Incremental,
