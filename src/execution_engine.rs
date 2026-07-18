@@ -439,6 +439,19 @@ impl<S: StorageEngine + 'static> ExecutionEngine<S> {
     /// Hot path for LOAD DATA LOCAL INFILE: avoids 2MB SQL string round-trip
     /// via `execute()` by handing the pre-parsed Vec<Record> directly to
     /// `Storage::insert`. Same transactional guarantees as SQL INSERT.
+    ///
+    /// ## Deferred Persist (v3.11.0)
+    ///
+    /// This method intentionally does NOT flush to disk after inserting.
+    /// The caller (LOAD DATA LOCAL INFILE handler) accumulates multiple
+    /// `bulk_insert_records` calls and calls `engine.flush()` once at the
+    /// end. This avoids N full-table JSON serializations for N batches,
+    /// reducing import time from O(N * table_size) to O(table_size).
+    ///
+    /// Before v3.11.0, each `bulk_insert_records` call triggered an
+    /// immediate `save_table` which serialized and wrote the entire table.
+    /// For a 500MB orders table, this caused ~3s per INSERT even with
+    /// buffered batching. Now: ~0ms per batch, one 3s flush at the end.
     pub fn bulk_insert_records(
         &self,
         table: &str,
@@ -449,6 +462,8 @@ impl<S: StorageEngine + 'static> ExecutionEngine<S> {
         storage
             .insert(table, records)
             .map_err(|e| SqlError::ExecutionError(format!("bulk_insert_records: {}", e)))?;
+        // NOTE: intentionally NO flush() here. Caller accumulates batches
+        // and calls engine.flush() once after loading completes.
         Ok(n)
     }
 
