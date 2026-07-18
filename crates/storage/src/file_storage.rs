@@ -7,7 +7,7 @@ use crate::engine::{
     StorageEngine, TableData, TableInfo, TriggerInfo, UniqueConstraint,
 };
 use sqlrustgo_types::{SqlError, SqlResult, Value};
-use std::collections::HashMap;
+use std::collections::{HashMap, HashSet};
 use std::fs::{self, File};
 use std::io::{BufReader, BufWriter, Write};
 use std::path::PathBuf;
@@ -37,6 +37,8 @@ pub struct FileStorage {
     /// Gap lock manager for REPEATABLE-READ isolation (F-16 Gap Locking)
     #[allow(dead_code)]
     gap_lock_manager: Option<std::sync::Arc<crate::lock::GapLockManager>>,
+    /// V311-07: Dirty table tracker - marks tables modified since last flush
+    dirty_tables: HashSet<String>,
 }
 
 impl FileStorage {
@@ -55,6 +57,7 @@ impl FileStorage {
             current_tx_id: 0,
             triggers: RwLock::new(HashMap::new()),
             gap_lock_manager: None,
+            dirty_tables: HashSet::new(),
         };
 
         // Load existing tables
@@ -83,6 +86,7 @@ impl FileStorage {
             current_tx_id: 0,
             triggers: RwLock::new(HashMap::new()),
             gap_lock_manager: None,
+            dirty_tables: HashSet::new(),
         };
 
         storage.load_all_tables()?;
@@ -109,6 +113,7 @@ impl FileStorage {
             current_tx_id: 0,
             triggers: RwLock::new(HashMap::new()),
             gap_lock_manager: None,
+            dirty_tables: HashSet::new(),
         };
 
         // Load existing tables
@@ -150,14 +155,16 @@ impl FileStorage {
             current_tx_id: 0,
             triggers: RwLock::new(HashMap::new()),
             gap_lock_manager: Some(lock_manager),
+            dirty_tables: HashSet::new(),
         };
 
         storage.load_all_tables()?;
         storage.load_all_indexes()?;
-        storage.load_all_triggers()?;
 
         Ok(storage)
     }
+
+
 
     /// Get the path for a table file
     fn table_path(&self, table_name: &str) -> PathBuf {
@@ -402,9 +409,14 @@ impl FileStorage {
     }
 
     /// Force save all dirty tables to disk
-    pub fn flush(&self) -> std::io::Result<()> {
-        for (name, table_data) in &self.tables {
-            self.save_table(name, table_data)?;
+    /// V311-07: Only persist tables that have been modified since last flush
+    pub fn flush(&mut self) -> std::io::Result<()> {
+        // V311-07: Take dirty tables set, leaving empty set behind
+        let dirty: Vec<String> = std::mem::take(&mut self.dirty_tables).into_iter().collect();
+        for name in &dirty {
+            if let Some(table_data) = self.tables.get(name) {
+                self.save_table(name, table_data)?;
+            }
         }
         Ok(())
     }
@@ -2670,13 +2682,17 @@ impl StorageEngine for FileStorage {
         // overridden for tx-scoped writes so WAL recovery sees a clean
         // apply-or-rollback boundary.
         if self.in_transaction() {
-            self.insert_buffered(table, records)
+            self.insert_buffered(table, records)?
         } else if !self.enable_buffer || records.len() >= self.buffer_threshold {
-            self.insert_direct(table, records)
+            self.insert_direct(table, records)?
         } else {
-            self.insert_buffered(table, records)
-        }
+            self.insert_buffered(table, records)?
+        };
+        // V311-07: Mark table dirty for optimized flush
+        self.dirty_tables.insert(table.to_string());
+        Ok(())
     }
+
 
     /// F-09 fix: bypass insert_buffer so WAL recovery can replay entries
     /// deterministically. Subsequent scan/delete in the same recovery pass
@@ -2706,9 +2722,9 @@ impl StorageEngine for FileStorage {
             let new_len = data.rows.len();
             let removed = original_len - new_len;
 
+            // V311-07: Mark dirty instead of immediate persist
             if removed > 0 || filters.is_empty() {
-                let table_data = data.clone();
-                self.save_table(table, &table_data)?;
+                self.dirty_tables.insert(table.to_string());
             }
 
             // After full table delete (filters.is_empty()), clear any buffered
@@ -2739,9 +2755,9 @@ impl StorageEngine for FileStorage {
             let original_len = data.rows.len();
             data.rows.retain(|r| !filter(r));
             let new_len = data.rows.len();
+            // V311-07: Mark dirty instead of immediate persist
             if new_len < original_len {
-                let table_data = data.clone();
-                self.save_table(table, &table_data)?;
+                self.dirty_tables.insert(table.to_string());
             }
             Ok(original_len - new_len)
         } else {
@@ -2775,12 +2791,10 @@ impl StorageEngine for FileStorage {
                 count += 1;
             }
         }
-
+        // V311-07: Mark dirty instead of immediate persist
         if count > 0 {
-            let table_data = data.clone();
-            self.save_table(table, &table_data)?;
+            self.dirty_tables.insert(table.to_string());
         }
-
         Ok(count)
     }
 
@@ -2807,13 +2821,10 @@ impl StorageEngine for FileStorage {
                 count += 1;
             }
         }
-
+        // V311-07: Mark dirty instead of immediate persist
         if count > 0 {
-            let table_data = data.clone();
-            self.save_table(table, &table_data)
-                .map_err(|e| SqlError::ExecutionError(e.to_string()))?;
+            self.dirty_tables.insert(table.to_string());
         }
-
         Ok(count)
     }
 
@@ -3170,5 +3181,48 @@ mod parallel_scan_tests {
         }
 
         let _ = std::fs::remove_dir_all(&temp_dir);
+    }
+}
+impl FileStorage {
+    /// Flush dirty tables in parallel using std::thread
+    /// V311-09: Addresses global lock bottleneck - parallel table writes
+    pub fn flush_parallel(&mut self) -> std::io::Result<()> {
+        // Take dirty tables set, leaving empty set behind
+        let dirty: Vec<String> = std::mem::take(&mut self.dirty_tables).into_iter().collect();
+        
+        if dirty.is_empty() {
+            return Ok(());
+        }
+        
+        // For 1-2 tables, sequential is faster (no thread overhead)
+        if dirty.len() <= 2 {
+            return self.flush();
+        }
+        
+        // For 3+ tables, flush in parallel using thread pool
+        let results = std::thread::scope(|s| {
+            let handles: Vec<_> = dirty.iter()
+                .map(|name| {
+                    s.spawn(|| {
+                        if let Some(table_data) = self.tables.get(name) {
+                            self.save_table(name, table_data)
+                        } else {
+                            Ok(())
+                        }
+                    })
+                })
+                .collect();
+            
+            handles.into_iter()
+                .map(|h| h.join().unwrap())
+                .collect::<Vec<_>>()
+        });
+        
+        // Combine all results - return first error if any
+        for result in results {
+            result?;
+        }
+        
+        Ok(())
     }
 }

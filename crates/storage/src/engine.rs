@@ -665,7 +665,12 @@ pub trait StorageEngine: Send + Sync {
     fn flush(&mut self) -> SqlResult<()> {
         Ok(())
     }
-
+    
+    /// Flush with parallel table writes (V311-09)
+    /// Default implementation falls back to sequential flush
+    fn flush_parallel(&mut self) -> SqlResult<()> {
+        self.flush()
+    }
     fn is_wal_enabled(&self) -> bool {
         false
     }
