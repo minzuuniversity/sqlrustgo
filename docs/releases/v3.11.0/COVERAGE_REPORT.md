@@ -1,8 +1,11 @@
 # SQLRustGo v3.11.0 — 完整测试覆盖率报告
 
 **生成时间**: 2026-07-18
-**测量方法**: `cargo llvm-cov test --no-fail-fast` (llvm-cov 覆盖率)
+**测量方法**: `cargo llvm-cov test -p <crate> --no-fail-fast` (llvm-cov 覆盖率)
 **分支**: `develop/v3.11.0`
+
+> ⚠️ **`sqlrustgo` root crate (第25行) 的测量数据不代表真实覆盖率**，详见"测量方法说明"章节。
+> 分支覆盖率（branch coverage）未启用，此报告仅含行覆盖率和函数覆盖率。
 
 ## 测试策略说明
 
@@ -13,8 +16,43 @@
 | `--lib --skip <slow>` | 运行 lib 单元测试，跳过超过 60s 的慢测试 |
 
 > **注意**: `sqlrustgo-vector` 测试超时（>120s），数据缺失。
-> 分支覆盖率（branch coverage）未启用，此报告仅含行覆盖率和函数覆盖率。
 
+## ⚠️ `sqlrustgo` root crate 测量数据说明
+
+**`sqlrustgo` root lib（第25行）的 17.00% 行覆盖率是测量方法错误导致的误导性数据，不代表真实测试覆盖情况。**
+
+### 问题原因
+
+`cargo llvm-cov test -p sqlrustgo --lib` 测量存在**三个根本性问题**：
+
+1. **双计算行数**：`src/lib.rs` 中的 `pub use sqlrustgo_executor::...` 等语句将其依赖的子 crate 代码行（executor/optimizer/planner/storage）计入 `sqlrustgo` 的 TOTAL，而 `cargo llvm-cov test -p <sub-crate>` 已经单独测量过这些代码，导致同一行代码被计算两次。
+
+2. **`engine_select.rs` 无内联测试**：`src/engine_select.rs`（4,562 行，占 root 46% 代码）有 **0 个** `#[test]` 块，其代码路径需要集成/e2e 测试触发，但 `--lib` 不执行集成测试。
+
+3. **仅测 `--lib` 跳过了所有集成/e2e 测试**：Root lib 的 `execution_engine_tests.rs` 只从外部调用 `execute_select()`，但不覆盖 `engine_select.rs` 内部 355 个 match arm 的 TPC-H 特定路径。
+
+### `sqlrustgo` root 各文件真实覆盖
+
+| 文件 | 行数 | 覆盖率 | 说明 |
+|------|------|--------|------|
+| `engine_select.rs` | 4,562 | 4.04% | 遗留执行引擎，无内联测试 |
+| `execution_engine.rs` | 2,878 | 14.48% | 同上 |
+| `engine_utils.rs` | 1,147 | 8.49% | 工具函数未充分测试 |
+| `engine_dml.rs` | 845 | 37.63% | DML 部分有测试覆盖 |
+| `expr_utils.rs` | 560 | 21.69% | 表达式工具有限覆盖 |
+| `engine_ddl.rs` | 567 | 5.09% | DDL 覆盖低 |
+| `cbo_estimator.rs` | 211 | 94.67% | 有测试 |
+| `engine_cte.rs` | 128 | 0.00% | CTE 无测试 |
+| `memory/` + `planner/` | ~800 | ~50%+ | 子模块有独立测试 |
+
+### 正确衡量方式
+
+| 衡量目标 | 正确方法 | 结果 |
+|----------|----------|------|
+| 各 crate 真实覆盖率 | `cargo llvm-cov test -p <crate> --no-fail-fast` | ✅ 有效 |
+| Workspace 总体 | 26 crate 平均（不含 sqlrustgo root） | 78.05% |
+
+**Issue #3420 / #3493 的覆盖率目标应该使用各 crate 独立测量数据，不参考 `sqlrustgo` root 的 17%**。
 ## L1_8 核心 Crate（Alpha Gate A5 / GA Gate G3 考核范围）
 
 | Crate | 行覆盖率 | 覆盖行数 | 函数覆盖率 | 函数数 | Alpha ≥75% | GA ≥80% | 备注 |
