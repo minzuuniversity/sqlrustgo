@@ -410,3 +410,179 @@ mod tests {
         assert_eq!(csv_escape(""), "");
     }
 }
+
+#[cfg(test)]
+mod additional_tests {
+    use super::*;
+
+    #[test]
+    fn test_serialize_result_set_csv_basic() {
+        let cols = vec![
+            sqlrustgo_mysql_client::ColumnDefinition {
+                catalog: "def".into(),
+                schema: "testdb".into(),
+                table: "users".into(),
+                org_table: "users".into(),
+                name: "id".into(),
+                org_name: "id".into(),
+                character_set: 0x21,
+                column_length: 11,
+                column_type: 0x03,
+                flags: 0x0020,
+                decimals: 0x00,
+            },
+            sqlrustgo_mysql_client::ColumnDefinition {
+                catalog: "def".into(),
+                schema: "testdb".into(),
+                table: "users".into(),
+                org_table: "users".into(),
+                name: "name".into(),
+                org_name: "name".into(),
+                character_set: 0x21,
+                column_length: 255,
+                column_type: 0x0f,
+                flags: 0x0000,
+                decimals: 0x00,
+            },
+        ];
+        let rows = vec![
+            vec!["1".into(), "alice".into()],
+            vec!["2".into(), "bob".into()],
+        ];
+        let csv = serialize_result_set_csv(&cols, &rows);
+        let lines: Vec<&str> = csv.lines().collect();
+        assert_eq!(lines.len(), 3);
+        assert_eq!(lines[0], "id,name");
+        assert_eq!(lines[1], "1,alice");
+        assert_eq!(lines[2], "2,bob");
+    }
+
+    #[test]
+    fn test_serialize_result_set_csv_empty() {
+        let cols = vec![];
+        let rows = vec![];
+        let csv = serialize_result_set_csv(&cols, &rows);
+        let lines: Vec<&str> = csv.lines().collect();
+        assert_eq!(lines.len(), 1);
+        assert_eq!(lines[0], "");
+    }
+
+    #[test]
+    fn test_serialize_result_set_csv_special_chars() {
+        // Verify serialize_result_set_csv produces non-empty output for special chars
+        let cols = vec![sqlrustgo_mysql_client::ColumnDefinition {
+            catalog: "def".into(), schema: "testdb".into(), table: "t".into(),
+            org_table: "t".into(), name: "col".into(), org_name: "col".into(),
+            character_set: 0x21, column_length: 255, column_type: 0x0f,
+            flags: 0x0000, decimals: 0x00,
+        }];
+        let rows = vec![vec!["a,b".into()]];
+        let csv = serialize_result_set_csv(&cols, &rows);
+        assert!(!csv.is_empty());
+        assert!(csv.contains("col"));
+    }
+
+    #[test]
+    fn test_logical_manifest_from() {
+        let tables = vec!["users".to_string(), "orders".to_string()];
+        let mut counts = std::collections::HashMap::new();
+        counts.insert("users".to_string(), 100);
+        counts.insert("orders".to_string(), 50);
+        let manifest = logical_manifest_from(&tables, &counts);
+        assert_eq!(manifest.version, 1);
+        assert_eq!(manifest.tables.len(), 2);
+        assert_eq!(manifest.tables[0].name, "users");
+        assert_eq!(manifest.tables[0].row_count, 100);
+        assert_eq!(manifest.tables[1].name, "orders");
+        assert_eq!(manifest.tables[1].row_count, 50);
+    }
+
+    #[test]
+    fn test_logical_manifest_from_missing_counts() {
+        let tables = vec!["users".to_string()];
+        let counts = std::collections::HashMap::new(); // empty
+        let manifest = logical_manifest_from(&tables, &counts);
+        assert_eq!(manifest.tables[0].row_count, 0);
+    }
+
+    #[test]
+    fn test_extract_first_cell_error_paths() {
+        use sqlrustgo_mysql_client::ResultSet;
+
+        // Not a Select result
+        let ok_result = ResultSet::Ok { affected_rows: 0, last_insert_id: 0, status_flags: 0, warnings: 0, info: "".into() };
+        let err = extract_first_cell(&ok_result, "test").unwrap_err();
+        assert!(matches!(err, WireError::Protocol(_)));
+
+        // Empty rows
+        let empty_result = ResultSet::Select { columns: vec![], rows: vec![] };
+        let err = extract_first_cell(&empty_result, "test").unwrap_err();
+        assert!(matches!(err, WireError::Protocol(_)));
+
+        // Empty row (columns defined but no cells)
+        let empty_row_result = ResultSet::Select {
+            columns: vec![sqlrustgo_mysql_client::ColumnDefinition {
+                catalog: "def".into(), schema: "testdb".into(), table: "t".into(),
+                org_table: "t".into(), name: "id".into(), org_name: "id".into(),
+                character_set: 0x21, column_length: 11, column_type: 0x03,
+                flags: 0x0020, decimals: 0x00,
+            }],
+            rows: vec![vec![]],
+        };
+        let err = extract_first_cell(&empty_row_result, "test").unwrap_err();
+        assert!(matches!(err, WireError::Protocol(_)));
+    }
+
+    #[test]
+    fn test_extract_first_cell_ok() {
+        use sqlrustgo_mysql_client::ResultSet;
+        let result = ResultSet::Select {
+            columns: vec![],
+            rows: vec![vec!["hello".into()]],
+        };
+        let cell = extract_first_cell(&result, "test").unwrap();
+        assert_eq!(cell, "hello");
+    }
+
+    #[test]
+    fn test_write_padding_zero() {
+        let mut buf = Vec::new();
+        // 0 bytes → (512 - 0) % 512 = 0, no padding needed
+        write_padding(&mut buf, 0).unwrap();
+        assert_eq!(buf.len(), 0);
+    }
+
+    #[test]
+    fn test_write_padding_exact_block() {
+        let mut buf = Vec::new();
+        // 512 bytes exactly → pad = 0
+        write_padding(&mut buf, 512).unwrap();
+        assert_eq!(buf.len(), 0);
+    }
+
+    #[test]
+    fn test_write_padding_partial_block() {
+        let mut buf = Vec::new();
+        // 100 bytes → pad = 512 - 100 = 412
+        write_padding(&mut buf, 100).unwrap();
+        assert_eq!(buf.len(), 412);
+    }
+
+    #[test]
+    fn test_write_tar_header_basic() {
+        let mut buf = Vec::new();
+        write_tar_header(&mut buf, "test.txt", 5).unwrap();
+        assert_eq!(buf.len(), 512);
+        // Magic bytes at offset 257
+        assert_eq!(&buf[257..263], b"ustar\0");
+    }
+
+    #[test]
+    fn test_write_tar_header_long_name_truncated() {
+        let mut buf = Vec::new();
+        // Name > 99 bytes should be truncated
+        let long_name = "a".repeat(150);
+        write_tar_header(&mut buf, &long_name, 0).unwrap();
+        assert_eq!(buf.len(), 512);
+    }
+}

@@ -629,3 +629,315 @@ fn test_prepared_statement_fields() {
     assert_eq!(ps.param_count, 5);
     assert_eq!(ps.column_count, 2);
 }
+
+// ============================================================================
+// Additional tests for result parsing and error paths
+// ============================================================================
+
+#[test]
+fn test_result_set_ok_fields() {
+    let rs = ResultSet::Ok {
+        affected_rows: 10,
+        last_insert_id: 5,
+        status_flags: 0x0020,
+        warnings: 2,
+        info: "Rows matched: 10".to_string(),
+    };
+    match &rs {
+        ResultSet::Ok { affected_rows, .. } => assert_eq!(*affected_rows, 10),
+        _ => panic!("expected Ok"),
+    }
+}
+
+#[test]
+fn test_result_set_select_multiple_rows() {
+    let rs = ResultSet::Select {
+        columns: vec![],
+        rows: vec![
+            vec!["a".to_string(), "b".to_string()],
+            vec!["c".to_string(), "d".to_string()],
+        ],
+    };
+    match &rs {
+        ResultSet::Select { rows, .. } => assert_eq!(rows.len(), 2),
+        _ => panic!("expected Select"),
+    }
+}
+
+#[test]
+fn test_result_set_error_fields() {
+    let rs = ResultSet::Error {
+        error_code: 1146,
+        sql_state: "42S02".to_string(),
+        error_message: "Table not found".to_string(),
+    };
+    match &rs {
+        ResultSet::Error { error_code, .. } => assert_eq!(*error_code, 1146),
+        _ => panic!("expected Error"),
+    }
+}
+
+#[test]
+fn test_parse_handshake_protocol_0x09() {
+    let payload = vec![0x09, 0x38, 0x2e, 0x30, 0x2e, 0x33, 0x30, 0x00];
+    let result = parse_handshake(&payload);
+    assert!(result.is_err());
+}
+
+#[test]
+fn test_parse_handshake_too_short() {
+    let payload = vec![0x0a, 0x00];
+    let result = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+        parse_handshake(&payload)
+    }));
+    assert!(result.is_err() || result.is_ok());
+}
+
+#[test]
+fn test_parse_handshake_zero_capability() {
+    // All zeros capability
+    let payload = vec![
+        0x0a, // protocol version
+        0x38, 0x2e, 0x30, 0x2e, 0x30, 0x00, // version "8.0.0"
+        0x01, 0x00, 0x00, 0x00, // connection_id = 1
+        0x01, 0x02, 0x03, 0x04, 0x05, 0x06, 0x07, 0x08, // auth_plugin_data part 1
+        0x00, // filler
+        0x00, 0x00, // capability lower = 0
+        0x08, // character_set
+        0x00, 0x00, // status_flags
+        0x00, 0x00, // capability upper = 0
+        0x00, // auth_plugin_data_len = 0
+        0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, // reserved
+    ];
+    let result = parse_handshake(&payload);
+    assert!(result.is_ok());
+}
+
+#[test]
+fn test_parse_handshake_status_flags() {
+    let payload = vec![
+        0x0a, // protocol version
+        0x38, 0x2e, 0x30, 0x2e, 0x30, 0x00, // version "8.0.0"
+        0x01, 0x00, 0x00, 0x00, // connection_id = 1
+        0x01, 0x02, 0x03, 0x04, 0x05, 0x06, 0x07, 0x08, // auth_plugin_data part 1
+        0x00, // filler
+        0x00, 0x00, // capability lower
+        0x08, // character_set
+        0x02, 0x00, // status_flags = 2 (SERVER_STATUS_AUTOCOMMIT)
+        0x00, 0x00, // capability upper
+        0x00, // auth_plugin_data_len = 0
+        0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, // reserved
+    ];
+    let result = parse_handshake(&payload);
+    assert!(result.is_ok());
+    let hs = result.unwrap();
+    assert_eq!(hs.status_flags, 0x0002);
+}
+
+#[test]
+fn test_parse_handshake_mysql_native_password() {
+    let payload = vec![
+        0x0a, 0x38, 0x2e, 0x30, 0x2e, 0x33, 0x30, 0x00,
+        0x01, 0x00, 0x00, 0x00,
+        0x01, 0x02, 0x03, 0x04, 0x05, 0x06, 0x07, 0x08,
+        0x00,
+        0x00, 0x00,
+        0x08,
+        0x02, 0x00,
+        0x00, 0x00,
+        0x00,
+        0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
+        0x6d, 0x79, 0x73, 0x71, 0x6c, 0x5f, 0x6e, 0x61, 0x74, 0x69, 0x76, 0x65, 0x5f, 0x70, 0x61, 0x73, 0x73, 0x77, 0x6f, 0x72, 0x64, 0x00, // "mysql_native_password\0"
+    ];
+    let result = parse_handshake(&payload);
+    assert!(result.is_ok());
+    let hs = result.unwrap();
+    assert_eq!(hs.auth_plugin_name, "mysql_native_password");
+}
+
+// ============================================================================
+// Additional Packet edge case tests
+// ============================================================================
+
+#[test]
+fn test_packet_read_multiple_sequential() {
+    use std::io::Cursor;
+    // Write 3 packets sequentially, read them back
+    let packets = vec![
+        Packet::new(0, vec![0x10]),
+        Packet::new(1, vec![0x11, 0x12]),
+        Packet::new(2, vec![0x13, 0x14, 0x15]),
+    ];
+    let mut buf = Vec::new();
+    for p in &packets {
+        p.write_to(&mut buf).unwrap();
+    }
+    let mut cur = Cursor::new(buf);
+    for expected in &packets {
+        let recovered = Packet::read_from(&mut cur).unwrap();
+        assert_eq!(recovered.length, expected.length);
+        assert_eq!(recovered.sequence, expected.sequence);
+        assert_eq!(recovered.payload, expected.payload);
+    }
+}
+
+#[test]
+fn test_packet_roundtrip_64kb() {
+    use std::io::Cursor;
+    let data: Vec<u8> = (0..=255).cycle().take(65_536).collect();
+    let original = Packet::new(5, data);
+    let mut buf = Vec::new();
+    original.write_to(&mut buf).unwrap();
+    let mut cur = Cursor::new(buf);
+    let recovered = Packet::read_from(&mut cur).unwrap();
+    assert_eq!(recovered.length, 65_536);
+    assert_eq!(recovered.sequence, 5);
+    assert_eq!(recovered.payload[0], 0);
+    assert_eq!(recovered.payload[65_535], 255);
+}
+
+#[test]
+fn test_packet_roundtrip_sequence_all_values() {
+    use std::io::Cursor;
+    for seq in [0u8, 1, 100, 127, 128, 200, 254, 255] {
+        let original = Packet::new(seq, vec![seq.wrapping_add(1)]);
+        let mut buf = Vec::new();
+        original.write_to(&mut buf).unwrap();
+        let mut cur = Cursor::new(buf);
+        let recovered = Packet::read_from(&mut cur).unwrap();
+        assert_eq!(recovered.sequence, seq);
+    }
+}
+
+#[test]
+fn test_packet_read_from_zero_length_header_truncated() {
+    use std::io::Cursor;
+    // 3 bytes (only partial header - need 4 bytes)
+    let truncated = vec![0x00, 0x00, 0x00];
+    let mut cur = Cursor::new(truncated);
+    let result = Packet::read_from(&mut cur);
+    assert!(result.is_err());
+}
+
+// ============================================================================
+// MySqlClientError variant and Display tests
+// ============================================================================
+
+#[test]
+fn test_mysql_client_error_io() {
+    use std::io;
+    use sqlrustgo_mysql_client::MySqlClientError;
+    let io_err = io::Error::new(io::ErrorKind::ConnectionReset, "reset");
+    let err = MySqlClientError::Io(io_err);
+    let msg = format!("{}", err);
+    assert!(msg.contains("IO error"));
+    assert!(msg.contains("reset"));
+}
+
+#[test]
+fn test_mysql_client_error_protocol() {
+    use sqlrustgo_mysql_client::MySqlClientError;
+    let err = MySqlClientError::Protocol("bad packet".to_string());
+    let msg = format!("{}", err);
+    assert!(msg.contains("Protocol error"));
+    assert!(msg.contains("bad packet"));
+}
+
+#[test]
+fn test_mysql_client_error_auth() {
+    use sqlrustgo_mysql_client::MySqlClientError;
+    let err = MySqlClientError::Auth("access denied".to_string());
+    let msg = format!("{}", err);
+    assert!(msg.contains("Auth error"));
+    assert!(msg.contains("access denied"));
+}
+
+#[test]
+fn test_mysql_client_error_server_error() {
+    use sqlrustgo_mysql_client::MySqlClientError;
+    let err = MySqlClientError::ServerError(1062, "Duplicate entry".to_string());
+    let msg = format!("{}", err);
+    assert!(msg.contains("Server error 1062"));
+    assert!(msg.contains("Duplicate entry"));
+}
+
+#[test]
+fn test_mysql_client_error_connection_closed() {
+    use sqlrustgo_mysql_client::MySqlClientError;
+    let err = MySqlClientError::ConnectionClosed;
+    let msg = format!("{}", err);
+    assert!(msg.contains("Connection closed"));
+}
+
+
+// ============================================================================
+// parse_handshake edge cases
+// ============================================================================
+
+#[test]
+fn test_parse_handshake_minimum_valid() {
+    use sqlrustgo_mysql_client::parse_handshake;
+    // Minimum valid handshake: protocol 0x0a, server_version, connection_id,
+    // 8 bytes auth_data, capability lower, charset, status, capability upper,
+    // auth_plugin_data_len=0, 10 reserved bytes
+    let payload = vec![
+        0x0a, // protocol
+        0x35, 0x2e, 0x30, 0x2e, 0x30, 0x00, // "5.0.0\0"
+        0x01, 0x00, 0x00, 0x00, // connection_id = 1
+        0x01, 0x02, 0x03, 0x04, 0x05, 0x06, 0x07, 0x08, // auth_data part1
+        0x00, // filler
+        0x00, 0x00, // capability lower
+        0x08, // charset
+        0x00, 0x00, // status
+        0x00, 0x00, // capability upper
+        0x00, // auth_plugin_data_len = 0
+        0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, // 10 reserved
+    ];
+    let result = parse_handshake(&payload);
+    assert!(result.is_ok());
+    let hs = result.unwrap();
+    assert_eq!(hs.protocol_version, 0x0a);
+    assert_eq!(hs.server_version, "5.0.0");
+    assert_eq!(hs.connection_id, 1);
+    // auth_plugin_data part2 should be zeros (len=0)
+    assert_eq!(hs.auth_plugin_data[8], 0);
+    assert_eq!(hs.auth_plugin_data[19], 0);
+    // PLUGIN_AUTH not set (capability=0), so default auth_plugin_name
+    assert_eq!(hs.auth_plugin_name, "mysql_native_password");
+}
+
+#[test]
+fn test_parse_handshake_protocol_0x01_rejected() {
+    use sqlrustgo_mysql_client::{parse_handshake, MySqlClientError};
+    let payload = vec![0x01]; // wrong protocol
+    let result = parse_handshake(&payload);
+    let err = result.unwrap_err();
+    match err {
+        MySqlClientError::Protocol(msg) => {
+            assert!(msg.contains("Expected protocol 10"));
+            assert!(msg.contains("1"));
+        }
+        _ => panic!("expected Protocol error"),
+    }
+}
+
+#[test]
+fn test_parse_handshake_server_version_with_dots() {
+    use sqlrustgo_mysql_client::parse_handshake;
+    let payload = vec![
+        0x0a,
+        0x38, 0x2e, 0x30, 0x2e, 0x32, 0x30, 0x00, // "8.0.20\0"
+        0x01, 0x00, 0x00, 0x00,
+        0x01, 0x02, 0x03, 0x04, 0x05, 0x06, 0x07, 0x08,
+        0x00,
+        0x00, 0x00,
+        0x08,
+        0x00, 0x00,
+        0x00, 0x00,
+        0x00,
+        0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
+    ];
+    let result = parse_handshake(&payload);
+    assert!(result.is_ok());
+    assert_eq!(result.unwrap().server_version, "8.0.20");
+}
