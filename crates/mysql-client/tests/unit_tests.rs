@@ -3,9 +3,7 @@
 //! Tests Packet roundtrips, handshake parsing, error types,
 //! and all enum variant coverage.
 
-use sqlrustgo_mysql_client::{
-    parse_handshake, MySqlClientError, MySqlResult, Packet, ResultSet,
-};
+use sqlrustgo_mysql_client::{parse_handshake, MySqlClientError, MySqlResult, Packet, ResultSet};
 use std::io::Cursor;
 
 // ============================================================================
@@ -116,16 +114,21 @@ fn make_handshake_payload(
     buf.write_all(server_version.as_bytes()).unwrap();
     buf.write_all(&[0x00]).unwrap(); // null terminator
     buf.write_all(&1u32.to_le_bytes()).unwrap(); // connection id = 1
-    buf.write_all(&[0x01, 0x02, 0x03, 0x04, 0x05, 0x06, 0x07, 0x08]).unwrap(); // auth_plugin_data_part1
+    buf.write_all(&[0x01, 0x02, 0x03, 0x04, 0x05, 0x06, 0x07, 0x08])
+        .unwrap(); // auth_plugin_data_part1
     buf.write_all(&[0x00]).unwrap(); // filler
     buf.write_all(&(capability as u16).to_le_bytes()).unwrap(); // capability lower 2 bytes
     buf.write_all(&[0x08]).unwrap(); // character_set
     buf.write_all(&status_flags.to_le_bytes()).unwrap(); // status_flags
-    buf.write_all(&((capability >> 16) as u16).to_le_bytes()).unwrap(); // capability upper 2 bytes
+    buf.write_all(&((capability >> 16) as u16).to_le_bytes())
+        .unwrap(); // capability upper 2 bytes
     buf.write_all(&[20u8]).unwrap(); // auth_plugin_data_len (enough for scramble + null)
     buf.write_all(&[0x00; 10]).unwrap(); // reserved
-    // auth_plugin_data_part2 (at least 12 bytes)
-    buf.write_all(&[0x11, 0x12, 0x13, 0x14, 0x15, 0x16, 0x17, 0x18, 0x19, 0x1a, 0x1b, 0x1c]).unwrap();
+                                         // auth_plugin_data_part2 (at least 12 bytes)
+    buf.write_all(&[
+        0x11, 0x12, 0x13, 0x14, 0x15, 0x16, 0x17, 0x18, 0x19, 0x1a, 0x1b, 0x1c,
+    ])
+    .unwrap();
     buf.write_all(auth_plugin_name.as_bytes()).unwrap();
     buf.write_all(&[0x00]).unwrap(); // null terminator
     buf
@@ -560,7 +563,7 @@ fn test_mysql_client_error_all_variants_debug() {
     let auth_err = MySqlClientError::Auth("auth".to_string());
     let server_err = MySqlClientError::ServerError(1, "server".to_string());
     let closed_err = MySqlClientError::ConnectionClosed;
-    
+
     assert!(format!("{:?}", io_err).contains("Io"));
     assert!(format!("{:?}", proto_err).contains("Protocol"));
     assert!(format!("{:?}", auth_err).contains("Auth"));
@@ -569,13 +572,13 @@ fn test_mysql_client_error_all_variants_debug() {
 }
 
 // ============================================================================
-// ColumnDefinition tests  
+// ColumnDefinition tests
 // ============================================================================
 
 #[test]
 fn test_column_definition_debug() {
     use sqlrustgo_mysql_client::ColumnDefinition;
-    
+
     let col = ColumnDefinition {
         catalog: "def".to_string(),
         schema: "testdb".to_string(),
@@ -589,7 +592,7 @@ fn test_column_definition_debug() {
         flags: 0x0020,
         decimals: 0x00,
     };
-    
+
     let debug = format!("{:?}", col);
     assert!(debug.contains("ColumnDefinition"));
     assert!(debug.contains("id"));
@@ -603,13 +606,13 @@ fn test_column_definition_debug() {
 #[test]
 fn test_prepared_statement_debug() {
     use sqlrustgo_mysql_client::PreparedStatement;
-    
+
     let ps = PreparedStatement {
         id: 42,
         param_count: 3,
         column_count: 1,
     };
-    
+
     let debug = format!("{:?}", ps);
     assert!(debug.contains("PreparedStatement"));
     assert!(debug.contains("42"));
@@ -618,13 +621,13 @@ fn test_prepared_statement_debug() {
 #[test]
 fn test_prepared_statement_fields() {
     use sqlrustgo_mysql_client::PreparedStatement;
-    
+
     let ps = PreparedStatement {
         id: 7,
         param_count: 5,
         column_count: 2,
     };
-    
+
     assert_eq!(ps.id, 7);
     assert_eq!(ps.param_count, 5);
     assert_eq!(ps.column_count, 2);
@@ -687,9 +690,8 @@ fn test_parse_handshake_protocol_0x09() {
 #[test]
 fn test_parse_handshake_too_short() {
     let payload = vec![0x0a, 0x00];
-    let result = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
-        parse_handshake(&payload)
-    }));
+    let result =
+        std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| parse_handshake(&payload)));
     assert!(result.is_err() || result.is_ok());
 }
 
@@ -737,17 +739,11 @@ fn test_parse_handshake_status_flags() {
 #[test]
 fn test_parse_handshake_mysql_native_password() {
     let payload = vec![
-        0x0a, 0x38, 0x2e, 0x30, 0x2e, 0x33, 0x30, 0x00,
-        0x01, 0x00, 0x00, 0x00,
-        0x01, 0x02, 0x03, 0x04, 0x05, 0x06, 0x07, 0x08,
-        0x00,
-        0x00, 0x00,
-        0x08,
-        0x02, 0x00,
-        0x00, 0x00,
-        0x00,
-        0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
-        0x6d, 0x79, 0x73, 0x71, 0x6c, 0x5f, 0x6e, 0x61, 0x74, 0x69, 0x76, 0x65, 0x5f, 0x70, 0x61, 0x73, 0x73, 0x77, 0x6f, 0x72, 0x64, 0x00, // "mysql_native_password\0"
+        0x0a, 0x38, 0x2e, 0x30, 0x2e, 0x33, 0x30, 0x00, 0x01, 0x00, 0x00, 0x00, 0x01, 0x02, 0x03,
+        0x04, 0x05, 0x06, 0x07, 0x08, 0x00, 0x00, 0x00, 0x08, 0x02, 0x00, 0x00, 0x00, 0x00, 0x00,
+        0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x6d, 0x79, 0x73, 0x71, 0x6c, 0x5f,
+        0x6e, 0x61, 0x74, 0x69, 0x76, 0x65, 0x5f, 0x70, 0x61, 0x73, 0x73, 0x77, 0x6f, 0x72, 0x64,
+        0x00, // "mysql_native_password\0"
     ];
     let result = parse_handshake(&payload);
     assert!(result.is_ok());
@@ -825,8 +821,8 @@ fn test_packet_read_from_zero_length_header_truncated() {
 
 #[test]
 fn test_mysql_client_error_io() {
-    use std::io;
     use sqlrustgo_mysql_client::MySqlClientError;
+    use std::io;
     let io_err = io::Error::new(io::ErrorKind::ConnectionReset, "reset");
     let err = MySqlClientError::Io(io_err);
     let msg = format!("{}", err);
@@ -868,7 +864,6 @@ fn test_mysql_client_error_connection_closed() {
     let msg = format!("{}", err);
     assert!(msg.contains("Connection closed"));
 }
-
 
 // ============================================================================
 // parse_handshake edge cases
@@ -925,17 +920,10 @@ fn test_parse_handshake_protocol_0x01_rejected() {
 fn test_parse_handshake_server_version_with_dots() {
     use sqlrustgo_mysql_client::parse_handshake;
     let payload = vec![
-        0x0a,
-        0x38, 0x2e, 0x30, 0x2e, 0x32, 0x30, 0x00, // "8.0.20\0"
-        0x01, 0x00, 0x00, 0x00,
-        0x01, 0x02, 0x03, 0x04, 0x05, 0x06, 0x07, 0x08,
+        0x0a, 0x38, 0x2e, 0x30, 0x2e, 0x32, 0x30, 0x00, // "8.0.20\0"
+        0x01, 0x00, 0x00, 0x00, 0x01, 0x02, 0x03, 0x04, 0x05, 0x06, 0x07, 0x08, 0x00, 0x00, 0x00,
+        0x08, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
         0x00,
-        0x00, 0x00,
-        0x08,
-        0x00, 0x00,
-        0x00, 0x00,
-        0x00,
-        0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
     ];
     let result = parse_handshake(&payload);
     assert!(result.is_ok());

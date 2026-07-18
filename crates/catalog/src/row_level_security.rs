@@ -50,6 +50,7 @@ pub enum PolicyCommand {
 
 impl PolicyCommand {
     /// Parse from SQL keyword
+    #[allow(clippy::should_implement_trait)]
     pub fn from_str(s: &str) -> Option<Self> {
         match s.to_uppercase().as_str() {
             "ALL" => Some(PolicyCommand::All),
@@ -159,20 +160,12 @@ impl PolicyCatalog {
 
     /// Check if RLS is enabled for a table
     pub fn is_rls_enabled(&self, table: &str) -> bool {
-        self.rls_enabled
-            .read()
-            .get(table)
-            .copied()
-            .unwrap_or(false)
+        self.rls_enabled.read().get(table).copied().unwrap_or(false)
     }
 
     /// Get all policies for a table
     pub fn get_policies(&self, table: &str) -> Vec<Policy> {
-        self.policies
-            .read()
-            .get(table)
-            .cloned()
-            .unwrap_or_default()
+        self.policies.read().get(table).cloned().unwrap_or_default()
     }
 
     /// Filter rows by applying all applicable SELECT/USING policies.
@@ -279,22 +272,31 @@ fn evaluate_predicate(predicate: &str, row: &Row) -> Result<bool, PredicateError
 
     // IS NULL
     if predicate.ends_with("IS NULL") {
-        let col = &predicate[..predicate.len() - "IS NULL".len()].trim();
-        let val = get_row_value(row, col).ok_or_else(|| PredicateError(format!("unknown column: {}", col)))?;
+        let col = predicate
+            .strip_suffix("IS NULL")
+            .unwrap_or(predicate)
+            .trim();
+        let val = get_row_value(row, col)
+            .ok_or_else(|| PredicateError(format!("unknown column: {}", col)))?;
         return Ok(matches!(val, Value::Null));
     }
 
     // IS NOT NULL
     if predicate.ends_with("IS NOT NULL") {
-        let col = &predicate[..predicate.len() - "IS NOT NULL".len()].trim();
-        let val = get_row_value(row, col).ok_or_else(|| PredicateError(format!("unknown column: {}", col)))?;
+        let col = predicate
+            .strip_suffix("IS NOT NULL")
+            .unwrap_or(predicate)
+            .trim();
+        let val = get_row_value(row, col)
+            .ok_or_else(|| PredicateError(format!("unknown column: {}", col)))?;
         return Ok(!matches!(val, Value::Null));
     }
 
     // Equality (=)
     if let Some((col, val_str)) = parse_equality(predicate) {
         let col = col.trim();
-        let val = get_row_value(row, col).ok_or_else(|| PredicateError(format!("unknown column: {}", col)))?;
+        let val = get_row_value(row, col)
+            .ok_or_else(|| PredicateError(format!("unknown column: {}", col)))?;
         return compare_value_to_literal(val, val_str);
     }
 
@@ -323,16 +325,20 @@ fn compare_value_to_literal(val: &Value, lit: &str) -> Result<bool, PredicateErr
         Value::Integer(i) => {
             if lit.starts_with('\'') && lit.ends_with('\'') {
                 // Compare as string
-                Ok(i.to_string() == &lit[1..lit.len() - 1])
+                Ok(i.to_string() == lit[1..lit.len() - 1])
             } else if let Ok(lit_i) = lit.parse::<i64>() {
                 Ok(*i == lit_i)
             } else {
-                Err(PredicateError(format!("cannot compare integer to: {}", lit)))
+                Err(PredicateError(format!(
+                    "cannot compare integer to: {}",
+                    lit
+                )))
             }
         }
         Value::Text(t) => {
             let t = t.as_str();
-            if (lit.starts_with('\'') && lit.ends_with('\'')) || (lit.starts_with('"') && lit.ends_with('"'))
+            if (lit.starts_with('\'') && lit.ends_with('\''))
+                || (lit.starts_with('"') && lit.ends_with('"'))
             {
                 let expected = &lit[1..lit.len() - 1];
                 Ok(t == expected)
@@ -359,7 +365,9 @@ fn compare_value_to_literal(val: &Value, lit: &str) -> Result<bool, PredicateErr
                 Err(PredicateError(format!("cannot compare blob to: {}", lit)))
             }
         }
-        Value::Point(_, _) => Err(PredicateError("cannot compare point to literal".to_string())),
+        Value::Point(_, _) => Err(PredicateError(
+            "cannot compare point to literal".to_string(),
+        )),
     }
 }
 
@@ -453,9 +461,18 @@ mod tests {
         catalog.enable_rls("posts");
 
         let rows = vec![
-            row(&[("id", Value::Integer(1)), ("status", Value::Text("published".into()))]),
-            row(&[("id", Value::Integer(2)), ("status", Value::Text("draft".into()))]),
-            row(&[("id", Value::Integer(3)), ("status", Value::Text("published".into()))]),
+            row(&[
+                ("id", Value::Integer(1)),
+                ("status", Value::Text("published".into())),
+            ]),
+            row(&[
+                ("id", Value::Integer(2)),
+                ("status", Value::Text("draft".into())),
+            ]),
+            row(&[
+                ("id", Value::Integer(3)),
+                ("status", Value::Text("published".into())),
+            ]),
         ];
 
         let filtered = catalog.filter_rows("posts", rows);
@@ -476,7 +493,9 @@ mod tests {
 
         // Valid write
         let valid_row = row(&[("id", Value::Integer(10)), ("tenant_id", Value::Integer(1))]);
-        assert!(catalog.check_write("orders", &valid_row, PolicyCommand::Insert).is_ok());
+        assert!(catalog
+            .check_write("orders", &valid_row, PolicyCommand::Insert)
+            .is_ok());
 
         // Violation
         let invalid_row = row(&[("id", Value::Integer(11)), ("tenant_id", Value::Integer(2))]);
@@ -507,9 +526,21 @@ mod tests {
         catalog.enable_rls("orders");
 
         let rows = vec![
-            row(&[("id", Value::Integer(1)), ("tenant_id", Value::Integer(1)), ("status", Value::Text("active".into()))]),
-            row(&[("id", Value::Integer(2)), ("tenant_id", Value::Integer(1)), ("status", Value::Text("closed".into()))]),
-            row(&[("id", Value::Integer(3)), ("tenant_id", Value::Integer(2)), ("status", Value::Text("active".into()))]),
+            row(&[
+                ("id", Value::Integer(1)),
+                ("tenant_id", Value::Integer(1)),
+                ("status", Value::Text("active".into())),
+            ]),
+            row(&[
+                ("id", Value::Integer(2)),
+                ("tenant_id", Value::Integer(1)),
+                ("status", Value::Text("closed".into())),
+            ]),
+            row(&[
+                ("id", Value::Integer(3)),
+                ("tenant_id", Value::Integer(2)),
+                ("status", Value::Text("active".into())),
+            ]),
         ];
 
         // AND semantics: both policies must pass
@@ -532,7 +563,10 @@ mod tests {
 
         let rows = vec![
             row(&[("id", Value::Integer(1)), ("deleted_at", Value::Null)]),
-            row(&[("id", Value::Integer(2)), ("deleted_at", Value::Integer(123456))]),
+            row(&[
+                ("id", Value::Integer(2)),
+                ("deleted_at", Value::Integer(123456)),
+            ]),
             row(&[("id", Value::Integer(3)), ("deleted_at", Value::Null)]),
         ];
 

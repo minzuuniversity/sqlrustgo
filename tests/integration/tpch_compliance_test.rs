@@ -56,7 +56,7 @@ fn setup_sqlrustgo_engine() -> ExecutionEngine {
                 foreign_keys: vec![],
                 unique_constraints: vec![],
                 check_constraints: vec![],
-                    compression: None,
+                compression: None,
                 partition_info: None,
             })
             .unwrap();
@@ -96,7 +96,7 @@ fn setup_sqlrustgo_engine() -> ExecutionEngine {
                 foreign_keys: vec![],
                 unique_constraints: vec![],
                 check_constraints: vec![],
-                    compression: None,
+                compression: None,
                 partition_info: None,
             })
             .unwrap();
@@ -164,7 +164,7 @@ fn setup_sqlrustgo_engine() -> ExecutionEngine {
                 foreign_keys: vec![],
                 unique_constraints: vec![],
                 check_constraints: vec![],
-                    compression: None,
+                compression: None,
                 partition_info: None,
             })
             .unwrap();
@@ -225,7 +225,7 @@ fn setup_sqlrustgo_engine() -> ExecutionEngine {
                 foreign_keys: vec![],
                 unique_constraints: vec![],
                 check_constraints: vec![],
-                    compression: None,
+                compression: None,
                 partition_info: None,
             })
             .unwrap();
@@ -300,7 +300,7 @@ fn setup_sqlrustgo_engine() -> ExecutionEngine {
                 foreign_keys: vec![],
                 unique_constraints: vec![],
                 check_constraints: vec![],
-                    compression: None,
+                compression: None,
                 partition_info: None,
             })
             .unwrap();
@@ -347,7 +347,7 @@ fn setup_sqlrustgo_engine() -> ExecutionEngine {
                 foreign_keys: vec![],
                 unique_constraints: vec![],
                 check_constraints: vec![],
-                    compression: None,
+                compression: None,
                 partition_info: None,
             })
             .unwrap();
@@ -422,7 +422,7 @@ fn setup_sqlrustgo_engine() -> ExecutionEngine {
                 foreign_keys: vec![],
                 unique_constraints: vec![],
                 check_constraints: vec![],
-                    compression: None,
+                compression: None,
                 partition_info: None,
             })
             .unwrap();
@@ -546,7 +546,7 @@ fn setup_sqlrustgo_engine() -> ExecutionEngine {
                 foreign_keys: vec![],
                 unique_constraints: vec![],
                 check_constraints: vec![],
-                    compression: None,
+                compression: None,
                 partition_info: None,
             })
             .unwrap();
