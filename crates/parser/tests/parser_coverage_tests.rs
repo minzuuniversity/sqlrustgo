@@ -221,7 +221,10 @@ fn test_parse_create_procedure_inout_params() {
             assert_eq!(stmt.params.len(), 1, "should have 1 param");
             assert_eq!(stmt.params[0].name, "value", "param name");
             assert!(
-                matches!(stmt.params[0].mode, sqlrustgo_parser::StoredProcParamMode::InOut),
+                matches!(
+                    stmt.params[0].mode,
+                    sqlrustgo_parser::StoredProcParamMode::InOut
+                ),
                 "param mode should be InOut"
             );
             assert_eq!(stmt.params[0].data_type, "INT", "param data type");
@@ -241,7 +244,10 @@ fn test_parse_create_procedure_with_if() {
             assert!(!stmt.body.is_empty(), "body should not be empty");
             // First statement should be If
             assert!(
-                matches!(&stmt.body[0], sqlrustgo_parser::StoredProcStatement::If { .. }),
+                matches!(
+                    &stmt.body[0],
+                    sqlrustgo_parser::StoredProcStatement::If { .. }
+                ),
                 "expected If statement, got {:?}",
                 stmt.body[0]
             );
@@ -249,7 +255,6 @@ fn test_parse_create_procedure_with_if() {
         other => panic!("expected CreateProcedure, got {:?}", other),
     }
 }
-
 
 #[test]
 fn test_parse_create_procedure_with_while() {
@@ -260,7 +265,10 @@ fn test_parse_create_procedure_with_while() {
         sqlrustgo_parser::Statement::CreateProcedure(stmt) => {
             assert_eq!(stmt.name, "test_while");
             assert!(
-                matches!(&stmt.body[0], sqlrustgo_parser::StoredProcStatement::While { .. }),
+                matches!(
+                    &stmt.body[0],
+                    sqlrustgo_parser::StoredProcStatement::While { .. }
+                ),
                 "expected While statement, got {:?}",
                 stmt.body[0]
             );
@@ -278,7 +286,10 @@ fn test_parse_create_procedure_with_set() {
         sqlrustgo_parser::Statement::CreateProcedure(stmt) => {
             assert_eq!(stmt.name, "test_set");
             assert!(
-                matches!(&stmt.body[0], sqlrustgo_parser::StoredProcStatement::Set { .. }),
+                matches!(
+                    &stmt.body[0],
+                    sqlrustgo_parser::StoredProcStatement::Set { .. }
+                ),
                 "expected Set statement, got {:?}",
                 stmt.body[0]
             );
@@ -303,7 +314,10 @@ fn test_parse_create_procedure_with_nested_begin() {
         sqlrustgo_parser::Statement::CreateProcedure(stmt) => {
             assert_eq!(stmt.name, "test_nested");
             assert!(
-                matches!(&stmt.body[0], sqlrustgo_parser::StoredProcStatement::NestedBegin { .. }),
+                matches!(
+                    &stmt.body[0],
+                    sqlrustgo_parser::StoredProcStatement::NestedBegin { .. }
+                ),
                 "expected NestedBegin, got {:?}",
                 stmt.body[0]
             );
@@ -2176,7 +2190,6 @@ fn test_parse_explain_tbl() {
     let result = parse(sql);
     let _ = result;
 }
-
 
 // ============ MERGE Tests ============
 

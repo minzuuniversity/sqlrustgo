@@ -132,7 +132,7 @@ fn test_parallel_memory_no_quadruple() {
             foreign_keys: vec![],
             unique_constraints: vec![],
             check_constraints: vec![],
-                compression: None,
+            compression: None,
             partition_info: None,
         })
         .unwrap();
