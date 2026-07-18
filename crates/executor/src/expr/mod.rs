@@ -1276,7 +1276,9 @@ pub fn eval_fn(name: &str, args: &[Value]) -> Value {
         "GROUP_CONCAT" => group_concat(args),
         // F-03 GIS: ST_WITHIN(point, polygon) — spatial predicate
         "ST_WITHIN" => {
-            use sqlrustgo_gis::{Point as GisPoint, Polygon as GisPolygon, st_within as gis_st_within};
+            use sqlrustgo_gis::{
+                st_within as gis_st_within, Point as GisPoint, Polygon as GisPolygon,
+            };
             if args.len() != 2 {
                 return Value::Null;
             }

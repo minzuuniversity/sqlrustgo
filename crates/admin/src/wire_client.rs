@@ -471,10 +471,17 @@ mod additional_tests {
     fn test_serialize_result_set_csv_special_chars() {
         // Verify serialize_result_set_csv produces non-empty output for special chars
         let cols = vec![sqlrustgo_mysql_client::ColumnDefinition {
-            catalog: "def".into(), schema: "testdb".into(), table: "t".into(),
-            org_table: "t".into(), name: "col".into(), org_name: "col".into(),
-            character_set: 0x21, column_length: 255, column_type: 0x0f,
-            flags: 0x0000, decimals: 0x00,
+            catalog: "def".into(),
+            schema: "testdb".into(),
+            table: "t".into(),
+            org_table: "t".into(),
+            name: "col".into(),
+            org_name: "col".into(),
+            character_set: 0x21,
+            column_length: 255,
+            column_type: 0x0f,
+            flags: 0x0000,
+            decimals: 0x00,
         }];
         let rows = vec![vec!["a,b".into()]];
         let csv = serialize_result_set_csv(&cols, &rows);
@@ -510,22 +517,38 @@ mod additional_tests {
         use sqlrustgo_mysql_client::ResultSet;
 
         // Not a Select result
-        let ok_result = ResultSet::Ok { affected_rows: 0, last_insert_id: 0, status_flags: 0, warnings: 0, info: "".into() };
+        let ok_result = ResultSet::Ok {
+            affected_rows: 0,
+            last_insert_id: 0,
+            status_flags: 0,
+            warnings: 0,
+            info: "".into(),
+        };
         let err = extract_first_cell(&ok_result, "test").unwrap_err();
         assert!(matches!(err, WireError::Protocol(_)));
 
         // Empty rows
-        let empty_result = ResultSet::Select { columns: vec![], rows: vec![] };
+        let empty_result = ResultSet::Select {
+            columns: vec![],
+            rows: vec![],
+        };
         let err = extract_first_cell(&empty_result, "test").unwrap_err();
         assert!(matches!(err, WireError::Protocol(_)));
 
         // Empty row (columns defined but no cells)
         let empty_row_result = ResultSet::Select {
             columns: vec![sqlrustgo_mysql_client::ColumnDefinition {
-                catalog: "def".into(), schema: "testdb".into(), table: "t".into(),
-                org_table: "t".into(), name: "id".into(), org_name: "id".into(),
-                character_set: 0x21, column_length: 11, column_type: 0x03,
-                flags: 0x0020, decimals: 0x00,
+                catalog: "def".into(),
+                schema: "testdb".into(),
+                table: "t".into(),
+                org_table: "t".into(),
+                name: "id".into(),
+                org_name: "id".into(),
+                character_set: 0x21,
+                column_length: 11,
+                column_type: 0x03,
+                flags: 0x0020,
+                decimals: 0x00,
             }],
             rows: vec![vec![]],
         };

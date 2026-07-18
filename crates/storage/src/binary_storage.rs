@@ -219,8 +219,9 @@ impl BinaryTableStorage {
             foreign_keys: vec![],
             unique_constraints: vec![],
             check_constraints: vec![],
-           
-    compression: None, partition_info: None,
+
+            compression: None,
+            partition_info: None,
         };
 
         // Read rows
@@ -317,8 +318,9 @@ impl StorageEngine for BinaryTableStorage {
                     foreign_keys: vec![],
                     unique_constraints: vec![],
                     check_constraints: vec![],
-                   
-    compression: None, partition_info: None,
+
+                    compression: None,
+                    partition_info: None,
                 },
                 rows: Vec::new(),
             });
@@ -338,8 +340,9 @@ impl StorageEngine for BinaryTableStorage {
                     foreign_keys: vec![],
                     unique_constraints: vec![],
                     check_constraints: vec![],
-                   
-    compression: None, partition_info: None,
+
+                    compression: None,
+                    partition_info: None,
                 },
                 rows: Vec::new(),
             });
@@ -934,8 +937,9 @@ mod tests {
             foreign_keys: vec![],
             unique_constraints: vec![],
             check_constraints: vec![],
-           
-    compression: None, partition_info: None,
+
+            compression: None,
+            partition_info: None,
         }
     }
 

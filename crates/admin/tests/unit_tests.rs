@@ -4,8 +4,8 @@ use sqlrustgo_admin::{
     backup::{tar_extract_all, tar_extract_one, BackupError, BackupResult},
     manifest::{sha256_bytes, sha256_file, walk_files, FileEntry, Manifest},
     pitr::{parse_target_time, PitrResult},
-    verify::{verify_extracted, VerifyError, VerifyErrorKind, VerifyResult},
     restore::RestoreResult,
+    verify::{verify_extracted, VerifyError, VerifyErrorKind, VerifyResult},
     wire_client::{LogicalBackupResult, StatusReport, WireError},
 };
 use std::fs;
@@ -149,7 +149,10 @@ fn test_tar_extract_one_not_found() {
 
 #[test]
 fn test_backup_error_io_display() {
-    let err = BackupError::Io(std::io::Error::new(std::io::ErrorKind::NotFound, "file not found"));
+    let err = BackupError::Io(std::io::Error::new(
+        std::io::ErrorKind::NotFound,
+        "file not found",
+    ));
     let display = format!("{}", err);
     assert!(display.contains("file not found") || display.contains("IO"));
 }
@@ -239,7 +242,11 @@ fn test_verify_error_display() {
 #[test]
 fn test_verify_result_no_errors() {
     let manifest = Manifest::new();
-    let result = VerifyResult { manifest, errors: vec![], verified_files: 5 };
+    let result = VerifyResult {
+        manifest,
+        errors: vec![],
+        verified_files: 5,
+    };
     assert!(result.errors.is_empty());
     assert_eq!(result.verified_files, 5);
 }
@@ -249,9 +256,10 @@ fn test_verify_result_with_errors() {
     let manifest = Manifest::new();
     let result = VerifyResult {
         manifest,
-        errors: vec![
-            VerifyError { kind: VerifyErrorKind::FileMissing, path: "/t1.bin".to_string() },
-        ],
+        errors: vec![VerifyError {
+            kind: VerifyErrorKind::FileMissing,
+            path: "/t1.bin".to_string(),
+        }],
         verified_files: 10,
     };
     assert!(!result.errors.is_empty());
@@ -265,7 +273,11 @@ fn test_verify_result_with_errors() {
 #[test]
 fn test_restore_result_fields() {
     let manifest = Manifest::new();
-    let result = RestoreResult { manifest, restored_data_files: 3, restored_wal: true };
+    let result = RestoreResult {
+        manifest,
+        restored_data_files: 3,
+        restored_wal: true,
+    };
     assert_eq!(result.restored_data_files, 3);
     assert!(result.restored_wal);
 }

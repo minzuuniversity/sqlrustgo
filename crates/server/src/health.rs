@@ -389,8 +389,8 @@ mod tests {
 
     #[test]
     fn test_component_health_with_message() {
-        let health = ComponentHealth::new("db", HealthStatus::Degraded)
-            .with_message("connection slow");
+        let health =
+            ComponentHealth::new("db", HealthStatus::Degraded).with_message("connection slow");
         assert_eq!(health.message, Some("connection slow".to_string()));
     }
 }
