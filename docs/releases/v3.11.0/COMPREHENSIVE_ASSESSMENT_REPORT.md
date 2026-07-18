@@ -505,3 +505,38 @@ v3.11.0 最大的成就是还清债务。下一步必须防止债务死灰复燃
 
 完善上述 P0/P1 项后，v3.11.0 GA 将不只是一个功能版本，而是一个**企业级就绪的 MySQL 替代品**。
 
+
+---
+
+## 16. GA 增强 Issue 跟踪
+
+### 16.1 Issue 清单
+
+| # | 标题 | 优先级 | 工时 | 状态 |
+|---|------|--------|------|------|
+| [#3604](http://192.168.0.250:3000/openclaw/sqlrustgo/issues/3604) | 故障注入 SOAK - 混沌工程验证 | P0 | 4h | 待认领 |
+| [#3605](http://192.168.0.250:3000/openclaw/sqlrustgo/issues/3605) | v3.10.0 → v3.11.0 原地升级测试 | P0 | 8h | 待认领 |
+| [#3606](http://192.168.0.250:3000/openclaw/sqlrustgo/issues/3606) | Release Binary 可重现构建 + SHA 校验 | P0 | 8h | 待认领 |
+| [#3607](http://192.168.0.250:3000/openclaw/sqlrustgo/issues/3607) | TPC-H SF=10 基准测试 | P1 | 16h | 待认领 |
+| [#3608](http://192.168.0.250:3000/openclaw/sqlrustgo/issues/3608) | Sysbench OLTP 混合负载压测 | P1 | 24h | 待认领 |
+| [#3609](http://192.168.0.250:3000/openclaw/sqlrustgo/issues/3609) | Prometheus 指标导出 + Slow Query Log | P1 | 32h | 待认领 |
+| [#3610](http://192.168.0.250:3000/openclaw/sqlrustgo/issues/3610) | Admin 命令增强 | P1 | 8h | 待认领 |
+| [#3611](http://192.168.0.250:3000/openclaw/sqlrustgo/issues/3611) | ALTER TABLE ADD COLUMN AFTER/FIRST | P1 | 8h | 待认领 |
+| [#3612](http://192.168.0.250:3000/openclaw/sqlrustgo/issues/3612) | LOAD DATA INFILE 支持 | P1 | 16h | 待认领 |
+| [#3613](http://192.168.0.250:3000/openclaw/sqlrustgo/issues/3613) | v3.10.0 → v3.11.0 升级指南 | P1 | 16h | 待认领 |
+| [#3614](http://192.168.0.250:3000/openclaw/sqlrustgo/issues/3614) | 架构全景图 v3.11.0 版 | P1 | 8h | 待认领 |
+| [#3615](http://192.168.0.250:3000/openclaw/sqlrustgo/issues/3615) | 防退化 CI + 分布式设计草案 | P2 | 16h | 待认领 |
+
+### 16.2 总工时
+
+| 阶段 | 工时 |
+|------|------|
+| P0 (RC 必达) | 20h |
+| P1 (GA 增强) | 128h |
+| P2 (v3.12 预研) | 16h |
+| **合计** | **164h** |
+
+### 16.3 进度跟踪 Issue
+
+- [#3616](http://192.168.0.250:3000/openclaw/sqlrustgo/issues/3616) - v3.11.0 GA 准备 - 增强任务进度跟踪
+
