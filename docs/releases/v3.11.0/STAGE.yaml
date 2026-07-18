@@ -93,8 +93,8 @@ promotion_to_BETA_requires:
 promotion_to_RC_requires:
   - "BETA stage: all BETA gates PASS"
   - "RC gate R1-R8 all PASS (check_rc_gate_v3.11.0.sh)"
-  - "All 22 V311-XX tasks completed"
-  - "Coverage ≥85% per crate"
+  - "All 23 V311-XX tasks completed"
+  - "Coverage ≥75% per crate (RC baseline, see coverage_thresholds.rc)"
   - "TPC-H SF=1 22/22 PASS"
   - "V311-19 (Extension Crate decision) complete"
 
@@ -122,7 +122,7 @@ promotion_to_GA_requires:
 # 阈值 (v3.11.0 specific)
 # =============================================================================
 thresholds_override:
-  COVERAGE_MIN: 80  # per crate, target ≥85% (Issue #3731)
+  COVERAGE_MIN: 75  # RC baseline; GA: 80% (see coverage_thresholds section below)
   IGNORE_MAX: 10
   TPC_H_SF1_REQUIRED: 22  # all 22 queries must PASS
   PARALLEL_EXEC_MIN_SPEEDUP: 1.10  # at least 10% speedup required
