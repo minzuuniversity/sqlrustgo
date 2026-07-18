@@ -1,6 +1,17 @@
 #!/usr/bin/env bash
+# =============================================================================
+# check_coverage.sh — v3.7.0 Coverage Gate (LEGACY)
+# =============================================================================
+# ⚠️  DEPRECATED: This script is for v3.7.0 only.
+# For v3.11.0 coverage measurement, use the per-crate methodology documented in:
+#   docs/releases/v3.11.0/COVERAGE_TESTING_METHODOLOGY.md
+#   docs/releases/v3.11.0/COVERAGE_REPORT.md
+#
+# v3.7.0 measurement used `cargo llvm-cov test -p sqlrustgo --lib` which produces
+# misleadingly low results (double-counting, no inline tests for engine_select.rs).
+# =============================================================================
 
-set -euo pipefail
+:set -euo pipefail
 
 REPO_ROOT="$(git rev-parse --show-toplevel 2>/dev/null || pwd)"
 cd "$REPO_ROOT"
@@ -12,11 +23,9 @@ if ! command -v cargo >/dev/null 2>&1; then
     fi
 fi
 
-echo "=== Running Coverage Gate Check ==="
+echo "=== Running Coverage Gate Check (v3.7.0 LEGACY — see COVERAGE_TESTING_METHODOLOGY.md for v3.11.0) ==="
 
 COVERAGE_DIR="docs/releases/v3.7.0"
-mkdir -p "$COVERAGE_DIR"
-
 MODE="${1:-full}"
 
 # v3.7.0: 唯一允许的命令（禁止局部覆盖率）
