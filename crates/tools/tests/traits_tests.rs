@@ -166,3 +166,39 @@ fn test_mock_io_remove_file_error() {
     let err = result.unwrap_err();
     assert_eq!(err.kind(), io::ErrorKind::Other);
 }
+
+// ============================================================================
+// Additional MockIo and RealIo tests
+// ============================================================================
+
+#[test]
+fn test_mock_io_remove_dir_err_via_lock() {
+    use sqlrustgo_tools::traits::{MockIo, SqlRustGoIo};
+    let io = MockIo::happy();
+    *io.remove_dir_all_err.lock() = Some(
+        std::io::Error::new(std::io::ErrorKind::PermissionDenied, "locked"),
+    );
+    let result = io.remove_dir_all(std::path::Path::new("/tmp/test"));
+    assert!(result.is_err());
+    assert_eq!(result.unwrap_err().kind(), std::io::ErrorKind::PermissionDenied);
+}
+
+#[test]
+fn test_mock_io_happy_default() {
+    use sqlrustgo_tools::traits::MockIo;
+    let io = MockIo::happy();
+    assert!(io.exists_return);
+    assert!(io.read_err.lock().is_none());
+    assert!(io.write_err.lock().is_none());
+    assert!(io.create_dir_all_err.lock().is_none());
+    assert!(io.remove_dir_all_err.lock().is_none());
+    assert!(io.remove_file_err.lock().is_none());
+}
+
+#[test]
+fn test_real_io_exists_false() {
+    use sqlrustgo_tools::traits::{RealIo, SqlRustGoIo};
+    let io = RealIo;
+    let result = io.exists(std::path::Path::new("/nonexistent_path_12345"));
+    assert!(!result);
+}
