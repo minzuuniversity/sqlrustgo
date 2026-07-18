@@ -4666,11 +4666,13 @@ name = "sqlrustgo-tools"
 version = "3.9.0"
 dependencies = [
  "anyhow",
+ "clap 4.6.1",
  "env_logger",
  "flate2",
  "hex",
  "log",
  "parking_lot",
+ "rand 0.8.6",
  "regex",
  "serde",
  "serde_json",
