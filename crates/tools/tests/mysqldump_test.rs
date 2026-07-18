@@ -269,3 +269,87 @@ fn test_import_reader_rollback() {
     importer.import_reader(Cursor::new(sql)).unwrap();
     assert!(matches!(&importer.statements()[0], SqlStatement::Rollback));
 }
+
+// ============================================================================
+// Additional SqlStatement variant coverage
+// ============================================================================
+
+#[test]
+fn test_sql_statement_all_variants() {
+    use sqlrustgo_tools::mysqldump::SqlStatement;
+    let _stmts = vec![
+        SqlStatement::CreateTable {
+            name: "users".to_string(),
+            columns: vec![],
+        },
+        SqlStatement::Insert {
+            table: "t1".to_string(),
+            columns: vec!["id".to_string(), "name".to_string()],
+            values: vec![
+                vec!["1".to_string(), "'Alice'".to_string()],
+                vec!["2".to_string(), "'Bob'".to_string()],
+            ],
+        },
+        SqlStatement::DropTable {
+            name: "old_table".to_string(),
+            if_exists: true,
+        },
+        SqlStatement::Use {
+            database: "production".to_string(),
+        },
+        SqlStatement::Set {
+            key: "foreign_key_checks".to_string(),
+            value: "0".to_string(),
+        },
+        SqlStatement::LockTables {
+            tables: vec!["t1 READ".to_string(), "t2 WRITE".to_string()],
+        },
+        SqlStatement::UnlockTables,
+        SqlStatement::Begin,
+        SqlStatement::Commit,
+        SqlStatement::Rollback,
+        SqlStatement::Unknown("SHOW TABLES".to_string()),
+    ];
+}
+
+#[test]
+fn test_sql_statement_insert_with_data() {
+    use sqlrustgo_tools::mysqldump::SqlStatement;
+    let stmt = SqlStatement::Insert {
+        table: "employees".to_string(),
+        columns: vec!["id".to_string(), "name".to_string()],
+        values: vec![
+            vec!["1".to_string(), "'John'".to_string()],
+        ],
+    };
+    match &stmt {
+        SqlStatement::Insert { table, columns, values } => {
+            assert_eq!(table, "employees");
+            assert_eq!(columns.len(), 2);
+            assert_eq!(values.len(), 1);
+        }
+        _ => panic!("expected Insert"),
+    }
+}
+
+#[test]
+fn test_sql_statement_lock_unlock_tables() {
+    use sqlrustgo_tools::mysqldump::SqlStatement;
+    let lock = SqlStatement::LockTables {
+        tables: vec!["t1 READ".to_string()],
+    };
+    match &lock {
+        SqlStatement::LockTables { tables } => assert_eq!(tables.len(), 1),
+        _ => panic!("expected LockTables"),
+    }
+    let unlock = SqlStatement::UnlockTables;
+    match unlock { SqlStatement::UnlockTables => {} _ => panic!("expected UnlockTables") }
+}
+
+#[test]
+fn test_sql_statement_transaction_control() {
+    use sqlrustgo_tools::mysqldump::SqlStatement;
+    let _begin = SqlStatement::Begin;
+    let _commit = SqlStatement::Commit;
+    let _rollback = SqlStatement::Rollback;
+}
