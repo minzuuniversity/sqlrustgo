@@ -2681,9 +2681,15 @@ impl StorageEngine for FileStorage {
         // insert is durable immediately. `enable_buffer: false` is
         // overridden for tx-scoped writes so WAL recovery sees a clean
         // apply-or-rollback boundary.
+        //
+        // v3.11.0 P1 fix: removed `records.len() >= self.buffer_threshold`
+        // condition that triggered immediate `insert_direct` (full table save).
+        // This was causing O(N * table_size) behavior during bulk loads where
+        // each batch of 100+ rows triggered a full table serialization and write.
+        // Now: always buffer inserts, caller explicitly calls flush() to persist.
         if self.in_transaction() {
             self.insert_buffered(table, records)?
-        } else if !self.enable_buffer || records.len() >= self.buffer_threshold {
+        } else if !self.enable_buffer {
             self.insert_direct(table, records)?
         } else {
             self.insert_buffered(table, records)?
