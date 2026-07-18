@@ -5,7 +5,12 @@ fn expr_to_str(e: &Expression) -> String {
         Expression::Identifier(n) => n.clone(),
         Expression::Literal(n) => n.clone(),
         Expression::BinaryOp(l, op, r) => {
-            format!("{} {} {}", expr_to_str(l.as_ref()), op, expr_to_str(r.as_ref()))
+            format!(
+                "{} {} {}",
+                expr_to_str(l.as_ref()),
+                op,
+                expr_to_str(r.as_ref())
+            )
         }
         _ => "?".to_string(),
     }
@@ -30,9 +35,17 @@ fn dump_q(label: &str, sql: &str) {
             Expression::Literal(s) => s.clone(),
             _ => "?".to_string(),
         };
-        eprintln!("  [{}] {} {}{} ON {}", i, jt, jc.table,
-            jc.alias.as_ref().map(|a| format!(" AS {}", a)).unwrap_or_default(),
-            on);
+        eprintln!(
+            "  [{}] {} {}{} ON {}",
+            i,
+            jt,
+            jc.table,
+            jc.alias
+                .as_ref()
+                .map(|a| format!(" AS {}", a))
+                .unwrap_or_default(),
+            on
+        );
     }
 }
 

@@ -280,7 +280,7 @@ fn int3_spec_crash_recovery_under_5s() {
                 foreign_keys: vec![],
                 unique_constraints: vec![],
                 check_constraints: vec![],
-                    compression: None,
+                compression: None,
                 partition_info: None,
             };
             wal_storage

@@ -355,7 +355,6 @@ pub fn create_shared_firewall(config: FirewallConfig) -> SharedFirewall {
     Arc::new(parking_lot::RwLock::new(SqlFirewall::new(config)))
 }
 
-
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -384,8 +383,16 @@ mod tests {
 
     #[test]
     fn test_sql_firewall_builder() {
-        let blacklist: Vec<BlacklistPattern> = vec![BlacklistPattern { pattern: "DROP".to_string(), description: "".to_string(), severity: ThreatSeverity::Medium }];
-        let whitelist: Vec<WhitelistPattern> = vec![WhitelistPattern { sql_pattern: "SELECT".to_string(), description: "".to_string(), enabled: true }];
+        let blacklist: Vec<BlacklistPattern> = vec![BlacklistPattern {
+            pattern: "DROP".to_string(),
+            description: "".to_string(),
+            severity: ThreatSeverity::Medium,
+        }];
+        let whitelist: Vec<WhitelistPattern> = vec![WhitelistPattern {
+            sql_pattern: "SELECT".to_string(),
+            description: "".to_string(),
+            enabled: true,
+        }];
         let mut fw = SqlFirewall::new(FirewallConfig::default())
             .with_whitelist(whitelist)
             .with_blacklist(blacklist);

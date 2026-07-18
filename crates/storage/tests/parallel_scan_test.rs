@@ -26,7 +26,7 @@ fn make_test_storage() -> (FileStorage, TempDir) {
         foreign_keys: vec![],
         unique_constraints: vec![],
         check_constraints: vec![],
-            compression: None,
+        compression: None,
         partition_info: None,
     };
     storage.create_table(&table_info).expect("create table");

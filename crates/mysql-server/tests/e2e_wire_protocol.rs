@@ -37,7 +37,7 @@ fn connect(port: u16) -> MySqlResult<MySqlConnection> {
 fn test_e2e_connect_and_handshake() {
     let config = EphemeralConfig {
         data_dir: None,
-                port: None,
+        port: None,
         host: "127.0.0.1".to_string(),
         bootstrap_users: true,
         bootstrap_tables: false,
@@ -65,7 +65,7 @@ fn test_e2e_connect_and_handshake() {
 fn test_e2e_select_simple() {
     let config = EphemeralConfig {
         data_dir: None,
-                port: None,
+        port: None,
         host: "127.0.0.1".to_string(),
         bootstrap_users: true,
         bootstrap_tables: false,
@@ -78,9 +78,7 @@ fn test_e2e_select_simple() {
     let port = handle.port;
 
     let mut conn = connect(port).expect("connected");
-    let result = conn
-        .execute("SELECT 1 AS a")
-        .expect("execute SELECT 1");
+    let result = conn.execute("SELECT 1 AS a").expect("execute SELECT 1");
 
     match result {
         sqlrustgo_mysql_client::ResultSet::Select { rows, .. } => {
@@ -88,7 +86,11 @@ fn test_e2e_select_simple() {
             assert_eq!(rows[0].len(), 1, "expected 1 column");
             assert_eq!(rows[0][0].to_string(), "1");
         }
-        sqlrustgo_mysql_client::ResultSet::Error { error_code: code, error_message: msg, .. } => {
+        sqlrustgo_mysql_client::ResultSet::Error {
+            error_code: code,
+            error_message: msg,
+            ..
+        } => {
             panic!("server returned error {}: {}", code, msg);
         }
         sqlrustgo_mysql_client::ResultSet::Ok { .. } => {
@@ -102,7 +104,7 @@ fn test_e2e_select_simple() {
 fn test_e2e_select_multiple_columns_rows() {
     let config = EphemeralConfig {
         data_dir: None,
-                port: None,
+        port: None,
         host: "127.0.0.1".to_string(),
         bootstrap_users: true,
         bootstrap_tables: false,
@@ -132,7 +134,11 @@ fn test_e2e_select_multiple_columns_rows() {
             assert_eq!(rows[1][1].to_string(), "world");
             assert_eq!(rows[1][2].to_string(), "2.71");
         }
-        sqlrustgo_mysql_client::ResultSet::Error { error_code: code, error_message: msg, .. } => {
+        sqlrustgo_mysql_client::ResultSet::Error {
+            error_code: code,
+            error_message: msg,
+            ..
+        } => {
             panic!("server returned error {}: {}", code, msg);
         }
         sqlrustgo_mysql_client::ResultSet::Ok { .. } => {
@@ -146,7 +152,7 @@ fn test_e2e_select_multiple_columns_rows() {
 fn test_e2e_create_insert_select() {
     let config = EphemeralConfig {
         data_dir: None,
-                port: None,
+        port: None,
         host: "127.0.0.1".to_string(),
         bootstrap_users: true,
         bootstrap_tables: false,
@@ -183,7 +189,11 @@ fn test_e2e_create_insert_select() {
             assert_eq!(rows[1][0].to_string(), "2");
             assert_eq!(rows[1][1].to_string(), "bob");
         }
-        sqlrustgo_mysql_client::ResultSet::Error { error_code: code, error_message: msg, .. } => {
+        sqlrustgo_mysql_client::ResultSet::Error {
+            error_code: code,
+            error_message: msg,
+            ..
+        } => {
             panic!("server returned error {}: {}", code, msg);
         }
         sqlrustgo_mysql_client::ResultSet::Ok { .. } => {
@@ -197,7 +207,7 @@ fn test_e2e_create_insert_select() {
 fn test_e2e_drop_table() {
     let config = EphemeralConfig {
         data_dir: None,
-                port: None,
+        port: None,
         host: "127.0.0.1".to_string(),
         bootstrap_users: true,
         bootstrap_tables: false,
@@ -233,8 +243,7 @@ fn test_e2e_drop_table() {
     }
 
     // DROP the table
-    conn.execute("DROP TABLE t2")
-        .expect("DROP TABLE failed");
+    conn.execute("DROP TABLE t2").expect("DROP TABLE failed");
 
     // Table should be gone
     let result = conn.execute("SELECT x FROM t2");
@@ -259,7 +268,7 @@ fn test_e2e_drop_table() {
 fn test_e2e_multi_statement() {
     let config = EphemeralConfig {
         data_dir: None,
-                port: None,
+        port: None,
         host: "127.0.0.1".to_string(),
         bootstrap_users: true,
         bootstrap_tables: false,
@@ -287,7 +296,11 @@ fn test_e2e_multi_statement() {
             assert_eq!(rows.len(), 1);
             assert_eq!(rows[0][0].to_string(), "1");
         }
-        sqlrustgo_mysql_client::ResultSet::Error { error_code: code, error_message: msg, .. } => {
+        sqlrustgo_mysql_client::ResultSet::Error {
+            error_code: code,
+            error_message: msg,
+            ..
+        } => {
             panic!("first result set error {}: {}", code, msg);
         }
         sqlrustgo_mysql_client::ResultSet::Ok { .. } => {
@@ -301,7 +314,7 @@ fn test_e2e_multi_statement() {
 fn test_e2e_null_handling() {
     let config = EphemeralConfig {
         data_dir: None,
-                port: None,
+        port: None,
         host: "127.0.0.1".to_string(),
         bootstrap_users: true,
         bootstrap_tables: false,
@@ -333,7 +346,11 @@ fn test_e2e_null_handling() {
             assert!(b_val.is_empty() || b_val.eq_ignore_ascii_case("NULL"));
             assert_eq!(rows[0][2].to_string(), "3.14");
         }
-        sqlrustgo_mysql_client::ResultSet::Error { error_code: code, error_message: msg, .. } => {
+        sqlrustgo_mysql_client::ResultSet::Error {
+            error_code: code,
+            error_message: msg,
+            ..
+        } => {
             panic!("server error {}: {}", code, msg);
         }
         sqlrustgo_mysql_client::ResultSet::Ok { .. } => {
@@ -347,7 +364,7 @@ fn test_e2e_null_handling() {
 fn test_e2e_arithmetic_expressions() {
     let config = EphemeralConfig {
         data_dir: None,
-                port: None,
+        port: None,
         host: "127.0.0.1".to_string(),
         bootstrap_users: true,
         bootstrap_tables: false,
@@ -369,7 +386,11 @@ fn test_e2e_arithmetic_expressions() {
         sqlrustgo_mysql_client::ResultSet::Select { rows, .. } => {
             assert!(!rows.is_empty(), "expected a result row");
         }
-        sqlrustgo_mysql_client::ResultSet::Error { error_code: code, error_message: msg, .. } => {
+        sqlrustgo_mysql_client::ResultSet::Error {
+            error_code: code,
+            error_message: msg,
+            ..
+        } => {
             panic!("server error {}: {}", code, msg);
         }
         sqlrustgo_mysql_client::ResultSet::Ok { .. } => {
@@ -383,7 +404,7 @@ fn test_e2e_arithmetic_expressions() {
 fn test_e2e_update() {
     let config = EphemeralConfig {
         data_dir: None,
-                port: None,
+        port: None,
         host: "127.0.0.1".to_string(),
         bootstrap_users: true,
         bootstrap_tables: false,
@@ -423,7 +444,11 @@ fn test_e2e_update() {
             assert_eq!(rows[2][0].to_string(), "3");
             assert_eq!(rows[2][1].to_string(), "30"); // unchanged
         }
-        sqlrustgo_mysql_client::ResultSet::Error { error_code: code, error_message: msg, .. } => {
+        sqlrustgo_mysql_client::ResultSet::Error {
+            error_code: code,
+            error_message: msg,
+            ..
+        } => {
             panic!("server error {}: {}", code, msg);
         }
         sqlrustgo_mysql_client::ResultSet::Ok { .. } => {
@@ -437,7 +462,7 @@ fn test_e2e_update() {
 fn test_e2e_delete() {
     let config = EphemeralConfig {
         data_dir: None,
-                port: None,
+        port: None,
         host: "127.0.0.1".to_string(),
         bootstrap_users: true,
         bootstrap_tables: false,
@@ -469,7 +494,11 @@ fn test_e2e_delete() {
             assert_eq!(rows[0][0].to_string(), "1");
             assert_eq!(rows[1][0].to_string(), "3");
         }
-        sqlrustgo_mysql_client::ResultSet::Error { error_code: code, error_message: msg, .. } => {
+        sqlrustgo_mysql_client::ResultSet::Error {
+            error_code: code,
+            error_message: msg,
+            ..
+        } => {
             panic!("server error {}: {}", code, msg);
         }
         sqlrustgo_mysql_client::ResultSet::Ok { .. } => {
@@ -483,7 +512,7 @@ fn test_e2e_delete() {
 fn test_e2e_order_by() {
     let config = EphemeralConfig {
         data_dir: None,
-                port: None,
+        port: None,
         host: "127.0.0.1".to_string(),
         bootstrap_users: true,
         bootstrap_tables: false,
@@ -515,7 +544,11 @@ fn test_e2e_order_by() {
             assert_eq!(rows[3][0].to_string(), "1");
             assert_eq!(rows[4][0].to_string(), "1");
         }
-        sqlrustgo_mysql_client::ResultSet::Error { error_code: code, error_message: msg, .. } => {
+        sqlrustgo_mysql_client::ResultSet::Error {
+            error_code: code,
+            error_message: msg,
+            ..
+        } => {
             panic!("server error {}: {}", code, msg);
         }
         sqlrustgo_mysql_client::ResultSet::Ok { .. } => {
@@ -529,7 +562,7 @@ fn test_e2e_order_by() {
 fn test_e2e_string_functions() {
     let config = EphemeralConfig {
         data_dir: None,
-                port: None,
+        port: None,
         host: "127.0.0.1".to_string(),
         bootstrap_users: true,
         bootstrap_tables: false,
@@ -553,7 +586,11 @@ fn test_e2e_string_functions() {
             // CONCAT may not be implemented; we just verify a result set round-trips
             assert!(!rows.is_empty(), "expected a result row");
         }
-        sqlrustgo_mysql_client::ResultSet::Error { error_code: code, error_message: msg, .. } => {
+        sqlrustgo_mysql_client::ResultSet::Error {
+            error_code: code,
+            error_message: msg,
+            ..
+        } => {
             panic!("server error {}: {}", code, msg);
         }
         sqlrustgo_mysql_client::ResultSet::Ok { .. } => {
@@ -567,7 +604,7 @@ fn test_e2e_string_functions() {
 fn test_e2e_group_by_aggregates() {
     let config = EphemeralConfig {
         data_dir: None,
-                port: None,
+        port: None,
         host: "127.0.0.1".to_string(),
         bootstrap_users: true,
         bootstrap_tables: false,
@@ -581,10 +618,8 @@ fn test_e2e_group_by_aggregates() {
 
     let mut conn = connect(port).expect("connected");
 
-    conn.execute(
-        "CREATE TABLE tgrp (dept TEXT, salary INT)",
-    )
-    .expect("CREATE TABLE failed");
+    conn.execute("CREATE TABLE tgrp (dept TEXT, salary INT)")
+        .expect("CREATE TABLE failed");
     conn.execute("INSERT INTO tgrp VALUES ('eng', 100), ('eng', 200), ('sales', 150)")
         .expect("INSERT failed");
 
@@ -600,7 +635,11 @@ fn test_e2e_group_by_aggregates() {
             assert_eq!(rows[1][0].to_string(), "sales");
             assert_eq!(rows[1][1].to_string(), "150");
         }
-        sqlrustgo_mysql_client::ResultSet::Error { error_code: code, error_message: msg, .. } => {
+        sqlrustgo_mysql_client::ResultSet::Error {
+            error_code: code,
+            error_message: msg,
+            ..
+        } => {
             panic!("server error {}: {}", code, msg);
         }
         sqlrustgo_mysql_client::ResultSet::Ok { .. } => {
@@ -617,7 +656,7 @@ fn test_e2e_group_by_aggregates() {
 fn test_e2e_ddl_create_table_types() {
     let config = EphemeralConfig {
         data_dir: None,
-                port: None,
+        port: None,
         host: "127.0.0.1".to_string(),
         bootstrap_users: true,
         bootstrap_tables: false,
@@ -631,14 +670,21 @@ fn test_e2e_ddl_create_table_types() {
     let mut conn = connect(port).expect("connected");
 
     // Create table with various column types
-    conn.execute("CREATE TABLE t1 (id INT PRIMARY KEY, name VARCHAR(50), active BOOLEAN, ts TIMESTAMP)")
-        .expect("CREATE TABLE");
+    conn.execute(
+        "CREATE TABLE t1 (id INT PRIMARY KEY, name VARCHAR(50), active BOOLEAN, ts TIMESTAMP)",
+    )
+    .expect("CREATE TABLE");
     // Verify it exists
-    let r = conn.execute("SELECT column_name FROM information_schema.columns WHERE table_name = 't1'")
+    let r = conn
+        .execute("SELECT column_name FROM information_schema.columns WHERE table_name = 't1'")
         .expect("query information_schema");
     match r {
         sqlrustgo_mysql_client::ResultSet::Select { rows, .. } => {
-            assert!(rows.len() >= 4, "expected at least 4 columns, got {}", rows.len());
+            assert!(
+                rows.len() >= 4,
+                "expected at least 4 columns, got {}",
+                rows.len()
+            );
         }
         _ => {}
     }
@@ -651,7 +697,7 @@ fn test_e2e_ddl_create_table_types() {
 fn test_e2e_ddl_alter_table() {
     let config = EphemeralConfig {
         data_dir: None,
-                port: None,
+        port: None,
         host: "127.0.0.1".to_string(),
         bootstrap_users: true,
         bootstrap_tables: false,
@@ -666,14 +712,17 @@ fn test_e2e_ddl_alter_table() {
 
     conn.execute("CREATE TABLE t1 (id INT PRIMARY KEY, name VARCHAR(50))")
         .expect("CREATE TABLE");
-    conn.execute("INSERT INTO t1 VALUES (1, 'alice')").expect("INSERT");
+    conn.execute("INSERT INTO t1 VALUES (1, 'alice')")
+        .expect("INSERT");
 
     // ALTER TABLE ADD COLUMN
     conn.execute("ALTER TABLE t1 ADD COLUMN email VARCHAR(100)")
         .expect("ALTER TABLE ADD");
 
     // Verify new column exists
-    let r = conn.execute("SELECT email FROM t1 WHERE id = 1").expect("SELECT new col");
+    let r = conn
+        .execute("SELECT email FROM t1 WHERE id = 1")
+        .expect("SELECT new col");
     match r {
         sqlrustgo_mysql_client::ResultSet::Select { rows, .. } => {
             // email is NULL for existing row
@@ -683,10 +732,13 @@ fn test_e2e_ddl_alter_table() {
     }
 
     // ALTER TABLE DROP COLUMN (drop name column)
-    conn.execute("ALTER TABLE t1 DROP COLUMN name").expect("ALTER TABLE DROP");
+    conn.execute("ALTER TABLE t1 DROP COLUMN name")
+        .expect("ALTER TABLE DROP");
 
     // Verify name column is gone
-    let r2 = conn.execute("SELECT * FROM t1 WHERE id = 1").expect("SELECT remaining cols");
+    let r2 = conn
+        .execute("SELECT * FROM t1 WHERE id = 1")
+        .expect("SELECT remaining cols");
     match r2 {
         sqlrustgo_mysql_client::ResultSet::Select { rows, .. } => {
             assert_eq!(rows[0].len(), 2, "should have id + email only");
@@ -702,7 +754,7 @@ fn test_e2e_ddl_alter_table() {
 fn test_e2e_ddl_create_index() {
     let config = EphemeralConfig {
         data_dir: None,
-                port: None,
+        port: None,
         host: "127.0.0.1".to_string(),
         bootstrap_users: true,
         bootstrap_tables: false,
@@ -719,7 +771,8 @@ fn test_e2e_ddl_create_index() {
         .expect("CREATE TABLE");
     conn.execute("INSERT INTO t1 VALUES (1, 10, 20), (2, 30, 40)")
         .expect("INSERT");
-    conn.execute("CREATE INDEX idx_x ON t1 (x)").expect("CREATE INDEX");
+    conn.execute("CREATE INDEX idx_x ON t1 (x)")
+        .expect("CREATE INDEX");
 
     // DROP INDEX
     conn.execute("DROP INDEX idx_x ON t1").expect("DROP INDEX");
@@ -736,7 +789,7 @@ fn test_e2e_ddl_create_index() {
 fn test_e2e_transaction_commit() {
     let config = EphemeralConfig {
         data_dir: None,
-                port: None,
+        port: None,
         host: "127.0.0.1".to_string(),
         bootstrap_users: true,
         bootstrap_tables: false,
@@ -753,11 +806,14 @@ fn test_e2e_transaction_commit() {
         .expect("CREATE TABLE");
 
     conn.execute("BEGIN").expect("BEGIN");
-    conn.execute("INSERT INTO t1 VALUES (1, 100)").expect("INSERT in tx");
+    conn.execute("INSERT INTO t1 VALUES (1, 100)")
+        .expect("INSERT in tx");
     conn.execute("COMMIT").expect("COMMIT");
 
     // Verify committed row is visible
-    let r = conn.execute("SELECT v FROM t1 WHERE id = 1").expect("SELECT");
+    let r = conn
+        .execute("SELECT v FROM t1 WHERE id = 1")
+        .expect("SELECT");
     match r {
         sqlrustgo_mysql_client::ResultSet::Select { rows, .. } => {
             assert_eq!(rows.len(), 1);
@@ -777,7 +833,7 @@ fn test_e2e_transaction_commit() {
 fn test_e2e_select_system_version() {
     let config = EphemeralConfig {
         data_dir: None,
-                port: None,
+        port: None,
         host: "127.0.0.1".to_string(),
         bootstrap_users: true,
         bootstrap_tables: false,
@@ -806,7 +862,7 @@ fn test_e2e_select_system_version() {
 fn test_e2e_select_system_version_comment() {
     let config = EphemeralConfig {
         data_dir: None,
-                port: None,
+        port: None,
         host: "127.0.0.1".to_string(),
         bootstrap_users: true,
         bootstrap_tables: false,
@@ -819,7 +875,9 @@ fn test_e2e_select_system_version_comment() {
     let port = handle.port;
     let mut conn = connect(port).expect("connected");
 
-    let r = conn.execute("SELECT @@version_comment").expect("SELECT @@version_comment");
+    let r = conn
+        .execute("SELECT @@version_comment")
+        .expect("SELECT @@version_comment");
     match r {
         sqlrustgo_mysql_client::ResultSet::Select { rows, .. } => {
             assert!(!rows.is_empty(), "version_comment should be returned");
@@ -837,7 +895,7 @@ fn test_e2e_select_system_version_comment() {
 fn test_e2e_multi_result_set() {
     let config = EphemeralConfig {
         data_dir: None,
-                port: None,
+        port: None,
         host: "127.0.0.1".to_string(),
         bootstrap_users: true,
         bootstrap_tables: false,
@@ -870,7 +928,7 @@ fn test_e2e_multi_result_set() {
 fn test_e2e_syntax_error() {
     let config = EphemeralConfig {
         data_dir: None,
-                port: None,
+        port: None,
         host: "127.0.0.1".to_string(),
         bootstrap_users: true,
         bootstrap_tables: false,
@@ -899,7 +957,7 @@ fn test_e2e_syntax_error() {
 fn test_e2e_insert_affected_rows() {
     let config = EphemeralConfig {
         data_dir: None,
-                port: None,
+        port: None,
         host: "127.0.0.1".to_string(),
         bootstrap_users: true,
         bootstrap_tables: false,
@@ -915,7 +973,8 @@ fn test_e2e_insert_affected_rows() {
     conn.execute("CREATE TABLE t1 (id INT PRIMARY KEY, v INT)")
         .expect("CREATE TABLE");
 
-    let r = conn.execute("INSERT INTO t1 VALUES (1, 10), (2, 20), (3, 30)")
+    let r = conn
+        .execute("INSERT INTO t1 VALUES (1, 10), (2, 20), (3, 30)")
         .expect("INSERT 3 rows");
     match r {
         sqlrustgo_mysql_client::ResultSet::Ok { affected_rows, .. } => {
@@ -931,7 +990,7 @@ fn test_e2e_insert_affected_rows() {
 fn test_e2e_update_affected_rows() {
     let config = EphemeralConfig {
         data_dir: None,
-                port: None,
+        port: None,
         host: "127.0.0.1".to_string(),
         bootstrap_users: true,
         bootstrap_tables: false,
@@ -949,7 +1008,8 @@ fn test_e2e_update_affected_rows() {
     conn.execute("INSERT INTO t1 VALUES (1, 10), (2, 20), (3, 30)")
         .expect("INSERT");
 
-    let r = conn.execute("UPDATE t1 SET v = v * 2 WHERE id > 1")
+    let r = conn
+        .execute("UPDATE t1 SET v = v * 2 WHERE id > 1")
         .expect("UPDATE 2 rows");
     match r {
         sqlrustgo_mysql_client::ResultSet::Ok { affected_rows, .. } => {
@@ -965,7 +1025,7 @@ fn test_e2e_update_affected_rows() {
 fn test_e2e_delete_affected_rows() {
     let config = EphemeralConfig {
         data_dir: None,
-                port: None,
+        port: None,
         host: "127.0.0.1".to_string(),
         bootstrap_users: true,
         bootstrap_tables: false,
@@ -983,7 +1043,9 @@ fn test_e2e_delete_affected_rows() {
     conn.execute("INSERT INTO t1 VALUES (1, 10), (2, 20), (3, 30)")
         .expect("INSERT");
 
-    let r = conn.execute("DELETE FROM t1 WHERE id = 2").expect("DELETE 1 row");
+    let r = conn
+        .execute("DELETE FROM t1 WHERE id = 2")
+        .expect("DELETE 1 row");
     match r {
         sqlrustgo_mysql_client::ResultSet::Ok { affected_rows, .. } => {
             assert_eq!(affected_rows, 1, "DELETE should report 1 affected row");
@@ -1002,7 +1064,7 @@ fn test_e2e_delete_affected_rows() {
 fn test_e2e_group_by_having() {
     let config = EphemeralConfig {
         data_dir: None,
-                port: None,
+        port: None,
         host: "127.0.0.1".to_string(),
         bootstrap_users: true,
         bootstrap_tables: false,
@@ -1020,9 +1082,9 @@ fn test_e2e_group_by_having() {
     conn.execute("INSERT INTO t1 VALUES ('eng', 100), ('eng', 200), ('sales', 150)")
         .expect("INSERT");
 
-    let r = conn.execute(
-        "SELECT dept, SUM(salary) AS total FROM t1 GROUP BY dept HAVING SUM(salary) > 200",
-    ).expect("HAVING filter");
+    let r = conn
+        .execute("SELECT dept, SUM(salary) AS total FROM t1 GROUP BY dept HAVING SUM(salary) > 200")
+        .expect("HAVING filter");
     match r {
         sqlrustgo_mysql_client::ResultSet::Select { rows, .. } => {
             // Only 'eng' (300 > 200) should appear
@@ -1044,7 +1106,7 @@ fn test_e2e_group_by_having() {
 fn test_e2e_subquery_where() {
     let config = EphemeralConfig {
         data_dir: None,
-                port: None,
+        port: None,
         host: "127.0.0.1".to_string(),
         bootstrap_users: true,
         bootstrap_tables: false,
@@ -1062,9 +1124,9 @@ fn test_e2e_subquery_where() {
     conn.execute("INSERT INTO t1 VALUES (1, 10), (2, 20), (3, 30)")
         .expect("INSERT");
 
-    let r = conn.execute(
-        "SELECT id FROM t1 WHERE v > (SELECT AVG(v) FROM t1)",
-    ).expect("subquery in WHERE");
+    let r = conn
+        .execute("SELECT id FROM t1 WHERE v > (SELECT AVG(v) FROM t1)")
+        .expect("subquery in WHERE");
     match r {
         sqlrustgo_mysql_client::ResultSet::Select { rows, .. } => {
             // Only rows with v > average(10+20+30)/3 = 20 should appear (id 2 and 3)
@@ -1078,12 +1140,7 @@ fn test_e2e_subquery_where() {
 #[test]
 fn test_e2e_connect_refused() {
     // Connecting to a port with no server should fail gracefully
-    let result = MySqlConnection::connect(
-        &"127.0.0.1:1".parse().unwrap(),
-        "tester",
-        "tester",
-        "",
-    );
+    let result = MySqlConnection::connect(&"127.0.0.1:1".parse().unwrap(), "tester", "tester", "");
     // Just verify it fails - we don't need to format the error
     assert!(result.is_err(), "connection to closed port should fail");
 }
@@ -1097,7 +1154,7 @@ fn test_e2e_connect_refused() {
 fn test_e2e_update_single_row() {
     let config = EphemeralConfig {
         data_dir: None,
-                port: None,
+        port: None,
         host: "127.0.0.1".to_string(),
         bootstrap_users: true,
         bootstrap_tables: false,
@@ -1135,7 +1192,7 @@ fn test_e2e_update_single_row() {
 fn test_e2e_update_no_where() {
     let config = EphemeralConfig {
         data_dir: None,
-                port: None,
+        port: None,
         host: "127.0.0.1".to_string(),
         bootstrap_users: true,
         bootstrap_tables: false,
@@ -1171,7 +1228,7 @@ fn test_e2e_update_no_where() {
 fn test_e2e_delete_single_row() {
     let config = EphemeralConfig {
         data_dir: None,
-                port: None,
+        port: None,
         host: "127.0.0.1".to_string(),
         bootstrap_users: true,
         bootstrap_tables: false,
@@ -1207,7 +1264,7 @@ fn test_e2e_delete_single_row() {
 fn test_e2e_delete_no_where() {
     let config = EphemeralConfig {
         data_dir: None,
-                port: None,
+        port: None,
         host: "127.0.0.1".to_string(),
         bootstrap_users: true,
         bootstrap_tables: false,
@@ -1224,8 +1281,7 @@ fn test_e2e_delete_no_where() {
         .expect("CREATE TABLE failed");
     conn.execute("INSERT INTO tdlt2 VALUES (1), (2), (3)")
         .expect("INSERT failed");
-    conn.execute("DELETE FROM tdlt2")
-        .expect("DELETE failed");
+    conn.execute("DELETE FROM tdlt2").expect("DELETE failed");
 
     let result = conn
         .execute("SELECT COUNT(*) FROM tdlt2")
@@ -1246,7 +1302,7 @@ fn test_e2e_delete_no_where() {
 fn test_e2e_insert_with_expression() {
     let config = EphemeralConfig {
         data_dir: None,
-                port: None,
+        port: None,
         host: "127.0.0.1".to_string(),
         bootstrap_users: true,
         bootstrap_tables: false,
@@ -1286,7 +1342,7 @@ fn test_e2e_insert_with_expression() {
 fn test_e2e_select_nonexistent_table() {
     let config = EphemeralConfig {
         data_dir: None,
-                port: None,
+        port: None,
         host: "127.0.0.1".to_string(),
         bootstrap_users: true,
         bootstrap_tables: false,
@@ -1310,7 +1366,7 @@ fn test_e2e_select_nonexistent_table() {
 fn test_e2e_insert_wrong_column_count() {
     let config = EphemeralConfig {
         data_dir: None,
-                port: None,
+        port: None,
         host: "127.0.0.1".to_string(),
         bootstrap_users: true,
         bootstrap_tables: false,
@@ -1334,7 +1390,7 @@ fn test_e2e_insert_wrong_column_count() {
 fn test_e2e_invalid_sql_syntax() {
     let config = EphemeralConfig {
         data_dir: None,
-                port: None,
+        port: None,
         host: "127.0.0.1".to_string(),
         bootstrap_users: true,
         bootstrap_tables: false,
@@ -1356,7 +1412,7 @@ fn test_e2e_invalid_sql_syntax() {
 fn test_e2e_divide_by_zero() {
     let config = EphemeralConfig {
         data_dir: None,
-                port: None,
+        port: None,
         host: "127.0.0.1".to_string(),
         bootstrap_users: true,
         bootstrap_tables: false,
@@ -1382,7 +1438,7 @@ fn test_e2e_divide_by_zero() {
 fn test_e2e_avg_aggregate() {
     let config = EphemeralConfig {
         data_dir: None,
-                port: None,
+        port: None,
         host: "127.0.0.1".to_string(),
         bootstrap_users: true,
         bootstrap_tables: false,
@@ -1406,7 +1462,11 @@ fn test_e2e_avg_aggregate() {
     match result {
         sqlrustgo_mysql_client::ResultSet::Select { rows, .. } => {
             let avg_str = rows[0][0].to_string();
-            assert!(avg_str.contains("20") || avg_str.contains("2"), "AVG should be ~20: got {}", avg_str);
+            assert!(
+                avg_str.contains("20") || avg_str.contains("2"),
+                "AVG should be ~20: got {}",
+                avg_str
+            );
         }
         _ => {}
     }
@@ -1417,7 +1477,7 @@ fn test_e2e_avg_aggregate() {
 fn test_e2e_min_max_aggregates() {
     let config = EphemeralConfig {
         data_dir: None,
-                port: None,
+        port: None,
         host: "127.0.0.1".to_string(),
         bootstrap_users: true,
         bootstrap_tables: false,
@@ -1435,12 +1495,16 @@ fn test_e2e_min_max_aggregates() {
     conn.execute("INSERT INTO taggmm VALUES (5), (15), (25), (35)")
         .expect("INSERT failed");
 
-    let min_result = conn.execute("SELECT MIN(val) FROM taggmm").expect("MIN failed");
+    let min_result = conn
+        .execute("SELECT MIN(val) FROM taggmm")
+        .expect("MIN failed");
     if let sqlrustgo_mysql_client::ResultSet::Select { rows, .. } = min_result {
         assert_eq!(rows[0][0].to_string(), "5");
     }
 
-    let max_result = conn.execute("SELECT MAX(val) FROM taggmm").expect("MAX failed");
+    let max_result = conn
+        .execute("SELECT MAX(val) FROM taggmm")
+        .expect("MAX failed");
     if let sqlrustgo_mysql_client::ResultSet::Select { rows, .. } = max_result {
         assert_eq!(rows[0][0].to_string(), "35");
     }
@@ -1451,7 +1515,7 @@ fn test_e2e_min_max_aggregates() {
 fn test_e2e_in_operator() {
     let config = EphemeralConfig {
         data_dir: None,
-                port: None,
+        port: None,
         host: "127.0.0.1".to_string(),
         bootstrap_users: true,
         bootstrap_tables: false,
@@ -1485,7 +1549,7 @@ fn test_e2e_in_operator() {
 fn test_e2e_is_null() {
     let config = EphemeralConfig {
         data_dir: None,
-                port: None,
+        port: None,
         host: "127.0.0.1".to_string(),
         bootstrap_users: true,
         bootstrap_tables: false,
@@ -1519,7 +1583,7 @@ fn test_e2e_is_null() {
 fn test_e2e_limit() {
     let config = EphemeralConfig {
         data_dir: None,
-                port: None,
+        port: None,
         host: "127.0.0.1".to_string(),
         bootstrap_users: true,
         bootstrap_tables: false,
@@ -1537,7 +1601,8 @@ fn test_e2e_limit() {
     conn.execute("INSERT INTO tlimit VALUES (1), (2), (3), (4), (5)")
         .expect("INSERT failed");
 
-    let result = conn.execute("SELECT COUNT(*) FROM tlimit LIMIT 3")
+    let result = conn
+        .execute("SELECT COUNT(*) FROM tlimit LIMIT 3")
         .expect("LIMIT failed");
     match result {
         sqlrustgo_mysql_client::ResultSet::Select { rows, .. } => {
@@ -1556,7 +1621,7 @@ fn test_e2e_limit() {
 fn test_e2e_insert_multiple_rows() {
     let config = EphemeralConfig {
         data_dir: None,
-                port: None,
+        port: None,
         host: "127.0.0.1".to_string(),
         bootstrap_users: true,
         bootstrap_tables: false,
@@ -1574,7 +1639,9 @@ fn test_e2e_insert_multiple_rows() {
     conn.execute("INSERT INTO tmulti VALUES (1, 'a'), (2, 'b'), (3, 'c')")
         .expect("INSERT failed");
 
-    let result = conn.execute("SELECT COUNT(*) FROM tmulti").expect("SELECT failed");
+    let result = conn
+        .execute("SELECT COUNT(*) FROM tmulti")
+        .expect("SELECT failed");
     match result {
         sqlrustgo_mysql_client::ResultSet::Select { rows, .. } => {
             assert_eq!(rows[0][0].to_string(), "3");
@@ -1588,7 +1655,7 @@ fn test_e2e_insert_multiple_rows() {
 fn test_e2e_insert_null() {
     let config = EphemeralConfig {
         data_dir: None,
-                port: None,
+        port: None,
         host: "127.0.0.1".to_string(),
         bootstrap_users: true,
         bootstrap_tables: false,
@@ -1606,7 +1673,9 @@ fn test_e2e_insert_null() {
     conn.execute("INSERT INTO tnullins VALUES (1, NULL)")
         .expect("INSERT failed");
 
-    let result = conn.execute("SELECT val FROM tnullins").expect("SELECT failed");
+    let result = conn
+        .execute("SELECT val FROM tnullins")
+        .expect("SELECT failed");
     match result {
         sqlrustgo_mysql_client::ResultSet::Select { rows, .. } => {
             let val = rows[0][0].to_string();
@@ -1621,7 +1690,7 @@ fn test_e2e_insert_null() {
 fn test_e2e_order_by_desc_limit() {
     let config = EphemeralConfig {
         data_dir: None,
-                port: None,
+        port: None,
         host: "127.0.0.1".to_string(),
         bootstrap_users: true,
         bootstrap_tables: false,
@@ -1655,7 +1724,7 @@ fn test_e2e_order_by_desc_limit() {
 fn test_e2e_select_distinct() {
     let config = EphemeralConfig {
         data_dir: None,
-                port: None,
+        port: None,
         host: "127.0.0.1".to_string(),
         bootstrap_users: true,
         bootstrap_tables: false,
@@ -1673,7 +1742,8 @@ fn test_e2e_select_distinct() {
     conn.execute("INSERT INTO tdist VALUES (1), (1), (2), (2), (2), (3)")
         .expect("INSERT failed");
 
-    let result = conn.execute("SELECT DISTINCT val FROM tdist ORDER BY val")
+    let result = conn
+        .execute("SELECT DISTINCT val FROM tdist ORDER BY val")
         .expect("SELECT failed");
     match result {
         sqlrustgo_mysql_client::ResultSet::Select { rows, .. } => {
@@ -1688,7 +1758,7 @@ fn test_e2e_select_distinct() {
 fn test_e2e_count_distinct() {
     let config = EphemeralConfig {
         data_dir: None,
-                port: None,
+        port: None,
         host: "127.0.0.1".to_string(),
         bootstrap_users: true,
         bootstrap_tables: false,
@@ -1706,7 +1776,8 @@ fn test_e2e_count_distinct() {
     conn.execute("INSERT INTO tcnt VALUES (1), (1), (2), (2), (2), (3)")
         .expect("INSERT failed");
 
-    let result = conn.execute("SELECT COUNT(DISTINCT val) FROM tcnt")
+    let result = conn
+        .execute("SELECT COUNT(DISTINCT val) FROM tcnt")
         .expect("SELECT failed");
     match result {
         sqlrustgo_mysql_client::ResultSet::Select { rows, .. } => {

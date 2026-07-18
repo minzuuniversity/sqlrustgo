@@ -2,8 +2,8 @@
 //!
 //! Tests: QueryResult struct
 
-use std::time::Duration;
 use sqlrustgo_soak::client::QueryResult;
+use std::time::Duration;
 
 #[test]
 fn test_query_result_empty() {

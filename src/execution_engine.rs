@@ -27,14 +27,16 @@ use sqlrustgo_optimizer::rules::{BinaryOperator, Expr};
 use sqlrustgo_optimizer::unified_cost::UnifiedCostModel;
 use sqlrustgo_optimizer::unified_plan::UnifiedPlan;
 use sqlrustgo_parser::parser::{
-    AggregateCall, AggregateFunction, AlterSequenceStatement, AlterTableOperation, AlterTableStatement, AlterUserStatement,
-    CallStatement, CompressionAlgorithm, CreateDatabaseStatement, CreateIndexStatement, CreateProcedureStatement,
-    CreateRoleStatement, CreateSequenceStatement, CreateTableStatement, CreateTriggerStatement, CreateViewStatement,
-    DescribeStatement, DropDatabaseStatement, DropIndexStatement, DropRoleStatement, DropSequenceStatement,
-    DropTableStatement, DropViewStatement, ExceptStatement, GrantRoleStatement, GrantStatement, InsertStatement,
-    IntersectStatement, MergeStatement, ObjectType as ParserObjectType, OrderByExpression,
-    Privilege as ParserPrivilege, RevokeRoleStatement, RevokeStatement, SelectStatement, SetRoleStatement,
-    ShowStatement, StorageEngineSpec, StoredProcParam as ParserStoredProcParam,
+    AggregateCall, AggregateFunction, AlterSequenceStatement, AlterTableOperation,
+    AlterTableStatement, AlterUserStatement, CallStatement, CompressionAlgorithm,
+    CreateDatabaseStatement, CreateIndexStatement, CreateProcedureStatement, CreateRoleStatement,
+    CreateSequenceStatement, CreateTableStatement, CreateTriggerStatement, CreateViewStatement,
+    DescribeStatement, DropDatabaseStatement, DropIndexStatement, DropRoleStatement,
+    DropSequenceStatement, DropTableStatement, DropViewStatement, ExceptStatement,
+    GrantRoleStatement, GrantStatement, InsertStatement, IntersectStatement, MergeStatement,
+    ObjectType as ParserObjectType, OrderByExpression, Privilege as ParserPrivilege,
+    RevokeRoleStatement, RevokeStatement, SelectStatement, SetRoleStatement, ShowStatement,
+    StorageEngineSpec, StoredProcParam as ParserStoredProcParam,
     StoredProcParamMode as ParserParamMode, StoredProcStatement as ParserStatement,
     TruncateStatement, UnionStatement,
 };
@@ -571,9 +573,11 @@ impl<S: StorageEngine + 'static> ExecutionEngine<S> {
             Statement::DropSequence(ref seq) => self.execute_drop_sequence(seq),
             Statement::AlterSequence(ref seq) => self.execute_alter_sequence(seq),
             Statement::UseDatabase(ref name) => self.execute_use_database(name),
-            Statement::AlterUser(_) => Err(SqlError::ExecutionError("ALTER USER not yet implemented".to_string())),
-         }
-     }
+            Statement::AlterUser(_) => Err(SqlError::ExecutionError(
+                "ALTER USER not yet implemented".to_string(),
+            )),
+        }
+    }
 
     /// CTE 物化: 将每个 CTE 子查询结果存入临时表，然后执行主查询
     pub fn execute_with_select(
@@ -639,13 +643,11 @@ impl<S: StorageEngine + 'static> ExecutionEngine<S> {
                 char_max_length: c.char_max_length,
             })
             .collect();
-        let compression = create.compress.as_ref().map(|spec| {
-        match spec.algorithm {
+        let compression = create.compress.as_ref().map(|spec| match spec.algorithm {
             CompressionAlgorithm::Lz4 => "LZ4".to_string(),
             CompressionAlgorithm::Zstd => "ZSTD".to_string(),
             CompressionAlgorithm::Zlib => "ZLIB".to_string(),
-        }
-    });
+        });
         let info = TableInfo {
             name: create.name.clone(),
             columns: columns.clone(),
@@ -676,7 +678,7 @@ impl<S: StorageEngine + 'static> ExecutionEngine<S> {
                 unique_constraints: vec![],
                 check_constraints: vec![],
                 partition_info: None,
-                    compression: None,
+                compression: None,
             })?;
             self.clustered_tables
                 .write()
@@ -821,9 +823,12 @@ impl<S: StorageEngine + 'static> ExecutionEngine<S> {
         Ok(ExecutorResult::empty())
     }
 
-    fn execute_alter_sequence(&self, seq_stmt: &AlterSequenceStatement) -> SqlResult<ExecutorResult> {
+    fn execute_alter_sequence(
+        &self,
+        seq_stmt: &AlterSequenceStatement,
+    ) -> SqlResult<ExecutorResult> {
         let mut storage = self.storage.write();
-        
+
         // Get existing sequence or error
         let mut seq_info = match storage.get_sequence(&seq_stmt.name) {
             Some(info) => info,
@@ -834,10 +839,12 @@ impl<S: StorageEngine + 'static> ExecutionEngine<S> {
                 )));
             }
         };
-        
+
         // Handle RESTART [WITH value]
         if seq_stmt.restart_with.is_some() {
-            let restart_val = seq_stmt.restart_with.as_ref()
+            let restart_val = seq_stmt
+                .restart_with
+                .as_ref()
                 .and_then(|s| s.parse::<i64>().ok())
                 .unwrap_or(seq_info.start_with);
             seq_info.current_value = restart_val - seq_info.increment_by;
@@ -845,7 +852,7 @@ impl<S: StorageEngine + 'static> ExecutionEngine<S> {
             // RESTART without WITH resets to start_value
             seq_info.current_value = seq_info.start_with - seq_info.increment_by;
         }
-        
+
         // Update the sequence
         storage.create_sequence(seq_info)?;
         Ok(ExecutorResult::empty())
@@ -994,51 +1001,53 @@ impl<S: StorageEngine + 'static> ExecutionEngine<S> {
                 sqlrustgo_parser::StoredProcStatement::RawSql(sql) => {
                     StoredProcStatement::RawSql(sql.clone())
                 }
-                sqlrustgo_parser::StoredProcStatement::If { condition, then_body, else_body } => {
-                    StoredProcStatement::If {
-                        condition: condition.clone(),
-                        then_body: Self::lower_body(then_body),
-                        elseif_body: vec![],
-                        else_body: Self::lower_body(else_body),
-                    }
-                }
+                sqlrustgo_parser::StoredProcStatement::If {
+                    condition,
+                    then_body,
+                    else_body,
+                } => StoredProcStatement::If {
+                    condition: condition.clone(),
+                    then_body: Self::lower_body(then_body),
+                    elseif_body: vec![],
+                    else_body: Self::lower_body(else_body),
+                },
                 sqlrustgo_parser::StoredProcStatement::While { condition, body } => {
                     StoredProcStatement::While {
                         condition: condition.clone(),
                         body: Self::lower_body(body),
                     }
                 }
-                sqlrustgo_parser::StoredProcStatement::Loop { body } => {
-                    StoredProcStatement::Loop {
-                        body: Self::lower_body(body),
-                    }
-                }
-                sqlrustgo_parser::StoredProcStatement::Leave => {
-                    StoredProcStatement::Leave { label: String::new() }
-                }
-                sqlrustgo_parser::StoredProcStatement::Iterate => {
-                    StoredProcStatement::Iterate { label: String::new() }
-                }
+                sqlrustgo_parser::StoredProcStatement::Loop { body } => StoredProcStatement::Loop {
+                    body: Self::lower_body(body),
+                },
+                sqlrustgo_parser::StoredProcStatement::Leave => StoredProcStatement::Leave {
+                    label: String::new(),
+                },
+                sqlrustgo_parser::StoredProcStatement::Iterate => StoredProcStatement::Iterate {
+                    label: String::new(),
+                },
                 sqlrustgo_parser::StoredProcStatement::Set { var_name, value } => {
                     StoredProcStatement::Set {
                         variable: var_name.clone(),
                         value: value.clone(),
                     }
                 }
-                sqlrustgo_parser::StoredProcStatement::Declare { var_name, data_type } => {
-                    StoredProcStatement::Declare {
-                        name: var_name.clone(),
-                        data_type: data_type.clone(),
-                        default_value: None,
-                    }
-                }
-                sqlrustgo_parser::StoredProcStatement::Call { procedure_name, args } => {
-                    StoredProcStatement::Call {
-                        procedure_name: procedure_name.clone(),
-                        args: args.clone(),
-                        into_var: None,
-                    }
-                }
+                sqlrustgo_parser::StoredProcStatement::Declare {
+                    var_name,
+                    data_type,
+                } => StoredProcStatement::Declare {
+                    name: var_name.clone(),
+                    data_type: data_type.clone(),
+                    default_value: None,
+                },
+                sqlrustgo_parser::StoredProcStatement::Call {
+                    procedure_name,
+                    args,
+                } => StoredProcStatement::Call {
+                    procedure_name: procedure_name.clone(),
+                    args: args.clone(),
+                    into_var: None,
+                },
                 sqlrustgo_parser::StoredProcStatement::NestedBegin { body } => {
                     StoredProcStatement::Block {
                         label: None,
@@ -1082,57 +1091,53 @@ impl<S: StorageEngine + 'static> ExecutionEngine<S> {
             .iter()
             .map(|s| match s {
                 ParserStatement::RawSql(sql) => StoredProcStatement::RawSql(sql.clone()),
-                ParserStatement::If { condition, then_body, else_body } => {
-                    StoredProcStatement::If {
-                        condition: condition.clone(),
-                        then_body: Self::lower_body(then_body),
-                        elseif_body: vec![],
-                        else_body: Self::lower_body(else_body),
-                    }
-                }
-                ParserStatement::While { condition, body } => {
-                    StoredProcStatement::While {
-                        condition: condition.clone(),
-                        body: Self::lower_body(body),
-                    }
-                }
-                ParserStatement::Loop { body } => {
-                    StoredProcStatement::Loop {
-                        body: Self::lower_body(body),
-                    }
-                }
+                ParserStatement::If {
+                    condition,
+                    then_body,
+                    else_body,
+                } => StoredProcStatement::If {
+                    condition: condition.clone(),
+                    then_body: Self::lower_body(then_body),
+                    elseif_body: vec![],
+                    else_body: Self::lower_body(else_body),
+                },
+                ParserStatement::While { condition, body } => StoredProcStatement::While {
+                    condition: condition.clone(),
+                    body: Self::lower_body(body),
+                },
+                ParserStatement::Loop { body } => StoredProcStatement::Loop {
+                    body: Self::lower_body(body),
+                },
                 ParserStatement::Leave => StoredProcStatement::Leave {
                     label: String::new(),
                 },
                 ParserStatement::Iterate => StoredProcStatement::Iterate {
                     label: String::new(),
                 },
-                ParserStatement::Set { var_name, value } => {
-                    StoredProcStatement::Set {
-                        variable: var_name.clone(),
-                        value: value.clone(),
-                    }
-                }
-                ParserStatement::Declare { var_name, data_type } => {
-                    StoredProcStatement::Declare {
-                        name: var_name.clone(),
-                        data_type: data_type.clone(),
-                        default_value: None,
-                    }
-                }
-                ParserStatement::Call { procedure_name, args } => {
-                    StoredProcStatement::Call {
-                        procedure_name: procedure_name.clone(),
-                        args: args.clone(),
-                        into_var: None,
-                    }
-                }
-                ParserStatement::NestedBegin { body } => {
-                    StoredProcStatement::Block {
-                        label: None,
-                        body: Self::lower_body(body),
-                    }
-                }
+                ParserStatement::Set { var_name, value } => StoredProcStatement::Set {
+                    variable: var_name.clone(),
+                    value: value.clone(),
+                },
+                ParserStatement::Declare {
+                    var_name,
+                    data_type,
+                } => StoredProcStatement::Declare {
+                    name: var_name.clone(),
+                    data_type: data_type.clone(),
+                    default_value: None,
+                },
+                ParserStatement::Call {
+                    procedure_name,
+                    args,
+                } => StoredProcStatement::Call {
+                    procedure_name: procedure_name.clone(),
+                    args: args.clone(),
+                    into_var: None,
+                },
+                ParserStatement::NestedBegin { body } => StoredProcStatement::Block {
+                    label: None,
+                    body: Self::lower_body(body),
+                },
             })
             .collect();
 

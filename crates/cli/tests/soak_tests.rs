@@ -2,7 +2,7 @@
 //!
 //! Tests: SoakConfig, SoakReport, print_report
 
-use sqlrustgo_soak::soak::{SoakConfig, SoakReport, print_report};
+use sqlrustgo_soak::soak::{print_report, SoakConfig, SoakReport};
 
 // ============ SoakConfig tests ============
 
