@@ -1,7 +1,7 @@
 //! Tests for [`BackupManager`](sqlrustgo_tools::backup_restore::BackupManager).
 
-use std::collections::HashMap;
 use sqlrustgo_tools::backup_restore::BackupManager;
+use std::collections::HashMap;
 use tempfile::TempDir;
 
 /// Verify [`BackupManager::new`] creates the backup directory.
@@ -168,9 +168,7 @@ fn test_delete_backup_nonexistent() {
     assert!(result.is_err(), "delete of non-existent should error");
     let err = result.unwrap_err();
     assert!(
-        err.contains("not found")
-            || err.contains("remove")
-            || err.contains("No such file"),
+        err.contains("not found") || err.contains("remove") || err.contains("No such file"),
         "unexpected error: {}",
         err
     );
@@ -202,7 +200,11 @@ fn test_create_backup_empty_tables() {
         std::collections::HashMap::new();
 
     let result = mgr.create_backup("emptydb", tables);
-    assert!(result.is_ok(), "create_backup with empty tables failed: {:?}", result);
+    assert!(
+        result.is_ok(),
+        "create_backup with empty tables failed: {:?}",
+        result
+    );
     let metadata = result.unwrap();
     assert!(metadata.tables.is_empty(), "should have no tables");
 }
@@ -250,5 +252,9 @@ fn test_serde_json_simple_all_statuses() {
     m3.fail("disk full".into());
     let j3 = sqlrustgo_tools::backup_restore::serde_json_simple(&m3);
     assert!(j3.contains("failed"), "Failed JSON: {}", j3);
-    assert!(j3.contains("disk full"), "Failed JSON should contain error: {}", j3);
+    assert!(
+        j3.contains("disk full"),
+        "Failed JSON should contain error: {}",
+        j3
+    );
 }

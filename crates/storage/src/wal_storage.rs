@@ -14,20 +14,15 @@ use std::sync::{Arc, RwLock};
 /// - `Every`: Full durability, slowest (~8 TPS on MacMini)
 /// - `Batch(n)`: Batched durability, ~30-50 TPS
 /// - `Off`: No sync, fastest (~100+ TPS), but data loss on crash
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
 pub enum WalSyncMode {
     /// Sync after every transaction (default, full durability)
+    #[default]
     Every,
     /// Sync after N transactions (batch mode)
     Batch(u32),
     /// No sync at all (fastest, no durability guarantee)
     Off,
-}
-
-impl Default for WalSyncMode {
-    fn default() -> Self {
-        Self::Every
-    }
 }
 
 pub struct WalStorage<S: StorageEngine, T: WalManager> {
@@ -117,7 +112,12 @@ impl<S: StorageEngine, T: WalManager> WalStorage<S, T> {
         wal: T,
         checkpoint_manager: Arc<RwLock<CheckpointManager>>,
     ) -> SqlResult<Self> {
-        Self::new_with_sync_mode_and_checkpoint(inner, wal, WalSyncMode::default(), checkpoint_manager)
+        Self::new_with_sync_mode_and_checkpoint(
+            inner,
+            wal,
+            WalSyncMode::default(),
+            checkpoint_manager,
+        )
     }
 
     /// Returns true if transaction `tx_id` is currently active.
@@ -201,7 +201,7 @@ impl<S: StorageEngine, T: WalManager> WalStorage<S, T> {
                 bytes.extend_from_slice(&x.to_le_bytes());
                 bytes.extend_from_slice(&y.to_le_bytes());
                 bytes
-            },
+            }
         }
     }
 
@@ -913,8 +913,9 @@ mod tests {
                 foreign_keys: vec![],
                 unique_constraints: vec![],
                 check_constraints: vec![],
-               
-    compression: None, partition_info: None,
+
+                compression: None,
+                partition_info: None,
             })
             .unwrap();
 
@@ -1033,8 +1034,9 @@ mod tests {
             foreign_keys: vec![],
             unique_constraints: vec![],
             check_constraints: vec![],
-           
-    compression: None, partition_info: None,
+
+            compression: None,
+            partition_info: None,
         };
         storage.create_table(&info).unwrap();
         storage.insert("t", vec![vec![Value::Integer(1)]]).unwrap();
@@ -1070,8 +1072,9 @@ mod tests {
             foreign_keys: vec![],
             unique_constraints: vec![],
             check_constraints: vec![],
-           
-    compression: None, partition_info: None,
+
+            compression: None,
+            partition_info: None,
         };
         storage.create_table(&info).unwrap();
         storage.insert("t", vec![vec![Value::Integer(1)]]).unwrap();
@@ -1090,8 +1093,9 @@ mod tests {
             foreign_keys: vec![],
             unique_constraints: vec![],
             check_constraints: vec![],
-           
-    compression: None, partition_info: None,
+
+            compression: None,
+            partition_info: None,
         };
         storage.create_table(&info).unwrap();
         storage.insert("t", vec![vec![Value::Integer(1)]]).unwrap();
@@ -1110,8 +1114,9 @@ mod tests {
             foreign_keys: vec![],
             unique_constraints: vec![],
             check_constraints: vec![],
-           
-    compression: None, partition_info: None,
+
+            compression: None,
+            partition_info: None,
         };
         storage.create_table(&info).unwrap();
         storage.insert("t", vec![vec![Value::Integer(1)]]).unwrap();
@@ -1132,8 +1137,9 @@ mod tests {
             foreign_keys: vec![],
             unique_constraints: vec![],
             check_constraints: vec![],
-           
-    compression: None, partition_info: None,
+
+            compression: None,
+            partition_info: None,
         };
         storage.create_table(&info).unwrap();
         storage.insert("t", vec![vec![Value::Integer(1)]]).unwrap();
@@ -1153,8 +1159,9 @@ mod tests {
             foreign_keys: vec![],
             unique_constraints: vec![],
             check_constraints: vec![],
-           
-    compression: None, partition_info: None,
+
+            compression: None,
+            partition_info: None,
         };
         storage.create_table(&info).unwrap();
         storage.drop_table("t").unwrap();
@@ -1171,8 +1178,9 @@ mod tests {
             foreign_keys: vec![],
             unique_constraints: vec![],
             check_constraints: vec![],
-           
-    compression: None, partition_info: None,
+
+            compression: None,
+            partition_info: None,
         };
         storage.create_table(&info).unwrap();
         let got = storage.get_table_info("t").unwrap();
@@ -1190,8 +1198,9 @@ mod tests {
             foreign_keys: vec![],
             unique_constraints: vec![],
             check_constraints: vec![],
-           
-    compression: None, partition_info: None,
+
+            compression: None,
+            partition_info: None,
         };
         storage.create_table(&info).unwrap();
         assert!(storage.has_table("t"));
@@ -1210,8 +1219,9 @@ mod tests {
             foreign_keys: vec![],
             unique_constraints: vec![],
             check_constraints: vec![],
-           
-    compression: None, partition_info: None,
+
+            compression: None,
+            partition_info: None,
         };
         storage.create_table(&info).unwrap();
         storage.insert("t", vec![vec![Value::Integer(1)]]).unwrap();
@@ -1230,8 +1240,9 @@ mod tests {
             foreign_keys: vec![],
             unique_constraints: vec![],
             check_constraints: vec![],
-           
-    compression: None, partition_info: None,
+
+            compression: None,
+            partition_info: None,
         };
         storage.create_table(&info).unwrap();
         storage

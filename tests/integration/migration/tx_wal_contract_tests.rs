@@ -452,7 +452,7 @@ fn test_recovery_begin_then_crash_rolls_back() {
             foreign_keys: vec![],
             unique_constraints: vec![],
             check_constraints: vec![],
-                compression: None,
+            compression: None,
             partition_info: None,
         })
         .unwrap();
@@ -518,7 +518,7 @@ fn test_recovery_insert_then_crash_rolls_back() {
             foreign_keys: vec![],
             unique_constraints: vec![],
             check_constraints: vec![],
-                compression: None,
+            compression: None,
             partition_info: None,
         })
         .unwrap();
@@ -581,7 +581,7 @@ fn test_recovery_prepare_then_crash_rolls_back() {
             foreign_keys: vec![],
             unique_constraints: vec![],
             check_constraints: vec![],
-                compression: None,
+            compression: None,
             partition_info: None,
         })
         .unwrap();
@@ -676,7 +676,7 @@ fn test_recovery_partial_insert_write() {
             foreign_keys: vec![],
             unique_constraints: vec![],
             check_constraints: vec![],
-                compression: None,
+            compression: None,
             partition_info: None,
         })
         .unwrap();
@@ -740,7 +740,7 @@ fn test_recovery_partial_update_write() {
             foreign_keys: vec![],
             unique_constraints: vec![],
             check_constraints: vec![],
-                compression: None,
+            compression: None,
             partition_info: None,
         })
         .unwrap();
@@ -842,7 +842,7 @@ fn test_recovery_partial_delete_write() {
             foreign_keys: vec![],
             unique_constraints: vec![],
             check_constraints: vec![],
-                compression: None,
+            compression: None,
             partition_info: None,
         })
         .unwrap();
@@ -966,7 +966,7 @@ fn test_recovery_partial_commit_flush() {
             foreign_keys: vec![],
             unique_constraints: vec![],
             check_constraints: vec![],
-                compression: None,
+            compression: None,
             partition_info: None,
         })
         .unwrap();
@@ -1026,7 +1026,7 @@ fn test_recovery_multiple_tx_crash_order() {
             foreign_keys: vec![],
             unique_constraints: vec![],
             check_constraints: vec![],
-                compression: None,
+            compression: None,
             partition_info: None,
         })
         .unwrap();
@@ -1121,7 +1121,7 @@ fn test_recovery_wal_replay_ordering() {
             foreign_keys: vec![],
             unique_constraints: vec![],
             check_constraints: vec![],
-                compression: None,
+            compression: None,
             partition_info: None,
         })
         .unwrap();

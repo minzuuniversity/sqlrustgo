@@ -2,12 +2,10 @@
 
 use sqlrustgo_tools::{
     backup_restore::{
-        chrono_lite_now, md5_simple, serde_json_simple, BackupManager, BackupMetadata, BackupStatus,
-        BackupType, ExportOptions, RestoreResult,
+        chrono_lite_now, md5_simple, serde_json_simple, BackupManager, BackupMetadata,
+        BackupStatus, BackupType, ExportOptions, RestoreResult,
     },
-    mysqldump::{
-        ColumnDef, DumpImporter, ForeignKeyRef, ImportMode, ImportStats, SqlStatement,
-    },
+    mysqldump::{ColumnDef, DumpImporter, ForeignKeyRef, ImportMode, ImportStats, SqlStatement},
     upgrade::{
         create_upgrade_plan, list_history, show_status, UpgradeCommand, UpgradeManifest,
         UpgradePlan, UpgradeStatus, VersionInfo,
@@ -40,11 +38,7 @@ fn test_backup_status_variants() {
 
 #[test]
 fn test_backup_metadata_new() {
-    let metadata = BackupMetadata::new(
-        "bak-001".to_string(),
-        BackupType::Full,
-        "mydb".to_string(),
-    );
+    let metadata = BackupMetadata::new("bak-001".to_string(), BackupType::Full, "mydb".to_string());
     assert_eq!(metadata.id, "bak-001");
     assert!(matches!(metadata.backup_type, BackupType::Full));
     assert_eq!(metadata.database, "mydb");
@@ -53,7 +47,11 @@ fn test_backup_metadata_new() {
 
 #[test]
 fn test_backup_metadata_fields() {
-    let mut metadata = BackupMetadata::new("bak-002".to_string(), BackupType::Incremental, "testdb".to_string());
+    let mut metadata = BackupMetadata::new(
+        "bak-002".to_string(),
+        BackupType::Incremental,
+        "testdb".to_string(),
+    );
     metadata.size_bytes = 2048;
     metadata.checksum = Some("sha256hash".to_string());
     metadata.tables = vec!["t1".to_string(), "t2".to_string()];
@@ -108,7 +106,8 @@ fn test_md5_simple_hello() {
 
 #[test]
 fn test_serde_json_simple() {
-    let metadata = BackupMetadata::new("bak-test".to_string(), BackupType::Full, "test".to_string());
+    let metadata =
+        BackupMetadata::new("bak-test".to_string(), BackupType::Full, "test".to_string());
     let json = serde_json_simple(&metadata);
     assert!(!json.is_empty());
     assert!(json.contains("bak-test"));
@@ -154,7 +153,11 @@ fn test_sql_statement_insert() {
         ],
     };
     match stmt {
-        SqlStatement::Insert { table, columns, values } => {
+        SqlStatement::Insert {
+            table,
+            columns,
+            values,
+        } => {
             assert_eq!(table, "t1");
             assert_eq!(columns.len(), 2);
             assert_eq!(values.len(), 2);
@@ -165,7 +168,10 @@ fn test_sql_statement_insert() {
 
 #[test]
 fn test_sql_statement_drop_table() {
-    let stmt = SqlStatement::DropTable { name: "t1".to_string(), if_exists: true };
+    let stmt = SqlStatement::DropTable {
+        name: "t1".to_string(),
+        if_exists: true,
+    };
     match stmt {
         SqlStatement::DropTable { name, if_exists } => {
             assert_eq!(name, "t1");
@@ -306,9 +312,15 @@ fn test_version_info_comparison() {
     let v311 = VersionInfo::parse("3.11.0").unwrap();
     let v400 = VersionInfo::parse("4.0.0").unwrap();
     // Verify major/minor/patch fields are set correctly
-    assert_eq!(v310.major, 3); assert_eq!(v310.minor, 10); assert_eq!(v310.patch, 0);
-    assert_eq!(v311.major, 3); assert_eq!(v311.minor, 11); assert_eq!(v311.patch, 0);
-    assert_eq!(v400.major, 4); assert_eq!(v400.minor, 0); assert_eq!(v400.patch, 0);
+    assert_eq!(v310.major, 3);
+    assert_eq!(v310.minor, 10);
+    assert_eq!(v310.patch, 0);
+    assert_eq!(v311.major, 3);
+    assert_eq!(v311.minor, 11);
+    assert_eq!(v311.patch, 0);
+    assert_eq!(v400.major, 4);
+    assert_eq!(v400.minor, 0);
+    assert_eq!(v400.patch, 0);
     // can_upgrade_to for ordering check
     assert!(v310.can_upgrade_to(&v311));
     assert!(!v311.can_upgrade_to(&v400));

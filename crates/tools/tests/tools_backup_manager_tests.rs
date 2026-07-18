@@ -197,7 +197,10 @@ fn test_backup_manager_restore_parses_table_names() {
 
     // restore() parses INSERT INTO table names (simplified parser)
     // The table 'users' should be in the restored data
-    assert!(restored.contains_key("users"), "restored data should contain 'users' table");
+    assert!(
+        restored.contains_key("users"),
+        "restored data should contain 'users' table"
+    );
 }
 
 /// BackupManager::delete removes the backup and subsequent restore fails.
@@ -218,7 +221,11 @@ fn test_backup_manager_delete_then_restore_fails() {
     let result = mgr.restore(&backup_id);
     assert!(result.is_err(), "restore after delete should fail");
     let err_msg = result.unwrap_err();
-    assert!(err_msg.contains("not found"), "error should mention not found: {}", err_msg);
+    assert!(
+        err_msg.contains("not found"),
+        "error should mention not found: {}",
+        err_msg
+    );
 }
 
 /// BackupManager checksum is non-empty after create_backup.
@@ -234,5 +241,8 @@ fn test_backup_manager_checksum_non_empty() {
     assert!(meta.checksum.is_some(), "checksum should be set");
     let checksum = meta.checksum.unwrap();
     assert!(!checksum.is_empty(), "checksum should be non-empty");
-    assert!(checksum.chars().all(|c| c.is_ascii_hexdigit()), "checksum should be hex");
+    assert!(
+        checksum.chars().all(|c| c.is_ascii_hexdigit()),
+        "checksum should be hex"
+    );
 }
