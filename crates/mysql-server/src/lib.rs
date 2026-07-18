@@ -3337,7 +3337,8 @@ pub fn run_server_v2(
         server_threads,
         ..Default::default()
     };
-    let mut active_cfg = crate::ACTIVE_CONFIG.lock().unwrap(); *active_cfg = Some(cfg);
+    let mut active_cfg = crate::ACTIVE_CONFIG.lock().unwrap();
+    *active_cfg = Some(cfg);
     let shutdown = std::sync::Arc::new(std::sync::atomic::AtomicBool::new(false));
     run_server_with_listener_and_shutdown_with_bootstrap_tables_and_sql(
         listener,
@@ -3488,7 +3489,8 @@ pub(crate) fn run_server_with_listener_and_shutdown_with_bootstrap_tables_and_sq
             let wal_manager = FileBackedWalManager::new(wal_path)
                 .map_err(|e| MySqlError::Sql(format!("WAL manager init failed: {}", e)))?;
             let checkpoint_manager = Arc::new(std::sync::RwLock::new(CheckpointManager::default()));
-            let wal_sync_mode = std::env::var("SQLRUSTGO_WAL_SYNC").unwrap_or_else(|_| "every".to_string());
+            let wal_sync_mode =
+                std::env::var("SQLRUSTGO_WAL_SYNC").unwrap_or_else(|_| "every".to_string());
             let sync_mode = parse_wal_sync_mode(&wal_sync_mode);
             tracing::info!("WAL sync mode: {:?}", sync_mode);
             let wal_storage = WalStorage::new_with_sync_mode_and_checkpoint(
@@ -4793,7 +4795,8 @@ pub mod testing {
         // can find the data_dir and bulk buffer size for LOAD DATA
         // LOCAL INFILE. Only the first call wins; later calls are a
         // no-op. With `Mutex<Option<...>>`, every call replaces the config.
-        let mut cfg = ACTIVE_CONFIG.lock().unwrap(); *cfg = Some(config.clone());
+        let mut cfg = ACTIVE_CONFIG.lock().unwrap();
+        *cfg = Some(config.clone());
 
         let requested_port = config.port.unwrap_or(0);
         let listener = std::net::TcpListener::bind(format!("{}:{}", config.host, requested_port))?;
@@ -5017,8 +5020,11 @@ pub mod testing {
                             port,
                             shutdown: None,
                             join: std::sync::Mutex::new(None),
-                            data_dir: std::env::temp_dir()
-                                .join(format!("sqlrustgo_ephemeral_{}_{}", port, std::process::id())),
+                            data_dir: std::env::temp_dir().join(format!(
+                                "sqlrustgo_ephemeral_{}_{}",
+                                port,
+                                std::process::id()
+                            )),
                             externally_owned: true,
                         };
                         // fall through to the shared return path below

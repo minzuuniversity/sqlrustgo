@@ -281,7 +281,7 @@ fn test_memory_storage_scan_with_cancel() {
             foreign_keys: vec![],
             unique_constraints: vec![],
             check_constraints: vec![],
-                compression: None,
+            compression: None,
             partition_info: None,
         })
         .unwrap();
@@ -323,7 +323,7 @@ fn test_memory_storage_scan_batch_with_cancel() {
             foreign_keys: vec![],
             unique_constraints: vec![],
             check_constraints: vec![],
-                compression: None,
+            compression: None,
             partition_info: None,
         })
         .unwrap();

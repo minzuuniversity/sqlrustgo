@@ -1048,11 +1048,9 @@ pub fn tpch_reorder_extra_tables(
         let mut collision = false;
         for t in &all_tables {
             let p1 = &t[..1];
-            if !seen_prefix.insert(p1.to_string()) {
-                if !prefix_edge.contains_key(p1) {
-                    collision = true;
-                    break;
-                }
+            if !seen_prefix.insert(p1.to_string()) && !prefix_edge.contains_key(p1) {
+                collision = true;
+                break;
             }
         }
         if collision {
@@ -1202,8 +1200,8 @@ pub fn tpch_reorder_extra_tables(
     }
     // The set of (bare-table) names already joined (base table +
     // TPC-H prefix variations). Mirrors what `joined` carries.
-    let mut accumulated: std::collections::HashSet<String> =
-        joined.iter()
+    let mut accumulated: std::collections::HashSet<String> = joined
+        .iter()
         .filter(|s| !s.is_empty())
         // Only include entries >= 2 chars in accumulated. The 1-char
         // prefix entries (like "p" for "part", "s" for "supplier")
@@ -1284,7 +1282,9 @@ pub fn tpch_reorder_extra_tables(
                 }
             }
             if force_orders_first && b == "orders" {
-                let orders_still_remaining = remaining.iter().any(|rt| bare(rt) == "orders" || rt == "orders");
+                let orders_still_remaining = remaining
+                    .iter()
+                    .any(|rt| bare(rt) == "orders" || rt == "orders");
                 if orders_still_remaining {
                     best_idx = i;
                     break;
@@ -1319,9 +1319,7 @@ pub fn tpch_reorder_extra_tables(
             let b2 = bare(&remaining[idx]);
             for acc in &accumulated {
                 let a = acc.as_str();
-                if b2 == a
-                    || (b2.len() >= 1 && a.len() >= 1 && &b2[..1] == &a[..1])
-                {
+                if b2 == a || (!b2.is_empty() && !a.is_empty() && b2[..1] == a[..1]) {
                     return true;
                 }
                 if edges.iter().any(|(l, r, _)| {
@@ -2110,7 +2108,7 @@ impl Parser {
 
     fn parse_create_sequence(&mut self) -> Result<Statement, String> {
         self.expect(Token::Sequence)?;
-        
+
         // Parse IF NOT EXISTS before the name
         let mut if_not_exists = false;
         if matches!(self.current(), Some(Token::If)) {
@@ -2119,7 +2117,7 @@ impl Parser {
             self.expect(Token::Exists)?;
             if_not_exists = true;
         }
-        
+
         let name = match self.next() {
             Some(Token::Identifier(name)) => name,
             Some(Token::StringLiteral(s)) => s,
@@ -2340,7 +2338,7 @@ impl Parser {
             Some(Token::Set) => "set".to_string(),
             Some(Token::Declare) => "declare".to_string(),
             Some(Token::Call) => "call".to_string(),
-Some(Token::Out) => "out".to_string(),
+            Some(Token::Out) => "out".to_string(),
             Some(t) => return Err(format!("Expected procedure name, got {:?}", t)),
             None => return Err("Expected procedure name".to_string()),
         };
@@ -2446,7 +2444,11 @@ Some(Token::Out) => "out".to_string(),
                     }
                     self.expect(Token::End)?;
                     self.expect(Token::If)?;
-                    body.push(StoredProcStatement::If { condition, then_body, else_body });
+                    body.push(StoredProcStatement::If {
+                        condition,
+                        then_body,
+                        else_body,
+                    });
                 }
                 Some(Token::While) => {
                     if !current_sql.trim().is_empty() {
@@ -2459,7 +2461,10 @@ Some(Token::Out) => "out".to_string(),
                     let body_stmts = self.parse_sp_body(&[Token::End])?;
                     self.expect(Token::End)?;
                     self.expect(Token::While)?;
-                    body.push(StoredProcStatement::While { condition, body: body_stmts });
+                    body.push(StoredProcStatement::While {
+                        condition,
+                        body: body_stmts,
+                    });
                 }
                 Some(Token::Loop) => {
                     if !current_sql.trim().is_empty() {
@@ -2520,7 +2525,10 @@ Some(Token::Out) => "out".to_string(),
                             let space_pos = rest.find(' ').unwrap_or(rest.len());
                             let var_name = rest[..space_pos].to_string();
                             let data_type = rest[space_pos..].trim().to_string();
-                            body.push(StoredProcStatement::Declare { var_name, data_type });
+                            body.push(StoredProcStatement::Declare {
+                                var_name,
+                                data_type,
+                            });
                         } else if upper.starts_with("CALL ") {
                             let rest = stmt_str[5..].trim();
                             if let Some(paren_pos) = rest.find('(') {
@@ -2531,7 +2539,10 @@ Some(Token::Out) => "out".to_string(),
                                 } else {
                                     args_str.split(',').map(|s| s.trim().to_string()).collect()
                                 };
-                                body.push(StoredProcStatement::Call { procedure_name: proc_name, args });
+                                body.push(StoredProcStatement::Call {
+                                    procedure_name: proc_name,
+                                    args,
+                                });
                             } else {
                                 body.push(StoredProcStatement::RawSql(stmt_str));
                             }
@@ -2562,7 +2573,10 @@ Some(Token::Out) => "out".to_string(),
             match self.current() {
                 None => break,
                 Some(Token::Semicolon) | Some(Token::Do) | Some(Token::Then) | Some(Token::End)
-                    if depth == 0 => break,
+                    if depth == 0 =>
+                {
+                    break
+                }
                 Some(Token::LParen) => {
                     depth += 1;
                     expr.push('(');
@@ -2577,7 +2591,7 @@ Some(Token::Out) => "out".to_string(),
                     self.next();
                 }
                 Some(Token::Identifier(s)) => {
-                    expr.push_str(&s);
+                    expr.push_str(s);
                     expr.push(' ');
                     self.next();
                 }
@@ -7345,7 +7359,8 @@ Some(Token::Out) => "out".to_string(),
             return None;
         }
         self.next();
-        if !matches!(self.current(), Some(Token::Identifier(s)) if s.eq_ignore_ascii_case("ALGORITHM")) {
+        if !matches!(self.current(), Some(Token::Identifier(s)) if s.eq_ignore_ascii_case("ALGORITHM"))
+        {
             return None;
         }
         self.next();
@@ -7672,7 +7687,9 @@ Some(Token::Out) => "out".to_string(),
                 "Expected TABLE, INDEX, VIEW, ROLE, SEQUENCE, or DATABASE after DROP, got {:?}",
                 t
             )),
-            None => Err("Expected TABLE, INDEX, VIEW, ROLE, SEQUENCE, or DATABASE after DROP".to_string()),
+            None => Err(
+                "Expected TABLE, INDEX, VIEW, ROLE, SEQUENCE, or DATABASE after DROP".to_string(),
+            ),
         }
     }
 
@@ -7694,7 +7711,10 @@ Some(Token::Out) => "out".to_string(),
             Some(Token::Identifier(name)) => name,
             _ => return Err("Expected sequence name".to_string()),
         };
-        Ok(Statement::DropSequence(DropSequenceStatement { name, if_exists }))
+        Ok(Statement::DropSequence(DropSequenceStatement {
+            name,
+            if_exists,
+        }))
     }
 
     fn parse_alter_sequence(&mut self) -> Result<Statement, String> {
@@ -7717,9 +7737,15 @@ Some(Token::Out) => "out".to_string(),
                     }
                     _ => None, // RESTART without WITH resets to start_value
                 };
-                Ok(Statement::AlterSequence(AlterSequenceStatement { name, restart_with }))
+                Ok(Statement::AlterSequence(AlterSequenceStatement {
+                    name,
+                    restart_with,
+                }))
             }
-            _ => Err(format!("Expected RESTART after ALTER SEQUENCE name, got {:?}", self.current())),
+            _ => Err(format!(
+                "Expected RESTART after ALTER SEQUENCE name, got {:?}",
+                self.current()
+            )),
         }
     }
 
@@ -8441,7 +8467,10 @@ Some(Token::Out) => "out".to_string(),
         match self.current() {
             Some(Token::Sequence) => self.parse_alter_sequence(),
             Some(Token::Table) => self.parse_alter_table(),
-            _ => Err(format!("Expected SEQUENCE or TABLE after ALTER, got {:?}", self.current())),
+            _ => Err(format!(
+                "Expected SEQUENCE or TABLE after ALTER, got {:?}",
+                self.current()
+            )),
         }
     }
 

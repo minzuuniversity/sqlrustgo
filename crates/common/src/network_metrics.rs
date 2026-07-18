@@ -245,8 +245,14 @@ mod tests {
         metrics.record_connection_open();
         metrics.record_bytes_sent(512);
         use crate::metrics::MetricValue;
-        assert!(matches!(metrics.get_metric("connections_active"), Some(MetricValue::Gauge(_))));
-        assert!(matches!(metrics.get_metric("bytes_sent"), Some(MetricValue::Counter(_))));
+        assert!(matches!(
+            metrics.get_metric("connections_active"),
+            Some(MetricValue::Gauge(_))
+        ));
+        assert!(matches!(
+            metrics.get_metric("bytes_sent"),
+            Some(MetricValue::Counter(_))
+        ));
         assert!(metrics.get_metric("nonexistent").is_none());
     }
 
