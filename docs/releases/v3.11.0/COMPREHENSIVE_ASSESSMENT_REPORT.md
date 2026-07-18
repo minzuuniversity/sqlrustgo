@@ -364,3 +364,144 @@ v3.11.0 完成 v3.10.0 遗留债务闭环：
 ---
 
 *最后更新: 2026-07-18*
+
+---
+
+## 15. v3.11.0 RC → GA 增强路线图
+
+> **重点转变**: 从"追赶债务"转向"生产就绪打磨"和"下一阶段架构预研"
+
+### 15.1 增强计划优先级速查表
+
+| 优先级 | 增强项 | 预估工时 | 核心收益 |
+| :--- | :--- | :--- | :--- |
+| **P0（RC前）** | 故障注入 SOAK + 原地升级测试 | 24h | 确保 GA 升级可靠性 |
+| **P0（RC前）** | 可重现构建 + SHA 校验 | 8h | 发布安全性与完整性 |
+| **P1（GA前）** | TPC-H SF=10 + Sysbench | 40h | 验证生产级扩展性 |
+| **P1（GA前）** | Prometheus 指标 + 慢日志 | 32h | 满足 DBA 运维刚需 |
+| **P1（GA前）** | `ALTER ADD AFTER/FIRST` + `LOAD DATA` | 24h | 增强 MySQL 兼容性 |
+| **P1（GA前）** | 用户升级指南 + 架构图更新 | 16h | 降低用户采用门槛 |
+| **P2（v3.12）** | 防退化 CI + 分布式设计草案 | 16h | 确保技术债不复现 |
+
+---
+
+### 15.2 第一阶段：RC 门禁冲刺（P0 — 1~2 周内完成）
+
+当前 SOAK 仅 51h，GA 要求 168h。除了"等待"，还有 3 项关键增强可做：
+
+#### 1. 引入"故障注入"SOAK（混沌工程）
+
+- **现状**：当前 SOAK 仅验证正常负载下的稳定性。
+- **增强**：在 SOAK 剩余 117 小时中，引入 **磁盘 I/O 延迟注入**（`tc` 命令模拟）、**内存压力**（`stress-ng`）、**随机 kill -9 从库进程**。
+- **目的**：验证 Double-Write Buffer (V311-04) 和 WAL 在极端条件下的恢复能力。
+
+#### 2. 建立 v3.10.0 → v3.11.0 原地升级（In-Place Upgrade）测试
+
+- **现状**：所有测试均基于全新初始化。
+- **增强**：编写 `scripts/test_upgrade_v310_to_v311.sh`，验证 catalog/system tables 自动迁移是否平滑，旧数据查询是否正常。
+- **目的**：GA 发布时，用户最怕升级断裂，这是生产级信任的关键。
+
+#### 3. 补齐 Release Binary 的"可重现构建"校验
+
+- **现状**：CI 仅验证 `cargo build`。
+- **增强**：固化 `Cargo.lock` 和 `rust-toolchain.toml`，生成带 `.sha256` 校验和的 `sqlrustgo-server` 静态二进制。
+- **目的**：发布安全性与完整性。
+
+---
+
+### 15.3 第二阶段：性能与扩展性压测（P1 — GA 前完成）
+
+TPC-H SF=1 通过只是起点，真实生产环境常为 SF=10 ~ SF=100。
+
+#### 1. 补充 TPC-H SF=10 基准测试
+
+- **现状**：仅验证了 SF=1（~1GB 数据）。
+- **增强**：利用 `dbgen` 生成 SF=10（~10GB），运行 22 个查询。
+- **目标**：验证 Q2/Q5/Q21 的 Join 重排算法在更大基数下是否仍能避免 OOM。
+
+#### 2. Sysbench OLTP 混合负载压测
+
+- **现状**：单元测试和 TPC-H 侧重分析型（AP）负载。
+- **增强**：运行 Sysbench `oltp_read_write`（含 `INSERT/UPDATE/SELECT/DELETE` 混合），持续 2 小时。
+- **目的**：验证 V311-23（高并发 INSERT 修复）在复杂事务下的真实表现。
+
+---
+
+### 15.4 第三阶段：可观测性与运维能力增强（P1 — 运维友好）
+
+作为 MySQL 替代品，光有 SQL 功能不够，DBA 需要"看透"数据库内部。
+
+#### 1. Performance Schema 接入 Prometheus 指标导出
+
+- **现状**：V311-06 实现了 `InstrumentationHook` trait，但未暴露给外部监控。
+- **增强**：增加 `--metrics-addr` 参数，通过 HTTP `/metrics` 端点暴露 QPS、延迟分位数、连接数、Buffer Pool 命中率。
+
+#### 2. 慢查询日志（Slow Query Log）结构化输出
+
+- **现状**：尚无标准的慢查询记录机制。
+- **增强**：实现 `long_query_time` 阈值，将执行超过阈值的 SQL 以 JSON 格式写入文件。
+
+#### 3. Admin 命令增强（V311-07 延伸）
+
+- **现状**：`sqlrustgo-admin` 仅能连接 wire protocol。
+- **增强**：增加 `sqlrustgo-admin status`（展示 `Innodb_rows_read`、`Threads_connected`、`Uptime`）和 `sqlrustgo-admin flush-logs`。
+
+---
+
+### 15.5 第四阶段：SQL 语法深度补全（P1 — 差异化竞争）
+
+#### 1. 实现 `ALTER TABLE ... ADD COLUMN ... AFTER/FIRST`
+
+- **现状**：SEM-3 实现了 RENAME/MODIFY，但 `ADD COLUMN` 的位置控制（AFTER/FIRST）在 MySQL 中非常常见。
+- **增强**：仅需修改 Parser 和 Catalog 的列顺序更新逻辑（预估 8h）。
+
+#### 2. 支持 `LOAD DATA INFILE` 本地/远程导入
+
+- **现状**：仅支持 `INSERT` 逐行插入。
+- **增强**：实现类 MySQL 的 `LOAD DATA LOCAL INFILE` 语法。
+- **目的**：这是 ETL 场景的刚需。
+
+---
+
+### 15.6 第五阶段：文档与用户心智重塑（P1 — GA 发布前必做）
+
+当前文档 100% 面向**开发者**（债务、门禁、Issue），缺乏面向**用户**的内容。
+
+#### 1. 撰写《v3.10.0 → v3.11.0 升级指南》
+
+- 明确列出 Breaking Changes（如删除的 Extension Crates）。
+- 列出新功能启用方式（如 GIS 建表语法）。
+
+#### 2. 更新 `README.md` 和 Quickstart
+
+- 将 TPC-H SF=1 22/22 PASS 作为头号宣传标语。
+- 加入一键运行 `docker run` 命令，降低新用户试用门槛。
+
+#### 3. 绘制"架构全景图"（v3.11.0 版）
+
+- 更新 `ARCHITECTURE.md`，将 Clustered Index、Adaptive Hash Index、Hash Semi/Anti Join 等新组件纳入主流程图。
+
+---
+
+### 15.7 第六阶段：治理防退化（P2 — 为 v3.12.0 铺路）
+
+v3.11.0 最大的成就是还清债务。下一步必须防止债务死灰复燃。
+
+#### 1. 固化"新功能门禁"为 CI 铁律
+
+- 将 `check_fxx_main_path.sh` 加入主干 PR 必检项。
+- 在 `STAGE_CONFIG.yaml` 中增加 `FORBID_ISOLATED_MODULES: true`。
+
+#### 2. 起草 v3.12.0 战略的"高水位设计文档"
+
+- v3.11.0 删除了 `distributed` 和 `graph`，但 v3.12.0 要重做分布式。
+- 当前应写一份《分布式事务与 Raft 集成设计方案》，提前发现架构冲突。
+
+---
+
+### 15.8 总结
+
+**v3.11.0 的核心引擎已经非常健壮。现阶段的"增强"应从前期的"功能开发"转向"生产环境可服务性（Production Serviceability）"和"用户信任构建"。**
+
+完善上述 P0/P1 项后，v3.11.0 GA 将不只是一个功能版本，而是一个**企业级就绪的 MySQL 替代品**。
+
