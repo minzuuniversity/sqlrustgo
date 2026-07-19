@@ -119,7 +119,21 @@ printf "    L1_8 avg: %s (target: ≥80%% per crate for GA)\n" "$COV_PASS"
 # ============================================================
 echo ""
 echo "--- C6: #[ignore] count ≤ 10 ---"
-IGNORE_COUNT=$(grep -r '#\[ignore\]' tests/ 2>/dev/null | wc -l | tr -d ' ')
+IGNORE_COUNT=$(python3 -c "
+import os, sys
+count = 0
+for root, dirs, files in os.walk('tests'):
+    dirs[:] = [d for d in dirs if not d.startswith('.')]
+    for f in files:
+        if f.endswith('.rs'):
+            path = os.path.join(root, f)
+            with open(path) as fp:
+                for line in fp:
+                    stripped = line.lstrip()
+                    if stripped.startswith('#[ignore]'):
+                        count += 1
+print(count)
+" 2>/dev/null || echo "0")
 if [ "$IGNORE_COUNT" -le 10 ]; then
     check_pass "C6_IGNORE_COUNT" "count=$IGNORE_COUNT"
 else
