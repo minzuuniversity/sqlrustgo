@@ -37,6 +37,8 @@ type DerivedResult = (Vec<Vec<Value>>, TableInfo);
 thread_local! {
     static DERIVED_RESULTS: RefCell<HashMap<String, DerivedResult>> =
         RefCell::new(HashMap::new());
+    // Thread-local flag: set when try_comma_join_hash_chain succeeds.
+    static COMMA_JOIN_WHERE_CONSUMED: RefCell<bool> = RefCell::new(false);
 }
 
 // Sprint 5 v2: per-column index for correlated EXISTS. TPC-H
@@ -256,7 +258,8 @@ impl<S: StorageEngine + 'static> ExecutionEngine<S> {
         // (reader owns lock → writer waits → reader tries reentrant read
         // → blocked by writer preference → deadlock).
         let (mut rows, table_info) = if !select.join_clause.is_empty() {
-            self.execute_joins(select)?
+            let (jrows, jinfo, _) = self.execute_joins(&mut select.clone())?;
+            (jrows, jinfo)
         } else if let Some((rows, info)) = materialized {
             (rows, info)
         } else if select.table.is_empty() {
@@ -352,6 +355,7 @@ impl<S: StorageEngine + 'static> ExecutionEngine<S> {
         } else {
             None
         };
+        let skip_where = COMMA_JOIN_WHERE_CONSUMED.with(|f| *f.borrow());
         // Step 1.5: correlated EXISTS / NOT EXISTS pre-evaluation
         // Before applying WHERE row-by-row, substitute the outer column
         // references in the subquery with concrete values from each
@@ -360,7 +364,8 @@ impl<S: StorageEngine + 'static> ExecutionEngine<S> {
         // the cloned where_expr with a Literal(true/false) for that
         // specific outer row. The remaining WHERE logic then runs via
         // the standard `eval_predicate` path.
-        if let Some(ref where_expr) = select.where_clause {
+        if !skip_where {
+            if let Some(ref where_expr) = select.where_clause {
             if where_expr_has_correlated_subquery(where_expr) {
                 // Sprint 5 (Q4 EXISTS perf): pre-build a
                 // `SubqueryIndex` for every correlated EXISTS
@@ -395,6 +400,7 @@ impl<S: StorageEngine + 'static> ExecutionEngine<S> {
             } else {
                 rows.retain(|row| eval_predicate(where_expr, row, &table_info));
             }
+        }
         }
 
         // Step 1.6: TPC-H Q13 — non-correlated IN / NOT IN subquery
@@ -1381,7 +1387,8 @@ impl<S: StorageEngine + 'static> ExecutionEngine<S> {
     /// Execute a chain of JOINs: start from the base table, then apply each
     /// JoinClause in order (left-associative: t1 JOIN t2 JOIN t3 → ((t1 JOIN t2) JOIN t3)).
     /// This function only generates joined rows, does NOT apply WHERE/AGG/HAVING.
-    fn execute_joins(&self, select: &SelectStatement) -> SqlResult<(Vec<Vec<Value>>, TableInfo)> {
+    fn execute_joins(&self, select: &mut SelectStatement) -> SqlResult<(Vec<Vec<Value>>, TableInfo, bool)> {
+        COMMA_JOIN_WHERE_CONSUMED.with(|f| *f.borrow_mut() = false);
         let storage = self.storage_read();
 
         // Sprint 5 v4: the parser encodes the inline alias into the
@@ -1557,7 +1564,7 @@ impl<S: StorageEngine + 'static> ExecutionEngine<S> {
         // with no JOIN ON). Returns `Some` on success, `None` when
         // the WHERE can't supply a complete chain (caller falls back
         // to the per-clause cartesian path).
-        if !select.extra_tables.is_empty() {
+        if !select.extra_tables.is_empty() || !select.join_clause.is_empty() {
             if let Some((new_rows, new_info)) = self.try_comma_join_hash_chain(
                 select,
                 &base_table,
@@ -1566,7 +1573,8 @@ impl<S: StorageEngine + 'static> ExecutionEngine<S> {
                 &table_info,
                 &pushdown_filters,
             ) {
-                return Ok((new_rows, new_info));
+                COMMA_JOIN_WHERE_CONSUMED.with(|f| *f.borrow_mut() = true);
+                return Ok((new_rows, new_info, true));
             }
         }
 
@@ -1603,7 +1611,7 @@ impl<S: StorageEngine + 'static> ExecutionEngine<S> {
             table_info = new_info;
         }
 
-        Ok((rows, table_info))
+        Ok((rows, table_info, false))
     }
 
     /// Sprint 8 (PR 1): comma-join with WHERE-extracted hash chain.
@@ -1644,14 +1652,13 @@ impl<S: StorageEngine + 'static> ExecutionEngine<S> {
         let where_expr = select.where_clause.as_ref()?;
         let storage = self.storage.read();
 
-        let (base_bare, base_alias_unwrapped) = match base_table.split_once('|') {
-            Some((t, a)) => (t.to_string(), Some(a.to_string())),
-            None => (base_table.to_string(), None),
-        };
-        let base_alias = base_alias_unwrapped.as_deref().unwrap_or(&base_bare);
+        // Extract bare table name from base_table (which may be "table" or "table|alias")
+        let base_bare = base_table.split_once('|').map(|(t, _)| t.to_string()).unwrap_or_else(|| base_table.to_string());
+        // Use _base_alias which was passed from execute_joins (where it was extracted from select.table)
+        let effective_base_alias = _base_alias;
 
         let mut join_tables: Vec<(String, String)> = Vec::new();
-        join_tables.push((base_bare.clone(), base_alias.to_string()));
+        join_tables.push((base_bare.clone(), effective_base_alias.to_string()));
         for extra in &select.extra_tables {
             let (bare, alias) = match extra.split_once('|') {
                 Some((t, a)) => (t.to_string(), Some(a.to_string())),
@@ -1659,6 +1666,17 @@ impl<S: StorageEngine + 'static> ExecutionEngine<S> {
             };
             let alias = alias.unwrap_or_else(|| bare.clone());
             join_tables.push((bare, alias));
+        }
+        // Also include tables from join_clause (comma-join case)
+        for jc in &select.join_clause {
+            let (bare, alias) = match jc.table.split_once('|') {
+                Some((t, a)) => (t.to_string(), Some(a.to_string())),
+                None => (jc.table.clone(), jc.alias.clone()),
+            };
+            let alias = alias.unwrap_or_else(|| bare.clone());
+            if !join_tables.iter().any(|(b, a)| b == &bare && a == &alias) {
+                join_tables.push((bare, alias));
+            }
         }
 
         if join_tables.len() < 2 {
@@ -1688,6 +1706,20 @@ impl<S: StorageEngine + 'static> ExecutionEngine<S> {
                 }
             }
             found.map(|alias| (alias.to_string(), col_name.to_string()))
+        };
+
+        // Helper: resolve a WHERE-clause qualifier (e.g. "c", "customer")
+        // to the full table name in join_tables.
+        let resolve_qualifier = |q: &str| -> Option<String> {
+            // Try exact alias match
+            if let Some((bare, _)) = join_tables.iter().find(|(_, a)| a == q) {
+                return Some(bare.clone());
+            }
+            // Try bare table name match
+            if let Some((bare, _)) = join_tables.iter().find(|(b, _)| b == q) {
+                return Some(bare.clone());
+            }
+            None
         };
 
         // Collect bare-equal columns from each `=` conjunct.
@@ -1722,6 +1754,7 @@ impl<S: StorageEngine + 'static> ExecutionEngine<S> {
             if lq == rq {
                 continue;
             }
+            // Use the actual qualifiers from WHERE (aliases like "c", "o") as keys
             let pair = if lq < rq {
                 (lq.clone(), rq.clone())
             } else {
@@ -1739,9 +1772,9 @@ impl<S: StorageEngine + 'static> ExecutionEngine<S> {
         // side and grow outward. For each step, find the next table
         // that has a recorded equality with the current tail.
         let mut visited: std::collections::HashSet<String> =
-            [base_alias.to_string()].into_iter().collect();
+            [effective_base_alias.to_string()].into_iter().collect();
         let mut chain_order: Vec<(String, String)> =
-            vec![(base_bare.clone(), base_alias.to_string())];
+            vec![(base_bare.clone(), effective_base_alias.to_string())];
         while visited.len() < join_tables.len() {
             let tail_alias = chain_order
                 .last()
@@ -1766,6 +1799,7 @@ impl<S: StorageEngine + 'static> ExecutionEngine<S> {
         }
 
         if chain_order.len() != join_tables.len() {
+            eprintln!("DBG chain_order.len()={} != join_tables.len()={}", chain_order.len(), join_tables.len());
             return None;
         }
 
@@ -1781,13 +1815,13 @@ impl<S: StorageEngine + 'static> ExecutionEngine<S> {
         let mut acc_columns = base_info.columns.clone();
         let mut alias_to_columns: HashMap<String, Vec<String>> = HashMap::new();
         alias_to_columns.insert(
-            base_alias.to_string(),
+            effective_base_alias.to_string(),
             base_info
                 .columns
                 .iter()
                 .map(|c| {
                     c.name
-                        .strip_prefix(&format!("{}.", base_alias))
+                        .strip_prefix(&format!("{}.", effective_base_alias))
                         .unwrap_or(&c.name)
                         .to_string()
                 })
@@ -1805,10 +1839,10 @@ impl<S: StorageEngine + 'static> ExecutionEngine<S> {
             };
             let (left_col, right_col) = pair_key.get(&(a1.clone(), a2.clone())).cloned()?;
             let prev_cols = alias_to_columns.get(prev_alias).cloned()?;
-            let prev_idx = prev_cols.iter().position(|c| c == &left_col)?;
+            let prev_idx = prev_cols.iter().position(|c| c.eq_ignore_ascii_case(&left_col))?;
             let cur_bare = &cur.0;
             let cur_info = storage.get_table_info(cur_bare).ok()?.clone();
-            let cur_idx = cur_info.columns.iter().position(|c| c.name == right_col)?;
+            let cur_idx = cur_info.columns.iter().position(|c| c.name.eq_ignore_ascii_case(&right_col))?;
             let raw_cur_rows = storage.scan(cur_bare).ok()?;
             let _rows_before_filter = raw_cur_rows.len();
             // Build alias-prefixed column names so that
@@ -2354,7 +2388,6 @@ impl<S: StorageEngine + 'static> ExecutionEngine<S> {
     ) -> SqlResult<JoinKey> {
         // v3.8.0-rc2: DBG noise disabled for cleaner test output.
         // Enable locally by uncommenting to debug find_join_key_index.
-        // eprintln!("DBG find_join_key_index: left={} right={} expr={:?}", left_name, right_name, expr);
         match expr {
             Expression::Literal(_) => {
                 // Phase 5 (TPCH-01 Q2): the parser emits `Literal("true")`
