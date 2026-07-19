@@ -1,10 +1,10 @@
-use std::time::{Duration, Instant};
-use std::sync::atomic::{AtomicUsize, Ordering};
-use std::sync::Arc;
-use std::process::{Command, Stdio};
-use std::thread;
 use clap::Parser;
 use rand::Rng;
+use std::process::{Command, Stdio};
+use std::sync::atomic::{AtomicUsize, Ordering};
+use std::sync::Arc;
+use std::thread;
+use std::time::{Duration, Instant};
 
 #[derive(Parser, Debug)]
 struct Args {
@@ -52,12 +52,14 @@ fn run_thread(
         let mut queries = Vec::with_capacity(batch_size);
         let mut batch_oltp = 0usize;
         let mut batch_olap = 0usize;
-        
+
         for _ in 0..batch_size {
-            if Instant::now() >= end { break; }
-            
+            if Instant::now() >= end {
+                break;
+            }
+
             let is_oltp = rng.gen_ratio(oltp_weight as u32, (oltp_weight + olap_weight) as u32);
-            
+
             let query = if is_oltp {
                 let orderkey = rng.gen_range(1..10000);
                 match rng.gen_range(0..3) {
@@ -72,9 +74,12 @@ fn run_thread(
                     _ => "SELECT c_nationkey, COUNT(*), AVG(c_acctbal) FROM customer GROUP BY c_nationkey".to_string(),
                 }
             };
-            
-            if is_oltp { batch_oltp += 1; } 
-            else { batch_olap += 1; }
+
+            if is_oltp {
+                batch_oltp += 1;
+            } else {
+                batch_olap += 1;
+            }
             queries.push(query);
         }
 
@@ -112,7 +117,10 @@ fn run_thread(
 
     total_oltp.fetch_add(oltp_count, Ordering::Relaxed);
     total_olap.fetch_add(olap_count, Ordering::Relaxed);
-    println!("Thread {}: {} OLTP, {} OLAP", thread_id, oltp_count, olap_count);
+    println!(
+        "Thread {}: {} OLTP, {} OLAP",
+        thread_id, oltp_count, olap_count
+    );
 }
 
 fn main() {
@@ -122,7 +130,10 @@ fn main() {
     println!("Host: {}:{}", args.host, args.port);
     println!("Threads: {}", args.threads);
     println!("Duration: {}s", args.duration);
-    println!("OLTP:OLAP ratio = {}:{}", args.oltp_weight, args.olap_weight);
+    println!(
+        "OLTP:OLAP ratio = {}:{}",
+        args.oltp_weight, args.olap_weight
+    );
     println!("Batch size: {}", args.batch_size);
     println!("");
 
@@ -132,21 +143,29 @@ fn main() {
 
     let start = Instant::now();
 
-    let handles: Vec<_> = (0..args.threads).map(|thread_id| {
-        let host = args.host.clone();
-        let total_oltp = Arc::clone(&total_oltp);
-        let total_olap = Arc::clone(&total_olap);
-        let error_count = Arc::clone(&error_count);
+    let handles: Vec<_> = (0..args.threads)
+        .map(|thread_id| {
+            let host = args.host.clone();
+            let total_oltp = Arc::clone(&total_oltp);
+            let total_olap = Arc::clone(&total_olap);
+            let error_count = Arc::clone(&error_count);
 
-        thread::spawn(move || {
-            run_thread(
-                thread_id, host, args.port,
-                args.oltp_weight, args.olap_weight,
-                args.batch_size, args.duration,
-                total_oltp, total_olap, error_count,
-            );
+            thread::spawn(move || {
+                run_thread(
+                    thread_id,
+                    host,
+                    args.port,
+                    args.oltp_weight,
+                    args.olap_weight,
+                    args.batch_size,
+                    args.duration,
+                    total_oltp,
+                    total_olap,
+                    error_count,
+                );
+            })
         })
-    }).collect();
+        .collect();
 
     for handle in handles {
         handle.join().unwrap();
@@ -165,7 +184,10 @@ fn main() {
     println!("Total queries: {}", total);
     println!("Errors: {}", errors);
     if total + errors > 0 {
-        println!("Success rate: {:.1}%", 100.0 * total as f64 / (total + errors) as f64);
+        println!(
+            "Success rate: {:.1}%",
+            100.0 * total as f64 / (total + errors) as f64
+        );
     }
     println!("Duration: {:.2}s", elapsed.as_secs_f64());
     if elapsed.as_secs_f64() > 0.0 {

@@ -70,7 +70,9 @@ fn test_chaos_io_latency_injectable() {
     } else {
         // Try to apply and immediately remove latency on loopback
         let add_result = Command::new("sudo")
-            .args(&["tc", "qdisc", "add", "dev", "lo", "root", "netem", "delay", "100ms"])
+            .args(&[
+                "tc", "qdisc", "add", "dev", "lo", "root", "netem", "delay", "100ms",
+            ])
             .output();
 
         let cleanup_result = Command::new("sudo")
@@ -85,24 +87,23 @@ fn test_chaos_io_latency_injectable() {
                     message: "100ms delay applied and cleaned up".into(),
                 }
             }
-            (Ok(add), _) => {
-                ChaosExperimentResult {
-                    name: "io_latency".into(),
-                    success: false,
-                    message: format!("tc add failed: {}", String::from_utf8_lossy(&add.stderr)),
-                }
-            }
-            _ => {
-                ChaosExperimentResult {
-                    name: "io_latency".into(),
-                    success: false,
-                    message: "tc command failed".into(),
-                }
-            }
+            (Ok(add), _) => ChaosExperimentResult {
+                name: "io_latency".into(),
+                success: false,
+                message: format!("tc add failed: {}", String::from_utf8_lossy(&add.stderr)),
+            },
+            _ => ChaosExperimentResult {
+                name: "io_latency".into(),
+                success: false,
+                message: "tc command failed".into(),
+            },
         }
     };
 
-    println!("I/O Latency Experiment: {} — {}", result.name, result.message);
+    println!(
+        "I/O Latency Experiment: {} — {}",
+        result.name, result.message
+    );
     assert!(
         result.success,
         "I/O latency experiment failed: {}",
@@ -126,13 +127,12 @@ fn test_chaos_memory_pressure_available() {
         ChaosExperimentResult {
             name: "memory_pressure".into(),
             success: true,
-            message: "skipped: stress-ng not installed (install with: sudo apt install stress-ng)".into(),
+            message: "skipped: stress-ng not installed (install with: sudo apt install stress-ng)"
+                .into(),
         }
     } else {
         // Verify stress-ng can be invoked (just version check)
-        let version_result = Command::new("stress-ng")
-            .arg("--version")
-            .output();
+        let version_result = Command::new("stress-ng").arg("--version").output();
 
         match version_result {
             Ok(output) if output.status.success() => {
@@ -140,27 +140,32 @@ fn test_chaos_memory_pressure_available() {
                 ChaosExperimentResult {
                     name: "memory_pressure".into(),
                     success: true,
-                    message: format!("stress-ng available: {}", version.lines().next().unwrap_or("unknown")),
+                    message: format!(
+                        "stress-ng available: {}",
+                        version.lines().next().unwrap_or("unknown")
+                    ),
                 }
             }
-            Ok(output) => {
-                ChaosExperimentResult {
-                    name: "memory_pressure".into(),
-                    success: false,
-                    message: format!("stress-ng --version failed: {}", String::from_utf8_lossy(&output.stderr)),
-                }
-            }
-            Err(e) => {
-                ChaosExperimentResult {
-                    name: "memory_pressure".into(),
-                    success: false,
-                    message: format!("failed to run stress-ng: {}", e),
-                }
-            }
+            Ok(output) => ChaosExperimentResult {
+                name: "memory_pressure".into(),
+                success: false,
+                message: format!(
+                    "stress-ng --version failed: {}",
+                    String::from_utf8_lossy(&output.stderr)
+                ),
+            },
+            Err(e) => ChaosExperimentResult {
+                name: "memory_pressure".into(),
+                success: false,
+                message: format!("failed to run stress-ng: {}", e),
+            },
         }
     };
 
-    println!("Memory Pressure Experiment: {} — {}", result.name, result.message);
+    println!(
+        "Memory Pressure Experiment: {} — {}",
+        result.name, result.message
+    );
     assert!(
         result.success,
         "Memory pressure experiment failed: {}",
@@ -175,8 +180,7 @@ fn test_chaos_memory_pressure_available() {
 #[test]
 fn test_chaos_controller_script_valid() {
     let script_path = "scripts/soak/chaos_inject.py";
-    let script = std::fs::read_to_string(script_path)
-        .expect("chaos_inject.py not found");
+    let script = std::fs::read_to_string(script_path).expect("chaos_inject.py not found");
 
     // Verify required classes and methods exist
     assert!(
@@ -199,10 +203,7 @@ fn test_chaos_controller_script_valid() {
         script.contains("def verify_recovery"),
         "verify_recovery method not found"
     );
-    assert!(
-        script.contains("def cleanup"),
-        "cleanup method not found"
-    );
+    assert!(script.contains("def cleanup"), "cleanup method not found");
 
     println!("Chaos Controller script is valid");
 }
