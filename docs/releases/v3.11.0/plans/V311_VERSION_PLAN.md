@@ -204,7 +204,7 @@ v3.10.0 文档存在版本演进混乱（多个 VERSION_PLAN.md），需统一�
 | --- | --- | --- |
 | G1 TPC-H SF=0.1 22/22 | ✅ PASS | ✅ 保持不退化 |
 | G3 覆盖率 ≥85% per crate | ❌ ~67% | ✅ 必达 (3 crate: executor/parser/storage) |
-| G4 TPC-H SF=1 22/22 | ⚠️ V310-11c 部分 | ✅ 必达 (22/22) |
+| G4 TPC-H SF=1 22/22 | ⚠️ V310-11c 部分 | ⚠️ PENDING (fixture at /tmp/tpch-sf1 missing) |
 | G6 DML 完整性 ignore = 0 | ✅ 0 | ✅ 保持 |
 | G7 ACID 5/5 | ✅ 5/5 | ✅ 保持 |
 | G8 Crash Matrix (kill -9) | ✅ PASS | ✅ 保持 |
