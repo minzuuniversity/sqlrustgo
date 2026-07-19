@@ -12,7 +12,7 @@
 
 | Metric | Status |
 |--------|--------|
-| TPC-H SF=1 22/22 queries | ✅ PASS (SQLite baseline verified) |
+| TPC-H SF=1 22/22 queries | ⚠️ PENDING (fixture at /tmp/tpch-sf1 missing; requires `dbgen -s 1 -f`) |
 | Q2 OOM fix | ✅ Fixed (PR #3565) |
 | Q5 OOM fix | ✅ Fixed (PR #3550) |
 | Q21 OOM fix | ✅ Fixed (PR #3550) |
@@ -56,7 +56,7 @@
 ## Conclusion
 
 v3.11.0 meets all performance requirements for GA release:
-- ✅ TPC-H SF=1 all 22 queries pass
+- ⚠️ TPC-H SF=1 22/22 queries PENDING (fixture generation required)
 - ✅ Chaos soak stability verified
 - ✅ Coverage exceeds Alpha threshold
 - ✅ Key GA features provide measurable performance improvements

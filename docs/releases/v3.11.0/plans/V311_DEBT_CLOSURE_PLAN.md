@@ -222,7 +222,7 @@ items:
 - [ ] Extension Crate 0 SCOPE_DEFERRED
 - [ ] Q4 TPC-H @ SF=3 < 5 分钟
 - [ ] 覆盖率 3 crate 均 ≥85%
-- [ ] TPC-H SF=1 22/22 PASS
+- [ ] TPC-H SF=1 22/22 PASS (PENDING: fixture generation required)
 
 ### 7.2 加分 (Optional)
 
