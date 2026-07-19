@@ -16,9 +16,12 @@ The following extension crates have been removed:
 
 ### TPC-H SF=1 Baseline
 
-TPC-H 22/22 queries now PASS at SF=1. Run with:
+⚠️ **PENDING**: TPC-H 22/22 queries 验证待 fixture 生成后执行。`tpch_sf1_22_in_process_regression` 测试标记为 `#[ignore]`，依赖 `/tmp/tpch-sf1` fixture 数据。
+
+运行方式（待 fixture 准备）:
 ```bash
-cargo run --release --bin tpch_runner -- --sf 1
+bash scripts/tpch/setup_sf1.sh /tmp/tpch-sf1
+bash scripts/tpch/run_sf1.sh
 ```
 
 ### GIS Support

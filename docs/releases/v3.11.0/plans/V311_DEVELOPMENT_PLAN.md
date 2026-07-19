@@ -344,7 +344,7 @@
 
 ### V311-20: TPC-H SF=1.0 baseline (#3423)
 
-**目标**: TPC-H 22/22 @ SF=1 全部 PASS
+**目标**: TPC-H 22/22 @ SF=1 全部 PASS (PENDING - fixture generation required)
 
 **实施步骤**:
 1. (24h) 生成 TPC-H SF=1 fixture (~1.1 GB)
@@ -352,7 +352,7 @@
 3. (24h) 修复发现的问题
 4. (8h) 文档化结果
 
-**验收**: `cargo run --release --bin tpch_runner -- --sf 1 --queries 22` 22/22 PASS
+**验收**: `bash scripts/tpch/run_sf1.sh` 22/22 PASS (PENDING: fixture at /tmp/tpch-sf1 missing; requires `dbgen -s 1 -f`)
 
 ### V311-21: 168h SOAK v3.11.0 (#3648, Hermes 协作)
 

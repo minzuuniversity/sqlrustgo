@@ -41,7 +41,7 @@ Evidence binding for each GA gate requirement.
 | Evidence | File | Status |
 |----------|------|--------|
 | PERFORMANCE_BASELINE.md | `docs/releases/v3.11.0/perf/PERFORMANCE_BASELINE.md` | ✅ |
-| TPC-H runner | `scripts/tpch/run_sf1.sh` | ✅ 22/22 PASS |
+| TPC-H runner | `scripts/tpch/run_sf1.sh` | ⚠️ PENDING (script created; fixture at /tmp/tpch-sf1 missing; real 22/22 not executed) |
 
 ---
 

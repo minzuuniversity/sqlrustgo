@@ -5,8 +5,8 @@
 > **分支**: `develop/v3.11.0`
 > **创建日期**: 2026-07-15
 > **前版本**: v3.10.0 (develop/v3.10.0 @ 14979a5f16)
-> **当前阶段**: **GA** (2026-07-19)
-> **发布日期**: 2026-07-19
+> **当前阶段**: **RC** (2026-07-19, GA reverted - TPC-H SF=1 fixture missing)
+> **GA 日期**: 2026-07-19 → 2026-07-19 RC (reverted, TPC-H SF=1 fixture not generated)
 
 ---
 
