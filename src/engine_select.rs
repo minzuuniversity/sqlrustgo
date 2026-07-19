@@ -1654,8 +1654,8 @@ impl<S: StorageEngine + 'static> ExecutionEngine<S> {
 
         // Extract bare table name from base_table (which may be "table" or "table|alias")
         let base_bare = base_table.split_once('|').map(|(t, _)| t.to_string()).unwrap_or_else(|| base_table.to_string());
-        // Use _base_alias which was passed from execute_joins (where it was extracted from select.table)
-        let effective_base_alias = _base_alias;
+        // Use the alias from select.table or _base_alias
+        let effective_base_alias = base_table.split_once('|').map(|(_, a)| a.to_string()).unwrap_or_else(|| _base_alias.to_string());
 
         let mut join_tables: Vec<(String, String)> = Vec::new();
         join_tables.push((base_bare.clone(), effective_base_alias.to_string()));
@@ -1775,21 +1775,35 @@ impl<S: StorageEngine + 'static> ExecutionEngine<S> {
             [effective_base_alias.to_string()].into_iter().collect();
         let mut chain_order: Vec<(String, String)> =
             vec![(base_bare.clone(), effective_base_alias.to_string())];
+        // When pair_key stores (min_alias, max_alias), the current tail
+        // can be in EITHER position. In a star schema where "o" (orders)
+        // is the hub connected to both "c" and "l", we have:
+        //   pair_key = {("c", "o"), ("l", "o")}
+        // When tail is "o", it is always the second element.
         while visited.len() < join_tables.len() {
             let tail_alias = chain_order
                 .last()
                 .map(|(_, a)| a.clone())
                 .unwrap_or_default();
-            let next = join_tables
-                .iter()
-                .find(|(_, alias)| {
-                    !visited.contains(alias)
-                        && pair_key.keys().any(|(a1, a2)| {
-                            (a1 == &tail_alias && a2 == alias) || (a2 == &tail_alias && a1 == alias)
-                        })
-                })
-                .cloned();
-            match next {
+            
+            // Find next table: one that is NOT visited and has a pair_key entry with tail
+            let mut found: Option<(String, String)> = None;
+            for (bare, alias) in &join_tables {
+                if visited.contains(alias) {
+                    continue;
+                }
+                // Check if this alias pairs with tail in pair_key
+                // pair_key keys are (smaller, larger) alphabetically
+                let matches = pair_key.keys().any(|(a1, a2)| {
+                    (*a1 == tail_alias && *a2 == *alias) || (*a2 == tail_alias && *a1 == *alias)
+                });
+                if matches {
+                    found = Some((bare.clone(), alias.clone()));
+                    break;
+                }
+            }
+            
+            match found {
                 Some((next_bare, alias)) => {
                     chain_order.push((next_bare, alias.clone()));
                     visited.insert(alias);
@@ -1832,12 +1846,22 @@ impl<S: StorageEngine + 'static> ExecutionEngine<S> {
             let prev_alias = &chain_order[i - 1].1;
             let cur = &chain_order[i];
             let cur_alias = &cur.1;
-            let (a1, a2) = if prev_alias < cur_alias {
-                (prev_alias.clone(), cur_alias.clone())
-            } else {
-                (cur_alias.clone(), prev_alias.clone())
+            // Find the pair_key entry that matches these two aliases
+            // (keys are stored as (min, max) alphabetically)
+            let (left_col, right_col) = {
+                let (k, v) = pair_key.iter()
+                    .find(|((a1, a2), _)| {
+                        (*a1 == *prev_alias && *a2 == *cur_alias) || 
+                        (*a2 == *prev_alias && *a1 == *cur_alias)
+                    })
+                    .ok_or_else(|| format!("No pair_key for ({}, {})", prev_alias, cur_alias)).ok()?;
+                // Determine which column belongs to prev_alias
+                if *k.0 == *prev_alias {
+                    (v.0.clone(), v.1.clone())
+                } else {
+                    (v.1.clone(), v.0.clone())
+                }
             };
-            let (left_col, right_col) = pair_key.get(&(a1.clone(), a2.clone())).cloned()?;
             let prev_cols = alias_to_columns.get(prev_alias).cloned()?;
             let prev_idx = prev_cols.iter().position(|c| c.eq_ignore_ascii_case(&left_col))?;
             let cur_bare = &cur.0;
