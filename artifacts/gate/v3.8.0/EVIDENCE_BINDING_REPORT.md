@@ -58,7 +58,7 @@
 - ❌ Type A/B 违规：第 235 行声明无 CI/gate/commit 证据: done
 - ❌ Type A/B 违规：第 314 行声明无 CI/gate/commit 证据: | 测试类型 | 通过标准 | Gate ID |
 - ❌ Type A/B 违规：第 318 行声明无 CI/gate/commit 证据: | L3 E2E Tests | 28/28 files PASS | C2 |
-- ❌ Type A/B 违规：第 319 行声明无 CI/gate/commit 证据: | TPC-H SF=1 | 22/22 queries PASS | C3 |
+- ❌ Type A/B 违规：第 319 行声明无 CI/gate/commit 证据: | TPC-H H/22 queries PASS | C3 |
 - ❌ Type A/B 违规：第 320 行声明无 CI/gate/commit 证据: | Backward Compatibility | 所有现有 tests 仍然 PASS | A2 |
 - ❌ Type A/B 违规：第 357 行声明无 CI/gate/commit 证据: | 测试 | 当前 PASS 率 | PR-800 后 |
 - ❌ Type A/B 违规：第 13 行声明无 CI/gate/commit 证据: v3.6.0 Beta Gate 报告显示 `7/9 PASS`，看起来一切正常。
@@ -377,7 +377,7 @@
 - ❌ Type A/B 违规：第 183 行声明无 CI/gate/commit 证据: | G2 | T-ISO-01~05 | ALL PASS |
 - ❌ Type A/B 违规：第 184 行声明无 CI/gate/commit 证据: | G3 | T-CRA-01~05 | ALL PASS |
 - ❌ Type A/B 违规：第 185 行声明无 CI/gate/commit 证据: | G4 | T-DIV-01~04 | ALL PASS |
-- ❌ Type A/B 违规：第 186 行声明无 CI/gate/commit 证据: | G5 | TPC-H SF=1 | 22/22 PASS |
+- ❌ Type A/B 违规：第 186 行声明无 CI/gate/commit 证据: | G5 | TPC-H SF=1 | ~10/22 (verified, see SF1_TRUTH_AUDIT.md) |
 - ❌ Type A/B 违规：第 200 行声明无 CI/gate/commit 证据:   PASS: all execution paths same result hash
 - ❌ Type A/B 违规：第 209 行声明无 CI/gate/commit 证据: 输出: PASS/FAIL + recovery details
 - ❌ Type A/B 违规：第 217 行声明无 CI/gate/commit 证据: 输出: PASS (correct isolation) / FAIL (violation detected)
@@ -855,7 +855,7 @@
 | - |  done |
 | - |  | 测试类型 | 通过标准 | Gate ID | |
 | - |  | L3 E2E Tests | 28/28 files PASS | C2 | |
-| - |  | TPC-H SF=1 | 22/22 queries PASS | C3 | |
+| - |  | TPC-H H/22 queries PASS | C3 | |
 | - |  | Backward Compatibility | 所有现有 tests 仍然 PASS | A2 | |
 | - |  | 测试 | 当前 PASS 率 | PR-800 后 | |
 | - |  v3.6.0 Beta Gate 报告显示 `7/9 PASS`，看起来一切正常。 |
@@ -972,7 +972,7 @@
 | - |  3. 在 TEST_PLAN.md 写入 "93 tests PASS" 但未执行 cargo test |
 | - |  | L2-1 | Execution consistency harness | `python3 scripts/test/execution_consistency_harness.py --corpus data/sql_corpus.json --paths mysql-server,bench-cli,direct` | PASS (all paths same hash) | |
 | - |  | L2-2 | E2E integration tests | `cargo test -p sqlrustgo-integration-tests` | 28/28 PASS | |
-| - |  | L2-3 | TPC-H SF=1 regression | `./target/release/sqlrustgo-bench-cli tpch-bench --queries all` | 22/22 PASS | |
+| - |  | L2-3 | TPC-H SF=1 regression | `./target/release/sqlrustgo-bench-cli tpch-bench --queries all` | ~10/22 (verified, see SF1_TRUTH_AUDIT.md) | |
 | - |  | L3-01 | Dirty Read Prevention | `python3 scripts/test/isolation_test_suite.py --test dirty_read` | PASS (uncommitted data NOT visible) | |
 | - |  | L3-02 | Non-repeatable Read | `python3 scripts/test/isolation_test_suite.py --test non_repeatable_read` | PASS | |
 | - |  | L3-03 | Phantom Read | `python3 scripts/test/isolation_test_suite.py --test phantom_read` | PASS | |
@@ -983,7 +983,7 @@
 | - |  | L3-13 | Type coercion | `python3 scripts/test/execution_divergence.py --test type_coercion` | PASS | |
 | - |  | L3-14 | Error handling | `python3 scripts/test/execution_divergence.py --test error_handling` | PASS | |
 | - |  | L4-5 | ParallelVolcanoExecutor integrated | `scripts/test/vtu_integration_check.sh` | PASS (not stub) | |
-| - |  | L5-1 | TPC-H SF=1 | `./target/release/sqlrustgo-bench-cli tpch-bench --queries all` | 22/22 PASS | |
+| - |  | L5-1 | TPC-H SF=1 | `./target/release/sqlrustgo-bench-cli tpch-bench --queries all` | ~10/22 (verified, see SF1_TRUTH_AUDIT.md) | |
 | - |  | L6-5 | SSOT cross-check | `bash scripts/docs/ssot_cross_check.sh` | PASS | |
 | - |  echo "=== GA Gate PASSED ===" |
 | - |  cargo test --lib --quiet && echo "L1 PASS" || echo "L1 FAIL" |
@@ -1157,7 +1157,7 @@
 | - |  | G2 | T-ISO-01~05 | ALL PASS | |
 | - |  | G3 | T-CRA-01~05 | ALL PASS | |
 | - |  | G4 | T-DIV-01~04 | ALL PASS | |
-| - |  | G5 | TPC-H SF=1 | 22/22 PASS | |
+| - |  | G5 | TPC-H SF=1 | ~10/22 (verified, see SF1_TRUTH_AUDIT.md) | |
 | - |    PASS: all execution paths same result hash |
 | - |  输出: PASS/FAIL + recovery details |
 | - |  输出: PASS (correct isolation) / FAIL (violation detected) |
