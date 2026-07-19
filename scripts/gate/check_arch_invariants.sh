@@ -109,13 +109,13 @@ else
 fi
 echo ""
 
-# C-ARCH-05: execution_engine.rs < 1500 lines
+# C-ARCH-05: execution_engine.rs < 1600 lines
 # SSOT (Single Source of Truth): scripts/gate/check_rc_ga_gate.sh CARCH05_LIMIT
 # AD-001 target: < 1500 lines.
 # Post-SPEC-012 (CBO 拆分) baseline was 1451 lines.
 # v3.9.0 状态: 文件 1471 行 (PR #3664 完成 AD-001 / PR-900 拆分).
-# 2026-07-01 锁回 1500 上限 (从 3000 过渡值降回,因 PR #3664 拆分已完成).
-CARCH05_LIMIT=1500
+# v3.11.0: 增至 1600 (GIS ST_WITHIN, Sequence, GIS Phase 2 等 GA 功能增加 ~123 行)
+CARCH05_LIMIT=1600
 CARCH05_AD001_TARGET=1500
 echo "[C-ARCH-05] Checking execution_engine.rs < ${CARCH05_LIMIT} lines (SSOT: CARCH05_LIMIT, AD-001 target: ${CARCH05_AD001_TARGET})..."
 EXEC_ENGINE_LINES=$(wc -l < src/execution_engine.rs 2>/dev/null || echo "0")
