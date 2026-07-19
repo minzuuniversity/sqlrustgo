@@ -35,7 +35,7 @@
 | 基线类型 | v3.10.0 状态 | 数据来源 |
 |---------|-------------|---------|
 | **覆盖率基线** | ✅ **已建立**：14.71% lib（28 tests run） | `docs/releases/v3.10.0/coverage-baseline/summary.txt` |
-| **TPC-H SF=1.0 (官方规格 6M 行)** | ⚠️ **部分建立**：22/22 PASS（600K 行 fixture） | `docs/releases/v3.10.0/perf/SF1_BASELINE_REPORT.md` |
+| **H/22 PASS（600K 行 fixture） | `docs/releases/v3.10.0/perf/SF1_BASELINE_REPORT.md` |
 | **TPC-H SF=0.1 (10K 行)** | ✅ **完整建立**：22/22 PASS | v3.9.0 继承 |
 | **并行执行器基线 (Issue #3792)** | ✅ **完整建立**：SF=1 (1M 行) + SF=3 (3M 行) 实测 | `perf/PERFORMANCE_BASELINE.md` |
 | **TPC-H SF=1.0 vs v3.9.0** | ⚠️ **PLACEHOLDER**：需大磁盘 (75GB+) + 专用硬件 | `GA_GATE_REPORT.md` R8 |
@@ -213,7 +213,7 @@
 
 - **状态**: ⏸️ 移交 v3.11.0
 - **v3.11.0 任务**: 已合并到 V311-20
-- **当前 v3.10.0 状态**: SF=0.1 22/22 ✅，SF=1.0 22/22 ✅（600K 行 fixture，非 TPC-H 官方 6M 行）
+- **当前 v3.10.0 状态**: SF=0.1 22/22 ✅，H/22 ✅（600K 行 fixture，非 TPC-H 官方 6M 行）
 
 ### V310-11c: G4 gate 入口 + 测试基础设施 (8h)
 
@@ -383,7 +383,7 @@
 | 覆盖率基线 | ✅ 已建立（14.71%） | V311-14 ≥85% |
 | TPC-H SF=0.1 | ✅ 已建立（22/22） | 保持 |
 | TPC-H SF=1.0 (官方) | ⚠️ PLACEHOLDER | V311-20 |
-| TPC-H SF=1.0 (600K 行) | ✅ 已建立（22/22） | 保留 |
+| H/22） | 保留 |
 | 并行执行器基线 | ✅ 已建立 | 保留 |
 | Wired-SOAK | ⚠️ 部分（G4 gate 入口） | V311-20 |
 
