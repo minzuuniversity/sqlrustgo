@@ -31,12 +31,12 @@ issue_plan:
 # 版本信息
 # =============================================================================
 version: "v3.11.0"
-current_stage: "GA"
+current_stage: "RC"  # Reverted from false GA claim on 2026-07-19 (TPC-H SF=1 fixture missing)
 last_transition:
-  from: "RC"
-  to: "GA"
+  from: "GA"
+  to: "RC"
   date: "2026-07-19"
-  reason: "RC → GA: All gate checks passed (C1-C8), L1_8 80.60%, TPC-H 22/22, Chaos Soak PASS"
+  reason: "Reverted false GA claim. C1-C7 PASS; C8 TPC-H SF=1 fixture missing (dbgen not installed), real 22/22 not executed. L1_8=80.60% (Alpha 阈值, user-accepted). Re-evaluate after SF=1 fixture generated."
 
 # =============================================================================
 # 分支保护规则 (v3.11.0 specific)

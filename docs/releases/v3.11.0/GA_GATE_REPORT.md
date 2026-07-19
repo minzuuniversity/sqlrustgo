@@ -4,7 +4,7 @@
 
 **Date**: 2026-07-18
 **Commit**: 27645a3854
-**Status**: RC PASSED - Awaiting GA
+**Status**: ⚠️ RC PASSED, GA BLOCKED (TPC-H SF=1 fixture missing, real 22/22 verification not executed)
 
 ### Entry Conditions
 
@@ -23,7 +23,7 @@
 | G1 | R1-R4 | 所有RC指标 | PASS | PASS |
 | G2 | Full test | `cargo test --workspace` | PASS | PENDING |
 | G3 | Full coverage | L1 avg ≥ 85%, 每crate ≥ 80% | PASS | L1_8=80.60% (α) |
-| G4 | TPC-H SF=1 | `scripts/gate/check_tpch_sf1.sh` | 22/22 PASS | PASS |
+| G4 | TPC-H SF=1 | `scripts/tpch/run_sf1.sh` | 22/22 PASS | ⚠️ PENDING (fixture missing) |
 | G5 | Security | `cargo audit` + 手动审计 | PASS | PENDING |
 | G6 | Documentation | API reference, CHANGELOG, UPGRADE_GUIDE | PASS | PASS |
 
@@ -49,11 +49,14 @@
 
 ### TPC-H SF=1 Results
 
-All 22 queries pass at SF=1. See `docs/releases/v3.11.0/perf/PERFORMANCE_BASELINE.md`.
+⚠️ PENDING: Test `tpch_sf1_22_in_process_regression` is `#[ignore]` (requires `/tmp/tpch-sf1` fixture via `dbgen -s 1 -f`; fixture not generated). 22 query files exist but cannot run on engine without data. Real 22/22 verification NOT executed.
 
-### Conclusion
+### Real Status (2026-07-19)
 
-v3.11.0 is in **RC** stage. GA gate pending:
-- SECURITY_AUDIT.md creation
-- Full test suite execution
-- Security audit completion
+v3.11.0 is in **RC** stage. GA gate is BLOCKED:
+- ⚠️ G4 TPC-H SF=1: PENDING (fixture missing, real 22/22 not run)
+- ⚠️ G3 Coverage: L1_8=80.60% (passes Alpha A5 75%; user-accepted as pass for GA; below declared 85% threshold)
+- ✅ C1-C7: PASS
+
+**Recommendation**: Generate SF=1 fixture and re-run TPC-H tests before declaring GA.
+See `GOVERNANCE_TRUTH_AUDIT.md` for full audit.
