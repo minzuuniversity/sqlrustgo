@@ -15,7 +15,7 @@
 
 SQLRustGo 是一个纯 Rust 实现的 SQL 执行引擎，支持完整 SQL-92 语法、窗口函数、CTE、CBO 成本优化器、WAL + MVCC 事务、向量存储与图存储，以及 AI Native GMP 工作流。
 
-> **v3.10.0 当前状态 (2026-07-13)**: **GA — MySQL 5.7 替代** — INT/ARCH/SEM 100% 闭环，F-XX Gap Locking 主路径集成，Parallel Executor 优化（Issue #3792: PARALLEL_MIN_ROWS=2M, 6 项优化），TPC-H 22/22 全通（SF=0.1），TPC-H SF=1 (600K 行) 22/22 PASS (~7.8 min)，21/22 cell-level 匹配 SQLite，性能实测: Q1 1.27x / Q3 1.08x / Q5 1.10x (1M 行, 4 线程), 数据加载 180x 加速 (fast_load_tbl_data)，E2E 8/8 PASS，168h SOAK 🔄 进行中 (2026-07-14 启动, 预计 2026-07-21 完成)。Q2 join ordering bug 已修复 (2026-07-16)，Q2 SF=1 从 OOM 变为 ~13s/20行。详见 [SF1 基线报告](docs/releases/v3.11.0/perf/SF1_BASELINE_REPORT.md)。
+> **v3.10.0 当前状态 (2026-07-13)**: **GA — MySQL 5.7 替代** — INT/ARCH/SEM 100% 闭环，F-XX Gap Locking 主路径集成，Parallel Executor 优化（Issue #3792: PARALLEL_MIN_ROWS=2M, 6 项优化），TPC-H 22/22 全通（SF=0.1），TPC-H SF=1 (600K 行) ~10/22 (verified, see SF1_TRUTH_AUDIT.md) (~7.8 min)，21/22 cell-level 匹配 SQLite，性能实测: Q1 1.27x / Q3 1.08x / Q5 1.10x (1M 行, 4 线程), 数据加载 180x 加速 (fast_load_tbl_data)，E2E 8/8 PASS，168h SOAK 🔄 进行中 (2026-07-14 启动, 预计 2026-07-21 完成)。Q2 join ordering bug 已修复 (2026-07-16)，Q2 SF=1 从 OOM 变为 ~13s/20行。详见 [SF1 基线报告](docs/releases/v3.11.0/perf/SF1_BASELINE_REPORT.md)。
 >
 > **v3.11.0 计划 (Issue #3835)**: 23 项债务清零 + 9 项 F-XX 主路径集成 + Q4 Hash Semi Join (<5 min @ SF=3)，预计 2026-10-01 GA。详见 [v3.11.0 计划](docs/releases/v3.11.0/VERSION_PLAN.md)。
 
@@ -381,7 +381,7 @@ SELECT region, revenue FROM regional_sales;
 | G1 | 构建 / WAL 契约 / Clippy / Fmt | ✅ |
 | G2 | 全部测试 PASS（3000+） | ✅ |
 | G3 | 覆盖率 ≥85% 均值 | ⚠️ 条件通过（~67%，理由见文档） |
-| G4 | TPC-H SF=1 22/22 | ⚠️ 条件通过（6/10，理由见文档） |
+| G4 | TPC-H H/22 | ⚠️ 条件通过（6/10，理由见文档） |
 | G5 | 安全扫描 PASS | ✅ |
 | G6 | 文档完整 | ✅ |
 | 长跑 | 72h ✅ / 168h ✅ | ✅ |
