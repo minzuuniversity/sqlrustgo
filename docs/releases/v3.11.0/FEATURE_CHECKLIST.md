@@ -121,7 +121,7 @@ This document is the **SSOT** for v3.11.0's feature checklist, tracking 23 V311-
 
 | ID | 任务 | 工作量 | 优先级 | 状态 | 测试方法 |
 |----|------|--------|--------|------|----------|
-| V311-20 | TPC-H SF=1.0 baseline (#3423) | 80h | P0 | ⏳ TODO | TPC-H 22/22 @ SF=1 |
+| V311-20 | H/22 @ SF=1 |
 | V311-21 | 168h SOAK v3.11.0 (#3648) | (Hermes 协作) | P1 | ⏳ TODO | 168h 持续监控 |
 | V311-22 | 文档架构整理 (5 plans → 3 plans) | 12h | P2 | ✅ DONE | `plans/INDEX.md` |
 
