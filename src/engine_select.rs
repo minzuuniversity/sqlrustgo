@@ -38,7 +38,6 @@ thread_local! {
     static DERIVED_RESULTS: RefCell<HashMap<String, DerivedResult>> =
         RefCell::new(HashMap::new());
     // Thread-local flag: set when try_comma_join_hash_chain succeeds.
-    #[allow(clippy::missing_const_for_thread_local)]
     static COMMA_JOIN_WHERE_CONSUMED: RefCell<bool> = RefCell::new(false);
 }
 
@@ -367,41 +366,41 @@ impl<S: StorageEngine + 'static> ExecutionEngine<S> {
         // the standard `eval_predicate` path.
         if !skip_where {
             if let Some(ref where_expr) = select.where_clause {
-                if where_expr_has_correlated_subquery(where_expr) {
-                    // Sprint 5 (Q4 EXISTS perf): pre-build a
-                    // `SubqueryIndex` for every correlated EXISTS
-                    // subquery before the per-row loop.  This turns
-                    // the O(N_inner × N_outer) full-scan EXISTS
-                    // evaluation into O(N_inner) one-time index build
-                    // + O(1) per outer row.  For TPC-H Q4 this is
-                    // 900M ops → 75K ops at SF 0.1.
-                    let mut subquery_indexes: Vec<SubqueryIndex> = Vec::new();
-                    collect_subquery_indexes(where_expr, self, &mut subquery_indexes);
+            if where_expr_has_correlated_subquery(where_expr) {
+                // Sprint 5 (Q4 EXISTS perf): pre-build a
+                // `SubqueryIndex` for every correlated EXISTS
+                // subquery before the per-row loop.  This turns
+                // the O(N_inner × N_outer) full-scan EXISTS
+                // evaluation into O(N_inner) one-time index build
+                // + O(1) per outer row.  For TPC-H Q4 this is
+                // 900M ops → 75K ops at SF 0.1.
+                let mut subquery_indexes: Vec<SubqueryIndex> = Vec::new();
+                collect_subquery_indexes(where_expr, self, &mut subquery_indexes);
 
-                    let pre_evaluated_where = where_expr.clone();
-                    let mut new_rows: Vec<Vec<Value>> = Vec::with_capacity(rows.len());
-                    for row in rows.into_iter() {
-                        let mut cursor: usize = 0;
-                        let replaced = self.pre_evaluate_correlated_exists(
-                            &pre_evaluated_where,
-                            &row,
-                            &table_info,
-                            &subquery_indexes,
-                            &mut cursor,
-                        );
-                        if eval_predicate(&replaced, &row, &table_info) {
-                            // V311-02 v2: AHI access was recorded at scan time via
-                            // `scan_with_ahi()`. Adding per-row hooks here would be
-                            // redundant noise; the table-level access is sufficient
-                            // for the production-hook metric (touched_pages, hit_rate).
-                            new_rows.push(row);
-                        }
+                let pre_evaluated_where = where_expr.clone();
+                let mut new_rows: Vec<Vec<Value>> = Vec::with_capacity(rows.len());
+                for row in rows.into_iter() {
+                    let mut cursor: usize = 0;
+                    let replaced = self.pre_evaluate_correlated_exists(
+                        &pre_evaluated_where,
+                        &row,
+                        &table_info,
+                        &subquery_indexes,
+                        &mut cursor,
+                    );
+                    if eval_predicate(&replaced, &row, &table_info) {
+                        // V311-02 v2: AHI access was recorded at scan time via
+                        // `scan_with_ahi()`. Adding per-row hooks here would be
+                        // redundant noise; the table-level access is sufficient
+                        // for the production-hook metric (touched_pages, hit_rate).
+                        new_rows.push(row);
                     }
-                    rows = new_rows;
-                } else {
-                    rows.retain(|row| eval_predicate(where_expr, row, &table_info));
                 }
+                rows = new_rows;
+            } else {
+                rows.retain(|row| eval_predicate(where_expr, row, &table_info));
             }
+        }
         }
 
         // Step 1.6: TPC-H Q13 — non-correlated IN / NOT IN subquery
@@ -1388,10 +1387,7 @@ impl<S: StorageEngine + 'static> ExecutionEngine<S> {
     /// Execute a chain of JOINs: start from the base table, then apply each
     /// JoinClause in order (left-associative: t1 JOIN t2 JOIN t3 → ((t1 JOIN t2) JOIN t3)).
     /// This function only generates joined rows, does NOT apply WHERE/AGG/HAVING.
-    fn execute_joins(
-        &self,
-        select: &mut SelectStatement,
-    ) -> SqlResult<(Vec<Vec<Value>>, TableInfo, bool)> {
+    fn execute_joins(&self, select: &mut SelectStatement) -> SqlResult<(Vec<Vec<Value>>, TableInfo, bool)> {
         COMMA_JOIN_WHERE_CONSUMED.with(|f| *f.borrow_mut() = false);
         let storage = self.storage_read();
 
@@ -1657,12 +1653,9 @@ impl<S: StorageEngine + 'static> ExecutionEngine<S> {
         let storage = self.storage.read();
 
         // Extract bare table name from base_table (which may be "table" or "table|alias")
-        let base_bare = base_table
-            .split_once('|')
-            .map(|(t, _)| t.to_string())
-            .unwrap_or_else(|| base_table.to_string());
-        // Use _base_alias which was passed from execute_joins (where it was extracted from select.table)
-        let effective_base_alias = _base_alias;
+        let base_bare = base_table.split_once('|').map(|(t, _)| t.to_string()).unwrap_or_else(|| base_table.to_string());
+        // Use the alias from select.table or _base_alias
+        let effective_base_alias = base_table.split_once('|').map(|(_, a)| a.to_string()).unwrap_or_else(|| _base_alias.to_string());
 
         let mut join_tables: Vec<(String, String)> = Vec::new();
         join_tables.push((base_bare.clone(), effective_base_alias.to_string()));
@@ -1717,7 +1710,7 @@ impl<S: StorageEngine + 'static> ExecutionEngine<S> {
 
         // Helper: resolve a WHERE-clause qualifier (e.g. "c", "customer")
         // to the full table name in join_tables.
-        let _resolve_qualifier = |q: &str| -> Option<String> {
+        let resolve_qualifier = |q: &str| -> Option<String> {
             // Try exact alias match
             if let Some((bare, _)) = join_tables.iter().find(|(_, a)| a == q) {
                 return Some(bare.clone());
@@ -1782,21 +1775,35 @@ impl<S: StorageEngine + 'static> ExecutionEngine<S> {
             [effective_base_alias.to_string()].into_iter().collect();
         let mut chain_order: Vec<(String, String)> =
             vec![(base_bare.clone(), effective_base_alias.to_string())];
+        // When pair_key stores (min_alias, max_alias), the current tail
+        // can be in EITHER position. In a star schema where "o" (orders)
+        // is the hub connected to both "c" and "l", we have:
+        //   pair_key = {("c", "o"), ("l", "o")}
+        // When tail is "o", it is always the second element.
         while visited.len() < join_tables.len() {
             let tail_alias = chain_order
                 .last()
                 .map(|(_, a)| a.clone())
                 .unwrap_or_default();
-            let next = join_tables
-                .iter()
-                .find(|(_, alias)| {
-                    !visited.contains(alias)
-                        && pair_key.keys().any(|(a1, a2)| {
-                            (a1 == &tail_alias && a2 == alias) || (a2 == &tail_alias && a1 == alias)
-                        })
-                })
-                .cloned();
-            match next {
+            
+            // Find next table: one that is NOT visited and has a pair_key entry with tail
+            let mut found: Option<(String, String)> = None;
+            for (bare, alias) in &join_tables {
+                if visited.contains(alias) {
+                    continue;
+                }
+                // Check if this alias pairs with tail in pair_key
+                // pair_key keys are (smaller, larger) alphabetically
+                let matches = pair_key.keys().any(|(a1, a2)| {
+                    (*a1 == tail_alias && *a2 == *alias) || (*a2 == tail_alias && *a1 == *alias)
+                });
+                if matches {
+                    found = Some((bare.clone(), alias.clone()));
+                    break;
+                }
+            }
+            
+            match found {
                 Some((next_bare, alias)) => {
                     chain_order.push((next_bare, alias.clone()));
                     visited.insert(alias);
@@ -1806,11 +1813,7 @@ impl<S: StorageEngine + 'static> ExecutionEngine<S> {
         }
 
         if chain_order.len() != join_tables.len() {
-            eprintln!(
-                "DBG chain_order.len()={} != join_tables.len()={}",
-                chain_order.len(),
-                join_tables.len()
-            );
+            eprintln!("DBG chain_order.len()={} != join_tables.len()={}", chain_order.len(), join_tables.len());
             return None;
         }
 
@@ -1843,22 +1846,27 @@ impl<S: StorageEngine + 'static> ExecutionEngine<S> {
             let prev_alias = &chain_order[i - 1].1;
             let cur = &chain_order[i];
             let cur_alias = &cur.1;
-            let (a1, a2) = if prev_alias < cur_alias {
-                (prev_alias.clone(), cur_alias.clone())
-            } else {
-                (cur_alias.clone(), prev_alias.clone())
+            // Find the pair_key entry that matches these two aliases
+            // (keys are stored as (min, max) alphabetically)
+            let (left_col, right_col) = {
+                let (k, v) = pair_key.iter()
+                    .find(|((a1, a2), _)| {
+                        (*a1 == *prev_alias && *a2 == *cur_alias) || 
+                        (*a2 == *prev_alias && *a1 == *cur_alias)
+                    })
+                    .ok_or_else(|| format!("No pair_key for ({}, {})", prev_alias, cur_alias)).ok()?;
+                // Determine which column belongs to prev_alias
+                if *k.0 == *prev_alias {
+                    (v.0.clone(), v.1.clone())
+                } else {
+                    (v.1.clone(), v.0.clone())
+                }
             };
-            let (left_col, right_col) = pair_key.get(&(a1.clone(), a2.clone())).cloned()?;
             let prev_cols = alias_to_columns.get(prev_alias).cloned()?;
-            let prev_idx = prev_cols
-                .iter()
-                .position(|c| c.eq_ignore_ascii_case(&left_col))?;
+            let prev_idx = prev_cols.iter().position(|c| c.eq_ignore_ascii_case(&left_col))?;
             let cur_bare = &cur.0;
             let cur_info = storage.get_table_info(cur_bare).ok()?.clone();
-            let cur_idx = cur_info
-                .columns
-                .iter()
-                .position(|c| c.name.eq_ignore_ascii_case(&right_col))?;
+            let cur_idx = cur_info.columns.iter().position(|c| c.name.eq_ignore_ascii_case(&right_col))?;
             let raw_cur_rows = storage.scan(cur_bare).ok()?;
             let _rows_before_filter = raw_cur_rows.len();
             // Build alias-prefixed column names so that
