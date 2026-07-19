@@ -164,8 +164,6 @@ impl FileStorage {
         Ok(storage)
     }
 
-
-
     /// Get the path for a table file
     fn table_path(&self, table_name: &str) -> PathBuf {
         self.data_dir.join(format!("{}.json", table_name))
@@ -2699,7 +2697,6 @@ impl StorageEngine for FileStorage {
         Ok(())
     }
 
-
     /// F-09 fix: bypass insert_buffer so WAL recovery can replay entries
     /// deterministically. Subsequent scan/delete in the same recovery pass
     /// see the row in `data.rows` directly, avoiding the "3 rows expected 1"
@@ -3195,19 +3192,20 @@ impl FileStorage {
     pub fn flush_parallel(&mut self) -> std::io::Result<()> {
         // Take dirty tables set, leaving empty set behind
         let dirty: Vec<String> = std::mem::take(&mut self.dirty_tables).into_iter().collect();
-        
+
         if dirty.is_empty() {
             return Ok(());
         }
-        
+
         // For 1-2 tables, sequential is faster (no thread overhead)
         if dirty.len() <= 2 {
             return self.flush();
         }
-        
+
         // For 3+ tables, flush in parallel using thread pool
         let results = std::thread::scope(|s| {
-            let handles: Vec<_> = dirty.iter()
+            let handles: Vec<_> = dirty
+                .iter()
                 .map(|name| {
                     s.spawn(|| {
                         if let Some(table_data) = self.tables.get(name) {
@@ -3218,17 +3216,18 @@ impl FileStorage {
                     })
                 })
                 .collect();
-            
-            handles.into_iter()
+
+            handles
+                .into_iter()
                 .map(|h| h.join().unwrap())
                 .collect::<Vec<_>>()
         });
-        
+
         // Combine all results - return first error if any
         for result in results {
             result?;
         }
-        
+
         Ok(())
     }
 }

@@ -11,8 +11,7 @@ use sqlrustgo_parser::{parse, Statement};
 use sqlrustgo_storage::wal::FileBackedWalManager;
 use sqlrustgo_storage::{
     BinaryTableStorage, BoxStorageEngine, CheckpointManager, FileStorage, MemoryStorage,
-    ParallelWalStorage,
-    StorageEngine, WalStorage,
+    ParallelWalStorage, StorageEngine, WalStorage,
 };
 use sqlrustgo_types::{SqlError, Value};
 use std::collections::HashMap;
@@ -3473,12 +3472,15 @@ pub(crate) fn run_server_with_listener_and_shutdown_with_bootstrap_tables_and_sq
             }
             let wal_manager = FileBackedWalManager::new(wal_path)
                 .map_err(|e| MySqlError::Sql(format!("WAL manager init failed: {}", e)))?;
-            let wal_sync_mode = std::env::var("SQLRUSTGO_WAL_SYNC").unwrap_or_else(|_| "every".to_string());
+            let wal_sync_mode =
+                std::env::var("SQLRUSTGO_WAL_SYNC").unwrap_or_else(|_| "every".to_string());
             let sync_mode = parse_wal_sync_mode(&wal_sync_mode);
             tracing::info!("WAL sync mode: {:?}", sync_mode);
             let mut parallel_storage = ParallelWalStorage::new(file_storage, wal_manager);
             parallel_storage.set_sync_mode(sync_mode);
-            Arc::new(parking_lot::RwLock::new(BoxStorageEngine::new(parallel_storage)))
+            Arc::new(parking_lot::RwLock::new(BoxStorageEngine::new(
+                parallel_storage,
+            )))
         }
         _ => {
             // WalStorage<FileStorage, FileBackedWalManager>
