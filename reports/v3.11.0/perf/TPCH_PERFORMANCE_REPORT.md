@@ -10,7 +10,7 @@
 
 | Metric | v3.10.0 | v3.11.0 | Change |
 |--------|----------|----------|--------|
-| TPC-H SF=1 | 19/22 (OOM) | **22/22 PASS** | +3 queries |
+| TPC-H SF=1 | 19/22 (OOM) | **~10/22 (verified, see SF1_TRUTH_AUDIT.md)** | +3 queries |
 | Q4 Performance | 14.5 min (OOM) | **FIXED** | Hash Semi Join |
 | Q2 Performance | OOM (1-char bug) | **FIXED** | Join ordering |
 | Q5 Performance | OOM (nation-bridge) | **FIXED** | Join ordering |
@@ -162,4 +162,4 @@ Generated from `scripts/gate/generate_tpch_sf1_fixture.py` (seed=42), loaded int
 ---
 
 **Report Date**: 2026-07-18
-**Status**: TPC-H SF=1.0 22/22 PASS
+**Status**: TPC-H SF=1.0 ~10/22 (verified, see SF1_TRUTH_AUDIT.md)

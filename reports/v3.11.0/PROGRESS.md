@@ -93,7 +93,7 @@
 
 | Task | Status | Notes |
 |------|--------|-------|
-| V311-20 (TPC-H SF=1) | ⏳ TODO | 22/22 PASS |
+| V311-20 (TPC-H SF=1) | ⏳ TODO | ~10/22 (verified, see SF1_TRUTH_AUDIT.md) |
 | V311-21 (168h SOAK) | 🔄 IN PROGRESS | Started 2026-07-18 |
 | V311-22 (Docs) | ✅ DONE | INDEX.md created |
 | V311-23 (INSERT fix) | ✅ DONE | from SOAK fix |
@@ -130,7 +130,7 @@
 |------|-----------|---------|--------|
 | Coverage (RC) | ≥75% | TBD | ⏳ |
 | Coverage (GA) | ≥80% | TBD | ⏳ |
-| TPC-H SF=1 | 22/22 | 22/22 | ✅ |
+| TPC-H H/22 | 22/22 | ✅ |
 | SOAK | 168h, 0 errors | 43h+ | 🔄 |
 
 ---

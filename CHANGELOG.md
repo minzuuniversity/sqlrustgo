@@ -413,7 +413,7 @@ AI Native GMP Platform（AI 原生 GMP 平台），在 v3.4.0 管理套件基础
 | GA | ✅ PASS | 2026-05-28 |
 
 > **L1 平均覆盖率**: 87.36%（≥85%）✅  
-> **TPC-H SF=1**: 22/22 PASS ✅
+> **TPC-H SF=1**: ~10/22 (verified, see SF1_TRUTH_AUDIT.md) ✅
 
 详见: [docs/releases/v3.5.0/README.md](docs/releases/v3.5.0/README.md)
 
