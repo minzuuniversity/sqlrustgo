@@ -28,7 +28,7 @@
 | RC Gate PASS | RC_GATE_REPORT.md | ✅ |
 | Full test suite | 300+ tests | ✅ |
 | Coverage ≥ 75% | L1_8 avg 80.60% | ✅ |
-| TPC-H SF=1 22/22 | scripts/tpch/run_sf1.sh | ✅ |
+| TPC-H SF=1 22/22 | scripts/tpch/run_sf1.sh | ⚠️ PENDING (fixture missing) |
 | Documentation | CHANGELOG, UPGRADE_GUIDE, ARCHITECTURE | ✅ |
 | Security audit | Code review | ⚠️ Pending |
 
