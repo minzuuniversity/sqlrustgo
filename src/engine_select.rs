@@ -1705,7 +1705,7 @@ impl<S: StorageEngine + 'static> ExecutionEngine<S> {
                             .name
                             .strip_prefix(&format!("{}.", alias))
                             .unwrap_or(&c.name);
-                        bare_c == col_name || c.name == col_name
+                        bare_c.eq_ignore_ascii_case(col_name) || c.name.eq_ignore_ascii_case(col_name)
                     });
                     if has_col {
                         if found.is_some() {
@@ -2592,17 +2592,17 @@ fn lookup_column(info: &TableInfo, col_name: &str) -> Option<usize> {
     let bare = col_name.rsplit('.').next().unwrap_or(col_name);
 
     info.columns.iter().position(|c| {
-        if c.name == col_name {
+        if c.name.eq_ignore_ascii_case(col_name) {
             return true;
         }
         // The accumulated column name may have one or more `.`-prefix
         // segments. Find the final segment and compare.
         if let Some((_, suffix)) = c.name.rsplit_once('.') {
-            if suffix == bare {
+            if suffix.eq_ignore_ascii_case(bare) {
                 return true;
             }
         }
-        if c.name == bare {
+        if c.name.eq_ignore_ascii_case(bare) {
             return true;
         }
         false
