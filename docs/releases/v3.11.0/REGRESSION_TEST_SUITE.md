@@ -8,9 +8,9 @@ Automated regression test suite for v3.11.0 GA release.
 
 ### 1. TPC-H Baseline (SF=1)
 
-22/22 queries must pass at SF=1.
+22/22 queries must pass at SF=1 once fixture is generated.
 
-**Gate**: `bash scripts/tpch/run_sf1.sh` → 22/22 PASS
+**Gate**: `bash scripts/tpch/run_sf1.sh` → ⚠️ PENDING (fixture at /tmp/tpch-sf1 missing)
 
 ```bash
 cd /path/to/sqlrustgo
@@ -83,7 +83,7 @@ regression-tests:
 
 | Test | Gate | Status |
 |------|------|--------|
-| TPC-H SF=1 | 22/22 PASS | Required |
+| TPC-H SF=1 | 22/22 PENDING (fixture missing) | Required |
 | Chaos Soak | 2h all PASS | Required |
 | Upgrade | All PASS | Required |
 | Sysbench OLTP | tps > baseline | Required |
