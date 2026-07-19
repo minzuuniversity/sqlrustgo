@@ -13,28 +13,28 @@ use std::collections::HashSet;
 pub trait TableEngine: Send + Sync {
     /// Get table info
     fn get_table_info(&self) -> &TableInfo;
-    
+
     /// Insert records into the table
     fn insert(&mut self, records: Vec<Record>) -> SqlResult<()>;
-    
+
     /// Scan all records in the table
     fn scan(&self) -> SqlResult<Vec<Record>>;
-    
+
     /// Delete records matching filters
     fn delete(&mut self, filters: &[Value]) -> SqlResult<usize>;
-    
+
     /// Update records matching filters
     fn update(&mut self, filters: &[Value], updates: &[(usize, Value)]) -> SqlResult<usize>;
-    
+
     /// Flush table to disk
     fn flush(&mut self) -> SqlResult<()>;
-    
+
     /// Get dirty tables (for flush optimization)
     fn dirty_tables(&self) -> &HashSet<String>;
-    
+
     /// Mark a table as dirty
     fn mark_dirty(&mut self, table: &str);
-    
+
     /// Get table name
     fn table_name(&self) -> &str;
 }

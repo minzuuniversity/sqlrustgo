@@ -17,10 +17,7 @@ fn test_upgrade_script_exists() {
     );
 
     // Check it's executable
-    let _ = Command::new("chmod")
-        .arg("+x")
-        .arg(script_path)
-        .output();
+    let _ = Command::new("chmod").arg("+x").arg(script_path).output();
 
     println!("Upgrade script exists and is executable");
 }
@@ -59,7 +56,9 @@ fn test_upgrade_script_syntax() {
         .output();
 
     let ok = result.as_ref().map(|o| o.status.success()).unwrap_or(false);
-    let err_msg = result.map(|o| String::from_utf8_lossy(&o.stderr).to_string()).unwrap_or_default();
+    let err_msg = result
+        .map(|o| String::from_utf8_lossy(&o.stderr).to_string())
+        .unwrap_or_default();
 
     assert!(ok, "Upgrade script has syntax errors: {}", err_msg);
 
