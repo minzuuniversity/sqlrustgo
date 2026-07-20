@@ -1005,7 +1005,7 @@ mod tests {
         let temp_dir = std::env::temp_dir().join("sqlrustgo_test_empty");
         let _ = remove_dir_all(&temp_dir);
 
-        let storage = FileStorage::new(temp_dir.clone()).unwrap();
+        let mut storage = FileStorage::new(temp_dir.clone()).unwrap();
 
         // Test empty storage
         assert_eq!(storage.table_names().len(), 0);

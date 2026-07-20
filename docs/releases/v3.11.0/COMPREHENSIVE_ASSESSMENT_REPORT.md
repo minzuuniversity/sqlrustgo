@@ -10,19 +10,19 @@
 
 ## 0. 总体结论
 
-**v3.11.0 RC — 债务清零完成，Q4 性能突破，TPC-H SF=1 22/22 通过，SOAK 51h 验证，已处于 RC 阶段，准备 GA。**
+**v3.11.0 RC — 债务清零部分完成，Q4 性能优化，TPC-H SF=1 fixture 缺失（22/22 未跑），SOAK 已 51h 但未达 168h GA 阈值，已处于 RC 阶段，距 GA 还差 P0 整改（见 `TPCH_SF1_VERIFICATION_REPORT.md`、`AUDIT_V311_REALITY_CHECK.md`）。**
 
 | 维度 | 结论 |
 |------|------|
-| **任务完成** | 23/23 (100%) |
+| **任务完成** | 12/23 (52%) — 11 项 V311-XX ⏳ TODO (见 `FEATURE_CHECKLIST.md`) |
 | **RC 门禁** | C1-C8 全部 PASS (clippy/fmt 已修复) |
 | **TPC-H** | SF=1 22/22 ⚠️ PENDING (fixture generation required, real 22/22 not executed) |
-| **SOAK** | 51h+ ✅ PASS (0 errors) |
+| **SOAK** | 51h+ 🔄 进行中（未达 168h GA 阈值；V311-21 仍在跑）|
 | **覆盖率** | ≥75% per crate ✅ |
 | **历史债务** | LEGACY_DEBT 全部 CLOSED |
 | **新功能** | GIS (POINT+WITHIN), CREATE SEQUENCE, Table Compression, RLS |
 | **性能突破** | Hash Semi Join, Decorrelation, Hash Anti Join, Q4 从 14.5min → <5min |
-| **可信度** | A — 门禁全闭环，SOAK 实测通过 |
+| **可信度** | C — 多项 PENDING 未跑（详见 `AUDIT_V311_REALITY_CHECK.md`）|
 
 ---
 
@@ -173,7 +173,7 @@ v3.11.0 完成 v3.10.0 遗留债务闭环：
 
 | 指标 | v3.10.0 | v3.11.0 | 改进 |
 |------|---------|---------|------|
-| TPC-H SF=1 | 19/22 | **22/22** | +3 |
+| TPC-H SF=1 | 19/22 | ⚠️ **未实测**（fixture 缺失）| — |
 | Q4 执行时间 | 14.5min | **<5min** | **2.9x** |
 | 内存效率 | OOM 风险 | **稳定** | +75% |
 
@@ -183,7 +183,7 @@ v3.11.0 完成 v3.10.0 遗留债务闭环：
 
 | 测试 | 时长 | 结果 | 备注 |
 |------|------|------|------|
-| 168h SOAK v3.11.0 | 51h+ | ✅ PASS | 0 errors, 100% success rate |
+| 168h SOAK v3.11.0 | 51h+ (进行中) | 🔄 进行中 | 0 errors so far, 100% success rate |
 
 **SOAK 验证**:
 - 并发负载稳定
@@ -267,12 +267,12 @@ v3.11.0 完成 v3.10.0 遗留债务闭环：
 | 维度 | v3.10.0 | v3.11.0 |
 |------|---------|---------|
 | 定位 | 债务清理终点站 | 新功能集成 + Q4 性能突破 |
-| TPC-H SF=1 | 19/22 | **22/22** |
+| TPC-H SF=1 | 19/22 | ⚠️ **未实测**（fixture 缺失，22/22 不可宣称）|
 | Q4 性能 | 14.5min OOM | **<5min** |
 | 新功能 | ParallelExecutor 主路径 | GIS, RLS, SEQUENCE, Compression |
 | 历史债务 | INT/ARCH/SEM CLOSED | LEGACY_DEBT CLOSED |
 | 覆盖率 | ~14.71% | **≥75%** |
-| SOAK | 168h PASS | 51h+ PASS |
+| SOAK | 168h PASS | 🔄 51h+ 进行中（未达 168h）|
 | Hash Join | 基础 | **Semi Join + Anti Join** |
 | Decorrelation | 无 | ✅ |
 | CTE Materialization | 无 | ✅ |
@@ -308,7 +308,7 @@ v3.11.0 完成 v3.10.0 遗留债务闭环：
 | 检查项 | 状态 | 说明 |
 |--------|------|------|
 | RC 门禁 R1-R8 | ✅ PASS | 全部通过 |
-| 168h SOAK | ✅ PASS | 目标 168h，实际 51h+ |
+| 168h SOAK | 🔄 进行中 | 目标 168h，实际 51h+ |
 | TPC-H SF=1 22/22 | ⚠️ PENDING | 全部查询通过（待 fixture 生成后真实验证） |
 | 覆盖率 ≥75% | ✅ PASS | 各 crate 均达标 |
 | 文档完整性 | ✅ | COMPREHENSIVE_ASSESSMENT_REPORT.md |
