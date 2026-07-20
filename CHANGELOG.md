@@ -321,7 +321,7 @@ Gitea Milestone: <http://192.168.0.252:3000/openclaw/sqlrustgo/milestones/32>
 > 以下为 v3.8.0 GA Final 收口内容, 已合并入 [`docs/releases/v3.8.0/CHANGELOG.md`](docs/releases/v3.8.0/CHANGELOG.md) 详细记录。v3.8.0 GA Final 关键 PR (按合并顺序):
 
 - **PR #3131 (Issue #2988)**: Parser — MySQL 5.7 keyword-as-identifier + scalar function dispatch. Corpus +68 cases, 86.5% → 94.2% pass rate.
-- **PR #3132 (Issue #2977)**: TPC-H Q2 — 5-table comma-join key resolution bug. TPC-H 21/22 → **22/22 ✅**.
+- **PR #3132 (Issue #2977)**: TPC-H Q2 — 5-table comma-join key resolution bug. (事后验证: 该修复基于 SF=0.1 fixture — 真正的 SF=1 仍未验证,见 Issue #3650)
 - **PR #3142**: ORDER BY execution in SELECT — TPC-H Q18/Q4 unblocked.
 - **PR #3134 (Issue #3110)**: Savepoint basic test scaffolding — `tests/savepoint_test.rs` + `undo_log_len` getter.
 - **PR #3137 (Issue #3107 #3111)**: FEATURE_MATRIX.md §1.5 F-11/F-12 contradiction fixed.
@@ -414,6 +414,7 @@ AI Native GMP Platform（AI 原生 GMP 平台），在 v3.4.0 管理套件基础
 
 > **L1 平均覆盖率**: 87.36%（≥85%）✅  
 > **TPC-H SF=1**: ~10/22 (verified, see SF1_TRUTH_AUDIT.md) ✅
+> **诚实声明 (2026-07-20, Issue #3650)**: 本文档历史版本中"22/22 PASS"声明均未在真实 TPC-H SF=1 fixture 上验证。`tpch_sf1_22_in_process_regression` 标 `#[ignore]`,`/tmp/tpch-sf1` 为空,`dbgen` 未安装。真实状态: ~10/22 (单表 + 2-3 表逗号连接)。完整依据见 [`docs/releases/v3.11.0/TPCH_SF1_VERIFICATION_REPORT.md`](docs/releases/v3.11.0/TPCH_SF1_VERIFICATION_REPORT.md)。
 
 详见: [docs/releases/v3.5.0/README.md](docs/releases/v3.5.0/README.md)
 
