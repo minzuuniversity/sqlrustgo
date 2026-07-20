@@ -78,17 +78,17 @@
 
 ---
 
-## 4. F-XX ISOLATED → 主路径集成 (7/10 完成)
+## 4. F-XX ISOLATED → 主路径集成 (5/10 完成,2 partial)
 
-### 4.1 已完成 (7) ✅
+### 4.1 已完成 (5 真实 + 2 partial)
 
 | ID | 名称 | v3.10.0 | v3.11.0 | PR | 状态 | 集成质量 |
 |----|------|---------|---------|-----|------|---------|
 | F-16 | Gap Locking | CLOSED | — | #3788, #3783 | ✅ CLOSED | ✅ 真实集成 |
 | F-23 | Clustered Index | VERIFIED | ✅ CLOSED | #3461 + #3516 | ✅ CLOSED | ✅ 读写路径完整 |
 | F-24 | Adaptive Hash Index | VERIFIED | ✅ CLOSED | #3478 | ✅ CLOSED | ✅ scan_with_ahi + record_access |
-| F-25 | Change Buffer | VERIFIED | ✅ CLOSED | #3512 | ✅ CLOSED | ✅ crates/storage + lib.rs 导出 |
-| F-26 | Double-Write Buffer | VERIFIED | ✅ CLOSED | #3514 | ✅ CLOSED | ✅ crates/storage + lib.rs 导出 |
+| F-25 | Change Buffer | VERIFIED | ⚠️ **partial** | #3512 | 🟡 **PARTIAL** | ⚠️ 仅 crates/storage lib 导出,主执行路径未集成（src/execution_engine.rs 无 ChangeBuffer 引用）|
+| F-26 | Double-Write Buffer | VERIFIED | ⚠️ **partial** | #3514 | 🟡 **PARTIAL** | ⚠️ 仅 crates/storage lib 导出,主执行路径未集成（src/execution_engine.rs 无 DWB 引用）|
 | F-31 | Performance Schema | VERIFIED | ✅ CLOSED | #3479 | ✅ CLOSED | ✅ trait + 调用 |
 | F-32 | MySQL Admin | PARTIAL | ✅ CLOSED | #3481 | ✅ CLOSED | 🟡 binary 发版 |
 
