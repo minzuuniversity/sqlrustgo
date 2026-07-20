@@ -94,7 +94,7 @@ promotion_to_RC_requires:
   - "RC gate R1-R8 all PASS (check_rc_gate_v3.11.0.sh)"
   - "All 23 V311-XX tasks completed"
   - "Coverage ≥75% per crate (RC baseline, see coverage_thresholds.rc)"
-  - "TPC-H SF=1 22/22 PASS"
+  - "TPC-H SF=1 [PENDING: fixture generation required, real 22/22 not executed, see Issue #3650]"
   - "V311-19 (Extension Crate decision) complete"
 
 promotion_to_GA_requires:
