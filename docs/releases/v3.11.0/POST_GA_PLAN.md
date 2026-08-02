@@ -1,10 +1,10 @@
-# v3.11.0 Post-GA Plan
+# v3.11.0 Pre-GA Plan (整改后)
 
 > **Version**: v3.11.0
-> **Status**: Post-GA (2026-07-19)
+> **Status**: PRE-GA (2026-07-20 整改后) — **GA 未发布**；G3/G4 FAIL；待 P0 整改完成
 > **Owner**: @openclaw
 
-Post-GA tasks and next steps.
+Pre-GA tasks and remaining P0 items (按 `TPCH_SF1_VERIFICATION_REPORT.md` + `AUDIT_V311_REALITY_CHECK.md`)。
 
 ---
 
