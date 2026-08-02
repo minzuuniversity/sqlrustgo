@@ -22,7 +22,7 @@
 |----|-------|--------|-----------|--------|
 | G1 | R1-R4 | 所有RC指标 | PASS | ✅ PASS |
 | G2 | Full test | `cargo test --workspace` | PASS | ✅ PASS (2,060 lib tests / 0 fail / 6 ignored slow-parallel) |
-| G3 | Full coverage | L1 avg ≥ 85%, 每crate ≥ 80% | **❌ FAIL** | 6 crate 实测平均 69.83%；4 crate < 80%；L1_8=80.60% 不可重现 |
+| G3 | Full coverage | L1 avg ≥ 85%, 每crate ≥ 80% | **❌ FAIL** | 9 crate 实测平均 63.25%；8 crate < 80%；L1_8=80.60% 不可重现 |
 | G4 | TPC-H SF=1 | `scripts/tpch/run_sf1.sh` | 22/22 PASS | **❌ FAIL**（fixture 缺失；22/22 未实测）|
 | G5 | Security | `cargo audit` + 手动审计 | PASS | ⚠️ PENDING |
 | G6 | Documentation | API reference, CHANGELOG, UPGRADE_GUIDE | PASS | ⚠️ PARTIAL（PENDING 已修正；audit/verify 报告已补）|
