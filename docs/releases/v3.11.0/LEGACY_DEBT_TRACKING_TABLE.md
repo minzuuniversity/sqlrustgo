@@ -166,8 +166,8 @@
 
 | # | 标题 | 状态 |
 |---|------|------|
-| #3491 | V311-03: F-25 Change Buffer 主路径集成 | ✅ CLOSED |
-| #3492 | V311-04: F-26 Double-Write Buffer 主路径集成 | ✅ CLOSED |
+| #3491 | V311-03: F-25 Change Buffer 主路径集成 | 🟡 PARTIAL（仅 lib 导出,主执行路径未集成）|
+| #3492 | V311-04: F-26 Double-Write Buffer 主路径集成 | 🟡 PARTIAL（仅 lib 导出,主执行路径未集成）|
 | #3493 | V311-14: SEM-4 覆盖率 ≥85% | ⏳ 待办 |
 | #3494 | V311-05: F-29 Row-Level Security | ⏳ 待办 |
 | #3495 | V311-08: F-35 Password Rotation | ⏳ 待办 |

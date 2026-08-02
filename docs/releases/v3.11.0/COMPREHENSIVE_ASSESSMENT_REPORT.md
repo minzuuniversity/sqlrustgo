@@ -236,13 +236,13 @@ v3.11.0 完成 v3.10.0 遗留债务闭环：
 | clippy errors | 0 | ✅ PASS |
 | fmt drift | 0 | ✅ PASS |
 | TPC-H SF=1 | fixture missing | ⚠️ PENDING (real 22/22 not run; requires `dbgen -s 1 -f`) |
-| SOAK | 51h+ | ✅ PASS |
+| SOAK | 51h+ | 🔄 进行中（未达 168h GA 阈值）|
 
 ### 8.2 覆盖率
 
 | Crate | 覆盖率目标 | 状态 |
 |--------|-----------|------|
-| 各 crate | ≥75% | ✅ PASS |
+| 各 crate | ≥75%（GA 阈值 ≥80%）| ❌ FAIL（实测 9-crate 平均 63.25%，8/9 < 80%）|
 
 ---
 
@@ -254,11 +254,11 @@ v3.11.0 完成 v3.10.0 遗留债务闭环：
 | Clippy | ✅ 0 errors |
 | Format (rustfmt) | ✅ 0 drift |
 | cargo test --lib | ✅ PASS |
-| SOAK 51h | ✅ PASS |
+| SOAK 51h | 🔄 进行中（未达 168h）|
 | TPC-H SF=1 22/22 | ⚠️ PENDING (fixture generation required) |
-| 覆盖率 ≥75% | ✅ PASS |
+| 覆盖率 ≥75% | ❌ FAIL（实测 9-crate 平均 63.25%；不达 GA 阈值 80%）|
 
-**综合评级**: A (RC 条件全部满足)
+**综合评级**: C（多项 PENDING 未跑；详见 `AUDIT_V311_REALITY_CHECK.md`）
 
 ---
 
