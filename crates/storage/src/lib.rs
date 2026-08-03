@@ -12,6 +12,8 @@ pub mod checkpoint;
 pub mod clustered_table;
 pub mod double_write_buffer;
 pub mod engine;
+pub mod integrated_storage;
+
 pub mod file_storage;
 pub mod file_table;
 pub mod io_delay;
