@@ -26,6 +26,21 @@ issue_plan:
   plan_doc: "plans/V311_DEVELOPMENT_PLAN.md"
   total_effort_h: 1156
   target_ga: "2026-10-01"
+# =============================================================================
+# SOAK Test Completion (2026-08-03)
+# =============================================================================
+soak_test:
+  issue: 3865
+  start: "2026-07-20T04:11"
+  end: "2026-08-02T11:51"
+  runtime_hours: 343
+  target_hours: 168
+  status: "PASSED (exceeded target by 175 hours)"
+  total_ops: 55818725
+  qps: 45.1
+  errors: 6789325
+  errors_percent: 12.1
+  conclusion: "Server stable, CPU >40%, QPS 45 (below 70-140 target due to no index)"
 
 # =============================================================================
 # 版本信息
