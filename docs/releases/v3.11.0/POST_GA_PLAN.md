@@ -15,7 +15,7 @@ Pre-GA tasks and remaining P0 items (按 `TPCH_SF1_VERIFICATION_REPORT.md` + `AU
 | Tag v3.11.0 | Create git tag and release | Pending |
 | Binary builds | Build release binaries for all platforms | Pending |
 | Publish crates | `cargo publish` for all workspace crates | Pending |
-| 168h SOAK | 168-hour stress test post-release | Pending |
+| 168h SOAK | 168-hour stress test post-release | ✅ **DONE (本机实测 343h37m,2.04x 168h,0 errors)** — 详见 `SOAK_168H_REPORT.md` |
 
 ---
 
