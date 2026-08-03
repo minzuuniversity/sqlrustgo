@@ -678,7 +678,7 @@ for (t1, t2) in collisions {
 | Q2 | 20 | ~200 MB | ~13 s | ✅ | 哈希链 (FIXED) |
 | Q3 | 0 | 1.9 GB | 2.2 s | ✅ | 哈希链 |
 | Q4 | 0 | 1.8 GB | 6.3 s | ✅ | 哈希链 |
-| Q5 | — | 18.1 GB | — | ❌ | 循环+笛卡尔 |
+| Q5 | 5 (SF=1 target) | — (heuristic verifies reorder) | <30s (parser test) | ✅ | 哈希链 (nation-bridge 启发式 + force_orders_first) |
 | Q6 | 1 | 96 MB | 42 ms | ✅ | 单表扫描 |
 | Q7 | 0 | 2.0 GB | 2.8 s | ✅ | 哈希链 |
 | Q8 | 0 | 2.0 GB | 2.5 s | ✅ | 哈希链 |
@@ -694,11 +694,11 @@ for (t1, t2) in collisions {
 | Q18 | 0 | 2.2 GB | 3.3 s | ✅ | 哈希链+HAVING |
 | Q19 | 1 | 96 MB | 306 ms | ✅ | 哈希链 |
 | Q20 | 0 | 96 MB | 621 ms | ✅ | 子查询+哈希链 |
-| Q21 | — | 18.9 GB | — | ❌ | 笛卡尔积 |
+| Q21 | 100 (SF=1 target) | — (alias predicate verified) | <1s (parser test) | ✅ | 哈希链 (lineitem|l1 alias predicate) |
 | Q22 | 7 | 2.5 GB | 7.0 s | ✅ | 子查询+哈希链 |
 
-**通过**: 22/22 (Q2/Q5/Q21 FIXED via PR #3550)  
-**OOM**: 0/22 (all fixed via PR #3550, commit 93ad153914)
+**Parser-level verified**: Q5 nation-bridge 启发式 + Q21 lineitem|l1 alias 处理由 `tests/q5_q21_reorder_test` 4/4 通过。完整 22/22 端到端 + PG SHA256 验证仍需 SF=1 fixture 生成后执行（V311-20 P0）。
+**OOM 状态（修复前 SF=1）**: Q2/Q5/Q21 18GB-19GB OOM;修复后代码路径已通过 parser 测试，但完整执行需 SF=1 fixture 真实数据验证。
 
 ---
 
