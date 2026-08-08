@@ -1,7 +1,7 @@
 # TPC-H SF=1.0 基准数据真实性核查与整改要求
 
 > **Version**: v3.11.0
-> **Status**: 🔴 整改未通过 — 阻塞 GA 门禁 G4
+> **Status**: 🟡 IN PROGRESS — fixture 生成✅; wire 测试执行中
 > **Date**: 2026-07-20
 > **Author**: MiniMax-M3 (governance audit follow-up)
 > **Related**: Issue #3643, PR #3647, `GOVERNANCE_TRUTH_AUDIT.md`
@@ -15,15 +15,15 @@ v3.11.0 当前文档中关于 TPC-H SF=1 的所有 "22/22 PASS" 声明**全部�
 
 | 维度 | 现状 | 真实状态 |
 |------|------|----------|
-| **SF=1 fixture** | 不存在 | `/tmp/tpch-sf1` 为空,`dbgen` 二进制缺失 |
-| **22/22 PASS** | 文档多处声明 | `tpch_sf1_22_in_process_regression` 标 `#[ignore]`,从未执行 |
+| **SF=1 fixture** | ✅ 已生成 (2026-08-08) | `/var/tmp/tpch-sf1` 1.1GB; `lineitem=6001215` ✅; dbgen 存在于 `/opt/tpch/tpch-dbgen/` |
+| **22/22 PASS** | 🟡 IN PROGRESS | fixture 生成✅; wire 协议测试执行中; `#[ignore]` 测试待运行 |
 | **SF1_BASELINE_REPORT.md 行数** | 声称 SF=1 | 实际是 SF=0.1 量级(supplier=1,000,非 10,000) |
 | **22 行查询时间** | 报告归为 sqlrustgo | 实际来自 SQLite 在伪 fixture 上的执行 |
 | **TPCH_QExecution_Analysis.md 性能表** | 标 22/22 PASS | 自身矛盾(Q5/Q21 标 ❌,但底部"通过 22/22") |
 | **跨引擎对比** | 仅 SQLite (SF=0.1) | PostgreSQL 需密码,MySQL/MariaDB 未安装 |
 | **覆盖率** | L1_8=80.60% | 12 个 crate 未达 80% 阈值 |
 
-**当前阶段**: 仍为 **RC**。不得声明 GA,直至本文档列出的整改项全部通过。
+**当前阶段**: **RC** (fixture 已生成; 待 22/22 wire 测试完成方可声明 G4 PASS)
 
 ---
 
@@ -59,43 +59,33 @@ grep -rn "TPC-H SF=1 22/22 PASS\|22/22 ✅\|TPC-H SF=1 ✅ PASS\|all 22 queries 
 
 ## 三、整改要求(按优先级)
 
-### 🔴 P0-1: 生成真实 TPC-H SF=1 fixture(阻塞 GA 门 G4)
+### ✅ P0-1: 生成真实 TPC-H SF=1 fixture(阻塞 GA 门 G4) — **✅ DONE (2026-08-08)**
 
-**责任人**: V311-20 owner
-**预计耗时**: 4h (含 dbgen 安装) + 30 min (数据生成)
-**依赖**: 75GB+ 磁盘
+**生成位置**: `192.168.0.250:/var/tmp/tpch-sf1`  
+**dbgen 路径**: `/opt/tpch/tpch-dbgen/dbgen` (预装)  
+**生成命令**: `dbgen -s 1 -f` → `/var/tmp/tpch-sf1/`  
+**磁盘空间**: 207GB free on `/`
 
-#### 步骤
-
-```bash
-# 1) 安装 dbgen
-which dbgen || {
-  git clone https://github.com/electrum/tpch-dbgen.git ~/tpch-dbgen
-  cd ~/tpch-dbgen && make
-}
-
-# 2) 生成 SF=1 fixture (~1 GB)
-bash scripts/tpch/setup_sf1.sh /tmp/tpch-sf1
-
-# 3) 行数断言(必须严格匹配 TPC-H 官方 SF=1 标准)
-for f in /tmp/tpch-sf1/*.tbl; do
-  echo "$(basename $f .tbl): $(wc -l < $f) lines"
-done
-# 期望输出:
-#   region: 5
-#   nation: 25
-#   supplier: 10000
-#   customer: 1500000
-#   part: 200000
-#   partsupp: 800000
-#   orders: 1500000
-#   lineitem: 6001215
+**Fixture 实测**:
+```
+customer.tbl  150,000 rows (24MB)   ✅ SF=1 标准值
+lineitem.tbl 6,001,215 rows (725MB) ✅ SF=1 标准值
+nation.tbl         25 rows (2.2KB)  ✅
+orders.tbl   1,500,000 rows (164MB) ✅
+partsupp.tbl  800,000 rows (114MB) ✅
+part.tbl      200,000 rows (24MB)  ✅
+region.tbl          5 rows (389B)  ✅
+supplier.tbl   10,000 rows (1.4MB) ✅
+Total: 1.1GB
 ```
 
-**强制断言**:
-- `customer.tbl` = **1,500,000** 行(不是 150,000)
-- `lineitem.tbl` = **6,001,215** 行(不是 600,000)
-- 8 个 `.tbl` 总大小约 1.0-1.2 GB
+**注意**: `customer=150,000` 是 SF=1 正确值（原文档期望 `customer=1,500,000` 为 SF=10 误值；本 fixture 数值符合 TPC-H 官方 SF=1 规范）。
+
+**构建验证**: `cargo build --release -p sqlrustgo-server` ✅ (34.59s)  
+**Harness 测试**: `tpch_gate_test` 16/17 ✅ (1 个需要服务器连接)  
+**REPL 测试**: `e2e_query_test` 8/8 ✅
+
+**下一步**: 执行 `TPCH_SF1_DIR=/var/tmp/tpch-sf1 cargo test --release --test tpch_sf1_22_vs_3engines_test -- --ignored --nocapture` 完成 22/22 wire 协议测试。
 
 **证据**:
 - 截屏 `df -h` 显示可用磁盘
