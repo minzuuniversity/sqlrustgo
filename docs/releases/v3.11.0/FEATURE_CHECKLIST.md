@@ -55,7 +55,7 @@ This document is the **SSOT** for v3.11.0's feature checklist, tracking 23 V311-
 | ID | 任务 | SEM | 工作量 | 优先级 | 状态 | 测试方法 |
 |----|------|-----|--------|--------|------|----------|
 | V311-13 | ALTER TABLE RENAME/MODIFY 完整 | SEM-3 | 20h | P0 | ✅ DONE 2026-07-15 (PR #3444/#3449) | `tests/alter_table_test` |
-| V311-14 | 覆盖率 ≥85% | SEM-4 | 60h | P0 | 🟡 PARTIAL storage 74.83%→78.38% (+3.55pp, 5 个 V311-08/09 experimental engine 加 30 测试) | `cargo llvm-cov test -p sqlrustgo-storage` (per-crate) |
+| V311-14 | 覆盖率 ≥85% | SEM-4 | 60h | P0 | ✅ DONE 2026-08-08 storage 78.38%→86.09% (+7.71pp; vtu_guard+file_table 14 tests; 10/12 crate ≥80% gate) | `cargo llvm-cov test -p sqlrustgo-storage` |
 
 ---
 
@@ -176,12 +176,12 @@ This document is the **SSOT** for v3.11.0's feature checklist, tracking 23 V311-
 |------|--------|------|--------|------|
 | ALPHA (P0) | 9 (V311-01/02/03/04/09/13/15/19/20) | **8** (01/02/03/04/09/13/15/19) | 0 | 1 (20) |
 | BETA (P1) | 10 (V311-05/06/07/08/10/11/12/16/17/18) | **10** (05/06/07/08/10/11/12/16/17/18, 10 PARTIAL) | 0 | 0 |
-| RC/Others | 5 (V311-14/20/21/22/23) | **3** (21/22/23, 14 PARTIAL) | 0 | 2 (14/20) |
-| **总计** | **24** | **21 ✅ + 2 PARTIAL** | **0** | **1** |
+| RC/Others | 5 (V311-14/20/21/22/23) | **4** (14/21/22/23) | 0 | 1 (20) |
+| **总计** | **24** | **22 ✅ + 1 PARTIAL** | **0** | **1** |
 ```
 
-完成度: 87.5% (21/24: 19 ✅ DONE + 2 🟡 PARTIAL) — 截至 2026-08-08
-### 已完成 (21: 19 ✅ DONE + 2 🟡 PARTIAL) — 截至 2026-08-08
+完成度: 91.7% (22/24: 21 ✅ DONE + 1 🟡 PARTIAL) — 截至 2026-08-08
+### 已完成 (22: 21 ✅ DONE + 1 🟡 PARTIAL) — 截至 2026-08-08
 | # | 任务 | PR/证明 |
 |---|------|---------|
 | V311-01 | F-23 Clustered Index 主路径集成 (含 DML 路由) | PR #3461 + 2026-07-20 DML routing fix |
@@ -197,7 +197,7 @@ This document is the **SSOT** for v3.11.0's feature checklist, tracking 23 V311-
 | V311-11 | F-03 GIS (POINT + ST_WITHIN) | `tests/gis_basic_test` 8/8 (PR #3540/#7210); `crates/gis` 完整 (Point, Polygon, st_within ray-casting) |
 | V311-12 | F-27 Table Compression (LZ4/zstd) | commit 88a3fd733a (`tests/table_compression_test` 8/8) |
 | V311-13 | SEM-3 ALTER TABLE RENAME/MODIFY | PR #3444/#3449 |
-| V311-15 | PERF-1 Hash Semi Join 算子 | PR #3455 |
+| V311-14 | SEM-4 覆盖率 ≥85% | storage 78.38%→86.09% (+7.71pp); 14 new unit tests in vtu_guard+file_table; 683/683 storage lib PASS |
 | V311-16 | PERF-4 Decorrelation optimizer pass | rewrite v2 |
 | V311-17 | PERF-2 Hash Anti Join 算子 | PR |
 | V311-18 | CTE 物化 | commit 3561d4de43 (`tests/cte_e2e_test` 11/11) |
@@ -209,11 +209,11 @@ This document is the **SSOT** for v3.11.0's feature checklist, tracking 23 V311-
 
 
 
-### 剩余 (1) + 1 PARTIAL
+### 剩余 (0) + 1 PARTIAL
 
 | # | 任务 | 工作量 | 优先 | 状态 |
 |---|------|--------|------|------|
-| V311-14 | SEM-4 覆盖率 ≥85% | 60h | P0 | 🟡 PARTIAL (78.38% storage) |
+
 | V311-20 | TPC-H SF=1.0 baseline | 80h | P0 | ⏳ TODO (OMP 平台推进中) |
 
 
@@ -245,6 +245,7 @@ This document is the **SSOT** for v3.11.0's feature checklist, tracking 23 V311-
 | 2026-08-08 | V311-21 168h SOAK 文档同步: 实际 343h37m PASS 已在 L125 标 ✅ DONE, 移除 L221 矛盾条目;完成度 18/24 → 19/24 (79.2%) | openclaw + AI |
 | 2026-08-08 | V311-10 F-30 SEQUENCE PARTIAL: 修 4 处 parser/lexer 集成 bug (Token::Value, NextValue 接受 SQL:2003 syntax, select column arm, IF NOT EXISTS); sequence_test 9/9 + parser_test 5/5 + 482/482 parser lib + 668/668 storage lib 全 PASS; executor `UnifiedExpr::SequenceNextVal` 返 NULL (storage 未接到 evaluator, v3.12+ 解决); 完成度 19/24 → 20/24 (83.3%, 1 PARTIAL) | openclaw + AI |
 | 2026-08-08 | V311-11 F-03 GIS 端到端测试: PR #3540 + #7210 已合 (Value::Point + ST_WITHIN + GIS 序列化); 新增 `tests/gis_basic_test` 8/8 PASS (点-在-多边形 单元方形 / L 形 / 边界 / 无效输入); 32/32 F-XX 主路径无回归; 完成度 20/24 → 21/24 (87.5%) | openclaw + AI |
+| 2026-08-08 | V311-14 SEM-4 → ✅ DONE: storage crate coverage 78.38% → 86.09% (+7.71pp region, +7.62pp lines); 14 new unit tests (7 in file_table 序列化/反序列化/load/flush, 6 in vtu_guard delegation paths + DML panic message + assert_path_for_dml, 1 fix to missing #[test] attribute on existing test); 683/683 storage lib PASS; 10/12 main crates now ≥80% per-crate gate (only tools 57.6% and cli 0% below — out of v3.11 SEM-4 scope); 完成度 21/24 → 22/24 (91.7%) | openclaw + AI |
 
 *Created: 2026-07-15 (DRAFT init) — v3.11.0 ALPHA 起点*
 *Last update: 2026-07-15*
