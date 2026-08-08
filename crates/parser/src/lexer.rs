@@ -277,6 +277,7 @@ impl<'a> Lexer<'a> {
                     "IGNORE" => Token::Ignore,
                     "INTO" => Token::Into,
                     "VALUES" => Token::Values,
+                    "VALUE" => Token::Value,
                     "UPDATE" => Token::Update,
                     "SET" => Token::Set,
                     "DELETE" => Token::Delete,
