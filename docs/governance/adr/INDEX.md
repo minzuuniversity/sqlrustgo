@@ -46,7 +46,19 @@ follow the file naming convention `ADR-NNN-<topic>.md`.
 | **ADR-011b** | v3.8.0+1 TX+WAL Repair Strategy [v3.8.0+1] | ACCEPTED | The v3.8.0+1 release repair plan | [ADR-011-v3.8.0-1-tx-wal-repair.md](ADR-011-v3.8.0-1-tx-wal-repair.md) |
 | ADR-012 | SQLRustGo vs GMP-Platform Scope Boundary | ACCEPTED | Project boundary clarification | [ADR-012-sqlrustgo-vs-gmp-platform-scope.md](ADR-012-sqlrustgo-vs-gmp-platform-scope.md) |
 | **ADR-013** | **v3.10 Wired-Soak DDL + Wire Protocol 修复 RFC** | PROPOSED | v3.10 milestone plan (closes Issue #3302, 4-PR plan) | [ADR-013-v310-wired-soak-ddl-and-wire-protocol-repair.md](ADR-013-v310-wired-soak-ddl-and-wire-protocol-repair.md) |
-| **ADR-014** | **Multi-AI Coordination** | ACCEPTED | Z6G4 + macmini + future AI agent protocol (5 evidence fields, conflict resolution) | [ADR-014-multi-ai-coordination.md](ADR-014-multi-ai-coordination.md) |
+| **ADR-008x** | **ADR-008 §Policy 2 Exception: v3.11.0 G4 TPC-H SF=1 Wire Test Deferral** | PROPOSED | First use of ADR-008 exception mechanism; expires 2026-09-01 | [ADR-008-exception-v311-tpch-sf1.md](ADR-008-exception-v311-tpch-sf1.md) |
+| **ADR-014** | Multi-AI Coordination | ACCEPTED | Z6G4 + macmini + future AI agent protocol (5 evidence fields, conflict resolution) | [ADR-014-multi-ai-coordination.md](ADR-014-multi-ai-coordination.md) |
+
+## Exception ADRs (ADR-008 §Policy 2)
+
+ADR-008 §Policy 2 allows gate tests to be temporarily ignored only via a documented
+ADR amendment with explicit deadline, owner, and success criteria. The first such
+exception is **ADR-008x** (2026-08-09, expires 2026-09-01), covering v3.11.0 G4
+TPC-H SF=1 wire test deferral.
+
+Exception suffix convention: `ADR-NNNx` (e.g. `ADR-008x`). The underlying policy ADR
+retains its base number; each exception is a separate file with its own proposal
+status and deadline.
 
 ## Numbering notes
 
