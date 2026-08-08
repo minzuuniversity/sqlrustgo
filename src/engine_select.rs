@@ -981,23 +981,26 @@ impl<S: StorageEngine + 'static> ExecutionEngine<S> {
                 .iter()
                 .map(|c| c.alias.clone().unwrap_or_else(|| c.name.clone()))
                 .collect();
-            let rows: Vec<Vec<Value>> =
-                rows.into_iter()
-                    .map(|row| {
-                        select
-                            .columns
-                            .iter()
-                            .map(|col| match &col.expression {
-                                Some(expr) => crate::expr_utils::evaluate_expression_with_seq(
-                                    expr, &row, &table_info,
-                                    Some(&mut *storage_guard),
-                                    &|_| Ok(Value::Null),
-                                ).unwrap_or(Value::Null),
-                                None => row.first().cloned().unwrap_or(Value::Null),
-                            })
-                            .collect()
-                    })
-                    .collect();
+            let rows: Vec<Vec<Value>> = rows
+                .into_iter()
+                .map(|row| {
+                    select
+                        .columns
+                        .iter()
+                        .map(|col| match &col.expression {
+                            Some(expr) => crate::expr_utils::evaluate_expression_with_seq(
+                                expr,
+                                &row,
+                                &table_info,
+                                Some(&mut *storage_guard),
+                                &|_| Ok(Value::Null),
+                            )
+                            .unwrap_or(Value::Null),
+                            None => row.first().cloned().unwrap_or(Value::Null),
+                        })
+                        .collect()
+                })
+                .collect();
             (names, rows)
         };
         let (projected_column_names, projected_rows) = projected_with_names;
@@ -1712,7 +1715,8 @@ impl<S: StorageEngine + 'static> ExecutionEngine<S> {
                             .name
                             .strip_prefix(&format!("{}.", alias))
                             .unwrap_or(&c.name);
-                        bare_c.eq_ignore_ascii_case(col_name) || c.name.eq_ignore_ascii_case(col_name)
+                        bare_c.eq_ignore_ascii_case(col_name)
+                            || c.name.eq_ignore_ascii_case(col_name)
                     });
                     if has_col {
                         if found.is_some() {
