@@ -46,7 +46,7 @@ This document is the **SSOT** for v3.11.0's feature checklist, tracking 23 V311-
 |----|------|------|--------|--------|------|----------|
 | V311-09 | 列级权限实现 | F-36 | 40h | P0 | ✅ DONE 2026-07-15 (PR #3457) | `tests/column_privilege_test` (12/12) |
 | V311-10 | CREATE SEQUENCE 实现 | F-30 | 20h | P1 | 🟡 PARTIAL parser ✅, executor gap (NEXT VALUE FOR 返 NULL) | `tests/sequence_test` 9/9; `tests/parser` 5/5 |
-| V311-11 | GIS 空间数据类型 (POINT + WITHIN) | F-03 | 80h | P1 | ⏳ TODO | `tests/gis_basic_test` |
+| V311-11 | GIS 空间数据类型 (POINT + WITHIN) | F-03 | 80h | P1 | ✅ DONE 2026-08-08 (PR #3540 + #7210 已合 + 8/8 gis_basic_test) | `tests/gis_basic_test` 8/8 (PR #3540/#7210) |
 
 ---
 
@@ -175,13 +175,13 @@ This document is the **SSOT** for v3.11.0's feature checklist, tracking 23 V311-
 | 阶段 | 任务数 | 完成 | 进行中 | TODO |
 |------|--------|------|--------|------|
 | ALPHA (P0) | 9 (V311-01/02/03/04/09/13/15/19/20) | **8** (01/02/03/04/09/13/15/19) | 0 | 1 (20) |
-| BETA (P1) | 10 (V311-05/06/07/08/10/11/12/16/17/18) | **9** (05/06/07/08/10/12/16/17/18, 10 PARTIAL) | 0 | 1 (11) |
+| BETA (P1) | 10 (V311-05/06/07/08/10/11/12/16/17/18) | **10** (05/06/07/08/10/11/12/16/17/18, 10 PARTIAL) | 0 | 0 |
 | RC/Others | 5 (V311-14/20/21/22/23) | **3** (21/22/23, 14 PARTIAL) | 0 | 2 (14/20) |
-| **总计** | **24** | **20 ✅ + 2 PARTIAL** | **0** | **2** |
+| **总计** | **24** | **21 ✅ + 2 PARTIAL** | **0** | **1** |
 ```
 
-完成度: 83.3% (20/24: 18 ✅ DONE + 2 🟡 PARTIAL) — 截至 2026-08-08
-### 已完成 (20: 18 ✅ DONE + 2 🟡 PARTIAL) — 截至 2026-08-08
+完成度: 87.5% (21/24: 19 ✅ DONE + 2 🟡 PARTIAL) — 截至 2026-08-08
+### 已完成 (21: 19 ✅ DONE + 2 🟡 PARTIAL) — 截至 2026-08-08
 | # | 任务 | PR/证明 |
 |---|------|---------|
 | V311-01 | F-23 Clustered Index 主路径集成 (含 DML 路由) | PR #3461 + 2026-07-20 DML routing fix |
@@ -194,6 +194,7 @@ This document is the **SSOT** for v3.11.0's feature checklist, tracking 23 V311-
 | V311-08 | F-35 Password Rotation 主路径集成 | commit 15245855f4 (`tests/password_rotation_integration_test` 17/17) |
 | V311-09 | F-36 列级权限实现 | PR #3457 |
 | V311-10 | F-30 CREATE SEQUENCE (parser 层) | `tests/sequence_test` 9/9; lexer+parser 修复 4 处; executor gap 待 v3.12+ |
+| V311-11 | F-03 GIS (POINT + ST_WITHIN) | `tests/gis_basic_test` 8/8 (PR #3540/#7210); `crates/gis` 完整 (Point, Polygon, st_within ray-casting) |
 | V311-12 | F-27 Table Compression (LZ4/zstd) | commit 88a3fd733a (`tests/table_compression_test` 8/8) |
 | V311-13 | SEM-3 ALTER TABLE RENAME/MODIFY | PR #3444/#3449 |
 | V311-15 | PERF-1 Hash Semi Join 算子 | PR #3455 |
@@ -208,12 +209,10 @@ This document is the **SSOT** for v3.11.0's feature checklist, tracking 23 V311-
 
 
 
-### 剩余 (2) + 1 PARTIAL
+### 剩余 (1) + 1 PARTIAL
 
 | # | 任务 | 工作量 | 优先 | 状态 |
 |---|------|--------|------|------|
-
-| V311-11 | F-03 GIS (POINT + WITHIN) | 80h | P1 | ⏳ TODO |
 | V311-14 | SEM-4 覆盖率 ≥85% | 60h | P0 | 🟡 PARTIAL (78.38% storage) |
 | V311-20 | TPC-H SF=1.0 baseline | 80h | P0 | ⏳ TODO (OMP 平台推进中) |
 
@@ -245,6 +244,7 @@ This document is the **SSOT** for v3.11.0's feature checklist, tracking 23 V311-
 | 2026-07-20 | V311-14 SEM-4 PARTIAL: storage crate coverage 74.83% → 78.38% (5 个 V311-08/09 experimental engine 加 30 测试, 668/668 lib tests PASS) | openclaw + AI |
 | 2026-08-08 | V311-21 168h SOAK 文档同步: 实际 343h37m PASS 已在 L125 标 ✅ DONE, 移除 L221 矛盾条目;完成度 18/24 → 19/24 (79.2%) | openclaw + AI |
 | 2026-08-08 | V311-10 F-30 SEQUENCE PARTIAL: 修 4 处 parser/lexer 集成 bug (Token::Value, NextValue 接受 SQL:2003 syntax, select column arm, IF NOT EXISTS); sequence_test 9/9 + parser_test 5/5 + 482/482 parser lib + 668/668 storage lib 全 PASS; executor `UnifiedExpr::SequenceNextVal` 返 NULL (storage 未接到 evaluator, v3.12+ 解决); 完成度 19/24 → 20/24 (83.3%, 1 PARTIAL) | openclaw + AI |
+| 2026-08-08 | V311-11 F-03 GIS 端到端测试: PR #3540 + #7210 已合 (Value::Point + ST_WITHIN + GIS 序列化); 新增 `tests/gis_basic_test` 8/8 PASS (点-在-多边形 单元方形 / L 形 / 边界 / 无效输入); 32/32 F-XX 主路径无回归; 完成度 20/24 → 21/24 (87.5%) | openclaw + AI |
 
 *Created: 2026-07-15 (DRAFT init) — v3.11.0 ALPHA 起点*
 *Last update: 2026-07-15*
