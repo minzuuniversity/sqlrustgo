@@ -206,6 +206,18 @@ mod tests {
     use super::*;
     use crate::ColumnDefinition;
 
+    fn make_info(name: &str) -> TableInfo {
+        TableInfo {
+            name: name.to_string(),
+            columns: vec![],
+            foreign_keys: vec![],
+            unique_constraints: vec![],
+            check_constraints: vec![],
+            compression: None,
+            partition_info: None,
+        }
+    }
+
     #[test]
     #[should_panic(expected = "VTU VIOLATION")]
     fn test_vtu_violation_insert() {
@@ -238,20 +250,11 @@ mod tests {
         assert!(result.is_ok());
     }
 
+    #[test]
     fn test_vtu_guard_get_table_info_allowed() {
+        // Fix: original test was missing `#[test]` attribute.
         let mut storage = crate::MemoryStorage::new();
-        storage
-            .create_table(&TableInfo {
-                name: "test_table".to_string(),
-                columns: vec![],
-                foreign_keys: vec![],
-                unique_constraints: vec![],
-                check_constraints: vec![],
-
-                compression: None,
-                partition_info: None,
-            })
-            .unwrap();
+        storage.create_table(&make_info("test_table")).unwrap();
         let guarded = VtuGuard::new(storage, "test_location");
         let result = guarded.get_table_info("test_table");
         assert!(result.is_ok());
@@ -286,11 +289,9 @@ mod tests {
     #[test]
     fn test_3129_memory_storage_in_transaction_reflects_tx_id() {
         let mut storage = crate::MemoryStorage::new();
-        // Initial: no TX → false
         assert!(!storage.in_transaction(), "fresh storage must not be in TX");
         assert_eq!(storage.current_tx_id(), 0);
 
-        // After set_current_tx_id(7) → true
         storage.set_current_tx_id(7);
         assert!(
             storage.in_transaction(),
@@ -298,7 +299,6 @@ mod tests {
         );
         assert_eq!(storage.current_tx_id(), 7);
 
-        // Back to 0 → false
         storage.set_current_tx_id(0);
         assert!(
             !storage.in_transaction(),
@@ -308,14 +308,12 @@ mod tests {
     }
 
     /// #3129: ARCH-3 obstruction 2 — verify VtuGuard::assert_dml_safe
-    /// passes when MemoryStorage is in a transaction (covers tests that
-    /// previously would panic with "VTU VIOLATION").
+    /// passes when MemoryStorage is in a transaction.
     #[test]
     fn test_3129_vtu_guard_passes_in_tx_with_memory_storage() {
         let mut storage = crate::MemoryStorage::new();
         storage.set_current_tx_id(123);
         let guarded = VtuGuard::new(storage, "arch3_in_tx_memory");
-        // Must NOT panic
         guarded.assert_dml_safe("insert", "users");
     }
 
@@ -324,22 +322,152 @@ mod tests {
     #[test]
     fn test_3129_vtu_guard_execute_dml_with_memory_storage_in_tx() {
         let mut storage = crate::MemoryStorage::new();
-        let info = TableInfo {
-            name: "t".to_string(),
-            columns: vec![],
-            foreign_keys: vec![],
-            unique_constraints: vec![],
-            check_constraints: vec![],
-
-            compression: None,
-            partition_info: None,
-        };
-        storage.create_table(&info).unwrap();
+        storage.create_table(&make_info("t")).unwrap();
         storage.set_current_tx_id(99);
-
         let mut guarded = VtuGuard::new(storage, "arch3_execute_dml_memory");
-        // execute_dml routes through inner — no VTU violation
         let result: SqlResult<usize> = guarded.execute_dml(|inner| inner.delete("t", &[]));
         assert_eq!(result.unwrap(), 0);
+    }
+
+    // === V311-14 coverage work: new tests for previously-uncovered delegation paths ===
+
+    #[test]
+    fn test_vtu_guard_inner_accessors() {
+        // `inner()` returns &S, `inner_mut()` returns &mut S,
+        // `into_inner()` consumes and returns S unchanged.
+        let storage = crate::MemoryStorage::new();
+        let mut guarded = VtuGuard::new(storage, "accessors_test");
+        let _inner_ref: &crate::MemoryStorage = guarded.inner();
+        {
+            let _inner_mut: &mut crate::MemoryStorage = guarded.inner_mut();
+        }
+        let _recovered: crate::MemoryStorage = guarded.into_inner();
+    }
+
+    #[test]
+    fn test_vtu_guard_create_drop_table_passthrough() {
+        // create_table / drop_table / has_table / list_tables delegate.
+        let storage = crate::MemoryStorage::new();
+        let mut guarded = VtuGuard::new(storage, "ddl_test");
+        guarded.create_table(&make_info("t")).unwrap();
+        assert!(guarded.has_table("t"));
+        let mut names = guarded.list_tables();
+        names.sort();
+        assert_eq!(names, vec!["t".to_string()]);
+        guarded.drop_table("t").unwrap();
+        assert!(!guarded.has_table("t"));
+    }
+
+    #[test]
+    fn test_vtu_guard_trigger_methods_passthrough() {
+        // create_trigger / drop_trigger / get_trigger / list_triggers
+        // all delegate to inner.
+        let storage = crate::MemoryStorage::new();
+        let mut guarded = VtuGuard::new(storage, "meta_test");
+        let trig = crate::engine::TriggerInfo {
+            name: "tr".into(),
+            table_name: "t".into(),
+            timing: crate::engine::TriggerTiming::Before,
+            event: crate::engine::TriggerEvent::Insert,
+            body: String::new(),
+        };
+        guarded.create_trigger(trig).unwrap();
+        assert!(guarded.get_trigger("tr").is_some());
+        assert_eq!(guarded.list_triggers("t").len(), 1);
+        guarded.drop_trigger("tr").unwrap();
+        assert!(guarded.get_trigger("tr").is_none());
+    }
+
+    #[test]
+    fn test_vtu_guard_tx_state_via_set_current_tx_id() {
+        // Use set_current_tx_id (the canonical way to mark storage as
+    #[test]
+    fn test_vtu_guard_tx_state_via_set_current_tx_id() {
+        // VtuGuard does not expose set_current_tx_id directly (the
+        // delegation is via inner storage). Exercise the accessor
+        // pattern: get inner, set tx, then confirm guarded.in_transaction()
+        // delegates correctly.
+        let storage = crate::MemoryStorage::new();
+        let mut guarded = VtuGuard::new(storage, "tx_test");
+        assert!(!guarded.in_transaction());
+        guarded.inner_mut().set_current_tx_id(7);
+        assert!(guarded.in_transaction());
+        assert_eq!(guarded.current_tx_id(), 7);
+        guarded.inner_mut().set_current_tx_id(0);
+        assert!(!guarded.in_transaction());
+        guarded.flush().unwrap();
+    }
+    }
+
+    #[test]
+    fn test_vtu_guard_add_column_rename_passthrough() {
+        // add_column and rename_table are pure DDL passthroughs.
+        let storage = crate::MemoryStorage::new();
+        let mut guarded = VtuGuard::new(storage, "rename_test");
+        guarded
+            .create_table(&TableInfo {
+                name: "old".into(),
+                columns: vec![ColumnDefinition {
+                    name: "x".into(),
+                    data_type: "INTEGER".into(),
+                    nullable: false,
+                    primary_key: false,
+                    char_max_length: None,
+                }],
+                foreign_keys: vec![],
+                unique_constraints: vec![],
+                check_constraints: vec![],
+                compression: None,
+                partition_info: None,
+            })
+            .unwrap();
+        guarded
+            .add_column(
+                "old",
+                ColumnDefinition {
+                    name: "y".into(),
+                    data_type: "TEXT".into(),
+                    nullable: true,
+                    primary_key: false,
+                    char_max_length: None,
+                },
+            )
+            .unwrap();
+        guarded.rename_table("old", "new").unwrap();
+        assert!(guarded.has_table("new"));
+        assert!(!guarded.has_table("old"));
+    }
+
+    #[test]
+    fn test_vtu_guard_assert_path_for_dml_is_idempotent() {
+        // Static marker; no runtime side effect. Call twice.
+        VtuGuard::<crate::MemoryStorage>::assert_path_for_dml("insert", "t");
+        VtuGuard::<crate::MemoryStorage>::assert_path_for_dml("update", "u");
+    }
+
+    #[test]
+    fn test_vtu_guard_dml_violation_panic_message_contains_table() {
+        // The panic message must include the VTU VIOLATION text and
+        // the offending table name so operators can grep for it.
+        let storage = crate::MemoryStorage::new();
+        let mut guarded = VtuGuard::new(storage, "msg_check");
+        let result = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+            let _ = guarded.insert("specific_offending_table", vec![]);
+        }));
+        assert!(result.is_err());
+        let panic_payload = result.unwrap_err();
+        let msg = if let Some(s) = panic_payload.downcast_ref::<&'static str>() {
+            s.to_string()
+        } else if let Some(s) = panic_payload.downcast_ref::<String>() {
+            s.clone()
+        } else {
+            String::from("unknown panic payload")
+        };
+        assert!(msg.contains("VTU VIOLATION"), "missing marker: {}", msg);
+        assert!(
+            msg.contains("specific_offending_table"),
+            "missing table name: {}",
+            msg
+        );
     }
 }
