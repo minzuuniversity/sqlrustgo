@@ -223,7 +223,7 @@ v3.2.0 = "GMP Native 可信数据平台"
 - [ ] Beta Gate PASS (24/24 或豁免项已审批)
 - [ ] M5-M8 所有任务已完成
 - [ ] 所有 P0 功能已实现
-- [ ] TPC-H SF=1 22/22 通过
+- [ ] TPC-H SF=1 ~10/22 (honest status, see SF1_TRUTH_AUDIT.md) 通过
 
 ### 4.3 Beta Gate 通过证明
 

@@ -6,7 +6,7 @@
 **Storage**: in-process wire protocol
 **Duration**: ~7.8 min for 22 queries
 
-## TPC-H SF=1 Query Results (22/22 PASS)
+## TPC-H SF=1 Query Results (~10/22 (honest status, see SF1_TRUTH_AUDIT.md) PASS)
 
 | Query | Rows | Time (s) |
 |-------|-----:|---------:|

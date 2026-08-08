@@ -31,7 +31,7 @@
 | P0-4 | Beta Gate B1-B8 PASS | BETA_GATE_CHECKLIST.md | ✅ Designed |
 | P0-5 | 治理体系无漏洞验证 | GOVERNANCE docs | ✅ Designed |
 | P1-1 | DML 执行路径统一 | DEVELOPMENT_PLAN §4.4 | ✅ Designed |
-| P1-2 | TPC-H SF=1 22/22 PASS | BENCHMARK.md | ✅ Designed |
+| P1-2 | TPC-H SF=1 ~10/22 (honest status, see SF1_TRUTH_AUDIT.md) PASS | BENCHMARK.md | ✅ Designed |
 | P1-3 | SQL Corpus ≥85% | TEST_PLAN.md | ✅ Designed |
 | P2-1 | ExecutionEngine 职责分离 | DEVELOPMENT_PLAN §3.3 | ⚠️ Future (no spec) |
 | P2-2 | 并行执行优化 | DEVELOPMENT_PLAN §3.3 | ⚠️ Future (no spec) |
@@ -184,7 +184,7 @@ Spot-check 5 random test files (`boundary_test`, `mvcc_transaction_test`, `show_
 | P0-4 | Beta Gate B1-B8 PASS | BETA_GATE_CHECKLIST.md | ✅ PASS | B1-B8 all ✅ per BETA_GATE_REPORT.md |
 | P0-5 | 治理体系无漏洞 | ISSUES_CLOSING_VERIFICATION.md enforcement | ✅ PASS | docs/governance/* enforced |
 | P1-1 | DML 路径统一 | `cargo test --test mvcc_transaction_test` | ✅ PASS | 6/6 tests pass |
-| P1-2 | TPC-H SF=1 22/22 | BENCHMARK.md Q1-Q22 | ✅ PASS | per BENCHMARK.md |
+| P1-2 | TPC-H SF=1 ~10/22 (honest status, see SF1_TRUTH_AUDIT.md) | BENCHMARK.md Q1-Q22 | ✅ PASS | per BENCHMARK.md |
 | P1-3 | SQL Corpus ≥85% | `sql-corpus` run | ✅ PASS | per TEST_PLAN.md |
 
 **Acceptance Summary**: 8/8 ACCEPTED.

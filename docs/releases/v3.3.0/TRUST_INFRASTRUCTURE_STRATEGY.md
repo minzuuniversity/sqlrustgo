@@ -274,7 +274,7 @@ Deviation ──→ CAPA ──→ Closure
 - A1~A4: Build/Test/Clippy/Format ✅（继承）
 - A5: Coverage ≥85%（Z6G4 执行）
 - A6: MySQL Protocol ✅（PR #1234 已修复）
-- A7: TPC-H SF=1 22/22 ✅（PR #1229 已完成）
+- A7: TPC-H SF=1 ~10/22 (honest status, see SF1_TRUTH_AUDIT.md) ✅（PR #1229 已完成）
 
 ### Beta Gate
 

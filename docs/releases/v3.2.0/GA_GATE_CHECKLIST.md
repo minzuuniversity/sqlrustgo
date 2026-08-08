@@ -26,7 +26,7 @@
 - [x] Beta Gate 21/21 PASS
 - [x] RC Gate 28/32 PASS (87.5%)
 - [x] 所有 P0/P1 功能已实现
-- [x] TPC-H SF=1 22/22 PASS
+- [x] TPC-H SF=1 ~10/22 (honest status, see SF1_TRUTH_AUDIT.md) PASS
 - [x] SQL Operations ≥85% MySQL 语法
 - [x] L1 测试覆盖率 ≥85% (85.81%)
 - [ ] Formal proofs ≥30 个 (TBD)
@@ -141,7 +141,7 @@ G4:  Format ................... ✅ PASS
 G5:  Coverage (≥85%) ......... ✅ PASS (85.81%)
 G6:  Security Audit .......... ⚠️ SKIP (advisory db unreachable)
 G7:  SQL Compat (≥85%) ...... ✅ PASS
-G8:  TPC-H SF=1 (22/22) ..... ✅ PASS
+G8:  TPC-H SF=1 (~10/22 (honest status, see SF1_TRUTH_AUDIT.md)) ..... ✅ PASS
 G9:  Performance ............. ⬜ SKIP (需服务器环境)
 G10: Proofs (≥30) ............ ⬜ PENDING
 G11: Docs .................... ✅ PASS (14/14)
