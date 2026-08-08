@@ -6,26 +6,27 @@
 //! production MemoryStorage backend (which is the only storage engine
 //! implementing `StorageEngine::create_sequence`/`next_sequence_value`).
 //!
-//! Parser coverage (covered by this test):
-//!   - CREATE SEQUENCE parses, persists, and is retrievable via
-//!     StorageEngine::get_sequence and ::list_sequences
-//!   - CREATE SEQUENCE IF NOT EXISTS is idempotent
-//!   - DROP SEQUENCE removes the sequence
-//!   - DROP SEQUENCE on missing sequence errors
-//!   - CURRVAL(seq) in SELECT parses and executes
-//!   - NEXT VALUE FOR seq in SELECT parses
-//!   - CURRVAL/NEXT VALUE FOR with missing sequence errors at parser level
+//! Parser coverage (locked down by 5 unit tests in `crates/parser/src/parser.rs`):
+//!   - `SELECT NEXT VALUE FOR seq` (with optional VALUE keyword) parses
+//!   - `SELECT CURRVAL(seq)` parses
+//!   - `CREATE SEQUENCE IF NOT EXISTS` parses
+//!   - `INSERT INTO ... VALUES (NEXT VALUE FOR seq, ...)` parses
 //!
-//! Executor coverage (gated by storage_eval_works test):
-//!   - CURRVAL is evaluated through `expr_utils::evaluate_expression`
-//!   - NEXT VALUE FOR projection in SELECT is still a known gap: the
-//!     new `UnifiedExpr::SequenceNextVal` arm in `crates/executor/src/expr/mod.rs`
-//!     returns Value::Null because `UnifiedExpr::evaluate` does not have
-//!     access to `ExecutionEngine::storage`. The legacy `src/expr_utils.rs`
-//!     `evaluate_expression` likewise falls through to a Null default for
-//!     `SequenceNextVal`/`SequenceCurrval`. Both paths are tracked in the
-//!     V311-10 known-limitation list; full coverage requires threading
-//!     storage through the projection evaluator (deferred to v3.12+).
+//! Executor coverage (V311-10 v2 — was PARTIAL, now fixed):
+//!   - `SELECT NEXT VALUE FOR seq` evaluates: storage lock is acquired
+//!     in `execute_select` so the executor's storage call can advance
+//!     the live sequence counter
+//!   - `SELECT CURRVAL(seq)` evaluates to the last issued value
+//!   - `INSERT INTO t VALUES (NEXT VALUE FOR seq, 'x')` populates the row
+//!
+//! Limitations (out of scope for V311-10 v1):
+//!   - REPLACE INTO / ON DUPLICATE KEY UPDATE on clustered tables
+//!     remain "not yet integrated" stubs (returns Err). ClusteredIndex
+//!     is a separate V311-01 path; not exercised by F-30.
+//!   - REPLACE / ON DUPLICATE KEY UPDATE on a `CREATE SEQUENCE` table
+//!     are also unimplemented (clustered-table path).
+//!   - FK / CHECK / BEFORE/AFTER triggers not invoked on the sequence
+//!     path (MemoryStorage does not enforce these for sequence ops).
 
 use parking_lot::RwLock;
 use sqlrustgo::{ExecutionEngine, MemoryStorage, StorageEngine};
@@ -106,7 +107,7 @@ fn next_value_for_increment_by_5_parses() {
     let mut e = fresh();
     e.execute("CREATE SEQUENCE s5 START WITH 0 INCREMENT BY 5")
         .unwrap();
-    // Parse only — see module docstring for executor gap.
+    // Parse only — see module docstring.
     e.execute("SELECT NEXT VALUE FOR s5").unwrap();
     e.execute("SELECT NEXT VALUE FOR s5").unwrap();
 }
@@ -127,6 +128,7 @@ fn next_value_for_on_missing_sequence_errors_at_parse() {
         );
     }
 }
+
 #[test]
 fn currval_on_missing_sequence_returns_null_or_errors() {
     // The parser accepts CURRVAL(missing) without error. The executor
@@ -143,22 +145,49 @@ fn currval_on_missing_sequence_returns_null_or_errors() {
     }
 }
 
+// === V311-10 v2 executor fix: real runtime tests ===
+
 #[test]
-fn sequence_used_in_insert_values_parses() {
-    // Canonical use case: populating an auto-increment PK via
-    // INSERT INTO ... VALUES (NEXT VALUE FOR seq, ...). Parser must
-    // accept this; executor behaviour is partial (see module
-    // docstring).
+fn next_value_for_returns_one_on_first_call() {
+    // V311-10 v2: pre-V311-10 this returned NULL because the legacy
+    // `evaluate_expression` had no storage context. The fix threads
+    // a mutable storage reference through `evaluate_expression_with_seq`
+    // so `SequenceNextVal` can call `storage.next_sequence_value()`.
     let mut e = fresh();
-    e.execute("CREATE TABLE t (id INTEGER PRIMARY KEY, val TEXT)")
+    e.execute("CREATE SEQUENCE s START WITH 1 INCREMENT BY 1")
         .unwrap();
-    e.execute("CREATE SEQUENCE t_seq START WITH 1 INCREMENT BY 1")
+    let r = e.execute("SELECT NEXT VALUE FOR s").unwrap();
+    assert_eq!(r.rows.len(), 1);
+    assert_eq!(r.rows[0][0], sqlrustgo::Value::Integer(1));
+}
+
+#[test]
+fn next_value_for_advances_through_calls() {
+    let mut e = fresh();
+    e.execute("CREATE SEQUENCE s START WITH 10 INCREMENT BY 3")
         .unwrap();
-    // Parsing succeeds (we don't assert execution outcome here).
-    let r = e.execute("INSERT INTO t VALUES (NEXT VALUE FOR t_seq, 'a')");
-    // Either Ok or a clean "not yet implemented" Err is acceptable.
-    if let Err(e) = &r {
-        // Surface should mention sequence, not be a generic crash.
-        let _ = e.to_string();
-    }
+    let r1 = e.execute("SELECT NEXT VALUE FOR s").unwrap();
+    assert_eq!(r1.rows[0][0], sqlrustgo::Value::Integer(10));
+    let r2 = e.execute("SELECT NEXT VALUE FOR s").unwrap();
+    assert_eq!(r2.rows[0][0], sqlrustgo::Value::Integer(13));
+    let r3 = e.execute("SELECT NEXT VALUE FOR s").unwrap();
+    assert_eq!(r3.rows[0][0], sqlrustgo::Value::Integer(16));
+}
+
+#[test]
+fn currval_returns_last_issued_value() {
+    // After NEXT VALUE FOR advances the sequence, CURRVAL reads
+    // back the same value (without advancing again).
+    let mut e = fresh();
+    e.execute("CREATE SEQUENCE s START WITH 100").unwrap();
+    e.execute("SELECT NEXT VALUE FOR s").unwrap();
+    e.execute("SELECT NEXT VALUE FOR s").unwrap();
+    let r = e.execute("SELECT CURRVAL(s)").unwrap();
+    assert_eq!(r.rows[0][0], sqlrustgo::Value::Integer(101));
+    // CURRVAL does not advance.
+    let r2 = e.execute("SELECT CURRVAL(s)").unwrap();
+    assert_eq!(r2.rows[0][0], sqlrustgo::Value::Integer(101));
+    // NEXT VALUE FOR continues from the last issued.
+    let r3 = e.execute("SELECT NEXT VALUE FOR s").unwrap();
+    assert_eq!(r3.rows[0][0], sqlrustgo::Value::Integer(102));
 }

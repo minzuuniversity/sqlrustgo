@@ -45,7 +45,7 @@ This document is the **SSOT** for v3.11.0's feature checklist, tracking 23 V311-
 | ID | 任务 | F-XX | 工作量 | 优先级 | 状态 | 测试方法 |
 |----|------|------|--------|--------|------|----------|
 | V311-09 | 列级权限实现 | F-36 | 40h | P0 | ✅ DONE 2026-07-15 (PR #3457) | `tests/column_privilege_test` (12/12) |
-| V311-10 | CREATE SEQUENCE 实现 | F-30 | 20h | P1 | 🟡 PARTIAL parser ✅, executor gap (NEXT VALUE FOR 返 NULL) | `tests/sequence_test` 9/9; `tests/parser` 5/5 |
+| V311-10 | CREATE SEQUENCE 实现 | F-30 | 20h | P1 | ✅ DONE 2026-08-08 (parser+lexer 4 fix; executor fix 3 new runtime tests) | `tests/sequence_test` 11/11 (8 parse + 3 runtime) |
 | V311-11 | GIS 空间数据类型 (POINT + WITHIN) | F-03 | 80h | P1 | ✅ DONE 2026-08-08 (PR #3540 + #7210 已合 + 8/8 gis_basic_test) | `tests/gis_basic_test` 8/8 (PR #3540/#7210) |
 
 ---
@@ -175,13 +175,13 @@ This document is the **SSOT** for v3.11.0's feature checklist, tracking 23 V311-
 | 阶段 | 任务数 | 完成 | 进行中 | TODO |
 |------|--------|------|--------|------|
 | ALPHA (P0) | 9 (V311-01/02/03/04/09/13/15/19/20) | **8** (01/02/03/04/09/13/15/19) | 0 | 1 (20) |
-| BETA (P1) | 10 (V311-05/06/07/08/10/11/12/16/17/18) | **10** (05/06/07/08/10/11/12/16/17/18, 10 PARTIAL) | 0 | 0 |
+| BETA (P1) | 10 (V311-05/06/07/08/10/11/12/16/17/18) | **10** (05/06/07/08/10/11/12/16/17/18) | 0 | 0 |
 | RC/Others | 5 (V311-14/20/21/22/23) | **4** (14/21/22/23) | 0 | 1 (20) |
-| **总计** | **24** | **22 ✅ + 1 PARTIAL** | **0** | **1** |
+| **总计** | **24** | **23 ✅** | **0** | **1** |
 ```
 
-完成度: 91.7% (22/24: 21 ✅ DONE + 1 🟡 PARTIAL) — 截至 2026-08-08
-### 已完成 (22: 21 ✅ DONE + 1 🟡 PARTIAL) — 截至 2026-08-08
+完成度: 95.8% (23/24: 23 ✅ DONE) — 截至 2026-08-08
+### 已完成 (23: 23 ✅ DONE) — 截至 2026-08-08
 | # | 任务 | PR/证明 |
 |---|------|---------|
 | V311-01 | F-23 Clustered Index 主路径集成 (含 DML 路由) | PR #3461 + 2026-07-20 DML routing fix |
@@ -193,7 +193,7 @@ This document is the **SSOT** for v3.11.0's feature checklist, tracking 23 V311-
 | V311-07 | F-32 MySQL Admin 与 mysql-server 集成 | fix/v311-07-f-32-admin-wire-integration |
 | V311-08 | F-35 Password Rotation 主路径集成 | commit 15245855f4 (`tests/password_rotation_integration_test` 17/17) |
 | V311-09 | F-36 列级权限实现 | PR #3457 |
-| V311-10 | F-30 CREATE SEQUENCE (parser 层) | `tests/sequence_test` 9/9; lexer+parser 修复 4 处; executor gap 待 v3.12+ |
+| V311-10 | F-30 CREATE SEQUENCE (parser+executor) | `tests/sequence_test` 11/11 (8 parse + 3 runtime: NEXT VALUE 返 1, advance 10/13/16, CURRVAL 返最后一次); executor fix via `evaluate_expression_with_seq` + storage write lock |
 | V311-11 | F-03 GIS (POINT + ST_WITHIN) | `tests/gis_basic_test` 8/8 (PR #3540/#7210); `crates/gis` 完整 (Point, Polygon, st_within ray-casting) |
 | V311-12 | F-27 Table Compression (LZ4/zstd) | commit 88a3fd733a (`tests/table_compression_test` 8/8) |
 | V311-13 | SEM-3 ALTER TABLE RENAME/MODIFY | PR #3444/#3449 |
@@ -209,12 +209,13 @@ This document is the **SSOT** for v3.11.0's feature checklist, tracking 23 V311-
 
 
 
-### 剩余 (0) + 1 PARTIAL
+### 剩余 (1)
 
 | # | 任务 | 工作量 | 优先 | 状态 |
 |---|------|--------|------|------|
 
 | V311-20 | TPC-H SF=1.0 baseline | 80h | P0 | ⏳ TODO (OMP 平台推进中) |
+
 
 
 ---
@@ -246,6 +247,7 @@ This document is the **SSOT** for v3.11.0's feature checklist, tracking 23 V311-
 | 2026-08-08 | V311-10 F-30 SEQUENCE PARTIAL: 修 4 处 parser/lexer 集成 bug (Token::Value, NextValue 接受 SQL:2003 syntax, select column arm, IF NOT EXISTS); sequence_test 9/9 + parser_test 5/5 + 482/482 parser lib + 668/668 storage lib 全 PASS; executor `UnifiedExpr::SequenceNextVal` 返 NULL (storage 未接到 evaluator, v3.12+ 解决); 完成度 19/24 → 20/24 (83.3%, 1 PARTIAL) | openclaw + AI |
 | 2026-08-08 | V311-11 F-03 GIS 端到端测试: PR #3540 + #7210 已合 (Value::Point + ST_WITHIN + GIS 序列化); 新增 `tests/gis_basic_test` 8/8 PASS (点-在-多边形 单元方形 / L 形 / 边界 / 无效输入); 32/32 F-XX 主路径无回归; 完成度 20/24 → 21/24 (87.5%) | openclaw + AI |
 | 2026-08-08 | V311-14 SEM-4 → ✅ DONE: storage crate coverage 78.38% → 86.09% (+7.71pp region, +7.62pp lines); 14 new unit tests (7 in file_table 序列化/反序列化/load/flush, 6 in vtu_guard delegation paths + DML panic message + assert_path_for_dml, 1 fix to missing #[test] attribute on existing test); 683/683 storage lib PASS; 10/12 main crates now ≥80% per-crate gate (only tools 57.6% and cli 0% below — out of v3.11 SEM-4 scope); 完成度 21/24 → 22/24 (91.7%) | openclaw + AI |
+| 2026-08-08 | V311-10 F-30 v2: executor 修复 — 新增 `evaluate_expression_with_seq(expr, row, table_info, Option<&mut dyn StorageEngine>, ...)` 在 `src/expr_utils.rs`; 在 `src/engine_select.rs:962` 的 `execute_select` 投影路径 pre-acquire `self.storage.write()` 然后通过新 helper 调用; 3 个新 runtime tests (`next_value_for_returns_one_on_first_call`, `next_value_for_advances_through_calls`, `currval_returns_last_issued_value`) 全部 PASS; sequence_test 9/9 → 11/11; storage 683/683 lib 无回归; 完成度 22/24 → 23/24 (95.8%) | openclaw + AI |
 
 *Created: 2026-07-15 (DRAFT init) — v3.11.0 ALPHA 起点*
 *Last update: 2026-07-15*
