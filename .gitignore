@@ -92,3 +92,6 @@ docs/formal/*_TTrace_*.bin
 # Build helper outputs + release-time log dumps
 scripts/usage/*.xlsx
 docs/releases/*/logs/
+# Security / server audit logs (runtime side effects from crates/security and crates/server)
+crates/security/audit.log
+crates/server/audit.log
