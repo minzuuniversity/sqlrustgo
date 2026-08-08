@@ -58,7 +58,7 @@ fn bint_dir() -> String {
 /// it without re-running LOAD DATA.
 const DEFAULT_SQLRUSTGO_DATA_DIR: &str = "/tmp/tpch-sf1";
 
-const DEFAULT_REPORT_PATH: &str = "docs/releases/v3.10.0/perf/SF1_BASELINE_REPORT.md";
+const DEFAULT_REPORT_PATH: &str = "docs/releases/v3.11.0/perf/SF1_BASELINE_REPORT.md";
 fn report_path() -> String {
     std::env::var("TPCH_REPORT_PATH").unwrap_or_else(|_| DEFAULT_REPORT_PATH.to_string())
 }
@@ -363,37 +363,79 @@ fn tpch_sf1_22_in_process_regression() {
             elapsed,
             result.as_ref().map(|_| "ok").unwrap_or("err")
         );
+
+        // SHA256 side-channel: when TPCH_SF1_ROWS_DIR is set, dump the
+        // (already text-serialized) rows to <rows_dir>/q<N>.tsv, one row
+        // per line, columns tab-separated. This is what `verify_binary_checksum`
+        // and issue #3654 cross-engine diff use; not the test's own
+        // acceptance path. Set by the SF=1 cross-engine driver; the test
+        // itself never reads it.
+        if let Ok(rows_dir) = std::env::var("TPCH_SF1_ROWS_DIR") {
+            if let Ok(rows) = &result {
+                let p = std::path::Path::new(&rows_dir).join(format!("q{}.tsv", n));
+                let mut buf = String::new();
+                for row in rows {
+                    for (i, cell) in row.iter().enumerate() {
+                        if i > 0 {
+                            buf.push('\t');
+                        }
+                        buf.push_str(cell);
+                    }
+                    buf.push('\n');
+                }
+                let _ = std::fs::write(p, buf);
+            }
+        }
     }
 
-    // 4) Acceptance check (warn-only). The historical hard-panic
-    //    assertion (`panic!(Q{} returned 0 rows ...)`) was tuned for
-    //    SF=1.0 specifically: it expects every multi-row query to
-    //    return at least one row, but on SF=0.1 the dataset is too
-    //    small for some queries (Q3, Q5, Q8, Q13, Q18, Q20 return
-    //    zero rows on SF=0.1, even though the queries are
-    //    semantically correct). We surface zero rows via stderr as a
-    //    warning so smaller SF runs still produce the full
-    //    SF1_BASELINE_REPORT.md artifact, while larger SFs where
-    //    zero rows DO indicate a regression are easy to spot in CI
-    //    logs without a hard panic.
-    let known_single_row: &[u8] = &[14, 15, 19, 22];
+    // 4) Acceptance check. SF=1 correctness failures must fail the gate,
+    //    not merely emit warnings that still produce a green cargo exit.
+    let required_non_empty: &[u8] = &[5, 8, 10, 13, 16, 21];
+    let mut zero_row_failures: Vec<u8> = Vec::new();
     for (n, count, _elapsed, _notes) in &report_rows {
-        if *count == 0 && !known_single_row.contains(n) {
+        if *count == 0 && required_non_empty.contains(n) {
+            zero_row_failures.push(*n);
             eprintln!(
-                "  [warn] Q{} returned 0 rows; review report at {} (acceptable on SF<0.1)",
+                "  [fail] Q{} returned 0 rows on SF=1; this is a correctness failure",
+                n
+            );
+        } else if *count == 0 {
+            eprintln!(
+                "  [warn] Q{} returned 0 rows; review report at {} before counting it as PASS",
                 n,
                 report_path()
             );
         }
     }
-    eprintln!("All 22 TPC-H queries completed (zero-row warnings emitted above, if any).");
+    eprintln!("TPC-H query execution completed; correctness failures are reported below.");
 
-    // 5) Write the Markdown report.
-    write_report(&report_rows);
+    // 5) Write the Markdown report before asserting, so failed runs still leave evidence.
+    write_report(&report_rows, &zero_row_failures);
     eprintln!("Wrote {}", report_path());
+
+    // TPCH_SKIP_PANIC=1 turns the required-non-empty check into a
+    // eprintln-only warning. Used by the G4 cross-engine driver
+    // (`scripts/tpch_sf1_baseline.sh --cross-engine`) when it needs
+    // row files for every query, even ones known to return 0 rows
+    // (Q16, see CROSS_ENGINE_BASELINE engine bug). The default is
+    // to keep the panic — issue #3650 P0-2 still requires the test
+    // to fail on a regression of the previously-known-good queries.
+    if !zero_row_failures.is_empty() {
+        if std::env::var("TPCH_SKIP_PANIC").is_ok() {
+            eprintln!(
+                "[skip-panic] required-non-empty check failed: {:?} (TPCH_SKIP_PANIC=1)",
+                zero_row_failures
+            );
+        } else {
+            panic!(
+                "SF=1 TPC-H correctness failure: required non-empty queries returned 0 rows: {:?}",
+                zero_row_failures
+            );
+        }
+    }
 }
 
-fn write_report(rows: &[(u8, usize, Duration, String)]) {
+fn write_report(rows: &[(u8, usize, Duration, String)], zero_row_failures: &[u8]) {
     std::fs::create_dir_all(Path::new(&report_path()).parent().unwrap())
         .expect("create report dir");
     let mut out = String::new();
@@ -401,7 +443,7 @@ fn write_report(rows: &[(u8, usize, Duration, String)]) {
     out.push_str("- Issue: #3423\n");
     out.push_str("- Spec: openspec/changes/2026-06-18-tpch-sf1-baseline\n");
     out.push_str("- Surface: in-process via `MySqlTestClient` + `start_ephemeral`\n");
-    out.push_str("- Branch: fix/wire-deprecate-eof-partial\n");
+    out.push_str("- Branch: feature/issue-3423-tpch-sf1-baseline\n");
     out.push_str("- Commit: see `git log` on the branch\n");
     out.push_str("- External-client follow-up: issue #3474 (out of scope here)\n\n");
     out.push_str("## Setup\n\n");
@@ -440,13 +482,25 @@ fn write_report(rows: &[(u8, usize, Duration, String)]) {
         .iter()
         .map(|(_, _, e, _)| e.as_secs_f64() * 1000.0)
         .sum();
+    let completed = rows.len();
+    let zero_rows = rows.iter().filter(|(_, c, _, _)| *c == 0).count();
     out.push_str(&format!(
-        "- 22/22 queries returned >= 1 row\n- Total rows across all 22 queries: {}\n- \
+        "- Queries executed in this run: {}/22\n- Queries returning 0 rows: {}\n- Total rows across executed queries: {}\n- \
          Total elapsed time: {:.1} ms ({:.1} s)\n",
+        completed,
+        zero_rows,
         total_rows,
         total_ms,
         total_ms / 1000.0
     ));
+    if zero_row_failures.is_empty() {
+        out.push_str("- Required non-empty query check: PASS for executed queries\n");
+    } else {
+        out.push_str(&format!(
+            "- Required non-empty query check: FAIL - Q{:?} returned 0 rows\n",
+            zero_row_failures
+        ));
+    }
     out.push_str("- Slowest query: ");
     if let Some((n, _c, e, _notes)) = rows.iter().max_by_key(|(_, _, e, _)| *e) {
         out.push_str(&format!("Q{} ({:.1} ms)\n", n, e.as_secs_f64() * 1000.0));
