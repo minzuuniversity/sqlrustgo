@@ -6814,8 +6814,12 @@ impl Parser {
             // `NEXT FOR seq` and `NEXT VALUE FOR seq`.
             Some(Token::NextValue) => {
                 self.next(); // consume NEXT
-                if matches!(self.current(), Some(Token::Value)) {
-                    self.next(); // consume optional VALUE
+                // SQL:2003 allows optional `VALUE` between NEXT and FOR.
+                // As of the 2026-08-09 fix, the lexer no longer reserves VALUE
+                    // as a keyword, so it surfaces as Identifier("value") here.
+                // Accept both `Identifier("value")` and the legacy `Token::Value`.
+                if matches!(self.current(), Some(Token::Identifier(name)) if name.eq_ignore_ascii_case("value")) {
+                    self.next();
                 }
                 self.expect(Token::For)?;
                 let seq_name = match self.next() {
