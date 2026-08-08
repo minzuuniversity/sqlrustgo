@@ -7,6 +7,7 @@ use std::fmt;
 #[derive(Debug, Clone, PartialEq)]
 pub enum Token {
     // Keywords
+    Value,
     Select,
     From,
     Where,
@@ -299,6 +300,7 @@ impl fmt::Display for Token {
             Token::Insert => write!(f, "INSERT"),
             Token::Into => write!(f, "INTO"),
             Token::Values => write!(f, "VALUES"),
+            Token::Value => write!(f, "VALUE"),
             Token::Update => write!(f, "UPDATE"),
             Token::Set => write!(f, "SET"),
             Token::Delete => write!(f, "DELETE"),
@@ -537,6 +539,7 @@ pub fn is_keyword(s: &str) -> bool {
             | "INSERT"
             | "INTO"
             | "VALUES"
+            | "VALUE"
             | "UPDATE"
             | "SET"
             | "DELETE"
@@ -593,6 +596,7 @@ pub fn from_keyword(s: &str) -> Option<Token> {
         "WHERE" => Some(Token::Where),
         "INSERT" => Some(Token::Insert),
         "INTO" => Some(Token::Into),
+        "VALUE" => Some(Token::Value),
         "VALUES" => Some(Token::Values),
         "UPDATE" => Some(Token::Update),
         "SET" => Some(Token::Set),
