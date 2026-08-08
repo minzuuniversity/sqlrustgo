@@ -55,12 +55,7 @@ impl FileTable {
             file.read_exact(&mut buf)?;
             match self.deserialize_record(&buf) {
                 Ok(record) => records.push(record),
-                Err(e) => {
-                    return Err(std::io::Error::new(
-                        std::io::ErrorKind::InvalidData,
-                        e,
-                    ))
-                }
+                Err(e) => return Err(std::io::Error::new(std::io::ErrorKind::InvalidData, e)),
             }
         }
         self.records = records;
@@ -336,7 +331,9 @@ mod tests {
             Value::Null,
         ];
         let buf = t.serialize_record(&record);
-        let parsed = t.deserialize_record(&buf).expect("deserialize must succeed");
+        let parsed = t
+            .deserialize_record(&buf)
+            .expect("deserialize must succeed");
         assert_eq!(parsed.len(), 4);
         assert_eq!(parsed[0], Value::Integer(42));
         assert_eq!(parsed[1], Value::Float(3.14));
@@ -352,7 +349,9 @@ mod tests {
         let dir = temp_dir();
         let t = FileTable::new("t".into(), sample_info("t"), dir.clone()).unwrap();
         let buf = vec![99u8]; // unknown type_byte 99
-        let parsed = t.deserialize_record(&buf).expect("unknown type must be null");
+        let parsed = t
+            .deserialize_record(&buf)
+            .expect("unknown type must be null");
         assert_eq!(parsed, vec![Value::Null]);
         let _ = std::fs::remove_dir_all(&dir);
     }

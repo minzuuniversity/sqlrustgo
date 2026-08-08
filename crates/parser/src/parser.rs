@@ -13147,31 +13147,31 @@ mod set_op_tests {
     }
 }
 
-    // V311-10 F-30: NEXT VALUE FOR seq / CURRVAL(seq) parse tests.
-    // Locks down the SQL:2003 standard syntax acceptance.
-    #[test]
-    fn test_parse_next_value_for_with_value_keyword() {
-        // The optional VALUE keyword between NEXT and FOR (SQL:2003).
-        assert!(parse("SELECT NEXT VALUE FOR my_seq").is_ok());
-    }
+// V311-10 F-30: NEXT VALUE FOR seq / CURRVAL(seq) parse tests.
+// Locks down the SQL:2003 standard syntax acceptance.
+#[test]
+fn test_parse_next_value_for_with_value_keyword() {
+    // The optional VALUE keyword between NEXT and FOR (SQL:2003).
+    assert!(parse("SELECT NEXT VALUE FOR my_seq").is_ok());
+}
 
-    #[test]
-    fn test_parse_next_value_for_without_value_keyword() {
-        // Bare NEXT FOR also accepted (relaxed form).
-        assert!(parse("SELECT NEXT FOR my_seq").is_ok());
-    }
+#[test]
+fn test_parse_next_value_for_without_value_keyword() {
+    // Bare NEXT FOR also accepted (relaxed form).
+    assert!(parse("SELECT NEXT FOR my_seq").is_ok());
+}
 
-    #[test]
-    fn test_parse_currval_function_call() {
-        assert!(parse("SELECT CURRVAL(my_seq)").is_ok());
-    }
+#[test]
+fn test_parse_currval_function_call() {
+    assert!(parse("SELECT CURRVAL(my_seq)").is_ok());
+}
 
-    #[test]
-    fn test_parse_create_sequence_if_not_exists() {
-        assert!(parse("CREATE SEQUENCE IF NOT EXISTS s1 START WITH 1").is_ok());
-    }
+#[test]
+fn test_parse_create_sequence_if_not_exists() {
+    assert!(parse("CREATE SEQUENCE IF NOT EXISTS s1 START WITH 1").is_ok());
+}
 
-    #[test]
-    fn test_parse_insert_with_next_value_for() {
-        assert!(parse("INSERT INTO t (id) VALUES (NEXT VALUE FOR my_seq)").is_ok());
-    }
+#[test]
+fn test_parse_insert_with_next_value_for() {
+    assert!(parse("INSERT INTO t (id) VALUES (NEXT VALUE FOR my_seq)").is_ok());
+}
