@@ -15,6 +15,7 @@ use sqlrustgo_executor::ExecutorResult;
 use sqlrustgo_parser::parser::{DeleteStatement, InsertStatement, UpdateStatement};
 use sqlrustgo_parser::Expression;
 use sqlrustgo_storage::{StorageEngine, TableInfo};
+
 use sqlrustgo_types::Value;
 
 use crate::engine_helpers::{
@@ -27,16 +28,24 @@ use crate::engine_utils::{
 };
 use crate::expr_utils::{evaluate_expression, resolve_subqueries_in_expr};
 use crate::{ExecutionEngine, SqlError, SqlResult};
-
 /// INSERT executor body. ARCH-3 VtuGuard call lives in the `pub fn
 /// execute_insert` wrapper in `execution_engine.rs` (gate requirement).
 pub fn execute_insert<S: StorageEngine + 'static>(
     engine: &mut ExecutionEngine<S>,
     insert: &InsertStatement,
 ) -> SqlResult<ExecutorResult> {
+    // V311-01 F-23: ClusteredTable main-path DML routing. The SELECT path
+    // already reads via ClusteredTable (engine_select.rs::scan_with_ahi);
+    // here we route INSERT to ClusteredTable.insert() so the rows actually
+    // land in the clustered B+ tree, not the Heap. Without this, SELECT
+    // after INSERT on a CLUSTERED table returns 0 rows.
+    if engine.clustered_tables.read().contains_key(&insert.table) {
+        return execute_insert_clustered(engine, insert);
+    }
     let (_tm_tx_id, started_implicit) =
         engine.begin_implicit_dml_tx("execute_insert", &insert.table)?;
     let table_name = insert.table.clone();
+
 
     // Get table info first (need it for triggers and FK validation)
     let table_info = {
@@ -249,6 +258,16 @@ pub fn execute_update<S: StorageEngine + 'static>(
     if update.tables.len() > 1 {
         return execute_update_multi_table(engine, update);
     }
+    // V311-01 F-23: ClusteredTable main-path DML routing. SELECT/INSERT
+    // already use ClusteredTable; UPDATE must too or it would write to
+    // the Heap and leave the clustered B+ tree stale.
+    if engine
+        .clustered_tables
+        .read()
+        .contains_key(&update.tables[0].name)
+    {
+        return execute_update_clustered(engine, update);
+    }
     let table_name = update.tables[0].name.clone();
     let (_tm_tx_id, started_implicit) =
         engine.begin_implicit_dml_tx("execute_update", &table_name)?;
@@ -458,6 +477,14 @@ pub fn execute_delete<S: StorageEngine + 'static>(
     }
     if delete.tables.len() > 1 || delete.using.is_some() {
         return execute_delete_multi_table(engine, delete);
+    }
+    // V311-01 F-23: ClusteredTable main-path DML routing. See execute_update.
+    if engine
+        .clustered_tables
+        .read()
+        .contains_key(&delete.tables[0].name)
+    {
+        return execute_delete_clustered(engine, delete);
     }
     let table_name = delete.tables[0].name.clone();
     let (_tm_tx_id, started_implicit) =
@@ -842,4 +869,274 @@ fn execute_delete_multi_table<S: StorageEngine + 'static>(
         }
     }
     Ok(ExecutorResult::new(vec![], total))
+}
+
+
+// =============================================================================
+// V311-01 F-23: ClusteredTable DML implementations
+// =============================================================================
+// These three functions implement INSERT/UPDATE/DELETE for tables registered
+// in `engine.clustered_tables` (i.e. tables created with
+// `CREATE TABLE ... ENGINE=InnoDB CLUSTERED`). They are dispatched from the
+// public `execute_insert`/`execute_update`/`execute_delete` entry points
+// above when the target table is clustered. The default Heap DML path
+// (and all of its trigger/FK/CHECK/ODUK/REPLACE logic) is unchanged.
+//
+// Known limitations in this initial main-path integration (V311-01 v2):
+//   - REPLACE INTO / ON DUPLICATE KEY UPDATE are not supported on clustered
+//     tables. ClusteredTable.insert() returns Err on PK collision, which
+//     surfaces as a `Duplicate entry` error. ON DUPLICATE KEY UPDATE would
+//     require a per-row CAS inside the clustered B+ tree; deferred to
+//     v3.12+ alongside disk-backed ClusteredTable pages.
+//   - FK / CHECK constraints on clustered tables are not validated here.
+//     ClusteredTable v1 enforces PK uniqueness only.
+//   - BEFORE / AFTER triggers are not invoked. Same reason as Heap path
+//     uses the storage-backed TriggerExecutor (which can't see clustered
+//     rows). Deferred to a future revision.
+//   - Multi-table DML (`UPDATE t1, t2 ...`, `DELETE t1 FROM t2 ...`) is not
+//     supported on clustered tables — the public entry points route these
+//     to `execute_update_multi_table`/`execute_delete_multi_table` first.
+
+/// V311-01 F-23: INSERT into a ClusteredTable.
+///
+/// Validates the row (PK column present, PK uniqueness — ClusteredTable
+/// itself enforces uniqueness and returns Err on collision), then inserts.
+/// Returns the number of rows inserted.
+fn execute_insert_clustered<S: StorageEngine + 'static>(
+    engine: &mut ExecutionEngine<S>,
+    insert: &InsertStatement,
+) -> SqlResult<ExecutorResult> {
+    if insert.is_replace {
+        return Err(SqlError::ExecutionError(
+            "REPLACE INTO is not supported on CLUSTERED tables (V311-01 v2)"
+                .to_string(),
+        ));
+    }
+    if insert.on_duplicate_key_update.is_some() {
+        return Err(SqlError::ExecutionError(
+            "ON DUPLICATE KEY UPDATE is not supported on CLUSTERED tables (V311-01 v2)"
+                .to_string(),
+        ));
+    }
+
+    let table_name = insert.table.clone();
+    let (_tm_tx_id, started_implicit) =
+        engine.begin_implicit_dml_tx("execute_insert_clustered", &table_name)?;
+
+    // Look up the ClusteredTable once (early return if the engine state
+    // changed between the dispatch check and now).
+    let ct_arc = {
+        let map = engine.clustered_tables.read();
+        map.get(&table_name)
+            .ok_or_else(|| {
+                SqlError::ExecutionError(format!(
+                    "ClusteredTable '{}' disappeared mid-INSERT",
+                    table_name
+                ))
+            })?
+            .clone()
+    };
+
+    // Get the table info (still stored in storage for catalog).
+    let table_info = {
+        let storage = engine.storage.read();
+        storage.get_table_info(&table_name)?.clone()
+    };
+
+    // Resolve the records to insert.
+    let all_records: Vec<Vec<Value>> = if let Some(ref select) = insert.select {
+        let select_result = engine.execute_select(select)?;
+        map_select_result_to_records(select_result, &insert.columns, &table_info)?
+    } else {
+        build_insert_records(&insert.values)
+    };
+
+    // Apply CHAR(N) padding (same as Heap path).
+    let processed_records: Vec<Vec<Value>> = all_records
+        .into_iter()
+        .map(|mut record| {
+            for (idx, col) in table_info.columns.iter().enumerate() {
+                if let Some(n) = col.char_max_length {
+                    if idx < record.len() {
+                        if let Value::Text(s) = &record[idx] {
+                            if s.len() < n {
+                                let mut padded = String::with_capacity(n);
+                                padded.push_str(s);
+                                for _ in s.len()..n {
+                                    padded.push(' ');
+                                }
+                                record[idx] = Value::Text(padded);
+                            }
+                        }
+                    }
+                }
+            }
+            record
+        })
+        .collect();
+
+    // Insert into ClusteredTable (PK uniqueness enforced internally).
+    let mut count = 0usize;
+    {
+        let mut ct = ct_arc.write();
+        for record in &processed_records {
+            ct.insert(record.clone())?;
+            count += 1;
+        }
+    }
+
+    engine.commit_implicit_dml_tx(started_implicit)?;
+    Ok(ExecutorResult::new(vec![], count))
+}
+
+/// V311-01 F-23: UPDATE on a ClusteredTable.
+///
+/// Reads all rows via ClusteredTable.full_scan(), filters by WHERE, applies
+/// SET clauses per row, then writes each updated row back via
+/// `update_pk` (PK stays the same).
+fn execute_update_clustered<S: StorageEngine + 'static>(
+    engine: &mut ExecutionEngine<S>,
+    update: &UpdateStatement,
+) -> SqlResult<ExecutorResult> {
+    let table_name = update.tables[0].name.clone();
+    let (_tm_tx_id, started_implicit) =
+        engine.begin_implicit_dml_tx("execute_update_clustered", &table_name)?;
+
+    let ct_arc = {
+        let map = engine.clustered_tables.read();
+        map.get(&table_name)
+            .ok_or_else(|| {
+                SqlError::ExecutionError(format!(
+                    "ClusteredTable '{}' disappeared mid-UPDATE",
+                    table_name
+                ))
+            })?
+            .clone()
+    };
+
+    let table_info = {
+        let storage = engine.storage.read();
+        storage.get_table_info(&table_name)?.clone()
+    };
+
+    // Read all rows from the clustered B+ tree.
+    let all_rows: Vec<Vec<Value>> = {
+        let ct = ct_arc.read();
+        ct.full_scan()
+    };
+
+    // Filter rows matching WHERE clause.
+    let where_clause = update.where_clause.as_ref();
+    let rows_to_update: Vec<Vec<Value>> = all_rows
+        .iter()
+        .filter(|row| match where_clause {
+            Some(w) => evaluate_where_clause(w, row, &table_info),
+            None => true, // no WHERE → update all
+        })
+        .cloned()
+        .collect();
+
+    if rows_to_update.is_empty() {
+        engine.commit_implicit_dml_tx(started_implicit)?;
+        return Ok(ExecutorResult::new(vec![], 0));
+    }
+
+    // Build (col_idx, new_expr) for SET clauses.
+    let set_pairs: Vec<(usize, &Expression)> = update
+        .set_clauses
+        .iter()
+        .filter_map(|(col, expr)| find_column_index(col, &table_info).map(|i| (i, expr)))
+        .collect();
+
+    // Apply SET to each row, then write back via update_pk.
+    let count = rows_to_update.len();
+    let pk_idx = table_info
+        .columns
+        .iter()
+        .position(|c| c.primary_key)
+        .unwrap_or(0);
+
+    {
+        let mut ct = ct_arc.write();
+        for row in &rows_to_update {
+            let mut new_row = row.clone();
+            for (col_idx, expr) in &set_pairs {
+                let new_val = evaluate_expression(expr, row, &table_info)
+                    .unwrap_or(Value::Null);
+                if *col_idx < new_row.len() {
+                    new_row[*col_idx] = new_val;
+                }
+            }
+            let pk_val = row
+                .get(pk_idx)
+                .cloned()
+                .unwrap_or(Value::Null);
+            ct.update_pk(&pk_val, new_row)?;
+        }
+    }
+
+    engine.commit_implicit_dml_tx(started_implicit)?;
+    Ok(ExecutorResult::new(vec![], count))
+}
+
+/// V311-01 F-23: DELETE on a ClusteredTable.
+///
+/// Reads all rows, filters by WHERE, deletes matching rows by PK.
+fn execute_delete_clustered<S: StorageEngine + 'static>(
+    engine: &mut ExecutionEngine<S>,
+    delete: &DeleteStatement,
+) -> SqlResult<ExecutorResult> {
+    let table_name = delete.tables[0].name.clone();
+    let (_tm_tx_id, started_implicit) =
+        engine.begin_implicit_dml_tx("execute_delete_clustered", &table_name)?;
+
+    let ct_arc = {
+        let map = engine.clustered_tables.read();
+        map.get(&table_name)
+            .ok_or_else(|| {
+                SqlError::ExecutionError(format!(
+                    "ClusteredTable '{}' disappeared mid-DELETE",
+                    table_name
+                ))
+            })?
+            .clone()
+    };
+
+ let table_info = {
+        let storage = engine.storage.read();
+        storage.get_table_info(&table_name)?.clone()
+    };
+
+    let all_rows: Vec<Vec<Value>> = {
+        let ct = ct_arc.read();
+        ct.full_scan()
+    };
+
+    let where_clause = delete.where_clause.as_ref();
+    let pk_idx = table_info
+        .columns
+        .iter()
+        .position(|c| c.primary_key)
+        .unwrap_or(0);
+
+    // Collect PKs to delete (filter first, then write).
+    let pks_to_delete: Vec<Value> = all_rows
+        .iter()
+        .filter(|row| match where_clause {
+            Some(w) => evaluate_where_clause(w, row, &table_info),
+            None => true,
+        })
+        .map(|row| row.get(pk_idx).cloned().unwrap_or(Value::Null))
+        .collect();
+
+    let count = pks_to_delete.len();
+    {
+        let mut ct = ct_arc.write();
+        for pk in &pks_to_delete {
+            ct.delete_pk(pk);
+        }
+    }
+
+    engine.commit_implicit_dml_tx(started_implicit)?;
+    Ok(ExecutorResult::new(vec![], count))
 }
