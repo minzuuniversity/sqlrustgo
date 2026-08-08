@@ -122,7 +122,7 @@ This document is the **SSOT** for v3.11.0's feature checklist, tracking 23 V311-
 | ID | 任务 | 工作量 | 优先级 | 状态 | 测试方法 |
 |----|------|--------|--------|------|----------|
 | V311-20 | H/22 @ SF=1 |
-| V311-21 | 168h SOAK v3.11.0 (#3648) | (Hermes 协作) | P1 | ⏳ TODO | 168h 持续监控 |
+| V311-21 | 168h SOAK v3.11.0 (#3648) | (本机已闭环) | P1 | ✅ **DONE (343h37m,2.04x 168h,0 errors)** | `SOAK_168H_REPORT.md` |
 | V311-22 | 文档架构整理 (5 plans → 3 plans) | 12h | P2 | ✅ DONE | `plans/INDEX.md` |
 
 ---
@@ -166,7 +166,7 @@ This document is the **SSOT** for v3.11.0's feature checklist, tracking 23 V311-
 | 覆盖率 (lib) | ≥80% per crate | 14.71% | ≥85% per crate |
 | TPC-H SF=0.1 | 22/22 | ✅ PASS | ✅ 保持 |
 | TPC-H SF=1 | 6/10 | ⚠️ 部分 | ⚠️ PENDING (fixture missing) |
-| 168h SOAK | 0 crashes | 🔄 进行中 (51h+/168h) | ⏳ V311-21 未完成 |
+| 168h SOAK | 0 crashes | ✅ **PASS (343h37m, 2.04x 168h)** | ✅ 已闭环 (V311-21),0 errors,详见 `SOAK_168H_REPORT.md` |
 | E2E 8/8 | PASS | ✅ PASS | ✅ 保持 |
 | 高并发 INSERT | 0 errors | ❌ PERF-5 | ✅ PASS (V311-23) |
 
