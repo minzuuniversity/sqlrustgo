@@ -215,20 +215,18 @@ fn test_tpch_22_mysql_cli_wire() {
     // Sanity: data dir present
     let data_dir = PathBuf::from("tests/data/tpch-sf001");
     if !data_dir.exists() {
-        eprintln!("[SKIP] data dir not found: {}", data_dir.display());
-        return;
+        panic!("[FAIL] data dir not found: {}. Generate SF=1 fixture via dbgen -s 1 -f, or restore tests/data/tpch-sf001 via git lfs pull.", data_dir.display());
     }
     for tbl in TABLES {
         let p = data_dir.join(format!("{}.tbl", tbl));
         if !p.exists() {
-            eprintln!("[SKIP] missing .tbl: {}", p.display());
-            return;
+            panic!("[FAIL] missing fixture: {}. Generate SF=1 fixture via dbgen -s 1 -f.", p.display());
         }
     }
+
     // `mysql` CLI must be installed
     if Command::new("mysql").arg("--version").output().is_err() {
-        eprintln!("[SKIP] mysql CLI not installed");
-        return;
+        panic!("[FAIL] mysql CLI not installed (required for this test)");
     }
 
     // Start the server
