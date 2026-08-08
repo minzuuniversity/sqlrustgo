@@ -1,3 +1,4 @@
+use sqlrustgo_storage::StorageEngine;
 use sqlrustgo_types::Value;
 
 #[derive(Debug, Clone, PartialEq)]
@@ -41,7 +42,18 @@ pub enum UnifiedExpr {
 }
 
 impl UnifiedExpr {
-    pub fn evaluate(&self, row: &[Value], columns: &[String]) -> Value {
+    /// Evaluate the expression.
+    ///
+    /// `storage` is \`&mut Option<&mut dyn StorageEngine>\` — pass `None` when no
+    /// engine is available (e.g. in pure expression-evaluation contexts). When
+    /// `Some`, the `SequenceNextVal` / `SequenceCurrval` arms call through to the
+    /// engine to resolve the actual sequence value.
+    pub fn evaluate(
+        &mut self,
+        row: &[Value],
+        columns: &[String],
+        storage: &mut Option<&mut dyn StorageEngine>,
+    ) -> Value {
         match self {
             UnifiedExpr::Literal(v) => v.clone(),
             UnifiedExpr::Column(name) => columns
@@ -50,58 +62,83 @@ impl UnifiedExpr {
                 .and_then(|i| row.get(i).cloned())
                 .unwrap_or(Value::Null),
             UnifiedExpr::BinaryOp { left, op, right } => {
-                let l = left.evaluate(row, columns);
-                let r = right.evaluate(row, columns);
+                let l = (&mut *left).evaluate(row, columns, storage);
+                let r = (&mut *right).evaluate(row, columns, storage);
                 eval_binary_op(&l, &r, op)
             }
             UnifiedExpr::UnaryOp { op, expr } => {
-                let v = expr.evaluate(row, columns);
+                let v = (&mut *expr).evaluate(row, columns, storage);
                 eval_unary_op(&v, op)
             }
             UnifiedExpr::IsNull(expr) => {
-                Value::Boolean(matches!(expr.evaluate(row, columns), Value::Null))
+                Value::Boolean(matches!(
+                    (&mut *expr).evaluate(row, columns, storage),
+                    Value::Null
+                ))
             }
             UnifiedExpr::IsNotNull(expr) => {
-                Value::Boolean(!matches!(expr.evaluate(row, columns), Value::Null))
+                Value::Boolean(!matches!(
+                    (&mut *expr).evaluate(row, columns, storage),
+                    Value::Null
+                ))
             }
             UnifiedExpr::FunctionCall { name, args } => {
-                let vals: Vec<Value> = args.iter().map(|a| a.evaluate(row, columns)).collect();
+                let vals: Vec<Value> = args
+                    .iter_mut()
+                    .map(|a| a.evaluate(row, columns, storage))
+                    .collect();
                 eval_fn(name, &vals)
             }
             UnifiedExpr::InList { expr, list } => {
-                let val = expr.evaluate(row, columns);
-                Value::Boolean(
-                    list.iter().any(|item| {
-                        val == item.evaluate(row, columns) && !matches!(&val, Value::Null)
-                    }),
-                )
+                let val = (&mut *expr).evaluate(row, columns, storage);
+                Value::Boolean(list.iter_mut().any(|item| {
+                    val == item.evaluate(row, columns, storage) && !matches!(&val, Value::Null)
+                }))
             }
             UnifiedExpr::Between { expr, low, high } => {
-                let v = expr.evaluate(row, columns);
-                let l = low.evaluate(row, columns);
-                let h = high.evaluate(row, columns);
+                let v = (&mut *expr).evaluate(row, columns, storage);
+                let l = (&mut *low).evaluate(row, columns, storage);
+                let h = (&mut *high).evaluate(row, columns, storage);
                 Value::Boolean(
                     eval_binary_op(&v, &l, ">=") == Value::Boolean(true)
                         && eval_binary_op(&v, &h, "<=") == Value::Boolean(true),
                 )
             }
             UnifiedExpr::CaseWhen { whens, else_val } => {
-                for (cond, result) in whens {
-                    if cond.evaluate(row, columns) == Value::Boolean(true) {
-                        return result.evaluate(row, columns);
+                for (cond, result) in whens.iter_mut() {
+                    if cond.evaluate(row, columns, storage) == Value::Boolean(true) {
+                        return result.evaluate(row, columns, storage);
                     }
                 }
                 else_val
-                    .as_ref()
-                    .map(|e| e.evaluate(row, columns))
+                    .as_mut()
+                    .map(|e| e.evaluate(row, columns, storage))
                     .unwrap_or(Value::Null)
             }
             UnifiedExpr::Cast { expr, target_type } => {
-                let v = expr.evaluate(row, columns);
+                let v = (&mut *expr).evaluate(row, columns, storage);
                 cast_val(&v, target_type)
             }
-            UnifiedExpr::SequenceNextVal(_) => Value::Null,
-            UnifiedExpr::SequenceCurrval(_) => Value::Null,
+            UnifiedExpr::SequenceNextVal(name) => {
+                if let Some(storage) = storage.as_mut() {
+                    match storage.next_sequence_value(name) {
+                        Ok(v) => Value::Integer(v),
+                        Err(_) => Value::Null,
+                    }
+                } else {
+                    Value::Null
+                }
+            }
+            UnifiedExpr::SequenceCurrval(name) => {
+                if let Some(storage) = storage.as_mut() {
+                    match storage.current_sequence_value(name) {
+                        Ok(v) => Value::Integer(v),
+                        Err(_) => Value::Null,
+                    }
+                } else {
+                    Value::Null
+                }
+            }
         }
     }
 
@@ -113,6 +150,7 @@ impl UnifiedExpr {
         cols
     }
 }
+
 fn collect_cols(expr: &UnifiedExpr, acc: &mut Vec<String>) {
     match expr {
         UnifiedExpr::Column(name) => acc.push(name.clone()),
@@ -1847,73 +1885,73 @@ mod tests {
     #[test]
     fn test_literal_int() {
         assert_eq!(
-            UnifiedExpr::Literal(Value::Integer(42)).evaluate(&[], &[]),
+            UnifiedExpr::Literal(Value::Integer(42)).evaluate(&[], &[], &mut None),
             Value::Integer(42)
         );
     }
 
     #[test]
     fn test_column() {
-        let e = UnifiedExpr::Column("x".into());
+        let mut e = UnifiedExpr::Column("x".into());
         assert_eq!(
-            e.evaluate(&[Value::Integer(5)], &["x".into()]),
+            e.evaluate(&[Value::Integer(5)], &["x".into()], &mut None),
             Value::Integer(5)
         );
     }
 
     #[test]
     fn test_eq() {
-        let e = UnifiedExpr::BinaryOp {
+        let mut e = UnifiedExpr::BinaryOp {
             left: Box::new(UnifiedExpr::Column("a".into())),
             op: "=".into(),
             right: Box::new(UnifiedExpr::Literal(Value::Integer(5))),
         };
         assert_eq!(
-            e.evaluate(&[Value::Integer(5)], &["a".into()]),
+            e.evaluate(&[Value::Integer(5)], &["a".into()], &mut None),
             Value::Boolean(true)
         );
         assert_eq!(
-            e.evaluate(&[Value::Integer(3)], &["a".into()]),
+            e.evaluate(&[Value::Integer(3)], &["a".into()], &mut None),
             Value::Boolean(false)
         );
     }
 
     #[test]
     fn test_and() {
-        let e = UnifiedExpr::BinaryOp {
+        let mut e = UnifiedExpr::BinaryOp {
             left: Box::new(UnifiedExpr::Literal(Value::Integer(1))),
             op: "AND".into(),
             right: Box::new(UnifiedExpr::Literal(Value::Integer(0))),
         };
-        assert_eq!(e.evaluate(&[], &[]), Value::Boolean(false));
+        assert_eq!(e.evaluate(&[], &[], &mut None), Value::Boolean(false));
     }
 
     #[test]
     fn test_or() {
-        let e = UnifiedExpr::BinaryOp {
+        let mut e = UnifiedExpr::BinaryOp {
             left: Box::new(UnifiedExpr::Literal(Value::Integer(1))),
             op: "OR".into(),
             right: Box::new(UnifiedExpr::Literal(Value::Integer(0))),
         };
-        assert_eq!(e.evaluate(&[], &[]), Value::Boolean(true));
+        assert_eq!(e.evaluate(&[], &[], &mut None), Value::Boolean(true));
     }
 
     #[test]
     fn test_is_null() {
-        let e = UnifiedExpr::IsNull(Box::new(UnifiedExpr::Column("x".into())));
+        let mut e = UnifiedExpr::IsNull(Box::new(UnifiedExpr::Column("x".into())));
         assert_eq!(
-            e.evaluate(&[Value::Null], &["x".into()]),
+            e.evaluate(&[Value::Null], &["x".into()], &mut None),
             Value::Boolean(true)
         );
         assert_eq!(
-            e.evaluate(&[Value::Boolean(true)], &["x".into()]),
+            e.evaluate(&[Value::Boolean(true)], &["x".into()], &mut None),
             Value::Boolean(false)
         );
     }
 
     #[test]
     fn test_in_list() {
-        let e = UnifiedExpr::InList {
+        let mut e = UnifiedExpr::InList {
             expr: Box::new(UnifiedExpr::Column("x".into())),
             list: vec![
                 UnifiedExpr::Literal(Value::Integer(1)),
@@ -1921,35 +1959,35 @@ mod tests {
             ],
         };
         assert_eq!(
-            e.evaluate(&[Value::Integer(3)], &["x".into()]),
+            e.evaluate(&[Value::Integer(3)], &["x".into()], &mut None),
             Value::Boolean(true)
         );
         assert_eq!(
-            e.evaluate(&[Value::Integer(2)], &["x".into()]),
+            e.evaluate(&[Value::Integer(2)], &["x".into()], &mut None),
             Value::Boolean(false)
         );
     }
 
     #[test]
     fn test_between() {
-        let e = UnifiedExpr::Between {
+        let mut e = UnifiedExpr::Between {
             expr: Box::new(UnifiedExpr::Column("age".into())),
             low: Box::new(UnifiedExpr::Literal(Value::Integer(18))),
             high: Box::new(UnifiedExpr::Literal(Value::Integer(65))),
         };
         assert_eq!(
-            e.evaluate(&[Value::Integer(30)], &["age".into()]),
+            e.evaluate(&[Value::Integer(30)], &["age".into()], &mut None),
             Value::Boolean(true)
         );
         assert_eq!(
-            e.evaluate(&[Value::Integer(15)], &["age".into()]),
+            e.evaluate(&[Value::Integer(15)], &["age".into()], &mut None),
             Value::Boolean(false)
         );
     }
 
     #[test]
     fn test_case_when() {
-        let e = UnifiedExpr::CaseWhen {
+        let mut e = UnifiedExpr::CaseWhen {
             whens: vec![(
                 UnifiedExpr::BinaryOp {
                     left: Box::new(UnifiedExpr::Column("s".into())),
@@ -1961,27 +1999,27 @@ mod tests {
             else_val: Some(Box::new(UnifiedExpr::Literal(Value::Text("F".into())))),
         };
         assert_eq!(
-            e.evaluate(&[Value::Integer(95)], &["s".into()]),
+            e.evaluate(&[Value::Integer(95)], &["s".into()], &mut None),
             Value::Text("A".into())
         );
         assert_eq!(
-            e.evaluate(&[Value::Integer(50)], &["s".into()]),
+            e.evaluate(&[Value::Integer(50)], &["s".into()], &mut None),
             Value::Text("F".into())
         );
     }
 
     #[test]
     fn test_cast() {
-        let e = UnifiedExpr::Cast {
+        let mut e = UnifiedExpr::Cast {
             expr: Box::new(UnifiedExpr::Literal(Value::Text("42".into()))),
             target_type: "INTEGER".into(),
         };
-        assert_eq!(e.evaluate(&[], &[]), Value::Integer(42));
+        assert_eq!(e.evaluate(&[], &[], &mut None), Value::Integer(42));
     }
 
     #[test]
     fn test_referenced_columns() {
-        let e = UnifiedExpr::BinaryOp {
+        let mut e = UnifiedExpr::BinaryOp {
             left: Box::new(UnifiedExpr::Column("a".into())),
             op: "+".into(),
             right: Box::new(UnifiedExpr::Column("b".into())),
@@ -2275,39 +2313,39 @@ mod tests {
 
     #[test]
     fn test_unified_expr_unary_op() {
-        let e = UnifiedExpr::UnaryOp {
+        let mut e = UnifiedExpr::UnaryOp {
             op: "NOT".into(),
             expr: Box::new(UnifiedExpr::Literal(Value::Boolean(true))),
         };
-        assert_eq!(e.evaluate(&[], &[]), Value::Boolean(false));
+        assert_eq!(e.evaluate(&[], &[], &mut None), Value::Boolean(false));
     }
 
     #[test]
     fn test_unified_expr_is_not_null() {
-        let e = UnifiedExpr::IsNotNull(Box::new(UnifiedExpr::Column("x".into())));
+        let mut e = UnifiedExpr::IsNotNull(Box::new(UnifiedExpr::Column("x".into())));
         assert_eq!(
-            e.evaluate(&[Value::Integer(1)], &["x".into()]),
+            e.evaluate(&[Value::Integer(1)], &["x".into()], &mut None),
             Value::Boolean(true)
         );
         assert_eq!(
-            e.evaluate(&[Value::Null], &["x".into()]),
+            e.evaluate(&[Value::Null], &["x".into()], &mut None),
             Value::Boolean(false)
         );
     }
 
     #[test]
     fn test_unified_expr_function_call() {
-        let e = UnifiedExpr::FunctionCall {
+        let mut e = UnifiedExpr::FunctionCall {
             name: "LENGTH".into(),
             args: vec![UnifiedExpr::Literal(Value::Text("abc".into()))],
         };
-        assert_eq!(e.evaluate(&[], &[]), Value::Integer(3));
+        assert_eq!(e.evaluate(&[], &[], &mut None), Value::Integer(3));
     }
 
     #[test]
     fn test_unified_expr_column_missing() {
-        let e = UnifiedExpr::Column("missing".into());
-        assert_eq!(e.evaluate(&[Value::Integer(1)], &["x".into()]), Value::Null);
+        let mut e = UnifiedExpr::Column("missing".into());
+        assert_eq!(e.evaluate(&[Value::Integer(1)], &["x".into()], &mut None), Value::Null);
     }
 
     #[test]
@@ -2376,7 +2414,7 @@ mod tests {
 
     #[test]
     fn test_case_when_no_else_returns_null() {
-        let e = UnifiedExpr::CaseWhen {
+        let mut e = UnifiedExpr::CaseWhen {
             whens: vec![(
                 UnifiedExpr::BinaryOp {
                     left: Box::new(UnifiedExpr::Literal(Value::Integer(1))),
@@ -2387,7 +2425,7 @@ mod tests {
             )],
             else_val: None,
         };
-        assert_eq!(e.evaluate(&[], &[]), Value::Null);
+        assert_eq!(e.evaluate(&[], &[], &mut None), Value::Null);
     }
 
     #[test]
@@ -2423,7 +2461,7 @@ mod tests {
 
     #[test]
     fn test_referenced_columns_complex() {
-        let e = UnifiedExpr::CaseWhen {
+        let mut e = UnifiedExpr::CaseWhen {
             whens: vec![(
                 UnifiedExpr::BinaryOp {
                     left: Box::new(UnifiedExpr::Column("a".into())),
@@ -2443,7 +2481,7 @@ mod tests {
 
     #[test]
     fn test_referenced_columns_in_list() {
-        let e = UnifiedExpr::InList {
+        let mut e = UnifiedExpr::InList {
             expr: Box::new(UnifiedExpr::Column("x".into())),
             list: vec![
                 UnifiedExpr::Column("a".into()),
@@ -2456,7 +2494,7 @@ mod tests {
 
     #[test]
     fn test_referenced_columns_between() {
-        let e = UnifiedExpr::Between {
+        let mut e = UnifiedExpr::Between {
             expr: Box::new(UnifiedExpr::Column("v".into())),
             low: Box::new(UnifiedExpr::Column("lo".into())),
             high: Box::new(UnifiedExpr::Column("hi".into())),
@@ -2467,7 +2505,7 @@ mod tests {
 
     #[test]
     fn test_referenced_columns_function_call() {
-        let e = UnifiedExpr::FunctionCall {
+        let mut e = UnifiedExpr::FunctionCall {
             name: "CONCAT".into(),
             args: vec![
                 UnifiedExpr::Column("a".into()),
@@ -2494,14 +2532,14 @@ mod tests {
 
     #[test]
     fn test_referenced_columns_is_null() {
-        let e = UnifiedExpr::IsNull(Box::new(UnifiedExpr::Column("x".into())));
+        let mut e = UnifiedExpr::IsNull(Box::new(UnifiedExpr::Column("x".into())));
         let cols = e.referenced_columns();
         assert_eq!(cols, vec!["x".to_string()]);
     }
 
     #[test]
     fn test_referenced_columns_cast() {
-        let e = UnifiedExpr::Cast {
+        let mut e = UnifiedExpr::Cast {
             expr: Box::new(UnifiedExpr::Column("x".into())),
             target_type: "INTEGER".into(),
         };
@@ -2511,12 +2549,12 @@ mod tests {
 
     #[test]
     fn test_in_list_null_value() {
-        let e = UnifiedExpr::InList {
+        let mut e = UnifiedExpr::InList {
             expr: Box::new(UnifiedExpr::Column("x".into())),
             list: vec![UnifiedExpr::Literal(Value::Integer(1))],
         };
         assert_eq!(
-            e.evaluate(&[Value::Null], &["x".into()]),
+            e.evaluate(&[Value::Null], &["x".into()], &mut None),
             Value::Boolean(false)
         );
     }
