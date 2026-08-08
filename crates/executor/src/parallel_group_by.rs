@@ -489,36 +489,98 @@ impl ParallelGroupBy {
 }
 
 #[cfg(test)]
+
 mod tests {
     use super::*;
+    use sqlrustgo_storage::ColumnDefinition;
 
-    #[test]
-    fn test_value_to_key_string_integer() {
-        assert_eq!(value_to_key_string(&Value::Integer(42)), "42");
+    fn empty_table_info() -> TableInfo {
+        TableInfo {
+            name: "t".to_string(),
+            columns: vec![],
+            foreign_keys: vec![],
+            unique_constraints: vec![],
+            check_constraints: vec![],
+            partition_info: None,
+            compression: None,
+        }
+    }
+
+    fn table_with_id_col() -> TableInfo {
+        TableInfo {
+            name: "t".to_string(),
+            columns: vec![ColumnDefinition {
+                name: "id".to_string(),
+                data_type: "INT".to_string(),
+                ..Default::default()
+            }],
+            foreign_keys: vec![],
+            unique_constraints: vec![],
+            check_constraints: vec![],
+            partition_info: None,
+            compression: None,
+        }
     }
 
     #[test]
-    fn test_value_to_key_string_text() {
+    fn test_parallel_group_by_new_clamps_degree() {
+        assert_eq!(ParallelGroupBy::new(0).degree, 1);
+        assert_eq!(ParallelGroupBy::new(8).degree, 8);
+    }
+
+    #[test]
+    fn test_evaluate_simple_expr_identifier() {
+        let table = table_with_id_col();
+        let row = vec![Value::Integer(42)];
         assert_eq!(
-            value_to_key_string(&Value::Text("hello".to_string())),
-            "hello"
+            evaluate_simple_expr(&Expression::Identifier("id".into()), &row, &table),
+            Value::Integer(42)
+        );
+        assert_eq!(
+            evaluate_simple_expr(&Expression::Identifier("ID".into()), &row, &table),
+            Value::Integer(42)
+        );
+        assert_eq!(
+            evaluate_simple_expr(&Expression::Identifier("missing".into()), &row, &table),
+            Value::Null
         );
     }
 
     #[test]
-    fn test_value_to_key_string_null() {
-        assert_eq!(value_to_key_string(&Value::Null), "NULL");
+    fn test_evaluate_simple_expr_literal() {
+        let table = empty_table_info();
+        let row: Vec<Value> = vec![];
+        assert_eq!(
+            evaluate_simple_expr(&Expression::Literal("42".into()), &row, &table),
+            Value::Integer(42)
+        );
+        assert_eq!(
+            evaluate_simple_expr(&Expression::Literal("3.14".into()), &row, &table),
+            Value::Float(3.14)
+        );
+        assert_eq!(
+            evaluate_simple_expr(&Expression::Literal("hello".into()), &row, &table),
+            Value::Text("hello".into())
+        );
     }
 
     #[test]
-    fn test_value_to_key_string_boolean() {
-        assert_eq!(value_to_key_string(&Value::Boolean(true)), "true");
-        assert_eq!(value_to_key_string(&Value::Boolean(false)), "false");
+    fn test_compute_group_keys_basic() {
+        let table = table_with_id_col();
+        let rows = vec![
+            vec![Value::Integer(1)],
+            vec![Value::Integer(2)],
+            vec![Value::Integer(1)],
+        ];
+        let keys = compute_group_keys(&rows, &[Expression::Identifier("id".into())], &table);
+        assert_eq!(keys.len(), 3);
+        assert_eq!(keys[0].0, "1");
+        assert_eq!(keys[1].0, "2");
+        assert_eq!(keys[2].0, "1");
     }
 
     #[test]
-    fn test_partial_slot_count() {
-        let slot = PartialSlot::Count(5);
-        assert!(matches!(slot, PartialSlot::Count(_)));
+    fn test_value_to_key_string_point() {
+        assert_eq!(value_to_key_string(&Value::Point(1.0, 2.0)), "POINT(1.0, 2.0)");
     }
 }
