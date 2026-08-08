@@ -802,8 +802,9 @@ path = "tests/common/oracle_framework.rs"
 name = "tpch_cli_harness"
 path = "tests/common/tpch_cli_harness.rs"
 [[test]]
-name = "tpch_wire_harness"
-path = "tests/common/tpch_wire_harness.rs"
+name = "sequence_test"
+path = "tests/integration/sql/sequence_test.rs"
+
 [[test]]
 name = "cte_e2e_test"
 path = "tests/e2e/cte_e2e_test.rs"
