@@ -277,7 +277,13 @@ impl<'a> Lexer<'a> {
                     "IGNORE" => Token::Ignore,
                     "INTO" => Token::Into,
                     "VALUES" => Token::Values,
-                    "VALUE" => Token::Value,
+                    // "VALUE" is intentionally NOT a reserved keyword. It is only
+                    // meaningful in the SQL:2003 `NEXT VALUE FOR sequence_name` form,
+                    // where the parser matches `Identifier("value")` between NEXT and FOR.
+                    // Treating it as a keyword broke column/alias use cases
+                    // (e.g. `UPDATE t SET value = 1`, `SELECT 1 AS value`).
+                    // Token::Value is now unused; retained for backwards-compat.
+                    "VALUE" => Token::Identifier(ident.to_string()),
                     "UPDATE" => Token::Update,
                     "SET" => Token::Set,
                     "DELETE" => Token::Delete,
