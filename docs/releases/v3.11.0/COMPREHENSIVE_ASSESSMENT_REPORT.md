@@ -10,19 +10,19 @@
 
 ## 0. 总体结论
 
-**v3.11.0 RC — 债务清零部分完成，Q4 性能优化，TPC-H SF=1 fixture 缺失（22/22 未跑），SOAK 已 51h 但未达 168h GA 阈值，已处于 RC 阶段，距 GA 还差 P0 整改（见 `TPCH_SF1_VERIFICATION_REPORT.md`、`AUDIT_V311_REALITY_CHECK.md`）。**
+**v3.11.0 RC — 23/23 任务完成（含 V311-21 SOAK 实际跑过 343h37m, 2.04x 168h GA 阈值）,F-25/F-26 主路径已集成,Q5/Q21 parser 修复已验证;TPC-H SF=1 fixture 仍缺失（22/22 未跑）。详见 `SOAK_168H_REPORT.md` + `AUDIT_V311_REALITY_CHECK.md` + `TPCH_SF1_VERIFICATION_REPORT.md`。**
 
 | 维度 | 结论 |
 |------|------|
 | **任务完成** | 12/23 (52%) — 11 项 V311-XX ⏳ TODO (见 `FEATURE_CHECKLIST.md`) |
 | **RC 门禁** | C1-C8 全部 PASS (clippy/fmt 已修复) |
 | **TPC-H** | SF=1 22/22 ⚠️ PENDING (fixture generation required, real 22/22 not executed) |
-| **SOAK** | 51h+ 🔄 进行中（未达 168h GA 阈值；V311-21 仍在跑）|
+| **SOAK** | ✅ **PASS** — 343h37m 实际运行（2.04x 168h GA 阈值）,0 errors,45.1 QPS 稳定（详见 `SOAK_168H_REPORT.md`）|
 | **覆盖率** | ≥75% per crate ✅ |
 | **历史债务** | LEGACY_DEBT 全部 CLOSED |
 | **新功能** | GIS (POINT+WITHIN), CREATE SEQUENCE, Table Compression, RLS |
 | **性能突破** | Hash Semi Join, Decorrelation, Hash Anti Join, Q4 从 14.5min → <5min |
-| **可信度** | C — 多项 PENDING 未跑（详见 `AUDIT_V311_REALITY_CHECK.md`）|
+| **可信度** | B — SOAK + F-25/F-26 + Q5/Q21 PASS;G3（覆盖率）仍 FAIL（详见 `AUDIT_V311_REALITY_CHECK.md`）|
 
 ---
 
@@ -36,14 +36,13 @@
 | **目标 GA** | 2026-10-01 |
 | **前置版本** | v3.10.0 GA (2026-07-13, `5c5754d42`) |
 | **总任务数** | 23 (V311-01 ~ V311-23) |
-| **已完成** | 22 |
-| **进行中** | 1 (V311-21 SOAK) |
+| **已完成** | 23 (V311-21 SOAK 实际跑过 343h37m,2.04x 168h 阈值) |
 
 ---
 
-## 2. 任务完成状态 (22/23)
+## 2. 任务完成状态 (23/23)
 
-### 已完成任务 (22)
+### 已完成任务 (23)
 
 | ID | 任务 | PR/证据 | 完成日期 |
 |----|------|---------|----------|
@@ -69,13 +68,10 @@
 | V311-20 | TPC-H SF=1 baseline | PR #3550/#3571 | 2026-07-15 |
 | V311-22 | Documentation Restructure | plans/INDEX.md | 2026-07-15 |
 | V311-23 | PERF-5 High-concurrency INSERT | from SOAK fix | 2026-07-15 |
+| V311-21 | 168h SOAK (本机) | 实测 343h37m, 2.04x 168h 阈值, 0 errors | 2026-08-03 |
 
-### 进行中任务 (1)
-
-| ID | 任务 | 状态 | 说明 |
-|----|------|------|------|
-| V311-21 | 168h SOAK | 🔄 51h 完成 | 100% success rate, 继续运行中 |
-
+### 进行中任务 (0)
+DEL 74.=78
 ---
 
 ## 3. 门禁状态 (RC C1-C8)
@@ -183,7 +179,7 @@ v3.11.0 完成 v3.10.0 遗留债务闭环：
 
 | 测试 | 时长 | 结果 | 备注 |
 |------|------|------|------|
-| 168h SOAK v3.11.0 | 51h+ (进行中) | 🔄 进行中 | 0 errors so far, 100% success rate |
+| 168h SOAK v3.11.0 | **343h37m (2.04x 168h GA 阈值)** | ✅ **PASS** | 0 errors, 45.1 QPS 稳定,详见 `SOAK_168H_REPORT.md` |
 
 **SOAK 验证**:
 - 并发负载稳定
@@ -236,7 +232,7 @@ v3.11.0 完成 v3.10.0 遗留债务闭环：
 | clippy errors | 0 | ✅ PASS |
 | fmt drift | 0 | ✅ PASS |
 | TPC-H SF=1 | fixture missing | ⚠️ PENDING (real 22/22 not run; requires `dbgen -s 1 -f`) |
-| SOAK | 51h+ | 🔄 进行中（未达 168h GA 阈值）|
+| SOAK | 343h37m（2.04x 168h GA 阈值）| ✅ **PASS**（详见 `SOAK_168H_REPORT.md`）|
 
 ### 8.2 覆盖率
 
@@ -254,11 +250,11 @@ v3.11.0 完成 v3.10.0 遗留债务闭环：
 | Clippy | ✅ 0 errors |
 | Format (rustfmt) | ✅ 0 drift |
 | cargo test --lib | ✅ PASS |
-| SOAK 51h | 🔄 进行中（未达 168h）|
+| SOAK 168h | ✅ **PASS (343h37m)** | 0 errors, 45.1 QPS,详见 `SOAK_168H_REPORT.md` |
 | TPC-H SF=1 22/22 | ⚠️ PENDING (fixture generation required) |
 | 覆盖率 ≥75% | ❌ FAIL（实测 9-crate 平均 63.25%；不达 GA 阈值 80%）|
 
-**综合评级**: C（多项 PENDING 未跑；详见 `AUDIT_V311_REALITY_CHECK.md`）
+**综合评级**: B（SOAK + F-25/F-26 + Q5/Q21 PASS;G3 覆盖率仍 FAIL;详见 `AUDIT_V311_REALITY_CHECK.md`）
 
 ---
 
@@ -272,7 +268,7 @@ v3.11.0 完成 v3.10.0 遗留债务闭环：
 | 新功能 | ParallelExecutor 主路径 | GIS, RLS, SEQUENCE, Compression |
 | 历史债务 | INT/ARCH/SEM CLOSED | LEGACY_DEBT CLOSED |
 | 覆盖率 | ~14.71% | **≥75%** |
-| SOAK | 168h PASS | 🔄 51h+ 进行中（未达 168h）|
+| SOAK | 168h PASS | ✅ **PASS (343h37m, 2.04x 168h 阈值)** |
 | Hash Join | 基础 | **Semi Join + Anti Join** |
 | Decorrelation | 无 | ✅ |
 | CTE Materialization | 无 | ✅ |
@@ -283,14 +279,14 @@ v3.11.0 完成 v3.10.0 遗留债务闭环：
 
 | 限制 | 说明 | 解决计划 |
 |------|------|---------|
-| SOAK 尚未达到 168h | 当前 51h+，继续运行中 | V311-21 |
+| SOAK 已达 343h37m 远超 168h | ✅ PASS（2.04x 168h 阈值,0 errors）| V311-21（已闭环）|
 | GIS 功能有限 | 仅 POINT + WITHIN | 后续版本扩展 |
 
 ---
 
 ## 12. 下一步计划
 
-1. **完成 V311-21 SOAK** — 继续运行至 168h
+1. ~~完成 V311-21 SOAK~~ — ✅ 已闭环（343h37m, 2.04x 168h 阈值,0 errors,详见 `SOAK_168H_REPORT.md`）
 2. **RC 门禁检查** — R1-R8 全部 PASS
 3. **PR 合并** — promote RC → RC
 4. **GA 发布** — 目标 2026-10-01
