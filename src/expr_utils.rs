@@ -167,6 +167,59 @@ pub fn evaluate_expression(
     evaluate_expression_with_subq(expr, row, table_info, &|_| Ok(Value::Null))
 }
 
+/// Like [`evaluate_expression_with_subq`] but additionally takes an
+/// optional storage reference for evaluating sequence expressions
+/// (`NEXT VALUE FOR seq`, `CURRVAL(seq)`).
+///
+/// The plain [`evaluate_expression`] path (no engine context) cannot
+/// advance or read sequence state, so it returns `Value::Null` for these
+/// arms. When the projection lives in a method that has `&self.storage`
+/// Like [`evaluate_expression_with_subq`] but additionally takes an
+/// optional mutable storage reference for evaluating sequence
+/// expressions (`NEXT VALUE FOR seq`, `CURRVAL(seq)`).
+///
+/// The plain [`evaluate_expression`] path (no engine context) cannot
+/// advance or read sequence state, so it returns `Value::Null` for these
+/// arms. When the projection lives in a method that has `&self.storage`
+/// (e.g. `ExecutionEngine::execute_select`), pass
+/// `Some(&mut *engine.storage.write())` to enable real sequence
+/// evaluation.
+///
+/// Pass `None` when no storage is in scope (e.g. testing the helper
+/// in isolation, or evaluating expressions outside an engine context).
+pub fn evaluate_expression_with_seq(
+    expr: &Expression,
+    row: &[Value],
+    table_info: &TableInfo,
+    storage: Option<&mut dyn sqlrustgo_storage::StorageEngine>,
+    subq_eval: &dyn Fn(&SelectStatement) -> Result<Value, String>,
+) -> Result<Value, String> {
+    if let Some(s) = storage {
+        match expr {
+            Expression::SequenceNextVal(name) => {
+                return s
+                    .next_sequence_value(name)
+                    .map(Value::Integer)
+                    .map_err(|e| format!("NEXT VALUE FOR {}: {}", name, e));
+            }
+            Expression::SequenceCurrval(name) => {
+                // No public has_sequence_value in the trait; derive the
+                // current value from get_sequence() (which returns
+                // Some(SequenceInfo) for sequences that have been
+                // created). CURRVAL semantics: return current_value
+                // (the value most recently produced by NEXT_VALUE; the
+                // engine has already advanced it on prior NEXT_VALUE_FOR).
+                return match s.get_sequence(name) {
+                    Some(info) => Ok(Value::Integer(info.current_value)),
+                    None => Ok(Value::Null),
+                };
+            }
+            _ => {}
+        }
+    }
+    evaluate_expression_with_subq(expr, row, table_info, subq_eval)
+}
+
 /// Like `evaluate_expression` but can resolve `(SELECT ...)` scalar
 /// subqueries via `subq_eval` (called with the inner select, expected
 /// to return its scalar value or Null for an empty result).
