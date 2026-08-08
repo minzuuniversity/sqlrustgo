@@ -62,7 +62,10 @@ fn q5_force_orders_before_customer() {
     let orders_pos = result.iter().position(|s| s == "orders");
     let lineitem_pos = result.iter().position(|s| s == "lineitem");
     assert!(orders_pos.is_some(), "orders must be in reordered output");
-    assert!(lineitem_pos.is_some(), "lineitem must be in reordered output");
+    assert!(
+        lineitem_pos.is_some(),
+        "lineitem must be in reordered output"
+    );
     let op = orders_pos.unwrap();
     let lp = lineitem_pos.unwrap();
     assert!(
@@ -98,7 +101,10 @@ fn q21_lineitem_alias_predicate_resolved() {
     assert_eq!(unique.len(), 3, "Q21 reorder should not duplicate tables");
 
     let lineitem_present = result.iter().any(|s| s.starts_with("lineitem"));
-    assert!(lineitem_present, "lineitem|l1 alias must be preserved in reorder");
+    assert!(
+        lineitem_present,
+        "lineitem|l1 alias must be preserved in reorder"
+    );
 
     eprintln!("Q21 reordered: {:?}", result);
 }

@@ -35,7 +35,10 @@ const UNIT_SQUARE: &str = "POLYGON((0 0, 5 0, 5 5, 0 5, 0 0))";
 fn st_within_point_inside_square() {
     let mut e = fresh();
     let r = e
-        .execute(&format!("SELECT ST_WITHIN('POINT(2, 3)', '{}')", UNIT_SQUARE))
+        .execute(&format!(
+            "SELECT ST_WITHIN('POINT(2, 3)', '{}')",
+            UNIT_SQUARE
+        ))
         .expect("ST_WITHIN should evaluate");
     assert_eq!(r.rows.len(), 1);
     assert_eq!(r.rows[0][0], sqlrustgo::Value::Boolean(true));
@@ -45,7 +48,10 @@ fn st_within_point_inside_square() {
 fn st_within_point_outside_square() {
     let mut e = fresh();
     let r = e
-        .execute(&format!("SELECT ST_WITHIN('POINT(10, 10)', '{}')", UNIT_SQUARE))
+        .execute(&format!(
+            "SELECT ST_WITHIN('POINT(10, 10)', '{}')",
+            UNIT_SQUARE
+        ))
         .expect("ST_WITHIN should evaluate");
     assert_eq!(r.rows.len(), 1);
     assert_eq!(r.rows[0][0], sqlrustgo::Value::Boolean(false));
@@ -58,7 +64,10 @@ fn st_within_point_on_boundary_returns_true() {
     // (0,0) in this case).
     let mut e = fresh();
     let r = e
-        .execute(&format!("SELECT ST_WITHIN('POINT(0, 0)', '{}')", UNIT_SQUARE))
+        .execute(&format!(
+            "SELECT ST_WITHIN('POINT(0, 0)', '{}')",
+            UNIT_SQUARE
+        ))
         .expect("ST_WITHIN should evaluate");
     assert_eq!(r.rows.len(), 1);
     // Boundary semantics: a vertex of the polygon is "inside".
@@ -69,7 +78,10 @@ fn st_within_point_on_boundary_returns_true() {
 fn st_within_point_just_outside_square() {
     let mut e = fresh();
     let r = e
-        .execute(&format!("SELECT ST_WITHIN('POINT(5.001, 2)', '{}')", UNIT_SQUARE))
+        .execute(&format!(
+            "SELECT ST_WITHIN('POINT(5.001, 2)', '{}')",
+            UNIT_SQUARE
+        ))
         .expect("ST_WITHIN should evaluate");
     assert_eq!(r.rows.len(), 1);
     assert_eq!(r.rows[0][0], sqlrustgo::Value::Boolean(false));
@@ -96,7 +108,10 @@ fn st_within_concave_polygon() {
 fn st_within_malformed_point_returns_null() {
     let mut e = fresh();
     let r = e
-        .execute(&format!("SELECT ST_WITHIN('NOT_A_POINT', '{}')", UNIT_SQUARE))
+        .execute(&format!(
+            "SELECT ST_WITHIN('NOT_A_POINT', '{}')",
+            UNIT_SQUARE
+        ))
         .expect("malformed point should not fail the query");
     assert_eq!(r.rows.len(), 1);
     assert_eq!(r.rows[0][0], sqlrustgo::Value::Null);
