@@ -153,7 +153,7 @@ bash gate/gate.sh v3.9.0
 
 ## 2026-07-01 — execution_engine 拆分 + C-ARCH-05 锁回 + SGL-001 fmt (PR #3664/#3665/#3666)
 
-v3.9.0 本机可推进的 L1 lint + 架构整理项已全部闭环。3 个连续 PR 合并至 `develop/v3.9.0` (HEAD `d77821f6d1`)。
+v3.9.0 本机可推进的 L1 lint + 架构整理项已全部闭环。3 个连续 PR 合并至 `develop/v3.9.0` (HEAD d77821f6d1)。
 
 ### Changed
 
@@ -174,7 +174,7 @@ v3.9.0 本机可推进的 L1 lint + 架构整理项已全部闭环。3 个连续
   - #3265 72h 长跑 SOAK (blocked-on-S1, 需 72+ 小时持续运行)
   - #3266 168h 长跑 SOAK (blocked-on-S1, 需 168 小时持续运行)
 
-### Verification (本机 develop/v3.9.0 @ `d77821f6d1`)
+### Verification (本机 develop/v3.9.0 @ d77821f6d1)
 
 ```
 bash scripts/gate/check_arch_invariants.sh:    5/5 PASS
@@ -221,7 +221,8 @@ cargo fmt --check:                            clean
 ### 架构债 (ARCH/SEM Debt Closure) — Phase 1 重点
 
 | 改进 | 说明 | Phase | Issue |
-| v3.9.0 | 2026-07-10 | **GA** — 119h57m soak, TPC-H 22/22, Q9 6.7x |
+|------|------|-------|-------|
+| **Architecture debt closure** | v3.9.0 GA 前工程化架构债闭环 | 1 | #3664/#3665/#3666 |
 ### GMP 审计 (Audit + Time Travel) — Phase 5 重点
 
 | 改进 | 说明 | Phase | Issue |
