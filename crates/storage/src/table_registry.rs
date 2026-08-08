@@ -105,3 +105,103 @@ impl Default for TableRegistry {
         Self::new()
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use std::collections::HashSet;
+
+    /// Minimal in-memory TableEngine for testing the registry plumbing only.
+    struct MemTable {
+        info: TableInfo,
+        rows: Vec<Record>,
+        dirty: HashSet<String>,
+    }
+    impl TableEngine for MemTable {
+        fn get_table_info(&self) -> &TableInfo { &self.info }
+        fn insert(&mut self, records: Vec<Record>) -> SqlResult<()> {
+            self.rows.extend(records);
+            self.dirty.insert(self.info.name.clone());
+            Ok(())
+        }
+        fn scan(&self) -> SqlResult<Vec<Record>> { Ok(self.rows.clone()) }
+        fn delete(&mut self, _filters: &[Value]) -> SqlResult<usize> { Ok(0) }
+        fn update(
+            &mut self,
+            _filters: &[Value],
+            _updates: &[(usize, Value)],
+        ) -> SqlResult<usize> { Ok(0) }
+        fn flush(&mut self) -> SqlResult<()> { Ok(()) }
+        fn dirty_tables(&self) -> &HashSet<String> { &self.dirty }
+        fn mark_dirty(&mut self, table: &str) { self.dirty.insert(table.to_string()); }
+        fn table_name(&self) -> &str { &self.info.name }
+    }
+
+    fn sample_info(name: &str) -> TableInfo {
+        TableInfo {
+            name: name.to_string(),
+            columns: vec![crate::engine::ColumnDefinition {
+                name: "id".to_string(),
+                data_type: "INTEGER".to_string(),
+                nullable: false,
+                primary_key: true,
+                char_max_length: None,
+            }],
+            foreign_keys: vec![],
+            unique_constraints: vec![],
+            check_constraints: vec![],
+            partition_info: None,
+            compression: None,
+        }
+    }
+
+    fn mem_table(name: &str) -> Box<MemTable> {
+        Box::new(MemTable {
+            info: sample_info(name),
+            rows: vec![],
+            dirty: HashSet::new(),
+        })
+    }
+
+    #[test]
+    fn default_and_register_get_list() {
+        let mut reg: TableRegistry = Default::default();
+        assert!(!reg.has_table("x"));
+        reg.register("a".into(), mem_table("a"));
+        reg.register("b".into(), mem_table("b"));
+        assert!(reg.has_table("a"));
+        let mut names = reg.list_tables();
+        names.sort();
+        assert_eq!(names, vec!["a".to_string(), "b".to_string()]);
+        assert!(reg.get("a").is_some());
+    }
+
+    #[test]
+    fn get_table_info_insert_scan() {
+        let mut reg = TableRegistry::new();
+        reg.register("t".into(), mem_table("t"));
+        let info = reg.get_table_info("t").unwrap();
+        assert_eq!(info.name, "t");
+        reg.insert("t", vec![vec![Value::Integer(1)]]).unwrap();
+        let rows = reg.scan("t").unwrap();
+        assert_eq!(rows, vec![vec![Value::Integer(1)]]);
+    }
+
+    #[test]
+    fn missing_table_errors() {
+        let reg = TableRegistry::new();
+        assert!(reg.get_table_info("nope").is_err());
+        assert!(reg.insert("nope", vec![]).is_err());
+        assert!(reg.scan("nope").is_err());
+        assert!(reg.delete("nope", &[]).is_err());
+        assert!(reg.update("nope", &[], &[]).is_err());
+        assert!(reg.flush_table("nope").is_err());
+    }
+
+    #[test]
+    fn flush_table_calls_engine_flush() {
+        let mut reg = TableRegistry::new();
+        reg.register("t".into(), mem_table("t"));
+        reg.flush_table("t").unwrap();
+    }
+}
