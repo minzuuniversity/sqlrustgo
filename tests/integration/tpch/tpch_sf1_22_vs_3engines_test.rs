@@ -1,5 +1,8 @@
-//! TPC-H SF=1.0 cross-engine baseline (in-process surface).
+//! ADR-008-exception: 2026-09-01 (hermes-agent) — G4 SF=1 wire 22/22 close-out
+//! in flight per docs/releases/v3.11.0/G4_WIRE_TEST_CLOSE_OUT_PLAN.md.
+//! Re-evaluate 2026-09-01. See ADR-008-exception-v311-tpch-sf1.md.
 //!
+//! TPC-H SF=1.0 cross-engine baseline (in-process surface).
 //! Runs the 22 canonical TPC-H queries against the in-process
 //! sqlrustgo server (via `MySqlTestClient` + `start_ephemeral`)
 //! on the SF=1.0 fixture and writes the row counts and timings
