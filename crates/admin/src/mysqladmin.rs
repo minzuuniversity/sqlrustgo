@@ -184,3 +184,179 @@ impl Default for MysqlAdmin {
         Self::new()
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn admin() -> MysqlAdmin {
+        MysqlAdmin::new()
+    }
+
+    #[test]
+    fn test_new_has_default_variables() {
+        let admin = admin();
+        let vars = admin.variables();
+        assert!(vars.contains("version\t3.10.0"));
+        assert!(vars.contains("max_connections\t151"));
+        assert!(vars.contains("port\t3306"));
+    }
+
+    #[test]
+    fn test_ping() {
+        assert_eq!(admin().ping(), "mysqld is alive");
+    }
+
+    #[test]
+    fn test_version() {
+        assert_eq!(admin().version(), "sqlrustgo  v3.10.0");
+    }
+
+    #[test]
+    fn test_add_connection_returns_incremental_id() {
+        let a = admin();
+        let id1 = a.add_connection("root", "localhost", "testdb");
+        let id2 = a.add_connection("alice", "127.0.0.1", "db2");
+        assert_eq!(id1, 1);
+        assert_eq!(id2, 2);
+    }
+
+    #[test]
+    fn test_processlist_empty() {
+        let out = admin().processlist();
+        assert!(out.starts_with("Id\tUser\tHost\tdb\tCommand\tTime\tState\tInfo\n"));
+    }
+
+    #[test]
+    fn test_processlist_with_connections() {
+        let a = admin();
+        a.add_connection("root", "localhost", "testdb");
+        a.add_connection("alice", "127.0.0.1", "db2");
+        let out = a.processlist();
+        assert!(out.contains("root\tlocalhost\ttestdb"));
+        assert!(out.contains("alice\t127.0.0.1\tdb2"));
+    }
+
+    #[test]
+    fn test_kill_existing_connection() {
+        let a = admin();
+        let id = a.add_connection("root", "localhost", "testdb");
+        assert_eq!(a.kill(id), format!("Killed connection {}", id));
+        assert!(!a.processlist().contains("root"));
+    }
+
+    #[test]
+    fn test_kill_nonexistent_connection() {
+        let a = admin();
+        assert_eq!(a.kill(999), "ERROR: connection 999 not found");
+    }
+
+    #[test]
+    fn test_reload() {
+        let a = admin();
+        assert!(!a.is_grants_reloaded());
+        assert_eq!(a.reload(), "Reload complete");
+        assert!(a.is_grants_reloaded());
+    }
+
+    #[test]
+    fn test_flush_logs() {
+        let a = admin();
+        assert!(!a.is_log_flushed());
+        assert_eq!(a.flush_logs(), "Log files flushed");
+        assert!(a.is_log_flushed());
+    }
+
+    #[test]
+    fn test_set_and_get_variable() {
+        let a = admin();
+        a.set_variable("max_connections", "200");
+        let vars = a.variables();
+        assert!(vars.contains("max_connections\t200"));
+    }
+
+    #[test]
+    fn test_inc_query() {
+        let a = admin();
+        a.inc_query();
+        a.inc_query();
+        a.inc_query();
+        let out = a.status();
+        assert!(out.contains("Questions: 3"));
+    }
+
+    #[test]
+    fn test_inc_slow() {
+        let a = admin();
+        a.inc_slow();
+        a.inc_slow();
+        let out = a.status();
+        assert!(out.contains("Slow queries: 2"));
+    }
+
+    #[test]
+    fn test_status_contains_uptime_threads() {
+        let out = admin().status();
+        assert!(out.starts_with("Uptime:"));
+        assert!(out.contains("Threads: 0"));
+        assert!(out.contains("Questions: 0"));
+    }
+
+    #[test]
+    fn test_dispatch_ping() {
+        assert_eq!(admin().dispatch("ping", &[]), "mysqld is alive");
+    }
+
+    #[test]
+    fn test_dispatch_version() {
+        assert_eq!(admin().dispatch("version", &[]), "sqlrustgo  v3.10.0");
+    }
+
+    #[test]
+    fn test_dispatch_unknown_command() {
+        let out = admin().dispatch("foobar", &[]);
+        assert!(out.contains("ERROR: unknown command 'foobar'"));
+    }
+
+    #[test]
+    fn test_dispatch_kill_missing_arg() {
+        let out = admin().dispatch("kill", &[]);
+        assert_eq!(out, "ERROR: kill requires a connection id");
+    }
+
+    #[test]
+    fn test_dispatch_kill_invalid_arg() {
+        let out = admin().dispatch("kill", &["not-a-number"]);
+        assert!(out.contains("ERROR: invalid id 'not-a-number'"));
+    }
+
+    #[test]
+    fn test_dispatch_kill_valid() {
+        let a = admin();
+        let id = a.add_connection("root", "localhost", "testdb");
+        assert_eq!(
+            a.dispatch("kill", &[&id.to_string()]),
+            format!("Killed connection {}", id)
+        );
+    }
+
+    #[test]
+    fn test_dispatch_reload() {
+        let a = admin();
+        assert_eq!(a.dispatch("reload", &[]), "Reload complete");
+        assert!(a.is_grants_reloaded());
+    }
+
+    #[test]
+    fn test_dispatch_flush_logs() {
+        let a = admin();
+        assert_eq!(a.dispatch("flush-logs", &[]), "Log files flushed");
+        assert!(a.is_log_flushed());
+    }
+
+    #[test]
+    fn test_dispatch_variables() {
+        let out = admin().dispatch("variables", &[]);
+        assert!(out.contains("version\t3.10.0"));
+    }
+}
