@@ -64,5 +64,26 @@ cargo llvm-cov --release -p sqlrustgo-mysql-client --all-features --tests --no-f
 
 ## 配套 ADR-008 异常文件
 
+## 后续更新：合并 252 Gitea 最新提交后 (2026-08-09)
+
+拉取并合并 252 上 2 个未在 develop/v3.11.0 上的分支：
+- `fix/f23-clustered-dml-routing`：1 commit (2c67074ba3 fmt rustfmt to expr/mod.rs)
+- `coverage-tests-2026-08-09b`：1 commit (f2323a497d test executor+server coverage for mutation/predicate/update compiler + security_integration)
+
+合并后 HEAD = `966e603296`，G3 `--lib` 重测：
+
+| Crate | 合并前 | 合并后 | Δ | 状态 |
+|-------|--------|--------|---|------|
+| executor | 72.78% | **74.23%** | +1.45pp | ❌ (差 -5.77pp) |
+| admin | 81.78% | **81.78%** | 0 | ✅ |
+| mysql-server | ~40% | (test_binary_storage_tpch_sf1_load 仍失败) | — | ❌ |
+| mysql-client | 31.56% | **31.56%** | 0 | ❌ |
+
+3 个 product parser bug 经合并后**仍然存在**：
+1. `mysql-server::tests::test_binary_storage_tpch_sf1_load`（SF=1 fixture 环境问题）
+2. `mysql-server::e2e_wire_protocol::test_e2e_select_multiple_columns_rows`（UNION ALL parse error）
+3. `mysql-server::tests::test_execution_engine_state_persistence`（SET clause parse error）
+
+本地已 push 到 252 + 250。`develop/v3.11.0` 现在三方同步到 `966e603296`。
 `docs/governance/adr/ADR-008-exception-v311-tpch-sf1.md` 已创建并提交。
 覆盖 v3.11.0 G4 门至 2026-09-01 ADR-008 §Policy 2 例外（详见 `G4_WIRE_TEST_CLOSE_OUT_PLAN.md`）。
