@@ -28,7 +28,7 @@
 | 2026-08-08 | **PR #3655** (Issue #3655): `fix(F-23): route DML through ClusteredTable + V311-10/11/14/20 main-path integration` | commit `d02b1f9627` (merge `98a39b8c3b`) |
 | 2026-08-08 | **PR #3657** (Issue #3657): `docs: analyze SQLRustGo data loading performance bottleneck` — DATA_LOADING_ANALYSIS.md | commit `18d4e7abb6` |
 | 2026-08-08 | **PR #3658** (Issue #3658): `docs: 2nd-pass truth audit - correct false TPC-H SF=1 22/22 PASS in 38 historical documents` | commit `88e65decbd` |
-| 2026-08-08 | Stage Control: HEAD = `3f6693f7ff` (gitea250 � origin/develop/v3.11.0 ↔ local) | |
+| 2026-08-08 | Stage Control: see current branch head in `STAGE.yaml` and Gitea branch state | |
 
 ---
 
@@ -77,7 +77,7 @@
 
 | Commit | 内容 |
 |--------|------|
-| `d02b1f9627` | fix(F-23): route DML (INSERT/UPDATE/DELETE) through ClusteredTable |
+| PR #3655 first fix | fix(F-23): route DML (INSERT/UPDATE/DELETE) through ClusteredTable |
 | `b0dfe9fe0a` | fix(executor): V311-10 F-30 CREATE SEQUENCE executor (NEXT VALUE FOR / CURRVAL) |
 | `35fd24a464` | feat(parser): V311-10 F-30 CREATE SEQUENCE parser layer + 9 integration tests |
 | `d710d17b0f` | test(gis): V311-11 F-03 end-to-end ST_WITHIN coverage (8/8 PASS) |
@@ -87,7 +87,7 @@
 | `936416e0f3` | test(tpch): V311-20 22-query syntax gate (in-process, no fixture) |
 | `d961cd5bda` | test(tools): V311-14 add 5 config_hot_reload unit tests (+3 E0596 fixes) |
 | `289a41d04b` | test(storage): V311-14 SEM-4 storage coverage 78.38% → 86.09% (+7.71pp) |
-| `98a39b8c3b` | Merge PR #3655 |
+| PR #3655 merge | Merge PR #3655 |
 
 **回归检查(PR #3655 自检)**:
 - storage lib: 683/683 PASS
@@ -104,15 +104,15 @@
 
 ### 关键 PR
 
-| PR | commit | 内容 |
-|----|--------|------|
-| #3644 | `8fa5e6a026` | `fix(governance): correct false TPC-H 22/22 PASS claims, revert GA to RC, bump workspace version` |
-| #3646 | `76eadb2d1c` | `fix: case-insensitive column lookup in comma-join path` |
-| #3647 | `8110715309` | `docs: correct false TPC-H SF=1 22/22 PASS claims in 38 historical documents` (PR head,1st-pass 仅 8 文件落地) |
-| #3651 | `c9775af658` | `docs: fix false SF=1 22/22 PASS claims per Issue #3650` |
-| #3652 | `57373d6954` | `test(tpch): complete SF=1 in-process baseline (#3423)` |
-| #3657 | `18d4e7abb6` | `docs: analyze SQLRustGo data loading performance bottleneck` (DATA_LOADING_ANALYSIS.md) |
-| #3658 | `88e65decbd` | `docs(v3.11.0): 2nd-pass truth audit - correct false TPC-H SF=1 22/22 PASS in 38 historical documents` |
+| PR | 内容 |
+|----|------|
+| #3644 | `fix(governance): correct false TPC-H 22/22 PASS claims, revert GA to RC, bump workspace version` |
+| #3646 | `fix: case-insensitive column lookup in comma-join path` |
+| #3647 | `docs: correct false TPC-H SF=1 22/22 PASS claims in 38 historical documents` (PR head,1st-pass 仅 8 文件落地) |
+| #3651 | `docs: fix false SF=1 22/22 PASS claims per Issue #3650` |
+| #3652 | `test(tpch): complete SF=1 in-process baseline (#3423)` |
+| #3657 | `docs: analyze SQLRustGo data loading performance bottleneck` (DATA_LOADING_ANALYSIS.md) |
+| #3658 | `docs(v3.11.0): 2nd-pass truth audit - correct false TPC-H SF=1 22/22 PASS in 38 historical documents` |
 
 ### 文档修正
 
