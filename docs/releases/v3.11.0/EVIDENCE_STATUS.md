@@ -74,4 +74,4 @@ Note: Security audit required before final GA. Current assessment based on code 
 | G3 | Coverage reports | **❌ FAIL**（实测 9-crate 平均 63.25%，8/9 < 80%；AUDIT_V311_REALITY_CHECK.md）|
 | G4 | TPC-H SF=1 results | **❌ FAIL**（fixture 缺失；22/22 未跑；TPCH_SF1_VERIFICATION_REPORT.md）|
 | G5 | Security audit | ⚠️ Pending |
-| G6 | Documentation | ⚠️ PARTIAL（虚假声明已下架；audit 报告已补）|
+| G6 | Documentation | ✅ PARTIAL（虚假声明已下架;audit/verify 报告已补;SOAK 报告新增）|
