@@ -1732,4 +1732,58 @@ mod tests {
 
         std::fs::remove_dir_all(&temp_dir).ok();
     }
+
+    #[test]
+    fn test_incremental_backup_context_new_is_empty() {
+        let buf = IncrementalBackupContext::new();
+        assert!(buf.is_empty());
+        assert_eq!(buf.len(), 0);
+        assert_eq!(buf.total_changes(), 0);
+    }
+
+    #[test]
+    fn test_incremental_backup_context_get_end_lsn() {
+        let buf = IncrementalBackupContext::new();
+        assert_eq!(buf.get_end_lsn(), "00000000-00000000");
+    }
+
+    #[test]
+    fn test_incremental_backup_context_record_insert_sets_lsn() {
+        use crate::types::Value;
+        let mut buf = IncrementalBackupContext::new();
+        buf.record_insert("t", vec![Value::Integer(1)], vec![Value::Integer(1)]);
+        assert_ne!(buf.get_end_lsn(), "00000000-00000000");
+    }
+
+    #[test]
+    fn test_backup_manifest_fields() {
+        let manifest = BackupManifest {
+            version: "3.11.0".to_string(),
+            backup_type: BackupType::Incremental,
+            timestamp: "2026-01-15 10:00:00".to_string(),
+            lsn: Some("00000001-0000000A".to_string()),
+            parent_lsn: Some("00000001-00000005".to_string()),
+            tables: vec!["users".to_string(), "orders".to_string()],
+            total_rows: 150,
+            checksum: "deadbeef".to_string(),
+        };
+        assert_eq!(manifest.version, "3.11.0");
+        assert!(matches!(manifest.backup_type, BackupType::Incremental));
+        assert_eq!(manifest.tables.len(), 2);
+        assert_eq!(manifest.total_rows, 150);
+    }
+
+    #[test]
+    fn test_value_to_sql_integer() {
+        let value = Value::Integer(42);
+        let sql = value_to_sql(&value);
+        assert_eq!(sql, "42");
+    }
+
+    #[test]
+    fn test_value_to_sql_bool() {
+        let value = Value::Boolean(true);
+        let sql = value_to_sql(&value);
+        assert_eq!(sql, "true");
+    }
 }
