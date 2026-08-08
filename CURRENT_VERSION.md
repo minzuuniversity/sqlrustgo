@@ -1,11 +1,11 @@
 # 当前版本状态
 
-v3.11.0 GA
+v3.11.0 RC（GA 门未通过）
 
 ## 阶段信息
 
-- **阶段**: GA（正式发布）
-- **发布日期**: 2026-08-08
+- **阶段**: RC（候选发布；2026-07-19 第二次 GA 声明因 TPC-H SF=1 fixture 缺失回退；2026-08-08 第三次 GA 声明因 G3 覆盖率 4/8 失败被 `bc4d2143e2` 修订） — 见 `docs/releases/v3.11.0/STAGE.yaml:current_stage`
+- **发布日期**: 2026-08-08（GA 声明日；RC 实际生效日）
 - **开发分支**: develop/v3.11.0
 - **目标**: 债务清零 + 功能孤岛集成 + 性能突破
 - **协作 Issue**: [#3433](http://192.168.0.252:3000/openclaw/sqlrustgo/issues/3433)（V311-MASTER）
@@ -49,8 +49,8 @@ v3.11.0 = 债务清零 + 功能孤岛集成 + 性能突破。从 v3.10.0 GA 继�
 |------|------|------|
 | G1 R1-R4 | PASS | ✅ |
 | G2 全量测试 | 0 失败 | ✅ |
-| G3 覆盖率 | 每crate ≥80% | ✅ (tools 80.31%) |
-| G4 TPC-H SF=1 | 22/22 PASS | ✅ |
+| G3 覆盖率 | 每 crate ≥80% line | ❌ FAIL (4/8: storage✅ common✅ planner✅ tools✅; executor❌ admin❌ mysql-server❌ mysql-client❌) — 见 GA_GATE_REPORT.md |
+| G4 TPC-H SF=1 | 22/22 PASS | 🟡 ALMOST PASS (P0-1 fixture ✅ 1.1GB; P0-2 wire tests 🟡 mostly ✅; ADR-008 exception active 2026-09-01) — 见 TPCH_SF1_VERIFICATION_REPORT.md |
 | G5 Security audit | PASS | ✅ |
 | G6 Documentation | PASS | ✅ |
 
@@ -73,5 +73,5 @@ v3.11.0 = 债务清零 + 功能孤岛集成 + 性能突破。从 v3.10.0 GA 继�
 | ... | ... | ... |
 | v3.10.0 GA | 2026-07-13 | v3.10.0 正式发布 |
 | v3.11.0 | 2026-07-15 | v3.11.0 开发分支创建 |
-| v3.11.0 RC | 2026-07-19 | RC 门禁通过 |
-| v3.11.0 GA | 2026-08-08 | v3.11.0 正式发布 |
+| v3.11.0 RC | 2026-07-19 | RC 门禁通过（首次 GA 声明被回退） |
+| v3.11.0 RC | 2026-07-19 (re-declared RC); 2026-08-08 (re-declared GA, but G3/G4 fail) | v3.11.0 RC 实际生效日；GA 门 G3/G4 未通过（见 `docs/releases/v3.11.0/GA_GATE_REPORT.md`、`TPCH_SF1_VERIFICATION_REPORT.md`） |
