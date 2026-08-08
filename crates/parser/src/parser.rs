@@ -3946,6 +3946,17 @@ impl Parser {
                         expression: Some(expr),
                     });
                 }
+                // V311-10 F-30: NEXT VALUE FOR seq / CURRVAL(seq) in SELECT.
+                // Delegate to the expression parser, which recognises
+                // SequenceNextVal / SequenceCurrval via parse_primary_expression.
+                Some(Token::NextValue) | Some(Token::Currval) => {
+                    let expr = self.parse_expression()?;
+                    columns.push(SelectColumn {
+                        name: format!("{:?}", expr),
+                        alias: None,
+                        expression: Some(expr),
+                    });
+                }
                 _ => {
                     return Err("Expected FROM or column name".to_string());
                 }
@@ -6798,9 +6809,14 @@ impl Parser {
                 self.expect(Token::RParen)?;
                 Ok(Expression::SequenceCurrval(seq_name))
             }
-            // NEXT [VALUE] FOR sequence_name - advance and return next value
+            // NEXT [VALUE] FOR sequence_name - SQL:2003 standard allows the
+            // optional `VALUE` keyword between NEXT and FOR. Accept both
+            // `NEXT FOR seq` and `NEXT VALUE FOR seq`.
             Some(Token::NextValue) => {
                 self.next(); // consume NEXT
+                if matches!(self.current(), Some(Token::Value)) {
+                    self.next(); // consume optional VALUE
+                }
                 self.expect(Token::For)?;
                 let seq_name = match self.next() {
                     Some(Token::Identifier(name)) => name,
@@ -13130,3 +13146,32 @@ mod set_op_tests {
         assert!(parse("WITH a AS (SELECT 1), b AS (SELECT 2) SELECT * FROM a, b").is_ok());
     }
 }
+
+    // V311-10 F-30: NEXT VALUE FOR seq / CURRVAL(seq) parse tests.
+    // Locks down the SQL:2003 standard syntax acceptance.
+    #[test]
+    fn test_parse_next_value_for_with_value_keyword() {
+        // The optional VALUE keyword between NEXT and FOR (SQL:2003).
+        assert!(parse("SELECT NEXT VALUE FOR my_seq").is_ok());
+    }
+
+    #[test]
+    fn test_parse_next_value_for_without_value_keyword() {
+        // Bare NEXT FOR also accepted (relaxed form).
+        assert!(parse("SELECT NEXT FOR my_seq").is_ok());
+    }
+
+    #[test]
+    fn test_parse_currval_function_call() {
+        assert!(parse("SELECT CURRVAL(my_seq)").is_ok());
+    }
+
+    #[test]
+    fn test_parse_create_sequence_if_not_exists() {
+        assert!(parse("CREATE SEQUENCE IF NOT EXISTS s1 START WITH 1").is_ok());
+    }
+
+    #[test]
+    fn test_parse_insert_with_next_value_for() {
+        assert!(parse("INSERT INTO t (id) VALUES (NEXT VALUE FOR my_seq)").is_ok());
+    }
