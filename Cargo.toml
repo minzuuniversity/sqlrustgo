@@ -498,6 +498,10 @@ name = "tpch_per_query_timeout_test"
 path = "tests/integration/tpch/tpch_per_query_timeout_test.rs"
 
 [[test]]
+name = "tpch_22_queries_syntax_test"
+path = "tests/integration/tpch/tpch_22_queries_syntax_test.rs"
+
+[[test]]
 name = "harness_validation_test"
 path = "tests/integration/stress/harness_validation_test.rs"
 
