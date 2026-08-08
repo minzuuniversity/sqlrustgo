@@ -496,7 +496,7 @@ LocalExecutor 增加并行模式开关:
 ### 交付物
 
 - ✅ MySQL COM_QUERY 协议处理
-- ✅ TPC-H SF=1 22/22 查询基线
+- ✅ TPC-H SF=1 ~10/22 (honest status, see SF1_TRUTH_AUDIT.md) 查询基线
 - ✅ SIMD 加速（sum_i64 阈值调度）
 - ✅ WAL 验证工作区（TI-3）
 - ❌ Alpha Gate FAIL（覆盖率 32.59% Z440）

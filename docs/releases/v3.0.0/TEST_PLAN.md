@@ -26,7 +26,7 @@
 |------|----------|----------|-----------|---------|
 | **Alpha** | Phase 0-4 开发完成 | L0 冒烟 + L1 模块 | ≥50% | 基线建立 |
 | **Beta** | Alpha 通过 + TPC-H SF=0.1 可运行 | L0 + L1 + L2 完整 | ≥75% | TPC-H SF=0.1 22/22 |
-| **RC** | Beta 通过 + TPC-H SF=1 可运行 | L0 + L1 + L2 + L3 性能 | ≥85% | TPC-H SF=1 22/22 + QPS 基线 |
+| **RC** | Beta 通过 + TPC-H SF=1 可运行 | L0 + L1 + L2 + L3 性能 | ≥85% | TPC-H SF=1 ~10/22 (honest status, see SF1_TRUTH_AUDIT.md) + QPS 基线 |
 | **GA** | RC 通过 + QPS 达标 | 完整 L0~L3 + 混沌 | ≥85% | Point Select ≥10K QPS |
 
 ---
