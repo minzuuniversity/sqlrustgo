@@ -890,6 +890,224 @@ mod tests {
     }
 
     #[test]
+    fn test_parse_length_encoded_int_3byte() {
+        // 0xfd prefix → 3-byte little-endian value
+        let mut off = 0;
+        let data = [0xfd, 0x01, 0x00, 0x00];
+        let val = parse_length_encoded_int(&data, &mut off).unwrap();
+        assert_eq!(val, 1);
+        assert_eq!(off, 4);
+    }
+
+    #[test]
+    fn test_parse_length_encoded_int_8byte() {
+        // 0xfe prefix → 8-byte little-endian value
+        let mut off = 0;
+        let data = [0xfe, 0x01, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00];
+        let val = parse_length_encoded_int(&data, &mut off).unwrap();
+        assert_eq!(val, 1);
+        assert_eq!(off, 9);
+    }
+
+    #[test]
+    fn test_parse_length_encoded_int_null_marker() {
+        // 0xfb → u64::MAX (NULL marker per MySQL protocol)
+        let mut off = 0;
+        let data = [0xfb];
+        let val = parse_length_encoded_int(&data, &mut off).unwrap();
+        assert_eq!(val, u64::MAX);
+        assert_eq!(off, 1);
+    }
+
+    #[test]
+    fn test_parse_length_encoded_int_eof() {
+        // Empty data → EOF error
+        let mut off = 0;
+        let data: &[u8] = &[];
+        let result = parse_length_encoded_int(data, &mut off);
+        assert!(result.is_err());
+        match result.unwrap_err() {
+            MySqlClientError::Protocol(msg) => assert!(msg.contains("EOF")),
+            _ => panic!("expected Protocol error"),
+        }
+    }
+
+    #[test]
+    fn test_parse_length_encoded_string_happy() {
+        // length(1) + "abc"
+        let mut off = 0;
+        let data = [0x03, b'a', b'b', b'c'];
+        let s = parse_length_encoded_string(&data, &mut off).unwrap();
+        assert_eq!(s, "abc");
+        assert_eq!(off, 4);
+    }
+
+    #[test]
+    fn test_parse_length_encoded_string_null_marker() {
+        // 0xfb prefix → NULL → empty string
+        let mut off = 0;
+        let data = [0xfb];
+        let s = parse_length_encoded_string(&data, &mut off).unwrap();
+        assert_eq!(s, "");
+        assert_eq!(off, 1);
+    }
+
+    #[test]
+    fn test_parse_length_encoded_string_truncated() {
+        // length(5) but only 2 bytes follow
+        let mut off = 0;
+        let data = [0x05, b'a', b'b'];
+        let result = parse_length_encoded_string(&data, &mut off);
+        assert!(result.is_err());
+    }
+    #[test]
+    fn test_parse_result_set_select_simple() {
+        // Hand-crafted SELECT result with 1 column ('id', INT NOT NULL) and 1 row [42].
+        // Wire layout:
+        //   Packet 1 (column count): length-encoded 1
+        //   Packet 2 (column def): catalog/schema/table/org_table/name/org_name strings + fixed fields
+        //   Packet 3 (EOF separator): 0xfe + 0x00 0x00 + 2-byte warning count
+        //   Packet 4 (row): length-encoded int per column (42)
+        //   Packet 5 (EOF terminator): 0xfe + 0x00 0x00 + 2-byte warning count
+        use std::io::Write;
+
+        let mut bytes = Vec::new();
+        // Packet 1: column count = 1 (header: 3-byte length=1 + 1-byte seq=0)
+        bytes.write_all(&[0x01, 0x00, 0x00, 0x00]).unwrap();
+        bytes.write_all(&[0x01]).unwrap(); // length-encoded int 1
+        // Packet 2: column definition (catalog, schema, table, org_table, name, org_name, len_of_fixed_fields, charset, length, type, ...)
+        let col_def = build_column_def_payload(b"id");
+        let col_len = col_def.len() as u32;
+        // MySQL packet header: 3-byte LE length + 1-byte seq
+        bytes.write_all(&col_len.to_le_bytes()[0..3]).unwrap();
+        bytes.write_all(&[0x01]).unwrap(); // seq=1
+        bytes.write_all(&col_def).unwrap();
+        bytes.write_all(&[0x05, 0x00, 0x00, 0x02]).unwrap();
+        bytes.write_all(&[0xfe, 0x00, 0x00, 0x00, 0x00]).unwrap();
+        // Packet 4: row with 1 column = "42" (text-protocol length-encoded string)
+
+        bytes.write_all(&[0x03, 0x00, 0x00, 0x03]).unwrap();
+        bytes.write_all(&[0x02, b'4', b'2']).unwrap(); // length=2, "42"
+
+        // Packet 5: EOF terminator (classic)
+        bytes.write_all(&[0x05, 0x00, 0x00, 0x04]).unwrap();
+        bytes.write_all(&[0xfe, 0x00, 0x00, 0x00, 0x00]).unwrap();
+        let mut cur = Cursor::new(bytes);
+        let rs = parse_result_set(&mut cur, false).expect("parse select");
+        match rs {
+        // debug removed
+
+            ResultSet::Select { columns, rows } => {
+                assert_eq!(columns.len(), 1);
+                assert_eq!(columns[0].name, "id");
+                assert_eq!(rows.len(), 1);
+                assert_eq!(rows[0].len(), 1);
+            }
+            other => panic!("expected Select, got {:?}", std::mem::discriminant(&other)),
+        }
+    }
+
+    #[test]
+    fn test_parse_result_set_select_deprecate_eof() {
+        // Same as test_parse_result_set_select_simple but terminator is
+        // OK packet (0x00 prefix, <= 8 bytes) instead of EOF (0xfe).
+        use std::io::Write;
+
+        let mut bytes = Vec::new();
+        // Packet 1: column count = 1
+        bytes.write_all(&[0x01, 0x00, 0x00, 0x00]).unwrap();
+        bytes.write_all(&[0x01]).unwrap();
+        // Packet 2: column def
+        let col_def = build_column_def_payload(b"id");
+        let col_len = col_def.len() as u32;
+        bytes.write_all(&col_len.to_le_bytes()[0..3]).unwrap();
+        bytes.write_all(&[0x01]).unwrap();
+        bytes.write_all(&col_def).unwrap();
+        // Packet 3: Separator OK packet (DEPRECATE_EOF): 0x00 + 0x00 + 0x00 + 2-byte status + 2-byte warning
+        bytes.write_all(&[0x07, 0x00, 0x00, 0x02]).unwrap();
+        bytes.write_all(&[0x00, 0x00, 0x00, 0x02, 0x00, 0x00, 0x00]).unwrap();
+        // Packet 4: row "42"
+        bytes.write_all(&[0x03, 0x00, 0x00, 0x03]).unwrap();
+        bytes.write_all(&[0x02, b'4', b'2']).unwrap();
+        // Packet 5: Terminator OK packet
+        bytes.write_all(&[0x07, 0x00, 0x00, 0x04]).unwrap();
+        bytes.write_all(&[0x00, 0x00, 0x00, 0x02, 0x00, 0x00, 0x00]).unwrap();
+
+        let mut cur = Cursor::new(bytes);
+        let rs = parse_result_set(&mut cur, true).expect("parse select deprecate_eof");
+        match rs {
+            ResultSet::Select { columns, rows } => {
+                assert_eq!(columns.len(), 1);
+                assert_eq!(rows.len(), 1);
+            }
+            other => panic!("expected Select"),
+        }
+    }
+
+    #[test]
+    fn test_parse_result_set_error_packet() {
+        // Error packet: 0xff + 2-byte error_code + sql_state (5 bytes) + message
+        use std::io::Write;
+        let mut bytes = Vec::new();
+        let payload = vec![
+            0xff, // ERR marker
+            0x04, 0x12, // error code = 0x0412 = 1042
+            b'S', b'Q', b'L', b'S', b't', // sql_state "SQLSt"
+            b'h', b'e', b'l', b'l', b'o', // message "hello"
+        ];
+        let len = payload.len() as u32;
+        bytes.write_all(&len.to_le_bytes()[0..3]).unwrap();
+        bytes.write_all(&[0x01]).unwrap(); // seq (header: 3-byte length + 1-byte seq)
+        bytes.write_all(&payload).unwrap();
+        let mut cur = Cursor::new(bytes);
+        let rs = parse_result_set(&mut cur, true).expect("parse error");
+        match rs {
+            ResultSet::Error {
+                error_code,
+                sql_state,
+                error_message,
+            } => {
+                assert_eq!(error_code, 0x1204); // LE bytes [0x04, 0x12] = 4612
+                assert_eq!(sql_state, "SQLSt");
+                assert_eq!(error_message, "hello");
+            }
+            other => panic!("expected Error, got {:?}", std::mem::discriminant(&other)),
+        }
+    }
+
+    /// Build a minimal column definition payload for one column with the given name.
+    /// Layout per MySQL protocol:
+    ///   catalog (len-str), schema (len-str), table (len-str), org_table (len-str),
+    ///   name (len-str), org_name (len-str), length_of_fixed_fields (len-int, 0x00),
+    ///   character_set (2 bytes), column_length (4 bytes), column_type (1 byte),
+    ///   flags (2 bytes), decimals (1 byte), filler (2 bytes)
+    fn build_column_def_payload(name: &[u8]) -> Vec<u8> {
+        let mut buf = Vec::new();
+        // 6 length-encoded strings (all empty or name for `name`)
+        buf.push(0x00); // catalog = ""
+        buf.push(0x00); // schema = ""
+        buf.push(0x00); // table = ""
+        buf.push(0x00); // org_table = ""
+        buf.push(name.len() as u8);
+        buf.extend_from_slice(name); // name
+        buf.push(0x00); // org_name = ""
+        // length_of_fixed_fields
+        buf.push(0x0c); // 12 fixed fields
+        // character_set (2 bytes)
+        buf.extend_from_slice(&0x21u16.to_le_bytes()); // utf8
+        // column_length (4 bytes)
+        buf.extend_from_slice(&11u32.to_le_bytes());
+        // column_type (1 byte) — MYSQL_TYPE_LONG = 3
+        buf.push(0x03);
+        // flags (2 bytes)
+        buf.extend_from_slice(&0u16.to_le_bytes());
+        // decimals (1 byte)
+        buf.push(0x00);
+        // filler (2 bytes)
+        buf.extend_from_slice(&[0u8, 0u8]);
+        buf
+    }
+    #[test]
     fn test_build_handshake_response() {
         let pkt =
             build_handshake_response(0, "testuser", &[1, 2, 3], "testdb", "mysql_native_password");
