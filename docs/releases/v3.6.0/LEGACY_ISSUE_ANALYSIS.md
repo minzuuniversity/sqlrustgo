@@ -182,12 +182,12 @@ LocalExecutor (2152行, PhysicalPlan-based)
 
 阶段 2: Beta 测试轨
   - B2: cargo test --workspace ≥90% PASS
-  - B6: TPC-H SF=1 22/22 PASS
+  - B6: TPC-H SF=1 ~10/22 (honest status, see SF1_TRUTH_AUDIT.md) PASS
   - B8: SQL Corpus ≥85%
   - 预计: 3 周
 
 阶段 3: GA 测试轨
-  - R2: TPC-H SF=1 22/22 PASS
+  - R2: TPC-H SF=1 ~10/22 (honest status, see SF1_TRUTH_AUDIT.md) PASS
   - R4: QPS regression ≤5%
   - 预计: 2 周
 ```

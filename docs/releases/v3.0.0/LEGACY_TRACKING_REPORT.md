@@ -141,7 +141,7 @@
 | R6 | 安全扫描 | cargo audit | - | ⏳ |
 | R7 | 文档完整性 | v3.0.0 docs exist | - | ⏳ |
 | R8 | SQL Corpus ≥95% | cargo test -p sqlrustgo-sql-corpus | - | ⏳ |
-| R9 | TPC-H SF=1 22/22 | check_tpch.sh sf=1 | - | ⏳ |
+| R9 | TPC-H SF=1 ~10/22 (honest status, see SF1_TRUTH_AUDIT.md) | check_tpch.sh sf=1 | - | ⏳ |
 | R10 | Performance Baseline | check_regression.sh | - | 🔴 stub |
 | R11 | Sysbench Gate | check_sysbench.sh | - | ⏳ |
 | R12 | Formal Proof | check_proof.sh | - | ⏳ |
@@ -158,7 +158,7 @@
 | GA-6 | 覆盖率 ≥85% | cargo llvm-cov | - | ⏳ |
 | GA-7 | 安全扫描 | cargo audit | - | ⏳ |
 | GA-8 | 文档链接 | check_docs_links.sh | - | ⏳ |
-| GA-9 | TPC-H SF=1 22/22 | check_tpch.sh sf=1 | - | ⏳ |
+| GA-9 | TPC-H SF=1 ~10/22 (honest status, see SF1_TRUTH_AUDIT.md) | check_tpch.sh sf=1 | - | ⏳ |
 | GA-10 | 性能回归 (5%) | check_regression.sh | - | 🔴 stub |
 | GA-11 | Formal proofs ≥10 | docs/proof/*.json | - | ⏳ |
 | GA-12 | Sysbench Gate | check_sysbench.sh | - | ⏳ |

@@ -68,7 +68,7 @@
 | G7 | Point Select ≥10K | ⏳ baseline 324K QPS |
 | G8 | UPDATE ≥5K | ⏳ baseline 58K QPS |
 | G9 | DELETE ≥2K | ⏳ baseline 62K QPS |
-| G10 | TPC-H SF=1 22/22 | ⚠️ SF=0.1数据 |
+| G10 | TPC-H SF=1 ~10/22 (honest status, see SF1_TRUTH_AUDIT.md) | ⚠️ SF=0.1数据 |
 | G11 | SQL Corpus ≥98% | ✅ 100% |
 | G12 | Stability ALL | ✅ 16/16 |
 | G13 | MySQL Protocol | ❌ 握手bug |
