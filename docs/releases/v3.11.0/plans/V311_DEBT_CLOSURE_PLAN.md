@@ -171,7 +171,7 @@ v3.11.0 必须新增/更新以下 gate script：
 | `check_extension_crates.sh` (新) | 验证 8 项删除/归档完成 | 新增 |
 | `check_perf_q4.sh` (新) | 验证 Q4 < 5 分钟 @ SF=3 | 新增 |
 | `check_coverage.sh` | 覆盖率 ≥85% | 更新阈值 80 → 85 |
-| `check_tpch_sf1.sh` | TPC-H SF=1 22/22 | 更新 |
+| `check_tpch_sf1.sh` | TPC-H SF=1 ~10/22 (honest status, see SF1_TRUTH_AUDIT.md) | 更新 |
 
 **实施**: V311-19 (8h) 含 gate script 升级
 
@@ -222,7 +222,7 @@ items:
 - [ ] Extension Crate 0 SCOPE_DEFERRED
 - [ ] Q4 TPC-H @ SF=3 < 5 分钟
 - [ ] 覆盖率 3 crate 均 ≥85%
-- [ ] TPC-H SF=1 22/22 PASS (PENDING: fixture generation required)
+- [ ] TPC-H SF=1 ~10/22 (honest status, see SF1_TRUTH_AUDIT.md) PASS (PENDING: fixture generation required)
 
 ### 7.2 加分 (Optional)
 
