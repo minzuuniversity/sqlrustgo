@@ -308,7 +308,7 @@ v3.4.0 在此基础上继续开发，虽然创建了门禁文档，但内部矛�
 |-----------|----------|---------|------------|---------|
 | EX-v320-001 | v3.2.0 | executor 覆盖率 <85% | 延续至 v3.3.0 | ❌ v3.3.0 无门禁验证 |
 | EX-v320-002 | v3.2.0 | MySQL Protocol 握手失败 | EX-v340-002 声明 PASS | ⚠️ ALPHA_GATE_CHECKLIST 标记 SKIP |
-| EX-v320-003 | v3.2.0 | TPC-H SF=1 数据缺失 | 在 v3.4.0 已修复 | ✅ TPC-H SF=1 22/22 PASS |
+| EX-v320-003 | v3.2.0 | TPC-H SF=1 数据缺失 | 在 v3.4.0 已修复 | ✅ TPC-H SF=1 ~10/22 (honest status, see SF1_TRUTH_AUDIT.md) PASS |
 | EX-v320-004 | v3.2.0 | Sysbench 服务器环境 | 延续至 v3.4.0 | ⚠️ RC_GATE_REPORT 标记 SKIP |
 
 ---

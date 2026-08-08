@@ -128,7 +128,7 @@ For migration instructions see [`MIGRATION_GUIDE.md`](MIGRATION_GUIDE.md).
 | Item | Target |
 |------|--------|
 | Coverage ≥80% per crate | v3.10.0 GA |
-| TPC-H SF=1 22/22 | v3.10.0 GA (4 parser errors remaining) |
+| TPC-H SF=1 ~10/22 (honest status, see SF1_TRUTH_AUDIT.md) | v3.10.0 GA (4 parser errors remaining) |
 | Backup/Restore 100+ scenarios | v3.10.0 |
 | Crash Matrix 100+ scenarios | v3.10.0 |
 | TPC-H 22 remaining queries | v3.11.0 |

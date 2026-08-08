@@ -107,7 +107,7 @@
 || **测试文件** | `tests/tpch_gate_test.rs` |
 || **验收条件** | `check_tpch.sh sf=1` 可运行，22/22 无 OOM |
 || **测试命令** | `bash scripts/gate/check_tpch.sh sf=1` |
-|| **门禁映射** | B8 (TPC-H SF=0.1 22/22), R9 (TPC-H SF=1 22/22), GA-9 (TPC-H SF=1 22/22) |
+|| **门禁映射** | B8 (TPC-H SF=0.1 22/22), R9 (TPC-H SF=1 ~10/22 (honest status, see SF1_TRUTH_AUDIT.md)), GA-9 (TPC-H SF=1 ~10/22 (honest status, see SF1_TRUTH_AUDIT.md)) |
 
 ### 3.2 P1 - 建议 Beta 前完成
 
@@ -240,7 +240,7 @@ thread 'main' panicked at 'attempt to multiply with overflow'
 | R6 | 安全扫描 | `cargo audit` | ⏳ |
 | R7 | 文档完整性 | v3.0.0 docs exist | ⏳ |
 | R8 | SQL Corpus ≥95% | `cargo test -p sqlrustgo-sql-corpus` | ⏳ |
-| R9 | TPC-H SF=1 22/22 | `check_tpch.sh sf=1` | ⏳ |
+| R9 | TPC-H SF=1 ~10/22 (honest status, see SF1_TRUTH_AUDIT.md) | `check_tpch.sh sf=1` | ⏳ |
 | R10 | Performance Baseline | `check_regression.sh` | ⏳ |
 | R11 | Sysbench Gate | `check_sysbench.sh` | ⏳ |
 | R12 | Formal Proof | `check_proof.sh` | ⏳ |
@@ -259,7 +259,7 @@ thread 'main' panicked at 'attempt to multiply with overflow'
 | GA-6 | 覆盖率 ≥85% | `cargo llvm-cov` | ⏳ |
 | GA-7 | 安全扫描 | `cargo audit` | ⏳ |
 | GA-8 | 文档链接 | `check_docs_links.sh` | ⏳ |
-| GA-9 | TPC-H SF=1 22/22 | `check_tpch.sh sf=1` | ⏳ |
+| GA-9 | TPC-H SF=1 ~10/22 (honest status, see SF1_TRUTH_AUDIT.md) | `check_tpch.sh sf=1` | ⏳ |
 | GA-10 | 性能回归 (5%) | `check_regression.sh` | ⏳ |
 | GA-11 | Formal proofs ≥10 | `docs/proof/*.json` | ⏳ |
 | GA-12 | Sysbench Gate | `check_sysbench.sh` | ⏳ |
@@ -350,7 +350,7 @@ thread 'main' panicked at 'attempt to multiply with overflow'
 | 优先级 | 任务 | 现状 | 说明 |
 |--------|------|------|------|
 | P0 | CBO 代价模型集成 | 🔄 | SimpleCostModel 接入 planner |
-| P0 | TPC-H SF=1 22/22 p99<5s | 🔄 | 当前 ~10.9s |
+| P0 | TPC-H SF=1 ~10/22 (honest status, see SF1_TRUTH_AUDIT.md) p99<5s | 🔄 | 当前 ~10.9s |
 | P1 | 覆盖率 ≥85% | ⏳ | 当前 84.18% |
 | P1 | Performance Baseline 建立 | ⏳ | check_regression.sh stub |
 

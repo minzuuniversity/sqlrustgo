@@ -122,7 +122,7 @@ tests/                                (root manifest)
 | **G1** | TPC-H SF=0.1 22/22 | ✅ PASS | v3.9.0 已继承 |
 | **G2** | ACID 正确性 (5 tests) | ✅ PASS | WAL 42/42 + transaction 测试 |
 | **G3** | 覆盖率 ≥ 80% per crate | ⚠️ PENDING | V310-10, 待 cargo llvm-cov 基线 |
-| **G4** | TPC-H SF=1 22/22 | ⏳ HARDWARE_BLOCKED | 75GB+ 磁盘, v3.11.0 目标 |
+| **G4** | TPC-H SF=1 ~10/22 (honest status, see SF1_TRUTH_AUDIT.md) | ⏳ HARDWARE_BLOCKED | 75GB+ 磁盘, v3.11.0 目标 |
 | **G5** | DML 完整性 (6 tests) | ✅ PASS | V310-01 |
 | **G6** | UNION 集合操作 (3 tests) | ✅ PASS | V310-02 |
 | **G7** | ALTER TABLE (4 类操作) | ✅ PASS | V310-04 |
