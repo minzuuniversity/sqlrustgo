@@ -1228,6 +1228,9 @@ path = "tests/integration/tpch/tpch_q6_q19_oracle_test.rs"
 name = "tpch_q8_q21_perf_regression_test"
 path = "tests/integration/tpch/tpch_q8_q21_perf_regression_test.rs"
 [[test]]
+name = "q5_q21_reorder_test"
+path = "tests/integration/tpch/q5_q21_reorder_test.rs"
+[[test]]
 name = "tpch_q9_audit"
 path = "tests/integration/tpch/tpch_q9_audit.rs"
 [[test]]
