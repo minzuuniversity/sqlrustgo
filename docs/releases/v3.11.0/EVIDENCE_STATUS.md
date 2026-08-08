@@ -1,7 +1,7 @@
 # v3.11.0 Evidence Status
 
-> **Version**: v3.11.0
-> **Status**: RC → GA (2026-07-19)
+> **Status**: RC (2026-07-20 整改后) — **GA 未通过**（G3/G4 FAIL）
+
 > **Owner**: @openclaw
 
 Evidence binding for each GA gate requirement.
@@ -70,8 +70,8 @@ Note: Security audit required before final GA. Current assessment based on code 
 | Requirement | Evidence | Status |
 |-------------|----------|--------|
 | G1 | RC/BETA/ALPHA Gate Reports | ✅ Complete |
-| G2 | Full test suite | ✅ Complete |
-| G3 | Coverage reports | ✅ Complete |
-| G4 | TPC-H SF=1 results | ✅ Complete |
+| G2 | Full test suite | ✅ Complete (2,060 lib tests / 0 fail) |
+| G3 | Coverage reports | **❌ FAIL**（实测 9-crate 平均 63.25%，8/9 < 80%；AUDIT_V311_REALITY_CHECK.md）|
+| G4 | TPC-H SF=1 results | **❌ FAIL**（fixture 缺失；22/22 未跑；TPCH_SF1_VERIFICATION_REPORT.md）|
 | G5 | Security audit | ⚠️ Pending |
-| G6 | Documentation | ✅ Complete |
+| G6 | Documentation | ⚠️ PARTIAL（虚假声明已下架；audit 报告已补）|
