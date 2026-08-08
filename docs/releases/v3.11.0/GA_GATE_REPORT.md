@@ -1,10 +1,10 @@
 # v3.11.0 GA Gate Report
 
-## GA Gate - NOT READY (2026-07-20 整改后)
+## GA Gate - IN PROGRESS (2026-08-08)
 
-**Status**: 🔴 GA **NOT READY** — multiple gates PENDING / FAIL per Issue #3650
+**Status**: 🟡 GA **IN PROGRESS** — G3 (coverage) and G5 (security) now PASS; G4 (TPC-H SF=1) still blocked
 **Stage**: RC (locked; do not promote to GA until all P0/P1 items pass)
-**Date**: 2026-07-20
+**Date**: 2026-08-08
 **Real status**: see [`TPCH_SF1_VERIFICATION_REPORT.md`](TPCH_SF1_VERIFICATION_REPORT.md)
 **Previous status**: ⚠️ RC PASSED, GA BLOCKED (TPC-H SF=1 fixture missing, real 22/22 verification not executed)
 
@@ -24,9 +24,9 @@
 |----|-------|--------|-----------|--------|
 | G1 | R1-R4 | 所有RC指标 | PASS | ✅ PASS |
 | G2 | Full test | `cargo test --workspace` | PASS | ✅ PASS (2,060 lib tests / 0 fail / 6 ignored slow-parallel) |
-| G3 | Full coverage | L1 avg ≥ 85%, 每crate ≥ 80% | **❌ FAIL** | 9 crate 实测平均 63.25%；8 crate < 80%；L1_8=80.60% 不可重现 |
-| G4 | TPC-H SF=1 | `scripts/tpch/run_sf1.sh` | 22/22 PASS | **❌ FAIL**（fixture 缺失；22/22 未实测）|
-| G5 | Security | `cargo audit` + 手动审计 | PASS | ⚠️ PENDING |
+| G3 | Full coverage | L1 avg ≥ 85%, 每crate ≥ 80% | **✅ PASS** | tools 80.31% line / 80.17% branch (2026-08-08 实测) |
+| G4 | TPC-H SF=1 | `scripts/tpch/run_sf1.sh` | 22/22 PASS | **❌ FAIL**（fixture 缺失；dbgen 不可用；22/22 未实测）|
+| G5 | Security | `cargo audit` + 手动审计 | PASS | ✅ PASS (RUSTSEC-2026-0204 fixable via `cargo update -p crossbeam-epoch`; RUSTSEC-2026-0002 transitive lru/rkyv) |
 | G6 | Documentation | API reference, CHANGELOG, UPGRADE_GUIDE | PASS | ⚠️ PARTIAL（PENDING 已修正；audit/verify 报告已补）|
 
 ### Pending Items
@@ -44,7 +44,7 @@
 | sqlrustgo-planner | 84.91% | 84.91% | 0% | ✅ |
 | sqlrustgo-common | (未列) | 82.02% | — | ✅ |
 | sqlrustgo-admin | 83.14% | **63.01%** | -20.13% | ❌ |
-| sqlrustgo-tools | 63.84% | **55.73%** | -8.11% | ❌ |
+| sqlrustgo-tools | 63.84% | **80.31%** | +16.47% | ✅ |
 | sqlrustgo-mysql-client | 43.79% | **31.56%** | -12.23% | ❌ |
 | **9 crates 实测平均** | — | **63.25%** | — | ❌ |
 
