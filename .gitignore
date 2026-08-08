@@ -83,7 +83,7 @@ artifacts/
 # Build / coverage / governance outputs (top-level)
 coverage-report/
 release-artifacts/
-releases/
+/releases/  # repo-root release artifacts; docs/releases/ intentionally tracked
 
 # Proof harness runtime traces (binary, regenerated on each run)
 docs/formal/*TTrace*.bin
