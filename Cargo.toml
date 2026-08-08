@@ -809,6 +809,9 @@ path = "tests/integration/sql/sequence_test.rs"
 name = "cte_e2e_test"
 path = "tests/e2e/cte_e2e_test.rs"
 [[test]]
+name = "gis_basic_test"
+path = "tests/integration/sql/gis_basic_test.rs"
+[[test]]
 name = "ddl_e2e_test"
 path = "tests/e2e/ddl_e2e_test.rs"
 [[test]]
