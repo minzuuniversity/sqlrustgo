@@ -2,9 +2,11 @@
 
 ## GA Gate - NOT READY (2026-07-20 整改后)
 
-**Date**: 2026-07-18
-**Commit**: 27645a3854
-**Status**: ⚠️ RC PASSED, GA BLOCKED (TPC-H SF=1 fixture missing, real 22/22 verification not executed)
+**Status**: 🔴 GA **NOT READY** — multiple gates PENDING / FAIL per Issue #3650
+**Stage**: RC (locked; do not promote to GA until all P0/P1 items pass)
+**Date**: 2026-07-20
+**Real status**: see [`TPCH_SF1_VERIFICATION_REPORT.md`](TPCH_SF1_VERIFICATION_REPORT.md)
+**Previous status**: ⚠️ RC PASSED, GA BLOCKED (TPC-H SF=1 fixture missing, real 22/22 verification not executed)
 
 ### Entry Conditions
 
