@@ -27,7 +27,7 @@
 | G1 | R1-R4 PASS | ✅ PASS |
 | G2 | Full test ≥300 PASS | ✅ 3000+ PASS |
 | G3 | Coverage ≥85% avg | ⚠️ CONDITIONAL — 67% avg, rationale in `ga/COVERAGE_GAP_RATIONALE.md` |
-| G4 | TPC-H SF=1 22/22 | ⚠️ CONDITIONAL — 6/10 parser scope, rationale in `ga/TPC-H_PARTIAL_RESULT.md` |
+| G4 | TPC-H SF=1 ~10/22 (honest status, see SF1_TRUTH_AUDIT.md) | ⚠️ CONDITIONAL — 6/10 parser scope, rationale in `ga/TPC-H_PARTIAL_RESULT.md` |
 | G5 | Security PASS | ✅ PASS |
 | G6 | Documentation | ✅ PASS |
 | Soak | 24h ✅ / 72h ✅ (G13 fix后, 119h57m) / 168h ⏳ 进行中 | ⚠️ 72h DONE, 168h ETA 2026-07-12 |

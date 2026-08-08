@@ -33,7 +33,7 @@
 | ID | 功能 | Issue | 状态 |
 |----|------|-------|------|
 | P1-1 | DML 执行路径统一 | I#2583 | 架构清理 |
-| P1-2 | TPC-H SF=1 22/22 PASS | — | 测试补充 |
+| P1-2 | TPC-H SF=1 ~10/22 (honest status, see SF1_TRUTH_AUDIT.md) PASS | — | 测试补充 |
 | P1-3 | SQL Corpus ≥85% | — | 测试补充 |
 
 ### 3.3 P2 — 架构愿景

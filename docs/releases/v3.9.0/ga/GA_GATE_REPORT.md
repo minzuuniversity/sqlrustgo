@@ -192,7 +192,7 @@
 | G1 | R1-R4 PASS | ✅ |
 | G2 | Full test PASS | ✅ |
 | G3 | Coverage ≥ 85% avg, ≥ 80% each | ⚠️ **CONDITIONAL** |
-| G4 | TPC-H SF=1 22/22 | ⚠️ **CONDITIONAL** |
+| G4 | TPC-H SF=1 ~10/22 (honest status, see SF1_TRUTH_AUDIT.md) | ⚠️ **CONDITIONAL** |
 | G5 | Security PASS | ✅ |
 | G6 | Documentation | ✅ |
 | Soak | 24h ✅; 72h ✅ (119h57m); 168h ⏳ in progress | ⚠️ 72h DONE, 168h ETA 2026-07-12 |
@@ -207,6 +207,6 @@
 |----------|--------|------|--------|
 | P0 | 168h SOAK completes (Issue #3266) | Soak | ⏳ IN PROGRESS — ETA 2026-07-12 22:02 |
 | P0 | Close Issue #3266 after 168h PASS | Soak | 🔴 Blocked on above |
-| P1 | TPC-H SF=1 22/22 measurement | G4 | 🔴 Z6G4 unreachable |
+| P1 | TPC-H SF=1 ~10/22 (honest status, see SF1_TRUTH_AUDIT.md) measurement | G4 | 🔴 Z6G4 unreachable |
 | P2 | Upgrade `tokio-postgres` in `sqlrustgo-bench` | G5 | Low effort |
 | P2 | Coverage ≥80% per crate | G3 | v3.10.0 target |

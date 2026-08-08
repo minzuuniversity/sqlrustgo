@@ -113,7 +113,7 @@ crates/executor/src/stored_proc/
 | **Issue** | #1198 |
 | **标签** | `P1`, `v3.3.0` |
 | **当前状态** | `tpch_data/` 目录不存在，无法运行 TPC-H SF=1 |
-| **影响** | GA Gate G8 (TPC-H SF=1 22/22) 无法验证 |
+| **影响** | GA Gate G8 (TPC-H SF=1 ~10/22 (honest status, see SF1_TRUTH_AUDIT.md)) 无法验证 |
 | **执行环境** | **必须在 Z6G4**（大内存服务器） |
 
 #### 整改方案
@@ -228,7 +228,7 @@ bash scripts/gate/check_tpch.sh --sf1
 |---------|-----|------|------|----------|
 | L-001 | #1220/#1232 | feat(executor): stored_proc 模块拆分 | ✅ Closed | 2026-05-17 |
 | L-002 | #1256 | fix(mysql-server): MySQL protocol handshake | ✅ Closed | 2026-05-17 |
-| L-003 | #1229 | docs(v3.3.0): TPC-H SF=1 22/22 verification | ✅ Closed | 2026-05-17 |
+| L-003 | #1229 | docs(v3.3.0): TPC-H SF=1 ~10/22 (honest status, see SF1_TRUTH_AUDIT.md) verification | ✅ Closed | 2026-05-17 |
 | L-005 | #1210 | docs: establish coverage SSOT | ✅ Closed | 2026-05-17 |
 | TI-001 | #1243 | feat(perf): Performance Governance System | ✅ Closed | 2026-05-17 |
 | TI-002 | #1244 | feat(crash-sim): Crash Simulation Framework | ✅ Closed | 2026-05-17 |

@@ -49,7 +49,7 @@ The system SHALL achieve ≥85% SQL compatibility with MySQL.
 - **WHEN** running SQL compatibility corpus
 - **THEN** at least 85% of queries pass
 
-### Requirement: GA Gate G8 TPC-H SF=1 22/22
+### Requirement: GA Gate G8 TPC-H SF=1 ~10/22 (honest status, see SF1_TRUTH_AUDIT.md)
 The system SHALL pass all 22 TPC-H queries at SF=1.
 
 #### Scenario: TPC-H SF=1 execution
