@@ -48,9 +48,10 @@ echo "Using dbgen at: $DBGEN_PATH"
 
 mkdir -p "$DATA_DIR"
 DBGEN_TMP="$(mktemp -d)"
+cp "$(dirname "$DBGEN_PATH")/dists.dss" "$DBGEN_TMP/"
 cd "$DBGEN_TMP"
 
-# Generate SF=1.0 data
+# Generate SF=1.0 data. dbgen resolves dists.dss from its working directory.
 "$DBGEN_PATH" -s 1 -f
 
 if [ $? -ne 0 ]; then
@@ -59,10 +60,12 @@ if [ $? -ne 0 ]; then
     exit 1
 fi
 
-# Move .tbl files to data dir
-mv *.tbl "$DATA_DIR/"
+# Move generated files into the requested directory and make them readable.
+mv ./*.tbl "$DATA_DIR/"
+chmod u+rw "$DATA_DIR"/*.tbl
 cd "$REPO_ROOT"
 rm -rf "$DBGEN_TMP"
+
 
 echo ""
 echo "TPC-H SF=1.0 data generated at: $DATA_DIR"
