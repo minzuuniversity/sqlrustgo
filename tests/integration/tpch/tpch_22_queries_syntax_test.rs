@@ -129,7 +129,12 @@ fn tpch_22_queries_execute_without_panic() {
     }
     eprintln!("\n=== TPC-H 22 Query Syntax Harness (in-process, no fixture) ===");
     eprintln!("  Parsed:   22/22");
-    eprintln!("  Executed: {} ok, {} errored, {} panicked", exec_ok.len(), exec_errors.len(), panics.len());
+    eprintln!(
+        "  Executed: {} ok, {} errored, {} panicked",
+        exec_ok.len(),
+        exec_errors.len(),
+        panics.len()
+    );
     for (q, n, d) in &exec_ok {
         eprintln!("    OK   {q}: {n} rows in {d:?}");
     }
