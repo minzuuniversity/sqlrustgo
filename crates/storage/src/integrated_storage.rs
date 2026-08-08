@@ -231,8 +231,14 @@ mod tests {
         let storage = IntegratedTableStorage::new(dir.clone()).unwrap();
 
         // Stage a page directly (no fsync, no write_all yet)
-        storage.dwb_stage(DwbPage { id: 42, data: b"page42".to_vec() });
-        storage.dwb_stage(DwbPage { id: 43, data: b"page43".to_vec() });
+        storage.dwb_stage(DwbPage {
+            id: 42,
+            data: b"page42".to_vec(),
+        });
+        storage.dwb_stage(DwbPage {
+            id: 43,
+            data: b"page43".to_vec(),
+        });
         assert_eq!(storage.dwb_buffered(), 2);
 
         // Simulate crash BEFORE fsync — pages are still in DWB staging
@@ -250,8 +256,20 @@ mod tests {
         let cb = ChangeBuffer::with_capacity(100);
         assert_eq!(cb.pending_count(), 0);
 
-        cb.defer_update(1, ChangeOp::Insert { key: b"k".to_vec(), value: b"v".to_vec() });
-        cb.defer_update(2, ChangeOp::Update { key: b"k2".to_vec(), new_value: b"v2".to_vec() });
+        cb.defer_update(
+            1,
+            ChangeOp::Insert {
+                key: b"k".to_vec(),
+                value: b"v".to_vec(),
+            },
+        );
+        cb.defer_update(
+            2,
+            ChangeOp::Update {
+                key: b"k2".to_vec(),
+                new_value: b"v2".to_vec(),
+            },
+        );
         assert_eq!(cb.pending_count(), 2);
 
         // merge on read should drain specific page
@@ -267,10 +285,34 @@ mod tests {
     #[test]
     fn test_f25_capacity_threshold() {
         let cb = ChangeBuffer::with_capacity(3);
-        cb.defer_update(1, ChangeOp::Insert { key: b"a".to_vec(), value: b"1".to_vec() });
-        cb.defer_update(2, ChangeOp::Insert { key: b"b".to_vec(), value: b"2".to_vec() });
-        cb.defer_update(3, ChangeOp::Insert { key: b"c".to_vec(), value: b"3".to_vec() });
-        cb.defer_update(4, ChangeOp::Insert { key: b"d".to_vec(), value: b"4".to_vec() });
+        cb.defer_update(
+            1,
+            ChangeOp::Insert {
+                key: b"a".to_vec(),
+                value: b"1".to_vec(),
+            },
+        );
+        cb.defer_update(
+            2,
+            ChangeOp::Insert {
+                key: b"b".to_vec(),
+                value: b"2".to_vec(),
+            },
+        );
+        cb.defer_update(
+            3,
+            ChangeOp::Insert {
+                key: b"c".to_vec(),
+                value: b"3".to_vec(),
+            },
+        );
+        cb.defer_update(
+            4,
+            ChangeOp::Insert {
+                key: b"d".to_vec(),
+                value: b"4".to_vec(),
+            },
+        );
         assert!(cb.should_flush(), "should flush at capacity");
     }
 
