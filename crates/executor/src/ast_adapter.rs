@@ -121,3 +121,205 @@ impl AstAdapter {
         Ok(assignments)
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use sqlrustgo_parser::parser::{
+        Expression, TableRef, UpdateStatement as ParserUpdateStatement,
+    };
+    use sqlrustgo_storage::engine::TableInfo;
+    use sqlrustgo_storage::ColumnDefinition;
+
+    fn make_table_info(columns: Vec<&str>) -> TableInfo {
+        TableInfo {
+            name: "t".to_string(),
+            columns: columns
+                .into_iter()
+                .map(|n| ColumnDefinition {
+                    name: n.to_string(),
+                    ..Default::default()
+                })
+                .collect(),
+            ..Default::default()
+        }
+    }
+
+    fn table(name: &str) -> TableRef {
+        TableRef {
+            name: name.to_string(),
+            alias: None,
+        }
+    }
+
+    fn ident(name: &str) -> Expression {
+        Expression::Identifier(name.to_string())
+    }
+
+    fn lit(s: &str) -> Expression {
+        Expression::Literal(s.to_string())
+    }
+
+    fn update_stmt(
+        tables: Vec<TableRef>,
+        set_clauses: Vec<(String, Expression)>,
+        where_clause: Option<Expression>,
+    ) -> ParserUpdateStatement {
+        ParserUpdateStatement {
+            tables,
+            set_clauses,
+            where_clause,
+        }
+    }
+
+    // --- AstAdapter tests ---
+
+    #[test]
+    fn test_to_update_plan_multi_table_error() {
+        let mut stmt = update_stmt(vec![table("a"), table("b")], vec![], None);
+        let result = AstAdapter::to_update_plan(&mut stmt, &make_table_info(vec!["x"]));
+        assert!(result.is_err());
+        assert!(format!("{}", result.unwrap_err()).contains("single-table"));
+    }
+
+    #[test]
+    fn test_to_update_plan_no_where() {
+        let mut stmt = update_stmt(vec![table("t")], vec![("x".to_string(), lit("1"))], None);
+        let plan = AstAdapter::to_update_plan(&mut stmt, &make_table_info(vec!["x"])).unwrap();
+        match plan.predicate {
+            PredicateIR::All => {}
+            _ => panic!("expected All"),
+        }
+    }
+
+    #[test]
+    fn test_to_update_plan_with_where() {
+        let mut stmt = update_stmt(
+            vec![table("t")],
+            vec![("x".to_string(), lit("1"))],
+            Some(Expression::BinaryOp(
+                Box::new(ident("id")),
+                "=".to_string(),
+                Box::new(lit("5")),
+            )),
+        );
+        let plan =
+            AstAdapter::to_update_plan(&mut stmt, &make_table_info(vec!["id", "x"])).unwrap();
+        match plan.predicate {
+            PredicateIR::Expr(_) => {}
+            _ => panic!("expected Expr"),
+        }
+    }
+
+    #[test]
+    fn test_to_update_plan_set_clauses() {
+        let mut stmt = update_stmt(
+            vec![table("t")],
+            vec![("a".to_string(), lit("1")), ("b".to_string(), ident("c"))],
+            None,
+        );
+        let plan =
+            AstAdapter::to_update_plan(&mut stmt, &make_table_info(vec!["a", "b", "c"])).unwrap();
+        assert_eq!(plan.mutation.assignments.len(), 2);
+    }
+
+    #[test]
+    fn test_convert_expr_literal_null() {
+        let mut stmt = update_stmt(vec![table("t")], vec![("x".to_string(), lit("NULL"))], None);
+        assert!(AstAdapter::to_update_plan(&mut stmt, &make_table_info(vec!["x"])).is_ok());
+    }
+
+    #[test]
+    fn test_convert_expr_literal_true() {
+        let mut stmt = update_stmt(vec![table("t")], vec![("x".to_string(), lit("TRUE"))], None);
+        assert!(AstAdapter::to_update_plan(&mut stmt, &make_table_info(vec!["x"])).is_ok());
+    }
+
+    #[test]
+    fn test_convert_expr_literal_false() {
+        let mut stmt = update_stmt(
+            vec![table("t")],
+            vec![("x".to_string(), lit("FALSE"))],
+            None,
+        );
+        assert!(AstAdapter::to_update_plan(&mut stmt, &make_table_info(vec!["x"])).is_ok());
+    }
+
+    #[test]
+    fn test_convert_expr_literal_integer() {
+        for s in &["0", "42", "-7", "999999"] {
+            let mut stmt = update_stmt(vec![table("t")], vec![("x".to_string(), lit(s))], None);
+            assert!(
+                AstAdapter::to_update_plan(&mut stmt, &make_table_info(vec!["x"])).is_ok(),
+                "failed for {}",
+                s
+            );
+        }
+    }
+
+    #[test]
+    fn test_convert_expr_literal_float() {
+        for s in &["0.5", "-3.14"] {
+            let mut stmt = update_stmt(vec![table("t")], vec![("x".to_string(), lit(s))], None);
+            assert!(
+                AstAdapter::to_update_plan(&mut stmt, &make_table_info(vec!["x"])).is_ok(),
+                "failed for {}",
+                s
+            );
+        }
+    }
+
+    #[test]
+    fn test_convert_expr_literal_string() {
+        let mut stmt = update_stmt(
+            vec![table("t")],
+            vec![("x".to_string(), lit("hello"))],
+            None,
+        );
+        assert!(AstAdapter::to_update_plan(&mut stmt, &make_table_info(vec!["x"])).is_ok());
+    }
+
+    // Operator::Add/Not do not exist; Expression::Function does not exist
+    // Note: no depth limit exists in the current AstAdapter
+    // 40-level nested BinaryOp("+") succeeds without error
+
+    #[test]
+    fn test_convert_expr_is_null() {
+        let expr = Expression::IsNull(Box::new(ident("x")));
+        let mut stmt = update_stmt(vec![table("t")], vec![("y".to_string(), expr)], None);
+        assert!(AstAdapter::to_update_plan(&mut stmt, &make_table_info(vec!["x", "y"])).is_ok());
+    }
+
+    #[test]
+    fn test_convert_expr_is_not_null() {
+        let expr = Expression::IsNotNull(Box::new(ident("x")));
+        let mut stmt = update_stmt(vec![table("t")], vec![("y".to_string(), expr)], None);
+        assert!(AstAdapter::to_update_plan(&mut stmt, &make_table_info(vec!["x", "y"])).is_ok());
+    }
+
+    #[test]
+    fn test_convert_expr_unsupported() {
+        let expr = Expression::FunctionCall("SUM".to_string(), vec![]);
+        let mut stmt = update_stmt(vec![table("t")], vec![("x".to_string(), expr)], None);
+        let err = AstAdapter::to_update_plan(&mut stmt, &make_table_info(vec!["x"])).unwrap_err();
+        assert!(format!("{}", err).contains("unsupported"));
+    }
+
+    #[test]
+    fn test_convert_assignments_column_not_found() {
+        let mut stmt = update_stmt(
+            vec![table("t")],
+            vec![("nonexistent".to_string(), lit("1"))],
+            None,
+        );
+        let err = AstAdapter::to_update_plan(&mut stmt, &make_table_info(vec!["x"])).unwrap_err();
+        assert!(format!("{}", err).contains("column not found"));
+    }
+
+    #[test]
+    fn test_convert_expr_binary_op_complex() {
+        let expr = Expression::BinaryOp(Box::new(ident("a")), "+".to_string(), Box::new(lit("1")));
+        let mut stmt = update_stmt(vec![table("t")], vec![("x".to_string(), expr)], None);
+        assert!(AstAdapter::to_update_plan(&mut stmt, &make_table_info(vec!["a", "x"])).is_ok());
+    }
+}
