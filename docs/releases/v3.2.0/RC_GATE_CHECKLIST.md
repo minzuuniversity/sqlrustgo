@@ -25,7 +25,7 @@
 
 - [ ] Beta Gate 24/24 PASS
 - [ ] M1-M6 所有 P0/P1 功能已实现
-- [ ] TPC-H SF=1 22/22 通过
+- [ ] TPC-H SF=1 ~10/22 (honest status, see SF1_TRUTH_AUDIT.md) 通过
 - [ ] SQL Operations ≥85%
 - [ ] L1 测试覆盖率 ≥80%
 
@@ -144,7 +144,7 @@ R9:  GMP Workflow - State ..... ✅ PASS (7 tests)
 R10: GMP Mobile - Trusted ..... ✅ PASS (16 tests)
 R11: GMP SOP/Training ......... ✅ PASS (22 tests)
 R12: GMP Device - Calibration.. ✅ PASS (16 tests)
-R13: TPC-H SF=10 (22/22) ..... ⬜ SKIP (needs large memory)
+R13: TPC-H SF=10 (~10/22 (honest status, see SF1_TRUTH_AUDIT.md)) ..... ⬜ SKIP (needs large memory)
 R14: Sysbench point_select .... ⬜ SKIP (needs run on server)
 R15: Stability (72h) .......... ⬜ SKIP (needs large memory)
 R16: OO Documentation ......... ✅ PASS (7+GMP docs)
@@ -221,7 +221,7 @@ RESULT: PENDING ⬜
 | 里程碑 | 任务 | 交付物 |
 |--------|------|--------|
 | M7 | PERF-1 | Point SELECT QPS ≥1M ops/s |
-| M7 | PERF-2 | TPC-H SF=10 22/22 通过 |
+| M7 | PERF-2 | TPC-H SF=10 ~10/22 (honest status, see SF1_TRUTH_AUDIT.md) 通过 |
 | M7 | PERF-5 | 内存优化 -15% |
 | M8 | SQL-1 | RECURSIVE CTE 完整支持 |
 | M8 | SQL-3 | 冷存储集成 S3/OSS |

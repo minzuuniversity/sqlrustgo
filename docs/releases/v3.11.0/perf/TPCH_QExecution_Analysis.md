@@ -678,27 +678,32 @@ for (t1, t2) in collisions {
 | Q2 | 20 | ~200 MB | ~13 s | ✅ | 哈希链 (FIXED) |
 | Q3 | 0 | 1.9 GB | 2.2 s | ✅ | 哈希链 |
 | Q4 | 0 | 1.8 GB | 6.3 s | ✅ | 哈希链 |
-| Q5 | 5 (SF=1 target) | — (heuristic verifies reorder) | <30s (parser test) | ✅ | 哈希链 (nation-bridge 启发式 + force_orders_first) |
+| Q5 | 5 (SF=1 target) | — (parser-level heuristic verified) | <30s (parser test) | ⚠️ parser-level 修复 | 哈希链 (nation-bridge 启发式 + force_orders_first) |
 | Q6 | 1 | 96 MB | 42 ms | ✅ | 单表扫描 |
-| Q7 | 0 | 2.0 GB | 2.8 s | ✅ | 哈希链 |
-| Q8 | 0 | 2.0 GB | 2.5 s | ✅ | 哈希链 |
-| Q9 | 0 | 2.1 GB | 4.1 s | ✅ | 哈希链 |
-| Q10 | 0 | 2.0 GB | 2.5 s | ✅ | 哈希链 |
-| Q11 | 29,636 | 2.3 GB | 4.8 s | ✅ | 哈希链 |
-| Q12 | 0 | 2.0 GB | 1.7 s | ✅ | 哈希链 |
-| Q13 | 0 | 2.1 GB | 4.7 s | ✅ | 哈希链+子查询 |
-| Q14 | 1 | 96 MB | 382 ms | ✅ | 哈希链 |
-| Q15 | 0 | 96 MB | 51 ms | ✅ | 子查询+哈希链 |
-| Q16 | 18,314 | 2.2 GB | 4.8 s | ✅ | 哈希链 |
-| Q17 | 1 | 96 MB | 308 ms | ✅ | 哈希链 |
-| Q18 | 0 | 2.2 GB | 3.3 s | ✅ | 哈希链+HAVING |
-| Q19 | 1 | 96 MB | 306 ms | ✅ | 哈希链 |
-| Q20 | 0 | 96 MB | 621 ms | ✅ | 子查询+哈希链 |
-| Q21 | 100 (SF=1 target) | — (alias predicate verified) | <1s (parser test) | ✅ | 哈希链 (lineitem|l1 alias predicate) |
-| Q22 | 7 | 2.5 GB | 7.0 s | ✅ | 子查询+哈希链 |
+| Q7 | [未实测]* | — | — | ⚠️ 部分 | 哈希链 |
+| Q8 | [未实测]* | — | — | ⚠️ 部分 | 哈希链 |
+| Q9 | [未实测]* | — | — | ⚠️ 部分 | 哈希链 |
+| Q10 | [未实测]* | — | — | ⚠️ 部分 | 哈希链 |
+| Q11 | 29,636 | — | — | ⚠️ 部分 | 哈希链 |
+| Q12 | [未实测]* | — | — | ⚠️ 部分 | 哈希链 |
+| Q13 | [未实测]* | — | — | ⚠️ 部分 | 哈希链+子查询 |
+| Q14 | [未实测]* | — | — | ⚠️ 部分 | 哈希链 |
+| Q15 | [未实测]* | — | — | ⚠️ 部分 | 子查询+哈希链 |
+| Q16 | 18,314 | — | — | ⚠️ 部分 | 哈希链 |
+| Q17 | [未实测]* | — | — | ⚠️ 部分 | 哈希链 |
+| Q18 | [未实测]* | — | — | ⚠️ 部分 | 哈希链+HAVING |
+| Q19 | [未实测]* | — | — | ⚠️ 部分 | 哈希链 |
+| Q20 | [未实测]* | — | — | ⚠️ 部分 | 子查询+哈希链 |
+| Q21 | 100 (SF=1 target) | — (parser-level alias predicate verified) | <1s (parser test) | ⚠️ parser-level 修复 | 哈希链 (lineitem\|l1 alias predicate) |
+| Q22 | [未实测]* | — | — | ⚠️ 部分 | 子查询+哈希链 |
 
-**Parser-level verified**: Q5 nation-bridge 启发式 + Q21 lineitem|l1 alias 处理由 `tests/q5_q21_reorder_test` 4/4 通过。完整 22/22 端到端 + PG SHA256 验证仍需 SF=1 fixture 生成后执行（V311-20 P0）。
-**OOM 状态（修复前 SF=1）**: Q2/Q5/Q21 18GB-19GB OOM;修复后代码路径已通过 parser 测试，但完整执行需 SF=1 fixture 真实数据验证。
+> **重大更正 (2026-07-20, Issue #3650 §P1-3; 2026-08-08 merge resolution)**: 本表原声称"22/22 PASS"和"OOM 0/22",与 Q5/Q21 的历史 OOM 证据直接矛盾。
+> - Q5: 修复前 SF=1 出现 18.1 GB OOM; 252 侧新增 nation-bridge 启发式 parser-level 验证,但尚不能替代完整 SF=1 E2E + PG SHA256 证据
+> - Q21: 修复前 SF=1 出现 18.9 GB OOM; 252 侧新增 lineitem|l1 alias predicate parser-level 验证,但尚不能替代完整 SF=1 E2E + PG SHA256 证据
+> - 其他 query 的"行数=0"是因为 **本表行数从未实测** — 它们来自代码路径分析,不是真实运行结果
+> - 所有标 [未实测]* 的数据都是代码预测/估算,**没有真实 SF=1 fixture 上 22/22 的运行证据**
+
+**真实状态**: 仅 Q1/Q4/Q6/Q22 + 简单 2-3 表连接在本次 session 实测通过(~10/22)。Q5 nation-bridge 启发式 + Q21 lineitem|l1 alias 处理由 `tests/q5_q21_reorder_test` 4/4 提供 parser-level 证据。任何 22/22 PASS 声明仍需完整 SF=1 fixture 端到端执行 + PG SHA256 证据支撑,完整依据见 [`TPCH_SF1_VERIFICATION_REPORT.md`](../../TPCH_SF1_VERIFICATION_REPORT.md)
 
 ---
 

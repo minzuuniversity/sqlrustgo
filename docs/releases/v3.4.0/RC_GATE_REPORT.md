@@ -149,7 +149,7 @@ R-S4: 24h Read/Write ....... ⏳ 待 Z6G4 执行
 ### 3.2 待执行项目 (需 Z6G4)
 
 - R2: --all-features test (超时问题)
-- R8: TPC-H SF=1 22/22
+- R8: TPC-H SF=1 ~10/22 (honest status, see SF1_TRUTH_AUDIT.md)
 - R-S1~S4: 稳定性测试
 - G11: Formal Proofs (≥30)
 
