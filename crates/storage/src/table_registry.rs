@@ -118,23 +118,35 @@ mod tests {
         dirty: HashSet<String>,
     }
     impl TableEngine for MemTable {
-        fn get_table_info(&self) -> &TableInfo { &self.info }
+        fn get_table_info(&self) -> &TableInfo {
+            &self.info
+        }
         fn insert(&mut self, records: Vec<Record>) -> SqlResult<()> {
             self.rows.extend(records);
             self.dirty.insert(self.info.name.clone());
             Ok(())
         }
-        fn scan(&self) -> SqlResult<Vec<Record>> { Ok(self.rows.clone()) }
-        fn delete(&mut self, _filters: &[Value]) -> SqlResult<usize> { Ok(0) }
-        fn update(
-            &mut self,
-            _filters: &[Value],
-            _updates: &[(usize, Value)],
-        ) -> SqlResult<usize> { Ok(0) }
-        fn flush(&mut self) -> SqlResult<()> { Ok(()) }
-        fn dirty_tables(&self) -> &HashSet<String> { &self.dirty }
-        fn mark_dirty(&mut self, table: &str) { self.dirty.insert(table.to_string()); }
-        fn table_name(&self) -> &str { &self.info.name }
+        fn scan(&self) -> SqlResult<Vec<Record>> {
+            Ok(self.rows.clone())
+        }
+        fn delete(&mut self, _filters: &[Value]) -> SqlResult<usize> {
+            Ok(0)
+        }
+        fn update(&mut self, _filters: &[Value], _updates: &[(usize, Value)]) -> SqlResult<usize> {
+            Ok(0)
+        }
+        fn flush(&mut self) -> SqlResult<()> {
+            Ok(())
+        }
+        fn dirty_tables(&self) -> &HashSet<String> {
+            &self.dirty
+        }
+        fn mark_dirty(&mut self, table: &str) {
+            self.dirty.insert(table.to_string());
+        }
+        fn table_name(&self) -> &str {
+            &self.info.name
+        }
     }
 
     fn sample_info(name: &str) -> TableInfo {

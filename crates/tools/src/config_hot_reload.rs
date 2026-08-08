@@ -438,88 +438,84 @@ mod tests {
         assert!(config.enabled);
         assert_eq!(config.max_size_mb, 512);
     }
-    }
+}
 
-    #[test]
-    fn test_load_config_missing_file_returns_default() {
-        let dir = std::env::temp_dir().join(format!(
-            "config_hot_reload_missing_{}",
-            std::process::id()
-        ));
-        let _ = std::fs::remove_dir_all(&dir);
-        let path = dir.join("nonexistent.json");
-        let config = load_config(&path).expect("missing file should return default");
-        assert_eq!(config.version, "2.1.0");
-        assert_eq!(config.database.port, 5432);
-        let _ = std::fs::remove_dir_all(&dir);
-    }
+#[test]
+fn test_load_config_missing_file_returns_default() {
+    let dir =
+        std::env::temp_dir().join(format!("config_hot_reload_missing_{}", std::process::id()));
+    let _ = std::fs::remove_dir_all(&dir);
+    let path = dir.join("nonexistent.json");
+    let config = load_config(&path).expect("missing file should return default");
+    assert_eq!(config.version, "2.1.0");
+    assert_eq!(config.database.port, 5432);
+    let _ = std::fs::remove_dir_all(&dir);
+}
 
-    #[test]
-    fn test_save_load_config_roundtrip() {
-        let dir = std::env::temp_dir().join(format!(
-            "config_hot_reload_roundtrip_{}",
-            std::process::id()
-        ));
-        let _ = std::fs::remove_dir_all(&dir);
-        std::fs::create_dir_all(&dir).unwrap();
-        let path = dir.join("config.json");
-        let mut original = AppConfig::default();
-        original.database.port = 7777;
-        original.database.max_connections = 42;
-        original.cache.enabled = false;
-        original.cache.max_size_mb = 1024;
-        original.log.level = "debug".to_string();
-        save_config(&path, &original).expect("save");
-        let loaded = load_config(&path).expect("load");
-        assert_eq!(loaded.database.port, 7777);
-        assert_eq!(loaded.database.max_connections, 42);
-        assert!(!loaded.cache.enabled);
-        assert_eq!(loaded.cache.max_size_mb, 1024);
-        assert_eq!(loaded.log.level, "debug");
-        let _ = std::fs::remove_dir_all(&dir);
-    }
+#[test]
+fn test_save_load_config_roundtrip() {
+    let dir = std::env::temp_dir().join(format!(
+        "config_hot_reload_roundtrip_{}",
+        std::process::id()
+    ));
+    let _ = std::fs::remove_dir_all(&dir);
+    std::fs::create_dir_all(&dir).unwrap();
+    let path = dir.join("config.json");
+    let mut original = AppConfig::default();
+    original.database.port = 7777;
+    original.database.max_connections = 42;
+    original.cache.enabled = false;
+    original.cache.max_size_mb = 1024;
+    original.log.level = "debug".to_string();
+    save_config(&path, &original).expect("save");
+    let loaded = load_config(&path).expect("load");
+    assert_eq!(loaded.database.port, 7777);
+    assert_eq!(loaded.database.max_connections, 42);
+    assert!(!loaded.cache.enabled);
+    assert_eq!(loaded.cache.max_size_mb, 1024);
+    assert_eq!(loaded.log.level, "debug");
+    let _ = std::fs::remove_dir_all(&dir);
+}
 
-    #[test]
-    fn test_load_config_invalid_json_errors() {
-        let dir = std::env::temp_dir().join(format!(
-            "config_hot_reload_invalid_{}",
-            std::process::id()
-        ));
-        let _ = std::fs::remove_dir_all(&dir);
-        std::fs::create_dir_all(&dir).unwrap();
-        let path = dir.join("bad.json");
-        std::fs::write(&path, "{ not valid json").unwrap();
-        let r = load_config(&path);
-        assert!(r.is_err(), "malformed config must error, not silently default");
-        let _ = std::fs::remove_dir_all(&dir);
-    }
+#[test]
+fn test_load_config_invalid_json_errors() {
+    let dir =
+        std::env::temp_dir().join(format!("config_hot_reload_invalid_{}", std::process::id()));
+    let _ = std::fs::remove_dir_all(&dir);
+    std::fs::create_dir_all(&dir).unwrap();
+    let path = dir.join("bad.json");
+    std::fs::write(&path, "{ not valid json").unwrap();
+    let r = load_config(&path);
+    assert!(
+        r.is_err(),
+        "malformed config must error, not silently default"
+    );
+    let _ = std::fs::remove_dir_all(&dir);
+}
 
-    #[test]
-    fn test_get_database_config_returns_default() {
-        let dir = std::env::temp_dir().join(format!(
-            "config_hot_reload_getdb_{}",
-            std::process::id()
-        ));
-        let _ = std::fs::remove_dir_all(&dir);
-        std::fs::create_dir_all(&dir).unwrap();
-        let path = dir.join("config.json");
-        let manager = ConfigManager::new(path).expect("manager");
-        let db = manager.get_database_config();
-        assert_eq!(db.host, "localhost");
-        assert_eq!(db.port, 5432);
-        let _ = std::fs::remove_dir_all(&dir);
-    }
+#[test]
+fn test_get_database_config_returns_default() {
+    let dir = std::env::temp_dir().join(format!("config_hot_reload_getdb_{}", std::process::id()));
+    let _ = std::fs::remove_dir_all(&dir);
+    std::fs::create_dir_all(&dir).unwrap();
+    let path = dir.join("config.json");
+    let manager = ConfigManager::new(path).expect("manager");
+    let db = manager.get_database_config();
+    assert_eq!(db.host, "localhost");
+    assert_eq!(db.port, 5432);
+    let _ = std::fs::remove_dir_all(&dir);
+}
 
-    #[test]
-    fn test_create_config_listener_invokes_callback() {
-        use std::sync::atomic::{AtomicUsize, Ordering};
-        use std::sync::Arc;
-        let counter = Arc::new(AtomicUsize::new(0));
-        let counter_clone = counter.clone();
-        let listener = create_config_listener(move |_change: ConfigChange| {
-            counter_clone.fetch_add(1, Ordering::SeqCst);
-        });
-        listener.on_config_change(ConfigChange::Database(DatabaseConfig::default()));
-        listener.on_config_change(ConfigChange::Log(LogConfig::default()));
-        assert_eq!(counter.load(Ordering::SeqCst), 2);
-    }
+#[test]
+fn test_create_config_listener_invokes_callback() {
+    use std::sync::atomic::{AtomicUsize, Ordering};
+    use std::sync::Arc;
+    let counter = Arc::new(AtomicUsize::new(0));
+    let counter_clone = counter.clone();
+    let listener = create_config_listener(move |_change: ConfigChange| {
+        counter_clone.fetch_add(1, Ordering::SeqCst);
+    });
+    listener.on_config_change(ConfigChange::Database(DatabaseConfig::default()));
+    listener.on_config_change(ConfigChange::Log(LogConfig::default()));
+    assert_eq!(counter.load(Ordering::SeqCst), 2);
+}
