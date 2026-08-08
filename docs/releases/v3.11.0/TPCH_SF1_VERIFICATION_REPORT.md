@@ -1,7 +1,7 @@
 # TPC-H SF=1.0 基准数据真实性核查与整改要求
 
 > **Version**: v3.11.0
-> **Status**: 🟡 IN PROGRESS — fixture 生成✅; wire 测试执行中
+> **Status**: 🟡 ALMOST PASS — P0-1 fixture ✅ P0-2 wire tests mostly ✅; ADR-008 exception active
 > **Date**: 2026-07-20
 > **Author**: MiniMax-M3 (governance audit follow-up)
 > **Related**: Issue #3643, PR #3647, `GOVERNANCE_TRUTH_AUDIT.md`
