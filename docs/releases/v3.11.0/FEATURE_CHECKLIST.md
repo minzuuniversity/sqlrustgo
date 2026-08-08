@@ -55,7 +55,7 @@ This document is the **SSOT** for v3.11.0's feature checklist, tracking 23 V311-
 | ID | 任务 | SEM | 工作量 | 优先级 | 状态 | 测试方法 |
 |----|------|-----|--------|--------|------|----------|
 | V311-13 | ALTER TABLE RENAME/MODIFY 完整 | SEM-3 | 20h | P0 | ✅ DONE 2026-07-15 (PR #3444/#3449) | `tests/alter_table_test` |
-| V311-14 | 覆盖率 ≥85% | SEM-4 | 60h | P0 | ✅ DONE 2026-08-08 storage 78.38%→86.09% (+7.71pp; vtu_guard+file_table 14 tests; 10/12 crate ≥80% gate) | `cargo llvm-cov test -p sqlrustgo-storage` |
+| V311-14 | 覆盖率 ≥85% | SEM-4 | 60h | P0 | ✅ DONE 2026-08-08 storage 78.38%→86.09% (+7.71pp; vtu_guard+file_table 14 tests; tools 8 → 60/60 lib tests + 2 E0596 修; 10/12 crate ≥80% gate) | `cargo llvm-cov test -p sqlrustgo-storage` |
 
 ---
 
@@ -198,7 +198,7 @@ This document is the **SSOT** for v3.11.0's feature checklist, tracking 23 V311-
 | V311-11 | F-03 GIS (POINT + ST_WITHIN) | `tests/gis_basic_test` 8/8 (PR #3540/#7210); `crates/gis` 完整 (Point, Polygon, st_within ray-casting) |
 | V311-12 | F-27 Table Compression (LZ4/zstd) | commit 88a3fd733a (`tests/table_compression_test` 8/8) |
 | V311-13 | SEM-3 ALTER TABLE RENAME/MODIFY | PR #3444/#3449 |
-| V311-14 | SEM-4 覆盖率 ≥85% | storage 78.38%→86.09% (+7.71pp); 14 new unit tests in vtu_guard+file_table; 683/683 storage lib PASS |
+| V311-14 | SEM-4 覆盖率 ≥85% | storage 78.38%→86.09% (+7.71pp); 14 vtu_guard+file_table tests + 5 new config_hot_reload tests + 3 E0596 修; tools 60/60 lib tests PASS |
 | V311-16 | PERF-4 Decorrelation optimizer pass | rewrite v2 |
 | V311-17 | PERF-2 Hash Anti Join 算子 | PR |
 | V311-18 | CTE 物化 | commit 3561d4de43 (`tests/cte_e2e_test` 11/11) |
@@ -245,6 +245,7 @@ This document is the **SSOT** for v3.11.0's feature checklist, tracking 23 V311-
 | 2026-08-08 | V311-14 SEM-4 → ✅ DONE: storage crate coverage 78.38% → 86.09% (+7.71pp region, +7.62pp lines); 14 new unit tests (7 in file_table 序列化/反序列化/load/flush, 6 in vtu_guard delegation paths + DML panic message + assert_path_for_dml, 1 fix to missing #[test] attribute on existing test); 683/683 storage lib PASS; 10/12 main crates now ≥80% per-crate gate (only tools 57.6% and cli 0% below — out of v3.11 SEM-4 scope); 完成度 21/24 → 22/24 (91.7%) | openclaw + AI |
 | 2026-08-08 | V311-10 F-30 v2: executor 修复 — 新增 `evaluate_expression_with_seq(expr, row, table_info, Option<&mut dyn StorageEngine>, ...)` 在 `src/expr_utils.rs`; 在 `src/engine_select.rs:962` 的 `execute_select` 投影路径 pre-acquire `self.storage.write()` 然后通过新 helper 调用; 3 个新 runtime tests (`next_value_for_returns_one_on_first_call`, `next_value_for_advances_through_calls`, `currval_returns_last_issued_value`) 全部 PASS; sequence_test 9/9 → 11/11; storage 683/683 lib 无回归; 完成度 22/24 → 23/24 (95.8%) | openclaw + AI |
 | 2026-08-08 | V311-20 TPC-H 22 syntax gate (PARTIAL): 新增 `tests/tpch_22_queries_syntax_test` 3/3 (22/22 parse, 22/22 execute 无 panic, <10s budget); 修复 audit 报告 "TPC-H SF=1 22/22 PASS" 虚假声明 — 22 query 现在能 parsed + executed in-process 不需要 dbgen fixture, 完整结果验证 (与 SQLite 对比) 仍 OMP 平台推进中; 完成度 23/24 → 22/24 (91.7%, 2 PARTIAL) | openclaw + AI |
+| 2026-08-08 | V311-14 SEM-4 tools 推进: 新增 5 个 config_hot_reload 单元测试 (test_load_config_missing_file_returns_default, test_save_load_config_roundtrip, test_load_config_invalid_json_errors, test_get_database_config_returns_default, test_create_config_listener_invokes_callback); 顺带修 3 个 E0596 修 (update_database_config/update_log_config/update_cache_config 缺 &mut self); tools 测试数 52 → 60 (8/8 config_hot_reload PASS); 仍然 tools/lib coverage 56.59% (gate 80% 未达, 仍为 PARTIAL 但测试表面已扩); 完成度 22/24 维持 (91.7%) | openclaw + AI |
 
 *Created: 2026-07-15 (DRAFT init) — v3.11.0 ALPHA 起点*
 *Last update: 2026-07-15*
