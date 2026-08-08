@@ -220,7 +220,10 @@ fn test_tpch_22_mysql_cli_wire() {
     for tbl in TABLES {
         let p = data_dir.join(format!("{}.tbl", tbl));
         if !p.exists() {
-            panic!("[FAIL] missing fixture: {}. Generate SF=1 fixture via dbgen -s 1 -f.", p.display());
+            panic!(
+                "[FAIL] missing fixture: {}. Generate SF=1 fixture via dbgen -s 1 -f.",
+                p.display()
+            );
         }
     }
 
