@@ -20,7 +20,7 @@ This is a **soft** check (`check_warn` not `check_fail`), but the issue is GA-BL
 ### What exists
 
 - `docs/releases/v3.10.0/perf/PERFORMANCE_BASELINE.md` — placeholder, all 22 queries marked `⏳ PENDING`.
-- `docs/releases/v3.10.0/perf/SF1_BASELINE_REPORT.md` — real TPC-H SF=1 v3.10.0 data (22/22 PASS, 2026-07-07, ~7.8 min total).
+- `docs/releases/v3.10.0/perf/SF1_BASELINE_REPORT.md` — real TPC-H SF=1 v3.10.0 data (~10/22 (honest status, see SF1_TRUTH_AUDIT.md) PASS, 2026-07-07, ~7.8 min total).
 - **No v3.9.0 binary available** in this sandbox.
 - **No sysbench run** captured.
 - **No gap-locking P99 measurement** (no workload script in repo).
