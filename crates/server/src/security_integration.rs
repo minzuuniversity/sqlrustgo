@@ -332,4 +332,44 @@ mod tests {
         let security = SecurityIntegration::new();
         security.log_grant("admin", "SELECT", "t", "alice");
     }
+
+    #[test]
+    fn test_check_session_and_reset_ok() {
+        let security = create_test_integration();
+        let session_id =
+            security.create_secure_session("alice".to_string(), "127.0.0.1".to_string());
+        assert!(security.check_session_and_reset(session_id).is_ok());
+    }
+
+    #[test]
+    fn test_check_session_and_reset_session_cancelled() {
+        let security = create_test_integration();
+        let result = security.check_session_and_reset(99999);
+        assert!(result.is_err());
+        assert!(result.unwrap_err().contains("Session is cancelled"));
+    }
+
+    #[test]
+    fn test_reset_session_query_state() {
+        let security = create_test_integration();
+        let session_id =
+            security.create_secure_session("alice".to_string(), "127.0.0.1".to_string());
+        security.reset_session_query_state(session_id);
+    }
+
+    #[test]
+    fn test_get_session_cancel_flag() {
+        let security = create_test_integration();
+        let session_id =
+            security.create_secure_session("alice".to_string(), "127.0.0.1".to_string());
+        let flag = security.get_session_cancel_flag(session_id);
+        assert!(flag.is_some());
+    }
+
+    #[test]
+    fn test_get_session_cancel_flag_nonexistent() {
+        let security = create_test_integration();
+        let flag = security.get_session_cancel_flag(99999);
+        assert!(flag.is_none());
+    }
 }
