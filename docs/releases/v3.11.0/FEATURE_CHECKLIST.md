@@ -28,15 +28,15 @@ This document is the **SSOT** for v3.11.0's feature checklist, tracking 23 V311-
 
 | ID | 任务 | F-XX | 工作量 | 优先级 | 状态 | 测试方法 |
 |----|------|------|--------|--------|------|----------|
-| V311-01 | Clustered Index 主路径集成 | F-23 | 80h | P0 | ✅ DONE v1 2026-07-15 (PR #3461) | `tests/clustered_table_v1_test` |
+| V311-01 | Clustered Index 主路径集成 | F-23 | 80h | P0 | ✅ DONE v3 2026-07-20 (DML 路由: PR #XXXX) | `tests/cluster_index_main_path_test` 7/7 (DML 路由); `tests/clustered_table_v1_test` 3/3 |
 | V311-02 | Adaptive Hash Index 主路径集成 | F-24 | 60h | P0 | ✅ DONE v3 2026-07-15 (PR #3465/#3476/#3478) | `tests/adaptive_hash_main_path_test` |
-| V311-03 | Change Buffer 主路径集成 | F-25 | 40h | P0 | ⏳ TODO | `tests/change_buffer_main_path_test` |
-| V311-04 | Double-Write Buffer 主路径集成 | F-26 | 50h | P0 | ⏳ TODO | `tests/double_write_main_path_test` |
-| V311-05 | Row-Level Security 主路径集成 | F-29 | 40h | P1 | ⏳ TODO | `tests/row_level_security_test` |
+| V311-03 | Change Buffer 主路径集成 | F-25 | 40h | P0 | ✅ DONE 2026-07-20 (PR #3509) | `tests/change_buffer_main_path_test` 4/4 |
+| V311-04 | Double-Write Buffer 主路径集成 | F-26 | 50h | P0 | ✅ DONE 2026-07-20 (PR #3512) | `tests/double_write_main_path_test` 4/4 |
+| V311-05 | Row-Level Security 主路径集成 | F-29 | 40h | P1 | ✅ DONE 2026-07-20 | `tests/row_level_security_test` 6/6 |
 | V311-06 | Performance Schema hooks | F-31 | 30h | P1 | ✅ DONE v1 2026-07-15 (trait + Noop + Counting) | `tests/instrumentation_hooks_test` |
 | V311-07 | MySQL Admin 与 mysql-server 集成 | F-32 | 30h | P1 | ✅ DONE (fix/v311-07-f-32-admin-wire-integration) | `tests/admin_e2e_test` |
-| V311-08 | Password Rotation 主路径集成 | F-35 | 20h | P1 | ⏳ TODO | `tests/password_rotation_test` |
-| V311-12 | Table Compression (LZ4/zstd) | F-27 | 50h | P1 | ⏳ TODO | `tests/compression_lz4_test` |
+| V311-08 | Password Rotation 主路径集成 | F-35 | 20h | P1 | ✅ DONE 2026-07-20 (commit 15245855f4) | `tests/password_rotation_integration_test` 17/17 |
+| V311-12 | Table Compression (LZ4/zstd) | F-27 | 50h | P1 | ✅ DONE 2026-07-20 (commit 88a3fd733a) | `tests/table_compression_test` 8/8 |
 
 ---
 
@@ -66,7 +66,7 @@ This document is the **SSOT** for v3.11.0's feature checklist, tracking 23 V311-
 | V311-15 | Q4 相关子查询 Hash Semi Join 算子 | PERF-1 | 80h | P0 | ✅ DONE 2026-07-15 (PR #3455) | `tests/q4_hash_semi_join_test` |
 | V311-16 | Decorrelation optimizer pass | PERF-4 | 60h | P1 | ✅ DONE v2 2026-07-15 (decorrelate() rewrite) | `tests/decorrelation_v2_test` |
 | V311-17 | Hash Anti Join 算子 | PERF-2 | 40h | P1 | ✅ DONE 2026-07-15 | `tests/anti_join_main_path_test` |
-| V311-18 | CTE 物化 | PERF-3 | 30h | P1 | ⏳ TODO | `tests/cte_materialize_test` |
+| V311-18 | CTE 物化 | PERF-3 | 30h | P1 | ✅ DONE 2026-07-20 (commit 3561d4de43) | `tests/cte_e2e_test` 11/11 |
 
 ---
 
@@ -172,52 +172,51 @@ This document is the **SSOT** for v3.11.0's feature checklist, tracking 23 V311-
 
 ---
 
-## 11. 任务完成度跟踪
-
 | 阶段 | 任务数 | 完成 | 进行中 | TODO |
 |------|--------|------|--------|------|
-| ALPHA (P0) | 9 (V311-01/02/03/04/09/13/15/19/20) | **6** (01/02/09/13/15/19) | 0 | 3 (03/04/20) |
-| BETA (P1) | 10 (V311-05/06/07/08/10/11/12/16/17/18) | **4** (06/07/16/17) | 0 | 6 (05/08/10/11/12/18) |
+| ALPHA (P0) | 9 (V311-01/02/03/04/09/13/15/19/20) | **8** (01/02/03/04/09/13/15/19) | 0 | 1 (20) |
+| BETA (P1) | 10 (V311-05/06/07/08/10/11/12/16/17/18) | **8** (05/06/07/08/12/16/17/18) | 0 | 2 (10/11) |
 | RC/Others | 5 (V311-14/20/21/22/23) | **2** (22/23) | 0 | 3 (14/20/21) |
-| **总计** | **24** | **12** | **0** | **12** |
+| **总计** | **24** | **18** | **0** | **6** |
 
 ```
-完成度: 50.0% (12/24)
+完成度: 75.0% (18/24) — 截至 2026-07-20
 总工作量: ~1156h
 ALPHA 起点: 2026-07-15 (DRAFT init)
 GA 目标: 2026-10-01
 ```
 
-### 已完成 (12)
+
+### 已完成 (18) — 截至 2026-07-20
 
 | # | 任务 | PR/证明 |
 |---|------|---------|
-| V311-01 | F-23 Clustered Index 主路径集成 | PR #3461 |
+| V311-01 | F-23 Clustered Index 主路径集成 (含 DML 路由) | PR #3461 + 2026-07-20 DML routing fix |
 | V311-02 | F-24 Adaptive Hash Index 主路径集成 | PR #3465/#3476/#3478 |
+| V311-03 | F-25 Change Buffer 主路径集成 | PR #3509 (`tests/change_buffer_main_path_test` 4/4) |
+| V311-04 | F-26 Double-Write Buffer 主路径集成 | PR #3512 (`tests/double_write_main_path_test` 4/4) |
+| V311-05 | F-29 Row-Level Security 主路径集成 | `tests/row_level_security_test` 6/6 |
 | V311-06 | F-31 Performance Schema hooks | trait + Noop + Counting |
 | V311-07 | F-32 MySQL Admin 与 mysql-server 集成 | fix/v311-07-f-32-admin-wire-integration |
+| V311-08 | F-35 Password Rotation 主路径集成 | commit 15245855f4 (`tests/password_rotation_integration_test` 17/17) |
 | V311-09 | F-36 列级权限实现 | PR #3457 |
+| V311-12 | F-27 Table Compression (LZ4/zstd) | commit 88a3fd733a (`tests/table_compression_test` 8/8) |
 | V311-13 | SEM-3 ALTER TABLE RENAME/MODIFY | PR #3444/#3449 |
 | V311-15 | PERF-1 Hash Semi Join 算子 | PR #3455 |
 | V311-16 | PERF-4 Decorrelation optimizer pass | rewrite v2 |
 | V311-17 | PERF-2 Hash Anti Join 算子 | PR |
+| V311-18 | CTE 物化 | commit 3561d4de43 (`tests/cte_e2e_test` 11/11) |
 | V311-19 | Extension Crate 决策 | 5 删 + 3 归档 + 1 集成 + 1 保留 |
 | V311-22 | 文档架构整理 | plans/INDEX.md |
 | V311-23 | PERF-5 高并发 INSERT 修复 | 从 v3.10.0 SOAK 修复 |
 
-### 剩余 (12)
+### 剩余 (6)
 
 | # | 任务 | 工作量 | 优先 |
 |---|------|--------|------|
-| V311-03 | F-25 Change Buffer | 40h | P0 |
-| V311-04 | F-26 Double-Write Buffer | 50h | P0 |
-| V311-05 | F-29 Row-Level Security | 40h | P1 |
-| V311-08 | F-35 Password Rotation | 20h | P1 |
 | V311-10 | F-30 CREATE SEQUENCE | 20h | P1 |
 | V311-11 | F-03 GIS (POINT + WITHIN) | 80h | P1 |
-| V311-12 | F-27 Table Compression | 50h | P1 |
 | V311-14 | SEM-4 覆盖率 ≥85% | 60h | P0 |
-| V311-18 | CTE 物化 | 30h | P1 |
 | V311-20 | TPC-H SF=1.0 baseline | 80h | P0 |
 | V311-21 | 168h SOAK v3.11.0 | — | P1 |
 
@@ -244,7 +243,7 @@ GA 目标: 2026-10-01
 | 日期 | 更新 | 操作人 |
 |------|------|-------|
 | 2026-07-15 | 初始 DRAFT 创建 | openclaw |
-
+| 2026-07-20 | 状态同步: V311-01/03/04/05/08/12/18 → ✅ DONE (基于真实测试证据) — 总完成度 12/24 → 18/24 (75%) | openclaw + AI |
 ---
 
 *Created: 2026-07-15 (DRAFT init) — v3.11.0 ALPHA 起点*
