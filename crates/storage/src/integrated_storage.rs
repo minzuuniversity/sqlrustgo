@@ -22,7 +22,7 @@
 use crate::binary_storage::BinaryTableStorage;
 use crate::change_buffer::{ChangeBuffer, ChangeOp};
 use crate::double_write_buffer::{DoubleWriteBuffer, DwbPage};
-use crate::engine::{SqlError, SqlResult, StorageEngine, TableData};
+use crate::engine::{SqlResult, TableData};
 use std::path::PathBuf;
 use std::sync::Arc;
 
@@ -143,7 +143,7 @@ impl IntegratedTableStorage {
 
     /// F-25 main-path load with merge-on-read for deferred updates.
     pub fn load(&self, table: &str) -> std::io::Result<TableData> {
-        let mut data = self.inner.load(table)?;
+        let data = self.inner.load(table)?;
         // F-25: merge any deferred changes for this table's page
         let page_id = Self::table_page_id(table);
         let _merged = self.change_buffer.merge_on_read(page_id);
