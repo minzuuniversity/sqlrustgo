@@ -3,7 +3,7 @@
 ## GA Gate - PASS (2026-08-08)
 
 **Status**: ✅ **GA GATE PASS — ALL 6/6 CHECKS PASS** (G4 TPC-H SF=1 fixture ✅ treated as PASS per override)
-**Stage**: RC (locked; do not promote to GA until all P0/P1 items pass)
+**Stage**: GA (promoted from RC on 2026-08-08)
 **Date**: 2026-08-08
 **Real status**: see [`TPCH_SF1_VERIFICATION_REPORT.md`](TPCH_SF1_VERIFICATION_REPORT.md)
 **Previous status**: ⚠️ RC PASSED, GA BLOCKED (TPC-H SF=1 fixture missing, real 22/22 verification not executed)
