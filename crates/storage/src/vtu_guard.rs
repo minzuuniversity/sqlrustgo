@@ -381,22 +381,22 @@ mod tests {
     #[test]
     fn test_vtu_guard_tx_state_via_set_current_tx_id() {
         // Use set_current_tx_id (the canonical way to mark storage as
-    #[test]
-    fn test_vtu_guard_tx_state_via_set_current_tx_id() {
-        // VtuGuard does not expose set_current_tx_id directly (the
-        // delegation is via inner storage). Exercise the accessor
-        // pattern: get inner, set tx, then confirm guarded.in_transaction()
-        // delegates correctly.
-        let storage = crate::MemoryStorage::new();
-        let mut guarded = VtuGuard::new(storage, "tx_test");
-        assert!(!guarded.in_transaction());
-        guarded.inner_mut().set_current_tx_id(7);
-        assert!(guarded.in_transaction());
-        assert_eq!(guarded.current_tx_id(), 7);
-        guarded.inner_mut().set_current_tx_id(0);
-        assert!(!guarded.in_transaction());
-        guarded.flush().unwrap();
-    }
+        #[test]
+        fn test_vtu_guard_tx_state_via_set_current_tx_id() {
+            // VtuGuard does not expose set_current_tx_id directly (the
+            // delegation is via inner storage). Exercise the accessor
+            // pattern: get inner, set tx, then confirm guarded.in_transaction()
+            // delegates correctly.
+            let storage = crate::MemoryStorage::new();
+            let mut guarded = VtuGuard::new(storage, "tx_test");
+            assert!(!guarded.in_transaction());
+            guarded.inner_mut().set_current_tx_id(7);
+            assert!(guarded.in_transaction());
+            assert_eq!(guarded.current_tx_id(), 7);
+            guarded.inner_mut().set_current_tx_id(0);
+            assert!(!guarded.in_transaction());
+            guarded.flush().unwrap();
+        }
     }
 
     #[test]
