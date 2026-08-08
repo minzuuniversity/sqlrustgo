@@ -959,6 +959,11 @@ impl<S: StorageEngine + 'static> ExecutionEngine<S> {
                                                                        // wrong — `idx` would read from the projected row's slot 0,
                                                                        // which is the function output, not the underlying column value).
         let is_star = select.columns.is_empty() || select.columns.iter().any(|c| c.name == "*");
+        // V311-10 fix: pre-acquire the storage write lock so the
+        // SequenceNextVal / SequenceCurrval arms in
+        // `evaluate_expression_with_seq` can advance / read live
+        // sequence state during the projection.
+        let mut storage_guard = self.storage.write();
         let projected_with_names: (Vec<String>, Vec<Vec<Value>>) = if is_star {
             let names: Vec<String> = if !table_info.columns.is_empty()
                 && table_info.columns.len() == rows.first().map(|r| r.len()).unwrap_or(0)
@@ -983,8 +988,11 @@ impl<S: StorageEngine + 'static> ExecutionEngine<S> {
                             .columns
                             .iter()
                             .map(|col| match &col.expression {
-                                Some(expr) => evaluate_expression(expr, &row, &table_info)
-                                    .unwrap_or(Value::Null),
+                                Some(expr) => crate::expr_utils::evaluate_expression_with_seq(
+                                    expr, &row, &table_info,
+                                    Some(&mut *storage_guard),
+                                    &|_| Ok(Value::Null),
+                                ).unwrap_or(Value::Null),
                                 None => row.first().cloned().unwrap_or(Value::Null),
                             })
                             .collect()
@@ -993,7 +1001,6 @@ impl<S: StorageEngine + 'static> ExecutionEngine<S> {
             (names, rows)
         };
         let (projected_column_names, projected_rows) = projected_with_names;
-
         // Step 6: DISTINCT — apply deduplication if select.distinct is set.
         // V380 F-12 fix: parser sets select.distinct but executor was ignoring it.
         // Use a HashSet of Value vectors to track seen rows.
