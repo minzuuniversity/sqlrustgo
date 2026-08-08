@@ -62,20 +62,20 @@ impl UnifiedExpr {
                 .and_then(|i| row.get(i).cloned())
                 .unwrap_or(Value::Null),
             UnifiedExpr::BinaryOp { left, op, right } => {
-                let l = (&mut *left).evaluate(row, columns, storage);
-                let r = (&mut *right).evaluate(row, columns, storage);
+                let l = left.evaluate(row, columns, storage);
+                let r = right.evaluate(row, columns, storage);
                 eval_binary_op(&l, &r, op)
             }
             UnifiedExpr::UnaryOp { op, expr } => {
-                let v = (&mut *expr).evaluate(row, columns, storage);
+                let v = expr.evaluate(row, columns, storage);
                 eval_unary_op(&v, op)
             }
             UnifiedExpr::IsNull(expr) => Value::Boolean(matches!(
-                (&mut *expr).evaluate(row, columns, storage),
+                expr.evaluate(row, columns, storage),
                 Value::Null
             )),
             UnifiedExpr::IsNotNull(expr) => Value::Boolean(!matches!(
-                (&mut *expr).evaluate(row, columns, storage),
+                expr.evaluate(row, columns, storage),
                 Value::Null
             )),
             UnifiedExpr::FunctionCall { name, args } => {
@@ -86,15 +86,15 @@ impl UnifiedExpr {
                 eval_fn(name, &vals)
             }
             UnifiedExpr::InList { expr, list } => {
-                let val = (&mut *expr).evaluate(row, columns, storage);
+                let val = expr.evaluate(row, columns, storage);
                 Value::Boolean(list.iter_mut().any(|item| {
                     val == item.evaluate(row, columns, storage) && !matches!(&val, Value::Null)
                 }))
             }
             UnifiedExpr::Between { expr, low, high } => {
-                let v = (&mut *expr).evaluate(row, columns, storage);
-                let l = (&mut *low).evaluate(row, columns, storage);
-                let h = (&mut *high).evaluate(row, columns, storage);
+                let v = expr.evaluate(row, columns, storage);
+                let l = low.evaluate(row, columns, storage);
+                let h = high.evaluate(row, columns, storage);
                 Value::Boolean(
                     eval_binary_op(&v, &l, ">=") == Value::Boolean(true)
                         && eval_binary_op(&v, &h, "<=") == Value::Boolean(true),
@@ -112,7 +112,7 @@ impl UnifiedExpr {
                     .unwrap_or(Value::Null)
             }
             UnifiedExpr::Cast { expr, target_type } => {
-                let v = (&mut *expr).evaluate(row, columns, storage);
+                let v = expr.evaluate(row, columns, storage);
                 cast_val(&v, target_type)
             }
             UnifiedExpr::SequenceNextVal(name) => {
