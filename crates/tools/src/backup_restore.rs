@@ -469,3 +469,123 @@ fn test_md5_different_inputs() {
     let h2 = md5_simple("world");
     assert_ne!(h1, h2);
 }
+
+#[test]
+fn test_backup_manager_delete_backup() {
+    use std::collections::HashMap;
+    let temp_dir = std::env::temp_dir().join("sqlrustgo_test_delete_backup");
+    let _ = std::fs::remove_dir_all(&temp_dir);
+    std::fs::create_dir_all(&temp_dir).unwrap();
+    let manager = BackupManager::new(temp_dir.clone());
+
+    let mut tables = HashMap::new();
+    tables.insert(
+        "t1".to_string(),
+        vec![{
+            let mut row = HashMap::new();
+            row.insert("id".to_string(), "1".to_string());
+            row
+        }],
+    );
+
+    let result = manager.create_backup("testdb", tables.clone());
+    assert!(result.is_ok());
+    let backup_id = result.unwrap().id.clone();
+
+    let listed = manager.list_backups();
+    assert!(!listed.is_empty());
+
+    let deleted = manager.delete_backup(&backup_id);
+    assert!(deleted.is_ok());
+
+    let listed_after = manager.list_backups();
+    assert!(listed_after.is_empty());
+
+    let _ = std::fs::remove_dir_all(temp_dir);
+}
+
+#[test]
+fn test_backup_manager_get_backup() {
+    use std::collections::HashMap;
+    let temp_dir = std::env::temp_dir().join("sqlrustgo_test_get_backup");
+    let _ = std::fs::remove_dir_all(&temp_dir);
+    std::fs::create_dir_all(&temp_dir).unwrap();
+    let manager = BackupManager::new(temp_dir.clone());
+
+    let mut tables = HashMap::new();
+    tables.insert(
+        "users".to_string(),
+        vec![{
+            let mut row = HashMap::new();
+            row.insert("id".to_string(), "42".to_string());
+            row
+        }],
+    );
+
+    let created = manager.create_backup("testdb", tables).unwrap();
+    let backup_id = created.id.clone();
+
+    let retrieved = manager.get_backup(&backup_id);
+    assert!(retrieved.is_some());
+    assert_eq!(retrieved.unwrap().id, backup_id);
+
+    // Non-existent backup
+    let missing = manager.get_backup("nonexistent_backup_id");
+    assert!(missing.is_none());
+
+    let _ = std::fs::remove_dir_all(temp_dir);
+}
+
+#[test]
+fn test_backup_manager_restore_not_found() {
+    let temp_dir = std::env::temp_dir().join("sqlrustgo_test_restore_not_found");
+    let _ = std::fs::remove_dir_all(&temp_dir);
+    std::fs::create_dir_all(&temp_dir).unwrap();
+    let manager = BackupManager::new(temp_dir.clone());
+
+    let result = manager.restore("this_backup_does_not_exist");
+    assert!(result.is_err());
+
+    let _ = std::fs::remove_dir_all(temp_dir);
+}
+
+#[test]
+fn test_backup_manager_backup_dir() {
+    let temp_dir = std::env::temp_dir().join("sqlrustgo_test_backup_dir");
+    let _ = std::fs::remove_dir_all(&temp_dir);
+    std::fs::create_dir_all(&temp_dir).unwrap();
+    let manager = BackupManager::new(temp_dir.clone());
+    assert_eq!(manager.backup_dir(), std::path::Path::new(&temp_dir));
+    let _ = std::fs::remove_dir_all(temp_dir);
+}
+
+#[test]
+fn test_backup_metadata_fail() {
+    let mut meta = BackupMetadata::new("bkp_1".into(), BackupType::Full, "db".into());
+    meta.fail("disk full".into());
+    assert!(matches!(meta.status, BackupStatus::Failed(_)));
+}
+
+#[test]
+fn test_backup_metadata_complete() {
+    let mut meta = BackupMetadata::new("bkp_2".into(), BackupType::Full, "db".into());
+    meta.complete(1024, "abc123".into());
+    assert!(matches!(meta.status, BackupStatus::Completed));
+    assert_eq!(meta.size_bytes, 1024);
+    assert_eq!(meta.checksum.as_ref().unwrap(), "abc123");
+}
+
+#[test]
+fn test_backup_type_variants() {
+    // Full backup
+    let full = BackupMetadata::new("f".into(), BackupType::Full, "db".into());
+    assert!(matches!(full.backup_type, BackupType::Full));
+
+    // Incremental backup
+    let incr = BackupMetadata::new("i".into(), BackupType::Incremental, "db".into());
+    assert!(matches!(incr.backup_type, BackupType::Incremental));
+
+    // Differential backup
+    let diff = BackupMetadata::new("d".into(), BackupType::Differential, "db".into());
+    assert!(matches!(diff.backup_type, BackupType::Differential));
+}

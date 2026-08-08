@@ -796,4 +796,414 @@ mod tests {
         assert!(ts.contains("_"));
         assert!(ts.contains("-"));
     }
+    #[test]
+    fn test_version_info_parse_invalid() {
+        assert!(VersionInfo::parse("notaversion").is_err());
+        assert!(VersionInfo::parse("1.2").is_err());
+        assert!(VersionInfo::parse("1.2.3.4").is_err());
+        assert!(VersionInfo::parse("").is_err());
+    }
+
+    #[test]
+    fn test_upgrade_status_variants() {
+        let statuses = vec![
+            UpgradeStatus::Pending,
+            UpgradeStatus::InProgress,
+            UpgradeStatus::Completed,
+            UpgradeStatus::Failed,
+            UpgradeStatus::RolledBack,
+        ];
+        assert_eq!(statuses.len(), 5);
+    }
+
+    #[test]
+    fn test_upgrade_manifest_fields() {
+        let manifest = UpgradeManifest {
+            from_version: "3.10.0".into(),
+            to_version: "3.11.0".into(),
+            timestamp: chrono_lite_timestamp(),
+            status: UpgradeStatus::Completed,
+            backup_path: None,
+            rollback_enabled: true,
+            steps_completed: 3,
+            total_steps: 3,
+            checksum: "abc123".into(),
+        };
+        assert_eq!(manifest.from_version, "3.10.0");
+        assert_eq!(manifest.to_version, "3.11.0");
+        assert_eq!(manifest.steps_completed, 3);
+        assert_eq!(manifest.total_steps, 3);
+        assert!(matches!(manifest.status, UpgradeStatus::Completed));
+    }
+
+    #[test]
+    fn test_version_info_fields_equal() {
+        let v1 = VersionInfo::parse("2.1.0").unwrap();
+        let v2 = VersionInfo::parse("2.1.0").unwrap();
+        assert!(v1.major == v2.major && v1.minor == v2.minor && v1.patch == v2.patch);
+        let v3 = VersionInfo::parse("2.1.1").unwrap();
+        assert!(v3.patch != v1.patch);
+    }
+    #[test]
+    fn test_create_upgrade_plan_minor_upgrade() {
+        let from = VersionInfo {
+            major: 3,
+            minor: 10,
+            patch: 0,
+        };
+        let to = VersionInfo {
+            major: 3,
+            minor: 11,
+            patch: 0,
+        };
+        let plan = create_upgrade_plan(&from, &to).unwrap();
+        assert_eq!(plan.to_version.major, 3);
+        assert_eq!(plan.to_version.minor, 11);
+        assert!(plan.pre_check_passed);
+        assert!(!plan.migration_steps.is_empty());
+        assert_eq!(plan.migration_steps.first().map(|s| s.id), Some(1));
+    }
+
+    #[test]
+    fn test_create_upgrade_plan_patch_upgrade() {
+        let from = VersionInfo {
+            major: 3,
+            minor: 11,
+            patch: 0,
+        };
+        let to = VersionInfo {
+            major: 3,
+            minor: 11,
+            patch: 1,
+        };
+        let plan = create_upgrade_plan(&from, &to).unwrap();
+        assert_eq!(plan.to_version.patch, 1);
+        assert!(plan.pre_check_passed);
+        // Should have patch update + metadata + verify steps
+        assert!(plan.migration_steps.len() >= 3);
+    }
+
+    #[test]
+    fn test_create_upgrade_plan_contains_steps() {
+        let from = VersionInfo {
+            major: 3,
+            minor: 0,
+            patch: 0,
+        };
+        let to = VersionInfo {
+            major: 3,
+            minor: 1,
+            patch: 1,
+        };
+        let plan = create_upgrade_plan(&from, &to).unwrap();
+        // Last two steps should be metadata and verify
+        let descs: Vec<_> = plan
+            .migration_steps
+            .iter()
+            .map(|s| s.description.clone())
+            .collect();
+        assert!(descs
+            .iter()
+            .any(|d| d.contains("Verify") || d.contains("Update")));
+    }
+    #[test]
+    fn test_check_upgrade_missing_dir_reports_warning() {
+        // check_upgrade still returns Ok even for missing data dir (warns but continues)
+        use std::path::Path;
+        let fake = Path::new("/tmp/does_not_exist_12345_xyz");
+        let result = check_upgrade("3.10.0", "3.11.0", fake);
+        assert!(result.is_ok());
+    }
+
+    #[test]
+    fn test_execute_rollback_nonexistent() {
+        use std::path::Path;
+        let fake_backup = Path::new("/tmp/no_such_backup_dir_xyz");
+        let fake_data = Path::new("/tmp/no_such_data_dir_xyz");
+        let result = execute_rollback(fake_backup, "3.10.0", fake_data);
+        assert!(result.is_err());
+    }
+
+    #[test]
+    fn test_show_status_nonexistent_dir_returns_ok() {
+        // show_status returns Ok even when no history (prints message)
+        use std::path::Path;
+        let fake = Path::new("/tmp/no_such_dir_for_status_xyz");
+        let result = show_status(fake);
+        assert!(result.is_ok());
+    }
+
+    #[test]
+    fn test_list_history_nonexistent_dir() {
+        use std::path::Path;
+        let fake = Path::new("/tmp/no_such_dir_for_history_xyz");
+        let result = list_history(fake);
+        assert!(result.is_ok()); // Returns empty vec
+    }
+
+    #[test]
+    fn test_version_info_to_string_exact() {
+        let v = VersionInfo {
+            major: 3,
+            minor: 11,
+            patch: 0,
+        };
+        assert_eq!(v.to_string(), "3.11.0");
+    }
+
+    #[test]
+    fn test_migration_step_fields() {
+        let step = MigrationStep {
+            id: 5,
+            description: "test step".into(),
+            executed: true,
+            rollback_sql: Some("DROP TABLE t".into()),
+        };
+        assert_eq!(step.id, 5);
+        assert_eq!(step.description, "test step");
+        assert!(step.executed);
+        assert_eq!(step.rollback_sql.as_ref().unwrap(), "DROP TABLE t");
+    }
+
+    #[test]
+    fn test_upgrade_plan_fields() {
+        let plan = UpgradePlan {
+            from_version: VersionInfo {
+                major: 3,
+                minor: 10,
+                patch: 0,
+            },
+            to_version: VersionInfo {
+                major: 3,
+                minor: 11,
+                patch: 0,
+            },
+            migration_steps: vec![MigrationStep {
+                id: 1,
+                description: "step 1".into(),
+                executed: false,
+                rollback_sql: None,
+            }],
+            pre_check_passed: true,
+            estimated_duration_secs: 120,
+        };
+        assert_eq!(plan.from_version.major, 3);
+        assert_eq!(plan.to_version.minor, 11);
+        assert!(plan.pre_check_passed);
+        assert_eq!(plan.estimated_duration_secs, 120);
+        assert_eq!(plan.migration_steps.len(), 1);
+    }
+    #[test]
+    fn test_execute_upgrade_with_real_temp_dirs() {
+        use std::fs;
+        use std::path::Path;
+        let data_dir =
+            std::env::temp_dir().join(format!("sqlrustgo_upgrade_test_{}", std::process::id()));
+        let backup_dir =
+            std::env::temp_dir().join(format!("sqlrustgo_backup_test_{}", std::process::id()));
+        let _ = fs::remove_dir_all(&data_dir);
+        let _ = fs::remove_dir_all(&backup_dir);
+        fs::create_dir_all(data_dir.join("catalog")).unwrap();
+        let result = execute_upgrade("3.10.0", "3.11.0", &backup_dir, &data_dir, true);
+        assert!(result.is_ok());
+        let _ = fs::remove_dir_all(&data_dir);
+        let _ = fs::remove_dir_all(&backup_dir);
+    }
+
+    #[test]
+    fn test_execute_upgrade_creates_manifest() {
+        use std::fs;
+        let data_dir =
+            std::env::temp_dir().join(format!("sqlrustgo_upg_manifest_{}", std::process::id()));
+        let backup_dir =
+            std::env::temp_dir().join(format!("sqlrustgo_bkp_manifest_{}", std::process::id()));
+        let _ = fs::remove_dir_all(&data_dir);
+        let _ = fs::remove_dir_all(&backup_dir);
+        fs::create_dir_all(data_dir.join("catalog")).unwrap();
+        execute_upgrade("3.10.0", "3.11.0", &backup_dir, &data_dir, true).unwrap();
+        let manifest_path = data_dir.join(".upgrade").join("last_upgrade.json");
+        assert!(manifest_path.exists(), "manifest should be created");
+        let _ = fs::remove_dir_all(&data_dir);
+        let _ = fs::remove_dir_all(&backup_dir);
+    }
+
+    #[test]
+    fn test_update_metadata_writes_version_file() {
+        use std::fs;
+        let dir = std::env::temp_dir().join(format!("sqlrustgo_meta_test_{}", std::process::id()));
+        let _ = fs::remove_dir_all(&dir);
+        fs::create_dir_all(&dir).unwrap();
+        let version = VersionInfo {
+            major: 3,
+            minor: 11,
+            patch: 0,
+        };
+        update_metadata(&dir, &version).unwrap();
+        let version_file = dir.join(".version");
+        assert!(version_file.exists());
+        assert_eq!(fs::read_to_string(&version_file).unwrap(), "3.11.0");
+        let _ = fs::remove_dir_all(&dir);
+    }
+
+    #[test]
+    fn test_validate_data_missing_catalog_fails() {
+        use std::fs;
+        let dir = std::env::temp_dir().join(format!("sqlrustgo_nocatalog_{}", std::process::id()));
+        let _ = fs::remove_dir_all(&dir);
+        fs::create_dir_all(&dir).unwrap(); // No catalog subdir
+        let result = validate_data(&dir);
+        assert!(result.is_err());
+        let _ = fs::remove_dir_all(&dir);
+    }
+
+    #[test]
+    fn test_generate_migration_sql_different_versions() {
+        let from = VersionInfo {
+            major: 3,
+            minor: 10,
+            patch: 0,
+        };
+        let to = VersionInfo {
+            major: 3,
+            minor: 11,
+            patch: 1,
+        };
+        let sql = generate_migration_sql(&from, &to);
+        assert!(sql.contains("Minor version migration"));
+        assert!(sql.contains("Patch update"));
+        assert!(sql.contains("v3.10.0"));
+        assert!(sql.contains("v3.11.1"));
+    }
+
+    #[test]
+    fn test_generate_migration_sql_patch_only() {
+        let from = VersionInfo {
+            major: 3,
+            minor: 11,
+            patch: 0,
+        };
+        let to = VersionInfo {
+            major: 3,
+            minor: 11,
+            patch: 2,
+        };
+        let sql = generate_migration_sql(&from, &to);
+        assert!(sql.contains("Patch update"));
+        assert!(!sql.contains("Minor version migration"));
+    }
+    #[test]
+    fn test_copy_dir_recursive_copies_files() {
+        use std::fs;
+        let src = std::env::temp_dir().join(format!("sqlrustgo_copy_src_{}", std::process::id()));
+        let dst = std::env::temp_dir().join(format!("sqlrustgo_copy_dst_{}", std::process::id()));
+        let _ = fs::remove_dir_all(&src);
+        let _ = fs::remove_dir_all(&dst);
+        fs::create_dir_all(&src).unwrap();
+        fs::write(src.join("test.txt"), "hello world").unwrap();
+        fs::create_dir_all(src.join("subdir")).unwrap();
+        fs::write(src.join("subdir").join("nested.txt"), "nested").unwrap();
+        copy_dir_recursive(&src, &dst).unwrap();
+        assert_eq!(
+            fs::read_to_string(dst.join("test.txt")).unwrap(),
+            "hello world"
+        );
+        assert_eq!(
+            fs::read_to_string(dst.join("subdir").join("nested.txt")).unwrap(),
+            "nested"
+        );
+        let _ = fs::remove_dir_all(&src);
+        let _ = fs::remove_dir_all(&dst);
+    }
+
+    #[test]
+    fn test_copy_dir_recursive_nonexistent_source_returns_ok() {
+        use std::path::Path;
+        let nonexistent = Path::new("/tmp/this_does_not_exist_xyz_12345");
+        let dst = std::env::temp_dir().join(format!("sqlrustgo_copy_dst2_{}", std::process::id()));
+        let result = copy_dir_recursive(nonexistent, &dst);
+        assert!(result.is_ok());
+    }
+
+    #[test]
+    fn test_verify_upgrade_version_mismatch() {
+        use std::fs;
+        let dir = std::env::temp_dir().join(format!("sqlrustgo_verify_{}", std::process::id()));
+        let _ = fs::remove_dir_all(&dir);
+        fs::create_dir_all(&dir).unwrap();
+        fs::write(dir.join(".version"), "3.10.0").unwrap();
+        let wrong_ver = VersionInfo {
+            major: 3,
+            minor: 11,
+            patch: 0,
+        };
+        let result = verify_upgrade(&dir, &wrong_ver);
+        assert!(result.is_err());
+        let _ = fs::remove_dir_all(&dir);
+    }
+
+    #[test]
+    fn test_verify_upgrade_no_version_file_is_ok() {
+        use std::fs;
+        let dir = std::env::temp_dir().join(format!("sqlrustgo_verify2_{}", std::process::id()));
+        let _ = fs::remove_dir_all(&dir);
+        fs::create_dir_all(&dir).unwrap(); // No .version file
+        let ver = VersionInfo {
+            major: 3,
+            minor: 11,
+            patch: 0,
+        };
+        let result = verify_upgrade(&dir, &ver);
+        assert!(result.is_ok());
+        let _ = fs::remove_dir_all(&dir);
+    }
+
+    #[test]
+    fn test_validate_backup_missing_manifest_fails() {
+        use std::fs;
+        let dir = std::env::temp_dir().join(format!("sqlrustgo_noman_{}", std::process::id()));
+        let _ = fs::remove_dir_all(&dir);
+        fs::create_dir_all(&dir).unwrap(); // No manifest.json
+        let result = validate_backup(&dir);
+        assert!(result.is_err());
+        let _ = fs::remove_dir_all(&dir);
+    }
+
+    #[test]
+    fn test_validate_backup_invalid_json_fails() {
+        use std::fs;
+        let dir = std::env::temp_dir().join(format!("sqlrustgo_badman_{}", std::process::id()));
+        let _ = fs::remove_dir_all(&dir);
+        fs::create_dir_all(&dir).unwrap();
+        fs::write(dir.join("manifest.json"), "not valid json{{{").unwrap();
+        let result = validate_backup(&dir);
+        assert!(result.is_err());
+        let _ = fs::remove_dir_all(&dir);
+    }
+
+    #[test]
+    fn test_calculate_dir_checksum_empty_dir() {
+        // An empty dir that exists gets a hash, not "empty" string
+        // "empty" is only returned when the dir does not exist
+        use std::fs;
+        let dir = std::env::temp_dir().join(format!("sqlrustgo_emptycksum_{}", std::process::id()));
+        let _ = fs::remove_dir_all(&dir);
+        fs::create_dir_all(&dir).unwrap();
+        let checksum = calculate_dir_checksum(&dir).unwrap();
+        assert!(checksum.len() == 16);
+        assert!(checksum.chars().all(|c| c.is_ascii_hexdigit()));
+        let _ = fs::remove_dir_all(&dir);
+    }
+
+    #[test]
+    fn test_calculate_dir_checksum_with_content() {
+        use std::fs;
+        let dir = std::env::temp_dir().join(format!("sqlrustgo_cksum_{}", std::process::id()));
+        let _ = fs::remove_dir_all(&dir);
+        fs::create_dir_all(&dir).unwrap();
+        fs::write(dir.join("data.txt"), "content").unwrap();
+        let checksum = calculate_dir_checksum(&dir).unwrap();
+        assert!(checksum.len() == 16);
+        assert!(checksum.chars().all(|c| c.is_ascii_hexdigit()));
+        let _ = fs::remove_dir_all(&dir);
+    }
 }

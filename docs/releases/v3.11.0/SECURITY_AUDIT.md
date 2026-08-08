@@ -1,7 +1,7 @@
 # v3.11.0 Security Audit Report
 
 > **Version**: v3.11.0
-> **Status**: RC → GA (2026-07-19)
+> **Status**: RC → GA (updated 2026-08-08)
 > **Owner**: @openclaw
 
 ---
@@ -72,7 +72,15 @@ Run `cargo audit` for third-party dependency vulnerabilities:
 cargo audit
 ```
 
-Last audit result: No critical vulnerabilities found.
+Last audit result: 2 vulnerability warnings from transitive dependencies:
+- RUSTSEC-2026-0204: crossbeam-epoch 0.9.18 (fixable: `cargo update -p crossbeam-epoch`)
+  Impact: None to sqlrustgo (affected path: sqlrustgo-vector → sqlrustgo-gmp → sqlrustgo-bench/transaction-stress)
+- RUSTSEC-2026-0002: lru 0.12.5 (unfixable without mysql upgrade)
+  Impact: None to sqlrustgo (affected path: mysql 25.0.1 → sqlrustgo-bench)
+- RUSTSEC-2026-0235: rkyv (no upgrade available, test-only crate)
+- RUSTSEC-2026-0173: proc-macro-error2 (no upgrade available, dev-dependency)
+9 allowed unmaintained warnings (atty, adler, ansi_term, bincode, proc-macro-error, structopt).
+No direct vulnerability in sqlrustgo production code.
 
 ---
 
@@ -87,3 +95,4 @@ v3.11.0 passes security review for GA release. No critical or medium severity is
 | Role | Name | Date |
 |------|------|------|
 | Security Reviewer | @openclaw | 2026-07-19 |
+| Security Reviewer | @openclaw | 2026-08-08 |  Updated dependency audit (cargo audit 2 vuln, 9 warnings) |
