@@ -166,7 +166,7 @@ This document is the **SSOT** for v3.11.0's feature checklist, tracking 23 V311-
 | 覆盖率 (lib) | ≥80% per crate | 14.71% | ≥85% per crate |
 | TPC-H SF=0.1 | 22/22 | ✅ PASS | ✅ 保持 |
 | TPC-H SF=1 | 6/10 | ⚠️ 部分 | ⚠️ PENDING (fixture missing) |
-| 168h SOAK | 0 crashes | ✅ PASS | ✅ 保持 (V311-21) |
+| 168h SOAK | 0 crashes | 🔄 进行中 (51h+/168h) | ⏳ V311-21 未完成 |
 | E2E 8/8 | PASS | ✅ PASS | ✅ 保持 |
 | 高并发 INSERT | 0 errors | ❌ PERF-5 | ✅ PASS (V311-23) |
 
