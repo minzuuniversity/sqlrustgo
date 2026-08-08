@@ -84,6 +84,20 @@ cargo llvm-cov --release -p sqlrustgo-mysql-client --all-features --tests --no-f
 2. `mysql-server::e2e_wire_protocol::test_e2e_select_multiple_columns_rows`（UNION ALL parse error）
 3. `mysql-server::tests::test_execution_engine_state_persistence`（SET clause parse error）
 
-本地已 push 到 252 + 250。`develop/v3.11.0` 现在三方同步到 `966e603296`。
+
+## 后续更新 (2026-08-09 晚): G3 进度
+
+| Crate | --lib (start) | --lib (after) | --tests (after) | 阈值 | 状态 |
+|-------|---------------|----------------|-----------------|------|------|
+| executor | 72.78% | 74.90% | **78.12%** | 80% | ❌ (--lib ❌, --tests 差 1.88pp) |
+| admin | 81.78% | 81.78% | 82.99% | 80% | ✅ |
+| mysql-server | 40.45% | 47.39% | 50.87% | 80% | ❌ |
+| **mysql-client** | 31.56% | **84.56%** | 更高 (估算 >85%) | 80% | ✅ |
+
+G3 现状：**2/4 通过** (admin + mysql-client)。mysql-server 差距大 (47.39% → 需要 +32pp 到 80%)。
+
+**关键路径**：执行 `cargo llvm-cov --release -p <crate> --all-features --tests --no-fail-fast`
+而不是 `--lib`，按 ADR-001 G-04 的 SSOT。`--tests` 自动包含 `crates/<crate>/tests/*.rs` 中
+的 27 (executor) / 8 (admin) / 6 (mysql-server) / 1 (mysql-client) 集成测试。
 `docs/governance/adr/ADR-008-exception-v311-tpch-sf1.md` 已创建并提交。
 覆盖 v3.11.0 G4 门至 2026-09-01 ADR-008 §Policy 2 例外（详见 `G4_WIRE_TEST_CLOSE_OUT_PLAN.md`）。
