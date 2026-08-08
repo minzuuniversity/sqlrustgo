@@ -99,7 +99,7 @@ main             ← GA 释放点（只接受 release/v3.3.0 PR）
 |---|-------|------|-----|------|
 | #1196/#1197 | P0 | executor 模块拆分 + 覆盖率 | #1232 | ✅ |
 | #1201 | P0 | MySQL Protocol 握手修复 | #1234 | ✅ |
-| #1229 | P1 | TPC-H SF=1 22/22 验证 | — | ✅ |
+| #1229 | P1 | TPC-H SF=1 ~10/22 (honest status, see SF1_TRUTH_AUDIT.md) 验证 | — | ✅ |
 | #1222 | P1 | Coverage SSOT 规范 | #1231 | ✅ |
 
 ### 3.3 AI 辅助开发工具（已完成 4/4）

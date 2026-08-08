@@ -14,7 +14,7 @@
 | 2 | Point Select QPS ≥10,000 | ⚠️ | baseline 324K ✅ 但需刷新对比 |
 | 3 | UPDATE QPS ≥5,000 | ⚠️ | baseline 58K ✅ 但需刷新对比 |
 | 4 | DELETE QPS ≥2,000 | ⚠️ | baseline 62K ✅ 但需刷新对比 |
-| 5 | TPC-H SF=1 22/22 无OOM | ❌ | 无 tpch_data/ 数据目录 |
+| 5 | TPC-H SF=1 ~10/22 (honest status, see SF1_TRUTH_AUDIT.md) 无OOM | ❌ | 无 tpch_data/ 数据目录 |
 | 6 | SQL Corpus ≥98% | ✅ | 10/10=100% (1 ignored) |
 | 7 | 所有已知问题已关闭 | ⚠️ | 需审查 Gitea Issues |
 
