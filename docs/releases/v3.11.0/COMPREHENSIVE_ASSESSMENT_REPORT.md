@@ -10,13 +10,13 @@
 
 ## 0. 总体结论
 
-**v3.11.0 RC — 23/23 任务完成（含 V311-21 SOAK 实际跑过 343h37m, 2.04x 168h GA 阈值）,F-25/F-26 主路径已集成,Q5/Q21 parser 修复已验证;TPC-H SF=1 fixture 仍缺失（22/22 未跑）。详见 `SOAK_168H_REPORT.md` + `AUDIT_V311_REALITY_CHECK.md` + `TPCH_SF1_VERIFICATION_REPORT.md`。**
+**v3.11.0 RC — 23/23 任务完成（含 V311-21 SOAK 实际跑过 343h37m, 2.04x 168h GA 阈值）,F-25/F-26 主路径已集成,Q5/Q21 parser 修复已验证;TPC-H SF=1 ~10/22 (honest status, see SF1_TRUTH_AUDIT.md) fixture 仍缺失（22/22 未跑）。详见 `SOAK_168H_REPORT.md` + `AUDIT_V311_REALITY_CHECK.md` + `TPCH_SF1_VERIFICATION_REPORT.md`。**
 
 | 维度 | 结论 |
 |------|------|
 | **任务完成** | 12/23 (52%) — 11 项 V311-XX ⏳ TODO (见 `FEATURE_CHECKLIST.md`) |
 | **RC 门禁** | C1-C8 全部 PASS (clippy/fmt 已修复) |
-| **TPC-H** | SF=1 22/22 ⚠️ PENDING (fixture generation required, real 22/22 not executed) |
+| **TPC-H** | SF=1 ~10/22 (honest status, see SF1_TRUTH_AUDIT.md) ⚠️ PENDING (fixture generation required, real 22/22 not executed) |
 | **SOAK** | ✅ **PASS** — 343h37m 实际运行（2.04x 168h GA 阈值）,0 errors,45.1 QPS 稳定（详见 `SOAK_168H_REPORT.md`）|
 | **覆盖率** | ≥75% per crate ✅ |
 | **历史债务** | LEGACY_DEBT 全部 CLOSED |
@@ -71,7 +71,7 @@
 | V311-21 | 168h SOAK (本机) | 实测 343h37m, 2.04x 168h 阈值, 0 errors | 2026-08-03 |
 
 ### 进行中任务 (0)
-DEL 74.=78
+
 ---
 
 ## 3. 门禁状态 (RC C1-C8)
@@ -85,7 +85,7 @@ DEL 74.=78
 | C2 | Required files | ✅ PASS | STAGE.yaml, RELEASE_NOTES.md, etc. |
 | C3 | Architecture gates | ✅ PASS | check_arch_invariants, check_arch3_no_bypass, check_anti_fab |
 | C4 | Beta Universal Gates | ✅ PASS | check_beta_v3.11.0.sh |
-| C5-C8 | Coverage/Debt/TPC-H | ⚠️ PARTIAL | Coverage ≥75% ✅, debt CLOSED ✅, TPC-H SF=1 22/22 ⚠️ PENDING (fixture missing) |
+| C5-C8 | Coverage/Debt/TPC-H | ⚠️ PARTIAL | Coverage ≥75% ✅, debt CLOSED ✅, TPC-H SF=1 ~10/22 (honest status, see SF1_TRUTH_AUDIT.md) ⚠️ PENDING (fixture missing) |
 
 **总结**: RC 门禁全部 PASS
 
@@ -136,7 +136,7 @@ v3.11.0 完成 v3.10.0 遗留债务闭环：
 
 ## 5. TPC-H 性能基准
 
-### 5.1 SF=1 22/22 PENDING (fixture generation required)
+### 5.1 SF=1 ~10/22 PENDING (fixture generation required)
 
 | Query | v3.10.0 | v3.11.0 (unit/parser fix) | 改进 |
 |-------|---------|---------|------|
@@ -215,7 +215,7 @@ v3.11.0 完成 v3.10.0 遗留债务闭环：
 | Decorrelation | ✅ 完整 | PERF-4 |
 | CTE Materialization | ✅ 完整 | V311-18 |
 | MySQL Wire Protocol | ✅ 兼容 | SELECT/INSERT/UPDATE/DELETE/Prepared Statement |
-| TPC-H SF=1 22/22 | ⚠️ | fixture 未生成，PENDING |
+| TPC-H SF=1 ~10/22 (honest status, see SF1_TRUTH_AUDIT.md) | ⚠️ | fixture 未生成，PENDING |
 
 ---
 
@@ -251,7 +251,7 @@ v3.11.0 完成 v3.10.0 遗留债务闭环：
 | Format (rustfmt) | ✅ 0 drift |
 | cargo test --lib | ✅ PASS |
 | SOAK 168h | ✅ **PASS (343h37m)** | 0 errors, 45.1 QPS,详见 `SOAK_168H_REPORT.md` |
-| TPC-H SF=1 22/22 | ⚠️ PENDING (fixture generation required) |
+| TPC-H SF=1 ~10/22 (honest status, see SF1_TRUTH_AUDIT.md) | ⚠️ PENDING (fixture generation required) |
 | 覆盖率 ≥75% | ❌ FAIL（实测 9-crate 平均 63.25%；不达 GA 阈值 80%）|
 
 **综合评级**: B（SOAK + F-25/F-26 + Q5/Q21 PASS;G3 覆盖率仍 FAIL;详见 `AUDIT_V311_REALITY_CHECK.md`）
@@ -302,10 +302,8 @@ v3.11.0 完成 v3.10.0 遗留债务闭环：
 ### 12.1 生产就绪项 (GA Gate)
 
 | 检查项 | 状态 | 说明 |
-|--------|------|------|
-| RC 门禁 R1-R8 | ✅ PASS | 全部通过 |
-| 168h SOAK | 🔄 进行中 | 目标 168h，实际 51h+ |
-| TPC-H SF=1 22/22 | ⚠️ PENDING | 全部查询通过（待 fixture 生成后真实验证） |
+| 168h SOAK | 🔄 进行中（已完成 343h37m，超 168h 阈值 2.04x）| 目标 168h |
+| TPC-H SF=1 ~10/22 (honest status, see SF1_TRUTH_AUDIT.md) | ⚠️ PENDING | 全部查询通过（待 fixture 生成后真实验证） |
 | 覆盖率 ≥75% | ✅ PASS | 各 crate 均达标 |
 | 文档完整性 | ✅ | COMPREHENSIVE_ASSESSMENT_REPORT.md |
 
@@ -470,7 +468,7 @@ TPC-H SF=1 通过只是起点，真实生产环境常为 SF=10 ~ SF=100。
 
 #### 2. 更新 `README.md` 和 Quickstart
 
-- TPC-H SF=1 22/22 验证通过后，再将其作为头号宣传标语（当前 fixture 未生成，不可宣传）。
+- TPC-H SF=1 ~10/22 (honest status, see SF1_TRUTH_AUDIT.md) 验证通过后，再将其作为头号宣传标语（当前 fixture 未生成，不可宣传）。
 - 加入一键运行 `docker run` 命令，降低新用户试用门槛。
 
 #### 3. 绘制"架构全景图"（v3.11.0 版）
