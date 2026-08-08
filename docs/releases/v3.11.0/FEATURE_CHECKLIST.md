@@ -55,7 +55,7 @@ This document is the **SSOT** for v3.11.0's feature checklist, tracking 23 V311-
 | ID | 任务 | SEM | 工作量 | 优先级 | 状态 | 测试方法 |
 |----|------|-----|--------|--------|------|----------|
 | V311-13 | ALTER TABLE RENAME/MODIFY 完整 | SEM-3 | 20h | P0 | ✅ DONE 2026-07-15 (PR #3444/#3449) | `tests/alter_table_test` |
-| V311-14 | 覆盖率 ≥85% | SEM-4 | 60h | P0 | ⏳ TODO | `cargo llvm-cov test -p <crate>` (per-crate, not `--workspace`) |
+| V311-14 | 覆盖率 ≥85% | SEM-4 | 60h | P0 | 🟡 PARTIAL storage 74.83%→78.38% (+3.55pp, 5 个 V311-08/09 experimental engine 加 30 测试) | `cargo llvm-cov test -p sqlrustgo-storage` (per-crate) |
 
 ---
 
@@ -210,15 +210,15 @@ GA 目标: 2026-10-01
 | V311-22 | 文档架构整理 | plans/INDEX.md |
 | V311-23 | PERF-5 高并发 INSERT 修复 | 从 v3.10.0 SOAK 修复 |
 
-### 剩余 (6)
+### 剩余 (5) + 1 PARTIAL
 
-| # | 任务 | 工作量 | 优先 |
-|---|------|--------|------|
-| V311-10 | F-30 CREATE SEQUENCE | 20h | P1 |
-| V311-11 | F-03 GIS (POINT + WITHIN) | 80h | P1 |
-| V311-14 | SEM-4 覆盖率 ≥85% | 60h | P0 |
-| V311-20 | TPC-H SF=1.0 baseline | 80h | P0 |
-| V311-21 | 168h SOAK v3.11.0 | — | P1 |
+| # | 任务 | 工作量 | 优先 | 状态 |
+|---|------|--------|------|------|
+| V311-10 | F-30 CREATE SEQUENCE | 20h | P1 | ⏳ TODO |
+| V311-11 | F-03 GIS (POINT + WITHIN) | 80h | P1 | ⏳ TODO |
+| V311-14 | SEM-4 覆盖率 ≥85% | 60h | P0 | 🟡 PARTIAL (78.38% storage) |
+| V311-20 | TPC-H SF=1.0 baseline | 80h | P0 | ⏳ TODO (OMP 平台推进中) |
+| V311-21 | 168h SOAK v3.11.0 | — | P1 | ⏳ TODO (实际 343h37m PASS, 文档待标) |
 
 ---
 
@@ -244,6 +244,7 @@ GA 目标: 2026-10-01
 |------|------|-------|
 | 2026-07-15 | 初始 DRAFT 创建 | openclaw |
 | 2026-07-20 | 状态同步: V311-01/03/04/05/08/12/18 → ✅ DONE (基于真实测试证据) — 总完成度 12/24 → 18/24 (75%) | openclaw + AI |
+| 2026-07-20 | V311-14 SEM-4 PARTIAL: storage crate coverage 74.83% → 78.38% (5 个 V311-08/09 experimental engine 加 30 测试, 668/668 lib tests PASS) | openclaw + AI |
 ---
 
 *Created: 2026-07-15 (DRAFT init) — v3.11.0 ALPHA 起点*
