@@ -107,3 +107,95 @@ pub fn compile(expr: &Expr) -> RowFilter {
 pub fn compile_optional(opt: Option<&Expr>) -> Option<RowFilter> {
     opt.map(|e| compile(e))
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use sqlrustgo_planner::{Expr, Operator};
+    use sqlrustgo_types::Value;
+
+    fn bool_record(vals: &[bool]) -> Record {
+        vals.iter().map(|&b| Value::Boolean(b)).collect()
+    }
+
+    #[test]
+    fn test_compile_literal() {
+        let filter = compile(&Expr::Literal(Value::Integer(42)));
+        assert!(filter(&bool_record(&[true])));
+    }
+
+    #[test]
+    fn test_compile_wildcard() {
+        let filter = compile(&Expr::Wildcard);
+        assert!(filter(&bool_record(&[true])));
+    }
+
+    #[test]
+    fn test_compile_unknown() {
+        let filter = compile(&Expr::Literal(Value::Null));
+        assert!(filter(&bool_record(&[false; 2])));
+    }
+
+    #[test]
+    fn test_predicate_compiler_new() {
+        use sqlrustgo_planner::{DataType, Field, Schema};
+        let schema = Schema::new(vec![Field::new_not_null(
+            "x".to_string(),
+            DataType::Integer,
+        )]);
+        let compiler = PredicateCompiler::new(schema);
+        let filter = compiler.compile(&Expr::Literal(Value::Integer(1)));
+        assert!(filter(&vec![]));
+    }
+
+    #[test]
+    fn test_column_index() {
+        use sqlrustgo_planner::{DataType, Field, Schema};
+        let schema = Schema::new(vec![
+            Field::new_not_null("a".to_string(), DataType::Integer),
+            Field::new_not_null("b".to_string(), DataType::Boolean),
+        ]);
+        let compiler = PredicateCompiler::new(schema);
+        let filter = compiler.compile(&Expr::Column(sqlrustgo_planner::Column::new(
+            "b".to_string(),
+        )));
+        let true_row: Record = vec![Value::Integer(1), Value::Boolean(true)];
+        let false_row: Record = vec![Value::Integer(1), Value::Boolean(false)];
+        assert!(filter(&true_row));
+        assert!(!filter(&false_row));
+    }
+
+    #[test]
+    fn test_compile_optional_some() {
+        use sqlrustgo_planner::{DataType, Field, Schema};
+        let schema = Schema::new(vec![Field::new_not_null(
+            "x".to_string(),
+            DataType::Integer,
+        )]);
+        let compiler = PredicateCompiler::new(schema);
+        assert!(compiler
+            .compile_optional(Some(&Expr::Literal(Value::Integer(5))))
+            .is_some());
+    }
+
+    #[test]
+    fn test_compile_optional_none() {
+        use sqlrustgo_planner::{DataType, Field, Schema};
+        let schema = Schema::new(vec![Field::new_not_null(
+            "x".to_string(),
+            DataType::Integer,
+        )]);
+        let compiler = PredicateCompiler::new(schema);
+        assert!(compiler.compile_optional(None).is_none());
+    }
+
+    #[test]
+    fn test_module_compile_optional_some() {
+        assert!(compile_optional(Some(&Expr::Literal(Value::Text("hello".into())))).is_some());
+    }
+
+    #[test]
+    fn test_module_compile_optional_none() {
+        assert!(compile_optional(None).is_none());
+    }
+}
