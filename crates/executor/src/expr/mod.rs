@@ -70,14 +70,12 @@ impl UnifiedExpr {
                 let v = expr.evaluate(row, columns, storage);
                 eval_unary_op(&v, op)
             }
-            UnifiedExpr::IsNull(expr) => Value::Boolean(matches!(
-                expr.evaluate(row, columns, storage),
-                Value::Null
-            )),
-            UnifiedExpr::IsNotNull(expr) => Value::Boolean(!matches!(
-                expr.evaluate(row, columns, storage),
-                Value::Null
-            )),
+            UnifiedExpr::IsNull(expr) => {
+                Value::Boolean(matches!(expr.evaluate(row, columns, storage), Value::Null))
+            }
+            UnifiedExpr::IsNotNull(expr) => {
+                Value::Boolean(!matches!(expr.evaluate(row, columns, storage), Value::Null))
+            }
             UnifiedExpr::FunctionCall { name, args } => {
                 let vals: Vec<Value> = args
                     .iter_mut()
