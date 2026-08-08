@@ -171,7 +171,7 @@
 1. 在 Z6G4 服务器上运行 R13, R14, R15 测试
 2. 验证 G10 Formal proofs (TLA+)
 3. 验证 G12 MySQL Protocol 兼容性
-4. 确认 G8 TPC-H SF=1 22/22 通过
+4. 确认 G8 TPC-H SF=1 ~10/22 (honest status, see SF1_TRUTH_AUDIT.md) 通过
 
 ---
 

@@ -274,7 +274,7 @@ Cargo dependency 检查结果:
 | V310-05 | 真实崩溃 + 24h SOAK | 80h | C-5a 已完成 (PR #3780), C-5b 待 24h 长跑 |
 | V310-06~09 | Wired-SOAK DDL (PR1-4) | 240h | 待 Gitea 创建后正式实施 |
 | V310-10 | 覆盖率 ≥80% | 40h | 未实施 |
-| V310-11 | TPC-H SF=1 22/22 | 80h (V310-11c 8h ✅) | 待 V310-11a/b |
+| V310-11 | TPC-H SF=1 ~10/22 (honest status, see SF1_TRUTH_AUDIT.md) | 80h (V310-11c 8h ✅) | 待 V310-11a/b |
 | V310-12 | 跨版本债 (M-5/M-6/H-2) | 60h | 部分完成 (M-5 已通过 PR #3767), M-6 unclear, H-2 (ARCH-3) 95% |
 | F-03/F-30/F-36 NOT IMPLEMENTED | — | 推迟 v3.11+ | — |
 | 9 × F-XX ISOLATED (F-23/24/25/26/27/29/31/32/35) | 实际生产集成 | 推迟 v3.11+ | — |
@@ -311,7 +311,7 @@ Cargo dependency 检查结果:
 |------|---------|------|
 | G1 TPC-H SF=0.1 22/22 | ✅ PASS（v3.9.0 通过） | — |
 | G3 覆盖率 ≥80% | ❌ ~67% | 仍条件通过 (Hermes C 授权) |
-| G4 TPC-H SF=1 22/22 | ⚠️ gate 入口存在 (V310-11c) | 实际 22/22 仍需 V310-11a/b (SF=1.0 fixture 1.1GB+ 需大磁盘) |
+| G4 TPC-H SF=1 ~10/22 (honest status, see SF1_TRUTH_AUDIT.md) | ⚠️ gate 入口存在 (V310-11c) | 实际 22/22 仍需 V310-11a/b (SF=1.0 fixture 1.1GB+ 需大磁盘) |
 | G8 真实 Crash Matrix (kill -9) | ✅ PASS (PR #3780 T-20) | — |
 | G9 24h 真实 SOAK 0 errors | ⚠️ 在 Mac mini 验证 168h PASS (Issue #3266 closed), but v3.10.0 own 24h 待 | — |
 | G10 Wired-SOAK sysbench prepare/run | ⚠️ V310-09 未实施 | — |

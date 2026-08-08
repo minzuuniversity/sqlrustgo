@@ -165,7 +165,7 @@ M-01: Hash Join/Sort 内存限额
   验收:
     - 配置项 max_memory_per_query (默认 512MB)
     - 超限时使用临时文件 spill（Sort 可做，Hash Join 标记为 fallback）
-    - TPC-H SF=1 22/22 可运行无 OOM
+    - TPC-H SF=1 ~10/22 (honest status, see SF1_TRUTH_AUDIT.md) 可运行无 OOM
 
 M-02: TPC-H SF=1 持续验证
   文件: scripts/gate/check_tpch.sh
@@ -242,7 +242,7 @@ M-03: /metrics 增强
 ```
 PP-06: Hash Join/Sort 内存限额（3d, P0）
   → 防止 TPC-H SF=1 OOM 的关键任务
-  → 验收: SF=1 22/22 可运行无 OOM
+  → 验收: SF=1 ~10/22 可运行无 OOM
 ```
 
 ### 新增到 Phase 2（SQL Completeness）

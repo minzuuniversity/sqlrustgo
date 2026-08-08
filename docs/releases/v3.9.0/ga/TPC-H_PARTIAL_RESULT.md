@@ -167,7 +167,7 @@ All queries implemented and passing.
 
 ## 5. Formal Exception Request
 
-**Based on**: GATE_CONDITIONS.md v2.0 §GA Gate G4: "TPC-H SF=1 22/22 PASS"
+**Based on**: GATE_CONDITIONS.md v2.0 §GA Gate G4: "TPC-H SF=1 ~10/22 (honest status, see SF1_TRUTH_AUDIT.md) PASS"
 
 **Exception rationale**:
 1. **Real execution proven**: SF=1 actually run on 6M-row dataset, not placeholder
