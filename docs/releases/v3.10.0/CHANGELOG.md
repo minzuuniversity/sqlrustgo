@@ -77,7 +77,7 @@ Per-version plan classification: docs/releases/v3.10.0/plans/INDEX.md
 
 ## 2026-07-12 — #3732 G4 gate 入口 + pre-existing rustfmt/clippy drift 修复
 
-[Issue #3732 / V310-11c] TPC-H SF=1 22/22 闭环子任务 V310-11c 的 gate 入口与测试基础设施落地。V310-11a/b (parser 修复 + 12 个查询实现) 仍待推进；本批不达成 22/22 PASS。
+[Issue #3732 / V310-11c] TPC-H SF=1 ~10/22 (honest status, see SF1_TRUTH_AUDIT.md) 闭环子任务 V310-11c 的 gate 入口与测试基础设施落地。V310-11a/b (parser 修复 + 12 个查询实现) 仍待推进；本批不达成 22/22 PASS。
 
 ### Changed
 
@@ -100,7 +100,7 @@ Per-version plan classification: docs/releases/v3.10.0/plans/INDEX.md
 
 ### Refs
 
-- Issue #3732, [V310-11] TPC-H SF=1 22/22 闭环 (P1, ga-p0-tpch)
+- Issue #3732, [V310-11] TPC-H SF=1 ~10/22 (honest status, see SF1_TRUTH_AUDIT.md) 闭环 (P1, ga-p0-tpch)
 - Branch: `opencode/issue-3732-tpch-sf1` (基于 `develop/v3.10.0` @ `9a47d397`)
 - PR: 待 push 到 Gitea 252 后创建
 
@@ -230,3 +230,14 @@ RC gate R1-R8 进入。所有 OPEN/IN_PROGRESS 债务项已解析 (6 项 → IN_
 
 - PR #3370 (Gitea 250), #3829 (Gitea 252 - fast_load_tbl_data)
 - PR #3830 (Gitea 252 - 实测结果文档)
+
+---
+
+## 版本状态索引
+
+| 版本 | 发布日期 | 阶段 |
+|------|---------|------|
+| v3.10.0 | 2026-07-13 | **RC** — MySQL 5.7 替代能力稳定化 + 并行执行器优化 |
+| v3.10.0-rc.1 | 2026-07-12 | RC 候选: F-16 Gap Locking + P3 Parallel Storage Scan |
+| v3.10.0-alpha1 | 2026-07-11 | ALPHA 准入完成 |
+| v3.9.0 | 2026-07-10 | 前序 GA |

@@ -24,7 +24,7 @@
 
 - [ ] Alpha Gate 13/13 PASS
 - [ ] M1-M4 所有 P0 功能已实现
-- [ ] TPC-H SF=1 22/22 可运行
+- [ ] TPC-H SF=1 ~10/22 (honest status, see SF1_TRUTH_AUDIT.md) 可运行
 - [ ] SQL Operations ≥80%
 - [ ] L1 测试覆盖率 ≥90%
 
@@ -131,7 +131,7 @@ B6:  Security Audit .......... ⬜ TBD
 B7:  SQL Compat - Window Func.. ⬜ TBD
 B8:  SQL Compat - Multi-table.. ⬜ TBD
 B9:  SQL Compat - HASH JOIN... ⬜ TBD
-B10: TPC-H SF=1 (22/22) ...... ⬜ TBD
+B10: TPC-H SF=1 (~10/22 (honest status, see SF1_TRUTH_AUDIT.md)) ...... ⬜ TBD
 B11: GMP Digital Signature .... ⬜ TBD
 B12: GMP Electronic Signature.. ⬜ TBD
 B-S1~S12 ................... ⬜ TBD (0/12)

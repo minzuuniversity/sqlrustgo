@@ -198,7 +198,7 @@ v2.0.0 (2025-xx-xx) → v2.9.0 (2026-05-05) → v3.0.0 (TBD)
 | R6 | 安全扫描 | - | ⏳ | |
 | R7 | 文档完整性 | - | ⏳ | |
 | R8 | SQL Corpus ≥95% | - | ⏳ | |
-| R9 | TPC-H SF=1 22/22 | - | ⏳ | F-10 |
+| R9 | TPC-H SF=1 ~10/22 (honest status, see SF1_TRUTH_AUDIT.md) | - | ⏳ | F-10 |
 | R10 | Performance Baseline | check_regression.sh | 🔴 stub | T-11 |
 | R11 | Sysbench Gate | check_sysbench.sh | ⏳ | |
 | R12 | Formal Proof | check_proof.sh | ⏳ | |
@@ -217,7 +217,7 @@ v2.0.0 (2025-xx-xx) → v2.9.0 (2026-05-05) → v3.0.0 (TBD)
 | GA-6 | 覆盖率 ≥85% | - | ⏳ | |
 | GA-7 | 安全扫描 | - | ⏳ | |
 | GA-8 | 文档链接 | - | ⏳ | |
-| GA-9 | TPC-H SF=1 22/22 | - | ⏳ | |
+| GA-9 | TPC-H SF=1 ~10/22 (honest status, see SF1_TRUTH_AUDIT.md) | - | ⏳ | |
 | GA-10 | 性能回归 (5%) | - | 🔴 stub | T-11 |
 | GA-11 | Formal proofs ≥10 | - | ⏳ | |
 | GA-12 | Sysbench Gate | - | ⏳ | |
