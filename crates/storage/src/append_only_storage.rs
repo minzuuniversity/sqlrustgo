@@ -477,20 +477,18 @@ impl StorageEngine for AppendOnlyStorage {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use super::{Value, AppendOnlyStorage};
-    use crate::engine::{ColumnDefinition, RowFilter, RowMutation, StorageEngine, TableInfo, TriggerInfo, TriggerEvent, TriggerTiming};
+    use super::{AppendOnlyStorage, Value};
+    use crate::engine::{
+        ColumnDefinition, RowFilter, RowMutation, StorageEngine, TableInfo, TriggerEvent,
+        TriggerInfo, TriggerTiming,
+    };
     use std::env;
-
 
     fn temp_dir() -> PathBuf {
         use std::sync::atomic::{AtomicU64, Ordering};
         static COUNTER: AtomicU64 = AtomicU64::new(0);
         let n = COUNTER.fetch_add(1, Ordering::SeqCst);
-        let p = env::temp_dir().join(format!(
-            "append_only_test_{}_{}",
-            std::process::id(),
-            n
-        ));
+        let p = env::temp_dir().join(format!("append_only_test_{}_{}", std::process::id(), n));
         let _ = std::fs::remove_dir_all(&p);
         p
     }
@@ -629,13 +627,17 @@ mod tests {
         s.drop_index("t", "id").unwrap();
         assert!(s.list_indexes("t").is_empty());
         assert!(!s.has_view("v"));
-        s.add_column("t", ColumnDefinition {
-            name: "c".to_string(),
-            data_type: "INT".to_string(),
-            nullable: true,
-            primary_key: false,
-            char_max_length: None,
-        }).unwrap();
+        s.add_column(
+            "t",
+            ColumnDefinition {
+                name: "c".to_string(),
+                data_type: "INT".to_string(),
+                nullable: true,
+                primary_key: false,
+                char_max_length: None,
+            },
+        )
+        .unwrap();
         s.rename_table("t", "u").unwrap();
         let trig = crate::engine::TriggerInfo {
             name: "tr".to_string(),
