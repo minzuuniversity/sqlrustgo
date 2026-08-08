@@ -70,18 +70,14 @@ impl UnifiedExpr {
                 let v = (&mut *expr).evaluate(row, columns, storage);
                 eval_unary_op(&v, op)
             }
-            UnifiedExpr::IsNull(expr) => {
-                Value::Boolean(matches!(
-                    (&mut *expr).evaluate(row, columns, storage),
-                    Value::Null
-                ))
-            }
-            UnifiedExpr::IsNotNull(expr) => {
-                Value::Boolean(!matches!(
-                    (&mut *expr).evaluate(row, columns, storage),
-                    Value::Null
-                ))
-            }
+            UnifiedExpr::IsNull(expr) => Value::Boolean(matches!(
+                (&mut *expr).evaluate(row, columns, storage),
+                Value::Null
+            )),
+            UnifiedExpr::IsNotNull(expr) => Value::Boolean(!matches!(
+                (&mut *expr).evaluate(row, columns, storage),
+                Value::Null
+            )),
             UnifiedExpr::FunctionCall { name, args } => {
                 let vals: Vec<Value> = args
                     .iter_mut()
@@ -2345,7 +2341,10 @@ mod tests {
     #[test]
     fn test_unified_expr_column_missing() {
         let mut e = UnifiedExpr::Column("missing".into());
-        assert_eq!(e.evaluate(&[Value::Integer(1)], &["x".into()], &mut None), Value::Null);
+        assert_eq!(
+            e.evaluate(&[Value::Integer(1)], &["x".into()], &mut None),
+            Value::Null
+        );
     }
 
     #[test]
