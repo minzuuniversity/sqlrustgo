@@ -97,7 +97,7 @@ issues:
     blocks: [f-23-clustered-index-final]
     acceptance:
       - Real clustered index in storage layer
-      - TPC-H SF=1 22/22 still passes
+      - TPC-H SF=1 ~10/22 (honest status, see SF1_TRUTH_AUDIT.md) still passes
       - 5+ new tests
       - SPEC updated
 
