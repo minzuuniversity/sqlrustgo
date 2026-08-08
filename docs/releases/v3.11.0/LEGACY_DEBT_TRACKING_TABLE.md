@@ -78,17 +78,17 @@
 
 ---
 
-## 4. F-XX ISOLATED → 主路径集成 (5/10 完成,2 partial)
+## 4. F-XX ISOLATED → 主路径集成 (7/10 完成)
 
-### 4.1 已完成 (5 真实 + 2 partial)
+### 4.1 已完成 (7 真实) ✅
 
 | ID | 名称 | v3.10.0 | v3.11.0 | PR | 状态 | 集成质量 |
 |----|------|---------|---------|-----|------|---------|
 | F-16 | Gap Locking | CLOSED | — | #3788, #3783 | ✅ CLOSED | ✅ 真实集成 |
 | F-23 | Clustered Index | VERIFIED | ✅ CLOSED | #3461 + #3516 | ✅ CLOSED | ✅ 读写路径完整 |
 | F-24 | Adaptive Hash Index | VERIFIED | ✅ CLOSED | #3478 | ✅ CLOSED | ✅ scan_with_ahi + record_access |
-| F-25 | Change Buffer | VERIFIED | ⚠️ **partial** | #3512 | 🟡 **PARTIAL** | ⚠️ 仅 crates/storage lib 导出,主执行路径未集成（src/execution_engine.rs 无 ChangeBuffer 引用）|
-| F-26 | Double-Write Buffer | VERIFIED | ⚠️ **partial** | #3514 | 🟡 **PARTIAL** | ⚠️ 仅 crates/storage lib 导出,主执行路径未集成（src/execution_engine.rs 无 DWB 引用）|
+| F-25 | Change Buffer | VERIFIED | ✅ **CLOSED** | #3512 | ✅ **CLOSED** | ✅ `IntegratedTableStorage` 主路径集成（V311-04;6/6 tests pass）|
+| F-26 | Double-Write Buffer | VERIFIED | ✅ **CLOSED** | #3514 | ✅ **CLOSED** | ✅ `IntegratedTableStorage` 主路径集成（V311-05;6/6 tests pass）|
 | F-31 | Performance Schema | VERIFIED | ✅ CLOSED | #3479 | ✅ CLOSED | ✅ trait + 调用 |
 | F-32 | MySQL Admin | PARTIAL | ✅ CLOSED | #3481 | ✅ CLOSED | 🟡 binary 发版 |
 
@@ -156,7 +156,7 @@
 | ID | 名称 | Issue | 状态 | 阻塞 |
 |----|------|-------|------|------|
 | #3423 | TPC-H SF=1.0 baseline | #3431 (V311-20) | ⏳ 待办 | 🔴 需 75GB+ 磁盘 |
-| #3648 | TPC-H SOAK 跨平台 | #3500 (V311-21) | ⏳ 待办 | Hermes 协作 |
+| #3648 | TPC-H SOAK 跨平台 | #3500 (V311-21) | ✅ **CLOSED** (本机跑过 343h37m,2.04x 168h,0 errors) | 已闭环,详见 `SOAK_168H_REPORT.md` |
 
 ---
 
@@ -166,8 +166,8 @@
 
 | # | 标题 | 状态 |
 |---|------|------|
-| #3491 | V311-03: F-25 Change Buffer 主路径集成 | 🟡 PARTIAL（仅 lib 导出,主执行路径未集成）|
-| #3492 | V311-04: F-26 Double-Write Buffer 主路径集成 | 🟡 PARTIAL（仅 lib 导出,主执行路径未集成）|
+| #3491 | V311-03: F-25 Change Buffer 主路径集成 | ✅ CLOSED（`IntegratedTableStorage` 集成;6/6 tests pass）|
+| #3492 | V311-04: F-26 Double-Write Buffer 主路径集成 | ✅ CLOSED（`IntegratedTableStorage` 集成;6/6 tests pass）|
 | #3493 | V311-14: SEM-4 覆盖率 ≥85% | ⏳ 待办 |
 | #3494 | V311-05: F-29 Row-Level Security | ⏳ 待办 |
 | #3495 | V311-08: F-35 Password Rotation | ⏳ 待办 |
@@ -175,7 +175,7 @@
 | #3497 | V311-11: F-03 GIS 空间数据类型 | ⏳ 待办 |
 | #3498 | V311-12: F-27 Table Compression | ⏳ 待办 |
 | #3499 | V311-18: CTE 物化 | ⏳ 待办 |
-| #3500 | V311-21: 168h SOAK v3.11.0 | ⏳ 待办 |
+| #3500 | V311-21: 168h SOAK v3.11.0 | ✅ **CLOSED**（本机跑过 343h37m,2.04x 168h,0 errors;详见 `SOAK_168H_REPORT.md`）|
 | #3501 | v3.11.0 总控 — 进度跟踪 | 🔄 进行中 |
 | #3507 | [AUDIT] #3136 check_cross_version_debt.sh 升级 | ✅ CLOSED |
 
@@ -193,7 +193,7 @@
 | 6 | #3496 | V311-10 | F-30 CREATE SEQUENCE | 20h | P1 | 零代码 |
 | 7 | #3497 | V311-11 | F-03 GIS | 80h | P1 | 零代码 |
 | 8 | #3431 | V311-20 | TPC-H SF=1 baseline | — | P0 | 🔴 需硬件 |
-| 9 | #3500 | V311-21 | 168h SOAK | — | P1 | — |
+| 9 | #3500 | V311-21 | 168h SOAK | ✅ CLOSED (343h37m) | P1 | 2.04x 168h 阈值,详见 `SOAK_168H_REPORT.md` |
 
 ---
 
