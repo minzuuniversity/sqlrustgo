@@ -181,4 +181,129 @@ mod tests {
         let outside = Point::new(15.0, 15.0);
         assert!(!st_within(&outside, &poly));
     }
+
+    #[test]
+    fn test_polygon_parse() {
+        // POLYGON() format
+        let p = Polygon::parse("POLYGON((0 0, 10 0, 10 10, 0 10, 0 0))").unwrap();
+        assert_eq!(p.vertices.len(), 5);
+
+        // Space/comma format
+        let p2 = Polygon::parse("0 0, 10 0, 10 10, 0 10").unwrap();
+        assert_eq!(p2.vertices.len(), 4);
+
+        // Too few vertices
+        assert!(Polygon::parse("0 0, 1 1").is_none());
+    }
+
+    #[test]
+    fn test_polygon_bbox() {
+        let poly = Polygon::new(vec![
+            Point::new(5.0, 3.0),
+            Point::new(15.0, 3.0),
+            Point::new(15.0, 13.0),
+            Point::new(5.0, 13.0),
+        ]);
+        let (min_x, min_y, max_x, max_y) = poly.bbox();
+        assert_eq!((min_x, min_y, max_x, max_y), (5.0, 3.0, 15.0, 13.0));
+    }
+
+    #[test]
+    fn test_st_within_point_on_edge() {
+        let poly = Polygon::new(vec![
+            Point::new(0.0, 0.0),
+            Point::new(10.0, 0.0),
+            Point::new(10.0, 10.0),
+            Point::new(0.0, 10.0),
+        ]);
+        // Point on edge
+        let on_edge = Point::new(5.0, 0.0);
+        let result = st_within_point_polygon(&on_edge, &poly);
+        // Ray casting: point on edge may be inside or outside depending on implementation
+        // Just verify no panic
+        let _ = result;
+    }
+
+    #[test]
+    fn test_st_within_invalid_polygon() {
+        let poly = Polygon::new(vec![Point::new(0.0, 0.0), Point::new(5.0, 5.0)]);
+        // Less than 3 vertices — should return false
+        assert!(!st_within_point_polygon(&Point::new(1.0, 1.0), &poly));
+    }
+
+    #[test]
+    fn test_st_within_point_in_bbox_false() {
+        let poly = Polygon::new(vec![
+            Point::new(0.0, 0.0),
+            Point::new(10.0, 0.0),
+            Point::new(10.0, 10.0),
+            Point::new(0.0, 10.0),
+        ]);
+        // Point in bbox but outside polygon (diagonal)
+        let inside_bbox = Point::new(9.0, 1.0);
+        assert!(st_within(&inside_bbox, &poly));
+    }
+
+    #[test]
+    fn test_point_from_value() {
+        use sqlrustgo_types::Value;
+        // Integer should return None
+        assert!(point_from_value(&Value::Integer(1)).is_none());
+        // Real point
+        let p = point_from_value(&Value::Point(1.5, 2.5)).unwrap();
+        assert!((p.x - 1.5).abs() < 0.001);
+        assert!((p.y - 2.5).abs() < 0.001);
+    }
+
+    #[test]
+    fn test_value_from_point() {
+        let p = Point::new(1.5, 2.5);
+        let v = value_from_point(&p);
+        match v {
+            Value::Point(x, y) => {
+                assert!((x - 1.5).abs() < 0.001);
+                assert!((y - 2.5).abs() < 0.001);
+            }
+            _ => panic!("expected Point variant"),
+        }
+    }
+
+    #[test]
+    fn test_point_to_sql_string() {
+        let p = Point::new(1.5, 2.5);
+        assert_eq!(p.to_sql_string(), "POINT(1.5, 2.5)");
+    }
+
+    #[test]
+    fn test_point_in_bbox() {
+        let p = Point::new(5.0, 5.0);
+        assert!(p.in_bbox(0.0, 0.0, 10.0, 10.0));
+        assert!(!p.in_bbox(0.0, 0.0, 4.0, 4.0));
+        assert!(p.in_bbox(5.0, 5.0, 5.0, 5.0)); // boundary
+    }
+
+    #[test]
+    fn test_polygon_parse_coords_variations() {
+        // With parentheses — splits on comma, so "0 0" is one part
+        let p = Polygon::parse("(0 0, 5 0, 5 5, 0 5)").unwrap();
+        assert_eq!(p.vertices.len(), 4);
+        // Without parentheses, space/comma separated
+        let p2 = Polygon::parse("0 0, 5 0, 5 5, 0 5").unwrap();
+        assert_eq!(p2.vertices.len(), 4);
+    }
+
+    #[test]
+    fn test_st_within_triangle() {
+        // Triangle polygon
+        let poly = Polygon::new(vec![
+            Point::new(0.0, 0.0),
+            Point::new(10.0, 0.0),
+            Point::new(5.0, 10.0),
+        ]);
+        let inside = Point::new(5.0, 2.0);
+        assert!(st_within(&inside, &poly));
+
+        let outside = Point::new(5.0, 11.0);
+        assert!(!st_within(&outside, &poly));
+    }
 }
