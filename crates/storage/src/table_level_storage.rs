@@ -193,23 +193,35 @@ mod tests {
         dirty: HashSet<String>,
     }
     impl TableEngine for MemTable {
-        fn get_table_info(&self) -> &TableInfo { &self.info }
+        fn get_table_info(&self) -> &TableInfo {
+            &self.info
+        }
         fn insert(&mut self, records: Vec<Record>) -> SqlResult<()> {
             self.rows.extend(records);
             self.dirty.insert(self.info.name.clone());
             Ok(())
         }
-        fn scan(&self) -> SqlResult<Vec<Record>> { Ok(self.rows.clone()) }
-        fn delete(&mut self, _filters: &[Value]) -> SqlResult<usize> { Ok(0) }
-        fn update(
-            &mut self,
-            _filters: &[Value],
-            _updates: &[(usize, Value)],
-        ) -> SqlResult<usize> { Ok(0) }
-        fn flush(&mut self) -> SqlResult<()> { Ok(()) }
-        fn dirty_tables(&self) -> &HashSet<String> { &self.dirty }
-        fn mark_dirty(&mut self, table: &str) { self.dirty.insert(table.to_string()); }
-        fn table_name(&self) -> &str { &self.info.name }
+        fn scan(&self) -> SqlResult<Vec<Record>> {
+            Ok(self.rows.clone())
+        }
+        fn delete(&mut self, _filters: &[Value]) -> SqlResult<usize> {
+            Ok(0)
+        }
+        fn update(&mut self, _filters: &[Value], _updates: &[(usize, Value)]) -> SqlResult<usize> {
+            Ok(0)
+        }
+        fn flush(&mut self) -> SqlResult<()> {
+            Ok(())
+        }
+        fn dirty_tables(&self) -> &HashSet<String> {
+            &self.dirty
+        }
+        fn mark_dirty(&mut self, table: &str) {
+            self.dirty.insert(table.to_string());
+        }
+        fn table_name(&self) -> &str {
+            &self.info.name
+        }
     }
 
     fn mem_wal() -> Box<dyn crate::wal::WalManager> {
@@ -226,11 +238,14 @@ mod tests {
     #[test]
     fn list_tables_via_registry() {
         let mut s = TableLevelStorage::new(mem_wal());
-        Arc::get_mut(&mut s.tables).unwrap().register("t".into(), Box::new(MemTable {
-            info: sample_info("t"),
-            rows: vec![],
-            dirty: HashSet::new(),
-        }));
+        Arc::get_mut(&mut s.tables).unwrap().register(
+            "t".into(),
+            Box::new(MemTable {
+                info: sample_info("t"),
+                rows: vec![],
+                dirty: HashSet::new(),
+            }),
+        );
         assert!(s.has_table("t"));
         assert_eq!(s.list_tables(), vec!["t".to_string()]);
     }
@@ -238,11 +253,14 @@ mod tests {
     #[test]
     fn insert_scan_via_registry() {
         let mut s = TableLevelStorage::new(mem_wal());
-        Arc::get_mut(&mut s.tables).unwrap().register("t".into(), Box::new(MemTable {
-            info: sample_info("t"),
-            rows: vec![],
-            dirty: HashSet::new(),
-        }));
+        Arc::get_mut(&mut s.tables).unwrap().register(
+            "t".into(),
+            Box::new(MemTable {
+                info: sample_info("t"),
+                rows: vec![],
+                dirty: HashSet::new(),
+            }),
+        );
         s.insert("t", vec![vec![Value::Integer(1)]]).unwrap();
         let rows = s.scan("t").unwrap();
         assert_eq!(rows, vec![vec![Value::Integer(1)]]);
