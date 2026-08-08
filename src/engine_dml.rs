@@ -46,7 +46,6 @@ pub fn execute_insert<S: StorageEngine + 'static>(
         engine.begin_implicit_dml_tx("execute_insert", &insert.table)?;
     let table_name = insert.table.clone();
 
-
     // Get table info first (need it for triggers and FK validation)
     let table_info = {
         let storage = engine.storage.read();
@@ -871,7 +870,6 @@ fn execute_delete_multi_table<S: StorageEngine + 'static>(
     Ok(ExecutorResult::new(vec![], total))
 }
 
-
 // =============================================================================
 // V311-01 F-23: ClusteredTable DML implementations
 // =============================================================================
@@ -908,14 +906,12 @@ fn execute_insert_clustered<S: StorageEngine + 'static>(
 ) -> SqlResult<ExecutorResult> {
     if insert.is_replace {
         return Err(SqlError::ExecutionError(
-            "REPLACE INTO is not supported on CLUSTERED tables (V311-01 v2)"
-                .to_string(),
+            "REPLACE INTO is not supported on CLUSTERED tables (V311-01 v2)".to_string(),
         ));
     }
     if insert.on_duplicate_key_update.is_some() {
         return Err(SqlError::ExecutionError(
-            "ON DUPLICATE KEY UPDATE is not supported on CLUSTERED tables (V311-01 v2)"
-                .to_string(),
+            "ON DUPLICATE KEY UPDATE is not supported on CLUSTERED tables (V311-01 v2)".to_string(),
         ));
     }
 
@@ -1061,16 +1057,12 @@ fn execute_update_clustered<S: StorageEngine + 'static>(
         for row in &rows_to_update {
             let mut new_row = row.clone();
             for (col_idx, expr) in &set_pairs {
-                let new_val = evaluate_expression(expr, row, &table_info)
-                    .unwrap_or(Value::Null);
+                let new_val = evaluate_expression(expr, row, &table_info).unwrap_or(Value::Null);
                 if *col_idx < new_row.len() {
                     new_row[*col_idx] = new_val;
                 }
             }
-            let pk_val = row
-                .get(pk_idx)
-                .cloned()
-                .unwrap_or(Value::Null);
+            let pk_val = row.get(pk_idx).cloned().unwrap_or(Value::Null);
             ct.update_pk(&pk_val, new_row)?;
         }
     }
@@ -1102,7 +1094,7 @@ fn execute_delete_clustered<S: StorageEngine + 'static>(
             .clone()
     };
 
- let table_info = {
+    let table_info = {
         let storage = engine.storage.read();
         storage.get_table_info(&table_name)?.clone()
     };
