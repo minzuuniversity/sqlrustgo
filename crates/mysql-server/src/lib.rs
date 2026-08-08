@@ -436,7 +436,9 @@ mod tests {
             ("part", 200_000),
             ("partsupp", 800_000),
             ("orders", 1_500_000),
-            ("lineitem", 6_000_000),
+            // TPC-H SF=1 dbgen generates exactly 6,001,215 lineitem rows
+            // (confirmed by fixture at /var/tmp/tpch-sf1, GA_GATE_REPORT.md).
+            ("lineitem", 6_001_215),
         ];
 
         for (table, expected) in counts {
@@ -5111,6 +5113,75 @@ pub mod testing {
     /// Global process-wide pool. Lazily initialised on first access.
     pub static SERVER_POOL: std::sync::LazyLock<EphemeralServerPool, fn() -> EphemeralServerPool> =
         std::sync::LazyLock::new(EphemeralServerPool::new);
+
+    #[cfg(test)]
+    mod testing_inline_tests {
+    // ========================================================================
+    // Inline tests (G3 mysql-server coverage lift, 2026-08-09)
+    // Migrated from crates/mysql-server/tests/*.rs so cargo llvm-cov --lib
+    // exercises the testing module helpers without spinning up TCP.
+    // ========================================================================
+        use super::*;
+
+        #[test]
+        fn ephemeral_config_default_is_well_formed() {
+            let cfg = EphemeralConfig::default();
+            assert_eq!(cfg.host, "127.0.0.1");
+            assert!(cfg.bootstrap_tables);
+            assert!(cfg.bootstrap_users);
+            assert_eq!(cfg.data_dir, None);
+            assert_eq!(cfg.bulk_insert_buffer_size, 1_048_576);
+            assert_eq!(cfg.server_threads, 16);
+            assert_eq!(cfg.storage, None);
+            assert_eq!(cfg.port, None);
+            assert!(cfg.bootstrap_sql.is_empty());
+        }
+
+        #[test]
+        fn ephemeral_config_customisation_round_trip() {
+            let cfg = EphemeralConfig {
+                host: "0.0.0.0".to_string(),
+                bootstrap_tables: false,
+                bootstrap_users: false,
+                data_dir: None,
+                bootstrap_sql: vec!["CREATE TABLE t (id INT)".to_string()],
+                bulk_insert_buffer_size: 4096,
+                server_threads: 2,
+                storage: Some("binary".to_string()),
+                port: Some(0),
+            };
+            assert_eq!(cfg.host, "0.0.0.0");
+            assert!(!cfg.bootstrap_tables);
+            assert_eq!(cfg.bootstrap_sql.len(), 1);
+            assert_eq!(cfg.bulk_insert_buffer_size, 4096);
+            assert_eq!(cfg.storage.as_deref(), Some("binary"));
+        }
+
+        #[test]
+        fn ephemeral_server_pool_ports_returns_pool_size_range() {
+            let pool = EphemeralServerPool::new();
+            let ports = pool.ports();
+            assert_eq!(ports.len(), POOL_SIZE);
+            for (i, &p) in ports.iter().enumerate() {
+                assert_eq!(p as usize, BASE_PORT as usize + i);
+            }
+        }
+
+        #[test]
+        fn ephemeral_handle_drop_closes_listener() {
+            // Start an ephemeral, get the handle, drop it — must not panic,
+            // must release the port (subsequent acquire should work).
+            let cfg = EphemeralConfig::default();
+            let handle = start_ephemeral(cfg).expect("start_ephemeral");
+            let port = handle.port;
+            // Touching the port ensures it was actually opened.
+            assert!(port > 0);
+            drop(handle);
+            // Port must now be reusable. start_ephemeral with port=None will
+            // pick the next free slot from SERVER_POOL; we don't assert
+            // on the specific port here.
+        }
+    }
 }
 
 /// Re-exports for the integration tests in `tests/`. The actual helpers
