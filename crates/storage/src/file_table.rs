@@ -195,3 +195,68 @@ impl TableEngine for FileTable {
         &self.table_name
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use std::env;
+    fn temp_dir() -> PathBuf {
+        use std::sync::atomic::{AtomicU64, Ordering};
+        static COUNTER: AtomicU64 = AtomicU64::new(0);
+        let n = COUNTER.fetch_add(1, Ordering::SeqCst);
+        let p = env::temp_dir().join(format!("file_table_test_{}_{}", std::process::id(), n));
+        let _ = std::fs::remove_dir_all(&p);
+        p
+    }
+
+    fn sample_info(name: &str) -> TableInfo {
+        TableInfo {
+            name: name.to_string(),
+            columns: vec![crate::engine::ColumnDefinition {
+                name: "id".to_string(),
+                data_type: "INTEGER".to_string(),
+                nullable: false,
+                primary_key: true,
+                char_max_length: None,
+            }],
+            foreign_keys: vec![],
+            unique_constraints: vec![],
+            check_constraints: vec![],
+            partition_info: None,
+            compression: None,
+        }
+    }
+
+    #[test]
+    fn insert_scan_flush_roundtrip() {
+        let dir = temp_dir();
+        let mut t = FileTable::new("t".into(), sample_info("t"), dir.clone()).unwrap();
+        t.insert(vec![vec![Value::Integer(1)]]).unwrap();
+        t.insert(vec![vec![Value::Integer(2)]]).unwrap();
+        let rows = t.scan().unwrap();
+        assert_eq!(rows.len(), 2);
+        t.flush().unwrap();
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    #[test]
+    fn delete_update_are_stubs() {
+        let dir = temp_dir();
+        let mut t = FileTable::new("t".into(), sample_info("t"), dir.clone()).unwrap();
+        assert_eq!(t.delete(&[]).unwrap(), 0);
+        assert_eq!(t.update(&[], &[]).unwrap(), 0);
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    #[test]
+    fn accessors_and_dirty_tracking() {
+        let dir = temp_dir();
+        let mut t = FileTable::new("t".into(), sample_info("t"), dir.clone()).unwrap();
+        assert_eq!(t.table_name(), "t");
+        assert_eq!(t.get_table_info().name, "t");
+        assert!(t.dirty_tables().is_empty());
+        t.mark_dirty("t");
+        assert!(t.dirty_tables().contains("t"));
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+}
