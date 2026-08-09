@@ -602,4 +602,153 @@ mod tests {
         assert_eq!(contents.len(), 1);
         assert_eq!(contents[0].section, "intro");
     }
+    #[test]
+    fn test_doc_status_all_variants() {
+        assert_eq!(DocStatus::Draft.as_str(), "DRAFT");
+        assert_eq!(DocStatus::Active.as_str(), "ACTIVE");
+        assert_eq!(DocStatus::Archived.as_str(), "ARCHIVED");
+        assert_eq!(DocStatus::Superseded.as_str(), "SUPERSEDED");
+    }
+
+    #[test]
+    fn test_doc_status_from_str_all() {
+        assert_eq!(DocStatus::from_str("DRAFT"), Some(DocStatus::Draft));
+        assert_eq!(DocStatus::from_str("ACTIVE"), Some(DocStatus::Active));
+        assert_eq!(DocStatus::from_str("ARCHIVED"), Some(DocStatus::Archived));
+        assert_eq!(
+            DocStatus::from_str("SUPERSEDED"),
+            Some(DocStatus::Superseded)
+        );
+        assert_eq!(DocStatus::from_str("draft"), Some(DocStatus::Draft)); // case insensitive
+        assert_eq!(DocStatus::from_str("INVALID"), None);
+    }
+
+    #[test]
+    fn test_document_from_row_invalid() {
+        // Wrong type for id (Text instead of Integer)
+        let row = vec![
+            Value::Text("not int".to_string()),
+            Value::Text("t".to_string()),
+            Value::Text("d".to_string()),
+            Value::Integer(1),
+            Value::Integer(0),
+            Value::Integer(0),
+            Value::Integer(0),
+            Value::Text("DRAFT".to_string()),
+        ];
+        assert!(Document::from_row(&row).is_none());
+    }
+
+    #[test]
+    fn test_document_from_row_invalid_types() {
+        // Wrong type for id
+        let row = vec![
+            Value::Text("not int".to_string()),
+            Value::Text("t".to_string()),
+            Value::Text("d".to_string()),
+            Value::Integer(1),
+            Value::Integer(0),
+            Value::Integer(0),
+            Value::Integer(0),
+            Value::Text("DRAFT".to_string()),
+        ];
+        assert!(Document::from_row(&row).is_none());
+    }
+
+    #[test]
+    fn test_document_to_row_full() {
+        let doc = Document {
+            id: 42,
+            title: "Test".to_string(),
+            doc_type: "SOP".to_string(),
+            version: 1,
+            created_at: 1000,
+            updated_at: 2000,
+            effective_date: 2025000,
+            status: DocStatus::Active,
+        };
+        let row = doc.to_row();
+        assert_eq!(row.len(), 8);
+        assert_eq!(row[0], Value::Integer(42));
+        assert_eq!(row[1], Value::Text("Test".to_string()));
+        assert_eq!(row[7], Value::Text("ACTIVE".to_string()));
+    }
+
+    #[test]
+    fn test_document_from_row_roundtrip() {
+        let doc = Document {
+            id: 1,
+            title: "X".to_string(),
+            doc_type: "SOP".to_string(),
+            version: 2,
+            created_at: 100,
+            updated_at: 200,
+            effective_date: 2025000,
+            status: DocStatus::Archived,
+        };
+        let row = doc.to_row();
+        let back = Document::from_row(&row).unwrap();
+        assert_eq!(back.id, doc.id);
+        assert_eq!(back.title, doc.title);
+        assert_eq!(back.status, doc.status);
+    }
+
+    #[test]
+    fn test_document_content_from_row() {
+        let row = vec![
+            Value::Integer(1),
+            Value::Text("intro".to_string()),
+            Value::Text("body".to_string()),
+        ];
+        let c = DocumentContent::from_row(&row).unwrap();
+        assert_eq!(c.doc_id, 1);
+        assert_eq!(c.section, "intro");
+        assert_eq!(c.content, "body");
+    }
+
+    #[test]
+    fn test_document_content_to_row() {
+        let c = DocumentContent {
+            doc_id: 1,
+            section: "s".to_string(),
+            content: "c".to_string(),
+        };
+        let r = c.to_row();
+        assert_eq!(r.len(), 3);
+        assert_eq!(r[0], Value::Integer(1));
+    }
+
+    #[test]
+    fn test_document_keyword_from_row_to_row() {
+        let row = vec![Value::Integer(1), Value::Text("k".to_string())];
+        let k = DocumentKeyword::from_row(&row).unwrap();
+        assert_eq!(k.doc_id, 1);
+        assert_eq!(k.keyword, "k");
+        let r = k.to_row();
+        assert_eq!(r.len(), 2);
+    }
+
+    #[test]
+    fn test_document_keyword_from_row_invalid() {
+        let row = vec![Value::Integer(1), Value::Integer(2)]; // wrong type
+        assert!(DocumentKeyword::from_row(&row).is_none());
+    }
+
+    #[test]
+    fn test_document_content_from_row_invalid() {
+        // Wrong type for section (Integer instead of Text)
+        let row = vec![
+            Value::Integer(1),
+            Value::Integer(99),
+            Value::Text("c".to_string()),
+        ];
+        assert!(DocumentContent::from_row(&row).is_none());
+    }
+
+    #[test]
+    fn test_table_constants() {
+        assert_eq!(TABLE_DOCUMENTS, "gmp_documents");
+        assert_eq!(TABLE_DOCUMENT_CONTENTS, "gmp_document_contents");
+        assert_eq!(TABLE_DOCUMENT_KEYWORDS, "gmp_document_keywords");
+    }
 }
