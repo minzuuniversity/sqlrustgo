@@ -1,11 +1,11 @@
 # SQLRustGo v3.11.0 综合评估报告
 
-> **版本**: v3.11.0  
-> **阶段**: **GA (General Availability) 正式发布阶段**  
-> **评估日期**: 2026-08-09  
-> **当前本地分支**: `develop/v3.11.0` @ `9f469a7ebde7b451d1ddbc5fc9f0a393d1d7810b`  
-> **本地 GA Tag**: `v3.11.0-ga` (2026-08-09, annotated object `eaafcd858`)  
-> **发布定位**: 债务清零 + 核心功能主路径集成 + TPC-H SF=1 可运行性突破 + GA 文档收口  
+> **版本**: v3.11.0
+> **阶段**: **GA (General Availability) 正式发布阶段**
+> **评估日期**: 2026-08-09
+> **当前本地分支**: `develop/v3.11.0` @ `9f469a7ebde7b451d1ddbc5fc9f0a393d1d7810b`
+> **本地 GA Tag**: `v3.11.0-ga` (2026-08-09, annotated object `eaafcd858`)
+> **发布定位**: 债务清零 + 核心功能主路径集成 + TPC-H SF=1 可运行性突破 + GA 文档收口
 > **证据等级**: VerifiedDoc + DerivedDoc 混合；本报告不把历史文档声明单独当作 PASS 证据
 
 ## 0. Provenance

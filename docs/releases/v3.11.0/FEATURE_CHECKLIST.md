@@ -1,3 +1,31 @@
+# v3.11.0 功能清单
+
+> **说明**: 本中文主文用于解释功能清单的当前阅读方式；原文保留在附录。功能状态必须与 PR、commit、测试输出和综合评估交叉验证。
+
+## 1. 功能清单定位
+
+本文件记录 v3.11.0 的 V311-XX 功能任务、历史状态和交付线索。它适合做版本范围索引，但不能单独作为“功能生产可用”证据。
+
+## 2. 功能分组
+
+| 分组 | 代表功能 | 当前阅读边界 |
+|---|---|---|
+| 存储/索引 | Clustered Index、Adaptive Hash Index、Change Buffer、Double-Write Buffer、Compression | 需结合 storage tests、recovery tests 和 SOAK |
+| SQL/Parser/Executor | CREATE SEQUENCE、ALTER TABLE、GIS、Hash Join 系列、Decorrelation | 需结合 parser/e2e/TPC-H correctness |
+| 权限/安全 | RLS、Column Privileges、Password Rotation、Admin wire | 需结合 ACL、安全审计和 MySQL wire E2E |
+| 性能/稳定 | TPC-H、SOAK、高并发 INSERT | 需区分可运行性、正确性、长期稳定性 |
+| 文档/治理 | Docs restructure、truth audit、release reports | 文档完整性不替代实跑 gate |
+
+## 3. 使用规则
+
+- DONE 表示任务在当时计划口径下完成，不自动等于 GA 生产能力。
+- PARTIAL、PENDING、TBD 或历史冲突状态必须进入后续 issue 或综合评估说明。
+- v3.12 规划应优先承接本清单中仍有 evidence boundary 的项目。
+
+## 附录：英文原文
+
+> 本附录保留本文件改写前的英文原文，便于追溯历史语义。若英文附录与中文正文或 `COMPREHENSIVE_ASSESSMENT_REPORT.md` 冲突，当前正式判断以中文正文和综合评估报告为准。
+
 # v3.11.0 Feature Checklist
 
 > **Version**: v3.11.0

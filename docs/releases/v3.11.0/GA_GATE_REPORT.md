@@ -1,3 +1,30 @@
+# v3.11.0 GA Gate 报告
+
+> **说明**: 本中文主文用于解释 GA gate 裁决边界；英文原文保留在附录。任何 PASS 声明仍需以对应命令输出、日志和 evidence hash 为准。
+
+## 1. 报告定位
+
+GA Gate 报告记录 v3.11.0 进入 GA 的发布裁决。它是高权重文档，但不是所有子项严格技术阈值全绿的替代证明。特别是 G3 coverage 和 G4 TPC-H 必须结合细分报告阅读。
+
+## 2. 关键 gate 边界
+
+| Gate | 当前阅读方式 |
+|---|---|
+| G1 RC 指标 | 需回看 RC gate 输出和对应命令 |
+| G2 Full test | 需确认测试数量、ignored 数量和实际执行范围 |
+| G3 Coverage | 注意 `--lib`、`--lib --tests` 等口径差异，不能混用 |
+| G4 TPC-H SF=1 | 22/22 可运行性强，但 correctness 和 wire artifact 仍需后续 close-out |
+| G5 Security | 依赖漏洞需以最新 `cargo audit` 为准 |
+| G6 Documentation | 文档完整性不替代功能/性能/安全实跑 |
+
+## 3. 与 v3.12 的关系
+
+v3.12.0 应把 GA Gate 报告中已经裁决但仍有证据边界的项目转化为硬化 gate，包括 SQLLogicTest、TPC-H correctness、coverage methodology、wire protocol、LOAD DATA、crash recovery、backup/restore 和 upgrade/downgrade。
+
+## 附录：英文原文
+
+> 本附录保留本文件改写前的英文原文，便于追溯历史语义；当前正式阅读与执行口径以上方中文正文为准。
+
 # v3.11.0 GA Gate Report
 
 ## GA Gate - PASS (2026-08-09)

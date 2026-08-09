@@ -1,3 +1,24 @@
+# v3.11.0 覆盖率基线说明
+
+## 1. 文档定位
+
+本目录保存 v3.11.0 覆盖率测量基线。覆盖率数据必须和具体命令、commit、时间、输出文件绑定；不能把历史数字单独当作当前 PASS 证据。
+
+## 2. 使用规则
+
+- 明确区分 `--lib`、`--tests`、`--lib --tests` 和 workspace 口径。
+- 每个 crate 的覆盖率应单独记录。
+- 如果某个 crate 因 timeout、fixture missing 或 known failure 未测量，必须写明。
+- v3.12 应将 canonical coverage command 固化到 gate。
+
+## 3. 风险提示
+
+覆盖率基线用于防止回归，但不代表功能正确性、性能正确性或生产可用性。特别是 parser、mysql-server、mysql-client、gmp、spill、vector、cli、sql-corpus 等 crate，需要结合 E2E 和行为测试判断。
+
+## 附录：英文原文
+
+> 本附录保留本文件改写前的英文原文，便于追溯历史语义。若英文附录与中文正文或 `COMPREHENSIVE_ASSESSMENT_REPORT.md` 冲突，当前正式判断以中文正文和综合评估报告为准。
+
 # v3.11.0 Coverage Baseline
 
 **Date**: 2026-07-15 (updated)

@@ -1,3 +1,48 @@
+# v3.11.0 覆盖率测试方法说明
+
+> **日期**: 2026-07-18
+> **工具**: `cargo-llvm-cov`
+> **范围**: workspace crate 覆盖率测量方法说明
+> **当前中文化说明**: 本文件中文正文用于解释方法边界；英文原文作为历史记录保留。
+
+## 1. 关键结论
+
+v3.11.0 的覆盖率文档中存在多种测量口径，必须避免把不同口径混成同一个 PASS 结论。尤其是 root crate 的 `--lib` 覆盖率不应直接代表整个系统真实测试覆盖情况。
+
+## 2. 不推荐的测量方式
+
+| 命令 | 问题 |
+|---|---|
+| `cargo llvm-cov test -p sqlrustgo --lib` | root crate 通过 `pub use` 重新导出多个子 crate，容易重复计算或低估真实路径；同时跳过 integration/e2e tests |
+| `cargo llvm-cov test --workspace` | 全 workspace 可能超时，不能作为稳定 gate 命令 |
+
+## 3. 推荐测量方式
+
+推荐按 crate 独立测量，并明确是否包含 integration tests：
+
+```bash
+cargo llvm-cov test -p <crate> --no-fail-fast
+```
+
+对于耗时 crate 可增加 timeout：
+
+```bash
+timeout 120 cargo llvm-cov test -p <crate> --no-fail-fast
+```
+
+若必须使用 `--lib`，必须在报告中声明该口径只覆盖 inline unit tests，不覆盖 `tests/*.rs` integration/e2e 文件。
+
+## 4. v3.12 需要收敛的事项
+
+- 固化唯一 G3 coverage 命令。
+- 每份报告都必须说明是否包含 integration/e2e tests。
+- 不得用 `--lib` 结果替代 `--lib --tests` 结果，反之亦然。
+- 所有 coverage PASS 声明必须带 command、timestamp、source_agent、source_run、evidence_hash 和 output location。
+
+## 附录：英文原文
+
+> 本附录保留本文件改写前的英文原文，便于追溯历史语义。若英文附录与中文正文或 `COMPREHENSIVE_ASSESSMENT_REPORT.md` 冲突，当前正式判断以中文正文和综合评估报告为准。
+
 # V3.11.0 Coverage Testing Methodology
 
 **Date**: 2026-07-18

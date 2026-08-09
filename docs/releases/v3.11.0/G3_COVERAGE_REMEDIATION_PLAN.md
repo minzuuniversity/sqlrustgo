@@ -1,3 +1,40 @@
+# v3.11.0 G3 覆盖率整改计划
+
+> **生成日期**: 2026-08-09
+> **用途**: 解释 G3 coverage 口径漂移，并为 v3.12.0 收敛提供整改路径。
+> **注意**: 本文件是计划和分析，不是 coverage gate PASS 证据。
+
+## 1. 根因
+
+当前 G3 争议的核心不是单个 crate 是否真的有测试，而是覆盖率命令口径不一致。`cargo llvm-cov --lib` 只统计 `src/*.rs` 中 inline `#[cfg(test)]` 覆盖的路径，不统计 `crates/<name>/tests/*.rs` 的 integration tests。因此，一些已经有大量 integration tests 的 crate，在 `--lib` 口径下仍会表现为低覆盖率。
+
+| crate | 主要问题 | 整改方向 |
+|---|---|---|
+| `sqlrustgo-executor` | 代码体量大，部分 orphan/stub 模块拉低分母 | 删除无调用孤儿模块或补 inline tests，补 `WalTransactionalFacade` 行为测试 |
+| `sqlrustgo-admin` | integration tests 多，但 `--lib` 不计入 | 将关键覆盖逻辑迁入 inline test，或统一采用包含 integration 的 gate 口径 |
+| `sqlrustgo-mysql-server` | wire dispatch 路径长，inline 覆盖不足 | 补 `testing`、COM_QUERY、resource monitor、WAL sync mode 等 inline/e2e 测试 |
+| `sqlrustgo-mysql-client` | inline tests 很少 | 补认证、连接、prepared statement、错误恢复测试 |
+
+## 2. 整改原则
+
+- 先统一测量方法，再谈 PASS/FAIL。
+- 删除代码只能删除确认无调用、无生产入口、无文档承诺的 orphan 模块。
+- 不能为了提高覆盖率而把真实功能路径改成伪测试路径。
+- coverage 报告必须保留命令输出和 evidence hash。
+
+## 3. v3.12 承接要求
+
+v3.12.0 必须把 G3 coverage 作为 P0 硬化项：
+
+1. 定义唯一 canonical coverage command。
+2. 记录每个 crate 是否包含 integration/e2e tests。
+3. 对 parser、mysql-server、mysql-client、gmp、spill、vector、cli、sql-corpus 建立专项提升计划。
+4. 在 gate 报告中明确“发布裁决口径”和“严格 per-crate 口径”的差异。
+
+## 附录：英文原文
+
+> 本附录保留本文件改写前的英文原文，便于追溯历史语义。若英文附录与中文正文或 `COMPREHENSIVE_ASSESSMENT_REPORT.md` 冲突，当前正式判断以中文正文和综合评估报告为准。
+
 # v3.11.0 G3 Coverage Remediation Plan
 
 > **Generated**: 2026-08-09 (today = T0, ADR-008 exception expires 2026-09-01 → T+23 days)

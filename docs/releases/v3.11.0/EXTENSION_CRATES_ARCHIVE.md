@@ -1,3 +1,30 @@
+# v3.11.0 扩展 Crate 归档说明
+
+## 1. 文档定位
+
+本文件记录 v3.11.0 对 extension crates 的产品决策：哪些保留、哪些归档、哪些进入主路径。该文档用于追溯架构边界，不能单独证明某个 crate 已具备生产能力。
+
+## 2. 决策原则
+
+| 原则 | 说明 |
+|---|---|
+| 主路径优先 | 只有进入 parser/planner/executor/storage/network 主路径并有 gate 的能力，才可对外作为产品功能声明 |
+| 归档不等于删除历史 | archived crate 可保留历史价值，但不得作为当前生产依赖 |
+| crate 存在不等于生产可用 | 需要 build/test/e2e/soak/recovery 证据 |
+| GMP/RAG/Vector/Graph 分层 | v3.11 保留原型或内部能力，v3.12/4.0 再决定生产级边界 |
+
+## 3. v3.12 影响
+
+v3.12.0 应基于本文件继续清理 extension crate 语义漂移：
+
+- 明确 `vector`、`graph`、`rag`、`gmp` 哪些是生产路径，哪些仍是实验路径。
+- 对进入 GMP 内审检索路径的 crate 增加 gate 和 evidence bundle。
+- 对归档 crate 防止被误引用为生产能力。
+
+## 附录：英文原文
+
+> 本附录保留本文件改写前的英文原文，便于追溯历史语义。若英文附录与中文正文或 `COMPREHENSIVE_ASSESSMENT_REPORT.md` 冲突，当前正式判断以中文正文和综合评估报告为准。
+
 # V311-19 Extension Crates Archive (v3.11.0)
 
 This document records 9 extension crates removed from the workspace in
@@ -104,4 +131,3 @@ Result:
 - `openspec/changes/v311-19-extension-crates-decision/` — full proposal/design/tasks
 - `docs/governance/debt/debt-registry.yaml` — debt items transitioned DELETED/ARCHIVED
 - `Cargo.toml` — workspace member list (current)
-

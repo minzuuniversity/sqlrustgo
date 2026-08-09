@@ -1,3 +1,27 @@
+# v3.11.0 Hash Anti Join 性能分析
+
+## 1. 文档定位
+
+本文件记录 Hash Anti Join 相关性能分析。它用于说明优化器和执行器能力提升，不应单独作为 TPC-H 全量 correctness 或 MySQL 5.7 替代能力证据。
+
+## 2. 关注点
+
+| 项 | 说明 |
+|---|---|
+| 目标查询 | `NOT EXISTS`、anti-semi join、子查询反连接场景 |
+| 预期收益 | 避免低效嵌套循环，改善复杂查询吞吐和延迟 |
+| 风险 | NULL 语义、相关子查询、join predicate 下推、结果顺序和 row-count correctness |
+
+## 3. v3.12 后续
+
+- 用 SQLLogicTest 和 TPC-H correctness 验证结果语义。
+- 增加 NULL、duplicate row、empty relation、large relation 的回归测试。
+- 把性能提升与正确性证据分开记录。
+
+## 附录：英文原文
+
+> 本附录保留本文件改写前的英文原文，便于追溯历史语义。若英文附录与中文正文或 `COMPREHENSIVE_ASSESSMENT_REPORT.md` 冲突，当前正式判断以中文正文和综合评估报告为准。
+
 # V311-17: Hash Anti Join Performance Report
 
 ## Algorithm Overview
@@ -20,7 +44,7 @@ V311-17 (Hash Anti Join):
   Build phase: O(N_inner)              ← once
     Bloom: key → 2-bit-mask
     HashMap: key → Vec<inner_rows>
-  
+
   Probe phase: O(N_outer)              ← per outer row
     bloom short-circuit: if definitely no → outer row passes
     else key_index lookup: O(1)

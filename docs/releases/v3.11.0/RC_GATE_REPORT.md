@@ -1,3 +1,29 @@
+# v3.11.0 RC Gate 报告
+
+> **说明**: RC Gate 是 v3.11.0 历史阶段证据之一。当前 GA 判断以 `COMPREHENSIVE_ASSESSMENT_REPORT.md`、`GA_GATE_REPORT.md` 和实跑输出为准；英文原文保留在附录。
+
+## 1. 报告定位
+
+本报告用于追溯 v3.11.0 从 Beta/RC 进入 GA 前的候选发布验证。RC 阶段 PASS 不能替代 GA 阶段 PASS，也不能替代后续发现的 G3/G4/SQLLogicTest 问题整改。
+
+## 2. 审阅重点
+
+| 项 | 审阅要求 |
+|---|---|
+| Build/Test/Clippy/Fmt | 必须有实际命令输出和 exit code |
+| TPC-H | 区分 parser/in-process、SF=0.1、SF=1、wire protocol、cross-engine correctness |
+| Coverage | 区分 `--lib`、`--tests`、per-crate 和 L1 average |
+| Ignored tests | 按 ADR-008 说明是否 gate test 被 ignore |
+| 文档状态 | PENDING/TBD/历史状态不得当作当前 PASS |
+
+## 3. v3.12 承接
+
+RC 阶段暴露的未闭环项应进入 v3.12：SQLLogicTest gate、TPC-H correctness、coverage 口径统一、wire protocol、LOAD DATA、crash recovery、backup/restore、upgrade/downgrade。
+
+## 附录：英文原文
+
+> 本附录保留本文件改写前的英文原文，便于追溯历史语义。若英文附录与中文正文或 `COMPREHENSIVE_ASSESSMENT_REPORT.md` 冲突，当前正式判断以中文正文和综合评估报告为准。
+
 # v3.11.0 RC Gate Report
 
 ## RC Gate PASS
