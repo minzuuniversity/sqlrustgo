@@ -1,3 +1,31 @@
+# v3.11.0 TPC-H Q5 内存分析
+
+## 1. 文档定位
+
+本文件记录 TPC-H Q5 内存问题的分析过程。Q5 曾暴露 join ordering、predicate pushdown、临时结果膨胀和 OOM 风险，是 v3.11 性能整改的重要案例。
+
+## 2. 关键问题
+
+| 问题 | 影响 |
+|---|---|
+| 多表 join 顺序不佳 | 中间结果过大，可能触发 OOM |
+| predicate pushdown 不充分 | 无法及早过滤无关行 |
+| parser/in-process 与 wire path 证据不等价 | 局部修复不能自动证明 live server E2E 已正确 |
+
+## 3. 当前判断
+
+v3.11.0 已通过相关修复显著降低 Q5 OOM 风险，但 v3.12 仍应在 SF=1 wire path 下复跑 Q5，并输出 row-count、checksum、耗时和内存峰值。
+
+## 4. v3.12 后续
+
+- 确认 Q5 修复进入 MySQL wire path。
+- 对比外部基准结果。
+- 将内存峰值和失败恢复纳入 gate artifact。
+
+## 附录：英文原文
+
+> 本附录保留本文件改写前的英文原文，便于追溯历史语义。若英文附录与中文正文或 `COMPREHENSIVE_ASSESSMENT_REPORT.md` 冲突，当前正式判断以中文正文和综合评估报告为准。
+
 # TPC-H Q5 Memory Growth Analysis
 
 ## Query

@@ -1,3 +1,29 @@
+# v3.11.0 现实状态核查报告
+
+> **说明**: 本中文主文用于当前阅读；原文保留在附录。本报告用于识别历史声明与实际证据之间的差异。
+
+## 1. 核查目的
+
+本报告用于检查 v3.11.0 文档、代码、gate 和 issue 状态是否存在不一致，特别关注未实跑却声称 PASS、历史 PENDING 未更新、TPC-H 与 coverage 口径漂移等问题。
+
+## 2. 主要核查维度
+
+| 维度 | 检查内容 |
+|---|---|
+| 版本阶段 | `STAGE.yaml`、tag、branch、release report 是否一致 |
+| TPC-H | 22/22 可运行性、wire path、cross-engine correctness 是否区分 |
+| Coverage | 测量命令、crate 范围、阈值和报告结论是否一致 |
+| Security | 是否有最新 audit 输出 |
+| Docs | 是否存在虚假声明、TBD/PENDING 残留、过期链接 |
+
+## 3. 当前结论
+
+该核查报告应与 `COMPREHENSIVE_ASSESSMENT_REPORT.md` 一起阅读。v3.11.0 可以作为 GA 发布状态理解，但其生产声明必须带边界；v3.12 必须补齐被识别的弱项。
+
+## 附录：英文原文
+
+> 本附录保留本文件改写前的英文原文，便于追溯历史语义。若英文附录与中文正文或 `COMPREHENSIVE_ASSESSMENT_REPORT.md` 冲突，当前正式判断以中文正文和综合评估报告为准。
+
 # v3.11.0 全面真实性核查报告 — **RESOLVED 2026-08-09**
 
 > **Original audit date**: 2026-07-20 (2nd pass verification)

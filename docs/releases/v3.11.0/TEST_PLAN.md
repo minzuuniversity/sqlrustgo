@@ -1,3 +1,29 @@
+# v3.11.0 测试计划
+
+> **说明**: 本文件中文主文用于当前审阅；英文原文保留在附录。测试计划是计划性文档，不等同测试已通过。
+
+## 1. 测试范围
+
+v3.11.0 测试应覆盖：核心 SQL build/test、parser/executor/storage、MySQL wire protocol、TPC-H、SOAK、coverage、security audit、upgrade/rollback 和 regression suite。
+
+## 2. 关键风险
+
+| 风险 | 要求 |
+|---|---|
+| TPC-H 只证明可运行性 | 必须补 row-count/SHA256 correctness |
+| coverage 口径漂移 | 必须统一 canonical coverage command |
+| wire protocol 覆盖不足 | 必须补 COM_QUERY/COM_STMT/error/reset/TLS/compression E2E |
+| SQLLogicTest 未进入 gate | v3.12 作为 P0 gate 承接 |
+| recovery/backup/upgrade 证据不足 | v3.12 继续硬化 |
+
+## 3. 引用边界
+
+测试计划中的任何 PASS 字样必须回到实际命令输出。没有输出的条目只能标记为 planned、pending、TBD 或 follow-up。
+
+## 附录：英文原文
+
+> 本附录保留本文件改写前的英文原文，便于追溯历史语义；当前正式阅读与执行口径以上方中文正文为准。
+
 # v3.11.0 Test Plan
 
 > **Version**: v3.11.0

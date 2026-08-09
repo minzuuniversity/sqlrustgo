@@ -1,3 +1,32 @@
+# v3.11.0 TPC-H SF=1 22/22 可运行性报告
+
+> **说明**: 本中文主文用于澄清报告边界；英文原文保留在附录。标题中的 PASS 应理解为“22 个 query 完整执行、0 OOM、0 panic”的可运行性 PASS，不等同跨引擎结果 correctness PASS。
+
+## 1. 核心结论
+
+v3.11.0 已经取得重要突破：TPC-H SF=1 22 个 query 可以完整执行，总耗时约 519.15s，运行过程中没有 OOM 或 panic。这证明执行路径和资源稳定性较 v3.10 有明显提升。
+
+## 2. 证据边界
+
+| 项 | 当前含义 |
+|---|---|
+| 22/22 completed | 证明每个 query 都能跑完 |
+| 0 OOM / 0 panic | 证明该路径下资源稳定性明显改善 |
+| 8 个 zero-row query | 不自动等同正确，仍需外部基准验证 |
+| BINT mmap fixture | 证明执行/读取路径，不能替代 `LOAD DATA` 生产导入能力 |
+| Cross-engine SHA256 | 仍需 v3.12 继续关闭 |
+
+## 3. v3.12 承接要求
+
+- 对 22 个 query 输出 row-count 和 SHA256。
+- 与 SQLite/PostgreSQL/MySQL 至少一个外部基准进行对比。
+- 对 zero-row query 建立 issue-linked explanation。
+- 在 MySQL wire protocol 路径复跑并保存 per-query artifact。
+
+## 附录：英文原文
+
+> 本附录保留本文件改写前的英文原文，便于追溯历史语义。若英文附录与中文正文或 `COMPREHENSIVE_ASSESSMENT_REPORT.md` 冲突，当前正式判断以中文正文和综合评估报告为准。
+
 # TPC-H SF=1 22/22 PASS — 完整测试报告
 
 > **Version**: v3.11.0 GA

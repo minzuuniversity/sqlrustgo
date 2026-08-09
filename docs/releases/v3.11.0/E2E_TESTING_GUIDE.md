@@ -205,7 +205,7 @@ use common::MySqlTestClient;
 #[test]
 fn wire_ping() {
     let mut client = MySqlTestClient::connect_default().expect("connect");
-    // ... 
+    // ...
 }
 
 // 3. 失败时立即 panic，描述预期行为

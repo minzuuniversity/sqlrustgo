@@ -1,3 +1,28 @@
+# v3.11.0 证据状态
+
+> **说明**: 本文件用于追踪 v3.11.0 证据链状态。英文原文保留在附录；若有旧状态，以最新综合评估和对应 gate 输出为准。
+
+## 1. 证据分层
+
+| 类型 | 可用于什么 | 限制 |
+|---|---|---|
+| 命令输出 / CI log | gate PASS/FAIL 判断 | 必须带时间、commit、输出位置 |
+| Git commit / tag | 代码状态追溯 | 不等同测试已通过 |
+| 报告/计划 | 解释背景和后续行动 | 不能替代实跑证据 |
+| 历史英文原文 | 追溯旧状态 | 若与中文主文冲突，以中文主文为准 |
+
+## 2. 当前重点证据
+
+当前应优先查看 `COMPREHENSIVE_ASSESSMENT_REPORT.md`、`GA_GATE_REPORT.md`、`TPCH_SF1_22_22_PASS_REPORT.md`、`SOAK_168H_REPORT.md`、coverage 报告和 security audit 输出。
+
+## 3. 风险
+
+任何没有 command output、timestamp、source_agent、source_run、evidence_hash 和 output location 的 PASS claim，都应视为未充分证实。
+
+## 附录：英文原文
+
+> 本附录保留本文件改写前的英文原文，便于追溯历史语义；当前正式阅读与执行口径以上方中文正文为准。
+
 # v3.11.0 Evidence Status
 
 > **Status**: RC (2026-07-20 整改后) — **GA 未通过**（G3/G4 FAIL）

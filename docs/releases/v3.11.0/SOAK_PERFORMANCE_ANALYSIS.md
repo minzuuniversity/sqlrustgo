@@ -1,3 +1,45 @@
+# v3.11.0 SOAK 性能分析报告
+
+## 执行摘要
+
+历史分析显示，通过 batch transaction mode 和 WAL sync mode 优化，系统吞吐从约 QPS/TPS 9 提升到约 371，约 41x。该结论应理解为特定测试环境和配置下的性能提升，不应泛化为所有生产负载。
+
+## 1. 测试环境
+
+| 组件 | 配置 |
+|---|---|
+| 硬件 | MacMini M2 |
+| CPU | 10 cores |
+| 内存 | 17 GB |
+| 存储 | FileStorage + WAL |
+| Server Threads | 16 |
+| Client Threads | 8 |
+
+## 2. 性能瓶颈
+
+优化前的主要瓶颈是“每个操作一次 commit”的事务模式：
+
+- WAL sync (`fsync`) 约 10ms。
+- JSON serialization 约 5ms。
+- File write 约 5ms。
+
+理论上单操作 commit 的吞吐上限约为 `1000ms / 20ms = 50 TPS`，实际测试约为 9 TPS，说明架构瓶颈明显。
+
+## 3. 优化实现
+
+| 优化 | 说明 | 效果 |
+|---|---|---|
+| Batch Transaction Mode | 客户端把 10 个 DML 操作合并到一个 transaction | 减少 commit 次数 |
+| WAL Sync Mode CLI | 增加 `--wal-sync every`、`batch:N`、`off` | 在 durability 与 throughput 间可配置平衡 |
+
+## 4. 结论和边界
+
+SOAK 性能分析证明 batch commit 和 WAL sync 策略对吞吐有明显帮助。v3.12 应进一步验证 mixed workload、crash recovery、backup/restore、audit-chain 和 GMP/RAG 检索路径下的长期稳定性。
+
+## 附录：英文原文
+
+> 本附录保留本文件改写前的英文原文，便于追溯历史语义。若英文附录与中文正文或 `COMPREHENSIVE_ASSESSMENT_REPORT.md` 冲突，当前正式判断以中文正文和综合评估报告为准。
+
 # SOAK Performance Analysis Report v3.11.0
 
 ## Executive Summary

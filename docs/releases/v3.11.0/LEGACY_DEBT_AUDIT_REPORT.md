@@ -186,7 +186,7 @@ PR 描述声称:
 **验证**:
 ```bash
 grep -rn "scan_with_ahi\|ahi().lookup\|ahi().record_access" \
-    crates/ src/ --include='*.rs' | grep -v "test\|#" 
+    crates/ src/ --include='*.rs' | grep -v "test\|#"
 # 结果: 无匹配
 ```
 
