@@ -1,0 +1,9 @@
+=== G4 Gate: ARCH-3 (#3169) VtuGuard main-path enforcement ===
+  [1/4] ✅ PASS: 3 VtuGuard marker calls in src/execution_engine.rs
+       ✅ All 3 EE DML functions have the marker
+  [2/4] ✅ PASS: 2 VtuGuard marker calls in openclaw_endpoints.rs
+  [3/4] bypass patterns in DML paths: 0 (informational)
+  [4/4] ✅ PASS: VtuGuard::assert_path_for_dml is public
+
+=== G4 Gate: PASS ===
+ARCH-3 (#3169) Blocker-3 verified: VtuGuard main path enforced

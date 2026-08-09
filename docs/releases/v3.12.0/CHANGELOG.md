@@ -59,6 +59,71 @@ SQLLogicTest 背景：
 |---|---|---|---|
 | v3.12.0 | TBD | DRAFT | GMP 内审检索数据库版本，附带 v3.11.0 弱项补强 |
 
+## v3.12.0 启动切片 (2026-08-09)
+
+agent: minimax 在本地 fresh checkout (`develop/v3.12.0` @ ed89db05ab, base `9e157ed61b`) 上完成 Track C (MySQL 兼容) 的启动切片；openspec 4/4 artifacts 全部 valid；evidence 已落地。
+
+### 仓库恢复
+
+- 本地仓库从损坏状态恢复：`develop/v3.12.0` 与 `origin/develop/v3.12.0` 同步；4591 个 0-byte 文件清理；pack (164k objects) 完整保留。
+- 本次启动前的清理目标是：删除历史本地 dev 分支 (损坏后已不存在)，拉取新基线 (完成)。
+- 详见 commit log: 4 commits, latest `<HEAD sha>`.
+
+### 认领与计划 (Gitea 252)
+
+| Issue | Track | 标题 | 状态 | 分支 |
+|-------|-------|------|------|------|
+| [#3900](http://192.168.0.252:3000/openclaw/sqlrustgo/issues/3900) | C | [V312-13] MySQL Wire + LOAD DATA Hardening | OPEN, assigned openclaw | `develop/v3.12.0` |
+| [#3906](http://192.168.0.252:3000/openclaw/sqlrustgo/issues/3906) | C/B | [V312-19] SQL Corpus、Architecture Invariant 与 Reviewer Sign-off Gate | OPEN, assigned openclaw | `develop/v3.12.0` |
+| [#3908](http://192.168.0.252:3000/openclaw/sqlrustgo/issues/3908) | C | [V312-21] MySQL Compatibility 与 SQL Surface Backlog | OPEN, assigned openclaw | `develop/v3.12.0` |
+
+每个 issue 已留下 claim comment 含 source_run、evidence_hash 口径和 openspec 链接。
+
+### Openspec 变更 (openspec/changes/)
+
+| Change | Issue | Status | Artifacts |
+|--------|-------|--------|-----------|
+| `v312-13-mysql-wire-load-data-hardening` | #3900 | valid, 4/4 | proposal, design, tasks, 5 specs (binary-prepared-statement-roundtrip MOD, wire-protocol-execution MOD, mysql-wire-stmt-reset-tls-compression, mysql-wire-error-packet-contract, load-data-sf1-sf10-memory-cap) |
+| `v312-19-sql-corpus-arch-invariant-reviewer-gate` | #3906 | valid, 4/4 | proposal, design, tasks, 3 specs (sql-corpus-all-targets-report, arch-invariant-r2-unified-report, reviewer-signoff-template) |
+| `v312-21-mysql-compat-sql-surface-backlog` | #3908 | valid, 4/4 | proposal, design, tasks, 2 specs (mysql-compat-surface-disposition, mysql-compat-fixture-suite) |
+
+### 已落地 evidence (docs/releases/v3.12.0/evidence/)
+
+| 路径 | 来源 | 内容 |
+|------|------|------|
+| `wire_load_data/V312-13-REPORT.md` | `check_v312_13_wire_load_data.sh` | 10 步 evidence 表 (5 PASS, 4 deferred, 1 pre-existing fail from `check_load_data_infile.sh`) |
+| `arch_invariants/R2_INVARIANTS_REPORT.md` | `check_r2_invariants.sh` | R2.1-R2.4 真实结果 (2 pass / 2 fail), R2.5-R2.8 honest-gap stub |
+| `mysql_compat/SURFACE_DISPOSITION.md` | `check_v312_21_mysql_compat.sh` | 10 v3.7-v3.10 历史 surface 的 decision 表 (PASS/unsupported/deferred) |
+| `sql_corpus/ALL_TARGETS_REPORT.md` | `corpus_manifest.yaml` + 初始 seed | 6 corpus target 的状态骨架 (runtime runner 待 v312-19 tasks §1.1-1.3 落地) |
+
+### 测试结果
+
+| 测试目标 | 通过 | 失败 |
+|----------|------|------|
+| `cargo test --test v312_13_typed_wrappers_test` | 22 | 0 |
+| `cargo test --test mysql_wire_protocol_test` (regression) | 28 | 0 |
+| `cargo test -p sqlrustgo-mysql-server --test e2e_wire_protocol` | 46 | 0 |
+| `cargo test -p sqlrustgo-mysql-server --test prepared_stmt_params_test` | 8 | 0 |
+| `cargo check --workspace` | OK | 0 (3 pre-existing warnings) |
+
+### Gate scripts
+
+| 脚本 | 用途 | 首次运行 |
+|------|------|----------|
+| `scripts/gate/check_v312_13_wire_load_data.sh` | V312-13 evidence | 5/5 typed-wrapper+regression PASS, 4 deferred, 1 pre-existing fail |
+| `scripts/gate/check_v312_19_release_gates.sh` | RC/GA 阻断 gate | PASS (artifacts fresh) |
+| `scripts/gate/check_r2_invariants.sh` | R2.1-R2.8 driver | 2/4 real pass, 2/4 real fail, 4/4 honest-gap stub |
+| `scripts/gate/check_v312_21_mysql_compat.sh` | 10-surface disposition | 10/10 rows seeded |
+| `scripts/gate/assert_reviewer_signoff.sh` | dual-reviewer signoff | 3/3 unit cases pass (missing/valid/same-reviewer) |
+
+### 未完成 / 后续工作
+
+- V312-13 §9-10: LOAD DATA SF=1 / SF=10 fixture (依赖 server-side batch loader 增强)
+- V312-13 §7-8: TLS / compression (依赖 ephemeral harness 加密支持)
+- V312-19 §1.1-1.3: corpus_manifest.yaml runtime runner (当前为 SSOT 文件 + 初始 ALL_TARGETS_REPORT)
+- V312-21 §2.1-2.2: 真正的 compat fixture runner (当前 disposition 行为为静态 seed)
+- 三项 issue 的 PR 提交需 1 名 reviewer approval (per `BRANCH_GOVERNANCE.md` v1.0 §4.1)
+
 ## 附录：英文原文
 
 > 本附录保留本文件改写前的英文原文，便于追溯历史语义；当前正式阅读与执行口径以上方中文正文为准。
