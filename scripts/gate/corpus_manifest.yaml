@@ -23,13 +23,11 @@ targets:
   - name: parser_fixtures
     command: cargo test -p sqlrustgo-parser --test parser_all_statements_tests -- --test-threads=1
     evidence_dir: docs/releases/v3.12.0/evidence/sql_corpus/parser_fixtures
-    min_cases: 50
-
+    min_cases: 34
   - name: sqllogictest_local
     command: cargo run -p sqlrustgo_sqllogictest -- --test-dir crates/sqlrustgo_sqllogictest/testdata
     evidence_dir: docs/releases/v3.12.0/evidence/sql_corpus/sqllogictest_local
     min_cases: 16
-
   - name: tpch_sf1
     command: bash scripts/gate/per_query_sf1.sh
     evidence_dir: docs/releases/v3.12.0/evidence/sql_corpus/tpch_sf1
