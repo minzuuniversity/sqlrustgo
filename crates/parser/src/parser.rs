@@ -13237,19 +13237,19 @@ fn test_split_sql_statements_block_comment() {
     assert_eq!(parts.len(), 2);
 }
 
-#[test]
-#[ignore]
-fn test_parse_statements_multiple() {
-    let stmts = parse_statements("SELECT 1; SELECT 2").unwrap();
-    assert_eq!(stmts.len(), 2);
-}
+    #[test]
+    #[ignore = "V312-17: parse_statements() API doesn't handle EOF properly - quarantined"]
+    fn test_parse_statements_multiple() {
+        let stmts = parse_statements("SELECT 1; SELECT 2").unwrap();
+        assert_eq!(stmts.len(), 2);
+    }
 
-#[test]
-#[ignore]
-fn test_parse_statements_no_trailing() {
-    let stmts = parse_statements("SELECT 1; SELECT 2;").unwrap();
-    assert_eq!(stmts.len(), 2);
-}
+    #[test]
+    #[ignore = "V312-17: parse_statements() API doesn't handle EOF properly - quarantined"]
+    fn test_parse_statements_no_trailing() {
+        let stmts = parse_statements("SELECT 1; SELECT 2;").unwrap();
+        assert_eq!(stmts.len(), 2);
+    }
 
 #[test]
 fn test_parse_statements_empty() {
