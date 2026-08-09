@@ -1,0 +1,16 @@
+[package]
+name = "compat-runner"
+version = "0.1.0"
+edition = "2021"
+description = "V312-21 / ISSUE #3908 — drives MySQL compat fixtures through MySqlTestClient and emits SURFACE_DISPOSITION.md"
+
+[dependencies]
+sqlrustgo-mysql-server = { path = "../../crates/mysql-server" }
+serde = { version = "1.0", features = ["derive"] }
+serde_yaml = "0.9"
+sha1 = "0.10"
+sha2 = "0.10"
+
+[[bin]]
+name = "compat-runner"
+path = "src/main.rs"

@@ -39,6 +39,7 @@ members = [
     "crates/sqlrustgo_sqllogictest",
     "crates/types",
     "crates/wal-verification",
+    "tools/compat-runner",
     "tools/xtask",
 ]
 
