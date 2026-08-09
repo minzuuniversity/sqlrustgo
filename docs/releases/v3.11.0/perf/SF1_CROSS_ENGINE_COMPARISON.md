@@ -62,37 +62,53 @@ are 100% consistent; SQLRustGo differs on 5 queries: Q2, Q12, Q16, Q18, Q20).
 
 ## 3. Per-Query Timing Comparison (ms)
 
-| Q  | SQLRustGo (ms) | PostgreSQL (ms) | SQLite (ms) | MySQL (ms) | speedup vs PG |
-|---:|---------------:|----------------:|------------:|-----------:|--------------:|
-|  1 |        21,571 |          1,861 |      4,835 |     9,777 | 0.1x slower |
-|  2 |         1,956 |            396 |        688 |       136 | 0.2x slower |
-|  3 |        34,772 |          2,654 |      9,392 |     6,862 | 0.1x slower |
-|  4 |         4,279 |            443 |        617 |       992 | 0.1x slower |
-|  5 |        44,022 |            847 |      1,750 |     3,249 | 0.0x slower |
-|  6 |         8,119 |            372 |      1,099 |     4,378 | 0.0x slower |
-|  7 |       348,531 |            510 |        904 |     3,405 | 0.0x slower |
-|  8 |        68,216 |          1,042 |      3,985 |     7,207 | 0.0x slower |
-|  9 |       815,102 |          2,518 |      5,495 |    11,542 | 0.0x slower |
-| 10 |        18,721 |            730 |      1,946 |     7,735 | 0.0x slower |
-| 11 |         4,791 |            374 |        155 |       368 | 0.1x slower |
-| 12 |        55,365 |            581 |      2,140 |     5,521 | 0.0x slower |
-| 13 |       714,577 |          1,125 |      4,439 |    12,659 | 0.0x slower |
-| 14 |         8,509 |            418 |     22,404 |     5,340 | 0.0x slower |
-| 15 |         9,042 |            418 |      1,095 |     4,570 | 0.0x slower |
-| 16 |        17,348 |            330 |        242 |       612 | 0.0x slower |
-| 17 |         6,365 |            935 |        148 |       639 | 0.1x slower |
-| 18 |        34,052 |          6,302 |     18,640 |   116,509 | 0.2x slower |
-| 19 |        11,500 |            103 |         74 |       162 | 0.0x slower |
-| 20 |           227 |            455 |      1,098 |       870 | 2.0x faster |
-| 21 |        52,512 |            671 |      5,880 |    21,411 | 0.0x slower |
-| 22 |         9,074 |            143 |        136 |       299 | 0.0x slower |
+| Q  | SQLRustGo (ms) | PostgreSQL (ms) | SQLite (ms) | MySQL (ms) | SQLR/PG |
+|---:|---------------:|----------------:|------------:|-----------:|--------:|
+|  1 |        21,571 |          1,861 |      4,835 |     9,777 |   11.6× |
+|  2 |         1,956 |            396 |        688 |       136 |    4.9× |
+|  3 |        34,772 |          2,654 |      9,392 |     6,862 |   13.1× |
+|  4 |         4,279 |            443 |        617 |       992 |    9.7× |
+|  5 |        44,022 |            847 |      1,750 |     3,249 |   52.0× |
+|  6 |         8,119 |            372 |      1,099 |     4,378 |   21.8× |
+|  7 |       348,531 |            510 |        904 |     3,405 |  682.8× |
+|  8 |        68,216 |          1,042 |      3,985 |     7,207 |   65.4× |
+|  9 |       815,102 |          2,518 |      5,495 |    11,542 |  323.7× |
+| 10 |        18,721 |            730 |      1,946 |     7,735 |   25.6× |
+| 11 |         4,791 |            374 |        155 |       368 |   12.8× |
+| 12 |        55,365 |            581 |      2,140 |     5,521 |   95.2× |
+| 13 |       714,577 |          1,125 |      4,439 |    12,659 |  635.0× |
+| 14 |         8,509 |            418 |     22,404 |     5,340 |   20.3× |
+| 15 |         9,042 |            418 |      1,095 |     4,570 |   21.6× |
+| 16 |        17,348 |            330 |        242 |       612 |   52.5× |
+| 17 |         6,365 |            935 |        148 |       639 |    6.8× |
+| 18 |        34,052 |          6,302 |     18,640 |   116,509 |    5.4× |
+| 19 |        11,500 |            103 |         74 |       162 |  111.8× |
+| 20 |           227 |            455 |      1,098 |       870 |    0.5× |
+| 21 |        52,512 |            671 |      5,880 |    21,411 |   78.3× |
+| 22 |         9,074 |            143 |        136 |       299 |   63.5× |
 
-| **Total** | **2,288.7 s** | **23.2 s** | **87.2 s** | **224.2 s** | — |
+| **Total** | **2,288.7 s** | **23.2 s** | **87.2 s** | **224.2 s** | **98.5×** |
 
+- `SQLR/PG` column = SQLRustGo time / PostgreSQL time. >1 means SQLRustGo is slower.
 - **PostgreSQL is the fastest** (23.2 s) — best join optimizer, hash aggregate, parallel scan.
 - **SQLite** is 3.8× slower than PG (87.2 s) — single-writer, no parallel scan.
 - **MySQL** is 9.7× slower than PG (224.2 s) — InnoDB but no PG-class hash join.
 - **SQLRustGo** is 98.5× slower than PG (2288.7 s) — single-threaded executor, in-process surface, BINT mmap (no LOAD DATA overhead).
+
+### 3.1 SQLRustGo vs SQLite (the comparable target)
+
+| Metric | SQLRustGo | SQLite | ratio |
+|--------|----------:|-------:|------:|
+| 22-query total | 2288.7 s | 87.2 s | 26.3× |
+| Per-query avg | 104.0 ms | 4.0 ms | 26.3× |
+| Faster queries (≤ SQLite) | 0/22 | — | — |
+| Slower queries (≥ 100×) | 6 (Q7, Q9, Q12, Q13, Q15, Q21) | — | — |
+| Slower queries (10-100×) | 7 (Q1, Q2, Q3, Q5, Q8, Q11, Q17) | — | — |
+| Faster queries (any) | 1 (Q20) | — | 2.0× |
+
+SQLite is the realistic target for SQLRustGo's embedded / single-process niche.
+SQLite is 26× faster at SF=1 in-process. The gap is dominated by SQLite's mature
+nested-loop + hash join optimizer. v3.12 P0 work targets this gap.
 
 ## 4. Per-Query Cell-Level Hash (PostgreSQL vs SQLite vs MySQL)
 
