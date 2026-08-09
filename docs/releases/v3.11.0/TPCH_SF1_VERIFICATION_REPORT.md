@@ -61,9 +61,9 @@ grep -rn "TPC-H SF=1 22/22 PASS\|22/22 ✅\|TPC-H SF=1 ✅ PASS\|all 22 queries 
 
 ### ✅ P0-1: 生成真实 TPC-H SF=1 fixture(阻塞 GA 门 G4) — **✅ DONE (2026-08-08)**
 
-**生成位置**: `192.168.0.250:/var/tmp/tpch-sf1`  
-**dbgen 路径**: `/opt/tpch/tpch-dbgen/dbgen` (预装)  
-**生成命令**: `dbgen -s 1 -f` → `/var/tmp/tpch-sf1/`  
+**生成位置**: `192.168.0.250:/var/tmp/tpch-sf1`
+**dbgen 路径**: `/opt/tpch/tpch-dbgen/dbgen` (预装)
+**生成命令**: `dbgen -s 1 -f` → `/var/tmp/tpch-sf1/`
 **磁盘空间**: 207GB free on `/`
 
 **Fixture 实测**:
@@ -81,8 +81,8 @@ Total: 1.1GB
 
 **注意**: `customer=150,000` 是 SF=1 正确值（原文档期望 `customer=1,500,000` 为 SF=10 误值；本 fixture 数值符合 TPC-H 官方 SF=1 规范）。
 
-**构建验证**: `cargo build --release -p sqlrustgo-server` ✅ (34.59s)  
-**Harness 测试**: `tpch_gate_test` 16/17 ✅ (1 个需要服务器连接)  
+**构建验证**: `cargo build --release -p sqlrustgo-server` ✅ (34.59s)
+**Harness 测试**: `tpch_gate_test` 16/17 ✅ (1 个需要服务器连接)
 **REPL 测试**: `e2e_query_test` 8/8 ✅
 
 **下一步**: 执行 `TPCH_SF1_DIR=/var/tmp/tpch-sf1 cargo test --release --test tpch_sf1_22_vs_3engines_test -- --ignored --nocapture` 完成 22/22 wire 协议测试。

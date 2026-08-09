@@ -1,8 +1,8 @@
 # TPC-H SF=0.1 Cross-Engine Baseline Report
 
-**日期**: 2026-07-15  
-**Scale Factor**: 0.1  
-**Fixture**: `tests/data/tpch-sf01/*.tbl` (dbgen 格式)  
+**日期**: 2026-07-15
+**Scale Factor**: 0.1
+**Fixture**: `tests/data/tpch-sf01/*.tbl` (dbgen 格式)
 **SQLite 版本**: 3.45.1
 
 ## 数据库规模 (SF=0.1)

@@ -1,7 +1,7 @@
 # TPC-H SF=1.0 执行分析报告
 
-**版本**: v3.11.0 (`develop/v3.11.0`, commit `698b69840d`)  
-**日期**: 2026-07-15  
+**版本**: v3.11.0 (`develop/v3.11.0`, commit `698b69840d`)
+**日期**: 2026-07-15
 **目的**: 详细分析 22 个 TPC-H 查询的执行路径、JOIN 算法及 OOM 根因
 
 ---
@@ -416,7 +416,7 @@ join_clause (自动重写后):
 
 **OOM 根因**: `customer` 是基表，最后加入。`supplier × customer` (via `c_nationkey=s_nationkey`) 产生 `200 × 30,000 = 6,000,000` 行中间结果，然后与 `orders` (`300,000`) 产生 `1.8 × 10^12` 行笛卡尔！
 
-**正确顺序应为**: `region(1) → nation(3) → supplier(200) → **orders(300K)** → **customer(30K)** → lineitem(210K)`  
+**正确顺序应为**: `region(1) → nation(3) → supplier(200) → **orders(300K)** → **customer(30K)** → lineitem(210K)`
 orders 的日期过滤在 JOIN 之前应用，将 1.5M 过滤到 300K。
 
 ---

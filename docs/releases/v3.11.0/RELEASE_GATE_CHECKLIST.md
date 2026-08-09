@@ -1,3 +1,29 @@
+# v3.11.0 发布门禁检查清单
+
+> **说明**: 本文件中文主文用于当前审阅；原始清单保留在附录。Checklist 中的状态不得替代实际 gate 输出。
+
+## 1. 清单定位
+
+发布门禁检查清单用于汇总 release 前必须确认的项目，包括 build/test、coverage、TPC-H、security、documentation、soak、regression 和 governance。它是执行入口，不是 PASS 证据本身。
+
+## 2. 必须特别注意的项目
+
+| 项 | 当前风险 |
+|---|---|
+| G3 Coverage | 存在多口径差异，必须看具体命令和报告 |
+| G4 TPC-H | 可运行性与 correctness / wire protocol 不是同一件事 |
+| SQLLogicTest | v3.11 中仍有 TBD/未集成 gate 风险，v3.12 必须承接 |
+| Security | 依赖审计需最新 `cargo audit` 输出 |
+| Documentation | 文档链接和一致性检查通过不等于功能 gate 通过 |
+
+## 3. v3.12 承接
+
+v3.12.0 应把本清单中仍缺执行证据或仍为 TBD 的项目升级为可执行 gate，尤其是 SQLLogicTest、TPC-H correctness、wire protocol、LOAD DATA、crash recovery、backup/restore 和 upgrade/downgrade。
+
+## 附录：英文原文
+
+> 本附录保留本文件改写前的英文原文，便于追溯历史语义。若英文附录与中文正文或 `COMPREHENSIVE_ASSESSMENT_REPORT.md` 冲突，当前正式判断以中文正文和综合评估报告为准。
+
 # v3.11.0 Release Gate Checklist
 
 **版本**: v3.11.0

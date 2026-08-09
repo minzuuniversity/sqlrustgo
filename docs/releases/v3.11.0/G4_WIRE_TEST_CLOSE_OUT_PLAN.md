@@ -1,3 +1,49 @@
+# v3.11.0 G4 TPC-H SF=1 Wire-Test 收口计划
+
+> **生成日期**: 2026-08-09
+> **ADR-008 例外到期**: 2026-09-01
+> **用途**: 明确 G4 从“可运行”走向“wire protocol + correctness”所需的补充验证。
+> **注意**: 本文件是 close-out plan，不是 22/22 wire correctness PASS 证据。
+
+## 1. 现实检查
+
+G4 GA gate 需要在 live server 上通过 MySQL wire protocol 执行 TPC-H SF=1 22 个 query。当前仓库中可确认的 22/22 证据主要证明 in-process/BINT 路径可运行；它不能自动等同于每个 query 都有 SF=1 wire protocol PASS artifact。
+
+| 状态 | 含义 |
+|---|---|
+| PASS / cell-level verified | 有单 query 可复核结果，仍建议在 SF=1 wire 路径复跑 |
+| UNVERIFIED | 源码中存在 wired loop 或历史执行线索，但缺少 SF=1 wire PASS artifact |
+| PARSER-ONLY | 只证明 parser 或局部修复，不证明 wire E2E |
+| WIRE-TIMEOUT | 已知 wire 路径存在超时或性能风险 |
+
+## 2. 逐 query 收口策略
+
+- Q1/Q2/Q6 等已有较强单元或 parser 证据的 query：优先复跑 SF=1 wire，并记录 exact row count。
+- Q3/Q4/Q7/Q10-Q20/Q22 等未验证 query：逐个补 `row_count`、checksum、耗时和输出 artifact。
+- Q5/Q21：确认 parser fix 是否真的进入 wire path，再跑 SF=1。
+- Q8/Q9：优先处理 `pre_filter_right_table` pushdown 和 timeout 风险。
+
+## 3. 当前 P0 风险
+
+`tests/integration/tpch/tpch_sf1_22_vs_3engines_test.rs` 依赖 `queries/q{1..22}.sql`，但这些 SQL 文件在当前树中缺失。若直接运行，存在 `std::fs::read_to_string` panic 风险。必须先修复 query source，再把测试纳入 gate。
+
+可选方案：
+
+1. 从 `tpch_gate_test.rs::tpch_queries()` 生成 `queries/qN.sql`。
+2. 调整 `QUERIES_DIR` 指向真实存在路径。
+3. 在测试文件内嵌 canonical SQL 字符串。
+
+## 4. v3.12 承接要求
+
+- 生成每个 query 的 SF=1 wire PASS/FAIL artifact。
+- 输出 row-count 与 SHA256，并与 SQLite/PostgreSQL/MySQL 至少一个外部基准对比。
+- 对 zero-row query 建立 issue、owner、到期时间和解释。
+- 去除 warn-only loop，gate 必须按真实失败返回非 0。
+
+## 附录：英文原文
+
+> 本附录保留本文件改写前的英文原文，便于追溯历史语义。若英文附录与中文正文或 `COMPREHENSIVE_ASSESSMENT_REPORT.md` 冲突，当前正式判断以中文正文和综合评估报告为准。
+
 # v3.11.0 G4 TPC-H SF=1 Wire-Test Close-Out Plan
 
 > **Generated**: 2026-08-09 (T0). **ADR-008 exception expires**: 2026-09-01 (T+23 days).

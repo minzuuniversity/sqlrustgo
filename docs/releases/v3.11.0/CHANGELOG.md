@@ -1,3 +1,33 @@
+# SQLRustGo v3.11.0 变更日志
+
+> **说明**: 本中文主文用于当前阅读；英文/混合原文保留在附录。若历史条目中的 commit、阶段或 PASS 口径与最新综合评估冲突，以 `COMPREHENSIVE_ASSESSMENT_REPORT.md` 和远端 git 状态为准。
+
+## 1. 版本定位
+
+v3.11.0 是一个 GA 发布版本，核心主题是债务清理、功能主路径集成、TPC-H SF=1 可运行性突破、SOAK 稳定性验证和发布文档收口。
+
+## 2. 主要变更类别
+
+| 类别 | 代表内容 |
+|---|---|
+| 存储与索引 | Clustered Index、Adaptive Hash Index、Change Buffer、Double-Write Buffer、Compression |
+| SQL 与执行器 | CREATE SEQUENCE parser、ALTER TABLE、Hash Semi/Anti Join、Decorrelation、CTE materialization |
+| 权限与安全 | RLS、Column Privileges、Password Rotation、Admin 权限路径 |
+| 性能与稳定性 | TPC-H SF=1 22/22 可运行、343h37m SOAK、Q4/Q5/Q21 等性能修复 |
+| 治理与文档 | truth audit、comprehensive assessment、coverage/G4 close-out、v3.12 规划承接 |
+
+## 3. 历史声明修正
+
+本变更日志保留了历史整改语境：v3.11.0 曾出现过 GA/TPC-H 22/22 等声明早于证据的情况，后续通过综合评估、TPC-H 可运行性报告、SOAK 报告和治理自审进行收口。引用本文件时必须区分历史条目和当前正式结论。
+
+## 4. v3.12 后续
+
+v3.12.0 将继续承接 SQLLogicTest、TPC-H correctness、coverage 口径、wire protocol、LOAD DATA、recovery、backup/restore、upgrade/downgrade 和 GMP/RAG/Vector/Graph 生产化工作。
+
+## 附录：英文原文
+
+> 本附录保留本文件改写前的英文原文，便于追溯历史语义。若英文附录与中文正文或 `COMPREHENSIVE_ASSESSMENT_REPORT.md` 冲突，当前正式判断以中文正文和综合评估报告为准。
+
 # SQLRustGo v3.11.0 Changelog
 
 > **版本**: v3.11.0

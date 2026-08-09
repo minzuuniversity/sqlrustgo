@@ -1,3 +1,47 @@
+# SQLRustGo v3.11.0 发布说明
+
+> **状态**: GA - General Availability
+> **发布日期**: 2026-08-09
+> **说明**: 本中文主文用于当前正式阅读；英文附录保留历史原文，其中若包含旧 commit、旧 PASS/PENDING 口径，应以 `COMPREHENSIVE_ASSESSMENT_REPORT.md` 和最新 gate 报告为准。
+
+## 1. 版本概览
+
+v3.11.0 的主线价值可以概括为：历史债务清理、功能孤岛进入主路径、性能瓶颈突破、GA 文档收口。
+
+本版本从 v3.6.0 到 v3.10.0 的遗留问题中继续收敛：
+
+- 处理 v3.10.0 继承的 legacy debt tasks。
+- 将多个 F-XX isolated features 推进到主路径。
+- 补齐部分此前未实现功能。
+- 对 extension crate 作出产品决策。
+- 针对 TPC-H 和相关子查询性能瓶颈进行优化。
+
+## 2. 主要变化
+
+| 类别 | 代表变更 |
+|---|---|
+| 存储引擎 | Clustered Index、Adaptive Hash Index、Change Buffer、Double-Write Buffer、Table Compression |
+| SQL / Protocol | ALTER TABLE RENAME/MODIFY、CREATE SEQUENCE parser、MySQL wire DDL 修复、TPC-H query 修复 |
+| 权限与安全 | Row-Level Security、Column-level Privileges、Password Rotation、Admin 权限路径 |
+| 执行器/优化器 | Hash Semi Join、Hash Anti Join、Decorrelation、CTE materialization |
+| 稳定性 | 343h37m SOAK，0 errors |
+| 文档治理 | 计划文档、发布说明、综合评估、truth audit、证据状态收口 |
+
+## 3. 已知边界
+
+- `CREATE SEQUENCE` 已有 parser 路径，但 executor 完整语义仍需 v3.12 继续补齐。
+- TPC-H SF=1 已有 22/22 可运行性证据，但跨引擎 correctness 仍需 row-count/SHA256 对比。
+- coverage 存在 `--lib` 与 `--lib --tests` 口径差异，不能混用为单一 PASS。
+- MySQL 5.7 替代声明必须限定在受控、可回滚、查询范围明确的场景。
+
+## 4. v3.12 后续
+
+v3.12.0 应优先处理：SQLLogicTest gate、TPC-H correctness、coverage 口径统一、wire protocol、LOAD DATA、crash recovery、backup/restore、upgrade/downgrade，以及 GMP/RAG/Vector/Graph 生产证据。
+
+## 附录：英文原文
+
+> 本附录保留本文件改写前的英文原文，便于追溯历史语义。若英文附录与中文正文或 `COMPREHENSIVE_ASSESSMENT_REPORT.md` 冲突，当前正式判断以中文正文和综合评估报告为准。
+
 # SQLRustGo v3.11.0 Release Notes — **GA (2026-08-09)** ✅
 
 > **Status**: **GA — General Availability** (TPC-H SF=1 22/22 verified, PR #3664 merged)
