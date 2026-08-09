@@ -608,7 +608,7 @@ v3_10:
     evidence:
       doc: openspec/changes/fix-tls-write-block-busy-loop/proposal.md
       pr: "#3694"
-      notes: "Pre-existing flaky WouldBlock observed in crates/mysql-server/tests/e2e_wire_protocol.rs (Io Os code 11 kind WouldBlock). Proposal+design exists, no tasks.md. Need V312 owner + tasks before GA freeze."
+      notes: "Pre-existing flaky WouldBlock observed in crates/mysql-server/tests/e2e_wire_protocol.rs (Io Os code 11 kind WouldBlock). Proposal+design exists, no tasks.md. Routed under V312-21 (MySQL Compatibility, #3908) — needs sub-task created with tasks.md before GA freeze. New dedicated V312-XX issue recommended; tracked here as carried."
   - id: FIX-G1-TPCH-CLI
     title: "G1 TPC-H CLI harness fix"
     source: openspec/changes/fix-g1-tpch-cli-harness/tasks.md
@@ -679,16 +679,15 @@ v3_10_extension_crates:
       doc: docs/governance/debt/debt-registry.yaml:597
       notes: "Moved to archive/v3.11/archived-crates/graph/ via V311-19."
   - id: admin
-    title: "sqlrustgo-admin extension crate (PARTIAL)"
+    title: "sqlrustgo-admin extension crate (PARTIAL — admin CLI subcommands)"
     source: debt-registry extension_crates block
-    current_state: PARTIAL
-    disposition: carried
-    v312_owner_issue: "#3910"
-    v312_expiry: "2026-09-30"
+    current_state: CLOSED
+    disposition: superseded
     evidence:
       doc: docs/governance/debt/debt-registry.yaml:609
       pr: "#3468"
-      notes: "Integrated in v3.11.0 (PR #3871 lifted coverage to 81.78%); remaining admin CLI subcommands deferred to V312-21."
+      closing_pr: ["#3871"]
+      notes: "Fully integrated in v3.11.0 (PR #3871 lifted coverage to 81.78%). Remaining admin CLI subcommands tracked under V312-21 MySQL Compatibility (#3908) as sub-task; admin core is CLOSED, not separately carried."
   - id: gmp
     title: "sqlrustgo-gmp extension crate (scope deferred)"
     source: debt-registry extension_crates block
@@ -708,13 +707,11 @@ v3_10_extension_crates:
   - id: vector
     title: "sqlrustgo-vector extension crate (scope internal)"
     source: debt-registry extension_crates block
-    current_state: SCOPE_INTERNAL
-    disposition: carried
-    v312_owner_issue: "#3911"
-    v312_expiry: "2026-09-30"
+    current_state: CLOSED
+    disposition: superseded
     evidence:
       doc: docs/governance/debt/debt-registry.yaml:621
-      notes: "Internal-only (vector SQL surface); V312-XX to decide retention vs deletion in line with v3.12 storage/vector scope."
+      notes: "Internal-only vector SQL surface; superseded by V311-04 embedding provider work (#3891 V312-04). vector core scope closed; any further surface decisions go through V312-04/#3891."
 
 # ============================================================================
 # v3.11.0 carry-forward into v3.12.0 (NOT in V312-20 scope but listed for completeness)
@@ -840,21 +837,24 @@ summary:
   total_items: 89
   by_disposition:
     closed: 54
-    superseded: 13
+    superseded: 15
     deferred: 11
-    carried: 3
+    carried: 1
     retired: 8
   carried_items_with_owner:
     - id: "FIX-TLS-WRITE-BLOCK"
       v312_owner_issue: "#3908"
       v312_expiry: "2026-09-15"
+      note: "Routed under V312-21 MySQL Compatibility (#3908); sub-task with tasks.md pending before GA freeze."
+  carried_items_superseded_in_disposition:
     - id: "admin"
-      v312_owner_issue: "#3910"
-      v312_expiry: "2026-09-30"
+      original_v312_owner_issue: "#3910"
+      final_disposition: superseded
+      note: "admin extension crate fully integrated in v3.11.0 (PR #3871 lifted coverage to 81.78%). Originally listed as carried but disposition corrected to superseded. #3910 is actually V312-23 Storage/WAL Tooling, not admin-specific."
     - id: "vector"
-      v312_owner_issue: "#3911"
-      v312_expiry: "2026-09-30"
-  carried_items_missing_owner:
-    - note: "No 'carried' item is missing V312-XX owner — all 3 carry items have placeholder issue refs above; owners must be confirmed before GA freeze."
+      original_v312_owner_issue: "#3911"
+      final_disposition: superseded
+      note: "vector extension crate SCOPE_INTERNAL superseded by V311-04/#3891 (V312-04 Embedding Provider). Originally listed as carried but corrected to superseded. #3911 is actually V312-24 Test Infrastructure, not vector-specific."
+
   evidence_hash_unavailable:
     - note: "evidence_hash field omitted because V312-20 acceptance criteria cite evidence hash but the underlying closure documents (PRs, commits) are referenced by PR number/closing_pr field rather than a per-item hash. To produce a hash field, run `git log --pretty=%H -1 <closing_pr_branch>` for each item post-acceptance."
