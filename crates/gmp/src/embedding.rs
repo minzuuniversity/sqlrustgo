@@ -49,9 +49,12 @@ pub const TABLE_EMBEDDINGS: &str = "gmp_embeddings";
 /// SQL to create the embeddings table
 pub const CREATE_EMBEDDINGS_TABLE: &str = r#"
 CREATE TABLE gmp_embeddings (
-    doc_id INTEGER PRIMARY KEY,
+    chunk_id INTEGER PRIMARY KEY,
     embedding TEXT NOT NULL,
-    updated_at INTEGER NOT NULL
+    updated_at INTEGER NOT NULL,
+    model_name TEXT NOT NULL,
+    dimension INTEGER NOT NULL,
+    vector_hash TEXT NOT NULL
 )
 "#;
 
