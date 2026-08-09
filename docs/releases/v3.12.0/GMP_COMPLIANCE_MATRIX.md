@@ -1,3 +1,32 @@
+# SQLRustGo v3.12.0 GMP 合规矩阵
+
+> **版本**: v3.12.0
+> **状态**: 规划中
+> **日期**: 2026-08-08
+
+本矩阵把 GMP 内审检索所需控制项映射到 SQLRustGo 的计划实现和测试证据。所有条目在真实测试和执行证据产生前，都必须保持 `PLANNED`，不得提前写成 PASS 或已完成。
+
+| 控制项 | 合规要求 | 计划实现 | 计划测试 | 状态 |
+|---|---|---|---|---|
+| Attributable 可归因 | 每个受监管动作都有明确操作者 | `gmp_audit_log.actor` | audit insert 必须带 actor | PLANNED |
+| Legible 可读 | 检索证据可读且能链接到来源 | chunk text + source path + citation | retrieval result 必须包含 citation text | PLANNED |
+| Contemporaneous 同步记录 | 事件时间在动作发生时记录 | 系统时钟写入 audit timestamp | import/search/export 均有 timestamp | PLANNED |
+| Original 原始性 | 保留源文档版本和 hash | document source hash + version table | re-import 创建新版本而不覆盖原文 | PLANNED |
+| Accurate 准确 | 检索证据可复核 | chunk hash + embedding hash | 返回 chunk hash 与存储文本一致 | PLANNED |
+| Complete 完整 | 语料导入报告覆盖所有文件 | ingestion report | 无未分类失败 | PLANNED |
+| Consistent 一致 | 数据模型确定性可复现 | stable document/chunk ids | 同一 corpus 生成相同 ID | PLANNED |
+| Enduring 持久 | backup/restore 保留记录 | backup/restore gate | restore 后 hash 与源一致 | PLANNED |
+| Available 可用 | 授权用户可检索证据 | ACL + retrieval API | permitted role 可检索 | PLANNED |
+| Access Control 访问控制 | 未授权访问 fail closed | role checks | restricted chunk 被拒绝 | PLANNED |
+| Audit Trail 审计追踪 | 审计链可防篡改 | previous hash + event hash | tamper test fail closed | PLANNED |
+| E-Signature 电子签名 | 审批/导出可签名 | signature hook | approval 需要 signature payload | PLANNED |
+| Traceability 可追溯 | findings 链接 SOP/CAPA/clause 证据 | graph projection tables | path query 返回 evidence bundle | PLANNED |
+| Retrieval Quality 检索质量 | 内审问题能命中相关文档 | hybrid retrieval + RRF | fixture hit-rate report | PLANNED |
+
+## 附录：英文原文
+
+> 本附录保留本文件改写前的英文原文，便于追溯历史语义；当前正式阅读与执行口径以上方中文正文为准。
+
 # SQLRustGo v3.12.0 GMP Compliance Matrix
 
 > **Version**: v3.12.0
