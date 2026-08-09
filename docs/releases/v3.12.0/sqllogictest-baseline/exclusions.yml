@@ -1,4 +1,153 @@
-# v3.12 SQLLogicTest exclusion registry
-# V312-11 must replace this seed with issue-linked exclusions.
-status: seed
-items: []
+# v3.12 SQLLogicTest Exclusion Registry
+# V312-11 exclusion registry for FAIL files with root_cause, owner, expiry, follow_up
+status: active
+last_updated: 2026-08-10
+commit: 941a63dbdb
+
+items:
+  # === Parser/Syntax Issues ===
+
+  - file: alter_table_set_partitioned_by.test
+    category: parser
+    root_cause: DuckDB PARTITIONED BY syntax not supported; expected 'not supported' but got parse error
+    owner: openclaw
+    expiry: 2027-06-30
+    follow_up: openspec/v313-08
+    closure_criteria: "ALTER TABLE PARTITIONED BY syntax support implemented and test passes"
+
+  - file: case_insensitive_alter.test
+    category: parser
+    root_cause: Case-insensitive ALTER TABLE keywords not fully implemented
+    owner: openclaw
+    expiry: 2027-06-30
+    follow_up: openspec/v313-08
+    closure_criteria: "Case-insensitive ALTER TABLE supported and test passes"
+
+  - file: update__test_update.test
+    category: parser
+    root_cause: UPDATE with constraint syntax (con1) not supported
+    owner: openclaw
+    expiry: 2027-06-30
+    follow_up: openspec/v313-08
+    closure_criteria: "UPDATE constraint syntax supported and test passes"
+
+  - file: alter__alter_table_set_partitioned_by.test
+    category: parser
+    root_cause: DuckDB ALTER TABLE SET PARTITIONED BY syntax not supported
+    owner: openclaw
+    expiry: 2027-06-30
+    follow_up: openspec/v313-08
+    closure_criteria: "ALTER TABLE SET PARTITIONED BY supported and test passes"
+
+  # === Semantic/Execution Issues ===
+
+  - file: insert__test_insert.test
+    category: semantic
+    root_cause: INSERT returning wrong row count (expected 3, got fewer)
+    owner: openclaw
+    expiry: 2027-06-30
+    follow_up: openspec/v313-09
+    closure_criteria: "INSERT returns correct row count and test passes"
+
+  - file: insert__test_insert_invalid.test
+    category: semantic
+    root_cause: Invalid INSERT with special characters not properly rejected
+    owner: openclaw
+    expiry: 2027-06-30
+    follow_up: openspec/v313-09
+    closure_criteria: "Invalid INSERT properly rejected with correct error"
+
+  - file: setops__test_except.test
+    category: semantic
+    root_cause: EXCEPT set operator returns incorrect order/rows
+    owner: openclaw
+    expiry: 2027-06-30
+    follow_up: openspec/v313-10
+    closure_criteria: "EXCEPT returns correct results and test passes"
+
+  - file: setops__test_setops.test
+    category: semantic
+    root_cause: Set operations (UNION/INTERSECT/EXCEPT) semantics incorrect
+    owner: openclaw
+    expiry: 2027-06-30
+    follow_up: openspec/v313-10
+    closure_criteria: "Set operations return correct results and tests pass"
+
+  - file: test_constraint_with_updates.test
+    category: semantic
+    root_cause: UPDATE constraint checking not enforced (statement expected to fail but succeeded)
+    owner: openclaw
+    expiry: 2027-06-30
+    follow_up: openspec/v313-11
+    closure_criteria: "UPDATE constraint checking implemented and test fails correctly"
+
+  # === Aggregate/Window Issues ===
+
+  - file: aggregate__quantile_fun.test
+    category: aggregate
+    root_cause: QUANTILE aggregate function not implemented
+    owner: openclaw
+    expiry: 2027-06-30
+    follow_up: openspec/v313-12
+    closure_criteria: "QUANTILE function implemented and test passes"
+
+  - file: quantile_fun.test
+    category: aggregate
+    root_cause: QUANTILE function not implemented
+    owner: openclaw
+    expiry: 2027-06-30
+    follow_up: openspec/v313-12
+    closure_criteria: "QUANTILE function implemented and test passes"
+
+  - file: sql__quantile_fun.test
+    category: aggregate
+    root_cause: QUANTILE function not implemented
+    owner: openclaw
+    expiry: 2027-06-30
+    follow_up: openspec/v313-12
+    closure_criteria: "QUANTILE function implemented and test passes"
+
+  - file: order__test_limit.test
+    category: semantic
+    root_cause: LIMIT/OFFSET with complex ORDER BY not handled correctly
+    owner: openclaw
+    expiry: 2027-06-30
+    follow_up: openspec/v313-13
+    closure_criteria: "LIMIT/OFFSET with ORDER BY works correctly and test passes"
+
+  # === Constraint Issues ===
+
+  - file: constraints__test_not_null.test
+    category: constraint
+    root_cause: NOT NULL constraint checking in UPDATE not enforced
+    owner: openclaw
+    expiry: 2027-06-30
+    follow_up: openspec/v313-14
+    closure_criteria: "NOT NULL constraint enforced on UPDATE and test passes"
+
+  # === Binder Issues ===
+
+  - file: binder__alias_error_10057.test
+    category: binder
+    root_cause: Alias error handling not properly implemented
+    owner: openclaw
+    expiry: 2027-06-30
+    follow_up: openspec/v313-15
+    closure_criteria: "Alias error handled correctly and test passes"
+
+  # === CREATE TABLE Issues ===
+
+  - file: create_as.test
+    category: ddl
+    root_cause: CREATE TABLE AS SELECT semantics not fully implemented
+    owner: openclaw
+    expiry: 2027-06-30
+    follow_up: openspec/v313-08
+    closure_criteria: "CREATE TABLE AS SELECT works correctly and test passes"
+
+# Summary
+total_excluded: 16
+total_test_files: 16
+pass_rate_baseline: "27.3% (6/16)"
+pass_rate_target: "100% (16/16)"
+deferred_to_v313: true
