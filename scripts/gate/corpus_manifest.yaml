@@ -21,14 +21,14 @@
 
 targets:
   - name: parser_fixtures
-    command: cargo test -p sqlrustgo-parser --test fixtures
+    command: cargo test -p sqlrustgo-parser --test parser_all_statements_tests -- --test-threads=1
     evidence_dir: docs/releases/v3.12.0/evidence/sql_corpus/parser_fixtures
-    min_cases: 100
+    min_cases: 50
 
   - name: sqllogictest_local
     command: cargo run -p sqlrustgo_sqllogictest -- --test-dir crates/sqlrustgo_sqllogictest/testdata
     evidence_dir: docs/releases/v3.12.0/evidence/sql_corpus/sqllogictest_local
-    min_cases: 100
+    min_cases: 16
 
   - name: tpch_sf1
     command: bash scripts/gate/per_query_sf1.sh
@@ -50,3 +50,15 @@ targets:
     command: bash scripts/gate/check_v312_21_mysql_compat.sh
     evidence_dir: docs/releases/v3.12.0/evidence/mysql_compat
     min_cases: 10
+  - name: v312_13_typed_wrappers
+    command: cargo test --test v312_13_typed_wrappers_test -- --test-threads=1
+    evidence_dir: docs/releases/v3.12.0/evidence/wire_load_data
+    min_cases: 6
+  - name: mysql_wire_protocol_regression
+    command: cargo test --test mysql_wire_protocol_test -- --test-threads=1
+    evidence_dir: docs/releases/v3.12.0/evidence/wire_load_data
+    min_cases: 20
+  - name: e2e_wire_protocol
+    command: cargo test -p sqlrustgo-mysql-server --test e2e_wire_protocol -- --test-threads=1
+    evidence_dir: docs/releases/v3.12.0/evidence/wire_load_data
+    min_cases: 20

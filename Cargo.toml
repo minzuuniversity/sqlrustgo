@@ -1359,6 +1359,10 @@ path = "tests/integration/wire/mysql_wire_protocol_test.rs"
 [[test]]
 name = "v312_13_typed_wrappers_test"
 path = "tests/integration/wire/v312_13_typed_wrappers_test.rs"
+
+[[test]]
+name = "v312_13_load_data_sf1_test"
+path = "tests/integration/tpch/v312_13_load_data_sf1_test.rs"
 [[test]]
 name = "oracle_g16_compat"
 path = "tests/integration/wire/oracle_g16_compat.rs"
