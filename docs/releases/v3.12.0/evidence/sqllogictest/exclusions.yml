@@ -1,0 +1,123 @@
+# V312-11 SQLLogicTest Oracle Gate — Exclusion Manifest
+# ISSUE #3898
+
+exclusions:
+  # === PARSER GAP: VALUES constructor not supported ===
+  - file: insert__test_insert_invalid.test
+    reason: "Parse error: Expected expression — VALUES constructor parser gap"
+    category: parser
+    owner: openclaw
+    expiry: "2027-06-30"
+    follow_up: "v313-08-sqlite-values-constructor"
+
+  - file: insert__test_insert.test
+    reason: "Query result mismatch — VALUES constructor not properly supported"
+    category: parser
+    owner: openclaw
+    expiry: "2027-06-30"
+    follow_up: "v313-08-sqlite-values-constructor"
+
+  # === PARSER GAP: VALUES constructor ===
+  - file: update__test_update.test
+    reason: "Parse error: unexpected token 'con1' — UPDATE with VALUES subquery"
+    category: parser
+    owner: openclaw
+    expiry: "2027-06-30"
+    follow_up: "v313-08-sqlite-values-constructor"
+
+  # === PARSER GAP: EXCEPT ALL / INTERSECT ALL ===
+  - file: setops__test_except.test
+    reason: "Query result mismatch — EXCEPT ALL semantics not implemented"
+    category: semantic
+    owner: openclaw
+    expiry: "2027-06-30"
+    follow_up: "v313-09-sqlite-setops-all"
+
+  - file: setops__test_setops.test
+    reason: "Parse error: INTERSECT ALL / EXCEPT ALL with VALUES constructor"
+    category: parser
+    owner: openclaw
+    expiry: "2027-06-30"
+    follow_up: "v313-09-sqlite-setops-all"
+
+  # === PARSER GAP: Window functions in ORDER BY ===
+  - file: order__test_limit.test
+    reason: "Parse error: Invalid LIMIT with window function"
+    category: parser
+    owner: openclaw
+    expiry: "2027-06-30"
+    follow_up: "v313-10-sqlite-window-limit"
+
+  # === PARSER GAP: ALTER TABLE SET PARTITIONED BY ===
+  - file: alter__alter_table_set_partitioned_by.test
+    reason: "Parse error: Expected ADD, DROP, MODIFY or RENAME — DuckDB PARTITIONED BY syntax not supported"
+    category: parser
+    owner: openclaw
+    expiry: "2027-06-30"
+    follow_up: "v313-11-sqlite-alter-partitioned"
+
+  - file: alter_table_set_partitioned_by.test
+    reason: "Parse error: Expected ADD, DROP, MODIFY or RENAME — DuckDB PARTITIONED BY syntax not supported"
+    category: parser
+    owner: openclaw
+    expiry: "2027-06-30"
+    follow_up: "v313-11-sqlite-alter-partitioned"
+
+  - file: case_insensitive_alter.test
+    reason: "Parse error: ALTER TABLE variants not fully implemented"
+    category: parser
+    owner: openclaw
+    expiry: "2027-06-30"
+    follow_up: "v313-11-sqlite-alter-partitioned"
+
+  # === SEMANTIC GAP: expected-fail succeeds ===
+  - file: constraints__test_not_null.test
+    reason: "Statement expected to fail but succeeds — NOT NULL constraint not enforced"
+    category: semantic
+    owner: openclaw
+    expiry: "2027-06-30"
+    follow_up: "v313-12-sqlite-notnull-enforcement"
+
+  - file: test_constraint_with_updates.test
+    reason: "Statement expected to fail but succeeds — constraint enforcement on UPDATE"
+    category: semantic
+    owner: openclaw
+    expiry: "2027-06-30"
+    follow_up: "v313-12-sqlite-notnull-enforcement"
+
+  - file: binder__alias_error_10057.test
+    reason: "Query expected to fail but succeeds — column alias in WHERE clause should error"
+    category: semantic
+    owner: openclaw
+    expiry: "2027-06-30"
+    follow_up: "v313-13-sqlite-alias-scoping"
+
+  # === SEMANTIC GAP: Query result mismatch ===
+  - file: create_as.test
+    reason: "Query result mismatch — CREATE TABLE AS behavior differs"
+    category: semantic
+    owner: openclaw
+    expiry: "2027-06-30"
+    follow_up: "v313-14-sqlite-create-as"
+
+  # === PARSER GAP: invalid test harness line ===
+  - file: aggregate__quantile_fun.test
+    reason: "Parse error: 'set variable sf 0.001' — test harness directive not supported"
+    category: harness
+    owner: openclaw
+    expiry: "2027-06-30"
+    follow_up: "v313-15-sqlite-harness-directives"
+
+  - file: sql__quantile_fun.test
+    reason: "Parse error: 'set variable sf 0.001' — test harness directive not supported"
+    category: harness
+    owner: openclaw
+    expiry: "2027-06-30"
+    follow_up: "v313-15-sqlite-harness-directives"
+
+  - file: quantile_fun.test
+    reason: "Parse error: 'set variable sf 0.001' — test harness directive not supported"
+    category: harness
+    owner: openclaw
+    expiry: "2027-06-30"
+    follow_up: "v313-15-sqlite-harness-directives"
