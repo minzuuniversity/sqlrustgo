@@ -1,0 +1,52 @@
+# V312-19 / ISSUE #3906 — corpus_manifest.yaml
+#
+# Enumerates every SQL corpus target the v3.12.0 release ships. Each
+# row is consumed by scripts/gate/test_sql_corpus.sh (extended) and
+# scripts/gate/check_v312_19_release_gates.sh to produce
+# docs/releases/v3.12.0/evidence/sql_corpus/ALL_TARGETS_REPORT.md.
+#
+# Per openspec/changes/v312-19-sql-corpus-arch-invariant-reviewer-gate:
+#   - name:           unique target id
+#   - command:        command to run for this target
+#   - evidence_dir:   directory under docs/releases/v3.12.0/evidence/
+#                     where per-run artifacts land
+#   - min_cases:      soft floor; below it, the runner marks the row
+#                     with a deferred note
+#   - allow_missing:  (optional) if true, the gate does not fail when
+#                     the target's command exits non-zero
+#
+# The runtime runner extension to test_sql_corpus.sh is tracked in
+# v312-19 tasks §1.1-1.3. This manifest is the SSOT for which targets
+# v3.12.0 will gate on; the runner is the next commit.
+
+targets:
+  - name: parser_fixtures
+    command: cargo test -p sqlrustgo-parser --test fixtures
+    evidence_dir: docs/releases/v3.12.0/evidence/sql_corpus/parser_fixtures
+    min_cases: 100
+
+  - name: sqllogictest_local
+    command: cargo run -p sqlrustgo_sqllogictest -- --test-dir crates/sqlrustgo_sqllogictest/testdata
+    evidence_dir: docs/releases/v3.12.0/evidence/sql_corpus/sqllogictest_local
+    min_cases: 100
+
+  - name: tpch_sf1
+    command: bash scripts/gate/per_query_sf1.sh
+    evidence_dir: docs/releases/v3.12.0/evidence/sql_corpus/tpch_sf1
+    min_cases: 22
+
+  - name: tpch_sf10
+    command: bash scripts/gate/per_query_v2.sh --sf 10
+    evidence_dir: docs/releases/v3.12.0/evidence/sql_corpus/tpch_sf10
+    min_cases: 22
+    allow_missing: true
+
+  - name: wire_corpus
+    command: bash scripts/gate/check_v312_13_wire_load_data.sh
+    evidence_dir: docs/releases/v3.12.0/evidence/wire_load_data
+    min_cases: 6
+
+  - name: mysql_compat
+    command: bash scripts/gate/check_v312_21_mysql_compat.sh
+    evidence_dir: docs/releases/v3.12.0/evidence/mysql_compat
+    min_cases: 10

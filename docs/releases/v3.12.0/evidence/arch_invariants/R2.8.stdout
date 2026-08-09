@@ -1,0 +1,6 @@
+TODO: implement R2.8
+
+This is a stub. The v3.12.0 release must either:
+  1. Land the real R2.8 check, or
+  2. Mark this R2.N as deferred with owner + expiry
+     in a follow-up issue.

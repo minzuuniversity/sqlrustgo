@@ -1,0 +1,8 @@
+=== ARCH-2: No DML Bypass Gate (Issue #2974 / #3101) ===
+
+❌ NEW ARCH-2 bypass detected (excluding whitelist + #[test] blocks):
+
+crates/optimizer/src/stats_collector.rs:253:        storage.insert(table, records).unwrap();
+
+Fix: route DML through ExecutionEngine.execute() or VtuGuard::execute_dml().
+See issue #2974 for the canonical pattern; follow-up #3101-sub for openclaw_endpoints.rs.
