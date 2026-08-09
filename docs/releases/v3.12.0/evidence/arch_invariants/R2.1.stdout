@@ -2,15 +2,15 @@
 
 ❌ NEW ARCH-2 bypass detected (excluding whitelist + #[test] blocks):
 
+crates/optimizer/src/stats_collector.rs:253:        storage.insert(table, records).unwrap();
+crates/gmp/src/vector_index.rs:281:    storage.insert(TABLE_VECTOR_INDEX, vec![row])?;
 crates/gmp/src/ingestion.rs:156:    storage.insert(TABLE_DOCUMENTS, vec![row])?;
 crates/gmp/src/version.rs:128:    storage.insert(TABLE_DOCUMENT_VERSIONS, vec![row])?;
 crates/gmp/src/chunk.rs:132:                    storage.delete(TABLE_CHUNKS, &[Value::Integer(chunk.id)])?;
 crates/gmp/src/chunk.rs:133:                    storage.insert(TABLE_CHUNKS, vec![updated])?;
 crates/gmp/src/chunk.rs:165:    storage.insert(TABLE_CHUNKS, vec![row])?;
 crates/gmp/src/chunk.rs:221:        storage.delete(TABLE_CHUNKS, &[Value::Integer(chunk.id)])?;
-crates/gmp/src/vector_index.rs:281:    storage.insert(TABLE_VECTOR_INDEX, vec![row])?;
 crates/gmp/src/relation.rs:157:    storage.insert(TABLE_RELATIONS, vec![row])?;
-crates/optimizer/src/stats_collector.rs:253:        storage.insert(table, records).unwrap();
 
 Fix: route DML through ExecutionEngine.execute() or VtuGuard::execute_dml().
 See issue #2974 for the canonical pattern; follow-up #3101-sub for openclaw_endpoints.rs.
