@@ -102,3 +102,19 @@ $ sha256sum openspec/changes/v312-24-test-infra-activation/proposal.md \
 #   docs/releases/v3.12.0/ISSUES_PLAN.md
 #   IN
 #   sha256sum $(cat /tmp/evhash_inputs.txt) | sha256sum
+
+# ---- V312-30 reconciliation hash (post 5 remediations + 15-item table) ----
+# SHA-256 of the 17-file composite:
+#   e4765c53a41e8f5b443f26c79924bf07a966953a8eb78de5175205f63ac0d7bd
+#
+# 5 V312-30 remediations added (relative to previous eb441a2e hash):
+#   1. tests/integration/sql/union_set_operations_test.rs:1 INTERSECT #[ignore]
+#      + ignore_registry.json +3 entries (2 restored + 1 new)
+#   2. scripts/gate/e2e/e2e_07_json_vector.sh: byte-exact vector value
+#   3. tests/e2e/backup_restore_docker.sh: docker cp path added
+#   4. tests/e2e/sysbench_smoke_test.sh: standalone sysbench invocation
+#   5. tests/integration/tpch/tpch_wire_smoke_sf.rs:2 #[ignore] for Q1.json
+#      missing; + check_sql_compat.sh:23 fail-explicit (1 of 29 || true masks)
+#   6. docs/releases/v3.12.0/V312-24_test_infra_activation_report.md:
+#      15-item disposition table (16 rows incl 4 + 9 grouping)
+#   7. tests/data/tpch-sf001 -> symlink to tpch-sf001-real (was broken /tmp)
