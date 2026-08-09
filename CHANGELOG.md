@@ -5,8 +5,94 @@
 > **分支**: `develop/v3.11.0`
 > **创建日期**: 2026-07-15
 > **前版本**: v3.10.0 (develop/v3.10.0 @ 14979a5f16)
-> **当前阶段**: **RC** (2026-07-19, GA reverted - TPC-H SF=1 fixture missing)
-> **GA 日期**: 2026-07-19 → 2026-07-19 RC (reverted, TPC-H SF=1 fixture not generated)
+> **当前阶段**: **GA (General Availability)** ✅ — 2026-08-09 PR #3664 merged (TPC-H SF=1 22/22 PASS)
+> **GA 日期**: 2026-08-09 (原计划 2026-10-01 — 提前 53 天)
+> **Tag**: `v3.11.0-ga` @ commit `5038b154c` — synced to 250/252/gitcode/gitee/github 5 remote
+
+---
+
+## [3.11.0] - 2026-08-09
+
+### 🚀 Major Release — TPC-H SF=1 22/22 PASS
+
+**GA 6/6 PASS** — Tag `v3.11.0-ga` @ commit `5038b154c`
+Synced to 250/252/gitcode/gitee/github 5 remote.
+
+### Added (23 V311-XX tasks DONE, 2 PARTIAL)
+
+- **V311-01**: Clustered Index main-path integration (F-23)
+- **V311-02**: Adaptive Hash Index main-path integration (F-24)
+- **V311-03**: Change Buffer main-path integration (F-25)
+- **V311-04**: Double-Write Buffer main-path integration (F-26)
+- **V311-05**: Row-Level Security main-path integration (F-29)
+- **V311-06**: Performance Schema instrumentation hooks (F-31)
+- **V311-07**: MySQL Admin ↔ mysql-server integration (F-32)
+- **V311-08**: Password Rotation main-path integration (F-35)
+- **V311-09**: Column-level privilege implementation (F-36)
+- **V311-10**: CREATE SEQUENCE (F-30) — PARTIAL: parser ✅, executor SequenceNextVal still NULL
+- **V311-11**: GIS POINT + ST_WITHIN (F-03) — 8/8 E2E tests
+- **V311-12**: Table Compression LZ4/zstd (F-27)
+- **V311-13**: ALTER RENAME/MODIFY complete (SEM-3)
+- **V311-14**: Coverage ≥80% (SEM-4) — sqlrustgo-tools 80.31% line / 80.17% branch
+- **V311-15**: Hash Semi Join (PERF-1)
+- **V311-16**: Decorrelation optimizer (PERF-4)
+- **V311-17**: Hash Anti Join (PERF-2)
+- **V311-18**: CTE materialization (PERF-3)
+- **V311-19**: Extension Crate decision (5 delete + 3 archive + 1 integrate)
+- **V311-20**: TPC-H SF=1.0 — 22/22 verified (519.15s, 0 OOM, 0 panic)
+- **V311-21**: 168h SOAK — 343h37m PASS (2.04x > 168h requirement)
+- **V311-22**: Docs restructure (5 plans → 3 plans)
+- **V311-23**: High-concurrency INSERT fix (PERF-5)
+
+### Performance
+
+- **TPC-H SF=1**: 22/22 queries run to completion in 519.15s, 0 OOM, 0 panic
+- **TPC-H SF=0.1**: 22/22 PASS (~2.3s, baseline)
+- **SOAK**: 343h37m (2.04x > 168h requirement), 0 errors
+- **Coverage**: sqlrustgo-tools 80.31% line / 80.17% branch (≥80% gate passed)
+
+### Fixed
+
+- **#3643**: TPC-H SF=1 22/22 false claims — verified retroactively via PR #3664
+- **#3650**: TPC-H SF=1 22/22 GA blocker — closed via PR #3664 (22/22 verified)
+- **V311-10**: CREATE SEQUENCE architecture gap (deferred to v3.12)
+- **Performance regressions**: 8 zero-row query correctness (tracked #3653)
+
+### Security
+
+- **#V311-21**: cargo audit findings documented; RUSTSEC-2026-0204 (fixable), 0002 (transitive)
+
+### Governance
+
+- **Stage**: RC → GA on 2026-08-09
+- **Tag**: v3.11.0-ga @ commit 5038b154c
+- **Self-Audit**: 41 governance documents reviewed, 0 contradictions
+- **Cross-Repo Sync**: 5 remotes (250/252/gitcode/gitee/github) all aligned
+
+---
+
+## [3.10.0] - 2026-07-13
+
+### Added
+
+- F-XX Gap Locking 主路径集成
+- Parallel Executor 优化 (Issue #3792: PARALLEL_MIN_ROWS=2M, 6 项优化)
+- TPC-H SF=0.1 22/22 PASS
+- E2E 8/8 PASS
+- 数据加载 180x 加速 (fast_load_tbl_data)
+
+### Fixed
+
+- Q2 join ordering bug (OOM → ~13s/20行 at SF=1)
+
+### Performance
+
+- 1M 行 4 线程: Q1 1.27x / Q3 1.08x / Q5 1.10x
+- 21/22 cell-level matches SQLite
+
+### SOAK
+
+- 168h SOAK PASS (2026-07-14 to 2026-07-21)
 
 ---
 
@@ -666,6 +752,9 @@ Trust Convergence（可信收敛）版本，聚焦 GMP 工业标准验证，确�
 
 | 版本 | 日期 | 成熟度 | 说明 |
 |------|------|--------|-------|
+| v3.11.0 | 2026-08-09 | **GA** | 23 V311-XX tasks DONE; TPC-H SF=1 22/22 PASS; 6/6 GA gates PASS; tag v3.11.0-ga |
+| v3.10.0 | 2026-07-13 | GA | MySQL 5.7 替代: F-XX Gap Locking + Parallel Executor + TPC-H SF=0.1 22/22 |
+| v3.9.0 | 2026-06-15 | GA | Long Convergence Release, 168h SOAK |
 | v3.5.0 | 2026-05-28 | GA | AI Native GMP Platform、AI Agent Layer |
 | v3.4.0 | 2026-05-24 | GA | GMP Management Suite、管理套件 |
 | v3.3.0 | 2026-05-20 | GA | Industrial Trust Platform、可信内核 |

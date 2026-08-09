@@ -243,6 +243,10 @@ name = "unit_parser_token_test"
 path = "tests/integration/sql/parser_token_test.rs"
 
 [[test]]
+name = "parser_e2e_test"
+path = "tests/integration/sql/parser_e2e_test.rs"
+
+[[test]]
 name = "cbo_integration_test"
 path = "tests/integration/optimizer/cbo_integration_test.rs"
 
@@ -535,6 +539,11 @@ path = "tests/integration/int3_spec_complete_test.rs"
 [[test]]
 name = "int2_mysql_server_persistence_test"
 path = "tests/integration/int2_mysql_server_persistence_test.rs"
+
+[[test]]
+name = "mysql_server_e2e_test"
+path = "tests/integration/mysql_server_e2e_test.rs"
+
 # INT-2 (#3270) — Cross-version upgrade (synthetic v3.8.0 file format readable by v3.9.0)
 [[test]]
 name = "int2_cross_version_upgrade_test"
