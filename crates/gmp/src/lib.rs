@@ -58,6 +58,7 @@ pub mod persist_sqlite;
 pub mod report;
 pub mod ingestion;
 pub mod graph;
+pub mod rag;
 pub mod chunk;
 pub mod relation;
 pub mod schema;
