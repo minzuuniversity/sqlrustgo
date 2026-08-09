@@ -74,3 +74,9 @@ TPC-H SF=1 fixture data is ready. `LOAD DATA INFILE` parser implementation is **
 
 **V312-13 closure status:** ⏳ **Partial** — fixture ✅, parser ⏳ (deferred to #3959)
 
+
+---
+
+## V312-13 Re-verify (2026-08-09T17:30:00Z)
+
+On current HEAD `898768bd89`, `bash scripts/gate/check_load_data_infile.sh` → 4/4 PASS exit 0 (after PR #3976 chmod +x fix).

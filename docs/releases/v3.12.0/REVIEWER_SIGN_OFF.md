@@ -193,3 +193,9 @@ $ bash scripts/gate/check_anti_fabrication.sh
 
 **Follow-up Issue:** [V312-24] MySQL Wire Hardening Deferred Items — #3959 (open, owner=openclaw, expiry=2026-09-30)
 
+
+---
+
+## V312-13 Re-apply Closure (2026-08-09T17:30:00Z)
+
+Verified on current HEAD `898768bd89` per codex #88100 reopen fix. PR #3976 merged.
