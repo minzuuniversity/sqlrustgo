@@ -373,4 +373,79 @@ mod tests {
         let config = HashConfig::default();
         assert_eq!(config.dimension, 256);
     }
+    #[test]
+    fn test_ollama_provider_creation() {
+        let cfg = OllamaConfig {
+            base_url: "http://test".to_string(),
+            model: "m".to_string(),
+            dimension: 768,
+        };
+        let p = ollama::OllamaProvider::new(cfg);
+        assert_eq!(p.name(), "ollama");
+        assert_eq!(p.dimension(), 768);
+        assert!(p.is_local());
+    }
+
+    #[test]
+    fn test_ollama_provider_from_env() {
+        let p = ollama::OllamaProvider::from_env();
+        assert_eq!(p.name(), "ollama");
+        assert_eq!(p.dimension(), 768);
+    }
+
+    #[test]
+    fn test_openai_provider_creation() {
+        let cfg = OpenAIConfig {
+            api_key: "k".to_string(),
+            model: "m".to_string(),
+            base_url: "http://api".to_string(),
+            dimension: 1536,
+        };
+        let p = openai::OpenAIProvider::new(cfg);
+        assert_eq!(p.name(), "openai");
+        assert_eq!(p.dimension(), 1536);
+        assert!(!p.is_local());
+    }
+
+    #[test]
+    fn test_openai_provider_from_env_none() {
+        // If OPENAI_API_KEY is not set, should return None
+        std::env::remove_var("OPENAI_API_KEY");
+        let p = openai::OpenAIProvider::from_env();
+        assert!(p.is_none());
+    }
+
+    #[test]
+    fn test_hash_provider_creation() {
+        let p = hash::HashEmbeddingProvider::new(HashConfig { dimension: 64 });
+        assert_eq!(p.name(), "hash");
+        assert_eq!(p.dimension(), 64);
+        assert!(p.is_local());
+        assert!(p.supports_batch());
+    }
+
+    #[test]
+    fn test_provider_factory_create_ollama() {
+        let p = ProviderFactory::create(EmbeddingProviderConfig::Ollama(OllamaConfig::default()));
+        assert_eq!(p.name(), "ollama");
+    }
+
+    #[test]
+    fn test_provider_factory_create_openai() {
+        let p = ProviderFactory::create(EmbeddingProviderConfig::OpenAI(OpenAIConfig::default()));
+        assert_eq!(p.name(), "openai");
+    }
+
+    #[test]
+    fn test_provider_factory_create_ollama_helper() {
+        let p = ProviderFactory::create_ollama();
+        assert_eq!(p.name(), "ollama");
+    }
+
+    #[test]
+    fn test_provider_factory_create_openai_helper() {
+        // If OPENAI_API_KEY is set, returns Some; otherwise None
+        std::env::remove_var("OPENAI_API_KEY");
+        let _ = ProviderFactory::create_openai();
+    }
 }

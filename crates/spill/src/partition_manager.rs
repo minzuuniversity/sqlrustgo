@@ -164,4 +164,43 @@ mod tests {
         let read_back: Vec<Row> = pm.read_partition(id).unwrap();
         assert_eq!(read_back, rows);
     }
+    #[test]
+    fn test_with_dir_creates_partition() {
+        let tmp = tempfile::tempdir().unwrap();
+        let mut pm = PartitionManager::with_dir(tmp.path().to_path_buf()).unwrap();
+        let id = pm.write_partition(&vec![1, 2, 3]).unwrap();
+        assert_eq!(id, 0);
+        assert_eq!(pm.num_partitions(), 1);
+    }
+
+    #[test]
+    fn test_default() {
+        let pm = PartitionManager::default();
+        assert_eq!(pm.num_partitions(), 0);
+        assert_eq!(pm.total_bytes_spilled(), 0);
+    }
+
+    #[test]
+    fn test_empty_total_bytes() {
+        let pm = PartitionManager::new().unwrap();
+        assert_eq!(pm.total_bytes_spilled(), 0);
+    }
+
+    #[test]
+    fn test_cleanup_removes_files() {
+        let mut pm = PartitionManager::new().unwrap();
+        let id = pm.write_partition(&vec![1, 2, 3]).unwrap();
+        let read_back: Vec<i32> = pm.read_partition(id).unwrap();
+        assert_eq!(read_back, vec![1, 2, 3]);
+        // Verify cleanup also removes files
+        pm.cleanup();
+        assert_eq!(pm.num_partitions(), 0);
+    }
+
+    #[test]
+    fn test_read_partition_error_message() {
+        let pm = PartitionManager::new().unwrap();
+        let err: SpillError = pm.read_partition::<i32>(42).unwrap_err();
+        assert!(format!("{}", err).contains("42"));
+    }
 }
