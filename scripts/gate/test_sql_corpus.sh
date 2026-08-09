@@ -161,7 +161,14 @@ run_target() {
             total=$(echo "${frline}" | awk '{print $2}' | awk -F'/' '{print $2}')
             fail=$((total - pass))
             cases=${total}
-        # Pattern 3: generic `test ... ok` lines (last-resort)
+        # Pattern 3: wire gate / compat runner summary line
+        #   e.g.: "pass=9 unsupported=1 deferred=3 fail=1"
+        elif grep -qE 'pass=[0-9]+ ' "${log}" 2>/dev/null; then
+            pass=$(grep -oE 'pass=[0-9]+' "${log}" | head -1 | grep -oE '[0-9]+' || echo 0)
+            fail=$(grep -oE 'fail=[0-9]+' "${log}" | head -1 | grep -oE '[0-9]+' || echo 0)
+            skipped=$(grep -oE 'unsupported=[0-9]+' "${log}" | head -1 | grep -oE '[0-9]+' || echo 0)
+            cases=$((pass + fail))
+        # Pattern 4: generic `test ... ok` lines (last-resort)
         else
             cases=$(grep -cE '^test .* \.\.\. ok' "${log}" 2>/dev/null | head -1)
             cases=${cases:-0}
