@@ -4010,21 +4010,6 @@ impl Parser {
                             None => return Err("Expected alias for subquery".to_string()),
                         };
                         (alias, Some(Box::new(subquery)), Vec::new())
-                    } else if matches!(self.current(), Some(Token::Values)) {
-                        // VALUES constructor as derived table: (VALUES row1, row2, ...) AS alias
-                        let values_subquery = self.parse_values_statement()?;
-                        self.expect(Token::RParen)?;
-                        if matches!(self.current(), Some(Token::As)) {
-                            self.next();
-                        }
-                        let alias = match self.next() {
-                            Some(Token::Identifier(name)) => name,
-                            Some(t) => {
-                                return Err(format!("Expected alias for VALUES derived table, got {:?}", t))
-                            }
-                            None => return Err("Expected alias for VALUES derived table".to_string()),
-                        };
-                        (alias, Some(Box::new(values_subquery)), Vec::new())
                     } else {
                         // Derived table: (table_ref [JOIN table_ref]*)
                         // Parse the first table, then any JOINs, then expect RParen.
