@@ -483,4 +483,34 @@ mod tests {
         // Should have at least one violation (the Draft document)
         assert!(!result.violations.is_empty());
     }
+    #[test]
+    fn test_severity_as_str() {
+        assert_eq!(Severity::Critical.as_str(), "CRITICAL");
+        assert_eq!(Severity::High.as_str(), "HIGH");
+        assert_eq!(Severity::Medium.as_str(), "MEDIUM");
+        assert_eq!(Severity::Low.as_str(), "LOW");
+    }
+
+    #[test]
+    fn test_compliance_result_new() {
+        let r = ComplianceResult::new(vec![], 10);
+        assert!(r.is_compliant);
+        assert_eq!(r.violations.len(), 0);
+        assert_eq!(r.documents_checked, 10);
+    }
+
+    #[test]
+    fn test_compliance_result_new_with_violations() {
+        let v = Violation {
+            doc_id: 1,
+            rule: "R1".to_string(),
+            severity: "HIGH".to_string(),
+            description: "d".to_string(),
+            detected_at: 100,
+            remediation: "r".to_string(),
+        };
+        let r = ComplianceResult::new(vec![v], 1);
+        assert!(!r.is_compliant);
+        assert_eq!(r.violations.len(), 1);
+    }
 }
