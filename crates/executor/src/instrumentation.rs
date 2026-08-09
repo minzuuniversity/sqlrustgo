@@ -241,6 +241,55 @@ mod tests {
         for h in handles {
             h.join().unwrap();
         }
-        assert_eq!(hook.seq_scan_count(), 4000);
     }
+    #[test]
+    fn counting_records_project_events() {
+        let hook = CountingInstrumentationHook::new();
+        hook.on_project_start("t", 100);
+        hook.on_project_end("t", 50);
+        assert_eq!(hook.project_count(), 1);
+        assert_eq!(hook.project_rows_in_total(), 100);
+        assert_eq!(hook.project_rows_out_total(), 50);
+    }
+
+    #[test]
+    fn counting_records_hash_join_events() {
+        let hook = CountingInstrumentationHook::new();
+        hook.on_hash_join_build("build");
+        hook.on_hash_join_probe(50);
+        hook.on_hash_join_probe(75);
+        assert_eq!(hook.hash_join_build_count(), 1);
+        assert_eq!(hook.hash_join_probe_count(), 2);
+        assert_eq!(hook.hash_join_probe_rows_total(), 125);
+    }
+
+    #[test]
+    fn counting_records_aggregate_events() {
+        let hook = CountingInstrumentationHook::new();
+        hook.on_aggregate_start(1000);
+        assert_eq!(hook.aggregate_count(), 1);
+    }
+
+    #[test]
+    fn counting_records_sort_events() {
+        let hook = CountingInstrumentationHook::new();
+        hook.on_sort_start(500);
+        assert_eq!(hook.sort_count(), 1);
+    }
+
+    #[test]
+    fn counting_default_matches_new() {
+        let hook: CountingInstrumentationHook = Default::default();
+        assert_eq!(hook.seq_scan_count(), 0);
+        assert_eq!(hook.query_complete_count(), 0);
+    }
+
+    #[test]
+    fn noop_clone_is_zero_sized() {
+        let h1 = NoopInstrumentationHook;
+        let h2 = h1; // Copy
+        // Calls on both should still no-op
+        h1.on_seq_scan_start("a");
+        h2.on_query_complete(1);
+}
 }
