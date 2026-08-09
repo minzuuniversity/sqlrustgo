@@ -1,5 +1,61 @@
 # SQLRustGo v3.12.0
 
+> **状态**: 规划中
+> **产品目标**: 面向 `~/gmp-platform` 的 GMP 内审检索数据库
+> **规划日期**: 2026-08-09
+
+v3.12.0 被规划为 SQLRustGo 第一个明确面向 GMP 内审检索工作负载的版本。它使用 SQLRustGo 作为受监管文档存储、chunk、embedding、audit trail、evidence relation、hybrid retrieval 和 SQL-backed graph projection 的数据库基础。
+
+本版本不得描述为通用向量数据库或通用图数据库；这些是 v4.0.0 的目标。
+
+2026-08-09 规划更新：v3.12.0 同时承担 v3.11.0 GA 弱项补强职责。进入 GA 前，必须关闭或显式重门禁 TPC-H correctness、coverage methodology、MySQL wire protocol、LOAD DATA/bulk import、crash recovery、backup/restore、upgrade/downgrade、dependency audit refresh，以及 v3.10.0 已规划但 v3.11.0 没有成为阻断 gate 的 SQLite SQLLogicTest oracle gate。
+
+## 发布契约
+
+允许的 v3.12.0 声明：
+
+> SQLRustGo v3.12.0 支持受控 GMP 内审检索工作负载，使用 SQLRustGo 管理关系存储、内部向量检索、SQL-backed graph projection 和可审计 evidence bundle。
+
+禁止的声明：
+
+- 通用独立向量数据库。
+- 通用图数据库。
+- 未处理 v3.11.0 弱项就宣称生产发布。
+- 没有 168h mixed SOAK 证据就宣称生产发布。
+- 没有 SQLLogicTest、TPC-H correctness、wire protocol、LOAD DATA、recovery 和 upgrade 证据就宣称广义 MySQL 5.7 替代。
+
+## 关键文档
+
+| 文档 | 用途 |
+|---|---|
+| `STAGE.yaml` | 阶段 SSOT 和 promotion criteria |
+| `DEVELOPMENT_PLAN.md` | 实施计划和 GMP-Platform 集成工作包 |
+| `VERSION_PLAN.md` | 产品范围和工作包 |
+| `TEST_PLAN.md` | gate 和测试矩阵 |
+| `ISSUES_PLAN.md` | V312-01 到 V312-14 的任务拆分 |
+| `GMP_COMPLIANCE_MATRIX.md` | GMP/ALCOA+ 合规控制映射 |
+| `fixtures/gmp_audit_questions.yml` | 检索质量 fixture seed |
+
+## 对 v3.11.0 的依赖
+
+v3.12.0 从 v3.11.0 GA 评估状态出发。进入 v3.12.0 GA 前，必须关闭或显式承接以下 v3.11.0 弱项：G3 覆盖率口径、G4 TPC-H SF=1 correctness、168h SOAK 适用范围、sqllogictest gate drift、MySQL wire protocol 缺口、LOAD DATA/bulk import、crash recovery、backup/restore、upgrade/downgrade、dependency audit refresh 和 debt-registry drift。
+
+## 新增硬化门禁
+
+| Gate | 目的 |
+|---|---|
+| SQLite SQLLogicTest | 把已有 `crates/sqlrustgo_sqllogictest` runner 和 SQLite corpus 计划变成真实 gate |
+| TPC-H correctness | 用 row-count 和 SHA256 关闭 zero-row / checksum 风险 |
+| MySQL wire protocol | 覆盖 COM_QUERY、COM_STMT、error packet、reset、TLS/compression |
+| LOAD DATA / bulk import | 验证导入行数、hash、内存和耗时 |
+| Crash recovery / upgrade | 验证 kill -9、WAL replay、backup/restore、v3.10/v3.11 到 v3.12 升级和回滚 |
+
+## 附录：英文原文
+
+> 本附录保留本文件改写前的英文原文，便于追溯历史语义；当前正式阅读与执行口径以上方中文正文为准。
+
+# SQLRustGo v3.12.0
+
 > **Status**: PLANNED
 > **Product target**: GMP internal-audit retrieval database for `~/gmp-platform`
 > **Planning date**: 2026-08-09
