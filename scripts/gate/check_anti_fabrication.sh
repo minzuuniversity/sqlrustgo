@@ -124,6 +124,8 @@ KNOWN_PREEXISTING_FAILURES=(
     "sqlancer"
     "test-runner"
     "test-registry-cli"
+    # Compilation errors in examples (not test binaries):
+    "sqlrustgo-bench"
 )
 
 check_test_compile() {
