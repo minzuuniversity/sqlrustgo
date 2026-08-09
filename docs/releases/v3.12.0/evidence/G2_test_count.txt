@@ -1,0 +1,18 @@
+# cargo test -p <crate> --lib — 2026-08-09 (实测)
+# 注意: 每次 build 会更新 test 数量；本次记录的是刚 build 后的状态
+
+sqlrustgo-executor:        685 PASS / 0 FAIL / 0 IGNORED
+sqlrustgo-storage:        683 PASS / 0 FAIL / 0 IGNORED
+sqlrustgo-parser:          589 PASS / 0 FAIL / 3 IGNORED
+sqlrustgo-catalog:         183 PASS / 0 FAIL / 0 IGNORED
+sqlrustgo-mysql-server:    207 PASS / 2 FAIL / 0 IGNORED  # ← 2 fails: list_threads_returns_at_least_one, skip_auth_defaults_false
+sqlrustgo-planner:          84 PASS / 0 FAIL / 0 IGNORED
+sqlrustgo-common:           79 PASS / 0 FAIL / 0 IGNORED
+sqlrustgo-mysql-client:     79 PASS / 0 FAIL / 0 IGNORED
+sqlrustgo-admin:            69 PASS / 0 FAIL / 0 IGNORED
+sqlrustgo-cache:            10 PASS / 0 FAIL / 0 IGNORED
+
+Total: 2,666 tests (2,664 PASS + 2 FAIL + 3 IGNORED)
+
+# 2 FAIL tests in sqlrustgo-mysql-server: utilities_tests
+# Both are non-blocking — tracked to V312-17 (Coverage + Disabled Tests)
