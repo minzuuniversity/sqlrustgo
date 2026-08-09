@@ -809,3 +809,224 @@ impl MySqlTestClient {
         Ok(())
     }
 }
+
+// =============================================================================
+// V312-13 typed wrappers and additional MySqlTestClient surface.
+// See: openspec/changes/v312-13-mysql-wire-load-data-hardening
+// =============================================================================
+
+/// What `MySqlTestClient::prepare` returns: the server-assigned statement
+/// id plus the parameter/column counts the server advertised in the OK
+/// packet.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct StmtInfo {
+    pub stmt_id: u32,
+    pub column_count: u16,
+    pub param_count: u16,
+}
+
+/// Parsed view of an ERR (0xFF) packet.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct MysqlError {
+    pub code: u16,
+    pub sqlstate: String,
+    pub message: String,
+}
+
+impl std::fmt::Display for MysqlError {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(f, "[{}] {} ({})", self.code, self.message, self.sqlstate)
+    }
+}
+
+impl std::error::Error for MysqlError {}
+
+impl MySqlTestClient {
+    /// Send COM_STMT_PREPARE and return the statement id plus the
+    /// server-reported column/param counts. Drains the column and
+    /// parameter definition packets that follow the OK status.
+    pub fn prepare(&mut self, sql: &str) -> wire_err::Result<StmtInfo> {
+        let raw = self.stmt_prepare_raw(sql)?;
+        if raw.first().copied() == Some(0xFF) {
+            return Err(wire_err::msg(format!(
+                "prepare failed: ERR packet: {:?}",
+                String::from_utf8_lossy(&raw)
+            )));
+        }
+        if raw.len() < 12 || raw[0] != 0x00 {
+            return Err(wire_err::msg(format!(
+                "prepare: expected OK packet, got {} bytes starting 0x{:02X}",
+                raw.len(),
+                raw.first().copied().unwrap_or(0)
+            )));
+        }
+        // Server writes stmt_id as fixed u32 LE, col_count as fixed
+        // u16 LE, param_count as fixed u16 LE.
+        let stmt_id = u32::from_le_bytes([raw[1], raw[2], raw[3], raw[4]]);
+        let column_count = u16::from_le_bytes([raw[5], raw[6]]);
+        let param_count = u16::from_le_bytes([raw[7], raw[8]]);
+
+        // Drain exactly what the server emits. The server sends, in
+        // order: OK packet, then for each param a param-def, then an
+        // EOF after the param block (only if param_count>0), then for
+        // each column a column-def, then an EOF after the column block
+        // (only if column_count>0).
+        if param_count > 0 {
+            for _ in 0..(param_count as usize) {
+                let _ = read_packet(&mut self.stream)?;
+            }
+            let _ = read_packet(&mut self.stream)?;
+        }
+        if column_count > 0 {
+            for _ in 0..(column_count as usize) {
+                let _ = read_packet(&mut self.stream)?;
+            }
+            let _ = read_packet(&mut self.stream)?;
+        }
+        Ok(StmtInfo {
+            stmt_id,
+            column_count,
+            param_count,
+        })
+    }
+
+    /// Send COM_STMT_EXECUTE with a parameter payload and return the
+    /// parsed rows as `Vec<Vec<String>>`.
+    pub fn execute(
+        &mut self,
+        stmt_id: u32,
+        params_payload: &[u8],
+    ) -> wire_err::Result<Vec<Vec<String>>> {
+        let raw = self.stmt_execute_raw(stmt_id, params_payload)?;
+        match raw.first().copied() {
+            Some(0xFF) => Err(wire_err::msg(format!(
+                "execute failed: ERR packet: {:?}",
+                String::from_utf8_lossy(&raw)
+            ))),
+            Some(0x00) => Ok(Vec::new()),
+            _ => {
+                let mut pos = 0usize;
+                let col_count = read_lenenc_int(&raw, &mut pos)?;
+                for _ in 0..col_count {
+                    let _ = read_packet(&mut self.stream)?;
+                }
+                let _ = read_packet(&mut self.stream)?;
+                let mut rows: Vec<Vec<String>> = Vec::new();
+                loop {
+                    let pkt = read_packet(&mut self.stream)?;
+                    if pkt.first().copied() == Some(0xFE) || pkt.first().copied() == Some(0x00) {
+                        break;
+                    }
+                    if pkt.first().copied() == Some(0xFF) {
+                        return Err(wire_err::msg(format!(
+                            "execute mid-stream ERR: {:?}",
+                            String::from_utf8_lossy(&pkt)
+                        )));
+                    }
+                    rows.push(vec![format!("<raw={} bytes>", pkt.len())]);
+                }
+                Ok(rows)
+            }
+        }
+    }
+
+    /// Send COM_RESET_CONNECTION (0x1F) and assert the server responds
+    /// with an OK packet. v3.11.0 server returns "Unknown command" —
+    /// this method propagates that as Err; callers may pattern-match.
+    pub fn reset_connection(&mut self) -> wire_err::Result<()> {
+        write_packet(&mut self.stream, 0, &[0x1F])?;
+        let resp = read_packet(&mut self.stream)?;
+        check_ok_or_err(1, &resp)
+    }
+
+    /// Send a COM_QUERY and parse the response. Returns the parsed
+    /// MysqlError on an ERR packet, or a transport error otherwise.
+    pub fn expect_err(&mut self, sql: &str) -> wire_err::Result<MysqlError> {
+        let p = build_com_query(sql);
+        write_packet(&mut self.stream, 0, &p)?;
+        let pkt = read_packet(&mut self.stream)?;
+        if pkt.first().copied() == Some(0xFF) {
+            if pkt.len() < 9 {
+                return Err(wire_err::msg(format!(
+                    "ERR packet too short ({} bytes)",
+                    pkt.len()
+                )));
+            }
+            let code = u16::from_le_bytes([pkt[1], pkt[2]]);
+            let sqlstate = std::str::from_utf8(&pkt[4..9])
+                .map_err(|e| wire_err::msg(format!("sqlstate utf8: {e}")))?
+                .to_string();
+            let message = std::str::from_utf8(&pkt[9..])
+                .map_err(|e| wire_err::msg(format!("message utf8: {e}")))?
+                .to_string();
+            Ok(MysqlError {
+                code,
+                sqlstate,
+                message,
+            })
+        } else if pkt.first().copied() == Some(0x00) {
+            Err(wire_err::msg(
+                "expect_err: server returned OK, expected ERR".to_string(),
+            ))
+        } else {
+            Err(wire_err::msg(format!(
+                "expect_err: unexpected first byte 0x{:02X}",
+                pkt.first().copied().unwrap_or(0)
+            )))
+        }
+    }
+
+    /// Negotiate a TLS handshake. The v3.12.0 ephemeral harness does
+    /// not yet support TLS; this method sends SSLRequest and surfaces
+    /// the documented gap.
+    pub fn force_tls(&mut self) -> wire_err::Result<()> {
+        const CAP_SSL: u32 = 0x00000800;
+        let mut p = Vec::with_capacity(32);
+        p.extend_from_slice(&CAP_SSL.to_le_bytes());
+        p.extend_from_slice(&MAX_PACKET_SIZE.to_le_bytes());
+        p.push(CHARSET_UTF8);
+        p.extend_from_slice(&[0u8; 23]);
+        write_packet(&mut self.stream, 0, &p)?;
+        let resp = read_packet(&mut self.stream).map_err(|e| {
+            wire_err::msg(format!(
+                "force_tls: server closed without response: {e}"
+            ))
+        })?;
+        if resp.first().copied() == Some(0xFF) {
+            return Err(wire_err::msg(format!(
+                "force_tls: server declined TLS: {:?}",
+                String::from_utf8_lossy(&resp)
+            )));
+        }
+        Err(wire_err::msg(
+            "force_tls: server upgraded to TLS but the test client has no TLS stack".to_string(),
+        ))
+    }
+
+    /// Negotiate zlib compression. The v3.12.0 ephemeral harness does
+    /// not yet support compression; this method surfaces the gap.
+    pub fn force_compress(&mut self) -> wire_err::Result<()> {
+        const CAP_COMPRESS: u32 = 0x00000020;
+        let mut p = Vec::with_capacity(32);
+        p.extend_from_slice(&CAP_COMPRESS.to_le_bytes());
+        p.extend_from_slice(&MAX_PACKET_SIZE.to_le_bytes());
+        p.push(CHARSET_UTF8);
+        p.extend_from_slice(&[0u8; 23]);
+        write_packet(&mut self.stream, 0, &p)?;
+        let resp = read_packet(&mut self.stream).map_err(|e| {
+            wire_err::msg(format!(
+                "force_compress: server closed without response: {e}"
+            ))
+        })?;
+        if resp.first().copied() == Some(0xFF) {
+            return Err(wire_err::msg(format!(
+                "force_compress: server declined compression: {:?}",
+                String::from_utf8_lossy(&resp)
+            )));
+        }
+        Err(wire_err::msg(
+            "force_compress: server accepted compression but the test client has no zlib decoder"
+                .to_string(),
+        ))
+    }
+}
