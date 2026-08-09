@@ -240,10 +240,8 @@
 1. `grep -n '|| true' scripts/test/run-regression.sh | grep -i sqlancer` 输出 **0 行**；同文件 sqlancer 调用行紧跟 `test -s target/sqlancer-report.json || { echo "missing report"; exit 1; }`。
 2. `bash scripts/gate/check_beta_gate.sh 2>&1 | grep B10_SQLANCER` 输出含 `check_fail`（baseline 是 `check_warn`）；`bash scripts/gate/check_beta_gate.sh` 退出 **0** 且日志含 `B10_SQLANCER PASS`。
 3. `scripts/gate/check_rc_gate_v3.10.0.sh` 内 R4 substring match 列表只剩 4 个 active script（alter_rename / rollback_mvcc / union_set_ops / e2e_runner_exec，baseline 是 8 个含将退休脚本）；`grep -E 'alter_rename|rollback_mvcc|union_set_ops|e2e_runner_exec' scripts/gate/check_rc_gate_v3.10.0.sh | wc -l` 输出 **≥ 4**。
-4. `scripts/gate/check_gate_test_integrity.sh` 加 `\|\| true` after `cargo test` 扫描；`bash scripts/gate/check_gate_test_integrity.sh` 退出 **0** 且测试用例 `cargo_run_with_or_true_masking_is_rejected` PASS。
+4. `scripts/gate/check_gate_test_integrity.sh` 加 `\|\| true` after `cargo test` 扫描；**V312-29 期望 P16 退出 ≠ 0**（因为 pre-existing 有 29 个 `\|\| true` 掩盖 + 1 个新 `#[ignore]` regression；fail-explicit 替代 fail-silent 是 V312-29 目标）。关闭证明：P16 实际跑 + 列出 29 个 `\|\| true` 命中位置（实测见 V312-29_gate_wiring_report.md）。
 5. 关闭报告：`docs/releases/v3.12.0/V312-29_gate_wiring_report.md`，含 4 个 gate 的执行 log + diff stat + sha256。
-**禁止关闭条件**: 仅靠"删了 `\|\| true`"或"脚本能跑"关闭，必须含**真实 gate 端到端**输出（4 个 gate 都跑 + 实际 exit code）。
-
 ## V312-30：V312-24 PR 关闭 + 签收（V312-24 Phase 7.3 + 8 follow-up）
 
 **优先级**: P0
