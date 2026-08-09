@@ -50,6 +50,7 @@
 //! - `gmp_audit_log`: Hash-chained audit trail (previous_hash + event_hash)
 
 pub mod audit;
+pub mod acl;
 pub mod compliance;
 pub mod sql_api;
 pub mod document;
