@@ -132,6 +132,20 @@ impl BinaryTableStorage {
                     sqlrustgo_types::Value::Null => {
                         w.write_all(&[0])?;
                     }
+                    sqlrustgo_types::Value::Blob(b) => {
+                        w.write_all(&[4])?;
+                        w.write_all(&(b.len() as u32).to_le_bytes())?;
+                        w.write_all(b)?;
+                    }
+                    sqlrustgo_types::Value::Point(x, y) => {
+                        w.write_all(&[5])?;
+                        w.write_all(&x.to_le_bytes())?;
+                        w.write_all(&y.to_le_bytes())?;
+                    }
+                    sqlrustgo_types::Value::Boolean(b) => {
+                        w.write_all(&[6])?;
+                        w.write_all(&[u8::from(*b)]);
+                    }
                     _ => {
                         w.write_all(&[0])?;
                     }
