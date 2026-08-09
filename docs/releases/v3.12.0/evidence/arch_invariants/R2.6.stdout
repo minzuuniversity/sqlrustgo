@@ -1,6 +1,15 @@
-TODO: implement R2.6
+=== D7: Cross-Version INT Debt Gate (5-Principle P5) ===
 
-This is a stub. The v3.12.0 release must either:
-  1. Land the real R2.6 check, or
-  2. Mark this R2.N as deferred with owner + expiry
-     in a follow-up issue.
+  [INT-1] status=CLOSED ✅
+  [INT-2] status=ACTIVE (has v3.9.0+ plan) ⚠️
+  [INT-3] status=ACTIVE (has v3.9.0+ plan) ⚠️
+  [INT-4] status=CLOSED ✅
+
+=== D7 INT Debt Summary ===
+  CLOSED:               2
+  ACTIVE:               0
+  DEFERRED w/ plan:     2
+  DEFERRED w/o plan:    0
+
+⚠️  D7 INT Debt: PASS-WITH-DRIFT (2 deferred with plan)
+   These items have documented v3.9.0+ plans but are not yet implemented.

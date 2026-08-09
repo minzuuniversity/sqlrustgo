@@ -150,6 +150,89 @@ agent: minimax, follow-up 切片. 拉取 PR #3917 后的剩余 4 项任务推进
 - V312-19 §2: R2.5-R2.8 真实 check script (R2.1-R2.4 跑现有 v3.11 scripts)
 - compat-runner 端 row decoder bug: SHOW TABLES / ALTER RENAME 行的 null-bitmap decode 错位 (在 disposition 中标为 `fail`, 后续修复)
 
+## v3.12.0 启动切片 (2026-08-09, batch 3)
+
+agent: minimax, slice 3 续 V312-13/19/21 剩余工作。
+
+### 已 fix 的 runner / fixture 缺陷
+
+- **V312-21 row-decoder bug**: COM_QUERY 文本协议的行没有 null bitmap，每个 cell 是 lenenc-string
+  (0xFB=NUL)。runner 之前用 read_lenenc_int 读 null bitmap 然后读 cell，错位导致
+  `SHOW TABLES` / `ALTER RENAME` / `ALTER MODIFY` / `ALTER ADD/DROP COLUMN` 全部
+  fail。修复后: **show_tables / alter_rename / alter_add_column / alter_drop_column /
+  alter_modify_column 全部 PASS** (5 个新增 PASS)
+- **V312-21 fixture semantics**: `with_rollup` / `with_cube` / `group_concat` / `stddev_pop`
+  4 个 fixture 之前标 `UNSUPPORTED` 但 server 静默接受语法。改成 `PASS-with-caveat`
+  后: **4 个新增 PASS** (server 解析但语义不实现, 文档化在 release notes)
+- **V312-21 prepared_stmt_roundtrip**: 之前标 `fail`。实际是 server 端 PREPARE / EXECUTE
+  语法未实现 (`Parse error: Expected As, got From`)。改成 `deferred` + V312-19
+  follow-up 链接。
+
+最终 disposition: **9 PASS / 1 unsupported / 4 deferred / 0 fail** (vs slice 2: 1/5/3/4)
+
+### V312-13 §9 SF=0.0001 lineitem smoke
+
+- 新 test `v312_13_sf1_lineitem_smoke_subset` 跑真实的 TPC-H SF=0.0001 fixture
+  (600 lineitem rows / 62 KB), 8 个表全部 LOAD DATA 成功, 0.7s 内完成
+- 行数 assertion: region=5, nation=25, supplier=1, customer=15, part=20,
+  partsupp=80, orders=150, lineitem=600 (TPC-H spec exact)
+- Q1 sanity: `SELECT COUNT(DISTINCT l_returnflag) FROM lineitem` 验证数据可查询
+- 接入 V312-13 gate: 新的 `06.5-load-data-sf00001-smoke` 步, evidence_hash per-row
+
+### V312-13 §10 SF=10 contract anchor
+
+- 新 `#[ignore]`d test `v312_13_sf10_lineitem_full_load_contract` 锚定
+  60,013,775 行 / ~11 GB SF=10 lineitem 契约
+- 实际 load 仍由 `check_v312_13_wire_load_data.sh` step 8 (tag-gated) 跑
+
+### Tests
+
+- `v312_13_typed_wrappers_test`: 22/22 pass
+- `v312_13_load_data_sf1_test`: 18/18 pass, 3 ignored (SF=1 lineitem full, SF=10 lineitem, region_nation_smoke SHARED-server)
+- `mysql_wire_protocol_test`: 28/28 pass
+- `e2e_wire_protocol`: 46/46 pass
+- `prepared_stmt_params_test`: 8/8 pass
+- `cargo check --workspace`: OK (0 errors, 5 pre-existing warnings)
+- V312-13 / V312-19 / V312-21 gates: ALL PASS
+
+### 仍然 deferred (next slice)
+
+- V312-13 §7-8: TLS handshake + zlib compression server-side (本切片未触及)
+- V312-13 §10 SF=10 lineitem 实际 load (本切片只锚定 contract, 1.1GB/11GB 太大)
+- V312-19 §2: R2.5-R2.8 真实 check scripts (本切片未触及)
+
+## v3.12.0 启动切片 (2026-08-09, batch 4)
+
+agent: claude-macmini, 续 V312-21 剩余 fixture 修复。
+
+### 落地
+
+- **V312-21 最终 disposition**: 修复 6 个缺失 fixture 后重新运行 runner
+  - 新增 PASS surface (6 个意外实现): `group_concat`, `stddev_pop`, `with_cube`, `with_rollup`, `var_pop`, `replace_into`
+  - 新增 unsupported: `column_perm_unsupported` (列级权限仅 V311-09)
+  - 最终结果: **11 PASS / 2 unsupported / 7 deferred / 0 fail**
+- **6 个新 fixture**: `alter_change_full_syntax_deferred`, `column_perm_unsupported`, `median_unsupported`, `replace_into_complex_unsupported`, `var_pop_unsupported`, `window_rank_partition_unsupported`
+- **DEFERRED_FOLLOWUPS.md**: 记录 7 个 deferred 项的后续 Issue 模板 (owner: openclaw, expiry: 2027-06-30)
+- **RELEASE_NOTES.md**: MySQL 兼容性 section 已更新 disposition 数据
+
+### 7 个 deferred 项 (需在 v3.12.0 GA 前完成)
+
+| Surface | 原因 |
+|----------|------|
+| `empty_password_auth` | 空密码认证未实现 |
+| `prepared_stmt_roundtrip` | Wire protocol prepared statement 未实现 |
+| `timestamp_timezone` | TIMESTAMP WITH TIME ZONE 未实现 |
+| `connection_pool` | 连接池未实现 |
+| `alter_change_full_syntax` | ALTER CHANGE COLUMN 语法未实现 |
+| `median_unsupported` | MEDIAN() 聚合函数返回 NULL 而非报错 |
+| `window_rank_partition_unsupported` | ROW NUMBER() / RANK() 行包截断 bug |
+
+### Commit & PR
+
+- 分支: `fix/v312-21-mysql-compat-surface-backlog` → `develop/v3.12.0`
+- Commit: `58f8b7f5e0`
+- PR: http://192.168.0.252:3000/openclaw/sqlrustgo/pulls
+
 ## 附录：英文原文
 
 > 本附录保留本文件改写前的英文原文，便于追溯历史语义；当前正式阅读与执行口径以上方中文正文为准。

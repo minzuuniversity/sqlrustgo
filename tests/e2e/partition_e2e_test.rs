@@ -89,6 +89,7 @@ fn test_storage_partition_type_variants() {
         name: "t2".to_string(),
         columns: vec![],
         foreign_keys: vec![],
+        compression: None,
         unique_constraints: vec![],
         check_constraints: vec![],
         partition_info: Some(PartitionInfo {
@@ -107,6 +108,7 @@ fn test_storage_partition_type_variants() {
         name: "t3".to_string(),
         columns: vec![],
         foreign_keys: vec![],
+        compression: None,
         unique_constraints: vec![],
         check_constraints: vec![],
         partition_info: Some(PartitionInfo {

@@ -67,7 +67,7 @@ else
 fi
 
 # 5. ≥50 tests pass
-PASSED=$(cargo test --test upgrade_test 2>&1 | grep -E "test result.*ok" | grep -oE "[0-9]+ passed" | head -1 || true)
+PASSED=$(cargo test --test upgrade_test 2>&1 | grep -E "test result.*ok" | grep -oE "[0-9]+ passed" | head -1 || echo "0")
 if [ -z "$PASSED" ]; then
     echo "  ❌ FAIL: upgrade_test tests did not pass"
     cargo test --test upgrade_test 2>&1 | tail -5
@@ -82,7 +82,7 @@ echo "  [5/7] ✅ PASS: upgrade_test $PASSED (≥50)"
 
 # 6. upgrade.rs unit tests still pass
 UPGRADE_PASSED=$(cargo test -p sqlrustgo-tools --lib upgrade 2>&1 \
-    | grep -E "test result.*ok" | grep -oE "[0-9]+ passed" | head -1 || true)
+    | grep -E "test result.*ok" | grep -oE "[0-9]+ passed" | head -1 || echo "0")
 if [ -z "$UPGRADE_PASSED" ]; then
     echo "  ❌ FAIL: crates/tools/src/upgrade.rs unit tests not all passing"
     cargo test -p sqlrustgo-tools --lib upgrade 2>&1 | tail -5

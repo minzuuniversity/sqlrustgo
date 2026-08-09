@@ -4,11 +4,11 @@
 
 use chrono::{DateTime, Utc};
 use serde::{Deserialize, Serialize};
-use std::collections::HashMap;
 use std::path::PathBuf;
 use std::process::Stdio;
-use std::time::Instant;
+use std::time::{Duration, Instant};
 use tokio::process::Command;
+use tokio::time::timeout;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 pub enum TestStatus {
@@ -124,15 +124,10 @@ impl Default for TestRunConfig {
 
 pub struct TestRunner {
     config: TestRunConfig,
-    results: HashMap<String, TestResult>,
 }
-
 impl TestRunner {
     pub fn new(config: TestRunConfig) -> Self {
-        Self {
-            config,
-            results: HashMap::new(),
-        }
+        Self { config }
     }
 
     pub fn with_default_config() -> Self {
@@ -153,106 +148,229 @@ impl TestRunner {
 
     async fn execute_cargo_test(config: &TestRunConfig, test_id: &str, name: &str) -> TestResult {
         let started_at = Utc::now();
-        let mut cmd = Command::new(&config.cargo_binary);
-        cmd.arg("test")
-            .arg(test_id)
-            .arg("--")
-            .args(&config.test_flags)
-            .current_dir(&config.working_dir)
-            .stdout(Stdio::piped())
-            .stderr(Stdio::piped());
+        let mut attempts = 0u32;
+        let max_attempts = config.retry_count.saturating_add(1).max(1);
+        let timeout_dur = Duration::from_millis(config.timeout_per_test_ms.max(1));
 
-        let output = match cmd.output().await {
-            Ok(o) => o,
-            Err(e) => {
+        loop {
+            attempts += 1;
+            let mut cmd = Command::new(&config.cargo_binary);
+            cmd.arg("test")
+                .arg(test_id)
+                .arg("--")
+                .args(&config.test_flags)
+                .current_dir(&config.working_dir)
+                .stdout(Stdio::piped())
+                .stderr(Stdio::piped())
+                .kill_on_drop(true);
+
+            // tokio::time::timeout enforces the per-test wall-clock budget.
+            let child_result = timeout(timeout_dur, cmd.output()).await;
+            let (status, stdout, stderr, error_message) = match child_result {
+                Err(_elapsed) => {
+                    // Hard timeout: kill the child via drop, mark TimedOut.
+                    (
+                        TestStatus::TimedOut,
+                        String::new(),
+                        String::new(),
+                        Some(format!("timeout after {} ms", config.timeout_per_test_ms)),
+                    )
+                }
+                Ok(Err(e)) => (
+                    TestStatus::Crashed,
+                    String::new(),
+                    String::new(),
+                    Some(format!("Failed to execute test: {}", e)),
+                ),
+                Ok(Ok(output)) => {
+                    let stdout = String::from_utf8_lossy(&output.stdout).to_string();
+                    let stderr = String::from_utf8_lossy(&output.stderr).to_string();
+                    let status = if output.status.success() {
+                        TestStatus::Passed
+                    } else if output.status.code() == Some(101) {
+                        TestStatus::Failed
+                    } else {
+                        TestStatus::Crashed
+                    };
+                    (status, stdout, stderr, None)
+                }
+            };
+
+            let combined_output = format!("{}\n{}", stdout, stderr);
+
+            // Retry on Failed or Crashed (not on Passed or TimedOut).
+            let should_retry = attempts < max_attempts
+                && matches!(status, TestStatus::Failed | TestStatus::Crashed);
+            if !should_retry {
                 return TestResult {
                     test_id: test_id.to_string(),
                     name: name.to_string(),
-                    status: TestStatus::Crashed,
+                    status,
                     duration_ms: 0,
                     started_at,
                     finished_at: Utc::now(),
-                    output: String::new(),
-                    error_message: Some(format!("Failed to execute test: {}", e)),
-                    retries: 0,
+                    output: combined_output,
+                    error_message,
+                    retries: attempts - 1,
                 };
+            }
+        }
+    }
+
+    /// Run multiple tests in parallel, bounded by `config.max_parallel`.
+    ///
+    /// Concurrency model: a `tokio::sync::Semaphore` caps in-flight tests; each
+    /// test runs as its own task on a `JoinSet`. `&self` (not `&mut self`) lets
+    /// the tasks share the runner without contention — `execute_cargo_test` is
+    /// already a static method and does not touch `self`.
+    pub async fn run_tests(&self, test_ids: Vec<String>) -> Vec<TestResult> {
+        let max_parallel = self.config.max_parallel.max(1);
+        let sem = std::sync::Arc::new(tokio::sync::Semaphore::new(max_parallel));
+        let config = std::sync::Arc::new(self.config.clone());
+        let mut joinset: tokio::task::JoinSet<TestResult> = tokio::task::JoinSet::new();
+
+        for test_id in test_ids {
+            let permit_source = sem.clone();
+            let config = config.clone();
+            let name = test_id.clone();
+            joinset.spawn(async move {
+                let _permit = permit_source
+                    .acquire_owned()
+                    .await
+                    .expect("semaphore closed unexpectedly");
+                Self::run_test_with_config(&config, &test_id, &name).await
+            });
+        }
+
+        let mut results = Vec::with_capacity(joinset.len());
+        while let Some(joined) = joinset.join_next().await {
+            match joined {
+                Ok(r) => results.push(r),
+                Err(e) => {
+                    // Task panicked or was cancelled. Record a synthetic
+                    // Crashed result so callers always see one entry per
+                    // requested test_id (the test_id is lost here, but the
+                    // outer length matches the spawned count).
+                    results.push(TestResult::failed(0, &format!("test task failed: {}", e)));
+                }
+            }
+        }
+        results
+    }
+
+    /// Like [`run_test`] but takes the config by reference, suitable for
+    /// parallel dispatch where borrowing `self` is not possible.
+    pub async fn run_test_with_config(
+        config: &TestRunConfig,
+        test_id: &str,
+        name: &str,
+    ) -> TestResult {
+        let start_time = Instant::now();
+        let result = Self::execute_cargo_test(config, test_id, name).await;
+        let mut final_result = result;
+        final_result.duration_ms = start_time.elapsed().as_millis() as u64;
+        final_result.finished_at = Utc::now();
+        final_result
+    }
+
+    // -------------------------------------------------------------------
+    // Managed-test dispatch (V312-24 activation).
+    //
+    // These methods consume `test_registry::ManagedTest` entries — the
+    // on-disk `[[test]]` manifest — and invoke the listed binaries with
+    // their declared args and per-entry timeout. Concurrency is still
+    // bounded by `config.max_parallel`.
+    // -------------------------------------------------------------------
+
+    /// Run a single managed entry, honoring its declared `timeout_ms`.
+    pub async fn run_managed(&self, entry: &test_registry::ManagedTest) -> TestResult {
+        let started_at = Utc::now();
+        let start = Instant::now();
+        let timeout_dur = Duration::from_millis(entry.timeout_ms.max(1));
+        let mut cmd = Command::new(&entry.binary);
+        cmd.args(&entry.args)
+            .stdout(Stdio::piped())
+            .stderr(Stdio::piped())
+            .kill_on_drop(true);
+
+        let child_result = timeout(timeout_dur, cmd.output()).await;
+        let (status, stdout, stderr, error_message) = match child_result {
+            Err(_elapsed) => (
+                TestStatus::TimedOut,
+                String::new(),
+                String::new(),
+                Some(format!("timeout after {} ms", entry.timeout_ms)),
+            ),
+            Ok(Err(e)) => (
+                TestStatus::Crashed,
+                String::new(),
+                String::new(),
+                Some(format!("Failed to execute {}: {}", entry.binary, e)),
+            ),
+            Ok(Ok(output)) => {
+                let stdout = String::from_utf8_lossy(&output.stdout).to_string();
+                let stderr = String::from_utf8_lossy(&output.stderr).to_string();
+                let status = if output.status.success() {
+                    TestStatus::Passed
+                } else if output.status.code() == Some(101) {
+                    TestStatus::Failed
+                } else {
+                    TestStatus::Crashed
+                };
+                (status, stdout, stderr, None)
             }
         };
 
-        let stdout = String::from_utf8_lossy(&output.stdout).to_string();
-        let stderr = String::from_utf8_lossy(&output.stderr).to_string();
-        let combined_output = format!("{}\n{}", stdout, stderr);
-
-        let status = if output.status.success() {
-            TestStatus::Passed
-        } else if output.status.code() == Some(101) {
-            TestStatus::Failed
-        } else {
-            TestStatus::Crashed
-        };
-
         TestResult {
-            test_id: test_id.to_string(),
-            name: name.to_string(),
+            test_id: entry.name.clone(),
+            name: format!("{} {}", entry.binary, entry.args.join(" ")),
             status,
-            duration_ms: 0,
+            duration_ms: start.elapsed().as_millis() as u64,
             started_at,
             finished_at: Utc::now(),
-            output: combined_output,
-            error_message: None,
+            output: format!("{}\n{}", stdout, stderr),
+            error_message,
             retries: 0,
         }
     }
 
-    pub async fn run_tests(&mut self, test_ids: Vec<String>) -> Vec<TestResult> {
-        let mut results = Vec::new();
+    /// Run all managed entries in parallel, bounded by `config.max_parallel`.
+    /// Returns a `TestResult` per entry; ordering matches the input.
+    ///
+    /// Concurrency model: the caller passes an `Arc<Self>` so spawned tasks
+    /// can borrow the runner for the duration of each future. The Semaphore
+    /// caps in-flight entries at `config.max_parallel` (default `num_cpus`).
+    pub async fn run_managed_all(
+        self: std::sync::Arc<Self>,
+        entries: Vec<test_registry::ManagedTest>,
+    ) -> Vec<TestResult> {
+        let max_parallel = self.config.max_parallel.max(1);
+        let sem = std::sync::Arc::new(tokio::sync::Semaphore::new(max_parallel));
+        let mut joinset: tokio::task::JoinSet<TestResult> = tokio::task::JoinSet::new();
 
-        for test_id in test_ids {
-            let result = self.run_test(&test_id, &test_id).await;
-            self.results.insert(test_id, result.clone());
-            results.push(result);
+        for entry in entries {
+            let permit_source = sem.clone();
+            let runner = self.clone();
+            joinset.spawn(async move {
+                let _permit = permit_source
+                    .acquire_owned()
+                    .await
+                    .expect("semaphore closed unexpectedly");
+                runner.run_managed(&entry).await
+            });
         }
 
-        results
-    }
-
-    pub fn get_result(&self, test_id: &str) -> Option<TestResult> {
-        self.results.get(test_id).cloned()
-    }
-
-    pub fn get_all_results(&self) -> Vec<TestResult> {
-        self.results.values().cloned().collect()
-    }
-
-    pub fn summary(&self) -> TestRunSummary {
-        let mut passed = 0;
-        let mut failed = 0;
-        let mut skipped = 0;
-        let mut timed_out = 0;
-        let mut crashed = 0;
-        let mut total_duration_ms = 0u64;
-
-        for result in self.results.values() {
-            match result.status {
-                TestStatus::Passed => passed += 1,
-                TestStatus::Failed => failed += 1,
-                TestStatus::Skipped => skipped += 1,
-                TestStatus::TimedOut => timed_out += 1,
-                TestStatus::Crashed => crashed += 1,
-                _ => {}
+        let mut results = Vec::with_capacity(joinset.len());
+        while let Some(joined) = joinset.join_next().await {
+            match joined {
+                Ok(r) => results.push(r),
+                Err(e) => results.push(TestResult::failed(
+                    0,
+                    &format!("managed-test task failed: {}", e),
+                )),
             }
-            total_duration_ms += result.duration_ms;
         }
-
-        TestRunSummary {
-            total: self.results.len(),
-            passed,
-            failed,
-            skipped,
-            timed_out,
-            crashed,
-            total_duration_ms,
-        }
+        results
     }
 }
 

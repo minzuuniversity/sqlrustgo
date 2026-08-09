@@ -36,12 +36,12 @@ echo
 # TPCH_SF01_ALL=1 (may take 10+ min due to Q21 4-table EXISTS).
 if [ "${TPCH_SF01_ALL:-0}" = "1" ]; then
     echo "[1/3] Running tpch_sf01_inprocess_test (TPCH_SF01_ALL=1, full 22)..."
-    cargo test --test tpch_sf01_inprocess_test --all-features -- --nocapture > /tmp/gate_c_run.log 2>&1 || true
+    cargo test --test tpch_sf01_inprocess_test --all-features -- --nocapture > /tmp/gate_c_run.log 2>&1 || { echo "  FAIL: cargo test exit $?" >&2; tail -20 /tmp/v312_31_fail.log; exit 1; }
     grep -E "Q[[:space:]]*[0-9]+: ok|Q[[:space:]]*[0-9]+: ERR|=== TPC-H|test result" /tmp/gate_c_run.log
     THRESHOLD=21
 else
     echo "[1/3] Running tpch_sf01_inprocess_test (smoke 6, fast)..."
-    cargo test --test tpch_sf01_inprocess_test --all-features -- --nocapture > /tmp/gate_c_run.log 2>&1 || true
+    cargo test --test tpch_sf01_inprocess_test --all-features -- --nocapture > /tmp/gate_c_run.log 2>&1 || { echo "  FAIL: cargo test exit $?" >&2; tail -20 /tmp/v312_31_fail.log; exit 1; }
     grep -E "Q[[:space:]]*[0-9]+: ok|Q[[:space:]]*[0-9]+: ERR|=== TPC-H|test result" /tmp/gate_c_run.log
     THRESHOLD=6
 fi

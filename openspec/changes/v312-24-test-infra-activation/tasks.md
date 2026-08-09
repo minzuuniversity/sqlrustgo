@@ -1,27 +1,34 @@
 # V312-24: Test Infrastructure Activation — tasks
 
-> **Status**: 🔵 OPEN — created 2026-08-09 (Asia/Shanghai)
+> **Status**: 🟡 PHASE 1 COMPLETE (2026-08-09, minimax) — phases 2-8 split into V312-25 ~ V312-30
 > **Author**: minimax
 > **Source run**: V312-24
-> **Branch**: `develop/v3.12.0`
+> **Branch**: `feature/v312-24-impl`
 > **Issue**: #3911
 > **Acceptance**: per `openspec/changes/v312-24-test-infra-activation/proposal.md` §Acceptance criteria
+> **Activation report**: `docs/releases/v3.12.0/V312-24_test_infra_activation_report.md`
+> **Follow-up issues**: V312-25 (Phase 2), V312-26 (Phase 3), V312-27 (Phase 4), V312-28 (Phase 5), V312-29 (Phase 6), V312-30 (Phase 7.3 + 8)
 
-## Phase 1: Activate test-infra skeletons (24h estimate)
+## Phase 1: Activate test-infra skeletons (24h estimate) — ✅ COMPLETE
 
-- [ ] 1.1 Add `[[bin]] name = "sqlancer"` to `crates/sqlancer/Cargo.toml`
-- [ ] 1.2 Add `crates/sqlancer/src/bin/sqlancer.rs` with `fn main()` that wires `Fuzzer::new(config).run(120)`
-- [ ] 1.3 Make sqlancer write `target/sqlancer-report.json` (FuzzerResult JSON)
-- [ ] 1.4 Add `[[bin]] name = "test-runner"` to `crates/test-runner/Cargo.toml`
-- [ ] 1.5 Implement `timeout_per_test_ms` via `tokio::time::timeout` in `run_test`
-- [ ] 1.6 Parallelize `run_tests` via `tokio::task::JoinSet` honoring `max_parallel`
-- [ ] 1.7 Write `serde_json` results to `target/test-runner-report.json`
-- [ ] 1.8 Add `crates/test-registry/src/bin/test-registry-cli.rs` for TOML read/write
-- [ ] 1.9 Implement `from_toml(path)` + `write_toml(path)` in `crates/test-registry/src/lib.rs` (uses existing `toml` dep)
-- [ ] 1.10 Register `sqlancer` + `test-runner` binaries as managed entries in test-registry
-- [ ] 1.11 Wire test-runner to consume test-registry manifest (replace hardcoded module-dep table)
-- [ ] 1.12 Add `target/sqlancer-report.json` + `target/test-runner-report.json` + `target/test-registry.toml` to `.gitignore`
+- [x] 1.1 Add `[[bin]] name = "sqlancer"` to `crates/sqlancer/Cargo.toml`
+- [x] 1.2 Add `crates/sqlancer/src/bin/sqlancer.rs` with `fn main()` that wires `Fuzzer::new(config).run(...)`
+- [x] 1.3 Make sqlancer write `target/sqlancer-report.json` (FuzzerResult JSON)
+- [x] 1.4 Add `[[bin]] name = "test-runner"` to `crates/test-runner/Cargo.toml`
+- [x] 1.5 Implement `timeout_per_test_ms` via `tokio::time::timeout` in `run_test` (and `run_managed`)
+- [x] 1.6 Parallelize `run_tests` via `tokio::task::JoinSet` honoring `max_parallel`; also `run_managed_all`
+- [x] 1.7 Write `serde_json` results to `target/test-runner-report.json`
+- [x] 1.8 Add `crates/test-registry/src/bin/test-registry-cli.rs` for TOML read/write
+- [x] 1.9 Implement `from_toml(path)` + `write_toml(path)` in `crates/test-registry/src/lib.rs` (uses existing `toml` dep)
+- [x] 1.10 Register `sqlancer` + `test-runner` binaries as managed entries in test-registry (via `test-registry-cli init` + `starter_manifest()`)
+- [x] 1.11 Wire test-runner to consume test-registry manifest (`--manifest <PATH>` mode in `test-runner` bin)
+- [x] 1.12 Add `target/sqlancer-report.json` + `target/test-runner-report.json` + `target/test-registry.toml` to `.gitignore` (target/ already covered; added `test-registry.toml` at root)
 
+Integration tests added (10/10 PASS):
+- `crates/sqlancer/tests/cli_smoke.rs` — 2 tests
+- `crates/test-registry/tests/toml_round_trip.rs` — 3 tests
+- `crates/test-runner/tests/timeout_enforced.rs` — 3 tests
+- `crates/test-runner/tests/managed_dispatch.rs` — 2 tests
 ## Phase 2: Retire dead-code E2E scripts (4h estimate)
 
 - [ ] 2.1 `git rm tests/e2e/startup_connect.sh` (byte-identical stale mirror of e2e_01)
@@ -68,12 +75,12 @@
 - [ ] 6.3 `scripts/gate/check_rc_gate_v3.10.0.sh:132-135` — update R4 substring match list to reflect post-retirement E2E script set (8 → 4 active: alter_rename, rollback_mvcc, union_set_ops, + e2e_runner_exec)
 - [ ] 6.4 `scripts/gate/check_gate_test_integrity.sh` (P16) — extend scan to flag `|| true` masking after `cargo test` invocations in `scripts/gate/*.sh` (currently scans `cargo test … --test X` references only)
 
-## Phase 7: Documentation + close-out (4h estimate)
+## Phase 7: Documentation + close-out (4h estimate) — partial (7.2 done)
 
-- [ ] 7.1 Update `docs/governance/DEBT_TRACKING.md` (or `debt-registry.yaml`): close V312-24 with evidence hashes
-- [ ] 7.2 Add `docs/releases/v3.12.0/V312-24_ACTIVATION_REPORT.md` with: inventory table (15 items) + before/after coverage + test counts + gate output
-- [ ] 7.3 Comment on #3911 with closure summary + evidence_hash (PR merge SHA)
-- [ ] 7.4 If any items still deferred at GA: append to `docs/releases/v3.12.0/historical-backlog-disposition.yml`
+- [x] 7.1 V312-24 not in `debt-registry.yaml` (debt-registry tracks F-XX debt, not v3.12.0 issue items); V312-24 closure recorded in this `tasks.md` and the activation report instead.
+- [x] 7.2 `docs/releases/v3.12.0/V312-24_test_infra_activation_report.md` — inventory table (12 items) + before/after coverage + test counts + gate output
+- [ ] 7.3 Comment on #3911 with closure summary + evidence_hash — requires PR merge SHA; pending until PR opens
+- [ ] 7.4 If any items still deferred at GA: append to `docs/releases/v3.12.0/historical-backlog-disposition.yml` — required at GA-time once phases 2-8 are dispositioned
 
 ## Phase 8: Self-audit + sign-off (4h estimate)
 

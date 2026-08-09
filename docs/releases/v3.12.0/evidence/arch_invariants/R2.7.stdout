@@ -1,6 +1,54 @@
-TODO: implement R2.7
+============================================
+Anti-Fabrication Policy Check (AFP) v4
+============================================
 
-This is a stub. The v3.12.0 release must either:
-  1. Land the real R2.7 check, or
-  2. Mark this R2.N as deferred with owner + expiry
-     in a follow-up issue.
+[INFO] CHECK 1: cargo build -p sqlrustgo-mysql-server (canonical binary)...
+[PASS] sqlrustgo-mysql-server: cargo check PASS
+[INFO] CHECK 2: cargo test --workspace --no-run (test compile only, fast)...
+[ERROR] Test binaries compile FAILED (no binary names extracted)
+    --> crates/mysql-server/src/lib.rs:5006:13
+     |
+5006 |         let response = [0x00; 8];
+     |             ^^^^^^^^ help: if this is intentional, prefix it with an underscore: `_response`
+
+warning: unused variable: `response`
+    --> crates/mysql-server/src/lib.rs:5016:13
+     |
+5016 |         let response = [0x00; 8];
+     |             ^^^^^^^^ help: if this is intentional, prefix it with an underscore: `_response`
+
+warning: unused variable: `passthrough`
+    --> crates/mysql-server/src/lib.rs:5867:29
+     |
+5867 |                         let passthrough = EphemeralHandle {
+     |                             ^^^^^^^^^^^ help: if this is intentional, prefix it with an underscore: `_passthrough`
+
+warning: function `decode_lenenc_int_3byte_via_0xfd` is never used
+   --> crates/mysql-server/src/lib.rs:516:8
+    |
+516 |     fn decode_lenenc_int_3byte_via_0xfd() {
+    |        ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+    |
+    = note: `#[warn(dead_code)]` (part of `#[warn(unused)]`) on by default
+
+warning: `sqlrustgo-bench` (example "tpch_compare") generated 1 warning
+warning: `sqlrustgo-executor` (lib test) generated 42 warnings (run `cargo fix --lib -p sqlrustgo-executor --tests` to apply 34 suggestions)
+warning: `sqlrustgo-gmp` (lib) generated 12 warnings (11 duplicates)
+warning: `sqlrustgo-gmp` (lib test) generated 15 warnings (run `cargo fix --lib -p sqlrustgo-gmp --tests` to apply 15 suggestions)
+warning: `sqlrustgo-mysql-server` (lib test) generated 11 warnings (1 duplicate) (run `cargo fix --lib -p sqlrustgo-mysql-server --tests` to apply 9 suggestions)
+[INFO] CHECK 3: Gate report test counts vs actual cargo test compile output...
+[INFO] docs/releases/v3.8.0/alpha/ALPHA_GATE_REPORT.md: declares 10/10 PASS (test binaries compiled: unknown (cargo test --no-run log unavailable))
+[INFO] docs/releases/v3.8.0/beta/BETA_GATE_REPORT.md: declares 15/15 PASS (test binaries compiled: unknown (cargo test --no-run log unavailable))
+[INFO] docs/releases/v3.8.0/rc/RC_GA_GATE_REPORT.md: declares 5/5 PASS (test binaries compiled: unknown (cargo test --no-run log unavailable))
+[INFO] docs/releases/v3.9.0/rc/RC1_GATE_REPORT.md: declares 4/4 PASS (test binaries compiled: unknown (cargo test --no-run log unavailable))
+[INFO] docs/releases/v3.9.0/rc/RC2_GATE_REPORT.md: declares 4/4 PASS (test binaries compiled: unknown (cargo test --no-run log unavailable))
+[INFO] CHECK 4: HEAD commit author must be a known AI/Human identity...
+[PASS] HEAD author email: openclaw@gaoyuanyiyao.com (allowed multi-AI identity)
+[INFO] CHECK 5: Code examples in documentation (sanity scan)...
+[PASS] Scanned 411 markdown files in docs/releases + docs/governance
+
+============================================
+Results: ERRORS=1, WARNINGS=0
+============================================
+
+[ERROR] Anti-fabrication check (AFP v4): FAILED with 1 error(s)
