@@ -90,3 +90,30 @@
 
 **Follow-up Issue:** [V312-24] MySQL Wire Hardening Deferred Items — #3959 (open, owner=openclaw, expiry=2026-09-30)
 
+
+---
+
+## V312-13 Re-apply Closure (2026-08-09T17:30:00Z)
+
+After codex #88100 reopened #3900 for `check_load_data_infile.sh` missing execute bit, this report is re-verified on current HEAD `898768bd89`.
+
+**Real-time gate outputs:**
+
+```
+$ bash scripts/gate/check_load_data_infile.sh
+=== GA-P1 LOAD DATA INFILE Gate ===
+  [PASS] LOAD_DATA_INFILE.md
+  [PASS] LOAD DATA documented
+  [PASS] parser changes documented
+  [PASS] gate executable
+PASS: 4, FAIL: 0
+[exit 0]
+
+$ bash scripts/gate/check_arch_invariants.sh
+Result: ALL PASS  [exit 0]
+
+$ cargo test -p sqlrustgo-mysql-server --test wire_smoke_mysql_cli
+11 passed; 0 failed  [exit 0]
+```
+
+**Fix PR:** #3976 (commit `898768bd89`) — chmod +x 24 gate scripts (including `check_load_data_infile.sh`).
