@@ -1,0 +1,15 @@
+# cargo llvm-cov test -p <crate> --lib --no-fail-fast — 2026-08-09 (实测)
+# Field 4 = Line%, Field 7 = Branch%
+
+| Crate                          | Line         | Branch       | Status       |
+|--------------------------------|--------------|--------------|--------------|
+| sqlrustgo-executor             | 80.86%       | 83.68%       | ✅ ≥80%   |
+| sqlrustgo-storage              | 85.16%       | 81.27%       | ✅ ≥80%   |
+| sqlrustgo-tools                | 80.31%       | 80.17%       | ✅ ≥80%   |
+| sqlrustgo-mysql-client         | 83.72%       | 93.33%       | ✅ ≥80%   |
+| sqlrustgo-admin                | 82.70%       | 82.10%       | ✅ ≥80%   |
+| sqlrustgo-common               | 89.86%       | 88.36%       | ✅ ≥80%   |
+| sqlrustgo-planner              | 88.27%       | 79.72%       | ✅ ≥80%   |
+| sqlrustgo-parser               | 56.73%       | 80.46%       | ❌ <80%     |
+| sqlrustgo-catalog              | 88.46%       | 81.09%       | ✅ ≥80%   |
+| sqlrustgo-mysql-server        | 51.13%       | 64.07%       | ❌ <80%     |

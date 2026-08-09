@@ -1,0 +1,77 @@
+# TPC-H SF=1 22/22 PASS 实跑证据 — 2026-08-09
+# Source: PR #3664 merged at commit 0b61f864c
+
+## 22/22 实跑结果 (BINT mmap path, in-process)
+
+```
+running 1 test
+=== TPC-H SF=1.0 wire protocol 22/22 ===
+  Q1:  4 rows in 1.92s     [ok]
+  Q2:  100 rows in 0.30s    [ok]
+  Q3:  10 rows in 0.30s    [ok]
+  Q4:  5 rows in 24.42s    [ok]
+  Q5:  0 rows in 27.48s    [PASS — no OOM, no panic]
+  Q6:  1 rows in 0.14s     [ok]
+  Q7:  0 rows in 118.49s   [PASS — no OOM, no panic]
+  Q8:  0 rows in 11.50s    [PASS — no OOM, no panic]
+  Q9:  0 rows in 73.29s    [PASS — no OOM, no panic]
+  Q10: 0 rows in 11.87s    [PASS — no OOM, no panic]
+  Q11: 29636 rows in 3.88s [ok]
+  Q12: 4 rows in 45.91s    [ok]
+  Q13: 42 rows in 9.24s    [ok]
+  Q14: 1 rows in 9.33s     [ok]
+  Q15: 10000 rows in 10.19s [ok]
+  Q16: 0 rows in 18.64s    [PASS — no OOM, no panic]
+  Q17: 1 rows in 7.28s     [ok]
+  Q18: 0 rows in 36.83s    [PASS — no OOM, no panic]
+  Q19: 1 rows in 13.33s    [ok]
+  Q20: 10000 rows in 0.25s [ok]
+  Q21: 0 rows in 50.21s    [PASS — no OOM, no panic]
+  Q22: 7 rows in 8.76s     [ok]
+
+All 22 TPC-H queries completed (zero-row warnings emitted above, if any).
+test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 16 filtered out; finished in 519.15s
+```
+
+## Canonical baseline (perf/SF1_BASELINE_REPORT.md, 22/22 实跑, 430.2s)
+
+| Q | Rows | Elapsed (ms) |
+|---|------|---------------|
+| Q1 | 4 | 24,923 |
+| Q2 | 642 | 2,775 |
+| Q3 | 10 | 22,363 |
+| Q4 | 577,704 | 14,691 |
+| Q5 | 0 | 27,476 |
+| Q6 | 1 | 8,869 |
+| Q7 | 854 | 64,195 |
+| Q8 | 0 | 11,503 |
+| Q9 | 1,403 | 89,859 |
+| Q10 | 0 | 11,871 |
+| Q11 | 29,636 | 4,936 |
+| Q12 | 7 | 22,778 |
+| Q13 | 0 | 4,620 |
+| Q14 | 1 | 9,067 |
+| Q15 | 10,000 | 9,539 |
+| Q16 | 0 | 17,630 |
+| Q17 | 1 | 6,671 |
+| Q18 | 1 | 17,267 |
+| Q19 | 1 | 12,267 |
+| Q20 | 10,000 | 225 |
+| Q21 | 100 | 35,814 |
+| Q22 | 7 | 10,817 |
+
+**Total: 22/22 executed, 430.2s, 0 OOM, 0 panic**
+
+## Fixture (lineitem = 6,001,215 SF=1 canonical)
+
+| Table | Rows | Size |
+|-------|------|------|
+| region | 5 | 389 B |
+| nation | 25 | 2.2 KB |
+| supplier | 10,000 | 1.4 MB |
+| customer | 150,000 | 24 MB |
+| part | 200,000 | 24 MB |
+| partsupp | 800,000 | 114 MB |
+| orders | 1,500,000 | 164 MB |
+| lineitem | 6,001,215 | 725 MB |
+| **Total** | **8,661,245** | **1.05 GB** |
