@@ -63,6 +63,7 @@ pub mod schema;
 pub mod version;
 pub mod semantic_embedding;
 pub mod vector_index;
+pub mod retrieval;
 pub mod vector_search;
 
 // Re-export commonly used types
