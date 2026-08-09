@@ -4720,9 +4720,13 @@ impl Parser {
             self.next();
             match self.current() {
                 Some(Token::NumberLiteral(n)) => {
-                    let val = n
-                        .parse::<u64>()
-                        .map_err(|e| format!("Invalid LIMIT: {}", e))?;
+                    let val = if let Ok(i) = n.parse::<u64>() {
+                                                i
+                                            } else if let Ok(f) = n.parse::<f64>() {
+                                                f as u64
+                                            } else {
+                                                return Err(format!("Invalid LIMIT: invalid digit found in string"));
+                                            };
                     self.next();
                     Some(val)
                 }

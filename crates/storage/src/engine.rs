@@ -1050,21 +1050,21 @@ impl StorageEngine for MemoryStorage {
     }
 
     fn drop_table(&mut self, table: &str) -> SqlResult<()> {
-        self.tables.remove(table);
-        self.table_infos.remove(table);
-        Ok(())
-    }
+            self.tables.remove(&table.to_lowercase());
+            self.table_infos.remove(&table.to_lowercase());
+            Ok(())
+        }
 
     fn get_table_info(&self, table: &str) -> SqlResult<TableInfo> {
-        self.table_infos
-            .get(table)
-            .cloned()
-            .ok_or_else(|| SqlError::ExecutionError(format!("Table not found: {}", table)))
-    }
+            self.table_infos
+                .get(&table.to_lowercase())
+                .cloned()
+                .ok_or_else(|| SqlError::ExecutionError(format!("Table not found: {}", table)))
+        }
 
     fn has_table(&self, table: &str) -> bool {
-        self.table_infos.contains_key(table)
-    }
+            self.table_infos.contains_key(&table.to_lowercase())
+        }
 
     fn list_tables(&self) -> Vec<String> {
         self.table_infos.keys().cloned().collect()
@@ -1079,33 +1079,35 @@ impl StorageEngine for MemoryStorage {
     }
 
     fn add_column(&mut self, table: &str, column: ColumnDefinition) -> SqlResult<()> {
-        if let Some(info) = self.table_infos.get_mut(table) {
-            info.columns.push(column);
-            Ok(())
-        } else {
-            Err(SqlError::ExecutionError(format!(
-                "Cannot add column: table {} not found",
-                table
-            )))
+            if let Some(info) = self.table_infos.get_mut(&table.to_lowercase()) {
+                info.columns.push(column);
+                Ok(())
+            } else {
+                Err(SqlError::ExecutionError(format!(
+                    "Cannot add column: table {} not found",
+                    table
+                )))
+            }
         }
-    }
 
     fn rename_table(&mut self, table: &str, new_name: &str) -> SqlResult<()> {
-        let info = self.table_infos.remove(table);
-        let records = self.tables.remove(table);
-        if let (Some(info), Some(records)) = (info, records) {
-            let mut new_info = info;
-            new_info.name = new_name.to_string();
-            self.table_infos.insert(new_name.to_string(), new_info);
-            self.tables.insert(new_name.to_string(), records);
-            Ok(())
-        } else {
-            Err(SqlError::ExecutionError(format!(
-                "Cannot rename table: table {} not found",
-                table
-            )))
+            let table_lower = table.to_lowercase();
+            let new_name_lower = new_name.to_lowercase();
+            let info = self.table_infos.remove(&table_lower);
+            let records = self.tables.remove(&table_lower);
+            if let (Some(info), Some(records)) = (info, records) {
+                let mut new_info = info;
+                new_info.name = new_name.to_string();
+                self.table_infos.insert(new_name_lower.clone(), new_info);
+                self.tables.insert(new_name_lower, records);
+                Ok(())
+            } else {
+                Err(SqlError::ExecutionError(format!(
+                    "Cannot rename table: table {} not found",
+                    table
+                )))
+            }
         }
-    }
 
     fn create_trigger(&mut self, info: TriggerInfo) -> SqlResult<()> {
         self.triggers.insert(info.name.clone(), info);
@@ -1227,44 +1229,44 @@ impl StorageEngine for MemoryStorage {
     }
 
     fn drop_column(&mut self, table: &str, column: &str) -> SqlResult<()> {
-        let info = self
-            .table_infos
-            .get_mut(table)
-            .ok_or_else(|| SqlError::ExecutionError(format!("Table not found: {}", table)))?;
-        let col_idx = info
-            .columns
-            .iter()
-            .position(|c| c.name == column)
-            .ok_or_else(|| SqlError::ExecutionError(format!("Column not found: {}", column)))?;
-        info.columns.remove(col_idx);
-        if let Some(records) = self.tables.get_mut(table) {
-            for record in records.iter_mut() {
-                if col_idx < record.len() {
-                    record.remove(col_idx);
+            let info = self
+                .table_infos
+                .get_mut(&table.to_lowercase())
+                .ok_or_else(|| SqlError::ExecutionError(format!("Table not found: {}", table)))?;
+            let col_idx = info
+                .columns
+                .iter()
+                .position(|c| c.name == column)
+                .ok_or_else(|| SqlError::ExecutionError(format!("Column not found: {}", column)))?;
+            info.columns.remove(col_idx);
+            if let Some(records) = self.tables.get_mut(&table.to_lowercase()) {
+                for record in records.iter_mut() {
+                    if col_idx < record.len() {
+                        record.remove(col_idx);
+                    }
                 }
             }
+            Ok(())
         }
-        Ok(())
-    }
 
     fn modify_column(
-        &mut self,
-        table: &str,
-        column: &str,
-        new_def: ColumnDefinition,
-    ) -> SqlResult<()> {
-        let info = self
-            .table_infos
-            .get_mut(table)
-            .ok_or_else(|| SqlError::ExecutionError(format!("Table not found: {}", table)))?;
-        let col_idx = info
-            .columns
-            .iter()
-            .position(|c| c.name == column)
-            .ok_or_else(|| SqlError::ExecutionError(format!("Column not found: {}", column)))?;
-        info.columns[col_idx] = new_def;
-        Ok(())
-    }
+            &mut self,
+            table: &str,
+            column: &str,
+            new_def: ColumnDefinition,
+        ) -> SqlResult<()> {
+            let info = self
+                .table_infos
+                .get_mut(&table.to_lowercase())
+                .ok_or_else(|| SqlError::ExecutionError(format!("Table not found: {}", table)))?;
+            let col_idx = info
+                .columns
+                .iter()
+                .position(|c| c.name == column)
+                .ok_or_else(|| SqlError::ExecutionError(format!("Column not found: {}", column)))?;
+            info.columns[col_idx] = new_def;
+            Ok(())
+        }
 
     fn rename_column(&mut self, table: &str, old_name: &str, new_name: &str) -> SqlResult<()> {
         let info = self
