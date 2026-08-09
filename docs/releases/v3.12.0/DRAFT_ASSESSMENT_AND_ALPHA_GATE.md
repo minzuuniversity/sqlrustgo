@@ -9,7 +9,7 @@
 | 项 | 状态 | 证据 |
 |---|---|---|
 | 分支 | 完成 | `develop/v3.12.0` 已推送到 252 和 250 |
-| 规划提交 | 完成 | `9e157ed61b68a2a7c61ebae18cd0a6c15ceb79b1` |
+| 规划提交 | 完成 | `004056a620bec8525f66206176ff0b6be8327ce8` |
 | Milestone | 完成 | 252 Gitea `v3.12.0` milestone `#38` |
 | 总控 Issue | 完成 | `#3887` |
 | 具体任务 Issue | 完成 | `#3888-#3911`，V312-01 至 V312-24 |
@@ -56,4 +56,4 @@ Draft 阶段可以移交 Hermes/OMP 进入 Alpha 开发准备。任何 Alpha PAS
 最新 SQLLogicTest smoke evidence：
 
 - Report: `docs/releases/v3.12.0/sqllogictest-baseline/smoke-report.md`
-- Log: `docs/releases/v3.12.0/logs/sqllogictest_9e157ed61_20260809_145003.log`
+- Log: `docs/releases/v3.12.0/logs/sqllogictest_004056a62_20260809_145319.log`
