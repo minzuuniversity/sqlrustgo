@@ -7,7 +7,7 @@ PASS: C-ARCH-01
 PASS: C-ARCH-02
 
 [C-ARCH-03] Checking storage.insert/update/delete only in crates/storage or crates/executor/...
-INFO (6 storage operations in business crates — business-level access to StorageEngine is allowed per AD-002 §Consequences for non-SQL paths)
+INFO (14 storage operations in business crates — business-level access to StorageEngine is allowed per AD-002 §Consequences for non-SQL paths)
 
 [C-ARCH-04] Checking no eng.execute(raw_sql) outside parser...
 PASS: C-ARCH-04
