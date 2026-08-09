@@ -892,6 +892,28 @@ pub enum Expression {
     JsonLiteral(String),
 }
 
+/// V312-19 #3972: constant-fold an arithmetic expression to a `u64` LIMIT/OFFSET value.
+/// Returns `None` if the expression is not a constant integer.
+/// Supports `+ - * / %` on integer literals.
+fn constant_fold_u64(expr: &Expression) -> Option<u64> {
+    match expr {
+        Expression::Literal(s) => s.parse::<u64>().ok(),
+        Expression::BinaryOp(left, op, right) => {
+            let l = constant_fold_u64(left)?;
+            let r = constant_fold_u64(right)?;
+            match op.as_str() {
+                "+" => l.checked_add(r),
+                "-" => l.checked_sub(r),
+                "*" => l.checked_mul(r),
+                "/" => if r != 0 { l.checked_div(r) } else { None },
+                "%" => if r != 0 { l.checked_rem(r) } else { None },
+                _ => None,
+            }
+        }
+        _ => None,
+    }
+}
+
 /// Flatten a top-level AND conjunction: `a AND b AND c` -> vec![a, b, c].
 /// If expr is not an AND, returns vec![expr].
 /// TPC-H Sprint 1c: used by the multi-table FROM auto-rewrite to extract
@@ -4754,13 +4776,22 @@ impl Parser {
                 }
                 Some(Token::Identifier(ref s)) => {
                     // Support LIMIT variable (e.g., @limit)
+                    // V312-19 #3972: also accept arithmetic expression via constant_fold_u64.
                     let val = s
-                        .parse::<u64>()
+                         .parse::<u64>()
                         .map_err(|e| format!("Invalid LIMIT: {}", e))?;
                     self.next();
                     Some(val)
                 }
-                _ => None,
+                _ => {
+                    // V312-19 #3972: accept arithmetic expression, e.g. LIMIT 2-1.
+                    let saved_pos = self.position;
+                    let expr = self.parse_expression()?;
+                    constant_fold_u64(&expr).or_else(|| {
+                        self.position = saved_pos;
+                        None
+                    })
+                }
             }
         } else {
             None
@@ -4788,7 +4819,15 @@ impl Parser {
                     self.next();
                     Some(val)
                 }
-                _ => None,
+                _ => {
+                    // V312-19 #3972: OFFSET also accepts arithmetic expression.
+                    let saved_pos = self.position;
+                    let expr = self.parse_expression()?;
+                    constant_fold_u64(&expr).or_else(|| {
+                        self.position = saved_pos;
+                        None
+                    })
+                }
             }
         } else {
             None
