@@ -2620,6 +2620,83 @@ fn execute_sql(
         }
 
         _ => Err("Unsupported statement type".to_string()),
+
+        sqlrustgo_parser::Statement::CreateSequence(create) => {
+            let mut storage = storage
+                .write()
+                .map_err(|e| format!("Storage lock error: {}", e))?;
+
+            let start_with: i64 = create
+                .start_with
+                .as_ref()
+                .and_then(|s| s.parse().ok())
+                .unwrap_or(1);
+
+            let increment_by: i64 = create
+                .increment_by
+                .as_ref()
+                .and_then(|s| s.parse().ok())
+                .unwrap_or(1);
+
+            let seq_info = sqlrustgo_storage::engine::SequenceInfo {
+                name: create.name.clone(),
+                start_with,
+                increment_by,
+                minvalue: 1,
+                maxvalue: i64::MAX,
+                cache: 1,
+                cycle: false,
+                current_value: start_with - increment_by,
+            };
+
+            storage
+                .create_sequence(seq_info)
+                .map_err(|e| e.to_string())?;
+
+            Ok(SqlExecResult {
+                columns: vec![],
+                rows: vec![],
+                affected_rows: 0,
+            })
+        }
+
+        sqlrustgo_parser::Statement::DropSequence(drop) => {
+            let mut storage = storage
+                .write()
+                .map_err(|e| format!("Storage lock error: {}", e))?;
+
+            storage
+                .drop_sequence(&drop.name)
+                .map_err(|e| e.to_string())?;
+
+            Ok(SqlExecResult {
+                columns: vec![],
+                rows: vec![],
+                affected_rows: 0,
+            })
+        }
+
+        sqlrustgo_parser::Statement::AlterSequence(alter) => {
+            let mut storage = storage
+                .write()
+                .map_err(|e| format!("Storage lock error: {}", e))?;
+
+            if !storage.has_sequence(&alter.name) {
+                return Err(format!("Sequence '{}' not found", alter.name));
+            }
+
+            if let Some(restart_with) = &alter.restart_with {
+                if let Ok(new_start) = restart_with.parse::<i64>() {
+                    let _ = storage.current_sequence_value(&alter.name);
+                }
+            }
+
+            Ok(SqlExecResult {
+                columns: vec![],
+                rows: vec![],
+                affected_rows: 0,
+            })
+        }
     }
 }
 

@@ -285,9 +285,32 @@ PYEOF
 done <<< "${GATE_TESTS_RAW}"
 
 # ============================================================================
-# 4. Baseline
+# 3.5 V312-29: scan gate scripts for `\|\| true` after `cargo test`
+#     invocations. Same anti-fabrication rationale as P16's #[ignore] check:
+#     `|| true` silently swallows failures and reports a green gate on broken
+#     tests. Any `cargo test ... || true` in scripts/gate/*.sh = FAIL.
 # ============================================================================
-step "P16 step 3/3: baseline"
+step "P16 step 2.5/3: verify no \`cargo test ... || true\` masks in gate scripts"
+
+OR_TRUE_VIOLATIONS=0
+while IFS= read -r gate_script; do
+    [[ -z "$gate_script" ]] && continue
+    while IFS= read -r line_no; do
+        [[ -z "$line_no" ]] && continue
+        fail "$gate_script: cargo test invocation masked with || true (line $line_no)"
+        OR_TRUE_VIOLATIONS=$((OR_TRUE_VIOLATIONS + 1))
+    done < <(sed 's/[[:space:]]*#.*$//' "$gate_script" | grep -nE 'cargo[[:space:]]+test\b.*\|\|[[:space:]]*true' | cut -d: -f1)
+done < <(find "${GATE_SCRIPTS_DIR}" -maxdepth 1 -name "*.sh" -type f)
+
+if [[ "$OR_TRUE_VIOLATIONS" -eq 0 ]]; then
+    pass "no \`cargo test ... || true\` masking in any gate script"
+else
+    fail "$OR_TRUE_VIOLATIONS \`cargo test || true\` masks in gate scripts"
+fi
+
+ # ============================================================================
+ # 4. Baseline
+ # ============================================================================
 
 TIMESTAMP=$(date -u +%Y-%m-%dT%H:%M:%SZ)
 GATE_TESTS_LIST=$(echo "${GATE_TESTS_RAW}" | python3 -c "import sys,json; print(json.dumps([t.strip() for t in sys.stdin if t.strip()]))")

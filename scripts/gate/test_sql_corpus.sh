@@ -144,22 +144,54 @@ run_target() {
     # generic grep that looks for `test result: ok` / `tests passed`
     # and counts test cases from `^test ... ok` lines.
     if [ -f "${log}" ]; then
-        cases=$(grep -cE '^test .* \.\.\. ok' "${log}" 2>/dev/null | head -1)
-        cases=${cases:-0}
-        pass=${cases}
-        fail=$(grep -cE '^test .* \.\.\. FAILED' "${log}" 2>/dev/null | head -1)
-        fail=${fail:-0}
-        skipped=$(grep -cE '^test .* \.\.\. ignored' "${log}" 2>/dev/null | head -1)
-        skipped=${skipped:-0}
+        # Pattern 1: cargo test format (`test result: ok. N passed; M failed; ...`)
+        if grep -qE '^test result:' "${log}" 2>/dev/null; then
+            local trline
+            trline=$(grep -E '^test result:' "${log}" | tail -1)
+            pass=$(echo "${trline}" | grep -oE '[0-9]+ passed' | grep -oE '[0-9]+' || echo 0)
+            fail=$(echo "${trline}" | grep -oE '[0-9]+ failed' | grep -oE '[0-9]+' || echo 0)
+            skipped=$(echo "${trline}" | grep -oE '[0-9]+ ignored' | grep -oE '[0-9]+' || echo 0)
+            cases=$((pass + fail))
+        # Pattern 2: sqllogictest format (`files:    N/M (pass/fail)` + `pass rate: X%`)
+        elif grep -qE '^files:[[:space:]]*[0-9]+/[0-9]+ \(pass/fail\)' "${log}" 2>/dev/null; then
+            local frline
+            frline=$(grep -E '^files:[[:space:]]*[0-9]+/[0-9]+' "${log}" | tail -1)
+            pass=$(echo "${frline}" | awk '{print $2}' | awk -F'/' '{print $1}')
+            local total
+            total=$(echo "${frline}" | awk '{print $2}' | awk -F'/' '{print $2}')
+            fail=$((total - pass))
+            cases=${total}
+        # Pattern 3: wire gate / compat runner summary line
+        #   e.g.: "pass=9 unsupported=1 deferred=3 fail=1"
+        elif grep -qE 'pass=[0-9]+ ' "${log}" 2>/dev/null; then
+            pass=$(grep -oE 'pass=[0-9]+' "${log}" | head -1 | grep -oE '[0-9]+' || echo 0)
+            fail=$(grep -oE 'fail=[0-9]+' "${log}" | head -1 | grep -oE '[0-9]+' || echo 0)
+            skipped=$(grep -oE 'unsupported=[0-9]+' "${log}" | head -1 | grep -oE '[0-9]+' || echo 0)
+            cases=$((pass + fail))
+        # Pattern 4: generic `test ... ok` lines (last-resort)
+        else
+            cases=$(grep -cE '^test .* \.\.\. ok' "${log}" 2>/dev/null | head -1)
+            cases=${cases:-0}
+            pass=${cases}
+            fail=$(grep -cE '^test .* \.\.\. FAILED' "${log}" 2>/dev/null | head -1)
+            fail=${fail:-0}
+            skipped=$(grep -cE '^test .* \.\.\. ignored' "${log}" 2>/dev/null | head -1)
+            skipped=${skipped:-0}
+        fi
         sha="$(sha256sum "${log}" 2>/dev/null | awk '{print $1}')"
     fi
-
     # If status is still pass but the manifest says min_cases and
     # the actual cases is below, mark deferred.
     if [ "${status}" = "pass" ] && [ "${min_cases}" != "0" ] && [ "${cases}" -lt "${min_cases}" ]; then
         status="deferred"
     fi
-
+    # Promote pass -> fail if the log shows failures even when the
+    # command's exit code was 0 (e.g. sqllogictest exits 0 with
+    # `pass rate: 27.3%`). This makes the report honest about
+    # per-target correctness, not just runner-correctness.
+    if [ "${status}" = "pass" ] && [ "${fail}" -gt 0 ]; then
+        status="fail"
+    fi
     # Record the row.
     cat >> "${REPORT}" <<EOF
 | ${name} | ${cases} | ${pass} | ${fail} | ${skipped} | ${status} | ${sha} | ${start_ts} | ${SOURCE_RUN} |

@@ -1901,6 +1901,38 @@ mod col_type {
     pub const BLOB: u8 = 0xfc;
 }
 
+/// Infer the MySQL binary-protocol column type code from a Value.
+/// This must stay in sync with write_binary_row encoding.
+fn value_type_string(v: &Value) -> String {
+    match v {
+        Value::Null => "VARCHAR(255)".into(),
+        Value::Integer(_) => "INT".into(),
+        Value::Float(_) => "FLOAT".into(),
+        Value::Text(s) => {
+            if s.len() < 256 { format!("VARCHAR({})", s.len()) } else { "TEXT".into() }
+        }
+        Value::Blob(b) => {
+            if b.len() < 256 { format!("VARBINARY({})", b.len()) } else { "BLOB".into() }
+        }
+        Value::Boolean(_) => "TINYINT".into(),
+        Value::Point(_, _) => "DOUBLE".into(),
+    }
+}
+
+fn value_col_type(v: &Value) -> u8 {
+    match v {
+        Value::Null => col_type::STRING,
+        Value::Integer(_) => col_type::LONG,
+        Value::Float(_) => col_type::FLOAT,
+        Value::Text(s) => {
+            if s.len() < 256 { col_type::VARCHAR } else { col_type::VARSTRING }
+        }
+        Value::Blob(_) => col_type::BLOB,
+        Value::Boolean(_) => col_type::TINY,
+        Value::Point(_, _) => col_type::DOUBLE,
+    }
+}
+
 fn col_type_from_string(t: &str) -> u8 {
     let u = t.to_uppercase();
     if u.contains("DATETIME") || u.contains("TIMESTAMP") {
@@ -2228,12 +2260,21 @@ fn send_binary_result_set<W: Write>(
         .write_to(w)?;
         seq = seq.wrapping_add(1);
     }
-    // Column definitions (same packet format as text protocol)
+    // Infer actual column type strings from row data (not the misleading
+    // ctypes which may say VARCHAR(255) for integer columns).
+    // This must match value_col_type so the binary row encoding is consistent.
+    let actual_ctypes: Vec<String> = if let Some(first_row) = rows.first() {
+        first_row.iter().map(|v| value_type_string(v)).collect()
+    } else {
+        ctypes.iter().cloned().collect()
+    };
+
+    // Column definitions — use actual types so client knows how to decode rows
     for (i, n) in cols.iter().enumerate() {
         write_column_def(
             w,
             n,
-            ctypes.get(i).map(|s| s.as_str()).unwrap_or("VARCHAR(255)"),
+            actual_ctypes.get(i).map(|s| s.as_str()).unwrap_or("VARCHAR(255)"),
             seq,
         )?;
         seq = seq.wrapping_add(1);
@@ -2247,15 +2288,18 @@ fn send_binary_result_set<W: Write>(
         make_deprecate_eof_ok_packet(seq, 0, 0, 0x0002, 0).write_to(w)?;
         seq = seq.wrapping_add(1);
     }
-    // Rows in binary protocol
-    let col_type_codes: Vec<u8> = cols
-        .iter()
-        .enumerate()
-        .map(|(i, _)| {
+    // Infer column type codes from the actual data values, NOT from the
+    // column type strings (which may be misleading e.g. VARCHAR(255) for
+    // integer columns). The encoding in write_binary_row is determined by
+    // the Value variant, so we must match that here.
+    let col_type_codes: Vec<u8> = if let Some(first_row) = rows.first() {
+        first_row.iter().map(|v| value_col_type(v)).collect()
+    } else {
+        cols.iter().enumerate().map(|(i, _)| {
             let t = ctypes.get(i).map(|s| s.as_str()).unwrap_or("VARCHAR(255)");
             col_type_from_string(t)
-        })
-        .collect();
+        }).collect()
+    };
     for r in rows {
         let mut p = Vec::new();
         write_binary_row(&mut p, r, &col_type_codes)?;
