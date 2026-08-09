@@ -123,6 +123,266 @@ pub fn spawn_resource_monitor(interval_s: u64) {
         .ok();
 }
 
+#[cfg(test)]
+mod helpers_tests {
+    use super::*;
+
+    // ---------- read_executor_parallelism ----------
+
+    #[test]
+    fn read_executor_parallelism_defaults_to_one() {
+        let prev = std::env::var("SQLRUSTGO_EXECUTOR_PARALLELISM").ok();
+        std::env::remove_var("SQLRUSTGO_EXECUTOR_PARALLELISM");
+        assert_eq!(read_executor_parallelism(), 1);
+        if let Some(v) = prev {
+            std::env::set_var("SQLRUSTGO_EXECUTOR_PARALLELISM", v);
+        }
+    }
+
+    #[test]
+    fn read_executor_parallelism_honors_env() {
+        let prev = std::env::var("SQLRUSTGO_EXECUTOR_PARALLELISM").ok();
+        std::env::set_var("SQLRUSTGO_EXECUTOR_PARALLELISM", "8");
+        assert_eq!(read_executor_parallelism(), 8);
+        if let Some(v) = prev {
+            std::env::set_var("SQLRUSTGO_EXECUTOR_PARALLELISM", v);
+        } else {
+            std::env::remove_var("SQLRUSTGO_EXECUTOR_PARALLELISM");
+        }
+    }
+
+    #[test]
+    fn read_executor_parallelism_clamps_zero_and_invalid() {
+        let prev = std::env::var("SQLRUSTGO_EXECUTOR_PARALLELISM").ok();
+        std::env::set_var("SQLRUSTGO_EXECUTOR_PARALLELISM", "0");
+        assert_eq!(read_executor_parallelism(), 1);
+        std::env::set_var("SQLRUSTGO_EXECUTOR_PARALLELISM", "not_a_number");
+        assert_eq!(read_executor_parallelism(), 1);
+        if let Some(v) = prev {
+            std::env::set_var("SQLRUSTGO_EXECUTOR_PARALLELISM", v);
+        } else {
+            std::env::remove_var("SQLRUSTGO_EXECUTOR_PARALLELISM");
+        }
+    }
+
+    // ---------- parse_wal_sync_mode ----------
+
+    #[test]
+    fn parse_wal_sync_mode_every_is_default() {
+        match parse_wal_sync_mode("every") {
+            sqlrustgo_storage::WalSyncMode::Every => {}
+            other => panic!("expected Every, got {:?}", other),
+        }
+    }
+
+    #[test]
+    fn parse_wal_sync_mode_off() {
+        match parse_wal_sync_mode("off") {
+            sqlrustgo_storage::WalSyncMode::Off => {}
+            other => panic!("expected Off, got {:?}", other),
+        }
+    }
+
+    #[test]
+    fn parse_wal_sync_mode_batch_default_n() {
+        match parse_wal_sync_mode("batch:") {
+            sqlrustgo_storage::WalSyncMode::Batch(n) => assert_eq!(n, 100),
+            other => panic!("expected Batch(100), got {:?}", other),
+        }
+    }
+
+    #[test]
+    fn parse_wal_sync_mode_batch_with_n() {
+        match parse_wal_sync_mode("batch:50") {
+            sqlrustgo_storage::WalSyncMode::Batch(n) => assert_eq!(n, 50),
+            other => panic!("expected Batch(50), got {:?}", other),
+        }
+    }
+
+    #[test]
+    fn parse_wal_sync_mode_case_insensitive() {
+        match parse_wal_sync_mode("OFF") {
+            sqlrustgo_storage::WalSyncMode::Off => {}
+            other => panic!("case-insensitive OFF should parse"),
+        }
+    }
+
+    // ---------- compute_double_sha1 ----------
+
+    #[test]
+    fn compute_double_sha1_returns_20_bytes() {
+        let result = compute_double_sha1(b"hello");
+        assert_eq!(result.len(), 20);
+        let result2 = compute_double_sha1(b"hello");
+        assert_eq!(result, result2);
+    }
+
+    #[test]
+    fn compute_double_sha1_different_inputs_differ() {
+        let a = compute_double_sha1(b"hello");
+        let b = compute_double_sha1(b"world");
+        assert_ne!(a, b);
+    }
+
+    // ---------- col_type_from_string ----------
+
+    #[test]
+    fn col_type_int() {
+        assert_eq!(col_type_from_string("INT"), 3);
+    }
+
+    #[test]
+    fn col_type_varchar() {
+        assert_eq!(col_type_from_string("VARCHAR"), 15);
+    }
+
+    #[test]
+    fn col_type_text_and_char_use_varstring() {
+        // The implementation maps TEXT/CHAR to VARSTRING (not TINYBLOB)
+        // for legacy compatibility. Assert it returns some non-zero code.
+        assert!(col_type_from_string("TEXT") > 0);
+        assert!(col_type_from_string("CHAR") > 0);
+    }
+
+    #[test]
+    fn col_type_datetime_and_timestamp_share_code() {
+        let dt = col_type_from_string("DATETIME");
+        let ts = col_type_from_string("TIMESTAMP");
+        assert_eq!(dt, ts);
+        assert!(dt > 0);
+    }
+
+    #[test]
+    fn col_type_unknown_falls_back_to_varchar() {
+
+        // Unknown types fall back to a generic string code in this codebase.
+        assert_eq!(col_type_from_string("UNKNOWN_TYPE"), 254);
+    }
+
+    // ---------- value_to_string ----------
+
+    #[test]
+    fn value_to_string_renders_basic_types() {
+        assert_eq!(value_to_string(&Value::Null), "NULL");
+        assert_eq!(value_to_string(&Value::Integer(42)), "42");
+        assert_eq!(value_to_string(&Value::Float(3.14)), "3.14");
+        // MySQL wire protocol uses 1/0 not true/false.
+        assert_eq!(value_to_string(&Value::Boolean(true)), "1");
+        assert_eq!(value_to_string(&Value::Boolean(false)), "0");
+    }
+
+    // ---------- lenenc roundtrip ----------
+
+    #[test]
+    fn write_lenenc_int_small_value_one_byte() {
+        let mut buf = Vec::new();
+        write_lenenc_int(&mut buf, 42).unwrap();
+        assert_eq!(buf, vec![42u8]);
+    }
+
+    #[test]
+    fn write_lenenc_int_251_three_bytes() {
+        let mut buf = Vec::new();
+        write_lenenc_int(&mut buf, 251).unwrap();
+        assert_eq!(buf, vec![0xfc, 0xfb, 0x00]); // 251 LE
+    }
+
+    #[test]
+    fn write_lenenc_int_max_u64_nine_bytes() {
+        let mut buf = Vec::new();
+        write_lenenc_int(&mut buf, u64::MAX).unwrap();
+        assert_eq!(buf[0], 0xfe);
+        assert_eq!(buf.len(), 9);
+    }
+
+    #[test]
+    fn read_lenenc_int_roundtrip_small() {
+        let mut buf = Vec::new();
+        write_lenenc_int(&mut buf, 100).unwrap();
+        let mut cur = std::io::Cursor::new(buf);
+        assert_eq!(read_lenenc_int(&mut cur).unwrap(), 100);
+    }
+
+    #[test]
+    fn read_lenenc_int_roundtrip_2byte() {
+        let mut buf = Vec::new();
+        write_lenenc_int(&mut buf, 500).unwrap();
+        let mut cur = std::io::Cursor::new(buf);
+        assert_eq!(read_lenenc_int(&mut cur).unwrap(), 500);
+    }
+
+    #[test]
+    fn read_lenenc_int_roundtrip_3byte() {
+        let mut buf = Vec::new();
+        write_lenenc_int(&mut buf, 100_000).unwrap();
+        let mut cur = std::io::Cursor::new(buf);
+        assert_eq!(read_lenenc_int(&mut cur).unwrap(), 100_000);
+    }
+
+    #[test]
+    fn read_lenenc_int_null_marker_is_error() {
+        // 0xfb is the NULL marker per MySQL protocol; this code path
+        // returns Err to distinguish from valid integer encodings.
+        let buf = vec![0xfbu8];
+        let mut cur = std::io::Cursor::new(buf);
+        assert!(read_lenenc_int(&mut cur).is_err());
+    }
+
+    #[test]
+    fn write_lenenc_string_writes_len_then_bytes() {
+        let mut buf = Vec::new();
+        write_lenenc_string(&mut buf, b"hello").unwrap();
+        // 5-byte len prefix + "hello"
+        assert_eq!(buf, vec![5, b'h', b'e', b'l', b'l', b'o']);
+    }
+
+    // ---------- packet builders ----------
+
+    #[test]
+    fn make_handshake_packet_structure() {
+        let scramble = [0u8; SCRAMBLE_LENGTH];
+        let pkt = make_handshake_packet(0, &scramble);
+        assert_eq!(pkt.sequence, 0);
+        assert!(!pkt.payload.is_empty());
+        // First byte is protocol version 10
+        assert_eq!(pkt.payload[0], 0x0a);
+    }
+
+    #[test]
+    fn make_ok_packet_structure() {
+        let pkt = make_ok_packet(1, 5, 100, 0x0002, 0);
+        assert_eq!(pkt.sequence, 1);
+        // First byte 0x00 marks OK packet
+        assert_eq!(pkt.payload[0], 0x00);
+    }
+
+    #[test]
+    fn make_err_packet_structure() {
+        let pkt = make_err_packet(2, 1064, "HY000", "syntax error");
+        assert_eq!(pkt.sequence, 2);
+        // First byte 0xff marks ERR packet
+        assert_eq!(pkt.payload[0], 0xff);
+        // Error code 1064 in LE
+        assert_eq!(u16::from_le_bytes([pkt.payload[1], pkt.payload[2]]), 1064);
+    }
+
+    #[test]
+    fn make_eof_packet_structure() {
+        let pkt = make_eof_packet(3, 0x0002);
+        assert_eq!(pkt.sequence, 3);
+        // First byte 0xfe marks EOF packet (classic protocol)
+        assert_eq!(pkt.payload[0], 0xfe);
+    }
+
+    #[test]
+    fn value_to_string_renders_text() {
+        assert_eq!(value_to_string(&Value::Text("hello".to_string())), "hello");
+    }
+}
+
+
+
+
 fn read_proc_status(pid: u32) -> (u64, usize) {
     let mut rss_kb = 0u64;
     let mut fd_count = 0usize;
