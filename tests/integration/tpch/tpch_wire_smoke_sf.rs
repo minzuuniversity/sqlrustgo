@@ -297,9 +297,14 @@ fn tpch_wire_smoke_sf001_fixture_loads_and_q1_executes() {
     // are fixed we expect 6 groups (3 returnflags × 2 linestatuses).
     // Either outcome is acceptable here; the value-correctness
     // test below asserts the 6-row outcome explicitly.
+    // V312-27: assert rows.len() > 0 instead of `<= 6`. The previous
+    // assertion accepted 0 rows, which let a broken engine silently
+    // pass the smoke. Q1 on the SF=0.001 fixture must return at
+    // least one group (correct value is 6; engine bugs may return
+    // 1..=6; 0 is always a sign the fixture failed to load).
     assert!(
-        rows.len() <= 6,
-        "Q1 returned {} rows, expected <= 6",
+        rows.len() > 0,
+        "Q1 returned {} rows, expected > 0 (engine failed to load fixture or execute Q1)",
         rows.len()
     );
 }

@@ -209,9 +209,13 @@ fn test_table_info_default() {
 }
 
 #[test]
-#[ignore = "VtuGuard not yet implemented - sqlrustgo_storage::VtuGuard does not exist"]
 fn test_vtu_guard_wraps_storage() {
-    // VtuGuard type does not exist in sqlrustgo_storage.
-    // This test is a placeholder - implementation pending.
-    let _ = "VtuGuard not yet available";
+    // VtuGuard type added in v3.8.0 ARCH-3 (PRs #3152/#3787/#3790);
+    // the `#[ignore]` marker was stale. V312-27 removed the ignore and
+    // this test now exercises the real type. We use a Send+Sync
+    // assertion to avoid coupling to internal VtuGuard fields (which
+    // change between versions).
+    use sqlrustgo_storage::vtu_guard::VtuGuard;
+    fn assert_send_sync<T: Send + Sync>() {}
+    assert_send_sync::<VtuGuard<()>>();
 }
