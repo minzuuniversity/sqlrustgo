@@ -798,6 +798,63 @@ run_d7_reliability() {
 }
 
 # =============================================================================
+# D8: V312-19 Release Gates (Issue #3906)
+# =============================================================================
+# Verifies the three V312-19 RC/GA blocking artifacts exist and are
+# fresh (modified within 7 days of HEAD):
+#   1. ALL_TARGETS_REPORT.md   (SQL corpus all-targets)
+#   2. R2_INVARIANTS_REPORT.md (architectural invariants)
+#   3. Reviewer sign-off file  (per docs/governance/REVIEWER_SIGNOFF_TEMPLATE.md)
+#
+# The sign-off file is also structurally validated via
+# assert_reviewer_signoff.sh (distinct reviewer logins, commit SHA
+# match, evidence hash, 7-day freshness).
+#
+# Failure mode: missing/stale/structurally-invalid artifact = D8_BLOCKER.
+# Drift mode: artifact present but FAIL/DEFERRED/PARTIAL in body is
+# not auto-blocking — that's tracked by the artifact content itself.
+#
+# Gate scope: GA only. (Alpha/Beta/RC do not require sign-off yet —
+# the sign-off is the RC → GA transition artifact.)
+# =============================================================================
+D8_PASS=0
+D8_TOTAL=0
+D8_BLOCKERS=0
+
+run_d8_v312_19_release_gates() {
+    log_dim "8" "V312-19 Release Gates (Issue #3906)"
+
+    local V31219_SCRIPT="${SCRIPT_DIR:-$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)}/check_v312_19_release_gates.sh"
+    if [ ! -f "$V31219_SCRIPT" ]; then
+        D8_TOTAL=$((D8_TOTAL+1))
+        log_fail "D8 V312-19 driver script missing: $V31219_SCRIPT"
+        D8_BLOCKERS=$((D8_BLOCKERS+1))
+        return
+    fi
+
+    # V312-19 release-gate driver exits 0 on pass, 1 on fail, 2 on drift.
+    # Only a `fail` exit counts as a D8 blocker. `drift` is informational
+    # (the artifact is fresh; contents may be FAIL/DEFERRED but that's
+    # tracked inside the artifact per strict-close policy).
+    local rc=0
+    set +e
+    bash "$V31219_SCRIPT" > /tmp/d8_v312_19.log 2>&1
+    rc=$?
+    set -e
+
+    D8_TOTAL=$((D8_TOTAL+1))
+    if [ "$rc" -eq 0 ]; then
+        log_pass "D8 V312-19 release gates"
+        D8_PASS=$((D8_PASS+1))
+    elif [ "$rc" -eq 2 ]; then
+        log_warn "D8 V312-19 release gates DRIFT (see /tmp/d8_v312_19.log)"
+        D8_PASS=$((D8_PASS+1))   # drift is not blocking
+    else
+        log_fail "D8 V312-19 release gates FAIL (see /tmp/d8_v312_19.log)"
+        D8_BLOCKERS=$((D8_BLOCKERS+1))
+    fi
+}
+
 # MAIN
 # =============================================================================
 
@@ -846,8 +903,15 @@ ${NC}"
         # D7: Reliability Gate (G6-G10) — Hermes 2026-06-12 审计新增
         # 真实生产环境关键门禁: 备份/Soak/Crash/Upgrade/Audit
         run_d7_reliability
-    fi
 
+        # D8: V312-19 Release Gates (Issue #3906)
+        # SQL corpus all-targets report + R2 invariant report + reviewer
+        # sign-off file must be present and fresh (within 7 days of HEAD)
+        # before allowing RC → GA promotion.
+        # Strict close condition #7: v3.12.0 RC/GA cannot pass without
+        # the three V312-19 artifacts.
+        run_d8_v312_19_release_gates
+    fi
     # =======================================================================
     # SUMMARY
     # =======================================================================
@@ -857,15 +921,14 @@ ${NC}"
     echo "  D3-SGL:    PASS=$D3_PASS | FAIL=$D3_FAILS | DRIFT=$D3_DRIFTS"
     echo "  D4-WAL:    $D4_PASS/$D4_TOTAL"
     echo "  D5-DeepSeek: $D5_PASS/$D5_TOTAL"
-    echo "  D6a-Integration: $D6_PASS/$D6_TOTAL (FAIL: $D6_FAIL)  (D6-TestInventory in check_full_gate_verification.sh)"
     echo "  D7-Reliability: $D7_PASS/$D7_TOTAL (blockers: $D7_BLOCKERS)  (G6-G10: Backup/Soak/Crash/Upgrade/Audit — Hermes 2026-06-12 审计新增)"
-    echo ""
+    echo "  D8-V312-19:     $D8_PASS/$D8_TOTAL (blockers: $D8_BLOCKERS)  (corpus/R2/signoff freshness — V312-19 / Issue #3906)"
 
     # Determine gate verdict
     local VERDICT="PASS"
     local EXIT_CODE=0
 
-    if [[ "$D1_BLOCKERS" -gt 0 ]] || [[ "${D2_BLOCKERS:-0}" -gt 0 ]]; then
+    if [[ "$D1_BLOCKERS" -gt 0 ]] || [[ "${D2_BLOCKERS:-0}" -gt 0 ]] || [[ "$D8_BLOCKERS" -gt 0 ]]; then
         VERDICT="FAIL"
         EXIT_CODE=1
     elif [[ "$D3_FAILS" -gt 0 ]]; then
@@ -900,8 +963,8 @@ ${NC}"
         echo "    Beta → RC:    PASS when D2=$D2_PASS/${D2_TOTAL}, D3_FAILS=0"
         echo "    RC → GA:      PASS when D5=$D5_PASS/${D5_TOTAL}, D7=$D7_PASS/${D7_TOTAL}, C-ARCH-05 drift tracked"
         echo "                  D7 (G6-G10 reliability) 是 Hermes 2026-06-12 审计新增的 GA 卡死门禁"
+        echo "                  D8 (V312-19 release gates) 是 Issue #3906 strict-close 硬性条件"
     fi
-
     exit $EXIT_CODE
 }
 
