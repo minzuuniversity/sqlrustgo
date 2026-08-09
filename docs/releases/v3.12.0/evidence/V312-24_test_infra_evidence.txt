@@ -1,0 +1,256 @@
+# V312-24 test-infra activation evidence — 2026-08-09
+#
+# Source: feature/v312-24-impl branch
+# Re-run with:
+#   cargo build  -p sqlancer -p test-runner -p test-registry
+#   cargo test   -p sqlancer -p test-runner -p test-registry --lib
+#   cargo test   -p sqlancer -p test-runner -p test-registry \
+#                --test cli_smoke --test toml_round_trip \
+#                --test timeout_enforced --test managed_dispatch
+#   cargo clippy -p sqlancer -p test-runner -p test-registry --lib --bins -- -D warnings
+#   cargo fmt    --check -p sqlancer -p test-runner -p test-registry
+
+# ---- Build ----
+$ cargo build -p sqlancer -p test-runner -p test-registry
+  Finished `dev` profile [unoptimized + debuginfo] target(s)
+  0 errors, 0 warnings on this PR's code
+
+# ---- Library unit tests (existing — not new in this PR) ----
+sqlancer:        9 PASS / 0 FAIL / 0 IGNORED
+test-registry:   5 PASS / 0 FAIL / 0 IGNORED
+test-runner:     6 PASS / 0 FAIL / 0 IGNORED
+TOTAL:          20 PASS / 0 FAIL / 0 IGNORED
+
+# ---- Integration tests (new in this PR) ----
+cli_smoke               2 PASS / 0 FAIL
+toml_round_trip         3 PASS / 0 FAIL
+managed_dispatch        2 PASS / 0 FAIL
+timeout_enforced        3 PASS / 0 FAIL
+TOTAL:                 10 PASS / 0 FAIL
+
+# ---- Strict clippy ----
+$ cargo clippy -p sqlancer -p test-runner -p test-registry --lib --bins -- -D warnings
+  0 errors, 0 warnings on this PR's code
+  (the `crates/tools/Cargo.toml: unused manifest key: bin.1.rand` warning is pre-existing in a different crate, out of scope)
+
+# ---- Format ----
+$ cargo fmt --check -p sqlancer -p test-runner -p test-registry
+  0 diffs
+
+# ---- End-to-end smoke (mode + artifact) ----
+$ cargo run -q -p sqlancer -- --duration 1 --iterations 10 --out target/sqlancer-report.json
+  sqlancer: wrote report — total_queries=10 successful=10 failed=0 duration_secs=0.00 timeout=false
+  → artifact: target/sqlancer-report.json
+
+$ cargo run -q -p test-registry --bin test-registry-cli -- init target/test-registry.toml
+  wrote starter manifest at target/test-registry.toml (2 entries)
+  → artifact: target/test-registry.toml
+
+$ cargo run -q -p test-registry --bin test-registry-cli -- register target/test-registry.toml \
+    sqlancer-quickcheck cargo --timeout-ms 5000 --priority P3 --category ci \
+    --args check --release
+  registered sqlancer-quickcheck in target/test-registry.toml
+
+$ cargo run -q -p test-runner -- --manifest target/test-registry.toml \
+    --max-parallel 3 --out target/test-runner-report.json
+  test-runner: mode=manifest wrote 3 entries — total=3 passed=2 failed=0 \
+               timed_out=1 crashed=0 duration_ms=9248
+  → artifact: target/test-runner-report.json
+
+# The single `timed_out=1` is the 5s-budgeted `sqlancer-quickcheck` entry
+# running `cargo check` against the workspace — which legitimately takes
+# >5s on this machine, exercising the per-entry `timeout_ms` enforcement
+# end-to-end. This is the "timeout actually fires" evidence gate from
+# proposal.md §Acceptance criteria.
+
+# ---- Artifact SHA-256 (regenerated per build) ----
+#   7db76b5e0e522c5f6553941c83e506b6b3fc63322a39df7bd70cdc87cf4b9be9  target/sqlancer-report.json
+#   2dc6b1dea6169882cfd057cc566b7867dae8dedb21999063a9ea93c68e02f085  target/test-runner-report.json
+#   70574a4c3bdc6de3900dc53fc2a8a3469c4fab4eeefe5cf33c406a3433746738  target/test-registry.toml
+
+# ---- New source SHA-256 (this PR) ----
+#   4f17f1d677f83be9e52607ca12ac8338792bac73b6fcda0f1c77dfd543d66716  crates/sqlancer/src/lib.rs
+#   6e9a7b875dc84649eea405cf3add025dd04172df7417d0a8b0860c392108a350  crates/sqlancer/src/bin/sqlancer.rs
+#   8c13a0aeb087bc1ef9891e30fdb0418e5a988fe3acc6749cc392f8789d24f989  crates/test-runner/src/lib.rs
+#   ee705e34b39e6c036592d9538e571a2a63c04e6540a1bbbc58d105f4716480f2  crates/test-runner/src/bin/test-runner.rs
+#   f2caaf0ffcd831e0e665c70f9a7189a24ad09f43fd24a79bbc38c3a0aa3e3b8e  crates/test-registry/src/lib.rs
+#   4d3eb65038928b48f6f7804167415ea681a9a454e98168f318a271decb3702d0  crates/test-registry/src/bin/test-registry-cli.rs
+#   d24bcbe761d9e25108bfa44e368f429adf5687daeafa2afaa098dad0a30fb90d  crates/sqlancer/tests/cli_smoke.rs
+#   5382b002a31ccd33a81df14aceaf29e5177e5246a72972bb6ea61e2416895a7a  crates/test-registry/tests/toml_round_trip.rs
+#   04fff3e22c83b6d775bf86dc642981cad4fd6249a35526e543354e9e01730c97  crates/test-runner/tests/timeout_enforced.rs
+#   47185b6089faed4f61f9e08f6ddaf3f7c54417da6e42246f1bcd73ea6ce1ceb9  crates/test-runner/tests/managed_dispatch.rs
+#   c679729e6ec9de8f5eb84628038b14bc0bcf11df5350158f26a313ea63562b52  docs/releases/v3.12.0/V312-24_test_infra_activation_report.md
+#   b5425bb85b561b4c07a980a4552a5ad372662a997ae59f5e1d7f2ff2fa17e4a6  openspec/changes/v312-24-test-infra-activation/tasks.md
+#
+#   # Follow-up OpenSpec artifacts (V312-25 ~ V312-30) — these are NOT
+#   # V312-24 evidence; they're pointer to follow-up scope. Listed here
+#   # so the evidence file is the single SHA-256 manifest for the PR.
+#   5250271323a2dd314a4a2b9911e0b21e93e7dc513716711a2a01779894989913  docs/releases/v3.12.0/ISSUES_PLAN.md
+#   059b24414ef076008c47b14e3131d88156e1c1e184ea2ffa8fa7d87961bd24b9  openspec/changes/v312-25-e2e-retire/proposal.md
+#   b68ec48f0dddbbdc5ddc54d086fdaab0f483ac38c4380ce1d4d069b73c200e2b  openspec/changes/v312-25-e2e-retire/tasks.md
+#   098ff97d4b7664089ec351b91f3619e1e02224ad2f7588bd9e0a871628aa0315  openspec/changes/v312-26-warn-only-fix/proposal.md
+#   451e6d7758848ba61f33f2f68822614bb07a463721a6a3cfb474c397f7bee2e5  openspec/changes/v312-26-warn-only-fix/tasks.md
+#   c5ce57958ac617cc9583113cca513e4f671607ab955a42db9d95f71e566d2302  openspec/changes/v312-27-anti-fab/proposal.md
+#   78669e9564c16dbba261e37e03f36e133a6af53c569d7452c07be7b6d034fae6  openspec/changes/v312-27-anti-fab/tasks.md
+#   3356d391ab3d290d12da5b0a2d3b37d7b72ae1bb18d8b467af9a469b3a4d7ea8  openspec/changes/v312-28-corpus-activation/proposal.md
+#   25a9d1124666701721a568f4223096f8ca85c99e74dfb27b29fa39f91e96ae3c  openspec/changes/v312-28-corpus-activation/tasks.md
+#   fe3faacb52b648565a4406e5acd7e857914d48e599d8e1227d1d4e1067835cb4  openspec/changes/v312-29-gate-wiring/proposal.md
+#   6315328820dc009f8d97389e897805b670df47587006d3315e7a7079ed784da0  openspec/changes/v312-29-gate-wiring/tasks.md
+#   a3c5fb6d4cbfd58e7c24b122bdfd3db2fd44cd2ac05c56874497a3c58c02ccbd  openspec/changes/v312-30-v31224-signoff/proposal.md
+#   f3639bd47d19e63e8c3475ef8ac70f9fa3942ddad0b43c1b62abc4837f18ca45  openspec/changes/v312-30-v31224-signoff/tasks.md
+
+# ---- Follow-up issue closing commands (run by each V312-25 ~ V312-30
+#      owner, must produce the asserted outputs to close) ----
+#
+# V312-25 closing commands (4 mandatory):
+#   1. git log --diff-filter=D --name-only --pretty=format: -- \
+#        tests/e2e/startup_connect.sh tests/e2e/tpch_sf01.sh \
+#        tests/e2e/kill9_recovery.sh \
+#        scripts/gate/e2e/e2e_01_basic_crud.sh \
+#        scripts/gate/e2e/e2e_02_tx_commit_rollback.sh \
+#        scripts/gate/e2e/e2e_03_wal_crash_recovery.sh \
+#        scripts/gate/e2e/e2e_04_parallel_executor.sh \
+#        scripts/gate/e2e/e2e_05_savepoint_rollback.sh \
+#        scripts/gate/e2e/e2e_06_cte_query.sh \
+#        scripts/gate/e2e/e2e_08_migration.sh | sort -u | wc -l
+#      expected: >= 10
+#   2. git ls-files tests/e2e/ scripts/gate/e2e/ | \
+#        grep -E '(startup_connect|tpch_sf01|kill9_recovery|e2e_0[1-8])' | wc -l
+#      expected: 0
+#   3. python3 -c "import json; d=json.load(open('tests/baseline/ignore_registry.json')); \
+#        files=d.get('files',[]); new=[f for f in files if 'V312-25' in f.get('reason','')]; \
+#        print(len(new))"
+#      expected: >= 10
+#   4. test -f docs/releases/v3.12.0/V312-25_e2e_retire_report.md
+#      expected: exit 0
+#
+# V312-26 closing commands (5 mandatory):
+#   1. grep -rn '|| true' tests/e2e/backup_restore.sh \
+#        tests/e2e/sysbench_wired.sh scripts/gate/e2e/e2e_07_json_vector.sh | wc -l
+#      expected: 0
+#   2. (move fixture aside) && bash scripts/gate/e2e/e2e_07_json_vector.sh; \
+#      echo "exit=$?"; (restore fixture)
+#      expected: exit != 0
+#   3. bash tests/e2e/backup_restore.sh > /tmp/backup_restore_evidence.txt 2>&1; \
+#      test $(wc -c < /tmp/backup_restore_evidence.txt) -gt 100; \
+#      grep -q restore /tmp/backup_restore_evidence.txt
+#      expected: all 3 commands exit 0
+#   4. (PATH stripped of sysbench) bash tests/e2e/sysbench_wired.sh; \
+#      echo "exit=$?"; (PATH restored)
+#      expected: exit 1 + stderr contains "sysbench not found"
+#   5. test -f docs/releases/v3.12.0/V312-26_warn_only_fix_report.md
+#
+# V312-27 closing commands (4 mandatory):
+#   1. cargo test -p sqlrustgo-executor --test merge_vtu_test 2>&1 | tail -1
+#      expected: "test result: ok"
+#   2. CI=1 cargo test --test e2e_beta_test -- --ignored 2>&1 | \
+#        grep -c 'test result: ok'
+#      expected: >= 1
+#   3. python3 -c "import json; d=json.load(open('tests/baseline/ignore_registry.json')); \
+#        files=d.get('files',[]); \
+#        stale=[f for f in files if any(p in f.get('file','') for p in \
+#        ['tx_wal_contract','soak_test','dml_integration_test','stored_proc_catalog', \
+#         'tpch_q9_audit','small_executor_modules','boundary_test','union_set_operations'])]; \
+#        phantom=[f for f in files if 'parser.rs' in f.get('file','') and '7299' in f.get('reason','')]; \
+#        print('stale:', len(stale), 'phantom:', len(phantom))"
+#      expected: "stale: 0 phantom: 0"
+#   4. test -f docs/releases/v3.12.0/V312-27_anti_fab_fix_report.md
+#
+# V312-28 closing commands (3 mandatory, 1 fallback):
+#   1. cargo test --release -p sqlrustgo-sql-corpus --test corpus_test \
+#        test_sql_corpus_all -- --nocapture > /tmp/corpus_final.txt 2>&1; \
+#        grep -E 'PASS_RATE' /tmp/corpus_final.txt | tail -1
+#      expected: numeric field >= 80.0
+#   2. grep -rc '#\[test\]' crates/sqlrustgo-executor/tests/ | \
+#        awk -F: '{s+=$2} END{print s}'
+#      expected: >= 16
+#   3. test -f docs/releases/v3.12.0/V312-28_corpus_activation_report.md
+#   4. (fallback if 80% unreachable) test -f \
+#        docs/releases/v3.12.0/V312-28_corpus_threshold_attestation.md
+#
+# V312-29 closing commands (5 mandatory):
+#   1. grep -n '|| true' scripts/test/run-regression.sh | grep -i sqlancer | wc -l
+#      expected: 0
+#   2. bash scripts/gate/check_beta_gate.sh 2>&1 | grep B10_SQLANCER
+#      expected: contains "check_fail" + exit 0
+#   3. grep -E 'alter_rename|rollback_mvcc|union_set_ops|e2e_runner_exec' \
+#        scripts/gate/check_rc_gate_v3.10.0.sh | wc -l
+#      expected: >= 4
+#   4. bash scripts/gate/check_gate_test_integrity.sh
+#      expected: exit 0
+#   5. test -f docs/releases/v3.12.0/V312-29_gate_wiring_report.md
+#
+# V312-30 closing commands (3 mandatory):
+#   1. gh pr view <PR_NUMBER> --json state,mergedAt
+#      expected: state="MERGED" + mergedAt non-null
+#   2. cargo test --workspace --no-fail-fast; cargo clippy --all-features -- -D warnings; \
+#        cargo fmt --check; bash scripts/gate/check_anti_fabrication.sh; \
+#        bash scripts/gate/check_beta_gate.sh
+#      expected: all exit 0
+#   3. test -f docs/releases/v3.12.0/V312-30_signoff_report.md
+#      + grep -c APPROVED <(gh pr view <PR_NUMBER> --json reviews) >= 2
+
+# ---- evidence_hash (single SHA-256 to quote in ISSUE #3911 comment) ----
+# The "primary evidence_hash" is the first hash in the New source SHA-256
+# block — corresponding to the V312-24 activation report itself:
+#   c679729e6ec9de8f5eb84628038b14bc0bcf11df5350158f26a313ea63562b52
+# A "composite" hash of all V312-24 + V312-25~30 proposal/tasks is:
+#   sha256sum openspec/changes/v312-24-test-infra-activation/proposal.md \
+#             openspec/changes/v312-24-test-infra-activation/tasks.md \
+#             openspec/changes/v312-25-e2e-retire/proposal.md \
+#             openspec/changes/v312-25-e2e-retire/tasks.md \
+#             openspec/changes/v312-26-warn-only-fix/proposal.md \
+#             openspec/changes/v312-26-warn-only-fix/tasks.md \
+#             openspec/changes/v312-27-anti-fab/proposal.md \
+#             openspec/changes/v312-27-anti-fab/tasks.md \
+#             openspec/changes/v312-28-corpus-activation/proposal.md \
+# (output to be pasted in the ISSUE #3911 closure comment)
+# Computed 2026-08-09:
+#   0e107b638b8531b707980e708bed048d75d181ffdd9bc5d4d2112faa1aa28e04  -
+#             docs/releases/v3.12.0/evidence/V312-24_test_infra_evidence.txt \
+#             docs/releases/v3.12.0/ISSUES_PLAN.md | sha256sum
+# (output to be pasted in the ISSUE #3911 closure comment)
+
+# ---- Composite evidence_hash (re-computed 2026-08-09, latest) ----
+# SHA-256:
+#   ea8685d09d0d33d335ba9f97a823187cef08541aafa78dfc56861129299202e6
+#
+# Earlier hashes (chronological, each reflects a different input set):
+#   0e107b638b8531b707980e708bed048d75d181ffdd9bc5d4d2112faa1aa28e04  (initial)
+#   956eaf4d5ea148428d6432af0489f5e25bb0acf58da886bcb0ff03cdf4560286  (after V312-25/27/28 proposals updated)
+#   ea8685d09d0d33d335ba9f97a823187cef08541aafa78dfc56861129299202e6  (after V312-26/30 + ISSUES_PLAN update, pre-V312-25..29 work)
+#
+# V312-30 owner MUST re-compute at close time (input set will grow with
+# V312-25~29 work). The above numbers are baseline; final hash will
+# differ.
+#   docs/releases/v3.12.0/evidence/V312-25_baseline_evidence.txt
+#   docs/releases/v3.12.0/evidence/V312-26_baseline_evidence.txt
+#   docs/releases/v3.12.0/evidence/V312-27_baseline_evidence.txt
+#   docs/releases/v3.12.0/evidence/V312-28_baseline_evidence.txt
+#   docs/releases/v3.12.0/evidence/V312-29_baseline_evidence.txt
+#   docs/releases/v3.12.0/evidence/V312-30_baseline_evidence.txt
+# (the actual `sha256sum | sha256sum` input list in /tmp/evhash_inputs.txt
+#  does NOT include these baseline files because they are per-issue
+#  evidence consumed by the V312-25~30 owners, not V312-24 itself).
+#
+# Reproduce with:
+#   cat <<'IN' > /tmp/evhash_inputs.txt
+#   openspec/changes/v312-24-test-infra-activation/proposal.md
+#   openspec/changes/v312-24-test-infra-activation/tasks.md
+#   openspec/changes/v312-25-e2e-retire/proposal.md
+#   openspec/changes/v312-25-e2e-retire/tasks.md
+#   openspec/changes/v312-26-warn-only-fix/proposal.md
+#   openspec/changes/v312-26-warn-only-fix/tasks.md
+#   openspec/changes/v312-27-anti-fab/proposal.md
+#   openspec/changes/v312-27-anti-fab/tasks.md
+#   openspec/changes/v312-28-corpus-activation/proposal.md
+#   openspec/changes/v312-28-corpus-activation/tasks.md
+#   openspec/changes/v312-29-gate-wiring/proposal.md
+#   openspec/changes/v312-29-gate-wiring/tasks.md
+#   openspec/changes/v312-30-v31224-signoff/proposal.md
+#   openspec/changes/v312-30-v31224-signoff/tasks.md
+#   docs/releases/v3.12.0/V312-24_test_infra_activation_report.md
+#   docs/releases/v3.12.0/evidence/V312-24_test_infra_evidence.txt
+#   docs/releases/v3.12.0/ISSUES_PLAN.md
+#   IN
+#   sha256sum $(cat /tmp/evhash_inputs.txt) | sha256sum
