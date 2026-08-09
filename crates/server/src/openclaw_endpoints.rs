@@ -448,6 +448,7 @@ pub struct OpenClawHttpServer {
     version: String,
     metrics_registry: Arc<RwLock<MetricsRegistry>>,
     storage: Arc<RwLock<dyn StorageEngine>>,
+    catalog: Option<Arc<parking_lot::RwLock<sqlrustgo_catalog::Catalog>>>,
     openclaw_client: Arc<RwLock<OpenClawClient>>,
     query_stats: Arc<StatsCollector>,
     scheduler_state: Arc<scheduler::SchedulerState>,
@@ -459,6 +460,7 @@ impl OpenClawHttpServer {
         host: impl Into<String>,
         port: u16,
         storage: Arc<RwLock<dyn StorageEngine>>,
+        catalog: Option<Arc<parking_lot::RwLock<sqlrustgo_catalog::Catalog>>>,
     ) -> Self {
         // BinaryTableStorage has no WAL. OpenClaw endpoints on
         // non-WAL storage log a warning but do not panic. WalStorage
@@ -485,6 +487,7 @@ impl OpenClawHttpServer {
             version: "2.4.0".to_string(),
             metrics_registry: Arc::new(RwLock::new(MetricsRegistry::new())),
             storage,
+            catalog,
             openclaw_client: Arc::new(RwLock::new(OpenClawClient::new())),
             query_stats: Arc::new(StatsCollector::new(1000)),
             scheduler_state: Arc::new(scheduler::SchedulerState::new()),
@@ -562,6 +565,7 @@ impl OpenClawHttpServer {
                     let openclaw_client = Arc::clone(&self.openclaw_client);
                     let query_stats = Arc::clone(&self.query_stats);
                     let scheduler_state = Arc::clone(&self.scheduler_state);
+                    let catalog = Arc::clone(self.catalog.as_ref().unwrap_or(&Arc::new(parking_lot::RwLock::new(sqlrustgo_catalog::Catalog::new("default")))));
 
                     std::thread::spawn(move || {
                         let _ = handle_openclaw_request(
@@ -569,6 +573,7 @@ impl OpenClawHttpServer {
                             &version,
                             &metrics_registry,
                             &storage,
+                            &catalog,
                             &openclaw_client,
                             &query_stats,
                             &scheduler_state,
@@ -591,6 +596,7 @@ fn handle_openclaw_request<T: std::io::Read + std::io::Write>(
     version: &str,
     metrics_registry: &Arc<RwLock<MetricsRegistry>>,
     storage: &Arc<RwLock<dyn StorageEngine>>,
+    catalog: &Arc<parking_lot::RwLock<sqlrustgo_catalog::Catalog>>,
     openclaw_client: &Arc<RwLock<OpenClawClient>>,
     query_stats: &Arc<StatsCollector>,
     scheduler_state: &Arc<scheduler::SchedulerState>,
@@ -637,7 +643,7 @@ fn handle_openclaw_request<T: std::io::Read + std::io::Write>(
                         match serde_json::from_str::<QueryRequest>(&body_str) {
                             Ok(req) => {
                                 let start = std::time::Instant::now();
-                                let result = execute_sql(&req.sql, storage);
+                                let result = execute_sql(&req.sql, storage, catalog);
                                 let elapsed = start.elapsed().as_millis() as u64;
 
                                 query_stats.record(&req.sql, elapsed as f64, 0);
@@ -700,7 +706,7 @@ fn handle_openclaw_request<T: std::io::Read + std::io::Write>(
                         match serde_json::from_str::<UnifiedQueryRequest>(&body_str) {
                             Ok(req) => {
                                 let start = std::time::Instant::now();
-                                let response = execute_unified_query(&req, storage);
+                                let response = execute_unified_query(&req, storage, catalog);
                                 let elapsed = start.elapsed().as_millis() as u64;
                                 let mut resp = response;
                                 resp.execution_time_ms = elapsed;
@@ -1942,6 +1948,7 @@ fn execute_delete_trigger_body(
 fn execute_sql(
     sql: &str,
     storage: &Arc<RwLock<dyn StorageEngine>>,
+    catalog: &Arc<parking_lot::RwLock<sqlrustgo_catalog::Catalog>>,
 ) -> Result<SqlExecResult, String> {
     let statement = parse(sql).map_err(|e| format!("Parse error: {:?}", e))?;
 
@@ -2355,8 +2362,148 @@ fn execute_sql(
             })
         }
 
+        // DDL: TRUNCATE TABLE
+        sqlrustgo_parser::Statement::Truncate(trunc) => {
+            if !storage.has_table(&trunc.name) {
+                return Err(format!("Table '{}' not found", trunc.name));
+            }
+            let table_info = storage.get_table_info(&trunc.name).map_err(|e| e.to_string())?;
+            storage.drop_table(&trunc.name).map_err(|e| e.to_string())?;
+            storage.create_table(&table_info).map_err(|e| e.to_string())?;
+            Ok(SqlExecResult {
+                columns: vec![],
+                rows: vec![],
+                affected_rows: 0,
+            })
+        }
+
+        // DDL: CREATE INDEX
+        sqlrustgo_parser::Statement::CreateIndex(create_idx) => {
+            if !storage.has_table(&create_idx.table) {
+                return Err(format!("Table '{}' not found", create_idx.table));
+            }
+            let table_info = storage.get_table_info(&create_idx.table).map_err(|e| e.to_string())?;
+            let col_name = create_idx.columns.first()
+                .ok_or_else(|| "Index must have at least one column".to_string())?;
+            let col_idx = table_info.columns.iter()
+                .position(|c| c.name.eq_ignore_ascii_case(col_name))
+                .ok_or_else(|| format!("Column '{}' not found", col_name))?;
+            storage.create_index(&create_idx.table, col_name, col_idx)
+                .map_err(|e| e.to_string())?;
+            // Also register the index in the table's catalog entry
+            {
+                let mut cat = catalog.write();
+                if let Some(schema) = cat.get_schema_mut("default") {
+                    if let Some(table) = schema.tables.get_mut(&create_idx.table) {
+                        table.indices.push(sqlrustgo_catalog::index::IndexInfo::new(
+                            &create_idx.name,
+                            &create_idx.table,
+                            create_idx.columns.clone(),
+                        ));
+                    }
+                }
+            }
+            Ok(SqlExecResult {
+                columns: vec![],
+                rows: vec![],
+                affected_rows: 0,
+            })
+        }
+
+        // DDL: DROP INDEX
+        sqlrustgo_parser::Statement::DropIndex(drop_idx) => {
+            let mut found = false;
+            {
+                let mut cat = catalog.write();
+                if let Some(schema) = cat.get_schema_mut("default") {
+                    for table in schema.tables.values_mut() {
+                        if let Some(pos) = table.indices.iter().position(|i| i.name == drop_idx.name) {
+                            table.indices.remove(pos);
+                            found = true;
+                            break;
+                        }
+                    }
+                }
+            }
+            if !found && !drop_idx.if_exists {
+                return Err(format!("Index '{}' not found", drop_idx.name));
+            }
+            storage.drop_index("", "").map_err(|e| e.to_string())?;
+            Ok(SqlExecResult {
+                columns: vec![],
+                rows: vec![],
+                affected_rows: 0,
+            })
+        }
+
+        // DDL: CREATE VIEW
+        sqlrustgo_parser::Statement::CreateView(create_view) => {
+            {
+                let cat = catalog.read();
+                if let Some(schema) = cat.get_schema("default") {
+                    if schema.has_table(&create_view.name) && !create_view.or_replace {
+                        return Err(format!("View '{}' already exists", create_view.name));
+                    }
+                }
+            }
+            let view_sql = create_view.definition.iter().cloned().collect::<Vec<_>>().join(" ");
+            let view_table = sqlrustgo_catalog::table::Table {
+                name: create_view.name.clone(),
+                columns: Vec::new(),
+                primary_key: None,
+                indices: Vec::new(),
+                foreign_keys: Vec::new(),
+                row_count: 0,
+                is_view: true,
+                view_definition: Some(view_sql),
+            };
+            {
+                let mut cat = catalog.write();
+                if let Some(schema) = cat.get_schema_mut("default") {
+                    schema.add_table(view_table).map_err(|e| e.to_string())?;
+                }
+            }
+            Ok(SqlExecResult {
+                columns: vec![],
+                rows: vec![],
+                affected_rows: 0,
+            })
+        }
+
+        // DDL: DROP VIEW
+        sqlrustgo_parser::Statement::DropView(drop_view) => {
+            let is_view = {
+                let cat = catalog.read();
+                cat.get_schema("default")
+                    .and_then(|s| s.get_table(&drop_view.name))
+                    .map(|t| t.is_view)
+                    .unwrap_or(false)
+            };
+            if !is_view {
+                if drop_view.if_exists {
+                    return Ok(SqlExecResult {
+                        columns: vec![],
+                        rows: vec![],
+                        affected_rows: 0,
+                    });
+                }
+                return Err(format!("View '{}' not found", drop_view.name));
+            }
+            {
+                let mut cat = catalog.write();
+                if let Some(schema) = cat.get_schema_mut("default") {
+                    schema.remove_table(&drop_view.name);
+                }
+            }
+            Ok(SqlExecResult {
+                columns: vec![],
+                rows: vec![],
+                affected_rows: 0,
+            })
+        }
+
         sqlrustgo_parser::Statement::Call(call) => {
-            let catalog = ctx.catalog.read();
+            let catalog = catalog.read();
             match catalog.get_stored_procedure(&call.procedure_name) {
                 Some(proc) => {
                     if proc.params.len() != call.args.len() {
@@ -2378,7 +2525,7 @@ fn execute_sql(
         }
 
         sqlrustgo_parser::Statement::CreateProcedure(create) => {
-            let catalog = ctx.catalog.read();
+            let catalog = catalog.read();
             let proc = sqlrustgo_catalog::stored_proc::StoredProcedure::new(
                 create.name.clone(),
                 create
@@ -2413,7 +2560,7 @@ fn execute_sql(
                     })
                     .collect(),
             );
-            let mut catalog = ctx.catalog.write();
+            let mut catalog = catalog.write();
             catalog
                 .add_stored_procedure(proc)
                 .map_err(|e| e.to_string())?;
@@ -2705,6 +2852,7 @@ fn nl_to_sql(
 fn execute_unified_query(
     req: &UnifiedQueryRequest,
     storage: &Arc<RwLock<dyn StorageEngine>>,
+    catalog: &Arc<parking_lot::RwLock<sqlrustgo_catalog::Catalog>>,
 ) -> UnifiedQueryResponse {
     let mode = req.mode.as_deref().unwrap_or("sql_vector_graph");
 
@@ -2713,7 +2861,7 @@ fn execute_unified_query(
     let mut graph_results = None;
 
     if mode.contains("sql") || mode == "sql_vector_graph" {
-        let result = execute_sql(&req.query, storage);
+        let result = execute_sql(&req.query, storage, Arc::clone(catalog));
         match result {
             Ok(exec_result) => {
                 let row_count = exec_result.rows.len();

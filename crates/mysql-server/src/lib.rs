@@ -1987,6 +1987,7 @@ fn value_to_string(v: &Value) -> String {
         Value::Text(s) => s.clone(),
         Value::Blob(b) => format!("{:?}", b),
         Value::Point(x, y) => format!("POINT({} {})", x, y),
+        Value::Json(v) => v.to_string(),
     }
 }
 
@@ -2063,6 +2064,10 @@ fn write_binary_row<W: Write>(w: &mut W, row: &[Value], col_types: &[u8]) -> MyS
                 // MySQL binary protocol: 8-byte double for X, 8-byte double for Y
                 buf.write_f64::<LittleEndian>(*x)?;
                 buf.write_f64::<LittleEndian>(*y)?;
+            }
+            Value::Json(v) => {
+                // Serialize JSON as a string
+                write_lenenc_string(&mut buf, v.to_string().as_bytes())?;
             }
         }
     }

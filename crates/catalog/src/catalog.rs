@@ -145,6 +145,16 @@ impl Catalog {
         self.default_db()?.get_schema(name)
     }
 
+    /// Get a mutable schema from the default database.
+    pub fn get_schema_mut(&mut self, name: &str) -> Option<&mut Schema> {
+        self.default_db_mut()?.get_schema_mut(name)
+    }
+
+    /// Get a mutable reference to the default database.
+    fn default_db_mut(&mut self) -> Option<&mut Database> {
+        self.databases.get_mut(&self.default_database)
+    }
+
     /// Get all schema names in the default database.
     pub fn schema_names(&self) -> Vec<&str> {
         self.default_db()

@@ -870,6 +870,9 @@ pub enum Expression {
     SequenceNextVal(String),
     /// CURRVAL(sequence_name) - reads current value without advancing
     SequenceCurrval(String),
+    /// JSON literal: JSON_EXTRACT / JSON_VALUE operands and JSON() constructor.
+    /// The `String` field stores the canonical JSON text produced by serde_json.
+    JsonLiteral(String),
 }
 
 /// Flatten a top-level AND conjunction: `a AND b AND c` -> vec![a, b, c].
@@ -3978,8 +3981,9 @@ impl Parser {
                     self.next(); // consume (
                     if matches!(self.current(), Some(Token::Select))
                         || matches!(self.current(), Some(Token::With))
+                        || matches!(self.current(), Some(Token::Values))
                     {
-                        // Subquery: parse as SELECT statement
+                        // Subquery: parse as SELECT statement or VALUES constructor
                         let subquery = self.parse_select_statement()?;
                         self.expect(Token::RParen)?;
                         if matches!(self.current(), Some(Token::As)) {
@@ -4720,9 +4724,15 @@ impl Parser {
             self.next();
             match self.current() {
                 Some(Token::NumberLiteral(n)) => {
-                    let val = n
-                        .parse::<u64>()
-                        .map_err(|e| format!("Invalid LIMIT: {}", e))?;
+                    // Handle both integer and float literals (float truncates to integer)
+                    let val = if n.contains('.') {
+                        n.parse::<f64>()
+                            .map(|f| f as u64)
+                            .map_err(|e| format!("Invalid LIMIT: {}", e))?
+                    } else {
+                        n.parse::<u64>()
+                            .map_err(|e| format!("Invalid LIMIT: {}", e))?
+                    };
                     self.next();
                     Some(val)
                 }
