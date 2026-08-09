@@ -49,8 +49,9 @@ v3.11.0 = 债务清零 + 功能孤岛集成 + 性能突破。从 v3.10.0 GA 继�
 |------|------|------|
 | G1 R1-R4 | PASS | ✅ |
 | G2 全量测试 | 0 失败 | ✅ |
-| G3 覆盖率 | 每 crate ≥80% line | ❌ FAIL (4/8: storage✅ common✅ planner✅ tools✅; executor❌ admin❌ mysql-server❌ mysql-client❌) — 见 GA_GATE_REPORT.md |
-| G4 TPC-H SF=1 | 22/22 PASS | 🟡 ALMOST PASS (P0-1 fixture ✅ 1.1GB; P0-2 wire tests 🟡 mostly ✅; ADR-008 exception active 2026-09-01) — 见 TPCH_SF1_VERIFICATION_REPORT.md |
+| G3 覆盖率 | 每 crate ≥80% line | 🟡 8/10 PASS (storage✅ common✅ planner✅ tools✅ admin✅ mysql-client✅ spill✅ gmp✅; executor❌ mysql-server❌) — 见 GA_GATE_REPORT.md + COVERAGE_FULL_2026-08-09.md |
+| G4 TPC-H SF=1 | 22/22 PASS | ✅ PASS (PR #3664 V311-20 BINT mmap — 22/22 wire queries 519s 2026-08-08) — ADR-008 异常仍有效至 2026-09-01 作冗余；TPCH_SF1_22_22_PASS_REPORT.md 是 SSOT |
+
 | G5 Security audit | PASS | ✅ |
 | G6 Documentation | PASS | ✅ |
 
