@@ -41,10 +41,13 @@
 //!
 //! The GMP extension creates the following tables:
 //! - `gmp_documents`: Document metadata (id, title, type, version, dates, status)
+//! - `gmp_document_versions`: Document version history with source and content hashes
+//! - `gmp_chunks`: Chunk-level content with content hash and section name
 //! - `gmp_document_contents`: Document section content
 //! - `gmp_document_keywords`: Document keywords for text search
 //! - `gmp_embeddings`: Vector embeddings for similarity search
-//! - `gmp_audit_log`: Audit trail for all GMP operations
+//! - `gmp_relations`: Typed edges (SOP/CLAUSE/CAPA/DEVIATION/ROLE/EQUIPMENT/AUDIT_FINDING)
+//! - `gmp_audit_log`: Hash-chained audit trail (previous_hash + event_hash)
 
 pub mod audit;
 pub mod compliance;
@@ -52,7 +55,10 @@ pub mod document;
 pub mod embedding;
 pub mod persist_sqlite;
 pub mod report;
-pub mod scenarios;
+pub mod chunk;
+pub mod relation;
+pub mod schema;
+pub mod version;
 pub mod semantic_embedding;
 pub mod sql_api;
 pub mod vector_search;
@@ -60,8 +66,8 @@ pub mod vector_search;
 // Re-export commonly used types
 pub use audit::{
     create_audit_log_table, get_all_audit_logs, get_audit_log_by_id, get_audit_stats,
-    query_audit_logs, record_audit_log, AuditAction, AuditLog, AuditStats, TableCount, UserCount,
-    TABLE_AUDIT_LOG,
+    get_last_event_hash, query_audit_logs, record_audit_log, verify_audit_chain, AuditAction,
+    AuditLog, AuditStats, GENESIS_PREVIOUS_HASH, TableCount, UserCount, TABLE_AUDIT_LOG,
 };
 
 pub use compliance::{

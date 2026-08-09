@@ -353,6 +353,48 @@ pub fn create_gmp_tables(storage: &mut dyn StorageEngine) -> SqlResult<()> {
         })?;
     }
 
+    // Create gmp_document_versions table
+    if !storage.has_table(crate::schema::TABLE_DOCUMENT_VERSIONS) {
+        let columns = crate::schema::document_versions_columns();
+        storage.create_table(&sqlrustgo_storage::TableInfo {
+            name: crate::schema::TABLE_DOCUMENT_VERSIONS.to_string(),
+            columns,
+            foreign_keys: vec![],
+            unique_constraints: vec![],
+            check_constraints: vec![],
+            compression: None,
+            partition_info: None,
+        })?;
+    }
+
+    // Create gmp_chunks table
+    if !storage.has_table(crate::schema::TABLE_CHUNKS) {
+        let columns = crate::schema::chunks_columns();
+        storage.create_table(&sqlrustgo_storage::TableInfo {
+            name: crate::schema::TABLE_CHUNKS.to_string(),
+            columns,
+            foreign_keys: vec![],
+            unique_constraints: vec![],
+            check_constraints: vec![],
+            compression: None,
+            partition_info: None,
+        })?;
+    }
+
+    // Create gmp_relations table
+    if !storage.has_table(crate::schema::TABLE_RELATIONS) {
+        let columns = crate::schema::relations_columns();
+        storage.create_table(&sqlrustgo_storage::TableInfo {
+            name: crate::schema::TABLE_RELATIONS.to_string(),
+            columns,
+            foreign_keys: vec![],
+            unique_constraints: vec![],
+            check_constraints: vec![],
+            compression: None,
+            partition_info: None,
+        })?;
+    }
+
     Ok(())
 }
 
