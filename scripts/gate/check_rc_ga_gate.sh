@@ -259,7 +259,7 @@ run_d2_beta() {
     # B2: WAL Contract
     D2_TOTAL=$((D2_TOTAL+1))
     echo -n "  [B2] WAL Contract (22 tests) ... "
-    WAL_OUTPUT=$(cargo test --test wal_tx_contract_test 2>&1 || true)
+    WAL_OUTPUT=$(cargo test --test wal_tx_contract_test 2>&1 || echo "0")
     PASSED=$(echo "$WAL_OUTPUT" | grep -oE '[0-9]+ passed' | head -1 | grep -oE '[0-9]+' || echo "0")
     FAILED=$(echo "$WAL_OUTPUT" | grep -oE '[0-9]+ failed' | head -1 | grep -oE '[0-9]+' || echo "0")
     echo "  → $PASSED passed, $FAILED failed"
@@ -392,7 +392,7 @@ run_d4_wal() {
         echo -e "\n  D4 Result: $WAL_PASSED/5 passed"
     else
         # Fallback: run exp_g_wal_contracts_verified
-        WAL_EXP_OUTPUT=$(cargo test --test exp_g_wal_contracts_verified 2>&1 || true)
+        WAL_EXP_OUTPUT=$(cargo test --test exp_g_wal_contracts_verified 2>&1 || echo "0")
         WAL_EXP_PASSED=$(echo "$WAL_EXP_OUTPUT" | grep -oE '[0-9]+ passed' | head -1 | grep -oE '[0-9]+' || echo "0")
         WAL_EXP_FAILED=$(echo "$WAL_EXP_OUTPUT" | grep -oE '[0-9]+ failed' | head -1 | grep -oE '[0-9]+' || echo "0")
 
@@ -505,7 +505,7 @@ run_d6_integration_tests() {
 
         # Run test, capture output. Set timeout via cargo (no timeout cmd available).
         local out
-        out=$(cargo test --test "${test_name}" --quiet 2>&1 || true)
+        out=$(cargo test --test "${test_name}" --quiet 2>&1 || echo "0")
         # PASS if "0 failed" in last lines, or "test result: ok"
         if echo "$out" | grep -qE 'test result: ok\.?\s*$|0 failed'; then
             log_pass "D6-${D6_TOTAL}: ${test_name}"
