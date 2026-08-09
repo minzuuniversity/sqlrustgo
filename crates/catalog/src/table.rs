@@ -53,6 +53,12 @@ pub struct Table {
     pub foreign_keys: Vec<ForeignKeyRef>,
     /// Current row count (estimated or actual)
     pub row_count: u64,
+    /// Whether this is a view (not a real table)
+    #[serde(default)]
+    pub is_view: bool,
+    /// VIEW definition SQL (stored when is_view is true)
+    #[serde(default)]
+    pub view_definition: Option<String>,
 }
 
 impl Table {
@@ -65,6 +71,8 @@ impl Table {
             indices: Vec::new(),
             foreign_keys: Vec::new(),
             row_count: 0,
+            is_view: false,
+            view_definition: None,
         }
     }
 

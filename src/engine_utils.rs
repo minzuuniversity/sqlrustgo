@@ -157,6 +157,7 @@ pub fn eval_predicate(expr: &Expression, row: &[Value], table_info: &TableInfo) 
                         Value::Null => return Value::Null,
                         Value::Blob(_) => return Value::Null,
                         Value::Point(_, _) => return Value::Null,
+                        Value::Json(_) => return Value::Null,
                     })
                 } else {
                     v
@@ -192,7 +193,6 @@ pub fn eval_predicate(expr: &Expression, row: &[Value], table_info: &TableInfo) 
                 Value::Text(s) => Value::Text(s.clone()),
                 _ => left_val_raw.clone(),
             };
-            let left_for_cmp = left_val.clone();
             let mut coerce = |v: Value| -> Value {
                 if matches!(left_val, Value::Text(_)) {
                     Value::Text(match v {
@@ -203,6 +203,7 @@ pub fn eval_predicate(expr: &Expression, row: &[Value], table_info: &TableInfo) 
                         Value::Null => return Value::Null,
                         Value::Blob(_) => return Value::Null,
                         Value::Point(_, _) => return Value::Null,
+                        Value::Json(_) => return Value::Null,
                     })
                 } else {
                     v
@@ -215,7 +216,7 @@ pub fn eval_predicate(expr: &Expression, row: &[Value], table_info: &TableInfo) 
                 if matches!(right_val, Value::Null) {
                     return false;
                 }
-                if crate::expr_utils::compare_values(&left_for_cmp, &right_val) == 0 {
+                if crate::expr_utils::compare_values(&left_val, &right_val) == 0 {
                     return false;
                 }
             }
@@ -859,7 +860,8 @@ fn substitute_outer_refs_in_expr_with_own(
         Expression::Literal(_)
         | Expression::WindowCall(_)
         | Expression::SequenceNextVal(_)
-        | Expression::SequenceCurrval(_) => expr.clone(),
+        | Expression::SequenceCurrval(_)
+        | Expression::JsonLiteral(_) => expr.clone(),
     }
 }
 
@@ -1095,7 +1097,8 @@ fn substitute_qualified_outer_refs_in_place(
         | Expression::Literal(_)
         | Expression::WindowCall(_)
         | Expression::SequenceNextVal(_)
-        | Expression::SequenceCurrval(_) => {}
+        | Expression::SequenceCurrval(_)
+        | Expression::JsonLiteral(_) => {}
     }
 }
 
@@ -1112,6 +1115,7 @@ fn value_to_literal_string(v: &Value) -> String {
         Value::Text(s) => format!("'{}'", s.replace('\'', "''")),
         Value::Blob(_) => "NULL".to_string(),
         Value::Point(x, y) => format!("POINT({}, {})", x, y),
+        Value::Json(v) => format!("'{}'", v.to_string().replace('\'', "''")),
     }
 }
 
@@ -1159,7 +1163,8 @@ pub fn where_expr_has_correlated_subquery(expr: &sqlrustgo_parser::Expression) -
         | Expression::Aggregate(_)
         | Expression::WindowCall(_)
         | Expression::SequenceNextVal(_)
-        | Expression::SequenceCurrval(_) => false,
+        | Expression::SequenceCurrval(_)
+        | Expression::JsonLiteral(_) => false,
     }
 }
 
@@ -1192,17 +1197,15 @@ pub fn where_expr_has_uncorrelated_subquery(expr: &sqlrustgo_parser::Expression)
             where_expr_has_uncorrelated_subquery(l) || where_expr_has_uncorrelated_subquery(r)
         }
         Expression::UnaryOp(_, inner) => where_expr_has_uncorrelated_subquery(inner),
-        Expression::IsNull(inner) | Expression::IsNotNull(inner) => {
-            where_expr_has_uncorrelated_subquery(inner)
-        }
-        Expression::InList(_, _)
-        | Expression::NotInList(_, _)
-        | Expression::Literal(_)
+        Expression::IsNull(_) | Expression::IsNotNull(_) => false,
+        Expression::InList(_, _) | Expression::NotInList(_, _) => false,
+        Expression::Literal(_)
         | Expression::Identifier(_)
         | Expression::Aggregate(_)
         | Expression::WindowCall(_)
         | Expression::FunctionCall(_, _)
         | Expression::SequenceNextVal(_)
-        | Expression::SequenceCurrval(_) => false,
+        | Expression::SequenceCurrval(_)
+        | Expression::JsonLiteral(_) => false,
     }
 }

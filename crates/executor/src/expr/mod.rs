@@ -768,6 +768,11 @@ fn parse_lit(s: &str) -> Value {
     if let Ok(f) = unquoted.parse::<f64>() {
         return Value::Integer(f as i64);
     }
+    // Try JSON parsing before falling back to Text.
+    // This correctly handles JSON objects/arrays that appear as literals.
+    if let Ok(v) = serde_json::from_str(unquoted) {
+        return Value::Json(v);
+    }
     Value::Text(unquoted.to_string())
 }
 
@@ -805,6 +810,8 @@ pub fn eval_binary_op(left: &Value, right: &Value, op: &str) -> Value {
         "AND" | "&&" => Value::Boolean(to_bool(left) && to_bool(right)),
         "OR" | "||" => Value::Boolean(to_bool(left) || to_bool(right)),
         "+" | "-" | "*" | "/" => eval_arithmetic(left, right, op),
+        "->" => json_extract(left, right, false),
+        "->>" => json_extract(left, right, true),
         _ => Value::Null,
     }
 }
@@ -863,7 +870,7 @@ fn to_f64(v: &Value) -> f64 {
                 0.0
             }
         }
-        Value::Null | Value::Text(_) | Value::Blob(_) | Value::Point(_, _) => 0.0,
+        Value::Null | Value::Text(_) | Value::Blob(_) | Value::Point(_, _) | Value::Json(_) => 0.0,
     }
 }
 
@@ -877,7 +884,7 @@ fn to_i64(v: &Value) -> i64 {
                 0
             }
         }
-        Value::Null | Value::Float(_) | Value::Text(_) | Value::Blob(_) | Value::Point(_, _) => 0,
+        Value::Null | Value::Float(_) | Value::Text(_) | Value::Blob(_) | Value::Point(_, _) | Value::Json(_) => 0,
     }
 }
 
@@ -892,7 +899,60 @@ fn to_i64(v: &Value) -> i64 {
 /// - `eval_unary_op(true, "NOT")` → `Value::Boolean(false)`
 /// - `eval_unary_op(0, "NOT")` → `Value::Boolean(true)` (0 is falsy via `to_bool`)
 /// - `eval_unary_op(1, "NOT")` → `Value::Boolean(false)` (1 is truthy via `to_bool`)
-/// - `eval_unary_op(_, "UNKNOWN")` → `Value::Null`
+/// MySQL 5.7 JSON path operators: `->` and `->>`.
+/// `unquote` = false → returns `Value::Json`, true → returns `Value::Text`.
+fn json_extract(left: &Value, right: &Value, unquote: bool) -> Value {
+    let doc = match left {
+        Value::Json(v) => v.clone(),
+        Value::Text(s) => {
+            match serde_json::from_str(s) {
+                Ok(v) => v,
+                Err(_) => return Value::Null,
+            }
+        }
+        _ => return Value::Null,
+    };
+
+    let path = match right {
+        Value::Text(s) => s.clone(),
+        Value::Json(serde_json::Value::String(s)) => s.clone(),
+        _ => return Value::Null,
+    };
+
+    let json_path = if path.starts_with('$') {
+        path.clone()
+    } else {
+        format!("$.{}", path)
+    };
+
+    match doc.pointer(&json_path) {
+        Some(result) => {
+            if unquote {
+                match result {
+                    serde_json::Value::String(s) => Value::Text(s.clone()),
+                    serde_json::Value::Number(n) => {
+                        if let Some(i) = n.as_i64() {
+                            Value::Integer(i)
+                        } else if let Some(f) = n.as_f64() {
+                            Value::Float(f)
+                        } else {
+                            Value::Text(n.to_string())
+                        }
+                    }
+                    serde_json::Value::Bool(b) => Value::Boolean(*b),
+                    serde_json::Value::Null => Value::Null,
+                    serde_json::Value::Array(_) | serde_json::Value::Object(_) => {
+                        Value::Text(result.to_string())
+                    }
+                }
+            } else {
+                Value::Json(result.clone())
+            }
+        }
+        None => Value::Null,
+    }
+}
+
 pub fn eval_unary_op(val: &Value, op: &str) -> Value {
     match op.to_uppercase().as_str() {
         "NOT" | "!" => Value::Boolean(!to_bool(val)),
@@ -1306,30 +1366,166 @@ pub fn eval_fn(name: &str, args: &[Value]) -> Value {
         "GROUPING" => Value::Integer(0),
         // GROUP_CONCAT — aggregate concatenator. Supports SEPARATOR.
         "GROUP_CONCAT" => group_concat(args),
-        // F-03 GIS: ST_WITHIN(point, polygon) — spatial predicate
-        "ST_WITHIN" => {
+        // F-03 GIS: ST_WITHIN, ST_Distance, ST_Contains, ST_Intersects
+        "ST_WITHIN" | "ST_CONTAINS" | "ST_INTERSECTS" | "ST_DISTANCE" => {
             use sqlrustgo_gis::{
-                st_within as gis_st_within, Point as GisPoint, Polygon as GisPolygon,
+                st_within as gis_st_within, st_distance as gis_st_distance,
+                st_contains as gis_st_contains, st_intersects as gis_st_intersects,
+                Point as GisPoint, Polygon as GisPolygon,
             };
-            if args.len() != 2 {
+            if args.len() < 2 {
                 return Value::Null;
             }
-            let point = match &args[0] {
-                Value::Point(x, y) => GisPoint::new(*x, *y),
-                Value::Text(s) => match GisPoint::parse(s) {
-                    Some(p) => p,
-                    None => return Value::Null,
-                },
-                _ => return Value::Null,
+            match name.to_uppercase().as_str() {
+                "ST_WITHIN" => {
+                    let point = match &args[0] {
+                        Value::Point(x, y) => GisPoint::new(*x, *y),
+                        Value::Text(s) => match GisPoint::parse(s) {
+                            Some(p) => p,
+                            None => return Value::Null,
+                        },
+                        _ => return Value::Null,
+                    };
+                    let polygon = match &args[1] {
+                        Value::Text(s) => match GisPolygon::parse(s) {
+                            Some(p) => p,
+                            None => return Value::Null,
+                        },
+                        _ => return Value::Null,
+                    };
+                    Value::Boolean(gis_st_within(&point, &polygon))
+                }
+                "ST_DISTANCE" => {
+                    let p1 = match &args[0] {
+                        Value::Point(x, y) => GisPoint::new(*x, *y),
+                        Value::Text(s) => match GisPoint::parse(s) {
+                            Some(p) => p,
+                            None => return Value::Null,
+                        },
+                        _ => return Value::Null,
+                    };
+                    let p2 = match &args[1] {
+                        Value::Point(x, y) => GisPoint::new(*x, *y),
+                        Value::Text(s) => match GisPoint::parse(s) {
+                            Some(p) => p,
+                            None => return Value::Null,
+                        },
+                        _ => return Value::Null,
+                    };
+                    Value::Float(gis_st_distance(&p1, &p2))
+                }
+                "ST_CONTAINS" => {
+                    let polygon = match &args[0] {
+                        Value::Text(s) => match GisPolygon::parse(s) {
+                            Some(p) => p,
+                            None => return Value::Null,
+                        },
+                        _ => return Value::Null,
+                    };
+                    let point = match &args[1] {
+                        Value::Point(x, y) => GisPoint::new(*x, *y),
+                        Value::Text(s) => match GisPoint::parse(s) {
+                            Some(p) => p,
+                            None => return Value::Null,
+                        },
+                        _ => return Value::Null,
+                    };
+                    Value::Boolean(gis_st_contains(&polygon, &point))
+                }
+                "ST_INTERSECTS" => {
+                    let p1 = match &args[0] {
+                        Value::Text(s) => match GisPolygon::parse(s) {
+                            Some(p) => p,
+                            None => return Value::Null,
+                        },
+                        _ => return Value::Null,
+                    };
+                    let p2 = match &args[1] {
+                        Value::Text(s) => match GisPolygon::parse(s) {
+                            Some(p) => p,
+                            None => return Value::Null,
+                        },
+                        _ => return Value::Null,
+                    };
+                    Value::Boolean(gis_st_intersects(&p1, &p2))
+                }
+                _ => Value::Null,
+            }
+        }
+        // JSON functions
+        "JSON_EXTRACT" => {
+            if args.len() < 2 {
+                return Value::Null;
+            }
+            json_extract(&args[0], &args[1], false)
+        }
+        "JSON_VALUE" => {
+            if args.len() < 2 {
+                return Value::Null;
+            }
+            json_extract(&args[0], &args[1], true)
+        }
+        "JSON" => {
+            // JSON(text) — parse text as JSON document
+            if args.is_empty() {
+                return Value::Null;
+            }
+            let s = args[0].to_sql_string();
+            match serde_json::from_str(&s) {
+                Ok(v) => Value::Json(v),
+                Err(_) => Value::Null,
+            }
+        }
+        // JSON_VALID(text) — returns 1 if text is valid JSON, else 0
+        "JSON_VALID" => {
+            if args.is_empty() {
+                return Value::Null;
+            }
+            let s = args[0].to_sql_string();
+            Value::Boolean(serde_json::from_str::<serde_json::Value>(&s).is_ok())
+        }
+        // JSON_TYPE(json_value) — returns the type of the JSON value
+        "JSON_TYPE" => {
+            if args.is_empty() {
+                return Value::Null;
+            }
+            let s = args[0].to_sql_string();
+            match serde_json::from_str::<serde_json::Value>(&s) {
+                Ok(serde_json::Value::Null) => Value::Text("null".to_string()),
+                Ok(serde_json::Value::Bool(_)) => Value::Text("boolean".to_string()),
+                Ok(serde_json::Value::Number(_)) => Value::Text("number".to_string()),
+                Ok(serde_json::Value::String(_)) => Value::Text("string".to_string()),
+                Ok(serde_json::Value::Array(_)) => Value::Text("array".to_string()),
+                Ok(serde_json::Value::Object(_)) => Value::Text("object".to_string()),
+                Err(_) => Value::Null,
+            }
+        }
+        // JSON_KEYS(json_doc, path?) — returns JSON array of keys at path
+        "JSON_KEYS" => {
+            if args.is_empty() {
+                return Value::Null;
+            }
+            let s = args[0].to_sql_string();
+            let doc = match serde_json::from_str::<serde_json::Value>(&s) {
+                Ok(v) => v,
+                Err(_) => return Value::Null,
             };
-            let polygon = match &args[1] {
-                Value::Text(s) => match GisPolygon::parse(s) {
-                    Some(p) => p,
-                    None => return Value::Null,
-                },
-                _ => return Value::Null,
+            let path = args.get(1).map(|v| v.to_sql_string()).unwrap_or_else(|| "$".to_string());
+            let json_path = if path.starts_with('$') {
+                path
+            } else {
+                format!("$.{}", path)
             };
-            Value::Boolean(gis_st_within(&point, &polygon))
+            match doc.pointer(&json_path) {
+                Some(serde_json::Value::Object(obj)) => {
+                    let keys: Vec<String> = obj.keys().cloned().collect();
+                    match serde_json::to_string(&keys) {
+                        Ok(s) => Value::Json(serde_json::from_str(&s).unwrap()),
+                        Err(_) => Value::Null,
+                    }
+                }
+                _ => Value::Null,
+            }
         }
         _ => Value::Null,
     }
