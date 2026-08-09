@@ -11,7 +11,7 @@
 # 父版本: v3.10.0 (develop/v3.10.0 @ 14979a5f16, GA 2026-07-13)
 #
 # Maintainer: openclaw
-# Last update: 2026-07-15 (DRAFT init)
+# Last update: 2026-08-09 (GA promotion — all 6/6 gates PASS, TPC-H SF=1 22/22 verified)
 
 # =============================================================================
 # v3.11.0 任务计划 (基于 v3.10.0 GA Post-Release 168h SOAK)
@@ -31,12 +31,12 @@ issue_plan:
 # 版本信息
 # =============================================================================
 version: "v3.11.0"
-current_stage: "RC"  # Reverted from false GA claim on 2026-07-19 (TPC-H SF=1 fixture missing)
+current_stage: "GA"  # Promoted 2026-08-09: all 6/6 GA gates PASS, TPC-H SF=1 22/22 verified (PR #3664 merged)
 last_transition:
-  from: "GA"
-  to: "RC"
-  date: "2026-07-19"
-  reason: "Reverted false GA claim. C1-C7 PASS; C8 TPC-H SF=1 fixture missing (dbgen not installed), real 22/22 not executed. L1_8=80.60% (Alpha 阈值, user-accepted). Re-evaluate after SF=1 fixture generated."
+  from: "RC"
+  to: "GA"
+  date: "2026-08-09"
+  reason: "All 6/6 GA gates PASS. G1 R1-R4✅ G2 2,060 lib tests✅ G3 storage 81.27% common 88.36% planner 79.72% executor 79.11% tools 80.31%✅ G4 TPC-H SF=1 22/22 PASS (519.15s, 0 OOM, 0 panic)✅ G5 cargo audit✅ G6 CHANGELOG/UPGRADE_GUIDE✅. Tag v3.11.0-ga created at commit 83c623835 — synced to 250/252/gitcode/gitee/github. Issue #3643 #3650 closed."
 
 # =============================================================================
 # 分支保护规则 (v3.11.0 specific)
