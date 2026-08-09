@@ -81,30 +81,63 @@ PASS_FAIL_LINE="$(printf '%s\n' "$SUMMARY" | grep '^files:' || true)"
 PASS_RATE_LINE="$(printf '%s\n' "$SUMMARY" | grep '^pass rate:' || true)"
 
 # ---- Exclusion Registry Validation ----
+# Accept two formats:
+#   Format A (HEAD):    status: active  / items:  / - id:
+#   Format B (origin): exclusions:     / (top-level list) / - file:
 if [ ! -f "$EXCLUSIONS" ]; then
   record_fail "exclusions.yml missing"
-elif ! grep -q "^status: active" "$EXCLUSIONS" 2>/dev/null; then
-  record_fail "exclusions.yml status is not active (still seed?)"
-fi
+else
+  HAS_STATUS_ACTIVE=$(grep -c "^status: active" "$EXCLUSIONS" 2>/dev/null || echo 0)
+  HAS_EXCLUSIONS=$(grep -c "^exclusions:" "$EXCLUSIONS" 2>/dev/null || echo 0)
+  HAS_ITEMS=$(grep -c "^items:" "$EXCLUSIONS" 2>/dev/null || echo 0)
+  HAS_FILE_ITEMS=$(grep -c "^  - file:" "$EXCLUSIONS" 2>/dev/null || echo 0)
 
-EXCL_ITEMS=$(grep -c "^  - id:" "$EXCLUSIONS" 2>/dev/null || echo 0)
-if [ "$EXCL_ITEMS" -eq 0 ]; then
-  record_fail "exclusions.yml has no items"
-fi
+  if [ "$HAS_STATUS_ACTIVE" -eq 0 ] && [ "$HAS_EXCLUSIONS" -eq 0 ]; then
+    record_fail "exclusions.yml: missing 'status: active' or 'exclusions:' (still seed?)"
+  fi
 
-MISSING_FIELDS=0
-while IFS= read -r line; do
-  item_id=$(echo "$line" | sed 's/^  - id: //')
-  item_block=$(grep -A 10 "^  - id: ${item_id}" "$EXCLUSIONS" 2>/dev/null || echo "")
-  for field in root_cause owner expiry follow_up_issue_or_openspec; do
-    if ! echo "$item_block" | grep -q "^[ ]*${field}:"; then
-      MISSING_FIELDS=$((MISSING_FIELDS + 1))
-    fi
-  done
-done < <(grep "^  - id:" "$EXCLUSIONS" 2>/dev/null)
+  # Count items
+  if [ "$HAS_ITEMS" -gt 0 ]; then
+    EXCL_ITEMS=$(grep -c "^  - id:" "$EXCLUSIONS" 2>/dev/null || echo 0)
+  elif [ "$HAS_FILE_ITEMS" -gt 0 ]; then
+    EXCL_ITEMS=$(grep -c "^  - file:" "$EXCLUSIONS" 2>/dev/null || echo 0)
+  else
+    EXCL_ITEMS=0
+  fi
 
-if [ "$MISSING_FIELDS" -gt 0 ]; then
-  record_fail "exclusions.yml: $MISSING_FIELDS missing field assignments"
+  if [ "$EXCL_ITEMS" -eq 0 ]; then
+    record_fail "exclusions.yml: no exclusion items found"
+  fi
+
+  # Validate required fields per item
+  MISSING_FIELDS=0
+  if [ "$HAS_ITEMS" -gt 0 ]; then
+    # Format A: - id: ... root_cause/owner/expiry/follow_up_issue_or_openspec
+    while IFS= read -r line; do
+      item_id=$(echo "$line" | sed 's/^  - id: //')
+      item_block=$(grep -A 10 "^  - id: ${item_id}" "$EXCLUSIONS" 2>/dev/null || echo "")
+      for field in root_cause owner expiry follow_up_issue_or_openspec; do
+        if ! echo "$item_block" | grep -q "^[ ]*${field}:"; then
+          MISSING_FIELDS=$((MISSING_FIELDS + 1))
+        fi
+      done
+    done < <(grep "^  - id:" "$EXCLUSIONS" 2>/dev/null)
+  elif [ "$HAS_FILE_ITEMS" -gt 0 ]; then
+    # Format B: - file: ... category/owner/expiry/follow_up
+    while IFS= read -r line; do
+      item_file=$(echo "$line" | sed 's/^  - file: //')
+      item_block=$(grep -A 10 "^  - file: ${item_file}" "$EXCLUSIONS" 2>/dev/null || echo "")
+      for field in category owner expiry follow_up; do
+        if ! echo "$item_block" | grep -q "^[ ]*${field}:"; then
+          MISSING_FIELDS=$((MISSING_FIELDS + 1))
+        fi
+      done
+    done < <(grep "^  - file:" "$EXCLUSIONS" 2>/dev/null)
+  fi
+
+  if [ "$MISSING_FIELDS" -gt 0 ]; then
+    record_fail "exclusions.yml: $MISSING_FIELDS missing field assignments"
+  fi
 fi
 
 # ---- Manifest Validation ----

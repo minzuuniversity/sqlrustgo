@@ -1,0 +1,8 @@
+schema: spec-driven
+created: 2026-08-10
+owner: openclaw
+expiry: 2027-06-30
+affects:
+  - aggregate__quantile_fun.test
+  - sql__quantile_fun.test
+  - quantile_fun.test
