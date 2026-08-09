@@ -102,7 +102,7 @@ else
 fi
 echo ""
 
-echo "[3/3] Vector type — byte-exact row count + content (if supported)"
+echo "[3/3] Vector type — byte-exact value + count (if supported)"
 # Vector type may not be supported on all sqlrustgo configs. Detect capability.
 VECTOR_CREATE_OK=0
 if mysql -h 127.0.0.1 -P "${SERVER_PORT}" -u root "${TEST_DB}" \
@@ -110,12 +110,20 @@ if mysql -h 127.0.0.1 -P "${SERVER_PORT}" -u root "${TEST_DB}" \
     VECTOR_CREATE_OK=1
     mysql -h 127.0.0.1 -P "${SERVER_PORT}" -u root "${TEST_DB}" \
         -e "INSERT INTO v_data VALUES (1, '[1.0,2.0,3.0]'), (2, '[4.0,5.0,6.0]');" 2>/dev/null
+    # Byte-exact value check: row id=1 should have vector [1.0,2.0,3.0]
+    EXPECTED_V1='[1.0,2.0,3.0]'
+    ACTUAL_V1=$(mysql -h 127.0.0.1 -P "${SERVER_PORT}" -u root "${TEST_DB}" -N -B \
+        -e "SELECT v FROM v_data WHERE id=1;" | tr -d ' \r')
+    EXPECTED_V2='[4.0,5.0,6.0]'
+    ACTUAL_V2=$(mysql -h 127.0.0.1 -P "${SERVER_PORT}" -u root "${TEST_DB}" -N -B \
+        -e "SELECT v FROM v_data WHERE id=2;" | tr -d ' \r')
     N=$(mysql -h 127.0.0.1 -P "${SERVER_PORT}" -u root "${TEST_DB}" -N -B \
         -e "SELECT COUNT(*) FROM v_data;" | tr -d ' \r')
-    if [ "${N}" = "2" ]; then
-        assert_pass "vector type: 2 rows inserted and counted"
+    # V312-30: byte-exact assertion per spec "byte-exact JSON+vector fixture"
+    if [ "${N}" = "2" ] && [ "${ACTUAL_V1}" = "${EXPECTED_V1}" ] && [ "${ACTUAL_V2}" = "${EXPECTED_V2}" ]; then
+        assert_pass "vector type: 2 rows byte-exact match (id=1 -> ${ACTUAL_V1}, id=2 -> ${ACTUAL_V2})"
     else
-        assert_fail "vector type: ${N} rows counted, expected 2"
+        assert_fail "vector type mismatch: count=${N} id=1='${ACTUAL_V1}' id=2='${ACTUAL_V2}'"
         exit 1
     fi
 else
@@ -126,8 +134,6 @@ else
     echo "  SKIP: server does not support VECTOR type (recorded in evidence)"
     PASS=$((PASS+1))  # record as pass-with-skip, not as a real assertion
 fi
-echo ""
-
 {
     echo ""
     echo "Result: ${PASS} pass, ${FAIL} fail"
