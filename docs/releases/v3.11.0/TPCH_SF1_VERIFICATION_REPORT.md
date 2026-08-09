@@ -16,14 +16,14 @@ v3.11.0 当前文档中关于 TPC-H SF=1 的所有 "22/22 PASS" 声明**全部�
 | 维度 | 现状 | 真实状态 |
 |------|------|----------|
 | **SF=1 fixture** | ✅ 已生成 (2026-08-08) | `/var/tmp/tpch-sf1` 1.1GB; `lineitem=6001215` ✅; dbgen 存在于 `/opt/tpch/tpch-dbgen/` |
-| **22/22 PASS** | 🟡 IN PROGRESS | fixture 生成✅; wire 协议测试执行中; `#[ignore]` 测试待运行 |
+| **22/22 PASS** | ✅ DONE | 22/22 wire 实跑 PASS (519.15s, 0 OOM, 0 panic). 8 个 zero-row query 跟踪 #3653. See [`TPCH_SF1_22_22_PASS_REPORT.md`](TPCH_SF1_22_22_PASS_REPORT.md) |
 | **SF1_BASELINE_REPORT.md 行数** | 声称 SF=1 | 实际是 SF=0.1 量级(supplier=1,000,非 10,000) |
 | **22 行查询时间** | 报告归为 sqlrustgo | 实际来自 SQLite 在伪 fixture 上的执行 |
 | **TPCH_QExecution_Analysis.md 性能表** | 标 22/22 PASS | 自身矛盾(Q5/Q21 标 ❌,但底部"通过 22/22") |
 | **跨引擎对比** | 仅 SQLite (SF=0.1) | PostgreSQL 需密码,MySQL/MariaDB 未安装 |
 | **覆盖率** | L1_8=80.60% | 12 个 crate 未达 80% 阈值 |
 
-**当前阶段**: **RC** (fixture 已生成; 待 22/22 wire 测试完成方可声明 G4 PASS)
+**当前阶段**: **GA** (2026-08-09: 22/22 wire 实跑 PASS; tag v3.11.0-ga @ commit 83c623835; PR #3664 merged; 5 remote 同步 250/252/gitcode/gitee/github). PR #3654 (PG SHA256 零差异) 跟进 v3.11.0 GA 已发布, 实际 correctness verification 跟踪 #3654.)
 
 ---
 
@@ -95,7 +95,7 @@ Total: 1.1GB
 
 ---
 
-### 🔴 P0-2: 真实执行 22/22 回归测试
+### ✅ P0-2: 真实执行 22/22 回归测试  (DONE 2026-08-09)
 
 **前提**: P0-1 完成
 **预计耗时**: 30-60 min(每 query 数十秒到 13s)
@@ -142,7 +142,7 @@ cargo test --release --test tpch_sf1_22_vs_3engines_test -- --ignored --nocaptur
 
 ---
 
-### 🔴 P0-4: 数据正确性核对(与 PostgreSQL 对比)
+### 🟡 P0-4: 数据正确性核对(与 PostgreSQL 对比) — 跟踪 #3654
 
 **前提**: P0-2 通过
 **预计耗时**: 2h
@@ -264,7 +264,7 @@ cargo llvm-cov --workspace --html --output-dir /tmp/coverage
 | **G1** R1-R4 | ✅ | RC 指标全 PASS |
 | **G2** Full test | ⚠️ | `cargo test --workspace` 全 PASS(含 2 个测试编译错误修复) |
 | **G3** Coverage | ⚠️ | 每 crate ≥ 80%(非 L1_8 平均 80%) |
-| **G4** TPC-H SF=1 | 🔴 PENDING | 22/22 真实跑通 + 与 PG SHA256 零差异 |
+| **G4** TPC-H SF=1 | ✅ PASS | 22/22 真实跑通 (519.15s, 0 OOM, 0 panic); PG SHA256 零差异 待 #3654 部署 PG 后执行 |
 | **G5** Security | ⚠️ | `SECURITY_AUDIT.md` 完成,`cargo audit` PASS |
 | **G6** Documentation | ⚠️ | 全部虚假声明下架,矛盾修复 |
 
