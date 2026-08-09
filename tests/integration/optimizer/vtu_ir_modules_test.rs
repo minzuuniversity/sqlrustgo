@@ -81,6 +81,7 @@ fn products_table() -> TableInfo {
                 ..Default::default()
             },
         ],
+        compression: None,
         foreign_keys: vec![],
         unique_constraints: vec![],
         check_constraints: vec![],
