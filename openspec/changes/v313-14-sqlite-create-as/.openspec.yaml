@@ -1,0 +1,6 @@
+schema: spec-driven
+created: 2026-08-10
+owner: openclaw
+expiry: 2027-06-30
+affects:
+  - create_as.test
