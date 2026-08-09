@@ -201,6 +201,38 @@ agent: minimax, slice 3 续 V312-13/19/21 剩余工作。
 - V312-13 §10 SF=10 lineitem 实际 load (本切片只锚定 contract, 1.1GB/11GB 太大)
 - V312-19 §2: R2.5-R2.8 真实 check scripts (本切片未触及)
 
+## v3.12.0 启动切片 (2026-08-09, batch 4)
+
+agent: claude-macmini, 续 V312-21 剩余 fixture 修复。
+
+### 落地
+
+- **V312-21 最终 disposition**: 修复 6 个缺失 fixture 后重新运行 runner
+  - 新增 PASS surface (6 个意外实现): `group_concat`, `stddev_pop`, `with_cube`, `with_rollup`, `var_pop`, `replace_into`
+  - 新增 unsupported: `column_perm_unsupported` (列级权限仅 V311-09)
+  - 最终结果: **11 PASS / 2 unsupported / 7 deferred / 0 fail**
+- **6 个新 fixture**: `alter_change_full_syntax_deferred`, `column_perm_unsupported`, `median_unsupported`, `replace_into_complex_unsupported`, `var_pop_unsupported`, `window_rank_partition_unsupported`
+- **DEFERRED_FOLLOWUPS.md**: 记录 7 个 deferred 项的后续 Issue 模板 (owner: openclaw, expiry: 2027-06-30)
+- **RELEASE_NOTES.md**: MySQL 兼容性 section 已更新 disposition 数据
+
+### 7 个 deferred 项 (需在 v3.12.0 GA 前完成)
+
+| Surface | 原因 |
+|----------|------|
+| `empty_password_auth` | 空密码认证未实现 |
+| `prepared_stmt_roundtrip` | Wire protocol prepared statement 未实现 |
+| `timestamp_timezone` | TIMESTAMP WITH TIME ZONE 未实现 |
+| `connection_pool` | 连接池未实现 |
+| `alter_change_full_syntax` | ALTER CHANGE COLUMN 语法未实现 |
+| `median_unsupported` | MEDIAN() 聚合函数返回 NULL 而非报错 |
+| `window_rank_partition_unsupported` | ROW NUMBER() / RANK() 行包截断 bug |
+
+### Commit & PR
+
+- 分支: `fix/v312-21-mysql-compat-surface-backlog` → `develop/v3.12.0`
+- Commit: `58f8b7f5e0`
+- PR: http://192.168.0.252:3000/openclaw/sqlrustgo/pulls
+
 ## 附录：英文原文
 
 > 本附录保留本文件改写前的英文原文，便于追溯历史语义；当前正式阅读与执行口径以上方中文正文为准。
