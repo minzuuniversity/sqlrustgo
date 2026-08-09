@@ -4520,6 +4520,7 @@ version = "3.11.0"
 dependencies = [
  "log",
  "serde",
+ "serde_json",
  "sqlrustgo-common",
  "tempfile",
  "thiserror 2.0.18",
@@ -4714,6 +4715,7 @@ dependencies = [
  "hex",
  "log",
  "serde",
+ "serde_json",
  "thiserror 2.0.18",
 ]
 

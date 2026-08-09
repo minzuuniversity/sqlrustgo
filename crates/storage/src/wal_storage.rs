@@ -202,6 +202,12 @@ impl<S: StorageEngine, T: WalManager> WalStorage<S, T> {
                 bytes.extend_from_slice(&y.to_le_bytes());
                 bytes
             }
+            Value::Json(v) => {
+                let s = v.to_string();
+                let mut bytes = vec![0x08];
+                bytes.extend_from_slice(s.as_bytes());
+                bytes
+            }
         }
     }
 
@@ -238,6 +244,11 @@ impl<S: StorageEngine, T: WalManager> WalStorage<S, T> {
                     bytes.extend_from_slice(b"P:");
                     bytes.extend_from_slice(&x.to_le_bytes());
                     bytes.extend_from_slice(&y.to_le_bytes());
+                    bytes.push(0);
+                }
+                Value::Json(v) => {
+                    bytes.extend_from_slice(b"J:");
+                    bytes.extend_from_slice(v.to_string().as_bytes());
                     bytes.push(0);
                 }
             }

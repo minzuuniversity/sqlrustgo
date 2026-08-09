@@ -1229,8 +1229,16 @@ impl StoredProcExecutor {
                     Value::Float(f)
                 } else if s.starts_with('\'') && s.ends_with('\'') {
                     Value::Text(s[1..s.len() - 1].to_string())
+                } else if let Ok(v) = serde_json::from_str(s) {
+                    Value::Json(v)
                 } else {
                     Value::Text(s.to_string())
+                }
+            }
+            sqlrustgo_parser::Expression::JsonLiteral(s) => {
+                match serde_json::from_str(s) {
+                    Ok(v) => Value::Json(v),
+                    Err(_) => Value::Null,
                 }
             }
             sqlrustgo_parser::Expression::Identifier(name) => {
@@ -2038,6 +2046,7 @@ impl StoredProcExecutor {
                 .collect::<String>()
                 .replace('\'', "''"),
             Value::Point(x, y) => format!("POINT({}, {})", x, y),
+            Value::Json(v) => v.to_string().replace('\'', "''"),
         }
     }
 
