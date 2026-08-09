@@ -661,6 +661,12 @@ pub struct CreateTableStatement {
     /// V311-12 F-27: table compression specifier.
     /// Syntax: COMPRESS (ALGORITHM=LZ4) or COMPRESS (ALGORITHM=ZSTD)
     pub compress: Option<CompressionSpec>,
+    /// V312-18: CREATE TABLE AS SELECT - the SELECT statement to populate the table.
+    pub select: Option<Box<SelectStatement>>,
+    /// V312-18: CREATE OR REPLACE TABLE flag.
+    pub or_replace: bool,
+    /// V312-18: WITH NO DATA / WITH DATA clause for CTAS.
+    pub with_data: Option<bool>,
 }
 
 /// Compression specification for table compression (F-27)
@@ -2079,8 +2085,31 @@ impl Parser {
 
     fn parse_create(&mut self) -> Result<Statement, String> {
         self.expect(Token::Create)?;
+
+        // V312-18: Handle CREATE OR REPLACE for TABLE and VIEW
+        let or_replace = if matches!(self.current(), Some(Token::Or)) {
+            self.next();
+            match self.current() {
+                Some(Token::Replace) => {
+                    self.next();
+                    true
+                }
+                _ => return Err("Expected 'REPLACE' after 'OR'".to_string()),
+            }
+        } else {
+            false
+        };
+
         match self.current() {
-            Some(Token::Table) => self.parse_create_table(),
+            Some(Token::Table) => {
+                let mut stmt = self.parse_create_table()?;
+                if or_replace {
+                    if let Statement::CreateTable(ref mut ct) = stmt {
+                        ct.or_replace = true;
+                    }
+                }
+                Ok(stmt)
+            }
             Some(Token::Index) => {
                 self.next();
                 self.parse_create_index(false)
@@ -2101,7 +2130,8 @@ impl Parser {
                 t
             )),
             None => Err(
-                "Expected TABLE, INDEX, PROCEDURE, TRIGGER, ROLE, VIEW, SEQUENCE, or DATABASE after CREATE".to_string(),
+                "Expected TABLE, INDEX, PROCEDURE, TRIGGER, ROLE, VIEW, SEQUENCE, or DATABASE after CREATE"
+                    .to_string(),
             ),
         }
     }
@@ -2991,7 +3021,8 @@ impl Parser {
                 | Some(Token::Except)
                 | Some(Token::Order)
                 | Some(Token::Limit)
-                | Some(Token::Offset) => break,
+                | Some(Token::Offset)
+                | Some(Token::Semicolon) => break,
                 Some(Token::From) | Some(Token::Eof) => {
                     break;
                 }
@@ -4249,7 +4280,7 @@ impl Parser {
                     (first, None, rest)
                 }
             }
-            Some(Token::Eof) | None => (String::new(), None, Vec::new()),
+            Some(Token::Eof) | None | Some(Token::Semicolon) => (String::new(), None, Vec::new()),
             Some(Token::RParen) | Some(Token::Union) => (String::new(), None, Vec::new()),
             // V310-06 PR2: set-operation tokens also terminate the FROM
             // clause without error so parse_select_statement can be used
@@ -7171,6 +7202,21 @@ impl Parser {
         if matches!(self.current(), Some(Token::Create)) {
             self.next(); // consume CREATE if not already consumed
         }
+
+        // V312-18: Parse OR REPLACE before TABLE keyword
+        let or_replace = if matches!(self.current(), Some(Token::Or)) {
+            self.next();
+            match self.current() {
+                Some(Token::Replace) => {
+                    self.next();
+                    true
+                }
+                _ => return Err("Expected 'REPLACE' after 'OR'".to_string()),
+            }
+        } else {
+            false
+        };
+
         self.expect(Token::Table)?;
 
         let if_not_exists = if matches!(self.current(), Some(Token::If)) {
@@ -7304,6 +7350,58 @@ impl Parser {
         // V311-12 F-27: Parse trailing `COMPRESS (ALGORITHM=LZ4)` clause.
         let compress = self.parse_compress_clause();
 
+        // V312-18: Parse AS SELECT clause for CREATE TABLE AS SELECT
+        let mut select: Option<Box<SelectStatement>> = None;
+        let mut with_data: Option<bool> = None;
+
+        if matches!(self.current(), Some(Token::As)) {
+            self.next();
+            match self.current() {
+                Some(Token::Select) => {
+                    let select_stmt = self.parse_select()?;
+                    match select_stmt {
+                        Statement::Select(s) => select = Some(Box::new(s)),
+                        _ => return Err("Expected SELECT statement".to_string()),
+                    }
+                    with_data = Some(true); // default: WITH DATA
+                }
+                Some(Token::With) => {
+                    // WITH NO DATA or WITH DATA
+                    self.next();
+                    let data_flag = match self.current() {
+                        Some(Token::No) => {
+                            self.next();
+                            match self.current() {
+                                Some(Token::Identifier(s)) if s.eq_ignore_ascii_case("DATA") => {
+                                    self.next();
+                                    false // WITH NO DATA
+                                }
+                                _ => return Err("Expected 'DATA' after 'NO'".to_string()),
+                            }
+                        }
+                        Some(Token::Identifier(s)) if s.eq_ignore_ascii_case("DATA") => {
+                            self.next();
+                            true // WITH DATA
+                        }
+                        _ => return Err("Expected 'NO DATA' or 'DATA' after 'WITH'".to_string()),
+                    };
+                    // Now parse SELECT after WITH clause
+                    match self.current() {
+                        Some(Token::Select) => {
+                            let select_stmt = self.parse_select()?;
+                            match select_stmt {
+                                Statement::Select(s) => select = Some(Box::new(s)),
+                                _ => return Err("Expected SELECT statement".to_string()),
+                            }
+                            with_data = Some(data_flag);
+                        }
+                        _ => return Err("Expected SELECT after WITH [NO] DATA clause".to_string()),
+                    }
+                }
+                _ => return Err("Expected SELECT after AS".to_string()),
+            }
+        }
+
         Ok(Statement::CreateTable(CreateTableStatement {
             name,
             columns,
@@ -7311,6 +7409,9 @@ impl Parser {
             if_not_exists,
             storage_engine,
             compress,
+            select,
+            or_replace,
+            with_data,
         }))
     }
 
