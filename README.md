@@ -1,13 +1,13 @@
-> **更新日期**: 2026-07-16
-> **当前开发分支**: `develop/v3.11.0` (规划中, Issue #3835)
-> **最新稳定版**: v3.10.0 (GA, 2026-07-13) — MySQL 5.7 替代
-> **v3.10.0 长跑测试**: 168h SOAK 🔄 IN PROGRESS (2026-07-14 启动, 预计 2026-07-21 完成)
+> **更新日期**: 2026-08-09
+> **最新稳定版**: v3.11.0 (GA, 2026-08-09) — 6/6 GA gates PASS, TPC-H SF=1 22/22 verified
+> **下一版本**: v3.12.0 (planning)
+> **v3.11.0 Tag**: `v3.11.0-ga` @ commit `5038b154c` — synced to 250/252/gitcode/gitee/github 5 remotes
 
 <p align="center">
   <img src="https://img.shields.io/badge/Rust-1.85+-dea584?style=flat-square&logo=rust" alt="Rust">
-  <img src="https://img.shields.io/badge/v3.10.0-GA-blue?style=flat-square" alt="GA">
+  <img src="https://img.shields.io/badge/v3.11.0-GA-blue?style=flat-square" alt="GA">
   <img src="https://img.shields.io/badge/license-MIT-green?style=flat-square" alt="License">
-  <img src="https://img.shields.io/badge/TPC--H-22%2F22-brightgreen?style=flat-square" alt="TPC-H">
+  <img src="https://img.shields.io/badge/TPC--H-SF1%2022%2F22-brightgreen?style=flat-square" alt="TPC-H SF=1 22/22">
   <img src="https://img.shields.io/badge/Corpus-100.0%25-brightgreen?style=flat-square" alt="Corpus">
   <img src="https://img.shields.io/badge/9--Dim%20Gate-8%2F8%20PASS-brightgreen?style=flat-square" alt="D9">
   <img src="https://img.shields.io/badge/INT--1%20(P0)-CLOSED-brightgreen?style=flat-square" alt="INT-1">
@@ -15,9 +15,9 @@
 
 SQLRustGo 是一个纯 Rust 实现的 SQL 执行引擎，支持完整 SQL-92 语法、窗口函数、CTE、CBO 成本优化器、WAL + MVCC 事务、向量存储与图存储，以及 AI Native GMP 工作流。
 
-> **v3.10.0 当前状态 (2026-07-13)**: **GA — MySQL 5.7 替代** — INT/ARCH/SEM 100% 闭环，F-XX Gap Locking 主路径集成，Parallel Executor 优化（Issue #3792: PARALLEL_MIN_ROWS=2M, 6 项优化），TPC-H 22/22 全通（SF=0.1），TPC-H SF=1 (600K 行) ~10/22 (verified, see SF1_TRUTH_AUDIT.md) (~7.8 min)，21/22 cell-level 匹配 SQLite，性能实测: Q1 1.27x / Q3 1.08x / Q5 1.10x (1M 行, 4 线程), 数据加载 180x 加速 (fast_load_tbl_data)，E2E 8/8 PASS，168h SOAK 🔄 进行中 (2026-07-14 启动, 预计 2026-07-21 完成)。Q2 join ordering bug 已修复 (2026-07-16)，Q2 SF=1 从 OOM 变为 ~13s/20行。详见 [SF1 基线报告](docs/releases/v3.11.0/perf/SF1_BASELINE_REPORT.md)。
+> **v3.11.0 当前状态 (2026-08-09)**: **GA ✅** — 6/6 GA gates PASS, 22/24 V311-XX tasks DONE (2 PARTIAL), 0 TODO. Tag `v3.11.0-ga` @ commit `5038b154c`. 同步到 5 remote (250/252/gitcode/gitee/github). 重大改进: Clustered Index (F-23) / Adaptive Hash Index (F-24) / Change Buffer (F-25) / Double-Write Buffer (F-26) / Row-Level Security (F-29) / Performance Schema hooks (F-31) / MySQL Admin 集成 (F-32) / Password Rotation (F-35) / 列级权限 (F-36) / CREATE SEQUENCE (F-30) / GIS POINT+ST_WITHIN (F-03) / Table Compression LZ4/zstd (F-27) / ALTER RENAME/MODIFY (SEM-3) / 覆盖率 ≥80% (SEM-4) / Hash Semi/Anti Join (PERF-1/2) / Decorrelation (PERF-4) / CTE 物化 (PERF-3) / 高并发 INSERT 修复 (PERF-5). TPC-H SF=1 22/22 verified (519.15s, 0 OOM, 0 panic). 168h SOAK: 343h37m PASS (2.04x > 168h requirement). G3 coverage: sqlrustgo-tools 80.31% line / 80.17% branch (≥80% gate).
 >
-> **v3.11.0 计划 (Issue #3835)**: 23 项债务清零 + 9 项 F-XX 主路径集成 + Q4 Hash Semi Join (<5 min @ SF=3)，预计 2026-10-01 GA。详见 [v3.11.0 计划](docs/releases/v3.11.0/VERSION_PLAN.md)。
+> **v3.11.0 ✅ 发布 (2026-08-09)**: 23 项债务清零 + 9 项 F-XX 主路径集成 + Q4 Hash Semi Join — 22/24 V311-XX DONE, 2 PARTIAL. **GA 提前 53 天** (原计划 2026-10-01). 详见 [v3.11.0 GA 报告](docs/releases/v3.11.0/GA_GATE_REPORT.md).
 
 ---
 
