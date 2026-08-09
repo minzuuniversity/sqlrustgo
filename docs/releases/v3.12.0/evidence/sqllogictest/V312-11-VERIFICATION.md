@@ -1,111 +1,102 @@
-# V312-11 SQLLogicTest Oracle Gate — 核查整改最终报告
+# V312-11 SQLLogicTest Oracle Gate — Verification Report
 
-**source_agent**: claude-code
-**source_run**: v312-11-closure-verification
-**timestamp**: 2026-08-09T15:00:00Z
-**issue**: #3898
-**branch**: `develop/v3.12.0`
-**commit**: `f6b2ded794`
+| Field | Value |
+|---|---|
+| source_agent | minimax-m2.7 |
+| source_run | v312-11-final-remediation |
+| timestamp | 2026-08-10T00:54:25+08:00 |
+| commit | a5a1b26724fbbd6a8b12640030d4d0d16e6da3e3 |
+| PR | #3938 (merged) |
+| Merge Commit | 71fc33a9d287f79e17147cca086fb2e6cc4f7b39 |
 
----
+## Gate Execution
 
-## 一、当前状态
+```bash
+bash scripts/gate/check_sqllogictest_v312.sh
+```
 
-### 1.1 测试结果
+**Result**: 4 PASS, 0 FAIL (exit 0)
+
+## Evidence Hashes
+
+| File | SHA256 |
+|------|--------|
+| Log | `a963c59da01c275362ea0fc5b524139b5c7247d58ee9c503052095bc09250c66` |
+| exclusions.yml | `3f63e5a5b721b923a2d1e0816a4a8b5b07d1e260fc70ce69c03ef46a00d25e05` |
+| sqlite-corpus-manifest.json | `05e59ffae4c7a9f163f66e4a1d43928017f0cdf669379ea810f2db2d1d346e16` |
+| smoke-report.md | `cdb0420e8061960926fe37a94f1981f709a374d78e62c8175d668e194375f460` |
+
+**Log file**: `docs/releases/v3.12.0/logs/sqllogictest_a5a1b26724_20260810_005425.log`
+
+## Test Results
 
 ```
-files: 6/16 (pass/fail)
+files:    6/22 (pass/fail)
 pass rate: 27.3%
 ```
 
-### 1.2 PASS 文件 (6)
+### PASS Files (6/22)
 
-| File | Category |
-|------|----------|
-| basic_select.test | smoke |
-| string_test.test | smoke |
-| null_test.test | smoke |
-| delete__test_delete.test | smoke |
-| demo.test | smoke |
-| sql__test_delete.test | smoke |
+| File | Source |
+|------|--------|
+| basic_select.test | sqlrustgo_simple/ |
+| null_test.test | sqlrustgo_simple/ |
+| string_test.test | sqlrustgo_simple/ |
+| delete__test_delete.test | root |
+| demo.test | root |
+| sql__test_delete.test | duckdb_full/ |
 
-### 1.3 FAIL 文件 (16) — 全部已登记 Exclusion
+### FAIL Files (16/22) — All Registered in exclusions.yml
 
-| File | Category | OpenSpec |
-|------|----------|----------|
-| insert__test_insert_invalid.test | parser | v313-08 |
-| insert__test_insert.test | parser | v313-08 |
-| update__test_update.test | parser | v313-08 |
-| setops__test_except.test | semantic | v313-09 |
-| setops__test_setops.test | parser | v313-09 |
-| order__test_limit.test | parser | v313-10 |
-| alter__alter_table_set_partitioned_by.test | parser | v313-11 |
-| alter_table_set_partitioned_by.test | parser | v313-11 |
-| case_insensitive_alter.test | parser | v313-11 |
-| constraints__test_not_null.test | semantic | v313-12 |
-| test_constraint_with_updates.test | semantic | v313-12 |
-| binder__alias_error_10057.test | semantic | v313-13 |
-| create_as.test | semantic | v313-14 |
-| aggregate__quantile_fun.test | harness | v313-15 |
-| sql__quantile_fun.test | harness | v313-15 |
-| quantile_fun.test | harness | v313-15 |
+| File | Root Cause | OpenSpec |
+|------|-----------|----------|
+| insert__test_insert_invalid.test | PARSER | v313-08 |
+| insert__test_insert.test | EXECUTION | v313-08 |
+| update__test_update.test | PARSER | v313-08 |
+| setops__test_except.test | PARSER | v313-09 |
+| setops__test_setops.test | PARSER | v313-09 |
+| order__test_limit.test | PARSER | v313-10 |
+| alter__alter_table_set_partitioned_by.test | PARSER | v313-11 |
+| alter_table_set_partitioned_by.test | PARSER | v313-11 |
+| case_insensitive_alter.test | PARSER | v313-11 |
+| constraints__test_not_null.test | SEMANTIC | v313-12 |
+| test_constraint_with_updates.test | SEMANTIC | v313-12 |
+| binder__alias_error_10057.test | SEMANTIC | v313-13 |
+| create_as.test | EXECUTION | v313-14 |
+| aggregate__quantile_fun.test | HARNESS | v313-15 |
+| sql__quantile_fun.test | HARNESS | v313-15 |
+| quantile_fun.test | HARNESS | v313-15 |
 
----
+## Exclusion Registry Summary
 
-## 二、Exclusions Manifest
+- `status: active`
+- `total_fail_files: 16`
+- `smoke_scope_pass_files: 6`
+- All 16 FAIL files have `root_cause`, `owner`, `expiry`, `follow_up_issue_or_openspec`
 
-所有 16 个 FAIL 文件已登记到 `exclusions.yml`：
-- 每个 exclusion 有 owner (openclaw)、expiry (2027-06-30)、follow_up issue
+## OpenSpec Follow-ups (8 changes)
 
----
+| Change | Coverage |
+|--------|---------|
+| v313-08-sql-logictest-insert-update-fix | 3 files |
+| v313-09-sql-logictest-setops-fix | 2 files |
+| v313-10-sql-logictest-order-limit-fix | 1 file |
+| v313-11-sql-logictest-alter-table-fix | 3 files |
+| v313-12-sql-logictest-constraint-semantics | 2 files |
+| v313-13-sql-logictest-binder-alias | 1 file |
+| v313-14-sql-logictest-create-as-execution | 1 file |
+| v313-15-sql-logictest-duckdb-harness | 3 files |
 
-## 三、Corpus Manifest
+## Closure Criteria
 
-`sqlite-corpus-manifest.json` 定义：
-- **scope**: full_corpus (22 files) / curated_subset (6 smoke files)
-- **baseline**: 27.3% pass rate established
-- **pass_threshold**: 0% for baseline, 100% for curated subset
+- [x] PR merged to `develop/v3.12.0` (PR #3938, commit 71fc33a9)
+- [x] Gate script executes exit 0
+- [x] All 16 FAIL files have OpenSpec follow-up
+- [x] exclusions.yml: `status: active`, all items have required fields
+- [x] Manifest stats consistent (22 total, 6 pass, 16 fail)
+- [x] Evidence hashes computed from actual files
+- [x] Issue comment posted with PR/Commit/command/log/PASS-FAIL/evidence_hash
 
----
+## Status
 
-## 四、OpenSpec Follow-up Changes (8)
-
-| OpenSpec | Surface | Category |
-|----------|---------|----------|
-| v313-08 | VALUES constructor | parser |
-| v313-09 | EXCEPT ALL / INTERSECT ALL | parser/semantic |
-| v313-10 | Window function LIMIT | parser |
-| v313-11 | ALTER TABLE PARTITIONED BY | parser |
-| v313-12 | NOT NULL enforcement | semantic |
-| v313-13 | Alias scoping in WHERE | semantic |
-| v313-14 | CREATE TABLE AS | semantic |
-| v313-15 | Harness directives | harness |
-
----
-
-## 五、Gate Script
-
-`scripts/gate/sqllogictest_gate.sh`:
-- 构建 sqlrustgo_sqllogictest
-- 运行测试到 `docs/releases/v3.12.0/evidence/sqllogictest/`
-- 支持 `--max-fail` 参数
-
----
-
-## 六、Closure Checklist
-
-- [x] Baseline established (27.3% pass rate, 6/16)
-- [x] All 16 FAIL files have exclusions with owner + expiry
-- [x] 8 OpenSpec follow-up changes created (v313-08 ~ v313-15)
-- [x] Corpus manifest created
-- [x] Gate script functional
-- [ ] Smoke subset (6 files) target 100% pass
-
----
-
-## 七、结论
-
-**ISSUE #3898 状态**: DEFERRED
-
-16 个 FAIL 文件全部有 exclusion 登记和 OpenSpec follow-up 追踪。
-Baseline 已建立，后续通过实现 OpenSpec 中的 parser/semantic 修复逐步提高 pass rate。
+**DEFERRED to v3.13.0 GA** — smoke baseline 6/22 PASS, 16 FAIL with OpenSpec tracking (owner: openclaw)
