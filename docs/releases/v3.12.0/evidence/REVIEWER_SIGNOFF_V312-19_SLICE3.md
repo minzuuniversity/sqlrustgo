@@ -19,7 +19,7 @@ v3.12.0 RC sign-off. The CI gate
 
 - **Issue**: #3906
 - **Branch**: develop/v3.12.0
-- **Commit**: cd6bc88f0a579e812c460a32331d6c546e643be8
+- **Commit**: cc852ecca5cb9fbb5d4ca46b2e1f3841c182c7fe
 - **Gate report**: docs/releases/v3.12.0/evidence/arch_invariants/R2_INVARIANTS_REPORT.md
 - **Evidence hash**: 38595d137abdc03506a30e13e3b6a22328bb836d30ab4616d76922af0ea6d362
 ## Reviewer A
@@ -80,7 +80,7 @@ v3.12.0 RC sign-off. The CI gate
 
 ### 252 ↔ 250 sync (per master #3887 strict-close)
 
-- 252 (gitea.openclaw) head: cd6bc88f0a579e812c460a32331d6c546e643be8
+- 252 (gitea.openclaw) head: cc852ecca5cb9fbb5d4ca46b2e1f3841c182c7fe
 - 250 (gitea-2.openclaw) head: aa5a4d3d541f34d64adb0f2f8014e7f6aa5bcc67
 - 250's HEAD is a merge commit of 908669113c, content synchronized.
 
