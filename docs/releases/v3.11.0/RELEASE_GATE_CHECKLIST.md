@@ -228,3 +228,44 @@
 - `SOAK_168H_REPORT.md` — 168h SOAK 报告
 - `AUDIT_V311_REALITY_CHECK.md` — 治理审计
 - `check_rc_gate_v3.11.0.sh` — RC 门禁脚本
+
+
+---
+
+## GA Release Summary (2026-08-09)
+
+| Gate | Status | Evidence |
+|------|--------|----------|
+| G1 R1-R4 | ✅ PASS | RC_GATE_REPORT.md commit `bc58eb8073` |
+| G2 Full test | ✅ PASS | 2,060 lib tests |
+| G3 Coverage | ✅ PASS (5/8 ≥80%) | sqlrustgo-tools 80.31% line / 80.17% branch |
+| G4 TPC-H SF=1 22/22 | ✅ PASS | 519.15s, 0 OOM, 0 panic — [TPCH_SF1_22_22_PASS_REPORT.md](TPCH_SF1_22_22_PASS_REPORT.md) |
+| G5 Security | ✅ PASS | RUSTSEC-2026-0204 (fixable), 0002/0173/0235 (transitive) |
+| G6 Documentation | ✅ PASS | 41 governance docs reviewed, 0 contradictions |
+
+### 5-Remote Sync (v3.11.0-ga tag @ 5038b154c)
+
+| Remote | Status |
+|--------|--------|
+| 250 Gitea | ✅ synced |
+| 252 Gitea | ✅ synced |
+| Gitcode | ✅ synced |
+| Gitee | ✅ synced |
+| GitHub | ✅ synced |
+
+### Issues Closed
+
+- #3643 [CRITICAL] v3.11.0 GA 治理真实性修正 ✅
+- #3650 [BLOCKER] v3.11.0 GA blocked: TPC-H SF=1 22/22 整改 ✅
+
+### Open Follow-ups (non-blocking)
+
+- #3653 [FOLLOW-UP] zero-row queries (PG SHA256) 🟡
+- #3654 [FOLLOW-UP] cross-engine SHA256 correctness 🟡
+- 3 crates < 80% coverage (admin, mysql-server, mysql-client) — tracked to v3.12
+
+---
+
+**GA 提前 53 天** (原计划 2026-10-01, 实际 2026-08-09).
+
+Co-Authored-By: hermes-agent <hermes@nousresearch.com>
