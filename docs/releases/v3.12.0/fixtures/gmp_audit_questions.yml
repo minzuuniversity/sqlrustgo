@@ -1,0 +1,81 @@
+# v3.12.0 GMP internal-audit retrieval fixture seed.
+#
+# This is a planning fixture, not execution evidence. Each question must be
+# converted into a scored retrieval test before any gate PASS claim.
+
+version: v3.12.0
+status: planned
+questions:
+  - id: GMP-AUDIT-001
+    question: "偏差处理应关联哪些 CAPA 管理要求和记录?"
+    intent: "deviation_to_capa"
+    expected_topics:
+      - "偏差处理"
+      - "CAPA"
+      - "纠正和预防措施"
+    required_evidence_fields:
+      - source_path
+      - document_version
+      - chunk_id
+      - chunk_hash
+      - citation_text
+
+  - id: GMP-AUDIT-002
+    question: "数据完整性 ALCOA 原则对应哪些计算机化系统控制?"
+    intent: "data_integrity_controls"
+    expected_topics:
+      - "ALCOA"
+      - "数据完整性"
+      - "审计追踪"
+      - "访问控制"
+    required_evidence_fields:
+      - source_path
+      - document_version
+      - chunk_id
+      - chunk_hash
+      - citation_text
+
+  - id: GMP-AUDIT-003
+    question: "供应商审计发现问题后应如何触发风险评估和整改?"
+    intent: "supplier_audit_risk_capa"
+    expected_topics:
+      - "供应商审计"
+      - "风险评估"
+      - "整改"
+      - "CAPA"
+    required_evidence_fields:
+      - source_path
+      - document_version
+      - chunk_id
+      - chunk_hash
+      - citation_text
+
+  - id: GMP-AUDIT-004
+    question: "设备清洁验证失败时应关联哪些验证、偏差和放行控制?"
+    intent: "cleaning_validation_failure"
+    expected_topics:
+      - "清洁验证"
+      - "偏差"
+      - "验证"
+      - "放行"
+    required_evidence_fields:
+      - source_path
+      - document_version
+      - chunk_id
+      - chunk_hash
+      - citation_text
+
+  - id: GMP-AUDIT-005
+    question: "电子签名和审计追踪在受控文件批准中如何体现?"
+    intent: "esignature_audit_trail"
+    expected_topics:
+      - "电子签名"
+      - "审计追踪"
+      - "文件批准"
+      - "受控文件"
+    required_evidence_fields:
+      - source_path
+      - document_version
+      - chunk_id
+      - chunk_hash
+      - citation_text

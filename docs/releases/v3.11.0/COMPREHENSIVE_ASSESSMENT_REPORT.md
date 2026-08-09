@@ -1,5 +1,348 @@
 # SQLRustGo v3.11.0 综合评估报告
 
+> **版本**: v3.11.0  
+> **阶段**: **GA (General Availability) 正式发布阶段**  
+> **评估日期**: 2026-08-09  
+> **当前本地分支**: `develop/v3.11.0` @ `9f469a7ebde7b451d1ddbc5fc9f0a393d1d7810b`  
+> **本地 GA Tag**: `v3.11.0-ga` (2026-08-09, annotated object `eaafcd858`)  
+> **发布定位**: 债务清零 + 核心功能主路径集成 + TPC-H SF=1 可运行性突破 + GA 文档收口  
+> **证据等级**: VerifiedDoc + DerivedDoc 混合；本报告不把历史文档声明单独当作 PASS 证据
+
+## 0. Provenance
+
+| 字段 | 值 |
+|------|----|
+| source_agent | Codex |
+| source_run | 2026-08-09 local doc assessment |
+| timestamp | 2026-08-09T13:00:00+08:00 |
+| evidence_hash | local-git:9f469a7ebde7b451d1ddbc5fc9f0a393d1d7810b |
+| input_refs | `STAGE.yaml`, `GA_GATE_REPORT.md`, `TPCH_SF1_22_22_PASS_REPORT.md`, `COVERAGE_E2E_AUG09.md`, `COVERAGE_FULL_2026-08-09.md`, `SOAK_168H_REPORT.md`, `SECURITY_AUDIT.md`, `FEATURE_CHECKLIST.md`, `GOVERNANCE_SELF_AUDIT_2026-08-09.md` |
+| limitation | 本次更新未重新执行完整 `cargo test --workspace`、`cargo llvm-cov`、TPC-H、cargo audit；结论基于本地文件、Git 状态和报告内嵌执行证据复核 |
+
+## 1. 总体结论
+
+**v3.11.0 已进入 GA 正式发布阶段，可以作为“简单生产环境 / 受控场景”的候选数据库版本，但不能等同宣称为完整 MySQL 5.7 替代品。**
+
+GA 发布的核心依据是：
+
+| 维度 | 结论 | 证据 |
+|------|------|------|
+| 阶段状态 | `current_stage: GA` | [`STAGE.yaml`](STAGE.yaml) |
+| GA Gate | 6/6 在发布裁决口径下通过 | [`GA_GATE_REPORT.md`](GA_GATE_REPORT.md) |
+| TPC-H SF=1 | 22/22 query 完整执行，519.15s，0 panic，0 OOM | [`TPCH_SF1_22_22_PASS_REPORT.md`](TPCH_SF1_22_22_PASS_REPORT.md) |
+| 稳定性 | 343h37m SOAK，55,818,725 ops，0 errors | [`SOAK_168H_REPORT.md`](SOAK_168H_REPORT.md) |
+| 功能集成 | V311 主任务已基本闭环；CREATE SEQUENCE、GIS、RLS、Compression、索引、性能优化进入主路径 | [`FEATURE_CHECKLIST.md`](FEATURE_CHECKLIST.md) |
+| 安全 | 无 High/Medium；依赖侧仍有已记录 warnings | [`SECURITY_AUDIT.md`](SECURITY_AUDIT.md) |
+| 治理一致性 | 41 份 governance/release 文档自审 0 contradictions | [`GOVERNANCE_SELF_AUDIT_2026-08-09.md`](GOVERNANCE_SELF_AUDIT_2026-08-09.md) |
+
+同时必须明确以下边界：
+
+| 边界项 | 当前真实状态 | 发布影响 |
+|--------|--------------|----------|
+| G3 覆盖率 | 多份报告口径不一致；`--lib` 为 14/26 crate ≥80%，`--lib --tests` 为 19/26 crate ≥80%，L1_8 平均约 79.27% | 不阻断本次 GA 裁决，但应作为 v3.12 P0 硬化项 |
+| G4 TPC-H | 22/22 为 in-process/BINT 路径；8 个 query 返回 0 行；PostgreSQL SHA256 correctness 仍跟踪 #3654 | 可作为“可运行性”证据，不应包装成“结果语义已与 PostgreSQL/MySQL 零差异” |
+| MySQL 5.7 替代 | SQL 主路径、事务、索引、TPC-H 可运行性和 SOAK 明显提升 | 适合受控、低风险、可回滚场景；不适合无回滚的通用生产替换 |
+| 向量/图/GMP | `vector` 保留，GMP/RAG/graph 方向已有规划和部分 crate | v3.11.0 不是生产级通用向量数据库或图数据库；应在 v3.12/4.0.0 继续验证 |
+
+### 1.1 重要文档链接
+
+以下文档是 v3.11.0 GA 评估时最重要的阅读入口。排序按“当前发布判断权重”从高到低：
+
+| 类别 | 文档 | 用途 | 可信度 |
+|------|------|------|--------|
+| Stage SSOT | [`STAGE.yaml`](STAGE.yaml) | 版本阶段、promotion 条件、分支保护、覆盖率阈值 | 高 |
+| GA 门禁 | [`GA_GATE_REPORT.md`](GA_GATE_REPORT.md) | G1-G6 发布裁决总表 | 中高；G3/G4 是发布裁决口径，需结合 coverage/TPC-H 细表阅读 |
+| TPC-H 完整执行 | [`TPCH_SF1_22_22_PASS_REPORT.md`](TPCH_SF1_22_22_PASS_REPORT.md) | SF=1 22/22 完整执行、519.15s、0 OOM/0 panic | 高；但仅证明可运行性，不证明跨引擎结果零差异 |
+| TPC-H 整改与后续 | [`TPCH_SF1_VERIFICATION_REPORT.md`](TPCH_SF1_VERIFICATION_REPORT.md) / [`G4_WIRE_TEST_CLOSE_OUT_PLAN.md`](G4_WIRE_TEST_CLOSE_OUT_PLAN.md) | 虚假声明整改、zero-row、PG SHA256、wire close-out | 中高；含历史问题定位和未完成项 |
+| SOAK | [`SOAK_168H_REPORT.md`](SOAK_168H_REPORT.md) | 343h37m 长稳测试、55.8M ops、0 errors | 高 |
+| 覆盖率当前数据 | [`COVERAGE_E2E_AUG09.md`](COVERAGE_E2E_AUG09.md) / [`COVERAGE_FULL_2026-08-09.md`](COVERAGE_FULL_2026-08-09.md) | `--lib --tests` 与 `--lib` 两种覆盖率口径 | 高；结论需按测量口径区分 |
+| 覆盖率方法 | [`COVERAGE_TESTING_METHODOLOGY.md`](COVERAGE_TESTING_METHODOLOGY.md) / [`G3_COVERAGE_REMEDIATION_PLAN.md`](G3_COVERAGE_REMEDIATION_PLAN.md) | 解释 root `--lib` 失真、per-crate 测量、v3.12 修复路线 | 中高 |
+| 功能清单 | [`FEATURE_CHECKLIST.md`](FEATURE_CHECKLIST.md) | V311-XX 任务、主路径集成、测试方法 | 中；部分历史统计仍需与 GA 报告交叉核对 |
+| Release 面向用户 | [`RELEASE_NOTES.md`](RELEASE_NOTES.md) / [`UPGRADE_GUIDE.md`](UPGRADE_GUIDE.md) / [`CHANGELOG.md`](CHANGELOG.md) | 发布说明、升级、阶段时间线 | 中；`CHANGELOG.md` 明确保留历史虚假声明整改记录 |
+| 安全 | [`SECURITY_AUDIT.md`](SECURITY_AUDIT.md) / [`security/security-summary.md`](security/security-summary.md) / [`security/security_audit_output.txt`](security/security_audit_output.txt) | 安全审计、依赖警告、审计输出 | 中高；未在本次报告更新中重新跑 `cargo audit` |
+| 治理自审 | [`GOVERNANCE_SELF_AUDIT_2026-08-09.md`](GOVERNANCE_SELF_AUDIT_2026-08-09.md) / [`GOVERNANCE_TRUTH_AUDIT.md`](GOVERNANCE_TRUTH_AUDIT.md) / [`AUDIT_V311_REALITY_CHECK.md`](AUDIT_V311_REALITY_CHECK.md) | 文档一致性、虚假声明修复、GA 自审 | 中；可信但仍属于文档审计，不替代实跑 gate |
+| 发布检查 | [`RELEASE_GATE_CHECKLIST.md`](RELEASE_GATE_CHECKLIST.md) / [`REGRESSION_TEST_SUITE.md`](REGRESSION_TEST_SUITE.md) / [`TEST_PLAN.md`](TEST_PLAN.md) | 发布检查项、回归测试、测试计划 | 中低；部分条目仍保留 fixture missing / PENDING 旧口径 |
+| 性能背景 | [`PERFORMANCE_REPORT.md`](PERFORMANCE_REPORT.md), [`perf/TPCH_PERFORMANCE_REPORT.md`](perf/TPCH_PERFORMANCE_REPORT.md), [`perf/SF1_BASELINE_REPORT.md`](perf/SF1_BASELINE_REPORT.md), [`perf/TPCH_QExecution_Analysis.md`](perf/TPCH_QExecution_Analysis.md) | 性能历史分析、旧基线、问题定位 | 低到中；部分内容明确为历史或 invalid，需要以最新 TPC-H 报告覆盖 |
+| 计划与历史 | [`PROGRESS.md`](PROGRESS.md), [`EVIDENCE_STATUS.md`](EVIDENCE_STATUS.md), [`LEGACY_DEBT_AUDIT_REPORT.md`](LEGACY_DEBT_AUDIT_REPORT.md), [`LEGACY_DEBT_TRACKING_TABLE.md`](LEGACY_DEBT_TRACKING_TABLE.md) | 历史进度、证据状态、债务审计 | 低到中；有 TODO/PENDING 残留，适合追溯，不适合作为当前 GA 结论依据 |
+
+### 1.2 文档和测试报告可信度评估
+
+**总体判断**: v3.11.0 的文档体系已经从 2026-07-19 的“虚假 GA / 虚假 22/22 PASS”状态恢复到可审计状态，但不是所有文档都同等可信。当前可信度应按证据类型分层使用。
+
+| 可信度等级 | 文档/报告 | 评估 |
+|------------|-----------|------|
+| 高可信 | `STAGE.yaml`, `TPCH_SF1_22_22_PASS_REPORT.md`, `SOAK_168H_REPORT.md`, `COVERAGE_E2E_AUG09.md`, `COVERAGE_FULL_2026-08-09.md` | 含明确日期、命令或执行输出摘要，可作为当前状态的一线证据 |
+| 中高可信 | `GA_GATE_REPORT.md`, `SECURITY_AUDIT.md`, `RELEASE_GATE_CHECKLIST.md`, `GOVERNANCE_SELF_AUDIT_2026-08-09.md` | 可作为发布裁决和治理解释，但部分 PASS 属于裁决口径，不等同每项严格技术阈值全绿 |
+| 中可信 | `FEATURE_CHECKLIST.md`, `RELEASE_NOTES.md`, `CHANGELOG.md`, `TPCH_SF1_VERIFICATION_REPORT.md`, `G4_WIRE_TEST_CLOSE_OUT_PLAN.md` | 含大量历史、整改和计划信息；需要结合最新 GA 证据阅读 |
+| 低到中可信 | `PROGRESS.md`, `EVIDENCE_STATUS.md`, `TEST_PLAN.md`, `REGRESSION_TEST_SUITE.md`, `PERFORMANCE_REPORT.md`, `perf/*` 历史分析 | 有 PENDING、fixture missing、未实测、旧阶段状态残留；适合作背景，不适合作当前 PASS 证据 |
+
+### 1.3 虚假声明与残留风险
+
+v3.11.0 曾经存在明确的虚假声明：2026-07-19 前后多个文档把未完成的 TPC-H SF=1 22/22 和 GA 状态写成已通过。`CHANGELOG.md`、`GOVERNANCE_TRUTH_AUDIT.md`、`AUDIT_V311_REALITY_CHECK.md` 已记录这批问题和整改。
+
+当前评估如下：
+
+| 项 | 当前状态 | 判断 |
+|----|----------|------|
+| 虚假 GA 声明 | 已通过后续 GA promotion 修正；`STAGE.yaml` 当前为 GA | 当前 GA 声明有证据支撑 |
+| 虚假 TPC-H 22/22 PASS | 已由 `TPCH_SF1_22_22_PASS_REPORT.md` 补上 22/22 可运行性证据 | “可运行性 PASS”可信；“结果正确性零差异”仍不可宣称 |
+| 覆盖率全达标声明 | 仍有口径风险：`GA_GATE_REPORT.md` 判 G3 PASS，但 coverage 细表显示多个 crate 未严格 ≥80% | 不应写“全 crate 严格达标” |
+| 历史 perf 报告 | 多处仍保留未实测/历史 invalid/fixture missing 说明 | 不可作为当前 GA 性能宣传依据 |
+| 文档自审 0 contradictions | 只能说明被审查文档在某个口径下自洽 | 不能替代实跑 `cargo test`、coverage、TPC-H、security audit |
+
+因此，报告采用以下约束：
+
+1. 允许声明：v3.11.0 已进入 GA 正式发布阶段。
+2. 允许声明：TPC-H SF=1 22/22 已完整执行，0 OOM，0 panic。
+3. 不允许声明：TPC-H 22/22 已与 PostgreSQL/MySQL 结果 SHA256 零差异。
+4. 不允许声明：所有 workspace crate 覆盖率均严格达到 80%。
+5. 不允许声明：v3.11.0 已是完整生产级 MySQL 5.7、向量数据库、图数据库替代品。
+
+### 1.4 遗漏测试与后续验证
+
+以下测试或验证仍有遗漏，应作为 v3.12.0 或 v3.11.x patch 的优先项：
+
+| 遗漏项 | 当前证据 | 风险 | 建议 |
+|--------|----------|------|------|
+| TPC-H SF=1 PostgreSQL/MySQL SHA256 正确性 | 22/22 可运行；8 个 zero-row query | High | 完成 #3653/#3654，输出每 query checksum 和 row-count 对照 |
+| TPC-H wire protocol 严格路径 | 当前主证据偏 in-process/BINT | High | 固化 wire 22/22 日志、每 query 独立 artifact、去除 ADR-008 例外 |
+| LOAD DATA / bulk import | BINT 绕过导入瓶颈 | Medium | 用 SF=1/SF=10 测 LOAD DATA 时间、内存峰值、失败恢复 |
+| 覆盖率统一口径 | `--lib` 与 `--lib --tests` 差异较大 | High | 固化唯一 G3 命令，避免同一 gate 多口径裁决 |
+| parser/mysql-server/mysql-client 覆盖率 | 多份覆盖率报告显示低于 80% | High | 加 MySQL 方言、错误包、COM_STMT、reset、TLS/压缩、client reconnect tests |
+| crash recovery + backup/restore | SOAK 强，但恢复演练证据不足 | High | kill -9、断电模拟、WAL replay、备份恢复 checksum |
+| upgrade/downgrade | v3.10 -> v3.11 文档存在，但实跑证据不足 | Medium | 固化升级脚本和回滚脚本，记录数据一致性 |
+| GMP/RAG/Vector/Graph | 有能力基础，但缺生产级检索评测 | High for GMP production | 建立 GMP fixture、ALCOA+ 审计包、向量召回率、图投影一致性、权限矩阵 |
+| dependency audit 复跑 | `SECURITY_AUDIT.md` 有依赖警告摘要 | Medium | 在 GA tag 或 release branch 上重新跑 `cargo audit` 并归档输出 |
+
+## 2. GA Gate 复核
+
+| Gate | 发布裁决 | 证据与说明 |
+|------|----------|------------|
+| G1 RC 指标 | PASS | `GA_GATE_REPORT.md` 记录 R1-R4 继承 RC PASS |
+| G2 Full test | PASS | `GA_GATE_REPORT.md` 记录 2,060 lib tests / 0 fail / 6 ignored |
+| G3 Coverage | PASS with follow-up | 发布裁决为 PASS；但覆盖率报告显示并非所有 crate 严格达到 80%，见 §5 |
+| G4 TPC-H SF=1 | PASS with correctness follow-up | `TPCH_SF1_22_22_PASS_REPORT.md` 证明 22/22 完整执行；zero-row correctness 跟踪 #3653/#3654 |
+| G5 Security | PASS with dependency warnings | 无 High/Medium；依赖警告已记录，不阻断 GA |
+| G6 Documentation | PASS | GA release 文档已补齐；本文件更新用于消除旧 RC/PENDING 残留 |
+
+### 2.1 G3 覆盖率口径说明
+
+本版本覆盖率报告存在三类口径，不能混用：
+
+| 文档 | 方法 | 结论 |
+|------|------|------|
+| `COVERAGE_FULL_2026-08-09.md` | `cargo llvm-cov --lib -p <crate>` | 26 crate 中 14 个 ≥80%；L1_8 平均 62.94%，严格口径 FAIL |
+| `COVERAGE_E2E_AUG09.md` | `cargo llvm-cov --lib --tests -p <crate>` | 26 crate 中 19 个 ≥80%；L1_8 平均 79.27%，接近 80% |
+| `GA_GATE_REPORT.md` | 发布裁决口径 | G3 PASS，但 admin/mysql-server/mysql-client 等仍列入 v3.12 跟踪 |
+
+**评估结论**: G3 可以作为本次 GA 的“发布裁决通过”，但不能写成“全 workspace / 全 crate 覆盖率严格达标”。v3.12 应将 parser、mysql-server、mysql-client、gmp、spill、vector、cli、sql-corpus 纳入 P0/P1 覆盖率硬化计划。
+
+### 2.2 G4 TPC-H 口径说明
+
+`TPCH_SF1_22_22_PASS_REPORT.md` 给出了关键突破：
+
+| 指标 | 值 |
+|------|----|
+| 数据规模 | SF=1 canonical，lineitem 6,001,215 行 |
+| 加载方式 | BINT mmap，绕过 LOAD DATA 长耗时路径 |
+| 执行结果 | 22/22 query completed |
+| 总耗时 | 519.15s |
+| 稳定性 | 0 panic, 0 OOM |
+| 忽略测试 | 0 ignored in reported test output |
+
+但它也明确暴露后续问题：
+
+| 问题 | 影响 | 跟踪 |
+|------|------|------|
+| Q5/Q7/Q8/Q9/Q10/Q16/Q18/Q21 返回 0 行 | 说明“可执行”已验证，但“结果正确性”仍需外部基准比对 | #3653/#3654 |
+| BINT 路径绕过 LOAD DATA | 证明执行引擎和存储读路径能力，不等同证明 bulk load 生产能力 | v3.12 数据导入硬化 |
+| PostgreSQL/MySQL SHA256 对比未完成 | 不能宣称跨引擎结果零差异 | `TPCH_SF1_VERIFICATION_REPORT.md` P0-4 |
+
+**评估结论**: G4 对 GA 足够，但对“替代 MySQL 5.7 的生产正确性承诺”仍不足。对外表述应限定为“TPC-H SF=1 22/22 可运行，0 OOM/0 panic；结果正确性差异比对继续跟踪”。
+
+## 3. 功能完成度
+
+v3.11.0 的主线价值是把 v3.10.0 后遗留的功能孤岛和性能债务推进到主路径。
+
+| 类别 | 状态 | 代表能力 |
+|------|------|----------|
+| 索引与存储 | DONE | Clustered Index、Adaptive Hash Index、Change Buffer、Double-Write Buffer、Table Compression |
+| 权限与安全 | DONE | Row-Level Security、Column Privileges、Password Rotation、Admin 权限路径 |
+| SQL 能力 | DONE / 部分需硬化 | ALTER RENAME/MODIFY、CREATE SEQUENCE、GIS POINT + ST_WITHIN、CTE materialization |
+| 优化器/执行器 | DONE | Hash Semi Join、Hash Anti Join、Decorrelation、Q4 性能突破 |
+| 稳定性 | DONE | 343h37m SOAK，0 errors |
+| 文档治理 | DONE | GA 文档、索引、release note、truth audit、自审报告补齐 |
+
+### 3.1 已进入主路径的关键功能
+
+| ID | 功能 | 评估 |
+|----|------|------|
+| V311-01/02 | Clustered Index + Adaptive Hash Index | 对点查和聚簇访问路径有实际价值 |
+| V311-03/04 | Change Buffer + Double-Write Buffer | 增强写入路径可靠性，但仍需 crash/fault injection 长测 |
+| V311-05/09 | RLS + Column Privileges | GMP/多租户数据边界的基础能力 |
+| V311-10 | CREATE SEQUENCE | parser + executor runtime 已补；建议 v3.12 加并发/恢复测试 |
+| V311-11 | GIS POINT + ST_WITHIN | 基础空间能力可用，非完整 GIS 产品 |
+| V311-15/17 | Hash Semi/Anti Join | 对 TPC-H 与复杂子查询性能有直接贡献 |
+| V311-21 | SOAK | 长稳证据强，是本次 GA 最有价值的生产侧信号 |
+
+### 3.2 仍不宜过度宣传的能力
+
+| 能力 | 原因 |
+|------|------|
+| 完整 MySQL 5.7 兼容 | wire protocol、LOAD DATA、权限细节、事务边界、SQL corner cases 仍需更系统验收 |
+| 完整 ACID 数据库 | WAL/MVCC/rollback 主路径增强明显，但仍需 crash recovery、backup/restore、fault injection 组合证据 |
+| 通用向量数据库 | vector crate 保留，但 RAG 生产评测、embedding 版本管理、索引恢复、权限一致性仍未完成 |
+| 通用图数据库 | graph 在 v3.11.0 不是主打生产能力，适合 v3.12/4.0.0 规划推进 |
+
+## 4. 稳定性与性能评估
+
+### 4.1 SOAK
+
+`SOAK_168H_REPORT.md` 是 v3.11.0 GA 中最强的生产稳定性证据。
+
+| 指标 | 结果 |
+|------|------|
+| GA 阈值 | 168h |
+| 实际运行 | 343h37m |
+| 总操作数 | 55,818,725 |
+| 错误数 | 0 |
+| 平均 QPS | 45.1 |
+| 内存 | 报告记录 idle RSS 4 MB，无泄漏迹象 |
+
+**评估**: 对低到中等 QPS、固定数据集、长期运行场景，v3.11.0 已具备可信的稳定性信号。下一步需要把 SOAK 从“单一长跑”升级为“混合写入 + crash/fault injection + restore verification”。
+
+### 4.2 TPC-H
+
+v3.11.0 的 TPC-H 价值主要是从“无法稳定跑完”推进到“SF=1 22 个 query 可完整跑完”。这对数据库版本成熟度是质变，但还不是最终性能/正确性证书。
+
+| 层次 | 结论 |
+|------|------|
+| 可执行性 | 已验证 22/22 completed |
+| 资源稳定 | 已验证 0 OOM / 0 panic |
+| 结果正确性 | 未完成跨引擎 SHA256 零差异证明 |
+| 性能可比性 | 缺少 PostgreSQL/MySQL/MariaDB 同 fixture 同硬件对比 |
+| 数据导入 | BINT mmap 路径有效；LOAD DATA 仍需专项优化 |
+
+## 5. 覆盖率与测试质量
+
+v3.11.0 的测试数量和覆盖率有显著提升，但报告必须避免“测试数量多 = 全面生产验证”的误导。
+
+| 项目 | 现状 |
+|------|------|
+| lib tests | `GA_GATE_REPORT.md` 记录 2,060 lib tests / 0 fail / 6 ignored |
+| E2E 新增 | `parser_e2e_test` 243 tests；`mysql_server_e2e_test` 67 tests |
+| `--lib` 覆盖率 | 14/26 crate ≥80%，严格每 crate 80% 未满足 |
+| `--lib --tests` 覆盖率 | 19/26 crate ≥80%，L1_8 平均 79.27% |
+| 未达标重点 | parser、mysql-server、mysql-client、gmp、spill、vector、cli、sql-corpus |
+
+### 5.1 v3.12 必须收敛的测试缺口
+
+| 缺口 | 优先级 | 建议 |
+|------|--------|------|
+| parser line coverage 低 | P0 | 增加 SQL 语法分支、错误恢复、MySQL 方言测试 |
+| mysql-server coverage 低 | P0 | 覆盖 COM_STMT、错误包、连接 reset、TLS/压缩边界 |
+| mysql-client coverage 低 | P1 | 使用真实 server e2e，覆盖认证、prepared statement、错误恢复 |
+| gmp/spill/vector 未完全达标 | P1 | 面向 GMP 检索、RAG、向量索引恢复补行为测试 |
+| cli/sql-corpus 0% | P2 | 明确是否纳入 GA 门控；若纳入，必须有可执行测试 |
+
+## 6. 安全与合规评估
+
+`SECURITY_AUDIT.md` 结论为：无 High/Medium，低风险项已记录，不阻断 GA。
+
+| 领域 | 当前状态 |
+|------|----------|
+| Authentication | Argon2 password hashing |
+| Authorization | RBAC + column-level permissions |
+| SQL injection | 参数化路径已审查 |
+| WAL integrity | checksum 记录 |
+| TLS | 文档声明支持 |
+| Dependency audit | 有 transitive warnings / unmaintained warnings，未发现直接生产代码高危 |
+
+**GMP 相关评估**: v3.11.0 具备承载 GMP 内审检索原型的基础能力，包括 RLS、列级权限、审计文档、RAG/GMP crate 的部分基础。但 GMP 生产系统还需要 v3.12 补齐：ALCOA+ 证据链、不可抵赖审计日志、备份恢复演练、权限矩阵、查询留痕、向量/图索引重建与版本化。
+
+## 7. MySQL 5.7 替代能力判断
+
+### 7.1 可以尝试的简单生产场景
+
+| 场景 | 条件 |
+|------|------|
+| 内部工具数据库 | 数据规模可控、查询模式已知、允许人工回滚 |
+| 只读/读多写少服务 | TPC-H 可运行性和 SOAK 支撑较强 |
+| GMP 内审检索原型 | 关系数据 + 权限控制 + 文档证据链 + 受控 RAG 流程 |
+| 教学/验证/PoC | 可以展示 SQL 引擎、优化器、WAL/MVCC、向量/图方向 |
+
+### 7.2 不建议直接替换的场景
+
+| 场景 | 原因 |
+|------|------|
+| 无停机窗口的核心生产库 | 尚缺完整 crash recovery、backup/restore、在线升级演练证据 |
+| 高写入金融/交易系统 | SOAK 主要证明稳定运行，不足以覆盖强一致高并发事务矩阵 |
+| 完整 MySQL 5.7 应用迁移 | SQL 方言、wire protocol、LOAD DATA、系统表、运维命令仍有差距 |
+| 生产级向量/图数据库 | 索引恢复、召回评测、权限一致性、图查询语义还需 v3.12/4.0.0 |
+
+### 7.3 推荐生产准入方式
+
+1. 使用 shadow traffic 或只读副本先运行 2-4 周。
+2. 对实际业务 SQL 建立 sqllogictest / result checksum 回归集。
+3. 建立每日备份 + restore 演练，不只检查备份文件存在。
+4. 对所有升级建立 v3.10.0 -> v3.11.0 -> v3.12.0 回滚剧本。
+5. 对 GMP 场景增加 ALCOA+ 审计证据包和权限矩阵验收。
+
+## 8. 主要风险清单
+
+| 风险 | 严重度 | 当前证据 | 缓解计划 |
+|------|--------|----------|----------|
+| TPC-H zero-row query correctness 未验证 | High | 8 个 query 返回 0 行 | #3653/#3654，PostgreSQL SHA256 对比 |
+| 覆盖率口径不一致 | High | G3 文档裁决与 coverage report 严格口径不同 | v3.12 固化唯一测量命令和阈值 |
+| MySQL wire protocol 边界不足 | High | mysql-server 覆盖率仍低 | 增加 prepared statement、error packet、TLS、reset tests |
+| LOAD DATA 不成熟 | Medium | SF=1 使用 BINT 绕过导入路径 | v3.12 加 bulk load benchmark 和内存上限 |
+| Dependency warnings | Medium | `cargo audit` 记录 transitive warnings | 定期升级和例外登记 |
+| 文档状态漂移 | Medium | 旧报告曾残留 RC/PENDING 与 GA 混写 | 本报告改为 evidence-tiered，后续 doc gate 检查 |
+
+## 9. v3.12.0 收尾建议
+
+v3.12.0 不宜继续扩张大量新功能，应该先完成 v3.11.0 GA 后硬化。
+
+| 优先级 | 任务 |
+|--------|------|
+| P0 | 完成 TPC-H SF=1 PostgreSQL/MySQL SHA256 correctness 对比 |
+| P0 | 固化 G3 覆盖率唯一口径，至少 L1_8 每 crate ≥80% 且平均 ≥85% |
+| P0 | mysql-server wire protocol e2e 矩阵 |
+| P0 | crash recovery + backup/restore + upgrade/downgrade 演练 |
+| P1 | LOAD DATA / bulk import 性能与内存上限 |
+| P1 | GMP 内审检索 schema、审计日志、ALCOA+ evidence package |
+| P1 | Vector/RAG 索引版本、重建、召回质量评测 |
+| P2 | 图谱投影 SQL API，先做 SQL-backed graph projection，不急于通用图数据库 |
+
+## 10. 最终评估
+
+| 评估项 | 等级 | 说明 |
+|--------|------|------|
+| 发布阶段 | GA | `STAGE.yaml` 已进入 GA，tag 存在 |
+| 工程成熟度 | B+ | SOAK 和 TPC-H 可运行性显著增强，覆盖率/正确性仍需硬化 |
+| 简单生产可用性 | 有条件可用 | 适合受控、可回滚、SQL 范围明确的内部场景 |
+| MySQL 5.7 替代性 | 部分替代 | 不建议直接替换复杂生产 MySQL 5.7 |
+| GMP 内审检索底座 | 可作为 v3.12 原型底座 | 生产合规还需审计、权限、恢复、RAG/Graph 证据闭环 |
+| 向量/图数据库 | 原型/内部能力 | 不应在 v3.11.0 宣称生产级通用 Vector/Graph DB |
+
+**结论**: v3.11.0 GA 是一个真实进步的版本，尤其体现在长稳 SOAK、TPC-H SF=1 完整执行、历史债务闭环和功能主路径集成上。它可以进入正式发布阶段，也可以在简单生产环境中通过灰度方式试用；但对外宣传必须保持证据边界，避免把“GA 发布裁决通过”扩大成“完整 MySQL 5.7 等价、TPC-H 结果完全正确、全 crate 覆盖率严格达标”。
+
+## 11. 文档整改记录
+
+| 项 | 内容 |
+|----|------|
+| 发现的问题 | 原报告同时包含 GA 6/6 PASS、RC/PENDING、fixture 缺失、覆盖率 FAIL 等互相冲突状态 |
+| 修改原则 | 按 ADR-001 / AFP 区分 claim、evidence、historical report、follow-up |
+| 执行操作 | 重写综合评估结构，保留 GA 正式发布结论，同时补充 G3/G4 风险边界、重要文档链接、可信度分级、虚假声明残留风险和遗漏测试清单 |
+| 待验证 | 文档链接、docs consistency gate；完整测试/覆盖率/TPC-H 未在本次文档更新中重跑 |
+
+## 附录 A. 原报告详细内容保留区
+
+> 本附录恢复本次整改前的详细评估内容，用于保留任务表、功能矩阵、路线图、Issue 跟踪和历史分析上下文。
+> 其中部分段落保留了 2026-07-18/2026-08-08 的旧口径，例如 RC/PENDING、fixture missing、覆盖率 FAIL 等历史状态。
+> **当前 v3.11.0 GA 发布判断、G3/G4 证据边界和生产适用性，以上文 §0-§11 的证据分级评估为准。**
+
+
 > **版本**: v3.11.0
 > **状态**: **GA (General Availability)** ✅ — 2026-08-09 PR #3664 merged (TPC-H SF=1 22/22 PASS)
 > **类型**: **MySQL 5.7 替代增强版** — 债务清零 + 功能孤岛集成 + 性能突破
@@ -555,6 +898,10 @@ GA enhancement issues #3604-#3616 已全部 closed (12 issues, 2026-07-18 前). 
 | Release Notes | [RELEASE_NOTES.md](RELEASE_NOTES.md) |
 | Truth Audit (resolved) | [GOVERNANCE_TRUTH_AUDIT.md](GOVERNANCE_TRUTH_AUDIT.md) |
 | Audit 2026-07-20 (resolved) | [AUDIT_V311_REALITY_CHECK.md](AUDIT_V311_REALITY_CHECK.md) |
+
+补充任务追踪:
+
+- [#3616](http://192.168.0.250:3000/openclaw/sqlrustgo/issues/3616) - v3.11.0 GA 准备 - 增强任务进度跟踪
 
 ### 15.3 关键 PR
 
