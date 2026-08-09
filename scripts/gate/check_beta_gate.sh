@@ -359,8 +359,15 @@ if [ -d "$REPO_ROOT/crates/sqllogictest/src" ]; then
         check_warn "B10_SQLLOGICTEST_BUILD" "cargo build -p sqllogictest not yet passing"
     fi
 else
-    check_warn "B10_SQLLOGICTEST_CRATE" "crates/sqllogictest/ not found (ISSUE #3373 P0, defer SQLancer #3372)"
-    check_warn "B10_SQLANCER" "sqlancer (#3372) DEFERRED: SLT (#3373) is P0, establishes oracle baseline first"
+    check_fail "B10_SQLANCER" "sqlancer (#3372) not yet wired (V312-29 Phase 6 follow-up)"
+    # V312-29: require target/sqlancer-report.json to exist and be non-empty.
+    # The binary is built in this PR; absence means sqlancer was not invoked
+    # or the report writer is broken — both are gate failures now.
+    if [ -s "$REPO_ROOT/target/sqlancer-report.json" ]; then
+        check_pass "B10_SQLANCER_REPORT" "target/sqlancer-report.json present and non-empty"
+    else
+        check_fail "B10_SQLANCER_REPORT" "target/sqlancer-report.json missing or empty (run: cargo run -p sqlancer -- --duration 30)"
+    fi
 fi
 
 # ===========================================================================
