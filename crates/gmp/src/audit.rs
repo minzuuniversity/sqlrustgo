@@ -703,4 +703,115 @@ mod tests {
         .unwrap();
         assert_eq!(content_logs.len(), 1);
     }
+    #[test]
+    fn test_audit_action_as_str() {
+        assert_eq!(AuditAction::Create.as_str(), "CREATE");
+        assert_eq!(AuditAction::Update.as_str(), "UPDATE");
+        assert_eq!(AuditAction::Delete.as_str(), "DELETE");
+    }
+
+    #[test]
+    fn test_audit_action_from_str() {
+        assert_eq!(AuditAction::from_str("CREATE"), Some(AuditAction::Create));
+        assert_eq!(AuditAction::from_str("UPDATE"), Some(AuditAction::Update));
+        assert_eq!(AuditAction::from_str("DELETE"), Some(AuditAction::Delete));
+        assert_eq!(AuditAction::from_str("create"), Some(AuditAction::Create));
+        assert_eq!(AuditAction::from_str("invalid"), None);
+    }
+
+    #[test]
+    fn test_compute_checksum_length() {
+        let h = compute_checksum("test data");
+        assert_eq!(h.len(), 64); // SHA256 hex
+    }
+
+    #[test]
+    fn test_compute_checksum_deterministic() {
+        let h1 = compute_checksum("hello");
+        let h2 = compute_checksum("hello");
+        assert_eq!(h1, h2);
+    }
+
+    #[test]
+    fn test_compute_checksum_different() {
+        let h1 = compute_checksum("hello");
+        let h2 = compute_checksum("world");
+        assert_ne!(h1, h2);
+    }
+
+    #[test]
+    fn test_audit_log_verify_checksum_valid() {
+        let mut log = AuditLog {
+            id: 1,
+            timestamp: 1000,
+            user_id: "u1".to_string(),
+            action: "CREATE".to_string(),
+            table_name: "t".to_string(),
+            record_id: Some("1".to_string()),
+            old_value: None,
+            new_value: Some("data".to_string()),
+            ip_address: Some("127.0.0.1".to_string()),
+            session_id: Some("s1".to_string()),
+            checksum: String::new(),
+        };
+        let data = format!(
+            "{}{}{}{}{}{}{}{}{}",
+            log.timestamp,
+            log.user_id,
+            log.action,
+            log.table_name,
+            log.record_id.as_deref().unwrap_or(""),
+            log.old_value.as_deref().unwrap_or(""),
+            log.new_value.as_deref().unwrap_or(""),
+            log.ip_address.as_deref().unwrap_or(""),
+            log.session_id.as_deref().unwrap_or(""),
+        );
+        log.checksum = compute_checksum(&data);
+        assert!(log.verify_checksum());
+    }
+
+    #[test]
+    fn test_audit_log_verify_checksum_invalid() {
+        let log = AuditLog {
+            id: 1,
+            timestamp: 1000,
+            user_id: "u1".to_string(),
+            action: "CREATE".to_string(),
+            table_name: "t".to_string(),
+            record_id: Some("1".to_string()),
+            old_value: None,
+            new_value: None,
+            ip_address: None,
+            session_id: None,
+            checksum: "INVALID".to_string(),
+        };
+        assert!(!log.verify_checksum());
+    }
+
+    #[test]
+    fn test_audit_log_verify_checksum_with_optional_none() {
+        let log = AuditLog {
+            id: 1,
+            timestamp: 1000,
+            user_id: "u1".to_string(),
+            action: "DELETE".to_string(),
+            table_name: "t".to_string(),
+            record_id: None,
+            old_value: None,
+            new_value: None,
+            ip_address: None,
+            session_id: None,
+            checksum: String::new(),
+        };
+        let data = format!(
+            "{}{}{}{}{}{}{}{}{}",
+            log.timestamp, log.user_id, log.action, log.table_name, "", "", "", "", "",
+        );
+        let valid_log = AuditLog {
+            checksum: compute_checksum(&data),
+            ..log.clone()
+        };
+        assert!(valid_log.verify_checksum());
+        assert!(!log.verify_checksum()); // empty checksum is wrong
+    }
 }
