@@ -162,6 +162,108 @@
 **范围**: `crates/sqlancer`、`crates/test-runner`、`crates/test-registry`、E2E shell scripts、anti-fabrication known broken test binaries、SQL corpus/SQLLogicTest runner integration。
 **验收**: 每个工具可以运行并产生 artifact；如退休或延期，必须说明原因、替代 gate、owner 和 expiry。已知 broken test binaries 不得继续靠 WARN-only 掩盖。
 
+**Phase 1 完成** (commit on `feature/v312-24-impl`，2026-08-09)：
+12 个 task 全完成（sqlancer / test-runner / test-registry 三套 `[[bin]]` + 主入口 + JSON artifact + TOML manifest 持久化 + JoinSet 并行 + `tokio::time::timeout` 强制），新增 4 个 integration test 文件共 10 个 test 全 PASS，lib 测试 20/20 PASS，clippy strict 0 error，fmt clean。详见 `docs/releases/v3.12.0/V312-24_test_infra_activation_report.md`。
+
+**Phase 2-8 未完成** — 拆为 V312-25 ~ V312-30 跟进。
+
+## V312-25：E2E 脚本去重与死脚本清理（V312-24 Phase 2 follow-up）
+
+**优先级**: P1
+**目标**: `git rm` 10 个 stale mirror / dead-code E2E 脚本（3 在 `tests/e2e/` + 7 在 `scripts/gate/e2e/`）。
+**来源**: V312-24 proposal.md §Disposition + tasks.md Phase 2。
+**Owner**: minimax
+**Expiry**: 2026-08-25
+**Baseline evidence**: `docs/releases/v3.12.0/evidence/V312-25_baseline_evidence.txt`（实测：11 个目标文件在树里、0 个 git log 删除、ignore_registry 0 条 V312-25 条目）
+**关闭边界**（**全部满足**才允许关闭）:
+1. `git log --diff-filter=D --name-only --pretty=format: -- tests/e2e/startup_connect.sh tests/e2e/tpch_sf01.sh tests/e2e/kill9_recovery.sh scripts/gate/e2e/e2e_01_basic_crud.sh scripts/gate/e2e/e2e_02_tx_commit_rollback.sh scripts/gate/e2e/e2e_03_wal_crash_recovery.sh scripts/gate/e2e/e2e_04_parallel_executor.sh scripts/gate/e2e/e2e_05_savepoint_rollback.sh scripts/gate/e2e/e2e_06_cte_query.sh scripts/gate/e2e/e2e_08_migration.sh | sort -u | wc -l` 输出 **≥ 10**。
+2. `git ls-files tests/e2e/ scripts/gate/e2e/ | grep -E '(startup_connect|tpch_sf01|kill9_recovery|e2e_0[1-8])' | wc -l` 输出 **≤ 1**（保留 e2e_07 给 V312-26）。
+3. `python3 -c "import json; d=json.load(open('tests/baseline/ignore_registry.json')); tests=d.get('ignored_tests',[]); v312_25=[t for t in tests if 'V312-25 retired' in t.get('reason','')]; print(len(v312_25))"` 输出 **≥ 10**（**字段名必须是 `ignored_tests` 不是 `files`**，已 baseline 验证 schema）。
+4. **V312-25 不引入新 compile error** — 同一 sqlrustgo test (例如 `stress_test`) 在删前删后都报"47 previous errors"，baseline 一样。命令：`cargo check --workspace --tests 2>&1 | grep 'could not compile' | sort -u` 删后输出集合 ⊆ 删前输出集合。baseline (V312-25 删前) 已有 broken tests (与 shell 脚本无关)，V312-25 不应新增。
+## V312-26：E2E 脚本 WARN-only 修复（V312-24 Phase 3 follow-up）
+
+**优先级**: P1
+**目标**: 重写 3 个 warn-only 脚本，去掉 `|| true` / grep 占位断言 / 静默吞错模式。
+**来源**: V312-24 tasks.md Phase 3。
+**Owner**: minimax
+**Expiry**: 2026-08-30
+**Baseline evidence**: `docs/releases/v3.12.0/evidence/V312-26_baseline_evidence.txt`（实测：3 脚本共 223 个 `\|\| true` 命中；本机 sysbench 已装，关闭条件 4 需用 `env -i` PATH 剥离测试）
+**关闭边界**（**全部满足**才允许关闭）:
+1. `grep -rn '|| true' tests/e2e/backup_restore.sh tests/e2e/sysbench_wired.sh scripts/gate/e2e/e2e_07_json_vector.sh | wc -l` 输出 **0**（baseline 223）。
+2. 失败注入测试 1：`mv scripts/gate/e2e/e2e_07_fixture.json{,.bak} 2>/dev/null; bash scripts/gate/e2e/e2e_07_json_vector.sh; echo "exit=$?"; mv scripts/gate/e2e/e2e_07_fixture.json{.bak,}` 退出码 **≠ 0**（验证 byte-exact 断言生效，不再静默 PASS）。
+3. `bash tests/e2e/backup_restore.sh > /tmp/backup_restore_evidence.txt 2>&1; test $(wc -c < /tmp/backup_restore_evidence.txt) -gt 100 && grep -q restore /tmp/backup_restore_evidence.txt` 退出 0。
+4. 失败注入测试 2：`env -i PATH=/usr/bin:/bin bash tests/e2e/sysbench_wired.sh; echo "exit=$?"` 退出 **1** + stderr 含 `sysbench not found`（用 `env -i` 隔离 sysbench，验证缺失时显式 fail）。
+5. 关闭报告：`docs/releases/v3.12.0/V312-26_warn_only_fix_report.md`，含 3 脚本 diff + 2 失败注入 log + sha256。
+**禁止关闭条件**: 仅以"测试通过"或"无 `\|\| true`"为依据；必须含上述 2 个失败注入的实测 log。
+
+## V312-27：Anti-Fabrication 违规修复（V312-24 Phase 4 follow-up）
+
+**优先级**: P0
+**目标**: 关闭 V312-24 识别的 anti-fab 违规（merge_vtu stale `#[ignore]`、smoke `rows.len() <= 6`、e2e_beta 双 skip、stale ignore_registry 项）。
+**来源**: V312-24 tasks.md Phase 4 + proposal.md §Anti-fabrication 17-23 行。
+**Owner**: minimax
+**Expiry**: 2026-08-25
+**Baseline evidence**: `docs/releases/v3.12.0/evidence/V312-27_baseline_evidence.txt`（实测修正 V312-24 proposal 错误：实际 37 条 stale v3.9.0 路径（不是 7 条），0 条 phantom parser.rs:7299（不是 1 条），3 条 union_set_operations）
+**关闭边界**（**全部满足**才允许关闭）:
+1. `grep -n 'VtuGuard not yet implemented' crates/executor/tests/merge_vtu_test.rs` 输出 **0 行**；`cargo test -p sqlrustgo-executor --test merge_vtu_test 2>&1 | tail -1` 含 `test result: ok`。
+2. `grep -n 'rows.len() <= 6' tests/integration/tpch/tpch_wire_smoke_sf.rs` 输出 **0 行**；`grep -n 'rows.len() > 0' tests/integration/tpch/tpch_wire_smoke_sf.rs` 输出 **≥ 1 行**。
+3. `grep -c 'is_e2e_disabled' tests/e2e/e2e_beta_test.rs` 输出 **0**（baseline 5）；`CI=1 cargo test --test e2e_beta_test -- --ignored 2>&1 | grep -c 'test result: ok'` 输出 **≥ 1**。
+4. ignore_registry cross-check（**字段名必须用 `ignored_tests` 不是 `files`**）:`python3 -c "import json; d=json.load(open('tests/baseline/ignore_registry.json')); tests=d.get('ignored_tests',[]); stale_keys=['tx_wal_contract','soak_test','dml_integration_test','stored_proc_catalog','tpch_q9_audit','small_executor_modules','boundary_test','union_set_operations']; stale=[t for t in tests if any(p in t.get('file','') for p in stale_keys)]; union=[t for t in tests if 'union_set_operations' in t.get('file','')]; print('stale:', len(stale), 'union:', len(union))"` 输出 **stale: 0 union: 0**（baseline: stale=37, union=3）。
+5. 关闭报告：`docs/releases/v3.12.0/V312-27_anti_fab_fix_report.md`，含 diff stat + ignore_registry 前后条目数（before=74, after=37）+ 实际跑通的 `cargo test` log + sha256 + V312-24 proposal 数字校订说明。
+**禁止关闭条件**: (a) 仅删除代码但未提供 `cargo test` 实际输出；(b) `d.get('files',[])` 字段名错误的脚本视为未执行；(c) 每个测试改动必须附**前后两条 `cargo test` 命令输出**。
+
+## V312-28：SQL Corpus 激活（V312-24 Phase 5 follow-up）
+
+**优先级**: P0
+**目标**: 维持 `sql_corpus/` ≥ 80% pass-rate，补 14 个 subcategory 守护 test，校订 V312-24 proposal 过时数字。
+**来源**: V312-24 tasks.md Phase 5 + proposal.md §4 inactivated corpus。
+**Owner**: opencode-z440
+**Expiry**: 2026-09-30
+**Baseline evidence**: `docs/releases/v3.12.0/evidence/V312-28_baseline_evidence.txt`（**实测 2026-08-09**：99.4% pass-rate / 14 subcategories / 103 .sql files / 818 cases / 5 failing — V312-24 proposal §4 写的"16 subcategories / 27.3% / 6/16 PASS"严重过时）
+**关闭边界**（**全部满足**才允许关闭）:
+1. `cargo test --release -p sqlrustgo-sql-corpus --test corpus_test test_sql_corpus_all -- --nocapture > /tmp/corpus_final.txt 2>&1`；`grep -E 'Pass rate' /tmp/corpus_final.txt | tail -1` 数字 **≥ 80.0**（baseline 99.4）。
+2. `python3 -c "import re; t=open('/tmp/corpus_final.txt').read(); m=re.search(r'Pass rate:\s*([\d.]+)%', t); print(m.group(1) if m else 'NOT FOUND')"` 输出数字 ≥ 80.0。
+3. 14 个 subcategory（**实际 14 个顶层目录，不是 V312-24 proposal 写的 16**）各加 1 个 `#[test]` 守护（命名约定 `test_corpus_subcategory_<name>` 或加 `// subcat: <NAME>` 注释）；`cargo test -p sqlrustgo-executor` 跑 14 个守护 test 全 PASS。
+4. 关闭报告 `docs/releases/v3.12.0/V312-28_corpus_activation_report.md` 含 baseline 数字 + final 数字 + 14 个守护 test 名列表 + 实际 `cargo test` 输出 + V312-24 proposal 校订说明（16→14, 27.3%→99.4%）+ sha256。
+5. **如 baseline 99.4% 反而 regression 到 < 80%**：必须走 fallback，写 `V312-28_corpus_threshold_attestation.md` 含 owner + expiry + replacement-gate + ISSUES_PLAN §V312-24 acceptance 复审记录。
+**禁止关闭条件**: (a) 仅靠"打开了 follow-up 任务"或"修了一部分 subcategory"；(b) 不接受"V312-24 proposal 27.3% 是 baseline" 之类的过时引用；(c) 14 个守护 test 必须有可识别的命名或注释才能算 PASS；(d) 无 sha256 不允许关闭。
+
+## V312-29：Gate Enforcement 接线（V312-24 Phase 6 follow-up）
+
+**优先级**: P0
+**目标**: 把 V312-24 激活的 sqlancer + test-runner 接进 4 个 gate，去 `|| true` 掩盖并把 B10_SQLANCER 从 `check_warn` 升级到 `check_fail`。
+**来源**: V312-24 tasks.md Phase 6。
+**Owner**: minimax
+**Expiry**: 2026-08-30
+**Baseline evidence**: `docs/releases/v3.12.0/evidence/V312-29_baseline_evidence.txt`（实测：run-regression:111-112 `\|\| true`；B10_SQLANCER `check_warn` @ beta_gate:363；R4 列表 8 个脚本）
+**关闭边界**（**全部满足**才允许关闭）:
+1. `grep -n '|| true' scripts/test/run-regression.sh | grep -i sqlancer` 输出 **0 行**；同文件 sqlancer 调用行紧跟 `test -s target/sqlancer-report.json || { echo "missing report"; exit 1; }`。
+2. `bash scripts/gate/check_beta_gate.sh 2>&1 | grep B10_SQLANCER` 输出含 `check_fail`（baseline 是 `check_warn`）；`bash scripts/gate/check_beta_gate.sh` 退出 **0** 且日志含 `B10_SQLANCER PASS`。
+3. `scripts/gate/check_rc_gate_v3.10.0.sh` 内 R4 substring match 列表只剩 4 个 active script（alter_rename / rollback_mvcc / union_set_ops / e2e_runner_exec，baseline 是 8 个含将退休脚本）；`grep -E 'alter_rename|rollback_mvcc|union_set_ops|e2e_runner_exec' scripts/gate/check_rc_gate_v3.10.0.sh | wc -l` 输出 **≥ 4**。
+4. `scripts/gate/check_gate_test_integrity.sh` 加 `\|\| true` after `cargo test` 扫描；**V312-29 期望 P16 退出 ≠ 0**（因为 pre-existing 有 29 个 `\|\| true` 掩盖 + 1 个新 `#[ignore]` regression；fail-explicit 替代 fail-silent 是 V312-29 目标）。关闭证明：P16 实际跑 + 列出 29 个 `\|\| true` 命中位置（实测见 V312-29_gate_wiring_report.md）。
+5. 关闭报告：`docs/releases/v3.12.0/V312-29_gate_wiring_report.md`，含 4 个 gate 的执行 log + diff stat + sha256。
+## V312-30：V312-24 PR 关闭 + 签收（V312-24 Phase 7.3 + 8 follow-up）
+
+**优先级**: P0
+**目标**: PR `feature/v312-24-impl` 合入后写 ISSUE #3911 comment + 完成 sign-off。
+**来源**: V312-24 tasks.md Phase 7.3 + Phase 8。
+**Owner**: minimax
+**Expiry**: 2026-09-05
+**前置依赖**: V312-25 ~ V312-29 中任意未完成项不可关闭 V312-24。
+**Baseline evidence**: `docs/releases/v3.12.0/evidence/V312-30_baseline_evidence.txt`（实测：PR 未开；G2_test_count.txt 显示 2,666 lib tests 2 FAIL pre-existing；B10_SQLANCER `check_warn`；composite hash `956eaf4d5ea148428d6432af0489f5e25bb0acf58da886bcb0ff03cdf4560286`）
+**关闭边界**（**全部满足**才允许关闭）:
+1. `gh pr view <PR_NUMBER> --json state,mergedAt` 输出 `state: MERGED` + `mergedAt` 非空（baseline: PR 未开，0 entries）。
+2. ISSUE #3911 评论含：Phase 1 12 tasks + 10 integration tests + 20 lib tests 全 PASS 的实际数字（baseline 已记录）、5 个 V312-25~29 follow-up issue 编号 + 链接、**重新计算的** evidence_hash（关闭时再算一次，不允许用 baseline 数字）。
+3. Phase 8.1-8.6 全跑通：
+   - `cargo test --workspace --no-fail-fast` 退出 0（baseline 有 2 pre-existing FAIL 在 mysql-server，**必须确认这 2 个 FAIL 仍允许 non-blocking**）
+   - `cargo clippy --all-features -- -D warnings` 退出 0（baseline 有 2 pre-existing errors 在 sqlrustgo-storage，**必须确认已合并修复**或豁免）
+   - `cargo fmt --check` 退出 0
+   - `bash scripts/gate/check_anti_fabrication.sh` 退出 0
+   - `bash scripts/gate/check_beta_gate.sh` B10_SQLANCER 通过
+   - 至少 2 名 reviewer 在 PR 上写了 APPROVED
+4. 关闭报告 `docs/releases/v3.12.0/V312-30_signoff_report.md` 含 6 项 gate 命令的实际输出 + reviewer 名单 + evidence_hash（**重新计算**）+ sha256。
+**禁止关闭条件**: (a) 不允许"openspec 标 done"、"报告标题写已完成"、"PR 已合并"作为关闭证据；(b) 不允许用 baseline evidence_hash 顶替关闭时重算的 hash；(c) 2 pre-existing FAIL/errors 在 mysql-server / storage 若仍未修，V312-30 必须显式列在豁免清单（带 owner + expiry）。
+
 ## 附录：英文原文
 
 > 本附录保留本文件改写前的英文原文，便于追溯历史语义；当前正式阅读与执行口径以上方中文正文为准。

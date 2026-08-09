@@ -51,9 +51,11 @@ impl Fuzzer {
     pub fn run<E, R>(&mut self, mut executor: E) -> FuzzerResult
     where
         E: FnMut(&str) -> Result<R, String>,
-        R: Clone,
     {
-        let mut result = FuzzerResult::default();
+        let mut result = FuzzerResult {
+            iterations_requested: self.config.max_iterations,
+            ..Default::default()
+        };
         let start = Instant::now();
 
         for i in 0..self.config.max_iterations {
@@ -78,7 +80,7 @@ impl Fuzzer {
                 }
             }
         }
-
+        result.duration_secs = start.elapsed().as_secs_f64();
         result
     }
 
@@ -115,13 +117,14 @@ impl Fuzzer {
         }
     }
 }
-
-#[derive(Debug, Default)]
+#[derive(Debug, Default, serde::Serialize)]
 pub struct FuzzerResult {
     pub successful_queries: u64,
     pub failed_queries: u64,
     pub timeout: bool,
     pub errors: Vec<String>,
+    pub duration_secs: f64,
+    pub iterations_requested: u64,
 }
 
 impl FuzzerResult {
@@ -169,6 +172,8 @@ mod tests {
             failed_queries: 20,
             timeout: false,
             errors: vec![],
+            duration_secs: 0.0,
+            iterations_requested: 100,
         };
 
         assert_eq!(result.total_queries(), 100);
