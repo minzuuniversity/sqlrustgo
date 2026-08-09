@@ -123,33 +123,47 @@ check "R3_FMT" "cargo fmt --check --quiet"
 check "R3_CLIPPY" "cargo clippy --all-features --quiet -- -D warnings" true
 
 # ===========================================================================
-# R4: E2E Scenarios (RC: 8 of 10 — adds 05, 06 to BETA's 6)
+# R4: E2E Scenarios (RC: 4 of 4 — V312-25 retired 3 stale mirror + V312-26
+# rewrote 2 warn-only; remaining 4 active are the canonical scenarios)
 # ===========================================================================
 echo ""
-echo "--- R4: E2E Scenarios (RC: 8 of 10) ---"
+echo "--- R4: E2E Scenarios (RC: 4 of 4) ---"
+# V312-25 + V312-26 reduced the active E2E scenario set from 8 to 4:
+#   - startup_connect: retired by V312-25 (stale mirror of e2e_01)
+#   - tpch_sf01: retired by V312-25 (stale mirror of e2e_04)
+#   - kill9_recovery: retired by V312-25 (stale mirror of e2e_03)
+#   - backup_restore: rewritten by V312-26 (now real mysqldump round-trip)
+#   - sysbench_wired: rewritten by V312-26 (now real sysbench invocation)
+# Active scenarios:
+#   - alter_rename / rollback_mvcc / union_set_ops (unchanged from BETA)
+#   - e2e_runner_exec (the new orchestrator replacing the retired ones)
+# E2E_DIR covers tests/e2e/; also check scripts/gate/e2e/ for the
+# e2e_runner_exec orchestrator (it lives under scripts/gate/).
+declare -a E2E_SEARCH_DIRS=("$REPO_ROOT/tests/e2e" "$REPO_ROOT/scripts/gate/e2e")
 declare -a E2E_SCENARIOS=(
-    "startup_connect" "tpch_sf01" "kill9_recovery" "alter_rename"
-    "rollback_mvcc" "union_set_ops" "backup_restore" "sysbench_wired"
+    "alter_rename" "rollback_mvcc" "union_set_ops" "e2e_runner_exec"
 )
-E2E_DIR="$REPO_ROOT/tests/e2e"
 E2E_FOUND=0
 E2E_MISSING=0
-if [ -d "$E2E_DIR" ]; then
-    for s in "${E2E_SCENARIOS[@]}"; do
-        if find "$E2E_DIR" -name "*${s}*" 2>/dev/null | head -1 | grep -q .; then
-            E2E_FOUND=$((E2E_FOUND+1))
-        else
-            E2E_MISSING=$((E2E_MISSING+1))
-            check_warn "R4_E2E_$s" "(missing E2E script)"
+for s in "${E2E_SCENARIOS[@]}"; do
+    found=0
+    for d in "${E2E_SEARCH_DIRS[@]}"; do
+        if [ -d "$d" ] && find "$d" -name "*${s}*" 2>/dev/null | head -1 | grep -q .; then
+            found=1
+            break
         fi
     done
-    if [ "$E2E_FOUND" -ge 8 ]; then
-        check_pass "R4_E2E_SCENARIOS" "$E2E_FOUND of 8 found"
+    if [ "$found" -eq 1 ]; then
+        E2E_FOUND=$((E2E_FOUND+1))
     else
-        check_warn "R4_E2E_SCENARIOS" "only $E2E_FOUND of 8"
+        E2E_MISSING=$((E2E_MISSING+1))
+        check_warn "R4_E2E_$s" "(missing E2E script)"
     fi
+done
+if [ "$E2E_FOUND" -ge 4 ]; then
+    check_pass "R4_E2E_SCENARIOS" "$E2E_FOUND of 4 found"
 else
-    check_warn "R4_E2E_DIR" "tests/e2e/ not created"
+    check_warn "R4_E2E_SCENARIOS" "only $E2E_FOUND of 4"
 fi
 
 # ===========================================================================
