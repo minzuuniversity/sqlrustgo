@@ -603,4 +603,63 @@ mod tests {
         // DELETE should trigger a HIGH severity deviation which creates a PENDING CAPA
         assert!(capa_report.total_actions >= 1);
     }
+    #[test]
+    fn test_report_type_as_str() {
+        assert_eq!(ReportType::Audit.as_str(), "audit");
+        assert_eq!(ReportType::Deviation.as_str(), "deviation");
+        assert_eq!(ReportType::Capa.as_str(), "capa");
+    }
+
+    #[test]
+    fn test_report_type_from_str_all() {
+        assert_eq!(ReportType::from_str("audit"), Some(ReportType::Audit));
+        assert_eq!(ReportType::from_str("AUDIT"), Some(ReportType::Audit));
+        assert_eq!(
+            ReportType::from_str("deviation"),
+            Some(ReportType::Deviation)
+        );
+        assert_eq!(ReportType::from_str("capa"), Some(ReportType::Capa));
+        assert_eq!(ReportType::from_str("invalid"), None);
+    }
+
+    #[test]
+    fn test_action_counts_from_stats() {
+        let stats = AuditStats {
+            total_records: 10,
+            create_count: 3,
+            update_count: 5,
+            delete_count: 2,
+            by_user: vec![],
+            by_table: vec![],
+        };
+        let counts = ActionCounts::from(&stats);
+        assert_eq!(counts.create, 3);
+        assert_eq!(counts.update, 5);
+        assert_eq!(counts.delete, 2);
+    }
+
+    #[test]
+    fn test_user_activity_struct() {
+        let ua = UserActivity {
+            user_id: "u1".to_string(),
+            count: 5,
+            actions: ActionCounts {
+                create: 2,
+                update: 2,
+                delete: 1,
+            },
+        };
+        assert_eq!(ua.user_id, "u1");
+        assert_eq!(ua.count, 5);
+    }
+
+    #[test]
+    fn test_table_activity_struct() {
+        let ta = TableActivity {
+            table_name: "t".to_string(),
+            count: 10,
+        };
+        assert_eq!(ta.table_name, "t");
+        assert_eq!(ta.count, 10);
+    }
 }
