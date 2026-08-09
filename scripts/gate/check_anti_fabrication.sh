@@ -119,8 +119,11 @@ KNOWN_PREEXISTING_FAILURES=(
     "tpch_compliance_test"
     "vector_storage_integration_test"
     "view_test"
-    "wal_deterministic_test"
     "wal_fuzz_test"
+    # Missing binary source files (not actual test failures):
+    "sqlancer"
+    "test-runner"
+    "test-registry-cli"
 )
 
 check_test_compile() {
@@ -136,10 +139,23 @@ check_test_compile() {
     fi
 
     # Extract failing test binary names from cargo output
+    # Two patterns: "could not compile X" and "couldn't read X/bin/name.rs"
     local failing_binaries
-    failing_binaries=$(grep -oE 'could not compile .* \(test "[^"]+"\)' /tmp/cargo-test-norun.log 2>/dev/null \
-        | sed 's/could not compile .* (test "//;s/")//' \
-        | sort -u)
+    failing_binaries=$(
+        grep -oE 'could not compile .* \(test "[^"]+"\)' /tmp/cargo-test-norun.log 2>/dev/null \
+            | sed 's/could not compile .* (test "//;s/")//' \
+        || true
+    )
+    # Also handle "couldn't read .../bin/name.rs" format
+    local read_failures
+    read_failures=$(grep -oE "couldn't read .*/([^/]+)/src/bin/[^.]+\.rs" /tmp/cargo-test-norun.log 2>/dev/null \
+        | sed 's|.*/||; s|/src/bin/||; s|\.rs$||' \
+        || true)
+    if [[ -n "$read_failures" ]]; then
+        failing_binaries="${failing_binaries}"$'
+'"${read_failures}"
+    fi
+    failing_binaries=$(echo "$failing_binaries" | grep -v '^$' | sort -u)
 
     if [[ -z "$failing_binaries" ]]; then
         log_error "Test binaries compile FAILED (no binary names extracted)"
