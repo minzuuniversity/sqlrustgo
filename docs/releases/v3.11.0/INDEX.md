@@ -1,7 +1,9 @@
 # v3.11.0 Documentation Index
 
-> **Status**: Current (2026-07-18)
+> **Status**: **GA Release (2026-08-09)** — commit `83c623835`, tag `v3.11.0-ga` on 5 remotes
 > **SSOT**: This is the **single source of truth** for v3.11.0 documentation structure.
+>
+> **v3.11.0 GA — 6/6 gates PASS** — see [`TPCH_SF1_22_22_PASS_REPORT.md`](TPCH_SF1_22_22_PASS_REPORT.md)
 
 ---
 
