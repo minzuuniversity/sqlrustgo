@@ -237,6 +237,23 @@ pub enum AlterTableOperation {
         name: String,
         new_name: String,
     },
+    /// `ALTER TABLE t ALTER [COLUMN] col SET/DROP ...`
+    AlterColumn {
+        name: String,
+        op: AlterColumnOperation,
+    },
+    /// `ALTER TABLE t SET PARTITIONED BY (col, ...)`
+    SetPartitionedBy,
+    /// `ALTER TABLE t RESET PARTITIONED BY`
+    ResetPartitionedBy,
+}
+
+#[derive(Debug, Clone, PartialEq)]
+pub enum AlterColumnOperation {
+    SetDefault { default_value: Option<String> },
+    DropDefault,
+    SetDataType { data_type: String },
+    DropNotNull,
 }
 
 /// CALL statement for invoking stored procedures
@@ -4720,13 +4737,14 @@ impl Parser {
             self.next();
             match self.current() {
                 Some(Token::NumberLiteral(n)) => {
+                    // Handle both integer and float literals (e.g., LIMIT 1.25 -> 1 row)
                     let val = if let Ok(i) = n.parse::<u64>() {
-                                                i
-                                            } else if let Ok(f) = n.parse::<f64>() {
-                                                f as u64
-                                            } else {
-                                                return Err(format!("Invalid LIMIT: invalid digit found in string"));
-                                            };
+                        i
+                    } else if let Ok(f) = n.parse::<f64>() {
+                        f as u64
+                    } else {
+                        return Err(format!("Invalid LIMIT: invalid digit found in string"));
+                    };
                     self.next();
                     Some(val)
                 }
@@ -4749,9 +4767,13 @@ impl Parser {
             self.next();
             match self.current() {
                 Some(Token::NumberLiteral(n)) => {
-                    let val = n
-                        .parse::<u64>()
-                        .map_err(|e| format!("Invalid OFFSET: {}", e))?;
+                    let val = if let Ok(i) = n.parse::<u64>() {
+                        i
+                    } else if let Ok(f) = n.parse::<f64>() {
+                        f as u64
+                    } else {
+                        return Err(format!("Invalid OFFSET: invalid digit found in string"));
+                    };
                     self.next();
                     Some(val)
                 }
@@ -8640,7 +8662,121 @@ impl Parser {
                     }))
                 }
             }
-            _ => Err("Expected ADD, DROP, MODIFY or RENAME".to_string()),
+            Some(Token::Set) => {
+                // ALTER TABLE t SET PARTITIONED BY (col, ...)
+                self.next();
+                let is_partitioned = if let Some(Token::Identifier(ref s)) = self.current() {
+                    s.to_uppercase() == "PARTITIONED"
+                } else {
+                    false
+                };
+                if is_partitioned {
+                    self.next();
+                    self.expect(Token::By)?;
+                    // Parse column list (col, col, ...)
+                    self.expect(Token::LParen)?;
+                    while !matches!(self.current(), Some(Token::RParen)) {
+                        self.next();
+                        if matches!(self.current(), Some(Token::Comma)) {
+                            self.next();
+                        }
+                    }
+                    self.expect(Token::RParen)?;
+                    Ok(Statement::AlterTable(AlterTableStatement {
+                        table_name,
+                        operation: AlterTableOperation::SetPartitionedBy,
+                    }))
+                } else {
+                    Err("Expected PARTITIONED BY after SET".to_string())
+                }
+            }
+            Some(Token::Identifier(ref s)) if s.to_uppercase() == "RESET" => {
+                // ALTER TABLE t RESET PARTITIONED BY
+                self.next();
+                Ok(Statement::AlterTable(AlterTableStatement {
+                    table_name,
+                    operation: AlterTableOperation::ResetPartitionedBy,
+                }))
+            }
+            Some(Token::Alter) => {
+                // ALTER [COLUMN] col_name SET DATA TYPE varchar
+                // ALTER [COLUMN] col_name SET DEFAULT expr
+                // ALTER [COLUMN] col_name DROP DEFAULT
+                // ALTER [COLUMN] col_name DROP NOT NULL
+                self.next();
+                if matches!(self.current(), Some(Token::Column)) {
+                    self.next();
+                }
+                let col_name = match self.next() {
+                    Some(Token::Identifier(name)) => name,
+                    _ => return Err("Expected column name".to_string()),
+                };
+                if matches!(self.current(), Some(Token::Set)) {
+                    self.next();
+                    if matches!(self.current(), Some(Token::Default)) {
+                        self.next();
+                        let default_value = None;
+                        Ok(Statement::AlterTable(AlterTableStatement {
+                            table_name,
+                            operation: AlterTableOperation::AlterColumn {
+                                name: col_name,
+                                op: AlterColumnOperation::SetDefault { default_value },
+                            },
+                        }))
+                    } else if let Some(Token::Identifier(ref id)) = self.current() {
+                        if id.to_uppercase() == "DATA" {
+                            self.next();
+                            match self.next() {
+                                Some(Token::Identifier(ref t)) if t.to_uppercase() == "TYPE" => {
+                                    let data_type = match self.next() {
+                                        Some(Token::Identifier(typename)) => typename,
+                                        _ => return Err("Expected data type".to_string()),
+                                    };
+                                    Ok(Statement::AlterTable(AlterTableStatement {
+                                        table_name,
+                                        operation: AlterTableOperation::AlterColumn {
+                                            name: col_name,
+                                            op: AlterColumnOperation::SetDataType { data_type },
+                                        },
+                                    }))
+                                }
+                                _ => Err("Expected TYPE after DATA".to_string()),
+                            }
+                        } else {
+                            Err("Expected DEFAULT or DATA TYPE after SET".to_string())
+                        }
+                    } else {
+                        Err("Expected DEFAULT or DATA TYPE after SET".to_string())
+                    }
+                } else if matches!(self.current(), Some(Token::Drop)) {
+                    self.next();
+                    if matches!(self.current(), Some(Token::Default)) {
+                        self.next();
+                        Ok(Statement::AlterTable(AlterTableStatement {
+                            table_name,
+                            operation: AlterTableOperation::AlterColumn {
+                                name: col_name,
+                                op: AlterColumnOperation::DropDefault,
+                            },
+                        }))
+                    } else if matches!(self.current(), Some(Token::Not)) {
+                        self.next();
+                        self.expect(Token::Null)?;
+                        Ok(Statement::AlterTable(AlterTableStatement {
+                            table_name,
+                            operation: AlterTableOperation::AlterColumn {
+                                name: col_name,
+                                op: AlterColumnOperation::DropNotNull,
+                            },
+                        }))
+                    } else {
+                        Err("Expected DEFAULT or NOT NULL after DROP".to_string())
+                    }
+                } else {
+                    Err("Expected SET or DROP after ALTER COLUMN".to_string())
+                }
+            }
+            _ => Err("Expected ADD, DROP, MODIFY, RENAME or ALTER".to_string()),
         }
     }
 }
