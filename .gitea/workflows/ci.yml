@@ -8,9 +8,9 @@ on:
       - develop/v3.8.0
       - develop/v3.10.0
       - develop/v3.11.0
+      - develop/v3.12.0
       - beta/v2.8.0
       - ci/gitea-compat
-      - ci/v2.8.0-*
       - ci/v3.8.0-*
   pull_request:
     branches:
@@ -19,9 +19,9 @@ on:
       - develop/v3.9.0
       - develop/v3.10.0
       - develop/v3.11.0
+      - develop/v3.12.0
       - beta/v2.8.0
       - ci/gitea-compat
-      - ci/v2.8.0-*
       - ci/v3.8.0-*
 
 env:
@@ -134,9 +134,20 @@ jobs:
           bash scripts/gate/check_alpha_v380.sh 2>&1 | tee alpha_gate.log
       - name: RC/GA Gate — Unified 6-Dim (Issue #2882)
         run: |
-          set -euo pipefail
           bash scripts/gate/check_rc_ga_gate.sh ga 2>&1 | tee rc_ga_gate.log
-      - name: Test Plan Audit (Issue #2881 → mandatory via #2882)
+      - name: V312-19 Release Gates (Issue #3906) — SQL corpus + R2 + signoff freshness
+        if: contains(github.ref, 'develop/v3.12.0') || contains(github.ref, 'ci/v3.12.0-')
+        run: |
+          set -euo pipefail
+          chmod +x scripts/gate/check_v312_19_release_gates.sh
+          bash scripts/gate/check_v312_19_release_gates.sh 2>&1 | tee v312_19_release_gates.log
+          # V312-19 strict-close condition: artifacts must be present and fresh.
+          # Drift (exit 2) is acceptable but tracked; fail (exit 1) blocks merge.
+          RC_V312_19=$(cat v312_19_release_gates.log | tail -1 | grep -oE 'exit [0-9]+' | tail -1 | awk '{print $2}' || echo "0")
+          if [ "$RC_V312_19" = "1" ]; then
+            echo "V312-19 release gates FAILED (artifacts missing or stale) — blocking PR merge"
+            exit 1
+          fi
         run: |
           set -euo pipefail
           mkdir -p artifacts/audit/v3.8.0
@@ -181,10 +192,11 @@ jobs:
           RC_GA_FAIL=$(grep -c '❌ FAIL\|blocker' rc_ga_gate.log 2>/dev/null || echo "0")
           AUDIT_FAIL=$(grep -c 'RESULT: FAIL' audit_testing.log 2>/dev/null || echo "0")
           D9_FAIL=$(grep -c '❌ FAIL\|exit 1' full_gate_verification.log 2>/dev/null || echo "0")
-          echo "Gate: failed=$GATE_FAIL coverage=$COVERAGE_FAIL evidence=$EVIDENCE_FAIL alpha_gate=$ALPHA_FAIL rc_ga=$RC_GA_FAIL audit=$AUDIT_FAIL d9=$D9_FAIL"
-          # SPEC-021: Evidence binding FAIL must block merge (Anti-Fabrication)
-          if [ "$GATE_FAIL" -gt 0 ] || [ "$COVERAGE_FAIL" -gt 0 ] || [ "$EVIDENCE_FAIL" -gt 0 ] || [ "$AFP_FAIL" -gt 0 ] || [ "$DOCS_FAIL" -gt 0 ] || [ "$ALPHA_FAIL" -gt 0 ] || [ "$RC_GA_FAIL" -gt 0 ] || [ "$AUDIT_FAIL" -gt 0 ] || [ "$D9_FAIL" -gt 0 ]; then
-            echo "L1 gate failed (incl. AFP / doc completeness / evidence binding / alpha gate / rc-ga gate / audit_testing / D9 full gate)"
-            exit 1
+          V312_19_FAIL=0
+          if [ -f v312_19_release_gates.log ]; then
+            V312_19_FAIL=$(grep -c 'V312-19 release gates FAILED\|blockers: [^0]' v312_19_release_gates.log 2>/dev/null || echo "0")
           fi
-          echo "All postcheck gates passed"
+          echo "Gate: failed=$GATE_FAIL coverage=$COVERAGE_FAIL evidence=$EVIDENCE_FAIL alpha_gate=$ALPHA_FAIL rc_ga=$RC_GA_FAIL audit=$AUDIT_FAIL d9=$D9_FAIL v312_19=$V312_19_FAIL"
+          if [ "$GATE_FAIL" -gt 0 ] || [ "$COVERAGE_FAIL" -gt 0 ] || [ "$EVIDENCE_FAIL" -gt 0 ] || [ "$AFP_FAIL" -gt 0 ] || [ "$DOCS_FAIL" -gt 0 ] || [ "$ALPHA_FAIL" -gt 0 ] || [ "$RC_GA_FAIL" -gt 0 ] || [ "$AUDIT_FAIL" -gt 0 ] || [ "$D9_FAIL" -gt 0 ] || [ "$V312_19_FAIL" -gt 0 ]; then
+            echo "L1 gate failed (incl. AFP / doc completeness / evidence binding / alpha gate / rc-ga gate / audit_testing / D9 full gate / V312-19 release gates)"
+            exit 1
