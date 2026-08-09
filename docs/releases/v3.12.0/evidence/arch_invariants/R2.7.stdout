@@ -1,6 +1,62 @@
-TODO: implement R2.7
+============================================
+Anti-Fabrication Policy Check (AFP) v4
+============================================
 
-This is a stub. The v3.12.0 release must either:
-  1. Land the real R2.7 check, or
-  2. Mark this R2.N as deferred with owner + expiry
-     in a follow-up issue.
+[INFO] CHECK 1: cargo build -p sqlrustgo-mysql-server (canonical binary)...
+[PASS] sqlrustgo-mysql-server: cargo check PASS
+[INFO] CHECK 2: cargo test --workspace --no-run (test compile only, fast)...
+[ERROR] Test binaries compile FAILED — NEW untracked failures detected:
+[ERROR]   NEW: tpch_full_test
+[ERROR] Known pre-existing failures (15 of 16):
+[INFO]   KNOWN: aggregate_type_test
+[INFO]   KNOWN: auth_rbac_test
+[INFO]   KNOWN: backup_test
+[INFO]   KNOWN: checksum_corruption_test
+[INFO]   KNOWN: columnar_storage_test
+[INFO]   KNOWN: distributed_transaction_test
+[INFO]   KNOWN: eval_22_vs_sf01
+[INFO]   KNOWN: executor_test
+[INFO]   KNOWN: mysql_compatibility_test
+[INFO]   KNOWN: openclaw_api_test
+[INFO]   KNOWN: parquet_test
+[INFO]   KNOWN: performance_test
+[INFO]   KNOWN: teaching_scenario_client_server_test
+[INFO]   KNOWN: tpch_index_test
+[INFO]   KNOWN: tpch_text_index_test
+[ERROR] See RC_BLOCKERS_REPORT.md §Blocker #4 for tracking.
+   --> tests/integration/performance_test.rs:768:26
+    |
+768 |     let result = storage.search_index("users", "id", 500);
+    |                          ^^^^^^^^^^^^
+    |
+help: there is a method `drop_index` with a similar name, but with different arguments
+   --> crates/storage/src/engine.rs:571:5
+    |
+571 |     fn drop_index(&mut self, table: &str, column: &str) -> SqlResult<()>;
+    |     ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+error[E0599]: no method named `range_index` found for struct `MemoryStorage` in the current scope
+   --> tests/integration/performance_test.rs:771:32
+    |
+771 |     let range_result = storage.range_index("users", "id", 100, 200);
+    |                                ^^^^^^^^^^^ method not found in `MemoryStorage`
+
+Some errors have detailed explanations: E0308, E0432, E0599.
+error: could not compile `sqlrustgo` (test "performance_test") due to 27 previous errors
+warning: `sqlrustgo` (test "harness_validation_test") generated 1 warning (run `cargo fix --test "harness_validation_test" -p sqlrustgo` to apply 1 suggestion)
+[INFO] CHECK 3: Gate report test counts vs actual cargo test compile output...
+[INFO] docs/releases/v3.8.0/alpha/ALPHA_GATE_REPORT.md: declares 10/10 PASS (test binaries compiled: unknown (cargo test --no-run log unavailable))
+[INFO] docs/releases/v3.8.0/beta/BETA_GATE_REPORT.md: declares 15/15 PASS (test binaries compiled: unknown (cargo test --no-run log unavailable))
+[INFO] docs/releases/v3.8.0/rc/RC_GA_GATE_REPORT.md: declares 5/5 PASS (test binaries compiled: unknown (cargo test --no-run log unavailable))
+[INFO] docs/releases/v3.9.0/rc/RC1_GATE_REPORT.md: declares 4/4 PASS (test binaries compiled: unknown (cargo test --no-run log unavailable))
+[INFO] docs/releases/v3.9.0/rc/RC2_GATE_REPORT.md: declares 4/4 PASS (test binaries compiled: unknown (cargo test --no-run log unavailable))
+[INFO] CHECK 4: HEAD commit author must be a known AI/Human identity...
+[PASS] HEAD author email: openclaw@gaoyuanyiyao.com (allowed multi-AI identity)
+[INFO] CHECK 5: Code examples in documentation (sanity scan)...
+[PASS] Scanned 411 markdown files in docs/releases + docs/governance
+
+============================================
+Results: ERRORS=4, WARNINGS=0
+============================================
+
+[ERROR] Anti-fabrication check (AFP v4): FAILED with 4 error(s)

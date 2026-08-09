@@ -47,8 +47,18 @@ declare -A R2_SCRIPTS=(
     ["R2.2"]="check_arch3_no_bypass.sh"
     ["R2.3"]="check_arch_invariants.sh"
     ["R2.4"]="check_arch_sem_debt.sh"
+    # v3.12 R2.5-R2.7 — wired to the v3.10.0 R2.5-R2.7 script
+    # set (see docs/releases/v3.10.0/RELEASE_GATE_CHECKLIST.md).
+    # R2.8 stays a stub: the v3.10.0 full-gate script
+    # (check_full_gate_verification.sh) transitively runs
+    # check_rc_ga_gate.sh A5 coverage, which exceeds the R2
+    # evidence-refresh budget. R2.8 is deferred to a follow-up
+    # issue (separate scope: speed up coverage gate).
+    ["R2.5"]="check_cross_version_debt.sh"
+    ["R2.6"]="check_int_debt.sh"
+    ["R2.7"]="check_anti_fabrication.sh"
+    # ["R2.8"]="check_full_gate_verification.sh"  # deferred: too slow
 )
-
 run_real_or_stub() {
     local r2="$1"
     local script_name="${R2_SCRIPTS[$r2]:-}"
@@ -57,12 +67,16 @@ run_real_or_stub() {
     local status
 
     if [ -n "${script_name}" ] && [ -f "${ROOT}/scripts/gate/${script_name}" ]; then
-        if bash "${ROOT}/scripts/gate/${script_name}" > "${stdout_file}" 2>&1; then
+        # Capture exit code before the if/else consumes it into
+        # the conditional; $? after if-fi is always 0 (the if's own
+        # status), not the underlying script's exit code.
+        bash "${ROOT}/scripts/gate/${script_name}" > "${stdout_file}" 2>&1
+        exit_code=$?
+        if [ "${exit_code}" -eq 0 ]; then
             status="pass"
         else
             status="fail"
         fi
-        exit_code=$?
     else
         # Stub: honest-gap, not a fabricated pass.
         {
