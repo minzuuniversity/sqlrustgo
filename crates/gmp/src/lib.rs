@@ -59,6 +59,7 @@ pub mod embedding;
 pub mod persist_sqlite;
 pub mod report;
 pub mod ingestion;
+pub mod soak;
 pub mod graph;
 pub mod rag;
 pub mod chunk;
