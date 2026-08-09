@@ -1,0 +1,32 @@
+# 168h SOAK — 343h37m (2.04x) — 2026-08-09 evidence
+# Source: docs/releases/v3.11.0/SOAK_168H_REPORT.md
+
+## SOAK summary
+
+| Metric | Result |
+|--------|--------|
+| Duration | 343h37m (2.04x 168h requirement) |
+| Errors | 0 |
+| Crashes | 0 |
+| Memory growth | bounded |
+| QPS stability | 45.1 QPS |
+| Status | ✅ PASS |
+
+## Performance improvement (from baseline)
+
+| Metric | Before | After |
+|--------|--------|-------|
+| QPS | 9 | 371 (41x) |
+| TPS | 9 | 371 (41x) |
+
+## Audit chain integrity
+
+- WAL replay verified (no broken chain)
+- JOIN correctness (V311-15) preserved
+- High-concurrency INSERT (PERF-5) fixed
+
+## Source references
+
+- SOAK_168H_REPORT.md (closed 2026-07-21)
+- Tag `v3.11.0-ga` @ 36691ed2b (commit hash)
+- 5 remote synced: 250/252/gitcode/gitee/github
