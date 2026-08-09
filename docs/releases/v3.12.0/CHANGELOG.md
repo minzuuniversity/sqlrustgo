@@ -57,7 +57,7 @@ SQLLogicTest 背景：
 
 | 版本 | 日期 | 阶段 | 说明 |
 |---|---|---|---|
-| v3.12.0 | TBD | PLANNED | GMP 内审检索数据库版本，附带 v3.11.0 弱项补强 |
+| v3.12.0 | TBD | DRAFT | GMP 内审检索数据库版本，附带 v3.11.0 弱项补强 |
 
 ## 附录：英文原文
 
@@ -65,7 +65,7 @@ SQLLogicTest 背景：
 
 # Changelog -- SQLRustGo v3.12.0
 
-> **Status**: PLANNED
+> **Status**: DRAFT
 > **Date**: 2026-08-09
 
 ## v3.12.0-planned
@@ -120,4 +120,4 @@ SQLLogicTest context:
 
 | Version | Date | Stage | Notes |
 |---|---|---|---|
-| v3.12.0 | TBD | PLANNED | GMP internal-audit retrieval database |
+| v3.12.0 | TBD | DRAFT | GMP internal-audit retrieval database |
