@@ -1,10 +1,42 @@
 //! Test Registry Module
 //!
 //! Provides test metadata management and test discovery for regression testing.
-
+//!
+//! Two layers:
+//!
+//! 1. **In-source `TestMetadata`** — per-test metadata registered programmatically
+//!    (id, name, category, module, tags, priority, timeout, file_path).
+//! 2. **On-disk `ManagedTest`** — a manifest of binaries + args (e.g. `sqlancer`,
+//!    `test-runner`) loaded from a TOML file. These are the *managed* test
+//!    infrastructure entries the runner can dispatch against.
+//!
+//! V312-24 activation: `TestRegistry` is now a single object that holds both
+//! layers, with `from_toml` / `write_toml` for round-tripping the manifest
+//! part. The CLI binary (`test-registry-cli`) drives the on-disk layer.
+//!
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
 use std::path::{Path, PathBuf};
+use thiserror::Error;
+
+// Re-export the `toml` crate at the crate root so callers don't have to
+// pin a separate version. Downstream code can `use test_registry::toml;`.
+pub use toml;
+
+/// Errors produced by `TestRegistry::from_toml` / `write_toml`.
+#[derive(Debug, Error)]
+pub enum RegistryError {
+    #[error("I/O error on {path}: {source}")]
+    Io {
+        path: PathBuf,
+        #[source]
+        source: std::io::Error,
+    },
+    #[error("TOML parse error: {0}")]
+    Parse(#[from] toml::de::Error),
+    #[error("TOML serialize error: {0}")]
+    Serialize(#[from] toml::ser::Error),
+}
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize)]
 pub enum TestCategory {
@@ -99,10 +131,99 @@ impl TestMetadata {
     }
 }
 
+/// A managed test entry: a binary + args registered in a TOML manifest.
+///
+/// Distinct from [`TestMetadata`] (which describes in-source unit/integration
+/// tests). `ManagedTest` is the on-disk contract that `test-runner` reads to
+/// know which binaries to invoke, with what arguments, and with what timeout.
+///
+/// TOML schema (table-array form, see design.md):
+///
+/// ```toml
+/// [[test]]
+/// name = "sqlancer"
+/// binary = "target/release/sqlancer"
+/// args = ["--duration", "120", "--out", "target/sqlancer-report.json"]
+/// timeout_ms = 600_000
+/// priority = "p1"
+/// category = "fuzz"
+/// ```
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
+pub struct ManagedTest {
+    pub name: String,
+    pub binary: String,
+    #[serde(default)]
+    pub args: Vec<String>,
+    #[serde(default = "default_timeout_ms")]
+    pub timeout_ms: u64,
+    #[serde(default = "default_priority")]
+    pub priority: TestPriority,
+    #[serde(default = "default_category")]
+    pub category: TestCategory,
+}
+
+fn default_timeout_ms() -> u64 {
+    120_000
+}
+
+fn default_priority() -> TestPriority {
+    TestPriority::P2
+}
+
+fn default_category() -> TestCategory {
+    TestCategory::Integration
+}
+
+impl ManagedTest {
+    pub fn new(name: &str, binary: &str) -> Self {
+        Self {
+            name: name.to_string(),
+            binary: binary.to_string(),
+            args: Vec::new(),
+            timeout_ms: default_timeout_ms(),
+            priority: default_priority(),
+            category: default_category(),
+        }
+    }
+
+    pub fn with_args(mut self, args: Vec<String>) -> Self {
+        self.args = args;
+        self
+    }
+
+    pub fn with_timeout_ms(mut self, timeout_ms: u64) -> Self {
+        self.timeout_ms = timeout_ms;
+        self
+    }
+
+    pub fn with_priority(mut self, priority: TestPriority) -> Self {
+        self.priority = priority;
+        self
+    }
+
+    pub fn with_category(mut self, category: TestCategory) -> Self {
+        self.category = category;
+        self
+    }
+}
+
+/// Bridge a `ManagedTest` (a binary manifest) into a `TestMetadata` (the
+/// in-memory per-test record) so the registry can treat both uniformly.
+impl From<ManagedTest> for TestMetadata {
+    fn from(m: ManagedTest) -> Self {
+        TestMetadata::new(&m.name, &m.name, m.category, "managed")
+            .with_priority(m.priority)
+            .with_timeout(m.timeout_ms)
+            .with_file_path(&m.binary)
+    }
+}
+
 #[derive(Debug, Default)]
 pub struct TestRegistry {
     tests: HashMap<String, TestMetadata>,
     modules: HashMap<String, Vec<String>>,
+    /// On-disk managed binaries (loaded from `test-registry.toml`).
+    managed_tests: HashMap<String, ManagedTest>,
 }
 
 impl TestRegistry {
@@ -244,6 +365,92 @@ impl TestRegistry {
         }
 
         counts
+    }
+
+    pub fn tests(&self) -> impl Iterator<Item = &TestMetadata> {
+        self.tests.values()
+    }
+
+    pub fn is_empty(&self) -> bool {
+        self.tests.is_empty()
+    }
+
+    pub fn len(&self) -> usize {
+        self.tests.len()
+    }
+
+    // -------------------------------------------------------------------
+    // Managed tests (on-disk manifest) — V312-24 activation.
+    // -------------------------------------------------------------------
+
+    /// Register a managed test (binary + args) under its `name`.
+    /// Also folds the entry into the in-memory `tests` map so existing
+    /// query APIs (`get_by_category`, `tests()`, etc.) see it.
+    pub fn register_managed(&mut self, m: ManagedTest) {
+        self.managed_tests.insert(m.name.clone(), m.clone());
+        self.register(m.into());
+    }
+
+    pub fn managed(&self) -> impl Iterator<Item = &ManagedTest> {
+        self.managed_tests.values()
+    }
+
+    pub fn get_managed(&self, name: &str) -> Option<&ManagedTest> {
+        self.managed_tests.get(name)
+    }
+
+    pub fn managed_len(&self) -> usize {
+        self.managed_tests.len()
+    }
+
+    /// Load a registry from a TOML manifest file. The file format is the
+    /// `[[test]]` table-array form defined in `design.md`. Missing file
+    /// returns an empty registry with an `Io` error.
+    pub fn from_toml(path: &Path) -> Result<Self, RegistryError> {
+        let s = std::fs::read_to_string(path).map_err(|source| RegistryError::Io {
+            path: path.to_path_buf(),
+            source,
+        })?;
+        #[derive(Deserialize)]
+        struct Manifest {
+            #[serde(default)]
+            test: Vec<ManagedTest>,
+        }
+        let manifest: Manifest = toml::from_str(&s)?;
+        let mut registry = TestRegistry::default();
+        for m in manifest.test {
+            registry.register_managed(m);
+        }
+        Ok(registry)
+    }
+
+    /// Persist the managed-tests portion of the registry to a TOML file.
+    /// Output uses the `[[test]]` table-array form so the file can be
+    /// read back via `from_toml` or hand-edited.
+    pub fn write_toml(&self, path: &Path) -> Result<(), RegistryError> {
+        if let Some(parent) = path.parent() {
+            if !parent.as_os_str().is_empty() {
+                std::fs::create_dir_all(parent).map_err(|source| RegistryError::Io {
+                    path: parent.to_path_buf(),
+                    source,
+                })?;
+            }
+        }
+        let mut entries: Vec<ManagedTest> = self.managed_tests.values().cloned().collect();
+        entries.sort_by(|a, b| a.name.cmp(&b.name));
+        #[derive(Serialize)]
+        struct Manifest<'a> {
+            test: Vec<&'a ManagedTest>,
+        }
+        let manifest = Manifest {
+            test: entries.iter().collect(),
+        };
+        let s = toml::to_string(&manifest)?;
+        std::fs::write(path, s).map_err(|source| RegistryError::Io {
+            path: path.to_path_buf(),
+            source,
+        })?;
+        Ok(())
     }
 }
 
