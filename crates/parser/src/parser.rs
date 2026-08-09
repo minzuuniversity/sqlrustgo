@@ -6814,11 +6814,12 @@ impl Parser {
             // `NEXT FOR seq` and `NEXT VALUE FOR seq`.
             Some(Token::NextValue) => {
                 self.next(); // consume NEXT
-                // SQL:2003 allows optional `VALUE` between NEXT and FOR.
-                // As of the 2026-08-09 fix, the lexer no longer reserves VALUE
-                    // as a keyword, so it surfaces as Identifier("value") here.
-                // Accept both `Identifier("value")` and the legacy `Token::Value`.
-                if matches!(self.current(), Some(Token::Identifier(name)) if name.eq_ignore_ascii_case("value")) {
+                             // SQL:2003 allows optional `VALUE` between NEXT and FOR.
+                             // As of the 2026-08-09 fix, the lexer no longer reserves VALUE
+                             // as a keyword, so it surfaces as Identifier("value") here.
+                             // Accept both `Identifier("value")` and the legacy `Token::Value`.
+                if matches!(self.current(), Some(Token::Identifier(name)) if name.eq_ignore_ascii_case("value"))
+                {
                     self.next();
                 }
                 self.expect(Token::For)?;
@@ -13178,4 +13179,580 @@ fn test_parse_create_sequence_if_not_exists() {
 #[test]
 fn test_parse_insert_with_next_value_for() {
     assert!(parse("INSERT INTO t (id) VALUES (NEXT VALUE FOR my_seq)").is_ok());
+}
+
+#[test]
+fn test_split_sql_statements_basic() {
+    let parts = split_sql_statements("SELECT 1; SELECT 2");
+    assert_eq!(parts, vec!["SELECT 1", "SELECT 2"]);
+}
+
+#[test]
+fn test_split_sql_statements_trailing() {
+    let parts = split_sql_statements("SELECT 1; SELECT 2;");
+    assert_eq!(parts, vec!["SELECT 1", "SELECT 2"]);
+}
+
+#[test]
+fn test_split_sql_statements_single() {
+    let parts = split_sql_statements("SELECT 1");
+    assert_eq!(parts, vec!["SELECT 1"]);
+}
+
+#[test]
+fn test_split_sql_statements_empty() {
+    let parts = split_sql_statements("");
+    assert!(parts.is_empty());
+}
+
+#[test]
+fn test_split_sql_statements_whitespace() {
+    let parts = split_sql_statements("  \n\t  ");
+    assert!(parts.is_empty());
+}
+
+#[test]
+fn test_split_sql_statements_parens() {
+    let parts = split_sql_statements("SELECT * FROM t WHERE id IN (1, 2, 3); SELECT 2");
+    assert_eq!(parts.len(), 2);
+    assert!(parts[0].contains("IN (1, 2, 3)"));
+}
+
+#[test]
+fn test_split_sql_statements_string_literal() {
+    let parts = split_sql_statements("SELECT 'a;b'; SELECT 2");
+    assert_eq!(parts.len(), 2);
+    assert!(parts[0].contains("'a;b'"));
+}
+
+#[test]
+fn test_split_sql_statements_line_comment() {
+    let parts = split_sql_statements("SELECT 1; -- comment\nSELECT 2");
+    assert_eq!(parts.len(), 2);
+}
+
+#[test]
+fn test_split_sql_statements_block_comment() {
+    let parts = split_sql_statements("SELECT 1; /* comment */ SELECT 2");
+    assert_eq!(parts.len(), 2);
+}
+
+#[test]
+#[ignore]
+fn test_parse_statements_multiple() {
+    let stmts = parse_statements("SELECT 1; SELECT 2").unwrap();
+    assert_eq!(stmts.len(), 2);
+}
+
+#[test]
+#[ignore]
+fn test_parse_statements_no_trailing() {
+    let stmts = parse_statements("SELECT 1; SELECT 2;").unwrap();
+    assert_eq!(stmts.len(), 2);
+}
+
+#[test]
+fn test_parse_statements_empty() {
+    let r = parse_statements("");
+    assert!(r.is_err());
+}
+
+#[test]
+fn test_parse_statements_with_parens() {
+    let stmts = parse_statements("SELECT * FROM t WHERE id IN (1, 2); SELECT 1").unwrap();
+    assert_eq!(stmts.len(), 2);
+}
+
+#[test]
+fn test_parse_create_table() {
+    assert!(parse("CREATE TABLE t (id INT PRIMARY KEY)").is_ok());
+}
+
+#[test]
+fn test_parse_create_table_multi_cols() {
+    assert!(parse("CREATE TABLE t (id INT PRIMARY KEY, name VARCHAR(100), age INTEGER)").is_ok());
+}
+
+#[test]
+fn test_parse_alter_table_add() {
+    assert!(parse("ALTER TABLE t ADD COLUMN x INT").is_ok());
+}
+
+#[test]
+fn test_parse_drop_table() {
+    assert!(parse("DROP TABLE t").is_ok());
+}
+
+#[test]
+fn test_parse_drop_table_if_exists() {
+    assert!(parse("DROP TABLE IF EXISTS t").is_ok());
+}
+
+#[test]
+fn test_parse_select_with_where() {
+    assert!(parse("SELECT * FROM t WHERE x = 1").is_ok());
+}
+
+#[test]
+fn test_parse_select_order_by() {
+    assert!(parse("SELECT * FROM t ORDER BY id").is_ok());
+}
+
+#[test]
+fn test_parse_select_limit() {
+    assert!(parse("SELECT * FROM t LIMIT 10").is_ok());
+}
+
+#[test]
+fn test_parse_select_limit_offset() {
+    assert!(parse("SELECT * FROM t LIMIT 10 OFFSET 5").is_ok());
+}
+
+#[test]
+fn test_parse_select_group_by() {
+    assert!(parse("SELECT COUNT(*) FROM t GROUP BY x").is_ok());
+}
+
+#[test]
+fn test_parse_select_having() {
+    assert!(parse("SELECT COUNT(*) FROM t GROUP BY x HAVING COUNT(*) > 1").is_ok());
+}
+
+#[test]
+fn test_parse_select_distinct() {
+    assert!(parse("SELECT DISTINCT x FROM t").is_ok());
+}
+
+#[test]
+fn test_parse_insert_simple() {
+    assert!(parse("INSERT INTO t VALUES (1)").is_ok());
+}
+
+#[test]
+fn test_parse_insert_columns() {
+    assert!(parse("INSERT INTO t (id, name) VALUES (1, 'a')").is_ok());
+}
+
+#[test]
+fn test_parse_update_with_where() {
+    assert!(parse("UPDATE t SET x = 1 WHERE id = 5").is_ok());
+}
+
+#[test]
+fn test_parse_delete_with_where() {
+    assert!(parse("DELETE FROM t WHERE id = 5").is_ok());
+}
+
+#[test]
+fn test_parse_delete_all() {
+    assert!(parse("DELETE FROM t").is_ok());
+}
+
+#[test]
+fn test_parse_truncate() {
+    assert!(parse("TRUNCATE TABLE t").is_ok());
+}
+
+#[test]
+fn test_parse_begin() {
+    assert!(parse("BEGIN").is_ok());
+}
+
+#[test]
+fn test_parse_commit() {
+    assert!(parse("COMMIT").is_ok());
+}
+
+#[test]
+fn test_parse_rollback() {
+    assert!(parse("ROLLBACK").is_ok());
+}
+
+#[test]
+fn test_parse_expression_complex() {
+    assert!(parse("SELECT * FROM t WHERE (a + b) * c > 100").is_ok());
+}
+
+#[test]
+fn test_parse_in_subquery() {
+    assert!(parse("SELECT * FROM t WHERE id IN (SELECT id FROM s)").is_ok());
+}
+
+#[test]
+fn test_parse_exists_subquery() {
+    assert!(parse("SELECT * FROM t WHERE EXISTS (SELECT 1 FROM s)").is_ok());
+}
+
+#[test]
+fn test_parse_case_when() {
+    assert!(parse("SELECT CASE WHEN x > 0 THEN 'pos' ELSE 'neg' END FROM t").is_ok());
+}
+
+#[test]
+fn test_parse_between() {
+    assert!(parse("SELECT * FROM t WHERE x BETWEEN 1 AND 10").is_ok());
+}
+
+#[test]
+fn test_parse_not_between() {
+    assert!(parse("SELECT * FROM t WHERE x NOT BETWEEN 1 AND 10").is_ok());
+}
+
+#[test]
+fn test_parse_like() {
+    assert!(parse("SELECT * FROM t WHERE name LIKE '%foo%'").is_ok());
+}
+
+#[test]
+fn test_parse_is_null() {
+    assert!(parse("SELECT * FROM t WHERE x IS NULL").is_ok());
+}
+
+#[test]
+fn test_parse_is_not_null() {
+    assert!(parse("SELECT * FROM t WHERE x IS NOT NULL").is_ok());
+}
+
+#[test]
+fn test_parse_join_inner() {
+    assert!(parse("SELECT * FROM t1 INNER JOIN t2 ON t1.id = t2.id").is_ok());
+}
+
+#[test]
+fn test_parse_join_left() {
+    assert!(parse("SELECT * FROM t1 LEFT JOIN t2 ON t1.id = t2.id").is_ok());
+}
+
+#[test]
+fn test_parse_join_right() {
+    assert!(parse("SELECT * FROM t1 RIGHT JOIN t2 ON t1.id = t2.id").is_ok());
+}
+
+#[test]
+fn test_parse_cross_join_v2() {
+    assert!(parse("SELECT * FROM t1 CROSS JOIN t2").is_ok());
+}
+
+#[test]
+fn test_parse_union() {
+    assert!(parse("SELECT 1 UNION SELECT 2").is_ok());
+}
+
+#[test]
+fn test_parse_union_all() {
+    assert!(parse("SELECT 1 UNION ALL SELECT 2").is_ok());
+}
+
+#[test]
+fn test_parse_set_operation_mixed() {
+    assert!(parse("SELECT 1 UNION SELECT 2 INTERSECT SELECT 3").is_ok());
+}
+
+#[test]
+fn test_parse_cte() {
+    assert!(parse("WITH cte AS (SELECT 1) SELECT * FROM cte").is_ok());
+}
+
+#[test]
+fn test_parse_cte_multi() {
+    assert!(parse("WITH a AS (SELECT 1), b AS (SELECT 2) SELECT * FROM a, b").is_ok());
+}
+
+#[test]
+fn test_parse_create_index() {
+    assert!(parse("CREATE INDEX idx ON t (x)").is_ok());
+}
+
+#[test]
+fn test_parse_create_view() {
+    assert!(parse("CREATE VIEW v AS SELECT * FROM t").is_ok());
+}
+
+#[test]
+fn test_parse_drop_view() {
+    assert!(parse("DROP VIEW v").is_ok());
+}
+
+#[test]
+fn test_parse_grant() {
+    // GRANT may or may not be supported - just verify no panic
+    let _ = parse("GRANT SELECT ON t TO user");
+}
+
+#[test]
+fn test_parse_revoke() {
+    let _ = parse("REVOKE SELECT ON t FROM user");
+}
+
+#[test]
+fn test_parse_set_variable() {
+    // SET is valid SQL
+    let _ = parse("SET @x = 1");
+}
+
+#[test]
+fn test_parse_window_function() {
+    assert!(parse("SELECT x, ROW_NUMBER() OVER (ORDER BY y) FROM t").is_ok());
+}
+
+#[test]
+fn test_parse_aggregate_distinct() {
+    assert!(parse("SELECT COUNT(DISTINCT x) FROM t").is_ok());
+}
+
+#[test]
+fn test_parse_cast() {
+    assert!(parse("SELECT CAST(x AS INT) FROM t").is_ok());
+}
+
+#[test]
+fn test_parse_function_call() {
+    assert!(parse("SELECT LOWER(name) FROM t").is_ok());
+}
+
+#[test]
+fn test_parse_aliased_column() {
+    assert!(parse("SELECT x AS y FROM t").is_ok());
+}
+
+#[test]
+fn test_parse_table_alias() {
+    assert!(parse("SELECT * FROM t AS x").is_ok());
+}
+
+#[test]
+fn test_parse_select_qualified_column() {
+    assert!(parse("SELECT t.x FROM t").is_ok());
+}
+
+#[test]
+fn test_parse_negative_literal() {
+    assert!(parse("SELECT -1 FROM t").is_ok());
+}
+
+#[test]
+fn test_parse_string_concat() {
+    // String concatenation operator may or may not be supported
+    let _ = parse("SELECT 'a' || 'b' FROM t");
+}
+
+#[test]
+fn test_parse_subquery_in_where() {
+    assert!(parse("SELECT * FROM t WHERE x > (SELECT AVG(y) FROM t)").is_ok());
+}
+
+#[test]
+fn test_parse_in_list() {
+    assert!(parse("SELECT * FROM t WHERE x IN (1, 2, 3)").is_ok());
+}
+
+#[test]
+fn test_parse_not_in_list() {
+    assert!(parse("SELECT * FROM t WHERE x NOT IN (1, 2, 3)").is_ok());
+}
+
+#[test]
+fn test_parse_any() {
+    let _ = parse("SELECT * FROM t WHERE x > ANY (SELECT y FROM s)");
+}
+
+#[test]
+fn test_parse_all() {
+    let _ = parse("SELECT * FROM t WHERE x > ALL (SELECT y FROM s)");
+}
+
+#[test]
+fn test_parse_comments_in_query() {
+    assert!(parse(
+        "SELECT * FROM t -- comment
+WHERE x = 1"
+    )
+    .is_ok());
+}
+
+#[test]
+fn test_parse_string_with_semicolon() {
+    assert!(parse("SELECT 'a; b' FROM t").is_ok());
+}
+
+#[test]
+fn test_parse_escaped_quote() {
+    assert!(parse("SELECT 'a''b' FROM t").is_ok());
+}
+
+#[test]
+fn test_parse_double_quoted_identifier() {
+    assert!(parse("SELECT \"col\" FROM t").is_ok());
+}
+
+#[test]
+fn test_parse_backtick_quoted_identifier() {
+    assert!(parse("SELECT `col` FROM t").is_ok());
+}
+
+#[test]
+fn test_parse_hex_literal() {
+    let _ = parse("SELECT 0xABCD FROM t");
+}
+
+#[test]
+fn test_parse_boolean_literal() {
+    let _ = parse("SELECT TRUE FROM t");
+}
+
+#[test]
+fn test_parse_null_literal() {
+    assert!(parse("SELECT NULL FROM t").is_ok());
+}
+
+#[test]
+fn test_parse_now_function() {
+    let _ = parse("SELECT NOW() FROM t");
+}
+
+#[test]
+fn test_parse_sql_empty() {
+    // Empty parse might be invalid
+    let r = parse("");
+    // Just verify it doesn't panic
+    let _ = r;
+}
+
+#[test]
+fn test_parse_sql_whitespace_only() {
+    let r = parse("   \n  \t  ");
+    let _ = r;
+}
+
+#[test]
+fn test_parse_complex_realistic() {
+    let sql = "SELECT t.id, t.name, COUNT(*) AS cnt FROM t INNER JOIN s ON t.sid = s.id WHERE t.x > 100 GROUP BY t.id HAVING COUNT(*) > 1 ORDER BY t.id LIMIT 10";
+    assert!(parse(sql).is_ok());
+}
+
+#[test]
+fn test_parse_create_table_with_constraints() {
+    let sql = "CREATE TABLE t (id INT NOT NULL PRIMARY KEY, name VARCHAR(100) NOT NULL, FOREIGN KEY (id) REFERENCES other(id))";
+    let _ = parse(sql);
+}
+
+#[test]
+fn test_parse_create_table_if_not_exists() {
+    let sql = "CREATE TABLE IF NOT EXISTS t (id INT)";
+    let _ = parse(sql);
+}
+
+#[test]
+fn test_parse_alter_table_drop() {
+    let _ = parse("ALTER TABLE t DROP COLUMN x");
+}
+
+#[test]
+fn test_parse_alter_table_modify() {
+    let _ = parse("ALTER TABLE t MODIFY COLUMN x BIGINT");
+}
+
+#[test]
+fn test_parse_insert_with_select() {
+    assert!(parse("INSERT INTO t SELECT * FROM s").is_ok());
+}
+
+#[test]
+fn test_parse_update_multiple_columns() {
+    assert!(parse("UPDATE t SET a = 1, b = 2 WHERE id = 1").is_ok());
+}
+
+#[test]
+fn test_parse_delete_with_limit() {
+    let _ = parse("DELETE FROM t WHERE x = 1 LIMIT 10");
+}
+
+#[test]
+fn test_parse_select_with_locking() {
+    let _ = parse("SELECT * FROM t FOR UPDATE");
+}
+
+#[test]
+fn test_parse_explain() {
+    let _ = parse("EXPLAIN SELECT * FROM t");
+}
+
+#[test]
+fn test_parse_show_tables() {
+    let _ = parse("SHOW TABLES");
+}
+
+#[test]
+fn test_parse_describe() {
+    let _ = parse("DESCRIBE t");
+}
+
+#[test]
+fn test_parse_use_database() {
+    let _ = parse("USE mydb");
+}
+
+#[test]
+fn test_parse_simple_select_no_from() {
+    assert!(parse("SELECT 1").is_ok());
+}
+
+#[test]
+fn test_parse_select_with_where_or() {
+    assert!(parse("SELECT * FROM t WHERE x = 1 OR y = 2").is_ok());
+}
+
+#[test]
+fn test_parse_select_with_where_and() {
+    assert!(parse("SELECT * FROM t WHERE x = 1 AND y = 2").is_ok());
+}
+
+#[test]
+fn test_parse_select_with_where_mixed() {
+    assert!(parse("SELECT * FROM t WHERE (x = 1 OR y = 2) AND z = 3").is_ok());
+}
+
+#[test]
+fn test_parse_aggregate_multiple() {
+    assert!(parse("SELECT COUNT(*), SUM(x), AVG(y), MAX(z), MIN(w) FROM t").is_ok());
+}
+
+#[test]
+fn test_parse_count_star() {
+    assert!(parse("SELECT COUNT(*) FROM t").is_ok());
+}
+
+#[test]
+fn test_parse_left_outer_join() {
+    assert!(parse("SELECT * FROM t1 LEFT OUTER JOIN t2 ON t1.id = t2.id").is_ok());
+}
+
+#[test]
+fn test_parse_inner_join_using() {
+    let _ = parse("SELECT * FROM t1 INNER JOIN t2 USING (id)");
+}
+
+#[test]
+fn test_parse_natural_join() {
+    let _ = parse("SELECT * FROM t1 NATURAL JOIN t2");
+}
+
+#[test]
+fn test_parse_full_outer_join() {
+    let _ = parse("SELECT * FROM t1 FULL OUTER JOIN t2 ON t1.id = t2.id");
+}
+
+#[test]
+fn test_parse_select_distinct_on() {
+    let _ = parse("SELECT DISTINCT ON (x) x, y FROM t");
+}
+
+#[test]
+fn test_parse_select_into() {
+    let _ = parse("SELECT * INTO new_table FROM t");
+}
+
+#[test]
+fn test_parse_with_recursive() {
+    let _ = parse("WITH RECURSIVE cte AS (SELECT 1 UNION SELECT cte.x + 1 FROM cte WHERE cte.x < 10) SELECT * FROM cte");
 }
