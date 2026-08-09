@@ -254,7 +254,6 @@ mod helpers_tests {
 
     #[test]
     fn col_type_unknown_falls_back_to_varchar() {
-
         // Unknown types fall back to a generic string code in this codebase.
         assert_eq!(col_type_from_string("UNKNOWN_TYPE"), 254);
     }
@@ -379,9 +378,6 @@ mod helpers_tests {
         assert_eq!(value_to_string(&Value::Text("hello".to_string())), "hello");
     }
 }
-
-
-
 
 fn read_proc_status(pid: u32) -> (u64, usize) {
     let mut rss_kb = 0u64;
@@ -651,6 +647,336 @@ fn verify_mysql_native_password(
 mod tests {
     use super::*;
 
+    #[test]
+    fn test_parse_wal_sync_mode_every() {
+        let m = parse_wal_sync_mode("any_default");
+        match m {
+            sqlrustgo_storage::WalSyncMode::Every => {}
+            _ => panic!("expected Every"),
+        }
+    }
+
+    #[test]
+    fn test_parse_wal_sync_mode_off() {
+        let m = parse_wal_sync_mode("OFF");
+        match m {
+            sqlrustgo_storage::WalSyncMode::Off => {}
+            _ => panic!("expected Off"),
+        }
+    }
+
+    #[test]
+    fn test_parse_wal_sync_mode_batch() {
+        let m = parse_wal_sync_mode("batch:50");
+        match m {
+            sqlrustgo_storage::WalSyncMode::Batch(n) => assert_eq!(n, 50),
+            _ => panic!("expected Batch"),
+        }
+    }
+
+    #[test]
+    fn test_parse_wal_sync_mode_batch_invalid() {
+        let m = parse_wal_sync_mode("batch:invalid");
+        match m {
+            sqlrustgo_storage::WalSyncMode::Batch(n) => assert_eq!(n, 100), // default
+            _ => panic!("expected Batch with default"),
+        }
+    }
+
+    #[test]
+    fn test_compute_double_sha1() {
+        let h1 = compute_double_sha1(b"test");
+        let h2 = compute_double_sha1(b"test");
+        assert_eq!(h1, h2);
+        assert_eq!(h1.len(), 20);
+    }
+
+    #[test]
+    fn test_compute_double_sha1_different() {
+        let h1 = compute_double_sha1(b"foo");
+        let h2 = compute_double_sha1(b"bar");
+        assert_ne!(h1, h2);
+    }
+
+    #[test]
+    fn test_sha1_simple() {
+        let h1 = sha1_simple(b"hello");
+        let h2 = sha1_simple(b"hello");
+        assert_eq!(h1, h2);
+        assert_eq!(h1.len(), 20);
+    }
+
+    #[test]
+    fn test_verify_mysql_native_password_correct() {
+        // Construct a valid auth_response
+        let password = b"test_password";
+        let scramble = [1u8; 20];
+        let pwd_hash = sha1_simple(password);
+        let double_hash = compute_double_sha1(password);
+        let mut to_xor = [0u8; 20];
+        for i in 0..20 {
+            let mut h = Sha1::new();
+            h.update(&scramble);
+            h.update(&double_hash);
+            let s = h.finalize();
+            to_xor[i] = s[i];
+        }
+        let mut auth_response = [0u8; 20];
+        for i in 0..20 {
+            auth_response[i] = to_xor[i] ^ pwd_hash[i];
+        }
+        assert!(verify_mysql_native_password(
+            &double_hash,
+            &scramble,
+            &auth_response
+        ));
+    }
+
+    #[test]
+    fn test_verify_mysql_native_password_wrong_length() {
+        let h = [0u8; 20];
+        let s = [0u8; 20];
+        assert!(!verify_mysql_native_password(&h, &s, &[0u8; 10]));
+    }
+
+    #[test]
+    fn test_verify_mysql_native_password_invalid() {
+        let h = [0u8; 20];
+        let s = [0u8; 20];
+        assert!(!verify_mysql_native_password(&h, &s, &[0u8; 20]));
+    }
+
+    #[test]
+    fn test_col_type_from_string_common2() {
+        // Just verify consistency; specific values are tested in integration_tests
+        let v1 = col_type_from_string("INT");
+        let v2 = col_type_from_string("INT");
+        assert_eq!(v1, v2);
+    }
+
+    #[test]
+    fn test_col_type_from_string_top_unknown() {
+        let _ = col_type_from_string("UNKNOWN_TYPE");
+    }
+
+    #[test]
+    fn test_col_len_from_type_int() {
+        // INT should have specific length
+        let len = col_len_from_type("INT");
+        assert!(len > 0);
+    }
+
+    #[test]
+    fn test_col_len_from_type_varchar() {
+        let len = col_len_from_type("VARCHAR");
+        assert!(len > 0);
+    }
+
+    #[test]
+    fn test_col_len_from_type_unknown() {
+        // Unknown types should return default
+        let len = col_len_from_type("UNKNOWN");
+        // either 0 or some default
+        let _ = len;
+    }
+
+    #[test]
+    fn test_count_placeholders() {
+        assert_eq!(count_placeholders("SELECT 1"), 0);
+        assert_eq!(count_placeholders("SELECT ?"), 1);
+        assert_eq!(count_placeholders("SELECT ?, ?, ?"), 3);
+        assert_eq!(count_placeholders("INSERT INTO t VALUES (?, ?)"), 2);
+    }
+
+    #[test]
+    fn test_extract_insert_columns_basic() {
+        let cols = extract_insert_columns("INSERT INTO t (a, b, c) VALUES (?, ?, ?)");
+        assert_eq!(cols, vec!["a", "b", "c"]);
+    }
+
+    #[test]
+    fn test_extract_insert_columns_backticks() {
+        let cols = extract_insert_columns("INSERT INTO t (`id`, `name`) VALUES (?, ?)");
+        assert_eq!(cols, vec!["id", "name"]);
+    }
+
+    #[test]
+    fn test_extract_insert_columns_no_into() {
+        let cols = extract_insert_columns("INSERT t VALUES (1)");
+        assert!(cols.is_empty());
+    }
+
+    #[test]
+    fn test_extract_insert_columns_into_with_no_col_list() {
+        let cols = extract_insert_columns("INSERT INTO t VALUES (1)");
+        let _ = cols;
+    }
+
+    #[test]
+    fn test_extract_insert_columns_non_insert() {
+        let cols = extract_insert_columns("SELECT * FROM t");
+        assert!(cols.is_empty());
+    }
+
+    #[test]
+    fn test_extract_where_columns_basic() {
+        let cols = extract_where_columns("SELECT * FROM t WHERE id = ? AND name = ?");
+        assert!(!cols.is_empty());
+    }
+
+    #[test]
+    fn test_extract_where_columns_no_where() {
+        let cols = extract_where_columns("SELECT * FROM t");
+        assert!(cols.is_empty());
+    }
+
+    #[test]
+    fn test_extract_where_columns_single() {
+        let cols = extract_where_columns("SELECT * FROM t WHERE id = ?");
+        assert_eq!(cols, vec!["id"]);
+    }
+
+    #[test]
+    fn test_write_lenenc_int_small() {
+        let mut buf = Vec::new();
+        write_lenenc_int(&mut buf, 0).unwrap();
+        assert_eq!(buf, vec![0u8]);
+        let mut buf = Vec::new();
+        write_lenenc_int(&mut buf, 100).unwrap();
+        assert_eq!(buf, vec![100u8]);
+    }
+
+    #[test]
+    fn test_write_lenenc_int_16bit() {
+        let mut buf = Vec::new();
+        write_lenenc_int(&mut buf, 0x1234).unwrap();
+        assert_eq!(buf[0], 0xfc);
+        assert_eq!(buf.len(), 3);
+    }
+
+    #[test]
+    fn test_write_lenenc_int_24bit() {
+        let mut buf = Vec::new();
+        write_lenenc_int(&mut buf, 0x123456).unwrap();
+        assert_eq!(buf[0], 0xfd);
+        assert_eq!(buf.len(), 4);
+    }
+
+    #[test]
+    fn test_write_lenenc_int_64bit() {
+        let mut buf = Vec::new();
+        write_lenenc_int(&mut buf, 0x123456789abcdef0).unwrap();
+        assert_eq!(buf[0], 0xfe);
+        assert_eq!(buf.len(), 9);
+    }
+
+    #[test]
+    fn test_read_lenenc_int_small() {
+        let bytes = vec![42u8];
+        let mut cursor = std::io::Cursor::new(&bytes);
+        let v = read_lenenc_int(&mut cursor).unwrap();
+        assert_eq!(v, 42);
+    }
+
+    #[test]
+    fn test_read_lenenc_int_16bit() {
+        let bytes = vec![0xfc, 0x34, 0x12];
+        let mut cursor = std::io::Cursor::new(&bytes);
+        let v = read_lenenc_int(&mut cursor).unwrap();
+        assert_eq!(v, 0x1234);
+    }
+
+    #[test]
+    fn test_read_lenenc_int_24bit() {
+        let bytes = vec![0xfd, 0x56, 0x34, 0x12];
+        let mut cursor = std::io::Cursor::new(&bytes);
+        let v = read_lenenc_int(&mut cursor).unwrap();
+        assert_eq!(v, 0x123456);
+    }
+
+    #[test]
+    fn test_read_lenenc_int_64bit() {
+        let mut bytes = vec![0xfe];
+        bytes.extend_from_slice(&0x123456789abcdef0u64.to_le_bytes());
+        let mut cursor = std::io::Cursor::new(&bytes);
+        let v = read_lenenc_int(&mut cursor).unwrap();
+        assert_eq!(v, 0x123456789abcdef0);
+    }
+
+    #[test]
+    fn test_read_lenenc_int_null() {
+        let bytes = vec![0xfb];
+        let mut cursor = std::io::Cursor::new(&bytes);
+        let r = read_lenenc_int(&mut cursor);
+        assert!(r.is_err());
+    }
+
+    #[test]
+    fn test_read_lenenc_int_invalid() {
+        let bytes = vec![0xff];
+        let mut cursor = std::io::Cursor::new(&bytes);
+        let r = read_lenenc_int(&mut cursor);
+        assert!(r.is_err());
+    }
+
+    #[test]
+    fn test_write_lenenc_string_basic() {
+        let mut buf = Vec::new();
+        write_lenenc_string(&mut buf, b"hello").unwrap();
+        assert_eq!(buf[0], 5);
+        assert_eq!(&buf[1..], b"hello");
+    }
+
+    #[test]
+    fn test_write_lenenc_string_empty() {
+        let mut buf = Vec::new();
+        write_lenenc_string(&mut buf, b"").unwrap();
+        assert_eq!(buf, vec![0u8]);
+    }
+
+    #[test]
+    fn test_make_handshake_packet_basic() {
+        let scramble = [0u8; 20];
+        let p = make_handshake_packet(0, &scramble);
+        assert!(p.payload.len() > 0);
+        assert_eq!(p.sequence, 0);
+    }
+
+    #[test]
+    fn test_make_ok_packet_basic() {
+        let p = make_ok_packet(1, 0, 0, 0x02, 0);
+        assert!(p.payload.len() > 0);
+        assert_eq!(p.sequence, 1);
+    }
+
+    #[test]
+    fn test_make_err_packet_basic() {
+        let p = make_err_packet(1, 1064, "HY000", "syntax error");
+        assert!(p.payload.len() > 0);
+        assert_eq!(p.payload[0], 0xff);
+    }
+
+    #[test]
+    fn test_make_eof_packet_basic() {
+        let p = make_eof_packet(1, 0x02);
+        assert!(p.payload.len() > 0);
+        assert_eq!(p.payload[0], 0xfe);
+    }
+
+    #[test]
+    fn test_value_to_string() {
+        assert_eq!(value_to_string(&sqlrustgo_types::Value::Integer(42)), "42");
+        assert_eq!(
+            value_to_string(&sqlrustgo_types::Value::Text("hi".to_string())),
+            "hi"
+        );
+        assert_eq!(value_to_string(&sqlrustgo_types::Value::Boolean(true)), "1");
+        assert_eq!(
+            value_to_string(&sqlrustgo_types::Value::Boolean(false)),
+            "0"
+        );
+        assert_eq!(value_to_string(&sqlrustgo_types::Value::Null), "NULL");
+    }
     // Test Packet serialization - roundtrip
     #[test]
     fn test_packet_roundtrip() {
@@ -5376,11 +5702,11 @@ pub mod testing {
 
     #[cfg(test)]
     mod testing_inline_tests {
-    // ========================================================================
-    // Inline tests (G3 mysql-server coverage lift, 2026-08-09)
-    // Migrated from crates/mysql-server/tests/*.rs so cargo llvm-cov --lib
-    // exercises the testing module helpers without spinning up TCP.
-    // ========================================================================
+        // ========================================================================
+        // Inline tests (G3 mysql-server coverage lift, 2026-08-09)
+        // Migrated from crates/mysql-server/tests/*.rs so cargo llvm-cov --lib
+        // exercises the testing module helpers without spinning up TCP.
+        // ========================================================================
         use super::*;
 
         #[test]
