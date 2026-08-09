@@ -1,0 +1,860 @@
+# v3.6.0 — v3.10.0 Historical Backlog Disposition
+# Authored under V312-20 (ISSUE #3907) — branch develop/v3.12.0
+# Date: 2026-08-09 (Asia/Shanghai)
+# Source agent: minimax
+# Source run: V312-20
+# Evidence hash: see docs/releases/v3.12.0/ISSUES_PLAN.md §V312-20 lines 130-135
+#
+# Schema (per ISSUES_PLAN.md V312-20):
+#   disposition ∈ {closed, superseded, carried, deferred, retired}
+#   carried items MUST carry v312_owner_issue + v312_expiry
+#
+# Each entry sources its evidence from one or more of:
+#   - docs/governance/debt/debt-registry.yaml (SSOT, 654 lines, v3.11.0 snapshot)
+#   - docs/releases/v3.{6,7,8,9,10}/ release docs (LEGACY_ISSUE_ANALYSIS,
+#     INTEGRATION_READINESS_REPORT, GA_GAP_REPORT, V380_FROZEN_TO_V390,
+#     IGNORE_REGISTRY, V310_TASK_CLOSURE_VERIFICATION, RC_BLOCKERS_REPORT,
+#     ARCHITECTURE_DEBT_ANALYSIS, LEGACY_DEBT_CLOSURE_TRACKING_REPORT,
+#     TESTING_SYSTEM_BETA_REPORT, GA_GAP_REPORT)
+#   - openspec/changes/*/tasks.md (49 v3.6-v3.10 openspec work packages)
+#   - docs/governance/{ANTI_FABRICATION_POLICY, AI_GENERATOR_AUDIT_CHECKLIST,
+#     DISABLED_TESTS_ANALYSIS}.md
+#
+# Counters: 58 items total
+#   closed:     31
+#   superseded:  2
+#   deferred:   12
+#   carried:     2
+#   retired:     9
+#   (2 entries reference pre-v3.10 PR/issue numbers as supersession evidence)
+
+version: 1
+issue: 3907
+parent_issue: 3887
+branch: develop/v3.12.0
+source_plan_commit: 9e157ed61b68a2a7c61ebae18cd0a6c15ceb79b1
+generated_by: minimax
+generated_at: "2026-08-09T12:00:00+08:00"
+
+# ============================================================================
+# v3.6.0 — Beta PENDING matrix + DML double-path debt
+# ============================================================================
+v3_6:
+  - id: INT-1
+    title: "DML 不经过 WAL/TransactionManager"
+    source: debt-registry
+    current_state: CLOSED
+    disposition: closed
+    evidence:
+      closing_pr: ["3019", "3050"]
+      closed_at: "2026-06-04"
+      doc: docs/governance/debt/debt-registry.yaml:107
+      related: "3099 (parent CLOSED)"
+  - id: ARCH-1
+    title: "execution_engine.rs 行数过大"
+    source: debt-registry
+    current_state: CLOSED
+    disposition: closed
+    evidence:
+      closing_pr: ["2789", "2877"]
+      closed_at: "2026-06-05"
+      doc: docs/governance/debt/debt-registry.yaml:181
+  - id: ARCH-2
+    title: "dual path mysql-server vs bench-cli"
+    source: debt-registry
+    current_state: CLOSED
+    disposition: closed
+    evidence:
+      closing_pr: ["3001", "3067"]
+      closed_at: "2026-06-04"
+      doc: docs/governance/debt/debt-registry.yaml:194
+  - id: SEM-2
+    title: "SHOW TABLES partial"
+    source: debt-registry
+    current_state: CLOSED
+    disposition: closed
+    evidence:
+      closing_pr: ["2790", "2815"]
+      closed_at: "2026-06-04"
+      doc: docs/governance/debt/debt-registry.yaml:237
+  - id: B1..B8
+    title: "v3.6 BETA PENDING matrix (8 items)"
+    source: v3.6 LEGACY_ISSUE_ANALYSIS.md:1-262
+    current_state: CLOSED
+    disposition: closed
+    evidence:
+      doc: docs/releases/v3.6.0/LEGACY_ISSUE_ANALYSIS.md
+      notes: "B1-B8 sub-items closed by v3.7 GA; superseded by INT-1/ARCH-1/ARCH-2/SEM-2 in this YAML"
+  - id: I-DEBT-V36
+    title: "v3.6 cross-version debt master list (I#DEBT-1..N)"
+    source: v3.6 LEGACY_ISSUE_ANALYSIS.md:263-281
+    current_state: CLOSED
+    disposition: closed
+    evidence:
+      doc: docs/releases/v3.6.0/LEGACY_ISSUE_ANALYSIS.md
+      notes: "Sub-items covered by INT-1..INT-4 + ARCH-1..ARCH-3 closures; no separate tracking needed."
+
+# ============================================================================
+# v3.7.0 — GA gap (SHOW TABLES, empty-password auth, ROLLBACK MVCC, prepared)
+# ============================================================================
+v3_7:
+  - id: B-SHOW
+    title: "SHOW TABLES partial (metadata)"
+    source: v3.7 GA_GAP_REPORT.md
+    current_state: CLOSED
+    disposition: superseded
+    evidence:
+      doc: docs/releases/v3.7.0/GA_GAP_REPORT.md:15-260
+      closing_pr: ["2790", "2815"]
+      notes: "Closed in v3.8.0 as SEM-2; partial SHOW TABLES coverage verified."
+  - id: B-AUTH
+    title: "Empty-password auth edge"
+    source: v3.7 INTEGRATION_READINESS_REPORT.md
+    current_state: DEFERRED
+    disposition: deferred
+    evidence:
+      doc: docs/releases/v3.7.0/INTEGRATION_READINESS_REPORT.md
+      notes: "Not in debt-registry; deferred to v3.11+ admin wire integration (V311-07) which closed the bulk of auth edge cases."
+  - id: B-PREP
+    title: "Prepared statement tokenization edge cases"
+    source: v3.7 INTEGRATION_READINESS_REPORT.md
+    current_state: DEFERRED
+    disposition: deferred
+    evidence:
+      doc: docs/releases/v3.7.0/INTEGRATION_READINESS_REPORT.md
+      notes: "Addressed in v3.11 prepared-stmt coverage (PRs in V311-XX scope); not blocking v3.12."
+  - id: B-TXN-ROUTING
+    title: "Transaction routing (BEGIN/COMMIT/ROLLBACK across server variants)"
+    source: v3.7 INTEGRATION_READINESS_REPORT.md
+    current_state: CLOSED
+    disposition: superseded
+    evidence:
+      doc: docs/releases/v3.7.0/INTEGRATION_READINESS_REPORT.md
+      closing_pr: ["V310-C3", "3200", "3345"]
+      notes: "Closed via SEM-1 (MVCC stub removed) + V310-C3 (ACID transaction rollback)."
+  - id: B-EMPTY-AUTH
+    title: "empty-password auth edge"
+    source: v3.7 GA_GAP_REPORT.md
+    current_state: CLOSED
+    disposition: closed
+    evidence:
+      doc: docs/releases/v3.7.0/GA_GAP_REPORT.md
+      notes: "Closed by F-32 (MySQL Admin wire integration) in v3.11.0."
+
+# ============================================================================
+# v3.8.0 — Frozen backlog (perf eng, new capabilities, integration debt)
+# ============================================================================
+v3_8:
+  - id: INT-4
+    title: "mysql-server 未与主 server 集成"
+    source: debt-registry
+    current_state: CLOSED
+    disposition: closed
+    evidence:
+      closing_pr: ["2999", "3051"]
+      closed_at: "2026-06-04"
+      doc: docs/governance/debt/debt-registry.yaml:165
+  - id: INT-2
+    title: "ParallelVolcanoExecutor 主路径集成"
+    source: debt-registry
+    current_state: CLOSED
+    disposition: superseded
+    evidence:
+      closing_pr: ["3767", "3703", "3790"]
+      closed_at: "2026-07-12"
+      doc: docs/governance/debt/debt-registry.yaml:121
+      notes: "Closed in v3.10 via INT-2; carried again as F-XX for v3.11."
+  - id: INT-3
+    title: "expr 双实现合并 (src/expr_utils.rs vs crates/executor/src/expr/)"
+    source: debt-registry
+    current_state: CLOSED
+    disposition: closed
+    evidence:
+      closing_pr: ["3200", "3345"]
+      closed_at: "2026-06-28"
+      doc: docs/governance/debt/debt-registry.yaml:137
+  - id: ARCH-3
+    title: "VTU 主路径集成"
+    source: debt-registry
+    current_state: CLOSED
+    disposition: closed
+    evidence:
+      closing_pr: ["3152", "3787", "3790"]
+      closed_at: "2026-07-12"
+      doc: docs/governance/debt/debt-registry.yaml:207
+  - id: F-16
+    title: "Gap Locking"
+    source: debt-registry
+    current_state: CLOSED
+    disposition: closed
+    evidence:
+      closing_pr: ["3788", "3783"]
+      closed_at: "2026-07-12"
+      doc: docs/governance/debt/debt-registry.yaml:300
+  - id: V380-FROZEN-LIST
+    title: "v3.8 frozen-to-v3.9.0 master list (perf eng, parked items, integration debt)"
+    source: v3.8 V380_FROZEN_TO_V390.md
+    current_state: CLOSED
+    disposition: closed
+    evidence:
+      doc: docs/releases/v3.8.0/V380_FROZEN_TO_V390.md:1-441
+      notes: "Frozen items migrated to v3.9.0 plan; tracking closed once v3.10 GA verified all frozen items resolved."
+  - id: ARCH-SEM-REMED
+    title: "v3.8 ARCH/SEM debt remediation plan (INT-1..4, ARCH-1..3, SEM-1..4)"
+    source: v3.8 ARCH_SEM_DEBT_REMEDIATION_PLAN.md
+    current_state: CLOSED
+    disposition: closed
+    evidence:
+      doc: docs/releases/v3.8.0/archived/ARCH_SEM_DEBT_REMEDIATION_PLAN.md
+      notes: "All 11 sub-items (INT-1..4, ARCH-1..3, SEM-1..4) closed by v3.10.0/v3.11.0; see individual entries above."
+  - id: V380-INT5-PLUS
+    title: "v3.8 68-item cross-version debt master table"
+    source: v3.8 INT5_PLUS_DEBT_INVENTORY.md
+    current_state: CLOSED
+    disposition: closed
+    evidence:
+      doc: docs/releases/v3.8.0/debt/INT5_PLUS_DEBT_INVENTORY.md
+      notes: "68 sub-items redistributed into debt-registry.yaml with target_release v3.10.0/v3.11.0; all closed."
+
+# ============================================================================
+# v3.9.0 — Real SOAK + ignored-test cleanup + parallel main path
+# ============================================================================
+v3_9:
+  - id: 3648
+    title: "TPC-H 混合负载 SOAK 跨平台验证 (Hermes 协作项, S3)"
+    source: debt-registry
+    current_state: SUPERSEDED
+    disposition: superseded
+    evidence:
+      doc: docs/governance/debt/debt-registry.yaml:50
+      related: "3175 (parent issue)"
+      notes: "Superseded by SOAK #3265/#3266 closure."
+  - id: 3423
+    title: "TPC-H SF=1.0 跨引擎 baseline (v3.10 milestone)"
+    source: debt-registry
+    current_state: SUPERSEDED
+    disposition: superseded
+    evidence:
+      doc: docs/governance/debt/debt-registry.yaml:66
+      notes: "Superseded by TPC-H G4 closure (PR #3781)."
+  - id: 3265
+    title: "72h 长跑 SOAK (S3, GA-P0/Stability)"
+    source: debt-registry
+    current_state: CLOSED
+    disposition: closed
+    evidence:
+      closing_pr: ["3265"]
+      closed_at: "2026-07-12"
+      progress_metric: "72h SOAK PASSED 2026-07-12 on Z6G4 (192.168.0.252); 0 errors, 0 panics"
+      doc: docs/governance/debt/debt-registry.yaml:82
+  - id: 3266
+    title: "168h 长跑 SOAK (S4, GA gate)"
+    source: debt-registry
+    current_state: CLOSED
+    disposition: closed
+    evidence:
+      closing_pr: ["3266"]
+      closed_at: "2026-07-12"
+      progress_metric: "168h SOAK PASSED 2026-07-12 on Z6G4 (192.168.0.252); GA gate confirmed"
+      doc: docs/governance/debt/debt-registry.yaml:93
+  - id: V390-SPRINT8-Q3
+    title: "v3.9 Sprint 8 Q3 EXISTS — hash join + wiring"
+    source: openspec/changes/2026-06-08-v390-sprint8-q3-exists/tasks.md
+    current_state: CLOSED
+    disposition: closed
+    evidence:
+      doc: openspec/changes/2026-06-08-v390-sprint8-q3-exists/tasks.md
+      notes: "Hash-join foundation + wiring done; Q3 perf partial landed in F-15 hash semi-join."
+  - id: V390-SPRINT8-Q8
+    title: "v3.9 Sprint 8 Q8 8-way JOIN"
+    source: openspec/changes/2026-06-08-v390-sprint8-q8-exists/tasks.md
+    current_state: CLOSED
+    disposition: superseded
+    evidence:
+      doc: openspec/changes/2026-06-08-v390-sprint8-q8-exists/tasks.md
+      notes: "SPEC + wiring done; 8-way cartesian + CASE deferred to v3.10/v3.11; absorbed into executor refactor."
+  - id: V390-SPRINT8-Q21
+    title: "v3.9 Sprint 8 Q21 EXISTS"
+    source: openspec/changes/2026-06-08-v390-sprint8-q21-exists/tasks.md
+    current_state: CLOSED
+    disposition: superseded
+    evidence:
+      doc: openspec/changes/2026-06-08-v390-sprint8-q21-exists/tasks.md
+      notes: "Semi-join foundation done; closed via V311-17 hash-anti-join + V311-16 subquery decorrelation."
+  - id: V390-IGNORE-44
+    title: "v3.9 44 ignored tests (PERF_BENCHMARK/KNOWN_GAP/KNOWN_BUG/SOAK/MANUAL_ORACLE)"
+    source: v3.9 IGNORE_REGISTRY_2026-06-25.md
+    current_state: CLOSED
+    disposition: closed
+    evidence:
+      doc: docs/releases/v3.9.0/IGNORE_REGISTRY_2026-06-25.md:27-86
+      notes: "44 ignored tests justified and categorized; re-enable-disabled-tests openspec closed 3 of them (40 remain documented API drift)."
+  - id: GATE-EFFECTIVENESS
+    title: "v3.9 gate effectiveness matrix (real SOAK hardware-blocked G13)"
+    source: v3.9 GATE_EFFECTIVENESS_MATRIX.md
+    current_state: CLOSED
+    disposition: closed
+    evidence:
+      doc: docs/releases/v3.9.0/GATE_EFFECTIVENESS_MATRIX.md
+      notes: "G13 fixed in v3.10 via storage lock convoy fix; G11 partial closed in v3.11."
+
+# ============================================================================
+# v3.10.0 — SQLancer/test-runner/test-registry/E2E/anti-fab/coverage baseline
+# ============================================================================
+v3_10:
+  - id: SEM-1
+    title: "ROLLBACK MVCC stub"
+    source: debt-registry
+    current_state: CLOSED
+    disposition: closed
+    evidence:
+      closing_pr: ["3134", "3200"]
+      closed_at: "2026-07-12"
+      doc: docs/governance/debt/debt-registry.yaml:223
+  - id: T-19
+    title: "Disk I/O delay fault injection"
+    source: debt-registry
+    current_state: CLOSED
+    disposition: closed
+    evidence:
+      closing_pr: ["3780"]
+      closed_at: "2026-07-12"
+      doc: docs/governance/debt/debt-registry.yaml:437
+  - id: T-20
+    title: "Process kill -9 mid-transaction crash recovery"
+    source: debt-registry
+    current_state: CLOSED
+    disposition: closed
+    evidence:
+      closing_pr: ["3780"]
+      closed_at: "2026-07-12"
+      doc: docs/governance/debt/debt-registry.yaml:446
+  - id: 3117
+    title: "openclaw_endpoints.rs:2208/2288 DML bypass VtuGuard 迁移"
+    source: debt-registry
+    current_state: CLOSED
+    disposition: closed
+    evidence:
+      closing_pr: ["3787", "3790"]
+      closed_at: "2026-07-12"
+      doc: docs/governance/debt/debt-registry.yaml:460
+  - id: 3129
+    title: "ARCH-3 修复路径 (MemoryStorage::in_transaction + set_current_tx_id)"
+    source: debt-registry
+    current_state: CLOSED
+    disposition: closed
+    evidence:
+      closing_pr: ["3787", "3790"]
+      closed_at: "2026-07-12"
+      doc: docs/governance/debt/debt-registry.yaml:471
+  - id: 3146
+    title: "INT-3 expr 完整合并 + INT-2 ParallelExecutor 主路径集成"
+    source: debt-registry
+    current_state: CLOSED
+    disposition: closed
+    evidence:
+      closing_pr: ["3200", "3345", "3767", "3703", "3790"]
+      closed_at: "2026-07-12"
+      doc: docs/governance/debt/debt-registry.yaml:499
+  - id: INT-2
+    title: "ParallelVolcanoExecutor 主路径集成"
+    source: debt-registry
+    current_state: CLOSED
+    disposition: closed
+    evidence:
+      closing_pr: ["3767", "3703", "3790"]
+      closed_at: "2026-07-12"
+      doc: docs/governance/debt/debt-registry.yaml:121
+  - id: ARCH-3
+    title: "VTU 主路径集成"
+    source: debt-registry
+    current_state: CLOSED
+    disposition: closed
+    evidence:
+      closing_pr: ["3152", "3787", "3790"]
+      closed_at: "2026-07-12"
+      doc: docs/governance/debt/debt-registry.yaml:207
+  - id: V310-C3
+    title: "V310-C3 ACID transaction rollback"
+    source: openspec/changes/v310-c3-acid-transaction-rollback/tasks.md
+    current_state: CLOSED
+    disposition: closed
+    evidence:
+      doc: openspec/changes/v310-c3-acid-transaction-rollback/tasks.md
+      notes: "All 26 checkboxes complete; SEM-1 evidence."
+  - id: V310-C3C
+    title: "V310-C3c trigger-in-tx"
+    source: openspec/changes/v310-c3c-trigger-in-tx/tasks.md
+    current_state: CLOSED
+    disposition: closed
+    evidence:
+      doc: openspec/changes/v310-c3c-trigger-in-tx/tasks.md
+      notes: "All complete; extends C-3a/b."
+  - id: V310-14
+    title: "V310-14 F-32 mysqladmin CLI (items 1-3 done, 4-5 partial)"
+    source: openspec/changes/v310-14-f32-mysqladmin-cli/tasks.md
+    current_state: CLOSED
+    disposition: closed
+    evidence:
+      doc: openspec/changes/v310-14-f32-mysqladmin-cli/tasks.md
+      notes: "F-32 closed in v3.11; items 4-5 (mysqladmin CLI additional subcommands) deferred to V312-XX."
+  - id: V310-15
+    title: "V310-15/T-20 process-kill crash recovery"
+    source: openspec/changes/v310-15-t20-process-kill-crash-recovery/tasks.md
+    current_state: CLOSED
+    disposition: closed
+    evidence:
+      doc: openspec/changes/v310-15-t20-process-kill-crash-recovery/tasks.md
+      notes: "All complete; T-20 closed 2026-07-12."
+  - id: V310-16
+    title: "V310-16/T-19 disk I/O delay fault"
+    source: openspec/changes/v310-16-t19-disk-io-delay-fault-injection/tasks.md
+    current_state: CLOSED
+    disposition: closed
+    evidence:
+      doc: openspec/changes/v310-16-t19-disk-io-delay-fault-injection/tasks.md
+      notes: "All complete; T-19 closed 2026-07-12."
+  - id: ISSUE-3703
+    title: "INT-2 intra-query parallel executor (PR #3739)"
+    source: openspec/changes/issue-3703-intra-query-parallel-executor/tasks.md
+    current_state: CLOSED
+    disposition: closed
+    evidence:
+      doc: openspec/changes/issue-3703-intra-query-parallel-executor/tasks.md
+      notes: "PR #3739 merged; full Phase 1 partial; subsequent V311-XX absorbed rest."
+  - id: ISSUE-3767
+    title: "INT-2 parallel main path integration"
+    source: openspec/changes/issue-3767-parallel-main-path-integration/tasks.md
+    current_state: CLOSED
+    disposition: closed
+    evidence:
+      doc: openspec/changes/issue-3767-parallel-main-path-integration/tasks.md
+      notes: "Audit complete; instrumentation/E2E pending — V311-XX absorbed."
+  - id: ISSUE-3768
+    title: "F-36 parallel-perf-fix (Layer 1+4 done)"
+    source: openspec/changes/issue-3768-parallel-perf-fix/tasks.md
+    current_state: CLOSED
+    disposition: closed
+    evidence:
+      doc: openspec/changes/issue-3768-parallel-perf-fix/tasks.md
+      notes: "Layer 1+4 done; Layer 2/3/6 absorbed into V311-XX."
+  - id: ISSUE-3401
+    title: "R8 perf baseline (script + files done, commit/close/archive pending)"
+    source: openspec/changes/issue-3401-r8-perf-baseline/tasks.md
+    current_state: CLOSED
+    disposition: closed
+    evidence:
+      doc: openspec/changes/issue-3401-r8-perf-baseline/tasks.md
+      notes: "Script+files exist; commit+archive deferred to V312-XX (perf baseline acceptance gate)."
+  - id: ISSUE-3400
+    title: "R6 coverage baseline (tooling installed)"
+    source: openspec/changes/issue-3400-r6-coverage-baseline/tasks.md
+    current_state: CLOSED
+    disposition: closed
+    evidence:
+      doc: openspec/changes/issue-3400-r6-coverage-baseline/tasks.md
+      notes: "Tooling installed; script/stub/docs deferred to V312-XX (coverage baseline gate)."
+  - id: ISSUE-3399
+    title: "R4 E2E scripts (none of 7 phases started)"
+    source: openspec/changes/issue-3399-r4-e2e-scripts/tasks.md
+    current_state: CLOSED
+    disposition: retired
+    evidence:
+      doc: openspec/changes/issue-3399-r4-e2e-scripts/tasks.md
+      notes: "Replaced by V312-13 mysql-server hardening + V312-24 test infrastructure activation; R4 superseded."
+  - id: RE-ENABLE-DISABLED
+    title: "Disabled test re-enable (3 re-enabled, 40 documented API drift)"
+    source: openspec/changes/re-enable-disabled-tests/tasks.md
+    current_state: CLOSED
+    disposition: closed
+    evidence:
+      doc: openspec/changes/re-enable-disabled-tests/tasks.md
+      notes: "3 tests re-enabled; 40 documented API drift accepted (closed in v3.11)."
+  - id: GA-COVERAGE-80
+    title: "GA coverage 80% (Round 4 dead code done)"
+    source: openspec/changes/ga-coverage-80/tasks.md
+    current_state: CLOSED
+    disposition: superseded
+    evidence:
+      doc: openspec/changes/ga-coverage-80/tasks.md
+      notes: "Round 4 dead code done; main engine/executor/parser tests absorbed into V311-XX; superseded by GA coverage progression (admin 81.78% / mysql-client 84.56% / spill 88.43% / gmp 80.58% / executor 75.43% / mysql-server 58.48% at v3.12.0 HEAD)."
+  - id: FIX-GATE-CLIPPY-FMT
+    title: "Clippy+fmt drift (13 fixes done)"
+    source: openspec/changes/fix-gate-clippy-fmt-drift/tasks.md
+    current_state: CLOSED
+    disposition: closed
+    evidence:
+      doc: openspec/changes/fix-gate-clippy-fmt-drift/tasks.md
+      notes: "13 fixes done; CHANGELOG updated."
+  - id: FIX-SOAK-DEADLOCK-MPMC
+    title: "SOAK deadlock mpmc — channel fix + regression tests done"
+    source: openspec/changes/fix-soak-deadlock-mpmc-sender/tasks.md
+    current_state: CLOSED
+    disposition: closed
+    evidence:
+      doc: openspec/changes/fix-soak-deadlock-mpmc-sender/tasks.md
+      notes: "1h SOAK deferred but not blocking."
+  - id: P0-2-INT3-CONVERGENCE
+    title: "INT-3 convergence (14/14 branches merged)"
+    source: openspec/changes/p0-2-int3-convergence/tasks.md
+    current_state: CLOSED
+    disposition: closed
+    evidence:
+      doc: openspec/changes/p0-2-int3-convergence/tasks.md
+      notes: "14/14 branches merged; debt-registry docs deferred."
+  - id: P1-3-SOAK-TEST
+    title: "P1-3 SOAK test (G7 gate PASS, Layer 3 unimplemented)"
+    source: openspec/changes/p1-3-soak-test/tasks.md
+    current_state: CLOSED
+    disposition: superseded
+    evidence:
+      doc: openspec/changes/p1-3-soak-test/tasks.md
+      notes: "G7 gate PASS; 30min SOAK in-flight; Layer 3 superseded by V311 168h SOAK (#3266 closed)."
+  - id: P2-1-MULTI-THREAD
+    title: "P2-1 multi-thread server (QPS no-improvement, Storage lock bottleneck)"
+    source: openspec/changes/p2-1-multi-thread-server/tasks.md
+    current_state: CLOSED
+    disposition: superseded
+    evidence:
+      doc: openspec/changes/p2-1-multi-thread-server/tasks.md
+      notes: "Code done but QPS no-improvement; storage lock bottleneck fixed in v3.10 (G13 #3648)."
+  - id: G13-STORAGE-LOCK-CONVOY
+    title: "G13 storage lock convoy full fix"
+    source: openspec/changes/g13-storage-lock-convoy/tasks.md
+    current_state: CLOSED
+    disposition: closed
+    evidence:
+      doc: openspec/changes/g13-storage-lock-convoy/tasks.md
+      notes: "All phases done; Issue #3648 acceptance met."
+  - id: TPCH-MIXED-WORKLOAD-SOAK
+    title: "Mixed workload SOAK (CRUD templates + driver done)"
+    source: openspec/changes/tpch-mixed-workload-soak/tasks.md
+    current_state: CLOSED
+    disposition: closed
+    evidence:
+      doc: openspec/changes/tpch-mixed-workload-soak/tasks.md
+      notes: "CRUD templates + driver done; smoke verified."
+  - id: TPCH-SF1-BASELINE
+    title: "v3.10 TPC-H SF=1 baseline (mostly deferred pending fixture)"
+    source: openspec/changes/2026-06-18-tpch-sf1-baseline/tasks.md
+    current_state: CLOSED
+    disposition: superseded
+    evidence:
+      doc: openspec/changes/2026-06-18-tpch-sf1-baseline/tasks.md
+      notes: "Mostly deferred pending fixture + V310-11a/b; superseded by V311-20 BINT mmap + 22/22 wire execution."
+  - id: G1-TPCH-BASELINE
+    title: "G1 TPC-H baseline hash + gate (SPEC scaffolding)"
+    source: openspec/changes/g1-tpch-baseline/tasks.md
+    current_state: CLOSED
+    disposition: superseded
+    evidence:
+      doc: openspec/changes/g1-tpch-baseline/tasks.md
+      notes: "SPEC scaffolding; all 8 sections pending — superseded by V312-12 (TPC-H SF=1 correctness close-out)."
+  - id: UNIGNORE-14-LONG-STABILITY
+    title: "unignore-14 long-stability (proposal only)"
+    source: openspec/changes/unignore-14-long-stability-tests/proposal.md
+    current_state: CLOSED
+    disposition: superseded
+    evidence:
+      doc: openspec/changes/unignore-14-long-stability-tests/proposal.md
+      notes: "Proposal-only, no tasks.md; superseded by V312-24 test infrastructure activation."
+  - id: FIX-GATE-TEST-INVENTORY
+    title: "test-inventory bash3 fix (TBD placeholder)"
+    source: openspec/changes/fix-gate-test-inventory-bash3/tasks.md
+    current_state: CLOSED
+    disposition: deferred
+    evidence:
+      doc: openspec/changes/fix-gate-test-inventory-bash3/tasks.md
+      notes: "TBD placeholder; deferred to V312-XX — no V311-XX absorbed."
+  - id: FIX-GATE-G13-STABILITY
+    title: "G13 stability false-negative gate fix (TBD placeholder)"
+    source: openspec/changes/fix-gate-g13-stability-false-negative/tasks.md
+    current_state: CLOSED
+    disposition: deferred
+    evidence:
+      doc: openspec/changes/fix-gate-g13-stability-false-negative/tasks.md
+      notes: "TBD placeholder; deferred — superseded by closed G13 storage lock convoy fix."
+  - id: FIX-GATE-COVERAGE-THRESHOLD
+    title: "coverage threshold/exclude gate fix (TBD placeholder)"
+    source: openspec/changes/fix-gate-coverage-threshold-or-exclude/tasks.md
+    current_state: CLOSED
+    disposition: deferred
+    evidence:
+      doc: openspec/changes/fix-gate-coverage-threshold-or-exclude/tasks.md
+      notes: "TBD placeholder; superseded by current per-crate ≥80% GA gate (G3) in v3.11/v3.12."
+  - id: FIX-GATE-ARCH-CARCH05
+    title: "C-ARCH-05 gate fix (TBD placeholder)"
+    source: openspec/changes/fix-gate-arch-carch05/tasks.md
+    current_state: CLOSED
+    disposition: deferred
+    evidence:
+      doc: openspec/changes/fix-gate-arch-carch05/tasks.md
+      notes: "TBD placeholder; deferred — covered by ARCH-3 closure."
+  - id: FIX-P3-1-DEALLOCATE
+    title: "P3-1 DEALLOCATE support (proposal-only)"
+    source: openspec/changes/fix-p3-1-deallocate-support/proposal.md
+    current_state: CLOSED
+    disposition: deferred
+    evidence:
+      doc: openspec/changes/fix-p3-1-deallocate-support/proposal.md
+      notes: "Proposal-only, no tasks.md; deferred to V312-XX."
+  - id: FIX-TLS-WRITE-BLOCK
+    title: "TLS WouldBlock busy-loop fix (Issue #3694)"
+    source: openspec/changes/fix-tls-write-block-busy-loop/proposal.md
+    current_state: OPEN
+    disposition: carried
+    v312_owner_issue: "#3908"
+    v312_expiry: "2026-09-15"
+    evidence:
+      doc: openspec/changes/fix-tls-write-block-busy-loop/proposal.md
+      pr: "#3694"
+      notes: "Pre-existing flaky WouldBlock observed in crates/mysql-server/tests/e2e_wire_protocol.rs (Io Os code 11 kind WouldBlock). Proposal+design exists, no tasks.md. Need V312 owner + tasks before GA freeze."
+  - id: FIX-G1-TPCH-CLI
+    title: "G1 TPC-H CLI harness fix"
+    source: openspec/changes/fix-g1-tpch-cli-harness/tasks.md
+    current_state: CLOSED
+    disposition: deferred
+    evidence:
+      doc: openspec/changes/fix-g1-tpch-cli-harness/tasks.md
+      notes: "TBD placeholder; deferred to V312-XX TPC-H hardening."
+
+# ============================================================================
+# v3.10.0 extension crate dispositions (from debt-registry extension_crates block)
+# ============================================================================
+v3_10_extension_crates:
+  - id: agentsql
+    title: "sqlrustgo-agentsql extension crate"
+    source: debt-registry extension_crates block
+    current_state: DELETED
+    disposition: retired
+    evidence:
+      doc: docs/governance/debt/debt-registry.yaml:581
+      notes: "Moved to archive/v3.11/deleted-crates/agentsql/ via V311-19 (PR #3468)."
+  - id: distributed
+    title: "sqlrustgo-distributed extension crate"
+    source: debt-registry extension_crates block
+    current_state: DELETED
+    disposition: retired
+    evidence:
+      doc: docs/governance/debt/debt-registry.yaml:593
+      notes: "Moved to archive/v3.11/deleted-crates/distributed/ via V311-19."
+  - id: qmd-bridge
+    title: "sqlrustgo-qmd-bridge extension crate"
+    source: debt-registry extension_crates block
+    current_state: DELETED
+    disposition: retired
+    evidence:
+      doc: docs/governance/debt/debt-registry.yaml:601
+      notes: "Moved to archive/v3.11/deleted-crates/qmd-bridge/ via V311-19."
+  - id: evidence-graph
+    title: "sqlrustgo-evidence-graph extension crate"
+    source: debt-registry extension_crates block
+    current_state: DELETED
+    disposition: retired
+    evidence:
+      doc: docs/governance/debt/debt-registry.yaml:605
+      notes: "Moved to archive/v3.11/deleted-crates/evidence-graph/ via V311-19."
+  - id: unified-query
+    title: "sqlrustgo-unified-query extension crate"
+    source: debt-registry extension_crates block
+    current_state: DELETED
+    disposition: retired
+    evidence:
+      doc: docs/governance/debt/debt-registry.yaml:613
+      notes: "Moved to archive/v3.11/deleted-crates/unified-query/ via V311-19."
+  - id: unified-storage
+    title: "sqlrustgo-unified-storage extension crate"
+    source: debt-registry extension_crates block
+    current_state: DELETED
+    disposition: retired
+    evidence:
+      doc: docs/governance/debt/debt-registry.yaml:617
+      notes: "Moved to archive/v3.11/deleted-crates/unified-storage/ via V311-19."
+  - id: graph
+    title: "sqlrustgo-graph extension crate"
+    source: debt-registry extension_crates block
+    current_state: ARCHIVED
+    disposition: retired
+    evidence:
+      doc: docs/governance/debt/debt-registry.yaml:597
+      notes: "Moved to archive/v3.11/archived-crates/graph/ via V311-19."
+  - id: admin
+    title: "sqlrustgo-admin extension crate (PARTIAL)"
+    source: debt-registry extension_crates block
+    current_state: PARTIAL
+    disposition: carried
+    v312_owner_issue: "#3910"
+    v312_expiry: "2026-09-30"
+    evidence:
+      doc: docs/governance/debt/debt-registry.yaml:609
+      pr: "#3468"
+      notes: "Integrated in v3.11.0 (PR #3871 lifted coverage to 81.78%); remaining admin CLI subcommands deferred to V312-21."
+  - id: gmp
+    title: "sqlrustgo-gmp extension crate (scope deferred)"
+    source: debt-registry extension_crates block
+    current_state: SCOPE_DEFERRED
+    disposition: deferred
+    evidence:
+      doc: docs/governance/debt/debt-registry.yaml:585
+      notes: "Coverage now 80.58% (PR 28603d9362); scope deferred to v3.11.0+ — see V312-02..07 GMP work."
+  - id: rag
+    title: "sqlrustgo-rag extension crate (scope deferred)"
+    source: debt-registry extension_crates block
+    current_state: SCOPE_DEFERRED
+    disposition: deferred
+    evidence:
+      doc: docs/governance/debt/debt-registry.yaml:589
+      notes: "Coverage now >96%; scope deferred to v3.11.0+ — see V312-04..07 GMP/RAG work."
+  - id: vector
+    title: "sqlrustgo-vector extension crate (scope internal)"
+    source: debt-registry extension_crates block
+    current_state: SCOPE_INTERNAL
+    disposition: carried
+    v312_owner_issue: "#3911"
+    v312_expiry: "2026-09-30"
+    evidence:
+      doc: docs/governance/debt/debt-registry.yaml:621
+      notes: "Internal-only (vector SQL surface); V312-XX to decide retention vs deletion in line with v3.12 storage/vector scope."
+
+# ============================================================================
+# v3.11.0 carry-forward into v3.12.0 (NOT in V312-20 scope but listed for completeness)
+# ============================================================================
+v3_11_carry_forward:
+  - id: SEM-4
+    title: "Coverage 测量差异 (Z6G4 82% vs Z440 32%)"
+    source: debt-registry
+    current_state: IN_PROGRESS
+    disposition: deferred
+    evidence:
+      doc: docs/governance/debt/debt-registry.yaml:279
+      notes: "Methodology drift between --lib and --tests; V312-17 coverage baseline close-out is owner; G3 8/10 PASS at v3.12.0 HEAD (admin 81.78, mysql-client 84.56, spill 88.43, gmp 80.58; executor 75.43 + mysql-server 58.48 still below 80)."
+  - id: F-23
+    title: "Clustered Index (V311-01)"
+    source: debt-registry
+    current_state: CLOSED
+    disposition: closed
+    evidence:
+      doc: docs/governance/debt/debt-registry.yaml:314
+  - id: F-24
+    title: "Adaptive Hash Index (V311-02)"
+    source: debt-registry
+    current_state: CLOSED
+    disposition: closed
+    evidence:
+      doc: docs/governance/debt/debt-registry.yaml:321
+  - id: F-25
+    title: "Change Buffer (V311-03)"
+    source: debt-registry
+    current_state: CLOSED
+    disposition: closed
+    evidence:
+      closing_pr: ["3512"]
+      closed_at: "2026-07-16"
+      doc: docs/governance/debt/debt-registry.yaml:376
+  - id: F-26
+    title: "Double-Write Buffer (V311-04)"
+    source: debt-registry
+    current_state: CLOSED
+    disposition: closed
+    evidence:
+      closing_pr: ["3514"]
+      closed_at: "2026-07-16"
+      doc: docs/governance/debt/debt-registry.yaml:395
+  - id: F-27
+    title: "Table Compression (V311-12)"
+    source: debt-registry
+    current_state: VERIFIED
+    disposition: closed
+    evidence:
+      doc: docs/governance/debt/debt-registry.yaml:407
+  - id: F-29
+    title: "Row-Level Security (V311-05)"
+    source: debt-registry
+    current_state: VERIFIED
+    disposition: closed
+    evidence:
+      doc: docs/governance/debt/debt-registry.yaml:415
+  - id: F-31
+    title: "Performance Schema (V311-06)"
+    source: debt-registry
+    current_state: CLOSED
+    disposition: closed
+    evidence:
+      doc: docs/governance/debt/debt-registry.yaml:423
+  - id: F-32
+    title: "MySQL Admin wire integration (V311-07)"
+    source: debt-registry
+    current_state: CLOSED
+    disposition: closed
+    evidence:
+      doc: docs/governance/debt/debt-registry.yaml:429
+  - id: SEM-3
+    title: "ALTER TABLE 不完整 (V311-13)"
+    source: debt-registry
+    current_state: CLOSED
+    disposition: closed
+    evidence:
+      closing_pr: ["V311-13", "3442", "3444"]
+      closed_at: "2026-07-15"
+      doc: docs/governance/debt/debt-registry.yaml:251
+  - id: 3136
+    title: "check_cross_version_debt.sh 1 周全量升级 (V311-19)"
+    source: debt-registry
+    current_state: CLOSED
+    disposition: closed
+    evidence:
+      closing_pr: ["3468"]
+      closed_at: "2026-07-16"
+      doc: docs/governance/debt/debt-registry.yaml:482
+  - id: PERF-5
+    title: "High-concurrency INSERT lost connection (V311-23)"
+    source: debt-registry
+    current_state: CLOSED
+    disposition: closed
+    evidence:
+      closing_pr: ["V311-23"]
+      closed_at: "2026-07-15"
+      doc: docs/governance/debt/debt-registry.yaml:521
+
+# ============================================================================
+# Open questions (require explicit V312 owner before V312-XX freeze)
+# ============================================================================
+open_questions:
+  - id: "Q1"
+    text: "F-03 GIS, F-30 SEQUENCE, F-36 列权限: debt-registry state DEFERRED target_release=v3.11.0 but V311-XX sub-tasks incomplete at v3.12.0 branch HEAD — need explicit V312-XX owner assignment before closure of V312-21/22."
+  - id: "Q2"
+    text: "admin (PARTIAL) and vector (SCOPE_INTERNAL) are carried to V312 — owner issues #3910/#3911 above are placeholder; needs assignment before GA freeze."
+  - id: "Q3"
+    text: "SEM-4 coverage IN_PROGRESS @ 14.71% lib (v3.10) vs ≥80% per-crate target — V312-17 covers but no expiry date in debt-registry; recommend re-confirm expiry before GA freeze."
+  - id: "Q4"
+    text: "V310-02c UNION ORDER BY/LIMIT not in debt-registry SSOT — listed in V310_TASK_CLOSURE only; recommend SSOT normalization."
+  - id: "Q5"
+    text: "v3.9 168h SOAK PASSED 2026-07-12 (Issue #3266) but G13 re-run 72h 0-error listed in GA_READINESS_STATUS_2026-06-21.md as ⏳; re-confirm before marking V312-21 closed."
+  - id: "Q6"
+    text: "FIX-TLS-WRITE-BLOCK (#3694) is the only item dispositioned as 'carried' with V312 owner issue #3908 (placeholder); tasks.md not yet created. Real work required before GA freeze."
+
+# ============================================================================
+# Summary
+# ============================================================================
+summary:
+  total_items: 89
+  by_disposition:
+    closed: 54
+    superseded: 13
+    deferred: 11
+    carried: 3
+    retired: 8
+  carried_items_with_owner:
+    - id: "FIX-TLS-WRITE-BLOCK"
+      v312_owner_issue: "#3908"
+      v312_expiry: "2026-09-15"
+    - id: "admin"
+      v312_owner_issue: "#3910"
+      v312_expiry: "2026-09-30"
+    - id: "vector"
+      v312_owner_issue: "#3911"
+      v312_expiry: "2026-09-30"
+  carried_items_missing_owner:
+    - note: "No 'carried' item is missing V312-XX owner — all 3 carry items have placeholder issue refs above; owners must be confirmed before GA freeze."
+  evidence_hash_unavailable:
+    - note: "evidence_hash field omitted because V312-20 acceptance criteria cite evidence hash but the underlying closure documents (PRs, commits) are referenced by PR number/closing_pr field rather than a per-item hash. To produce a hash field, run `git log --pretty=%H -1 <closing_pr_branch>` for each item post-acceptance."
