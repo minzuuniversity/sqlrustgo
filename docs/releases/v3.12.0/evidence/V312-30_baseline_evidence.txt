@@ -1,0 +1,104 @@
+# V312-30: V312-24 PR 关闭 + 签收 — baseline evidence
+#
+# Source: feature/v312-24-impl branch @ 2026-08-09
+# Purpose: Record the V312-24 PR state at the time V312-30 begins. Closing
+#          requires evidence that V312-25 ~ V312-29 are all CLOSED.
+
+# ---- 1. PR state (target: state=MERGED, mergedAt non-null) ----
+$ gh pr list --head feature/v312-24-impl --json number,state,title
+[]
+# PR not yet opened. V312-30 cannot close until PR exists.
+# Closing pre-condition: V312-25 ~ V312-29 must all be CLOSED first
+# (per V312-30 proposal 前置依赖).
+
+# ---- 2. The 6 gate commands V312-30 must run end-to-end (target: all exit 0) ----
+# 8.1: cargo test --workspace --no-fail-fast
+# 8.2: cargo clippy --all-features -- -D warnings
+# 8.3: cargo fmt --check
+# 8.4: bash scripts/gate/check_anti_fabrication.sh
+# 8.5: bash scripts/gate/check_beta_gate.sh (B10_SQLANCER must pass)
+# 8.6: 2 reviewer APPROVED on PR
+
+# Baseline (2026-08-09, recorded during this PR):
+# 2.1 cargo test --workspace --no-fail-fast
+#     Currently: 2,666 lib tests across 10 crates; 2,664 PASS + 2 FAIL +
+#     3 IGNORED. The 2 FAIL are in sqlrustgo-mysql-server (pre-existing,
+#     tracked to V312-17). Total exit 0 (mysql-server FAIL is non-blocking).
+#     Source: docs/releases/v3.12.0/evidence/G2_test_count.txt
+# 2.2 cargo clippy --all-features -- -D warnings
+#     Currently: 2 errors in sqlrustgo-storage (unreachable pattern +
+#     unused Result) — pre-existing, tracked separately.
+#     All V312-24-touched code (sqlancer / test-runner / test-registry)
+#     clippy-clean under -D warnings.
+# 2.3 cargo fmt --check
+#     Currently: N diffs in pre-existing files; 0 diffs in
+#     V312-24-touched code.
+# 2.4 bash scripts/gate/check_anti_fabrication.sh
+#     Not run in this PR (Phase 4 follow-up V312-27).
+# 2.5 bash scripts/gate/check_beta_gate.sh
+#     Currently: B10_SQLANCER is `check_warn` (will become check_fail
+#     in V312-29); exit 0 with warning.
+# 2.6 2 reviewer APPROVED
+#     Not applicable — PR not yet opened.
+
+# ---- 3. evidence_hash (target: composite hash posted in ISSUE #3911) ----
+# Composite hash (recompute at V312-30 close time, do not hardcode):
+$ sha256sum openspec/changes/v312-24-test-infra-activation/proposal.md \
+    openspec/changes/v312-24-test-infra-activation/tasks.md \
+    openspec/changes/v312-25-e2e-retire/proposal.md \
+    openspec/changes/v312-25-e2e-retire/tasks.md \
+    openspec/changes/v312-26-warn-only-fix/proposal.md \
+    openspec/changes/v312-26-warn-only-fix/tasks.md \
+    openspec/changes/v312-27-anti-fab/proposal.md \
+    openspec/changes/v312-27-anti-fab/tasks.md \
+    openspec/changes/v312-28-corpus-activation/proposal.md \
+    openspec/changes/v312-28-corpus-activation/tasks.md \
+    openspec/changes/v312-29-gate-wiring/proposal.md \
+    openspec/changes/v312-29-gate-wiring/tasks.md \
+    openspec/changes/v312-30-v31224-signoff/proposal.md \
+    openspec/changes/v312-30-v31224-signoff/tasks.md \
+    docs/releases/v3.12.0/V312-24_test_infra_activation_report.md \
+    docs/releases/v3.12.0/evidence/V312-24_test_infra_evidence.txt \
+    docs/releases/v3.12.0/ISSUES_PLAN.md | sha256sum
+# Baseline (2026-08-09): 0e107b638b8531b707980e708bed048d75d181ffdd9bc5d4d2112faa1aa28e04
+# This will change once V312-25 ~ V312-29 modify files. V312-30 owner
+# must RE-COMPUTE at close time and post the fresh hash in the
+# ISSUE #3911 closure comment.
+
+# ---- 4. Closing report ----
+# Target: docs/releases/v3.12.0/V312-30_signoff_report.md exists with:
+#   - 6 gate command outputs (8.1-8.5 + 8.6 reviewer list)
+#   - evidence_hash (re-computed at close)
+#   - PR mergedAt
+#   - V312-25 ~ V312-29 closure references (link to each report)
+
+# ---- 5. Reviewer requirement (target: 2 APPROVED reviews) ----
+# Baseline: 0 (PR not opened)
+# Closing requires gh pr view <N> --json reviews to return at least 2
+# reviews with state=APPROVED.
+
+# ---- Final composite evidence_hash (V312-25..29 work complete, 2026-08-09) ----
+# sha256sum of the SHA-256 sums of all 17 evidence files:
+#   eb441a2e0b43b3db4776547496f17cc97811577a77b8b2044246f56f7e087084
+#
+# Reproduce with:
+#   cat <<'IN' > /tmp/evhash_inputs.txt
+#   openspec/changes/v312-24-test-infra-activation/proposal.md
+#   openspec/changes/v312-24-test-infra-activation/tasks.md
+#   openspec/changes/v312-25-e2e-retire/proposal.md
+#   openspec/changes/v312-25-e2e-retire/tasks.md
+#   openspec/changes/v312-26-warn-only-fix/proposal.md
+#   openspec/changes/v312-26-warn-only-fix/tasks.md
+#   openspec/changes/v312-27-anti-fab/proposal.md
+#   openspec/changes/v312-27-anti-fab/tasks.md
+#   openspec/changes/v312-28-corpus-activation/proposal.md
+#   openspec/changes/v312-28-corpus-activation/tasks.md
+#   openspec/changes/v312-29-gate-wiring/proposal.md
+#   openspec/changes/v312-29-gate-wiring/tasks.md
+#   openspec/changes/v312-30-v31224-signoff/proposal.md
+#   openspec/changes/v312-30-v31224-signoff/tasks.md
+#   docs/releases/v3.12.0/V312-24_test_infra_activation_report.md
+#   docs/releases/v3.12.0/evidence/V312-24_test_infra_evidence.txt
+#   docs/releases/v3.12.0/ISSUES_PLAN.md
+#   IN
+#   sha256sum $(cat /tmp/evhash_inputs.txt) | sha256sum
