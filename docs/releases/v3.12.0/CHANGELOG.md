@@ -124,6 +124,32 @@ agent: minimax 在本地 fresh checkout (`develop/v3.12.0` @ ed89db05ab, base `9
 - V312-21 §2.1-2.2: 真正的 compat fixture runner (当前 disposition 行为为静态 seed)
 - 三项 issue 的 PR 提交需 1 名 reviewer approval (per `BRANCH_GOVERNANCE.md` v1.0 §4.1)
 
+## v3.12.0 启动切片 (2026-08-09, batch 2)
+
+agent: minimax, follow-up 切片. 拉取 PR #3917 后的剩余 4 项任务推进。
+
+### 落地
+
+- **V312-21 §2.1-2.2**: real compat fixture runner (`tools/compat-runner/`,  workspace member, Rust binary)
+  - 启动 ephemeral server、walk 13 个 *.sql fixture、按 # expect: directive 分类 (PASS / unsupported / deferred / fail)
+  - 每行带 per-row evidence_hash (per-fixture log 的 SHA-256)
+  - 重写 `scripts/gate/check_v312_21_mysql_compat.sh` 为 thin wrapper，调用 runner
+- **V312-21 §6**: RELEASE_NOTES.md 加 MySQL 兼容性边界 section, 指向 SURFACE_DISPOSITION.md 为 SSOT
+- **V312-19 §1.1-1.3**: yaml-driven corpus runner (`scripts/gate/test_sql_corpus.sh`, 200 lines)
+  - awk-based manifest parser (no extra dep)
+  - 9 个 target: parser_fixtures / sqllogictest_local / tpch_sf1 / tpch_sf10 / wire_corpus / mysql_compat / v312_13_typed_wrappers / mysql_wire_protocol_regression / e2e_wire_protocol
+  - 首次跑: 3 pass / 4 deferred / 2 fail (fail 都是 v3.11 继承的，不在 v3.12 范围)
+- **V312-13 §9**: SF=1 LOAD DATA smoke test (`tests/integration/tpch/v312_13_load_data_sf1_test.rs`)
+  - 5 regions + 25 nations = SF=1 exact row counts
+  - lineitem (6,001,215 rows / 1.1 GB) 仍 tag-gated, contract test 锚定 spec
+
+### 已知 gap (下一切片)
+
+- V312-13 §7-8: TLS handshake + zlib compression (server-side)
+- V312-13 §10: SF=10 lineitem 60M rows (tag-gated, 需要 generate_tpch_sf.py 跑出 fixture)
+- V312-19 §2: R2.5-R2.8 真实 check script (R2.1-R2.4 跑现有 v3.11 scripts)
+- compat-runner 端 row decoder bug: SHOW TABLES / ALTER RENAME 行的 null-bitmap decode 错位 (在 disposition 中标为 `fail`, 后续修复)
+
 ## 附录：英文原文
 
 > 本附录保留本文件改写前的英文原文，便于追溯历史语义；当前正式阅读与执行口径以上方中文正文为准。
