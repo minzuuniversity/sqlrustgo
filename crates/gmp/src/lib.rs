@@ -51,6 +51,7 @@
 
 pub mod audit;
 pub mod compliance;
+pub mod sql_api;
 pub mod document;
 pub mod embedding;
 pub mod persist_sqlite;
@@ -61,7 +62,7 @@ pub mod relation;
 pub mod schema;
 pub mod version;
 pub mod semantic_embedding;
-pub mod sql_api;
+pub mod vector_index;
 pub mod vector_search;
 
 // Re-export commonly used types
@@ -91,7 +92,7 @@ pub use embedding::{
 
 pub use vector_search::{
     create_embeddings_table, get_all_embeddings, hybrid_search, upsert_embedding, vector_search,
-    vector_search_active, SearchResult,
+    SearchResult,
 };
 
 pub use report::{
