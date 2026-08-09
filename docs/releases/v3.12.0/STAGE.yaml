@@ -10,12 +10,12 @@
 # with execution evidence or explicitly carried as v3.12.0 P0 blockers.
 
 version: "v3.12.0"
-current_stage: "PLANNED"
+current_stage: "DRAFT"
 last_transition:
-  from: "UNDEFINED"
-  to: "PLANNED"
-  date: "2026-08-08"
-  reason: "Planned as GMP internal-audit retrieval production release for ~/gmp-platform, with SQLRustGo as relational store, audited document store, internal vector index host, and graph projection store. 2026-08-09 update: also carries v3.11.0 weak-point hardening, including SQLLogicTest/SQLite oracle gate, TPC-H correctness, wire protocol, LOAD DATA, recovery, backup/restore, and upgrade verification."
+  from: "PLANNED"
+  to: "DRAFT"
+  date: "2026-08-09"
+  reason: "Draft planning is complete enough for Hermes/OMP implementation handoff: branch, milestone, V312 issues, development plan, test plan, initial fixtures, and draft/alpha gate entry scripts exist. This does not claim any implementation gate has passed."
 
 positioning:
   product_contract: "GMP internal-audit retrieval database"
@@ -32,6 +32,10 @@ positioning:
 base_requirements:
   prior_version: "v3.11.0"
   prior_stage_required: "GA or explicitly demoted with carried blockers"
+  planning_branch: "develop/v3.12.0"
+  planning_commit: "9e157ed61b68a2a7c61ebae18cd0a6c15ceb79b1"
+  controlling_issue: "#3887"
+  issue_range: "#3888-#3911"
   required_prior_evidence:
     - "G3 coverage evidence reconciled"
     - "G4 TPC-H SF=1 real 22/22 evidence plus correctness disposition or carried as v3.12.0 blocker"
@@ -48,6 +52,9 @@ promotion_to_ALPHA_requires:
   - "cargo build -p sqlrustgo_sqllogictest evidence captured"
   - "~/gmp-platform/gmp-md corpus ingestion fixture selected"
   - "Initial cargo build, fmt, clippy, and docs checks pass"
+  - "DRAFT_ASSESSMENT_AND_ALPHA_GATE.md exists and records unresolved alpha blockers"
+  - "scripts/gate/check_alpha_v3.12.0.sh exists"
+  - "scripts/gate/check_sqllogictest_v312.sh exists"
 
 promotion_to_BETA_requires:
   - "GMP document/chunk/embedding/audit schema implemented"

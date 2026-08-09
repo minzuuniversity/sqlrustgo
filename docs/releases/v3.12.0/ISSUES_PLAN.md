@@ -169,7 +169,7 @@
 # SQLRustGo v3.12.0 Issues Plan
 
 > **Version**: v3.12.0
-> **Status**: PLANNED
+> **Status**: DRAFT
 > **Date**: 2026-08-09
 
 This file breaks the v3.12.0 plan into issue-sized work packages. Every item must produce execution evidence before it can be marked complete.
