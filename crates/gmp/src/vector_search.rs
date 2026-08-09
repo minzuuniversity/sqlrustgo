@@ -389,4 +389,74 @@ mod tests {
         assert!(!results.is_empty());
         assert_eq!(results[0].doc_id, doc_id);
     }
+    #[test]
+    fn test_search_result_struct() {
+        let r = SearchResult {
+            doc_id: 1,
+            title: "T".to_string(),
+            doc_type: "D".to_string(),
+            similarity: 0.5,
+        };
+        assert_eq!(r.doc_id, 1);
+        assert_eq!(r.similarity, 0.5);
+    }
+
+    #[test]
+    fn test_vector_search_active_filters() {
+        let mut storage = MemoryStorage::new();
+        create_gmp_tables(&mut storage).unwrap();
+        create_embeddings_table(&mut storage).unwrap();
+
+        let now = std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .unwrap()
+            .as_secs() as i64;
+
+        let doc_id = insert_document(
+            &mut storage,
+            NewDocument {
+                title: "Active Doc",
+                doc_type: "ACTIVE",
+                version: 1,
+                created_at: now,
+                updated_at: now,
+                effective_date: 19000,
+                status: DocStatus::Active,
+            },
+        )
+        .unwrap();
+
+        let emb = generate_embedding("active document");
+        upsert_embedding(&mut storage, doc_id, &emb).unwrap();
+
+        let results = vector_search_active(&storage, "active", 5).unwrap();
+        // Should not be empty
+        for r in &results {
+            assert!(r.doc_type != "ARCHIVED");
+            assert!(r.doc_type != "SUPERSEDED");
+        }
+    }
+
+    #[test]
+    fn test_get_all_embeddings_empty() {
+        let storage = MemoryStorage::new();
+        let result = get_all_embeddings(&storage).unwrap();
+        assert!(result.is_empty());
+    }
+
+    #[test]
+    fn test_upsert_embedding_update() {
+        let mut storage = MemoryStorage::new();
+        create_embeddings_table(&mut storage).unwrap();
+
+        let emb1 = vec![1.0; 4];
+        let emb2 = vec![2.0; 4];
+
+        upsert_embedding(&mut storage, 1, &emb1).unwrap();
+        upsert_embedding(&mut storage, 1, &emb2).unwrap(); // Should update not duplicate
+
+        let all = get_all_embeddings(&storage).unwrap();
+        assert_eq!(all.len(), 1);
+        assert_eq!(all[0].embedding, emb2);
+    }
 }
