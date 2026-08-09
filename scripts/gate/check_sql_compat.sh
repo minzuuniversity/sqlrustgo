@@ -20,7 +20,17 @@ fi
 CORPUS_THRESHOLD=80
 
 echo "[1/2] Running SQL Corpus tests..."
-CORPUS_OUTPUT=$(cargo test -p sqlrustgo-sql-corpus -- --nocapture 2>&1 || true)
+# V312-30: removed `|| true` mask; propagate failure explicitly. P16 step
+# 2.5 detects this anti-fab pattern; fail-explicit per V312-24 acceptance
+# criteria ("known broken test binaries 不得继续靠 WARN-only 掩盖").
+CORPUS_OUTPUT=$(cargo test -p sqlrustgo-sql-corpus -- --nocapture 2>&1)
+CORPUS_EXIT=$?
+if [ ${CORPUS_EXIT} -ne 0 ]; then
+    echo "  FAIL: cargo test exit ${CORPUS_EXIT} (corpus test failed to build/run)"
+    echo "  Output tail:"
+    echo "${CORPUS_OUTPUT}" | tail -20 | sed 's/^/    /'
+    exit 1
+fi
 
 echo "[2/2] Analyzing results..."
 

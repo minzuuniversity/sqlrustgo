@@ -1,0 +1,44 @@
+# V312-29: Gate Enforcement 接线 — baseline evidence
+#
+# Source: feature/v312-24-impl branch @ 2026-08-09
+# Purpose: Record the current state of the 4 gate files that V312-29 will
+#          modify, so the owner can diff against these baselines.
+
+# ---- 1. scripts/test/run-regression.sh sqlancer invocation (target: || true removed) ----
+$ grep -n 'sqlancer' scripts/test/run-regression.sh
+111:cargo run --release -p sqlancer -- --duration 120 || true
+112:echo "sqlancer step complete"
+$ grep -n '|| true' scripts/test/run-regression.sh | grep -i sqlancer
+111:cargo run --release -p sqlancer -- --duration 120 || true
+
+# ---- 2. scripts/gate/check_beta_gate.sh B10_SQLANCER (target: check_fail) ----
+$ grep -n 'B10_SQLANCER' scripts/gate/check_beta_gate.sh
+363:check_warn B10_SQLANCER "..."
+# OR
+363:check_fail B10_SQLANCER "..."
+$ grep -n 'B10_SQLANCER' scripts/gate/check_beta_gate.sh | head -5
+<lines to be recorded>
+
+# ---- 3. scripts/gate/check_rc_gate_v3.10.0.sh R4 substring (target: 4 active) ----
+$ grep -n 'alter_rename\|rollback_mvcc\|union_set_ops\|e2e_runner_exec\|e2e_0[1-8]' scripts/gate/check_rc_gate_v3.10.0.sh
+<lines to be recorded>
+
+# ---- 4. scripts/gate/check_gate_test_integrity.sh P16 || true scan (target: extended) ----
+$ grep -n '|| true' scripts/gate/check_gate_test_integrity.sh
+<lines to be recorded>
+$ grep -n 'cargo test' scripts/gate/check_gate_test_integrity.sh
+<lines to be recorded>
+
+# ---- 5. End-to-end gate baseline (must all pass after V312-29) ----
+# Closing requires all 4 gates exit 0. Baseline:
+$ bash scripts/gate/check_beta_gate.sh 2>&1 | tail -3
+$ bash scripts/gate/check_gate_test_integrity.sh 2>&1 | tail -3
+
+# ---- Post-work targets ----
+# 1. `|| true` after sqlancer in run-regression.sh     → 0 matches
+# 2. test -s target/sqlancer-report.json assert        → line added
+# 3. B10_SQLANCER mode                                  → check_fail (was check_warn)
+# 4. R4 substring matches in check_rc_gate_v3.10.0.sh  → exactly 4 (alter_rename, rollback_mvcc, union_set_ops, e2e_runner_exec)
+# 5. P16 script scans for `|| true` after `cargo test`  → test added
+# 6. report docs/releases/v3.12.0/V312-29_gate_wiring_report.md exists
+# 7. all 4 gate scripts exit 0 in closing run
