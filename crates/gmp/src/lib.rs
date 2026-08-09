@@ -55,6 +55,7 @@ pub mod document;
 pub mod embedding;
 pub mod persist_sqlite;
 pub mod report;
+pub mod ingestion;
 pub mod chunk;
 pub mod relation;
 pub mod schema;
