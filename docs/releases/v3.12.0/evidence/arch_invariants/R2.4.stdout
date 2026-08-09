@@ -1,0 +1,20 @@
+=== D8: Architecture/Semantic Debt Gate (5-Principle P5) ===
+  SSOT: /home/openclaw/sqlrustgo_work/docs/governance/debt/debt-registry.yaml
+
+  [ARCH-1] state=CLOSED ✅
+  [ARCH-2] state=CLOSED ✅
+  [ARCH-3] state=CLOSED ✅
+  [SEM-1] state=CLOSED ✅
+  [SEM-2] state=CLOSED ✅
+  [SEM-3] state=CLOSED (100%) ✅
+  [SEM-4] state=IN_PROGRESS (30%) (has v3.9.0+ plan) ⚠️
+
+=== D8 Arch/Sem Debt Summary ===
+  CLOSED:               6
+  IN_PROGRESS/BLOCKED:  1 (with plan)
+  OPEN w/o plan:        0
+  UNKNOWN:              0
+
+⚠️  D8 Arch/Sem Debt: PASS-WITH-DRIFT (1 in-progress / blocked with plan)
+   These items have documented v3.9.0+ plans in /home/openclaw/sqlrustgo_work/docs/governance/debt/debt-registry.yaml
+   but are not yet fully implemented.
