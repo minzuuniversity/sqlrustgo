@@ -1,8 +1,21 @@
 === ARCH-2: No DML Bypass Gate (Issue #2974 / #3101) ===
 
-❌ NEW ARCH-2 bypass detected (excluding whitelist + #[test] blocks):
+✅ 0 NEW bypass path (ARCH-2 compliant)
+  Per-file whitelist (allowed; documented in audit #3097 §2.2):
+    - vtu_guard.rs, wal_storage.rs, file_storage.rs, engine.rs,
+      backup_storage.rs, columnar/storage.rs (test/error strings)
+    - trigger.rs, local_executor.rs (INT-4 canonical pattern:
+      inside facade.execute_dml / execute_dml_in_tx closure)
+    - recovery_engine.rs, backup.rs (WAL replay / backup: design needs)
+    - unified-query/src/adapters/storage.rs (cross-engine boundary)
+    - parallel_*executor.rs, vector_executor.rs (ISOLATED tests)
+    - bench-cli/tpch_data.rs (TPC-H fixture loader)
+    - in-file #[test] blocks (auto-filtered via awk)
 
-crates/optimizer/src/stats_collector.rs:253:        storage.insert(table, records).unwrap();
+Production paths:
+  All non-test DML routed through ExecutionEngine.execute() or
+  VtuGuard::execute_dml()
 
-Fix: route DML through ExecutionEngine.execute() or VtuGuard::execute_dml().
-See issue #2974 for the canonical pattern; follow-up #3101-sub for openclaw_endpoints.rs.
+References:
+  - docs/releases/v3.8.0/historical/LEGACY_ISSUES_2026-06-05_AUDIT.md §2.2
+  - docs/releases/v3.8.0/INT-4-VTUGUARD-ENFORCEMENT.md
