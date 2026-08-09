@@ -92,10 +92,10 @@ impl GmpExecutor {
         vector_search(&*storage, query, top_k)
     }
 
-    /// Hybrid search (text + vector)
+    /// Hybrid search (text + vector) with default text boost of 0.3
     pub fn hybrid_search(&self, query: &str, top_k: usize) -> SqlResult<Vec<SearchResult>> {
         let storage = self.storage.read().unwrap();
-        hybrid_search(&*storage, query, top_k)
+        hybrid_search(&*storage, query, top_k, 0.3)
     }
 
     /// Generate an embedding for text
