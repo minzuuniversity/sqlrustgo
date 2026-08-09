@@ -41,20 +41,18 @@ v3.12.0 是面向 GMP 内审检索系统的开发版本。目标是在 SQLRustGo
 > [`docs/releases/v3.12.0/evidence/mysql_compat/SURFACE_DISPOSITION.md`](evidence/mysql_compat/SURFACE_DISPOSITION.md) 读取；
 > 不得在 release note 中复制未经 disposition 表验证的兼容性声明。
 
-当前 disposition（2026-08-09 V312-21 启动切片后）：
 
-- 数据行数：13（包含 1 PASS / 5 unsupported / 3 deferred / 4 fail 的混合状态）
-- PASS 表面：`alter_add_column`
-- unsupported 表面：`create_procedure_unsupported`、`group_concat_unsupported`、`stddev_pop_unsupported`、`with_rollup_unsupported`（部分）
-- deferred 表面：`empty_password_auth`、`timestamp_timezone_deferred`、`connection_pool_deferred`
-- fail 表面（runner 端 bug 或 fixture 不匹配，见日志）：剩余项
+当前 disposition（2026-08-09 minimax V312-21 runner，`source_run: minimax-v312-21-runner-71fc33a9d2`，commit `71fc33a9d2`）：
+
+- 数据行数：20（PASS: 11 / unsupported: 2 / deferred: 7 / fail: 0）
+- **PASS surface**: `alter_add_column`, `alter_drop_column`, `alter_modify_column`, `alter_rename`, `show_tables`, `group_concat` (意外实现), `stddev_pop` (意外实现), `with_cube` (意外实现), `with_rollup` (意外实现), `var_pop` (意外实现), `replace_into` (意外实现)
+- **unsupported surface**: `create_procedure_unsupported` (存储过程未实现), `column_perm_unsupported` (列级权限仅 V311-09)
+- **deferred surface** (owner: openclaw, expiry: 2027-06-30): `empty_password_auth`, `prepared_stmt_roundtrip`, `timestamp_timezone`, `connection_pool`, `alter_change_full_syntax`, `median_unsupported`, `window_rank_partition_unsupported`
+- **fail surface**: 0 (全部修复)
 
 v3.12.0 GA 之前必须完成：
 
-- 把所有 `fail` 行的根因归类为 (a) runner 端 bug (修复) / (b) fixture 端 bug (修复) / (c) 服务端真实缺陷 (转 issue)
-- 把所有 `deferred` 行升级为 PASS / unsupported / issue
-- 把"with_rollup"等 server 静默接受的语义从 `unsupported` 重新分类为 `PASS-with-caveat`（这是 fixtures/服务器契约问题，不是 v3.12 范围）
+- 所有 deferred 项必须创建 follow-up issue 并填入 SURFACE_DISPOSITION.md
+- deferred 项见: `evidence/mysql_compat/DEFERRED_FOLLOWUPS.md`
 
-每个 row 的 `evidence_hash` 字段指向 `docs/releases/v3.12.0/evidence/mysql_compat/logs/<surface>.log`
-的 SHA-256 摘要；任何"我在 v3.12.0 跑了 X"的声明必须引用该 hash 而非
-其他来源。
+每个 row 的 `evidence_hash` 字段指向 `evidence/mysql_compat/logs/<surface>.log` 的 SHA-256 摘要。

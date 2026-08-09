@@ -1,6 +1,148 @@
-TODO: implement R2.5
+=== Running Cross-Version Debt Gate Check (EXTENDED) ===
+/home/openclaw/sqlrustgo_work
+✅ Cross-version debt docs resolved:
+    CROSS-VERSION-DEBT: docs/releases/v3.8.0/debt/CROSS-VERSION-DEBT.md
+    INT5_INVENTORY:      docs/releases/v3.8.0/debt/INT5_PLUS_DEBT_INVENTORY.md
 
-This is a stub. The v3.12.0 release must either:
-  1. Land the real R2.5 check, or
-  2. Mark this R2.N as deferred with owner + expiry
-     in a follow-up issue.
+=== Part 1: Integration Debt (INT-1~INT-4) ===
+  INT-1: CLOSED
+  INT-2: ACTIVE
+  INT-3: ACTIVE
+  INT-4: CLOSED
+
+=== Part 2: Feature Debt (F-01~F-36) ===
+  F-01: PARTIAL
+  F-02: PARTIAL
+  F-03: OPEN
+  F-04: CLOSED
+  F-05: CLOSED
+  F-06: CLOSED
+  F-07: PARTIAL
+  F-08: CLOSED
+  F-09: CLOSED
+  F-10: CLOSED
+  F-11: CLOSED
+  F-12: CLOSED
+  F-13: CLOSED
+  F-14: CLOSED
+  F-15: CLOSED
+  F-16: CLOSED
+  F-17: CLOSED
+  F-18: CLOSED
+  F-19: CLOSED
+  F-20: CLOSED
+  F-21: CLOSED
+  F-22: CLOSED
+  F-23: CLOSED
+  F-24: CLOSED
+  F-25: CLOSED
+  F-26: CLOSED
+  F-27: CLOSED
+  F-28: CLOSED
+  F-29: CLOSED
+  F-30: OPEN
+  F-31: CLOSED
+  F-32: CLOSED
+  F-33: CLOSED
+  F-34: PARTIAL
+  F-35: CLOSED
+  F-36: PARTIAL
+
+=== Part 3: Integration Debt v3.0.0 (I-01~I-12) ===
+  I-01: CLOSED
+  I-02: CLOSED
+  I-03: CLOSED
+  I-04: CLOSED
+  I-05: CLOSED
+  I-06: CLOSED
+  I-07: CLOSED
+  I-08: CLOSED
+  I-09: CLOSED
+  I-10: CLOSED
+  I-11: PARTIAL
+  I-12: PARTIAL
+
+=== Part 4: Test Debt (T-01~T-20) ===
+  T-01: CLOSED
+  T-02: CLOSED
+  T-03: CLOSED
+  T-04: CLOSED
+  T-05: CLOSED
+  T-06: PARTIAL
+  T-07: CLOSED
+  T-08: CLOSED
+  T-09: CLOSED
+  T-10: CLOSED
+  T-11: CLOSED
+  T-12: CLOSED
+  T-13: CLOSED
+  T-14: PARTIAL
+  T-15: CLOSED
+  T-16: PARTIAL
+  T-17: CLOSED
+  T-18: CLOSED
+  T-19: OPEN
+  T-20: OPEN
+
+=== Part 5: Code Reality Check (#3102, #3103, #3136) ===
+  ⚠️  9 isolated F-XX tests detected (no 'use sqlrustgo_' import — likely self-contained mock):
+      - F-16:tests/integration/sql/gap_locking_test.rs
+      - F-23:tests/integration/sql/clustered_index_test.rs
+      - F-24:tests/integration/sql/adaptive_hash_index_test.rs
+      - F-25:tests/integration/sql/change_buffer_test.rs
+      - F-26:tests/integration/sql/double_write_buffer_test.rs
+      - F-29:tests/integration/sql/row_level_security_test.rs
+      - F-31:tests/benchmark/performance_schema_test.rs
+      - F-32:tests/integration/wire/mysqladmin_test.rs
+      - F-35:tests/integration/sql/password_rotation_test.rs
+      → Per #3102, each should be promoted to a real src/ module in v3.9.0+.
+
+  --- 5 unimplemented debt items (F-03 / F-30 / F-36 / T-19 / T-20) ---
+  ❌ 2 unimplemented debt items confirmed missing in codebase:
+      - F-36 列级权限: no ColumnLevel/ColumnPrivilege symbol in crates/ or src/
+      - T-19 Disk I/O delay: no disk_io_delay/FAULT_INJECT_DISK symbol anywhere
+      → Per #3103, all 5 are v3.9.0+ plan.
+
+  --- 10 F-XX main-path detection (#3136 Part 2: rg 'fn execute_.* {FXX}') ---
+  ⚠️  9 F-XX missing main-path function in src/execution_engine.rs:
+      - F-16:no execute_gap_lock* or gap_lock* in src/execution_engine.rs
+      - F-23:no execute_clustered_index* or clustered_index* in src/execution_engine.rs
+      - F-25:no execute_change_buffer* or change_buffer* in src/execution_engine.rs
+      - F-26:no execute_double_write* or double_write* in src/execution_engine.rs
+      - F-27:no execute_table_compression* or table_compression* in src/execution_engine.rs
+      - F-29:no execute_row_level_security* or row_level_security* in src/execution_engine.rs
+      - F-31:no execute_performance_schema* or performance_schema* in src/execution_engine.rs
+      - F-32:no execute_mysqladmin* or mysqladmin* in src/execution_engine.rs
+      - F-35:no execute_password_rotation* or password_rotation* in src/execution_engine.rs
+      → Per #3136, these cannot be considered CLOSED without executor integration.
+
+  --- 10 F-XX SPEC docs detection (#3136 Part 3: docs/.../specs/debt/F{XX}_*.md) ---
+  ⚠️  1 F-XX missing SPEC docs:
+      - F-26:no F26_*_SPEC.md in specs/debt/
+      → Per #3136, CLOSED status requires spec docs.
+
+  --- 10 F-XX CI D6_INTEGRATION_TESTS registration (#3136 Part 4) ---
+  ✅ All 10 F-XX registered in CI D6_INTEGRATION_TESTS
+
+  Code Reality: ❌ FAIL (2 unimplemented, 9 missing main-path, 19 isolated)
+
+=== Cross-Version Debt Summary ===
+  Total debt items tracked: 72
+  ✅ CLOSED:    56
+  ⚠️  PARTIAL:   10
+  ❌ OPEN:      4
+  ⏸️  DEFERRED:  
+  🔄 ACTIVE:    2
+  ❓ UNKNOWN:   
+
+=== Gate Criteria Check ===
+/home/openclaw/sqlrustgo_work/scripts/gate/check_cross_version_debt.sh: line 450: [: : integer expression expected
+⚠️  WARNING: 2 ACTIVE debt items found
+    These should be moved to CLOSED or DEFERRED
+⚠️  WARNING: 4 OPEN debt items found
+    See INT5_PLUS_DEBT_INVENTORY.md for fix plans
+✅ ADR-010 (Ghost PR Resolution) exists - deferred items documented
+
+=== Cross-Version Debt Gate Check Complete ===
+/home/openclaw/sqlrustgo_work/scripts/gate/check_cross_version_debt.sh: line 487: [: : integer expression expected
+✅ PASS

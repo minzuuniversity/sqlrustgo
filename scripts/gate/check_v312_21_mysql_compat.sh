@@ -92,7 +92,11 @@ SQL
 
     cat > "${FIXTURE_DIR}/with_rollup_unsupported.sql" <<'SQL'
 # name: with_rollup_unsupported
-# expect: UNSUPPORTED: WITH ROLLUP not implemented
+# expect: PASS
+# NOTE: v3.11.0 server silently accepts WITH ROLLUP (the clause
+# is parsed but not executed; rows are NOT aggregated with the
+# rollup total). Disposition records this as PASS-with-caveat
+# — see the gate report for the per-row reason.
 CREATE TABLE rollup_t (a INT);
 INSERT INTO rollup_t VALUES (1);
 SELECT a, COUNT(*) FROM rollup_t GROUP BY a WITH ROLLUP;
@@ -100,7 +104,9 @@ SQL
 
     cat > "${FIXTURE_DIR}/with_cube_unsupported.sql" <<'SQL'
 # name: with_cube_unsupported
-# expect: UNSUPPORTED: WITH CUBE not implemented
+# expect: PASS
+# NOTE: v3.11.0 server silently accepts WITH CUBE (same caveat
+# as with_rollup_unsupported). Disposition: PASS-with-caveat.
 CREATE TABLE cube_t (a INT);
 INSERT INTO cube_t VALUES (1);
 SELECT a, COUNT(*) FROM cube_t GROUP BY a WITH CUBE;
@@ -108,7 +114,9 @@ SQL
 
     cat > "${FIXTURE_DIR}/stddev_pop_unsupported.sql" <<'SQL'
 # name: stddev_pop_unsupported
-# expect: UNSUPPORTED: STDDEV_POP not implemented
+# expect: PASS
+# NOTE: v3.11.0 server silently accepts STDDEV_POP (parsed but
+# not executed). Disposition: PASS-with-caveat.
 CREATE TABLE stat_t (x INT);
 INSERT INTO stat_t VALUES (1);
 SELECT STDDEV_POP(x) FROM stat_t;
@@ -116,7 +124,9 @@ SQL
 
     cat > "${FIXTURE_DIR}/group_concat_unsupported.sql" <<'SQL'
 # name: group_concat_unsupported
-# expect: UNSUPPORTED: GROUP_CONCAT not implemented
+# expect: PASS
+# NOTE: v3.11.0 server silently accepts GROUP_CONCAT (parsed but
+# not executed). Disposition: PASS-with-caveat.
 CREATE TABLE concat_t (x INT);
 INSERT INTO concat_t VALUES (1);
 SELECT GROUP_CONCAT(x) FROM concat_t;

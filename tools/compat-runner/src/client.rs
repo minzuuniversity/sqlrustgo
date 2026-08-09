@@ -240,23 +240,40 @@ impl CompatClient {
             self.read_packet()?;
         }
         self.read_packet()?;
-        // Read rows until terminator
+        // Read rows until terminator. COM_QUERY text-protocol row:
+        // no null bitmap. Each cell is a lenenc-string where 0xFB
+        // means NULL. (The null bitmap format is only used in
+        // COM_STMT_EXECUTE binary protocol, not COM_QUERY.)
         let mut rows = Vec::new();
         loop {
             let pkt = self.read_packet()?;
-            if pkt.first().copied() == Some(0xFE) || pkt.first().copied() == Some(0x00) {
+            if pkt.is_empty() {
+                return Err(CompatError::Protocol("unexpected empty row packet".into()));
+            }
+            if pkt[0] == 0xFE || pkt[0] == 0x00 {
+                // EOF / OK terminator
                 break;
             }
-            // Row packet: null-bitmap + values
+            if pkt[0] == 0xFF {
+                return Err(CompatError::Protocol(format!(
+                    "ERR during result set: {}",
+                    String::from_utf8_lossy(&pkt.get(3..).unwrap_or(&[]))
+                )));
+            }
             let mut rpos = 0;
-            let _ = read_lenenc_int(&pkt, &mut rpos)?;
-            let mut row = Vec::new();
+            let mut row = Vec::with_capacity(col_count as usize);
             for _ in 0..col_count {
-                // lenenc string
-                let len = read_lenenc_int(&pkt, &mut rpos)?;
-                if len == 0xFB {
+                if rpos >= pkt.len() {
+                    return Err(CompatError::Protocol(format!(
+                        "row packet truncated: rpos={} pkt_len={}",
+                        rpos, pkt.len()
+                    )));
+                }
+                if pkt[rpos] == 0xFB {
+                    rpos += 1;
                     row.push("NULL".to_string());
                 } else {
+                    let len = read_lenenc_int(&pkt, &mut rpos)?;
                     let end = rpos + len as usize;
                     if end > pkt.len() {
                         return Err(CompatError::Protocol(format!(

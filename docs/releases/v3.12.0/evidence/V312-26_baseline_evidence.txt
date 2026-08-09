@@ -1,0 +1,46 @@
+# V312-26: E2E 脚本 WARN-only 修复 — baseline evidence
+#
+# Source: feature/v312-24-impl branch @ 2026-08-09
+# Purpose: Record actual pre-work state of the 3 warn-only scripts.
+
+# ---- 1. || true counts in 3 target scripts (target: 0 after work) ----
+$ grep -rn '|| true' tests/e2e/backup_restore.sh tests/e2e/sysbench_wired.sh scripts/gate/e2e/e2e_07_json_vector.sh | wc -l
+223
+$ grep -rn '|| true' tests/e2e/backup_restore.sh | head -3
+tests/e2e/backup_restore.sh:13:# 禁用 2>/dev/null && 用 || true 真实捕获
+tests/e2e/backup_restore.sh:31:    /usr/bin/mysqldump ... 2>/dev/null || true
+tests/e2e/backup_restore.sh:47:    echo "  WARN: ..." || true
+$ grep -rn '|| true' tests/e2e/sysbench_wired.sh | head -3
+tests/e2e/sysbench_wired.sh:9:# sysbench_wired.sh — real sysbench invocation, no || true fallback
+... (skip — already states the goal but uses || true in execution)
+$ grep -rn '|| true' scripts/gate/e2e/e2e_07_json_vector.sh | head -3
+scripts/gate/e2e/e2e_07_json_vector.sh:18:grep -q "name" "$RESULT_FILE" || true
+... (skip — see V312-26 tasks for full list)
+
+# ---- 2. sysbench availability ----
+# sysbench is INSTALLED on this host (closes the "fail-explicit if absent"
+# closing path with "sysbench found, exercise it for real").
+$ which sysbench
+/usr/bin/sysbench
+$ sysbench --version
+sysbench 1.0.20
+
+# Implication: closing command 4 ("sysbench --version missing → exit 1")
+# CANNOT be tested on this host. Owner must use a PATH-stripping wrapper
+# (e.g. env -i PATH=/usr/bin:/bin bash ...) OR test in a fresh container.
+# Closing report MUST include the exact env used for the failure injection.
+
+# ---- 3. e2e_07 fixture check ----
+# e2e_07_json_vector.sh currently uses `grep -q name` (loose match).
+# Closing command 2 ("move fixture aside → exit != 0") needs the test
+# to ACTUALLY fail when the fixture is missing. Baseline: it does NOT
+# fail (the grep matches something else, exits 0). After work: it does.
+$ bash scripts/gate/e2e/e2e_07_json_vector.sh
+  (currently exits 0 via loose grep — to be confirmed via stderr inspection)
+
+# ---- Post-work targets ----
+# `|| true` count in 3 scripts        → 0    (current 223)
+# e2e_07 fixture-missing exit code    → != 0 (currently 0)
+# backup_restore produces > 100B file  → yes  (currently produces /tmp/backup_restore_evidence.txt)
+# sysbench --version missing → exit 1  → yes  (requires PATH stripping on this host)
+# report file exists                   → yes

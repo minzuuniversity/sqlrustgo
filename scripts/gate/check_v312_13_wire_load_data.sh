@@ -89,9 +89,12 @@ run_step "04-prepared-statement-params" "cd ${ROOT} && cargo test -p sqlrustgo-m
 run_step "05-e2e-wire-protocol" "cd ${ROOT} && cargo test -p sqlrustgo-mysql-server --test e2e_wire_protocol -- --test-threads=1"
 
 # 6. COM_QUERY smoke (existing v3.11 test)
-run_step "06-wire-smoke" "cd ${ROOT} && bash scripts/gate/check_load_data_infile.sh"
+# 6.5. V312-13 §9 SF=0.0001 lineitem smoke (real TPC-H data, fast)
+run_step "06.5-load-data-sf00001-smoke" "cd ${ROOT} && cargo test --test v312_13_load_data_sf1_test v312_13_sf1_lineitem_smoke_subset -- --nocapture"
 
 # 7-9. SF=1 / SF=10 / TLS / compression -- gated by tag and feature flag.
+
+
 # These steps are recorded as 'deferred' on this commit and will be
 # promoted once the server-side support lands (see V312-13 tasks §9-10).
 for step in 07-load-data-sf1 08-load-data-sf10 09-tls-handshake 10-compression; do
