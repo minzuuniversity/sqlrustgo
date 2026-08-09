@@ -128,7 +128,7 @@ v3.12.0 不能继承 v3.11.0 中未验证的生产声明。进入 GA 前，必�
 # SQLRustGo v3.12.0 Version Plan
 
 > **Version**: v3.12.0
-> **Status**: PLANNED
+> **Status**: DRAFT
 > **Date**: 2026-08-09
 > **Product target**: GMP internal-audit retrieval database for `~/gmp-platform`
 > **Planning source**: `docs/plans/2026-08-08-sqlrustgo-v312-v400-gmp-rag-graph-plan.md`

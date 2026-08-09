@@ -10,7 +10,7 @@
 
 | 来源 | 证据 | 用途 |
 |---|---|---|
-| SQLRustGo 本地 checkout | `develop/v3.11.0` at `9f469a7ebde7b451d1ddbc5fc9f0a393d1d7810b` | 同步 252 Gitea v3.11.0 GA 评估后的规划基线 |
+| SQLRustGo 本地 checkout | `develop/v3.12.0` at `9e157ed61b68a2a7c61ebae18cd0a6c15ceb79b1`，基于 `develop/v3.11.0` at `6ab0da723e871d28b80dbd15ecf31852cd07c779` | 252/250 Gitea 同步后的 v3.12 Draft 规划基线 |
 | GMP-Platform 250 checkout | `develop/v1.4.0` at `c0f366d59e7d` | 集成分析基线 |
 | GMP-Platform 集成计划 | commit `556a5f104900` | 跨项目实施方向 |
 | SQLRustGo roadmap plan | `docs/plans/2026-08-08-sqlrustgo-v312-v400-gmp-rag-graph-plan.md` | v3.12/v4.0 范围拆分 |
@@ -26,7 +26,7 @@
 | source_agent | Codex |
 | source_run | `codex-sqlrustgo-v312-plan-2026-08-09` |
 | timestamp | `2026-08-09 13:35:00 CST` |
-| evidence_hash | `local-git:9f469a7ebde7b451d1ddbc5fc9f0a393d1d7810b`；实际 gate 必须生成自己的 evidence hash |
+| evidence_hash | `local-git:9e157ed61b68a2a7c61ebae18cd0a6c15ceb79b1`；实际 gate 必须生成自己的 evidence hash |
 | conflict_resolution | SQLRustGo 本地文档是 release SSOT；GMP-Platform 发现作为集成输入 |
 
 ## 2. 驱动 v3.12.0 的当前发现
@@ -212,7 +212,7 @@ cargo run -p sqlrustgo_sqllogictest -- --test-dir crates/sqlrustgo_sqllogictest/
 # SQLRustGo v3.12.0 Development Plan
 
 > **Version**: v3.12.0
-> **Status**: PLANNED
+> **Status**: DRAFT
 > **Date**: 2026-08-09
 > **Product target**: GMP internal-audit retrieval database for `~/gmp-platform`
 > **Truthfulness rule**: This plan defines future work and exit evidence. It does not claim any v3.12.0 gate has passed.
@@ -221,7 +221,7 @@ cargo run -p sqlrustgo_sqllogictest -- --test-dir crates/sqlrustgo_sqllogictest/
 
 | Source | Evidence | Use |
 |---|---|---|
-| SQLRustGo local checkout | `develop/v3.11.0` at `9f469a7ebde7b451d1ddbc5fc9f0a393d1d7810b` | Current planning baseline after syncing 252 Gitea v3.11.0 GA assessment |
+| SQLRustGo local checkout | `develop/v3.12.0` at `9e157ed61b68a2a7c61ebae18cd0a6c15ceb79b1`, based on `develop/v3.11.0` at `6ab0da723e871d28b80dbd15ecf31852cd07c779` | v3.12 Draft planning baseline after syncing 252/250 Gitea |
 | GMP-Platform 250 checkout | `develop/v1.4.0` at `c0f366d59e7d` | Integration findings baseline |
 | GMP-Platform integration plan | commit `556a5f104900` | Cross-project implementation direction |
 | SQLRustGo roadmap plan | `docs/plans/2026-08-08-sqlrustgo-v312-v400-gmp-rag-graph-plan.md` | v3.12/v4.0 scope split |
@@ -237,7 +237,7 @@ Claim metadata for this document:
 | source_agent | Codex |
 | source_run | `codex-sqlrustgo-v312-plan-2026-08-09` |
 | timestamp | `2026-08-09 13:35:00 CST` |
-| evidence_hash | `local-git:9f469a7ebde7b451d1ddbc5fc9f0a393d1d7810b`; implemented gates must generate their own evidence hashes |
+| evidence_hash | `local-git:9e157ed61b68a2a7c61ebae18cd0a6c15ceb79b1`; implemented gates must generate their own evidence hashes |
 | conflict_resolution | Local SQLRustGo docs are the release SSOT; GMP-Platform findings are treated as integration inputs |
 
 ## 2. Current Findings Driving v3.12.0

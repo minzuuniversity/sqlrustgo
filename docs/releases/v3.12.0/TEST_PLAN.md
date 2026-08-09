@@ -173,7 +173,7 @@ bash scripts/gate/check_sqllogictest_v312.sh
 # SQLRustGo v3.12.0 Test Plan
 
 > **Version**: v3.12.0
-> **Status**: PLANNED
+> **Status**: DRAFT
 > **Date**: 2026-08-09
 > **Target**: GMP internal-audit retrieval production gate
 

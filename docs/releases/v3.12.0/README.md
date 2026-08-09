@@ -56,7 +56,7 @@ v3.12.0 从 v3.11.0 GA 评估状态出发。进入 v3.12.0 GA 前，必须关闭
 
 # SQLRustGo v3.12.0
 
-> **Status**: PLANNED
+> **Status**: DRAFT
 > **Product target**: GMP internal-audit retrieval database for `~/gmp-platform`
 > **Planning date**: 2026-08-09
 

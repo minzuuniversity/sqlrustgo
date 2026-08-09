@@ -292,6 +292,7 @@ if [[ ${#REQ_GATES[@]} -gt 0 ]]; then
         g_expanded=$(expand_version "$g")
         script_path="${g_expanded%% *}"
         if [[ "$g_expanded" =~ ^cargo ]]; then
+            label="$g_expanded"
             if [[ "$DRY_RUN" == true ]]; then
                 echo "  [DRY]  $g_expanded"
                 continue
