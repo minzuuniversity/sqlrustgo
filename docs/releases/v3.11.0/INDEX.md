@@ -47,6 +47,8 @@
 | V311-09-soak-report.md | `reports/v3.11.0/V311-09-soak-report.md` | Current | V311-09 specific |
 | COVERAGE_HISTORICAL_ANALYSIS.md | `COVERAGE_HISTORICAL_ANALYSIS.md` | Current | Coverage threshold history |
 | COVERAGE_TESTING_METHODOLOGY.md | `COVERAGE_TESTING_METHODOLOGY.md` | Current | Coverage measurement |
+| COVERAGE_E2E_AUG09.md | `COVERAGE_E2E_AUG09.md` | **Current (2026-08-09)** | E2E test coverage expansion |
+| E2E_TESTING_GUIDE.md | `E2E_TESTING_GUIDE.md` | **Current (2026-08-09)** | E2E test development guide |
 | DISABLED_TESTS_ANALYSIS.md | `DISABLED_TESTS_ANALYSIS.md` | Current | Disabled test analysis |
 | EXTENSION_CRATES_ARCHIVE.md | `EXTENSION_CRATES_ARCHIVE.md` | Current | Extension crate decisions |
 
@@ -90,4 +92,4 @@
 
 ---
 
-*Last updated: 2026-07-18*
+*Last updated: 2026-08-09 (E2E Coverage Expansion)*
