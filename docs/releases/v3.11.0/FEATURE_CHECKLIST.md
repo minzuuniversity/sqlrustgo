@@ -1,9 +1,10 @@
 # v3.11.0 Feature Checklist
 
 > **Version**: v3.11.0
-> **Status**: DRAFT (2026-07-15, 起步于 v3.10.0 GA)
+> **Status**: **GA (General Availability)** ✅ — 2026-08-09 PR #3664 merged (TPC-H SF=1 22/22 PASS)
 > **Owner**: @openclaw
-> **Last update**: 2026-07-15 (DRAFT init)
+> **Last update**: 2026-08-09 (GA completion)
+> **Tag**: `v3.11.0-ga` @ commit `5038b154c` — synced to 5 remote (250/252/gitcode/gitee/github)
 > **Related**: Issue #3433 (V311-MASTER), STAGE.yaml, V311_DEVELOPMENT_PLAN.md
 
 This document is the **SSOT** for v3.11.0's feature checklist, tracking 23 V311-XX tasks. The framework-level gates (G1-G16) are defined in `docs/governance/STAGE_CONFIG.yaml`; this document enumerates the *application integration* scenarios and the test coverage plan.
