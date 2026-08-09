@@ -4,9 +4,9 @@
 |---|---|
 | source_agent | Codex |
 | source_run | check_sqllogictest_v312 |
-| timestamp | 2026-08-09T14:53:21+08:00 |
-| commit | 004056a620bec8525f66206176ff0b6be8327ce8 |
-| log | docs/releases/v3.12.0/logs/sqllogictest_004056a62_20260809_145319.log |
+| timestamp | 2026-08-10T00:40:17+08:00 |
+| commit | 941a63dbdb178b2b4244c3f5df1e2e88b255e07b |
+| log | docs/releases/v3.12.0/logs/sqllogictest_941a63dbdb_20260810_004013.log |
 | gate_status | PASS |
 
 ## Runner Summary
