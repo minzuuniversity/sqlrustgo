@@ -1,0 +1,95 @@
+# Per-Version Stage State -- v3.12.0
+#
+# SSOT chain:
+#   1. docs/governance/STAGE_CONFIG.yaml
+#   2. docs/releases/v3.12.0/STAGE.yaml
+#   3. scripts/gate/check_stage.sh
+#
+# v3.12.0 is planned from the v3.11.0 GA assessment state.
+# It must not start GA promotion until v3.11.0 weak points are either closed
+# with execution evidence or explicitly carried as v3.12.0 P0 blockers.
+
+version: "v3.12.0"
+current_stage: "PLANNED"
+last_transition:
+  from: "UNDEFINED"
+  to: "PLANNED"
+  date: "2026-08-08"
+  reason: "Planned as GMP internal-audit retrieval production release for ~/gmp-platform, with SQLRustGo as relational store, audited document store, internal vector index host, and graph projection store. 2026-08-09 update: also carries v3.11.0 weak-point hardening, including SQLLogicTest/SQLite oracle gate, TPC-H correctness, wire protocol, LOAD DATA, recovery, backup/restore, and upgrade verification."
+
+positioning:
+  product_contract: "GMP internal-audit retrieval database"
+  allowed_claims:
+    - "SQLRustGo-backed GMP document, chunk, embedding, audit, and relation storage"
+    - "Internal vector retrieval for GMP/RAG workloads"
+    - "SQL-backed graph projection for GMP evidence navigation"
+  forbidden_claims:
+    - "General-purpose standalone vector database"
+    - "General-purpose graph database"
+    - "v3.12.0 GA before v3.11.0 weak points are resolved or explicitly re-gated"
+    - "Broad MySQL 5.7 replacement without SQLLogicTest, TPC-H correctness, wire protocol, LOAD DATA, recovery, and upgrade evidence"
+
+base_requirements:
+  prior_version: "v3.11.0"
+  prior_stage_required: "GA or explicitly demoted with carried blockers"
+  required_prior_evidence:
+    - "G3 coverage evidence reconciled"
+    - "G4 TPC-H SF=1 real 22/22 evidence plus correctness disposition or carried as v3.12.0 blocker"
+    - "168h SOAK decision recorded"
+    - "SQLLogicTest / SQLite oracle gate disposition recorded"
+    - "MySQL wire protocol, LOAD DATA, crash recovery, backup/restore, and upgrade/downgrade gaps classified"
+    - "debt-registry.yaml reconciled with v3.11.0 truth audit"
+
+promotion_to_ALPHA_requires:
+  - "VERSION_PLAN.md approved"
+  - "TEST_PLAN.md approved"
+  - "GMP schema contract accepted"
+  - "SQLLogicTest runner path normalized to crates/sqlrustgo_sqllogictest"
+  - "cargo build -p sqlrustgo_sqllogictest evidence captured"
+  - "~/gmp-platform/gmp-md corpus ingestion fixture selected"
+  - "Initial cargo build, fmt, clippy, and docs checks pass"
+
+promotion_to_BETA_requires:
+  - "GMP document/chunk/embedding/audit schema implemented"
+  - "Idempotent GMP markdown ingestion works on representative corpus"
+  - "Hybrid retrieval returns source path, version, chunk hash, and citation text"
+  - "SQL-backed graph projection supports neighbors and depth-limited paths"
+  - "Audit hash-chain tamper tests fail closed"
+  - "SQLLogicTest smoke corpus runs and writes a report"
+  - "TPC-H SF=1 correctness close-out plan has per-query artifact format"
+
+promotion_to_RC_requires:
+  - "Full ~/gmp-platform/gmp-md ingestion report produced"
+  - "Retrieval quality report produced from fixed GMP internal-audit question set"
+  - "Backup/restore preserves GMP documents, embeddings, graph relations, and audit chain"
+  - "Security and role-based access tests pass"
+  - "Curated SQLite SQLLogicTest subset runs with PASS/FAIL/SKIP classification"
+  - "TPC-H SF=1 cross-engine row-count/SHA256 report exists"
+  - "MySQL wire protocol and LOAD DATA/bulk import reports exist"
+  - "Crash recovery and upgrade/downgrade reports exist"
+  - "No unsupported GMP/RAG production claims remain in docs"
+
+promotion_to_GA_requires:
+  - "All v3.12.0 gates pass with execution evidence"
+  - "168h mixed SOAK: SQL + GMP ingest + retrieval + audit + backup/restore"
+  - "Security scan PASS"
+  - "SQLLogicTest selected targets PASS or every exclusion is issue-linked"
+  - "TPC-H SF=1 correctness has no unexplained zero-row/checksum mismatch"
+  - "Wire protocol, LOAD DATA, crash recovery, backup/restore, and upgrade/downgrade gates PASS"
+  - "Documentation links and consistency PASS"
+  - "GMP compliance matrix signed off"
+  - "GA_GATE_REPORT.md records evidence hashes and no unresolved P0 blockers"
+
+thresholds_override:
+  COVERAGE_MIN_PER_CRATE: 80
+  GMP_CORPUS_UNCLASSIFIED_FAILURE_MAX: 0
+  GMP_AUDIT_TAMPER_TEST_REQUIRED: true
+  GMP_RETRIEVAL_CITATION_REQUIRED: true
+  MIXED_SOAK_HOURS: 168
+  SQLLOGICTEST_SMOKE_REQUIRED: true
+  SQLLOGICTEST_SELECTED_TARGETS_REQUIRED: true
+  TPCH_SF1_CORRECTNESS_REQUIRED: true
+  MYSQL_WIRE_E2E_REQUIRED: true
+  LOAD_DATA_BULK_IMPORT_REQUIRED: true
+  CRASH_RECOVERY_REQUIRED: true
+  UPGRADE_DOWNGRADE_REQUIRED: true

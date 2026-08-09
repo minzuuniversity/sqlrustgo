@@ -2,7 +2,7 @@
 
 > **版本**: v3.11.0
 > **类型**: Debt Clearance + Feature Island Integration + Performance Breakthrough
-> **分支**: `develop/v3.11.0` + `release/v3.11.0` + `main` (HEAD `83c623835`, 与 250/252/gitcode/gitee/github 5 remote 同步)
+> **分支**: `develop/v3.11.0` + `release/v3.11.0` + `main` (HEAD 与 GA tag 对齐, 与 250/252/gitcode/gitee/github 5 remote 同步)
 > **创建日期**: 2026-07-15
 > **前版本**: v3.10.0 (develop/v3.10.0 @ `4ed7d982f6`, GA 2026-07-13)
 > **当前阶段**: **GA (General Availability)** ✅ — 2026-08-09 PR #3664 merged (TPC-H SF=1 22/22 PASS). Tag `v3.11.0-ga` @ commit `83c623835`. 6/6 GA gates PASS: G1 R1-R4 ✅ G2 2,060 tests ✅ G3 tools 80.31% ✅ G4 22/22 ✅ G5 audit ✅ G6 docs ✅.
@@ -30,7 +30,7 @@
 | 2026-08-08 | **PR #3658** (Issue #3658): `docs: 2nd-pass truth audit - correct false TPC-H SF=1 22/22 PASS in 38 historical documents` | commit `88e65decbd` |
 | 2026-08-08 | Stage Control: see current branch head in `STAGE.yaml` and Gitea branch state | |
 
-| 2026-08-09 | **GA 正式发布**: PR #3664 merged (TPC-H SF=1 22/22 PASS), tag `v3.11.0-ga` 创建, 5 remote 同步 (250/252/gitcode/gitee/github) | commit `83c623835` |
+| 2026-08-09 | **GA 正式发布**: PR #3664 merged (TPC-H SF=1 22/22 PASS), tag `v3.11.0-ga` 创建, 5 remote 同步 (250/252/gitcode/gitee/github) | GA tag commit (见文件头部) |
 | 2026-08-09 | V311-20 TPC-H SF=1 22/22 实跑: BinaryTableStorage V2 (Blob/Point/Boolean) + bint_to_tbl example + TPCH_SF1_22_22_PASS_REPORT.md | commit `0b61f864c` + `fae235987` |
 | 2026-08-08 | G3 覆盖率 (V311-14): sqlrustgo-tools 80.31% line / 80.17% branch — 72 → 80.31% (commit `a34b880a7`) | GA gate 工具 crate ≥80% |
 
