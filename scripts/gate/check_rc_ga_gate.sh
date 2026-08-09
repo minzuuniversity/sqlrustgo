@@ -307,6 +307,34 @@ run_d2_beta() {
         log_warn "B5 Integration Gate: review output"
     fi
 
+    # B6: V312-24 test infrastructure artifacts (ISSUE #3911 acceptance criterion 1)
+    # Validates that the canonical SQLancer + test-runner binaries produce
+    # target/sqlancer-report.json + target/test-runner-report.json. Without
+    # this check, V312-24 work can be merged but never wired into the gate.
+    D2_TOTAL=$((D2_TOTAL+1))
+    echo -n "  [B6] V312-24 SQLancer + test-runner artifacts ... "
+    if [ -s "${REPO_ROOT}/target/sqlancer-report.json" ] && \
+       [ -s "${REPO_ROOT}/target/test-runner-report.json" ]; then
+        # Validate JSON schema (same checks as check_anti_fabrication.sh CHECK 1.5)
+        if python3 -c "import json,sys
+d1=json.load(open('${REPO_ROOT}/target/sqlancer-report.json'))
+d2=json.load(open('${REPO_ROOT}/target/test-runner-report.json'))
+for k in ('successful_queries','failed_queries','iterations_requested'):
+    if k not in d1: sys.exit(1)
+for k in ('started_at','finished_at','config','summary','results'):
+    if k not in d2: sys.exit(1)
+" 2>/dev/null; then
+            log_pass "B6 V312-24: SQLancer + test-runner artifacts valid"
+            D2_PASS=$((D2_PASS+1))
+        else
+            log_fail "B6 V312-24: report schema invalid"
+            D2_BLOCKERS=$((D2_BLOCKERS+1))
+        fi
+    else
+        log_fail "B6 V312-24: report artifacts missing (run: cargo run -p sqlancer -- --duration 30 + cargo run -p test-runner)"
+        D2_BLOCKERS=$((D2_BLOCKERS+1))
+    fi
+
     echo -e "\n  D2 Result: $D2_PASS/$D2_TOTAL"
 }
 
