@@ -1,0 +1,142 @@
+warning: /home/ai/sqlrustgo/crates/tools/Cargo.toml: unused manifest key: bin.1.rand
+warning: unreachable pattern
+   --> crates/storage/src/binary_storage.rs:149:21
+    |
+149 |                     _ => {
+    |                     ^ no value can reach this
+    |
+note: multiple earlier patterns match some of the same values
+   --> crates/storage/src/binary_storage.rs:149:21
+    |
+118 |                     sqlrustgo_types::Value::Integer(i) => {
+    |                     ---------------------------------- matches some of the same values
+...
+122 |                     sqlrustgo_types::Value::Float(f) => {
+    |                     -------------------------------- matches some of the same values
+...
+126 |                     sqlrustgo_types::Value::Text(s) => {
+    |                     ------------------------------- matches some of the same values
+...
+132 |                     sqlrustgo_types::Value::Null => {
+    |                     ---------------------------- matches some of the same values
+...
+149 |                     _ => {
+    |                     ^ ...and 3 other patterns collectively make this unreachable
+    = note: `#[warn(unreachable_patterns)]` (part of `#[warn(unused)]`) on by default
+
+warning: unused `Result` that must be used
+   --> crates/storage/src/binary_storage.rs:147:25
+    |
+147 |                         w.write_all(&[u8::from(*b)]);
+    |                         ^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+    |
+    = note: this `Result` may be an `Err` variant, which should be handled
+    = note: `#[warn(unused_must_use)]` (part of `#[warn(unused)]`) on by default
+help: use `let _ = ...` to ignore the resulting value
+    |
+147 |                         let _ = w.write_all(&[u8::from(*b)]);
+    |                         +++++++
+
+warning: unused import: `std::io::Read`
+   --> crates/mysql-client/src/lib.rs:108:9
+    |
+108 |     use std::io::Read;
+    |         ^^^^^^^^^^^^^
+    |
+    = note: `#[warn(unused_imports)]` (part of `#[warn(unused)]`) on by default
+
+warning: function `parse_binary_value` is never used
+   --> crates/mysql-client/src/lib.rs:781:4
+    |
+781 | fn parse_binary_value(data: &[u8]) -> Option<(String, usize)> {
+    |    ^^^^^^^^^^^^^^^^^^
+    |
+    = note: `#[warn(dead_code)]` (part of `#[warn(unused)]`) on by default
+
+warning: constant `COM_QUIT` is never used
+  --> crates/mysql-client/src/lib.rs:24:15
+   |
+24 |     pub const COM_QUIT: u8 = 0x01;
+   |               ^^^^^^^^
+
+warning: constant `COM_STMT_PREPARE` is never used
+  --> crates/mysql-client/src/lib.rs:27:15
+   |
+27 |     pub const COM_STMT_PREPARE: u8 = 0x16;
+   |               ^^^^^^^^^^^^^^^^
+
+warning: constant `COM_STMT_EXECUTE` is never used
+  --> crates/mysql-client/src/lib.rs:28:15
+   |
+28 |     pub const COM_STMT_EXECUTE: u8 = 0x17;
+   |               ^^^^^^^^^^^^^^^^
+
+warning: constant `COM_RESET_CONNECTION` is never used
+  --> crates/mysql-client/src/lib.rs:30:15
+   |
+30 |     pub const COM_RESET_CONNECTION: u8 = 0x1F;
+   |               ^^^^^^^^^^^^^^^^^^^^
+
+warning: `sqlrustgo-storage` (lib) generated 2 warnings
+warning: `sqlrustgo-mysql-client` (lib) generated 6 warnings
+warning: unused import: `super::*`
+  --> crates/executor/src/trigger_eval/resolver.rs:10:9
+   |
+10 |     use super::*;
+   |         ^^^^^^^^
+   |
+   = note: `#[warn(unused_imports)]` (part of `#[warn(unused)]`) on by default
+
+warning: unused import: `crate::trigger_eval::context::TriggerContext`
+  --> crates/executor/src/trigger_eval/resolver.rs:11:9
+   |
+11 |     use crate::trigger_eval::context::TriggerContext;
+   |         ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+warning: `sqlrustgo-executor` (lib) generated 2 warnings (run `cargo fix --lib -p sqlrustgo-executor` to apply 2 suggestions)
+    Finished `dev` profile [unoptimized + debuginfo] target(s) in 0.28s
+     Running `target/debug/sqlrustgo-sqllogictest --test-dir crates/sqlrustgo_sqllogictest/testdata --max-fail 5`
+=== sqlrustgo SQLLogicTest Runner ===
+test_dir: crates/sqlrustgo_sqllogictest/testdata
+
+PASS [string_test.test]
+PASS [null_test.test]
+PASS [basic_select.test]
+FAIL [insert__test_insert_invalid.test] statement failed: execution error: Parse error: Expected expression
+[SQL] INSERT INTO strings VALUES ('�(')
+at crates/sqlrustgo_sqllogictest/testdata/insert__test_insert_invalid.test:8
+
+FAIL [update__test_update.test] parse error: unexpected token: "con1"
+at crates/sqlrustgo_sqllogictest/testdata/update__test_update.test:6
+
+PASS [delete__test_delete.test]
+PASS [demo.test]
+FAIL [setops__test_except.test] query result mismatch:
+[SQL] SELECT * FROM t1 EXCEPT SELECT * FROM t2 ORDER BY a;
+[Diff] (-expected|+actual)
+-   GHI
++   ABC
++   GHI
++   def
+at crates/sqlrustgo_sqllogictest/testdata/setops__test_except.test:41
+
+FAIL [constraints__test_not_null.test] statement is expected to fail, but actually succeed:
+[SQL] INSERT INTO integers VALUES (NULL)
+at crates/sqlrustgo_sqllogictest/testdata/constraints__test_not_null.test:11
+
+PASS [sql__test_delete.test]
+FAIL [binder__alias_error_10057.test] query is expected to fail, but actually succeed:
+[SQL] with test_data as (
+  select 'foo' as a
+)
+select test_data.foobar as new_column from test_data where new_column is not null;
+at crates/sqlrustgo_sqllogictest/testdata/duckdb_full/binder__alias_error_10057.test:5
+
+
+Max failures (5) reached.
+
+=== Summary ===
+files:    6/5 (pass/fail)
+pass rate: 54.5%
+
+NOTE: Baseline established — fail count decreases as sqlrustgo SQL coverage improves.
