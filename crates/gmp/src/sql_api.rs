@@ -338,4 +338,65 @@ mod tests {
         assert!(sql::select_by_status("ACTIVE").contains("ACTIVE"));
         assert!(sql::select_by_date_range(19000, 20000).contains("19000"));
     }
+    #[test]
+    fn test_gmp_executor_vector_embed() {
+        let storage = Arc::new(RwLock::new(MemoryStorage::new()));
+        let executor = GmpExecutor::new(storage.clone());
+        let emb = executor.vector_embed("hello world");
+        assert!(!emb.is_empty());
+    }
+
+    #[test]
+    fn test_gmp_executor_hybrid_search() {
+        let storage = Arc::new(RwLock::new(MemoryStorage::new()));
+        let executor = GmpExecutor::new(storage.clone());
+        executor.init().unwrap();
+        executor
+            .import_document("A", "T", "about rust", &["x"])
+            .unwrap();
+        let results = executor.hybrid_search("rust", 5).unwrap();
+        // May be empty if hybrid not configured, just verify no error
+        assert!(results.len() <= 5);
+    }
+
+    #[test]
+    fn test_gmp_executor_get_document_not_found() {
+        let storage = Arc::new(RwLock::new(MemoryStorage::new()));
+        let executor = GmpExecutor::new(storage.clone());
+        executor.init().unwrap();
+        let doc = executor.get_document(999).unwrap();
+        assert!(doc.is_none());
+    }
+
+    #[test]
+    fn test_gmp_executor_reindex_all() {
+        let storage = Arc::new(RwLock::new(MemoryStorage::new()));
+        let executor = GmpExecutor::new(storage.clone());
+        executor.init().unwrap();
+        executor
+            .import_document("A", "T", "content A", &["x"])
+            .unwrap();
+        executor
+            .import_document("B", "T", "content B", &["x"])
+            .unwrap();
+        let count = executor.reindex_all().unwrap();
+        assert_eq!(count, 2);
+    }
+
+    #[test]
+    fn test_gmp_executor_reindex_empty() {
+        let storage = Arc::new(RwLock::new(MemoryStorage::new()));
+        let executor = GmpExecutor::new(storage.clone());
+        executor.init().unwrap();
+        let count = executor.reindex_all().unwrap();
+        assert_eq!(count, 0);
+    }
+
+    #[test]
+    fn test_sql_init_tables() {
+        assert!(sql::INIT_TABLES.contains("CREATE TABLE IF NOT EXISTS gmp_documents"));
+        assert!(sql::INIT_TABLES.contains("CREATE TABLE IF NOT EXISTS gmp_document_contents"));
+        assert!(sql::INIT_TABLES.contains("CREATE TABLE IF NOT EXISTS gmp_document_keywords"));
+        assert!(sql::INIT_TABLES.contains("CREATE TABLE IF NOT EXISTS gmp_embeddings"));
+    }
 }
