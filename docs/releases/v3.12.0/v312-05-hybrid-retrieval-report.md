@@ -1,5 +1,7 @@
 # V312-05 Hybrid Retrieval — Verification Report
 
+> **provenance:** generated_by=v3.12.0-remediation-round-3, generated_at=2026-08-10T10:49:33Z, commit=ea648a40c07e6d0ac707a8a004bf55c84b1c2790, source_repo=openclaw/sqlrustgo, branch=develop/v3.12.0, policy=Anti-Fabrication-Policy-v1.0
+
 ## Issue & PR
 
 | 字段 | 值 |

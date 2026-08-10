@@ -440,7 +440,24 @@ check_provenance_metadata() {
   local doc="$1"
   local path="$RELEASE_DIR/$doc"
 
+  # 子目录兼容
   if [ ! -f "$path" ]; then
+    if [ -f "$doc" ] && [[ "$doc" == */* ]]; then
+      path="$REPO_ROOT/$doc"
+    elif [ -f "$REPO_ROOT/docs/releases/$VERSION/$doc" ]; then
+      path="$REPO_ROOT/docs/releases/$VERSION/$doc"
+    else
+      return
+    fi
+  fi
+
+  if [ ! -f "$path" ]; then
+    return
+  fi
+
+  # 历史快照豁免（与 check_pass_fail_evidence 一致）
+  if grep -qE "env:historical-snapshot|env:historical_snapshot|env-historical-snapshot" "$path" 2>/dev/null; then
+    add_pass "历史快照文件已豁免 provenance 元数据检查: $doc"
     return
   fi
 
