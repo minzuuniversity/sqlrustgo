@@ -84,6 +84,24 @@ impl<'a> Lexer<'a> {
         self.input[start..self.position].to_string()
     }
 
+    /// Read a double-quoted identifier (e.g., "MyTable" -> MyTable)
+    fn read_quoted_identifier(&mut self) -> String {
+        self.position += 1; // Skip opening double quote
+        let start = self.position;
+        while !self.is_eof() {
+            let ch = self.peek_char();
+            if ch == '"' {
+                break;
+            }
+            self.position += 1;
+        }
+        let result = self.input[start..self.position].to_string();
+        if !self.is_eof() {
+            self.position += 1; // Skip closing double quote
+        }
+        result
+    }
+
     /// Read a number literal
     fn read_number(&mut self) -> String {
         let start = self.position;
@@ -217,6 +235,7 @@ impl<'a> Lexer<'a> {
                 self.position += 1;
                 Token::Colon
             }
+            '"' => Token::Identifier(self.read_quoted_identifier()),
             '\'' => Token::StringLiteral(self.read_string()),
             '=' => {
                 self.position += 1;
