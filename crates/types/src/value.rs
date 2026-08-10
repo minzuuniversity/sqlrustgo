@@ -34,6 +34,8 @@ pub enum Value {
     Blob(Vec<u8>),
     /// Geographic point (x, y)
     Point(f64, f64),
+    /// JSON document (stored as a serde_json::Value)
+    Json(serde_json::Value),
 }
 
 impl Hash for Value {
@@ -55,6 +57,7 @@ impl Hash for Value {
                 x.to_bits().hash(state);
                 y.to_bits().hash(state);
             }
+            Value::Json(v) => v.hash(state),
         }
     }
 }
@@ -69,6 +72,7 @@ impl PartialEq for Value {
             (Value::Text(a), Value::Text(b)) => a == b,
             (Value::Blob(a), Value::Blob(b)) => a == b,
             (Value::Point(a1, a2), Value::Point(b1, b2)) => a1 == b1 && a2 == b2,
+            (Value::Json(a), Value::Json(b)) => a == b,
             _ => false,
         }
     }
@@ -101,6 +105,7 @@ impl Ord for Value {
             Value::Text(_) => 4,
             Value::Blob(_) => 5,
             Value::Point(_, _) => 6,
+            Value::Json(_) => 7,
         };
         match (disc(self), disc(other)) {
             (a, b) if a != b => return a.cmp(&b),
@@ -119,6 +124,11 @@ impl Ord for Value {
                 }
                 other => other.unwrap_or(std::cmp::Ordering::Equal),
             },
+            (Value::Json(a), Value::Json(b)) => {
+                // Compare JSON values by their serialized string representation.
+                // This gives a consistent total order for JSON values.
+                a.to_string().cmp(&b.to_string())
+            }
             // Same discriminant but different subtype — unreachable
             // for the current Value enum (each discriminant is unique),
             // but be defensive against future variants.
@@ -146,6 +156,7 @@ impl Value {
             Value::Text(s) => s.clone(),
             Value::Blob(b) => format!("X'{}'", hex::encode(b)),
             Value::Point(x, y) => format!("POINT({}, {})", x, y),
+            Value::Json(v) => v.to_string(),
         }
     }
 
@@ -159,6 +170,7 @@ impl Value {
             Value::Text(_) => "TEXT",
             Value::Blob(_) => "BLOB",
             Value::Point(_, _) => "POINT",
+            Value::Json(_) => "JSON",
         }
     }
 
@@ -188,6 +200,7 @@ impl Value {
             Value::Text(s) => s.len(),
             Value::Blob(b) => b.len(),
             Value::Point(_, _) => 16,
+            Value::Json(v) => v.to_string().len(),
         }
     }
 }

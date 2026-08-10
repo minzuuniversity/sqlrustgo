@@ -82,8 +82,8 @@ PASS_RATE_LINE="$(printf '%s\n' "$SUMMARY" | grep '^pass rate:' || true)"
 
 # ---- Exclusion Registry Validation ----
 # Accept two formats:
-#   Format A (mine):    status: active  / items:  / - id:
-#   Format B (origin):  exclusions:     / (top-level list) / - file:
+#   Format A (HEAD):    status: active  / items:  / - id:
+#   Format B (origin): exclusions:     / (top-level list) / - file:
 if [ ! -f "$EXCLUSIONS" ]; then
   record_fail "exclusions.yml missing"
 else
