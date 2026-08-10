@@ -2902,7 +2902,7 @@ pub fn parse_stmt_execute_params(
             .unwrap_or(mysql_type::VAR_STRING);
         match decode_param(payload, &mut pos, type_code) {
             Some(v) => params.push((v, is_numeric_type(type_code))),
-            None => return params,
+            None => params.push((Vec::new(), false)), // NULL fallback, continue processing remaining params
         }
     }
 

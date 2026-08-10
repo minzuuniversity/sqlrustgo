@@ -1,5 +1,7 @@
 # V312-11 SQLLogicTest Oracle Gate - Verification Report
 
+> **provenance:** generated_by=v3.12.0-remediation-round-3, generated_at=2026-08-10T10:49:33Z, commit=941a63dbdb178b2b4244c3f5df1e2e88b255e07b, source_repo=openclaw/sqlrustgo, branch=develop/v3.12.0, policy=Anti-Fabrication-Policy-v1.0
+
 **source_agent**: claude-code
 **source_run**: v312-11-verification-2026-08-10-updated
 **timestamp**: 2026-08-10T12:30:00+08:00

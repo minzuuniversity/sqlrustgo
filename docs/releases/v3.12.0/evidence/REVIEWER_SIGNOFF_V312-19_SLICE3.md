@@ -1,5 +1,7 @@
 # v3.12.0 RC/GA Reviewer Sign-off
 
+> **provenance:** generated_by=v3.12.0-remediation-round-3, generated_at=2026-08-10T10:49:33Z, commit=20c02bbe39328615ec421551db2eab5beb6b938c, source_repo=openclaw/sqlrustgo, branch=develop/v3.12.0, policy=Anti-Fabrication-Policy-v1.0
+
 > **Template version**: 1.0
 > **Status**: FILLED (V312-19 / ISSUE #3906 slice 3 + 4)
 > **Required for**: v3.12.0 RC → GA promotion

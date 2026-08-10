@@ -1,5 +1,7 @@
 # V312-30 Reconciliation Report — 总控红线核查 + 5 补救
 
+> **provenance:** generated_by=v3.12.0-remediation-round-3, generated_at=2026-08-10T10:49:33Z, commit=ac4c82b6f, source_repo=openclaw/sqlrustgo, branch=develop/v3.12.0, policy=Anti-Fabrication-Policy-v1.0
+
 > **Status**: 🟢 PHASE 1 + 5 REMEDIATIONS CLOSED (2026-08-09, minimax)
 > **Scope**: V312-24 总控 ISSUES_PLAN §V312-24 "已知 broken test binaries 不得继续靠 WARN-only 掩盖" 的严格核查 + 整改
 > **Final composite hash**: `e4765c53a41e8f5b443f26c79924bf07a966953a8eb78de5175205f63ac0d7bd`

@@ -1,5 +1,7 @@
 # v3.12.0 Reviewer Sign-Off
 
+> **provenance:** generated_by=v3.12.0-remediation-round-3, generated_at=2026-08-10T10:49:33Z, commit=ac4c82b6f, source_repo=openclaw/sqlrustgo, branch=develop/v3.12.0, policy=Anti-Fabrication-Policy-v1.0
+
 ## Release: v3.12.0
 **Release Date:** 2026-08-09
 **Branch:** `develop/v3.12.0` (current: `966c28d0c2`)
