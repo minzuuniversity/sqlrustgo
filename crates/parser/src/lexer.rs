@@ -655,3 +655,29 @@ mod tests {
         assert_eq!(tokens[0], Token::Null);
     }
 }
+
+#[cfg(test)]
+mod double_quote_tests {
+    use super::*;
+
+    #[test]
+    fn test_double_quoted_identifier() {
+        let sql = r#"CREATE TABLE "MyTable"(i integer)"#;
+        let tokens = tokenize(sql);
+        println!("Tokens: {:?}", tokens);
+        // CREATE TABLE "MyTable" ( i integer )
+        // = 7 tokens: Create, Table, Identifier("MyTable"), LParen, Identifier("i"), Identifier("INTEGER"), RParen
+        assert!(tokens.len() >= 3, "Expected at least 3 tokens, got {:?}", tokens);
+        assert_eq!(tokens[0], Token::Create);
+        assert_eq!(tokens[1], Token::Table);
+        assert_eq!(tokens[2], Token::Identifier("MyTable".to_string()));
+    }
+
+    #[test]
+    fn test_values_keyword() {
+        let sql = "VALUES (1, 2)";
+        let tokens = tokenize(sql);
+        assert_eq!(tokens[0], Token::Values);
+        assert_eq!(tokens[1], Token::LParen);
+    }
+}
