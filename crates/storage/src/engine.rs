@@ -853,7 +853,7 @@ impl Default for MemoryStorage {
 
 impl StorageEngine for MemoryStorage {
     fn scan(&self, table: &str) -> SqlResult<Vec<Record>> {
-        Ok(self.tables.get(table).cloned().unwrap_or_default())
+        Ok(self.tables.get(&table.to_lowercase()).cloned().unwrap_or_default())
     }
 
     fn begin_transaction(&mut self) -> SqlResult<u64> {
@@ -900,13 +900,14 @@ impl StorageEngine for MemoryStorage {
     }
 
     fn insert(&mut self, table: &str, records: Vec<Record>) -> SqlResult<()> {
+        let table_key = table.to_lowercase();
         if let Some(log) = self.tx_log.as_mut() {
             for row in &records {
-                log.inserted.push((table.to_string(), row.clone()));
+                log.inserted.push((table_key.clone(), row.clone()));
             }
         }
         self.tables
-            .entry(table.to_string())
+            .entry(table_key)
             .or_default()
             .extend(records);
         Ok(())
@@ -1291,7 +1292,7 @@ impl StorageEngine for MemoryStorage {
     ) -> SqlResult<Vec<Box<dyn Iterator<Item = Record> + Send>>> {
         let data = self
             .tables
-            .get(table)
+            .get(&table.to_lowercase())
             .ok_or_else(|| SqlError::ExecutionError(format!("Table not found: {}", table)))?;
         let total = data.len();
         if total == 0 || num_partitions == 0 {
