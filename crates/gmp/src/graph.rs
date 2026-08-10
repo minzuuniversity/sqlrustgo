@@ -5,9 +5,7 @@
 
 use crate::chunk::get_chunks_for_version;
 use crate::document::{Document, TABLE_DOCUMENTS};
-use crate::relation::{
-    get_neighbors, path_query, GraphPath, PathEdge, PathNode, Relation,
-};
+use crate::relation::{get_neighbors, path_query, GraphPath, PathEdge, PathNode, Relation};
 use crate::schema::RelationType;
 use crate::version::get_document_versions;
 use serde::{Deserialize, Serialize};
@@ -71,8 +69,12 @@ pub struct GraphProjection {
 }
 
 impl GraphProjection {
-    pub fn node_count(&self) -> usize { self.nodes.len() }
-    pub fn edge_count(&self) -> usize { self.edges.len() }
+    pub fn node_count(&self) -> usize {
+        self.nodes.len()
+    }
+    pub fn edge_count(&self) -> usize {
+        self.edges.len()
+    }
     pub fn get_node(&self, doc_id: i64) -> Option<&GraphNode> {
         self.nodes.iter().find(|n| n.doc_id == doc_id)
     }
@@ -189,9 +191,7 @@ pub fn project_subgraph(
         let neighbors: Vec<Relation> = get_neighbors(storage, current_id, None)
             .unwrap_or_default()
             .into_iter()
-            .filter(|r| {
-                relation_types.map_or(true, |types| types.contains(&r.relation_type))
-            })
+            .filter(|r| relation_types.map_or(true, |types| types.contains(&r.relation_type)))
             .collect();
 
         for rel in neighbors {
@@ -296,8 +296,10 @@ pub fn get_graph_stats(storage: &dyn StorageEngine) -> SqlResult<GraphStats> {
         .filter_map(|r| Relation::from_row(&r))
         .collect();
 
-    let mut node_type_counts: std::collections::HashMap<String, usize> = std::collections::HashMap::new();
-    let mut edge_type_counts: std::collections::HashMap<String, usize> = std::collections::HashMap::new();
+    let mut node_type_counts: std::collections::HashMap<String, usize> =
+        std::collections::HashMap::new();
+    let mut edge_type_counts: std::collections::HashMap<String, usize> =
+        std::collections::HashMap::new();
 
     for doc in &docs {
         *node_type_counts.entry(doc.doc_type.clone()).or_insert(0) += 1;
@@ -387,8 +389,22 @@ mod tests {
     fn test_graph_projection_counts() {
         let proj = GraphProjection {
             nodes: vec![
-                GraphNode { doc_id: 1, node_type: "SOP".to_string(), title: "".to_string(), status: "".to_string(), effective_date: 0, version: 1 },
-                GraphNode { doc_id: 2, node_type: "CLAUSE".to_string(), title: "".to_string(), status: "".to_string(), effective_date: 0, version: 1 },
+                GraphNode {
+                    doc_id: 1,
+                    node_type: "SOP".to_string(),
+                    title: "".to_string(),
+                    status: "".to_string(),
+                    effective_date: 0,
+                    version: 1,
+                },
+                GraphNode {
+                    doc_id: 2,
+                    node_type: "CLAUSE".to_string(),
+                    title: "".to_string(),
+                    status: "".to_string(),
+                    effective_date: 0,
+                    version: 1,
+                },
             ],
             edges: vec![],
         };
@@ -421,10 +437,19 @@ mod tests {
         assert_eq!(relation_type_to_node_type(&RelationType::Sop), "SOP");
         assert_eq!(relation_type_to_node_type(&RelationType::Clause), "CLAUSE");
         assert_eq!(relation_type_to_node_type(&RelationType::Capa), "CAPA");
-        assert_eq!(relation_type_to_node_type(&RelationType::Deviation), "DEVIATION");
+        assert_eq!(
+            relation_type_to_node_type(&RelationType::Deviation),
+            "DEVIATION"
+        );
         assert_eq!(relation_type_to_node_type(&RelationType::Role), "ROLE");
-        assert_eq!(relation_type_to_node_type(&RelationType::Equipment), "EQUIPMENT");
-        assert_eq!(relation_type_to_node_type(&RelationType::AuditFinding), "AUDIT_FINDING");
+        assert_eq!(
+            relation_type_to_node_type(&RelationType::Equipment),
+            "EQUIPMENT"
+        );
+        assert_eq!(
+            relation_type_to_node_type(&RelationType::AuditFinding),
+            "AUDIT_FINDING"
+        );
     }
 
     #[test]

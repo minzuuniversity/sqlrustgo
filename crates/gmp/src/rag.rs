@@ -44,8 +44,12 @@ impl CitationBundle {
         !self.citations.is_empty() && self.evidence_hash == self.compute_evidence_hash()
     }
 
-    pub fn len(&self) -> usize { self.citations.len() }
-    pub fn is_empty(&self) -> bool { self.citations.is_empty() }
+    pub fn len(&self) -> usize {
+        self.citations.len()
+    }
+    pub fn is_empty(&self) -> bool {
+        self.citations.is_empty()
+    }
 }
 
 /// Answer envelope containing the response and its evidence.
@@ -178,7 +182,8 @@ pub fn generate_rag_answer(
         total_chunks,
     };
 
-    let answer_snippets: Vec<_> = bundle.citations
+    let answer_snippets: Vec<_> = bundle
+        .citations
         .iter()
         .map(|c| c.content_snippet.clone())
         .collect();
@@ -192,7 +197,9 @@ pub fn generate_rag_answer(
     let grounded = verify_citations(&bundle);
 
     if config.fail_on_uncited && !grounded {
-        return Ok(Err("Answer could not be verified against citations. Fail closed.".to_string()));
+        return Ok(Err(
+            "Answer could not be verified against citations. Fail closed.".to_string(),
+        ));
     }
 
     let envelope = AnswerEnvelope {

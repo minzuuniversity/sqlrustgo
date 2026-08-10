@@ -349,10 +349,17 @@ fn tpch_sf1_22_in_process_regression() {
         } else if (std::env::var("TPCH_SKIP_Q9").is_ok() && n == 9)
             || (std::env::var("TPCH_SKIP_Q10").is_ok() && n == 10)
         {
-            let label = if n == 9 { "Q9 6-table join OOM" } else { "Q10 3-table join OOM" };
+            let label = if n == 9 {
+                "Q9 6-table join OOM"
+            } else {
+                "Q10 3-table join OOM"
+            };
             eprintln!(
                 "  Q{:>2}: {} rows in {:?}  [skipped — {}, tracked #3732]",
-                n, 0, Duration::ZERO, label
+                n,
+                0,
+                Duration::ZERO,
+                label
             );
             report_rows.push((n, 0, Duration::ZERO, "skipped".to_string()));
             continue;
