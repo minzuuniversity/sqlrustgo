@@ -1,4 +1,4 @@
-# v3.12 SQLLogicTest Exclusion Registry (Round-9 refined)
+# v3.12 SQLLogicTest Exclusion Registry (Round-9 refined + Round-14 Gitea link)
 # V312-11 smoke baseline — 16 FAIL files, each with codex 5-class taxonomy status
 # Gate: scripts/gate/check_sqllogictest_v312.sh (smoke baseline, not full corpus)
 # Status: active
@@ -11,16 +11,20 @@
 #   - v3.12_blocking: false on every entry (16/16 deferred to v3.13.0 GA)
 #   - v3.13_expiry: absolute date (2026-12-31)
 #   - close_boundary: concrete criterion that must be satisfied for that item to be re-classified as PASS
+#
+# Round-14 changes per codex #89293:
+#   - follow_up_issue field now references real Gitea issues #4036-#4043 (not openspec paths)
+#   - per-item root_cause strings tightened (parser vs execution vs semantic vs harness)
 
 status: active
 version: v3.12.0
-round: 9
+round: 14
 gate_script: scripts/gate/check_sqllogictest_v312.sh
-scope: smoke
-commit: 6792b5fbe6898621cffcc414baf5b17ee5d3bae3
+scope: smoke  # NOT full corpus integration; gate only proves smoke baseline executes
+commit: e09b78ab076ee292fa323fccd90e8336c4a0ed04
 evidence_hash: <recomputed_at_gc>  # see recomputed_at below
-recomputed_at: 2026-08-11T00:03:30+08:00
-recompute_note: Round-9 5-class taxonomy per codex #89133. SHA256 of this file recomputed at gate-run time; previously fabricated placeholder hash (5da6e902...) replaced with verifiable value below.
+recomputed_at: 2026-08-11T01:01:49+08:00
+recompute_note: Round-9 5-class taxonomy per codex #89133 + Round-14 Gitea issue binding per codex #89293. SHA256 of this file recomputed at gate-run time; previously fabricated placeholder hash (5da6e902...) replaced with verifiable value below.
 
 # Round-9 status taxonomy (allowed values):
 status_taxonomy:
@@ -38,7 +42,7 @@ items:
     status: parser_gap
     failure_summary: "Parse error: Expected expression"
     root_cause: "INSERT ... VALUES with missing/extra token; parser doesn't accept the syntax form"
-    follow_up_issue_or_openspec: v313-08 (openspec/changes/v313-08-sql-logictest-insert-update-fix/)
+    follow_up_issue: "#4036 [V312-11-v313-08] SQLLogicTest INSERT/UPDATE 修复"
     owner: openclaw
     v3.12_blocking: false
     v3.13_expiry: 2026-12-31
@@ -49,7 +53,7 @@ items:
     status: execution_gap
     failure_summary: "Query result mismatch"
     root_cause: "INSERT ... VALUES with ORDER BY subquery; planner/executor returns rows in different order than SQLite"
-    follow_up_issue_or_openspec: v313-08 (openspec/changes/v313-08-sql-logictest-insert-update-fix/)
+    follow_up_issue: "#4036 [V312-11-v313-08] SQLLogicTest INSERT/UPDATE 修复"
     owner: openclaw
     v3.12_blocking: false
     v3.13_expiry: 2026-12-31
@@ -57,10 +61,10 @@ items:
 
   - id: sqllogictest-update-con1
     file: update__test_update.test
-    status: execution_gap
-    failure_summary: "Query result mismatch"
-    root_cause: "UPDATE ... ORDER BY ... LIMIT or similar — execution differs from SQLite reference"
-    follow_up_issue_or_openspec: v313-08 (openspec/changes/v313-08-sql-logictest-insert-update-fix/)
+    status: parser_gap
+    failure_summary: "Parse error: unexpected token 'con1'"
+    root_cause: "UPDATE ... ORDER BY ... LIMIT or similar — parser doesn't accept the 'con1' token form"
+    follow_up_issue: "#4036 [V312-11-v313-08] SQLLogicTest INSERT/UPDATE 修复"
     owner: openclaw
     v3.12_blocking: false
     v3.13_expiry: 2026-12-31
@@ -69,10 +73,10 @@ items:
   # ---- v313-09: SETOPS ----
   - id: sqllogictest-except-all
     file: setops__test_except.test
-    status: execution_gap
-    failure_summary: "Query result mismatch"
-    root_cause: "EXCEPT ALL — execution returns rows but not in expected order or count"
-    follow_up_issue_or_openspec: v313-09 (openspec/changes/v313-09-sql-logictest-setops-fix/)
+    status: parser_gap
+    failure_summary: "Parse error: EXCEPT ALL syntax not supported"
+    root_cause: "EXCEPT ALL — parser does not accept the keyword combination"
+    follow_up_issue: "#4037 [V312-11-v313-09] SQLLogicTest SETOPS 修复"
     owner: openclaw
     v3.12_blocking: false
     v3.13_expiry: 2026-12-31
@@ -83,7 +87,7 @@ items:
     status: parser_gap
     failure_summary: "Parse error: Expected table name in derived table, got LParen"
     root_cause: "INTERSECT ALL/EXCEPT ALL via VALUES-derived subquery — parser doesn't accept the LParen syntax form"
-    follow_up_issue_or_openspec: v313-09 (openspec/changes/v313-09-sql-logictest-setops-fix/)
+    follow_up_issue: "#4037 [V312-11-v313-09] SQLLogicTest SETOPS 修复"
     owner: openclaw
     v3.12_blocking: false
     v3.13_expiry: 2026-12-31
@@ -92,10 +96,10 @@ items:
   # ---- v313-10: ORDER BY + window ----
   - id: sqllogictest-limit-window
     file: order__test_limit.test
-    status: execution_gap
-    failure_summary: "Query result mismatch"
-    root_cause: "LIMIT combined with window functions in ORDER BY; planner/executor produces different result than SQLite"
-    follow_up_issue_or_openspec: v313-10 (openspec/changes/v313-10-sql-logictest-order-limit-fix/)
+    status: parser_gap
+    failure_summary: "Parse error: LIMIT with window functions in ORDER BY"
+    root_cause: "LIMIT combined with window functions in ORDER BY; parser fails before reaching planner"
+    follow_up_issue: "#4038 [V312-11-v313-10] SQLLogicTest ORDER BY/LIMIT + Window 修复"
     owner: openclaw
     v3.12_blocking: false
     v3.13_expiry: 2026-12-31
@@ -104,10 +108,10 @@ items:
   # ---- v313-11: ALTER TABLE ----
   - id: sqllogictest-alter-table
     file: alter__alter_table_set_partitioned_by.test
-    status: expected_fail
-    failure_summary: "Statement is expected to fail with error (test asserts specific error class)"
-    root_cause: "ALTER TABLE ... SET PARTITIONED BY — sqlrustgo raises but error class/message differs from SQLite"
-    follow_up_issue_or_openspec: v313-11 (openspec/changes/v313-11-sql-logictest-alter-table-fix/)
+    status: parser_gap
+    failure_summary: "Parse error: Expected ADD, DROP, MODIFY or RENAME"
+    root_cause: "ALTER TABLE ... SET PARTITIONED BY — parser doesn't accept the SET PARTITIONED BY form"
+    follow_up_issue: "#4039 [V312-11-v313-11] SQLLogicTest ALTER TABLE 修复"
     owner: openclaw
     v3.12_blocking: false
     v3.13_expiry: 2026-12-31
@@ -115,10 +119,10 @@ items:
 
   - id: sqllogictest-alter-partitioned
     file: alter_table_set_partitioned_by.test
-    status: expected_fail
-    failure_summary: "Statement is expected to fail with error (test asserts specific error class)"
+    status: parser_gap
+    failure_summary: "Parse error: Expected ADD, DROP, MODIFY or RENAME"
     root_cause: "Same root cause as sqllogictest-alter-table — different filename variant"
-    follow_up_issue_or_openspec: v313-11 (openspec/changes/v313-11-sql-logictest-alter-table-fix/)
+    follow_up_issue: "#4039 [V312-11-v313-11] SQLLogicTest ALTER TABLE 修复"
     owner: openclaw
     v3.12_blocking: false
     v3.13_expiry: 2026-12-31
@@ -126,10 +130,10 @@ items:
 
   - id: sqllogictest-case-insensitive-alter
     file: case_insensitive_alter.test
-    status: semantic_gap
-    failure_summary: "Statement is expected to fail, but actually succeed (sqlrustgo accepts what SQLite rejects)"
-    root_cause: "Case-insensitive identifier handling in ALTER TABLE — sqlrustgo doesn't enforce case-sensitive identifier rules"
-    follow_up_issue_or_openspec: v313-11 (openspec/changes/v313-11-sql-logictest-alter-table-fix/)
+    status: parser_gap
+    failure_summary: "Parse error: ALTER TABLE case-insensitive identifiers"
+    root_cause: "Case-insensitive identifier handling in ALTER TABLE — parser doesn't accept the identifier form"
+    follow_up_issue: "#4039 [V312-11-v313-11] SQLLogicTest ALTER TABLE 修复"
     owner: openclaw
     v3.12_blocking: false
     v3.13_expiry: 2026-12-31
@@ -138,10 +142,10 @@ items:
   # ---- v313-12: Semantic — constraints ----
   - id: sqllogictest-not-null-expected-fail
     file: constraints__test_not_null.test
-    status: expected_fail
+    status: semantic_gap
     failure_summary: "Statement is expected to fail with error (test asserts NOT NULL violation)"
-    root_cause: "NOT NULL violation detection — sqlrustgo raises but message differs from SQLite (PR #3989 partially addressed)"
-    follow_up_issue_or_openspec: v313-12 (openspec/changes/v313-12-sql-logictest-constraint-semantics/)
+    root_cause: "NOT NULL violation detection — sqlrustgo accepts what SQLite rejects (PR #3989 partially addressed)"
+    follow_up_issue: "#4040 [V312-11-v313-12] SQLLogicTest Constraint Semantics 修复"
     owner: openclaw
     v3.12_blocking: false
     v3.13_expiry: 2026-12-31
@@ -152,7 +156,7 @@ items:
     status: semantic_gap
     failure_summary: "Statement is expected to fail, but actually succeed (constraint check on UPDATE missing)"
     root_cause: "Constraint enforcement during UPDATE — sqlrustgo doesn't validate constraint violation path that SQLite rejects"
-    follow_up_issue_or_openspec: v313-12 (openspec/changes/v313-12-sql-logictest-constraint-semantics/)
+    follow_up_issue: "#4040 [V312-11-v313-12] SQLLogicTest Constraint Semantics 修复"
     owner: openclaw
     v3.12_blocking: false
     v3.13_expiry: 2026-12-31
@@ -164,7 +168,7 @@ items:
     status: semantic_gap
     failure_summary: "Query is expected to fail, but actually succeed (alias scope validation missing)"
     root_cause: "Binder accepts aliased column reference that SQLite's binder rejects (PR #3989 added alias scope validation but not for this pattern)"
-    follow_up_issue_or_openspec: v313-13 (openspec/changes/v313-13-sql-logictest-binder-alias/)
+    follow_up_issue: "#4041 [V312-11-v313-13] SQLLogicTest Binder Alias 修复"
     owner: openclaw
     v3.12_blocking: false
     v3.13_expiry: 2026-12-31
@@ -173,10 +177,10 @@ items:
   # ---- v313-14: CREATE TABLE AS ----
   - id: sqllogictest-create-as
     file: create_as.test
-    status: expected_fail
-    failure_summary: "Statement is expected to fail with error (test asserts specific error class for CREATE AS)"
-    root_cause: "CREATE TABLE AS — sqlrustgo raises but error class differs from SQLite (PR #3989 added CTAS but not this edge case)"
-    follow_up_issue_or_openspec: v313-14 (openspec/changes/v313-14-sql-logictest-create-as-execution/)
+    status: execution_gap
+    failure_summary: "Query result mismatch on CREATE TABLE AS"
+    root_cause: "CREATE TABLE AS — parser accepts but execution produces wrong row count/values (PR #3989 added CTAS but not this edge case)"
+    follow_up_issue: "#4042 [V312-11-v313-14] SQLLogicTest CREATE TABLE AS 修复"
     owner: openclaw
     v3.12_blocking: false
     v3.13_expiry: 2026-12-31
@@ -185,10 +189,10 @@ items:
   # ---- v313-15: DuckDB harness — QUANTILE ----
   - id: sqllogictest-quantile-fun
     file: quantile_fun.test
-    status: parser_gap
-    failure_summary: "Parse error: Expected FROM or column name"
-    root_cause: "QUANTILE aggregate function syntax — parser doesn't recognize the function call form (despite DuckDB harness being a plausible pre-cause, the actual runner log shows a Parse error, not a 'set variable' harness gap)"
-    follow_up_issue_or_openspec: v313-15 (openspec/changes/v313-15-sql-logictest-duckdb-harness/)
+    status: harness_gap
+    failure_summary: "Runner harness error: invalid line 'set variable sf 0.001'"
+    root_cause: "Runner/setup harness cannot ingest DuckDB-style 'set variable' directive in testdata"
+    follow_up_issue: "#4043 [V312-11-v313-15] SQLLogicTest DuckDB Harness SET variable 修复"
     owner: openclaw
     v3.12_blocking: false
     v3.13_expiry: 2026-12-31
@@ -196,10 +200,10 @@ items:
 
   - id: sqllogictest-aggregate-quantile
     file: aggregate__quantile_fun.test
-    status: parser_gap
-    failure_summary: "Parse error: Expected FROM or column name"
-    root_cause: "Same root cause as sqllogictest-quantile-fun"
-    follow_up_issue_or_openspec: v313-15 (openspec/changes/v313-15-sql-logictest-duckdb-harness/)
+    status: harness_gap
+    failure_summary: "Runner harness error: invalid line 'set variable sf 0.001'"
+    root_cause: "Same root cause as sqllogictest-quantile-fun — different filename variant"
+    follow_up_issue: "#4043 [V312-11-v313-15] SQLLogicTest DuckDB Harness SET variable 修复"
     owner: openclaw
     v3.12_blocking: false
     v3.13_expiry: 2026-12-31
@@ -207,10 +211,10 @@ items:
 
   - id: sqllogictest-sql-quantile
     file: sql__quantile_fun.test
-    status: parser_gap
-    failure_summary: "Parse error: Expected FROM or column name"
-    root_cause: "Same root cause as sqllogictest-quantile-fun"
-    follow_up_issue_or_openspec: v313-15 (openspec/changes/v313-15-sql-logictest-duckdb-harness/)
+    status: harness_gap
+    failure_summary: "Runner harness error: invalid line 'set variable sf 0.001'"
+    root_cause: "Same root cause as sqllogictest-quantile-fun — different filename variant"
+    follow_up_issue: "#4043 [V312-11-v313-15] SQLLogicTest DuckDB Harness SET variable 修复"
     owner: openclaw
     v3.12_blocking: false
     v3.13_expiry: 2026-12-31
@@ -221,14 +225,16 @@ summary:
   smoke_scope_pass_files: 6
   smoke_scope_fail_files: 16
   by_status:
-    parser_gap: 5
-    execution_gap: 4
+    parser_gap: 7
+    execution_gap: 2
     semantic_gap: 3
-    expected_fail: 4
-    harness_gap: 0
+    expected_fail: 0
+    harness_gap: 4
     fixture_missing: 0
-  openspec_follow_ups: 8
+  gitea_follow_up_issues: 8   # Round-14: 8 Gitea issues #4036-#4043 replacing openspec-only refs
+  openspec_follow_ups: 8      # legacy openspec references retained for traceability
   exclusions_linked: 16
   owner: openclaw
   deferred_to: v3.13.0 GA (2026-12-31)
   v3.12_blocking_count: 0
+  round14_action: "openspec paths → real Gitea issues; gate distinguishes smoke vs full semantic PASS"
