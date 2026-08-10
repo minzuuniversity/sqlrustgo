@@ -102,6 +102,42 @@ fn test_wire_smoke_stmt_prepare_execute_int() {
     drop(handle);
 }
 
+/// Test COM_STMT_PREPARE + COM_STMT_EXECUTE with parameterized SELECT.
+#[test]
+fn test_wire_smoke_stmt_prepare_execute_param_int() {
+    let handle = start_server();
+    let port = handle.port;
+    let mut conn = connect(port).expect("connected");
+
+    exec_dml(&mut conn, "CREATE TABLE tp (id INT PRIMARY KEY, name VARCHAR(50))");
+    exec_dml(&mut conn, "INSERT INTO tp VALUES (1, 'Alice')");
+    exec_dml(&mut conn, "INSERT INTO tp VALUES (2, 'Bob')");
+
+    let stmt = conn.prepare("SELECT id, name FROM tp WHERE id = ?")
+        .expect("prepare succeeds");
+    assert_eq!(stmt.param_count, 1);
+    assert_eq!(stmt.column_count, 2);
+
+    let rs = conn.execute_prepared(stmt.id, &["1"])
+        .expect("execute succeeds");
+    match rs {
+        ResultSet::Select { rows, .. } => {
+            assert_eq!(rows.len(), 1);
+            assert_eq!(rows[0][0], "1");
+            assert_eq!(rows[0][1], "Alice");
+        }
+        ResultSet::Ok { affected_rows, .. } => {
+            panic!("expected Select, got OK({})", affected_rows);
+        }
+        ResultSet::Error { error_message, .. } => {
+            panic!("server error: {}", error_message);
+        }
+    }
+
+    conn.close_statement(stmt.id).expect("close succeeds");
+    drop(handle);
+}
+
 /// Test COM_STMT_PREPARE + COM_STMT_EXECUTE — simple column selection (no params).
 #[test]
 fn test_wire_smoke_stmt_prepare_execute_varchar() {
@@ -395,4 +431,41 @@ fn test_wire_smoke_load_data_sf1() {
         }
     }
     drop(handle);
+
+
+/// Test COM_STMT_PREPARE + COM_STMT_EXECUTE with parameterized SELECT.
+#[test]
+fn test_wire_smoke_stmt_prepare_execute_param_int() {
+    let handle = start_server();
+    let port = handle.port;
+    let mut conn = connect(port).expect("connected");
+
+    exec_dml(&mut conn, "CREATE TABLE tp (id INT PRIMARY KEY, name VARCHAR(50))");
+    exec_dml(&mut conn, "INSERT INTO tp VALUES (1, 'Alice')");
+    exec_dml(&mut conn, "INSERT INTO tp VALUES (2, 'Bob')");
+
+    let stmt = conn.prepare("SELECT id, name FROM tp WHERE id = ?")
+        .expect("prepare succeeds");
+    assert_eq!(stmt.param_count, 1);
+    assert_eq!(stmt.column_count, 2);
+
+    let rs = conn.execute_prepared(stmt.id, &["1"])
+        .expect("execute succeeds");
+    match rs {
+        ResultSet::Select { rows, .. } => {
+            assert_eq!(rows.len(), 1);
+            assert_eq!(rows[0][0], "1");
+            assert_eq!(rows[0][1], "Alice");
+        }
+        ResultSet::Ok { affected_rows, .. } => {
+            panic!("expected Select, got OK({})", affected_rows);
+        }
+        ResultSet::Error { error_message, .. } => {
+            panic!("server error: {}", error_message);
+        }
+    }
+
+    conn.close_statement(stmt.id).expect("close succeeds");
+    drop(handle);
+}
 }
