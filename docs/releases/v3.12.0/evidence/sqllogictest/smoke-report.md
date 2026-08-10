@@ -1,13 +1,15 @@
 # SQLRustGo v3.12 SQLLogicTest Smoke Baseline
 
+> **provenance:** generated_by=check_sqllogictest_v312.sh, generated_at=2026-08-10T23:24:37+08:00, commit=f2bfd0cf020ed2d2c85ddde63b5a32a9642771df, source_repo=openclaw/sqlrustgo, branch=develop/v3.12.0, gate_policy_eval_id=v312-slt-smoke-001, evidence_hash=f9841d5f2cdeea475ebf0ea68f7e2d86685fcb4ed228bc6956faca54d0cb1dc4, log_path=docs/releases/v3.12.0/logs/sqllogictest_f2bfd0cf02_20260810_232435.log
+
 | Field | Value |
 |---|---|
 | source_agent | minimax-m2.7 |
 | source_run | check_sqllogictest_v312 |
-| timestamp | 2026-08-10T23:21:40+08:00 |
-| commit | 7c018c24e2c46e4c91f416faabd25a2c5cf3dca8 |
-| log | docs/releases/v3.12.0/logs/sqllogictest_7c018c24e2_20260810_232135.log |
-| evidence_hash | 1e4d8878e5007f798d8253effec024b1cfa0a04498021efdadd8b5ebffb38f21 |
+| timestamp | 2026-08-10T23:24:37+08:00 |
+| commit | f2bfd0cf020ed2d2c85ddde63b5a32a9642771df |
+| log | docs/releases/v3.12.0/logs/sqllogictest_f2bfd0cf02_20260810_232435.log |
+| evidence_hash | f9841d5f2cdeea475ebf0ea68f7e2d86685fcb4ed228bc6956faca54d0cb1dc4 |
 | gate_status | PASS |
 
 ## Runner Summary
