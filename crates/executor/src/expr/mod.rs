@@ -1545,24 +1545,6 @@ pub fn eval_fn(name: &str, args: &[Value]) -> Value {
             };
             Value::Float(gis_st_distance(&p1, &p2))
         }
-        // F-03 GIS: ST_Intersects(point1, point2) — returns true if intersect
-        "ST_INTERSECTS" => {
-            use sqlrustgo_gis::{st_intersects as gis_st_intersects, Point as GisPoint};
-            if args.len() != 2 {
-                return Value::Null;
-            }
-            let p1 = match &args[0] {
-                Value::Point(x, y) => GisPoint::new(*x, *y),
-                Value::Text(s) => match GisPoint::parse(s) { Some(p) => p, None => return Value::Null },
-                _ => return Value::Null,
-            };
-            let p2 = match &args[1] {
-                Value::Point(x, y) => GisPoint::new(*x, *y),
-                Value::Text(s) => match GisPoint::parse(s) { Some(p) => p, None => return Value::Null },
-                _ => return Value::Null,
-            };
-            Value::Boolean(gis_st_intersects(&p1, &p2))
-        }
         _ => Value::Null,
     }
 }
