@@ -388,7 +388,11 @@ print(d.get('total_ignore_hits', 0))
         warn "P16: gate test count decreased ($BASELINE_COUNT -> $GATE_TESTS_COUNT); a gate was removed"
     fi
 
-    pass "P16: $GATE_TESTS_COUNT gate tests, 0 new #[ignore] (baseline $BASELINE_COUNT, was $BASELINE_IGNORES ignores)"
+    if [[ "$BASELINE_IGNORES" -gt 0 ]]; then
+        pass "P16: $GATE_TESTS_COUNT gate tests, 0 NEW #[ignore] (baseline-tolerated: $BASELINE_IGNORES pre-existing #[ignore] under ADR-008 exceptions; see tests/baseline/gate_test_baseline.json adr_exceptions)"
+    else
+        pass "P16: $GATE_TESTS_COUNT gate tests, 0 new #[ignore] (baseline $BASELINE_COUNT)"
+    fi
     rm -f "$VIOLATIONS_FILE"
     exit 0
 fi
