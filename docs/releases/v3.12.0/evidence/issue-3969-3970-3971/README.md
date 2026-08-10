@@ -1,5 +1,7 @@
 # V312-16/17/18 Issue Evidence Bundle
 
+> **provenance:** generated_by=v3.12.0-remediation-round-7, generated_at=2026-08-10T17:00:00Z, commit=54e8a5dc, source_repo=openclaw/sqlrustgo, branch=develop/v3.12.0, policy=Anti-Fabrication-Policy-v1.0
+
 > **Purpose**: 12 个 sqllogictest 目标文件的逐项实跑 evidence，对应 Gitea issues:
 > - #3969 (V312-16 sqllogictest Runner 增强)
 > - #3970 (V312-17 VALUES 构造器)
