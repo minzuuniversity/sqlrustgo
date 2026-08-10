@@ -523,15 +523,11 @@ impl<S: StorageEngine + 'static> ExecutionEngine<S> {
                 storage.rename_column(&alter.table_name, name, new_name)?;
             }
             AlterTableOperation::AlterColumn { name, op } => match op {
-                AlterColumnOperation::SetDataType { data_type } => {
-                    let column = ColumnDefinition {
-                        name: name.clone(),
-                        data_type: data_type.clone(),
-                        nullable: true,
-                        primary_key: false,
-                        char_max_length: None,
-                    };
-                    storage.modify_column(&alter.table_name, name, column)?;
+                AlterColumnOperation::SetDataType { .. } => {
+                    return Err(SqlError::ExecutionError(format!(
+                        "ALTER COLUMN '{}' SET DATA TYPE requires explicit CAST (unsafe implicit conversion rejected)",
+                        name
+                    )));
                 }
                 AlterColumnOperation::SetDefault { .. } => {
                     return Err(SqlError::ParseError(format!(
