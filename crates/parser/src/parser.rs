@@ -9007,6 +9007,10 @@ impl Parser {
                                 Some(Token::Identifier(ref t)) if t.to_uppercase() == "TYPE" => {
                                     let data_type = match self.next() {
                                         Some(Token::Identifier(typename)) => typename,
+                                        Some(Token::Integer) => "INTEGER".to_string(),
+                                        Some(Token::Text) => "TEXT".to_string(),
+                                        Some(Token::Float) => "FLOAT".to_string(),
+                                        Some(Token::Boolean) => "BOOLEAN".to_string(),
                                         _ => return Err("Expected data type".to_string()),
                                     };
                                     Ok(Statement::AlterTable(AlterTableStatement {
