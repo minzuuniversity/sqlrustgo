@@ -545,11 +545,14 @@ pub fn eval_identifier(
     name: &str,
     row: &[Value],
     columns: &[sqlrustgo_storage::ColumnDefinition],
-) -> Value {
+) -> Result<Value, String> {
     if let Some(col_idx) = find_column_index(name, columns) {
-        row.get(col_idx).cloned().unwrap_or(Value::Null)
+        Ok(row.get(col_idx).cloned().unwrap_or(Value::Null))
+    } else if name.contains('.') {
+        // V312-18 #3971: qualified column that doesn't exist is a binder error
+        Err(format!("Binder Error: column '{}' not found", name))
     } else {
-        Value::Text(name.to_string())
+        Ok(Value::Text(name.to_string()))
     }
 }
 
