@@ -1,4 +1,6 @@
 # V312 Issues 评论内容
+
+> **provenance:** generated_by=v3.12.0-remediation-round-3, generated_at=2026-08-10T10:49:33Z, commit=ac4c82b6f, source_repo=openclaw/sqlrustgo, branch=develop/v3.12.0, policy=Anti-Fabrication-Policy-v1.0
 **生成时间**: 2026-08-09
 **用途**: 手动发布到各 Issue 或使用 API token 批量发布
 
@@ -24,7 +26,7 @@
 | 测试命令 | `cargo test -p sqlrustgo-gmp --lib` |
 | 测试结果 | **PASS** |
 | 通过数 | 154 passed, 0 failed |
-| evidence_hash | `bbb3dacb5050a2e5c7a5b3d4e6f8a1b2c3d4e5f6a7b8c9d0e1f2a3b4c5d6e7f8a9b` |
+| evidence_hash | `bbb3dacb5078636c7c526004d2f05de0c6d13dda` (Merge Commit SHA1) |
 
 ### 重新关闭条件满足情况
 
@@ -96,7 +98,7 @@
 | 测试命令 | `cargo test -p sqlrustgo-gmp --lib` |
 | 测试结果 | **PASS** |
 | 通过数 | 154 passed, 0 failed |
-| evidence_hash | `1857dca535e2b1c4a5d6e7f8a9b0c1d2e3f4a5b6c7d8e9f0a1b2c3d4e5f6a7b8` |
+| evidence_hash | `1857dca5357902a35778f6adf85f2b310116a8eb` (Merge Commit SHA1) |
 
 ### 重新关闭条件满足情况
 
@@ -132,7 +134,7 @@
 | 测试命令 | `cargo test -p sqlrustgo-gmp --lib` |
 | 测试结果 | **PASS** |
 | 通过数 | 154 passed, 0 failed |
-| evidence_hash | `ea648a40c0e1f2a3b4c5d6e7f8a9b0c1d2e3f4a5b6c7d8e9f0a1b2c3d4e5f6a7b8` |
+| evidence_hash | `ea648a40c07e6d0ac707a8a004bf55c84b1c2790` (Merge Commit SHA1) |
 
 ### 重新关闭条件满足情况
 
@@ -168,7 +170,7 @@
 | 测试命令 | `cargo test -p sqlrustgo-gmp --lib` |
 | 测试结果 | **PASS** |
 | 通过数 | 154 passed, 0 failed |
-| evidence_hash | `1bc0066b45e2f3a4b5c6d7e8f9a0b1c2d3e4f5a6b7c8d9e0f1a2b3c4d5e6f7a8b9` |
+| evidence_hash | `1bc0066b459ff59a751788e9405ad5aacdfccc4b` (Merge Commit SHA1) |
 
 ### 重新关闭条件满足情况
 
@@ -204,7 +206,7 @@
 | 测试命令 | `cargo test -p sqlrustgo-gmp --lib` |
 | 测试结果 | **PASS** |
 | 通过数 | 154 passed, 0 failed |
-| evidence_hash | `893c3078f4e5a6b7c8d9e0f1a2b3c4d5e6f7a8b9c0d1e2f3a4b5c6d7e8f9a0b1c2` |
+| evidence_hash | `893c3078f447e77650299ee6f763d3538b2f9cd8` (Merge Commit SHA1) |
 
 ### 重新关闭条件满足情况
 
@@ -240,7 +242,7 @@
 | 测试命令 | `cargo test -p sqlrustgo-gmp --lib` |
 | 测试结果 | **PASS** |
 | 通过数 | 154 passed, 0 failed |
-| evidence_hash | `cefbc81a10e1f2a3b4c5d6e7f8a9b0c1d2e3f4a5b6c7d8e9f0a1b2c3d4e5f6a7b8` |
+| evidence_hash | `cefbc81a107394a5b18cddd96330eb7c46c9dc95` (Merge Commit SHA1) |
 
 ### 已知限制（不影响关闭）
 
