@@ -804,8 +804,8 @@ fn parse_lit(s: &str) -> Value {
 /// whenever either operand is `Float`, matching PostgreSQL/SQLite.
 pub fn eval_binary_op(left: &Value, right: &Value, op: &str) -> Value {
     match op.to_uppercase().as_str() {
-        "=" | "==" => Value::Boolean(left == right && !matches!(left, Value::Null)),
-        "!=" | "<>" => Value::Boolean(left != right && !matches!(left, Value::Null)),
+        "=" | "==" => Value::Boolean(eq_cross(left, right)),
+        "!=" | "<>" => Value::Boolean(!eq_cross(left, right)),
         ">" | "<" | ">=" | "<=" => compare_cmp(left, right, op),
         "AND" | "&&" => Value::Boolean(to_bool(left) && to_bool(right)),
         "OR" | "||" => Value::Boolean(to_bool(left) || to_bool(right)),
@@ -813,6 +813,30 @@ pub fn eval_binary_op(left: &Value, right: &Value, op: &str) -> Value {
         "->" => json_extract(left, right, false),
         "->>" => json_extract(left, right, true),
         _ => Value::Null,
+    }
+}
+
+/// Cross-type equality for SQL. Two values compare equal if:
+/// - They share a tag (derive PartialEq succeeds), OR
+/// - One is Boolean and the other is a numeric type with the same
+///   truthiness/zero-ness (e.g. `TRUE = 1`, `FALSE = 0`), OR
+/// - One is Integer and the other is Float and they represent the
+///   same numeric value.
+///
+/// Returns false if either side is NULL (SQL three-valued logic:
+/// NULL = NULL is NULL/false, not true).
+fn eq_cross(left: &Value, right: &Value) -> bool {
+    if matches!(left, Value::Null) || matches!(right, Value::Null) {
+        return false;
+    }
+    if left == right {
+        return true;
+    }
+    match (left, right) {
+        (Value::Boolean(a), b) | (b, Value::Boolean(a)) => to_bool(b) == *a,
+        (Value::Integer(a), Value::Float(b))
+        | (Value::Float(b), Value::Integer(a)) => (*a as f64) == *b,
+        _ => false,
     }
 }
 
@@ -919,13 +943,41 @@ fn json_extract(left: &Value, right: &Value, unquote: bool) -> Value {
         _ => return Value::Null,
     };
 
-    let json_path = if path.starts_with('$') {
-        path.clone()
+    // serde_json::Value::pointer uses RFC 6901 JSON Pointer syntax
+    // (e.g. `/foo/0/bar`), but the SQL surface is MySQL JSONPath
+    // (e.g. `$.foo[0].bar`). Normalize: drop leading `$.` and rewrite
+    // each `.`/bracket segment into an RFC 6901 `/`-prefixed token.
+    let json_pointer = if path == "$" {
+        String::new()
+    } else if let Some(rest) = path.strip_prefix("$.") {
+        let mut p = String::new();
+        for segment in rest.split('.') {
+            if let Some(idx_start) = segment.find('[') {
+                let name = &segment[..idx_start];
+                let idx_part = &segment[idx_start..];
+                p.push('/');
+                p.push_str(name);
+                let cleaned: String = idx_part
+                    .chars()
+                    .filter(|c| *c != '[' && *c != ']')
+                    .collect();
+                p.push('/');
+                p.push_str(&cleaned);
+            } else {
+                p.push('/');
+                p.push_str(segment);
+            }
+        }
+        p
+    } else if path.starts_with('$') {
+        // Bare `$` already handled; `$[N]` style — strip the `$`.
+        path[1..].to_string()
     } else {
-        format!("$.{}", path)
+        // Caller supplied an RFC 6901 pointer directly; pass through.
+        path.clone()
     };
 
-    match doc.pointer(&json_path) {
+    match doc.pointer(&json_pointer) {
         Some(result) => {
             if unquote {
                 match result {
