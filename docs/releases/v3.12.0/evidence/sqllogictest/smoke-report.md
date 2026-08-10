@@ -2,19 +2,19 @@
 
 | Field | Value |
 |---|---|
-| source_agent | minimax-m2.7 + claude-code |
-| source_run | v312-11-remediation + check_sqllogictest_v312 |
-| timestamp | 2026-08-10T01:32:02+08:00 |
-| commit | a493c39e7df20e9c9fd5c528ea95f93e88db8477 |
-| log | docs/releases/v3.12.0/logs/sqllogictest_a493c39e7d_20260810_013200.log |
-| evidence_hash | 2de15f38ba33eff0013ce611738d903f88db4e3d9987a672209d833db93b5674 |
-| gate_status | PASS |
+| source_agent | minimax-m2.7 |
+| source_run | check_sqllogictest_v312 |
+| timestamp | 2026-08-10T08:26:17+08:00 |
+| commit | 03969b53a9d4f9cd9fca8ad210e77a512674fd13 |
+| log | docs/releases/v3.12.0/logs/sqllogictest_03969b53a9_20260810_082525.log |
+| evidence_hash | 21998303a5885b8cde4d3544234cdc7001f6dc147ed0d12b46b1ff639c482812 |
+| gate_status | FAIL |
 
 ## Runner Summary
 
 ```text
-files:    6/16 (pass/fail)
-pass rate: 27.3%
+files: unavailable
+pass rate: unavailable
 ```
 
 ## Exclusion Registry
