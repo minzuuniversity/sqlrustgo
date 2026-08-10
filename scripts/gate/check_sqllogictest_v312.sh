@@ -184,6 +184,8 @@ LOG_HASH=$(sha256sum "$LOG" 2>/dev/null | cut -d' ' -f1 || echo unavailable)
 cat >"$REPORT" <<EOF
 # SQLRustGo v3.12 SQLLogicTest Smoke Baseline
 
+> **provenance:** generated_by=check_sqllogictest_v312.sh, generated_at=$(date -Iseconds), commit=$(git rev-parse HEAD 2>/dev/null || echo unknown), source_repo=openclaw/sqlrustgo, branch=develop/v3.12.0, gate_policy_eval_id=v312-slt-smoke-001, evidence_hash=$LOG_HASH, log_path=$LOG
+
 | Field | Value |
 |---|---|
 | source_agent | minimax-m2.7 |
