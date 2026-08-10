@@ -395,11 +395,9 @@ pub fn euclidean_distance(p1: &Point, p2: &Point) -> f64 {
     ((p2.x - p1.x).powi(2) + (p2.y - p1.y).powi(2)).sqrt()
 }
 
-
-
 /// ST_Distance_Point - wrapper for SQL interface
 pub fn st_distance_point(p1: &Point, p2: &Point) -> Value {
-    Value::Float(st_distance(p1, p2))
+    Value::Float(euclidean_distance(p1, p2))
 }
 
 /// ST_Intersects_Point - wrapper for SQL interface  
