@@ -3,6 +3,13 @@ name = "test-registry"
 version = "0.1.0"
 edition = "2021"
 
+[lib]
+path = "src/lib.rs"
+
+[[bin]]
+name = "test-registry-cli"
+path = "src/bin/test-registry-cli.rs"
+
 [dependencies]
 serde = { version = "1.0", features = ["derive"] }
 toml = "0.8"

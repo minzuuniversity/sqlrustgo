@@ -96,3 +96,12 @@
 所有 backlog surfaces 已完成 disposition 分类，无悬空 deferred 项。
 
 7 个 deferred 项已分配 owner (openclaw) 和 expiry (2027-06-30)，并有对应 OpenSpec change 追踪。
+
+---
+
+## 六、V312-13 vs V312-24 Boundary (from origin/develop)
+
+| Workstream | Issue | Status | Owner | Expiry |
+|------------|-------|--------|-------|--------|
+| Wire main path (COM_QUERY / COM_STMT_* / binary row / error packet) | #3900 (V312-13) | ✅ DONE (PR #3948) | openclaw | (closed) |
+| LOAD DATA parser / SF=1 full exec / SF=10 / TLS / compression / parameterized binary / COM_RESET_CONNECTION server | #3959 (V312-24) | 🔜 Deferred | openclaw | 2026-09-30 |

@@ -291,6 +291,7 @@ fn test_expression_to_value_subquery() {
         table: "t".to_string(),
         from_alias: None,
         from_subquery: None,
+        from_values: None,
         where_clause: None,
         join_clause: vec![],
         extra_tables: vec![],

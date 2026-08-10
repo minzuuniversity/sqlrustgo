@@ -179,7 +179,9 @@ fn q21_cell_regression_sf01() {
                     Value::Float(f) => format!("{:.2}", f),
                     Value::Boolean(b) => b.to_string(),
                     Value::Blob(_) => "[blob]".to_string(),
+                    Value::Point(x, y) => format!("POINT({:.2},{:.2})", x, y),
                     Value::Null => String::new(),
+                    Value::Json(j) => format!("[json:{}]", j.to_string().len()),
                 })
                 .collect()
         })

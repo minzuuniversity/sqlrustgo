@@ -24,7 +24,7 @@ use crate::engine_helpers::{
 };
 use crate::engine_utils::{
     build_multi_table_combined_schema, cartesian_product, evaluate_where_clause, find_column_index,
-    validate_foreign_keys,
+    validate_foreign_keys, validate_not_null,
 };
 use crate::expr_utils::{evaluate_expression, resolve_subqueries_in_expr};
 use crate::{ExecutionEngine, SqlError, SqlResult};
@@ -197,6 +197,8 @@ pub fn execute_insert<S: StorageEngine + 'static>(
                             }
                         }
                     }
+                    // Validate NOT NULL constraints
+                    validate_not_null(&table_info, record, &insert.columns)?;
                 }
                 storage.insert(&table_name, to_insert)?;
             }
@@ -220,6 +222,8 @@ pub fn execute_insert<S: StorageEngine + 'static>(
                         }
                     }
                 }
+                // Validate NOT NULL constraints
+                validate_not_null(&table_info, record, &insert.columns)?;
             }
             storage.insert(&table_name, processed_records)?;
         }
@@ -341,6 +345,20 @@ pub fn execute_update<S: StorageEngine + 'static>(
                 Some((col_idx, new_val))
             })
             .collect();
+
+        // Validate NOT NULL constraints for the update values
+        let set_col_names: Vec<String> = resolved_update
+            .set_clauses
+            .iter()
+            .map(|(col, _)| col.clone())
+            .collect();
+        // Build a synthetic row to validate
+        let mut synthetic_row = sample_row.clone();
+        for (col_idx, new_val) in &updates {
+            synthetic_row[*col_idx] = new_val.clone();
+        }
+        validate_not_null(&table_info, &synthetic_row, &set_col_names)?;
+
         let mut storage = engine.storage.write();
         let count = storage.update(&table_name, &[], &updates)?;
         drop(storage);
@@ -410,7 +428,6 @@ pub fn execute_update<S: StorageEngine + 'static>(
 
     {
         let mut storage = engine.storage.write();
-
         if !table_info.check_constraints.is_empty() {
             let col_names: Vec<String> =
                 table_info.columns.iter().map(|c| c.name.clone()).collect();
@@ -429,6 +446,16 @@ pub fn execute_update<S: StorageEngine + 'static>(
                     }
                 }
             }
+        }
+
+        // Validate NOT NULL constraints for each updated row
+        let set_col_names: Vec<String> = resolved_update
+            .set_clauses
+            .iter()
+            .map(|(col, _)| col.clone())
+            .collect();
+        for record in &trigger_modified_rows {
+            validate_not_null(&table_info, record, &set_col_names)?;
         }
 
         let pk_idx = table_info
@@ -970,6 +997,11 @@ fn execute_insert_clustered<S: StorageEngine + 'static>(
             record
         })
         .collect();
+
+    // Validate NOT NULL constraints before inserting each row.
+    for record in &processed_records {
+        validate_not_null(&table_info, record, &insert.columns)?;
+    }
 
     // Insert into ClusteredTable (PK uniqueness enforced internally).
     let mut count = 0usize;

@@ -72,7 +72,7 @@ else
 fi
 
 # 5. ≥20 audit tests pass
-PASSED=$(cargo test --test audit_log_test 2>&1 | grep -E "test result.*ok" | grep -oE "[0-9]+ passed" | head -1 || true)
+PASSED=$(cargo test --test audit_log_test 2>&1 | grep -E "test result.*ok" | grep -oE "[0-9]+ passed" | head -1 || echo "0")
 if [ -z "$PASSED" ]; then
     echo "  ❌ FAIL: audit_log_test tests did not pass"
     cargo test --test audit_log_test 2>&1 | tail -5
