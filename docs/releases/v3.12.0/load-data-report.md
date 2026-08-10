@@ -1,4 +1,5 @@
 # LOAD DATA INFILE Report — v3.12.0 (V312-13 closure scope)
+> **commit**: 1903545df6d036f7f6d5035a0503b5fa932aac51
 
 **Generated:** 2026-08-09
 **Updated:** 2026-08-09T16:45:00Z (V312-13 closure)
@@ -74,3 +75,9 @@ TPC-H SF=1 fixture data is ready. `LOAD DATA INFILE` parser implementation is **
 
 **V312-13 closure status:** ⏳ **Partial** — fixture ✅, parser ⏳ (deferred to #3959)
 
+
+---
+
+## V312-13 Re-verify (2026-08-09T17:30:00Z)
+
+On current HEAD `898768bd89`, `bash scripts/gate/check_load_data_infile.sh` → 4/4 PASS exit 0 (after PR #3976 chmod +x fix).

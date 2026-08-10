@@ -170,6 +170,12 @@ impl BinaryFormat for Value {
                 result.extend_from_slice(&helpers::write_f64(*y));
                 result
             }
+            Value::Json(v) => {
+                let mut result = vec![7u8]; // type indicator
+                let s = v.to_string();
+                result.extend_from_slice(&helpers::write_string(&s));
+                result
+            }
         }
     }
 
@@ -197,6 +203,13 @@ impl BinaryFormat for Value {
                 let x = helpers::read_f64(&data[1..])?;
                 let y = helpers::read_f64(&data[9..])?;
                 Ok(Value::Point(x, y))
+            }
+            7 => {
+                // Read JSON: string representation
+                let s = helpers::read_string(&data[1..])?;
+                let v: serde_json::Value = serde_json::from_str(&s)
+                    .map_err(|e| BinaryFormatError::InvalidFormat(e.to_string()))?;
+                Ok(Value::Json(v))
             }
             _ => Err(BinaryFormatError::InvalidFormat(format!(
                 "Unknown type indicator: {}",
