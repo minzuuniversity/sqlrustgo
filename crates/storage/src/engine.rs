@@ -1053,7 +1053,7 @@ impl StorageEngine for MemoryStorage {
     }
 
     fn drop_table(&mut self, table: &str) -> SqlResult<()> {
-        self.tables.remove(table);
+        self.tables.remove(&table.to_lowercase());
         self.table_infos.remove(table);
         Ok(())
     }
@@ -1066,7 +1066,7 @@ impl StorageEngine for MemoryStorage {
     }
 
     fn has_table(&self, table: &str) -> bool {
-        self.table_infos.contains_key(table)
+        self.table_infos.contains_key(&table.to_lowercase())
     }
 
     fn list_tables(&self) -> Vec<String> {
@@ -1082,7 +1082,7 @@ impl StorageEngine for MemoryStorage {
     }
 
     fn add_column(&mut self, table: &str, column: ColumnDefinition) -> SqlResult<()> {
-        if let Some(info) = self.table_infos.get_mut(table) {
+        if let Some(info) = self.table_infos.get_mut(&table.to_lowercase()) {
             info.columns.push(column);
             Ok(())
         } else {
@@ -1094,13 +1094,14 @@ impl StorageEngine for MemoryStorage {
     }
 
     fn rename_table(&mut self, table: &str, new_name: &str) -> SqlResult<()> {
-        let info = self.table_infos.remove(table);
-        let records = self.tables.remove(table);
+        let table_key = table.to_lowercase();
+        let info = self.table_infos.remove(&table_key);
+        let records = self.tables.remove(&table_key);
         if let (Some(info), Some(records)) = (info, records) {
             let mut new_info = info;
-            new_info.name = new_name.to_string();
-            self.table_infos.insert(new_name.to_string(), new_info);
-            self.tables.insert(new_name.to_string(), records);
+            new_info.name = new_name.to_lowercase();
+            self.table_infos.insert(new_name.to_lowercase(), new_info);
+            self.tables.insert(new_name.to_lowercase(), records);
             Ok(())
         } else {
             Err(SqlError::ExecutionError(format!(
@@ -1230,17 +1231,18 @@ impl StorageEngine for MemoryStorage {
     }
 
     fn drop_column(&mut self, table: &str, column: &str) -> SqlResult<()> {
+        let table_key = table.to_lowercase();
         let info = self
             .table_infos
-            .get_mut(table)
+            .get_mut(&table_key)
             .ok_or_else(|| SqlError::ExecutionError(format!("Table not found: {}", table)))?;
         let col_idx = info
             .columns
             .iter()
-            .position(|c| c.name == column)
+            .position(|c| c.name.to_lowercase() == column.to_lowercase())
             .ok_or_else(|| SqlError::ExecutionError(format!("Column not found: {}", column)))?;
         info.columns.remove(col_idx);
-        if let Some(records) = self.tables.get_mut(table) {
+        if let Some(records) = self.tables.get_mut(&table_key) {
             for record in records.iter_mut() {
                 if col_idx < record.len() {
                     record.remove(col_idx);
@@ -1258,12 +1260,12 @@ impl StorageEngine for MemoryStorage {
     ) -> SqlResult<()> {
         let info = self
             .table_infos
-            .get_mut(table)
+            .get_mut(&table.to_lowercase())
             .ok_or_else(|| SqlError::ExecutionError(format!("Table not found: {}", table)))?;
         let col_idx = info
             .columns
             .iter()
-            .position(|c| c.name == column)
+            .position(|c| c.name.to_lowercase() == column.to_lowercase())
             .ok_or_else(|| SqlError::ExecutionError(format!("Column not found: {}", column)))?;
         info.columns[col_idx] = new_def;
         Ok(())
@@ -1272,12 +1274,12 @@ impl StorageEngine for MemoryStorage {
     fn rename_column(&mut self, table: &str, old_name: &str, new_name: &str) -> SqlResult<()> {
         let info = self
             .table_infos
-            .get_mut(table)
+            .get_mut(&table.to_lowercase())
             .ok_or_else(|| SqlError::ExecutionError(format!("Table not found: {}", table)))?;
         let col = info
             .columns
             .iter_mut()
-            .find(|c| c.name == old_name)
+            .find(|c| c.name.to_lowercase() == old_name.to_lowercase())
             .ok_or_else(|| SqlError::ExecutionError(format!("Column not found: {}", old_name)))?;
         col.name = new_name.to_string();
         Ok(())
