@@ -5765,6 +5765,19 @@ pub mod testing {
             std::fs::create_dir_all(&data_dir)?;
         }
 
+        // V312-F-2 #4025 fix (round-2): the server thread MUST receive the
+        // *resolved* `data_dir` (with the temp fallback already computed
+        // and the directory created/cleaned), not the original `Option`
+        // from `EphemeralConfig`. Previously the closure captured
+        // `data_dir_for_thread` (= `config.data_dir.clone()`, which is
+        // `None` for the typical `data_dir: None` ephemeral test), so the
+        // server thread fell back to the shared `cwd/.sqlrustgo/data`
+        // directory and tests polluted one another (e.g. `test_e2e_drop_table`
+        // saw 2 rows for `t2` instead of 1, because a previous test left a
+        // row there). We now re-assign `data_dir_for_thread` to
+        // `Some(data_dir.clone())` so the closure receives the unique path.
+        let data_dir_for_thread = Some(data_dir.clone());
+
         // Move the listener into the server thread. The accept loop
         // is non-blocking and polls a shutdown flag; Drop sets the
         // flag and joins the thread (the loop exits within 50ms).
