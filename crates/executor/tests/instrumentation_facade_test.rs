@@ -22,9 +22,15 @@ impl MockExecutionEngine {
 }
 
 impl ExecutionEngine for MockExecutionEngine {
-    fn execute(&mut self, _ctx: &mut sqlrustgo_executor::execution::QueryContext) -> SqlResult<ExecutionResult> {
+    fn execute(
+        &mut self,
+        _ctx: &mut sqlrustgo_executor::execution::QueryContext,
+    ) -> SqlResult<ExecutionResult> {
         self.called.store(true, Ordering::SeqCst);
-        Ok(ExecutionResult::with_payload(vec![Value::Integer(1), Value::Text("test".to_string())]))
+        Ok(ExecutionResult::with_payload(vec![
+            Value::Integer(1),
+            Value::Text("test".to_string()),
+        ]))
     }
 
     fn begin(&mut self) -> Result<u64, SqlError> {

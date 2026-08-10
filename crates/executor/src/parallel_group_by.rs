@@ -582,6 +582,9 @@ mod tests {
 
     #[test]
     fn test_value_to_key_string_point() {
-        assert_eq!(value_to_key_string(&Value::Point(1.0, 2.0)), "POINT(1.0, 2.0)");
+        assert_eq!(
+            value_to_key_string(&Value::Point(1.0, 2.0)),
+            "POINT(1.0, 2.0)"
+        );
     }
 }

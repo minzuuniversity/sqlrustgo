@@ -272,8 +272,7 @@ fn preprocess_content(content: &str, base_dir: &Path) -> Result<String, String> 
             for value in values {
                 for body_line in &loop_body {
                     // First substitute the loop variable
-                    let expanded =
-                        body_line.replace(&format!("${{{}}}", var_name), value);
+                    let expanded = body_line.replace(&format!("${{{}}}", var_name), value);
                     // Then substitute any other variables (e.g. from set variable)
                     let expanded = substitute_variables(&expanded, &variables);
                     output.push_str(&expanded);
@@ -312,9 +311,8 @@ fn preprocess_content(content: &str, base_dir: &Path) -> Result<String, String> 
 // Temp file handling for pre-processed content
 // =============================================================================
 
-static TEMP_DIR: LazyLock<tempfile::TempDir> = LazyLock::new(|| {
-    tempfile::tempdir().expect("failed to create temp dir")
-});
+static TEMP_DIR: LazyLock<tempfile::TempDir> =
+    LazyLock::new(|| tempfile::tempdir().expect("failed to create temp dir"));
 
 fn write_temp_file(content: &str, suffix: &str) -> PathBuf {
     let temp_dir = &*TEMP_DIR;
@@ -322,7 +320,8 @@ fn write_temp_file(content: &str, suffix: &str) -> PathBuf {
     let mut path = temp_dir.path().join(format!("slt_{}", safe_suffix));
     path.set_extension("test");
     let mut file = File::create(&path).expect("failed to create temp file");
-    file.write_all(content.as_bytes()).expect("failed to write temp file");
+    file.write_all(content.as_bytes())
+        .expect("failed to write temp file");
     path
 }
 
