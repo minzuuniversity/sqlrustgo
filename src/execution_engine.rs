@@ -588,6 +588,12 @@ impl<S: StorageEngine + 'static> ExecutionEngine<S> {
             Statement::DropSequence(ref seq) => self.execute_drop_sequence(seq),
             Statement::AlterSequence(ref seq) => self.execute_alter_sequence(seq),
             Statement::UseDatabase(ref name) => self.execute_use_database(name),
+            Statement::Values(_) => Err(SqlError::ExecutionError(
+                "VALUES cannot be used as a standalone statement".to_string(),
+            )),
+            Statement::Values(_) => Err(SqlError::ExecutionError(
+                "VALUES cannot be used as a standalone statement".to_string(),
+            )),
             Statement::AlterUser(_) => Err(SqlError::ExecutionError(
                 "ALTER USER not yet implemented".to_string(),
             )),
@@ -647,13 +653,150 @@ impl<S: StorageEngine + 'static> ExecutionEngine<S> {
 
     fn execute_create_table(&self, create: &CreateTableStatement) -> SqlResult<ExecutorResult> {
         let mut storage = self.storage.write();
+
+        // V312-18: CREATE TABLE AS SELECT
+        if let Some(ref select_stmt) = create.select {
+            // Execute the SELECT first to get the column names and data
+            drop(storage); // release write lock to allow reads for SELECT
+            let select_result = self.execute_select(select_stmt)?;
+            storage = self.storage.write();
+
+            // Determine column names: use explicit column names if provided, else from SELECT
+            let select_column_names: Vec<String> = if !create.columns.is_empty() {
+                // Use explicit column names from CREATE TABLE (col1, col2, ...)
+                create.columns.iter().map(|c| c.name.clone()).collect()
+            } else {
+                // Infer from SELECT output column names
+                select_result
+                    .rows
+                    .first()
+                    .map(|_| vec![])
+                    .unwrap_or_else(Vec::new)
+            };
+
+            // V312-18: OR REPLACE - drop existing table first
+            if create.or_replace && storage.has_table(&create.name) {
+                storage.drop_table(&create.name)?;
+            }
+
+            // Check IF NOT EXISTS
+            if storage.has_table(&create.name) {
+                if create.if_not_exists {
+                    return Ok(ExecutorResult::empty());
+                } else {
+                    return Err(SqlError::ExecutionError(format!(
+                        "Table '{}' already exists",
+                        create.name
+                    )));
+                }
+            }
+
+            // Infer column types from SELECT result rows
+            let num_select_cols = if let Some(first_row) = select_result.rows.first() {
+                first_row.len()
+            } else {
+                0
+            };
+
+            // Validate column name count vs select column count
+            if !create.columns.is_empty() && create.columns.len() < num_select_cols {
+                return Err(SqlError::ExecutionError(
+                    "Target table has more column names than query result.".to_string(),
+                ));
+            }
+
+            // Build column definitions from SELECT result
+            // Use explicit column definitions if provided, else infer from data
+            let columns: Vec<ColumnDefinition> = if !create.columns.is_empty() {
+                // Use explicit column definitions
+                create
+                    .columns
+                    .iter()
+                    .map(|c| ColumnDefinition {
+                        name: c.name.clone(),
+                        data_type: c.data_type.clone(),
+                        nullable: c.nullable,
+                        primary_key: c.primary_key,
+                        char_max_length: c.char_max_length,
+                    })
+                    .collect()
+            } else {
+                // Infer from SELECT result - all columns nullable since they come from SELECT
+                (0..num_select_cols)
+                    .map(|i| {
+                        let inferred_type = select_result
+                            .rows
+                            .first()
+                            .and_then(|row| row.get(i))
+                            .map(|v| match v {
+                                Value::Integer(_) => "INTEGER".to_string(),
+                                Value::Float(_) => "FLOAT".to_string(),
+                                Value::Text(_) => "TEXT".to_string(),
+                                Value::Null => "TEXT".to_string(),
+                                Value::Blob(_) => "BLOB".to_string(),
+                                Value::Boolean(_) => "BOOLEAN".to_string(),
+                                Value::Point(_, _) => "POINT".to_string(),
+                            })
+                            .unwrap_or_else(|| "TEXT".to_string());
+                        ColumnDefinition {
+                            name: format!("column{}", i + 1),
+                            data_type: inferred_type,
+                            nullable: true,
+                            primary_key: false,
+                            char_max_length: None,
+                        }
+                    })
+                    .collect()
+            };
+
+            // Handle WITH NO DATA - skip data insertion if false
+            let with_data = create.with_data.unwrap_or(true);
+            if !with_data {
+                // Create empty table
+                let info = TableInfo {
+                    name: create.name.clone(),
+                    columns: columns.clone(),
+                    foreign_keys: vec![],
+                    unique_constraints: vec![],
+                    check_constraints: vec![],
+                    partition_info: None,
+                    compression: None,
+                };
+                storage.create_table(&info)?;
+                return Ok(ExecutorResult::new(vec![], 0));
+            }
+
+            // Insert data rows
+            let info = TableInfo {
+                name: create.name.clone(),
+                columns: columns.clone(),
+                foreign_keys: vec![],
+                unique_constraints: vec![],
+                check_constraints: vec![],
+                partition_info: None,
+                compression: None,
+            };
+            storage.create_table(&info)?;
+
+            // Insert rows from SELECT result
+            let insert_count = if !select_result.rows.is_empty() {
+                storage.insert(&create.name, select_result.rows.clone())?;
+                select_result.rows.len()
+            } else {
+                0
+            };
+
+            return Ok(ExecutorResult::new(vec![], insert_count));
+        }
+
+        // Standard CREATE TABLE (without AS SELECT)
         let columns: Vec<ColumnDefinition> = create
             .columns
             .iter()
             .map(|c| ColumnDefinition {
                 name: c.name.clone(),
                 data_type: c.data_type.clone(),
-                nullable: !c.primary_key,
+                nullable: c.nullable,
                 primary_key: c.primary_key,
                 char_max_length: c.char_max_length,
             })
@@ -663,6 +806,24 @@ impl<S: StorageEngine + 'static> ExecutionEngine<S> {
             CompressionAlgorithm::Zstd => "ZSTD".to_string(),
             CompressionAlgorithm::Zlib => "ZLIB".to_string(),
         });
+
+        // V312-18: OR REPLACE for regular CREATE TABLE
+        if create.or_replace && storage.has_table(&create.name) {
+            storage.drop_table(&create.name)?;
+        }
+
+        // Check IF NOT EXISTS for regular CREATE TABLE
+        if storage.has_table(&create.name) {
+            if create.if_not_exists {
+                return Ok(ExecutorResult::empty());
+            } else {
+                return Err(SqlError::ExecutionError(format!(
+                    "Table '{}' already exists",
+                    create.name
+                )));
+            }
+        }
+
         let info = TableInfo {
             name: create.name.clone(),
             columns: columns.clone(),
