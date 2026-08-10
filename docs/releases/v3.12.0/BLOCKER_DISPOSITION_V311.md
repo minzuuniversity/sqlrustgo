@@ -1,5 +1,7 @@
 # v3.11.0 → v3.12.0 Blocker Disposition Report
 
+> **provenance:** generated_by=v3.12.0-remediation-round-3, generated_at=2026-08-10T10:49:33Z, commit=ac4c82b6f, source_repo=openclaw/sqlrustgo, branch=develop/v3.12.0, policy=Anti-Fabrication-Policy-v1.0
+
 > **V312-01 (#3888) [P0]** — 前序版本阻断项处置
 > **Owner**: MiniMax-M3 (hermes-agent)
 > **Date**: 2026-08-09

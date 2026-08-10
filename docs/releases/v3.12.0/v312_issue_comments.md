@@ -1,4 +1,6 @@
 # V312 Issues 评论内容
+
+> **provenance:** generated_by=v3.12.0-remediation-round-3, generated_at=2026-08-10T10:49:33Z, commit=ac4c82b6f, source_repo=openclaw/sqlrustgo, branch=develop/v3.12.0, policy=Anti-Fabrication-Policy-v1.0
 **生成时间**: 2026-08-09
 **用途**: 手动发布到各 Issue 或使用 API token 批量发布
 
