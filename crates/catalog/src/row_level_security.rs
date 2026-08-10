@@ -368,6 +368,16 @@ fn compare_value_to_literal(val: &Value, lit: &str) -> Result<bool, PredicateErr
         Value::Point(_, _) => Err(PredicateError(
             "cannot compare point to literal".to_string(),
         )),
+        Value::Json(j) => {
+            if (lit.starts_with('\'') && lit.ends_with('\''))
+                || (lit.starts_with('"') && lit.ends_with('"'))
+            {
+                let expected = &lit[1..lit.len() - 1];
+                Ok(j.to_string() == expected)
+            } else {
+                Ok(j.to_string() == lit)
+            }
+        }
     }
 }
 

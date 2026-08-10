@@ -144,7 +144,7 @@ impl BinaryTableStorage {
                     }
                     sqlrustgo_types::Value::Boolean(b) => {
                         w.write_all(&[6])?;
-                        w.write_all(&[u8::from(*b)]);
+                        w.write_all(&[u8::from(*b)])?;
                     }
                     _ => {
                         w.write_all(&[0])?;

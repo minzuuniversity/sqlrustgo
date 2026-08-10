@@ -3,6 +3,7 @@
 **Branch:** `develop/v3.12.0`
 **Date:** 2026-08-09
 **Updated:** 2026-08-09T16:42:00Z (V312-13 closure scope)
+**commit**: 898768bd89
 
 
 ## V312-13 vs V312-24 Boundary
@@ -107,3 +108,9 @@ VARCHAR columns are space-padded to column width in MySQL storage. The client st
 - Parameterized query binary result (`WHERE id = ?` → binary rows)
 - COM_RESET_CONNECTION (server-side)
 
+
+---
+
+## V312-13 Re-apply Closure (2026-08-09T17:30:00Z)
+
+Verified on current HEAD `898768bd89`. All 4 documented gates pass (post PR #3976 chmod +x fix).

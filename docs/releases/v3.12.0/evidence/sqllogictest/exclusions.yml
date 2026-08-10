@@ -1,123 +1,159 @@
-# V312-11 SQLLogicTest Oracle Gate — Exclusion Manifest
-# ISSUE #3898
+# v3.12 SQLLogicTest Exclusion Registry
+# V312-11 smoke baseline — 16 FAIL files, all root-caused to known parser/semantic/harness limitations
+# Gate: scripts/gate/check_sqllogictest_v312.sh (smoke baseline, not full corpus)
+# Status: active
+# scope: smoke (curated subset from testdata/), not full SQLite corpus integration
+# closure: DEFERRED — all 16 FAIL files have OpenSpec follow-up tracking
 
-exclusions:
-  # === PARSER GAP: VALUES constructor not supported ===
-  - file: insert__test_insert_invalid.test
-    reason: "Parse error: Expected expression — VALUES constructor parser gap"
-    category: parser
-    owner: openclaw
-    expiry: "2027-06-30"
-    follow_up: "v313-08-sqlite-values-constructor"
+status: active
+version: v3.12.0
+gate_script: scripts/gate/check_sqllogictest_v312.sh
+scope: smoke
+commit: a5a1b26724fbbd6a8b12640030d4d0d16e6da3e3
+evidence_hash: dc8fcdc941bdedf1b23c764add142caee4fbc1dd6177f5ae80f644f8610cf12c
 
-  - file: insert__test_insert.test
-    reason: "Query result mismatch — VALUES constructor not properly supported"
-    category: parser
+items:
+  # ---- v313-08: INSERT/UPDATE ----
+  - id: sqllogictest-insert-invalid
+    file: insert__test_insert_invalid.test
+    root_cause: PARSER — expected expression
+    follow_up_issue_or_openspec: v313-08 (openspec/changes/v313-08-sql-logictest-insert-update-fix/)
     owner: openclaw
-    expiry: "2027-06-30"
-    follow_up: "v313-08-sqlite-values-constructor"
+    expiry: v3.13.0 GA
+    status: deferred
 
-  # === PARSER GAP: VALUES constructor ===
-  - file: update__test_update.test
-    reason: "Parse error: unexpected token 'con1' — UPDATE with VALUES subquery"
-    category: parser
+  - id: sqllogictest-insert-order
+    file: insert__test_insert.test
+    root_cause: EXECUTION — ORDER BY behavior with VALUES subquery
+    follow_up_issue_or_openspec: v313-08 (openspec/changes/v313-08-sql-logictest-insert-update-fix/)
     owner: openclaw
-    expiry: "2027-06-30"
-    follow_up: "v313-08-sqlite-values-constructor"
+    expiry: v3.13.0 GA
+    status: deferred
 
-  # === PARSER GAP: EXCEPT ALL / INTERSECT ALL ===
-  - file: setops__test_except.test
-    reason: "Query result mismatch — EXCEPT ALL semantics not implemented"
-    category: semantic
+  - id: sqllogictest-update-con1
+    file: update__test_update.test
+    root_cause: PARSER — unexpected token "con1"
+    follow_up_issue_or_openspec: v313-08 (openspec/changes/v313-08-sql-logictest-insert-update-fix/)
     owner: openclaw
-    expiry: "2027-06-30"
-    follow_up: "v313-09-sqlite-setops-all"
+    expiry: v3.13.0 GA
+    status: deferred
 
-  - file: setops__test_setops.test
-    reason: "Parse error: INTERSECT ALL / EXCEPT ALL with VALUES constructor"
-    category: parser
+  # ---- v313-09: SETOPS ----
+  - id: sqllogictest-except-all
+    file: setops__test_except.test
+    root_cause: PARSER — EXCEPT ALL syntax not supported
+    follow_up_issue_or_openspec: v313-09 (openspec/changes/v313-09-sql-logictest-setops-fix/)
     owner: openclaw
-    expiry: "2027-06-30"
-    follow_up: "v313-09-sqlite-setops-all"
+    expiry: v3.13.0 GA
+    status: deferred
 
-  # === PARSER GAP: Window functions in ORDER BY ===
-  - file: order__test_limit.test
-    reason: "Parse error: Invalid LIMIT with window function"
-    category: parser
+  - id: sqllogictest-setops
+    file: setops__test_setops.test
+    root_cause: PARSER — INTERSECT ALL + EXCEPT ALL via VALUES subquery
+    follow_up_issue_or_openspec: v313-09 (openspec/changes/v313-09-sql-logictest-setops-fix/)
     owner: openclaw
-    expiry: "2027-06-30"
-    follow_up: "v313-10-sqlite-window-limit"
+    expiry: v3.13.0 GA
+    status: deferred
 
-  # === PARSER GAP: ALTER TABLE SET PARTITIONED BY ===
-  - file: alter__alter_table_set_partitioned_by.test
-    reason: "Parse error: Expected ADD, DROP, MODIFY or RENAME — DuckDB PARTITIONED BY syntax not supported"
-    category: parser
+  # ---- v313-10: ORDER BY + window ----
+  - id: sqllogictest-limit-window
+    file: order__test_limit.test
+    root_cause: PARSER — LIMIT with window functions in ORDER BY
+    follow_up_issue_or_openspec: v313-10 (openspec/changes/v313-10-sql-logictest-order-limit-fix/)
     owner: openclaw
-    expiry: "2027-06-30"
-    follow_up: "v313-11-sqlite-alter-partitioned"
+    expiry: v3.13.0 GA
+    status: deferred
 
-  - file: alter_table_set_partitioned_by.test
-    reason: "Parse error: Expected ADD, DROP, MODIFY or RENAME — DuckDB PARTITIONED BY syntax not supported"
-    category: parser
+  # ---- v313-11: ALTER TABLE ----
+  - id: sqllogictest-alter-table
+    file: alter__alter_table_set_partitioned_by.test
+    root_cause: PARSER — Expected ADD, DROP, MODIFY or RENAME
+    follow_up_issue_or_openspec: v313-11 (openspec/changes/v313-11-sql-logictest-alter-table-fix/)
     owner: openclaw
-    expiry: "2027-06-30"
-    follow_up: "v313-11-sqlite-alter-partitioned"
+    expiry: v3.13.0 GA
+    status: deferred
 
-  - file: case_insensitive_alter.test
-    reason: "Parse error: ALTER TABLE variants not fully implemented"
-    category: parser
+  - id: sqllogictest-alter-partitioned
+    file: alter_table_set_partitioned_by.test
+    root_cause: PARSER — Expected ADD, DROP, MODIFY or RENAME
+    follow_up_issue_or_openspec: v313-11 (openspec/changes/v313-11-sql-logictest-alter-table-fix/)
     owner: openclaw
-    expiry: "2027-06-30"
-    follow_up: "v313-11-sqlite-alter-partitioned"
+    expiry: v3.13.0 GA
+    status: deferred
 
-  # === SEMANTIC GAP: expected-fail succeeds ===
-  - file: constraints__test_not_null.test
-    reason: "Statement expected to fail but succeeds — NOT NULL constraint not enforced"
-    category: semantic
+  - id: sqllogictest-case-insensitive-alter
+    file: case_insensitive_alter.test
+    root_cause: PARSER — ALTER TABLE case-insensitive identifiers
+    follow_up_issue_or_openspec: v313-11 (openspec/changes/v313-11-sql-logictest-alter-table-fix/)
     owner: openclaw
-    expiry: "2027-06-30"
-    follow_up: "v313-12-sqlite-notnull-enforcement"
+    expiry: v3.13.0 GA
+    status: deferred
 
-  - file: test_constraint_with_updates.test
-    reason: "Statement expected to fail but succeeds — constraint enforcement on UPDATE"
-    category: semantic
+  # ---- v313-12: Semantic — constraints ----
+  - id: sqllogictest-not-null-expected-fail
+    file: constraints__test_not_null.test
+    root_cause: SEMANTIC — expected-fail test succeeded (NOT NULL violation not detected)
+    follow_up_issue_or_openspec: v313-12 (openspec/changes/v313-12-sql-logictest-constraint-semantics/)
     owner: openclaw
-    expiry: "2027-06-30"
-    follow_up: "v313-12-sqlite-notnull-enforcement"
+    expiry: v3.13.0 GA
+    status: deferred
 
-  - file: binder__alias_error_10057.test
-    reason: "Query expected to fail but succeeds — column alias in WHERE clause should error"
-    category: semantic
+  - id: sqllogictest-constraint-updates
+    file: test_constraint_with_updates.test
+    root_cause: SEMANTIC — constraint checking on UPDATE
+    follow_up_issue_or_openspec: v313-12 (openspec/changes/v313-12-sql-logictest-constraint-semantics/)
     owner: openclaw
-    expiry: "2027-06-30"
-    follow_up: "v313-13-sqlite-alias-scoping"
+    expiry: v3.13.0 GA
+    status: deferred
 
-  # === SEMANTIC GAP: Query result mismatch ===
-  - file: create_as.test
-    reason: "Query result mismatch — CREATE TABLE AS behavior differs"
-    category: semantic
+  # ---- v313-13: Binder alias ----
+  - id: sqllogictest-binder-alias
+    file: binder__alias_error_10057.test
+    root_cause: SEMANTIC — binder error for alias
+    follow_up_issue_or_openspec: v313-13 (openspec/changes/v313-13-sql-logictest-binder-alias/)
     owner: openclaw
-    expiry: "2027-06-30"
-    follow_up: "v313-14-sqlite-create-as"
+    expiry: v3.13.0 GA
+    status: deferred
 
-  # === PARSER GAP: invalid test harness line ===
-  - file: aggregate__quantile_fun.test
-    reason: "Parse error: 'set variable sf 0.001' — test harness directive not supported"
-    category: harness
+  # ---- v313-14: CREATE TABLE AS ----
+  - id: sqllogictest-create-as
+    file: create_as.test
+    root_cause: EXECUTION — CREATE TABLE AS query result mismatch
+    follow_up_issue_or_openspec: v313-14 (openspec/changes/v313-14-sql-logictest-create-as-execution/)
     owner: openclaw
-    expiry: "2027-06-30"
-    follow_up: "v313-15-sqlite-harness-directives"
+    expiry: v3.13.0 GA
+    status: deferred
 
-  - file: sql__quantile_fun.test
-    reason: "Parse error: 'set variable sf 0.001' — test harness directive not supported"
-    category: harness
+  # ---- v313-15: DuckDB harness — SET variable ----
+  - id: sqllogictest-quantile-fun
+    file: quantile_fun.test
+    root_cause: HARNESS — parse error: invalid line: "set variable sf 0.001"
+    follow_up_issue_or_openspec: v313-15 (openspec/changes/v313-15-sql-logictest-duckdb-harness/)
     owner: openclaw
-    expiry: "2027-06-30"
-    follow_up: "v313-15-sqlite-harness-directives"
+    expiry: v3.13.0 GA
+    status: deferred
 
-  - file: quantile_fun.test
-    reason: "Parse error: 'set variable sf 0.001' — test harness directive not supported"
-    category: harness
+  - id: sqllogictest-aggregate-quantile
+    file: aggregate__quantile_fun.test
+    root_cause: HARNESS — parse error: invalid line: "set variable sf 0.001"
+    follow_up_issue_or_openspec: v313-15 (openspec/changes/v313-15-sql-logictest-duckdb-harness/)
     owner: openclaw
-    expiry: "2027-06-30"
-    follow_up: "v313-15-sqlite-harness-directives"
+    expiry: v3.13.0 GA
+    status: deferred
+
+  - id: sqllogictest-sql-quantile
+    file: sql__quantile_fun.test
+    root_cause: HARNESS — parse error: invalid line: "set variable sf 0.001"
+    follow_up_issue_or_openspec: v313-15 (openspec/changes/v313-15-sql-logictest-duckdb-harness/)
+    owner: openclaw
+    expiry: v3.13.0 GA
+    status: deferred
+
+summary:
+  total_fail_files: 16
+  smoke_scope_pass_files: 6
+  smoke_scope_fail_files: 16
+  openspec_follow_ups: 8
+  exclusions_linked: 16
+  owner: openclaw
+  deferred_to: v3.13.0 GA

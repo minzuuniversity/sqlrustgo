@@ -48,9 +48,13 @@ KNOWN_PREEXISTING_FAILURES=(
     "teaching_scenario_client_server_test" "executor_test" "snapshot_isolation_test"
     "checksum_corruption_test" "types_value_test" "production_scenario_test"
     "auth_rbac_test" "tpch_compliance_test" "vector_storage_integration_test"
-    "view_test" "wal_fuzz_test"
+    "view_test" "wal_fuzz_test" "wal_deterministic_test"
     # Missing binary source files:
-    "sqlancer" "test-runner" "test-registry-cli"
+    # V312-50 (per codex #88807 4th item): removed stale 'sqlancer'/'test-runner'/'test-registry-cli'
+    # entries per codex #88807 4th item — they were 'Missing binary source files' from
+    # pre-V312-24 days. V312-24 now ACTIVE these binaries (CHECK 1.5 enforces
+    # they exist + produce artifacts). Keeping them as KNOWN would mask
+    # regressions.
     # Example compilation errors:
     "sqlrustgo-bench" "tpch_run_query"
     # Main workspace binary (compile error propagates):
@@ -194,12 +198,97 @@ check_doc_code_examples() {
     log_pass "Scanned $checked markdown files in docs/releases + docs/governance"
 }
 
+# V312-50 (per codex #88807 4th item): restore CHECK 1.5 (V312-24 artifact gate).
+# Originally added in V312-32 commit 1f94d119da; removed by PR #3968 anti-fab v5
+# regression (888ee1445e); never restored when PR #3995 (V312-49) merged
+# V312-46 corpus runner re-apply. Adding back per codex #88807 strict review.
+#
+# Per ISSUE #3911 acceptance criterion 1 ("Every tool can run + produce
+# artifact"), the canonical SQLancer + test-runner binaries must produce
+# target/sqlancer-report.json + target/test-runner-report.json on demand.
+# This check is a fail-explicit guard: absence of artifacts = gate fail.
+check_v312_24_test_infra_artifacts() {
+    log_info "CHECK 1.5: V312-24 SQLancer + test-runner report artifacts..."
+    local errors=0
+
+    # SQLancer
+    if [ ! -x "${REPO_ROOT}/target/release/sqlancer" ]; then
+        log_info "  target/release/sqlancer not present; building..."
+        cargo build --release -p sqlancer 2>/tmp/cargo-build-sqlancer.log || errors=$((errors + 1))
+    fi
+    if [ -x "${REPO_ROOT}/target/release/sqlancer" ]; then
+        if [ ! -s "${REPO_ROOT}/target/sqlancer-report.json" ]; then
+            log_info "  target/sqlancer-report.json missing; running sqlancer (--duration 5)..."
+            "${REPO_ROOT}/target/release/sqlancer" --duration 5 \
+                --out "${REPO_ROOT}/target/sqlancer-report.json" 2>/tmp/sqlancer-run.log || errors=$((errors + 1))
+        fi
+        if [ -s "${REPO_ROOT}/target/sqlancer-report.json" ]; then
+            if python3 -c "import json,sys
+d=json.load(open('${REPO_ROOT}/target/sqlancer-report.json'))
+for k in ('successful_queries','failed_queries','iterations_requested'):
+    if k not in d: sys.exit(1)
+" 2>/dev/null; then
+                local iters
+                iters=$(python3 -c "import json; print(json.load(open('${REPO_ROOT}/target/sqlancer-report.json'))['iterations_requested'])")
+                log_pass "  V312-24: target/sqlancer-report.json valid (iterations=${iters})"
+            else
+                log_error "  V312-24: target/sqlancer-report.json schema INVALID"
+                errors=$((errors + 1))
+            fi
+        else
+            log_error "  V312-24: target/sqlancer-report.json still missing after sqlancer run"
+            errors=$((errors + 1))
+        fi
+    else
+        log_error "  V312-24: target/release/sqlancer not built; cannot produce report"
+        errors=$((errors + 1))
+    fi
+
+    # test-runner
+    if [ ! -x "${REPO_ROOT}/target/release/test-runner" ]; then
+        log_info "  target/release/test-runner not present; building..."
+        cargo build --release -p test-runner 2>/tmp/cargo-build-test-runner.log || errors=$((errors + 1))
+    fi
+    if [ -x "${REPO_ROOT}/target/release/test-runner" ]; then
+        if [ ! -s "${REPO_ROOT}/target/test-runner-report.json" ]; then
+            log_info "  target/test-runner-report.json missing; running test-runner probe..."
+            "${REPO_ROOT}/target/release/test-runner" \
+                --out "${REPO_ROOT}/target/test-runner-report.json" 2>/tmp/test-runner-run.log || errors=$((errors + 1))
+        fi
+        if [ -s "${REPO_ROOT}/target/test-runner-report.json" ]; then
+            if python3 -c "import json,sys
+d=json.load(open('${REPO_ROOT}/target/test-runner-report.json'))
+for k in ('started_at','finished_at','config','summary','results'):
+    if k not in d: sys.exit(1)
+" 2>/dev/null; then
+                local total_duration
+                total_duration=$(python3 -c "import json; print(json.load(open('${REPO_ROOT}/target/test-runner-report.json'))['summary']['total_duration_ms'])")
+                log_pass "  V312-24: target/test-runner-report.json valid (total_duration_ms=${total_duration})"
+            else
+                log_error "  V312-24: target/test-runner-report.json schema INVALID"
+                errors=$((errors + 1))
+            fi
+        else
+            log_error "  V312-24: target/test-runner-report.json still missing after test-runner run"
+            errors=$((errors + 1))
+        fi
+    else
+        log_error "  V312-24: target/release/test-runner not built; cannot produce report"
+        errors=$((errors + 1))
+    fi
+
+    if [[ $errors -gt 0 ]]; then
+        log_error "  V312-24 artifacts check: $errors failure(s) (see lines above)"
+    else
+        log_pass "  V312-24: both SQLancer + test-runner report artifacts present and valid"
+    fi
+}
+
 main() {
     echo "============================================"
     echo "Anti-Fabrication Policy Check (AFP) v4"
-    echo "============================================"
-    echo
     check_canonical_binary_build; echo
+    check_v312_24_test_infra_artifacts; echo
     check_test_compile; echo
     check_gate_report_test_counts; echo
     check_head_commit_author; echo

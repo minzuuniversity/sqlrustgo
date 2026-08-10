@@ -367,6 +367,7 @@ fn value_to_key_string(v: &Value) -> String {
         Value::Blob(b) => format!("{:?}", b),
         Value::Point(x, y) => format!("POINT({:?}, {:?})", x, y),
         Value::Boolean(b) => b.to_string(),
+        Value::Json(v) => format!("{:?}", v),
     }
 }
 
