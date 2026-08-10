@@ -3,8 +3,8 @@
 > **Created**: 2026-08-09
 > **Agent**: claude-code
 > **Source Issue**: #3898
-> **Branch**: develop/v3.12.0
-
+> **commit**: 1903545df6d036f7f6d5035a0503b5fa932aac51
+>
 ## Executive Summary
 
 V312-11 assessed the SQLite SQLLogicTest oracle gate integration for v3.12.0.
