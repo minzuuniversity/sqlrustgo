@@ -1,5 +1,7 @@
 # V312-26: E2E 脚本 WARN-only 修复 — 关闭报告
 
+> **provenance:** generated_by=v3.12.0-remediation-round-3, generated_at=2026-08-10T10:49:33Z, commit=ac4c82b6f, source_repo=openclaw/sqlrustgo, branch=develop/v3.12.0, policy=Anti-Fabrication-Policy-v1.0
+
 > **Status**: 🟢 CLOSED (2026-08-09, minimax)
 > **Issue**: V312-26（V312-24 Phase 3 follow-up）
 > **Owner**: minimax

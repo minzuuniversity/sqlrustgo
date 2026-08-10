@@ -1391,6 +1391,9 @@ impl<S: StorageEngine + 'static> ExecutionEngine<S> {
                 }
                 self.begin_transaction(iso, false)
             }
+            // V312-11-fix #3986: SET session variable is parsed and stored
+            // in the parser/executor pairing; no transaction-level effect,
+            // so this is a no-op for the transaction executor.
             TransactionStatement::SetSessionVariable { .. } => {
                 Ok(ExecutorResult::empty())
             }

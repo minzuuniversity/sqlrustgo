@@ -1,5 +1,7 @@
 # Issue V312-32: v3.12.0 文档证据绑定整改
 
+> **provenance:** generated_by=v3.12.0-remediation-round-3, generated_at=2026-08-10T10:49:33Z, commit=1903545df6d036f7f6d5035a0503b5fa932aac51, source_repo=openclaw/sqlrustgo, branch=develop/v3.12.0, policy=Anti-Fabrication-Policy-v1.0
+
 **状态**: ✅ CLOSED
 **创建日期**: 2026-08-10
 **关闭日期**: 2026-08-10

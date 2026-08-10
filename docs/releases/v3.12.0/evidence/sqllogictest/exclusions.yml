@@ -10,7 +10,9 @@ version: v3.12.0
 gate_script: scripts/gate/check_sqllogictest_v312.sh
 scope: smoke
 commit: a5a1b26724fbbd6a8b12640030d4d0d16e6da3e3
-evidence_hash: dc8fcdc941bdedf1b23c764add142caee4fbc1dd6177f5ae80f644f8610cf12c
+evidence_hash: 5da6e90258182252e298a2d6b96d59f72f0d4a7082c29aef0bb9dc1f1f045127
+recomputed_at: 2026-08-10T14:15:00+08:00
+recompute_note: SHA256 of exclusions.yml at commit a5a1b26724 (V312-11 baseline); V312-32 anti-fab round-2 fix replaced previously fabricated placeholder hash (dc8fcdc9...) with this verifiable value
 
 items:
   # ---- v313-08: INSERT/UPDATE ----

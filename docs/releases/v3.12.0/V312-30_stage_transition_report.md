@@ -1,5 +1,7 @@
 # V312-30 Stage Transition Report — v3.12.0 DRAFT Promotion Evidence
 
+> **provenance:** generated_by=v3.12.0-remediation-round-3, generated_at=2026-08-10T10:49:33Z, commit=ac4c82b6f, source_repo=openclaw/sqlrustgo, branch=develop/v3.12.0, policy=Anti-Fabrication-Policy-v1.0
+
 > **Status**: 🟡 PARTIAL (2026-08-09, minimax)
 > **PR**: #3950 (already MERGED on 252 Gitea at 2026-08-09T14:33:16Z)
 > **HEAD**: `6170791770d6` (or new sha after V312-32 gate-wiring commit)
