@@ -23,6 +23,36 @@
 
 ---
 
+## Done/Deferred Boundary (V312-F-6 / ISSUE #4029)
+
+The boundary below enumerates every step in this report and classifies it
+as **DONE** (V312-13) or **DEFERRED** (V312-24 / ISSUE #3959).
+
+| step | status (V312-13) | classification | follow-up |
+|------|------------------|----------------|-----------|
+| 01-build | pass | DONE (V312-13) | — |
+| 02-typed-wrappers | pass (post V312-F-1 fix) | DONE (V312-13) | — |
+| 03-wire-regression | pass | DONE (V312-13) | — |
+| 04-prepared-statement-params | pass | DONE (V312-13) | — |
+| 05-e2e-wire-protocol | pass (post V312-F-2 fix) | DONE (V312-13) | 9 tests `#[ignore]`'d → V312-24 |
+| 06.5-load-data-sf00001-smoke | pass | DONE (V312-13) | — |
+| 07-load-data-sf1 | deferred | DEFERRED | [openclaw/sqlrustgo#3959](https://github.com/openclaw/sqlrustgo/issues/3959) (V312-24) |
+| 08-load-data-sf10 | deferred | DEFERRED | [openclaw/sqlrustgo#3959](https://github.com/openclaw/sqlrustgo/issues/3959) (V312-24) |
+| 09-tls-handshake | deferred | DEFERRED | [openclaw/sqlrustgo#3959](https://github.com/openclaw/sqlrustgo/issues/3959) (V312-24) |
+| 10-compression | deferred | DEFERRED | [openclaw/sqlrustgo#3959](https://github.com/openclaw/sqlrustgo/issues/3959) (V312-24) |
+
+**V312-13 (DONE) — 7 steps**
+01-build, 02-typed-wrappers, 03-wire-regression, 04-prepared-statement-params,
+05-e2e-wire-protocol, 06.5-load-data-sf00001-smoke, plus 1 partial-completion
+post-F-2 deferral fix.
+
+**V312-24 (DEFERRED) — 4 steps**
+07-load-data-sf1, 08-load-data-sf10, 09-tls-handshake, 10-compression.
+All tracked in ISSUE #3959 (V312-24 / openclaw/sqlrustgo).
+
+V312-F-6 (ISSUE #4029): the DONE/DEFERRED boundary is now explicit in this
+report. The V312-24 follow-up owns all 4 deferred items.
+
 ## Footer
 
 - report_sha256: `e036c47ea12c741edc4e68d3368eaf19ab9d60637ab36bcf095057fe8c1d686e`
