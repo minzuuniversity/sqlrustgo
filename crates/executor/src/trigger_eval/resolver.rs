@@ -10,7 +10,6 @@ mod tests {
     use super::*;
     use crate::trigger_eval::context::TriggerContext;
 
-
     #[test]
     fn resolve_column_returns_null_for_any_name() {
         let trigger = TriggerContext::new(None, None);
