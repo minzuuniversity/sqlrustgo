@@ -285,10 +285,21 @@ PYEOF
 done <<< "${GATE_TESTS_RAW}"
 
 # ============================================================================
-# 3.5 V312-29: scan gate scripts for `\|\| true` after `cargo test`
+# 3.5 V312-29 + V312-31: scan gate scripts for `\|\| true` after `cargo test`
 #     invocations. Same anti-fabrication rationale as P16's #[ignore] check:
 #     `|| true` silently swallows failures and reports a green gate on broken
-#     tests. Any `cargo test ... || true` in scripts/gate/*.sh = FAIL.
+#     tests. Any ACTUAL `cargo test ... || true` invocation in scripts/gate/*.sh
+#     = FAIL.
+#
+#     V312-31 refinement: the previous detector matched its own diagnostic
+#     strings (step/pass/fail/warn messages that LITERALLY contain the text
+#     `cargo test ... || true` for documentation) and rg/grep search patterns
+#     (e.g., `rg "cargo test --test X"` where `cargo test` is a search
+#     literal, not an invocation). The refined detector excludes:
+#       1. Diagnostic/log strings (step/pass/fail/warn/echo/printf ... )
+#       2. `cargo test` occurrences inside double-quoted rg/grep patterns
+#       3. `cargo test` occurrences inside backtick-quoted literal text
+#     Real cargo test invocations followed by `|| true` are still caught.
 # ============================================================================
 step "P16 step 2.5/3: verify no \`cargo test ... || true\` masks in gate scripts"
 
@@ -299,7 +310,14 @@ while IFS= read -r gate_script; do
         [[ -z "$line_no" ]] && continue
         fail "$gate_script: cargo test invocation masked with || true (line $line_no)"
         OR_TRUE_VIOLATIONS=$((OR_TRUE_VIOLATIONS + 1))
-    done < <(sed 's/[[:space:]]*#.*$//' "$gate_script" | grep -nE 'cargo[[:space:]]+test\b.*\|\|[[:space:]]*true' | cut -d: -f1)
+    done < <(
+        sed 's/[[:space:]]*#.*$//' "$gate_script" \
+        | grep -nE 'cargo[[:space:]]+test\b.*\|\|[[:space:]]*true' \
+        | grep -vE '^[[:space:]]*[0-9]+:[[:space:]]*(step|pass|fail|warn|echo|printf)[[:space:]]' \
+        | grep -vE '"cargo[[:space:]]+test' \
+        | grep -vE '`cargo[[:space:]]+test' \
+        | cut -d: -f1
+    )
 done < <(find "${GATE_SCRIPTS_DIR}" -maxdepth 1 -name "*.sh" -type f)
 
 if [[ "$OR_TRUE_VIOLATIONS" -eq 0 ]]; then
