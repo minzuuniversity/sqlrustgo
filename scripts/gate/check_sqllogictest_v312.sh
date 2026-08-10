@@ -141,10 +141,12 @@ else
 fi
 
 # ---- Manifest Validation ----
+# `wc -l` on macOS emits leading whitespace (BSD wc); trim to digits-only so
+# the string compare against MANIFEST_TOTAL is reliable across platforms.
 if [ -f "$MANIFEST" ]; then
   MANIFEST_TOTAL=$(grep '"total_files"' "$MANIFEST" | grep -o '[0-9]\+' | head -1 || echo 0)
   MANIFEST_PASS=$(grep '"pass_files"' "$MANIFEST" | grep -o '[0-9]\+' | head -1 || echo 0)
-  ACTUAL_TEST_FILES=$(find crates/sqlrustgo_sqllogictest/testdata -name "*.test" 2>/dev/null | wc -l)
+  ACTUAL_TEST_FILES=$(find crates/sqlrustgo_sqllogictest/testdata -name "*.test" 2>/dev/null | wc -l | tr -d '[:space:]')
   if [ "$MANIFEST_TOTAL" != "$ACTUAL_TEST_FILES" ]; then
     record_fail "manifest total_files ($MANIFEST_TOTAL) != actual test files ($ACTUAL_TEST_FILES)"
   fi
@@ -173,6 +175,12 @@ done < <(grep "^  - id:" "$EXCLUSIONS" 2>/dev/null)
 if [ "$MISSING_OPENSPC" -gt 0 ]; then
   record_fail "exclusions.yml: $MISSING_OPENSPC OpenSpec follow-up directories missing"
 fi
+
+# Compute evidence_hash AFTER all log writes are done. We append more lines
+# to $LOG below (the `tee -a "$LOG"` blocks) so the hash must be deferred
+# until those writes finish.
+LOG_HASH=$(sha256sum "$LOG" 2>/dev/null | cut -d' ' -f1 || echo unavailable)
+
 cat >"$REPORT" <<EOF
 # SQLRustGo v3.12 SQLLogicTest Smoke Baseline
 
@@ -183,7 +191,7 @@ cat >"$REPORT" <<EOF
 | timestamp | $(date -Iseconds) |
 | commit | $(git rev-parse HEAD 2>/dev/null || echo unknown) |
 | log | $LOG |
-| evidence_hash | $(sha256sum "$LOG" 2>/dev/null | cut -d' ' -f1 || echo unavailable) |
+| evidence_hash | $LOG_HASH |
 | gate_status | $([ "$FAIL" -eq 0 ] && echo PASS || echo FAIL) |
 
 ## Runner Summary
@@ -204,11 +212,15 @@ This report is a v3.12 smoke baseline. It does not claim the SQLite official cor
 EOF
 
 
-echo | tee -a "$LOG"
-echo "report: $REPORT" | tee -a "$LOG"
-echo "manifest: $MANIFEST" | tee -a "$LOG"
-echo "exclusions: $EXCLUSIONS" | tee -a "$LOG"
-echo "summary: $PASS PASS, $FAIL FAIL" | tee -a "$LOG"
+echo
+SUMMARY_FILE="${LOG}.summary"
+{
+  echo
+  echo "report: $REPORT"
+  echo "manifest: $MANIFEST"
+  echo "exclusions: $EXCLUSIONS"
+  echo "summary: $PASS PASS, $FAIL FAIL"
+} | tee "$SUMMARY_FILE"
 
 if [ "$FAIL" -eq 0 ]; then
   exit 0
