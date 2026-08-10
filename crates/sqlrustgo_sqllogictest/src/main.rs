@@ -486,5 +486,10 @@ async fn async_main() {
         println!(
             "\nNOTE: Baseline established — fail count decreases as sqlrustgo SQL coverage improves."
         );
+        // Round-9 (V312-24): exit non-zero so the gate script can distinguish
+        // a successful baseline run from a real failure. Previously `main`
+        // returned 0 even with `files_fail > 0`, masking regressions from the
+        // gate logic. See plan: /home/openclaw/.claude/plans/pure-hugging-sifakis.md
+        std::process::exit(1);
     }
 }
