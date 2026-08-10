@@ -1391,6 +1391,13 @@ impl<S: StorageEngine + 'static> ExecutionEngine<S> {
                 }
                 self.begin_transaction(iso, false)
             }
+            // V312-11-fix #3986: SET session variable — store name/value in
+            // session-level map. Currently no-op for execution but parser-level
+            // support requires this match arm to keep the enum exhaustive.
+            TransactionStatement::SetSessionVariable { name, value } => {
+                let _ = (name, value);
+                Ok(ExecutorResult::empty())
+            }
         }
     }
 
