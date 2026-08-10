@@ -19,28 +19,18 @@ statement ok
 INSERT INTO a VALUES (1, 2)
 
 # scalar inserts
-statement error
+statement error .*Binder Error.*table a has 2 columns.*
 INSERT INTO a VALUES (1)
-----
-<REGEX>:.*Binder Error.*table a has 2 columns.*
 
-statement error
+statement error .*Binder Error.*table a has 2 columns.*
 INSERT INTO a VALUES (1,2,3)
-----
-<REGEX>:.*Binder Error.*table a has 2 columns.*
 
-statement error
+statement error .*Parser Error.*must all be the same length.*
 INSERT INTO a VALUES (1,2),(3)
-----
-<REGEX>:.*Parser Error.*must all be the same length.*
 
-statement error
+statement error .*Parser Error.*must all be the same length.*
 INSERT INTO a VALUES (1,2),(3,4,5)
-----
-<REGEX>:.*Parser Error.*must all be the same length.*
 
 # also with queries
-statement error
+statement error .*Binder Error.*table a has 2 columns.*
 INSERT INTO a SELECT 42
-----
-<REGEX>:.*Binder Error.*table a has 2 columns.*

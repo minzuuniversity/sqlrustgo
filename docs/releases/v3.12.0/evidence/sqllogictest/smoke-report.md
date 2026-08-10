@@ -4,17 +4,17 @@
 |---|---|
 | source_agent | minimax-m2.7 |
 | source_run | check_sqllogictest_v312 |
-| timestamp | 2026-08-10T18:32:43+08:00 |
-| commit | ac9e74609f9a7956743a1b5168102a7927752031 |
-| log | docs/releases/v3.12.0/logs/sqllogictest_ac9e74609f_20260810_183229.log |
-| evidence_hash | ba3f7884e2907ba7b6e2c56e27de8a8816fc71dea3e38e5c177ffb7f59874320 |
+| timestamp | 2026-08-10T19:32:02+08:00 |
+| commit | 99db75695c941602173bd574890ee7900bbcf854 |
+| log | docs/releases/v3.12.0/logs/sqllogictest_99db75695c_20260810_193200.log |
+| evidence_hash | 7a0cc58acbff84305593d8a6ce1587f67c32e8fa49dc03b94fed98537c6c871d |
 | gate_status | PASS |
 
 ## Runner Summary
 
 ```text
-files:    6/16 (pass/fail)
-pass rate: 27.3%
+files:    10/12 (pass/fail)
+pass rate: 45.5%
 ```
 
 ## Exclusion Registry

@@ -8,16 +8,14 @@ CREATE TABLE integers(i INTEGER NOT NULL)
 statement ok
 INSERT INTO integers VALUES (3)
 
-statement error
+statement error .*NULL.*
 INSERT INTO integers VALUES (NULL)
-----
 
 statement ok
 UPDATE integers SET i=4
 
-statement error
+statement error .*NULL.*
 UPDATE integers SET i=NULL
-----
 
 statement ok
 CREATE TABLE integers_with_null(i INTEGER)
@@ -25,9 +23,8 @@ CREATE TABLE integers_with_null(i INTEGER)
 statement ok
 INSERT INTO integers_with_null VALUES (3), (4), (5), (NULL);
 
-statement error
+statement error .*NULL.*
 INSERT INTO integers (i) SELECT * FROM integers_with_null
-----
 
 statement ok
 INSERT INTO integers (i) SELECT * FROM integers_with_null WHERE i IS NOT NULL
@@ -50,4 +47,3 @@ SELECT * FROM integers ORDER BY i
 4
 4
 4
-

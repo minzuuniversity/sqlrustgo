@@ -55,6 +55,7 @@ use sqlrustgo_storage::checkpoint::{CheckpointManager, CheckpointMetadata};
 use sqlrustgo_storage::{
     adaptive_hash_index::AdaptiveHashIndex,
     clustered_table::ClusteredTable,
+    engine::CheckConstraint,
     recovery_engine::{RecoveryEngine, RecoveryEngineImpl},
     wal::{FileBackedWalManager, MemoryWalManager},
     ColumnDefinition, FileStorage, MemoryStorage, StorageEngine, TableInfo, WalStorage,
@@ -825,12 +826,27 @@ impl<S: StorageEngine + 'static> ExecutionEngine<S> {
             }
         }
 
+        // V312-18 #3971: collect CHECK constraints from parsed TableConstraint list
+        let check_constraints: Vec<CheckConstraint> = create
+            .constraints
+            .iter()
+            .filter_map(|c| match c {
+                sqlrustgo_parser::TableConstraint::Check { expression, name } => {
+                    Some(CheckConstraint {
+                        name: name.clone(),
+                        expression: expression.clone(),
+                    })
+                }
+                _ => None,
+            })
+            .collect();
+
         let info = TableInfo {
             name: create.name.clone(),
             columns: columns.clone(),
             foreign_keys: vec![],
             unique_constraints: vec![],
-            check_constraints: vec![],
+            check_constraints: check_constraints.clone(),
             partition_info: None,
             compression,
         };
@@ -853,7 +869,7 @@ impl<S: StorageEngine + 'static> ExecutionEngine<S> {
                 columns,
                 foreign_keys: vec![],
                 unique_constraints: vec![],
-                check_constraints: vec![],
+                check_constraints,
                 partition_info: None,
                 compression: None,
             })?;
