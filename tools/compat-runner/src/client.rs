@@ -15,8 +15,7 @@ use std::time::Duration;
 const CAP_LONG_PASSWORD: u32 = 0x00000001;
 const CAP_PROTOCOL_41: u32 = 0x00000200;
 const CAP_SECURE_CONNECTION: u32 = 0x00008000;
-const CLIENT_CAPABILITIES: u32 =
-    CAP_LONG_PASSWORD | CAP_PROTOCOL_41 | CAP_SECURE_CONNECTION;
+const CLIENT_CAPABILITIES: u32 = CAP_LONG_PASSWORD | CAP_PROTOCOL_41 | CAP_SECURE_CONNECTION;
 const MAX_PACKET_SIZE: u32 = 16 * 1024 * 1024;
 const CHARSET_UTF8: u8 = 33;
 const SCRAMBLE_LEN: usize = 20;
@@ -266,7 +265,8 @@ impl CompatClient {
                 if rpos >= pkt.len() {
                     return Err(CompatError::Protocol(format!(
                         "row packet truncated: rpos={} pkt_len={}",
-                        rpos, pkt.len()
+                        rpos,
+                        pkt.len()
                     )));
                 }
                 if pkt[rpos] == 0xFB {
@@ -278,7 +278,9 @@ impl CompatClient {
                     if end > pkt.len() {
                         return Err(CompatError::Protocol(format!(
                             "row cell out of bounds: rpos={} len={} pkt_len={}",
-                            rpos, len, pkt.len()
+                            rpos,
+                            len,
+                            pkt.len()
                         )));
                     }
                     row.push(String::from_utf8_lossy(&pkt[rpos..end]).into_owned());
@@ -312,8 +314,7 @@ fn read_lenenc_int(payload: &[u8], pos: &mut usize) -> Result<u64> {
             if *pos + 3 > payload.len() {
                 return Err(CompatError::Protocol("lenenc int: truncated".into()));
             }
-            let v =
-                u32::from_le_bytes([0, payload[*pos], payload[*pos + 1], payload[*pos + 2]]);
+            let v = u32::from_le_bytes([0, payload[*pos], payload[*pos + 1], payload[*pos + 2]]);
             *pos += 3;
             Ok(v as u64)
         }

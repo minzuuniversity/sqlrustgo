@@ -121,8 +121,8 @@ fn v312_13_load_data_sf1_region_nation_smoke() {
     .expect("start_ephemeral");
     let port = handle.port;
 
-    let mut client = MySqlTestClient::connect_at(("127.0.0.1", port), "tester", "tester")
-        .expect("connect");
+    let mut client =
+        MySqlTestClient::connect_at(("127.0.0.1", port), "tester", "tester").expect("connect");
     client.exec(TPC_H_REGION_SCHEMA).expect("create region");
     client.exec(TPC_H_NATION_SCHEMA).expect("create nation");
 
@@ -218,13 +218,19 @@ fn v312_13_sf1_lineitem_smoke_subset() {
     let gen = Command::new("python3")
         .args([
             "scripts/gate/generate_tpch_sf.py",
-            "--sf", "0.0001",
-            "--output", tmp.path().to_str().unwrap(),
-            "--seed", "42",
+            "--sf",
+            "0.0001",
+            "--output",
+            tmp.path().to_str().unwrap(),
+            "--seed",
+            "42",
         ])
         .output();
     if !gen.as_ref().map(|o| o.status.success()).unwrap_or(false) {
-        let stderr = gen.as_ref().map(|o| String::from_utf8_lossy(&o.stderr).to_string()).unwrap_or_default();
+        let stderr = gen
+            .as_ref()
+            .map(|o| String::from_utf8_lossy(&o.stderr).to_string())
+            .unwrap_or_default();
         panic!("generate_tpch_sf.py failed: {}", stderr);
     }
     assert!(lineitem_path.exists(), "lineitem.tbl not generated");
@@ -233,7 +239,10 @@ fn v312_13_sf1_lineitem_smoke_subset() {
         .lines()
         .filter(|l| !l.is_empty())
         .count() as u64;
-    eprintln!("V312-13 §9 SF=0.0001 subset: lineitem.tbl has {} rows", lineitem_rows);
+    eprintln!(
+        "V312-13 §9 SF=0.0001 subset: lineitem.tbl has {} rows",
+        lineitem_rows
+    );
     // TPC-H spec: SF=0.0001 produces exactly 600 lineitem rows
     // (6,000,000 / 10,000 = 600).
     assert_eq!(lineitem_rows, 600, "lineitem row count mismatch");
@@ -247,8 +256,8 @@ fn v312_13_sf1_lineitem_smoke_subset() {
     })
     .expect("start_ephemeral");
     let port = handle.port;
-    let mut client = MySqlTestClient::connect_at(("127.0.0.1", port), "tester", "tester")
-        .expect("connect");
+    let mut client =
+        MySqlTestClient::connect_at(("127.0.0.1", port), "tester", "tester").expect("connect");
 
     // 3. Create the 8 TPC-H tables (compatible with the .tbl schema).
     client
@@ -306,9 +315,7 @@ fn v312_13_sf1_lineitem_smoke_subset() {
 
     // 6. Aggregate sanity check: TPC-H Q1 (pricing summary).
     let q1_count: i64 = client
-        .query_one_i64(
-            "SELECT COUNT(DISTINCT l_returnflag) FROM lineitem"
-        )
+        .query_one_i64("SELECT COUNT(DISTINCT l_returnflag) FROM lineitem")
         .expect("Q1 sanity");
     eprintln!(
         "V312-13 §9 SF=0.0001 end-to-end: 8 tables loaded in {:?}, Q1 distinct={}",

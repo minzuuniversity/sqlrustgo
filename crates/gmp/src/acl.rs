@@ -95,14 +95,8 @@ pub fn role_permissions(role: GmpRole) -> Vec<GmpOperation> {
             GmpOperation::DocumentExport,
             GmpOperation::DocumentReview,
         ],
-        GmpRole::Viewer => vec![
-            GmpOperation::RetrievalSearch,
-            GmpOperation::DocumentReview,
-        ],
-        GmpRole::BackupOperator => vec![
-            GmpOperation::BackupCreate,
-            GmpOperation::BackupRestore,
-        ],
+        GmpRole::Viewer => vec![GmpOperation::RetrievalSearch, GmpOperation::DocumentReview],
+        GmpRole::BackupOperator => vec![GmpOperation::BackupCreate, GmpOperation::BackupRestore],
     }
 }
 
@@ -199,11 +193,7 @@ pub struct AccessAuditRecord {
 }
 
 impl AccessAuditRecord {
-    pub fn new(
-        context: &AclContext,
-        op: GmpOperation,
-        decision: &AccessDecision,
-    ) -> Self {
+    pub fn new(context: &AclContext, op: GmpOperation, decision: &AccessDecision) -> Self {
         let (decision_str, reason) = match decision {
             AccessDecision::Allowed => ("ALLOWED".to_string(), None),
             AccessDecision::Denied { reason } => ("DENIED".to_string(), Some(reason.clone())),
@@ -300,11 +290,8 @@ mod tests {
     #[test]
     fn test_access_audit_record_allowed() {
         let ctx = AclContext::new("admin1", GmpRole::Admin);
-        let record = AccessAuditRecord::new(
-            &ctx,
-            GmpOperation::DocumentImport,
-            &AccessDecision::Allowed,
-        );
+        let record =
+            AccessAuditRecord::new(&ctx, GmpOperation::DocumentImport, &AccessDecision::Allowed);
         assert_eq!(record.decision, "ALLOWED");
         assert_eq!(record.user_id, "admin1");
         assert!(record.reason.is_none());
@@ -316,7 +303,9 @@ mod tests {
         let record = AccessAuditRecord::new(
             &ctx,
             GmpOperation::BackupRestore,
-            &AccessDecision::Denied { reason: "Not authorized".to_string() },
+            &AccessDecision::Denied {
+                reason: "Not authorized".to_string(),
+            },
         );
         assert_eq!(record.decision, "DENIED");
         assert!(record.reason.is_some());

@@ -200,7 +200,6 @@ fn compute_event_hash(log: &AuditLog) -> String {
     format!("{:x}", hasher.finalize())
 }
 
-
 /// Genesis event hash seed — used as previous_hash sentinel for the first row.
 pub const GENESIS_PREVIOUS_HASH: Option<String> = None;
 
@@ -331,7 +330,10 @@ pub fn create_audit_log_table(storage: &mut dyn StorageEngine) -> SqlResult<()> 
 /// Get the last audit log row's event_hash, or None if no audit rows exist.
 pub fn get_last_event_hash(storage: &dyn StorageEngine) -> SqlResult<Option<String>> {
     let rows = storage.scan(TABLE_AUDIT_LOG)?;
-    let last = rows.into_iter().filter_map(|r| AuditLog::from_row(&r)).max_by_key(|l| l.id);
+    let last = rows
+        .into_iter()
+        .filter_map(|r| AuditLog::from_row(&r))
+        .max_by_key(|l| l.id);
     Ok(last.map(|l| l.event_hash))
 }
 
@@ -681,11 +683,27 @@ mod tests {
         create_audit_log_table(&mut storage).unwrap();
 
         record_audit_log(
-            &mut storage, "u1", "CREATE", "gmp_documents", Some("1"), None, None, None, None,
+            &mut storage,
+            "u1",
+            "CREATE",
+            "gmp_documents",
+            Some("1"),
+            None,
+            None,
+            None,
+            None,
         )
         .unwrap();
         record_audit_log(
-            &mut storage, "u2", "UPDATE", "gmp_documents", Some("1"), None, None, None, None,
+            &mut storage,
+            "u2",
+            "UPDATE",
+            "gmp_documents",
+            Some("1"),
+            None,
+            None,
+            None,
+            None,
         )
         .unwrap();
 
@@ -699,7 +717,15 @@ mod tests {
         create_audit_log_table(&mut storage).unwrap();
 
         record_audit_log(
-            &mut storage, "u1", "CREATE", "gmp_documents", Some("1"), None, None, None, None,
+            &mut storage,
+            "u1",
+            "CREATE",
+            "gmp_documents",
+            Some("1"),
+            None,
+            None,
+            None,
+            None,
         )
         .unwrap();
 
@@ -714,7 +740,15 @@ mod tests {
         let mut storage = sqlrustgo_storage::MemoryStorage::new();
         create_audit_log_table(&mut storage).unwrap();
         record_audit_log(
-            &mut storage, "u1", "CREATE", "gmp_documents", Some("1"), None, None, None, None,
+            &mut storage,
+            "u1",
+            "CREATE",
+            "gmp_documents",
+            Some("1"),
+            None,
+            None,
+            None,
+            None,
         )
         .unwrap();
 
@@ -728,19 +762,51 @@ mod tests {
         create_audit_log_table(&mut storage).unwrap();
 
         record_audit_log(
-            &mut storage, "user1", "CREATE", "gmp_documents", Some("1"), None, None, None, None,
+            &mut storage,
+            "user1",
+            "CREATE",
+            "gmp_documents",
+            Some("1"),
+            None,
+            None,
+            None,
+            None,
         )
         .unwrap();
         record_audit_log(
-            &mut storage, "user1", "UPDATE", "gmp_documents", Some("1"), None, None, None, None,
+            &mut storage,
+            "user1",
+            "UPDATE",
+            "gmp_documents",
+            Some("1"),
+            None,
+            None,
+            None,
+            None,
         )
         .unwrap();
         record_audit_log(
-            &mut storage, "user2", "CREATE", "gmp_documents", Some("2"), None, None, None, None,
+            &mut storage,
+            "user2",
+            "CREATE",
+            "gmp_documents",
+            Some("2"),
+            None,
+            None,
+            None,
+            None,
         )
         .unwrap();
         record_audit_log(
-            &mut storage, "user2", "DELETE", "gmp_documents", Some("1"), None, None, None, None,
+            &mut storage,
+            "user2",
+            "DELETE",
+            "gmp_documents",
+            Some("1"),
+            None,
+            None,
+            None,
+            None,
         )
         .unwrap();
 
@@ -758,11 +824,27 @@ mod tests {
         create_audit_log_table(&mut storage).unwrap();
 
         record_audit_log(
-            &mut storage, "user1", "CREATE", "gmp_documents", Some("1"), None, None, None, None,
+            &mut storage,
+            "user1",
+            "CREATE",
+            "gmp_documents",
+            Some("1"),
+            None,
+            None,
+            None,
+            None,
         )
         .unwrap();
         record_audit_log(
-            &mut storage, "user2", "CREATE", "gmp_documents", Some("2"), None, None, None, None,
+            &mut storage,
+            "user2",
+            "CREATE",
+            "gmp_documents",
+            Some("2"),
+            None,
+            None,
+            None,
+            None,
         )
         .unwrap();
         record_audit_log(
@@ -805,14 +887,30 @@ mod tests {
         assert!(get_last_event_hash(&storage).unwrap().is_none());
 
         record_audit_log(
-            &mut storage, "u1", "CREATE", "gmp_documents", Some("1"), None, None, None, None,
+            &mut storage,
+            "u1",
+            "CREATE",
+            "gmp_documents",
+            Some("1"),
+            None,
+            None,
+            None,
+            None,
         )
         .unwrap();
         let h1 = get_last_event_hash(&storage).unwrap();
         assert!(h1.is_some());
 
         record_audit_log(
-            &mut storage, "u2", "CREATE", "gmp_documents", Some("2"), None, None, None, None,
+            &mut storage,
+            "u2",
+            "CREATE",
+            "gmp_documents",
+            Some("2"),
+            None,
+            None,
+            None,
+            None,
         )
         .unwrap();
         let h2 = get_last_event_hash(&storage).unwrap();

@@ -2699,7 +2699,9 @@ fn decode_value_key(s: &str) -> Value {
         b'J' => {
             // JSON: prefix J then JSON string
             let json_str = &s[1..];
-            serde_json::from_str(json_str).map(Value::Json).unwrap_or(Value::Null)
+            serde_json::from_str(json_str)
+                .map(Value::Json)
+                .unwrap_or(Value::Null)
         }
         _ => Value::Null,
     }

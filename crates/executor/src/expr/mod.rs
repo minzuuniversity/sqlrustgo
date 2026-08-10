@@ -834,8 +834,9 @@ fn eq_cross(left: &Value, right: &Value) -> bool {
     }
     match (left, right) {
         (Value::Boolean(a), b) | (b, Value::Boolean(a)) => to_bool(b) == *a,
-        (Value::Integer(a), Value::Float(b))
-        | (Value::Float(b), Value::Integer(a)) => (*a as f64) == *b,
+        (Value::Integer(a), Value::Float(b)) | (Value::Float(b), Value::Integer(a)) => {
+            (*a as f64) == *b
+        }
         _ => false,
     }
 }
@@ -908,7 +909,12 @@ fn to_i64(v: &Value) -> i64 {
                 0
             }
         }
-        Value::Null | Value::Float(_) | Value::Text(_) | Value::Blob(_) | Value::Point(_, _) | Value::Json(_) => 0,
+        Value::Null
+        | Value::Float(_)
+        | Value::Text(_)
+        | Value::Blob(_)
+        | Value::Point(_, _)
+        | Value::Json(_) => 0,
     }
 }
 
@@ -928,12 +934,10 @@ fn to_i64(v: &Value) -> i64 {
 fn json_extract(left: &Value, right: &Value, unquote: bool) -> Value {
     let doc = match left {
         Value::Json(v) => v.clone(),
-        Value::Text(s) => {
-            match serde_json::from_str(s) {
-                Ok(v) => v,
-                Err(_) => return Value::Null,
-            }
-        }
+        Value::Text(s) => match serde_json::from_str(s) {
+            Ok(v) => v,
+            Err(_) => return Value::Null,
+        },
         _ => return Value::Null,
     };
 
@@ -1421,9 +1425,9 @@ pub fn eval_fn(name: &str, args: &[Value]) -> Value {
         // F-03 GIS: ST_WITHIN, ST_Distance, ST_Contains, ST_Intersects
         "ST_WITHIN" | "ST_CONTAINS" | "ST_INTERSECTS" | "ST_DISTANCE" => {
             use sqlrustgo_gis::{
-                st_within as gis_st_within, st_distance as gis_st_distance,
-                st_contains as gis_st_contains, st_intersects as gis_st_intersects,
-                Point as GisPoint, Polygon as GisPolygon,
+                st_contains as gis_st_contains, st_distance as gis_st_distance,
+                st_intersects as gis_st_intersects, st_within as gis_st_within, Point as GisPoint,
+                Polygon as GisPolygon,
             };
             if args.len() < 2 {
                 return Value::Null;
@@ -1562,7 +1566,10 @@ pub fn eval_fn(name: &str, args: &[Value]) -> Value {
                 Ok(v) => v,
                 Err(_) => return Value::Null,
             };
-            let path = args.get(1).map(|v| v.to_sql_string()).unwrap_or_else(|| "$".to_string());
+            let path = args
+                .get(1)
+                .map(|v| v.to_sql_string())
+                .unwrap_or_else(|| "$".to_string());
             let json_path = if path.starts_with('$') {
                 path
             } else {
@@ -1587,12 +1594,18 @@ pub fn eval_fn(name: &str, args: &[Value]) -> Value {
             }
             let p1 = match &args[0] {
                 Value::Point(x, y) => GisPoint::new(*x, *y),
-                Value::Text(s) => match GisPoint::parse(s) { Some(p) => p, None => return Value::Null },
+                Value::Text(s) => match GisPoint::parse(s) {
+                    Some(p) => p,
+                    None => return Value::Null,
+                },
                 _ => return Value::Null,
             };
             let p2 = match &args[1] {
                 Value::Point(x, y) => GisPoint::new(*x, *y),
-                Value::Text(s) => match GisPoint::parse(s) { Some(p) => p, None => return Value::Null },
+                Value::Text(s) => match GisPoint::parse(s) {
+                    Some(p) => p,
+                    None => return Value::Null,
+                },
                 _ => return Value::Null,
             };
             Value::Float(gis_st_distance(&p1, &p2))
