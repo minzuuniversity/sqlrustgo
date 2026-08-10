@@ -123,3 +123,39 @@ v3.13 待办:
 ---
 
 *Posted by sqlrustgo gate script v3.12.0*
+
+---
+
+## 六、补充修复 (2026-08-10 Update)
+
+### 6.1 Extended Storage Case-Insensitive Fix
+
+**Commit**: `6df1dc4e40`
+
+Additional lowercase normalization added:
+- `scan()`: use `table.to_lowercase()` for lookup
+- `insert()`: use `table.to_lowercase()` for both tx log and table entry
+- `parallel_scan()`: use `table.to_lowercase()` for lookup
+
+### 6.2 Evidence Comment
+
+Posted to issue #3985: comment ID 88704
+
+### 6.3 Root Cause Analysis
+
+The remaining issue with `SELECT SmallColumn FROM MyTable` after `RENAME COLUMN TO "SmallColumn"`:
+
+1. Original column `BIGCOLUMN` is stored as `bigcolumn` (lowercased)
+2. `RENAME COLUMN BIGCOLUMN TO "SmallColumn"` stores new name as `SmallColumn`
+3. Later `SELECT SmallColumn FROM MyTable` looks for column `smallcolumn` (lowercased)
+4. Column is stored as `SmallColumn`, so lookup fails
+
+This is a data storage inconsistency - the column name case should be normalized consistently.
+
+### 6.4 Status
+
+**Owner**: openclaw  
+**Expiry**: 2026-08-31  
+**Close Boundary**: case_insensitive_alter.test 全部 14 行 PASS
+
+Full resolution deferred to v3.13.
