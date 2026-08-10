@@ -77,6 +77,30 @@ TPC-H SF=1 fixture data is ready. `LOAD DATA INFILE` parser implementation is **
 
 **V312-13 closure status:** ⏳ **Partial** — fixture ✅, parser ⏳ (deferred to #3959)
 
+---
+
+## Server-Side Execution: DEFERRED (V312-F-6 / ISSUE #4029)
+
+Per V312-F-6 (ISSUE #4029), the v3.12.0 server-side `LOAD DATA INFILE`
+execution path is **DEFERRED** to V312-24. The deferred items are:
+
+1. **SF=1 server-side execution** — parser accepts syntax but server-side
+   row insertion is not yet wired (V312-13-REPORT.md step 07).
+2. **SF=10 server-side execution** — same as SF=1 at 10× scale
+   (V312-13-REPORT.md step 08).
+3. **TLS handshake** (server-side) — wire layer does not yet accept TLS
+   upgrade from the test client (V312-13-REPORT.md step 09).
+4. **Compression negotiation** (server-side) — wire layer does not yet
+   accept `COM_CHANGE_USER` compression flag (V312-13-REPORT.md step 10).
+
+All 4 deferred items are tracked in
+[openclaw/sqlrustgo#3959](https://github.com/openclaw/sqlrustgo/issues/3959)
+(V312-24), with contract expiry **2026-09-30** and owner `openclaw`.
+
+The fixture data (102.80 MB TPC-H SF=1) and parser hardening tests are
+✅ DONE in V312-13. The v3.12.0 release proceeds with the fixture side
+of the contract; the server-side execution path lands in V312-24.
+
 
 ---
 

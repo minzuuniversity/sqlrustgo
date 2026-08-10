@@ -17,6 +17,20 @@
 
 This file documents the V3.12.0 MySQL compatibility surface. Items split between V312-13 (✅ done in #3900) and V312-24 (deferred to #3959).
 
+### V312-F-6 (ISSUE #4029) Cross-Reference
+
+All MySQL compatibility items deferred from V312-13 to V312-24 are tracked
+in [openclaw/sqlrustgo#3959](https://github.com/openclaw/sqlrustgo/issues/3959).
+The V312-24 owner is `openclaw` and the contract expiry is **2026-09-30**.
+
+Specifically deferred (per V312-13-REPORT.md boundary table):
+- LOAD DATA INFILE SF=1 server-side execution
+- LOAD DATA INFILE SF=10 server-side execution
+- TLS handshake (server-side)
+- Compression negotiation (server-side)
+- COM_RESET_CONNECTION server-side (currently returns "Unknown command")
+- LOAD DATA parser hardening (currently accepts basic subset)
+
 
 ## Supported
 
