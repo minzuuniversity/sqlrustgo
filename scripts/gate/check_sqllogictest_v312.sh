@@ -26,6 +26,7 @@ EXCLUSIONS="$OUT_DIR/exclusions.yml"
 
 PASS=0
 FAIL=0
+WARN=0
 
 record_pass() {
   local msg="[PASS] $1"
@@ -39,6 +40,13 @@ record_fail() {
   echo "$msg"
   echo "$msg" >>"$LOG"
   FAIL=$((FAIL + 1))
+}
+
+record_warn() {
+  local msg="[WARN] $1"
+  echo "$msg"
+  echo "$msg" >>"$LOG"
+  WARN=$((WARN + 1))
 }
 
 echo "=== SQLRustGo v3.12 SQLLogicTest Gate Entry ===" | tee "$LOG"
@@ -116,8 +124,9 @@ else
     while IFS= read -r line; do
       item_id=$(echo "$line" | sed 's/^  - id: //')
       item_block=$(grep -A 10 "^  - id: ${item_id}" "$EXCLUSIONS" 2>/dev/null || echo "")
-      for field in root_cause owner expiry follow_up_issue_or_openspec; do
-        if ! echo "$item_block" | grep -q "^[ ]*${field}:"; then
+      for field in root_cause owner expiry follow_up_issue; do
+        # Accept either follow_up_issue (Round-14+) or legacy follow_up_issue_or_openspec
+        if ! echo "$item_block" | grep -qE "^[ ]*${field}:|follow_up_issue_or_openspec:"; then
           MISSING_FIELDS=$((MISSING_FIELDS + 1))
         fi
       done
@@ -158,22 +167,35 @@ if [ -f "$MANIFEST" ]; then
   fi
 fi
 
-# ---- OpenSpec Follow-up Validation ----
-MISSING_OPENSPC=0
+# ---- Follow-up Issue Validation (Round-14: Gitea issues replace OpenSpec paths) ----
+MISSING_FOLLOWUP=0
+INVALID_FOLLOWUP=0
 while IFS= read -r line; do
   item_id=$(echo "$line" | sed 's/^  - id: //')
   follow_up_block=$(grep -A 8 "^  - id: ${item_id}" "$EXCLUSIONS" 2>/dev/null || echo "")
-  op_path=$(echo "$follow_up_block" | grep "follow_up_issue_or_openspec:" | sed -n 's/.*openspec\/changes\/\([^ ]*\).*/\1/p' | tr -d ' ,')
-  if [ -n "$op_path" ]; then
-    op_dir=$(echo "$op_path" | sed 's/\/.*//')
-    if [ -n "$op_dir" ] && [ ! -d "openspec/changes/${op_dir}" ] 2>/dev/null; then
-      MISSING_OPENSPC=$((MISSING_OPENSPC + 1))
-    fi
+  # Accept either follow_up_issue (Round-14+) or follow_up_issue_or_openspec (legacy)
+  # Strip surrounding whitespace and quotes from the value
+  issue_ref=$(echo "$follow_up_block" | grep "follow_up_issue" | head -1 | sed 's/.*follow_up_issue[^:]*:[[:space:]]*//' | tr -d '"' | sed 's/^[[:space:]]*//;s/[[:space:]]*$//')
+  if [ -z "$issue_ref" ]; then
+    MISSING_FOLLOWUP=$((MISSING_FOLLOWUP + 1))
+  elif ! echo "$issue_ref" | grep -qE "^#?[0-9]+"; then
+    INVALID_FOLLOWUP=$((INVALID_FOLLOWUP + 1))
   fi
 done < <(grep "^  - id:" "$EXCLUSIONS" 2>/dev/null)
 
-if [ "$MISSING_OPENSPC" -gt 0 ]; then
-  record_fail "exclusions.yml: $MISSING_OPENSPC OpenSpec follow-up directories missing"
+if [ "$MISSING_FOLLOWUP" -gt 0 ]; then
+  record_fail "exclusions.yml: $MISSING_FOLLOWUP items missing follow_up_issue field"
+fi
+if [ "$INVALID_FOLLOWUP" -gt 0 ]; then
+  record_fail "exclusions.yml: $INVALID_FOLLOWUP items have invalid follow_up_issue format (must be #NNNN)"
+fi
+
+# ---- Scope Distinction Check (per codex #89293: smoke vs full semantic) ----
+SCOPE_LINE=$(grep "^scope:" "$EXCLUSIONS" 2>/dev/null | head -1)
+if [ -n "$SCOPE_LINE" ]; then
+  if ! echo "$SCOPE_LINE" | grep -qiE "smoke|baseline|subset|not.*full"; then
+    record_warn "exclusions.yml scope line unclear: '$SCOPE_LINE' (should explicitly state 'NOT full corpus')"
+  fi
 fi
 
 # Compute evidence_hash AFTER all log writes are done. We append more lines

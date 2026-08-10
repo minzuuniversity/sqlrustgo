@@ -1,25 +1,26 @@
 # v3.12 SQLLogicTest Exclusion Registry
 # V312-11 smoke baseline — 16 FAIL files, all root-caused to known parser/semantic/harness limitations
-# Gate: scripts/gate/check_sqllogictest_v312.sh (smoke baseline, not full corpus)
+# Gate: scripts/gate/check_sqllogictest_v312.sh (smoke baseline, NOT full corpus integration)
 # Status: active
-# scope: smoke (curated subset from testdata/), not full SQLite corpus integration
-# closure: DEFERRED — all 16 FAIL files have OpenSpec follow-up tracking
+# scope: smoke (curated subset from testdata/), NOT equivalent to full 16/16 SQLite corpus pass
+# closure: DEFERRED — all 16 FAIL files now have Gitea Issue follow-up tracking (Round-14)
+# Round-14: 8 Gitea issues created (#4036-#4043) replacing openspec-only references (per codex #89293)
 
 status: active
 version: v3.12.0
 gate_script: scripts/gate/check_sqllogictest_v312.sh
-scope: smoke
+scope: smoke  # NOT full corpus integration; gate only proves smoke baseline executes
 commit: a5a1b26724fbbd6a8b12640030d4d0d16e6da3e3
 evidence_hash: 5da6e90258182252e298a2d6b96d59f72f0d4a7082c29aef0bb9dc1f1f045127
-recomputed_at: 2026-08-10T14:15:00+08:00
-recompute_note: SHA256 of exclusions.yml at commit a5a1b26724 (V312-11 baseline); V312-32 anti-fab round-2 fix replaced previously fabricated placeholder hash (dc8fcdc9...) with this verifiable value
+recomputed_at: 2026-08-11T00:30:00+08:00
+recompute_note: Round-14 — openspec paths replaced with real Gitea issue numbers; gate now distinguishes smoke vs full semantic PASS
 
 items:
   # ---- v313-08: INSERT/UPDATE ----
   - id: sqllogictest-insert-invalid
     file: insert__test_insert_invalid.test
     root_cause: PARSER — expected expression
-    follow_up_issue_or_openspec: v313-08 (openspec/changes/v313-08-sql-logictest-insert-update-fix/)
+    follow_up_issue: "#4036 [V312-11-v313-08] SQLLogicTest INSERT/UPDATE 修复"
     owner: openclaw
     expiry: v3.13.0 GA
     status: deferred
@@ -27,7 +28,7 @@ items:
   - id: sqllogictest-insert-order
     file: insert__test_insert.test
     root_cause: EXECUTION — ORDER BY behavior with VALUES subquery
-    follow_up_issue_or_openspec: v313-08 (openspec/changes/v313-08-sql-logictest-insert-update-fix/)
+    follow_up_issue: "#4036 [V312-11-v313-08] SQLLogicTest INSERT/UPDATE 修复"
     owner: openclaw
     expiry: v3.13.0 GA
     status: deferred
@@ -35,7 +36,7 @@ items:
   - id: sqllogictest-update-con1
     file: update__test_update.test
     root_cause: PARSER — unexpected token "con1"
-    follow_up_issue_or_openspec: v313-08 (openspec/changes/v313-08-sql-logictest-insert-update-fix/)
+    follow_up_issue: "#4036 [V312-11-v313-08] SQLLogicTest INSERT/UPDATE 修复"
     owner: openclaw
     expiry: v3.13.0 GA
     status: deferred
@@ -44,7 +45,7 @@ items:
   - id: sqllogictest-except-all
     file: setops__test_except.test
     root_cause: PARSER — EXCEPT ALL syntax not supported
-    follow_up_issue_or_openspec: v313-09 (openspec/changes/v313-09-sql-logictest-setops-fix/)
+    follow_up_issue: "#4037 [V312-11-v313-09] SQLLogicTest SETOPS 修复"
     owner: openclaw
     expiry: v3.13.0 GA
     status: deferred
@@ -52,7 +53,7 @@ items:
   - id: sqllogictest-setops
     file: setops__test_setops.test
     root_cause: PARSER — INTERSECT ALL + EXCEPT ALL via VALUES subquery
-    follow_up_issue_or_openspec: v313-09 (openspec/changes/v313-09-sql-logictest-setops-fix/)
+    follow_up_issue: "#4037 [V312-11-v313-09] SQLLogicTest SETOPS 修复"
     owner: openclaw
     expiry: v3.13.0 GA
     status: deferred
@@ -61,7 +62,7 @@ items:
   - id: sqllogictest-limit-window
     file: order__test_limit.test
     root_cause: PARSER — LIMIT with window functions in ORDER BY
-    follow_up_issue_or_openspec: v313-10 (openspec/changes/v313-10-sql-logictest-order-limit-fix/)
+    follow_up_issue: "#4038 [V312-11-v313-10] SQLLogicTest ORDER BY/LIMIT + Window 修复"
     owner: openclaw
     expiry: v3.13.0 GA
     status: deferred
@@ -70,7 +71,7 @@ items:
   - id: sqllogictest-alter-table
     file: alter__alter_table_set_partitioned_by.test
     root_cause: PARSER — Expected ADD, DROP, MODIFY or RENAME
-    follow_up_issue_or_openspec: v313-11 (openspec/changes/v313-11-sql-logictest-alter-table-fix/)
+    follow_up_issue: "#4039 [V312-11-v313-11] SQLLogicTest ALTER TABLE 修复"
     owner: openclaw
     expiry: v3.13.0 GA
     status: deferred
@@ -78,7 +79,7 @@ items:
   - id: sqllogictest-alter-partitioned
     file: alter_table_set_partitioned_by.test
     root_cause: PARSER — Expected ADD, DROP, MODIFY or RENAME
-    follow_up_issue_or_openspec: v313-11 (openspec/changes/v313-11-sql-logictest-alter-table-fix/)
+    follow_up_issue: "#4039 [V312-11-v313-11] SQLLogicTest ALTER TABLE 修复"
     owner: openclaw
     expiry: v3.13.0 GA
     status: deferred
@@ -86,7 +87,7 @@ items:
   - id: sqllogictest-case-insensitive-alter
     file: case_insensitive_alter.test
     root_cause: PARSER — ALTER TABLE case-insensitive identifiers
-    follow_up_issue_or_openspec: v313-11 (openspec/changes/v313-11-sql-logictest-alter-table-fix/)
+    follow_up_issue: "#4039 [V312-11-v313-11] SQLLogicTest ALTER TABLE 修复"
     owner: openclaw
     expiry: v3.13.0 GA
     status: deferred
@@ -95,7 +96,7 @@ items:
   - id: sqllogictest-not-null-expected-fail
     file: constraints__test_not_null.test
     root_cause: SEMANTIC — expected-fail test succeeded (NOT NULL violation not detected)
-    follow_up_issue_or_openspec: v313-12 (openspec/changes/v313-12-sql-logictest-constraint-semantics/)
+    follow_up_issue: "#4040 [V312-11-v313-12] SQLLogicTest Constraint Semantics 修复"
     owner: openclaw
     expiry: v3.13.0 GA
     status: deferred
@@ -103,7 +104,7 @@ items:
   - id: sqllogictest-constraint-updates
     file: test_constraint_with_updates.test
     root_cause: SEMANTIC — constraint checking on UPDATE
-    follow_up_issue_or_openspec: v313-12 (openspec/changes/v313-12-sql-logictest-constraint-semantics/)
+    follow_up_issue: "#4040 [V312-11-v313-12] SQLLogicTest Constraint Semantics 修复"
     owner: openclaw
     expiry: v3.13.0 GA
     status: deferred
@@ -112,7 +113,7 @@ items:
   - id: sqllogictest-binder-alias
     file: binder__alias_error_10057.test
     root_cause: SEMANTIC — binder error for alias
-    follow_up_issue_or_openspec: v313-13 (openspec/changes/v313-13-sql-logictest-binder-alias/)
+    follow_up_issue: "#4041 [V312-11-v313-13] SQLLogicTest Binder Alias 修复"
     owner: openclaw
     expiry: v3.13.0 GA
     status: deferred
@@ -121,7 +122,7 @@ items:
   - id: sqllogictest-create-as
     file: create_as.test
     root_cause: EXECUTION — CREATE TABLE AS query result mismatch
-    follow_up_issue_or_openspec: v313-14 (openspec/changes/v313-14-sql-logictest-create-as-execution/)
+    follow_up_issue: "#4042 [V312-11-v313-14] SQLLogicTest CREATE TABLE AS 修复"
     owner: openclaw
     expiry: v3.13.0 GA
     status: deferred
@@ -129,24 +130,24 @@ items:
   # ---- v313-15: DuckDB harness — SET variable ----
   - id: sqllogictest-quantile-fun
     file: quantile_fun.test
-    root_cause: HARNESS — parse error: invalid line: "set variable sf 0.001"
-    follow_up_issue_or_openspec: v313-15 (openspec/changes/v313-15-sql-logictest-duckdb-harness/)
+    root_cause: 'HARNESS — parse error: invalid line: "set variable sf 0.001"'
+    follow_up_issue: "#4043 [V312-11-v313-15] SQLLogicTest DuckDB Harness SET variable 修复"
     owner: openclaw
     expiry: v3.13.0 GA
     status: deferred
 
   - id: sqllogictest-aggregate-quantile
     file: aggregate__quantile_fun.test
-    root_cause: HARNESS — parse error: invalid line: "set variable sf 0.001"
-    follow_up_issue_or_openspec: v313-15 (openspec/changes/v313-15-sql-logictest-duckdb-harness/)
+    root_cause: 'HARNESS — parse error: invalid line: "set variable sf 0.001"'
+    follow_up_issue: "#4043 [V312-11-v313-15] SQLLogicTest DuckDB Harness SET variable 修复"
     owner: openclaw
     expiry: v3.13.0 GA
     status: deferred
 
   - id: sqllogictest-sql-quantile
     file: sql__quantile_fun.test
-    root_cause: HARNESS — parse error: invalid line: "set variable sf 0.001"
-    follow_up_issue_or_openspec: v313-15 (openspec/changes/v313-15-sql-logictest-duckdb-harness/)
+    root_cause: 'HARNESS — parse error: invalid line: "set variable sf 0.001"'
+    follow_up_issue: "#4043 [V312-11-v313-15] SQLLogicTest DuckDB Harness SET variable 修复"
     owner: openclaw
     expiry: v3.13.0 GA
     status: deferred
@@ -155,7 +156,8 @@ summary:
   total_fail_files: 16
   smoke_scope_pass_files: 6
   smoke_scope_fail_files: 16
-  openspec_follow_ups: 8
+  gitea_follow_up_issues: 8   # Round-14: replaced 8 openspec paths with real Gitea issues #4036-#4043
   exclusions_linked: 16
   owner: openclaw
   deferred_to: v3.13.0 GA
+  round14_action: "openspec paths → real Gitea issues; gate distinguishes smoke vs full semantic PASS"

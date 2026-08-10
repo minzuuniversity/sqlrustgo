@@ -11,7 +11,7 @@
 
 | 检查项 | 数量 |
 |--------|------|
-| 通过 | 136 |
+| 通过 | 138 |
 | 警告 | 0 |
 | 失败（违规） | 0 |
 | 未验证声明 | 0 |
@@ -98,6 +98,8 @@
 - ✅ 文档有 provenance 元数据：v312-06-graph-projection-report.md
 - ✅ 无状态声明（无需证据检查）：disabled-test-registry.md
 - ✅ 文档有 provenance 元数据：disabled-test-registry.md
+- ✅ Gate Report 有整体 provenance（commit 或 gate_policy_eval_id）：v312-22-round12-status.md
+- ✅ 文档有 provenance 元数据：v312-22-round12-status.md
 - ✅ Gate Report 有整体 provenance（commit 或 gate_policy_eval_id）：V312-26_warn_only_fix_report.md
 - ✅ 文档有 provenance 元数据：V312-26_warn_only_fix_report.md
 - ✅ Gate Report 有整体 provenance（commit 或 gate_policy_eval_id）：sql-corpus-invariant-reviewer-gate-report.md
@@ -208,7 +210,7 @@
 
 ---
 
-*报告生成时间: 2026-08-11 00:08:46*
+*报告生成时间: 2026-08-11 00:33:50*
 *检查工具版本: check_evidence_binding.sh v1.0.0*
 *依据政策: Anti-Fabrication Policy v1.0.0*
 
