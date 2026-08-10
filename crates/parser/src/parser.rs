@@ -1818,6 +1818,10 @@ impl Parser {
             // first) actually wins. Regular ROLLBACK [WORK] is handled
             // by the `Some(Token::Rollback)` arm at the bottom of this
             // match, which calls parse_rollback.
+            // V312-19 #3986: SET session variable (e.g. SET debug_force_external=true)
+            // routes to parse_set_session_variable, not parse_transaction.
+            Some(Token::Set) if self.peek() != Some(&Token::Transaction)
+                && self.peek() != Some(&Token::Role) => self.parse_set_session_variable(),
             Some(Token::Begin) | Some(Token::Commit) | Some(Token::Set) | Some(Token::Start) => {
                 self.parse_transaction()
             }
@@ -2094,6 +2098,34 @@ impl Parser {
             None => return Err("Expected role name".to_string()),
         };
         Ok(Statement::SetRole(SetRoleStatement { role_name }))
+    }
+
+    /// V312-11-fix #3986: parse `SET variable = value` (session variable).
+    fn parse_set_session_variable(&mut self) -> Result<Statement, String> {
+        self.expect(Token::Set)?;
+        if matches!(self.current(), Some(Token::Identifier(ref s)) if s.to_lowercase() == "variable") {
+            self.next();
+        }
+        let name = match self.next() {
+            Some(Token::Identifier(name)) => name,
+            Some(Token::StringLiteral(s)) => s,
+            Some(t) => return Err(format!("Expected variable name, got {:?}", t)),
+            None => return Err("Expected variable name".to_string()),
+        };
+        let value = if matches!(self.current(), Some(Token::Equal)) {
+            self.next();
+            match self.next() {
+                Some(Token::NumberLiteral(n)) => n,
+                Some(Token::StringLiteral(s)) => s,
+                Some(Token::BooleanLiteral(true)) => "true".to_string(),
+                Some(Token::BooleanLiteral(false)) => "false".to_string(),
+                Some(t) => format!("{:?}", t),
+                None => String::new(),
+            }
+        } else {
+            String::new()
+        };
+        Ok(Statement::Transaction(TransactionStatement::SetSessionVariable { name, value }))
     }
 
     fn parse_isolation_level_value(&mut self) -> Result<IsolationLevel, String> {
@@ -13854,6 +13886,20 @@ fn test_parse_revoke() {
 fn test_parse_set_variable() {
     // SET is valid SQL
     let _ = parse("SET @x = 1");
+}
+
+/// V312-11-fix #3986: SET session variable
+#[test]
+fn test_parse_set_session_variable_3986() {
+    let result = parse("SET debug_force_external=true");
+    assert!(result.is_ok(), "Parse failed: {:?}", result);
+    match result.unwrap() {
+        Statement::Transaction(TransactionStatement::SetSessionVariable { name, value }) => {
+            assert_eq!(name, "debug_force_external");
+            assert_eq!(value, "true");
+        }
+        _ => panic!("Expected SetSessionVariable statement"),
+    }
 }
 
 #[test]
