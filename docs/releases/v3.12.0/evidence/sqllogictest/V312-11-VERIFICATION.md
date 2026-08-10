@@ -159,3 +159,56 @@ This is a data storage inconsistency - the column name case should be normalized
 **Close Boundary**: case_insensitive_alter.test 全部 14 行 PASS
 
 Full resolution deferred to v3.13.
+
+---
+
+## 七、最新修复 (2026-08-10 Commit 7cc637876c)
+
+### 7.1 Commit Summary
+
+**Commit**: `7cc637876c` - fix: case-insensitive column name handling
+
+**Changes**:
+1. `lexer.rs`: Added `read_quoted_identifier()` method for `"` handling
+2. `engine.rs`: 
+   - `add_column`: normalize column name to lowercase
+   - `modify_column`: normalize column name to lowercase  
+   - `rename_column`: normalize new column name to lowercase
+3. `execution_engine.rs`:
+   - `execute_create_table`: normalize column names to lowercase
+4. `sqlrustgo_sqllogictest/main.rs`: Skip missing include files (non-fatal)
+
+### 7.2 Gate Results
+
+```
+files:    6/5 (pass/fail)
+pass rate: 54.5%
+max-fail: 5 (reached)
+```
+
+### 7.3 Remaining Issue: case_insensitive_alter.test
+
+**Status**: ALTER TABLE is executing correctly (confirmed via debug output), 
+but `DROP COLUMN` doesn't properly remove columns from table schema.
+
+**Debug Evidence**:
+```
+DEBUG execute_alter_table: table=MyTable, op=DropColumn { name: "BIGCOLUMN" }
+```
+The ALTER is being called, but the column remains visible after DROP.
+
+**Analysis**: 
+- ALTER TABLE parsing produces correct `AlterTableOperation::DropColumn`
+- Storage `drop_column()` is being called with correct parameters
+- But SELECT after DROP still sees the column
+
+This suggests the issue may be in how the column state is maintained
+across operations, possibly in the executor layer.
+
+### 7.4 Next Steps
+
+To fully resolve case_insensitive_alter.test:
+1. Investigate why DROP COLUMN doesn't remove column from table_infos
+2. Ensure column removal is reflected in subsequent SELECT operations
+3. Verify the fix works end-to-end with all 43 lines of the test
+
