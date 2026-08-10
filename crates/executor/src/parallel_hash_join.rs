@@ -80,6 +80,7 @@ impl ParallelHashJoin {
             Value::Blob(b) => format!("{:?}", b),
             Value::Point(x, y) => format!("POINT({:?}, {:?})", x, y),
             Value::Boolean(b) => b.to_string(),
+            Value::Json(v) => format!("{:?}", v),
         };
         JoinKey(s)
     }

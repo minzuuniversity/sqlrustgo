@@ -148,6 +148,72 @@ pub fn value_from_point(point: &Point) -> Value {
     Value::Point(point.x, point.y)
 }
 
+/// ST_Distance(point1, point2) - Euclidean distance between two points
+pub fn st_distance(p1: &Point, p2: &Point) -> f64 {
+    ((p1.x - p2.x).powi(2) + (p1.y - p2.y).powi(2)).sqrt()
+}
+
+/// ST_Contains(polygon, point) - returns true if polygon contains point
+pub fn st_contains(polygon: &Polygon, point: &Point) -> bool {
+    st_within(point, polygon)
+}
+
+/// ST_Intersects(polygon1, polygon2) - returns true if two polygons intersect
+/// Uses bounding box quick-check first, then ray casting at edge intersections
+pub fn st_intersects(p1: &Polygon, p2: &Polygon) -> bool {
+    // Quick rejection: if bounding boxes don't overlap, polygons don't intersect
+    let (p1_min_x, p1_min_y, p1_max_x, p1_max_y) = p1.bbox();
+    let (p2_min_x, p2_min_y, p2_max_x, p2_max_y) = p2.bbox();
+
+    if p1_max_x < p2_min_x || p2_max_x < p1_min_x ||
+       p1_max_y < p2_min_y || p2_max_y < p1_min_y {
+        return false;
+    }
+
+    // Check if any vertex of p1 is inside p2
+    for v in &p1.vertices {
+        if st_within_point_polygon(v, p2) {
+            return true;
+        }
+    }
+
+    // Check if any vertex of p2 is inside p1
+    for v in &p2.vertices {
+        if st_within_point_polygon(v, p1) {
+            return true;
+        }
+    }
+
+    // Check for edge intersections (line segment intersection)
+    let n1 = p1.vertices.len();
+    let n2 = p2.vertices.len();
+
+    for i in 0..n1 {
+        let a1 = &p1.vertices[i];
+        let a2 = &p1.vertices[(i + 1) % n1];
+
+        for j in 0..n2 {
+            let b1 = &p2.vertices[j];
+            let b2 = &p2.vertices[(j + 1) % n2];
+
+            if segments_intersect(a1, a2, b1, b2) {
+                return true;
+            }
+        }
+    }
+
+    false
+}
+
+/// Check if two line segments (a1-a2) and (b1-b2) intersect
+fn segments_intersect(a1: &Point, a2: &Point, b1: &Point, b2: &Point) -> bool {
+    fn ccw(p1: &Point, p2: &Point, p3: &Point) -> bool {
+        (p3.y - p1.y) * (p2.x - p1.x) > (p2.y - p1.y) * (p3.x - p1.x)
+    }
+
+    ccw(a1, b1, b2) != ccw(a2, b1, b2) && ccw(a1, a2, b1) != ccw(a1, a2, b2)
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -329,24 +395,17 @@ pub fn euclidean_distance(p1: &Point, p2: &Point) -> f64 {
     ((p2.x - p1.x).powi(2) + (p2.y - p1.y).powi(2)).sqrt()
 }
 
-/// ST_Distance - returns the minimum distance between two geometries
-/// For points, returns Euclidean distance
-pub fn st_distance(p1: &Point, p2: &Point) -> f64 {
-    euclidean_distance(p1, p2)
-}
-
-/// ST_Intersects - returns true if two geometries intersect
-/// For points, uses a small tolerance
-pub fn st_intersects(p1: &Point, p2: &Point) -> bool {
-    euclidean_distance(p1, p2) < 1e-10
-}
-
 /// ST_Distance_Point - wrapper for SQL interface
 pub fn st_distance_point(p1: &Point, p2: &Point) -> Value {
-    Value::Float(st_distance(p1, p2))
+    Value::Float(euclidean_distance(p1, p2))
 }
 
 /// ST_Intersects_Point - wrapper for SQL interface  
 pub fn st_intersects_point(p1: &Point, p2: &Point) -> Value {
-    Value::Boolean(st_intersects(p1, p2))
+    Value::Boolean(points_intersect(p1, p2))
+}
+
+/// Point-point intersection with tolerance
+fn points_intersect(p1: &Point, p2: &Point) -> bool {
+    euclidean_distance(p1, p2) < 1e-10
 }

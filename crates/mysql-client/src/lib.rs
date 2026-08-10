@@ -1076,6 +1076,16 @@ impl MySqlConnection {
         self.seq = pkt.sequence.wrapping_add(1);
         Ok(pkt)
     }
+
+    /// Close the connection by sending COM_QUIT and dropping the TCP stream.
+    /// Best-effort: server's OK response is read but not surfaced (per MySQL
+    /// wire protocol, server closes after receiving COM_QUIT).
+    pub fn close(&mut self) -> MySqlResult<()> {
+        let pkt = Packet::new(self.seq, vec![packet_type::COM_QUIT]);
+        // Best-effort write; ignore result if server already closed.
+        let _ = pkt.write_to(&mut self.stream);
+        Ok(())
+    }
 }
 
 // ============================================================================

@@ -320,6 +320,14 @@ pub fn value_to_bytes(value: &Value) -> Vec<u8> {
             bytes.extend_from_slice(&y.to_le_bytes());
             bytes
         }
+        Value::Json(v) => {
+            let mut bytes = vec![0x08];
+            let s = v.to_string();
+            let len = (s.len() as u32).to_le_bytes();
+            bytes.extend_from_slice(&len);
+            bytes.extend_from_slice(s.as_bytes());
+            bytes
+        }
     }
 }
 
@@ -359,6 +367,24 @@ pub fn bytes_to_value(data: &[u8]) -> Option<Value> {
             let len = u32::from_le_bytes([data[1], data[2], data[3], data[4]]) as usize;
             if data.len() >= 5 + len {
                 Some(Value::Blob(data[5..5 + len].to_vec()))
+            } else {
+                None
+            }
+        }
+        0x07 if data.len() >= 17 => {
+            let x = f64::from_le_bytes([data[1], data[2], data[3], data[4], data[5], data[6], data[7], data[8]]);
+            let y = f64::from_le_bytes([data[9], data[10], data[11], data[12], data[13], data[14], data[15], data[16]]);
+            Some(Value::Point(x, y))
+        }
+        0x08 if data.len() >= 5 => {
+            let len = u32::from_le_bytes([data[1], data[2], data[3], data[4]]) as usize;
+            if data.len() >= 5 + len {
+                let s = String::from_utf8_lossy(&data[5..5 + len]).to_string();
+                if let Ok(v) = serde_json::from_str(&s) {
+                    Some(Value::Json(v))
+                } else {
+                    None
+                }
             } else {
                 None
             }
