@@ -1033,8 +1033,11 @@ impl StorageEngine for MemoryStorage {
         Ok(count)
     }
     fn create_table(&mut self, info: &TableInfo) -> SqlResult<()> {
-        self.table_infos.insert(info.name.clone(), info.clone());
-        self.tables.entry(info.name.clone()).or_default();
+        self.table_infos
+            .insert(info.name.to_lowercase(), info.clone());
+        self.tables
+            .entry(info.name.to_lowercase())
+            .or_default();
         Ok(())
     }
 
