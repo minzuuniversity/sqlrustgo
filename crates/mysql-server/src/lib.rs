@@ -1917,6 +1917,7 @@ fn value_type_string(v: &Value) -> String {
         }
         Value::Boolean(_) => "TINYINT".into(),
         Value::Point(_, _) => "DOUBLE".into(),
+        Value::Json(_) => "JSON".into(),
     }
 }
 
@@ -1931,6 +1932,7 @@ fn value_col_type(v: &Value) -> u8 {
         Value::Blob(_) => col_type::BLOB,
         Value::Boolean(_) => col_type::TINY,
         Value::Point(_, _) => col_type::DOUBLE,
+        Value::Json(_) => 0xf5, // MySQL JSON type code
     }
 }
 
