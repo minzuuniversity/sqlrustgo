@@ -28,6 +28,14 @@ pub enum TransactionStatement {
     StartTransaction {
         isolation_level: Option<IsolationLevel>,
     },
+    /// V312-11-fix #3986: SET session variable
+    /// (e.g. `SET debug_force_external=true`, `SET default_null_order='nulls_first'`).
+    /// Stores the variable name and raw value; no executor change required
+    /// for the parse stage to succeed.
+    SetSessionVariable {
+        name: String,
+        value: String,
+    },
 }
 
 #[cfg(test)]
@@ -178,7 +186,8 @@ mod tests {
                 | TransactionStatement::Commit { .. }
                 | TransactionStatement::Rollback { .. }
                 | TransactionStatement::SetTransaction { .. }
-                | TransactionStatement::StartTransaction { .. } => {}
+                | TransactionStatement::StartTransaction { .. }
+                | TransactionStatement::SetSessionVariable { .. } => {}
             }
         }
     }

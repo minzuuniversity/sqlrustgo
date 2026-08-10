@@ -190,6 +190,7 @@ impl<S: StorageEngine + 'static> ExecutionEngine<S> {
     }
 
     pub fn execute_select(&self, select: &SelectStatement) -> SqlResult<ExecutorResult> {
+        // Debug: print query table structure
         Self::clear_tpch_caches();
         // Sprint 1b fix (Q7/Q8/Q9): handle FROM (subquery) AS alias by
         // first executing the subquery to materialize its result into a
@@ -1707,10 +1708,48 @@ impl<S: StorageEngine + 'static> ExecutionEngine<S> {
             return None;
         }
 
+        // TPC-H table prefixes: s=supplier, p=part, ps=partsupp,
+        // c=customer, o=orders, l=lineitem, n=nation, r=region.
+        let tpch_prefix_to_alias: std::collections::HashMap<&str, &str> =
+            std::collections::HashMap::from_iter([
+                ("s_", "supplier"),
+                ("p_", "part"),
+                ("ps_", "partsupp"),
+                ("c_", "customer"),
+                ("o_", "orders"),
+                ("l_", "lineitem"),
+                ("n_", "nation"),
+                ("r_", "region"),
+            ]);
+
         // Helper: resolve a bare column name to (table_alias, column_name)
-        // by searching each table's schema. Returns None if not found or
-        // if the column name is ambiguous (appears in multiple tables).
+        // by searching each table's schema. When the column name is ambiguous
+        // (appears in multiple tables) but has a TPC-H qualifier prefix, the
+        // prefix is used to disambiguate (e.g. "s_suppkey" -> supplier even
+        // though partsupp also has s_suppkey).
         let resolve_bare = |col_name: &str| -> Option<(String, String)> {
+            // Check for TPC-H prefix disambiguation first.
+            for (prefix, alias) in &tpch_prefix_to_alias {
+                if col_name.starts_with(prefix) {
+                    let col_stripped = &col_name[prefix.len()..];
+                    // Verify the table is in join_tables and has this column.
+                    if join_tables.iter().any(|(_, a)| a == alias) {
+                        if let Ok(info) = storage.get_table_info(alias) {
+                            let has_col = info.columns.iter().any(|c| {
+                                let bare_c = c
+                                    .name
+                                    .strip_prefix(&format!("{}.", alias))
+                                    .unwrap_or(&c.name);
+                                bare_c == col_stripped || c.name == col_name
+                            });
+                            if has_col {
+                                return Some((alias.to_string(), col_name.to_string()));
+                            }
+                        }
+                    }
+                }
+            }
+            // Fallback: scan tables; return None on ambiguity (original behaviour).
             let mut found: Option<&str> = None;
             for (bare, alias) in &join_tables {
                 if let Ok(info) = storage.get_table_info(bare) {
