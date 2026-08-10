@@ -988,9 +988,7 @@ impl MySqlTestClient {
         p.extend_from_slice(&[0u8; 23]);
         write_packet(&mut self.stream, 0, &p)?;
         let resp = read_packet(&mut self.stream).map_err(|e| {
-            wire_err::msg(format!(
-                "force_tls: server closed without response: {e}"
-            ))
+            wire_err::msg(format!("force_tls: server closed without response: {e}"))
         })?;
         if resp.first().copied() == Some(0xFF) {
             return Err(wire_err::msg(format!(

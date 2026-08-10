@@ -915,8 +915,20 @@ fn constant_fold_u64(expr: &Expression) -> Option<u64> {
                 "+" => l.checked_add(r),
                 "-" => l.checked_sub(r),
                 "*" => l.checked_mul(r),
-                "/" => if r != 0 { l.checked_div(r) } else { None },
-                "%" => if r != 0 { l.checked_rem(r) } else { None },
+                "/" => {
+                    if r != 0 {
+                        l.checked_div(r)
+                    } else {
+                        None
+                    }
+                }
+                "%" => {
+                    if r != 0 {
+                        l.checked_rem(r)
+                    } else {
+                        None
+                    }
+                }
                 _ => None,
             }
         }
@@ -1820,8 +1832,12 @@ impl Parser {
             // match, which calls parse_rollback.
             // V312-19 #3986: SET session variable (e.g. SET debug_force_external=true)
             // routes to parse_set_session_variable, not parse_transaction.
-            Some(Token::Set) if self.peek() != Some(&Token::Transaction)
-                && self.peek() != Some(&Token::Role) => self.parse_set_session_variable(),
+            Some(Token::Set)
+                if self.peek() != Some(&Token::Transaction)
+                    && self.peek() != Some(&Token::Role) =>
+            {
+                self.parse_set_session_variable()
+            }
             Some(Token::Begin) | Some(Token::Commit) | Some(Token::Set) | Some(Token::Start) => {
                 self.parse_transaction()
             }
@@ -2103,7 +2119,8 @@ impl Parser {
     /// V312-11-fix #3986: parse `SET variable = value` (session variable).
     fn parse_set_session_variable(&mut self) -> Result<Statement, String> {
         self.expect(Token::Set)?;
-        if matches!(self.current(), Some(Token::Identifier(ref s)) if s.to_lowercase() == "variable") {
+        if matches!(self.current(), Some(Token::Identifier(ref s)) if s.to_lowercase() == "variable")
+        {
             self.next();
         }
         let name = match self.next() {
@@ -2125,7 +2142,9 @@ impl Parser {
         } else {
             String::new()
         };
-        Ok(Statement::Transaction(TransactionStatement::SetSessionVariable { name, value }))
+        Ok(Statement::Transaction(
+            TransactionStatement::SetSessionVariable { name, value },
+        ))
     }
 
     fn parse_isolation_level_value(&mut self) -> Result<IsolationLevel, String> {
@@ -4922,7 +4941,7 @@ impl Parser {
                     // Support LIMIT variable (e.g., @limit)
                     // V312-19 #3972: also accept arithmetic expression via constant_fold_u64.
                     let val = s
-                         .parse::<u64>()
+                        .parse::<u64>()
                         .map_err(|e| format!("Invalid LIMIT: {}", e))?;
                     self.next();
                     Some(val)
@@ -13635,19 +13654,19 @@ fn test_split_sql_statements_block_comment() {
     assert_eq!(parts.len(), 2);
 }
 
-    #[test]
-    #[ignore = "V312-17: parse_statements() API doesn't handle EOF properly - quarantined"]
-    fn test_parse_statements_multiple() {
-        let stmts = parse_statements("SELECT 1; SELECT 2").unwrap();
-        assert_eq!(stmts.len(), 2);
-    }
+#[test]
+#[ignore = "V312-17: parse_statements() API doesn't handle EOF properly - quarantined"]
+fn test_parse_statements_multiple() {
+    let stmts = parse_statements("SELECT 1; SELECT 2").unwrap();
+    assert_eq!(stmts.len(), 2);
+}
 
-    #[test]
-    #[ignore = "V312-17: parse_statements() API doesn't handle EOF properly - quarantined"]
-    fn test_parse_statements_no_trailing() {
-        let stmts = parse_statements("SELECT 1; SELECT 2;").unwrap();
-        assert_eq!(stmts.len(), 2);
-    }
+#[test]
+#[ignore = "V312-17: parse_statements() API doesn't handle EOF properly - quarantined"]
+fn test_parse_statements_no_trailing() {
+    let stmts = parse_statements("SELECT 1; SELECT 2;").unwrap();
+    assert_eq!(stmts.len(), 2);
+}
 
 #[test]
 fn test_parse_statements_empty() {

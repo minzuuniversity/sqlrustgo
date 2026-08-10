@@ -72,11 +72,12 @@ fn test_json_value_extracts_string() {
 }
 
 #[test]
-
 #[test]
 fn test_json_function_constructor() {
     let mut engine = create_engine();
-    let r = engine.execute("SELECT JSON('{\"a\":1}') IS NOT NULL").unwrap();
+    let r = engine
+        .execute("SELECT JSON('{\"a\":1}') IS NOT NULL")
+        .unwrap();
     // JSON constructor returns non-null Value::Json for valid input.
     assert_eq!(r.rows.len(), 1);
 }

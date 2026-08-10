@@ -166,10 +166,7 @@ pub struct ChunkEmbedding {
 
 /// Compute SHA-256 hash of a vector.
 pub fn vector_hash(embedding: &[f32]) -> String {
-    let bytes: Vec<u8> = embedding
-        .iter()
-        .flat_map(|f| f.to_le_bytes())
-        .collect();
+    let bytes: Vec<u8> = embedding.iter().flat_map(|f| f.to_le_bytes()).collect();
     sha256(&bytes)
 }
 
@@ -234,7 +231,10 @@ pub fn rebuild_flat_index(
     // Load all embeddings
     let embeddings = get_all_embeddings(storage)?;
 
-    let dimension = embeddings.first().map(|e| e.embedding.len()).unwrap_or(EMBEDDING_DIM);
+    let dimension = embeddings
+        .first()
+        .map(|e| e.embedding.len())
+        .unwrap_or(EMBEDDING_DIM);
     let now = std::time::SystemTime::now()
         .duration_since(std::time::UNIX_EPOCH)
         .map(|d| d.as_secs() as i64)
@@ -260,10 +260,12 @@ pub fn rebuild_flat_index(
     let rows = storage.scan(TABLE_VECTOR_INDEX)?;
     let next_id = rows
         .iter()
-        .filter_map(|r| r.get(0).and_then(|v| match v {
-            Value::Integer(n) => Some(*n),
-            _ => None,
-        }))
+        .filter_map(|r| {
+            r.get(0).and_then(|v| match v {
+                Value::Integer(n) => Some(*n),
+                _ => None,
+            })
+        })
         .max()
         .unwrap_or(0)
         + 1;
@@ -292,7 +294,10 @@ pub fn rebuild_flat_index(
 /// Get the latest vector index metadata.
 pub fn get_latest_index(storage: &dyn StorageEngine) -> SqlResult<Option<VectorIndexMeta>> {
     let rows = storage.scan(TABLE_VECTOR_INDEX)?;
-    let mut indexes: Vec<_> = rows.into_iter().filter_map(|r| VectorIndexMeta::from_row(&r)).collect();
+    let mut indexes: Vec<_> = rows
+        .into_iter()
+        .filter_map(|r| VectorIndexMeta::from_row(&r))
+        .collect();
     indexes.sort_by_key(|i| i.built_at);
     Ok(indexes.into_iter().last())
 }
@@ -346,8 +351,14 @@ mod tests {
     fn test_index_type_conversion() {
         assert_eq!(VectorIndexType::Flat.as_str(), "FLAT");
         assert_eq!(VectorIndexType::Hnsw.as_str(), "HNSW");
-        assert_eq!(VectorIndexType::from_str("FLAT"), Some(VectorIndexType::Flat));
-        assert_eq!(VectorIndexType::from_str("HNSW"), Some(VectorIndexType::Hnsw));
+        assert_eq!(
+            VectorIndexType::from_str("FLAT"),
+            Some(VectorIndexType::Flat)
+        );
+        assert_eq!(
+            VectorIndexType::from_str("HNSW"),
+            Some(VectorIndexType::Hnsw)
+        );
         assert_eq!(VectorIndexType::from_str("invalid"), None);
     }
 }

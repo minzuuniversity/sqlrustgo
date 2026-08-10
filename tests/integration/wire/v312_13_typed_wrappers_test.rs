@@ -11,8 +11,8 @@
 #[path = "../../common/mod.rs"]
 mod common;
 
-use common::MysqlError;
 use common::MySqlTestClient;
+use common::MysqlError;
 
 /// COM_STMT_PREPARE round-trip: prepare, assert stmt id, then close.
 #[test]
