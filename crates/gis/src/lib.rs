@@ -395,24 +395,18 @@ pub fn euclidean_distance(p1: &Point, p2: &Point) -> f64 {
     ((p2.x - p1.x).powi(2) + (p2.y - p1.y).powi(2)).sqrt()
 }
 
-/// ST_Distance - returns the minimum distance between two geometries
-/// For points, returns Euclidean distance
-pub fn st_distance(p1: &Point, p2: &Point) -> f64 {
-    euclidean_distance(p1, p2)
-}
-
 /// ST_Intersects - returns true if two geometries intersect
 /// For points, uses a small tolerance
-pub fn st_intersects(p1: &Point, p2: &Point) -> bool {
+pub fn st_intersects_points(p1: &Point, p2: &Point) -> bool {
     euclidean_distance(p1, p2) < 1e-10
 }
 
 /// ST_Distance_Point - wrapper for SQL interface
 pub fn st_distance_point(p1: &Point, p2: &Point) -> Value {
-    Value::Float(st_distance(p1, p2))
+    Value::Float(euclidean_distance(p1, p2))
 }
 
 /// ST_Intersects_Point - wrapper for SQL interface  
 pub fn st_intersects_point(p1: &Point, p2: &Point) -> Value {
-    Value::Boolean(st_intersects(p1, p2))
+    Value::Boolean(st_intersects_points(p1, p2))
 }
