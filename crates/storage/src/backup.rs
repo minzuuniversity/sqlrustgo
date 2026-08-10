@@ -89,6 +89,7 @@ impl BackupExporter {
             Value::Boolean(b) => b.to_string(),
             Value::Blob(b) => format!("[BLOB: {} bytes]", b.len()),
             Value::Point(x, y) => format!("POINT({}, {})", x, y),
+            Value::Json(v) => v.to_string(),
         }
     }
 
@@ -145,6 +146,7 @@ impl BackupExporter {
             Value::Boolean(b) => b.to_string(),
             Value::Blob(b) => format!("\"[BLOB: {} bytes]\"", b.len()),
             Value::Point(x, y) => format!("POINT({}, {})", x, y),
+            Value::Json(v) => v.to_string(),
         }
     }
 
@@ -189,6 +191,7 @@ impl BackupExporter {
             }
             Value::Blob(b) => format!("X'{}'", use_hex::encode(b)),
             Value::Point(x, y) => format!("POINT({}, {})", x, y),
+            Value::Json(v) => format!("'{}'", v.to_string().replace('\'', "''")),
         }
     }
 }

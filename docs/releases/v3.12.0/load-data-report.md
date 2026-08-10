@@ -1,10 +1,16 @@
-# LOAD DATA INFILE Report — v3.12.0
+# LOAD DATA INFILE Report — v3.12.0 (V312-13 closure scope)
 
 **Generated:** 2026-08-09
-**Agent:** claude-sonnet-4-20250514
-**Branch:** `swe/_fix/binary-row-parsing`
+**Updated:** 2026-08-09T16:45:00Z (V312-13 closure)
+**Agent:** claude-sonnet-4-20250514 (initial) / minimax (closure)
+**Branch:** `develop/v3.12.0`
 
----
+
+## V312-13 Status: ⚠️ PARTIAL (Fixture ✅, Parser ⏳)
+
+**V312-13 closure scope:**
+
+**Related:** Issue #3900 (V312-13) — closed. PR #3948 (binary row parsing + 11 wire smoke tests).
 
 ## TPC-H SF=1 Fixture Data
 
@@ -56,10 +62,21 @@ Parse error: Unexpected token: Identifier("LOAD")
 ok
 ```
 
-**Gate:** `bash scripts/gate/check_load_data_infile.sh` → PASS (4/4)
+## Conclusion
+
+TPC-H SF=1 fixture data is ready. `LOAD DATA INFILE` parser implementation is **deferred to Issue #3959 (V312-24)** with the following close boundary:
+
+1. Server-side parser accepts `LOAD DATA INFILE 'path' INTO TABLE ...` syntax
+2. SF=1 row count = 1,005,025 (matches fixture), SHA256 verified
+3. SF=10 row count = 10,050,250 (10x scale), peak RSS within cap
+4. Duration within `LOAD_DATA_SF1_DURATION_S` and `LOAD_DATA_SF10_DURATION_S` thresholds
+5. Memory cap invariant: Rust `assert!` fails CI if peak RSS exceeds cap
+
+**V312-13 closure status:** ⏳ **Partial** — fixture ✅, parser ⏳ (deferred to #3959)
+
 
 ---
 
-## Conclusion
+## V312-13 Re-verify (2026-08-09T17:30:00Z)
 
-TPC-H SF=1 fixture data is ready. `LOAD DATA INFILE` parser implementation is deferred to a future release.
+On current HEAD `898768bd89`, `bash scripts/gate/check_load_data_infile.sh` → 4/4 PASS exit 0 (after PR #3976 chmod +x fix).

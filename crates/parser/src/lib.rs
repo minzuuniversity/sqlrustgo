@@ -12,6 +12,7 @@ pub use token::Token;
 
 pub use parser::{
     get_and_clear_derived_subqueries, AggregateCall, AggregateFunction, AlterTableOperation,
+    AlterColumnOperation,
     AlterTableStatement, CallStatement, ColumnDefinition, CommonTableExpression,
     CreateProcedureStatement, CreateSequenceStatement, CreateTableStatement,
     CreateTriggerStatement, CreateViewStatement, DeleteStatement, DropIndexStatement,

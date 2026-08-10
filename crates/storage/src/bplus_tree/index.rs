@@ -78,6 +78,7 @@ fn compare_values(lhs: &Value, rhs: &Value) -> std::cmp::Ordering {
             Value::Text(_) => 4,
             Value::Blob(_) => 5,
             Value::Point(_, _) => 6,
+            Value::Json(_) => 7,
         }
     }
 

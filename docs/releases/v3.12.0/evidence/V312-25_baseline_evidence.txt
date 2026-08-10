@@ -1,0 +1,66 @@
+# V312-25: E2E 脚本去重与死脚本清理 — baseline evidence
+#
+# Source: feature/v312-24-impl branch @ 2026-08-09
+# Purpose: Record the actual pre-work state of the 10 E2E scripts targeted
+#          for retirement. Post-work values must be checked against these
+#          baselines in the closing report.
+
+# ---- 1. Files still tracked by git (target: ≤ 1 after work) ----
+$ git ls-files tests/e2e/ scripts/gate/e2e/ | grep -E '(startup_connect|tpch_sf01|kill9_recovery|e2e_0[1-8])' | sort
+scripts/gate/e2e/e2e_01_basic_crud.sh
+scripts/gate/e2e/e2e_02_tx_commit_rollback.sh
+scripts/gate/e2e/e2e_03_wal_crash_recovery.sh
+scripts/gate/e2e/e2e_04_parallel_executor.sh
+scripts/gate/e2e/e2e_05_savepoint_rollback.sh
+scripts/gate/e2e/e2e_06_cte_query.sh
+scripts/gate/e2e/e2e_07_json_vector.sh
+scripts/gate/e2e/e2e_08_migration.sh
+tests/e2e/kill9_recovery.sh
+tests/e2e/startup_connect.sh
+tests/e2e/tpch_sf01.sh
+$ git ls-files tests/e2e/ scripts/gate/e2e/ | grep -E '(startup_connect|tpch_sf01|kill9_recovery|e2e_0[1-8])' | wc -l
+11
+
+# ---- 2. git log --diff-filter=D for the 10 retire targets ----
+# Pre-work: 0 (none have been deleted yet on this branch)
+$ git log --diff-filter=D --name-only --pretty=format: -- \
+    tests/e2e/startup_connect.sh tests/e2e/tpch_sf01.sh \
+    tests/e2e/kill9_recovery.sh \
+    scripts/gate/e2e/e2e_01_basic_crud.sh \
+    scripts/gate/e2e/e2e_02_tx_commit_rollback.sh \
+    scripts/gate/e2e/e2e_03_wal_crash_recovery.sh \
+    scripts/gate/e2e/e2e_04_parallel_executor.sh \
+    scripts/gate/e2e/e2e_05_savepoint_rollback.sh \
+    scripts/gate/e2e/e2e_06_cte_query.sh \
+    scripts/gate/e2e/e2e_08_migration.sh 2>&1 | sort -u | wc -l
+0
+
+# Note: e2e_07_json_vector.sh is NOT in this list because V312-26 rewrites
+# it instead of deleting it. Closing command 2 (git ls-files) expects ≤ 1
+# to account for e2e_07 remaining for V312-26 to handle.
+
+# ---- 3. ignore_registry.json: V312-25 retired entries ----
+# Pre-work: 0 (no V312-25 entries yet)
+$ python3 -c "import json; d=json.load(open('tests/baseline/ignore_registry.json')); tests=d.get('ignored_tests',[]); v312_25=[t for t in tests if 'V312-25 retired' in t.get('reason','')]; print(len(v312_25))"
+0
+
+# Total entries baseline:
+$ python3 -c "import json; d=json.load(open('tests/baseline/ignore_registry.json')); print(len(d.get('ignored_tests',[])))"
+74
+
+# ---- 4. Field-name audit ----
+# The cross-check script MUST use d.get('ignored_tests',[]), not d.get('files',[]).
+# The registry schema (verified 2026-08-09):
+$ python3 -c "import json; d=json.load(open('tests/baseline/ignore_registry.json')); print('top-level keys:', list(d.keys()))"
+['version', 'timestamp', 'total_allowed', 'ignored_tests', 'note']
+# 'files' key does NOT exist; 'ignored_tests' is the correct key.
+
+# ---- Post-work targets (for closing report cross-check) ----
+# git ls-files | grep -E '...'      → ≤ 1  (current 11, after 10 git rm + 1 e2e_07 keep)
+# git log --diff-filter=D | wc -l   → ≥ 10 (current 0, after 10 rm commits)
+# ignore_registry V312-25 entries   → ≥ 10 (current 0, after 10 retired entries)
+# ignore_registry total entries     → 84   (current 74 + 10 new)
+
+# ---- SHA-256 of files targeted for retirement (pre-work) ----
+$ sha256sum tests/e2e/startup_connect.sh tests/e2e/tpch_sf01.sh tests/e2e/kill9_recovery.sh scripts/gate/e2e/e2e_01_basic_crud.sh scripts/gate/e2e/e2e_02_tx_commit_rollback.sh scripts/gate/e2e/e2e_03_wal_crash_recovery.sh scripts/gate/e2e/e2e_04_parallel_executor.sh scripts/gate/e2e/e2e_05_savepoint_rollback.sh scripts/gate/e2e/e2e_06_cte_query.sh scripts/gate/e2e/e2e_08_migration.sh
+<computed at work time>

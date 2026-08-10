@@ -17,11 +17,11 @@ mod tests {
     use std::sync::Arc;
     use std::time::Instant;
 
-    fn create_engine() -> ExecutionEngine {
+    fn create_engine() -> ExecutionEngine<MemoryStorage> {
         ExecutionEngine::new(Arc::new(RwLock::new(MemoryStorage::new())))
     }
 
-    fn setup_full_tpch_schema(engine: &mut ExecutionEngine) {
+    fn setup_full_tpch_schema(engine: &mut ExecutionEngine<MemoryStorage>) {
         engine.execute("CREATE TABLE nation (n_nationkey INTEGER, n_name TEXT, n_regionkey INTEGER, n_comment TEXT)").unwrap();
         engine
             .execute("CREATE TABLE region (r_regionkey INTEGER, r_name TEXT, r_comment TEXT)")
@@ -34,7 +34,7 @@ mod tests {
         engine.execute("CREATE TABLE lineitem (l_orderkey INTEGER, l_partkey INTEGER, l_suppkey INTEGER, l_linenumber INTEGER, l_quantity INTEGER, l_extendedprice REAL, l_discount REAL, l_tax REAL, l_returnflag TEXT, l_linestatus TEXT, l_shipdate TEXT, l_commitdate TEXT, l_receiptdate TEXT, l_shipinstruct TEXT, l_shipmode TEXT, l_comment TEXT)").unwrap();
     }
 
-    fn insert_tpch_data(engine: &mut ExecutionEngine) {
+    fn insert_tpch_data(engine: &mut ExecutionEngine<MemoryStorage>) {
         engine
             .execute("INSERT INTO region VALUES (1, 'ASIA', 'Asia region')")
             .unwrap();
@@ -82,7 +82,7 @@ mod tests {
         engine.execute("INSERT INTO lineitem VALUES (5, 1, 1, 1, 12, 12000.00, 0.04, 0.96, 'R', 'F', '2024-03-05', '2024-03-03', '2024-03-10', 'NONE', 'AIR', 'comment7')").unwrap();
     }
 
-    fn setup_engine_with_data() -> ExecutionEngine {
+    fn setup_engine_with_data() -> ExecutionEngine<MemoryStorage> {
         let mut engine = create_engine();
         setup_full_tpch_schema(&mut engine);
         insert_tpch_data(&mut engine);
@@ -101,7 +101,7 @@ mod tests {
             let mut engine = setup_engine_with_data();
             let sql = "SELECT COUNT(*) FROM lineitem";
             let start = Instant::now();
-            let result = engine.execute(parse(sql).unwrap());
+            let result = engine.execute(sql);
             let elapsed = start.elapsed();
             println!(
                 "SQLRustGo Q1: {:?} in {:?}",
@@ -116,7 +116,7 @@ mod tests {
             let mut engine = setup_engine_with_data();
             let sql = "SELECT COUNT(*) FROM part";
             let start = Instant::now();
-            let result = engine.execute(parse(sql).unwrap());
+            let result = engine.execute(sql);
             let elapsed = start.elapsed();
             println!(
                 "SQLRustGo Q2: {:?} in {:?}",
@@ -131,7 +131,7 @@ mod tests {
             let mut engine = setup_engine_with_data();
             let sql = "SELECT COUNT(*) FROM orders";
             let start = Instant::now();
-            let result = engine.execute(parse(sql).unwrap());
+            let result = engine.execute(sql);
             let elapsed = start.elapsed();
             println!(
                 "SQLRustGo Q3: {:?} in {:?}",
@@ -146,7 +146,7 @@ mod tests {
             let mut engine = setup_engine_with_data();
             let sql = "SELECT * FROM orders";
             let start = Instant::now();
-            let result = engine.execute(parse(sql).unwrap());
+            let result = engine.execute(sql);
             let elapsed = start.elapsed();
             println!(
                 "SQLRustGo Q4: {:?} in {:?}",
@@ -161,7 +161,7 @@ mod tests {
             let mut engine = setup_engine_with_data();
             let sql = "SELECT COUNT(*) FROM customer";
             let start = Instant::now();
-            let result = engine.execute(parse(sql).unwrap());
+            let result = engine.execute(sql);
             let elapsed = start.elapsed();
             println!(
                 "SQLRustGo Q5: {:?} in {:?}",
@@ -176,7 +176,7 @@ mod tests {
             let mut engine = setup_engine_with_data();
             let sql = "SELECT SUM(l_extendedprice) FROM lineitem WHERE l_discount > 0";
             let start = Instant::now();
-            let result = engine.execute(parse(sql).unwrap());
+            let result = engine.execute(sql);
             let elapsed = start.elapsed();
             println!(
                 "SQLRustGo Q6: {:?} in {:?}",
@@ -192,7 +192,7 @@ mod tests {
             let sql =
                 "SELECT SUM(l_extendedprice) FROM lineitem WHERE l_discount BETWEEN 0.05 AND 0.07";
             let start = Instant::now();
-            let result = engine.execute(parse(sql).unwrap());
+            let result = engine.execute(sql);
             let elapsed = start.elapsed();
             let result_clone = result.as_ref().map(|r| r.rows.len());
             println!(
@@ -208,7 +208,7 @@ mod tests {
             let mut engine = setup_engine_with_data();
             let sql = "SELECT COUNT(*) FROM lineitem";
             let start = Instant::now();
-            let result = engine.execute(parse(sql).unwrap());
+            let result = engine.execute(sql);
             let elapsed = start.elapsed();
             println!(
                 "SQLRustGo Q7: {:?} in {:?}",
@@ -223,7 +223,7 @@ mod tests {
             let mut engine = setup_engine_with_data();
             let sql = "SELECT COUNT(*) FROM supplier";
             let start = Instant::now();
-            let result = engine.execute(parse(sql).unwrap());
+            let result = engine.execute(sql);
             let elapsed = start.elapsed();
             println!(
                 "SQLRustGo Q8: {:?} in {:?}",
@@ -238,7 +238,7 @@ mod tests {
             let mut engine = setup_engine_with_data();
             let sql = "SELECT COUNT(*) FROM nation";
             let start = Instant::now();
-            let result = engine.execute(parse(sql).unwrap());
+            let result = engine.execute(sql);
             let elapsed = start.elapsed();
             println!(
                 "SQLRustGo Q9: {:?} in {:?}",
@@ -253,7 +253,7 @@ mod tests {
             let mut engine = setup_engine_with_data();
             let sql = "SELECT * FROM lineitem WHERE l_returnflag = 'R'";
             let start = Instant::now();
-            let result = engine.execute(parse(sql).unwrap());
+            let result = engine.execute(sql);
             let elapsed = start.elapsed();
             println!(
                 "SQLRustGo Q10: {:?} in {:?}",
@@ -268,7 +268,7 @@ mod tests {
             let mut engine = setup_engine_with_data();
             let sql = "SELECT COUNT(*) FROM partsupp";
             let start = Instant::now();
-            let result = engine.execute(parse(sql).unwrap());
+            let result = engine.execute(sql);
             let elapsed = start.elapsed();
             println!(
                 "SQLRustGo Q11: {:?} in {:?}",
@@ -283,7 +283,7 @@ mod tests {
             let mut engine = setup_engine_with_data();
             let sql = "SELECT * FROM lineitem WHERE l_shipmode = 'AIR'";
             let start = Instant::now();
-            let result = engine.execute(parse(sql).unwrap());
+            let result = engine.execute(sql);
             let elapsed = start.elapsed();
             println!(
                 "SQLRustGo Q12: {:?} in {:?}",
@@ -298,7 +298,7 @@ mod tests {
             let mut engine = setup_engine_with_data();
             let sql = "SELECT * FROM customer";
             let start = Instant::now();
-            let result = engine.execute(parse(sql).unwrap());
+            let result = engine.execute(sql);
             let elapsed = start.elapsed();
             println!(
                 "SQLRustGo Q13: {:?} in {:?}",
@@ -313,7 +313,7 @@ mod tests {
             let mut engine = setup_engine_with_data();
             let sql = "SELECT COUNT(*) FROM lineitem WHERE l_quantity < 25";
             let start = Instant::now();
-            let result = engine.execute(parse(sql).unwrap());
+            let result = engine.execute(sql);
             let elapsed = start.elapsed();
             println!(
                 "SQLRustGo Q14: {:?} in {:?}",
@@ -328,7 +328,7 @@ mod tests {
             let mut engine = setup_engine_with_data();
             let sql = "SELECT * FROM supplier";
             let start = Instant::now();
-            let result = engine.execute(parse(sql).unwrap());
+            let result = engine.execute(sql);
             let elapsed = start.elapsed();
             println!(
                 "SQLRustGo Q15: {:?} in {:?}",
@@ -343,7 +343,7 @@ mod tests {
             let mut engine = setup_engine_with_data();
             let sql = "SELECT * FROM part WHERE p_size = 10";
             let start = Instant::now();
-            let result = engine.execute(parse(sql).unwrap());
+            let result = engine.execute(sql);
             let elapsed = start.elapsed();
             println!(
                 "SQLRustGo Q16: {:?} in {:?}",
@@ -358,7 +358,7 @@ mod tests {
             let mut engine = setup_engine_with_data();
             let sql = "SELECT * FROM lineitem WHERE l_quantity < 20";
             let start = Instant::now();
-            let result = engine.execute(parse(sql).unwrap());
+            let result = engine.execute(sql);
             let elapsed = start.elapsed();
             println!(
                 "SQLRustGo Q17: {:?} in {:?}",
@@ -373,7 +373,7 @@ mod tests {
             let mut engine = setup_engine_with_data();
             let sql = "SELECT * FROM orders WHERE o_totalprice > 10000";
             let start = Instant::now();
-            let result = engine.execute(parse(sql).unwrap());
+            let result = engine.execute(sql);
             let elapsed = start.elapsed();
             println!(
                 "SQLRustGo Q18: {:?} in {:?}",
@@ -388,7 +388,7 @@ mod tests {
             let mut engine = setup_engine_with_data();
             let sql = "SELECT * FROM lineitem WHERE l_discount > 0.05";
             let start = Instant::now();
-            let result = engine.execute(parse(sql).unwrap());
+            let result = engine.execute(sql);
             let elapsed = start.elapsed();
             println!(
                 "SQLRustGo Q19: {:?} in {:?}",
@@ -403,7 +403,7 @@ mod tests {
             let mut engine = setup_engine_with_data();
             let sql = "SELECT * FROM supplier WHERE s_nationkey = 1";
             let start = Instant::now();
-            let result = engine.execute(parse(sql).unwrap());
+            let result = engine.execute(sql);
             let elapsed = start.elapsed();
             println!(
                 "SQLRustGo Q20: {:?} in {:?}",
@@ -418,7 +418,7 @@ mod tests {
             let mut engine = setup_engine_with_data();
             let sql = "SELECT * FROM nation";
             let start = Instant::now();
-            let result = engine.execute(parse(sql).unwrap());
+            let result = engine.execute(sql);
             let elapsed = start.elapsed();
             println!(
                 "SQLRustGo Q21: {:?} in {:?}",
@@ -433,7 +433,7 @@ mod tests {
             let mut engine = setup_engine_with_data();
             let sql = "SELECT * FROM customer WHERE c_acctbal > 1000";
             let start = Instant::now();
-            let result = engine.execute(parse(sql).unwrap());
+            let result = engine.execute(sql);
             let elapsed = start.elapsed();
             println!(
                 "SQLRustGo Q22: {:?} in {:?}",
@@ -462,7 +462,7 @@ mod tests {
 
             for (name, sql) in queries {
                 let start = Instant::now();
-                let result = engine.execute(parse(sql).unwrap());
+                let result = engine.execute(sql);
                 let elapsed = start.elapsed();
                 let row_count = result.as_ref().map(|r| r.rows.len());
                 println!("SQLRustGo {}: {:?} in {:?}", name, row_count, elapsed);
