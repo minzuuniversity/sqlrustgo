@@ -638,6 +638,7 @@ mod packet_type {
     pub const COM_STMT_PREPARE: u8 = 0x16;
     pub const COM_STMT_EXECUTE: u8 = 0x17;
     pub const COM_STMT_CLOSE: u8 = 0x19;
+    pub const COM_RESET_CONNECTION: u8 = 0x1F;
 }
 
 // ============================================================================
@@ -1916,6 +1917,7 @@ fn value_type_string(v: &Value) -> String {
         }
         Value::Boolean(_) => "TINYINT".into(),
         Value::Point(_, _) => "DOUBLE".into(),
+        Value::Json(_) => "JSON".into(),
     }
 }
 
@@ -1930,6 +1932,7 @@ fn value_col_type(v: &Value) -> u8 {
         Value::Blob(_) => col_type::BLOB,
         Value::Boolean(_) => col_type::TINY,
         Value::Point(_, _) => col_type::DOUBLE,
+        Value::Json(_) => 0xf5, // MySQL JSON type code
     }
 }
 
@@ -2019,6 +2022,7 @@ fn value_to_string(v: &Value) -> String {
         Value::Text(s) => s.clone(),
         Value::Blob(b) => format!("{:?}", b),
         Value::Point(x, y) => format!("POINT({} {})", x, y),
+        Value::Json(v) => v.to_string(),
     }
 }
 
@@ -2095,6 +2099,10 @@ fn write_binary_row<W: Write>(w: &mut W, row: &[Value], col_types: &[u8]) -> MyS
                 // MySQL binary protocol: 8-byte double for X, 8-byte double for Y
                 buf.write_f64::<LittleEndian>(*x)?;
                 buf.write_f64::<LittleEndian>(*y)?;
+            }
+            Value::Json(v) => {
+                // Serialize JSON as a string
+                write_lenenc_string(&mut buf, v.to_string().as_bytes())?;
             }
         }
     }
@@ -2372,8 +2380,17 @@ impl PreparedStatementManager {
     fn remove(&mut self, id: u32) {
         self.statements.remove(&id);
     }
+
+    /// Reset all prepared statements and session state.
+    /// MySQL protocol: COM_RESET_CONNECTION (0x1F) clears all prepared
+    /// statement IDs and resets the statement counter to 1.
+    fn reset(&mut self) {
+        self.statements.clear();
+        self.next_id = 1;
+    }
 }
 
+/// Count `?` placeholders in SQL (used by COM_STMT_PREPARE to report param count).
 fn count_placeholders(sql: &str) -> u16 {
     sql.chars().filter(|&c| c == '?').count() as u16
 }
@@ -3867,6 +3884,15 @@ fn do_command_loop<S: Read + Write + DrainWrites>(
                         u32::from_le_bytes([payload[0], payload[1], payload[2], payload[3]]);
                     ps_manager.remove(stmt_id);
                 }
+            }
+            // COM_RESET_CONNECTION (0x1F): resets session state including all
+            // prepared statements. MySQL protocol requires OK packet response.
+            packet_type::COM_RESET_CONNECTION => {
+                tracing::info!("COM_RESET_CONNECTION from {}", addr);
+                ps_manager.reset();
+                make_ok_packet(seq, 0, 0, 0x0002, 0).write_to(stream)?;
+                *server_last_sent_seq = seq;
+                seq = seq.wrapping_add(1);
             }
             _ => {
                 make_err_packet(seq, 1047, "HY000", "Unknown command").write_to(stream)?;

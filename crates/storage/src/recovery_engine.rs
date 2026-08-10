@@ -682,6 +682,11 @@ mod tests {
                     bytes.extend_from_slice(&x.to_bits().to_le_bytes());
                     bytes.extend_from_slice(&y.to_bits().to_le_bytes());
                 }
+                Value::Json(v) => {
+                    bytes.extend_from_slice(b"J:");
+                    bytes.extend_from_slice(v.to_string().as_bytes());
+                    bytes.push(0);
+                }
             }
         }
 

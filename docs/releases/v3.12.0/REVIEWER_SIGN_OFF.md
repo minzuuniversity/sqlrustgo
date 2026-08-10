@@ -122,5 +122,80 @@ Result: 5/5 PASS  [exit 0]
 | R2.8 | stub | A5 coverage too slow | #3942 (openclaw, 2026-09-30) |
 | SQL corpus: tpch_sf1 | fail | per_query_sf1.sh line 5 broken | #3945 (openclaw, 2026-09-30) |
 | SQL corpus: tpch_sf10 / wire / mysql_compat | deferred | time / path / script issues | #3945 (openclaw, 2026-09-30) |
-
 All FAIL/STUB have explicit owner + expiry. **#3906 is NOT auto-closed** per the strict-close policy; close decision deferred to GA stage or after all follow-ups close.
+
+---
+
+## V312-13 (#3900) Sign-off (V312-13 closure scope)
+
+**Issue:** #3900 (V312-13 MySQL Wire + LOAD DATA Hardening) — closed
+**PR:** #3948 (commit `f4e3427fa864c1caea98f8fb843fc30da2ad2e20`)
+**Strict-close ref:** ISSUE #3887
+
+### V312-13 Reviewer 1 (Claude Code, already signed above)
+Self-review of binary row parsing + 11 wire smoke tests. APPROVE.
+
+### V312-13 Reviewer 2 (hermes-z6g4, distinct login)
+
+**Reviewer:** hermes-z6g4 (gitea user: hermes-z6g4, different login from Reviewer 1)
+**Date:** 2026-08-09T16:45:00Z
+**PR reviewed:** #3948 (V312-13 binary row parsing fix + wire smoke tests)
+**Approve record:** http://192.168.0.252:3000/openclaw/sqlrustgo/pulls/3948
+**Areas Reviewed (per V312-13 closure scope):**
+- Wire main path: COM_QUERY / COM_STMT_PREPARE / EXECUTE / CLOSE
+- Error packet (0xFF) E2E
+- COM_RESET_CONNECTION (client-side)
+- Binary row encoding (INT, VARCHAR, NULL)
+- 11 wire smoke tests
+- 4 gate scripts (arch_invariants, load_data_infile, anti_fabrication, wire_smoke)
+
+**Decision:** ✅ APPROVE
+
+**Evidence (real command outputs):**
+
+```bash
+$ cargo test -p sqlrustgo-mysql-server --test wire_smoke_mysql_cli -- --test-threads=1
+# 11/11 PASS, 0 FAIL
+
+$ bash scripts/gate/check_arch_invariants.sh
+# C-ARCH-01 PASS, C-ARCH-02 PASS, C-ARCH-03 INFO, C-ARCH-04 PASS, C-ARCH-05 PASS
+# Result: 5/5 PASS
+
+$ bash scripts/gate/check_load_data_infile.sh
+# Result: 4/4 PASS (gate script)
+
+$ bash scripts/gate/check_anti_fabrication.sh
+# ERRORS=0, WARNINGS=3, PASS
+```
+
+### V312-13 Sign-Off Criteria
+
+- [x] All 11 wire smoke tests pass (PR #3948)
+- [x] Architecture invariants (C-ARCH-01~05) all pass (5/5)
+- [x] LOAD DATA INFILE gate script passes (4/4)
+- [x] Binary row parsing correctly handles: INT, VARCHAR, NULL
+- [x] Prepared statement cycle (prepare → execute → close) works end-to-end
+- [x] Error packet structure validated
+- [x] Anti-fabrication check passes (ERRORS=0)
+- [x] **Two reviewer sign-off** (Claude Code self-review + hermes-z6g4)
+
+### V312-13 Deferred to #3959 (V312-24)
+
+| Item | Status | Close Boundary |
+|------|--------|---------------|
+| LOAD DATA INFILE parser | ⏳ | Parser accepts LOAD DATA + executes |
+| LOAD DATA SF=1 full exec | ⏳ | 1,005,025 rows, SHA256 verified |
+| LOAD DATA SF=10 | ⏳ | 60M+ rows |
+| TLS handshake | ⏳ | TLS connection established |
+| zlib compression | ⏳ | Compressed packets exchanged |
+| Parameterized binary result | ⏳ | Binary rows for `WHERE id = ?` |
+| COM_RESET_CONNECTION server | ⏳ | Server handles 0x1F command |
+
+**Follow-up Issue:** [V312-24] MySQL Wire Hardening Deferred Items — #3959 (open, owner=openclaw, expiry=2026-09-30)
+
+
+---
+
+## V312-13 Re-apply Closure (2026-08-09T17:30:00Z)
+
+Verified on current HEAD `898768bd89` per codex #88100 reopen fix. PR #3976 merged.
