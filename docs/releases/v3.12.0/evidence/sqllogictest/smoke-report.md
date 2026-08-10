@@ -4,10 +4,10 @@
 |---|---|
 | source_agent | minimax-m2.7 |
 | source_run | check_sqllogictest_v312 |
-| timestamp | 2026-08-10T20:52:03+08:00 |
-| commit | 5f6786a20da979f32f1101c42ea83ac881e4b977 |
-| log | docs/releases/v3.12.0/logs/sqllogictest_5f6786a20_20260810_205201.log |
-| evidence_hash | 9773321552274eb784f01cdf72ae56eadbd9484416e6a45f5b617e54ea3dcc70 |
+| timestamp | 2026-08-10T23:21:40+08:00 |
+| commit | 7c018c24e2c46e4c91f416faabd25a2c5cf3dca8 |
+| log | docs/releases/v3.12.0/logs/sqllogictest_7c018c24e2_20260810_232135.log |
+| evidence_hash | 1e4d8878e5007f798d8253effec024b1cfa0a04498021efdadd8b5ebffb38f21 |
 | gate_status | PASS |
 
 ## Runner Summary
