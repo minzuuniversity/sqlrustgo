@@ -1917,6 +1917,7 @@ fn value_type_string(v: &Value) -> String {
         }
         Value::Boolean(_) => "TINYINT".into(),
         Value::Point(_, _) => "DOUBLE".into(),
+        Value::Json(_) => "JSON".into(),
     }
 }
 
@@ -1931,6 +1932,7 @@ fn value_col_type(v: &Value) -> u8 {
         Value::Blob(_) => col_type::BLOB,
         Value::Boolean(_) => col_type::TINY,
         Value::Point(_, _) => col_type::DOUBLE,
+        Value::Json(_) => 0xf5, // MySQL JSON type code
     }
 }
 
@@ -2020,6 +2022,7 @@ fn value_to_string(v: &Value) -> String {
         Value::Text(s) => s.clone(),
         Value::Blob(b) => format!("{:?}", b),
         Value::Point(x, y) => format!("POINT({} {})", x, y),
+        Value::Json(v) => v.to_string(),
     }
 }
 
@@ -2096,6 +2099,10 @@ fn write_binary_row<W: Write>(w: &mut W, row: &[Value], col_types: &[u8]) -> MyS
                 // MySQL binary protocol: 8-byte double for X, 8-byte double for Y
                 buf.write_f64::<LittleEndian>(*x)?;
                 buf.write_f64::<LittleEndian>(*y)?;
+            }
+            Value::Json(v) => {
+                // Serialize JSON as a string
+                write_lenenc_string(&mut buf, v.to_string().as_bytes())?;
             }
         }
     }

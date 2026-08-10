@@ -362,6 +362,7 @@ impl MergeExecutor {
             Value::Boolean(false) => "FALSE".to_string(),
             Value::Blob(_) => "NULL".to_string(),
             Value::Point(x, y) => format!("POINT({}, {})", x, y),
+            Value::Json(v) => format!("'{}'", v.to_string().replace('\'', "''")),
         }
     }
 }
