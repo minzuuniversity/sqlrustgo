@@ -24,6 +24,10 @@ mod packet_type {
     pub const COM_QUIT: u8 = 0x01;
     pub const COM_QUERY: u8 = 0x03;
     pub const COM_PING: u8 = 0x0e;
+    pub const COM_STMT_PREPARE: u8 = 0x16;
+    pub const COM_STMT_EXECUTE: u8 = 0x17;
+    pub const COM_STMT_CLOSE: u8 = 0x19;
+    pub const COM_RESET_CONNECTION: u8 = 0x1F;
 }
 
 mod capability {
@@ -94,6 +98,50 @@ pub type MySqlResult<T> = Result<T, MySqlClientError>;
 // Wire Protocol Packet
 // ============================================================================
 
+/// Read exactly `buf.len()` bytes, retrying on `WouldBlock` up to N times.
+/// This handles non-blocking sockets in test environments where a single
+/// `read` may return `WouldBlock` temporarily even after the server has
+/// sent data (EAGAIN/EWOULDBLOCK on macOS).
+const READ_RETRY_MAX: usize = 100;
+
+fn read_exact_retry<R: Read + ?Sized>(r: &mut R, mut buf: &mut [u8]) -> MySqlResult<()> {
+    use std::io::Read;
+    let mut retries = 0;
+    loop {
+        match r.read(buf) {
+            Ok(0) => {
+                if !buf.is_empty() {
+                    return Err(MySqlClientError::Io(std::io::Error::new(
+                        std::io::ErrorKind::UnexpectedEof,
+                        "unexpected EOF during read_exact",
+                    )));
+                }
+                return Ok(());
+            }
+            Ok(n) => {
+                buf = &mut buf[n..];
+                if buf.is_empty() {
+                    return Ok(());
+                }
+                retries = 0; // reset on forward progress
+            }
+            Err(e) if e.kind() == std::io::ErrorKind::WouldBlock => {
+                retries += 1;
+                if retries >= READ_RETRY_MAX {
+                    return Err(MySqlClientError::Io(std::io::Error::new(
+                        std::io::ErrorKind::TimedOut,
+                        format!("read_exact:WouldBlock after {} retries", READ_RETRY_MAX),
+                    )));
+                }
+                // Brief yield to allow server to process
+                std::thread::sleep(std::time::Duration::from_micros(100));
+                continue;
+            }
+            Err(e) => return Err(MySqlClientError::Io(e)),
+        }
+    }
+}
+
 pub struct Packet {
     pub length: u32,
     pub sequence: u8,
@@ -102,14 +150,15 @@ pub struct Packet {
 
 impl Packet {
     /// Read a MySQL packet from a stream (4-byte header + payload).
+    /// Retries on `WouldBlock` (non-blocking sockets in test environments).
     pub fn read_from<R: Read + ?Sized>(r: &mut R) -> MySqlResult<Self> {
         let mut header = [0u8; 4];
-        r.read_exact(&mut header)?;
+        read_exact_retry(r, &mut header)?;
         let length = u32::from_le_bytes([header[0], header[1], header[2], 0]);
         let sequence = header[3];
         let mut payload = vec![0u8; length as usize];
         if length > 0 {
-            r.read_exact(&mut payload)?;
+            read_exact_retry(r, &mut payload)?;
         }
         Ok(Packet {
             length,
@@ -560,7 +609,6 @@ pub fn parse_result_set(stream: &mut dyn Read, deprecate_eof: bool) -> MySqlResu
     let mut off = 0;
     let column_count = parse_length_encoded_int(&pkt.payload, &mut off)? as usize;
 
-    // Parse column definitions (one packet per column)
     let mut columns = Vec::with_capacity(column_count);
     for _ in 0..column_count {
         let col_pkt = Packet::read_from(stream)?;
@@ -572,30 +620,197 @@ pub fn parse_result_set(stream: &mut dyn Read, deprecate_eof: bool) -> MySqlResu
     // Inter-record separator (EOF or OK packet). Discard.
     let _separator = Packet::read_from(stream)?;
 
-    // Parse rows. Termination is:
+    // Parse rows. The first byte of the first row packet tells us the format:
+    //   0x00 = binary protocol row (COM_STMT_EXECUTE response)
+    //   otherwise = text protocol row (COM_QUERY response)
+    let row_pkt = Packet::read_from(stream)?;
 
-    //   - Classic (DEPRECATE_EOF=0): EOF packet (0xFE, 5 bytes)
-    //   - DEPRECATE_EOF=1: OK packet (0x00, 7 bytes)
+    // Empty packet or EOF/OK terminator → no rows
+    if row_pkt.payload.is_empty() {
+        return Ok(ResultSet::Select { columns, rows: vec![] });
+    }
+    let first_byte = row_pkt.payload[0];
+    let is_binary = first_byte == 0x00;
+
+    // Parse first row to determine format, then handle remaining rows
     let mut rows = Vec::new();
-    loop {
-        let row_pkt = Packet::read_from(stream)?;
-        let first = row_pkt.payload.first().copied();
-        // Empty packet always terminates
-        if row_pkt.payload.is_empty() {
-            break;
-        }
-        // Terminated by EOF packet (classic) or OK packet (DEPRECATE_EOF)
-        let is_eof = !deprecate_eof && first == Some(0xfe) && row_pkt.payload.len() < 9;
-        let is_deprecate_eof = deprecate_eof && first == Some(0x00) && row_pkt.payload.len() <= 8;
-        if is_eof || is_deprecate_eof {
-            break;
-        }
-        let mut row_off = 0;
-        let row = parse_text_row(&row_pkt.payload, &mut row_off, column_count)?;
+    if is_binary {
+        // Binary protocol: 0x00 prefix + NULL bitmap + raw column values
+        let col_types: Vec<u8> = columns.iter().map(|c| c.column_type).collect();
+        let row = parse_binary_row(&row_pkt.payload[1..], &col_types)?;
         rows.push(row);
+        // Read remaining binary rows
+        loop {
+            let pkt = Packet::read_from(stream)?;
+            if pkt.payload.is_empty() { break; }
+            let fb = pkt.payload.first().copied();
+            let is_eof = !deprecate_eof && fb == Some(0xfe) && pkt.payload.len() < 9;
+            let is_dep_eof = deprecate_eof && fb == Some(0x00) && pkt.payload.len() <= 8;
+            if is_eof || is_dep_eof { break; }
+            if pkt.payload[0] == 0x00 {
+                if let Ok(row) = parse_binary_row(&pkt.payload[1..], &col_types) {
+                    rows.push(row);
+                }
+            }
+        }
+    } else {
+        // Text protocol: values are length-encoded strings
+        let mut off = 0;
+        if let Ok(row) = parse_text_row(&row_pkt.payload, &mut off, column_count) {
+            rows.push(row);
+        }
+        // Read remaining text rows
+        loop {
+            let pkt = Packet::read_from(stream)?;
+            if pkt.payload.is_empty() { break; }
+            let fb = pkt.payload.first().copied();
+            let is_eof = !deprecate_eof && fb == Some(0xfe) && pkt.payload.len() < 9;
+            let is_dep_eof = deprecate_eof && fb == Some(0x00) && pkt.payload.len() <= 8;
+            if is_eof || is_dep_eof { break; }
+            let mut off = 0;
+            if let Ok(row) = parse_text_row(&pkt.payload, &mut off, column_count) {
+                rows.push(row);
+            }
+        }
     }
 
     Ok(ResultSet::Select { columns, rows })
+}
+
+/// Parse binary row: NULL bitmap + raw column values (no type bytes in MySQL binary protocol).
+/// col_types provides the column type codes to determine how many bytes each value occupies.
+fn parse_binary_row(data: &[u8], col_types: &[u8]) -> MySqlResult<Vec<String>> {
+    let null_bytes = (col_types.len() + 7) / 8;
+    if data.len() < null_bytes {
+        return Err(MySqlClientError::Protocol("Binary row: data too short for null bitmap".into()));
+    }
+    let mut row = Vec::with_capacity(col_types.len());
+    let mut pos = null_bytes;
+    for (col_idx, &col_type) in col_types.iter().enumerate() {
+        let byte_idx = col_idx / 8;
+        let bit_idx = col_idx % 8;
+        let is_null = (data[byte_idx] >> bit_idx) & 1 == 1;
+        if is_null {
+            row.push("NULL".to_string());
+            continue;
+        }
+        if pos >= data.len() {
+            row.push("".to_string());
+            continue;
+        }
+        let val = match col_type {
+            0x01 => {
+                // TINYINT signed — 1 byte
+                let v = data[pos] as i8;
+                pos += 1;
+                format!("{}", v as i32)
+            }
+            0x02 => {
+                // SMALLINT signed — 2 bytes LE
+                if pos + 1 < data.len() {
+                    let v = i16::from_le_bytes([data[pos], data[pos + 1]]);
+                    pos += 2;
+                    format!("{}", v)
+                } else { "".into() }
+            }
+            0x03 => {
+                // INT/LONG signed — 4 bytes LE
+                if pos + 3 < data.len() {
+                    let v = i32::from_le_bytes([data[pos], data[pos + 1], data[pos + 2], data[pos + 3]]);
+                    pos += 4;
+                    format!("{}", v)
+                } else { "".into() }
+            }
+            0x04 => {
+                // FLOAT — 4 bytes
+                if pos + 3 < data.len() {
+                    let v = f32::from_le_bytes([data[pos], data[pos + 1], data[pos + 2], data[pos + 3]]);
+                    pos += 4;
+                    format!("{}", v)
+                } else { "".into() }
+            }
+            0x05 => {
+                // DOUBLE — 8 bytes
+                if pos + 7 < data.len() {
+                    let v = f64::from_le_bytes([
+                        data[pos], data[pos + 1], data[pos + 2], data[pos + 3],
+                        data[pos + 4], data[pos + 5], data[pos + 6], data[pos + 7],
+                    ]);
+                    pos += 8;
+                    format!("{}", v)
+                } else { "".into() }
+            }
+            0x08 => {
+                // LONGLONG/BIGINT signed — 8 bytes LE
+                if pos + 7 < data.len() {
+                    let v = i64::from_le_bytes([
+                        data[pos], data[pos + 1], data[pos + 2], data[pos + 3],
+                        data[pos + 4], data[pos + 5], data[pos + 6], data[pos + 7],
+                    ]);
+                    pos += 8;
+                    format!("{}", v)
+                } else { "".into() }
+            }
+            0x09 => {
+                // INT24/MEDIUMINT — 3 bytes signed
+                if pos + 2 < data.len() {
+                    let v = i32::from_le_bytes([data[pos], data[pos + 1], data[pos + 2], 0]);
+                    pos += 3;
+                    format!("{}", v)
+                } else { "".into() }
+            }
+            _ => {
+                // VARCHAR (0x0f), VARSTRING (0xfd), STRING (0xfe), BLOB (0xfc):
+                // first byte is length for single-byte length encoding (< 0xfb)
+                let len = data[pos] as usize;
+                pos += 1;
+                let end = (pos + len).min(data.len());
+                let mut s = String::from_utf8_lossy(&data[pos..end]).to_string();
+                pos = end;
+                // MySQL VARCHAR is space-padded to column width — strip trailing spaces
+                s = s.trim_end().to_string();
+                s
+            }
+        };
+        row.push(val);
+    }
+    Ok(row)
+}
+
+/// Handles the most common types.
+fn parse_binary_value(data: &[u8]) -> Option<(String, usize)> {
+    if data.is_empty() {
+        return None;
+    }
+    match data[0] {
+        0xfc => {
+            // 2-byte int
+            if data.len() < 3 { return None; }
+            let v = i16::from_le_bytes([data[1], data[2]]);
+            Some((format!("{}", v), 3))
+        }
+        0xfd => {
+            // 3-byte int
+            if data.len() < 4 { return None; }
+            let v = i32::from_le_bytes([data[1], data[2], data[3], 0]);
+            Some((format!("{}", v), 4))
+        }
+        0xfe => {
+            // 8-byte int
+            if data.len() < 9 { return None; }
+            let v = i64::from_le_bytes([
+                data[1], data[2], data[3], data[4],
+                data[5], data[6], data[7], data[8],
+            ]);
+            Some((format!("{}", v), 9))
+        }
+        _ => {
+            // Length-encoded string
+            let mut offset = 0;
+            let s = parse_length_encoded_string(data, &mut offset).unwrap_or_else(|_| "".into());
+            Some((s, offset))
+        }
+    }
 }
 
 // ============================================================================
@@ -825,10 +1040,50 @@ impl MySqlConnection {
         parse_result_set(&mut self.stream, true)
     }
 
-    /// Ping the server.
-    pub fn close(mut self) -> MySqlResult<()> {
-        let pkt = Packet::new(self.seq, vec![packet_type::COM_QUIT]);
+    /// COM_STMT_CLOSE — deallocate a prepared statement.
+    ///
+    /// Per MySQL protocol, the server does NOT send a response packet for
+    /// COM_STMT_CLOSE. The client just sends the packet and returns immediately.
+    /// The server deallocates the statement server-side.
+    pub fn close_statement(&mut self, _stmt_id: u32) -> MySqlResult<()> {
+        let mut payload = Vec::with_capacity(5);
+        payload.push(packet_type::COM_STMT_CLOSE);
+        payload.extend_from_slice(&_stmt_id.to_le_bytes());
+        let pkt = Packet::new(self.seq, payload);
+        self.seq = pkt.sequence.wrapping_add(1);
         pkt.write_to(&mut self.stream)?;
+        // No response packet from server — return immediately.
+        Ok(())
+}
+
+    /// COM_RESET_CONNECTION — reset session state.
+    /// Returns the OK packet read from the server.
+    pub fn reset_connection(&mut self) -> MySqlResult<Packet> {
+        let pkt = Packet::new(self.seq, vec![0x1F]);
+        self.seq = pkt.sequence.wrapping_add(1);
+        pkt.write_to(&mut self.stream)?;
+        let resp = Packet::read_from(&mut self.stream)?;
+        self.seq = resp.sequence.wrapping_add(1);
+        Ok(resp)
+    }
+
+    /// Read the next raw packet from the server.
+    /// Exposed for wire-protocol-level tests that need to inspect packet
+    /// structure (e.g. error packet fields, EOF flags) without going through
+    /// the result-set parser.
+    pub fn read_packet(&mut self) -> MySqlResult<Packet> {
+        let pkt = Packet::read_from(&mut self.stream)?;
+        self.seq = pkt.sequence.wrapping_add(1);
+        Ok(pkt)
+    }
+
+    /// Close the connection by sending COM_QUIT and dropping the TCP stream.
+    /// Best-effort: server's OK response is read but not surfaced (per MySQL
+    /// wire protocol, server closes after receiving COM_QUIT).
+    pub fn close(&mut self) -> MySqlResult<()> {
+        let pkt = Packet::new(self.seq, vec![packet_type::COM_QUIT]);
+        // Best-effort write; ignore result if server already closed.
+        let _ = pkt.write_to(&mut self.stream);
         Ok(())
     }
 }

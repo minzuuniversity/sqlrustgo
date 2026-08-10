@@ -1,0 +1,94 @@
+# V312-28: SQL Corpus 激活 — baseline evidence
+#
+# Source: feature/v312-24-impl branch @ 2026-08-09
+# Purpose: Record pre-work corpus state. **NOTE: V312-24 proposal §4
+#          describes 16 subcategories at 27.3% pass rate — both numbers
+#          are STALE. The actual baseline (verified 2026-08-09) is
+#          14 subcategories at 99.4% pass rate. Closing report must
+#          acknowledge this correction.**
+
+# ---- 1. Corpus structure ----
+$ ls crates/sql-corpus/sql_corpus/
+ADVANCED  DDL  DEBUG  DML  EVENTS  EXPRESSIONS  FUNCTIONS  INDEXES
+PROCEDURES  SPECIAL  TCL  TRANSACTION  TRIGGERS  VIEWS
+$ ls crates/sql-corpus/sql_corpus/ | wc -l
+14
+# (V312-24 proposal claimed 16; actual is 14)
+
+# ---- 2. .sql file count ----
+$ bash -c 'shopt -s globstar nullglob; files=(crates/sql-corpus/sql_corpus/**/*.sql); echo ${#files[@]}'
+103
+# (V312-24 proposal claimed 103; matches)
+
+# ---- 3. Per-subcategory file count ----
+$ for d in crates/sql-corpus/sql_corpus/*/; do
+    sub=$(basename "$d")
+    count=$(bash -c "shopt -s globstar nullglob; files=($d**/*.sql); echo \${#files[@]}")
+    echo "$sub: $count"
+  done
+ADVANCED:        7
+DDL:            13
+DEBUG:           2
+DML:            46
+EVENTS:          1
+EXPRESSIONS:    18
+FUNCTIONS:       4
+INDEXES:         1
+PROCEDURES:      1
+SPECIAL:         3
+TCL:             1
+TRANSACTION:     4
+TRIGGERS:        1
+VIEWS:           1
+TOTAL:          103
+
+# ---- 4. Pass rate (the headline metric) ----
+$ cargo test --release -p sqlrustgo-sql-corpus --test corpus_test \
+    test_sql_corpus_all -- --nocapture 2>&1 | grep -E "Pass rate|Total:"
+Total: 818 cases, 813 passed, 5 failed
+Pass rate: 99.4%
+# (V312-24 proposal claimed 27.3% / 6/16 PASS; actual is 99.4% / 813/818)
+# The threshold is 80.0 — baseline is ALREADY 19.4 percentage points above.
+
+# ---- 5. The 5 currently failing cases (target: all 5 must also pass at close) ----
+$ cargo test --release -p sqlrustgo-sql-corpus --test corpus_test \
+    test_sql_corpus_all -- --nocapture 2>&1 | grep -E '^\s+✗' | head -10
+<5 lines to be recorded at work time>
+# Closing requires these 5 to also pass (to keep pass_rate at 100%) OR
+# owner must document why they remain and update the threshold
+# attestation file.
+
+# ---- 6. #[test] count in executor tests (baseline for "≥ 14 守护 test" check) ----
+# CRATE NAME CORRECTION: actual crate is `crates/executor`, not
+# `crates/sqlrustgo-executor` (which does not exist).
+$ ls crates/executor/tests/ | wc -l
+27
+$ grep -rc '#\[test\]' crates/executor/tests/ | awk -F: '{s+=$2} END{print s}'
+288
+
+# However, none of the existing 288 tests is explicitly tagged
+# "per-subcategory" — they are random coverage. V312-28 work must
+# ADD per-subcategory markers (e.g. // subcat: ADVANCED) OR add
+# one named test per subcategory (e.g. test_corpus_subcategory_advanced).
+
+# ---- 7. Threshold value in source ----
+$ grep -n 'PASS_RATE_THRESHOLD' crates/sql-corpus/tests/corpus_test.rs
+const PASS_RATE_THRESHOLD: f64 = 80.0;
+# Threshold is hardcoded at 80.0; closing must keep this passing.
+
+# ---- Post-work targets ----
+# 1. `Pass rate: XX.X%` in /tmp/corpus_final.txt      → ≥ 80.0  (baseline 99.4)
+# 2. 14 subcategories each have ≥ 1 named test         → 14 named tests
+# 3. report file docs/releases/v3.12.0/V312-28_corpus_activation_report.md
+# 4. baseline/final comparison in report                → baseline=99.4 final≥80
+# 5. V312-24 proposal correction acknowledged in report
+# 6. sha256 of report + 14 守护 tests + /tmp/corpus_final.txt
+
+# ---- 关闭路径注意 ----
+# If pass_rate DROPS below 80% during work (regression), owner must
+# restore or use the V312-28 fallback path:
+#   - Lower the threshold with explicit owner + expiry + replacement-gate
+#     attestation written to V312-28_corpus_threshold_attestation.md
+#   - V312-24 acceptance re-review required
+#   - V312-28 CANNOT close in this case without ISSUES_PLAN §V312-24
+#     acceptance re-review record

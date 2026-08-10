@@ -2,7 +2,7 @@
 # Per-query SF=1.0 isolation test — runs each query in its own cargo test invocation
 set -e
 
-WD旁 scripts/gate/watchdog_memory.sh
+# watchdog_memory.sh skipped (WD variable not defined)
 TPCH_SF1_DIR=/tmp/tpch-sf1
 TPCH_BINT_DIR=/tmp/tpch-sf1-bin
 TPCH_SF1_SQLRUSTGO_DATA_DIR=/tmp/tpch-sf1

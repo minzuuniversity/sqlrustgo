@@ -2,7 +2,9 @@
 # Per-query SF=1.0 isolation test with 4GB watchdog
 set -e
 
-cd /home/openclaw/sqlrustgo-sf1-baseline
+# cd to repo root (detect from script location)
+ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
+cd "$ROOT"
 LOG_DIR="/tmp/tpch-per-query-v2"
 mkdir -p "$LOG_DIR"
 

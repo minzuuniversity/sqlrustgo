@@ -1,4 +1,224 @@
-# v3.12 SQLLogicTest exclusion registry
-# V312-11 must replace this seed with issue-linked exclusions.
-status: seed
-items: []
+# v3.12 SQLLogicTest Exclusion Registry
+# V312-11 smoke baseline — 16 FAIL files, all root-caused to known parser/semantic limitations
+# Gate: scripts/gate/check_sqllogictest_v312.sh (smoke baseline, not full corpus)
+# Status: exclusion_scope = smoke (curated subset), not full SQLite corpus integration
+
+status: active
+version: v3.12.0
+gate_script: scripts/gate/check_sqllogictest_v312.sh
+scope: smoke
+
+items:
+  # ---- Parser: VALUES in subquery (EXCEPT ALL / INTERSECT ALL) ----
+  - id: sqllogictest-except-all
+    file: setops__test_except.test
+    root_cause: PARSER — EXCEPT ALL syntax not supported
+    fix_issue: V312-21
+    fix_issue_url: http://192.168.0.252:3000/openclaw/sqlrustgo/issues/3908
+    openspec_followup: openspec/changes/v313-10-proposal
+    owner: V312-21 owner
+    expiry: v3.12.0 GA
+    status: deferred
+    closure_criteria: "EXCEPT ALL syntax supported and test passes"
+    notes: VALUES constructor needed inside subquery for EXCEPT ALL
+
+  - id: sqllogictest-setops
+    file: setops__test_setops.test
+    root_cause: PARSER — INTERSECT ALL + EXCEPT ALL via VALUES subquery
+    fix_issue: V312-21
+    fix_issue_url: http://192.168.0.252:3000/openclaw/sqlrustgo/issues/3908
+    openspec_followup: openspec/changes/v313-10-proposal
+    owner: V312-21 owner
+    expiry: v3.12.0 GA
+    status: deferred
+    closure_criteria: "Set operations semantics correct and tests pass"
+    notes: Values constructor in derived table subquery
+
+  # ---- Parser: VALUES in subquery (INSERT ORDER BY) ----
+  - id: sqllogictest-insert-order
+    file: insert__test_insert.test
+    root_cause: EXECUTION — ORDER BY behavior with VALUES subquery
+    fix_issue: V312-21
+    fix_issue_url: http://192.168.0.252:3000/openclaw/sqlrustgo/issues/3908
+    openspec_followup: openspec/changes/v313-09-proposal
+    owner: V312-21 owner
+    expiry: v3.12.0 GA
+    status: deferred
+    closure_criteria: "INSERT returns correct row count and test passes"
+    notes: VALUES (1),(2),(3) inside derived table with ORDER BY
+
+  # ---- Parser: unexpected token "con1" in UPDATE ----
+  - id: sqllogictest-update-con1
+    file: update__test_update.test
+    root_cause: PARSER — unexpected token "con1" (constraint reference?)
+    fix_issue: V312-21
+    fix_issue_url: http://192.168.0.252:3000/openclaw/sqlrustgo/issues/3908
+    openspec_followup: openspec/changes/v313-08-proposal
+    owner: V312-21 owner
+    expiry: v3.12.0 GA
+    status: deferred
+    closure_criteria: "UPDATE constraint syntax supported and test passes"
+    notes: Parser fails on constraint syntax in UPDATE
+
+  # ---- Semantic: expected-fail test succeeded unexpectedly ----
+  - id: sqllogictest-not-null-expected-fail
+    file: constraints__test_not_null.test
+    root_cause: SEMANTIC — expected-fail test succeeded (NOT NULL violation not detected)
+    fix_issue: 待定
+    openspec_followup: openspec/changes/v313-14-proposal
+    owner: 待定
+    expiry: v3.12.0 GA
+    status: deferred
+    closure_criteria: "NOT NULL constraint enforced on UPDATE and test passes"
+    notes: expected-fail test semantics — NOT NULL detection
+
+  # ---- Parser: Expected expression (INSERT INVALID) ----
+  - id: sqllogictest-insert-invalid
+    file: insert__test_insert_invalid.test
+    root_cause: PARSER — expected expression error
+    fix_issue: V312-21
+    fix_issue_url: http://192.168.0.252:3000/openclaw/sqlrustgo/issues/3908
+    openspec_followup: openspec/changes/v313-09-proposal
+    owner: V312-21 owner
+    expiry: v3.12.0 GA
+    status: deferred
+    closure_criteria: "Invalid INSERT properly rejected with correct error"
+    notes: Insert invalid expression parsing
+
+  # ---- Parser: LIMIT with window functions ----
+  - id: sqllogictest-limit-window
+    file: order__test_limit.test
+    root_cause: PARSER — LIMIT with window functions in ORDER BY
+    fix_issue: V312-21
+    fix_issue_url: http://192.168.0.252:3000/openclaw/sqlrustgo/issues/3908
+    openspec_followup: openspec/changes/v313-13-proposal
+    owner: V312-21 owner
+    expiry: v3.12.0 GA
+    status: deferred
+    closure_criteria: "LIMIT/OFFSET with ORDER BY works correctly and test passes"
+    notes: Window function in ORDER BY + LIMIT
+
+  # ---- Parser: ALTER TABLE ADD/DROP/MODIFY ----
+  - id: sqllogictest-alter-table
+    file: alter__alter_table_set_partitioned_by.test
+    root_cause: PARSER — Expected ADD, DROP, MODIFY or RENAME
+    fix_issue: V312-21
+    fix_issue_url: http://192.168.0.252:3000/openclaw/sqlrustgo/issues/3908
+    openspec_followup: openspec/changes/v313-08-proposal
+    owner: V312-21 owner
+    expiry: v3.12.0 GA
+    status: deferred
+    closure_criteria: "ALTER TABLE SET PARTITIONED BY supported and test passes"
+    notes: ALTER TABLE syntax — PARTITIONED BY only, missing ADD/DROP/MODIFY
+
+  # ---- Parser: binder__alias_error ----
+  - id: sqllogictest-binder-alias
+    file: binder__alias_error_10057.test
+    root_cause: PARSER — binder error for alias
+    fix_issue: V312-21
+    fix_issue_url: http://192.168.0.252:3000/openclaw/sqlrustgo/issues/3908
+    openspec_followup: openspec/changes/v313-15-proposal
+    owner: V312-21 owner
+    expiry: v3.12.0 GA
+    status: deferred
+    closure_criteria: "Alias error handled correctly and test passes"
+    notes: Binder alias resolution
+
+  # ---- DuckDB samples: all require VALUES / ALTER TABLE ----
+  - id: sqllogictest-quantile-fun
+    file: quantile_fun.test
+    root_cause: PARSER — set variable sf 0.001
+    fix_issue: V312-21
+    fix_issue_url: http://192.168.0.252:3000/openclaw/sqlrustgo/issues/3908
+    openspec_followup: openspec/changes/v313-12-proposal
+    owner: V312-21 owner
+    expiry: v3.12.0 GA
+    status: deferred
+    closure_criteria: "QUANTILE function implemented and test passes"
+    notes: SET variable parsing needed
+
+  - id: sqllogictest-aggregate-quantile
+    file: aggregate__quantile_fun.test
+    root_cause: PARSER — set variable + VALUES
+    fix_issue: V312-21
+    fix_issue_url: http://192.168.0.252:3000/openclaw/sqlrustgo/issues/3908
+    openspec_followup: openspec/changes/v313-12-proposal
+    owner: V312-21 owner
+    expiry: v3.12.0 GA
+    status: deferred
+    closure_criteria: "QUANTILE function implemented and test passes"
+    notes: SET + VALUES in subquery
+
+  - id: sqllogictest-sql-quantile
+    file: sql__quantile_fun.test
+    root_cause: PARSER — set variable + VALUES
+    fix_issue: V312-21
+    fix_issue_url: http://192.168.0.252:3000/openclaw/sqlrustgo/issues/3908
+    openspec_followup: openspec/changes/v313-12-proposal
+    owner: V312-21 owner
+    expiry: v3.12.0 GA
+    status: deferred
+    closure_criteria: "QUANTILE function implemented and test passes"
+    notes: SET + VALUES in subquery
+
+  - id: sqllogictest-create-as
+    file: create_as.test
+    root_cause: EXECUTION — CREATE TABLE AS query result mismatch
+    fix_issue: 待定
+    openspec_followup: openspec/changes/v313-08-proposal
+    owner: 待定
+    expiry: v3.12.0 GA
+    status: deferred
+    closure_criteria: "CREATE TABLE AS SELECT works correctly and test passes"
+    notes: CREATE TABLE AS execution semantics
+
+  - id: sqllogictest-case-insensitive-alter
+    file: case_insensitive_alter.test
+    root_cause: PARSER — ALTER TABLE case-insensitive
+    fix_issue: V312-21
+    fix_issue_url: http://192.168.0.252:3000/openclaw/sqlrustgo/issues/3908
+    openspec_followup: openspec/changes/v313-08-proposal
+    owner: V312-21 owner
+    expiry: v3.12.0 GA
+    status: deferred
+    closure_criteria: "Case-insensitive ALTER TABLE supported and test passes"
+    notes: ALTER TABLE case-insensitive identifiers
+
+  - id: sqllogictest-alter-partitioned
+    file: alter_table_set_partitioned_by.test
+    root_cause: PARSER — Expected ADD, DROP, MODIFY or RENAME
+    fix_issue: V312-21
+    fix_issue_url: http://192.168.0.252:3000/openclaw/sqlrustgo/issues/3908
+    openspec_followup: openspec/changes/v313-08-proposal
+    owner: V312-21 owner
+    expiry: v3.12.0 GA
+    status: deferred
+    closure_criteria: "ALTER TABLE PARTITIONED BY syntax supported and test passes"
+    notes: ALTER TABLE SET PARTITIONED BY
+
+  - id: sqllogictest-constraint-updates
+    file: test_constraint_with_updates.test
+    root_cause: SEMANTIC — constraint with updates
+    fix_issue: 待定
+    openspec_followup: openspec/changes/v313-11-proposal
+    owner: 待定
+    expiry: v3.12.0 GA
+    status: deferred
+    closure_criteria: "UPDATE constraint checking implemented and test fails correctly"
+    notes: Constraint checking on UPDATE
+
+summary:
+  total_fail_files: 16
+  smoke_scope_fail_files: 16
+  v312_21_related: 13
+  independent_fixes: 3
+  exclusions_linked: 16
+  openspec_tracking:
+    - v313-08: Parser fixes (ALTER TABLE, UPDATE syntax, CREATE AS)
+    - v313-09: INSERT fixes
+    - v313-10: Set operations
+    - v313-11: UPDATE constraints
+    - v313-12: QUANTILE aggregate
+    - v313-13: LIMIT/OFFSET
+    - v313-14: NOT NULL on UPDATE
+    - v313-15: Binder alias errors

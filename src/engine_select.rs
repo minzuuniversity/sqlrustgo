@@ -163,6 +163,7 @@ fn value_to_literal_string_v(v: &Value) -> String {
         Value::Boolean(b) => if *b { "TRUE" } else { "FALSE" }.to_string(),
         Value::Blob(b) => format!("BLOB({} bytes)", b.len()),
         Value::Point(x, y) => format!("POINT({}, {})", x, y),
+        Value::Json(v) => v.to_string(),
     }
 }
 
@@ -230,6 +231,7 @@ impl<S: StorageEngine + 'static> ExecutionEngine<S> {
                                 Value::Boolean(_) => "BOOLEAN",
                                 Value::Blob(_) => "BLOB",
                                 Value::Point(_, _) => "POINT",
+                                Value::Json(_) => "JSON",
                                 Value::Null => "NULL",
                             })
                         })
@@ -530,6 +532,7 @@ impl<S: StorageEngine + 'static> ExecutionEngine<S> {
                                         Value::Boolean(b) => format!("B{}", b as i32),
                                         Value::Blob(b) => format!("X{}", b.len()),
                                         Value::Point(x, y) => format!("POINT({}, {})", x, y),
+                                        Value::Json(v) => format!("J{}", v),
                                     }
                                 })
                                 .collect::<Vec<_>>()
@@ -1503,6 +1506,7 @@ impl<S: StorageEngine + 'static> ExecutionEngine<S> {
                                 Value::Boolean(_) => "BOOLEAN",
                                 Value::Blob(_) => "BLOB",
                                 Value::Point(_, _) => "POINT",
+                                Value::Json(_) => "JSON",
                                 Value::Null => "NULL",
                             })
                         })
@@ -2653,6 +2657,11 @@ fn decode_value_key(s: &str) -> Value {
             _ => Value::Boolean(false),
         },
         b'X' => Value::Blob(Vec::new()),
+        b'J' => {
+            // JSON: prefix J then JSON string
+            let json_str = &s[1..];
+            serde_json::from_str(json_str).map(Value::Json).unwrap_or(Value::Null)
+        }
         _ => Value::Null,
     }
 }
@@ -3098,7 +3107,8 @@ impl<S: StorageEngine + 'static> ExecutionEngine<S> {
             | Expression::Aggregate(_)
             | Expression::WindowCall(_)
             | Expression::SequenceNextVal(_)
-            | Expression::SequenceCurrval(_) => where_expr.clone(),
+            | Expression::SequenceCurrval(_)
+            | Expression::JsonLiteral(_) => where_expr.clone(),
         }
     }
 
@@ -4025,6 +4035,7 @@ impl<S: StorageEngine + 'static> ExecutionEngine<S> {
                                     V::Point(x, y) => format!("POINT({}, {})", x, y),
                                     V::Boolean(b) => b.to_string(),
                                     V::Blob(_) => "BLOB".to_string(),
+                                    V::Json(v) => v.to_string(),
                                 };
                                 E::Literal(s)
                             })
@@ -4045,9 +4056,10 @@ impl<S: StorageEngine + 'static> ExecutionEngine<S> {
                                     V::Float(f) => f.to_string(),
                                     V::Text(s) => s,
                                     V::Null => "NULL".to_string(),
-                                    V::Point(x, y) => format!("POINT({}, {})", x, y),
                                     V::Boolean(b) => b.to_string(),
+                                    V::Point(x, y) => format!("POINT({}, {})", x, y),
                                     V::Blob(_) => "BLOB".to_string(),
+                                    V::Json(v) => v.to_string(),
                                 };
                                 E::Literal(s)
                             })

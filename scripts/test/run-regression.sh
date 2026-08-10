@@ -108,8 +108,13 @@ case "$MODE" in
         run_cmd "cargo clippy --all-targets -- -D warnings"
         
         echo ">>> SQL Fuzz (SQLancer)"
-        cargo build --release -p sqlancer || true
-        timeout 300 cargo run --release -p sqlancer -- --duration 120 || true
+        # V312-29: explicit fail on missing artifact + dropped || true.
+        cargo build --release -p sqlancer
+        timeout 300 cargo run --release -p sqlancer -- --duration 120
+        if [[ ! -s target/sqlancer-report.json ]]; then
+            echo "  FAIL: target/sqlancer-report.json missing or empty" >&2
+            exit 1
+        fi
         ;;
         
     unit)
