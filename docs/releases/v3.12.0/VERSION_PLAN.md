@@ -4,7 +4,7 @@
 > **状态**: 规划中
 > **日期**: 2026-08-09
 > **产品目标**: 面向 `~/gmp-platform` 的 GMP 内审检索数据库
-> **规划来源**: `docs/plans/2026-08-08-sqlrustgo-v312-v400-gmp-rag-graph-plan.md`
+> **commit**: 1903545df6d036f7f6d5035a0503b5fa932aac51
 
 ## 1. 版本定位
 
