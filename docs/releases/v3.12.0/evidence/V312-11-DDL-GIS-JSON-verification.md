@@ -1,5 +1,7 @@
 # V312-11 DDL/GIS/JSON Feature Verification Report
 
+> **provenance:** generated_by=v3.12.0-remediation-round-3, generated_at=2026-08-10T10:49:33Z, commit=a5a1b26724fbbd6a8b12640030d4d0d16e6da3e3, source_repo=openclaw/sqlrustgo, branch=develop/v3.12.0, policy=Anti-Fabrication-Policy-v1.0
+
 **Agent**: claude-code (current session)
 **Branch**: feature/v312-11-sqllogictest-gate
 **Commit**: a5a1b26724fbbd6a8b12640030d4d0d16e6da3e3
