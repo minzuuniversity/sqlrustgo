@@ -11,8 +11,8 @@
 
 | 检查项 | 数量 |
 |--------|------|
-| 通过 | 138 |
-| 警告 | 0 |
+| 通过 | 142 |
+| 警告 | 1 |
 | 失败（违规） | 0 |
 | 未验证声明 | 0 |
 
@@ -32,7 +32,7 @@
 
 ### 警告项（需要人工复核）
 
-✅ 无警告
+- ⚠️ v312-11-round14-status.md: Type C 警告: evidence_hash 与当前文件 SHA256 不匹配，且无可验证 commit/log 上下文: v312-11-round14-status.md (声明: 91d4b971af98a494..., 实际: da1a04376c5b7758...)
 
 ---
 
@@ -44,6 +44,8 @@
 - ✅ 文档有 provenance 元数据：sqllogictest-oracle-gate-report.md
 - ✅ Gate Report 有整体 provenance（commit 或 gate_policy_eval_id）：V312_DAG_ANALYSIS.md
 - ✅ 文档有 provenance 元数据：V312_DAG_ANALYSIS.md
+- ✅ Gate Report 有整体 provenance（commit 或 gate_policy_eval_id）：v312-11-round14-status.md
+- ✅ 文档有 provenance 元数据：v312-11-round14-status.md
 - ✅ Gate Report 有整体 provenance（commit 或 gate_policy_eval_id）：ARCHITECTURE.md
 - ✅ 文档有 provenance 元数据：ARCHITECTURE.md
 - ✅ Gate Report 有整体 provenance（commit 或 gate_policy_eval_id）：DEVELOPMENT_PLAN.md
@@ -69,7 +71,7 @@
 - ✅ Gate Report 有整体 provenance（commit 或 gate_policy_eval_id）：evidence/tpch/V312-12-TPCH-CORRECTNESS.md
 - ✅ 文档有 provenance 元数据：evidence/tpch/V312-12-TPCH-CORRECTNESS.md
 - ✅ Gate Report 有整体 provenance（commit 或 gate_policy_eval_id）：evidence/sqllogictest/smoke-report.md
-- ✅ evidence_hash 真实验证通过（log 文件 SHA256）: evidence/sqllogictest/smoke-report.md (docs/releases/v3.12.0/logs/sqllogictest_7961c4d84_20260810_233528.log)
+- ✅ evidence_hash 真实验证通过（log 文件 SHA256）: evidence/sqllogictest/smoke-report.md (docs/releases/v3.12.0/logs/sqllogictest_03537812a_20260811_004524.log)
 - ✅ 文档有 provenance 元数据：evidence/sqllogictest/smoke-report.md
 - ✅ 历史快照文件已豁免 PASS/FAIL 逐行检查: evidence/sqllogictest/EVIDENCE_BINDING_REPORT.md (env:historical-snapshot 标记)
 - ✅ 历史快照文件已豁免 provenance 元数据检查: evidence/sqllogictest/EVIDENCE_BINDING_REPORT.md
@@ -162,6 +164,8 @@
 - ✅ 文档有 provenance 元数据：v312-04-embedding-provider-report.md
 - ✅ Gate Report 有整体 provenance（commit 或 gate_policy_eval_id）：wire-e2e-report.md
 - ✅ 文档有 provenance 元数据：wire-e2e-report.md
+- ✅ Gate Report 有整体 provenance（commit 或 gate_policy_eval_id）：v312-17-round16-status.md
+- ✅ 文档有 provenance 元数据：v312-17-round16-status.md
 - ✅ Gate Report 有整体 provenance（commit 或 gate_policy_eval_id）：load-data-report.md
 - ✅ 文档有 provenance 元数据：load-data-report.md
 - ✅ Gate Report 有整体 provenance（commit 或 gate_policy_eval_id）：MYSQL_COMPAT_STATUS.md
@@ -192,7 +196,7 @@
 | PASS/FAIL 声明绑定 CI 证据 | ✅ 合规 |
 | 门禁结果绑定 gate_policy_eval_id | ✅ 合规 |
 | 计划文档无 GA Final 伪造 | ✅ 合规 |
-| provenance 元数据存在 | ✅ 合规 |
+| provenance 元数据存在 | ⚠️  部分缺失 |
 
 ---
 
@@ -210,7 +214,7 @@
 
 ---
 
-*报告生成时间: 2026-08-11 00:33:50*
+*报告生成时间: 2026-08-11 01:05:10*
 *检查工具版本: check_evidence_binding.sh v1.0.0*
 *依据政策: Anti-Fabrication Policy v1.0.0*
 
