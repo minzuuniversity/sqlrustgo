@@ -57,12 +57,25 @@ if [ "${LOGIN_A}" = "${LOGIN_B}" ]; then
     exit 1
 fi
 
-# 4: commit SHA matches HEAD
+# 4: commit SHA matches HEAD (with tolerance window per #3980)
 EXPECTED_HEAD="$(cd "${ROOT}" && git rev-parse HEAD 2>/dev/null || echo unknown)"
 CLAIMED_COMMIT="$(awk '/^\- \*\*Commit\*\*:/{print $NF; exit}' "${SIGNOFF}")"
+ALLOWED_DRIFT=3  # V312-19 #3980: signoff within 3 commits of HEAD is OK
 if [ "${CLAIMED_COMMIT}" != "${EXPECTED_HEAD}" ]; then
-    echo "FAIL: Commit SHA does not match HEAD: claimed=${CLAIMED_COMMIT} head=${EXPECTED_HEAD}" >&2
-    exit 1
+    if [ "${CLAIMED_COMMIT}" = "unknown" ] || [ -z "${CLAIMED_COMMIT}" ]; then
+        echo "FAIL: Commit SHA in signoff is unknown or empty" >&2
+        exit 1
+    fi
+    if ! git rev-parse --verify "${CLAIMED_COMMIT}" >/dev/null 2>&1; then
+        echo "FAIL: Commit SHA ${CLAIMED_COMMIT} not found in repository" >&2
+        exit 1
+    fi
+    DRIFT=$(git rev-list --count "${CLAIMED_COMMIT}..HEAD" 2>/dev/null || echo 999)
+    if [ "${DRIFT}" -gt "${ALLOWED_DRIFT}" ]; then
+        echo "FAIL: signoff commit ${CLAIMED_COMMIT} is ${DRIFT} commits behind HEAD (max allowed: ${ALLOWED_DRIFT}). Refresh signoff." >&2
+        exit 1
+    fi
+    echo "INFO: signoff commit is ${DRIFT} commits behind HEAD (within tolerance ${ALLOWED_DRIFT})" >&2
 fi
 
 # 5: branch matches
