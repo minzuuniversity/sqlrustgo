@@ -14,6 +14,7 @@ fn format_value(v: &sqlrustgo_storage::Value) -> String {
         sqlrustgo_storage::Value::Boolean(b) => b.to_string(),
         sqlrustgo_storage::Value::Blob(b) => String::from_utf8_lossy(b).to_string(),
         sqlrustgo_storage::Value::Point(x, y) => format!("POINT({}, {})", x, y),
+        sqlrustgo_storage::Value::Json(j) => j.to_string(),
     }
 }
 

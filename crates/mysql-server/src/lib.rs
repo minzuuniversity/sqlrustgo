@@ -638,6 +638,7 @@ mod packet_type {
     pub const COM_STMT_PREPARE: u8 = 0x16;
     pub const COM_STMT_EXECUTE: u8 = 0x17;
     pub const COM_STMT_CLOSE: u8 = 0x19;
+    pub const COM_RESET_CONNECTION: u8 = 0x1F;
 }
 
 // ============================================================================
@@ -1901,6 +1902,40 @@ mod col_type {
     pub const BLOB: u8 = 0xfc;
 }
 
+/// Infer the MySQL binary-protocol column type code from a Value.
+/// This must stay in sync with write_binary_row encoding.
+fn value_type_string(v: &Value) -> String {
+    match v {
+        Value::Null => "VARCHAR(255)".into(),
+        Value::Integer(_) => "INT".into(),
+        Value::Float(_) => "FLOAT".into(),
+        Value::Text(s) => {
+            if s.len() < 256 { format!("VARCHAR({})", s.len()) } else { "TEXT".into() }
+        }
+        Value::Blob(b) => {
+            if b.len() < 256 { format!("VARBINARY({})", b.len()) } else { "BLOB".into() }
+        }
+        Value::Boolean(_) => "TINYINT".into(),
+        Value::Point(_, _) => "DOUBLE".into(),
+        Value::Json(_) => "JSON".into(),
+    }
+}
+
+fn value_col_type(v: &Value) -> u8 {
+    match v {
+        Value::Null => col_type::STRING,
+        Value::Integer(_) => col_type::LONG,
+        Value::Float(_) => col_type::FLOAT,
+        Value::Text(s) => {
+            if s.len() < 256 { col_type::VARCHAR } else { col_type::VARSTRING }
+        }
+        Value::Blob(_) => col_type::BLOB,
+        Value::Boolean(_) => col_type::TINY,
+        Value::Point(_, _) => col_type::DOUBLE,
+        Value::Json(_) => 0xf5, // MySQL JSON type code
+    }
+}
+
 fn col_type_from_string(t: &str) -> u8 {
     let u = t.to_uppercase();
     if u.contains("DATETIME") || u.contains("TIMESTAMP") {
@@ -1987,6 +2022,7 @@ fn value_to_string(v: &Value) -> String {
         Value::Text(s) => s.clone(),
         Value::Blob(b) => format!("{:?}", b),
         Value::Point(x, y) => format!("POINT({} {})", x, y),
+        Value::Json(v) => v.to_string(),
     }
 }
 
@@ -2063,6 +2099,10 @@ fn write_binary_row<W: Write>(w: &mut W, row: &[Value], col_types: &[u8]) -> MyS
                 // MySQL binary protocol: 8-byte double for X, 8-byte double for Y
                 buf.write_f64::<LittleEndian>(*x)?;
                 buf.write_f64::<LittleEndian>(*y)?;
+            }
+            Value::Json(v) => {
+                // Serialize JSON as a string
+                write_lenenc_string(&mut buf, v.to_string().as_bytes())?;
             }
         }
     }
@@ -2223,12 +2263,21 @@ fn send_binary_result_set<W: Write>(
         .write_to(w)?;
         seq = seq.wrapping_add(1);
     }
-    // Column definitions (same packet format as text protocol)
+    // Infer actual column type strings from row data (not the misleading
+    // ctypes which may say VARCHAR(255) for integer columns).
+    // This must match value_col_type so the binary row encoding is consistent.
+    let actual_ctypes: Vec<String> = if let Some(first_row) = rows.first() {
+        first_row.iter().map(|v| value_type_string(v)).collect()
+    } else {
+        ctypes.iter().cloned().collect()
+    };
+
+    // Column definitions — use actual types so client knows how to decode rows
     for (i, n) in cols.iter().enumerate() {
         write_column_def(
             w,
             n,
-            ctypes.get(i).map(|s| s.as_str()).unwrap_or("VARCHAR(255)"),
+            actual_ctypes.get(i).map(|s| s.as_str()).unwrap_or("VARCHAR(255)"),
             seq,
         )?;
         seq = seq.wrapping_add(1);
@@ -2242,15 +2291,18 @@ fn send_binary_result_set<W: Write>(
         make_deprecate_eof_ok_packet(seq, 0, 0, 0x0002, 0).write_to(w)?;
         seq = seq.wrapping_add(1);
     }
-    // Rows in binary protocol
-    let col_type_codes: Vec<u8> = cols
-        .iter()
-        .enumerate()
-        .map(|(i, _)| {
+    // Infer column type codes from the actual data values, NOT from the
+    // column type strings (which may be misleading e.g. VARCHAR(255) for
+    // integer columns). The encoding in write_binary_row is determined by
+    // the Value variant, so we must match that here.
+    let col_type_codes: Vec<u8> = if let Some(first_row) = rows.first() {
+        first_row.iter().map(|v| value_col_type(v)).collect()
+    } else {
+        cols.iter().enumerate().map(|(i, _)| {
             let t = ctypes.get(i).map(|s| s.as_str()).unwrap_or("VARCHAR(255)");
             col_type_from_string(t)
-        })
-        .collect();
+        }).collect()
+    };
     for r in rows {
         let mut p = Vec::new();
         write_binary_row(&mut p, r, &col_type_codes)?;
@@ -2328,8 +2380,17 @@ impl PreparedStatementManager {
     fn remove(&mut self, id: u32) {
         self.statements.remove(&id);
     }
+
+    /// Reset all prepared statements and session state.
+    /// MySQL protocol: COM_RESET_CONNECTION (0x1F) clears all prepared
+    /// statement IDs and resets the statement counter to 1.
+    fn reset(&mut self) {
+        self.statements.clear();
+        self.next_id = 1;
+    }
 }
 
+/// Count `?` placeholders in SQL (used by COM_STMT_PREPARE to report param count).
 fn count_placeholders(sql: &str) -> u16 {
     sql.chars().filter(|&c| c == '?').count() as u16
 }
@@ -3823,6 +3884,15 @@ fn do_command_loop<S: Read + Write + DrainWrites>(
                         u32::from_le_bytes([payload[0], payload[1], payload[2], payload[3]]);
                     ps_manager.remove(stmt_id);
                 }
+            }
+            // COM_RESET_CONNECTION (0x1F): resets session state including all
+            // prepared statements. MySQL protocol requires OK packet response.
+            packet_type::COM_RESET_CONNECTION => {
+                tracing::info!("COM_RESET_CONNECTION from {}", addr);
+                ps_manager.reset();
+                make_ok_packet(seq, 0, 0, 0x0002, 0).write_to(stream)?;
+                *server_last_sent_seq = seq;
+                seq = seq.wrapping_add(1);
             }
             _ => {
                 make_err_packet(seq, 1047, "HY000", "Unknown command").write_to(stream)?;

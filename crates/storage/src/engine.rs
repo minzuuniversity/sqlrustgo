@@ -202,8 +202,8 @@ fn compare_values(col_val: &Value, compare_with: &str, op: &str) -> SqlResult<bo
             }
             Value::Blob(_) => Ok(false),
             Value::Point(_, _) => Ok(false),
+            &Value::Json(_) => Ok(false),
         },
-        "neq" => Ok(!compare_values(col_val, compare_with, "eq")?),
         "gt" | "gte" | "lt" | "lte" => {
             match col_val {
                 Value::Integer(i) => {
@@ -254,6 +254,7 @@ fn is_zero_or_empty(val: &Value) -> bool {
         Value::Null => true,
         Value::Blob(_) => false,
         Value::Point(_, _) => false,
+        &Value::Json(_) => false,
     }
 }
 
@@ -1033,8 +1034,12 @@ impl StorageEngine for MemoryStorage {
         Ok(count)
     }
     fn create_table(&mut self, info: &TableInfo) -> SqlResult<()> {
-        self.table_infos.insert(info.name.clone(), info.clone());
-        self.tables.entry(info.name.clone()).or_default();
+        // V312-19 #3972: store table info under lowercased key for case-insensitive lookup.
+        let key = info.name.to_lowercase();
+        let mut info = info.clone();
+        info.name = key.clone();
+        self.table_infos.insert(key.clone(), info);
+        self.tables.entry(key).or_default();
         Ok(())
     }
 
@@ -1050,20 +1055,24 @@ impl StorageEngine for MemoryStorage {
     }
 
     fn drop_table(&mut self, table: &str) -> SqlResult<()> {
-        self.tables.remove(table);
-        self.table_infos.remove(table);
+        // V312-19 #3972: case-insensitive table name lookup.
+        let key = table.to_lowercase();
+        self.tables.remove(&key);
+        self.table_infos.remove(&key);
         Ok(())
     }
 
     fn get_table_info(&self, table: &str) -> SqlResult<TableInfo> {
+        // V312-19 #3972: case-insensitive table name lookup.
         self.table_infos
-            .get(table)
+            .get(&table.to_lowercase())
             .cloned()
             .ok_or_else(|| SqlError::ExecutionError(format!("Table not found: {}", table)))
     }
 
     fn has_table(&self, table: &str) -> bool {
-        self.table_infos.contains_key(table)
+        // V312-19 #3972: case-insensitive table name lookup.
+        self.table_infos.contains_key(&table.to_lowercase())
     }
 
     fn list_tables(&self) -> Vec<String> {
@@ -1079,7 +1088,8 @@ impl StorageEngine for MemoryStorage {
     }
 
     fn add_column(&mut self, table: &str, column: ColumnDefinition) -> SqlResult<()> {
-        if let Some(info) = self.table_infos.get_mut(table) {
+        // V312-19 #3972: case-insensitive table name lookup.
+        if let Some(info) = self.table_infos.get_mut(&table.to_lowercase()) {
             info.columns.push(column);
             Ok(())
         } else {
@@ -1091,13 +1101,16 @@ impl StorageEngine for MemoryStorage {
     }
 
     fn rename_table(&mut self, table: &str, new_name: &str) -> SqlResult<()> {
-        let info = self.table_infos.remove(table);
-        let records = self.tables.remove(table);
+        // V312-19 #3972: case-insensitive table name lookup.
+        let key = table.to_lowercase();
+        let new_key = new_name.to_lowercase();
+        let info = self.table_infos.remove(&key);
+        let records = self.tables.remove(&key);
         if let (Some(info), Some(records)) = (info, records) {
             let mut new_info = info;
-            new_info.name = new_name.to_string();
-            self.table_infos.insert(new_name.to_string(), new_info);
-            self.tables.insert(new_name.to_string(), records);
+            new_info.name = new_key.clone();
+            self.table_infos.insert(new_key.clone(), new_info);
+            self.tables.insert(new_key, records);
             Ok(())
         } else {
             Err(SqlError::ExecutionError(format!(

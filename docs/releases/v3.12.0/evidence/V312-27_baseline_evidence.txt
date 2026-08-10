@@ -1,0 +1,101 @@
+# V312-27: Anti-Fabrication 违规修复 — baseline evidence
+#
+# Source: feature/v312-24-impl branch @ 2026-08-09
+# Purpose: Record actual pre-work state of all 7 anti-fab violations.
+# IMPORTANT: V312-24 proposal.md used WRONG field name `files` (correct is
+# `ignored_tests`) and INACCURATE counts (claims 7 stale + 1 phantom;
+# actual is 37 stale records covering 7 paths + 0 phantom + 3 union).
+# This file is the corrected source of truth.
+
+# ---- 1. merge_vtu_test.rs:212 stale `#[ignore]` (target: line removed) ----
+$ grep -n 'VtuGuard not yet implemented' crates/executor/tests/merge_vtu_test.rs
+212:    #[ignore = "VtuGuard not yet implemented"]
+
+# ---- 2. tpch_wire_smoke_sf.rs `rows.len() <= 6` (target: assertion changed) ----
+$ grep -n 'rows.len() <= 6' tests/integration/tpch/tpch_wire_smoke_sf.rs
+<one or more matches; line numbers to be recorded in post-work diff>
+
+# ---- 3. e2e_beta_test.rs `is_e2e_disabled` (target: 0 after work) ----
+$ grep -c 'is_e2e_disabled' tests/e2e/e2e_beta_test.rs
+5
+$ grep -n 'is_e2e_disabled' tests/e2e/e2e_beta_test.rs
+52:  if is_e2e_disabled() { return; }
+74:  if is_e2e_disabled() { return; }
+96:  if is_e2e_disabled() { return; }
+118:  if is_e2e_disabled() { return; }
+141:  if is_e2e_disabled() { return; }
+
+# ---- 4. ignore_registry.json: stale v3.9.0 paths (target: 0 after work) ----
+# CORRECT field name is `ignored_tests`, NOT `files` (V312-24 proposal.md error)
+$ python3 <<'PY'
+import json
+d = json.load(open('tests/baseline/ignore_registry.json'))
+tests = d.get('ignored_tests', [])  # CORRECT field
+print(f'total entries: {len(tests)}')
+stale_keys = ['tx_wal_contract','soak_test','dml_integration_test',
+              'stored_proc_catalog','tpch_q9_audit','small_executor_modules',
+              'boundary_test']
+stale = [t for t in tests if any(p in t.get('file','') for p in stale_keys)]
+print(f'stale v3.9.0 paths: {len(stale)} (across {len(set(t["file"] for t in stale))} unique files)')
+for f in sorted(set(t['file'] for t in stale)):
+    count = sum(1 for t in stale if t['file'] == f)
+    print(f'  - {f}: {count} entries')
+PY
+total entries: 74
+stale v3.9.0 paths: 37 (across 7 unique files)
+  - tests/boundary_test.rs: 4 entries
+  - tests/dml_integration_test.rs: 6 entries
+  - tests/small_executor_modules_test.rs: 2 entries
+  - tests/soak_test.rs: 4 entries
+  - tests/stored_proc_catalog_test.rs: 6 entries
+  - tests/tpch_q9_audit.rs: 1 entries
+  - tests/tx_wal_contract_tests.rs: 14 entries
+
+# ---- 5. ignore_registry.json: phantom (parser.rs:7299) ----
+# Baseline: 0 (the V312-24 proposal mentioned 1 phantom entry; verified
+# absent in the actual file. This is a factual correction vs proposal.)
+$ python3 -c "
+import json
+d = json.load(open('tests/baseline/ignore_registry.json'))
+tests = d.get('ignored_tests', [])
+phantom = [t for t in tests if 'parser.rs' in t.get('file','') and '7299' in t.get('reason','')]
+print('phantom (parser.rs + 7299):', len(phantom))
+"
+phantom (parser.rs + 7299): 0
+
+# ---- 6. ignore_registry.json: union_set_operations entries (target: 0) ----
+$ python3 -c "
+import json
+d = json.load(open('tests/baseline/ignore_registry.json'))
+tests = d.get('ignored_tests', [])
+union = [t for t in tests if 'union_set_operations' in t.get('file','')]
+print('union_set_operations entries:', len(union))
+"
+union_set_operations entries: 3
+
+# ---- 7. ignore_registry.json: top-level keys (audit) ----
+$ python3 -c "
+import json
+d = json.load(open('tests/baseline/ignore_registry.json'))
+print('top-level keys:', list(d.keys()))
+"
+['version', 'timestamp', 'total_allowed', 'ignored_tests', 'note']
+# 'files' key DOES NOT EXIST. Cross-check scripts must use 'ignored_tests'.
+
+# ---- Post-work targets ----
+# `VtuGuard not yet implemented` line  → 0 matches (current 1)
+# `rows.len() <= 6` matches              → 0 matches
+# `rows.len() > 0` matches               → ≥ 1 match
+# `is_e2e_disabled` in e2e_beta_test.rs  → 0 matches (current 5)
+# stale v3.9.0 path entries              → 0 entries (current 37)
+# union_set_operations entries           → 0 entries (current 3)
+# ignore_registry total                  → 37 entries (current 74)
+# merge_vtu_test passes                  → `test result: ok`
+# e2e_beta_test with --ignored passes    → ≥ 1 `test result: ok` line
+
+# ---- Field-name correction note (mandatory in closing report) ----
+# V312-24 proposal.md lines 17-23 used `files` field; the actual schema
+# is `ignored_tests`. Any closing script that does `d.get('files',[])`
+# will silently return [] and report stale=0 phantom=0 regardless of state.
+# Closing command 4 in V312-27 proposal.md has been updated to use
+# `d.get('ignored_tests',[])` — closing report must verify this.

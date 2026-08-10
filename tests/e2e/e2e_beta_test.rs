@@ -51,10 +51,6 @@ fn data_dir(scenario: &str) -> PathBuf {
 #[test]
 #[ignore = "E2E scenario — needs live server, run with --ignored"]
 fn e2e_01_startup_connect_select_1() {
-    if is_e2e_disabled() {
-        eprintln!("[E2E-01] SKIPPED (env {} set)", SKIP_ENV);
-        return;
-    }
     let bin = server_bin();
     if !bin.exists() {
         eprintln!(
@@ -78,10 +74,6 @@ fn e2e_01_startup_connect_select_1() {
 #[test]
 #[ignore = "E2E scenario — invoked via check_tpch_sf1.sh, run with --ignored"]
 fn e2e_02_tpch_sf01_22_queries() {
-    if is_e2e_disabled() {
-        eprintln!("[E2E-02] SKIPPED (env {} set)", SKIP_ENV);
-        return;
-    }
     eprintln!("[E2E-02] See scripts/gate/check_tpch_sf1.sh for the actual 22/22 test");
     eprintln!("[E2E-02] STUB PASS: real impl in check_tpch_sf1.sh + tests/tpch_full_22_test.rs");
     let _ = data_dir("02"); // suppress unused warning
@@ -94,10 +86,6 @@ fn e2e_02_tpch_sf01_22_queries() {
 #[test]
 #[ignore = "E2E scenario — kills running server, run with --ignored"]
 fn e2e_04_kill9_recovery() {
-    if is_e2e_disabled() {
-        eprintln!("[E2E-04] SKIPPED (env {} set)", SKIP_ENV);
-        return;
-    }
     eprintln!("[E2E-04] See tests/process_kill_crash_test.rs for actual kill -9 + recovery test");
     eprintln!("[E2E-04] STUB PASS: real impl in process_kill_crash_test.rs");
 }
@@ -109,10 +97,6 @@ fn e2e_04_kill9_recovery() {
 #[test]
 #[ignore = "E2E scenario — needs live server, run with --ignored"]
 fn e2e_07_alter_rename() {
-    if is_e2e_disabled() {
-        eprintln!("[E2E-07] SKIPPED (env {} set)", SKIP_ENV);
-        return;
-    }
     eprintln!("[E2E-07] See tests/alter_table_test.rs (C-4 partial, V310-04 WIP)");
     eprintln!("[E2E-07] STUB PASS: real impl tracks V310-04 (ALTER TABLE 完整性)");
 }
@@ -124,10 +108,6 @@ fn e2e_07_alter_rename() {
 #[test]
 #[ignore = "E2E scenario — needs live server with MVCC, run with --ignored"]
 fn e2e_08_rollback_mvcc() {
-    if is_e2e_disabled() {
-        eprintln!("[E2E-08] SKIPPED (env {} set)", SKIP_ENV);
-        return;
-    }
     eprintln!("[E2E-08] See tests/savepoint_test.rs + tests/sem1_savepoint_test.rs");
     eprintln!("[E2E-08] STUB PASS: real impl in savepoint/sem1 tests");
 }
@@ -139,10 +119,6 @@ fn e2e_08_rollback_mvcc() {
 #[test]
 #[ignore = "E2E scenario — needs V310-02 INTERSECT/EXCEPT impl, run with --ignored"]
 fn e2e_09_union_set_ops() {
-    if is_e2e_disabled() {
-        eprintln!("[E2E-09] SKIPPED (env {} set)", SKIP_ENV);
-        return;
-    }
     eprintln!("[E2E-09] See tests/union_set_operations_test.rs (V310-02 in progress)");
     eprintln!("[E2E-09] STUB PASS: 3 union tests, 2 still #[ignore] pending V310-02 impl");
     eprintln!("[E2E-09]   - INTERSECT (V310-02a, 1 ignored)");

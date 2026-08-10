@@ -4203,9 +4203,12 @@ version = "0.1.0"
 dependencies = [
  "log",
  "rand 0.8.6",
+ "serde",
+ "serde_json",
  "sqlrustgo",
  "sqlrustgo-parser",
  "sqlrustgo-storage",
+ "tempfile",
  "thiserror 1.0.69",
 ]
 
@@ -4520,6 +4523,7 @@ version = "3.11.0"
 dependencies = [
  "log",
  "serde",
+ "serde_json",
  "sqlrustgo-common",
  "tempfile",
  "thiserror 2.0.18",
@@ -4714,6 +4718,7 @@ dependencies = [
  "hex",
  "log",
  "serde",
+ "serde_json",
  "thiserror 2.0.18",
 ]
 
@@ -4753,6 +4758,7 @@ name = "sqlrustgo_sqllogictest"
 version = "0.1.0"
 dependencies = [
  "parking_lot",
+ "regex",
  "sqllogictest",
  "sqlrustgo",
  "sqlrustgo-storage",
@@ -4992,7 +4998,6 @@ dependencies = [
  "parking_lot",
  "serde",
  "serde_json",
- "tempfile",
  "test-registry",
  "thiserror 1.0.69",
  "tokio",

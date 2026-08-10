@@ -1,14 +1,13 @@
 # v3.12.0 SQL Corpus — All-Targets Report
 
 - source_agent: `minimax`
-- source_run: `minimax-v312-19-corpus-8ecb0ddf37`
-- timestamp: `2026-08-09T08:32:33Z`
-- branch: `feature/v312-19-sql-corpus-invariant`
-- commit: `8ecb0ddf371301b419a07cd514022db63d01323b`
+- source_run: `minimax-v312-19-corpus-57e8d0572`
+- timestamp: `2026-08-09T16:11:28Z`
+- branch: `develop/v3.12.0`
+- commit: `57e8d0572c7331997563f9d0488ac683cdc204ee`
 
 | target | cases | pass | fail | skipped | status | evidence_hash | timestamp | source_run |
 |--------|-------|------|------|---------|--------|---------------|-----------|------------|
-| parser_fixtures | 34 | 34 | 0 | 0 | deferred | 21d7a8eabb61c11554bab30b9f4022bc818dfd6267b738dd16a450ea1243647f | 2026-08-09T08:32:33Z | minimax-v312-19-corpus-8ecb0ddf37 |
-| sqllogictest_local | 0 | 0 | 0 | 0 | deferred | daf205f0b9549e22d9f3ca25d24e9ef5cafc84e1adf7f4698e19058fb6a782e7 | 2026-08-09T08:32:33Z | minimax-v312-19-corpus-8ecb0ddf37 |
-| tpch_sf1 | 0 | 0 | 0 | 0 | fail | d80f9b06625e0da5efc39269b0db17b7c8f23cb6977fad6365ea782b4411ea38 | 2026-08-09T08:32:34Z | minimax-v312-19-corpus-8ecb0ddf37 |
-| tpch_sf10 | 0 | 0 | 0 | 0 | deferred | 3a444d35ec3afb84b97770c3e11f54e614e0f5dc42cb0bb14cae002efab7df95 | 2026-08-09T08:32:34Z | minimax-v312-19-corpus-8ecb0ddf37 |
+| parser_fixtures | 34 | 34 | 0 | 0 | pass | 7e79cb772e0c9e87c511afef801f8bba5555178f7bfdc914d9b43992c57bb7ae | 2026-08-09T16:11:28Z | minimax-v312-19-corpus-57e8d0572 |
+| sqllogictest_local | 16 | 6 | 10 | 0 | fail | 6aecb3989fe0746f0fd97c84a81a11835b57a7cfe0f8796d83653d6cc8692d0d | 2026-08-09T16:11:34Z | minimax-v312-19-corpus-57e8d0572 |
+| tpch_sf1 | 0 | 0 | 0 | 0 | fail | ff208b78d09c967ec06fc5f5b2afa92de6cdc1c2de960f096e2c378322f8762b | 2026-08-09T16:11:49Z | minimax-v312-19-corpus-57e8d0572 |

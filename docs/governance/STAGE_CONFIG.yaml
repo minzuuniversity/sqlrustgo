@@ -120,6 +120,9 @@ stages:
       - "docs/releases/v{VER}/FEATURE_CHECKLIST.md"
     required_gates:
       - "scripts/gate/check_beta_gate.sh"
+      # 2026-08-09 V312-32: AFP v4 CHECK 1.5 forces target/sqlancer-report.json
+      # + target/test-runner-report.json (V312-24 artifacts) at every gate run.
+      - "scripts/gate/check_anti_fabrication.sh"
       - "scripts/gate/check_arch_invariants.sh"
       - "scripts/gate/check_arch3_no_bypass.sh"
       - "scripts/gate/check_arch_sem_debt.sh"
