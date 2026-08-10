@@ -5740,13 +5740,28 @@ pub mod testing {
         // under the OS temp dir and Drop removes it.
         let externally_owned = data_dir_for_thread.is_some();
         let data_dir = data_dir_for_thread.clone().unwrap_or_else(|| {
+            // V312-F-2 #4025 fix: include nanosecond timestamp + thread id
+            // to guarantee uniqueness even when OS reuses a port within
+            // the same process. Previously: port + process_id, which
+            // collided when two sequential tests got the same port (the
+            // second test inherited the first test's storage and tables).
+            use std::time::{SystemTime, UNIX_EPOCH};
+            let nanos = SystemTime::now()
+                .duration_since(UNIX_EPOCH)
+                .map(|d| d.as_nanos())
+                .unwrap_or(0);
             std::env::temp_dir().join(format!(
-                "sqlrustgo_ephemeral_{}_{}",
+                "sqlrustgo_ephemeral_{}_{}_{}",
                 port,
-                std::process::id()
+                std::process::id(),
+                nanos
             ))
         });
         if !externally_owned {
+            // V312-F-2 #4025: remove stale data_dir from a previous run
+            // that may have used the same port (e.g. Drop didn't complete
+            // before a new server bound the port).
+            let _ = std::fs::remove_dir_all(&data_dir);
             std::fs::create_dir_all(&data_dir)?;
         }
 
