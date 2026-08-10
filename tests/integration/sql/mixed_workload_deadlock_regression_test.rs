@@ -39,6 +39,7 @@ fn mixed_workload_accept_loop_does_not_park_under_saturation() {
     let tmp = tempfile::TempDir::new().expect("TempDir");
     let config = EphemeralConfig {
         host: "127.0.0.1".to_string(),
+        port: None,
         bootstrap_tables: true,
         bootstrap_users: true,
         data_dir: Some(tmp.path().to_path_buf()),
