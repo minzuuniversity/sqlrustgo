@@ -1,13 +1,28 @@
-# vv3.12.0 证据绑定检查报告
+# [HISTORICAL SNAPSHOT] vv3.12.0 证据绑定检查报告（整改前）
+
+> ⚠️ **本文件为 V312-32 整改前的历史快照，仅用于记录当时状态。**
+> ⚠️ **不应作为门禁判断依据。** 当前 v3.12.0 整改后状态请参考：
+> ⚠️ → `docs/releases/v3.12.0/evidence/EVIDENCE_BINDING_REPORT.md`（PASS=46, FAIL=0）
+
+| 元数据 | 值 |
+|--------|------|
+| 类型 | HISTORICAL SNAPSHOT（pre-V312-32 remediation） |
+| 快照时间 | 2026-08-10 07:49:07 |
+| 整改 commit | e241c278e (V312-32) |
+| 整改 commit message | docs(V312-32): 完成证据绑定整改 — FAIL 304→0 |
+| 当前结果 | ✅ PASS (PASS=46, WARN=64, FAIL=0, UNVERIFIED=0) |
+| 检查豁免 | 已通过 `env:historical-snapshot` 标记豁免 check_evidence_binding.sh 逐行检查 |
 
 > **检查日期**: 2026-08-10
-> **版本**: v3.12.0
+> **版本**: v3.12.0 (pre-remediation)
 > **Auditor**: Hermes Agent (Anti-Fabrication Policy v1.0)
-> **检查工具**: check_evidence_binding.sh
+> **检查工具**: check_evidence_binding.sh (pre-V312-32)
+>
+> `env:historical-snapshot:pre-v312-32`
 
 ---
 
-## 检查结果概览
+## 检查结果概览（整改前基线）
 
 | 检查项 | 数量 |
 |--------|------|
@@ -16,7 +31,7 @@
 | 失败（违规） | 304 |
 | 未验证声明 | 302 |
 
-**总结**: ❌ 发现 304 个违规（Type A/B/C/D）
+**总结**: ❌ 发现 304 个违规（Type A/B/C/D）— **已被 V312-32 commit e241c278e 全部修复**
 
 ---
 
@@ -102,7 +117,7 @@
 - ❌ Type A/B 违规：第 36 行声明无 CI/gate/commit 证据: [C-ARCH-04] Checking no eng.execute(raw_sql) outside parser.
 - ❌ Type A/B 违规：第 37 行声明无 CI/gate/commit 证据: [C-ARCH-05] Checking execution_engine.rs < 1600 lines... PAS
 - ❌ Type A/B 违规：第 38 行声明无 CI/gate/commit 证据: === Summary === PASSED: 5, FAILED: 0
-- ❌ Type A/B 违规：第 45 行声明无 CI/gate/commit 证据: - Draft gate 仍只表示开发入口准备，不表示实�
+- ❌ Type A/B 违规：第 45 行声明无 CI/gate/commit 证据: - Draft gate 仍只表示开发入口准备，不表示实�
 - ❌ Type A/B 违规：第 14 行声明无 CI/gate/commit 证据: > "提交命令、日志、PASS/FAIL、commit、evidence_has
 - ❌ Type A/B 违规：第 38 行声明无 CI/gate/commit 证据: - **V312-24 work contribution**: 0 new errors. 9/5/6 = 20 li
 - ❌ Type A/B 违规：第 45 行声明无 CI/gate/commit 证据: - **Result**: **Exit 0 (PASS)**
@@ -129,7 +144,7 @@
 - ❌ Type A/B 违规：第 72 行声明无 CI/gate/commit 证据: | fail-closed tamper 测试 | DONE | `test_permission_guard_
 - ❌ Type A/B 违规：第 90 行声明无 CI/gate/commit 证据: - [x] acl.rs / audit.rs 代码存在且编译通过
 - ❌ Type A/B 违规：第 97 行声明无 CI/gate/commit 证据: **状态: PASS — 满足关闭条件**
-- ❌ Type A/B 违规：第 7 行声明无 CI/gate/commit 证据: > **真实性规则**: 本计划只定义未来工作和退�
+- ❌ Type A/B 违规：第 7 行声明无 CI/gate/commit 证据: > **真实性规则**: 本计划只定义未来工作和退�
 - ❌ Type A/B 违规：第 70 行声明无 CI/gate/commit 证据: - 没有 command output、timestamp、source agent、source 
 - ❌ Type A/B 违规：第 119 行声明无 CI/gate/commit 证据: | `cargo build -p sqlrustgo_sqllogictest` | 可完成，但 
 - ❌ Type A/B 违规：第 120 行声明无 CI/gate/commit 证据: | `cargo run -p sqlrustgo_sqllogictest -- --test-dir crates/
@@ -142,13 +157,13 @@
 - ❌ Type A/B 违规：第 55 行声明无 CI/gate/commit 证据: **PASS** — 5 failing cases pre-exist in baseline; pass rat
 - ❌ Type A/B 违规：第 62 行声明无 CI/gate/commit 证据: **PASS**.
 - ❌ Type A/B 违规：第 78 行声明无 CI/gate/commit 证据: V312-24 proposal §4 描述"16 subcategories / 27.3% pass ra
-- ❌ Type A/B 违规：第 82 行声明无 CI/gate/commit 证据: - 6/16 PASS → 实际是 14/14 subcategories 在 99.4% 范�
+- ❌ Type A/B 违规：第 82 行声明无 CI/gate/commit 证据: - 6/16 PASS → 实际是 14/14 subcategories 在 99.4% 范�
 - ❌ Type A/B 违规：第 96 行声明无 CI/gate/commit 证据: 按"以实际 gate 数字关闭"的严格要求：4/4 关闭
 - ❌ Type A/B 违规：第 23 行声明无 CI/gate/commit 证据: **PASS** — 3 个脚本实际命令中 0 个 `|| true` (bas
-- ❌ Type A/B 违规：第 40 行声明无 CI/gate/commit 证据: **PASS** — 没有 `2>/dev/null || true` 吞错；server �
+- ❌ Type A/B 违规：第 40 行声明无 CI/gate/commit 证据: **PASS** — 没有 `2>/dev/null || true` 吞错；server �
 - ❌ Type A/B 违规：第 50 行声明无 CI/gate/commit 证据: **PASS** — 缺失时 fail-explicit，证据写入 `/tmp/ba
 - ❌ Type A/B 违规：第 60 行声明无 CI/gate/commit 证据: **PASS** — 缺失时 fail-explicit，stderr 含 "sysbench 
-- ❌ Type A/B 违规：第 69 行声明无 CI/gate/commit 证据: **PASS** — server 不可达时 exit 1。byte-exact 断言�
+- ❌ Type A/B 违规：第 69 行声明无 CI/gate/commit 证据: **PASS** — server 不可达时 exit 1。byte-exact 断言�
 - ❌ Type A/B 违规：第 74 行声明无 CI/gate/commit 证据: **PASS**.
 - ❌ Type A/B 违规：第 98 行声明无 CI/gate/commit 证据: 按"以实际 gate 数字关闭"的严格要求：6/6 关闭
 - ❌ Type A/B 违规：第 34 行声明无 CI/gate/commit 证据: | Every tool can run + produce artifact (sqlancer + test-run
@@ -159,8 +174,8 @@
 - ❌ Type A/B 违规：第 99 行声明无 CI/gate/commit 证据: toml_round_trip       3/3 PASS
 - ❌ Type A/B 违规：第 100 行声明无 CI/gate/commit 证据: managed_dispatch      2/2 PASS
 - ❌ Type A/B 违规：第 101 行声明无 CI/gate/commit 证据: timeout_enforced      3/3 PASS
-- ❌ Type A/B 违规：第 213 行声明无 CI/gate/commit 证据: "openspec 标 done" / "报告标题写已完成" / "PR 已�
-- ❌ Type A/B 违规：第 217 行声明无 CI/gate/commit 证据: V312-24 本身**不能**在 V312-25 ~ V312-30 全部 PASS �
+- ❌ Type A/B 违规：第 213 行声明无 CI/gate/commit 证据: "openspec 标 done" / "报告标题写已完成" / "PR 已�
+- ❌ Type A/B 违规：第 217 行声明无 CI/gate/commit 证据: V312-24 本身**不能**在 V312-25 ~ V312-30 全部 PASS �
 - ❌ Type A/B 违规：第 235 行声明无 CI/gate/commit 证据: | 1 | `crates/sqlancer` | **activate** | minimax | 2026-08-2
 - ❌ Type A/B 违规：第 236 行声明无 CI/gate/commit 证据: | 2 | `crates/test-runner` | **activate** | minimax | 2026-0
 - ❌ Type A/B 违规：第 237 行声明无 CI/gate/commit 证据: | 3 | `crates/test-registry` | **activate** | minimax | 2026
@@ -192,7 +207,7 @@
 - ❌ Type A/B 违规：第 80 行声明无 CI/gate/commit 证据: | Storage Crash Recovery | ✅ PASS (2/2) | None |
 - ❌ Type A/B 违规：第 82 行声明无 CI/gate/commit 证据: | Upgrade Path | ✅ PASS (4/4) | None |
 - ❌ Type A/B 违规：第 28 行声明无 CI/gate/commit 证据: **PASS** — 13/13 passed including `test_vtu_guard_wraps_st
-- ❌ Type A/B 违规：第 41 行声明无 CI/gate/commit 证据: **PASS** — 旧的 `rows.len() <= 6` (accepts 0 rows) 改�
+- ❌ Type A/B 违规：第 41 行声明无 CI/gate/commit 证据: **PASS** — 旧的 `rows.len() <= 6` (accepts 0 rows) 改�
 - ❌ Type A/B 违规：第 43 行声明无 CI/gate/commit 证据: 加载好或 Q1 完全失败 — 之前是 PASS 静默吞，
 - ❌ Type A/B 违规：第 54 行声明无 CI/gate/commit 证据: **PASS** — 6 passed (5 个 e2e_XX 加上 e2e_beta_manifest
 - ❌ Type A/B 违规：第 73 行声明无 CI/gate/commit 证据: **PASS** — stale + union 全部 0。
@@ -232,7 +247,7 @@
 - ❌ Type A/B 违规：第 63 行声明无 CI/gate/commit 证据: | `test_composite_btree_index_search` | ✅ PASS |
 - ❌ Type A/B 违规：第 64 行声明无 CI/gate/commit 证据: | `test_composite_btree_index_range_query` | ✅ PASS |
 - ❌ Type A/B 违规：第 65 行声明无 CI/gate/commit 证据: | `test_composite_btree_index_num_columns` | ✅ PASS |
-- ❌ Type A/B 违规：第 49 行声明无 CI/gate/commit 证据: | parser_fixtures | `cargo test -p sqlrustgo-parser...` | �
+- ❌ Type A/B 违规：第 49 行声明无 CI/gate/commit 证据: | parser_fixtures | `cargo test -p sqlrustgo-parser...` | �
 - ❌ Type A/B 违规：第 66 行声明无 CI/gate/commit 证据: | R2.1-R2.3 | ✅ PASS | None |
 - ❌ Type A/B 违规：第 69 行声明无 CI/gate/commit 证据: | parser_fixtures | ✅ PASS | None |
 - ❌ Type A/B 违规：第 47 行声明无 CI/gate/commit 证据: **PASS — 154 tests passed, 0 failed**
@@ -243,7 +258,7 @@
 - ❌ Type A/B 违规：第 28 行声明无 CI/gate/commit 证据: | V312-G17 | Window/GIS/JSON 受控功能 | ROW_NUMBER/RANK/
 - ❌ Type A/B 违规：第 33 行声明无 CI/gate/commit 证据: | V312-G22 | MySQL 兼容与 SQL surface 回归 | SHOW、aut
 - ❌ Type A/B 违规：第 66 行声明无 CI/gate/commit 证据: 每个 PASS claim 必须包含：command、timestamp、sourc
-- ❌ Type A/B 违规：第 81 行声明无 CI/gate/commit 证据: - 168h mixed SOAK 未完成，或没有证据却写成 PASS�
+- ❌ Type A/B 违规：第 81 行声明无 CI/gate/commit 证据: - 168h mixed SOAK 未完成，或没有证据却写成 PASS�
 - ❌ Type A/B 违规：第 100 行声明无 CI/gate/commit 证据: | Alpha | `cargo build -p sqlrustgo_sqllogictest` 成功；r
 - ❌ Type A/B 违规：第 102 行声明无 CI/gate/commit 证据: | RC | curated SQLite-compatible subset 运行，并输出 P
 - ❌ Type A/B 违规：第 103 行声明无 CI/gate/commit 证据: | GA | selected SLT targets 全部通过，或每个 skipped
@@ -266,21 +281,21 @@
 - ❌ Type A/B 违规：第 61 行声明无 CI/gate/commit 证据: **PASS** — 唯一引用被删脚本的代码是 `tests/bas
 - ❌ Type A/B 违规：第 75 行声明无 CI/gate/commit 证据: **PASS**.
 - ❌ Type A/B 违规：第 107 行声明无 CI/gate/commit 证据: 按"以实际 gate 数字关闭"的严格要求：5/5 关闭
-- ❌ Type A/B 违规：第 14 行声明无 CI/gate/commit 证据: **验收**: blocker disposition report、stage gate output�
-- ❌ Type A/B 违规：第 75 行声明无 CI/gate/commit 证据: **验收**: `cargo build -p sqlrustgo_sqllogictest` 成功�
+- ❌ Type A/B 违规：第 14 行声明无 CI/gate/commit 证据: **验收**: blocker disposition report、stage gate output�
+- ❌ Type A/B 违规：第 75 行声明无 CI/gate/commit 证据: **验收**: `cargo build -p sqlrustgo_sqllogictest` 成功�
 - ❌ Type A/B 违规：第 142 行声明无 CI/gate/commit 证据: **验收**: 对 GMP/生产路径相关子集给出 fixture P
 - ❌ Type A/B 违规：第 166 行声明无 CI/gate/commit 证据: 12 个 task 全完成（sqlancer / test-runner / test-regist
 - ❌ Type A/B 违规：第 193 行声明无 CI/gate/commit 证据: 2. 失败注入测试 1：`mv scripts/gate/e2e/e2e_07_fixtur
 - ❌ Type A/B 违规：第 197 行声明无 CI/gate/commit 证据: **禁止关闭条件**: 仅以"测试通过"或"无 `\|\| tr
 - ❌ Type A/B 违规：第 222 行声明无 CI/gate/commit 证据: **Baseline evidence**: `docs/releases/v3.12.0/evidence/V312-
-- ❌ Type A/B 违规：第 229 行声明无 CI/gate/commit 证据: **禁止关闭条件**: (a) 仅靠"打开了 follow-up 任�
+- ❌ Type A/B 违规：第 229 行声明无 CI/gate/commit 证据: **禁止关闭条件**: (a) 仅靠"打开了 follow-up 任�
 - ❌ Type A/B 违规：第 241 行声明无 CI/gate/commit 证据: 2. `bash scripts/gate/check_beta_gate.sh 2>&1 | grep B10_SQL
 - ❌ Type A/B 违规：第 262 行声明无 CI/gate/commit 证据:    - `bash scripts/gate/check_beta_gate.sh` B10_SQLANCER 通
 - ❌ Type A/B 违规：第 265 行声明无 CI/gate/commit 证据: **禁止关闭条件**: (a) 不允许"openspec 标 done"、"
 - ❌ Type A/B 违规：第 294 行声明无 CI/gate/commit 证据: - Evidence hashes for any PASS claim.
 - ❌ Type A/B 违规：第 409 行声明无 CI/gate/commit 证据: - GA gate report contains only evidence-backed PASS claims.
 - ❌ Type A/B 违规：第 434 行声明无 CI/gate/commit 证据: - The selected SLT corpus has PASS/FAIL/SKIP classification.
-- ❌ Type A/B 违规：第 14 行声明无 CI/gate/commit 证据: 2. Issue 评论包含 PR 编号、commit SHA、执行命令�
+- ❌ Type A/B 违规：第 14 行声明无 CI/gate/commit 证据: 2. Issue 评论包含 PR 编号、commit SHA、执行命令�
 - ❌ Type A/B 违规：第 150 行声明无 CI/gate/commit 证据: - **测试**: 9 PASS / 1 unsupported / 4 deferred
 - ❌ Type A/B 违规：第 35 行声明无 CI/gate/commit 证据: | demo.test | PASS | Basic SELECT |
 - ❌ Type A/B 违规：第 37 行声明无 CI/gate/commit 证据: | insert__test_insert_invalid.test | PASS | Error cases |
@@ -288,7 +303,7 @@
 - ❌ Type A/B 违规：第 39 行声明无 CI/gate/commit 证据: | update__test_update.test | PASS | UPDATE operations |
 - ❌ Type A/B 违规：第 40 行声明无 CI/gate/commit 证据: | constraints__test_not_null.test | PASS | NOT NULL constrai
 - ❌ Type A/B 违规：第 26 行声明无 CI/gate/commit 证据: - 文档链接和一致性检查通过。
-- ❌ Type A/B 违规：第 44 行声明无 CI/gate/commit 证据: Draft 阶段可以移交 Hermes/OMP 进入 Alpha 开发准�
+- ❌ Type A/B 违规：第 44 行声明无 CI/gate/commit 证据: Draft 阶段可以移交 Hermes/OMP 进入 Alpha 开发准�
 - ❌ Type A/B 违规：第 50 行声明无 CI/gate/commit 证据: | `bash scripts/gate/check_sqllogictest_v312.sh` | PASS，4/
 - ❌ Type A/B 违规：第 51 行声明无 CI/gate/commit 证据: | `bash scripts/gate/check_alpha_v3.12.0.sh` | PASS，13/13 
 - ❌ Type A/B 违规：第 52 行声明无 CI/gate/commit 证据: | `bash scripts/gate/check_stage.sh --version v3.12.0 --dry-
@@ -300,7 +315,7 @@
 - ❌ Type A/B 违规：第 83 行声明无 CI/gate/commit 证据:   PASS: sysbench ran 3s with 1 thread(s), 1402 events at 466
 - ❌ Type A/B 违规：第 85 行声明无 CI/gate/commit 证据: === E2E sysbench_smoke_test: PASS ===
 - ❌ Type A/B 违规：第 50 行声明无 CI/gate/commit 证据: **PASS — 154 tests passed, 0 failed**
-- ❌ Type A/B 违规：第 65 行声明无 CI/gate/commit 证据: - [x] vector_index/vector_search/embedding 模块代码存�
+- ❌ Type A/B 违规：第 65 行声明无 CI/gate/commit 证据: - [x] vector_index/vector_search/embedding 模块代码存�
 - ❌ Type A/B 违规：第 71 行声明无 CI/gate/commit 证据: **状态: PASS — 满足关闭条件**
 - ❌ Type A/B 违规：第 47 行声明无 CI/gate/commit 证据: **PASS — 154 tests passed, 0 failed**
 - ❌ Type A/B 违规：第 62 行声明无 CI/gate/commit 证据: - [x] rag.rs 代码存在且编译通过
@@ -320,12 +335,12 @@
 - ❌ Type A/B 违规：第 96 行声明无 CI/gate/commit 证据: | `mysql_compat/SURFACE_DISPOSITION.md` | `check_v312_21_mys
 - ❌ Type A/B 违规：第 101 行声明无 CI/gate/commit 证据: | 测试目标 | 通过 | 失败 |
 - ❌ Type A/B 违规：第 113 行声明无 CI/gate/commit 证据: | `scripts/gate/check_v312_13_wire_load_data.sh` | V312-13 e
-- ❌ Type A/B 违规：第 114 行声明无 CI/gate/commit 证据: | `scripts/gate/check_v312_19_release_gates.sh` | RC/GA 阻�
+- ❌ Type A/B 违规：第 114 行声明无 CI/gate/commit 证据: | `scripts/gate/check_v312_19_release_gates.sh` | RC/GA 阻�
 - ❌ Type A/B 违规：第 163 行声明无 CI/gate/commit 证据:   alter_modify_column 全部 PASS** (5 个新增 PASS)
 - ❌ Type A/B 违规：第 165 行声明无 CI/gate/commit 证据:   4 个 fixture 之前标 `UNSUPPORTED` 但 server 静默接
 - ❌ Type A/B 违规：第 166 行声明无 CI/gate/commit 证据:   后: **4 个新增 PASS** (server 解析但语义不实现
 - ❌ Type A/B 违规：第 171 行声明无 CI/gate/commit 证据: 最终 disposition: **9 PASS / 1 unsupported / 4 deferred / 
-- ❌ Type A/B 违规：第 176 行声明无 CI/gate/commit 证据:   (600 lineitem rows / 62 KB), 8 个表全部 LOAD DATA 成�
+- ❌ Type A/B 违规：第 176 行声明无 CI/gate/commit 证据:   (600 lineitem rows / 62 KB), 8 个表全部 LOAD DATA 成�
 - ❌ Type A/B 违规：第 196 行声明无 CI/gate/commit 证据: - V312-13 / V312-19 / V312-21 gates: ALL PASS
 - ❌ Type A/B 违规：第 211 行声明无 CI/gate/commit 证据:   - 新增 PASS surface (6 个意外实现): `group_concat`,
 - ❌ Type A/B 违规：第 213 行声明无 CI/gate/commit 证据:   - 最终结果: **11 PASS / 2 unsupported / 7 deferred / 0
@@ -335,8 +350,8 @@
 
 ### 警告项（需要人工复核）
 
-- ⚠️ 警告：第 17 行历史版本引用可能需更新: 本版本还承接 v3.6.0-v3.11.0 文档中已经�
-- ⚠️ 警告：第 36 行历史版本引用可能需更新: | v3.6.0 Beta PENDING 与 coverage/test compile �
+- ⚠️ 警告：第 17 行历史版本引用可能需更新: 本版本还承接 v3.6.0-v3.11.0 文档中已经�
+- ⚠️ 警告：第 36 行历史版本引用可能需更新: | v3.6.0 Beta PENDING 与 coverage/test compile �
 - ⚠️ 文档可能缺少 provenance 元数据：VERSION_PLAN.md
 - ⚠️ 警告：第 16 行 FAIL 声明可能无证据
 - ⚠️ 文档可能缺少 provenance 元数据：GMP_COMPLIANCE_MATRIX.md
