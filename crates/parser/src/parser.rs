@@ -86,6 +86,8 @@ pub enum Statement {
     Intersect(IntersectStatement),
     /// SQL-92 EXCEPT (V310-06 PR2 / Issue #3723 C-2b).
     Except(ExceptStatement),
+    /// VALUES constructor — for FROM (VALUES ...) AS alias
+    Values(Vec<Vec<Expression>>),
     Transaction(TransactionStatement),
     Grant(GrantStatement),
     Revoke(RevokeStatement),
@@ -516,6 +518,8 @@ pub struct SelectStatement {
     /// result into a temporary table named `table`, then runs the outer
     /// SELECT against that table.
     pub from_subquery: Option<Box<SelectStatement>>,
+    /// VALUES constructor: FROM (VALUES ...) AS alias
+    pub from_values: Option<Vec<Vec<Expression>>>,
     pub where_clause: Option<Expression>,
     pub join_clause: Vec<JoinClause>,
     /// TPC-H Sprint 1c: additional tables from `FROM t1, t2, t3` (after the
@@ -4017,8 +4021,84 @@ impl Parser {
                     // Sprint 1b: FROM (subquery) AS alias
                     // Sprint 1d: also support FROM (table_ref [JOIN table_ref]*) AS alias
                     // (derived table without explicit SELECT).
+                    // VALUES constructor: FROM (VALUES (...), (...) ) AS alias
                     self.next(); // consume (
-                    if matches!(self.current(), Some(Token::Select))
+                    if matches!(self.current(), Some(Token::Values)) {
+                        // Parse VALUES constructor
+                        self.next(); // consume VALUES
+                        let mut values = Vec::new();
+                        if !matches!(self.current(), Some(Token::LParen)) {
+                            return Err("Expected ( after VALUES".to_string());
+                        }
+                        loop {
+                            if !matches!(self.current(), Some(Token::LParen)) {
+                                break;
+                            }
+                            self.next(); // consume '('
+                            let mut row = Vec::new();
+                            loop {
+                                match self.current() {
+                                    Some(Token::RParen) => {
+                                        self.next();
+                                        break;
+                                    }
+                                    Some(Token::Comma) => {
+                                        self.next();
+                                    }
+                                    _ => {
+                                        let expr = self.parse_expression()?;
+                                        row.push(expr);
+                                    }
+                                }
+                            }
+                            values.push(row);
+                            match self.current() {
+                                Some(Token::Comma) => {
+                                    self.next();
+                                }
+                                _ => break,
+                            }
+                        }
+                        if values.is_empty() {
+                            return Err("Expected at least one row of values".to_string());
+                        }
+                        self.expect(Token::RParen)?;
+                        if matches!(self.current(), Some(Token::As)) {
+                            self.next();
+                        }
+                        let alias = match self.next() {
+                            Some(Token::Identifier(name)) => name,
+                            Some(t) => {
+                                return Err(format!("Expected alias for VALUES, got {:?}", t))
+                            }
+                            None => return Err("Expected alias for VALUES".to_string()),
+                        };
+                        let synth_select = SelectStatement {
+                            columns: vec![SelectColumn {
+                                name: "*".to_string(),
+                                alias: None,
+                                expression: None,
+                            }],
+                            table: alias.clone(),
+                            from_alias: None,
+                            from_subquery: None,
+                            from_values: Some(values),
+                            where_clause: None,
+                            join_clause: vec![],
+                            extra_tables: vec![],
+                            aggregates: vec![],
+                            group_by: vec![],
+                            with_rollup: false,
+                            with_cube: false,
+                            having: None,
+                            order_by: vec![],
+                            limit: None,
+                            offset: None,
+                            distinct: false,
+                            lock_clause: None,
+                        };
+                        (alias, Some(Box::new(synth_select)), Vec::new())
+                    } else if matches!(self.current(), Some(Token::Select))
                         || matches!(self.current(), Some(Token::With))
                         || matches!(self.current(), Some(Token::Values))
                     {
@@ -4074,6 +4154,7 @@ impl Parser {
                             table: first_table.clone(),
                             from_alias: first_alias.clone(),
                             from_subquery: None,
+                            from_values: None,
                             where_clause: None,
                             join_clause: vec![],
                             extra_tables: vec![],
@@ -4906,6 +4987,7 @@ impl Parser {
             table,
             from_alias,
             from_subquery,
+            from_values: None,
             where_clause,
             join_clause,
             extra_tables,
