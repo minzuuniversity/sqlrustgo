@@ -66,14 +66,48 @@ fi
 
 # The current runner returns 0 even with expected baseline failures. Keep this
 # as a baseline collector and parse the output instead of pretending all tests pass.
+# Round-9 (V312-24): runner now exits non-zero when files_fail > 0
+# (see crates/sqlrustgo_sqllogictest/src/main.rs).
 cargo run -p sqlrustgo_sqllogictest -- \
   --test-dir crates/sqlrustgo_sqllogictest/testdata \
   --max-fail 20 >>"$LOG" 2>&1
 RUN_STATUS=$?
+
+# Parse file-level FAIL/PREPROCESS FAIL lines from the runner log so that the
+# gate can detect real regressions even if the runner process happens to exit 0
+# (e.g. when --max-fail truncates output). The runner's own exit code is the
+# primary signal; this grep is the secondary belt-and-suspenders check.
+# Use || fallback rather than `|| echo 0` inside $(...) to avoid multi-line
+# stdout under `set -u` when grep returns non-zero.
+grep -c '^FAIL \[' "$LOG" 2>/dev/null > /tmp/_r9_fail_count || FAIL_FILE_COUNT=0
+grep -c '^PREPROCESS FAIL \[' "$LOG" 2>/dev/null > /tmp/_r9_pp_fail_count || PREPROCESS_FAIL_COUNT=0
+FAIL_FILE_COUNT=$(tr -d '[:space:]' < /tmp/_r9_fail_count)
+PREPROCESS_FAIL_COUNT=$(tr -d '[:space:]' < /tmp/_r9_pp_fail_count)
+FAIL_FILE_COUNT="${FAIL_FILE_COUNT:-0}"
+PREPROCESS_FAIL_COUNT="${PREPROCESS_FAIL_COUNT:-0}"
+rm -f /tmp/_r9_fail_count /tmp/_r9_pp_fail_count
+TOTAL_FILE_FAIL=$((FAIL_FILE_COUNT + PREPROCESS_FAIL_COUNT))
+
 if [ "$RUN_STATUS" -eq 0 ]; then
-  record_pass "runner smoke execution completed"
+  if [ "$TOTAL_FILE_FAIL" -gt 0 ]; then
+    record_fail "runner smoke execution completed ($TOTAL_FILE_FAIL file-level failures detected in log)"
+  else
+    record_pass "runner smoke execution completed"
+  fi
 else
-  record_fail "runner smoke execution completed"
+  record_fail "runner smoke execution completed (runner exit=$RUN_STATUS, $TOTAL_FILE_FAIL file-level failures)"
+fi
+
+# Promote a structured per-file summary to the top of the log so downstream
+# tools and human reviewers can see the full file-level result without
+# scrolling through cargo build output.
+PER_FILE_TABLE="$(grep -E '^(PASS|FAIL|PREPROCESS FAIL) \[' "$LOG" | sort || true)"
+if [ -n "$PER_FILE_TABLE" ]; then
+  {
+    echo
+    echo "=== Per-file results ==="
+    echo "$PER_FILE_TABLE"
+  } >>"$LOG"
 fi
 
 SUMMARY="$(grep -A2 '^=== Summary ===' "$LOG" | tail -2 || true)"
@@ -113,14 +147,24 @@ else
   MISSING_FIELDS=0
   if [ "$HAS_ITEMS" -gt 0 ]; then
     # Format A: - id: ... root_cause/owner/expiry/follow_up_issue_or_openspec
+    # Round-9: accept either "root_cause:" (legacy) or "failure_summary:" (Round-9 schema);
+    # accept either "expiry:" (legacy) or "v3.13_expiry:" (Round-9 schema).
     while IFS= read -r line; do
       item_id=$(echo "$line" | sed 's/^  - id: //')
-      item_block=$(grep -A 10 "^  - id: ${item_id}" "$EXCLUSIONS" 2>/dev/null || echo "")
-      for field in root_cause owner expiry follow_up_issue_or_openspec; do
+      item_block=$(grep -A 12 "^  - id: ${item_id}" "$EXCLUSIONS" 2>/dev/null || echo "")
+      for field in owner follow_up_issue_or_openspec; do
         if ! echo "$item_block" | grep -q "^[ ]*${field}:"; then
           MISSING_FIELDS=$((MISSING_FIELDS + 1))
         fi
       done
+      # expiry (legacy) OR v3.13_expiry (Round-9)
+      if ! echo "$item_block" | grep -qE "^[ ]*(expiry|v3.13_expiry):"; then
+        MISSING_FIELDS=$((MISSING_FIELDS + 1))
+      fi
+      # root_cause (legacy) OR failure_summary (Round-9)
+      if ! echo "$item_block" | grep -qE "^[ ]*(root_cause|failure_summary):"; then
+        MISSING_FIELDS=$((MISSING_FIELDS + 1))
+      fi
     done < <(grep "^  - id:" "$EXCLUSIONS" 2>/dev/null)
   elif [ "$HAS_FILE_ITEMS" -gt 0 ]; then
     # Format B: - file: ... category/owner/expiry/follow_up
