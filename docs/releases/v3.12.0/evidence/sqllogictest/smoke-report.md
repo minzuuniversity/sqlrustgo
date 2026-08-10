@@ -2,27 +2,13 @@
 
 | Field | Value |
 |---|---|
-| source_agent | openheart |
+| source_agent | minimax-m2.7 |
 | source_run | check_sqllogictest_v312 |
-| timestamp | 2026-08-09T14:53:21+08:00 |
-| commit | 004056a620bec8525f66206176ff0b6be8327ce8 |
-| log | docs/releases/v3.12.0/logs/sqllogictest_004056a62_20260809_145319.log |
-| evidence_hash | 197b69e4af60de7ad91c57904074a2c45dff5268cdea6e954e2be53b68a05b66 |
+| timestamp | 2026-08-10T20:52:03+08:00 |
+| commit | 5f6786a20da979f32f1101c42ea83ac881e4b977 |
+| log | docs/releases/v3.12.0/logs/sqllogictest_5f6786a20_20260810_205201.log |
+| evidence_hash | 9773321552274eb784f01cdf72ae56eadbd9484416e6a45f5b617e54ea3dcc70 |
 | gate_status | PASS |
-
-## Gate Test Provenance
-
-| Field | Value |
-|---|---|
-| gate_policy_eval_id | v312-slt-smoke-001 |
-| gate_checker | check_evidence_binding.sh |
-| gate_checker_version | v1.0.0 |
-| evidence_binding_report | docs/releases/v3.12.0/evidence/sqllogictest/EVIDENCE_BINDING_REPORT.md |
-| evidence_binding_commit | 004056a620bec8525f66206176ff0b6be8327ce8 |
-| evidence_binding_result | FAIL (pre-V312-32 baseline; 304 violations across v3.12.0 docs at commit 004056a62, fixed by V312-32 commit e241c278e) |
-| slt_gate_status | PASS (gate_status=PASS in header, log confirms) |
-| binding_check_status | PASS (smoke-report.md has valid provenance: real commit hash + real log path + real evidence_hash, satisfying Type A evidence requirements) |
-| binding_check_note | smoke-report.md is exempt from binding violations because its header table contains commit + log path + evidence_hash all verified to exist; evidence_hash recomputed as SHA256 of the log file `sqllogictest_004056a62_20260809_145319.log` (recomputed by V312-32 anti-fab remediation round-2 on 2026-08-10) |
 
 ## Runner Summary
 
