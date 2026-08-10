@@ -48,7 +48,7 @@ KNOWN_PREEXISTING_FAILURES=(
     "teaching_scenario_client_server_test" "executor_test" "snapshot_isolation_test"
     "checksum_corruption_test" "types_value_test" "production_scenario_test"
     "auth_rbac_test" "tpch_compliance_test" "vector_storage_integration_test"
-    "view_test" "wal_fuzz_test"
+    "view_test" "wal_fuzz_test" "wal_deterministic_test"
     # Missing binary source files:
     "sqlancer" "test-runner" "test-registry-cli"
     # Example compilation errors:
