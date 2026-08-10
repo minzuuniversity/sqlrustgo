@@ -488,10 +488,7 @@ mod utilities_tests {
     fn atomic_counter_increment_works() {
         let before = ACTIVE_CONNECTIONS.load(Ordering::Relaxed);
         ACTIVE_CONNECTIONS.fetch_add(1, Ordering::Relaxed);
-        assert_eq!(
-            ACTIVE_CONNECTIONS.load(Ordering::Relaxed),
-            before + 1
-        );
+        assert_eq!(ACTIVE_CONNECTIONS.load(Ordering::Relaxed), before + 1);
         // Restore so we don't leave dirty state.
         ACTIVE_CONNECTIONS.fetch_sub(1, Ordering::Relaxed);
     }
@@ -1905,10 +1902,18 @@ fn value_type_string(v: &Value) -> String {
         Value::Integer(_) => "INT".into(),
         Value::Float(_) => "FLOAT".into(),
         Value::Text(s) => {
-            if s.len() < 256 { format!("VARCHAR({})", s.len()) } else { "TEXT".into() }
+            if s.len() < 256 {
+                format!("VARCHAR({})", s.len())
+            } else {
+                "TEXT".into()
+            }
         }
         Value::Blob(b) => {
-            if b.len() < 256 { format!("VARBINARY({})", b.len()) } else { "BLOB".into() }
+            if b.len() < 256 {
+                format!("VARBINARY({})", b.len())
+            } else {
+                "BLOB".into()
+            }
         }
         Value::Boolean(_) => "TINYINT".into(),
         Value::Point(_, _) => "DOUBLE".into(),
@@ -1922,7 +1927,11 @@ fn value_col_type(v: &Value) -> u8 {
         Value::Integer(_) => col_type::LONG,
         Value::Float(_) => col_type::FLOAT,
         Value::Text(s) => {
-            if s.len() < 256 { col_type::VARCHAR } else { col_type::VARSTRING }
+            if s.len() < 256 {
+                col_type::VARCHAR
+            } else {
+                col_type::VARSTRING
+            }
         }
         Value::Blob(_) => col_type::BLOB,
         Value::Boolean(_) => col_type::TINY,
@@ -2272,7 +2281,10 @@ fn send_binary_result_set<W: Write>(
         write_column_def(
             w,
             n,
-            actual_ctypes.get(i).map(|s| s.as_str()).unwrap_or("VARCHAR(255)"),
+            actual_ctypes
+                .get(i)
+                .map(|s| s.as_str())
+                .unwrap_or("VARCHAR(255)"),
             seq,
         )?;
         seq = seq.wrapping_add(1);
@@ -2293,10 +2305,13 @@ fn send_binary_result_set<W: Write>(
     let col_type_codes: Vec<u8> = if let Some(first_row) = rows.first() {
         first_row.iter().map(|v| value_col_type(v)).collect()
     } else {
-        cols.iter().enumerate().map(|(i, _)| {
-            let t = ctypes.get(i).map(|s| s.as_str()).unwrap_or("VARCHAR(255)");
-            col_type_from_string(t)
-        }).collect()
+        cols.iter()
+            .enumerate()
+            .map(|(i, _)| {
+                let t = ctypes.get(i).map(|s| s.as_str()).unwrap_or("VARCHAR(255)");
+                col_type_from_string(t)
+            })
+            .collect()
     };
     for r in rows {
         let mut p = Vec::new();

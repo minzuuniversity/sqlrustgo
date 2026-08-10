@@ -11,7 +11,7 @@
 
 | 检查项 | 数量 |
 |--------|------|
-| 通过 | 142 |
+| 通过 | 144 |
 | 警告 | 1 |
 | 失败（违规） | 0 |
 | 未验证声明 | 0 |
@@ -164,6 +164,8 @@
 - ✅ 文档有 provenance 元数据：v312-04-embedding-provider-report.md
 - ✅ Gate Report 有整体 provenance（commit 或 gate_policy_eval_id）：wire-e2e-report.md
 - ✅ 文档有 provenance 元数据：wire-e2e-report.md
+- ✅ Gate Report 有整体 provenance（commit 或 gate_policy_eval_id）：v312-round17-scope-table.md
+- ✅ 文档有 provenance 元数据：v312-round17-scope-table.md
 - ✅ Gate Report 有整体 provenance（commit 或 gate_policy_eval_id）：v312-17-round16-status.md
 - ✅ 文档有 provenance 元数据：v312-17-round16-status.md
 - ✅ Gate Report 有整体 provenance（commit 或 gate_policy_eval_id）：load-data-report.md
@@ -214,7 +216,7 @@
 
 ---
 
-*报告生成时间: 2026-08-11 01:05:10*
+*报告生成时间: 2026-08-11 01:13:41*
 *检查工具版本: check_evidence_binding.sh v1.0.0*
 *依据政策: Anti-Fabrication Policy v1.0.0*
 
