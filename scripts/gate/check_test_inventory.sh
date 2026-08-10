@@ -105,7 +105,7 @@ for i in "${!TEST_NAMES[@]}"; do
     printf "[%2d/%2d] %-50s " "$((i+1))" "$TOTAL_FILES" "$name"
 
     # Run the test, capture output
-    OUTPUT=$(timeout 180 cargo test --test "$name" -- --test-threads=1 2>&1 || true)
+    OUTPUT=$(timeout 180 cargo test --test "$name" -- --test-threads=1 2>&1 || echo "0")
 
     # Parse results
     RESULT_LINE=$(echo "$OUTPUT" | grep "^test result:" | tail -1)

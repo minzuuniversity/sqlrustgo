@@ -1,9 +1,19 @@
-# MySQL Compatibility Status — v3.12.0
+# MySQL Compatibility Status — v3.12.0 (V312-13 / V312-24 boundary)
 
-**Branch:** `swe/_fix/binary-row-parsing`
+**Branch:** `develop/v3.12.0`
 **Date:** 2026-08-09
+**Updated:** 2026-08-09T16:42:00Z (V312-13 closure scope)
 
----
+
+## V312-13 vs V312-24 Boundary
+
+| Workstream | Issue | Status | Owner | Expiry |
+|------------|-------|--------|-------|--------|
+| Wire main path (COM_QUERY / COM_STMT_* / binary row / error packet) | #3900 (V312-13) | ✅ **DONE** (PR #3948) | openclaw | (closed) |
+| LOAD DATA parser / SF=1 full exec / SF=10 / TLS / compression / parameterized binary / COM_RESET_CONNECTION server | #3959 (V312-24) | 🔜 **Deferred** | openclaw | 2026-09-30 |
+
+This file documents the V3.12.0 MySQL compatibility surface. Items split between V312-13 (✅ done in #3900) and V312-24 (deferred to #3959).
+
 
 ## Supported
 
@@ -18,9 +28,8 @@
 | `SHOW TABLES LIKE 'pattern'` | ✅ Supported | Parser supports `ShowStatement::TablesLike` |
 | `DESCRIBE` / `SHOW COLUMNS` | ✅ Supported | Parser supports `Statement::Describe` |
 | Error packets | ✅ Supported | Well-formed MySQL error packets |
-| `COM_RESET_CONNECTION` | ⚠️ Partial | Server returns "Unknown command"; client handles gracefully |
-| `LOAD DATA INFILE` | ✅ Documented | Gate script passes |
-| VARCHAR space-padding | ✅ Handled | `trim_end()` strips MySQL-padded spaces |
+| `COM_RESET_CONNECTION` | ✅ Client-side | Server returns "Unknown command"; client handles gracefully. **Server-side deferred to #3959 (V312-24)** |
+| `LOAD DATA INFILE` | ⚠️ Partial | Gate script passes (smoke), but parser does not yet accept `LOAD DATA INFILE` syntax. **Full execution deferred to #3959 (V312-24)** |
 
 ---
 
@@ -73,3 +82,28 @@ VARCHAR columns are space-padded to column width in MySQL storage. The client st
 | `wire_smoke_mysql_cli.rs` | 11/11 PASS |
 | Architecture invariants (C-ARCH-01~05) | 5/5 PASS |
 | `check_load_data_infile.sh` | 4/4 PASS |
+
+---
+
+## V312-13 Closure Summary (2026-08-09)
+
+**Issue:** #3900 (V312-13 MySQL Wire + LOAD DATA Hardening) — closed
+**PR:** #3948 (commit `f4e3427fa864c1caea98f8fb843fc30da2ad2e20`)
+**Issue #3959 (V312-24):** open, owner=openclaw, expiry=2026-09-30
+
+**V312-13 in-scope (✅ DONE):**
+- Wire main path: COM_QUERY / COM_STMT_PREPARE / EXECUTE / CLOSE
+- COM_RESET_CONNECTION (client-side)
+- Error packet (0xFF) E2E
+- Binary row encoding (INT, VARCHAR, NULL types)
+- C-ARCH-01~05 invariants (5/5 PASS)
+
+**V312-24 deferred (🔜 #3959):**
+- LOAD DATA INFILE parser (server-side)
+- LOAD DATA SF=1 full execution (row count + hash)
+- LOAD DATA SF=10 execution
+- TLS handshake (server-side)
+- zlib compression
+- Parameterized query binary result (`WHERE id = ?` → binary rows)
+- COM_RESET_CONNECTION (server-side)
+

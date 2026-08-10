@@ -70,7 +70,7 @@ else
 fi
 
 # 5. ≥20 tests pass
-PASSED=$(cargo test --test hash_chain_test 2>&1 | grep -E "test result.*ok" | grep -oE "[0-9]+ passed" | head -1 || true)
+PASSED=$(cargo test --test hash_chain_test 2>&1 | grep -E "test result.*ok" | grep -oE "[0-9]+ passed" | head -1 || echo "0")
 if [ -z "$PASSED" ]; then
     echo "  ❌ FAIL: hash_chain_test tests did not pass"
     cargo test --test hash_chain_test 2>&1 | tail -5
