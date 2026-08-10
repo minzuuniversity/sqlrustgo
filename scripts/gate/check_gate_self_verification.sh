@@ -32,7 +32,7 @@ FAIL_DETAILS=()
 check_cargo_test_actually_runs() {
     local label="$1"
     local output
-    output=$(cargo test --lib -p sqlrustgo-parser --all-features 2>&1 || true)
+    output=$(cargo test --lib -p sqlrustgo-parser --all-features 2>&1 || echo "0")
 
     # Must contain at least one "test ... ok" or "test result:" line
     local ok_count
@@ -168,7 +168,7 @@ EOF
 check_test_result_parsing() {
     local label="test_result_parsing"
     local output
-    output=$(cargo test --lib -p sqlrustgo-parser --all-features 2>&1 || true)
+    output=$(cargo test --lib -p sqlrustgo-parser --all-features 2>&1 || echo "0")
 
     # Extract "test result: ok. N passed; M failed; K ignored"
     local summary

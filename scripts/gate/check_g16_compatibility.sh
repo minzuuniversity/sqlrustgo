@@ -113,7 +113,7 @@ else
 fi
 
 # 6. TPC-H 22/22 maintained
-TPCH_PASSED=$(cargo test --test tpch_gate_test 2>&1 | grep -E "test result.*ok" | head -1 || true)
+TPCH_PASSED=$(cargo test --test tpch_gate_test 2>&1 | grep -E "test result.*ok" | head -1 || echo "0")
 if echo "$TPCH_PASSED" | grep -q "ok"; then
     echo "  [6/7] ✅ PASS: TPC-H gate (22/22) maintained"
 else
