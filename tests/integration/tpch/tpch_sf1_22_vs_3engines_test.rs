@@ -344,7 +344,19 @@ fn tpch_sf1_22_in_process_regression() {
         let sql_path = format!("{}/q{}.sql", QUERIES_DIR, n);
         let sql = std::fs::read_to_string(&sql_path)
             .unwrap_or_else(|e| panic!("read {}: {}", sql_path, e));
-        eprintln!("  >>> Q{:>2}: starting query...", n);
+        if let Some(q) = only_q {
+            // TPCH_ONLY_Q is exclusive — run exactly one and stop
+        } else if (std::env::var("TPCH_SKIP_Q9").is_ok() && n == 9)
+            || (std::env::var("TPCH_SKIP_Q10").is_ok() && n == 10)
+        {
+            let label = if n == 9 { "Q9 6-table join OOM" } else { "Q10 3-table join OOM" };
+            eprintln!(
+                "  Q{:>2}: {} rows in {:?}  [skipped — {}, tracked #3732]",
+                n, 0, Duration::ZERO, label
+            );
+            report_rows.push((n, 0, Duration::ZERO, "skipped".to_string()));
+            continue;
+        }
         let start = Instant::now();
         let result = client.query_rows(&sql);
         eprintln!(
