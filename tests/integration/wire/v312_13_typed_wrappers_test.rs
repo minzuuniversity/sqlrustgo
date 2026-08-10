@@ -41,7 +41,11 @@ fn v312_13_reset_connection_ok() {
     match res {
         Ok(()) => {
             // After a real reset, follow-up queries must still work.
-            client.exec("SELECT 1").expect("post-reset SELECT 1");
+            // SELECT 1 returns a result set, so use query_rows (exec only
+            // handles OK/ERR packets, not column count packets).
+            client
+                .query_rows("SELECT 1")
+                .expect("post-reset SELECT 1");
         }
         Err(e) if e.to_string().contains("Unknown command") => {
             // Documented gap: v3.11.0 server does not implement 0x1F.
