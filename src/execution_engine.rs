@@ -1391,6 +1391,9 @@ impl<S: StorageEngine + 'static> ExecutionEngine<S> {
                 }
                 self.begin_transaction(iso, false)
             }
+            TransactionStatement::SetSessionVariable { .. } => {
+                Ok(ExecutorResult::empty())
+            }
         }
     }
 
