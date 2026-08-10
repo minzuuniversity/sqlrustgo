@@ -11,7 +11,7 @@
 
 | 检查项 | 数量 |
 |--------|------|
-| 通过 | 144 |
+| 通过 | 146 |
 | 警告 | 1 |
 | 失败（违规） | 0 |
 | 未验证声明 | 0 |
@@ -42,6 +42,8 @@
 - ✅ 文档有 provenance 元数据：GMP_COMPLIANCE_MATRIX.md
 - ✅ Gate Report 有整体 provenance（commit 或 gate_policy_eval_id）：sqllogictest-oracle-gate-report.md
 - ✅ 文档有 provenance 元数据：sqllogictest-oracle-gate-report.md
+- ✅ Gate Report 有整体 provenance（commit 或 gate_policy_eval_id）：v312-round18-followup-progress.md
+- ✅ 文档有 provenance 元数据：v312-round18-followup-progress.md
 - ✅ Gate Report 有整体 provenance（commit 或 gate_policy_eval_id）：V312_DAG_ANALYSIS.md
 - ✅ 文档有 provenance 元数据：V312_DAG_ANALYSIS.md
 - ✅ Gate Report 有整体 provenance（commit 或 gate_policy_eval_id）：v312-11-round14-status.md
@@ -216,7 +218,7 @@
 
 ---
 
-*报告生成时间: 2026-08-11 01:13:41*
+*报告生成时间: 2026-08-11 01:38:36*
 *检查工具版本: check_evidence_binding.sh v1.0.0*
 *依据政策: Anti-Fabrication Policy v1.0.0*
 
