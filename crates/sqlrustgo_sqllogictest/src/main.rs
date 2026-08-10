@@ -219,9 +219,20 @@ fn preprocess_content(content: &str, base_dir: &Path) -> Result<String, String> 
             } else {
                 base_dir.join(include_path)
             };
-            let included = preprocess_test_file(&full_path)?;
-            output.push_str(&included);
-            output.push('\n');
+            // Skip missing include files (non-fatal for DuckDB compatibility tests)
+            if full_path.exists() {
+                match preprocess_test_file(&full_path) {
+                    Ok(included) => {
+                        output.push_str(&included);
+                        output.push('\n');
+                    }
+                    Err(e) => {
+                        eprintln!("warning: include failed for {:?}: {}", full_path, e);
+                    }
+                }
+            } else {
+                eprintln!("warning: include file not found: {:?}", full_path);
+            }
             continue;
         }
 

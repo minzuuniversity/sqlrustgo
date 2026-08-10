@@ -651,7 +651,7 @@ impl<S: StorageEngine + 'static> ExecutionEngine<S> {
             .columns
             .iter()
             .map(|c| ColumnDefinition {
-                name: c.name.clone(),
+                name: c.name.to_lowercase(),
                 data_type: c.data_type.clone(),
                 nullable: !c.primary_key,
                 primary_key: c.primary_key,

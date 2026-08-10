@@ -1061,7 +1061,7 @@ impl StorageEngine for MemoryStorage {
 
     fn get_table_info(&self, table: &str) -> SqlResult<TableInfo> {
         self.table_infos
-            .get(table)
+            .get(&table.to_lowercase())
             .cloned()
             .ok_or_else(|| SqlError::ExecutionError(format!("Table not found: {}", table)))
     }
@@ -1082,8 +1082,9 @@ impl StorageEngine for MemoryStorage {
         Ok(())
     }
 
-    fn add_column(&mut self, table: &str, column: ColumnDefinition) -> SqlResult<()> {
+    fn add_column(&mut self, table: &str, mut column: ColumnDefinition) -> SqlResult<()> {
         if let Some(info) = self.table_infos.get_mut(&table.to_lowercase()) {
+            column.name = column.name.to_lowercase();
             info.columns.push(column);
             Ok(())
         } else {
@@ -1257,7 +1258,7 @@ impl StorageEngine for MemoryStorage {
         &mut self,
         table: &str,
         column: &str,
-        new_def: ColumnDefinition,
+        mut new_def: ColumnDefinition,
     ) -> SqlResult<()> {
         let info = self
             .table_infos
@@ -1268,6 +1269,7 @@ impl StorageEngine for MemoryStorage {
             .iter()
             .position(|c| c.name.to_lowercase() == column.to_lowercase())
             .ok_or_else(|| SqlError::ExecutionError(format!("Column not found: {}", column)))?;
+        new_def.name = new_def.name.to_lowercase();
         info.columns[col_idx] = new_def;
         Ok(())
     }
@@ -1282,7 +1284,7 @@ impl StorageEngine for MemoryStorage {
             .iter_mut()
             .find(|c| c.name.to_lowercase() == old_name.to_lowercase())
             .ok_or_else(|| SqlError::ExecutionError(format!("Column not found: {}", old_name)))?;
-        col.name = new_name.to_string();
+        col.name = new_name.to_lowercase();
         Ok(())
     }
     fn parallel_scan(
