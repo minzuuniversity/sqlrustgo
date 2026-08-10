@@ -736,6 +736,7 @@ impl<S: StorageEngine + 'static> ExecutionEngine<S> {
                                 Value::Blob(_) => "BLOB".to_string(),
                                 Value::Boolean(_) => "BOOLEAN".to_string(),
                                 Value::Point(_, _) => "POINT".to_string(),
+                                &Value::Json(_) => "JSON".to_string(),
                             })
                             .unwrap_or_else(|| "TEXT".to_string());
                         ColumnDefinition {
