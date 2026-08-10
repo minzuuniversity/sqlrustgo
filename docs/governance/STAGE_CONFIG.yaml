@@ -90,11 +90,13 @@ stages:
       - "scripts/gate/check_alpha_v{VER}.sh"
       - "scripts/gate/check_arch_invariants.sh"
       - "scripts/gate/check_arch3_no_bypass.sh"
+      - "scripts/gate/check_coverage_v312.sh"
+      - "scripts/gate/check_sql_corpus_gate.sh"
+      - "scripts/gate/check_anti_ignore_gate.sh"
       - "cargo build --all-features"
       - "cargo test --all-features --lib"
       - "cargo fmt --check"
-    optional_gates:
-      - "scripts/gate/check_coverage.sh"
+    optional_gates: []
     merge_policy:
       reviewers: 1
       approval: codeowner
@@ -128,12 +130,14 @@ stages:
       - "scripts/gate/check_arch_sem_debt.sh"
       - "scripts/gate/check_cross_version_debt.sh"
       - "scripts/gate/check_int_debt.sh"
+      - "scripts/gate/check_coverage_v312.sh"
+      - "scripts/gate/check_sql_corpus_gate.sh"
+      - "scripts/gate/check_anti_ignore_gate.sh"
       - "cargo build --all-features"
       - "cargo test --all-features"
       - "cargo fmt --check"
       - "cargo clippy --all-features -- -D warnings"
-    optional_gates:
-      - "scripts/gate/check_coverage.sh"
+    optional_gates: []
     merge_policy:
       reviewers: 2
       approval: codeowner + governance
@@ -169,6 +173,9 @@ stages:
       - "scripts/gate/check_cross_version_debt.sh"
       - "scripts/gate/check_int_debt.sh"
       - "scripts/gate/check_full_gate_verification.sh"
+      - "scripts/gate/check_coverage_v312.sh"
+      - "scripts/gate/check_sql_corpus_gate.sh"
+      - "scripts/gate/check_anti_ignore_gate.sh"
       - "cargo build --all-features"
       - "cargo test --all-features"
       - "cargo fmt --check"
@@ -216,6 +223,9 @@ stages:
       - "scripts/gate/check_architecture_freeze.sh"
       - "scripts/gate/check_gate_self_verification.sh"
       - "scripts/gate/check_gate_test_integrity.sh"
+      - "scripts/gate/check_coverage_v312.sh"
+      - "scripts/gate/check_sql_corpus_gate.sh"
+      - "scripts/gate/check_anti_ignore_gate.sh"
       - "cargo build --all-features"
       - "cargo test --all-features"
       - "cargo fmt --check"
