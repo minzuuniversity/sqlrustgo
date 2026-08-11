@@ -1,16 +1,16 @@
 # SQLRustGo v3.12 SQLLogicTest Smoke Baseline
 
-> **provenance:** generated_by=check_sqllogictest_v312.sh, generated_at=2026-08-11T01:01:49+08:00, commit=e09b78ab076ee292fa323fccd90e8336c4a0ed04, source_repo=openclaw/sqlrustgo, branch=develop/v3.12.0, gate_policy_eval_id=v312-slt-smoke-001, evidence_hash=efb19d2daef082a4443d02d13fe19d937439ca5b4e6ed8f3b15d85a8e177c919, log_path=docs/releases/v3.12.0/logs/sqllogictest_e09b78ab07_20260811_010147.log
+> **provenance:** generated_by=check_sqllogictest_v312.sh, generated_at=2026-08-11T11:38:44+08:00, commit=9c1207909d866e63649f8866d4ebc502e462f057, source_repo=openclaw/sqlrustgo, branch=develop/v3.12.0, gate_policy_eval_id=v312-slt-smoke-001, evidence_hash=b1de425d782e19c1dc4adad8a0f58581c70f5d3b22a1d574ca60be51d4f73f57, log_path=docs/releases/v3.12.0/logs/sqllogictest_9c1207909d_20260811_113843.log
 
 | Field | Value |
 |---|---|
 | source_agent | minimax-m2.7 |
 | source_run | check_sqllogictest_v312 |
-| timestamp | 2026-08-11T01:01:49+08:00 |
-| commit | e09b78ab076ee292fa323fccd90e8336c4a0ed04 |
-| log | docs/releases/v3.12.0/logs/sqllogictest_e09b78ab07_20260811_010147.log |
-| evidence_hash | efb19d2daef082a4443d02d13fe19d937439ca5b4e6ed8f3b15d85a8e177c919 |
-| gate_status | FAIL |
+| timestamp | 2026-08-11T11:38:44+08:00 |
+| commit | 9c1207909d866e63649f8866d4ebc502e462f057 |
+| log | docs/releases/v3.12.0/logs/sqllogictest_9c1207909d_20260811_113843.log |
+| evidence_hash | b1de425d782e19c1dc4adad8a0f58581c70f5d3b22a1d574ca60be51d4f73f57 |
+| gate_status | PASS |
 
 ## Runner Summary
 
