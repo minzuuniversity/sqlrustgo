@@ -149,6 +149,27 @@ jobs:
         run: bash scripts/gate/check_coverage_v312.sh
 
   # ----------------------------------------
+  # Coverage gate
+  # ----------------------------------------
+  coverage:
+    name: Gate G17 — Coverage
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 1
+
+      - name: Setup Rust
+        uses: dtolnay/rust-toolchain@stable
+
+      - name: Install cargo-llvm-cov
+        run: cargo install cargo-llvm-cov --locked
+
+      - name: Gate G17 — Coverage
+        run: bash scripts/gate/check_coverage_v312.sh
+
+  # ----------------------------------------
   # Security audit
   # ----------------------------------------
   security:

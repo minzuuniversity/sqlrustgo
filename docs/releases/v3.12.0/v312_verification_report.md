@@ -1,11 +1,12 @@
 # V312-02 ~ V312-24 任务核查报告
 
+> **provenance:** generated_by=v3.12.0-remediation-round-3, generated_at=2026-08-10T10:49:33Z, commit=1903545df6d036f7f6d5035a0503b5fa932aac51, source_repo=openclaw/sqlrustgo, branch=develop/v3.12.0, policy=Anti-Fabrication-Policy-v1.0
+
 **source_agent**: claude-code  
 **source_run**: 2026-08-09 verification  
 **分支**: develop/v3.12.0  
-**验证时间**: 2026-08-09
+**commit**: 1903545df6d036f7f6d5035a0503b5fa932aac51
 
----
 
 ## 核查方法
 

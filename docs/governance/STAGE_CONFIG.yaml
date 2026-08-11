@@ -90,13 +90,12 @@ stages:
       - "scripts/gate/check_alpha_v{VER}.sh"
       - "scripts/gate/check_arch_invariants.sh"
       - "scripts/gate/check_arch3_no_bypass.sh"
-      - "cargo build --all-features"
-      - "cargo test --all-features --lib"
-      - "cargo fmt --check"
-      # V312-41: G17/G18/G19 moved from optional to required
       - "scripts/gate/check_coverage_v312.sh"
       - "scripts/gate/check_sql_corpus_gate.sh"
       - "scripts/gate/check_anti_ignore_gate.sh"
+      - "cargo build --all-features"
+      - "cargo test --all-features --lib"
+      - "cargo fmt --check"
     optional_gates: []
     merge_policy:
       reviewers: 1
@@ -131,14 +130,13 @@ stages:
       - "scripts/gate/check_arch_sem_debt.sh"
       - "scripts/gate/check_cross_version_debt.sh"
       - "scripts/gate/check_int_debt.sh"
+      - "scripts/gate/check_coverage_v312.sh"
+      - "scripts/gate/check_sql_corpus_gate.sh"
+      - "scripts/gate/check_anti_ignore_gate.sh"
       - "cargo build --all-features"
       - "cargo test --all-features"
       - "cargo fmt --check"
       - "cargo clippy --all-features -- -D warnings"
-      # V312-41: G17/G18/G19 moved from optional to required
-      - "scripts/gate/check_coverage_v312.sh"
-      - "scripts/gate/check_sql_corpus_gate.sh"
-      - "scripts/gate/check_anti_ignore_gate.sh"
     optional_gates: []
     merge_policy:
       reviewers: 2
@@ -175,14 +173,13 @@ stages:
       - "scripts/gate/check_cross_version_debt.sh"
       - "scripts/gate/check_int_debt.sh"
       - "scripts/gate/check_full_gate_verification.sh"
+      - "scripts/gate/check_coverage_v312.sh"
+      - "scripts/gate/check_sql_corpus_gate.sh"
+      - "scripts/gate/check_anti_ignore_gate.sh"
       - "cargo build --all-features"
       - "cargo test --all-features"
       - "cargo fmt --check"
       - "cargo clippy --all-features -- -D warnings"
-      # V312-41: G17/G18/G19 added as required gates
-      - "scripts/gate/check_coverage_v312.sh"
-      - "scripts/gate/check_sql_corpus_gate.sh"
-      - "scripts/gate/check_anti_ignore_gate.sh"
     optional_gates:
       - "scripts/gate/check_architecture_freeze.sh"
       - "scripts/gate/check_gate_self_verification.sh"
@@ -226,14 +223,13 @@ stages:
       - "scripts/gate/check_architecture_freeze.sh"
       - "scripts/gate/check_gate_self_verification.sh"
       - "scripts/gate/check_gate_test_integrity.sh"
+      - "scripts/gate/check_coverage_v312.sh"
+      - "scripts/gate/check_sql_corpus_gate.sh"
+      - "scripts/gate/check_anti_ignore_gate.sh"
       - "cargo build --all-features"
       - "cargo test --all-features"
       - "cargo fmt --check"
       - "cargo clippy --all-features -- -D warnings"
-      # V312-41: G17/G18/G19 added as required gates
-      - "scripts/gate/check_coverage_v312.sh"
-      - "scripts/gate/check_sql_corpus_gate.sh"
-      - "scripts/gate/check_anti_ignore_gate.sh"
     optional_gates:
       - "scripts/gate/check_soak_gate.sh"  # if available
       - "scripts/gate/check_p13_soak.sh"    # if available

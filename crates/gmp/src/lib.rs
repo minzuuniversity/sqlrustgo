@@ -49,33 +49,33 @@
 //! - `gmp_relations`: Typed edges (SOP/CLAUSE/CAPA/DEVIATION/ROLE/EQUIPMENT/AUDIT_FINDING)
 //! - `gmp_audit_log`: Hash-chained audit trail (previous_hash + event_hash)
 
+pub mod acl;
 pub mod audit;
 pub mod backup;
-pub mod acl;
+pub mod chunk;
 pub mod compliance;
-pub mod sql_api;
 pub mod document;
 pub mod embedding;
-pub mod persist_sqlite;
-pub mod report;
-pub mod ingestion;
-pub mod soak;
 pub mod graph;
+pub mod ingestion;
+pub mod persist_sqlite;
 pub mod rag;
-pub mod chunk;
 pub mod relation;
-pub mod schema;
-pub mod version;
-pub mod semantic_embedding;
-pub mod vector_index;
+pub mod report;
 pub mod retrieval;
+pub mod schema;
+pub mod semantic_embedding;
+pub mod soak;
+pub mod sql_api;
+pub mod vector_index;
 pub mod vector_search;
+pub mod version;
 
 // Re-export commonly used types
 pub use audit::{
     create_audit_log_table, get_all_audit_logs, get_audit_log_by_id, get_audit_stats,
     get_last_event_hash, query_audit_logs, record_audit_log, verify_audit_chain, AuditAction,
-    AuditLog, AuditStats, GENESIS_PREVIOUS_HASH, TableCount, UserCount, TABLE_AUDIT_LOG,
+    AuditLog, AuditStats, TableCount, UserCount, GENESIS_PREVIOUS_HASH, TABLE_AUDIT_LOG,
 };
 
 pub use compliance::{

@@ -87,15 +87,17 @@ fn write_nation_fixture(path: &std::path::Path) {
     }
 }
 
-/// NOTE: this test creates its own ephemeral server with its own
-/// data_dir, but the server's `ACTIVE_CONFIG` is process-global
-/// (only the first `start_ephemeral`'s `data_dir` is honored by
-/// the LOAD DATA handler). When run alongside `v312_13_sf1_lineitem_smoke_subset`,
-/// the second start_ephemeral's data_dir is ignored, so the fixture
-/// files end up in the wrong dir. Marked `#[ignore]`; run alone via:
-///   cargo test --test v312_13_load_data_sf1_test v312_13_load_data_sf1_region_nation_smoke -- --ignored
+/// V312-13 §9 smoke for the SF=1 TPC-H region (5 rows) + nation
+/// (25 rows) tables loaded via LOAD DATA LOCAL INFILE.
+///
+/// V312-32: previously `#[ignore]`d because the LOAD DATA handler
+/// read the process-global `ACTIVE_CONFIG`, so concurrent
+/// `start_ephemeral` calls saw each other's `data_dir` (one test
+/// would import into the other's temp dir). The handler now reads a
+/// per-handle `Arc<EphemeralConfig>` threaded down from
+/// `start_ephemeral`, so this test can run alongside
+/// `v312_13_sf1_lineitem_smoke_subset` without `#[ignore]`.
 #[test]
-#[ignore = "requires SHARED server pattern (process-global ACTIVE_CONFIG); run via check_v312_13_wire_load_data.sh gate"]
 fn v312_13_load_data_sf1_region_nation_smoke() {
     // SF=1 row count for region is 5, for nation is 25. These are
     // the exact TPC-H SF=1 spec values and the openspec V312-13 §9
@@ -119,8 +121,8 @@ fn v312_13_load_data_sf1_region_nation_smoke() {
     .expect("start_ephemeral");
     let port = handle.port;
 
-    let mut client = MySqlTestClient::connect_at(("127.0.0.1", port), "tester", "tester")
-        .expect("connect");
+    let mut client =
+        MySqlTestClient::connect_at(("127.0.0.1", port), "tester", "tester").expect("connect");
     client.exec(TPC_H_REGION_SCHEMA).expect("create region");
     client.exec(TPC_H_NATION_SCHEMA).expect("create nation");
 
@@ -216,13 +218,19 @@ fn v312_13_sf1_lineitem_smoke_subset() {
     let gen = Command::new("python3")
         .args([
             "scripts/gate/generate_tpch_sf.py",
-            "--sf", "0.0001",
-            "--output", tmp.path().to_str().unwrap(),
-            "--seed", "42",
+            "--sf",
+            "0.0001",
+            "--output",
+            tmp.path().to_str().unwrap(),
+            "--seed",
+            "42",
         ])
         .output();
     if !gen.as_ref().map(|o| o.status.success()).unwrap_or(false) {
-        let stderr = gen.as_ref().map(|o| String::from_utf8_lossy(&o.stderr).to_string()).unwrap_or_default();
+        let stderr = gen
+            .as_ref()
+            .map(|o| String::from_utf8_lossy(&o.stderr).to_string())
+            .unwrap_or_default();
         panic!("generate_tpch_sf.py failed: {}", stderr);
     }
     assert!(lineitem_path.exists(), "lineitem.tbl not generated");
@@ -231,7 +239,10 @@ fn v312_13_sf1_lineitem_smoke_subset() {
         .lines()
         .filter(|l| !l.is_empty())
         .count() as u64;
-    eprintln!("V312-13 §9 SF=0.0001 subset: lineitem.tbl has {} rows", lineitem_rows);
+    eprintln!(
+        "V312-13 §9 SF=0.0001 subset: lineitem.tbl has {} rows",
+        lineitem_rows
+    );
     // TPC-H spec: SF=0.0001 produces exactly 600 lineitem rows
     // (6,000,000 / 10,000 = 600).
     assert_eq!(lineitem_rows, 600, "lineitem row count mismatch");
@@ -245,8 +256,8 @@ fn v312_13_sf1_lineitem_smoke_subset() {
     })
     .expect("start_ephemeral");
     let port = handle.port;
-    let mut client = MySqlTestClient::connect_at(("127.0.0.1", port), "tester", "tester")
-        .expect("connect");
+    let mut client =
+        MySqlTestClient::connect_at(("127.0.0.1", port), "tester", "tester").expect("connect");
 
     // 3. Create the 8 TPC-H tables (compatible with the .tbl schema).
     client
@@ -304,9 +315,7 @@ fn v312_13_sf1_lineitem_smoke_subset() {
 
     // 6. Aggregate sanity check: TPC-H Q1 (pricing summary).
     let q1_count: i64 = client
-        .query_one_i64(
-            "SELECT COUNT(DISTINCT l_returnflag) FROM lineitem"
-        )
+        .query_one_i64("SELECT COUNT(DISTINCT l_returnflag) FROM lineitem")
         .expect("Q1 sanity");
     eprintln!(
         "V312-13 §9 SF=0.0001 end-to-end: 8 tables loaded in {:?}, Q1 distinct={}",
@@ -316,54 +325,11 @@ fn v312_13_sf1_lineitem_smoke_subset() {
     drop(handle);
 }
 
-/// Full SF=1 lineitem contract anchor. The actual 1.1 GB / 6M-row
-/// load runs in `scripts/gate/check_v312_13_wire_load_data.sh` step
-/// 7 with `#[ignore]`. This test pins the row count and the
-/// fixture location so the gate cannot drift.
-#[test]
-#[ignore = "runs in scripts/gate/check_v312_13_wire_load_data.sh step 7 (1.1 GB / 6M rows)"]
-fn v312_13_sf1_lineitem_full_load_contract() {
-    const SF1_LINEITEM_ROWS: u64 = 6_001_215;
-    // Per the TPC-H spec, SF=1 lineitem.tbl is 6,001,215 rows.
-    // The gate generates the fixture via:
-    //   python3 scripts/gate/generate_tpch_sf.py --sf 1 \
-    //       --output /var/tmp/tpch_sf1 --seed 42
-    // producing lineitem.tbl of size ~1.1 GB / 6,001,215 rows.
-    // The gate's step 7 then runs:
-    //   mysql ... -e "LOAD DATA LOCAL INFILE 'lineitem.tbl'
-    //     INTO TABLE lineitem FIELDS TERMINATED BY '|'"
-    // and asserts:
-    //   - COUNT(*) = 6,001,215
-    //   - SHA256(lineitem) matches the reference hash
-    //   - elapsed < LOAD_DATA_SF1_DURATION_S (default 600)
-    //   - peak RSS < LOAD_DATA_SF1_PEAK_RSS_MB (default 4096)
-    // See the spec at
-    //   openspec/changes/v312-13-mysql-wire-load-data-hardening
-    //     /specs/load-data-sf1-sf10-memory-cap/spec.md
-    let _ = SF1_LINEITEM_ROWS;
-}
-
-/// V312-13 §10 contract anchor: SF=10 lineitem. The actual load
-/// is 60,013,775 rows / ~11 GB and is `#[ignore]`d — running it
-/// requires the gate's tag-gated step 8 in
-/// `scripts/gate/check_v312_13_wire_load_data.sh`.
-///
-/// This test pins the row count so the gate cannot drift.
-#[test]
-#[ignore = "runs in scripts/gate/check_v312_13_wire_load_data.sh step 8 (11 GB / 60M rows)"]
-fn v312_13_sf10_lineitem_full_load_contract() {
-    // Per the TPC-H spec, SF=10 lineitem.tbl is 60,013,775 rows.
-    // The gate's step 8 generates the fixture via:
-    //   python3 scripts/gate/generate_tpch_sf.py --sf 10 \
-    //       --output /var/tmp/tpch_sf10 --seed 42
-    // producing lineitem.tbl of size ~11 GB / 60,013,775 rows.
-    // The gate then runs LOAD DATA LOCAL INFILE and asserts:
-    //   - COUNT(*) = 60,013,775
-    //   - elapsed < LOAD_DATA_SF10_DURATION_S (default 3600)
-    //   - peak RSS < LOAD_DATA_SF10_PEAK_RSS_MB (default 12288)
-    // See the spec at
-    //   openspec/changes/v312-13-mysql-wire-load-data-hardening
-    //     /specs/load-data-sf1-sf10-memory-cap/spec.md
-    const SF10_LINEITEM_ROWS: u64 = 60_013_775;
-    let _ = SF10_LINEITEM_ROWS;
-}
+// ============================================================================
+// V312-32: removed v312_13_sf1_lineitem_full_load_contract + sf10 variants.
+// These were empty `let _ = SF{1,10}_LINEITEM_ROWS` anchors with `#[ignore]`,
+// occupying gate-list slots without running any actual test. The real 1.1 GB
+// / 11 GB LOAD DATA coverage lives in scripts/gate/check_v312_13_wire_load_data.sh
+// steps 7 + 8 (tag-gated). See ADR-008 §Policy 2: a gate test must actually
+// run — empty anchors are removed, not papered over.
+// ============================================================================

@@ -13,8 +13,7 @@ use sqlrustgo_parser::parser::{
     AlterColumnOperation, AlterTableOperation, AlterTableStatement, CreateRoleStatement,
     DescribeStatement, DropRoleStatement, GrantRoleStatement, GrantStatement,
     ObjectType as ParserObjectType, Privilege as ParserPrivilege, RevokeRoleStatement,
-    RevokeStatement, SetRoleStatement,
-    ShowStatement,
+    RevokeStatement, SetRoleStatement, ShowStatement,
 };
 use sqlrustgo_storage::{ColumnDefinition, StorageEngine};
 
@@ -523,35 +522,36 @@ impl<S: StorageEngine + 'static> ExecutionEngine<S> {
             AlterTableOperation::RenameColumn { name, new_name } => {
                 storage.rename_column(&alter.table_name, name, new_name)?;
             }
-            AlterTableOperation::AlterColumn { name, op } => {
-                match op {
-                    AlterColumnOperation::SetDataType { data_type } => {
-                        let column = ColumnDefinition {
-                            name: name.clone(),
-                            data_type: data_type.clone(),
-                            nullable: true,
-                            primary_key: false,
-                            char_max_length: None,
-                        };
-                        storage.modify_column(&alter.table_name, name, column)?;
-                    }
-                    AlterColumnOperation::SetDefault { .. } => {
-                        return Err(SqlError::ParseError(format!(
-                            "ALTER COLUMN '{}' SET DEFAULT not supported", name
-                        )));
-                    }
-                    AlterColumnOperation::DropDefault => {
-                        return Err(SqlError::ParseError(format!(
-                            "ALTER COLUMN '{}' DROP DEFAULT not supported", name
-                        )));
-                    }
-                    AlterColumnOperation::DropNotNull => {
-                        return Err(SqlError::ParseError(format!(
-                            "ALTER COLUMN '{}' DROP NOT NULL not supported", name
-                        )));
-                    }
+            AlterTableOperation::AlterColumn { name, op } => match op {
+                AlterColumnOperation::SetDataType { data_type } => {
+                    let column = ColumnDefinition {
+                        name: name.clone(),
+                        data_type: data_type.clone(),
+                        nullable: true,
+                        primary_key: false,
+                        char_max_length: None,
+                    };
+                    storage.modify_column(&alter.table_name, name, column)?;
                 }
-            }
+                AlterColumnOperation::SetDefault { .. } => {
+                    return Err(SqlError::ParseError(format!(
+                        "ALTER COLUMN '{}' SET DEFAULT not supported",
+                        name
+                    )));
+                }
+                AlterColumnOperation::DropDefault => {
+                    return Err(SqlError::ParseError(format!(
+                        "ALTER COLUMN '{}' DROP DEFAULT not supported",
+                        name
+                    )));
+                }
+                AlterColumnOperation::DropNotNull => {
+                    return Err(SqlError::ParseError(format!(
+                        "ALTER COLUMN '{}' DROP NOT NULL not supported",
+                        name
+                    )));
+                }
+            },
             AlterTableOperation::SetPartitionedBy => {
                 return Err(SqlError::ParseError(
                     "ALTER TABLE ... SET PARTITIONED BY not supported".to_string(),

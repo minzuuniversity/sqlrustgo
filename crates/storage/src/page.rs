@@ -372,8 +372,12 @@ pub fn bytes_to_value(data: &[u8]) -> Option<Value> {
             }
         }
         0x07 if data.len() >= 17 => {
-            let x = f64::from_le_bytes([data[1], data[2], data[3], data[4], data[5], data[6], data[7], data[8]]);
-            let y = f64::from_le_bytes([data[9], data[10], data[11], data[12], data[13], data[14], data[15], data[16]]);
+            let x = f64::from_le_bytes([
+                data[1], data[2], data[3], data[4], data[5], data[6], data[7], data[8],
+            ]);
+            let y = f64::from_le_bytes([
+                data[9], data[10], data[11], data[12], data[13], data[14], data[15], data[16],
+            ]);
             Some(Value::Point(x, y))
         }
         0x08 if data.len() >= 5 => {
