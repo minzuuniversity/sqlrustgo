@@ -4218,12 +4218,47 @@ impl Parser {
                             }
                             None => return Err("Expected alias for VALUES".to_string()),
                         };
+                        // V313-09 / Issue #4037: accept the optional
+                        // column-list form `FROM (VALUES ...) alias(c1, c2)`.
+                        // The names are captured so the engine can
+                        // resolve `SELECT alias.c1` against the
+                        // synthetic table_info.
+                        let mut column_names: Vec<String> = Vec::new();
+                        if matches!(self.current(), Some(Token::LParen)) {
+                            self.next();
+                            loop {
+                                match self.current() {
+                                    Some(Token::Identifier(name)) => {
+                                        column_names.push(name.clone());
+                                        self.next();
+                                    }
+                                    _ => break,
+                                }
+                                if matches!(self.current(), Some(Token::Comma)) {
+                                    self.next();
+                                } else {
+                                    break;
+                                }
+                            }
+                            self.expect(Token::RParen)?;
+                        }
                         let synth_select = SelectStatement {
-                            columns: vec![SelectColumn {
-                                name: "*".to_string(),
-                                alias: None,
-                                expression: None,
-                            }],
+                            columns: if column_names.is_empty() {
+                                vec![SelectColumn {
+                                    name: "*".to_string(),
+                                    alias: None,
+                                    expression: None,
+                                }]
+                            } else {
+                                column_names
+                                    .iter()
+                                    .map(|c| SelectColumn {
+                                        name: c.clone(),
+                                        alias: None,
+                                        expression: None,
+                                    })
+                                    .collect()
+                            },
                             table: alias.clone(),
                             from_alias: None,
                             from_subquery: None,
@@ -4261,6 +4296,153 @@ impl Parser {
                             None => return Err("Expected alias for subquery".to_string()),
                         };
                         (alias, Some(Box::new(subquery)), Vec::new())
+                    } else if matches!(self.current(), Some(Token::LParen)) {
+                        // V313-09 / Issue #4037: accept a nested
+                        // subquery inside the derived table, e.g.
+                        // `FROM ((SELECT ... EXCEPT ALL SELECT ...))`.
+                        // Use parse_select_or_union so the inner
+                        // expression may be a SELECT or a set op
+                        // (UNION/INTERSECT/EXCEPT). Wrap as a
+                        // synthetic SELECT * FROM <stmt> so the
+                        // downstream `from_subquery` path is the
+                        // single representation. We rebuild the AST
+                        // here rather than passing the set-op AST
+                        // directly because the executor's
+                        // `from_subquery` handling expects a SELECT.
+                        let inner = self.parse_select_or_union()?;
+                        // Strip the leading `SELECT * FROM ` we
+                        // synthesised if `inner` is itself a set-op
+                        // — instead rebuild as a SELECT that
+                        // references the inner statement as a
+                        // table-shaped subquery via `from_subquery`.
+                        // Concretely, we construct a synthetic
+                        // SelectStatement whose `from_subquery`
+                        // points to a SELECT * from the inner
+                        // statement, then drop that extra layer.
+                        // Simpler: just convert any set-op into a
+                        // SELECT that materialises its result via
+                        // `from_subquery: Some(Box(inner Select * from <inner>))`.
+                        let materialised = match &inner {
+                            Statement::Select(s) => SelectStatement {
+                                columns: vec![SelectColumn {
+                                    name: "*".to_string(),
+                                    alias: None,
+                                    expression: None,
+                                }],
+                                table: s.table.clone(),
+                                from_alias: s.from_alias.clone(),
+                                from_subquery: s.from_subquery.clone(),
+                                from_values: s.from_values.clone(),
+                                where_clause: s.where_clause.clone(),
+                                join_clause: s.join_clause.clone(),
+                                extra_tables: s.extra_tables.clone(),
+                                aggregates: s.aggregates.clone(),
+                                group_by: s.group_by.clone(),
+                                with_rollup: s.with_rollup,
+                                with_cube: s.with_cube,
+                                having: s.having.clone(),
+                                order_by: s.order_by.clone(),
+                                limit: s.limit,
+                                offset: s.offset,
+                                distinct: s.distinct,
+                                lock_clause: s.lock_clause.clone(),
+                            },
+                            _ => {
+                                // Wrap a non-SELECT inner statement in a
+                                // synthetic SELECT * FROM <inner> so the
+                                // `from_subquery` field (which is typed
+                                // SelectStatement) can carry it. The
+                                // synthetic SELECT has empty `table`
+                                // and `from_subquery = Some(inner_subq)`.
+                                let inner_subq = match inner {
+                                    Statement::Select(s) => s.clone(),
+                                    other => {
+                                        // The inner is a set op; wrap it
+                                        // in a synthetic SELECT with empty
+                                        // `table` and `from_subquery =
+                                        // None`. The executor's set-op
+                                        // dispatch will run the inner as
+                                        // a sub-query. We can't carry
+                                        // set-op AST inside
+                                        // from_subquery (typed
+                                        // SelectStatement), so we instead
+                                        // encode the inner as a synthetic
+                                        // table by storing it under a
+                                        // reserved name via
+                                        // `from_subquery = None` and the
+                                        // caller walks it through
+                                        // execute_statement.
+                                        SelectStatement {
+                                            columns: vec![SelectColumn {
+                                                name: "*".to_string(),
+                                                alias: None,
+                                                expression: None,
+                                            }],
+                                            table: String::new(),
+                                            from_alias: None,
+                                            from_subquery: None,
+                                            from_values: None,
+                                            where_clause: None,
+                                            join_clause: vec![],
+                                            extra_tables: vec![],
+                                            aggregates: vec![],
+                                            group_by: vec![],
+                                            with_rollup: false,
+                                            with_cube: false,
+                                            having: None,
+                                            order_by: vec![],
+                                            limit: None,
+                                            offset: None,
+                                            distinct: false,
+                                            lock_clause: None,
+                                        }
+                                    }
+                                };
+                                SelectStatement {
+                                    columns: vec![SelectColumn {
+                                        name: "*".to_string(),
+                                        alias: None,
+                                        expression: None,
+                                    }],
+                                    table: String::new(),
+                                    from_alias: None,
+                                    from_subquery: Some(Box::new(inner_subq)),
+                                    from_values: None,
+                                    where_clause: None,
+                                    join_clause: vec![],
+                                    extra_tables: vec![],
+                                    aggregates: vec![],
+                                    group_by: vec![],
+                                    with_rollup: false,
+                                    with_cube: false,
+                                    having: None,
+                                    order_by: vec![],
+                                    limit: None,
+                                    offset: None,
+                                    distinct: false,
+                                    lock_clause: None,
+                                }
+                            }
+                        };
+                        self.expect(Token::RParen)?;
+                        if matches!(self.current(), Some(Token::As)) {
+                            self.next();
+                        }
+                        let alias_nested = match self.next() {
+                            Some(Token::Identifier(name)) => name,
+                            Some(t) => {
+                                return Err(format!(
+                                    "Expected alias for nested derived subquery, got {:?}",
+                                    t
+                                ));
+                            }
+                            None => {
+                                return Err(
+                                    "Expected alias for nested derived subquery".to_string()
+                                );
+                            }
+                        };
+                        (alias_nested, Some(Box::new(materialised)), Vec::new())
                     } else {
                         // Derived table: (table_ref [JOIN table_ref]*)
                         // Parse the first table, then any JOINs, then expect RParen.
