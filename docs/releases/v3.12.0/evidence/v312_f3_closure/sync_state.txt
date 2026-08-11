@@ -1,0 +1,52 @@
+V312-F-3 closure evidence (2026-08-11):
+EXPECTED: 36691ed2b418c421c9fad24651649ae60a044238 (v3.11.0-ga tag commit)
+
+## Final Disposition: ✅ CLOSED (5/5 synced)
+
+## Bug Fix Summary
+scripts/gate/check_v312_01_blocker_closed.sh Gap 7 (5 remotes synced)
+- BEFORE: used phantom remote names "250", "252" which were never registered
+  in .git/config → 0/5 phantom slots always FAIL regardless of actual sync state
+- AFTER: uses real remote names from .git/config
+  (gitea250, gitea, gitcode, gitee, github) → reflects actual sync state
+
+## Additional Fix
+gitee remote URL switched from HTTPS (embedded token) to SSH:
+  - BEFORE: https://yinglichina8848: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@gitee.com/yinglichina/sqlrustgo.git
+            ↑ token invalid (HTTP 401 "Access token does not exist" since 2026-08-11)
+  - AFTER:  git@gitee.com:yinglichina/sqlrustgo.git
+            ↑ uses ~/.ssh/id_ed25519 (also registered to gitee.com profile)
+
+## Sync Verification (real-time git ls-remote, 2026-08-11)
+
+### Synced (5/5):
+gitea250: 36691ed2b418c421c9fad24651649ae60a044238 refs/tags/v3.11.0-ga^{}
+gitea:    36691ed2b418c421c9fad24651649ae60a044238 refs/tags/v3.11.0-ga^{}
+gitcode:  36691ed2b418c421c9fad24651649ae60a044238 refs/tags/v3.11.0-ga^{}
+gitee:    36691ed2b418c421c9fad24651649ae60a044238 refs/tags/v3.11.0-ga^{}
+          (via git@gitee.com SSH key, ~/.ssh/id_ed25519)
+github:   36691ed2b418c421c9fad24651649ae60a044238 refs/tags/v3.11.0-ga^{}
+          (via git@github.com:yinglichina8848/sqlrustgo.git SSH key auth)
+
+## Gate Result
+PASS: 7/7  ← ALL GAPS PASS
+FAIL: 0/7
+
+V312-01 blocker disposition: PASS
+v3.12.0 can be promoted to ALPHA
+
+## Progress vs Original
+- Original F-3 state: 1/5 (using phantom remote names)
+- Current state:      5/5 (script fix + gitee SSH switch)
+- Delta:              +4 remotes correctly recognized as synced
+
+## Follow-up INDEX Close Conditions (per FOLLOWUP-INDEX.md)
+1. ✅ check_v312_01_blocker_closed.sh status=pass  (PASS 7/7)
+2. ⏳ PR with evidence_hash + log_path  (to be created next)
+3. ⏳ Gitea #3887 INDEX comment "✅ F-3 closed at <sha>"  (to be posted)
+4. ⏳ Update #3887 checklist  (to be updated)
+
+## Files Changed
+- scripts/gate/check_v312_01_blocker_closed.sh (Gap 7 phantom→real remotes)
+- .git/config (gitee remote URL HTTPS→SSH, local-only)
+- docs/releases/v3.12.0/evidence/v312_f3_closure/sync_state.txt (this file)

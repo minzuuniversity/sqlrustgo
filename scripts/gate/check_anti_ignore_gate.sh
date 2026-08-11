@@ -20,9 +20,7 @@ import json
 with open("$REGISTRY") as f:
     data = json.load(f)
 total_allowed = data.get("total_allowed", 0)
-# Count entries that are not marked as RETIRED as active
-entries = data.get("ignored_tests", [])
-active = sum(1 for e in entries if "RETIRED" not in e.get("line", ""))
+active = sum(1 for e in data.get("ignored_tests", []) if e.get("status") == "ACTIVE")
 print(f"{active} {total_allowed}")
 PYEOF
 }

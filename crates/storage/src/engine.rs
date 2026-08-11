@@ -202,9 +202,8 @@ fn compare_values(col_val: &Value, compare_with: &str, op: &str) -> SqlResult<bo
             }
             Value::Blob(_) => Ok(false),
             Value::Point(_, _) => Ok(false),
-            Value::Json(_) => Ok(false),
+            &Value::Json(_) => Ok(false),
         },
-        "neq" => Ok(!compare_values(col_val, compare_with, "eq")?),
         "gt" | "gte" | "lt" | "lte" => {
             match col_val {
                 Value::Integer(i) => {
@@ -255,7 +254,7 @@ fn is_zero_or_empty(val: &Value) -> bool {
         Value::Null => true,
         Value::Blob(_) => false,
         Value::Point(_, _) => false,
-        Value::Json(_) => false,
+        &Value::Json(_) => false,
     }
 }
 
@@ -855,7 +854,11 @@ impl Default for MemoryStorage {
 
 impl StorageEngine for MemoryStorage {
     fn scan(&self, table: &str) -> SqlResult<Vec<Record>> {
-        Ok(self.tables.get(table).cloned().unwrap_or_default())
+        Ok(self
+            .tables
+            .get(&table.to_lowercase())
+            .cloned()
+            .unwrap_or_default())
     }
 
     fn begin_transaction(&mut self) -> SqlResult<u64> {
@@ -902,15 +905,13 @@ impl StorageEngine for MemoryStorage {
     }
 
     fn insert(&mut self, table: &str, records: Vec<Record>) -> SqlResult<()> {
+        let table_key = table.to_lowercase();
         if let Some(log) = self.tx_log.as_mut() {
             for row in &records {
-                log.inserted.push((table.to_string(), row.clone()));
+                log.inserted.push((table_key.clone(), row.clone()));
             }
         }
-        self.tables
-            .entry(table.to_string())
-            .or_default()
-            .extend(records);
+        self.tables.entry(table_key).or_default().extend(records);
         Ok(())
     }
 
@@ -1035,8 +1036,12 @@ impl StorageEngine for MemoryStorage {
         Ok(count)
     }
     fn create_table(&mut self, info: &TableInfo) -> SqlResult<()> {
-        self.table_infos.insert(info.name.clone(), info.clone());
-        self.tables.entry(info.name.clone()).or_default();
+        // V312-19 #3972: store table info under lowercased key for case-insensitive lookup.
+        let key = info.name.to_lowercase();
+        let mut info = info.clone();
+        info.name = key.clone();
+        self.table_infos.insert(key.clone(), info);
+        self.tables.entry(key).or_default();
         Ok(())
     }
 
@@ -1052,21 +1057,25 @@ impl StorageEngine for MemoryStorage {
     }
 
     fn drop_table(&mut self, table: &str) -> SqlResult<()> {
-            self.tables.remove(&table.to_lowercase());
-            self.table_infos.remove(&table.to_lowercase());
-            Ok(())
-        }
+        // V312-19 #3972: case-insensitive table name lookup.
+        let key = table.to_lowercase();
+        self.tables.remove(&key);
+        self.table_infos.remove(&key);
+        Ok(())
+    }
 
     fn get_table_info(&self, table: &str) -> SqlResult<TableInfo> {
-            self.table_infos
-                .get(&table.to_lowercase())
-                .cloned()
-                .ok_or_else(|| SqlError::ExecutionError(format!("Table not found: {}", table)))
-        }
+        // V312-19 #3972: case-insensitive table name lookup.
+        self.table_infos
+            .get(&table.to_lowercase())
+            .cloned()
+            .ok_or_else(|| SqlError::ExecutionError(format!("Table not found: {}", table)))
+    }
 
     fn has_table(&self, table: &str) -> bool {
-            self.table_infos.contains_key(&table.to_lowercase())
-        }
+        // V312-19 #3972: case-insensitive table name lookup.
+        self.table_infos.contains_key(&table.to_lowercase())
+    }
 
     fn list_tables(&self) -> Vec<String> {
         self.table_infos.keys().cloned().collect()
@@ -1080,36 +1089,39 @@ impl StorageEngine for MemoryStorage {
         Ok(())
     }
 
-    fn add_column(&mut self, table: &str, column: ColumnDefinition) -> SqlResult<()> {
-            if let Some(info) = self.table_infos.get_mut(&table.to_lowercase()) {
-                info.columns.push(column);
-                Ok(())
-            } else {
-                Err(SqlError::ExecutionError(format!(
-                    "Cannot add column: table {} not found",
-                    table
-                )))
-            }
+    fn add_column(&mut self, table: &str, mut column: ColumnDefinition) -> SqlResult<()> {
+        // V312-19 #3972: case-insensitive table name lookup + lowercase column names
+        if let Some(info) = self.table_infos.get_mut(&table.to_lowercase()) {
+            column.name = column.name.to_lowercase();
+            info.columns.push(column);
+            Ok(())
+        } else {
+            Err(SqlError::ExecutionError(format!(
+                "Cannot add column: table {} not found",
+                table
+            )))
         }
+    }
 
     fn rename_table(&mut self, table: &str, new_name: &str) -> SqlResult<()> {
-            let table_lower = table.to_lowercase();
-            let new_name_lower = new_name.to_lowercase();
-            let info = self.table_infos.remove(&table_lower);
-            let records = self.tables.remove(&table_lower);
-            if let (Some(info), Some(records)) = (info, records) {
-                let mut new_info = info;
-                new_info.name = new_name.to_string();
-                self.table_infos.insert(new_name_lower.clone(), new_info);
-                self.tables.insert(new_name_lower, records);
-                Ok(())
-            } else {
-                Err(SqlError::ExecutionError(format!(
-                    "Cannot rename table: table {} not found",
-                    table
-                )))
-            }
+        // V312-19 #3972: case-insensitive table name lookup.
+        let key = table.to_lowercase();
+        let new_key = new_name.to_lowercase();
+        let info = self.table_infos.remove(&key);
+        let records = self.tables.remove(&key);
+        if let (Some(info), Some(records)) = (info, records) {
+            let mut new_info = info;
+            new_info.name = new_key.clone();
+            self.table_infos.insert(new_key.clone(), new_info);
+            self.tables.insert(new_key, records);
+            Ok(())
+        } else {
+            Err(SqlError::ExecutionError(format!(
+                "Cannot rename table: table {} not found",
+                table
+            )))
         }
+    }
 
     fn create_trigger(&mut self, info: TriggerInfo) -> SqlResult<()> {
         self.triggers.insert(info.name.clone(), info);
@@ -1231,56 +1243,58 @@ impl StorageEngine for MemoryStorage {
     }
 
     fn drop_column(&mut self, table: &str, column: &str) -> SqlResult<()> {
-            let info = self
-                .table_infos
-                .get_mut(&table.to_lowercase())
-                .ok_or_else(|| SqlError::ExecutionError(format!("Table not found: {}", table)))?;
-            let col_idx = info
-                .columns
-                .iter()
-                .position(|c| c.name == column)
-                .ok_or_else(|| SqlError::ExecutionError(format!("Column not found: {}", column)))?;
-            info.columns.remove(col_idx);
-            if let Some(records) = self.tables.get_mut(&table.to_lowercase()) {
-                for record in records.iter_mut() {
-                    if col_idx < record.len() {
-                        record.remove(col_idx);
-                    }
+        let table_key = table.to_lowercase();
+        let info = self
+            .table_infos
+            .get_mut(&table_key)
+            .ok_or_else(|| SqlError::ExecutionError(format!("Table not found: {}", table)))?;
+        let col_idx = info
+            .columns
+            .iter()
+            .position(|c| c.name.to_lowercase() == column.to_lowercase())
+            .ok_or_else(|| SqlError::ExecutionError(format!("Column not found: {}", column)))?;
+        info.columns.remove(col_idx);
+        if let Some(records) = self.tables.get_mut(&table_key) {
+            for record in records.iter_mut() {
+                if col_idx < record.len() {
+                    record.remove(col_idx);
                 }
             }
-            Ok(())
         }
+        Ok(())
+    }
 
     fn modify_column(
-            &mut self,
-            table: &str,
-            column: &str,
-            new_def: ColumnDefinition,
-        ) -> SqlResult<()> {
-            let info = self
-                .table_infos
-                .get_mut(&table.to_lowercase())
-                .ok_or_else(|| SqlError::ExecutionError(format!("Table not found: {}", table)))?;
-            let col_idx = info
-                .columns
-                .iter()
-                .position(|c| c.name == column)
-                .ok_or_else(|| SqlError::ExecutionError(format!("Column not found: {}", column)))?;
-            info.columns[col_idx] = new_def;
-            Ok(())
-        }
+        &mut self,
+        table: &str,
+        column: &str,
+        mut new_def: ColumnDefinition,
+    ) -> SqlResult<()> {
+        let info = self
+            .table_infos
+            .get_mut(&table.to_lowercase())
+            .ok_or_else(|| SqlError::ExecutionError(format!("Table not found: {}", table)))?;
+        let col_idx = info
+            .columns
+            .iter()
+            .position(|c| c.name.to_lowercase() == column.to_lowercase())
+            .ok_or_else(|| SqlError::ExecutionError(format!("Column not found: {}", column)))?;
+        new_def.name = new_def.name.to_lowercase();
+        info.columns[col_idx] = new_def;
+        Ok(())
+    }
 
     fn rename_column(&mut self, table: &str, old_name: &str, new_name: &str) -> SqlResult<()> {
         let info = self
             .table_infos
-            .get_mut(table)
+            .get_mut(&table.to_lowercase())
             .ok_or_else(|| SqlError::ExecutionError(format!("Table not found: {}", table)))?;
         let col = info
             .columns
             .iter_mut()
-            .find(|c| c.name == old_name)
+            .find(|c| c.name.to_lowercase() == old_name.to_lowercase())
             .ok_or_else(|| SqlError::ExecutionError(format!("Column not found: {}", old_name)))?;
-        col.name = new_name.to_string();
+        col.name = new_name.to_lowercase();
         Ok(())
     }
     fn parallel_scan(
@@ -1290,7 +1304,7 @@ impl StorageEngine for MemoryStorage {
     ) -> SqlResult<Vec<Box<dyn Iterator<Item = Record> + Send>>> {
         let data = self
             .tables
-            .get(table)
+            .get(&table.to_lowercase())
             .ok_or_else(|| SqlError::ExecutionError(format!("Table not found: {}", table)))?;
         let total = data.len();
         if total == 0 || num_partitions == 0 {

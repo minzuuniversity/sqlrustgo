@@ -62,9 +62,9 @@ GATES=(
     "G14|Real Crash|check_g14_real_crash.sh|#3203|warn"
     "G15|Perf Report|check_g15_perf_report.sh|#3204|warn"
     "G16|Compatibility|check_g16_compatibility.sh|#3205|warn"
-    "G17|check_coverage_v312.sh|check_coverage_v312.sh|#V312-31|yes"
-    "G18|check_sql_corpus_gate.sh|check_sql_corpus_gate.sh|#V312-31|yes"
-    "G19|check_anti_ignore_gate.sh|check_anti_ignore_gate.sh|#V312-31|yes"
+    "G17|check_coverage_v312|check_coverage_v312.sh|#3206|yes"
+    "G18|check_sql_corpus_gate|check_sql_corpus_gate.sh|#3207|yes"
+    "G19|check_anti_ignore_gate|check_anti_ignore_gate.sh|#3208|yes"
 )
 
 # G10 has 3 sub-scripts

@@ -117,7 +117,10 @@ fn keyword_score(query: &str, title: &str, doc_type: &str) -> f32 {
 fn document_matches_filter(doc: &Document, filter: &RetrievalFilter) -> bool {
     // Doc type filter
     if !filter.doc_types.is_empty()
-        && !filter.doc_types.iter().any(|t| t.eq_ignore_ascii_case(&doc.doc_type))
+        && !filter
+            .doc_types
+            .iter()
+            .any(|t| t.eq_ignore_ascii_case(&doc.doc_type))
     {
         return false;
     }
@@ -125,7 +128,11 @@ fn document_matches_filter(doc: &Document, filter: &RetrievalFilter) -> bool {
     // Status filter
     if !filter.statuses.is_empty() {
         let status_str = doc.status.as_str();
-        if !filter.statuses.iter().any(|s| s.eq_ignore_ascii_case(status_str)) {
+        if !filter
+            .statuses
+            .iter()
+            .any(|s| s.eq_ignore_ascii_case(status_str))
+        {
             return false;
         }
     }
@@ -204,8 +211,7 @@ pub fn hybrid_retrieval(
         let graph_boost = if true {
             0.0
         } else {
-            let neighbors = get_neighbors(storage, doc.id, None)
-                .unwrap_or_default();
+            let neighbors = get_neighbors(storage, doc.id, None).unwrap_or_default();
             let relation_count = neighbors.len() as f32;
             (relation_count / 10.0).min(1.0) // cap at 1.0
         };
@@ -218,16 +224,17 @@ pub fn hybrid_retrieval(
         if combined > 0.0 || kw_score > 0.0 || vector_score > 0.0 {
             // Get latest version
             let versions = get_document_versions(storage, doc.id).unwrap_or_default();
-            let version_number = versions
-                .iter()
-                .map(|v| v.version_number)
-                .max()
-                .unwrap_or(1);
+            let version_number = versions.iter().map(|v| v.version_number).max().unwrap_or(1);
 
             // Get first chunk for citation
-            let chunks = get_chunks_for_version(storage, doc.id, version_number).unwrap_or_default();
+            let chunks =
+                get_chunks_for_version(storage, doc.id, version_number).unwrap_or_default();
             let (chunk_id, chunk_hash, citation_text) = if let Some(chunk) = chunks.first() {
-                (chunk.id, Chunk::compute_hash(&chunk.content_text), chunk.content_text.clone())
+                (
+                    chunk.id,
+                    Chunk::compute_hash(&chunk.content_text),
+                    chunk.content_text.clone(),
+                )
             } else {
                 (doc.id, "".to_string(), doc.title.clone())
             };

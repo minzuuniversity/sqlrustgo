@@ -1,8 +1,11 @@
 # MySQL Compatibility Status — v3.12.0 (V312-13 / V312-24 boundary)
 
+> **provenance:** generated_by=v3.12.0-remediation-round-3, generated_at=2026-08-10T10:49:33Z, commit=898768bd89, source_repo=openclaw/sqlrustgo, branch=develop/v3.12.0, policy=Anti-Fabrication-Policy-v1.0
+
 **Branch:** `develop/v3.12.0`
 **Date:** 2026-08-09
 **Updated:** 2026-08-09T16:42:00Z (V312-13 closure scope)
+**commit**: 898768bd89
 
 
 ## V312-13 vs V312-24 Boundary
@@ -13,6 +16,20 @@
 | LOAD DATA parser / SF=1 full exec / SF=10 / TLS / compression / parameterized binary / COM_RESET_CONNECTION server | #3959 (V312-24) | 🔜 **Deferred** | openclaw | 2026-09-30 |
 
 This file documents the V3.12.0 MySQL compatibility surface. Items split between V312-13 (✅ done in #3900) and V312-24 (deferred to #3959).
+
+### V312-F-6 (ISSUE #4029) Cross-Reference
+
+All MySQL compatibility items deferred from V312-13 to V312-24 are tracked
+in [openclaw/sqlrustgo#3959](https://github.com/openclaw/sqlrustgo/issues/3959).
+The V312-24 owner is `openclaw` and the contract expiry is **2026-09-30**.
+
+Specifically deferred (per V312-13-REPORT.md boundary table):
+- LOAD DATA INFILE SF=1 server-side execution
+- LOAD DATA INFILE SF=10 server-side execution
+- TLS handshake (server-side)
+- Compression negotiation (server-side)
+- COM_RESET_CONNECTION server-side (currently returns "Unknown command")
+- LOAD DATA parser hardening (currently accepts basic subset)
 
 
 ## Supported

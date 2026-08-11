@@ -1,5 +1,8 @@
 # V312-15 CREATE SEQUENCE Executor Close-out Assessment
 
+> **provenance:** generated_by=v3.12.0-remediation-round-3, generated_at=2026-08-10T10:49:33Z, commit=1903545df6d036f7f6d5035a0503b5fa932aac51, source_repo=openclaw/sqlrustgo, branch=develop/v3.12.0, policy=Anti-Fabrication-Policy-v1.0
+> **commit**: 1903545df6d036f7f6d5035a0503b5fa932aac51
+
 > **Created**: 2026-08-09
 > **Agent**: claude-code
 > **Source Issue**: #3902

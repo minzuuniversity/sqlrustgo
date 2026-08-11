@@ -1,10 +1,12 @@
 # SQLRustGo v3.12.0 版本计划
 
+> **provenance:** generated_by=v3.12.0-remediation-round-3, generated_at=2026-08-10T10:49:33Z, commit=1903545df6d036f7f6d5035a0503b5fa932aac51, source_repo=openclaw/sqlrustgo, branch=develop/v3.12.0, policy=Anti-Fabrication-Policy-v1.0
+
 > **版本**: v3.12.0
 > **状态**: 规划中
 > **日期**: 2026-08-09
 > **产品目标**: 面向 `~/gmp-platform` 的 GMP 内审检索数据库
-> **规划来源**: `docs/plans/2026-08-08-sqlrustgo-v312-v400-gmp-rag-graph-plan.md`
+> **commit**: 1903545df6d036f7f6d5035a0503b5fa932aac51
 
 ## 1. 版本定位
 

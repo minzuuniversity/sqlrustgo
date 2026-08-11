@@ -1,0 +1,13 @@
+Label:         soak_40m_8t
+Duration:      122s (target 2400s)
+Threads:       8
+Total queries: 2872270
+Total errors:  8
+Error rate:   0.0003%
+Final QPS:     23476.7
+RSS start:    7748 KB
+RSS end:      8320 KB
+RSS growth:   572 KB
+FD start:     5
+FD end:       5
+PASS:         NO

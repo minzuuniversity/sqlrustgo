@@ -86,6 +86,8 @@ pub enum Statement {
     Intersect(IntersectStatement),
     /// SQL-92 EXCEPT (V310-06 PR2 / Issue #3723 C-2b).
     Except(ExceptStatement),
+    /// VALUES constructor — for FROM (VALUES ...) AS alias
+    Values(Vec<Vec<Expression>>),
     Transaction(TransactionStatement),
     Grant(GrantStatement),
     Revoke(RevokeStatement),
@@ -516,6 +518,8 @@ pub struct SelectStatement {
     /// result into a temporary table named `table`, then runs the outer
     /// SELECT against that table.
     pub from_subquery: Option<Box<SelectStatement>>,
+    /// VALUES constructor: FROM (VALUES ...) AS alias
+    pub from_values: Option<Vec<Vec<Expression>>>,
     pub where_clause: Option<Expression>,
     pub join_clause: Vec<JoinClause>,
     /// TPC-H Sprint 1c: additional tables from `FROM t1, t2, t3` (after the
@@ -678,6 +682,12 @@ pub struct CreateTableStatement {
     /// V311-12 F-27: table compression specifier.
     /// Syntax: COMPRESS (ALGORITHM=LZ4) or COMPRESS (ALGORITHM=ZSTD)
     pub compress: Option<CompressionSpec>,
+    /// V312-18: CREATE TABLE AS SELECT - the SELECT statement to populate the table.
+    pub select: Option<Box<SelectStatement>>,
+    /// V312-18: CREATE OR REPLACE TABLE flag.
+    pub or_replace: bool,
+    /// V312-18: WITH NO DATA / WITH DATA clause for CTAS.
+    pub with_data: Option<bool>,
 }
 
 /// Compression specification for table compression (F-27)
@@ -890,6 +900,40 @@ pub enum Expression {
     /// JSON literal: JSON_EXTRACT / JSON_VALUE operands and JSON() constructor.
     /// The `String` field stores the canonical JSON text produced by serde_json.
     JsonLiteral(String),
+}
+
+/// V312-19 #3972: constant-fold an arithmetic expression to a `u64` LIMIT/OFFSET value.
+/// Returns `None` if the expression is not a constant integer.
+/// Supports `+ - * / %` on integer literals.
+fn constant_fold_u64(expr: &Expression) -> Option<u64> {
+    match expr {
+        Expression::Literal(s) => s.parse::<u64>().ok(),
+        Expression::BinaryOp(left, op, right) => {
+            let l = constant_fold_u64(left)?;
+            let r = constant_fold_u64(right)?;
+            match op.as_str() {
+                "+" => l.checked_add(r),
+                "-" => l.checked_sub(r),
+                "*" => l.checked_mul(r),
+                "/" => {
+                    if r != 0 {
+                        l.checked_div(r)
+                    } else {
+                        None
+                    }
+                }
+                "%" => {
+                    if r != 0 {
+                        l.checked_rem(r)
+                    } else {
+                        None
+                    }
+                }
+                _ => None,
+            }
+        }
+        _ => None,
+    }
 }
 
 /// Flatten a top-level AND conjunction: `a AND b AND c` -> vec![a, b, c].
@@ -1786,6 +1830,14 @@ impl Parser {
             // first) actually wins. Regular ROLLBACK [WORK] is handled
             // by the `Some(Token::Rollback)` arm at the bottom of this
             // match, which calls parse_rollback.
+            // V312-19 #3986: SET session variable (e.g. SET debug_force_external=true)
+            // routes to parse_set_session_variable, not parse_transaction.
+            Some(Token::Set)
+                if self.peek() != Some(&Token::Transaction)
+                    && self.peek() != Some(&Token::Role) =>
+            {
+                self.parse_set_session_variable()
+            }
             Some(Token::Begin) | Some(Token::Commit) | Some(Token::Set) | Some(Token::Start) => {
                 self.parse_transaction()
             }
@@ -2064,6 +2116,37 @@ impl Parser {
         Ok(Statement::SetRole(SetRoleStatement { role_name }))
     }
 
+    /// V312-11-fix #3986: parse `SET variable = value` (session variable).
+    fn parse_set_session_variable(&mut self) -> Result<Statement, String> {
+        self.expect(Token::Set)?;
+        if matches!(self.current(), Some(Token::Identifier(ref s)) if s.to_lowercase() == "variable")
+        {
+            self.next();
+        }
+        let name = match self.next() {
+            Some(Token::Identifier(name)) => name,
+            Some(Token::StringLiteral(s)) => s,
+            Some(t) => return Err(format!("Expected variable name, got {:?}", t)),
+            None => return Err("Expected variable name".to_string()),
+        };
+        let value = if matches!(self.current(), Some(Token::Equal)) {
+            self.next();
+            match self.next() {
+                Some(Token::NumberLiteral(n)) => n,
+                Some(Token::StringLiteral(s)) => s,
+                Some(Token::BooleanLiteral(true)) => "true".to_string(),
+                Some(Token::BooleanLiteral(false)) => "false".to_string(),
+                Some(t) => format!("{:?}", t),
+                None => String::new(),
+            }
+        } else {
+            String::new()
+        };
+        Ok(Statement::Transaction(
+            TransactionStatement::SetSessionVariable { name, value },
+        ))
+    }
+
     fn parse_isolation_level_value(&mut self) -> Result<IsolationLevel, String> {
         match self.current() {
             Some(Token::Serializable) => {
@@ -2099,8 +2182,31 @@ impl Parser {
 
     fn parse_create(&mut self) -> Result<Statement, String> {
         self.expect(Token::Create)?;
+
+        // V312-18: Handle CREATE OR REPLACE for TABLE and VIEW
+        let or_replace = if matches!(self.current(), Some(Token::Or)) {
+            self.next();
+            match self.current() {
+                Some(Token::Replace) => {
+                    self.next();
+                    true
+                }
+                _ => return Err("Expected 'REPLACE' after 'OR'".to_string()),
+            }
+        } else {
+            false
+        };
+
         match self.current() {
-            Some(Token::Table) => self.parse_create_table(),
+            Some(Token::Table) => {
+                let mut stmt = self.parse_create_table()?;
+                if or_replace {
+                    if let Statement::CreateTable(ref mut ct) = stmt {
+                        ct.or_replace = true;
+                    }
+                }
+                Ok(stmt)
+            }
             Some(Token::Index) => {
                 self.next();
                 self.parse_create_index(false)
@@ -2121,7 +2227,8 @@ impl Parser {
                 t
             )),
             None => Err(
-                "Expected TABLE, INDEX, PROCEDURE, TRIGGER, ROLE, VIEW, SEQUENCE, or DATABASE after CREATE".to_string(),
+                "Expected TABLE, INDEX, PROCEDURE, TRIGGER, ROLE, VIEW, SEQUENCE, or DATABASE after CREATE"
+                    .to_string(),
             ),
         }
     }
@@ -3011,7 +3118,8 @@ impl Parser {
                 | Some(Token::Except)
                 | Some(Token::Order)
                 | Some(Token::Limit)
-                | Some(Token::Offset) => break,
+                | Some(Token::Offset)
+                | Some(Token::Semicolon) => break,
                 Some(Token::From) | Some(Token::Eof) => {
                     break;
                 }
@@ -3995,8 +4103,84 @@ impl Parser {
                     // Sprint 1b: FROM (subquery) AS alias
                     // Sprint 1d: also support FROM (table_ref [JOIN table_ref]*) AS alias
                     // (derived table without explicit SELECT).
+                    // VALUES constructor: FROM (VALUES (...), (...) ) AS alias
                     self.next(); // consume (
-                    if matches!(self.current(), Some(Token::Select))
+                    if matches!(self.current(), Some(Token::Values)) {
+                        // Parse VALUES constructor
+                        self.next(); // consume VALUES
+                        let mut values = Vec::new();
+                        if !matches!(self.current(), Some(Token::LParen)) {
+                            return Err("Expected ( after VALUES".to_string());
+                        }
+                        loop {
+                            if !matches!(self.current(), Some(Token::LParen)) {
+                                break;
+                            }
+                            self.next(); // consume '('
+                            let mut row = Vec::new();
+                            loop {
+                                match self.current() {
+                                    Some(Token::RParen) => {
+                                        self.next();
+                                        break;
+                                    }
+                                    Some(Token::Comma) => {
+                                        self.next();
+                                    }
+                                    _ => {
+                                        let expr = self.parse_expression()?;
+                                        row.push(expr);
+                                    }
+                                }
+                            }
+                            values.push(row);
+                            match self.current() {
+                                Some(Token::Comma) => {
+                                    self.next();
+                                }
+                                _ => break,
+                            }
+                        }
+                        if values.is_empty() {
+                            return Err("Expected at least one row of values".to_string());
+                        }
+                        self.expect(Token::RParen)?;
+                        if matches!(self.current(), Some(Token::As)) {
+                            self.next();
+                        }
+                        let alias = match self.next() {
+                            Some(Token::Identifier(name)) => name,
+                            Some(t) => {
+                                return Err(format!("Expected alias for VALUES, got {:?}", t))
+                            }
+                            None => return Err("Expected alias for VALUES".to_string()),
+                        };
+                        let synth_select = SelectStatement {
+                            columns: vec![SelectColumn {
+                                name: "*".to_string(),
+                                alias: None,
+                                expression: None,
+                            }],
+                            table: alias.clone(),
+                            from_alias: None,
+                            from_subquery: None,
+                            from_values: Some(values),
+                            where_clause: None,
+                            join_clause: vec![],
+                            extra_tables: vec![],
+                            aggregates: vec![],
+                            group_by: vec![],
+                            with_rollup: false,
+                            with_cube: false,
+                            having: None,
+                            order_by: vec![],
+                            limit: None,
+                            offset: None,
+                            distinct: false,
+                            lock_clause: None,
+                        };
+                        (alias, Some(Box::new(synth_select)), Vec::new())
+                    } else if matches!(self.current(), Some(Token::Select))
                         || matches!(self.current(), Some(Token::With))
                         || matches!(self.current(), Some(Token::Values))
                     {
@@ -4052,6 +4236,7 @@ impl Parser {
                             table: first_table.clone(),
                             from_alias: first_alias.clone(),
                             from_subquery: None,
+                            from_values: None,
                             where_clause: None,
                             join_clause: vec![],
                             extra_tables: vec![],
@@ -4270,7 +4455,7 @@ impl Parser {
                     (first, None, rest)
                 }
             }
-            Some(Token::Eof) | None => (String::new(), None, Vec::new()),
+            Some(Token::Eof) | None | Some(Token::Semicolon) => (String::new(), None, Vec::new()),
             Some(Token::RParen) | Some(Token::Union) => (String::new(), None, Vec::new()),
             // V310-06 PR2: set-operation tokens also terminate the FROM
             // clause without error so parse_select_statement can be used
@@ -4754,13 +4939,22 @@ impl Parser {
                 }
                 Some(Token::Identifier(ref s)) => {
                     // Support LIMIT variable (e.g., @limit)
+                    // V312-19 #3972: also accept arithmetic expression via constant_fold_u64.
                     let val = s
                         .parse::<u64>()
                         .map_err(|e| format!("Invalid LIMIT: {}", e))?;
                     self.next();
                     Some(val)
                 }
-                _ => None,
+                _ => {
+                    // V312-19 #3972: accept arithmetic expression, e.g. LIMIT 2-1.
+                    let saved_pos = self.position;
+                    let expr = self.parse_expression()?;
+                    constant_fold_u64(&expr).or_else(|| {
+                        self.position = saved_pos;
+                        None
+                    })
+                }
             }
         } else {
             None
@@ -4788,7 +4982,15 @@ impl Parser {
                     self.next();
                     Some(val)
                 }
-                _ => None,
+                _ => {
+                    // V312-19 #3972: OFFSET also accepts arithmetic expression.
+                    let saved_pos = self.position;
+                    let expr = self.parse_expression()?;
+                    constant_fold_u64(&expr).or_else(|| {
+                        self.position = saved_pos;
+                        None
+                    })
+                }
             }
         } else {
             None
@@ -4867,6 +5069,7 @@ impl Parser {
             table,
             from_alias,
             from_subquery,
+            from_values: None,
             where_clause,
             join_clause,
             extra_tables,
@@ -7201,6 +7404,21 @@ impl Parser {
         if matches!(self.current(), Some(Token::Create)) {
             self.next(); // consume CREATE if not already consumed
         }
+
+        // V312-18: Parse OR REPLACE before TABLE keyword
+        let or_replace = if matches!(self.current(), Some(Token::Or)) {
+            self.next();
+            match self.current() {
+                Some(Token::Replace) => {
+                    self.next();
+                    true
+                }
+                _ => return Err("Expected 'REPLACE' after 'OR'".to_string()),
+            }
+        } else {
+            false
+        };
+
         self.expect(Token::Table)?;
 
         let if_not_exists = if matches!(self.current(), Some(Token::If)) {
@@ -7334,6 +7552,58 @@ impl Parser {
         // V311-12 F-27: Parse trailing `COMPRESS (ALGORITHM=LZ4)` clause.
         let compress = self.parse_compress_clause();
 
+        // V312-18: Parse AS SELECT clause for CREATE TABLE AS SELECT
+        let mut select: Option<Box<SelectStatement>> = None;
+        let mut with_data: Option<bool> = None;
+
+        if matches!(self.current(), Some(Token::As)) {
+            self.next();
+            match self.current() {
+                Some(Token::Select) => {
+                    let select_stmt = self.parse_select()?;
+                    match select_stmt {
+                        Statement::Select(s) => select = Some(Box::new(s)),
+                        _ => return Err("Expected SELECT statement".to_string()),
+                    }
+                    with_data = Some(true); // default: WITH DATA
+                }
+                Some(Token::With) => {
+                    // WITH NO DATA or WITH DATA
+                    self.next();
+                    let data_flag = match self.current() {
+                        Some(Token::No) => {
+                            self.next();
+                            match self.current() {
+                                Some(Token::Identifier(s)) if s.eq_ignore_ascii_case("DATA") => {
+                                    self.next();
+                                    false // WITH NO DATA
+                                }
+                                _ => return Err("Expected 'DATA' after 'NO'".to_string()),
+                            }
+                        }
+                        Some(Token::Identifier(s)) if s.eq_ignore_ascii_case("DATA") => {
+                            self.next();
+                            true // WITH DATA
+                        }
+                        _ => return Err("Expected 'NO DATA' or 'DATA' after 'WITH'".to_string()),
+                    };
+                    // Now parse SELECT after WITH clause
+                    match self.current() {
+                        Some(Token::Select) => {
+                            let select_stmt = self.parse_select()?;
+                            match select_stmt {
+                                Statement::Select(s) => select = Some(Box::new(s)),
+                                _ => return Err("Expected SELECT statement".to_string()),
+                            }
+                            with_data = Some(data_flag);
+                        }
+                        _ => return Err("Expected SELECT after WITH [NO] DATA clause".to_string()),
+                    }
+                }
+                _ => return Err("Expected SELECT after AS".to_string()),
+            }
+        }
+
         Ok(Statement::CreateTable(CreateTableStatement {
             name,
             columns,
@@ -7341,6 +7611,9 @@ impl Parser {
             if_not_exists,
             storage_engine,
             compress,
+            select,
+            or_replace,
+            with_data,
         }))
     }
 
@@ -13381,19 +13654,19 @@ fn test_split_sql_statements_block_comment() {
     assert_eq!(parts.len(), 2);
 }
 
-    #[test]
-    #[ignore = "V312-17: parse_statements() API doesn't handle EOF properly - quarantined"]
-    fn test_parse_statements_multiple() {
-        let stmts = parse_statements("SELECT 1; SELECT 2").unwrap();
-        assert_eq!(stmts.len(), 2);
-    }
+#[test]
+#[ignore = "V312-17: parse_statements() API doesn't handle EOF properly - quarantined"]
+fn test_parse_statements_multiple() {
+    let stmts = parse_statements("SELECT 1; SELECT 2").unwrap();
+    assert_eq!(stmts.len(), 2);
+}
 
-    #[test]
-    #[ignore = "V312-17: parse_statements() API doesn't handle EOF properly - quarantined"]
-    fn test_parse_statements_no_trailing() {
-        let stmts = parse_statements("SELECT 1; SELECT 2;").unwrap();
-        assert_eq!(stmts.len(), 2);
-    }
+#[test]
+#[ignore = "V312-17: parse_statements() API doesn't handle EOF properly - quarantined"]
+fn test_parse_statements_no_trailing() {
+    let stmts = parse_statements("SELECT 1; SELECT 2;").unwrap();
+    assert_eq!(stmts.len(), 2);
+}
 
 #[test]
 fn test_parse_statements_empty() {
@@ -13632,6 +13905,20 @@ fn test_parse_revoke() {
 fn test_parse_set_variable() {
     // SET is valid SQL
     let _ = parse("SET @x = 1");
+}
+
+/// V312-11-fix #3986: SET session variable
+#[test]
+fn test_parse_set_session_variable_3986() {
+    let result = parse("SET debug_force_external=true");
+    assert!(result.is_ok(), "Parse failed: {:?}", result);
+    match result.unwrap() {
+        Statement::Transaction(TransactionStatement::SetSessionVariable { name, value }) => {
+            assert_eq!(name, "debug_force_external");
+            assert_eq!(value, "true");
+        }
+        _ => panic!("Expected SetSessionVariable statement"),
+    }
 }
 
 #[test]

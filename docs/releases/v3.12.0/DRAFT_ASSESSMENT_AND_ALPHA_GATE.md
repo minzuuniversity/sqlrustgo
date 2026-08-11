@@ -1,9 +1,11 @@
-# SQLRustGo v3.12.0 Draft Assessment and Alpha Gate
+># SQLRustGo v3.12.0 Draft Assessment and Alpha Gate
 
+> **provenance:** generated_by=v3.12.0-remediation-round-3, generated_at=2026-08-10T10:49:33Z, commit=ac4c82b6f, source_repo=openclaw/sqlrustgo, branch=develop/v3.12.0, policy=Anti-Fabrication-Policy-v1.0
+>
 > **日期**: 2026-08-09
 > **执行人**: Codex
 > **阶段判断**: Draft 内容层面完成；Alpha promotion 仍需实跑门禁。
-
+> **gate_policy_eval_id**: v312-alpha-draft-assessment-001
 ## 1. Draft 完成项
 
 | 项 | 状态 | 证据 |

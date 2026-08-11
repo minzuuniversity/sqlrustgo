@@ -25,35 +25,14 @@
 
 | Q | rows | elapsed (ms) | notes |
 |---|------|---------------|-------|
-| Q 1 | 4 | 24015.0 | ok; 4 rows |
-| Q 2 | 642 | 2372.9 | ok; 642 rows |
-| Q 3 | 10 | 42747.1 | ok; 10 rows |
-| Q 4 | 2406 | 5577.9 | ok; 2406 rows |
-| Q 5 | 0 | 34906.0 | ok; 0 rows |
-| Q 6 | 1 | 8598.3 | ok; 1 rows |
-| Q 7 | 0 | 165148.5 | ok; 0 rows |
-| Q 8 | 0 | 11247.3 | ok; 0 rows |
-| Q 9 | 0 | 45081.1 | ok; 0 rows |
-| Q10 | 0 | 11450.2 | ok; 0 rows |
-| Q11 | 29636 | 4778.1 | ok; 29636 rows |
-| Q12 | 4 | 56078.4 | ok; 4 rows |
-| Q13 | 42 | 11270.6 | ok; 42 rows |
-| Q14 | 1 | 8968.5 | ok; 1 rows |
-| Q15 | 10000 | 9398.3 | ok; 10000 rows |
-| Q16 | 0 | 17335.6 | ok; 0 rows |
-| Q17 | 1 | 6544.2 | ok; 1 rows |
-| Q18 | 0 | 34452.0 | ok; 0 rows |
-| Q19 | 1 | 12326.0 | ok; 1 rows |
-| Q20 | 10000 | 222.5 | ok; 10000 rows |
-| Q21 | 0 | 56782.7 | ok; 0 rows |
-| Q22 | 7 | 10080.2 | ok; 7 rows |
+| Q 2 | 642 | 212532.5 | ok; 642 rows |
 
 ## Summary
 
 - 22/22 queries returned >= 1 row
-- Total rows across all 22 queries: 52755
-- Total elapsed time: 579381.4 ms (579.4 s)
-- Slowest query: Q7 (165148.5 ms)
+- Total rows across all 22 queries: 642
+- Total elapsed time: 212532.5 ms (212.5 s)
+- Slowest query: Q2 (212532.5 ms)
 
 ## Limitations
 

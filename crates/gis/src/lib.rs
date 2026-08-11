@@ -165,8 +165,7 @@ pub fn st_intersects(p1: &Polygon, p2: &Polygon) -> bool {
     let (p1_min_x, p1_min_y, p1_max_x, p1_max_y) = p1.bbox();
     let (p2_min_x, p2_min_y, p2_max_x, p2_max_y) = p2.bbox();
 
-    if p1_max_x < p2_min_x || p2_max_x < p1_min_x ||
-       p1_max_y < p2_min_y || p2_max_y < p1_min_y {
+    if p1_max_x < p2_min_x || p2_max_x < p1_min_x || p1_max_y < p2_min_y || p2_max_y < p1_min_y {
         return false;
     }
 
@@ -377,28 +376,22 @@ mod tests {
 /// Calculate the Haversine distance between two points in meters
 pub fn haversine_distance(p1: &Point, p2: &Point) -> f64 {
     const EARTH_RADIUS_METERS: f64 = 6371000.0;
-    
+
     let lat1 = p1.y.to_radians();
     let lat2 = p2.y.to_radians();
     let delta_lat = (p2.y - p1.y).to_radians();
     let delta_lon = (p2.x - p1.x).to_radians();
 
-    let a = (delta_lat / 2.0).sin().powi(2)
-        + lat1.cos() * lat2.cos() * (delta_lon / 2.0).sin().powi(2);
+    let a =
+        (delta_lat / 2.0).sin().powi(2) + lat1.cos() * lat2.cos() * (delta_lon / 2.0).sin().powi(2);
     let c = 2.0 * a.sqrt().asin();
-    
+
     EARTH_RADIUS_METERS * c
 }
 
 /// Calculate Euclidean distance between two points
 pub fn euclidean_distance(p1: &Point, p2: &Point) -> f64 {
     ((p2.x - p1.x).powi(2) + (p2.y - p1.y).powi(2)).sqrt()
-}
-
-/// ST_Intersects - returns true if two geometries intersect
-/// For points, uses a small tolerance
-pub fn st_intersects_points(p1: &Point, p2: &Point) -> bool {
-    euclidean_distance(p1, p2) < 1e-10
 }
 
 /// ST_Distance_Point - wrapper for SQL interface
@@ -408,5 +401,10 @@ pub fn st_distance_point(p1: &Point, p2: &Point) -> Value {
 
 /// ST_Intersects_Point - wrapper for SQL interface  
 pub fn st_intersects_point(p1: &Point, p2: &Point) -> Value {
-    Value::Boolean(st_intersects_points(p1, p2))
+    Value::Boolean(points_intersect(p1, p2))
+}
+
+/// Point-point intersection with tolerance
+fn points_intersect(p1: &Point, p2: &Point) -> bool {
+    euclidean_distance(p1, p2) < 1e-10
 }
