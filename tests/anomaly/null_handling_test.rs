@@ -144,6 +144,27 @@ mod tests {
         assert!(result.is_ok());
     }
 
+    /// V313-11 / Issue #4039 — GREEN regression: case-insensitive
+    /// ALTER TABLE column reference works. The case where SELECT on
+    /// a dropped column returns a Binder "column not found" error
+    /// requires the V313-13 binder-side column resolution change;
+    /// this V313-11 PR deliberately skips that case (storage-level
+    /// case-insensitive matching is already in place via the
+    /// V312-19 #3972 lower-cased keys, and the ALTER SET DATA TYPE
+    /// case exercises that path successfully). Mirrors the
+    /// case_insensitive_alter.test line 9 (`ALTER TABLE MyTable
+    /// ALTER BIGCOLUMN SET DATA TYPE VARCHAR`).
+    #[test]
+    fn green_v313_11_alter_case_insensitive_column() {
+        let mut engine = create_engine();
+        engine
+            .execute(r#"CREATE TABLE "MyTable"(i integer, "BigColumn" integer)"#)
+            .expect("CREATE TABLE must succeed");
+        engine
+            .execute("ALTER TABLE MyTable ALTER BIGCOLUMN SET DATA TYPE VARCHAR")
+            .expect("case-insensitive ALTER COLUMN reference must succeed");
+    }
+
     #[test]
     fn test_null_equality() {
         let mut engine = create_engine();

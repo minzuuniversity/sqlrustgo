@@ -1,16 +1,19 @@
 # name: test/sql/alter/alter_table_set_partitioned_by.test
-# description: Test ALTER TABLE SET PARTITIONED BY
+# description: Test ALTER TABLE SET PARTITIONED BY.
+#              V313-11 / Issue #4039 fix: the parser already accepted
+#              the SET / RESET PARTITIONED BY syntax and the engine
+#              raises a "not supported" error at execution time. The
+#              original fixture used an exact-multiline match for the
+#              substring "not supported", which fails when the engine
+#              emits a more descriptive message. Switch to inline
+#              regex so the substring is matched anywhere in the error.
 # group: [alter]
 
 statement ok
 CREATE TABLE tbl(i INTEGER);
 
-statement error
+statement error .*not supported.*
 ALTER TABLE tbl SET PARTITIONED BY (i)
-----
-not supported
 
-statement error
+statement error .*not supported.*
 ALTER TABLE tbl RESET PARTITIONED BY;
-----
-not supported
