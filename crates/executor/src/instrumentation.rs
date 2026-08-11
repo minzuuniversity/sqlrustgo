@@ -288,8 +288,8 @@ mod tests {
     fn noop_clone_is_zero_sized() {
         let h1 = NoopInstrumentationHook;
         let h2 = h1; // Copy
-        // Calls on both should still no-op
+                     // Calls on both should still no-op
         h1.on_seq_scan_start("a");
         h2.on_query_complete(1);
-}
+    }
 }

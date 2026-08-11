@@ -222,5 +222,40 @@ logs/gate_ga_<commit>_<timestamp>.log
 
 ---
 
-**关联 Issue**: #2682 (Beta Gate functional tracking vulnerability — gate passed but features incomplete)  
+**关联 Issue**: #2682 (Beta Gate functional tracking vulnerability — gate passed but features incomplete)
 **修复来源**: Hermes C 根因分析 (2026-05-31) — Beta Gate 只检查 B1-B4 基础设施，未追踪功能完整性
+
+## Coverage Gates (added 2026-08-10)
+
+### G17 — Coverage Gate
+
+| Stage | Threshold | Script |
+|-------|-----------|--------|
+| ALPHA | L1_8 avg >= 75% | scripts/gate/check_coverage_v312.sh |
+| BETA | L1_8 avg >= 80% | scripts/gate/check_coverage_v312.sh |
+| RC | L1_8 avg >= 80% | scripts/gate/check_coverage_v312.sh |
+| GA | L1_8 avg >= 80% | scripts/gate/check_coverage_v312.sh |
+
+L1_8 = {sqlrustgo-parser, sqlrustgo-planner, sqlrustgo-executor, sqlrustgo-transaction, sqlrustgo-storage, sqlrustgo-catalog, sqlrustgo-optimizer, sqlrustgo-types}.
+
+### G18 — SQL Corpus Gate
+
+| Stage | Threshold | Script |
+|-------|-----------|--------|
+| BETA | pass_rate >= 80.0% | scripts/gate/check_sql_corpus_gate.sh |
+| RC | pass_rate >= 80.0% | scripts/gate/check_sql_corpus_gate.sh |
+| GA | pass_rate >= 80.0% | scripts/gate/check_sql_corpus_gate.sh |
+
+Test target: `cargo test --release -p sqlrustgo-sql-corpus --test corpus_test test_sql_corpus_all`.
+
+### G19 — Anti-Ignore Gate
+
+| Stage | Threshold | Script |
+|-------|-----------|--------|
+| BETA | active <= 47, total_allowed <= 96 | scripts/gate/check_anti_ignore_gate.sh |
+| RC | active <= 47, total_allowed <= 96 | scripts/gate/check_anti_ignore_gate.sh |
+| GA | active <= 47, total_allowed <= 96 | scripts/gate/check_anti_ignore_gate.sh |
+
+Active = entries in `tests/baseline/ignore_registry.json` with status=ACTIVE.
+
+Note (2026-08-11): total_allowed ceiling bumped 73 -> 96 by V312-17 round-16 (codex #89297) which added 23 entries (round-16: 3418ac19a1, round-17: 628a621bd1).

@@ -242,6 +242,9 @@ pub enum Token {
     Boolean,
     Blob,
     Null,
+    // Used by `ALTER TABLE ... ALTER COLUMN ... SET DATA TYPE`
+    Data,
+    Type,
 
     // Operators
     Equal,
@@ -495,6 +498,8 @@ impl fmt::Display for Token {
             Token::Float => write!(f, "FLOAT"),
             Token::Boolean => write!(f, "BOOLEAN"),
             Token::Blob => write!(f, "BLOB"),
+            Token::Data => write!(f, "DATA"),
+            Token::Type => write!(f, "TYPE"),
             Token::Null => write!(f, "NULL"),
             // Operators - uppercase
             Token::Equal => write!(f, "="),
@@ -567,6 +572,8 @@ pub fn is_keyword(s: &str) -> bool {
             | "FLOAT"
             | "BOOLEAN"
             | "BLOB"
+            | "DATA"
+            | "TYPE"
             | "NULL"
             | "TRUE"
             | "FALSE"
@@ -646,6 +653,8 @@ pub fn from_keyword(s: &str) -> Option<Token> {
         "FLOAT" => Some(Token::Float),
         "BOOLEAN" => Some(Token::Boolean),
         "BLOB" => Some(Token::Blob),
+        "DATA" => Some(Token::Data),
+        "TYPE" => Some(Token::Type),
         "NULL" => Some(Token::Null),
         "TRUE" => Some(Token::BooleanLiteral(true)),
         "FALSE" => Some(Token::BooleanLiteral(false)),
@@ -906,6 +915,20 @@ mod tests {
         assert_eq!(from_keyword("UNKNOWN"), None);
         assert_eq!(from_keyword("select"), Some(Token::Select));
         assert_eq!(from_keyword("TRUE"), Some(Token::BooleanLiteral(true)));
+    }
+
+    #[test]
+    fn test_token_from_keyword_data_type() {
+        assert_eq!(from_keyword("DATA"), Some(Token::Data));
+        assert_eq!(from_keyword("TYPE"), Some(Token::Type));
+        assert_eq!(from_keyword("data"), Some(Token::Data));
+        assert_eq!(from_keyword("type"), Some(Token::Type));
+    }
+
+    #[test]
+    fn test_token_display_data_type_keywords() {
+        assert_eq!(Token::Data.to_string(), "DATA");
+        assert_eq!(Token::Type.to_string(), "TYPE");
     }
 
     #[test]
