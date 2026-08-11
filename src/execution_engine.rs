@@ -24,6 +24,7 @@ use sqlrustgo_executor::trigger::{
 };
 use sqlrustgo_executor::ExecutorResult;
 use sqlrustgo_optimizer::rules::{BinaryOperator, Expr};
+use sqlrustgo_optimizer::stats::{build_histogram_from_values, ColumnStats as OptColumnStats, Histogram};
 use sqlrustgo_optimizer::unified_cost::UnifiedCostModel;
 use sqlrustgo_optimizer::unified_plan::UnifiedPlan;
 use sqlrustgo_parser::parser::{
@@ -140,6 +141,10 @@ pub struct ColumnStatistics {
     pub distinct_count: u64,
     pub min_value: Option<SqlValue>,
     pub max_value: Option<SqlValue>,
+    /// V312-22b / Issue #4033: optional equi-height histogram for
+    /// data-driven selectivity estimation. Built by `collect_table_stats`
+    /// during ANALYZE.
+    pub histogram: Option<Histogram>,
 }
 
 /// Type alias for MemoryStorage-backed execution engine
@@ -316,11 +321,36 @@ impl<S: StorageEngine + 'static> ExecutionEngine<S> {
     }
 
     /// Sync table statistics from ExecutionStats into the cost model.
+    ///
+    /// V312-22b / Issue #4033: also forwards column-level stats (including
+    /// `Histogram`) into `UnifiedCostModel::column_stats`, so
+    /// `estimate_selectivity` can consume real data instead of the
+    /// per-op heuristic.
     pub fn update_cost_model_stats(&self) {
         let stats = self.stats.read();
         let mut cost_model = self.cost_model.write();
         for (name, tstats) in &stats.table_stats {
-            cost_model.update_table_stats(name.clone(), tstats.row_count, 0);
+            // Convert local ColumnStatistics → optimizer ColumnStats.
+            let mut opt_column_stats: std::collections::HashMap<String, OptColumnStats> =
+                std::collections::HashMap::with_capacity(tstats.column_stats.len());
+            for (col_name, cs) in &tstats.column_stats {
+                let opt = OptColumnStats::new(col_name.clone())
+                    .with_distinct_count(cs.distinct_count)
+                    .with_null_count(cs.null_count)
+                    .with_range(cs.min_value.clone(), cs.max_value.clone());
+                let opt = if let Some(h) = &cs.histogram {
+                    opt.with_histogram(h.clone())
+                } else {
+                    opt
+                };
+                opt_column_stats.insert(col_name.clone(), opt);
+            }
+            cost_model.update_table_stats_with_columns(
+                name.clone(),
+                tstats.row_count,
+                0,
+                opt_column_stats,
+            );
         }
     }
 }
