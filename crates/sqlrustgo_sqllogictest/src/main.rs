@@ -9,10 +9,10 @@
 //!   cargo run -p sqlrustgo_sqllogictest -- --help
 //!   cargo run -p sqlrustgo_sqllogictest -- --test-dir crates/sqlrustgo_sqllogictest/testdata
 
-use parking_lot::RwLock;
+use parking_lot::{Mutex, RwLock};
 use sqllogictest::{DBOutput, DefaultColumnType, Runner, DB};
 use sqlrustgo::MemoryExecutionEngine;
-use sqlrustgo_storage::MemoryStorage;
+use sqlrustgo_storage::{MemoryStorage, SchemaSnapshot, TxLog};
 use std::cell::RefCell;
 use std::collections::HashMap;
 use std::fs::{self, File};
@@ -38,26 +38,105 @@ impl PartialEq for SltError {
     }
 }
 
-/// SltDb backed by shared storage.
+/// V312-26 #3969: Broadcast hub for multi-connection isolation.
 ///
-/// Each named connection gets its own SltDb, but all share the same MemoryStorage
-/// via Arc. This allows different connections to see each other's uncommitted
-/// changes (transaction isolation is handled by the storage layer).
+/// Each SltDb owns its own `Arc<RwLock<MemoryStorage>>` (per-connection
+/// isolation), but commits on one connection need to propagate to peer
+/// connections so a follow-up SELECT on a different connection can see
+/// committed rows. The hub maintains a list of all storages registered for
+/// the current test file; commits broadcast to peers via `apply_committed_log`,
+/// and DDL statements broadcast to peers via `apply_schema`.
+pub(crate) struct BroadcastHub {
+    storages: Vec<Arc<RwLock<MemoryStorage>>>,
+}
+
+impl BroadcastHub {
+    fn new() -> Self {
+        Self {
+            storages: Vec::new(),
+        }
+    }
+
+    fn register(&mut self, storage: Arc<RwLock<MemoryStorage>>) {
+        let self_ptr = Arc::as_ptr(&storage);
+        if !self
+            .storages
+            .iter()
+            .any(|s| Arc::as_ptr(s) == self_ptr)
+        {
+            self.storages.push(storage);
+        }
+    }
+
+    fn broadcast_log(&self, sender: &Arc<RwLock<MemoryStorage>>, log: &TxLog) {
+        let sender_ptr = Arc::as_ptr(sender);
+        for storage in &self.storages {
+            if Arc::as_ptr(storage) != sender_ptr {
+                let _ = storage.write().apply_committed_log(log);
+            }
+        }
+    }
+
+    fn broadcast_schema(
+        &self,
+        sender: &Arc<RwLock<MemoryStorage>>,
+        snapshot: &SchemaSnapshot,
+    ) {
+        let sender_ptr = Arc::as_ptr(sender);
+        for storage in &self.storages {
+            if Arc::as_ptr(storage) != sender_ptr {
+                let _ = storage.write().apply_schema(snapshot);
+            }
+        }
+    }
+}
+
+/// SltDb backed by per-connection storage (V312-26 #3969 isolation).
+///
+/// Each named connection gets its own `MemoryStorage` (sqllogictest-rs
+/// expects independent DB instances per named connection). Commits and DDL
+/// on one connection are propagated to peer connections via the shared
+/// `BroadcastHub` so subsequent statements on other connections see the
+/// committed changes.
 pub struct SltDb {
     engine: MemoryExecutionEngine,
+    storage: Arc<RwLock<MemoryStorage>>,
+    hub: Arc<Mutex<BroadcastHub>>,
 }
 
 impl SltDb {
     pub fn new() -> Self {
         let storage = Arc::new(RwLock::new(MemoryStorage::new()));
-        let engine = MemoryExecutionEngine::new(storage);
-        Self { engine }
+        let engine = MemoryExecutionEngine::new(storage.clone());
+        Self {
+            engine,
+            storage,
+            hub: Arc::new(Mutex::new(BroadcastHub::new())),
+        }
     }
 
-    /// Create with shared storage (used for multi-connection tests).
+    /// Create with shared storage (legacy / single-connection tests).
+    ///
+    /// The SltDb has its own empty BroadcastHub — there are no peers to
+    /// notify, so commits just clear the local TxLog as before.
     pub fn with_storage(storage: Arc<RwLock<MemoryStorage>>) -> Self {
-        let engine = MemoryExecutionEngine::new(storage);
-        Self { engine }
+        let engine = MemoryExecutionEngine::new(storage.clone());
+        Self {
+            engine,
+            storage,
+            hub: Arc::new(Mutex::new(BroadcastHub::new())),
+        }
+    }
+
+    /// V312-26 #3969: create an SltDb whose storage is registered with the
+    /// shared broadcast hub so commits/DDL on it reach peer connections.
+    pub(crate) fn with_hub(storage: Arc<RwLock<MemoryStorage>>, hub: Arc<Mutex<BroadcastHub>>) -> Self {
+        let engine = MemoryExecutionEngine::new(storage.clone());
+        Self {
+            engine,
+            storage,
+            hub,
+        }
     }
 }
 
@@ -72,7 +151,35 @@ impl DB for SltDb {
     type ColumnType = DefaultColumnType;
 
     fn run(&mut self, sql: &str) -> Result<DBOutput<Self::ColumnType>, Self::Error> {
-        match self.engine.execute(sql) {
+        let trimmed = sql.trim();
+        let trimmed_upper = trimmed.to_uppercase();
+        let first_kw = trimmed_upper.split_whitespace().next().unwrap_or("");
+
+        let result = self.engine.execute(sql);
+
+        // V312-26 #3969: after DDL (CREATE/DROP/ALTER/RENAME), broadcast the
+        // local schema to peer connections so they see newly created tables,
+        // views, sequences, and databases.
+        let is_ddl = matches!(first_kw, "CREATE" | "DROP" | "ALTER" | "RENAME");
+        if is_ddl {
+            let snapshot = self.storage.read().snapshot_schema();
+            self.hub.lock().broadcast_schema(&self.storage, &snapshot);
+        }
+
+        // V312-26 #3969: after COMMIT/END, drain the last committed TxLog
+        // and broadcast it to peer connections so a follow-up SELECT on
+        // another connection sees the committed rows.
+        let is_commit = matches!(
+            trimmed_upper.as_str(),
+            "COMMIT" | "COMMIT TRANSACTION" | "END" | "END TRANSACTION"
+        );
+        if is_commit {
+            if let Some(log) = self.storage.read().take_last_committed_log() {
+                self.hub.lock().broadcast_log(&self.storage, &log);
+            }
+        }
+
+        match result {
             Ok(result) => {
                 if result.rows.is_empty() {
                     Ok(DBOutput::StatementComplete(result.affected_rows as u64))
@@ -427,18 +534,39 @@ async fn async_main() {
         // Write processed content to a temp file for the runner
         let temp_path = write_temp_file(&processed, filename);
 
-        // Shared storage for multi-connection support.
-        // All named connections share the same storage so they can see each other's
-        // uncommitted changes (for testing transaction isolation).
-        let shared_storage = Arc::new(RwLock::new(MemoryStorage::new()));
+        // V312-26 #3969: per-connection storage with broadcast hub.
+        // Each named connection gets its own MemoryStorage so uncommitted
+        // writes are isolated (sqllogictest-rs's expected semantics). The
+        // shared BroadcastHub propagates commits and DDL to peers.
+        let hub = Arc::new(Mutex::new(BroadcastHub::new()));
+        let hub_cell = RefCell::new(hub.clone());
 
         // Create a fresh Runner for each file. The Runner creates a fresh SltDb
-        // for each named connection, but they all share the same storage.
-        // RefCell allows FnMut closure to clone the Arc on each call.
-        let storage_cell = RefCell::new(shared_storage);
+        // for each named connection. Each SltDb gets a fresh MemoryStorage
+        // registered with the shared hub; new connections inherit schema from
+        // any pre-existing peer storage so they see tables created earlier.
         let mut tester = Runner::new(move || {
-            let storage = storage_cell.borrow().clone();
-            async move { Ok(SltDb::with_storage(storage)) }
+            let new_storage = Arc::new(RwLock::new(MemoryStorage::new()));
+            let hub_ref = hub_cell.borrow().clone();
+
+            // Register with hub and inherit schema from any existing peer.
+            {
+                let mut hub_guard = hub_ref.lock();
+                hub_guard.register(new_storage.clone());
+                // Snapshot schema from the first registered peer (typically
+                // the default connection, which created tables first).
+                let self_ptr = Arc::as_ptr(&new_storage);
+                if let Some(peer) = hub_guard
+                    .storages
+                    .iter()
+                    .find(|s| Arc::as_ptr(*s) != self_ptr)
+                {
+                    let snapshot = peer.read().snapshot_schema();
+                    let _ = new_storage.write().apply_schema(&snapshot);
+                }
+            }
+
+            async move { Ok(SltDb::with_hub(new_storage, hub_ref)) }
         });
         tester.with_normalizer(strip_debug_format);
         tester.with_validator(|norm, actual, expected| {
