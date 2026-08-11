@@ -103,12 +103,7 @@ pub fn insert_chunk(
         .unwrap_or(0);
 
     // Check if chunk already exists
-    let existing = get_chunk_by_index(
-        storage,
-        doc_id,
-        version_number,
-        chunk_index,
-    )?;
+    let existing = get_chunk_by_index(storage, doc_id, version_number, chunk_index)?;
 
     if let Some(existing_chunk) = existing {
         // Upsert: update existing
@@ -308,7 +303,15 @@ mod tests {
         crate::document::create_gmp_tables(&mut storage).unwrap();
 
         insert_chunk(&mut storage, 1, 1, 0, Some("Introduction"), "Hello world.").unwrap();
-        insert_chunk(&mut storage, 1, 1, 1, Some("Section 1"), "More content here.").unwrap();
+        insert_chunk(
+            &mut storage,
+            1,
+            1,
+            1,
+            Some("Section 1"),
+            "More content here.",
+        )
+        .unwrap();
 
         let chunks = get_chunks_for_version(&storage, 1, 1).unwrap();
         assert_eq!(chunks.len(), 2);
@@ -358,8 +361,14 @@ mod tests {
 
     #[test]
     fn test_extract_heading() {
-        assert_eq!(extract_heading("# Introduction"), Some("Introduction".to_string()));
-        assert_eq!(extract_heading("## Section 1.2"), Some("Section 1.2".to_string()));
+        assert_eq!(
+            extract_heading("# Introduction"),
+            Some("Introduction".to_string())
+        );
+        assert_eq!(
+            extract_heading("## Section 1.2"),
+            Some("Section 1.2".to_string())
+        );
         assert_eq!(
             extract_heading("This is a very long first line that does not look like a heading and exceeds 80 chars"),
             None

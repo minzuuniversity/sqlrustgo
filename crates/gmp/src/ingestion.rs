@@ -5,11 +5,11 @@
 
 use crate::chunk::{chunk_text, insert_chunk, ChunkConfig};
 use crate::embedding::generate_embedding;
-use crate::version::{
-    compute_content_hash_from_chunks, find_version_by_source_hash,
-    get_document_versions, insert_version, sha256_str,
-};
 use crate::vector_search::upsert_embedding;
+use crate::version::{
+    compute_content_hash_from_chunks, find_version_by_source_hash, get_document_versions,
+    insert_version, sha256_str,
+};
 use sqlrustgo_storage::StorageEngine;
 use sqlrustgo_types::{SqlResult, Value};
 use std::fs;
@@ -76,12 +76,7 @@ pub fn ingest_file(
 
     let versions =
         get_document_versions(storage, doc_id).map_err(|_| "FAIL: version query error")?;
-    let version_number = versions
-        .iter()
-        .map(|v| v.version_number)
-        .max()
-        .unwrap_or(0)
-        + 1;
+    let version_number = versions.iter().map(|v| v.version_number).max().unwrap_or(0) + 1;
 
     let config = ChunkConfig::default();
     let chunk_data = chunk_text(&content, &config);
@@ -129,10 +124,12 @@ fn ensure_document(
     let rows = storage.scan(TABLE_DOCUMENTS)?;
     let next_id = rows
         .iter()
-        .filter_map(|r| r.get(0).and_then(|v| match v {
-            Value::Integer(n) => Some(*n),
-            _ => None,
-        }))
+        .filter_map(|r| {
+            r.get(0).and_then(|v| match v {
+                Value::Integer(n) => Some(*n),
+                _ => None,
+            })
+        })
         .max()
         .unwrap_or(0)
         + 1;
@@ -216,7 +213,10 @@ fn walkdir(root: &std::path::Path) -> Vec<WalkEntry> {
                 if path.is_dir() {
                     stack.push(path);
                 } else {
-                    results.push(WalkEntry { path, is_file: true });
+                    results.push(WalkEntry {
+                        path,
+                        is_file: true,
+                    });
                 }
             }
         }
