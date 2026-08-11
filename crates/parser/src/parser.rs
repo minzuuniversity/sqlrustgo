@@ -7470,12 +7470,26 @@ impl Parser {
                         constraints.push(fk);
                     }
                     Some(Token::Unique) => {
-                        self.next();
-                        let columns = self.parse_column_list()?;
-                        constraints.push(TableConstraint::Unique {
-                            columns,
-                            name: None,
-                        });
+                        // V313-#4071: only enter this arm when the
+                        // keyword is followed by `(`; otherwise fall
+                        // through so the inner parse_column_definition
+                        // loop gets a chance to consume the column-level
+                        // UNIQUE modifier and the outer loop continues
+                        // with the next column definition. Without
+                        // this guard, `,` after UNIQUE makes
+                        // parse_column_list() silently consume the
+                        // next column's identifier as part of a
+                        // spurious UNIQUE columns list.
+                        if matches!(self.tokens.get(self.position + 1), Some(Token::LParen)) {
+                            self.next();
+                            let columns = self.parse_column_list()?;
+                            constraints.push(TableConstraint::Unique {
+                                columns,
+                                name: None,
+                            });
+                        } else {
+                            continue;
+                        }
                     }
                     Some(Token::Check) => {
                         self.next();
@@ -7723,6 +7737,18 @@ impl Parser {
                 let t = type_name.to_uppercase();
                 self.next();
                 t
+            }
+            Some(Token::Date) => {
+                // V313-#4071: without this arm the parser would
+                // fall through to the `_ => "INTEGER".to_string()`
+                // default and silently coerce a DATE column to
+                // INTEGER. The fixture uses `Date NOT NULL UNIQUE`
+                // to exercise the column-level UNIQUE modifier
+                // path; that path required a working data_type
+                // for the column to be accepted by the storage
+                // engine.
+                self.next();
+                "DATE".to_string()
             }
             Some(Token::Integer) => {
                 self.next();
