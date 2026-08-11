@@ -1,5 +1,7 @@
 # V312-30: V312-24 PR 关闭 + 签收 — Sign-off Report
 
+> **provenance:** generated_by=v3.12.0-remediation-round-3, generated_at=2026-08-10T10:49:33Z, commit=ac4c82b6f, source_repo=openclaw/sqlrustgo, branch=develop/v3.12.0, policy=Anti-Fabrication-Policy-v1.0
+
 > **Status**: 🟡 **PARTIAL** (2026-08-09, minimax)
 > **PR**: http://192.168.0.252:3000/openclaw/sqlrustgo/pulls/3950
 > **Issue**: #3911 (V312-24 Test Infrastructure Activation)

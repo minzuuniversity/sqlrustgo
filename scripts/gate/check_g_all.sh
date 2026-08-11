@@ -1,7 +1,7 @@
 #!/bin/bash
-# check_g_all.sh - v3.9.0 G1-G16 orchestrator
+# check_g_all.sh - v3.9.0 G1-G19 orchestrator
 #
-# Runs all 16 v3.9.0 gates (G1-G16) in sequence, maps each
+# Runs all 19 v3.9.0 gates (G1-G19) in sequence, maps each
 # result to its tracking issue, and produces a consolidated PASS/FAIL report.
 #
 # Mapping (per docs/releases/v3.9.0/alpha/ALPHA_GATE_CONTRACT.md):
@@ -62,6 +62,9 @@ GATES=(
     "G14|Real Crash|check_g14_real_crash.sh|#3203|warn"
     "G15|Perf Report|check_g15_perf_report.sh|#3204|warn"
     "G16|Compatibility|check_g16_compatibility.sh|#3205|warn"
+    "G17|check_coverage_v312|check_coverage_v312.sh|#3206|yes"
+    "G18|check_sql_corpus_gate|check_sql_corpus_gate.sh|#3207|yes"
+    "G19|check_anti_ignore_gate|check_anti_ignore_gate.sh|#3208|yes"
 )
 
 # G10 has 3 sub-scripts
@@ -77,7 +80,7 @@ WARN_COUNT=0
 RESULTS=()
 
 echo "================================================================"
-echo "  v3.9.0 G1-G16 Orchestrator"
+echo "  v3.9.0 G1-G19 Orchestrator"
 echo "  Branch: $(git rev-parse --abbrev-ref HEAD 2>/dev/null || echo 'unknown')"
 echo "  Commit: $(git rev-parse --short HEAD 2>/dev/null || echo 'unknown')"
 echo "  Date:   $(date -u +%Y-%m-%dT%H:%M:%SZ)"
@@ -145,7 +148,7 @@ echo
 
 echo
 echo "================================================================"
-echo "  v3.9.0 G1-G16 SUMMARY"
+echo "  v3.9.0 G1-G19 SUMMARY"
 echo "================================================================"
 printf "  %-6s %-30s %-12s %s\n" "GATE" "TOPIC" "STATUS" "TRACKING"
 printf "  %-6s %-30s %-12s %s\n" "----" "-----" "------" "--------"
@@ -175,5 +178,5 @@ if [ $WARN_COUNT -gt 0 ]; then
     exit 0
 fi
 
-echo "  GATE STATUS: ✅ ALL PASS (G1-G16 fully green)"
+echo "  GATE STATUS: ✅ ALL PASS (G1-G19 fully green)"
 exit 0

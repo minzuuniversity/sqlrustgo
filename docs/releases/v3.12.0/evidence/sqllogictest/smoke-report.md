@@ -1,28 +1,16 @@
 # SQLRustGo v3.12 SQLLogicTest Smoke Baseline
 
+> **provenance:** generated_by=check_sqllogictest_v312.sh, generated_at=2026-08-11T01:01:49+08:00, commit=e09b78ab076ee292fa323fccd90e8336c4a0ed04, source_repo=openclaw/sqlrustgo, branch=develop/v3.12.0, gate_policy_eval_id=v312-slt-smoke-001, evidence_hash=efb19d2daef082a4443d02d13fe19d937439ca5b4e6ed8f3b15d85a8e177c919, log_path=docs/releases/v3.12.0/logs/sqllogictest_e09b78ab07_20260811_010147.log
+
 | Field | Value |
 |---|---|
 | source_agent | minimax-m2.7 |
 | source_run | check_sqllogictest_v312 |
-| timestamp | 2026-08-10T07:38:59+08:00 |
-| commit | 1903545df6d036f7f6d5035a0503b5fa932aac51 |
-| log | docs/releases/v3.12.0/logs/sqllogictest_1903545df6_20260810_073857.log |
-| evidence_hash | 979e45bc4e924af62d1768f6e314fcf97c5bd135154ddd485c0e14472919676e |
-| gate_status | PASS |
-
-## Gate Test Provenance
-
-| Field | Value |
-|---|---|
-| gate_policy_eval_id | v312-slt-smoke-001 |
-| gate_checker | check_evidence_binding.sh |
-| gate_checker_version | v1.0.0 |
-| evidence_binding_report | docs/releases/v3.12.0/evidence/sqllogictest/EVIDENCE_BINDING_REPORT.md |
-| evidence_binding_commit | 1903545df6d036f7f6d5035a0503b5fa932aac51 |
-| evidence_binding_result | FAIL (304 violations across v3.12.0 docs) |
-| slt_gate_status | PASS (gate_status=PASS in header, log confirms) |
-| binding_check_status | PASS (smoke-report.md itself has valid provenance: commit hash, log path, evidence_hash in header table) |
-| binding_check_note | smoke-report.md is exempt from binding violations because its header table contains commit + log path + evidence_hash, satisfying Type A evidence requirements |
+| timestamp | 2026-08-11T01:01:49+08:00 |
+| commit | e09b78ab076ee292fa323fccd90e8336c4a0ed04 |
+| log | docs/releases/v3.12.0/logs/sqllogictest_e09b78ab07_20260811_010147.log |
+| evidence_hash | efb19d2daef082a4443d02d13fe19d937439ca5b4e6ed8f3b15d85a8e177c919 |
+| gate_status | FAIL |
 
 ## Runner Summary
 

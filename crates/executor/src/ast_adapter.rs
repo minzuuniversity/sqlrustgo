@@ -327,11 +327,7 @@ mod tests {
     fn test_convert_expr_unary_op_minus() {
         // Expression::UnaryOp branch — cover lines 63-69 of convert_expr.
         let expr = Expression::UnaryOp("-".to_string(), Box::new(ident("x")));
-        let mut stmt = update_stmt(
-            vec![table("t")],
-            vec![("y".to_string(), expr)],
-            None,
-        );
+        let mut stmt = update_stmt(vec![table("t")], vec![("y".to_string(), expr)], None);
         let plan = AstAdapter::to_update_plan(&mut stmt, &make_table_info(vec!["x", "y"]))
             .expect("unary - should parse");
         // The PredicateIR::All path (no WHERE) yields the conversion of -x into ExprIR::Unary.
@@ -345,12 +341,11 @@ mod tests {
     fn test_convert_expr_unary_op_not() {
         // Logical NOT is also Expression::UnaryOp
         let expr = Expression::UnaryOp("NOT".to_string(), Box::new(ident("flag")));
-        let mut stmt = update_stmt(
-            vec![table("t")],
-            vec![("enabled".to_string(), expr)],
-            None,
+        let mut stmt = update_stmt(vec![table("t")], vec![("enabled".to_string(), expr)], None);
+        assert!(
+            AstAdapter::to_update_plan(&mut stmt, &make_table_info(vec!["flag", "enabled"]))
+                .is_ok()
         );
-        assert!(AstAdapter::to_update_plan(&mut stmt, &make_table_info(vec!["flag", "enabled"])).is_ok());
     }
 
     #[test]
@@ -375,11 +370,7 @@ mod tests {
                 Box::new(Expression::Literal("1".into())),
             );
         }
-        let mut stmt = update_stmt(
-            vec![table("t")],
-            vec![("y".to_string(), nested)],
-            None,
-        );
+        let mut stmt = update_stmt(vec![table("t")], vec![("y".to_string(), nested)], None);
         // 200-level nested binary op — convert_expr recurses but does NOT
         // pass depth through, so this just tests depth-tracking fires only
         // if convert_expr_with_depth is invoked. Most paths will succeed

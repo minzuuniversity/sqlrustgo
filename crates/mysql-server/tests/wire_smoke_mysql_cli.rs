@@ -46,7 +46,11 @@ fn exec_dml(conn: &mut MySqlConnection, sql: &str) -> u64 {
     match conn.execute(sql) {
         Ok(ResultSet::Ok { affected_rows, .. }) => affected_rows,
         Ok(ResultSet::Select { .. }) => panic!("exec_dml called with SELECT: {}", sql),
-        Ok(ResultSet::Error { error_code, error_message, .. }) => {
+        Ok(ResultSet::Error {
+            error_code,
+            error_message,
+            ..
+        }) => {
             panic!("server error {}: {}", error_code, error_message)
         }
         Err(e) => panic!("execute failed for {}: {}", sql, e),
@@ -57,7 +61,11 @@ fn rows_from_result(rs: ResultSet) -> Vec<Vec<String>> {
     match rs {
         ResultSet::Select { rows, .. } => rows,
         ResultSet::Ok { .. } => panic!("expected Select result set, got Ok"),
-        ResultSet::Error { error_code, error_message, .. } => {
+        ResultSet::Error {
+            error_code,
+            error_message,
+            ..
+        } => {
             panic!("server error {}: {}", error_code, error_message)
         }
     }
@@ -75,20 +83,26 @@ fn test_wire_smoke_stmt_prepare_execute_int() {
     let mut conn = connect(port).expect("connected");
 
     // Create test table
-    exec_dml(&mut conn, "CREATE TABLE t (id INT PRIMARY KEY, a INT, b INT)");
+    exec_dml(
+        &mut conn,
+        "CREATE TABLE t (id INT PRIMARY KEY, a INT, b INT)",
+    );
     exec_dml(&mut conn, "INSERT INTO t VALUES (1, 1, 2)");
     exec_dml(&mut conn, "INSERT INTO t VALUES (2, 10, 20)");
 
     // PREPARE — SELECT columns (no WHERE params, no expressions to avoid server gaps)
-    let stmt = conn.prepare("SELECT id, a, b FROM t ORDER BY id")
+    let stmt = conn
+        .prepare("SELECT id, a, b FROM t ORDER BY id")
         .expect("prepare succeeds");
     assert_eq!(stmt.param_count, 0);
     assert_eq!(stmt.column_count, 3);
     let stmt_id = stmt.id;
 
     // EXECUTE — no params, should return both rows
-    let rows = rows_from_result(conn.execute_prepared(stmt_id, &[])
-        .expect("execute succeeds"));
+    let rows = rows_from_result(
+        conn.execute_prepared(stmt_id, &[])
+            .expect("execute succeeds"),
+    );
     assert_eq!(rows.len(), 2, "expected 2 rows");
     assert_eq!(rows[0][0], "1", "row 1 id=1");
     assert_eq!(rows[0][1], "1", "row 1 a=1");
@@ -102,6 +116,47 @@ fn test_wire_smoke_stmt_prepare_execute_int() {
     drop(handle);
 }
 
+/// Test COM_STMT_PREPARE + COM_STMT_EXECUTE with parameterized SELECT.
+#[test]
+fn test_wire_smoke_stmt_prepare_execute_param_int() {
+    let handle = start_server();
+    let port = handle.port;
+    let mut conn = connect(port).expect("connected");
+
+    exec_dml(
+        &mut conn,
+        "CREATE TABLE tp (id INT PRIMARY KEY, name VARCHAR(50))",
+    );
+    exec_dml(&mut conn, "INSERT INTO tp VALUES (1, 'Alice')");
+    exec_dml(&mut conn, "INSERT INTO tp VALUES (2, 'Bob')");
+
+    let stmt = conn
+        .prepare("SELECT id, name FROM tp WHERE id = ?")
+        .expect("prepare succeeds");
+    assert_eq!(stmt.param_count, 1);
+    assert_eq!(stmt.column_count, 2);
+
+    let rs = conn
+        .execute_prepared(stmt.id, &["1"])
+        .expect("execute succeeds");
+    match rs {
+        ResultSet::Select { rows, .. } => {
+            assert_eq!(rows.len(), 1);
+            assert_eq!(rows[0][0], "1");
+            assert_eq!(rows[0][1], "Alice");
+        }
+        ResultSet::Ok { affected_rows, .. } => {
+            panic!("expected Select, got OK({})", affected_rows);
+        }
+        ResultSet::Error { error_message, .. } => {
+            panic!("server error: {}", error_message);
+        }
+    }
+
+    conn.close_statement(stmt.id).expect("close succeeds");
+    drop(handle);
+}
+
 /// Test COM_STMT_PREPARE + COM_STMT_EXECUTE — simple column selection (no params).
 #[test]
 fn test_wire_smoke_stmt_prepare_execute_varchar() {
@@ -109,16 +164,22 @@ fn test_wire_smoke_stmt_prepare_execute_varchar() {
     let port = handle.port;
     let mut conn = connect(port).expect("connected");
 
-    exec_dml(&mut conn, "CREATE TABLE t2 (id INT PRIMARY KEY, name VARCHAR(100))");
+    exec_dml(
+        &mut conn,
+        "CREATE TABLE t2 (id INT PRIMARY KEY, name VARCHAR(100))",
+    );
     exec_dml(&mut conn, "INSERT INTO t2 VALUES (1, 'Alice')");
     exec_dml(&mut conn, "INSERT INTO t2 VALUES (2, 'Bob')");
 
-    let stmt = conn.prepare("SELECT id, name FROM t2 ORDER BY id")
+    let stmt = conn
+        .prepare("SELECT id, name FROM t2 ORDER BY id")
         .expect("prepare succeeds");
     let stmt_id = stmt.id;
 
-    let rows = rows_from_result(conn.execute_prepared(stmt_id, &[])
-        .expect("execute succeeds"));
+    let rows = rows_from_result(
+        conn.execute_prepared(stmt_id, &[])
+            .expect("execute succeeds"),
+    );
     assert_eq!(rows.len(), 2);
     assert_eq!(rows[0][0], "1");
     assert_eq!(rows[0][1], "Alice");
@@ -149,7 +210,11 @@ fn test_wire_smoke_stmt_execute_after_close() {
     match &result {
         Ok(ResultSet::Error { .. }) => { /* expected: server says unknown stmt */ }
         Ok(ResultSet::Select { rows, .. }) => {
-            assert!(rows.is_empty(), "expected empty rows after stmt close, got {:?}", rows);
+            assert!(
+                rows.is_empty(),
+                "expected empty rows after stmt close, got {:?}",
+                rows
+            );
         }
         Ok(ResultSet::Ok { .. }) => { /* some servers ack anyway */ }
         Err(_) => { /* network error also acceptable */ }
@@ -193,7 +258,8 @@ fn test_wire_smoke_stmt_close_nonexistent() {
     let mut conn = connect(port).expect("connected");
 
     // Close a statement ID that was never prepared — should not panic
-    conn.close_statement(99999).expect("close of nonexistent stmt should not error");
+    conn.close_statement(99999)
+        .expect("close of nonexistent stmt should not error");
     drop(handle);
 }
 
@@ -210,20 +276,26 @@ fn test_wire_smoke_stmt_prepare_null() {
     exec_dml(&mut conn, "INSERT INTO t5 VALUES (2, NULL)");
 
     // Non-parameterized: get the row with NULL value
-    let stmt = conn.prepare("SELECT val FROM t5 WHERE id = 2")
+    let stmt = conn
+        .prepare("SELECT val FROM t5 WHERE id = 2")
         .expect("prepare succeeds");
     let stmt_id = stmt.id;
 
-    let rows = rows_from_result(conn.execute_prepared(stmt_id, &[])
-        .expect("execute succeeds"));
+    let rows = rows_from_result(
+        conn.execute_prepared(stmt_id, &[])
+            .expect("execute succeeds"),
+    );
     assert_eq!(rows.len(), 1);
     assert_eq!(rows[0][0], "NULL");
 
     // Also test the non-NULL row
-    let stmt2 = conn.prepare("SELECT val FROM t5 WHERE id = 1")
+    let stmt2 = conn
+        .prepare("SELECT val FROM t5 WHERE id = 1")
         .expect("prepare succeeds 2");
-    let rows2 = rows_from_result(conn.execute_prepared(stmt2.id, &[])
-        .expect("execute 2 succeeds"));
+    let rows2 = rows_from_result(
+        conn.execute_prepared(stmt2.id, &[])
+            .expect("execute 2 succeeds"),
+    );
     assert_eq!(rows2.len(), 1);
     assert_eq!(rows2[0][0], "42");
 
@@ -243,9 +315,16 @@ fn test_wire_smoke_error_packet_structure() {
 
     let result = conn.execute("THIS IS NOT VALID SQL");
     match result {
-        Ok(ResultSet::Error { error_code, error_message, .. }) => {
+        Ok(ResultSet::Error {
+            error_code,
+            error_message,
+            ..
+        }) => {
             assert!(error_code > 0, "error code should be non-zero");
-            assert!(!error_message.is_empty(), "error message should be non-empty");
+            assert!(
+                !error_message.is_empty(),
+                "error message should be non-empty"
+            );
         }
         Ok(_) => panic!("expected Error result set for invalid SQL"),
         Err(_) => { /* network-level error also acceptable */ }
@@ -272,7 +351,10 @@ fn test_wire_smoke_stmt_prepare_invalid_sql() {
     match exec_result {
         Ok(ResultSet::Error { .. }) => { /* expected: table doesn't exist */ }
         Ok(ResultSet::Select { rows, .. }) => {
-            assert!(rows.is_empty(), "expected empty or error for nonexistent table");
+            assert!(
+                rows.is_empty(),
+                "expected empty or error for nonexistent table"
+            );
         }
         Ok(ResultSet::Ok { .. }) => { /* acceptable */ }
         Err(_) => { /* network error also acceptable */ }
@@ -314,7 +396,10 @@ fn test_wire_smoke_reset_connection() {
     }
 
     // After reset, SELECT should still work (session is valid)
-    let rows2 = rows_from_result(conn.execute("SELECT id FROM trc").expect("select still works"));
+    let rows2 = rows_from_result(
+        conn.execute("SELECT id FROM trc")
+            .expect("select still works"),
+    );
     assert_eq!(rows2.len(), 1);
 
     drop(handle);
@@ -385,7 +470,10 @@ fn test_wire_smoke_load_data_sf1() {
             assert!(affected_rows > 0, "expected rows from SF=1 load");
         }
         Ok(ResultSet::Error { error_message, .. }) => {
-            println!("LOAD DATA not available (expected in test env): {}", error_message);
+            println!(
+                "LOAD DATA not available (expected in test env): {}",
+                error_message
+            );
         }
         Ok(ResultSet::Select { .. }) => {
             panic!("LOAD DATA should not return rows");
@@ -395,4 +483,45 @@ fn test_wire_smoke_load_data_sf1() {
         }
     }
     drop(handle);
+
+    /// Test COM_STMT_PREPARE + COM_STMT_EXECUTE with parameterized SELECT.
+    #[test]
+    fn test_wire_smoke_stmt_prepare_execute_param_int() {
+        let handle = start_server();
+        let port = handle.port;
+        let mut conn = connect(port).expect("connected");
+
+        exec_dml(
+            &mut conn,
+            "CREATE TABLE tp (id INT PRIMARY KEY, name VARCHAR(50))",
+        );
+        exec_dml(&mut conn, "INSERT INTO tp VALUES (1, 'Alice')");
+        exec_dml(&mut conn, "INSERT INTO tp VALUES (2, 'Bob')");
+
+        let stmt = conn
+            .prepare("SELECT id, name FROM tp WHERE id = ?")
+            .expect("prepare succeeds");
+        assert_eq!(stmt.param_count, 1);
+        assert_eq!(stmt.column_count, 2);
+
+        let rs = conn
+            .execute_prepared(stmt.id, &["1"])
+            .expect("execute succeeds");
+        match rs {
+            ResultSet::Select { rows, .. } => {
+                assert_eq!(rows.len(), 1);
+                assert_eq!(rows[0][0], "1");
+                assert_eq!(rows[0][1], "Alice");
+            }
+            ResultSet::Ok { affected_rows, .. } => {
+                panic!("expected Select, got OK({})", affected_rows);
+            }
+            ResultSet::Error { error_message, .. } => {
+                panic!("server error: {}", error_message);
+            }
+        }
+
+        conn.close_statement(stmt.id).expect("close succeeds");
+        drop(handle);
+    }
 }

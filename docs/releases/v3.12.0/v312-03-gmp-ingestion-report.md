@@ -1,5 +1,7 @@
 # V312-03 GMP Corpus Ingestion — Verification Report
 
+> **provenance:** generated_by=v3.12.0-remediation-round-3, generated_at=2026-08-10T10:49:33Z, commit=56b37ede72df5f76b4d3e623179e9f422362a8b7, source_repo=openclaw/sqlrustgo, branch=develop/v3.12.0, policy=Anti-Fabrication-Policy-v1.0
+
 ## Issue & PR
 
 | 字段 | 值 |
