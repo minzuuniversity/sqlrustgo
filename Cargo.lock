@@ -4660,6 +4660,7 @@ dependencies = [
  "serde_json",
  "sqlrustgo",
  "sqlrustgo-common",
+ "sqlrustgo-parser",
  "sqlrustgo-types",
  "sqlrustgo-wal-verification",
  "tempfile",

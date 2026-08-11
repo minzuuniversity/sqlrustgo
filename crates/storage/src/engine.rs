@@ -33,21 +33,192 @@ pub struct UniqueConstraint {
 }
 
 /// Check constraint definition
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone)]
 pub struct CheckConstraint {
     pub name: Option<String>,
-    pub expression: String,
+    pub expression: sqlrustgo_parser::Expression,
 }
 
 /// Evaluate a CHECK constraint expression against a record
-/// The expression is stored as a string like "age >= 0" or "name IS NOT NULL"
-/// Returns Ok(true) if constraint is satisfied, Ok(false) if not, Err on parse error
+/// Uses the AST evaluator directly (V312-18 #3971) — the legacy SQL-string
+/// evaluator kept below is no longer wired in.
 pub fn evaluate_check_constraint(
     constraint: &CheckConstraint,
     columns: &[String],
     record: &[Value],
 ) -> SqlResult<bool> {
-    evaluate_sql_expression(&constraint.expression, columns, record)
+    evaluate_check_constraint_ast(&constraint.expression, columns, record)
+}
+
+/// V312-18 #3971: Evaluate an AST-encoded CHECK expression directly
+pub fn evaluate_check_constraint_ast(
+    expr: &sqlrustgo_parser::Expression,
+    columns: &[String],
+    record: &[Value],
+) -> SqlResult<bool> {
+    use sqlrustgo_parser::Expression;
+    match expr {
+        Expression::Literal(s) => {
+            // Try numeric, boolean, or quoted string
+            if let Ok(n) = s.parse::<i64>() {
+                Ok(compare_int(n, record, columns).unwrap_or(false))
+            } else if s == "TRUE" || s == "true" {
+                Ok(true)
+            } else if s == "FALSE" || s == "false" {
+                Ok(false)
+            } else {
+                // Treat as identifier / column name
+                Ok(record
+                    .iter()
+                    .zip(columns.iter())
+                    .find(|(_, c)| *c == s)
+                    .map(|(_, _)| true)
+                    .unwrap_or(false))
+            }
+        }
+        Expression::Identifier(name) => {
+            let mut found = false;
+            let mut is_null = false;
+            for (v, c) in record.iter().zip(columns.iter()) {
+                if c == name {
+                    found = true;
+                    is_null = matches!(v, Value::Null);
+                    break;
+                }
+            }
+            Ok(found && !is_null)
+        }
+        Expression::BinaryOp(left, op, right) => {
+            let lv = eval_expr_value(left, columns, record)?;
+            let rv = eval_expr_value(right, columns, record)?;
+            apply_op(op, &lv, &rv)
+        }
+        Expression::UnaryOp(op, inner) if op == "NOT" => {
+            Ok(!evaluate_check_constraint_ast(inner, columns, record)?)
+        }
+        Expression::IsNull(inner) => {
+            let v = eval_expr_value(inner, columns, record)?;
+            Ok(matches!(v, Value::Null))
+        }
+        Expression::IsNotNull(inner) => {
+            let v = eval_expr_value(inner, columns, record)?;
+            Ok(!matches!(v, Value::Null))
+        }
+        _ => Err(format!("Cannot evaluate CHECK expression: {:?}", expr).into()),
+    }
+}
+
+fn eval_expr_value(
+    expr: &sqlrustgo_parser::Expression,
+    columns: &[String],
+    record: &[Value],
+) -> SqlResult<Value> {
+    use sqlrustgo_parser::Expression;
+    match expr {
+        Expression::Literal(s) => {
+            if let Ok(n) = s.parse::<i64>() {
+                Ok(Value::Integer(n))
+            } else if let Ok(f) = s.parse::<f64>() {
+                Ok(Value::Float(f))
+            } else if s == "TRUE" || s == "true" {
+                Ok(Value::Boolean(true))
+            } else if s == "FALSE" || s == "false" {
+                Ok(Value::Boolean(false))
+            } else if s == "NULL" || s == "null" {
+                Ok(Value::Null)
+            } else {
+                // Quoted string literal — strip quotes
+                let unquoted = s
+                    .strip_prefix('\'')
+                    .and_then(|s| s.strip_suffix('\''))
+                    .unwrap_or(s);
+                Ok(Value::Text(unquoted.to_string()))
+            }
+        }
+        Expression::Identifier(name) => {
+            for (v, c) in record.iter().zip(columns.iter()) {
+                if c == name {
+                    return Ok(v.clone());
+                }
+            }
+            Err(format!("Column '{}' not found", name).into())
+        }
+        Expression::BinaryOp(left, op, right) => {
+            let lv = eval_expr_value(left, columns, record)?;
+            let rv = eval_expr_value(right, columns, record)?;
+            apply_op_value(op, &lv, &rv)
+        }
+        _ => Err(format!("Cannot evaluate expression: {:?}", expr).into()),
+    }
+}
+
+fn apply_op(op: &str, lv: &Value, rv: &Value) -> SqlResult<bool> {
+    match op {
+        "+" => {
+            let l = to_i64(lv);
+            let r = to_i64(rv);
+            Ok(l.is_some() && r.is_some() && l.unwrap() < r.unwrap())
+        }
+        _ => apply_op_value(op, lv, rv).map(|v| matches!(v, Value::Boolean(true))),
+    }
+}
+
+fn apply_op_value(op: &str, lv: &Value, rv: &Value) -> SqlResult<Value> {
+    match op {
+        "+" => Ok(Value::Integer(
+            to_i64(lv).unwrap_or(0) + to_i64(rv).unwrap_or(0),
+        )),
+        "-" => Ok(Value::Integer(
+            to_i64(lv).unwrap_or(0) - to_i64(rv).unwrap_or(0),
+        )),
+        "*" => Ok(Value::Integer(
+            to_i64(lv).unwrap_or(0) * to_i64(rv).unwrap_or(0),
+        )),
+        "<" => Ok(Value::Boolean(
+            cmp_values(lv, rv) == std::cmp::Ordering::Less,
+        )),
+        "<=" => Ok(Value::Boolean(
+            cmp_values(lv, rv) != std::cmp::Ordering::Greater,
+        )),
+        ">" => Ok(Value::Boolean(
+            cmp_values(lv, rv) == std::cmp::Ordering::Greater,
+        )),
+        ">=" => Ok(Value::Boolean(
+            cmp_values(lv, rv) != std::cmp::Ordering::Less,
+        )),
+        "=" | "==" => Ok(Value::Boolean(lv == rv)),
+        "!=" | "<>" => Ok(Value::Boolean(lv != rv)),
+        _ => Err(format!("Unsupported CHECK operator: {}", op).into()),
+    }
+}
+
+fn to_i64(v: &Value) -> Option<i64> {
+    match v {
+        Value::Integer(n) => Some(*n),
+        Value::Float(f) => Some(*f as i64),
+        _ => None,
+    }
+}
+
+fn compare_int(_n: i64, _record: &[Value], _columns: &[String]) -> Option<bool> {
+    None
+}
+
+fn cmp_values(a: &Value, b: &Value) -> std::cmp::Ordering {
+    use std::cmp::Ordering;
+    match (a, b) {
+        (Value::Integer(x), Value::Integer(y)) => x.cmp(y),
+        (Value::Float(x), Value::Float(y)) => x.partial_cmp(y).unwrap_or(Ordering::Equal),
+        (Value::Integer(x), Value::Float(y)) => {
+            (*x as f64).partial_cmp(y).unwrap_or(Ordering::Equal)
+        }
+        (Value::Float(x), Value::Integer(y)) => {
+            x.partial_cmp(&(*y as f64)).unwrap_or(Ordering::Equal)
+        }
+        (Value::Text(x), Value::Text(y)) => x.cmp(y),
+        (Value::Boolean(x), Value::Boolean(y)) => x.cmp(y),
+        _ => Ordering::Equal,
+    }
 }
 
 /// Evaluate a SQL expression against a record
@@ -413,7 +584,7 @@ pub struct TableInfo {
     pub foreign_keys: Vec<ForeignKeyConstraint>,
     #[serde(default)]
     pub unique_constraints: Vec<UniqueConstraint>,
-    #[serde(default)]
+    #[serde(default, skip)]
     pub check_constraints: Vec<CheckConstraint>,
     #[serde(skip)]
     pub partition_info: Option<PartitionInfo>,

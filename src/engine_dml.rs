@@ -56,6 +56,32 @@ pub fn execute_insert<S: StorageEngine + 'static>(
         let select_result = engine.execute_select(select)?;
         map_select_result_to_records(select_result, &insert.columns, &table_info)?
     } else {
+        // V312-17 #3970: validate row consistency and column count
+        if insert.values.len() >= 2 {
+            let first_len = insert.values[0].len();
+            for row in &insert.values {
+                if row.len() != first_len {
+                    return Err(SqlError::ExecutionError(format!(
+                        "Parser Error: VALUES lists must all be the same length"
+                    )));
+                }
+            }
+        }
+        let expected_cols = if !insert.columns.is_empty() {
+            insert.columns.len()
+        } else {
+            table_info.columns.len()
+        };
+        for (row_idx, row) in insert.values.iter().enumerate() {
+            if row.len() != expected_cols {
+                return Err(SqlError::ExecutionError(format!(
+                    "Binder Error: table {} has {} columns but {} values were supplied",
+                    insert.table,
+                    expected_cols,
+                    row.len()
+                )));
+            }
+        }
         build_insert_records(&insert.values)
     };
 
@@ -191,7 +217,7 @@ pub fn execute_insert<S: StorageEngine + 'static>(
                                 return Err(format!(
                                     "CHECK constraint '{}' violated: {}",
                                     constraint.name.as_deref().unwrap_or("unnamed"),
-                                    constraint.expression
+                                    format!("{:?}", constraint.expression)
                                 )
                                 .into());
                             }
@@ -216,7 +242,7 @@ pub fn execute_insert<S: StorageEngine + 'static>(
                             return Err(format!(
                                 "CHECK constraint '{}' violated: {}",
                                 constraint.name.as_deref().unwrap_or("unnamed"),
-                                constraint.expression
+                                format!("{:?}", constraint.expression)
                             )
                             .into());
                         }
@@ -357,6 +383,27 @@ pub fn execute_update<S: StorageEngine + 'static>(
         }
         validate_not_null(&table_info, &synthetic_row, &[])?;
 
+        // V312-18 #3971: validate CHECK constraints for the synthetic updated row
+        if !table_info.check_constraints.is_empty() {
+            let col_names: Vec<String> =
+                table_info.columns.iter().map(|c| c.name.clone()).collect();
+            for constraint in &table_info.check_constraints {
+                let valid = sqlrustgo_storage::evaluate_check_constraint(
+                    constraint,
+                    &col_names,
+                    &synthetic_row,
+                )?;
+                if !valid {
+                    return Err(format!(
+                        "CHECK constraint '{}' violated: {}",
+                        constraint.name.as_deref().unwrap_or("unnamed"),
+                        format!("{:?}", constraint.expression)
+                    )
+                    .into());
+                }
+            }
+        }
+
         let mut storage = engine.storage.write();
         let count = storage.update(&table_name, &[], &updates)?;
         drop(storage);
@@ -438,7 +485,7 @@ pub fn execute_update<S: StorageEngine + 'static>(
                         return Err(format!(
                             "CHECK constraint '{}' violated: {}",
                             constraint.name.as_deref().unwrap_or("unnamed"),
-                            constraint.expression
+                            format!("{:?}", constraint.expression)
                         )
                         .into());
                     }

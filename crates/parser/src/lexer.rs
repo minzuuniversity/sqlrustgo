@@ -39,14 +39,14 @@ impl<'a> Lexer<'a> {
 
     /// Get the current character without advancing
     fn peek_char(&self) -> char {
-        self.input.chars().nth(self.position).unwrap_or('\0')
+        self.input[self.position..].chars().next().unwrap_or('\0')
     }
 
     /// Get the current character and advance
     #[allow(dead_code)]
     fn next_char(&mut self) -> char {
         let ch = self.peek_char();
-        self.position += 1;
+        self.position += ch.len_utf8();
         ch
     }
 
@@ -361,6 +361,7 @@ impl<'a> Lexer<'a> {
                     "OR" => Token::Or,
                     "NOT" => Token::Not,
                     "IF" => Token::If,
+                    "COLLATE" => Token::Collate,
                     "CASE" => Token::Case,
                     "WHEN" => Token::When,
                     "THEN" => Token::Then,
