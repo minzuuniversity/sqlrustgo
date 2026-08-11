@@ -924,12 +924,90 @@ pub enum Expression {
     JsonLiteral(String),
 }
 
+/// V312-19 #4038: classify a LIMIT/OFFSET expression.
+/// * `Ok(v)` — foldable integer literal / arithmetic on integer literals.
+/// * `Err(msg)` — non-foldable; emit `msg` so the binder-style regex in
+///   order__test_limit.test (`Binder Error:.*Referenced column.*not found`,
+///   `Binder Error:.*Aggregate functions are not supported`,
+///   `Not implemented Error:.*expression class.*`) matches.
+fn classify_limit_expr(expr: &Expression, clause: &str) -> Result<u64, String> {
+    // Strategy:
+    //   1. If the whole tree folds to a constant, return Ok(v).
+    //   2. Otherwise, walk the tree to find the *first* non-foldable leaf
+    //      and emit the matching binder-style error. Walking left-to-right
+    //      ensures `LIMIT a+1` reports `Referenced column 'a' not found`
+    //      rather than accidentally folding the right-hand literal `1`.
+    if let Some(v) = constant_fold_u64(expr) {
+        return Ok(v);
+    }
+    classify_non_foldable(expr, clause)
+}
+
+/// Walk the tree to find the first non-foldable node and emit a binder-style
+/// error for it. Prefers left children over right, so `LIMIT a+1` reports
+/// the column reference error instead of folding the right literal.
+fn classify_non_foldable(expr: &Expression, clause: &str) -> Result<u64, String> {
+    match expr {
+        // Aggregate / window / function / unbound identifier — emit a
+        // binder-style error so the regex in order__test_limit.test matches.
+        Expression::Aggregate(_) => Err(format!(
+            "Binder Error: Aggregate functions are not supported in {} clause",
+            clause
+        )),
+        Expression::WindowCall(_) => Err(format!(
+            "Not implemented Error: expression class window is not supported in {} clause",
+            clause
+        )),
+        Expression::FunctionCall(name, _) => Err(format!(
+            "Binder Error: function '{}' is not supported in {} clause",
+            name, clause
+        )),
+        Expression::Identifier(name) => Err(format!(
+            "Binder Error: Referenced column '{}' not found",
+            name
+        )),
+        // A literal here is foldable on its own; the outer call's
+        // `constant_fold_u64` already proved the whole tree didn't fold, so
+        // a literal child means the *other* side is non-foldable. Return Ok
+        // so the BinaryOp walker recurses into the other side.
+        Expression::Literal(_) => Ok(0),
+        Expression::BinaryOp(left, _, right) => {
+            // Walk left first; if left reports a non-foldable leaf, return
+            // that error immediately. Only fall through to right when left
+            // is foldable. This guarantees `LIMIT a+1` reports the column
+            // error rather than silently folding the right literal.
+            let l = classify_non_foldable(left, clause);
+            if l.is_err() {
+                return l;
+            }
+            classify_non_foldable(right, clause)
+        }
+        _ => Err(format!(
+            "Invalid {}: expected integer literal or foldable expression",
+            clause
+        )),
+    }
+}
+
 /// V312-19 #3972: constant-fold an arithmetic expression to a `u64` LIMIT/OFFSET value.
 /// Returns `None` if the expression is not a constant integer.
 /// Supports `+ - * / %` on integer literals.
 fn constant_fold_u64(expr: &Expression) -> Option<u64> {
     match expr {
-        Expression::Literal(s) => s.parse::<u64>().ok(),
+        Expression::Literal(s) => {
+            // Try integer first, then float-truncate (e.g. "1.25" -> 1).
+            if let Ok(i) = s.parse::<u64>() {
+                Some(i)
+            } else if let Ok(f) = s.parse::<f64>() {
+                if f >= 0.0 && f.is_finite() {
+                    Some(f as u64)
+                } else {
+                    None
+                }
+            } else {
+                None
+            }
+        }
         Expression::BinaryOp(left, op, right) => {
             let l = constant_fold_u64(left)?;
             let r = constant_fold_u64(right)?;
@@ -5124,37 +5202,15 @@ impl Parser {
         // Parse LIMIT clause
         let limit = if matches!(self.current(), Some(Token::Limit)) {
             self.next();
-            match self.current() {
-                Some(Token::NumberLiteral(n)) => {
-                    // Handle both integer and float literals (e.g., LIMIT 1.25 -> 1 row)
-                    let val = if let Ok(i) = n.parse::<u64>() {
-                        i
-                    } else if let Ok(f) = n.parse::<f64>() {
-                        f as u64
-                    } else {
-                        return Err(format!("Invalid LIMIT: invalid digit found in string"));
-                    };
-                    self.next();
-                    Some(val)
-                }
-                Some(Token::Identifier(ref s)) => {
-                    // Support LIMIT variable (e.g., @limit)
-                    // V312-19 #3972: also accept arithmetic expression via constant_fold_u64.
-                    let val = s
-                        .parse::<u64>()
-                        .map_err(|e| format!("Invalid LIMIT: {}", e))?;
-                    self.next();
-                    Some(val)
-                }
-                _ => {
-                    // V312-19 #3972: accept arithmetic expression, e.g. LIMIT 2-1.
-                    let saved_pos = self.position;
-                    let expr = self.parse_expression()?;
-                    constant_fold_u64(&expr).or_else(|| {
-                        self.position = saved_pos;
-                        None
-                    })
-                }
+            // V312-19 #4038: try to fold a constant arithmetic expression
+            // (e.g. `LIMIT 2-1`, `LIMIT 1.25`). For non-foldable expressions
+            // (column references, aggregates, window calls, etc.) emit a
+            // binder-style error that matches the regex used by
+            // order__test_limit.test.
+            let expr = self.parse_expression()?;
+            match classify_limit_expr(&expr, "LIMIT") {
+                Ok(v) => Some(v),
+                Err(e) => return Err(e),
             }
         } else {
             None
@@ -5163,34 +5219,11 @@ impl Parser {
         // Parse OFFSET clause
         let offset = if matches!(self.current(), Some(Token::Offset)) {
             self.next();
-            match self.current() {
-                Some(Token::NumberLiteral(n)) => {
-                    let val = if let Ok(i) = n.parse::<u64>() {
-                        i
-                    } else if let Ok(f) = n.parse::<f64>() {
-                        f as u64
-                    } else {
-                        return Err(format!("Invalid OFFSET: invalid digit found in string"));
-                    };
-                    self.next();
-                    Some(val)
-                }
-                Some(Token::Identifier(ref s)) => {
-                    let val = s
-                        .parse::<u64>()
-                        .map_err(|e| format!("Invalid OFFSET: {}", e))?;
-                    self.next();
-                    Some(val)
-                }
-                _ => {
-                    // V312-19 #3972: OFFSET also accepts arithmetic expression.
-                    let saved_pos = self.position;
-                    let expr = self.parse_expression()?;
-                    constant_fold_u64(&expr).or_else(|| {
-                        self.position = saved_pos;
-                        None
-                    })
-                }
+            // V312-19 #4038: same classification logic as LIMIT.
+            let expr = self.parse_expression()?;
+            match classify_limit_expr(&expr, "OFFSET") {
+                Ok(v) => Some(v),
+                Err(e) => return Err(e),
             }
         } else {
             None
@@ -9745,6 +9778,19 @@ mod split_sql_statements_tests {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn test_probe_limit_arith_v312_limit() {
+        let sql = "SELECT a FROM test LIMIT 2-1";
+        let stmt = parse(sql).unwrap();
+        match stmt {
+            Statement::Select(s) => {
+                eprintln!("LIMIT 2-1 parsed: limit={:?}", s.limit);
+                assert_eq!(s.limit, Some(1u64), "Expected LIMIT 1 from 2-1, got {:?}", s.limit);
+            }
+            _ => panic!("Expected SELECT"),
+        }
+    }
 
     #[test]
     fn test_parse_qualified_column_names() {
