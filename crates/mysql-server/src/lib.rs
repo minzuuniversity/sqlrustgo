@@ -3350,6 +3350,36 @@ fn handle_load_local_infile<S: Read + Write>(
     Ok(total_rows)
 }
 
+/// V312-18e: recognise `SET long_query_time = N` and return `N`.
+///
+/// Inspect a parsed `Statement` to see whether it is a `SET long_query_time`.
+/// Returns `None` if the statement is something else.
+///
+/// `N` is a threshold in **seconds** (matches MySQL semantics — fractional
+/// values like `0.5` are accepted). The internal `SlowQueryLog` is
+/// millisecond-granular, so this helper converts seconds → ms.
+///
+/// The parser accepts the statement (`TransactionStatement::SetSessionVariable`)
+/// but no executor handles it, so `do_command_loop` intercepts it and
+/// retunes the server's shared `SlowQueryLog` instead of dispatching.
+fn classify_long_query_time_set(stmt: &Statement) -> Option<Result<u64, &'static str>> {
+    use sqlrustgo_parser::transaction::TransactionStatement;
+    match stmt {
+        Statement::Transaction(TransactionStatement::SetSessionVariable { name, value })
+            if name.eq_ignore_ascii_case("long_query_time") =>
+        {
+            let trimmed = value.trim();
+            match trimmed.parse::<f64>() {
+                Ok(secs) if secs.is_finite() && secs >= 0.0 => {
+                    Some(Ok((secs * 1000.0).round() as u64))
+                }
+                _ => Some(Err("Incorrect argument type to variable 'long_query_time'")),
+            }
+        }
+        _ => None,
+    }
+}
+
 fn do_command_loop<S: Read + Write + DrainWrites>(
     stream: &mut S,
     addr: SocketAddr,
@@ -3537,7 +3567,30 @@ fn do_command_loop<S: Read + Write + DrainWrites>(
                         had_error = true;
                         continue;
                     }
+                    // V312-18e: `SET long_query_time = N` is intercepted
+                    // here rather than dispatched to the executor (which has
+                    // no handler for it). `N` is in seconds (MySQL semantics,
+                    // fractional permitted); invalid values produce an error
+                    // packet that mirrors MySQL error 1232.
+                    if let Some(retune) = parsed.as_ref().ok().and_then(classify_long_query_time_set) {
+                        match retune {
+                            Ok(ms) => {
+                                if let Some(ref slow_log) = config.slow_query_log {
+                                    slow_log.set_threshold_ms(ms);
+                                }
+                                make_ok_packet(seq, 0, 0, 0x0002, 0).write_to(stream)?;
+                            }
+                            Err(err) => {
+                                make_err_packet(seq, 1232u16, "42000", err).write_to(stream)?;
+                                had_error = true;
+                            }
+                        }
+                        *server_last_sent_seq = seq;
+                        seq = seq.wrapping_add(1);
+                        continue;
+                    }
                     // G13-OLTP-1: poisoning recovery in both branches.
+                    let started = std::time::Instant::now();
                     let result = if let Some(stmt) = is_read_only {
                         let rstmt = read_only_stmt(stmt);
                         let eng = engine.read();
@@ -3552,6 +3605,13 @@ fn do_command_loop<S: Read + Write + DrainWrites>(
                         eprintln!("SERVER: eng.execute(sql={})", stmt_sql);
                         eng.execute(stmt_sql)
                     };
+                    // V312-18e: time every dispatched statement; the log
+                    // itself gates on its threshold.
+                    if let Some(ref slow_log) = config.slow_query_log {
+                        let elapsed_ms = started.elapsed().as_millis() as u64;
+                        let rows = result.as_ref().map(|r| r.rows.len() as u64).unwrap_or(0);
+                        slow_log.maybe_log(stmt_sql, elapsed_ms, rows);
+                    }
                     match result {
                         Ok(r) if is_read_only.is_some() => {
                             // Extract real column names from the SQL
@@ -3846,6 +3906,7 @@ fn do_command_loop<S: Read + Write + DrainWrites>(
                     .as_ref()
                     .ok()
                     .and_then(|s| read_only_stmt(s).map(|_| s));
+                let started = std::time::Instant::now();
                 let result = if let Some(stmt) = is_read_only {
                     let rstmt = read_only_stmt(stmt);
                     let eng = engine.read();
@@ -3859,6 +3920,12 @@ fn do_command_loop<S: Read + Write + DrainWrites>(
                     let mut eng = engine.write();
                     eng.execute(&final_sql)
                 };
+                // V312-18e: prepared-statement executions are timed too.
+                if let Some(ref slow_log) = config.slow_query_log {
+                    let elapsed_ms = started.elapsed().as_millis() as u64;
+                    let rows = result.as_ref().map(|r| r.rows.len() as u64).unwrap_or(0);
+                    slow_log.maybe_log(&final_sql, elapsed_ms, rows);
+                }
                 match result {
                     Ok(r) if is_read_only.is_some() => {
                         let c: Vec<String> = r
@@ -5615,6 +5682,18 @@ pub mod testing {
         /// files upstream (e.g. `tools/tbl2bin`). The CLI mirrors
         /// this knob via `--storage binary`.
         pub storage: Option<String>,
+        /// Slow query log. `None` (default) disables slow query logging
+        /// entirely — no file is created and no timing is retained.
+        /// `Some(log)` makes every dispatched statement time itself and
+        /// hand the duration to [`SlowQueryLog::maybe_log`], which gates
+        /// on its own threshold.
+        ///
+        /// Shared behind an `Arc` across all connections of one server:
+        /// the slow query log is server-wide in MySQL, and
+        /// `SET long_query_time = N` retunes the shared threshold.
+        /// Build one with
+        /// `EphemeralConfig::with_slow_query_log(path, threshold_ms)`.
+        pub slow_query_log: Option<Arc<query_stats::SlowQueryLog>>,
     }
 
     impl Default for EphemeralConfig {
@@ -5629,7 +5708,25 @@ pub mod testing {
                 server_threads: 16,
                 storage: None,
                 port: None,
+                slow_query_log: None,
             }
+        }
+    }
+
+    impl EphemeralConfig {
+        /// Enable slow query logging to `log_path`, recording every
+        /// statement whose wall-clock duration is >= `threshold_ms`.
+        /// The file is appended to and created on first slow query.
+        pub fn with_slow_query_log(
+            mut self,
+            log_path: std::path::PathBuf,
+            threshold_ms: u64,
+        ) -> Self {
+            self.slow_query_log = Some(Arc::new(query_stats::SlowQueryLog::new(
+                threshold_ms,
+                log_path,
+            )));
+            self
         }
     }
 
@@ -5740,15 +5837,43 @@ pub mod testing {
         // under the OS temp dir and Drop removes it.
         let externally_owned = data_dir_for_thread.is_some();
         let data_dir = data_dir_for_thread.clone().unwrap_or_else(|| {
+            // V312-F-2 #4025 fix: include nanosecond timestamp + thread id
+            // to guarantee uniqueness even when OS reuses a port within
+            // the same process. Previously: port + process_id, which
+            // collided when two sequential tests got the same port (the
+            // second test inherited the first test's storage and tables).
+            use std::time::{SystemTime, UNIX_EPOCH};
+            let nanos = SystemTime::now()
+                .duration_since(UNIX_EPOCH)
+                .map(|d| d.as_nanos())
+                .unwrap_or(0);
             std::env::temp_dir().join(format!(
-                "sqlrustgo_ephemeral_{}_{}",
+                "sqlrustgo_ephemeral_{}_{}_{}",
                 port,
-                std::process::id()
+                std::process::id(),
+                nanos
             ))
         });
         if !externally_owned {
+            // V312-F-2 #4025: remove stale data_dir from a previous run
+            // that may have used the same port (e.g. Drop didn't complete
+            // before a new server bound the port).
+            let _ = std::fs::remove_dir_all(&data_dir);
             std::fs::create_dir_all(&data_dir)?;
         }
+
+        // V312-F-2 #4025 fix (round-2): the server thread MUST receive the
+        // *resolved* `data_dir` (with the temp fallback already computed
+        // and the directory created/cleaned), not the original `Option`
+        // from `EphemeralConfig`. Previously the closure captured
+        // `data_dir_for_thread` (= `config.data_dir.clone()`, which is
+        // `None` for the typical `data_dir: None` ephemeral test), so the
+        // server thread fell back to the shared `cwd/.sqlrustgo/data`
+        // directory and tests polluted one another (e.g. `test_e2e_drop_table`
+        // saw 2 rows for `t2` instead of 1, because a previous test left a
+        // row there). We now re-assign `data_dir_for_thread` to
+        // `Some(data_dir.clone())` so the closure receives the unique path.
+        let data_dir_for_thread = Some(data_dir.clone());
 
         // Move the listener into the server thread. The accept loop
         // is non-blocking and polls a shutdown flag; Drop sets the
@@ -5941,6 +6066,7 @@ pub mod testing {
                     server_threads: 2,
                     storage: None,
                     data_dir: None,
+                    slow_query_log: None,
                 };
 
                 // If a server is already on this port (e.g. prior process in
@@ -6040,6 +6166,7 @@ pub mod testing {
                 server_threads: 2,
                 storage: Some("binary".to_string()),
                 port: Some(0),
+                slow_query_log: None,
             };
             assert_eq!(cfg.host, "0.0.0.0");
             assert!(!cfg.bootstrap_tables);
