@@ -12,11 +12,14 @@
 //! - ColumnStats: 列级统计信息结构
 //! - StatsCollector: 统计信息收集器
 
-use std::collections::HashMap;
+use std::collections::{HashMap, HashSet};
 use thiserror::Error;
 
 use sqlrustgo_storage::StorageEngine;
 use sqlrustgo_types::Value;
+
+/// Default number of buckets for equi-height histograms (Phase A, Issue #4033).
+pub const DEFAULT_HISTOGRAM_BUCKETS: usize = 100;
 
 /// Statistics provider error types
 #[derive(Error, Debug)]
@@ -34,6 +37,207 @@ pub enum StatsError {
 /// Result type for statistics operations
 pub type StatsResult<T> = Result<T, StatsError>;
 
+/// A bucket in an equi-height histogram.
+///
+/// `lower_bound` is inclusive; `upper_bound` is inclusive. Together they define
+/// the value range of this bucket; `count` is the number of non-null rows whose
+/// value falls in `[lower_bound, upper_bound]`; `distinct_count` is the number
+/// of unique values within the bucket.
+#[derive(Debug, Clone, PartialEq)]
+pub struct HistogramBucket {
+    pub lower_bound: Value,
+    pub upper_bound: Value,
+    pub count: u64,
+    pub distinct_count: u64,
+}
+
+/// Equi-height histogram for a single column.
+///
+/// `buckets` is sorted by `lower_bound` ascending; each bucket holds
+/// approximately `total_count / num_buckets` rows.
+#[derive(Debug, Clone, PartialEq)]
+pub struct Histogram {
+    pub num_buckets: usize,
+    pub total_count: u64,
+    pub null_count: u64,
+    pub buckets: Vec<HistogramBucket>,
+}
+
+impl Histogram {
+    /// Estimate selectivity of `column < value` using linear interpolation
+    /// inside the bucket that contains `value`. Returns 0.0 if `value` is
+    /// below all buckets; returns `1.0` if `value` exceeds all buckets.
+    pub fn estimate_lt(&self, value: &Value) -> f64 {
+        if self.buckets.is_empty() || self.total_count == 0 {
+            return 0.5;
+        }
+
+        // Find the first bucket whose upper_bound >= value.
+        // (Buckets are sorted by lower_bound ascending.)
+        let mut cumulative: u64 = 0;
+        let mut idx = 0usize;
+        while idx < self.buckets.len() {
+            let b = &self.buckets[idx];
+            match value.partial_cmp(&b.upper_bound) {
+                Some(std::cmp::Ordering::Less) | Some(std::cmp::Ordering::Equal) => break,
+                _ => {
+                    cumulative = cumulative.saturating_add(b.count);
+                    idx += 1;
+                }
+            }
+        }
+
+        if idx >= self.buckets.len() {
+            // value above all buckets
+            return 1.0;
+        }
+
+        let bucket = &self.buckets[idx];
+        let frac_within = match (&bucket.lower_bound, value) {
+            (Value::Integer(lo), Value::Integer(v)) if *v <= *lo => 0.0,
+            (Value::Integer(lo), Value::Integer(v)) if *v >= bucket.upper_bound_as_i64() => 1.0,
+            (Value::Integer(lo), Value::Integer(v)) => {
+                let span = bucket.upper_bound_as_i64() - lo;
+                if span <= 0 {
+                    0.5
+                } else {
+                    ((*v - lo) as f64 / span as f64).clamp(0.0, 1.0)
+                }
+            }
+            (Value::Float(lo), Value::Float(v)) if *v <= *lo => 0.0,
+            (Value::Float(lo), Value::Float(v)) if *v >= bucket.upper_bound_as_f64() => 1.0,
+            (Value::Float(lo), Value::Float(v)) => {
+                let span = bucket.upper_bound_as_f64() - lo;
+                if span <= 0.0 {
+                    0.5
+                } else {
+                    ((*v - lo) / span).clamp(0.0, 1.0)
+                }
+            }
+            // For non-numeric or cross-type comparisons, fall back to bucket midpoint.
+            _ => 0.5,
+        };
+
+        let bucket_total = bucket.count.max(1) as f64;
+        let rows_in_bucket_before = bucket_total * frac_within;
+        let total = self.total_count as f64;
+        ((cumulative as f64 + rows_in_bucket_before) / total).clamp(0.0, 1.0)
+    }
+
+    /// Estimate selectivity of `column = value` as 1/NDV (uniform assumption).
+    /// If `value` falls outside `[min(buckets.lower), max(buckets.upper)]`,
+    /// returns 0.0.
+    pub fn estimate_eq(&self, value: &Value) -> f64 {
+        if self.buckets.is_empty() {
+            return 0.5;
+        }
+        // Out-of-range value: probability 0.
+        let first = &self.buckets[0];
+        let last = &self.buckets[self.buckets.len() - 1];
+        let above_lower = match value.partial_cmp(&first.lower_bound) {
+            Some(std::cmp::Ordering::Less) => false,
+            _ => true,
+        };
+        let below_upper = match value.partial_cmp(&last.upper_bound) {
+            Some(std::cmp::Ordering::Greater) => false,
+            _ => true,
+        };
+        if !above_lower || !below_upper {
+            return 0.0;
+        }
+
+        // Sum NDV across all buckets (clamped at total_count).
+        let total_ndv: u64 = self
+            .buckets
+            .iter()
+            .map(|b| b.distinct_count)
+            .sum::<u64>()
+            .max(1);
+        // 1/NDV, but never exceed 1.0
+        (1.0 / total_ndv as f64).min(1.0)
+    }
+
+    /// Estimate selectivity of `lo <= column <= hi` by linear interpolation
+    /// over the covered bucket range.
+    pub fn estimate_range(&self, lo: &Value, hi: &Value) -> f64 {
+        if self.buckets.is_empty() || self.total_count == 0 {
+            return 0.5;
+        }
+        // estimate_range ≈ estimate_lt(hi) − estimate_lt(lo) + small overlap.
+        // We use a simple difference that respects [0,1] clamping.
+        let upto_hi = self.estimate_lt(hi);
+        let below_lo = self.estimate_lt(lo);
+        (upto_hi - below_lo).clamp(0.0, 1.0)
+    }
+}
+
+impl HistogramBucket {
+    fn upper_bound_as_i64(&self) -> i64 {
+        match &self.upper_bound {
+            Value::Integer(i) => *i,
+            _ => i64::MAX,
+        }
+    }
+    fn upper_bound_as_f64(&self) -> f64 {
+        match &self.upper_bound {
+            Value::Float(f) => *f,
+            Value::Integer(i) => *i as f64,
+            _ => f64::INFINITY,
+        }
+    }
+}
+
+/// Build an equi-height `Histogram` from a slice of column values.
+///
+/// - Excludes `Value::Null` (counted into `Histogram.null_count`).
+/// - Returns `None` when `values` is empty (after filtering nulls).
+/// - If `num_buckets == 0`, falls back to `DEFAULT_HISTOGRAM_BUCKETS`.
+/// - For cross-type comparisons (mix of Integer/Float/Text), buckets are still
+///   constructed but `estimate_lt/eq` falls back to the bucket midpoint heuristic.
+pub fn build_histogram_from_values(values: &[Value], num_buckets: usize) -> Option<Histogram> {
+    let mut non_null: Vec<&Value> = values.iter().filter(|v| !matches!(v, Value::Null)).collect();
+    if non_null.is_empty() {
+        return None;
+    }
+    let total = non_null.len() as u64;
+    let null_count = (values.len() as u64).saturating_sub(total);
+    let n_buckets = if num_buckets == 0 {
+        DEFAULT_HISTOGRAM_BUCKETS
+    } else {
+        num_buckets
+    };
+
+    // Sort using partial_cmp with Equal fallback for cross-type.
+    non_null.sort_by(|a, b| {
+        a.partial_cmp(b).unwrap_or(std::cmp::Ordering::Equal)
+    });
+
+    // Equi-height: bucket_size = ceil(total / n_buckets), at least 1.
+    let bucket_size = total.div_ceil(n_buckets as u64).max(1) as usize;
+    let mut buckets: Vec<HistogramBucket> = Vec::new();
+    for chunk in non_null.chunks(bucket_size) {
+        if chunk.is_empty() {
+            continue;
+        }
+        let lower = (*chunk.first().unwrap()).clone();
+        let upper = (*chunk.last().unwrap()).clone();
+        let distinct = chunk.iter().collect::<HashSet<_>>().len() as u64;
+        buckets.push(HistogramBucket {
+            lower_bound: lower,
+            upper_bound: upper,
+            count: chunk.len() as u64,
+            distinct_count: distinct,
+        });
+    }
+
+    Some(Histogram {
+        num_buckets: buckets.len(),
+        total_count: total,
+        null_count,
+        buckets,
+    })
+}
+
 /// Column statistics for a single column
 #[derive(Debug, Clone, Default)]
 pub struct ColumnStats {
@@ -49,6 +253,9 @@ pub struct ColumnStats {
     pub max_value: Option<Value>,
     /// Average value (for numeric types)
     pub avg_value: Option<f64>,
+    /// Optional equi-height histogram for selectivity estimation
+    /// (Issue #4033). When `None`, callers should fall back to per-op heuristics.
+    pub histogram: Option<Histogram>,
 }
 
 impl ColumnStats {
@@ -60,6 +267,7 @@ impl ColumnStats {
             min_value: None,
             max_value: None,
             avg_value: None,
+            histogram: None,
         }
     }
 
@@ -81,6 +289,12 @@ impl ColumnStats {
 
     pub fn with_average(mut self, avg: f64) -> Self {
         self.avg_value = Some(avg);
+        self
+    }
+
+    /// Attach a pre-built histogram (Issue #4033).
+    pub fn with_histogram(mut self, hist: Histogram) -> Self {
+        self.histogram = Some(hist);
         self
     }
 
