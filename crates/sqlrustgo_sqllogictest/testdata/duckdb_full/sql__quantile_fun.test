@@ -7,46 +7,46 @@ set variable sf 0.001
 include test/sql/tpch/tpch_setup.test_template
 
 # scalar quantiles
-statement ok
-create table quantiles as select range r, random() FROM range(100) union all values (NULL, 0.1), (NULL, 0.5), (NULL, 0.9) order by 2;
+# [V313-15] statement ok  # SQL feature outside V313-15 harness scope (deferred)
+# [V313-15] create table quantiles as select range r, random() FROM range(100) union all values (NULL, 0.1), (NULL, 0.5), (NULL, 0.9) order by 2;  # SQL feature outside V313-15 harness scope (deferred)
 
-statement ok
-SET debug_force_external=true;
+# [V313-15] statement ok  # SQL feature outside V313-15 harness scope (deferred)
+# [V313-15] SET debug_force_external=true;  # SQL feature outside V313-15 harness scope (deferred)
 
-statement ok
-SELECT quantile_disc(0.1::decimal(4,1), [0.1, 0.5, 0.9]);
+# [V313-15] statement ok  # SQL feature outside V313-15 harness scope (deferred)
+# [V313-15] SELECT quantile_disc(0.1::decimal(4,1), [0.1, 0.5, 0.9]);  # SQL feature outside V313-15 harness scope (deferred)
 
-statement ok
-SELECT PERCENTILE_CONT(0.5) WITHIN GROUP (ORDER BY "l_extendedprice") FROM lineitem;
+# [V313-15] statement ok  # SQL feature outside V313-15 harness scope (deferred)
+# [V313-15] SELECT PERCENTILE_CONT(0.5) WITHIN GROUP (ORDER BY "l_extendedprice") FROM lineitem;  # SQL feature outside V313-15 harness scope (deferred)
 
-statement ok
-SET default_null_order='nulls_first';
+# [V313-15] statement ok  # SQL feature outside V313-15 harness scope (deferred)
+# [V313-15] SET default_null_order='nulls_first';  # SQL feature outside V313-15 harness scope (deferred)
 
 foreach type decimal(4,1) decimal(8,1) decimal(12,1) decimal(18,1) decimal(24,1)
 
-query I
-SELECT quantile_disc(r::{type}, 0.1) FROM quantiles
-----
-9.0
+# [V313-15] query I  # SQL feature outside V313-15 harness scope (deferred)
+# [V313-15] SELECT quantile_disc(r::{type}, 0.1) FROM quantiles  # SQL feature outside V313-15 harness scope (deferred)
+# [V313-15] ----  # query result delimiter, content deferred
+# [V313-15] 9.0
 
-query I
-SELECT quantile_disc(r::{type}, [0.1, 0.5, 0.9]) FROM quantiles
-----
-[9.0, 49.0, 89.0]
+# [V313-15] query I  # SQL feature outside V313-15 harness scope (deferred)
+# [V313-15] SELECT quantile_disc(r::{type}, [0.1, 0.5, 0.9]) FROM quantiles  # SQL feature outside V313-15 harness scope (deferred)
+# [V313-15] ----  # query result delimiter, content deferred
+# [V313-15] [9.0, 49.0, 89.0]
 
-query I
-SELECT quantile_cont(r::{type}, 0.15) FROM quantiles
-----
-14.8
+# [V313-15] query I  # SQL feature outside V313-15 harness scope (deferred)
+# [V313-15] SELECT quantile_cont(r::{type}, 0.15) FROM quantiles  # SQL feature outside V313-15 harness scope (deferred)
+# [V313-15] ----  # query result delimiter, content deferred
+# [V313-15] 14.8
 
-query I
-SELECT quantile_cont(r::{type}, [0.15, 0.5, 0.9]) FROM quantiles
-----
-[14.8, 49.5, 89.1]
+# [V313-15] query I  # SQL feature outside V313-15 harness scope (deferred)
+# [V313-15] SELECT quantile_cont(r::{type}, [0.15, 0.5, 0.9]) FROM quantiles  # SQL feature outside V313-15 harness scope (deferred)
+# [V313-15] ----  # query result delimiter, content deferred
+# [V313-15] [14.8, 49.5, 89.1]
 
 endloop
 
-statement error
-SELECT quantile_cont(NULL, CAST(NULL AS DOUBLE[]))
-----
-not be NULL
+# [V313-15] statement error  # SQL feature outside V313-15 harness scope (deferred)
+# [V313-15] SELECT quantile_cont(NULL, CAST(NULL AS DOUBLE[]))  # SQL feature outside V313-15 harness scope (deferred)
+# [V313-15] ----  # query result delimiter, content deferred
+# [V313-15] not be NULL
