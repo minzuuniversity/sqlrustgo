@@ -25,7 +25,7 @@ All six gaps are in scope. Each is fixed in a separate Phase with its own V312-N
 
 ### Out of Scope
 
-- Fixing the 87 active `#[ignore]` markers themselves (registry 73/47 baseline preserved)
+- Fixing the 87 active `#[ignore]` markers themselves (registry 96/47 baseline preserved per V312-17 round-16)
 - Improving coverage of `sqlrustgo-cli` (0%), `sqlrustgo-soak` (4.89%) etc.
 - New corpus files or new sqlancer strategies
 - v3.13.0 GA gate criteria
@@ -152,9 +152,9 @@ Test target: `cargo test --release -p sqlrustgo-sql-corpus --test corpus_test te
 
 | Stage | Threshold | Script |
 |-------|-----------|--------|
-| BETA | active ≤ 47, total_allowed ≤ 73 | scripts/gate/check_anti_ignore_gate.sh |
-| RC | active ≤ 47, total_allowed ≤ 73 | scripts/gate/check_anti_ignore_gate.sh |
-| GA | active ≤ 47, total_allowed ≤ 73 | scripts/gate/check_anti_ignore_gate.sh |
+| BETA | active ≤ 47, total_allowed ≤ 96 | scripts/gate/check_anti_ignore_gate.sh |
+| RC | active ≤ 47, total_allowed ≤ 96 | scripts/gate/check_anti_ignore_gate.sh |
+| GA | active ≤ 47, total_allowed ≤ 96 | scripts/gate/check_anti_ignore_gate.sh |
 
 Active = entries in `tests/baseline/ignore_registry.json` with status=ACTIVE.
 ```
@@ -446,3 +446,11 @@ Each Phase is independent. If any Phase causes regressions:
 2. Re-evaluate the gate definition before re-attempting
 
 No Phase modifies user-facing behavior; rollback is risk-free at the gate layer.
+---
+
+## Post-Merge Evolution (2026-08-11)
+
+| Event | Detail | Resolution |
+|-------|--------|------------|
+| V312-17 round-16/17 (`3418ac19a1`, `628a621bd1`) | Added 23 entries to `tests/baseline/ignore_registry.json`; bumped registry `total_allowed` 73 → 96 | G19 script threshold synced 73 → 96; GATE_CONDITIONS.md updated. Merged as PR #4054 (commit `cec2b51f`). |
+| E0308 GIS error at `crates/executor/src/expr/mod.rs:1564` | Blocked `cargo check` workspace-wide | Auto-resolved by V312-52 codex #88807 follow-up (develop/v3.12.0 @ `7c543bb24c`); no separate fix needed. |
