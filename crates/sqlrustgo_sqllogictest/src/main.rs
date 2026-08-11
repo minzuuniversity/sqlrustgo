@@ -186,7 +186,7 @@ fn preprocess_test_file(path: &Path) -> Result<String, String> {
 }
 
 /// Pre-process test content string, expanding directives
-fn preprocess_content(content: &str, base_dir: &Path) -> Result<String, String> {
+pub(crate) fn preprocess_content(content: &str, base_dir: &Path) -> Result<String, String> {
     let mut variables: HashMap<String, String> = HashMap::new();
     let mut output = String::new();
     let mut lines = content.lines().peekable();
@@ -491,5 +491,134 @@ async fn async_main() {
         // returned 0 even with `files_fail > 0`, masking regressions from the
         // gate logic. See plan: /home/openclaw/.claude/plans/pure-hugging-sifakis.md
         std::process::exit(1);
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    //! V313-15 / Issue #4043 — DuckDB Harness 'set variable' directive tests.
+    //!
+    //! Asserts the harness-level preprocessing of `set variable NAME VALUE`
+    //! and the substitution of `$(NAME)` / `${NAME}` references in subsequent
+    //! statement/query lines. The pre-existing commit c689806d3 introduced
+    //! this handling; these tests pin the behaviour so V313-15 / Issue #4043
+    //! can be closed with a verified evidence bundle.
+    use super::preprocess_content;
+    use std::path::Path;
+
+    fn run(input: &str) -> String {
+        preprocess_content(input, Path::new(".")).expect("preprocess must succeed")
+    }
+
+    /// RED → GREEN: bare 'set variable NAME VALUE' line is consumed and the
+    /// variable is then substituted in subsequent SQL lines.
+    #[test]
+    fn v313_15_set_variable_basic_substitution_dollar_paren() {
+        let out = run("set variable sf 0.001\n\
+             SELECT * FROM x WHERE scale = $(sf);\n");
+        assert!(
+            out.contains("SELECT * FROM x WHERE scale = 0.001;"),
+            "expected substituted dollar-paren form, got: {}",
+            out
+        );
+        assert!(
+            !out.contains("set variable sf"),
+            "set variable directive itself must be consumed, got: {}",
+            out
+        );
+    }
+
+    /// V313-15 — ${name} brace form must also be substituted.
+    #[test]
+    fn v313_15_set_variable_brace_form() {
+        let out = run("set variable threshold 42\nSELECT * FROM y WHERE n > ${threshold};\n");
+        assert!(
+            out.contains("SELECT * FROM y WHERE n > 42;"),
+            "expected brace-form substitution, got: {}",
+            out
+        );
+    }
+
+    /// V313-15 — variable used across multiple statement lines, last-write
+    /// wins when redefined.
+    #[test]
+    fn v313_15_set_variable_redefine_overrides() {
+        let out = run("set variable x first\nSELECT $(x);\n\
+             set variable x second\nSELECT $(x);\n");
+        let first_pos = out
+            .find("SELECT first;")
+            .expect("first select must contain 'first'");
+        let second_pos = out
+            .find("SELECT second;")
+            .expect("second select must contain 'second'");
+        assert!(
+            first_pos < second_pos,
+            "first occurrence should appear before second (redefinition)"
+        );
+    }
+
+    /// V313-15 — SQLLogicTest fixture shape used by quantile_fun.test:
+    /// `set variable sf 0.001` followed by `include ...` and CREATE TABLE AS
+    /// statements. The directive must be consumed cleanly (no leftover line).
+    #[test]
+    fn v313_15_set_variable_followed_by_include_is_consumed() {
+        let out = run("# name: test/sql/aggregate/quantile_fun.test\n\
+             set variable sf 0.001\n\
+             include test/sql/tpch/tpch_setup.test_template\n\
+             statement ok\n\
+             SELECT $(sf);\n");
+        // The set-variable line itself is consumed.
+        assert!(
+            !out.lines()
+                .any(|l| l.trim_start().starts_with("set variable sf")),
+            "set variable directive must be consumed, output was:\n{}",
+            out
+        );
+        // Variable is substituted into the SELECT.
+        assert!(
+            out.contains("SELECT 0.001;"),
+            "expected $(sf) substituted into SELECT, got:\n{}",
+            out
+        );
+        // Missing include file produces a warning but does not error.
+        assert!(
+            !out.contains("include test/sql/tpch"),
+            "missing include must be silently skipped, output was:\n{}",
+            out
+        );
+    }
+
+    /// V313-15 — regression: a line that contains 'set variable' as a substring
+    /// but is not the directive (e.g. inside a string literal) must not be
+    /// consumed. The current implementation only strips a line that *starts*
+    /// with `set variable `, so this is a positive control rather than a
+    /// regression.
+    #[test]
+    fn v313_15_set_variable_substring_inside_string_is_preserved() {
+        let out = run("SELECT 'set variable sf 0.001' AS label;\n\
+             set variable sf 0.5\n\
+             SELECT $(sf);\n");
+        assert!(
+            out.contains("'set variable sf 0.001'"),
+            "literal string containing 'set variable' must be preserved"
+        );
+        assert!(
+            out.contains("SELECT 0.5;"),
+            "directive on a later line must still substitute"
+        );
+    }
+
+    /// V313-15 — malformed directive (missing value) must NOT poison the
+    /// preprocessor. Per current implementation, the warning is logged to
+    /// stderr but preprocessing continues. We assert that the rest of the
+    /// content still appears in the output.
+    #[test]
+    fn v313_15_set_variable_malformed_does_not_panic() {
+        let out = run("set variable lonely\nSELECT 1;\n");
+        assert!(
+            out.contains("SELECT 1;"),
+            "malformed set-variable line must not abort preprocessing, got: {}",
+            out
+        );
     }
 }
