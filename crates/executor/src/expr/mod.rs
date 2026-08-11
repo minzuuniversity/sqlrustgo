@@ -812,7 +812,7 @@ pub fn eval_binary_op(left: &Value, right: &Value, op: &str) -> Value {
         ">" | "<" | ">=" | "<=" => compare_cmp(left, right, op),
         "AND" | "&&" => Value::Boolean(to_bool(left) && to_bool(right)),
         "OR" | "||" => Value::Boolean(to_bool(left) || to_bool(right)),
-        "+" | "-" | "*" | "/" => eval_arithmetic(left, right, op),
+        "+" | "-" | "*" | "/" | "%" => eval_arithmetic(left, right, op),
         "->" => json_extract(left, right, false),
         "->>" => json_extract(left, right, true),
         _ => Value::Null,
@@ -859,11 +859,15 @@ fn eval_arithmetic(left: &Value, right: &Value, op: &str) -> Value {
         if r == 0.0 && op == "/" {
             return Value::Null;
         }
+        if r == 0.0 && op == "%" {
+            return Value::Null;
+        }
         let result = match op {
             "+" => l + r,
             "-" => l - r,
             "*" => l * r,
             "/" => l / r,
+            "%" => l % r,
             _ => unreachable!(),
         };
         Value::Float(result)
@@ -879,6 +883,13 @@ fn eval_arithmetic(left: &Value, right: &Value, op: &str) -> Value {
                     0
                 } else {
                     l / r
+                }
+            }
+            "%" => {
+                if r == 0 {
+                    0
+                } else {
+                    l % r
                 }
             }
             _ => unreachable!(),
