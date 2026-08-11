@@ -60,9 +60,15 @@ mod tests {
                 Err(e) => Err(e),
             }
         }
-        fn begin(&mut self) -> Result<u64, SqlError> { Ok(1) }
-        fn commit(&mut self, _txn: u64) -> Result<(), SqlError> { Ok(()) }
-        fn rollback(&mut self, _txn: u64) -> Result<(), SqlError> { Ok(()) }
+        fn begin(&mut self) -> Result<u64, SqlError> {
+            Ok(1)
+        }
+        fn commit(&mut self, _txn: u64) -> Result<(), SqlError> {
+            Ok(())
+        }
+        fn rollback(&mut self, _txn: u64) -> Result<(), SqlError> {
+            Ok(())
+        }
     }
 
     #[test]
@@ -87,7 +93,9 @@ mod tests {
         };
         let mut facade = ExecutionFacade::new(engine);
         let params = vec![Value::Integer(42), Value::Text("x".to_string())];
-        facade.execute_with_params("INSERT INTO t VALUES (?)".to_string(), params.clone()).unwrap();
+        facade
+            .execute_with_params("INSERT INTO t VALUES (?)".to_string(), params.clone())
+            .unwrap();
         assert_eq!(facade.engine.last_params.as_ref(), Some(&params));
     }
 

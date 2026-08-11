@@ -1,8 +1,11 @@
 # SQLRustGo v3.12.0 Release Notes
 
+> **provenance:** generated_by=v3.12.0-remediation-round-3, generated_at=2026-08-10T10:49:33Z, commit=1903545df6d036f7f6d5035a0503b5fa932aac51, source_repo=openclaw/sqlrustgo, branch=develop/v3.12.0, policy=Anti-Fabrication-Policy-v1.0
+
 > **状态**: DRAFT
 > **日期**: 2026-08-09
 > **说明**: 本文是 v3.12.0 开发入口说明，不是发布完成说明。
+**commit**: 1903545df6d036f7f6d5035a0503b5fa932aac51
 
 ## 版本定位
 

@@ -588,6 +588,12 @@ impl<S: StorageEngine + 'static> ExecutionEngine<S> {
             Statement::DropSequence(ref seq) => self.execute_drop_sequence(seq),
             Statement::AlterSequence(ref seq) => self.execute_alter_sequence(seq),
             Statement::UseDatabase(ref name) => self.execute_use_database(name),
+            Statement::Values(_) => Err(SqlError::ExecutionError(
+                "VALUES cannot be used as a standalone statement".to_string(),
+            )),
+            Statement::Values(_) => Err(SqlError::ExecutionError(
+                "VALUES cannot be used as a standalone statement".to_string(),
+            )),
             Statement::AlterUser(_) => Err(SqlError::ExecutionError(
                 "ALTER USER not yet implemented".to_string(),
             )),
@@ -645,64 +651,8 @@ impl<S: StorageEngine + 'static> ExecutionEngine<S> {
         crate::engine_dml::execute_delete(self, delete)
     }
 
-    fn execute_create_table(&self, create: &CreateTableStatement) -> SqlResult<ExecutorResult> {
-        let mut storage = self.storage.write();
-        let columns: Vec<ColumnDefinition> = create
-            .columns
-            .iter()
-            .map(|c| ColumnDefinition {
-                name: c.name.clone(),
-                data_type: c.data_type.clone(),
-                nullable: !c.primary_key,
-                primary_key: c.primary_key,
-                char_max_length: c.char_max_length,
-            })
-            .collect();
-        let compression = create.compress.as_ref().map(|spec| match spec.algorithm {
-            CompressionAlgorithm::Lz4 => "LZ4".to_string(),
-            CompressionAlgorithm::Zstd => "ZSTD".to_string(),
-            CompressionAlgorithm::Zlib => "ZLIB".to_string(),
-        });
-        let info = TableInfo {
-            name: create.name.clone(),
-            columns: columns.clone(),
-            foreign_keys: vec![],
-            unique_constraints: vec![],
-            check_constraints: vec![],
-            partition_info: None,
-            compression,
-        };
-
-        // V311-01 F-23: route to ClusteredTable when storage_engine = Clustered.
-        // - ENGINE=InnoDB CLUSTERED → B+ Tree storage with PK ordering.
-        // - absent / ENGINE=InnoDB (no CLUSTERED) → existing Heap path.
-        if matches!(create.storage_engine, Some(StorageEngineSpec::Clustered)) {
-            // Find PK column index (must exist for ClusteredTable).
-            let pk_col_idx = columns.iter().position(|c| c.primary_key).ok_or_else(|| {
-                SqlError::ExecutionError(
-                    "Clustered table requires PRIMARY KEY on a single column".to_string(),
-                )
-            })?;
-            // Create ClusteredTable
-            let ct = ClusteredTable::new(info.clone(), pk_col_idx);
-            // Also register with Heap so other code paths (catalog, schema checks) find it
-            storage.create_table(&TableInfo {
-                name: info.name.clone(),
-                columns,
-                foreign_keys: vec![],
-                unique_constraints: vec![],
-                check_constraints: vec![],
-                partition_info: None,
-                compression: None,
-            })?;
-            self.clustered_tables
-                .write()
-                .insert(create.name.clone(), Arc::new(parking_lot::RwLock::new(ct)));
-            return Ok(ExecutorResult::empty());
-        }
-        storage.create_table(&info)?;
-        Ok(ExecutorResult::empty())
-    }
+    // V312-F-4: execute_create_table moved to src/engine_create.rs
+    // to keep execution_engine.rs under 1500 lines (C-ARCH-05 AD-001).
 
     fn execute_drop_table(&self, drop: &DropTableStatement) -> SqlResult<ExecutorResult> {
         let mut storage = self.storage.write();
@@ -747,79 +697,8 @@ impl<S: StorageEngine + 'static> ExecutionEngine<S> {
         Ok(ExecutorResult::empty())
     }
 
-    fn execute_create_sequence(
-        &self,
-        seq_stmt: &CreateSequenceStatement,
-    ) -> SqlResult<ExecutorResult> {
-        use sqlrustgo_storage::engine::SequenceInfo;
-
-        let mut storage = self.storage.write();
-
-        // Check if sequence already exists
-        if storage.has_sequence(&seq_stmt.name) {
-            if seq_stmt.if_not_exists {
-                return Ok(ExecutorResult::empty());
-            }
-            return Err(SqlError::ExecutionError(format!(
-                "Sequence '{}' already exists",
-                seq_stmt.name
-            )));
-        }
-
-        // Parse sequence options from String to i64
-        let start_with = seq_stmt
-            .start_with
-            .as_ref()
-            .and_then(|s| s.parse::<i64>().ok())
-            .unwrap_or(1);
-        let increment_by = seq_stmt
-            .increment_by
-            .as_ref()
-            .and_then(|s| s.parse::<i64>().ok())
-            .unwrap_or(1);
-        let minvalue = seq_stmt
-            .minvalue
-            .as_ref()
-            .and_then(|s| {
-                if s == "NO MINVALUE" {
-                    Some(i64::MIN)
-                } else {
-                    s.parse::<i64>().ok()
-                }
-            })
-            .unwrap_or(1);
-        let maxvalue = seq_stmt
-            .maxvalue
-            .as_ref()
-            .and_then(|s| {
-                if s == "NO MAXVALUE" {
-                    Some(i64::MAX)
-                } else {
-                    s.parse::<i64>().ok()
-                }
-            })
-            .unwrap_or(i64::MAX);
-        let cache = seq_stmt
-            .cache
-            .as_ref()
-            .and_then(|s| s.parse::<i64>().ok())
-            .unwrap_or(1);
-        let cycle = seq_stmt.cycle.unwrap_or(false);
-
-        let seq_info = SequenceInfo {
-            name: seq_stmt.name.clone(),
-            start_with,
-            increment_by,
-            minvalue,
-            maxvalue,
-            cache,
-            cycle,
-            current_value: start_with - increment_by, // Start position before first NEXT VALUE
-        };
-
-        storage.create_sequence(seq_info)?;
-        Ok(ExecutorResult::empty())
-    }
+    // V312-F-4: execute_create_sequence moved to src/engine_create.rs
+    // to keep execution_engine.rs under 1500 lines (C-ARCH-05 AD-001).
 
     fn execute_drop_sequence(&self, seq_stmt: &DropSequenceStatement) -> SqlResult<ExecutorResult> {
         let mut storage = self.storage.write();
@@ -838,40 +717,8 @@ impl<S: StorageEngine + 'static> ExecutionEngine<S> {
         Ok(ExecutorResult::empty())
     }
 
-    fn execute_alter_sequence(
-        &self,
-        seq_stmt: &AlterSequenceStatement,
-    ) -> SqlResult<ExecutorResult> {
-        let mut storage = self.storage.write();
-
-        // Get existing sequence or error
-        let mut seq_info = match storage.get_sequence(&seq_stmt.name) {
-            Some(info) => info,
-            None => {
-                return Err(SqlError::ExecutionError(format!(
-                    "Sequence '{}' not found",
-                    seq_stmt.name
-                )));
-            }
-        };
-
-        // Handle RESTART [WITH value]
-        if seq_stmt.restart_with.is_some() {
-            let restart_val = seq_stmt
-                .restart_with
-                .as_ref()
-                .and_then(|s| s.parse::<i64>().ok())
-                .unwrap_or(seq_info.start_with);
-            seq_info.current_value = restart_val - seq_info.increment_by;
-        } else {
-            // RESTART without WITH resets to start_value
-            seq_info.current_value = seq_info.start_with - seq_info.increment_by;
-        }
-
-        // Update the sequence
-        storage.create_sequence(seq_info)?;
-        Ok(ExecutorResult::empty())
-    }
+    // V312-F-4: execute_alter_sequence moved to src/engine_create.rs
+    // to keep execution_engine.rs under 1500 lines (C-ARCH-05 AD-001).
 
     fn execute_use_database(&self, _db: &str) -> SqlResult<ExecutorResult> {
         // v3.9.0 single-database: USE <database> is accepted for MySQL wire
@@ -1229,6 +1076,10 @@ impl<S: StorageEngine + 'static> ExecutionEngine<S> {
                 }
                 self.begin_transaction(iso, false)
             }
+            // V312-11-fix #3986: SET session variable is parsed and stored
+            // in the parser/executor pairing; no transaction-level effect,
+            // so this is a no-op for the transaction executor.
+            TransactionStatement::SetSessionVariable { .. } => Ok(ExecutorResult::empty()),
         }
     }
 

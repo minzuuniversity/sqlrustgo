@@ -1,5 +1,7 @@
 # V312-06 SQL-backed Graph Projection — Verification Report
 
+> **provenance:** generated_by=v3.12.0-remediation-round-3, generated_at=2026-08-10T10:49:33Z, commit=1bc0066b459ff59a751788e9405ad5aacdfccc4b, source_repo=openclaw/sqlrustgo, branch=develop/v3.12.0, policy=Anti-Fabrication-Policy-v1.0
+
 ## Issue & PR
 
 | 字段 | 值 |

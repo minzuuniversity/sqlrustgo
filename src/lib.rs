@@ -12,6 +12,7 @@
 
 pub mod cbo_estimator;
 pub mod engine_builder;
+pub mod engine_create;
 pub mod engine_cte;
 pub mod engine_ddl;
 pub mod engine_dml;

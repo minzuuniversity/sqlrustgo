@@ -43,8 +43,7 @@ struct Fixture {
 }
 
 const FIXTURE_DIR: &str = "tests/compat/mysql_v3_12";
-const DISPOSITION_PATH: &str =
-    "docs/releases/v3.12.0/evidence/mysql_compat/SURFACE_DISPOSITION.md";
+const DISPOSITION_PATH: &str = "docs/releases/v3.12.0/evidence/mysql_compat/SURFACE_DISPOSITION.md";
 const LOG_DIR: &str = "docs/releases/v3.12.0/evidence/mysql_compat/logs";
 
 fn parse_fixture(text: &str, default_name: &str) -> Fixture {
@@ -62,11 +61,7 @@ fn parse_fixture(text: &str, default_name: &str) -> Fixture {
         }
     }
     let sql = body_lines.join("\n");
-    Fixture {
-        name,
-        expect,
-        sql,
-    }
+    Fixture { name, expect, sql }
 }
 
 fn split_sql(sql: &str) -> Vec<&str> {
@@ -242,7 +237,11 @@ fn write_disposition(rows: &[Row], source_run: &str) -> std::io::Result<()> {
     )
     .unwrap();
     writeln!(s).unwrap();
-    writeln!(s, "| surface | decision | reason | evidence_hash | owner | expiry |").unwrap();
+    writeln!(
+        s,
+        "| surface | decision | reason | evidence_hash | owner | expiry |"
+    )
+    .unwrap();
     writeln!(
         s,
         "|---------|----------|--------|---------------|-------|--------|"
@@ -308,8 +307,7 @@ fn main() -> Result<()> {
 
     // 3. Iterate *.sql. The runner records one row per fixture.
     //    Map by surface name so a later pass can de-dup.
-    let mut by_surface: std::collections::BTreeMap<String, Row> =
-        std::collections::BTreeMap::new();
+    let mut by_surface: std::collections::BTreeMap<String, Row> = std::collections::BTreeMap::new();
 
     let mut entries: Vec<_> = fs::read_dir(fixdir)?
         .filter_map(|e| e.ok())
@@ -373,8 +371,14 @@ fn main() -> Result<()> {
 
     // 6. Print summary.
     let pass_count = final_rows.iter().filter(|r| r.decision == "PASS").count();
-    let unsup_count = final_rows.iter().filter(|r| r.decision == "unsupported").count();
-    let deferred_count = final_rows.iter().filter(|r| r.decision == "deferred").count();
+    let unsup_count = final_rows
+        .iter()
+        .filter(|r| r.decision == "unsupported")
+        .count();
+    let deferred_count = final_rows
+        .iter()
+        .filter(|r| r.decision == "deferred")
+        .count();
     let fail_count = final_rows.iter().filter(|r| r.decision == "fail").count();
     println!(
         "compat-runner: {} surfaces, pass={} unsupported={} deferred={} fail={}",

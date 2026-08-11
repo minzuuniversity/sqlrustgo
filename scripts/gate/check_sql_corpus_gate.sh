@@ -12,8 +12,8 @@ echo "Running corpus_test::test_sql_corpus_all ..."
 cargo test --release -p sqlrustgo-sql-corpus --test corpus_test \
     test_sql_corpus_all -- --nocapture > "$REPORT" 2>&1 || true
 
-# Extract pass rate from "R8 Gate Passed: pass rate: XX.X%"
-PASS_RATE=$(grep -oE 'pass rate:[[:space:]]*[0-9]+\.[0-9]+%' "$REPORT" | head -1 | grep -oE '[0-9]+\.[0-9]+')
+# Extract pass rate from "Final Summary: ... XX.X% pass rate"
+PASS_RATE=$(grep -oE '[0-9]+\.[0-9]+% pass rate' "$REPORT" | head -1 | grep -oE '[0-9]+\.[0-9]+')
 
 if [ -z "$PASS_RATE" ]; then
     echo "FAIL: could not extract pass rate from corpus output" >&2

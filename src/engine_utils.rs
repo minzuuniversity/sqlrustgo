@@ -73,6 +73,44 @@ pub fn validate_foreign_keys(
     }
     Ok(())
 }
+/// Validate NOT NULL constraints for a row before INSERT or UPDATE.
+/// Returns an error if any non-nullable column is NULL.
+pub fn validate_not_null(
+    table_info: &sqlrustgo_storage::TableInfo,
+    row: &[Value],
+    insert_columns: &[String],
+) -> SqlResult<()> {
+    let col_to_row_idx: std::collections::HashMap<String, usize> = if insert_columns.is_empty() {
+        table_info
+            .columns
+            .iter()
+            .enumerate()
+            .map(|(i, c)| (c.name.to_uppercase(), i))
+            .collect()
+    } else {
+        insert_columns
+            .iter()
+            .enumerate()
+            .map(|(i, name)| (name.to_uppercase(), i))
+            .collect()
+    };
+
+    for col in &table_info.columns {
+        if !col.nullable {
+            if let Some(&source_idx) = col_to_row_idx.get(&col.name.to_uppercase()) {
+                if let Some(value) = row.get(source_idx) {
+                    if matches!(value, Value::Null) {
+                        return Err(SqlError::ExecutionError(format!(
+                            "Column '{}' cannot be NULL",
+                            col.name
+                        )));
+                    }
+                }
+            }
+        }
+    }
+    Ok(())
+}
 
 /// Evaluate a WHERE clause expression against a row
 /// Returns true if the row matches the WHERE condition

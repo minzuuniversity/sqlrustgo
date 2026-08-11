@@ -240,7 +240,11 @@ pub fn hybrid_search(
         })
         .collect();
 
-    scored.sort_by(|a, b| b.similarity.partial_cmp(&a.similarity).unwrap_or(std::cmp::Ordering::Equal));
+    scored.sort_by(|a, b| {
+        b.similarity
+            .partial_cmp(&a.similarity)
+            .unwrap_or(std::cmp::Ordering::Equal)
+    });
     scored.truncate(top_k);
     Ok(scored)
 }

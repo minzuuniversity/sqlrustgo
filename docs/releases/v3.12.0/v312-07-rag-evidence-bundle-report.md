@@ -1,5 +1,7 @@
 # V312-07 RAG Evidence Bundle — Verification Report
 
+> **provenance:** generated_by=v3.12.0-remediation-round-3, generated_at=2026-08-10T10:49:33Z, commit=893c3078f447e77650299ee6f763d3538b2f9cd8, source_repo=openclaw/sqlrustgo, branch=develop/v3.12.0, policy=Anti-Fabrication-Policy-v1.0
+
 ## Issue & PR
 
 | 字段 | 值 |

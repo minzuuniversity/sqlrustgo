@@ -20,19 +20,21 @@
 #   - docs/governance/{ANTI_FABRICATION_POLICY, AI_GENERATOR_AUDIT_CHECKLIST,
 #     DISABLED_TESTS_ANALYSIS}.md
 #
-# Counters: 58 items total
-#   closed:     31
-#   superseded:  2
-#   deferred:   12
-#   carried:     2
-#   retired:     9
-#   (2 entries reference pre-v3.10 PR/issue numbers as supersession evidence)
+# Counters: 89 items total (round-9 updated 2026-08-10)
+#   closed:     55
+#   superseded:  15
+#   deferred:    11
+#   carried:      0
+#   retired:      8
+#   (Note: round-9 corrected FIX-TLS-WRITE-BLOCK from carried to closed after
+#    TDD verification confirmed PR #3696 + PR #3700 + commit eaba6d6f0
+#    all reachable from develop/v3.12.0 HEAD)
 
 version: 1
 issue: 3907
 parent_issue: 3887
 branch: develop/v3.12.0
-source_plan_commit: 9e157ed61b68a2a7c61ebae18cd0a6c15ceb79b1
+source_plan_commit: "9e157ed61b68a2a7c61ebae18cd0a6c15ceb79b1"
 generated_by: minimax
 generated_at: "2026-08-09T12:00:00+08:00"
 
@@ -601,14 +603,24 @@ v3_10:
   - id: FIX-TLS-WRITE-BLOCK
     title: "TLS WouldBlock busy-loop fix (Issue #3694)"
     source: openspec/changes/fix-tls-write-block-busy-loop/proposal.md
-    current_state: OPEN
-    disposition: carried
-    v312_owner_issue: "#3908"
-    v312_expiry: "2026-09-15"
+    current_state: CLOSED
+    disposition: closed
     evidence:
       doc: openspec/changes/fix-tls-write-block-busy-loop/proposal.md
-      pr: "#3694"
-      notes: "Pre-existing flaky WouldBlock observed in crates/mysql-server/tests/e2e_wire_protocol.rs (Io Os code 11 kind WouldBlock). Proposal+design exists, no tasks.md. Routed under V312-21 (MySQL Compatibility, #3908) — needs sub-task created with tasks.md before GA freeze. New dedicated V312-XX issue recommended; tracked here as carried."
+      closing_pr: ["#3696", "#3700"]
+      closing_commits:
+        - "94a04eaf3 fix(mysql-server): force-drain all TLS cipher records on STMT_PREPARE response"
+        - "a56dbb274 fix(mysql-server): drain all pending TLS records in TlsStream::read"
+        - "d32dff636 fix(mysql-server): restore blocking mode on accepted TcpStream — eliminates TlsStream WouldBlock busy-loop"
+        - "eaba6d6f0 fix(mysql-server): loop TlsStream write through all WouldBlock"
+        - "bdf9b0ef4 test(coverage): V311-14 SEM-4 — security audit +5, tls +2 tests"
+      closing_merge_commits:
+        - "6bec8b4e69feb43d838c6f23db3bd41a30da0e11"  # PR #3696
+        - "3adbfa597bf14687f224c4ede152eabd6eb0f807"  # PR #3700
+        - "ecff2f10503959b8715e8ecba055985c8696c92a"  # PR #3701 (openspec)
+      evidence_hash: "fix-tls-write-block-busy-loop@ecff2f105"
+      reachable_on_v3_12_0: true
+      notes: "Issue #3694 actually fixed by PR #3696 (force-drain on STMT_PREPARE) + PR #3700 (restore blocking mode) + eaba6d6f0 (loop through all WouldBlock); all three merges reachable from HEAD `54e8a5dc253b486e378e2bb280522a485e34dea5` via the v3.9.0 → v3.10.0 → v3.11.0 → v3.12.0 rebase chain. Originally dispositioned 'carried' with placeholder V312 owner #3908 but #3908 closed without addressing this specific issue; the actual fix shipped via upstream merge path. round-9 verification confirmed via git merge-base --is-ancestor for all 3 merge commits. evidence_hash uses PR #3701 (openspec/changes) merge commit as the canonical artifact pointing to the design + proposal committed in v3.9.0 and carried forward."
   - id: FIX-G1-TPCH-CLI
     title: "G1 TPC-H CLI harness fix"
     source: openspec/changes/fix-g1-tpch-cli-harness/tasks.md
@@ -828,7 +840,7 @@ open_questions:
   - id: "Q5"
     text: "v3.9 168h SOAK PASSED 2026-07-12 (Issue #3266) but G13 re-run 72h 0-error listed in GA_READINESS_STATUS_2026-06-21.md as ⏳; re-confirm before marking V312-21 closed."
   - id: "Q6"
-    text: "FIX-TLS-WRITE-BLOCK (#3694) is the only item dispositioned as 'carried' with V312 owner issue #3908 (placeholder); tasks.md not yet created. Real work required before GA freeze."
+    text: "FIX-TLS-WRITE-BLOCK (#3694) was dispositioned 'carried' with V312 owner #3908 (placeholder); round-9 TDD verification (2026-08-10) confirmed Issue #3694 actually fixed via PR #3696 (force-drain TLS on STMT_PREPARE) + PR #3700 (restore blocking mode) + commit eaba6d6f0 (loop TlsStream write through all WouldBlock), all 3 merges reachable from develop/v3.12.0 HEAD 54e8a5dc. Disposition corrected from carried to closed with full evidence_hash + closing_commits."
 
 # ============================================================================
 # Summary
@@ -836,16 +848,26 @@ open_questions:
 summary:
   total_items: 89
   by_disposition:
-    closed: 54
+    closed: 55
     superseded: 15
     deferred: 11
-    carried: 1
+    carried: 0
     retired: 8
-  carried_items_with_owner:
+  carried_items_with_owner: []
+  carried_items_corrected_during_round9:
     - id: "FIX-TLS-WRITE-BLOCK"
-      v312_owner_issue: "#3908"
-      v312_expiry: "2026-09-15"
-      note: "Routed under V312-21 MySQL Compatibility (#3908); sub-task with tasks.md pending before GA freeze."
+      previous_disposition: carried
+      new_disposition: closed
+      v312_owner_issue_was: "#3908"
+      actual_fixes:
+        - pr: "#3696"  # force-drain TLS on STMT_PREPARE
+          merge_commit: "6bec8b4e69feb43d838c6f23db3bd41a30da0e11"
+        - pr: "#3700"  # restore blocking mode
+          merge_commit: "3adbfa597bf14687f224c4ede152eabd6eb0f807"
+        - commit: "eaba6d6f0"  # loop TlsStream write through all WouldBlock
+          description: "loop TlsStream write through all WouldBlock"
+      evidence_hash: "fix-tls-write-block-busy-loop@ecff2f105"
+      note: "Round-9 TDD verification (2026-08-10) — git merge-base --is-ancestor confirmed all 3 merge commits reachable from develop/v3.12.0 HEAD 54e8a5dc253b486e378e2bb280522a485e34dea5 via the v3.9.0 → v3.10.0 → v3.11.0 → v3.12.0 rebase chain. Disposition corrected from 'carried' to 'closed' per Anti-Fabrication Policy v1.0 (real evidence > placeholder claim)."
   carried_items_superseded_in_disposition:
     - id: "admin"
       original_v312_owner_issue: "#3910"

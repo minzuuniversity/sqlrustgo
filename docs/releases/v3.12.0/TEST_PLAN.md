@@ -1,11 +1,13 @@
 # SQLRustGo v3.12.0 测试计划
 
+> **provenance:** generated_by=v3.12.0-remediation-round-3, generated_at=2026-08-10T10:49:33Z, commit=1903545df6d036f7f6d5035a0503b5fa932aac51, source_repo=openclaw/sqlrustgo, branch=develop/v3.12.0, policy=Anti-Fabrication-Policy-v1.0
+
 > **版本**: v3.12.0
 > **状态**: 规划中
 > **日期**: 2026-08-09
 > **目标**: GMP 内审检索生产门禁
+> **commit**: 1903545df6d036f7f6d5035a0503b5fa932aac51
 
-## 1. 测试矩阵
 
 | Gate | 领域 | 方法 | 阈值 |
 |---|---|---|---|

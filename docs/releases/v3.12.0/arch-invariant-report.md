@@ -1,5 +1,7 @@
 # Architecture Invariant Report — v3.12.0
 
+> **provenance:** generated_by=v3.12.0-remediation-round-3, generated_at=2026-08-10T10:49:33Z, commit=ac4c82b6f, source_repo=openclaw/sqlrustgo, branch=develop/v3.12.0, policy=Anti-Fabrication-Policy-v1.0
+
 **Generated:** 2026-08-09T16:02:42Z
 **Source agent:** minimax (V312-19 driver)
 **Source run:** `minimax-v312-19-r2-966c28d0c2`

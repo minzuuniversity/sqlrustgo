@@ -39,6 +39,7 @@ fn mixed_workload_accept_loop_does_not_park_under_saturation() {
     let tmp = tempfile::TempDir::new().expect("TempDir");
     let config = EphemeralConfig {
         host: "127.0.0.1".to_string(),
+        port: None,
         bootstrap_tables: true,
         bootstrap_users: true,
         data_dir: Some(tmp.path().to_path_buf()),
@@ -46,6 +47,7 @@ fn mixed_workload_accept_loop_does_not_park_under_saturation() {
         bulk_insert_buffer_size: 1_048_576,
         server_threads: 16,
         storage: None,
+        slow_query_log: None,
     };
     let handle = start_ephemeral(config).expect("start_ephemeral");
     let port = handle.port;

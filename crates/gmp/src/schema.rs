@@ -219,8 +219,13 @@ impl RelationType {
 
     pub fn all_str() -> Vec<&'static str> {
         vec![
-            "SOP", "CLAUSE", "CAPA", "DEVIATION",
-            "ROLE", "EQUIPMENT", "AUDIT_FINDING",
+            "SOP",
+            "CLAUSE",
+            "CAPA",
+            "DEVIATION",
+            "ROLE",
+            "EQUIPMENT",
+            "AUDIT_FINDING",
         ]
     }
 }

@@ -157,7 +157,9 @@ pub fn get_document_version(
     version_number: i32,
 ) -> SqlResult<Option<DocumentVersion>> {
     let versions = get_document_versions(storage, doc_id)?;
-    Ok(versions.into_iter().find(|v| v.version_number == version_number))
+    Ok(versions
+        .into_iter()
+        .find(|v| v.version_number == version_number))
 }
 
 /// Find a version by source hash (for idempotent re-import check).
