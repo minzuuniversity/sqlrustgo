@@ -1,5 +1,5 @@
 === Running Cross-Version Debt Gate Check (EXTENDED) ===
-/home/openclaw/workspace/dev/sqlrustgo
+/tmp/sqlrustgo-v312-alpha-gate-governance
 ✅ Cross-version debt docs resolved:
     CROSS-VERSION-DEBT: docs/releases/v3.8.0/debt/CROSS-VERSION-DEBT.md
     INT5_INVENTORY:      docs/releases/v3.8.0/debt/INT5_PLUS_DEBT_INVENTORY.md
@@ -136,7 +136,7 @@
   ❓ UNKNOWN:   
 
 === Gate Criteria Check ===
-/home/openclaw/workspace/dev/sqlrustgo/scripts/gate/check_cross_version_debt.sh: line 450: [: : integer expression expected
+/tmp/sqlrustgo-v312-alpha-gate-governance/scripts/gate/check_cross_version_debt.sh: line 450: [: : integer expression expected
 ⚠️  WARNING: 2 ACTIVE debt items found
     These should be moved to CLOSED or DEFERRED
 ⚠️  WARNING: 4 OPEN debt items found
@@ -144,5 +144,5 @@
 ✅ ADR-010 (Ghost PR Resolution) exists - deferred items documented
 
 === Cross-Version Debt Gate Check Complete ===
-/home/openclaw/workspace/dev/sqlrustgo/scripts/gate/check_cross_version_debt.sh: line 487: [: : integer expression expected
+/tmp/sqlrustgo-v312-alpha-gate-governance/scripts/gate/check_cross_version_debt.sh: line 487: [: : integer expression expected
 ✅ PASS
