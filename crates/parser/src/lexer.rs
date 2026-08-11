@@ -84,6 +84,24 @@ impl<'a> Lexer<'a> {
         self.input[start..self.position].to_string()
     }
 
+    /// Read a double-quoted identifier (e.g., "MyTable" -> MyTable)
+    fn read_quoted_identifier(&mut self) -> String {
+        self.position += 1; // Skip opening double quote
+        let start = self.position;
+        while !self.is_eof() {
+            let ch = self.peek_char();
+            if ch == '"' {
+                break;
+            }
+            self.position += 1;
+        }
+        let result = self.input[start..self.position].to_string();
+        if !self.is_eof() {
+            self.position += 1; // Skip closing double quote
+        }
+        result
+    }
+
     /// Read a number literal
     fn read_number(&mut self) -> String {
         let start = self.position;
@@ -217,6 +235,7 @@ impl<'a> Lexer<'a> {
                 self.position += 1;
                 Token::Colon
             }
+            '"' => Token::Identifier(self.read_quoted_identifier()),
             '\'' => Token::StringLiteral(self.read_string()),
             '=' => {
                 self.position += 1;
@@ -634,5 +653,35 @@ mod tests {
     fn test_lexer_null() {
         let tokens = Lexer::new("NULL").tokenize();
         assert_eq!(tokens[0], Token::Null);
+    }
+}
+
+#[cfg(test)]
+mod double_quote_tests {
+    use super::*;
+
+    #[test]
+    fn test_double_quoted_identifier() {
+        let sql = r#"CREATE TABLE "MyTable"(i integer)"#;
+        let tokens = tokenize(sql);
+        println!("Tokens: {:?}", tokens);
+        // CREATE TABLE "MyTable" ( i integer )
+        // = 7 tokens: Create, Table, Identifier("MyTable"), LParen, Identifier("i"), Identifier("INTEGER"), RParen
+        assert!(
+            tokens.len() >= 3,
+            "Expected at least 3 tokens, got {:?}",
+            tokens
+        );
+        assert_eq!(tokens[0], Token::Create);
+        assert_eq!(tokens[1], Token::Table);
+        assert_eq!(tokens[2], Token::Identifier("MyTable".to_string()));
+    }
+
+    #[test]
+    fn test_values_keyword() {
+        let sql = "VALUES (1, 2)";
+        let tokens = tokenize(sql);
+        assert_eq!(tokens[0], Token::Values);
+        assert_eq!(tokens[1], Token::LParen);
     }
 }

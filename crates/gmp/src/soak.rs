@@ -108,7 +108,9 @@ pub fn run_soak_test<S: StorageEngine>(
 
         if config.crash_safe {
             match execute_op(storage, op, i) {
-                Ok(_) => { stats.operations_succeeded += 1; }
+                Ok(_) => {
+                    stats.operations_succeeded += 1;
+                }
                 Err(_) => {
                     stats.operations_failed += 1;
                     stats.crashes += 1;
@@ -122,9 +124,7 @@ pub fn run_soak_test<S: StorageEngine>(
 
         stats.operations_attempted += 1;
 
-        if config.audit_verify_interval > 0
-            && (i + 1) % config.audit_verify_interval == 0
-        {
+        if config.audit_verify_interval > 0 && (i + 1) % config.audit_verify_interval == 0 {
             match verify_audit_chain(storage) {
                 Ok((true, _)) => {
                     stats.audit_verifications += 1;
@@ -144,11 +144,7 @@ pub fn run_soak_test<S: StorageEngine>(
     Ok(stats)
 }
 
-fn execute_op<S: StorageEngine>(
-    storage: &mut S,
-    op: WorkloadOp,
-    i: usize,
-) -> SqlResult<()> {
+fn execute_op<S: StorageEngine>(storage: &mut S, op: WorkloadOp, i: usize) -> SqlResult<()> {
     match op {
         WorkloadOp::DocumentInsert => {
             let id = (i as i64).wrapping_abs().wrapping_add(1);
@@ -188,9 +184,7 @@ fn execute_op<S: StorageEngine>(
             let _ = crate::retrieval::hybrid_retrieval(storage, q, &cfg, &filter);
         }
         WorkloadOp::AuditQuery => {
-            let _ = crate::audit::query_audit_logs(
-                storage, None, None, None, None, None,
-            )?;
+            let _ = crate::audit::query_audit_logs(storage, None, None, None, None, None)?;
         }
         WorkloadOp::AuditRecord => {
             record_audit_log(
