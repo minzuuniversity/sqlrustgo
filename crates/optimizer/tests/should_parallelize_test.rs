@@ -79,7 +79,7 @@ fn test_should_parallelize_unknown_table() {
 fn test_estimate_selectivity_eq() {
     let model = UnifiedCostModel::default_model(128, 10000);
     let expr = make_eq_expr("id", "5");
-    let selectivity = model.estimate_selectivity(&expr);
+    let selectivity = model.estimate_selectivity_from_expr(&expr);
     assert!((selectivity - 0.1).abs() < 0.001);
 }
 
@@ -87,7 +87,7 @@ fn test_estimate_selectivity_eq() {
 fn test_estimate_selectivity_lt() {
     let model = UnifiedCostModel::default_model(128, 10000);
     let expr = make_lt_expr("k", "5000");
-    let selectivity = model.estimate_selectivity(&expr);
+    let selectivity = model.estimate_selectivity_from_expr(&expr);
     assert!((selectivity - 0.3).abs() < 0.001);
 }
 
@@ -99,7 +99,7 @@ fn test_estimate_selectivity_and() {
         Box::new(make_eq_expr("b", "2")),
     );
     // 0.1 * 0.1 = 0.01
-    let selectivity = model.estimate_selectivity(&expr);
+    let selectivity = model.estimate_selectivity_from_expr(&expr);
     assert!((selectivity - 0.01).abs() < 0.001);
 }
 
@@ -111,7 +111,7 @@ fn test_estimate_selectivity_or() {
         Box::new(make_eq_expr("b", "2")),
     );
     // 0.1 + 0.1 - 0.1*0.1 = 0.19
-    let selectivity = model.estimate_selectivity(&expr);
+    let selectivity = model.estimate_selectivity_from_expr(&expr);
     assert!((selectivity - 0.19).abs() < 0.001);
 }
 
@@ -120,7 +120,7 @@ fn test_estimate_selectivity_not() {
     let model = UnifiedCostModel::default_model(128, 10000);
     let expr = Expr::Not(Box::new(make_eq_expr("a", "1")));
     // 1.0 - 0.1 = 0.9
-    let selectivity = model.estimate_selectivity(&expr);
+    let selectivity = model.estimate_selectivity_from_expr(&expr);
     assert!((selectivity - 0.9).abs() < 0.001);
 }
 

@@ -162,6 +162,9 @@ pub fn optimize_join_order<'a>(
 }
 
 /// Collect statistics for a table (ANALYZE)
+///
+/// V312-22b / Issue #4033: also builds an equi-height `Histogram` per column
+/// (default 100 buckets) for data-driven selectivity estimation in CBO.
 pub fn collect_table_stats<S: sqlrustgo_storage::StorageEngine>(
     engine: &S,
     table: &str,
@@ -172,6 +175,7 @@ pub fn collect_table_stats<S: sqlrustgo_storage::StorageEngine>(
     let table_info = engine.get_table_info(table)?;
     let column_names: Vec<String> = table_info.columns.iter().map(|c| c.name.clone()).collect();
 
+    use sqlrustgo_optimizer::stats::DEFAULT_HISTOGRAM_BUCKETS;
     use sqlrustgo_types::Value;
     let mut column_stats = std::collections::HashMap::new();
     if !rows.is_empty() {
@@ -183,15 +187,22 @@ pub fn collect_table_stats<S: sqlrustgo_storage::StorageEngine>(
                 .unwrap_or_else(|| format!("col_{}", col_idx));
             let mut distinct_values = std::collections::HashSet::new();
             let mut null_count = 0u64;
+            let mut col_values: Vec<Value> = Vec::with_capacity(rows.len());
             for row in &rows {
                 if let Some(v) = row.get(col_idx) {
                     if matches!(v, Value::Null) {
                         null_count += 1;
                     } else {
                         distinct_values.insert(format!("{:?}", v));
+                        col_values.push(v.clone());
                     }
                 }
             }
+            // Build an equi-height histogram (Issue #4033 Phase B).
+            let histogram = sqlrustgo_optimizer::stats::build_histogram_from_values(
+                &col_values,
+                DEFAULT_HISTOGRAM_BUCKETS,
+            );
             column_stats.insert(
                 col_name,
                 super::execution_engine::ColumnStatistics {
@@ -199,6 +210,7 @@ pub fn collect_table_stats<S: sqlrustgo_storage::StorageEngine>(
                     null_count,
                     min_value: None,
                     max_value: None,
+                    histogram,
                 },
             );
         }
