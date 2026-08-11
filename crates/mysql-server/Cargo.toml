@@ -13,6 +13,7 @@ sqlrustgo-storage = { path = "../storage" }
 sqlrustgo-types = { path = "../types" }
 sqlrustgo-common = { path = "../common" }
 sqlrustgo-tools = { path = "../tools" }
+query-stats = { path = "../query-stats" }
 byteorder = "1"
 thiserror = "1"
 parking_lot.workspace = true
@@ -38,3 +39,4 @@ path = "src/main.rs"
 
 [dev-dependencies]
 sqlrustgo-mysql-client = { path = "../mysql-client" }
+tempfile = "3"

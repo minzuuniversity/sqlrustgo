@@ -3350,6 +3350,27 @@ fn handle_load_local_infile<S: Read + Write>(
     Ok(total_rows)
 }
 
+/// V312-18e: recognise `SET long_query_time = N` and return `N`.
+///
+/// `N` is a threshold in **milliseconds** (SQLRustGo's slow query log is
+/// millisecond-granular throughout), which differs from MySQL, where
+/// `long_query_time` is expressed in seconds.
+///
+/// The parser accepts the statement (`TransactionStatement::SetSessionVariable`)
+/// but no executor handles it, so `do_command_loop` intercepts it and
+/// retunes the server's shared `SlowQueryLog` instead of dispatching.
+fn long_query_time_ms(stmt: &Statement) -> Option<u64> {
+    use sqlrustgo_parser::transaction::TransactionStatement;
+    match stmt {
+        Statement::Transaction(TransactionStatement::SetSessionVariable { name, value })
+            if name.eq_ignore_ascii_case("long_query_time") =>
+        {
+            value.trim().parse::<u64>().ok()
+        }
+        _ => None,
+    }
+}
+
 fn do_command_loop<S: Read + Write + DrainWrites>(
     stream: &mut S,
     addr: SocketAddr,
@@ -3537,7 +3558,19 @@ fn do_command_loop<S: Read + Write + DrainWrites>(
                         had_error = true;
                         continue;
                     }
+                    // V312-18e: `SET long_query_time = N` never reaches the
+                    // executor — it retunes this server's slow query log.
+                    if let Some(ms) = parsed.as_ref().ok().and_then(long_query_time_ms) {
+                        if let Some(ref slow_log) = config.slow_query_log {
+                            slow_log.set_threshold_ms(ms);
+                        }
+                        make_ok_packet(seq, 0, 0, 0x0002, 0).write_to(stream)?;
+                        *server_last_sent_seq = seq;
+                        seq = seq.wrapping_add(1);
+                        continue;
+                    }
                     // G13-OLTP-1: poisoning recovery in both branches.
+                    let started = std::time::Instant::now();
                     let result = if let Some(stmt) = is_read_only {
                         let rstmt = read_only_stmt(stmt);
                         let eng = engine.read();
@@ -3552,6 +3585,13 @@ fn do_command_loop<S: Read + Write + DrainWrites>(
                         eprintln!("SERVER: eng.execute(sql={})", stmt_sql);
                         eng.execute(stmt_sql)
                     };
+                    // V312-18e: time every dispatched statement; the log
+                    // itself gates on its threshold.
+                    if let Some(ref slow_log) = config.slow_query_log {
+                        let elapsed_ms = started.elapsed().as_millis() as u64;
+                        let rows = result.as_ref().map(|r| r.rows.len() as u64).unwrap_or(0);
+                        slow_log.maybe_log(stmt_sql, elapsed_ms, rows);
+                    }
                     match result {
                         Ok(r) if is_read_only.is_some() => {
                             // Extract real column names from the SQL
@@ -3846,6 +3886,7 @@ fn do_command_loop<S: Read + Write + DrainWrites>(
                     .as_ref()
                     .ok()
                     .and_then(|s| read_only_stmt(s).map(|_| s));
+                let started = std::time::Instant::now();
                 let result = if let Some(stmt) = is_read_only {
                     let rstmt = read_only_stmt(stmt);
                     let eng = engine.read();
@@ -3859,6 +3900,12 @@ fn do_command_loop<S: Read + Write + DrainWrites>(
                     let mut eng = engine.write();
                     eng.execute(&final_sql)
                 };
+                // V312-18e: prepared-statement executions are timed too.
+                if let Some(ref slow_log) = config.slow_query_log {
+                    let elapsed_ms = started.elapsed().as_millis() as u64;
+                    let rows = result.as_ref().map(|r| r.rows.len() as u64).unwrap_or(0);
+                    slow_log.maybe_log(&final_sql, elapsed_ms, rows);
+                }
                 match result {
                     Ok(r) if is_read_only.is_some() => {
                         let c: Vec<String> = r
@@ -5615,6 +5662,18 @@ pub mod testing {
         /// files upstream (e.g. `tools/tbl2bin`). The CLI mirrors
         /// this knob via `--storage binary`.
         pub storage: Option<String>,
+        /// Slow query log. `None` (default) disables slow query logging
+        /// entirely — no file is created and no timing is retained.
+        /// `Some(log)` makes every dispatched statement time itself and
+        /// hand the duration to [`SlowQueryLog::maybe_log`], which gates
+        /// on its own threshold.
+        ///
+        /// Shared behind an `Arc` across all connections of one server:
+        /// the slow query log is server-wide in MySQL, and
+        /// `SET long_query_time = N` retunes the shared threshold.
+        /// Build one with
+        /// `EphemeralConfig::with_slow_query_log(path, threshold_ms)`.
+        pub slow_query_log: Option<Arc<query_stats::SlowQueryLog>>,
     }
 
     impl Default for EphemeralConfig {
@@ -5629,7 +5688,25 @@ pub mod testing {
                 server_threads: 16,
                 storage: None,
                 port: None,
+                slow_query_log: None,
             }
+        }
+    }
+
+    impl EphemeralConfig {
+        /// Enable slow query logging to `log_path`, recording every
+        /// statement whose wall-clock duration is >= `threshold_ms`.
+        /// The file is appended to and created on first slow query.
+        pub fn with_slow_query_log(
+            mut self,
+            log_path: std::path::PathBuf,
+            threshold_ms: u64,
+        ) -> Self {
+            self.slow_query_log = Some(Arc::new(query_stats::SlowQueryLog::new(
+                threshold_ms,
+                log_path,
+            )));
+            self
         }
     }
 
@@ -5969,6 +6046,7 @@ pub mod testing {
                     server_threads: 2,
                     storage: None,
                     data_dir: None,
+                    slow_query_log: None,
                 };
 
                 // If a server is already on this port (e.g. prior process in
@@ -6068,6 +6146,7 @@ pub mod testing {
                 server_threads: 2,
                 storage: Some("binary".to_string()),
                 port: Some(0),
+                slow_query_log: None,
             };
             assert_eq!(cfg.host, "0.0.0.0");
             assert!(!cfg.bootstrap_tables);
