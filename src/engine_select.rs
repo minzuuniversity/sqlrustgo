@@ -295,6 +295,13 @@ impl<S: StorageEngine + 'static> ExecutionEngine<S> {
             drop(storage);
             // V311-05 F-29: apply RLS row filtering if enabled
             let rows = self.apply_rls_filter(lookup_table, rows, &table_info)?;
+            // V313-13 / Issue #4041: binder column-existence check.
+            // Catches cases like `WITH t AS (SELECT 1 AS a)
+            // SELECT t.foobar FROM t` — without this check the legacy
+            // eval_identifier fallback would silently emit
+            // Value::Text("t.foobar"). Also catches `WHERE alias`
+            // references to SELECT-list aliases, which SQL forbids.
+            crate::engine_utils::validate_select_columns_referenced(select, &table_info)?;
             (rows, table_info)
         };
         // The storage read lock is NOT held past this point, ensuring
