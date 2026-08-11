@@ -24,7 +24,9 @@ use sqlrustgo_executor::trigger::{
 };
 use sqlrustgo_executor::ExecutorResult;
 use sqlrustgo_optimizer::rules::{BinaryOperator, Expr};
-use sqlrustgo_optimizer::stats::{build_histogram_from_values, ColumnStats as OptColumnStats, Histogram};
+use sqlrustgo_optimizer::stats::{
+    build_histogram_from_values, ColumnStats as OptColumnStats, Histogram,
+};
 use sqlrustgo_optimizer::unified_cost::UnifiedCostModel;
 use sqlrustgo_optimizer::unified_plan::UnifiedPlan;
 use sqlrustgo_parser::parser::{
