@@ -142,6 +142,12 @@ jobs:
       - name: Run integration tests
         run: cargo test --workspace --test '*'
 
+      - name: Install cargo-llvm-cov
+        run: cargo install cargo-llvm-cov --locked
+
+      - name: Gate G17 — Coverage
+        run: bash scripts/gate/check_coverage_v312.sh
+
   # ----------------------------------------
   # Security audit
   # ----------------------------------------
