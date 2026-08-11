@@ -3352,20 +3352,29 @@ fn handle_load_local_infile<S: Read + Write>(
 
 /// V312-18e: recognise `SET long_query_time = N` and return `N`.
 ///
-/// `N` is a threshold in **milliseconds** (SQLRustGo's slow query log is
-/// millisecond-granular throughout), which differs from MySQL, where
-/// `long_query_time` is expressed in seconds.
+/// Inspect a parsed `Statement` to see whether it is a `SET long_query_time`.
+/// Returns `None` if the statement is something else.
+///
+/// `N` is a threshold in **seconds** (matches MySQL semantics — fractional
+/// values like `0.5` are accepted). The internal `SlowQueryLog` is
+/// millisecond-granular, so this helper converts seconds → ms.
 ///
 /// The parser accepts the statement (`TransactionStatement::SetSessionVariable`)
 /// but no executor handles it, so `do_command_loop` intercepts it and
 /// retunes the server's shared `SlowQueryLog` instead of dispatching.
-fn long_query_time_ms(stmt: &Statement) -> Option<u64> {
+fn classify_long_query_time_set(stmt: &Statement) -> Option<Result<u64, &'static str>> {
     use sqlrustgo_parser::transaction::TransactionStatement;
     match stmt {
         Statement::Transaction(TransactionStatement::SetSessionVariable { name, value })
             if name.eq_ignore_ascii_case("long_query_time") =>
         {
-            value.trim().parse::<u64>().ok()
+            let trimmed = value.trim();
+            match trimmed.parse::<f64>() {
+                Ok(secs) if secs.is_finite() && secs >= 0.0 => {
+                    Some(Ok((secs * 1000.0).round() as u64))
+                }
+                _ => Some(Err("Incorrect argument type to variable 'long_query_time'")),
+            }
         }
         _ => None,
     }
@@ -3558,13 +3567,24 @@ fn do_command_loop<S: Read + Write + DrainWrites>(
                         had_error = true;
                         continue;
                     }
-                    // V312-18e: `SET long_query_time = N` never reaches the
-                    // executor — it retunes this server's slow query log.
-                    if let Some(ms) = parsed.as_ref().ok().and_then(long_query_time_ms) {
-                        if let Some(ref slow_log) = config.slow_query_log {
-                            slow_log.set_threshold_ms(ms);
+                    // V312-18e: `SET long_query_time = N` is intercepted
+                    // here rather than dispatched to the executor (which has
+                    // no handler for it). `N` is in seconds (MySQL semantics,
+                    // fractional permitted); invalid values produce an error
+                    // packet that mirrors MySQL error 1232.
+                    if let Some(retune) = parsed.as_ref().ok().and_then(classify_long_query_time_set) {
+                        match retune {
+                            Ok(ms) => {
+                                if let Some(ref slow_log) = config.slow_query_log {
+                                    slow_log.set_threshold_ms(ms);
+                                }
+                                make_ok_packet(seq, 0, 0, 0x0002, 0).write_to(stream)?;
+                            }
+                            Err(err) => {
+                                make_err_packet(seq, 1232u16, "42000", err).write_to(stream)?;
+                                had_error = true;
+                            }
                         }
-                        make_ok_packet(seq, 0, 0, 0x0002, 0).write_to(stream)?;
                         *server_last_sent_seq = seq;
                         seq = seq.wrapping_add(1);
                         continue;

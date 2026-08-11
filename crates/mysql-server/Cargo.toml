@@ -39,4 +39,5 @@ path = "src/main.rs"
 
 [dev-dependencies]
 sqlrustgo-mysql-client = { path = "../mysql-client" }
+query-stats = { path = "../query-stats" }
 tempfile = "3"

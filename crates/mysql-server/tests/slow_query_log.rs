@@ -5,8 +5,10 @@
 //!
 //! Run with: cargo test -p sqlrustgo-mysql-server --test slow_query_log
 
-use sqlrustgo_mysql_client::{MySqlConnection, MySqlResult};
+use sqlrustgo_mysql_client::{MySqlConnection, MySqlResult, ResultSet};
 use sqlrustgo_mysql_server::testing::{start_ephemeral, EphemeralConfig, EphemeralHandle};
+use query_stats::SlowQueryLog;
+use std::sync::Arc;
 
 fn connect(port: u16) -> MySqlResult<MySqlConnection> {
     let addr = format!("127.0.0.1:{}", port)
@@ -89,9 +91,12 @@ fn test_slow_query_log_emits_above_threshold() {
 
 /// With a high threshold nothing is logged until `SET long_query_time = 0`
 /// retunes the shared threshold, which must take effect immediately.
+///
+/// `long_query_time` is in **seconds** (matches MySQL semantics), while
+/// the internal threshold is in milliseconds.
 #[test]
 fn test_set_long_query_time_changes_threshold() {
-    // 10 minutes: nothing a test query can plausibly exceed.
+    // 600 seconds = 10 minutes: nothing a test query can plausibly exceed.
     let (handle, log_path, _dir) = server_with_slow_log(600_000, "settime");
 
     let mut conn = connect(handle.port).expect("connected");
@@ -118,6 +123,66 @@ fn test_set_long_query_time_changes_threshold() {
         !contents.contains("long_query_time"),
         "SET long_query_time should not itself be logged:\n{contents}"
     );
+}
+
+/// `SET long_query_time` is in seconds (MySQL semantics) and accepts
+/// fractional values. The internal threshold is millisecond-granular, so
+/// `0.5` lowers the threshold to 500ms, and `0.001` to 1ms — both
+/// retrievable via `SlowQueryLog::threshold_ms()`.
+#[test]
+fn test_set_long_query_time_fractional_seconds() {
+    let dir = tempfile::tempdir().expect("tempdir");
+    let log_path = dir.path().join("fractional_slow.log");
+    let slow_log = Arc::new(SlowQueryLog::new(600_000, log_path));
+    let config = EphemeralConfig {
+        bootstrap_tables: false,
+        server_threads: 2,
+        slow_query_log: Some(Arc::clone(&slow_log)),
+        ..Default::default()
+    };
+    let handle = start_ephemeral(config).expect("ephemeral server starts");
+
+    assert_eq!(
+        slow_log.threshold_ms(),
+        600_000,
+        "initial threshold is 10 minutes"
+    );
+
+    let mut conn = connect(handle.port).expect("connected");
+    conn.execute("SET long_query_time = 0.5")
+        .expect("SET long_query_time = 0.5 is accepted");
+    assert_eq!(
+        slow_log.threshold_ms(),
+        500,
+        "0.5 seconds must lower the threshold to 500 ms, got {}",
+        slow_log.threshold_ms()
+    );
+
+    conn.execute("SET long_query_time = 0.001")
+        .expect("SET long_query_time = 0.001 is accepted");
+    assert_eq!(
+        slow_log.threshold_ms(),
+        1,
+        "0.001 seconds must lower the threshold to 1 ms, got {}",
+        slow_log.threshold_ms()
+    );
+
+    // Negative values must be rejected by the server (the wire-level error
+    // packet mirrors MySQL error 1232). The client surfaces error packets as
+    // `Ok(ResultSet::Error(...))`, so check the variant directly.
+    let result = conn.execute("SET long_query_time = -1");
+    match result {
+        Ok(ResultSet::Error { error_code, .. }) => {
+            assert_eq!(
+                error_code, 1232,
+                "expected MySQL error 1232 for invalid long_query_time"
+            );
+        }
+        Ok(other) => panic!("expected error packet, got Ok({other:?})"),
+        Err(e) => panic!("transport error: {e}"),
+    }
+    drop(handle);
+    drop(slow_log);
 }
 
 /// The emitted records use MySQL's slow query log field layout so that
