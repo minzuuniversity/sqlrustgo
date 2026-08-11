@@ -1550,6 +1550,25 @@ impl Iterator for SharedSliceIter {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use sqlrustgo_parser::Expression;
+
+    /// Helper constructors for AST expressions used in unit tests
+    /// (per #3887 follow-up — V312-24 engine.rs test compilation).
+    fn lit(s: &str) -> Expression {
+        Expression::Literal(s.to_string())
+    }
+    fn ident(name: &str) -> Expression {
+        Expression::Identifier(name.to_string())
+    }
+    fn binop(left: Expression, op: &str, right: Expression) -> Expression {
+        Expression::BinaryOp(Box::new(left), op.to_string(), Box::new(right))
+    }
+    fn unary(op: &str, inner: Expression) -> Expression {
+        Expression::UnaryOp(op.to_string(), Box::new(inner))
+    }
+    fn is_null(inner: Expression) -> Expression {
+        Expression::IsNull(Box::new(inner))
+    }
 
     /// Test that StorageEngine trait is defined correctly
     #[test]
@@ -2045,7 +2064,7 @@ mod tests {
     fn test_evaluate_check_constraint_eq() {
         let constraint = CheckConstraint {
             name: Some("c1".into()),
-            expression: "x = 5".into(),
+            expression: binop(ident("x"), "=", lit("5")),
         };
         let cols = vec!["x".to_string()];
         assert!(evaluate_check_constraint(&constraint, &cols, &vec![Value::Integer(5)]).unwrap());
@@ -2056,7 +2075,11 @@ mod tests {
     fn test_evaluate_check_constraint_and() {
         let constraint = CheckConstraint {
             name: Some("c1".into()),
-            expression: "x > 0 AND y < 100".into(),
+            expression: binop(
+                binop(ident("x"), ">", lit("0")),
+                "AND",
+                binop(ident("y"), "<", lit("100")),
+            ),
         };
         let cols = vec!["x".into(), "y".into()];
         assert!(evaluate_check_constraint(
@@ -2083,7 +2106,11 @@ mod tests {
     fn test_evaluate_check_constraint_or() {
         let constraint = CheckConstraint {
             name: Some("c1".into()),
-            expression: "x = 0 OR y = 0".into(),
+            expression: binop(
+                binop(ident("x"), "=", lit("0")),
+                "OR",
+                binop(ident("y"), "=", lit("0")),
+            ),
         };
         let cols = vec!["x".into(), "y".into()];
         assert!(evaluate_check_constraint(
@@ -2110,7 +2137,7 @@ mod tests {
     fn test_evaluate_check_constraint_not() {
         let constraint = CheckConstraint {
             name: Some("c1".into()),
-            expression: "NOT x = 5".into(),
+            expression: unary("NOT", binop(ident("x"), "=", lit("5"))),
         };
         let cols = vec!["x".to_string()];
         assert!(evaluate_check_constraint(&constraint, &cols, &vec![Value::Integer(10)]).unwrap());
@@ -2121,7 +2148,7 @@ mod tests {
     fn test_evaluate_check_constraint_is_null() {
         let constraint = CheckConstraint {
             name: Some("c1".into()),
-            expression: "x IS NULL".into(),
+            expression: is_null(ident("x")),
         };
         let cols = vec!["x".to_string()];
         assert!(evaluate_check_constraint(&constraint, &cols, &vec![Value::Null]).unwrap());
@@ -2132,7 +2159,7 @@ mod tests {
     fn test_evaluate_check_constraint_column_missing() {
         let constraint = CheckConstraint {
             name: Some("c1".into()),
-            expression: "x IS NULL".into(),
+            expression: is_null(ident("x")),
         };
         let cols = vec![];
         let rec = vec![];
@@ -2185,10 +2212,10 @@ mod tests {
     fn test_check_constraint_struct() {
         let cc = CheckConstraint {
             name: Some("ck1".into()),
-            expression: "x > 0".into(),
+            expression: binop(ident("x"), ">", lit("0")),
         };
         assert_eq!(cc.name, Some("ck1".into()));
-        assert_eq!(cc.expression, "x > 0");
+        assert_eq!(cc.expression, binop(ident("x"), ">", lit("0")));
     }
 
     #[test]
