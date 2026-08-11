@@ -179,7 +179,7 @@ timeout 120 cargo llvm-cov \
 | TPC-H SF=10 | 数据集路径和导入脚本 | dry run / subset | 22 query duration + memory | 趋势对比，不设不现实 QPS |
 | Sysbench OLTP | schema smoke | point-select/read-write smoke | latency/QPS baseline | 和历史基线比较 |
 | Bulk-load | row-count smoke | SF=1 import | SF=10 import + memory cap | duration/hash trend |
-| RAG/vector | fixed top-k fixture | rebuild + query latency | hybrid retrieval benchmark | GMP 内审问题集稳定性 |
+| RAG/vector | fixed top-k fixture | rebuild + query 再次检查，评审所有 open ISSUE，给出整改要求，或者给出结论后关闭（如果达到关闭的要求）latency | hybrid retrieval benchmark | GMP 内审问题集稳定性 |
 | Graph projection | node/edge count | depth<=3 query | path latency and correctness | evidence bundle trace |
 | SOAK | 不跑 | 24h smoke | 72h/168h | 0 crash、hash-chain 不断裂 |
 
@@ -193,40 +193,3 @@ V312-G18 / #3904 关闭前至少满足：
 4. P12/P16 显示无新增静默 ignore；gate test ignore 必须有 ADR-008 exception。
 5. 不再引用 v3.6-v3.11 的历史 PASS claim 作为当前 v3.12 PASS 证据。
 
-## 10. 最新 develop HEAD 复跑补充
-
-> **复跑时间**: 2026-08-12 11:44 CST  
-> **复跑者**: codex  
-> **source_run**: close-open-issues-20260812-1228  
-> **基线分支**: `origin/develop/v3.12.0`  
-> **基线 commit**: `5f477ad38d8aab7a5abef1bbd029751e7f3d4d61`  
-> **复跑命令**: `bash scripts/gate/check_v312_coverage_baseline.sh`  
-> **exit code**: `0`  
-> **证据目录**: `docs/releases/v3.12.0/coverage-baseline/current_5f477ad38d_20260812_114453/`
-
-本次复跑基于 #4089 合并后的最新 `develop/v3.12.0` HEAD，不再沿用旧 commit 的 coverage claim。复跑结果显示 coverage framework、tracked crate 清单、per-crate JSON/log/summary 产物均可生成，满足 Alpha 阶段“框架和基线可复核”的关闭条件。
-
-汇总口径：
-
-| 指标 | 结果 |
-|---|---:|
-| tracked crates | 16 |
-| 平均 line coverage | 80.70% |
-| 最低 line coverage | 69.55% (`sqlrustgo-mysql-server`) |
-| 最高 line coverage | 95.67% (`sqlrustgo-rag`) |
-| 低于 80% 的 crate | 7 |
-| report-only-failure | 2 (`sqlrustgo-parser`, `sqlrustgo-mysql-server`) |
-
-本补充只支持关闭“测试框架和覆盖率基线已经落地、可复跑、可审计”的任务，不支持关闭覆盖率质量债本身。以下弱项仍需由独立 Issue 继续跟踪：
-
-| 弱项 | 当前证据 | 后续要求 |
-|---|---|---|
-| `sqlrustgo-parser` | 70.18%，`report-only-failure` | 修复失败 target，补充 SQL surface 单元测试 |
-| `sqlrustgo-mysql-server` | 69.55%，`report-only-failure` | 修复 wire/e2e target 健康度，逐步提升到 RC/GA 阈值 |
-| `sqlrustgo-mysql-client` | 73.84% | 补 packet decode、prepared statement、error packet、reset/compression 边界 |
-| `sqlrustgo-gmp` | 76.03% | 补 GMP import、ACL、audit hash-chain、evidence bundle、backup/restore fixture |
-| `sqlrustgo-vector` | 70.65% | 拆 fast unit 与 slow benchmark，补生产路径 HNSW/Flat rebuild smoke |
-| `sqlrustgo-tools` | 76.72% | 补异常路径、报告生成、manifest 校验 |
-| `sqlrustgo-sql-corpus` | 74.43% | 补 corpus negative/error path |
-
-因此，#4080、#3904 可按 Alpha coverage framework/baseline 落地关闭；#3942、#3943 应继续保持 open，分别跟踪 full gate speed-up 与 SEM-4 per-crate coverage 质量债。
