@@ -195,7 +195,10 @@ impl HistogramBucket {
 /// - For cross-type comparisons (mix of Integer/Float/Text), buckets are still
 ///   constructed but `estimate_lt/eq` falls back to the bucket midpoint heuristic.
 pub fn build_histogram_from_values(values: &[Value], num_buckets: usize) -> Option<Histogram> {
-    let mut non_null: Vec<&Value> = values.iter().filter(|v| !matches!(v, Value::Null)).collect();
+    let mut non_null: Vec<&Value> = values
+        .iter()
+        .filter(|v| !matches!(v, Value::Null))
+        .collect();
     if non_null.is_empty() {
         return None;
     }
@@ -208,9 +211,7 @@ pub fn build_histogram_from_values(values: &[Value], num_buckets: usize) -> Opti
     };
 
     // Sort using partial_cmp with Equal fallback for cross-type.
-    non_null.sort_by(|a, b| {
-        a.partial_cmp(b).unwrap_or(std::cmp::Ordering::Equal)
-    });
+    non_null.sort_by(|a, b| a.partial_cmp(b).unwrap_or(std::cmp::Ordering::Equal));
 
     // Equi-height: bucket_size = ceil(total / n_buckets), at least 1.
     let bucket_size = total.div_ceil(n_buckets as u64).max(1) as usize;

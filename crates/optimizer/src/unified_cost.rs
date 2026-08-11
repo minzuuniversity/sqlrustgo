@@ -273,7 +273,8 @@ impl UnifiedCostModel {
         match predicate {
             Expr::BinaryExpr { op, .. } => self.heuristic_selectivity(*op),
             Expr::And(left, right) => {
-                self.estimate_selectivity_from_expr(left) * self.estimate_selectivity_from_expr(right)
+                self.estimate_selectivity_from_expr(left)
+                    * self.estimate_selectivity_from_expr(right)
             }
             Expr::Or(left, right) => {
                 let a = self.estimate_selectivity_from_expr(left);
