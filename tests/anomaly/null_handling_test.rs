@@ -662,4 +662,56 @@ mod tests {
         );
     }
 
+
+    /// V313-08 / Issue #4043 — RED test: modulo operator in WHERE
+    /// clause must work. Mirrors insert__test_insert.test line 15
+    /// (`i % 2 <> 0`).
+    #[test]
+    fn red_v313_08_modulo_in_where_clause_must_work() {
+        let mut engine = create_engine();
+        engine
+            .execute("CREATE TABLE integers(i INTEGER)")
+            .expect("CREATE TABLE must succeed");
+        for v in [1, 2, 3, 4, 5] {
+            engine
+                .execute(&format!("INSERT INTO integers VALUES ({})", v))
+                .expect("INSERT must succeed");
+        }
+
+        engine
+            .execute("CREATE TABLE i2 AS SELECT 1 AS i FROM integers WHERE i % 2 <> 0")
+            .expect("CTAS with modulo must succeed");
+        // CTAS returns an empty `rows`; read the new table instead.
+        let result = engine
+            .execute("SELECT * FROM i2 ORDER BY 1")
+            .expect("SELECT from CTAS table must succeed");
+        assert_eq!(
+            result.rows.len(),
+            3,
+            "odd values are 1, 3, 5 -> 3 rows; got {} rows",
+            result.rows.len()
+        );
+    }
+
+    /// V313-08 — GREEN regression: simple UPDATE returns the affected
+    /// row count.
+    #[test]
+    fn green_v313_08_update_affected_rows_count() {
+        let mut engine = create_engine();
+        engine
+            .execute("CREATE TABLE t(a INTEGER)")
+            .expect("CREATE TABLE must succeed");
+        engine
+            .execute("INSERT INTO t VALUES (1), (2), (3)")
+            .expect("INSERT must succeed");
+        let result = engine
+            .execute("UPDATE t SET a=99")
+            .expect("UPDATE must succeed");
+        assert_eq!(result.rows.len(), 0, "UPDATE returns no rows");
+        assert_eq!(
+            result.affected_rows, 3,
+            "UPDATE must report 3 affected rows"
+        );
+    }
+
 }
