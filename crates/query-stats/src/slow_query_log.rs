@@ -73,8 +73,12 @@ impl SlowQueryRecord {
 }
 
 /// Slow query logger
+#[derive(Debug)]
 pub struct SlowQueryLog {
-    threshold_ms: u64,
+    /// Threshold in milliseconds. Behind a lock so that a shared
+    /// `Arc<SlowQueryLog>` can be retuned at runtime by
+    /// `SET long_query_time = N` without taking `&mut self`.
+    threshold_ms: RwLock<u64>,
     log_path: PathBuf,
     /// In-memory buffer of recent slow queries (optional, for reading)
     recent_records: RwLock<Vec<SlowQueryRecord>>,
@@ -84,7 +88,7 @@ impl SlowQueryLog {
     /// Create a new SlowQueryLog
     pub fn new(threshold_ms: u64, log_path: PathBuf) -> Self {
         Self {
-            threshold_ms,
+            threshold_ms: RwLock::new(threshold_ms),
             log_path,
             recent_records: RwLock::new(Vec::new()),
         }
@@ -97,7 +101,7 @@ impl SlowQueryLog {
 
     /// Record a query if it exceeds the threshold
     pub fn maybe_log(&self, query: &str, duration_ms: u64, rows: u64) {
-        if duration_ms < self.threshold_ms {
+        if duration_ms < self.threshold_ms() {
             return;
         }
 
@@ -187,7 +191,7 @@ impl SlowQueryLog {
         Some(SlowQueryRecord {
             timestamp: Utc::now(),
             query,
-            duration_ms: self.threshold_ms,
+            duration_ms: self.threshold_ms(),
             rows: 0,
             lock_time_ms: 0.0,
             rows_examined: 0,
@@ -206,7 +210,13 @@ impl SlowQueryLog {
 
     /// Get the threshold in milliseconds
     pub fn threshold_ms(&self) -> u64 {
-        self.threshold_ms
+        *self.threshold_ms.read().unwrap()
+    }
+
+    /// Retune the threshold at runtime. Backs `SET long_query_time = N`,
+    /// which is server-wide in SQLRustGo (see the module docs).
+    pub fn set_threshold_ms(&self, threshold_ms: u64) {
+        *self.threshold_ms.write().unwrap() = threshold_ms;
     }
 
     /// Get the log path
@@ -367,6 +377,26 @@ mod tests {
 
         let recent = log.get_recent();
         assert!(recent.is_empty());
+
+        std::fs::remove_file(log_path).ok();
+    }
+
+    #[test]
+    fn test_set_threshold_ms_retunes_gating() {
+        let log_path = temp_dir().join("test_set_threshold.log");
+        std::fs::remove_file(&log_path).ok();
+        let log = SlowQueryLog::new(1000, log_path.clone());
+
+        // Below the initial threshold — dropped.
+        log.maybe_log("SELECT 1", 5, 1);
+        assert!(log.get_recent().is_empty());
+
+        log.set_threshold_ms(0);
+        assert_eq!(log.threshold_ms(), 0);
+
+        // Same query now clears the retuned threshold.
+        log.maybe_log("SELECT 1", 5, 1);
+        assert_eq!(log.get_recent().len(), 1);
 
         std::fs::remove_file(log_path).ok();
     }
