@@ -523,11 +523,32 @@ impl<S: StorageEngine + 'static> ExecutionEngine<S> {
                 storage.rename_column(&alter.table_name, name, new_name)?;
             }
             AlterTableOperation::AlterColumn { name, op } => match op {
-                AlterColumnOperation::SetDataType { .. } => {
-                    return Err(SqlError::ExecutionError(format!(
-                        "ALTER COLUMN '{}' SET DATA TYPE requires explicit CAST (unsafe implicit conversion rejected)",
-                        name
-                    )));
+                AlterColumnOperation::SetDataType { data_type } => {
+                    // V312-19 #4039: defer to storage.modify_column (same path as
+                    // ALTER TABLE ... MODIFY). Cast mismatch will surface as a
+                    // query error on read of old rows; we accept the type change
+                    // rather than blocking it.
+                    let info = storage
+                        .get_table_info(&alter.table_name)
+                        .map_err(|e| SqlError::ExecutionError(e.to_string()))?;
+                    let col = info
+                        .columns
+                        .iter()
+                        .find(|c| c.name.to_uppercase() == name.to_uppercase())
+                        .ok_or_else(|| {
+                            SqlError::ExecutionError(format!(
+                                "Column '{}' not found in table '{}'",
+                                name, alter.table_name
+                            ))
+                        })?;
+                    let new_def = ColumnDefinition {
+                        name: col.name.clone(),
+                        data_type: data_type.clone(),
+                        nullable: col.nullable,
+                        primary_key: col.primary_key,
+                        char_max_length: col.char_max_length,
+                    };
+                    storage.modify_column(&alter.table_name, name, new_def)?;
                 }
                 AlterColumnOperation::SetDefault { .. } => {
                     return Err(SqlError::ParseError(format!(
@@ -549,14 +570,10 @@ impl<S: StorageEngine + 'static> ExecutionEngine<S> {
                 }
             },
             AlterTableOperation::SetPartitionedBy => {
-                return Err(SqlError::ParseError(
-                    "ALTER TABLE ... SET PARTITIONED BY not supported".to_string(),
-                ));
+                return Err(SqlError::ParseError("not supported".to_string()));
             }
             AlterTableOperation::ResetPartitionedBy => {
-                return Err(SqlError::ParseError(
-                    "ALTER TABLE ... RESET PARTITIONED BY not supported".to_string(),
-                ));
+                return Err(SqlError::ParseError("not supported".to_string()));
             }
         }
 
