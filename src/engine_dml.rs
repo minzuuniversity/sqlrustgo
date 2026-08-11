@@ -61,9 +61,9 @@ pub fn execute_insert<S: StorageEngine + 'static>(
             let first_len = insert.values[0].len();
             for row in &insert.values {
                 if row.len() != first_len {
-                    return Err(SqlError::ExecutionError(format!(
-                        "Parser Error: VALUES lists must all be the same length"
-                    )));
+                    return Err(SqlError::ExecutionError(
+                        "Parser Error: VALUES lists must all be the same length".to_string(),
+                    ));
                 }
             }
         }
@@ -72,7 +72,7 @@ pub fn execute_insert<S: StorageEngine + 'static>(
         } else {
             table_info.columns.len()
         };
-        for (row_idx, row) in insert.values.iter().enumerate() {
+        for row in insert.values.iter() {
             if row.len() != expected_cols {
                 return Err(SqlError::ExecutionError(format!(
                     "Binder Error: table {} has {} columns but {} values were supplied",
@@ -215,9 +215,9 @@ pub fn execute_insert<S: StorageEngine + 'static>(
                             )?;
                             if !valid {
                                 return Err(format!(
-                                    "CHECK constraint '{}' violated: {}",
+                                    "CHECK constraint '{}' violated: {:?}",
                                     constraint.name.as_deref().unwrap_or("unnamed"),
-                                    format!("{:?}", constraint.expression)
+                                    constraint.expression
                                 )
                                 .into());
                             }
@@ -240,9 +240,9 @@ pub fn execute_insert<S: StorageEngine + 'static>(
                         )?;
                         if !valid {
                             return Err(format!(
-                                "CHECK constraint '{}' violated: {}",
+                                "CHECK constraint '{}' violated: {:?}",
                                 constraint.name.as_deref().unwrap_or("unnamed"),
-                                format!("{:?}", constraint.expression)
+                                constraint.expression
                             )
                             .into());
                         }
@@ -395,9 +395,9 @@ pub fn execute_update<S: StorageEngine + 'static>(
                 )?;
                 if !valid {
                     return Err(format!(
-                        "CHECK constraint '{}' violated: {}",
+                        "CHECK constraint '{}' violated: {:?}",
                         constraint.name.as_deref().unwrap_or("unnamed"),
-                        format!("{:?}", constraint.expression)
+                        constraint.expression
                     )
                     .into());
                 }
@@ -483,9 +483,9 @@ pub fn execute_update<S: StorageEngine + 'static>(
                     )?;
                     if !valid {
                         return Err(format!(
-                            "CHECK constraint '{}' violated: {}",
+                            "CHECK constraint '{}' violated: {:?}",
                             constraint.name.as_deref().unwrap_or("unnamed"),
-                            format!("{:?}", constraint.expression)
+                            constraint.expression
                         )
                         .into());
                     }

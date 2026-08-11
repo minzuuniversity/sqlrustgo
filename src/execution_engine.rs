@@ -624,9 +624,6 @@ impl<S: StorageEngine + 'static> ExecutionEngine<S> {
             Statement::Values(_) => Err(SqlError::ExecutionError(
                 "VALUES cannot be used as a standalone statement".to_string(),
             )),
-            Statement::Values(_) => Err(SqlError::ExecutionError(
-                "VALUES cannot be used as a standalone statement".to_string(),
-            )),
             Statement::AlterUser(_) => Err(SqlError::ExecutionError(
                 "ALTER USER not yet implemented".to_string(),
             )),

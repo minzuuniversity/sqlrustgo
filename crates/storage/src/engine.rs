@@ -89,6 +89,20 @@ pub fn evaluate_check_constraint_ast(
             Ok(found && !is_null)
         }
         Expression::BinaryOp(left, op, right) => {
+            // V312-18 / Issue #3971 / #4036: short-circuit logical
+            // operators AND/OR must be evaluated as boolean expressions,
+            // not as numeric comparisons. Reuse evaluate_check_constraint_ast
+            // recursively so sub-expressions get full AST handling.
+            if op == "AND" || op == "OR" {
+                let l_bool = evaluate_check_constraint_ast(left, columns, record)?;
+                if op == "AND" && !l_bool {
+                    return Ok(false);
+                }
+                if op == "OR" && l_bool {
+                    return Ok(true);
+                }
+                return evaluate_check_constraint_ast(right, columns, record);
+            }
             let lv = eval_expr_value(left, columns, record)?;
             let rv = eval_expr_value(right, columns, record)?;
             apply_op(op, &lv, &rv)
@@ -141,7 +155,10 @@ fn eval_expr_value(
                     return Ok(v.clone());
                 }
             }
-            Err(format!("Column '{}' not found", name).into())
+            // V312-18 / Issue #3971: missing columns are treated as
+            // NULL so IS NULL / IS NOT NULL constraints can evaluate
+            // against optional columns without erroring.
+            Ok(Value::Null)
         }
         Expression::BinaryOp(left, op, right) => {
             let lv = eval_expr_value(left, columns, record)?;
@@ -221,211 +238,232 @@ fn cmp_values(a: &Value, b: &Value) -> std::cmp::Ordering {
     }
 }
 
-/// Evaluate a SQL expression against a record
-/// Supports: comparisons (=, !=, <, >, <=, >=), boolean ops (AND, OR, NOT), IS NULL/IS NOT NULL
-fn evaluate_sql_expression(expr: &str, columns: &[String], record: &[Value]) -> SqlResult<bool> {
-    let expr = expr.trim();
+/// V312-18 / Issue #3971: the legacy string-based CHECK expression
+/// evaluator (`evaluate_sql_expression`, `find_top_level_op`,
+/// `get_column_value`, `compare_values`, `is_zero_or_empty`) was
+/// superseded by the AST-based `evaluate_check_constraint_ast`. The
+/// remaining string-evaluator code below is retained only for the
+/// legacy test fixtures under `mod tests` and is gated to test builds.
 
-    // Handle AND/OR
-    if let Some(idx) = find_top_level_op(expr, "AND") {
-        let left = &expr[..idx];
-        let right = &expr[idx + 3..];
-        return Ok(evaluate_sql_expression(left.trim(), columns, record)?
-            && evaluate_sql_expression(right.trim(), columns, record)?);
-    }
-    if let Some(idx) = find_top_level_op(expr, "OR") {
-        let left = &expr[..idx];
-        let right = &expr[idx + 2..];
-        return Ok(evaluate_sql_expression(left.trim(), columns, record)?
-            || evaluate_sql_expression(right.trim(), columns, record)?);
-    }
+#[cfg(test)]
+mod legacy_string_evaluator {
+    use super::*;
 
-    // Handle NOT
-    if expr.to_uppercase().starts_with("NOT ") {
-        let inner = &expr[4..].trim();
-        return Ok(!evaluate_sql_expression(inner, columns, record)?);
-    }
+    pub fn evaluate_sql_expression(
+        expr: &str,
+        columns: &[String],
+        record: &[Value],
+    ) -> SqlResult<bool> {
+        let expr = expr.trim();
 
-    // Handle IS NULL / IS NOT NULL
-    if let Some(idx) = expr.to_uppercase().find(" IS NULL") {
-        let col_name = expr[..idx].trim();
-        if let Some(val) = get_column_value(col_name, columns, record) {
-            return Ok(matches!(val, Value::Null));
+        // Handle AND/OR
+        if let Some(idx) = find_top_level_op(expr, "AND") {
+            let left = &expr[..idx];
+            let right = &expr[idx + 3..];
+            return Ok(evaluate_sql_expression(left.trim(), columns, record)?
+                && evaluate_sql_expression(right.trim(), columns, record)?);
         }
-        return Ok(true); // column not found, assume OK
-    }
-    if let Some(idx) = expr.to_uppercase().find(" IS NOT NULL") {
-        let col_name = expr[..idx].trim();
-        if let Some(val) = get_column_value(col_name, columns, record) {
-            return Ok(!matches!(val, Value::Null));
+        if let Some(idx) = find_top_level_op(expr, "OR") {
+            let left = &expr[..idx];
+            let right = &expr[idx + 2..];
+            return Ok(evaluate_sql_expression(left.trim(), columns, record)?
+                || evaluate_sql_expression(right.trim(), columns, record)?);
         }
-        return Ok(false);
-    }
 
-    // Handle comparisons: column op value
-    for (op, check) in &[
-        (">=", "gte"),
-        ("<=", "lte"),
-        ("!=", "neq"),
-        ("<>", "neq"),
-        ("=", "eq"),
-        ("==", "eq"),
-        (">", "gt"),
-        ("<", "lt"),
-    ] {
-        if let Some(idx) = expr.find(op) {
+        // Handle NOT
+        if expr.to_uppercase().starts_with("NOT ") {
+            let inner = &expr[4..].trim();
+            return Ok(!evaluate_sql_expression(inner, columns, record)?);
+        }
+
+        // Handle IS NULL / IS NOT NULL
+        if let Some(idx) = expr.to_uppercase().find(" IS NULL") {
             let col_name = expr[..idx].trim();
-            let value_str = expr[idx + op.len()..].trim();
-
-            if let Some(col_val) = get_column_value(col_name, columns, record) {
-                return compare_values(col_val, value_str, check);
+            if let Some(val) = get_column_value(col_name, columns, record) {
+                return Ok(matches!(val, Value::Null));
             }
-            break;
+            return Ok(true); // column not found, assume OK
         }
-    }
-
-    // If no comparison found, try to evaluate as a literal boolean or column existence check
-    let upper = expr.to_uppercase();
-    if upper == "TRUE" || upper == "1" {
-        return Ok(true);
-    }
-    if upper == "FALSE" || upper == "0" {
-        return Ok(false);
-    }
-
-    // Treat as column name - check if not null
-    if let Some(val) = get_column_value(expr, columns, record) {
-        return Ok(!matches!(val, Value::Null) && !is_zero_or_empty(val));
-    }
-
-    Err(format!("Cannot evaluate CHECK expression: {}", expr).into())
-}
-
-/// Find top-level operator (not inside quotes or parentheses)
-fn find_top_level_op(expr: &str, op: &str) -> Option<usize> {
-    let upper = expr.to_uppercase();
-    let op_upper = op.to_uppercase();
-    let mut depth = 0;
-    let mut in_string = false;
-
-    for (i, c) in expr.char_indices() {
-        match c {
-            '(' => {
-                depth += 1;
+        if let Some(idx) = expr.to_uppercase().find(" IS NOT NULL") {
+            let col_name = expr[..idx].trim();
+            if let Some(val) = get_column_value(col_name, columns, record) {
+                return Ok(!matches!(val, Value::Null));
             }
-            ')' => {
-                depth -= 1;
-            }
-            '\'' => {
-                in_string = !in_string;
-            }
-            _ if !in_string && depth == 0 && upper[i..].starts_with(&op_upper) => {
-                return Some(i);
-            }
-            _ => {}
+            return Ok(false);
         }
-    }
-    None
-}
 
-/// Get column value by name (case-insensitive)
-fn get_column_value<'a>(
-    name: &str,
-    columns: &'a [String],
-    record: &'a [Value],
-) -> Option<&'a Value> {
-    // Remove quotes if present
-    let name = name.trim().trim_matches(|c| c == '\'' || c == '"');
+        // Handle comparisons: column op value
+        for (op, check) in &[
+            (">=", "gte"),
+            ("<=", "lte"),
+            ("!=", "neq"),
+            ("<>", "neq"),
+            ("=", "eq"),
+            ("==", "eq"),
+            (">", "gt"),
+            ("<", "lt"),
+        ] {
+            if let Some(idx) = expr.find(op) {
+                let col_name = expr[..idx].trim();
+                let value_str = expr[idx + op.len()..].trim();
 
-    for (i, col) in columns.iter().enumerate() {
-        if col.eq_ignore_ascii_case(name) {
-            return record.get(i);
-        }
-    }
-    None
-}
-
-/// Compare column value with string representation
-fn compare_values(col_val: &Value, compare_with: &str, op: &str) -> SqlResult<bool> {
-    let cmp_str = compare_with.trim().trim_matches(|c| c == '\'' || c == '"');
-
-    match op {
-        "eq" => match col_val {
-            Value::Null => Ok(false),
-            Value::Integer(i) => {
-                if let Ok(cmp) = cmp_str.parse::<i64>() {
-                    Ok(*i == cmp)
-                } else {
-                    Ok(false)
+                if let Some(col_val) = get_column_value(col_name, columns, record) {
+                    return compare_values(col_val, value_str, check);
                 }
+                break;
             }
-            Value::Float(f) => {
-                if let Ok(cmp) = cmp_str.parse::<f64>() {
-                    Ok(*f == cmp)
-                } else {
-                    Ok(false)
+        }
+
+        // If no comparison found, try to evaluate as a literal boolean or column existence check
+        let upper = expr.to_uppercase();
+        if upper == "TRUE" || upper == "1" {
+            return Ok(true);
+        }
+        if upper == "FALSE" || upper == "0" {
+            return Ok(false);
+        }
+
+        // Treat as column name - check if not null
+        if let Some(val) = get_column_value(expr, columns, record) {
+            return Ok(!matches!(val, Value::Null) && !is_zero_or_empty(val));
+        }
+
+        Err(format!("Cannot evaluate CHECK expression: {}", expr).into())
+    }
+
+    /// Find top-level operator (not inside quotes or parentheses)
+    pub fn find_top_level_op(expr: &str, op: &str) -> Option<usize> {
+        let upper = expr.to_uppercase();
+        let op_upper = op.to_uppercase();
+        let mut depth = 0;
+        let mut in_string = false;
+
+        for (i, c) in expr.char_indices() {
+            match c {
+                '(' => {
+                    depth += 1;
                 }
+                ')' => {
+                    depth -= 1;
+                }
+                '\'' => {
+                    in_string = !in_string;
+                }
+                _ if !in_string && depth == 0 && upper[i..].starts_with(&op_upper) => {
+                    return Some(i);
+                }
+                _ => {}
             }
-            Value::Text(s) => Ok(s == cmp_str),
-            Value::Boolean(b) => {
-                let cmp_bool = cmp_str.eq_ignore_ascii_case("true") || cmp_str == "1";
-                Ok(*b == cmp_bool)
+        }
+        None
+    }
+
+    pub fn get_column_value<'a>(
+        col_name: &str,
+        columns: &[String],
+        record: &'a [Value],
+    ) -> Option<&'a Value> {
+        for (i, c) in columns.iter().enumerate() {
+            if c == col_name {
+                return record.get(i);
             }
-            Value::Blob(_) => Ok(false),
-            Value::Point(_, _) => Ok(false),
-            &Value::Json(_) => Ok(false),
-        },
-        "gt" | "gte" | "lt" | "lte" => {
-            match col_val {
+        }
+        None
+    }
+
+    pub fn compare_values(col_val: &Value, compare_with: &str, op: &str) -> SqlResult<bool> {
+        let cmp_str = compare_with.trim().trim_matches(|c| c == '\'' || c == '"');
+
+        match op {
+            "eq" => match col_val {
+                Value::Null => Ok(false),
                 Value::Integer(i) => {
                     if let Ok(cmp) = cmp_str.parse::<i64>() {
-                        return Ok(match op {
-                            "gt" => *i > cmp,
-                            "gte" => *i >= cmp,
-                            "lt" => *i < cmp,
-                            "lte" => *i <= cmp,
-                            _ => false,
-                        });
+                        Ok(*i == cmp)
+                    } else {
+                        Ok(false)
                     }
                 }
                 Value::Float(f) => {
                     if let Ok(cmp) = cmp_str.parse::<f64>() {
+                        Ok(*f == cmp)
+                    } else {
+                        Ok(false)
+                    }
+                }
+                Value::Text(s) => Ok(s == cmp_str),
+                Value::Boolean(b) => {
+                    let cmp_bool = cmp_str.eq_ignore_ascii_case("true") || cmp_str == "1";
+                    Ok(*b == cmp_bool)
+                }
+                Value::Blob(_) => Ok(false),
+                Value::Point(_, _) => Ok(false),
+                &Value::Json(_) => Ok(false),
+            },
+            "gt" | "gte" | "lt" | "lte" | "neq" => {
+                match col_val {
+                    Value::Integer(i) => {
+                        if let Ok(cmp) = cmp_str.parse::<i64>() {
+                            return Ok(match op {
+                                "gt" => *i > cmp,
+                                "gte" => *i >= cmp,
+                                "lt" => *i < cmp,
+                                "lte" => *i <= cmp,
+                                "neq" => *i != cmp,
+                                _ => false,
+                            });
+                        }
+                    }
+                    Value::Float(f) => {
+                        if let Ok(cmp) = cmp_str.parse::<f64>() {
+                            return Ok(match op {
+                                "gt" => *f > cmp,
+                                "gte" => *f >= cmp,
+                                "lt" => *f < cmp,
+                                "lte" => *f <= cmp,
+                                "neq" => *f != cmp,
+                                _ => false,
+                            });
+                        }
+                    }
+                    Value::Text(s) => {
                         return Ok(match op {
-                            "gt" => *f > cmp,
-                            "gte" => *f >= cmp,
-                            "lt" => *f < cmp,
-                            "lte" => *f <= cmp,
+                            "gt" => s.as_str() > cmp_str,
+                            "gte" => s.as_str() >= cmp_str,
+                            "lt" => s.as_str() < cmp_str,
+                            "lte" => s.as_str() <= cmp_str,
+                            "neq" => s.as_str() != cmp_str,
                             _ => false,
                         });
                     }
+                    Value::Boolean(b) => {
+                        let cmp_bool = cmp_str.eq_ignore_ascii_case("true") || cmp_str == "1";
+                        if op == "neq" {
+                            return Ok(*b != cmp_bool);
+                        }
+                    }
+                    _ => {}
                 }
-                Value::Text(s) => {
-                    return Ok(match op {
-                        "gt" => s.as_str() > cmp_str,
-                        "gte" => s.as_str() >= cmp_str,
-                        "lt" => s.as_str() < cmp_str,
-                        "lte" => s.as_str() <= cmp_str,
-                        _ => false,
-                    });
+                if op == "neq" {
+                    return Ok(col_val.to_string() != cmp_str);
                 }
-                _ => {}
+                Err(format!("Cannot compare {} with {}", col_val, cmp_str).into())
             }
-            Err(format!("Cannot compare {} with {}", col_val, cmp_str).into())
+            _ => Err(format!("Unknown operator: {}", op).into()),
         }
-        _ => Err(format!("Unknown operator: {}", op).into()),
     }
-}
 
-fn is_zero_or_empty(val: &Value) -> bool {
-    match val {
-        Value::Integer(i) => *i == 0,
-        Value::Float(f) => *f == 0.0,
-        Value::Text(s) => s.is_empty(),
-        Value::Boolean(b) => !*b,
-        Value::Null => true,
-        Value::Blob(_) => false,
-        Value::Point(_, _) => false,
-        &Value::Json(_) => false,
+    pub fn is_zero_or_empty(val: &Value) -> bool {
+        match val {
+            Value::Integer(i) => *i == 0,
+            Value::Float(f) => *f == 0.0,
+            Value::Text(s) => s.is_empty(),
+            Value::Boolean(b) => !*b,
+            Value::Null => true,
+            Value::Blob(_) => false,
+            Value::Point(_, _) => false,
+            &Value::Json(_) => false,
+        }
     }
 }
 
@@ -1549,6 +1587,10 @@ impl Iterator for SharedSliceIter {
 
 #[cfg(test)]
 mod tests {
+    use super::legacy_string_evaluator::{
+        compare_values, evaluate_sql_expression, find_top_level_op, get_column_value,
+        is_zero_or_empty,
+    };
     use super::*;
     use sqlrustgo_parser::Expression;
 
