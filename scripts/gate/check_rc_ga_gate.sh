@@ -883,6 +883,58 @@ run_d8_v312_19_release_gates() {
     fi
 }
 
+# =============================================================================
+# D9: v3.12.0 Coverage Framework Gate
+# =============================================================================
+# Fast path validates that the v3.12.0 comprehensive test framework, coverage
+# baseline script, canonical command, and L0-L5 layering are present and
+# executable. Full per-crate coverage execution is deliberately explicit via
+# V312_COVERAGE_FULL=1 because it is heavy and belongs to nightly/Beta/RC/GA
+# validation rather than every lightweight smoke run.
+# =============================================================================
+D9_PASS=0
+D9_TOTAL=0
+D9_BLOCKERS=0
+
+run_d9_v312_coverage_framework() {
+    log_dim "9" "v3.12.0 Coverage Framework and Per-Crate Baseline"
+
+    local COVERAGE_SCRIPT="${SCRIPT_DIR:-$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)}/check_v312_coverage_baseline.sh"
+    if [ ! -x "$COVERAGE_SCRIPT" ]; then
+        D9_TOTAL=$((D9_TOTAL+1))
+        log_fail "D9 coverage baseline script missing or not executable: $COVERAGE_SCRIPT"
+        D9_BLOCKERS=$((D9_BLOCKERS+1))
+        return
+    fi
+
+    D9_TOTAL=$((D9_TOTAL+1))
+    if bash "$COVERAGE_SCRIPT" --check-config > /tmp/d9_v312_coverage_config.log 2>&1; then
+        log_pass "D9 coverage framework config"
+        D9_PASS=$((D9_PASS+1))
+    else
+        log_fail "D9 coverage framework config failed (see /tmp/d9_v312_coverage_config.log)"
+        D9_BLOCKERS=$((D9_BLOCKERS+1))
+        return
+    fi
+
+    if [ "${V312_COVERAGE_FULL:-0}" = "1" ]; then
+        local coverage_stage="${GATE_TYPE:-rc}"
+        if [ "$coverage_stage" = "all" ]; then
+            coverage_stage="rc"
+        fi
+        D9_TOTAL=$((D9_TOTAL+1))
+        if bash "$COVERAGE_SCRIPT" --enforce-stage "$coverage_stage" > /tmp/d9_v312_coverage_full.log 2>&1; then
+            log_pass "D9 per-crate coverage enforcement (${coverage_stage})"
+            D9_PASS=$((D9_PASS+1))
+        else
+            log_fail "D9 per-crate coverage enforcement failed (see /tmp/d9_v312_coverage_full.log)"
+            D9_BLOCKERS=$((D9_BLOCKERS+1))
+        fi
+    else
+        log_warn "D9 full coverage execution skipped; set V312_COVERAGE_FULL=1 for nightly/Beta/RC/GA evidence"
+    fi
+}
+
 # MAIN
 # =============================================================================
 
@@ -940,6 +992,15 @@ ${NC}"
         # the three V312-19 artifacts.
         run_d8_v312_19_release_gates
     fi
+
+    if [[ "$GATE" == "all" ]] || [[ "$GATE" == "rc" ]] || [[ "$GATE" == "ga" ]]; then
+        # D9: v3.12.0 Coverage Framework Gate
+        # Fast config check is always on for RC/GA. Full per-crate measurement
+        # is enabled by V312_COVERAGE_FULL=1 and uses the same canonical script
+        # that writes the evidence artifact.
+        run_d9_v312_coverage_framework
+    fi
+
     # =======================================================================
     # SUMMARY
     # =======================================================================
@@ -951,12 +1012,13 @@ ${NC}"
     echo "  D5-DeepSeek: $D5_PASS/$D5_TOTAL"
     echo "  D7-Reliability: $D7_PASS/$D7_TOTAL (blockers: $D7_BLOCKERS)  (G6-G10: Backup/Soak/Crash/Upgrade/Audit — Hermes 2026-06-12 审计新增)"
     echo "  D8-V312-19:     $D8_PASS/$D8_TOTAL (blockers: $D8_BLOCKERS)  (corpus/R2/signoff freshness — V312-19 / Issue #3906)"
+    echo "  D9-Coverage:    $D9_PASS/$D9_TOTAL (blockers: $D9_BLOCKERS)  (v3.12 L0-L5 test framework + per-crate coverage baseline)"
 
     # Determine gate verdict
     local VERDICT="PASS"
     local EXIT_CODE=0
 
-    if [[ "$D1_BLOCKERS" -gt 0 ]] || [[ "${D2_BLOCKERS:-0}" -gt 0 ]] || [[ "$D8_BLOCKERS" -gt 0 ]]; then
+    if [[ "$D1_BLOCKERS" -gt 0 ]] || [[ "${D2_BLOCKERS:-0}" -gt 0 ]] || [[ "$D8_BLOCKERS" -gt 0 ]] || [[ "$D9_BLOCKERS" -gt 0 ]]; then
         VERDICT="FAIL"
         EXIT_CODE=1
     elif [[ "$D3_FAILS" -gt 0 ]]; then
@@ -981,6 +1043,7 @@ ${NC}"
     echo "    • WAL invariants: 5 passed (INV-1~INV-3)"
     echo "    • SGL: $D3_PASS/5 PASS | $D3_DRIFTS DRIFT | $D3_FAILS FAIL"
     echo "    • Coverage: $(get_coverage_avg)% avg (min: ${COVERAGE_MIN}%)"
+    echo "    • v3.12 coverage framework: D9=$D9_PASS/$D9_TOTAL; full run via V312_COVERAGE_FULL=1"
     echo "    • execution_engine.rs: $(wc -l < src/execution_engine.rs 2>/dev/null || echo '?') lines (limit: $CARCH05_LIMIT)"
     echo ""
 
@@ -992,6 +1055,7 @@ ${NC}"
         echo "    RC → GA:      PASS when D5=$D5_PASS/${D5_TOTAL}, D7=$D7_PASS/${D7_TOTAL}, C-ARCH-05 drift tracked"
         echo "                  D7 (G6-G10 reliability) 是 Hermes 2026-06-12 审计新增的 GA 卡死门禁"
         echo "                  D8 (V312-19 release gates) 是 Issue #3906 strict-close 硬性条件"
+        echo "                  D9 (v3.12 coverage framework) 要求覆盖率框架配置 PASS；正式 RC/GA 证据需 V312_COVERAGE_FULL=1"
     fi
     exit $EXIT_CODE
 }
