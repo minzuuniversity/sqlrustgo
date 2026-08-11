@@ -948,13 +948,24 @@ pub struct MemoryStorage {
     /// `Some(log)` between matching `begin`/`commit` (or `begin`/`rollback`);
     /// `None` outside a transaction.
     tx_log: Option<TxLog>,
+    /// V312-26 #3969: cache of the most recently committed `TxLog`. The
+    /// sqllogictest runner's commit broadcast reads this via
+    /// `take_last_committed_log()` immediately after `engine.execute("COMMIT")`
+    /// returns, so the TxLog can be replayed to other connections.
+    last_committed_log: parking_lot::Mutex<Option<TxLog>>,
+    /// V312-26 #3969: snapshot of row contents captured at the most recent
+    /// commit (or autocommit write). Used so that a newly created named
+    /// connection can inherit the **last committed** state of a peer, NOT
+    /// the peer's current in-transaction live state. Updated in
+    /// `commit_transaction_with_log` and on every autocommit write.
+    committed_tables: HashMap<String, Vec<Record>>,
 }
 
-#[derive(Default)]
-struct TxLog {
-    inserted: Vec<(String, Record)>,
-    deleted: Vec<(String, Record)>,
-    updated: Vec<(String, Record, Record)>,
+#[derive(Default, Clone, Debug)]
+pub struct TxLog {
+    pub inserted: Vec<(String, Record)>,
+    pub deleted: Vec<(String, Record)>,
+    pub updated: Vec<(String, Record, Record)>,
 }
 
 impl MemoryStorage {
@@ -969,7 +980,19 @@ impl MemoryStorage {
             current_tx_id: 0,
             next_tx_id: 1,
             tx_log: None,
+            last_committed_log: parking_lot::Mutex::new(None),
+            committed_tables: HashMap::new(),
         }
+    }
+
+    /// V312-26 #3969: take (and clear) the most recently committed `TxLog`.
+    ///
+    /// Returns `None` if no commit has happened on this storage, or if a
+    /// previous `take` already drained the slot. The sqllogictest runner
+    /// calls this immediately after `engine.execute("COMMIT")` so it can
+    /// broadcast the log to their peer connections.
+    pub fn take_last_committed_log(&self) -> Option<TxLog> {
+        self.last_committed_log.lock().take()
     }
 
     /// v3.10.0 Issue #3703: returns pre-partitioned chunks so the caller
@@ -1053,6 +1076,141 @@ impl MemoryStorage {
         }
         Ok(total)
     }
+
+    /// V312-26 #3969: commit the current transaction and return the recorded
+    /// `TxLog` so the sqllogictest runner can broadcast it to other connections.
+    ///
+    /// Behavior matches the original `commit_transaction`:
+    /// - `tx_log = None`
+    /// - `current_tx_id = 0`
+    /// but **returns** the previous `TxLog` instead of dropping it. Callers
+    /// that do not need the log can simply discard the result.
+    ///
+    /// Side effect: also caches the log into `last_committed_log` so callers
+    /// that have lost the direct return value (e.g. the sqllogictest runner
+    /// that goes through `MemoryExecutionEngine::execute("COMMIT")`) can
+    /// still retrieve it via `take_last_committed_log()`.
+    pub fn commit_transaction_with_log(&mut self) -> Option<TxLog> {
+        let log = self.tx_log.take();
+        self.current_tx_id = 0;
+        // V312-26 #3969: refresh the post-commit row snapshot so a late-joining
+        // connection can inherit committed rows without seeing this
+        // connection's in-flight transaction state.
+        self.committed_tables = self.tables.clone();
+        if let Some(ref l) = log {
+            *self.last_committed_log.lock() = Some(l.clone());
+        }
+        log
+    }
+
+    /// V312-26 #3969: replay a committed `TxLog` from another connection's
+    /// storage into this one. Used by the sqllogictest runner's commit
+    /// broadcast mechanism so con2 sees con1's committed writes.
+    ///
+    /// UPDATE entries are matched by `prior` (the snapshot before the change)
+    /// because the broadcast fires **after** the source connection commits —
+    /// i.e. the source's `tables` already contain the new row.
+    ///
+    /// If the receiver is itself in an active transaction (`self.tx_log` is
+    /// `Some`), the same change is appended to the receiver's `tx_log` so a
+    /// subsequent ROLLBACK on the receiver reverts the broadcast, preserving
+    /// the multi-connection isolation guarantee.
+    pub fn apply_committed_log(&mut self, log: &TxLog) -> SqlResult<()> {
+        for (table, record) in &log.inserted {
+            if let Some(active_log) = self.tx_log.as_mut() {
+                active_log.inserted.push((table.clone(), record.clone()));
+            }
+            self.tables
+                .entry(table.clone())
+                .or_default()
+                .push(record.clone());
+            // V312-26 #3969: keep the post-commit snapshot in sync so a
+            // later connection joining via this storage sees the broadcast.
+            self.committed_tables
+                .entry(table.clone())
+                .or_default()
+                .push(record.clone());
+        }
+
+        for (table, record) in &log.deleted {
+            if let Some(active_log) = self.tx_log.as_mut() {
+                active_log.deleted.push((table.clone(), record.clone()));
+            }
+            if let Some(records) = self.tables.get_mut(table) {
+                records.retain(|r| r != record);
+            }
+            if let Some(records) = self.committed_tables.get_mut(table) {
+                records.retain(|r| r != record);
+            }
+        }
+
+        for (table, prior, new) in &log.updated {
+            if let Some(active_log) = self.tx_log.as_mut() {
+                active_log.updated.push((table.clone(), prior.clone(), new.clone()));
+            }
+            if let Some(records) = self.tables.get_mut(table) {
+                for record in records.iter_mut() {
+                    if record == prior {
+                        *record = new.clone();
+                        break;
+                    }
+                }
+            }
+            if let Some(records) = self.committed_tables.get_mut(table) {
+                for record in records.iter_mut() {
+                    if record == prior {
+                        *record = new.clone();
+                        break;
+                    }
+                }
+            }
+        }
+
+        Ok(())
+    }
+
+    /// V312-26 #3969: export the current schema **and committed rows** so a
+    /// newly created named connection can start with the same state as the
+    /// default connection. Rows are taken from the **post-commit view**
+    /// (`committed_tables`), NOT from the live `tables` map, so a peer's
+    /// in-flight transaction state is never leaked to a late-joining
+    /// connection. Subsequent writes are propagated through the
+    /// `apply_committed_log` broadcast path.
+    pub fn snapshot_schema(&self) -> SchemaSnapshot {
+        SchemaSnapshot {
+            table_infos: self.table_infos.clone(),
+            tables: self.committed_tables.clone(),
+            views: self.views.clone(),
+            sequences: self.sequences.clone(),
+            databases: self.databases.clone(),
+        }
+    }
+
+    /// V312-26 #3969: restore schema and committed rows from a snapshot.
+    /// Used when a named connection is first created to inherit the existing
+    /// state of any peer already registered in the broadcast hub.
+    pub fn apply_schema(&mut self, snapshot: &SchemaSnapshot) -> SqlResult<()> {
+        self.table_infos = snapshot.table_infos.clone();
+        self.tables = snapshot.tables.clone();
+        self.views = snapshot.views.clone();
+        self.sequences = snapshot.sequences.clone();
+        self.databases = snapshot.databases.clone();
+        Ok(())
+    }
+}
+
+/// V312-26 #3969: Snapshot used to seed a new connection with the existing
+/// state of a peer already registered in the broadcast hub. Carries both
+/// schema (table infos, views, sequences, databases) and committed rows so a
+/// late-arriving connection sees the same state that early connections built
+/// up via autocommit writes.
+#[derive(Clone, Debug)]
+pub struct SchemaSnapshot {
+    pub table_infos: HashMap<String, TableInfo>,
+    pub tables: HashMap<String, Vec<Record>>,
+    pub views: HashSet<String>,
+    pub sequences: HashMap<String, SequenceInfo>,
+    pub databases: HashSet<String>,
 }
 
 impl Default for MemoryStorage {
@@ -1084,8 +1242,15 @@ impl StorageEngine for MemoryStorage {
     }
 
     fn commit_transaction(&mut self) -> SqlResult<()> {
-        self.tx_log = None;
+        let log = self.tx_log.take();
         self.current_tx_id = 0;
+        // V312-26 #3969: refresh the post-commit row snapshot so a late-joining
+        // connection can inherit committed rows without seeing this
+        // connection's in-flight transaction state.
+        self.committed_tables = self.tables.clone();
+        if let Some(ref l) = log {
+            *self.last_committed_log.lock() = Some(l.clone());
+        }
         Ok(())
     }
 
@@ -1119,6 +1284,13 @@ impl StorageEngine for MemoryStorage {
             for row in &records {
                 log.inserted.push((table_key.clone(), row.clone()));
             }
+        } else {
+            // V312-26 #3969: autocommit insert — propagate to the post-commit
+            // snapshot so a late-joining connection sees the row.
+            self.committed_tables
+                .entry(table_key.clone())
+                .or_default()
+                .extend(records.iter().cloned());
         }
         self.tables.entry(table_key).or_default().extend(records);
         Ok(())
@@ -1133,6 +1305,11 @@ impl StorageEngine for MemoryStorage {
                 for row in records.iter() {
                     log.deleted.push((table.to_string(), row.clone()));
                 }
+            } else {
+                // V312-26 #3969: autocommit delete — keep post-commit view in sync.
+                if let Some(committed) = self.committed_tables.get_mut(table) {
+                    committed.clear();
+                }
             }
             let count = records.len();
             records.clear();
@@ -1144,6 +1321,8 @@ impl StorageEngine for MemoryStorage {
             if !keep {
                 if let Some(log) = self.tx_log.as_mut() {
                     log.deleted.push((table.to_string(), r.clone()));
+                } else if let Some(committed) = self.committed_tables.get_mut(table) {
+                    committed.retain(|c| c != r);
                 }
             }
             keep
@@ -1161,6 +1340,8 @@ impl StorageEngine for MemoryStorage {
             if !keep {
                 if let Some(log) = self.tx_log.as_mut() {
                     log.deleted.push((table.to_string(), r.clone()));
+                } else if let Some(committed) = self.committed_tables.get_mut(table) {
+                    committed.retain(|c| c != r);
                 }
             }
             keep
@@ -1190,6 +1371,16 @@ impl StorageEngine for MemoryStorage {
                 }
                 if let Some(log) = self.tx_log.as_mut() {
                     log.updated.push((table.to_string(), prior, record.clone()));
+                } else {
+                    // V312-26 #3969: autocommit update — keep post-commit view in sync.
+                    if let Some(committed) = self.committed_tables.get_mut(table) {
+                        for committed_record in committed.iter_mut() {
+                            if committed_record == &prior {
+                                *committed_record = record.clone();
+                                break;
+                            }
+                        }
+                    }
                 }
                 count += 1;
             }
@@ -1205,6 +1396,16 @@ impl StorageEngine for MemoryStorage {
                     }
                     if let Some(log) = self.tx_log.as_mut() {
                         log.updated.push((table.to_string(), prior, record.clone()));
+                    } else {
+                        // V312-26 #3969: autocommit update — keep post-commit view in sync.
+                        if let Some(committed) = self.committed_tables.get_mut(table) {
+                            for committed_record in committed.iter_mut() {
+                                if committed_record == &prior {
+                                    *committed_record = record.clone();
+                                    break;
+                                }
+                            }
+                        }
                     }
                     count += 1;
                 }
@@ -1237,6 +1438,16 @@ impl StorageEngine for MemoryStorage {
                 }
                 if let Some(log) = self.tx_log.as_mut() {
                     log.updated.push((table.to_string(), prior, record.clone()));
+                } else {
+                    // V312-26 #3969: autocommit update — keep post-commit view in sync.
+                    if let Some(committed) = self.committed_tables.get_mut(table) {
+                        for committed_record in committed.iter_mut() {
+                            if committed_record == &prior {
+                                *committed_record = record.clone();
+                                break;
+                            }
+                        }
+                    }
                 }
                 count += 1;
             }
