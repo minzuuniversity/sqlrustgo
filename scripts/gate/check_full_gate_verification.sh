@@ -43,6 +43,18 @@ FAIL_COUNT=0
 DRIFT_COUNT=0
 RESULTS=()
 
+# V313-#3942: propagate --skip-a5 to the RC/GA gate so the R2
+# invariant driver can invoke this orchestrator within a tight
+# 60-second budget (A5 coverage of 8 crates via cargo llvm-cov is
+# the dominant cost).
+SKIP_A5=0
+for arg in "$@"; do
+    case "$arg" in
+        --skip-a5) SKIP_A5=1 ;;
+        *) ;;
+    esac
+done
+
 run_gate() {
     local name="$1" script="$2" expect_code="${3:-0}"
     echo "--- [$name] ---"
@@ -75,7 +87,11 @@ run_gate() {
 }
 
 # 1. D1-D5: RC/GA gate (must PASS)
-run_gate "D1-D5 RC/GA" "$SCRIPT_DIR/check_rc_ga_gate.sh" 0
+if [ "$SKIP_A5" -eq 1 ]; then
+    run_gate "D1-D5 RC/GA (--skip-a5)" "$SCRIPT_DIR/check_rc_ga_gate.sh --skip-a5" 0
+else
+    run_gate "D1-D5 RC/GA" "$SCRIPT_DIR/check_rc_ga_gate.sh" 0
+fi
 
 # 2. D6b: Test inventory (must PASS or DRIFT) — distinct from D6a-Integration in check_rc_ga_gate.sh
 run_gate "D6b Test Inventory" "$SCRIPT_DIR/check_test_inventory.sh" 0
