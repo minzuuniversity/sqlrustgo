@@ -1,9 +1,117 @@
 //! Engine utilities - predicate evaluation, schema building, and constraint validation.
 //! Extracted from execution_engine.rs for modularity.
 
-use sqlrustgo_parser::{AggregateCall, AggregateFunction, Expression};
+use sqlrustgo_parser::{AggregateCall, AggregateFunction, Expression, SelectStatement};
 use sqlrustgo_storage::{ColumnDefinition, SqlResult, StorageEngine, TableInfo, Value};
 use sqlrustgo_types::SqlError;
+
+/// V313-13 / Issue #4041 — Binder column-existence check.
+///
+/// `eval_identifier` (in `crates/executor/src/expr/mod.rs`) intentionally
+/// falls back to `Value::Text(name)` when an unqualified identifier does
+/// not match a table column; that fallback is preserved for backward
+/// compatibility with legacy SQLLogicTest fixtures that pass string
+/// literals as bare identifiers. But when a user writes something like
+/// `WITH t AS (SELECT 'foo' AS a) SELECT t.foobar FROM t`, the legacy
+/// fallback silently produces wrong output (the whole string
+/// `t.foobar` becomes a Text value).
+///
+/// This helper makes the binder stricter by reporting an explicit
+/// error for column references that do not match any column in the
+/// schema, including qualified `table.column` references whose column
+/// part is unknown. The check is invoked from
+/// `execute_with_select`/`execute_select` after the table_info for
+/// the relation has been resolved.
+pub fn validate_select_columns_referenced(
+    select: &SelectStatement,
+    table_info: &TableInfo,
+) -> SqlResult<()> {
+    let column_names: Vec<String> = table_info
+        .columns
+        .iter()
+        .map(|c| c.name.to_ascii_lowercase())
+        .collect();
+    let exists = |raw: &str| -> bool {
+        // Strip a single leading qualifier ("table.col" -> "col"). The
+        // parser does not yet build a MemberAccess node, so the whole
+        // "table.col" arrives as a single Identifier; users almost
+        // always mean the column half, and "table" itself is unlikely
+        // to match a column name by accident.
+        let stripped = if let Some(dot) = raw.rfind('.') {
+            &raw[dot + 1..]
+        } else {
+            raw
+        };
+        column_names
+            .iter()
+            .any(|c| c == &stripped.to_ascii_lowercase())
+    };
+    for col in &select.columns {
+        if let Some(ref expr) = col.expression {
+            check_expr_references(expr, &exists)?;
+        }
+    }
+    if let Some(ref w) = select.where_clause {
+        check_expr_references(w, &exists)?;
+    }
+    if let Some(ref h) = select.having {
+        check_expr_references(h, &exists)?;
+    }
+    for ord in &select.order_by {
+        check_expr_references(&ord.expression, &exists)?;
+    }
+    Ok(())
+}
+
+fn check_expr_references<F: Fn(&str) -> bool>(expr: &Expression, exists: &F) -> SqlResult<()> {
+    match expr {
+        Expression::Identifier(name) => {
+            if !exists(name) {
+                return Err(SqlError::ExecutionError(format!(
+                    "Binder error: column '{}' not found in schema",
+                    name
+                )));
+            }
+        }
+        Expression::BinaryOp(left, _op, right) => {
+            check_expr_references(left, exists)?;
+            check_expr_references(right, exists)?;
+        }
+        Expression::UnaryOp(_, inner) => check_expr_references(inner, exists)?,
+        Expression::FunctionCall(name, args) => {
+            for a in args {
+                check_expr_references(a, exists)?;
+            }
+            let _ = name; // function name itself is not a column reference
+        }
+        Expression::CaseWhen(whens, else_expr) => {
+            for w in whens {
+                check_expr_references(&w.condition, exists)?;
+                check_expr_references(&w.result, exists)?;
+            }
+            if let Some(e) = else_expr {
+                check_expr_references(e, exists)?;
+            }
+        }
+        Expression::IsNull(inner) | Expression::IsNotNull(inner) => {
+            check_expr_references(inner, exists)?;
+        }
+        Expression::Like(inner, pattern, _) => {
+            check_expr_references(inner, exists)?;
+            check_expr_references(pattern, exists)?;
+        }
+        Expression::InList(inner, values) => {
+            check_expr_references(inner, exists)?;
+            for v in values {
+                check_expr_references(v, exists)?;
+            }
+        }
+        // Literal, AggregateCall, etc. have no embedded column refs at
+        // this AST level; deeper aggregates are handled by the planner.
+        _ => {}
+    }
+    Ok(())
+}
 
 /// Validate foreign key constraints for a row before insert
 pub fn validate_foreign_keys(

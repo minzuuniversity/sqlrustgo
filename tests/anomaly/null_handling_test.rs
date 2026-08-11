@@ -322,4 +322,74 @@ mod tests {
              V313-12 / Issue #4040 fix required."
         );
     }
+
+    /// V313-13 / Issue #4041 — RED test: SELECT-from-CTE that references a
+    /// non-existent CTE column must fail at bind time. Mirrors
+    /// binder__alias_error_10057.test line 5-9 (the `test_data.foobar`
+    /// reference).
+    #[test]
+    fn red_v313_13_cte_reference_to_unknown_column_must_fail() {
+        let mut engine = create_engine();
+        let result = engine.execute(
+            "WITH test_data AS (SELECT 'foo' AS a) \
+             SELECT test_data.foobar AS new_column \
+             FROM test_data \
+             WHERE new_column IS NOT NULL",
+        );
+        assert!(
+            result.is_err(),
+            "SELECT cte.unknown_col must return a binder error, but got Ok. \
+             V313-13 / Issue #4041 fix required."
+        );
+        let err_msg = format!("{:?}", result.unwrap_err());
+        assert!(
+            err_msg.to_lowercase().contains("foobar")
+                || err_msg.to_lowercase().contains("column")
+                || err_msg.to_lowercase().contains("unknown")
+                || err_msg.to_lowercase().contains("not found")
+                || err_msg.to_lowercase().contains("bind"),
+            "Error must mention 'foobar' / column-not-found / bind, got: {}",
+            err_msg
+        );
+    }
+
+    /// V313-13 — GREEN regression test: a well-formed CTE with valid columns
+    /// and aliases must continue to execute after the binder change.
+    #[test]
+    fn green_v313_13_well_formed_cte_with_alias_must_succeed() {
+        let mut engine = create_engine();
+        let result = engine.execute(
+            "WITH test_data AS (SELECT 'foo' AS a) \
+             SELECT a AS new_column \
+             FROM test_data \
+             WHERE a IS NOT NULL",
+        );
+        assert!(
+            result.is_ok(),
+            "well-formed CTE SELECT must succeed, got: {:?}",
+            result.err()
+        );
+    }
+
+    /// V313-13 — RED test: WHERE clause referencing a SELECT alias must fail
+    /// at bind time (SQL standard: WHERE cannot see SELECT-list aliases).
+    /// Mirrors the WHERE clause in binder__alias_error_10057.test line 9.
+    #[test]
+    fn red_v313_13_where_referencing_select_alias_must_fail() {
+        let mut engine = create_engine();
+        engine
+            .execute("CREATE TABLE t(a INTEGER)")
+            .expect("CREATE TABLE must succeed");
+        engine
+            .execute("INSERT INTO t VALUES (1)")
+            .expect("INSERT must succeed");
+
+        let result = engine.execute("SELECT a AS new_column FROM t WHERE new_column IS NOT NULL");
+        assert!(
+            result.is_err(),
+            "WHERE new_column (alias defined in SELECT list) must fail at bind time, but got Ok. \
+             V313-13 / Issue #4041 fix required."
+        );
+    }
+
 }
