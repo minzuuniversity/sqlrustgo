@@ -53,8 +53,13 @@ promotion_to_ALPHA_requires:
   - "~/gmp-platform/gmp-md corpus ingestion fixture selected"
   - "Initial cargo build, fmt, clippy, and docs checks pass"
   - "DRAFT_ASSESSMENT_AND_ALPHA_GATE.md exists and records unresolved alpha blockers"
-  - "scripts/gate/check_alpha_v3.12.0.sh exists"
+  - "scripts/gate/check_alpha_entry_v3.12.0.sh exists and passes"
+  - "scripts/gate/check_v312_deferred_followups.sh exists and reports any deferred SQLLogicTest exclusions with Gitea issue, owner, expiry, and close boundary"
+  - "scripts/gate/check_alpha_quality_v3.12.0.sh exists; Alpha Quality PASS is required before claiming Alpha gate quality"
+  - "scripts/gate/check_alpha_v3.12.0.sh exists as composite wrapper for Entry + Quality"
   - "scripts/gate/check_sqllogictest_v312.sh exists"
+  - "Registered SQLLogicTest exclusions are treated as visible deferred debt, not PASS evidence"
+  - "P12/P16/anti-ignore failures block Alpha Quality unless a signed governance exception exists"
 
 promotion_to_BETA_requires:
   - "GMP document/chunk/embedding/audit schema implemented"

@@ -1,5 +1,7 @@
 # V312-11 SQLLogicTest Oracle Gate — Verification Report
 
+> **provenance:** generated_by=v3.12.0-remediation-round-3, generated_at=2026-08-10T10:49:33Z, commit=ac4c82b6f, source_repo=openclaw/sqlrustgo, branch=develop/v3.12.0, policy=Anti-Fabrication-Policy-v1.0
+
 | Field | Value |
 |---|---|
 | source_agent | minimax-m2.7 |

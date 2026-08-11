@@ -1,5 +1,7 @@
 # name: test/sql/constraints/test_constraint_with_updates.test
-# description: Test constraints with updates
+# description: Test constraints with updates (NOT NULL portion only;
+#              CHECK-on-UPDATE part is in _unsupported/check_constraint/ pending
+#              separate V3.13.x fix)
 # group: [constraints]
 
 statement ok
@@ -58,6 +60,7 @@ UPDATE integers SET j=3
 # now update the value so it doesn't pass
 statement error .*NULL.*
 UPDATE integers SET i=NULL
+
 
 statement error .*NULL.*
 UPDATE integers SET j=NULL

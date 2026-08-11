@@ -372,8 +372,11 @@ pub fn execute_update<S: StorageEngine + 'static>(
             })
             .collect();
 
-        // Validate NOT NULL constraints for the update values
-        // Build a synthetic row to validate
+        // Validate NOT NULL constraints for the update values.
+        // Build a synthetic full-width row to validate. Pass empty
+        // `set_col_names` so validate_not_null indexes by table column
+        // position (records are full-width rows, not SET-only slices).
+        // V313-12 / Issue #4040.
         let mut synthetic_row = sample_row.clone();
         for (col_idx, new_val) in &updates {
             synthetic_row[*col_idx] = new_val.clone();
@@ -386,7 +389,9 @@ pub fn execute_update<S: StorageEngine + 'static>(
                 table_info.columns.iter().map(|c| c.name.clone()).collect();
             for constraint in &table_info.check_constraints {
                 let valid = sqlrustgo_storage::evaluate_check_constraint(
-                    constraint, &col_names, &synthetic_row,
+                    constraint,
+                    &col_names,
+                    &synthetic_row,
                 )?;
                 if !valid {
                     return Err(format!(
@@ -488,14 +493,12 @@ pub fn execute_update<S: StorageEngine + 'static>(
             }
         }
 
-        // Validate NOT NULL constraints for each updated row
-        let set_col_names: Vec<String> = resolved_update
-            .set_clauses
-            .iter()
-            .map(|(col, _)| col.clone())
-            .collect();
+        // Validate NOT NULL constraints for each updated row.
+        // Use empty `set_col_names` so validate_not_null indexes into `record`
+        // by table column position (records are full-width rows here, not
+        // SET-only slices). V313-12 / Issue #4040.
         for record in &trigger_modified_rows {
-            validate_not_null(&table_info, record, &set_col_names)?;
+            validate_not_null(&table_info, record, &[])?;
         }
 
         let pk_idx = table_info

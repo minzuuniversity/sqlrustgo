@@ -74,6 +74,13 @@ awk '
 ' Cargo.toml | sort -u > "$ROOT_TESTS_TMP"
 
 if [ -f "$TEST_PLAN" ]; then
+  # V312-31: the `\|\| true` here is NOT masking a cargo test invocation;
+  # `cargo test` is the LITERAL SEARCH PATTERN passed to `rg` (it appears
+  # inside the double-quoted regex), not an executed command. The `\|\| true`
+  # tolerates rg | awk | sort exiting non-zero (e.g., rg finds zero matches
+  # in TEST_PLAN, awk writes nothing, sort exits 0 — but we guard defensively
+  # for pipeline SIGPIPE). P16 step 2.5 detector's refined regex excludes
+  # `cargo test` occurrences inside double-quoted rg/grep search patterns.
   rg -o --no-filename "cargo test --test [a-zA-Z0-9_\\-]+" "$TEST_PLAN" | awk '{print $4}' | sort -u > "$DOC_TESTS_TMP" || true
 fi
 

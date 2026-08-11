@@ -488,10 +488,7 @@ mod utilities_tests {
     fn atomic_counter_increment_works() {
         let before = ACTIVE_CONNECTIONS.load(Ordering::Relaxed);
         ACTIVE_CONNECTIONS.fetch_add(1, Ordering::Relaxed);
-        assert_eq!(
-            ACTIVE_CONNECTIONS.load(Ordering::Relaxed),
-            before + 1
-        );
+        assert_eq!(ACTIVE_CONNECTIONS.load(Ordering::Relaxed), before + 1);
         // Restore so we don't leave dirty state.
         ACTIVE_CONNECTIONS.fetch_sub(1, Ordering::Relaxed);
     }
@@ -642,24 +639,19 @@ mod packet_type {
 }
 
 // ============================================================================
-// ACTIVE_CONFIG — process-wide handle to the most recently-started
-// ephemeral server's configuration. Set by `start_ephemeral`, read by
-// `do_command_loop` so the LOAD DATA LOCAL INFILE handler can access
-// `data_dir` (for the whitelist check) and `bulk_insert_buffer_size`
-// (for batch boundaries) without threading them through every layer.
-//
-// This is a process-global because:
-//   - In-process ephemeral tests use it: the test creates the server
-//     via `start_ephemeral`, then drives it through the wire protocol.
-//   - The canonical-subprocess entry point is separate (it sets CLI
-//     flags and reads them from a different static). `start_ephemeral`
-//     is the entry point used by every wire-protocol integration test.
-//
-// FIXED: `OnceLock` -> `Mutex<Option<...>>` so each `start_ephemeral`
-// call replaces the config instead of only the first call succeeding.
+// V312-32: removed the process-global `static ACTIVE_CONFIG: Mutex<Option<...>>`
+// that previously let `start_ephemeral` publish its `EphemeralConfig` for
+// the LOAD DATA LOCAL INFILE handler to read. The replacement is a
+// per-handle `Arc<EphemeralConfig>` threaded through
+//   `run_server_with_listener_and_shutdown_with_bootstrap_tables_and_sql`
+//   → accept loop → `ServerJob` / `handle_connection` → `do_command_loop`.
+// This makes concurrent `start_ephemeral` calls safe: each connection's
+// LOAD DATA sees the `data_dir` and `bulk_insert_buffer_size` of the
+// server it connected to, not whichever `start_ephemeral` ran last in
+// the process. The removal of the `Mutex<Option<...>>` static also
+// eliminates the cross-test data_dir pollution that caused
+// `v312_13_load_data_sf1_region_nation_smoke` to be marked `#[ignore]`.
 // ============================================================================
-use std::sync::Mutex;
-static ACTIVE_CONFIG: Mutex<Option<testing::EphemeralConfig>> = Mutex::new(None);
 
 mod capability {
     pub const LONG_PASSWORD: u32 = 0x00000001;
@@ -1910,10 +1902,18 @@ fn value_type_string(v: &Value) -> String {
         Value::Integer(_) => "INT".into(),
         Value::Float(_) => "FLOAT".into(),
         Value::Text(s) => {
-            if s.len() < 256 { format!("VARCHAR({})", s.len()) } else { "TEXT".into() }
+            if s.len() < 256 {
+                format!("VARCHAR({})", s.len())
+            } else {
+                "TEXT".into()
+            }
         }
         Value::Blob(b) => {
-            if b.len() < 256 { format!("VARBINARY({})", b.len()) } else { "BLOB".into() }
+            if b.len() < 256 {
+                format!("VARBINARY({})", b.len())
+            } else {
+                "BLOB".into()
+            }
         }
         Value::Boolean(_) => "TINYINT".into(),
         Value::Point(_, _) => "DOUBLE".into(),
@@ -1927,7 +1927,11 @@ fn value_col_type(v: &Value) -> u8 {
         Value::Integer(_) => col_type::LONG,
         Value::Float(_) => col_type::FLOAT,
         Value::Text(s) => {
-            if s.len() < 256 { col_type::VARCHAR } else { col_type::VARSTRING }
+            if s.len() < 256 {
+                col_type::VARCHAR
+            } else {
+                col_type::VARSTRING
+            }
         }
         Value::Blob(_) => col_type::BLOB,
         Value::Boolean(_) => col_type::TINY,
@@ -2277,7 +2281,10 @@ fn send_binary_result_set<W: Write>(
         write_column_def(
             w,
             n,
-            actual_ctypes.get(i).map(|s| s.as_str()).unwrap_or("VARCHAR(255)"),
+            actual_ctypes
+                .get(i)
+                .map(|s| s.as_str())
+                .unwrap_or("VARCHAR(255)"),
             seq,
         )?;
         seq = seq.wrapping_add(1);
@@ -2298,10 +2305,13 @@ fn send_binary_result_set<W: Write>(
     let col_type_codes: Vec<u8> = if let Some(first_row) = rows.first() {
         first_row.iter().map(|v| value_col_type(v)).collect()
     } else {
-        cols.iter().enumerate().map(|(i, _)| {
-            let t = ctypes.get(i).map(|s| s.as_str()).unwrap_or("VARCHAR(255)");
-            col_type_from_string(t)
-        }).collect()
+        cols.iter()
+            .enumerate()
+            .map(|(i, _)| {
+                let t = ctypes.get(i).map(|s| s.as_str()).unwrap_or("VARCHAR(255)");
+                col_type_from_string(t)
+            })
+            .collect()
     };
     for r in rows {
         let mut p = Vec::new();
@@ -2902,7 +2912,7 @@ pub fn parse_stmt_execute_params(
             .unwrap_or(mysql_type::VAR_STRING);
         match decode_param(payload, &mut pos, type_code) {
             Some(v) => params.push((v, is_numeric_type(type_code))),
-            None => return params,
+            None => params.push((Vec::new(), false)), // NULL fallback, continue processing remaining params
         }
     }
 
@@ -3340,6 +3350,36 @@ fn handle_load_local_infile<S: Read + Write>(
     Ok(total_rows)
 }
 
+/// V312-18e: recognise `SET long_query_time = N` and return `N`.
+///
+/// Inspect a parsed `Statement` to see whether it is a `SET long_query_time`.
+/// Returns `None` if the statement is something else.
+///
+/// `N` is a threshold in **seconds** (matches MySQL semantics — fractional
+/// values like `0.5` are accepted). The internal `SlowQueryLog` is
+/// millisecond-granular, so this helper converts seconds → ms.
+///
+/// The parser accepts the statement (`TransactionStatement::SetSessionVariable`)
+/// but no executor handles it, so `do_command_loop` intercepts it and
+/// retunes the server's shared `SlowQueryLog` instead of dispatching.
+fn classify_long_query_time_set(stmt: &Statement) -> Option<Result<u64, &'static str>> {
+    use sqlrustgo_parser::transaction::TransactionStatement;
+    match stmt {
+        Statement::Transaction(TransactionStatement::SetSessionVariable { name, value })
+            if name.eq_ignore_ascii_case("long_query_time") =>
+        {
+            let trimmed = value.trim();
+            match trimmed.parse::<f64>() {
+                Ok(secs) if secs.is_finite() && secs >= 0.0 => {
+                    Some(Ok((secs * 1000.0).round() as u64))
+                }
+                _ => Some(Err("Incorrect argument type to variable 'long_query_time'")),
+            }
+        }
+        _ => None,
+    }
+}
+
 fn do_command_loop<S: Read + Write + DrainWrites>(
     stream: &mut S,
     addr: SocketAddr,
@@ -3349,6 +3389,10 @@ fn do_command_loop<S: Read + Write + DrainWrites>(
     server_last_sent_seq: &mut u8,
     ps_manager: &mut PreparedStatementManager,
     authenticated_user: Option<String>,
+    // V312-32: per-handle ephemeral config. Replaces the process-global
+    // `ACTIVE_CONFIG` lookup so concurrent `start_ephemeral` calls each
+    // see their own server's `data_dir` and `bulk_insert_buffer_size`.
+    config: &crate::testing::EphemeralConfig,
 ) -> MySqlResult<()> {
     loop {
         let pkt = match Packet::read_from(stream) {
@@ -3407,16 +3451,18 @@ fn do_command_loop<S: Read + Write + DrainWrites>(
                 // text (handled here), the server replies with a 0xFB
                 // packet naming the file, and then the client streams
                 // the file's bytes back. We pull data_dir and
-                // bulk_insert_buffer_size from the ACTIVE_CONFIG set
-                // by `start_ephemeral` so the handler has the same
-                // values the test used to configure the server.
+                // bulk_insert_buffer_size from the per-handle `config`
+                // threaded down from `start_ephemeral` (V312-32: was
+                // the process-global `ACTIVE_CONFIG`). This guarantees
+                // the handler sees the same values the test used to
+                // configure THIS server, not whichever `start_ephemeral`
+                // ran last in the process.
                 if let Some((path, table, delim)) = parse_load_local_infile_sql(&q) {
-                    let cfg = ACTIVE_CONFIG.lock().unwrap().clone().unwrap_or_default();
-                    let data_dir = cfg
+                    let data_dir = config
                         .data_dir
                         .clone()
                         .unwrap_or_else(|| std::path::PathBuf::from("/tmp"));
-                    let bulk_buf = cfg.bulk_insert_buffer_size;
+                    let bulk_buf = config.bulk_insert_buffer_size;
                     // G13-OLTP-1: poisoning recovery on the engine
                     // write lock. A previous LOAD DATA may have
                     // panicked mid-insert (e.g. parse_tbl_line on
@@ -3521,7 +3567,32 @@ fn do_command_loop<S: Read + Write + DrainWrites>(
                         had_error = true;
                         continue;
                     }
+                    // V312-18e: `SET long_query_time = N` is intercepted
+                    // here rather than dispatched to the executor (which has
+                    // no handler for it). `N` is in seconds (MySQL semantics,
+                    // fractional permitted); invalid values produce an error
+                    // packet that mirrors MySQL error 1232.
+                    if let Some(retune) =
+                        parsed.as_ref().ok().and_then(classify_long_query_time_set)
+                    {
+                        match retune {
+                            Ok(ms) => {
+                                if let Some(ref slow_log) = config.slow_query_log {
+                                    slow_log.set_threshold_ms(ms);
+                                }
+                                make_ok_packet(seq, 0, 0, 0x0002, 0).write_to(stream)?;
+                            }
+                            Err(err) => {
+                                make_err_packet(seq, 1232u16, "42000", err).write_to(stream)?;
+                                had_error = true;
+                            }
+                        }
+                        *server_last_sent_seq = seq;
+                        seq = seq.wrapping_add(1);
+                        continue;
+                    }
                     // G13-OLTP-1: poisoning recovery in both branches.
+                    let started = std::time::Instant::now();
                     let result = if let Some(stmt) = is_read_only {
                         let rstmt = read_only_stmt(stmt);
                         let eng = engine.read();
@@ -3536,6 +3607,13 @@ fn do_command_loop<S: Read + Write + DrainWrites>(
                         eprintln!("SERVER: eng.execute(sql={})", stmt_sql);
                         eng.execute(stmt_sql)
                     };
+                    // V312-18e: time every dispatched statement; the log
+                    // itself gates on its threshold.
+                    if let Some(ref slow_log) = config.slow_query_log {
+                        let elapsed_ms = started.elapsed().as_millis() as u64;
+                        let rows = result.as_ref().map(|r| r.rows.len() as u64).unwrap_or(0);
+                        slow_log.maybe_log(stmt_sql, elapsed_ms, rows);
+                    }
                     match result {
                         Ok(r) if is_read_only.is_some() => {
                             // Extract real column names from the SQL
@@ -3830,6 +3908,7 @@ fn do_command_loop<S: Read + Write + DrainWrites>(
                     .as_ref()
                     .ok()
                     .and_then(|s| read_only_stmt(s).map(|_| s));
+                let started = std::time::Instant::now();
                 let result = if let Some(stmt) = is_read_only {
                     let rstmt = read_only_stmt(stmt);
                     let eng = engine.read();
@@ -3843,6 +3922,12 @@ fn do_command_loop<S: Read + Write + DrainWrites>(
                     let mut eng = engine.write();
                     eng.execute(&final_sql)
                 };
+                // V312-18e: prepared-statement executions are timed too.
+                if let Some(ref slow_log) = config.slow_query_log {
+                    let elapsed_ms = started.elapsed().as_millis() as u64;
+                    let rows = result.as_ref().map(|r| r.rows.len() as u64).unwrap_or(0);
+                    slow_log.maybe_log(&final_sql, elapsed_ms, rows);
+                }
                 match result {
                     Ok(r) if is_read_only.is_some() => {
                         let c: Vec<String> = r
@@ -3910,6 +3995,11 @@ fn handle_connection(
     storage: Arc<parking_lot::RwLock<BoxStorageEngine>>,
     tls_config: Arc<rustls::ServerConfig>,
     user_store: UserStore,
+    // V312-32: per-handle ephemeral config threaded down from
+    // `ServerJob` so LOAD DATA LOCAL INFILE reads the right server's
+    // `data_dir` and `bulk_insert_buffer_size` even when multiple
+    // `start_ephemeral` servers coexist in the same process.
+    config: Arc<crate::testing::EphemeralConfig>,
 ) {
     ACTIVE_CONNECTIONS.fetch_add(1, Ordering::Relaxed);
     TOTAL_CONNECTIONS_ACCEPTED.fetch_add(1, Ordering::Relaxed);
@@ -4042,6 +4132,7 @@ fn handle_connection(
                 &mut server_last_sent_seq,
                 &mut ps_manager,
                 Some(resp.username.clone()),
+                &config,
             );
             // Best-effort final flush so the last OK packet (e.g. on
             // COM_QUIT) reaches the client before the connection drops.
@@ -4100,6 +4191,7 @@ fn handle_connection(
         &mut server_last_sent_seq,
         &mut ps_manager,
         Some(resp.username.clone()),
+        &config,
     );
 }
 
@@ -4156,22 +4248,26 @@ pub fn run_server_v2(
         "SQLRUSTGO_EXECUTOR_PARALLELISM",
         executor_parallelism.to_string(),
     );
-    // v3.8.0-rc2 Week 1 Day 7: also publish the data_dir to
-    // ACTIVE_CONFIG so that the LOAD DATA LOCAL INFILE handler
-    // recognizes files inside the data dir as in-whitelist.
-    // Without this, only the in-process test harness (which calls
-    // `start_ephemeral`) can issue LOAD DATA — a real `mysql`
-    // client connecting to a server started by `run_server_v2`
-    // would get "not in allowed data_dir" because ACTIVE_CONFIG
-    // was never populated.
+    // v3.8.0-rc2 Week 1 Day 7: propagate data_dir to the LOAD DATA
+    // LOCAL INFILE handler so it recognizes files inside the data dir
+    // as in-whitelist. Without this, only the in-process test harness
+    // (which calls `start_ephemeral`) can issue LOAD DATA — a real
+    // `mysql` client connecting to a server started by `run_server_v2`
+    // would get "not in allowed data_dir".
+    //
+    // V312-32: the propagation mechanism changed from the
+    // process-global `ACTIVE_CONFIG` to a per-handle `Arc<EphemeralConfig>`
+    // threaded through `run_server_with_listener_and_shutdown_with_bootstrap_tables_and_sql`
+    // → accept loop → `ServerJob` / `handle_connection` → `do_command_loop`.
+    // This lets multiple `start_ephemeral` servers (and `run_server_v2`)
+    // coexist in the same process without one server's LOAD DATA seeing
+    // another's `data_dir`.
     use crate::testing::EphemeralConfig;
     let cfg = EphemeralConfig {
         data_dir: Some(std::path::PathBuf::from(data_dir)),
         server_threads,
         ..Default::default()
     };
-    let mut active_cfg = crate::ACTIVE_CONFIG.lock().unwrap();
-    *active_cfg = Some(cfg);
     let shutdown = std::sync::Arc::new(std::sync::atomic::AtomicBool::new(false));
     run_server_with_listener_and_shutdown_with_bootstrap_tables_and_sql(
         listener,
@@ -4182,6 +4278,10 @@ pub fn run_server_v2(
         Some(std::path::PathBuf::from(data_dir)),
         server_threads,
         Some(storage.to_string()),
+        // V312-32: per-handle config replaces the process-global
+        // ACTIVE_CONFIG publication. LOAD DATA LOCAL INFILE on this
+        // server sees the same data_dir the caller configured.
+        Arc::new(cfg),
     )
 }
 
@@ -4228,6 +4328,11 @@ pub(crate) fn run_server_with_listener_and_shutdown_with_bootstrap_tables_and_sq
     data_dir: Option<std::path::PathBuf>,
     server_threads: usize,
     storage: Option<String>,
+    // V312-32: per-handle ephemeral config. The accept loop attaches
+    // this to every `ServerJob` / `handle_connection` call so the LOAD
+    // DATA LOCAL INFILE handler reads THIS server's `data_dir` and
+    // `bulk_insert_buffer_size`, not a process-global.
+    config: std::sync::Arc<crate::testing::EphemeralConfig>,
 ) -> MySqlResult<()> {
     let tls_config = Arc::new(make_tls_config());
     tracing::info!("TLS ready (self-signed cert)");
@@ -4431,9 +4536,12 @@ pub(crate) fn run_server_with_listener_and_shutdown_with_bootstrap_tables_and_sq
                 let st = storage.clone();
                 let tc = tls_config.clone();
                 let us = user_store.clone();
+                // V312-32: per-handle config clone so the handler
+                // sees THIS server's data_dir / bulk_insert_buffer_size.
+                let cfg = Arc::clone(&config);
                 match &pool {
                     None => {
-                        thread::spawn(move || handle_connection(stream, addr, st, tc, us));
+                        thread::spawn(move || handle_connection(stream, addr, st, tc, us, cfg));
                     }
                     Some(p) => {
                         let job = crate::testing::ServerJob {
@@ -4442,6 +4550,7 @@ pub(crate) fn run_server_with_listener_and_shutdown_with_bootstrap_tables_and_sq
                             storage: st,
                             tls_config: tc,
                             user_store: us,
+                            config: cfg,
                         };
                         match p.send_timeout(job, Duration::from_millis(200)) {
                             Ok(()) => {}
@@ -4502,6 +4611,10 @@ pub fn run_server_with_listener_and_shutdown(
         None,
         16,
         None,
+        // V312-32: default ephemeral config (no data_dir override,
+        // no bulk_insert_buffer_size override). LOAD DATA LOCAL INFILE
+        // on this server uses the standard defaults.
+        Arc::new(crate::testing::EphemeralConfig::default()),
     )
 }
 
@@ -4526,6 +4639,8 @@ pub(crate) fn run_server_with_listener_and_shutdown_with_bootstrap(
         None,
         16,
         None,
+        // V312-32: see note on `run_server_with_listener_and_shutdown`.
+        Arc::new(crate::testing::EphemeralConfig::default()),
     )
 }
 
@@ -5381,20 +5496,27 @@ pub use testing::EphemeralConfig;
 pub mod testing {
     use crate::BoxStorageEngine;
     use crate::UserStore;
-    use crate::ACTIVE_CONFIG;
     use crossbeam_channel::{bounded, Receiver, Sender};
-    use std::net::{SocketAddr, TcpListener, TcpStream};
+    use std::net::{SocketAddr, TcpStream};
     use std::path::PathBuf;
     use std::sync::{Arc, Mutex};
     use std::thread::JoinHandle;
 
     /// One connection-handling job dispatched to a worker via the
+    ///
+    /// V312-32: `config` carries the per-server `EphemeralConfig` so the
+    /// LOAD DATA LOCAL INFILE handler can read `data_dir` and
+    /// `bulk_insert_buffer_size` without consulting process-global
+    /// state. This makes concurrent `start_ephemeral` calls safe —
+    /// each connection sees the config of the server it connected to,
+    /// not whichever `start_ephemeral` ran last.
     pub struct ServerJob {
         pub stream: TcpStream,
         pub addr: SocketAddr,
         pub storage: Arc<parking_lot::RwLock<BoxStorageEngine>>,
         pub tls_config: Arc<rustls::ServerConfig>,
         pub(crate) user_store: UserStore,
+        pub(crate) config: Arc<EphemeralConfig>,
     }
 
     /// Bounded worker pool: N worker threads + `sync_channel(N*2)` for
@@ -5497,6 +5619,7 @@ pub mod testing {
                     job.storage,
                     job.tls_config,
                     job.user_store,
+                    job.config,
                 )
             }));
             if let Err(e) = result {
@@ -5561,6 +5684,18 @@ pub mod testing {
         /// files upstream (e.g. `tools/tbl2bin`). The CLI mirrors
         /// this knob via `--storage binary`.
         pub storage: Option<String>,
+        /// Slow query log. `None` (default) disables slow query logging
+        /// entirely — no file is created and no timing is retained.
+        /// `Some(log)` makes every dispatched statement time itself and
+        /// hand the duration to [`SlowQueryLog::maybe_log`], which gates
+        /// on its own threshold.
+        ///
+        /// Shared behind an `Arc` across all connections of one server:
+        /// the slow query log is server-wide in MySQL, and
+        /// `SET long_query_time = N` retunes the shared threshold.
+        /// Build one with
+        /// `EphemeralConfig::with_slow_query_log(path, threshold_ms)`.
+        pub slow_query_log: Option<Arc<query_stats::SlowQueryLog>>,
     }
 
     impl Default for EphemeralConfig {
@@ -5575,7 +5710,25 @@ pub mod testing {
                 server_threads: 16,
                 storage: None,
                 port: None,
+                slow_query_log: None,
             }
+        }
+    }
+
+    impl EphemeralConfig {
+        /// Enable slow query logging to `log_path`, recording every
+        /// statement whose wall-clock duration is >= `threshold_ms`.
+        /// The file is appended to and created on first slow query.
+        pub fn with_slow_query_log(
+            mut self,
+            log_path: std::path::PathBuf,
+            threshold_ms: u64,
+        ) -> Self {
+            self.slow_query_log = Some(Arc::new(query_stats::SlowQueryLog::new(
+                threshold_ms,
+                log_path,
+            )));
+            self
         }
     }
 
@@ -5665,12 +5818,14 @@ pub mod testing {
     /// a handle to it. The server runs on a background thread; the
     /// handle's `Drop` joins the thread and cleans up the temp data dir.
     pub fn start_ephemeral(config: EphemeralConfig) -> Result<EphemeralHandle, std::io::Error> {
-        // Publish the config so the server thread's `do_command_loop`
-        // can find the data_dir and bulk buffer size for LOAD DATA
-        // LOCAL INFILE. Only the first call wins; later calls are a
-        // no-op. With `Mutex<Option<...>>`, every call replaces the config.
-        let mut cfg = ACTIVE_CONFIG.lock().unwrap();
-        *cfg = Some(config.clone());
+        // V312-32: the config is now passed to the server thread via
+        // `Arc::clone` rather than published to a process-global. Each
+        // `start_ephemeral` call gets its own `Arc<EphemeralConfig>`,
+        // so concurrent in-process servers (e.g. one for `region_nation_smoke`,
+        // another for `sf1_lineitem_smoke_subset`) each see their own
+        // `data_dir` and `bulk_insert_buffer_size` from the LOAD DATA
+        // LOCAL INFILE handler.
+        let config_arc = Arc::new(config.clone());
 
         let requested_port = config.port.unwrap_or(0);
         let listener = std::net::TcpListener::bind(format!("{}:{}", config.host, requested_port))?;
@@ -5684,15 +5839,43 @@ pub mod testing {
         // under the OS temp dir and Drop removes it.
         let externally_owned = data_dir_for_thread.is_some();
         let data_dir = data_dir_for_thread.clone().unwrap_or_else(|| {
+            // V312-F-2 #4025 fix: include nanosecond timestamp + thread id
+            // to guarantee uniqueness even when OS reuses a port within
+            // the same process. Previously: port + process_id, which
+            // collided when two sequential tests got the same port (the
+            // second test inherited the first test's storage and tables).
+            use std::time::{SystemTime, UNIX_EPOCH};
+            let nanos = SystemTime::now()
+                .duration_since(UNIX_EPOCH)
+                .map(|d| d.as_nanos())
+                .unwrap_or(0);
             std::env::temp_dir().join(format!(
-                "sqlrustgo_ephemeral_{}_{}",
+                "sqlrustgo_ephemeral_{}_{}_{}",
                 port,
-                std::process::id()
+                std::process::id(),
+                nanos
             ))
         });
         if !externally_owned {
+            // V312-F-2 #4025: remove stale data_dir from a previous run
+            // that may have used the same port (e.g. Drop didn't complete
+            // before a new server bound the port).
+            let _ = std::fs::remove_dir_all(&data_dir);
             std::fs::create_dir_all(&data_dir)?;
         }
+
+        // V312-F-2 #4025 fix (round-2): the server thread MUST receive the
+        // *resolved* `data_dir` (with the temp fallback already computed
+        // and the directory created/cleaned), not the original `Option`
+        // from `EphemeralConfig`. Previously the closure captured
+        // `data_dir_for_thread` (= `config.data_dir.clone()`, which is
+        // `None` for the typical `data_dir: None` ephemeral test), so the
+        // server thread fell back to the shared `cwd/.sqlrustgo/data`
+        // directory and tests polluted one another (e.g. `test_e2e_drop_table`
+        // saw 2 rows for `t2` instead of 1, because a previous test left a
+        // row there). We now re-assign `data_dir_for_thread` to
+        // `Some(data_dir.clone())` so the closure receives the unique path.
+        let data_dir_for_thread = Some(data_dir.clone());
 
         // Move the listener into the server thread. The accept loop
         // is non-blocking and polls a shutdown flag; Drop sets the
@@ -5729,6 +5912,10 @@ pub mod testing {
                 data_dir_for_thread,
                 server_threads,
                 storage_backend,
+                // V312-32: per-handle ephemeral config. Replaces the
+                // former process-global `ACTIVE_CONFIG` publication so
+                // concurrent `start_ephemeral` servers don't share state.
+                Arc::clone(&config_arc),
             );
         });
 
@@ -5881,6 +6068,7 @@ pub mod testing {
                     server_threads: 2,
                     storage: None,
                     data_dir: None,
+                    slow_query_log: None,
                 };
 
                 // If a server is already on this port (e.g. prior process in
@@ -5980,6 +6168,7 @@ pub mod testing {
                 server_threads: 2,
                 storage: Some("binary".to_string()),
                 port: Some(0),
+                slow_query_log: None,
             };
             assert_eq!(cfg.host, "0.0.0.0");
             assert!(!cfg.bootstrap_tables);
