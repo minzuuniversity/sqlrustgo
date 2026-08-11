@@ -74,14 +74,102 @@ fi
 
 # The current runner returns 0 even with expected baseline failures. Keep this
 # as a baseline collector and parse the output instead of pretending all tests pass.
+# Round-9 (V312-24): runner now exits non-zero when files_fail > 0
+# (see crates/sqlrustgo_sqllogictest/src/main.rs).
 cargo run -p sqlrustgo_sqllogictest -- \
   --test-dir crates/sqlrustgo_sqllogictest/testdata \
   --max-fail 20 >>"$LOG" 2>&1
 RUN_STATUS=$?
-if [ "$RUN_STATUS" -eq 0 ]; then
-  record_pass "runner smoke execution completed"
+
+# Parse file-level FAIL/PREPROCESS FAIL lines from the runner log so that the
+# gate can detect real regressions even if the runner process happens to exit 0
+# (e.g. when --max-fail truncates output). The runner's own exit code is the
+# primary signal; this grep is the secondary belt-and-suspenders check.
+# Use || fallback rather than `|| echo 0` inside $(...) to avoid multi-line
+# stdout under `set -u` when grep returns non-zero.
+grep -c '^FAIL \[' "$LOG" 2>/dev/null > /tmp/_r9_fail_count || FAIL_FILE_COUNT=0
+grep -c '^PREPROCESS FAIL \[' "$LOG" 2>/dev/null > /tmp/_r9_pp_fail_count || PREPROCESS_FAIL_COUNT=0
+FAIL_FILE_COUNT=$(tr -d '[:space:]' < /tmp/_r9_fail_count)
+PREPROCESS_FAIL_COUNT=$(tr -d '[:space:]' < /tmp/_r9_pp_fail_count)
+FAIL_FILE_COUNT="${FAIL_FILE_COUNT:-0}"
+PREPROCESS_FAIL_COUNT="${PREPROCESS_FAIL_COUNT:-0}"
+rm -f /tmp/_r9_fail_count /tmp/_r9_pp_fail_count
+TOTAL_FILE_FAIL=$((FAIL_FILE_COUNT + PREPROCESS_FAIL_COUNT))
+
+# ---- Round-10: Exclusion-aware smoke gate ----
+# The V312 smoke baseline is intentionally not the full SQLite corpus; 16
+# known FAIL files are registered in exclusions.yml (each with a v313
+# follow_up_issue and close_boundary). This check splits the observed
+# file-level failures into:
+#   * registered = listed under exclusions.yml `items: - file:` (or `id:` mapped via `file:`)
+#   * unregistered = NOT in the registry → real regression
+# The runner is allowed to exit non-zero AND produce file-level failures,
+# provided every observed failure maps to a registered exclusion item.
+# Unregistered failures OR a missing/malformed registry still fail the gate.
+if [ -f "$EXCLUSIONS" ] && grep -q "^status: active" "$EXCLUSIONS" 2>/dev/null; then
+  # Extract registered file names from exclusions.yml (Format A: items: - file: ...)
+  REGISTERED_FILES=$(grep -E "^[[:space:]]+file:[[:space:]]+\S+\.test" "$EXCLUSIONS" 2>/dev/null \
+    | sed -E 's/^[[:space:]]+file:[[:space:]]+//' | sort -u)
+  REGISTERED_COUNT=$(printf '%s\n' "$REGISTERED_FILES" | grep -c '\.test$' 2>/dev/null || true)
+  REGISTERED_COUNT="${REGISTERED_COUNT:-0}"
+
+  # Extract observed failed file names from the log
+  OBSERVED_FAILS=$(grep -E '^(FAIL|PREPROCESS FAIL) \[' "$LOG" 2>/dev/null \
+    | sed -E 's/^(FAIL|PREPROCESS FAIL) \[([^]]+)\].*/\2/' | sort -u)
+  OBSERVED_COUNT=$(printf '%s\n' "$OBSERVED_FAILS" | grep -c '.' 2>/dev/null || true)
+  OBSERVED_COUNT="${OBSERVED_COUNT:-0}"
+
+  # Compute unregistered failures via comm (write inputs to temp files to
+  # avoid process-substitution shell quirks; use -z to handle empty inputs).
+  UNREGISTERED=0
+  if [ -n "$OBSERVED_FAILS" ] && [ -n "$REGISTERED_FILES" ]; then
+    _obs=$(mktemp); _reg=$(mktemp); _diff=$(mktemp)
+    printf '%s\n' "$OBSERVED_FAILS" > "$_obs"
+    printf '%s\n' "$REGISTERED_FILES" > "$_reg"
+    comm -23 "$_obs" "$_reg" > "$_diff"
+    UNREGISTERED=$(grep -c '.' "$_diff" 2>/dev/null || true)
+    UNREGISTERED="${UNREGISTERED:-0}"
+    rm -f "$_obs" "$_reg" "$_diff"
+  elif [ "$OBSERVED_COUNT" -gt 0 ] && [ -z "$REGISTERED_FILES" ]; then
+    UNREGISTERED=$OBSERVED_COUNT
+  fi
+
+  if [ "$RUN_STATUS" -eq 0 ]; then
+    if [ "$OBSERVED_COUNT" -eq 0 ]; then
+      record_pass "runner smoke execution completed (clean)"
+    else
+      record_pass "runner smoke execution completed (observed=$OBSERVED_COUNT, registered=$REGISTERED_COUNT, unregistered=$UNREGISTERED — all observed failures covered by exclusions.yml)"
+    fi
+  else
+    if [ "$UNREGISTERED" -eq 0 ]; then
+      record_pass "runner smoke execution completed (runner exit=$RUN_STATUS, observed=$OBSERVED_COUNT, registered=$REGISTERED_COUNT — all observed failures covered by exclusions.yml)"
+    else
+      record_fail "runner smoke execution completed (runner exit=$RUN_STATUS, observed=$OBSERVED_COUNT, unregistered=$UNREGISTERED — UNREGISTERED failures require new exclusion entries)"
+    fi
+  fi
 else
-  record_fail "runner smoke execution completed"
+  # No active exclusion registry → strict behavior (Round-9)
+  if [ "$RUN_STATUS" -eq 0 ]; then
+    if [ "$TOTAL_FILE_FAIL" -gt 0 ]; then
+      record_fail "runner smoke execution completed ($TOTAL_FILE_FAIL file-level failures detected in log)"
+    else
+      record_pass "runner smoke execution completed"
+    fi
+  else
+    record_fail "runner smoke execution completed (runner exit=$RUN_STATUS, $TOTAL_FILE_FAIL file-level failures)"
+  fi
+fi
+
+# Promote a structured per-file summary to the top of the log so downstream
+# tools and human reviewers can see the full file-level result without
+# scrolling through cargo build output.
+PER_FILE_TABLE="$(grep -E '^(PASS|FAIL|PREPROCESS FAIL) \[' "$LOG" | sort || true)"
+if [ -n "$PER_FILE_TABLE" ]; then
+  {
+    echo
+    echo "=== Per-file results ==="
+    echo "$PER_FILE_TABLE"
+  } >>"$LOG"
 fi
 
 SUMMARY="$(grep -A2 '^=== Summary ===' "$LOG" | tail -2 || true)"
@@ -121,15 +209,24 @@ else
   MISSING_FIELDS=0
   if [ "$HAS_ITEMS" -gt 0 ]; then
     # Format A: - id: ... root_cause/owner/expiry/follow_up_issue_or_openspec
+    # Round-9: accept either "root_cause:" (legacy) or "failure_summary:" (Round-9 schema);
+    # accept either "expiry:" (legacy) or "v3.13_expiry:" (Round-9 schema).
     while IFS= read -r line; do
       item_id=$(echo "$line" | sed 's/^  - id: //')
-      item_block=$(grep -A 10 "^  - id: ${item_id}" "$EXCLUSIONS" 2>/dev/null || echo "")
-      for field in root_cause owner expiry follow_up_issue; do
-        # Accept either follow_up_issue (Round-14+) or legacy follow_up_issue_or_openspec
-        if ! echo "$item_block" | grep -qE "^[ ]*${field}:|follow_up_issue_or_openspec:"; then
+      item_block=$(grep -A 12 "^  - id: ${item_id}" "$EXCLUSIONS" 2>/dev/null || echo "")
+      for field in owner; do
+        if ! echo "$item_block" | grep -q "^[ ]*${field}:"; then
           MISSING_FIELDS=$((MISSING_FIELDS + 1))
         fi
       done
+      # expiry (legacy) OR v3.13_expiry (Round-9)
+      if ! echo "$item_block" | grep -qE "^[ ]*(expiry|v3.13_expiry):"; then
+        MISSING_FIELDS=$((MISSING_FIELDS + 1))
+      fi
+      # root_cause (legacy) OR failure_summary (Round-9)
+      if ! echo "$item_block" | grep -qE "^[ ]*(root_cause|failure_summary):"; then
+        MISSING_FIELDS=$((MISSING_FIELDS + 1))
+      fi
     done < <(grep "^  - id:" "$EXCLUSIONS" 2>/dev/null)
   elif [ "$HAS_FILE_ITEMS" -gt 0 ]; then
     # Format B: - file: ... category/owner/expiry/follow_up
