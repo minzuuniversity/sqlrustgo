@@ -77,6 +77,7 @@ pub enum Token {
 
     // Conditional keywords
     If,
+    Collate,
     Case,
     Then,
     Else,

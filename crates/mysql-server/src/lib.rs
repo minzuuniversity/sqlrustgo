@@ -3572,7 +3572,9 @@ fn do_command_loop<S: Read + Write + DrainWrites>(
                     // no handler for it). `N` is in seconds (MySQL semantics,
                     // fractional permitted); invalid values produce an error
                     // packet that mirrors MySQL error 1232.
-                    if let Some(retune) = parsed.as_ref().ok().and_then(classify_long_query_time_set) {
+                    if let Some(retune) =
+                        parsed.as_ref().ok().and_then(classify_long_query_time_set)
+                    {
                         match retune {
                             Ok(ms) => {
                                 if let Some(ref slow_log) = config.slow_query_log {
