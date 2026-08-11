@@ -1397,10 +1397,10 @@ fn test_e2e_select_nonexistent_table() {
     assert!(r.is_err() || matches!(r, Ok(sqlrustgo_mysql_client::ResultSet::Error { .. })));
 }
 
-/// Server does not validate INSERT column count — this test verifies
-/// the rejection propagates correctly.
+/// Verify error on invalid INSERT column count — server validates and
+/// returns an error to the client (was marked #[should_panic] in
+/// d87c847ad before column-count validation landed; obsolete now).
 #[test]
-#[should_panic]
 fn test_e2e_insert_wrong_column_count() {
     let config = EphemeralConfig {
         data_dir: None,
