@@ -484,4 +484,77 @@ mod tests {
         }
     }
 
+
+    /// V313-10 / Issue #4038 — RED test: LIMIT arithmetic expression must
+    /// be folded to a single integer. Mirrors order__test_limit.test
+    /// line 23-27 (`SELECT a FROM test LIMIT 2-1`).
+    #[test]
+    fn red_v313_10_limit_arithmetic_expression_must_fold() {
+        let mut engine = create_engine();
+        engine
+            .execute("CREATE TABLE test (a INTEGER, b INTEGER)")
+            .expect("CREATE TABLE must succeed");
+        engine
+            .execute("INSERT INTO test VALUES (11, 22), (12, 21), (13, 22)")
+            .expect("INSERT must succeed");
+
+        let result = engine
+            .execute("SELECT a FROM test LIMIT 2-1")
+            .expect("LIMIT 2-1 must succeed");
+        assert_eq!(
+            result.rows.len(),
+            1,
+            "LIMIT 2-1 must fold to 1 row, got {} rows: {:?}",
+            result.rows.len(),
+            result.rows
+        );
+        match &result.rows[0][0] {
+            Value::Integer(n) => assert_eq!(*n, 11),
+            other => panic!("expected Integer(11), got {:?}", other),
+        }
+    }
+
+    /// V313-10 — GREEN regression test: LIMIT 1 (integer literal) keeps
+    /// the original behaviour.
+    #[test]
+    fn green_v313_10_limit_integer_literal_unchanged() {
+        let mut engine = create_engine();
+        engine
+            .execute("CREATE TABLE test (a INTEGER)")
+            .expect("CREATE TABLE must succeed");
+        engine
+            .execute("INSERT INTO test VALUES (1), (2), (3)")
+            .expect("INSERT must succeed");
+
+        let result = engine
+            .execute("SELECT a FROM test LIMIT 1")
+            .expect("LIMIT 1 must succeed");
+        assert_eq!(result.rows.len(), 1);
+    }
+
+    /// V313-10 — RED test: OFFSET arithmetic expression must also be
+    /// folded. Mirrors the OFFSET side of order__test_limit.test (the
+    /// fixture covers both LIMIT and OFFSET arithmetic).
+    #[test]
+    fn red_v313_10_offset_arithmetic_expression_must_fold() {
+        let mut engine = create_engine();
+        engine
+            .execute("CREATE TABLE test (a INTEGER)")
+            .expect("CREATE TABLE must succeed");
+        engine
+            .execute("INSERT INTO test VALUES (1), (2), (3), (4), (5)")
+            .expect("INSERT must succeed");
+
+        let result = engine
+            .execute("SELECT a FROM test LIMIT 2 OFFSET 3-1")
+            .expect("OFFSET 3-1 must succeed");
+        // OFFSET 3-1 -> 2, so we expect rows 3..5 = [3, 4]
+        assert_eq!(
+            result.rows.len(),
+            2,
+            "OFFSET 3-1 must fold to 2 (skip 2 rows), got {} rows",
+            result.rows.len()
+        );
+    }
+
 }
