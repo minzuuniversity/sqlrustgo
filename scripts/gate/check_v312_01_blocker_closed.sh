@@ -107,19 +107,31 @@ else
 fi
 
 # --- GAP 7: All 5 remotes synced to v3.11.0-ga ---
+# V312-F-3 (#4026) fix: use real remote names from .git/config
+# (gitea250, gitea, gitcode, gitee, github). Previous version used
+# "250"/"252" which were short IDs not registered in .git/config,
+# causing 2 phantom slots to always FAIL.
 echo "--- Gap 7: 5 remotes synced to v3.11.0-ga ---"
 EXPECTED=36691ed2b418c421c9fad24651649ae60a044238
 SYNCED=0
-for r in 250 252 gitcode gitee; do
-    out=$(git ls-remote $r refs/tags/v3.11.0-ga^{} 2>/dev/null | awk '{print $1}')
+SYNCED_NAMES=""
+for r in gitea250 gitea gitcode gitee; do
+    out=$(git ls-remote "$r" refs/tags/v3.11.0-ga^{} 2>/dev/null | awk '{print $1}')
     if [ "$out" = "$EXPECTED" ]; then
         SYNCED=$((SYNCED+1))
+        SYNCED_NAMES="$SYNCED_NAMES $r"
+    else
+        echo "  [INFO] remote $r not synced (out='$out')"
     fi
 done
 out=$(git ls-remote git@github.com:yinglichina8848/sqlrustgo.git refs/tags/v3.11.0-ga^{} 2>/dev/null | awk '{print $1}')
 if [ "$out" = "$EXPECTED" ]; then
     SYNCED=$((SYNCED+1))
+    SYNCED_NAMES="$SYNCED_NAMES github"
+else
+    echo "  [INFO] remote github not synced (out='$out')"
 fi
+echo "  synced remotes ($SYNCED/5):$SYNCED_NAMES"
 if [ "$SYNCED" = "5" ]; then
     echo "  [PASS] All 5 remotes synced to v3.11.0-ga"
     GATE_PASS=$((GATE_PASS+1))
