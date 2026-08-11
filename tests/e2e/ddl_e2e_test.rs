@@ -348,6 +348,20 @@ fn test_alter_table_rename_column() {
     assert_eq!(r.rows[0][0], Value::Text("hello".to_string()));
 }
 
+#[test]
+fn test_alter_table_alter_column_set_data_type_rejected() {
+    let mut engine = make_engine();
+    let _ = engine
+        .execute("CREATE TABLE t (id INTEGER, name TEXT)")
+        .unwrap();
+
+    let result = engine.execute("ALTER TABLE t ALTER COLUMN name SET DATA TYPE VARCHAR(100)");
+    assert!(
+        result.is_err(),
+        "ALTER COLUMN SET DATA TYPE without CAST should be rejected"
+    );
+}
+
 // =============================================================================
 // 多 DDL 操作序列
 // =============================================================================

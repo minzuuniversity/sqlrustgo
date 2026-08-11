@@ -1,4 +1,4 @@
-use sqlrustgo_parser::parse;
+use sqlrustgo_parser::{parse, AlterColumnOperation, AlterTableOperation, Statement};
 macro_rules! ok {
     ($sql:expr) => {
         assert!(parse($sql).is_ok(), "FAIL: {}", $sql);
@@ -195,6 +195,49 @@ fn t_alt_set_default_rejected() {
         result.is_err(),
         "ALTER TABLE ALTER COLUMN SET DEFAULT not yet supported"
     );
+}
+#[test]
+fn t_alt_set_data_type() {
+    let result = parse("ALTER TABLE users ALTER COLUMN age SET DATA TYPE BIGINT");
+    assert!(result.is_ok(), "Parse failed: {:?}", result);
+    match result.unwrap() {
+        Statement::AlterTable(a) => {
+            assert_eq!(a.table_name, "users");
+            match a.operation {
+                AlterTableOperation::AlterColumn { name, op } => {
+                    assert_eq!(name, "age");
+                    match op {
+                        AlterColumnOperation::SetDataType { data_type } => {
+                            assert_eq!(data_type, "BIGINT");
+                        }
+                        other => panic!("Expected SetDataType, got {:?}", other),
+                    }
+                }
+                other => panic!("Expected AlterColumn, got {:?}", other),
+            }
+        }
+        other => panic!("Expected AlterTable, got {:?}", other),
+    }
+}
+#[test]
+fn t_alt_set_data_type_keyword_type() {
+    let result = parse("ALTER TABLE t ALTER COLUMN c SET DATA TYPE INTEGER");
+    assert!(result.is_ok(), "Parse failed: {:?}", result);
+    match result.unwrap() {
+        Statement::AlterTable(a) => match a.operation {
+            AlterTableOperation::AlterColumn { name, op } => {
+                assert_eq!(name, "c");
+                match op {
+                    AlterColumnOperation::SetDataType { data_type } => {
+                        assert_eq!(data_type, "INTEGER");
+                    }
+                    other => panic!("Expected SetDataType, got {:?}", other),
+                }
+            }
+            other => panic!("Expected AlterColumn, got {:?}", other),
+        },
+        other => panic!("Expected AlterTable, got {:?}", other),
+    }
 }
 #[test]
 fn t_alt_rename_constraint_rejected() {

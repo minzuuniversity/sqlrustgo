@@ -1206,17 +1206,11 @@ impl StoredProcExecutor {
                             .map_err(|e| format!("Failed to rename column: {}", e))?;
                     }
                     sqlrustgo_parser::AlterTableOperation::AlterColumn { name, op } => match op {
-                        sqlrustgo_parser::AlterColumnOperation::SetDataType { data_type } => {
-                            let column = sqlrustgo_storage::ColumnDefinition {
-                                name: name.clone(),
-                                data_type: data_type.clone(),
-                                nullable: true,
-                                primary_key: false,
-                                char_max_length: None,
-                            };
-                            storage
-                                .modify_column(table_name, name, column)
-                                .map_err(|e| format!("Failed to modify column: {}", e))?;
+                        sqlrustgo_parser::AlterColumnOperation::SetDataType { .. } => {
+                            return Err(format!(
+                                "ALTER COLUMN '{}' SET DATA TYPE requires explicit CAST (unsafe implicit conversion rejected)",
+                                name
+                            ));
                         }
                         sqlrustgo_parser::AlterColumnOperation::SetDefault { .. } => {
                             return Err(
