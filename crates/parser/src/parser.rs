@@ -5124,36 +5124,73 @@ impl Parser {
         // Parse LIMIT clause
         let limit = if matches!(self.current(), Some(Token::Limit)) {
             self.next();
-            match self.current() {
-                Some(Token::NumberLiteral(n)) => {
-                    // Handle both integer and float literals (e.g., LIMIT 1.25 -> 1 row)
-                    let val = if let Ok(i) = n.parse::<u64>() {
-                        i
-                    } else if let Ok(f) = n.parse::<f64>() {
-                        f as u64
-                    } else {
-                        return Err(format!("Invalid LIMIT: invalid digit found in string"));
-                    };
-                    self.next();
-                    Some(val)
+            // V312-11 #4038: try to parse a full arithmetic expression first
+            // (covers `LIMIT 2-1`, `LIMIT 1+1`, `LIMIT 10/2`, etc.). On failure
+            // — or when the expression isn't a constant-foldable integer —
+            // fall back to single-literal handling.
+            let saved_pos = self.position;
+            let expr_res = self.parse_expression();
+            if let Ok(ref expr) = expr_res {
+                if let Some(v) = constant_fold_u64(expr) {
+                    Some(v)
+                } else {
+                    // Non-constant expression — restore position and try legacy path.
+                    self.position = saved_pos;
+                    match self.current() {
+                        Some(Token::NumberLiteral(n)) => {
+                            let val = if let Ok(i) = n.parse::<u64>() {
+                                i
+                            } else if let Ok(f) = n.parse::<f64>() {
+                                f as u64
+                            } else {
+                                return Err(format!(
+                                    "Invalid LIMIT: invalid digit found in string"
+                                ));
+                            };
+                            self.next();
+                            Some(val)
+                        }
+                        Some(Token::Identifier(ref s)) => {
+                            let val = s
+                                .parse::<u64>()
+                                .map_err(|e| format!("Invalid LIMIT: {}", e))?;
+                            self.next();
+                            Some(val)
+                        }
+                        _ => {
+                            let expr2 = self.parse_expression()?;
+                            constant_fold_u64(&expr2)
+                        }
+                    }
                 }
-                Some(Token::Identifier(ref s)) => {
-                    // Support LIMIT variable (e.g., @limit)
-                    // V312-19 #3972: also accept arithmetic expression via constant_fold_u64.
-                    let val = s
-                        .parse::<u64>()
-                        .map_err(|e| format!("Invalid LIMIT: {}", e))?;
-                    self.next();
-                    Some(val)
-                }
-                _ => {
-                    // V312-19 #3972: accept arithmetic expression, e.g. LIMIT 2-1.
-                    let saved_pos = self.position;
-                    let expr = self.parse_expression()?;
-                    constant_fold_u64(&expr).or_else(|| {
-                        self.position = saved_pos;
-                        None
-                    })
+            } else {
+                // parse_expression failed — restore position and try legacy path.
+                self.position = saved_pos;
+                match self.current() {
+                    Some(Token::NumberLiteral(n)) => {
+                        let val = if let Ok(i) = n.parse::<u64>() {
+                            i
+                        } else if let Ok(f) = n.parse::<f64>() {
+                            f as u64
+                        } else {
+                            return Err(format!(
+                                "Invalid LIMIT: invalid digit found in string"
+                            ));
+                        };
+                        self.next();
+                        Some(val)
+                    }
+                    Some(Token::Identifier(ref s)) => {
+                        let val = s
+                            .parse::<u64>()
+                            .map_err(|e| format!("Invalid LIMIT: {}", e))?;
+                        self.next();
+                        Some(val)
+                    }
+                    _ => {
+                        let expr2 = self.parse_expression()?;
+                        constant_fold_u64(&expr2)
+                    }
                 }
             }
         } else {
@@ -9341,8 +9378,28 @@ impl Parser {
             Some(Token::Rename) => {
                 self.next();
                 // Distinguish `RENAME TO new_table` from `RENAME COLUMN old TO new`.
+                // V312-19 #4039: DuckDB also accepts the bare form
+                // `RENAME <ident> TO <ident>` (without the COLUMN keyword).
                 if matches!(self.current(), Some(Token::Column)) {
                     self.next();
+                    let old_name = match self.next() {
+                        Some(Token::Identifier(name)) => name,
+                        _ => return Err("Expected column name".to_string()),
+                    };
+                    self.expect(Token::To)?;
+                    let new_name = match self.next() {
+                        Some(Token::Identifier(name)) => name,
+                        _ => return Err("Expected new column name".to_string()),
+                    };
+                    Ok(Statement::AlterTable(AlterTableStatement {
+                        table_name,
+                        operation: AlterTableOperation::RenameColumn {
+                            name: old_name,
+                            new_name,
+                        },
+                    }))
+                } else if matches!(self.current(), Some(Token::Identifier(_))) {
+                    // DuckDB-style: `RENAME <column> TO <new_column>` without COLUMN keyword.
                     let old_name = match self.next() {
                         Some(Token::Identifier(name)) => name,
                         _ => return Err("Expected column name".to_string()),

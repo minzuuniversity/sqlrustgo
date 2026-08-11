@@ -1229,14 +1229,10 @@ impl StoredProcExecutor {
                         }
                     },
                     sqlrustgo_parser::AlterTableOperation::SetPartitionedBy => {
-                        return Err(
-                            "ALTER TABLE ... SET PARTITIONED BY not yet implemented".to_string()
-                        );
+                        return Err("not supported".to_string());
                     }
                     sqlrustgo_parser::AlterTableOperation::ResetPartitionedBy => {
-                        return Err(
-                            "ALTER TABLE ... RESET PARTITIONED BY not yet implemented".to_string()
-                        );
+                        return Err("not supported".to_string());
                     }
                 }
                 Ok(())
