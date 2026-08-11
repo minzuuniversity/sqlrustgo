@@ -15,8 +15,8 @@
 ## Runner Summary
 
 ```text
-files:    6/16 (pass/fail)
-pass rate: 27.3%
+files:    10/12 (pass/fail)
+pass rate: 45.5%
 ```
 
 ## Exclusion Registry

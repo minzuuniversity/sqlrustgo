@@ -14,7 +14,7 @@ use sqlrustgo_parser::parser::{
     StorageEngineSpec,
 };
 use sqlrustgo_storage::clustered_table::ClusteredTable;
-use sqlrustgo_storage::{ColumnDefinition, StorageEngine, TableInfo};
+use sqlrustgo_storage::{engine::CheckConstraint, ColumnDefinition, StorageEngine, TableInfo};
 use std::sync::Arc;
 
 impl<S: StorageEngine + 'static> ExecutionEngine<S> {
@@ -197,12 +197,26 @@ impl<S: StorageEngine + 'static> ExecutionEngine<S> {
             }
         }
 
+        let check_constraints: Vec<CheckConstraint> = create
+            .constraints
+            .iter()
+            .filter_map(|c| match c {
+                sqlrustgo_parser::TableConstraint::Check { expression, name } => {
+                    Some(CheckConstraint {
+                        name: name.clone(),
+                        expression: expression.clone(),
+                    })
+                }
+                _ => None,
+            })
+            .collect();
+
         let info = TableInfo {
             name: create.name.clone(),
             columns: columns.clone(),
             foreign_keys: vec![],
             unique_constraints: vec![],
-            check_constraints: vec![],
+            check_constraints: check_constraints.clone(),
             partition_info: None,
             compression,
         };
@@ -225,7 +239,7 @@ impl<S: StorageEngine + 'static> ExecutionEngine<S> {
                 columns,
                 foreign_keys: vec![],
                 unique_constraints: vec![],
-                check_constraints: vec![],
+                check_constraints,
                 partition_info: None,
                 compression: None,
             })?;

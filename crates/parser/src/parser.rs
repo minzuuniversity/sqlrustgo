@@ -820,7 +820,7 @@ pub struct ForeignKeyRef {
 }
 
 /// Table-level constraint
-#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq)]
 pub enum TableConstraint {
     PrimaryKey {
         columns: Vec<String>,
@@ -839,7 +839,7 @@ pub enum TableConstraint {
         name: Option<String>,
     },
     Check {
-        expression: String,
+        expression: Expression,
         name: Option<String>,
     },
 }
@@ -5579,6 +5579,15 @@ impl Parser {
 
             let value = self.parse_expression()?;
 
+            // V312-18 #3971: reject duplicate column assignment in SET
+            for (existing_col, _) in &set_clauses {
+                if existing_col == &column {
+                    return Err(format!(
+                        "Binder Error: duplicate column '{}' in UPDATE SET clause",
+                        column
+                    ));
+                }
+            }
             set_clauses.push((column, value));
 
             match self.current() {
@@ -7453,7 +7462,7 @@ impl Parser {
             loop {
                 match self.current() {
                     Some(Token::Identifier(_)) => {
-                        let col_def = self.parse_column_definition()?;
+                        let col_def = self.parse_column_definition(&mut constraints)?;
                         columns.push(col_def);
                     }
                     Some(Token::Primary) => {
@@ -7483,7 +7492,7 @@ impl Parser {
                         let expr = self.parse_expression()?;
                         self.expect(Token::RParen)?;
                         constraints.push(TableConstraint::Check {
-                            expression: format!("{:?}", expr),
+                            expression: expr,
                             name: None,
                         });
                     }
@@ -7519,7 +7528,7 @@ impl Parser {
                                     let expr = self.parse_expression()?;
                                     self.expect(Token::RParen)?;
                                     constraints.push(TableConstraint::Check {
-                                        expression: format!("{:?}", expr),
+                                        expression: expr,
                                         name: Some(name),
                                     });
                                 }
@@ -7712,7 +7721,10 @@ impl Parser {
         Some(CompressionSpec { algorithm: algo })
     }
 
-    fn parse_column_definition(&mut self) -> Result<ColumnDefinition, String> {
+    fn parse_column_definition(
+        &mut self,
+        constraints: &mut Vec<TableConstraint>,
+    ) -> Result<ColumnDefinition, String> {
         let name = match self.next() {
             Some(Token::Identifier(name)) => name,
             _ => return Err("Expected column name".to_string()),
@@ -7807,6 +7819,24 @@ impl Parser {
                 Some(Token::Default) => {
                     self.next();
                     default_value = Some(self.parse_simple_value()?);
+                }
+                Some(Token::Collate) => {
+                    // V312-17 #3970: skip COLLATE <name> clause (storage-only hint)
+                    self.next();
+                    if let Some(Token::Identifier(_)) = self.current() {
+                        self.next();
+                    }
+                }
+                Some(Token::Check) => {
+                    // V312-18 #3971: inline column-level CHECK constraint
+                    self.next();
+                    self.expect(Token::LParen)?;
+                    let check_expr = self.parse_expression()?;
+                    self.expect(Token::RParen)?;
+                    constraints.push(TableConstraint::Check {
+                        expression: check_expr,
+                        name: None,
+                    });
                 }
                 Some(Token::References) => {
                     self.next();

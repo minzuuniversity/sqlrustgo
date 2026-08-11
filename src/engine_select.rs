@@ -985,13 +985,12 @@ impl<S: StorageEngine + 'static> ExecutionEngine<S> {
                 .iter()
                 .map(|c| c.alias.clone().unwrap_or_else(|| c.name.clone()))
                 .collect();
-            let rows: Vec<Vec<Value>> = rows
-                .into_iter()
-                .map(|row| {
-                    select
-                        .columns
-                        .iter()
-                        .map(|col| match &col.expression {
+            let rows: Vec<Vec<Value>> = (|| -> SqlResult<Vec<Vec<Value>>> {
+                let mut out = Vec::new();
+                for row in rows {
+                    let mut new_row = Vec::new();
+                    for col in &select.columns {
+                        let v = match &col.expression {
                             Some(expr) => crate::expr_utils::evaluate_expression_with_seq(
                                 expr,
                                 &row,
@@ -999,12 +998,15 @@ impl<S: StorageEngine + 'static> ExecutionEngine<S> {
                                 Some(&mut *storage_guard),
                                 &|_| Ok(Value::Null),
                             )
-                            .unwrap_or(Value::Null),
+                            .map_err(|e| SqlError::ExecutionError(e))?,
                             None => row.first().cloned().unwrap_or(Value::Null),
-                        })
-                        .collect()
-                })
-                .collect();
+                        };
+                        new_row.push(v);
+                    }
+                    out.push(new_row);
+                }
+                Ok(out)
+            })()?;
             (names, rows)
         };
         let (projected_column_names, projected_rows) = projected_with_names;
