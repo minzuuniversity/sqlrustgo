@@ -5,12 +5,8 @@
 statement ok
 CREATE TABLE tbl(i INTEGER);
 
-statement error
+statement error not supported
 ALTER TABLE tbl SET PARTITIONED BY (i)
-----
-not supported
 
-statement error
+statement error not supported
 ALTER TABLE tbl RESET PARTITIONED BY;
-----
-not supported
