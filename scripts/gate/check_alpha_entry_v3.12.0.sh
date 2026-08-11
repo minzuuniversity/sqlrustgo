@@ -58,6 +58,12 @@ check "E3_SQLLOGICTEST_HELP" "cargo run -p sqlrustgo_sqllogictest -- --help"
 check "E3_ALPHA_QUALITY_SCRIPT" "test -x scripts/gate/check_alpha_quality_v3.12.0.sh"
 
 echo ""
+echo "--- E4: Coverage Framework Entry Gates ---"
+check "E4_COVERAGE_FRAMEWORK_DOC" "test -f docs/releases/v3.12.0/COMPREHENSIVE_TEST_FRAMEWORK_AND_COVERAGE_BASELINE.md"
+check "E4_COVERAGE_BASELINE_SCRIPT" "test -x scripts/gate/check_v312_coverage_baseline.sh"
+check "E4_COVERAGE_CONFIG" "bash scripts/gate/check_v312_coverage_baseline.sh --check-config"
+
+echo ""
 echo "=== v3.12.0 Alpha Entry Summary ==="
 echo "PASS: $PASS/$TOTAL"
 echo "BLOCKERS: $BLOCKERS"

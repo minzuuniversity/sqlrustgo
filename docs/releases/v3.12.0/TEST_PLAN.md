@@ -173,6 +173,27 @@ bash scripts/gate/check_alpha_quality_v3.12.0.sh
 | Storage/index/WAL backlog | `docs/releases/v3.12.0/storage/storage_wal_index_backlog_<commit>_<timestamp>.md` |
 | Test infrastructure backlog | `docs/releases/v3.12.0/test-infra/sqlancer_runner_registry_e2e_<commit>_<timestamp>.md` |
 
+## 8. 综合测试框架与覆盖率口径
+
+v3.12.0 的覆盖率与综合测试执行口径以
+`docs/releases/v3.12.0/COMPREHENSIVE_TEST_FRAMEWORK_AND_COVERAGE_BASELINE.md`
+为准。该文档明确区分 L0 单元测试、L1 集成测试、L2 E2E/wire/SQLLogicTest
+smoke、L3 per-crate 覆盖率、L4 性能测试、L5 SOAK/crash/recovery，不再用单一
+workspace 覆盖率数字替代分模块质量判断。
+
+覆盖率框架已接入门禁：
+
+```bash
+bash scripts/gate/check_v312_coverage_baseline.sh --check-config
+V312_COVERAGE_FULL=1 bash scripts/gate/check_rc_ga_gate.sh rc
+```
+
+默认覆盖率采集命令：
+
+```bash
+bash scripts/gate/check_v312_coverage_baseline.sh
+```
+
 ## 附录：英文原文
 
 > 本附录保留本文件改写前的英文原文，便于追溯历史语义；当前正式阅读与执行口径以上方中文正文为准。
