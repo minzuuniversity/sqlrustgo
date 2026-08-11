@@ -185,8 +185,55 @@ fn preprocess_test_file(path: &Path) -> Result<String, String> {
     preprocess_content(&raw, path.parent().unwrap_or(Path::new(".")))
 }
 
+/// Regex matching DuckDB-style `<REGEX>:` multiline `statement error` blocks.
+///
+/// Matches the multi-line block:
+/// ```
+/// statement error
+/// <SQL line 1>
+/// <SQL line 2>
+/// ...
+/// ----
+/// <REGEX>:<pattern>
+/// ```
+///
+/// Group 1: SQL lines (each line ending with `\n`)
+/// Group 2: regex pattern content (single line, no trailing `\n`)
+///
+/// V312-19 #4038: sqllogictest-rs 0.29.1 parses `----`-delimited errors as
+/// `ExpectedError::Multiline(String)` and uses **exact** string equality
+/// (see parser.rs `is_match`). The DuckDB test corpus uses the `<REGEX>:`
+/// prefix as a non-standard marker meaning "treat the rest as a regex".
+/// We rewrite these blocks to the sqllogictest-rs-native inline form:
+/// ```
+/// statement error <pattern>
+/// <SQL line 1>
+/// <SQL line 2>
+/// ```
+/// which produces `ExpectedError::Inline(Regex)` and matches correctly.
+static REGEX_MULTILINE_BLOCK: LazyLock<regex::Regex> = LazyLock::new(|| {
+    regex::Regex::new(r"(?m)^statement error\n((?:.+\n)*?)----\n<REGEX>:([^\n]+)\n").unwrap()
+});
+
+/// Convert DuckDB-style `<REGEX>:` multiline `statement error` blocks into the
+/// sqllogictest-rs-native inline format.
+fn convert_regex_multiline_blocks(content: &str) -> String {
+    REGEX_MULTILINE_BLOCK
+        .replace_all(content, |caps: &regex::Captures| {
+            let sql = &caps[1];
+            let pattern = &caps[2];
+            format!("statement error {}\n{}", pattern, sql)
+        })
+        .into_owned()
+}
+
 /// Pre-process test content string, expanding directives
 pub(crate) fn preprocess_content(content: &str, base_dir: &Path) -> Result<String, String> {
+    // V312-19 #4038: convert DuckDB-style `<REGEX>:` multiline blocks first so
+    // the rest of preprocessing (variable substitution, foreach expansion,
+    // connection suffixing) operates on the canonical sqllogictest-rs format.
+    let content = &convert_regex_multiline_blocks(content);
+
     let mut variables: HashMap<String, String> = HashMap::new();
     let mut output = String::new();
     let mut lines = content.lines().peekable();
@@ -618,6 +665,135 @@ mod tests {
         assert!(
             out.contains("SELECT 1;"),
             "malformed set-variable line must not abort preprocessing, got: {}",
+            out
+        );
+    }
+
+    // =====================================================================
+    // V312-19 #4038: `<REGEX>:` multiline → inline conversion tests
+    //
+    // sqllogictest-rs 0.29.1 parses `----`-delimited errors as
+    // `ExpectedError::Multiline(String)` and uses exact string equality.
+    // DuckDB test files use a `<REGEX>:` prefix in multiline content as a
+    // non-standard "this is a regex" marker. These tests pin the conversion
+    // behavior so `order__test_limit.test` and friends can be verified.
+    // =====================================================================
+
+    #[test]
+    fn v312_19_regex_multiline_to_inline_basic() {
+        // Single-line SQL, single-line regex.
+        let input = "statement error\n\
+                     SELECT a FROM test LIMIT a\n\
+                     ----\n\
+                     <REGEX>:Binder Error:.*Referenced column.*not found.*\n";
+        let out = run(input);
+        // Expect inline form on one line, SQL right after.
+        assert!(
+            out.contains(
+                "statement error Binder Error:.*Referenced column.*not found.*\nSELECT a FROM test LIMIT a\n"
+            ),
+            "expected inline conversion, got:\n{}",
+            out
+        );
+        // Original `----` separator must be gone (Multiline form removed).
+        assert!(
+            !out.contains("----"),
+            "---- separator should be consumed by conversion, got:\n{}",
+            out
+        );
+        // `<REGEX>:` prefix marker must be consumed.
+        assert!(
+            !out.contains("<REGEX>:"),
+            "<REGEX>: prefix marker should be consumed, got:\n{}",
+            out
+        );
+    }
+
+    #[test]
+    fn v312_19_regex_multiline_multiline_sql() {
+        // SQL spans multiple lines. Constructed with explicit `\n` so that
+        // Rust's `\` line-continuation whitespace stripping does not collapse
+        // any leading whitespace inside the SQL body.
+        let input = "statement error\nSELECT a,\n       b\nFROM test\nLIMIT a\n----\n<REGEX>:Binder Error:.*not found.*\n";
+        let out = run(input);
+        assert!(
+            out.contains(
+                "statement error Binder Error:.*not found.*\nSELECT a,\n       b\nFROM test\nLIMIT a\n"
+            ),
+            "expected multi-line SQL preserved after conversion, got:\n{}",
+            out
+        );
+    }
+
+    #[test]
+    fn v312_19_regex_multiline_preserves_exact_match_blocks() {
+        // Multiline content with NO `<REGEX>:` prefix is exact-match — must NOT
+        // be converted (sqllogictest-rs Multiline variant uses exact string
+        // equality).
+        let input = "statement error\n\
+                     ALTER TABLE tbl SET PARTITIONED BY (i)\n\
+                     ----\n\
+                     not supported\n";
+        let out = run(input);
+        assert!(
+            out.contains(
+                "ALTER TABLE tbl SET PARTITIONED BY (i)\n----\nnot supported\n"
+            ),
+            "exact-match multiline block must be preserved as-is, got:\n{}",
+            out
+        );
+    }
+
+    #[test]
+    fn v312_19_regex_multiline_preserves_already_inline_format() {
+        // Inline regex (no `----` separator) must NOT be touched.
+        let input = "statement error Binder Error:.*Aggregate.*\n\
+                     SELECT SUM(42) FROM t LIMIT SUM(42)\n";
+        let out = run(input);
+        assert!(
+            out.contains(
+                "statement error Binder Error:.*Aggregate.*\nSELECT SUM(42) FROM t LIMIT SUM(42)\n"
+            ),
+            "inline format must pass through unchanged, got:\n{}",
+            out
+        );
+    }
+
+    #[test]
+    fn v312_19_regex_multiline_real_order_test_limit_shape() {
+        // Real DuckDB test shape: identifier and aggregate cases.
+        let input = "statement ok\n\
+                     CREATE TABLE test (a INTEGER, b INTEGER);\n\
+                     INSERT INTO test VALUES (1, 10), (2, 20);\n\
+                     statement error\n\
+                     SELECT a FROM test LIMIT a\n\
+                     ----\n\
+                     <REGEX>:Binder Error:.*Referenced column.*not found.*\n\
+                     statement error\n\
+                     SELECT a FROM test LIMIT SUM(42)\n\
+                     ----\n\
+                     <REGEX>:Binder Error:.*Aggregate functions are not supported in LIMIT clause.*\n";
+        let out = run(input);
+        // Both errors must be converted to inline.
+        assert!(
+            out.contains(
+                "statement error Binder Error:.*Referenced column.*not found.*\nSELECT a FROM test LIMIT a\n"
+            ),
+            "first statement error conversion failed, got:\n{}",
+            out
+        );
+        assert!(
+            out.contains(
+                "statement error Binder Error:.*Aggregate functions are not supported in LIMIT clause.*\nSELECT a FROM test LIMIT SUM(42)\n"
+            ),
+            "second statement error conversion failed, got:\n{}",
+            out
+        );
+        // Original `----` separators must be gone (both converted).
+        assert_eq!(
+            out.matches("----").count(),
+            0,
+            "all <REGEX>: multiline blocks should be converted, found stray ---- in:\n{}",
             out
         );
     }
