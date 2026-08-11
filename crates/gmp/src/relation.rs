@@ -192,7 +192,8 @@ pub fn get_neighbors(
         .into_iter()
         .filter_map(|r| Relation::from_row(&r))
         .filter(|rel| {
-            let matches_doc = rel.source_doc_id == Some(doc_id) || rel.target_doc_id == Some(doc_id);
+            let matches_doc =
+                rel.source_doc_id == Some(doc_id) || rel.target_doc_id == Some(doc_id);
             let matches_type = relation_type.map_or(true, |t| &rel.relation_type == t);
             matches_doc && matches_type
         })
@@ -201,10 +202,7 @@ pub fn get_neighbors(
 }
 
 /// Get all neighbors of a chunk.
-pub fn get_neighbors_chunk(
-    storage: &dyn StorageEngine,
-    chunk_id: i64,
-) -> SqlResult<Vec<Relation>> {
+pub fn get_neighbors_chunk(storage: &dyn StorageEngine, chunk_id: i64) -> SqlResult<Vec<Relation>> {
     let rows = storage.scan(TABLE_RELATIONS)?;
     let relations: Vec<Relation> = rows
         .into_iter()
@@ -256,16 +254,15 @@ pub fn path_query(
 
     let all_relations: Vec<Relation> = {
         let rows = storage.scan(TABLE_RELATIONS)?;
-        rows.into_iter().filter_map(|r| Relation::from_row(&r)).collect()
+        rows.into_iter()
+            .filter_map(|r| Relation::from_row(&r))
+            .collect()
     };
 
     let mut results = Vec::new();
     let mut visited = std::collections::HashSet::new();
-    let mut queue: Vec<(i64, Vec<(i64, Option<i64>)>, Vec<Relation>)> = vec![(
-        source_doc_id,
-        vec![(source_doc_id, None)],
-        vec![],
-    )];
+    let mut queue: Vec<(i64, Vec<(i64, Option<i64>)>, Vec<Relation>)> =
+        vec![(source_doc_id, vec![(source_doc_id, None)], vec![])];
 
     while let Some((current_doc, path_nodes, path_edges)) = queue.pop() {
         if path_nodes.len() > max_depth {
@@ -329,10 +326,7 @@ pub fn path_query(
 }
 
 /// Get all relations for a document.
-pub fn get_relations_for_doc(
-    storage: &dyn StorageEngine,
-    doc_id: i64,
-) -> SqlResult<Vec<Relation>> {
+pub fn get_relations_for_doc(storage: &dyn StorageEngine, doc_id: i64) -> SqlResult<Vec<Relation>> {
     let rows = storage.scan(TABLE_RELATIONS)?;
     let relations: Vec<Relation> = rows
         .into_iter()

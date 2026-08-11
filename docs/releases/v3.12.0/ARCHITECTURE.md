@@ -1,5 +1,7 @@
 # SQLRustGo v3.12.0 架构草案
 
+> **provenance:** generated_by=v3.12.0-remediation-round-3, generated_at=2026-08-10T10:49:33Z, commit=1903545df6d036f7f6d5035a0503b5fa932aac51, source_repo=openclaw/sqlrustgo, branch=develop/v3.12.0, policy=Anti-Fabrication-Policy-v1.0
+
 > **阶段**: DRAFT
 > **日期**: 2026-08-09
 > **边界**: 本文定义 v3.12.0 目标架构和门禁入口，不声明实现已完成。

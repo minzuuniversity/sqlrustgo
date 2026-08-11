@@ -165,13 +165,27 @@ fn apply_op(op: &str, lv: &Value, rv: &Value) -> SqlResult<bool> {
 
 fn apply_op_value(op: &str, lv: &Value, rv: &Value) -> SqlResult<Value> {
     match op {
-        "+" => Ok(Value::Integer(to_i64(lv).unwrap_or(0) + to_i64(rv).unwrap_or(0))),
-        "-" => Ok(Value::Integer(to_i64(lv).unwrap_or(0) - to_i64(rv).unwrap_or(0))),
-        "*" => Ok(Value::Integer(to_i64(lv).unwrap_or(0) * to_i64(rv).unwrap_or(0))),
-        "<" => Ok(Value::Boolean(cmp_values(lv, rv) == std::cmp::Ordering::Less)),
-        "<=" => Ok(Value::Boolean(cmp_values(lv, rv) != std::cmp::Ordering::Greater)),
-        ">" => Ok(Value::Boolean(cmp_values(lv, rv) == std::cmp::Ordering::Greater)),
-        ">=" => Ok(Value::Boolean(cmp_values(lv, rv) != std::cmp::Ordering::Less)),
+        "+" => Ok(Value::Integer(
+            to_i64(lv).unwrap_or(0) + to_i64(rv).unwrap_or(0),
+        )),
+        "-" => Ok(Value::Integer(
+            to_i64(lv).unwrap_or(0) - to_i64(rv).unwrap_or(0),
+        )),
+        "*" => Ok(Value::Integer(
+            to_i64(lv).unwrap_or(0) * to_i64(rv).unwrap_or(0),
+        )),
+        "<" => Ok(Value::Boolean(
+            cmp_values(lv, rv) == std::cmp::Ordering::Less,
+        )),
+        "<=" => Ok(Value::Boolean(
+            cmp_values(lv, rv) != std::cmp::Ordering::Greater,
+        )),
+        ">" => Ok(Value::Boolean(
+            cmp_values(lv, rv) == std::cmp::Ordering::Greater,
+        )),
+        ">=" => Ok(Value::Boolean(
+            cmp_values(lv, rv) != std::cmp::Ordering::Less,
+        )),
         "=" | "==" => Ok(Value::Boolean(lv == rv)),
         "!=" | "<>" => Ok(Value::Boolean(lv != rv)),
         _ => Err(format!("Unsupported CHECK operator: {}", op).into()),
@@ -1011,7 +1025,11 @@ impl Default for MemoryStorage {
 
 impl StorageEngine for MemoryStorage {
     fn scan(&self, table: &str) -> SqlResult<Vec<Record>> {
-        Ok(self.tables.get(&table.to_lowercase()).cloned().unwrap_or_default())
+        Ok(self
+            .tables
+            .get(&table.to_lowercase())
+            .cloned()
+            .unwrap_or_default())
     }
 
     fn begin_transaction(&mut self) -> SqlResult<u64> {
@@ -1064,10 +1082,7 @@ impl StorageEngine for MemoryStorage {
                 log.inserted.push((table_key.clone(), row.clone()));
             }
         }
-        self.tables
-            .entry(table_key)
-            .or_default()
-            .extend(records);
+        self.tables.entry(table_key).or_default().extend(records);
         Ok(())
     }
 
@@ -1245,7 +1260,7 @@ impl StorageEngine for MemoryStorage {
         Ok(())
     }
 
-fn add_column(&mut self, table: &str, mut column: ColumnDefinition) -> SqlResult<()> {
+    fn add_column(&mut self, table: &str, mut column: ColumnDefinition) -> SqlResult<()> {
         // V312-19 #3972: case-insensitive table name lookup + lowercase column names
         if let Some(info) = self.table_infos.get_mut(&table.to_lowercase()) {
             column.name = column.name.to_lowercase();

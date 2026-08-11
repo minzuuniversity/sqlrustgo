@@ -668,7 +668,11 @@ mod double_quote_tests {
         println!("Tokens: {:?}", tokens);
         // CREATE TABLE "MyTable" ( i integer )
         // = 7 tokens: Create, Table, Identifier("MyTable"), LParen, Identifier("i"), Identifier("INTEGER"), RParen
-        assert!(tokens.len() >= 3, "Expected at least 3 tokens, got {:?}", tokens);
+        assert!(
+            tokens.len() >= 3,
+            "Expected at least 3 tokens, got {:?}",
+            tokens
+        );
         assert_eq!(tokens[0], Token::Create);
         assert_eq!(tokens[1], Token::Table);
         assert_eq!(tokens[2], Token::Identifier("MyTable".to_string()));

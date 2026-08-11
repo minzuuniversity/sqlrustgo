@@ -1,5 +1,7 @@
 # SQLRustGo v3.12.0 测试计划
 
+> **provenance:** generated_by=v3.12.0-remediation-round-3, generated_at=2026-08-10T10:49:33Z, commit=1903545df6d036f7f6d5035a0503b5fa932aac51, source_repo=openclaw/sqlrustgo, branch=develop/v3.12.0, policy=Anti-Fabrication-Policy-v1.0
+
 > **版本**: v3.12.0
 > **状态**: 规划中
 > **日期**: 2026-08-09
@@ -97,7 +99,8 @@ SQLite 自动测试框架是从 v3.10.0 继承的 P0 项，v3.12.0 必须把它�
 
 | 阶段 | 必需 SLT 证据 |
 |---|---|
-| Alpha | `cargo build -p sqlrustgo_sqllogictest` 成功；runner `--help` 可用 |
+| Alpha Entry | `cargo build -p sqlrustgo_sqllogictest` 成功；runner `--help` 可用 |
+| Alpha Quality | `check_sqllogictest_v312.sh`、P12、P16、anti-ignore、deferred follow-up visibility 均通过；注册 exclusion 不能单独视为 PASS |
 | Beta | `crates/sqlrustgo_sqllogictest/testdata` 本地 smoke corpus 可运行并输出报告 |
 | RC | curated SQLite-compatible subset 运行，并输出 PASS/FAIL/SKIP 分类和 issue-linked exclusions |
 | GA | selected SLT targets 全部通过，或每个 skipped/failed group 都有 issue、owner、expiry、rationale |
@@ -108,23 +111,27 @@ SQLite 自动测试框架是从 v3.10.0 继承的 P0 项，v3.12.0 必须把它�
 cargo build -p sqlrustgo_sqllogictest
 cargo run -p sqlrustgo_sqllogictest -- --test-dir crates/sqlrustgo_sqllogictest/testdata
 bash scripts/gate/check_sqllogictest_v312.sh
+bash scripts/gate/check_v312_deferred_followups.sh
+bash scripts/gate/check_alpha_quality_v3.12.0.sh
 ```
 
-2026-08-09 当前基线：
+2026-08-11 治理口径：
 
 | 命令 | 观察结果 | 对测试计划的含义 |
 |---|---|---|
 | `cargo build -p sqlrustgo_sqllogictest` | build 可完成，但依赖 crate 仍有 warning | 只能作为初始 Alpha build evidence，不能作为 clippy/warning-free evidence |
 | `cargo run -p sqlrustgo_sqllogictest -- --test-dir crates/sqlrustgo_sqllogictest/testdata` | runner 可完成；6/16 文件通过，通过率 27.3% | v3.12 必须 triage failures、分类 expected incompatibilities，并在 Beta/RC 前提升 smoke gate |
-| `bash scripts/gate/check_sqllogictest_v312.sh` | 当前计划基线中脚本尚不存在 | 实现前不能称 SQLLogicTest gate 已集成 |
+| `bash scripts/gate/check_sqllogictest_v312.sh` | 已作为 smoke baseline gate 存在 | 只能证明 gate 可执行和失败项可追踪；不能把 exclusion 当 PASS |
+| `bash scripts/gate/check_v312_deferred_followups.sh` | 新增 | 所有 exclusion 必须绑定 Gitea Issue、owner、expiry、close boundary |
+| `bash scripts/gate/check_alpha_quality_v3.12.0.sh` | 新增 | 汇总 SQLLogicTest、P12、P16、anti-ignore、SQL corpus、AFP；失败则 Alpha Quality BLOCKED |
 
 必需 artifact：
 
 | Artifact | 路径 |
 |---|---|
-| SLT smoke report | `docs/releases/v3.12.0/sqllogictest-baseline/smoke-report.md` |
-| SQLite corpus manifest | `docs/releases/v3.12.0/sqllogictest-baseline/sqlite-corpus-manifest.json` |
-| Exclusion registry | `docs/releases/v3.12.0/sqllogictest-baseline/exclusions.yml` |
+| SLT smoke report | `docs/releases/v3.12.0/evidence/sqllogictest/smoke-report.md` |
+| SQLite corpus manifest | `docs/releases/v3.12.0/evidence/sqllogictest/sqlite-corpus-manifest.json` |
+| Exclusion registry | `docs/releases/v3.12.0/evidence/sqllogictest/exclusions.yml` |
 | Gate output | `docs/releases/v3.12.0/logs/sqllogictest_<commit>_<timestamp>.log` |
 
 ## 6. v3.11 弱项回归计划
@@ -247,7 +254,8 @@ The SQLite automatic testing framework is a carried-forward P0 item from v3.10.0
 
 | Stage | Required SLT evidence |
 |---|---|
-| Alpha | `cargo build -p sqlrustgo_sqllogictest` succeeds; runner `--help` prints usable options |
+| Alpha Entry | `cargo build -p sqlrustgo_sqllogictest` succeeds; runner `--help` prints usable options |
+| Alpha Quality | `check_sqllogictest_v312.sh`, P12, P16, anti-ignore, and deferred follow-up visibility all pass; registered exclusions are not standalone PASS evidence |
 | Beta | Local smoke corpus under `crates/sqlrustgo_sqllogictest/testdata` runs and writes a report |
 | RC | Curated SQLite-compatible subset runs with PASS/FAIL/SKIP classification and issue-linked exclusions |
 | GA | All selected SLT targets pass, or every skipped/failed group has an issue, owner, expiry, and rationale |
@@ -258,23 +266,27 @@ Required commands:
 cargo build -p sqlrustgo_sqllogictest
 cargo run -p sqlrustgo_sqllogictest -- --test-dir crates/sqlrustgo_sqllogictest/testdata
 bash scripts/gate/check_sqllogictest_v312.sh
+bash scripts/gate/check_v312_deferred_followups.sh
+bash scripts/gate/check_alpha_quality_v3.12.0.sh
 ```
 
-Current baseline captured on 2026-08-09:
+Governance boundary updated on 2026-08-11:
 
 | Command | Observed result | Test-plan implication |
 |---|---|---|
 | `cargo build -p sqlrustgo_sqllogictest` | Build completes; warnings are still emitted from dependent crates | Acceptable only as initial Alpha build evidence, not as clippy/warning-free evidence |
 | `cargo run -p sqlrustgo_sqllogictest -- --test-dir crates/sqlrustgo_sqllogictest/testdata` | Runner completes with 6/16 files passing and 27.3% pass rate | v3.12.0 must triage failures, classify expected incompatibilities, and raise the smoke gate before Beta/RC |
-| `bash scripts/gate/check_sqllogictest_v312.sh` | Script not yet present in the current plan baseline | Must be implemented before the SQLLogicTest gate can be called integrated |
+| `bash scripts/gate/check_sqllogictest_v312.sh` | Exists as a smoke baseline gate | Proves executable baseline and visible exclusions only; exclusions are not PASS evidence |
+| `bash scripts/gate/check_v312_deferred_followups.sh` | New | Every exclusion must bind to a Gitea issue, owner, expiry, and close boundary |
+| `bash scripts/gate/check_alpha_quality_v3.12.0.sh` | New | Aggregates SQLLogicTest, P12, P16, anti-ignore, SQL corpus, and AFP; failure means Alpha Quality BLOCKED |
 
 Required artifacts:
 
 | Artifact | Path |
 |---|---|
-| SLT smoke report | `docs/releases/v3.12.0/sqllogictest-baseline/smoke-report.md` |
-| SQLite corpus manifest | `docs/releases/v3.12.0/sqllogictest-baseline/sqlite-corpus-manifest.json` |
-| Exclusion registry | `docs/releases/v3.12.0/sqllogictest-baseline/exclusions.yml` |
+| SLT smoke report | `docs/releases/v3.12.0/evidence/sqllogictest/smoke-report.md` |
+| SQLite corpus manifest | `docs/releases/v3.12.0/evidence/sqllogictest/sqlite-corpus-manifest.json` |
+| Exclusion registry | `docs/releases/v3.12.0/evidence/sqllogictest/exclusions.yml` |
 | Gate output | `docs/releases/v3.12.0/logs/sqllogictest_<commit>_<timestamp>.log` |
 
 ## 6. v3.11 Weak-Point Regression Plan

@@ -126,11 +126,26 @@ pub fn create_backup_manifest(storage: &dyn StorageEngine) -> SqlResult<BackupMa
         }
     }
 
-    let total_documents = table_stats.get("gmp_documents").map(|s| s.row_count).unwrap_or(0);
-    let total_embeddings = table_stats.get("gmp_embeddings").map(|s| s.row_count).unwrap_or(0);
-    let total_chunks = table_stats.get("gmp_chunks").map(|s| s.row_count).unwrap_or(0);
-    let total_relations = table_stats.get("gmp_relations").map(|s| s.row_count).unwrap_or(0);
-    let total_audit_logs = table_stats.get("gmp_audit_log").map(|s| s.row_count).unwrap_or(0);
+    let total_documents = table_stats
+        .get("gmp_documents")
+        .map(|s| s.row_count)
+        .unwrap_or(0);
+    let total_embeddings = table_stats
+        .get("gmp_embeddings")
+        .map(|s| s.row_count)
+        .unwrap_or(0);
+    let total_chunks = table_stats
+        .get("gmp_chunks")
+        .map(|s| s.row_count)
+        .unwrap_or(0);
+    let total_relations = table_stats
+        .get("gmp_relations")
+        .map(|s| s.row_count)
+        .unwrap_or(0);
+    let total_audit_logs = table_stats
+        .get("gmp_audit_log")
+        .map(|s| s.row_count)
+        .unwrap_or(0);
 
     let manifest = BackupManifest {
         version: "3.12.0".to_string(),
@@ -190,10 +205,7 @@ impl BackupReport {
 }
 
 /// Create a backup of all GMP tables to a JSON file.
-pub fn create_backup(
-    storage: &dyn StorageEngine,
-    backup_path: &str,
-) -> SqlResult<BackupReport> {
+pub fn create_backup(storage: &dyn StorageEngine, backup_path: &str) -> SqlResult<BackupReport> {
     let manifest = create_backup_manifest(storage)?;
 
     let mut tables_data: HashMap<String, Vec<Vec<String>>> = HashMap::new();
@@ -212,11 +224,7 @@ pub fn create_backup(
             let rows = storage.scan(table)?;
             let serialized: Vec<Vec<String>> = rows
                 .into_iter()
-                .map(|row| {
-                    row.iter()
-                        .map(|v| format!("{:?}", v))
-                        .collect()
-                })
+                .map(|row| row.iter().map(|v| format!("{:?}", v)).collect())
                 .collect();
             tables_data.insert(table.to_string(), serialized);
         }
@@ -230,9 +238,8 @@ pub fn create_backup(
     let json = serde_json::to_string_pretty(&backup).unwrap_or_default();
     let bytes_written = json.len();
 
-    std::fs::write(backup_path, &json).map_err(|e| {
-        sqlrustgo_types::SqlError::IoError(e.to_string())
-    })?;
+    std::fs::write(backup_path, &json)
+        .map_err(|e| sqlrustgo_types::SqlError::IoError(e.to_string()))?;
 
     Ok(BackupReport {
         manifest,
@@ -246,25 +253,26 @@ pub fn restore_backup(
     _storage: &mut dyn StorageEngine,
     backup_path: &str,
 ) -> SqlResult<RestoreResult> {
-    let content = std::fs::read_to_string(backup_path).map_err(|e| {
-        sqlrustgo_types::SqlError::IoError(e.to_string())
-    })?;
+    let content = std::fs::read_to_string(backup_path)
+        .map_err(|e| sqlrustgo_types::SqlError::IoError(e.to_string()))?;
 
-    let json: serde_json::Value = serde_json::from_str(&content).map_err(|e| {
-        sqlrustgo_types::SqlError::ParseError(format!("JSON parse error: {}", e))
-    })?;
+    let json: serde_json::Value = serde_json::from_str(&content)
+        .map_err(|e| sqlrustgo_types::SqlError::ParseError(format!("JSON parse error: {}", e)))?;
 
-    let manifest: BackupManifest = serde_json::from_value(
-        json.get("manifest").cloned().ok_or_else(|| {
+    let manifest: BackupManifest =
+        serde_json::from_value(json.get("manifest").cloned().ok_or_else(|| {
             sqlrustgo_types::SqlError::ParseError("Missing manifest in backup".to_string())
-        })?
-    ).map_err(|e| {
-        sqlrustgo_types::SqlError::ParseError(format!("Manifest parse error: {}", e))
-    })?;
+        })?)
+        .map_err(|e| {
+            sqlrustgo_types::SqlError::ParseError(format!("Manifest parse error: {}", e))
+        })?;
 
-    let tables = json.get("tables").and_then(|t| t.as_object()).ok_or_else(|| {
-        sqlrustgo_types::SqlError::ParseError("Missing tables in backup".to_string())
-    })?;
+    let tables = json
+        .get("tables")
+        .and_then(|t| t.as_object())
+        .ok_or_else(|| {
+            sqlrustgo_types::SqlError::ParseError("Missing tables in backup".to_string())
+        })?;
 
     let mut restored_counts: HashMap<String, usize> = HashMap::new();
 

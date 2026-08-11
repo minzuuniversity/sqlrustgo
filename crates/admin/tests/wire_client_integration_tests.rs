@@ -19,6 +19,7 @@ fn start_server(
         server_threads: 2,
         storage: None,
         data_dir: None,
+        slow_query_log: None,
     };
     start_ephemeral(config).expect("server starts")
 }

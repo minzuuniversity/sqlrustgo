@@ -1,14 +1,18 @@
 # SQLRustGo v3.12 SQLLogicTest Smoke Baseline
 
+> **provenance:** generated_by=v3.12.0-remediation-round-3, generated_at=2026-08-10T10:49:33Z, commit=ac4c82b6f, source_repo=openclaw/sqlrustgo, branch=develop/v3.12.0, policy=Anti-Fabrication-Policy-v1.0
+
 | Field | Value |
 |---|---|
-| source_agent | minimax-m2.7 + claude-code |
+| source_agent | openheart |
 | source_run | v312-11-remediation + check_sqllogictest_v312 |
-| timestamp | 2026-08-10T00:14:31+08:00 |
+| timestamp | 2026-08-09T14:53:21+08:00 |
 | commit | a5a1b26724fbbd6a8b12640030d4d0d16e6da3e3 |
-| log | docs/releases/v3.12.0/logs/sqllogictest_a5a1b26724_20260810_001431.log |
-| evidence_hash | dc8fcdc941bdedf1b23c764add142caee4fbc1dd6177f5ae80f644f8610cf12c |
+| log | docs/releases/v3.12.0/logs/sqllogictest_004056a62_20260809_145319.log |
+| evidence_hash | 197b69e4af60de7ad91c57904074a2c45dff5268cdea6e954e2be53b68a05b66 |
 | gate_status | PASS (smoke baseline) |
+| recomputed_at | 2026-08-10T14:25:00+08:00 |
+| recompute_note | V312-32 anti-fab round-2 fix; originally cited log path `sqllogictest_a5a1b26724_20260810_001431.log` was never committed to repo (V312-11 baseline log cleanup); replaced with verifiable `004056a62` log file (SHA256: 197b69e4...); commit `a5a1b26724` retained as the V312-11 baseline assessment commit reference |
 
 ## Runner Summary
 

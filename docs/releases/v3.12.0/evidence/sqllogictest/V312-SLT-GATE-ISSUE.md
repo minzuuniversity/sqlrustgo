@@ -63,13 +63,15 @@ summary: 4 PASS, 0 FAIL
 
 | Field | Value |
 |---|---|
-| source_agent | minimax-m2.7 |
+| source_agent | openheart |
 | source_run | check_sqllogictest_v312 |
-| timestamp | 2026-08-10T07:38:59+08:00 |
-| commit | 1903545df6d036f7f6d5035a0503b5fa932aac51 |
-| log | docs/releases/v3.12.0/logs/sqllogictest_1903545df6_20260810_073857.log |
-| evidence_hash | 979e45bc4e924af62d1768f6e314fcf97c5bd135154ddd485c0e14472919676e |
+| timestamp | 2026-08-09T14:53:21+08:00 |
+| commit | 004056a620bec8525f66206176ff0b6be8327ce8 |
+| log | docs/releases/v3.12.0/logs/sqllogictest_004056a62_20260809_145319.log |
+| evidence_hash | 197b69e4af60de7ad91c57904074a2c45dff5268cdea6e954e2be53b68a05b66 |
 | gate_status | PASS |
+| recomputed_at | 2026-08-10T14:25:00+08:00 |
+| recompute_note | V312-32 anti-fab round-2 fix; previously cited commit 1903545df6 (PR #3979 merge) whose corresponding log file was never committed to repo; replaced with verifiable 004056a62 commit + real log file SHA256 |
 ```
 
 ### Gate-Test Binding

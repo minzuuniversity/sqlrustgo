@@ -986,27 +986,27 @@ impl<S: StorageEngine + 'static> ExecutionEngine<S> {
                 .map(|c| c.alias.clone().unwrap_or_else(|| c.name.clone()))
                 .collect();
             let rows: Vec<Vec<Value>> = (|| -> SqlResult<Vec<Vec<Value>>> {
-    let mut out = Vec::new();
-    for row in rows {
-        let mut new_row = Vec::new();
-        for col in &select.columns {
-            let v = match &col.expression {
-                Some(expr) => crate::expr_utils::evaluate_expression_with_seq(
-                    expr,
-                    &row,
-                    &table_info,
-                    Some(&mut *storage_guard),
-                    &|_| Ok(Value::Null),
-                )
-                .map_err(|e| SqlError::ExecutionError(e))?,
-                None => row.first().cloned().unwrap_or(Value::Null),
-            };
-            new_row.push(v);
-        }
-        out.push(new_row);
-    }
-    Ok(out)
-})()?;
+                let mut out = Vec::new();
+                for row in rows {
+                    let mut new_row = Vec::new();
+                    for col in &select.columns {
+                        let v = match &col.expression {
+                            Some(expr) => crate::expr_utils::evaluate_expression_with_seq(
+                                expr,
+                                &row,
+                                &table_info,
+                                Some(&mut *storage_guard),
+                                &|_| Ok(Value::Null),
+                            )
+                            .map_err(|e| SqlError::ExecutionError(e))?,
+                            None => row.first().cloned().unwrap_or(Value::Null),
+                        };
+                        new_row.push(v);
+                    }
+                    out.push(new_row);
+                }
+                Ok(out)
+            })()?;
             (names, rows)
         };
         let (projected_column_names, projected_rows) = projected_with_names;
@@ -2701,7 +2701,9 @@ fn decode_value_key(s: &str) -> Value {
         b'J' => {
             // JSON: prefix J then JSON string
             let json_str = &s[1..];
-            serde_json::from_str(json_str).map(Value::Json).unwrap_or(Value::Null)
+            serde_json::from_str(json_str)
+                .map(Value::Json)
+                .unwrap_or(Value::Null)
         }
         _ => Value::Null,
     }

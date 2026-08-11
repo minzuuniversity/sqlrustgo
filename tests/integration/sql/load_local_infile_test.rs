@@ -2,11 +2,15 @@
 //!
 //! See docs/superpowers/specs/2026-06-04-load-data-local-infile-design.md.
 //!
-//! All 5 tests share a single ephemeral server (see [`SHARED`]) because
-//! the server's `ACTIVE_CONFIG` is process-global — only the first
-//! `start_ephemeral`'s `data_dir` is honored by the LOAD DATA handler.
-//! Each loading test uses a unique table name so the tests are safe to
-//! run in parallel.
+//! V312-32: these 5 tests still share a single ephemeral server (see
+//! [`SHARED`]) for convenience, but the LOAD DATA handler no longer
+//! reads a process-global `ACTIVE_CONFIG`. Each connection sees its
+//! server's own `data_dir` via a per-handle `Arc<EphemeralConfig>`
+//! threaded from `start_ephemeral` through `handle_connection` to
+//! `do_command_loop`. The shared-server pattern is preserved for
+//! startup-cost reasons; tests that need independent data_dirs can
+//! use their own `start_ephemeral` calls safely. Each loading test
+//! uses a unique table name so they remain safe to run in parallel.
 
 #[path = "../../common/mod.rs"]
 mod common;
@@ -38,10 +42,11 @@ struct SharedServer {
 
 static SHARED: OnceLock<SharedServer> = OnceLock::new();
 
-/// Initialize the shared server on first call. All 5 tests in this
-/// file reuse the same server because the LOAD DATA handler reads
-/// `data_dir` from a process-global `ACTIVE_CONFIG` (`OnceLock`) that
-/// only stores the first call's config.
+/// Initialize the shared server on first call. V312-32: the per-handle
+/// `Arc<EphemeralConfig>` makes this purely a startup-cost optimization
+/// rather than a correctness requirement — each connection now sees
+/// the right server's `data_dir` regardless of how many `start_ephemeral`
+/// calls precede it.
 fn shared() -> &'static SharedServer {
     SHARED.get_or_init(|| {
         let tmp = tempfile::tempdir().expect("create tempdir");

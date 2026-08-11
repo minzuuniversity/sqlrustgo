@@ -1,5 +1,7 @@
 # V312-02 GMP Schema v3.12 — Verification Report
 
+> **provenance:** generated_by=v3.12.0-remediation-round-3, generated_at=2026-08-10T10:49:33Z, commit=bbb3dacb5078636c7c526004d2f05de0c6d13dda, source_repo=openclaw/sqlrustgo, branch=develop/v3.12.0, policy=Anti-Fabrication-Policy-v1.0
+
 ## Issue & PR
 
 | 字段 | 值 |
