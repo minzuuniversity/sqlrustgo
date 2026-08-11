@@ -252,7 +252,7 @@ fi
 if [ -f "$MANIFEST" ]; then
   MANIFEST_TOTAL=$(grep '"total_files"' "$MANIFEST" | grep -o '[0-9]\+' | head -1 || echo 0)
   MANIFEST_PASS=$(grep '"pass_files"' "$MANIFEST" | grep -o '[0-9]\+' | head -1 || echo 0)
-  ACTUAL_TEST_FILES=$(find crates/sqlrustgo_sqllogictest/testdata -name "*.test" 2>/dev/null | wc -l | tr -d '[:space:]')
+  ACTUAL_TEST_FILES=$(find crates/sqlrustgo_sqllogictest/testdata -name "*.test" -not -path '*/_unsupported/*' 2>/dev/null | wc -l | tr -d '[:space:]')
   if [ "$MANIFEST_TOTAL" != "$ACTUAL_TEST_FILES" ]; then
     record_fail "manifest total_files ($MANIFEST_TOTAL) != actual test files ($ACTUAL_TEST_FILES)"
   fi
