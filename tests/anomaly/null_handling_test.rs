@@ -4,7 +4,7 @@
 
 #[cfg(test)]
 mod tests {
-    use sqlrustgo::{parse, ExecutionEngine, MemoryStorage};
+    use sqlrustgo::{parse, ExecutionEngine, MemoryStorage, Value};
 
     use parking_lot::RwLock;
     use std::sync::Arc;
@@ -390,6 +390,98 @@ mod tests {
             "WHERE new_column (alias defined in SELECT list) must fail at bind time, but got Ok. \
              V313-13 / Issue #4041 fix required."
         );
+    }
+
+
+    /// V313-14 / Issue #4042 — RED test: CREATE TABLE AS SELECT must create
+    /// the table with the SELECT projection shape and populate it from the
+    /// query result. Mirrors create_as.test line 5-11.
+    #[test]
+    fn red_v313_14_ctas_basic_int_projection_must_succeed() {
+        let mut engine = create_engine();
+        engine
+            .execute("CREATE TABLE tbl1 AS SELECT 1")
+            .expect("CREATE TABLE AS must succeed");
+        let result = engine
+            .execute("SELECT * FROM tbl1")
+            .expect("SELECT must succeed");
+        let rows = &result.rows;
+        assert_eq!(rows.len(), 1, "CTAS should produce 1 row, got {:?}", rows);
+        assert_eq!(
+            rows[0].len(),
+            1,
+            "CTAS should produce 1 column, got {:?}",
+            rows[0]
+        );
+        match &rows[0][0] {
+            Value::Integer(n) => assert_eq!(*n, 1),
+            other => panic!("expected Integer(1), got {:?}", other),
+        }
+    }
+
+    /// V313-14 — RED test: CREATE TABLE AS with explicit column names must
+    /// use the column names as the schema and the SELECT projection as the
+    /// data. Mirrors create_as.test line 67-83.
+    #[test]
+    fn red_v313_14_ctas_with_explicit_columns_must_use_them() {
+        let mut engine = create_engine();
+        engine
+            .execute("CREATE TABLE t(col1, col2) AS SELECT 1, 'hello'")
+            .expect("CREATE TABLE AS with explicit columns must succeed");
+        let result = engine
+            .execute("SELECT * FROM t")
+            .expect("SELECT must succeed");
+        let rows = &result.rows;
+        assert_eq!(rows.len(), 1, "got rows: {:?}", rows);
+        assert_eq!(rows[0].len(), 2);
+        match (&rows[0][0], &rows[0][1]) {
+            (Value::Integer(n), Value::Text(s)) => {
+                assert_eq!(*n, 1);
+                assert_eq!(s, "hello");
+            }
+            other => panic!("expected (Int(1), Text(hello)), got {:?}", other),
+        }
+    }
+
+    /// V313-14 — RED test: CREATE TABLE AS where the SELECT produces fewer
+    /// columns than the explicit column list — the engine must reject this
+    /// with a column-count-mismatch binder error rather than silently
+    /// dropping data. Mirrors create_as.test line 112-115.
+    #[test]
+    fn red_v313_14_ctas_too_many_columns_must_fail_with_binder_error() {
+        let mut engine = create_engine();
+        // SELECT has 1 column but tbl7(col1, col2) declares 2 — must fail.
+        let result = engine.execute("CREATE TABLE tbl7(col1, col2) AS SELECT 5");
+        assert!(
+            result.is_err(),
+            "CREATE TABLE AS with too few SELECT columns must return a binder error, got Ok"
+        );
+        let err_msg = format!("{:?}", result.unwrap_err());
+        assert!(
+            err_msg.to_lowercase().contains("column")
+                || err_msg.to_lowercase().contains("binder")
+                || err_msg.to_lowercase().contains("mismatch"),
+            "error must mention column / binder / mismatch, got: {}",
+            err_msg
+        );
+    }
+
+    /// V313-14 — GREEN regression test: CREATE TABLE AS with a single
+    /// integer column produces a SELECTable integer column.
+    #[test]
+    fn green_v313_14_ctas_select_after_ctas_preserves_value() {
+        let mut engine = create_engine();
+        engine
+            .execute("CREATE TABLE numbers AS SELECT 42 AS n")
+            .expect("CTAS must succeed");
+        let result = engine
+            .execute("SELECT n FROM numbers")
+            .expect("SELECT after CTAS must succeed");
+        assert_eq!(result.rows.len(), 1);
+        match &result.rows[0][0] {
+            Value::Integer(n) => assert_eq!(*n, 42),
+            other => panic!("expected Integer(42), got {:?}", other),
+        }
     }
 
 }
