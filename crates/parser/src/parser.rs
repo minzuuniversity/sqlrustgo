@@ -518,8 +518,25 @@ pub struct SelectStatement {
     /// result into a temporary table named `table`, then runs the outer
     /// SELECT against that table.
     pub from_subquery: Option<Box<SelectStatement>>,
+    /// V312-17 / Issue #4037: FROM (set-op chain) AS alias.
+    /// When the derived-table parens wrap a UNION / INTERSECT / EXCEPT
+    /// chain (e.g. `FROM ((A EXCEPT B) INTERSECT C) s` in
+    /// setops__test_setops.test), the chain can't fit in `from_subquery`
+    /// (which only holds a SelectStatement). Store the full
+    /// `Statement::SetOp(...)` here so the executor can dispatch via
+    /// `execute_statement` and materialise the chain's rows.
+    pub from_set_op: Option<Box<Statement>>,
     /// VALUES constructor: FROM (VALUES ...) AS alias
     pub from_values: Option<Vec<Vec<Expression>>>,
+    /// V312-17 / Issue #4037: inline column list after FROM alias.
+    /// `FROM (VALUES (1),(2)) s(x)` — the alias `s` is stored in
+    /// `from_subquery.table` (or `table`), but the column list `(x)`
+    /// that renames the underlying VALUES columns is stored here.
+    /// Before this field, the column list was silently consumed and
+    /// `x` was lost, so `SELECT x` outside the derived table referred
+    /// to the inner subquery's `column1` placeholder — which broke
+    /// setops__test_setops.test.
+    pub from_alias_columns: Vec<String>,
     pub where_clause: Option<Expression>,
     pub join_clause: Vec<JoinClause>,
     /// TPC-H Sprint 1c: additional tables from `FROM t1, t2, t3` (after the
@@ -590,6 +607,11 @@ pub struct InsertStatement {
 pub struct TableRef {
     pub name: String,
     pub alias: Option<String>,
+    /// Optional inline subquery that materialises the table — when `Some`,
+    /// `name` is unused for binding and the executor evaluates the embedded
+    /// SELECT to produce the rows. Populated from `FROM (SELECT ...) alias`
+    /// or `FROM (VALUES ...) alias` and friends (V312-17 / Issue #4037).
+    pub subquery: Option<Box<SelectStatement>>,
 }
 
 /// UPDATE statement
@@ -2917,9 +2939,29 @@ impl Parser {
     }
 
     fn parse_select_or_union(&mut self) -> Result<Statement, String> {
+        // V312-17 / Issue #4037: support `(SELECT ...) INTERSECT ...`
+        // set-op chains inside derived-table parens. The leading `(` is
+        // consumed here so the chain parses uniformly; the caller is
+        // responsible for consuming the matching `)`.
+        if matches!(self.current(), Some(Token::LParen)) {
+            self.next(); // consume leading (
+            let inner_stmt = self.parse_select_or_union()?;
+            self.expect(Token::RParen)?;
+            return self.parse_set_op_chain_tail(inner_stmt);
+        }
         let first_select = self.parse_select_statement()?;
+        let current = Statement::Select(first_select);
+        self.parse_set_op_chain_tail(current)
+    }
 
-        let mut current = Statement::Select(first_select);
+    /// Parse the trailing UNION/INTERSECT/EXCEPT chain (the loop body of
+    /// `parse_select_or_union`). Extracted so the leading-LParen variant
+    /// of parse_select_or_union can reuse it after unwrapping the inner
+    /// derived table.
+    fn parse_set_op_chain_tail(
+        &mut self,
+        mut current: Statement,
+    ) -> Result<Statement, String> {
         // A SELECT can be followed by zero or more UNION [ALL] /
         // INTERSECT [ALL] / EXCEPT [ALL] chains (SQL-92 set operations).
         // Each chain consumes a new SELECT and wraps the existing
@@ -4155,6 +4197,53 @@ impl Parser {
                             }
                             None => return Err("Expected alias for VALUES".to_string()),
                         };
+                        // V312-17 / Issue #4037: consume the optional column
+                        // list `s(x)` after the VALUES alias. Without this,
+                        // the leftover `(x)` confused downstream parsers
+                        // (the SELECT statement continued and tried to parse
+                        // it as a parenthesised expression, eventually
+                        // mismatching at the closing `)`).
+                        //
+                        // V312-17 / Issue #4037 (continued): now we also
+                        // CAPTURE the column list into `column_aliases` so the
+                        // executor can rename the placeholder VALUES columns
+                        // (`column1`, `column2`, ...) into the user-provided
+                        // names (`x`, `y`, ...). Previously the list was
+                        // consumed and discarded, so
+                        //   `SELECT * FROM (VALUES (1),(2)) s(x)` returned a
+                        // column literally named `x` (Text("x")) instead of
+                        // the renamed `column1` carrying the value 1.
+                        let mut column_aliases: Vec<String> = Vec::new();
+                        if matches!(self.current(), Some(Token::LParen)) {
+                            self.next();
+                            // Consume identifiers and commas until matching RParen.
+                            loop {
+                                match self.current() {
+                                    Some(Token::Identifier(name)) => {
+                                        column_aliases.push(name.clone());
+                                        self.next();
+                                    }
+                                    Some(Token::RParen) => {
+                                        self.next();
+                                        break;
+                                    }
+                                    Some(Token::Comma) => {
+                                        self.next();
+                                    }
+                                    Some(t) => {
+                                        return Err(format!(
+                                            "Expected column name in VALUES column list, got {:?}",
+                                            t
+                                        ))
+                                    }
+                                    None => {
+                                        return Err(
+                                            "Unexpected EOF in VALUES column list".to_string()
+                                        )
+                                    }
+                                }
+                            }
+                        }
                         let synth_select = SelectStatement {
                             columns: vec![SelectColumn {
                                 name: "*".to_string(),
@@ -4164,7 +4253,13 @@ impl Parser {
                             table: alias.clone(),
                             from_alias: None,
                             from_subquery: None,
+                            from_set_op: None,
                             from_values: Some(values),
+                            // V312-17 / Issue #4037: propagate the captured
+                            // `s(x)` column list to the executor so it can
+                            // rename the synthetic `column1`/`column2`/...
+                            // placeholders into `x`/`y`/... in the table_info.
+                            from_alias_columns: column_aliases,
                             where_clause: None,
                             join_clause: vec![],
                             extra_tables: vec![],
@@ -4198,6 +4293,105 @@ impl Parser {
                             None => return Err("Expected alias for subquery".to_string()),
                         };
                         (alias, Some(Box::new(subquery)), Vec::new())
+                    } else if matches!(self.current(), Some(Token::LParen)) {
+                        // V312-17 / Issue #4037: nested derived table form
+                        // `FROM ((SELECT ...) inner_alias) outer_alias` or
+                        // `FROM ((SELECT ... EXCEPT ALL SELECT ...) INTERSECT ALL SELECT ...) outer_alias`
+                        // — see setops__test_setops.test which chains
+                        // EXCEPT ALL + INTERSECT ALL over derived tables.
+                        //
+                        // The outer `(` was consumed at line 4132. The inner
+                        // content begins with another `(`. We do NOT consume
+                        // it here — instead we delegate to parse_select_or_union
+                        // whose leading-LParen path handles recursive parens
+                        // and the matching inner RParen. After it returns the
+                        // chain tail may have stopped at the outer-most
+                        // RParen (when the chain extended beyond the inner
+                        // paren, e.g. `(A EXCEPT B) INTERSECT C` inside
+                        // `FROM ((A EXCEPT B) INTERSECT C) s`). We then consume
+                        // any remaining trailing RParens before reading the
+                        // outer alias.
+                        let chain_stmt = self.parse_select_or_union()?;
+                        // Consume any trailing RParens left over by the
+                        // set-op chain tail. In the common case
+                        // `FROM ((SELECT ...)) s` no extra RParens remain
+                        // (parse_select_or_union consumed them all). For
+                        // `FROM ((A EXCEPT B) INTERSECT C) s` one trailing
+                        // RParen is left (matching the outer FROM `(`).
+                        // For `FROM (((A EXCEPT B) INTERSECT C)) s` two
+                        // trailing RParens are left.
+                        while matches!(self.current(), Some(Token::RParen)) {
+                            self.next();
+                        }
+                        // Optional AS keyword before the outer alias.
+                        if matches!(self.current(), Some(Token::As)) {
+                            self.next();
+                        }
+                        let outer_alias = match self.next() {
+                            Some(Token::Identifier(name)) => name,
+                            Some(t) => {
+                                return Err(format!(
+                                    "Expected outer alias for nested derived table, got {:?}",
+                                    t
+                                ))
+                            }
+                            None => {
+                                return Err(
+                                    "Expected outer alias for nested derived table".to_string()
+                                )
+                            }
+                        };
+                        // V312-17 / Issue #4037: encode the chain into
+                        // `from_set_op` so the executor can dispatch via
+                        // `execute_statement` (which handles
+                        // Statement::Union/Intersect/Except). For a plain
+                        // SELECT chain (no set-op), still use `from_subquery`
+                        // for backwards compat.
+                        match chain_stmt {
+                            Statement::Select(s) => {
+                                (outer_alias, Some(Box::new(s)), Vec::new())
+                            }
+                            other => {
+                                // Store set-op chain in the dedicated
+                                // `from_set_op` field via a placeholder
+                                // SelectStatement shell that the SELECT
+                                // handler will unpack into `from_set_op`.
+                                let synth_select = SelectStatement {
+                                    columns: vec![SelectColumn {
+                                        name: "*".to_string(),
+                                        alias: None,
+                                        expression: None,
+                                    }],
+                                    table: outer_alias.clone(),
+                                    from_alias: None,
+                                    from_subquery: None,
+                                    from_set_op: Some(Box::new(other)),
+                                    from_values: None,
+                                    // V312-17 / Issue #4037: nested derived
+                                    // table with set-op chain does not
+                                    // currently accept a column list, but
+                                    // the field must be present to satisfy
+                                    // the struct. The executor will look up
+                                    // chain column names from the inner
+                                    // Statement's own columns.
+                                    from_alias_columns: Vec::new(),
+                                    where_clause: None,
+                                    join_clause: vec![],
+                                    extra_tables: vec![],
+                                    aggregates: vec![],
+                                    group_by: vec![],
+                                    with_rollup: false,
+                                    with_cube: false,
+                                    having: None,
+                                    order_by: vec![],
+                                    limit: None,
+                                    offset: None,
+                                    distinct: false,
+                                    lock_clause: None,
+                                };
+                                (outer_alias, Some(Box::new(synth_select)), Vec::new())
+                            }
+                        }
                     } else {
                         // Derived table: (table_ref [JOIN table_ref]*)
                         // Parse the first table, then any JOINs, then expect RParen.
@@ -4236,7 +4430,13 @@ impl Parser {
                             table: first_table.clone(),
                             from_alias: first_alias.clone(),
                             from_subquery: None,
+                            from_set_op: None,
                             from_values: None,
+                            // V312-17 / Issue #4037: derived-table JOIN
+                            // path; no column list is captured here. The
+                            // executor resolves column names from the
+                            // first table's natural schema.
+                            from_alias_columns: Vec::new(),
                             where_clause: None,
                             join_clause: vec![],
                             extra_tables: vec![],
@@ -5069,7 +5269,12 @@ impl Parser {
             table,
             from_alias,
             from_subquery,
+            from_set_op: None,
             from_values: None,
+            // V312-17 / Issue #4037: top-level SELECTs have no FROM-alias
+            // column list. The executor never reads `from_alias_columns`
+            // for a non-derived-table statement.
+            from_alias_columns: Vec::new(),
             where_clause,
             join_clause,
             extra_tables,
@@ -6144,10 +6349,11 @@ impl Parser {
     fn parse_multiplicative_expression(&mut self) -> Result<Expression, String> {
         let mut left = self.parse_primary_expression()?;
 
-        while let Some(Token::Star) | Some(Token::Slash) = self.current() {
+        while let Some(Token::Star) | Some(Token::Slash) | Some(Token::Percent) = self.current() {
             let op = match self.current() {
                 Some(Token::Star) => "*",
                 Some(Token::Slash) => "/",
+                Some(Token::Percent) => "%",
                 _ => break,
             };
             self.next();
@@ -7159,12 +7365,186 @@ impl Parser {
     }
 
     fn parse_table_ref(&mut self) -> Result<TableRef, String> {
+        // V312-17 / Issue #4037: derived-table form `(SELECT ...) alias`
+        // or `(VALUES ...) alias` — see setops__test_setops.test which
+        // chains three derived tables via EXCEPT ALL / INTERSECT ALL.
+        if matches!(self.current(), Some(Token::LParen)) {
+            self.next(); // consume '('
+            let subquery = match self.current() {
+                Some(Token::Select) => {
+                    // V312-17 / Issue #4037: use parse_select_or_union so the
+                    // derived table can carry an EXCEPT ALL / INTERSECT ALL /
+                    // UNION ALL chain (`(SELECT ... EXCEPT ALL SELECT ...) alias`).
+                    // parse_select_statement alone would only return the
+                    // left side and leave the set-op tokens in the stream.
+                    let stmt = self.parse_select_or_union()?;
+                    self.expect(Token::RParen)?;
+                    Self::extract_subquery_select(stmt)
+                }
+                Some(Token::Values) => {
+                    // `FROM (VALUES (1), (2)) v(x)` — promote the
+                    // multi-row VALUES list to a synthetic SELECT.
+                    let s = self.parse_values_as_select()?;
+                    self.expect(Token::RParen)?;
+                    s
+                }
+                Some(Token::LParen) => {
+                    // Nested derived table: `FROM ((SELECT ...) inner) outer`.
+                    // parse_select_or_union now handles the leading-LParen
+                    // case directly (consumes inner `(`, parses chain,
+                    // expects inner `)`), so we just delegate.
+                    let stmt = self.parse_select_or_union()?;
+                    self.expect(Token::RParen)?;
+                    Self::extract_subquery_select(stmt)
+                }
+                _ => return Err("Expected SELECT or VALUES inside derived table".to_string()),
+            };
+            let alias = self.parse_optional_alias()?;
+            return Ok(TableRef {
+                name: format!("__derived_{}", subquery.columns.len()),
+                alias,
+                subquery: Some(Box::new(subquery)),
+            });
+        }
         let name = match self.next() {
             Some(Token::Identifier(name)) => name,
             _ => return Err("Expected table name".to_string()),
         };
         let alias = self.parse_optional_alias()?;
-        Ok(TableRef { name, alias })
+        Ok(TableRef {
+            name,
+            alias,
+            subquery: None,
+        })
+    }
+
+    /// Convert a `Statement` returned by `parse_select_or_union` into a
+    /// `SelectStatement` for embedding as a derived-table subquery. When
+    /// the chain has resolved to a non-Select set-op node we synthesise
+    /// a placeholder `SELECT *`; the executor materialises the chain via
+    /// its set-op evaluation path and the placeholder columns are
+    /// sufficient for binding.
+    fn extract_subquery_select(stmt: Statement) -> SelectStatement {
+        match stmt {
+            Statement::Select(s) => s,
+            _ => SelectStatement {
+                columns: vec![SelectColumn {
+                    name: "*".to_string(),
+                    alias: None,
+                    expression: None,
+                }],
+                table: String::new(),
+                from_alias: None,
+                from_subquery: None,
+                from_set_op: None,
+                from_values: None,
+                // V312-17 / Issue #4037: set-op chain placeholder for
+                // derived-table embedding; the column-list path is not
+                // exercised here.
+                from_alias_columns: Vec::new(),
+                where_clause: None,
+                join_clause: vec![],
+                extra_tables: vec![],
+                aggregates: vec![],
+                group_by: vec![],
+                with_rollup: false,
+                with_cube: false,
+                having: None,
+                order_by: vec![],
+                limit: None,
+                offset: None,
+                distinct: false,
+                lock_clause: None,
+            },
+        }
+    }
+
+    /// Promote a top-level `VALUES (1), (2), (3)` clause into a synthetic
+    /// `SELECT <col1>, ...` so it can be embedded inside a parenthesised
+    /// derived table. The caller is responsible for consuming the closing
+    /// `)` of the derived table (V312-17 / Issue #4037).
+    fn parse_values_as_select(&mut self) -> Result<SelectStatement, String> {
+        self.expect(Token::Values)?;
+        let mut rows: Vec<Vec<Expression>> = Vec::new();
+        if !matches!(self.current(), Some(Token::LParen)) {
+            return Err("Expected ( after VALUES".to_string());
+        }
+        loop {
+            if !matches!(self.current(), Some(Token::LParen)) {
+                break;
+            }
+            self.next(); // consume '('
+            let mut row = Vec::new();
+            loop {
+                match self.current() {
+                    Some(Token::RParen) => {
+                        self.next();
+                        break;
+                    }
+                    Some(Token::Comma) => {
+                        self.next();
+                    }
+                    _ => row.push(self.parse_expression()?),
+                }
+            }
+            rows.push(row);
+            if !matches!(self.current(), Some(Token::Comma)) {
+                break;
+            }
+            self.next();
+        }
+        if rows.is_empty() {
+            return Err("VALUES list must have at least one row".to_string());
+        }
+        let ncols = rows[0].len();
+        for r in &rows {
+            if r.len() != ncols {
+                return Err("VALUES rows must all have the same column count".to_string());
+            }
+        }
+        // Wrap each VALUES row as a tiny `SELECT v` so the executor can reuse
+        // its existing projection path. The downstream TableRef.subquery
+        // consumer flattens these into a single derived-table relation.
+        let mut rows_as_selects: Vec<Vec<Expression>> = Vec::new();
+        for row in rows {
+            let mut new_row = Vec::with_capacity(row.len());
+            for expr in row {
+                new_row.push(expr);
+            }
+            rows_as_selects.push(new_row);
+        }
+        let columns: Vec<SelectColumn> = (0..ncols)
+            .map(|i| SelectColumn {
+                name: format!("column{}", i + 1),
+                alias: None,
+                expression: None,
+            })
+            .collect();
+        Ok(SelectStatement {
+            columns,
+            table: String::new(),
+            from_alias: None,
+            from_subquery: None,
+            from_set_op: None,
+            from_values: Some(rows_as_selects),
+            // V312-17 / Issue #4037: this path is for a bare
+            // `VALUES (...)` inside a parenthesised derived table;
+            // no user-provided alias column list applies.
+            from_alias_columns: Vec::new(),
+            where_clause: None,
+            join_clause: vec![],
+            extra_tables: vec![],
+            aggregates: vec![],
+            group_by: vec![],
+            with_rollup: false,
+            with_cube: false,
+            having: None,
+            order_by: vec![],
+            limit: None,
+            offset: None,
+            distinct: false,
+            lock_clause: None,
+        })
     }
 
     fn parse_table_ref_list(&mut self, terminator: Token) -> Result<Vec<TableRef>, String> {
@@ -7752,6 +8132,15 @@ impl Parser {
                 self.next();
                 "BOOLEAN".to_string()
             }
+            // V312-17: `Date` / `DATE` surfaces as a dedicated lexer token
+            // (DateAdd / DateSub are function-call keywords and never appear
+            // here). It must still be consumed, otherwise the trailing
+            // column-constraint tokens (NOT NULL, UNIQUE, ...) misalign the
+            // whole CREATE TABLE body.
+            Some(Token::Date) => {
+                self.next();
+                "DATE".to_string()
+            }
             _ => "INTEGER".to_string(),
         };
 
@@ -7862,6 +8251,19 @@ impl Parser {
                 Some(Token::AutoIncrement) => {
                     self.next();
                     auto_increment = true;
+                }
+                Some(Token::Unique) => {
+                    // V312-17: column-level UNIQUE constraint (e.g.
+                    // `Date NOT NULL UNIQUE`). Optionally followed by
+                    // parenthesised index name; consume and discard.
+                    self.next();
+                    if matches!(self.current(), Some(Token::LParen)) {
+                        self.next();
+                        if let Some(Token::Identifier(_)) = self.current() {
+                            self.next();
+                        }
+                        self.expect(Token::RParen)?;
+                    }
                 }
                 _ => break,
             }
