@@ -373,9 +373,9 @@ fn compare_value_to_literal(val: &Value, lit: &str) -> Result<bool, PredicateErr
                 || (lit.starts_with('"') && lit.ends_with('"'))
             {
                 let expected = &lit[1..lit.len() - 1];
-                Ok(j.to_string() == expected)
+                Ok(*j == expected)
             } else {
-                Ok(j.to_string() == lit)
+                Ok(*j == lit)
             }
         }
     }

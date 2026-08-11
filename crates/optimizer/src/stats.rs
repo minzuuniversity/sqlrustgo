@@ -134,14 +134,14 @@ impl Histogram {
         // Out-of-range value: probability 0.
         let first = &self.buckets[0];
         let last = &self.buckets[self.buckets.len() - 1];
-        let above_lower = match value.partial_cmp(&first.lower_bound) {
-            Some(std::cmp::Ordering::Less) => false,
-            _ => true,
-        };
-        let below_upper = match value.partial_cmp(&last.upper_bound) {
-            Some(std::cmp::Ordering::Greater) => false,
-            _ => true,
-        };
+        let above_lower = !matches!(
+            value.partial_cmp(&first.lower_bound),
+            Some(std::cmp::Ordering::Less)
+        );
+        let below_upper = !matches!(
+            value.partial_cmp(&last.upper_bound),
+            Some(std::cmp::Ordering::Greater)
+        );
         if !above_lower || !below_upper {
             return 0.0;
         }

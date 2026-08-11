@@ -4226,14 +4226,9 @@ impl Parser {
                         let mut column_names: Vec<String> = Vec::new();
                         if matches!(self.current(), Some(Token::LParen)) {
                             self.next();
-                            loop {
-                                match self.current() {
-                                    Some(Token::Identifier(name)) => {
-                                        column_names.push(name.clone());
-                                        self.next();
-                                    }
-                                    _ => break,
-                                }
+                            while let Some(Token::Identifier(name)) = self.current() {
+                                column_names.push(name.clone());
+                                self.next();
                                 if matches!(self.current(), Some(Token::Comma)) {
                                     self.next();
                                 } else {
@@ -4356,7 +4351,7 @@ impl Parser {
                                 // and `from_subquery = Some(inner_subq)`.
                                 let inner_subq = match inner {
                                     Statement::Select(s) => s.clone(),
-                                    other => {
+                                    _other => {
                                         // The inner is a set op; wrap it
                                         // in a synthetic SELECT with empty
                                         // `table` and `from_subquery =
@@ -5203,7 +5198,7 @@ impl Parser {
                         } else if let Ok(f) = n.parse::<f64>() {
                             f as u64
                         } else {
-                            return Err(format!("Invalid LIMIT: invalid digit found in string"));
+                            return Err("Invalid LIMIT: invalid digit found in string".to_string());
                         };
                         self.next();
                         Some(val)
@@ -5300,7 +5295,7 @@ impl Parser {
                         } else if let Ok(f) = n.parse::<f64>() {
                             f as u64
                         } else {
-                            return Err(format!("Invalid OFFSET: invalid digit found in string"));
+                            return Err("Invalid OFFSET: invalid digit found in string".to_string());
                         };
                         self.next();
                         Some(val)

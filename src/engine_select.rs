@@ -1054,7 +1054,7 @@ impl<S: StorageEngine + 'static> ExecutionEngine<S> {
                                 Some(&mut *storage_guard),
                                 &|_| Ok(Value::Null),
                             )
-                            .map_err(|e| SqlError::ExecutionError(e))?,
+                            .map_err(SqlError::ExecutionError)?,
                             None => row.first().cloned().unwrap_or(Value::Null),
                         };
                         new_row.push(v);
@@ -1788,8 +1788,7 @@ impl<S: StorageEngine + 'static> ExecutionEngine<S> {
         let resolve_bare = |col_name: &str| -> Option<(String, String)> {
             // Check for TPC-H prefix disambiguation first.
             for (prefix, alias) in &tpch_prefix_to_alias {
-                if col_name.starts_with(prefix) {
-                    let col_stripped = &col_name[prefix.len()..];
+                if let Some(col_stripped) = col_name.strip_prefix(prefix) {
                     // Verify the table is in join_tables and has this column.
                     if join_tables.iter().any(|(_, a)| a == alias) {
                         if let Ok(info) = storage.get_table_info(alias) {
