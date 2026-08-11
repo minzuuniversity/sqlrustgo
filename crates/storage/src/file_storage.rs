@@ -2854,7 +2854,14 @@ impl StorageEngine for FileStorage {
     }
 
     fn flush(&mut self) -> SqlResult<()> {
-        self.flush_all_buffers()
+        self.flush_all_buffers()?;
+        let dirty: Vec<String> = std::mem::take(&mut self.dirty_tables).into_iter().collect();
+        for name in dirty {
+            if let Some(table_data) = self.tables.get(&name).cloned() {
+                self.save_table(&name, &table_data)?;
+            }
+        }
+        Ok(())
     }
 
     fn has_table(&self, table: &str) -> bool {
