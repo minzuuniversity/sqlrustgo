@@ -288,7 +288,7 @@ jobs:
 
       - name: Run SQL Fuzz
         run: |
-          timeout 600 cargo run --release -p sqlancer -- --duration 300 || true
+          timeout 600 cargo run --release -p sqlancer -- --duration 300
 
   # ==================== Additional Feature Tests ====================
   feature-tests:
