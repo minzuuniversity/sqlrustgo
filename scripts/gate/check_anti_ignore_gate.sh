@@ -1,6 +1,9 @@
 #!/bin/bash
 # V312-37: Anti-Ignore gate (G19)
 # Threshold: active entries <= 47, total_allowed <= 96
+# V312-17 round-17 (ADR-008 exception): 9 e2e_wire_protocol #[ignore] markers
+# consolidated into 1 registry entry. New baseline total_allowed = 73 + 23
+# (round-16) = 96. The 73 v3.9.0 baseline is preserved as v3.9.0_legacy field.
 # Exit 0 = PASS, Exit 1 = FAIL
 # Note: total_allowed ceiling bumped 73 -> 96 by V312-17 round-16 (codex #89297)
 #       which added 23 entries (round-16: 3418ac19a1, round-17: 628a621bd1).
