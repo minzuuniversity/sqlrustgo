@@ -266,6 +266,55 @@ impl<S: StorageEngine + 'static> ExecutionEngine<S> {
             (jrows, jinfo)
         } else if let Some((rows, info)) = materialized {
             (rows, info)
+        } else if let Some(values) = &select.from_values {
+            // V313-09 / Issue #4037: `FROM (VALUES (...))` constructor.
+            // The parser stores the row data as `Vec<Vec<Expression>>`
+            // in `from_values`; we materialise it via the same
+            // build_insert_records helper that INSERT VALUES uses, then
+            // build a synthetic TableInfo (column names default to
+            // col_0, col_1, ...). The alternative path (recursing into
+            // the synthetic subquery) used to fail with 'Table not
+            // found: <alias>' because the subquery's `table` field
+            // carries the alias, not a real storage table.
+            let rows = crate::engine_helpers::build_insert_records(values);
+            let inferred_types: Vec<String> = if let Some(first_row) = rows.first() {
+                first_row
+                    .iter()
+                    .map(|v| match v {
+                        Value::Integer(_) => "INTEGER".to_string(),
+                        Value::Float(_) => "FLOAT".to_string(),
+                        Value::Text(_) => "TEXT".to_string(),
+                        Value::Boolean(_) => "BOOLEAN".to_string(),
+                        Value::Blob(_) => "BLOB".to_string(),
+                        Value::Point(_, _) => "POINT".to_string(),
+                        Value::Json(_) => "JSON".to_string(),
+                        Value::Null => "TEXT".to_string(),
+                    })
+                    .collect()
+            } else {
+                Vec::new()
+            };
+            let info = TableInfo {
+                name: select.table.clone(),
+                columns: (0..rows.first().map(|r| r.len()).unwrap_or(0))
+                    .map(|i| sqlrustgo_storage::ColumnDefinition {
+                        name: format!("col_{}", i),
+                        data_type: inferred_types
+                            .get(i)
+                            .cloned()
+                            .unwrap_or_else(|| "TEXT".to_string()),
+                        nullable: true,
+                        primary_key: false,
+                        char_max_length: None,
+                    })
+                    .collect(),
+                foreign_keys: Vec::new(),
+                unique_constraints: Vec::new(),
+                check_constraints: Vec::new(),
+                partition_info: None,
+                compression: None,
+            };
+            (rows, info)
         } else if select.table.is_empty() {
             let empty_schema = TableInfo {
                 name: String::new(),

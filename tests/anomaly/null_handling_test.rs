@@ -557,4 +557,109 @@ mod tests {
         );
     }
 
+
+    /// V313-09 / Issue #4037 — RED test: EXCEPT ALL must deduplicate
+    /// by multiset subtraction (each right-side row removes one
+    /// matching occurrence from the left), not by set difference.
+    /// Mirrors setops__test_setops.test line 117-124 (the
+    /// EXCEPT ALL + INTERSECT ALL combination query).
+    #[test]
+    fn red_v313_09_except_all_multiset_semantics() {
+        let mut engine = create_engine();
+        // left  has 1,2,2,3,3,3,4,4,4,4  (4x "2", 3x "3", 4x "4")
+        // right has 1,3,3                     (1x "1", 2x "3")
+        // EXCEPT ALL  -> 2,2,4,4,4           (kept the two "2"s and all four "4"s;
+        //                                     "1" removed once, each "3" removed once
+        //                                     until right-side "3"s exhausted)
+        let result = engine
+            .execute(
+                "SELECT * FROM (VALUES (1),(2),(2),(3),(3),(3),(4),(4),(4),(4)) s(x) \
+                 EXCEPT ALL \
+                 SELECT * FROM (VALUES (1),(3),(3)) t(x) \
+                 ORDER BY x",
+            )
+            .expect("EXCEPT ALL must succeed");
+        let values: Vec<i64> = result
+            .rows
+            .iter()
+            .map(|r| match &r[0] {
+                Value::Integer(n) => *n,
+                other => panic!("expected Integer, got {:?}", other),
+            })
+            .collect();
+        assert_eq!(
+            values,
+            vec![2, 2, 4, 4, 4, 4],
+            "EXCEPT ALL must keep two 2s and four 4s; multiset subtraction"
+        );
+    }
+
+    /// V313-09 — RED test: INTERSECT ALL must keep duplicates by
+    /// multiplicity. Mirrors setops__test_setops.test line 117-124.
+    #[test]
+    fn red_v313_09_intersect_all_multiset_semantics() {
+        let mut engine = create_engine();
+        // left  has 1,2,3 (1x "1", 1x "2", 1x "3")
+        // right has 2,2,2,3,3 (3x "2", 2x "3")
+        // INTERSECT ALL -> 2,3 (1x of each, limited by min multiplicity)
+        let result = engine
+            .execute(
+                "SELECT * FROM (VALUES (1),(2),(3)) s(x) \
+                 INTERSECT ALL \
+                 SELECT * FROM (VALUES (2),(2),(2),(3),(3)) t(x) \
+                 ORDER BY x",
+            )
+            .expect("INTERSECT ALL must succeed");
+        let values: Vec<i64> = result
+            .rows
+            .iter()
+            .map(|r| match &r[0] {
+                Value::Integer(n) => *n,
+                other => panic!("expected Integer, got {:?}", other),
+            })
+            .collect();
+        assert_eq!(
+            values,
+            vec![2, 3],
+            "INTERSECT ALL must keep min(left_count, right_count) for each key"
+        );
+    }
+
+    /// V313-09 — GREEN regression test: bare EXCEPT (without ALL) is
+    /// set difference (deduplicated). Mirrors setops__test_except.test
+    /// line 17-22.
+    #[test]
+    fn green_v313_09_except_default_is_set_difference() {
+        let mut engine = create_engine();
+        engine
+            .execute("CREATE TABLE a(i INTEGER)")
+            .expect("CREATE TABLE must succeed");
+        engine
+            .execute("INSERT INTO a VALUES (41), (42), (43)")
+            .expect("INSERT must succeed");
+        engine
+            .execute("CREATE TABLE b(i INTEGER)")
+            .expect("CREATE TABLE must succeed");
+        engine
+            .execute("INSERT INTO b VALUES (40), (43), (43)")
+            .expect("INSERT must succeed");
+
+        let result = engine
+            .execute("SELECT * FROM a EXCEPT SELECT * FROM b ORDER BY 1")
+            .expect("EXCEPT must succeed");
+        let values: Vec<i64> = result
+            .rows
+            .iter()
+            .map(|r| match &r[0] {
+                Value::Integer(n) => *n,
+                other => panic!("expected Integer, got {:?}", other),
+            })
+            .collect();
+        assert_eq!(
+            values,
+            vec![41, 42],
+            "default EXCEPT (DISTINCT) must remove '43' even though b has it twice"
+        );
+    }
+
 }
