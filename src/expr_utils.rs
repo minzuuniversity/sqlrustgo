@@ -458,6 +458,19 @@ pub fn evaluate_binary_op(left: &Value, right: &Value, op: &str) -> Value {
                 arithmetic_op(left, right, |a, b| a / b, |a, b| a / b)
             }
         }
+        // V312-22b / Issue #4036: modulo operator. Without this arm the
+        // parser-built `BinaryOp(_, "%", _)` falls through to `_ => Value::Null`
+        // below, so `WHERE i % 2 <> 0` evaluates as NULL and matches no rows
+        // (SQL three-valued logic: NULL predicate is UNKNOWN, treated as false).
+        // This broke TPC-H Q4-style `i % 2 <> 0` filtering in
+        // sqllogictest/insert__test_insert.test.
+        "%" => {
+            if matches!(right, Value::Integer(0) | Value::Float(0.0)) {
+                Value::Null
+            } else {
+                arithmetic_op(left, right, |a, b| a % b, |a, b| a % b)
+            }
+        }
         // TPC-H Q9: `WHERE p_name LIKE '%green%'`. The parser emits
         // `Expression::BinaryOp(left, "LIKE", right)`, so this branch is
         // the one that actually fires during WHERE evaluation. Both

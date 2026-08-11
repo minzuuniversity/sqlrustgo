@@ -6311,10 +6311,18 @@ impl Parser {
     fn parse_multiplicative_expression(&mut self) -> Result<Expression, String> {
         let mut left = self.parse_primary_expression()?;
 
-        while let Some(Token::Star) | Some(Token::Slash) = self.current() {
+        // V312-22b / Issue #4036: include `Token::Percent` so `i % 2` parses
+        // through the standard multiplicative chain. Previously only `*` and
+        // `/` were accepted, causing `SELECT i % 2 FROM integers` (the
+        // TPC-H Q4 / sqllogictest insert__test_insert.test case) to fail
+        // with "Expected FROM or column name" — the parser fell out of the
+        // Identifier branch with the leading `i` consumed and `%` left as
+        // the next token, which doesn't match any SELECT-list case.
+        while let Some(Token::Star) | Some(Token::Slash) | Some(Token::Percent) = self.current() {
             let op = match self.current() {
                 Some(Token::Star) => "*",
                 Some(Token::Slash) => "/",
+                Some(Token::Percent) => "%",
                 _ => break,
             };
             self.next();
