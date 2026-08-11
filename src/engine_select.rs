@@ -167,6 +167,95 @@ fn value_to_literal_string_v(v: &Value) -> String {
     }
 }
 
+/// V312-17 / Issue #4037: walk a `Statement` tree leftwards to find the
+/// leftmost leaf `SelectStatement`. Used to extract the column projection
+/// for materialised set-op chains embedded in a derived table. The
+/// helper lives outside the `impl` block because it doesn't need `&self`.
+fn probe_select_from_stmt(stmt: &sqlrustgo_parser::parser::Statement) -> Option<&SelectStatement> {
+    use sqlrustgo_parser::parser::Statement;
+    match stmt {
+        Statement::Select(s) => Some(s),
+        Statement::Union(u) => probe_select_from_stmt(&u.left),
+        Statement::Intersect(i) => probe_select_from_stmt(&i.left),
+        Statement::Except(e) => probe_select_from_stmt(&e.left),
+        _ => None,
+    }
+}
+
+/// V312-17 / Issue #4037: resolve effective column names for a
+/// SelectStatement that may contain `SELECT *`. When the projection
+/// is `*`, the actual column names come from the underlying source
+/// (VALUES subquery, derived table, or base table). This helper
+/// returns the list of column names that the SELECT will produce
+/// when executed, expanding `*` to the underlying columns.
+///
+/// The expansion handles two cases:
+/// 1. `select * from (select ...) sub` — uses the inner subquery's columns.
+/// 2. `select * from (values ...) s(x)` — uses the user-supplied
+///    column list `from_alias_columns` when present, falling back to
+///    `column1`, `column2`, ... (the synthetic `parse_values_as_select`
+///    placeholder names) otherwise.
+fn resolve_select_column_names(select: &SelectStatement) -> Vec<String> {
+    // V312-17 / Issue #4037 follow-up: when the leftmost SELECT of a
+    // chain has `select *` and `from_subquery` (rather than
+    // `from_values`), the synthetic subquery is itself a wrapper
+    // SelectStatement produced by the parser's `(VALUES ...) s(x)`
+    // handling. That inner SelectStatement has its own `from_alias_columns`
+    // (the user-supplied `s(x)` list). We must read column names from
+    // that inner wrapper too, not just from the outer `columns` list.
+    //
+    // Detect this shape: outer has `from_subquery` and the subquery
+    // has `from_values` (a VALUES-constructor wrapper).
+    if let Some(subq) = &select.from_subquery {
+        if subq.from_values.is_some() {
+            if !subq.from_alias_columns.is_empty() {
+                // The outer SELECT's `*` expansion resolves to the
+                // user-provided column list of the inner VALUES wrapper.
+                return subq.from_alias_columns.clone();
+            }
+        }
+    }
+    let mut names: Vec<String> = Vec::new();
+    for col in &select.columns {
+        if col.name == "*" {
+            // Expand `*` by looking at the inner source.
+            // Priority 1: from_subquery.columns
+            if let Some(subq) = &select.from_subquery {
+                for inner_col in &subq.columns {
+                    let inner_name = inner_col.alias.clone().unwrap_or_else(|| inner_col.name.clone());
+                    names.push(inner_name);
+                }
+            } else if select.from_values.is_some() {
+                // Priority 2: from_values columns. The user-provided
+                // column list (e.g. `s(x)` from `from (values ...) s(x)`)
+                // takes precedence over the synthetic `column1`/`column2`
+                // placeholders, because the downstream executor already
+                // renamed table_info columns to match the user list.
+                if !select.from_alias_columns.is_empty() {
+                    names.extend(select.from_alias_columns.iter().cloned());
+                } else {
+                    for inner_col in &select.columns {
+                        let inner_name =
+                            inner_col.alias.clone().unwrap_or_else(|| inner_col.name.clone());
+                        if inner_name != "*" {
+                            names.push(inner_name);
+                        }
+                    }
+                }
+            } else {
+                // Cannot expand `*` here (e.g. underlying table not yet
+                // looked up). Use the literal name so the caller can
+                // still build a placeholder column.
+                names.push(col.name.clone());
+            }
+        } else {
+            // Concrete column expression — use its alias or name.
+            names.push(col.alias.clone().unwrap_or_else(|| col.name.clone()));
+        }
+    }
+    names
+}
+
 impl<S: StorageEngine + 'static> ExecutionEngine<S> {
     fn clear_tpch_caches() {
         thread_local! {
@@ -198,7 +287,93 @@ impl<S: StorageEngine + 'static> ExecutionEngine<S> {
         // it. We collect the materialized rows + schema before acquiring
         // the storage read lock to avoid reentrant lock issues.
         let materialized: Option<(Vec<Vec<Value>>, TableInfo)> =
-            if let Some(subq) = &select.from_subquery {
+            // V312-17 / Issue #4037: set-op chain embedded in derived
+            // table (`FROM ((A EXCEPT B) INTERSECT C) s`). Materialise the
+            // chain rows up front and reuse the existing `materialized`
+            // block downstream.
+            //
+            // The parser encodes this in two equivalent ways depending
+            // on how the SELECT statement is parsed:
+            //   (a) directly via `select.from_set_op` (when the
+            //       parse_select_statement path itself encounters the
+            //       chain — see parser.rs sites that explicitly build
+            //       a SelectStatement with from_set_op set); or
+            //   (b) indirectly via `select.from_subquery` whose
+            //       body is a synthetic SelectStatement carrying
+            //       from_set_op = Some(chain) (the placeholder-shell
+            //       path used when the parser forwards a chain via a
+            //       tuple returned from the FROM-table parser).
+            //
+            // To handle both, we first check `select.from_set_op`,
+            // then fall back to `select.from_subquery.as_ref().and_then(|s| s.from_set_op.as_ref())`.
+            if let Some(chain_stmt_ref) = select
+                .from_set_op
+                .as_ref()
+                .or_else(|| {
+                    select
+                        .from_subquery
+                        .as_ref()
+                        .and_then(|sub| sub.from_set_op.as_ref())
+                })
+            {
+                let chain_stmt = chain_stmt_ref;
+                use sqlrustgo_parser::parser::Statement;
+                let chain_rows: Vec<Vec<Value>> = match chain_stmt.as_ref() {
+                    Statement::Select(s) => self.execute_select(s)?.rows,
+                    Statement::Union(u) => {
+                        self.execute_union(u)?.rows
+                    }
+                    Statement::Intersect(i) => {
+                        self.execute_intersect(i)?.rows
+                    }
+                    Statement::Except(e) => {
+                        self.execute_except(e)?.rows
+                    }
+                    _ => {
+                        return Err(SqlError::ExecutionError(
+                            "from_set_op must be SELECT, UNION, INTERSECT, or EXCEPT".to_string(),
+                        ))
+                    }
+                };
+                // Probe the leftmost leaf's column projection so we can
+                // build a synthetic TableInfo with the right names.
+                let probe: Option<&SelectStatement> = match chain_stmt.as_ref() {
+                    Statement::Select(s) => Some(s),
+                    Statement::Union(u) => probe_select_from_stmt(&u.left),
+                    Statement::Intersect(i) => probe_select_from_stmt(&i.left),
+                    Statement::Except(e) => probe_select_from_stmt(&e.left),
+                    _ => None,
+                };
+                let mut table_info = TableInfo {
+                    name: select.table.clone(),
+                    columns: Vec::new(),
+                    foreign_keys: Vec::new(),
+                    unique_constraints: Vec::new(),
+                    check_constraints: Vec::new(),
+                    partition_info: None,
+                    compression: None,
+                };
+                if let Some(p) = probe {
+                    // V312-17 / Issue #4037: expand `*` to the inner
+                    // source's columns. Without this, `select *` produced
+                    // a column named "*" which made subsequent
+                    // `eval_identifier("x")` calls fall back to literal
+                    // text (e.g. `Key="x"` instead of `Key="2"`).
+                    let col_names = resolve_select_column_names(p);
+                    for col_name in col_names {
+                        table_info
+                            .columns
+                            .push(sqlrustgo_storage::ColumnDefinition {
+                                name: col_name,
+                                data_type: "TEXT".to_string(),
+                                nullable: true,
+                                primary_key: false,
+                                char_max_length: None,
+                            });
+                    }
+                }
+                Some((chain_rows, table_info))
+            } else if let Some(subq) = &select.from_subquery {
                 // Drop the read lock (if held) and execute subquery; subquery
                 // itself takes a read lock internally. Since the outer has not
                 // yet acquired a lock, this is a fresh acquisition.
@@ -249,6 +424,60 @@ impl<S: StorageEngine + 'static> ExecutionEngine<S> {
                         });
                 }
                 Some((sub_result.rows, table_info))
+            } else if let Some(values) = &select.from_values {
+                // V312-17 / Issue #4037: VALUES constructor at top of
+                // SELECT — `SELECT * FROM (VALUES (1),(2),(2)) v(x)`.
+                // Evaluate each row's expressions and build a synthetic
+                // TableInfo from the column projection.
+                use sqlrustgo_parser::Expression;
+                let eval_row = |row: &[Expression]| -> Vec<Value> {
+                    row.iter()
+                        .map(|e| crate::expr_utils::expression_to_value(e))
+                        .collect()
+                };
+                let val_rows: Vec<Vec<Value>> = values.iter().map(|r| eval_row(r)).collect();
+                let ncols = if let Some(first) = val_rows.first() {
+                    first.len()
+                } else if let Some(first_expr_row) = values.first() {
+                    first_expr_row.len()
+                } else {
+                    0
+                };
+                // V312-17 / Issue #4037: when the user supplied an inline
+                // column list `s(x)` after the alias, rename the
+                // synthetic table_info columns to the user-provided names.
+                // Without this, `select x from (values (1),(2),(2)) s(x)`
+                // failed because table_info had a single column named
+                // `*` (the outer SELECT's projection), so
+                // `find_column_index("x")` returned None and the legacy
+                // `eval_identifier` fallback emitted `Text("x")` instead
+                // of the literal value 1.
+                let effective_names: Vec<String> = if !select.from_alias_columns.is_empty() {
+                    select.from_alias_columns.clone()
+                } else {
+                    (1..=ncols).map(|i| format!("column{}", i)).collect()
+                };
+                let mut table_info = TableInfo {
+                    name: select.table.clone(),
+                    columns: Vec::new(),
+                    foreign_keys: Vec::new(),
+                    unique_constraints: Vec::new(),
+                    check_constraints: Vec::new(),
+                    partition_info: None,
+                    compression: None,
+                };
+                for col_name in &effective_names {
+                    table_info
+                        .columns
+                        .push(sqlrustgo_storage::ColumnDefinition {
+                            name: col_name.clone(),
+                            data_type: "TEXT".to_string(),
+                            nullable: true,
+                            primary_key: false,
+                            char_max_length: None,
+                        });
+                }
+                Some((val_rows, table_info))
             } else {
                 None
             };
@@ -1872,11 +2101,6 @@ impl<S: StorageEngine + 'static> ExecutionEngine<S> {
         }
 
         if chain_order.len() != join_tables.len() {
-            eprintln!(
-                "DBG chain_order.len()={} != join_tables.len()={}",
-                chain_order.len(),
-                join_tables.len()
-            );
             return None;
         }
 
