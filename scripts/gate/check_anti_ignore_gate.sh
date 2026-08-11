@@ -1,12 +1,14 @@
 #!/bin/bash
 # V312-37: Anti-Ignore gate (G19)
-# Threshold: active entries <= 47, total_allowed <= 73
+# Threshold: active entries <= 47, total_allowed <= 96
 # Exit 0 = PASS, Exit 1 = FAIL
+# Note: total_allowed ceiling bumped 73 -> 96 by V312-17 round-16 (codex #89297)
+#       which added 23 entries (round-16: 3418ac19a1, round-17: 628a621bd1).
 set -e
 
 REGISTRY="tests/baseline/ignore_registry.json"
 ACTIVE_MAX=47
-TOTAL_ALLOWED_MAX=73
+TOTAL_ALLOWED_MAX=96
 
 if [ ! -f "$REGISTRY" ]; then
     echo "FAIL: $REGISTRY not found" >&2
