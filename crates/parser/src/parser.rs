@@ -8300,11 +8300,7 @@ impl Parser {
                             collation = Some(name.to_uppercase());
                             self.next();
                         }
-                        _ => {
-                            return Err(
-                                "Expected collation name after COLLATE".to_string()
-                            )
-                        }
+                        _ => return Err("Expected collation name after COLLATE".to_string()),
                     }
                 }
                 Some(Token::Check) => {

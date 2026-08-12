@@ -75,7 +75,9 @@ use std::thread::JoinHandle;
 
 use sqlrustgo_telemetry::PrometheusRenderer;
 
-use crate::{ACTIVE_CONNECTIONS, TOTAL_CONNECTIONS_ACCEPTED, TOTAL_QUERIES_SERVED, TOTAL_QUERY_ERRORS};
+use crate::{
+    ACTIVE_CONNECTIONS, TOTAL_CONNECTIONS_ACCEPTED, TOTAL_QUERIES_SERVED, TOTAL_QUERY_ERRORS,
+};
 
 /// Handle to a running `/metrics` HTTP endpoint bound by `MetricsEndpoint::bind`.
 ///
@@ -172,7 +174,10 @@ pub fn start(host: &str, port: u16) -> JoinHandle<()> {
                     return;
                 }
             };
-            tracing::info!("Prometheus /metrics endpoint listening on http://{}/metrics", addr);
+            tracing::info!(
+                "Prometheus /metrics endpoint listening on http://{}/metrics",
+                addr
+            );
             for stream in listener.incoming() {
                 match stream {
                     Ok(mut stream) => {
@@ -200,7 +205,10 @@ pub fn render_prometheus() -> String {
     let mut out = String::with_capacity(2048);
 
     use std::fmt::Write as _;
-    let _ = writeln!(out, "# HELP sqlrustgo_active_connections Number of currently-open MySQL connections");
+    let _ = writeln!(
+        out,
+        "# HELP sqlrustgo_active_connections Number of currently-open MySQL connections"
+    );
     let _ = writeln!(out, "# TYPE sqlrustgo_active_connections gauge");
     let _ = writeln!(
         out,
@@ -244,7 +252,9 @@ pub fn render_prometheus() -> String {
     // Append the telemetry renderer output (cache hits, storage bytes,
     // query duration histogram). It already emits `# HELP` / `# TYPE` and
     // uses the `sqlrustgo_` prefix; concatenation is safe.
-    out.push_str(&PrometheusRenderer::render(&sqlrustgo_telemetry::GLOBAL_METRICS));
+    out.push_str(&PrometheusRenderer::render(
+        &sqlrustgo_telemetry::GLOBAL_METRICS,
+    ));
     out
 }
 
@@ -381,10 +391,22 @@ mod tests {
         handle_stream(&mut s).unwrap();
         let r = s.response();
         assert!(r.starts_with("HTTP/1.1 200 OK"), "got: {}", r);
-        assert!(r.contains("Content-Type: text/plain; version=0.0.4"), "got: {}", r);
+        assert!(
+            r.contains("Content-Type: text/plain; version=0.0.4"),
+            "got: {}",
+            r
+        );
         // Body must include at least the wire-protocol counters + telemetry renderer output
-        assert!(r.contains("sqlrustgo_active_connections"), "got body: {}", r);
-        assert!(r.contains("sqlrustgo_queries_served_total"), "got body: {}", r);
+        assert!(
+            r.contains("sqlrustgo_active_connections"),
+            "got body: {}",
+            r
+        );
+        assert!(
+            r.contains("sqlrustgo_queries_served_total"),
+            "got body: {}",
+            r
+        );
         assert!(r.contains("sqlrustgo_queries_total"), "got body: {}", r); // from telemetry renderer
         assert!(r.contains("# HELP "), "got body: {}", r);
         assert!(r.contains("# TYPE "), "got body: {}", r);
