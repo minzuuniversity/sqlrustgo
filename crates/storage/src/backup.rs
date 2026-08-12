@@ -246,6 +246,7 @@ impl DataRestorer {
                     nullable: true,
                     primary_key: false,
                     char_max_length: None,
+                    collation: None,
                 })
                 .collect(),
             foreign_keys: vec![],
@@ -316,6 +317,7 @@ impl DataRestorer {
                     nullable: true,
                     primary_key: false,
                     char_max_length: None,
+                    collation: None,
                 })
                 .collect(),
             foreign_keys: vec![],

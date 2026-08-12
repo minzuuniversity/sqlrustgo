@@ -495,6 +495,7 @@ impl<S: StorageEngine + 'static> ExecutionEngine<S> {
                     nullable: *nullable,
                     primary_key: false,
                     char_max_length: None,
+                    collation: None,
                 };
                 storage.add_column(&alter.table_name, column)?;
             }
@@ -513,6 +514,7 @@ impl<S: StorageEngine + 'static> ExecutionEngine<S> {
                     nullable: *nullable,
                     primary_key: false,
                     char_max_length: *char_max_length,
+                    collation: None,
                 };
                 storage.modify_column(&alter.table_name, name, column)?;
             }
@@ -542,6 +544,7 @@ impl<S: StorageEngine + 'static> ExecutionEngine<S> {
                         nullable: existing.nullable,
                         primary_key: existing.primary_key,
                         char_max_length: existing.char_max_length,
+                        collation: existing.collation.clone(),
                     };
                     storage.modify_column(&alter.table_name, name, new_def)?;
                 }

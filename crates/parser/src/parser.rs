@@ -162,6 +162,12 @@ pub struct IntersectStatement {
     pub left: Box<Statement>,
     pub right: Box<Statement>,
     pub intersect_all: bool,
+    /// V4077 / Issue #4077: ORDER BY / LIMIT / OFFSET lifted from the
+    /// right SELECT (consistent with UNION's behavior). The right SELECT
+    /// still carries its own copy — consumers should prefer these.
+    pub trailing_order_by: Vec<OrderByExpression>,
+    pub trailing_limit: Option<i64>,
+    pub trailing_offset: Option<i64>,
 }
 
 /// SQL-92 EXCEPT (V310-06 PR2 / Issue #3723 C-2b). Returns rows
@@ -173,6 +179,12 @@ pub struct ExceptStatement {
     pub left: Box<Statement>,
     pub right: Box<Statement>,
     pub except_all: bool,
+    /// V4077 / Issue #4077: ORDER BY / LIMIT / OFFSET lifted from the
+    /// right SELECT (consistent with UNION's behavior). The right SELECT
+    /// still carries its own copy — consumers should prefer these.
+    pub trailing_order_by: Vec<OrderByExpression>,
+    pub trailing_limit: Option<i64>,
+    pub trailing_offset: Option<i64>,
 }
 
 /// CREATE INDEX statement
@@ -798,6 +810,13 @@ pub struct ColumnDefinition {
     /// the engine can apply SQL-standard space padding on INSERT.
     /// `None` means unbounded / no padding (TEXT, INTEGER, etc.).
     pub char_max_length: Option<usize>,
+    /// Optional column-level collation hint (e.g. `Some("NOCASE")`).
+    /// V4077 / Issue #4077: captured at parse time so that set-op
+    /// executors can perform collation-aware row comparison for
+    /// columns declared with `COLLATE NOCASE`. Default `None` means
+    /// binary (case-sensitive) comparison.
+    #[serde(default)]
+    pub collation: Option<String>,
 }
 
 /// Foreign key referential action
@@ -3057,12 +3076,18 @@ impl Parser {
                     left: Box::new(current),
                     right: Box::new(Statement::Select(next_select)),
                     intersect_all: all,
+                    trailing_order_by,
+                    trailing_limit,
+                    trailing_offset,
                 })
             } else {
                 Statement::Except(ExceptStatement {
                     left: Box::new(current),
                     right: Box::new(Statement::Select(next_select)),
                     except_all: all,
+                    trailing_order_by,
+                    trailing_limit,
+                    trailing_offset,
                 })
             };
         }
@@ -8226,6 +8251,7 @@ impl Parser {
         let mut auto_increment = false;
         let mut default_value = None;
         let mut references = None;
+        let mut collation: Option<String> = None;
 
         loop {
             match self.current() {
@@ -8251,10 +8277,23 @@ impl Parser {
                     default_value = Some(self.parse_simple_value()?);
                 }
                 Some(Token::Collate) => {
-                    // V312-17 #3970: skip COLLATE <name> clause (storage-only hint)
+                    // V4077 / Issue #4077: capture the COLLATE <name> hint
+                    // so EXCEPT/INTERSECT executors can perform
+                    // collation-aware row comparison (NOCASE) on text
+                    // columns. The collation name is upper-cased for
+                    // case-insensitive matching against well-known
+                    // collation identifiers (NOCASE, BINARY, RTRIM).
                     self.next();
-                    if let Some(Token::Identifier(_)) = self.current() {
-                        self.next();
+                    match self.current().cloned() {
+                        Some(Token::Identifier(name)) => {
+                            collation = Some(name.to_uppercase());
+                            self.next();
+                        }
+                        _ => {
+                            return Err(
+                                "Expected collation name after COLLATE".to_string()
+                            )
+                        }
                     }
                 }
                 Some(Token::Check) => {
@@ -8306,6 +8345,7 @@ impl Parser {
             default_value,
             references,
             char_max_length,
+            collation,
         })
     }
 
