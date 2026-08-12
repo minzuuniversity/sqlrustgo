@@ -1170,6 +1170,7 @@ impl StoredProcExecutor {
                             nullable: *nullable,
                             primary_key: false,
                             char_max_length: None,
+                            collation: None,
                         };
                         storage
                             .add_column(table_name, column)

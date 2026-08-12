@@ -112,6 +112,7 @@ impl<S: StorageEngine + 'static> ExecutionEngine<S> {
                         nullable: c.nullable,
                         primary_key: c.primary_key,
                         char_max_length: c.char_max_length,
+                        collation: c.collation.clone(),
                     })
                     .collect()
             } else {
@@ -147,6 +148,7 @@ impl<S: StorageEngine + 'static> ExecutionEngine<S> {
                             nullable: true,
                             primary_key: false,
                             char_max_length: None,
+                            collation: None,
                         }
                     })
                     .collect()
@@ -202,6 +204,7 @@ impl<S: StorageEngine + 'static> ExecutionEngine<S> {
                 nullable: c.nullable,
                 primary_key: c.primary_key,
                 char_max_length: c.char_max_length,
+                collation: c.collation.clone(),
             })
             .collect();
         let compression = create.compress.as_ref().map(|spec| match spec.algorithm {
