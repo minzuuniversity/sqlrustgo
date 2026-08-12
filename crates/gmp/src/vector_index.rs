@@ -95,6 +95,7 @@ pub fn create_vector_index_table(storage: &mut dyn StorageEngine) -> SqlResult<(
                 nullable: false,
                 primary_key: true,
                 char_max_length: None,
+                collation: None,
             },
             sqlrustgo_storage::ColumnDefinition {
                 name: "index_type".to_string(),
@@ -102,6 +103,7 @@ pub fn create_vector_index_table(storage: &mut dyn StorageEngine) -> SqlResult<(
                 nullable: false,
                 primary_key: false,
                 char_max_length: None,
+                collation: None,
             },
             sqlrustgo_storage::ColumnDefinition {
                 name: "model_name".to_string(),
@@ -109,6 +111,7 @@ pub fn create_vector_index_table(storage: &mut dyn StorageEngine) -> SqlResult<(
                 nullable: false,
                 primary_key: false,
                 char_max_length: None,
+                collation: None,
             },
             sqlrustgo_storage::ColumnDefinition {
                 name: "dimension".to_string(),
@@ -116,6 +119,7 @@ pub fn create_vector_index_table(storage: &mut dyn StorageEngine) -> SqlResult<(
                 nullable: false,
                 primary_key: false,
                 char_max_length: None,
+                collation: None,
             },
             sqlrustgo_storage::ColumnDefinition {
                 name: "embedding_count".to_string(),
@@ -123,6 +127,7 @@ pub fn create_vector_index_table(storage: &mut dyn StorageEngine) -> SqlResult<(
                 nullable: false,
                 primary_key: false,
                 char_max_length: None,
+                collation: None,
             },
             sqlrustgo_storage::ColumnDefinition {
                 name: "built_at".to_string(),
@@ -130,6 +135,7 @@ pub fn create_vector_index_table(storage: &mut dyn StorageEngine) -> SqlResult<(
                 nullable: false,
                 primary_key: false,
                 char_max_length: None,
+                collation: None,
             },
             sqlrustgo_storage::ColumnDefinition {
                 name: "index_path".to_string(),
@@ -137,6 +143,7 @@ pub fn create_vector_index_table(storage: &mut dyn StorageEngine) -> SqlResult<(
                 nullable: true,
                 primary_key: false,
                 char_max_length: None,
+                collation: None,
             },
         ];
         storage.create_table(&sqlrustgo_storage::TableInfo {
