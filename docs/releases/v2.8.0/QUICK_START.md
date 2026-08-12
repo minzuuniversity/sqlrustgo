@@ -332,10 +332,7 @@ Pass rate: 100.0%
 |------|------|
 | [README.md](./README.md) | 文档索引 |
 | [CLIENT_CONNECTION.md](./CLIENT_CONNECTION.md) | 客户端连接指南 |
-| [API_REFERENCE.md](./API_REFERENCE.md) | REST API 参考 |
-| [USER_MANUAL.md](./USER_MANUAL.md) | 用户手册 |
-| [SECURITY_HARDENING.md](./SECURITY_HARDENING.md) | 安全加固指南 |
-| [ERROR_MESSAGES.md](./ERROR_MESSAGES.md) | 错误消息参考 |
+| [USER_MANUAL.md](./user-guide/USER_MANUAL.md) | 用户手册 |
 
 ---
 
