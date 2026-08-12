@@ -2546,6 +2546,21 @@ impl FileStorage {
         Ok(())
     }
 
+    /// Discard all buffered in-memory inserts without persisting them.
+    /// Used by `WalStorage::rollback_transaction` so the rolled-back
+    /// transaction's writes are not visible to subsequent reads or to
+    /// the next `flush()`. Issue #3964: previously rollback called
+    /// `inner.flush()`, which pushed the buffer to `data.rows` and then
+    /// persisted the table to disk — making rolled-back rows visible.
+    pub fn discard_all_buffers(&mut self) {
+        self.insert_buffer.clear();
+        // No dirty_tables entry to remove — the buffer was never
+        // persisted, so the dirty marker for the rolled-back tx was
+        // either not yet added or, if previously added by a prior
+        // committed tx in the same session, the next flush() will
+        // simply re-save the persisted state.
+    }
+
     /// v3.10.0 Issue #3703: returns pre-partitioned chunks so the caller
     /// (typically `engine_select::filter_partitions_parallel`) can
     /// process each chunk on a separate rayon worker, fusing scan
@@ -2854,7 +2869,21 @@ impl StorageEngine for FileStorage {
     }
 
     fn flush(&mut self) -> SqlResult<()> {
-        self.flush_all_buffers()
+        self.flush_all_buffers()?;
+        let dirty: Vec<String> = std::mem::take(&mut self.dirty_tables).into_iter().collect();
+        for name in dirty {
+            if let Some(table_data) = self.tables.get(&name).cloned() {
+                self.save_table(&name, &table_data)?;
+            }
+        }
+        Ok(())
+    }
+
+    fn discard_all_buffers(&mut self) {
+        // StorageEngine::discard_all_buffers default is a no-op; for
+        // FileStorage we actually drop the buffered inserts. Issue
+        // #3964: rollback must NOT persist.
+        self.insert_buffer.clear();
     }
 
     fn has_table(&self, table: &str) -> bool {

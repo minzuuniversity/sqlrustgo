@@ -741,3 +741,656 @@ fn write_dump_via_select(
     // is wired but knows the full engine-access layer is Stage 4 work.
     Ok(())
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn validate_server_threads_zero_is_ok() {
+        // 0 means "auto-detect from CPU count" per CLI docs.
+        assert_eq!(validate_server_threads("0").unwrap(), 0);
+    }
+
+    #[test]
+    fn validate_server_threads_positive_ok() {
+        assert_eq!(validate_server_threads("8").unwrap(), 8);
+        assert_eq!(validate_server_threads("80").unwrap(), 80);
+    }
+
+    #[test]
+    fn validate_server_threads_over_max_rejects() {
+        assert!(validate_server_threads("81").is_err());
+        assert!(validate_server_threads("1000").is_err());
+    }
+
+    #[test]
+    fn validate_server_threads_non_integer_rejects() {
+        assert!(validate_server_threads("abc").is_err());
+        assert!(validate_server_threads("-1").is_err());
+        assert!(validate_server_threads("").is_err());
+    }
+
+    #[test]
+    fn validate_executor_parallelism_min_ok() {
+        assert_eq!(validate_executor_parallelism("1").unwrap(), 1);
+    }
+
+    #[test]
+    fn validate_executor_parallelism_max_ok() {
+        assert_eq!(validate_executor_parallelism("1024").unwrap(), 1024);
+    }
+
+    #[test]
+    fn validate_executor_parallelism_zero_rejects() {
+        // Issue #3703: 0 = sequential is rejected (must be >= 1).
+        let err = validate_executor_parallelism("0").unwrap_err();
+        assert!(err.contains(">= 1") || err.contains(">= 1 (got 0)"));
+    }
+
+    #[test]
+    fn validate_executor_parallelism_over_max_rejects() {
+        let err = validate_executor_parallelism("1025").unwrap_err();
+        assert!(err.contains("1024"));
+    }
+
+    #[test]
+    fn validate_executor_parallelism_non_integer_rejects() {
+        assert!(validate_executor_parallelism("foo").is_err());
+        assert!(validate_executor_parallelism("-3").is_err());
+    }
+
+    #[test]
+    fn validate_executor_parallelism_midrange_ok() {
+        assert_eq!(validate_executor_parallelism("32").unwrap(), 32);
+        assert_eq!(validate_executor_parallelism("256").unwrap(), 256);
+    }
+
+    // ---------- replay_sql_file ----------
+
+    #[test]
+    fn replay_sql_file_returns_zero_for_missing_file() {
+        let mut engine = make_shared_engine();
+        let result = replay_sql_file(&mut engine, "/no/such/path/init.sql");
+        assert!(result.is_err(), "missing file must error");
+        let msg = result.unwrap_err();
+        assert!(msg.contains("cannot read"));
+    }
+
+    #[test]
+    fn replay_sql_file_runs_each_statement_separated_by_semicolon() {
+        let dir = std::env::temp_dir().join("sqlrustgo-ms-replay");
+        let _ = std::fs::remove_dir_all(&dir);
+        std::fs::create_dir_all(&dir).unwrap();
+        let path = dir.join("init.sql");
+        std::fs::write(
+            &path,
+            "CREATE TABLE t1 (id INT);\nINSERT INTO t1 VALUES (1);\nINSERT INTO t1 VALUES (2);\n",
+        )
+        .unwrap();
+
+        let mut engine = make_shared_engine();
+        let result = replay_sql_file(&mut engine, path.to_str().unwrap());
+        assert!(result.is_ok(), "replay must succeed: {:?}", result);
+        assert_eq!(result.unwrap(), 3, "must replay 3 statements");
+
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    #[test]
+    fn replay_sql_file_skips_comment_and_blank_lines() {
+        let dir = std::env::temp_dir().join("sqlrustgo-ms-replay-cmt");
+        let _ = std::fs::remove_dir_all(&dir);
+        std::fs::create_dir_all(&dir).unwrap();
+        let path = dir.join("init.sql");
+        std::fs::write(
+            &path,
+            "-- header comment\n\n-- another comment\nCREATE TABLE t2 (id INT)\n",
+        )
+        .unwrap();
+
+        let mut engine = make_shared_engine();
+        let result = replay_sql_file(&mut engine, path.to_str().unwrap());
+        assert!(result.is_ok());
+        assert_eq!(result.unwrap(), 1, "only the CREATE TABLE counts");
+
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    #[test]
+    fn replay_sql_file_empty_file_yields_zero() {
+        let dir = std::env::temp_dir().join("sqlrustgo-ms-replay-empty");
+        let _ = std::fs::remove_dir_all(&dir);
+        std::fs::create_dir_all(&dir).unwrap();
+        let path = dir.join("empty.sql");
+        std::fs::write(&path, "").unwrap();
+
+        let mut engine = make_shared_engine();
+        let result = replay_sql_file(&mut engine, path.to_str().unwrap());
+        assert!(result.is_ok());
+        assert_eq!(result.unwrap(), 0);
+
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    // ---------- exec_one ----------
+
+    #[test]
+    fn exec_one_runs_simple_select() {
+        // exec_one creates its own engine; we just check it doesn't error.
+        let result = exec_one("SELECT 1");
+        assert!(result.is_ok(), "SELECT 1 must succeed: {:?}", result);
+    }
+
+    #[test]
+    fn exec_one_returns_err_on_bad_sql() {
+        let result = exec_one("THIS IS NOT VALID SQL");
+        assert!(result.is_err());
+    }
+
+    // ---------- handle_dot_command ----------
+
+    #[test]
+    fn handle_dot_help_returns_continue() {
+        let mut engine = make_shared_engine();
+        let mut history = VecDeque::new();
+        let mut pager = false;
+        let mut timing = false;
+        let mut headers = true;
+        let r = handle_dot_command(
+            ".help",
+            &mut history,
+            &mut pager,
+            &mut timing,
+            &mut headers,
+            &mut engine,
+        );
+        assert!(matches!(r, DotResult::Continue));
+    }
+
+    #[test]
+    fn handle_dot_exit_returns_exit() {
+        let mut engine = make_shared_engine();
+        let mut history = VecDeque::new();
+        let mut pager = false;
+        let mut timing = false;
+        let mut headers = true;
+        let r = handle_dot_command(
+            ".exit",
+            &mut history,
+            &mut pager,
+            &mut timing,
+            &mut headers,
+            &mut engine,
+        );
+        assert!(matches!(r, DotResult::Exit));
+        let r2 = handle_dot_command(
+            ".quit",
+            &mut history,
+            &mut pager,
+            &mut timing,
+            &mut headers,
+            &mut engine,
+        );
+        assert!(matches!(r2, DotResult::Exit));
+    }
+
+    #[test]
+    fn handle_dot_history_prints_history() {
+        let mut engine = make_shared_engine();
+        let mut history = VecDeque::new();
+        history.push_back("SELECT 1".to_string());
+        history.push_back("SELECT 2".to_string());
+        let mut pager = false;
+        let mut timing = false;
+        let mut headers = true;
+        let r = handle_dot_command(
+            ".history",
+            &mut history,
+            &mut pager,
+            &mut timing,
+            &mut headers,
+            &mut engine,
+        );
+        assert!(matches!(r, DotResult::Continue));
+    }
+
+    #[test]
+    fn handle_dot_pager_on_off() {
+        let mut engine = make_shared_engine();
+        let mut history = VecDeque::new();
+        let mut pager = false;
+        let mut timing = false;
+        let mut headers = true;
+        let r = handle_dot_command(
+            ".pager on",
+            &mut history,
+            &mut pager,
+            &mut timing,
+            &mut headers,
+            &mut engine,
+        );
+        assert!(matches!(r, DotResult::Continue));
+        assert!(pager, ".pager on must enable pager");
+        let r = handle_dot_command(
+            ".pager off",
+            &mut history,
+            &mut pager,
+            &mut timing,
+            &mut headers,
+            &mut engine,
+        );
+        assert!(matches!(r, DotResult::Continue));
+        assert!(!pager, ".pager off must disable pager");
+    }
+
+    #[test]
+    fn handle_dot_pager_unknown_mode_errors() {
+        let mut engine = make_shared_engine();
+        let mut history = VecDeque::new();
+        let mut pager = false;
+        let mut timing = false;
+        let mut headers = true;
+        let r = handle_dot_command(
+            ".pager silly",
+            &mut history,
+            &mut pager,
+            &mut timing,
+            &mut headers,
+            &mut engine,
+        );
+        match r {
+            DotResult::Error(msg) => assert!(msg.contains("unknown pager")),
+            other => panic!(
+                "expected DotResult::Error, got {:?}",
+                std::mem::discriminant(&other)
+            ),
+        }
+    }
+
+    #[test]
+    fn handle_dot_pager_missing_arg_errors() {
+        let mut engine = make_shared_engine();
+        let mut history = VecDeque::new();
+        let mut pager = false;
+        let mut timing = false;
+        let mut headers = true;
+        let r = handle_dot_command(
+            ".pager",
+            &mut history,
+            &mut pager,
+            &mut timing,
+            &mut headers,
+            &mut engine,
+        );
+        match r {
+            DotResult::Error(msg) => assert!(msg.contains(".pager requires")),
+            other => panic!(
+                "expected DotResult::Error, got {:?}",
+                std::mem::discriminant(&other)
+            ),
+        }
+    }
+
+    #[test]
+    fn handle_dot_source_missing_path_errors() {
+        let mut engine = make_shared_engine();
+        let mut history = VecDeque::new();
+        let mut pager = false;
+        let mut timing = false;
+        let mut headers = true;
+        let r = handle_dot_command(
+            ".source",
+            &mut history,
+            &mut pager,
+            &mut timing,
+            &mut headers,
+            &mut engine,
+        );
+        match r {
+            DotResult::Error(msg) => assert!(msg.contains(".source requires")),
+            other => panic!(
+                "expected DotResult::Error, got {:?}",
+                std::mem::discriminant(&other)
+            ),
+        }
+    }
+
+    #[test]
+    fn handle_dot_source_runs_sql_file() {
+        let dir = std::env::temp_dir().join("sqlrustgo-ms-dot-source");
+        let _ = std::fs::remove_dir_all(&dir);
+        std::fs::create_dir_all(&dir).unwrap();
+        let path = dir.join("init.sql");
+        std::fs::write(&path, "CREATE TABLE dot_src (id INT);\n").unwrap();
+
+        let mut engine = make_shared_engine();
+        let mut history = VecDeque::new();
+        let mut pager = false;
+        let mut timing = false;
+        let mut headers = true;
+        let cmd = format!(".source {}", path.display());
+        let r = handle_dot_command(
+            &cmd,
+            &mut history,
+            &mut pager,
+            &mut timing,
+            &mut headers,
+            &mut engine,
+        );
+        assert!(matches!(r, DotResult::Continue));
+
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    #[test]
+    fn handle_dot_unknown_command_returns_error() {
+        let mut engine = make_shared_engine();
+        let mut history = VecDeque::new();
+        let mut pager = false;
+        let mut timing = false;
+        let mut headers = true;
+        let r = handle_dot_command(
+            "garbage",
+            &mut history,
+            &mut pager,
+            &mut timing,
+            &mut headers,
+            &mut engine,
+        );
+        // Unknown dot commands return Error per the implementation.
+        match r {
+            DotResult::Error(msg) => assert!(msg.contains("unknown command")),
+            other => panic!(
+                "expected DotResult::Error, got {:?}",
+                std::mem::discriminant(&other)
+            ),
+        }
+    }
+
+    #[test]
+    fn handle_dot_empty_command_returns_continue() {
+        let mut engine = make_shared_engine();
+        let mut history = VecDeque::new();
+        let mut pager = false;
+        let mut timing = false;
+        let mut headers = true;
+        let r = handle_dot_command(
+            "",
+            &mut history,
+            &mut pager,
+            &mut timing,
+            &mut headers,
+            &mut engine,
+        );
+        assert!(matches!(r, DotResult::Continue));
+    }
+
+    #[test]
+    fn handle_dot_version_returns_continue() {
+        let mut engine = make_shared_engine();
+        let mut history = VecDeque::new();
+        let mut pager = false;
+        let mut timing = false;
+        let mut headers = true;
+        let r = handle_dot_command(
+            ".version",
+            &mut history,
+            &mut pager,
+            &mut timing,
+            &mut headers,
+            &mut engine,
+        );
+        assert!(matches!(r, DotResult::Continue));
+    }
+
+    #[test]
+    fn handle_dot_multiline_returns_continue() {
+        let mut engine = make_shared_engine();
+        let mut history = VecDeque::new();
+        let mut pager = false;
+        let mut timing = false;
+        let mut headers = true;
+        let r = handle_dot_command(
+            ".multiline",
+            &mut history,
+            &mut pager,
+            &mut timing,
+            &mut headers,
+            &mut engine,
+        );
+        assert!(matches!(r, DotResult::Continue));
+    }
+
+    #[test]
+    fn handle_dot_clear_returns_continue() {
+        let mut engine = make_shared_engine();
+        let mut history = VecDeque::new();
+        let mut pager = false;
+        let mut timing = false;
+        let mut headers = true;
+        let r = handle_dot_command(
+            ".clear",
+            &mut history,
+            &mut pager,
+            &mut timing,
+            &mut headers,
+            &mut engine,
+        );
+        assert!(matches!(r, DotResult::Continue));
+    }
+
+    #[test]
+    fn handle_dot_timing_on_off() {
+        let mut engine = make_shared_engine();
+        let mut history = VecDeque::new();
+        let mut pager = false;
+        let mut timing = false;
+        let mut headers = true;
+        let r = handle_dot_command(
+            ".timing on",
+            &mut history,
+            &mut pager,
+            &mut timing,
+            &mut headers,
+            &mut engine,
+        );
+        assert!(matches!(r, DotResult::Continue));
+        assert!(timing);
+        let r = handle_dot_command(
+            ".timing off",
+            &mut history,
+            &mut pager,
+            &mut timing,
+            &mut headers,
+            &mut engine,
+        );
+        assert!(matches!(r, DotResult::Continue));
+        assert!(!timing);
+    }
+
+    #[test]
+    fn handle_dot_timing_missing_arg_errors() {
+        let mut engine = make_shared_engine();
+        let mut history = VecDeque::new();
+        let mut pager = false;
+        let mut timing = false;
+        let mut headers = true;
+        let r = handle_dot_command(
+            ".timing",
+            &mut history,
+            &mut pager,
+            &mut timing,
+            &mut headers,
+            &mut engine,
+        );
+        match r {
+            DotResult::Error(msg) => assert!(msg.contains(".timing requires")),
+            other => panic!(
+                "expected DotResult::Error, got {:?}",
+                std::mem::discriminant(&other)
+            ),
+        }
+    }
+
+    #[test]
+    fn handle_dot_timing_unknown_mode_errors() {
+        let mut engine = make_shared_engine();
+        let mut history = VecDeque::new();
+        let mut pager = false;
+        let mut timing = false;
+        let mut headers = true;
+        let r = handle_dot_command(
+            ".timing silly",
+            &mut history,
+            &mut pager,
+            &mut timing,
+            &mut headers,
+            &mut engine,
+        );
+        match r {
+            DotResult::Error(msg) => assert!(msg.contains("unknown timing")),
+            other => panic!(
+                "expected DotResult::Error, got {:?}",
+                std::mem::discriminant(&other)
+            ),
+        }
+    }
+
+    #[test]
+    fn handle_dot_headers_on_off() {
+        let mut engine = make_shared_engine();
+        let mut history = VecDeque::new();
+        let mut pager = false;
+        let mut timing = false;
+        let mut headers = false;
+        let r = handle_dot_command(
+            ".headers on",
+            &mut history,
+            &mut pager,
+            &mut timing,
+            &mut headers,
+            &mut engine,
+        );
+        assert!(matches!(r, DotResult::Continue));
+        assert!(headers);
+        let r = handle_dot_command(
+            ".headers off",
+            &mut history,
+            &mut pager,
+            &mut timing,
+            &mut headers,
+            &mut engine,
+        );
+        assert!(matches!(r, DotResult::Continue));
+        assert!(!headers);
+    }
+
+    #[test]
+    fn handle_dot_headers_missing_arg_errors() {
+        let mut engine = make_shared_engine();
+        let mut history = VecDeque::new();
+        let mut pager = false;
+        let mut timing = false;
+        let mut headers = true;
+        let r = handle_dot_command(
+            ".headers",
+            &mut history,
+            &mut pager,
+            &mut timing,
+            &mut headers,
+            &mut engine,
+        );
+        match r {
+            DotResult::Error(msg) => assert!(msg.contains(".headers requires")),
+            other => panic!(
+                "expected DotResult::Error, got {:?}",
+                std::mem::discriminant(&other)
+            ),
+        }
+    }
+
+    #[test]
+    fn handle_dot_headers_unknown_mode_errors() {
+        let mut engine = make_shared_engine();
+        let mut history = VecDeque::new();
+        let mut pager = false;
+        let mut timing = false;
+        let mut headers = true;
+        let r = handle_dot_command(
+            ".headers silly",
+            &mut history,
+            &mut pager,
+            &mut timing,
+            &mut headers,
+            &mut engine,
+        );
+        match r {
+            DotResult::Error(msg) => assert!(msg.contains("unknown headers")),
+            other => panic!(
+                "expected DotResult::Error, got {:?}",
+                std::mem::discriminant(&other)
+            ),
+        }
+    }
+
+    #[test]
+    fn handle_dot_schema_missing_table_errors() {
+        let mut engine = make_shared_engine();
+        let mut history = VecDeque::new();
+        let mut pager = false;
+        let mut timing = false;
+        let mut headers = true;
+        let r = handle_dot_command(
+            ".schema",
+            &mut history,
+            &mut pager,
+            &mut timing,
+            &mut headers,
+            &mut engine,
+        );
+        match r {
+            DotResult::Error(msg) => assert!(msg.contains("requires a table name")),
+            other => panic!(
+                "expected DotResult::Error, got {:?}",
+                std::mem::discriminant(&other)
+            ),
+        }
+    }
+
+    #[test]
+    fn handle_dot_h_alias() {
+        let mut engine = make_shared_engine();
+        let mut history = VecDeque::new();
+        let mut pager = false;
+        let mut timing = false;
+        let mut headers = true;
+        let r = handle_dot_command(
+            ".h",
+            &mut history,
+            &mut pager,
+            &mut timing,
+            &mut headers,
+            &mut engine,
+        );
+        assert!(matches!(r, DotResult::Continue));
+    }
+
+    #[test]
+    fn handle_dot_quit_alias() {
+        let mut engine = make_shared_engine();
+        let mut history = VecDeque::new();
+        let mut pager = false;
+        let mut timing = false;
+        let mut headers = true;
+        let r = handle_dot_command(
+            ".quit",
+            &mut history,
+            &mut pager,
+            &mut timing,
+            &mut headers,
+            &mut engine,
+        );
+        assert!(matches!(r, DotResult::Exit));
+    }
+}

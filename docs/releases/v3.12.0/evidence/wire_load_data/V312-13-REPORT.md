@@ -1,31 +1,31 @@
 # V312-13 Wire + LOAD DATA Hardening Report
 
 - source_agent: `minimax`
-- source_run: `minimax-v312-13-5f82b1891a`
-- timestamp: `2026-08-11T07:03:58Z`
+- source_run: `minimax-v312-13-dc5c54e49`
+- timestamp: `2026-08-12T13:06:55Z`
 - branch: `develop/v3.12.0`
-- commit: `5f82b1891af360a85911f24045cdfcf01fe7f926`
+- commit: `dc5c54e490c49c3aa337233d6197227ee9bf92e1`
 
 | step | command | status | evidence_hash | output_location | timestamp | source_agent | source_run |
 |------|---------|--------|---------------|-----------------|-----------|--------------|------------|
-| 01-build | `cd /tmp/sqlrustgo-v312-alpha-gate-governance && cargo build -p sqlrustgo-mysql-server -p sqlrustgo-mysql-client --tests` | pass | 354995964cde7285d4318fbab0c527169bf93c04d5f71c10b70a1b1503d2bc1d | /tmp/sqlrustgo-v312-alpha-gate-governance/docs/releases/v3.12.0/evidence/wire_load_data/01-build.log | 2026-08-11T07:03:58Z | minimax | minimax-v312-13-5f82b1891a |
-| 02-typed-wrappers | `cd /tmp/sqlrustgo-v312-alpha-gate-governance && cargo test --test v312_13_typed_wrappers_test -- --test-threads=1` | pass | 994c96650a77bd01000653eab710fdd88a326d42eaeb21af5a94c94df7ece63b | /tmp/sqlrustgo-v312-alpha-gate-governance/docs/releases/v3.12.0/evidence/wire_load_data/02-typed-wrappers.log | 2026-08-11T07:03:58Z | minimax | minimax-v312-13-5f82b1891a |
-| 03-wire-regression | `cd /tmp/sqlrustgo-v312-alpha-gate-governance && cargo test --test mysql_wire_protocol_test -- --test-threads=1` | pass | 9f04f94e612b947ad346e34e87e36fcbb1e4d44e3119496992112ecdfe849736 | /tmp/sqlrustgo-v312-alpha-gate-governance/docs/releases/v3.12.0/evidence/wire_load_data/03-wire-regression.log | 2026-08-11T07:03:58Z | minimax | minimax-v312-13-5f82b1891a |
-| 04-prepared-statement-params | `cd /tmp/sqlrustgo-v312-alpha-gate-governance && cargo test -p sqlrustgo-mysql-server --test prepared_stmt_params_test -- --test-threads=1` | pass | 435f281397af7706e3ba79747355db4b9bce657f33a96241903c0a036631caf3 | /tmp/sqlrustgo-v312-alpha-gate-governance/docs/releases/v3.12.0/evidence/wire_load_data/04-prepared-statement-params.log | 2026-08-11T07:03:58Z | minimax | minimax-v312-13-5f82b1891a |
-| 05-e2e-wire-protocol | `cd /tmp/sqlrustgo-v312-alpha-gate-governance && cargo test -p sqlrustgo-mysql-server --test e2e_wire_protocol -- --test-threads=1` | pass | 34194dfc3047bdac176abaa9daa8246eca63e8f3df640c6973d25f81420db654 | /tmp/sqlrustgo-v312-alpha-gate-governance/docs/releases/v3.12.0/evidence/wire_load_data/05-e2e-wire-protocol.log | 2026-08-11T07:03:58Z | minimax | minimax-v312-13-5f82b1891a |
-| 06.5-load-data-sf00001-smoke | `cd /tmp/sqlrustgo-v312-alpha-gate-governance && cargo test --test v312_13_load_data_sf1_test v312_13_sf1_lineitem_smoke_subset -- --nocapture` | pass | 855711f15a00b9a054093359950c203dc1471caa4b7a6475965a19e2cb4d1f45 | /tmp/sqlrustgo-v312-alpha-gate-governance/docs/releases/v3.12.0/evidence/wire_load_data/06.5-load-data-sf00001-smoke.log | 2026-08-11T07:03:58Z | minimax | minimax-v312-13-5f82b1891a |
-| 07-load-data-sf1 | `(server-side not yet implemented; deferred to follow-up)` | deferred | 931ca89518249df149a35ea09a673dde7002881987e999d015acbb0bcb02c549 | /tmp/sqlrustgo-v312-alpha-gate-governance/docs/releases/v3.12.0/evidence/wire_load_data/07-load-data-sf1.log | 2026-08-11T07:03:58Z | minimax | minimax-v312-13-5f82b1891a |
-| 08-load-data-sf10 | `(server-side not yet implemented; deferred to follow-up)` | deferred | 4ab9ade42cd4f09a63ad732c7469b9d576b090720f9cd1346edcf1acd4758019 | /tmp/sqlrustgo-v312-alpha-gate-governance/docs/releases/v3.12.0/evidence/wire_load_data/08-load-data-sf10.log | 2026-08-11T07:03:58Z | minimax | minimax-v312-13-5f82b1891a |
-| 09-tls-handshake | `(server-side not yet implemented; deferred to follow-up)` | deferred | bafcb3a9aba6fe594bfdc0b22ba409eb0b0b32d512816627d40bda2f6f01de5e | /tmp/sqlrustgo-v312-alpha-gate-governance/docs/releases/v3.12.0/evidence/wire_load_data/09-tls-handshake.log | 2026-08-11T07:03:58Z | minimax | minimax-v312-13-5f82b1891a |
-| 10-compression | `(server-side not yet implemented; deferred to follow-up)` | deferred | fbefe3ef3ce861da58b597d2fcefb15818fb2b8d5f29aefa3e9ef58d173ddfd2 | /tmp/sqlrustgo-v312-alpha-gate-governance/docs/releases/v3.12.0/evidence/wire_load_data/10-compression.log | 2026-08-11T07:03:58Z | minimax | minimax-v312-13-5f82b1891a |
+| 01-build | `cd /home/ai/sqlrustgo && cargo build -p sqlrustgo-mysql-server -p sqlrustgo-mysql-client --tests` | pass | f4042f1d354aad8444bf83f4bee217f79e800470282bc77cfd806960eb40ef5f | /home/ai/sqlrustgo/docs/releases/v3.12.0/evidence/wire_load_data/01-build.log | 2026-08-12T13:06:55Z | minimax | minimax-v312-13-dc5c54e49 |
+| 02-typed-wrappers | `cd /home/ai/sqlrustgo && cargo test --test v312_13_typed_wrappers_test -- --test-threads=1` | pass | dbdcdc0bde2a32c72f6b24726d2e23d6e062e5121444579d2c6c248db5a3c0f5 | /home/ai/sqlrustgo/docs/releases/v3.12.0/evidence/wire_load_data/02-typed-wrappers.log | 2026-08-12T13:06:55Z | minimax | minimax-v312-13-dc5c54e49 |
+| 03-wire-regression | `cd /home/ai/sqlrustgo && cargo test --test mysql_wire_protocol_test -- --test-threads=1` | pass | 81ba6c26fb87eeca88df50d837f8aef621fadba543037e6ba280a9e3282d03eb | /home/ai/sqlrustgo/docs/releases/v3.12.0/evidence/wire_load_data/03-wire-regression.log | 2026-08-12T13:06:55Z | minimax | minimax-v312-13-dc5c54e49 |
+| 04-prepared-statement-params | `cd /home/ai/sqlrustgo && cargo test -p sqlrustgo-mysql-server --test prepared_stmt_params_test -- --test-threads=1` | pass | 5133d67d95ec8e9901cbd878acd908b3e2a3111c88940a7a7f4b23371dc6d40a | /home/ai/sqlrustgo/docs/releases/v3.12.0/evidence/wire_load_data/04-prepared-statement-params.log | 2026-08-12T13:06:55Z | minimax | minimax-v312-13-dc5c54e49 |
+| 05-e2e-wire-protocol | `cd /home/ai/sqlrustgo && cargo test -p sqlrustgo-mysql-server --test e2e_wire_protocol -- --test-threads=1` | pass | b343d1cf37f5affb0493de2ca2943540f02a93b12f3fccbb38fe909cb981dc29 | /home/ai/sqlrustgo/docs/releases/v3.12.0/evidence/wire_load_data/05-e2e-wire-protocol.log | 2026-08-12T13:06:55Z | minimax | minimax-v312-13-dc5c54e49 |
+| 06.5-load-data-sf00001-smoke | `cd /home/ai/sqlrustgo && cargo test --test v312_13_load_data_sf1_test v312_13_sf1_lineitem_smoke_subset -- --nocapture` | pass | e694b64a869813ec26144c91ba24f617e7150e35011f76ce537b803faca326f5 | /home/ai/sqlrustgo/docs/releases/v3.12.0/evidence/wire_load_data/06.5-load-data-sf00001-smoke.log | 2026-08-12T13:06:55Z | minimax | minimax-v312-13-dc5c54e49 |
+| 07-load-data-sf1 | `cd /home/ai/sqlrustgo && cargo test --test v312_13_load_data_sf1_test -- --nocapture` | pass | 60ca768db4fba4bce02894c7ff9d1787372537f936f4449f8fe917c14db1f3fa | /home/ai/sqlrustgo/docs/releases/v3.12.0/evidence/wire_load_data/07-load-data-sf1.log | 2026-08-12T13:06:55Z | minimax | minimax-v312-13-dc5c54e49 |
+| 08-load-data-sf10 | `(requires SF=10 fixture generation, out of scope)` | not_applicable | 4ab9ade42cd4f09a63ad732c7469b9d576b090720f9cd1346edcf1acd4758019 | /home/ai/sqlrustgo/docs/releases/v3.12.0/evidence/wire_load_data/08-load-data-sf10.log | 2026-08-12T13:06:55Z | minimax | minimax-v312-13-dc5c54e49 |
+| 09-tls-handshake | `cd /home/ai/sqlrustgo && cargo test --test v312_13_typed_wrappers_test v312_13_force_tls_server_implemented -- --exact` | pass | ff1ded7527084fd1fc807d2af5534cad69389c85e17e1d025c652eef9741e4aa | /home/ai/sqlrustgo/docs/releases/v3.12.0/evidence/wire_load_data/09-tls-handshake.log | 2026-08-12T13:06:55Z | minimax | minimax-v312-13-dc5c54e49 |
+| 10-compression | `cd /home/ai/sqlrustgo && cargo test --test v312_13_typed_wrappers_test v312_13_compress_primitives_working -- --exact` | pass | 8f6b22adecc30bdff57d46a22e553ce7790496bd943bda708a42318135dfb13d | /home/ai/sqlrustgo/docs/releases/v3.12.0/evidence/wire_load_data/10-compression.log | 2026-08-12T13:06:55Z | minimax | minimax-v312-13-dc5c54e49 |
 
 ---
 
 ## Footer
 
-- report_sha256: `333e4984dc362b165ee6d3484941d50ab6e664a9b8b64a68a8d8f1b3d477f56a`
+- report_sha256: `365a622bce70e44abe11c5230a4b92e0bdec69bac85d0dd03ded7762556a77e3`
 - failed_steps: `0`
-- artifact_path: `/tmp/sqlrustgo-v312-alpha-gate-governance/docs/releases/v3.12.0/evidence/wire_load_data/V312-13-REPORT.md`
+- artifact_path: `/home/ai/sqlrustgo/docs/releases/v3.12.0/evidence/wire_load_data/V312-13-REPORT.md`
 
 This report is regenerated by `scripts/gate/check_v312_13_wire_load_data.sh`.
 Any `fail` or non-zero `failed_steps` MUST be addressed before promoting

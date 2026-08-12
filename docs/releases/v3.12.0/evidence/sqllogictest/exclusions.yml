@@ -39,202 +39,265 @@ items:
   # ---- v313-08: INSERT/UPDATE ----
   - id: sqllogictest-insert-invalid
     file: insert__test_insert_invalid.test
-    status: parser_gap
+    status: closed
     failure_summary: "Parse error: Expected expression"
     root_cause: "INSERT ... VALUES with missing/extra token; parser doesn't accept the syntax form"
     follow_up_issue: "#4036 [V312-11-v313-08] SQLLogicTest INSERT/UPDATE 修复"
     owner: openclaw
     v3.12_blocking: false
     v3.13_expiry: 2026-12-31
+    closed_at: 2026-08-12
+    closed_by_commit: 20d397641e
+    merged_pr: "#4074"
     close_boundary: "cargo run -p sqlrustgo_sqllogictest -- --filter insert__test_insert_invalid exits 0 AND PASS [insert__test_insert_invalid.test] in log"
+    verification_2026_08_12: "PASS [insert__test_insert_invalid.test]  files: 1/0 pass rate 100.0%"
 
   - id: sqllogictest-insert-order
     file: insert__test_insert.test
-    status: execution_gap
+    status: closed
     failure_summary: "Query result mismatch"
     root_cause: "INSERT ... VALUES with ORDER BY subquery; planner/executor returns rows in different order than SQLite"
     follow_up_issue: "#4036 [V312-11-v313-08] SQLLogicTest INSERT/UPDATE 修复"
     owner: openclaw
     v3.12_blocking: false
     v3.13_expiry: 2026-12-31
+    closed_at: 2026-08-12
+    closed_by_commit: 20d397641e
+    merged_pr: "#4074"
     close_boundary: "cargo run -p sqlrustgo_sqllogictest -- --filter insert__test_insert exits 0 AND PASS [insert__test_insert.test]"
+    verification_2026_08_12: "PASS [insert__test_insert.test]  files: 1/0 pass rate 100.0%"
 
   - id: sqllogictest-update-con1
     file: update__test_update.test
-    status: parser_gap
+    status: closed
     failure_summary: "Parse error: unexpected token 'con1'"
     root_cause: "UPDATE ... ORDER BY ... LIMIT or similar — parser doesn't accept the 'con1' token form"
     follow_up_issue: "#4036 [V312-11-v313-08] SQLLogicTest INSERT/UPDATE 修复"
     owner: openclaw
     v3.12_blocking: false
     v3.13_expiry: 2026-12-31
+    closed_at: 2026-08-12
+    closed_by_commit: 20d397641e
+    merged_pr: "#4074"
     close_boundary: "cargo run -p sqlrustgo_sqllogictest -- --filter update__test_update exits 0 AND PASS [update__test_update.test]"
+    verification_2026_08_12: "PASS [update__test_update.test]  files: 1/0 pass rate 100.0%"
 
   # ---- v313-09: SETOPS ----
   - id: sqllogictest-except-all
     file: setops__test_except.test
-    status: parser_gap
+    status: closed
     failure_summary: "Parse error: EXCEPT ALL syntax not supported"
     root_cause: "EXCEPT ALL — parser does not accept the keyword combination"
     follow_up_issue: "#4037 [V312-11-v313-09] SQLLogicTest SETOPS 修复"
     owner: openclaw
     v3.12_blocking: false
     v3.13_expiry: 2026-12-31
+    closed_at: 2026-08-12
+    closed_by_commit: 455fcb546f
+    merged_pr: "#4073"
     close_boundary: "cargo run -p sqlrustgo_sqllogictest -- --filter setops__test_except exits 0 AND PASS [setops__test_except.test]"
+    verification_2026_08_12: "PASS [setops__test_except.test]  files: 1/0 pass rate 100.0%"
 
   - id: sqllogictest-setops
     file: setops__test_setops.test
-    status: parser_gap
+    status: closed
     failure_summary: "Parse error: Expected table name in derived table, got LParen"
     root_cause: "INTERSECT ALL/EXCEPT ALL via VALUES-derived subquery — parser doesn't accept the LParen syntax form"
     follow_up_issue: "#4037 [V312-11-v313-09] SQLLogicTest SETOPS 修复"
     owner: openclaw
     v3.12_blocking: false
     v3.13_expiry: 2026-12-31
+    closed_at: 2026-08-12
+    closed_by_commit: 455fcb546f
+    merged_pr: "#4073"
     close_boundary: "cargo run -p sqlrustgo_sqllogictest -- --filter setops__test_setops exits 0 AND PASS [setops__test_setops.test]"
+    verification_2026_08_12: "PASS [setops__test_setops.test]  files: 1/0 pass rate 100.0%"
 
   # ---- v313-10: ORDER BY + window ----
   - id: sqllogictest-limit-window
     file: order__test_limit.test
-    status: parser_gap
+    status: closed
     failure_summary: "Parse error: LIMIT with window functions in ORDER BY"
     root_cause: "LIMIT combined with window functions in ORDER BY; parser fails before reaching planner"
     follow_up_issue: "#4038 [V312-11-v313-10] SQLLogicTest ORDER BY/LIMIT + Window 修复"
     owner: openclaw
     v3.12_blocking: false
     v3.13_expiry: 2026-12-31
+    closed_at: 2026-08-12
+    closed_by_commit: 2e71f19b35
+    merged_pr: "#4069"
     close_boundary: "cargo run -p sqlrustgo_sqllogictest -- --filter order__test_limit exits 0 AND PASS [order__test_limit.test]"
+    verification_2026_08_12: "PASS [order__test_limit.test]  files: 1/0 pass rate 100.0%"
 
   # ---- v313-11: ALTER TABLE ----
   - id: sqllogictest-alter-table
     file: alter__alter_table_set_partitioned_by.test
-    status: parser_gap
+    status: closed
     failure_summary: "Parse error: Expected ADD, DROP, MODIFY or RENAME"
     root_cause: "ALTER TABLE ... SET PARTITIONED BY — parser doesn't accept the SET PARTITIONED BY form"
     follow_up_issue: "#4039 [V312-11-v313-11] SQLLogicTest ALTER TABLE 修复"
     owner: openclaw
     v3.12_blocking: false
     v3.13_expiry: 2026-12-31
+    closed_at: 2026-08-12
+    closed_by_commit: 7490845613
+    merged_pr: "#4082"
     close_boundary: "cargo run -p sqlrustgo_sqllogictest -- --filter alter__alter_table_set_partitioned_by exits 0 AND PASS [alter__alter_table_set_partitioned_by.test]"
+    verification_2026_08_12: "PASS [alter__alter_table_set_partitioned_by.test]  files: 1/0 pass rate 100.0%"
 
   - id: sqllogictest-alter-partitioned
     file: alter_table_set_partitioned_by.test
-    status: parser_gap
+    status: closed
     failure_summary: "Parse error: Expected ADD, DROP, MODIFY or RENAME"
     root_cause: "Same root cause as sqllogictest-alter-table — different filename variant"
     follow_up_issue: "#4039 [V312-11-v313-11] SQLLogicTest ALTER TABLE 修复"
     owner: openclaw
     v3.12_blocking: false
     v3.13_expiry: 2026-12-31
+    closed_at: 2026-08-12
+    closed_by_commit: 7490845613
+    merged_pr: "#4082"
     close_boundary: "cargo run -p sqlrustgo_sqllogictest -- --filter alter_table_set_partitioned_by exits 0 AND PASS [alter_table_set_partitioned_by.test]"
+    verification_2026_08_12: "PASS [alter_table_set_partitioned_by.test]  files: 1/0 pass rate 100.0%"
 
   - id: sqllogictest-case-insensitive-alter
     file: case_insensitive_alter.test
-    status: parser_gap
+    status: closed
     failure_summary: "Parse error: ALTER TABLE case-insensitive identifiers"
     root_cause: "Case-insensitive identifier handling in ALTER TABLE — parser doesn't accept the identifier form"
     follow_up_issue: "#4039 [V312-11-v313-11] SQLLogicTest ALTER TABLE 修复"
     owner: openclaw
     v3.12_blocking: false
     v3.13_expiry: 2026-12-31
+    closed_at: 2026-08-12
+    closed_by_commit: 7490845613
+    merged_pr: "#4082"
     close_boundary: "cargo run -p sqlrustgo_sqllogictest -- --filter case_insensitive_alter exits 0 AND PASS [case_insensitive_alter.test]"
+    verification_2026_08_12: "PASS [case_insensitive_alter.test]  files: 1/0 pass rate 100.0%"
 
   # ---- v313-12: Semantic — constraints ----
   - id: sqllogictest-not-null-expected-fail
     file: constraints__test_not_null.test
-    status: semantic_gap
+    status: closed
     failure_summary: "Statement is expected to fail with error (test asserts NOT NULL violation)"
     root_cause: "NOT NULL violation detection — sqlrustgo accepts what SQLite rejects (PR #3989 partially addressed)"
     follow_up_issue: "#4040 [V312-11-v313-12] SQLLogicTest Constraint Semantics 修复"
     owner: openclaw
     v3.12_blocking: false
     v3.13_expiry: 2026-12-31
+    closed_at: 2026-08-12
+    closed_by_commit: c0bce926b7
+    merged_pr: "#4055"
     close_boundary: "cargo run -p sqlrustgo_sqllogictest -- --filter constraints__test_not_null exits 0 AND PASS [constraints__test_not_null.test]"
+    verification_2026_08_12: "PASS [constraints__test_not_null.test]  files: 1/0 pass rate 100.0%"
 
   - id: sqllogictest-constraint-updates
     file: test_constraint_with_updates.test
-    status: semantic_gap
+    status: closed
     failure_summary: "Statement is expected to fail, but actually succeed (constraint check on UPDATE missing)"
     root_cause: "Constraint enforcement during UPDATE — sqlrustgo doesn't validate constraint violation path that SQLite rejects"
     follow_up_issue: "#4040 [V312-11-v313-12] SQLLogicTest Constraint Semantics 修复"
     owner: openclaw
     v3.12_blocking: false
     v3.13_expiry: 2026-12-31
+    closed_at: 2026-08-12
+    closed_by_commit: c0bce926b7
+    merged_pr: "#4055"
     close_boundary: "cargo run -p sqlrustgo_sqllogictest -- --filter test_constraint_with_updates exits 0 AND PASS [test_constraint_with_updates.test]"
+    verification_2026_08_12: "PASS [test_constraint_with_updates.test]  files: 1/0 pass rate 100.0%"
 
   # ---- v313-13: Binder alias ----
   - id: sqllogictest-binder-alias
     file: binder__alias_error_10057.test
-    status: semantic_gap
+    status: closed
     failure_summary: "Query is expected to fail, but actually succeed (alias scope validation missing)"
     root_cause: "Binder accepts aliased column reference that SQLite's binder rejects (PR #3989 added alias scope validation but not for this pattern)"
     follow_up_issue: "#4041 [V312-11-v313-13] SQLLogicTest Binder Alias 修复"
     owner: openclaw
     v3.12_blocking: false
     v3.13_expiry: 2026-12-31
+    closed_at: 2026-08-12
+    closed_by_commit: c4062e2fbf
+    merged_pr: "#4065"
     close_boundary: "cargo run -p sqlrustgo_sqllogictest -- --filter binder__alias_error_10057 exits 0 AND PASS [binder__alias_error_10057.test]"
+    verification_2026_08_12: "PASS [binder__alias_error_10057.test]  files: 1/0 pass rate 100.0%"
 
   # ---- v313-14: CREATE TABLE AS ----
   - id: sqllogictest-create-as
     file: create_as.test
-    status: execution_gap
+    status: closed
     failure_summary: "Query result mismatch on CREATE TABLE AS"
     root_cause: "CREATE TABLE AS — parser accepts but execution produces wrong row count/values (PR #3989 added CTAS but not this edge case)"
     follow_up_issue: "#4042 [V312-11-v313-14] SQLLogicTest CREATE TABLE AS 修复"
     owner: openclaw
     v3.12_blocking: false
     v3.13_expiry: 2026-12-31
+    closed_at: 2026-08-12
+    closed_by_commit: 678585fedf
+    merged_pr: "#4066"
     close_boundary: "cargo run -p sqlrustgo_sqllogictest -- --filter create_as exits 0 AND PASS [create_as.test]"
+    verification_2026_08_12: "PASS [create_as.test]  files: 1/0 pass rate 100.0%"
 
   # ---- v313-15: DuckDB harness — QUANTILE ----
   - id: sqllogictest-quantile-fun
     file: quantile_fun.test
-    status: harness_gap
+    status: closed
     failure_summary: "Runner harness error: invalid line 'set variable sf 0.001'"
     root_cause: "Runner/setup harness cannot ingest DuckDB-style 'set variable' directive in testdata"
     follow_up_issue: "#4043 [V312-11-v313-15] SQLLogicTest DuckDB Harness SET variable 修复"
     owner: openclaw
     v3.12_blocking: false
     v3.13_expiry: 2026-12-31
+    closed_at: 2026-08-12
+    closed_by_commit: 7a315826fb
     close_boundary: "cargo run -p sqlrustgo_sqllogictest -- --filter quantile_fun exits 0 AND PASS [quantile_fun.test]"
+    verification_2026_08_12: "PASS [quantile_fun.test]  files: 1/0 pass rate 100.0%"
 
   - id: sqllogictest-aggregate-quantile
     file: aggregate__quantile_fun.test
-    status: harness_gap
+    status: closed
     failure_summary: "Runner harness error: invalid line 'set variable sf 0.001'"
     root_cause: "Same root cause as sqllogictest-quantile-fun — different filename variant"
     follow_up_issue: "#4043 [V312-11-v313-15] SQLLogicTest DuckDB Harness SET variable 修复"
     owner: openclaw
     v3.12_blocking: false
     v3.13_expiry: 2026-12-31
+    closed_at: 2026-08-12
+    closed_by_commit: 7a315826fb
     close_boundary: "cargo run -p sqlrustgo_sqllogictest -- --filter aggregate__quantile_fun exits 0 AND PASS [aggregate__quantile_fun.test]"
+    verification_2026_08_12: "PASS [aggregate__quantile_fun.test]  files: 1/0 pass rate 100.0%"
 
   - id: sqllogictest-sql-quantile
     file: sql__quantile_fun.test
-    status: harness_gap
+    status: closed
     failure_summary: "Runner harness error: invalid line 'set variable sf 0.001'"
     root_cause: "Same root cause as sqllogictest-quantile-fun — different filename variant"
     follow_up_issue: "#4043 [V312-11-v313-15] SQLLogicTest DuckDB Harness SET variable 修复"
     owner: openclaw
     v3.12_blocking: false
     v3.13_expiry: 2026-12-31
+    closed_at: 2026-08-12
+    closed_by_commit: 7a315826fb
     close_boundary: "cargo run -p sqlrustgo_sqllogictest -- --filter sql__quantile_fun exits 0 AND PASS [sql__quantile_fun.test]"
+    verification_2026_08_12: "PASS [sql__quantile_fun.test]  files: 1/0 pass rate 100.0%"
 
 summary:
   total_fail_files: 16
-  smoke_scope_pass_files: 6
-  smoke_scope_fail_files: 16
+  smoke_scope_pass_files: 22   # 2026-08-12: 22/22 PASS, 100% pass rate
+  smoke_scope_fail_files: 0
   by_status:
-    parser_gap: 7
-    execution_gap: 2
-    semantic_gap: 3
+    parser_gap: 0
+    execution_gap: 0
+    semantic_gap: 0
     expected_fail: 0
-    harness_gap: 4
+    harness_gap: 0
     fixture_missing: 0
+    closed: 16       # 2026-08-12: ALL 16 SQLLogicTest smoke files verified PASS at HEAD e58cb3ebd3
   gitea_follow_up_issues: 8   # Round-14: 8 Gitea issues #4036-#4043 replacing openspec-only refs
   openspec_follow_ups: 8      # legacy openspec references retained for traceability
   exclusions_linked: 16
   owner: openclaw
-  deferred_to: v3.13.0 GA (2026-12-31)
+  deferred_to: v3.13.0 GA (2026-12-31)  # superseded by round-15 — all 16 closed at HEAD
   v3.12_blocking_count: 0
   round14_action: "openspec paths → real Gitea issues; gate distinguishes smoke vs full semantic PASS"
+  round15_action: "ALL 16 SQLLogicTest smoke files verified PASS at HEAD e58cb3ebd3 (rebased on ac4364a046); status closed"

@@ -12,13 +12,13 @@
 
 | Surface | Owner | Expiry | OpenSpec Change | 说明 |
 |---------|-------|--------|-----------------|------|
-| empty_password_auth | openclaw | 2027-06-30 | [v313-01](../openspec/changes/v313-01-empty-password-auth/) | 空密码认证边界测试需要 fixture 实现 |
-| prepared_stmt_roundtrip | openclaw | 2027-06-30 | [v313-02](../openspec/changes/v313-02-prepared-stmt-protocol/) | 预处理语句协议问题需要修复 |
-| timestamp_timezone_deferred | openclaw | 2027-06-30 | [v313-03](../openspec/changes/v313-03-timestamp-timezone/) | TIMESTAMP 类型时区支持 |
-| connection_pool_deferred | openclaw | 2027-06-30 | [v313-04](../openspec/changes/v313-04-connection-pool/) | 连接池实现 |
-| alter_change_full_syntax_deferred | openclaw | 2027-06-30 | [v313-05](../openspec/changes/v313-05-alter-change-syntax/) | ALTER TABLE CHANGE 完整语法 |
-| median_unsupported | openclaw | 2027-06-30 | [v313-06](../openspec/changes/v313-06-median-aggregate/) | MEDIAN 聚合函数实现 (返回 NULL 而非错误) |
-| window_rank_partition_unsupported | openclaw | 2027-06-30 | [v313-07](../openspec/changes/v313-07-window-rank-truncation/) | 窗口函数 RANK OVER PARTITION BY wire protocol truncation |
+| empty_password_auth | openclaw | 2027-06-30 | [v313-01](../../../../../openspec/changes/v313-01-empty-password-auth/) | 空密码认证边界测试需要 fixture 实现 |
+| prepared_stmt_roundtrip | openclaw | 2027-06-30 | [v313-02](../../../../../openspec/changes/v313-02-prepared-stmt-protocol/) | 预处理语句协议问题需要修复 |
+| timestamp_timezone_deferred | openclaw | 2027-06-30 | [v313-03](../../../../../openspec/changes/v313-03-timestamp-timezone/) | TIMESTAMP 类型时区支持 |
+| connection_pool_deferred | openclaw | 2027-06-30 | [v313-04](../../../../../openspec/changes/v313-04-connection-pool/) | 连接池实现 |
+| alter_change_full_syntax_deferred | openclaw | 2027-06-30 | [v313-05](../../../../../openspec/changes/v313-05-alter-change-syntax/) | ALTER TABLE CHANGE 完整语法 |
+| median_unsupported | openclaw | 2027-06-30 | [v313-06](../../../../../openspec/changes/v313-06-median-aggregate/) | MEDIAN 聚合函数实现 (返回 NULL 而非错误) |
+| window_rank_partition_unsupported | openclaw | 2027-06-30 | [v313-07](../../../../../openspec/changes/v313-07-window-rank-truncation/) | 窗口函数 RANK OVER PARTITION BY wire protocol truncation |
 
 ---
 

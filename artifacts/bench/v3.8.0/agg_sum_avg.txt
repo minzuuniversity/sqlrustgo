@@ -1,6 +1,0 @@
-Aggregation SUM/AVG (v3.8.0)
-Date: 2026-06-03
-Iter: 10000
-Total: 2258 ms
-Avg: 225 us
-QPS: 4427

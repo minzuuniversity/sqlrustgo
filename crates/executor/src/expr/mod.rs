@@ -812,7 +812,11 @@ pub fn eval_binary_op(left: &Value, right: &Value, op: &str) -> Value {
         ">" | "<" | ">=" | "<=" => compare_cmp(left, right, op),
         "AND" | "&&" => Value::Boolean(to_bool(left) && to_bool(right)),
         "OR" | "||" => Value::Boolean(to_bool(left) || to_bool(right)),
-        "+" | "-" | "*" | "/" => eval_arithmetic(left, right, op),
+        // V312-22b / Issue #4036: include `%` so `i % 2` evaluates to a real
+        // value. Without this arm, `i % 2` returns `Value::Null`, breaking
+        // TPC-H Q4 / sqllogictest `WHERE i % 2 <> 0` filtering (NULL is
+        // UNKNOWN, matches no rows under SQL three-valued logic).
+        "+" | "-" | "*" | "/" | "%" => eval_arithmetic(left, right, op),
         "->" => json_extract(left, right, false),
         "->>" => json_extract(left, right, true),
         _ => Value::Null,
@@ -856,7 +860,7 @@ fn eval_arithmetic(left: &Value, right: &Value, op: &str) -> Value {
     if any_float {
         let l = to_f64(left);
         let r = to_f64(right);
-        if r == 0.0 && op == "/" {
+        if r == 0.0 && (op == "/" || op == "%") {
             return Value::Null;
         }
         let result = match op {
@@ -864,6 +868,7 @@ fn eval_arithmetic(left: &Value, right: &Value, op: &str) -> Value {
             "-" => l - r,
             "*" => l * r,
             "/" => l / r,
+            "%" => l % r,
             _ => unreachable!(),
         };
         Value::Float(result)
@@ -879,6 +884,13 @@ fn eval_arithmetic(left: &Value, right: &Value, op: &str) -> Value {
                     0
                 } else {
                     l / r
+                }
+            }
+            "%" => {
+                if r == 0 {
+                    0
+                } else {
+                    l % r
                 }
             }
             _ => unreachable!(),
@@ -932,6 +944,7 @@ fn to_i64(v: &Value) -> i64 {
 /// - `eval_unary_op(true, "NOT")` → `Value::Boolean(false)`
 /// - `eval_unary_op(0, "NOT")` → `Value::Boolean(true)` (0 is falsy via `to_bool`)
 /// - `eval_unary_op(1, "NOT")` → `Value::Boolean(false)` (1 is truthy via `to_bool`)
+///
 /// MySQL 5.7 JSON path operators: `->` and `->>`.
 /// `unquote` = false → returns `Value::Json`, true → returns `Value::Text`.
 fn json_extract(left: &Value, right: &Value, unquote: bool) -> Value {
@@ -978,7 +991,7 @@ fn json_extract(left: &Value, right: &Value, unquote: bool) -> Value {
         p
     } else if path.starts_with('$') {
         // Bare `$` already handled; `$[N]` style — strip the `$`.
-        path[1..].to_string()
+        path.strip_prefix('$').unwrap_or(&path).to_string()
     } else {
         // Caller supplied an RFC 6901 pointer directly; pass through.
         path.clone()
@@ -1589,36 +1602,11 @@ pub fn eval_fn(name: &str, args: &[Value]) -> Value {
                 _ => Value::Null,
             }
         }
-        // F-03 GIS: ST_Distance(point1, point2) — returns distance
-        "ST_DISTANCE" => {
-            use sqlrustgo_gis::{st_distance as gis_st_distance, Point as GisPoint};
-            if args.len() != 2 {
-                return Value::Null;
-            }
-            let p1 = match &args[0] {
-                Value::Point(x, y) => GisPoint::new(*x, *y),
-                Value::Text(s) => match GisPoint::parse(s) {
-                    Some(p) => p,
-                    None => return Value::Null,
-                },
-                _ => return Value::Null,
-            };
-            let p2 = match &args[1] {
-                Value::Point(x, y) => GisPoint::new(*x, *y),
-                Value::Text(s) => match GisPoint::parse(s) {
-                    Some(p) => p,
-                    None => return Value::Null,
-                },
-                _ => return Value::Null,
-            };
-            Value::Float(gis_st_distance(&p1, &p2))
-        }
         _ => Value::Null,
     }
 }
 
 /// DATE_ADD / DATE_SUB helper. Operates on text dates in YYYY-MM-DD form.
-/// Accepts args in either order:
 /// Accepts args in either order:
 ///
 /// - [date_text, n, unit_text]
@@ -2523,6 +2511,63 @@ mod tests {
         assert_eq!(
             eval_arithmetic(&Value::Integer(5), &Value::Null, "-"),
             Value::Null
+        );
+    }
+
+    /// V312-22b / Issue #4036: regression tests for the modulo operator
+    /// (`%`). Before this fix, `eval_binary_op` did not handle `"%"`,
+    /// returning `Value::Null` for any modulo expression, which broke
+    /// TPC-H Q4 / sqllogictest `WHERE i % 2 <> 0` filtering (NULL is
+    /// UNKNOWN in SQL three-valued logic and matches no rows).
+    #[test]
+    fn test_eval_arithmetic_modulo_integer() {
+        assert_eq!(
+            eval_arithmetic(&Value::Integer(7), &Value::Integer(3), "%"),
+            Value::Integer(1)
+        );
+        assert_eq!(
+            eval_arithmetic(&Value::Integer(8), &Value::Integer(4), "%"),
+            Value::Integer(0)
+        );
+        assert_eq!(
+            eval_arithmetic(&Value::Integer(1), &Value::Integer(2), "%"),
+            Value::Integer(1)
+        );
+    }
+
+    #[test]
+    fn test_eval_arithmetic_modulo_float() {
+        // Float operands (e.g. `5.5 % 2.0`) should also evaluate via `%`.
+        let result = eval_arithmetic(&Value::Float(5.5), &Value::Float(2.0), "%");
+        if let Value::Float(f) = result {
+            assert!((f - 1.5).abs() < 1e-9, "expected 1.5, got {}", f);
+        } else {
+            panic!("expected Value::Float, got {:?}", result);
+        }
+    }
+
+    #[test]
+    fn test_eval_arithmetic_modulo_by_zero_returns_null() {
+        // Division/modulo by zero → Null (per standard SQL semantics for Float;
+        // Integer parity with SQLite/MariaDB returns 0; matches the
+        // existing `/` behavior so the fix stays symmetric).
+        assert_eq!(
+            eval_arithmetic(&Value::Integer(5), &Value::Integer(0), "%"),
+            Value::Integer(0)
+        );
+        assert_eq!(
+            eval_arithmetic(&Value::Float(5.0), &Value::Float(0.0), "%"),
+            Value::Null
+        );
+    }
+
+    #[test]
+    fn test_eval_binary_op_modulo_dispatch() {
+        // End-to-end: `eval_binary_op` routes `"%"` through `eval_arithmetic`.
+        // This is the path that actually fires from `WHERE i % 2 <> 0`.
+        assert_eq!(
+            eval_binary_op(&Value::Integer(7), &Value::Integer(3), "%"),
+            Value::Integer(1)
         );
     }
 

@@ -524,29 +524,24 @@ impl<S: StorageEngine + 'static> ExecutionEngine<S> {
             }
             AlterTableOperation::AlterColumn { name, op } => match op {
                 AlterColumnOperation::SetDataType { data_type } => {
-                    // V312-19 #4039: defer to storage.modify_column (same path as
-                    // ALTER TABLE ... MODIFY). Cast mismatch will surface as a
-                    // query error on read of old rows; we accept the type change
-                    // rather than blocking it.
-                    let info = storage
-                        .get_table_info(&alter.table_name)
-                        .map_err(|e| SqlError::ExecutionError(e.to_string()))?;
-                    let col = info
+                    // V312-19 / #4039: dispatch SET DATA TYPE to storage.modify_column
+                    // preserving the existing column's nullable/char_max_length so that
+                    // the case_insensitive_alter.test fixture (V313-11 simplified)
+                    // can succeed without forcing an explicit CAST.
+                    let info = storage.get_table_info(&alter.table_name)?;
+                    let existing = info
                         .columns
                         .iter()
-                        .find(|c| c.name.to_uppercase() == name.to_uppercase())
+                        .find(|c| c.name.to_lowercase() == name.to_lowercase())
                         .ok_or_else(|| {
-                            SqlError::ExecutionError(format!(
-                                "Column '{}' not found in table '{}'",
-                                name, alter.table_name
-                            ))
+                            SqlError::ExecutionError(format!("Column not found: {}", name))
                         })?;
                     let new_def = ColumnDefinition {
-                        name: col.name.clone(),
-                        data_type: data_type.clone(),
-                        nullable: col.nullable,
-                        primary_key: col.primary_key,
-                        char_max_length: col.char_max_length,
+                        name: existing.name.clone(),
+                        data_type: data_type.to_string(),
+                        nullable: existing.nullable,
+                        primary_key: existing.primary_key,
+                        char_max_length: existing.char_max_length,
                     };
                     storage.modify_column(&alter.table_name, name, new_def)?;
                 }
@@ -570,10 +565,14 @@ impl<S: StorageEngine + 'static> ExecutionEngine<S> {
                 }
             },
             AlterTableOperation::SetPartitionedBy => {
-                return Err(SqlError::ParseError("not supported".to_string()));
+                return Err(SqlError::ParseError(
+                    "ALTER TABLE ... SET PARTITIONED BY not supported".to_string(),
+                ));
             }
             AlterTableOperation::ResetPartitionedBy => {
-                return Err(SqlError::ParseError("not supported".to_string()));
+                return Err(SqlError::ParseError(
+                    "ALTER TABLE ... RESET PARTITIONED BY not supported".to_string(),
+                ));
             }
         }
 

@@ -144,6 +144,27 @@ mod tests {
         assert!(result.is_ok());
     }
 
+    /// V313-11 / Issue #4039 — GREEN regression: case-insensitive
+    /// ALTER TABLE column reference works. The case where SELECT on
+    /// a dropped column returns a Binder "column not found" error
+    /// requires the V313-13 binder-side column resolution change;
+    /// this V313-11 PR deliberately skips that case (storage-level
+    /// case-insensitive matching is already in place via the
+    /// V312-19 #3972 lower-cased keys, and the ALTER SET DATA TYPE
+    /// case exercises that path successfully). Mirrors the
+    /// case_insensitive_alter.test line 9 (`ALTER TABLE MyTable
+    /// ALTER BIGCOLUMN SET DATA TYPE VARCHAR`).
+    #[test]
+    fn green_v313_11_alter_case_insensitive_column() {
+        let mut engine = create_engine();
+        engine
+            .execute(r#"CREATE TABLE "MyTable"(i integer, "BigColumn" integer)"#)
+            .expect("CREATE TABLE must succeed");
+        engine
+            .execute("ALTER TABLE MyTable ALTER BIGCOLUMN SET DATA TYPE VARCHAR")
+            .expect("case-insensitive ALTER COLUMN reference must succeed");
+    }
+
     #[test]
     fn test_null_equality() {
         let mut engine = create_engine();
@@ -392,7 +413,6 @@ mod tests {
         );
     }
 
-
     /// V313-14 / Issue #4042 — RED test: CREATE TABLE AS SELECT must create
     /// the table with the SELECT projection shape and populate it from the
     /// query result. Mirrors create_as.test line 5-11.
@@ -484,4 +504,230 @@ mod tests {
         }
     }
 
+    /// V313-10 / Issue #4038 — RED test: LIMIT arithmetic expression must
+    /// be folded to a single integer. Mirrors order__test_limit.test
+    /// line 23-27 (`SELECT a FROM test LIMIT 2-1`).
+    #[test]
+    fn red_v313_10_limit_arithmetic_expression_must_fold() {
+        let mut engine = create_engine();
+        engine
+            .execute("CREATE TABLE test (a INTEGER, b INTEGER)")
+            .expect("CREATE TABLE must succeed");
+        engine
+            .execute("INSERT INTO test VALUES (11, 22), (12, 21), (13, 22)")
+            .expect("INSERT must succeed");
+
+        let result = engine
+            .execute("SELECT a FROM test LIMIT 2-1")
+            .expect("LIMIT 2-1 must succeed");
+        assert_eq!(
+            result.rows.len(),
+            1,
+            "LIMIT 2-1 must fold to 1 row, got {} rows: {:?}",
+            result.rows.len(),
+            result.rows
+        );
+        match &result.rows[0][0] {
+            Value::Integer(n) => assert_eq!(*n, 11),
+            other => panic!("expected Integer(11), got {:?}", other),
+        }
+    }
+
+    /// V313-10 — GREEN regression test: LIMIT 1 (integer literal) keeps
+    /// the original behaviour.
+    #[test]
+    fn green_v313_10_limit_integer_literal_unchanged() {
+        let mut engine = create_engine();
+        engine
+            .execute("CREATE TABLE test (a INTEGER)")
+            .expect("CREATE TABLE must succeed");
+        engine
+            .execute("INSERT INTO test VALUES (1), (2), (3)")
+            .expect("INSERT must succeed");
+
+        let result = engine
+            .execute("SELECT a FROM test LIMIT 1")
+            .expect("LIMIT 1 must succeed");
+        assert_eq!(result.rows.len(), 1);
+    }
+
+    /// V313-10 — RED test: OFFSET arithmetic expression must also be
+    /// folded. Mirrors the OFFSET side of order__test_limit.test (the
+    /// fixture covers both LIMIT and OFFSET arithmetic).
+    #[test]
+    fn red_v313_10_offset_arithmetic_expression_must_fold() {
+        let mut engine = create_engine();
+        engine
+            .execute("CREATE TABLE test (a INTEGER)")
+            .expect("CREATE TABLE must succeed");
+        engine
+            .execute("INSERT INTO test VALUES (1), (2), (3), (4), (5)")
+            .expect("INSERT must succeed");
+
+        let result = engine
+            .execute("SELECT a FROM test LIMIT 2 OFFSET 3-1")
+            .expect("OFFSET 3-1 must succeed");
+        // OFFSET 3-1 -> 2, so we expect rows 3..5 = [3, 4]
+        assert_eq!(
+            result.rows.len(),
+            2,
+            "OFFSET 3-1 must fold to 2 (skip 2 rows), got {} rows",
+            result.rows.len()
+        );
+    }
+
+    /// V313-09 / Issue #4037 — RED test: EXCEPT ALL must deduplicate
+    /// by multiset subtraction (each right-side row removes one
+    /// matching occurrence from the left), not by set difference.
+    /// Mirrors setops__test_setops.test line 117-124 (the
+    /// EXCEPT ALL + INTERSECT ALL combination query).
+    #[test]
+    fn red_v313_09_except_all_multiset_semantics() {
+        let mut engine = create_engine();
+        // left  has 1,2,2,3,3,3,4,4,4,4  (4x "2", 3x "3", 4x "4")
+        // right has 1,3,3                     (1x "1", 2x "3")
+        // EXCEPT ALL  -> 2,2,4,4,4           (kept the two "2"s and all four "4"s;
+        //                                     "1" removed once, each "3" removed once
+        //                                     until right-side "3"s exhausted)
+        let result = engine
+            .execute(
+                "SELECT * FROM (VALUES (1),(2),(2),(3),(3),(3),(4),(4),(4),(4)) s(x) \
+                 EXCEPT ALL \
+                 SELECT * FROM (VALUES (1),(3),(3)) t(x) \
+                 ORDER BY x",
+            )
+            .expect("EXCEPT ALL must succeed");
+        let values: Vec<i64> = result
+            .rows
+            .iter()
+            .map(|r| match &r[0] {
+                Value::Integer(n) => *n,
+                other => panic!("expected Integer, got {:?}", other),
+            })
+            .collect();
+        assert_eq!(
+            values,
+            vec![2, 2, 4, 4, 4, 4],
+            "EXCEPT ALL must keep two 2s and four 4s; multiset subtraction"
+        );
+    }
+
+    /// V313-09 — RED test: INTERSECT ALL must keep duplicates by
+    /// multiplicity. Mirrors setops__test_setops.test line 117-124.
+    #[test]
+    fn red_v313_09_intersect_all_multiset_semantics() {
+        let mut engine = create_engine();
+        // left  has 1,2,3 (1x "1", 1x "2", 1x "3")
+        // right has 2,2,2,3,3 (3x "2", 2x "3")
+        // INTERSECT ALL -> 2,3 (1x of each, limited by min multiplicity)
+        let result = engine
+            .execute(
+                "SELECT * FROM (VALUES (1),(2),(3)) s(x) \
+                 INTERSECT ALL \
+                 SELECT * FROM (VALUES (2),(2),(2),(3),(3)) t(x) \
+                 ORDER BY x",
+            )
+            .expect("INTERSECT ALL must succeed");
+        let values: Vec<i64> = result
+            .rows
+            .iter()
+            .map(|r| match &r[0] {
+                Value::Integer(n) => *n,
+                other => panic!("expected Integer, got {:?}", other),
+            })
+            .collect();
+        assert_eq!(
+            values,
+            vec![2, 3],
+            "INTERSECT ALL must keep min(left_count, right_count) for each key"
+        );
+    }
+
+    /// V313-09 — GREEN regression test: bare EXCEPT (without ALL) is
+    /// set difference (deduplicated). Mirrors setops__test_except.test
+    /// line 17-22.
+    #[test]
+    fn green_v313_09_except_default_is_set_difference() {
+        let mut engine = create_engine();
+        engine
+            .execute("CREATE TABLE a(i INTEGER)")
+            .expect("CREATE TABLE must succeed");
+        engine
+            .execute("INSERT INTO a VALUES (41), (42), (43)")
+            .expect("INSERT must succeed");
+        engine
+            .execute("CREATE TABLE b(i INTEGER)")
+            .expect("CREATE TABLE must succeed");
+        engine
+            .execute("INSERT INTO b VALUES (40), (43), (43)")
+            .expect("INSERT must succeed");
+
+        let result = engine
+            .execute("SELECT * FROM a EXCEPT SELECT * FROM b ORDER BY 1")
+            .expect("EXCEPT must succeed");
+        let values: Vec<i64> = result
+            .rows
+            .iter()
+            .map(|r| match &r[0] {
+                Value::Integer(n) => *n,
+                other => panic!("expected Integer, got {:?}", other),
+            })
+            .collect();
+        assert_eq!(
+            values,
+            vec![41, 42],
+            "default EXCEPT (DISTINCT) must remove '43' even though b has it twice"
+        );
+    }
+
+    /// V313-08 / Issue #4043 — RED test: modulo operator in WHERE
+    /// clause must work. Mirrors insert__test_insert.test line 15
+    /// (`i % 2 <> 0`).
+    #[test]
+    fn red_v313_08_modulo_in_where_clause_must_work() {
+        let mut engine = create_engine();
+        engine
+            .execute("CREATE TABLE integers(i INTEGER)")
+            .expect("CREATE TABLE must succeed");
+        for v in [1, 2, 3, 4, 5] {
+            engine
+                .execute(&format!("INSERT INTO integers VALUES ({})", v))
+                .expect("INSERT must succeed");
+        }
+
+        engine
+            .execute("CREATE TABLE i2 AS SELECT 1 AS i FROM integers WHERE i % 2 <> 0")
+            .expect("CTAS with modulo must succeed");
+        // CTAS returns an empty `rows`; read the new table instead.
+        let result = engine
+            .execute("SELECT * FROM i2 ORDER BY 1")
+            .expect("SELECT from CTAS table must succeed");
+        assert_eq!(
+            result.rows.len(),
+            3,
+            "odd values are 1, 3, 5 -> 3 rows; got {} rows",
+            result.rows.len()
+        );
+    }
+
+    /// V313-08 — GREEN regression: simple UPDATE returns the affected
+    /// row count.
+    #[test]
+    fn green_v313_08_update_affected_rows_count() {
+        let mut engine = create_engine();
+        engine
+            .execute("CREATE TABLE t(a INTEGER)")
+            .expect("CREATE TABLE must succeed");
+        engine
+            .execute("INSERT INTO t VALUES (1), (2), (3)")
+            .expect("INSERT must succeed");
+        let result = engine
+            .execute("UPDATE t SET a=99")
+            .expect("UPDATE must succeed");
+        assert_eq!(result.rows.len(), 0, "UPDATE returns no rows");
+        assert_eq!(
+            result.affected_rows, 3,
+            "UPDATE must report 3 affected rows"
+        );
+    }
 }

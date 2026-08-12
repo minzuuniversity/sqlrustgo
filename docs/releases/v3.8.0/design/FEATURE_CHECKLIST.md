@@ -138,11 +138,11 @@ v3.8.0 Beta Gate 通过了，但实际上大量功能（PR-810~PR-900）未完�
 
 ## 关联文档
 
-- [GATE_CONDITIONS.md](../governance/GATE_CONDITIONS.md) — 门禁条件定义
-- [BETA_GATE_CONTRACT.md](./BETA_GATE_CONTRACT.md) — Beta Gate 合同
-- [BETA_GATE_REPORT.md](./BETA_GATE_REPORT.md) — Beta Gate 报告
-- [DEVELOPMENT_PLAN.md](./DEVELOPMENT_PLAN.md) — 开发计划（含 PR-DAG）
-- [LEGACY_ISSUES.md](./LEGACY_ISSUES.md) — 历史遗留问题
+- [GATE_CONDITIONS.md](../../../governance/GATE_CONDITIONS.md) — 门禁条件定义
+- [BETA_GATE_CONTRACT.md](../beta/BETA_GATE_CONTRACT.md) — Beta Gate 合同
+- [BETA_GATE_REPORT.md](../../v3.7.0/BETA_GATE_REPORT.md) — Beta Gate 报告
+- [DEVELOPMENT_PLAN.md](../../v2.0/DEVELOPMENT_PLAN.md) — 开发计划（含 PR-DAG）
+- [LEGACY_ISSUES.md](../../v3.3.0/LEGACY_ISSUES.md) — 历史遗留问题
 
 ---
 

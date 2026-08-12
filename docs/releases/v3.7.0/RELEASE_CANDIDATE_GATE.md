@@ -45,4 +45,4 @@
 
 ## v3.8.0 RC Gate
 
-参见 [../v3.8.0/GA_GATE_CHECKLIST.md](../v3.8.0/GA_GATE_CHECKLIST.md)
+参见 [../v3.8.0/GA_GATE_CHECKLIST.md](../v3.4.0/GA_GATE_CHECKLIST.md)

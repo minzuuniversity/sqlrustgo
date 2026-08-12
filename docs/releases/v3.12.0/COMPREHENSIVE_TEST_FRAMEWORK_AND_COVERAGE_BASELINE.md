@@ -179,7 +179,7 @@ timeout 120 cargo llvm-cov \
 | TPC-H SF=10 | 数据集路径和导入脚本 | dry run / subset | 22 query duration + memory | 趋势对比，不设不现实 QPS |
 | Sysbench OLTP | schema smoke | point-select/read-write smoke | latency/QPS baseline | 和历史基线比较 |
 | Bulk-load | row-count smoke | SF=1 import | SF=10 import + memory cap | duration/hash trend |
-| RAG/vector | fixed top-k fixture | rebuild + query latency | hybrid retrieval benchmark | GMP 内审问题集稳定性 |
+| RAG/vector | fixed top-k fixture | rebuild + query 再次检查，评审所有 open ISSUE，给出整改要求，或者给出结论后关闭（如果达到关闭的要求）latency | hybrid retrieval benchmark | GMP 内审问题集稳定性 |
 | Graph projection | node/edge count | depth<=3 query | path latency and correctness | evidence bundle trace |
 | SOAK | 不跑 | 24h smoke | 72h/168h | 0 crash、hash-chain 不断裂 |
 

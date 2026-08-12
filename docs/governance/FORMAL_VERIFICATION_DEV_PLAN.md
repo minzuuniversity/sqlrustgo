@@ -248,7 +248,7 @@ formal_verification tool 运行
 ---
 
 > **References**:
-> - [E2E Workflow](docs/governance/FORMAL_VERIFICATION_E2E.md)
+> - [E2E Workflow](FORMAL_VERIFICATION_E2E.md)
 > - [G-02 Proof Registry](http://192.168.0.252:3000/openclaw/sqlrustgo/issues/128)
-> - [Proof Files](docs/proof/)
-> - [Gate Scripts](scripts/gate/check_proof.sh)
+> - Proof Files
+> - [Gate Scripts](../../scripts/gate/check_proof.sh)

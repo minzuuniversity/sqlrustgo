@@ -392,5 +392,22 @@ fn main() -> Result<()> {
 
     // Hold the server handle until exit.
     drop(handle);
+
+    // STRICT PROOF MODE (ADR-008 P16 / AFP Type B): fail-explicit exit.
+    // The runner must NOT mask regressions by exiting 0 when fail_count > 0.
+    // If any surface ended in `fail`, surface that explicitly in the exit
+    // code so gate scripts that pipe through `set -e` actually trip.
+    if fail_count > 0 {
+        eprintln!(
+            "compat-runner: FAIL-EXPLICIT exit — {} surface(s) in `fail` decision (pass={} unsupported={} deferred={})",
+            fail_count, pass_count, unsup_count, deferred_count
+        );
+        eprintln!(
+            "compat-runner: see {} for per-row disposition",
+            DISPOSITION_PATH
+        );
+        std::process::exit(1);
+    }
+
     Ok(())
 }

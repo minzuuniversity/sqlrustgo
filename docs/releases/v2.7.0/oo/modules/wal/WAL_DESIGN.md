@@ -120,7 +120,7 @@ pub enum EntryType {
 ## 六、相关文档
 
 - [ARCHITECTURE_V2.7.md](../../architecture/ARCHITECTURE_V2.7.md)
-- [STABILITY_REPORT.md](../../STABILITY_REPORT.md)
+- [STABILITY_REPORT.md](../../../STABILITY_REPORT.md)
 
 ---
 
