@@ -645,6 +645,12 @@ pub struct ColumnDefinition {
     /// semantics. `None` (default) means no length cap.
     #[serde(default)]
     pub char_max_length: Option<usize>,
+    /// Optional column-level collation hint (e.g. `Some("NOCASE")`).
+    /// V4077 / Issue #4077: surfaced so EXCEPT/INTERSECT executors can
+    /// perform collation-aware row comparison on text columns. Default
+    /// `None` means binary (case-sensitive) comparison.
+    #[serde(default)]
+    pub collation: Option<String>,
 }
 
 impl ColumnDefinition {
@@ -655,6 +661,7 @@ impl ColumnDefinition {
             nullable: false,
             primary_key: false,
             char_max_length: None,
+            collation: None,
         }
     }
 }

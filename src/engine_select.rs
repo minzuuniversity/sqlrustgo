@@ -246,6 +246,7 @@ impl<S: StorageEngine + 'static> ExecutionEngine<S> {
                             nullable: true,
                             primary_key: false,
                             char_max_length: None,
+                            collation: None,
                         });
                 }
                 Some((sub_result.rows, table_info))
@@ -306,6 +307,7 @@ impl<S: StorageEngine + 'static> ExecutionEngine<S> {
                         nullable: true,
                         primary_key: false,
                         char_max_length: None,
+                        collation: None,
                     })
                     .collect(),
                 foreign_keys: Vec::new(),
@@ -1579,6 +1581,7 @@ impl<S: StorageEngine + 'static> ExecutionEngine<S> {
                             nullable: true,
                             primary_key: false,
                             char_max_length: None,
+                            collation: None,
                         });
                 }
                 DERIVED_RESULTS.with(|cell| {
@@ -2025,6 +2028,7 @@ impl<S: StorageEngine + 'static> ExecutionEngine<S> {
                     nullable: col.nullable,
                     primary_key: col.primary_key,
                     char_max_length: col.char_max_length,
+                    collation: col.collation.clone(),
                 });
             }
             acc_columns = new_columns;
@@ -2375,6 +2379,7 @@ impl<S: StorageEngine + 'static> ExecutionEngine<S> {
                         nullable: col.nullable,
                         primary_key: col.primary_key,
                         char_max_length: col.char_max_length,
+                        collation: col.collation.clone(),
                     });
                 }
                 let combined_schema = TableInfo {
