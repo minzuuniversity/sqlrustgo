@@ -371,7 +371,10 @@ mod corpus_unit_tests {
         let content = "-- === IGNORE ===\n\
                        -- === CASE: never_runs\nSELECT 1;\n";
         let results = corpus.parse_and_execute(content);
-        assert!(results.is_empty(), "IGNORE marker must produce empty results");
+        assert!(
+            results.is_empty(),
+            "IGNORE marker must produce empty results"
+        );
     }
 
     #[test]
@@ -478,7 +481,10 @@ mod corpus_unit_tests {
         let mut corpus = SqlCorpus::new(PathBuf::from("/tmp/anywhere"));
         let content = "CREATE TABLE no_cases (id INT);\nINSERT INTO no_cases VALUES (1);\n";
         let results = corpus.parse_and_execute(content);
-        assert!(results.is_empty(), "SQL without CASE markers yields no cases");
+        assert!(
+            results.is_empty(),
+            "SQL without CASE markers yields no cases"
+        );
     }
 
     #[test]
@@ -585,7 +591,11 @@ mod corpus_unit_tests {
         assert_eq!(results.len(), 1);
         let r = &results[0];
         // WHERE id > 1 returns Bob (2) and Carol (3).
-        assert!(r.success, "select with where must succeed: {:?}", r.error_message);
+        assert!(
+            r.success,
+            "select with where must succeed: {:?}",
+            r.error_message
+        );
         assert_eq!(r.rows_returned, 2);
     }
 
@@ -1092,10 +1102,15 @@ mod corpus_unit_tests {
         let results = corpus.parse_and_execute(content);
         assert_eq!(results.len(), 1);
         let r = &results[0];
-        assert!(!r.success, "expected_rows=0 but SELECT returns 1 → mismatch");
+        assert!(
+            !r.success,
+            "expected_rows=0 but SELECT returns 1 → mismatch"
+        );
         let msg = r.error_message.as_deref().unwrap_or("");
-        assert!(msg.contains("Expected") && msg.contains("got"),
-                "error message must explain the mismatch, got: {msg}");
+        assert!(
+            msg.contains("Expected") && msg.contains("got"),
+            "error message must explain the mismatch, got: {msg}"
+        );
     }
 
     #[test]
@@ -1130,7 +1145,8 @@ mod corpus_unit_tests {
     #[test]
     fn test_corpus_parse_and_execute_setup_with_isolated_blank_lines() {
         let mut corpus = SqlCorpus::new(PathBuf::from("/tmp/anywhere"));
-        let content = "-- === SETUP ===\n\n\nCREATE TABLE t (id INT);\n\nINSERT INTO t VALUES (1);\n\n\
+        let content =
+            "-- === SETUP ===\n\n\nCREATE TABLE t (id INT);\n\nINSERT INTO t VALUES (1);\n\n\
                        -- === CASE: blanks\nSELECT * FROM t;\n";
         let results = corpus.parse_and_execute(content);
         assert_eq!(results.len(), 1);

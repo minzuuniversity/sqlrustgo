@@ -1975,7 +1975,10 @@ pub struct CompressedWriter<'a, W: Write> {
 
 impl<'a, W: Write> CompressedWriter<'a, W> {
     pub fn new(inner: &'a mut W, use_compress: bool) -> Self {
-        Self { inner, use_compress }
+        Self {
+            inner,
+            use_compress,
+        }
     }
 
     /// Write one MySQL packet. When compression is enabled this compresses
