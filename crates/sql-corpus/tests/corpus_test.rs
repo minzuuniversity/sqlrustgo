@@ -153,6 +153,27 @@ fn test_sql_corpus_aggregates() {
     assert_eq!(results.failed, 0, "Aggregate tests had failures");
 }
 
+#[test]
+fn test_corpus_run_alias_operations_with_concat() {
+    let corpus_root = get_corpus_root();
+    let mut corpus = SqlCorpus::new(corpus_root.clone());
+    let _ = corpus.execute_file(&corpus_root.join("DML/SELECT/alias_operations.sql"));
+}
+
+#[test]
+fn test_corpus_run_cte_advanced_with_concat() {
+    let corpus_root = get_corpus_root();
+    let mut corpus = SqlCorpus::new(corpus_root.clone());
+    let _ = corpus.execute_file(&corpus_root.join("DML/SELECT/cte_advanced.sql"));
+}
+
+#[test]
+fn test_corpus_run_set_operations_with_concat() {
+    let corpus_root = get_corpus_root();
+    let mut corpus = SqlCorpus::new(corpus_root.clone());
+    let _ = corpus.execute_file(&corpus_root.join("DML/SELECT/set_operations.sql"));
+}
+
 // ============================================================================
 // SqlCorpus unit-level coverage tests (Issue #3943)
 // ============================================================================
