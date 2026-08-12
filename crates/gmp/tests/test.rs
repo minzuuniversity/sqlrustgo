@@ -259,3 +259,153 @@ fn test_hybrid_search_text_boost() {
         .iter()
         .any(|r| r.title.contains("Programming in Rust")));
 }
+
+// ============================================================================
+// VectorIndex coverage tests (Issue #3943)
+// ============================================================================
+
+#[test]
+fn test_vector_index_type_as_str_roundtrip() {
+    use sqlrustgo_gmp::vector_index::VectorIndexType;
+    for t in [VectorIndexType::Flat, VectorIndexType::Hnsw] {
+        let s = t.as_str();
+        assert_eq!(VectorIndexType::from_str(s), Some(t));
+    }
+    assert_eq!(VectorIndexType::from_str("invalid"), None);
+}
+
+#[test]
+fn test_vector_hash_deterministic_and_length() {
+    use sqlrustgo_gmp::vector_index::vector_hash;
+    let v1 = vec![0.1f32, 0.2, 0.3, 0.4];
+    let v2 = vec![0.1f32, 0.2, 0.3, 0.4];
+    let v3 = vec![0.5f32, 0.6, 0.7, 0.8];
+    let h1 = vector_hash(&v1);
+    let h2 = vector_hash(&v2);
+    let h3 = vector_hash(&v3);
+    assert_eq!(h1, h2, "same input must yield same hash");
+    assert_ne!(h1, h3, "different input must yield different hash");
+    assert_eq!(h1.len(), 64, "SHA-256 hex digest must be 64 chars");
+}
+
+#[test]
+fn test_vector_index_meta_from_row() {
+    use sqlrustgo_gmp::vector_index::VectorIndexMeta;
+    use sqlrustgo_types::Value;
+    let row = vec![
+        Value::Integer(7),             // id
+        Value::Text("flat".into()),    // index_type
+        Value::Text("test-model".into()), // model_name
+        Value::Integer(384),           // dimension
+        Value::Integer(12345),         // embedding_count
+        Value::Integer(100),           // built_at
+        Value::Null,                   // index_path (NULL)
+    ];
+    let meta = VectorIndexMeta::from_row(&row).expect("row should parse");
+    assert_eq!(meta.id, 7);
+    assert_eq!(meta.dimension, 384);
+    assert_eq!(meta.embedding_count, 12345);
+    assert_eq!(meta.built_at, 100);
+    assert_eq!(meta.index_path, None);
+}
+
+#[test]
+fn test_vector_index_meta_from_row_bad_type() {
+    use sqlrustgo_gmp::vector_index::VectorIndexMeta;
+    use sqlrustgo_types::Value;
+    // First field must be Integer; Text should fail.
+    let row = vec![Value::Text("not int".into())];
+    assert!(VectorIndexMeta::from_row(&row).is_none());
+}
+
+#[test]
+fn test_create_vector_index_table_then_rebuild() {
+    use sqlrustgo_gmp::vector_index::{
+        create_vector_index_table, get_latest_index, rebuild_flat_index, ChunkEmbedding,
+    };
+    let mut storage = MemoryStorage::new();
+    create_vector_index_table(&mut storage).expect("create_vector_index_table");
+
+    // No index yet — get_latest_index should return None.
+    let none = get_latest_index(&storage).expect("get_latest_index ok");
+    assert!(none.is_none());
+
+    // Build a tiny flat index from one embedding.
+    let chunks = vec![ChunkEmbedding {
+        chunk_id: 1,
+        doc_id: 42,
+        vector: vec![0.1f32, 0.2, 0.3, 0.4, 0.5],
+        model_name: "test-model".to_string(),
+        dimension: 5,
+        vector_hash: "abc123".to_string(),
+        updated_at: 100,
+    }];
+    let _report = rebuild_flat_index(&mut storage, "test-model")
+        .expect("rebuild_flat_index");
+    // 0 chunks in storage so embedding_count == 0; build still records
+    // the metadata entry. get_latest_index should return Some.
+    let loaded = get_latest_index(&storage).expect("get_latest_index ok");
+    assert!(loaded.is_some(), "rebuild must record metadata even with 0 chunks");
+    let _ = chunks; // suppress unused
+}
+
+#[test]
+fn test_flat_index_build_and_search() {
+    use sqlrustgo_gmp::vector_index::{vector_hash, ChunkEmbedding, FlatIndex};
+    let chunks = vec![
+        ChunkEmbedding {
+            chunk_id: 1,
+            doc_id: 100,
+            vector: vec![1.0f32, 0.0, 0.0],
+            model_name: "m".into(),
+            dimension: 3,
+            vector_hash: "h1".into(),
+            updated_at: 0,
+        },
+        ChunkEmbedding {
+            chunk_id: 2,
+            doc_id: 200,
+            vector: vec![0.0f32, 1.0, 0.0],
+            model_name: "m".into(),
+            dimension: 3,
+            vector_hash: "h2".into(),
+            updated_at: 0,
+        },
+        ChunkEmbedding {
+            chunk_id: 3,
+            doc_id: 300,
+            vector: vec![0.0f32, 0.0, 1.0],
+            model_name: "m".into(),
+            dimension: 3,
+            vector_hash: "h3".into(),
+            updated_at: 0,
+        },
+    ];
+    let idx = FlatIndex::build(&chunks);
+    // Query identical to first chunk → top hit must be chunk_id 1.
+    let hits = idx.search(&[1.0f32, 0.0, 0.0], 1);
+    assert_eq!(hits.len(), 1);
+    assert_eq!(hits[0].0, 1);
+    assert!((hits[0].1 - 1.0).abs() < 1e-5);
+    // Sanity: top_k larger than index returns all rows.
+    let all = idx.search(&[0.5f32, 0.5, 0.0], 5);
+    assert_eq!(all.len(), 3);
+    // hash helper is still usable for verification.
+    assert_eq!(vector_hash(&chunks[0].vector).len(), 64);
+}
+
+// ============================================================================
+// Chunk coverage tests (Issue #3943)
+// ============================================================================
+
+#[test]
+fn test_chunk_text_extraction_edge_cases() {
+    use sqlrustgo_gmp::chunk::{chunk_text, ChunkConfig};
+    let cfg = ChunkConfig::default();
+    let empty = chunk_text("", &cfg);
+    assert!(empty.is_empty(), "empty input must produce no chunks");
+    let ws_only = chunk_text("   \n\t  ", &cfg);
+    assert!(ws_only.is_empty(), "whitespace-only must produce no chunks");
+    let single = chunk_text("hello world", &cfg);
+    assert!(!single.is_empty());
+}
