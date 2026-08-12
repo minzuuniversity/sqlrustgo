@@ -566,6 +566,7 @@ pub fn build_combined_schema(
         check_constraints: vec![],
         partition_info: None,
         compression: None,
+        collations: std::collections::HashMap::new(),
     })
 }
 
@@ -594,6 +595,7 @@ pub fn build_multi_table_combined_schema(infos: &[TableInfo], prefixes: &[String
         check_constraints: vec![],
         partition_info: None,
         compression: None,
+        collations: std::collections::HashMap::new(),
     }
 }
 
@@ -708,6 +710,7 @@ pub fn build_aggregate_schema(
         check_constraints: vec![],
         partition_info: None,
         compression: None,
+        collations: std::collections::HashMap::new(),
     })
 }
 

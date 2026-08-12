@@ -209,6 +209,7 @@ fn test_aggregate_delegation() {
                 nullable: false,
                 primary_key: false,
                 char_max_length: None,
+            collation: None,
             },
             ColumnDefinition {
                 name: "SUM(l_quantity)".to_string(),
@@ -216,12 +217,14 @@ fn test_aggregate_delegation() {
                 nullable: false,
                 primary_key: false,
                 char_max_length: None,
+            collation: None,
             },
         ],
         foreign_keys: vec![],
         unique_constraints: vec![],
         check_constraints: vec![],
         compression: None,
+        collations: std::collections::HashMap::new(),
         partition_info: None,
     };
 
@@ -863,6 +866,7 @@ fn test_identifier_delegation() {
             nullable: false,
             primary_key: true,
             char_max_length: None,
+        collation: None,
         },
         ColumnDefinition {
             name: "t.name".to_string(),
@@ -870,6 +874,7 @@ fn test_identifier_delegation() {
             nullable: false,
             primary_key: false,
             char_max_length: None,
+        collation: None,
         },
         ColumnDefinition {
             name: "a_join_b.a.tag".to_string(),
@@ -877,6 +882,7 @@ fn test_identifier_delegation() {
             nullable: false,
             primary_key: false,
             char_max_length: None,
+        collation: None,
         },
     ];
     let table_info = TableInfo {
@@ -886,6 +892,7 @@ fn test_identifier_delegation() {
         unique_constraints: vec![],
         check_constraints: vec![],
         compression: None,
+        collations: std::collections::HashMap::new(),
         partition_info: None,
     };
     let row: Vec<Value> = vec![
@@ -949,6 +956,7 @@ fn test_identifier_known_outputs() {
             nullable: false,
             primary_key: true,
             char_max_length: None,
+        collation: None,
         },
         ColumnDefinition {
             name: "user_name".to_string(),
@@ -956,6 +964,7 @@ fn test_identifier_known_outputs() {
             nullable: false,
             primary_key: false,
             char_max_length: None,
+        collation: None,
         },
     ];
     let row: Vec<Value> = vec![Value::Integer(7), Value::Text("bob".into())];
@@ -1003,6 +1012,7 @@ fn test_find_column_index_known_outputs() {
             nullable: false,
             primary_key: true,
             char_max_length: None,
+        collation: None,
         },
         ColumnDefinition {
             name: "t.col".to_string(),
@@ -1010,6 +1020,7 @@ fn test_find_column_index_known_outputs() {
             nullable: false,
             primary_key: false,
             char_max_length: None,
+        collation: None,
         },
         ColumnDefinition {
             name: "a_join_b.a.deep".to_string(),
@@ -1017,6 +1028,7 @@ fn test_find_column_index_known_outputs() {
             nullable: false,
             primary_key: false,
             char_max_length: None,
+        collation: None,
         },
     ];
 

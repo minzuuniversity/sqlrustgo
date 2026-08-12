@@ -212,6 +212,7 @@ impl<S: StorageEngine + 'static> ExecutionEngine<S> {
                     check_constraints: Vec::new(),
                     partition_info: None,
                     compression: None,
+                    collations: std::collections::HashMap::new(),
                 };
                 for col in &subq.columns {
                     let col_name = col.alias.clone().unwrap_or_else(|| col.name.clone());
@@ -315,6 +316,7 @@ impl<S: StorageEngine + 'static> ExecutionEngine<S> {
                 check_constraints: Vec::new(),
                 partition_info: None,
                 compression: None,
+                collations: std::collections::HashMap::new(),
             };
             (rows, info)
         } else if select.table.is_empty() {
@@ -326,6 +328,7 @@ impl<S: StorageEngine + 'static> ExecutionEngine<S> {
                 check_constraints: Vec::new(),
                 partition_info: None,
                 compression: None,
+                collations: std::collections::HashMap::new(),
             };
             (vec![Vec::new()], empty_schema)
         } else {
@@ -1548,6 +1551,7 @@ impl<S: StorageEngine + 'static> ExecutionEngine<S> {
                     check_constraints: Vec::new(),
                     partition_info: None,
                     compression: None,
+                    collations: std::collections::HashMap::new(),
                 };
                 for col in &subq.columns {
                     let col_name = col.alias.clone().unwrap_or_else(|| col.name.clone());
@@ -2390,6 +2394,7 @@ impl<S: StorageEngine + 'static> ExecutionEngine<S> {
                     check_constraints: vec![],
                     partition_info: None,
                     compression: None,
+                    collations: std::collections::HashMap::new(),
                 };
                 return Ok((cross, combined_schema));
             }

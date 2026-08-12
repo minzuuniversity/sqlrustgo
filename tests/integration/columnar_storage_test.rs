@@ -28,6 +28,7 @@ fn create_test_table_info() -> TableInfo {
                 nullable: false,
                 primary_key: false,
                 char_max_length: None,
+                collation: None,
             },
             ColumnDefinition {
                 name: "name".to_string(),
@@ -35,6 +36,7 @@ fn create_test_table_info() -> TableInfo {
                 nullable: true,
                 primary_key: false,
                 char_max_length: None,
+                collation: None,
             },
             ColumnDefinition {
                 name: "value".to_string(),
@@ -42,6 +44,7 @@ fn create_test_table_info() -> TableInfo {
                 nullable: true,
                 primary_key: false,
                 char_max_length: None,
+                collation: None,
             },
             ColumnDefinition {
                 name: "active".to_string(),
@@ -49,6 +52,7 @@ fn create_test_table_info() -> TableInfo {
                 nullable: false,
                 primary_key: false,
                 char_max_length: None,
+                collation: None,
             },
         ],
         foreign_keys: vec![],

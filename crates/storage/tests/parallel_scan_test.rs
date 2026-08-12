@@ -22,11 +22,13 @@ fn make_test_storage() -> (FileStorage, TempDir) {
             nullable: false,
             primary_key: true,
             char_max_length: None,
+        collation: None,
         }],
         foreign_keys: vec![],
         unique_constraints: vec![],
         check_constraints: vec![],
         compression: None,
+        collations: std::collections::HashMap::new(),
         partition_info: None,
     };
     storage.create_table(&table_info).expect("create table");

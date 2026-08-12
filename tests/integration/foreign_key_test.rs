@@ -364,12 +364,14 @@ fn test_fk_concurrent_insert_simulation() {
                     nullable: false,
                     primary_key: false,
                     char_max_length: None,
+                    collation: None,
                 }],
                 foreign_keys: vec![],
                 unique_constraints: vec![],
                 check_constraints: vec![],
                 compression: None,
                 partition_info: None,
+                collations: std::collections::HashMap::new(),
             })
             .unwrap();
 
@@ -383,6 +385,7 @@ fn test_fk_concurrent_insert_simulation() {
                         nullable: false,
                         primary_key: false,
                         char_max_length: None,
+                        collation: None,
                     },
                     ColumnDefinition {
                         name: "user_id".to_string(),
@@ -395,6 +398,7 @@ fn test_fk_concurrent_insert_simulation() {
                             referenced_column: "id".to_string(),
                             on_delete: None,
                             on_update: None,
+                            collation: None,
                         }),
                     },
                 ],
@@ -403,6 +407,7 @@ fn test_fk_concurrent_insert_simulation() {
                 check_constraints: vec![],
                 compression: None,
                 partition_info: None,
+                collations: std::collections::HashMap::new(),
             })
             .unwrap();
     }
@@ -459,12 +464,14 @@ fn test_fk_large_dataset_validation() {
                     nullable: false,
                     primary_key: false,
                     char_max_length: None,
+                    collation: None,
                 }],
                 foreign_keys: vec![],
                 unique_constraints: vec![],
                 check_constraints: vec![],
                 compression: None,
                 partition_info: None,
+                collations: std::collections::HashMap::new(),
             })
             .unwrap();
 
@@ -478,6 +485,7 @@ fn test_fk_large_dataset_validation() {
                         nullable: false,
                         primary_key: false,
                         char_max_length: None,
+                        collation: None,
                     },
                     ColumnDefinition {
                         name: "category_id".to_string(),
@@ -490,6 +498,7 @@ fn test_fk_large_dataset_validation() {
                             referenced_column: "id".to_string(),
                             on_delete: None,
                             on_update: None,
+                            collation: None,
                         }),
                     },
                 ],
@@ -498,6 +507,7 @@ fn test_fk_large_dataset_validation() {
                 check_constraints: vec![],
                 compression: None,
                 partition_info: None,
+                collations: std::collections::HashMap::new(),
             })
             .unwrap();
     }

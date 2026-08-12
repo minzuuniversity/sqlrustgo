@@ -38,9 +38,11 @@ fn setup_test_storage(
             data_type: "INTEGER".to_string(),
             nullable: false,
             primary_key: true,
+            collation: None,
         }],
         foreign_keys: vec![],
         unique_constraints: vec![],
+        collations: std::collections::HashMap::new(),
     };
     storage.create_table(&table_info).unwrap();
 
@@ -279,9 +281,11 @@ fn bench_multi_table_insert(c: &mut Criterion) {
                         data_type: "INTEGER".to_string(),
                         nullable: false,
                         primary_key: true,
+                        collation: None,
                     }],
                     foreign_keys: vec![],
                     unique_constraints: vec![],
+                    collations: std::collections::HashMap::new(),
                 };
                 let _ = storage.create_table(&table_info);
             }

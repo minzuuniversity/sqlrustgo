@@ -34,6 +34,7 @@ fn make_table_info() -> TableInfo {
         unique_constraints: vec![],
         check_constraints: vec![],
         compression: None,
+        collations: std::collections::HashMap::new(),
         partition_info: None,
     }
 }

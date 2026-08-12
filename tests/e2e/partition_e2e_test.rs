@@ -51,6 +51,7 @@ fn test_storage_partition_info_field() {
             partition_type: PartitionType::Range,
             column: "id".to_string(),
             boundaries: vec![Value::Integer(0), Value::Integer(100)],
+            collations: std::collections::HashMap::new(),
         }),
     };
 
@@ -77,6 +78,7 @@ fn test_storage_partition_type_variants() {
             partition_type: PartitionType::Range,
             column: "id".to_string(),
             boundaries: vec![],
+            collations: std::collections::HashMap::new(),
         }),
     };
     assert_eq!(
@@ -96,6 +98,7 @@ fn test_storage_partition_type_variants() {
             partition_type: PartitionType::List,
             column: "id".to_string(),
             boundaries: vec![],
+            collations: std::collections::HashMap::new(),
         }),
     };
     assert_eq!(
@@ -115,6 +118,7 @@ fn test_storage_partition_type_variants() {
             partition_type: PartitionType::Hash,
             column: "id".to_string(),
             boundaries: vec![],
+            collations: std::collections::HashMap::new(),
         }),
     };
     assert_eq!(

@@ -36,6 +36,7 @@ mod tests {
                             nullable: false,
                             primary_key: false,
                             char_max_length: None,
+                            collation: None,
                         },
                         sqlrustgo_storage::engine::ColumnDefinition {
                             name: "customer_id".to_string(),
@@ -43,6 +44,7 @@ mod tests {
                             nullable: false,
                             primary_key: false,
                             char_max_length: None,
+                            collation: None,
                         },
                         sqlrustgo_storage::engine::ColumnDefinition {
                             name: "amount".to_string(),
@@ -50,6 +52,7 @@ mod tests {
                             nullable: false,
                             primary_key: false,
                             char_max_length: None,
+                            collation: None,
                         },
                         sqlrustgo_storage::engine::ColumnDefinition {
                             name: "status".to_string(),
@@ -57,6 +60,7 @@ mod tests {
                             nullable: false,
                             primary_key: false,
                             char_max_length: None,
+                            collation: None,
                         },
                     ],
                     foreign_keys: vec![],
@@ -64,6 +68,7 @@ mod tests {
                     check_constraints: vec![],
                     compression: None,
                     partition_info: None,
+                    collations: std::collections::HashMap::new(),
                 })
                 .unwrap();
 
@@ -77,6 +82,7 @@ mod tests {
                             nullable: false,
                             primary_key: false,
                             char_max_length: None,
+                            collation: None,
                         },
                         sqlrustgo_storage::engine::ColumnDefinition {
                             name: "name".to_string(),
@@ -84,6 +90,7 @@ mod tests {
                             nullable: false,
                             primary_key: false,
                             char_max_length: None,
+                            collation: None,
                         },
                         sqlrustgo_storage::engine::ColumnDefinition {
                             name: "region".to_string(),
@@ -91,6 +98,7 @@ mod tests {
                             nullable: false,
                             primary_key: false,
                             char_max_length: None,
+                            collation: None,
                         },
                     ],
                     foreign_keys: vec![],
@@ -98,6 +106,7 @@ mod tests {
                     check_constraints: vec![],
                     compression: None,
                     partition_info: None,
+                    collations: std::collections::HashMap::new(),
                 })
                 .unwrap();
 
@@ -163,6 +172,7 @@ mod tests {
                         nullable: false,
                         primary_key: false,
                         char_max_length: None,
+                        collation: None,
                     },
                     sqlrustgo_storage::engine::ColumnDefinition {
                         name: "value".to_string(),
@@ -170,6 +180,7 @@ mod tests {
                         nullable: false,
                         primary_key: false,
                         char_max_length: None,
+                        collation: None,
                     },
                 ],
                 foreign_keys: vec![],
@@ -177,6 +188,7 @@ mod tests {
                 check_constraints: vec![],
                 compression: None,
                 partition_info: None,
+                collations: std::collections::HashMap::new(),
             })
             .unwrap();
 
@@ -263,6 +275,7 @@ mod tests {
                         nullable: false,
                         primary_key: false,
                         char_max_length: None,
+                        collation: None,
                     },
                     sqlrustgo_storage::engine::ColumnDefinition {
                         name: "value".to_string(),
@@ -270,6 +283,7 @@ mod tests {
                         nullable: false,
                         primary_key: false,
                         char_max_length: None,
+                        collation: None,
                     },
                 ],
                 foreign_keys: vec![],
@@ -277,6 +291,7 @@ mod tests {
                 check_constraints: vec![],
                 compression: None,
                 partition_info: None,
+                collations: std::collections::HashMap::new(),
             })
             .unwrap();
 
@@ -325,6 +340,7 @@ mod tests {
                         nullable: false,
                         primary_key: false,
                         char_max_length: None,
+                        collation: None,
                     },
                     sqlrustgo_storage::engine::ColumnDefinition {
                         name: "account".to_string(),
@@ -332,6 +348,7 @@ mod tests {
                         nullable: false,
                         primary_key: false,
                         char_max_length: None,
+                        collation: None,
                     },
                     sqlrustgo_storage::engine::ColumnDefinition {
                         name: "amount".to_string(),
@@ -339,6 +356,7 @@ mod tests {
                         nullable: false,
                         primary_key: false,
                         char_max_length: None,
+                        collation: None,
                     },
                 ],
                 foreign_keys: vec![],
@@ -346,6 +364,7 @@ mod tests {
                 check_constraints: vec![],
                 compression: None,
                 partition_info: None,
+                collations: std::collections::HashMap::new(),
             })
             .unwrap();
 

@@ -2420,7 +2420,6 @@ fn parse_handshake_response(packet: &Packet) -> MySqlResult<HandshakeResponse> {
 }
 
 mod load_data;
-pub mod metrics_endpoint;
 
 #[allow(dead_code)]
 mod col_type {
@@ -4270,7 +4269,7 @@ fn do_command_loop<S: Read + Write + DrainWrites>(
                     // renderer reads the same singleton that the
                     // `/metrics` endpoint serves.
                     let query_type = statement_kind(&parsed);
-                    Metrics::global().record_query(query_type, std::time::Duration::from_millis(elapsed_ms));
+                    sqlrustgo_telemetry::GLOBAL_METRICS.record_query(query_type, std::time::Duration::from_millis(elapsed_ms));
                     match result {
                         Ok(r) if is_read_only.is_some() => {
                             // Extract real column names from the SQL
@@ -4603,7 +4602,7 @@ fn do_command_loop<S: Read + Write + DrainWrites>(
                 }
                 // V312-18e Issue #4021: record prepared-statement
                 // executions into the Prometheus counters as well.
-                Metrics::global().record_query(
+                sqlrustgo_telemetry::GLOBAL_METRICS.record_query(
                     "STMT_EXECUTE",
                     std::time::Duration::from_millis(elapsed_ms),
                 );
@@ -4690,11 +4689,11 @@ fn handle_connection(
     // V312-18e Issue #4021: feed the connection lifecycle into the
     // Prometheus singleton so `/metrics` exposes
     // `sqlrustgo_connections_active` / `sqlrustgo_connections_total`.
-    Metrics::global().connection_acquired();
+    sqlrustgo_telemetry::GLOBAL_METRICS.connection_acquired();
     let _guard = scopeguard::guard((), |_| {
         // Always decrement on exit, even on panic
         ACTIVE_CONNECTIONS.fetch_sub(1, Ordering::Relaxed);
-        Metrics::global().connection_released();
+        sqlrustgo_telemetry::GLOBAL_METRICS.connection_released();
     });
     stream
         .set_read_timeout(Some(std::time::Duration::from_secs(600)))

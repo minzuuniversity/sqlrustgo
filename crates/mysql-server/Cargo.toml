@@ -15,7 +15,6 @@ sqlrustgo-common = { path = "../common" }
 sqlrustgo-tools = { path = "../tools" }
 sqlrustgo-telemetry = { path = "../telemetry" }
 query-stats = { path = "../query-stats" }
-sqlrustgo-telemetry = { path = "../telemetry" }
 byteorder = "1"
 thiserror = "1"
 parking_lot.workspace = true
