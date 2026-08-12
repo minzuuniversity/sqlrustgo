@@ -2797,7 +2797,11 @@ fn send_result_set<W: Write>(
         // (1 OK packet, optionally +1 separate session_state_info packet
         // when status has 0x4000). Use `write_ok_packets` to emit them all
         // and advance seq once per packet.
-        seq = write_ok_packets(w, make_deprecate_eof_ok_packet(seq, 0, 0, 0x0002, 0, cap), seq)?;
+        seq = write_ok_packets(
+            w,
+            make_deprecate_eof_ok_packet(seq, 0, 0, 0x0002, 0, cap),
+            seq,
+        )?;
     }
     tracing::info!("send_result_set done: final_seq={}", seq);
     Ok(seq)
@@ -2891,7 +2895,11 @@ fn send_binary_result_set<W: Write>(
     } else {
         // V312-WIRE-5: see send_result_set for rationale. Vec<Packet> may
         // include a separate session_state_info packet after the OK.
-        seq = write_ok_packets(w, make_deprecate_eof_ok_packet(seq, 0, 0, 0x0002, 0, cap), seq)?;
+        seq = write_ok_packets(
+            w,
+            make_deprecate_eof_ok_packet(seq, 0, 0, 0x0002, 0, cap),
+            seq,
+        )?;
     }
     Ok(seq)
 }
@@ -3979,16 +3987,28 @@ fn do_command_loop<S: Read + Write + DrainWrites>(
                 // pymysql hang in recv() after sending COM_QUIT (Issue #SET-NAMES-HANG).
                 // V312-WIRE-5: write_ok_packets handles the optional
                 // session_state_info packet that may follow the OK.
-                seq = write_ok_packets(stream, make_ok_packet(seq, 0, 0, 0x0002, 0, cap, false), seq)?;
+                seq = write_ok_packets(
+                    stream,
+                    make_ok_packet(seq, 0, 0, 0x0002, 0, cap, false),
+                    seq,
+                )?;
                 *server_last_sent_seq = seq;
                 break;
             }
             packet_type::COM_PING => {
-                seq = write_ok_packets(stream, make_ok_packet(seq, 0, 0, 0x0002, 0, cap, false), seq)?;
+                seq = write_ok_packets(
+                    stream,
+                    make_ok_packet(seq, 0, 0, 0x0002, 0, cap, false),
+                    seq,
+                )?;
                 *server_last_sent_seq = seq;
             }
             packet_type::COM_INIT_DB => {
-                seq = write_ok_packets(stream, make_ok_packet(seq, 0, 0, 0x0002, 0, cap, false), seq)?;
+                seq = write_ok_packets(
+                    stream,
+                    make_ok_packet(seq, 0, 0, 0x0002, 0, cap, false),
+                    seq,
+                )?;
                 *server_last_sent_seq = seq;
             }
             packet_type::COM_QUERY => {
@@ -4045,13 +4065,21 @@ fn do_command_loop<S: Read + Write + DrainWrites>(
                             0
                         }
                     };
-                    seq = write_ok_packets(stream, make_ok_packet(seq, n, 0, 0x0002, 0, cap, false), seq)?;
+                    seq = write_ok_packets(
+                        stream,
+                        make_ok_packet(seq, n, 0, 0x0002, 0, cap, false),
+                        seq,
+                    )?;
                     *server_last_sent_seq = seq;
                     continue;
                 }
 
                 if q.is_empty() {
-                    seq = write_ok_packets(stream, make_ok_packet(seq, 0, 0, 0x0002, 0, cap, false), seq)?;
+                    seq = write_ok_packets(
+                        stream,
+                        make_ok_packet(seq, 0, 0, 0x0002, 0, cap, false),
+                        seq,
+                    )?;
                     *server_last_sent_seq = seq;
                     continue;
                 }
@@ -4073,7 +4101,11 @@ fn do_command_loop<S: Read + Write + DrainWrites>(
                     || lower_q.starts_with("settransaction")
                 {
                     tracing::info!("SET NOP: {}", q);
-                    seq = write_ok_packets(stream, make_ok_packet(seq, 0, 0, 0x0002, 0, cap, false), seq)?;
+                    seq = write_ok_packets(
+                        stream,
+                        make_ok_packet(seq, 0, 0, 0x0002, 0, cap, false),
+                        seq,
+                    )?;
                     *server_last_sent_seq = seq;
                     continue;
                 }
@@ -4131,7 +4163,11 @@ fn do_command_loop<S: Read + Write + DrainWrites>(
                                 if let Some(ref slow_log) = config.slow_query_log {
                                     slow_log.set_threshold_ms(ms);
                                 }
-                                seq = write_ok_packets(stream, make_ok_packet(seq, 0, 0, 0x0002, 0, cap, false), seq)?;
+                                seq = write_ok_packets(
+                                    stream,
+                                    make_ok_packet(seq, 0, 0, 0x0002, 0, cap, false),
+                                    seq,
+                                )?;
                             }
                             Err(err) => {
                                 make_err_packet(seq, 1232u16, "42000", err).write_to(stream)?;
@@ -4215,7 +4251,15 @@ fn do_command_loop<S: Read + Write + DrainWrites>(
                         Ok(r) => {
                             seq = write_ok_packets(
                                 stream,
-                                make_ok_packet(seq, r.affected_rows as u64, 0, 0x0002, 0, cap, false),
+                                make_ok_packet(
+                                    seq,
+                                    r.affected_rows as u64,
+                                    0,
+                                    0x0002,
+                                    0,
+                                    cap,
+                                    false,
+                                ),
                                 seq,
                             )?;
                             *server_last_sent_seq = seq;
@@ -4332,7 +4376,11 @@ fn do_command_loop<S: Read + Write + DrainWrites>(
                         seq = seq.wrapping_add(1);
                     }
                     if cap & capability::DEPRECATE_EOF != 0 {
-                        seq = write_ok_packets(stream, make_deprecate_eof_ok_packet(seq, 0, 0, 0x0002, 0, cap), seq)?;
+                        seq = write_ok_packets(
+                            stream,
+                            make_deprecate_eof_ok_packet(seq, 0, 0, 0x0002, 0, cap),
+                            seq,
+                        )?;
                         *server_last_sent_seq = seq;
                     } else {
                         make_eof_packet(seq, 0x0002).write_to(stream)?;
@@ -4390,7 +4438,11 @@ fn do_command_loop<S: Read + Write + DrainWrites>(
                         seq = write_column_def(stream, &col_name, "VARCHAR(255)", seq)?;
                     }
                     if cap & capability::DEPRECATE_EOF != 0 {
-                        seq = write_ok_packets(stream, make_deprecate_eof_ok_packet(seq, 0, 0, 0x0002, 0, cap), seq)?;
+                        seq = write_ok_packets(
+                            stream,
+                            make_deprecate_eof_ok_packet(seq, 0, 0, 0x0002, 0, cap),
+                            seq,
+                        )?;
                         *server_last_sent_seq = seq;
                     } else {
                         make_eof_packet(seq, 0x0002).write_to(stream)?;
@@ -4528,7 +4580,11 @@ fn do_command_loop<S: Read + Write + DrainWrites>(
             packet_type::COM_RESET_CONNECTION => {
                 tracing::info!("COM_RESET_CONNECTION from {}", addr);
                 ps_manager.reset();
-                seq = write_ok_packets(stream, make_ok_packet(seq, 0, 0, 0x0002, 0, cap, false), seq)?;
+                seq = write_ok_packets(
+                    stream,
+                    make_ok_packet(seq, 0, 0, 0x0002, 0, cap, false),
+                    seq,
+                )?;
                 *server_last_sent_seq = seq;
             }
             _ => {
