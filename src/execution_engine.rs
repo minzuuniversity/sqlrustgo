@@ -1401,7 +1401,7 @@ impl<S: StorageEngine + 'static> ExecutionEngine<S> {
             }
         } else {
             // DISTINCT: a row appears iff it appears on both sides; one copy.
-            for (row, _) in &left_counts {
+            for row in left_counts.keys() {
                 if right_counts.contains_key(row) {
                     out.push(row.clone());
                 }
@@ -1435,7 +1435,7 @@ impl<S: StorageEngine + 'static> ExecutionEngine<S> {
             }
         } else {
             // DISTINCT: a row is kept iff it appears in left and not in right.
-            for (row, _) in &left_counts {
+            for row in left_counts.keys() {
                 if !right_counts.contains_key(row) {
                     out.push(row.clone());
                 }
