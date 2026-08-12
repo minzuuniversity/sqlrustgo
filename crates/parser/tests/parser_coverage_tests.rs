@@ -2793,3 +2793,227 @@ fn test_parse_lock_table_share() {
     let result = parse("LOCK TABLE users IN SHARE MODE");
     let _ = result;
 }
+
+// ============ Date arithmetic functions ============
+
+#[test]
+fn test_parse_date_add() {
+    let result = parse("SELECT DATE_ADD('2024-01-01', INTERVAL 1 DAY)");
+    let _ = result;
+}
+
+#[test]
+fn test_parse_date_sub() {
+    let result = parse("SELECT DATE_SUB('2024-01-01', INTERVAL 1 MONTH)");
+    let _ = result;
+}
+
+#[test]
+fn test_parse_date_add_hours() {
+    let result = parse("SELECT DATE_ADD('2024-01-01', INTERVAL 5 HOUR)");
+    let _ = result;
+}
+
+// ============ Function call args ============
+
+#[test]
+fn test_parse_function_with_no_args() {
+    let result = parse("SELECT NOW()");
+    let _ = result;
+}
+
+#[test]
+fn test_parse_function_with_quoted_args() {
+    let result = parse("SELECT CONCAT('hello', 'world')");
+    let _ = result;
+}
+
+#[test]
+fn test_parse_function_with_subquery_arg() {
+    let result = parse("SELECT (SELECT MAX(id) FROM t) AS max_id");
+    let _ = result;
+}
+
+#[test]
+fn test_parse_function_with_distinct_arg() {
+    let result = parse("SELECT COUNT(DISTINCT id) FROM t");
+    let _ = result;
+}
+
+#[test]
+fn test_parse_function_with_star_arg() {
+    let result = parse("SELECT COUNT(*) FROM t");
+    let _ = result;
+}
+
+// ============ CAST variants ============
+
+#[test]
+fn test_parse_cast_as_varchar() {
+    let result = parse("SELECT CAST(x AS VARCHAR(50)) FROM t");
+    let _ = result;
+}
+
+#[test]
+fn test_parse_cast_as_text() {
+    let result = parse("SELECT CAST(x AS TEXT) FROM t");
+    let _ = result;
+}
+
+#[test]
+fn test_parse_cast_as_decimal() {
+    let result = parse("SELECT CAST(x AS DECIMAL(10, 2)) FROM t");
+    let _ = result;
+}
+
+#[test]
+fn test_parse_cast_as_date() {
+    let result = parse("SELECT CAST(x AS DATE) FROM t");
+    let _ = result;
+}
+
+// ============ BETWEEN ============
+
+#[test]
+fn test_parse_between() {
+    let result = parse("SELECT * FROM t WHERE age BETWEEN 18 AND 65");
+    let _ = result;
+}
+
+#[test]
+fn test_parse_not_between() {
+    let result = parse("SELECT * FROM t WHERE age NOT BETWEEN 18 AND 65");
+    let _ = result;
+}
+
+// ============ IN with values list ============
+
+#[test]
+fn test_parse_in_with_values() {
+    let result = parse("SELECT * FROM t WHERE id IN (1, 2, 3, 4, 5)");
+    let _ = result;
+}
+
+#[test]
+fn test_parse_not_in_with_values() {
+    let result = parse("SELECT * FROM t WHERE id NOT IN (1, 2, 3)");
+    let _ = result;
+}
+
+// ============ LIKE / ILIKE ============
+
+#[test]
+fn test_parse_like() {
+    let result = parse("SELECT * FROM t WHERE name LIKE 'A%'");
+    let _ = result;
+}
+
+#[test]
+fn test_parse_not_like() {
+    let result = parse("SELECT * FROM t WHERE name NOT LIKE '%z'");
+    let _ = result;
+}
+
+#[test]
+fn test_parse_ilike() {
+    let result = parse("SELECT * FROM t WHERE name ILIKE 'a%'");
+    let _ = result;
+}
+
+// ============ IN subquery ============
+
+#[test]
+fn test_parse_in_subquery_cov() {
+    let result = parse("SELECT * FROM t WHERE id IN (SELECT user_id FROM orders)");
+    let _ = result;
+}
+
+#[test]
+fn test_parse_in_with_nested_subquery() {
+    let result = parse("SELECT * FROM t WHERE id IN (SELECT user_id FROM orders WHERE total > 100)");
+    let _ = result;
+}
+
+// ============ EXISTS / NOT EXISTS ============
+
+#[test]
+fn test_parse_exists_in_where() {
+    let result = parse("SELECT * FROM t WHERE EXISTS (SELECT 1 FROM s WHERE s.t_id = t.id)");
+    let _ = result;
+}
+
+#[test]
+fn test_parse_not_exists_in_where() {
+    let result = parse("SELECT * FROM t WHERE NOT EXISTS (SELECT 1 FROM s)");
+    let _ = result;
+}
+
+// ============ ANY / ALL ============
+
+#[test]
+fn test_parse_any_with_subquery() {
+    let result = parse("SELECT * FROM t WHERE id > ANY (SELECT id FROM s)");
+    let _ = result;
+}
+
+#[test]
+fn test_parse_all_with_subquery() {
+    let result = parse("SELECT * FROM t WHERE id > ALL (SELECT id FROM s)");
+    let _ = result;
+}
+
+// ============ ARRAY ============
+
+#[test]
+fn test_parse_array_constructor() {
+    let result = parse("SELECT ARRAY[1, 2, 3]");
+    let _ = result;
+}
+
+#[test]
+fn test_parse_array_index() {
+    let result = parse("SELECT arr[1] FROM t");
+    let _ = result;
+}
+
+// ============ JSON constructors ============
+
+#[test]
+fn test_parse_json_object_constructor() {
+    let result = parse("SELECT JSON_OBJECT('key', 'value')");
+    let _ = result;
+}
+
+#[test]
+fn test_parse_json_array_constructor() {
+    let result = parse("SELECT JSON_ARRAY(1, 2, 3)");
+    let _ = result;
+}
+
+// ============ Interval ============
+
+#[test]
+fn test_parse_interval_expression() {
+    let result = parse("SELECT INTERVAL '1' DAY");
+    let _ = result;
+}
+
+#[test]
+fn test_parse_interval_year_month() {
+    let result = parse("SELECT INTERVAL '1' YEAR");
+    let _ = result;
+}
+
+// ============ GROUPING / GROUPING_ID ============
+
+#[test]
+fn test_parse_grouping() {
+    let result = parse("SELECT a, b, GROUPING(a) FROM t GROUP BY ROLLUP(a, b)");
+    let _ = result;
+}
+
+#[test]
+fn test_parse_grouping_id() {
+    let result = parse("SELECT GROUPING_ID(a, b) FROM t GROUP BY a, b");
+    let _ = result;
+}
