@@ -1,6 +1,8 @@
 # name: replace_into_complex_unsupported
 # expect: PASS
-CREATE TABLE t (id INT PRIMARY KEY);
-CREATE TABLE t2 (id INT PRIMARY KEY);
-INSERT INTO t2 VALUES (1);
-REPLACE INTO t SELECT * FROM t2;
+DROP TABLE IF EXISTS replace_into_dst;
+DROP TABLE IF EXISTS replace_into_src;
+CREATE TABLE replace_into_dst (id INT PRIMARY KEY);
+CREATE TABLE replace_into_src (id INT PRIMARY KEY);
+INSERT INTO replace_into_src VALUES (1);
+REPLACE INTO replace_into_dst SELECT * FROM replace_into_src;
