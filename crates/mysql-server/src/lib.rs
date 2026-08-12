@@ -14,6 +14,7 @@ use sqlrustgo_storage::{
     BinaryTableStorage, BoxStorageEngine, CheckpointManager, FileStorage, MemoryStorage,
     ParallelWalStorage, StorageEngine, WalStorage,
 };
+use sqlrustgo_telemetry::Metrics;
 use sqlrustgo_types::{SqlError, Value};
 use std::collections::HashMap;
 use std::io::{Read, Write};
@@ -24,6 +25,9 @@ use std::thread;
 use std::time::Duration;
 
 const SERVER_VERSION: &str = "8.0.33-SQLRustGo";
+
+/// V312-18e Issue #4021 — Prometheus `/metrics` endpoint.
+mod metrics_endpoint;
 
 /// v3.10.0 Issue #3703: read intra-query executor parallelism from
 /// the `SQLRUSTGO_EXECUTOR_PARALLELISM` env var (set by
@@ -2229,7 +2233,7 @@ fn make_deprecate_eof_ok_packet(
     client_cap: u32,
 ) -> Vec<Packet> {
     let mut p = Vec::new();
-    // V312-WIRE-8 fix (regression #4019.4 fifth pass — replaces the
+// V312-WIRE-8 fix (regression #4019.4 fifth pass — replaces the
     // retracted V312-WIRE-7 / V312-WIRE-5 hypothesis chain):
     //
     // Per MySQL WL#7766 (https://dev.mysql.com/worklog/task/?id=7766) and
@@ -2732,7 +2736,7 @@ fn send_result_set<W: Write>(
             seq,
         )?;
     }
-    // Inter-record separator between column defs and the row stream.
+// Inter-record separator between column defs and the row stream.
     // Per MySQL wire protocol (and verified against mysql 8.0 CLI behavior):
     //   - DEPRECATE_EOF = 0 (classic pre-8.0): send a 5-byte EOF packet
     //     so clients can detect "end of column metadata, rows begin".
@@ -3585,6 +3589,66 @@ fn read_only_stmt(stmt: &Statement) -> Option<ReadOnlyStmt<'_>> {
         _ => None,
     }
 }
+
+/// V312-18e Issue #4021: classify a parsed `Statement` into a stable
+/// Prometheus label. Kept on a small allowlist so the cardinality of
+/// `sqlrustgo_queries_total` stays bounded — anything not on the list
+/// collapses into `"OTHER"` and is recorded but not labeled.
+///
+/// `parsed` is `Result<Statement, String>` (the COM_QUERY dispatch
+/// return type); a parse error collapses into `"PARSE_ERROR"` so we
+/// still observe failed dispatches in the metrics.
+fn statement_kind(parsed: &Result<Statement, String>) -> &'static str {
+    match parsed {
+        Err(_) => "PARSE_ERROR",
+        Ok(stmt) => match stmt {
+            Statement::Select(_) => "SELECT",
+            Statement::Insert(_) => "INSERT",
+            Statement::Update(_) => "UPDATE",
+            Statement::Delete(_) => "DELETE",
+            Statement::Merge(_) => "MERGE",
+            Statement::CreateTable(_) => "CREATE_TABLE",
+            Statement::CreateIndex(_) => "CREATE_INDEX",
+            Statement::CreateView(_) => "CREATE_VIEW",
+            Statement::DropTable(_) => "DROP_TABLE",
+            Statement::DropIndex(_) => "DROP_INDEX",
+            Statement::DropView(_) => "DROP_VIEW",
+            Statement::CreateSequence(_) => "CREATE_SEQUENCE",
+            Statement::DropSequence(_) => "DROP_SEQUENCE",
+            Statement::AlterSequence(_) => "ALTER_SEQUENCE",
+            Statement::Truncate(_) => "TRUNCATE",
+            Statement::Analyze(_) => "ANALYZE",
+            Statement::WithSelect(_) => "WITH_SELECT",
+            Statement::WithDml(_) => "WITH_DML",
+            Statement::AlterTable(_) => "ALTER_TABLE",
+            Statement::AlterUser(_) => "ALTER_USER",
+            Statement::Call(_) => "CALL",
+            Statement::CreateProcedure(_) => "CREATE_PROCEDURE",
+            Statement::Union(_) => "UNION",
+            Statement::CreateTrigger(_) => "CREATE_TRIGGER",
+            Statement::Intersect(_) => "INTERSECT",
+            Statement::Except(_) => "EXCEPT",
+            Statement::Values(_) => "VALUES",
+            Statement::Transaction(_) => "TRANSACTION",
+            Statement::Grant(_) | Statement::GrantRole(_) => "GRANT",
+            Statement::Revoke(_) | Statement::RevokeRole(_) => "REVOKE",
+            Statement::Show(_)
+            | Statement::Describe(_)
+            | Statement::ShowRoles
+            | Statement::ShowGrantsFor(_) => "SHOW",
+            Statement::CreateRole(_) => "CREATE_ROLE",
+            Statement::DropRole(_) => "DROP_ROLE",
+            Statement::CreateDatabase(_) => "CREATE_DATABASE",
+            Statement::DropDatabase(_) => "DROP_DATABASE",
+            Statement::UseDatabase(_) => "USE_DATABASE",
+            Statement::SetRole(_) => "SET_ROLE",
+            Statement::SavepointStatement { .. } => "SAVEPOINT",
+            Statement::Prepare { .. }
+            | Statement::Execute { .. }
+            | Statement::Deallocate { .. } => "PREPARED_STMT",
+        },
+    }
+}
 #[cfg(test)]
 fn is_select_stmt(stmt: &Statement) -> bool {
     read_only_stmt(stmt).is_some()
@@ -4196,11 +4260,17 @@ fn do_command_loop<S: Read + Write + DrainWrites>(
                     };
                     // V312-18e: time every dispatched statement; the log
                     // itself gates on its threshold.
+                    let elapsed_ms = started.elapsed().as_millis() as u64;
                     if let Some(ref slow_log) = config.slow_query_log {
-                        let elapsed_ms = started.elapsed().as_millis() as u64;
                         let rows = result.as_ref().map(|r| r.rows.len() as u64).unwrap_or(0);
                         slow_log.maybe_log(stmt_sql, elapsed_ms, rows);
                     }
+                    // V312-18e Issue #4021: record every dispatched
+                    // statement into the Prometheus counters. The
+                    // renderer reads the same singleton that the
+                    // `/metrics` endpoint serves.
+                    let query_type = statement_kind(&parsed);
+                    Metrics::global().record_query(query_type, std::time::Duration::from_millis(elapsed_ms));
                     match result {
                         Ok(r) if is_read_only.is_some() => {
                             // Extract real column names from the SQL
@@ -4526,11 +4596,17 @@ fn do_command_loop<S: Read + Write + DrainWrites>(
                     eng.execute(&final_sql)
                 };
                 // V312-18e: prepared-statement executions are timed too.
+                let elapsed_ms = started.elapsed().as_millis() as u64;
                 if let Some(ref slow_log) = config.slow_query_log {
-                    let elapsed_ms = started.elapsed().as_millis() as u64;
                     let rows = result.as_ref().map(|r| r.rows.len() as u64).unwrap_or(0);
                     slow_log.maybe_log(&final_sql, elapsed_ms, rows);
                 }
+                // V312-18e Issue #4021: record prepared-statement
+                // executions into the Prometheus counters as well.
+                Metrics::global().record_query(
+                    "STMT_EXECUTE",
+                    std::time::Duration::from_millis(elapsed_ms),
+                );
                 match result {
                     Ok(r) if is_read_only.is_some() => {
                         let c: Vec<String> = r
@@ -4611,9 +4687,14 @@ fn handle_connection(
 ) {
     ACTIVE_CONNECTIONS.fetch_add(1, Ordering::Relaxed);
     TOTAL_CONNECTIONS_ACCEPTED.fetch_add(1, Ordering::Relaxed);
+    // V312-18e Issue #4021: feed the connection lifecycle into the
+    // Prometheus singleton so `/metrics` exposes
+    // `sqlrustgo_connections_active` / `sqlrustgo_connections_total`.
+    Metrics::global().connection_acquired();
     let _guard = scopeguard::guard((), |_| {
         // Always decrement on exit, even on panic
         ACTIVE_CONNECTIONS.fetch_sub(1, Ordering::Relaxed);
+        Metrics::global().connection_released();
     });
     stream
         .set_read_timeout(Some(std::time::Duration::from_secs(600)))
@@ -6480,7 +6561,7 @@ pub mod testing {
         /// Build one with
         /// `EphemeralConfig::with_slow_query_log(path, threshold_ms)`.
         pub slow_query_log: Option<Arc<query_stats::SlowQueryLog>>,
-        /// V312-26 / Issue #4021: when `Some(port)`, the ephemeral
+/// V312-26 / Issue #4021: when `Some(port)`, the ephemeral
         /// server spawns a background thread that serves Prometheus
         /// exposition format at `http://<host>:<port>/metrics`. `None`
         /// (the default) means no metrics endpoint is bound. The thread
@@ -6524,7 +6605,7 @@ pub mod testing {
             self
         }
 
-        /// V312-26 / Issue #4021: enable a Prometheus `/metrics`
+/// V312-26 / Issue #4021: enable a Prometheus `/metrics`
         /// endpoint bound to `<host>:<port>`. The endpoint renders the
         /// wire-protocol counters (`ACTIVE_CONNECTIONS`,
         /// `TOTAL_QUERIES_SERVED`, etc.) plus the telemetry `Metrics`
@@ -6541,11 +6622,19 @@ pub mod testing {
     /// temporary data directory.
     pub struct EphemeralHandle {
         pub port: u16,
+        /// V312-18e Issue #4021: port of the Prometheus `/metrics`
+        /// HTTP endpoint, when one was enabled via
+        /// `EphemeralConfig::with_metrics_port`. `None` if the
+        /// endpoint was not enabled.
+        pub metrics_port: Option<u16>,
         // Shared shutdown signal: Drop sets it to true, the
         // server thread's accept loop polls it and exits within 50ms.
         shutdown: Option<Arc<std::sync::atomic::AtomicBool>>,
         // Mutex so Drop can take the JoinHandle by value.
         join: Mutex<Option<JoinHandle<()>>>,
+        // V312-18e Issue #4021: when set, Drop signals the metrics
+        // endpoint to exit and joins its thread.
+        metrics_endpoint: Option<crate::metrics_endpoint::MetricsEndpoint>,
         // Temporary data directory; removed on Drop ONLY when the
         // server auto-created it. When the test supplied a path via
         // `EphemeralConfig::data_dir`, the path is caller-owned and
@@ -6568,6 +6657,7 @@ pub mod testing {
         fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
             f.debug_struct("EphemeralHandle")
                 .field("port", &self.port)
+                .field("metrics_port", &self.metrics_port)
                 .field("data_dir", &self.data_dir)
                 .finish()
         }
@@ -6583,8 +6673,10 @@ pub mod testing {
         pub fn detached_for_external_server(port: u16) -> Self {
             Self {
                 port,
+                metrics_port: None,
                 shutdown: None,
                 join: Mutex::new(None),
+                metrics_endpoint: None,
                 data_dir: PathBuf::new(),
                 externally_owned: true,
             }
@@ -6604,7 +6696,12 @@ pub mod testing {
                     let _ = handle.join();
                 }
             }
-            // 3. Remove the temporary data directory ONLY if the
+            // 3. V312-18e Issue #4021: drop the metrics endpoint last
+            //    so it can still serve scrapes during the server's
+            //    shutdown phase. Dropping the handle signals its
+            //    accept loop and joins its thread.
+            let _ = self.metrics_endpoint.take();
+            // 4. Remove the temporary data directory ONLY if the
             //    server created it. When the test supplied the path
             //    via `EphemeralConfig::data_dir` (e.g. for
             //    recovery-style tests that share the dir between two
@@ -6723,10 +6820,40 @@ pub mod testing {
             );
         });
 
+        // V312-18e Issue #4021: bind the Prometheus `/metrics` endpoint
+        // BEFORE the server thread starts processing connections so
+        // scrapes can succeed during the server's warm-up. The endpoint
+        // reads the process-wide `Metrics::global()` singleton; the
+        // query dispatch path records into the same singleton.
+        let metrics_endpoint = match config.metrics_port {
+            Some(0) => match crate::metrics_endpoint::MetricsEndpoint::bind(("127.0.0.1", 0)) {
+                Ok(e) => Some(e),
+                Err(e) => {
+                    eprintln!(
+                        "sqlrustgo: failed to bind ephemeral metrics endpoint on 127.0.0.1:0: {e}"
+                    );
+                    None
+                }
+            },
+            Some(p) => match crate::metrics_endpoint::MetricsEndpoint::bind(("127.0.0.1", p)) {
+                Ok(e) => Some(e),
+                Err(e) => {
+                    return Err(std::io::Error::new(
+                        e.kind(),
+                        format!("sqlrustgo: failed to bind metrics endpoint on 127.0.0.1:{p}: {e}"),
+                    ));
+                }
+            },
+            None => None,
+        };
+        let metrics_port = metrics_endpoint.as_ref().map(|e| e.port());
+
         Ok(EphemeralHandle {
             port,
+            metrics_port,
             shutdown: Some(shutdown),
             join: Mutex::new(Some(join)),
+            metrics_endpoint,
             data_dir,
             externally_owned,
         })
@@ -6893,6 +7020,11 @@ pub mod testing {
                                 std::process::id()
                             )),
                             externally_owned: true,
+                            metrics_port: None,
+                            // Passthrough handles reference an
+                            // externally-owned server; we never have
+                            // ownership of its metrics endpoint.
+                            metrics_endpoint: None,
                         };
                         // fall through to the shared return path below
                         let inner = slot.as_ref().unwrap();
@@ -6903,6 +7035,11 @@ pub mod testing {
                             join: Mutex::new(None),
                             data_dir: h.data_dir.clone(),
                             externally_owned: true,
+                            metrics_port: h.metrics_port,
+                            // Pool owns the metrics endpoint in its
+                            // slot — caller-side clones must not
+                            // also try to drop it.
+                            metrics_endpoint: None,
                         });
                     }
                     Err(e) => return Err(e),
@@ -6920,6 +7057,11 @@ pub mod testing {
                 join: Mutex::new(None), // intentionally None: pool owns join
                 data_dir: h.data_dir.clone(),
                 externally_owned: true, // pool never removes data dirs
+                metrics_port: h.metrics_port,
+                // Pool owns the metrics endpoint in its slot — caller-side
+                // clones must not also try to drop it (MetricsEndpoint owns
+                // its thread; Drop joins it).
+                metrics_endpoint: None,
             })
         }
 
