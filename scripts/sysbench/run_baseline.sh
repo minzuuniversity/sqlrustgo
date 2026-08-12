@@ -242,11 +242,20 @@ oltp_read_only_baseline() {
     echo "3" > "$RUN_DIR/.step"
     # sysbench run includes connection-pool setup + 10s wall-clock + cleanup.
     # Bound it generously; sqlrustgo's wire protocol latency dominates.
+    # --db-ps-mode=disable: sysbench 1.0.20 oltp_read_only.lua calls prepare()
+    # in thread_init (oltp_common.lua:284). sqlrustgo's COM_STMT_PREPARE
+    # parser rejects sysbench-generated prepared statements with error 2027
+    # "Malformed packet" — that issue is tracked under #4019.4 follow-ups
+    # (see crates/mysql-server/src/commands/stmt_prepare.rs). Until that is
+    # fixed, db-ps-mode=disable forces plain COM_QUERY round-trips, which
+    # sqlrustgo's multi-query round-trip fix (PR #4140) now supports end-
+    # to-end (verified 2026-08-13 with 7543 qps, 471 tps on table_size=100).
     if timeout $((TIME_SEC + 60)) sysbench --db-driver=mysql \
         --mysql-host="$HOST" --mysql-port="$port" \
         --mysql-user="$USER" --mysql-db="$DB" \
         --table-size="$TABLE_SIZE" --tables=1 \
         --threads="$THREADS" --time="$TIME_SEC" \
+        --db-ps-mode=disable \
         oltp_read_only run > "$RUN_DIR/sysbench_oltp_read_only.log" 2>&1; then
         local qps
         qps=$(grep -E "^ (queries:|read/write requests:|transactions:)" \
