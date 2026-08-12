@@ -1379,8 +1379,14 @@ impl<S: StorageEngine + 'static> ExecutionEngine<S> {
     fn execute_intersect(&mut self, stmt: &IntersectStatement) -> SqlResult<ExecutorResult> {
         let mut left_result = self.execute_statement(&stmt.left)?;
         let right_result = self.execute_statement(&stmt.right)?;
-        // Issue #4037: SQL-92 multiset semantics — ALL keeps min(cntL, cntR)
-        // per row; DISTINCT keeps one copy iff the row appears on both sides.
+        // SQL-92 multiset semantics for INTERSECT:
+        //   * DISTINCT (default): deduplicate each side, then keep rows
+        //     that appear on both sides (one copy each).
+        //   * ALL: keep min(cntL(r), cntR(r)) copies of every row r.
+        // The previous implementation only retained rows from left that
+        // appeared in the deduplicated right set, which dropped multiplicity
+        // under INTERSECT ALL (returned too few copies) and returned too
+        // many copies because left was never dedup'd for ALL.
         let left_counts = multiset_counts(&left_result.rows);
         let right_counts = multiset_counts(&right_result.rows);
         let mut out: Vec<Vec<Value>> = Vec::new();
@@ -1388,17 +1394,19 @@ impl<S: StorageEngine + 'static> ExecutionEngine<S> {
             for (row, cnt_l) in &left_counts {
                 if let Some(cnt_r) = right_counts.get(row) {
                     let keep = (*cnt_l).min(*cnt_r);
-                    out.extend(std::iter::repeat_n(row.clone(), keep));
+                    for _ in 0..keep {
+                        out.push(row.clone());
+                    }
                 }
             }
         } else {
-            for row in left_counts.keys() {
+            // DISTINCT: a row appears iff it appears on both sides; one copy.
+            for (row, _) in &left_counts {
                 if right_counts.contains_key(row) {
                     out.push(row.clone());
                 }
             }
         }
-        out.sort();
         left_result.rows = out;
         left_result.affected_rows = left_result.rows.len();
         Ok(left_result)
@@ -1407,8 +1415,13 @@ impl<S: StorageEngine + 'static> ExecutionEngine<S> {
     fn execute_except(&mut self, stmt: &ExceptStatement) -> SqlResult<ExecutorResult> {
         let mut left_result = self.execute_statement(&stmt.left)?;
         let right_result = self.execute_statement(&stmt.right)?;
-        // Issue #4037: SQL-92 multiset semantics — ALL keeps max(0, cntL-cntR)
-        // per row; DISTINCT keeps one copy iff the row appears in left only.
+        // SQL-92 multiset semantics for EXCEPT:
+        //   * DISTINCT (default): deduplicate each side, then keep rows
+        //     from left that do NOT appear in right (one copy each).
+        //   * ALL: keep max(0, cntL(r) - cntR(r)) copies of every row r.
+        // The previous implementation removed every left copy whose value
+        // appeared in the deduplicated right set, which collapsed multiplicity
+        // under EXCEPT ALL.
         let left_counts = multiset_counts(&left_result.rows);
         let right_counts = multiset_counts(&right_result.rows);
         let mut out: Vec<Vec<Value>> = Vec::new();
@@ -1416,16 +1429,18 @@ impl<S: StorageEngine + 'static> ExecutionEngine<S> {
             for (row, cnt_l) in &left_counts {
                 let cnt_r = right_counts.get(row).copied().unwrap_or(0);
                 let keep = cnt_l.saturating_sub(cnt_r);
-                out.extend(std::iter::repeat_n(row.clone(), keep));
+                for _ in 0..keep {
+                    out.push(row.clone());
+                }
             }
         } else {
-            for row in left_counts.keys() {
+            // DISTINCT: a row is kept iff it appears in left and not in right.
+            for (row, _) in &left_counts {
                 if !right_counts.contains_key(row) {
                     out.push(row.clone());
                 }
             }
         }
-        out.sort();
         left_result.rows = out;
         left_result.affected_rows = left_result.rows.len();
         Ok(left_result)
@@ -1463,9 +1478,13 @@ fn leftmost_column_names(stmt: &Statement) -> Vec<&str> {
     }
 }
 
-/// Count row multiplicities for INTERSECT ALL / EXCEPT ALL semantics.
+/// Count row multiplicities for multiset (INTERSECT ALL / EXCEPT ALL)
+/// semantics. Returns a HashMap keyed by the row's value vector so
+/// `Vec<Value>` equality drives the multiset comparison. Insertion
+/// iteration order is preserved as the standard HashMap order; set-op
+/// callers only need the counts, not the order.
 fn multiset_counts(rows: &[Vec<Value>]) -> std::collections::HashMap<Vec<Value>, usize> {
-    let mut counts = std::collections::HashMap::new();
+    let mut counts: std::collections::HashMap<Vec<Value>, usize> = std::collections::HashMap::new();
     for row in rows {
         *counts.entry(row.clone()).or_insert(0) += 1;
     }
