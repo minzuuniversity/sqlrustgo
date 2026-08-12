@@ -1328,14 +1328,11 @@ impl<S: StorageEngine + 'static> ExecutionEngine<S> {
             // BINARY is exact). We dedup by a normalized key while
             // preserving the *left* side's original casing in output.
             let storage = self.storage.read();
-            let left_coll =
-                collect_column_collations(&*storage, &union_stmt.left);
-            let right_coll =
-                collect_column_collations(&*storage, &union_stmt.right);
+            let left_coll = collect_column_collations(&*storage, &union_stmt.left);
+            let right_coll = collect_column_collations(&*storage, &union_stmt.right);
             drop(storage);
             // Walk rows keeping the FIRST occurrence (leftmost wins).
-            let mut seen: std::collections::HashSet<Vec<Value>> =
-                std::collections::HashSet::new();
+            let mut seen: std::collections::HashSet<Vec<Value>> = std::collections::HashSet::new();
             let mut out: Vec<Vec<Value>> = Vec::with_capacity(left_result.rows.len());
             for row in &left_result.rows {
                 // Determine which collation set applies: pick left's if
@@ -1343,7 +1340,11 @@ impl<S: StorageEngine + 'static> ExecutionEngine<S> {
                 // contribute one collation context; rows from each side
                 // are normalized under their own side's collation before
                 // being inserted into the seen set.
-                let row_coll = if out.is_empty() { &left_coll } else { &right_coll };
+                let row_coll = if out.is_empty() {
+                    &left_coll
+                } else {
+                    &right_coll
+                };
                 let key = normalize_row_for_compare(row, row_coll);
                 if seen.insert(key) {
                     out.push(row.clone());
@@ -1476,11 +1477,9 @@ impl<S: StorageEngine + 'static> ExecutionEngine<S> {
             // the order-by key collapses to NULL for every row and the
             // HashMap insertion order leaks into the output.
             let storage = self.storage.read();
-            let col_names: Vec<String> =
-                expand_column_names(&*storage, stmt_left);
+            let col_names: Vec<String> = expand_column_names(&*storage, stmt_left);
             drop(storage);
-            let col_names_ref: Vec<&str> =
-                col_names.iter().map(|s| s.as_str()).collect();
+            let col_names_ref: Vec<&str> = col_names.iter().map(|s| s.as_str()).collect();
             let sort_keys: Vec<Vec<Value>> = rows
                 .iter()
                 .map(|row| {
@@ -1505,10 +1504,7 @@ impl<S: StorageEngine + 'static> ExecutionEngine<S> {
                 }
                 std::cmp::Ordering::Equal
             });
-            *rows = indices
-                .into_iter()
-                .map(|i| rows[i].clone())
-                .collect();
+            *rows = indices.into_iter().map(|i| rows[i].clone()).collect();
         }
         if let Some(off) = offset {
             let off = off as usize;
@@ -1657,9 +1653,7 @@ fn multiset_entries(
         std::collections::HashMap::new();
     for row in rows {
         let key = normalize_row_for_compare(row, collations);
-        let entry = entries
-            .entry(key)
-            .or_insert_with(|| (0usize, row.clone()));
+        let entry = entries.entry(key).or_insert_with(|| (0usize, row.clone()));
         entry.0 += 1;
     }
     entries
