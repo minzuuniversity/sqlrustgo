@@ -1,0 +1,51 @@
+# HELP sqlrustgo_active_connections Number of currently-open MySQL connections
+# TYPE sqlrustgo_active_connections gauge
+sqlrustgo_active_connections 0
+# HELP sqlrustgo_connections_accepted_total Total MySQL connections accepted since startup
+# TYPE sqlrustgo_connections_accepted_total counter
+sqlrustgo_connections_accepted_total 1
+# HELP sqlrustgo_queries_served_total Total SQL statements dispatched to the executor
+# TYPE sqlrustgo_queries_served_total counter
+sqlrustgo_queries_served_total 0
+# HELP sqlrustgo_query_errors_total Total SQL statements that returned an error
+# TYPE sqlrustgo_query_errors_total counter
+sqlrustgo_query_errors_total 0
+# HELP sqlrustgo_queries_total Total number of queries executed
+# TYPE sqlrustgo_queries_total counter
+sqlrustgo_queries_total 0
+# HELP sqlrustgo_queries_duration_seconds Query duration histogram
+# TYPE sqlrustgo_queries_duration_seconds histogram
+sqlrustgo_queries_duration_seconds{bucket="0.000100"} 0
+sqlrustgo_queries_duration_seconds{bucket="0.000500"} 0
+sqlrustgo_queries_duration_seconds{bucket="0.001000"} 0
+sqlrustgo_queries_duration_seconds{bucket="0.005000"} 0
+sqlrustgo_queries_duration_seconds{bucket="0.010000"} 0
+sqlrustgo_queries_duration_seconds{bucket="0.050000"} 0
+sqlrustgo_queries_duration_seconds{bucket="0.100000"} 0
+sqlrustgo_queries_duration_seconds{bucket="0.500000"} 0
+sqlrustgo_queries_duration_seconds{bucket="1.000000"} 0
+sqlrustgo_queries_duration_seconds{bucket="5.000000"} 0
+sqlrustgo_queries_duration_seconds{bucket="+Inf"} 0
+sqlrustgo_queries_duration_seconds_sum 0
+sqlrustgo_queries_duration_seconds_count 0
+# HELP sqlrustgo_connections_active Number of active connections
+# TYPE sqlrustgo_connections_active gauge
+sqlrustgo_connections_active 0
+# HELP sqlrustgo_connections_total Total number of connections created
+# TYPE sqlrustgo_connections_total counter
+sqlrustgo_connections_total 0
+# HELP sqlrustgo_cache_hits Total number of cache hits
+# TYPE sqlrustgo_cache_hits counter
+sqlrustgo_cache_hits 0
+# HELP sqlrustgo_cache_misses Total number of cache misses
+# TYPE sqlrustgo_cache_misses counter
+sqlrustgo_cache_misses 0
+# HELP sqlrustgo_cache_hit_rate Cache hit rate (0.0 to 1.0)
+# TYPE sqlrustgo_cache_hit_rate gauge
+sqlrustgo_cache_hit_rate 0
+# HELP sqlrustgo_storage_read_bytes Total bytes read from storage
+# TYPE sqlrustgo_storage_read_bytes counter
+sqlrustgo_storage_read_bytes 0
+# HELP sqlrustgo_storage_write_bytes Total bytes written to storage
+# TYPE sqlrustgo_storage_write_bytes counter
+sqlrustgo_storage_write_bytes 0
