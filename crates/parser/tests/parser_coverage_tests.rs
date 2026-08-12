@@ -2545,3 +2545,251 @@ fn test_parse_with_line_comment() {
     let result = parse("SELECT * -- inline comment\nFROM t");
     let _ = result;
 }
+
+// ============ WITH cte VALUES ============
+
+#[test]
+fn test_parse_with_cte_select_values() {
+    let result = parse("WITH cte AS (SELECT a FROM t) SELECT * FROM cte");
+    let _ = result;
+}
+
+#[test]
+fn test_parse_with_cte_select_with_columns() {
+    let result = parse("WITH cte(a, b) AS (SELECT 1, 2) SELECT * FROM cte");
+    let _ = result;
+}
+
+// ============ UNION inside subquery ============
+
+#[test]
+fn test_parse_union_in_subquery() {
+    let result = parse("SELECT * FROM (SELECT id FROM t1 UNION SELECT id FROM t2) AS u");
+    let _ = result;
+}
+
+#[test]
+fn test_parse_intersect_in_subquery() {
+    let result = parse("SELECT * FROM (SELECT id FROM t1 INTERSECT SELECT id FROM t2) AS u");
+    let _ = result;
+}
+
+// ============ CTE with INSERT ============
+
+#[test]
+fn test_parse_cte_insert() {
+    let result = parse("WITH src AS (SELECT 1 AS id) INSERT INTO dest SELECT * FROM src");
+    let _ = result;
+}
+
+// ============ CREATE TABLE AS ============
+
+#[test]
+fn test_parse_create_table_as_select() {
+    let result = parse("CREATE TABLE t AS SELECT * FROM other");
+    let _ = result;
+}
+
+// ============ VACUUM ============
+
+#[test]
+fn test_parse_vacuum() {
+    let result = parse("VACUUM");
+    let _ = result;
+}
+
+#[test]
+fn test_parse_vacuum_full() {
+    let result = parse("VACUUM FULL");
+    let _ = result;
+}
+
+#[test]
+fn test_parse_vacuum_analyze() {
+    let result = parse("VACUUM ANALYZE");
+    let _ = result;
+}
+
+// ============ CALL variants ============
+
+#[test]
+fn test_parse_call_no_schema() {
+    let result = parse("CALL my_proc(1, 2, 3)");
+    let _ = result;
+}
+
+// ============ SAVEPOINT/RELEASE ============
+
+#[test]
+fn test_parse_savepoint_cov() {
+    let result = parse("SAVEPOINT my_savepoint");
+    let _ = result;
+}
+
+#[test]
+fn test_parse_release_savepoint() {
+    let result = parse("RELEASE SAVEPOINT my_savepoint");
+    let _ = result;
+}
+
+// ============ PREPARE/EXECUTE/DEALLOCATE ============
+
+#[test]
+fn test_parse_prepare() {
+    let result = parse("PREPARE stmt AS SELECT * FROM users WHERE id = $1");
+    let _ = result;
+}
+
+#[test]
+fn test_parse_execute() {
+    let result = parse("EXECUTE stmt(1)");
+    let _ = result;
+}
+
+#[test]
+fn test_parse_deallocate() {
+    let result = parse("DEALLOCATE stmt");
+    let _ = result;
+}
+
+// ============ Use database ============
+
+#[test]
+fn test_parse_use_database() {
+    let result = parse("USE mydb");
+    let _ = result;
+}
+
+// ============ SET SCHEMA / SET ROLE ============
+
+#[test]
+fn test_parse_set_schema() {
+    let result = parse("SET SCHEMA 'public'");
+    let _ = result;
+}
+
+#[test]
+fn test_parse_set_names_cov() {
+    let result = parse("SET NAMES 'utf8'");
+    let _ = result;
+}
+
+// ============ Multiple SET options ============
+
+#[test]
+fn test_parse_set_session_authorization() {
+    let result = parse("SET SESSION AUTHORIZATION admin");
+    let _ = result;
+}
+
+// ============ CREATE TABLE with PARTITION BY ============
+
+#[test]
+fn test_parse_create_table_partition_by() {
+    let result = parse("CREATE TABLE t (id INT) PARTITION BY HASH(id)");
+    let _ = result;
+}
+
+#[test]
+fn test_parse_create_table_partition_by_range() {
+    let result = parse("CREATE TABLE t (id INT) PARTITION BY RANGE(id)");
+    let _ = result;
+}
+
+// ============ ALTER TABLE partitioning ============
+
+#[test]
+fn test_parse_alter_table_partition() {
+    let result = parse("ALTER TABLE t ADD PARTITION (PARTITION p1 VALUES LESS THAN (100))");
+    let _ = result;
+}
+
+// ============ ALTER TABLE various ============
+
+#[test]
+fn test_parse_alter_table_add_index() {
+    let result = parse("ALTER TABLE t ADD INDEX idx_name (name)");
+    let _ = result;
+}
+
+#[test]
+fn test_parse_alter_table_drop_index() {
+    let result = parse("ALTER TABLE t DROP INDEX idx_name");
+    let _ = result;
+}
+
+// ============ LATERAL JOIN ============
+
+#[test]
+fn test_parse_lateral_join() {
+    let result = parse("SELECT * FROM users u, LATERAL (SELECT * FROM orders WHERE user_id = u.id) o");
+    let _ = result;
+}
+
+#[test]
+fn test_parse_lateral_subquery_in_select() {
+    let result = parse("SELECT u.id, (SELECT COUNT(*) FROM orders WHERE user_id = u.id) FROM users u");
+    let _ = result;
+}
+
+// ============ TABLESAMPLE ============
+
+#[test]
+fn test_parse_tablesample() {
+    let result = parse("SELECT * FROM users TABLESAMPLE BERNOULLI(10)");
+    let _ = result;
+}
+
+#[test]
+fn test_parse_tablesample_system() {
+    let result = parse("SELECT * FROM users TABLESAMPLE SYSTEM(50)");
+    let _ = result;
+}
+
+// ============ Generated columns ============
+
+#[test]
+fn test_parse_generated_column() {
+    let result = parse("CREATE TABLE t (id INT, full_name TEXT GENERATED ALWAYS AS (first_name || last_name))");
+    let _ = result;
+}
+
+#[test]
+fn test_parse_generated_column_stored() {
+    let result = parse("CREATE TABLE t (id INT, total INT GENERATED ALWAYS AS (a + b) STORED)");
+    let _ = result;
+}
+
+// ============ CHECK constraint ============
+
+#[test]
+fn test_parse_check_constraint_inline() {
+    let result = parse("CREATE TABLE t (id INT, age INT CHECK (age >= 0))");
+    let _ = result;
+}
+
+#[test]
+fn test_parse_check_constraint_named() {
+    let result = parse("CREATE TABLE t (id INT, age INT CONSTRAINT chk_age CHECK (age >= 0))");
+    let _ = result;
+}
+
+#[test]
+fn test_parse_table_check_constraint() {
+    let result = parse("CREATE TABLE t (id INT, age INT, CHECK (age >= 0))");
+    let _ = result;
+}
+
+// ============ LOCK TABLE ============
+
+#[test]
+fn test_parse_lock_table() {
+    let result = parse("LOCK TABLE users IN EXCLUSIVE MODE");
+    let _ = result;
+}
+
+#[test]
+fn test_parse_lock_table_share() {
+    let result = parse("LOCK TABLE users IN SHARE MODE");
+    let _ = result;
+}
