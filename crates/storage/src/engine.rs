@@ -881,6 +881,13 @@ pub trait StorageEngine: Send + Sync {
     fn flush_parallel(&mut self) -> SqlResult<()> {
         self.flush()
     }
+
+    /// Discard any in-memory buffered writes without persisting them.
+    /// Issue #3964: used by `WalStorage::rollback_transaction` so a
+    /// rolled-back tx's writes are not visible to subsequent reads or
+    /// to the next `flush()`. Default implementation is a no-op.
+    fn discard_all_buffers(&mut self) {}
+
     fn is_wal_enabled(&self) -> bool {
         false
     }
