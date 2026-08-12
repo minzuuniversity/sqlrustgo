@@ -895,6 +895,7 @@ mod sqlrustgo_integration {
                             nullable: false,
                             primary_key: true,
                             char_max_length: None,
+                        collation: None,
                         },
                         ColumnDefinition {
                             name: columns::CONTENT.to_string(),
@@ -902,6 +903,7 @@ mod sqlrustgo_integration {
                             nullable: false,
                             primary_key: false,
                             char_max_length: None,
+                        collation: None,
                         },
                         ColumnDefinition {
                             name: columns::METADATA.to_string(),
@@ -909,6 +911,7 @@ mod sqlrustgo_integration {
                             nullable: true,
                             primary_key: false,
                             char_max_length: None,
+                        collation: None,
                         },
                         ColumnDefinition {
                             name: columns::SOURCE.to_string(),
@@ -916,6 +919,7 @@ mod sqlrustgo_integration {
                             nullable: false,
                             primary_key: false,
                             char_max_length: None,
+                        collation: None,
                         },
                         ColumnDefinition {
                             name: columns::VERSION.to_string(),
@@ -923,6 +927,7 @@ mod sqlrustgo_integration {
                             nullable: false,
                             primary_key: false,
                             char_max_length: None,
+                        collation: None,
                         },
                         ColumnDefinition {
                             name: columns::CREATED_AT.to_string(),
@@ -930,6 +935,7 @@ mod sqlrustgo_integration {
                             nullable: false,
                             primary_key: false,
                             char_max_length: None,
+                        collation: None,
                         },
                         ColumnDefinition {
                             name: columns::UPDATED_AT.to_string(),
@@ -937,6 +943,7 @@ mod sqlrustgo_integration {
                             nullable: false,
                             primary_key: false,
                             char_max_length: None,
+                        collation: None,
                         },
                     ],
                     ..Default::default()
@@ -1183,6 +1190,7 @@ pub mod storage_helpers {
                     nullable: false,
                     primary_key: true,
                     char_max_length: None,
+                collation: None,
                 },
                 ColumnDefinition {
                     name: columns::CONTENT.to_string(),
@@ -1190,6 +1198,7 @@ pub mod storage_helpers {
                     nullable: false,
                     primary_key: false,
                     char_max_length: None,
+                collation: None,
                 },
                 ColumnDefinition {
                     name: columns::METADATA.to_string(),
@@ -1197,6 +1206,7 @@ pub mod storage_helpers {
                     nullable: true,
                     primary_key: false,
                     char_max_length: None,
+                collation: None,
                 },
                 ColumnDefinition {
                     name: columns::SOURCE.to_string(),
@@ -1204,6 +1214,7 @@ pub mod storage_helpers {
                     nullable: false,
                     primary_key: false,
                     char_max_length: None,
+                collation: None,
                 },
                 ColumnDefinition {
                     name: columns::VERSION.to_string(),
@@ -1211,6 +1222,7 @@ pub mod storage_helpers {
                     nullable: false,
                     primary_key: false,
                     char_max_length: None,
+                collation: None,
                 },
                 ColumnDefinition {
                     name: columns::CREATED_AT.to_string(),
@@ -1218,6 +1230,7 @@ pub mod storage_helpers {
                     nullable: false,
                     primary_key: false,
                     char_max_length: None,
+                collation: None,
                 },
                 ColumnDefinition {
                     name: columns::UPDATED_AT.to_string(),
@@ -1225,6 +1238,7 @@ pub mod storage_helpers {
                     nullable: false,
                     primary_key: false,
                     char_max_length: None,
+                collation: None,
                 },
             ],
             ..Default::default()

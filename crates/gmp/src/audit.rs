@@ -235,6 +235,7 @@ pub fn create_audit_log_table(storage: &mut dyn StorageEngine) -> SqlResult<()> 
                 nullable: false,
                 primary_key: true,
                 char_max_length: None,
+                collation: None,
             },
             ColumnDefinition {
                 name: "timestamp".to_string(),
@@ -242,6 +243,7 @@ pub fn create_audit_log_table(storage: &mut dyn StorageEngine) -> SqlResult<()> 
                 nullable: false,
                 primary_key: false,
                 char_max_length: None,
+                collation: None,
             },
             ColumnDefinition {
                 name: "user_id".to_string(),
@@ -249,6 +251,7 @@ pub fn create_audit_log_table(storage: &mut dyn StorageEngine) -> SqlResult<()> 
                 nullable: false,
                 primary_key: false,
                 char_max_length: None,
+                collation: None,
             },
             ColumnDefinition {
                 name: "action".to_string(),
@@ -256,6 +259,7 @@ pub fn create_audit_log_table(storage: &mut dyn StorageEngine) -> SqlResult<()> 
                 nullable: false,
                 primary_key: false,
                 char_max_length: None,
+                collation: None,
             },
             ColumnDefinition {
                 name: "table_name".to_string(),
@@ -263,6 +267,7 @@ pub fn create_audit_log_table(storage: &mut dyn StorageEngine) -> SqlResult<()> 
                 nullable: false,
                 primary_key: false,
                 char_max_length: None,
+                collation: None,
             },
             ColumnDefinition {
                 name: "record_id".to_string(),
@@ -270,6 +275,7 @@ pub fn create_audit_log_table(storage: &mut dyn StorageEngine) -> SqlResult<()> 
                 nullable: true,
                 primary_key: false,
                 char_max_length: None,
+                collation: None,
             },
             ColumnDefinition {
                 name: "old_value".to_string(),
@@ -277,6 +283,7 @@ pub fn create_audit_log_table(storage: &mut dyn StorageEngine) -> SqlResult<()> 
                 nullable: true,
                 primary_key: false,
                 char_max_length: None,
+                collation: None,
             },
             ColumnDefinition {
                 name: "new_value".to_string(),
@@ -284,6 +291,7 @@ pub fn create_audit_log_table(storage: &mut dyn StorageEngine) -> SqlResult<()> 
                 nullable: true,
                 primary_key: false,
                 char_max_length: None,
+                collation: None,
             },
             ColumnDefinition {
                 name: "ip_address".to_string(),
@@ -291,6 +299,7 @@ pub fn create_audit_log_table(storage: &mut dyn StorageEngine) -> SqlResult<()> 
                 nullable: true,
                 primary_key: false,
                 char_max_length: None,
+                collation: None,
             },
             ColumnDefinition {
                 name: "session_id".to_string(),
@@ -298,6 +307,7 @@ pub fn create_audit_log_table(storage: &mut dyn StorageEngine) -> SqlResult<()> 
                 nullable: true,
                 primary_key: false,
                 char_max_length: None,
+                collation: None,
             },
             ColumnDefinition {
                 name: "previous_hash".to_string(),
@@ -305,6 +315,7 @@ pub fn create_audit_log_table(storage: &mut dyn StorageEngine) -> SqlResult<()> 
                 nullable: true,
                 primary_key: false,
                 char_max_length: None,
+                collation: None,
             },
             ColumnDefinition {
                 name: "event_hash".to_string(),
@@ -312,6 +323,7 @@ pub fn create_audit_log_table(storage: &mut dyn StorageEngine) -> SqlResult<()> 
                 nullable: false,
                 primary_key: false,
                 char_max_length: None,
+                collation: None,
             },
         ];
         storage.create_table(&sqlrustgo_storage::TableInfo {
