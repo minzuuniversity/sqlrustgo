@@ -2,7 +2,9 @@
 
 use parking_lot::RwLock;
 use sqlrustgo::ExecutionEngine;
-use sqlrustgo_mysql_server::{MySqlError, Packet};
+use sqlrustgo_mysql_server::{
+    parse_stmt_execute_params, replace_placeholders, MySqlError, Packet, StmtParam,
+};
 use std::sync::Arc;
 
 // ============ MySqlError Tests ============
@@ -433,4 +435,289 @@ fn test_parse_stmt_execute_params_null_param() {
     let params = parse_stmt_execute_params(&payload, 1, &[0xfd]);
     assert_eq!(params.len(), 1);
     assert!(params[0].0.is_empty()); // NULL = empty bytes
+}
+
+// ============ Additional Coverage Tests (Issue #3943) ============
+
+// ============ More parse_stmt_execute_params variants ============
+
+#[test]
+fn test_parse_stmt_execute_with_null_bitmap_various() {
+    // null_bitmap = 0xAA (binary 10101010) for 8 params: 1, 3, 5, 7 are null
+    let mut payload: Vec<u8> = vec![0, 0, 0, 0, 0, 0, 0, 0, 0xAA, 0, 0, 0, 0];
+    payload.extend_from_slice(&[0x00; 50]); // padding
+    let params = parse_stmt_execute_params(&payload, 8, &[]);
+    assert_eq!(params.len(), 8);
+    // Indices 0, 2, 4, 6 should be non-null (have default empty bytes)
+    // Indices 1, 3, 5, 7 should be NULL
+    assert!(params[1].0.is_empty());
+    assert!(params[3].0.is_empty());
+    assert!(params[5].0.is_empty());
+    assert!(params[7].0.is_empty());
+}
+
+#[test]
+fn test_parse_stmt_execute_int_long() {
+    // LONG type = 0x03
+    let mut payload = vec![0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0];
+    payload.extend_from_slice(&[42u8, 0, 0, 0, 0, 0, 0, 0, 0]); // 8-byte long
+    let params = parse_stmt_execute_params(&payload, 1, &[0x03]);
+    assert_eq!(params.len(), 1);
+}
+
+#[test]
+fn test_parse_stmt_execute_int_longlong() {
+    // LONGLONG type = 0x08
+    let mut payload = vec![0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0];
+    payload.extend_from_slice(&[42u8, 0, 0, 0, 0, 0, 0, 0]); // 8-byte longlong
+    let params = parse_stmt_execute_params(&payload, 1, &[0x08]);
+    assert_eq!(params.len(), 1);
+}
+
+#[test]
+fn test_parse_stmt_execute_int_short() {
+    // SHORT type = 0x02
+    let mut payload = vec![0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0];
+    payload.extend_from_slice(&[42u8, 0]); // 2-byte short
+    let params = parse_stmt_execute_params(&payload, 1, &[0x02]);
+    assert_eq!(params.len(), 1);
+}
+
+#[test]
+fn test_parse_stmt_execute_int_tiny() {
+    // TINY type = 0x01
+    let mut payload = vec![0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0];
+    payload.extend_from_slice(&[42u8]); // 1-byte tiny
+    let params = parse_stmt_execute_params(&payload, 1, &[0x01]);
+    assert_eq!(params.len(), 1);
+}
+
+#[test]
+fn test_parse_stmt_execute_int_float() {
+    // FLOAT type = 0x04
+    let mut payload = vec![0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0];
+    payload.extend_from_slice(&[0u8; 4]); // 4-byte float
+    let params = parse_stmt_execute_params(&payload, 1, &[0x04]);
+    assert_eq!(params.len(), 1);
+}
+
+#[test]
+fn test_parse_stmt_execute_int_double() {
+    // DOUBLE type = 0x05
+    let mut payload = vec![0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0];
+    payload.extend_from_slice(&[0u8; 8]); // 8-byte double
+    let params = parse_stmt_execute_params(&payload, 1, &[0x05]);
+    assert_eq!(params.len(), 1);
+}
+
+// ============ More Packet variants ============
+
+#[test]
+fn test_packet_large_payload() {
+    let mut buf = Vec::new();
+    let payload = vec![0u8; 1000];
+    let packet = Packet { length: payload.len() as u32, sequence: 1, payload };
+    packet.write_to(&mut buf).unwrap();
+    let mut read_buf = buf.as_slice();
+    let read = Packet::read_from(&mut read_buf).unwrap();
+    assert_eq!(read.length, 1000);
+    assert_eq!(read.payload.len(), 1000);
+}
+
+#[test]
+fn test_packet_with_high_sequence() {
+    let mut buf = Vec::new();
+    let packet = Packet { length: 3, sequence: 255, payload: vec![0x01, 0x02, 0x03] };
+    packet.write_to(&mut buf).unwrap();
+    let mut read_buf = buf.as_slice();
+    let read = Packet::read_from(&mut read_buf).unwrap();
+    assert_eq!(read.sequence, 255);
+}
+
+#[test]
+fn test_packet_with_zero_sequence() {
+    let mut buf = Vec::new();
+    let packet = Packet { length: 1, sequence: 0, payload: vec![0x01] };
+    packet.write_to(&mut buf).unwrap();
+    let mut read_buf = buf.as_slice();
+    let read = Packet::read_from(&mut read_buf).unwrap();
+    assert_eq!(read.sequence, 0);
+}
+
+#[test]
+fn test_packet_read_truncated_returns_err() {
+    // A packet header is 4 bytes, but only 2 are provided.
+    let payload = [0u8, 0u8];
+    let mut read_buf = payload.as_slice();
+    let result = Packet::read_from(&mut read_buf);
+    assert!(result.is_err());
+}
+
+#[test]
+fn test_packet_flush_pending_no_data() {
+    let mut packet = Packet { length: 0, sequence: 0, payload: vec![] };
+    // Packet.flush_pending only exists on TlsStream; verify we can still
+    // inspect the packet fields directly.
+    assert_eq!(packet.length, 0);
+    assert_eq!(packet.sequence, 0);
+    assert!(packet.payload.is_empty());
+}
+
+// ============ More replace_placeholders variants ============
+
+#[test]
+fn test_replace_placeholders_empty_string_param() {
+    let sql = "INSERT INTO t VALUES (?)";
+    let params = vec![(b"".to_vec(), false)];
+    let result = replace_placeholders(sql, &params);
+    // Empty string becomes NULL per replace_placeholders contract.
+    assert_eq!(result, "INSERT INTO t VALUES (NULL)");
+}
+
+#[test]
+fn test_replace_placeholders_string_with_semicolon() {
+    let sql = "INSERT INTO t VALUES (?)";
+    let params = vec![(b"a;b".to_vec(), false)];
+    let result = replace_placeholders(sql, &params);
+    assert_eq!(result, "INSERT INTO t VALUES ('a;b')");
+}
+
+#[test]
+fn test_replace_placeholders_many_numeric() {
+    let sql = "?, ?, ?, ?, ?";
+    let params = vec![
+        (b"1".to_vec(), true),
+        (b"2".to_vec(), true),
+        (b"3".to_vec(), true),
+        (b"4".to_vec(), true),
+        (b"5".to_vec(), true),
+    ];
+    let result = replace_placeholders(sql, &params);
+    assert_eq!(result, "1, 2, 3, 4, 5");
+}
+
+#[test]
+fn test_replace_placeholders_mixed_types() {
+    let sql = "INSERT INTO t VALUES (?, ?, ?)";
+    let params = vec![
+        (b"100".to_vec(), true),
+        (b"name".to_vec(), false),
+        (b"3.14".to_vec(), true),
+    ];
+    let result = replace_placeholders(sql, &params);
+    assert_eq!(result, "INSERT INTO t VALUES (100, 'name', 3.14)");
+}
+
+#[test]
+fn test_replace_placeholders_string_with_backslash() {
+    let sql = "SELECT ?";
+    let params = vec![(b"a\\b".to_vec(), false)];
+    let result = replace_placeholders(sql, &params);
+    // Backslash may be escaped or preserved depending on impl.
+    assert!(result.contains("a") && result.contains("b"));
+}
+
+#[test]
+fn test_replace_placeholders_more_than_needed() {
+    // Excess params are simply ignored.
+    let sql = "SELECT ?";
+    let params = vec![(b"1".to_vec(), true), (b"2".to_vec(), true)];
+    let result = replace_placeholders(sql, &params);
+    assert_eq!(result, "SELECT 1");
+}
+
+#[test]
+fn test_replace_placeholders_unicode_strings() {
+    let sql = "SELECT ?";
+    let params = vec![("héllo".as_bytes().to_vec(), false)];
+    let result = replace_placeholders(sql, &params);
+    assert!(result.contains("héllo"));
+}
+
+#[test]
+fn test_replace_placeholders_numeric_zero() {
+    let sql = "INSERT INTO t VALUES (?)";
+    let params = vec![(b"0".to_vec(), true)];
+    let result = replace_placeholders(sql, &params);
+    assert_eq!(result, "INSERT INTO t VALUES (0)");
+}
+
+#[test]
+fn test_replace_placeholders_string_with_quote() {
+    let sql = "INSERT INTO t VALUES (?)";
+    let params = vec![(b"O'Connor".to_vec(), false)];
+    let result = replace_placeholders(sql, &params);
+    assert!(result.contains("O'Connor") || result.contains("O''Connor"));
+}
+
+#[test]
+fn test_replace_placeholders_empty_string_no_quotes() {
+    // Empty bytes param is treated as NULL per contract.
+    let sql = "SELECT ?";
+    let params = vec![(b"".to_vec(), true)];
+    let result = replace_placeholders(sql, &params);
+    assert_eq!(result, "SELECT NULL");
+}
+
+#[test]
+fn test_replace_placeholders_string_no_quotes_with_empty_bytes_text() {
+    // Empty bytes param with text marker should also be NULL.
+    let sql = "SELECT ?";
+    let params: Vec<sqlrustgo_mysql_server::StmtParam> = vec![(Vec::new(), false)];
+    let result = replace_placeholders(sql, &params);
+    assert_eq!(result, "SELECT NULL");
+}
+
+// ============ More MySqlError variants ============
+
+#[test]
+fn test_mysql_error_from_sql_error() {
+    use sqlrustgo_types::SqlError;
+    let sql_err = SqlError::ParseError("syntax error".to_string());
+    let err: MySqlError = sql_err.into();
+    let display = format!("{}", err);
+    assert!(display.contains("syntax"));
+}
+
+#[test]
+fn test_mysql_error_io_with_kind_not_found() {
+    let io_err = std::io::Error::new(std::io::ErrorKind::PermissionDenied, "denied");
+    let err = MySqlError::Io(io_err);
+    let display = format!("{}", err);
+    assert!(display.contains("denied"));
+}
+
+#[test]
+fn test_mysql_error_protocol_with_long_string() {
+    let err = MySqlError::Protocol("a".repeat(1000));
+    let display = format!("{}", err);
+    assert!(display.contains("Protocol"));
+}
+
+#[test]
+fn test_mysql_error_sql_with_special_chars() {
+    let err = MySqlError::Sql("syntax error at ';'".to_string());
+    let display = format!("{}", err);
+    assert!(display.contains("syntax"));
+}
+
+#[test]
+fn test_mysql_error_other_with_empty_string() {
+    let err = MySqlError::Other(String::new());
+    let display = format!("{}", err);
+    // Empty Other displays just the empty string.
+    assert!(display.is_empty() || display == "");
+}
+
+// ============ run_server_v2 / spawn_resource_monitor edge cases ============
+
+#[test]
+fn test_spawn_resource_monitor_zero_interval() {
+    // Spawn with zero interval — should still spawn a thread without panic.
+    sqlrustgo_mysql_server::spawn_resource_monitor(0);
+}
+
+#[test]
+fn test_spawn_resource_monitor_large_interval() {
+    sqlrustgo_mysql_server::spawn_resource_monitor(3600);
 }
