@@ -677,11 +677,39 @@ mod hybrid_tests {
         for i in 0..20 {
             searcher.insert(i as u64, &[i as f32, (i + 1) as f32, (i + 2) as f32], 1.0).unwrap();
         }
+        // SQL scores must include all inserted IDs.
         let sql_scores: Vec<(u64, f32)> = (0..20).map(|i| (i as u64, 1.0)).collect();
         let result = searcher.search_hybrid(&[10.0, 11.0, 12.0], &sql_scores, 5);
         assert!(result.is_ok());
         let r = result.unwrap();
         assert!(!r.entries.is_empty());
+        assert!(r.search_time_ms >= 0.0);
+    }
+
+    #[test]
+    fn hybrid_search_dimension_mismatch() {
+        let mut searcher = HybridSearcher::new(DistanceMetric::Cosine);
+        searcher.insert(1, &[1.0, 2.0, 3.0], 1.0).unwrap();
+        let sql_scores = vec![(1, 1.0)];
+        let result = searcher.search_hybrid(&[1.0, 2.0], &sql_scores, 5); // wrong dimension
+        assert!(result.is_err());
+    }
+
+    #[test]
+    fn hybrid_search_with_row_and_predicates() {
+        use std::collections::HashMap;
+        let mut searcher = HybridSearcher::new(DistanceMetric::Cosine);
+        for i in 0..5 {
+            let mut row = HashMap::new();
+            row.insert("score".to_string(), SqlValue::Float(i as f64 * 0.1));
+            searcher.insert_with_row(i as u64, &[i as f32, i as f32], row).unwrap();
+        }
+        let preds = vec![SqlPredicate::GreaterThan {
+            column: "score".to_string(),
+            value: SqlValue::Float(0.0),
+        }];
+        let result = searcher.execute_filtered_search(&[2.5, 2.5], &preds, 5);
+        assert!(result.is_ok());
     }
 
     #[test]
