@@ -743,4 +743,102 @@ mod corpus_unit_tests {
         assert_eq!(results.len(), 1);
         assert_eq!(results[0].case_name, "view_test");
     }
+
+    #[test]
+    fn test_corpus_parse_and_execute_delete_with_where() {
+        let mut corpus = SqlCorpus::new(PathBuf::from("/tmp/anywhere"));
+        let content = "-- === SETUP ===\n\
+                       CREATE TABLE t (id INT);\n\
+                       INSERT INTO t VALUES (1);\n\
+                       INSERT INTO t VALUES (2);\n\
+                       INSERT INTO t VALUES (3);\n\
+                       -- === CASE: del_where\n\
+                       DELETE FROM t WHERE id > 1;\n";
+        let results = corpus.parse_and_execute(content);
+        assert_eq!(results.len(), 1);
+        assert_eq!(results[0].case_name, "del_where");
+    }
+
+    #[test]
+    fn test_corpus_parse_and_execute_delete_all() {
+        let mut corpus = SqlCorpus::new(PathBuf::from("/tmp/anywhere"));
+        let content = "-- === SETUP ===\n\
+                       CREATE TABLE t (id INT);\n\
+                       INSERT INTO t VALUES (1);\n\
+                       INSERT INTO t VALUES (2);\n\
+                       -- === CASE: del_all\nDELETE FROM t;\n";
+        let results = corpus.parse_and_execute(content);
+        assert_eq!(results.len(), 1);
+        assert_eq!(results[0].case_name, "del_all");
+    }
+
+    #[test]
+    fn test_corpus_parse_and_execute_with_dml_insert() {
+        let mut corpus = SqlCorpus::new(PathBuf::from("/tmp/anywhere"));
+        // WITH ... INSERT (CTE + DML body).
+        let content = "-- === CASE: with_dml_insert\n\
+                       WITH src(x) AS (SELECT 1 AS v UNION SELECT 2 AS v UNION SELECT 3 AS v) \
+                       INSERT INTO dest SELECT * FROM src;\n";
+        let results = corpus.parse_and_execute(content);
+        assert_eq!(results.len(), 1);
+        assert_eq!(results[0].case_name, "with_dml_insert");
+    }
+
+    #[test]
+    fn test_corpus_parse_and_execute_select_with_function_call() {
+        let mut corpus = SqlCorpus::new(PathBuf::from("/tmp/anywhere"));
+        let content = "-- === CASE: fn_call\n\
+                       SELECT UPPER('hello');\n";
+        let results = corpus.parse_and_execute(content);
+        assert_eq!(results.len(), 1);
+        assert_eq!(results[0].case_name, "fn_call");
+    }
+
+    #[test]
+    fn test_corpus_parse_and_execute_select_with_case_expr() {
+        let mut corpus = SqlCorpus::new(PathBuf::from("/tmp/anywhere"));
+        let content = "-- === CASE: case_expr\n\
+                       SELECT CASE WHEN 1 > 0 THEN 'yes' ELSE 'no' END;\n";
+        let results = corpus.parse_and_execute(content);
+        assert_eq!(results.len(), 1);
+        assert_eq!(results[0].case_name, "case_expr");
+    }
+
+    #[test]
+    fn test_corpus_parse_and_execute_insert_with_multiple_rows() {
+        let mut corpus = SqlCorpus::new(PathBuf::from("/tmp/anywhere"));
+        let content = "-- === SETUP ===\n\
+                       CREATE TABLE t (a INT, b TEXT);\n\
+                       -- === CASE: multi_insert\n\
+                       INSERT INTO t VALUES (1, 'a'), (2, 'b'), (3, 'c');\n";
+        let results = corpus.parse_and_execute(content);
+        assert_eq!(results.len(), 1);
+        assert_eq!(results[0].case_name, "multi_insert");
+    }
+
+    #[test]
+    fn test_corpus_parse_and_execute_string_with_escaped_quote_in_literal() {
+        // Tests split_sql_statements' escape handling.
+        let mut corpus = SqlCorpus::new(PathBuf::from("/tmp/anywhere"));
+        let content = "-- === CASE: escape\n\
+                       CREATE TABLE e (s TEXT);\n\
+                       INSERT INTO e VALUES ('it\\'s a test');\n";
+        let results = corpus.parse_and_execute(content);
+        assert_eq!(results.len(), 1);
+        assert_eq!(results[0].case_name, "escape");
+    }
+
+    #[test]
+    fn test_corpus_parse_and_execute_setup_only_with_empty() {
+        // Empty setup followed by CASE marker — exercises the empty
+        // setup_sql branch in execute_case.
+        let mut corpus = SqlCorpus::new(PathBuf::from("/tmp/anywhere"));
+        let content = "-- === SETUP ===\n\
+                       -- === CASE: empty_setup\n\
+                       CREATE TABLE t (id INT);\n\
+                       INSERT INTO t VALUES (1);\n";
+        let results = corpus.parse_and_execute(content);
+        assert_eq!(results.len(), 1);
+        assert_eq!(results[0].case_name, "empty_setup");
+    }
 }
