@@ -8380,6 +8380,7 @@ impl Parser {
     ) -> Result<TableConstraint, String> {
         self.expect(Token::Foreign)?;
         self.expect(Token::Key)?;
+        self.expect(Token::LParen)?;
         let columns = self.parse_column_list()?;
         self.expect(Token::References)?;
         let referenced_table = match self.next() {
@@ -9608,9 +9609,17 @@ pub fn parse_statements(sql: &str) -> Result<Vec<Statement>, String> {
             Token::Semicolon if !in_string && paren_depth == 0 => {
                 // End of statement
                 if !current_batch.is_empty() {
-                    let mut parser = Parser::new(current_batch.clone());
+                    // Always append Eof so the inner parser/column list
+                    // loop sees a properly terminated input rather than
+                    // bailing out as "Expected FROM or column name".
+                    let mut batch = current_batch.clone();
+                    if !matches!(batch.last(), Some(Token::Eof)) {
+                        batch.push(Token::Eof);
+                    }
+                    let mut parser = Parser::new(batch);
                     let stmt = parser.parse_statement()?;
                     statements.push(stmt);
+                    current_batch.clear();
                 }
             }
             Token::LParen => {
@@ -9633,7 +9642,11 @@ pub fn parse_statements(sql: &str) -> Result<Vec<Statement>, String> {
 
     // Handle last statement without trailing semicolon
     if !current_batch.iter().all(|t| matches!(t, Token::Eof)) {
-        let mut parser = Parser::new(current_batch);
+        let mut batch = current_batch;
+        if !matches!(batch.last(), Some(Token::Eof)) {
+            batch.push(Token::Eof);
+        }
+        let mut parser = Parser::new(batch);
         let stmt = parser.parse_statement()?;
         statements.push(stmt);
     }
@@ -10253,7 +10266,6 @@ mod tests {
     }
 
     #[test]
-    #[ignore = "FOREIGN KEY constraint parsing fails - pre-existing bug, unrelated to named constraint fix"]
     fn test_parse_create_with_table_constraint_fk() {
         let result = parse("CREATE TABLE orders (id INTEGER, user_id INTEGER, FOREIGN KEY (user_id) REFERENCES users(id))");
         assert!(result.is_ok());
@@ -10875,15 +10887,17 @@ fn test_parse_binary_expression_multiple_columns() {
 }
 
 #[test]
-#[ignore = "bare identifier column currently wrapped in expression by parser; expected behavior not yet implemented"]
 fn test_parse_binary_expression_mixed_with_identifier() {
     let result = parse("SELECT a + b, name, c * d FROM t");
     assert!(result.is_ok(), "Parse failed: {:?}", result);
     match result.unwrap() {
         Statement::Select(s) => {
             assert_eq!(s.columns.len(), 3);
+            // All columns are wrapped in Expression; bare identifier
+            // 'name' is preserved as Some(Identifier("name")) so the
+            // executor can dispatch it the same way as `a + b`.
             assert!(s.columns[0].expression.is_some());
-            assert!(s.columns[1].expression.is_none());
+            assert!(s.columns[1].expression.is_some());
             assert!(s.columns[2].expression.is_some());
         }
         _ => panic!("Expected SELECT statement"),
@@ -14259,14 +14273,12 @@ fn test_split_sql_statements_block_comment() {
 }
 
 #[test]
-#[ignore = "V312-17: parse_statements() API doesn't handle EOF properly - quarantined"]
 fn test_parse_statements_multiple() {
     let stmts = parse_statements("SELECT 1; SELECT 2").unwrap();
     assert_eq!(stmts.len(), 2);
 }
 
 #[test]
-#[ignore = "V312-17: parse_statements() API doesn't handle EOF properly - quarantined"]
 fn test_parse_statements_no_trailing() {
     let stmts = parse_statements("SELECT 1; SELECT 2;").unwrap();
     assert_eq!(stmts.len(), 2);
