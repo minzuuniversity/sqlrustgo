@@ -395,7 +395,12 @@ impl<S: StorageEngine, T: WalManager> WalStorage<S, T> {
             self.append_wal_entry(entry)?;
             self.wal.sync()?;
         }
-        self.inner.flush()?;
+        // Issue #3964: previously this called `self.inner.flush()`,
+        // which persisted the rolled-back tx's buffered inserts to
+        // data.rows and then to disk via the post-flush dirty-table
+        // save path. ROLLBACK must discard in-memory writes without
+        // persisting them, so we discard the buffer instead.
+        self.inner.discard_all_buffers();
         // #3223 Phase 1: remove from active set on rollback.
         self.active_txs.remove(&tx_id);
         Ok(())
@@ -737,7 +742,12 @@ impl<S: StorageEngine, T: WalManager> StorageEngine for WalStorage<S, T> {
         }
         // #3223 Phase 1: remove from active set on rollback.
         self.active_txs.remove(&tx_id);
-        self.inner.flush()?;
+        // Issue #3964: previously this called `self.inner.flush()`,
+        // which persisted the rolled-back tx's buffered inserts to
+        // data.rows and then to disk via the post-flush dirty-table
+        // save path. ROLLBACK must discard in-memory writes without
+        // persisting them, so we discard the buffer instead.
+        self.inner.discard_all_buffers();
         Ok(())
     }
 
