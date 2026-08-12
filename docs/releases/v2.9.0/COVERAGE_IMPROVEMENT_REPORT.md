@@ -200,7 +200,7 @@ python3 -c "import json; d=json.load(open('artifacts/coverage/total.json')); pri
 
 - [RELEASE_GATE_CHECKLIST.md](./RELEASE_GATE_CHECKLIST.md)
 - [RC_GATE_REPORT.md](./RC_GATE_REPORT.md)
-- [.github/workflows/coverage.yml](../../.github/workflows/coverage.yml)
+- .github/workflows/coverage.yml
 
 ---
 

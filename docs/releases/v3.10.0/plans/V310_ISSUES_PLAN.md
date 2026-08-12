@@ -3,7 +3,7 @@
 > **创建日期**: 2026-07-11
 > **创建人**: Claude Code
 > **分支**: `develop/v3.10.0` (forked from `main` at `23353c0c54`)
-> **父文档**: [`V310_DEVELOPMENT_PLAN.md`](V310_DEVELOPMENT_PLAN.md), [ADR-013](../../governance/adr/ADR-013-v310-wired-soak-ddl-and-wire-protocol-repair.md)
+> **父文档**: [`V310_DEVELOPMENT_PLAN.md`](V310_DEVELOPMENT_PLAN.md), [ADR-013](../../../governance/adr/ADR-013-v310-wired-soak-ddl-and-wire-protocol-repair.md)
 > **目标**: 替代 MySQL 5.7，可生产
 
 ---
@@ -454,8 +454,8 @@ bash scripts/gate/check_tpch_sf1.sh
 - **总控 ISSUE**: 待 Gitea 创建
 - **开发计划**: [`V310_DEVELOPMENT_PLAN.md`](V310_DEVELOPMENT_PLAN.md)
 - **CLI 计划**: [`V310_CLI_BINARY_PLAN.md`](V310_CLI_BINARY_PLAN.md)
-- **ADR-013**: [`../../governance/adr/ADR-013-v310-wired-soak-ddl-and-wire-protocol-repair.md`](../../governance/adr/ADR-013-v310-wired-soak-ddl-and-wire-protocol-repair.md)
-- **v3.9.0 评估**: [`../v3.9.0/V390_COMPREHENSIVE_ASSESSMENT.md`](../v3.9.0/V390_COMPREHENSIVE_ASSESSMENT.md)
+- **ADR-013**: [`../../governance/adr/ADR-013-v310-wired-soak-ddl-and-wire-protocol-repair.md`](../../../governance/adr/ADR-013-v310-wired-soak-ddl-and-wire-protocol-repair.md)
+- **v3.9.0 评估**: [`../v3.9.0/V390_COMPREHENSIVE_ASSESSMENT.md`](../../v3.9.0/V390_COMPREHENSIVE_ASSESSMENT.md)
 - **ARCHITECTURE**: [`../ARCHITECTURE.md`](../ARCHITECTURE.md)
 - **STAGE**: [`../STAGE.yaml`](../STAGE.yaml)
 

@@ -393,6 +393,6 @@ x: [1, 2, 3, 4, 5]
 
 | 文档 | 说明 |
 |------|------|
-| [DML_EXECUTION.md](./DML_EXECUTION.md) | DML 执行链路 |
+| [DML_EXECUTION.md](../dml/DML_EXECUTION.md) | DML 执行链路 |
 | [SUBQUERY_EXECUTION.md](./SUBQUERY_EXECUTION.md) | 子查询执行 |
-| [AGGREGATE_EXECUTION.md](./AGGREGATE_EXECUTION.md) | 聚合函数执行 |
+| AGGREGATE_EXECUTION.md | 聚合函数执行 |

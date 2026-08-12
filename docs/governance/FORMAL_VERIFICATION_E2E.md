@@ -477,7 +477,7 @@ echo "✅ Formulog check PASSED"
 - [Formulog](https://github.com/ucsd-progsys/formulog)
 - [Issue #117](http://192.168.0.252:3000/openclaw/sqlrustgo/issues/117)
 - [G-02 Proof Registry](http://192.168.0.252:3000/openclaw/sqlrustgo/issues/128)
-- [R-Gate R10](docs/governance/RULES.md#R10)
+- R-Gate R10
 
 ## 9. Appendix
 
@@ -503,7 +503,7 @@ required by `docs/governance/FORMAL_VERIFICATION_E2E.md` policy.
 
 | L3 ID | Description | Evidence file | Source change |
 |-------|-------------|---------------|---------------|
-| L3-05 | MySQL CLI handshake + `SELECT 1` over wire protocol (system client → `sqlrustgo-mysql-server`) | [`artifacts/gate/v3.8.0/L3-05_mysql_cli_handshake.log`](../../artifacts/gate/v3.8.0/L3-05_mysql_cli_handshake.log) | `openspec/changes/mysql-server-canonical-entry` §8 |
+| L3-05 | MySQL CLI handshake + `SELECT 1` over wire protocol (system client → `sqlrustgo-mysql-server`) | `artifacts/gate/v3.8.0/L3-05_mysql_cli_handshake.log` | `openspec/changes/mysql-server-canonical-entry` §8 |
 
 Each L3 evidence file:
 

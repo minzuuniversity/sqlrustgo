@@ -114,7 +114,7 @@ v3.5.0: AI Native GMP Platform
 | Beta | ≥80% | - |
 | GA | ≥85% | - |
 
-详见: [docs/governance/gate_spec_v340.md](../governance/gate_spec_v340.md)
+详见: docs/governance/gate_spec_v340.md
 
 ---
 

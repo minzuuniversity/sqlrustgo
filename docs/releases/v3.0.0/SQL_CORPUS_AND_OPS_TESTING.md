@@ -196,9 +196,9 @@ sql_corpus/OPERATIONS/
 
 ## 六、相关文档
 
-- [ISSUE-421: 运维功能完善与测试补全](../issues/ISSUE-421-OPERATIONS-TESTING.md)
+- ISSUE-421: 运维功能完善与测试补全
 - [Beta Phase 2 计划](./BETA_PHASE2_PLAN.md)
-- [测试指南](../../../docs/guides/TESTING_GUIDE.md)
+- 测试指南
 
 ---
 

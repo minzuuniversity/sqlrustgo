@@ -168,7 +168,7 @@ v3.0.0 GA（2026-05-07）发布时，3 个 BLOCKER 未达标：
 | [docs/releases/v3.5.0/README.md](../v3.5.0/README.md) | R10/R11 闭环证据 |
 | [docs/releases/v3.6.0/README.md](../v3.6.0/README.md) | R10 性能优化证据 |
 | [CHANGELOG.md](../../../CHANGELOG.md) | 跨版本覆盖率/QPS 历史 |
-| [scripts/gate/check_coverage.sh](../../scripts/gate/check_coverage.sh) | 当前覆盖率门禁 |
+| [scripts/gate/check_coverage.sh](../../../scripts/gate/check_coverage.sh) | 当前覆盖率门禁 |
 
 ---
 

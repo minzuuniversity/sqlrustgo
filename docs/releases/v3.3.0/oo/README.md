@@ -57,7 +57,7 @@ oo/
 ## 四、相关文档
 
 - [开发计划](../DEV_PLAN.md) - v3.3.0 完整开发计划
-- [门禁规范](../../governance/gate_spec_v330.md) - Alpha/Beta/GA Gate 要求
+- 门禁规范 - Alpha/Beta/GA Gate 要求
 - [Trust Infrastructure 策略](../TRUST_INFRASTRUCTURE_STRATEGY.md) - 战略定位
 
 ---
