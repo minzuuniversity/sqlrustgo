@@ -106,6 +106,13 @@ enum Command {
         /// SERVER-01: show detailed startup banner
         #[arg(long, default_value_t = false)]
         verbose: bool,
+        /// V312-26 / Issue #4021: optional Prometheus `/metrics`
+        /// endpoint port. When set, the server spawns a background
+        /// thread serving `GET /metrics` (Prometheus text exposition
+        /// format 0.0.4) on this port. When unset, no metrics endpoint
+        /// is started (default — backwards-compatible).
+        #[arg(long)]
+        metrics_port: Option<u16>,
     },
     /// Execute a single SQL statement and print the result, then exit.
     Exec { sql: String },
@@ -192,6 +199,7 @@ fn main() -> ExitCode {
         wal_sync: "every".to_string(),
         executor_parallelism: 1,
         verbose: false,
+        metrics_port: None,
     });
 
     match command {
@@ -206,6 +214,7 @@ fn main() -> ExitCode {
             wal_sync,
             executor_parallelism,
             verbose,
+            metrics_port,
         } => {
             // SERVER-01: print startup banner
             println!("SQLRustGo v3.8.0-beta (Strong Beta, 8.0/10)");
@@ -219,6 +228,12 @@ fn main() -> ExitCode {
                 "  Exec par:   {} (Issue #3703, --executor-parallelism)",
                 executor_parallelism
             );
+            if let Some(mp) = metrics_port {
+                println!(
+                    "  Metrics:    http://{}:{}/metrics (Prometheus 0.0.4, V312-26 / #4021)",
+                    host, mp
+                );
+            }
             if verbose {
                 println!("  MVCC:       enabled");
             }
@@ -235,6 +250,15 @@ fn main() -> ExitCode {
                         std::thread::sleep(std::time::Duration::from_millis(100));
                     }
                 });
+            }
+
+            // V312-26 / Issue #4021: publish the metrics port to the
+            // child server process via an env var so we don't have to
+            // widen the `run_server_v2` signature. The server reads
+            // SQLRUSTGO_METRICS_PORT at startup and spawns the
+            // background `/metrics` listener if set.
+            if let Some(mp) = metrics_port {
+                std::env::set_var("SQLRUSTGO_METRICS_PORT", mp.to_string());
             }
 
             tracing::info!("SQLRustGo MySQL Server starting on {}:{}", host, port);
