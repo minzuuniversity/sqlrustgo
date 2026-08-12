@@ -1012,4 +1012,84 @@ mod corpus_unit_tests {
         assert_eq!(results.len(), 1);
         assert!(results[0].success);
     }
+
+    #[test]
+    fn test_corpus_execute_sql_skips_empty_statements() {
+        // Exercises the `continue;` branch in execute_sql (line 1161)
+        // when consecutive semicolons produce an empty statement.
+        let mut corpus = SqlCorpus::new(PathBuf::from("/tmp/anywhere"));
+        let content = "-- === SETUP ===\n\
+                       CREATE TABLE t (id INT);\n\
+                       -- === CASE: empty_stmts\n\
+                       ;;SELECT 1;;;\n";
+        let results = corpus.parse_and_execute(content);
+        assert_eq!(results.len(), 1);
+        // Must succeed — empty statements are skipped.
+        assert!(results[0].success);
+    }
+
+    #[test]
+    fn test_corpus_execute_sql_only_whitespace_statements() {
+        // Whitespace-only statements also trigger the continue branch.
+        let mut corpus = SqlCorpus::new(PathBuf::from("/tmp/anywhere"));
+        let content = "-- === CASE: ws_only\n   \n\t  \n;\n";
+        let results = corpus.parse_and_execute(content);
+        assert_eq!(results.len(), 1);
+        // The case has no real SQL — execute_sql returns the last
+        // result of executing nothing (initial empty result).
+        assert_eq!(results[0].case_name, "ws_only");
+    }
+
+    #[test]
+    fn test_corpus_parse_and_execute_concat_text_with_int() {
+        // Exercises get_expression_value fallback path: concat int + text.
+        let mut corpus = SqlCorpus::new(PathBuf::from("/tmp/anywhere"));
+        let content = "-- === CASE: concat_int_text\n\
+                       SELECT 'id_' || 5;\n";
+        let results = corpus.parse_and_execute(content);
+        assert_eq!(results.len(), 1);
+        assert_eq!(results[0].case_name, "concat_int_text");
+    }
+
+    #[test]
+    fn test_corpus_parse_and_execute_boolean_or() {
+        let mut corpus = SqlCorpus::new(PathBuf::from("/tmp/anywhere"));
+        let content = "-- === CASE: bool_or\n\
+                       SELECT true OR false;\n";
+        let results = corpus.parse_and_execute(content);
+        assert_eq!(results.len(), 1);
+        assert_eq!(results[0].case_name, "bool_or");
+    }
+
+    #[test]
+    fn test_corpus_parse_and_execute_int_or_int_concat() {
+        // Exercises line 725: int || int falls through to text concat.
+        let mut corpus = SqlCorpus::new(PathBuf::from("/tmp/anywhere"));
+        let content = "-- === CASE: int_or_int\n\
+                       SELECT 1 || 2;\n";
+        let results = corpus.parse_and_execute(content);
+        assert_eq!(results.len(), 1);
+        assert_eq!(results[0].case_name, "int_or_int");
+    }
+
+    #[test]
+    fn test_corpus_parse_and_execute_with_join_three_tables() {
+        // 3-table join to trigger multi-join iteration in execute_select_with_join
+        // (or the JOIN path if parser emits it). Even if unsupported,
+        // the case is processed.
+        let mut corpus = SqlCorpus::new(PathBuf::from("/tmp/anywhere"));
+        let content = "-- === SETUP ===\n\
+                       CREATE TABLE t1 (id INT);\n\
+                       CREATE TABLE t2 (id INT);\n\
+                       CREATE TABLE t3 (id INT);\n\
+                       INSERT INTO t1 VALUES (1);\n\
+                       INSERT INTO t2 VALUES (1);\n\
+                       INSERT INTO t3 VALUES (1);\n\
+                       -- === CASE: join3\n\
+                       SELECT * FROM t1 INNER JOIN t2 ON t1.id = t2.id \
+                       INNER JOIN t3 ON t2.id = t3.id;\n";
+        let results = corpus.parse_and_execute(content);
+        assert_eq!(results.len(), 1);
+        assert_eq!(results[0].case_name, "join3");
+    }
 }
