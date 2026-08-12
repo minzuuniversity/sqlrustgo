@@ -15,6 +15,7 @@ use sqlrustgo_parser::parser::{
 };
 use sqlrustgo_storage::clustered_table::ClusteredTable;
 use sqlrustgo_storage::{engine::CheckConstraint, ColumnDefinition, StorageEngine, TableInfo};
+use std::collections::HashMap;
 use std::sync::Arc;
 
 impl<S: StorageEngine + 'static> ExecutionEngine<S> {
@@ -166,6 +167,7 @@ impl<S: StorageEngine + 'static> ExecutionEngine<S> {
                     check_constraints: vec![],
                     partition_info: None,
                     compression: None,
+                    collations: std::collections::HashMap::new(),
                 };
                 storage.create_table(&info)?;
                 return Ok(ExecutorResult::new(vec![], 0));
@@ -180,6 +182,7 @@ impl<S: StorageEngine + 'static> ExecutionEngine<S> {
                 check_constraints: vec![],
                 partition_info: None,
                 compression: None,
+                collations: std::collections::HashMap::new(),
             };
             storage.create_table(&info)?;
 
@@ -206,6 +209,14 @@ impl<S: StorageEngine + 'static> ExecutionEngine<S> {
                 char_max_length: c.char_max_length,
                 collation: c.collation.clone(),
             })
+            .collect();
+        // V312-26 / #4077: zip column_collations (parallel to columns) into a
+        // name→collation map for the executor to consult during set-op.
+        let collations: std::collections::HashMap<String, String> = create
+            .columns
+            .iter()
+            .zip(create.column_collations.iter())
+            .filter_map(|(c, col)| col.as_ref().map(|n| (c.name.clone(), n.to_lowercase())))
             .collect();
         let compression = create.compress.as_ref().map(|spec| match spec.algorithm {
             CompressionAlgorithm::Lz4 => "LZ4".to_string(),
@@ -252,6 +263,7 @@ impl<S: StorageEngine + 'static> ExecutionEngine<S> {
             check_constraints: check_constraints.clone(),
             partition_info: None,
             compression,
+            collations: collations.clone(),
         };
 
         // V311-01 F-23: route to ClusteredTable when storage_engine = Clustered.
@@ -275,6 +287,7 @@ impl<S: StorageEngine + 'static> ExecutionEngine<S> {
                 check_constraints,
                 partition_info: None,
                 compression: None,
+            collations: HashMap::new(),
             })?;
             self.clustered_tables
                 .write()
