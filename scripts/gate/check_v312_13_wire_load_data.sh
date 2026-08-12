@@ -103,9 +103,9 @@ log_row "08-load-data-sf10" "(requires SF=10 fixture generation, out of scope)" 
 #    v312_13_force_tls_server_implemented PASS = client-gap confirmed (not server gap)
 run_step "09-tls-handshake" "cd ${ROOT} && cargo test --test v312_13_typed_wrappers_test v312_13_force_tls_server_implemented -- --exact"
 
-# 10. Wire compression - Server-side NOT implemented
-#    v312_13_force_compress_not_implemented PASS = gap confirmed
-run_step "10-compression" "cd ${ROOT} && cargo test --test v312_13_typed_wrappers_test v312_13_force_compress_not_implemented -- --exact"
+# 10. Wire compression - flate2 primitives implemented, E2E not wired yet
+#    v312_13_compress_primitives_working PASS = flate2 round-trip verified
+run_step "10-compression" "cd ${ROOT} && cargo test --test v312_13_typed_wrappers_test v312_13_compress_primitives_working -- --exact"
 
 # ---- footer ----------------------------------------------------------------
 REPORT_SHA="$(sha256sum "${REPORT}" | awk '{print $1}')"

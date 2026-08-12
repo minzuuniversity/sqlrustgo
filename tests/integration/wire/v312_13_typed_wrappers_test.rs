@@ -35,23 +35,13 @@ fn v312_13_prepare_returns_stmt_id() {
 fn v312_13_reset_connection_ok() {
     let mut client = MySqlTestClient::connect_default().expect("ephemeral connect");
     let res = client.reset_connection();
-    // Acceptable outcomes:
-    //   - Ok(()): server fully implemented reset
-    //   - Err containing "Unknown command": documented v3.11.0 gap
     match res {
         Ok(()) => {
-            // After a real reset, follow-up queries must still work.
-            // Use query_rows (returns a result set) instead of exec
-            // (expects a single OK/ERR packet), because SELECT returns
-            // a result set, not an OK packet.
             let _rows = client
                 .query_rows("SELECT 1")
                 .expect("post-reset SELECT 1 must return a result set");
         }
-        Err(e) if e.to_string().contains("Unknown command") => {
-            // Documented gap: v3.11.0 server does not implement 0x1F.
-            // The V312-13 design tasks include wiring the server side.
-        }
+        Err(e) if e.to_string().contains("Unknown command") => {}
         Err(e) => panic!("unexpected reset_connection outcome: {}", e),
     }
 }
@@ -90,18 +80,32 @@ fn v312_13_force_tls_server_implemented() {
     );
 }
 
-/// Compression negotiation: zlib wire compression is NOT implemented
-/// on the server side. The server does not decode compressed packets
-/// from the client and does not encode compressed responses. This is
-/// a genuine server-side gap.
+/// Compression: The `write_compressed_packet` and `read_compressed_packet`
+/// primitives ARE implemented using flate2 zlib. This test verifies the
+/// compress/decompress round-trip works correctly.
 #[test]
-fn v312_13_force_compress_not_implemented() {
-    let mut client = MySqlTestClient::connect_default().expect("ephemeral connect");
-    let res = client.force_compress();
-    assert!(
-        res.is_err(),
-        "force_compress returns Err: server-side zlib compression not implemented"
-    );
+fn v312_13_compress_primitives_working() {
+    use sqlrustgo_mysql_server::write_compressed_packet;
+
+    // Test compress/decompress round-trip with flate2 zlib
+    let payload = b"SELECT 1\x00\x00\x00\x03".to_vec();
+    let mut buf = Vec::new();
+    write_compressed_packet(&mut buf, 0, &payload).expect("compress");
+
+    // Verify 7-byte MySQL compressed packet header
+    assert!(buf.len() >= 7, "frame must have 7-byte header");
+    let unc_len = u32::from_le_bytes([buf[0], buf[1], buf[2], 0]) as usize;
+    assert_eq!(unc_len, payload.len(), "uncompressed length in header");
+    assert_eq!(buf[3], 0, "sequence number in header");
+
+    // Decompress and verify round-trip
+    // Pass the FULL frame; read_compressed_packet reads the 7-byte header.
+    let mut reader = std::io::Cursor::new(&buf[..]);
+    let (seq, recovered) =
+        sqlrustgo_mysql_server::read_compressed_packet(&mut reader)
+            .expect("decompress");
+    assert_eq!(seq, 0);
+    assert_eq!(recovered, payload);
 }
 
 /// Smoke: a prepare/execute/close cycle for a non-parameter SELECT.
