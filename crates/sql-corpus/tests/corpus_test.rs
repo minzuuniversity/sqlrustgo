@@ -940,4 +940,76 @@ mod corpus_unit_tests {
         // The case is processed; success depends on parser support.
         assert_eq!(results[0].case_name, "bad_recursive");
     }
+
+    #[test]
+    fn test_corpus_row_count_mismatch_via_expect_error() {
+        // EXPECT: ERROR sets expected_rows = Some(0). For a SQL that
+        // returns 1+ rows successfully, the row count check fails and
+        // triggers the "Expected X rows, got Y" error_message branch.
+        let mut corpus = SqlCorpus::new(PathBuf::from("/tmp/anywhere"));
+        let content = "-- === SETUP ===\n\
+                       CREATE TABLE t (id INT);\n\
+                       INSERT INTO t VALUES (1);\n\
+                       -- === CASE: row_mismatch\n\
+                       -- EXPECT: ERROR\n\
+                       SELECT * FROM t;\n";
+        let results = corpus.parse_and_execute(content);
+        assert_eq!(results.len(), 1);
+        let r = &results[0];
+        assert!(!r.success, "expected_rows=0 but SELECT returns 1 → mismatch");
+        let msg = r.error_message.as_deref().unwrap_or("");
+        assert!(msg.contains("Expected") && msg.contains("got"),
+                "error message must explain the mismatch, got: {msg}");
+    }
+
+    #[test]
+    fn test_corpus_parse_and_execute_multiple_setup_runs_clears() {
+        // Multiple SETUP markers before different cases — verify setup
+        // is cleared between cases (each case gets fresh executor state).
+        let mut corpus = SqlCorpus::new(PathBuf::from("/tmp/anywhere"));
+        let content = "-- === SETUP ===\n\
+                       CREATE TABLE a (id INT);\n\
+                       INSERT INTO a VALUES (1);\n\
+                       -- === CASE: first\nSELECT * FROM a;\n\
+                       -- === SETUP ===\n\
+                       CREATE TABLE b (id INT);\n\
+                       INSERT INTO b VALUES (2);\n\
+                       -- === CASE: second\nSELECT * FROM b;\n";
+        let results = corpus.parse_and_execute(content);
+        assert_eq!(results.len(), 2);
+        assert_eq!(results[0].case_name, "first");
+        assert_eq!(results[1].case_name, "second");
+    }
+
+    #[test]
+    fn test_corpus_parse_and_execute_only_comment_no_sql() {
+        // File with only CASE marker and no SQL → empty rows.
+        let mut corpus = SqlCorpus::new(PathBuf::from("/tmp/anywhere"));
+        let content = "-- === CASE: empty_case\n";
+        let results = corpus.parse_and_execute(content);
+        assert_eq!(results.len(), 1);
+        assert_eq!(results[0].case_name, "empty_case");
+    }
+
+    #[test]
+    fn test_corpus_parse_and_execute_setup_with_isolated_blank_lines() {
+        let mut corpus = SqlCorpus::new(PathBuf::from("/tmp/anywhere"));
+        let content = "-- === SETUP ===\n\n\nCREATE TABLE t (id INT);\n\nINSERT INTO t VALUES (1);\n\n\
+                       -- === CASE: blanks\nSELECT * FROM t;\n";
+        let results = corpus.parse_and_execute(content);
+        assert_eq!(results.len(), 1);
+        assert_eq!(results[0].case_name, "blanks");
+        assert!(results[0].success, "must succeed despite blank lines");
+    }
+
+    #[test]
+    fn test_corpus_split_sql_statements_handles_trailing_semicolon() {
+        // split_sql_statements: trailing semicolon should not produce
+        // an empty entry.
+        let mut corpus = SqlCorpus::new(PathBuf::from("/tmp/anywhere"));
+        let content = "-- === CASE: trail\nSELECT 1;\n";
+        let results = corpus.parse_and_execute(content);
+        assert_eq!(results.len(), 1);
+        assert!(results[0].success);
+    }
 }
