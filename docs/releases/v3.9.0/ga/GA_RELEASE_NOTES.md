@@ -119,7 +119,7 @@ Full data: [`EVALUATION_REPORT.md`](../EVALUATION_REPORT.md)
 v3.9.0 is a **binary-swap upgrade** from v3.8.0. No data migration required.
 On-disk format is unchanged.
 
-For migration instructions see [`MIGRATION_GUIDE.md`](MIGRATION_GUIDE.md).
+For migration instructions see [`MIGRATION_GUIDE.md`](../../../../MIGRATION_GUIDE.md).
 
 ---
 

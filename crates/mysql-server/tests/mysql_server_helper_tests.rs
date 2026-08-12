@@ -240,3 +240,71 @@ fn test_packet_type_alias() {
     // Verify Packet type is accessible
     let _ = std::any::type_name::<Packet>();
 }
+
+// ============ EphemeralConfig tests ============
+
+#[test]
+fn test_ephemeral_config_default_values() {
+    use sqlrustgo_mysql_server::testing::EphemeralConfig;
+    let cfg = EphemeralConfig::default();
+    assert_eq!(cfg.host, "127.0.0.1");
+    assert!(
+        cfg.bootstrap_tables,
+        "bootstrap_tables default must be true"
+    );
+    assert!(cfg.bootstrap_users, "bootstrap_users default must be true");
+    assert!(cfg.data_dir.is_none(), "data_dir default is None");
+    assert!(cfg.bootstrap_sql.is_empty(), "bootstrap_sql default empty");
+    assert_eq!(cfg.bulk_insert_buffer_size, 1_048_576, "default 1 MiB");
+    assert_eq!(cfg.server_threads, 16, "default 16 worker threads");
+    assert!(cfg.storage.is_none(), "storage default is None");
+    assert!(cfg.port.is_none(), "port default is None");
+    assert!(cfg.slow_query_log.is_none(), "slow_query_log default None");
+}
+
+#[test]
+fn test_ephemeral_config_with_slow_query_log_sets_some() {
+    use sqlrustgo_mysql_server::testing::EphemeralConfig;
+    let dir = std::env::temp_dir().join("sqlrustgo-ms-slowlog-test");
+    let _ = std::fs::remove_dir_all(&dir);
+    std::fs::create_dir_all(&dir).unwrap();
+    let log_path = dir.join("slow.log");
+
+    let cfg = EphemeralConfig::default().with_slow_query_log(log_path.clone(), 100);
+    assert!(cfg.slow_query_log.is_some(), "slow_query_log must be set");
+    let _ = std::fs::remove_dir_all(&dir);
+}
+
+#[test]
+fn test_ephemeral_config_with_slow_query_log_returns_self() {
+    // The builder pattern: with_slow_query_log returns the config (Self).
+    use sqlrustgo_mysql_server::testing::EphemeralConfig;
+    let cfg = EphemeralConfig::default().with_slow_query_log(std::env::temp_dir(), 50);
+    assert!(cfg.slow_query_log.is_some());
+}
+
+#[test]
+fn test_ephemeral_config_fields_can_be_overridden() {
+    use sqlrustgo_mysql_server::testing::EphemeralConfig;
+    let cfg = EphemeralConfig {
+        host: "0.0.0.0".to_string(),
+        bootstrap_tables: false,
+        bootstrap_users: false,
+        data_dir: Some(std::env::temp_dir()),
+        bootstrap_sql: vec!["CREATE TABLE x (id INT)".to_string()],
+        bulk_insert_buffer_size: 16 * 1_048_576,
+        server_threads: 32,
+        storage: Some("binary".to_string()),
+        port: Some(3307),
+        slow_query_log: None,
+    };
+    assert_eq!(cfg.host, "0.0.0.0");
+    assert!(!cfg.bootstrap_tables);
+    assert!(!cfg.bootstrap_users);
+    assert!(cfg.data_dir.is_some());
+    assert_eq!(cfg.bootstrap_sql.len(), 1);
+    assert_eq!(cfg.bulk_insert_buffer_size, 16 * 1_048_576);
+    assert_eq!(cfg.server_threads, 32);
+    assert_eq!(cfg.storage.as_deref(), Some("binary"));
+    assert_eq!(cfg.port, Some(3307));
+}

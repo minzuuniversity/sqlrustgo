@@ -121,8 +121,8 @@ Pass rate: 100.0%
 ## 8. 相关文档
 
 - [../modules/wal/WAL_DESIGN.md](../modules/wal/WAL_DESIGN.md) - WAL 设计
-- [../PERFORMANCE_TARGETS.md](../PERFORMANCE_TARGETS.md) - 性能目标
-- [../STABILITY_REPORT.md](../STABILITY_REPORT.md) - 稳定性报告
+- [../PERFORMANCE_TARGETS.md](../../../v2.9.0/PERFORMANCE_TARGETS.md) - 性能目标
+- [../STABILITY_REPORT.md](../../STABILITY_REPORT.md) - 稳定性报告
 
 ---
 

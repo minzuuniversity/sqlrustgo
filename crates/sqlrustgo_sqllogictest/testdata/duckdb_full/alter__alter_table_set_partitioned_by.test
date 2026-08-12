@@ -1,12 +1,15 @@
 # name: test/sql/alter/alter_table_set_partitioned_by.test
-# description: Test ALTER TABLE SET PARTITIONED BY
+# description: Test ALTER TABLE SET PARTITIONED BY.
+#              V313-11 / Issue #4039 fix: same as the duckdb_samples
+#              variant — use inline regex for the "not supported"
+#              substring match.
 # group: [alter]
 
 statement ok
 CREATE TABLE tbl(i INTEGER);
 
-statement error not supported
+statement error .*not supported.*
 ALTER TABLE tbl SET PARTITIONED BY (i)
 
-statement error not supported
+statement error .*not supported.*
 ALTER TABLE tbl RESET PARTITIONED BY;

@@ -57,9 +57,9 @@
 
 ## Evidence
 
-- Gate script: [scripts/gate/check_alpha_v3.11.0.sh](../../scripts/gate/check_alpha_v3.11.0.sh)
+- Gate script: [scripts/gate/check_alpha_v3.11.0.sh](../../../scripts/gate/check_alpha_v3.11.0.sh)
 - STAGE.yaml: [STAGE.yaml](./STAGE.yaml)
 
 ---
 
-*Next: BETA gate (12 additional criteria) — see [check_beta_v3.11.0.sh](../../scripts/gate/check_beta_v3.11.0.sh)*
+*Next: BETA gate (12 additional criteria) — see [check_beta_v3.11.0.sh](../../../scripts/gate/check_beta_v3.11.0.sh)*

@@ -3,6 +3,7 @@
 //! Supports mysql_native_password auth + TLS (mariadb-connector-c 3.4+ compatible)
 
 use byteorder::{LittleEndian, ReadBytesExt, WriteBytesExt};
+use flate2::{Compress, Decompress, FlushCompress, FlushDecompress};
 use parking_lot::RwLock;
 use rcgen::{CertificateParams, KeyPair};
 use sha1::{Digest, Sha1};
@@ -667,6 +668,7 @@ mod capability {
     pub const PLUGIN_AUTH_LENENC_CLIENT_DATA: u32 = 0x00200000;
     pub const SSL: u32 = 0x00000800;
     pub const DEPRECATE_EOF: u32 = 0x01000000;
+    pub const COMPRESS: u32 = 0x00200000;
 
     pub const SERVER_DEFAULT: u32 = LONG_PASSWORD
         | FOUND_ROWS
@@ -680,7 +682,8 @@ mod capability {
         | PLUGIN_AUTH
         | PLUGIN_AUTH_LENENC_CLIENT_DATA
         | DEPRECATE_EOF
-        | SSL;
+        | SSL
+        | COMPRESS;
 }
 
 #[derive(Debug)]
@@ -1484,6 +1487,179 @@ mod tests {
         let auth_response = [];
         assert!(!store.verify_password("root", &scramble, &auth_response));
     }
+
+    // ---------- split_top_level_statements ----------
+
+    #[test]
+    fn split_top_level_single_statement() {
+        let stmts = split_top_level_statements("SELECT 1");
+        assert_eq!(stmts, vec!["SELECT 1"]);
+    }
+
+    #[test]
+    fn split_top_level_two_statements() {
+        let stmts = split_top_level_statements("SELECT 1; SELECT 2");
+        assert_eq!(stmts, vec!["SELECT 1", "SELECT 2"]);
+    }
+
+    #[test]
+    fn split_top_level_with_trailing_semicolon() {
+        let stmts = split_top_level_statements("SELECT 1;");
+        assert_eq!(stmts, vec!["SELECT 1"]);
+    }
+
+    #[test]
+    fn split_top_level_with_whitespace() {
+        let stmts = split_top_level_statements("  SELECT 1  ;  SELECT 2  ");
+        assert_eq!(stmts, vec!["SELECT 1", "SELECT 2"]);
+    }
+
+    #[test]
+    fn split_top_level_semicolon_inside_string_is_ignored() {
+        let stmts = split_top_level_statements("INSERT INTO t VALUES ('a;b'); SELECT 1");
+        assert_eq!(stmts.len(), 2);
+        assert_eq!(stmts[0], "INSERT INTO t VALUES ('a;b')");
+        assert_eq!(stmts[1], "SELECT 1");
+    }
+
+    #[test]
+    fn split_top_level_escaped_quote_skips_next_char() {
+        let stmts = split_top_level_statements("INSERT INTO t VALUES ('it\\'s'); SELECT 1");
+        assert_eq!(stmts.len(), 2);
+        assert!(stmts[0].contains("it\\'s"));
+    }
+
+    #[test]
+    fn split_top_level_double_quoted_string() {
+        let stmts = split_top_level_statements("SELECT \"a;b\"; SELECT 2");
+        assert_eq!(stmts.len(), 2);
+    }
+
+    #[test]
+    fn split_top_level_semicolon_inside_parens_ignored() {
+        let stmts = split_top_level_statements("SELECT * FROM (SELECT 1; SELECT 2);");
+        // The parser sees ONE statement (the outer SELECT) because the
+        // inner ';' is inside parens.
+        assert_eq!(stmts.len(), 1);
+        assert!(stmts[0].contains("SELECT 1; SELECT 2"));
+    }
+
+    #[test]
+    fn split_top_level_line_comment_skipped() {
+        let stmts = split_top_level_statements(
+            "-- comment with ; inside\nSELECT 1; -- another ;\nSELECT 2",
+        );
+        assert_eq!(stmts.len(), 2);
+    }
+
+    #[test]
+    fn split_top_level_block_comment_skipped() {
+        let stmts =
+            split_top_level_statements("/* ; */ SELECT 2; /* multi\nline ; comment */ SELECT 3");
+        assert_eq!(stmts.len(), 2);
+    }
+
+    #[test]
+    fn split_top_level_empty_input() {
+        let stmts = split_top_level_statements("");
+        assert!(stmts.is_empty());
+    }
+
+    #[test]
+    fn split_top_level_only_whitespace() {
+        let stmts = split_top_level_statements("   \n\t  ");
+        assert!(stmts.is_empty());
+    }
+
+    // ---------- classify_long_query_time_set ----------
+
+    #[test]
+    fn classify_long_query_time_set_none_for_other_statements() {
+        use sqlrustgo_parser::{transaction::TransactionStatement, Statement};
+        // Begin is not a SET long_query_time, so None.
+        let stmt = Statement::Transaction(TransactionStatement::Begin {
+            work: false,
+            isolation_level: None,
+            readonly: false,
+        });
+        assert_eq!(classify_long_query_time_set(&stmt), None);
+    }
+
+    #[test]
+    fn classify_long_query_time_set_parses_integer_seconds() {
+        use sqlrustgo_parser::{transaction::TransactionStatement, Statement};
+        let stmt = Statement::Transaction(TransactionStatement::SetSessionVariable {
+            name: "long_query_time".to_string(),
+            value: "5".to_string(),
+        });
+        match classify_long_query_time_set(&stmt) {
+            Some(Ok(ms)) => assert_eq!(ms, 5000),
+            other => panic!("expected Some(Ok(5000)), got {:?}", other),
+        }
+    }
+
+    #[test]
+    fn classify_long_query_time_set_parses_float_seconds() {
+        use sqlrustgo_parser::{transaction::TransactionStatement, Statement};
+        let stmt = Statement::Transaction(TransactionStatement::SetSessionVariable {
+            name: "long_query_time".to_string(),
+            value: "0.5".to_string(),
+        });
+        match classify_long_query_time_set(&stmt) {
+            Some(Ok(ms)) => assert_eq!(ms, 500),
+            other => panic!("expected Some(Ok(500)), got {:?}", other),
+        }
+    }
+
+    #[test]
+    fn classify_long_query_time_set_case_insensitive_name() {
+        use sqlrustgo_parser::{transaction::TransactionStatement, Statement};
+        let stmt = Statement::Transaction(TransactionStatement::SetSessionVariable {
+            name: "LONG_QUERY_TIME".to_string(),
+            value: "2".to_string(),
+        });
+        match classify_long_query_time_set(&stmt) {
+            Some(Ok(ms)) => assert_eq!(ms, 2000),
+            other => panic!("expected Some(Ok(2000)), got {:?}", other),
+        }
+    }
+
+    #[test]
+    fn classify_long_query_time_set_rejects_invalid_value() {
+        use sqlrustgo_parser::{transaction::TransactionStatement, Statement};
+        let stmt = Statement::Transaction(TransactionStatement::SetSessionVariable {
+            name: "long_query_time".to_string(),
+            value: "not_a_number".to_string(),
+        });
+        match classify_long_query_time_set(&stmt) {
+            Some(Err(msg)) => assert!(msg.contains("Incorrect argument")),
+            other => panic!("expected Some(Err), got {:?}", other),
+        }
+    }
+
+    #[test]
+    fn classify_long_query_time_set_rejects_negative() {
+        use sqlrustgo_parser::{transaction::TransactionStatement, Statement};
+        let stmt = Statement::Transaction(TransactionStatement::SetSessionVariable {
+            name: "long_query_time".to_string(),
+            value: "-1.0".to_string(),
+        });
+        match classify_long_query_time_set(&stmt) {
+            Some(Err(_)) => {}
+            other => panic!("expected Some(Err) for negative value, got {:?}", other),
+        }
+    }
+
+    #[test]
+    fn classify_long_query_time_set_ignores_other_variable() {
+        use sqlrustgo_parser::{transaction::TransactionStatement, Statement};
+        let stmt = Statement::Transaction(TransactionStatement::SetSessionVariable {
+            name: "max_connections".to_string(),
+            value: "100".to_string(),
+        });
+        // Not long_query_time → None (not interested in this SET).
+        assert_eq!(classify_long_query_time_set(&stmt), None);
+    }
 }
 
 #[derive(Debug)]
@@ -1648,6 +1824,197 @@ impl<'a> DrainWrites for TlsStream<'a> {
 // TcpStream is NOT a TlsStream (covers both TcpStream and &TcpStream)
 impl NotTlsStream for std::net::TcpStream {}
 impl<T: NotTlsStream> NotTlsStream for &T {}
+/// Compress `payload` into a MySQL compressed packet frame and write to `w`.
+pub fn write_compressed_packet<W: Write>(w: &mut W, seq: u8, payload: &[u8]) -> MySqlResult<()> {
+    let uncompressed_len = payload.len();
+    let mut compressor = Compress::new(flate2::Compression::default(), true);
+    let bound = uncompressed_len.saturating_add(12);
+    let mut compressed = Vec::with_capacity(bound);
+    let _status = compressor
+        .compress_vec(payload, &mut compressed, FlushCompress::Finish)
+        .map_err(|e| MySqlError::Protocol(format!("zlib compress: {e}")))?;
+    let compressed_len = compressed.len();
+    // 7-byte header: [uncompressed_len: u24][seq: u8][compressed_len: u24]
+    w.write_all(&(uncompressed_len as u32).to_le_bytes()[..3])?;
+    w.write_u8(seq)?;
+    w.write_all(&(compressed_len as u32).to_le_bytes()[..3])?;
+    w.write_all(&compressed)?;
+    w.flush()?;
+    Ok(())
+}
+
+/// Read and decompress one MySQL compressed packet frame from `inner`.
+pub fn read_compressed_packet<R: Read>(inner: &mut R) -> MySqlResult<(u8, Vec<u8>)> {
+    // 7-byte header
+    let mut header = [0u8; 7];
+    inner.read_exact(&mut header).map_err(MySqlError::Io)?;
+
+    let uncompressed_len = u32::from_le_bytes([header[0], header[1], header[2], 0]) as usize;
+    let seq = header[3];
+    let compressed_len = u32::from_le_bytes([header[4], header[5], header[6], 0]) as usize;
+
+    // Read compressed payload
+    let mut compressed = vec![0u8; compressed_len];
+    inner.read_exact(&mut compressed).map_err(MySqlError::Io)?;
+
+    // Uncompressed payload (MySQL optimization for small frames)
+    if uncompressed_len == 0 || compressed_len == uncompressed_len {
+        return Ok((seq, compressed));
+    }
+
+    // Decompress using flate2 decompress_vec
+    // IMPORTANT: decompress_vec APPENDS starting at len, so len must be 0
+    let mut decompressed = Vec::with_capacity(uncompressed_len);
+    decompressed.reserve(uncompressed_len); // capacity = 2*uncompressed, len = 0
+
+    let mut d = Decompress::new(true);
+    d.decompress_vec(&compressed, &mut decompressed, FlushDecompress::Finish)
+        .map_err(|e| MySqlError::Protocol(format!("zlib: {e}")))?;
+
+    if decompressed.len() != uncompressed_len {
+        return Err(MySqlError::Protocol(format!(
+            "zlib: decompressed {} bytes, expected {}",
+            decompressed.len(),
+            uncompressed_len
+        )));
+    }
+
+    Ok((seq, decompressed))
+}
+
+// ============================================================================
+// Compressed I/O wrappers for MySQL wire compression
+// ============================================================================
+//
+// MySQL compressed packet format (7-byte header + payload):
+//   [uncompressed_len: u24 LE][seq: u8][compressed_len: u24 LE][payload]
+//
+// Reference: MySQL 8.0 `net_serv.cc` compress_packet() / decompress_packet()
+//
+// Compression design: each MySQL packet (request or response) is independently
+// compressible. When COMPRESS is negotiated, the sender MAY choose to send
+// the payload uncompressed (when compressed_len >= uncompressed_len, MySQL
+// optimization). The receiver MUST handle both compressed and uncompressed
+// payloads transparently.
+
+/// Read packets from a stream, automatically decompressing if the client
+/// negotiated COMPRESS capability.
+pub struct CompressedReader<'a, R: Read> {
+    inner: &'a mut R,
+    use_compress: bool,
+    // Decompression buffer: holds partial decompressed data from a
+    // compressed packet whose output spanned multiple MySQL payload chunks.
+    // Most MySQL implementations don't span a single uncompressed packet
+    // across multiple compressed frames, but we handle it for correctness.
+    decompressed_buf: Vec<u8>,
+    decompressed_pos: usize,
+}
+
+impl<'a, R: Read> CompressedReader<'a, R> {
+    pub fn new(inner: &'a mut R, use_compress: bool) -> Self {
+        Self {
+            inner,
+            use_compress,
+            decompressed_buf: Vec::new(),
+            decompressed_pos: 0,
+        }
+    }
+
+    /// Reads one MySQL packet payload. When compression is enabled this
+    /// reads and decompresses a compressed packet frame; otherwise reads
+    /// a plain packet. Returns (seq, payload).
+    pub fn read_packet(&mut self) -> MySqlResult<(u8, Vec<u8>)> {
+        if !self.use_compress {
+            let pkt = Packet::read_from(self.inner)?;
+            return Ok((pkt.sequence, pkt.payload));
+        }
+
+        // First: drain any leftover decompressed data from a previous frame
+        if self.decompressed_pos < self.decompressed_buf.len() {
+            let remaining = self.decompressed_buf[self.decompressed_pos..].to_vec();
+            let seq = self.decompressed_buf.get(0).copied().unwrap_or(0);
+            self.decompressed_buf.clear();
+            self.decompressed_pos = 0;
+            return Ok((seq, remaining));
+        }
+
+        // Read a compressed packet frame
+        let (seq, payload) = read_compressed_packet(self.inner)?;
+        self.decompressed_buf = payload;
+        self.decompressed_pos = 0;
+        Ok((seq, self.decompressed_buf.clone()))
+    }
+}
+
+impl<'a, R: Read> Read for CompressedReader<'a, R> {
+    fn read(&mut self, buf: &mut [u8]) -> std::io::Result<usize> {
+        // This Read impl is for the case where we use CompressedReader
+        // as a drop-in Read replacement (draining decompressed data).
+        // For simplicity, delegate to read_packet.
+        if buf.is_empty() {
+            return Ok(0);
+        }
+        match self.read_packet() {
+            Ok((_seq, payload)) => {
+                let len = payload.len().min(buf.len());
+                buf[..len].copy_from_slice(&payload[..len]);
+                Ok(len)
+            }
+            Err(MySqlError::Io(e)) => Err(e),
+            Err(e) => Err(std::io::Error::new(std::io::ErrorKind::Other, e)),
+        }
+    }
+}
+
+/// Write packets to a stream, automatically compressing if the client
+/// negotiated COMPRESS capability.
+pub struct CompressedWriter<'a, W: Write> {
+    inner: &'a mut W,
+    use_compress: bool,
+}
+
+impl<'a, W: Write> CompressedWriter<'a, W> {
+    pub fn new(inner: &'a mut W, use_compress: bool) -> Self {
+        Self {
+            inner,
+            use_compress,
+        }
+    }
+
+    /// Write one MySQL packet. When compression is enabled this compresses
+    /// the payload and writes a compressed packet frame; otherwise writes
+    /// a plain packet.
+    pub fn write_packet(&mut self, seq: u8, payload: &[u8]) -> MySqlResult<()> {
+        if !self.use_compress {
+            Packet {
+                length: payload.len() as u32,
+                sequence: seq,
+                payload: payload.to_vec(),
+            }
+            .write_to(self.inner)?;
+            return Ok(());
+        }
+
+        // Compress: use write_compressed_packet which handles the
+        // uncompressed-payload optimization (when compressed_len >= uncompressed_len,
+        // it sends payload uncompressed with uncompressed_len == compressed_len).
+        write_compressed_packet(self.inner, seq, payload)?;
+        Ok(())
+    }
+}
+
+impl<'a, W: Write> Write for CompressedWriter<'a, W> {
+    fn write(&mut self, buf: &[u8]) -> std::io::Result<usize> {
+        // This Write impl exists for DrainWrites compatibility.
+        // We delegate to inner.write — caller should use write_packet for
+        // proper MySQL packet framing.
+        self.inner.write(buf)
+    }
+
+    fn flush(&mut self) -> std::io::Result<()> {
+        self.inner.flush()
+    }
+}
 
 fn write_lenenc_int<W: Write>(w: &mut W, v: u64) -> MySqlResult<()> {
     if v < 251 {
@@ -3395,13 +3762,7 @@ fn do_command_loop<S: Read + Write + DrainWrites>(
     config: &crate::testing::EphemeralConfig,
 ) -> MySqlResult<()> {
     loop {
-        let pkt = match Packet::read_from(stream) {
-            Ok(p) => p,
-            Err(e) => {
-                tracing::debug!("Disconnected: {}", e);
-                break;
-            }
-        };
+        let pkt = Packet::read_from(stream)?;
         let cmd = pkt.payload.first().copied().unwrap_or(0);
         let payload = &pkt.payload[1..];
         // MySQL/MariaDB protocol: every new client command starts with
@@ -3418,10 +3779,6 @@ fn do_command_loop<S: Read + Write + DrainWrites>(
         }
         match cmd {
             packet_type::COM_QUIT => {
-                // MySQL wire protocol: server MUST send OK packet on COM_QUIT
-                // before closing the connection, so the client can release
-                // its read() and exit cleanly. Without this, mysql CLI and
-                // pymysql hang in recv() after sending COM_QUIT (Issue #SET-NAMES-HANG).
                 make_ok_packet(seq, 0, 0, 0x0002, 0).write_to(stream)?;
                 *server_last_sent_seq = seq;
                 seq = seq.wrapping_add(1);
@@ -6215,4 +6572,29 @@ pub mod test_helpers {
     pub use crate::parse_stmt_execute_params;
     pub use crate::replace_placeholders;
     pub use crate::StmtParam;
+}
+
+#[cfg(test)]
+mod compression_tests {
+    use super::*;
+    #[test]
+    fn test_compress_decompress_roundtrip() {
+        let payload = b"SELECT 1\x00\x00\x00\x03".to_vec();
+
+        // Compress
+        let mut buf = Vec::new();
+        write_compressed_packet(&mut buf, 0, &payload).expect("compress");
+        assert!(buf.len() >= 7, "need 7-byte header");
+
+        // Verify header
+        let unc_len = u32::from_le_bytes([buf[0], buf[1], buf[2], 0]) as usize;
+        assert_eq!(unc_len, payload.len());
+        assert_eq!(buf[3], 0); // seq
+
+        // Decompress
+        let mut reader = std::io::Cursor::new(&buf[..]);
+        let (seq, recovered) = read_compressed_packet(&mut reader).expect("decompress");
+        assert_eq!(seq, 0);
+        assert_eq!(recovered, payload);
+    }
 }

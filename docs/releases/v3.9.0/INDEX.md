@@ -283,7 +283,7 @@ v3.9.0/
 | [V390_DOC_CORRECTION_WORK_REPORT.md](V390_DOC_CORRECTION_WORK_REPORT.md) | 文档修正工作报告 | — |
 | [V390_GA_DOC_CORRECTION_PLAN.md](V390_GA_DOC_CORRECTION_PLAN.md) | GA 文档修正计划 | — |
 | [V390_GA_DOC_CORRECTION_WORK_REPORT.md](V390_GA_DOC_CORRECTION_WORK_REPORT.md) | GA 文档修正工作报告 | — |
-| [V380_TO_V390_LEGACY_ISSUES_REMEDIATION_REPORT.md](V380_TO_V390_LEGACY_ISSUES_REMEDIATION_REPORT.md) | v380→v390 遗留问题修复 | — |
+| V380_TO_V390_LEGACY_ISSUES_REMEDIATION_REPORT.md | v380→v390 遗留问题修复 | — |
 | [E2E_MIGRATION_MASTER_PLAN.md](E2E_MIGRATION_MASTER_PLAN.md) | E2E 改造总计划 | — |
 | [WIRED-22-VERIFICATION-REPORT.md](WIRED-22-VERIFICATION-REPORT.md) | 22 wire 验证 | — |
 | [Q9-FIX-GATE-REPORT.md](Q9-FIX-GATE-REPORT.md) | Q9 修复 gate 报告 | — |
@@ -323,7 +323,7 @@ v3.9.0/
 | 前置版本 | [v3.8.0](../v3.8.0/README.md) |
 | 顶层文档 | [docs/README.md](../../README.md) |
 | ADR-006 | [docs/governance/adr/ADR-006-meta-governance.md](../../governance/adr/ADR-006-meta-governance.md) |
-| Sprint 8 spec | [openspec/changes/2026-06-08-v390-sprint8-q8-exists/](../../../../openspec/changes/2026-06-08-v390-sprint8-q8-exists/) |
+| Sprint 8 spec | openspec/changes/2026-06-08-v390-sprint8-q8-exists/ |
 
 ---
 

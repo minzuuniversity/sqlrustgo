@@ -57,7 +57,7 @@
 | 加版本表条目 | `docs/releases/v3.5.0/CHANGELOG.md` | 同上 | 同上 |
 | 加版本表条目 | `docs/releases/v3.6.0/CHANGELOG.md` | 同上 | 同上 |
 | 删除重复 commit | `docs/releases/v3.4.0/CHANGELOG.md` | 删除第 2 处 `d934228b` | check_docs_consistency.sh PASS |
-| 移除 broken link 1 | `README.md:91` | `[mdBook](book/book/index.html)` → `docs/releases/v3.8.0/` | check_docs_links.sh PASS |
+| 移除 broken link 1 | `README.md:91` | `[mdBook](../../../v3.7.0/html/index.html)` → `docs/releases/v3.8.0/` | check_docs_links.sh PASS |
 | 移除 broken link 2 | `README.md:311` | 同上 | 同上 |
 | 移除 broken link 3 | `README.md:321` | 同上 | 同上 |
 | 修复 v3.1.0 broken link | `docs/releases/v3.1.0/README.md` | 新增 placeholder 文件 | check_docs_links.sh PASS |
@@ -109,7 +109,7 @@
 #### 3.1.3 README.md broken links 替换
 
 ```diff
--**提示**: 更多文档请查阅 [mdBook 用户手册](book/book/index.html)。
+-**提示**: 更多文档请查阅 [mdBook 用户手册](../../../v3.7.0/html/index.html)。
 +**提示**: 更多文档请查阅 `docs/releases/v3.8.0/` 目录。
 ```
 

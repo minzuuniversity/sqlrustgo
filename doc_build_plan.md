@@ -67,17 +67,17 @@ extra-css = ["custom.css"]
 ```markdown
 # Table of Contents
 
-- [Introduction](introduction.md)
-- [Getting Started](getting-started.md)
-- [Architecture](architecture.md)
-- [API Documentation](api/index.md)
-  - [API Reference](api/reference.md)
-- [User Guide](user-guide/index.md)
-  - [Best Practices](user-guide/best-practices.md)
-- [Developer Guide](developer-guide/index.md)
-  - [Contributing](developer-guide/contributing.md)
-  - [Development Setup](developer-guide/setup.md)
-- [Release Notes](release-notes.md)
+- Introduction
+- Getting Started
+- [Architecture](docs/architecture.md)
+- API Documentation
+  - API Reference
+- User Guide
+  - Best Practices
+- Developer Guide
+  - Contributing
+  - Development Setup
+- Release Notes
 ```
 
 #### 2.2 文档迁移与整合
