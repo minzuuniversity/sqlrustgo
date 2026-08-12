@@ -241,6 +241,7 @@ fn convert_table(
         unique_constraints: vec![],
         check_constraints: vec![],
         compression: None,
+        collations: std::collections::HashMap::new(),
         partition_info: None,
     };
 
@@ -434,6 +435,7 @@ mod tests {
             unique_constraints: vec![],
             check_constraints: vec![],
             compression: None,
+            collations: std::collections::HashMap::new(),
             partition_info: None,
         };
         let table_data = TableData {
@@ -475,6 +477,7 @@ mod tests {
             unique_constraints: vec![],
             check_constraints: vec![],
             compression: None,
+            collations: std::collections::HashMap::new(),
             partition_info: None,
         };
         let table_data = TableData { info, rows: vec![] };
@@ -501,6 +504,7 @@ mod tests {
             unique_constraints: vec![],
             check_constraints: vec![],
             compression: None,
+            collations: std::collections::HashMap::new(),
             partition_info: None,
         };
         let table_data = TableData {

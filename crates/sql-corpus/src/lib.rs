@@ -74,6 +74,7 @@ impl SimpleExecutor {
                     unique_constraints: vec![],
                     check_constraints: vec![],
                     compression: None,
+                    collations: std::collections::HashMap::new(),
                     partition_info: None,
                 };
                 self.storage
@@ -289,6 +290,7 @@ impl SimpleExecutor {
                 unique_constraints: vec![],
                 check_constraints: vec![],
                 compression: None,
+                collations: std::collections::HashMap::new(),
                 partition_info: None,
             };
             self.storage
@@ -416,6 +418,7 @@ impl SimpleExecutor {
                 unique_constraints: vec![],
                 check_constraints: vec![],
                 compression: None,
+                collations: std::collections::HashMap::new(),
                 partition_info: None,
             };
             self.storage
@@ -457,6 +460,7 @@ impl SimpleExecutor {
                 unique_constraints: vec![],
                 check_constraints: vec![],
                 compression: None,
+                collations: std::collections::HashMap::new(),
                 partition_info: None,
             };
             // Create table only if it doesn't exist yet
@@ -531,6 +535,7 @@ impl SimpleExecutor {
                 unique_constraints: vec![],
                 check_constraints: vec![],
                 compression: None,
+                collations: std::collections::HashMap::new(),
                 partition_info: None,
             };
 
@@ -803,6 +808,7 @@ impl SimpleExecutor {
                         unique_constraints: vec![],
                         check_constraints: vec![],
                         compression: None,
+                        collations: std::collections::HashMap::new(),
                         partition_info: None,
                     };
                     self.storage
@@ -871,6 +877,7 @@ impl SimpleExecutor {
             unique_constraints: vec![],
             check_constraints: vec![],
             compression: None,
+            collations: std::collections::HashMap::new(),
             partition_info: None,
         };
         self.storage

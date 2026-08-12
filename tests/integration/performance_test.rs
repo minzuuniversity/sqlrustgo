@@ -289,12 +289,14 @@ fn test_index_scan_performance_vs_seqscan() {
                 nullable: false,
                 primary_key: false,
                 char_max_length: None,
+                collation: None,
             }],
             foreign_keys: vec![],
             unique_constraints: vec![],
             check_constraints: vec![],
             compression: None,
             partition_info: None,
+            collations: std::collections::HashMap::new(),
         })
         .unwrap();
 
@@ -351,12 +353,14 @@ fn test_join_performance_hash_join() {
                 nullable: false,
                 primary_key: false,
                 char_max_length: None,
+                collation: None,
             }],
             foreign_keys: vec![],
             unique_constraints: vec![],
             check_constraints: vec![],
             compression: None,
             partition_info: None,
+            collations: std::collections::HashMap::new(),
         })
         .unwrap();
 
@@ -375,12 +379,14 @@ fn test_join_performance_hash_join() {
                 nullable: false,
                 primary_key: false,
                 char_max_length: None,
+                collation: None,
             }],
             foreign_keys: vec![],
             unique_constraints: vec![],
             check_constraints: vec![],
             compression: None,
             partition_info: None,
+            collations: std::collections::HashMap::new(),
         })
         .unwrap();
 
@@ -684,6 +690,7 @@ fn test_composite_index() {
                     nullable: false,
                     primary_key: false,
                     char_max_length: None,
+                    collation: None,
                 },
                 ColumnDefinition {
                     name: "order_id".to_string(),
@@ -691,6 +698,7 @@ fn test_composite_index() {
                     nullable: false,
                     primary_key: false,
                     char_max_length: None,
+                    collation: None,
                 },
             ],
             foreign_keys: vec![],
@@ -698,6 +706,7 @@ fn test_composite_index() {
             check_constraints: vec![],
             compression: None,
             partition_info: None,
+            collations: std::collections::HashMap::new(),
         })
         .unwrap();
 
@@ -737,6 +746,7 @@ fn test_covering_index() {
                     nullable: false,
                     primary_key: false,
                     char_max_length: None,
+                    collation: None,
                 },
                 ColumnDefinition {
                     name: "name".to_string(),
@@ -744,6 +754,7 @@ fn test_covering_index() {
                     nullable: false,
                     primary_key: false,
                     char_max_length: None,
+                    collation: None,
                 },
             ],
             foreign_keys: vec![],
@@ -751,6 +762,7 @@ fn test_covering_index() {
             check_constraints: vec![],
             compression: None,
             partition_info: None,
+            collations: std::collections::HashMap::new(),
         })
         .unwrap();
 

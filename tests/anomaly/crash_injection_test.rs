@@ -34,6 +34,7 @@ mod tests {
                 unique_constraints: vec![],
                 check_constraints: vec![],
                 compression: None,
+                collations: std::collections::HashMap::new(),
                 partition_info: None,
             };
             storage.create_table(&info).unwrap();
@@ -79,6 +80,7 @@ mod tests {
                 unique_constraints: vec![],
                 check_constraints: vec![],
                 compression: None,
+                collations: std::collections::HashMap::new(),
                 partition_info: None,
             };
             storage.create_table(&info).unwrap();
@@ -119,6 +121,7 @@ mod tests {
                 unique_constraints: vec![],
                 check_constraints: vec![],
                 compression: None,
+                collations: std::collections::HashMap::new(),
                 partition_info: None,
             };
             storage.create_table(&info).unwrap();
@@ -159,6 +162,7 @@ mod tests {
                 unique_constraints: vec![],
                 check_constraints: vec![],
                 compression: None,
+                collations: std::collections::HashMap::new(),
                 partition_info: None,
             };
             storage.create_table(&info).unwrap();
@@ -191,6 +195,7 @@ mod tests {
                 unique_constraints: vec![],
                 check_constraints: vec![],
                 compression: None,
+                collations: std::collections::HashMap::new(),
                 partition_info: None,
             };
             storage.create_table(&info).unwrap();
@@ -228,6 +233,7 @@ mod tests {
             unique_constraints: vec![],
             check_constraints: vec![],
             compression: None,
+            collations: std::collections::HashMap::new(),
             partition_info: None,
         };
         storage.create_table(&info).unwrap();
@@ -265,6 +271,7 @@ mod tests {
                 unique_constraints: vec![],
                 check_constraints: vec![],
                 compression: None,
+                collations: std::collections::HashMap::new(),
                 partition_info: None,
             };
             storage.create_table(&info).unwrap();
@@ -300,6 +307,7 @@ mod tests {
             unique_constraints: vec![],
             check_constraints: vec![],
             compression: None,
+            collations: std::collections::HashMap::new(),
             partition_info: None,
         };
         storage.lock().unwrap().create_table(&info).unwrap();

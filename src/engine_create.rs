@@ -210,13 +210,14 @@ impl<S: StorageEngine + 'static> ExecutionEngine<S> {
                 collation: c.collation.clone(),
             })
             .collect();
-        // V312-26 / #4077: zip column_collations (parallel to columns) into a
-        // name→collation map for the executor to consult during set-op.
+        // V312-26 / #4077: collect per-column collation (each column
+        // carries its own `collation` field in HEAD's CreateTable AST)
+        // into a name→collation map for the executor to consult during
+        // set-op.
         let collations: std::collections::HashMap<String, String> = create
             .columns
             .iter()
-            .zip(create.column_collations.iter())
-            .filter_map(|(c, col)| col.as_ref().map(|n| (c.name.clone(), n.to_lowercase())))
+            .filter_map(|c| c.collation.as_ref().map(|n| (c.name.clone(), n.to_lowercase())))
             .collect();
         let compression = create.compress.as_ref().map(|spec| match spec.algorithm {
             CompressionAlgorithm::Lz4 => "LZ4".to_string(),

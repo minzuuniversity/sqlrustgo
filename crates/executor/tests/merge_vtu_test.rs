@@ -108,6 +108,7 @@ fn test_storage_create_table() {
         unique_constraints: vec![],
         check_constraints: vec![],
         compression: None,
+        collations: std::collections::HashMap::new(),
         partition_info: None,
     };
     {
@@ -132,6 +133,7 @@ fn test_storage_insert_and_scan() {
         unique_constraints: vec![],
         check_constraints: vec![],
         compression: None,
+        collations: std::collections::HashMap::new(),
         partition_info: None,
     };
     {
@@ -159,6 +161,7 @@ fn test_storage_delete() {
         unique_constraints: vec![],
         check_constraints: vec![],
         compression: None,
+        collations: std::collections::HashMap::new(),
         partition_info: None,
     };
     {
@@ -202,6 +205,7 @@ fn test_table_info_default() {
         unique_constraints: vec![],
         check_constraints: vec![],
         compression: None,
+        collations: std::collections::HashMap::new(),
         partition_info: None,
     };
     assert_eq!(info.name, "default_t");

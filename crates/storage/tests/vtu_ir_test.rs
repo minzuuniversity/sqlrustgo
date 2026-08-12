@@ -128,11 +128,14 @@ fn make_table_info(columns: Vec<(&str, &str)>) -> TableInfo {
                 nullable: false,
                 primary_key: false,
                 char_max_length: None,
+            collation: None,
             })
             .collect(),
         foreign_keys: vec![],
         unique_constraints: vec![],
         check_constraints: vec![],
+        collations: std::collections::HashMap::new(),
+
         partition_info: None,
         compression: None,
     }

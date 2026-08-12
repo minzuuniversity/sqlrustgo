@@ -581,6 +581,13 @@ pub fn eval_identifier(
     row: &[Value],
     columns: &[sqlrustgo_storage::ColumnDefinition],
 ) -> Result<Value, String> {
+    // V312-26 / #4019-#4020 wire-protocol fix: when an identifier
+    // arrives as `@@var` (e.g. the lexer tokenised it as Identifier
+    // rather than SystemVariable), strip the `@@` prefix and resolve
+    // it through the same scalar lookup as `Expression::SystemVariable`.
+    if let Some(stripped) = name.strip_prefix("@@") {
+        return Ok(resolve_system_variable(&stripped.to_ascii_lowercase()));
+    }
     if let Some(col_idx) = find_column_index(name, columns) {
         Ok(row.get(col_idx).cloned().unwrap_or(Value::Null))
     } else if name.contains('.') {

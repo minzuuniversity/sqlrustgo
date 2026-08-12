@@ -22,6 +22,7 @@ fn clustered_table_production_storage_full_lifecycle() {
                 nullable: false,
                 primary_key: true,
                 char_max_length: None,
+                collation: None,
             },
             ColumnDefinition {
                 name: "name".to_string(),
@@ -29,12 +30,14 @@ fn clustered_table_production_storage_full_lifecycle() {
                 nullable: true,
                 primary_key: false,
                 char_max_length: None,
+                collation: None,
             },
         ],
         foreign_keys: vec![],
         unique_constraints: vec![],
         check_constraints: vec![],
         compression: None,
+        collations: std::collections::HashMap::new(),
         partition_info: None,
     };
 
@@ -108,11 +111,13 @@ fn clustered_table_pk_uniqueness() {
             nullable: false,
             primary_key: true,
             char_max_length: None,
+            collation: None,
         }],
         foreign_keys: vec![],
         unique_constraints: vec![],
         check_constraints: vec![],
         compression: None,
+        collations: std::collections::HashMap::new(),
         partition_info: None,
     };
     let mut ct = ClusteredTable::new(info, 0);
@@ -131,11 +136,13 @@ fn clustered_table_empty_operations() {
             nullable: false,
             primary_key: true,
             char_max_length: None,
+            collation: None,
         }],
         foreign_keys: vec![],
         unique_constraints: vec![],
         check_constraints: vec![],
         compression: None,
+        collations: std::collections::HashMap::new(),
         partition_info: None,
     };
     let ct = ClusteredTable::new(info, 0);
