@@ -248,9 +248,7 @@ impl From<&sqlrustgo_parser::Expression> for UnifiedExpr {
             // `SELECT @@version_comment LIMIT 1` return a single
             // column with a single value, which is what mysql CLI 8.0+
             // expects during its boot probe.
-            Expression::SystemVariable(name) => {
-                UnifiedExpr::Literal(resolve_system_variable(name))
-            }
+            Expression::SystemVariable(name) => UnifiedExpr::Literal(resolve_system_variable(name)),
             _ => UnifiedExpr::Literal(Value::Null),
         }
     }

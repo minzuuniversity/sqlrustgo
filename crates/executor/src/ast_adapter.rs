@@ -149,7 +149,6 @@ mod tests {
         TableRef {
             name: name.to_string(),
             alias: None,
-            subquery: None,
         }
     }
 
