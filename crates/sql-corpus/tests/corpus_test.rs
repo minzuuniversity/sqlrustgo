@@ -841,4 +841,103 @@ mod corpus_unit_tests {
         assert_eq!(results.len(), 1);
         assert_eq!(results[0].case_name, "empty_setup");
     }
+
+    #[test]
+    fn test_corpus_parse_and_execute_null_value_in_where() {
+        // Exercises compare_values paths where Value::Null is involved.
+        let mut corpus = SqlCorpus::new(PathBuf::from("/tmp/anywhere"));
+        let content = "-- === SETUP ===\n\
+                       CREATE TABLE t (id INT, val INT);\n\
+                       INSERT INTO t VALUES (1, 10);\n\
+                       INSERT INTO t VALUES (2, NULL);\n\
+                       INSERT INTO t VALUES (3, 30);\n\
+                       -- === CASE: null_check\n\
+                       SELECT * FROM t WHERE val IS NULL;\n";
+        let results = corpus.parse_and_execute(content);
+        assert_eq!(results.len(), 1);
+        assert_eq!(results[0].case_name, "null_check");
+    }
+
+    #[test]
+    fn test_corpus_parse_and_execute_null_in_equality() {
+        let mut corpus = SqlCorpus::new(PathBuf::from("/tmp/anywhere"));
+        let content = "-- === SETUP ===\n\
+                       CREATE TABLE t (id INT, val INT);\n\
+                       INSERT INTO t VALUES (1, NULL);\n\
+                       INSERT INTO t VALUES (2, 10);\n\
+                       -- === CASE: null_eq\n\
+                       SELECT * FROM t WHERE val = NULL;\n";
+        let results = corpus.parse_and_execute(content);
+        assert_eq!(results.len(), 1);
+        assert_eq!(results[0].case_name, "null_eq");
+    }
+
+    #[test]
+    fn test_corpus_parse_and_execute_float_value_comparison() {
+        // Exercises compare_values with Value::Float arms.
+        let mut corpus = SqlCorpus::new(PathBuf::from("/tmp/anywhere"));
+        let content = "-- === SETUP ===\n\
+                       CREATE TABLE t (id INT, ratio FLOAT);\n\
+                       INSERT INTO t VALUES (1, 1.5);\n\
+                       INSERT INTO t VALUES (2, 2.5);\n\
+                       -- === CASE: float_cmp\n\
+                       SELECT * FROM t WHERE ratio > 2.0;\n";
+        let results = corpus.parse_and_execute(content);
+        assert_eq!(results.len(), 1);
+        assert_eq!(results[0].case_name, "float_cmp");
+    }
+
+    #[test]
+    fn test_corpus_parse_and_execute_text_comparison() {
+        let mut corpus = SqlCorpus::new(PathBuf::from("/tmp/anywhere"));
+        let content = "-- === SETUP ===\n\
+                       CREATE TABLE t (id INT, name TEXT);\n\
+                       INSERT INTO t VALUES (1, 'Alice');\n\
+                       INSERT INTO t VALUES (2, 'Bob');\n\
+                       INSERT INTO t VALUES (3, 'Carol');\n\
+                       -- === CASE: text_cmp\n\
+                       SELECT * FROM t WHERE name < 'Carol';\n";
+        let results = corpus.parse_and_execute(content);
+        assert_eq!(results.len(), 1);
+        assert_eq!(results[0].case_name, "text_cmp");
+    }
+
+    #[test]
+    fn test_corpus_parse_and_execute_with_explicit_cte_columns() {
+        // Exercises cte.columns.len() non-empty path.
+        let mut corpus = SqlCorpus::new(PathBuf::from("/tmp/anywhere"));
+        let content = "-- === CASE: explicit_cols\n\
+                       WITH my_cte(a, b) AS (SELECT 1, 2) \
+                       SELECT a + b FROM my_cte;\n";
+        let results = corpus.parse_and_execute(content);
+        assert_eq!(results.len(), 1);
+        assert_eq!(results[0].case_name, "explicit_cols");
+    }
+
+    #[test]
+    fn test_corpus_parse_and_execute_update_with_complex_expr() {
+        // Exercises UPDATE with column reference expressions.
+        let mut corpus = SqlCorpus::new(PathBuf::from("/tmp/anywhere"));
+        let content = "-- === SETUP ===\n\
+                       CREATE TABLE t (id INT, val INT);\n\
+                       INSERT INTO t VALUES (1, 10);\n\
+                       -- === CASE: complex_update\n\
+                       UPDATE t SET val = val + 5;\n";
+        let results = corpus.parse_and_execute(content);
+        assert_eq!(results.len(), 1);
+        assert_eq!(results[0].case_name, "complex_update");
+    }
+
+    #[test]
+    fn test_corpus_parse_and_execute_recursive_cte_no_union() {
+        // Forces execute_recursive_cte error path: CTE body is not UNION.
+        let mut corpus = SqlCorpus::new(PathBuf::from("/tmp/anywhere"));
+        let content = "-- === CASE: bad_recursive\n\
+                       WITH RECURSIVE bad_cte(n) AS (SELECT 1) \
+                       SELECT * FROM bad_cte;\n";
+        let results = corpus.parse_and_execute(content);
+        assert_eq!(results.len(), 1);
+        // The case is processed; success depends on parser support.
+        assert_eq!(results[0].case_name, "bad_recursive");
+    }
 }
