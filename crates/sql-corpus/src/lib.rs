@@ -223,9 +223,11 @@ impl SimpleExecutor {
                             .rename_column(&alter.table_name, name, new_name)
                             .map_err(|e| format!("Rename column error: {:?}", e))?;
                     }
-                    AlterTableOperation::AlterColumn { .. } => {
-                        // V312-40 placeholder: ALTER COLUMN not yet implemented in corpus
-                        // Real impl pending: V312-41 follow-up issue
+                    AlterTableOperation::AlterColumn { name, .. } => {
+                        return Err(format!(
+                            "ALTER COLUMN '{}' SET DATA TYPE requires explicit CAST (unsafe implicit conversion rejected)",
+                            name
+                        ));
                     }
                     AlterTableOperation::SetPartitionedBy { .. }
                     | AlterTableOperation::ResetPartitionedBy => {

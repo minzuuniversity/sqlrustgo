@@ -24,6 +24,9 @@ use sqlrustgo_executor::trigger::{
 };
 use sqlrustgo_executor::ExecutorResult;
 use sqlrustgo_optimizer::rules::{BinaryOperator, Expr};
+use sqlrustgo_optimizer::stats::{
+    build_histogram_from_values, ColumnStats as OptColumnStats, Histogram,
+};
 use sqlrustgo_optimizer::unified_cost::UnifiedCostModel;
 use sqlrustgo_optimizer::unified_plan::UnifiedPlan;
 use sqlrustgo_parser::parser::{
@@ -55,6 +58,7 @@ use sqlrustgo_storage::checkpoint::{CheckpointManager, CheckpointMetadata};
 use sqlrustgo_storage::{
     adaptive_hash_index::AdaptiveHashIndex,
     clustered_table::ClusteredTable,
+    engine::CheckConstraint,
     recovery_engine::{RecoveryEngine, RecoveryEngineImpl},
     wal::{FileBackedWalManager, MemoryWalManager},
     ColumnDefinition, FileStorage, MemoryStorage, StorageEngine, TableInfo, WalStorage,
@@ -139,6 +143,10 @@ pub struct ColumnStatistics {
     pub distinct_count: u64,
     pub min_value: Option<SqlValue>,
     pub max_value: Option<SqlValue>,
+    /// V312-22b / Issue #4033: optional equi-height histogram for
+    /// data-driven selectivity estimation. Built by `collect_table_stats`
+    /// during ANALYZE.
+    pub histogram: Option<Histogram>,
 }
 
 /// Type alias for MemoryStorage-backed execution engine
@@ -315,11 +323,36 @@ impl<S: StorageEngine + 'static> ExecutionEngine<S> {
     }
 
     /// Sync table statistics from ExecutionStats into the cost model.
+    ///
+    /// V312-22b / Issue #4033: also forwards column-level stats (including
+    /// `Histogram`) into `UnifiedCostModel::column_stats`, so
+    /// `estimate_selectivity` can consume real data instead of the
+    /// per-op heuristic.
     pub fn update_cost_model_stats(&self) {
         let stats = self.stats.read();
         let mut cost_model = self.cost_model.write();
         for (name, tstats) in &stats.table_stats {
-            cost_model.update_table_stats(name.clone(), tstats.row_count, 0);
+            // Convert local ColumnStatistics → optimizer ColumnStats.
+            let mut opt_column_stats: std::collections::HashMap<String, OptColumnStats> =
+                std::collections::HashMap::with_capacity(tstats.column_stats.len());
+            for (col_name, cs) in &tstats.column_stats {
+                let opt = OptColumnStats::new(col_name.clone())
+                    .with_distinct_count(cs.distinct_count)
+                    .with_null_count(cs.null_count)
+                    .with_range(cs.min_value.clone(), cs.max_value.clone());
+                let opt = if let Some(h) = &cs.histogram {
+                    opt.with_histogram(h.clone())
+                } else {
+                    opt
+                };
+                opt_column_stats.insert(col_name.clone(), opt);
+            }
+            cost_model.update_table_stats_with_columns(
+                name.clone(),
+                tstats.row_count,
+                0,
+                opt_column_stats,
+            );
         }
     }
 }
@@ -588,9 +621,6 @@ impl<S: StorageEngine + 'static> ExecutionEngine<S> {
             Statement::DropSequence(ref seq) => self.execute_drop_sequence(seq),
             Statement::AlterSequence(ref seq) => self.execute_alter_sequence(seq),
             Statement::UseDatabase(ref name) => self.execute_use_database(name),
-            Statement::Values(_) => Err(SqlError::ExecutionError(
-                "VALUES cannot be used as a standalone statement".to_string(),
-            )),
             Statement::Values(_) => Err(SqlError::ExecutionError(
                 "VALUES cannot be used as a standalone statement".to_string(),
             )),
@@ -1349,20 +1379,35 @@ impl<S: StorageEngine + 'static> ExecutionEngine<S> {
     fn execute_intersect(&mut self, stmt: &IntersectStatement) -> SqlResult<ExecutorResult> {
         let mut left_result = self.execute_statement(&stmt.left)?;
         let right_result = self.execute_statement(&stmt.right)?;
-        // Keep rows that appear in both sides. If INTERSECT ALL, keep one
-        // copy per common occurrence (count min). For plain INTERSECT (distinct),
-        // dedup left side first, then keep only rows present in right.
-        if !stmt.intersect_all {
-            left_result.rows.sort();
-            left_result.rows.dedup();
+        // SQL-92 multiset semantics for INTERSECT:
+        //   * DISTINCT (default): deduplicate each side, then keep rows
+        //     that appear on both sides (one copy each).
+        //   * ALL: keep min(cntL(r), cntR(r)) copies of every row r.
+        // The previous implementation only retained rows from left that
+        // appeared in the deduplicated right set, which dropped multiplicity
+        // under INTERSECT ALL (returned too few copies) and returned too
+        // many copies because left was never dedup'd for ALL.
+        let left_counts = multiset_counts(&left_result.rows);
+        let right_counts = multiset_counts(&right_result.rows);
+        let mut out: Vec<Vec<Value>> = Vec::new();
+        if stmt.intersect_all {
+            for (row, cnt_l) in &left_counts {
+                if let Some(cnt_r) = right_counts.get(row) {
+                    let keep = (*cnt_l).min(*cnt_r);
+                    for _ in 0..keep {
+                        out.push(row.clone());
+                    }
+                }
+            }
+        } else {
+            // DISTINCT: a row appears iff it appears on both sides; one copy.
+            for (row, _) in &left_counts {
+                if right_counts.contains_key(row) {
+                    out.push(row.clone());
+                }
+            }
         }
-        let right_set: Vec<Vec<Value>> = {
-            let mut r = right_result.rows.clone();
-            r.sort();
-            r.dedup();
-            r
-        };
-        left_result.rows.retain(|row| right_set.contains(row));
+        left_result.rows = out;
         left_result.affected_rows = left_result.rows.len();
         Ok(left_result)
     }
@@ -1370,18 +1415,33 @@ impl<S: StorageEngine + 'static> ExecutionEngine<S> {
     fn execute_except(&mut self, stmt: &ExceptStatement) -> SqlResult<ExecutorResult> {
         let mut left_result = self.execute_statement(&stmt.left)?;
         let right_result = self.execute_statement(&stmt.right)?;
-        // Keep rows in left that are not in right.
-        let right_set: Vec<Vec<Value>> = {
-            let mut r = right_result.rows.clone();
-            r.sort();
-            r.dedup();
-            r
-        };
-        left_result.rows.retain(|row| !right_set.contains(row));
-        if !stmt.except_all {
-            left_result.rows.sort();
-            left_result.rows.dedup();
+        // SQL-92 multiset semantics for EXCEPT:
+        //   * DISTINCT (default): deduplicate each side, then keep rows
+        //     from left that do NOT appear in right (one copy each).
+        //   * ALL: keep max(0, cntL(r) - cntR(r)) copies of every row r.
+        // The previous implementation removed every left copy whose value
+        // appeared in the deduplicated right set, which collapsed multiplicity
+        // under EXCEPT ALL.
+        let left_counts = multiset_counts(&left_result.rows);
+        let right_counts = multiset_counts(&right_result.rows);
+        let mut out: Vec<Vec<Value>> = Vec::new();
+        if stmt.except_all {
+            for (row, cnt_l) in &left_counts {
+                let cnt_r = right_counts.get(row).copied().unwrap_or(0);
+                let keep = cnt_l.saturating_sub(cnt_r);
+                for _ in 0..keep {
+                    out.push(row.clone());
+                }
+            }
+        } else {
+            // DISTINCT: a row is kept iff it appears in left and not in right.
+            for (row, _) in &left_counts {
+                if !right_counts.contains_key(row) {
+                    out.push(row.clone());
+                }
+            }
         }
+        left_result.rows = out;
         left_result.affected_rows = left_result.rows.len();
         Ok(left_result)
     }
@@ -1416,6 +1476,19 @@ fn leftmost_column_names(stmt: &Statement) -> Vec<&str> {
         Statement::Except(e) => leftmost_column_names(&e.left),
         _ => Vec::new(),
     }
+}
+
+/// Count row multiplicities for multiset (INTERSECT ALL / EXCEPT ALL)
+/// semantics. Returns a HashMap keyed by the row's value vector so
+/// `Vec<Value>` equality drives the multiset comparison. Insertion
+/// iteration order is preserved as the standard HashMap order; set-op
+/// callers only need the counts, not the order.
+fn multiset_counts(rows: &[Vec<Value>]) -> std::collections::HashMap<Vec<Value>, usize> {
+    let mut counts: std::collections::HashMap<Vec<Value>, usize> = std::collections::HashMap::new();
+    for row in rows {
+        *counts.entry(row.clone()).or_insert(0) += 1;
+    }
+    counts
 }
 
 /// Evaluate a single ORDER BY expression against a row, using column

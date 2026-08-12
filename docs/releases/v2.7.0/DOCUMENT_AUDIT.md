@@ -125,7 +125,7 @@ v2.7.0 是 SQLRustGo 的 GA (生产就绪) 版本，重点实现 WAL 崩溃恢�
 **问题**: UPGRADE_GUIDE.md 第 185 行引用 `UPGRADE_GUIDE_v2.7.0.md`，但实际文件名是 `UPGRADE_GUIDE.md`。
 
 ```markdown
-详见 [UPGRADE_GUIDE_v2.7.0.md](./UPGRADE_GUIDE_v2.7.0.md)
+详见 UPGRADE_GUIDE_v2.7.0.md
 ```
 
 应修正为：

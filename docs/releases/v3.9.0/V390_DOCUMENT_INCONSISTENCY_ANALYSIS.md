@@ -42,10 +42,10 @@
 
 | 文档 | GA 目标日期 | 说明 |
 |------|-------------|------|
-| [ROADMAP.md](file:///D:/sqlrustgo/docs/releases/v3.9.0/ROADMAP.md) | 2026-09-23 | 12 周 |
-| [V390_VERSION_PLAN.md](file:///D:/sqlrustgo/docs/releases/v3.9.0/plans/V390_VERSION_PLAN.md) | 2026-09-23 | W12 收口 |
-| [V390_COMPREHENSIVE_ASSESSMENT.md](file:///D:/sqlrustgo/docs/releases/v3.9.0/V390_COMPREHENSIVE_ASSESSMENT.md) | 2026-09-23 **at risk** | 调整后 22-26 周 |
-| [RC3_PLAN.md](file:///D:/sqlrustgo/docs/releases/v3.9.0/rc/RC3_PLAN.md) | 2026-09-23 **at risk** | 依赖 Z6G4 |
+| [ROADMAP.md](../../../ROADMAP.md) | 2026-09-23 | 12 周 |
+| [V390_VERSION_PLAN.md](plans/V390_VERSION_PLAN.md) | 2026-09-23 | W12 收口 |
+| [V390_COMPREHENSIVE_ASSESSMENT.md](V390_COMPREHENSIVE_ASSESSMENT.md) | 2026-09-23 **at risk** | 调整后 22-26 周 |
+| [RC3_PLAN.md](rc/RC3_PLAN.md) | 2026-09-23 **at risk** | 依赖 Z6G4 |
 
 **问题**: ROADMAP.md 和 V390_VERSION_PLAN.md 未反映 RC3_PLAN 揭示的延期风险。
 

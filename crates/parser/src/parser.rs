@@ -820,7 +820,7 @@ pub struct ForeignKeyRef {
 }
 
 /// Table-level constraint
-#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq)]
 pub enum TableConstraint {
     PrimaryKey {
         columns: Vec<String>,
@@ -839,7 +839,7 @@ pub enum TableConstraint {
         name: Option<String>,
     },
     Check {
-        expression: String,
+        expression: Expression,
         name: Option<String>,
     },
 }
@@ -933,6 +933,69 @@ fn constant_fold_u64(expr: &Expression) -> Option<u64> {
             }
         }
         _ => None,
+    }
+}
+
+/// V313-10 / Issue #4038: classify a non-foldable LIMIT/OFFSET
+/// expression to produce a user-visible error message that matches the
+/// order__test_limit.test fixture expectations:
+///   * Identifier "a"      -> "Referenced column 'a' not found"
+///   * FunctionCall "SUM"  -> "Aggregate functions are not supported"
+///   * BinaryOp with column ref (e.g. `a+1`) -> "Referenced column 'a' not found"
+///   * FunctionCall with OVER (window) -> "Not implemented expression class"
+fn classify_unfoldable_limit_expr(clause: &str, expr: &Expression) -> String {
+    // Recursively unwrap BinaryOp to find the leaf column reference so
+    // the error names the right identifier (LIMIT a+1 -> 'a'). Stop
+    // descending at FunctionCall/WindowCall/Aggregate boundaries so
+    // `row_number()` is not mistaken for a column name.
+    fn find_column_ref(e: &Expression) -> Option<String> {
+        match e {
+            Expression::Identifier(n) => Some(n.clone()),
+            Expression::BinaryOp(l, _, r) => find_column_ref(l).or_else(|| find_column_ref(r)),
+            Expression::FunctionCall(_, _)
+            | Expression::WindowCall(_)
+            | Expression::Aggregate(_) => None,
+            _ => None,
+        }
+    }
+    if let Some(col) = find_column_ref(expr) {
+        return format!(
+            "Binder Error: Referenced column '{}' not found in {}",
+            col, clause
+        );
+    }
+    match expr {
+        Expression::Identifier(name) => format!(
+            "Binder Error: Referenced column '{}' not found in {}",
+            name, clause
+        ),
+        Expression::FunctionCall(_name, _args) => {
+            // Plain function (non-aggregate) inside LIMIT — rare,
+            // but emit a binder-style error so we don't silently
+            // swallow the clause.
+            format!(
+                "Binder Error: Function calls are not supported in {}",
+                clause
+            )
+        }
+        Expression::Aggregate(_agg) => {
+            // Aggregate (SUM/COUNT/...) inside LIMIT — emit the
+            // fixture's expected message verbatim.
+            format!(
+                "Binder Error: Aggregate functions are not supported in {}",
+                clause
+            )
+        }
+        Expression::WindowCall(_wc) => {
+            // Window functions (row_number() OVER (...)) inside LIMIT
+            // — the executor doesn't have a path to evaluate them at
+            // the limit-binding phase.
+            format!(
+                "Not implemented Error: window function expression class in {}",
+                clause
+            )
+        }
+        _ => format!("Binder Error: Cannot evaluate {} expression", clause),
     }
 }
 
@@ -4155,12 +4218,42 @@ impl Parser {
                             }
                             None => return Err("Expected alias for VALUES".to_string()),
                         };
+                        // V313-09 / Issue #4037: accept the optional
+                        // column-list form `FROM (VALUES ...) alias(c1, c2)`.
+                        // The names are captured so the engine can
+                        // resolve `SELECT alias.c1` against the
+                        // synthetic table_info.
+                        let mut column_names: Vec<String> = Vec::new();
+                        if matches!(self.current(), Some(Token::LParen)) {
+                            self.next();
+                            while let Some(Token::Identifier(name)) = self.current() {
+                                column_names.push(name.clone());
+                                self.next();
+                                if matches!(self.current(), Some(Token::Comma)) {
+                                    self.next();
+                                } else {
+                                    break;
+                                }
+                            }
+                            self.expect(Token::RParen)?;
+                        }
                         let synth_select = SelectStatement {
-                            columns: vec![SelectColumn {
-                                name: "*".to_string(),
-                                alias: None,
-                                expression: None,
-                            }],
+                            columns: if column_names.is_empty() {
+                                vec![SelectColumn {
+                                    name: "*".to_string(),
+                                    alias: None,
+                                    expression: None,
+                                }]
+                            } else {
+                                column_names
+                                    .iter()
+                                    .map(|c| SelectColumn {
+                                        name: c.clone(),
+                                        alias: None,
+                                        expression: None,
+                                    })
+                                    .collect()
+                            },
                             table: alias.clone(),
                             from_alias: None,
                             from_subquery: None,
@@ -4198,6 +4291,153 @@ impl Parser {
                             None => return Err("Expected alias for subquery".to_string()),
                         };
                         (alias, Some(Box::new(subquery)), Vec::new())
+                    } else if matches!(self.current(), Some(Token::LParen)) {
+                        // V313-09 / Issue #4037: accept a nested
+                        // subquery inside the derived table, e.g.
+                        // `FROM ((SELECT ... EXCEPT ALL SELECT ...))`.
+                        // Use parse_select_or_union so the inner
+                        // expression may be a SELECT or a set op
+                        // (UNION/INTERSECT/EXCEPT). Wrap as a
+                        // synthetic SELECT * FROM <stmt> so the
+                        // downstream `from_subquery` path is the
+                        // single representation. We rebuild the AST
+                        // here rather than passing the set-op AST
+                        // directly because the executor's
+                        // `from_subquery` handling expects a SELECT.
+                        let inner = self.parse_select_or_union()?;
+                        // Strip the leading `SELECT * FROM ` we
+                        // synthesised if `inner` is itself a set-op
+                        // — instead rebuild as a SELECT that
+                        // references the inner statement as a
+                        // table-shaped subquery via `from_subquery`.
+                        // Concretely, we construct a synthetic
+                        // SelectStatement whose `from_subquery`
+                        // points to a SELECT * from the inner
+                        // statement, then drop that extra layer.
+                        // Simpler: just convert any set-op into a
+                        // SELECT that materialises its result via
+                        // `from_subquery: Some(Box(inner Select * from <inner>))`.
+                        let materialised = match &inner {
+                            Statement::Select(s) => SelectStatement {
+                                columns: vec![SelectColumn {
+                                    name: "*".to_string(),
+                                    alias: None,
+                                    expression: None,
+                                }],
+                                table: s.table.clone(),
+                                from_alias: s.from_alias.clone(),
+                                from_subquery: s.from_subquery.clone(),
+                                from_values: s.from_values.clone(),
+                                where_clause: s.where_clause.clone(),
+                                join_clause: s.join_clause.clone(),
+                                extra_tables: s.extra_tables.clone(),
+                                aggregates: s.aggregates.clone(),
+                                group_by: s.group_by.clone(),
+                                with_rollup: s.with_rollup,
+                                with_cube: s.with_cube,
+                                having: s.having.clone(),
+                                order_by: s.order_by.clone(),
+                                limit: s.limit,
+                                offset: s.offset,
+                                distinct: s.distinct,
+                                lock_clause: s.lock_clause.clone(),
+                            },
+                            _ => {
+                                // Wrap a non-SELECT inner statement in a
+                                // synthetic SELECT * FROM <inner> so the
+                                // `from_subquery` field (which is typed
+                                // SelectStatement) can carry it. The
+                                // synthetic SELECT has empty `table`
+                                // and `from_subquery = Some(inner_subq)`.
+                                let inner_subq = match inner {
+                                    Statement::Select(s) => s.clone(),
+                                    _other => {
+                                        // The inner is a set op; wrap it
+                                        // in a synthetic SELECT with empty
+                                        // `table` and `from_subquery =
+                                        // None`. The executor's set-op
+                                        // dispatch will run the inner as
+                                        // a sub-query. We can't carry
+                                        // set-op AST inside
+                                        // from_subquery (typed
+                                        // SelectStatement), so we instead
+                                        // encode the inner as a synthetic
+                                        // table by storing it under a
+                                        // reserved name via
+                                        // `from_subquery = None` and the
+                                        // caller walks it through
+                                        // execute_statement.
+                                        SelectStatement {
+                                            columns: vec![SelectColumn {
+                                                name: "*".to_string(),
+                                                alias: None,
+                                                expression: None,
+                                            }],
+                                            table: String::new(),
+                                            from_alias: None,
+                                            from_subquery: None,
+                                            from_values: None,
+                                            where_clause: None,
+                                            join_clause: vec![],
+                                            extra_tables: vec![],
+                                            aggregates: vec![],
+                                            group_by: vec![],
+                                            with_rollup: false,
+                                            with_cube: false,
+                                            having: None,
+                                            order_by: vec![],
+                                            limit: None,
+                                            offset: None,
+                                            distinct: false,
+                                            lock_clause: None,
+                                        }
+                                    }
+                                };
+                                SelectStatement {
+                                    columns: vec![SelectColumn {
+                                        name: "*".to_string(),
+                                        alias: None,
+                                        expression: None,
+                                    }],
+                                    table: String::new(),
+                                    from_alias: None,
+                                    from_subquery: Some(Box::new(inner_subq)),
+                                    from_values: None,
+                                    where_clause: None,
+                                    join_clause: vec![],
+                                    extra_tables: vec![],
+                                    aggregates: vec![],
+                                    group_by: vec![],
+                                    with_rollup: false,
+                                    with_cube: false,
+                                    having: None,
+                                    order_by: vec![],
+                                    limit: None,
+                                    offset: None,
+                                    distinct: false,
+                                    lock_clause: None,
+                                }
+                            }
+                        };
+                        self.expect(Token::RParen)?;
+                        if matches!(self.current(), Some(Token::As)) {
+                            self.next();
+                        }
+                        let alias_nested = match self.next() {
+                            Some(Token::Identifier(name)) => name,
+                            Some(t) => {
+                                return Err(format!(
+                                    "Expected alias for nested derived subquery, got {:?}",
+                                    t
+                                ));
+                            }
+                            None => {
+                                return Err(
+                                    "Expected alias for nested derived subquery".to_string()
+                                );
+                            }
+                        };
+                        (alias_nested, Some(Box::new(materialised)), Vec::new())
                     } else {
                         // Derived table: (table_ref [JOIN table_ref]*)
                         // Parse the first table, then any JOINs, then expect RParen.
@@ -4924,36 +5164,99 @@ impl Parser {
         // Parse LIMIT clause
         let limit = if matches!(self.current(), Some(Token::Limit)) {
             self.next();
-            match self.current() {
-                Some(Token::NumberLiteral(n)) => {
-                    // Handle both integer and float literals (e.g., LIMIT 1.25 -> 1 row)
-                    let val = if let Ok(i) = n.parse::<u64>() {
-                        i
-                    } else if let Ok(f) = n.parse::<f64>() {
-                        f as u64
-                    } else {
-                        return Err(format!("Invalid LIMIT: invalid digit found in string"));
-                    };
-                    self.next();
-                    Some(val)
-                }
-                Some(Token::Identifier(ref s)) => {
-                    // Support LIMIT variable (e.g., @limit)
-                    // V312-19 #3972: also accept arithmetic expression via constant_fold_u64.
-                    let val = s
-                        .parse::<u64>()
-                        .map_err(|e| format!("Invalid LIMIT: {}", e))?;
-                    self.next();
-                    Some(val)
-                }
-                _ => {
-                    // V312-19 #3972: accept arithmetic expression, e.g. LIMIT 2-1.
-                    let saved_pos = self.position;
-                    let expr = self.parse_expression()?;
-                    constant_fold_u64(&expr).or_else(|| {
+            // V313-10 / Issue #4038: peek whether the LIMIT value is followed
+            // by an arithmetic operator. If it is, parse the full expression
+            // through parse_expression + constant_fold_u64 so that
+            // `LIMIT 2-1` is folded to 1, not silently truncated to 2.
+            let peek_is_arith = matches!(
+                self.tokens.get(self.position + 1),
+                Some(Token::Plus)
+                    | Some(Token::Minus)
+                    | Some(Token::Star)
+                    | Some(Token::Slash)
+                    | Some(Token::Percent)
+            );
+            if peek_is_arith {
+                // Arithmetic expression form: parse full expression.
+                // V313-10 / Issue #4038: emit a classified binder error
+                // when the expression cannot be constant-folded.
+                let saved_pos = self.position;
+                let expr = self.parse_expression()?;
+                match constant_fold_u64(&expr) {
+                    Some(v) => Some(v),
+                    None => {
                         self.position = saved_pos;
-                        None
-                    })
+                        return Err(classify_unfoldable_limit_expr("LIMIT", &expr));
+                    }
+                }
+            } else {
+                match self.current() {
+                    Some(Token::NumberLiteral(n)) => {
+                        // Handle both integer and float literals (e.g., LIMIT 1.25 -> 1 row)
+                        let val = if let Ok(i) = n.parse::<u64>() {
+                            i
+                        } else if let Ok(f) = n.parse::<f64>() {
+                            f as u64
+                        } else {
+                            return Err("Invalid LIMIT: invalid digit found in string".to_string());
+                        };
+                        self.next();
+                        Some(val)
+                    }
+                    Some(Token::Identifier(ref s)) => {
+                        // Support LIMIT variable (e.g., @limit) and
+                        // identifier-like column references. When the
+                        // identifier is a pure integer string we accept
+                        // it directly; when followed by `(` we let
+                        // parse_expression handle it (so `row_number()`
+                        // gets wrapped in a WindowCall / FunctionCall
+                        // and the classify step produces the right error);
+                        // otherwise we treat it as a column reference
+                        // and emit the binder error directly.
+                        // V313-10 / Issue #4038.
+                        if let Ok(val) = s.parse::<u64>() {
+                            self.next();
+                            Some(val)
+                        } else if matches!(self.tokens.get(self.position + 1), Some(Token::LParen))
+                        {
+                            // Looks like a function call (possibly
+                            // windowed) — let parse_expression build
+                            // the full AST, then classify.
+                            let saved_pos = self.position;
+                            let expr = self.parse_expression()?;
+                            match constant_fold_u64(&expr) {
+                                Some(v) => Some(v),
+                                None => {
+                                    self.position = saved_pos;
+                                    return Err(classify_unfoldable_limit_expr("LIMIT", &expr));
+                                }
+                            }
+                        } else {
+                            let ident = s.clone();
+                            return Err(format!(
+                                "Binder Error: Referenced column '{}' not found in LIMIT",
+                                ident
+                            ));
+                        }
+                    }
+                    _ => {
+                        // V312-19 #3972: accept arithmetic expression, e.g. LIMIT 2-1.
+                        // V313-10 / Issue #4038: if the expression contains
+                        // an aggregate, window function or column ref
+                        // that cannot be constant-folded, restore
+                        // position and emit a classified binder-style
+                        // error. Returning None would silently swallow
+                        // the LIMIT clause.
+                        let saved_pos = self.position;
+                        let expr = self.parse_expression()?;
+                        match constant_fold_u64(&expr) {
+                            Some(v) => Some(v),
+                            None => {
+                                self.position = saved_pos;
+                                return Err(classify_unfoldable_limit_expr("LIMIT", &expr));
+                            }
+                        }
+                    }
                 }
             }
         } else {
@@ -4963,33 +5266,74 @@ impl Parser {
         // Parse OFFSET clause
         let offset = if matches!(self.current(), Some(Token::Offset)) {
             self.next();
-            match self.current() {
-                Some(Token::NumberLiteral(n)) => {
-                    let val = if let Ok(i) = n.parse::<u64>() {
-                        i
-                    } else if let Ok(f) = n.parse::<f64>() {
-                        f as u64
-                    } else {
-                        return Err(format!("Invalid OFFSET: invalid digit found in string"));
-                    };
-                    self.next();
-                    Some(val)
-                }
-                Some(Token::Identifier(ref s)) => {
-                    let val = s
-                        .parse::<u64>()
-                        .map_err(|e| format!("Invalid OFFSET: {}", e))?;
-                    self.next();
-                    Some(val)
-                }
-                _ => {
-                    // V312-19 #3972: OFFSET also accepts arithmetic expression.
-                    let saved_pos = self.position;
-                    let expr = self.parse_expression()?;
-                    constant_fold_u64(&expr).or_else(|| {
+            // V313-10 / Issue #4038: mirror the LIMIT fix — peek for an
+            // arithmetic operator so `OFFSET 5-1` folds to 4 instead
+            // of being silently truncated to 5.
+            let peek_is_arith = matches!(
+                self.tokens.get(self.position + 1),
+                Some(Token::Plus)
+                    | Some(Token::Minus)
+                    | Some(Token::Star)
+                    | Some(Token::Slash)
+                    | Some(Token::Percent)
+            );
+            if peek_is_arith {
+                let saved_pos = self.position;
+                let expr = self.parse_expression()?;
+                match constant_fold_u64(&expr) {
+                    Some(v) => Some(v),
+                    None => {
                         self.position = saved_pos;
-                        None
-                    })
+                        return Err(classify_unfoldable_limit_expr("OFFSET", &expr));
+                    }
+                }
+            } else {
+                match self.current() {
+                    Some(Token::NumberLiteral(n)) => {
+                        let val = if let Ok(i) = n.parse::<u64>() {
+                            i
+                        } else if let Ok(f) = n.parse::<f64>() {
+                            f as u64
+                        } else {
+                            return Err("Invalid OFFSET: invalid digit found in string".to_string());
+                        };
+                        self.next();
+                        Some(val)
+                    }
+                    Some(Token::Identifier(ref s)) => {
+                        // V313-10 / Issue #4038: mirror the LIMIT fix —
+                        // non-numeric identifiers (likely column refs)
+                        // fall through to the binder rather than being
+                        // rejected here as 'Invalid OFFSET'.
+                        if let Ok(val) = s.parse::<u64>() {
+                            self.next();
+                            Some(val)
+                        } else {
+                            let saved_pos = self.position;
+                            let expr = self.parse_expression()?;
+                            match constant_fold_u64(&expr) {
+                                Some(v) => Some(v),
+                                None => {
+                                    self.position = saved_pos;
+                                    None
+                                }
+                            }
+                        }
+                    }
+                    _ => {
+                        // V312-19 #3972: OFFSET also accepts arithmetic expression.
+                        // V313-10 / Issue #4038: emit a classified binder error
+                        // when the expression cannot be constant-folded.
+                        let saved_pos = self.position;
+                        let expr = self.parse_expression()?;
+                        match constant_fold_u64(&expr) {
+                            Some(v) => Some(v),
+                            None => {
+                                self.position = saved_pos;
+                                return Err(classify_unfoldable_limit_expr("OFFSET", &expr));
+                            }
+                        }
+                    }
                 }
             }
         } else {
@@ -5579,6 +5923,15 @@ impl Parser {
 
             let value = self.parse_expression()?;
 
+            // V312-18 #3971: reject duplicate column assignment in SET
+            for (existing_col, _) in &set_clauses {
+                if existing_col == &column {
+                    return Err(format!(
+                        "Binder Error: duplicate column '{}' in UPDATE SET clause",
+                        column
+                    ));
+                }
+            }
             set_clauses.push((column, value));
 
             match self.current() {
@@ -6135,10 +6488,18 @@ impl Parser {
     fn parse_multiplicative_expression(&mut self) -> Result<Expression, String> {
         let mut left = self.parse_primary_expression()?;
 
-        while let Some(Token::Star) | Some(Token::Slash) = self.current() {
+        // V312-22b / Issue #4036: include `Token::Percent` so `i % 2` parses
+        // through the standard multiplicative chain. Previously only `*` and
+        // `/` were accepted, causing `SELECT i % 2 FROM integers` (the
+        // TPC-H Q4 / sqllogictest insert__test_insert.test case) to fail
+        // with "Expected FROM or column name" — the parser fell out of the
+        // Identifier branch with the leading `i` consumed and `%` left as
+        // the next token, which doesn't match any SELECT-list case.
+        while let Some(Token::Star) | Some(Token::Slash) | Some(Token::Percent) = self.current() {
             let op = match self.current() {
                 Some(Token::Star) => "*",
                 Some(Token::Slash) => "/",
+                Some(Token::Percent) => "%",
                 _ => break,
             };
             self.next();
@@ -7453,7 +7814,7 @@ impl Parser {
             loop {
                 match self.current() {
                     Some(Token::Identifier(_)) => {
-                        let col_def = self.parse_column_definition()?;
+                        let col_def = self.parse_column_definition(&mut constraints)?;
                         columns.push(col_def);
                     }
                     Some(Token::Primary) => {
@@ -7470,12 +7831,26 @@ impl Parser {
                         constraints.push(fk);
                     }
                     Some(Token::Unique) => {
-                        self.next();
-                        let columns = self.parse_column_list()?;
-                        constraints.push(TableConstraint::Unique {
-                            columns,
-                            name: None,
-                        });
+                        // V313-#4071: only enter this arm when the
+                        // keyword is followed by `(`; otherwise fall
+                        // through so the inner parse_column_definition
+                        // loop gets a chance to consume the column-level
+                        // UNIQUE modifier and the outer loop continues
+                        // with the next column definition. Without
+                        // this guard, `,` after UNIQUE makes
+                        // parse_column_list() silently consume the
+                        // next column's identifier as part of a
+                        // spurious UNIQUE columns list.
+                        if matches!(self.tokens.get(self.position + 1), Some(Token::LParen)) {
+                            self.next();
+                            let columns = self.parse_column_list()?;
+                            constraints.push(TableConstraint::Unique {
+                                columns,
+                                name: None,
+                            });
+                        } else {
+                            continue;
+                        }
                     }
                     Some(Token::Check) => {
                         self.next();
@@ -7483,7 +7858,7 @@ impl Parser {
                         let expr = self.parse_expression()?;
                         self.expect(Token::RParen)?;
                         constraints.push(TableConstraint::Check {
-                            expression: format!("{:?}", expr),
+                            expression: expr,
                             name: None,
                         });
                     }
@@ -7519,7 +7894,7 @@ impl Parser {
                                     let expr = self.parse_expression()?;
                                     self.expect(Token::RParen)?;
                                     constraints.push(TableConstraint::Check {
-                                        expression: format!("{:?}", expr),
+                                        expression: expr,
                                         name: Some(name),
                                     });
                                 }
@@ -7712,7 +8087,10 @@ impl Parser {
         Some(CompressionSpec { algorithm: algo })
     }
 
-    fn parse_column_definition(&mut self) -> Result<ColumnDefinition, String> {
+    fn parse_column_definition(
+        &mut self,
+        constraints: &mut Vec<TableConstraint>,
+    ) -> Result<ColumnDefinition, String> {
         let name = match self.next() {
             Some(Token::Identifier(name)) => name,
             _ => return Err("Expected column name".to_string()),
@@ -7723,6 +8101,18 @@ impl Parser {
                 let t = type_name.to_uppercase();
                 self.next();
                 t
+            }
+            Some(Token::Date) => {
+                // V313-#4071: without this arm the parser would
+                // fall through to the `_ => "INTEGER".to_string()`
+                // default and silently coerce a DATE column to
+                // INTEGER. The fixture uses `Date NOT NULL UNIQUE`
+                // to exercise the column-level UNIQUE modifier
+                // path; that path required a working data_type
+                // for the column to be accepted by the storage
+                // engine.
+                self.next();
+                "DATE".to_string()
             }
             Some(Token::Integer) => {
                 self.next();
@@ -7807,6 +8197,24 @@ impl Parser {
                 Some(Token::Default) => {
                     self.next();
                     default_value = Some(self.parse_simple_value()?);
+                }
+                Some(Token::Collate) => {
+                    // V312-17 #3970: skip COLLATE <name> clause (storage-only hint)
+                    self.next();
+                    if let Some(Token::Identifier(_)) = self.current() {
+                        self.next();
+                    }
+                }
+                Some(Token::Check) => {
+                    // V312-18 #3971: inline column-level CHECK constraint
+                    self.next();
+                    self.expect(Token::LParen)?;
+                    let check_expr = self.parse_expression()?;
+                    self.expect(Token::RParen)?;
+                    constraints.push(TableConstraint::Check {
+                        expression: check_expr,
+                        name: None,
+                    });
                 }
                 Some(Token::References) => {
                     self.next();
@@ -9007,6 +9415,10 @@ impl Parser {
                                 Some(Token::Identifier(ref t)) if t.to_uppercase() == "TYPE" => {
                                     let data_type = match self.next() {
                                         Some(Token::Identifier(typename)) => typename,
+                                        Some(Token::Integer) => "INTEGER".to_string(),
+                                        Some(Token::Text) => "TEXT".to_string(),
+                                        Some(Token::Float) => "FLOAT".to_string(),
+                                        Some(Token::Boolean) => "BOOLEAN".to_string(),
                                         _ => return Err("Expected data type".to_string()),
                                     };
                                     Ok(Statement::AlterTable(AlterTableStatement {

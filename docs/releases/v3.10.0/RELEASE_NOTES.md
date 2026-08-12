@@ -13,7 +13,7 @@
 > **下一版本**: v3.11.0 (规划中, Issue #3835, 预计 2026-10-01 GA)
 >
 > Comprehensive list of changes from v3.9.0 → v3.10.0-rc.1
-> For migration instructions see [`CLI_USER_MANUAL.md`](CLI_USER_MANUAL.md) (TBW)
+> For migration instructions see [`CLI_USER_MANUAL.md`](../v3.9.0/CLI_USER_MANUAL.md) (TBW)
 > For benchmark numbers see [`docs/releases/v3.10.0/perf/`](perf/) (TBW until GA)
 
 ## 0. Headline
@@ -90,9 +90,9 @@ Per-component breakdown in [`docs/releases/v3.10.0/perf/`](perf/)（待 GA 前�
 
 | 类别 | 数量 | 说明 |
 |------|------|------|
-| F-XX ISOLATED (9 项) | F-23/24/25/26/27/29/31/32/35 | ~960 LOC 重构,需 BTree/索引/安全多子系统协同。 [ISOLATED_MODULES.md §1](../../ISOLATED_MODULES.md#1-f-xx-functional-islands-9-项孤岛-计划-v3110-集成) |
-| F-XX NOT IMPLEMENTED (3 项) | F-03 GIS, F-30 SEQUENCE, F-36 列级权限 | 0 代码 → GA 是反常,延后。 [ISOLATED_MODULES.md §2](../../ISOLATED_MODULES.md#2-f-xx-not_implemented-3-项-计划-v311) |
-| Extension crates (8 项 SCOPE_DEFERRED) | agentsql, gmp, rag, graph, qmd-bridge, evidence-graph, unified-query, unified-storage | 产品决策层,等 openclaw + hermes 评审。 [ISOLATED_MODULES.md §3](../../ISOLATED_MODULES.md#3-extension-crates-11-项-v311-业务决策) |
+| F-XX ISOLATED (9 项) | F-23/24/25/26/27/29/31/32/35 | ~960 LOC 重构,需 BTree/索引/安全多子系统协同。 [ISOLATED_MODULES.md §1](../../../ISOLATED_MODULES.md) |
+| F-XX NOT IMPLEMENTED (3 项) | F-03 GIS, F-30 SEQUENCE, F-36 列级权限 | 0 代码 → GA 是反常,延后。 [ISOLATED_MODULES.md §2](../../../ISOLATED_MODULES.md) |
+| Extension crates (8 项 SCOPE_DEFERRED) | agentsql, gmp, rag, graph, qmd-bridge, evidence-graph, unified-query, unified-storage | 产品决策层,等 openclaw + hermes 评审。 [ISOLATED_MODULES.md §3](../../../ISOLATED_MODULES.md) |
 | SEM-3 ALTER TABLE RENAME/MODIFY | V310-04 (20h, P0) | MODIFY 关键字已在词法分析器 (PR #3773),RENAME 已部分实现; 完整 RENAME TABLE + MODIFY COLUMN 推迟 |
 | SEM-4 覆盖率 ≥80% | V310-10 (40h) | 当前 ~67% Hermes C 条件通过; 未达 ≥80% 但非 blocker |
 
@@ -136,7 +136,7 @@ Per-component breakdown in [`docs/releases/v3.10.0/perf/`](perf/)（待 GA 前�
 - Stage 状态: [`STAGE.yaml`](STAGE.yaml)
 - 计划: [`plans/V310_VERSION_PLAN.md`](plans/V310_VERSION_PLAN.md), [`plans/V310_DEVELOPMENT_PLAN.md`](plans/V310_DEVELOPMENT_PLAN.md), [`plans/V310_ISSUES_PLAN.md`](plans/V310_ISSUES_PLAN.md)
 - 治理: [`../../governance/debt/debt-registry.yaml`](../../governance/debt/debt-registry.yaml), [`../../governance/STAGE_CONFIG.yaml`](../../governance/STAGE_CONFIG.yaml)
-- 孤岛: [`../../ISOLATED_MODULES.md`](../../ISOLATED_MODULES.md)
+- 孤岛: [`../../ISOLATED_MODULES.md`](../../../ISOLATED_MODULES.md)
 - Alpha 门禁: [`../../../scripts/gate/check_alpha_v3.10.0.sh`](../../../scripts/gate/check_alpha_v3.10.0.sh)
 
 ---

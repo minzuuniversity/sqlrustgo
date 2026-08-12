@@ -266,6 +266,55 @@ impl<S: StorageEngine + 'static> ExecutionEngine<S> {
             (jrows, jinfo)
         } else if let Some((rows, info)) = materialized {
             (rows, info)
+        } else if let Some(values) = &select.from_values {
+            // V313-09 / Issue #4037: `FROM (VALUES (...))` constructor.
+            // The parser stores the row data as `Vec<Vec<Expression>>`
+            // in `from_values`; we materialise it via the same
+            // build_insert_records helper that INSERT VALUES uses, then
+            // build a synthetic TableInfo (column names default to
+            // col_0, col_1, ...). The alternative path (recursing into
+            // the synthetic subquery) used to fail with 'Table not
+            // found: <alias>' because the subquery's `table` field
+            // carries the alias, not a real storage table.
+            let rows = crate::engine_helpers::build_insert_records(values);
+            let inferred_types: Vec<String> = if let Some(first_row) = rows.first() {
+                first_row
+                    .iter()
+                    .map(|v| match v {
+                        Value::Integer(_) => "INTEGER".to_string(),
+                        Value::Float(_) => "FLOAT".to_string(),
+                        Value::Text(_) => "TEXT".to_string(),
+                        Value::Boolean(_) => "BOOLEAN".to_string(),
+                        Value::Blob(_) => "BLOB".to_string(),
+                        Value::Point(_, _) => "POINT".to_string(),
+                        Value::Json(_) => "JSON".to_string(),
+                        Value::Null => "TEXT".to_string(),
+                    })
+                    .collect()
+            } else {
+                Vec::new()
+            };
+            let info = TableInfo {
+                name: select.table.clone(),
+                columns: (0..rows.first().map(|r| r.len()).unwrap_or(0))
+                    .map(|i| sqlrustgo_storage::ColumnDefinition {
+                        name: format!("col_{}", i),
+                        data_type: inferred_types
+                            .get(i)
+                            .cloned()
+                            .unwrap_or_else(|| "TEXT".to_string()),
+                        nullable: true,
+                        primary_key: false,
+                        char_max_length: None,
+                    })
+                    .collect(),
+                foreign_keys: Vec::new(),
+                unique_constraints: Vec::new(),
+                check_constraints: Vec::new(),
+                partition_info: None,
+                compression: None,
+            };
+            (rows, info)
         } else if select.table.is_empty() {
             let empty_schema = TableInfo {
                 name: String::new(),
@@ -295,6 +344,13 @@ impl<S: StorageEngine + 'static> ExecutionEngine<S> {
             drop(storage);
             // V311-05 F-29: apply RLS row filtering if enabled
             let rows = self.apply_rls_filter(lookup_table, rows, &table_info)?;
+            // V313-13 / Issue #4041: binder column-existence check.
+            // Catches cases like `WITH t AS (SELECT 1 AS a)
+            // SELECT t.foobar FROM t` — without this check the legacy
+            // eval_identifier fallback would silently emit
+            // Value::Text("t.foobar"). Also catches `WHERE alias`
+            // references to SELECT-list aliases, which SQL forbids.
+            crate::engine_utils::validate_select_columns_referenced(select, &table_info)?;
             (rows, table_info)
         };
         // The storage read lock is NOT held past this point, ensuring
@@ -985,13 +1041,12 @@ impl<S: StorageEngine + 'static> ExecutionEngine<S> {
                 .iter()
                 .map(|c| c.alias.clone().unwrap_or_else(|| c.name.clone()))
                 .collect();
-            let rows: Vec<Vec<Value>> = rows
-                .into_iter()
-                .map(|row| {
-                    select
-                        .columns
-                        .iter()
-                        .map(|col| match &col.expression {
+            let rows: Vec<Vec<Value>> = (|| -> SqlResult<Vec<Vec<Value>>> {
+                let mut out = Vec::new();
+                for row in rows {
+                    let mut new_row = Vec::new();
+                    for col in &select.columns {
+                        let v = match &col.expression {
                             Some(expr) => crate::expr_utils::evaluate_expression_with_seq(
                                 expr,
                                 &row,
@@ -999,12 +1054,15 @@ impl<S: StorageEngine + 'static> ExecutionEngine<S> {
                                 Some(&mut *storage_guard),
                                 &|_| Ok(Value::Null),
                             )
-                            .unwrap_or(Value::Null),
+                            .map_err(SqlError::ExecutionError)?,
                             None => row.first().cloned().unwrap_or(Value::Null),
-                        })
-                        .collect()
-                })
-                .collect();
+                        };
+                        new_row.push(v);
+                    }
+                    out.push(new_row);
+                }
+                Ok(out)
+            })()?;
             (names, rows)
         };
         let (projected_column_names, projected_rows) = projected_with_names;
@@ -1730,8 +1788,7 @@ impl<S: StorageEngine + 'static> ExecutionEngine<S> {
         let resolve_bare = |col_name: &str| -> Option<(String, String)> {
             // Check for TPC-H prefix disambiguation first.
             for (prefix, alias) in &tpch_prefix_to_alias {
-                if col_name.starts_with(prefix) {
-                    let col_stripped = &col_name[prefix.len()..];
+                if let Some(col_stripped) = col_name.strip_prefix(prefix) {
                     // Verify the table is in join_tables and has this column.
                     if join_tables.iter().any(|(_, a)| a == alias) {
                         if let Ok(info) = storage.get_table_info(alias) {

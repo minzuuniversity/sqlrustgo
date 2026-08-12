@@ -86,7 +86,7 @@ done
 grep -r "PENDING\|TODO\|FIXME" docs/releases/v3.8.0/VERSION_PLAN.md CHANGELOG.md 2>/dev/null && echo "FOUND PENDING" || echo "NO PENDING"
 
 # 检查 D7 链接
-grep -o '\[.*\](.*CHANGELOG.*)' docs/releases/v3.8.0/VERSION_PLAN.md | head -3
+grep -o '\.*\' docs/releases/v3.8.0/VERSION_PLAN.md | head -3
 ```
 
 ### A1.4 Code Gate

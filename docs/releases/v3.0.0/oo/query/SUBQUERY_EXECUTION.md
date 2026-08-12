@@ -401,6 +401,6 @@ SELECT * FROM org_chain;
 
 | 文档 | 说明 |
 |------|------|
-| [DML_EXECUTION.md](./DML_EXECUTION.md) | DML 执行链路 |
+| [DML_EXECUTION.md](../dml/DML_EXECUTION.md) | DML 执行链路 |
 | [JOIN_ALGORITHMS.md](../join/JOIN_ALGORITHMS.md) | JOIN 算法 |
-| [CTE_EXECUTION.md](../query/CTE_EXECUTION.md) | CTE 详细执行 |
+| CTE_EXECUTION.md | CTE 详细执行 |

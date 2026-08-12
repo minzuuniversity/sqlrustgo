@@ -544,8 +544,7 @@ impl MysqlNativePassword {
 
 ## 相关文档
 
-- [架构设计](../architecture.md)
-- [安全加固指南](./SECURITY_HARDENING.md)
+- [架构设计](../../architecture.md)
 - [API 使用示例](./API_USAGE_EXAMPLES.md)
 - [性能基准](./BENCHMARK.md)
 

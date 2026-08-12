@@ -39,6 +39,20 @@ pub fn materialize_cte_tables<S: StorageEngine + 'static>(
                 ));
             }
         };
+        // Resolve the column names for this CTE in priority order:
+        //   1. Explicit `name(col1, col2, ...)` form
+        //   2. The subquery's SELECT-column aliases (e.g. `SELECT 'foo' AS a`)
+        //   3. The subquery's SELECT-column names (raw expression-derived)
+        //   4. Fallback `col_<i>`
+        //
+        // V313-13 / Issue #4041: previously step 2/3 was missing, so a CTE
+        // such as `WITH t AS (SELECT 'foo' AS a)` got columns named
+        // `col_0` instead of `a`. Downstream references like
+        // `t.a` then failed (or, worse, `t.foobar` silently fell
+        // through to `Value::Text("t.foobar")` and produced wrong
+        // output). With this fix the CTE column schema matches the
+        // subquery's projection, which is what users (and the
+        // binder__alias_error_10057 fixture) expect.
         let column_count = if !cte.columns.is_empty() {
             cte.columns.len()
         } else if !cte_rows.is_empty() {
@@ -46,17 +60,30 @@ pub fn materialize_cte_tables<S: StorageEngine + 'static>(
         } else {
             0
         };
+        let subquery_column_names: Vec<String> = match cte.subquery.as_ref() {
+            Statement::Select(s) => s
+                .columns
+                .iter()
+                .map(|c| c.alias.clone().unwrap_or_else(|| c.name.clone()))
+                .collect(),
+            _ => Vec::new(),
+        };
         let columns: Vec<ColumnDefinition> = (0..column_count)
-            .map(|i| ColumnDefinition {
-                name: if !cte.columns.is_empty() {
+            .map(|i| {
+                let name = if !cte.columns.is_empty() {
                     cte.columns[i].clone()
+                } else if i < subquery_column_names.len() && !subquery_column_names[i].is_empty() {
+                    subquery_column_names[i].clone()
                 } else {
                     format!("col_{}", i)
-                },
-                data_type: "TEXT".to_string(),
-                nullable: true,
-                primary_key: false,
-                char_max_length: None,
+                };
+                ColumnDefinition {
+                    name,
+                    data_type: "TEXT".to_string(),
+                    nullable: true,
+                    primary_key: false,
+                    char_max_length: None,
+                }
             })
             .collect();
         let table_info = TableInfo {

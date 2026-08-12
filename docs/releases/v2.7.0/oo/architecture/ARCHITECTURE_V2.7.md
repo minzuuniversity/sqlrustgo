@@ -120,9 +120,9 @@ v2.7.0 实现完整的 WAL 崩溃恢复机制：
 
 ## 5. 相关文档
 
-- [../oo/modules/wal/WAL_DESIGN.md](../oo/modules/wal/WAL_DESIGN.md) - WAL 详细设计
-- [../oo/reports/PERFORMANCE_ANALYSIS.md](../oo/reports/PERFORMANCE_ANALYSIS.md) - 性能分析
-- [../RELEASE_NOTES.md](../RELEASE_NOTES.md) - 发布说明
+- [../oo/modules/wal/WAL_DESIGN.md](../../../../../releases/v2.5.0/oo/modules/wal/WAL_DESIGN.md) - WAL 详细设计
+- [../oo/reports/PERFORMANCE_ANALYSIS.md](../../../v1.5.0/report/PERFORMANCE_ANALYSIS.md) - 性能分析
+- [../RELEASE_NOTES.md](../../../../../RELEASE_NOTES.md) - 发布说明
 
 ---
 

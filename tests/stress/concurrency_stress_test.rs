@@ -161,7 +161,7 @@ mod tests {
             let mvcc_clone = mvcc.clone();
             let handle = thread::spawn(move || {
                 let mut manager =
-                    create_manager_with_isolation(mvcc_clone, IsolationLevel::RepeatableRead);
+                    create_manager_with_isolation(mvcc_clone, IsolationLevel::SnapshotIsolation);
                 let tx = manager.begin().unwrap();
 
                 // Get context once
@@ -193,7 +193,7 @@ mod tests {
 
         // Start long-running transaction
         let mut long_manager =
-            create_manager_with_isolation(mvcc.clone(), IsolationLevel::RepeatableRead);
+            create_manager_with_isolation(mvcc.clone(), IsolationLevel::SnapshotIsolation);
         let _long_tx = long_manager.begin().unwrap();
 
         // Long transaction gets context multiple times without concurrent activity
@@ -244,7 +244,7 @@ mod tests {
         let isolation_levels = vec![
             IsolationLevel::ReadUncommitted,
             IsolationLevel::ReadCommitted,
-            IsolationLevel::RepeatableRead,
+            IsolationLevel::SnapshotIsolation,
         ];
 
         for level in isolation_levels {
@@ -389,7 +389,7 @@ mod tests {
             let mvcc_clone = mvcc.clone();
             let handle = thread::spawn(move || {
                 let mut manager = TransactionManager::with_mvcc(mvcc_clone);
-                manager.set_isolation_level(IsolationLevel::RepeatableRead);
+                manager.set_isolation_level(IsolationLevel::SnapshotIsolation);
 
                 let tx_id = manager.begin().unwrap();
                 let ctx = manager.get_transaction_context().unwrap();
@@ -467,7 +467,7 @@ mod tests {
             let mvcc_clone = mvcc.clone();
             let handle = thread::spawn(move || {
                 let mut manager = TransactionManager::with_mvcc(mvcc_clone);
-                manager.set_isolation_level(IsolationLevel::RepeatableRead);
+                manager.set_isolation_level(IsolationLevel::SnapshotIsolation);
 
                 let tx_id = manager.begin().unwrap();
 
@@ -534,7 +534,7 @@ mod tests {
             let mvcc_clone = mvcc.clone();
             let handle = thread::spawn(move || {
                 let mut manager = TransactionManager::with_mvcc(mvcc_clone);
-                manager.set_isolation_level(IsolationLevel::RepeatableRead);
+                manager.set_isolation_level(IsolationLevel::SnapshotIsolation);
 
                 let tx_id = manager.begin().unwrap();
 

@@ -189,36 +189,45 @@ items:
   # ---- v313-15: DuckDB harness — QUANTILE ----
   - id: sqllogictest-quantile-fun
     file: quantile_fun.test
-    status: harness_gap
+    status: closed
     failure_summary: "Runner harness error: invalid line 'set variable sf 0.001'"
     root_cause: "Runner/setup harness cannot ingest DuckDB-style 'set variable' directive in testdata"
     follow_up_issue: "#4043 [V312-11-v313-15] SQLLogicTest DuckDB Harness SET variable 修复"
     owner: openclaw
     v3.12_blocking: false
     v3.13_expiry: 2026-12-31
+    closed_at: 2026-08-12
+    closed_by_commit: 7a315826fb
     close_boundary: "cargo run -p sqlrustgo_sqllogictest -- --filter quantile_fun exits 0 AND PASS [quantile_fun.test]"
+    verification_2026_08_12: "PASS [quantile_fun.test]  files: 1/0 pass rate 100.0%"
 
   - id: sqllogictest-aggregate-quantile
     file: aggregate__quantile_fun.test
-    status: harness_gap
+    status: closed
     failure_summary: "Runner harness error: invalid line 'set variable sf 0.001'"
     root_cause: "Same root cause as sqllogictest-quantile-fun — different filename variant"
     follow_up_issue: "#4043 [V312-11-v313-15] SQLLogicTest DuckDB Harness SET variable 修复"
     owner: openclaw
     v3.12_blocking: false
     v3.13_expiry: 2026-12-31
+    closed_at: 2026-08-12
+    closed_by_commit: 7a315826fb
     close_boundary: "cargo run -p sqlrustgo_sqllogictest -- --filter aggregate__quantile_fun exits 0 AND PASS [aggregate__quantile_fun.test]"
+    verification_2026_08_12: "PASS [aggregate__quantile_fun.test]  files: 1/0 pass rate 100.0%"
 
   - id: sqllogictest-sql-quantile
     file: sql__quantile_fun.test
-    status: harness_gap
+    status: closed
     failure_summary: "Runner harness error: invalid line 'set variable sf 0.001'"
     root_cause: "Same root cause as sqllogictest-quantile-fun — different filename variant"
     follow_up_issue: "#4043 [V312-11-v313-15] SQLLogicTest DuckDB Harness SET variable 修复"
     owner: openclaw
     v3.12_blocking: false
     v3.13_expiry: 2026-12-31
+    closed_at: 2026-08-12
+    closed_by_commit: 7a315826fb
     close_boundary: "cargo run -p sqlrustgo_sqllogictest -- --filter sql__quantile_fun exits 0 AND PASS [sql__quantile_fun.test]"
+    verification_2026_08_12: "PASS [sql__quantile_fun.test]  files: 1/0 pass rate 100.0%"
 
 summary:
   total_fail_files: 16
@@ -229,8 +238,9 @@ summary:
     execution_gap: 2
     semantic_gap: 3
     expected_fail: 0
-    harness_gap: 4
+    harness_gap: 1   # 4 items: 3 quantile_fun closed (commit 7a315826fb), 1 still pending
     fixture_missing: 0
+    closed: 3        # 2026-08-12: v313-15 (3 quantile_fun files) verified PASS
   gitea_follow_up_issues: 8   # Round-14: 8 Gitea issues #4036-#4043 replacing openspec-only refs
   openspec_follow_ups: 8      # legacy openspec references retained for traceability
   exclusions_linked: 16
@@ -238,3 +248,4 @@ summary:
   deferred_to: v3.13.0 GA (2026-12-31)
   v3.12_blocking_count: 0
   round14_action: "openspec paths → real Gitea issues; gate distinguishes smoke vs full semantic PASS"
+  round15_action: "v313-15 (3 quantile_fun files) verified PASS at HEAD 7a315826fb; status closed"

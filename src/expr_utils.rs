@@ -240,11 +240,7 @@ pub fn evaluate_expression_with_subq(
             // Looks up the column by name; if not found, falls back to
             // `Value::Text(name)` (the legacy behavior for unqualified
             // identifiers that happen to be string literals).
-            Ok(sqlrustgo_executor::expr::eval_identifier(
-                name,
-                row,
-                &table_info.columns,
-            ))
+            sqlrustgo_executor::expr::eval_identifier(name, row, &table_info.columns)
         }
         Expression::UnaryOp(op, inner) => {
             // P0-2 §4.12: delegated to `executor::expr::eval_unary_op`.
@@ -460,6 +456,19 @@ pub fn evaluate_binary_op(left: &Value, right: &Value, op: &str) -> Value {
                 Value::Null
             } else {
                 arithmetic_op(left, right, |a, b| a / b, |a, b| a / b)
+            }
+        }
+        // V312-22b / Issue #4036: modulo operator. Without this arm the
+        // parser-built `BinaryOp(_, "%", _)` falls through to `_ => Value::Null`
+        // below, so `WHERE i % 2 <> 0` evaluates as NULL and matches no rows
+        // (SQL three-valued logic: NULL predicate is UNKNOWN, treated as false).
+        // This broke TPC-H Q4-style `i % 2 <> 0` filtering in
+        // sqllogictest/insert__test_insert.test.
+        "%" => {
+            if matches!(right, Value::Integer(0) | Value::Float(0.0)) {
+                Value::Null
+            } else {
+                arithmetic_op(left, right, |a, b| a % b, |a, b| a % b)
             }
         }
         // TPC-H Q9: `WHERE p_name LIKE '%green%'`. The parser emits

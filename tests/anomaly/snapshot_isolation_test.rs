@@ -146,7 +146,7 @@ mod tests {
     fn test_repeatable_read_same_read_same_result() {
         let mvcc = create_mvcc_engine();
         let mut manager =
-            create_manager_with_isolation(mvcc.clone(), IsolationLevel::RepeatableRead);
+            create_manager_with_isolation(mvcc.clone(), IsolationLevel::SnapshotIsolation);
 
         let tx_id = manager.begin().unwrap();
 
@@ -174,14 +174,14 @@ mod tests {
 
         // Start read transaction
         let mut manager =
-            create_manager_with_isolation(mvcc.clone(), IsolationLevel::RepeatableRead);
+            create_manager_with_isolation(mvcc.clone(), IsolationLevel::SnapshotIsolation);
         let tx_read = manager.begin().unwrap();
         let ctx_read = manager.get_transaction_context().unwrap();
         let snapshot_ts = ctx_read.snapshot.snapshot_timestamp;
 
         // Another transaction commits data with timestamp > our snapshot
         let mut manager2 =
-            create_manager_with_isolation(mvcc.clone(), IsolationLevel::RepeatableRead);
+            create_manager_with_isolation(mvcc.clone(), IsolationLevel::SnapshotIsolation);
         let tx2 = manager2.begin().unwrap();
         manager2.commit().unwrap();
 
@@ -195,7 +195,7 @@ mod tests {
     #[test]
     fn test_repeatable_read_own_writes_visible() {
         let mvcc = create_mvcc_engine();
-        let mut manager = create_manager_with_isolation(mvcc, IsolationLevel::RepeatableRead);
+        let mut manager = create_manager_with_isolation(mvcc, IsolationLevel::SnapshotIsolation);
 
         let tx_id = manager.begin().unwrap();
         let ctx = manager.get_transaction_context().unwrap();
@@ -223,7 +223,7 @@ mod tests {
 
         // Start our snapshot transaction
         let mut manager =
-            create_manager_with_isolation(mvcc.clone(), IsolationLevel::RepeatableRead);
+            create_manager_with_isolation(mvcc.clone(), IsolationLevel::SnapshotIsolation);
         let tx_id = manager.begin().unwrap();
         let ctx = manager.get_transaction_context().unwrap();
 
@@ -246,7 +246,7 @@ mod tests {
             let counter_clone = counter.clone();
             let handle = thread::spawn(move || {
                 let mut manager = TransactionManager::with_mvcc(mvcc_clone);
-                manager.set_isolation_level(IsolationLevel::RepeatableRead);
+                manager.set_isolation_level(IsolationLevel::SnapshotIsolation);
 
                 let tx_id = manager.begin().unwrap();
                 let ctx = manager.get_transaction_context().unwrap();
@@ -419,7 +419,7 @@ mod tests {
     #[test]
     fn test_multi_statement_isolation() {
         let mvcc = create_mvcc_engine();
-        let mut manager = create_manager_with_isolation(mvcc, IsolationLevel::RepeatableRead);
+        let mut manager = create_manager_with_isolation(mvcc, IsolationLevel::SnapshotIsolation);
 
         let tx_id = manager.begin().unwrap();
 
@@ -447,7 +447,7 @@ mod tests {
 
         // Start long-running transaction
         let mut manager1 =
-            create_manager_with_isolation(mvcc.clone(), IsolationLevel::RepeatableRead);
+            create_manager_with_isolation(mvcc.clone(), IsolationLevel::SnapshotIsolation);
         let tx1 = manager1.begin().unwrap();
         let ctx1 = manager1.get_transaction_context().unwrap();
         let snapshot_ts = ctx1.snapshot.snapshot_timestamp;
@@ -468,7 +468,7 @@ mod tests {
         // Long-running transaction should still see original snapshot
         // New commits have timestamps > snapshot_ts, so should not be visible
         let mut manager2 =
-            create_manager_with_isolation(mvcc.clone(), IsolationLevel::RepeatableRead);
+            create_manager_with_isolation(mvcc.clone(), IsolationLevel::SnapshotIsolation);
         let tx_new = manager2.begin().unwrap();
 
         // The new transaction committed, but our original snapshot should not see it

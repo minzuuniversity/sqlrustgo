@@ -221,7 +221,7 @@ Gate: 6D 32+/33 ✅  (D1 10/10 + D2 5/5 + D3 4/5+DRIFT + D4 5/5 + D5 9/10 + D6a 
 > v3.9.0 主题从"收敛与集成"重新定位为 **"Production Readiness Release"**.
 > 资源分配从 50%+ SQL 功能 → 40% 架构债 + 35% 可靠性 + 15% GMP 审计 + 10% 性能 + 0% 新 SQL.
 > 新增 G6-G10 门禁 (Backup/Restore, Soak Test, Crash Matrix, Upgrade Test, Audit Log + 时间旅行).
-> 详细计划见 [`plans/V390_VERSION_PLAN.md`](../plans/V390_VERSION_PLAN.md) / [`plans/V390_DEVELOPMENT_PLAN.md`](../plans/V390_DEVELOPMENT_PLAN.md) / [`plans/V390_TEST_PLAN.md`](../plans/V390_TEST_PLAN.md).
+> 详细计划见 [`plans/V390_VERSION_PLAN.md`](../../v3.9.0/plans/V390_VERSION_PLAN.md) / [`plans/V390_DEVELOPMENT_PLAN.md`](../../v3.9.0/plans/V390_DEVELOPMENT_PLAN.md) / [`plans/V390_TEST_PLAN.md`](../../v3.9.0/plans/V390_TEST_PLAN.md).
 
 ### 3.1 v3.9.0 主题: **Production Readiness Release — Single-Node Production Candidate**
 

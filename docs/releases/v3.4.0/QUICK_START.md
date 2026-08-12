@@ -137,11 +137,11 @@ public class Example {
 
 ## 下一步
 
-- 📖 [完整文档](../README.md)
+- 📖 [完整文档](../../../README.md)
 - 📦 [安装指南](INSTALL.md)
-- 🔧 [配置参考](../CONFIG.md)
-- 🧪 [测试套件](../TESTING.md)
-- 🏗️ [架构设计](../ARCHITECTURE.md)
+- 🔧 配置参考
+- 🧪 测试套件
+- 🏗️ [架构设计](../../architecture/ARCHITECTURE.md)
 
 ## 常见问题
 

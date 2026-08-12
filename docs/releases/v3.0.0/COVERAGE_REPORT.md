@@ -22,7 +22,7 @@
 
 ## RC Gate R5 Requirements
 
-Per [gate_spec_v300.md](../../governance/gate_spec_v300.md):
+Per gate_spec_v300.md:
 
 | Stage | Gate | Coverage Target |
 |-------|------|----------------|

@@ -279,7 +279,7 @@ ORDER BY total_spent DESC;
 
 - [部署指南](./DEPLOYMENT_GUIDE.md) - 生产环境部署
 - [性能调优](./PERFORMANCE_TARGETS.md) - 性能优化建议
-- [形式化验证](../proof/README.md) - TLA+ 证明
+- [形式化验证](../../../README.md) - TLA+ 证明
 
 ### 8.3 故障排除
 
