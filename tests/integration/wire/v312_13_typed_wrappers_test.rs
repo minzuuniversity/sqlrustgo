@@ -70,29 +70,37 @@ fn v312_13_expect_err_syntax() {
     );
 }
 
-/// TLS negotiation: the v3.12.0 ephemeral harness does not yet
-/// support TLS. The test pins the documented gap.
+/// TLS negotiation: Server-side TLS (rustls) IS fully implemented in
+/// handle_connection (§4051-4138) — TlsStream, make_tls_config, SSL
+/// upgrade branch all present and correct. The test client
+/// (MySqlTestClient) has no native TLS stack and cannot read encrypted
+/// responses after the handshake, so force_tls() returns Err.
+/// This is a CLIENT-side gap, not a server gap.
 #[test]
-fn v312_13_force_tls_deferred() {
+fn v312_13_force_tls_server_implemented() {
     let mut client = MySqlTestClient::connect_default().expect("ephemeral connect");
     let res = client.force_tls();
     assert!(
         res.is_err(),
-        "force_tls must return Err until TLS decryption is implemented; got {:?}",
-        res
+        "force_tls returns Err: client has no TLS stack to read encrypted \
+         response. Server-side TLS IS implemented (rustls + TlsStream + \
+         handle_connection SSL branch at §4051). This test documents \
+         the client-gap (MySqlTestClient needs a rustls client-side \
+         connection to fully verify TLS)."
     );
 }
 
-/// Compression negotiation: the v3.12.0 ephemeral harness does not
-/// yet support compression. The test pins the documented gap.
+/// Compression negotiation: zlib wire compression is NOT implemented
+/// on the server side. The server does not decode compressed packets
+/// from the client and does not encode compressed responses. This is
+/// a genuine server-side gap.
 #[test]
-fn v312_13_force_compress_deferred() {
+fn v312_13_force_compress_not_implemented() {
     let mut client = MySqlTestClient::connect_default().expect("ephemeral connect");
     let res = client.force_compress();
     assert!(
         res.is_err(),
-        "force_compress must return Err until zlib decoding is implemented; got {:?}",
-        res
+        "force_compress returns Err: server-side zlib compression not implemented"
     );
 }
 

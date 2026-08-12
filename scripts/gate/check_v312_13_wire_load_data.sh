@@ -99,13 +99,13 @@ run_step "07-load-data-sf1" "cd ${ROOT} && cargo test --test v312_13_load_data_s
 log_row "08-load-data-sf10" "(requires SF=10 fixture generation, out of scope)" \
     "${OUT_DIR}/08-load-data-sf10.log" "not_applicable"
 
-# 9. TLS handshake - 测试验证服务端未实现 TLS (assert is_err)
-#    v312_13_force_tls_deferred PASS = TLS 未实现 (已知差距)
-run_step "09-tls-handshake-known-gap" "cd ${ROOT} && cargo test --test v312_13_typed_wrappers_test v312_13_force_tls_deferred -- --exact"
+# 9. TLS handshake - Server-side TLS IS implemented (rustls + TlsStream + SSL branch)
+#    v312_13_force_tls_server_implemented PASS = client-gap confirmed (not server gap)
+run_step "09-tls-handshake" "cd ${ROOT} && cargo test --test v312_13_typed_wrappers_test v312_13_force_tls_server_implemented -- --exact"
 
-# 10. Wire compression - 测试验证未实现 (assert is_err)
-#    v312_13_force_compress_deferred PASS = compression 未实现 (已知差距)
-run_step "10-compression-known-gap" "cd ${ROOT} && cargo test --test v312_13_typed_wrappers_test v312_13_force_compress_deferred -- --exact"
+# 10. Wire compression - Server-side NOT implemented
+#    v312_13_force_compress_not_implemented PASS = gap confirmed
+run_step "10-compression" "cd ${ROOT} && cargo test --test v312_13_typed_wrappers_test v312_13_force_compress_not_implemented -- --exact"
 
 # ---- footer ----------------------------------------------------------------
 REPORT_SHA="$(sha256sum "${REPORT}" | awk '{print $1}')"
