@@ -721,3 +721,90 @@ fn test_spawn_resource_monitor_zero_interval() {
 fn test_spawn_resource_monitor_large_interval() {
     sqlrustgo_mysql_server::spawn_resource_monitor(3600);
 }
+
+// ============ More parse_stmt_execute_params edge cases ============
+
+#[test]
+fn test_parse_stmt_execute_with_null_bitmap_8_params() {
+    // 8 params with null_bitmap = 0xFF (all null)
+    let mut payload: Vec<u8> = vec![0, 0, 0, 0, 0, 0, 0, 0, 0xFF, 0, 0, 0, 0];
+    payload.extend_from_slice(&[0u8; 100]);
+    let params = parse_stmt_execute_params(&payload, 8, &[]);
+    assert_eq!(params.len(), 8);
+    // All params are null → empty bytes
+    for p in &params {
+        assert!(p.0.is_empty());
+    }
+}
+
+#[test]
+fn test_parse_stmt_execute_no_null_bitmap() {
+    // null_bitmap = 0x00 (no params null)
+    let mut payload: Vec<u8> = vec![0, 0, 0, 0, 0, 0, 0, 0, 0x00, 0, 0, 0, 0];
+    payload.extend_from_slice(&[0u8; 50]);
+    let params = parse_stmt_execute_params(&payload, 8, &[]);
+    assert_eq!(params.len(), 8);
+    // All non-null → default empty bytes
+    for p in &params {
+        assert!(p.0.is_empty());
+    }
+}
+
+#[test]
+fn test_parse_stmt_execute_truly_empty_payload() {
+    let params = parse_stmt_execute_params(&[], 0, &[]);
+    assert!(params.is_empty());
+}
+
+#[test]
+fn test_parse_stmt_execute_4_params_with_mixed_nulls() {
+    // null_bitmap for 4 params: bit pattern 0b0101 = byte 0x05
+    // Index 0 and 2 are null, 1 and 3 are not.
+    let mut payload: Vec<u8> = vec![0, 0, 0, 0, 0, 0, 0, 0, 0x05, 0, 0, 0, 0];
+    payload.extend_from_slice(&[0u8; 50]);
+    let params = parse_stmt_execute_params(&payload, 4, &[]);
+    assert_eq!(params.len(), 4);
+    // Just verify all 4 params parsed successfully.
+}
+
+#[test]
+fn test_parse_stmt_execute_with_type_codes_string() {
+    // VAR_STRING type code = 0xfd
+    let mut payload: Vec<u8> = vec![0, 0, 0, 0, 0, 0, 0, 0, 0, 0x01, 0, 0, 0];
+    payload.extend_from_slice(&[5u8]); // length
+    payload.extend_from_slice(b"hello"); // value
+    let params = parse_stmt_execute_params(&payload, 1, &[0xfd]);
+    assert_eq!(params.len(), 1);
+    // Param parsed (length depends on parsing details).
+}
+
+#[test]
+fn test_parse_stmt_execute_with_type_codes_long() {
+    let mut payload: Vec<u8> = vec![0, 0, 0, 0, 0, 0, 0, 0, 0, 0x01, 0, 0, 0];
+    payload.extend_from_slice(&[42u8, 0, 0, 0, 0, 0, 0, 0]);
+    let params = parse_stmt_execute_params(&payload, 1, &[0x03]); // LONG
+    assert_eq!(params.len(), 1);
+}
+
+// ============ More StmtParam variants ============
+
+#[test]
+fn test_stmt_param_construction() {
+    let p: StmtParam = (b"data".to_vec(), true);
+    assert_eq!(p.0, b"data".to_vec());
+    assert!(p.1);
+}
+
+#[test]
+fn test_stmt_param_with_binary() {
+    let p: StmtParam = (vec![0xFFu8, 0x00, 0xFF], false);
+    assert_eq!(p.0, vec![0xFFu8, 0x00, 0xFF]);
+    assert!(!p.1);
+}
+
+#[test]
+fn test_stmt_param_with_empty() {
+    let p: StmtParam = (Vec::new(), true);
+    assert!(p.0.is_empty());
+    assert!(p.1);
+}
