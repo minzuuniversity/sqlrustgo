@@ -3786,7 +3786,8 @@ impl Parser {
                 | Some(Token::Substring)
                 | Some(Token::Position)
                 | Some(Token::Text)
-                | Some(Token::Interval) => {
+                | Some(Token::Interval)
+                | Some(Token::Database) => {
                     let name = match self.current() {
                         Some(Token::Left) => "LEFT",
                         Some(Token::Right) => "RIGHT",
@@ -3800,6 +3801,7 @@ impl Parser {
                         Some(Token::Position) => "POSITION",
                         Some(Token::Text) => "CHAR",
                         Some(Token::Interval) => "INTERVAL",
+                        Some(Token::Database) => "DATABASE",
                         _ => unreachable!(),
                     };
                     self.next();
@@ -6607,7 +6609,8 @@ impl Parser {
             | Some(Token::Substring)
             | Some(Token::Position)
             | Some(Token::Rollup)
-            | Some(Token::Cube) => {
+            | Some(Token::Cube)
+            | Some(Token::Database) => {
                 let name = match self.current() {
                     Some(Token::Left) => "LEFT",
                     Some(Token::Right) => "RIGHT",
@@ -6622,6 +6625,7 @@ impl Parser {
                     Some(Token::Position) => "POSITION",
                     Some(Token::Rollup) => "ROLLUP",
                     Some(Token::Cube) => "CUBE",
+                    Some(Token::Database) => "DATABASE",
                     _ => unreachable!(),
                 };
                 self.next();
