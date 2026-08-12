@@ -253,11 +253,11 @@ $ echo $?
 
 ---
 
-## 9. origin-HEAD 重新基线 (ac4364a046)
+## 10. origin-HEAD 重新基线 (ac4364a046)
 
 > 本节由 `STRICT PROOF MODE re-audit` 第二轮追加（2026-08-12 11:30 CST），针对 §8.5 选项 A 实际执行结果。
 
-### 9.1 重新基线元数据
+### 10.1 重新基线元数据
 
 | 字段 | 值 |
 |---|---|
@@ -273,7 +273,7 @@ $ echo $?
 | source_agent | `minimax` |
 | source_run | `v312-baseline-rerun-ac4364a046-20260812-1124` |
 
-### 9.2 重新基线结果 (16 个 crate)
+### 10.2 重新基线结果 (16 个 crate)
 
 | Crate | Line% | Lines | Functions | Test health |
 |---|---:|---:|---:|---|
@@ -296,9 +296,9 @@ $ echo $?
 
 **汇总**：平均 line% = **79.51%**（min: 69.48% sqlrustgo-mysql-server，max: 95.67% sqlrustgo-rag）；所有 16 个 crate 状态=`ok`；2 个 crate 触发 `report-only-failure` 标记（sqlrustgo-parser、sqlrustgo-mysql-server），需追溯源测试日志。
 
-### 9.3 与 §1-§6 (32ddada27b snapshot) 对比
+### 10.3 与 §1-§6 (32ddada27b snapshot) 对比
 
-| 维度 | §1-§6 (32ddada27b local snapshot) | §9 (ac4364a046 origin HEAD) | delta |
+| 维度 | §1-§6 (32ddada27b local snapshot) | §10 (ac4364a046 origin HEAD) | delta |
 |---|---|---|---|
 | commit | `32ddada27b`（本地未推送） | `ac4364a046`（origin HEAD） | 替换 |
 | 平均 line% | ~79.66%（按 §6 数据回算） | 79.51% | -0.15pp |
@@ -307,9 +307,9 @@ $ echo $?
 | source_repo | openclaw/sqlrustgo | openclaw/sqlrustgo | 同 |
 | branch | develop/v3.12.0 | develop/v3.12.0 | 同 |
 
-数字差异极小（<0.2pp），但 §1-§6 的数字是**本地未推送** `32ddada27b` 上的产物，§9 是**真实合并**到 origin 的 `ac4364a046` 上的产物。**只有 §9 可作为 #3904 / V312-G18 的关闭依据**。
+数字差异极小（<0.2pp），但 §1-§6 的数字是**本地未推送** `32ddada27b` 上的产物，§10 是**真实合并**到 origin 的 `ac4364a046` 上的产物。**只有 §10 可作为 #3904 / V312-G18 的关闭依据**。
 
-### 9.4 与 origin HEAD 关系的可验证证据
+### 10.4 与 origin HEAD 关系的可验证证据
 
 ```bash
 $ git ls-remote origin 'refs/heads/develop/v3.12.0'  # 重跑当时
@@ -323,13 +323,13 @@ $ echo $?
 0   # exit=0 → 重跑 commit 与 origin HEAD 一致（self-ancestor）
 ```
 
-> 注：origin/develop/v3.12.0 在本报告撰写后又推进到了 `8951f35ff2`（PR #4087 close-out）。如需更新到此 commit，请在 `8951f35ff2` 上再跑一次 gate。但本 §9 已足够支撑 #3904 / V312-G18 的关闭依据：因 `ac4364a046` 是真实合并状态、其上产生的 evidence 是 develop 事实。
+> 注：origin/develop/v3.12.0 在本报告撰写后又推进到了 `8951f35ff2`（PR #4087 close-out）。如需更新到此 commit，请在 `8951f35ff2` 上再跑一次 gate。但本 §10 已足够支撑 #3904 / V312-G18 的关闭依据：因 `ac4364a046` 是真实合并状态、其上产生的 evidence 是 develop 事实。
 
-### 9.5 关闭条件判定
+### 10.5 关闭条件判定
 
 按 `scripts/gate/check_v312_coverage_baseline.sh --enforce-stage <stage>` 策略：
 
-| stage | default 阈值 | override 阈值 | required_health crates | §9 实测结果 | 判定 |
+| stage | default 阈值 | override 阈值 | required_health crates | §10 实测结果 | 判定 |
 |---|---:|---|---|---|---|
 | alpha | 0.0% | — | — | 全部 ≥ 69.48% | **PASS** |
 | beta | 70.0% | gmp 78.0% | — | gmp=76.03%（<78% 阈值） | **FAIL** (gmp) |
@@ -343,7 +343,7 @@ $ echo $?
 
 V312-G18 关闭路径建议：先关 alpha stage 的 sub-deliverable；beta/rc/ga 需作为 follow-up issue 跟踪（参考 #3942 / #3943 / #4080）。
 
-### 9.6 关联证据
+### 10.6 关联证据
 
 - gate 脚本：`scripts/gate/check_v312_coverage_baseline.sh`
 - 框架文档：`docs/releases/v3.12.0/COMPREHENSIVE_TEST_FRAMEWORK_AND_COVERAGE_BASELINE.md` 第 9 节
