@@ -2102,7 +2102,20 @@ impl Parser {
             Some(t) => return Err(format!("Expected prepared statement name, got {:?}", t)),
             None => return Err("Expected prepared statement name, got EOF".to_string()),
         };
-        self.expect(Token::As)?;
+        // MySQL: PREPARE stmt FROM 'sql' — but accept AS as an alias for
+        // dialect compatibility (PostgreSQL, MariaDB, internal callers).
+        match self.current() {
+            Some(Token::From) | Some(Token::As) => {
+                self.next();
+            }
+            Some(t) => {
+                return Err(format!(
+                    "Expected FROM or AS after prepared statement name, got {:?}",
+                    t
+                ));
+            }
+            None => return Err("Expected FROM or AS after prepared statement name, got EOF".to_string()),
+        }
         let sql = match self.next() {
             Some(Token::StringLiteral(s)) => s,
             Some(t) => return Err(format!("Expected SQL string literal, got {:?}", t)),
