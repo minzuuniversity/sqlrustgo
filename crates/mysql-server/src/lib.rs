@@ -2416,6 +2416,7 @@ fn parse_handshake_response(packet: &Packet) -> MySqlResult<HandshakeResponse> {
 }
 
 mod load_data;
+pub mod metrics_endpoint;
 
 #[allow(dead_code)]
 mod col_type {
@@ -4825,6 +4826,20 @@ pub fn run_server_v2(
         server_threads,
         ..Default::default()
     };
+
+    // V312-26 / Issue #4021: optional Prometheus /metrics endpoint.
+    // Read the port from `SQLRUSTGO_METRICS_PORT` so the CLI flag
+    // plumbing (added to `main.rs`) doesn't have to widen the
+    // `run_server_v2` signature. The env var is only consulted here;
+    // the production binary sets it from `--metrics-port`. The handle
+    // is intentionally detached — the metrics endpoint is fire-and-forget
+    // and lives for the rest of the process.
+    if let Ok(port_str) = std::env::var("SQLRUSTGO_METRICS_PORT") {
+        if let Ok(port) = port_str.parse::<u16>() {
+            let _ = crate::metrics_endpoint::start(host, port);
+        }
+    }
+
     let shutdown = std::sync::Arc::new(std::sync::atomic::AtomicBool::new(false));
     run_server_with_listener_and_shutdown_with_bootstrap_tables_and_sql(
         listener,
@@ -6409,6 +6424,14 @@ pub mod testing {
         /// Build one with
         /// `EphemeralConfig::with_slow_query_log(path, threshold_ms)`.
         pub slow_query_log: Option<Arc<query_stats::SlowQueryLog>>,
+        /// V312-26 / Issue #4021: when `Some(port)`, the ephemeral
+        /// server spawns a background thread that serves Prometheus
+        /// exposition format at `http://<host>:<port>/metrics`. `None`
+        /// (the default) means no metrics endpoint is bound. The thread
+        /// is best-effort — if the bind fails (port in use), the server
+        /// keeps running and a `tracing::warn!` is emitted.
+        /// Build one with `EphemeralConfig::with_metrics_port(port)`.
+        pub metrics_port: Option<u16>,
     }
 
     impl Default for EphemeralConfig {
@@ -6424,6 +6447,7 @@ pub mod testing {
                 storage: None,
                 port: None,
                 slow_query_log: None,
+                metrics_port: None,
             }
         }
     }
@@ -6441,6 +6465,17 @@ pub mod testing {
                 threshold_ms,
                 log_path,
             )));
+            self
+        }
+
+        /// V312-26 / Issue #4021: enable a Prometheus `/metrics`
+        /// endpoint bound to `<host>:<port>`. The endpoint renders the
+        /// wire-protocol counters (`ACTIVE_CONNECTIONS`,
+        /// `TOTAL_QUERIES_SERVED`, etc.) plus the telemetry `Metrics`
+        /// global (`sqlrustgo_queries_total`, cache, storage bytes,
+        /// query-duration histogram) in text exposition format 0.0.4.
+        pub fn with_metrics_port(mut self, port: u16) -> Self {
+            self.metrics_port = Some(port);
             self
         }
     }
@@ -6782,6 +6817,7 @@ pub mod testing {
                     storage: None,
                     data_dir: None,
                     slow_query_log: None,
+                    metrics_port: None,
                 };
 
                 // If a server is already on this port (e.g. prior process in
@@ -6882,6 +6918,7 @@ pub mod testing {
                 storage: Some("binary".to_string()),
                 port: Some(0),
                 slow_query_log: None,
+                metrics_port: None,
             };
             assert_eq!(cfg.host, "0.0.0.0");
             assert!(!cfg.bootstrap_tables);
