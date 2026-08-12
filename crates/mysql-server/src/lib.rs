@@ -350,7 +350,9 @@ mod helpers_tests {
 
     #[test]
     fn make_ok_packet_structure() {
-        let pkt = make_ok_packet(1, 5, 100, 0x0002, 0);
+        let packets = make_ok_packet(1, 5, 100, 0x0002, 0, 0, false);
+        assert_eq!(packets.len(), 1);
+        let pkt = &packets[0];
         assert_eq!(pkt.sequence, 1);
         // First byte 0x00 marks OK packet
         assert_eq!(pkt.payload[0], 0x00);
@@ -668,7 +670,24 @@ mod capability {
     pub const PLUGIN_AUTH_LENENC_CLIENT_DATA: u32 = 0x00200000;
     pub const SSL: u32 = 0x00000800;
     pub const DEPRECATE_EOF: u32 = 0x01000000;
+    /// CLIENT_COMPRESS (0x00200000). When advertised by both client and
+    /// server, payloads after the HandshakeV10 are wrapped in zlib.
+    /// PR #4112 added the wire primitives; see `compression.rs`.
     pub const COMPRESS: u32 = 0x00200000;
+    /// CLIENT_SESSION_TRACK (0x00800000). When set by the client, every
+    /// OK packet (and EOF/result-set terminator) MUST carry an extra
+    /// lenenc-encoded `info` string at the end. If
+    /// `status_flags & SERVER_STATUS_SESSION_STATE_CHANGED` is also set,
+    /// an additional lenenc-encoded session-state blob follows. mysql CLI
+    /// 8.0+ sets this bit by default, so omitting the trailing fields
+    /// causes the client to block on recvfrom waiting for the missing
+    /// bytes (Issue #4019.3).
+    pub const SESSION_TRACK: u32 = 0x00800000;
+    /// SERVER_STATUS_SESSION_STATE_CHANGED (0x4000). Set in the status
+    /// flags of an OK packet when the server includes session-state
+    /// change data in the packet (only meaningful when
+    /// `CLIENT_SESSION_TRACK` is negotiated).
+    pub const SERVER_STATUS_SESSION_STATE_CHANGED: u16 = 0x4000;
 
     pub const SERVER_DEFAULT: u32 = LONG_PASSWORD
         | FOUND_ROWS
@@ -683,7 +702,15 @@ mod capability {
         | PLUGIN_AUTH_LENENC_CLIENT_DATA
         | DEPRECATE_EOF
         | SSL
-        | COMPRESS;
+        | COMPRESS
+        // V312-WIRE-3 fix (regression #4019.3): mysql CLI 8.0+ advertises
+        // CLIENT_SESSION_TRACK by default. If we want to send the trailing
+        // `info` field (and optional session-state blob) in OK packets, we
+        // MUST also advertise SESSION_TRACK in HandshakeV10. Otherwise the
+        // client parses the OK packet with the old layout and consumes the
+        // trailing 0x00 as part of the next packet — leaving it blocked on
+        // recvfrom waiting for a packet that will never arrive.
+        | SESSION_TRACK;
 }
 
 #[derive(Debug)]
@@ -1115,7 +1142,9 @@ mod tests {
 
     #[test]
     fn test_make_ok_packet_basic() {
-        let p = make_ok_packet(1, 0, 0, 0x02, 0);
+        let packets = make_ok_packet(1, 0, 0, 0x02, 0, 0, false);
+        assert_eq!(packets.len(), 1);
+        let p = &packets[0];
         assert!(p.payload.len() > 0);
         assert_eq!(p.sequence, 1);
     }
@@ -1323,7 +1352,9 @@ mod tests {
     // Test make_ok_packet structure
     #[test]
     fn test_make_ok_packet() {
-        let pkt = make_ok_packet(1, 5, 10, 0x0002, 0);
+        let packets = make_ok_packet(1, 5, 10, 0x0002, 0, 0, false);
+        assert_eq!(packets.len(), 1);
+        let pkt = &packets[0];
         assert_eq!(pkt.sequence, 1);
         assert_eq!(pkt.payload[0], 0x00); // OK packet type
                                           // Verify it can be written without error
@@ -2077,18 +2108,89 @@ fn make_handshake_packet(seq: u8, scramble: &[u8; SCRAMBLE_LENGTH]) -> Packet {
     }
 }
 
-fn make_ok_packet(seq: u8, affected: u64, last_id: u64, status: u16, warnings: u16) -> Packet {
+fn make_ok_packet(
+    seq: u8,
+    affected: u64,
+    last_id: u64,
+    status: u16,
+    warnings: u16,
+    client_cap: u32,
+    is_auth_ok: bool,
+) -> Vec<Packet> {
     let mut p = Vec::new();
     p.push(0x00);
     write_lenenc_int(&mut p, affected).unwrap();
     write_lenenc_int(&mut p, last_id).unwrap();
-    p.write_u16::<LittleEndian>(status).unwrap();
+    // V312-WIRE-4 fix (regression #4019.4): when CLIENT_SESSION_TRACK is
+    // negotiated, augment the status flags with
+    // SERVER_STATUS_SESSION_STATE_CHANGED (0x4000) EXCEPT for the Auth OK
+    // packet. mysql CLI 8.0+ expects this bit to be set in the OK packet's
+    // status_flags when SESSION_TRACK is negotiated (it signals "session
+    // state may have changed in this statement"); the client then knows to
+    // look for the standalone session-state-change packet that follows.
+    // Without 0x4000, mysql CLI 8.0.46 has been observed to hang on
+    // recvfrom after the result-set terminator (verified via strace — see
+    // docs/releases/v3.12.0/evidence/v4019.1/STRACE_BYTE_VERIFICATION.md).
+    //
+    // V312-WIRE-6 fix (regression #4019.4 third pass): the Auth OK packet
+    // MUST NOT carry 0x4000 and MUST NOT emit the trailing session_state
+    // packet. mysql CLI 8.0.46 reads the Auth OK in 3 recv calls (header
+    // partial + header tail + payload), then immediately sends COM_QUERY
+    // before reading the 2nd packet. The 2nd packet then arrives AFTER the
+    // client's sendto, gets interpreted as the COM_QUERY response (wrong
+    // seq = 3 instead of 1), and the client crashes with
+    // CR_SERVER_LOST (exit 1). Verified via strace — see
+    // docs/releases/v3.12.0/evidence/v4019.4/. The Auth OK status stays
+    // pure AUTOCOMMIT (0x0002); no session_state sibling packet.
+    let mut actual_status = status;
+    if client_cap & capability::SESSION_TRACK != 0 && !is_auth_ok {
+        actual_status |= capability::SERVER_STATUS_SESSION_STATE_CHANGED;
+        // Also keep AUTOCOMMIT set if caller didn't already enable it.
+        actual_status |= 0x0002;
+    }
+    p.write_u16::<LittleEndian>(actual_status).unwrap();
     p.write_u16::<LittleEndian>(warnings).unwrap();
-    Packet {
+    // V312-WIRE-3 fix (regression #4019.3): when CLIENT_SESSION_TRACK is
+    // negotiated, mysql CLI 8.0+ ALWAYS expects the trailing lenenc `info`
+    // field after `warnings` in the OK packet. Omitting it causes the client
+    // to consume the next packet's header bytes as the info-length and
+    // silently desync its read cursor (verified via strace — see
+    // docs/releases/v3.12.0/evidence/v4019.3/STRACE_BYTE_VERIFICATION.md).
+    //
+    // V312-WIRE-7 fix (regression #4019.4 fourth pass — supersedes the
+    // retracted V312-WIRE-5): per the MySQL 8.0 protocol spec
+    // (https://dev.mysql.com/doc/dev/mysql-server/latest/page_protocol_basic_ok_packet.html),
+    // when status_flags has SERVER_STATUS_SESSION_STATE_CHANGED AND
+    // CLIENT_SESSION_TRACK is negotiated, the session_state_changes lenenc
+    // string is **embedded** in the SAME OK packet (right after `info`),
+    // NOT sent as a separate packet. V312-WIRE-5 had assumed separate
+    // transmission; that hypothesis was WRONG — mysql CLI 8.0.46 reads
+    // session_state_changes from inside the OK packet's body via
+    // `net_field_length` on the same buffer, and emits
+    // `CR_SERVER_LOST` / hangs after the OK packet when it doesn't find
+    // it there. Verified via strace after fix B' — see
+    // docs/releases/v3.12.0/evidence/v4019.4/STRACE_BYTE_VERIFICATION.md.
+    //
+    // The session_state_changes we emit is `lenenc 0` (empty: we have no
+    // session state to advertise). Auth OK stays `is_auth_ok` gated: it
+    // never carries 0x4000 so the inner `if (status & 0x4000)` is false and
+    // no session_state byte is appended.
+    if client_cap & capability::SESSION_TRACK != 0 {
+        write_lenenc_int(&mut p, 0).unwrap();
+        // Embedded session_state_changes — only when status has 0x4000.
+        // For Auth OK actual_status has no 0x4000 (short-circuited above),
+        // so no session_state byte is appended. For statement/trailing OK
+        // actual_status has 0x4000 (set above) so we append the empty
+        // session_state_changes lenenc.
+        if actual_status & capability::SERVER_STATUS_SESSION_STATE_CHANGED != 0 {
+            write_lenenc_int(&mut p, 0).unwrap();
+        }
+    }
+    vec![Packet {
         length: p.len() as u32,
         sequence: seq,
         payload: p,
-    }
+    }]
 }
 
 fn make_err_packet(seq: u8, code: u16, state: &str, msg: &str) -> Packet {
@@ -2124,23 +2226,96 @@ fn make_deprecate_eof_ok_packet(
     last_id: u64,
     status: u16,
     warnings: u16,
-) -> Packet {
+    client_cap: u32,
+) -> Vec<Packet> {
     let mut p = Vec::new();
-    // DEPRECATE_EOF protocol (MySQL 8.0+): trailing result-set terminator
-    // is an OK packet (0x00 marker), NOT an EOF packet (0xFE).
-    // This replaces the classic EOF when the client advertises
-    // CLIENT_DEPRECATE_EOF capability. The 0x00 marker is the standard
-    // OK packet format per the MySQL client/server protocol.
-    p.push(0x00);
+    // V312-WIRE-8 fix (regression #4019.4 fifth pass — replaces the
+    // retracted V312-WIRE-7 / V312-WIRE-5 hypothesis chain):
+    //
+    // Per MySQL WL#7766 (https://dev.mysql.com/worklog/task/?id=7766) and
+    // verified by direct wire-byte capture against real MySQL 8.0.46 with
+    // CLIENT_DEPRECATE_EOF + CLIENT_SESSION_TRACK negotiated, the trailing
+    // result-set terminator under DEPRECATE_EOF protocol uses the **EOF
+    // identifier 0xFE** as the FIRST byte, NOT the regular OK marker 0x00.
+    //
+    // WL#7766 explains: `net_send_ok(..., eof_identifier=true)` writes 0xFE
+    // when the OK packet is being used as a result-set terminator under
+    // CLIENT_DEPRECATE_EOF. The mysql CLI 8.0.46 client library dispatches
+    // on this first byte: 0xFE → "OK-as-terminator" path, 0x00 → "regular
+    // OK packet" path. We were emitting 0x00, which the client treated as
+    // a regular OK packet, then expected another packet to follow (per the
+    // session-tracking protocol path) — and hung on a 5th recvfrom that
+    // never came.
+    //
+    // Verified empirically against real MySQL 8.0.46 port 3306 with the
+    // same capabilities and same query ('select @@version_comment limit 1'):
+    // the last result-set packet starts with `0xfe 00 00 02 00 00 00`
+    // (7 bytes: 0xFE marker + lenenc affected=0 + lenenc last_id=0 +
+    // status=0x0002 [AUTOCOMMIT only, NO 0x4000] + warnings=0). NO info,
+    // NO session_state_changes — because status has no 0x4000.
+    //
+    // Rules:
+    // - This function is ONLY for result-set terminator under DEPRECATE_EOF.
+    //   Other OK packets (auth OK, COM_PING, COM_INIT_DB, statement OK
+    //   without result-set, etc.) MUST keep the 0x00 header in
+    //   `make_ok_packet` — they are not terminators.
+    //   NOTE: COM_QUIT does NOT return an OK packet at all — the server
+    //   just half-closes the TCP connection. So COM_QUIT is never in this
+    //   set.
+    // - We MUST NOT set 0x4000 (SESSION_STATE_CHANGED) here unless session
+    //   state actually changed in this statement (e.g. SET, USE, multi-
+    //   statement). For plain SELECTs (like our regression case), the
+    //   trailing OK carries just AUTOCOMMIT (0x0002) and nothing else.
+    // - When 0x4000 IS set (rare), per the canonical spec the OK packet
+    //   then appends lenenc `info` (may be empty) and lenenc
+    //   `session_state_changes`. We honor that path so the client can read
+    //   session-state tracking data when it does change.
+    p.push(0xfe); // OK-as-terminator under DEPRECATE_EOF: EOF identifier
     write_lenenc_int(&mut p, affected).unwrap();
     write_lenenc_int(&mut p, last_id).unwrap();
-    p.write_u16::<LittleEndian>(status).unwrap();
+    // No unconditional 0x4000 — only set when session state actually
+    // changed. Caller passes `status` and we trust it. For plain SELECT
+    // / DML with no session impact, status stays at the caller's value
+    // (typically 0x0002 AUTOCOMMIT only). This matches what real MySQL
+    // 8.0.46 emits for `select @@version_comment limit 1`.
+    let mut actual_status = status;
+    // Keep AUTOCOMMIT visible to the client unless the caller disabled it.
+    actual_status |= 0x0002;
+    p.write_u16::<LittleEndian>(actual_status).unwrap();
     p.write_u16::<LittleEndian>(warnings).unwrap();
-    Packet {
+    // session_state_changes is appended IFF status has 0x4000 (i.e. session
+    // state actually changed in this statement). The canonical spec wraps
+    // session_state in lenenc(info) + lenenc(session_state) — but for the
+    // no-change case (0x4000 unset), there is NO info field and NO
+    // session_state field at all. This matches real MySQL 8.0.46 wire
+    // bytes for plain SELECTs (no info byte, no session_state byte).
+    if actual_status & capability::SERVER_STATUS_SESSION_STATE_CHANGED != 0
+        && client_cap & capability::SESSION_TRACK != 0
+    {
+        // lenenc info (always present after warnings when SESSION_TRACK +
+        // 0x4000 is negotiated, even if empty)
+        write_lenenc_int(&mut p, 0).unwrap();
+        // lenenc session_state_changes
+        write_lenenc_int(&mut p, 0).unwrap();
+    }
+    vec![Packet {
         length: p.len() as u32,
         sequence: seq,
         payload: p,
+    }]
+}
+
+/// Write one or more OK packets (returned by `make_ok_packet` /
+/// `make_deprecate_eof_ok_packet`) to a stream, advancing `seq` once per
+/// packet so the wire-protocol sequence numbers stay consistent across the
+/// optional trailing `session_state_info` packet. Returns the post-write
+/// `seq` value.
+fn write_ok_packets<W: Write>(w: &mut W, packets: Vec<Packet>, mut seq: u8) -> MySqlResult<u8> {
+    for pkt in packets {
+        pkt.write_to(w)?;
+        seq = seq.wrapping_add(1);
     }
+    Ok(seq)
 }
 
 struct HandshakeResponse {
@@ -2556,13 +2731,25 @@ fn send_result_set<W: Write>(
             seq,
         )?;
     }
+    // Inter-record separator between column defs and the row stream.
+    // Per MySQL wire protocol (and verified against mysql 8.0 CLI behavior):
+    //   - DEPRECATE_EOF = 0 (classic pre-8.0): send a 5-byte EOF packet
+    //     so clients can detect "end of column metadata, rows begin".
+    //   - DEPRECATE_EOF = 1 (mysql 8.0+ default): NO separator packet —
+    //     column defs are followed directly by the row stream. The
+    //     trailing OK packet (0x00) below marks end-of-result-set.
+    //
+    // V312-WIRE-1 fix (regression #4019.1): the previous implementation
+    // sent an OK packet (0x00) as the "separator" even when DEPRECATE_EOF=1,
+    // which mysql CLI 8.0.46 misinterpreted as the trailing terminator.
+    // It then stopped reading the row stream, never received the actual
+    // rows, and hung waiting for the next command response. Removing the
+    // extra OK separator restores wire-protocol compatibility.
     if cap & capability::DEPRECATE_EOF == 0 {
         make_eof_packet(seq, 0x0002).write_to(w)?;
         seq = seq.wrapping_add(1);
-    } else {
-        make_deprecate_eof_ok_packet(seq, 0, 0, 0x0002, 0).write_to(w)?;
-        seq = seq.wrapping_add(1);
     }
+    // DEPRECATE_EOF=1: do NOT send any inter-record separator.
     for r in rows.iter() {
         let mut p = Vec::new();
         write_text_row(&mut p, r)?;
@@ -2605,8 +2792,11 @@ fn send_result_set<W: Write>(
         make_eof_packet(seq, 0x0002).write_to(w)?;
         seq = seq.wrapping_add(1);
     } else {
-        make_deprecate_eof_ok_packet(seq, 0, 0, 0x0002, 0).write_to(w)?;
-        seq = seq.wrapping_add(1);
+        // V312-WIRE-5: `make_deprecate_eof_ok_packet` returns Vec<Packet>
+        // (1 OK packet, optionally +1 separate session_state_info packet
+        // when status has 0x4000). Use `write_ok_packets` to emit them all
+        // and advance seq once per packet.
+        seq = write_ok_packets(w, make_deprecate_eof_ok_packet(seq, 0, 0, 0x0002, 0, cap), seq)?;
     }
     tracing::info!("send_result_set done: final_seq={}", seq);
     Ok(seq)
@@ -2657,14 +2847,16 @@ fn send_binary_result_set<W: Write>(
         seq = seq.wrapping_add(1);
     }
     // Inter-record separator between column defs and row stream.
-    // Honor the client's DEPRECATE_EOF capability.
+    // V312-WIRE-1 fix (regression #4019.1): previously this branch sent
+    // an OK packet when DEPRECATE_EOF=1, breaking mysql CLI 8.0+ clients.
+    // Correct MySQL 8.0+ protocol: NO inter-record separator when
+    // DEPRECATE_EOF=1; only the trailing OK terminator below marks
+    // end-of-result-set.
     if cap & capability::DEPRECATE_EOF == 0 {
         make_eof_packet(seq, 0x0002).write_to(w)?;
         seq = seq.wrapping_add(1);
-    } else {
-        make_deprecate_eof_ok_packet(seq, 0, 0, 0x0002, 0).write_to(w)?;
-        seq = seq.wrapping_add(1);
     }
+    // DEPRECATE_EOF=1: do NOT send any inter-record separator.
     // Infer column type codes from the actual data values, NOT from the
     // column type strings (which may be misleading e.g. VARCHAR(255) for
     // integer columns). The encoding in write_binary_row is determined by
@@ -2696,8 +2888,9 @@ fn send_binary_result_set<W: Write>(
         make_eof_packet(seq, 0x0002).write_to(w)?;
         seq = seq.wrapping_add(1);
     } else {
-        make_deprecate_eof_ok_packet(seq, 0, 0, 0x0002, 0).write_to(w)?;
-        seq = seq.wrapping_add(1);
+        // V312-WIRE-5: see send_result_set for rationale. Vec<Packet> may
+        // include a separate session_state_info packet after the OK.
+        seq = write_ok_packets(w, make_deprecate_eof_ok_packet(seq, 0, 0, 0x0002, 0, cap), seq)?;
     }
     Ok(seq)
 }
@@ -3779,20 +3972,23 @@ fn do_command_loop<S: Read + Write + DrainWrites>(
         }
         match cmd {
             packet_type::COM_QUIT => {
-                make_ok_packet(seq, 0, 0, 0x0002, 0).write_to(stream)?;
+                // MySQL wire protocol: server MUST send OK packet on COM_QUIT
+                // before closing the connection, so the client can release
+                // its read() and exit cleanly. Without this, mysql CLI and
+                // pymysql hang in recv() after sending COM_QUIT (Issue #SET-NAMES-HANG).
+                // V312-WIRE-5: write_ok_packets handles the optional
+                // session_state_info packet that may follow the OK.
+                seq = write_ok_packets(stream, make_ok_packet(seq, 0, 0, 0x0002, 0, cap, false), seq)?;
                 *server_last_sent_seq = seq;
-                seq = seq.wrapping_add(1);
                 break;
             }
             packet_type::COM_PING => {
-                make_ok_packet(seq, 0, 0, 0x0002, 0).write_to(stream)?;
+                seq = write_ok_packets(stream, make_ok_packet(seq, 0, 0, 0x0002, 0, cap, false), seq)?;
                 *server_last_sent_seq = seq;
-                seq = seq.wrapping_add(1);
             }
             packet_type::COM_INIT_DB => {
-                make_ok_packet(seq, 0, 0, 0x0002, 0).write_to(stream)?;
+                seq = write_ok_packets(stream, make_ok_packet(seq, 0, 0, 0x0002, 0, cap, false), seq)?;
                 *server_last_sent_seq = seq;
-                seq = seq.wrapping_add(1);
             }
             packet_type::COM_QUERY => {
                 let q = String::from_utf8_lossy(payload)
@@ -3848,16 +4044,14 @@ fn do_command_loop<S: Read + Write + DrainWrites>(
                             0
                         }
                     };
-                    make_ok_packet(seq, n, 0, 0x0002, 0).write_to(stream)?;
+                    seq = write_ok_packets(stream, make_ok_packet(seq, n, 0, 0x0002, 0, cap, false), seq)?;
                     *server_last_sent_seq = seq;
-                    seq = seq.wrapping_add(1);
                     continue;
                 }
 
                 if q.is_empty() {
-                    make_ok_packet(seq, 0, 0, 0x0002, 0).write_to(stream)?;
+                    seq = write_ok_packets(stream, make_ok_packet(seq, 0, 0, 0x0002, 0, cap, false), seq)?;
                     *server_last_sent_seq = seq;
-                    seq = seq.wrapping_add(1);
                     continue;
                 }
 
@@ -3878,9 +4072,8 @@ fn do_command_loop<S: Read + Write + DrainWrites>(
                     || lower_q.starts_with("settransaction")
                 {
                     tracing::info!("SET NOP: {}", q);
-                    make_ok_packet(seq, 0, 0, 0x0002, 0).write_to(stream)?;
+                    seq = write_ok_packets(stream, make_ok_packet(seq, 0, 0, 0x0002, 0, cap, false), seq)?;
                     *server_last_sent_seq = seq;
-                    seq = seq.wrapping_add(1);
                     continue;
                 }
                 // G13-OLTP-1 lock contention fix: DDL/DML use exclusive write lock with
@@ -3937,15 +4130,15 @@ fn do_command_loop<S: Read + Write + DrainWrites>(
                                 if let Some(ref slow_log) = config.slow_query_log {
                                     slow_log.set_threshold_ms(ms);
                                 }
-                                make_ok_packet(seq, 0, 0, 0x0002, 0).write_to(stream)?;
+                                seq = write_ok_packets(stream, make_ok_packet(seq, 0, 0, 0x0002, 0, cap, false), seq)?;
                             }
                             Err(err) => {
                                 make_err_packet(seq, 1232u16, "42000", err).write_to(stream)?;
+                                seq = seq.wrapping_add(1);
                                 had_error = true;
                             }
                         }
                         *server_last_sent_seq = seq;
-                        seq = seq.wrapping_add(1);
                         continue;
                     }
                     // G13-OLTP-1: poisoning recovery in both branches.
@@ -4019,10 +4212,12 @@ fn do_command_loop<S: Read + Write + DrainWrites>(
                             *server_last_sent_seq = seq;
                         }
                         Ok(r) => {
-                            make_ok_packet(seq, r.affected_rows as u64, 0, 0x0002, 0)
-                                .write_to(stream)?;
+                            seq = write_ok_packets(
+                                stream,
+                                make_ok_packet(seq, r.affected_rows as u64, 0, 0x0002, 0, cap, false),
+                                seq,
+                            )?;
                             *server_last_sent_seq = seq;
-                            seq = seq.wrapping_add(1);
                         }
                         Err(e) => {
                             let code = e.mysql_error_code();
@@ -4136,9 +4331,8 @@ fn do_command_loop<S: Read + Write + DrainWrites>(
                         seq = seq.wrapping_add(1);
                     }
                     if cap & capability::DEPRECATE_EOF != 0 {
-                        make_deprecate_eof_ok_packet(seq, 0, 0, 0x0002, 0).write_to(stream)?;
+                        seq = write_ok_packets(stream, make_deprecate_eof_ok_packet(seq, 0, 0, 0x0002, 0, cap), seq)?;
                         *server_last_sent_seq = seq;
-                        seq = seq.wrapping_add(1);
                     } else {
                         make_eof_packet(seq, 0x0002).write_to(stream)?;
                         *server_last_sent_seq = seq;
@@ -4195,9 +4389,8 @@ fn do_command_loop<S: Read + Write + DrainWrites>(
                         seq = write_column_def(stream, &col_name, "VARCHAR(255)", seq)?;
                     }
                     if cap & capability::DEPRECATE_EOF != 0 {
-                        make_deprecate_eof_ok_packet(seq, 0, 0, 0x0002, 0).write_to(stream)?;
+                        seq = write_ok_packets(stream, make_deprecate_eof_ok_packet(seq, 0, 0, 0x0002, 0, cap), seq)?;
                         *server_last_sent_seq = seq;
-                        seq = seq.wrapping_add(1);
                     } else {
                         make_eof_packet(seq, 0x0002).write_to(stream)?;
                         *server_last_sent_seq = seq;
@@ -4307,10 +4500,12 @@ fn do_command_loop<S: Read + Write + DrainWrites>(
                         )?;
                     }
                     Ok(r) => {
-                        make_ok_packet(seq, r.affected_rows as u64, 0, 0x0002, 0)
-                            .write_to(stream)?;
+                        seq = write_ok_packets(
+                            stream,
+                            make_ok_packet(seq, r.affected_rows as u64, 0, 0x0002, 0, cap, false),
+                            seq,
+                        )?;
                         *server_last_sent_seq = seq;
-                        seq = seq.wrapping_add(1);
                     }
                     Err(e) => {
                         let code = e.mysql_error_code();
@@ -4332,9 +4527,8 @@ fn do_command_loop<S: Read + Write + DrainWrites>(
             packet_type::COM_RESET_CONNECTION => {
                 tracing::info!("COM_RESET_CONNECTION from {}", addr);
                 ps_manager.reset();
-                make_ok_packet(seq, 0, 0, 0x0002, 0).write_to(stream)?;
+                seq = write_ok_packets(stream, make_ok_packet(seq, 0, 0, 0x0002, 0, cap, false), seq)?;
                 *server_last_sent_seq = seq;
-                seq = seq.wrapping_add(1);
             }
             _ => {
                 make_err_packet(seq, 1047, "HY000", "Unknown command").write_to(stream)?;
@@ -4467,8 +4661,13 @@ fn handle_connection(
                 return;
             }
             tracing::info!("Auth accepted, sending OK packet, seq=3");
-            make_ok_packet(3, 0, 0, 0x0002, 0).write_to(&mut tls).ok();
-            tracing::info!("Starting command loop, seq=4");
+            // V312-WIRE-5: Vec<Packet> — write all packets (OK + optional
+            // session_state_info) and advance the sequence number per
+            // packet written.
+            for pkt in make_ok_packet(3, 0, 0, 0x0002, 0, resp.capability_flags, true) {
+                pkt.write_to(&mut tls).ok();
+            }
+            tracing::info!("Starting command loop, seq=4+");
             // Drop the temporary Stream wrapper and create a long-lived
             // TlsStream that drives rustls IO after every write. This
             // is critical for `mysql` CLI / sysbench compatibility:
@@ -4530,9 +4729,10 @@ fn handle_connection(
         return;
     }
     tracing::info!("Auth accepted, sending OK packet, seq=2");
-    make_ok_packet(2, 0, 0, 0x0002, 0)
-        .write_to(&mut &stream)
-        .ok();
+    // V312-WIRE-5: Vec<Packet> — emit OK + optional session_state_info.
+    for pkt in make_ok_packet(2, 0, 0, 0x0002, 0, resp.capability_flags, true) {
+        pkt.write_to(&mut &stream).ok();
+    }
     let mut server_last_sent_seq = 2u8;
     tracing::info!("Starting command loop with server_last_sent_seq=2");
     let engine: Arc<parking_lot::RwLock<ExecutionEngine<BoxStorageEngine>>> = Arc::new(
@@ -5266,17 +5466,173 @@ mod integration_tests {
 
     #[test]
     fn test_make_ok_packet_basic() {
-        let pkt = make_ok_packet(1, 0, 0, 0x0002, 0);
+        let packets = make_ok_packet(1, 0, 0, 0x0002, 0, 0, false);
+        // client_cap=0 means SESSION_TRACK NOT negotiated → no trailing
+        // info, no separate session_state_info → single OK packet only.
+        assert_eq!(packets.len(), 1);
+        let pkt = &packets[0];
         assert_eq!(pkt.sequence, 1);
         assert_eq!(pkt.payload[0], 0x00); // OK packet type
     }
 
     #[test]
     fn test_make_ok_packet_with_affected_rows() {
-        let pkt = make_ok_packet(2, 5, 10, 0x0002, 0);
+        let packets = make_ok_packet(2, 5, 10, 0x0002, 0, 0, false);
+        assert_eq!(packets.len(), 1);
+        let pkt = &packets[0];
         assert_eq!(pkt.sequence, 2);
         // Affected rows is lenenc-int of 5 = 0x05
         assert!(pkt.payload.contains(&5));
+    }
+
+    #[test]
+    fn test_make_ok_packet_session_track_embeds_session_state_in_ok_packet() {
+        // V312-WIRE-7 (supersedes retracted V312-WIRE-5): with
+        // SESSION_TRACK negotiated (0x00800000), the caller's status not
+        // carrying 0x4000, and is_auth_ok=false (statement OK), the
+        // make_ok_packet helper augments status with 0x4000 internally
+        // and EMBEDS the empty session_state_changes lenenc inside the
+        // SAME OK packet (after `info`), NOT as a separate packet.
+        // Verified by strace against mysql CLI 8.0.46.
+        let cap = capability::SESSION_TRACK;
+        let packets = make_ok_packet(3, 0, 0, 0x0002, 0, cap, false);
+        assert_eq!(packets.len(), 1, "should emit exactly one OK packet");
+        assert_eq!(packets[0].sequence, 3);
+        let p = &packets[0].payload;
+        assert_eq!(p[0], 0x00, "OK marker");
+        assert_eq!(p[1], 0x00, "affected=0");
+        assert_eq!(p[2], 0x00, "last_id=0");
+        // status LE — must have 0x4000 set (and AUTOCOMMIT 0x0002)
+        let status = u16::from_le_bytes([p[3], p[4]]);
+        assert_eq!(
+            status,
+            0x0002 | capability::SERVER_STATUS_SESSION_STATE_CHANGED,
+            "statement OK status must include SESSION_STATE_CHANGED"
+        );
+        assert_eq!(p[5], 0x00, "warnings high");
+        assert_eq!(p[6], 0x00, "warnings low");
+        // lenenc(info=0) trailing — SESSION_TRACK negotiated
+        assert_eq!(p[7], 0x00, "lenenc(info=0)");
+        // EMBEDDED lenenc(session_state_changes=0) — appended inside OK
+        assert_eq!(p[8], 0x00, "embedded lenenc(session_state_changes=0)");
+    }
+
+    #[test]
+    fn test_make_ok_packet_auth_ok_does_not_emit_session_state_packet() {
+        // V312-WIRE-6 + V312-WIRE-7: even with SESSION_TRACK negotiated,
+        // the Auth OK packet MUST NOT carry 0x4000 and MUST NOT emit any
+        // session_state byte (separate OR embedded). mysql CLI 8.0.46
+        // reads the Auth OK and immediately sends COM_QUERY before
+        // reading the 2nd packet, so any trailing session_state would
+        // desync the wire. The payload ends at `info` (no embedded
+        // session_state_changes lenenc after).
+        let cap = capability::SESSION_TRACK;
+        let packets = make_ok_packet(2, 0, 0, 0x0002, 0, cap, true);
+        assert_eq!(packets.len(), 1, "Auth OK must be a single packet");
+        assert_eq!(packets[0].sequence, 2);
+        let p = &packets[0].payload;
+        assert_eq!(p[0], 0x00, "OK marker");
+        assert_eq!(p[1], 0x00, "affected=0");
+        assert_eq!(p[2], 0x00, "last_id=0");
+        // status LE = 0x0002 (no SESSION_STATE_CHANGED bit)
+        let status = u16::from_le_bytes([p[3], p[4]]);
+        assert_eq!(status, 0x0002, "Auth OK status must be 0x0002 (no 0x4000)");
+        assert_eq!(p[5], 0x00, "warnings high");
+        assert_eq!(p[6], 0x00, "warnings low");
+        // lenenc(info=0) trailing — SESSION_TRACK negotiated
+        assert_eq!(p[7], 0x00, "lenenc(info=0)");
+        // NO embedded session_state_changes lenenc after info
+        assert_eq!(
+            p.len(),
+            8,
+            "Auth OK payload must end at info; no embedded session_state"
+        );
+    }
+
+    #[test]
+    fn test_make_deprecate_eof_ok_packet_terminator_uses_0xfe_marker() {
+        // V312-WIRE-8 regression test (#4019.4 sixth pass — replaces the
+        // retracted V312-WIRE-7 / V312-WIRE-5 / V312-WIRE-4 chain):
+        //
+        // Per MySQL WL#7766 (https://dev.mysql.com/worklog/task/?id=7766),
+        // the trailing result-set terminator under CLIENT_DEPRECATE_EOF
+        // uses the **EOF identifier 0xFE** as the FIRST byte, NOT the
+        // regular OK marker 0x00. mysql CLI 8.0.46 dispatches on this
+        // first byte: 0xFE → "OK-as-terminator" path, 0x00 → "regular OK
+        // packet" path. Sending 0x00 here caused mysql CLI 8.0.46 to
+        // treat the terminator as a regular OK packet and hang waiting
+        // for a 5th recvfrom that never came.
+        //
+        // For plain SELECTs (no session-state change), the terminator is
+        // exactly 7 bytes: 0xFE + lenenc(0) + lenenc(0) + status(0x0002)
+        // + warnings(0). No 0x4000, no info, no session_state_changes —
+        // matching real MySQL 8.0.46 wire bytes for `select
+        // @@version_comment limit 1` captured via strace.
+        let cap = capability::SESSION_TRACK;
+        let packets = make_deprecate_eof_ok_packet(5, 0, 0, 0x0002, 0, cap);
+        assert_eq!(
+            packets.len(),
+            1,
+            "trailing OK must be a single packet under DEPRECATE_EOF"
+        );
+        assert_eq!(packets[0].sequence, 5);
+        let p = &packets[0].payload;
+        assert_eq!(
+            p[0], 0xfe,
+            "DEPRECATE_EOF terminator MUST use EOF identifier 0xFE (WL#7766), \
+             NOT OK marker 0x00 — mysql CLI 8.0.46 dispatches on this byte"
+        );
+        assert_eq!(p[1], 0x00, "affected=0");
+        assert_eq!(p[2], 0x00, "last_id=0");
+        // status LE — must be 0x0002 (AUTOCOMMIT) only, NO 0x4000
+        let status = u16::from_le_bytes([p[3], p[4]]);
+        assert_eq!(
+            status, 0x0002,
+            "plain SELECT trailing OK status must be 0x0002 (no SESSION_STATE_CHANGED)"
+        );
+        assert!(
+            status & capability::SERVER_STATUS_SESSION_STATE_CHANGED == 0,
+            "plain SELECT trailing OK MUST NOT have 0x4000 set"
+        );
+        assert_eq!(p[5], 0x00, "warnings high");
+        assert_eq!(p[6], 0x00, "warnings low");
+        assert_eq!(
+            p.len(),
+            7,
+            "plain SELECT terminator payload must be exactly 7 bytes \
+             (0xFE + 2 lenenc + status + warnings), no info, no session_state"
+        );
+    }
+
+    #[test]
+    fn test_make_deprecate_eof_ok_packet_with_session_state_change_appends_info_and_session() {
+        // V312-WIRE-8 regression test: when the trailing OK does carry
+        // 0x4000 (e.g. SET, USE, multi-statement), it appends the
+        // lenenc(info) + lenenc(session_state_changes) suffix INSIDE the
+        // SAME packet (not as a separate packet). This is the only case
+        // where the payload is > 7 bytes.
+        let cap = capability::SESSION_TRACK;
+        let packets = make_deprecate_eof_ok_packet(
+            5,
+            0,
+            0,
+            0x0002 | capability::SERVER_STATUS_SESSION_STATE_CHANGED,
+            0,
+            cap,
+        );
+        let p = &packets[0].payload;
+        assert_eq!(
+            p[0], 0xfe,
+            "header is still 0xFE even when 0x4000 is set — WL#7766 eof_identifier"
+        );
+        let status = u16::from_le_bytes([p[3], p[4]]);
+        assert!(
+            status & capability::SERVER_STATUS_SESSION_STATE_CHANGED != 0,
+            "status must include 0x4000 for this test"
+        );
+        assert_eq!(p[7], 0x00, "lenenc(info=0)");
+        assert_eq!(p[8], 0x00, "embedded lenenc(session_state_changes=0)");
+        assert_eq!(p.len(), 9, "payload must end at session_state_changes");
     }
 
     // ============ make_err_packet Tests ============

@@ -397,6 +397,12 @@ pub fn evaluate_expression_with_subq(
         Expression::SubqueryField(inner, _field) => {
             evaluate_expression_with_subq(inner, row, table_info, subq_eval)
         }
+        // MySQL `@@version_comment` / `@@autocommit` etc. — resolved to a
+        // scalar literal at evaluation time. We delegate to the same
+        // resolver that the unified-expr path uses so the wire-protocol
+        // result (column count, value type) is consistent regardless of
+        // which evaluator the SELECT passes through.
+        Expression::SystemVariable(name) => Ok(sqlrustgo_executor::expr::resolve_system_variable(name)),
         _ => Ok(Value::Null),
     }
 }

@@ -235,6 +235,31 @@ impl<'a> Lexer<'a> {
                 self.position += 1;
                 Token::Colon
             }
+            // MySQL system variable: `@@version_comment`, `@@autocommit`, etc.
+            // The double-`@` is a single token pulled out of the identifier
+            // stream so the parser/executor can resolve it as a scalar value
+            // rather than mistaking each `@` for a column reference.
+            '@' => {
+                if self.input[self.position..].starts_with("@@")
+                    && self.position + 2 < self.input.len()
+                {
+                    let next = self
+                        .input
+                        .chars()
+                        .nth(self.position + 2)
+                        .unwrap_or('\0');
+                    if next.is_alphabetic() || next == '_' {
+                        self.position += 2;
+                        let name = self.read_identifier();
+                        return Token::SystemVariable(name);
+                    }
+                }
+                // Fallback: single `@` is not legal in this dialect; treat as
+                // an identifier so the parser can produce a clearer error
+                // than the catch-all fallback below.
+                self.position += 1;
+                Token::Identifier("@".to_string())
+            }
             '"' => Token::Identifier(self.read_quoted_identifier()),
             '\'' => Token::StringLiteral(self.read_string()),
             '=' => {
