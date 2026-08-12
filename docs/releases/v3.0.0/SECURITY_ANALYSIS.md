@@ -59,7 +59,7 @@
 
 ## 3. RC Gate Security Checks (R-S1, R-S2)
 
-Per [gate_spec_v300.md](../../governance/gate_spec_v300.md):
+Per gate_spec_v300.md:
 
 | ID | Check | Status | Evidence |
 |----|-------|--------|----------|

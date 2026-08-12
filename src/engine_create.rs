@@ -14,7 +14,7 @@ use sqlrustgo_parser::parser::{
     StorageEngineSpec,
 };
 use sqlrustgo_storage::clustered_table::ClusteredTable;
-use sqlrustgo_storage::{ColumnDefinition, StorageEngine, TableInfo};
+use sqlrustgo_storage::{engine::CheckConstraint, ColumnDefinition, StorageEngine, TableInfo};
 use std::sync::Arc;
 
 impl<S: StorageEngine + 'static> ExecutionEngine<S> {
@@ -33,17 +33,27 @@ impl<S: StorageEngine + 'static> ExecutionEngine<S> {
             let select_result = self.execute_select(select_stmt)?;
             storage = self.storage.write();
 
-            // Determine column names: use explicit column names if provided, else from SELECT
+            // Determine column names: use explicit column names if provided, else
+            // from the SELECT projection (alias or name).
+            //
+            // V313-14 / Issue #4042: previously the inferred path returned an
+            // empty Vec and the table got placeholder names like
+            // "column1", "column2", ... so `CREATE TABLE t AS SELECT 42 AS n`
+            // produced a table with one column named "column1"; subsequent
+            // `SELECT n FROM t` then failed to bind the column reference
+            // and the legacy eval_identifier fallback emitted Text("n")
+            // instead of Integer(42). With this fix the inferred names
+            // mirror the SELECT-column aliases (or, when no alias is
+            // given, the column expression name).
             let select_column_names: Vec<String> = if !create.columns.is_empty() {
                 // Use explicit column names from CREATE TABLE (col1, col2, ...)
                 create.columns.iter().map(|c| c.name.clone()).collect()
             } else {
-                // Infer from SELECT output column names
-                select_result
-                    .rows
-                    .first()
-                    .map(|_| vec![])
-                    .unwrap_or_else(Vec::new)
+                select_stmt
+                    .columns
+                    .iter()
+                    .map(|c| c.alias.clone().unwrap_or_else(|| c.name.clone()))
+                    .collect()
             };
 
             // V312-18: OR REPLACE - drop existing table first
@@ -70,11 +80,23 @@ impl<S: StorageEngine + 'static> ExecutionEngine<S> {
                 0
             };
 
-            // Validate column name count vs select column count
-            if !create.columns.is_empty() && create.columns.len() < num_select_cols {
-                return Err(SqlError::ExecutionError(
-                    "Target table has more column names than query result.".to_string(),
-                ));
+            // Validate column name count vs select column count.
+            //
+            // V313-14 / Issue #4042: the original guard only rejected
+            // `create.columns.len() < num_select_cols` (extra SELECT
+            // columns silently dropped) but accepted the inverse case
+            // `create.columns.len() > num_select_cols` (missing SELECT
+            // columns silently filled with NULLs). The create_as.test
+            // line 112-115 fixture expects the inverse case to error
+            // with a binder message; this change enforces equality
+            // for explicit-column CTAS.
+            if !create.columns.is_empty() && create.columns.len() != num_select_cols {
+                return Err(SqlError::ExecutionError(format!(
+                    "Binder error: column count mismatch — CREATE TABLE declares {} \
+                     column name(s) but SELECT produces {} column(s).",
+                    create.columns.len(),
+                    num_select_cols
+                )));
             }
 
             // Build column definitions from SELECT result
@@ -93,7 +115,10 @@ impl<S: StorageEngine + 'static> ExecutionEngine<S> {
                     })
                     .collect()
             } else {
-                // Infer from SELECT result - all columns nullable since they come from SELECT
+                // Infer from SELECT result - all columns nullable since they come
+                // from SELECT. V313-14 / Issue #4042: name comes from the
+                // SELECT-column alias (or raw name) so subsequent
+                // `SELECT alias FROM new_table` can bind correctly.
                 (0..num_select_cols)
                     .map(|i| {
                         let inferred_type = select_result
@@ -111,8 +136,13 @@ impl<S: StorageEngine + 'static> ExecutionEngine<S> {
                                 &Value::Json(_) => "JSON".to_string(),
                             })
                             .unwrap_or_else(|| "TEXT".to_string());
+                        let inferred_name = select_column_names
+                            .get(i)
+                            .cloned()
+                            .filter(|n| !n.is_empty())
+                            .unwrap_or_else(|| format!("column{}", i + 1));
                         ColumnDefinition {
-                            name: format!("column{}", i + 1),
+                            name: inferred_name,
                             data_type: inferred_type,
                             nullable: true,
                             primary_key: false,
@@ -197,12 +227,26 @@ impl<S: StorageEngine + 'static> ExecutionEngine<S> {
             }
         }
 
+        let check_constraints: Vec<CheckConstraint> = create
+            .constraints
+            .iter()
+            .filter_map(|c| match c {
+                sqlrustgo_parser::TableConstraint::Check { expression, name } => {
+                    Some(CheckConstraint {
+                        name: name.clone(),
+                        expression: expression.clone(),
+                    })
+                }
+                _ => None,
+            })
+            .collect();
+
         let info = TableInfo {
             name: create.name.clone(),
             columns: columns.clone(),
             foreign_keys: vec![],
             unique_constraints: vec![],
-            check_constraints: vec![],
+            check_constraints: check_constraints.clone(),
             partition_info: None,
             compression,
         };
@@ -225,7 +269,7 @@ impl<S: StorageEngine + 'static> ExecutionEngine<S> {
                 columns,
                 foreign_keys: vec![],
                 unique_constraints: vec![],
-                check_constraints: vec![],
+                check_constraints,
                 partition_info: None,
                 compression: None,
             })?;

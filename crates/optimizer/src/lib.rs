@@ -23,8 +23,9 @@ pub use network_cost::{NetworkCost, NetworkCostEstimator, SimpleNetworkCostEstim
 pub use plan::{OptimizerError, OptimizerResult};
 pub use rules::{ConstantFolding, PredicatePushdown, ProjectionPruning};
 pub use stats::{
-    ColumnStats, DefaultStatsCollector, InMemoryStatisticsProvider, StatisticsProvider,
-    StatsCollector, StatsError, StatsResult, TableStats,
+    build_histogram_from_values, ColumnStats, DefaultStatsCollector, Histogram, HistogramBucket,
+    InMemoryStatisticsProvider, StatisticsProvider, StatsCollector, StatsError, StatsResult,
+    TableStats, DEFAULT_HISTOGRAM_BUCKETS,
 };
 
 /// Optimizer trait - interface for query optimization

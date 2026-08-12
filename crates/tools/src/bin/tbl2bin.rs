@@ -340,3 +340,181 @@ fn main() {
         bin_dir.display()
     );
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use sqlrustgo_storage::engine::{ColumnDefinition, TableData, TableInfo};
+    use std::io::Read;
+
+    #[test]
+    fn parse_tbl_line_int_and_text() {
+        let line = "1|ALGERIA|0| haggle. carefully f|";
+        let types = &["INT", "TEXT", "INT", "TEXT"];
+        let vals = parse_tbl_line(line, types);
+        assert_eq!(vals.len(), 4);
+        assert_eq!(vals[0], Value::Integer(1));
+        assert_eq!(vals[1], Value::Text("ALGERIA".into()));
+        assert_eq!(vals[2], Value::Integer(0));
+        assert!(matches!(vals[3], Value::Text(_)));
+    }
+
+    #[test]
+    fn parse_tbl_line_trailing_pipe_dropped() {
+        let line = "1|hello|2|\n";
+        let types = &["INT", "TEXT", "INT"];
+        let vals = parse_tbl_line(line, types);
+        assert_eq!(vals.len(), 3);
+        assert_eq!(vals[0], Value::Integer(1));
+        assert_eq!(vals[1], Value::Text("hello".into()));
+        assert_eq!(vals[2], Value::Integer(2));
+    }
+
+    #[test]
+    fn parse_tbl_line_empty_field_is_null() {
+        let line = "||";
+        let types = &["INT", "TEXT"];
+        let vals = parse_tbl_line(line, types);
+        assert_eq!(vals[0], Value::Null);
+        assert_eq!(vals[1], Value::Null);
+    }
+
+    #[test]
+    fn parse_tbl_line_crlf_trimmed() {
+        let line = "5|name\r\n";
+        let types = &["INT", "TEXT"];
+        let vals = parse_tbl_line(line, types);
+        assert_eq!(vals[1], Value::Text("name".into()));
+    }
+
+    #[test]
+    fn parse_tbl_line_float_column() {
+        let line = "1.25|hello";
+        let types = &["FLOAT", "TEXT"];
+        let vals = parse_tbl_line(line, types);
+        assert_eq!(vals[0], Value::Float(1.25));
+        assert_eq!(vals[1], Value::Text("hello".into()));
+    }
+
+    #[test]
+    fn parse_tbl_line_fallback_text_on_parse_fail() {
+        let line = "notint|hello";
+        let types = &["INT", "TEXT"];
+        let vals = parse_tbl_line(line, types);
+        // INT column with non-numeric input falls back to Text per contract.
+        assert_eq!(vals[0], Value::Text("notint".into()));
+    }
+
+    #[test]
+    fn parse_tbl_line_missing_field_padded_with_empty() {
+        let line = "42";
+        let types = &["INT", "TEXT", "INT"];
+        let vals = parse_tbl_line(line, types);
+        assert_eq!(vals.len(), 3);
+        assert_eq!(vals[0], Value::Integer(42));
+        assert_eq!(vals[1], Value::Null);
+        assert_eq!(vals[2], Value::Null);
+    }
+
+    #[test]
+    fn write_bin_round_trip_int_text_null() {
+        let dir = std::env::temp_dir().join(format!("sqlrustgo-tbl2bin-{}", std::process::id()));
+        let _ = fs::remove_dir_all(&dir);
+        fs::create_dir_all(&dir).unwrap();
+        let path = dir.join("t.bin");
+
+        let info = TableInfo {
+            name: "t".into(),
+            columns: vec![
+                ColumnDefinition::new("id", "INT"),
+                ColumnDefinition::new("name", "TEXT"),
+                ColumnDefinition::new("note", "TEXT"),
+            ],
+            foreign_keys: vec![],
+            unique_constraints: vec![],
+            check_constraints: vec![],
+            compression: None,
+            partition_info: None,
+        };
+        let table_data = TableData {
+            info,
+            rows: vec![
+                vec![Value::Integer(1), Value::Text("a".into()), Value::Null],
+                vec![Value::Integer(2), Value::Text("b".into()), Value::Text("ok".into())],
+            ],
+        };
+
+        write_bin(&path, &table_data).expect("write_bin");
+        assert!(path.exists());
+
+        // Spot-check: header magic present.
+        let mut f = File::open(&path).unwrap();
+        let mut head = [0u8; 4];
+        f.read_exact(&mut head).unwrap();
+        assert_eq!(&head, b"BINT");
+
+        let _ = fs::remove_dir_all(&dir);
+    }
+
+    #[test]
+    fn write_bin_empty_rows_still_writes_header() {
+        let dir = std::env::temp_dir().join(format!("sqlrustgo-tbl2bin-empty-{}", std::process::id()));
+        let _ = fs::remove_dir_all(&dir);
+        fs::create_dir_all(&dir).unwrap();
+        let path = dir.join("empty.bin");
+
+        let info = TableInfo {
+            name: "empty".into(),
+            columns: vec![ColumnDefinition::new("c", "INT")],
+            foreign_keys: vec![],
+            unique_constraints: vec![],
+            check_constraints: vec![],
+            compression: None,
+            partition_info: None,
+        };
+        let table_data = TableData { info, rows: vec![] };
+
+        write_bin(&path, &table_data).expect("write_bin empty");
+        let len = fs::metadata(&path).unwrap().len();
+        assert!(len > 0, "header must exist even with no rows");
+
+        let _ = fs::remove_dir_all(&dir);
+    }
+
+    #[test]
+    fn write_bin_float_column_uses_float_code() {
+        let dir = std::env::temp_dir().join(format!("sqlrustgo-tbl2bin-flt-{}", std::process::id()));
+        let _ = fs::remove_dir_all(&dir);
+        fs::create_dir_all(&dir).unwrap();
+        let path = dir.join("f.bin");
+
+        let info = TableInfo {
+            name: "f".into(),
+            columns: vec![ColumnDefinition::new("ratio", "FLOAT")],
+            foreign_keys: vec![],
+            unique_constraints: vec![],
+            check_constraints: vec![],
+            compression: None,
+            partition_info: None,
+        };
+        let table_data = TableData {
+            info,
+            rows: vec![vec![Value::Float(3.14159)]],
+        };
+        write_bin(&path, &table_data).expect("write_bin float");
+        let len = fs::metadata(&path).unwrap().len();
+        assert!(len > 8);
+        let _ = fs::remove_dir_all(&dir);
+    }
+
+    #[test]
+    fn convert_table_missing_file_returns_zero() {
+        let dir = std::env::temp_dir().join(format!("sqlrustgo-tbl2bin-miss-{}", std::process::id()));
+        let _ = fs::remove_dir_all(&dir);
+        fs::create_dir_all(&dir).unwrap();
+        let result =
+            convert_table(&dir, &dir, "no_such_table", &[("c", "INT")]).expect("must not error");
+        assert_eq!(result, (0, 0));
+        let _ = fs::remove_dir_all(&dir);
+    }
+}

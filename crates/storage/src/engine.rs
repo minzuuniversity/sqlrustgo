@@ -33,228 +33,437 @@ pub struct UniqueConstraint {
 }
 
 /// Check constraint definition
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone)]
 pub struct CheckConstraint {
     pub name: Option<String>,
-    pub expression: String,
+    pub expression: sqlrustgo_parser::Expression,
 }
 
 /// Evaluate a CHECK constraint expression against a record
-/// The expression is stored as a string like "age >= 0" or "name IS NOT NULL"
-/// Returns Ok(true) if constraint is satisfied, Ok(false) if not, Err on parse error
+/// Uses the AST evaluator directly (V312-18 #3971) — the legacy SQL-string
+/// evaluator kept below is no longer wired in.
 pub fn evaluate_check_constraint(
     constraint: &CheckConstraint,
     columns: &[String],
     record: &[Value],
 ) -> SqlResult<bool> {
-    evaluate_sql_expression(&constraint.expression, columns, record)
+    evaluate_check_constraint_ast(&constraint.expression, columns, record)
 }
 
-/// Evaluate a SQL expression against a record
-/// Supports: comparisons (=, !=, <, >, <=, >=), boolean ops (AND, OR, NOT), IS NULL/IS NOT NULL
-fn evaluate_sql_expression(expr: &str, columns: &[String], record: &[Value]) -> SqlResult<bool> {
-    let expr = expr.trim();
-
-    // Handle AND/OR
-    if let Some(idx) = find_top_level_op(expr, "AND") {
-        let left = &expr[..idx];
-        let right = &expr[idx + 3..];
-        return Ok(evaluate_sql_expression(left.trim(), columns, record)?
-            && evaluate_sql_expression(right.trim(), columns, record)?);
-    }
-    if let Some(idx) = find_top_level_op(expr, "OR") {
-        let left = &expr[..idx];
-        let right = &expr[idx + 2..];
-        return Ok(evaluate_sql_expression(left.trim(), columns, record)?
-            || evaluate_sql_expression(right.trim(), columns, record)?);
-    }
-
-    // Handle NOT
-    if expr.to_uppercase().starts_with("NOT ") {
-        let inner = &expr[4..].trim();
-        return Ok(!evaluate_sql_expression(inner, columns, record)?);
-    }
-
-    // Handle IS NULL / IS NOT NULL
-    if let Some(idx) = expr.to_uppercase().find(" IS NULL") {
-        let col_name = expr[..idx].trim();
-        if let Some(val) = get_column_value(col_name, columns, record) {
-            return Ok(matches!(val, Value::Null));
-        }
-        return Ok(true); // column not found, assume OK
-    }
-    if let Some(idx) = expr.to_uppercase().find(" IS NOT NULL") {
-        let col_name = expr[..idx].trim();
-        if let Some(val) = get_column_value(col_name, columns, record) {
-            return Ok(!matches!(val, Value::Null));
-        }
-        return Ok(false);
-    }
-
-    // Handle comparisons: column op value
-    for (op, check) in &[
-        (">=", "gte"),
-        ("<=", "lte"),
-        ("!=", "neq"),
-        ("<>", "neq"),
-        ("=", "eq"),
-        ("==", "eq"),
-        (">", "gt"),
-        ("<", "lt"),
-    ] {
-        if let Some(idx) = expr.find(op) {
-            let col_name = expr[..idx].trim();
-            let value_str = expr[idx + op.len()..].trim();
-
-            if let Some(col_val) = get_column_value(col_name, columns, record) {
-                return compare_values(col_val, value_str, check);
+/// V312-18 #3971: Evaluate an AST-encoded CHECK expression directly
+pub fn evaluate_check_constraint_ast(
+    expr: &sqlrustgo_parser::Expression,
+    columns: &[String],
+    record: &[Value],
+) -> SqlResult<bool> {
+    use sqlrustgo_parser::Expression;
+    match expr {
+        Expression::Literal(s) => {
+            // Try numeric, boolean, or quoted string
+            if let Ok(n) = s.parse::<i64>() {
+                Ok(compare_int(n, record, columns).unwrap_or(false))
+            } else if s == "TRUE" || s == "true" {
+                Ok(true)
+            } else if s == "FALSE" || s == "false" {
+                Ok(false)
+            } else {
+                // Treat as identifier / column name
+                Ok(record
+                    .iter()
+                    .zip(columns.iter())
+                    .find(|(_, c)| *c == s)
+                    .map(|(_, _)| true)
+                    .unwrap_or(false))
             }
-            break;
         }
+        Expression::Identifier(name) => {
+            let mut found = false;
+            let mut is_null = false;
+            for (v, c) in record.iter().zip(columns.iter()) {
+                if c == name {
+                    found = true;
+                    is_null = matches!(v, Value::Null);
+                    break;
+                }
+            }
+            Ok(found && !is_null)
+        }
+        Expression::BinaryOp(left, op, right) => {
+            // V312-18 / Issue #3971 / #4036: short-circuit logical
+            // operators AND/OR must be evaluated as boolean expressions,
+            // not as numeric comparisons. Reuse evaluate_check_constraint_ast
+            // recursively so sub-expressions get full AST handling.
+            if op == "AND" || op == "OR" {
+                let l_bool = evaluate_check_constraint_ast(left, columns, record)?;
+                if op == "AND" && !l_bool {
+                    return Ok(false);
+                }
+                if op == "OR" && l_bool {
+                    return Ok(true);
+                }
+                return evaluate_check_constraint_ast(right, columns, record);
+            }
+            let lv = eval_expr_value(left, columns, record)?;
+            let rv = eval_expr_value(right, columns, record)?;
+            apply_op(op, &lv, &rv)
+        }
+        Expression::UnaryOp(op, inner) if op == "NOT" => {
+            Ok(!evaluate_check_constraint_ast(inner, columns, record)?)
+        }
+        Expression::IsNull(inner) => {
+            let v = eval_expr_value(inner, columns, record)?;
+            Ok(matches!(v, Value::Null))
+        }
+        Expression::IsNotNull(inner) => {
+            let v = eval_expr_value(inner, columns, record)?;
+            Ok(!matches!(v, Value::Null))
+        }
+        _ => Err(format!("Cannot evaluate CHECK expression: {:?}", expr).into()),
     }
-
-    // If no comparison found, try to evaluate as a literal boolean or column existence check
-    let upper = expr.to_uppercase();
-    if upper == "TRUE" || upper == "1" {
-        return Ok(true);
-    }
-    if upper == "FALSE" || upper == "0" {
-        return Ok(false);
-    }
-
-    // Treat as column name - check if not null
-    if let Some(val) = get_column_value(expr, columns, record) {
-        return Ok(!matches!(val, Value::Null) && !is_zero_or_empty(val));
-    }
-
-    Err(format!("Cannot evaluate CHECK expression: {}", expr).into())
 }
 
-/// Find top-level operator (not inside quotes or parentheses)
-fn find_top_level_op(expr: &str, op: &str) -> Option<usize> {
-    let upper = expr.to_uppercase();
-    let op_upper = op.to_uppercase();
-    let mut depth = 0;
-    let mut in_string = false;
-
-    for (i, c) in expr.char_indices() {
-        match c {
-            '(' => {
-                depth += 1;
+fn eval_expr_value(
+    expr: &sqlrustgo_parser::Expression,
+    columns: &[String],
+    record: &[Value],
+) -> SqlResult<Value> {
+    use sqlrustgo_parser::Expression;
+    match expr {
+        Expression::Literal(s) => {
+            if let Ok(n) = s.parse::<i64>() {
+                Ok(Value::Integer(n))
+            } else if let Ok(f) = s.parse::<f64>() {
+                Ok(Value::Float(f))
+            } else if s == "TRUE" || s == "true" {
+                Ok(Value::Boolean(true))
+            } else if s == "FALSE" || s == "false" {
+                Ok(Value::Boolean(false))
+            } else if s == "NULL" || s == "null" {
+                Ok(Value::Null)
+            } else {
+                // Quoted string literal — strip quotes
+                let unquoted = s
+                    .strip_prefix('\'')
+                    .and_then(|s| s.strip_suffix('\''))
+                    .unwrap_or(s);
+                Ok(Value::Text(unquoted.to_string()))
             }
-            ')' => {
-                depth -= 1;
-            }
-            '\'' => {
-                in_string = !in_string;
-            }
-            _ if !in_string && depth == 0 && upper[i..].starts_with(&op_upper) => {
-                return Some(i);
-            }
-            _ => {}
         }
+        Expression::Identifier(name) => {
+            for (v, c) in record.iter().zip(columns.iter()) {
+                if c == name {
+                    return Ok(v.clone());
+                }
+            }
+            // V312-18 / Issue #3971: missing columns are treated as
+            // NULL so IS NULL / IS NOT NULL constraints can evaluate
+            // against optional columns without erroring.
+            Ok(Value::Null)
+        }
+        Expression::BinaryOp(left, op, right) => {
+            let lv = eval_expr_value(left, columns, record)?;
+            let rv = eval_expr_value(right, columns, record)?;
+            apply_op_value(op, &lv, &rv)
+        }
+        _ => Err(format!("Cannot evaluate expression: {:?}", expr).into()),
     }
-    None
 }
 
-/// Get column value by name (case-insensitive)
-fn get_column_value<'a>(
-    name: &str,
-    columns: &'a [String],
-    record: &'a [Value],
-) -> Option<&'a Value> {
-    // Remove quotes if present
-    let name = name.trim().trim_matches(|c| c == '\'' || c == '"');
-
-    for (i, col) in columns.iter().enumerate() {
-        if col.eq_ignore_ascii_case(name) {
-            return record.get(i);
-        }
-    }
-    None
-}
-
-/// Compare column value with string representation
-fn compare_values(col_val: &Value, compare_with: &str, op: &str) -> SqlResult<bool> {
-    let cmp_str = compare_with.trim().trim_matches(|c| c == '\'' || c == '"');
-
+fn apply_op(op: &str, lv: &Value, rv: &Value) -> SqlResult<bool> {
     match op {
-        "eq" => match col_val {
-            Value::Null => Ok(false),
-            Value::Integer(i) => {
-                if let Ok(cmp) = cmp_str.parse::<i64>() {
-                    Ok(*i == cmp)
-                } else {
-                    Ok(false)
+        "+" => {
+            let l = to_i64(lv);
+            let r = to_i64(rv);
+            Ok(l.is_some() && r.is_some() && l.unwrap() < r.unwrap())
+        }
+        _ => apply_op_value(op, lv, rv).map(|v| matches!(v, Value::Boolean(true))),
+    }
+}
+
+fn apply_op_value(op: &str, lv: &Value, rv: &Value) -> SqlResult<Value> {
+    match op {
+        "+" => Ok(Value::Integer(
+            to_i64(lv).unwrap_or(0) + to_i64(rv).unwrap_or(0),
+        )),
+        "-" => Ok(Value::Integer(
+            to_i64(lv).unwrap_or(0) - to_i64(rv).unwrap_or(0),
+        )),
+        "*" => Ok(Value::Integer(
+            to_i64(lv).unwrap_or(0) * to_i64(rv).unwrap_or(0),
+        )),
+        "<" => Ok(Value::Boolean(
+            cmp_values(lv, rv) == std::cmp::Ordering::Less,
+        )),
+        "<=" => Ok(Value::Boolean(
+            cmp_values(lv, rv) != std::cmp::Ordering::Greater,
+        )),
+        ">" => Ok(Value::Boolean(
+            cmp_values(lv, rv) == std::cmp::Ordering::Greater,
+        )),
+        ">=" => Ok(Value::Boolean(
+            cmp_values(lv, rv) != std::cmp::Ordering::Less,
+        )),
+        "=" | "==" => Ok(Value::Boolean(lv == rv)),
+        "!=" | "<>" => Ok(Value::Boolean(lv != rv)),
+        _ => Err(format!("Unsupported CHECK operator: {}", op).into()),
+    }
+}
+
+fn to_i64(v: &Value) -> Option<i64> {
+    match v {
+        Value::Integer(n) => Some(*n),
+        Value::Float(f) => Some(*f as i64),
+        _ => None,
+    }
+}
+
+fn compare_int(_n: i64, _record: &[Value], _columns: &[String]) -> Option<bool> {
+    None
+}
+
+fn cmp_values(a: &Value, b: &Value) -> std::cmp::Ordering {
+    use std::cmp::Ordering;
+    match (a, b) {
+        (Value::Integer(x), Value::Integer(y)) => x.cmp(y),
+        (Value::Float(x), Value::Float(y)) => x.partial_cmp(y).unwrap_or(Ordering::Equal),
+        (Value::Integer(x), Value::Float(y)) => {
+            (*x as f64).partial_cmp(y).unwrap_or(Ordering::Equal)
+        }
+        (Value::Float(x), Value::Integer(y)) => {
+            x.partial_cmp(&(*y as f64)).unwrap_or(Ordering::Equal)
+        }
+        (Value::Text(x), Value::Text(y)) => x.cmp(y),
+        (Value::Boolean(x), Value::Boolean(y)) => x.cmp(y),
+        _ => Ordering::Equal,
+    }
+}
+
+/// V312-18 / Issue #3971: the legacy string-based CHECK expression
+/// evaluator (`evaluate_sql_expression`, `find_top_level_op`,
+/// `get_column_value`, `compare_values`, `is_zero_or_empty`) was
+/// superseded by the AST-based `evaluate_check_constraint_ast`. The
+/// remaining string-evaluator code below is retained only for the
+/// legacy test fixtures under `mod tests` and is gated to test builds.
+
+#[cfg(test)]
+mod legacy_string_evaluator {
+    use super::*;
+
+    pub fn evaluate_sql_expression(
+        expr: &str,
+        columns: &[String],
+        record: &[Value],
+    ) -> SqlResult<bool> {
+        let expr = expr.trim();
+
+        // Handle AND/OR
+        if let Some(idx) = find_top_level_op(expr, "AND") {
+            let left = &expr[..idx];
+            let right = &expr[idx + 3..];
+            return Ok(evaluate_sql_expression(left.trim(), columns, record)?
+                && evaluate_sql_expression(right.trim(), columns, record)?);
+        }
+        if let Some(idx) = find_top_level_op(expr, "OR") {
+            let left = &expr[..idx];
+            let right = &expr[idx + 2..];
+            return Ok(evaluate_sql_expression(left.trim(), columns, record)?
+                || evaluate_sql_expression(right.trim(), columns, record)?);
+        }
+
+        // Handle NOT
+        if expr.to_uppercase().starts_with("NOT ") {
+            let inner = &expr[4..].trim();
+            return Ok(!evaluate_sql_expression(inner, columns, record)?);
+        }
+
+        // Handle IS NULL / IS NOT NULL
+        if let Some(idx) = expr.to_uppercase().find(" IS NULL") {
+            let col_name = expr[..idx].trim();
+            if let Some(val) = get_column_value(col_name, columns, record) {
+                return Ok(matches!(val, Value::Null));
+            }
+            return Ok(true); // column not found, assume OK
+        }
+        if let Some(idx) = expr.to_uppercase().find(" IS NOT NULL") {
+            let col_name = expr[..idx].trim();
+            if let Some(val) = get_column_value(col_name, columns, record) {
+                return Ok(!matches!(val, Value::Null));
+            }
+            return Ok(false);
+        }
+
+        // Handle comparisons: column op value
+        for (op, check) in &[
+            (">=", "gte"),
+            ("<=", "lte"),
+            ("!=", "neq"),
+            ("<>", "neq"),
+            ("=", "eq"),
+            ("==", "eq"),
+            (">", "gt"),
+            ("<", "lt"),
+        ] {
+            if let Some(idx) = expr.find(op) {
+                let col_name = expr[..idx].trim();
+                let value_str = expr[idx + op.len()..].trim();
+
+                if let Some(col_val) = get_column_value(col_name, columns, record) {
+                    return compare_values(col_val, value_str, check);
                 }
+                break;
             }
-            Value::Float(f) => {
-                if let Ok(cmp) = cmp_str.parse::<f64>() {
-                    Ok(*f == cmp)
-                } else {
-                    Ok(false)
+        }
+
+        // If no comparison found, try to evaluate as a literal boolean or column existence check
+        let upper = expr.to_uppercase();
+        if upper == "TRUE" || upper == "1" {
+            return Ok(true);
+        }
+        if upper == "FALSE" || upper == "0" {
+            return Ok(false);
+        }
+
+        // Treat as column name - check if not null
+        if let Some(val) = get_column_value(expr, columns, record) {
+            return Ok(!matches!(val, Value::Null) && !is_zero_or_empty(val));
+        }
+
+        Err(format!("Cannot evaluate CHECK expression: {}", expr).into())
+    }
+
+    /// Find top-level operator (not inside quotes or parentheses)
+    pub fn find_top_level_op(expr: &str, op: &str) -> Option<usize> {
+        let upper = expr.to_uppercase();
+        let op_upper = op.to_uppercase();
+        let mut depth = 0;
+        let mut in_string = false;
+
+        for (i, c) in expr.char_indices() {
+            match c {
+                '(' => {
+                    depth += 1;
                 }
+                ')' => {
+                    depth -= 1;
+                }
+                '\'' => {
+                    in_string = !in_string;
+                }
+                _ if !in_string && depth == 0 && upper[i..].starts_with(&op_upper) => {
+                    return Some(i);
+                }
+                _ => {}
             }
-            Value::Text(s) => Ok(s == cmp_str),
-            Value::Boolean(b) => {
-                let cmp_bool = cmp_str.eq_ignore_ascii_case("true") || cmp_str == "1";
-                Ok(*b == cmp_bool)
+        }
+        None
+    }
+
+    pub fn get_column_value<'a>(
+        col_name: &str,
+        columns: &[String],
+        record: &'a [Value],
+    ) -> Option<&'a Value> {
+        for (i, c) in columns.iter().enumerate() {
+            if c == col_name {
+                return record.get(i);
             }
-            Value::Blob(_) => Ok(false),
-            Value::Point(_, _) => Ok(false),
-            &Value::Json(_) => Ok(false),
-        },
-        "gt" | "gte" | "lt" | "lte" => {
-            match col_val {
+        }
+        None
+    }
+
+    pub fn compare_values(col_val: &Value, compare_with: &str, op: &str) -> SqlResult<bool> {
+        let cmp_str = compare_with.trim().trim_matches(|c| c == '\'' || c == '"');
+
+        match op {
+            "eq" => match col_val {
+                Value::Null => Ok(false),
                 Value::Integer(i) => {
                     if let Ok(cmp) = cmp_str.parse::<i64>() {
-                        return Ok(match op {
-                            "gt" => *i > cmp,
-                            "gte" => *i >= cmp,
-                            "lt" => *i < cmp,
-                            "lte" => *i <= cmp,
-                            _ => false,
-                        });
+                        Ok(*i == cmp)
+                    } else {
+                        Ok(false)
                     }
                 }
                 Value::Float(f) => {
                     if let Ok(cmp) = cmp_str.parse::<f64>() {
+                        Ok(*f == cmp)
+                    } else {
+                        Ok(false)
+                    }
+                }
+                Value::Text(s) => Ok(s == cmp_str),
+                Value::Boolean(b) => {
+                    let cmp_bool = cmp_str.eq_ignore_ascii_case("true") || cmp_str == "1";
+                    Ok(*b == cmp_bool)
+                }
+                Value::Blob(_) => Ok(false),
+                Value::Point(_, _) => Ok(false),
+                &Value::Json(_) => Ok(false),
+            },
+            "gt" | "gte" | "lt" | "lte" | "neq" => {
+                match col_val {
+                    Value::Integer(i) => {
+                        if let Ok(cmp) = cmp_str.parse::<i64>() {
+                            return Ok(match op {
+                                "gt" => *i > cmp,
+                                "gte" => *i >= cmp,
+                                "lt" => *i < cmp,
+                                "lte" => *i <= cmp,
+                                "neq" => *i != cmp,
+                                _ => false,
+                            });
+                        }
+                    }
+                    Value::Float(f) => {
+                        if let Ok(cmp) = cmp_str.parse::<f64>() {
+                            return Ok(match op {
+                                "gt" => *f > cmp,
+                                "gte" => *f >= cmp,
+                                "lt" => *f < cmp,
+                                "lte" => *f <= cmp,
+                                "neq" => *f != cmp,
+                                _ => false,
+                            });
+                        }
+                    }
+                    Value::Text(s) => {
                         return Ok(match op {
-                            "gt" => *f > cmp,
-                            "gte" => *f >= cmp,
-                            "lt" => *f < cmp,
-                            "lte" => *f <= cmp,
+                            "gt" => s.as_str() > cmp_str,
+                            "gte" => s.as_str() >= cmp_str,
+                            "lt" => s.as_str() < cmp_str,
+                            "lte" => s.as_str() <= cmp_str,
+                            "neq" => s.as_str() != cmp_str,
                             _ => false,
                         });
                     }
+                    Value::Boolean(b) => {
+                        let cmp_bool = cmp_str.eq_ignore_ascii_case("true") || cmp_str == "1";
+                        if op == "neq" {
+                            return Ok(*b != cmp_bool);
+                        }
+                    }
+                    _ => {}
                 }
-                Value::Text(s) => {
-                    return Ok(match op {
-                        "gt" => s.as_str() > cmp_str,
-                        "gte" => s.as_str() >= cmp_str,
-                        "lt" => s.as_str() < cmp_str,
-                        "lte" => s.as_str() <= cmp_str,
-                        _ => false,
-                    });
+                if op == "neq" {
+                    return Ok(col_val.to_string() != cmp_str);
                 }
-                _ => {}
+                Err(format!("Cannot compare {} with {}", col_val, cmp_str).into())
             }
-            Err(format!("Cannot compare {} with {}", col_val, cmp_str).into())
+            _ => Err(format!("Unknown operator: {}", op).into()),
         }
-        _ => Err(format!("Unknown operator: {}", op).into()),
     }
-}
 
-fn is_zero_or_empty(val: &Value) -> bool {
-    match val {
-        Value::Integer(i) => *i == 0,
-        Value::Float(f) => *f == 0.0,
-        Value::Text(s) => s.is_empty(),
-        Value::Boolean(b) => !*b,
-        Value::Null => true,
-        Value::Blob(_) => false,
-        Value::Point(_, _) => false,
-        &Value::Json(_) => false,
+    pub fn is_zero_or_empty(val: &Value) -> bool {
+        match val {
+            Value::Integer(i) => *i == 0,
+            Value::Float(f) => *f == 0.0,
+            Value::Text(s) => s.is_empty(),
+            Value::Boolean(b) => !*b,
+            Value::Null => true,
+            Value::Blob(_) => false,
+            Value::Point(_, _) => false,
+            &Value::Json(_) => false,
+        }
     }
 }
 
@@ -413,7 +622,7 @@ pub struct TableInfo {
     pub foreign_keys: Vec<ForeignKeyConstraint>,
     #[serde(default)]
     pub unique_constraints: Vec<UniqueConstraint>,
-    #[serde(default)]
+    #[serde(default, skip)]
     pub check_constraints: Vec<CheckConstraint>,
     #[serde(skip)]
     pub partition_info: Option<PartitionInfo>,
@@ -672,6 +881,13 @@ pub trait StorageEngine: Send + Sync {
     fn flush_parallel(&mut self) -> SqlResult<()> {
         self.flush()
     }
+
+    /// Discard any in-memory buffered writes without persisting them.
+    /// Issue #3964: used by `WalStorage::rollback_transaction` so a
+    /// rolled-back tx's writes are not visible to subsequent reads or
+    /// to the next `flush()`. Default implementation is a no-op.
+    fn discard_all_buffers(&mut self) {}
+
     fn is_wal_enabled(&self) -> bool {
         false
     }
@@ -739,13 +955,24 @@ pub struct MemoryStorage {
     /// `Some(log)` between matching `begin`/`commit` (or `begin`/`rollback`);
     /// `None` outside a transaction.
     tx_log: Option<TxLog>,
+    /// V312-26 #3969: cache of the most recently committed `TxLog`. The
+    /// sqllogictest runner's commit broadcast reads this via
+    /// `take_last_committed_log()` immediately after `engine.execute("COMMIT")`
+    /// returns, so the TxLog can be replayed to other connections.
+    last_committed_log: parking_lot::Mutex<Option<TxLog>>,
+    /// V312-26 #3969: snapshot of row contents captured at the most recent
+    /// commit (or autocommit write). Used so that a newly created named
+    /// connection can inherit the **last committed** state of a peer, NOT
+    /// the peer's current in-transaction live state. Updated in
+    /// `commit_transaction_with_log` and on every autocommit write.
+    committed_tables: HashMap<String, Vec<Record>>,
 }
 
-#[derive(Default)]
-struct TxLog {
-    inserted: Vec<(String, Record)>,
-    deleted: Vec<(String, Record)>,
-    updated: Vec<(String, Record, Record)>,
+#[derive(Default, Clone, Debug)]
+pub struct TxLog {
+    pub inserted: Vec<(String, Record)>,
+    pub deleted: Vec<(String, Record)>,
+    pub updated: Vec<(String, Record, Record)>,
 }
 
 impl MemoryStorage {
@@ -760,7 +987,19 @@ impl MemoryStorage {
             current_tx_id: 0,
             next_tx_id: 1,
             tx_log: None,
+            last_committed_log: parking_lot::Mutex::new(None),
+            committed_tables: HashMap::new(),
         }
+    }
+
+    /// V312-26 #3969: take (and clear) the most recently committed `TxLog`.
+    ///
+    /// Returns `None` if no commit has happened on this storage, or if a
+    /// previous `take` already drained the slot. The sqllogictest runner
+    /// calls this immediately after `engine.execute("COMMIT")` so it can
+    /// broadcast the log to their peer connections.
+    pub fn take_last_committed_log(&self) -> Option<TxLog> {
+        self.last_committed_log.lock().take()
     }
 
     /// v3.10.0 Issue #3703: returns pre-partitioned chunks so the caller
@@ -844,6 +1083,141 @@ impl MemoryStorage {
         }
         Ok(total)
     }
+
+    /// V312-26 #3969: commit the current transaction and return the recorded
+    /// `TxLog` so the sqllogictest runner can broadcast it to other connections.
+    ///
+    /// Behavior matches the original `commit_transaction`:
+    /// - `tx_log = None`
+    /// - `current_tx_id = 0`
+    /// but **returns** the previous `TxLog` instead of dropping it. Callers
+    /// that do not need the log can simply discard the result.
+    ///
+    /// Side effect: also caches the log into `last_committed_log` so callers
+    /// that have lost the direct return value (e.g. the sqllogictest runner
+    /// that goes through `MemoryExecutionEngine::execute("COMMIT")`) can
+    /// still retrieve it via `take_last_committed_log()`.
+    pub fn commit_transaction_with_log(&mut self) -> Option<TxLog> {
+        let log = self.tx_log.take();
+        self.current_tx_id = 0;
+        // V312-26 #3969: refresh the post-commit row snapshot so a late-joining
+        // connection can inherit committed rows without seeing this
+        // connection's in-flight transaction state.
+        self.committed_tables = self.tables.clone();
+        if let Some(ref l) = log {
+            *self.last_committed_log.lock() = Some(l.clone());
+        }
+        log
+    }
+
+    /// V312-26 #3969: replay a committed `TxLog` from another connection's
+    /// storage into this one. Used by the sqllogictest runner's commit
+    /// broadcast mechanism so con2 sees con1's committed writes.
+    ///
+    /// UPDATE entries are matched by `prior` (the snapshot before the change)
+    /// because the broadcast fires **after** the source connection commits —
+    /// i.e. the source's `tables` already contain the new row.
+    ///
+    /// If the receiver is itself in an active transaction (`self.tx_log` is
+    /// `Some`), the same change is appended to the receiver's `tx_log` so a
+    /// subsequent ROLLBACK on the receiver reverts the broadcast, preserving
+    /// the multi-connection isolation guarantee.
+    pub fn apply_committed_log(&mut self, log: &TxLog) -> SqlResult<()> {
+        for (table, record) in &log.inserted {
+            if let Some(active_log) = self.tx_log.as_mut() {
+                active_log.inserted.push((table.clone(), record.clone()));
+            }
+            self.tables
+                .entry(table.clone())
+                .or_default()
+                .push(record.clone());
+            // V312-26 #3969: keep the post-commit snapshot in sync so a
+            // later connection joining via this storage sees the broadcast.
+            self.committed_tables
+                .entry(table.clone())
+                .or_default()
+                .push(record.clone());
+        }
+
+        for (table, record) in &log.deleted {
+            if let Some(active_log) = self.tx_log.as_mut() {
+                active_log.deleted.push((table.clone(), record.clone()));
+            }
+            if let Some(records) = self.tables.get_mut(table) {
+                records.retain(|r| r != record);
+            }
+            if let Some(records) = self.committed_tables.get_mut(table) {
+                records.retain(|r| r != record);
+            }
+        }
+
+        for (table, prior, new) in &log.updated {
+            if let Some(active_log) = self.tx_log.as_mut() {
+                active_log.updated.push((table.clone(), prior.clone(), new.clone()));
+            }
+            if let Some(records) = self.tables.get_mut(table) {
+                for record in records.iter_mut() {
+                    if record == prior {
+                        *record = new.clone();
+                        break;
+                    }
+                }
+            }
+            if let Some(records) = self.committed_tables.get_mut(table) {
+                for record in records.iter_mut() {
+                    if record == prior {
+                        *record = new.clone();
+                        break;
+                    }
+                }
+            }
+        }
+
+        Ok(())
+    }
+
+    /// V312-26 #3969: export the current schema **and committed rows** so a
+    /// newly created named connection can start with the same state as the
+    /// default connection. Rows are taken from the **post-commit view**
+    /// (`committed_tables`), NOT from the live `tables` map, so a peer's
+    /// in-flight transaction state is never leaked to a late-joining
+    /// connection. Subsequent writes are propagated through the
+    /// `apply_committed_log` broadcast path.
+    pub fn snapshot_schema(&self) -> SchemaSnapshot {
+        SchemaSnapshot {
+            table_infos: self.table_infos.clone(),
+            tables: self.committed_tables.clone(),
+            views: self.views.clone(),
+            sequences: self.sequences.clone(),
+            databases: self.databases.clone(),
+        }
+    }
+
+    /// V312-26 #3969: restore schema and committed rows from a snapshot.
+    /// Used when a named connection is first created to inherit the existing
+    /// state of any peer already registered in the broadcast hub.
+    pub fn apply_schema(&mut self, snapshot: &SchemaSnapshot) -> SqlResult<()> {
+        self.table_infos = snapshot.table_infos.clone();
+        self.tables = snapshot.tables.clone();
+        self.views = snapshot.views.clone();
+        self.sequences = snapshot.sequences.clone();
+        self.databases = snapshot.databases.clone();
+        Ok(())
+    }
+}
+
+/// V312-26 #3969: Snapshot used to seed a new connection with the existing
+/// state of a peer already registered in the broadcast hub. Carries both
+/// schema (table infos, views, sequences, databases) and committed rows so a
+/// late-arriving connection sees the same state that early connections built
+/// up via autocommit writes.
+#[derive(Clone, Debug)]
+pub struct SchemaSnapshot {
+    pub table_infos: HashMap<String, TableInfo>,
+    pub tables: HashMap<String, Vec<Record>>,
+    pub views: HashSet<String>,
+    pub sequences: HashMap<String, SequenceInfo>,
+    pub databases: HashSet<String>,
 }
 
 impl Default for MemoryStorage {
@@ -875,8 +1249,15 @@ impl StorageEngine for MemoryStorage {
     }
 
     fn commit_transaction(&mut self) -> SqlResult<()> {
-        self.tx_log = None;
+        let log = self.tx_log.take();
         self.current_tx_id = 0;
+        // V312-26 #3969: refresh the post-commit row snapshot so a late-joining
+        // connection can inherit committed rows without seeing this
+        // connection's in-flight transaction state.
+        self.committed_tables = self.tables.clone();
+        if let Some(ref l) = log {
+            *self.last_committed_log.lock() = Some(l.clone());
+        }
         Ok(())
     }
 
@@ -910,6 +1291,13 @@ impl StorageEngine for MemoryStorage {
             for row in &records {
                 log.inserted.push((table_key.clone(), row.clone()));
             }
+        } else {
+            // V312-26 #3969: autocommit insert — propagate to the post-commit
+            // snapshot so a late-joining connection sees the row.
+            self.committed_tables
+                .entry(table_key.clone())
+                .or_default()
+                .extend(records.iter().cloned());
         }
         self.tables.entry(table_key).or_default().extend(records);
         Ok(())
@@ -924,6 +1312,11 @@ impl StorageEngine for MemoryStorage {
                 for row in records.iter() {
                     log.deleted.push((table.to_string(), row.clone()));
                 }
+            } else {
+                // V312-26 #3969: autocommit delete — keep post-commit view in sync.
+                if let Some(committed) = self.committed_tables.get_mut(table) {
+                    committed.clear();
+                }
             }
             let count = records.len();
             records.clear();
@@ -935,6 +1328,8 @@ impl StorageEngine for MemoryStorage {
             if !keep {
                 if let Some(log) = self.tx_log.as_mut() {
                     log.deleted.push((table.to_string(), r.clone()));
+                } else if let Some(committed) = self.committed_tables.get_mut(table) {
+                    committed.retain(|c| c != r);
                 }
             }
             keep
@@ -952,6 +1347,8 @@ impl StorageEngine for MemoryStorage {
             if !keep {
                 if let Some(log) = self.tx_log.as_mut() {
                     log.deleted.push((table.to_string(), r.clone()));
+                } else if let Some(committed) = self.committed_tables.get_mut(table) {
+                    committed.retain(|c| c != r);
                 }
             }
             keep
@@ -981,6 +1378,16 @@ impl StorageEngine for MemoryStorage {
                 }
                 if let Some(log) = self.tx_log.as_mut() {
                     log.updated.push((table.to_string(), prior, record.clone()));
+                } else {
+                    // V312-26 #3969: autocommit update — keep post-commit view in sync.
+                    if let Some(committed) = self.committed_tables.get_mut(table) {
+                        for committed_record in committed.iter_mut() {
+                            if committed_record == &prior {
+                                *committed_record = record.clone();
+                                break;
+                            }
+                        }
+                    }
                 }
                 count += 1;
             }
@@ -996,6 +1403,16 @@ impl StorageEngine for MemoryStorage {
                     }
                     if let Some(log) = self.tx_log.as_mut() {
                         log.updated.push((table.to_string(), prior, record.clone()));
+                    } else {
+                        // V312-26 #3969: autocommit update — keep post-commit view in sync.
+                        if let Some(committed) = self.committed_tables.get_mut(table) {
+                            for committed_record in committed.iter_mut() {
+                                if committed_record == &prior {
+                                    *committed_record = record.clone();
+                                    break;
+                                }
+                            }
+                        }
                     }
                     count += 1;
                 }
@@ -1028,6 +1445,16 @@ impl StorageEngine for MemoryStorage {
                 }
                 if let Some(log) = self.tx_log.as_mut() {
                     log.updated.push((table.to_string(), prior, record.clone()));
+                } else {
+                    // V312-26 #3969: autocommit update — keep post-commit view in sync.
+                    if let Some(committed) = self.committed_tables.get_mut(table) {
+                        for committed_record in committed.iter_mut() {
+                            if committed_record == &prior {
+                                *committed_record = record.clone();
+                                break;
+                            }
+                        }
+                    }
                 }
                 count += 1;
             }
@@ -1378,7 +1805,30 @@ impl Iterator for SharedSliceIter {
 
 #[cfg(test)]
 mod tests {
+    use super::legacy_string_evaluator::{
+        compare_values, evaluate_sql_expression, find_top_level_op, get_column_value,
+        is_zero_or_empty,
+    };
     use super::*;
+    use sqlrustgo_parser::Expression;
+
+    /// Helper constructors for AST expressions used in unit tests
+    /// (per #3887 follow-up — V312-24 engine.rs test compilation).
+    fn lit(s: &str) -> Expression {
+        Expression::Literal(s.to_string())
+    }
+    fn ident(name: &str) -> Expression {
+        Expression::Identifier(name.to_string())
+    }
+    fn binop(left: Expression, op: &str, right: Expression) -> Expression {
+        Expression::BinaryOp(Box::new(left), op.to_string(), Box::new(right))
+    }
+    fn unary(op: &str, inner: Expression) -> Expression {
+        Expression::UnaryOp(op.to_string(), Box::new(inner))
+    }
+    fn is_null(inner: Expression) -> Expression {
+        Expression::IsNull(Box::new(inner))
+    }
 
     /// Test that StorageEngine trait is defined correctly
     #[test]
@@ -1874,7 +2324,7 @@ mod tests {
     fn test_evaluate_check_constraint_eq() {
         let constraint = CheckConstraint {
             name: Some("c1".into()),
-            expression: "x = 5".into(),
+            expression: binop(ident("x"), "=", lit("5")),
         };
         let cols = vec!["x".to_string()];
         assert!(evaluate_check_constraint(&constraint, &cols, &vec![Value::Integer(5)]).unwrap());
@@ -1885,7 +2335,11 @@ mod tests {
     fn test_evaluate_check_constraint_and() {
         let constraint = CheckConstraint {
             name: Some("c1".into()),
-            expression: "x > 0 AND y < 100".into(),
+            expression: binop(
+                binop(ident("x"), ">", lit("0")),
+                "AND",
+                binop(ident("y"), "<", lit("100")),
+            ),
         };
         let cols = vec!["x".into(), "y".into()];
         assert!(evaluate_check_constraint(
@@ -1912,7 +2366,11 @@ mod tests {
     fn test_evaluate_check_constraint_or() {
         let constraint = CheckConstraint {
             name: Some("c1".into()),
-            expression: "x = 0 OR y = 0".into(),
+            expression: binop(
+                binop(ident("x"), "=", lit("0")),
+                "OR",
+                binop(ident("y"), "=", lit("0")),
+            ),
         };
         let cols = vec!["x".into(), "y".into()];
         assert!(evaluate_check_constraint(
@@ -1939,7 +2397,7 @@ mod tests {
     fn test_evaluate_check_constraint_not() {
         let constraint = CheckConstraint {
             name: Some("c1".into()),
-            expression: "NOT x = 5".into(),
+            expression: unary("NOT", binop(ident("x"), "=", lit("5"))),
         };
         let cols = vec!["x".to_string()];
         assert!(evaluate_check_constraint(&constraint, &cols, &vec![Value::Integer(10)]).unwrap());
@@ -1950,7 +2408,7 @@ mod tests {
     fn test_evaluate_check_constraint_is_null() {
         let constraint = CheckConstraint {
             name: Some("c1".into()),
-            expression: "x IS NULL".into(),
+            expression: is_null(ident("x")),
         };
         let cols = vec!["x".to_string()];
         assert!(evaluate_check_constraint(&constraint, &cols, &vec![Value::Null]).unwrap());
@@ -1961,7 +2419,7 @@ mod tests {
     fn test_evaluate_check_constraint_column_missing() {
         let constraint = CheckConstraint {
             name: Some("c1".into()),
-            expression: "x IS NULL".into(),
+            expression: is_null(ident("x")),
         };
         let cols = vec![];
         let rec = vec![];
@@ -2014,10 +2472,10 @@ mod tests {
     fn test_check_constraint_struct() {
         let cc = CheckConstraint {
             name: Some("ck1".into()),
-            expression: "x > 0".into(),
+            expression: binop(ident("x"), ">", lit("0")),
         };
         assert_eq!(cc.name, Some("ck1".into()));
-        assert_eq!(cc.expression, "x > 0");
+        assert_eq!(cc.expression, binop(ident("x"), ">", lit("0")));
     }
 
     #[test]

@@ -36,9 +36,10 @@ pub fn map_select_result_to_records(
     let target_col_indices: Vec<usize> = if target_columns.is_empty() {
         if !result.rows.is_empty() && result.rows[0].len() != target_table_info.columns.len() {
             return Err(SqlError::ExecutionError(format!(
-                "INSERT SELECT column count mismatch: SELECT has {} columns, target table has {}",
-                result.rows[0].len(),
-                target_table_info.columns.len()
+                "Binder Error: table {} has {} columns but {} values were supplied",
+                target_table_info.name,
+                target_table_info.columns.len(),
+                result.rows[0].len()
             )));
         }
         (0..target_table_info.columns.len()).collect()

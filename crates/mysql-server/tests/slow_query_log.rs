@@ -5,9 +5,9 @@
 //!
 //! Run with: cargo test -p sqlrustgo-mysql-server --test slow_query_log
 
+use query_stats::SlowQueryLog;
 use sqlrustgo_mysql_client::{MySqlConnection, MySqlResult, ResultSet};
 use sqlrustgo_mysql_server::testing::{start_ephemeral, EphemeralConfig, EphemeralHandle};
-use query_stats::SlowQueryLog;
 use std::sync::Arc;
 
 fn connect(port: u16) -> MySqlResult<MySqlConnection> {
@@ -78,7 +78,10 @@ fn test_slow_query_log_emits_above_threshold() {
 
     let contents = std::fs::read_to_string(&log_path)
         .unwrap_or_else(|e| panic!("slow log {} should exist: {e}", log_path.display()));
-    let time_lines = contents.lines().filter(|l| l.starts_with("# Time:")).count();
+    let time_lines = contents
+        .lines()
+        .filter(|l| l.starts_with("# Time:"))
+        .count();
     assert!(
         time_lines >= 1,
         "expected at least one logged query, got:\n{contents}"

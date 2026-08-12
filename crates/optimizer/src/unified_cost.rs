@@ -1,6 +1,7 @@
 use crate::cost::SimpleCostModel;
 use crate::graph_cost::GraphCostModel;
 use crate::rules::{BinaryOperator, Expr, JoinType};
+use crate::stats::ColumnStats;
 use crate::unified_plan::UnifiedPlan;
 use crate::vector_cost::VectorCostModel;
 
@@ -79,6 +80,10 @@ pub struct UnifiedCostModel {
     graph_size: u64,
     /// Table statistics for cost estimation (table_name -> (row_count, page_count))
     table_stats: std::collections::HashMap<String, (u64, u64)>,
+    /// V312-22b / Issue #4033: column-level stats keyed by `(table, column)`.
+    /// When present, `estimate_selectivity` consumes the histogram for
+    /// realistic selectivity instead of falling back to the per-op heuristic.
+    column_stats: std::collections::HashMap<(String, String), ColumnStats>,
 }
 
 impl UnifiedCostModel {
@@ -97,6 +102,7 @@ impl UnifiedCostModel {
             vector_dimension,
             graph_size,
             table_stats: std::collections::HashMap::new(),
+            column_stats: std::collections::HashMap::new(),
         }
     }
 
@@ -109,6 +115,7 @@ impl UnifiedCostModel {
             vector_dimension,
             graph_size,
             table_stats: std::collections::HashMap::new(),
+            column_stats: std::collections::HashMap::new(),
         }
     }
 
@@ -116,6 +123,23 @@ impl UnifiedCostModel {
     /// This allows the cost model to use actual statistics instead of defaults
     pub fn update_table_stats(&mut self, table_name: String, row_count: u64, page_count: u64) {
         self.table_stats.insert(table_name, (row_count, page_count));
+    }
+
+    /// V312-22b / Issue #4033: Update table stats **with** column-level
+    /// statistics (including histograms). Replaces the legacy 3-arg
+    /// `update_table_stats` for callers that have full ANALYZE output.
+    pub fn update_table_stats_with_columns(
+        &mut self,
+        table: String,
+        row_count: u64,
+        page_count: u64,
+        column_stats: std::collections::HashMap<String, ColumnStats>,
+    ) {
+        self.table_stats
+            .insert(table.clone(), (row_count, page_count));
+        for (col, cs) in column_stats {
+            self.column_stats.insert((table.clone(), col), cs);
+        }
     }
 
     /// Get the default row count for a table if no stats available
@@ -133,6 +157,20 @@ impl UnifiedCostModel {
             .map(|(_, pages)| *pages)
             .unwrap_or(10) // Default estimate
     }
+
+    /// Per-operator fallback selectivity (used when no histogram is available).
+    /// Mirrors the original heuristic so behavior is unchanged for callers
+    /// without ANALYZE data.
+    pub fn heuristic_selectivity(&self, op: BinaryOperator) -> f64 {
+        match op {
+            BinaryOperator::Eq => 0.1,
+            BinaryOperator::NotEq => 0.9,
+            BinaryOperator::Lt | BinaryOperator::LtEq => 0.3,
+            BinaryOperator::Gt | BinaryOperator::GtEq => 0.3,
+            _ => 0.5,
+        }
+    }
+
     /// Determine if a plan should be parallelized based on cost estimation
     ///
     /// v3.10.0 Issue #3703 Phase 3: CBO-driven parallelism.
@@ -190,30 +228,60 @@ impl UnifiedCostModel {
 
     /// Estimate selectivity of a predicate (0.0 to 1.0)
     ///
-    /// Returns a rough estimate based on predicate shape.
-    /// Heuristic - real implementation would use table histograms.
-    pub fn estimate_selectivity(&self, predicate: &Expr) -> f64 {
-        match predicate {
-            // Binary comparisons
-            Expr::BinaryExpr { op, .. } => match op {
-                BinaryOperator::Eq => 0.1,    // k = literal
-                BinaryOperator::NotEq => 0.9, // k != literal
-                BinaryOperator::Lt | BinaryOperator::LtEq => 0.3,
-                BinaryOperator::Gt | BinaryOperator::GtEq => 0.3,
-                _ => 0.5,
-            },
-            // AND: multiply selectivities (independence assumption)
-            Expr::And(left, right) => {
-                self.estimate_selectivity(left) * self.estimate_selectivity(right)
+    /// V312-22b / Issue #4033: when a histogram is available for
+    /// `(table, column)`, this consumes the histogram via
+    /// `Histogram::estimate_{lt,eq,range}` and returns a data-driven estimate.
+    /// Otherwise it falls back to the per-operator heuristic
+    /// (`heuristic_selectivity`).
+    ///
+    /// Signature change note: the legacy `(predicate: &Expr)` API is preserved
+    /// as `estimate_selectivity_from_expr` for backward compatibility with
+    /// internal callers (`should_parallelize_with`, `is_compute_bound`).
+    pub fn estimate_selectivity(
+        &self,
+        table: &str,
+        col: &str,
+        op: BinaryOperator,
+        value: &sqlrustgo_types::Value,
+    ) -> f64 {
+        if let Some(stats) = self.column_stats.get(&(table.to_string(), col.to_string())) {
+            if let Some(h) = &stats.histogram {
+                return match op {
+                    BinaryOperator::Eq => h.estimate_eq(value),
+                    BinaryOperator::NotEq => 1.0 - h.estimate_eq(value),
+                    BinaryOperator::Lt => h.estimate_lt(value),
+                    BinaryOperator::LtEq => {
+                        // LtEq ≈ Lt + Eq (independent, small overlap).
+                        (h.estimate_lt(value) + h.estimate_eq(value)).min(1.0)
+                    }
+                    BinaryOperator::Gt => {
+                        let le = h.estimate_lt(value) + h.estimate_eq(value);
+                        (1.0 - le).max(0.0)
+                    }
+                    BinaryOperator::GtEq => (1.0 - h.estimate_lt(value)).max(0.0),
+                    _ => self.heuristic_selectivity(op),
+                };
             }
-            // OR: combined using inclusion-exclusion
+        }
+        self.heuristic_selectivity(op)
+    }
+
+    /// Legacy Expr-based selectivity estimator (preserved for internal
+    /// callers that only have a parsed predicate and no table/column context).
+    /// Always returns the per-operator heuristic (0.1/0.3/0.9/0.5).
+    pub fn estimate_selectivity_from_expr(&self, predicate: &Expr) -> f64 {
+        match predicate {
+            Expr::BinaryExpr { op, .. } => self.heuristic_selectivity(*op),
+            Expr::And(left, right) => {
+                self.estimate_selectivity_from_expr(left)
+                    * self.estimate_selectivity_from_expr(right)
+            }
             Expr::Or(left, right) => {
-                let a = self.estimate_selectivity(left);
-                let b = self.estimate_selectivity(right);
+                let a = self.estimate_selectivity_from_expr(left);
+                let b = self.estimate_selectivity_from_expr(right);
                 (a + b - a * b).min(1.0)
             }
-            // NOT: inverse
-            Expr::Not(inner) => 1.0 - self.estimate_selectivity(inner),
+            Expr::Not(inner) => 1.0 - self.estimate_selectivity_from_expr(inner),
             _ => 0.5,
         }
     }
@@ -229,7 +297,7 @@ impl UnifiedCostModel {
             UnifiedPlan::TableScan { table_name, .. } => self.get_row_count(table_name),
             _ => input.estimate_cardinality(),
         };
-        let selectivity = self.estimate_selectivity(predicate);
+        let selectivity = self.estimate_selectivity_from_expr(predicate);
         let output_rows = (input_rows as f64 * selectivity) as u64;
 
         // Parallel break-even analysis:

@@ -289,4 +289,3 @@ CREATE TABLE users (
 
 - [Error Messages Reference](./ERROR_MESSAGES.md)
 - [API Reference](./API_REFERENCE.md)
-- [Audit System](./AUDIT_SYSTEM.md)

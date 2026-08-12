@@ -435,5 +435,5 @@ SELECT username FROM contractors;  -- username 会变成 n
 
 | 文档 | 说明 |
 |------|------|
-| [DML_EXECUTION.md](./DML_EXECUTION.md) | DML 执行链路 |
-| [SUBQUERY_EXECUTION.md](./SUBQUERY_EXECUTION.md) | 子查询执行 |
+| [DML_EXECUTION.md](../dml/DML_EXECUTION.md) | DML 执行链路 |
+| [SUBQUERY_EXECUTION.md](../query/SUBQUERY_EXECUTION.md) | 子查询执行 |

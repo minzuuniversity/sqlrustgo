@@ -69,7 +69,7 @@
 | sqlrustgo-mysql-server | ~50% | ❌ | Test harness; excluded from L1 average |
 | **Average** | **~67%** | ❌ < 85% | |
 
-> ⚠️ **CONDITIONAL PASS — See [`ga/COVERAGE_GAP_RATIONALE.md`](ga/COVERAGE_GAP_RATIONALE.md)**
+> ⚠️ **CONDITIONAL PASS — See [`ga/COVERAGE_GAP_RATIONALE.md`](COVERAGE_GAP_RATIONALE.md)**
 >
 > **Rationale**: No regression. v3.8.0 GA baseline ~35% → v3.9.0 ~67% (+32pp improvement).
 > All 44 ignored tests audited (17 perf benchmarks, 18 unimplemented SQL features, 3 known bugs all fixed).
@@ -83,7 +83,7 @@
 | SF=0.01 | 60k rows | 22/22 PASS | ✅ (G15) |
 | SF=0.1 | 600k rows | 22/22 PASS | ✅ (G1) |
 
-> ⚠️ **CONDITIONAL PASS — See [`ga/TPC-H_PARTIAL_RESULT.md`](ga/TPC-H_PARTIAL_RESULT.md)**
+> ⚠️ **CONDITIONAL PASS — See [`ga/TPC-H_PARTIAL_RESULT.md`](TPC-H_PARTIAL_RESULT.md)**
 >
 > **Real execution verified**: SF=1 run on Z6G4 (2026-06-03, 6,001,215 lineitem rows, 1.1GB, 144s wall time).
 > Result: 6/10 PASS — Q1/Q3/Q5/Q6/Q10/Q19 pass; Q7/Q8/Q9/Q12 fail with `Parse error` (subquery-in-FROM and OR precedence).

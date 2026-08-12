@@ -56,6 +56,32 @@ pub fn execute_insert<S: StorageEngine + 'static>(
         let select_result = engine.execute_select(select)?;
         map_select_result_to_records(select_result, &insert.columns, &table_info)?
     } else {
+        // V312-17 #3970: validate row consistency and column count
+        if insert.values.len() >= 2 {
+            let first_len = insert.values[0].len();
+            for row in &insert.values {
+                if row.len() != first_len {
+                    return Err(SqlError::ExecutionError(
+                        "Parser Error: VALUES lists must all be the same length".to_string(),
+                    ));
+                }
+            }
+        }
+        let expected_cols = if !insert.columns.is_empty() {
+            insert.columns.len()
+        } else {
+            table_info.columns.len()
+        };
+        for row in insert.values.iter() {
+            if row.len() != expected_cols {
+                return Err(SqlError::ExecutionError(format!(
+                    "Binder Error: table {} has {} columns but {} values were supplied",
+                    insert.table,
+                    expected_cols,
+                    row.len()
+                )));
+            }
+        }
         build_insert_records(&insert.values)
     };
 
@@ -189,7 +215,7 @@ pub fn execute_insert<S: StorageEngine + 'static>(
                             )?;
                             if !valid {
                                 return Err(format!(
-                                    "CHECK constraint '{}' violated: {}",
+                                    "CHECK constraint '{}' violated: {:?}",
                                     constraint.name.as_deref().unwrap_or("unnamed"),
                                     constraint.expression
                                 )
@@ -214,7 +240,7 @@ pub fn execute_insert<S: StorageEngine + 'static>(
                         )?;
                         if !valid {
                             return Err(format!(
-                                "CHECK constraint '{}' violated: {}",
+                                "CHECK constraint '{}' violated: {:?}",
                                 constraint.name.as_deref().unwrap_or("unnamed"),
                                 constraint.expression
                             )
@@ -346,21 +372,65 @@ pub fn execute_update<S: StorageEngine + 'static>(
             })
             .collect();
 
-        // Validate NOT NULL constraints for the update values
-        let set_col_names: Vec<String> = resolved_update
-            .set_clauses
-            .iter()
-            .map(|(col, _)| col.clone())
-            .collect();
-        // Build a synthetic row to validate
+        // Validate NOT NULL constraints for the update values.
+        // Build a synthetic full-width row to validate. Pass empty
+        // `set_col_names` so validate_not_null indexes by table column
+        // position (records are full-width rows, not SET-only slices).
+        // V313-12 / Issue #4040.
         let mut synthetic_row = sample_row.clone();
         for (col_idx, new_val) in &updates {
             synthetic_row[*col_idx] = new_val.clone();
         }
-        validate_not_null(&table_info, &synthetic_row, &set_col_names)?;
+        validate_not_null(&table_info, &synthetic_row, &[])?;
+
+        // V312-18 #3971: validate CHECK constraints for the synthetic updated row
+        if !table_info.check_constraints.is_empty() {
+            let col_names: Vec<String> =
+                table_info.columns.iter().map(|c| c.name.clone()).collect();
+            for constraint in &table_info.check_constraints {
+                let valid = sqlrustgo_storage::evaluate_check_constraint(
+                    constraint,
+                    &col_names,
+                    &synthetic_row,
+                )?;
+                if !valid {
+                    return Err(format!(
+                        "CHECK constraint '{}' violated: {:?}",
+                        constraint.name.as_deref().unwrap_or("unnamed"),
+                        constraint.expression
+                    )
+                    .into());
+                }
+            }
+        }
 
         let mut storage = engine.storage.write();
-        let count = storage.update(&table_name, &[], &updates)?;
+        // V312-18 / Issue #3971: route the no-WHERE UPDATE path through
+        // delete+insert so the WAL layer (which only hooks delete/insert)
+        // correctly records each row update for crash recovery. The prior
+        // implementation called `storage.update(&table_name, &[], ...)`
+        // which bypassed WAL logging entirely — recovered values were
+        // stale after a crash (ISSUE-2741 / RECOVERY-009..011 L2 runtime).
+        let pk_idx = table_info
+            .columns
+            .iter()
+            .position(|c| c.primary_key)
+            .unwrap_or(0);
+        let all_rows_no_where = storage.scan(&table_name)?;
+        let mut count = 0usize;
+        for prior_row in all_rows_no_where {
+            let mut new_row = prior_row.clone();
+            for (col_idx, new_val) in &updates {
+                new_row[*col_idx] = new_val.clone();
+            }
+            let pk_val = prior_row
+                .get(pk_idx)
+                .cloned()
+                .unwrap_or(sqlrustgo_types::Value::Null);
+            storage.delete(&table_name, std::slice::from_ref(&pk_val))?;
+            storage.insert(&table_name, vec![new_row])?;
+            count += 1;
+        }
         drop(storage);
         engine.commit_implicit_dml_tx(started_implicit)?;
         return Ok(ExecutorResult::new(vec![], count));
@@ -438,7 +508,7 @@ pub fn execute_update<S: StorageEngine + 'static>(
                     )?;
                     if !valid {
                         return Err(format!(
-                            "CHECK constraint '{}' violated: {}",
+                            "CHECK constraint '{}' violated: {:?}",
                             constraint.name.as_deref().unwrap_or("unnamed"),
                             constraint.expression
                         )
@@ -448,14 +518,12 @@ pub fn execute_update<S: StorageEngine + 'static>(
             }
         }
 
-        // Validate NOT NULL constraints for each updated row
-        let set_col_names: Vec<String> = resolved_update
-            .set_clauses
-            .iter()
-            .map(|(col, _)| col.clone())
-            .collect();
+        // Validate NOT NULL constraints for each updated row.
+        // Use empty `set_col_names` so validate_not_null indexes into `record`
+        // by table column position (records are full-width rows here, not
+        // SET-only slices). V313-12 / Issue #4040.
         for record in &trigger_modified_rows {
-            validate_not_null(&table_info, record, &set_col_names)?;
+            validate_not_null(&table_info, record, &[])?;
         }
 
         let pk_idx = table_info
