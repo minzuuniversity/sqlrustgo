@@ -602,4 +602,4 @@ async fn write_entries(&self, entries: Vec<WalEntry>) -> SqlResult<()> {
 |------|------|
 | [CRASH_RECOVERY.md](../recovery/CRASH_RECOVERY.md) | 崩溃恢复链路 |
 | [MVCC_IMPLEMENTATION.md](../transaction/MVCC_IMPLEMENTATION.md) | MVCC 实现 |
-| [XA_TRANSACTION.md](../distributed/XA_TRANSACTION.md) | XA 事务 |
+| XA_TRANSACTION.md | XA 事务 |

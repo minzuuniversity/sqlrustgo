@@ -42,6 +42,6 @@ All items below must be resolved before RC1 tag.
 ## Notes
 
 - RC gate criteria defined in `docs/governance/STAGE_CONFIG.yaml`
-- See also: [V311_ISSUES_PLAN.md](./V311_ISSUES_PLAN.md)
+- See also: [V311_ISSUES_PLAN.md](plans/V311_ISSUES_PLAN.md)
 
 <!-- Fill in as blockers are resolved during RC phase. -->

@@ -579,4 +579,4 @@ fn test_crash_after_wal_write() {
 |------|------|
 | [WAL_PROTOCOL.md](../wal/WAL_PROTOCOL.md) | WAL 协议详解 |
 | [MVCC_IMPLEMENTATION.md](../transaction/MVCC_IMPLEMENTATION.md) | MVCC 实现 |
-| [XA_TRANSACTION.md](../distributed/XA_TRANSACTION.md) | XA 事务 |
+| XA_TRANSACTION.md | XA 事务 |

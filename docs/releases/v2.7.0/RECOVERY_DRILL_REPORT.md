@@ -209,4 +209,4 @@ echo "=== Rollback Drill PASSED ==="
 
 - [BACKUP_RESTORE_REPORT.md](./BACKUP_RESTORE_REPORT.md)
 - [DEPLOYMENT_GUIDE.md](./DEPLOYMENT_GUIDE.md)
-- [INCIDENT_RESPONSE.md](./INCIDENT_RESPONSE.md) (to be created)
+- INCIDENT_RESPONSE.md (to be created)
