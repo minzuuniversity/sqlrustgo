@@ -434,6 +434,8 @@ impl<'a> Lexer<'a> {
                     "READ" => Token::Read,
                     "WRITE" => Token::Write,
                     "ONLY" => Token::Only,
+                    "COMMITTED" => Token::Committed,
+                    "UNCOMMITTED" => Token::Uncommitted,
                     "CALL" => Token::Call,
                     "PROCEDURE" => Token::Procedure,
                     "END" => Token::End,
