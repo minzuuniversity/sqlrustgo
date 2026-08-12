@@ -244,6 +244,51 @@ fn test_corpus_with_dml_unsupported_body() {
     assert_eq!(results[0].case_name, "with_select_in_dml");
 }
 
+#[test]
+fn test_corpus_with_dml_update_invalid_column() {
+    // Exercises execute_with_dml's UPDATE branch with filter_map
+    // None path (col_name not found in table_info).
+    let mut corpus = SqlCorpus::new(PathBuf::from("/tmp/anywhere"));
+    let content = "-- === SETUP ===\n\
+                       CREATE TABLE t (id INT, val INT);\n\
+                       INSERT INTO t VALUES (1, 10);\n\
+                       -- === CASE: with_dml_bad_col\n\
+                       WITH src(x) AS (SELECT 1 AS v) \
+                       UPDATE t SET nonexistent = 5;\n";
+    let results = corpus.parse_and_execute(content);
+    assert_eq!(results.len(), 1);
+    assert_eq!(results[0].case_name, "with_dml_bad_col");
+}
+
+#[test]
+fn test_corpus_with_dml_delete() {
+    // Exercises execute_with_dml's DELETE branch.
+    let mut corpus = SqlCorpus::new(PathBuf::from("/tmp/anywhere"));
+    let content = "-- === SETUP ===\n\
+                       CREATE TABLE t (id INT);\n\
+                       INSERT INTO t VALUES (1);\n\
+                       -- === CASE: with_dml_del\n\
+                       WITH src(x) AS (SELECT 1 AS v) \
+                       DELETE FROM t WHERE id = 1;\n";
+    let results = corpus.parse_and_execute(content);
+    assert_eq!(results.len(), 1);
+    assert_eq!(results[0].case_name, "with_dml_del");
+}
+
+#[test]
+fn test_corpus_with_dml_insert() {
+    // Exercises execute_with_dml's INSERT branch.
+    let mut corpus = SqlCorpus::new(PathBuf::from("/tmp/anywhere"));
+    let content = "-- === SETUP ===\n\
+                       CREATE TABLE dest (id INT);\n\
+                       -- === CASE: with_dml_ins\n\
+                       WITH src(x) AS (SELECT 1 AS v) \
+                       INSERT INTO dest VALUES (1);\n";
+    let results = corpus.parse_and_execute(content);
+    assert_eq!(results.len(), 1);
+    assert_eq!(results[0].case_name, "with_dml_ins");
+}
+
 // ============================================================================
 // SqlCorpus unit-level coverage tests (Issue #3943)
 // ============================================================================
