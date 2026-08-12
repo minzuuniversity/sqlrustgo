@@ -516,7 +516,11 @@ fn test_parse_stmt_execute_int_double() {
 fn test_packet_large_payload() {
     let mut buf = Vec::new();
     let payload = vec![0u8; 1000];
-    let packet = Packet { length: payload.len() as u32, sequence: 1, payload };
+    let packet = Packet {
+        length: payload.len() as u32,
+        sequence: 1,
+        payload,
+    };
     packet.write_to(&mut buf).unwrap();
     let mut read_buf = buf.as_slice();
     let read = Packet::read_from(&mut read_buf).unwrap();
@@ -527,7 +531,11 @@ fn test_packet_large_payload() {
 #[test]
 fn test_packet_with_high_sequence() {
     let mut buf = Vec::new();
-    let packet = Packet { length: 3, sequence: 255, payload: vec![0x01, 0x02, 0x03] };
+    let packet = Packet {
+        length: 3,
+        sequence: 255,
+        payload: vec![0x01, 0x02, 0x03],
+    };
     packet.write_to(&mut buf).unwrap();
     let mut read_buf = buf.as_slice();
     let read = Packet::read_from(&mut read_buf).unwrap();
@@ -537,7 +545,11 @@ fn test_packet_with_high_sequence() {
 #[test]
 fn test_packet_with_zero_sequence() {
     let mut buf = Vec::new();
-    let packet = Packet { length: 1, sequence: 0, payload: vec![0x01] };
+    let packet = Packet {
+        length: 1,
+        sequence: 0,
+        payload: vec![0x01],
+    };
     packet.write_to(&mut buf).unwrap();
     let mut read_buf = buf.as_slice();
     let read = Packet::read_from(&mut read_buf).unwrap();
@@ -555,7 +567,11 @@ fn test_packet_read_truncated_returns_err() {
 
 #[test]
 fn test_packet_flush_pending_no_data() {
-    let mut packet = Packet { length: 0, sequence: 0, payload: vec![] };
+    let mut packet = Packet {
+        length: 0,
+        sequence: 0,
+        payload: vec![],
+    };
     // Packet.flush_pending only exists on TlsStream; verify we can still
     // inspect the packet fields directly.
     assert_eq!(packet.length, 0);
