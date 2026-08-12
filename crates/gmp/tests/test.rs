@@ -409,3 +409,96 @@ fn test_chunk_text_extraction_edge_cases() {
     let single = chunk_text("hello world", &cfg);
     assert!(!single.is_empty());
 }
+
+// ============================================================================
+// Additional Chunk coverage tests (Issue #3943)
+// ============================================================================
+
+#[test]
+fn test_chunk_from_row_to_row_roundtrip() {
+    use sqlrustgo_gmp::chunk::Chunk;
+    use sqlrustgo_types::Value;
+    let original = Chunk {
+        id: 7,
+        doc_id: 42,
+        version_number: 3,
+        chunk_index: 1,
+        section_name: Some("intro".into()),
+        content_hash: "deadbeef".into(),
+        content_text: "hello world".into(),
+        created_at: 12345,
+    };
+    let row = original.to_row();
+    let parsed = Chunk::from_row(&row).expect("roundtrip parse");
+    assert_eq!(parsed.id, original.id);
+    assert_eq!(parsed.doc_id, original.doc_id);
+    assert_eq!(parsed.version_number, original.version_number);
+    assert_eq!(parsed.chunk_index, original.chunk_index);
+    assert_eq!(parsed.section_name, original.section_name);
+    assert_eq!(parsed.content_hash, original.content_hash);
+    assert_eq!(parsed.content_text, original.content_text);
+    assert_eq!(parsed.created_at, original.created_at);
+}
+
+#[test]
+fn test_chunk_from_row_no_section() {
+    use sqlrustgo_gmp::chunk::Chunk;
+    use sqlrustgo_types::Value;
+    let row = vec![
+        Value::Integer(1),
+        Value::Integer(10),
+        Value::Integer(1),
+        Value::Integer(0),
+        Value::Null, // no section
+        Value::Text("h".into()),
+        Value::Text("body".into()),
+        Value::Integer(0),
+    ];
+    let chunk = Chunk::from_row(&row).expect("parse");
+    assert_eq!(chunk.section_name, None);
+}
+
+#[test]
+fn test_chunk_from_row_bad_type_returns_none() {
+    use sqlrustgo_gmp::chunk::Chunk;
+    use sqlrustgo_types::Value;
+    let row = vec![Value::Text("not int".into())];
+    assert!(Chunk::from_row(&row).is_none());
+}
+
+#[test]
+fn test_chunk_compute_hash_deterministic() {
+    use sqlrustgo_gmp::chunk::Chunk;
+    let h1 = Chunk::compute_hash("hello");
+    let h2 = Chunk::compute_hash("hello");
+    assert_eq!(h1, h2);
+    assert_eq!(h1.len(), 64, "SHA-256 hex digest must be 64 chars");
+    assert_ne!(Chunk::compute_hash("hello"), Chunk::compute_hash("world"));
+}
+
+#[test]
+fn test_chunk_insert_get_delete_roundtrip() {
+    use sqlrustgo_gmp::chunk::{delete_chunks_for_version, get_chunks_for_version, insert_chunk};
+    use sqlrustgo_gmp::create_gmp_tables;
+    let mut storage = MemoryStorage::new();
+    create_gmp_tables(&mut *Arc::new(RwLock::new(MemoryStorage::new())).write().unwrap()).unwrap();
+    // Use a fresh storage for the actual test
+    let mut storage = MemoryStorage::new();
+    create_gmp_tables(&mut storage).unwrap();
+
+    insert_chunk(&mut storage, 1, 1, 0, None, "text a").ok();
+    insert_chunk(&mut storage, 1, 1, 1, None, "text b").ok();
+    insert_chunk(&mut storage, 1, 2, 0, None, "text c").ok();
+
+    let v1 = get_chunks_for_version(&storage, 1, 1).expect("get v1");
+    assert_eq!(v1.len(), 2);
+    let v2 = get_chunks_for_version(&storage, 1, 2).expect("get v2");
+    assert_eq!(v2.len(), 1);
+
+    // Delete v1 chunks; v2 should remain.
+    delete_chunks_for_version(&mut storage, 1, 1).expect("delete v1");
+    let v1_after = get_chunks_for_version(&storage, 1, 1).expect("get v1 after");
+    assert_eq!(v1_after.len(), 0);
+    let v2_after = get_chunks_for_version(&storage, 1, 2).expect("get v2 after");
+    assert_eq!(v2_after.len(), 1);
+}
