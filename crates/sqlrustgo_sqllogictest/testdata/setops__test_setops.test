@@ -121,6 +121,14 @@ SELECT 1, 'a' UNION ALL SELECT 1, 'a' UNION SELECT 2, 'b' UNION SELECT 1, 'a' OR
 # does not currently implement. Tracked for a follow-up V3.13.x
 # round; we replace it with two flat cases that cover the same
 # semantics on the new path.
+#
+# Issue #4037 / V313-09 PR-2 fix re-aligns the EXCEPT ALL multiset
+# output with SQL-92: max(0, cnt_left(r) - cnt_right(r)) copies per
+# row. Previously the testdata expected the buggy "dedup-right
+# removal" output (no (3) row), which silently dropped multiplicity.
+# Left rows: 1, 2, 2, 3, 3, 3, 4, 4, 4, 4
+# Right rows: 1, 3, 3
+# Per row: (1) max(0, 1-1)=0, (2) max(0, 2-0)=2, (3) max(0, 3-2)=1, (4) max(0, 4-0)=4
 query I
 SELECT x FROM (VALUES (1),(2),(2),(3),(3),(3),(4),(4),(4),(4)) s(x)
 EXCEPT ALL
@@ -129,6 +137,7 @@ ORDER BY 1
 ----
 2
 2
+3
 4
 4
 4

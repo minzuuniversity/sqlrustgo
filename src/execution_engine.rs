@@ -24,7 +24,9 @@ use sqlrustgo_executor::trigger::{
 };
 use sqlrustgo_executor::ExecutorResult;
 use sqlrustgo_optimizer::rules::{BinaryOperator, Expr};
-use sqlrustgo_optimizer::stats::{build_histogram_from_values, ColumnStats as OptColumnStats, Histogram};
+use sqlrustgo_optimizer::stats::{
+    build_histogram_from_values, ColumnStats as OptColumnStats, Histogram,
+};
 use sqlrustgo_optimizer::unified_cost::UnifiedCostModel;
 use sqlrustgo_optimizer::unified_plan::UnifiedPlan;
 use sqlrustgo_parser::parser::{
@@ -619,9 +621,6 @@ impl<S: StorageEngine + 'static> ExecutionEngine<S> {
             Statement::DropSequence(ref seq) => self.execute_drop_sequence(seq),
             Statement::AlterSequence(ref seq) => self.execute_alter_sequence(seq),
             Statement::UseDatabase(ref name) => self.execute_use_database(name),
-            Statement::Values(_) => Err(SqlError::ExecutionError(
-                "VALUES cannot be used as a standalone statement".to_string(),
-            )),
             Statement::Values(_) => Err(SqlError::ExecutionError(
                 "VALUES cannot be used as a standalone statement".to_string(),
             )),
@@ -1380,20 +1379,27 @@ impl<S: StorageEngine + 'static> ExecutionEngine<S> {
     fn execute_intersect(&mut self, stmt: &IntersectStatement) -> SqlResult<ExecutorResult> {
         let mut left_result = self.execute_statement(&stmt.left)?;
         let right_result = self.execute_statement(&stmt.right)?;
-        // Keep rows that appear in both sides. If INTERSECT ALL, keep one
-        // copy per common occurrence (count min). For plain INTERSECT (distinct),
-        // dedup left side first, then keep only rows present in right.
-        if !stmt.intersect_all {
-            left_result.rows.sort();
-            left_result.rows.dedup();
+        // Issue #4037: SQL-92 multiset semantics — ALL keeps min(cntL, cntR)
+        // per row; DISTINCT keeps one copy iff the row appears on both sides.
+        let left_counts = multiset_counts(&left_result.rows);
+        let right_counts = multiset_counts(&right_result.rows);
+        let mut out: Vec<Vec<Value>> = Vec::new();
+        if stmt.intersect_all {
+            for (row, cnt_l) in &left_counts {
+                if let Some(cnt_r) = right_counts.get(row) {
+                    let keep = (*cnt_l).min(*cnt_r);
+                    out.extend(std::iter::repeat_n(row.clone(), keep));
+                }
+            }
+        } else {
+            for row in left_counts.keys() {
+                if right_counts.contains_key(row) {
+                    out.push(row.clone());
+                }
+            }
         }
-        let right_set: Vec<Vec<Value>> = {
-            let mut r = right_result.rows.clone();
-            r.sort();
-            r.dedup();
-            r
-        };
-        left_result.rows.retain(|row| right_set.contains(row));
+        out.sort();
+        left_result.rows = out;
         left_result.affected_rows = left_result.rows.len();
         Ok(left_result)
     }
@@ -1401,18 +1407,26 @@ impl<S: StorageEngine + 'static> ExecutionEngine<S> {
     fn execute_except(&mut self, stmt: &ExceptStatement) -> SqlResult<ExecutorResult> {
         let mut left_result = self.execute_statement(&stmt.left)?;
         let right_result = self.execute_statement(&stmt.right)?;
-        // Keep rows in left that are not in right.
-        let right_set: Vec<Vec<Value>> = {
-            let mut r = right_result.rows.clone();
-            r.sort();
-            r.dedup();
-            r
-        };
-        left_result.rows.retain(|row| !right_set.contains(row));
-        if !stmt.except_all {
-            left_result.rows.sort();
-            left_result.rows.dedup();
+        // Issue #4037: SQL-92 multiset semantics — ALL keeps max(0, cntL-cntR)
+        // per row; DISTINCT keeps one copy iff the row appears in left only.
+        let left_counts = multiset_counts(&left_result.rows);
+        let right_counts = multiset_counts(&right_result.rows);
+        let mut out: Vec<Vec<Value>> = Vec::new();
+        if stmt.except_all {
+            for (row, cnt_l) in &left_counts {
+                let cnt_r = right_counts.get(row).copied().unwrap_or(0);
+                let keep = cnt_l.saturating_sub(cnt_r);
+                out.extend(std::iter::repeat_n(row.clone(), keep));
+            }
+        } else {
+            for row in left_counts.keys() {
+                if !right_counts.contains_key(row) {
+                    out.push(row.clone());
+                }
+            }
         }
+        out.sort();
+        left_result.rows = out;
         left_result.affected_rows = left_result.rows.len();
         Ok(left_result)
     }
@@ -1447,6 +1461,15 @@ fn leftmost_column_names(stmt: &Statement) -> Vec<&str> {
         Statement::Except(e) => leftmost_column_names(&e.left),
         _ => Vec::new(),
     }
+}
+
+/// Count row multiplicities for INTERSECT ALL / EXCEPT ALL semantics.
+fn multiset_counts(rows: &[Vec<Value>]) -> std::collections::HashMap<Vec<Value>, usize> {
+    let mut counts = std::collections::HashMap::new();
+    for row in rows {
+        *counts.entry(row.clone()).or_insert(0) += 1;
+    }
+    counts
 }
 
 /// Evaluate a single ORDER BY expression against a row, using column
