@@ -1074,6 +1074,21 @@ pub fn eval_unary_op(val: &Value, op: &str) -> Value {
 /// `src/expr_utils.rs` (the binary engine path).
 pub fn eval_fn(name: &str, args: &[Value]) -> Value {
     match name.to_uppercase().as_str() {
+        // V312-26 / #4020: MySQL wire-client compatibility. The MySQL
+        // CLI sends `SELECT DATABASE()` after every connect to
+        // determine the current schema before sending `USE db`. Returning
+        // an empty string (or NULL) lets the client proceed to send
+        // subsequent queries; sqlrustgo's `USE <db>` is a no-op in v3.12
+        // (single-database mode), so the actual current schema is the
+        // empty string. See execute_use_database in
+        // src/execution_engine.rs.
+        "DATABASE" | "SCHEMA" => Value::Text(String::new()),
+        // V312-26 / #4020: MySQL compat — CLIENT_USER() and USER() are
+        // sent by some clients during connection setup. Returning the
+        // empty user name keeps the wire protocol happy.
+        "USER" | "CURRENT_USER" | "SESSION_USER" | "SYSTEM_USER" => {
+            Value::Text(String::new())
+        }
         "LOWER" => args
             .first()
             .map(|v| Value::Text(v.to_sql_string().to_lowercase()))
