@@ -492,5 +492,5 @@ fn detect_recursive_trigger(
 
 | 文档 | 说明 |
 |------|------|
-| [DML_EXECUTION.md](./DML_EXECUTION.md) | DML 执行链路 |
+| [DML_EXECUTION.md](../dml/DML_EXECUTION.md) | DML 执行链路 |
 | [STORED_PROCEDURE.md](./STORED_PROCEDURE.md) | 存储过程 |

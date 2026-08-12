@@ -24,7 +24,9 @@ use sqlrustgo_executor::trigger::{
 };
 use sqlrustgo_executor::ExecutorResult;
 use sqlrustgo_optimizer::rules::{BinaryOperator, Expr};
-use sqlrustgo_optimizer::stats::{build_histogram_from_values, ColumnStats as OptColumnStats, Histogram};
+use sqlrustgo_optimizer::stats::{
+    build_histogram_from_values, ColumnStats as OptColumnStats, Histogram,
+};
 use sqlrustgo_optimizer::unified_cost::UnifiedCostModel;
 use sqlrustgo_optimizer::unified_plan::UnifiedPlan;
 use sqlrustgo_parser::parser::{
@@ -619,9 +621,6 @@ impl<S: StorageEngine + 'static> ExecutionEngine<S> {
             Statement::DropSequence(ref seq) => self.execute_drop_sequence(seq),
             Statement::AlterSequence(ref seq) => self.execute_alter_sequence(seq),
             Statement::UseDatabase(ref name) => self.execute_use_database(name),
-            Statement::Values(_) => Err(SqlError::ExecutionError(
-                "VALUES cannot be used as a standalone statement".to_string(),
-            )),
             Statement::Values(_) => Err(SqlError::ExecutionError(
                 "VALUES cannot be used as a standalone statement".to_string(),
             )),
@@ -1316,7 +1315,7 @@ impl<S: StorageEngine + 'static> ExecutionEngine<S> {
 
     // ── Set-operation handlers (V310-06 PR2 / Issue #3723 C-2) ──────
 
-    pub(crate) fn execute_union(&self, union_stmt: &UnionStatement) -> SqlResult<ExecutorResult> {
+    fn execute_union(&mut self, union_stmt: &UnionStatement) -> SqlResult<ExecutorResult> {
         let mut left_result = self.execute_statement(&union_stmt.left)?;
         let right_result = self.execute_statement(&union_stmt.right)?;
 
@@ -1377,99 +1376,79 @@ impl<S: StorageEngine + 'static> ExecutionEngine<S> {
         Ok(left_result)
     }
 
-    pub(crate) fn execute_intersect(&self, stmt: &IntersectStatement) -> SqlResult<ExecutorResult> {
+    fn execute_intersect(&mut self, stmt: &IntersectStatement) -> SqlResult<ExecutorResult> {
         let mut left_result = self.execute_statement(&stmt.left)?;
         let right_result = self.execute_statement(&stmt.right)?;
-        // V312-17 / Issue #4037: INTERSECT ALL is multiset intersection —
-        // for each row in left, keep it iff right still has a matching
-        // occurrence. The previous implementation always deduped the right
-        // side (treating it as a set), which is wrong for ALL semantics:
-        // `INTERSECT ALL [1,3,3]` would behave as `INTERSECT [1,3]`,
-        // removing duplicates from the result.
+        // SQL-92 multiset semantics for INTERSECT:
+        //   * DISTINCT (default): deduplicate each side, then keep rows
+        //     that appear on both sides (one copy each).
+        //   * ALL: keep min(cntL(r), cntR(r)) copies of every row r.
+        // The previous implementation only retained rows from left that
+        // appeared in the deduplicated right set, which dropped multiplicity
+        // under INTERSECT ALL (returned too few copies) and returned too
+        // many copies because left was never dedup'd for ALL.
+        let left_counts = multiset_counts(&left_result.rows);
+        let right_counts = multiset_counts(&right_result.rows);
+        let mut out: Vec<Vec<Value>> = Vec::new();
         if stmt.intersect_all {
-            // Build a multiset of right rows. Walk left in order, retain
-            // a row only if the right multiset has it, and decrement
-            // the right count for that row.
-            let mut right_counts: std::collections::HashMap<Vec<Value>, usize> =
-                std::collections::HashMap::new();
-            for row in &right_result.rows {
-                *right_counts.entry(row.clone()).or_insert(0) += 1;
-            }
-            let mut kept: Vec<Vec<Value>> = Vec::with_capacity(left_result.rows.len());
-            for row in &left_result.rows {
-                if let Some(count) = right_counts.get_mut(row) {
-                    if *count > 0 {
-                        kept.push(row.clone());
-                        *count -= 1;
+            for (row, cnt_l) in &left_counts {
+                if let Some(cnt_r) = right_counts.get(row) {
+                    let keep = (*cnt_l).min(*cnt_r);
+                    for _ in 0..keep {
+                        out.push(row.clone());
                     }
                 }
             }
-            left_result.rows = kept;
         } else {
-            // INTERSECT (distinct): keep only rows present in right, with
-            // duplicates removed.
-            left_result.rows.sort();
-            left_result.rows.dedup();
-            let right_set: Vec<Vec<Value>> = {
-                let mut r = right_result.rows.clone();
-                r.sort();
-                r.dedup();
-                r
-            };
-            left_result.rows.retain(|row| right_set.contains(row));
+            // DISTINCT: a row appears iff it appears on both sides; one copy.
+            for row in left_counts.keys() {
+                if right_counts.contains_key(row) {
+                    out.push(row.clone());
+                }
+            }
         }
+        left_result.rows = out;
         left_result.affected_rows = left_result.rows.len();
         Ok(left_result)
     }
 
-    pub(crate) fn execute_except(&self, stmt: &ExceptStatement) -> SqlResult<ExecutorResult> {
+    fn execute_except(&mut self, stmt: &ExceptStatement) -> SqlResult<ExecutorResult> {
         let mut left_result = self.execute_statement(&stmt.left)?;
         let right_result = self.execute_statement(&stmt.right)?;
-        // V312-17 / Issue #4037: EXCEPT ALL is multiset difference — for
-        // each occurrence in right, remove exactly one matching occurrence
-        // from left. The previous implementation always deduped the right
-        // side (treating it as a set), so `EXCEPT ALL [1,3,3]` would behave
-        // as `EXCEPT [1,3]`, removing all 1s and all 3s from left instead
-        // of one each.
+        // SQL-92 multiset semantics for EXCEPT:
+        //   * DISTINCT (default): deduplicate each side, then keep rows
+        //     from left that do NOT appear in right (one copy each).
+        //   * ALL: keep max(0, cntL(r) - cntR(r)) copies of every row r.
+        // The previous implementation removed every left copy whose value
+        // appeared in the deduplicated right set, which collapsed multiplicity
+        // under EXCEPT ALL.
+        let left_counts = multiset_counts(&left_result.rows);
+        let right_counts = multiset_counts(&right_result.rows);
+        let mut out: Vec<Vec<Value>> = Vec::new();
         if stmt.except_all {
-            // Build a multiset of right rows. Walk left in order, drop a
-            // row iff right multiset has it, and decrement the right count.
-            let mut right_counts: std::collections::HashMap<Vec<Value>, usize> =
-                std::collections::HashMap::new();
-            for row in &right_result.rows {
-                *right_counts.entry(row.clone()).or_insert(0) += 1;
-            }
-            let mut kept: Vec<Vec<Value>> = Vec::with_capacity(left_result.rows.len());
-            for row in &left_result.rows {
-                if let Some(count) = right_counts.get_mut(row) {
-                    if *count > 0 {
-                        *count -= 1;
-                        continue;
-                    }
+            for (row, cnt_l) in &left_counts {
+                let cnt_r = right_counts.get(row).copied().unwrap_or(0);
+                let keep = cnt_l.saturating_sub(cnt_r);
+                for _ in 0..keep {
+                    out.push(row.clone());
                 }
-                kept.push(row.clone());
             }
-            left_result.rows = kept;
         } else {
-            // EXCEPT (distinct): drop rows in left that are in right,
-            // then dedup the result.
-            let right_set: Vec<Vec<Value>> = {
-                let mut r = right_result.rows.clone();
-                r.sort();
-                r.dedup();
-                r
-            };
-            left_result.rows.retain(|row| !right_set.contains(row));
-            left_result.rows.sort();
-            left_result.rows.dedup();
+            // DISTINCT: a row is kept iff it appears in left and not in right.
+            for row in left_counts.keys() {
+                if !right_counts.contains_key(row) {
+                    out.push(row.clone());
+                }
+            }
         }
+        left_result.rows = out;
         left_result.affected_rows = left_result.rows.len();
         Ok(left_result)
     }
 
     /// Execute any parsed statement. Used by the set-operation handlers
     /// for recursive left/right execution of nested set-ops.
-    pub(crate) fn execute_statement(&self, stmt: &Statement) -> SqlResult<ExecutorResult> {
+    fn execute_statement(&mut self, stmt: &Statement) -> SqlResult<ExecutorResult> {
         match stmt {
             Statement::Select(s) => self.execute_select(s),
             Statement::Union(u) => self.execute_union(u),
@@ -1497,6 +1476,19 @@ fn leftmost_column_names(stmt: &Statement) -> Vec<&str> {
         Statement::Except(e) => leftmost_column_names(&e.left),
         _ => Vec::new(),
     }
+}
+
+/// Count row multiplicities for multiset (INTERSECT ALL / EXCEPT ALL)
+/// semantics. Returns a HashMap keyed by the row's value vector so
+/// `Vec<Value>` equality drives the multiset comparison. Insertion
+/// iteration order is preserved as the standard HashMap order; set-op
+/// callers only need the counts, not the order.
+fn multiset_counts(rows: &[Vec<Value>]) -> std::collections::HashMap<Vec<Value>, usize> {
+    let mut counts: std::collections::HashMap<Vec<Value>, usize> = std::collections::HashMap::new();
+    for row in rows {
+        *counts.entry(row.clone()).or_insert(0) += 1;
+    }
+    counts
 }
 
 /// Evaluate a single ORDER BY expression against a row, using column

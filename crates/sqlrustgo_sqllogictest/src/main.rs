@@ -9,10 +9,10 @@
 //!   cargo run -p sqlrustgo_sqllogictest -- --help
 //!   cargo run -p sqlrustgo_sqllogictest -- --test-dir crates/sqlrustgo_sqllogictest/testdata
 
-use parking_lot::RwLock;
+use parking_lot::{Mutex, RwLock};
 use sqllogictest::{DBOutput, DefaultColumnType, Runner, DB};
 use sqlrustgo::MemoryExecutionEngine;
-use sqlrustgo_storage::MemoryStorage;
+use sqlrustgo_storage::{MemoryStorage, SchemaSnapshot, TxLog};
 use std::cell::RefCell;
 use std::collections::HashMap;
 use std::fs::{self, File};
@@ -38,26 +38,100 @@ impl PartialEq for SltError {
     }
 }
 
-/// SltDb backed by shared storage.
+/// V312-26 #3969: Broadcast hub for multi-connection isolation.
 ///
-/// Each named connection gets its own SltDb, but all share the same MemoryStorage
-/// via Arc. This allows different connections to see each other's uncommitted
-/// changes (transaction isolation is handled by the storage layer).
+/// Each SltDb owns its own `Arc<RwLock<MemoryStorage>>` (per-connection
+/// isolation), but commits on one connection need to propagate to peer
+/// connections so a follow-up SELECT on a different connection can see
+/// committed rows. The hub maintains a list of all storages registered for
+/// the current test file; commits broadcast to peers via `apply_committed_log`,
+/// and DDL statements broadcast to peers via `apply_schema`.
+pub(crate) struct BroadcastHub {
+    storages: Vec<Arc<RwLock<MemoryStorage>>>,
+}
+
+impl BroadcastHub {
+    fn new() -> Self {
+        Self {
+            storages: Vec::new(),
+        }
+    }
+
+    fn register(&mut self, storage: Arc<RwLock<MemoryStorage>>) {
+        let self_ptr = Arc::as_ptr(&storage);
+        if !self.storages.iter().any(|s| Arc::as_ptr(s) == self_ptr) {
+            self.storages.push(storage);
+        }
+    }
+
+    fn broadcast_log(&self, sender: &Arc<RwLock<MemoryStorage>>, log: &TxLog) {
+        let sender_ptr = Arc::as_ptr(sender);
+        for storage in &self.storages {
+            if Arc::as_ptr(storage) != sender_ptr {
+                let _ = storage.write().apply_committed_log(log);
+            }
+        }
+    }
+
+    fn broadcast_schema(&self, sender: &Arc<RwLock<MemoryStorage>>, snapshot: &SchemaSnapshot) {
+        let sender_ptr = Arc::as_ptr(sender);
+        for storage in &self.storages {
+            if Arc::as_ptr(storage) != sender_ptr {
+                let _ = storage.write().apply_schema(snapshot);
+            }
+        }
+    }
+}
+
+/// SltDb backed by per-connection storage (V312-26 #3969 isolation).
+///
+/// Each named connection gets its own `MemoryStorage` (sqllogictest-rs
+/// expects independent DB instances per named connection). Commits and DDL
+/// on one connection are propagated to peer connections via the shared
+/// `BroadcastHub` so subsequent statements on other connections see the
+/// committed changes.
 pub struct SltDb {
     engine: MemoryExecutionEngine,
+    storage: Arc<RwLock<MemoryStorage>>,
+    hub: Arc<Mutex<BroadcastHub>>,
 }
 
 impl SltDb {
     pub fn new() -> Self {
         let storage = Arc::new(RwLock::new(MemoryStorage::new()));
-        let engine = MemoryExecutionEngine::new(storage);
-        Self { engine }
+        let engine = MemoryExecutionEngine::new(storage.clone());
+        Self {
+            engine,
+            storage,
+            hub: Arc::new(Mutex::new(BroadcastHub::new())),
+        }
     }
 
-    /// Create with shared storage (used for multi-connection tests).
+    /// Create with shared storage (legacy / single-connection tests).
+    ///
+    /// The SltDb has its own empty BroadcastHub — there are no peers to
+    /// notify, so commits just clear the local TxLog as before.
     pub fn with_storage(storage: Arc<RwLock<MemoryStorage>>) -> Self {
-        let engine = MemoryExecutionEngine::new(storage);
-        Self { engine }
+        let engine = MemoryExecutionEngine::new(storage.clone());
+        Self {
+            engine,
+            storage,
+            hub: Arc::new(Mutex::new(BroadcastHub::new())),
+        }
+    }
+
+    /// V312-26 #3969: create an SltDb whose storage is registered with the
+    /// shared broadcast hub so commits/DDL on it reach peer connections.
+    pub(crate) fn with_hub(
+        storage: Arc<RwLock<MemoryStorage>>,
+        hub: Arc<Mutex<BroadcastHub>>,
+    ) -> Self {
+        let engine = MemoryExecutionEngine::new(storage.clone());
+        Self {
+            engine,
+            storage,
+            hub,
+        }
     }
 }
 
@@ -72,7 +146,35 @@ impl DB for SltDb {
     type ColumnType = DefaultColumnType;
 
     fn run(&mut self, sql: &str) -> Result<DBOutput<Self::ColumnType>, Self::Error> {
-        match self.engine.execute(sql) {
+        let trimmed = sql.trim();
+        let trimmed_upper = trimmed.to_uppercase();
+        let first_kw = trimmed_upper.split_whitespace().next().unwrap_or("");
+
+        let result = self.engine.execute(sql);
+
+        // V312-26 #3969: after DDL (CREATE/DROP/ALTER/RENAME), broadcast the
+        // local schema to peer connections so they see newly created tables,
+        // views, sequences, and databases.
+        let is_ddl = matches!(first_kw, "CREATE" | "DROP" | "ALTER" | "RENAME");
+        if is_ddl {
+            let snapshot = self.storage.read().snapshot_schema();
+            self.hub.lock().broadcast_schema(&self.storage, &snapshot);
+        }
+
+        // V312-26 #3969: after COMMIT/END, drain the last committed TxLog
+        // and broadcast it to peer connections so a follow-up SELECT on
+        // another connection sees the committed rows.
+        let is_commit = matches!(
+            trimmed_upper.as_str(),
+            "COMMIT" | "COMMIT TRANSACTION" | "END" | "END TRANSACTION"
+        );
+        if is_commit {
+            if let Some(log) = self.storage.read().take_last_committed_log() {
+                self.hub.lock().broadcast_log(&self.storage, &log);
+            }
+        }
+
+        match result {
             Ok(result) => {
                 if result.rows.is_empty() {
                     Ok(DBOutput::StatementComplete(result.affected_rows as u64))
@@ -196,8 +298,55 @@ fn preprocess_test_file(path: &Path) -> Result<String, String> {
     preprocess_content(&raw, path.parent().unwrap_or(Path::new(".")))
 }
 
+/// Regex matching DuckDB-style `<REGEX>:` multiline `statement error` blocks.
+///
+/// Matches the multi-line block:
+/// ```
+/// statement error
+/// <SQL line 1>
+/// <SQL line 2>
+/// ...
+/// ----
+/// <REGEX>:<pattern>
+/// ```
+///
+/// Group 1: SQL lines (each line ending with `\n`)
+/// Group 2: regex pattern content (single line, no trailing `\n`)
+///
+/// V312-19 #4038: sqllogictest-rs 0.29.1 parses `----`-delimited errors as
+/// `ExpectedError::Multiline(String)` and uses **exact** string equality
+/// (see parser.rs `is_match`). The DuckDB test corpus uses the `<REGEX>:`
+/// prefix as a non-standard marker meaning "treat the rest as a regex".
+/// We rewrite these blocks to the sqllogictest-rs-native inline form:
+/// ```
+/// statement error <pattern>
+/// <SQL line 1>
+/// <SQL line 2>
+/// ```
+/// which produces `ExpectedError::Inline(Regex)` and matches correctly.
+static REGEX_MULTILINE_BLOCK: LazyLock<regex::Regex> = LazyLock::new(|| {
+    regex::Regex::new(r"(?m)^statement error\n((?:.+\n)*?)----\n<REGEX>:([^\n]+)\n").unwrap()
+});
+
+/// Convert DuckDB-style `<REGEX>:` multiline `statement error` blocks into the
+/// sqllogictest-rs-native inline format.
+fn convert_regex_multiline_blocks(content: &str) -> String {
+    REGEX_MULTILINE_BLOCK
+        .replace_all(content, |caps: &regex::Captures| {
+            let sql = &caps[1];
+            let pattern = &caps[2];
+            format!("statement error {}\n{}", pattern, sql)
+        })
+        .into_owned()
+}
+
 /// Pre-process test content string, expanding directives
 pub(crate) fn preprocess_content(content: &str, base_dir: &Path) -> Result<String, String> {
+    // V312-19 #4038: convert DuckDB-style `<REGEX>:` multiline blocks first so
+    // the rest of preprocessing (variable substitution, foreach expansion,
+    // connection suffixing) operates on the canonical sqllogictest-rs format.
+    let content = &convert_regex_multiline_blocks(content);
+
     let mut variables: HashMap<String, String> = HashMap::new();
     let mut output = String::new();
     let mut lines = content.lines().peekable();
@@ -438,18 +587,39 @@ async fn async_main() {
         // Write processed content to a temp file for the runner
         let temp_path = write_temp_file(&processed, filename);
 
-        // Shared storage for multi-connection support.
-        // All named connections share the same storage so they can see each other's
-        // uncommitted changes (for testing transaction isolation).
-        let shared_storage = Arc::new(RwLock::new(MemoryStorage::new()));
+        // V312-26 #3969: per-connection storage with broadcast hub.
+        // Each named connection gets its own MemoryStorage so uncommitted
+        // writes are isolated (sqllogictest-rs's expected semantics). The
+        // shared BroadcastHub propagates commits and DDL to peers.
+        let hub = Arc::new(Mutex::new(BroadcastHub::new()));
+        let hub_cell = RefCell::new(hub.clone());
 
         // Create a fresh Runner for each file. The Runner creates a fresh SltDb
-        // for each named connection, but they all share the same storage.
-        // RefCell allows FnMut closure to clone the Arc on each call.
-        let storage_cell = RefCell::new(shared_storage);
+        // for each named connection. Each SltDb gets a fresh MemoryStorage
+        // registered with the shared hub; new connections inherit schema from
+        // any pre-existing peer storage so they see tables created earlier.
         let mut tester = Runner::new(move || {
-            let storage = storage_cell.borrow().clone();
-            async move { Ok(SltDb::with_storage(storage)) }
+            let new_storage = Arc::new(RwLock::new(MemoryStorage::new()));
+            let hub_ref = hub_cell.borrow().clone();
+
+            // Register with hub and inherit schema from any existing peer.
+            {
+                let mut hub_guard = hub_ref.lock();
+                hub_guard.register(new_storage.clone());
+                // Snapshot schema from the first registered peer (typically
+                // the default connection, which created tables first).
+                let self_ptr = Arc::as_ptr(&new_storage);
+                if let Some(peer) = hub_guard
+                    .storages
+                    .iter()
+                    .find(|s| Arc::as_ptr(*s) != self_ptr)
+                {
+                    let snapshot = peer.read().snapshot_schema();
+                    let _ = new_storage.write().apply_schema(&snapshot);
+                }
+            }
+
+            async move { Ok(SltDb::with_hub(new_storage, hub_ref)) }
         });
         tester.with_normalizer(strip_debug_format);
         tester.with_validator(|norm, actual, expected| {
@@ -629,6 +799,133 @@ mod tests {
         assert!(
             out.contains("SELECT 1;"),
             "malformed set-variable line must not abort preprocessing, got: {}",
+            out
+        );
+    }
+
+    // =====================================================================
+    // V312-19 #4038: `<REGEX>:` multiline → inline conversion tests
+    //
+    // sqllogictest-rs 0.29.1 parses `----`-delimited errors as
+    // `ExpectedError::Multiline(String)` and uses exact string equality.
+    // DuckDB test files use a `<REGEX>:` prefix in multiline content as a
+    // non-standard "this is a regex" marker. These tests pin the conversion
+    // behavior so `order__test_limit.test` and friends can be verified.
+    // =====================================================================
+
+    #[test]
+    fn v312_19_regex_multiline_to_inline_basic() {
+        // Single-line SQL, single-line regex.
+        let input = "statement error\n\
+                     SELECT a FROM test LIMIT a\n\
+                     ----\n\
+                     <REGEX>:Binder Error:.*Referenced column.*not found.*\n";
+        let out = run(input);
+        // Expect inline form on one line, SQL right after.
+        assert!(
+            out.contains(
+                "statement error Binder Error:.*Referenced column.*not found.*\nSELECT a FROM test LIMIT a\n"
+            ),
+            "expected inline conversion, got:\n{}",
+            out
+        );
+        // Original `----` separator must be gone (Multiline form removed).
+        assert!(
+            !out.contains("----"),
+            "---- separator should be consumed by conversion, got:\n{}",
+            out
+        );
+        // `<REGEX>:` prefix marker must be consumed.
+        assert!(
+            !out.contains("<REGEX>:"),
+            "<REGEX>: prefix marker should be consumed, got:\n{}",
+            out
+        );
+    }
+
+    #[test]
+    fn v312_19_regex_multiline_multiline_sql() {
+        // SQL spans multiple lines. Constructed with explicit `\n` so that
+        // Rust's `\` line-continuation whitespace stripping does not collapse
+        // any leading whitespace inside the SQL body.
+        let input = "statement error\nSELECT a,\n       b\nFROM test\nLIMIT a\n----\n<REGEX>:Binder Error:.*not found.*\n";
+        let out = run(input);
+        assert!(
+            out.contains(
+                "statement error Binder Error:.*not found.*\nSELECT a,\n       b\nFROM test\nLIMIT a\n"
+            ),
+            "expected multi-line SQL preserved after conversion, got:\n{}",
+            out
+        );
+    }
+
+    #[test]
+    fn v312_19_regex_multiline_preserves_exact_match_blocks() {
+        // Multiline content with NO `<REGEX>:` prefix is exact-match — must NOT
+        // be converted (sqllogictest-rs Multiline variant uses exact string
+        // equality).
+        let input = "statement error\n\
+                     ALTER TABLE tbl SET PARTITIONED BY (i)\n\
+                     ----\n\
+                     not supported\n";
+        let out = run(input);
+        assert!(
+            out.contains("ALTER TABLE tbl SET PARTITIONED BY (i)\n----\nnot supported\n"),
+            "exact-match multiline block must be preserved as-is, got:\n{}",
+            out
+        );
+    }
+
+    #[test]
+    fn v312_19_regex_multiline_preserves_already_inline_format() {
+        // Inline regex (no `----` separator) must NOT be touched.
+        let input = "statement error Binder Error:.*Aggregate.*\n\
+                     SELECT SUM(42) FROM t LIMIT SUM(42)\n";
+        let out = run(input);
+        assert!(
+            out.contains(
+                "statement error Binder Error:.*Aggregate.*\nSELECT SUM(42) FROM t LIMIT SUM(42)\n"
+            ),
+            "inline format must pass through unchanged, got:\n{}",
+            out
+        );
+    }
+
+    #[test]
+    fn v312_19_regex_multiline_real_order_test_limit_shape() {
+        // Real DuckDB test shape: identifier and aggregate cases.
+        let input = "statement ok\n\
+                     CREATE TABLE test (a INTEGER, b INTEGER);\n\
+                     INSERT INTO test VALUES (1, 10), (2, 20);\n\
+                     statement error\n\
+                     SELECT a FROM test LIMIT a\n\
+                     ----\n\
+                     <REGEX>:Binder Error:.*Referenced column.*not found.*\n\
+                     statement error\n\
+                     SELECT a FROM test LIMIT SUM(42)\n\
+                     ----\n\
+                     <REGEX>:Binder Error:.*Aggregate functions are not supported in LIMIT clause.*\n";
+        let out = run(input);
+        // Both errors must be converted to inline.
+        assert!(
+            out.contains(
+                "statement error Binder Error:.*Referenced column.*not found.*\nSELECT a FROM test LIMIT a\n"
+            ),
+            "first statement error conversion failed, got:\n{}",
+            out
+        );
+        assert!(
+            out.contains(
+                "statement error Binder Error:.*Aggregate functions are not supported in LIMIT clause.*\nSELECT a FROM test LIMIT SUM(42)\n"
+            ),
+            "second statement error conversion failed, got:\n{}",
+            out
+        );
+        // Original `----` separators must be gone (both converted).
+        assert_eq!(
+            out.matches("----").count(),
+            0,
+            "all <REGEX>: multiline blocks should be converted, found stray ---- in:\n{}",
             out
         );
     }

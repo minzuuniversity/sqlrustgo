@@ -198,4 +198,125 @@ mod tests {
 
         assert!(result.is_ok());
     }
+
+    // Helper: build storage with two single-column tables where each
+    // table may contain duplicate rows. Used by INTERSECT/EXCEPT ALL
+    // multiplicity tests.
+    fn create_multi_storage(a_rows: Vec<i64>, b_rows: Vec<i64>) -> MemoryStorage {
+        let mut storage = MemoryStorage::new();
+        for (name, rows) in [("ta", &a_rows), ("tb", &b_rows)] {
+            let info = sqlrustgo_storage::TableInfo {
+                name: name.to_string(),
+                columns: vec![sqlrustgo_storage::ColumnDefinition {
+                    name: "id".to_string(),
+                    data_type: "INTEGER".to_string(),
+                    nullable: false,
+                    primary_key: false,
+                    char_max_length: None,
+                }],
+                foreign_keys: vec![],
+                unique_constraints: vec![],
+                check_constraints: vec![],
+                compression: None,
+                partition_info: None,
+            };
+            storage.create_table(&info).unwrap();
+            let records: Vec<Vec<Value>> = rows.iter().map(|v| vec![Value::Integer(*v)]).collect();
+            storage.insert(name, records).unwrap();
+        }
+        storage
+    }
+
+    /// INTERSECT ALL must follow SQL-92 multiset semantics:
+    /// result row r appears min(cnt_left(r), cnt_right(r)) times.
+    /// Regression test for ISSUE #4037: the prior implementation
+    /// only kept distinct rows from left that exist in right, which
+    /// silently dropped multiplicity.
+    #[test]
+    fn test_intersect_all_multiplicity() {
+        // left has 3 copies of (1), right has 2 copies of (1)
+        // INTERSECT ALL must yield 2 copies of (1)
+        let storage = create_multi_storage(vec![1, 1, 1], vec![1, 1]);
+        let mut engine = ExecutionEngine::new(Arc::new(RwLock::new(storage)));
+
+        let result = engine
+            .execute("SELECT id FROM ta INTERSECT ALL SELECT id FROM tb")
+            .expect("INTERSECT ALL should execute");
+
+        assert_eq!(
+            result.rows.len(),
+            2,
+            "INTERSECT ALL must keep min(cnt_left, cnt_right)=2 copies, got {:?}",
+            result.rows
+        );
+        for row in &result.rows {
+            assert_eq!(row[0], Value::Integer(1));
+        }
+    }
+
+    /// INTERSECT (DISTINCT) — when left has duplicates that all
+    /// intersect right, the result must be deduplicated to a single
+    /// row.
+    #[test]
+    fn test_intersect_distinct_multiplicity() {
+        let storage = create_multi_storage(vec![1, 1, 1], vec![1, 1]);
+        let mut engine = ExecutionEngine::new(Arc::new(RwLock::new(storage)));
+
+        let result = engine
+            .execute("SELECT id FROM ta INTERSECT SELECT id FROM tb")
+            .expect("INTERSECT should execute");
+
+        assert_eq!(
+            result.rows.len(),
+            1,
+            "INTERSECT (DISTINCT) must yield exactly 1 copy, got {:?}",
+            result.rows
+        );
+    }
+
+    /// EXCEPT ALL must follow SQL-92 multiset semantics:
+    /// result row r appears max(0, cnt_left(r) - cnt_right(r)) times.
+    /// Regression test for ISSUE #4037: the prior implementation
+    /// removed *every* row that appeared in right (after dedup),
+    /// which silently dropped multiplicity.
+    #[test]
+    fn test_except_all_multiplicity() {
+        // left has 3 copies of (1), right has 2 copies of (1)
+        // EXCEPT ALL must yield 1 copy of (1)
+        let storage = create_multi_storage(vec![1, 1, 1], vec![1, 1]);
+        let mut engine = ExecutionEngine::new(Arc::new(RwLock::new(storage)));
+
+        let result = engine
+            .execute("SELECT id FROM ta EXCEPT ALL SELECT id FROM tb")
+            .expect("EXCEPT ALL should execute");
+
+        assert_eq!(
+            result.rows.len(),
+            1,
+            "EXCEPT ALL must keep max(0, cnt_left-cnt_right)=1 copy, got {:?}",
+            result.rows
+        );
+        assert_eq!(result.rows[0][0], Value::Integer(1));
+    }
+
+    /// EXCEPT (DISTINCT) — when every row in left also appears in
+    /// right, the result must be empty (the row is "excluded").
+    /// A buggy implementation that also returns one copy because of
+    /// a multiplicity regression would fail this test.
+    #[test]
+    fn test_except_distinct_empty_when_overlapping() {
+        let storage = create_multi_storage(vec![1, 1, 1], vec![1, 1]);
+        let mut engine = ExecutionEngine::new(Arc::new(RwLock::new(storage)));
+
+        let result = engine
+            .execute("SELECT id FROM ta EXCEPT SELECT id FROM tb")
+            .expect("EXCEPT should execute");
+
+        assert_eq!(
+            result.rows.len(),
+            0,
+            "EXCEPT (DISTINCT) must drop the overlapping row, got {:?}",
+            result.rows
+        );
+    }
 }

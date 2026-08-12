@@ -59,13 +59,13 @@
 
 | Surface | evidence_hash | OpenSpec Change | owner | expiry |
 |---------|--------------|-----------------|-------|--------|
-| empty_password_auth | 0eaf76d9d8d77669035e8c86f88b0de8eb18f189b23688e4231f2ac543dcb2c1 | v313-01 | openclaw | 2027-06-30 |
-| prepared_stmt_roundtrip | e018673e3d43788fd953ffd1c1be0fb085da6f58c82f0461a06b65793232bbc6 | v313-02 | openclaw | 2027-06-30 |
-| timestamp_timezone_deferred | abde62a45cf60d2cbb49257e3b8b6d9bdd398f25f5f9b3365965ec6c72844738 | v313-03 | openclaw | 2027-06-30 |
-| connection_pool_deferred | 1e0f85ad493f3da72374231f936fff5d72f09e74271ec6598b0cef17a9537cdc | v313-04 | openclaw | 2027-06-30 |
-| alter_change_full_syntax_deferred | 06176b4a0d3349f750abe0a9b38acbe3043a1d9641aecdb9798b67d0c72fae05 | v313-05 | openclaw | 2027-06-30 |
-| median_unsupported | e03b158793a567f73c167e6e5863074bfd72553512c430cde5725d31bbf8a5c7 | v313-06 | openclaw | 2027-06-30 |
-| window_rank_partition_unsupported | ef9183d45e382d6cc2024d775ce294ceab10fc2ed874549b4d72feeb8ec341d1 | v313-07 | openclaw | 2027-06-30 |
+| empty_password_auth | 0eaf76d9d8d77669035e8c86f88b0de8eb18f189b23688e4231f2ac543dcb2c1 | [v313-01](../../../../../openspec/changes/v313-01-empty-password-auth/) | openclaw | 2027-06-30 |
+| prepared_stmt_roundtrip | e018673e3d43788fd953ffd1c1be0fb085da6f58c82f0461a06b65793232bbc6 | [v313-02](../../../../../openspec/changes/v313-02-prepared-stmt-protocol/) | openclaw | 2027-06-30 |
+| timestamp_timezone_deferred | abde62a45cf60d2cbb49257e3b8b6d9bdd398f25f5f9b3365965ec6c72844738 | [v313-03](../../../../../openspec/changes/v313-03-timestamp-timezone/) | openclaw | 2027-06-30 |
+| connection_pool_deferred | 1e0f85ad493f3da72374231f936fff5d72f09e74271ec6598b0cef17a9537cdc | [v313-04](../../../../../openspec/changes/v313-04-connection-pool/) | openclaw | 2027-06-30 |
+| alter_change_full_syntax_deferred | 06176b4a0d3349f750abe0a9b38acbe3043a1d9641aecdb9798b67d0c72fae05 | [v313-05](../../../../../openspec/changes/v313-05-alter-change-syntax/) | openclaw | 2027-06-30 |
+| median_unsupported | e03b158793a567f73c167e6e5863074bfd72553512c430cde5725d31bbf8a5c7 | [v313-06](../../../../../openspec/changes/v313-06-median-aggregate/) | openclaw | 2027-06-30 |
+| window_rank_partition_unsupported | ef9183d45e382d6cc2024d775ce294ceab10fc2ed874549b4d72feeb8ec341d1 | [v313-07](../../../../../openspec/changes/v313-07-window-rank-truncation/) | openclaw | 2027-06-30 |
 
 ---
 
@@ -75,13 +75,13 @@
 
 | Change | Surface | Directory |
 |--------|---------|-----------|
-| v313-01 | empty_password_auth | openspec/changes/v313-01-empty-password-auth/ |
-| v313-02 | prepared_stmt_roundtrip | openspec/changes/v313-02-prepared-stmt-protocol/ |
-| v313-03 | timestamp_timezone | openspec/changes/v313-03-timestamp-timezone/ |
-| v313-04 | connection_pool | openspec/changes/v313-04-connection-pool/ |
-| v313-05 | alter_change_full_syntax | openspec/changes/v313-05-alter-change-syntax/ |
-| v313-06 | median_aggregate | openspec/changes/v313-06-median-aggregate/ |
-| v313-07 | window_rank_truncation | openspec/changes/v313-07-window-rank-truncation/ |
+| v313-01 | empty_password_auth | [v313-01-empty-password-auth](../../../../../openspec/changes/v313-01-empty-password-auth/) |
+| v313-02 | prepared_stmt_roundtrip | [v313-02-prepared-stmt-protocol](../../../../../openspec/changes/v313-02-prepared-stmt-protocol/) |
+| v313-03 | timestamp_timezone | [v313-03-timestamp-timezone](../../../../../openspec/changes/v313-03-timestamp-timezone/) |
+| v313-04 | connection_pool | [v313-04-connection-pool](../../../../../openspec/changes/v313-04-connection-pool/) |
+| v313-05 | alter_change_full_syntax | [v313-05-alter-change-syntax](../../../../../openspec/changes/v313-05-alter-change-syntax/) |
+| v313-06 | median_aggregate | [v313-06-median-aggregate](../../../../../openspec/changes/v313-06-median-aggregate/) |
+| v313-07 | window_rank_truncation | [v313-07-window-rank-truncation](../../../../../openspec/changes/v313-07-window-rank-truncation/) |
 
 ---
 

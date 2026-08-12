@@ -552,4 +552,4 @@ pub enum AuditEvent {
 |------|------|
 | [DDL_EXECUTION.md](../ddl/DDL_EXECUTION.md) | DDL 执行链路 |
 | [DML_EXECUTION.md](../dml/DML_EXECUTION.md) | DML 执行链路 |
-| [SECURITY_REPORT.md](../../SECURITY_REPORT.md) | 安全报告 |
+| [SECURITY_REPORT.md](../../../v2.9.0/SECURITY_REPORT.md) | 安全报告 |
