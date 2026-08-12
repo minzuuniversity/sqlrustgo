@@ -504,3 +504,119 @@ fn test_backup_metadata_serde_roundtrip() {
     assert!(s.contains("\"database\":\"db\""));
     assert!(s.contains("Incremental"));
 }
+
+// ============================================================================
+// upgrade::show_status + list_history integration tests (Issue #3943)
+// ============================================================================
+#[test]
+fn test_upgrade_show_status_no_history() {
+    use sqlrustgo_tools::upgrade::show_status;
+    let dir = std::env::temp_dir().join(format!(
+        "sqlrustgo-tools-upgrade-showstatus-empty-{}",
+        std::process::id()
+    ));
+    let _ = std::fs::remove_dir_all(&dir);
+    std::fs::create_dir_all(&dir).unwrap();
+    show_status(&dir).expect("show_status with no history must succeed");
+    let _ = std::fs::remove_dir_all(&dir);
+}
+
+#[test]
+fn test_upgrade_show_status_with_manifest() {
+    use sqlrustgo_tools::upgrade::show_status;
+    let dir = std::env::temp_dir().join(format!(
+        "sqlrustgo-tools-upgrade-showstatus-{}",
+        std::process::id()
+    ));
+    let _ = std::fs::remove_dir_all(&dir);
+    std::fs::create_dir_all(&dir).unwrap();
+
+    // Create a fake last_upgrade.json manifest file.
+    let manifest = r#"{
+        "from_version": "3.11.0",
+        "to_version": "3.12.0",
+        "timestamp": "2026-08-12T00:00:00Z",
+        "status": "completed",
+        "backup_path": null,
+        "rollback_enabled": false,
+        "steps_completed": 3,
+        "total_steps": 3,
+        "checksum": "abc123"
+    }"#;
+    std::fs::write(dir.join("last_upgrade.json"), manifest).unwrap();
+
+    show_status(&dir).expect("show_status with manifest must succeed");
+    // (status enum has: pending, inprogress, completed, failed, rolledback)
+    let _ = std::fs::remove_dir_all(&dir);
+}
+
+#[test]
+fn test_upgrade_show_status_invalid_json() {
+    use sqlrustgo_tools::upgrade::show_status;
+    let dir = std::env::temp_dir().join(format!(
+        "sqlrustgo-tools-upgrade-showstatus-bad-{}",
+        std::process::id()
+    ));
+    let _ = std::fs::remove_dir_all(&dir);
+    std::fs::create_dir_all(&dir).unwrap();
+    std::fs::write(dir.join("last_upgrade.json"), "not valid json").unwrap();
+    // Invalid JSON → show_status returns Err, no panic.
+    let result = show_status(&dir);
+    assert!(result.is_err());
+    let _ = std::fs::remove_dir_all(&dir);
+}
+
+#[test]
+fn test_upgrade_list_history_empty_dir() {
+    use sqlrustgo_tools::upgrade::list_history;
+    let dir = std::env::temp_dir().join(format!(
+        "sqlrustgo-tools-upgrade-list-empty-{}",
+        std::process::id()
+    ));
+    let _ = std::fs::remove_dir_all(&dir);
+    // list_history on a non-existent dir should return Ok.
+    list_history(&dir).expect("list_history with missing dir must succeed");
+    let _ = std::fs::remove_dir_all(&dir);
+}
+
+#[test]
+fn test_upgrade_list_history_with_subdirs() {
+    use sqlrustgo_tools::upgrade::list_history;
+    let dir = std::env::temp_dir().join(format!(
+        "sqlrustgo-tools-upgrade-list-{}",
+        std::process::id()
+    ));
+    let _ = std::fs::remove_dir_all(&dir);
+    std::fs::create_dir_all(&dir).unwrap();
+
+    // Subdir 1 with manifest
+    let sub1 = dir.join("upgrade_2026_08_12_001");
+    std::fs::create_dir_all(&sub1).unwrap();
+    std::fs::write(
+        sub1.join("manifest.json"),
+        r#"{
+            "from_version": "3.11.0",
+            "to_version": "3.12.0",
+            "timestamp": "2026-08-12T01:00:00Z",
+            "status": "completed",
+            "backup_path": null,
+            "rollback_enabled": true,
+            "steps_completed": 3,
+            "total_steps": 3,
+            "checksum": "deadbeef"
+        }"#,
+    )
+    .unwrap();
+
+    // Subdir 2 without manifest — must be ignored, not panic
+    let sub2 = dir.join("upgrade_2026_08_12_002");
+    std::fs::create_dir_all(&sub2).unwrap();
+
+    list_history(&dir).expect("list_history must succeed");
+    let _ = std::fs::remove_dir_all(&dir);
+}
+
+// Note: check_upgrade calls std::process::exit(1) on failure which kills
+// the test process. So we cannot test it via the normal path. The
+// happy-path VersionInfo::can_upgrade_to + create_upgrade_plan paths
+// are already covered by tests above.
