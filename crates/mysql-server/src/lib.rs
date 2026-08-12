@@ -3,6 +3,7 @@
 //! Supports mysql_native_password auth + TLS (mariadb-connector-c 3.4+ compatible)
 
 use byteorder::{LittleEndian, ReadBytesExt, WriteBytesExt};
+use flate2::{Compress, Decompress, FlushCompress, FlushDecompress};
 use parking_lot::RwLock;
 use rcgen::{CertificateParams, KeyPair};
 use sha1::{Digest, Sha1};
@@ -1648,6 +1649,72 @@ impl<'a> DrainWrites for TlsStream<'a> {
 // TcpStream is NOT a TlsStream (covers both TcpStream and &TcpStream)
 impl NotTlsStream for std::net::TcpStream {}
 impl<T: NotTlsStream> NotTlsStream for &T {}
+// ============================================================================
+// MySQL wire protocol zlib compression (flate2)
+// ============================================================================
+//
+// MySQL compressed packet format (7-byte header + payload):
+//   [uncompressed_len: u24 LE][seq: u8][compressed_len: u24 LE][payload]
+//
+// Reference: MySQL 8.0 `net_serv.cc` compress_packet() / decompress_packet()
+
+/// Read and decompress one MySQL compressed packet frame from `inner`.
+pub fn read_compressed_packet<R: Read>(inner: &mut R) -> MySqlResult<(u8, Vec<u8>)> {
+    // 7-byte header
+    let mut header = [0u8; 7];
+    inner.read_exact(&mut header).map_err(MySqlError::Io)?;
+
+    let uncompressed_len = u32::from_le_bytes([header[0], header[1], header[2], 0]) as usize;
+    let seq = header[3];
+    let compressed_len = u32::from_le_bytes([header[4], header[5], header[6], 0]) as usize;
+
+    // Read compressed payload
+    let mut compressed = vec![0u8; compressed_len];
+    inner.read_exact(&mut compressed).map_err(MySqlError::Io)?;
+
+    // Uncompressed payload (MySQL optimization for small frames)
+    if uncompressed_len == 0 || compressed_len == uncompressed_len {
+        return Ok((seq, compressed));
+    }
+
+    // Decompress using flate2 decompress_vec
+    // IMPORTANT: decompress_vec APPENDS starting at len, so len must be 0
+    let mut decompressed = Vec::with_capacity(uncompressed_len);
+    decompressed.reserve(uncompressed_len); // capacity = 2*uncompressed, len = 0
+
+    let mut d = Decompress::new(true);
+    d.decompress_vec(&compressed, &mut decompressed, FlushDecompress::Finish)
+        .map_err(|e| MySqlError::Protocol(format!("zlib: {e}")))?;
+
+    if decompressed.len() != uncompressed_len {
+        return Err(MySqlError::Protocol(format!(
+            "zlib: decompressed {} bytes, expected {}",
+            decompressed.len(),
+            uncompressed_len
+        )));
+    }
+
+    Ok((seq, decompressed))
+}
+
+/// Compress `payload` into a MySQL compressed packet frame and write to `w`.
+pub fn write_compressed_packet<W: Write>(w: &mut W, seq: u8, payload: &[u8]) -> MySqlResult<()> {
+    let uncompressed_len = payload.len();
+    let mut compressor = Compress::new(flate2::Compression::default(), true);
+    let bound = uncompressed_len.saturating_add(12);
+    let mut compressed = Vec::with_capacity(bound);
+    let _status = compressor
+        .compress_vec(payload, &mut compressed, FlushCompress::Finish)
+        .map_err(|e| MySqlError::Protocol(format!("zlib compress: {e}")))?;
+    let compressed_len = compressed.len();
+    // 7-byte header: [uncompressed_len: u24][seq: u8][compressed_len: u24]
+    w.write_all(&(uncompressed_len as u32).to_le_bytes()[..3])?;
+    w.write_u8(seq)?;
+    w.write_all(&(compressed_len as u32).to_le_bytes()[..3])?;
+    w.write_all(&compressed)?;
+    w.flush()?;
+    Ok(())
+}
 
 fn write_lenenc_int<W: Write>(w: &mut W, v: u64) -> MySqlResult<()> {
     if v < 251 {
@@ -6215,4 +6282,29 @@ pub mod test_helpers {
     pub use crate::parse_stmt_execute_params;
     pub use crate::replace_placeholders;
     pub use crate::StmtParam;
+}
+
+#[cfg(test)]
+mod compression_tests {
+    use super::*;
+    #[test]
+    fn test_compress_decompress_roundtrip() {
+        let payload = b"SELECT 1\x00\x00\x00\x03".to_vec();
+
+        // Compress
+        let mut buf = Vec::new();
+        write_compressed_packet(&mut buf, 0, &payload).expect("compress");
+        assert!(buf.len() >= 7, "need 7-byte header");
+
+        // Verify header
+        let unc_len = u32::from_le_bytes([buf[0], buf[1], buf[2], 0]) as usize;
+        assert_eq!(unc_len, payload.len());
+        assert_eq!(buf[3], 0); // seq
+
+        // Decompress
+        let mut reader = std::io::Cursor::new(&buf[..]);
+        let (seq, recovered) = read_compressed_packet(&mut reader).expect("decompress");
+        assert_eq!(seq, 0);
+        assert_eq!(recovered, payload);
+    }
 }
