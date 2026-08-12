@@ -1,0 +1,19 @@
+=== #4019 Sysbench OLTP Read-Write Baseline ===
+run_id:        20260812T125004Z_t2_s10000
+sysbench:      sysbench 1.0.20
+sqlrustgo:     sqlrustgo-mysql-server 0.1.0
+threads:       2
+time_sec:      15
+table_size:    10000
+
+--- key metrics ---
+(no metrics extracted — check sysbench_run.log)
+
+--- errors (if any) ---
+FATAL: mysql_stmt_prepare() failed
+FATAL: MySQL error: 2027 "Malformed packet"
+FATAL: `thread_init' function failed: /usr/share/sysbench/oltp_common.lua:284: SQL API error
+FATAL: mysql_stmt_prepare() failed
+FATAL: MySQL error: 2027 "Malformed packet"
+FATAL: `thread_init' function failed: /usr/share/sysbench/oltp_common.lua:284: SQL API error
+FATAL: Thread initialization failed!
