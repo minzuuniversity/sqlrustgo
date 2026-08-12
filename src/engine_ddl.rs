@@ -568,14 +568,10 @@ impl<S: StorageEngine + 'static> ExecutionEngine<S> {
                 }
             },
             AlterTableOperation::SetPartitionedBy => {
-                return Err(SqlError::ParseError(
-                    "ALTER TABLE ... SET PARTITIONED BY not supported".to_string(),
-                ));
+                return Err(SqlError::ParseError("not supported".to_string()));
             }
             AlterTableOperation::ResetPartitionedBy => {
-                return Err(SqlError::ParseError(
-                    "ALTER TABLE ... RESET PARTITIONED BY not supported".to_string(),
-                ));
+                return Err(SqlError::ParseError("not supported".to_string()));
             }
         }
 
