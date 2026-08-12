@@ -171,6 +171,7 @@ fn convert_expression(e: &sqlrustgo_parser::Expression) -> Expr {
                 "-" => Operator::Minus,
                 "*" => Operator::Multiply,
                 "/" => Operator::Divide,
+                "%" => Operator::Modulo,
                 _ => Operator::Eq,
             };
             Expr::BinaryExpr {

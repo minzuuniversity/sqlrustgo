@@ -26,3 +26,4 @@
 
 pub mod hash_anti_join;
 pub mod hash_join;
+pub mod hash_semi_join;
