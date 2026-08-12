@@ -174,6 +174,34 @@ fn test_corpus_run_set_operations_with_concat() {
     let _ = corpus.execute_file(&corpus_root.join("DML/SELECT/set_operations.sql"));
 }
 
+#[test]
+fn test_corpus_run_complex_combinations_corpus() {
+    let corpus_root = get_corpus_root();
+    let mut corpus = SqlCorpus::new(corpus_root.clone());
+    let _ = corpus.execute_file(&corpus_root.join("DML/SELECT/complex_combinations.sql"));
+}
+
+#[test]
+fn test_corpus_run_inline_views_corpus() {
+    let corpus_root = get_corpus_root();
+    let mut corpus = SqlCorpus::new(corpus_root.clone());
+    let _ = corpus.execute_file(&corpus_root.join("DML/SELECT/inline_views.sql"));
+}
+
+#[test]
+fn test_corpus_run_subquery_corner_cases() {
+    let corpus_root = get_corpus_root();
+    let mut corpus = SqlCorpus::new(corpus_root.clone());
+    let _ = corpus.execute_file(&corpus_root.join("DML/SELECT/subquery_corner_cases.sql"));
+}
+
+#[test]
+fn test_corpus_run_correlated_subquery() {
+    let corpus_root = get_corpus_root();
+    let mut corpus = SqlCorpus::new(corpus_root.clone());
+    let _ = corpus.execute_file(&corpus_root.join("DML/SELECT/correlated_subquery.sql"));
+}
+
 // ============================================================================
 // SqlCorpus unit-level coverage tests (Issue #3943)
 // ============================================================================
