@@ -241,8 +241,45 @@ impl From<&sqlrustgo_parser::Expression> for UnifiedExpr {
             },
             Expression::SequenceNextVal(name) => UnifiedExpr::SequenceNextVal(name.clone()),
             Expression::SequenceCurrval(name) => UnifiedExpr::SequenceCurrval(name.clone()),
+            // MySQL system variable references: `@@version_comment`,
+            // `@@autocommit`, etc. Resolved to a scalar literal at plan
+            // time — we don't track session/scope state, so each variable
+            // is resolved to a fixed string. This makes
+            // `SELECT @@version_comment LIMIT 1` return a single
+            // column with a single value, which is what mysql CLI 8.0+
+            // expects during its boot probe.
+            Expression::SystemVariable(name) => {
+                UnifiedExpr::Literal(resolve_system_variable(name))
+            }
             _ => UnifiedExpr::Literal(Value::Null),
         }
+    }
+}
+
+/// Resolve a MySQL system variable name (lowercase, no `@@` prefix) to
+/// its current scalar value.
+///
+/// This is the executor-side counterpart to the lexer's `@@` tokenization
+/// (see `crates/parser/src/lexer.rs`). It returns a `Value::Text` so
+/// that `SELECT @@version_comment LIMIT 1` produces a text column when
+/// the result set is rendered. Variables we don't model explicitly fall
+/// back to empty string rather than NULL so mysql CLI 8.0+ does not
+/// hang waiting for column values that never arrive.
+pub fn resolve_system_variable(name: &str) -> Value {
+    let key = name.to_ascii_lowercase();
+    match key.as_str() {
+        // mysql CLI 8.0+ boot probe expects a non-NULL scalar value.
+        "version_comment" => Value::Text("SQLRustGo".to_string()),
+        "version" => Value::Text(env!("CARGO_PKG_VERSION").to_string()),
+        "version_compile_os" => Value::Text(std::env::consts::OS.to_string()),
+        "version_compile_machine" => Value::Text(std::env::consts::ARCH.to_string()),
+        // Session variables that are always on in our single-session mode.
+        "autocommit" => Value::Integer(1),
+        "sql_mode" => Value::Text(String::new()),
+        // Anything else we don't model is returned as empty text rather
+        // than NULL — this keeps the result set column count consistent
+        // with row count (mysql CLI 8.0+ asserts columns == values per row).
+        _ => Value::Text(String::new()),
     }
 }
 
