@@ -2334,4 +2334,295 @@ mod tests {
         assert!(result.is_ok());
         assert_eq!(result.unwrap().server_version, "8.0.20");
     }
+
+    // ---- parse_length_encoded_string coverage ----
+
+    #[test]
+    fn test_parse_length_encoded_string_normal() {
+        // 0x03 'a' 'b' 'c'
+        let data = [0x03, b'a', b'b', b'c'];
+        let mut off = 0;
+        let s = parse_length_encoded_string(&data, &mut off).unwrap();
+        assert_eq!(s, "abc");
+        assert_eq!(off, 4);
+    }
+
+    #[test]
+    fn test_parse_length_encoded_string_null_returns_empty() {
+        // 0xfb is the NULL marker → returns empty string.
+        let data = [0xfb, 0x00, 0x00];
+        let mut off = 0;
+        let s = parse_length_encoded_string(&data, &mut off).unwrap();
+        assert_eq!(s, "");
+        assert_eq!(off, 1);
+    }
+
+    #[test]
+    fn test_parse_length_encoded_string_zero_len() {
+        // 0x00 length prefix → empty string, offset advances by 1.
+        let data = [0x00, 0xff];
+        let mut off = 0;
+        let s = parse_length_encoded_string(&data, &mut off).unwrap();
+        assert_eq!(s, "");
+        assert_eq!(off, 1);
+    }
+
+    // ---- parse_column_definition coverage ----
+
+    #[test]
+    fn test_parse_column_definition_minimal() {
+        // Build a minimal valid column definition payload:
+        //   catalog (len-encoded empty) + schema + table + org_table + name + org_name +
+        //   fixed-length-of-following (12) + character_set(2) + column_length(4) +
+        //   column_type(1) + flags(2) + decimals(1) + filler(2)
+        let mut data = Vec::new();
+        for _ in 0..6 {
+            data.push(0x00); // empty length-encoded string
+        }
+        data.push(0x0c); // length-of-fixed-fields = 12
+        data.extend_from_slice(&33u16.to_le_bytes()); // utf8 charset
+        data.extend_from_slice(&32u32.to_le_bytes()); // column_length
+        data.push(0xfd); // MYSQL_TYPE_VAR_STRING
+        data.extend_from_slice(&0u16.to_le_bytes()); // flags
+        data.push(0x00); // decimals
+        data.extend_from_slice(&[0x00, 0x00]); // filler
+
+        let mut off = 0;
+        let col = parse_column_definition(&data, &mut off).unwrap();
+        assert_eq!(col.name, "");
+        assert_eq!(col.table, "");
+        assert_eq!(col.character_set, 33);
+        assert_eq!(col.column_length, 32);
+        assert_eq!(col.column_type, 0xfd);
+        assert_eq!(col.flags, 0);
+        assert_eq!(col.decimals, 0);
+        assert_eq!(off, data.len());
+    }
+
+    #[test]
+    fn test_parse_column_definition_named_column() {
+        let mut data = Vec::new();
+        let push_lcs = |d: &mut Vec<u8>, s: &str| {
+            d.push(s.len() as u8);
+            d.extend_from_slice(s.as_bytes());
+        };
+        push_lcs(&mut data, "def");
+        push_lcs(&mut data, "");
+        push_lcs(&mut data, "t1");
+        push_lcs(&mut data, "t1");
+        push_lcs(&mut data, "id");
+        push_lcs(&mut data, "id");
+        data.push(0x0c);
+        data.extend_from_slice(&33u16.to_le_bytes());
+        data.extend_from_slice(&11u32.to_le_bytes());
+        data.push(0x03); // MYSQL_TYPE_LONG
+        data.extend_from_slice(&0u16.to_le_bytes());
+        data.push(0x00);
+        data.extend_from_slice(&[0x00, 0x00]);
+
+        let mut off = 0;
+        let col = parse_column_definition(&data, &mut off).unwrap();
+        assert_eq!(col.catalog, "def");
+        assert_eq!(col.table, "t1");
+        assert_eq!(col.name, "id");
+        assert_eq!(col.column_type, 0x03);
+    }
+
+    // ---- parse_text_row coverage ----
+
+    #[test]
+    fn test_parse_text_row_basic() {
+        // Two columns: "42" and "hello"
+        let mut data = Vec::new();
+        data.push(0x02);
+        data.extend_from_slice(b"42");
+        data.push(0x05);
+        data.extend_from_slice(b"hello");
+
+        let mut off = 0;
+        let row = parse_text_row(&data, &mut off, 2).unwrap();
+        assert_eq!(row, vec!["42", "hello"]);
+        assert_eq!(off, data.len());
+    }
+
+    #[test]
+    fn test_parse_text_row_with_null() {
+        // 0xfb marks NULL; should produce "NULL".
+        let data = [0xfb, 0x03, b'a', b'b', b'c'];
+        let mut off = 0;
+        let row = parse_text_row(&data, &mut off, 2).unwrap();
+        assert_eq!(row, vec!["NULL", "abc"]);
+    }
+
+    #[test]
+    fn test_parse_text_row_truncated() {
+        // Asks for 3 columns but only 1 byte remains.
+        let data = [0xfb];
+        let mut off = 0;
+        let result = parse_text_row(&data, &mut off, 3);
+        assert!(result.is_err());
+    }
+
+    // ---- parse_binary_value coverage ----
+
+    #[test]
+    fn test_parse_binary_value_two_byte_int() {
+        // 0xfc prefix → 2-byte little-endian int.
+        let data = [0xfc, 0xff, 0x00];
+        let (s, consumed) = parse_binary_value(&data).unwrap();
+        assert_eq!(s, "255");
+        assert_eq!(consumed, 3);
+    }
+
+    #[test]
+    fn test_parse_binary_value_three_byte_int() {
+        // 0xfd prefix → 3-byte little-endian int (sign-extended to i32).
+        let data = [0xfd, 0x01, 0x00, 0x00];
+        let (s, consumed) = parse_binary_value(&data).unwrap();
+        assert_eq!(s, "1");
+        assert_eq!(consumed, 4);
+    }
+
+    #[test]
+    fn test_parse_binary_value_eight_byte_int() {
+        // 0xfe prefix → 8-byte little-endian int.
+        let data = [0xfe, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0x7f];
+        let (s, consumed) = parse_binary_value(&data).unwrap();
+        assert_eq!(s, "9223372036854775807");
+        assert_eq!(consumed, 9);
+    }
+
+    #[test]
+    fn test_parse_binary_value_default_is_string() {
+        // Unknown type tag falls through to parse_length_encoded_string.
+        let data = [0x03, b'a', b'b', b'c'];
+        let (s, consumed) = parse_binary_value(&data).unwrap();
+        assert_eq!(s, "abc");
+        assert_eq!(consumed, 4);
+    }
+
+    #[test]
+    fn test_parse_binary_value_empty_returns_none() {
+        let data: &[u8] = &[];
+        assert!(parse_binary_value(data).is_none());
+    }
+
+    #[test]
+    fn test_parse_binary_value_two_byte_truncated() {
+        // 0xfc needs 3 bytes total but only 2 provided.
+        let data = [0xfc, 0x01];
+        assert!(parse_binary_value(&data).is_none());
+    }
+
+    // ---- Packet read/write coverage ----
+
+    #[test]
+    fn test_packet_read_write_roundtrip() {
+        let original = Packet::new(7, b"hello world".to_vec());
+        let mut buf = Vec::new();
+        original.write_to(&mut buf).unwrap();
+        let parsed = Packet::read_from(&mut buf.as_slice()).unwrap();
+        assert_eq!(parsed.sequence, 7);
+        assert_eq!(parsed.payload, b"hello world");
+    }
+
+    #[test]
+    fn test_packet_read_truncated_header() {
+        // Header is 4 bytes; only 2 provided should error.
+        let buf = vec![0u8, 0u8];
+        let result = Packet::read_from(&mut buf.as_slice());
+        assert!(result.is_err());
+    }
+
+    #[test]
+    fn test_read_exact_retry_partial() {
+        // read_exact_retry fills up to N bytes from the reader. Provide
+        // a reader that returns data in chunks so the loop is exercised.
+        struct Chunked {
+            data: Vec<u8>,
+            offset: usize,
+            chunk_size: usize,
+        }
+        impl std::io::Read for Chunked {
+            fn read(&mut self, buf: &mut [u8]) -> std::io::Result<usize> {
+                if self.offset >= self.data.len() {
+                    return Ok(0);
+                }
+                let n = self.chunk_size.min(buf.len()).min(self.data.len() - self.offset);
+                buf[..n].copy_from_slice(&self.data[self.offset..self.offset + n]);
+                self.offset += n;
+                Ok(n)
+            }
+        }
+
+        let mut c = Chunked {
+            data: vec![1, 2, 3, 4, 5, 6, 7, 8],
+            offset: 0,
+            chunk_size: 3,
+        };
+        let mut buf = [0u8; 8];
+        read_exact_retry(&mut c, &mut buf).unwrap();
+        assert_eq!(buf, [1, 2, 3, 4, 5, 6, 7, 8]);
+    }
+
+    #[test]
+    fn test_read_null_terminated() {
+        let data = b"hello\0world";
+        let mut off = 0;
+        let s = read_null_terminated(data, &mut off).unwrap();
+        assert_eq!(s, "hello");
+        assert_eq!(off, 6);
+    }
+
+    #[test]
+    fn test_read_null_terminated_truncated() {
+        let data = b"no null";
+        let mut off = 0;
+        let result = read_null_terminated(data, &mut off);
+        assert!(result.is_err());
+    }
+
+    #[test]
+    fn test_parse_length_encoded_int_three_bytes() {
+        // 0xfd prefix → next 3 bytes are little-endian 24-bit int.
+        let data = [0xfd, 0x01, 0x00, 0x00];
+        let mut off = 0;
+        let v = parse_length_encoded_int(&data, &mut off).unwrap();
+        assert_eq!(v, 1);
+        assert_eq!(off, 4);
+    }
+
+    #[test]
+    fn test_parse_length_encoded_int_eight_bytes() {
+        // 0xfe prefix → next 8 bytes are little-endian 64-bit int.
+        let data = [0xfe, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0x7f];
+        let mut off = 0;
+        let v = parse_length_encoded_int(&data, &mut off).unwrap();
+        assert_eq!(v, 0x7fff_ffff_ffff_ffff);
+        assert_eq!(off, 9);
+    }
+
+    #[test]
+    fn test_build_handshake_response_basic() {
+        // Signature: build_handshake_response(seq, username, auth_response, database, auth_plugin)
+        let auth_response = vec![0u8; 20];
+        let packet = build_handshake_response(
+            1,                   // seq
+            "user",              // username
+            &auth_response,      // auth_response
+            "db",                // database
+            "mysql_native_password", // auth_plugin
+        );
+        assert!(!packet.payload.is_empty());
+        assert_eq!(packet.sequence, 1);
+    }
+
+    #[test]
+    fn test_build_handshake_response_no_db() {
+        let auth_response = vec![0u8; 20];
+        let packet = build_handshake_response(
+            1, "alice", &auth_response, "", "mysql_native_password",
+        );
+        assert!(!packet.payload.is_empty());
+    }
 }
