@@ -2883,6 +2883,13 @@ impl Parser {
                     body.push(';');
                     body.push(' ');
                 }
+                Some(Token::Dot) => {
+                    // Strip trailing space before dot so we get `NEW.name` not `NEW .name`
+                    while body.ends_with(' ') {
+                        body.pop();
+                    }
+                    body.push('.');
+                }
                 Some(Token::Identifier(sql)) => {
                     body.push_str(&sql);
                     body.push(' ');
@@ -10840,7 +10847,6 @@ fn test_parse_binary_expression_with_table_prefix() {
 }
 
 #[test]
-#[ignore = "CREATE TRIGGER body extraction not yet implemented; parser strips body content"]
 fn test_parse_create_trigger() {
     let sql = "CREATE TRIGGER test_trigger BEFORE INSERT ON users FOR EACH ROW BEGIN SET NEW.name = 'triggered'; END";
     let result = parse(sql);
@@ -11084,7 +11090,6 @@ fn test_parse_set_transaction() {
 }
 
 #[test]
-#[ignore = "parser does not yet recognize READ COMMITTED after ISOLATION LEVEL"]
 fn test_parse_set_transaction_read_committed() {
     let result = parse("SET TRANSACTION ISOLATION LEVEL READ COMMITTED");
     assert!(result.is_ok(), "Parse failed: {:?}", result);
@@ -11097,7 +11102,6 @@ fn test_parse_set_transaction_read_committed() {
 }
 
 #[test]
-#[ignore = "parser does not yet recognize READ UNCOMMITTED after ISOLATION LEVEL"]
 fn test_parse_set_transaction_read_uncommitted() {
     let result = parse("SET TRANSACTION ISOLATION LEVEL READ UNCOMMITTED");
     assert!(result.is_ok(), "Parse failed: {:?}", result);
@@ -11110,7 +11114,6 @@ fn test_parse_set_transaction_read_uncommitted() {
 }
 
 #[test]
-#[ignore = "parser does not yet recognize READ COMMITTED after ISOLATION LEVEL in BEGIN"]
 fn test_parse_begin_read_committed() {
     let result = parse("BEGIN ISOLATION LEVEL READ COMMITTED");
     assert!(result.is_ok(), "Parse failed: {:?}", result);
