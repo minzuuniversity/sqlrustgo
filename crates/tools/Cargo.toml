@@ -32,4 +32,3 @@ path = "src/bin/tbl2bin.rs"
 [[bin]]
 name = "bench_client"
 path = "src/bin/bench_client.rs"
-rand = "0.8"
