@@ -202,6 +202,48 @@ fn test_corpus_run_correlated_subquery() {
     let _ = corpus.execute_file(&corpus_root.join("DML/SELECT/correlated_subquery.sql"));
 }
 
+#[test]
+fn test_corpus_insert_with_unquoted_string_value() {
+    // Exercises evaluate_expression line 378: bare word that's not NULL,
+    // not parseable as int/float, and not quoted — falls through to
+    // Value::Text(s.to_string()).
+    let mut corpus = SqlCorpus::new(PathBuf::from("/tmp/anywhere"));
+    let content = "-- === SETUP ===\n\
+                       CREATE TABLE t (val TEXT);\n\
+                       -- === CASE: unquoted\n\
+                       INSERT INTO t VALUES (hello);\n";
+    let results = corpus.parse_and_execute(content);
+    assert_eq!(results.len(), 1);
+    assert_eq!(results[0].case_name, "unquoted");
+}
+
+#[test]
+fn test_corpus_select_with_null_literal() {
+    // Exercises evaluate_expression NULL path (line 369-370).
+    let mut corpus = SqlCorpus::new(PathBuf::from("/tmp/anywhere"));
+    let content = "-- === SETUP ===\n\
+                       CREATE TABLE t (val INT);\n\
+                       INSERT INTO t VALUES (1);\n\
+                       -- === CASE: null_lit\n\
+                       SELECT * FROM t WHERE val IS NULL;\n";
+    let results = corpus.parse_and_execute(content);
+    assert_eq!(results.len(), 1);
+    assert_eq!(results[0].case_name, "null_lit");
+}
+
+#[test]
+fn test_corpus_with_dml_unsupported_body() {
+    // Exercises execute_with_dml's `_ => Err(...)` branch when body is
+    // not Insert/Update/Delete.
+    let mut corpus = SqlCorpus::new(PathBuf::from("/tmp/anywhere"));
+    let content = "-- === CASE: with_select_in_dml\n\
+                       WITH src(x) AS (SELECT 1 AS v) \
+                       SELECT * FROM src;\n";
+    let results = corpus.parse_and_execute(content);
+    assert_eq!(results.len(), 1);
+    assert_eq!(results[0].case_name, "with_select_in_dml");
+}
+
 // ============================================================================
 // SqlCorpus unit-level coverage tests (Issue #3943)
 // ============================================================================
