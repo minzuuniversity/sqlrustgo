@@ -3206,6 +3206,7 @@ impl<S: StorageEngine + 'static> ExecutionEngine<S> {
             | Expression::WindowCall(_)
             | Expression::SequenceNextVal(_)
             | Expression::SequenceCurrval(_)
+            | Expression::SystemVariable(_)
             | Expression::JsonLiteral(_) => where_expr.clone(),
         }
     }

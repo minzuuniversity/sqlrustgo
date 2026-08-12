@@ -900,6 +900,10 @@ pub enum Expression {
     /// JSON literal: JSON_EXTRACT / JSON_VALUE operands and JSON() constructor.
     /// The `String` field stores the canonical JSON text produced by serde_json.
     JsonLiteral(String),
+    /// MySQL system variable reference: `@@version_comment`, `@@autocommit`,
+    /// `@@sql_mode`, etc. The `String` is the variable name in lower-case.
+    /// The executor resolves the name to a scalar value at evaluation time.
+    SystemVariable(String),
 }
 
 /// V312-19 #3972: constant-fold an arithmetic expression to a `u64` LIMIT/OFFSET value.
@@ -3235,6 +3239,31 @@ impl Parser {
                         name: "NULL".to_string(),
                         alias,
                         expression: Some(Expression::Literal("NULL".to_string())),
+                    });
+                }
+                // V312-19 / #4019.2: MySQL `@@system_variable` reference in
+                // SELECT projection (e.g. mysql CLI 8.0+'s boot probe
+                // `SELECT @@version_comment LIMIT 1`). Treat as a single
+                // scalar expression, not a column ref.
+                Some(Token::SystemVariable(name)) => {
+                    let var_name = name.clone();
+                    self.next();
+                    let alias = if matches!(self.current(), Some(Token::As)) {
+                        self.next();
+                        if let Some(Token::Identifier(n)) = self.current() {
+                            let a = n.clone();
+                            self.next();
+                            Some(a)
+                        } else {
+                            None
+                        }
+                    } else {
+                        None
+                    };
+                    columns.push(SelectColumn {
+                        name: format!("@@{}", var_name),
+                        alias,
+                        expression: Some(Expression::SystemVariable(var_name)),
                     });
                 }
                 // Handle aggregate functions: COUNT(*), SUM(col), etc.
@@ -6717,6 +6746,14 @@ impl Parser {
                 }
                 self.expect(Token::RParen)?;
                 Ok(Expression::FunctionCall(name.to_string(), args))
+            }
+            Some(Token::SystemVariable(name)) => {
+                // MySQL `@@version_comment` / `@@autocommit` / etc. — a single
+                // scalar expression that the executor resolves to the current
+                // session/system value at plan time.
+                let var_name = name.clone();
+                self.next();
+                Ok(Expression::SystemVariable(var_name))
             }
             Some(Token::Identifier(_)) => {
                 let name = match self.current() {
@@ -12988,6 +13025,80 @@ mod set_op_tests {
     fn test_select_null_column() {
         let result = parse("SELECT NULL AS col FROM t");
         assert!(result.is_ok(), "Parse failed: {:?}", result);
+    }
+
+    /// V312-19 / #4019.2: MySQL `@@system_variable` reference must be
+    /// lexed and parsed as a single `Expression::SystemVariable`, NOT
+    /// as three separate identifiers (`@`, `@`, `version_comment`).
+    /// This is what mysql CLI 8.0+ sends as its boot probe
+    /// (`SELECT @@version_comment LIMIT 1`), and the previous fallback
+    /// path caused the parser to emit 3 columns, leading to schema
+    /// mismatch and a wire-protocol hang.
+    #[test]
+    fn test_select_system_variable_version_comment() {
+        let result = parse("SELECT @@version_comment LIMIT 1");
+        assert!(result.is_ok(), "Parse failed: {:?}", result);
+        match result.unwrap() {
+            Statement::Select(s) => {
+                assert_eq!(s.columns.len(), 1, "expected 1 column for `@@version_comment`");
+                let expr = s.columns[0]
+                    .expression
+                    .as_ref()
+                    .expect("SELECT column must have an expression");
+                match expr {
+                    Expression::SystemVariable(name) => {
+                        assert_eq!(name, "version_comment");
+                    }
+                    other => panic!(
+                        "Expected SystemVariable, got {:?}",
+                        other
+                    ),
+                }
+                assert!(s.limit.is_some(), "LIMIT 1 should be preserved");
+            }
+            other => panic!("Expected Select, got {:?}", other),
+        }
+    }
+
+    #[test]
+    fn test_lexer_emits_system_variable_token() {
+        let mut lexer = Lexer::new("@@autocommit");
+        let tokens = lexer.tokenize();
+        // Expect exactly 1 SystemVariable token (followed by Eof).
+        let sysvars: Vec<&Token> = tokens
+            .iter()
+            .filter(|t| matches!(t, Token::SystemVariable(_)))
+            .collect();
+        assert_eq!(
+            sysvars.len(),
+            1,
+            "expected 1 SystemVariable, got tokens = {:?}",
+            tokens
+        );
+        match &sysvars[0] {
+            Token::SystemVariable(name) => assert_eq!(name, "autocommit"),
+            _ => unreachable!(),
+        }
+    }
+
+    #[test]
+    fn test_lexer_single_at_falls_back_to_identifier() {
+        // A single `@foo` (no second `@`) is not a system variable in
+        // MySQL syntax; we accept it as a plain identifier so the
+        // parser can still produce a clear error message rather than
+        // a crash.
+        let mut lexer = Lexer::new("@foo");
+        let tokens = lexer.tokenize();
+        let sysvars: Vec<&Token> = tokens
+            .iter()
+            .filter(|t| matches!(t, Token::SystemVariable(_)))
+            .collect();
+        assert_eq!(
+            sysvars.len(),
+            0,
+            "single `@` must not produce a SystemVariable, got tokens = {:?}",
+            tokens
+        );
     }
 
     #[test]

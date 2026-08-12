@@ -82,6 +82,7 @@ artifacts/
 
 # Build / coverage / governance outputs (top-level)
 coverage-report/
+coverage-baseline/
 release-artifacts/
 /releases/  # repo-root release artifacts; docs/releases/ intentionally tracked
 

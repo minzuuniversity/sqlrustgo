@@ -286,6 +286,10 @@ pub enum Token {
     NumberLiteral(String),
     BooleanLiteral(bool),
 
+    // MySQL system variable reference: `@@version_comment`, `@@autocommit`, etc.
+    // Synthesized by the lexer when `@@` is followed by an identifier.
+    SystemVariable(String),
+
     // Special
     Eof,
 }
@@ -297,6 +301,7 @@ impl fmt::Display for Token {
             Token::StringLiteral(s) => write!(f, "'{}'", s),
             Token::NumberLiteral(s) => write!(f, "{}", s),
             Token::BooleanLiteral(b) => write!(f, "{}", b),
+            Token::SystemVariable(s) => write!(f, "@@{}", s),
             // Keywords and data types - uppercase
             Token::Select => write!(f, "SELECT"),
             Token::From => write!(f, "FROM"),
