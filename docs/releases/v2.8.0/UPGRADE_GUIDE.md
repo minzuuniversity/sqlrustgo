@@ -648,9 +648,8 @@ cargo test --test buffer_pool_benchmark_test
 
 - [GitHub Issues](https://github.com/minzuuniversity/sqlrustgo/issues)
 - [v2.8.0 文档入口](./README.md)
-- [迁移指南](../../MIGRATION_GUIDE.md)
+- [迁移指南](../../../MIGRATION_GUIDE.md)
 - [版本计划](./VERSION_PLAN.md)
-- [安全加固指南](./SECURITY_HARDENING.md)
 
 ---
 
