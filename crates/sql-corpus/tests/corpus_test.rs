@@ -1115,4 +1115,113 @@ mod corpus_unit_tests {
         assert_eq!(results.len(), 1);
         assert_eq!(results[0].case_name, "str_semi");
     }
+
+    #[test]
+    fn test_corpus_recursive_cte_with_union_no_all() {
+        // Exercises the non-union_all branch in execute_recursive_cte
+        // (line 892+) which deduplicates against existing rows.
+        let mut corpus = SqlCorpus::new(PathBuf::from("/tmp/anywhere"));
+        let content = "-- === CASE: rec_union\n\
+                       WITH RECURSIVE nums(n) AS (\
+                       SELECT 1 \
+                       UNION \
+                       SELECT n + 1 FROM nums WHERE n < 3\
+                       ) SELECT * FROM nums;\n";
+        let results = corpus.parse_and_execute(content);
+        assert_eq!(results.len(), 1);
+        assert_eq!(results[0].case_name, "rec_union");
+    }
+
+    #[test]
+    fn test_corpus_update_with_invalid_column() {
+        // UPDATE with a column name that doesn't exist exercises the
+        // filter_map's None branch (line 328-329).
+        let mut corpus = SqlCorpus::new(PathBuf::from("/tmp/anywhere"));
+        let content = "-- === SETUP ===\n\
+                       CREATE TABLE t (id INT, val INT);\n\
+                       INSERT INTO t VALUES (1, 10);\n\
+                       -- === CASE: bad_col_update\n\
+                       UPDATE t SET nonexistent = 5;\n";
+        let results = corpus.parse_and_execute(content);
+        assert_eq!(results.len(), 1);
+        assert_eq!(results[0].case_name, "bad_col_update");
+    }
+
+    #[test]
+    fn test_corpus_update_with_complex_set_expr() {
+        // Exercises evaluate_expression path for SET clauses.
+        let mut corpus = SqlCorpus::new(PathBuf::from("/tmp/anywhere"));
+        let content = "-- === SETUP ===\n\
+                       CREATE TABLE t (id INT, a INT, b INT);\n\
+                       INSERT INTO t VALUES (1, 10, 20);\n\
+                       -- === CASE: update_arith\n\
+                       UPDATE t SET a = a + b, b = a * 2;\n";
+        let results = corpus.parse_and_execute(content);
+        assert_eq!(results.len(), 1);
+        assert_eq!(results[0].case_name, "update_arith");
+    }
+
+    #[test]
+    fn test_corpus_execute_select_with_derived_subquery() {
+        // Exercises the derived subqueries materialisation path
+        // (lines 393-425 in execute_select). A SELECT with a subquery
+        // in the FROM clause triggers this.
+        let mut corpus = SqlCorpus::new(PathBuf::from("/tmp/anywhere"));
+        let content = "-- === SETUP ===\n\
+                       CREATE TABLE src (id INT, val INT);\n\
+                       INSERT INTO src VALUES (1, 10);\n\
+                       INSERT INTO src VALUES (2, 20);\n\
+                       -- === CASE: from_subq\n\
+                       SELECT * FROM (SELECT * FROM src WHERE val > 10) AS sub;\n";
+        let results = corpus.parse_and_execute(content);
+        assert_eq!(results.len(), 1);
+        assert_eq!(results[0].case_name, "from_subq");
+    }
+
+    #[test]
+    fn test_corpus_select_with_text_in_where() {
+        // Exercises evaluate_expression with String literal type for
+        // Value::Text path (line 376-378).
+        let mut corpus = SqlCorpus::new(PathBuf::from("/tmp/anywhere"));
+        let content = "-- === SETUP ===\n\
+                       CREATE TABLE t (name TEXT);\n\
+                       INSERT INTO t VALUES ('hello');\n\
+                       INSERT INTO t VALUES ('world');\n\
+                       -- === CASE: text_where\n\
+                       SELECT * FROM t WHERE name = 'hello';\n";
+        let results = corpus.parse_and_execute(content);
+        assert_eq!(results.len(), 1);
+        assert_eq!(results[0].case_name, "text_where");
+    }
+
+    #[test]
+    fn test_corpus_select_with_multiple_set_clauses_one_invalid() {
+        // UPDATE with one valid column + one invalid column triggers
+        // the filter_map None branch (line 329).
+        let mut corpus = SqlCorpus::new(PathBuf::from("/tmp/anywhere"));
+        let content = "-- === SETUP ===\n\
+                       CREATE TABLE t (id INT, val INT);\n\
+                       INSERT INTO t VALUES (1, 10);\n\
+                       -- === CASE: mixed_update\n\
+                       UPDATE t SET val = 100, missing = 5;\n";
+        let results = corpus.parse_and_execute(content);
+        assert_eq!(results.len(), 1);
+        assert_eq!(results[0].case_name, "mixed_update");
+    }
+
+    #[test]
+    fn test_corpus_insert_with_subquery() {
+        // INSERT ... SELECT — exercises the WithDml path.
+        let mut corpus = SqlCorpus::new(PathBuf::from("/tmp/anywhere"));
+        let content = "-- === SETUP ===\n\
+                       CREATE TABLE src (id INT);\n\
+                       CREATE TABLE dest (id INT);\n\
+                       INSERT INTO src VALUES (1);\n\
+                       INSERT INTO src VALUES (2);\n\
+                       -- === CASE: insert_select\n\
+                       INSERT INTO dest SELECT * FROM src;\n";
+        let results = corpus.parse_and_execute(content);
+        assert_eq!(results.len(), 1);
+        assert_eq!(results[0].case_name, "insert_select");
+    }
 }
