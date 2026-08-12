@@ -1,0 +1,25 @@
+=== #4019 Sysbench OLTP Baseline ===
+run_id:        20260812T130145Z_t2_s100
+sysbench:      sysbench 1.0.20
+sqlrustgo:     sqlrustgo-mysql-server 0.1.0
+host:port:     127.0.0.1:23307
+db:            e2e_baseline_17295
+table_size:    100
+threads:       2
+time_sec:      8
+
+--- result codes ---
+cpu_baseline_rc:        0
+oltp_read_only_rc:      1
+
+--- cpu baseline ---
+    events per second:   938.41
+General statistics:
+    total time:                          8.0014s
+Latency (ms):
+
+--- oltp_read_only baseline ---
+(no metrics extracted — see sysbench_oltp_read_only.log)
+
+--- errors (if any) ---
+(none)
