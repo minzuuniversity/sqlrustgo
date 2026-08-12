@@ -13040,7 +13040,11 @@ mod set_op_tests {
         assert!(result.is_ok(), "Parse failed: {:?}", result);
         match result.unwrap() {
             Statement::Select(s) => {
-                assert_eq!(s.columns.len(), 1, "expected 1 column for `@@version_comment`");
+                assert_eq!(
+                    s.columns.len(),
+                    1,
+                    "expected 1 column for `@@version_comment`"
+                );
                 let expr = s.columns[0]
                     .expression
                     .as_ref()
@@ -13049,10 +13053,7 @@ mod set_op_tests {
                     Expression::SystemVariable(name) => {
                         assert_eq!(name, "version_comment");
                     }
-                    other => panic!(
-                        "Expected SystemVariable, got {:?}",
-                        other
-                    ),
+                    other => panic!("Expected SystemVariable, got {:?}", other),
                 }
                 assert!(s.limit.is_some(), "LIMIT 1 should be preserved");
             }
