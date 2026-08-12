@@ -3151,7 +3151,24 @@ pub fn replace_placeholders(sql: &str, params: &[StmtParam]) -> String {
             String::from_utf8_lossy(param).into_owned()
         } else {
             match String::from_utf8(param.clone()) {
-                Ok(s) => format!("'{}'", s.replace('\'', "''")),
+                Ok(s) => {
+                    // String types get quoted. Numeric types get unquoted
+                    // even though the client sent VAR_STRING — this happens
+                    // when the client advertised a wrong type but the value
+                    // is a plain ASCII number that fits the schema column.
+                    // Without this, `WHERE id = ?` with param "1" produces
+                    // `WHERE id = '1'` which compares INT to STRING and
+                    // matches zero rows (Issue #4130).
+                    if !s.is_empty()
+                        && s.bytes().all(|b| b.is_ascii_digit())
+                        && param.len() < 20
+                    {
+                        // Treat as numeric literal (no quotes).
+                        s
+                    } else {
+                        format!("'{}'", s.replace('\'', "''"))
+                    }
+                }
                 Err(_) => "NULL".to_string(),
             }
         };
@@ -3457,18 +3474,27 @@ pub fn parse_stmt_execute_params(
             params.push((Vec::new(), false));
             continue;
         }
-        // Server is the source of truth for parameter types (it knows the
-        // schema). The client's `type_codes` from `new_params_bound_flag`
-        // are advisory only — some clients (sysbench 1.0.20) advertise
-        // MYSQL_TYPE_VAR_STRING (0xfd) for every parameter regardless of
-        // the underlying column type, which causes INT64 values to be
-        // misread as length-encoded strings (Issue #3372 follow-up).
-        // Prefer the prepared statement's type, falling back to the
-        // client's advertised type only when we have no schema info.
-        let type_code: u8 = prepared_param_types
+        // Parameter type priority: client_advertised > server_prepared > VAR_STRING.
+        //
+        // When `new_params_bound_flag == 1` the client BOTH advertises the
+        // type AND encodes the value per that type. If we use the
+        // server-prepared type (LONG) but the client advertised VAR_STRING
+        // and sent a length-encoded string, decode_param reads 4 bytes
+        // looking for an i32 and fails (returns None) → param becomes NULL.
+        // This breaks `WHERE id = ?` SELECT-style prepared statements
+        // because `id = NULL` matches nothing and the test then sees
+        // "expected Select, got OK(0)" from the test_wire_smoke_stmt
+        // regression.
+        //
+        // The server's `prepared_param_types` are still useful for clients
+        // that set `new_params_bound_flag = 0` (no per-param type sent) —
+        // for those clients we use the prepared type. For clients that
+        // DO send types (new_params_bound_flag = 1), trust their wire
+        // encoding.
+        let type_code: u8 = type_codes
             .get(i)
             .copied()
-            .or_else(|| type_codes.get(i).copied())
+            .or_else(|| prepared_param_types.get(i).copied())
             .unwrap_or(mysql_type::VAR_STRING);
         match decode_param(payload, &mut pos, type_code) {
             Some(v) => params.push((v, is_numeric_type(type_code))),
