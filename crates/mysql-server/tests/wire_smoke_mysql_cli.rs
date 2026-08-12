@@ -37,6 +37,7 @@ fn start_server() -> sqlrustgo_mysql_server::testing::EphemeralHandle {
         server_threads: 2,
         storage: None,
         slow_query_log: None,
+        metrics_port: None,
     };
     start_ephemeral(config).expect("ephemeral server starts")
 }
