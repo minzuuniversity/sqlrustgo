@@ -2282,6 +2282,42 @@ fn test_parse_foreign_key_on_update_set_default() {
     let _ = result;
 }
 
+#[test]
+fn test_parse_foreign_key_on_delete_cascade_only() {
+    let result = parse("CREATE TABLE child (id INT, fk_id INT, FOREIGN KEY (fk_id) REFERENCES parent ON DELETE CASCADE)");
+    let _ = result;
+}
+
+#[test]
+fn test_parse_foreign_key_on_delete_restrict_only() {
+    let result = parse("CREATE TABLE child (id INT, fk_id INT, FOREIGN KEY (fk_id) REFERENCES parent ON DELETE RESTRICT)");
+    let _ = result;
+}
+
+#[test]
+fn test_parse_foreign_key_on_delete_no_action_only() {
+    let result = parse("CREATE TABLE child (id INT, fk_id INT, FOREIGN KEY (fk_id) REFERENCES parent ON DELETE NO ACTION)");
+    let _ = result;
+}
+
+#[test]
+fn test_parse_foreign_key_on_delete_set_null_only() {
+    let result = parse("CREATE TABLE child (id INT, fk_id INT, FOREIGN KEY (fk_id) REFERENCES parent ON DELETE SET NULL)");
+    let _ = result;
+}
+
+#[test]
+fn test_parse_foreign_key_on_update_cascade() {
+    let result = parse("CREATE TABLE child (id INT, fk_id INT, FOREIGN KEY (fk_id) REFERENCES parent ON UPDATE CASCADE)");
+    let _ = result;
+}
+
+#[test]
+fn test_parse_foreign_key_on_both_delete_and_update() {
+    let result = parse("CREATE TABLE child (id INT, fk_id INT, FOREIGN KEY (fk_id) REFERENCES parent ON DELETE CASCADE ON UPDATE RESTRICT)");
+    let _ = result;
+}
+
 // ============ More ALTER TABLE variants ============
 
 #[test]
