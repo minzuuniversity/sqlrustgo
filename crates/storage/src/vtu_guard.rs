@@ -214,6 +214,7 @@ mod tests {
             unique_constraints: vec![],
             check_constraints: vec![],
             compression: None,
+            collations: std::collections::HashMap::new(),
             partition_info: None,
         }
     }
@@ -413,11 +414,13 @@ mod tests {
                     nullable: false,
                     primary_key: false,
                     char_max_length: None,
+                collation: None,
                 }],
                 foreign_keys: vec![],
                 unique_constraints: vec![],
                 check_constraints: vec![],
                 compression: None,
+                collations: std::collections::HashMap::new(),
                 partition_info: None,
             })
             .unwrap();
@@ -430,6 +433,7 @@ mod tests {
                     nullable: true,
                     primary_key: false,
                     char_max_length: None,
+                collation: None,
                 },
             )
             .unwrap();

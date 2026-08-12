@@ -23,12 +23,14 @@ mod tests {
                 nullable: false,
                 primary_key: false,
                 char_max_length: None,
+                collation: None,
             }],
             foreign_keys: vec![],
             unique_constraints: vec![],
             check_constraints: vec![],
             compression: None,
             partition_info: None,
+            collations: std::collections::HashMap::new(),
         };
 
         let child = TableInfo {
@@ -40,6 +42,7 @@ mod tests {
                     nullable: false,
                     primary_key: false,
                     char_max_length: None,
+                    collation: None,
                 },
                 ColumnDefinition {
                     name: "parent_id".to_string(),
@@ -52,6 +55,7 @@ mod tests {
                         referenced_column: "id".to_string(),
                         on_delete: None,
                         on_update: None,
+                        collation: None,
                     }),
                 },
             ],
@@ -60,6 +64,7 @@ mod tests {
             check_constraints: vec![],
             compression: None,
             partition_info: None,
+            collations: std::collections::HashMap::new(),
         };
 
         storage.create_table(&parent).unwrap();
@@ -86,12 +91,14 @@ mod tests {
                 nullable: false,
                 primary_key: false,
                 char_max_length: None,
+                collation: None,
             }],
             foreign_keys: vec![],
             unique_constraints: vec![],
             check_constraints: vec![],
             compression: None,
             partition_info: None,
+            collations: std::collections::HashMap::new(),
         };
 
         let child = TableInfo {
@@ -103,6 +110,7 @@ mod tests {
                     nullable: false,
                     primary_key: false,
                     char_max_length: None,
+                    collation: None,
                 },
                 ColumnDefinition {
                     name: "parent_id".to_string(),
@@ -115,6 +123,7 @@ mod tests {
                         referenced_column: "id".to_string(),
                         on_delete: None,
                         on_update: None,
+                        collation: None,
                     }),
                 },
             ],
@@ -123,6 +132,7 @@ mod tests {
             check_constraints: vec![],
             compression: None,
             partition_info: None,
+            collations: std::collections::HashMap::new(),
         };
 
         storage.create_table(&parent).unwrap();
@@ -160,12 +170,14 @@ mod tests {
                 nullable: false,
                 primary_key: false,
                 char_max_length: None,
+                collation: None,
             }],
             foreign_keys: vec![],
             unique_constraints: vec![],
             check_constraints: vec![],
             compression: None,
             partition_info: None,
+            collations: std::collections::HashMap::new(),
         };
 
         let child = TableInfo {
@@ -177,6 +189,7 @@ mod tests {
                     nullable: false,
                     primary_key: false,
                     char_max_length: None,
+                    collation: None,
                 },
                 ColumnDefinition {
                     name: "user_id".to_string(),
@@ -189,6 +202,7 @@ mod tests {
                         referenced_column: "id".to_string(),
                         on_delete: Some(ForeignKeyAction::Cascade),
                         on_update: None,
+                        collation: None,
                     }),
                 },
             ],
@@ -197,6 +211,7 @@ mod tests {
             check_constraints: vec![],
             compression: None,
             partition_info: None,
+            collations: std::collections::HashMap::new(),
         };
 
         storage.create_table(&parent).unwrap();
@@ -227,12 +242,14 @@ mod tests {
                 nullable: false,
                 primary_key: false,
                 char_max_length: None,
+                collation: None,
             }],
             foreign_keys: vec![],
             unique_constraints: vec![],
             check_constraints: vec![],
             compression: None,
             partition_info: None,
+            collations: std::collections::HashMap::new(),
         };
 
         let child = TableInfo {
@@ -244,6 +261,7 @@ mod tests {
                     nullable: false,
                     primary_key: false,
                     char_max_length: None,
+                    collation: None,
                 },
                 ColumnDefinition {
                     name: "dept_id".to_string(),
@@ -256,6 +274,7 @@ mod tests {
                         referenced_column: "id".to_string(),
                         on_delete: Some(ForeignKeyAction::SetNull),
                         on_update: None,
+                        collation: None,
                     }),
                 },
             ],
@@ -264,6 +283,7 @@ mod tests {
             check_constraints: vec![],
             compression: None,
             partition_info: None,
+            collations: std::collections::HashMap::new(),
         };
 
         let parent = TableInfo {
@@ -274,12 +294,14 @@ mod tests {
                 nullable: false,
                 primary_key: false,
                 char_max_length: None,
+                collation: None,
             }],
             foreign_keys: vec![],
             unique_constraints: vec![],
             check_constraints: vec![],
             compression: None,
             partition_info: None,
+            collations: std::collections::HashMap::new(),
         };
 
         storage.create_table(&parent).unwrap();
@@ -311,6 +333,7 @@ mod tests {
                     nullable: false,
                     primary_key: false,
                     char_max_length: None,
+                    collation: None,
                 },
                 ColumnDefinition {
                     name: "manager_id".to_string(),
@@ -323,6 +346,7 @@ mod tests {
                         referenced_column: "id".to_string(),
                         on_delete: None,
                         on_update: None,
+                        collation: None,
                     }),
                 },
             ],
@@ -331,6 +355,7 @@ mod tests {
             check_constraints: vec![],
             compression: None,
             partition_info: None,
+            collations: std::collections::HashMap::new(),
         };
 
         storage.create_table(&info).unwrap();
@@ -359,12 +384,14 @@ mod tests {
                 nullable: false,
                 primary_key: false,
                 char_max_length: None,
+                collation: None,
             }],
             foreign_keys: vec![],
             unique_constraints: vec![],
             check_constraints: vec![],
             compression: None,
             partition_info: None,
+            collations: std::collections::HashMap::new(),
         };
 
         let table2 = TableInfo {
@@ -375,12 +402,14 @@ mod tests {
                 nullable: false,
                 primary_key: false,
                 char_max_length: None,
+                collation: None,
             }],
             foreign_keys: vec![],
             unique_constraints: vec![],
             check_constraints: vec![],
             compression: None,
             partition_info: None,
+            collations: std::collections::HashMap::new(),
         };
 
         let table3 = TableInfo {
@@ -392,6 +421,7 @@ mod tests {
                     nullable: false,
                     primary_key: false,
                     char_max_length: None,
+                    collation: None,
                 },
                 ColumnDefinition {
                     name: "customer_id".to_string(),
@@ -404,6 +434,7 @@ mod tests {
                         referenced_column: "id".to_string(),
                         on_delete: None,
                         on_update: None,
+                        collation: None,
                     }),
                 },
                 ColumnDefinition {
@@ -417,6 +448,7 @@ mod tests {
                         referenced_column: "id".to_string(),
                         on_delete: None,
                         on_update: None,
+                        collation: None,
                     }),
                 },
             ],
@@ -425,6 +457,7 @@ mod tests {
             check_constraints: vec![],
             compression: None,
             partition_info: None,
+            collations: std::collections::HashMap::new(),
         };
 
         storage.create_table(&table1).unwrap();
@@ -462,12 +495,14 @@ mod tests {
                 nullable: false,
                 primary_key: false,
                 char_max_length: None,
+                collation: None,
             }],
             foreign_keys: vec![],
             unique_constraints: vec![],
             check_constraints: vec![],
             compression: None,
             partition_info: None,
+            collations: std::collections::HashMap::new(),
         };
 
         let child = TableInfo {
@@ -479,6 +514,7 @@ mod tests {
                     nullable: false,
                     primary_key: false,
                     char_max_length: None,
+                    collation: None,
                 },
                 ColumnDefinition {
                     name: "category_id".to_string(),
@@ -491,6 +527,7 @@ mod tests {
                         referenced_column: "id".to_string(),
                         on_delete: Some(ForeignKeyAction::Restrict),
                         on_update: None,
+                        collation: None,
                     }),
                 },
             ],
@@ -499,6 +536,7 @@ mod tests {
             check_constraints: vec![],
             compression: None,
             partition_info: None,
+            collations: std::collections::HashMap::new(),
         };
 
         storage.create_table(&parent).unwrap();
@@ -527,6 +565,7 @@ mod tests {
                     nullable: false,
                     primary_key: false,
                     char_max_length: None,
+                    collation: None,
                 },
                 ColumnDefinition {
                     name: "customer_id".to_string(),
@@ -539,6 +578,7 @@ mod tests {
                         referenced_column: "id".to_string(),
                         on_delete: Some(ForeignKeyAction::Cascade),
                         on_update: Some(ForeignKeyAction::Cascade),
+                        collation: None,
                     }),
                 },
             ],
@@ -547,6 +587,7 @@ mod tests {
             check_constraints: vec![],
             compression: None,
             partition_info: None,
+            collations: std::collections::HashMap::new(),
         };
 
         storage.create_table(&child).unwrap();

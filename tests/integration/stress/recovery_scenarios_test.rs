@@ -34,6 +34,7 @@ fn fresh_storage() -> MemoryStorage {
         check_constraints: vec![],
         compression: None,
         partition_info: None,
+        collations: std::collections::HashMap::new(),
     })
     .expect("create_table t");
     s

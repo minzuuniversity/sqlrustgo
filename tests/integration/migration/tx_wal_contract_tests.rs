@@ -454,6 +454,7 @@ fn test_recovery_begin_then_crash_rolls_back() {
             check_constraints: vec![],
             compression: None,
             partition_info: None,
+            collations: std::collections::HashMap::new(),
         })
         .unwrap();
 
@@ -520,6 +521,7 @@ fn test_recovery_insert_then_crash_rolls_back() {
             check_constraints: vec![],
             compression: None,
             partition_info: None,
+            collations: std::collections::HashMap::new(),
         })
         .unwrap();
 
@@ -583,6 +585,7 @@ fn test_recovery_prepare_then_crash_rolls_back() {
             check_constraints: vec![],
             compression: None,
             partition_info: None,
+            collations: std::collections::HashMap::new(),
         })
         .unwrap();
 
@@ -678,6 +681,7 @@ fn test_recovery_partial_insert_write() {
             check_constraints: vec![],
             compression: None,
             partition_info: None,
+            collations: std::collections::HashMap::new(),
         })
         .unwrap();
 
@@ -742,6 +746,7 @@ fn test_recovery_partial_update_write() {
             check_constraints: vec![],
             compression: None,
             partition_info: None,
+            collations: std::collections::HashMap::new(),
         })
         .unwrap();
 
@@ -844,6 +849,7 @@ fn test_recovery_partial_delete_write() {
             check_constraints: vec![],
             compression: None,
             partition_info: None,
+            collations: std::collections::HashMap::new(),
         })
         .unwrap();
 
@@ -968,6 +974,7 @@ fn test_recovery_partial_commit_flush() {
             check_constraints: vec![],
             compression: None,
             partition_info: None,
+            collations: std::collections::HashMap::new(),
         })
         .unwrap();
 
@@ -1028,6 +1035,7 @@ fn test_recovery_multiple_tx_crash_order() {
             check_constraints: vec![],
             compression: None,
             partition_info: None,
+            collations: std::collections::HashMap::new(),
         })
         .unwrap();
 
@@ -1123,6 +1131,7 @@ fn test_recovery_wal_replay_ordering() {
             check_constraints: vec![],
             compression: None,
             partition_info: None,
+            collations: std::collections::HashMap::new(),
         })
         .unwrap();
 

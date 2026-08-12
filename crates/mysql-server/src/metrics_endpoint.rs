@@ -77,6 +77,79 @@ use sqlrustgo_telemetry::PrometheusRenderer;
 
 use crate::{ACTIVE_CONNECTIONS, TOTAL_CONNECTIONS_ACCEPTED, TOTAL_QUERIES_SERVED, TOTAL_QUERY_ERRORS};
 
+/// Handle to a running `/metrics` HTTP endpoint bound by `MetricsEndpoint::bind`.
+///
+/// This wraps the `JoinHandle` of the accept-loop thread plus the
+/// resolved TCP port (which may differ from the requested port when
+/// the caller passes port `0` to ask the OS for an ephemeral port).
+/// Dropping the handle does NOT signal shutdown — the thread keeps
+/// serving `/metrics` for the lifetime of the process. Ephemeral test
+/// servers that need explicit shutdown should call `.shutdown()`.
+pub struct MetricsEndpoint {
+    port: u16,
+    join: Option<std::thread::JoinHandle<()>>,
+}
+
+impl MetricsEndpoint {
+    /// Bind a TcpListener on `addr`, capture the resolved port (supports
+    /// `0.0.0.0:0` for OS-assigned), and spawn the accept-loop thread.
+    pub fn bind<A: std::net::ToSocketAddrs>(addr: A) -> std::io::Result<Self> {
+        let listener = std::net::TcpListener::bind(addr)?;
+        let port = listener.local_addr()?.port();
+        let join = std::thread::Builder::new()
+            .name("sqlrustgo-metrics-endpoint".to_string())
+            .spawn(move || {
+                tracing::info!(
+                    "Prometheus /metrics endpoint listening on http://{}/metrics",
+                    listener.local_addr().map(|a| a.to_string()).unwrap_or_default()
+                );
+                for stream in listener.incoming() {
+                    match stream {
+                        Ok(mut s) => {
+                            if let Err(e) = handle_connection(&mut s) {
+                                tracing::debug!("metrics_endpoint: connection error: {}", e);
+                            }
+                        }
+                        Err(e) => {
+                            tracing::debug!("metrics_endpoint: accept error: {}", e);
+                        }
+                    }
+                }
+            })
+            .expect("failed to spawn metrics_endpoint thread");
+        Ok(Self {
+            port,
+            join: Some(join),
+        })
+    }
+
+    /// The TCP port the endpoint is bound to.
+    pub fn port(&self) -> u16 {
+        self.port
+    }
+
+    /// Join the accept-loop thread (block until it exits). The thread
+    /// runs forever in the current implementation, so callers that
+    /// want a bounded join should use `shutdown()` (no-op stub — kept
+    /// for API stability).
+    pub fn shutdown(mut self) {
+        if let Some(h) = self.join.take() {
+            // Detach so we don't block on an infinite accept loop.
+            drop(h);
+        }
+    }
+}
+
+impl Drop for MetricsEndpoint {
+    fn drop(&mut self) {
+        // Detach the thread; it runs the accept loop for the
+        // lifetime of the process. This is intentional — ephemeral
+        // test servers re-create the endpoint per `start_ephemeral`
+        // and we don't want to block on shutdown.
+        self.join.take();
+    }
+}
+
 /// Spawn the `/metrics` HTTP server on a background thread. Returns the
 /// `JoinHandle` so callers can either ignore it (fire-and-forget) or
 /// `join()` for shutdown. If the bind fails (port in use, permission

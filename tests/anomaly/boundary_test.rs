@@ -22,13 +22,7 @@ mod tests {
                 primary_key: false,
                 char_max_length: None,
                 primary_key: false,
-                ..Default::default()
-            }],
-            foreign_keys: vec![],
-            unique_constraints: vec![],
-            check_constraints: vec![],
-            compression: None,
-            partition_info: None,
+                ..Default::default()            }],
             ..Default::default()
         };
 
@@ -52,13 +46,7 @@ mod tests {
                 primary_key: false,
                 char_max_length: None,
                 primary_key: false,
-                ..Default::default()
-            }],
-            foreign_keys: vec![],
-            unique_constraints: vec![],
-            check_constraints: vec![],
-            compression: None,
-            partition_info: None,
+                ..Default::default()            }],
             ..Default::default()
         };
 
@@ -87,13 +75,7 @@ mod tests {
                 primary_key: false,
                 char_max_length: None,
                 primary_key: false,
-                ..Default::default()
-            }],
-            foreign_keys: vec![],
-            unique_constraints: vec![],
-            check_constraints: vec![],
-            compression: None,
-            partition_info: None,
+                ..Default::default()            }],
             ..Default::default()
         };
 
@@ -124,13 +106,7 @@ mod tests {
                 primary_key: false,
                 char_max_length: None,
                 primary_key: false,
-                ..Default::default()
-            }],
-            foreign_keys: vec![],
-            unique_constraints: vec![],
-            check_constraints: vec![],
-            compression: None,
-            partition_info: None,
+                ..Default::default()            }],
             ..Default::default()
         };
 
@@ -159,13 +135,7 @@ mod tests {
                 primary_key: false,
                 char_max_length: None,
                 primary_key: false,
-                ..Default::default()
-            }],
-            foreign_keys: vec![],
-            unique_constraints: vec![],
-            check_constraints: vec![],
-            compression: None,
-            partition_info: None,
+                ..Default::default()            }],
             ..Default::default()
         };
 
@@ -193,13 +163,7 @@ mod tests {
                 primary_key: false,
                 char_max_length: None,
                 primary_key: false,
-                ..Default::default()
-            }],
-            foreign_keys: vec![],
-            unique_constraints: vec![],
-            check_constraints: vec![],
-            compression: None,
-            partition_info: None,
+                ..Default::default()            }],
             ..Default::default()
         };
 
@@ -229,13 +193,7 @@ mod tests {
                 primary_key: false,
                 char_max_length: None,
                 primary_key: false,
-                ..Default::default()
-            }],
-            foreign_keys: vec![],
-            unique_constraints: vec![],
-            check_constraints: vec![],
-            compression: None,
-            partition_info: None,
+                ..Default::default()            }],
             ..Default::default()
         };
 
@@ -265,15 +223,13 @@ mod tests {
                 primary_key: false,
                 char_max_length: None,
                 primary_key: false,
-                ..Default::default()
-            })
+                ..Default::default()            })
             .collect();
 
         let info = TableInfo {
             name: "many_cols".to_string(),
             columns,
-            ..Default::default()
-        };
+            ..Default::default()        };
 
         storage.create_table(&info).unwrap();
 
@@ -298,13 +254,7 @@ mod tests {
                 primary_key: false,
                 char_max_length: None,
                 primary_key: false,
-                ..Default::default()
-            }],
-            foreign_keys: vec![],
-            unique_constraints: vec![],
-            check_constraints: vec![],
-            compression: None,
-            partition_info: None,
+                ..Default::default()            }],
             ..Default::default()
         };
 
@@ -341,13 +291,7 @@ mod tests {
                 primary_key: false,
                 char_max_length: None,
                 primary_key: false,
-                ..Default::default()
-            }],
-            foreign_keys: vec![],
-            unique_constraints: vec![],
-            check_constraints: vec![],
-            compression: None,
-            partition_info: None,
+                ..Default::default()            }],
             ..Default::default()
         };
 

@@ -25,6 +25,7 @@ mod tests {
                     nullable: false,
                     primary_key: false,
                     char_max_length: None,
+                    collation: None,
                 },
                 sqlrustgo_storage::ColumnDefinition {
                     name: "value".to_string(),
@@ -32,6 +33,7 @@ mod tests {
                     nullable: true,
                     primary_key: false,
                     char_max_length: None,
+                    collation: None,
                 },
             ],
             foreign_keys: vec![],
@@ -39,6 +41,7 @@ mod tests {
             check_constraints: vec![],
             compression: None,
             partition_info: None,
+            collations: std::collections::HashMap::new(),
         };
 
         storage.create_table(&left_info).ok();
@@ -65,6 +68,7 @@ mod tests {
                     nullable: false,
                     primary_key: false,
                     char_max_length: None,
+                    collation: None,
                 },
                 sqlrustgo_storage::ColumnDefinition {
                     name: "name".to_string(),
@@ -72,6 +76,7 @@ mod tests {
                     nullable: true,
                     primary_key: false,
                     char_max_length: None,
+                    collation: None,
                 },
             ],
             foreign_keys: vec![],
@@ -79,6 +84,7 @@ mod tests {
             check_constraints: vec![],
             compression: None,
             partition_info: None,
+            collations: std::collections::HashMap::new(),
         };
 
         storage.create_table(&right_info).ok();
@@ -190,12 +196,14 @@ mod tests {
                 nullable: false,
                 primary_key: false,
                 char_max_length: None,
+                collation: None,
             }],
             foreign_keys: vec![],
             unique_constraints: vec![],
             check_constraints: vec![],
             compression: None,
             partition_info: None,
+            collations: std::collections::HashMap::new(),
         };
 
         storage.create_table(&left_info).ok();
@@ -209,12 +217,14 @@ mod tests {
                 nullable: false,
                 primary_key: false,
                 char_max_length: None,
+                collation: None,
             }],
             foreign_keys: vec![],
             unique_constraints: vec![],
             check_constraints: vec![],
             compression: None,
             partition_info: None,
+            collations: std::collections::HashMap::new(),
         };
 
         storage.create_table(&right_info).ok();
@@ -262,12 +272,14 @@ mod tests {
                 nullable: false,
                 primary_key: false,
                 char_max_length: None,
+                collation: None,
             }],
             foreign_keys: vec![],
             unique_constraints: vec![],
             check_constraints: vec![],
             compression: None,
             partition_info: None,
+            collations: std::collections::HashMap::new(),
         };
 
         storage.create_table(&left_info).ok();
@@ -284,6 +296,7 @@ mod tests {
                     nullable: false,
                     primary_key: false,
                     char_max_length: None,
+                    collation: None,
                 },
                 sqlrustgo_storage::ColumnDefinition {
                     name: "category_id".to_string(),
@@ -291,6 +304,7 @@ mod tests {
                     nullable: false,
                     primary_key: false,
                     char_max_length: None,
+                    collation: None,
                 },
             ],
             foreign_keys: vec![],
@@ -298,6 +312,7 @@ mod tests {
             check_constraints: vec![],
             compression: None,
             partition_info: None,
+            collations: std::collections::HashMap::new(),
         };
 
         storage.create_table(&right_info).ok();

@@ -22,6 +22,7 @@ mod tests {
                     nullable: false,
                     primary_key: false,
                     char_max_length: None,
+                    collation: None,
                 },
                 ColumnDefinition {
                     name: "email".to_string(),
@@ -29,6 +30,7 @@ mod tests {
                     nullable: false,
                     primary_key: false,
                     char_max_length: None,
+                    collation: None,
                 },
                 ColumnDefinition {
                     name: "name".to_string(),
@@ -36,6 +38,7 @@ mod tests {
                     nullable: true,
                     primary_key: false,
                     char_max_length: None,
+                    collation: None,
                 },
             ],
             foreign_keys: vec![],
@@ -56,6 +59,7 @@ mod tests {
                     nullable: false,
                     primary_key: false,
                     char_max_length: None,
+                    collation: None,
                 },
                 ColumnDefinition {
                     name: "user_id".to_string(),
@@ -68,6 +72,7 @@ mod tests {
                         referenced_column: "id".to_string(),
                         on_delete: Some(ForeignKeyAction::Cascade),
                         on_update: Some(ForeignKeyAction::Cascade),
+                        collation: None,
                     }),
                 },
                 ColumnDefinition {
@@ -76,6 +81,7 @@ mod tests {
                     nullable: false,
                     primary_key: false,
                     char_max_length: None,
+                    collation: None,
                 },
             ],
             foreign_keys: vec![],
@@ -121,6 +127,7 @@ mod tests {
                         nullable: false,
                         primary_key: false,
                         char_max_length: None,
+                        collation: None,
                     },
                     ColumnDefinition {
                         name: "name".to_string(),
@@ -128,6 +135,7 @@ mod tests {
                         nullable: false,
                         primary_key: false,
                         char_max_length: None,
+                        collation: None,
                     },
                 ],
                 foreign_keys: vec![],
@@ -135,6 +143,7 @@ mod tests {
                 check_constraints: vec![],
                 compression: None,
                 partition_info: None,
+                collations: std::collections::HashMap::new(),
             },
         ];
 
@@ -307,6 +316,7 @@ mod tests {
                     nullable: false,
                     primary_key: false,
                     char_max_length: None,
+                    collation: None,
                 },
                 ColumnDefinition {
                     name: "varchar_col".to_string(),
@@ -314,6 +324,7 @@ mod tests {
                     nullable: true,
                     primary_key: false,
                     char_max_length: None,
+                    collation: None,
                 },
                 ColumnDefinition {
                     name: "real_col".to_string(),
@@ -321,6 +332,7 @@ mod tests {
                     nullable: false,
                     primary_key: false,
                     char_max_length: None,
+                    collation: None,
                 },
             ],
             foreign_keys: vec![],
@@ -328,6 +340,7 @@ mod tests {
             check_constraints: vec![],
             compression: None,
             partition_info: None,
+            collations: std::collections::HashMap::new(),
         };
 
         storage.create_table(&info).unwrap();
@@ -411,12 +424,14 @@ mod tests {
                 nullable: false,
                 primary_key: false,
                 char_max_length: None,
+                collation: None,
             }],
             foreign_keys: vec![],
             unique_constraints: vec![],
             check_constraints: vec![],
             compression: None,
             partition_info: None,
+            collations: std::collections::HashMap::new(),
         };
 
         storage.create_table(&info).unwrap();
@@ -438,12 +453,14 @@ mod tests {
                 nullable: false,
                 primary_key: false,
                 char_max_length: None,
+                collation: None,
             }],
             foreign_keys: vec![],
             unique_constraints: vec![],
             check_constraints: vec![],
             compression: None,
             partition_info: None,
+            collations: std::collections::HashMap::new(),
         };
 
         let table2 = TableInfo {
@@ -454,12 +471,14 @@ mod tests {
                 nullable: true,
                 primary_key: false,
                 char_max_length: None,
+                collation: None,
             }],
             foreign_keys: vec![],
             unique_constraints: vec![],
             check_constraints: vec![],
             compression: None,
             partition_info: None,
+            collations: std::collections::HashMap::new(),
         };
 
         storage.create_table(&table1).unwrap();

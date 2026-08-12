@@ -25,6 +25,7 @@ mod tests {
                     nullable: false,
                     primary_key: false,
                     char_max_length: None,
+                    collation: None,
                 },
                 ColumnDefinition {
                     name: "value".to_string(),
@@ -32,6 +33,7 @@ mod tests {
                     nullable: true,
                     primary_key: false,
                     char_max_length: None,
+                    collation: None,
                 },
             ],
             foreign_keys: vec![],
@@ -213,12 +215,14 @@ mod tests {
                     nullable: false,
                     primary_key: false,
                     char_max_length: None,
+                    collation: None,
                 }],
                 foreign_keys: vec![],
                 unique_constraints: vec![],
                 check_constraints: vec![],
                 compression: None,
                 partition_info: None,
+                collations: std::collections::HashMap::new(),
             };
 
             let result = storage.create_table(&info);
@@ -253,12 +257,14 @@ mod tests {
                 nullable: false,
                 primary_key: false,
                 char_max_length: None,
+                collation: None,
             }],
             foreign_keys: vec![],
             unique_constraints: vec![],
             check_constraints: vec![],
             compression: None,
             partition_info: None,
+            collations: std::collections::HashMap::new(),
         };
 
         storage.lock().unwrap().create_table(&info).unwrap();
@@ -334,6 +340,7 @@ mod tests {
                 check_constraints: vec![],
                 compression: None,
                 partition_info: None,
+                collations: std::collections::HashMap::new(),
             };
             storage.create_table(&info).unwrap();
         }
@@ -452,12 +459,14 @@ mod tests {
                     nullable: false,
                     primary_key: false,
                     char_max_length: None,
+                    collation: None,
                 }],
                 foreign_keys: vec![],
                 unique_constraints: vec![],
                 check_constraints: vec![],
                 compression: None,
                 partition_info: None,
+                collations: std::collections::HashMap::new(),
             };
 
             storage.create_table(&info).unwrap();

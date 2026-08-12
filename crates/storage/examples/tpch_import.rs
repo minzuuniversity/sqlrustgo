@@ -112,6 +112,7 @@ fn create_tables(storage: &mut FileStorage) {
             check_constraints: vec![],
             compression: None,
             partition_info: None,
+            collations: std::collections::HashMap::new(),
         })
         .unwrap();
 
@@ -129,6 +130,7 @@ fn create_tables(storage: &mut FileStorage) {
             check_constraints: vec![],
             compression: None,
             partition_info: None,
+            collations: std::collections::HashMap::new(),
         })
         .unwrap();
 
@@ -150,6 +152,7 @@ fn create_tables(storage: &mut FileStorage) {
             check_constraints: vec![],
             compression: None,
             partition_info: None,
+            collations: std::collections::HashMap::new(),
         })
         .unwrap();
 
@@ -173,6 +176,7 @@ fn create_tables(storage: &mut FileStorage) {
             check_constraints: vec![],
             compression: None,
             partition_info: None,
+            collations: std::collections::HashMap::new(),
         })
         .unwrap();
 
@@ -192,6 +196,7 @@ fn create_tables(storage: &mut FileStorage) {
             check_constraints: vec![],
             compression: None,
             partition_info: None,
+            collations: std::collections::HashMap::new(),
         })
         .unwrap();
 
@@ -214,6 +219,7 @@ fn create_tables(storage: &mut FileStorage) {
             check_constraints: vec![],
             compression: None,
             partition_info: None,
+            collations: std::collections::HashMap::new(),
         })
         .unwrap();
 
@@ -237,6 +243,7 @@ fn create_tables(storage: &mut FileStorage) {
             check_constraints: vec![],
             compression: None,
             partition_info: None,
+            collations: std::collections::HashMap::new(),
         })
         .unwrap();
 
@@ -267,6 +274,7 @@ fn create_tables(storage: &mut FileStorage) {
             check_constraints: vec![],
             compression: None,
             partition_info: None,
+            collations: std::collections::HashMap::new(),
         })
         .unwrap();
 }

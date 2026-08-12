@@ -121,18 +121,17 @@ fn test_parallel_memory_no_quadruple() {
         .create_table(&sqlrustgo_storage::TableInfo {
             name: "t".to_string(),
             columns: vec![sqlrustgo_storage::ColumnDefinition {
-                name: "id".to_string(),
                 data_type: "INTEGER".to_string(),
                 nullable: false,
                 primary_key: false,
                 char_max_length: None,
-                primary_key: false,
-                char_max_length: None,
+            collation: None,
             }],
             foreign_keys: vec![],
             unique_constraints: vec![],
             check_constraints: vec![],
             compression: None,
+            collations: std::collections::HashMap::new(),
             partition_info: None,
         })
         .unwrap();
