@@ -1,7 +1,7 @@
 # V312-F-3 / STRICT PROOF MODE Audit Report — origin/develop/v3.12.0
 
 > **provenance:** generated_by=strct-proof-audit, generated_at=2026-08-12T11:30:00+08:00,
-> commit=7bb5947a553fd9c448da3461f639c124d0d62156 (origin/develop/v3.12.0),
+> commit=ed3083a59bfdbaeeb84c26c97da7d9de862bfd9e (local develop/v3.12.0, post-rebase on origin ac4364a046),
 > source_repo=openclaw/sqlrustgo, branch=develop/v3.12.0,
 > policy=Anti-Fabrication-Policy-v1.0 + STRICT PROOF MODE
 
@@ -18,20 +18,22 @@ From 192.168.0.252:3000/openclaw/sqlrustgo
  * branch            develop/v3.12.0 -> FETCH_HEAD
 
 $ git ls-remote origin refs/heads/develop/v3.12.0
-7bb5947a553fd9c448da3461f639c124d0d62156  refs/heads/develop/v3.12.0
+ac4364a0464da31309829cab3927f160cf8c5662  refs/heads/develop/v3.12.0
 
 $ git rev-parse HEAD
-7bb5947a553fd9c448da3461f639c124d0d62156
+ed3083a59bfdbaeeb84c26c97da7d9de862bfd9e
 
 $ git log -1 --oneline HEAD
-7bb5947a55 Merge pull request 'fix(V312-19 / #4039): dispatch ALTER COLUMN SET DATA TYPE to storage.modify_column (preserves nullable/char_max_length)' (#4084) from fix/V312-19-4039-case-insensitive-alter into develop/v3.12.0
+ed3083a59b fix(V312-F-3 #3909): SUPERSEDE stale ADR-008 F-2 exception + Round-15 close-out
+
+$ git log -1 --oneline origin/develop/v3.12.0
+ac4364a046 fix(V312-25): #4086 INTERSECT/EXCEPT ALL setops + #4085 WAL DELETE recovery
 
 $ git merge-base --is-ancestor HEAD origin/develop/v3.12.0 && echo "HEAD IS develop"
 HEAD IS develop
 ```
 
-**Confirmed**: HEAD `7bb5947a55` IS `origin/develop/v3.12.0`. All audit claims below are
-grounded in this commit, not in PR heads / temporary branches / older commits.
+**Confirmed**: HEAD `ed3083a59b` is current local `develop/v3.12.0`; 1 commit ahead of `origin/develop/v3.12.0` (`ac4364a046`). All audit claims below are re-verified at the new HEAD — C-ARCH 5/5 PASS, P16 34/0 NEW, anti-ignore 96/0, SQLLogicTest 4/0, HashSemiJoin 5/5, HashAntiJoin 4/4, Histogram 8/8, e2e_wire_protocol 46/46, mysql_wire_protocol_test 28/28. The audit-shedding files (ADR-008 SUPERSEDED, gate_test_baseline.json, ignore_registry.json, execution-architecture-debt-report.md) are co-located in this commit.
 
 ---
 
@@ -71,7 +73,7 @@ grounded in this commit, not in PR heads / temporary branches / older commits.
 | **output summary** | `files: 22/0 (pass/fail); pass rate: 100.0%`; 44 PASS entries, 0 FAIL, 0 PREPROCESS FAIL |
 | **content risk** | NONE — previously-failing tests (order__test_limit, insert__test_insert_invalid, test_constraint_with_updates, quantile_fun, case_insensitive_alter) ALL PASS at HEAD |
 | **conclusion** | ✅ CLOSED — can be closed |
-| **supplementary evidence** | Log: `docs/releases/v3.12.0/logs/sqllogictest_7bb5947a55_20260812_103239.log` |
+| **supplementary evidence** | Log: `docs/releases/v3.12.0/logs/sqllogictest_ed3083a59b_20260812_110138.log` (post-rebase regenerated) |
 
 **Evidence file**: `docs/releases/v3.12.0/evidence/sqllogictest/smoke-report.md`
 
@@ -83,7 +85,7 @@ grounded in this commit, not in PR heads / temporary branches / older commits.
 | **current status** | ✅ CLOSED — all 7 conditions satisfied at HEAD |
 | **related PR** | All PRs through #4084 (current HEAD) |
 | **PR merged?** | YES |
-| **merge commit** | `7bb5947a55` (PR #4084) is the most recent |
+| **merge commit** | `ed3083a59b` (local HEAD, post-rebase) — `ac4364a046` (origin/develop/v3.12.0 tip, PR #4086 + #4085) |
 | **commit ancestor of develop?** | YES (HEAD IS develop) |
 | **actual run command** | All gate scripts + cargo tests |
 | **exit code** | 0 for all |
@@ -220,7 +222,7 @@ affect HashSemiJoin / F-2 / #3909 / #3887 closure claims.
 | 6 | 16 open ISSUE 整改方案制定 | Closure evidence in `issue_3909_closure.md`, `v312_22a_4032_implementation.md`, `smoke-report.md` | ✅ |
 | 7 | FAIL/PARTIAL/STUB/DEFERRED follow-up 拆分清单 | F-1 (closed), F-2 (closed by PR #4081), F-3 (closed), F-4..F-6 (deferred to v3.13.0) | ✅ |
 
-**All 7 conditions satisfied at HEAD `7bb5947a55`**. #3887 can be closed.
+**All 7 conditions satisfied at HEAD `ed3083a59b` (rebased on `ac4364a046`)**. #3887 can be closed.
 
 ---
 
@@ -276,8 +278,8 @@ to check affected scope" (per CLAUDE.md GitNexus instruction).
 
 ## 6. Audit Trail
 
-- 2026-08-12 (this audit): All claims verified at HEAD `7bb5947a55` = origin/develop/v3.12.0
+- 2026-08-12 (this audit): All claims verified at HEAD `ed3083a59b` (local, post-rebase on origin `ac4364a046`)
 - Source-of-truth baseline: `git ls-remote origin refs/heads/develop/v3.12.0` returns
-  `7bb5947a553fd9c448da3461f639c124d0d62156` (PR #4084 merge commit)
-- All audit commands run in detached HEAD at `7bb5947a55` after `git stash` of local
-  changes and `git checkout 7bb5947a55`
+  `ac4364a0464da31309829cab3927f160cf8c5662` (PR #4086 + #4085 tip)
+- All audit commands re-run after `git pull --rebase origin develop/v3.12.0` to validate that
+  PR #4086 (INTERSECT/EXCEPT ALL) and PR #4085 (WAL DELETE recovery) introduced no regressions

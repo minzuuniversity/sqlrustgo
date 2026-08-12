@@ -2,7 +2,7 @@
 
 > **⚠️ STATUS: SUPERSEDED — 2026-08-12 (Round-15 close-out)**
 >
-> This ADR-008 exception is **SUPERSEDED** at `origin/develop/v3.12.0` (`7bb5947a55`).
+> This ADR-008 exception is **SUPERSEDED** at `origin/develop/v3.12.0` (`ac4364a046`; local HEAD `ed3083a59b` post-rebase).
 >
 > **Reason for supersession**:
 > - All 4 lifting criteria (see "Acceptance criteria for lifting" below) are satisfied:
