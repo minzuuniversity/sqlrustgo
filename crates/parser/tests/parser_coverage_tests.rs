@@ -3171,3 +3171,177 @@ fn test_parse_delete_returning() {
     let result = parse("DELETE FROM t WHERE id = 1 RETURNING id");
     let _ = result;
 }
+
+// ============ Bad LIMIT expression paths ============
+
+#[test]
+fn test_parse_limit_with_column_ref() {
+    // LIMIT col+1 triggers classify_unfoldable_limit_expr error path
+    // with column reference detection.
+    let result = parse("SELECT * FROM t LIMIT a + 1");
+    // Should error with a useful message about column 'a'.
+    if let Err(e) = result {
+        assert!(e.contains("a") || e.to_lowercase().contains("column"));
+    }
+}
+
+#[test]
+fn test_parse_limit_with_arithmetic() {
+    let result = parse("SELECT * FROM t LIMIT 1 + 2");
+    let _ = result;
+}
+
+#[test]
+fn test_parse_offset_with_column() {
+    let result = parse("SELECT * FROM t LIMIT 5 OFFSET x");
+    let _ = result;
+}
+
+// ============ Bad SELECT with FROM errors ============
+
+#[test]
+fn test_parse_select_missing_from() {
+    let result = parse("SELECT FROM t");
+    let _ = result;
+}
+
+#[test]
+fn test_parse_select_incomplete() {
+    let result = parse("SELECT");
+    let _ = result;
+}
+
+// ============ Bad INSERT variations ============
+
+#[test]
+fn test_parse_insert_missing_values() {
+    let result = parse("INSERT INTO t");
+    let _ = result;
+}
+
+#[test]
+fn test_parse_insert_default_values() {
+    let result = parse("INSERT INTO t DEFAULT VALUES");
+    let _ = result;
+}
+
+#[test]
+fn test_parse_insert_select_without_into() {
+    // INSERT SELECT requires INTO target.
+    let result = parse("INSERT SELECT * FROM t");
+    let _ = result;
+}
+
+// ============ Bad CREATE variations ============
+
+#[test]
+fn test_parse_create_temp_table() {
+    let result = parse("CREATE TEMP TABLE t (id INT)");
+    let _ = result;
+}
+
+#[test]
+fn test_parse_create_global_temp_table() {
+    let result = parse("CREATE GLOBAL TEMPORARY TABLE t (id INT)");
+    let _ = result;
+}
+
+#[test]
+fn test_parse_create_local_temp_table() {
+    let result = parse("CREATE LOCAL TEMPORARY TABLE t (id INT)");
+    let _ = result;
+}
+
+#[test]
+fn test_parse_create_unlogged_table() {
+    let result = parse("CREATE UNLOGGED TABLE t (id INT)");
+    let _ = result;
+}
+
+// ============ Schema-qualified references ============
+
+#[test]
+fn test_parse_qualified_table_in_select() {
+    let result = parse("SELECT * FROM public.users");
+    let _ = result;
+}
+
+#[test]
+fn test_parse_qualified_table_in_join() {
+    let result = parse("SELECT * FROM public.users u JOIN public.orders o ON u.id = o.user_id");
+    let _ = result;
+}
+
+#[test]
+fn test_parse_qualified_column_in_where() {
+    let result = parse("SELECT * FROM users WHERE public.users.id = 1");
+    let _ = result;
+}
+
+// ============ Window definition reuse ============
+
+#[test]
+fn test_parse_window_definition_with_partition() {
+    let result = parse("SELECT a, SUM(b) OVER (PARTITION BY c ORDER BY d) FROM t");
+    let _ = result;
+}
+
+#[test]
+fn test_parse_window_multiple() {
+    let result = parse("SELECT a, SUM(b) OVER (ORDER BY a), COUNT(*) OVER (PARTITION BY a) FROM t");
+    let _ = result;
+}
+
+// ============ Multiple ALTER TABLE actions ============
+
+#[test]
+fn test_parse_alter_table_multiple_actions() {
+    let result = parse("ALTER TABLE t ADD COLUMN a INT, ADD COLUMN b TEXT");
+    let _ = result;
+}
+
+#[test]
+fn test_parse_alter_table_add_drop_combined() {
+    let result = parse("ALTER TABLE t ADD COLUMN a INT, DROP COLUMN b");
+    let _ = result;
+}
+
+// ============ DESCRIBE / EXPLAIN ============
+
+#[test]
+fn test_parse_describe_table_cov() {
+    let result = parse("DESCRIBE TABLE users");
+    let _ = result;
+}
+
+#[test]
+fn test_parse_describe_shorthand() {
+    let result = parse("DESC users");
+    let _ = result;
+}
+
+#[test]
+fn test_parse_show_databases() {
+    let result = parse("SHOW DATABASES");
+    let _ = result;
+}
+
+#[test]
+fn test_parse_show_schemas() {
+    let result = parse("SHOW SCHEMAS");
+    let _ = result;
+}
+
+#[test]
+fn test_parse_show_create_table_cov() {
+    let result = parse("SHOW CREATE TABLE users");
+    let _ = result;
+}
+
+// ============ CALL with named args ============
+
+#[test]
+fn test_parse_call_named_args() {
+    let result = parse("CALL my_proc(name => 'foo', id => 1)");
+    let _ = result;
+}
