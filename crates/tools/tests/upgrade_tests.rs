@@ -302,48 +302,106 @@ fn test_version_info_parse_v_prefix_v3() {
 fn test_version_info_parse_invalid_format() {
     use sqlrustgo_tools::upgrade::VersionInfo;
     assert!(VersionInfo::parse("1.2").is_err(), "two-part must fail");
-    assert!(VersionInfo::parse("1.2.3.4").is_err(), "four-part must fail");
+    assert!(
+        VersionInfo::parse("1.2.3.4").is_err(),
+        "four-part must fail"
+    );
 }
 
 #[test]
 fn test_version_info_parse_invalid_number() {
     use sqlrustgo_tools::upgrade::VersionInfo;
-    assert!(VersionInfo::parse("a.b.c").is_err(), "non-numeric parts must fail");
-    assert!(VersionInfo::parse("1.b.3").is_err(), "non-numeric minor must fail");
+    assert!(
+        VersionInfo::parse("a.b.c").is_err(),
+        "non-numeric parts must fail"
+    );
+    assert!(
+        VersionInfo::parse("1.b.3").is_err(),
+        "non-numeric minor must fail"
+    );
 }
 
 #[test]
 fn test_can_upgrade_to_minor_bump() {
     use sqlrustgo_tools::upgrade::VersionInfo;
-    let from = VersionInfo { major: 3, minor: 11, patch: 0 };
-    let to = VersionInfo { major: 3, minor: 12, patch: 0 };
+    let from = VersionInfo {
+        major: 3,
+        minor: 11,
+        patch: 0,
+    };
+    let to = VersionInfo {
+        major: 3,
+        minor: 12,
+        patch: 0,
+    };
     assert!(from.can_upgrade_to(&to));
 }
 
 #[test]
 fn test_can_upgrade_to_patch_bump_same_minor() {
     use sqlrustgo_tools::upgrade::VersionInfo;
-    let from = VersionInfo { major: 3, minor: 12, patch: 0 };
-    let to = VersionInfo { major: 3, minor: 12, patch: 5 };
+    let from = VersionInfo {
+        major: 3,
+        minor: 12,
+        patch: 0,
+    };
+    let to = VersionInfo {
+        major: 3,
+        minor: 12,
+        patch: 5,
+    };
     assert!(from.can_upgrade_to(&to));
 }
 
 #[test]
 fn test_can_upgrade_to_rejects_downgrade() {
     use sqlrustgo_tools::upgrade::VersionInfo;
-    let from = VersionInfo { major: 3, minor: 12, patch: 0 };
-    let to = VersionInfo { major: 3, minor: 11, patch: 5 };
+    let from = VersionInfo {
+        major: 3,
+        minor: 12,
+        patch: 0,
+    };
+    let to = VersionInfo {
+        major: 3,
+        minor: 11,
+        patch: 5,
+    };
     assert!(!from.can_upgrade_to(&to), "downgrade must be rejected");
-    let to_same = VersionInfo { major: 3, minor: 12, patch: 0 };
-    assert!(!from.can_upgrade_to(&to_same), "same version must be rejected");
+    let to_same = VersionInfo {
+        major: 3,
+        minor: 12,
+        patch: 0,
+    };
+    assert!(
+        !from.can_upgrade_to(&to_same),
+        "same version must be rejected"
+    );
 }
 
 #[test]
 fn test_can_upgrade_to_rejects_major_bump() {
     use sqlrustgo_tools::upgrade::VersionInfo;
-    let from = VersionInfo { major: 3, minor: 12, patch: 0 };
-    let to = VersionInfo { major: 4, minor: 0, patch: 0 };
-    assert!(!from.can_upgrade_to(&to), "major version bump must be rejected");
-    let to_major_downgrade = VersionInfo { major: 2, minor: 5, patch: 0 };
-    assert!(!from.can_upgrade_to(&to_major_downgrade), "major version downgrade must be rejected");
+    let from = VersionInfo {
+        major: 3,
+        minor: 12,
+        patch: 0,
+    };
+    let to = VersionInfo {
+        major: 4,
+        minor: 0,
+        patch: 0,
+    };
+    assert!(
+        !from.can_upgrade_to(&to),
+        "major version bump must be rejected"
+    );
+    let to_major_downgrade = VersionInfo {
+        major: 2,
+        minor: 5,
+        patch: 0,
+    };
+    assert!(
+        !from.can_upgrade_to(&to_major_downgrade),
+        "major version downgrade must be rejected"
+    );
 }

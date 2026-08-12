@@ -102,8 +102,7 @@ fn v312_13_compress_primitives_working() {
     // Pass the FULL frame; read_compressed_packet reads the 7-byte header.
     let mut reader = std::io::Cursor::new(&buf[..]);
     let (seq, recovered) =
-        sqlrustgo_mysql_server::read_compressed_packet(&mut reader)
-            .expect("decompress");
+        sqlrustgo_mysql_server::read_compressed_packet(&mut reader).expect("decompress");
     assert_eq!(seq, 0);
     assert_eq!(recovered, payload);
 }

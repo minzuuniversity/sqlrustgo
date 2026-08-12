@@ -1575,7 +1575,7 @@ mod tests {
 
     #[test]
     fn classify_long_query_time_set_none_for_other_statements() {
-        use sqlrustgo_parser::{Statement, transaction::TransactionStatement};
+        use sqlrustgo_parser::{transaction::TransactionStatement, Statement};
         // Begin is not a SET long_query_time, so None.
         let stmt = Statement::Transaction(TransactionStatement::Begin {
             work: false,
@@ -1587,7 +1587,7 @@ mod tests {
 
     #[test]
     fn classify_long_query_time_set_parses_integer_seconds() {
-        use sqlrustgo_parser::{Statement, transaction::TransactionStatement};
+        use sqlrustgo_parser::{transaction::TransactionStatement, Statement};
         let stmt = Statement::Transaction(TransactionStatement::SetSessionVariable {
             name: "long_query_time".to_string(),
             value: "5".to_string(),
@@ -1600,7 +1600,7 @@ mod tests {
 
     #[test]
     fn classify_long_query_time_set_parses_float_seconds() {
-        use sqlrustgo_parser::{Statement, transaction::TransactionStatement};
+        use sqlrustgo_parser::{transaction::TransactionStatement, Statement};
         let stmt = Statement::Transaction(TransactionStatement::SetSessionVariable {
             name: "long_query_time".to_string(),
             value: "0.5".to_string(),
@@ -1613,7 +1613,7 @@ mod tests {
 
     #[test]
     fn classify_long_query_time_set_case_insensitive_name() {
-        use sqlrustgo_parser::{Statement, transaction::TransactionStatement};
+        use sqlrustgo_parser::{transaction::TransactionStatement, Statement};
         let stmt = Statement::Transaction(TransactionStatement::SetSessionVariable {
             name: "LONG_QUERY_TIME".to_string(),
             value: "2".to_string(),
@@ -1626,7 +1626,7 @@ mod tests {
 
     #[test]
     fn classify_long_query_time_set_rejects_invalid_value() {
-        use sqlrustgo_parser::{Statement, transaction::TransactionStatement};
+        use sqlrustgo_parser::{transaction::TransactionStatement, Statement};
         let stmt = Statement::Transaction(TransactionStatement::SetSessionVariable {
             name: "long_query_time".to_string(),
             value: "not_a_number".to_string(),
@@ -1639,7 +1639,7 @@ mod tests {
 
     #[test]
     fn classify_long_query_time_set_rejects_negative() {
-        use sqlrustgo_parser::{Statement, transaction::TransactionStatement};
+        use sqlrustgo_parser::{transaction::TransactionStatement, Statement};
         let stmt = Statement::Transaction(TransactionStatement::SetSessionVariable {
             name: "long_query_time".to_string(),
             value: "-1.0".to_string(),
@@ -1652,7 +1652,7 @@ mod tests {
 
     #[test]
     fn classify_long_query_time_set_ignores_other_variable() {
-        use sqlrustgo_parser::{Statement, transaction::TransactionStatement};
+        use sqlrustgo_parser::{transaction::TransactionStatement, Statement};
         let stmt = Statement::Transaction(TransactionStatement::SetSessionVariable {
             name: "max_connections".to_string(),
             value: "100".to_string(),

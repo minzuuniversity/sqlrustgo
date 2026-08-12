@@ -248,7 +248,10 @@ fn test_ephemeral_config_default_values() {
     use sqlrustgo_mysql_server::testing::EphemeralConfig;
     let cfg = EphemeralConfig::default();
     assert_eq!(cfg.host, "127.0.0.1");
-    assert!(cfg.bootstrap_tables, "bootstrap_tables default must be true");
+    assert!(
+        cfg.bootstrap_tables,
+        "bootstrap_tables default must be true"
+    );
     assert!(cfg.bootstrap_users, "bootstrap_users default must be true");
     assert!(cfg.data_dir.is_none(), "data_dir default is None");
     assert!(cfg.bootstrap_sql.is_empty(), "bootstrap_sql default empty");

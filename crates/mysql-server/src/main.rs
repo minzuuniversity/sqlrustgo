@@ -897,7 +897,14 @@ mod tests {
         let mut pager = false;
         let mut timing = false;
         let mut headers = true;
-        let r = handle_dot_command(".help", &mut history, &mut pager, &mut timing, &mut headers, &mut engine);
+        let r = handle_dot_command(
+            ".help",
+            &mut history,
+            &mut pager,
+            &mut timing,
+            &mut headers,
+            &mut engine,
+        );
         assert!(matches!(r, DotResult::Continue));
     }
 
@@ -908,9 +915,23 @@ mod tests {
         let mut pager = false;
         let mut timing = false;
         let mut headers = true;
-        let r = handle_dot_command(".exit", &mut history, &mut pager, &mut timing, &mut headers, &mut engine);
+        let r = handle_dot_command(
+            ".exit",
+            &mut history,
+            &mut pager,
+            &mut timing,
+            &mut headers,
+            &mut engine,
+        );
         assert!(matches!(r, DotResult::Exit));
-        let r2 = handle_dot_command(".quit", &mut history, &mut pager, &mut timing, &mut headers, &mut engine);
+        let r2 = handle_dot_command(
+            ".quit",
+            &mut history,
+            &mut pager,
+            &mut timing,
+            &mut headers,
+            &mut engine,
+        );
         assert!(matches!(r2, DotResult::Exit));
     }
 
@@ -923,7 +944,14 @@ mod tests {
         let mut pager = false;
         let mut timing = false;
         let mut headers = true;
-        let r = handle_dot_command(".history", &mut history, &mut pager, &mut timing, &mut headers, &mut engine);
+        let r = handle_dot_command(
+            ".history",
+            &mut history,
+            &mut pager,
+            &mut timing,
+            &mut headers,
+            &mut engine,
+        );
         assert!(matches!(r, DotResult::Continue));
     }
 
@@ -934,10 +962,24 @@ mod tests {
         let mut pager = false;
         let mut timing = false;
         let mut headers = true;
-        let r = handle_dot_command(".pager on", &mut history, &mut pager, &mut timing, &mut headers, &mut engine);
+        let r = handle_dot_command(
+            ".pager on",
+            &mut history,
+            &mut pager,
+            &mut timing,
+            &mut headers,
+            &mut engine,
+        );
         assert!(matches!(r, DotResult::Continue));
         assert!(pager, ".pager on must enable pager");
-        let r = handle_dot_command(".pager off", &mut history, &mut pager, &mut timing, &mut headers, &mut engine);
+        let r = handle_dot_command(
+            ".pager off",
+            &mut history,
+            &mut pager,
+            &mut timing,
+            &mut headers,
+            &mut engine,
+        );
         assert!(matches!(r, DotResult::Continue));
         assert!(!pager, ".pager off must disable pager");
     }
@@ -949,10 +991,20 @@ mod tests {
         let mut pager = false;
         let mut timing = false;
         let mut headers = true;
-        let r = handle_dot_command(".pager silly", &mut history, &mut pager, &mut timing, &mut headers, &mut engine);
+        let r = handle_dot_command(
+            ".pager silly",
+            &mut history,
+            &mut pager,
+            &mut timing,
+            &mut headers,
+            &mut engine,
+        );
         match r {
             DotResult::Error(msg) => assert!(msg.contains("unknown pager")),
-            other => panic!("expected DotResult::Error, got {:?}", std::mem::discriminant(&other)),
+            other => panic!(
+                "expected DotResult::Error, got {:?}",
+                std::mem::discriminant(&other)
+            ),
         }
     }
 
@@ -963,10 +1015,20 @@ mod tests {
         let mut pager = false;
         let mut timing = false;
         let mut headers = true;
-        let r = handle_dot_command(".pager", &mut history, &mut pager, &mut timing, &mut headers, &mut engine);
+        let r = handle_dot_command(
+            ".pager",
+            &mut history,
+            &mut pager,
+            &mut timing,
+            &mut headers,
+            &mut engine,
+        );
         match r {
             DotResult::Error(msg) => assert!(msg.contains(".pager requires")),
-            other => panic!("expected DotResult::Error, got {:?}", std::mem::discriminant(&other)),
+            other => panic!(
+                "expected DotResult::Error, got {:?}",
+                std::mem::discriminant(&other)
+            ),
         }
     }
 
@@ -977,10 +1039,20 @@ mod tests {
         let mut pager = false;
         let mut timing = false;
         let mut headers = true;
-        let r = handle_dot_command(".source", &mut history, &mut pager, &mut timing, &mut headers, &mut engine);
+        let r = handle_dot_command(
+            ".source",
+            &mut history,
+            &mut pager,
+            &mut timing,
+            &mut headers,
+            &mut engine,
+        );
         match r {
             DotResult::Error(msg) => assert!(msg.contains(".source requires")),
-            other => panic!("expected DotResult::Error, got {:?}", std::mem::discriminant(&other)),
+            other => panic!(
+                "expected DotResult::Error, got {:?}",
+                std::mem::discriminant(&other)
+            ),
         }
     }
 
@@ -998,7 +1070,14 @@ mod tests {
         let mut timing = false;
         let mut headers = true;
         let cmd = format!(".source {}", path.display());
-        let r = handle_dot_command(&cmd, &mut history, &mut pager, &mut timing, &mut headers, &mut engine);
+        let r = handle_dot_command(
+            &cmd,
+            &mut history,
+            &mut pager,
+            &mut timing,
+            &mut headers,
+            &mut engine,
+        );
         assert!(matches!(r, DotResult::Continue));
 
         let _ = std::fs::remove_dir_all(&dir);
@@ -1011,11 +1090,21 @@ mod tests {
         let mut pager = false;
         let mut timing = false;
         let mut headers = true;
-        let r = handle_dot_command("garbage", &mut history, &mut pager, &mut timing, &mut headers, &mut engine);
+        let r = handle_dot_command(
+            "garbage",
+            &mut history,
+            &mut pager,
+            &mut timing,
+            &mut headers,
+            &mut engine,
+        );
         // Unknown dot commands return Error per the implementation.
         match r {
             DotResult::Error(msg) => assert!(msg.contains("unknown command")),
-            other => panic!("expected DotResult::Error, got {:?}", std::mem::discriminant(&other)),
+            other => panic!(
+                "expected DotResult::Error, got {:?}",
+                std::mem::discriminant(&other)
+            ),
         }
     }
 
@@ -1026,7 +1115,14 @@ mod tests {
         let mut pager = false;
         let mut timing = false;
         let mut headers = true;
-        let r = handle_dot_command("", &mut history, &mut pager, &mut timing, &mut headers, &mut engine);
+        let r = handle_dot_command(
+            "",
+            &mut history,
+            &mut pager,
+            &mut timing,
+            &mut headers,
+            &mut engine,
+        );
         assert!(matches!(r, DotResult::Continue));
     }
 
@@ -1037,7 +1133,14 @@ mod tests {
         let mut pager = false;
         let mut timing = false;
         let mut headers = true;
-        let r = handle_dot_command(".version", &mut history, &mut pager, &mut timing, &mut headers, &mut engine);
+        let r = handle_dot_command(
+            ".version",
+            &mut history,
+            &mut pager,
+            &mut timing,
+            &mut headers,
+            &mut engine,
+        );
         assert!(matches!(r, DotResult::Continue));
     }
 
@@ -1048,7 +1151,14 @@ mod tests {
         let mut pager = false;
         let mut timing = false;
         let mut headers = true;
-        let r = handle_dot_command(".multiline", &mut history, &mut pager, &mut timing, &mut headers, &mut engine);
+        let r = handle_dot_command(
+            ".multiline",
+            &mut history,
+            &mut pager,
+            &mut timing,
+            &mut headers,
+            &mut engine,
+        );
         assert!(matches!(r, DotResult::Continue));
     }
 
@@ -1059,7 +1169,14 @@ mod tests {
         let mut pager = false;
         let mut timing = false;
         let mut headers = true;
-        let r = handle_dot_command(".clear", &mut history, &mut pager, &mut timing, &mut headers, &mut engine);
+        let r = handle_dot_command(
+            ".clear",
+            &mut history,
+            &mut pager,
+            &mut timing,
+            &mut headers,
+            &mut engine,
+        );
         assert!(matches!(r, DotResult::Continue));
     }
 
@@ -1070,10 +1187,24 @@ mod tests {
         let mut pager = false;
         let mut timing = false;
         let mut headers = true;
-        let r = handle_dot_command(".timing on", &mut history, &mut pager, &mut timing, &mut headers, &mut engine);
+        let r = handle_dot_command(
+            ".timing on",
+            &mut history,
+            &mut pager,
+            &mut timing,
+            &mut headers,
+            &mut engine,
+        );
         assert!(matches!(r, DotResult::Continue));
         assert!(timing);
-        let r = handle_dot_command(".timing off", &mut history, &mut pager, &mut timing, &mut headers, &mut engine);
+        let r = handle_dot_command(
+            ".timing off",
+            &mut history,
+            &mut pager,
+            &mut timing,
+            &mut headers,
+            &mut engine,
+        );
         assert!(matches!(r, DotResult::Continue));
         assert!(!timing);
     }
@@ -1085,10 +1216,20 @@ mod tests {
         let mut pager = false;
         let mut timing = false;
         let mut headers = true;
-        let r = handle_dot_command(".timing", &mut history, &mut pager, &mut timing, &mut headers, &mut engine);
+        let r = handle_dot_command(
+            ".timing",
+            &mut history,
+            &mut pager,
+            &mut timing,
+            &mut headers,
+            &mut engine,
+        );
         match r {
             DotResult::Error(msg) => assert!(msg.contains(".timing requires")),
-            other => panic!("expected DotResult::Error, got {:?}", std::mem::discriminant(&other)),
+            other => panic!(
+                "expected DotResult::Error, got {:?}",
+                std::mem::discriminant(&other)
+            ),
         }
     }
 
@@ -1099,10 +1240,20 @@ mod tests {
         let mut pager = false;
         let mut timing = false;
         let mut headers = true;
-        let r = handle_dot_command(".timing silly", &mut history, &mut pager, &mut timing, &mut headers, &mut engine);
+        let r = handle_dot_command(
+            ".timing silly",
+            &mut history,
+            &mut pager,
+            &mut timing,
+            &mut headers,
+            &mut engine,
+        );
         match r {
             DotResult::Error(msg) => assert!(msg.contains("unknown timing")),
-            other => panic!("expected DotResult::Error, got {:?}", std::mem::discriminant(&other)),
+            other => panic!(
+                "expected DotResult::Error, got {:?}",
+                std::mem::discriminant(&other)
+            ),
         }
     }
 
@@ -1113,10 +1264,24 @@ mod tests {
         let mut pager = false;
         let mut timing = false;
         let mut headers = false;
-        let r = handle_dot_command(".headers on", &mut history, &mut pager, &mut timing, &mut headers, &mut engine);
+        let r = handle_dot_command(
+            ".headers on",
+            &mut history,
+            &mut pager,
+            &mut timing,
+            &mut headers,
+            &mut engine,
+        );
         assert!(matches!(r, DotResult::Continue));
         assert!(headers);
-        let r = handle_dot_command(".headers off", &mut history, &mut pager, &mut timing, &mut headers, &mut engine);
+        let r = handle_dot_command(
+            ".headers off",
+            &mut history,
+            &mut pager,
+            &mut timing,
+            &mut headers,
+            &mut engine,
+        );
         assert!(matches!(r, DotResult::Continue));
         assert!(!headers);
     }
@@ -1128,10 +1293,20 @@ mod tests {
         let mut pager = false;
         let mut timing = false;
         let mut headers = true;
-        let r = handle_dot_command(".headers", &mut history, &mut pager, &mut timing, &mut headers, &mut engine);
+        let r = handle_dot_command(
+            ".headers",
+            &mut history,
+            &mut pager,
+            &mut timing,
+            &mut headers,
+            &mut engine,
+        );
         match r {
             DotResult::Error(msg) => assert!(msg.contains(".headers requires")),
-            other => panic!("expected DotResult::Error, got {:?}", std::mem::discriminant(&other)),
+            other => panic!(
+                "expected DotResult::Error, got {:?}",
+                std::mem::discriminant(&other)
+            ),
         }
     }
 
@@ -1142,10 +1317,20 @@ mod tests {
         let mut pager = false;
         let mut timing = false;
         let mut headers = true;
-        let r = handle_dot_command(".headers silly", &mut history, &mut pager, &mut timing, &mut headers, &mut engine);
+        let r = handle_dot_command(
+            ".headers silly",
+            &mut history,
+            &mut pager,
+            &mut timing,
+            &mut headers,
+            &mut engine,
+        );
         match r {
             DotResult::Error(msg) => assert!(msg.contains("unknown headers")),
-            other => panic!("expected DotResult::Error, got {:?}", std::mem::discriminant(&other)),
+            other => panic!(
+                "expected DotResult::Error, got {:?}",
+                std::mem::discriminant(&other)
+            ),
         }
     }
 
@@ -1156,10 +1341,20 @@ mod tests {
         let mut pager = false;
         let mut timing = false;
         let mut headers = true;
-        let r = handle_dot_command(".schema", &mut history, &mut pager, &mut timing, &mut headers, &mut engine);
+        let r = handle_dot_command(
+            ".schema",
+            &mut history,
+            &mut pager,
+            &mut timing,
+            &mut headers,
+            &mut engine,
+        );
         match r {
             DotResult::Error(msg) => assert!(msg.contains("requires a table name")),
-            other => panic!("expected DotResult::Error, got {:?}", std::mem::discriminant(&other)),
+            other => panic!(
+                "expected DotResult::Error, got {:?}",
+                std::mem::discriminant(&other)
+            ),
         }
     }
 
@@ -1170,7 +1365,14 @@ mod tests {
         let mut pager = false;
         let mut timing = false;
         let mut headers = true;
-        let r = handle_dot_command(".h", &mut history, &mut pager, &mut timing, &mut headers, &mut engine);
+        let r = handle_dot_command(
+            ".h",
+            &mut history,
+            &mut pager,
+            &mut timing,
+            &mut headers,
+            &mut engine,
+        );
         assert!(matches!(r, DotResult::Continue));
     }
 
@@ -1181,7 +1383,14 @@ mod tests {
         let mut pager = false;
         let mut timing = false;
         let mut headers = true;
-        let r = handle_dot_command(".quit", &mut history, &mut pager, &mut timing, &mut headers, &mut engine);
+        let r = handle_dot_command(
+            ".quit",
+            &mut history,
+            &mut pager,
+            &mut timing,
+            &mut headers,
+            &mut engine,
+        );
         assert!(matches!(r, DotResult::Exit));
     }
 }
