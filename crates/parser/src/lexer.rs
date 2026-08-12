@@ -243,11 +243,7 @@ impl<'a> Lexer<'a> {
                 if self.input[self.position..].starts_with("@@")
                     && self.position + 2 < self.input.len()
                 {
-                    let next = self
-                        .input
-                        .chars()
-                        .nth(self.position + 2)
-                        .unwrap_or('\0');
+                    let next = self.input.chars().nth(self.position + 2).unwrap_or('\0');
                     if next.is_alphabetic() || next == '_' {
                         self.position += 2;
                         let name = self.read_identifier();
