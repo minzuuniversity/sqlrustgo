@@ -599,12 +599,19 @@ impl MySqlTestClient {
 
         // 3) EOF separator (when DEPRECATE_EOF=0, the server sends
         //    one EOF after all columns, before the row data).
-        let sep = read_packet(&mut self.stream)?;
-        if !sep.is_empty() && sep[0] == 0xFF {
-            return Err(wire_err::msg(format!(
-                "ERR after column defs: {}",
-                String::from_utf8_lossy(&sep[3..])
-            )));
+        //    V312-WIRE-1 fix (regression #4019.1): only consume the
+        //    separator when the client advertised DEPRECATE_EOF=0.
+        //    When DEPRECATE_EOF=1 the server follows the MySQL 8.0+
+        //    protocol and sends NO inter-record separator — column
+        //    defs are followed directly by the row stream.
+        if self.client_caps & 0x01000000 == 0 {
+            let sep = read_packet(&mut self.stream)?;
+            if !sep.is_empty() && sep[0] == 0xFF {
+                return Err(wire_err::msg(format!(
+                    "ERR after column defs: {}",
+                    String::from_utf8_lossy(&sep[3..])
+                )));
+            }
         }
 
         // 4) Row packets until EOF/OK terminator.
