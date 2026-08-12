@@ -147,7 +147,8 @@ fn test_multi_statement_executes_all() {
     let config = EphemeralConfig {
         data_dir: Some(dir.path().to_path_buf()),
         bootstrap_tables: true,
-        bootstrap_users: false,
+        bootstrap_users: false,        metrics_port: None,
+
         ..Default::default()
     };
 

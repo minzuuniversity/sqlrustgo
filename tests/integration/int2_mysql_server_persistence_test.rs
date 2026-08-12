@@ -96,7 +96,8 @@ where
         let config = EphemeralConfig {
             data_dir: Some(data_dir.clone()),
             bootstrap_tables: false,
-            bootstrap_users: true,
+            bootstrap_users: true,                metrics_port: None,
+
             ..Default::default()
         };
         let mut client = MySqlTestClient::connect_with_config(config).expect("connect #1");
@@ -111,7 +112,8 @@ where
         let config = EphemeralConfig {
             data_dir: Some(data_dir.clone()),
             bootstrap_tables: false,
-            bootstrap_users: true,
+            bootstrap_users: true,                metrics_port: None,
+
             ..Default::default()
         };
         let mut client = MySqlTestClient::connect_with_config(config).expect("connect #2");
