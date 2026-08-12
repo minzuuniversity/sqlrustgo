@@ -1,6 +1,32 @@
 # ADR-008 Exception: v3.12.0 V312-F-2 e2e_wire_protocol 9 Tests Deferral
 
-> **Status**: PROPOSED (2026-08-11)
+> **⚠️ STATUS: SUPERSEDED — 2026-08-12 (Round-15 close-out)**
+>
+> This ADR-008 exception is **SUPERSEDED** at `origin/develop/v3.12.0` (`7bb5947a55`).
+>
+> **Reason for supersession**:
+> - All 4 lifting criteria (see "Acceptance criteria for lifting" below) are satisfied:
+>   1. ✅ Issue #4025 closed via PR #4081 (commit `5a85a5184e`) merged into develop/v3.12.0
+>   2. ✅ All 9 e2e_wire_protocol tests pass under `cargo test -p sqlrustgo-mysql-server --test e2e_wire_protocol`
+>      — verified 2026-08-12: `test result: ok. 46 passed; 0 failed; 0 ignored; 0 measured`
+>   3. ✅ All 9 `#[ignore = "V312-F-2 DEFERRED: ..."]` markers removed by commit `7aef7d407e` (PR #4081)
+>   4. ✅ Pass log captured; sha256 verified
+> - `crates/mysql-server/tests/e2e_wire_protocol.rs` currently has **0 `#[ignore]` markers** (was 9 at PROPOSED time).
+> - `tests/baseline/gate_test_baseline.json` adr_exceptions[1] removed (Round-15 reconciliation).
+> - `tests/baseline/ignore_registry.json` entry for `crates/mysql-server/tests/e2e_wire_protocol.rs` removed (Round-15 reconciliation).
+>
+> **Root cause fix chain** (referenced for audit, not as blocking issues):
+> 1. PR #4014 (V312-32): `ACTIVE_CONFIG` → `Arc<EphemeralConfig>` for concurrent `start_ephemeral` safety
+> 2. Commit `5611a95b5` (V312-F-2): `start_ephemeral` passes resolved `data_dir` (not `Option`) to server thread — guarantees each ephemeral server has unique on-disk data_dir
+> 3. Commit `c0a4da530` (V312-F-2): `data_dir` uniqueness hardened (port+pid → port+pid+nanos) so SERVER_POOL slot reuse can no longer collide
+>
+> **Close-out evidence**: `docs/releases/v3.12.0/evidence/v312_f3_closure/v312_f3_strict_proof_audit.md` §1.4, §2.2
+>
+> **Effective lifetime**: PROPOSED 2026-08-11 → SUPERSEDED 2026-08-12 (1 day).
+>
+> ---
+
+> **Original Status**: PROPOSED (2026-08-11)
 > **Deciders**: openclaw + executor-agent
 > **Date**: 2026-08-11
 > **Supersedes**: None (2nd exception under [ADR-008 §Policy 2](./ADR-008-test-claim-transparency.md))
