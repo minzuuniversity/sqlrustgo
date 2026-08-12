@@ -2114,7 +2114,9 @@ impl Parser {
                     t
                 ));
             }
-            None => return Err("Expected FROM or AS after prepared statement name, got EOF".to_string()),
+            None => {
+                return Err("Expected FROM or AS after prepared statement name, got EOF".to_string())
+            }
         }
         let sql = match self.next() {
             Some(Token::StringLiteral(s)) => s,
