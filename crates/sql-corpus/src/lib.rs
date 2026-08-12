@@ -1256,3 +1256,140 @@ fn split_sql_statements(sql: &str) -> Vec<&str> {
     }
     out
 }
+
+#[cfg(test)]
+mod unit_tests {
+    use super::*;
+    use std::path::PathBuf;
+
+    #[test]
+    fn split_statements_single() {
+        let out = split_sql_statements("SELECT 1");
+        assert_eq!(out, vec!["SELECT 1"]);
+    }
+
+    #[test]
+    fn split_statements_multiple() {
+        let out = split_sql_statements("SELECT 1; SELECT 2; SELECT 3");
+        assert_eq!(out, vec!["SELECT 1", "SELECT 2", "SELECT 3"]);
+    }
+
+    #[test]
+    fn split_statements_trailing_semicolon() {
+        let out = split_sql_statements("SELECT 1;");
+        assert_eq!(out, vec!["SELECT 1"]);
+    }
+
+    #[test]
+    fn split_statements_semicolon_in_string() {
+        let out = split_sql_statements("INSERT INTO t VALUES ('a;b'); SELECT 2");
+        assert_eq!(out.len(), 2);
+        assert!(out[0].contains("'a;b'"));
+        assert_eq!(out[1], "SELECT 2");
+    }
+
+    #[test]
+    fn split_statements_escaped_quote() {
+        let out = split_sql_statements("INSERT INTO t VALUES ('it\\'s'); SELECT 2");
+        assert_eq!(out.len(), 2);
+        assert!(out[0].contains("it\\'s"));
+    }
+
+    #[test]
+    fn split_statements_empty() {
+        let out = split_sql_statements("");
+        assert!(out.is_empty());
+    }
+
+    #[test]
+    fn split_statements_whitespace_only() {
+        let out = split_sql_statements("   \n\t  ");
+        assert!(out.is_empty());
+    }
+
+    #[test]
+    fn split_statements_only_semicolons() {
+        let out = split_sql_statements(";;;");
+        assert!(out.is_empty());
+    }
+
+    #[test]
+    fn sql_corpus_new() {
+        let corpus = SqlCorpus::new(PathBuf::from("/tmp/corpus"));
+        assert_eq!(corpus.corpus_root, PathBuf::from("/tmp/corpus"));
+    }
+
+    #[test]
+    fn sql_corpus_reset() {
+        let mut corpus = SqlCorpus::new(PathBuf::from("/tmp/corpus"));
+        // Just ensure reset doesn't panic
+        corpus.reset();
+    }
+
+    #[test]
+    fn sql_corpus_execute_all_missing_dir() {
+        let mut corpus = SqlCorpus::new(PathBuf::from("/nonexistent/dir/abc"));
+        let results = corpus.execute_all();
+        assert!(results.is_empty());
+    }
+
+    #[test]
+    fn summary_empty_results() {
+        let corpus = SqlCorpus::new(PathBuf::from("/tmp/corpus"));
+        let summary = corpus.summary(&HashMap::new());
+        assert_eq!(summary.total_files, 0);
+        assert_eq!(summary.total_cases, 0);
+        assert_eq!(summary.passed, 0);
+        assert_eq!(summary.failed, 0);
+    }
+
+    #[test]
+    fn summary_with_pass_and_fail() {
+        let corpus = SqlCorpus::new(PathBuf::from("/tmp/corpus"));
+        let mut results = HashMap::new();
+        results.insert(
+            "a.sql".to_string(),
+            CorpusFileResult {
+                file_path: "a.sql".to_string(),
+                total_cases: 1,
+                passed: 1,
+                failed: 0,
+                results: vec![SqlTestResult {
+                    case_name: "t1".to_string(),
+                    sql: "SELECT 1".to_string(),
+                    success: true,
+                    rows_returned: 1,
+                    execution_time_ms: 5,
+                    error_message: None,
+                    expected_rows: None,
+                    expected_columns: None,
+                }],
+            },
+        );
+        results.insert(
+            "b.sql".to_string(),
+            CorpusFileResult {
+                file_path: "b.sql".to_string(),
+                total_cases: 1,
+                passed: 0,
+                failed: 1,
+                results: vec![SqlTestResult {
+                    case_name: "t2".to_string(),
+                    sql: "BAD SQL".to_string(),
+                    success: false,
+                    rows_returned: 0,
+                    execution_time_ms: 7,
+                    error_message: Some("oops".to_string()),
+                    expected_rows: None,
+                    expected_columns: None,
+                }],
+            },
+        );
+        let summary = corpus.summary(&results);
+        assert_eq!(summary.total_files, 2);
+        assert_eq!(summary.total_cases, 2);
+        assert_eq!(summary.passed, 1);
+        assert_eq!(summary.failed, 1);
+        assert!((summary.pass_rate - 50.0).abs() < 0.001);
+    }
+}
