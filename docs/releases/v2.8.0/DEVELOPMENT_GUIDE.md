@@ -631,8 +631,7 @@ cargo test --all-features
 | 文档 | 说明 |
 |------|------|
 | [测试手册](./TEST_PLAN.md) | 测试计划 |
-| [架构决策](../architecture.md) | ADR |
-| [API 使用示例](./API_USAGE_EXAMPLES.md) | Rust API 示例 |
+| [架构决策](../../architecture.md) | ADR |
 | [SIMD 基准报告](./SIMD_BENCHMARK_REPORT.md) | SIMD 性能数据 |
 
 ---
