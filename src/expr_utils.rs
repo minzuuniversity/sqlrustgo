@@ -402,7 +402,9 @@ pub fn evaluate_expression_with_subq(
         // resolver that the unified-expr path uses so the wire-protocol
         // result (column count, value type) is consistent regardless of
         // which evaluator the SELECT passes through.
-        Expression::SystemVariable(name) => Ok(sqlrustgo_executor::expr::resolve_system_variable(name)),
+        Expression::SystemVariable(name) => {
+            Ok(sqlrustgo_executor::expr::resolve_system_variable(name))
+        }
         _ => Ok(Value::Null),
     }
 }
