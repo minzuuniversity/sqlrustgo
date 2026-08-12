@@ -1092,4 +1092,27 @@ mod corpus_unit_tests {
         assert_eq!(results.len(), 1);
         assert_eq!(results[0].case_name, "join3");
     }
+
+    #[test]
+    fn test_corpus_sql_without_trailing_semicolon() {
+        // Exercises the "tail" push branch in split_sql_statements
+        // (line 1241) when input has no trailing semicolon.
+        let mut corpus = SqlCorpus::new(PathBuf::from("/tmp/anywhere"));
+        // Note: no trailing semicolon after SELECT 1
+        let content = "-- === CASE: no_semi\nSELECT 1\n";
+        let results = corpus.parse_and_execute(content);
+        assert_eq!(results.len(), 1);
+        assert_eq!(results[0].case_name, "no_semi");
+    }
+
+    #[test]
+    fn test_corpus_sql_with_string_containing_semicolon() {
+        // Exercises the in-string check in split_sql_statements.
+        let mut corpus = SqlCorpus::new(PathBuf::from("/tmp/anywhere"));
+        let content = "-- === CASE: str_semi\n\
+                       SELECT 'a;b;c';\n";
+        let results = corpus.parse_and_execute(content);
+        assert_eq!(results.len(), 1);
+        assert_eq!(results[0].case_name, "str_semi");
+    }
 }
