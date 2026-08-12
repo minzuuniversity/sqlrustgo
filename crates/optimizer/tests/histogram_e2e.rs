@@ -151,7 +151,8 @@ fn test_unified_cost_selectivity_uses_histogram() {
 
     // estimate_selectivity("t", "c", Eq, &v) must equal histogram.estimate_eq(&v)
     let v = Value::Integer(500);
-    let sel_eq = model.estimate_selectivity("t", "c", sqlrustgo_optimizer::rules::BinaryOperator::Eq, &v);
+    let sel_eq =
+        model.estimate_selectivity("t", "c", sqlrustgo_optimizer::rules::BinaryOperator::Eq, &v);
     let expected = hist.estimate_eq(&v);
     assert!(
         (sel_eq - expected).abs() < 1e-9,

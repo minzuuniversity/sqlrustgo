@@ -944,6 +944,7 @@ fn to_i64(v: &Value) -> i64 {
 /// - `eval_unary_op(true, "NOT")` → `Value::Boolean(false)`
 /// - `eval_unary_op(0, "NOT")` → `Value::Boolean(true)` (0 is falsy via `to_bool`)
 /// - `eval_unary_op(1, "NOT")` → `Value::Boolean(false)` (1 is truthy via `to_bool`)
+///
 /// MySQL 5.7 JSON path operators: `->` and `->>`.
 /// `unquote` = false → returns `Value::Json`, true → returns `Value::Text`.
 fn json_extract(left: &Value, right: &Value, unquote: bool) -> Value {
@@ -990,7 +991,7 @@ fn json_extract(left: &Value, right: &Value, unquote: bool) -> Value {
         p
     } else if path.starts_with('$') {
         // Bare `$` already handled; `$[N]` style — strip the `$`.
-        path[1..].to_string()
+        path.strip_prefix('$').unwrap_or(&path).to_string()
     } else {
         // Caller supplied an RFC 6901 pointer directly; pass through.
         path.clone()
@@ -1601,36 +1602,11 @@ pub fn eval_fn(name: &str, args: &[Value]) -> Value {
                 _ => Value::Null,
             }
         }
-        // F-03 GIS: ST_Distance(point1, point2) — returns distance
-        "ST_DISTANCE" => {
-            use sqlrustgo_gis::{st_distance as gis_st_distance, Point as GisPoint};
-            if args.len() != 2 {
-                return Value::Null;
-            }
-            let p1 = match &args[0] {
-                Value::Point(x, y) => GisPoint::new(*x, *y),
-                Value::Text(s) => match GisPoint::parse(s) {
-                    Some(p) => p,
-                    None => return Value::Null,
-                },
-                _ => return Value::Null,
-            };
-            let p2 = match &args[1] {
-                Value::Point(x, y) => GisPoint::new(*x, *y),
-                Value::Text(s) => match GisPoint::parse(s) {
-                    Some(p) => p,
-                    None => return Value::Null,
-                },
-                _ => return Value::Null,
-            };
-            Value::Float(gis_st_distance(&p1, &p2))
-        }
         _ => Value::Null,
     }
 }
 
 /// DATE_ADD / DATE_SUB helper. Operates on text dates in YYYY-MM-DD form.
-/// Accepts args in either order:
 /// Accepts args in either order:
 ///
 /// - [date_text, n, unit_text]
