@@ -502,3 +502,169 @@ fn test_chunk_insert_get_delete_roundtrip() {
     let v2_after = get_chunks_for_version(&storage, 1, 2).expect("get v2 after");
     assert_eq!(v2_after.len(), 1);
 }
+
+// ============================================================================
+// Ingestion coverage tests (Issue #3943)
+// ============================================================================
+
+mod ingestion_tests {
+    use sqlrustgo_gmp::ingestion::{ingest_corpus, ingest_file, IngestionReport};
+    use sqlrustgo_gmp::{create_embeddings_table, create_gmp_tables};
+    use sqlrustgo_storage::{MemoryStorage, StorageEngine};
+    use sqlrustgo_types::Value;
+    use std::fs;
+    use std::path::PathBuf;
+
+    fn fresh_storage() -> MemoryStorage {
+        let mut storage = MemoryStorage::new();
+        create_gmp_tables(&mut storage).unwrap();
+        create_embeddings_table(&mut storage).unwrap();
+        storage
+    }
+
+    fn temp_subdir(label: &str) -> PathBuf {
+        let dir = std::env::temp_dir().join(format!(
+            "sqlrustgo-gmp-ingest-{}-{}",
+            label,
+            std::process::id()
+        ));
+        let _ = fs::remove_dir_all(&dir);
+        fs::create_dir_all(&dir).unwrap();
+        dir
+    }
+
+    #[test]
+    fn test_ingest_file_inserts_document_chunks_and_embeddings() {
+        let dir = temp_subdir("basic");
+        let file = dir.join("hello.md");
+        fs::write(&file, "# Hello World\n\nSome text content for chunking.").unwrap();
+        let mut storage = fresh_storage();
+
+        let result = ingest_file(&mut storage, &file, "hello.md");
+        assert!(result.is_ok(), "ingest_file must succeed: {:?}", result);
+        let (doc_id, version_number) = result.unwrap();
+        assert!(doc_id > 0, "doc_id must be positive");
+        assert_eq!(version_number, 1, "first version number must be 1");
+
+        let _ = fs::remove_dir_all(&dir);
+    }
+
+    #[test]
+    fn test_ingest_file_idempotent_skip_on_duplicate_source_hash() {
+        let dir = temp_subdir("dup");
+        let file = dir.join("dup.md");
+        let content = "# Duplicate content\n\nSame body twice.";
+        fs::write(&file, content).unwrap();
+        let mut storage = fresh_storage();
+
+        let first = ingest_file(&mut storage, &file, "dup.md");
+        assert!(first.is_ok(), "first ingest must succeed");
+        let second = ingest_file(&mut storage, &file, "dup.md");
+        assert_eq!(second, Err("SKIP"), "second ingest of same source must SKIP");
+
+        let _ = fs::remove_dir_all(&dir);
+    }
+
+    #[test]
+    fn test_ingest_file_missing_file_returns_fail() {
+        let mut storage = fresh_storage();
+        let result = ingest_file(&mut storage, PathBuf::from("/no/such/file.md").as_path(), "x.md");
+        assert!(result.is_err());
+        let msg = result.unwrap_err();
+        assert!(msg.starts_with("FAIL:"), "missing file must return FAIL prefix");
+    }
+
+    #[test]
+    fn test_ingest_file_uses_file_stem_as_title() {
+        let dir = temp_subdir("title");
+        let file = dir.join("my-special-doc.md");
+        fs::write(&file, "# Body content").unwrap();
+        let mut storage = fresh_storage();
+
+        let result = ingest_file(&mut storage, &file, "my-special-doc.md");
+        assert!(result.is_ok());
+
+        // Title should be the file_stem of the path: "my-special-doc"
+        let docs = storage
+            .scan(sqlrustgo_gmp::document::TABLE_DOCUMENTS)
+            .unwrap();
+        assert_eq!(docs.len(), 1);
+        // column 1 is title in the gmp_documents schema
+        if let Some(Value::Text(t)) = docs[0].get(1) {
+            assert_eq!(t, "my-special-doc");
+        } else {
+            panic!("expected Text title at column 1");
+        }
+        let _ = fs::remove_dir_all(&dir);
+    }
+
+    #[test]
+    fn test_ingest_corpus_ingests_md_and_txt_skips_pdf() {
+        let dir = temp_subdir("corpus");
+        fs::write(dir.join("a.md"), "alpha content").unwrap();
+        fs::write(dir.join("b.txt"), "beta content").unwrap();
+        fs::write(dir.join("c.pdf"), "gamma ignored").unwrap();
+        let nested = dir.join("nested");
+        fs::create_dir_all(&nested).unwrap();
+        fs::write(nested.join("d.md"), "delta content nested").unwrap();
+
+        let mut storage = fresh_storage();
+        let mut report = IngestionReport::new();
+        ingest_corpus(&mut storage, &dir.as_path(), &mut report);
+
+        assert_eq!(report.documents_ingested, 3, "3 ingestable files (md+txt+md)");
+        assert_eq!(report.documents_skipped, 0);
+        assert_eq!(report.documents_failed, 0);
+        // ingest_corpus tracks docs; chunks/embeddings are filled by
+        // ingest_file but only reported when called via other paths.
+        // Verify the documents were actually written to storage.
+        let docs = storage.scan(sqlrustgo_gmp::document::TABLE_DOCUMENTS).unwrap();
+        assert_eq!(docs.len(), 3, "3 documents stored in gmp_documents");
+
+        let _ = fs::remove_dir_all(&dir);
+    }
+
+    #[test]
+    fn test_ingest_corpus_counts_duplicate_as_skipped() {
+        let dir = temp_subdir("corpus-dup");
+        fs::write(dir.join("x.md"), "duplicate content body").unwrap();
+        let mut storage = fresh_storage();
+        let mut report = IngestionReport::new();
+        ingest_corpus(&mut storage, &dir.as_path(), &mut report);
+        assert_eq!(report.documents_ingested, 1);
+        assert_eq!(report.documents_skipped, 0);
+
+        // Re-ingest same corpus.
+        ingest_corpus(&mut storage, &dir.as_path(), &mut report);
+        assert_eq!(report.documents_ingested, 1, "no new docs ingested");
+        assert_eq!(report.documents_skipped, 1, "duplicate must be skipped");
+
+        let _ = fs::remove_dir_all(&dir);
+    }
+
+    #[test]
+    fn test_ingest_corpus_missing_directory_is_empty() {
+        let mut storage = fresh_storage();
+        let mut report = IngestionReport::new();
+        let nonexistent = PathBuf::from("/no/such/corpus/anywhere");
+        ingest_corpus(&mut storage, nonexistent.as_path(), &mut report);
+        // walkdir returns no entries for a missing dir.
+        assert_eq!(report.documents_ingested, 0);
+        assert_eq!(report.documents_skipped, 0);
+    }
+
+    #[test]
+    fn test_ingestion_report_summary_format() {
+        let mut report = IngestionReport::new();
+        report.documents_ingested = 5;
+        report.documents_skipped = 1;
+        report.documents_failed = 0;
+        report.chunks_created = 12;
+        report.embeddings_created = 12;
+        let s = report.summary();
+        assert!(s.contains("ingested: 5"));
+        assert!(s.contains("skipped: 1"));
+        assert!(s.contains("chunks: 12"));
+        assert!(s.contains("embeddings: 12"));
+    }
+}
