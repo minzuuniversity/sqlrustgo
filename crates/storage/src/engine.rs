@@ -629,6 +629,13 @@ pub struct TableInfo {
     /// V311-12 F-27: table compression specifier (algorithm: "LZ4", "ZSTD", "ZLIB")
     #[serde(default)]
     pub compression: Option<String>,
+    /// V312-26 / #4077: per-column collation names (lowercased to
+    /// `Some("nocase")`, `Some("binary")`, etc.). `None`/missing means
+    /// binary collation — the pre-V312-26 behavior. Only NOCASE is
+    /// semantically distinct today; other names are recorded but treated
+    /// as binary by the executor.
+    #[serde(default)]
+    pub collations: HashMap<String, String>,
 }
 
 /// Column definition for table schema
@@ -1870,6 +1877,7 @@ mod tests {
             check_constraints: vec![],
             partition_info: None,
             compression: None,
+            collations: HashMap::new(),
         };
         storage.create_table(&info).unwrap();
         let tables = storage.list_tables();
@@ -1964,6 +1972,7 @@ mod tests {
             check_constraints: vec![],
             partition_info: None,
             compression: None,
+            collations: HashMap::new(),
         };
 
         storage.create_table(&info).unwrap();
@@ -1991,6 +2000,7 @@ mod tests {
             check_constraints: vec![],
             partition_info: None,
             compression: None,
+            collations: HashMap::new(),
         };
 
         storage.create_table(&info).unwrap();
@@ -2048,6 +2058,7 @@ mod tests {
             check_constraints: vec![],
             partition_info: None,
             compression: None,
+            collations: HashMap::new(),
         };
         let info2 = TableInfo {
             name: "orders".to_string(),
@@ -2057,6 +2068,7 @@ mod tests {
             check_constraints: vec![],
             partition_info: None,
             compression: None,
+            collations: HashMap::new(),
         };
         storage.create_table(&info1).unwrap();
         storage.create_table(&info2).unwrap();
@@ -2080,6 +2092,7 @@ mod tests {
             check_constraints: vec![],
             partition_info: None,
             compression: None,
+            collations: HashMap::new(),
         };
         storage.create_table(&info).unwrap();
         assert!(storage.has_table("users"));
@@ -2193,6 +2206,7 @@ mod tests {
             check_constraints: vec![],
             partition_info: None,
             compression: None,
+            collations: HashMap::new(),
         };
         storage.create_table(&info).unwrap();
         storage
@@ -2762,6 +2776,7 @@ mod tests {
             check_constraints: vec![],
             partition_info: None,
             compression: None,
+            collations: HashMap::new(),
         };
         s.create_table(&info).unwrap();
         assert!(s.has_table("users"));
@@ -2778,6 +2793,7 @@ mod tests {
             check_constraints: vec![],
             partition_info: None,
             compression: None,
+            collations: HashMap::new(),
         };
         s.create_table(&info).unwrap();
         s.drop_table("t").unwrap();
@@ -2795,6 +2811,7 @@ mod tests {
             check_constraints: vec![],
             partition_info: None,
             compression: None,
+            collations: HashMap::new(),
         };
         s.create_table(&info).unwrap();
         let got = s.get_table_info("t").unwrap();
@@ -2821,6 +2838,7 @@ mod tests {
                 check_constraints: vec![],
                 partition_info: None,
                 compression: None,
+            collations: HashMap::new(),
             };
             s.create_table(&info).unwrap();
         }
@@ -2846,6 +2864,7 @@ mod tests {
             check_constraints: vec![],
             partition_info: None,
             compression: None,
+            collations: HashMap::new(),
         };
         s.create_table(&info).unwrap();
         s.add_column("t", ColumnDefinition::new("b", "TEXT"))
@@ -2872,6 +2891,7 @@ mod tests {
             check_constraints: vec![],
             partition_info: None,
             compression: None,
+            collations: HashMap::new(),
         };
         s.create_table(&info).unwrap();
         s.insert("old", vec![vec![Value::Integer(1)]]).unwrap();
