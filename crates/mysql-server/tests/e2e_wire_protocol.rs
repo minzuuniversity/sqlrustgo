@@ -208,7 +208,7 @@ fn test_e2e_create_insert_select() {
 
 /// Verify that a DROP TABLE removes data.
 #[test]
-#[ignore = "V312-F-2 DEFERRED: server-side DROP TABLE result reporting needs V312-24 (#4025)"]
+
 fn test_e2e_drop_table() {
     let config = EphemeralConfig {
         data_dir: None,
@@ -318,7 +318,7 @@ fn test_e2e_multi_statement() {
 
 /// Verify NULL values are correctly transmitted.
 #[test]
-#[ignore = "V312-F-2 DEFERRED: NULL column values return extra rows — V312-24 (#4025)"]
+
 fn test_e2e_null_handling() {
     let config = EphemeralConfig {
         data_dir: None,
@@ -411,7 +411,7 @@ fn test_e2e_arithmetic_expressions() {
 
 /// Verify UPDATE works end-to-end.
 #[test]
-#[ignore = "V312-F-2 DEFERRED: UPDATE affected_rows / row data mismatch — V312-24 (#4025)"]
+
 fn test_e2e_update() {
     let config = EphemeralConfig {
         data_dir: None,
@@ -471,7 +471,7 @@ fn test_e2e_update() {
 
 /// Verify DELETE works end-to-end.
 #[test]
-#[ignore = "V312-F-2 DEFERRED: DELETE result reporting needs V312-24 (#4025)"]
+
 fn test_e2e_delete() {
     let config = EphemeralConfig {
         data_dir: None,
@@ -523,7 +523,7 @@ fn test_e2e_delete() {
 
 /// Verify ORDER BY works.
 #[test]
-#[ignore = "V312-F-2 DEFERRED: ORDER BY DESC returns duplicated max-value rows — V312-24 (#4025)"]
+
 fn test_e2e_order_by() {
     let config = EphemeralConfig {
         data_dir: None,
@@ -618,7 +618,7 @@ fn test_e2e_string_functions() {
 
 /// Verify GROUP BY with aggregate functions.
 #[test]
-#[ignore = "V312-F-2 DEFERRED: GROUP BY aggregates return extra rows — V312-24 (#4025)"]
+
 fn test_e2e_group_by_aggregates() {
     let config = EphemeralConfig {
         data_dir: None,
@@ -1555,7 +1555,7 @@ fn test_e2e_min_max_aggregates() {
 
 /// Verify IN operator
 #[test]
-#[ignore = "V312-F-2 DEFERRED: IN operator result row count mismatch — V312-24 (#4025)"]
+
 fn test_e2e_in_operator() {
     let config = EphemeralConfig {
         data_dir: None,
@@ -1591,7 +1591,7 @@ fn test_e2e_in_operator() {
 
 /// Verify IS NULL
 #[test]
-#[ignore = "V312-F-2 DEFERRED: IS NULL row count mismatch — V312-24 (#4025)"]
+
 fn test_e2e_is_null() {
     let config = EphemeralConfig {
         data_dir: None,
@@ -1666,7 +1666,7 @@ fn test_e2e_limit() {
 
 /// Verify INSERT with multiple rows
 #[test]
-#[ignore = "V312-F-2 DEFERRED: INSERT multi-row result row count mismatch — V312-24 (#4025)"]
+
 fn test_e2e_insert_multiple_rows() {
     let config = EphemeralConfig {
         data_dir: None,

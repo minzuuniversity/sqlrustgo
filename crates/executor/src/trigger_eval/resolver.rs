@@ -7,7 +7,9 @@ pub fn resolve_column(_name: &str, _ctx: &EvalContext) -> Value {
 }
 
 mod tests {
+    #[allow(unused_imports)]
     use super::*;
+    #[allow(unused_imports)]
     use crate::trigger_eval::context::TriggerContext;
 
     #[test]

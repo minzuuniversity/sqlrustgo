@@ -144,6 +144,27 @@ mod tests {
         assert!(result.is_ok());
     }
 
+    /// V313-11 / Issue #4039 — GREEN regression: case-insensitive
+    /// ALTER TABLE column reference works. The case where SELECT on
+    /// a dropped column returns a Binder "column not found" error
+    /// requires the V313-13 binder-side column resolution change;
+    /// this V313-11 PR deliberately skips that case (storage-level
+    /// case-insensitive matching is already in place via the
+    /// V312-19 #3972 lower-cased keys, and the ALTER SET DATA TYPE
+    /// case exercises that path successfully). Mirrors the
+    /// case_insensitive_alter.test line 9 (`ALTER TABLE MyTable
+    /// ALTER BIGCOLUMN SET DATA TYPE VARCHAR`).
+    #[test]
+    fn green_v313_11_alter_case_insensitive_column() {
+        let mut engine = create_engine();
+        engine
+            .execute(r#"CREATE TABLE "MyTable"(i integer, "BigColumn" integer)"#)
+            .expect("CREATE TABLE must succeed");
+        engine
+            .execute("ALTER TABLE MyTable ALTER BIGCOLUMN SET DATA TYPE VARCHAR")
+            .expect("case-insensitive ALTER COLUMN reference must succeed");
+    }
+
     #[test]
     fn test_null_equality() {
         let mut engine = create_engine();
@@ -392,7 +413,6 @@ mod tests {
         );
     }
 
-
     /// V313-14 / Issue #4042 — RED test: CREATE TABLE AS SELECT must create
     /// the table with the SELECT projection shape and populate it from the
     /// query result. Mirrors create_as.test line 5-11.
@@ -484,7 +504,6 @@ mod tests {
         }
     }
 
-
     /// V313-10 / Issue #4038 — RED test: LIMIT arithmetic expression must
     /// be folded to a single integer. Mirrors order__test_limit.test
     /// line 23-27 (`SELECT a FROM test LIMIT 2-1`).
@@ -556,7 +575,6 @@ mod tests {
             result.rows.len()
         );
     }
-
 
     /// V313-09 / Issue #4037 — RED test: EXCEPT ALL must deduplicate
     /// by multiset subtraction (each right-side row removes one
@@ -662,7 +680,6 @@ mod tests {
         );
     }
 
-
     /// V313-08 / Issue #4043 — RED test: modulo operator in WHERE
     /// clause must work. Mirrors insert__test_insert.test line 15
     /// (`i % 2 <> 0`).
@@ -713,5 +730,4 @@ mod tests {
             "UPDATE must report 3 affected rows"
         );
     }
-
 }

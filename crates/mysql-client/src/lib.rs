@@ -24,9 +24,12 @@ mod packet_type {
     pub const COM_QUIT: u8 = 0x01;
     pub const COM_QUERY: u8 = 0x03;
     pub const COM_PING: u8 = 0x0e;
+    #[allow(dead_code)]
     pub const COM_STMT_PREPARE: u8 = 0x16;
+    #[allow(dead_code)]
     pub const COM_STMT_EXECUTE: u8 = 0x17;
     pub const COM_STMT_CLOSE: u8 = 0x19;
+    #[allow(dead_code)]
     pub const COM_RESET_CONNECTION: u8 = 0x1F;
 }
 
@@ -105,7 +108,6 @@ pub type MySqlResult<T> = Result<T, MySqlClientError>;
 const READ_RETRY_MAX: usize = 100;
 
 fn read_exact_retry<R: Read + ?Sized>(r: &mut R, mut buf: &mut [u8]) -> MySqlResult<()> {
-    use std::io::Read;
     let mut retries = 0;
     loop {
         match r.read(buf) {
@@ -691,7 +693,7 @@ pub fn parse_result_set(stream: &mut dyn Read, deprecate_eof: bool) -> MySqlResu
 /// Parse binary row: NULL bitmap + raw column values (no type bytes in MySQL binary protocol).
 /// col_types provides the column type codes to determine how many bytes each value occupies.
 fn parse_binary_row(data: &[u8], col_types: &[u8]) -> MySqlResult<Vec<String>> {
-    let null_bytes = (col_types.len() + 7) / 8;
+    let null_bytes = col_types.len().div_ceil(8);
     if data.len() < null_bytes {
         return Err(MySqlClientError::Protocol(
             "Binary row: data too short for null bitmap".into(),
@@ -825,6 +827,7 @@ fn parse_binary_row(data: &[u8], col_types: &[u8]) -> MySqlResult<Vec<String>> {
 }
 
 /// Handles the most common types.
+#[allow(dead_code)]
 fn parse_binary_value(data: &[u8]) -> Option<(String, usize)> {
     if data.is_empty() {
         return None;
