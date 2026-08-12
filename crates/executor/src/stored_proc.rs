@@ -1417,6 +1417,9 @@ impl StoredProcExecutor {
             sqlrustgo_parser::Expression::SubqueryField(_, _) => Value::Null,
             sqlrustgo_parser::Expression::SequenceNextVal(_) => Value::Null,
             sqlrustgo_parser::Expression::SequenceCurrval(_) => Value::Null,
+            sqlrustgo_parser::Expression::SystemVariable(name) => {
+                crate::expr::resolve_system_variable(name)
+            }
         }
     }
 
