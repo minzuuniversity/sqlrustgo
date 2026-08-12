@@ -2548,7 +2548,10 @@ mod tests {
                 if self.offset >= self.data.len() {
                     return Ok(0);
                 }
-                let n = self.chunk_size.min(buf.len()).min(self.data.len() - self.offset);
+                let n = self
+                    .chunk_size
+                    .min(buf.len())
+                    .min(self.data.len() - self.offset);
                 buf[..n].copy_from_slice(&self.data[self.offset..self.offset + n]);
                 self.offset += n;
                 Ok(n)
@@ -2607,10 +2610,10 @@ mod tests {
         // Signature: build_handshake_response(seq, username, auth_response, database, auth_plugin)
         let auth_response = vec![0u8; 20];
         let packet = build_handshake_response(
-            1,                   // seq
-            "user",              // username
-            &auth_response,      // auth_response
-            "db",                // database
+            1,                       // seq
+            "user",                  // username
+            &auth_response,          // auth_response
+            "db",                    // database
             "mysql_native_password", // auth_plugin
         );
         assert!(!packet.payload.is_empty());
@@ -2620,9 +2623,8 @@ mod tests {
     #[test]
     fn test_build_handshake_response_no_db() {
         let auth_response = vec![0u8; 20];
-        let packet = build_handshake_response(
-            1, "alice", &auth_response, "", "mysql_native_password",
-        );
+        let packet =
+            build_handshake_response(1, "alice", &auth_response, "", "mysql_native_password");
         assert!(!packet.payload.is_empty());
     }
 }

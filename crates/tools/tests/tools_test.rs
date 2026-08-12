@@ -209,16 +209,30 @@ fn test_config_manager_load_save_roundtrip() {
 
 #[test]
 fn test_config_change_variants() {
-    use sqlrustgo_tools::config_hot_reload::{ConfigChange, DatabaseConfig, LogConfig, CacheConfig};
+    use sqlrustgo_tools::config_hot_reload::{
+        CacheConfig, ConfigChange, DatabaseConfig, LogConfig,
+    };
     let db_change = ConfigChange::Database(DatabaseConfig::default());
     let log_change = ConfigChange::Log(LogConfig::default());
     let cache_change = ConfigChange::Cache(CacheConfig::default());
     let full_change = ConfigChange::Full(AppConfig::default());
     // Pattern-match each variant to ensure Debug derives correctly.
-    match db_change { ConfigChange::Database(_) => {} _ => panic!("expected Database") }
-    match log_change { ConfigChange::Log(_) => {} _ => panic!("expected Log") }
-    match cache_change { ConfigChange::Cache(_) => {} _ => panic!("expected Cache") }
-    match full_change { ConfigChange::Full(_) => {} _ => panic!("expected Full") }
+    match db_change {
+        ConfigChange::Database(_) => {}
+        _ => panic!("expected Database"),
+    }
+    match log_change {
+        ConfigChange::Log(_) => {}
+        _ => panic!("expected Log"),
+    }
+    match cache_change {
+        ConfigChange::Cache(_) => {}
+        _ => panic!("expected Cache"),
+    }
+    match full_change {
+        ConfigChange::Full(_) => {}
+        _ => panic!("expected Full"),
+    }
 }
 
 #[test]
@@ -251,7 +265,7 @@ use sqlrustgo_tools::config_hot_reload::AppConfig;
 #[test]
 fn test_config_manager_getters() {
     use sqlrustgo_tools::config_hot_reload::{
-        AppConfig, ConfigManager, DatabaseConfig, LogConfig, CacheConfig,
+        AppConfig, CacheConfig, ConfigManager, DatabaseConfig, LogConfig,
     };
     let dir = std::env::temp_dir().join(format!(
         "sqlrustgo-tools-cfgmgr-getters-{}",
@@ -284,7 +298,8 @@ fn test_config_manager_update_database() {
         max_connections: 50,
         timeout_seconds: 10,
     };
-    mgr.update_database_config(new_db.clone()).expect("update_database_config");
+    mgr.update_database_config(new_db.clone())
+        .expect("update_database_config");
     // In-memory state updated.
     assert_eq!(mgr.get_database_config(), new_db);
     // Persisted to file.
@@ -309,14 +324,15 @@ fn test_config_manager_update_log() {
         retention_days: 3,
         format: "text".into(),
     };
-    mgr.update_log_config(new_log.clone()).expect("update_log_config");
+    mgr.update_log_config(new_log.clone())
+        .expect("update_log_config");
     assert_eq!(mgr.get_log_config(), new_log);
     let _ = std::fs::remove_dir_all(&dir);
 }
 
 #[test]
 fn test_config_manager_update_cache() {
-    use sqlrustgo_tools::config_hot_reload::{ConfigManager, CacheConfig};
+    use sqlrustgo_tools::config_hot_reload::{CacheConfig, ConfigManager};
     let dir = std::env::temp_dir().join(format!(
         "sqlrustgo-tools-cfgmgr-update-cache-{}",
         std::process::id()
@@ -329,7 +345,8 @@ fn test_config_manager_update_cache() {
         max_size_mb: 256,
         ttl_seconds: 60,
     };
-    mgr.update_cache_config(new_cache.clone()).expect("update_cache_config");
+    mgr.update_cache_config(new_cache.clone())
+        .expect("update_cache_config");
     assert_eq!(mgr.get_cache_config(), new_cache);
     let _ = std::fs::remove_dir_all(&dir);
 }
@@ -404,7 +421,8 @@ fn test_config_manager_listener_dispatch() {
     let mut mgr = ConfigManager::new(path).expect("new");
     mgr.update_database_config(DatabaseConfig::default())
         .expect("db update");
-    mgr.update_log_config(LogConfig::default()).expect("log update");
+    mgr.update_log_config(LogConfig::default())
+        .expect("log update");
     mgr.update_cache_config(CacheConfig::default())
         .expect("cache update");
     let _ = std::fs::remove_dir_all(&dir);
@@ -497,7 +515,8 @@ fn test_backup_metadata_status_variants() {
 #[test]
 fn test_backup_metadata_serde_roundtrip() {
     use sqlrustgo_tools::backup_restore::{serde_json_simple, BackupMetadata, BackupType};
-    let mut original = BackupMetadata::new("abc".to_string(), BackupType::Incremental, "db".to_string());
+    let mut original =
+        BackupMetadata::new("abc".to_string(), BackupType::Incremental, "db".to_string());
     original.tables.push("t1".to_string());
     let s = serde_json_simple(&original);
     assert!(s.contains("\"id\":\"abc\""));
