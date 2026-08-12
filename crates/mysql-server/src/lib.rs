@@ -1484,6 +1484,179 @@ mod tests {
         let auth_response = [];
         assert!(!store.verify_password("root", &scramble, &auth_response));
     }
+
+    // ---------- split_top_level_statements ----------
+
+    #[test]
+    fn split_top_level_single_statement() {
+        let stmts = split_top_level_statements("SELECT 1");
+        assert_eq!(stmts, vec!["SELECT 1"]);
+    }
+
+    #[test]
+    fn split_top_level_two_statements() {
+        let stmts = split_top_level_statements("SELECT 1; SELECT 2");
+        assert_eq!(stmts, vec!["SELECT 1", "SELECT 2"]);
+    }
+
+    #[test]
+    fn split_top_level_with_trailing_semicolon() {
+        let stmts = split_top_level_statements("SELECT 1;");
+        assert_eq!(stmts, vec!["SELECT 1"]);
+    }
+
+    #[test]
+    fn split_top_level_with_whitespace() {
+        let stmts = split_top_level_statements("  SELECT 1  ;  SELECT 2  ");
+        assert_eq!(stmts, vec!["SELECT 1", "SELECT 2"]);
+    }
+
+    #[test]
+    fn split_top_level_semicolon_inside_string_is_ignored() {
+        let stmts = split_top_level_statements("INSERT INTO t VALUES ('a;b'); SELECT 1");
+        assert_eq!(stmts.len(), 2);
+        assert_eq!(stmts[0], "INSERT INTO t VALUES ('a;b')");
+        assert_eq!(stmts[1], "SELECT 1");
+    }
+
+    #[test]
+    fn split_top_level_escaped_quote_skips_next_char() {
+        let stmts = split_top_level_statements("INSERT INTO t VALUES ('it\\'s'); SELECT 1");
+        assert_eq!(stmts.len(), 2);
+        assert!(stmts[0].contains("it\\'s"));
+    }
+
+    #[test]
+    fn split_top_level_double_quoted_string() {
+        let stmts = split_top_level_statements("SELECT \"a;b\"; SELECT 2");
+        assert_eq!(stmts.len(), 2);
+    }
+
+    #[test]
+    fn split_top_level_semicolon_inside_parens_ignored() {
+        let stmts = split_top_level_statements("SELECT * FROM (SELECT 1; SELECT 2);");
+        // The parser sees ONE statement (the outer SELECT) because the
+        // inner ';' is inside parens.
+        assert_eq!(stmts.len(), 1);
+        assert!(stmts[0].contains("SELECT 1; SELECT 2"));
+    }
+
+    #[test]
+    fn split_top_level_line_comment_skipped() {
+        let stmts = split_top_level_statements(
+            "-- comment with ; inside\nSELECT 1; -- another ;\nSELECT 2",
+        );
+        assert_eq!(stmts.len(), 2);
+    }
+
+    #[test]
+    fn split_top_level_block_comment_skipped() {
+        let stmts =
+            split_top_level_statements("/* ; */ SELECT 2; /* multi\nline ; comment */ SELECT 3");
+        assert_eq!(stmts.len(), 2);
+    }
+
+    #[test]
+    fn split_top_level_empty_input() {
+        let stmts = split_top_level_statements("");
+        assert!(stmts.is_empty());
+    }
+
+    #[test]
+    fn split_top_level_only_whitespace() {
+        let stmts = split_top_level_statements("   \n\t  ");
+        assert!(stmts.is_empty());
+    }
+
+    // ---------- classify_long_query_time_set ----------
+
+    #[test]
+    fn classify_long_query_time_set_none_for_other_statements() {
+        use sqlrustgo_parser::{Statement, transaction::TransactionStatement};
+        // Begin is not a SET long_query_time, so None.
+        let stmt = Statement::Transaction(TransactionStatement::Begin {
+            work: false,
+            isolation_level: None,
+            readonly: false,
+        });
+        assert_eq!(classify_long_query_time_set(&stmt), None);
+    }
+
+    #[test]
+    fn classify_long_query_time_set_parses_integer_seconds() {
+        use sqlrustgo_parser::{Statement, transaction::TransactionStatement};
+        let stmt = Statement::Transaction(TransactionStatement::SetSessionVariable {
+            name: "long_query_time".to_string(),
+            value: "5".to_string(),
+        });
+        match classify_long_query_time_set(&stmt) {
+            Some(Ok(ms)) => assert_eq!(ms, 5000),
+            other => panic!("expected Some(Ok(5000)), got {:?}", other),
+        }
+    }
+
+    #[test]
+    fn classify_long_query_time_set_parses_float_seconds() {
+        use sqlrustgo_parser::{Statement, transaction::TransactionStatement};
+        let stmt = Statement::Transaction(TransactionStatement::SetSessionVariable {
+            name: "long_query_time".to_string(),
+            value: "0.5".to_string(),
+        });
+        match classify_long_query_time_set(&stmt) {
+            Some(Ok(ms)) => assert_eq!(ms, 500),
+            other => panic!("expected Some(Ok(500)), got {:?}", other),
+        }
+    }
+
+    #[test]
+    fn classify_long_query_time_set_case_insensitive_name() {
+        use sqlrustgo_parser::{Statement, transaction::TransactionStatement};
+        let stmt = Statement::Transaction(TransactionStatement::SetSessionVariable {
+            name: "LONG_QUERY_TIME".to_string(),
+            value: "2".to_string(),
+        });
+        match classify_long_query_time_set(&stmt) {
+            Some(Ok(ms)) => assert_eq!(ms, 2000),
+            other => panic!("expected Some(Ok(2000)), got {:?}", other),
+        }
+    }
+
+    #[test]
+    fn classify_long_query_time_set_rejects_invalid_value() {
+        use sqlrustgo_parser::{Statement, transaction::TransactionStatement};
+        let stmt = Statement::Transaction(TransactionStatement::SetSessionVariable {
+            name: "long_query_time".to_string(),
+            value: "not_a_number".to_string(),
+        });
+        match classify_long_query_time_set(&stmt) {
+            Some(Err(msg)) => assert!(msg.contains("Incorrect argument")),
+            other => panic!("expected Some(Err), got {:?}", other),
+        }
+    }
+
+    #[test]
+    fn classify_long_query_time_set_rejects_negative() {
+        use sqlrustgo_parser::{Statement, transaction::TransactionStatement};
+        let stmt = Statement::Transaction(TransactionStatement::SetSessionVariable {
+            name: "long_query_time".to_string(),
+            value: "-1.0".to_string(),
+        });
+        match classify_long_query_time_set(&stmt) {
+            Some(Err(_)) => {}
+            other => panic!("expected Some(Err) for negative value, got {:?}", other),
+        }
+    }
+
+    #[test]
+    fn classify_long_query_time_set_ignores_other_variable() {
+        use sqlrustgo_parser::{Statement, transaction::TransactionStatement};
+        let stmt = Statement::Transaction(TransactionStatement::SetSessionVariable {
+            name: "max_connections".to_string(),
+            value: "100".to_string(),
+        });
+        // Not long_query_time → None (not interested in this SET).
+        assert_eq!(classify_long_query_time_set(&stmt), None);
+    }
 }
 
 #[derive(Debug)]
