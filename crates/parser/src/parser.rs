@@ -2220,6 +2220,18 @@ impl Parser {
     /// V312-11-fix #3986: parse `SET variable = value` (session variable).
     fn parse_set_session_variable(&mut self) -> Result<Statement, String> {
         self.expect(Token::Set)?;
+        // Reject unsupported MySQL statements that look like SET session var.
+        // These would otherwise be silently treated as session-variable
+        // assignments and pass parse with no useful semantics.
+        if let Some(Token::Identifier(ref s)) = self.current() {
+            let upper = s.to_uppercase();
+            if upper == "NAMES" || upper == "CHARACTER" {
+                return Err(format!(
+                    "SET {} is not yet supported",
+                    upper
+                ));
+            }
+        }
         if matches!(self.current(), Some(Token::Identifier(ref s)) if s.to_lowercase() == "variable")
         {
             self.next();
@@ -5242,6 +5254,11 @@ impl Parser {
         // Parse LIMIT clause
         let limit = if matches!(self.current(), Some(Token::Limit)) {
             self.next();
+            // MySQL: LIMIT ALL = no limit (== LIMIT NULL)
+            if matches!(self.current(), Some(Token::All)) {
+                self.next();
+                None
+            } else {
             // V313-10 / Issue #4038: peek whether the LIMIT value is followed
             // by an arithmetic operator. If it is, parse the full expression
             // through parse_expression + constant_fold_u64 so that
@@ -5336,6 +5353,7 @@ impl Parser {
                         }
                     }
                 }
+            }
             }
         } else {
             None
@@ -9498,15 +9516,14 @@ impl Parser {
                 if matches!(self.current(), Some(Token::Set)) {
                     self.next();
                     if matches!(self.current(), Some(Token::Default)) {
-                        self.next();
-                        let default_value = None;
-                        Ok(Statement::AlterTable(AlterTableStatement {
-                            table_name,
-                            operation: AlterTableOperation::AlterColumn {
-                                name: col_name,
-                                op: AlterColumnOperation::SetDefault { default_value },
-                            },
-                        }))
+                        // SET DEFAULT <expr> is not yet implemented; reject
+                        // rather than silently accept (was previously
+                        // producing SetDefault { default_value: None }
+                        // which dropped the user-supplied value).
+                        Err(
+                            "ALTER COLUMN SET DEFAULT is not yet supported"
+                                .to_string(),
+                        )
                     } else if let Some(Token::Identifier(ref id)) = self.current() {
                         if id.to_uppercase() == "DATA" {
                             self.next();
