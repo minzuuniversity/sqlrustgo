@@ -46,6 +46,7 @@ fn test_e2e_connect_and_handshake() {
         server_threads: 2,
         storage: None,
         slow_query_log: None,
+        metrics_port: None,
     };
     let handle = start_ephemeral(config).expect("ephemeral server starts");
     let port = handle.port;
@@ -75,6 +76,7 @@ fn test_e2e_select_simple() {
         server_threads: 2,
         storage: None,
         slow_query_log: None,
+        metrics_port: None,
     };
     let handle = start_ephemeral(config).expect("ephemeral server starts");
     let port = handle.port;
@@ -115,6 +117,7 @@ fn test_e2e_select_multiple_columns_rows() {
         server_threads: 2,
         storage: None,
         slow_query_log: None,
+        metrics_port: None,
     };
     let handle = start_ephemeral(config).expect("ephemeral server starts");
     let port = handle.port;
@@ -164,6 +167,7 @@ fn test_e2e_create_insert_select() {
         server_threads: 2,
         storage: None,
         slow_query_log: None,
+        metrics_port: None,
     };
     let handle = start_ephemeral(config).expect("ephemeral server starts");
     let port = handle.port;
@@ -221,6 +225,7 @@ fn test_e2e_drop_table() {
         server_threads: 2,
         storage: None,
         slow_query_log: None,
+        metrics_port: None,
     };
     let handle = start_ephemeral(config).expect("ephemeral server starts");
     let port = handle.port;
@@ -283,6 +288,7 @@ fn test_e2e_multi_statement() {
         server_threads: 2,
         storage: None,
         slow_query_log: None,
+        metrics_port: None,
     };
     let handle = start_ephemeral(config).expect("ephemeral server starts");
     let port = handle.port;
@@ -331,6 +337,7 @@ fn test_e2e_null_handling() {
         server_threads: 2,
         storage: None,
         slow_query_log: None,
+        metrics_port: None,
     };
     let handle = start_ephemeral(config).expect("ephemeral server starts");
     let port = handle.port;
@@ -382,6 +389,7 @@ fn test_e2e_arithmetic_expressions() {
         server_threads: 2,
         storage: None,
         slow_query_log: None,
+        metrics_port: None,
     };
     let handle = start_ephemeral(config).expect("ephemeral server starts");
     let port = handle.port;
@@ -424,6 +432,7 @@ fn test_e2e_update() {
         server_threads: 2,
         storage: None,
         slow_query_log: None,
+        metrics_port: None,
     };
     let handle = start_ephemeral(config).expect("ephemeral server starts");
     let port = handle.port;
@@ -484,6 +493,7 @@ fn test_e2e_delete() {
         server_threads: 2,
         storage: None,
         slow_query_log: None,
+        metrics_port: None,
     };
     let handle = start_ephemeral(config).expect("ephemeral server starts");
     let port = handle.port;
@@ -536,6 +546,7 @@ fn test_e2e_order_by() {
         server_threads: 2,
         storage: None,
         slow_query_log: None,
+        metrics_port: None,
     };
     let handle = start_ephemeral(config).expect("ephemeral server starts");
     let port = handle.port;
@@ -587,6 +598,7 @@ fn test_e2e_string_functions() {
         server_threads: 2,
         storage: None,
         slow_query_log: None,
+        metrics_port: None,
     };
     let handle = start_ephemeral(config).expect("ephemeral server starts");
     let port = handle.port;
@@ -631,6 +643,7 @@ fn test_e2e_group_by_aggregates() {
         server_threads: 2,
         storage: None,
         slow_query_log: None,
+        metrics_port: None,
     };
     let handle = start_ephemeral(config).expect("ephemeral server starts");
     let port = handle.port;
@@ -684,6 +697,7 @@ fn test_e2e_ddl_create_table_types() {
         server_threads: 2,
         storage: None,
         slow_query_log: None,
+        metrics_port: None,
     };
     let handle = start_ephemeral(config).expect("ephemeral server starts");
     let port = handle.port;
@@ -726,6 +740,7 @@ fn test_e2e_ddl_alter_table() {
         server_threads: 2,
         storage: None,
         slow_query_log: None,
+        metrics_port: None,
     };
     let handle = start_ephemeral(config).expect("ephemeral server starts");
     let port = handle.port;
@@ -784,6 +799,7 @@ fn test_e2e_ddl_create_index() {
         server_threads: 2,
         storage: None,
         slow_query_log: None,
+        metrics_port: None,
     };
     let handle = start_ephemeral(config).expect("ephemeral server starts");
     let port = handle.port;
@@ -820,6 +836,7 @@ fn test_e2e_transaction_commit() {
         server_threads: 2,
         storage: None,
         slow_query_log: None,
+        metrics_port: None,
     };
     let handle = start_ephemeral(config).expect("ephemeral server starts");
     let port = handle.port;
@@ -865,6 +882,7 @@ fn test_e2e_select_system_version() {
         server_threads: 2,
         storage: None,
         slow_query_log: None,
+        metrics_port: None,
     };
     let handle = start_ephemeral(config).expect("ephemeral server starts");
     let port = handle.port;
@@ -895,6 +913,7 @@ fn test_e2e_select_system_version_comment() {
         server_threads: 2,
         storage: None,
         slow_query_log: None,
+        metrics_port: None,
     };
     let handle = start_ephemeral(config).expect("ephemeral server starts");
     let port = handle.port;
@@ -929,6 +948,7 @@ fn test_e2e_multi_result_set() {
         server_threads: 2,
         storage: None,
         slow_query_log: None,
+        metrics_port: None,
     };
     let handle = start_ephemeral(config).expect("ephemeral server starts");
     let port = handle.port;
@@ -963,6 +983,7 @@ fn test_e2e_syntax_error() {
         server_threads: 2,
         storage: None,
         slow_query_log: None,
+        metrics_port: None,
     };
     let handle = start_ephemeral(config).expect("ephemeral server starts");
     let port = handle.port;
@@ -993,6 +1014,7 @@ fn test_e2e_insert_affected_rows() {
         server_threads: 2,
         storage: None,
         slow_query_log: None,
+        metrics_port: None,
     };
     let handle = start_ephemeral(config).expect("ephemeral server starts");
     let port = handle.port;
@@ -1027,6 +1049,7 @@ fn test_e2e_update_affected_rows() {
         server_threads: 2,
         storage: None,
         slow_query_log: None,
+        metrics_port: None,
     };
     let handle = start_ephemeral(config).expect("ephemeral server starts");
     let port = handle.port;
@@ -1063,6 +1086,7 @@ fn test_e2e_delete_affected_rows() {
         server_threads: 2,
         storage: None,
         slow_query_log: None,
+        metrics_port: None,
     };
     let handle = start_ephemeral(config).expect("ephemeral server starts");
     let port = handle.port;
@@ -1103,6 +1127,7 @@ fn test_e2e_group_by_having() {
         server_threads: 2,
         storage: None,
         slow_query_log: None,
+        metrics_port: None,
     };
     let handle = start_ephemeral(config).expect("ephemeral server starts");
     let port = handle.port;
@@ -1146,6 +1171,7 @@ fn test_e2e_subquery_where() {
         server_threads: 2,
         storage: None,
         slow_query_log: None,
+        metrics_port: None,
     };
     let handle = start_ephemeral(config).expect("ephemeral server starts");
     let port = handle.port;
@@ -1195,6 +1221,7 @@ fn test_e2e_update_single_row() {
         server_threads: 2,
         storage: None,
         slow_query_log: None,
+        metrics_port: None,
     };
     let handle = start_ephemeral(config).expect("ephemeral server starts");
     let port = handle.port;
@@ -1234,6 +1261,7 @@ fn test_e2e_update_no_where() {
         server_threads: 2,
         storage: None,
         slow_query_log: None,
+        metrics_port: None,
     };
     let handle = start_ephemeral(config).expect("ephemeral server starts");
     let port = handle.port;
@@ -1271,6 +1299,7 @@ fn test_e2e_delete_single_row() {
         server_threads: 2,
         storage: None,
         slow_query_log: None,
+        metrics_port: None,
     };
     let handle = start_ephemeral(config).expect("ephemeral server starts");
     let port = handle.port;
@@ -1308,6 +1337,7 @@ fn test_e2e_delete_no_where() {
         server_threads: 2,
         storage: None,
         slow_query_log: None,
+        metrics_port: None,
     };
     let handle = start_ephemeral(config).expect("ephemeral server starts");
     let port = handle.port;
@@ -1347,6 +1377,7 @@ fn test_e2e_insert_with_expression() {
         server_threads: 2,
         storage: None,
         slow_query_log: None,
+        metrics_port: None,
     };
     let handle = start_ephemeral(config).expect("ephemeral server starts");
     let port = handle.port;
@@ -1388,6 +1419,7 @@ fn test_e2e_select_nonexistent_table() {
         server_threads: 2,
         storage: None,
         slow_query_log: None,
+        metrics_port: None,
     };
     let handle = start_ephemeral(config).expect("ephemeral server starts");
     let port = handle.port;
@@ -1413,6 +1445,7 @@ fn test_e2e_insert_wrong_column_count() {
         server_threads: 2,
         storage: None,
         slow_query_log: None,
+        metrics_port: None,
     };
     let handle = start_ephemeral(config).expect("ephemeral server starts");
     let port = handle.port;
@@ -1438,6 +1471,7 @@ fn test_e2e_invalid_sql_syntax() {
         server_threads: 2,
         storage: None,
         slow_query_log: None,
+        metrics_port: None,
     };
     let handle = start_ephemeral(config).expect("ephemeral server starts");
     let port = handle.port;
@@ -1461,6 +1495,7 @@ fn test_e2e_divide_by_zero() {
         server_threads: 2,
         storage: None,
         slow_query_log: None,
+        metrics_port: None,
     };
     let handle = start_ephemeral(config).expect("ephemeral server starts");
     let port = handle.port;
@@ -1488,6 +1523,7 @@ fn test_e2e_avg_aggregate() {
         server_threads: 2,
         storage: None,
         slow_query_log: None,
+        metrics_port: None,
     };
     let handle = start_ephemeral(config).expect("ephemeral server starts");
     let port = handle.port;
@@ -1528,6 +1564,7 @@ fn test_e2e_min_max_aggregates() {
         server_threads: 2,
         storage: None,
         slow_query_log: None,
+        metrics_port: None,
     };
     let handle = start_ephemeral(config).expect("ephemeral server starts");
     let port = handle.port;
@@ -1568,6 +1605,7 @@ fn test_e2e_in_operator() {
         server_threads: 2,
         storage: None,
         slow_query_log: None,
+        metrics_port: None,
     };
     let handle = start_ephemeral(config).expect("ephemeral server starts");
     let port = handle.port;
@@ -1604,6 +1642,7 @@ fn test_e2e_is_null() {
         server_threads: 2,
         storage: None,
         slow_query_log: None,
+        metrics_port: None,
     };
     let handle = start_ephemeral(config).expect("ephemeral server starts");
     let port = handle.port;
@@ -1639,6 +1678,7 @@ fn test_e2e_limit() {
         server_threads: 2,
         storage: None,
         slow_query_log: None,
+        metrics_port: None,
     };
     let handle = start_ephemeral(config).expect("ephemeral server starts");
     let port = handle.port;
@@ -1679,6 +1719,7 @@ fn test_e2e_insert_multiple_rows() {
         server_threads: 2,
         storage: None,
         slow_query_log: None,
+        metrics_port: None,
     };
     let handle = start_ephemeral(config).expect("ephemeral server starts");
     let port = handle.port;
@@ -1714,6 +1755,7 @@ fn test_e2e_insert_null() {
         server_threads: 2,
         storage: None,
         slow_query_log: None,
+        metrics_port: None,
     };
     let handle = start_ephemeral(config).expect("ephemeral server starts");
     let port = handle.port;
@@ -1750,6 +1792,7 @@ fn test_e2e_order_by_desc_limit() {
         server_threads: 2,
         storage: None,
         slow_query_log: None,
+        metrics_port: None,
     };
     let handle = start_ephemeral(config).expect("ephemeral server starts");
     let port = handle.port;
@@ -1785,6 +1828,7 @@ fn test_e2e_select_distinct() {
         server_threads: 2,
         storage: None,
         slow_query_log: None,
+        metrics_port: None,
     };
     let handle = start_ephemeral(config).expect("ephemeral server starts");
     let port = handle.port;
@@ -1820,6 +1864,7 @@ fn test_e2e_count_distinct() {
         server_threads: 2,
         storage: None,
         slow_query_log: None,
+        metrics_port: None,
     };
     let handle = start_ephemeral(config).expect("ephemeral server starts");
     let port = handle.port;
