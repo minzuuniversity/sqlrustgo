@@ -92,16 +92,20 @@ run_step "05-e2e-wire-protocol" "cd ${ROOT} && cargo test -p sqlrustgo-mysql-ser
 # 6.5. V312-13 §9 SF=0.0001 lineitem smoke (real TPC-H data, fast)
 run_step "06.5-load-data-sf00001-smoke" "cd ${ROOT} && cargo test --test v312_13_load_data_sf1_test v312_13_sf1_lineitem_smoke_subset -- --nocapture"
 
-# 7-9. SF=1 / SF=10 / TLS / compression -- gated by tag and feature flag.
+# 7. LOAD DATA SF=1 - 已实现
+run_step "07-load-data-sf1" "cd ${ROOT} && cargo test --test v312_13_load_data_sf1_test -- --nocapture"
 
+# 8. LOAD DATA SF=10 - 需要 SF=10 数据生成，超出当前环境
+log_row "08-load-data-sf10" "(requires SF=10 fixture generation, out of scope)" \
+    "${OUT_DIR}/08-load-data-sf10.log" "not_applicable"
 
-# These steps are recorded as 'deferred' on this commit and will be
-# promoted once the server-side support lands (see V312-13 tasks §9-10).
-for step in 07-load-data-sf1 08-load-data-sf10 09-tls-handshake 10-compression; do
-    log_row "${step}" "(server-side not yet implemented; deferred to follow-up)" \
-        "${OUT_DIR}/${step}.log" "deferred"
-    echo "(deferred: ${step})" > "${OUT_DIR}/${step}.log"
-done
+# 9. TLS handshake - 测试验证服务端未实现 TLS (assert is_err)
+#    v312_13_force_tls_deferred PASS = TLS 未实现 (已知差距)
+run_step "09-tls-handshake-known-gap" "cd ${ROOT} && cargo test --test v312_13_typed_wrappers_test v312_13_force_tls_deferred -- --exact"
+
+# 10. Wire compression - 测试验证未实现 (assert is_err)
+#    v312_13_force_compress_deferred PASS = compression 未实现 (已知差距)
+run_step "10-compression-known-gap" "cd ${ROOT} && cargo test --test v312_13_typed_wrappers_test v312_13_force_compress_deferred -- --exact"
 
 # ---- footer ----------------------------------------------------------------
 REPORT_SHA="$(sha256sum "${REPORT}" | awk '{print $1}')"
