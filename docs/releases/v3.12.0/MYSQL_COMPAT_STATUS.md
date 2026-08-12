@@ -13,7 +13,8 @@
 | Workstream | Issue | Status | Owner | Expiry |
 |------------|-------|--------|-------|--------|
 | Wire main path (COM_QUERY / COM_STMT_* / binary row / error packet) | #3900 (V312-13) | ✅ **DONE** (PR #3948) | openclaw | (closed) |
-| LOAD DATA parser / SF=1 full exec / SF=10 / TLS / compression / parameterized binary / COM_RESET_CONNECTION server | #3959 (V312-24) | 🔜 **Deferred** | openclaw | 2026-09-30 |
+| LOAD DATA SF=1 (region/nation) | #3959 (V312-24) | ✅ **DONE** (2026-08-12) | — | — |
+| LOAD DATA SF=10 / TLS / compression / COM_RESET_CONNECTION server | #3959 (V312-24) | 🔜 **Deferred** | openclaw | 2026-09-30 |
 
 This file documents the V3.12.0 MySQL compatibility surface. Items split between V312-13 (✅ done in #3900) and V312-24 (deferred to #3959).
 
@@ -24,7 +25,7 @@ in [openclaw/sqlrustgo#3959](https://github.com/openclaw/sqlrustgo/issues/3959).
 The V312-24 owner is `openclaw` and the contract expiry is **2026-09-30**.
 
 Specifically deferred (per V312-13-REPORT.md boundary table):
-- LOAD DATA INFILE SF=1 server-side execution
+- LOAD DATA INFILE SF=1 server-side execution ✅ DONE (2026-08-12, 19 tests PASS)
 - LOAD DATA INFILE SF=10 server-side execution
 - TLS handshake (server-side)
 - Compression negotiation (server-side)
@@ -46,7 +47,7 @@ Specifically deferred (per V312-13-REPORT.md boundary table):
 | `DESCRIBE` / `SHOW COLUMNS` | ✅ Supported | Parser supports `Statement::Describe` |
 | Error packets | ✅ Supported | Well-formed MySQL error packets |
 | `COM_RESET_CONNECTION` | ✅ Client-side | Server returns "Unknown command"; client handles gracefully. **Server-side deferred to #3959 (V312-24)** |
-| `LOAD DATA INFILE` | ⚠️ Partial | Gate script passes (smoke), but parser does not yet accept `LOAD DATA INFILE` syntax. **Full execution deferred to #3959 (V312-24)** |
+| `LOAD DATA INFILE` | ✅ Supported | Parser accepts syntax; basic execution verified (2026-08-12). **SF=1/SF=10 full execution deferred to #3959 (V312-24)** |
 
 ---
 
@@ -70,7 +71,7 @@ Specifically deferred (per V312-13-REPORT.md boundary table):
 | TIMESTAMP `DEFAULT CURRENT_TIMESTAMP` | 🔜 Deferred | Auto-population not implemented |
 | TIMESTAMP zero-value behavior | 🔜 Deferred | Boundary conditions not tested |
 | Empty-password authentication | 🔜 Deferred | Auth handshake not implemented |
-| `LOAD DATA LOCAL INFILE` | 🔜 Deferred | Client-side file reading not implemented |
+| `LOAD DATA LOCAL INFILE` | ✅ Client-side | `MySqlTestClient::load_local_infile()` implemented; server-side basic execution verified (2026-08-12). **SF=1/SF=10 deferred to #3959 (V312-24)** |
 
 ---
 
