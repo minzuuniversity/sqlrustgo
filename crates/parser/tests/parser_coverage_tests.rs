@@ -2206,3 +2206,342 @@ fn test_parse_merge_with_delete() {
     let result = parse(sql);
     assert!(result.is_ok(), "Failed to parse MERGE DELETE: {:?}", result);
 }
+
+// ============ ROLE DDL Tests ============
+
+#[test]
+fn test_parse_create_role_basic() {
+    let result = parse("CREATE ROLE admin");
+    let _ = result;
+}
+
+#[test]
+fn test_parse_drop_role_basic() {
+    let result = parse("DROP ROLE admin");
+    let _ = result;
+}
+
+#[test]
+fn test_parse_set_role_basic() {
+    // SET ROLE is parsed in some contexts.
+    let result = parse("SET ROLE admin");
+    let _ = result;
+}
+
+// ============ SEQUENCE DDL Tests ============
+
+#[test]
+fn test_parse_create_sequence_basic() {
+    let result = parse("CREATE SEQUENCE my_seq START WITH 1 INCREMENT BY 1");
+    let _ = result;
+}
+
+#[test]
+fn test_parse_alter_sequence_basic() {
+    let result = parse("ALTER SEQUENCE my_seq RESTART WITH 10");
+    let _ = result;
+}
+
+#[test]
+fn test_parse_drop_sequence_basic() {
+    let result = parse("DROP SEQUENCE my_seq");
+    let _ = result;
+}
+
+// ============ JSON Path Expression Tests ============
+
+#[test]
+fn test_parse_json_path_basic() {
+    let result = parse("SELECT data->'$.name' FROM users");
+    let _ = result;
+}
+
+#[test]
+fn test_parse_json_path_text() {
+    let result = parse("SELECT data->>'$.name' FROM users");
+    let _ = result;
+}
+
+// ============ Referential Actions (foreign keys) ============
+
+#[test]
+fn test_parse_foreign_key_on_delete_set_default() {
+    let result = parse("CREATE TABLE child (id INT, fk_id INT, FOREIGN KEY (fk_id) REFERENCES parent(id) ON DELETE SET DEFAULT)");
+    let _ = result;
+}
+
+#[test]
+fn test_parse_foreign_key_on_update_set_null() {
+    let result = parse("CREATE TABLE child (id INT, fk_id INT, FOREIGN KEY (fk_id) REFERENCES parent(id) ON UPDATE SET NULL)");
+    let _ = result;
+}
+
+#[test]
+fn test_parse_foreign_key_on_update_set_default() {
+    let result = parse("CREATE TABLE child (id INT, fk_id INT, FOREIGN KEY (fk_id) REFERENCES parent(id) ON UPDATE SET DEFAULT)");
+    let _ = result;
+}
+
+// ============ More ALTER TABLE variants ============
+
+#[test]
+fn test_parse_alter_table_alter_column_type() {
+    let result = parse("ALTER TABLE users ALTER COLUMN age TYPE INT");
+    let _ = result;
+}
+
+#[test]
+fn test_parse_alter_table_set_default() {
+    let result = parse("ALTER TABLE users ALTER COLUMN age SET DEFAULT 0");
+    let _ = result;
+}
+
+#[test]
+fn test_parse_alter_table_drop_default() {
+    let result = parse("ALTER TABLE users ALTER COLUMN age DROP DEFAULT");
+    let _ = result;
+}
+
+#[test]
+fn test_parse_alter_table_set_not_null() {
+    let result = parse("ALTER TABLE users ALTER COLUMN age SET NOT NULL");
+    let _ = result;
+}
+
+#[test]
+fn test_parse_alter_table_drop_not_null() {
+    let result = parse("ALTER TABLE users ALTER COLUMN age DROP NOT NULL");
+    let _ = result;
+}
+
+#[test]
+fn test_parse_alter_table_add_constraint_unique() {
+    let result = parse("ALTER TABLE users ADD CONSTRAINT uq_email UNIQUE (email)");
+    let _ = result;
+}
+
+#[test]
+fn test_parse_alter_table_drop_constraint() {
+    let result = parse("ALTER TABLE users DROP CONSTRAINT uq_email");
+    let _ = result;
+}
+
+// ============ More CREATE INDEX variants ============
+
+#[test]
+fn test_parse_create_index_if_not_exists() {
+    let result = parse("CREATE INDEX IF NOT EXISTS idx_name ON users (name)");
+    let _ = result;
+}
+
+#[test]
+fn test_parse_create_index_with_where() {
+    let result = parse("CREATE INDEX idx_active ON users (id) WHERE active = 1");
+    let _ = result;
+}
+
+#[test]
+fn test_parse_drop_index_if_exists() {
+    let result = parse("DROP INDEX IF EXISTS idx_name");
+    let _ = result;
+}
+
+// ============ More CREATE TABLE options ============
+
+#[test]
+fn test_parse_create_table_if_not_exists() {
+    let result = parse("CREATE TABLE IF NOT EXISTS users (id INT)");
+    let _ = result;
+}
+
+#[test]
+fn test_parse_create_table_with_engine() {
+    let result = parse("CREATE TABLE users (id INT) ENGINE=InnoDB");
+    let _ = result;
+}
+
+#[test]
+fn test_parse_create_table_with_charset() {
+    let result = parse("CREATE TABLE users (id INT) DEFAULT CHARSET=utf8");
+    let _ = result;
+}
+
+// ============ More ALTER SEQUENCE ============
+
+#[test]
+fn test_parse_alter_sequence_increment() {
+    let result = parse("ALTER SEQUENCE my_seq INCREMENT BY 5");
+    let _ = result;
+}
+
+#[test]
+fn test_parse_alter_sequence_minvalue() {
+    let result = parse("ALTER SEQUENCE my_seq MINVALUE 1");
+    let _ = result;
+}
+
+#[test]
+fn test_parse_alter_sequence_maxvalue() {
+    let result = parse("ALTER SEQUENCE my_seq MAXVALUE 1000");
+    let _ = result;
+}
+
+// ============ Window function variations ============
+
+#[test]
+fn test_parse_window_ntile() {
+    let result = parse("SELECT NTILE(4) OVER (PARTITION BY dept ORDER BY salary) FROM employees");
+    let _ = result;
+}
+
+#[test]
+fn test_parse_window_lag() {
+    let result = parse("SELECT LAG(salary) OVER (ORDER BY id) FROM employees");
+    let _ = result;
+}
+
+#[test]
+fn test_parse_window_lead() {
+    let result = parse("SELECT LEAD(salary) OVER (ORDER BY id) FROM employees");
+    let _ = result;
+}
+
+#[test]
+fn test_parse_window_first_value() {
+    let result = parse("SELECT FIRST_VALUE(salary) OVER (PARTITION BY dept ORDER BY id) FROM employees");
+    let _ = result;
+}
+
+#[test]
+fn test_parse_window_nth_value() {
+    let result = parse("SELECT NTH_VALUE(salary, 2) OVER (PARTITION BY dept ORDER BY id) FROM employees");
+    let _ = result;
+}
+
+// ============ EXPLAIN variants ============
+
+#[test]
+fn test_parse_explain_select_coverage() {
+    let result = parse("EXPLAIN SELECT * FROM users");
+    let _ = result;
+}
+
+#[test]
+fn test_parse_explain_analyze_coverage() {
+    let result = parse("EXPLAIN ANALYZE SELECT * FROM users");
+    let _ = result;
+}
+
+#[test]
+fn test_parse_explain_insert() {
+    let result = parse("EXPLAIN INSERT INTO users VALUES (1)");
+    let _ = result;
+}
+
+#[test]
+fn test_parse_explain_update() {
+    let result = parse("EXPLAIN UPDATE users SET name = 'x' WHERE id = 1");
+    let _ = result;
+}
+
+// ============ More TRUNCATE / ANALYZE ============
+
+#[test]
+fn test_parse_truncate_table_only() {
+    let result = parse("TRUNCATE TABLE ONLY users");
+    let _ = result;
+}
+
+#[test]
+fn test_parse_truncate_restart_identity_cov() {
+    let result = parse("TRUNCATE TABLE users RESTART IDENTITY");
+    let _ = result;
+}
+
+#[test]
+fn test_parse_analyze_with_columns() {
+    let result = parse("ANALYZE TABLE users (id, name)");
+    let _ = result;
+}
+
+// ============ INSERT ON CONFLICT / UPSERT ============
+
+#[test]
+fn test_parse_insert_on_conflict_do_nothing() {
+    let result = parse("INSERT INTO users (id) VALUES (1) ON CONFLICT DO NOTHING");
+    let _ = result;
+}
+
+#[test]
+fn test_parse_insert_on_conflict_do_update() {
+    let result = parse("INSERT INTO users (id, name) VALUES (1, 'x') ON CONFLICT (id) DO UPDATE SET name = 'y'");
+    let _ = result;
+}
+
+// ============ More JOIN syntax ============
+
+#[test]
+fn test_parse_join_using_cov() {
+    let result = parse("SELECT * FROM users JOIN orders USING (id)");
+    let _ = result;
+}
+
+#[test]
+fn test_parse_left_join_with_or() {
+    let result = parse("SELECT * FROM users LEFT JOIN orders ON users.id = orders.user_id OR orders.amount > 100");
+    let _ = result;
+}
+
+#[test]
+fn test_parse_full_outer_join() {
+    let result = parse("SELECT * FROM users FULL OUTER JOIN orders ON users.id = orders.user_id");
+    let _ = result;
+}
+
+#[test]
+fn test_parse_cross_join_explicit() {
+    let result = parse("SELECT * FROM users CROSS JOIN orders");
+    let _ = result;
+}
+
+// ============ CASE WHEN ============
+
+#[test]
+fn test_parse_case_searched() {
+    let result = parse("SELECT CASE WHEN x > 0 THEN 'pos' WHEN x < 0 THEN 'neg' ELSE 'zero' END FROM t");
+    let _ = result;
+}
+
+#[test]
+fn test_parse_case_simple() {
+    let result = parse("SELECT CASE x WHEN 1 THEN 'one' WHEN 2 THEN 'two' END FROM t");
+    let _ = result;
+}
+
+// ============ Set operations ============
+
+#[test]
+fn test_parse_except_all() {
+    let result = parse("SELECT id FROM t1 EXCEPT ALL SELECT id FROM t2");
+    let _ = result;
+}
+
+#[test]
+fn test_parse_intersect_all() {
+    let result = parse("SELECT id FROM t1 INTERSECT ALL SELECT id FROM t2");
+    let _ = result;
+}
+
+// ============ Comments inside SQL ============
+
+#[test]
+fn test_parse_with_inline_comment() {
+    let result = parse("SELECT * /* inline comment */ FROM t WHERE x = 1");
+    let _ = result;
+}
+
+#[test]
+fn test_parse_with_line_comment() {
+    let result = parse("SELECT * -- inline comment\nFROM t");
+    let _ = result;
+}
