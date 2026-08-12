@@ -100,8 +100,8 @@ For complete evidence chains and risk assessments, see:
 - [`GA_READINESS_FINAL_2026-06-19.md`](GA_READINESS_FINAL_2026-06-19.md) — latest pre-soak status
 - [`SESSION_FINAL_STATUS_2026-06-19.md`](SESSION_FINAL_STATUS_2026-06-19.md) — engineering work complete
 - [`TEST_TRUTHFULNESS_REPORT.md`](TEST_TRUTHFULNESS_REPORT.md) — ADR-008 transparency
-- [`docs/governance/GATE_CONDITIONS.md`](../governance/GATE_CONDITIONS.md) v3.1 — gate definitions
-- [`docs/governance/adr/ADR-006-*.md`](../governance/adr/) — meta-gate rationale
+- [`docs/governance/GATE_CONDITIONS.md`](../../governance/GATE_CONDITIONS.md) v3.1 — gate definitions
+- `docs/governance/adr/ADR-006-*.md` — meta-gate rationale
 
 ## Maintenance
 

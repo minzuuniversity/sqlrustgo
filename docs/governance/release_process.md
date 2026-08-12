@@ -349,7 +349,7 @@ v2.8.0 Milestone
 
 | 文档 | 说明 |
 |------|------|
-| [gate_spec.md](./gate_spec.md) | 门禁规范 |
+| gate_spec.md | 门禁规范 |
 | [RELEASE_LIFECYCLE.md](./RELEASE_LIFECYCLE.md) | 版本生命周期 |
 | [RC_TO_GA_GATE_CHECKLIST.md](./RC_TO_GA_GATE_CHECKLIST.md) | RC→GA 清单 |
 | [RELEASE_POLICY.md](./RELEASE_POLICY.md) | 发布策略 |

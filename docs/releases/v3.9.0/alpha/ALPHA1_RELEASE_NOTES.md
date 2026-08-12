@@ -103,9 +103,9 @@ v3.9.0-alpha1 是 **Production Readiness Release** 的首个 Alpha 版本，标�
 
 ## 五、关联文档
 
-- [ROADMAP.md](file:///D:/sqlrustgo/docs/releases/v3.9.0/ROADMAP.md) — 6 Phase / 12 周
-- [V390_VERSION_PLAN.md](file:///D:/sqlrustgo/docs/releases/v3.9.0/plans/V390_VERSION_PLAN.md) — 战略定位
-- [V390_COMPREHENSIVE_ASSESSMENT.md](file:///D:/sqlrustgo/docs/releases/v3.9.0/V390_COMPREHENSIVE_ASSESSMENT.md) — 综合评估
+- [ROADMAP.md](../../../../ROADMAP.md) — 6 Phase / 12 周
+- [V390_VERSION_PLAN.md](../plans/V390_VERSION_PLAN.md) — 战略定位
+- [V390_COMPREHENSIVE_ASSESSMENT.md](../V390_COMPREHENSIVE_ASSESSMENT.md) — 综合评估
 
 ---
 
