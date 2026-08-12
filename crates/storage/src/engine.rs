@@ -1088,8 +1088,10 @@ impl MemoryStorage {
     /// `TxLog` so the sqllogictest runner can broadcast it to other connections.
     ///
     /// Behavior matches the original `commit_transaction`:
+    ///
     /// - `tx_log = None`
     /// - `current_tx_id = 0`
+    ///
     /// but **returns** the previous `TxLog` instead of dropping it. Callers
     /// that do not need the log can simply discard the result.
     ///
@@ -1153,7 +1155,9 @@ impl MemoryStorage {
 
         for (table, prior, new) in &log.updated {
             if let Some(active_log) = self.tx_log.as_mut() {
-                active_log.updated.push((table.clone(), prior.clone(), new.clone()));
+                active_log
+                    .updated
+                    .push((table.clone(), prior.clone(), new.clone()));
             }
             if let Some(records) = self.tables.get_mut(table) {
                 for record in records.iter_mut() {
