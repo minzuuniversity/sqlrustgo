@@ -13,7 +13,7 @@
 | Workstream | Issue | Status | Owner | Expiry |
 |------------|-------|--------|-------|--------|
 | Wire main path (COM_QUERY / COM_STMT_* / binary row / error packet) | #3900 (V312-13) | ✅ **DONE** (PR #3948) | openclaw | (closed) |
-| LOAD DATA SF=10 / compression / COM_RESET_CONNECTION server | #3959 (V312-24) | 🔜 **Deferred** | openclaw | 2026-09-30 |
+| LOAD DATA SF=10 / COM_RESET_CONNECTION server | #3959 (V312-24) | 🔜 **Deferred** | openclaw | 2026-09-30 |
 | TLS handshake (server-side) | #3959 (V312-24) | ✅ Server-side implemented | — | — |
 
 This file documents the V3.12.0 MySQL compatibility surface. Items split between V312-13 (✅ done in #3900) and V312-24 (deferred to #3959).
@@ -28,7 +28,7 @@ Specifically deferred (per V312-13-REPORT.md boundary table):
 - LOAD DATA INFILE SF=1 server-side execution ✅ DONE (2026-08-12, 19 tests PASS)
 - LOAD DATA INFILE SF=10 server-side execution
 - TLS handshake (server-side)
-- Compression negotiation (server-side)
+- Compression negotiation (server-side: flate2 primitives + integration DONE)
 - COM_RESET_CONNECTION server-side (currently returns "Unknown command")
 - LOAD DATA parser hardening (currently accepts basic subset)
 
@@ -121,7 +121,7 @@ VARCHAR columns are space-padded to column width in MySQL storage. The client st
 - LOAD DATA SF=1 full execution (row count + hash)
 - LOAD DATA SF=10 execution
 - TLS handshake (server-side ✅ implemented; client-gap: MySqlTestClient has no native TLS to verify end-to-end)
-- zlib compression (server-side ❌ not implemented)
+- zlib compression (server-side: flate2 implemented, read_compressed_packet + write_compressed_packet integrated, unit + integration tests pass)
 - Parameterized query binary result (`WHERE id = ?` → binary rows)
 - COM_RESET_CONNECTION (server-side)
 

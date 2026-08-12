@@ -102,8 +102,8 @@ log_row "08-load-data-sf10" "(requires SF=10 fixture generation, out of scope)" 
 # 9. TLS handshake - Server-side TLS IS implemented (rustls + TlsStream + SSL branch)
 #    v312_13_force_tls_server_implemented PASS = client-gap confirmed (not server gap)
 run_step "09-tls-handshake" "cd ${ROOT} && cargo test --test v312_13_typed_wrappers_test v312_13_force_tls_server_implemented -- --exact"
-
-# 10. Wire compression - flate2 primitives implemented, E2E not wired yet
+# 10. Wire compression - flate2 primitives implemented and server-side integrated
+#    (COMPRESS capability advertised, read_compressed_packet/read_packet wire in do_command_loop)
 #    v312_13_compress_primitives_working PASS = flate2 round-trip verified
 run_step "10-compression" "cd ${ROOT} && cargo test --test v312_13_typed_wrappers_test v312_13_compress_primitives_working -- --exact"
 
