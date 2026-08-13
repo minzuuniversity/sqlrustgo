@@ -47,7 +47,8 @@ fn create_wal_file_engine(dir: &std::path::Path) -> MySqlTestClient {
         bootstrap_sql: Vec::new(),
         bulk_insert_buffer_size: 1_048_576,
         server_threads: 16,
-        storage: None,
+        storage: None,        metrics_port: None,
+
         ..Default::default()
     };
     let handle = start_ephemeral(cfg).expect("start_ephemeral");

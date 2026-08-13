@@ -137,7 +137,8 @@ fn int2_v380_table_readable_in_v390() {
     let config = EphemeralConfig {
         data_dir: Some(data_dir.clone()),
         bootstrap_tables: false,
-        bootstrap_users: true,
+        bootstrap_users: true,        metrics_port: None,
+
         ..Default::default()
     };
     let mut client = MySqlTestClient::connect_with_config(config).expect("connect");
@@ -183,7 +184,8 @@ fn int2_v390_create_new_table_on_v380_dir() {
     let config = EphemeralConfig {
         data_dir: Some(data_dir.clone()),
         bootstrap_tables: false,
-        bootstrap_users: true,
+        bootstrap_users: true,        metrics_port: None,
+
         ..Default::default()
     };
     let mut client = MySqlTestClient::connect_with_config(config).expect("connect");
@@ -238,7 +240,8 @@ fn int2_v390_writes_v390_format_reloadable() {
         let config = EphemeralConfig {
             data_dir: Some(data_dir.clone()),
             bootstrap_tables: false,
-            bootstrap_users: true,
+            bootstrap_users: true,                metrics_port: None,
+
             ..Default::default()
         };
         let mut client = MySqlTestClient::connect_with_config(config).expect("connect #1");
@@ -259,7 +262,8 @@ fn int2_v390_writes_v390_format_reloadable() {
         let config = EphemeralConfig {
             data_dir: Some(data_dir.clone()),
             bootstrap_tables: false,
-            bootstrap_users: true,
+            bootstrap_users: true,                metrics_port: None,
+
             ..Default::default()
         };
         let mut client = MySqlTestClient::connect_with_config(config).expect("connect #2");
@@ -314,7 +318,8 @@ fn int2_v380_multi_table_join() {
     let config = EphemeralConfig {
         data_dir: Some(data_dir.clone()),
         bootstrap_tables: false,
-        bootstrap_users: true,
+        bootstrap_users: true,        metrics_port: None,
+
         ..Default::default()
     };
     let mut client = MySqlTestClient::connect_with_config(config).expect("connect");

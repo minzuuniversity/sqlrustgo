@@ -26,6 +26,7 @@ fn make_cfg(server_threads: usize) -> EphemeralConfig {
         server_threads,
         ..Default::default()
     }
+metrics_port: None,
 }
 
 #[test]
