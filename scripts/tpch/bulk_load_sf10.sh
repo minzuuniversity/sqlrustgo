@@ -136,10 +136,11 @@ start_server() {
     local port="$1"
     local data_dir="$RUN_DIR/data"
     mkdir -p "$data_dir"
-    log "starting sqlrustgo-mysql-server on $HOST:$port (auth=none, data=$data_dir)"
+    log "starting sqlrustgo-mysql-server on $HOST:$port (auth=none, data=$data_dir, infile=$DATA_DIR)"
     "$SERVER_BIN" serve \
         --host "$HOST" --port "$port" \
         --data-dir "$data_dir" \
+        --load-infile-dir "$DATA_DIR" \
         --auth-mode none \
         --max-connections 8 \
         --server-threads 4 \
