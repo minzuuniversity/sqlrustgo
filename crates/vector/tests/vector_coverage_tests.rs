@@ -3,14 +3,12 @@
 //! Exercises public APIs across all vector modules to push line coverage
 //! past the 80% RC/GA threshold.
 
-use sqlrustgo_vector::{
-    BatchVectorWriter, BatchWriteConfig, DistanceMetric, FlatIndex, HnswIndex, IvfIndex,
-    ParallelKnnConfig, ParallelKnnIndex, ShardedVectorIndex,
-    VectorRecord, HybridSearcher, HybridSearchConfig,
-    VectorIndex,
-    simd_explicit,
-};
 use sqlrustgo_vector::sql_vector_hybrid::{CompareOp, SqlPredicate, SqlValue};
+use sqlrustgo_vector::{
+    simd_explicit, BatchVectorWriter, BatchWriteConfig, DistanceMetric, FlatIndex, HnswIndex,
+    HybridSearchConfig, HybridSearcher, IvfIndex, ParallelKnnConfig, ParallelKnnIndex,
+    ShardedVectorIndex, VectorIndex, VectorRecord,
+};
 
 // ============================================================================
 // HNSW Index coverage tests
@@ -252,7 +250,10 @@ mod parallel_knn_extra_tests {
 
     #[test]
     fn parallel_knn_chunk_size_1() {
-        let config = ParallelKnnConfig { chunk_size: 1, simd_enabled: true };
+        let config = ParallelKnnConfig {
+            chunk_size: 1,
+            simd_enabled: true,
+        };
         let mut idx = ParallelKnnIndex::with_config(DistanceMetric::Cosine, config);
         for i in 0..20 {
             idx.insert(i as u64, &[i as f32, i as f32]).unwrap();
@@ -263,7 +264,10 @@ mod parallel_knn_extra_tests {
 
     #[test]
     fn parallel_knn_large_chunk() {
-        let config = ParallelKnnConfig { chunk_size: 100, simd_enabled: false };
+        let config = ParallelKnnConfig {
+            chunk_size: 100,
+            simd_enabled: false,
+        };
         let mut idx = ParallelKnnIndex::with_config(DistanceMetric::Cosine, config);
         for i in 0..30 {
             idx.insert(i as u64, &[i as f32, i as f32]).unwrap();
@@ -312,7 +316,9 @@ mod hybrid_extra_tests {
             column: "score".to_string(),
             value: SqlValue::Float(0.0),
         }];
-        let result = searcher.execute_filtered_search(&[1.0, 2.0], &preds, 5).unwrap();
+        let result = searcher
+            .execute_filtered_search(&[1.0, 2.0], &preds, 5)
+            .unwrap();
         // Predicate evaluation may not match — assert result is Ok.
         assert!(result.entries.len() <= 1);
     }
@@ -325,7 +331,10 @@ mod hybrid_extra_tests {
         searcher.insert_with_row(1, &[1.0], row).unwrap();
         let preds = vec![SqlPredicate::In {
             column: "status".to_string(),
-            values: vec![SqlValue::Text("active".to_string()), SqlValue::Text("pending".to_string())],
+            values: vec![
+                SqlValue::Text("active".to_string()),
+                SqlValue::Text("pending".to_string()),
+            ],
         }];
         let result = searcher.execute_filtered_search(&[1.0], &preds, 5).unwrap();
         assert!(result.entries.len() <= 1);
@@ -362,14 +371,20 @@ mod parallel_knn_tests {
 
     #[test]
     fn parallel_knn_with_config_override() {
-        let config = ParallelKnnConfig { chunk_size: 500, simd_enabled: false };
+        let config = ParallelKnnConfig {
+            chunk_size: 500,
+            simd_enabled: false,
+        };
         assert_eq!(config.chunk_size, 500);
         assert!(!config.simd_enabled);
     }
 
     #[test]
     fn parallel_knn_with_disabled_simd() {
-        let config = ParallelKnnConfig { chunk_size: 10, simd_enabled: false };
+        let config = ParallelKnnConfig {
+            chunk_size: 10,
+            simd_enabled: false,
+        };
         let mut idx = ParallelKnnIndex::with_config(DistanceMetric::Cosine, config);
         idx.insert(1, &[1.0, 2.0]).unwrap();
         idx.insert(2, &[3.0, 4.0]).unwrap();
@@ -578,7 +593,11 @@ mod sharded_tests {
     fn sharded_index_basic() {
         let mut idx = ShardedVectorIndex::new(4, DistanceMetric::Cosine);
         for i in 0..20 {
-            idx.insert(i as u64, &[i as f32, (i * 2) as f32, (i * 3) as f32, (i * 4) as f32]).unwrap();
+            idx.insert(
+                i as u64,
+                &[i as f32, (i * 2) as f32, (i * 3) as f32, (i * 4) as f32],
+            )
+            .unwrap();
         }
         let results = idx.search(&[5.0, 10.0, 15.0, 20.0], 5).unwrap();
         assert!(!results.is_empty());
@@ -605,7 +624,12 @@ mod batch_tests {
     fn batch_writer_basic() {
         let mut writer = BatchVectorWriter::new(DistanceMetric::Cosine);
         for i in 0..10 {
-            writer.insert(i as u64, vec![i as f32, (i + 1) as f32, (i + 2) as f32, (i + 3) as f32]).unwrap();
+            writer
+                .insert(
+                    i as u64,
+                    vec![i as f32, (i + 1) as f32, (i + 2) as f32, (i + 3) as f32],
+                )
+                .unwrap();
         }
         writer.flush().unwrap();
     }
@@ -675,7 +699,9 @@ mod hybrid_tests {
     fn hybrid_search_search_hybrid() {
         let mut searcher = HybridSearcher::new(DistanceMetric::Cosine);
         for i in 0..20 {
-            searcher.insert(i as u64, &[i as f32, (i + 1) as f32, (i + 2) as f32], 1.0).unwrap();
+            searcher
+                .insert(i as u64, &[i as f32, (i + 1) as f32, (i + 2) as f32], 1.0)
+                .unwrap();
         }
         // SQL scores must include all inserted IDs.
         let sql_scores: Vec<(u64, f32)> = (0..20).map(|i| (i as u64, 1.0)).collect();
@@ -702,7 +728,9 @@ mod hybrid_tests {
         for i in 0..5 {
             let mut row = HashMap::new();
             row.insert("score".to_string(), SqlValue::Float(i as f64 * 0.1));
-            searcher.insert_with_row(i as u64, &[i as f32, i as f32], row).unwrap();
+            searcher
+                .insert_with_row(i as u64, &[i as f32, i as f32], row)
+                .unwrap();
         }
         let preds = vec![SqlPredicate::GreaterThan {
             column: "score".to_string(),
@@ -727,7 +755,9 @@ mod hybrid_tests {
     fn hybrid_search_execute_filtered() {
         let mut searcher = HybridSearcher::new(DistanceMetric::Cosine);
         for i in 0..10 {
-            searcher.insert(i as u64, &[i as f32, i as f32], (i as f32) * 0.1).unwrap();
+            searcher
+                .insert(i as u64, &[i as f32, i as f32], (i as f32) * 0.1)
+                .unwrap();
         }
         let predicates = vec![SqlPredicate::GreaterThan {
             column: "score".to_string(),
@@ -784,7 +814,10 @@ mod vector_record_tests {
 
     #[test]
     fn vector_record_basic() {
-        let rec = VectorRecord { id: 42, vector: vec![1.0, 2.0, 3.0] };
+        let rec = VectorRecord {
+            id: 42,
+            vector: vec![1.0, 2.0, 3.0],
+        };
         assert_eq!(rec.id, 42);
         assert_eq!(rec.vector, vec![1.0, 2.0, 3.0]);
     }

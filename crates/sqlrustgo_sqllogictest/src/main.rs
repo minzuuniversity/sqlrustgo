@@ -25,7 +25,7 @@ use tokio::runtime::Runtime;
 
 #[derive(Error, Debug)]
 pub enum SltError {
-    #[error("execution error: {0}")]
+    #[error("{0}")]
     Execution(String),
 }
 
@@ -199,7 +199,18 @@ impl DB for SltDb {
                     Ok(DBOutput::Rows { types, rows })
                 }
             }
-            Err(e) => Err(SltError::Execution(format!("{}", e))),
+            Err(e) => {
+                // Strip the "Parse error: " / "Execution error: " prefix so that
+                // SQLLogicTest Multiline `statement error` comparisons (which expect
+                // a fully equal string) match the underlying error message exactly.
+                let s = e.to_string();
+                let stripped = s
+                    .strip_prefix("Parse error: ")
+                    .or_else(|| s.strip_prefix("Execution error: "))
+                    .unwrap_or(&s)
+                    .to_string();
+                Err(SltError::Execution(stripped))
+            }
         }
     }
 

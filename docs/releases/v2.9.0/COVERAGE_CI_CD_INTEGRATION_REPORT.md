@@ -43,7 +43,7 @@
 
 ### 2.1 分层架构 (L1/L2/L3)
 
-根据 [2026-05-04-tiered-ci-cd-implementation-plan.md](../../plans/2026-05-04-tiered-ci-cd-implementation-plan.md)：
+根据 2026-05-04-tiered-ci-cd-implementation-plan.md：
 
 ```
 PR / push (develop/v2.9.0)
@@ -464,7 +464,7 @@ Issue #263 要求添加测试文件：
 - [COVERAGE_REPORT_RC.md](./COVERAGE_REPORT_RC.md)
 - [COVERAGE_IMPROVEMENT_REPORT.md](./COVERAGE_IMPROVEMENT_REPORT.md)
 - [RELEASE_GATE_CHECKLIST.md](./RELEASE_GATE_CHECKLIST.md)
-- [Tiered CI/CD Implementation Plan](../../plans/2026-05-04-tiered-ci-cd-implementation-plan.md)
+- Tiered CI/CD Implementation Plan
 - [Formal Verification Toolchain CI/CD Guide](./TOOLCHAIN_CICD_GUIDE.md)
 
 ---

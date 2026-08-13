@@ -21,7 +21,7 @@
 
 > **Last update**: 2026-06-26 (corrected — Z6G4 72h soak never completed; prior claim of "RUNNING" was incorrect)
 > **Purpose**: Single-page reference for all v3.9.0 wall-clock soak testing.
-> Closes the doc gap flagged by [Issue #3225](../../..//issues/3225) and the
+> Closes the doc gap flagged by Issue #3225 and the
 > 14-long-stability-tests analysis in
 > [`LONG_STABILITY_TESTS_ANALYSIS.md`](LONG_STABILITY_TESTS_ANALYSIS.md).
 > **Index status**: merged (was in PR #3311, now closed)
@@ -92,9 +92,9 @@ benchmarks, 3 batched-inserts, and 6 v3.8.0 perf tests. The plan:
 
 ## Audit and infrastructure references
 
-- [`docs/audit/status/SOAK_WIRED_SHORT_DURATIONS.md`](../../../audit/status/SOAK_WIRED_SHORT_DURATIONS.md) — short duration soak audit
-- [`docs/audit/status/STABILITY_TEST_LADDER.md`](../../../audit/status/STABILITY_TEST_LADDER.md) — 30m→1h→2h→4h ladder test design
-- [`docs/audit/status/2026-06-04-tpch-phase2d-status.md`](../../../audit/status/2026-06-04-tpch-phase2d-status.md) — TPC-H phase 2D (predecessor of wired-soak)
+- [`docs/audit/status/SOAK_WIRED_SHORT_DURATIONS.md`](../../audit/status/SOAK_WIRED_SHORT_DURATIONS.md) — short duration soak audit
+- [`docs/audit/status/STABILITY_TEST_LADDER.md`](../../audit/status/STABILITY_TEST_LADDER.md) — 30m→1h→2h→4h ladder test design
+- [`docs/audit/status/2026-06-04-tpch-phase2d-status.md`](../../audit/status/2026-06-04-tpch-phase2d-status.md) — TPC-H phase 2D (predecessor of wired-soak)
 - [`docs/governance/adr/ADR-013-v310-wired-soak-ddl-and-wire-protocol-repair.md`](../../governance/adr/ADR-013-v310-wired-soak-ddl-and-wire-protocol-repair.md) — v3.10 milestone plan (Issue #3302, 4-PR plan)
 
 ## Update policy

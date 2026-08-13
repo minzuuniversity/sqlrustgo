@@ -234,10 +234,10 @@ ls -la docs/releases/v(X-1).Y.Z/ | wc -l
 
 | 文档 | 说明 |
 |------|------|
-| [USER_MANUAL.md](./user-guide/USER_MANUAL.md) | 用户手册 |
-| [GMP_USER_GUIDE.md](./user-guide/GMP_USER_GUIDE.md) | GMP 用户指南 |
-| [GRAPH_SEARCH_USER_GUIDE.md](./user-guide/GRAPH_SEARCH_USER_GUIDE.md) | 图检索用户指南 |
-| [VECTOR_SEARCH_USER_GUIDE.md](./user-guide/VECTOR_SEARCH_USER_GUIDE.md) | 向量检索用户指南 |
+| [USER_MANUAL.md](../releases/v2.0/USER_MANUAL.md) | 用户手册 |
+| [GMP_USER_GUIDE.md](../releases/v2.8.0/user-guide/GMP_USER_GUIDE.md) | GMP 用户指南 |
+| [GRAPH_SEARCH_USER_GUIDE.md](../releases/v2.8.0/user-guide/GRAPH_SEARCH_USER_GUIDE.md) | 图检索用户指南 |
+| [VECTOR_SEARCH_USER_GUIDE.md](../releases/v2.8.0/user-guide/VECTOR_SEARCH_USER_GUIDE.md) | 向量检索用户指南 |
 ```
 
 ---

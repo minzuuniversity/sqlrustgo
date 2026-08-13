@@ -54,6 +54,8 @@ fn shared() -> &'static SharedServer {
             data_dir: Some(tmp.path().to_path_buf()),
             bootstrap_tables: false,
             bootstrap_users: true,
+            metrics_port: None,
+
             ..Default::default()
         };
         let handle = start_ephemeral(config).expect("start_ephemeral");

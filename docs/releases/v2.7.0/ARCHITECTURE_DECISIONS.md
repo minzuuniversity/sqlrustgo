@@ -478,7 +478,7 @@ RRF_score(d) = Σ (1 / (k + rank(d))) for each retrieval type
 
 - [架构设计](oo/architecture/ARCHITECTURE_V2.7.md)
 - [qmd-bridge 设计文档](./qmd-bridge-design.md)
-- [性能分析](oo/reports/PERFORMANCE_ANALYSIS.md)
+- [性能分析](./oo/reports/PERFORMANCE_ANALYSIS.md)
 - [API 文档](./API_DOCUMENTATION.md)
 
 ---

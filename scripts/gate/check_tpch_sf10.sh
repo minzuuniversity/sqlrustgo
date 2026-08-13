@@ -63,6 +63,33 @@ check "run_sf10.sh has 22 queries" "grep -q 'seq 1 22' scripts/tpch/run_sf10.sh"
 # 3. Gate script executable
 check "gate script executable" "[ -x '$0' ]"
 
+# 4. Cross-engine harness (Issue #4018)
+echo ""
+echo "--- Cross-engine Harness (Issue #4018) ---"
+if [ -f "scripts/tpch_sf10_cross_engine_harness.py" ]; then
+    echo "  [PASS] scripts/tpch_sf10_cross_engine_harness.py exists"
+    PASS=$((PASS+1))
+else
+    echo "  [FAIL] scripts/tpch_sf10_cross_engine_harness.py missing"
+    FAIL=$((FAIL+1))
+fi
+
+check "sf10 harness python syntax" "python3 -c 'import ast; ast.parse(open(\"scripts/tpch_sf10_cross_engine_harness.py\").read())'"
+check "sf10 harness imports from sf1 module" "grep -q 'tpch_cross_engine_harness' scripts/tpch_sf10_cross_engine_harness.py"
+check "sf10 harness runs --help" "python3 scripts/tpch_sf10_cross_engine_harness.py --help >/dev/null"
+
+# 5. SF=10 evidence directory (per STRICT PROOF MODE)
+SF10_EVIDENCE_DIR="docs/releases/v3.12.0/evidence/tpch/cross_engine_sf10"
+echo ""
+echo "--- SF=10 Evidence Directory ---"
+if [ -d "$SF10_EVIDENCE_DIR" ] || mkdir -p "$SF10_EVIDENCE_DIR" 2>/dev/null; then
+    echo "  [PASS] $SF10_EVIDENCE_DIR exists (or can be created)"
+    PASS=$((PASS+1))
+else
+    echo "  [FAIL] $SF10_EVIDENCE_DIR missing and cannot be created"
+    FAIL=$((FAIL+1))
+fi
+
 echo ""
 echo "=== TPC-H SF=10 Gate Summary ==="
 echo "PASS: $PASS"

@@ -629,6 +629,13 @@ pub struct TableInfo {
     /// V311-12 F-27: table compression specifier (algorithm: "LZ4", "ZSTD", "ZLIB")
     #[serde(default)]
     pub compression: Option<String>,
+    /// V312-26 / #4077: per-column collation names (lowercased to
+    /// `Some("nocase")`, `Some("binary")`, etc.). `None`/missing means
+    /// binary collation — the pre-V312-26 behavior. Only NOCASE is
+    /// semantically distinct today; other names are recorded but treated
+    /// as binary by the executor.
+    #[serde(default)]
+    pub collations: HashMap<String, String>,
 }
 
 /// Column definition for table schema
@@ -645,6 +652,12 @@ pub struct ColumnDefinition {
     /// semantics. `None` (default) means no length cap.
     #[serde(default)]
     pub char_max_length: Option<usize>,
+    /// Optional column-level collation hint (e.g. `Some("NOCASE")`).
+    /// V4077 / Issue #4077: surfaced so EXCEPT/INTERSECT executors can
+    /// perform collation-aware row comparison on text columns. Default
+    /// `None` means binary (case-sensitive) comparison.
+    #[serde(default)]
+    pub collation: Option<String>,
 }
 
 impl ColumnDefinition {
@@ -655,6 +668,7 @@ impl ColumnDefinition {
             nullable: false,
             primary_key: false,
             char_max_length: None,
+            collation: None,
         }
     }
 }
@@ -1088,8 +1102,10 @@ impl MemoryStorage {
     /// `TxLog` so the sqllogictest runner can broadcast it to other connections.
     ///
     /// Behavior matches the original `commit_transaction`:
+    ///
     /// - `tx_log = None`
     /// - `current_tx_id = 0`
+    ///
     /// but **returns** the previous `TxLog` instead of dropping it. Callers
     /// that do not need the log can simply discard the result.
     ///
@@ -1153,7 +1169,9 @@ impl MemoryStorage {
 
         for (table, prior, new) in &log.updated {
             if let Some(active_log) = self.tx_log.as_mut() {
-                active_log.updated.push((table.clone(), prior.clone(), new.clone()));
+                active_log
+                    .updated
+                    .push((table.clone(), prior.clone(), new.clone()));
             }
             if let Some(records) = self.tables.get_mut(table) {
                 for record in records.iter_mut() {
@@ -1859,6 +1877,7 @@ mod tests {
             check_constraints: vec![],
             partition_info: None,
             compression: None,
+            collations: HashMap::new(),
         };
         storage.create_table(&info).unwrap();
         let tables = storage.list_tables();
@@ -1953,6 +1972,7 @@ mod tests {
             check_constraints: vec![],
             partition_info: None,
             compression: None,
+            collations: HashMap::new(),
         };
 
         storage.create_table(&info).unwrap();
@@ -1974,12 +1994,14 @@ mod tests {
                 nullable: false,
                 primary_key: true,
                 char_max_length: None,
+                collation: None,
             }],
             foreign_keys: vec![],
             unique_constraints: vec![],
             check_constraints: vec![],
             partition_info: None,
             compression: None,
+            collations: HashMap::new(),
         };
 
         storage.create_table(&info).unwrap();
@@ -2037,6 +2059,7 @@ mod tests {
             check_constraints: vec![],
             partition_info: None,
             compression: None,
+            collations: HashMap::new(),
         };
         let info2 = TableInfo {
             name: "orders".to_string(),
@@ -2046,6 +2069,7 @@ mod tests {
             check_constraints: vec![],
             partition_info: None,
             compression: None,
+            collations: HashMap::new(),
         };
         storage.create_table(&info1).unwrap();
         storage.create_table(&info2).unwrap();
@@ -2069,6 +2093,7 @@ mod tests {
             check_constraints: vec![],
             partition_info: None,
             compression: None,
+            collations: HashMap::new(),
         };
         storage.create_table(&info).unwrap();
         assert!(storage.has_table("users"));
@@ -2176,12 +2201,14 @@ mod tests {
                 nullable: false,
                 primary_key: true,
                 char_max_length: None,
+                collation: None,
             }],
             foreign_keys: vec![],
             unique_constraints: vec![],
             check_constraints: vec![],
             partition_info: None,
             compression: None,
+            collations: HashMap::new(),
         };
         storage.create_table(&info).unwrap();
         storage
@@ -2751,6 +2778,7 @@ mod tests {
             check_constraints: vec![],
             partition_info: None,
             compression: None,
+            collations: HashMap::new(),
         };
         s.create_table(&info).unwrap();
         assert!(s.has_table("users"));
@@ -2767,6 +2795,7 @@ mod tests {
             check_constraints: vec![],
             partition_info: None,
             compression: None,
+            collations: HashMap::new(),
         };
         s.create_table(&info).unwrap();
         s.drop_table("t").unwrap();
@@ -2784,6 +2813,7 @@ mod tests {
             check_constraints: vec![],
             partition_info: None,
             compression: None,
+            collations: HashMap::new(),
         };
         s.create_table(&info).unwrap();
         let got = s.get_table_info("t").unwrap();
@@ -2810,6 +2840,7 @@ mod tests {
                 check_constraints: vec![],
                 partition_info: None,
                 compression: None,
+                collations: HashMap::new(),
             };
             s.create_table(&info).unwrap();
         }
@@ -2835,6 +2866,7 @@ mod tests {
             check_constraints: vec![],
             partition_info: None,
             compression: None,
+            collations: HashMap::new(),
         };
         s.create_table(&info).unwrap();
         s.add_column("t", ColumnDefinition::new("b", "TEXT"))
@@ -2861,6 +2893,7 @@ mod tests {
             check_constraints: vec![],
             partition_info: None,
             compression: None,
+            collations: HashMap::new(),
         };
         s.create_table(&info).unwrap();
         s.insert("old", vec![vec![Value::Integer(1)]]).unwrap();

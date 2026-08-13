@@ -572,10 +572,27 @@ pub fn parse_result_set(stream: &mut dyn Read, deprecate_eof: bool) -> MySqlResu
         });
     }
 
-    // Check for OK packet (first byte 0x00 or 0xfe for OK/EOF)
-    // In protocol with DEPRECATE_EOF, OK packet starts with 0x00 or 0xfe
-    // when there are no rows (affected_rows response)
-    if !pkt.payload.is_empty() && (pkt.payload[0] == 0x00 || pkt.payload[0] == 0xfe) {
+    // A response is OK (no result set) iff:
+    //   - DEPRECATE_EOF=0: first byte is 0x00 (OK marker) and NOT a
+    //     lenenc column count of 0 (0x00 is a valid lenenc int = 0 columns)
+    //   - DEPRECATE_EOF=1: first byte is 0xfe (EOF identifier used as
+    //     the OK marker for DML responses) and NOT a lenenc column count
+    //     0xfe doesn't collide because lenenc ints only encode values
+    //     0..=250 directly (0xfb+ are escape codes). So 0xfe is unambiguously
+    //     an OK/terminator packet.
+    //
+    // To distinguish "OK packet (no rows)" from "column count = N", we
+    // check the wire format: an OK packet has 0x00/0xfe header + lenenc
+    // affected_rows (typically 0x00 for DML) + lenenc last_insert_id +
+    // 2-byte status + 2-byte warnings. The smallest OK packet is 7 bytes.
+    // A column-count packet is just a lenenc int (1 byte for N<=250).
+    //
+    // Heuristic: if first byte is 0x00/0xfe AND payload len >= 5
+    // (enough for OK header fields), it's OK. Otherwise it's a lenenc
+    // column count.
+    let first_byte = pkt.payload.first().copied().unwrap_or(0);
+    let looks_like_ok = (first_byte == 0x00 || first_byte == 0xfe) && pkt.payload.len() >= 5;
+    if looks_like_ok {
         let mut off = 1;
         let affected_rows = parse_length_encoded_int(&pkt.payload, &mut off)?;
         let last_insert_id = parse_length_encoded_int(&pkt.payload, &mut off)?;
@@ -619,8 +636,13 @@ pub fn parse_result_set(stream: &mut dyn Read, deprecate_eof: bool) -> MySqlResu
         columns.push(col);
     }
 
-    // Inter-record separator (EOF or OK packet). Discard.
-    let _separator = Packet::read_from(stream)?;
+    // Inter-record separator: present only when DEPRECATE_EOF=0.
+    // Per WL#7766, DEPRECATE_EOF=1 omits the inter-record separator
+    // between column defs and rows; the trailing OK packet (0xfe) marks
+    // the end of the row stream.
+    if !deprecate_eof {
+        let _separator = Packet::read_from(stream)?;
+    }
 
     // Parse rows. The first byte of the first row packet tells us the format:
     //   0x00 = binary protocol row (COM_STMT_EXECUTE response)
@@ -651,8 +673,14 @@ pub fn parse_result_set(stream: &mut dyn Read, deprecate_eof: bool) -> MySqlResu
                 break;
             }
             let fb = pkt.payload.first().copied();
+            // Per WL#7766, the DEPRECATE_EOF result-set terminator uses
+            // 0xFE as the first byte (EOF identifier), NOT 0x00. mysql CLI
+            // 8.0+ uses this identifier to dispatch to the "OK-as-terminator"
+            // path. The previous `fb == 0x00` check never matched, causing
+            // the loop to block on the next packet and hang the test
+            // (Issue #4130).
             let is_eof = !deprecate_eof && fb == Some(0xfe) && pkt.payload.len() < 9;
-            let is_dep_eof = deprecate_eof && fb == Some(0x00) && pkt.payload.len() <= 8;
+            let is_dep_eof = deprecate_eof && fb == Some(0xfe) && pkt.payload.len() <= 8;
             if is_eof || is_dep_eof {
                 break;
             }
@@ -676,7 +704,7 @@ pub fn parse_result_set(stream: &mut dyn Read, deprecate_eof: bool) -> MySqlResu
             }
             let fb = pkt.payload.first().copied();
             let is_eof = !deprecate_eof && fb == Some(0xfe) && pkt.payload.len() < 9;
-            let is_dep_eof = deprecate_eof && fb == Some(0x00) && pkt.payload.len() <= 8;
+            let is_dep_eof = deprecate_eof && fb == Some(0xfe) && pkt.payload.len() <= 8;
             if is_eof || is_dep_eof {
                 break;
             }
@@ -1039,13 +1067,24 @@ impl MySqlConnection {
         let column_count = u16::from_le_bytes([resp.payload[5], resp.payload[6]]);
         let param_count = u16::from_le_bytes([resp.payload[7], resp.payload[8]]);
 
-        // If there are parameters, the server sends parameter defs.
-        // If there are columns, the server sends column defs.
-        // For now, we just drain those packets.
-        for _ in 0..(param_count + column_count) {
+        // If there are parameters, the server sends parameter defs
+        // followed by an EOF/DEPR_EOF separator. Same for columns.
+        // We drain each def packet + its trailing separator.
+        //
+        // Previously we drained only ONE separator after all defs,
+        // which left the second separator (after columns) in the
+        // stream. The next call (parse_result_set for EXECUTE) then
+        // misread that leftover 0xFE separator as the result-set's
+        // first packet and returned ResultSet::Ok(0). Issue #4130.
+        for _ in 0..param_count {
             let _ = Packet::read_from(&mut self.stream)?;
         }
-        // The final packet is an EOF or DEPR_EOF terminator.
+        // EOF/DEPR_EOF separator after params
+        let _ = Packet::read_from(&mut self.stream)?;
+        for _ in 0..column_count {
+            let _ = Packet::read_from(&mut self.stream)?;
+        }
+        // EOF/DEPR_EOF separator after columns
         let _ = Packet::read_from(&mut self.stream)?;
 
         Ok(PreparedStatement {
@@ -1071,8 +1110,16 @@ impl MySqlConnection {
         // new_params_bound_flag = 1
         payload.push(0x01);
 
-        // Parameter types (VARCHAR for all)
-        payload.extend(std::iter::repeat_n(0xfd, params.len())); // MYSQL_TYPE_VAR_STRING
+        // Parameter types — MySQL binary protocol requires 2 bytes per
+        // parameter: 1 byte type + 1 byte flags (e.g. UNSIGNED). The
+        // server reads `pos += 2` per parameter, so sending only 1 byte
+        // desyncs the parser. The server's prepared-statement schema
+        // determines the actual type (Issue #3372), so we just need
+        // any valid type byte here; we use MYSQL_TYPE_VAR_STRING (0xfd).
+        for _ in 0..params.len() {
+            payload.push(0xfd); // MYSQL_TYPE_VAR_STRING
+            payload.push(0x00); // flags
+        }
 
         // Parameter values (length-encoded strings)
         for p in params {
@@ -2548,7 +2595,10 @@ mod tests {
                 if self.offset >= self.data.len() {
                     return Ok(0);
                 }
-                let n = self.chunk_size.min(buf.len()).min(self.data.len() - self.offset);
+                let n = self
+                    .chunk_size
+                    .min(buf.len())
+                    .min(self.data.len() - self.offset);
                 buf[..n].copy_from_slice(&self.data[self.offset..self.offset + n]);
                 self.offset += n;
                 Ok(n)
@@ -2607,10 +2657,10 @@ mod tests {
         // Signature: build_handshake_response(seq, username, auth_response, database, auth_plugin)
         let auth_response = vec![0u8; 20];
         let packet = build_handshake_response(
-            1,                   // seq
-            "user",              // username
-            &auth_response,      // auth_response
-            "db",                // database
+            1,                       // seq
+            "user",                  // username
+            &auth_response,          // auth_response
+            "db",                    // database
             "mysql_native_password", // auth_plugin
         );
         assert!(!packet.payload.is_empty());
@@ -2620,9 +2670,8 @@ mod tests {
     #[test]
     fn test_build_handshake_response_no_db() {
         let auth_response = vec![0u8; 20];
-        let packet = build_handshake_response(
-            1, "alice", &auth_response, "", "mysql_native_password",
-        );
+        let packet =
+            build_handshake_response(1, "alice", &auth_response, "", "mysql_native_password");
         assert!(!packet.payload.is_empty());
     }
 }

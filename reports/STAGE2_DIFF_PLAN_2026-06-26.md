@@ -317,7 +317,7 @@ claim:
 > **Deciders**: Hermes Agent + User (李哥)
 > **Date**: 2026-06-26
 > **Supersedes**: 部分覆盖 AI_COLLABORATION.md §1.1 (单 AI 模型)
-> **Related**: [ADR-001 — Truthfulness](ADR-001-truthfulness-framework.md), [ADR-008 — Test-Claim-Transparency](ADR-008-test-claim-transparency.md), [AFP — Anti-Fabrication](../ANTI_FABRICATION_POLICY.md), [ISSUE_CLOSING — HTTP 405 workaround](../ISSUE_CLOSING_VERIFICATION.md), [AI_COLLABORATION — §5.5](../AI_COLLABORATION.md)
+> **Related**: [ADR-001 — Truthfulness](../docs/governance/adr/ADR-001-truthfulness-framework.md), [ADR-008 — Test-Claim-Transparency](../docs/governance/adr/ADR-008-test-claim-transparency.md), [AFP — Anti-Fabrication](../docs/governance/ANTI_FABRICATION_POLICY.md), [ISSUE_CLOSING — HTTP 405 workaround](../docs/governance/ISSUE_CLOSING_VERIFICATION.md), [AI_COLLABORATION — §5.5](../docs/governance/AI_COLLABORATION.md)
 
 ## Context
 

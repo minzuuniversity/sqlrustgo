@@ -30,6 +30,7 @@ pub fn create_embeddings_table(storage: &mut dyn StorageEngine) -> SqlResult<()>
                 nullable: false,
                 primary_key: true,
                 char_max_length: None,
+                collation: None,
             },
             sqlrustgo_storage::ColumnDefinition {
                 name: "embedding".to_string(),
@@ -37,6 +38,7 @@ pub fn create_embeddings_table(storage: &mut dyn StorageEngine) -> SqlResult<()>
                 nullable: false,
                 primary_key: false,
                 char_max_length: None,
+                collation: None,
             },
             sqlrustgo_storage::ColumnDefinition {
                 name: "updated_at".to_string(),
@@ -44,6 +46,7 @@ pub fn create_embeddings_table(storage: &mut dyn StorageEngine) -> SqlResult<()>
                 nullable: false,
                 primary_key: false,
                 char_max_length: None,
+                collation: None,
             },
             sqlrustgo_storage::ColumnDefinition {
                 name: "model_name".to_string(),
@@ -51,6 +54,7 @@ pub fn create_embeddings_table(storage: &mut dyn StorageEngine) -> SqlResult<()>
                 nullable: false,
                 primary_key: false,
                 char_max_length: None,
+                collation: None,
             },
             sqlrustgo_storage::ColumnDefinition {
                 name: "dimension".to_string(),
@@ -58,6 +62,7 @@ pub fn create_embeddings_table(storage: &mut dyn StorageEngine) -> SqlResult<()>
                 nullable: false,
                 primary_key: false,
                 char_max_length: None,
+                collation: None,
             },
             sqlrustgo_storage::ColumnDefinition {
                 name: "vector_hash".to_string(),
@@ -65,6 +70,7 @@ pub fn create_embeddings_table(storage: &mut dyn StorageEngine) -> SqlResult<()>
                 nullable: false,
                 primary_key: false,
                 char_max_length: None,
+                collation: None,
             },
         ];
         storage.create_table(&sqlrustgo_storage::TableInfo {
@@ -74,6 +80,7 @@ pub fn create_embeddings_table(storage: &mut dyn StorageEngine) -> SqlResult<()>
             unique_constraints: vec![],
             check_constraints: vec![],
             compression: None,
+            collations: std::collections::HashMap::new(),
             partition_info: None,
         })?;
     }

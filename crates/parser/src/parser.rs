@@ -162,6 +162,12 @@ pub struct IntersectStatement {
     pub left: Box<Statement>,
     pub right: Box<Statement>,
     pub intersect_all: bool,
+    /// V4077 / Issue #4077: ORDER BY / LIMIT / OFFSET lifted from the
+    /// right SELECT (consistent with UNION's behavior). The right SELECT
+    /// still carries its own copy — consumers should prefer these.
+    pub trailing_order_by: Vec<OrderByExpression>,
+    pub trailing_limit: Option<i64>,
+    pub trailing_offset: Option<i64>,
 }
 
 /// SQL-92 EXCEPT (V310-06 PR2 / Issue #3723 C-2b). Returns rows
@@ -173,6 +179,12 @@ pub struct ExceptStatement {
     pub left: Box<Statement>,
     pub right: Box<Statement>,
     pub except_all: bool,
+    /// V4077 / Issue #4077: ORDER BY / LIMIT / OFFSET lifted from the
+    /// right SELECT (consistent with UNION's behavior). The right SELECT
+    /// still carries its own copy — consumers should prefer these.
+    pub trailing_order_by: Vec<OrderByExpression>,
+    pub trailing_limit: Option<i64>,
+    pub trailing_offset: Option<i64>,
 }
 
 /// CREATE INDEX statement
@@ -798,6 +810,13 @@ pub struct ColumnDefinition {
     /// the engine can apply SQL-standard space padding on INSERT.
     /// `None` means unbounded / no padding (TEXT, INTEGER, etc.).
     pub char_max_length: Option<usize>,
+    /// Optional column-level collation hint (e.g. `Some("NOCASE")`).
+    /// V4077 / Issue #4077: captured at parse time so that set-op
+    /// executors can perform collation-aware row comparison for
+    /// columns declared with `COLLATE NOCASE`. Default `None` means
+    /// binary (case-sensitive) comparison.
+    #[serde(default)]
+    pub collation: Option<String>,
 }
 
 /// Foreign key referential action
@@ -900,6 +919,10 @@ pub enum Expression {
     /// JSON literal: JSON_EXTRACT / JSON_VALUE operands and JSON() constructor.
     /// The `String` field stores the canonical JSON text produced by serde_json.
     JsonLiteral(String),
+    /// MySQL system variable reference: `@@version_comment`, `@@autocommit`,
+    /// `@@sql_mode`, etc. The `String` is the variable name in lower-case.
+    /// The executor resolves the name to a scalar value at evaluation time.
+    SystemVariable(String),
 }
 
 /// V312-19 #3972: constant-fold an arithmetic expression to a `u64` LIMIT/OFFSET value.
@@ -2102,7 +2125,22 @@ impl Parser {
             Some(t) => return Err(format!("Expected prepared statement name, got {:?}", t)),
             None => return Err("Expected prepared statement name, got EOF".to_string()),
         };
-        self.expect(Token::As)?;
+        // MySQL: PREPARE stmt FROM 'sql' — but accept AS as an alias for
+        // dialect compatibility (PostgreSQL, MariaDB, internal callers).
+        match self.current() {
+            Some(Token::From) | Some(Token::As) => {
+                self.next();
+            }
+            Some(t) => {
+                return Err(format!(
+                    "Expected FROM or AS after prepared statement name, got {:?}",
+                    t
+                ));
+            }
+            None => {
+                return Err("Expected FROM or AS after prepared statement name, got EOF".to_string())
+            }
+        }
         let sql = match self.next() {
             Some(Token::StringLiteral(s)) => s,
             Some(t) => return Err(format!("Expected SQL string literal, got {:?}", t)),
@@ -2182,6 +2220,15 @@ impl Parser {
     /// V312-11-fix #3986: parse `SET variable = value` (session variable).
     fn parse_set_session_variable(&mut self) -> Result<Statement, String> {
         self.expect(Token::Set)?;
+        // Reject unsupported MySQL statements that look like SET session var.
+        // These would otherwise be silently treated as session-variable
+        // assignments and pass parse with no useful semantics.
+        if let Some(Token::Identifier(ref s)) = self.current() {
+            let upper = s.to_uppercase();
+            if upper == "NAMES" || upper == "CHARACTER" {
+                return Err(format!("SET {} is not yet supported", upper));
+            }
+        }
         if matches!(self.current(), Some(Token::Identifier(ref s)) if s.to_lowercase() == "variable")
         {
             self.next();
@@ -2864,6 +2911,13 @@ impl Parser {
                     body.push(';');
                     body.push(' ');
                 }
+                Some(Token::Dot) => {
+                    // Strip trailing space before dot so we get `NEW.name` not `NEW .name`
+                    while body.ends_with(' ') {
+                        body.pop();
+                    }
+                    body.push('.');
+                }
                 Some(Token::Identifier(sql)) => {
                     body.push_str(&sql);
                     body.push(' ');
@@ -3038,12 +3092,18 @@ impl Parser {
                     left: Box::new(current),
                     right: Box::new(Statement::Select(next_select)),
                     intersect_all: all,
+                    trailing_order_by,
+                    trailing_limit,
+                    trailing_offset,
                 })
             } else {
                 Statement::Except(ExceptStatement {
                     left: Box::new(current),
                     right: Box::new(Statement::Select(next_select)),
                     except_all: all,
+                    trailing_order_by,
+                    trailing_limit,
+                    trailing_offset,
                 })
             };
         }
@@ -3220,6 +3280,31 @@ impl Parser {
                         name: "NULL".to_string(),
                         alias,
                         expression: Some(Expression::Literal("NULL".to_string())),
+                    });
+                }
+                // V312-19 / #4019.2: MySQL `@@system_variable` reference in
+                // SELECT projection (e.g. mysql CLI 8.0+'s boot probe
+                // `SELECT @@version_comment LIMIT 1`). Treat as a single
+                // scalar expression, not a column ref.
+                Some(Token::SystemVariable(name)) => {
+                    let var_name = name.clone();
+                    self.next();
+                    let alias = if matches!(self.current(), Some(Token::As)) {
+                        self.next();
+                        if let Some(Token::Identifier(n)) = self.current() {
+                            let a = n.clone();
+                            self.next();
+                            Some(a)
+                        } else {
+                            None
+                        }
+                    } else {
+                        None
+                    };
+                    columns.push(SelectColumn {
+                        name: format!("@@{}", var_name),
+                        alias,
+                        expression: Some(Expression::SystemVariable(var_name)),
                     });
                 }
                 // Handle aggregate functions: COUNT(*), SUM(col), etc.
@@ -3710,7 +3795,8 @@ impl Parser {
                 | Some(Token::Substring)
                 | Some(Token::Position)
                 | Some(Token::Text)
-                | Some(Token::Interval) => {
+                | Some(Token::Interval)
+                | Some(Token::Database) => {
                     let name = match self.current() {
                         Some(Token::Left) => "LEFT",
                         Some(Token::Right) => "RIGHT",
@@ -3724,6 +3810,7 @@ impl Parser {
                         Some(Token::Position) => "POSITION",
                         Some(Token::Text) => "CHAR",
                         Some(Token::Interval) => "INTERVAL",
+                        Some(Token::Database) => "DATABASE",
                         _ => unreachable!(),
                     };
                     self.next();
@@ -5164,64 +5251,98 @@ impl Parser {
         // Parse LIMIT clause
         let limit = if matches!(self.current(), Some(Token::Limit)) {
             self.next();
-            // V313-10 / Issue #4038: peek whether the LIMIT value is followed
-            // by an arithmetic operator. If it is, parse the full expression
-            // through parse_expression + constant_fold_u64 so that
-            // `LIMIT 2-1` is folded to 1, not silently truncated to 2.
-            let peek_is_arith = matches!(
-                self.tokens.get(self.position + 1),
-                Some(Token::Plus)
-                    | Some(Token::Minus)
-                    | Some(Token::Star)
-                    | Some(Token::Slash)
-                    | Some(Token::Percent)
-            );
-            if peek_is_arith {
-                // Arithmetic expression form: parse full expression.
-                // V313-10 / Issue #4038: emit a classified binder error
-                // when the expression cannot be constant-folded.
-                let saved_pos = self.position;
-                let expr = self.parse_expression()?;
-                match constant_fold_u64(&expr) {
-                    Some(v) => Some(v),
-                    None => {
-                        self.position = saved_pos;
-                        return Err(classify_unfoldable_limit_expr("LIMIT", &expr));
-                    }
-                }
+            // MySQL: LIMIT ALL = no limit (== LIMIT NULL)
+            if matches!(self.current(), Some(Token::All)) {
+                self.next();
+                None
             } else {
-                match self.current() {
-                    Some(Token::NumberLiteral(n)) => {
-                        // Handle both integer and float literals (e.g., LIMIT 1.25 -> 1 row)
-                        let val = if let Ok(i) = n.parse::<u64>() {
-                            i
-                        } else if let Ok(f) = n.parse::<f64>() {
-                            f as u64
-                        } else {
-                            return Err("Invalid LIMIT: invalid digit found in string".to_string());
-                        };
-                        self.next();
-                        Some(val)
+                // V313-10 / Issue #4038: peek whether the LIMIT value is followed
+                // by an arithmetic operator. If it is, parse the full expression
+                // through parse_expression + constant_fold_u64 so that
+                // `LIMIT 2-1` is folded to 1, not silently truncated to 2.
+                let peek_is_arith = matches!(
+                    self.tokens.get(self.position + 1),
+                    Some(Token::Plus)
+                        | Some(Token::Minus)
+                        | Some(Token::Star)
+                        | Some(Token::Slash)
+                        | Some(Token::Percent)
+                );
+                if peek_is_arith {
+                    // Arithmetic expression form: parse full expression.
+                    // V313-10 / Issue #4038: emit a classified binder error
+                    // when the expression cannot be constant-folded.
+                    let saved_pos = self.position;
+                    let expr = self.parse_expression()?;
+                    match constant_fold_u64(&expr) {
+                        Some(v) => Some(v),
+                        None => {
+                            self.position = saved_pos;
+                            return Err(classify_unfoldable_limit_expr("LIMIT", &expr));
+                        }
                     }
-                    Some(Token::Identifier(ref s)) => {
-                        // Support LIMIT variable (e.g., @limit) and
-                        // identifier-like column references. When the
-                        // identifier is a pure integer string we accept
-                        // it directly; when followed by `(` we let
-                        // parse_expression handle it (so `row_number()`
-                        // gets wrapped in a WindowCall / FunctionCall
-                        // and the classify step produces the right error);
-                        // otherwise we treat it as a column reference
-                        // and emit the binder error directly.
-                        // V313-10 / Issue #4038.
-                        if let Ok(val) = s.parse::<u64>() {
+                } else {
+                    match self.current() {
+                        Some(Token::NumberLiteral(n)) => {
+                            // Handle both integer and float literals (e.g., LIMIT 1.25 -> 1 row)
+                            let val = if let Ok(i) = n.parse::<u64>() {
+                                i
+                            } else if let Ok(f) = n.parse::<f64>() {
+                                f as u64
+                            } else {
+                                return Err(
+                                    "Invalid LIMIT: invalid digit found in string".to_string()
+                                );
+                            };
                             self.next();
                             Some(val)
-                        } else if matches!(self.tokens.get(self.position + 1), Some(Token::LParen))
-                        {
-                            // Looks like a function call (possibly
-                            // windowed) — let parse_expression build
-                            // the full AST, then classify.
+                        }
+                        Some(Token::Identifier(ref s)) => {
+                            // Support LIMIT variable (e.g., @limit) and
+                            // identifier-like column references. When the
+                            // identifier is a pure integer string we accept
+                            // it directly; when followed by `(` we let
+                            // parse_expression handle it (so `row_number()`
+                            // gets wrapped in a WindowCall / FunctionCall
+                            // and the classify step produces the right error);
+                            // otherwise we treat it as a column reference
+                            // and emit the binder error directly.
+                            // V313-10 / Issue #4038.
+                            if let Ok(val) = s.parse::<u64>() {
+                                self.next();
+                                Some(val)
+                            } else if matches!(
+                                self.tokens.get(self.position + 1),
+                                Some(Token::LParen)
+                            ) {
+                                // Looks like a function call (possibly
+                                // windowed) — let parse_expression build
+                                // the full AST, then classify.
+                                let saved_pos = self.position;
+                                let expr = self.parse_expression()?;
+                                match constant_fold_u64(&expr) {
+                                    Some(v) => Some(v),
+                                    None => {
+                                        self.position = saved_pos;
+                                        return Err(classify_unfoldable_limit_expr("LIMIT", &expr));
+                                    }
+                                }
+                            } else {
+                                let ident = s.clone();
+                                return Err(format!(
+                                    "Binder Error: Referenced column '{}' not found in LIMIT",
+                                    ident
+                                ));
+                            }
+                        }
+                        _ => {
+                            // V312-19 #3972: accept arithmetic expression, e.g. LIMIT 2-1.
+                            // V313-10 / Issue #4038: if the expression contains
+                            // an aggregate, window function or column ref
+                            // that cannot be constant-folded, restore
+                            // position and emit a classified binder-style
+                            // error. Returning None would silently swallow
+                            // the LIMIT clause.
                             let saved_pos = self.position;
                             let expr = self.parse_expression()?;
                             match constant_fold_u64(&expr) {
@@ -5230,30 +5351,6 @@ impl Parser {
                                     self.position = saved_pos;
                                     return Err(classify_unfoldable_limit_expr("LIMIT", &expr));
                                 }
-                            }
-                        } else {
-                            let ident = s.clone();
-                            return Err(format!(
-                                "Binder Error: Referenced column '{}' not found in LIMIT",
-                                ident
-                            ));
-                        }
-                    }
-                    _ => {
-                        // V312-19 #3972: accept arithmetic expression, e.g. LIMIT 2-1.
-                        // V313-10 / Issue #4038: if the expression contains
-                        // an aggregate, window function or column ref
-                        // that cannot be constant-folded, restore
-                        // position and emit a classified binder-style
-                        // error. Returning None would silently swallow
-                        // the LIMIT clause.
-                        let saved_pos = self.position;
-                        let expr = self.parse_expression()?;
-                        match constant_fold_u64(&expr) {
-                            Some(v) => Some(v),
-                            None => {
-                                self.position = saved_pos;
-                                return Err(classify_unfoldable_limit_expr("LIMIT", &expr));
                             }
                         }
                     }
@@ -6531,7 +6628,8 @@ impl Parser {
             | Some(Token::Substring)
             | Some(Token::Position)
             | Some(Token::Rollup)
-            | Some(Token::Cube) => {
+            | Some(Token::Cube)
+            | Some(Token::Database) => {
                 let name = match self.current() {
                     Some(Token::Left) => "LEFT",
                     Some(Token::Right) => "RIGHT",
@@ -6546,6 +6644,7 @@ impl Parser {
                     Some(Token::Position) => "POSITION",
                     Some(Token::Rollup) => "ROLLUP",
                     Some(Token::Cube) => "CUBE",
+                    Some(Token::Database) => "DATABASE",
                     _ => unreachable!(),
                 };
                 self.next();
@@ -6702,6 +6801,14 @@ impl Parser {
                 }
                 self.expect(Token::RParen)?;
                 Ok(Expression::FunctionCall(name.to_string(), args))
+            }
+            Some(Token::SystemVariable(name)) => {
+                // MySQL `@@version_comment` / `@@autocommit` / etc. — a single
+                // scalar expression that the executor resolves to the current
+                // session/system value at plan time.
+                let var_name = name.clone();
+                self.next();
+                Ok(Expression::SystemVariable(var_name))
             }
             Some(Token::Identifier(_)) => {
                 let name = match self.current() {
@@ -7831,12 +7938,54 @@ impl Parser {
                         constraints.push(fk);
                     }
                     Some(Token::Unique) => {
-                        self.next();
-                        let columns = self.parse_column_list()?;
-                        constraints.push(TableConstraint::Unique {
-                            columns,
-                            name: None,
-                        });
+                        // V313-#4071: only enter this arm when the
+                        // keyword is followed by `(`; otherwise fall
+                        // through so the inner parse_column_definition
+                        // loop gets a chance to consume the column-level
+                        // UNIQUE modifier and the outer loop continues
+                        // with the next column definition. Without
+                        // this guard, `,` after UNIQUE makes
+                        // parse_column_list() silently consume the
+                        // next column's identifier as part of a
+                        // spurious UNIQUE columns list.
+                        //
+                        // V312-coverage: also handle `UNIQUE KEY (cols)`
+                        // and `UNIQUE KEY name (cols)` (MySQL allows the
+                        // optional KEY keyword between UNIQUE and the
+                        // column list, with an optional constraint
+                        // name in between). Previously UNIQUE KEY fell
+                        // into the `else continue` branch and since
+                        // the loop didn't advance on `continue`, it
+                        // spun forever.
+                        let next_tok = self.tokens.get(self.position + 1);
+                        match next_tok {
+                            Some(Token::LParen) => {
+                                self.next();
+                                let columns = self.parse_column_list()?;
+                                constraints.push(TableConstraint::Unique {
+                                    columns,
+                                    name: None,
+                                });
+                            }
+                            Some(Token::Key) => {
+                                self.next(); // consume UNIQUE
+                                self.next(); // consume KEY
+                                let name = match self.current() {
+                                    Some(Token::Identifier(n)) => {
+                                        let s = n.clone();
+                                        self.next();
+                                        Some(s)
+                                    }
+                                    _ => None,
+                                };
+                                let columns = self.parse_column_list()?;
+                                constraints.push(TableConstraint::Unique {
+                                    columns,
+                                    name,
+                                });
+                            }
+                            _ => continue,
+                        }
                     }
                     Some(Token::Check) => {
                         self.next();
@@ -8088,6 +8237,18 @@ impl Parser {
                 self.next();
                 t
             }
+            Some(Token::Date) => {
+                // V313-#4071: without this arm the parser would
+                // fall through to the `_ => "INTEGER".to_string()`
+                // default and silently coerce a DATE column to
+                // INTEGER. The fixture uses `Date NOT NULL UNIQUE`
+                // to exercise the column-level UNIQUE modifier
+                // path; that path required a working data_type
+                // for the column to be accepted by the storage
+                // engine.
+                self.next();
+                "DATE".to_string()
+            }
             Some(Token::Integer) => {
                 self.next();
                 "INTEGER".to_string()
@@ -8148,6 +8309,7 @@ impl Parser {
         let mut auto_increment = false;
         let mut default_value = None;
         let mut references = None;
+        let mut collation: Option<String> = None;
 
         loop {
             match self.current() {
@@ -8173,10 +8335,19 @@ impl Parser {
                     default_value = Some(self.parse_simple_value()?);
                 }
                 Some(Token::Collate) => {
-                    // V312-17 #3970: skip COLLATE <name> clause (storage-only hint)
+                    // V4077 / Issue #4077: capture the COLLATE <name> hint
+                    // so EXCEPT/INTERSECT executors can perform
+                    // collation-aware row comparison (NOCASE) on text
+                    // columns. The collation name is upper-cased for
+                    // case-insensitive matching against well-known
+                    // collation identifiers (NOCASE, BINARY, RTRIM).
                     self.next();
-                    if let Some(Token::Identifier(_)) = self.current() {
-                        self.next();
+                    match self.current().cloned() {
+                        Some(Token::Identifier(name)) => {
+                            collation = Some(name.to_uppercase());
+                            self.next();
+                        }
+                        _ => return Err("Expected collation name after COLLATE".to_string()),
                     }
                 }
                 Some(Token::Check) => {
@@ -8215,6 +8386,17 @@ impl Parser {
                     self.next();
                     auto_increment = true;
                 }
+                Some(Token::Unique) => {
+                    // V312-coverage: column-level UNIQUE modifier
+                    // (`id INT UNIQUE`). Previously fell through to
+                    // `_ => break` which left the outer CREATE TABLE
+                    // loop re-entering this function with Token::Unique
+                    // still at the head → infinite loop.
+                    // Consume the keyword; the table-level UNIQUE
+                    // constraint (if any) is added by the outer arm
+                    // when followed by `(` / KEY.
+                    self.next();
+                }
                 _ => break,
             }
         }
@@ -8228,6 +8410,7 @@ impl Parser {
             default_value,
             references,
             char_max_length,
+            collation,
         })
     }
 
@@ -8237,6 +8420,7 @@ impl Parser {
     ) -> Result<TableConstraint, String> {
         self.expect(Token::Foreign)?;
         self.expect(Token::Key)?;
+        self.expect(Token::LParen)?;
         let columns = self.parse_column_list()?;
         self.expect(Token::References)?;
         let referenced_table = match self.next() {
@@ -9291,8 +9475,28 @@ impl Parser {
             Some(Token::Rename) => {
                 self.next();
                 // Distinguish `RENAME TO new_table` from `RENAME COLUMN old TO new`.
+                // V312-19 #4039: DuckDB also accepts the bare form
+                // `RENAME <ident> TO <ident>` (without the COLUMN keyword).
                 if matches!(self.current(), Some(Token::Column)) {
                     self.next();
+                    let old_name = match self.next() {
+                        Some(Token::Identifier(name)) => name,
+                        _ => return Err("Expected column name".to_string()),
+                    };
+                    self.expect(Token::To)?;
+                    let new_name = match self.next() {
+                        Some(Token::Identifier(name)) => name,
+                        _ => return Err("Expected new column name".to_string()),
+                    };
+                    Ok(Statement::AlterTable(AlterTableStatement {
+                        table_name,
+                        operation: AlterTableOperation::RenameColumn {
+                            name: old_name,
+                            new_name,
+                        },
+                    }))
+                } else if matches!(self.current(), Some(Token::Identifier(_))) {
+                    // DuckDB-style: `RENAME <column> TO <new_column>` without COLUMN keyword.
                     let old_name = match self.next() {
                         Some(Token::Identifier(name)) => name,
                         _ => return Err("Expected column name".to_string()),
@@ -9373,15 +9577,11 @@ impl Parser {
                 if matches!(self.current(), Some(Token::Set)) {
                     self.next();
                     if matches!(self.current(), Some(Token::Default)) {
-                        self.next();
-                        let default_value = None;
-                        Ok(Statement::AlterTable(AlterTableStatement {
-                            table_name,
-                            operation: AlterTableOperation::AlterColumn {
-                                name: col_name,
-                                op: AlterColumnOperation::SetDefault { default_value },
-                            },
-                        }))
+                        // SET DEFAULT <expr> is not yet implemented; reject
+                        // rather than silently accept (was previously
+                        // producing SetDefault { default_value: None }
+                        // which dropped the user-supplied value).
+                        Err("ALTER COLUMN SET DEFAULT is not yet supported".to_string())
                     } else if let Some(Token::Identifier(ref id)) = self.current() {
                         if id.to_uppercase() == "DATA" {
                             self.next();
@@ -9466,9 +9666,17 @@ pub fn parse_statements(sql: &str) -> Result<Vec<Statement>, String> {
             Token::Semicolon if !in_string && paren_depth == 0 => {
                 // End of statement
                 if !current_batch.is_empty() {
-                    let mut parser = Parser::new(current_batch.clone());
+                    // Always append Eof so the inner parser/column list
+                    // loop sees a properly terminated input rather than
+                    // bailing out as "Expected FROM or column name".
+                    let mut batch = current_batch.clone();
+                    if !matches!(batch.last(), Some(Token::Eof)) {
+                        batch.push(Token::Eof);
+                    }
+                    let mut parser = Parser::new(batch);
                     let stmt = parser.parse_statement()?;
                     statements.push(stmt);
+                    current_batch.clear();
                 }
             }
             Token::LParen => {
@@ -9491,7 +9699,11 @@ pub fn parse_statements(sql: &str) -> Result<Vec<Statement>, String> {
 
     // Handle last statement without trailing semicolon
     if !current_batch.iter().all(|t| matches!(t, Token::Eof)) {
-        let mut parser = Parser::new(current_batch);
+        let mut batch = current_batch;
+        if !matches!(batch.last(), Some(Token::Eof)) {
+            batch.push(Token::Eof);
+        }
+        let mut parser = Parser::new(batch);
         let stmt = parser.parse_statement()?;
         statements.push(stmt);
     }
@@ -10111,7 +10323,6 @@ mod tests {
     }
 
     #[test]
-    #[ignore = "FOREIGN KEY constraint parsing fails - pre-existing bug, unrelated to named constraint fix"]
     fn test_parse_create_with_table_constraint_fk() {
         let result = parse("CREATE TABLE orders (id INTEGER, user_id INTEGER, FOREIGN KEY (user_id) REFERENCES users(id))");
         assert!(result.is_ok());
@@ -10733,15 +10944,17 @@ fn test_parse_binary_expression_multiple_columns() {
 }
 
 #[test]
-#[ignore = "bare identifier column currently wrapped in expression by parser; expected behavior not yet implemented"]
 fn test_parse_binary_expression_mixed_with_identifier() {
     let result = parse("SELECT a + b, name, c * d FROM t");
     assert!(result.is_ok(), "Parse failed: {:?}", result);
     match result.unwrap() {
         Statement::Select(s) => {
             assert_eq!(s.columns.len(), 3);
+            // All columns are wrapped in Expression; bare identifier
+            // 'name' is preserved as Some(Identifier("name")) so the
+            // executor can dispatch it the same way as `a + b`.
             assert!(s.columns[0].expression.is_some());
-            assert!(s.columns[1].expression.is_none());
+            assert!(s.columns[1].expression.is_some());
             assert!(s.columns[2].expression.is_some());
         }
         _ => panic!("Expected SELECT statement"),
@@ -10762,7 +10975,6 @@ fn test_parse_binary_expression_with_table_prefix() {
 }
 
 #[test]
-#[ignore = "CREATE TRIGGER body extraction not yet implemented; parser strips body content"]
 fn test_parse_create_trigger() {
     let sql = "CREATE TRIGGER test_trigger BEFORE INSERT ON users FOR EACH ROW BEGIN SET NEW.name = 'triggered'; END";
     let result = parse(sql);
@@ -11006,7 +11218,6 @@ fn test_parse_set_transaction() {
 }
 
 #[test]
-#[ignore = "parser does not yet recognize READ COMMITTED after ISOLATION LEVEL"]
 fn test_parse_set_transaction_read_committed() {
     let result = parse("SET TRANSACTION ISOLATION LEVEL READ COMMITTED");
     assert!(result.is_ok(), "Parse failed: {:?}", result);
@@ -11019,7 +11230,6 @@ fn test_parse_set_transaction_read_committed() {
 }
 
 #[test]
-#[ignore = "parser does not yet recognize READ UNCOMMITTED after ISOLATION LEVEL"]
 fn test_parse_set_transaction_read_uncommitted() {
     let result = parse("SET TRANSACTION ISOLATION LEVEL READ UNCOMMITTED");
     assert!(result.is_ok(), "Parse failed: {:?}", result);
@@ -11032,7 +11242,6 @@ fn test_parse_set_transaction_read_uncommitted() {
 }
 
 #[test]
-#[ignore = "parser does not yet recognize READ COMMITTED after ISOLATION LEVEL in BEGIN"]
 fn test_parse_begin_read_committed() {
     let result = parse("BEGIN ISOLATION LEVEL READ COMMITTED");
     assert!(result.is_ok(), "Parse failed: {:?}", result);
@@ -12954,6 +13163,81 @@ mod set_op_tests {
         assert!(result.is_ok(), "Parse failed: {:?}", result);
     }
 
+    /// V312-19 / #4019.2: MySQL `@@system_variable` reference must be
+    /// lexed and parsed as a single `Expression::SystemVariable`, NOT
+    /// as three separate identifiers (`@`, `@`, `version_comment`).
+    /// This is what mysql CLI 8.0+ sends as its boot probe
+    /// (`SELECT @@version_comment LIMIT 1`), and the previous fallback
+    /// path caused the parser to emit 3 columns, leading to schema
+    /// mismatch and a wire-protocol hang.
+    #[test]
+    fn test_select_system_variable_version_comment() {
+        let result = parse("SELECT @@version_comment LIMIT 1");
+        assert!(result.is_ok(), "Parse failed: {:?}", result);
+        match result.unwrap() {
+            Statement::Select(s) => {
+                assert_eq!(
+                    s.columns.len(),
+                    1,
+                    "expected 1 column for `@@version_comment`"
+                );
+                let expr = s.columns[0]
+                    .expression
+                    .as_ref()
+                    .expect("SELECT column must have an expression");
+                match expr {
+                    Expression::SystemVariable(name) => {
+                        assert_eq!(name, "version_comment");
+                    }
+                    other => panic!("Expected SystemVariable, got {:?}", other),
+                }
+                assert!(s.limit.is_some(), "LIMIT 1 should be preserved");
+            }
+            other => panic!("Expected Select, got {:?}", other),
+        }
+    }
+
+    #[test]
+    fn test_lexer_emits_system_variable_token() {
+        let mut lexer = Lexer::new("@@autocommit");
+        let tokens = lexer.tokenize();
+        // Expect exactly 1 SystemVariable token (followed by Eof).
+        let sysvars: Vec<&Token> = tokens
+            .iter()
+            .filter(|t| matches!(t, Token::SystemVariable(_)))
+            .collect();
+        assert_eq!(
+            sysvars.len(),
+            1,
+            "expected 1 SystemVariable, got tokens = {:?}",
+            tokens
+        );
+        match &sysvars[0] {
+            Token::SystemVariable(name) => assert_eq!(name, "autocommit"),
+            _ => unreachable!(),
+        }
+    }
+
+    #[test]
+    fn test_lexer_single_at_falls_back_to_identifier() {
+        // A single `@foo` (no second `@`) is not a system variable in
+        // MySQL syntax; we accept it as a plain identifier so the
+        // parser can still produce a clear error message rather than
+        // a crash.
+        let mut lexer = Lexer::new("@foo");
+        let tokens = lexer.tokenize();
+        let sysvars: Vec<&Token> = tokens
+            .iter()
+            .filter(|t| matches!(t, Token::SystemVariable(_)))
+            .collect();
+        assert_eq!(
+            sysvars.len(),
+            0,
+            "single `@` must not produce a SystemVariable, got tokens = {:?}",
+            tokens
+        );
+    }
+
     #[test]
     fn test_delete_multi_table() {
         let result = parse("DELETE t1, t2 FROM t1, t2 WHERE t1.id = t2.id");
@@ -14046,14 +14330,12 @@ fn test_split_sql_statements_block_comment() {
 }
 
 #[test]
-#[ignore = "V312-17: parse_statements() API doesn't handle EOF properly - quarantined"]
 fn test_parse_statements_multiple() {
     let stmts = parse_statements("SELECT 1; SELECT 2").unwrap();
     assert_eq!(stmts.len(), 2);
 }
 
 #[test]
-#[ignore = "V312-17: parse_statements() API doesn't handle EOF properly - quarantined"]
 fn test_parse_statements_no_trailing() {
     let stmts = parse_statements("SELECT 1; SELECT 2;").unwrap();
     assert_eq!(stmts.len(), 2);

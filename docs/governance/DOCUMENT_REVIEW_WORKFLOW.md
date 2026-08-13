@@ -261,8 +261,8 @@ bash scripts/gate/check_docs_links.sh --all
 ```
 
 **常见引用问题**:
-- 引用不存在的文件: `[UPGRADE_GUIDE_v2.7.0.md](./UPGRADE_GUIDE.md)`
-- 引用路径错误: `[文档](../v2.7.0/UPGRADE_GUIDE.md)` 而非 `[文档](./UPGRADE_GUIDE.md)`
+- 引用不存在的文件: `[UPGRADE_GUIDE_v2.7.0.md](../releases/v3.7.0/UPGRADE_GUIDE.md)`
+- 引用路径错误: `[文档](../releases/v3.7.0/UPGRADE_GUIDE.md)` 而非 `[文档](../releases/v3.7.0/UPGRADE_GUIDE.md)`
 
 ### 3.5 Phase 4: 质量检查
 

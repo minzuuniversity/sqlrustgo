@@ -1071,6 +1071,8 @@ mod tests {
             unique_constraints: vec![],
             check_constraints: vec![],
             compression: None,
+            collations: std::collections::HashMap::new(),
+
             partition_info: None,
         };
         assert_eq!(find_column_index("t.id", &info), Some(0));
@@ -1085,6 +1087,8 @@ mod tests {
             unique_constraints: vec![],
             check_constraints: vec![],
             compression: None,
+            collations: std::collections::HashMap::new(),
+
             partition_info: None,
         };
         assert_eq!(find_column_index("id", &info), Some(0));
@@ -1099,6 +1103,8 @@ mod tests {
             unique_constraints: vec![],
             check_constraints: vec![],
             compression: None,
+            collations: std::collections::HashMap::new(),
+
             partition_info: None,
         };
         assert_eq!(find_column_index("mycol", &info), Some(0));
@@ -1113,6 +1119,8 @@ mod tests {
             unique_constraints: vec![],
             check_constraints: vec![],
             compression: None,
+            collations: std::collections::HashMap::new(),
+
             partition_info: None,
         };
         assert_eq!(find_column_index("name", &info), None);

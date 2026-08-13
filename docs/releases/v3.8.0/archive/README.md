@@ -36,5 +36,5 @@ requiring a `git log` archaeology session.
 ## See Also
 
 - [SPEC-v3.8.0-001-mysql-server-canonical-entry.md](../SPEC-v3.8.0-001-mysql-server-canonical-entry.md) — full design
-- [openspec/changes/mysql-server-canonical-entry/](../openspec/changes/mysql-server-canonical-entry/) — the source change
+- openspec/changes/mysql-server-canonical-entry/ — the source change
 - [CHANGELOG.md](../../../../CHANGELOG.md) `## [Unreleased]` — breaking change entry
