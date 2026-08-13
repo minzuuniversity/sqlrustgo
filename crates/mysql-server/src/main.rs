@@ -76,6 +76,19 @@ enum Command {
         /// SERVER-01: data directory (currently used for temp WAL location)
         #[arg(long, default_value = "/tmp/sqlrustgo-data")]
         data_dir: String,
+        /// Issue #4020: directory used as the LOAD DATA LOCAL INFILE
+        /// whitelist. When set, files must canonicalize inside THIS
+        /// path (not the storage `data_dir`) to be accepted. When unset
+        /// (default), the whitelist falls back to `data_dir` — preserving
+        /// the V312-13 sandbox semantics so existing tests
+        /// (`test_load_local_infile_path_outside_data_dir`) continue to
+        /// pass unchanged. Use this when the LOAD DATA fixtures live
+        /// outside the storage dir (e.g. the TPC-H bulk-load runner
+        /// keeps `region.tbl` / `nation.tbl` / `supplier.tbl` under
+        /// `/tmp/tpch-sf10` and wants the storage WAL under
+        /// `$RUN_DIR/data`).
+        #[arg(long)]
+        load_infile_dir: Option<String>,
         /// SERVER-01: max concurrent connections (semaphore limit)
         #[arg(long, default_value_t = 100)]
         max_connections: usize,
@@ -192,6 +205,7 @@ fn main() -> ExitCode {
         host: "127.0.0.1".to_string(),
         port: 3306,
         data_dir: "/tmp/sqlrustgo-data".to_string(),
+        load_infile_dir: None,
         max_connections: 100,
         server_threads: 16,
         auth_mode: "none".to_string(),
@@ -207,6 +221,7 @@ fn main() -> ExitCode {
             host,
             port,
             data_dir,
+            load_infile_dir,
             max_connections,
             server_threads,
             auth_mode,
@@ -221,6 +236,9 @@ fn main() -> ExitCode {
             println!("MySQL wire-protocol server");
             println!("  Listen:     {}:{}", host, port);
             println!("  Data dir:   {}", data_dir);
+            if let Some(ref lid) = load_infile_dir {
+                println!("  INFILE dir: {} (Issue #4020, --load-infile-dir)", lid);
+            }
             println!("  Max conn:   {}", max_connections);
             println!("  Auth mode:  {}", auth_mode);
             println!("  Storage:    {}", storage);
@@ -259,6 +277,16 @@ fn main() -> ExitCode {
             // background `/metrics` listener if set.
             if let Some(mp) = metrics_port {
                 std::env::set_var("SQLRUSTGO_METRICS_PORT", mp.to_string());
+            }
+
+            // Issue #4020: forward --load-infile-dir to the server via
+            // env var. Mirrors the SQLRUSTGO_METRICS_PORT pattern above
+            // so we don't have to widen `run_server_v2`'s signature.
+            // The server reads SQLRUSTGO_LOAD_INFILE_DIR at startup and
+            // uses it as the LOAD DATA whitelist (falling back to
+            // data_dir when unset).
+            if let Some(ref lid) = load_infile_dir {
+                std::env::set_var("SQLRUSTGO_LOAD_INFILE_DIR", lid);
             }
 
             tracing::info!("SQLRustGo MySQL Server starting on {}:{}", host, port);

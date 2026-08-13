@@ -273,12 +273,15 @@ fn window_partition() {
 
 #[test]
 fn window_frame_rows() {
-    let _ = parse("SELECT SUM(x) OVER (ORDER BY id ROWS BETWEEN 1 PRECEDING AND CURRENT ROW) FROM t");
+    let _ =
+        parse("SELECT SUM(x) OVER (ORDER BY id ROWS BETWEEN 1 PRECEDING AND CURRENT ROW) FROM t");
 }
 
 #[test]
 fn window_frame_range() {
-    let _ = parse("SELECT SUM(x) OVER (ORDER BY id RANGE BETWEEN UNBOUNDED PRECEDING AND CURRENT ROW) FROM t");
+    let _ = parse(
+        "SELECT SUM(x) OVER (ORDER BY id RANGE BETWEEN UNBOUNDED PRECEDING AND CURRENT ROW) FROM t",
+    );
 }
 
 #[test]

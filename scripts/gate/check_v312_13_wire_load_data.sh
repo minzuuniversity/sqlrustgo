@@ -85,8 +85,13 @@ run_step "03-wire-regression" "cd ${ROOT} && cargo test --test mysql_wire_protoc
 # 4. prepared-statement regression
 run_step "04-prepared-statement-params" "cd ${ROOT} && cargo test -p sqlrustgo-mysql-server --test prepared_stmt_params_test -- --test-threads=1"
 
-# 5. e2e wire protocol
-run_step "05-e2e-wire-protocol" "cd ${ROOT} && cargo test -p sqlrustgo-mysql-server --test e2e_wire_protocol -- --test-threads=1"
+# 5. e2e wire protocol — superseded by `wire_smoke_mysql_cli` (the
+#    `e2e_wire_protocol.rs` integration test target was deleted when
+#    PR #4081 (V312-F-2 #4025) un-ignored + consolidated the wire
+#    smoke tests into `crates/mysql-server/tests/wire_smoke_mysql_cli.rs`.
+#    This gate step now runs the same coverage that was previously
+#    asserted by e2e_wire_protocol's 9 tests + the 12 wire_smoke tests.
+run_step "05-e2e-wire-protocol" "cd ${ROOT} && cargo test -p sqlrustgo-mysql-server --test wire_smoke_mysql_cli -- --test-threads=1"
 
 # 6. COM_QUERY smoke (existing v3.11 test)
 # 6.5. V312-13 §9 SF=0.0001 lineitem smoke (real TPC-H data, fast)

@@ -544,6 +544,7 @@ pub fn build_combined_schema(
             primary_key: c.primary_key,
             char_max_length: c.char_max_length,
             collation: c.collation.clone(),
+            default_value: None,
         });
     }
 
@@ -555,6 +556,7 @@ pub fn build_combined_schema(
             primary_key: c.primary_key,
             char_max_length: c.char_max_length,
             collation: c.collation.clone(),
+            default_value: None,
         });
     }
 
@@ -584,6 +586,7 @@ pub fn build_multi_table_combined_schema(infos: &[TableInfo], prefixes: &[String
                 primary_key: c.primary_key,
                 char_max_length: c.char_max_length,
                 collation: c.collation.clone(),
+                default_value: None,
             });
         }
     }
@@ -632,6 +635,7 @@ pub fn build_aggregate_schema(
             primary_key: false,
             char_max_length: None,
             collation: None,
+            default_value: None,
         });
     }
 
@@ -719,6 +723,7 @@ pub fn build_aggregate_schema(
             primary_key: false,
             char_max_length: None,
             collation: None,
+            default_value: None,
         });
     }
 

@@ -692,6 +692,16 @@ mod capability {
     /// change data in the packet (only meaningful when
     /// `CLIENT_SESSION_TRACK` is negotiated).
     pub const SERVER_STATUS_SESSION_STATE_CHANGED: u16 = 0x4000;
+    /// SERVER_MORE_RESULTS_EXISTS (0x0008). V312-WIRE-8 fix (regression
+    /// #4019/#4020/#4022 multi-query blocker): status flag set on the
+    /// trailing EOF/OK packet of every result set that is NOT the last
+    /// in a multi-statement COM_QUERY batch. Clients that negotiate
+    /// CLIENT_MULTI_STATEMENTS use this bit to decide whether to read
+    /// another result set from the same packet stream. Without this bit,
+    /// the client stops reading after the first result and the second
+    /// statement's response either gets concatenated into the row
+    /// stream or blocks the client on recvfrom.
+    pub const SERVER_MORE_RESULTS_EXISTS: u16 = 0x0008;
 
     pub const SERVER_DEFAULT: u32 = LONG_PASSWORD
         | FOUND_ROWS
@@ -2710,11 +2720,29 @@ fn send_result_set<W: Write>(
     mut seq: u8,
     cap: u32,
 ) -> MySqlResult<u8> {
+    send_result_set_with_more(w, cols, ctypes, rows, seq, cap, 0)
+}
+
+/// V312-WIRE-8: trailing-status variant. `more_results_flag` is OR'd
+/// into the status_flags of every trailing terminator (EOF for classic
+/// protocol, OK for DEPRECATE_EOF protocol) so multi-statement clients
+/// know whether another result set follows.
+fn send_result_set_with_more<W: Write>(
+    w: &mut W,
+    cols: &[String],
+    ctypes: &[String],
+    rows: &[Vec<Value>],
+    mut seq: u8,
+    cap: u32,
+    more_results_flag: u16,
+) -> MySqlResult<u8> {
+    let trailing_status: u16 = 0x0002 | more_results_flag;
     tracing::info!(
-        "send_result_set: {} cols, {} rows, start_seq={}",
+        "send_result_set: {} cols, {} rows, start_seq={}, more_results=0x{:04x}",
         cols.len(),
         rows.len(),
-        seq
+        seq,
+        more_results_flag
     );
     {
         let mut p = Vec::new();
@@ -2749,6 +2777,11 @@ fn send_result_set<W: Write>(
     // It then stopped reading the row stream, never received the actual
     // rows, and hung waiting for the next command response. Removing the
     // extra OK separator restores wire-protocol compatibility.
+    //
+    // V312-WIRE-8: in classic (DEPRECATE_EOF=0) protocol the inter-record
+    // separator is also a place where MORE_RESULTS_EXISTS is sometimes
+    // surfaced — MySQL 8.0 only sets the bit on the trailing terminator,
+    // so we mirror that here. Keep this packet at 0x0002.
     if cap & capability::DEPRECATE_EOF == 0 {
         make_eof_packet(seq, 0x0002).write_to(w)?;
         seq = seq.wrapping_add(1);
@@ -2789,11 +2822,11 @@ fn send_result_set<W: Write>(
     //     the spec-mandated byte layout per
     //     openspec/changes/2026-06-18-wire-deprecate-eof.
     //
-    // Both branches carry status_flags = 0x0002 (SERVER_STATUS_AUTOCOMMIT)
-    // so the client observes the same autocommit state regardless of
-    // which protocol variant is in use.
+    // Both branches carry status_flags = trailing_status (default
+    // 0x0002 = SERVER_STATUS_AUTOCOMMIT, OR'd with more_results_flag
+    // when this is not the last result of a multi-statement batch).
     if cap & capability::DEPRECATE_EOF == 0 {
-        make_eof_packet(seq, 0x0002).write_to(w)?;
+        make_eof_packet(seq, trailing_status).write_to(w)?;
         seq = seq.wrapping_add(1);
     } else {
         // V312-WIRE-5: `make_deprecate_eof_ok_packet` returns Vec<Packet>
@@ -2802,7 +2835,7 @@ fn send_result_set<W: Write>(
         // and advance seq once per packet.
         seq = write_ok_packets(
             w,
-            make_deprecate_eof_ok_packet(seq, 0, 0, 0x0002, 0, cap),
+            make_deprecate_eof_ok_packet(seq, 0, 0, trailing_status, 0, cap),
             seq,
         )?;
     }
@@ -4122,6 +4155,15 @@ fn do_command_loop<S: Read + Write + DrainWrites>(
                         .data_dir
                         .clone()
                         .unwrap_or_else(|| std::path::PathBuf::from("/tmp"));
+                    // Issue #4020: prefer the per-handle LOAD DATA
+                    // whitelist when configured; fall back to the
+                    // storage data_dir so the default sandbox semantics
+                    // are preserved.
+                    let load_infile_dir = config
+                        .load_infile_dir
+                        .clone()
+                        .unwrap_or_else(|| data_dir.clone());
+                    let data_dir = load_infile_dir;
                     let bulk_buf = config.bulk_insert_buffer_size;
                     // G13-OLTP-1: poisoning recovery on the engine
                     // write lock. A previous LOAD DATA may have
@@ -4200,8 +4242,24 @@ fn do_command_loop<S: Read + Write + DrainWrites>(
                 // the RwLock poisons all subsequent .read()/.write() calls. Using .into_inner()
                 // recovery allows the server to continue serving queries rather than hard-fail.
                 let stmt_texts = split_top_level_statements(&q);
+                let stmt_count = stmt_texts.len();
                 let mut had_error = false;
-                for stmt_sql in &stmt_texts {
+                for (idx, stmt_sql) in stmt_texts.iter().enumerate() {
+                    // V312-WIRE-8: when the client negotiated CLIENT_MULTI_
+                    // STATEMENTS / CLIENT_MULTI_RESULTS, every result
+                    // terminator (OK or trailing EOF) for a non-final
+                    // statement in the batch MUST have the
+                    // SERVER_MORE_RESULTS_EXISTS (0x0008) bit set in its
+                    // status_flags. Without it, mysql 8.0 stops reading
+                    // after the first result and the remaining statements'
+                    // responses get concatenated into the row stream
+                    // (or block the client on recvfrom).
+                    let is_last_stmt = idx + 1 == stmt_count;
+                    let more_results_flag = if is_last_stmt {
+                        0
+                    } else {
+                        capability::SERVER_MORE_RESULTS_EXISTS
+                    };
                     let parsed = parse(stmt_sql);
                     // G13-OLTP-1: pick read-vs-write lock based on AST.
                     let is_read_only = parsed
@@ -4249,9 +4307,21 @@ fn do_command_loop<S: Read + Write + DrainWrites>(
                                 if let Some(ref slow_log) = config.slow_query_log {
                                     slow_log.set_threshold_ms(ms);
                                 }
+                                // V312-WIRE-8: OR MORE_RESULTS_EXISTS on
+                                // the SET OK packet when this is not the
+                                // last statement of a multi-stmt batch
+                                // (e.g. "SET long_query_time=100; SELECT 1").
                                 seq = write_ok_packets(
                                     stream,
-                                    make_ok_packet(seq, 0, 0, 0x0002, 0, cap, false),
+                                    make_ok_packet(
+                                        seq,
+                                        0,
+                                        0,
+                                        0x0002 | more_results_flag,
+                                        0,
+                                        cap,
+                                        false,
+                                    ),
                                     seq,
                                 )?;
                             }
@@ -4338,17 +4408,28 @@ fn do_command_loop<S: Read + Write + DrainWrites>(
                             let cols: Vec<String> = real_col_names;
                             let ctypes: Vec<String> =
                                 cols.iter().map(|_| "VARCHAR(255)".to_string()).collect();
-                            seq = send_result_set(stream, &cols, &ctypes, &r.rows, seq, cap)?;
+                            seq = send_result_set_with_more(
+                                stream,
+                                &cols,
+                                &ctypes,
+                                &r.rows,
+                                seq,
+                                cap,
+                                more_results_flag,
+                            )?;
                             *server_last_sent_seq = seq;
                         }
                         Ok(r) => {
+                            // V312-WIRE-8: OR the more_results_flag into
+                            // the OK packet's status_flags when this is
+                            // not the last statement in the batch.
                             seq = write_ok_packets(
                                 stream,
                                 make_ok_packet(
                                     seq,
                                     r.affected_rows as u64,
                                     0,
-                                    0x0002,
+                                    0x0002 | more_results_flag,
                                     0,
                                     cap,
                                     false,
@@ -4979,8 +5060,19 @@ pub fn run_server_v2(
     // coexist in the same process without one server's LOAD DATA seeing
     // another's `data_dir`.
     use crate::testing::EphemeralConfig;
+    // Issue #4020: optional LOAD DATA whitelist separate from the
+    // storage data_dir. Read from `SQLRUSTGO_LOAD_INFILE_DIR` so the
+    // CLI plumbing (`--load-infile-dir` in main.rs) doesn't have to
+    // widen the `run_server_v2` signature. When unset (the default),
+    // the LOAD DATA whitelist falls back to `data_dir`, preserving the
+    // pre-#4020 sandbox semantics.
+    let load_infile_dir = std::env::var("SQLRUSTGO_LOAD_INFILE_DIR")
+        .ok()
+        .filter(|s| !s.is_empty())
+        .map(std::path::PathBuf::from);
     let cfg = EphemeralConfig {
         data_dir: Some(std::path::PathBuf::from(data_dir)),
+        load_infile_dir,
         server_threads,
         ..Default::default()
     };
@@ -6545,6 +6637,25 @@ pub mod testing {
         /// that needs to share a data dir between two `start_ephemeral`
         /// calls (one to import, one to query).
         pub data_dir: Option<std::path::PathBuf>,
+        /// Issue #4020: directory used as the LOAD DATA LOCAL INFILE
+        /// whitelist. When `Some(path)`, files must canonicalize inside
+        /// THIS path (not the storage `data_dir`) to be accepted. When
+        /// `None` (default), the whitelist falls back to `data_dir` —
+        /// preserving the V312-13 sandbox semantics so existing tests
+        /// (`test_load_local_infile_path_outside_data_dir`) continue
+        /// to pass unchanged. The CLI mirrors this knob via
+        /// `--load-infile-dir`.
+        ///
+        /// Why is this separate from `data_dir`? Because the bulk-load
+        /// runner (`scripts/tpch/bulk_load_sf10.sh`) wants the server's
+        /// *storage* data_dir to live next to the WAL under
+        /// `$RUN_DIR/data` (so the runner can wipe it on exit) while
+        /// the LOAD DATA fixtures live under `$DATA_DIR` (which the
+        /// runner does NOT own — typically a long-lived `/tmp/tpch-sf10`
+        /// shared across runs). Conflating the two would force a
+        /// `cp` of every .tbl into the storage dir on every run; the
+        /// 60M-line SF=10 lineitem.tbl makes that prohibitive.
+        pub load_infile_dir: Option<std::path::PathBuf>,
         /// Extra DDL statements to execute after the internal catalog
         /// tables (if `bootstrap_tables` is true) and before the server
         /// starts accepting connections. Use this to inject the 8 TPC-H
@@ -6599,6 +6710,7 @@ pub mod testing {
                 bootstrap_tables: true,
                 bootstrap_users: true,
                 data_dir: None,
+                load_infile_dir: None,
                 bootstrap_sql: Vec::new(),
                 bulk_insert_buffer_size: 1_048_576,
                 server_threads: 16,
@@ -7022,6 +7134,7 @@ pub mod testing {
                     data_dir: None,
                     slow_query_log: None,
                     metrics_port: None,
+                    load_infile_dir: None,
                 };
 
                 // If a server is already on this port (e.g. prior process in
@@ -7138,6 +7251,7 @@ pub mod testing {
                 port: Some(0),
                 slow_query_log: None,
                 metrics_port: None,
+                load_infile_dir: None,
             };
             assert_eq!(cfg.host, "0.0.0.0");
             assert!(!cfg.bootstrap_tables);

@@ -4232,26 +4232,26 @@ impl Parser {
                         expression: Some(expr),
                     });
                 }
-// V311-10 F-30: NEXT VALUE FOR seq / CURRVAL(seq) in SELECT.
-                    // Delegate to the expression parser, which recognises
-                    // SequenceNextVal / SequenceCurrval via parse_primary_expression.
-                    Some(Token::NextValue) | Some(Token::Currval) => {
-                        let expr = self.parse_expression()?;
-                        columns.push(SelectColumn {
-                            name: format!("{:?}", expr),
-                            alias: None,
-                            expression: Some(expr),
-                        });
-                    }
-                    // V313-followup-5 / Issue #4158: trailing `WITH [NO] DATA`
-                    // marker in CREATE TABLE AS SELECT. Break the column-list
-                    // loop without consuming; the caller (parse_create_table)
-                    // will recognise the WITH token and parse the trailing
-                    // materialization clause.
-                    Some(Token::With) => break,
-                    _ => {
-                        return Err("Expected FROM or column name".to_string());
-                    }
+                // V311-10 F-30: NEXT VALUE FOR seq / CURRVAL(seq) in SELECT.
+                // Delegate to the expression parser, which recognises
+                // SequenceNextVal / SequenceCurrval via parse_primary_expression.
+                Some(Token::NextValue) | Some(Token::Currval) => {
+                    let expr = self.parse_expression()?;
+                    columns.push(SelectColumn {
+                        name: format!("{:?}", expr),
+                        alias: None,
+                        expression: Some(expr),
+                    });
+                }
+                // V313-followup-5 / Issue #4158: trailing `WITH [NO] DATA`
+                // marker in CREATE TABLE AS SELECT. Break the column-list
+                // loop without consuming; the caller (parse_create_table)
+                // will recognise the WITH token and parse the trailing
+                // materialization clause.
+                Some(Token::With) => break,
+                _ => {
+                    return Err("Expected FROM or column name".to_string());
+                }
             }
         }
 
@@ -8007,10 +8007,7 @@ impl Parser {
                                     _ => None,
                                 };
                                 let columns = self.parse_column_list()?;
-                                constraints.push(TableConstraint::Unique {
-                                    columns,
-                                    name,
-                                });
+                                constraints.push(TableConstraint::Unique { columns, name });
                             }
                             _ => continue,
                         }
@@ -8123,14 +8120,14 @@ impl Parser {
                                         _ => return Err("Expected 'DATA' after 'NO'".to_string()),
                                     }
                                 }
-                                Some(Token::Identifier(s))
-                                    if s.eq_ignore_ascii_case("DATA") =>
-                                {
+                                Some(Token::Identifier(s)) if s.eq_ignore_ascii_case("DATA") => {
                                     self.next();
                                     Some(true)
                                 }
                                 _ => {
-                                    return Err("Expected 'NO DATA' or 'DATA' after 'WITH'".to_string())
+                                    return Err(
+                                        "Expected 'NO DATA' or 'DATA' after 'WITH'".to_string()
+                                    )
                                 }
                             }
                         }
@@ -9645,7 +9642,9 @@ impl Parser {
                             Some(Token::BooleanLiteral(true)) => "true".to_string(),
                             Some(Token::BooleanLiteral(false)) => "false".to_string(),
                             Some(Token::Null) => {
-                                return Err("ALTER COLUMN SET DEFAULT NULL is not supported".to_string());
+                                return Err(
+                                    "ALTER COLUMN SET DEFAULT NULL is not supported".to_string()
+                                );
                             }
                             Some(t) => {
                                 return Err(format!(
@@ -9655,7 +9654,9 @@ impl Parser {
                             }
                             None => return Err("Expected literal after SET DEFAULT".to_string()),
                         };
-                        AlterColumnOperation::SetDefault { default_value: Some(default_value.clone()) };
+                        AlterColumnOperation::SetDefault {
+                            default_value: Some(default_value.clone()),
+                        };
                         Ok(Statement::AlterTable(AlterTableStatement {
                             table_name,
                             operation: AlterTableOperation::AlterColumn {

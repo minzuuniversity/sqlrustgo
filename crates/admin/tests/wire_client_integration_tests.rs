@@ -20,10 +20,11 @@ fn start_server(
         storage: None,
         data_dir: None,
         slow_query_log: None,
-// EphemeralConfig extended with metrics_port; this initializer was
+        // EphemeralConfig extended with metrics_port; this initializer was
         // missed by the struct-extension propagation. Default None disables
         // the metrics endpoint.
         metrics_port: None,
+        load_infile_dir: None,
     };
     start_ephemeral(config).expect("server starts")
 }

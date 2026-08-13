@@ -212,7 +212,7 @@ fn dispatch(cli: Cli) -> Result<u8, Box<dyn std::error::Error>> {
         } => {
             let mut conn = connect(&host, port, &user, &password)?;
             match conn.execute("SELECT * FROM information_schema.processlist") {
-                Ok(ResultSet::Select { columns, rows }) => {
+                Ok(ResultSet::Select { columns, rows, .. }) => {
                     let header = columns
                         .iter()
                         .map(|c| c.name.clone())

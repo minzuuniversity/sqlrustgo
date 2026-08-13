@@ -510,50 +510,45 @@ impl<S: StorageEngine + 'static> ExecutionEngine<S> {
                 // step, Q14 would return 2 raw SUM values instead of
                 // the `100.00 * SUM(...) / SUM(...)` result.
                 let agg_schema = build_aggregate_schema(&[], &select.aggregates)?;
-                let projected: Vec<Vec<Value>> =
-                    if select.columns.is_empty() || select.columns.iter().any(|c| c.name == "*") {
-                        vec![agg_values.clone()]
-                    } else {
-                        let row: Vec<Value> = select
-                            .columns
-                            .iter()
-                            .map(|col| match &col.expression {
-                                Some(expr) => {
-                                    // V313-followup-2 / Issue #4155: reuse the precomputed aggregate
-                                    // value rather than re-evaluating through
-                                    // `evaluate_expression`'s FunctionCall
-                                    // dispatch (which lacks aggregate context).
-                                    if let sqlrustgo_parser::Expression::FunctionCall(
-                                        name,
-                                        _,
-                                    ) = expr
-                                    {
-                                        let upper = name.to_uppercase();
-                                        if upper == "QUANTILE_DISC"
-                                            || upper == "QUANTILE_CONT"
-                                        {
-                                            if let Some(idx) = select.aggregates.iter().position(
-                                                |a| matches!(
-                                                    a.func,
-                                                    AggregateFunction::QuantileDisc
-                                                        | AggregateFunction::QuantileCont
-                                                ),
-                                            ) {
-                                                return agg_values
-                                                    .get(idx)
-                                                    .cloned()
-                                                    .unwrap_or(Value::Null);
-                                            }
+                let projected: Vec<Vec<Value>> = if select.columns.is_empty()
+                    || select.columns.iter().any(|c| c.name == "*")
+                {
+                    vec![agg_values.clone()]
+                } else {
+                    let row: Vec<Value> = select
+                        .columns
+                        .iter()
+                        .map(|col| match &col.expression {
+                            Some(expr) => {
+                                // V313-followup-2 / Issue #4155: reuse the precomputed aggregate
+                                // value rather than re-evaluating through
+                                // `evaluate_expression`'s FunctionCall
+                                // dispatch (which lacks aggregate context).
+                                if let sqlrustgo_parser::Expression::FunctionCall(name, _) = expr {
+                                    let upper = name.to_uppercase();
+                                    if upper == "QUANTILE_DISC" || upper == "QUANTILE_CONT" {
+                                        if let Some(idx) = select.aggregates.iter().position(|a| {
+                                            matches!(
+                                                a.func,
+                                                AggregateFunction::QuantileDisc
+                                                    | AggregateFunction::QuantileCont
+                                            )
+                                        }) {
+                                            return agg_values
+                                                .get(idx)
+                                                .cloned()
+                                                .unwrap_or(Value::Null);
                                         }
                                     }
-                                    evaluate_expression(expr, &agg_values, &agg_schema)
-                                        .unwrap_or(Value::Null)
                                 }
-                                None => agg_values.first().cloned().unwrap_or(Value::Null),
-                            })
-                            .collect();
-                        vec![row]
-                    };
+                                evaluate_expression(expr, &agg_values, &agg_schema)
+                                    .unwrap_or(Value::Null)
+                            }
+                            None => agg_values.first().cloned().unwrap_or(Value::Null),
+                        })
+                        .collect();
+                    vec![row]
+                };
                 let row_count = projected.len();
                 return Ok(ExecutorResult::new(projected, row_count));
             } else {
@@ -1205,13 +1200,13 @@ impl<S: StorageEngine + 'static> ExecutionEngine<S> {
             // Sort. Each order_by has an `ascending` flag;
             // v3.8.0-rc2 Day 7: respect ASC/DESC. Q13 uses
             // DESC, which my earlier version ignored.
-            // V313-followup-4 / Issue #4157: honour session
-            // SET default_null_order for NULL placement.
+            // V313-followup-4 / Issue #4157: also honour session
+            // `SET default_null_order` for NULL-first / NULL-last placement.
             zipped.sort_by(|a, b| {
                 for (i, ob) in select.order_by.iter().enumerate() {
-                    let nulls_first_eff: bool = ob.nulls_first.unwrap_or_else(|| {
-                        self.session_null_order_first.unwrap_or(true)
-                    });
+                    let nulls_first_eff: bool = ob
+                        .nulls_first
+                        .unwrap_or_else(|| self.session_null_order_first.unwrap_or(true));
                     let ord = if i < a.0.len() && i < b.0.len() {
                         let va = &a.0[i];
                         let vb = &b.0[i];
@@ -1220,9 +1215,17 @@ impl<S: StorageEngine + 'static> ExecutionEngine<S> {
                         if is_null_a && is_null_b {
                             std::cmp::Ordering::Equal
                         } else if is_null_a {
-                            if nulls_first_eff { std::cmp::Ordering::Less } else { std::cmp::Ordering::Greater }
+                            if nulls_first_eff {
+                                std::cmp::Ordering::Less
+                            } else {
+                                std::cmp::Ordering::Greater
+                            }
                         } else if is_null_b {
-                            if nulls_first_eff { std::cmp::Ordering::Greater } else { std::cmp::Ordering::Less }
+                            if nulls_first_eff {
+                                std::cmp::Ordering::Greater
+                            } else {
+                                std::cmp::Ordering::Less
+                            }
                         } else {
                             va.cmp(vb)
                         }
@@ -1423,15 +1426,21 @@ impl<S: StorageEngine + 'static> ExecutionEngine<S> {
                         _ => None,
                     }) {
                         Some(f) if (0.0..=1.0).contains(&f) => f,
-                        _ => return Err(SqlError::ExecutionError(
-                            "quantile_disc / quantile_cont requires 2nd arg in [0.0, 1.0]".to_string()
-                        )),
+                        _ => {
+                            return Err(SqlError::ExecutionError(
+                                "quantile_disc / quantile_cont requires 2nd arg in [0.0, 1.0]"
+                                    .to_string(),
+                            ))
+                        }
                     };
-                    let mut sorted: Vec<f64> = values.iter().filter_map(|v| match v {
-                        Value::Integer(n) => Some(*n as f64),
-                        Value::Float(f) => Some(*f),
-                        _ => None,
-                    }).collect();
+                    let mut sorted: Vec<f64> = values
+                        .iter()
+                        .filter_map(|v| match v {
+                            Value::Integer(n) => Some(*n as f64),
+                            Value::Float(f) => Some(*f),
+                            _ => None,
+                        })
+                        .collect();
                     sorted.sort_by(|a, b| a.partial_cmp(b).unwrap_or(std::cmp::Ordering::Equal));
                     if sorted.is_empty() {
                         Value::Null
@@ -1439,12 +1448,13 @@ impl<S: StorageEngine + 'static> ExecutionEngine<S> {
                         let idx = (frac * (sorted.len() as f64 - 1.0)).max(0.0);
                         let lo = idx.floor() as usize;
                         let hi = idx.ceil() as usize;
-                        let result = if matches!(agg.func, AggregateFunction::QuantileDisc) || lo == hi {
-                            sorted[lo.min(sorted.len() - 1)]
-                        } else {
-                            let frac_part = idx - lo as f64;
-                            sorted[lo] + (sorted[hi] - sorted[lo]) * frac_part
-                        };
+                        let result =
+                            if matches!(agg.func, AggregateFunction::QuantileDisc) || lo == hi {
+                                sorted[lo.min(sorted.len() - 1)]
+                            } else {
+                                let frac_part = idx - lo as f64;
+                                sorted[lo] + (sorted[hi] - sorted[lo]) * frac_part
+                            };
                         Value::Float(result)
                     }
                 }
