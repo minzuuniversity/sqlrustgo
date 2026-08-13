@@ -34,7 +34,18 @@ fn start_server() -> sqlrustgo_mysql_server::testing::EphemeralHandle {
         bootstrap_tables: false,
         bootstrap_sql: Vec::new(),
         bulk_insert_buffer_size: 1_048_576,
-        server_threads: 2,
+        // V312-26/Round-19 fix: bump from 2 → 8 worker threads.
+        // With 12 wire_smoke tests running in parallel, the previous
+        // pool (2 workers + 8-slot buffer) exhausted under backpressure
+        // — `ServerThreadPool::send_timeout` returned `Timeout` after
+        // 200ms and the accept loop silently DROPPED the connection.
+        // Clients reading the COM_STMT_PREPARE response then panicked
+        // with `UnexpectedEof during read_exact`. 8 workers keeps the
+        // channel buffer (n*4 = 32) large enough that no test's
+        // handshake + CREATE/INSERT/PREPARE sequence waits more than
+        // ~50ms for a free slot. Backpressure counter (BACKPRESSURE_COUNT)
+        // still serves as the canary for any future regression.
+        server_threads: 8,
         storage: None,
         slow_query_log: None,
         metrics_port: None,
