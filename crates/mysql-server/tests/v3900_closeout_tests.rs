@@ -52,6 +52,7 @@ fn start_server() -> sqlrustgo_mysql_server::testing::EphemeralHandle {
         bulk_insert_buffer_size: 1_048_576,
         server_threads: 8,
         storage: None,
+        load_infile_dir: None,
         slow_query_log: None,
         metrics_port: None,
     };

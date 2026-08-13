@@ -45,6 +45,7 @@ fn boot_ephemeral_server() -> (sqlrustgo_mysql_server::testing::EphemeralHandle,
         data_dir: None,
         slow_query_log: None,
         metrics_port: None,
+        load_infile_dir: None,
     };
     let handle = start_ephemeral(config).expect("ephemeral server starts");
     // Recover the bound port by querying the listener through a fresh
