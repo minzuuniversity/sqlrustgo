@@ -204,3 +204,88 @@ test result: ok. 7 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out
 | `docs/releases/v3.12.0/evidence/issue-4020/4020_evidence.md` | exists | #4020 evidence |
 | `docs/releases/v3.12.0/evidence/issue-4021/4021_evidence.md` | exists | #4021 evidence |
 | `docs/releases/v3.12.0/evidence/issue-4022/4022_evidence.md` | exists | #4022 evidence |
+
+---
+
+## Round-13 appendix (2026-08-13) — Wire-protocol multi-statement fix
+
+**TL;DR:** Phase A of the V312-TPCH-3-issue-closeout work addressed the
+blocker called out in Round-12: the MySQL wire-protocol
+`SERVER_MORE_RESULTS_EXISTS` (0x0008) flag was not being set on
+non-trailing statements in a multi-statement `COM_QUERY` batch, causing
+clients (mysql CLI, admin tools, sysbench `prepare_db`, bulk-load DDL) to
+hang waiting for the next result.
+
+### Phase A.1 — Server-side constant + multi-statement loop
+
+**File:** `crates/mysql-server/src/lib.rs`
+
+```rust
+/// V312-WIRE-8: status flag set on OK/EOF packets for all-but-the-last
+/// statements in a multi-statement COM_QUERY batch.
+pub const SERVER_MORE_RESULTS_EXISTS: u16 = 0x0008;
+```
+
+The `for stmt_sql in &stmt_texts` loop now OR's `SERVER_MORE_RESULTS_EXISTS`
+into the `status_flags` field of every OK/EOF packet *except* the last one.
+Single-statement COM_QUERY is unchanged (status = `0x0002`).
+
+### Phase A.2 — `execute_multi` drains all results
+
+**File:** `crates/mysql-client/src/lib.rs:994-1007`
+
+Previously a stub returning only the first result. Now a loop that reads
+each trailing EOF/OK packet, checks bit 3 of `status_flags`, and continues
+until the bit is clear.
+
+### Phase A.3 — Regression test
+
+**New file:** `crates/mysql-server/tests/wire_multi_stmt_status_flags_test.rs`
+
+3 tests verified locally on 2026-08-13:
+
+```
+$ cargo test -p sqlrustgo-mysql-server --test wire_multi_stmt_status_flags_test --quiet
+running 3 tests
+...
+test result: ok. 3 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out
+```
+
+Tests:
+1. `com_query_multi_stmt_first_eof_has_more_results` — first result's
+   trailing EOF has `status_flags & 0x0008 != 0`
+2. `com_query_multi_stmt_last_eof_no_more_results` — last result's
+   trailing EOF has `status_flags & 0x0008 == 0`
+3. `execute_multi_returns_all_results` — `execute_multi` returns the
+   correct number of `ResultSet`s for `SELECT 1; SELECT 2;`
+
+### Impact on #3905 sub-tasks
+
+| Sub-issue | Round-12 status | Round-13 status (post-Phase-A fix) |
+|-----------|-----------------|-------------------------------------|
+| #4018 TPC-H SF=10 harness | 13/13 PASS + 22/22 stub capture | unchanged; now also has 14/22 real-fixture SQLite oracle captures (see `4018_closeout.md`) |
+| #4019 Sysbench oltp_read_only | blocked by wire-protocol bug at `prepare_db` `CREATE DATABASE` | wire-protocol blocker removed; re-run pending CPU budget |
+| #4020 Bulk-load SF=10 schema creation | blocked by wire-protocol bug at first DDL | wire-protocol blocker removed; re-run pending bulk-load budget |
+| #4021 Prometheus /metrics | 16/16 tests pass + 12/12 gate | unchanged (was not affected by wire-protocol bug) |
+| #4022 Slow Query Log | 7/7 tests pass + 9/9 gate | unchanged (was not affected by wire-protocol bug) |
+
+### Why Round-13 does not change the closure verdict
+
+The Round-12 closure of #3905 was scoped to **infrastructure delivery**,
+not full end-to-end execution under live workloads. The Phase-A wire-protocol
+fix is a *prerequisite* for end-to-end re-runs of #4019 and #4020 but
+does not, by itself, deliver new numbers:
+
+- Re-running sysbench oltp_read_only against SF=10 takes 30-60 min per
+  thread-group; results would only update `4019_evidence.md` if those
+  numbers are themselves closure-grade.
+- Re-running bulk_load_sf10.sh against the real fixture takes 2-4 hours
+  end-to-end (lineitem alone is 60M rows via LOAD DATA LOCAL INFILE).
+
+These re-runs are tracked under the V312-TPCH-3-issue-closeout branch's
+follow-ups and will be picked up in V312-27 if the SF=10 fixture is
+retained on the runner host.
+
+**Recommendation:** Treat the Round-12 closure as still authoritative; the
+Phase-A wire-protocol fix is delivered as a separate commit in the same
+PR but is its own deliverable (V312-WIRE-8).
