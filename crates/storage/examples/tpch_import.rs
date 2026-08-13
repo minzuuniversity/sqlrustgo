@@ -286,6 +286,10 @@ fn col_def(name: &str, dtype: &str) -> ColumnDefinition {
         nullable: true,
         primary_key: false,
         char_max_length: None,
+        // V312-26 / #4077: collation field added by d48b0a1a71;
+        // this initializer was missed by the propagation PR #4140.
+        // Default None = binary collation (case-sensitive).
+        collation: None,
     }
 }
 
