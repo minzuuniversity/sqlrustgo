@@ -77,18 +77,23 @@ CREATE TABLE tbl7(col1, col2) AS SELECT 5
 # WITH NO DATA / WITH DATA are outside V313-14 engine scope (parser
 # doesn't accept the WITH [NO] DATA suffix on CREATE TABLE AS). Tracked
 # for a follow-up V3.13.x parser round.
-# statement ok
-# CREATE TABLE tbl8 AS SELECT 42 WITH NO DATA
-#
-# query I
-# SELECT COUNT(*) FROM tbl8
-# ----
-# 0
-#
-# statement ok
-# CREATE TABLE tbl9 AS SELECT 42 WITH DATA
-#
-# query I
-# SELECT COUNT(*) FROM tbl9
-# ----
-# 1
+# V313-followup-5 / Issue #4158: WITH NO DATA / WITH DATA clauses
+# restored (parser now accepts the SQL-standard `AS SELECT ... WITH [NO] DATA`
+# order; executor at src/engine_create.rs:159 skips data insertion when
+# with_data is false).
+
+statement ok
+CREATE TABLE tbl8 AS SELECT 42 AS x WITH NO DATA
+
+query I
+SELECT COUNT(*) FROM tbl8
+----
+0
+
+statement ok
+CREATE TABLE tbl9 AS SELECT 42 AS x WITH DATA
+
+query I
+SELECT COUNT(*) FROM tbl9
+----
+1
