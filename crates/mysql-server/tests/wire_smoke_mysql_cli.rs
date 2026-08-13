@@ -34,6 +34,7 @@ fn start_server() -> sqlrustgo_mysql_server::testing::EphemeralHandle {
         bootstrap_tables: false,
         bootstrap_sql: Vec::new(),
         bulk_insert_buffer_size: 1_048_576,
+        load_infile_dir: None,
         // V312-26/Round-19 fix: bump from 2 → 8 worker threads.
         // With 12 wire_smoke tests running in parallel, the previous
         // pool (2 workers + 8-slot buffer) exhausted under backpressure
