@@ -273,7 +273,8 @@ mod tests {
                 references: None,
                 compression: None,
                 collation: None,
-            },
+
+                default_value: None,            },
             ColumnDefinition {
                 name: "name".to_string(),
                 data_type: "TEXT".to_string(),
@@ -284,7 +285,8 @@ mod tests {
                 references: None,
                 compression: None,
                 collation: None,
-            },
+
+                default_value: None,            },
         ];
         let storage = make_storage_with_data("users", records, columns);
 

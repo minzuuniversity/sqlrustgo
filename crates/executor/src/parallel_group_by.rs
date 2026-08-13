@@ -522,7 +522,7 @@ mod tests {
                 name: "id".to_string(),
                 data_type: "INT".to_string(),
                 ..Default::default()
-            }],
+                }],
             foreign_keys: vec![],
             unique_constraints: vec![],
             check_constraints: vec![],

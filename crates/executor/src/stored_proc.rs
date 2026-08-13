@@ -1162,7 +1162,7 @@ impl StoredProcExecutor {
                         name,
                         data_type,
                         nullable,
-                        default_value: _,
+                        default_value,
                     } => {
                         let column = ColumnDefinition {
                             name: name.clone(),
@@ -1171,6 +1171,7 @@ impl StoredProcExecutor {
                             primary_key: false,
                             char_max_length: None,
                             collation: None,
+                            default_value: default_value.clone(),
                         };
                         storage
                             .add_column(table_name, column)
