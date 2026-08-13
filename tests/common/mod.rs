@@ -188,7 +188,17 @@ fn parse_handshake(handshake: &[u8]) -> wire_err::Result<[u8; SCRAMBLE_LEN]> {
 
 /// Compute the mysql_native_password auth response:
 ///   auth_response = SHA1(password) XOR SHA1(scramble + SHA1(SHA1(password)))
-fn native_password_auth(password: &[u8], scramble: &[u8; SCRAMBLE_LEN]) -> [u8; SCRAMBLE_LEN] {
+///
+/// V312-38 / Issue #4176: per MySQL protocol, when `password` is empty
+/// the client MUST send a 0-length auth-response. The previous version
+/// always returned a 20-byte token (SHA1 of empty + scramble), which
+/// makes servers respond with `Access denied ... (using password: YES)`
+/// and obscures the real reason for the failure. Mirrors the fix in
+/// `crates/cli/src/client.rs:native_password_auth`.
+fn native_password_auth(password: &[u8], scramble: &[u8; SCRAMBLE_LEN]) -> Vec<u8> {
+    if password.is_empty() {
+        return Vec::new();
+    }
     let mut h1 = Sha1::new();
     h1.update(password);
     let sha1_pw = h1.finalize();
@@ -206,7 +216,7 @@ fn native_password_auth(password: &[u8], scramble: &[u8; SCRAMBLE_LEN]) -> [u8; 
     for i in 0..SCRAMBLE_LEN {
         out[i] = sha1_pw[i] ^ scramble_sha1_sha1_pw[i];
     }
-    out
+    out.to_vec()
 }
 
 /// Build a HandshakeResponse41 packet body. We use the SECURE_CONNECTION
