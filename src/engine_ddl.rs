@@ -496,6 +496,7 @@ impl<S: StorageEngine + 'static> ExecutionEngine<S> {
                     primary_key: false,
                     char_max_length: None,
                     collation: None,
+                    default_value: None,
                 };
                 storage.add_column(&alter.table_name, column)?;
             }
@@ -515,6 +516,7 @@ impl<S: StorageEngine + 'static> ExecutionEngine<S> {
                     primary_key: false,
                     char_max_length: *char_max_length,
                     collation: None,
+                    default_value: None,
                 };
                 storage.modify_column(&alter.table_name, name, column)?;
             }
@@ -545,20 +547,21 @@ impl<S: StorageEngine + 'static> ExecutionEngine<S> {
                         primary_key: existing.primary_key,
                         char_max_length: existing.char_max_length,
                         collation: existing.collation.clone(),
+                        default_value: None,
                     };
                     storage.modify_column(&alter.table_name, name, new_def)?;
                 }
-                AlterColumnOperation::SetDefault { .. } => {
-                    return Err(SqlError::ParseError(format!(
-                        "ALTER COLUMN '{}' SET DEFAULT not supported",
-                        name
-                    )));
+                AlterColumnOperation::SetDefault { default_value } => {
+                    // V313-followup-1 / Issue #4154: persist the literal default.
+                    storage.set_column_default(
+                        &alter.table_name,
+                        name,
+                        default_value.clone(),
+                    )?;
                 }
                 AlterColumnOperation::DropDefault => {
-                    return Err(SqlError::ParseError(format!(
-                        "ALTER COLUMN '{}' DROP DEFAULT not supported",
-                        name
-                    )));
+                    // V313-followup-1 / Issue #4154: clear the persisted default.
+                    storage.set_column_default(&alter.table_name, name, None)?;
                 }
                 AlterColumnOperation::DropNotNull => {
                     return Err(SqlError::ParseError(format!(

@@ -248,6 +248,7 @@ impl<S: StorageEngine + 'static> ExecutionEngine<S> {
                             primary_key: false,
                             char_max_length: None,
                             collation: None,
+                            default_value: None,
                         });
                 }
                 Some((sub_result.rows, table_info))
@@ -309,6 +310,7 @@ impl<S: StorageEngine + 'static> ExecutionEngine<S> {
                         primary_key: false,
                         char_max_length: None,
                         collation: None,
+                        default_value: None,
                     })
                     .collect(),
                 foreign_keys: Vec::new(),
@@ -1203,10 +1205,27 @@ impl<S: StorageEngine + 'static> ExecutionEngine<S> {
             // Sort. Each order_by has an `ascending` flag;
             // v3.8.0-rc2 Day 7: respect ASC/DESC. Q13 uses
             // DESC, which my earlier version ignored.
+            // V313-followup-4 / Issue #4157: honour session
+            // SET default_null_order for NULL placement.
             zipped.sort_by(|a, b| {
                 for (i, ob) in select.order_by.iter().enumerate() {
+                    let nulls_first_eff: bool = ob.nulls_first.unwrap_or_else(|| {
+                        self.session_null_order_first.unwrap_or(true)
+                    });
                     let ord = if i < a.0.len() && i < b.0.len() {
-                        a.0[i].cmp(&b.0[i])
+                        let va = &a.0[i];
+                        let vb = &b.0[i];
+                        let is_null_a = matches!(va, Value::Null);
+                        let is_null_b = matches!(vb, Value::Null);
+                        if is_null_a && is_null_b {
+                            std::cmp::Ordering::Equal
+                        } else if is_null_a {
+                            if nulls_first_eff { std::cmp::Ordering::Less } else { std::cmp::Ordering::Greater }
+                        } else if is_null_b {
+                            if nulls_first_eff { std::cmp::Ordering::Greater } else { std::cmp::Ordering::Less }
+                        } else {
+                            va.cmp(vb)
+                        }
                     } else {
                         std::cmp::Ordering::Equal
                     };
@@ -1655,6 +1674,7 @@ impl<S: StorageEngine + 'static> ExecutionEngine<S> {
                             primary_key: false,
                             char_max_length: None,
                             collation: None,
+                            default_value: None,
                         });
                 }
                 DERIVED_RESULTS.with(|cell| {
@@ -2102,6 +2122,7 @@ impl<S: StorageEngine + 'static> ExecutionEngine<S> {
                     primary_key: col.primary_key,
                     char_max_length: col.char_max_length,
                     collation: col.collation.clone(),
+                    default_value: None,
                 });
             }
             acc_columns = new_columns;
@@ -2453,6 +2474,7 @@ impl<S: StorageEngine + 'static> ExecutionEngine<S> {
                         primary_key: col.primary_key,
                         char_max_length: col.char_max_length,
                         collation: col.collation.clone(),
+                        default_value: None,
                     });
                 }
                 let combined_schema = TableInfo {

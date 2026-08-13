@@ -516,7 +516,11 @@ pub fn find_column_index(
     col_name: &str,
     columns: &[sqlrustgo_storage::ColumnDefinition],
 ) -> Option<usize> {
-    // Fast path: exact match.
+    // V313-followup-1 / Issue #4154: case-exact first, fallback
+    // case-insensitive.
+    if let Some(idx) = columns.iter().position(|c| c.name == col_name) {
+        return Some(idx);
+    }
     if let Some(idx) = columns
         .iter()
         .position(|c| c.name.eq_ignore_ascii_case(col_name))
