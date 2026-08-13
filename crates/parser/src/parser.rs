@@ -5930,6 +5930,12 @@ impl Parser {
                         Some(Token::Comma) => {
                             self.next();
                         }
+                        // V313-followup-1 / Issue #4154: INSERT VALUES (DEFAULT)
+                        // materialises the column's set default.
+                        Some(Token::Default) => {
+                            self.next();
+                            row.push(Expression::Identifier("DEFAULT".to_string()));
+                        }
                         _ => {
                             let expr = self.parse_expression()?;
                             row.push(expr);
@@ -9630,11 +9636,35 @@ impl Parser {
                 if matches!(self.current(), Some(Token::Set)) {
                     self.next();
                     if matches!(self.current(), Some(Token::Default)) {
-                        // SET DEFAULT <expr> is not yet implemented; reject
-                        // rather than silently accept (was previously
-                        // producing SetDefault { default_value: None }
-                        // which dropped the user-supplied value).
-                        Err("ALTER COLUMN SET DEFAULT is not yet supported".to_string())
+                        // V313-followup-1 / Issue #4154: SET DEFAULT <expr>
+                        // now wired through to engine_ddl::set_column_default.
+                        self.next();
+                        let default_value = match self.next() {
+                            Some(Token::NumberLiteral(n)) => n,
+                            Some(Token::StringLiteral(s)) => s,
+                            Some(Token::BooleanLiteral(true)) => "true".to_string(),
+                            Some(Token::BooleanLiteral(false)) => "false".to_string(),
+                            Some(Token::Null) => {
+                                return Err("ALTER COLUMN SET DEFAULT NULL is not supported".to_string());
+                            }
+                            Some(t) => {
+                                return Err(format!(
+                                    "Unsupported SET DEFAULT literal token: {:?}",
+                                    t
+                                ));
+                            }
+                            None => return Err("Expected literal after SET DEFAULT".to_string()),
+                        };
+                        AlterColumnOperation::SetDefault { default_value: Some(default_value.clone()) };
+                        Ok(Statement::AlterTable(AlterTableStatement {
+                            table_name,
+                            operation: AlterTableOperation::AlterColumn {
+                                name: col_name,
+                                op: AlterColumnOperation::SetDefault {
+                                    default_value: Some(default_value),
+                                },
+                            },
+                        }))
                     } else if let Some(Token::Identifier(ref id)) = self.current() {
                         if id.to_uppercase() == "DATA" {
                             self.next();

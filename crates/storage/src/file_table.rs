@@ -225,6 +225,7 @@ mod tests {
                 primary_key: true,
                 char_max_length: None,
                 collation: None,
+                default_value: None,
             }],
             foreign_keys: vec![],
             unique_constraints: vec![],
@@ -247,6 +248,7 @@ mod tests {
                     primary_key: false,
                     char_max_length: None,
                     collation: None,
+                    default_value: None,
                 },
                 crate::engine::ColumnDefinition {
                     name: "b".into(),
@@ -255,6 +257,7 @@ mod tests {
                     primary_key: false,
                     char_max_length: None,
                     collation: None,
+                    default_value: None,
                 },
                 crate::engine::ColumnDefinition {
                     name: "c".into(),
@@ -263,6 +266,7 @@ mod tests {
                     primary_key: false,
                     char_max_length: None,
                     collation: None,
+                    default_value: None,
                 },
                 crate::engine::ColumnDefinition {
                     name: "d".into(),
@@ -271,6 +275,7 @@ mod tests {
                     primary_key: false,
                     char_max_length: None,
                     collation: None,
+                    default_value: None,
                 },
             ],
             foreign_keys: vec![],

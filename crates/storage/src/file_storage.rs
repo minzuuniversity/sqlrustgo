@@ -645,6 +645,7 @@ mod tests {
                             primary_key: true,
                             char_max_length: None,
                             collation: None,
+                            default_value: None,
                         },
                         ColumnDefinition {
                             name: "name".to_string(),
@@ -653,6 +654,7 @@ mod tests {
                             primary_key: false,
                             char_max_length: None,
                             collation: None,
+                            default_value: None,
                         },
                     ],
                     foreign_keys: vec![],
@@ -1179,6 +1181,7 @@ mod tests {
                     primary_key: true,
                     char_max_length: None,
                     collation: None,
+                    default_value: None,
                 }],
                 foreign_keys: vec![],
                 unique_constraints: vec![],
@@ -1201,6 +1204,7 @@ mod tests {
             primary_key: false,
             char_max_length: None,
             collation: None,
+            default_value: None,
         };
         let result = storage.add_column("add_col_test", new_col);
         assert!(result.is_ok());
@@ -1330,6 +1334,7 @@ mod tests {
                 primary_key: true,
                 char_max_length: None,
                 collation: None,
+                default_value: None,
             }],
             foreign_keys: vec![],
             unique_constraints: vec![],
@@ -1367,6 +1372,7 @@ mod tests {
                 primary_key: true,
                 char_max_length: None,
                 collation: None,
+                default_value: None,
             }],
             foreign_keys: vec![],
             unique_constraints: vec![],
@@ -1404,6 +1410,7 @@ mod tests {
                 primary_key: true,
                 char_max_length: None,
                 collation: None,
+                default_value: None,
             }],
             foreign_keys: vec![],
             unique_constraints: vec![],
@@ -2061,6 +2068,7 @@ mod tests {
             primary_key: false,
             char_max_length: None,
             collation: None,
+            default_value: None,
         };
         storage.modify_column("t", "a", new_def).unwrap();
     }
@@ -3179,6 +3187,7 @@ mod parallel_scan_tests {
                         primary_key: true,
                         char_max_length: None,
                         collation: None,
+                        default_value: None,
                     }],
                     foreign_keys: vec![],
                     unique_constraints: vec![],
@@ -3249,6 +3258,7 @@ mod parallel_scan_tests {
                         primary_key: true,
                         char_max_length: None,
                         collation: None,
+                        default_value: None,
                     }],
                     foreign_keys: vec![],
                     unique_constraints: vec![],
