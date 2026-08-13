@@ -826,4 +826,44 @@ mod tests {
             "ORDER BY x must sort ascending: 2,3 (per-row min(left_cnt, right_cnt))"
         );
     }
+
+    /// V313-followup-2 / Issue #4155 — GREEN: `quantile_disc(col, frac)`
+    /// returns the value at sorted-index `floor(frac * (n-1))`.
+    #[test]
+    fn green_4155_quantile_disc_single_fraction() {
+        let mut engine = create_engine();
+        engine
+            .execute("CREATE TABLE t (x INTEGER)")
+            .expect("CREATE TABLE must succeed");
+        engine
+            .execute("INSERT INTO t VALUES (1), (2), (3), (4), (5), (6), (7), (8), (9), (10)")
+            .expect("INSERT must succeed");
+        let result = engine
+            .execute("SELECT quantile_disc(x, 0.50) FROM t")
+            .expect("quantile_disc must succeed");
+        match &result.rows[0][0] {
+            Value::Float(f) => assert_eq!(*f, 5.0, "frac=0.5 on [1..10] -> sorted[4]=5.0"),
+            other => panic!("expected Float, got {:?}", other),
+        }
+    }
+
+    /// V313-followup-2 / Issue #4155 — GREEN: `quantile_cont(col, frac)`
+    /// linearly interpolates between sorted-index neighbours.
+    #[test]
+    fn green_4155_quantile_cont_single_fraction() {
+        let mut engine = create_engine();
+        engine
+            .execute("CREATE TABLE t (x INTEGER)")
+            .expect("CREATE TABLE must succeed");
+        engine
+            .execute("INSERT INTO t VALUES (1), (2), (3), (4), (5), (6), (7), (8), (9), (10)")
+            .expect("INSERT must succeed");
+        let result = engine
+            .execute("SELECT quantile_cont(x, 0.50) FROM t")
+            .expect("quantile_cont must succeed");
+        match &result.rows[0][0] {
+            Value::Float(f) => assert_eq!(*f, 5.5, "frac=0.5 -> 5 + 0.5*(6-5) = 5.5"),
+            other => panic!("expected Float, got {:?}", other),
+        }
+    }
 }
