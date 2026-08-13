@@ -192,13 +192,24 @@ else
     record_fail "exclusions.yml: missing 'status: active' or 'exclusions:' (still seed?)"
   fi
 
-  # Count items
+  # Count items: separate OPEN (active deferral) from CLOSED (historical).
+  # Round-15+ (follow-up to PR #4194): closed exclusions are retained for
+  # historical reference per Round-9 codex #89133 + Round-14 #89293
+  # governance; the manifest math invariant only enforces against OPEN
+  # items, so the all-pass + closed-historical steady state is legal.
   if [ "$HAS_ITEMS" -gt 0 ]; then
     EXCL_ITEMS=$(grep -c "^  - id:" "$EXCLUSIONS" 2>/dev/null || echo 0)
+    EXCL_CLOSED_ITEMS=$(grep -c "^    status: closed" "$EXCLUSIONS" 2>/dev/null || echo 0)
+    EXCL_OPEN_ITEMS=$((EXCL_ITEMS - EXCL_CLOSED_ITEMS))
   elif [ "$HAS_FILE_ITEMS" -gt 0 ]; then
     EXCL_ITEMS=$(grep -c "^  - file:" "$EXCLUSIONS" 2>/dev/null || echo 0)
+    # Format B has no per-item status field — treat all items as OPEN.
+    EXCL_OPEN_ITEMS=$EXCL_ITEMS
+    EXCL_CLOSED_ITEMS=0
   else
     EXCL_ITEMS=0
+    EXCL_OPEN_ITEMS=0
+    EXCL_CLOSED_ITEMS=0
   fi
 
   if [ "$EXCL_ITEMS" -eq 0 ]; then
@@ -256,10 +267,15 @@ if [ -f "$MANIFEST" ]; then
   if [ "$MANIFEST_TOTAL" != "$ACTUAL_TEST_FILES" ]; then
     record_fail "manifest total_files ($MANIFEST_TOTAL) != actual test files ($ACTUAL_TEST_FILES)"
   fi
-  if [ "$MANIFEST_TOTAL" -gt 0 ] && [ "$EXCL_ITEMS" -gt 0 ]; then
+  if [ "$MANIFEST_TOTAL" -gt 0 ]; then
     EXPECTED_EXCL=$((MANIFEST_TOTAL - MANIFEST_PASS))
-    if [ "$EXPECTED_EXCL" != "$EXCL_ITEMS" ]; then
-      record_fail "manifest pass_files ($MANIFEST_PASS) + exclusions ($EXCL_ITEMS) != total ($MANIFEST_TOTAL)"
+    if [ "$EXPECTED_EXCL" -gt 0 ] && [ "$EXCL_OPEN_ITEMS" -ne "$EXPECTED_EXCL" ]; then
+      record_fail "manifest pass_files ($MANIFEST_PASS) + open exclusions ($EXCL_OPEN_ITEMS) != total ($MANIFEST_TOTAL)"
+    fi
+    # All-pass + closed-historical steady state: emit an explicit PASS so
+    # the closed-only state is visible in the gate log and smoke report.
+    if [ "$EXPECTED_EXCL" -eq 0 ] && [ "$EXCL_CLOSED_ITEMS" -gt 0 ]; then
+      record_pass "manifest all-pass + closed-historical steady state (pass=$MANIFEST_PASS, total=$MANIFEST_TOTAL, open=$EXCL_OPEN_ITEMS, closed-historical=$EXCL_CLOSED_ITEMS)"
     fi
   fi
 fi
