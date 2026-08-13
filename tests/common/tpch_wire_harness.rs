@@ -34,7 +34,8 @@ fn start_with_fixture(fixture_dir: &str, timeout_s: Option<u64>) -> MySqlTestCli
     let config = EphemeralConfig {
         data_dir: Some(data_dir),
         bootstrap_tables: false,
-        bootstrap_users: true,        metrics_port: None,
+        bootstrap_users: true,
+        metrics_port: None,
 
         ..Default::default()
     };

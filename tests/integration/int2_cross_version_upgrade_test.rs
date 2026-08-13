@@ -137,7 +137,8 @@ fn int2_v380_table_readable_in_v390() {
     let config = EphemeralConfig {
         data_dir: Some(data_dir.clone()),
         bootstrap_tables: false,
-        bootstrap_users: true,        metrics_port: None,
+        bootstrap_users: true,
+        metrics_port: None,
 
         ..Default::default()
     };
@@ -184,7 +185,8 @@ fn int2_v390_create_new_table_on_v380_dir() {
     let config = EphemeralConfig {
         data_dir: Some(data_dir.clone()),
         bootstrap_tables: false,
-        bootstrap_users: true,        metrics_port: None,
+        bootstrap_users: true,
+        metrics_port: None,
 
         ..Default::default()
     };
@@ -240,7 +242,8 @@ fn int2_v390_writes_v390_format_reloadable() {
         let config = EphemeralConfig {
             data_dir: Some(data_dir.clone()),
             bootstrap_tables: false,
-            bootstrap_users: true,                metrics_port: None,
+            bootstrap_users: true,
+            metrics_port: None,
 
             ..Default::default()
         };
@@ -262,7 +265,8 @@ fn int2_v390_writes_v390_format_reloadable() {
         let config = EphemeralConfig {
             data_dir: Some(data_dir.clone()),
             bootstrap_tables: false,
-            bootstrap_users: true,                metrics_port: None,
+            bootstrap_users: true,
+            metrics_port: None,
 
             ..Default::default()
         };
@@ -318,7 +322,8 @@ fn int2_v380_multi_table_join() {
     let config = EphemeralConfig {
         data_dir: Some(data_dir.clone()),
         bootstrap_tables: false,
-        bootstrap_users: true,        metrics_port: None,
+        bootstrap_users: true,
+        metrics_port: None,
 
         ..Default::default()
     };
