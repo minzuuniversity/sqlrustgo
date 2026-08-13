@@ -9,22 +9,78 @@ Anti-Fabrication Policy Check (AFP) v4
 [PASS]   V312-24: both SQLancer + test-runner report artifacts present and valid
 
 [INFO] CHECK 2: cargo test --workspace --no-run (test compile only, fast)...
-[PASS] Test binaries compile: all 14 failures are KNOWN pre-existing
-[WARN] Pre-existing failures (API evolution, not fabrication):
-[WARN]   (pre-existing) agentsql_test
-[WARN]   (pre-existing) auth_rbac_test
-[WARN]   (pre-existing) batch_insert_test
-[WARN]   (pre-existing) diag_2t_join
-[WARN]   (pre-existing) index_integration_test
-[WARN]   (pre-existing) mysql_compatibility_test
-[WARN]   (pre-existing) optimizer_rules_test
-[WARN]   (pre-existing) performance_test
-[WARN]   (pre-existing) sqlrustgo
-[WARN]   (pre-existing) storage_integration_test
-[WARN]   (pre-existing) tpch_comparison_test
-[WARN]   (pre-existing) tpch_index_test
-[WARN]   (pre-existing) tpch_test
-[WARN]   (pre-existing) wal_fuzz_test
+[ERROR] Test binaries compile FAILED — NEW untracked failures detected:
+[ERROR]   NEW: anomaly_qps_benchmark_test
+[ERROR]   NEW: bench_bulk_insert_records
+[ERROR]   NEW: bench_v380_point_agg
+[ERROR]   NEW: cbo_integration_test
+[ERROR]   NEW: diag_q11_having
+[ERROR]   NEW: diag_q11_steps
+[ERROR]   NEW: diag_q14_full
+[ERROR]   NEW: diag_q22_cell_level
+[ERROR]   NEW: diag_q22_substr
+[ERROR]   NEW: diag_q6_filter
+[ERROR]   NEW: embedded_harness_smoke
+[ERROR]   NEW: f11_f12_executor_test
+[ERROR]   NEW: four_way_cell_diff_test
+[ERROR]   NEW: g2_substance_parallel_executor_test
+[ERROR]   NEW: harness_validation_test
+[ERROR]   NEW: instrumentation_hooks_test
+[ERROR]   NEW: int1_bypass_evidence_test
+[ERROR]   NEW: issue_3257_wal_fallback_test
+[ERROR]   NEW: multi_db_e2e_test
+[ERROR]   NEW: mysql_client_multi_stmt_test
+[ERROR]   NEW: mysql_server_helper_tests
+[ERROR]   NEW: oracle_g12_sysbench
+[ERROR]   NEW: oracle_g2_int2
+[ERROR]   NEW: oracle_g3_int3
+[ERROR]   NEW: oracle_g5_sem1
+[ERROR]   NEW: oracle_p23_hash_chain
+[ERROR]   NEW: oracle_p34_parallel_executor
+[ERROR]   NEW: parallel_executor_integration_test
+[ERROR]   NEW: q21_trace
+[ERROR]   NEW: repro_3282_orderby_desc
+[ERROR]   NEW: sequence_test
+[ERROR]   NEW: set_operations_test
+[ERROR]   NEW: sprint8_hash_chain_bench
+[ERROR]   NEW: sqlrustgo-mysql-server
+[ERROR]   NEW: stored_proc_catalog_test
+[ERROR]   NEW: tpch_22_queries_syntax_test
+[ERROR]   NEW: tpch_22_queries_wire_test
+[ERROR]   NEW: tpch_full_22_test
+[ERROR]   NEW: tpch_q8_q21_perf_regression_test
+[ERROR]   NEW: tpch_sf03_test
+[ERROR]   NEW: window_function_test
+[ERROR] Known pre-existing failures (8 of 49):
+[INFO]   KNOWN: batch_insert_test
+[INFO]   KNOWN: expr_single_engine_test
+[INFO]   KNOWN: null_handling_test
+[INFO]   KNOWN: sql_cli_test
+[INFO]   KNOWN: sqlrustgo
+[INFO]   KNOWN: tpch_hash_test
+[INFO]   KNOWN: tpch_test
+[INFO]   KNOWN: tpch_text_index_test
+[ERROR] See RC_BLOCKERS_REPORT.md §Blocker #4 for tracking.
+   |             ^^^^^^^^^^^
+   |
+   = note: `#[warn(unused_comparisons)]` on by default
+
+warning: comparison is useless due to type limits
+  --> tests/unit/server_health_test.rs:69:13
+   |
+69 |     assert!(report.uptime_seconds >= 0);
+   |             ^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+warning: `sqlrustgo` (test "crash_test_harness") generated 1 warning (run `cargo fix --test "crash_test_harness" -p sqlrustgo` to apply 1 suggestion)
+warning: `sqlrustgo` (test "four_way_harness") generated 4 warnings (run `cargo fix --test "four_way_harness" -p sqlrustgo` to apply 4 suggestions)
+warning: `sqlrustgo` (test "page_io_benchmark_test") generated 1 warning (run `cargo fix --test "page_io_benchmark_test" -p sqlrustgo` to apply 1 suggestion)
+warning: `sqlrustgo` (test "int_debt_gate_test") generated 1 warning (run `cargo fix --test "int_debt_gate_test" -p sqlrustgo` to apply 1 suggestion)
+warning: `sqlrustgo-admin` (test "admin_pitr_tests") generated 1 warning (run `cargo fix --test "admin_pitr_tests" -p sqlrustgo-admin` to apply 1 suggestion)
+warning: `sqlrustgo` (test "backup_restore_test") generated 5 warnings (run `cargo fix --test "backup_restore_test" -p sqlrustgo` to apply 5 suggestions)
+warning: `sqlrustgo` (test "process_kill_crash_test") generated 2 warnings (run `cargo fix --test "process_kill_crash_test" -p sqlrustgo` to apply 2 suggestions)
+error: could not compile `sqlrustgo` (test "expr_single_engine_test") due to 1 previous error
+warning: `sqlrustgo-admin` (bin "sqlrustgo-admin" test) generated 2 warnings (run `cargo fix --bin "sqlrustgo-admin" -p sqlrustgo-admin --tests` to apply 1 suggestion)
+warning: `sqlrustgo` (test "server_health_test") generated 2 warnings
 
 [INFO] CHECK 3: Gate report test counts vs actual cargo test compile output...
 [INFO] docs/releases/v3.8.0/alpha/ALPHA_GATE_REPORT.md: declares 10/10 PASS (test binaries: unknown)
@@ -40,7 +96,7 @@ Anti-Fabrication Policy Check (AFP) v4
 [PASS] Scanned 415 markdown files in docs/releases + docs/governance
 
 ============================================
-Results: ERRORS=0, WARNINGS=16
+Results: ERRORS=44, WARNINGS=0
 ============================================
 
-[PASS] Anti-fabrication check (AFP v4): PASS
+[FAIL] Anti-fabrication check (AFP v4): FAILED with 44 error(s)
