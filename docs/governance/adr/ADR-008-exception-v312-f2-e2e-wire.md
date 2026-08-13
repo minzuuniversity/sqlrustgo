@@ -113,7 +113,7 @@ If expiry is reached without lifting, the exception is **revoked** and P16 retur
 
 | Evidence | Path | sha256 |
 |---|---|---|
-| 9 `#[ignore]` markers in e2e_wire_protocol.rs | `crates/mysql-server/tests/e2e_wire_protocol.rs:207,315,406,465,516,540,634,1541,1647` | (commit-pinned) |
+| 9 `#[ignore]` markers in e2e_wire_protocol.rs | `crates/mysql-server/tests/e2e_wire_protocol.rs:211,321,414,474,526,621,1558,1594,1669` | (commit-pinned) |
 | Registry entry | `tests/baseline/ignore_registry.json` (`crates/mysql-server/tests/e2e_wire_protocol.rs`) | (commit-pinned) |
 | Gate baseline update | `tests/baseline/gate_test_baseline.json` (`adr_exceptions[1]`) | (commit-pinned) |
 | Issue linkage | http://192.168.0.252:3000/openclaw/sqlrustgo/issues/4025 | (Gitea API) |
