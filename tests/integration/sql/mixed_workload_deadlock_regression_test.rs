@@ -48,6 +48,10 @@ fn mixed_workload_accept_loop_does_not_park_under_saturation() {
         server_threads: 16,
         storage: None,
         slow_query_log: None,
+        // EphemeralConfig extended with metrics_port; this initializer was
+        // missed by the struct-extension propagation. Default None disables
+        // the metrics endpoint.
+        metrics_port: None,
     };
     let handle = start_ephemeral(config).expect("start_ephemeral");
     let port = handle.port;

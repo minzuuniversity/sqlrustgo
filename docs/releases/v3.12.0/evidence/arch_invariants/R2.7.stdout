@@ -5,27 +5,23 @@ Anti-Fabrication Policy Check (AFP) v4
 
 [INFO] CHECK 1.5: V312-24 SQLancer + test-runner report artifacts...
 [PASS]   V312-24: target/sqlancer-report.json valid (iterations=1000)
-[PASS]   V312-24: target/test-runner-report.json valid (total_duration_ms=12019)
+[PASS]   V312-24: target/test-runner-report.json valid (total_duration_ms=14)
 [PASS]   V312-24: both SQLancer + test-runner report artifacts present and valid
 
 [INFO] CHECK 2: cargo test --workspace --no-run (test compile only, fast)...
-[PASS] Test binaries compile: all 15 failures are KNOWN pre-existing
+[PASS] Test binaries compile: all 11 failures are KNOWN pre-existing
 [WARN] Pre-existing failures (API evolution, not fabrication):
-[WARN]   (pre-existing) buffer_pool_test
-[WARN]   (pre-existing) checksum_corruption_test
-[WARN]   (pre-existing) eval_22_vs_sf01
+[WARN]   (pre-existing) crash_recovery_test
+[WARN]   (pre-existing) expr_single_engine_test
+[WARN]   (pre-existing) join_test
+[WARN]   (pre-existing) mysql_compatibility_test
 [WARN]   (pre-existing) optimizer_rules_test
 [WARN]   (pre-existing) parquet_test
-[WARN]   (pre-existing) q21_perf_bench
-[WARN]   (pre-existing) sql_cli_test
+[WARN]   (pre-existing) production_scenario_test
+[WARN]   (pre-existing) server_integration_test
 [WARN]   (pre-existing) sqlrustgo
-[WARN]   (pre-existing) storage_integration_test
-[WARN]   (pre-existing) stress_test
-[WARN]   (pre-existing) tpch_comparison_test
-[WARN]   (pre-existing) tpch_qtest
-[WARN]   (pre-existing) tpch_text_index_test
+[WARN]   (pre-existing) teaching_scenario_test
 [WARN]   (pre-existing) wal_deterministic_test
-[WARN]   (pre-existing) wal_fuzz_test
 
 [INFO] CHECK 3: Gate report test counts vs actual cargo test compile output...
 [INFO] docs/releases/v3.8.0/alpha/ALPHA_GATE_REPORT.md: declares 10/10 PASS (test binaries: unknown)
@@ -38,10 +34,10 @@ Anti-Fabrication Policy Check (AFP) v4
 [PASS] HEAD author email: openclaw@gaoyuanyiyao.com (allowed multi-AI identity)
 
 [INFO] CHECK 5: Code examples in documentation (sanity scan)...
-[PASS] Scanned 414 markdown files in docs/releases + docs/governance
+[PASS] Scanned 415 markdown files in docs/releases + docs/governance
 
 ============================================
-Results: ERRORS=0, WARNINGS=17
+Results: ERRORS=0, WARNINGS=13
 ============================================
 
 [PASS] Anti-fabrication check (AFP v4): PASS

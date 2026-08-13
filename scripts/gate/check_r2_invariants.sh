@@ -70,10 +70,20 @@ run_real_or_stub() {
         # Capture exit code before the if/else consumes it into
         # the conditional; $? after if-fi is always 0 (the if's own
         # status), not the underlying script's exit code.
+        #
+        # Exit-code mapping (per check_arch_sem_debt.sh v3.9.0+ semantics,
+        # applied uniformly across all R2.N scripts):
+        #   0  = pass  (all checks CLOSED)
+        #   1  = fail  (OPEN debt without target_release plan — blocker)
+        #   2  = drift (IN_PROGRESS / BLOCKED with target_release plan —
+        #                 PASS-WITH-DRIFT, acceptable per ADR-011)
+        #   3  = fail  (UNKNOWN state — must surface, not silently pass)
         bash "${ROOT}/scripts/gate/${script_name}" > "${stdout_file}" 2>&1
         exit_code=$?
         if [ "${exit_code}" -eq 0 ]; then
             status="pass"
+        elif [ "${exit_code}" -eq 2 ]; then
+            status="drift"
         else
             status="fail"
         fi
