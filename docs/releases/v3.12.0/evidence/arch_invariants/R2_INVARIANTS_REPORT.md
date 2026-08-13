@@ -1,10 +1,10 @@
 # v3.12.0 R2 Architectural Invariants Report
 
 - source_agent: `minimax`
-- source_run: `minimax-v312-19-r2-8ab07493ca`
-- timestamp: `2026-08-13T03:41:02Z`
+- source_run: `minimax-v312-19-r2-90baf34bc5`
+- timestamp: `2026-08-13T04:12:32Z`
 - branch: `fix/v3943-r2-4-drift-status`
-- commit: `8ab07493ca21a634114314dda12a3f357ca1f9e6`
+- commit: `90baf34bc53b2bb2720e1277e07974789fcb2286`
 
 | check | status | stdout_sha256 | exit_code |
 |-------|--------|---------------|-----------|
@@ -14,9 +14,9 @@
 | R2.4 | drift | 01e31a16936e384516f1d8f57d2b3df8371600731b86dc95fca15579e1feb103 | 2 |
 | R2.5 | pass | fd06490ad652f4cfe311ed7d06119f9f5491ab6e4dfd748069aad8530661ad4e | 0 |
 | R2.6 | drift | 5d4ffa88996d6c238044d155f6772124fc65c006e634489c4dc61345ec043538 | 2 |
-| R2.7 | pass | f5e5a45c83bc6b6ab6dfb72f8a4e70d97cd38c5b1dad761a8e5571ee076ff1a6 | 0 |
+| R2.7 | pass | b2fd2ebd251c963ff422bcf5fec729b607678eec48dd03448ccc924a22268a16 | 0 |
 | R2.8 | stub | fadf1c0585fadc471318fa5e7fb768cf940da78230d50c72b02ed0217df2d6f2 | 0 |
 
 ---
 
-<!-- report_sha256: d23c046ce6ce40b190db15a27bd8e09795326fc69349d745c668952a970dea54 -->
+<!-- report_sha256: 6749de98c39dc91fc24b1a8bbac43e48a1f97ac48eca4274e096fab98f98aa81 -->
