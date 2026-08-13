@@ -63,6 +63,7 @@ fn setup_sqlrustgo_engine() -> ExecutionEngine<MemoryStorage> {
                 unique_constraints: vec![],
                 check_constraints: vec![],
                 compression: None,
+                collations: std::collections::HashMap::new(),
                 partition_info: None,
             })
             .unwrap();
@@ -111,6 +112,7 @@ fn setup_sqlrustgo_engine() -> ExecutionEngine<MemoryStorage> {
                 unique_constraints: vec![],
                 check_constraints: vec![],
                 compression: None,
+                collations: std::collections::HashMap::new(),
                 partition_info: None,
             })
             .unwrap();
@@ -195,6 +197,7 @@ fn setup_sqlrustgo_engine() -> ExecutionEngine<MemoryStorage> {
                 unique_constraints: vec![],
                 check_constraints: vec![],
                 compression: None,
+                collations: std::collections::HashMap::new(),
                 partition_info: None,
             })
             .unwrap();
@@ -270,6 +273,7 @@ fn setup_sqlrustgo_engine() -> ExecutionEngine<MemoryStorage> {
                 unique_constraints: vec![],
                 check_constraints: vec![],
                 compression: None,
+                collations: std::collections::HashMap::new(),
                 partition_info: None,
             })
             .unwrap();
@@ -363,6 +367,7 @@ fn setup_sqlrustgo_engine() -> ExecutionEngine<MemoryStorage> {
                 unique_constraints: vec![],
                 check_constraints: vec![],
                 compression: None,
+                collations: std::collections::HashMap::new(),
                 partition_info: None,
             })
             .unwrap();
@@ -420,6 +425,7 @@ fn setup_sqlrustgo_engine() -> ExecutionEngine<MemoryStorage> {
                 unique_constraints: vec![],
                 check_constraints: vec![],
                 compression: None,
+                collations: std::collections::HashMap::new(),
                 partition_info: None,
             })
             .unwrap();
@@ -513,6 +519,7 @@ fn setup_sqlrustgo_engine() -> ExecutionEngine<MemoryStorage> {
                 unique_constraints: vec![],
                 check_constraints: vec![],
                 compression: None,
+                collations: std::collections::HashMap::new(),
                 partition_info: None,
             })
             .unwrap();
@@ -669,6 +676,7 @@ fn setup_sqlrustgo_engine() -> ExecutionEngine<MemoryStorage> {
                 unique_constraints: vec![],
                 check_constraints: vec![],
                 compression: None,
+                collations: std::collections::HashMap::new(),
                 partition_info: None,
             })
             .unwrap();

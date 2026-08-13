@@ -226,6 +226,7 @@ fn test_aggregate_delegation() {
         unique_constraints: vec![],
         check_constraints: vec![],
         compression: None,
+        collations: std::collections::HashMap::new(),
         partition_info: None,
     };
 
@@ -896,6 +897,7 @@ fn test_identifier_delegation() {
         unique_constraints: vec![],
         check_constraints: vec![],
         compression: None,
+        collations: std::collections::HashMap::new(),
         partition_info: None,
     };
     let row: Vec<Value> = vec![
