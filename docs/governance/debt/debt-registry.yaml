@@ -284,9 +284,9 @@ sem:
       v3.10.0: 平均覆盖率 ~67% (Hermes C authorization); V310-10 (40h, 目标 ≥80%) 推迟.
       check_coverage.sh 测量方法未统一; 多 runner (cargo-llvm-cov, tarpaulin) 结果差异显著.
     owner: openclaw
-    target_release: v3.11.0
+    target_release: v3.13.0
     review_date: "2027-01-15"
-    note: "IN_PROGRESS with target_release=v3.11.0 per 5-Principle P5. Coverage measurement methodology standardization and ≥80% per-crate target deferred to v3.11.0 (V310-10)."
+    note: "IN_PROGRESS, target_release bumped v3.11.0 → v3.13.0 (2026-08-13, V312-19 / #3943 followup): v3.11.0 已 released 但 SEM-4 coverage methodology standardization 未完成, 计划滑入 v3.13.0. Per 5-Principle P5, drift 状态合法 (有 plan, 有 owner, 有 review_date); 但 target_release 必须指未来版本, 故修正."
 
 # =============================================================================
 # F-XX — Feature Gap (36 items, v3.0.0 baseline)

@@ -13,7 +13,7 @@ INFO (14 storage operations in business crates — business-level access to Stor
 PASS: C-ARCH-04
 
 [C-ARCH-05] Checking execution_engine.rs < 1600 lines (SSOT: CARCH05_LIMIT, AD-001 target: 1500)...
-FAIL: C-ARCH-05 violated - execution_engine.rs has 1770 lines (limit: 1600, AD-001 target: 1500, SSOT: check_rc_ga_gate.sh)
+FAIL: C-ARCH-05 violated - execution_engine.rs has 1778 lines (limit: 1600, AD-001 target: 1500, SSOT: check_rc_ga_gate.sh)
 
 === Summary ===
 PASSED: 4
