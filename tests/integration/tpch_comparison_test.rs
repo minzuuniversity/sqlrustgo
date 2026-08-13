@@ -2,11 +2,11 @@
 //! Run with: cargo test --test tpch_comparison_test -- --nocapture --ignored
 
 use parking_lot::RwLock;
-use sqlrustgo::{parse, ExecutionEngine, MemoryStorage};
+use sqlrustgo::{ExecutionEngine, MemoryStorage};
 use std::path::Path;
 use std::sync::Arc;
 
-fn setup_engine(data_dir: &str) -> Option<ExecutionEngine> {
+fn setup_engine(data_dir: &str) -> Option<ExecutionEngine<MemoryStorage>> {
     let mut engine = ExecutionEngine::new(Arc::new(RwLock::new(MemoryStorage::new())));
 
     // Create schema
@@ -14,7 +14,7 @@ fn setup_engine(data_dir: &str) -> Option<ExecutionEngine> {
 
     let filepath = format!("{}/lineitem.tbl", data_dir);
     if Path::new(&filepath).exists() {
-        let mut storage = engine.storage.write();
+        let mut storage = engine.storage_ref().write();
         if let Ok(count) = storage.bulk_load_tbl_file("lineitem", &filepath) {
             eprintln!("Loaded {} rows", count);
         }
@@ -26,9 +26,9 @@ fn setup_engine(data_dir: &str) -> Option<ExecutionEngine> {
     Some(engine)
 }
 
-fn run_query(engine: &mut ExecutionEngine, sql: &str, name: &str) {
+fn run_query(engine: &mut ExecutionEngine<MemoryStorage>, sql: &str, name: &str) {
     let start = std::time::Instant::now();
-    match engine.execute(parse(sql).unwrap()) {
+    match engine.execute(sql) {
         Ok(result) => {
             let elapsed = start.elapsed();
             eprintln!("{}: {} rows in {:?}", name, result.rows.len(), elapsed);
