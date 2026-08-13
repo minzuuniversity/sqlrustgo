@@ -730,4 +730,43 @@ mod tests {
             "UPDATE must report 3 affected rows"
         );
     }
+
+    /// V313-followup-5 / Issue #4158 — GREEN: `CREATE TABLE ... AS SELECT ...
+    /// WITH NO DATA` creates the schema and skips data materialisation.
+    #[test]
+    fn green_4158_ctas_with_no_data_creates_empty_table() {
+        let mut engine = create_engine();
+        engine
+            .execute("CREATE TABLE t_no_data AS SELECT 42 AS x WITH NO DATA")
+            .expect("CTAS WITH NO DATA must succeed");
+        let result = engine
+            .execute("SELECT COUNT(*) FROM t_no_data")
+            .expect("SELECT must succeed");
+        assert_eq!(
+            result.rows.len(),
+            1,
+            "SELECT COUNT(*) returns one row"
+        );
+        match &result.rows[0][0] {
+            Value::Integer(n) => assert_eq!(*n, 0, "table must be empty"),
+            other => panic!("expected Integer, got {:?}", other),
+        }
+    }
+
+    /// V313-followup-5 / Issue #4158 — GREEN: `CREATE TABLE ... AS SELECT ...
+    /// WITH DATA` (explicit) populates the table.
+    #[test]
+    fn green_4158_ctas_with_data_populates_table() {
+        let mut engine = create_engine();
+        engine
+            .execute("CREATE TABLE t_with_data AS SELECT 42 AS x WITH DATA")
+            .expect("CTAS WITH DATA must succeed");
+        let result = engine
+            .execute("SELECT COUNT(*) FROM t_with_data")
+            .expect("SELECT must succeed");
+        match &result.rows[0][0] {
+            Value::Integer(n) => assert_eq!(*n, 1, "table must have 1 row"),
+            other => panic!("expected Integer, got {:?}", other),
+        }
+    }
 }
