@@ -297,6 +297,7 @@ fn test_ephemeral_config_fields_can_be_overridden() {
         storage: Some("binary".to_string()),
         port: Some(3307),
         slow_query_log: None,
+        metrics_port: None,
     };
     assert_eq!(cfg.host, "0.0.0.0");
     assert!(!cfg.bootstrap_tables);
