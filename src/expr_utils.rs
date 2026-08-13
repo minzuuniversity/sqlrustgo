@@ -103,6 +103,16 @@ pub fn expression_to_string(expr: &sqlrustgo_parser::Expression) -> String {
                         .join(", ")
                 )
             }
+            sqlrustgo_parser::AggregateFunction::PercentileCont => {
+                format!(
+                    "PERCENTILE_CONT({})",
+                    agg.args
+                        .iter()
+                        .map(expression_to_string)
+                        .collect::<Vec<_>>()
+                        .join(", ")
+                )
+            }
         },
         _ => "?".to_string(),
     }
