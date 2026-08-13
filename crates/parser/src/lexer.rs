@@ -403,6 +403,7 @@ impl<'a> Lexer<'a> {
                     "MIN" => Token::Min,
                     "MAX" => Token::Max,
                     "GROUP" => Token::Group,
+                    "WITHIN" => Token::Within,
                     "HAVING" => Token::Having,
                     "ORDER" => Token::Order,
                     "LIMIT" => Token::Limit,

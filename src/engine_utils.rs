@@ -705,6 +705,16 @@ pub fn build_aggregate_schema(
                         .join(", ")
                 )
             }
+            AggregateFunction::PercentileCont => {
+                format!(
+                    "PERCENTILE_CONT({})",
+                    agg.args
+                        .iter()
+                        .map(crate::expr_utils::expression_to_string)
+                        .collect::<Vec<_>>()
+                        .join(", ")
+                )
+            }
             AggregateFunction::QuantileCont => {
                 format!(
                     "QUANTILE_CONT({})",
