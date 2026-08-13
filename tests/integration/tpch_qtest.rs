@@ -1,6 +1,6 @@
 //! TPC-H Q1-Q6 Performance Test
 use parking_lot::RwLock;
-use sqlrustgo::{parse, ExecutionEngine, MemoryStorage};
+use sqlrustgo::{ExecutionEngine, MemoryStorage};
 use std::fs::File;
 use std::io::Write;
 use std::path::Path;
@@ -17,7 +17,7 @@ fn main() {
 
     let filepath = format!("{}/lineitem.tbl", data_dir);
     if Path::new(&filepath).exists() {
-        let mut storage = engine.storage.write();
+        let mut storage = engine.storage_ref().write();
         match storage.bulk_load_tbl_file("lineitem", &filepath) {
             Ok(count) => results.push_str(&format!("Loaded {} rows\n", count)),
             Err(e) => results.push_str(&format!("Error loading: {:?}\n", e)),
@@ -64,7 +64,7 @@ fn main() {
 
     let filepath = "data/tpch-sf03/lineitem.tbl";
     if Path::new(&filepath).exists() {
-        let mut storage = engine.storage.write();
+        let mut storage = engine.storage_ref().write();
         match storage.bulk_load_tbl_file("lineitem", &filepath) {
             Ok(count) => results.push_str(&format!("Loaded {} rows\n", count)),
             Err(e) => results.push_str(&format!("Error loading: {:?}\n", e)),
