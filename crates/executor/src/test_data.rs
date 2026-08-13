@@ -184,18 +184,20 @@ impl TestTableBuilder {
                 name: name.clone(),
                 data_type: format!("{:?}", data_type),
                 nullable: false,
-                is_unique: false,
-                is_primary_key: false,
-                references: None,
-                auto_increment: false,
-                compression: None,
+                primary_key: false,
+                char_max_length: None,
                 collation: None,
             })
             .collect();
         sqlrustgo_storage::TableInfo {
             name: self.name.clone(),
             columns,
-            table_foreign_keys: None,
+            foreign_keys: vec![],
+            unique_constraints: vec![],
+            check_constraints: vec![],
+            compression: None,
+            collations: std::collections::HashMap::new(),
+            partition_info: None,
         }
     }
 }
