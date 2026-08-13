@@ -1160,21 +1160,33 @@ impl MySqlConnection {
         let column_count = u16::from_le_bytes([resp.payload[5], resp.payload[6]]);
         let param_count = u16::from_le_bytes([resp.payload[7], resp.payload[8]]);
 
-        // Drain param defs and (if any) the trailing separator. The server
-        // only sends the params separator when param_count > 0 — reading
-        // it unconditionally would consume the first column def instead,
-        // desync the rest of the parse, and yield UnexpectedEof on the
-        // final packet (Issue #4130 follow-up).
+        // The server sends parameter defs + EOF/DEPR_EOF separator ONLY
+        // when param_count > 0; same for columns. Drain each def packet
+        // and its trailing separator (if present).
+        //
+        // Bug history (Issue #4130 fix followed by #4171 regression):
+        //   - #4130 fix drained only ONE separator after all defs, leaving
+        //     the second separator (after columns) in the stream.
+        //   - The follow-up drain fixed that but read separators
+        //     UNCONDITIONALLY, even when param_count = 0 / column_count = 0.
+        //     The server only emits separators when the corresponding
+        //     count is > 0, so a no-param SELECT (`SELECT x FROM trc2`)
+        //     caused the client to read the first column-def packet AS
+        //     the param separator, then misaligned the rest of the read
+        //     and HUNG waiting for a packet that the server never sends.
+        //   - Fix: make both separator reads conditional on count > 0.
         for _ in 0..param_count {
             let _ = Packet::read_from(&mut self.stream)?;
         }
         if param_count > 0 {
+            // EOF/DEPR_EOF separator after params (only sent when params > 0)
             let _ = Packet::read_from(&mut self.stream)?;
         }
         for _ in 0..column_count {
             let _ = Packet::read_from(&mut self.stream)?;
         }
         if column_count > 0 {
+            // EOF/DEPR_EOF separator after columns (only sent when cols > 0)
             let _ = Packet::read_from(&mut self.stream)?;
         }
 
