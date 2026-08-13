@@ -9516,8 +9516,28 @@ impl Parser {
             Some(Token::Rename) => {
                 self.next();
                 // Distinguish `RENAME TO new_table` from `RENAME COLUMN old TO new`.
+                // V312-19 #4039: DuckDB also accepts the bare form
+                // `RENAME <ident> TO <ident>` (without the COLUMN keyword).
                 if matches!(self.current(), Some(Token::Column)) {
                     self.next();
+                    let old_name = match self.next() {
+                        Some(Token::Identifier(name)) => name,
+                        _ => return Err("Expected column name".to_string()),
+                    };
+                    self.expect(Token::To)?;
+                    let new_name = match self.next() {
+                        Some(Token::Identifier(name)) => name,
+                        _ => return Err("Expected new column name".to_string()),
+                    };
+                    Ok(Statement::AlterTable(AlterTableStatement {
+                        table_name,
+                        operation: AlterTableOperation::RenameColumn {
+                            name: old_name,
+                            new_name,
+                        },
+                    }))
+                } else if matches!(self.current(), Some(Token::Identifier(_))) {
+                    // DuckDB-style: `RENAME <column> TO <new_column>` without COLUMN keyword.
                     let old_name = match self.next() {
                         Some(Token::Identifier(name)) => name,
                         _ => return Err("Expected column name".to_string()),
