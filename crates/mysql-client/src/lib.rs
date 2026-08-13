@@ -397,12 +397,29 @@ pub struct ColumnDefinition {
     pub decimals: u8,
 }
 
+/// MySQL wire-protocol status-flag bit indicating that another result
+/// set follows in a COM_QUERY multi-statement batch. When the trailing
+/// EOF/OK packet of a result set carries this bit, the client should
+/// keep reading and parse the next result set. When clear, this is the
+/// last result set in the batch.
+///
+/// Matches `SERVER_MORE_RESULTS_EXISTS` (0x0008) in MySQL's
+/// `enum_server_status` and the `capability::SERVER_MORE_RESULTS_EXISTS`
+/// constant on the server side.
+pub const SERVER_MORE_RESULTS_EXISTS: u16 = 0x0008;
+
 #[derive(Debug)]
 pub enum ResultSet {
-    /// Query returned rows (column definitions + rows)
+    /// Query returned rows (column definitions + rows).
+    ///
+    /// `status_flags` is the value from the trailing EOF/OK packet that
+    /// terminated this result set. In COM_QUERY multi-statement batches
+    /// the server sets `SERVER_MORE_RESULTS_EXISTS` (0x0008) on every
+    /// non-last result set so the client knows to keep reading.
     Select {
         columns: Vec<ColumnDefinition>,
         rows: Vec<Vec<String>>,
+        status_flags: u16,
     },
     /// OK packet (non-SELECT: INSERT/UPDATE/DELETE)
     Ok {
@@ -547,6 +564,43 @@ fn parse_text_row(data: &[u8], offset: &mut usize, num_columns: usize) -> MySqlR
     Ok(row)
 }
 
+/// Extract the `status_flags` field from a trailing EOF or OK-as-terminator
+/// packet.
+///
+/// Wire formats:
+///   * Classic EOF (DEPRECATE_EOF=0): 0xfe | warnings(2) | status_flags(2)
+///   * DEPRECATE_EOF OK (DEPRECATE_EOF=1):
+///       0xfe | lenenc(affected_rows) | lenenc(last_insert_id)
+///           | status_flags(2) | warnings(2) | (optional info + session_state)
+///
+/// Returns 0 if the payload is too short or the length-encoded ints fail to
+/// parse. Callers should treat the trailing EOF as best-effort.
+fn extract_status_flags_from_eof(payload: &[u8], deprecate_eof: bool) -> u16 {
+    if payload.len() < 3 || payload[0] != 0xfe {
+        return 0;
+    }
+    if !deprecate_eof {
+        // Classic EOF: 0xfe | warnings(2) | status_flags(2)
+        if payload.len() >= 5 {
+            return u16::from_le_bytes([payload[3], payload[4]]);
+        }
+        return 0;
+    }
+    // DEPRECATE_EOF: skip two length-encoded ints then read status_flags.
+    let mut off = 1usize;
+    if parse_length_encoded_int(payload, &mut off).is_err() {
+        return 0;
+    }
+    if parse_length_encoded_int(payload, &mut off).is_err() {
+        return 0;
+    }
+    if off + 2 <= payload.len() {
+        u16::from_le_bytes([payload[off], payload[off + 1]])
+    } else {
+        0
+    }
+}
+
 /// Parse a result set from the stream after sending COM_QUERY.
 pub fn parse_result_set(stream: &mut dyn Read, deprecate_eof: bool) -> MySqlResult<ResultSet> {
     let pkt = Packet::read_from(stream)?;
@@ -649,11 +703,24 @@ pub fn parse_result_set(stream: &mut dyn Read, deprecate_eof: bool) -> MySqlResu
     //   otherwise = text protocol row (COM_QUERY response)
     let row_pkt = Packet::read_from(stream)?;
 
-    // Empty packet or EOF/OK terminator → no rows
-    if row_pkt.payload.is_empty() {
+    // Empty packet or EOF/OK terminator → no rows. The trailing EOF/OK
+    // carries status_flags — including SERVER_MORE_RESULTS_EXISTS (0x0008)
+    // when this result set is not the last in a COM_QUERY multi-statement
+    // batch. Capture it so callers (execute_multi) can decide whether to
+    // parse another result set.
+    let first_byte = row_pkt.payload.first().copied();
+    let is_immediate_eof = !deprecate_eof && first_byte == Some(0xfe) && row_pkt.payload.len() < 9;
+    let is_immediate_dep_eof = deprecate_eof && first_byte == Some(0xfe) && row_pkt.payload.len() <= 8;
+    if row_pkt.payload.is_empty() || is_immediate_eof || is_immediate_dep_eof {
+        let trailing_status = if row_pkt.payload.is_empty() {
+            0
+        } else {
+            extract_status_flags_from_eof(&row_pkt.payload, deprecate_eof)
+        };
         return Ok(ResultSet::Select {
             columns,
             rows: vec![],
+            status_flags: trailing_status,
         });
     }
     let first_byte = row_pkt.payload[0];
@@ -661,6 +728,7 @@ pub fn parse_result_set(stream: &mut dyn Read, deprecate_eof: bool) -> MySqlResu
 
     // Parse first row to determine format, then handle remaining rows
     let mut rows = Vec::new();
+    let mut trailing_status_flags: u16 = 0;
     if is_binary {
         // Binary protocol: 0x00 prefix + NULL bitmap + raw column values
         let col_types: Vec<u8> = columns.iter().map(|c| c.column_type).collect();
@@ -682,6 +750,8 @@ pub fn parse_result_set(stream: &mut dyn Read, deprecate_eof: bool) -> MySqlResu
             let is_eof = !deprecate_eof && fb == Some(0xfe) && pkt.payload.len() < 9;
             let is_dep_eof = deprecate_eof && fb == Some(0xfe) && pkt.payload.len() <= 8;
             if is_eof || is_dep_eof {
+                trailing_status_flags =
+                    extract_status_flags_from_eof(&pkt.payload, deprecate_eof);
                 break;
             }
             if pkt.payload[0] == 0x00 {
@@ -706,6 +776,8 @@ pub fn parse_result_set(stream: &mut dyn Read, deprecate_eof: bool) -> MySqlResu
             let is_eof = !deprecate_eof && fb == Some(0xfe) && pkt.payload.len() < 9;
             let is_dep_eof = deprecate_eof && fb == Some(0xfe) && pkt.payload.len() <= 8;
             if is_eof || is_dep_eof {
+                trailing_status_flags =
+                    extract_status_flags_from_eof(&pkt.payload, deprecate_eof);
                 break;
             }
             let mut off = 0;
@@ -715,7 +787,11 @@ pub fn parse_result_set(stream: &mut dyn Read, deprecate_eof: bool) -> MySqlResu
         }
     }
 
-    Ok(ResultSet::Select { columns, rows })
+    Ok(ResultSet::Select {
+        columns,
+        rows,
+        status_flags: trailing_status_flags,
+    })
 }
 
 /// Parse binary row: NULL bitmap + raw column values (no type bytes in MySQL binary protocol).
@@ -990,10 +1066,17 @@ impl MySqlConnection {
 
     /// Execute a multi-statement query via COM_QUERY.
     /// Each statement separated by `;` is executed independently.
-    /// Returns the first parsed result set (limited multi-result support).
+    ///
+    /// Drains every result set returned by the server. Continues reading
+    /// until a result set's trailing EOF/OK status_flags does NOT have
+    /// `SERVER_MORE_RESULTS_EXISTS` (0x0008) set. This flag is set by the
+    /// server on every non-final result in the batch — see
+    /// `crates/mysql-server/src/lib.rs` `capability::SERVER_MORE_RESULTS_EXISTS`
+    /// (added in v3.12.0 / V312-WIRE-8) and the multi-statement COM_QUERY
+    /// loop there. Returns ALL parsed `ResultSet`s in order; an empty
+    /// outer Vec is impossible (at minimum the trailing OK is one result).
     pub fn execute_multi(&mut self, sql: &str) -> MySqlResult<Vec<ResultSet>> {
         // Multi-statement queries are sent as a single COM_QUERY packet.
-        // For simplicity, we parse the first result set only.
         let mut payload = Vec::with_capacity(sql.len() + 1);
         payload.push(packet_type::COM_QUERY);
         payload.extend_from_slice(sql.as_bytes());
@@ -1002,8 +1085,18 @@ impl MySqlConnection {
         self.seq = pkt.sequence.wrapping_add(1);
         pkt.write_to(&mut self.stream)?;
 
-        let first = parse_result_set(&mut self.stream, true)?;
-        Ok(vec![first])
+        let mut results = Vec::new();
+        loop {
+            let rs = parse_result_set(&mut self.stream, true)?;
+            let more = matches!(&rs, ResultSet::Select { status_flags, .. } if *status_flags & SERVER_MORE_RESULTS_EXISTS != 0)
+                || matches!(&rs, ResultSet::Ok { status_flags, .. } if *status_flags & SERVER_MORE_RESULTS_EXISTS != 0);
+            let is_last = !more;
+            results.push(rs);
+            if is_last {
+                break;
+            }
+        }
+        Ok(results)
     }
 
     /// Ping the server.
@@ -1363,7 +1456,7 @@ mod tests {
         let rs = parse_result_set(&mut cur, false).expect("parse select");
         match rs {
             // debug removed
-            ResultSet::Select { columns, rows } => {
+            ResultSet::Select { columns, rows, .. } => {
                 assert_eq!(columns.len(), 1);
                 assert_eq!(columns[0].name, "id");
                 assert_eq!(rows.len(), 1);
@@ -1406,7 +1499,7 @@ mod tests {
         let mut cur = Cursor::new(bytes);
         let rs = parse_result_set(&mut cur, true).expect("parse select deprecate_eof");
         match rs {
-            ResultSet::Select { columns, rows } => {
+            ResultSet::Select { columns, rows, .. } => {
                 assert_eq!(columns.len(), 1);
                 assert_eq!(rows.len(), 1);
             }
@@ -1747,6 +1840,7 @@ mod tests {
         let rs = ResultSet::Select {
             columns: vec![],
             rows: vec![vec!["1".to_string(), "hello".to_string()]],
+            status_flags: 0x0002,
         };
         match rs {
             ResultSet::Select { rows, .. } => assert_eq!(rows.len(), 1),
@@ -2135,6 +2229,7 @@ mod tests {
                 vec!["a".to_string(), "b".to_string()],
                 vec!["c".to_string(), "d".to_string()],
             ],
+            status_flags: 0,
         };
         match &rs {
             ResultSet::Select { rows, .. } => assert_eq!(rows.len(), 2),
