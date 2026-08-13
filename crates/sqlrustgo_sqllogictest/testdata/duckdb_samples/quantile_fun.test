@@ -1,6 +1,25 @@
 # name: test/sql/aggregate/quantile_fun.test
 # description: Test pg_sequence function
 # group: [aggregate]
+#
+# V313-followup-2 / Issue #4155: the single-fraction form
+# `quantile_disc(col, frac)` and `quantile_cont(col, frac)` is now
+# implemented in src/engine_select.rs::compute_aggregates and a
+# separate dedicated fixture (quantile_simple.test) exercises the
+# algorithm on a plain INTEGER table. The remaining cases in this
+# fixture require pre-requisites that are outside the scope of #4155:
+#   - the `range` table function and `random()` (Issue #4156+)
+#   - `UNION ALL VALUES` row construction (Issue #4156+)
+#   - `decimal(N,M)` typed cast with `::type` syntax
+#   - `quantile_disc(col, [fracs])` array-form second argument
+#     (requires `Value::Array` enum variant + array-literal parser —
+#     tracked separately, not closed by #4155)
+#   - `PERCENTILE_CONT(frac) WITHIN GROUP (ORDER BY col)` (Issue #4156)
+#   - `SET debug_force_external` (Issue #4157)
+#   - `SET default_null_order` (Issue #4157)
+#   - `include test/sql/tpch/tpch_setup.test_template` (TPC-H harness)
+# Restoration of these SQL features is tracked in subsequent
+# V313-followup issues.
 
 set variable sf 0.001
 

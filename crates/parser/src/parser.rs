@@ -492,6 +492,12 @@ pub enum AggregateFunction {
     Avg,
     Min,
     Max,
+    /// V313-followup-2 / Issue #4155: `quantile_disc(col, frac)` —
+    /// discrete-quantile aggregate (DuckDB-compatible signature).
+    QuantileDisc,
+    /// V313-followup-2 / Issue #4155: `quantile_cont(col, frac)` —
+    /// continuous-quantile aggregate with linear interpolation.
+    QuantileCont,
 }
 
 /// Join clause
@@ -3324,6 +3330,8 @@ impl Parser {
                                 AggregateFunction::Avg => "AVG",
                                 AggregateFunction::Min => "MIN",
                                 AggregateFunction::Max => "MAX",
+                                AggregateFunction::QuantileDisc => "QUANTILE_DISC",
+                                AggregateFunction::QuantileCont => "QUANTILE_CONT",
                             };
 
                             let mut partition_by = Vec::new();
@@ -4224,20 +4232,26 @@ impl Parser {
                         expression: Some(expr),
                     });
                 }
-                // V311-10 F-30: NEXT VALUE FOR seq / CURRVAL(seq) in SELECT.
-                // Delegate to the expression parser, which recognises
-                // SequenceNextVal / SequenceCurrval via parse_primary_expression.
-                Some(Token::NextValue) | Some(Token::Currval) => {
-                    let expr = self.parse_expression()?;
-                    columns.push(SelectColumn {
-                        name: format!("{:?}", expr),
-                        alias: None,
-                        expression: Some(expr),
-                    });
-                }
-                _ => {
-                    return Err("Expected FROM or column name".to_string());
-                }
+// V311-10 F-30: NEXT VALUE FOR seq / CURRVAL(seq) in SELECT.
+                    // Delegate to the expression parser, which recognises
+                    // SequenceNextVal / SequenceCurrval via parse_primary_expression.
+                    Some(Token::NextValue) | Some(Token::Currval) => {
+                        let expr = self.parse_expression()?;
+                        columns.push(SelectColumn {
+                            name: format!("{:?}", expr),
+                            alias: None,
+                            expression: Some(expr),
+                        });
+                    }
+                    // V313-followup-5 / Issue #4158: trailing `WITH [NO] DATA`
+                    // marker in CREATE TABLE AS SELECT. Break the column-list
+                    // loop without consuming; the caller (parse_create_table)
+                    // will recognise the WITH token and parse the trailing
+                    // materialization clause.
+                    Some(Token::With) => break,
+                    _ => {
+                        return Err("Expected FROM or column name".to_string());
+                    }
             }
         }
 
@@ -4794,6 +4808,10 @@ impl Parser {
             Some(Token::Order) | Some(Token::Limit) | Some(Token::Offset) => {
                 (String::new(), None, Vec::new())
             }
+            // V313-followup-5 / Issue #4158: `WITH [NO] DATA` terminates
+            // a bare SELECT in CREATE TABLE AS SELECT context; caller
+            // (parse_create_table) consumes the trailing token.
+            Some(Token::With) => (String::new(), None, Vec::new()),
             Some(t) => return Err(format!("Expected FROM or end of query, got {:?}", t)),
         };
 
@@ -5544,6 +5562,8 @@ impl Parser {
                     "COUNT" => Some(AggregateFunction::Count),
                     "MIN" => Some(AggregateFunction::Min),
                     "MAX" => Some(AggregateFunction::Max),
+                    "QUANTILE_DISC" => Some(AggregateFunction::QuantileDisc),
+                    "QUANTILE_CONT" => Some(AggregateFunction::QuantileCont),
                     _ => None,
                 } {
                     out.push(AggregateCall {
@@ -7361,6 +7381,8 @@ impl Parser {
                         AggregateFunction::Avg => "AVG",
                         AggregateFunction::Min => "MIN",
                         AggregateFunction::Max => "MAX",
+                        AggregateFunction::QuantileDisc => "QUANTILE_DISC",
+                        AggregateFunction::QuantileCont => "QUANTILE_CONT",
                     };
 
                     let mut partition_by = Vec::new();
@@ -8075,10 +8097,42 @@ impl Parser {
                         Statement::Select(s) => select = Some(Box::new(s)),
                         _ => return Err("Expected SELECT statement".to_string()),
                     }
-                    with_data = Some(true); // default: WITH DATA
+                    // V313-followup-5 / Issue #4158: PostgreSQL / DuckDB
+                    // standard order is `AS SELECT ... WITH [NO] DATA`.
+                    // Accept the optional trailing WITH clause here; default
+                    // is WITH DATA when the clause is absent.
+                    with_data = match self.current() {
+                        Some(Token::With) => {
+                            self.next();
+                            match self.current() {
+                                Some(Token::No) => {
+                                    self.next();
+                                    match self.current() {
+                                        Some(Token::Identifier(s))
+                                            if s.eq_ignore_ascii_case("DATA") =>
+                                        {
+                                            self.next();
+                                            Some(false)
+                                        }
+                                        _ => return Err("Expected 'DATA' after 'NO'".to_string()),
+                                    }
+                                }
+                                Some(Token::Identifier(s))
+                                    if s.eq_ignore_ascii_case("DATA") =>
+                                {
+                                    self.next();
+                                    Some(true)
+                                }
+                                _ => {
+                                    return Err("Expected 'NO DATA' or 'DATA' after 'WITH'".to_string())
+                                }
+                            }
+                        }
+                        _ => Some(true),
+                    };
                 }
                 Some(Token::With) => {
-                    // WITH NO DATA or WITH DATA
+                    // Legacy V312-18 form: `AS WITH [NO] DATA SELECT ...`.
                     self.next();
                     let data_flag = match self.current() {
                         Some(Token::No) => {
@@ -8097,7 +8151,6 @@ impl Parser {
                         }
                         _ => return Err("Expected 'NO DATA' or 'DATA' after 'WITH'".to_string()),
                     };
-                    // Now parse SELECT after WITH clause
                     match self.current() {
                         Some(Token::Select) => {
                             let select_stmt = self.parse_select()?;
