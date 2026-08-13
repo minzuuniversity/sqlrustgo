@@ -691,6 +691,26 @@ pub fn build_aggregate_schema(
                         .join(", ")
                 )
             }
+            AggregateFunction::QuantileDisc => {
+                format!(
+                    "QUANTILE_DISC({})",
+                    agg.args
+                        .iter()
+                        .map(crate::expr_utils::expression_to_string)
+                        .collect::<Vec<_>>()
+                        .join(", ")
+                )
+            }
+            AggregateFunction::QuantileCont => {
+                format!(
+                    "QUANTILE_CONT({})",
+                    agg.args
+                        .iter()
+                        .map(crate::expr_utils::expression_to_string)
+                        .collect::<Vec<_>>()
+                        .join(", ")
+                )
+            }
         };
         columns.push(ColumnDefinition {
             name,
