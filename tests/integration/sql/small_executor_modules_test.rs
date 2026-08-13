@@ -509,6 +509,7 @@ fn test_ast_adapter_to_update_plan_uses_all_when_no_where() {
         unique_constraints: vec![],
         check_constraints: vec![],
         compression: None,
+        collations: std::collections::HashMap::new(),
         partition_info: None,
     };
 
@@ -549,6 +550,7 @@ fn test_ast_adapter_to_update_plan_errors_on_unknown_column() {
         unique_constraints: vec![],
         check_constraints: vec![],
         compression: None,
+        collations: std::collections::HashMap::new(),
         partition_info: None,
     };
     let err = sqlrustgo_executor::ast_adapter::AstAdapter::to_update_plan(&stmt, &info)
