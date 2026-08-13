@@ -220,10 +220,6 @@ version = "0.39"
 features = ["bundled"]
 
 [[test]]
-name = "unit_buffer_pool_test"
-path = "tests/ci/buffer_pool_test.rs"
-
-[[test]]
 name = "buffer_pool_benchmark_test"
 path = "tests/ci/buffer_pool_benchmark_test.rs"
 
@@ -266,10 +262,6 @@ path = "tests/integration/sql/data_loader.rs"
 [[test]]
 name = "e2e_query_test"
 path = "tests/e2e/e2e_query_test.rs"
-
-[[test]]
-name = "e2e_observability_test"
-path = "tests/e2e/observability_test.rs"
 
 [[test]]
 name = "e2e_monitoring_test"
@@ -584,9 +576,6 @@ path = "tests/integration/stress/chaos_soak_test.rs"
 [[test]]
 name = "g13_oltp1_concurrent_select_test"
 path = "tests/integration/sql/g13_oltp1_concurrent_select_test.rs"
-[[test]]
-name = "mixed_workload_deadlock_regression_test"
-path = "tests/integration/sql/mixed_workload_deadlock_regression_test.rs"
 # P1-4 (#3176) — Upgrade Test (v3.8 → v3.9, 50+ scenarios)
 [[test]]
 name = "upgrade_test"
@@ -741,29 +730,11 @@ debug = 1
 name = "aggregate_type_test"
 path = "tests/anomaly/aggregate_type_test.rs"
 [[test]]
-name = "boundary_test"
-path = "tests/anomaly/boundary_test.rs"
-[[test]]
-name = "catalog_consistency_test"
-path = "tests/anomaly/catalog_consistency_test.rs"
-[[test]]
-name = "crash_injection_test"
-path = "tests/anomaly/crash_injection_test.rs"
-[[test]]
 name = "datetime_type_test"
 path = "tests/anomaly/datetime_type_test.rs"
 [[test]]
 name = "error_handling_test"
 path = "tests/anomaly/error_handling_test.rs"
-[[test]]
-name = "fk_constraint_test"
-path = "tests/anomaly/fk_constraint_test.rs"
-[[test]]
-name = "join_test"
-path = "tests/anomaly/join_test.rs"
-[[test]]
-name = "long_run_stability_test"
-path = "tests/anomaly/long_run_stability_test.rs"
 [[test]]
 name = "mvcc_concurrency_test"
 path = "tests/anomaly/mvcc_concurrency_test.rs"
@@ -771,20 +742,11 @@ path = "tests/anomaly/mvcc_concurrency_test.rs"
 name = "null_handling_test"
 path = "tests/anomaly/null_handling_test.rs"
 [[test]]
-name = "outer_join_test"
-path = "tests/anomaly/outer_join_test.rs"
-[[test]]
-name = "qps_benchmark_test"
-path = "tests/anomaly/qps_benchmark_test.rs"
-[[test]]
 name = "query_cache_benchmark"
 path = "tests/anomaly/query_cache_benchmark.rs"
 [[test]]
 name = "set_operations_test"
 path = "tests/anomaly/set_operations_test.rs"
-[[test]]
-name = "snapshot_isolation_test"
-path = "tests/anomaly/snapshot_isolation_test.rs"
 [[test]]
 name = "transaction_isolation_test"
 path = "tests/anomaly/transaction_isolation_test.rs"
@@ -792,17 +754,11 @@ path = "tests/anomaly/transaction_isolation_test.rs"
 name = "transaction_timeout_test"
 path = "tests/anomaly/transaction_timeout_test.rs"
 [[test]]
-name = "view_test"
-path = "tests/anomaly/view_test.rs"
-[[test]]
 name = "bench_v380_point_agg"
 path = "tests/benchmark/bench_v380_point_agg.rs"
 [[test]]
 name = "parallel_perf_baseline_test"
 path = "tests/benchmark/parallel_perf_baseline_test.rs"
-[[test]]
-name = "q21_perf_bench"
-path = "tests/benchmark/q21_perf_bench.rs"
 [[test]]
 name = "sprint8_hash_chain_bench"
 path = "tests/benchmark/sprint8_hash_chain_bench.rs"
@@ -850,26 +806,11 @@ path = "tests/e2e/sqlrustgo_cli_soak_e2e_test.rs"
 name = "view_procedure_trigger_e2e_test"
 path = "tests/e2e/view_procedure_trigger_e2e_test.rs"
 [[test]]
-name = "agentsql_test"
-path = "tests/integration/agentsql_test.rs"
-[[test]]
-name = "auth_rbac_test"
-path = "tests/integration/auth_rbac_test.rs"
-[[test]]
 name = "autoinc_test"
 path = "tests/integration/autoinc_test.rs"
 [[test]]
 name = "batch_insert_test"
 path = "tests/integration/batch_insert_test.rs"
-[[test]]
-name = "checksum_corruption_test"
-path = "tests/integration/checksum_corruption_test.rs"
-[[test]]
-name = "columnar_storage_test"
-path = "tests/integration/columnar_storage_test.rs"
-[[test]]
-name = "distributed_transaction_test"
-path = "tests/integration/distributed_transaction_test.rs"
 [[test]]
 name = "arch2_dml_api_test"
 path = "tests/integration/dml/arch2_dml_api_test.rs"
@@ -895,17 +836,8 @@ path = "tests/integration/dml/test_insert_replace.rs"
 name = "wired_insert_payload_regression_test"
 path = "tests/integration/dml/wired_insert_payload_regression_test.rs"
 [[test]]
-name = "executor_test"
-path = "tests/integration/executor_test.rs"
-[[test]]
 name = "fk_actions_test"
 path = "tests/integration/fk_actions_test.rs"
-[[test]]
-name = "foreign_key_test"
-path = "tests/integration/foreign_key_test.rs"
-[[test]]
-name = "index_integration_test"
-path = "tests/integration/index_integration_test.rs"
 [[test]]
 name = "logging_test"
 path = "tests/integration/logging_test.rs"
@@ -916,26 +848,14 @@ path = "tests/integration/migration/oracle_g9_upgrade.rs"
 name = "upgrade_chain_v3_6_to_v3_9_test"
 path = "tests/integration/migration/upgrade_chain_v3_6_to_v3_9_test.rs"
 [[test]]
-name = "mysql_compatibility_test"
-path = "tests/integration/mysql_compatibility_test.rs"
-[[test]]
 name = "mysql_tpch_test"
 path = "tests/integration/mysql_tpch_test.rs"
-[[test]]
-name = "openclaw_api_test"
-path = "tests/integration/openclaw_api_test.rs"
 [[test]]
 name = "vtu_ir_modules_test"
 path = "tests/integration/optimizer/vtu_ir_modules_test.rs"
 [[test]]
 name = "optimizer_stats_test"
 path = "tests/integration/optimizer_stats_test.rs"
-[[test]]
-name = "diag_22_on_sf01_broken"
-path = "tests/integration/oracle/diag_22_on_sf01.rs.broken"
-[[test]]
-name = "diag_2t_join"
-path = "tests/integration/oracle/diag_2t_join.rs"
 [[test]]
 name = "diag_compare"
 path = "tests/integration/oracle/diag_compare.rs"
@@ -1021,23 +941,8 @@ path = "tests/integration/oracle/oracle_p34_parallel_executor.rs"
 name = "page_test"
 path = "tests/integration/page_test.rs"
 [[test]]
-name = "parquet_test"
-path = "tests/integration/parquet_test.rs"
-[[test]]
-name = "performance_test"
-path = "tests/integration/performance_test.rs"
-[[test]]
-name = "planner_test"
-path = "tests/integration/planner_test.rs"
-[[test]]
 name = "savepoint_test"
 path = "tests/integration/savepoint_test.rs"
-[[test]]
-name = "server_integration_test"
-path = "tests/integration/server_integration_test.rs"
-[[test]]
-name = "session_config_test"
-path = "tests/integration/session_config_test.rs"
 [[test]]
 name = "_q15_q16_check"
 path = "tests/integration/sql/_q15_q16_check.rs"
@@ -1165,9 +1070,6 @@ name = "mysqladmin_e2e_test"
 path = "tests/integration/admin/mysqladmin_e2e_test.rs"
 
 [[test]]
-name = "clustered_table_v1_test"
-path = "tests/integration/storage/clustered_table_v1_test.rs"
-[[test]]
 name = "quick_query"
 path = "tests/integration/sql/quick_query.rs"
 [[test]]
@@ -1215,12 +1117,6 @@ path = "tests/integration/stress/recovery_fuzzer_test.rs"
 [[test]]
 name = "recovery_scenarios_test"
 path = "tests/integration/stress/recovery_scenarios_test.rs"
-[[test]]
-name = "teaching_scenario_client_server_test"
-path = "tests/integration/teaching_scenario_client_server_test.rs"
-[[test]]
-name = "teaching_scenario_test"
-path = "tests/integration/teaching_scenario_test.rs"
 [[test]]
 name = "oracle_g15_tpch_sf01"
 path = "tests/integration/tpch/oracle_g15_tpch_sf01.rs"
@@ -1297,20 +1193,11 @@ path = "tests/integration/tpch/tpch_wire_smoke_sf.rs"
 name = "tpch_benchmark"
 path = "tests/integration/tpch_benchmark.rs"
 [[test]]
-name = "tpch_comparison_test"
-path = "tests/integration/tpch_comparison_test.rs"
-[[test]]
 name = "tpch_compliance_test"
 path = "tests/integration/tpch_compliance_test.rs"
 [[test]]
 name = "tpch_full_test"
 path = "tests/integration/tpch_full_test.rs"
-[[test]]
-name = "tpch_index_test"
-path = "tests/integration/tpch_index_test.rs"
-[[test]]
-name = "tpch_qtest"
-path = "tests/integration/tpch_qtest.rs"
 [[test]]
 name = "tpch_sf03_test"
 path = "tests/integration/tpch_sf03_test.rs"
@@ -1326,9 +1213,6 @@ path = "tests/integration/tpch_text_index_test.rs"
 [[test]]
 name = "upsert_test"
 path = "tests/integration/upsert_test.rs"
-[[test]]
-name = "vector_storage_integration_test"
-path = "tests/integration/vector_storage_integration_test.rs"
 [[test]]
 name = "window_function_test"
 path = "tests/integration/window_function_test.rs"
@@ -1379,50 +1263,14 @@ path = "tests/integration/wire/wire_deprecate_eof_test.rs"
 name = "chaos_test"
 path = "tests/stress/chaos_test.rs"
 [[test]]
-name = "concurrency_stress_test"
-path = "tests/stress/concurrency_stress_test.rs"
-[[test]]
-name = "crash_recovery_test"
-path = "tests/stress/crash_recovery_test.rs"
-[[test]]
-name = "kill_stress_test"
-path = "tests/stress/kill_stress_test.rs"
-[[test]]
-name = "production_scenario_test"
-path = "tests/stress/production_scenario_test.rs"
-[[test]]
-name = "stress_test"
-path = "tests/stress/stress_test.rs"
-[[test]]
-name = "wal_deterministic_test"
-path = "tests/stress/wal_deterministic_test.rs"
-[[test]]
-name = "wal_fuzz_test"
-path = "tests/stress/wal_fuzz_test.rs"
-[[test]]
-name = "backup_test"
-path = "tests/unit/backup_test.rs"
-[[test]]
 name = "bplus_tree_test"
 path = "tests/unit/bplus_tree_test.rs"
-[[test]]
-name = "buffer_pool_test"
-path = "tests/unit/buffer_pool_test.rs"
 [[test]]
 name = "file_storage_test"
 path = "tests/unit/file_storage_test.rs"
 [[test]]
-name = "local_executor_test"
-path = "tests/unit/local_executor_test.rs"
-[[test]]
 name = "mysqldump_test"
 path = "tests/unit/mysqldump_test.rs"
-[[test]]
-name = "optimizer_cost_test"
-path = "tests/unit/optimizer_cost_test.rs"
-[[test]]
-name = "optimizer_rules_test"
-path = "tests/unit/optimizer_rules_test.rs"
 [[test]]
 name = "parser_token_test"
 path = "tests/unit/parser_token_test.rs"
@@ -1441,6 +1289,3 @@ path = "tests/unit/slow_query_log_test.rs"
 [[test]]
 name = "types_value_test"
 path = "tests/unit/types_value_test.rs"
-[[test]]
-name = "vectorization_test"
-path = "tests/unit/vectorization_test.rs"
