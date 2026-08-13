@@ -1,0 +1,3 @@
+{"table":"region","src_lines":5,"loaded_rows":-1,"elapsed_sec":0.046,"rows_per_sec":0,"rc":1,"parity":"load_failed"}
+{"table":"nation","src_lines":25,"loaded_rows":-1,"elapsed_sec":0.041,"rows_per_sec":0,"rc":1,"parity":"load_failed"}
+{"table":"supplier","src_lines":100000,"loaded_rows":-1,"elapsed_sec":0.086,"rows_per_sec":0,"rc":1,"parity":"load_failed"}
