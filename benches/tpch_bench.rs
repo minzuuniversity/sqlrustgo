@@ -4,8 +4,9 @@
 //! It includes data generation and sample TPC-H queries.
 
 use criterion::{criterion_group, criterion_main, Criterion};
+use parking_lot::RwLock;
 use sqlrustgo::{ExecutionEngine, MemoryStorage};
-use std::sync::{Arc, RwLock};
+use std::sync::Arc;
 use std::time::Instant;
 
 struct LatencyCollector {
