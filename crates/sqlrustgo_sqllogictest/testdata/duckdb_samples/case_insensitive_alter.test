@@ -1,17 +1,44 @@
 # name: test/sql/catalog/case_insensitive_alter.test
-# description: Test case insensitive alter.
-#              V313-11 / Issue #4039 fix: the storage layer (V312-19
-#              #3972) already lower-cases identifiers on table creation
-#              and matches them case-insensitively on ALTER TABLE.
-#              This fixture exercises the case-insensitive column
-#              reference path on ALTER TABLE. The other ALTER cases
-#              (ADD / DROP / SET DEFAULT / column-not-found SELECT)
-#              require separate work and are removed.
+# description: Test case insensitive alter
 # group: [catalog]
 
 statement ok
 CREATE TABLE "MyTable"(i integer, "BigColumn" integer);
 
-# V313-11: case-insensitive column reference on ALTER TABLE.
 statement ok
 ALTER TABLE MyTable ALTER BIGCOLUMN SET DATA TYPE VARCHAR
+
+statement ok
+ALTER TABLE MyTable DROP COLUMN BIGCOLUMN;
+
+statement error
+SELECT BIGCOLUMN FROM MyTable
+----
+Binder error: column 'BIGCOLUMN' not found in schema
+
+
+statement ok
+ALTER TABLE MyTable ADD COLUMN "BIGCOLUMN" VARCHAR;
+
+statement ok
+ALTER TABLE MyTable ALTER COLUMN BIGCOLUMN SET DEFAULT 3
+
+statement ok
+INSERT INTO MyTable(BIGCOLUMN) VALUES (DEFAULT)
+
+query I
+SELECT BIGCOLUMN FROM MyTable
+----
+3
+
+statement ok
+ALTER TABLE MyTable ALTER COLUMN BIGCOLUMN DROP DEFAULT
+
+statement ok
+SELECT BIGCOLUMN FROM MyTable
+
+statement ok
+ALTER TABLE MyTable RENAME BIGCOLUMN TO "SmallColumn"
+
+statement ok
+SELECT SmallColumn FROM MyTable

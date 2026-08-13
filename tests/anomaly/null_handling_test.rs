@@ -866,4 +866,41 @@ mod tests {
             other => panic!("expected Float, got {:?}", other),
         }
     }
+
+    /// V313-followup-1 / Issue #4154 — GREEN: SET DEFAULT persists
+    /// the literal at the catalog level.
+    #[test]
+    fn green_4154_alter_table_set_default_accepted() {
+        let mut engine = create_engine();
+        engine
+            .execute("CREATE TABLE t (a INTEGER)")
+            .expect("CREATE TABLE must succeed");
+        engine
+            .execute("ALTER TABLE t ADD COLUMN b INTEGER")
+            .expect("ADD COLUMN must succeed");
+        let result = engine
+            .execute("ALTER TABLE t ALTER COLUMN b SET DEFAULT 99")
+            .expect("SET DEFAULT must be accepted (V313-followup-1 wired through to storage.set_column_default)");
+        assert_eq!(result.rows.len(), 0, "ALTER returns no rows");
+    }
+
+    /// V313-followup-1 / Issue #4154 — GREEN: `ALTER TABLE t ALTER
+    /// COLUMN c DROP DEFAULT` clears a previously-set default.
+    #[test]
+    fn green_4154_alter_table_drop_default_accepted() {
+        let mut engine = create_engine();
+        engine
+            .execute("CREATE TABLE t (a INTEGER)")
+            .expect("CREATE TABLE must succeed");
+        engine
+            .execute("ALTER TABLE t ADD COLUMN b INTEGER")
+            .expect("ADD COLUMN must succeed");
+        engine
+            .execute("ALTER TABLE t ALTER COLUMN b SET DEFAULT 99")
+            .expect("SET DEFAULT must succeed");
+        let result = engine
+            .execute("ALTER TABLE t ALTER COLUMN b DROP DEFAULT")
+            .expect("DROP DEFAULT must be accepted");
+        assert_eq!(result.rows.len(), 0, "ALTER returns no rows");
+    }
 }

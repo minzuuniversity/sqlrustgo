@@ -20,7 +20,8 @@ use sqlrustgo_types::Value;
 
 use crate::engine_helpers::{
     apply_odku, apply_set_clauses, build_insert_records, ir_validate_update_filter,
-    map_select_result_to_records, record_matches_unique_key, run_before_update_triggers,
+    map_select_result_to_records, materialise_default_tokens, record_matches_unique_key,
+    run_before_update_triggers,
 };
 use crate::engine_utils::{
     build_multi_table_combined_schema, cartesian_product, evaluate_where_clause, find_column_index,
@@ -82,7 +83,11 @@ pub fn execute_insert<S: StorageEngine + 'static>(
                 )));
             }
         }
-        build_insert_records(&insert.values)
+        materialise_default_tokens(
+            build_insert_records(&insert.values),
+            &insert.columns,
+            &table_info.columns,
+        )
     };
 
     // For REPLACE INTO: if insert.values has a unique/key conflict, delete old row first

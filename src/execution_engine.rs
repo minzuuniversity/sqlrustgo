@@ -81,6 +81,9 @@ pub struct ExecutionEngine<S: StorageEngine> {
     pub(crate) tx_readonly: bool,
     pub(crate) default_isolation: TmIsolationLevel,
     pub(crate) current_role: Option<String>,
+    /// V313-followup-4 / Issue #4157: SET default_null_order override
+    /// (None = use engine default).
+    pub(crate) session_null_order_first: Option<bool>,
     /// CheckpointManager field — reserved for future PR-830F WAL lifecycle
     /// integration (currently set to None in all engine builders).
     /// PR-830F lifecycle methods were removed in SPEC-002; the field is
@@ -183,6 +186,7 @@ impl<S: StorageEngine + 'static> ExecutionEngine<S> {
             tx_readonly: false,
             default_isolation: TmIsolationLevel::default(),
             current_role: None,
+            session_null_order_first: None,
             checkpoint_manager: None,
             parallel_degree,
             stmt_cache: sqlrustgo_cache::PreparedStatementCache::new(100),
@@ -1106,10 +1110,23 @@ impl<S: StorageEngine + 'static> ExecutionEngine<S> {
                 }
                 self.begin_transaction(iso, false)
             }
-            // V312-11-fix #3986: SET session variable is parsed and stored
-            // in the parser/executor pairing; no transaction-level effect,
-            // so this is a no-op for the transaction executor.
-            TransactionStatement::SetSessionVariable { .. } => Ok(ExecutorResult::empty()),
+            // V313-followup-4 / Issue #4157: SET default_null_order wired
+            // to session_null_order_first; everything else accepted.
+            TransactionStatement::SetSessionVariable { name, value } => {
+                let upper = name.to_uppercase();
+                if upper == "DEFAULT_NULL_ORDER" {
+                    let upper_v = value.to_uppercase();
+                    let parsed = match upper_v.as_str() {
+                        "NULLS_FIRST" => Some(true),
+                        "NULLS_LAST" => Some(false),
+                        _ => None,
+                    };
+                    if let Some(first) = parsed {
+                        self.session_null_order_first = Some(first);
+                    }
+                }
+                Ok(ExecutorResult::empty())
+            }
         }
     }
 
