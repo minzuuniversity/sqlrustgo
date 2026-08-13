@@ -526,12 +526,16 @@ impl<S: StorageEngine + 'static> ExecutionEngine<S> {
                                 // dispatch (which lacks aggregate context).
                                 if let sqlrustgo_parser::Expression::FunctionCall(name, _) = expr {
                                     let upper = name.to_uppercase();
-                                    if upper == "QUANTILE_DISC" || upper == "QUANTILE_CONT" {
+                                    if upper == "QUANTILE_DISC"
+                                        || upper == "QUANTILE_CONT"
+                                        || upper == "PERCENTILE_CONT"
+                                    {
                                         if let Some(idx) = select.aggregates.iter().position(|a| {
                                             matches!(
                                                 a.func,
                                                 AggregateFunction::QuantileDisc
                                                     | AggregateFunction::QuantileCont
+                                                    | AggregateFunction::PercentileCont
                                             )
                                         }) {
                                             return agg_values
@@ -877,6 +881,7 @@ impl<S: StorageEngine + 'static> ExecutionEngine<S> {
                             AggregateFunction::Count => "count",
                             AggregateFunction::Avg => "avg",
                             AggregateFunction::Min => "min",
+                            AggregateFunction::PercentileCont => "percentile_cont",
                             AggregateFunction::Max => "max",
                             AggregateFunction::QuantileDisc => "quantile_disc",
                             AggregateFunction::QuantileCont => "quantile_cont",
@@ -1002,6 +1007,26 @@ impl<S: StorageEngine + 'static> ExecutionEngine<S> {
                                     // Try aggregate default name
                                     if let Some(&i) = agg_set.get(&key) {
                                         return row.get(i).cloned().unwrap_or(Value::Null);
+                                    }
+                                    // V313-followup-3 / Issue #4156:
+                                    // PERCENTILE_CONT FunctionCall column
+                                    // (name is the full debug string, so
+                                    // match by expression function name).
+                                    if let Some(Expression::FunctionCall(fname, _)) =
+                                        &col.expression
+                                    {
+                                        let fu = fname.to_uppercase();
+                                        let default_name = match fu.as_str() {
+                                            "PERCENTILE_CONT" => "percentile_cont",
+                                            "QUANTILE_DISC" => "quantile_disc",
+                                            "QUANTILE_CONT" => "quantile_cont",
+                                            _ => "",
+                                        };
+                                        if !default_name.is_empty() {
+                                            if let Some(&i) = agg_set.get(default_name) {
+                                                return row.get(i).cloned().unwrap_or(Value::Null);
+                                            }
+                                        }
                                     }
                                     // Try aggregate alias map
                                     if let Some(&i) = agg_alias_to_pos.get(&key) {
@@ -1274,7 +1299,15 @@ impl<S: StorageEngine + 'static> ExecutionEngine<S> {
     ) -> SqlResult<Vec<Value>> {
         let mut results = Vec::with_capacity(aggregates.len());
         for agg in aggregates {
-            let values: Vec<Value> = if let Some(arg) = agg.args.first() {
+            // V313-followup-3 / Issue #4156: PERCENTILE_CONT encodes the
+            // WITHIN GROUP ORDER BY expression as args[1] (args[0] is the
+            // fraction); DESC is a trailing `__DESC__` literal arg.
+            let val_src_idx = if matches!(agg.func, AggregateFunction::PercentileCont) {
+                1
+            } else {
+                0
+            };
+            let values: Vec<Value> = if let Some(arg) = agg.args.get(val_src_idx) {
                 rows.iter()
                     .map(|row| evaluate_expression(arg, row, table_info).unwrap_or(Value::Null))
                     .collect()
@@ -1420,19 +1453,31 @@ impl<S: StorageEngine + 'static> ExecutionEngine<S> {
                 // SQL:92 ordered-set aggregate semantics (fraction
                 // interpolated linearly for continuous; rounded down for
                 // discrete).
-                AggregateFunction::QuantileDisc | AggregateFunction::QuantileCont => {
-                    let frac = match agg.args.get(1).and_then(|e| match e {
+                AggregateFunction::QuantileDisc
+                | AggregateFunction::QuantileCont
+                | AggregateFunction::PercentileCont => {
+                    let frac_idx = if matches!(agg.func, AggregateFunction::PercentileCont) {
+                        0
+                    } else {
+                        1
+                    };
+                    let frac = match agg.args.get(frac_idx).and_then(|e| match e {
                         sqlrustgo_parser::Expression::Literal(lit) => lit.parse::<f64>().ok(),
                         _ => None,
                     }) {
                         Some(f) if (0.0..=1.0).contains(&f) => f,
                         _ => {
-                            return Err(SqlError::ExecutionError(
+                            let msg = if matches!(agg.func, AggregateFunction::PercentileCont) {
+                                "PercentileCont requires frac arg in [0.0, 1.0]".to_string()
+                            } else {
                                 "quantile_disc / quantile_cont requires 2nd arg in [0.0, 1.0]"
-                                    .to_string(),
-                            ))
+                                    .to_string()
+                            };
+                            return Err(SqlError::ExecutionError(msg));
                         }
                     };
+                    let desc = matches!(agg.func, AggregateFunction::PercentileCont)
+                        && agg.args.last().is_some_and(|e| matches!(e, sqlrustgo_parser::Expression::Literal(l) if l == "__DESC__"));
                     let mut sorted: Vec<f64> = values
                         .iter()
                         .filter_map(|v| match v {
@@ -1442,6 +1487,9 @@ impl<S: StorageEngine + 'static> ExecutionEngine<S> {
                         })
                         .collect();
                     sorted.sort_by(|a, b| a.partial_cmp(b).unwrap_or(std::cmp::Ordering::Equal));
+                    if desc {
+                        sorted.reverse();
+                    }
                     if sorted.is_empty() {
                         Value::Null
                     } else {
@@ -4837,6 +4885,10 @@ fn build_scalar_agg_index(
                 // AVG/SUM/COUNT for the Q17 perf fix.
                 let _ = (entry, v.clone(), ci);
             }
+            // V313-followup-3 / Issue #4156: PERCENTILE_CONT WITHIN
+            // GROUP falls back to the serial compute_aggregates path
+            // (this fast-path only supports AVG/SUM/COUNT/MIN/MAX).
+            AggregateFunction::PercentileCont => unreachable!(),
             // V313-followup-2 / Issue #4155: quantile aggregates are
             // sorted-index algorithms; the scalar-aggregate fast-path
             // only handles in-place updaters. Fall through (no update).

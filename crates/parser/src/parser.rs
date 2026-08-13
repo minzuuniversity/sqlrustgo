@@ -498,6 +498,8 @@ pub enum AggregateFunction {
     /// V313-followup-2 / Issue #4155: `quantile_cont(col, frac)` —
     /// continuous-quantile aggregate with linear interpolation.
     QuantileCont,
+    /// V313-followup-3 / Issue #4156: ordered-set aggregate.
+    PercentileCont,
 }
 
 /// Join clause
@@ -3330,6 +3332,7 @@ impl Parser {
                                 AggregateFunction::Avg => "AVG",
                                 AggregateFunction::Min => "MIN",
                                 AggregateFunction::Max => "MAX",
+                                AggregateFunction::PercentileCont => "PERCENTILE_CONT",
                                 AggregateFunction::QuantileDisc => "QUANTILE_DISC",
                                 AggregateFunction::QuantileCont => "QUANTILE_CONT",
                             };
@@ -5563,6 +5566,7 @@ impl Parser {
                     "MIN" => Some(AggregateFunction::Min),
                     "MAX" => Some(AggregateFunction::Max),
                     "QUANTILE_DISC" => Some(AggregateFunction::QuantileDisc),
+                    "PERCENTILE_CONT" => Some(AggregateFunction::PercentileCont),
                     "QUANTILE_CONT" => Some(AggregateFunction::QuantileCont),
                     _ => None,
                 } {
@@ -6826,6 +6830,23 @@ impl Parser {
                     }
                 }
                 self.expect(Token::RParen)?;
+                // V313-followup-3 / Issue #4156: PERCENTILE_CONT
+                // optionally followed by WITHIN GROUP (ORDER BY col).
+                if name.to_uppercase() == "PERCENTILE_CONT"
+                    && matches!(self.current(), Some(Token::Within))
+                {
+                    self.next();
+                    self.expect(Token::Group)?;
+                    self.expect(Token::LParen)?;
+                    self.expect(Token::Order)?;
+                    self.expect(Token::By)?;
+                    self.parse_expression()?;
+                    while matches!(self.current(), Some(Token::Comma)) {
+                        self.next();
+                        self.parse_expression()?;
+                    }
+                    self.expect(Token::RParen)?;
+                }
                 Ok(Expression::FunctionCall(name.to_string(), args))
             }
             Some(Token::SystemVariable(name)) => {
@@ -7223,7 +7244,37 @@ impl Parser {
                         // field name and arg[1] is the source expression. We
                         // encode it that way: push the field as a quoted
                         // Literal string so it round-trips through the AST.
-                        Ok(Expression::FunctionCall(name, args))
+                        let name_upper = name.to_uppercase();
+                        // V313-followup-3 / Issue #4156: PERCENTILE_CONT
+                        // optionally followed by WITHIN GROUP (ORDER BY col
+                        // [ASC|DESC]). Encode the ORDER BY expression as an
+                        // extra arg so the executor can evaluate it into the
+                        // value list; DESC is encoded as a trailing
+                        // `__DESC__` literal arg.
+                        if name_upper == "PERCENTILE_CONT"
+                            && matches!(self.current(), Some(Token::Within))
+                        {
+                            self.next();
+                            self.expect(Token::Group)?;
+                            self.expect(Token::LParen)?;
+                            self.expect(Token::Order)?;
+                            self.expect(Token::By)?;
+                            let ob_expr = self.parse_expression()?;
+                            args.push(ob_expr);
+                            if matches!(self.current(), Some(Token::Asc)) {
+                                self.next();
+                            } else if matches!(self.current(), Some(Token::Desc)) {
+                                self.next();
+                                args.push(Expression::Literal("__DESC__".to_string()));
+                            }
+                            while matches!(self.current(), Some(Token::Comma)) {
+                                self.next();
+                                args.push(self.parse_expression()?);
+                            }
+                            self.expect(Token::RParen)?;
+                        }
+                        let expr = Expression::FunctionCall(name, args);
+                        Ok(expr)
                     }
                 } else {
                     Ok(Expression::Identifier(name))
@@ -7387,6 +7438,7 @@ impl Parser {
                         AggregateFunction::Avg => "AVG",
                         AggregateFunction::Min => "MIN",
                         AggregateFunction::Max => "MAX",
+                        AggregateFunction::PercentileCont => "PERCENTILE_CONT",
                         AggregateFunction::QuantileDisc => "QUANTILE_DISC",
                         AggregateFunction::QuantileCont => "QUANTILE_CONT",
                     };

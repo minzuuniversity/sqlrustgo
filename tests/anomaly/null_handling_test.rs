@@ -900,6 +900,115 @@ mod tests {
         assert_eq!(result.rows.len(), 0, "ALTER returns no rows");
     }
 
+    /// V313-followup-3 / Issue #4156 — GREEN: `PERCENTILE_CONT(frac)
+    /// WITHIN GROUP (ORDER BY col)` returns the linearly interpolated
+    /// value at sorted-index `frac * (n-1)` (median for frac=0.5).
+    #[test]
+    fn green_4156_percentile_cont_within_group() {
+        let mut engine = create_engine();
+        engine
+            .execute("CREATE TABLE t (x INTEGER)")
+            .expect("CREATE TABLE must succeed");
+        engine
+            .execute("INSERT INTO t VALUES (1), (2), (3), (4), (5), (6), (7), (8), (9), (10)")
+            .expect("INSERT must succeed");
+        let result = engine
+            .execute("SELECT PERCENTILE_CONT(0.5) WITHIN GROUP (ORDER BY x) FROM t")
+            .expect("PERCENTILE_CONT WITHIN GROUP must parse and execute");
+        match &result.rows[0][0] {
+            Value::Float(f) => assert_eq!(*f, 5.5, "frac=0.5 on [1..10] -> 5 + 0.5*(6-5) = 5.5"),
+            other => panic!("expected Float, got {:?}", other),
+        }
+    }
+
+    /// V313-followup-3 / Issue #4156 — GREEN: `PERCENTILE_CONT(0.25)`
+    /// interpolates at index 2.25 (3.25 on [1..10]).
+    #[test]
+    fn green_4156_percentile_cont_quarter() {
+        let mut engine = create_engine();
+        engine
+            .execute("CREATE TABLE t (x INTEGER)")
+            .expect("CREATE TABLE must succeed");
+        engine
+            .execute("INSERT INTO t VALUES (1), (2), (3), (4), (5), (6), (7), (8), (9), (10)")
+            .expect("INSERT must succeed");
+        let result = engine
+            .execute("SELECT PERCENTILE_CONT(0.25) WITHIN GROUP (ORDER BY x) FROM t")
+            .expect("PERCENTILE_CONT(0.25) must succeed");
+        match &result.rows[0][0] {
+            Value::Float(f) => assert_eq!(*f, 3.25, "idx=2.25 -> 3 + 0.25*(4-3) = 3.25"),
+            other => panic!("expected Float, got {:?}", other),
+        }
+    }
+
+    /// V313-followup-3 / Issue #4156 — GREEN: `PERCENTILE_CONT` with a
+    /// fractional value outside [0,1] is rejected.
+    #[test]
+    fn green_4156_percentile_cont_frac_out_of_range() {
+        let mut engine = create_engine();
+        engine
+            .execute("CREATE TABLE t (x INTEGER)")
+            .expect("CREATE TABLE must succeed");
+        engine
+            .execute("INSERT INTO t VALUES (1), (2), (3)")
+            .expect("INSERT must succeed");
+        let result = engine.execute("SELECT PERCENTILE_CONT(1.5) WITHIN GROUP (ORDER BY x) FROM t");
+        assert!(
+            result.is_err(),
+            "frac=1.5 must be rejected (outside [0.0, 1.0])"
+        );
+    }
+
+    /// V313-followup-3 / Issue #4156 — GREEN: `PERCENTILE_CONT` respects
+    /// `WITHIN GROUP (ORDER BY x DESC)` (median invariant, but the sort
+    /// direction is honoured by the executor).
+    #[test]
+    fn green_4156_percentile_cont_desc() {
+        let mut engine = create_engine();
+        engine
+            .execute("CREATE TABLE t (x INTEGER)")
+            .expect("CREATE TABLE must succeed");
+        engine
+            .execute("INSERT INTO t VALUES (1), (2), (3), (4), (5), (6), (7), (8), (9), (10)")
+            .expect("INSERT must succeed");
+        let result = engine
+            .execute("SELECT PERCENTILE_CONT(0.5) WITHIN GROUP (ORDER BY x DESC) FROM t")
+            .expect("PERCENTILE_CONT with DESC must succeed");
+        match &result.rows[0][0] {
+            Value::Float(f) => assert_eq!(*f, 5.5, "median invariant under DESC"),
+            other => panic!("expected Float, got {:?}", other),
+        }
+    }
+
+    /// V313-followup-3 / Issue #4156 — GREEN: `PERCENTILE_CONT` inside
+    /// GROUP BY evaluates per-group (median of [1,2,3]=2, [10,20]=15).
+    #[test]
+    fn green_4156_percentile_cont_group_by() {
+        let mut engine = create_engine();
+        engine
+            .execute("CREATE TABLE g (grp INTEGER, x INTEGER)")
+            .expect("CREATE TABLE must succeed");
+        engine
+            .execute("INSERT INTO g VALUES (1, 1), (1, 2), (1, 3), (2, 10), (2, 20)")
+            .expect("INSERT must succeed");
+        let result = engine
+            .execute(
+                "SELECT grp, PERCENTILE_CONT(0.5) WITHIN GROUP (ORDER BY x) FROM g GROUP BY grp",
+            )
+            .expect("GROUP BY PERCENTILE_CONT must succeed");
+        assert_eq!(result.rows.len(), 2, "two groups");
+        let mut group_values: Vec<(i64, f64)> = result
+            .rows
+            .iter()
+            .map(|r| match (&r[0], &r[1]) {
+                (Value::Integer(g), Value::Float(f)) => (*g, *f),
+                other => panic!("unexpected row {:?}", other),
+            })
+            .collect();
+        group_values.sort_by(|a, b| a.0.cmp(&b.0));
+        assert_eq!(group_values, vec![(1, 2.0), (2, 15.0)]);
+    }
+
     /// V313-followup-4 / Issue #4157 — GREEN: `SET default_null_order =
     /// 'nulls_first'` puts NULL at the start of ORDER BY output.
     #[test]
