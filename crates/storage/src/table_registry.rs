@@ -158,7 +158,7 @@ mod tests {
                 nullable: false,
                 primary_key: true,
                 char_max_length: None,
-            collation: None,
+                collation: None,
             }],
             foreign_keys: vec![],
             unique_constraints: vec![],

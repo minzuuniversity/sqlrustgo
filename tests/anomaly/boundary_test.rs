@@ -22,7 +22,8 @@ mod tests {
                 primary_key: false,
                 char_max_length: None,
                 primary_key: false,
-                ..Default::default()            }],
+                ..Default::default()
+            }],
             ..Default::default()
         };
 
@@ -46,7 +47,8 @@ mod tests {
                 primary_key: false,
                 char_max_length: None,
                 primary_key: false,
-                ..Default::default()            }],
+                ..Default::default()
+            }],
             ..Default::default()
         };
 
@@ -75,7 +77,8 @@ mod tests {
                 primary_key: false,
                 char_max_length: None,
                 primary_key: false,
-                ..Default::default()            }],
+                ..Default::default()
+            }],
             ..Default::default()
         };
 
@@ -106,7 +109,8 @@ mod tests {
                 primary_key: false,
                 char_max_length: None,
                 primary_key: false,
-                ..Default::default()            }],
+                ..Default::default()
+            }],
             ..Default::default()
         };
 
@@ -135,7 +139,8 @@ mod tests {
                 primary_key: false,
                 char_max_length: None,
                 primary_key: false,
-                ..Default::default()            }],
+                ..Default::default()
+            }],
             ..Default::default()
         };
 
@@ -163,7 +168,8 @@ mod tests {
                 primary_key: false,
                 char_max_length: None,
                 primary_key: false,
-                ..Default::default()            }],
+                ..Default::default()
+            }],
             ..Default::default()
         };
 
@@ -193,7 +199,8 @@ mod tests {
                 primary_key: false,
                 char_max_length: None,
                 primary_key: false,
-                ..Default::default()            }],
+                ..Default::default()
+            }],
             ..Default::default()
         };
 
@@ -223,13 +230,15 @@ mod tests {
                 primary_key: false,
                 char_max_length: None,
                 primary_key: false,
-                ..Default::default()            })
+                ..Default::default()
+            })
             .collect();
 
         let info = TableInfo {
             name: "many_cols".to_string(),
             columns,
-            ..Default::default()        };
+            ..Default::default()
+        };
 
         storage.create_table(&info).unwrap();
 
@@ -254,7 +263,8 @@ mod tests {
                 primary_key: false,
                 char_max_length: None,
                 primary_key: false,
-                ..Default::default()            }],
+                ..Default::default()
+            }],
             ..Default::default()
         };
 
@@ -291,7 +301,8 @@ mod tests {
                 primary_key: false,
                 char_max_length: None,
                 primary_key: false,
-                ..Default::default()            }],
+                ..Default::default()
+            }],
             ..Default::default()
         };
 

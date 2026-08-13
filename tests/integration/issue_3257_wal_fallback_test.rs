@@ -78,7 +78,8 @@ fn issue_3257_wal_default_survives_restart() {
         let config = EphemeralConfig {
             data_dir: Some(data_dir.clone()),
             bootstrap_tables: false,
-            bootstrap_users: true,                metrics_port: None,
+            bootstrap_users: true,
+            metrics_port: None,
 
             ..Default::default()
         };
@@ -99,7 +100,8 @@ fn issue_3257_wal_default_survives_restart() {
         let config = EphemeralConfig {
             data_dir: Some(data_dir.clone()),
             bootstrap_tables: false,
-            bootstrap_users: true,                metrics_port: None,
+            bootstrap_users: true,
+            metrics_port: None,
 
             ..Default::default()
         };
@@ -183,7 +185,8 @@ fn issue_3257_wal_recovery_does_not_hang_on_existing_wal() {
     let config = EphemeralConfig {
         data_dir: Some(data_dir.clone()),
         bootstrap_tables: false,
-        bootstrap_users: true,        metrics_port: None,
+        bootstrap_users: true,
+        metrics_port: None,
 
         ..Default::default()
     };

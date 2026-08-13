@@ -2226,10 +2226,7 @@ impl Parser {
         if let Some(Token::Identifier(ref s)) = self.current() {
             let upper = s.to_uppercase();
             if upper == "NAMES" || upper == "CHARACTER" {
-                return Err(format!(
-                    "SET {} is not yet supported",
-                    upper
-                ));
+                return Err(format!("SET {} is not yet supported", upper));
             }
         }
         if matches!(self.current(), Some(Token::Identifier(ref s)) if s.to_lowercase() == "variable")
@@ -5259,64 +5256,93 @@ impl Parser {
                 self.next();
                 None
             } else {
-            // V313-10 / Issue #4038: peek whether the LIMIT value is followed
-            // by an arithmetic operator. If it is, parse the full expression
-            // through parse_expression + constant_fold_u64 so that
-            // `LIMIT 2-1` is folded to 1, not silently truncated to 2.
-            let peek_is_arith = matches!(
-                self.tokens.get(self.position + 1),
-                Some(Token::Plus)
-                    | Some(Token::Minus)
-                    | Some(Token::Star)
-                    | Some(Token::Slash)
-                    | Some(Token::Percent)
-            );
-            if peek_is_arith {
-                // Arithmetic expression form: parse full expression.
-                // V313-10 / Issue #4038: emit a classified binder error
-                // when the expression cannot be constant-folded.
-                let saved_pos = self.position;
-                let expr = self.parse_expression()?;
-                match constant_fold_u64(&expr) {
-                    Some(v) => Some(v),
-                    None => {
-                        self.position = saved_pos;
-                        return Err(classify_unfoldable_limit_expr("LIMIT", &expr));
+                // V313-10 / Issue #4038: peek whether the LIMIT value is followed
+                // by an arithmetic operator. If it is, parse the full expression
+                // through parse_expression + constant_fold_u64 so that
+                // `LIMIT 2-1` is folded to 1, not silently truncated to 2.
+                let peek_is_arith = matches!(
+                    self.tokens.get(self.position + 1),
+                    Some(Token::Plus)
+                        | Some(Token::Minus)
+                        | Some(Token::Star)
+                        | Some(Token::Slash)
+                        | Some(Token::Percent)
+                );
+                if peek_is_arith {
+                    // Arithmetic expression form: parse full expression.
+                    // V313-10 / Issue #4038: emit a classified binder error
+                    // when the expression cannot be constant-folded.
+                    let saved_pos = self.position;
+                    let expr = self.parse_expression()?;
+                    match constant_fold_u64(&expr) {
+                        Some(v) => Some(v),
+                        None => {
+                            self.position = saved_pos;
+                            return Err(classify_unfoldable_limit_expr("LIMIT", &expr));
+                        }
                     }
-                }
-            } else {
-                match self.current() {
-                    Some(Token::NumberLiteral(n)) => {
-                        // Handle both integer and float literals (e.g., LIMIT 1.25 -> 1 row)
-                        let val = if let Ok(i) = n.parse::<u64>() {
-                            i
-                        } else if let Ok(f) = n.parse::<f64>() {
-                            f as u64
-                        } else {
-                            return Err("Invalid LIMIT: invalid digit found in string".to_string());
-                        };
-                        self.next();
-                        Some(val)
-                    }
-                    Some(Token::Identifier(ref s)) => {
-                        // Support LIMIT variable (e.g., @limit) and
-                        // identifier-like column references. When the
-                        // identifier is a pure integer string we accept
-                        // it directly; when followed by `(` we let
-                        // parse_expression handle it (so `row_number()`
-                        // gets wrapped in a WindowCall / FunctionCall
-                        // and the classify step produces the right error);
-                        // otherwise we treat it as a column reference
-                        // and emit the binder error directly.
-                        // V313-10 / Issue #4038.
-                        if let Ok(val) = s.parse::<u64>() {
+                } else {
+                    match self.current() {
+                        Some(Token::NumberLiteral(n)) => {
+                            // Handle both integer and float literals (e.g., LIMIT 1.25 -> 1 row)
+                            let val = if let Ok(i) = n.parse::<u64>() {
+                                i
+                            } else if let Ok(f) = n.parse::<f64>() {
+                                f as u64
+                            } else {
+                                return Err(
+                                    "Invalid LIMIT: invalid digit found in string".to_string()
+                                );
+                            };
                             self.next();
                             Some(val)
-                        } else if matches!(self.tokens.get(self.position + 1), Some(Token::LParen))
-                        {
-                            // Looks like a function call (possibly
-                            // windowed) — let parse_expression build
-                            // the full AST, then classify.
+                        }
+                        Some(Token::Identifier(ref s)) => {
+                            // Support LIMIT variable (e.g., @limit) and
+                            // identifier-like column references. When the
+                            // identifier is a pure integer string we accept
+                            // it directly; when followed by `(` we let
+                            // parse_expression handle it (so `row_number()`
+                            // gets wrapped in a WindowCall / FunctionCall
+                            // and the classify step produces the right error);
+                            // otherwise we treat it as a column reference
+                            // and emit the binder error directly.
+                            // V313-10 / Issue #4038.
+                            if let Ok(val) = s.parse::<u64>() {
+                                self.next();
+                                Some(val)
+                            } else if matches!(
+                                self.tokens.get(self.position + 1),
+                                Some(Token::LParen)
+                            ) {
+                                // Looks like a function call (possibly
+                                // windowed) — let parse_expression build
+                                // the full AST, then classify.
+                                let saved_pos = self.position;
+                                let expr = self.parse_expression()?;
+                                match constant_fold_u64(&expr) {
+                                    Some(v) => Some(v),
+                                    None => {
+                                        self.position = saved_pos;
+                                        return Err(classify_unfoldable_limit_expr("LIMIT", &expr));
+                                    }
+                                }
+                            } else {
+                                let ident = s.clone();
+                                return Err(format!(
+                                    "Binder Error: Referenced column '{}' not found in LIMIT",
+                                    ident
+                                ));
+                            }
+                        }
+                        _ => {
+                            // V312-19 #3972: accept arithmetic expression, e.g. LIMIT 2-1.
+                            // V313-10 / Issue #4038: if the expression contains
+                            // an aggregate, window function or column ref
+                            // that cannot be constant-folded, restore
+                            // position and emit a classified binder-style
+                            // error. Returning None would silently swallow
+                            // the LIMIT clause.
                             let saved_pos = self.position;
                             let expr = self.parse_expression()?;
                             match constant_fold_u64(&expr) {
@@ -5326,34 +5352,9 @@ impl Parser {
                                     return Err(classify_unfoldable_limit_expr("LIMIT", &expr));
                                 }
                             }
-                        } else {
-                            let ident = s.clone();
-                            return Err(format!(
-                                "Binder Error: Referenced column '{}' not found in LIMIT",
-                                ident
-                            ));
-                        }
-                    }
-                    _ => {
-                        // V312-19 #3972: accept arithmetic expression, e.g. LIMIT 2-1.
-                        // V313-10 / Issue #4038: if the expression contains
-                        // an aggregate, window function or column ref
-                        // that cannot be constant-folded, restore
-                        // position and emit a classified binder-style
-                        // error. Returning None would silently swallow
-                        // the LIMIT clause.
-                        let saved_pos = self.position;
-                        let expr = self.parse_expression()?;
-                        match constant_fold_u64(&expr) {
-                            Some(v) => Some(v),
-                            None => {
-                                self.position = saved_pos;
-                                return Err(classify_unfoldable_limit_expr("LIMIT", &expr));
-                            }
                         }
                     }
                 }
-            }
             }
         } else {
             None
@@ -9521,10 +9522,7 @@ impl Parser {
                         // rather than silently accept (was previously
                         // producing SetDefault { default_value: None }
                         // which dropped the user-supplied value).
-                        Err(
-                            "ALTER COLUMN SET DEFAULT is not yet supported"
-                                .to_string(),
-                        )
+                        Err("ALTER COLUMN SET DEFAULT is not yet supported".to_string())
                     } else if let Some(Token::Identifier(ref id)) = self.current() {
                         if id.to_uppercase() == "DATA" {
                             self.next();

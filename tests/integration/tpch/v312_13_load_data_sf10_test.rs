@@ -83,7 +83,11 @@ fn v312_13_load_data_sf10_region_nation_supplier_smoke() {
     let nation_path = sf10_fixture("nation");
     let supplier_path = sf10_fixture("supplier");
 
-    for (label, p) in [("region", &region_path), ("nation", &nation_path), ("supplier", &supplier_path)] {
+    for (label, p) in [
+        ("region", &region_path),
+        ("nation", &nation_path),
+        ("supplier", &supplier_path),
+    ] {
         assert!(
             p.exists(),
             "SF=10 fixture missing: {}. Generate with:\n  cd /tmp/tpch-dbgen && \
@@ -96,12 +100,21 @@ fn v312_13_load_data_sf10_region_nation_supplier_smoke() {
             .lines()
             .count() as u64;
         match label {
-            "region" => assert_eq!(lines, SF10_REGION_ROWS,
-                "SF=10 region.tbl expected {} rows, got {} lines", SF10_REGION_ROWS, lines),
-            "nation" => assert_eq!(lines, SF10_NATION_ROWS,
-                "SF=10 nation.tbl expected {} rows, got {} lines", SF10_NATION_ROWS, lines),
-            "supplier" => assert_eq!(lines, SF10_SUPPLIER_ROWS,
-                "SF=10 supplier.tbl expected {} rows, got {} lines", SF10_SUPPLIER_ROWS, lines),
+            "region" => assert_eq!(
+                lines, SF10_REGION_ROWS,
+                "SF=10 region.tbl expected {} rows, got {} lines",
+                SF10_REGION_ROWS, lines
+            ),
+            "nation" => assert_eq!(
+                lines, SF10_NATION_ROWS,
+                "SF=10 nation.tbl expected {} rows, got {} lines",
+                SF10_NATION_ROWS, lines
+            ),
+            "supplier" => assert_eq!(
+                lines, SF10_SUPPLIER_ROWS,
+                "SF=10 supplier.tbl expected {} rows, got {} lines",
+                SF10_SUPPLIER_ROWS, lines
+            ),
             _ => unreachable!(),
         }
     }
