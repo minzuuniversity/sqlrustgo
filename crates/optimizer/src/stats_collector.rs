@@ -248,6 +248,7 @@ mod tests {
             name: table.to_string(),
             columns,
             table_foreign_keys: None,
+            collations: std::collections::HashMap::new(),
         };
         storage.create_table(&info).unwrap();
         storage.insert(table, records).unwrap();
@@ -271,6 +272,7 @@ mod tests {
                 auto_increment: false,
                 references: None,
                 compression: None,
+                collation: None,
             },
             ColumnDefinition {
                 name: "name".to_string(),
@@ -281,6 +283,7 @@ mod tests {
                 auto_increment: false,
                 references: None,
                 compression: None,
+                collation: None,
             },
         ];
         let storage = make_storage_with_data("users", records, columns);

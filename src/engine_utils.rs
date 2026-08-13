@@ -543,6 +543,7 @@ pub fn build_combined_schema(
             nullable: c.nullable,
             primary_key: c.primary_key,
             char_max_length: c.char_max_length,
+            collation: c.collation.clone(),
         });
     }
 
@@ -553,6 +554,7 @@ pub fn build_combined_schema(
             nullable: c.nullable,
             primary_key: c.primary_key,
             char_max_length: c.char_max_length,
+            collation: c.collation.clone(),
         });
     }
 
@@ -564,6 +566,7 @@ pub fn build_combined_schema(
         check_constraints: vec![],
         partition_info: None,
         compression: None,
+        collations: std::collections::HashMap::new(),
     })
 }
 
@@ -580,6 +583,7 @@ pub fn build_multi_table_combined_schema(infos: &[TableInfo], prefixes: &[String
                 nullable: c.nullable,
                 primary_key: c.primary_key,
                 char_max_length: c.char_max_length,
+                collation: c.collation.clone(),
             });
         }
     }
@@ -591,6 +595,7 @@ pub fn build_multi_table_combined_schema(infos: &[TableInfo], prefixes: &[String
         check_constraints: vec![],
         partition_info: None,
         compression: None,
+        collations: std::collections::HashMap::new(),
     }
 }
 
@@ -626,6 +631,7 @@ pub fn build_aggregate_schema(
             nullable: false,
             primary_key: false,
             char_max_length: None,
+            collation: None,
         });
     }
 
@@ -692,6 +698,7 @@ pub fn build_aggregate_schema(
             nullable: false,
             primary_key: false,
             char_max_length: None,
+            collation: None,
         });
     }
 
@@ -703,6 +710,7 @@ pub fn build_aggregate_schema(
         check_constraints: vec![],
         partition_info: None,
         compression: None,
+        collations: std::collections::HashMap::new(),
     })
 }
 
@@ -1007,6 +1015,7 @@ fn substitute_outer_refs_in_expr_with_own(
         | Expression::WindowCall(_)
         | Expression::SequenceNextVal(_)
         | Expression::SequenceCurrval(_)
+        | Expression::SystemVariable(_)
         | Expression::JsonLiteral(_) => expr.clone(),
     }
 }
@@ -1244,6 +1253,7 @@ fn substitute_qualified_outer_refs_in_place(
         | Expression::WindowCall(_)
         | Expression::SequenceNextVal(_)
         | Expression::SequenceCurrval(_)
+        | Expression::SystemVariable(_)
         | Expression::JsonLiteral(_) => {}
     }
 }
@@ -1310,6 +1320,7 @@ pub fn where_expr_has_correlated_subquery(expr: &sqlrustgo_parser::Expression) -
         | Expression::WindowCall(_)
         | Expression::SequenceNextVal(_)
         | Expression::SequenceCurrval(_)
+        | Expression::SystemVariable(_)
         | Expression::JsonLiteral(_) => false,
     }
 }
@@ -1352,6 +1363,7 @@ pub fn where_expr_has_uncorrelated_subquery(expr: &sqlrustgo_parser::Expression)
         | Expression::FunctionCall(_, _)
         | Expression::SequenceNextVal(_)
         | Expression::SequenceCurrval(_)
+        | Expression::SystemVariable(_)
         | Expression::JsonLiteral(_) => false,
     }
 }

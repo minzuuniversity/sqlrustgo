@@ -226,6 +226,7 @@ pub fn create_gmp_tables(storage: &mut dyn StorageEngine) -> SqlResult<()> {
                 nullable: false,
                 primary_key: true,
                 char_max_length: None,
+                collation: None,
             },
             ColumnDefinition {
                 name: "title".to_string(),
@@ -233,6 +234,7 @@ pub fn create_gmp_tables(storage: &mut dyn StorageEngine) -> SqlResult<()> {
                 nullable: false,
                 primary_key: false,
                 char_max_length: None,
+                collation: None,
             },
             ColumnDefinition {
                 name: "doc_type".to_string(),
@@ -240,6 +242,7 @@ pub fn create_gmp_tables(storage: &mut dyn StorageEngine) -> SqlResult<()> {
                 nullable: false,
                 primary_key: false,
                 char_max_length: None,
+                collation: None,
             },
             ColumnDefinition {
                 name: "version".to_string(),
@@ -247,6 +250,7 @@ pub fn create_gmp_tables(storage: &mut dyn StorageEngine) -> SqlResult<()> {
                 nullable: false,
                 primary_key: false,
                 char_max_length: None,
+                collation: None,
             },
             ColumnDefinition {
                 name: "created_at".to_string(),
@@ -254,6 +258,7 @@ pub fn create_gmp_tables(storage: &mut dyn StorageEngine) -> SqlResult<()> {
                 nullable: false,
                 primary_key: false,
                 char_max_length: None,
+                collation: None,
             },
             ColumnDefinition {
                 name: "updated_at".to_string(),
@@ -261,6 +266,7 @@ pub fn create_gmp_tables(storage: &mut dyn StorageEngine) -> SqlResult<()> {
                 nullable: false,
                 primary_key: false,
                 char_max_length: None,
+                collation: None,
             },
             ColumnDefinition {
                 name: "effective_date".to_string(),
@@ -268,6 +274,7 @@ pub fn create_gmp_tables(storage: &mut dyn StorageEngine) -> SqlResult<()> {
                 nullable: false,
                 primary_key: false,
                 char_max_length: None,
+                collation: None,
             },
             ColumnDefinition {
                 name: "status".to_string(),
@@ -275,6 +282,7 @@ pub fn create_gmp_tables(storage: &mut dyn StorageEngine) -> SqlResult<()> {
                 nullable: false,
                 primary_key: false,
                 char_max_length: None,
+                collation: None,
             },
         ];
         storage.create_table(&sqlrustgo_storage::TableInfo {
@@ -284,6 +292,7 @@ pub fn create_gmp_tables(storage: &mut dyn StorageEngine) -> SqlResult<()> {
             unique_constraints: vec![],
             check_constraints: vec![],
             compression: None,
+            collations: std::collections::HashMap::new(),
             partition_info: None,
         })?;
     }
@@ -297,6 +306,7 @@ pub fn create_gmp_tables(storage: &mut dyn StorageEngine) -> SqlResult<()> {
                 nullable: false,
                 primary_key: true,
                 char_max_length: None,
+                collation: None,
             },
             ColumnDefinition {
                 name: "section".to_string(),
@@ -304,6 +314,7 @@ pub fn create_gmp_tables(storage: &mut dyn StorageEngine) -> SqlResult<()> {
                 nullable: false,
                 primary_key: true,
                 char_max_length: None,
+                collation: None,
             },
             ColumnDefinition {
                 name: "content".to_string(),
@@ -311,6 +322,7 @@ pub fn create_gmp_tables(storage: &mut dyn StorageEngine) -> SqlResult<()> {
                 nullable: false,
                 primary_key: false,
                 char_max_length: None,
+                collation: None,
             },
         ];
         storage.create_table(&sqlrustgo_storage::TableInfo {
@@ -320,6 +332,7 @@ pub fn create_gmp_tables(storage: &mut dyn StorageEngine) -> SqlResult<()> {
             unique_constraints: vec![],
             check_constraints: vec![],
             compression: None,
+            collations: std::collections::HashMap::new(),
             partition_info: None,
         })?;
     }
@@ -333,6 +346,7 @@ pub fn create_gmp_tables(storage: &mut dyn StorageEngine) -> SqlResult<()> {
                 nullable: false,
                 primary_key: true,
                 char_max_length: None,
+                collation: None,
             },
             ColumnDefinition {
                 name: "keyword".to_string(),
@@ -340,6 +354,7 @@ pub fn create_gmp_tables(storage: &mut dyn StorageEngine) -> SqlResult<()> {
                 nullable: false,
                 primary_key: true,
                 char_max_length: None,
+                collation: None,
             },
         ];
         storage.create_table(&sqlrustgo_storage::TableInfo {
@@ -349,6 +364,7 @@ pub fn create_gmp_tables(storage: &mut dyn StorageEngine) -> SqlResult<()> {
             unique_constraints: vec![],
             check_constraints: vec![],
             compression: None,
+            collations: std::collections::HashMap::new(),
             partition_info: None,
         })?;
     }
@@ -363,6 +379,7 @@ pub fn create_gmp_tables(storage: &mut dyn StorageEngine) -> SqlResult<()> {
             unique_constraints: vec![],
             check_constraints: vec![],
             compression: None,
+            collations: std::collections::HashMap::new(),
             partition_info: None,
         })?;
     }
@@ -377,6 +394,7 @@ pub fn create_gmp_tables(storage: &mut dyn StorageEngine) -> SqlResult<()> {
             unique_constraints: vec![],
             check_constraints: vec![],
             compression: None,
+            collations: std::collections::HashMap::new(),
             partition_info: None,
         })?;
     }
@@ -391,6 +409,7 @@ pub fn create_gmp_tables(storage: &mut dyn StorageEngine) -> SqlResult<()> {
             unique_constraints: vec![],
             check_constraints: vec![],
             compression: None,
+            collations: std::collections::HashMap::new(),
             partition_info: None,
         })?;
     }

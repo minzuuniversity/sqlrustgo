@@ -6,7 +6,7 @@
 > **Supersedes**: None (first exception under [ADR-008 §Policy 2](../../governance/adr/ADR-008-test-claim-transparency.md))
 > **Authorising ADR**: [ADR-008-test-claim-transparency.md](ADR-008-test-claim-transparency.md) §Policy 2
 > **Related**:
-> - [CURRENT_VERSION.md §v3.11.0](../../../../CURRENT_VERSION.md) (G4 row references this exception)
+> - [CURRENT_VERSION.md §v3.11.0](../../../CURRENT_VERSION.md) (G4 row references this exception)
 > - [docs/releases/v3.11.0/GA_GATE_REPORT.md](../../releases/v3.11.0/GA_GATE_REPORT.md) (G4 PASS row, line 27 / 58 / 74)
 > - [docs/releases/v3.11.0/TPCH_SF1_VERIFICATION_REPORT.md](../../releases/v3.11.0/TPCH_SF1_VERIFICATION_REPORT.md)
 > - [docs/releases/v3.11.0/G4_WIRE_TEST_CLOSE_OUT_PLAN.md](../../releases/v3.11.0/G4_WIRE_TEST_CLOSE_OUT_PLAN.md)
@@ -184,7 +184,7 @@ If any of the above slip by ≥3 days, the exception auto-reports as expiring on
 ## Refs
 
 - [ADR-008 §Policy 2](ADR-008-test-claim-transparency.md) — Authorising policy
-- [CURRENT_VERSION.md](../../../../CURRENT_VERSION.md) — G4 row exception reference
+- [CURRENT_VERSION.md](../../../CURRENT_VERSION.md) — G4 row exception reference
 - [docs/releases/v3.11.0/GA_GATE_REPORT.md](../../releases/v3.11.0/GA_GATE_REPORT.md) — G4 PASS row
 - [docs/releases/v3.11.0/G4_WIRE_TEST_CLOSE_OUT_PLAN.md](../../releases/v3.11.0/G4_WIRE_TEST_CLOSE_OUT_PLAN.md) — Phase A/B/C close-out plan
 - [docs/releases/v3.11.0/TPCH_SF1_VERIFICATION_REPORT.md](../../releases/v3.11.0/TPCH_SF1_VERIFICATION_REPORT.md) — P0-1/P0-2 status

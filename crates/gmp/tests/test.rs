@@ -293,13 +293,13 @@ fn test_vector_index_meta_from_row() {
     use sqlrustgo_gmp::vector_index::VectorIndexMeta;
     use sqlrustgo_types::Value;
     let row = vec![
-        Value::Integer(7),             // id
-        Value::Text("flat".into()),    // index_type
+        Value::Integer(7),                // id
+        Value::Text("flat".into()),       // index_type
         Value::Text("test-model".into()), // model_name
-        Value::Integer(384),           // dimension
-        Value::Integer(12345),         // embedding_count
-        Value::Integer(100),           // built_at
-        Value::Null,                   // index_path (NULL)
+        Value::Integer(384),              // dimension
+        Value::Integer(12345),            // embedding_count
+        Value::Integer(100),              // built_at
+        Value::Null,                      // index_path (NULL)
     ];
     let meta = VectorIndexMeta::from_row(&row).expect("row should parse");
     assert_eq!(meta.id, 7);
@@ -340,12 +340,14 @@ fn test_create_vector_index_table_then_rebuild() {
         vector_hash: "abc123".to_string(),
         updated_at: 100,
     }];
-    let _report = rebuild_flat_index(&mut storage, "test-model")
-        .expect("rebuild_flat_index");
+    let _report = rebuild_flat_index(&mut storage, "test-model").expect("rebuild_flat_index");
     // 0 chunks in storage so embedding_count == 0; build still records
     // the metadata entry. get_latest_index should return Some.
     let loaded = get_latest_index(&storage).expect("get_latest_index ok");
-    assert!(loaded.is_some(), "rebuild must record metadata even with 0 chunks");
+    assert!(
+        loaded.is_some(),
+        "rebuild must record metadata even with 0 chunks"
+    );
     let _ = chunks; // suppress unused
 }
 
@@ -560,7 +562,11 @@ mod ingestion_tests {
         let first = ingest_file(&mut storage, &file, "dup.md");
         assert!(first.is_ok(), "first ingest must succeed");
         let second = ingest_file(&mut storage, &file, "dup.md");
-        assert_eq!(second, Err("SKIP"), "second ingest of same source must SKIP");
+        assert_eq!(
+            second,
+            Err("SKIP"),
+            "second ingest of same source must SKIP"
+        );
 
         let _ = fs::remove_dir_all(&dir);
     }
@@ -568,10 +574,17 @@ mod ingestion_tests {
     #[test]
     fn test_ingest_file_missing_file_returns_fail() {
         let mut storage = fresh_storage();
-        let result = ingest_file(&mut storage, PathBuf::from("/no/such/file.md").as_path(), "x.md");
+        let result = ingest_file(
+            &mut storage,
+            PathBuf::from("/no/such/file.md").as_path(),
+            "x.md",
+        );
         assert!(result.is_err());
         let msg = result.unwrap_err();
-        assert!(msg.starts_with("FAIL:"), "missing file must return FAIL prefix");
+        assert!(
+            msg.starts_with("FAIL:"),
+            "missing file must return FAIL prefix"
+        );
     }
 
     #[test]
@@ -612,13 +625,18 @@ mod ingestion_tests {
         let mut report = IngestionReport::new();
         ingest_corpus(&mut storage, &dir.as_path(), &mut report);
 
-        assert_eq!(report.documents_ingested, 3, "3 ingestable files (md+txt+md)");
+        assert_eq!(
+            report.documents_ingested, 3,
+            "3 ingestable files (md+txt+md)"
+        );
         assert_eq!(report.documents_skipped, 0);
         assert_eq!(report.documents_failed, 0);
         // ingest_corpus tracks docs; chunks/embeddings are filled by
         // ingest_file but only reported when called via other paths.
         // Verify the documents were actually written to storage.
-        let docs = storage.scan(sqlrustgo_gmp::document::TABLE_DOCUMENTS).unwrap();
+        let docs = storage
+            .scan(sqlrustgo_gmp::document::TABLE_DOCUMENTS)
+            .unwrap();
         assert_eq!(docs.len(), 3, "3 documents stored in gmp_documents");
 
         let _ = fs::remove_dir_all(&dir);

@@ -45,6 +45,9 @@ fn users_table() -> TableInfo {
             },
         ],
         compression: None,
+// V312-26 / #4077: collations field added by d48b0a1a71;
+        // this initializer was missed by the propagation PR #4140.
+        collations: std::collections::HashMap::new(),
         foreign_keys: vec![],
         unique_constraints: vec![],
         check_constraints: vec![],
@@ -82,6 +85,9 @@ fn products_table() -> TableInfo {
             },
         ],
         compression: None,
+// V312-26 / #4077: collations field added by d48b0a1a71;
+        // this initializer was missed by the propagation PR #4140.
+        collations: std::collections::HashMap::new(),
         foreign_keys: vec![],
         unique_constraints: vec![],
         check_constraints: vec![],

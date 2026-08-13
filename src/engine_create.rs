@@ -15,6 +15,7 @@ use sqlrustgo_parser::parser::{
 };
 use sqlrustgo_storage::clustered_table::ClusteredTable;
 use sqlrustgo_storage::{engine::CheckConstraint, ColumnDefinition, StorageEngine, TableInfo};
+use std::collections::HashMap;
 use std::sync::Arc;
 
 impl<S: StorageEngine + 'static> ExecutionEngine<S> {
@@ -112,6 +113,7 @@ impl<S: StorageEngine + 'static> ExecutionEngine<S> {
                         nullable: c.nullable,
                         primary_key: c.primary_key,
                         char_max_length: c.char_max_length,
+                        collation: c.collation.clone(),
                     })
                     .collect()
             } else {
@@ -147,6 +149,7 @@ impl<S: StorageEngine + 'static> ExecutionEngine<S> {
                             nullable: true,
                             primary_key: false,
                             char_max_length: None,
+                            collation: None,
                         }
                     })
                     .collect()
@@ -164,6 +167,7 @@ impl<S: StorageEngine + 'static> ExecutionEngine<S> {
                     check_constraints: vec![],
                     partition_info: None,
                     compression: None,
+                    collations: std::collections::HashMap::new(),
                 };
                 storage.create_table(&info)?;
                 return Ok(ExecutorResult::new(vec![], 0));
@@ -178,6 +182,7 @@ impl<S: StorageEngine + 'static> ExecutionEngine<S> {
                 check_constraints: vec![],
                 partition_info: None,
                 compression: None,
+                collations: std::collections::HashMap::new(),
             };
             storage.create_table(&info)?;
 
@@ -202,6 +207,20 @@ impl<S: StorageEngine + 'static> ExecutionEngine<S> {
                 nullable: c.nullable,
                 primary_key: c.primary_key,
                 char_max_length: c.char_max_length,
+                collation: c.collation.clone(),
+            })
+            .collect();
+        // V312-26 / #4077: collect per-column collation (each column
+        // carries its own `collation` field in HEAD's CreateTable AST)
+        // into a name→collation map for the executor to consult during
+        // set-op.
+        let collations: std::collections::HashMap<String, String> = create
+            .columns
+            .iter()
+            .filter_map(|c| {
+                c.collation
+                    .as_ref()
+                    .map(|n| (c.name.clone(), n.to_lowercase()))
             })
             .collect();
         let compression = create.compress.as_ref().map(|spec| match spec.algorithm {
@@ -249,6 +268,7 @@ impl<S: StorageEngine + 'static> ExecutionEngine<S> {
             check_constraints: check_constraints.clone(),
             partition_info: None,
             compression,
+            collations: collations.clone(),
         };
 
         // V311-01 F-23: route to ClusteredTable when storage_engine = Clustered.
@@ -272,6 +292,7 @@ impl<S: StorageEngine + 'static> ExecutionEngine<S> {
                 check_constraints,
                 partition_info: None,
                 compression: None,
+                collations: HashMap::new(),
             })?;
             self.clustered_tables
                 .write()

@@ -209,7 +209,7 @@ Status: ✅ PASS
 - [门禁检查清单](./RELEASE_GATE_CHECKLIST.md)
 - [测试计划](./TEST_PLAN.md)
 - [升级指南](./UPGRADE_GUIDE.md)
-- [WAL 配置迁移](./WAL_CONFIG_MIGRATION.md)
+- WAL 配置迁移
 - [功能集成状态](./INTEGRATION_STATUS.md)
 - [性能目标](./PERFORMANCE_TARGETS.md)
 - [GitHub Issues](https://github.com/minzuuniversity/sqlrustgo/issues)

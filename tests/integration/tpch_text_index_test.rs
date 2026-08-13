@@ -20,13 +20,10 @@ fn test_text_index() {
     for i in 0..1000 {
         let status = if i % 2 == 0 { "P" } else { "O" };
         engine
-            .execute(
-                parse(&format!(
-                    "INSERT INTO orders VALUES ({}, {}, '{}', 100.0, '1998-01-01')",
-                    i, i, status
-                ))
-                .unwrap(),
-            )
+            .execute(&format!(
+                "INSERT INTO orders VALUES ({}, {}, '{}', 100.0, '1998-01-01')",
+                i, i, status
+            ))
             .unwrap();
     }
 
@@ -49,7 +46,7 @@ fn test_text_index() {
 
     let filepath = "data/tpch-sf03/lineitem.tbl";
     if Path::new(&filepath).exists() {
-        let mut storage = engine.storage.write();
+        let mut storage = engine.storage_ref().write();
         match storage.bulk_load_tbl_file("lineitem", &filepath) {
             Ok(count) => {
                 println!("  Loaded {} rows", count);

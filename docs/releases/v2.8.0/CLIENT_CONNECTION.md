@@ -457,9 +457,7 @@ jdbc:mysql://127.0.0.1:3306/default?useSSL=true&requireSSL=true
 ## 11. 相关文档
 
 - [快速开始](./QUICK_START.md)
-- [REST API 参考](./API_REFERENCE.md)
-- [安全加固指南](./SECURITY_HARDENING.md)
-- [用户手册](./USER_MANUAL.md)
+- [用户手册](./user-guide/USER_MANUAL.md)
 
 ---
 

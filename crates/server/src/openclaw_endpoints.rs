@@ -2156,6 +2156,7 @@ fn execute_sql(
                     references: None,
                     auto_increment: col.auto_increment,
                     compression: None,
+                    collation: None,
                 })
                 .collect();
 

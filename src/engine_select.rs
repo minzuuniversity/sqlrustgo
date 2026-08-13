@@ -212,6 +212,7 @@ impl<S: StorageEngine + 'static> ExecutionEngine<S> {
                     check_constraints: Vec::new(),
                     partition_info: None,
                     compression: None,
+                    collations: std::collections::HashMap::new(),
                 };
                 for col in &subq.columns {
                     let col_name = col.alias.clone().unwrap_or_else(|| col.name.clone());
@@ -246,6 +247,7 @@ impl<S: StorageEngine + 'static> ExecutionEngine<S> {
                             nullable: true,
                             primary_key: false,
                             char_max_length: None,
+                            collation: None,
                         });
                 }
                 Some((sub_result.rows, table_info))
@@ -306,6 +308,7 @@ impl<S: StorageEngine + 'static> ExecutionEngine<S> {
                         nullable: true,
                         primary_key: false,
                         char_max_length: None,
+                        collation: None,
                     })
                     .collect(),
                 foreign_keys: Vec::new(),
@@ -313,6 +316,7 @@ impl<S: StorageEngine + 'static> ExecutionEngine<S> {
                 check_constraints: Vec::new(),
                 partition_info: None,
                 compression: None,
+                collations: std::collections::HashMap::new(),
             };
             (rows, info)
         } else if select.table.is_empty() {
@@ -324,6 +328,7 @@ impl<S: StorageEngine + 'static> ExecutionEngine<S> {
                 check_constraints: Vec::new(),
                 partition_info: None,
                 compression: None,
+                collations: std::collections::HashMap::new(),
             };
             (vec![Vec::new()], empty_schema)
         } else {
@@ -1546,6 +1551,7 @@ impl<S: StorageEngine + 'static> ExecutionEngine<S> {
                     check_constraints: Vec::new(),
                     partition_info: None,
                     compression: None,
+                    collations: std::collections::HashMap::new(),
                 };
                 for col in &subq.columns {
                     let col_name = col.alias.clone().unwrap_or_else(|| col.name.clone());
@@ -1579,6 +1585,7 @@ impl<S: StorageEngine + 'static> ExecutionEngine<S> {
                             nullable: true,
                             primary_key: false,
                             char_max_length: None,
+                            collation: None,
                         });
                 }
                 DERIVED_RESULTS.with(|cell| {
@@ -2025,6 +2032,7 @@ impl<S: StorageEngine + 'static> ExecutionEngine<S> {
                     nullable: col.nullable,
                     primary_key: col.primary_key,
                     char_max_length: col.char_max_length,
+                    collation: col.collation.clone(),
                 });
             }
             acc_columns = new_columns;
@@ -2375,6 +2383,7 @@ impl<S: StorageEngine + 'static> ExecutionEngine<S> {
                         nullable: col.nullable,
                         primary_key: col.primary_key,
                         char_max_length: col.char_max_length,
+                        collation: col.collation.clone(),
                     });
                 }
                 let combined_schema = TableInfo {
@@ -2385,6 +2394,7 @@ impl<S: StorageEngine + 'static> ExecutionEngine<S> {
                     check_constraints: vec![],
                     partition_info: None,
                     compression: None,
+                    collations: std::collections::HashMap::new(),
                 };
                 return Ok((cross, combined_schema));
             }
@@ -3206,6 +3216,7 @@ impl<S: StorageEngine + 'static> ExecutionEngine<S> {
             | Expression::WindowCall(_)
             | Expression::SequenceNextVal(_)
             | Expression::SequenceCurrval(_)
+            | Expression::SystemVariable(_)
             | Expression::JsonLiteral(_) => where_expr.clone(),
         }
     }

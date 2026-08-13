@@ -116,6 +116,8 @@ fn v312_13_load_data_sf1_region_nation_smoke() {
         data_dir: Some(tmp.path().to_path_buf()),
         bootstrap_tables: false,
         bootstrap_users: true,
+        metrics_port: None,
+
         ..Default::default()
     })
     .expect("start_ephemeral");
@@ -252,6 +254,8 @@ fn v312_13_sf1_lineitem_smoke_subset() {
         data_dir: Some(tmp.path().to_path_buf()),
         bootstrap_tables: false,
         bootstrap_users: true,
+        metrics_port: None,
+
         ..Default::default()
     })
     .expect("start_ephemeral");

@@ -703,7 +703,7 @@ for (t1, t2) in collisions {
 > - 其他 query 的"行数=0"是因为 **本表行数从未实测** — 它们来自代码路径分析,不是真实运行结果
 > - 所有标 [未实测]* 的数据都是代码预测/估算,**没有真实 SF=1 fixture 上 22/22 的运行证据**
 
-**真实状态**: 仅 Q1/Q4/Q6/Q22 + 简单 2-3 表连接在本次 session 实测通过(~10/22)。Q5 nation-bridge 启发式 + Q21 lineitem|l1 alias 处理由 `tests/q5_q21_reorder_test` 4/4 提供 parser-level 证据。任何 22/22 PASS 声明仍需完整 SF=1 fixture 端到端执行 + PG SHA256 证据支撑,完整依据见 [`TPCH_SF1_VERIFICATION_REPORT.md`](../../TPCH_SF1_VERIFICATION_REPORT.md)
+**真实状态**: 仅 Q1/Q4/Q6/Q22 + 简单 2-3 表连接在本次 session 实测通过(~10/22)。Q5 nation-bridge 启发式 + Q21 lineitem|l1 alias 处理由 `tests/q5_q21_reorder_test` 4/4 提供 parser-level 证据。任何 22/22 PASS 声明仍需完整 SF=1 fixture 端到端执行 + PG SHA256 证据支撑,完整依据见 [`TPCH_SF1_VERIFICATION_REPORT.md`](../TPCH_SF1_VERIFICATION_REPORT.md)
 
 ---
 

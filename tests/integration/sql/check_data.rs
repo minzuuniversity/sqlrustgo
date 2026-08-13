@@ -28,6 +28,8 @@ fn check_sf1_data_present() {
         data_dir: Some(data_dir.to_path_buf()),
         bootstrap_tables: false,
         bootstrap_users: true,
+        metrics_port: None,
+
         ..Default::default()
     };
     let handle = start_ephemeral(config).expect("start_ephemeral");

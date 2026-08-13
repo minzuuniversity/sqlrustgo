@@ -230,7 +230,7 @@ fn emit_skip_message() {
     );
 }
 
-#[ignore = "requires SF=1.0 fixture at /tmp/tpch-sf1 (dbgen -s 1 -f); run with --ignored"]
+#[ignore = "requires SF=1.0 fixture at /tmp/tpch-sf1 (dbgen -s 1 -f) AND TPCH_SKIP_PANIC=1 (Q16/Q21 correctness bugs pending); run with --ignored"]
 #[test]
 fn tpch_sf1_22_in_process_regression() {
     if !fixture_present() {
@@ -309,6 +309,8 @@ fn tpch_sf1_22_in_process_regression() {
         bootstrap_users: true,
         bootstrap_sql,
         storage: storage_backend,
+        metrics_port: None,
+
         ..Default::default()
     };
     let handle = start_ephemeral(config).expect("start_ephemeral");

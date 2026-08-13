@@ -224,10 +224,13 @@ mod tests {
                 nullable: false,
                 primary_key: true,
                 char_max_length: None,
+                collation: None,
             }],
             foreign_keys: vec![],
             unique_constraints: vec![],
             check_constraints: vec![],
+            collations: std::collections::HashMap::new(),
+
             partition_info: None,
             compression: None,
         }
@@ -243,6 +246,7 @@ mod tests {
                     nullable: false,
                     primary_key: false,
                     char_max_length: None,
+                    collation: None,
                 },
                 crate::engine::ColumnDefinition {
                     name: "b".into(),
@@ -250,6 +254,7 @@ mod tests {
                     nullable: true,
                     primary_key: false,
                     char_max_length: None,
+                    collation: None,
                 },
                 crate::engine::ColumnDefinition {
                     name: "c".into(),
@@ -257,6 +262,7 @@ mod tests {
                     nullable: true,
                     primary_key: false,
                     char_max_length: None,
+                    collation: None,
                 },
                 crate::engine::ColumnDefinition {
                     name: "d".into(),
@@ -264,11 +270,14 @@ mod tests {
                     nullable: true,
                     primary_key: false,
                     char_max_length: None,
+                    collation: None,
                 },
             ],
             foreign_keys: vec![],
             unique_constraints: vec![],
             check_constraints: vec![],
+            collations: std::collections::HashMap::new(),
+
             partition_info: None,
             compression: None,
         }

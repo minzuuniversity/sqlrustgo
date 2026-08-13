@@ -1322,8 +1322,38 @@ impl<S: StorageEngine + 'static> ExecutionEngine<S> {
         left_result.rows.extend(right_result.rows);
 
         if !union_stmt.union_all {
-            left_result.rows.sort();
-            left_result.rows.dedup();
+            // V4077 / Issue #4077: collation-aware DISTINCT for UNION.
+            // Two rows are duplicates if their per-column values compare
+            // equal under each column's collation (NOCASE folds case,
+            // BINARY is exact). We dedup by a normalized key while
+            // preserving the *left* side's original casing in output.
+            let storage = self.storage.read();
+            let left_coll = collect_column_collations(&*storage, &union_stmt.left);
+            let right_coll = collect_column_collations(&*storage, &union_stmt.right);
+            drop(storage);
+            // Walk rows keeping the FIRST occurrence (leftmost wins).
+            let mut seen: std::collections::HashSet<Vec<Value>> = std::collections::HashSet::new();
+            let mut out: Vec<Vec<Value>> = Vec::with_capacity(left_result.rows.len());
+            for row in &left_result.rows {
+                // Determine which collation set applies: pick left's if
+                // available, otherwise right's. For UNION, both sides
+                // contribute one collation context; rows from each side
+                // are normalized under their own side's collation before
+                // being inserted into the seen set.
+                let row_coll = if out.is_empty() {
+                    &left_coll
+                } else {
+                    &right_coll
+                };
+                let key = normalize_row_for_compare(row, row_coll);
+                if seen.insert(key) {
+                    out.push(row.clone());
+                }
+            }
+            left_result.rows = out;
+            // SQL requires output order to be implementation-defined for
+            // UNION DISTINCT; preserve insertion order which is the order
+            // rows were first seen (left side wins ties).
         }
 
         // Trailing ORDER BY / LIMIT / OFFSET (C-2c).
@@ -1383,33 +1413,110 @@ impl<S: StorageEngine + 'static> ExecutionEngine<S> {
         //   * DISTINCT (default): deduplicate each side, then keep rows
         //     that appear on both sides (one copy each).
         //   * ALL: keep min(cntL(r), cntR(r)) copies of every row r.
-        // The previous implementation only retained rows from left that
-        // appeared in the deduplicated right set, which dropped multiplicity
-        // under INTERSECT ALL (returned too few copies) and returned too
-        // many copies because left was never dedup'd for ALL.
-        let left_counts = multiset_counts(&left_result.rows);
-        let right_counts = multiset_counts(&right_result.rows);
+        // V4077 / Issue #4077: row identity for the multiset is the
+        // NORMALIZED row under each side's column collations, so a
+        // NOCASE column on either side folds case before comparing.
+        // The *output* keeps the LEFT side's original casing.
+        let storage = self.storage.read();
+        let left_coll = collect_column_collations(&*storage, &stmt.left);
+        let right_coll = collect_column_collations(&*storage, &stmt.right);
+        drop(storage);
+        let left_entries = multiset_entries(&left_result.rows, &left_coll);
+        let right_entries = multiset_entries(&right_result.rows, &right_coll);
         let mut out: Vec<Vec<Value>> = Vec::new();
         if stmt.intersect_all {
-            for (row, cnt_l) in &left_counts {
-                if let Some(cnt_r) = right_counts.get(row) {
+            for (key, (cnt_l, first_row)) in &left_entries {
+                if let Some((cnt_r, _)) = right_entries.get(key) {
                     let keep = (*cnt_l).min(*cnt_r);
                     for _ in 0..keep {
-                        out.push(row.clone());
+                        out.push(first_row.clone());
                     }
                 }
             }
         } else {
             // DISTINCT: a row appears iff it appears on both sides; one copy.
-            for (row, _) in &left_counts {
-                if right_counts.contains_key(row) {
-                    out.push(row.clone());
+            for (key, (_, first_row)) in &left_entries {
+                if right_entries.contains_key(key) {
+                    out.push(first_row.clone());
                 }
             }
         }
         left_result.rows = out;
+        // V4077 / Issue #4077: trailing ORDER BY / LIMIT / OFFSET lifted
+        // from the right SELECT (consistent with UNION's behavior).
+        // INTERSECT DISTINCT now applies the ORDER BY so callers
+        // observe deterministic output even when the HashMap iteration
+        // order would otherwise shuffle the result.
+        self.apply_trailing_order_limit_offset(
+            &stmt.left,
+            &stmt.trailing_order_by,
+            stmt.trailing_offset.map(|v| v as u64),
+            stmt.trailing_limit.map(|v| v as u64),
+            &mut left_result.rows,
+        );
         left_result.affected_rows = left_result.rows.len();
         Ok(left_result)
+    }
+
+    fn apply_trailing_order_limit_offset(
+        &self,
+        stmt_left: &Statement,
+        order_by: &[sqlrustgo_parser::parser::OrderByExpression],
+        offset: Option<u64>,
+        limit: Option<u64>,
+        rows: &mut Vec<Vec<Value>>,
+    ) {
+        if order_by.is_empty() && offset.is_none() && limit.is_none() {
+            return;
+        }
+        if !order_by.is_empty() {
+            // V4077 / Issue #4077: when the leftmost SELECT uses `*`
+            // (or `table.*`), expand to the actual physical columns of
+            // the source table so that `ORDER BY a` resolves to a
+            // real column index instead of `Value::Null`. Without this
+            // the order-by key collapses to NULL for every row and the
+            // HashMap insertion order leaks into the output.
+            let storage = self.storage.read();
+            let col_names: Vec<String> = expand_column_names(&*storage, stmt_left);
+            drop(storage);
+            let col_names_ref: Vec<&str> = col_names.iter().map(|s| s.as_str()).collect();
+            let sort_keys: Vec<Vec<Value>> = rows
+                .iter()
+                .map(|row| {
+                    order_by
+                        .iter()
+                        .map(|ob| order_by_expr_value(&ob, &col_names_ref, row))
+                        .collect()
+                })
+                .collect();
+            let mut indices: Vec<usize> = (0..rows.len()).collect();
+            indices.sort_by(|&a, &b| {
+                for (i, ob) in order_by.iter().enumerate() {
+                    let ord = if i < sort_keys[a].len() && i < sort_keys[b].len() {
+                        sort_keys[a][i].cmp(&sort_keys[b][i])
+                    } else {
+                        std::cmp::Ordering::Equal
+                    };
+                    let ord = if ob.ascending { ord } else { ord.reverse() };
+                    if ord != std::cmp::Ordering::Equal {
+                        return ord;
+                    }
+                }
+                std::cmp::Ordering::Equal
+            });
+            *rows = indices.into_iter().map(|i| rows[i].clone()).collect();
+        }
+        if let Some(off) = offset {
+            let off = off as usize;
+            if off < rows.len() {
+                rows.drain(..off);
+            } else {
+                rows.clear();
+            }
+        }
+        if let Some(lim) = limit {
+            rows.truncate(lim as usize);
+        }
     }
 
     fn execute_except(&mut self, stmt: &ExceptStatement) -> SqlResult<ExecutorResult> {
@@ -1419,29 +1526,43 @@ impl<S: StorageEngine + 'static> ExecutionEngine<S> {
         //   * DISTINCT (default): deduplicate each side, then keep rows
         //     from left that do NOT appear in right (one copy each).
         //   * ALL: keep max(0, cntL(r) - cntR(r)) copies of every row r.
-        // The previous implementation removed every left copy whose value
-        // appeared in the deduplicated right set, which collapsed multiplicity
-        // under EXCEPT ALL.
-        let left_counts = multiset_counts(&left_result.rows);
-        let right_counts = multiset_counts(&right_result.rows);
+        // V4077 / Issue #4077: same normalization for collation as
+        // INTERSECT — NOCASE columns are case-folded for comparison.
+        let storage = self.storage.read();
+        let left_coll = collect_column_collations(&*storage, &stmt.left);
+        let right_coll = collect_column_collations(&*storage, &stmt.right);
+        drop(storage);
+        let left_entries = multiset_entries(&left_result.rows, &left_coll);
+        let right_entries = multiset_entries(&right_result.rows, &right_coll);
         let mut out: Vec<Vec<Value>> = Vec::new();
         if stmt.except_all {
-            for (row, cnt_l) in &left_counts {
-                let cnt_r = right_counts.get(row).copied().unwrap_or(0);
+            for (key, (cnt_l, first_row)) in &left_entries {
+                let cnt_r = right_entries.get(key).map(|(c, _)| *c).unwrap_or(0);
                 let keep = cnt_l.saturating_sub(cnt_r);
                 for _ in 0..keep {
-                    out.push(row.clone());
+                    out.push(first_row.clone());
                 }
             }
         } else {
             // DISTINCT: a row is kept iff it appears in left and not in right.
-            for (row, _) in &left_counts {
-                if !right_counts.contains_key(row) {
-                    out.push(row.clone());
+            for (key, (_, first_row)) in &left_entries {
+                if !right_entries.contains_key(key) {
+                    out.push(first_row.clone());
                 }
             }
         }
         left_result.rows = out;
+        // V4077 / Issue #4077: trailing ORDER BY / LIMIT / OFFSET lifted
+        // from the right SELECT (consistent with UNION's behavior).
+        // EXCEPT DISTINCT now applies the ORDER BY so callers
+        // observe deterministic output (e.g. ORDER BY 1 → ascending).
+        self.apply_trailing_order_limit_offset(
+            &stmt.left,
+            &stmt.trailing_order_by,
+            stmt.trailing_offset.map(|v| v as u64),
+            stmt.trailing_limit.map(|v| v as u64),
+            &mut left_result.rows,
+        );
         left_result.affected_rows = left_result.rows.len();
         Ok(left_result)
     }
@@ -1478,17 +1599,156 @@ fn leftmost_column_names(stmt: &Statement) -> Vec<&str> {
     }
 }
 
-/// Count row multiplicities for multiset (INTERSECT ALL / EXCEPT ALL)
-/// semantics. Returns a HashMap keyed by the row's value vector so
-/// `Vec<Value>` equality drives the multiset comparison. Insertion
-/// iteration order is preserved as the standard HashMap order; set-op
-/// callers only need the counts, not the order.
-fn multiset_counts(rows: &[Vec<Value>]) -> std::collections::HashMap<Vec<Value>, usize> {
-    let mut counts: std::collections::HashMap<Vec<Value>, usize> = std::collections::HashMap::new();
-    for row in rows {
-        *counts.entry(row.clone()).or_insert(0) += 1;
+/// V4077 / Issue #4077: expand `*` / `table.*` to the actual physical
+/// column names of the source table, so ORDER BY resolution against a
+/// `SELECT *` left side can find real column indices. Returns owned
+/// strings (rather than `&str`) because the physical columns come from
+/// a fresh `get_table_info` call and live only as long as the storage
+/// read guard.
+fn expand_column_names(
+    storage: &dyn sqlrustgo_storage::StorageEngine,
+    stmt: &Statement,
+) -> Vec<String> {
+    match stmt {
+        Statement::Select(s) => {
+            let raw = s
+                .columns
+                .iter()
+                .map(|c| c.alias.clone().unwrap_or_else(|| c.name.clone()))
+                .collect::<Vec<_>>();
+            // Expand `*` (or `table.*`) once via the source table info.
+            let mut out: Vec<String> = Vec::new();
+            for n in raw {
+                if n == "*" {
+                    if !s.table.is_empty() {
+                        if let Ok(info) = storage.get_table_info(&s.table) {
+                            for col in &info.columns {
+                                out.push(col.name.clone());
+                            }
+                            continue;
+                        }
+                    }
+                    // V313-followup-6 / Issue #4159: `SELECT * FROM (VALUES ...) s(x)`
+                    // has `table="s"` but `s` is not in catalog; recurse into
+                    // `from_subquery` so the column-list form `s(x)` surfaces.
+                    if let Some(sub) = &s.from_subquery {
+                        let sub_names = expand_column_names(storage, &Statement::Select(sub.as_ref().clone()));
+                        out.extend(sub_names);
+                    }
+                } else {
+                    out.push(n);
+                }
+            }
+            out
+        }
+        Statement::Union(u) => expand_column_names(storage, &u.left),
+        Statement::Intersect(i) => expand_column_names(storage, &i.left),
+        Statement::Except(e) => expand_column_names(storage, &e.left),
+        _ => Vec::new(),
     }
-    counts
+}
+
+/// V4077 / Issue #4077: collation-aware multiset entries.
+/// Returns a map keyed by the *normalized* row (per-column collation
+/// applied) to `(count, first_original_row)`. The first row from the
+/// input slice is preserved so set-op output retains the LEFT side's
+/// original casing for NOCASE columns.
+fn multiset_entries(
+    rows: &[Vec<Value>],
+    collations: &[Option<String>],
+) -> std::collections::HashMap<Vec<Value>, (usize, Vec<Value>)> {
+    let mut entries: std::collections::HashMap<Vec<Value>, (usize, Vec<Value>)> =
+        std::collections::HashMap::new();
+    for row in rows {
+        let key = normalize_row_for_compare(row, collations);
+        let entry = entries.entry(key).or_insert_with(|| (0usize, row.clone()));
+        entry.0 += 1;
+    }
+    entries
+}
+
+/// V4077 / Issue #4077: walk a set-op's left operand to find the
+/// leftmost SELECT statement (so we can look up its source table's
+/// column collations).
+fn leftmost_select(stmt: &Statement) -> Option<&SelectStatement> {
+    match stmt {
+        Statement::Select(s) => Some(s),
+        Statement::Union(u) => leftmost_select(&u.left),
+        Statement::Intersect(i) => leftmost_select(&i.left),
+        Statement::Except(e) => leftmost_select(&e.left),
+        _ => None,
+    }
+}
+
+/// V4077 / Issue #4077: pull each column's COLLATE name from the
+/// source table's TableInfo (if any). Returns a Vec aligned with
+/// SELECT projection positions; position N corresponds to column N
+/// of the SELECT's projection. If the leftmost SELECT references no
+/// resolvable table, returns an empty Vec (caller treats empty as
+/// "no collation context" → binary comparison, the original
+/// behavior).
+fn collect_column_collations(
+    storage: &dyn sqlrustgo_storage::StorageEngine,
+    stmt: &Statement,
+) -> Vec<Option<String>> {
+    let Some(select) = leftmost_select(stmt) else {
+        return Vec::new();
+    };
+    if select.table.is_empty() {
+        return Vec::new();
+    }
+    let Ok(info) = storage.get_table_info(&select.table) else {
+        return Vec::new();
+    };
+    // Column names from the SELECT projection (alias → name). For `*`
+    // (or `table.*`), expand to every physical column of the source
+    // table in declaration order. Otherwise the alias-or-name lookup
+    // would fail for `*` and the collation context would silently
+    // collapse to binary comparison — which is what produced the V4077
+    // NOCASE bug where ABC != abc under binary.
+    let mut names: Vec<String> = Vec::new();
+    for c in &select.columns {
+        let n = c.alias.clone().unwrap_or_else(|| c.name.clone());
+        if n == "*" {
+            for col in &info.columns {
+                names.push(col.name.clone());
+            }
+        } else {
+            names.push(n);
+        }
+    }
+    names
+        .into_iter()
+        .map(|n| {
+            info.columns
+                .iter()
+                .find(|c| c.name == n)
+                .and_then(|c| c.collation.clone())
+        })
+        .collect()
+}
+
+/// V4077 / Issue #4077: produce a comparison key from a row by
+/// applying each column's collation. NOCASE folds ASCII case;
+/// unknown / BINARY leaves the value as-is.
+fn normalize_row_for_compare(row: &[Value], collations: &[Option<String>]) -> Vec<Value> {
+    if collations.is_empty() {
+        return row.to_vec();
+    }
+    row.iter()
+        .enumerate()
+        .map(|(i, v)| {
+            let coll = collations.get(i).and_then(|c| c.as_deref());
+            normalize_value_for_collation(v, coll)
+        })
+        .collect()
+}
+
+fn normalize_value_for_collation(v: &Value, collation: Option<&str>) -> Value {
+    match (v, collation) {
+        (Value::Text(s), Some("NOCASE")) => Value::Text(s.to_uppercase()),
+        (v, _) => v.clone(),
+    }
 }
 
 /// Evaluate a single ORDER BY expression against a row, using column

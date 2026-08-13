@@ -83,6 +83,7 @@ pub fn materialize_cte_tables<S: StorageEngine + 'static>(
                     nullable: true,
                     primary_key: false,
                     char_max_length: None,
+                    collation: None,
                 }
             })
             .collect();
@@ -94,6 +95,7 @@ pub fn materialize_cte_tables<S: StorageEngine + 'static>(
             check_constraints: vec![],
             partition_info: None,
             compression: None,
+            collations: std::collections::HashMap::new(),
         };
         let mut storage = engine.storage.write();
         storage

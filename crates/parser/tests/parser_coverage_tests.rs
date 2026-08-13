@@ -2444,13 +2444,15 @@ fn test_parse_window_lead() {
 
 #[test]
 fn test_parse_window_first_value() {
-    let result = parse("SELECT FIRST_VALUE(salary) OVER (PARTITION BY dept ORDER BY id) FROM employees");
+    let result =
+        parse("SELECT FIRST_VALUE(salary) OVER (PARTITION BY dept ORDER BY id) FROM employees");
     let _ = result;
 }
 
 #[test]
 fn test_parse_window_nth_value() {
-    let result = parse("SELECT NTH_VALUE(salary, 2) OVER (PARTITION BY dept ORDER BY id) FROM employees");
+    let result =
+        parse("SELECT NTH_VALUE(salary, 2) OVER (PARTITION BY dept ORDER BY id) FROM employees");
     let _ = result;
 }
 
@@ -2510,7 +2512,9 @@ fn test_parse_insert_on_conflict_do_nothing() {
 
 #[test]
 fn test_parse_insert_on_conflict_do_update() {
-    let result = parse("INSERT INTO users (id, name) VALUES (1, 'x') ON CONFLICT (id) DO UPDATE SET name = 'y'");
+    let result = parse(
+        "INSERT INTO users (id, name) VALUES (1, 'x') ON CONFLICT (id) DO UPDATE SET name = 'y'",
+    );
     let _ = result;
 }
 
@@ -2524,7 +2528,9 @@ fn test_parse_join_using_cov() {
 
 #[test]
 fn test_parse_left_join_with_or() {
-    let result = parse("SELECT * FROM users LEFT JOIN orders ON users.id = orders.user_id OR orders.amount > 100");
+    let result = parse(
+        "SELECT * FROM users LEFT JOIN orders ON users.id = orders.user_id OR orders.amount > 100",
+    );
     let _ = result;
 }
 
@@ -2544,7 +2550,8 @@ fn test_parse_cross_join_explicit() {
 
 #[test]
 fn test_parse_case_searched() {
-    let result = parse("SELECT CASE WHEN x > 0 THEN 'pos' WHEN x < 0 THEN 'neg' ELSE 'zero' END FROM t");
+    let result =
+        parse("SELECT CASE WHEN x > 0 THEN 'pos' WHEN x < 0 THEN 'neg' ELSE 'zero' END FROM t");
     let _ = result;
 }
 
@@ -2758,13 +2765,15 @@ fn test_parse_alter_table_drop_index() {
 
 #[test]
 fn test_parse_lateral_join() {
-    let result = parse("SELECT * FROM users u, LATERAL (SELECT * FROM orders WHERE user_id = u.id) o");
+    let result =
+        parse("SELECT * FROM users u, LATERAL (SELECT * FROM orders WHERE user_id = u.id) o");
     let _ = result;
 }
 
 #[test]
 fn test_parse_lateral_subquery_in_select() {
-    let result = parse("SELECT u.id, (SELECT COUNT(*) FROM orders WHERE user_id = u.id) FROM users u");
+    let result =
+        parse("SELECT u.id, (SELECT COUNT(*) FROM orders WHERE user_id = u.id) FROM users u");
     let _ = result;
 }
 
@@ -2786,7 +2795,9 @@ fn test_parse_tablesample_system() {
 
 #[test]
 fn test_parse_generated_column() {
-    let result = parse("CREATE TABLE t (id INT, full_name TEXT GENERATED ALWAYS AS (first_name || last_name))");
+    let result = parse(
+        "CREATE TABLE t (id INT, full_name TEXT GENERATED ALWAYS AS (first_name || last_name))",
+    );
     let _ = result;
 }
 
@@ -2966,7 +2977,8 @@ fn test_parse_in_subquery_cov() {
 
 #[test]
 fn test_parse_in_with_nested_subquery() {
-    let result = parse("SELECT * FROM t WHERE id IN (SELECT user_id FROM orders WHERE total > 100)");
+    let result =
+        parse("SELECT * FROM t WHERE id IN (SELECT user_id FROM orders WHERE total > 100)");
     let _ = result;
 }
 
@@ -3058,7 +3070,8 @@ fn test_parse_grouping_id() {
 
 #[test]
 fn test_parse_create_function_basic() {
-    let result = parse("CREATE FUNCTION my_func(a INT) RETURNS INT AS $$ SELECT a + 1 $$ LANGUAGE SQL");
+    let result =
+        parse("CREATE FUNCTION my_func(a INT) RETURNS INT AS $$ SELECT a + 1 $$ LANGUAGE SQL");
     let _ = result;
 }
 
@@ -3102,7 +3115,9 @@ fn test_parse_create_type_enum() {
 
 #[test]
 fn test_parse_window_frame_rows() {
-    let result = parse("SELECT SUM(amount) OVER (ORDER BY id ROWS BETWEEN 2 PRECEDING AND CURRENT ROW) FROM t");
+    let result = parse(
+        "SELECT SUM(amount) OVER (ORDER BY id ROWS BETWEEN 2 PRECEDING AND CURRENT ROW) FROM t",
+    );
     let _ = result;
 }
 
@@ -3124,7 +3139,8 @@ fn test_parse_grouping_sets() {
 
 #[test]
 fn test_parse_within_group() {
-    let result = parse("SELECT a, ARRAY_AGG(b ORDER BY c) WITHIN GROUP (ORDER BY c) FROM t GROUP BY a");
+    let result =
+        parse("SELECT a, ARRAY_AGG(b ORDER BY c) WITHIN GROUP (ORDER BY c) FROM t GROUP BY a");
     let _ = result;
 }
 
