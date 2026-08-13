@@ -168,6 +168,7 @@ pub fn execute_intersect<S: StorageEngine + 'static>(
     // order would otherwise shuffle the result.
     apply_trailing_order_limit_offset(
         engine,
+        engine.session_null_order_first,
         &stmt.left,
         &stmt.trailing_order_by,
         stmt.trailing_offset.map(|v| v as u64),
@@ -220,6 +221,7 @@ pub fn execute_except<S: StorageEngine + 'static>(
     // observe deterministic output (e.g. ORDER BY 1 → ascending).
     apply_trailing_order_limit_offset(
         engine,
+        engine.session_null_order_first,
         &stmt.left,
         &stmt.trailing_order_by,
         stmt.trailing_offset.map(|v| v as u64),
@@ -232,6 +234,7 @@ pub fn execute_except<S: StorageEngine + 'static>(
 
 pub fn apply_trailing_order_limit_offset<S: StorageEngine + 'static>(
     engine: &ExecutionEngine<S>,
+    session_null_order_first: Option<bool>,
     stmt_left: &Statement,
     order_by: &[OrderByExpression],
     offset: Option<u64>,
@@ -264,8 +267,28 @@ pub fn apply_trailing_order_limit_offset<S: StorageEngine + 'static>(
         let mut indices: Vec<usize> = (0..rows.len()).collect();
         indices.sort_by(|&a, &b| {
             for (i, ob) in order_by.iter().enumerate() {
+                // V313-followup-4 / Issue #4157: explicit ob.nulls_first
+                // wins; otherwise fall back to session
+                // `SET default_null_order`, otherwise default
+                // (nulls_first).
+                let nulls_first_eff: bool = ob.nulls_first.unwrap_or_else(|| {
+                    session_null_order_first.unwrap_or(true)
+                });
                 let ord = if i < sort_keys[a].len() && i < sort_keys[b].len() {
-                    sort_keys[a][i].cmp(&sort_keys[b][i])
+                    let va = &sort_keys[a][i];
+                    let vb = &sort_keys[b][i];
+                    let is_null_a = matches!(va, Value::Null);
+                    let is_null_b = matches!(vb, Value::Null);
+                    let base_ord = if is_null_a && is_null_b {
+                        std::cmp::Ordering::Equal
+                    } else if is_null_a {
+                        if nulls_first_eff { std::cmp::Ordering::Less } else { std::cmp::Ordering::Greater }
+                    } else if is_null_b {
+                        if nulls_first_eff { std::cmp::Ordering::Greater } else { std::cmp::Ordering::Less }
+                    } else {
+                        va.cmp(vb)
+                    };
+                    base_ord
                 } else {
                     std::cmp::Ordering::Equal
                 };
