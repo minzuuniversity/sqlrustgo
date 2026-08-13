@@ -2233,7 +2233,7 @@ fn make_deprecate_eof_ok_packet(
     client_cap: u32,
 ) -> Vec<Packet> {
     let mut p = Vec::new();
-// V312-WIRE-8 fix (regression #4019.4 fifth pass — replaces the
+    // V312-WIRE-8 fix (regression #4019.4 fifth pass — replaces the
     // retracted V312-WIRE-7 / V312-WIRE-5 hypothesis chain):
     //
     // Per MySQL WL#7766 (https://dev.mysql.com/worklog/task/?id=7766) and
@@ -2735,7 +2735,7 @@ fn send_result_set<W: Write>(
             seq,
         )?;
     }
-// Inter-record separator between column defs and the row stream.
+    // Inter-record separator between column defs and the row stream.
     // Per MySQL wire protocol (and verified against mysql 8.0 CLI behavior):
     //   - DEPRECATE_EOF = 0 (classic pre-8.0): send a 5-byte EOF packet
     //     so clients can detect "end of column metadata, rows begin".
@@ -3171,10 +3171,7 @@ pub fn replace_placeholders(sql: &str, params: &[StmtParam]) -> String {
                     // Without this, `WHERE id = ?` with param "1" produces
                     // `WHERE id = '1'` which compares INT to STRING and
                     // matches zero rows (Issue #4130).
-                    if !s.is_empty()
-                        && s.bytes().all(|b| b.is_ascii_digit())
-                        && param.len() < 20
-                    {
+                    if !s.is_empty() && s.bytes().all(|b| b.is_ascii_digit()) && param.len() < 20 {
                         // Treat as numeric literal (no quotes).
                         s
                     } else {
@@ -4295,7 +4292,8 @@ fn do_command_loop<S: Read + Write + DrainWrites>(
                     // renderer reads the same singleton that the
                     // `/metrics` endpoint serves.
                     let query_type = statement_kind(&parsed);
-                    sqlrustgo_telemetry::GLOBAL_METRICS.record_query(query_type, std::time::Duration::from_millis(elapsed_ms));
+                    sqlrustgo_telemetry::GLOBAL_METRICS
+                        .record_query(query_type, std::time::Duration::from_millis(elapsed_ms));
                     match result {
                         Ok(r) if is_read_only.is_some() => {
                             // Extract real column names from the SQL
@@ -4628,10 +4626,8 @@ fn do_command_loop<S: Read + Write + DrainWrites>(
                 }
                 // V312-18e Issue #4021: record prepared-statement
                 // executions into the Prometheus counters as well.
-                sqlrustgo_telemetry::GLOBAL_METRICS.record_query(
-                    "STMT_EXECUTE",
-                    std::time::Duration::from_millis(elapsed_ms),
-                );
+                sqlrustgo_telemetry::GLOBAL_METRICS
+                    .record_query("STMT_EXECUTE", std::time::Duration::from_millis(elapsed_ms));
                 match result {
                     Ok(r) if is_read_only.is_some() => {
                         let c: Vec<String> = r
@@ -6586,7 +6582,7 @@ pub mod testing {
         /// Build one with
         /// `EphemeralConfig::with_slow_query_log(path, threshold_ms)`.
         pub slow_query_log: Option<Arc<query_stats::SlowQueryLog>>,
-/// V312-26 / Issue #4021: when `Some(port)`, the ephemeral
+        /// V312-26 / Issue #4021: when `Some(port)`, the ephemeral
         /// server spawns a background thread that serves Prometheus
         /// exposition format at `http://<host>:<port>/metrics`. `None`
         /// (the default) means no metrics endpoint is bound. The thread
@@ -6630,7 +6626,7 @@ pub mod testing {
             self
         }
 
-/// V312-26 / Issue #4021: enable a Prometheus `/metrics`
+        /// V312-26 / Issue #4021: enable a Prometheus `/metrics`
         /// endpoint bound to `<host>:<port>`. The endpoint renders the
         /// wire-protocol counters (`ACTIVE_CONNECTIONS`,
         /// `TOTAL_QUERIES_SERVED`, etc.) plus the telemetry `Metrics`

@@ -134,7 +134,7 @@ fn load_tbl_file(
             .collect();
         batch.push(record);
         if batch.len() >= BATCH_SIZE {
-            let mut storage = storage.write().unwrap();
+            let mut storage = storage.write();
             storage
                 .insert(tbl_name, batch.clone())
                 .map_err(|e| format!("Insert error: {}", e))?;
@@ -143,7 +143,7 @@ fn load_tbl_file(
         }
     }
     if !batch.is_empty() {
-        let mut storage = storage.write().unwrap();
+        let mut storage = storage.write();
         storage
             .insert(tbl_name, batch.clone())
             .map_err(|e| format!("Insert error: {}", e))?;

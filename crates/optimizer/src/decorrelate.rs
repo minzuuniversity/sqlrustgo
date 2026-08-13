@@ -225,7 +225,7 @@ fn count_scalar_in(expr: &Expression, count: &mut usize) {
 /// - Output: `Option<DecorrelatedWhere>` describing the rewriter
 ///
 /// ## Patterns handled
-/// - `ExistsSemi`: rewrites to inner-join-on-key-trick (filter inside join)
+/// - `ExistsSemi`: rewrites to left-semi-join (via Engine HashSemiJoin hint, V312-22a)
 /// - `NotExistsAnti`: rewrites to left-anti-join (via Engine HashAntiJoin hint)
 /// - `InToInnerJoin`: rewrites to INNER JOIN on key
 /// - `ScalarAggGroupBy`: NOT YET (v2 deferred)

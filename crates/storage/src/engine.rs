@@ -1994,7 +1994,7 @@ mod tests {
                 nullable: false,
                 primary_key: true,
                 char_max_length: None,
-            collation: None,
+                collation: None,
             }],
             foreign_keys: vec![],
             unique_constraints: vec![],
@@ -2201,7 +2201,7 @@ mod tests {
                 nullable: false,
                 primary_key: true,
                 char_max_length: None,
-            collation: None,
+                collation: None,
             }],
             foreign_keys: vec![],
             unique_constraints: vec![],
@@ -2840,7 +2840,7 @@ mod tests {
                 check_constraints: vec![],
                 partition_info: None,
                 compression: None,
-            collations: HashMap::new(),
+                collations: HashMap::new(),
             };
             s.create_table(&info).unwrap();
         }

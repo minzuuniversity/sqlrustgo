@@ -209,6 +209,7 @@ fn test_aggregate_delegation() {
                 nullable: false,
                 primary_key: false,
                 char_max_length: None,
+            
             collation: None,
             },
             ColumnDefinition {
@@ -217,6 +218,7 @@ fn test_aggregate_delegation() {
                 nullable: false,
                 primary_key: false,
                 char_max_length: None,
+            
             collation: None,
             },
         ],
@@ -866,6 +868,7 @@ fn test_identifier_delegation() {
             nullable: false,
             primary_key: true,
             char_max_length: None,
+        
         collation: None,
         },
         ColumnDefinition {
@@ -874,6 +877,7 @@ fn test_identifier_delegation() {
             nullable: false,
             primary_key: false,
             char_max_length: None,
+        
         collation: None,
         },
         ColumnDefinition {
@@ -882,6 +886,7 @@ fn test_identifier_delegation() {
             nullable: false,
             primary_key: false,
             char_max_length: None,
+        
         collation: None,
         },
     ];
@@ -930,7 +935,7 @@ fn test_identifier_delegation() {
                 "facade mismatch for {input:?}: facade={from_facade:?} expected={expected:?}"
             ));
         }
-        if from_evaluator != *expected {
+        if from_evaluator != Ok(expected.clone()) {
             failures.push(format!(
                 "evaluator mismatch for {input:?}: evaluator={from_evaluator:?} expected={expected:?}"
             ));
@@ -956,6 +961,7 @@ fn test_identifier_known_outputs() {
             nullable: false,
             primary_key: true,
             char_max_length: None,
+        
         collation: None,
         },
         ColumnDefinition {
@@ -964,37 +970,38 @@ fn test_identifier_known_outputs() {
             nullable: false,
             primary_key: false,
             char_max_length: None,
+        
         collation: None,
         },
     ];
     let row: Vec<Value> = vec![Value::Integer(7), Value::Text("bob".into())];
 
     // Found
-    assert_eq!(eval_identifier("id", &row, &columns), Value::Integer(7));
+    assert_eq!(eval_identifier("id", &row, &columns).unwrap(), Value::Integer(7));
     assert_eq!(
-        eval_identifier("user_name", &row, &columns),
+        eval_identifier("user_name", &row, &columns).unwrap(),
         Value::Text("bob".into())
     );
     // Case-insensitive
     assert_eq!(
-        eval_identifier("ID", &row, &columns),
+        eval_identifier("ID", &row, &columns).unwrap(),
         Value::Integer(7),
         "case-insensitive match"
     );
     assert_eq!(
-        eval_identifier("USER_NAME", &row, &columns),
+        eval_identifier("USER_NAME", &row, &columns).unwrap(),
         Value::Text("bob".into()),
         "case-insensitive match"
     );
     // Not found → fallback
     assert_eq!(
-        eval_identifier("missing", &row, &columns),
+        eval_identifier("missing", &row, &columns).unwrap(),
         Value::Text("missing".into()),
         "unknown column returns Value::Text(name)"
     );
     // Out of bounds
     assert_eq!(
-        eval_identifier("id", &[], &columns),
+        eval_identifier("id", &[], &columns).unwrap(),
         Value::Null,
         "out-of-bounds row returns Null"
     );
@@ -1012,6 +1019,7 @@ fn test_find_column_index_known_outputs() {
             nullable: false,
             primary_key: true,
             char_max_length: None,
+        
         collation: None,
         },
         ColumnDefinition {
@@ -1020,6 +1028,7 @@ fn test_find_column_index_known_outputs() {
             nullable: false,
             primary_key: false,
             char_max_length: None,
+        
         collation: None,
         },
         ColumnDefinition {
@@ -1028,6 +1037,7 @@ fn test_find_column_index_known_outputs() {
             nullable: false,
             primary_key: false,
             char_max_length: None,
+        
         collation: None,
         },
     ];

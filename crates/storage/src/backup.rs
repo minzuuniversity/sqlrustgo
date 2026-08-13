@@ -469,7 +469,7 @@ mod tests {
                     nullable: false,
                     primary_key: false,
                     char_max_length: None,
-                collation: None,
+                    collation: None,
                 },
                 crate::ColumnDefinition {
                     name: "name".to_string(),
@@ -477,7 +477,7 @@ mod tests {
                     nullable: true,
                     primary_key: false,
                     char_max_length: None,
-                collation: None,
+                    collation: None,
                 },
             ],
             ..Default::default()
@@ -518,7 +518,7 @@ mod tests {
                     nullable: false,
                     primary_key: false,
                     char_max_length: None,
-                collation: None,
+                    collation: None,
                 },
                 crate::ColumnDefinition {
                     name: "name".to_string(),
@@ -526,7 +526,7 @@ mod tests {
                     nullable: true,
                     primary_key: false,
                     char_max_length: None,
-                collation: None,
+                    collation: None,
                 },
             ],
             ..Default::default()
@@ -614,7 +614,7 @@ mod tests {
                 nullable: false,
                 primary_key: false,
                 char_max_length: None,
-            collation: None,
+                collation: None,
             }],
             ..Default::default()
         };
@@ -713,7 +713,7 @@ mod tests {
                 nullable: false,
                 primary_key: false,
                 char_max_length: None,
-            collation: None,
+                collation: None,
             }],
             ..Default::default()
         };
@@ -738,7 +738,7 @@ mod tests {
                 nullable: false,
                 primary_key: false,
                 char_max_length: None,
-            collation: None,
+                collation: None,
             }],
             ..Default::default()
         };
@@ -769,7 +769,7 @@ mod tests {
                 nullable: false,
                 primary_key: false,
                 char_max_length: None,
-            collation: None,
+                collation: None,
             }],
             ..Default::default()
         };

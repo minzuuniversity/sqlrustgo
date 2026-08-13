@@ -591,8 +591,7 @@ pub fn parse_result_set(stream: &mut dyn Read, deprecate_eof: bool) -> MySqlResu
     // (enough for OK header fields), it's OK. Otherwise it's a lenenc
     // column count.
     let first_byte = pkt.payload.first().copied().unwrap_or(0);
-    let looks_like_ok = (first_byte == 0x00 || first_byte == 0xfe)
-        && pkt.payload.len() >= 5;
+    let looks_like_ok = (first_byte == 0x00 || first_byte == 0xfe) && pkt.payload.len() >= 5;
     if looks_like_ok {
         let mut off = 1;
         let affected_rows = parse_length_encoded_int(&pkt.payload, &mut off)?;
