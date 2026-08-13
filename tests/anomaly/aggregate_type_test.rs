@@ -143,9 +143,7 @@ mod tests {
         engine.execute("INSERT INTO single VALUES (42)").unwrap();
 
         let result = engine
-            .execute(
-                "SELECT COUNT(*), SUM(value), AVG(value), MIN(value), MAX(value) FROM single",
-            )
+            .execute("SELECT COUNT(*), SUM(value), AVG(value), MIN(value), MAX(value) FROM single")
             .unwrap();
 
         assert_eq!(result.rows.len(), 1);

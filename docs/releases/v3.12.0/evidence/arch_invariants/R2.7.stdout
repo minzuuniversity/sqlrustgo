@@ -9,22 +9,7 @@ Anti-Fabrication Policy Check (AFP) v4
 [PASS]   V312-24: both SQLancer + test-runner report artifacts present and valid
 
 [INFO] CHECK 2: cargo test --workspace --no-run (test compile only, fast)...
-[PASS] Test binaries compile: all 14 failures are KNOWN pre-existing
-[WARN] Pre-existing failures (API evolution, not fabrication):
-[WARN]   (pre-existing) agentsql_test
-[WARN]   (pre-existing) auth_rbac_test
-[WARN]   (pre-existing) batch_insert_test
-[WARN]   (pre-existing) diag_2t_join
-[WARN]   (pre-existing) index_integration_test
-[WARN]   (pre-existing) mysql_compatibility_test
-[WARN]   (pre-existing) optimizer_rules_test
-[WARN]   (pre-existing) performance_test
-[WARN]   (pre-existing) sqlrustgo
-[WARN]   (pre-existing) storage_integration_test
-[WARN]   (pre-existing) tpch_comparison_test
-[WARN]   (pre-existing) tpch_index_test
-[WARN]   (pre-existing) tpch_test
-[WARN]   (pre-existing) wal_fuzz_test
+[PASS] Test binaries compile PASS
 
 [INFO] CHECK 3: Gate report test counts vs actual cargo test compile output...
 [INFO] docs/releases/v3.8.0/alpha/ALPHA_GATE_REPORT.md: declares 10/10 PASS (test binaries: unknown)
@@ -40,7 +25,7 @@ Anti-Fabrication Policy Check (AFP) v4
 [PASS] Scanned 415 markdown files in docs/releases + docs/governance
 
 ============================================
-Results: ERRORS=0, WARNINGS=16
+Results: ERRORS=0, WARNINGS=0
 ============================================
 
 [PASS] Anti-fabrication check (AFP v4): PASS
