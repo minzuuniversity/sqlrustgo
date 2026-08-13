@@ -763,7 +763,7 @@ mod tests {
             nullable: false,
             primary_key: false,
             char_max_length: None,
-        collation: None,
+            collation: None,
         }];
         let rows = vec![vec![sqlrustgo_types::Value::Integer(42)]];
 
@@ -819,7 +819,7 @@ mod tests {
                 nullable: false,
                 primary_key: false,
                 char_max_length: None,
-            collation: None,
+                collation: None,
             }];
             let rows = vec![vec![sqlrustgo_types::Value::Integer(i)]];
             let data = TableData {
@@ -852,7 +852,7 @@ mod tests {
             nullable: false,
             primary_key: false,
             char_max_length: None,
-        collation: None,
+            collation: None,
         }];
         let rows = vec![vec![sqlrustgo_types::Value::Float(3.14159)]];
 
@@ -883,7 +883,7 @@ mod tests {
             nullable: false,
             primary_key: false,
             char_max_length: None,
-        collation: None,
+            collation: None,
         }];
         let rows = vec![vec![sqlrustgo_types::Value::Text("hello".to_string())]];
 
@@ -914,7 +914,7 @@ mod tests {
             nullable: false,
             primary_key: false,
             char_max_length: None,
-        collation: None,
+            collation: None,
         }];
         let rows: Vec<Vec<sqlrustgo_types::Value>> = (1..=100)
             .map(|i| vec![sqlrustgo_types::Value::Integer(i)])
@@ -949,7 +949,7 @@ mod tests {
                 nullable: false,
                 primary_key: false,
                 char_max_length: None,
-            collation: None,
+                collation: None,
             })
             .collect()
     }
@@ -1131,7 +1131,7 @@ mod tests {
                     nullable: true,
                     primary_key: false,
                     char_max_length: None,
-                collation: None,
+                    collation: None,
                 },
             )
             .unwrap();

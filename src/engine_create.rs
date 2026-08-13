@@ -217,7 +217,11 @@ impl<S: StorageEngine + 'static> ExecutionEngine<S> {
         let collations: std::collections::HashMap<String, String> = create
             .columns
             .iter()
-            .filter_map(|c| c.collation.as_ref().map(|n| (c.name.clone(), n.to_lowercase())))
+            .filter_map(|c| {
+                c.collation
+                    .as_ref()
+                    .map(|n| (c.name.clone(), n.to_lowercase()))
+            })
             .collect();
         let compression = create.compress.as_ref().map(|spec| match spec.algorithm {
             CompressionAlgorithm::Lz4 => "LZ4".to_string(),
@@ -288,7 +292,7 @@ impl<S: StorageEngine + 'static> ExecutionEngine<S> {
                 check_constraints,
                 partition_info: None,
                 compression: None,
-            collations: HashMap::new(),
+                collations: HashMap::new(),
             })?;
             self.clustered_tables
                 .write()
