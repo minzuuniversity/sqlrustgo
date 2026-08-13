@@ -7948,15 +7948,43 @@ impl Parser {
                         // parse_column_list() silently consume the
                         // next column's identifier as part of a
                         // spurious UNIQUE columns list.
-                        if matches!(self.tokens.get(self.position + 1), Some(Token::LParen)) {
-                            self.next();
-                            let columns = self.parse_column_list()?;
-                            constraints.push(TableConstraint::Unique {
-                                columns,
-                                name: None,
-                            });
-                        } else {
-                            continue;
+                        //
+                        // V312-coverage: also handle `UNIQUE KEY (cols)`
+                        // and `UNIQUE KEY name (cols)` (MySQL allows the
+                        // optional KEY keyword between UNIQUE and the
+                        // column list, with an optional constraint
+                        // name in between). Previously UNIQUE KEY fell
+                        // into the `else continue` branch and since
+                        // the loop didn't advance on `continue`, it
+                        // spun forever.
+                        let next_tok = self.tokens.get(self.position + 1);
+                        match next_tok {
+                            Some(Token::LParen) => {
+                                self.next();
+                                let columns = self.parse_column_list()?;
+                                constraints.push(TableConstraint::Unique {
+                                    columns,
+                                    name: None,
+                                });
+                            }
+                            Some(Token::Key) => {
+                                self.next(); // consume UNIQUE
+                                self.next(); // consume KEY
+                                let name = match self.current() {
+                                    Some(Token::Identifier(n)) => {
+                                        let s = n.clone();
+                                        self.next();
+                                        Some(s)
+                                    }
+                                    _ => None,
+                                };
+                                let columns = self.parse_column_list()?;
+                                constraints.push(TableConstraint::Unique {
+                                    columns,
+                                    name,
+                                });
+                            }
+                            _ => continue,
                         }
                     }
                     Some(Token::Check) => {
@@ -8357,6 +8385,17 @@ impl Parser {
                 Some(Token::AutoIncrement) => {
                     self.next();
                     auto_increment = true;
+                }
+                Some(Token::Unique) => {
+                    // V312-coverage: column-level UNIQUE modifier
+                    // (`id INT UNIQUE`). Previously fell through to
+                    // `_ => break` which left the outer CREATE TABLE
+                    // loop re-entering this function with Token::Unique
+                    // still at the head → infinite loop.
+                    // Consume the keyword; the table-level UNIQUE
+                    // constraint (if any) is added by the outer arm
+                    // when followed by `(` / KEY.
+                    self.next();
                 }
                 _ => break,
             }
