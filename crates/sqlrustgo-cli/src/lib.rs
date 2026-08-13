@@ -221,7 +221,7 @@ fn run_cli(query: &str, host: &str, port: u16, user: &str, password: &str) -> i3
         Ok(result) => {
             use sqlrustgo_mysql_client::ResultSet;
             match result {
-                ResultSet::Select { columns, rows } => {
+                ResultSet::Select { columns, rows, .. } => {
                     // Print column headers
                     let header: Vec<&str> = columns.iter().map(|c| c.name.as_str()).collect();
                     println!("{}", header.join(" | "));
@@ -325,7 +325,7 @@ fn run_soak_repl(host: &str, port: u16, user: &str, password: &str) -> i32 {
                     ResultSet::Ok { affected_rows, .. } => {
                         writeln!(out_lock, "OK\t{}", affected_rows).ok();
                     }
-                    ResultSet::Select { columns, rows } => {
+                    ResultSet::Select { columns, rows, .. } => {
                         writeln!(out_lock, "ROWS\t{}", columns.len()).ok();
                         for c in &columns {
                             // column_type 1 byte, e.g. 0xfd for VARCHAR

@@ -1,0 +1,63 @@
+diff --git a/tests/integration/tpch/v312_13_load_data_sf10_test.rs b/tests/integration/tpch/v312_13_load_data_sf10_test.rs
+index 0325c8e16f..bf725bdbe6 100644
+--- a/tests/integration/tpch/v312_13_load_data_sf10_test.rs
++++ b/tests/integration/tpch/v312_13_load_data_sf10_test.rs
+@@ -127,8 +127,14 @@ fn v312_13_load_data_sf10_region_nation_supplier_smoke() {
+     // path without any copy.)
+     let tmp = TempDir::new().expect("create tempdir");
+     let start = Instant::now();
++    // Issue #4020: pass `load_infile_dir` so the server's LOAD DATA
++    // whitelist accepts fixtures from `/tmp/tpch-sf10` directly,
++    // without having to copy them into `data_dir` first. The
++    // `data_dir` stays as the tempdir (the storage sandbox), and
++    // `load_infile_dir` is the read-only whitelist for LOCAL INFILE.
+     let handle = start_ephemeral(EphemeralConfig {
+         data_dir: Some(tmp.path().to_path_buf()),
++        load_infile_dir: Some(PathBuf::from("/tmp/tpch-sf10")),
+         bootstrap_tables: false,
+         bootstrap_users: true,
+         ..Default::default()
+@@ -142,21 +148,11 @@ fn v312_13_load_data_sf10_region_nation_supplier_smoke() {
+     client.exec(TPC_H_NATION_SCHEMA).expect("create nation");
+     client.exec(TPC_H_SUPPLIER_SCHEMA).expect("create supplier");
+ 
+-    // The MySqlTestClient sends `LOAD DATA LOCAL INFILE '<path>'`
+-    // using the absolute path. sqlrustgo's data_dir whitelist will
+-    // canonicalise the path and reject anything outside data_dir, so
+-    // we copy the fixture into the data_dir first (mirrors the
+-    // bulk_load_sf10.sh pattern from PR #4020).
+-    let canonical_region = tmp.path().join("region.tbl");
+-    let canonical_nation = tmp.path().join("nation.tbl");
+-    let canonical_supplier = tmp.path().join("supplier.tbl");
+-    std::fs::copy(&region_path, &canonical_region).expect("copy region fixture");
+-    std::fs::copy(&nation_path, &canonical_nation).expect("copy nation fixture");
+-    std::fs::copy(&supplier_path, &canonical_supplier).expect("copy supplier fixture");
+-
+-    // LOAD DATA: region (5 rows).
++    // LOAD DATA: region (5 rows). With `load_infile_dir` set to
++    // `/tmp/tpch-sf10`, the server's whitelist accepts the canonical
++    // fixture path directly — no copy needed.
+     let region_rows = client
+-        .load_local_infile(&canonical_region, "region")
++        .load_local_infile(&region_path, "region")
+         .expect("load region");
+     assert_eq!(
+         region_rows, SF10_REGION_ROWS,
+@@ -166,7 +162,7 @@ fn v312_13_load_data_sf10_region_nation_supplier_smoke() {
+ 
+     // LOAD DATA: nation (25 rows).
+     let nation_rows = client
+-        .load_local_infile(&canonical_nation, "nation")
++        .load_local_infile(&nation_path, "nation")
+         .expect("load nation");
+     assert_eq!(
+         nation_rows, SF10_NATION_ROWS,
+@@ -176,7 +172,7 @@ fn v312_13_load_data_sf10_region_nation_supplier_smoke() {
+ 
+     // LOAD DATA: supplier (100,000 rows).
+     let supplier_rows = client
+-        .load_local_infile(&canonical_supplier, "supplier")
++        .load_local_infile(&supplier_path, "supplier")
+         .expect("load supplier");
+     assert_eq!(
+         supplier_rows, SF10_SUPPLIER_ROWS,

@@ -114,6 +114,7 @@ impl<S: StorageEngine + 'static> ExecutionEngine<S> {
                         primary_key: c.primary_key,
                         char_max_length: c.char_max_length,
                         collation: c.collation.clone(),
+                        default_value: None,
                     })
                     .collect()
             } else {
@@ -150,6 +151,7 @@ impl<S: StorageEngine + 'static> ExecutionEngine<S> {
                             primary_key: false,
                             char_max_length: None,
                             collation: None,
+                            default_value: None,
                         }
                     })
                     .collect()
@@ -208,6 +210,7 @@ impl<S: StorageEngine + 'static> ExecutionEngine<S> {
                 primary_key: c.primary_key,
                 char_max_length: c.char_max_length,
                 collation: c.collation.clone(),
+                default_value: None,
             })
             .collect();
         // V312-26 / #4077: collect per-column collation (each column

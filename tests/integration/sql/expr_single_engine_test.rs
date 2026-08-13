@@ -209,8 +209,8 @@ fn test_aggregate_delegation() {
                 nullable: false,
                 primary_key: false,
                 char_max_length: None,
-            
-            collation: None,
+
+                collation: None,
             },
             ColumnDefinition {
                 name: "SUM(l_quantity)".to_string(),
@@ -218,8 +218,8 @@ fn test_aggregate_delegation() {
                 nullable: false,
                 primary_key: false,
                 char_max_length: None,
-            
-            collation: None,
+
+                collation: None,
             },
         ],
         foreign_keys: vec![],
@@ -868,8 +868,8 @@ fn test_identifier_delegation() {
             nullable: false,
             primary_key: true,
             char_max_length: None,
-        
-        collation: None,
+
+            collation: None,
         },
         ColumnDefinition {
             name: "t.name".to_string(),
@@ -877,8 +877,8 @@ fn test_identifier_delegation() {
             nullable: false,
             primary_key: false,
             char_max_length: None,
-        
-        collation: None,
+
+            collation: None,
         },
         ColumnDefinition {
             name: "a_join_b.a.tag".to_string(),
@@ -886,8 +886,8 @@ fn test_identifier_delegation() {
             nullable: false,
             primary_key: false,
             char_max_length: None,
-        
-        collation: None,
+
+            collation: None,
         },
     ];
     let table_info = TableInfo {
@@ -961,8 +961,8 @@ fn test_identifier_known_outputs() {
             nullable: false,
             primary_key: true,
             char_max_length: None,
-        
-        collation: None,
+
+            collation: None,
         },
         ColumnDefinition {
             name: "user_name".to_string(),
@@ -970,14 +970,17 @@ fn test_identifier_known_outputs() {
             nullable: false,
             primary_key: false,
             char_max_length: None,
-        
-        collation: None,
+
+            collation: None,
         },
     ];
     let row: Vec<Value> = vec![Value::Integer(7), Value::Text("bob".into())];
 
     // Found
-    assert_eq!(eval_identifier("id", &row, &columns).unwrap(), Value::Integer(7));
+    assert_eq!(
+        eval_identifier("id", &row, &columns).unwrap(),
+        Value::Integer(7)
+    );
     assert_eq!(
         eval_identifier("user_name", &row, &columns).unwrap(),
         Value::Text("bob".into())
@@ -1019,8 +1022,8 @@ fn test_find_column_index_known_outputs() {
             nullable: false,
             primary_key: true,
             char_max_length: None,
-        
-        collation: None,
+
+            collation: None,
         },
         ColumnDefinition {
             name: "t.col".to_string(),
@@ -1028,8 +1031,8 @@ fn test_find_column_index_known_outputs() {
             nullable: false,
             primary_key: false,
             char_max_length: None,
-        
-        collation: None,
+
+            collation: None,
         },
         ColumnDefinition {
             name: "a_join_b.a.deep".to_string(),
@@ -1037,8 +1040,8 @@ fn test_find_column_index_known_outputs() {
             nullable: false,
             primary_key: false,
             char_max_length: None,
-        
-        collation: None,
+
+            collation: None,
         },
     ];
 
