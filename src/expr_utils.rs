@@ -73,14 +73,34 @@ pub fn expression_to_string(expr: &sqlrustgo_parser::Expression) -> String {
                         .join(", ")
                 )
             }
-            sqlrustgo_parser::AggregateFunction::Max => {
+sqlrustgo_parser::AggregateFunction::Max => {
                 format!(
                     "MAX({})",
                     agg.args
-                        .iter()
-                        .map(expression_to_string)
-                        .collect::<Vec<_>>()
-                        .join(", ")
+                            .iter()
+                            .map(expression_to_string)
+                            .collect::<Vec<_>>()
+                            .join(", ")
+                )
+            }
+            sqlrustgo_parser::AggregateFunction::QuantileDisc => {
+                format!(
+                    "QUANTILE_DISC({})",
+                    agg.args
+                            .iter()
+                            .map(expression_to_string)
+                            .collect::<Vec<_>>()
+                            .join(", ")
+                )
+            }
+            sqlrustgo_parser::AggregateFunction::QuantileCont => {
+                format!(
+                    "QUANTILE_CONT({})",
+                    agg.args
+                            .iter()
+                            .map(expression_to_string)
+                            .collect::<Vec<_>>()
+                            .join(", ")
                 )
             }
         },

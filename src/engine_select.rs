@@ -516,8 +516,37 @@ impl<S: StorageEngine + 'static> ExecutionEngine<S> {
                             .columns
                             .iter()
                             .map(|col| match &col.expression {
-                                Some(expr) => evaluate_expression(expr, &agg_values, &agg_schema)
-                                    .unwrap_or(Value::Null),
+                                Some(expr) => {
+                                    // V313-followup-2 / Issue #4155: reuse the precomputed aggregate
+                                    // value rather than re-evaluating through
+                                    // `evaluate_expression`'s FunctionCall
+                                    // dispatch (which lacks aggregate context).
+                                    if let sqlrustgo_parser::Expression::FunctionCall(
+                                        name,
+                                        _,
+                                    ) = expr
+                                    {
+                                        let upper = name.to_uppercase();
+                                        if upper == "QUANTILE_DISC"
+                                            || upper == "QUANTILE_CONT"
+                                        {
+                                            if let Some(idx) = select.aggregates.iter().position(
+                                                |a| matches!(
+                                                    a.func,
+                                                    AggregateFunction::QuantileDisc
+                                                        | AggregateFunction::QuantileCont
+                                                ),
+                                            ) {
+                                                return agg_values
+                                                    .get(idx)
+                                                    .cloned()
+                                                    .unwrap_or(Value::Null);
+                                            }
+                                        }
+                                    }
+                                    evaluate_expression(expr, &agg_values, &agg_schema)
+                                        .unwrap_or(Value::Null)
+                                }
                                 None => agg_values.first().cloned().unwrap_or(Value::Null),
                             })
                             .collect();
@@ -852,6 +881,8 @@ impl<S: StorageEngine + 'static> ExecutionEngine<S> {
                             AggregateFunction::Avg => "avg",
                             AggregateFunction::Min => "min",
                             AggregateFunction::Max => "max",
+                            AggregateFunction::QuantileDisc => "quantile_disc",
+                            AggregateFunction::QuantileCont => "quantile_cont",
                         })
                         .map(|s| s.to_string())
                         .collect();
@@ -1359,6 +1390,44 @@ impl<S: StorageEngine + 'static> ExecutionEngine<S> {
                         })
                         .max();
                     max.map(Value::Integer).unwrap_or(Value::Null)
+                }
+                // V313-followup-2 / Issue #4155: quantile_disc(frac) and
+                // quantile_cont(frac). The fraction lives in args[1]
+                // (e.g. `quantile_disc(col, 0.1)`); args[0] is already
+                // evaluated into `values`. Sorted-index algorithm per
+                // SQL:92 ordered-set aggregate semantics (fraction
+                // interpolated linearly for continuous; rounded down for
+                // discrete).
+                AggregateFunction::QuantileDisc | AggregateFunction::QuantileCont => {
+                    let frac = match agg.args.get(1).and_then(|e| match e {
+                        sqlrustgo_parser::Expression::Literal(lit) => lit.parse::<f64>().ok(),
+                        _ => None,
+                    }) {
+                        Some(f) if (0.0..=1.0).contains(&f) => f,
+                        _ => return Err(SqlError::ExecutionError(
+                            "quantile_disc / quantile_cont requires 2nd arg in [0.0, 1.0]".to_string()
+                        )),
+                    };
+                    let mut sorted: Vec<f64> = values.iter().filter_map(|v| match v {
+                        Value::Integer(n) => Some(*n as f64),
+                        Value::Float(f) => Some(*f),
+                        _ => None,
+                    }).collect();
+                    sorted.sort_by(|a, b| a.partial_cmp(b).unwrap_or(std::cmp::Ordering::Equal));
+                    if sorted.is_empty() {
+                        Value::Null
+                    } else {
+                        let idx = (frac * (sorted.len() as f64 - 1.0)).max(0.0);
+                        let lo = idx.floor() as usize;
+                        let hi = idx.ceil() as usize;
+                        let result = if matches!(agg.func, AggregateFunction::QuantileDisc) || lo == hi {
+                            sorted[lo.min(sorted.len() - 1)]
+                        } else {
+                            let frac_part = idx - lo as f64;
+                            sorted[lo] + (sorted[hi] - sorted[lo]) * frac_part
+                        };
+                        Value::Float(result)
+                    }
                 }
             };
             results.push(result);
@@ -4736,6 +4805,10 @@ fn build_scalar_agg_index(
                 // AVG/SUM/COUNT for the Q17 perf fix.
                 let _ = (entry, v.clone(), ci);
             }
+            // V313-followup-2 / Issue #4155: quantile aggregates are
+            // sorted-index algorithms; the scalar-aggregate fast-path
+            // only handles in-place updaters. Fall through (no update).
+            AggregateFunction::QuantileDisc | AggregateFunction::QuantileCont => {}
         }
     }
     let mut result: ScalarAggIndexMap = HashMap::with_capacity(groups.len());

@@ -79,6 +79,13 @@ impl PartialAggregate {
                 AggregateFunction::Avg => self.update_avg(i, &values[i]),
                 AggregateFunction::Min => self.update_min(i, &values[i]),
                 AggregateFunction::Max => self.update_max(i, &values[i]),
+                // V313-followup-2 / Issue #4155: quantile aggregates
+                // are non-incremental (require sorted finalization), so
+                // they fall back to the serial compute_aggregates path
+                // and never reach the parallel in-place updater.
+                AggregateFunction::QuantileDisc | AggregateFunction::QuantileCont => {
+                    unreachable!("quantile aggregates are computed serially in compute_aggregates")
+                }
             }
         }
     }
