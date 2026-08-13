@@ -866,4 +866,86 @@ mod tests {
             other => panic!("expected Float, got {:?}", other),
         }
     }
+
+    /// V313-followup-4 / Issue #4157 — GREEN: `SET default_null_order =
+    /// 'nulls_first'` puts NULL at the start of ORDER BY output.
+    #[test]
+    fn green_4157_set_default_null_order_nulls_first() {
+        let mut engine = create_engine();
+        engine
+            .execute("CREATE TABLE t (x INTEGER)")
+            .expect("CREATE TABLE must succeed");
+        engine
+            .execute("INSERT INTO t VALUES (1), (NULL), (3), (NULL), (5)")
+            .expect("INSERT must succeed");
+        engine
+            .execute("SET default_null_order = 'nulls_first'")
+            .expect("SET must succeed");
+        let result = engine
+            .execute("SELECT * FROM t ORDER BY x")
+            .expect("ORDER BY must succeed");
+        let values: Vec<String> = result
+            .rows
+            .iter()
+            .map(|r| match &r[0] {
+                Value::Null => "NULL".to_string(),
+                Value::Integer(n) => n.to_string(),
+                other => panic!("unexpected value {:?}", other),
+            })
+            .collect();
+        assert_eq!(
+            values,
+            vec!["NULL", "NULL", "1", "3", "5"],
+            "nulls_first: NULL appears before non-NULL values"
+        );
+    }
+
+    /// V313-followup-4 / Issue #4157 — GREEN: `SET default_null_order =
+    /// 'nulls_last'` puts NULL at the end of ORDER BY output.
+    #[test]
+    fn green_4157_set_default_null_order_nulls_last() {
+        let mut engine = create_engine();
+        engine
+            .execute("CREATE TABLE t (x INTEGER)")
+            .expect("CREATE TABLE must succeed");
+        engine
+            .execute("INSERT INTO t VALUES (1), (NULL), (3), (NULL), (5)")
+            .expect("INSERT must succeed");
+        engine
+            .execute("SET default_null_order = 'nulls_last'")
+            .expect("SET must succeed");
+        let result = engine
+            .execute("SELECT * FROM t ORDER BY x")
+            .expect("ORDER BY must succeed");
+        let values: Vec<String> = result
+            .rows
+            .iter()
+            .map(|r| match &r[0] {
+                Value::Null => "NULL".to_string(),
+                Value::Integer(n) => n.to_string(),
+                other => panic!("unexpected value {:?}", other),
+            })
+            .collect();
+        assert_eq!(
+            values,
+            vec!["1", "3", "5", "NULL", "NULL"],
+            "nulls_last: NULL appears after non-NULL values"
+        );
+    }
+
+    /// V313-followup-4 / Issue #4157 — GREEN: `SET debug_force_external`
+    /// is accepted without error (DuckDB debug toggle; the engine
+    /// has no spilling path so the SET is a no-op).
+    #[test]
+    fn green_4157_set_debug_force_external_accepted() {
+        let mut engine = create_engine();
+        let result = engine
+            .execute("SET debug_force_external = true")
+            .expect("SET debug_force_external must be accepted (no-op)");
+        assert_eq!(result.rows.len(), 0, "SET returns no rows");
+        assert_eq!(
+            result.affected_rows, 0,
+            "SET is not a write — affected_rows is 0"
+        );
+    }
 }
