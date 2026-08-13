@@ -127,6 +127,7 @@ fn test_parallel_memory_no_quadruple() {
                 primary_key: false,
                 char_max_length: None,
                 collation: None,
+                default_value: None,
             }],
             foreign_keys: vec![],
             unique_constraints: vec![],
