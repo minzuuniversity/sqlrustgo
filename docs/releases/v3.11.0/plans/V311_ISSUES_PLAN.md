@@ -2,7 +2,7 @@
 
 > **状态**: 历史计划 / ALPHA stub 口径
 > **父 Issue**: #3433 (V311-MASTER)
-> **v3.10.0 参考**: [V310_ISSUES_PLAN.md](../v3.10.0/plans/V310_ISSUES_PLAN.md)
+> **v3.10.0 参考**: [V310_ISSUES_PLAN.md](../../v3.10.0/plans/V310_ISSUES_PLAN.md)
 > **说明**: 本文件保留 v3.11.0 早期 issue 拆分记录。当前完成状态应以 `COMPREHENSIVE_ASSESSMENT_REPORT.md`、`FEATURE_CHECKLIST.md` 和 Gitea 最新 issue/PR 为准。
 
 ## 1. 概览
@@ -46,7 +46,7 @@ v3.11.0 曾按 V311-01 到 V311-23 拆分任务。本计划用于追溯 issue �
 
 > **Status**: ALPHA (stub)
 > **Parent**: Issue #3433 (V311-MASTER)
-> **v3.10.0**: [V310_ISSUES_PLAN.md](../v3.10.0/plans/V310_ISSUES_PLAN.md)
+> **v3.10.0**: [V310_ISSUES_PLAN.md](../../v3.10.0/plans/V310_ISSUES_PLAN.md)
 
 ## Overview
 

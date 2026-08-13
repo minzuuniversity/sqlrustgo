@@ -3,14 +3,14 @@
 // Tests for UPDATE and DELETE support in sql-cli
 
 use parking_lot::RwLock;
-use sqlrustgo::{parse, ExecutionEngine, MemoryStorage, StorageEngine};
+use sqlrustgo::{ExecutionEngine, MemoryStorage};
 use sqlrustgo_executor::ExecutorResult;
 use sqlrustgo_types::Value;
 use std::sync::Arc;
 
 /// Test engine that maintains state across multiple SQL statements
 struct TestEngine {
-    engine: ExecutionEngine,
+    engine: ExecutionEngine<MemoryStorage>,
 }
 
 impl TestEngine {
@@ -21,8 +21,7 @@ impl TestEngine {
     }
 
     fn execute(&mut self, sql: &str) -> Result<ExecutorResult, String> {
-        let stmt = parse(sql).map_err(|e| format!("Parse error: {:?}", e))?;
-        self.engine.execute(stmt).map_err(|e| e.to_string())
+        self.engine.execute(sql).map_err(|e| e.to_string())
     }
 
     fn execute_ok(&mut self, sql: &str) -> ExecutorResult {

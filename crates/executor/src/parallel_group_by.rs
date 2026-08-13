@@ -504,6 +504,7 @@ mod tests {
             check_constraints: vec![],
             partition_info: None,
             compression: None,
+            collations: std::collections::HashMap::new(),
         }
     }
 
@@ -520,6 +521,7 @@ mod tests {
             check_constraints: vec![],
             partition_info: None,
             compression: None,
+            collations: std::collections::HashMap::new(),
         }
     }
 

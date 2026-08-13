@@ -393,11 +393,6 @@ START SLAVE;
 
 | 文档 | 说明 |
 |------|------|
-| [快速开始](./QUICK_START.md) | 快速入门指南 |
-| [客户端连接](./CLIENT_CONNECTION.md) | 连接方式详解 |
-| [API 参考](./API_REFERENCE.md) | REST API 文档 |
-| [安全加固](./SECURITY_HARDENING.md) | 安全配置指南 |
-| [错误消息](./ERROR_MESSAGES.md) | 错误代码参考 |
 | [GMP 用户指南](./GMP_USER_GUIDE.md) | 图谱审计查询 |
 | [图检索指南](./GRAPH_SEARCH_USER_GUIDE.md) | 图引擎使用 |
 | [向量检索指南](./VECTOR_SEARCH_USER_GUIDE.md) | 向量索引使用 |

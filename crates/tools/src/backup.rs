@@ -1071,11 +1071,13 @@ pub fn restore_backup(dir: &Path, target: &Path, clean: bool) -> Result<()> {
                 is_unique: c.is_unique,
                 auto_increment: c.auto_increment,
                 references: None,
+                collation: None,
             })
             .collect();
 
         let table_schema = TableInfo {
             name: table_info.name.clone(),
+            collations: std::collections::HashMap::new(),
             columns,
         };
 
@@ -1278,6 +1280,7 @@ fn create_demo_storage() -> MemoryStorage {
                 is_unique: true,
                 auto_increment: true,
                 references: None,
+                collation: None,
             },
             ColumnDefinition {
                 name: "name".to_string(),
@@ -1287,6 +1290,7 @@ fn create_demo_storage() -> MemoryStorage {
                 is_unique: false,
                 auto_increment: false,
                 references: None,
+                collation: None,
             },
             ColumnDefinition {
                 name: "email".to_string(),
@@ -1296,6 +1300,7 @@ fn create_demo_storage() -> MemoryStorage {
                 is_unique: true,
                 auto_increment: false,
                 references: None,
+                collation: None,
             },
             ColumnDefinition {
                 name: "created_at".to_string(),
@@ -1305,6 +1310,8 @@ fn create_demo_storage() -> MemoryStorage {
                 is_unique: false,
                 auto_increment: false,
                 references: None,
+                collations: std::collections::HashMap::new(),
+                collation: None,
             },
         ],
     };
@@ -1349,6 +1356,7 @@ fn create_demo_storage() -> MemoryStorage {
                 is_unique: true,
                 auto_increment: true,
                 references: None,
+                collation: None,
             },
             ColumnDefinition {
                 name: "user_id".to_string(),
@@ -1362,6 +1370,7 @@ fn create_demo_storage() -> MemoryStorage {
                     referenced_column: "id".to_string(),
                     on_delete: None,
                     on_update: None,
+                    collation: None,
                 }),
             },
             ColumnDefinition {
@@ -1372,6 +1381,7 @@ fn create_demo_storage() -> MemoryStorage {
                 is_unique: false,
                 auto_increment: false,
                 references: None,
+                collation: None,
             },
             ColumnDefinition {
                 name: "status".to_string(),
@@ -1381,6 +1391,8 @@ fn create_demo_storage() -> MemoryStorage {
                 is_unique: false,
                 auto_increment: false,
                 references: None,
+                collations: std::collections::HashMap::new(),
+                collation: None,
             },
         ],
     };
@@ -1425,6 +1437,7 @@ fn create_demo_storage() -> MemoryStorage {
                 is_unique: true,
                 auto_increment: true,
                 references: None,
+                collation: None,
             },
             ColumnDefinition {
                 name: "name".to_string(),
@@ -1434,6 +1447,7 @@ fn create_demo_storage() -> MemoryStorage {
                 is_unique: false,
                 auto_increment: false,
                 references: None,
+                collation: None,
             },
             ColumnDefinition {
                 name: "price".to_string(),
@@ -1443,6 +1457,8 @@ fn create_demo_storage() -> MemoryStorage {
                 is_unique: false,
                 auto_increment: false,
                 references: None,
+                collations: std::collections::HashMap::new(),
+                collation: None,
             },
         ],
     };
@@ -1530,6 +1546,7 @@ mod tests {
                     is_unique: true,
                     auto_increment: true,
                     references: None,
+                    collation: None,
                 },
                 ColumnDefinition {
                     name: "name".to_string(),
@@ -1539,6 +1556,8 @@ mod tests {
                     is_unique: false,
                     auto_increment: false,
                     references: None,
+                    collations: std::collections::HashMap::new(),
+                    collation: None,
                 },
             ],
         };

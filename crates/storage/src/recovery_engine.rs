@@ -958,6 +958,7 @@ mod tests {
             check_constraints: vec![],
 
             compression: None,
+            collations: std::collections::HashMap::new(),
             partition_info: None,
         };
         storage.create_table(&table_info).unwrap();

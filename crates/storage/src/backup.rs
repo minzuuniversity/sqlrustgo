@@ -4,6 +4,7 @@
 
 use crate::{Record, StorageEngine, TableInfo};
 use sqlrustgo_types::{SqlError, SqlResult, Value};
+use std::collections::HashMap;
 use std::fs::File;
 use std::io::{BufWriter, Write};
 use std::path::Path;
@@ -246,6 +247,7 @@ impl DataRestorer {
                     nullable: true,
                     primary_key: false,
                     char_max_length: None,
+                    collation: None,
                 })
                 .collect(),
             foreign_keys: vec![],
@@ -253,6 +255,7 @@ impl DataRestorer {
             check_constraints: vec![],
             partition_info: None,
             compression: None,
+            collations: HashMap::new(),
         };
 
         let count = rows.len();
@@ -316,6 +319,7 @@ impl DataRestorer {
                     nullable: true,
                     primary_key: false,
                     char_max_length: None,
+                    collation: None,
                 })
                 .collect(),
             foreign_keys: vec![],
@@ -323,6 +327,7 @@ impl DataRestorer {
             check_constraints: vec![],
             partition_info: None,
             compression: None,
+            collations: HashMap::new(),
         };
 
         let count = rows.len();
@@ -371,6 +376,7 @@ impl DataRestorer {
                         check_constraints: vec![],
                         partition_info: None,
                         compression: None,
+                        collations: HashMap::new(),
                     };
                     storage.create_table(&table_info)?;
                 }
@@ -463,6 +469,7 @@ mod tests {
                     nullable: false,
                     primary_key: false,
                     char_max_length: None,
+                    collation: None,
                 },
                 crate::ColumnDefinition {
                     name: "name".to_string(),
@@ -470,6 +477,7 @@ mod tests {
                     nullable: true,
                     primary_key: false,
                     char_max_length: None,
+                    collation: None,
                 },
             ],
             ..Default::default()
@@ -510,6 +518,7 @@ mod tests {
                     nullable: false,
                     primary_key: false,
                     char_max_length: None,
+                    collation: None,
                 },
                 crate::ColumnDefinition {
                     name: "name".to_string(),
@@ -517,6 +526,7 @@ mod tests {
                     nullable: true,
                     primary_key: false,
                     char_max_length: None,
+                    collation: None,
                 },
             ],
             ..Default::default()
@@ -604,6 +614,7 @@ mod tests {
                 nullable: false,
                 primary_key: false,
                 char_max_length: None,
+                collation: None,
             }],
             ..Default::default()
         };
@@ -702,6 +713,7 @@ mod tests {
                 nullable: false,
                 primary_key: false,
                 char_max_length: None,
+                collation: None,
             }],
             ..Default::default()
         };
@@ -726,6 +738,7 @@ mod tests {
                 nullable: false,
                 primary_key: false,
                 char_max_length: None,
+                collation: None,
             }],
             ..Default::default()
         };
@@ -756,6 +769,7 @@ mod tests {
                 nullable: false,
                 primary_key: false,
                 char_max_length: None,
+                collation: None,
             }],
             ..Default::default()
         };

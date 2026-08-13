@@ -241,8 +241,43 @@ impl From<&sqlrustgo_parser::Expression> for UnifiedExpr {
             },
             Expression::SequenceNextVal(name) => UnifiedExpr::SequenceNextVal(name.clone()),
             Expression::SequenceCurrval(name) => UnifiedExpr::SequenceCurrval(name.clone()),
+            // MySQL system variable references: `@@version_comment`,
+            // `@@autocommit`, etc. Resolved to a scalar literal at plan
+            // time — we don't track session/scope state, so each variable
+            // is resolved to a fixed string. This makes
+            // `SELECT @@version_comment LIMIT 1` return a single
+            // column with a single value, which is what mysql CLI 8.0+
+            // expects during its boot probe.
+            Expression::SystemVariable(name) => UnifiedExpr::Literal(resolve_system_variable(name)),
             _ => UnifiedExpr::Literal(Value::Null),
         }
+    }
+}
+
+/// Resolve a MySQL system variable name (lowercase, no `@@` prefix) to
+/// its current scalar value.
+///
+/// This is the executor-side counterpart to the lexer's `@@` tokenization
+/// (see `crates/parser/src/lexer.rs`). It returns a `Value::Text` so
+/// that `SELECT @@version_comment LIMIT 1` produces a text column when
+/// the result set is rendered. Variables we don't model explicitly fall
+/// back to empty string rather than NULL so mysql CLI 8.0+ does not
+/// hang waiting for column values that never arrive.
+pub fn resolve_system_variable(name: &str) -> Value {
+    let key = name.to_ascii_lowercase();
+    match key.as_str() {
+        // mysql CLI 8.0+ boot probe expects a non-NULL scalar value.
+        "version_comment" => Value::Text("SQLRustGo".to_string()),
+        "version" => Value::Text(env!("CARGO_PKG_VERSION").to_string()),
+        "version_compile_os" => Value::Text(std::env::consts::OS.to_string()),
+        "version_compile_machine" => Value::Text(std::env::consts::ARCH.to_string()),
+        // Session variables that are always on in our single-session mode.
+        "autocommit" => Value::Integer(1),
+        "sql_mode" => Value::Text(String::new()),
+        // Anything else we don't model is returned as empty text rather
+        // than NULL — this keeps the result set column count consistent
+        // with row count (mysql CLI 8.0+ asserts columns == values per row).
+        _ => Value::Text(String::new()),
     }
 }
 
@@ -546,6 +581,13 @@ pub fn eval_identifier(
     row: &[Value],
     columns: &[sqlrustgo_storage::ColumnDefinition],
 ) -> Result<Value, String> {
+    // V312-26 / #4019-#4020 wire-protocol fix: when an identifier
+    // arrives as `@@var` (e.g. the lexer tokenised it as Identifier
+    // rather than SystemVariable), strip the `@@` prefix and resolve
+    // it through the same scalar lookup as `Expression::SystemVariable`.
+    if let Some(stripped) = name.strip_prefix("@@") {
+        return Ok(resolve_system_variable(&stripped.to_ascii_lowercase()));
+    }
     if let Some(col_idx) = find_column_index(name, columns) {
         Ok(row.get(col_idx).cloned().unwrap_or(Value::Null))
     } else if name.contains('.') {
@@ -1039,6 +1081,19 @@ pub fn eval_unary_op(val: &Value, op: &str) -> Value {
 /// `src/expr_utils.rs` (the binary engine path).
 pub fn eval_fn(name: &str, args: &[Value]) -> Value {
     match name.to_uppercase().as_str() {
+        // V312-26 / #4020: MySQL wire-client compatibility. The MySQL
+        // CLI sends `SELECT DATABASE()` after every connect to
+        // determine the current schema before sending `USE db`. Returning
+        // an empty string (or NULL) lets the client proceed to send
+        // subsequent queries; sqlrustgo's `USE <db>` is a no-op in v3.12
+        // (single-database mode), so the actual current schema is the
+        // empty string. See execute_use_database in
+        // src/execution_engine.rs.
+        "DATABASE" | "SCHEMA" => Value::Text(String::new()),
+        // V312-26 / #4020: MySQL compat — CLIENT_USER() and USER() are
+        // sent by some clients during connection setup. Returning the
+        // empty user name keeps the wire protocol happy.
+        "USER" | "CURRENT_USER" | "SESSION_USER" | "SYSTEM_USER" => Value::Text(String::new()),
         "LOWER" => args
             .first()
             .map(|v| Value::Text(v.to_sql_string().to_lowercase()))

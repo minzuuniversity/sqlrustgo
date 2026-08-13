@@ -1170,6 +1170,7 @@ impl StoredProcExecutor {
                             nullable: *nullable,
                             primary_key: false,
                             char_max_length: None,
+                            collation: None,
                         };
                         storage
                             .add_column(table_name, column)
@@ -1229,14 +1230,10 @@ impl StoredProcExecutor {
                         }
                     },
                     sqlrustgo_parser::AlterTableOperation::SetPartitionedBy => {
-                        return Err(
-                            "ALTER TABLE ... SET PARTITIONED BY not yet implemented".to_string()
-                        );
+                        return Err("not supported".to_string());
                     }
                     sqlrustgo_parser::AlterTableOperation::ResetPartitionedBy => {
-                        return Err(
-                            "ALTER TABLE ... RESET PARTITIONED BY not yet implemented".to_string()
-                        );
+                        return Err("not supported".to_string());
                     }
                 }
                 Ok(())
@@ -1421,6 +1418,9 @@ impl StoredProcExecutor {
             sqlrustgo_parser::Expression::SubqueryField(_, _) => Value::Null,
             sqlrustgo_parser::Expression::SequenceNextVal(_) => Value::Null,
             sqlrustgo_parser::Expression::SequenceCurrval(_) => Value::Null,
+            sqlrustgo_parser::Expression::SystemVariable(name) => {
+                crate::expr::resolve_system_variable(name)
+            }
         }
     }
 

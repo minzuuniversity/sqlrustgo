@@ -322,5 +322,5 @@ Add to `.github/workflows/r-gate.yml`:
 - [Dafny Getting Started](https://dafny.org/)
 - [TLA+ Toolbox Download](https://tla-tools.github.io/)
 - [Formulog GitHub](https://github.com/ucsd-progsys/formulog)
-- [Formal Verification E2E](../governance/FORMAL_VERIFICATION_E2E.md)
+- [Formal Verification E2E](../../governance/FORMAL_VERIFICATION_E2E.md)
 - [Issue #117](http://192.168.0.252:3000/openclaw/sqlrustgo/issues/117)

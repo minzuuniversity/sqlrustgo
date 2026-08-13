@@ -452,6 +452,7 @@ mod tests {
                     is_primary_key: false,
                     auto_increment: false,
                     references: None,
+                    collation: None,
                 },
                 ColumnDefinition {
                     name: "name".to_string(),
@@ -461,9 +462,11 @@ mod tests {
                     is_primary_key: false,
                     auto_increment: false,
                     references: None,
+                    collation: None,
                 },
             ],
             compression: None,
+            collations: std::collections::HashMap::new(),
 };
 
         let records = vec![
@@ -502,8 +505,10 @@ mod tests {
                 is_primary_key: false,
                 auto_increment: false,
                 references: None,
+                collation: None,
             }],
             compression: None,
+            collations: std::collections::HashMap::new(),
 };
 
         let records: Vec<Vec<Value>> = (0..100)
@@ -538,8 +543,10 @@ mod tests {
                 is_primary_key: false,
                 auto_increment: false,
                 references: None,
+                collation: None,
             }],
             compression: None,
+            collations: std::collections::HashMap::new(),
 };
 
         let records: Vec<Vec<Value>> = (0..50).map(|i| vec![Value::Integer(i)]).collect();
@@ -572,8 +579,10 @@ mod tests {
                 is_primary_key: false,
                 auto_increment: false,
                 references: None,
+                collation: None,
             }],
             compression: None,
+            collations: std::collections::HashMap::new(),
 };
 
         let records = vec![
@@ -611,6 +620,7 @@ mod tests {
                     is_primary_key: false,
                     auto_increment: false,
                     references: None,
+                    collation: None,
                 },
                 ColumnDefinition {
                     name: "score".to_string(),
@@ -620,9 +630,11 @@ mod tests {
                     is_primary_key: false,
                     auto_increment: false,
                     references: None,
+                    collation: None,
                 },
             ],
             compression: None,
+            collations: std::collections::HashMap::new(),
 };
 
         let mut chunk1 = ColumnChunk::new();

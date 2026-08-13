@@ -241,6 +241,7 @@ fn convert_table(
         unique_constraints: vec![],
         check_constraints: vec![],
         compression: None,
+        collations: std::collections::HashMap::new(),
         partition_info: None,
     };
 
@@ -434,13 +435,18 @@ mod tests {
             unique_constraints: vec![],
             check_constraints: vec![],
             compression: None,
+            collations: std::collections::HashMap::new(),
             partition_info: None,
         };
         let table_data = TableData {
             info,
             rows: vec![
                 vec![Value::Integer(1), Value::Text("a".into()), Value::Null],
-                vec![Value::Integer(2), Value::Text("b".into()), Value::Text("ok".into())],
+                vec![
+                    Value::Integer(2),
+                    Value::Text("b".into()),
+                    Value::Text("ok".into()),
+                ],
             ],
         };
 
@@ -458,7 +464,8 @@ mod tests {
 
     #[test]
     fn write_bin_empty_rows_still_writes_header() {
-        let dir = std::env::temp_dir().join(format!("sqlrustgo-tbl2bin-empty-{}", std::process::id()));
+        let dir =
+            std::env::temp_dir().join(format!("sqlrustgo-tbl2bin-empty-{}", std::process::id()));
         let _ = fs::remove_dir_all(&dir);
         fs::create_dir_all(&dir).unwrap();
         let path = dir.join("empty.bin");
@@ -470,6 +477,7 @@ mod tests {
             unique_constraints: vec![],
             check_constraints: vec![],
             compression: None,
+            collations: std::collections::HashMap::new(),
             partition_info: None,
         };
         let table_data = TableData { info, rows: vec![] };
@@ -483,7 +491,8 @@ mod tests {
 
     #[test]
     fn write_bin_float_column_uses_float_code() {
-        let dir = std::env::temp_dir().join(format!("sqlrustgo-tbl2bin-flt-{}", std::process::id()));
+        let dir =
+            std::env::temp_dir().join(format!("sqlrustgo-tbl2bin-flt-{}", std::process::id()));
         let _ = fs::remove_dir_all(&dir);
         fs::create_dir_all(&dir).unwrap();
         let path = dir.join("f.bin");
@@ -495,6 +504,7 @@ mod tests {
             unique_constraints: vec![],
             check_constraints: vec![],
             compression: None,
+            collations: std::collections::HashMap::new(),
             partition_info: None,
         };
         let table_data = TableData {
@@ -509,7 +519,8 @@ mod tests {
 
     #[test]
     fn convert_table_missing_file_returns_zero() {
-        let dir = std::env::temp_dir().join(format!("sqlrustgo-tbl2bin-miss-{}", std::process::id()));
+        let dir =
+            std::env::temp_dir().join(format!("sqlrustgo-tbl2bin-miss-{}", std::process::id()));
         let _ = fs::remove_dir_all(&dir);
         fs::create_dir_all(&dir).unwrap();
         let result =

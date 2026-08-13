@@ -21,6 +21,7 @@ fn clean_client() -> MySqlTestClient {
     MySqlTestClient::connect_with_config(EphemeralConfig {
         bootstrap_tables: false,
         slow_query_log: None,
+        metrics_port: None,
         ..EphemeralConfig::default()
     })
     .expect("ephemeral server (clean catalog) + raw client should come up")
