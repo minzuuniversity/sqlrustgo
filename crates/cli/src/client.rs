@@ -34,9 +34,87 @@ pub struct QueryResult {
     pub duration: Duration,
 }
 
+/// Classification of the MySQL-compatible server we connected to.
+///
+/// The handshake `server_version` string is the only reliable way to
+/// distinguish `sqlrustgo-mysql-server` from `mysqld` / `mariadbd`
+/// without sending a probe query. The latter is what causes
+/// Issue #4176 — REPL defaults to 127.0.0.1:3306 which collides with
+/// system MySQL on dev machines.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum ServerKind {
+    /// The server identifies itself as sqlrustgo (version string contains
+    /// `sqlrustgo`).
+    SqlRustGo(String),
+    /// A non-sqlrustgo MySQL-compatible server (system MySQL, MariaDB,
+    /// Percona, etc.). The string is the raw `server_version` from the
+    /// handshake so callers can render it in diagnostics.
+    Other(String),
+    /// Handshake could not be parsed (truncated, wrong protocol, etc.).
+    Unknown,
+}
+
+impl ServerKind {
+    /// True iff this is a confirmed sqlrustgo server.
+    pub fn is_sqlrustgo(&self) -> bool {
+        matches!(self, ServerKind::SqlRustGo(_))
+    }
+
+    /// One-line diagnostic message for the case where REPL/CLI connected
+    /// to a non-sqlrustgo server on the given port. Empty for sqlrustgo
+    /// or unknown so we don't print false-positive warnings when the
+    /// issue is something else (e.g. wrong password).
+    pub fn diagnostic_for_port(&self, port: u16) -> String {
+        match self {
+            ServerKind::SqlRustGo(_) => String::new(),
+            ServerKind::Other(ver) => format!(
+                "warning: server on {port} identifies as `{ver}` — this looks like a \
+                 non-sqlrustgo MySQL/MariaDB. Port {port} is the default for system MySQL. \
+                 Start sqlrustgo-mysql-server (or pass --host/--port to point at the right \
+                 server)."
+            ),
+            ServerKind::Unknown => String::new(),
+        }
+    }
+}
+
+/// Parse the server_version string from a HandshakeV10 packet payload.
+///
+/// Returns the raw server version (e.g. `"8.0.33"` or
+/// `"8.0.33-sqlrustgo"`) — callers can inspect it to detect non-sqlrustgo
+/// servers. Returns `Err` on protocol errors (wrong version byte,
+/// missing NUL terminator, packet too short) so a corrupted stream
+/// doesn't masquerade as a known MySQL.
+pub fn parse_handshake_version(handshake: &[u8]) -> anyhow::Result<ServerKind> {
+    // Minimum valid handshake: protocol(1) + version_at_least_1 + NUL(1)
+    // + conn_id(4) + ... — anything shorter than 6 bytes is certainly
+    // malformed (the test suite relies on this).
+    if handshake.len() < 6 {
+        return Err(anyhow::anyhow!("handshake too short: {} bytes", handshake.len()));
+    }
+    if handshake[0] != 0x0a {
+        return Err(anyhow::anyhow!(
+            "not a HandshakeV10: first byte = 0x{:02x}",
+            handshake[0]
+        ));
+    }
+    let v_end_rel = handshake[1..]
+        .iter()
+        .position(|&b| b == 0)
+        .ok_or_else(|| anyhow::anyhow!("server version not NUL-terminated"))?;
+    let version = String::from_utf8_lossy(&handshake[1..1 + v_end_rel]).into_owned();
+    let kind = if version.to_lowercase().contains("sqlrustgo") {
+        ServerKind::SqlRustGo(version)
+    } else {
+        ServerKind::Other(version)
+    };
+    Ok(kind)
+}
+
 /// A MySQL wire-protocol client connected to a running server.
 pub struct Client {
     stream: TcpStream,
+    server_kind: ServerKind,
 }
 
 impl Client {
@@ -51,11 +129,15 @@ impl Client {
             .set_write_timeout(Some(WRITE_TIMEOUT))
             .map_err(|e| anyhow::anyhow!("set_write_timeout: {e}"))?;
 
-        // 1) Read server's HandshakeV10 and extract scramble
+        // 1) Read server's HandshakeV10 and extract scramble + version
         let handshake = read_packet(&mut stream)?;
+        let server_kind = parse_handshake_version(&handshake).unwrap_or(ServerKind::Unknown);
         let scramble = parse_handshake(&handshake)?;
 
-        // 2) Compute mysql_native_password auth response
+        // 2) Compute mysql_native_password auth response.
+        //    V312-38 / Issue #4176: empty password must produce a
+        //    zero-length auth-response (length byte = 0); MySQL protocol
+        //    forbids sending the SHA1("") token for an empty password.
         let auth = native_password_auth(password.as_bytes(), &scramble);
 
         // 3) Send HandshakeResponse41
@@ -66,7 +148,17 @@ impl Client {
         let auth_resp = read_packet(&mut stream)?;
         check_ok_or_err(&auth_resp).map_err(|e| anyhow::anyhow!("auth failed: {e}"))?;
 
-        Ok(Self { stream })
+        Ok(Self {
+            stream,
+            server_kind,
+        })
+    }
+
+    /// The server kind identified from the handshake. Useful for callers
+    /// that want to warn the user when they accidentally connected to a
+    /// non-sqlrustgo MySQL.
+    pub fn server_kind(&self) -> &ServerKind {
+        &self.server_kind
     }
 
     /// Execute a SQL statement that may return a result set (DDL, DML).
@@ -301,7 +393,25 @@ fn parse_handshake(handshake: &[u8]) -> anyhow::Result<[u8; SCRAMBLE_LEN]> {
 }
 
 /// mysql_native_password: SHA1(password) XOR SHA1(scramble + SHA1(SHA1(password)))
-fn native_password_auth(password: &[u8], scramble: &[u8; SCRAMBLE_LEN]) -> [u8; SCRAMBLE_LEN] {
+///
+/// V312-38 / Issue #4176: per MySQL protocol, when `password` is empty the
+/// client MUST send an empty `auth-response` (length byte = 0). Sending
+/// `SHA1("") XOR SHA1(scramble + SHA1(SHA1("")))` instead makes servers
+/// (notably system MySQL/MariaDB) respond with `Access denied for user
+/// '<u>'@'<h>' (using password: YES)` because the 20-byte token does not
+/// match what the server expects for a user with an empty password.
+///
+/// Returns a `Vec<u8>` (rather than `[u8; 20]`) so an empty password
+/// yields a 0-length payload. Non-empty passwords still produce the
+/// standard 20-byte XOR token.
+pub(crate) fn native_password_auth(
+    password: &[u8],
+    scramble: &[u8; SCRAMBLE_LEN],
+) -> Vec<u8> {
+    if password.is_empty() {
+        // Per MySQL protocol: empty password → no auth-response bytes.
+        return Vec::new();
+    }
     let mut h1 = Sha1::new();
     h1.update(password);
     let sha1_pw = h1.finalize();
@@ -319,10 +429,17 @@ fn native_password_auth(password: &[u8], scramble: &[u8; SCRAMBLE_LEN]) -> [u8; 
     for i in 0..SCRAMBLE_LEN {
         out[i] = sha1_pw[i] ^ scrambled[i];
     }
-    out
+    out.to_vec()
 }
 
-fn build_handshake_response41(user: &str, auth_response: &[u8]) -> anyhow::Result<Vec<u8>> {
+/// Build the HandshakeResponse41 packet body for SECURE_CONNECTION auth.
+/// The auth-response length byte is `auth_response.len()` as a single
+/// u8, so an empty `auth_response` (empty password) correctly encodes
+/// `0x00` as the length field followed by no token bytes.
+pub(crate) fn build_handshake_response41(
+    user: &str,
+    auth_response: &[u8],
+) -> anyhow::Result<Vec<u8>> {
     let mut p = Vec::with_capacity(64 + user.len() + auth_response.len());
     p.extend_from_slice(&CLIENT_CAPABILITIES.to_le_bytes());
     p.extend_from_slice(&MAX_PACKET_SIZE.to_le_bytes());
@@ -551,5 +668,96 @@ fn read_lenenc_int(payload: &[u8], pos: &mut usize) -> anyhow::Result<u64> {
             Ok(u64::from_le_bytes(buf))
         }
         n => Ok(n as u64),
+    }
+}
+
+// ─── Tests ──────────────────────────────────────────────────────────
+//
+// V312-38 / Issue #4176 regression coverage: the empty-password case
+// must produce a 0-length auth-response (length byte = 0, no token),
+// not the bogus 20-byte SHA1("") token that system MySQL would reject
+// with `(using password: YES)`.
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    /// Find the auth-response length byte in a HandshakeResponse41
+    /// packet body. Layout (after our builder):
+    ///   4   capabilities (LE u32)
+    ///   4   max packet size (LE u32)
+    ///   1   charset
+    ///   23  reserved
+    ///   N   username (then 0x00 NUL terminator)
+    ///   1   auth-response length
+    ///   M   auth-response bytes
+    fn auth_response_length_byte(packet: &[u8]) -> u8 {
+        // capabilities + max_packet + charset + reserved = 32 bytes,
+        // then username (NUL-terminated), then 1 byte length.
+        let user_start = 32;
+        let nul = packet[user_start..]
+            .iter()
+            .position(|&b| b == 0)
+            .expect("username NUL terminator");
+        packet[user_start + nul + 1]
+    }
+
+    fn auth_response_bytes(packet: &[u8]) -> &[u8] {
+        let user_start = 32;
+        let nul = packet[user_start..]
+            .iter()
+            .position(|&b| b == 0)
+            .expect("username NUL terminator");
+        let len = packet[user_start + nul + 1] as usize;
+        &packet[user_start + nul + 2..user_start + nul + 2 + len]
+    }
+
+    #[test]
+    fn native_password_auth_empty_password_yields_zero_length() {
+        // V312-38 / Issue #4176: empty password MUST yield a 0-length
+        // auth-response per MySQL protocol.
+        let scramble = [0xAAu8; SCRAMBLE_LEN];
+        let auth = native_password_auth(b"", &scramble);
+        assert_eq!(auth.len(), 0, "empty password must produce no token bytes");
+    }
+
+    #[test]
+    fn native_password_auth_nonempty_password_yields_20_bytes() {
+        // Sanity: non-empty password still produces a 20-byte XOR token.
+        let scramble = [0xAAu8; SCRAMBLE_LEN];
+        let auth = native_password_auth(b"hunter2", &scramble);
+        assert_eq!(auth.len(), SCRAMBLE_LEN);
+    }
+
+    #[test]
+    fn handshake_response_empty_password_encodes_length_zero() {
+        // End-to-end: build_handshake_response41 with empty auth must
+        // emit 0x00 as the auth-response length byte and no token.
+        let scramble = [0xAAu8; SCRAMBLE_LEN];
+        let auth = native_password_auth(b"", &scramble);
+        let pkt = build_handshake_response41("root", &auth).expect("build");
+        assert_eq!(auth_response_length_byte(&pkt), 0);
+        assert_eq!(auth_response_bytes(&pkt).len(), 0);
+    }
+
+    #[test]
+    fn handshake_response_nonempty_password_encodes_length_twenty() {
+        // End-to-end: non-empty auth must emit 0x14 + 20 token bytes.
+        let scramble = [0xAAu8; SCRAMBLE_LEN];
+        let auth = native_password_auth(b"hunter2", &scramble);
+        let pkt = build_handshake_response41("root", &auth).expect("build");
+        assert_eq!(auth_response_length_byte(&pkt), SCRAMBLE_LEN as u8);
+        assert_eq!(auth_response_bytes(&pkt).len(), SCRAMBLE_LEN);
+        assert_eq!(auth_response_bytes(&pkt), auth.as_slice());
+    }
+
+    #[test]
+    fn native_password_auth_is_stable_for_same_inputs() {
+        // Determinism check: same password + scramble → same token.
+        let scramble = [0x55u8; SCRAMBLE_LEN];
+        let a = native_password_auth(b"hunter2", &scramble);
+        let b = native_password_auth(b"hunter2", &scramble);
+        assert_eq!(a, b);
+        assert_ne!(a, vec![0u8; SCRAMBLE_LEN]);
     }
 }

@@ -692,6 +692,16 @@ mod capability {
     /// change data in the packet (only meaningful when
     /// `CLIENT_SESSION_TRACK` is negotiated).
     pub const SERVER_STATUS_SESSION_STATE_CHANGED: u16 = 0x4000;
+    /// SERVER_MORE_RESULTS_EXISTS (0x0008). V312-WIRE-8 fix (regression
+    /// #4019/#4020/#4022 multi-query blocker): status flag set on the
+    /// trailing EOF/OK packet of every result set that is NOT the last
+    /// in a multi-statement COM_QUERY batch. Clients that negotiate
+    /// CLIENT_MULTI_STATEMENTS use this bit to decide whether to read
+    /// another result set from the same packet stream. Without this bit,
+    /// the client stops reading after the first result and the second
+    /// statement's response either gets concatenated into the row
+    /// stream or blocks the client on recvfrom.
+    pub const SERVER_MORE_RESULTS_EXISTS: u16 = 0x0008;
 
     pub const SERVER_DEFAULT: u32 = LONG_PASSWORD
         | FOUND_ROWS
@@ -2710,11 +2720,29 @@ fn send_result_set<W: Write>(
     mut seq: u8,
     cap: u32,
 ) -> MySqlResult<u8> {
+    send_result_set_with_more(w, cols, ctypes, rows, seq, cap, 0)
+}
+
+/// V312-WIRE-8: trailing-status variant. `more_results_flag` is OR'd
+/// into the status_flags of every trailing terminator (EOF for classic
+/// protocol, OK for DEPRECATE_EOF protocol) so multi-statement clients
+/// know whether another result set follows.
+fn send_result_set_with_more<W: Write>(
+    w: &mut W,
+    cols: &[String],
+    ctypes: &[String],
+    rows: &[Vec<Value>],
+    mut seq: u8,
+    cap: u32,
+    more_results_flag: u16,
+) -> MySqlResult<u8> {
+    let trailing_status: u16 = 0x0002 | more_results_flag;
     tracing::info!(
-        "send_result_set: {} cols, {} rows, start_seq={}",
+        "send_result_set: {} cols, {} rows, start_seq={}, more_results=0x{:04x}",
         cols.len(),
         rows.len(),
-        seq
+        seq,
+        more_results_flag
     );
     {
         let mut p = Vec::new();
@@ -2749,6 +2777,11 @@ fn send_result_set<W: Write>(
     // It then stopped reading the row stream, never received the actual
     // rows, and hung waiting for the next command response. Removing the
     // extra OK separator restores wire-protocol compatibility.
+    //
+    // V312-WIRE-8: in classic (DEPRECATE_EOF=0) protocol the inter-record
+    // separator is also a place where MORE_RESULTS_EXISTS is sometimes
+    // surfaced — MySQL 8.0 only sets the bit on the trailing terminator,
+    // so we mirror that here. Keep this packet at 0x0002.
     if cap & capability::DEPRECATE_EOF == 0 {
         make_eof_packet(seq, 0x0002).write_to(w)?;
         seq = seq.wrapping_add(1);
@@ -2789,11 +2822,11 @@ fn send_result_set<W: Write>(
     //     the spec-mandated byte layout per
     //     openspec/changes/2026-06-18-wire-deprecate-eof.
     //
-    // Both branches carry status_flags = 0x0002 (SERVER_STATUS_AUTOCOMMIT)
-    // so the client observes the same autocommit state regardless of
-    // which protocol variant is in use.
+    // Both branches carry status_flags = trailing_status (default
+    // 0x0002 = SERVER_STATUS_AUTOCOMMIT, OR'd with more_results_flag
+    // when this is not the last result of a multi-statement batch).
     if cap & capability::DEPRECATE_EOF == 0 {
-        make_eof_packet(seq, 0x0002).write_to(w)?;
+        make_eof_packet(seq, trailing_status).write_to(w)?;
         seq = seq.wrapping_add(1);
     } else {
         // V312-WIRE-5: `make_deprecate_eof_ok_packet` returns Vec<Packet>
@@ -2802,7 +2835,7 @@ fn send_result_set<W: Write>(
         // and advance seq once per packet.
         seq = write_ok_packets(
             w,
-            make_deprecate_eof_ok_packet(seq, 0, 0, 0x0002, 0, cap),
+            make_deprecate_eof_ok_packet(seq, 0, 0, trailing_status, 0, cap),
             seq,
         )?;
     }
@@ -4200,8 +4233,24 @@ fn do_command_loop<S: Read + Write + DrainWrites>(
                 // the RwLock poisons all subsequent .read()/.write() calls. Using .into_inner()
                 // recovery allows the server to continue serving queries rather than hard-fail.
                 let stmt_texts = split_top_level_statements(&q);
+                let stmt_count = stmt_texts.len();
                 let mut had_error = false;
-                for stmt_sql in &stmt_texts {
+                for (idx, stmt_sql) in stmt_texts.iter().enumerate() {
+                    // V312-WIRE-8: when the client negotiated CLIENT_MULTI_
+                    // STATEMENTS / CLIENT_MULTI_RESULTS, every result
+                    // terminator (OK or trailing EOF) for a non-final
+                    // statement in the batch MUST have the
+                    // SERVER_MORE_RESULTS_EXISTS (0x0008) bit set in its
+                    // status_flags. Without it, mysql 8.0 stops reading
+                    // after the first result and the remaining statements'
+                    // responses get concatenated into the row stream
+                    // (or block the client on recvfrom).
+                    let is_last_stmt = idx + 1 == stmt_count;
+                    let more_results_flag = if is_last_stmt {
+                        0
+                    } else {
+                        capability::SERVER_MORE_RESULTS_EXISTS
+                    };
                     let parsed = parse(stmt_sql);
                     // G13-OLTP-1: pick read-vs-write lock based on AST.
                     let is_read_only = parsed
@@ -4249,9 +4298,21 @@ fn do_command_loop<S: Read + Write + DrainWrites>(
                                 if let Some(ref slow_log) = config.slow_query_log {
                                     slow_log.set_threshold_ms(ms);
                                 }
+                                // V312-WIRE-8: OR MORE_RESULTS_EXISTS on
+                                // the SET OK packet when this is not the
+                                // last statement of a multi-stmt batch
+                                // (e.g. "SET long_query_time=100; SELECT 1").
                                 seq = write_ok_packets(
                                     stream,
-                                    make_ok_packet(seq, 0, 0, 0x0002, 0, cap, false),
+                                    make_ok_packet(
+                                        seq,
+                                        0,
+                                        0,
+                                        0x0002 | more_results_flag,
+                                        0,
+                                        cap,
+                                        false,
+                                    ),
                                     seq,
                                 )?;
                             }
@@ -4338,17 +4399,28 @@ fn do_command_loop<S: Read + Write + DrainWrites>(
                             let cols: Vec<String> = real_col_names;
                             let ctypes: Vec<String> =
                                 cols.iter().map(|_| "VARCHAR(255)".to_string()).collect();
-                            seq = send_result_set(stream, &cols, &ctypes, &r.rows, seq, cap)?;
+                            seq = send_result_set_with_more(
+                                stream,
+                                &cols,
+                                &ctypes,
+                                &r.rows,
+                                seq,
+                                cap,
+                                more_results_flag,
+                            )?;
                             *server_last_sent_seq = seq;
                         }
                         Ok(r) => {
+                            // V312-WIRE-8: OR the more_results_flag into
+                            // the OK packet's status_flags when this is
+                            // not the last statement in the batch.
                             seq = write_ok_packets(
                                 stream,
                                 make_ok_packet(
                                     seq,
                                     r.affected_rows as u64,
                                     0,
-                                    0x0002,
+                                    0x0002 | more_results_flag,
                                     0,
                                     cap,
                                     false,
