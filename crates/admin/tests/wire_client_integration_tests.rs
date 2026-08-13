@@ -24,6 +24,7 @@ fn start_server(
         // missed by the struct-extension propagation. Default None disables
         // the metrics endpoint.
         metrics_port: None,
+        load_infile_dir: None,
     };
     start_ephemeral(config).expect("server starts")
 }
