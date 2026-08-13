@@ -73,7 +73,8 @@ mod tests {
                 primary_key: false,
                 char_max_length: None,
                 collation: None,
-            }],
+
+                default_value: None,            }],
             foreign_keys: vec![],
             unique_constraints: vec![],
             check_constraints: vec![],
@@ -114,7 +115,8 @@ mod tests {
                 primary_key: false,
                 char_max_length: None,
                 collation: None,
-            }],
+
+                default_value: None,            }],
             foreign_keys: vec![],
             unique_constraints: vec![],
             check_constraints: vec![],
@@ -163,7 +165,8 @@ mod tests {
                 primary_key: false,
                 char_max_length: None,
                 collation: None,
-            }],
+
+                default_value: None,            }],
             foreign_keys: vec![],
             unique_constraints: vec![],
             check_constraints: vec![],
@@ -199,7 +202,8 @@ mod tests {
                 primary_key: false,
                 char_max_length: None,
                 collation: None,
-            }],
+
+                default_value: None,            }],
             foreign_keys: vec![],
             unique_constraints: vec![],
             check_constraints: vec![],
