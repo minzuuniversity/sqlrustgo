@@ -1,5 +1,5 @@
 === D8: Architecture/Semantic Debt Gate (5-Principle P5) ===
-  SSOT: /home/openclaw/workspace/dev/sqlrustgo/docs/governance/debt/debt-registry.yaml
+  SSOT: /home/openclaw/sqlrustgo_work/docs/governance/debt/debt-registry.yaml
 
   [ARCH-1] state=CLOSED ✅
   [ARCH-2] state=CLOSED ✅
@@ -16,5 +16,5 @@
   UNKNOWN:              0
 
 ⚠️  D8 Arch/Sem Debt: PASS-WITH-DRIFT (1 in-progress / blocked with plan)
-   These items have documented v3.9.0+ plans in /home/openclaw/workspace/dev/sqlrustgo/docs/governance/debt/debt-registry.yaml
+   These items have documented v3.9.0+ plans in /home/openclaw/sqlrustgo_work/docs/governance/debt/debt-registry.yaml
    but are not yet fully implemented.
