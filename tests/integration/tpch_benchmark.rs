@@ -9,16 +9,16 @@
 #[cfg(test)]
 mod tests {
     use parking_lot::RwLock;
-    use sqlrustgo::{parse, ExecutionEngine, MemoryStorage};
+    use sqlrustgo::{ExecutionEngine, MemoryStorage};
     use std::process::Command;
     use std::sync::Arc;
     use std::time::Instant;
 
-    fn create_engine() -> ExecutionEngine {
+    fn create_engine() -> ExecutionEngine<MemoryStorage> {
         ExecutionEngine::new(Arc::new(RwLock::new(MemoryStorage::new())))
     }
 
-    fn setup_sqlrustgo_test_data() -> ExecutionEngine {
+    fn setup_sqlrustgo_test_data() -> ExecutionEngine<MemoryStorage> {
         let mut engine = create_engine();
 
         engine.execute("CREATE TABLE lineitem (l_orderkey INTEGER, l_partkey INTEGER, l_suppkey INTEGER, l_linenumber INTEGER, l_quantity INTEGER, l_extendedprice REAL, l_discount REAL, l_tax REAL, l_returnflag TEXT, l_linestatus TEXT, l_shipdate TEXT, l_commitdate TEXT, l_receiptdate TEXT, l_shipinstruct TEXT, l_shipmode TEXT, l_comment TEXT)").unwrap();
@@ -56,7 +56,7 @@ mod tests {
             let sql = "SELECT * FROM lineitem";
 
             let start = Instant::now();
-            let result = engine.execute(parse(sql).unwrap()).unwrap();
+            let result = engine.execute(sql).unwrap();
             let elapsed = start.elapsed();
 
             println!(
@@ -74,7 +74,7 @@ mod tests {
             let sql = "SELECT * FROM lineitem WHERE l_quantity > 10";
 
             let start = Instant::now();
-            let result = engine.execute(parse(sql).unwrap()).unwrap();
+            let result = engine.execute(sql).unwrap();
             let elapsed = start.elapsed();
 
             println!(
@@ -92,7 +92,7 @@ mod tests {
             let sql = "SELECT c.c_name, o.o_orderkey FROM customer c JOIN orders o ON c.c_custkey = o.o_custkey WHERE c.c_mktsegment = 'AUTOMOBILE'";
 
             let start = Instant::now();
-            let result = engine.execute(parse(sql).unwrap()).unwrap();
+            let result = engine.execute(sql).unwrap();
             let elapsed = start.elapsed();
 
             println!(
@@ -112,7 +112,7 @@ mod tests {
 
             let start = Instant::now();
             for _ in 0..iterations {
-                let _ = engine.execute(parse(sql).unwrap()).unwrap();
+                let _ = engine.execute(sql).unwrap();
             }
             let total_elapsed = start.elapsed();
             let avg_ms = (total_elapsed.as_secs_f64() * 1000.0) / iterations as f64;
@@ -141,7 +141,7 @@ mod tests {
 
             for (name, sql) in queries {
                 let start = Instant::now();
-                let result = engine.execute(parse(sql).unwrap()).unwrap();
+                let result = engine.execute(sql).unwrap();
                 let elapsed = start.elapsed();
 
                 println!(
