@@ -9,7 +9,7 @@ mod tests {
     use parking_lot::RwLock;
     use std::sync::Arc;
 
-    fn create_engine() -> ExecutionEngine {
+    fn create_engine() -> ExecutionEngine<MemoryStorage> {
         ExecutionEngine::new(Arc::new(RwLock::new(MemoryStorage::new())))
     }
 
@@ -144,10 +144,7 @@ mod tests {
 
         let result = engine
             .execute(
-                parse(
-                    "SELECT COUNT(*), SUM(value), AVG(value), MIN(value), MAX(value) FROM single",
-                )
-                .unwrap(),
+                "SELECT COUNT(*), SUM(value), AVG(value), MIN(value), MAX(value) FROM single",
             )
             .unwrap();
 

@@ -20,7 +20,7 @@ fn create_sqlite_conn() -> Connection {
     Connection::open(TBL_SQLITE_DB).unwrap()
 }
 
-fn setup_sqlrustgo_engine() -> ExecutionEngine {
+fn setup_sqlrustgo_engine() -> ExecutionEngine<MemoryStorage> {
     let storage = Arc::new(RwLock::new(MemoryStorage::new()));
     let engine = ExecutionEngine::new(storage.clone());
 
@@ -853,14 +853,7 @@ fn test_tpch_q1_simple() {
     println!("SQLite returned {} rows", sqlite_result.len());
 
     // Run SQLRustGo query
-    let parse_result = parse(sql);
-    assert!(
-        parse_result.is_ok(),
-        "Parse error: {:?}",
-        parse_result.err()
-    );
-
-    let result = sqlrustgo_engine.execute(parse_result.unwrap());
+    let result = sqlrustgo_engine.execute(sql);
     match result {
         Ok(r) => {
             println!("SQLRustGo returned {} rows", r.rows.len());

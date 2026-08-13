@@ -930,7 +930,7 @@ fn test_identifier_delegation() {
                 "facade mismatch for {input:?}: facade={from_facade:?} expected={expected:?}"
             ));
         }
-        if from_evaluator != *expected {
+        if from_evaluator != Ok(expected.clone()) {
             failures.push(format!(
                 "evaluator mismatch for {input:?}: evaluator={from_evaluator:?} expected={expected:?}"
             ));
@@ -970,32 +970,32 @@ fn test_identifier_known_outputs() {
     let row: Vec<Value> = vec![Value::Integer(7), Value::Text("bob".into())];
 
     // Found
-    assert_eq!(eval_identifier("id", &row, &columns), Value::Integer(7));
+    assert_eq!(eval_identifier("id", &row, &columns), Ok(Value::Integer(7)));
     assert_eq!(
         eval_identifier("user_name", &row, &columns),
-        Value::Text("bob".into())
+        Ok(Value::Text("bob".into()))
     );
     // Case-insensitive
     assert_eq!(
         eval_identifier("ID", &row, &columns),
-        Value::Integer(7),
+        Ok(Value::Integer(7)),
         "case-insensitive match"
     );
     assert_eq!(
         eval_identifier("USER_NAME", &row, &columns),
-        Value::Text("bob".into()),
+        Ok(Value::Text("bob".into())),
         "case-insensitive match"
     );
     // Not found → fallback
     assert_eq!(
         eval_identifier("missing", &row, &columns),
-        Value::Text("missing".into()),
+        Ok(Value::Text("missing".into())),
         "unknown column returns Value::Text(name)"
     );
     // Out of bounds
     assert_eq!(
         eval_identifier("id", &[], &columns),
-        Value::Null,
+        Ok(Value::Null),
         "out-of-bounds row returns Null"
     );
 }
