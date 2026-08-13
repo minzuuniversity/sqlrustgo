@@ -1364,6 +1364,9 @@ path = "tests/integration/wire/v312_13_typed_wrappers_test.rs"
 name = "v312_13_load_data_sf1_test"
 path = "tests/integration/tpch/v312_13_load_data_sf1_test.rs"
 [[test]]
+name = "v312_13_load_data_sf10_test"
+path = "tests/integration/tpch/v312_13_load_data_sf10_test.rs"
+[[test]]
 name = "oracle_g16_compat"
 path = "tests/integration/wire/oracle_g16_compat.rs"
 [[test]]
