@@ -1625,7 +1625,15 @@ fn expand_column_names(
                             for col in &info.columns {
                                 out.push(col.name.clone());
                             }
+                            continue;
                         }
+                    }
+                    // V313-followup-6 / Issue #4159: `SELECT * FROM (VALUES ...) s(x)`
+                    // has `table="s"` but `s` is not in catalog; recurse into
+                    // `from_subquery` so the column-list form `s(x)` surfaces.
+                    if let Some(sub) = &s.from_subquery {
+                        let sub_names = expand_column_names(storage, &Statement::Select(sub.as_ref().clone()));
+                        out.extend(sub_names);
                     }
                 } else {
                     out.push(n);
