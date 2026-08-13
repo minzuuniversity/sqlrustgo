@@ -42,7 +42,8 @@ fn open_client(data_dir: &std::path::Path) -> MySqlTestClient {
     let cfg = EphemeralConfig {
         data_dir: Some(data_dir.to_path_buf()),
         bootstrap_tables: false,
-        bootstrap_users: true,        metrics_port: None,
+        bootstrap_users: true,
+        metrics_port: None,
 
         ..Default::default()
     };

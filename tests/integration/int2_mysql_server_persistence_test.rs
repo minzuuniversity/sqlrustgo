@@ -96,7 +96,8 @@ where
         let config = EphemeralConfig {
             data_dir: Some(data_dir.clone()),
             bootstrap_tables: false,
-            bootstrap_users: true,                metrics_port: None,
+            bootstrap_users: true,
+            metrics_port: None,
 
             ..Default::default()
         };
@@ -112,7 +113,8 @@ where
         let config = EphemeralConfig {
             data_dir: Some(data_dir.clone()),
             bootstrap_tables: false,
-            bootstrap_users: true,                metrics_port: None,
+            bootstrap_users: true,
+            metrics_port: None,
 
             ..Default::default()
         };

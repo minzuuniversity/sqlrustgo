@@ -308,7 +308,8 @@ fn tpch_sf1_22_in_process_regression() {
         bootstrap_tables: false,
         bootstrap_users: true,
         bootstrap_sql,
-        storage: storage_backend,        metrics_port: None,
+        storage: storage_backend,
+        metrics_port: None,
 
         ..Default::default()
     };

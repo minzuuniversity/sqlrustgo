@@ -151,7 +151,7 @@ mod tests {
                     nullable: false,
                     primary_key: true,
                     char_max_length: None,
-                collation: None,
+                    collation: None,
                 },
                 crate::engine::ColumnDefinition {
                     name: "name".to_string(),
@@ -159,7 +159,7 @@ mod tests {
                     nullable: true,
                     primary_key: false,
                     char_max_length: None,
-                collation: None,
+                    collation: None,
                 },
             ],
             foreign_keys: vec![],

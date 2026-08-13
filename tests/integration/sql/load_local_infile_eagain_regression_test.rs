@@ -95,7 +95,8 @@ fn shared() -> &'static SharedServer {
                 _handle: start_ephemeral(EphemeralConfig {
                     data_dir: Some(tmp.path().to_path_buf()),
                     bootstrap_tables: false,
-                    bootstrap_users: true,                                metrics_port: None,
+                    bootstrap_users: true,
+                    metrics_port: None,
 
                     ..Default::default()
                 })
@@ -106,7 +107,8 @@ fn shared() -> &'static SharedServer {
         let config = EphemeralConfig {
             data_dir: Some(data_dir),
             bootstrap_tables: false,
-            bootstrap_users: true,                metrics_port: None,
+            bootstrap_users: true,
+            metrics_port: None,
 
             ..Default::default()
         };
