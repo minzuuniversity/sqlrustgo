@@ -34,9 +34,87 @@ pub struct QueryResult {
     pub duration: Duration,
 }
 
+/// Classification of the MySQL-compatible server we connected to.
+///
+/// The handshake `server_version` string is the only reliable way to
+/// distinguish `sqlrustgo-mysql-server` from `mysqld` / `mariadbd`
+/// without sending a probe query. The latter is what causes
+/// Issue #4176 — REPL defaults to 127.0.0.1:3306 which collides with
+/// system MySQL on dev machines.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum ServerKind {
+    /// The server identifies itself as sqlrustgo (version string contains
+    /// `sqlrustgo`).
+    SqlRustGo(String),
+    /// A non-sqlrustgo MySQL-compatible server (system MySQL, MariaDB,
+    /// Percona, etc.). The string is the raw `server_version` from the
+    /// handshake so callers can render it in diagnostics.
+    Other(String),
+    /// Handshake could not be parsed (truncated, wrong protocol, etc.).
+    Unknown,
+}
+
+impl ServerKind {
+    /// True iff this is a confirmed sqlrustgo server.
+    pub fn is_sqlrustgo(&self) -> bool {
+        matches!(self, ServerKind::SqlRustGo(_))
+    }
+
+    /// One-line diagnostic message for the case where REPL/CLI connected
+    /// to a non-sqlrustgo server on the given port. Empty for sqlrustgo
+    /// or unknown so we don't print false-positive warnings when the
+    /// issue is something else (e.g. wrong password).
+    pub fn diagnostic_for_port(&self, port: u16) -> String {
+        match self {
+            ServerKind::SqlRustGo(_) => String::new(),
+            ServerKind::Other(ver) => format!(
+                "warning: server on {port} identifies as `{ver}` — this looks like a \
+                 non-sqlrustgo MySQL/MariaDB. Port {port} is the default for system MySQL. \
+                 Start sqlrustgo-mysql-server (or pass --host/--port to point at the right \
+                 server)."
+            ),
+            ServerKind::Unknown => String::new(),
+        }
+    }
+}
+
+/// Parse the server_version string from a HandshakeV10 packet payload.
+///
+/// Returns the raw server version (e.g. `"8.0.33"` or
+/// `"8.0.33-sqlrustgo"`) — callers can inspect it to detect non-sqlrustgo
+/// servers. Returns `Err` on protocol errors (wrong version byte,
+/// missing NUL terminator, packet too short) so a corrupted stream
+/// doesn't masquerade as a known MySQL.
+pub fn parse_handshake_version(handshake: &[u8]) -> anyhow::Result<ServerKind> {
+    // Minimum valid handshake: protocol(1) + version_at_least_1 + NUL(1)
+    // + conn_id(4) + ... — anything shorter than 6 bytes is certainly
+    // malformed (the test suite relies on this).
+    if handshake.len() < 6 {
+        return Err(anyhow::anyhow!("handshake too short: {} bytes", handshake.len()));
+    }
+    if handshake[0] != 0x0a {
+        return Err(anyhow::anyhow!(
+            "not a HandshakeV10: first byte = 0x{:02x}",
+            handshake[0]
+        ));
+    }
+    let v_end_rel = handshake[1..]
+        .iter()
+        .position(|&b| b == 0)
+        .ok_or_else(|| anyhow::anyhow!("server version not NUL-terminated"))?;
+    let version = String::from_utf8_lossy(&handshake[1..1 + v_end_rel]).into_owned();
+    let kind = if version.to_lowercase().contains("sqlrustgo") {
+        ServerKind::SqlRustGo(version)
+    } else {
+        ServerKind::Other(version)
+    };
+    Ok(kind)
+}
+
 /// A MySQL wire-protocol client connected to a running server.
 pub struct Client {
     stream: TcpStream,
+    server_kind: ServerKind,
 }
 
 impl Client {
@@ -51,8 +129,9 @@ impl Client {
             .set_write_timeout(Some(WRITE_TIMEOUT))
             .map_err(|e| anyhow::anyhow!("set_write_timeout: {e}"))?;
 
-        // 1) Read server's HandshakeV10 and extract scramble
+        // 1) Read server's HandshakeV10 and extract scramble + version
         let handshake = read_packet(&mut stream)?;
+        let server_kind = parse_handshake_version(&handshake).unwrap_or(ServerKind::Unknown);
         let scramble = parse_handshake(&handshake)?;
 
         // 2) Compute mysql_native_password auth response
@@ -66,7 +145,17 @@ impl Client {
         let auth_resp = read_packet(&mut stream)?;
         check_ok_or_err(&auth_resp).map_err(|e| anyhow::anyhow!("auth failed: {e}"))?;
 
-        Ok(Self { stream })
+        Ok(Self {
+            stream,
+            server_kind,
+        })
+    }
+
+    /// The server kind identified from the handshake. Useful for callers
+    /// that want to warn the user when they accidentally connected to a
+    /// non-sqlrustgo MySQL.
+    pub fn server_kind(&self) -> &ServerKind {
+        &self.server_kind
     }
 
     /// Execute a SQL statement that may return a result set (DDL, DML).
