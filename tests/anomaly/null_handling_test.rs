@@ -730,4 +730,61 @@ mod tests {
             "UPDATE must report 3 affected rows"
         );
     }
+
+    /// V313-followup-6 / Issue #4159 — GREEN: trailing ORDER BY column_name
+    /// against EXCEPT ALL whose left is `SELECT * FROM (VALUES ...) s(x)`.
+    /// Post-fix: recursion into `from_subquery` surfaces the captured
+    /// column-list names and the rows sort ascending.
+    #[test]
+    fn green_4159_except_all_trailing_order_by_column_name_against_values_alias() {
+        let mut engine = create_engine();
+        let result = engine
+            .execute(
+                "SELECT * FROM (VALUES (1),(2),(2),(3),(3),(3),(4),(4),(4),(4)) s(x) \
+                 EXCEPT ALL \
+                 SELECT * FROM (VALUES (1),(3),(3)) t(x) \
+                 ORDER BY x",
+            )
+            .expect("EXCEPT ALL must succeed");
+        let values: Vec<i64> = result
+            .rows
+            .iter()
+            .map(|r| match &r[0] {
+                Value::Integer(n) => *n,
+                other => panic!("expected Integer, got {:?}", other),
+            })
+            .collect();
+        assert_eq!(
+            values,
+            vec![2, 2, 3, 4, 4, 4, 4],
+            "ORDER BY x must sort ascending: 2,2,3,4,4,4,4 (per-row max(0, left_cnt - right_cnt))"
+        );
+    }
+
+    /// V313-followup-6 / Issue #4159 — GREEN: same fix for INTERSECT ALL.
+    #[test]
+    fn green_4159_intersect_all_trailing_order_by_column_name_against_values_alias() {
+        let mut engine = create_engine();
+        let result = engine
+            .execute(
+                "SELECT * FROM (VALUES (1),(2),(3)) s(x) \
+                 INTERSECT ALL \
+                 SELECT * FROM (VALUES (2),(2),(2),(3),(3)) t(x) \
+                 ORDER BY x",
+            )
+            .expect("INTERSECT ALL must succeed");
+        let values: Vec<i64> = result
+            .rows
+            .iter()
+            .map(|r| match &r[0] {
+                Value::Integer(n) => *n,
+                other => panic!("expected Integer, got {:?}", other),
+            })
+            .collect();
+        assert_eq!(
+            values,
+            vec![2, 3],
+            "ORDER BY x must sort ascending: 2,3 (per-row min(left_cnt, right_cnt))"
+        );
+    }
 }
