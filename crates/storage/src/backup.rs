@@ -248,6 +248,7 @@ impl DataRestorer {
                     primary_key: false,
                     char_max_length: None,
                     collation: None,
+                    default_value: None,
                 })
                 .collect(),
             foreign_keys: vec![],
@@ -320,6 +321,7 @@ impl DataRestorer {
                     primary_key: false,
                     char_max_length: None,
                     collation: None,
+                    default_value: None,
                 })
                 .collect(),
             foreign_keys: vec![],
@@ -470,6 +472,7 @@ mod tests {
                     primary_key: false,
                     char_max_length: None,
                     collation: None,
+                    default_value: None,
                 },
                 crate::ColumnDefinition {
                     name: "name".to_string(),
@@ -478,6 +481,7 @@ mod tests {
                     primary_key: false,
                     char_max_length: None,
                     collation: None,
+                    default_value: None,
                 },
             ],
             ..Default::default()
@@ -519,6 +523,7 @@ mod tests {
                     primary_key: false,
                     char_max_length: None,
                     collation: None,
+                    default_value: None,
                 },
                 crate::ColumnDefinition {
                     name: "name".to_string(),
@@ -527,6 +532,7 @@ mod tests {
                     primary_key: false,
                     char_max_length: None,
                     collation: None,
+                    default_value: None,
                 },
             ],
             ..Default::default()
@@ -615,6 +621,7 @@ mod tests {
                 primary_key: false,
                 char_max_length: None,
                 collation: None,
+                default_value: None,
             }],
             ..Default::default()
         };
@@ -714,6 +721,7 @@ mod tests {
                 primary_key: false,
                 char_max_length: None,
                 collation: None,
+                default_value: None,
             }],
             ..Default::default()
         };
@@ -739,6 +747,7 @@ mod tests {
                 primary_key: false,
                 char_max_length: None,
                 collation: None,
+                default_value: None,
             }],
             ..Default::default()
         };
@@ -770,6 +779,7 @@ mod tests {
                 primary_key: false,
                 char_max_length: None,
                 collation: None,
+                default_value: None,
             }],
             ..Default::default()
         };

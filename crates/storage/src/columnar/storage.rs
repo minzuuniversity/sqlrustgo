@@ -967,6 +967,7 @@ mod tests {
                     auto_increment: false,
                     compression: None,
                     collation: None,
+                    default_value: None,
                 },
                 ColumnDefinition {
                     name: "name".to_string(),
@@ -978,6 +979,7 @@ mod tests {
                     auto_increment: false,
                     compression: None,
                     collation: None,
+                    default_value: None,
                 },
                 ColumnDefinition {
                     name: "value".to_string(),
@@ -989,6 +991,7 @@ mod tests {
                     auto_increment: false,
                     compression: None,
                     collation: None,
+                    default_value: None,
                 },
             ],
             ..Default::default()

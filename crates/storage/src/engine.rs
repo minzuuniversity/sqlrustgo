@@ -658,6 +658,10 @@ pub struct ColumnDefinition {
     /// `None` means binary (case-sensitive) comparison.
     #[serde(default)]
     pub collation: Option<String>,
+    /// V313-followup-1 / Issue #4154: literal default; INSERT
+    /// materialises when the row omits the column.
+    #[serde(default)]
+    pub default_value: Option<sqlrustgo_types::Value>,
 }
 
 impl ColumnDefinition {
@@ -669,6 +673,7 @@ impl ColumnDefinition {
             primary_key: false,
             char_max_length: None,
             collation: None,
+            default_value: None,
         }
     }
 }
@@ -822,6 +827,19 @@ pub trait StorageEngine: Send + Sync {
     ) -> SqlResult<()> {
         Err(SqlError::ExecutionError(
             "modify_column not supported by this storage engine".to_string(),
+        ))
+    }
+
+    /// V313-followup-1 / Issue #4154: SET/DROP DEFAULT on a column;
+    /// default impl returns "not supported" so backends opt in.
+    fn set_column_default(
+        &mut self,
+        _table: &str,
+        _column: &str,
+        _default_value: Option<String>,
+    ) -> SqlResult<()> {
+        Err(SqlError::ExecutionError(
+            "set_column_default not supported by this storage engine".to_string(),
         ))
     }
 
@@ -1305,8 +1323,31 @@ impl StorageEngine for MemoryStorage {
 
     fn insert(&mut self, table: &str, records: Vec<Record>) -> SqlResult<()> {
         let table_key = table.to_lowercase();
+        // V313-followup-1 / Issue #4154: pad rows with NULL for
+        // omitted columns so SELECT can resolve later columns.
+        let padded: Vec<Record> = if let Some(info) = self.table_infos.get(&table_key) {
+            let ncols = info.columns.len();
+            records
+                .into_iter()
+                .map(|mut row| {
+                    while row.len() < ncols {
+                        // V313-followup-1 / Issue #4154: fill omitted columns with
+                        // their default_value (NULL if no default).
+                        let default = info
+                            .columns
+                            .get(row.len())
+                            .and_then(|c| c.default_value.clone())
+                            .unwrap_or(Value::Null);
+                        row.push(default);
+                    }
+                    row
+                })
+                .collect()
+        } else {
+            records
+        };
         if let Some(log) = self.tx_log.as_mut() {
-            for row in &records {
+            for row in &padded {
                 log.inserted.push((table_key.clone(), row.clone()));
             }
         } else {
@@ -1315,9 +1356,9 @@ impl StorageEngine for MemoryStorage {
             self.committed_tables
                 .entry(table_key.clone())
                 .or_default()
-                .extend(records.iter().cloned());
+                .extend(padded.iter().cloned());
         }
-        self.tables.entry(table_key).or_default().extend(records);
+        self.tables.entry(table_key).or_default().extend(padded);
         Ok(())
     }
 
@@ -1535,9 +1576,10 @@ impl StorageEngine for MemoryStorage {
     }
 
     fn add_column(&mut self, table: &str, mut column: ColumnDefinition) -> SqlResult<()> {
-        // V312-19 #3972: case-insensitive table name lookup + lowercase column names
+        // V313-followup-1 / Issue #4154: column name preserved as-is
+        // (no lowercase) so case-exact ALTER COLUMN can disambiguate.
         if let Some(info) = self.table_infos.get_mut(&table.to_lowercase()) {
-            column.name = column.name.to_lowercase();
+            let _ = &mut column;
             info.columns.push(column);
             Ok(())
         } else {
@@ -1707,6 +1749,29 @@ impl StorageEngine for MemoryStorage {
             }
         }
         Ok(())
+    }
+
+    // V313-followup-1 / Issue #4154: SET/DROP DEFAULT updates the
+    // column's default_value; INSERT-time materialisation lives in
+    // src/engine_dml.rs.
+    fn set_column_default(
+        &mut self,
+        table: &str,
+        column: &str,
+        default_value: Option<String>,
+    ) -> SqlResult<()> {
+        let info = self
+            .table_infos
+            .get_mut(&table.to_lowercase())
+            .ok_or_else(|| SqlError::ExecutionError(format!("Table not found: {}", table)))?;
+        // V313-followup-1 / Issue #4154: case-exact column match.
+            let col = info
+                .columns
+                .iter_mut()
+                .find(|c| c.name == column)
+                .ok_or_else(|| SqlError::ExecutionError(format!("Column not found: {}", column)))?;
+            col.default_value = default_value.map(|s| sqlrustgo_types::Value::Text(s));
+            Ok(())
     }
 
     fn modify_column(
@@ -1995,6 +2060,7 @@ mod tests {
                 primary_key: true,
                 char_max_length: None,
                 collation: None,
+                default_value: None,
             }],
             foreign_keys: vec![],
             unique_constraints: vec![],
@@ -2202,6 +2268,7 @@ mod tests {
                 primary_key: true,
                 char_max_length: None,
                 collation: None,
+                default_value: None,
             }],
             foreign_keys: vec![],
             unique_constraints: vec![],
