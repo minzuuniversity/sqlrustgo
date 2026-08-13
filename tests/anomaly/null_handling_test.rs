@@ -584,17 +584,16 @@ mod tests {
     #[test]
     fn red_v313_09_except_all_multiset_semantics() {
         let mut engine = create_engine();
-        // left  has 1,2,2,3,3,3,4,4,4,4  (4x "2", 3x "3", 4x "4")
+        // left  has 1,2,2,3,3,3,4,4,4,4  (1x "1", 2x "2", 3x "3", 4x "4")
         // right has 1,3,3                     (1x "1", 2x "3")
-        // EXCEPT ALL  -> 2,2,4,4,4           (kept the two "2"s and all four "4"s;
-        //                                     "1" removed once, each "3" removed once
-        //                                     until right-side "3"s exhausted)
+        // EXCEPT ALL  -> 2,2,3,4,4,4,4  (per-row max(0, left_cnt - right_cnt)):
+        //                                     (1) 1-1=0; (2) 2-0=2; (3) 3-2=1; (4) 4-0=4
         let result = engine
             .execute(
-                "SELECT * FROM (VALUES (1),(2),(2),(3),(3),(3),(4),(4),(4),(4)) s(x) \
+                "SELECT x FROM (VALUES (1),(2),(2),(3),(3),(3),(4),(4),(4),(4)) s(x) \
                  EXCEPT ALL \
-                 SELECT * FROM (VALUES (1),(3),(3)) t(x) \
-                 ORDER BY x",
+                 SELECT x FROM (VALUES (1),(3),(3)) t(x) \
+                 ORDER BY 1",
             )
             .expect("EXCEPT ALL must succeed");
         let values: Vec<i64> = result
@@ -607,8 +606,9 @@ mod tests {
             .collect();
         assert_eq!(
             values,
-            vec![2, 2, 4, 4, 4, 4],
-            "EXCEPT ALL must keep two 2s and four 4s; multiset subtraction"
+            vec![2, 2, 3, 4, 4, 4, 4],
+            "EXCEPT ALL multiset subtraction: per-row max(0, left_cnt - right_cnt); \
+             left=1,2,2,3,3,3,4,4,4,4 minus right=1,3,3 -> 2,2,3,4,4,4,4"
         );
     }
 
@@ -622,10 +622,10 @@ mod tests {
         // INTERSECT ALL -> 2,3 (1x of each, limited by min multiplicity)
         let result = engine
             .execute(
-                "SELECT * FROM (VALUES (1),(2),(3)) s(x) \
+                "SELECT x FROM (VALUES (1),(2),(3)) s(x) \
                  INTERSECT ALL \
-                 SELECT * FROM (VALUES (2),(2),(2),(3),(3)) t(x) \
-                 ORDER BY x",
+                 SELECT x FROM (VALUES (2),(2),(2),(3),(3)) t(x) \
+                 ORDER BY 1",
             )
             .expect("INTERSECT ALL must succeed");
         let values: Vec<i64> = result
