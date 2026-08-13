@@ -89,6 +89,8 @@ fn format_value(v: &sqlrustgo::Value) -> String {
         Text(s) => s.clone(),
         Blob(b) => format!("{:?}", b),
         Boolean(b) => b.to_string(),
+        Point(x, y) => format!("POINT({}, {})", x, y),
+        Json(j) => j.to_string(),
     }
 }
 
