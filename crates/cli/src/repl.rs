@@ -12,6 +12,12 @@ pub fn run_repl(host: &str, port: u16, user: &str, password: &str) -> anyhow::Re
     let mut client = Client::connect(host, port, user, password)?;
 
     println!("SQLRustGo CLI REPL — connected to {host}:{port}");
+    // Issue #4176 / V312-38: warn when the user accidentally connected
+    // to a non-sqlrustgo MySQL on the default port (system MySQL collision).
+    let diag = client.server_kind().diagnostic_for_port(port);
+    if !diag.is_empty() {
+        eprintln!("{diag}");
+    }
     println!("Enter SQL statements. Type `exit` or Ctrl-D to quit.");
     println!();
 
