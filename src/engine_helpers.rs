@@ -26,6 +26,60 @@ pub fn build_insert_records(values: &[Vec<sqlrustgo_parser::Expression>]) -> Vec
         .collect()
 }
 
+/// V313-followup-1 / Issue #4154: substitute `DEFAULT` tokens
+/// (sentinel `Value::Text("DEFAULT")`) with column default_value
+/// (NULL when the column has no default).
+pub fn materialise_default_tokens(
+    records: Vec<Vec<Value>>,
+    column_names: &[String],
+    table_columns: &[sqlrustgo_storage::ColumnDefinition],
+) -> Vec<Vec<Value>> {
+    if records.is_empty() {
+        return records;
+    }
+    let defaults: Vec<Option<Value>> = table_columns
+        .iter()
+        .map(|c| c.default_value.clone())
+        .collect();
+    let positions: Vec<(usize, Option<Value>)> = if column_names.is_empty() {
+        // INSERT VALUES with no explicit column list — align by index.
+        (0..table_columns.len())
+            .map(|i| (i, defaults.get(i).cloned().unwrap_or(None)))
+            .collect()
+    } else {
+        column_names
+            .iter()
+            .enumerate()
+            .filter_map(|(row_idx, name)| {
+                // V313-followup-1 / Issue #4154: case-exact first, fallback
+                // case-insensitive if exact fails.
+                let pos = table_columns
+                    .iter()
+                    .position(|c| c.name == *name)
+                    .or_else(|| {
+                        table_columns
+                            .iter()
+                            .position(|c| c.name.to_lowercase() == name.to_lowercase())
+                    })?;
+                Some((row_idx, defaults.get(pos).cloned().unwrap_or(None)))
+            })
+            .collect()
+    };
+    let mut out = records;
+    for (col_idx, default) in positions {
+        let default = default.clone();
+        for row in out.iter_mut() {
+            if col_idx < row.len() {
+                let is_default = matches!(&row[col_idx], Value::Text(t) if t == "DEFAULT");
+                if is_default {
+                    row[col_idx] = default.clone().unwrap_or(Value::Null);
+                }
+            }
+        }
+    }
+    out
+}
+
 /// Materialise a SELECT result into INSERT-shaped records, coercing each
 /// value to the target column's declared type.
 pub fn map_select_result_to_records(
