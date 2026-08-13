@@ -40,6 +40,9 @@ mod tests {
             unique_constraints: vec![],
             check_constraints: vec![],
             compression: None,
+            // V312-26 / #4077: collations field added by d48b0a1a71;
+            // this initializer was missed by the propagation PR #4140.
+            collations: std::collections::HashMap::new(),
             partition_info: None,
         }
     }
@@ -221,8 +224,10 @@ mod tests {
                 unique_constraints: vec![],
                 check_constraints: vec![],
                 compression: None,
-                partition_info: None,
+                // V312-26 / #4077: collations field added by d48b0a1a71;
+                // this initializer was missed by the propagation PR #4140.
                 collations: std::collections::HashMap::new(),
+                partition_info: None,
             };
 
             let result = storage.create_table(&info);
@@ -263,8 +268,10 @@ mod tests {
             unique_constraints: vec![],
             check_constraints: vec![],
             compression: None,
-            partition_info: None,
+            // V312-26 / #4077: collations field added by d48b0a1a71;
+            // this initializer was missed by the propagation PR #4140.
             collations: std::collections::HashMap::new(),
+            partition_info: None,
         };
 
         storage.lock().unwrap().create_table(&info).unwrap();
@@ -339,8 +346,10 @@ mod tests {
                 unique_constraints: vec![],
                 check_constraints: vec![],
                 compression: None,
-                partition_info: None,
+                // V312-26 / #4077: collations field added by d48b0a1a71;
+                // this initializer was missed by the propagation PR #4140.
                 collations: std::collections::HashMap::new(),
+                partition_info: None,
             };
             storage.create_table(&info).unwrap();
         }
@@ -465,8 +474,10 @@ mod tests {
                 unique_constraints: vec![],
                 check_constraints: vec![],
                 compression: None,
-                partition_info: None,
+                // V312-26 / #4077: collations field added by d48b0a1a71;
+                // this initializer was missed by the propagation PR #4140.
                 collations: std::collections::HashMap::new(),
+                partition_info: None,
             };
 
             storage.create_table(&info).unwrap();

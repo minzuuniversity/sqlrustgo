@@ -59,6 +59,9 @@ fn create_test_table_info() -> TableInfo {
         unique_constraints: vec![],
         check_constraints: vec![],
         compression: None,
+        // V312-26 / #4077: collations field added by d48b0a1a71;
+        // this initializer was missed by the propagation PR #4140.
+        collations: std::collections::HashMap::new(),
         partition_info: None,
     }
 }
