@@ -492,6 +492,12 @@ pub enum AggregateFunction {
     Avg,
     Min,
     Max,
+    /// V313-followup-2 / Issue #4155: `quantile_disc(col, frac)` —
+    /// discrete-quantile aggregate (DuckDB-compatible signature).
+    QuantileDisc,
+    /// V313-followup-2 / Issue #4155: `quantile_cont(col, frac)` —
+    /// continuous-quantile aggregate with linear interpolation.
+    QuantileCont,
 }
 
 /// Join clause
@@ -3324,6 +3330,8 @@ impl Parser {
                                 AggregateFunction::Avg => "AVG",
                                 AggregateFunction::Min => "MIN",
                                 AggregateFunction::Max => "MAX",
+                                AggregateFunction::QuantileDisc => "QUANTILE_DISC",
+                                AggregateFunction::QuantileCont => "QUANTILE_CONT",
                             };
 
                             let mut partition_by = Vec::new();
@@ -5544,6 +5552,8 @@ impl Parser {
                     "COUNT" => Some(AggregateFunction::Count),
                     "MIN" => Some(AggregateFunction::Min),
                     "MAX" => Some(AggregateFunction::Max),
+                    "QUANTILE_DISC" => Some(AggregateFunction::QuantileDisc),
+                    "QUANTILE_CONT" => Some(AggregateFunction::QuantileCont),
                     _ => None,
                 } {
                     out.push(AggregateCall {
@@ -7361,6 +7371,8 @@ impl Parser {
                         AggregateFunction::Avg => "AVG",
                         AggregateFunction::Min => "MIN",
                         AggregateFunction::Max => "MAX",
+                        AggregateFunction::QuantileDisc => "QUANTILE_DISC",
+                        AggregateFunction::QuantileCont => "QUANTILE_CONT",
                     };
 
                     let mut partition_by = Vec::new();
