@@ -79,6 +79,8 @@ fn issue_3257_wal_default_survives_restart() {
             data_dir: Some(data_dir.clone()),
             bootstrap_tables: false,
             bootstrap_users: true,
+            metrics_port: None,
+
             ..Default::default()
         };
         let mut client = MySqlTestClient::connect_with_config(config).expect("connect phase 1");
@@ -99,6 +101,8 @@ fn issue_3257_wal_default_survives_restart() {
             data_dir: Some(data_dir.clone()),
             bootstrap_tables: false,
             bootstrap_users: true,
+            metrics_port: None,
+
             ..Default::default()
         };
         let mut client = MySqlTestClient::connect_with_config(config).expect("connect phase 2");
@@ -182,6 +186,8 @@ fn issue_3257_wal_recovery_does_not_hang_on_existing_wal() {
         data_dir: Some(data_dir.clone()),
         bootstrap_tables: false,
         bootstrap_users: true,
+        metrics_port: None,
+
         ..Default::default()
     };
     let _client = MySqlTestClient::connect_with_config(config).expect("start with existing WAL");

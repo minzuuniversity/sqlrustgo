@@ -66,6 +66,8 @@ fn g13_oltp1_concurrent_selects_run_in_parallel() {
         bulk_insert_buffer_size: 1_048_576,
         server_threads: 16,
         storage: None,
+        metrics_port: None,
+
         ..Default::default()
     };
     let handle = start_ephemeral(config).expect("start_ephemeral");

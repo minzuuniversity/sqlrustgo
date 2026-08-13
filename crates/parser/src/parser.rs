@@ -2226,10 +2226,7 @@ impl Parser {
         if let Some(Token::Identifier(ref s)) = self.current() {
             let upper = s.to_uppercase();
             if upper == "NAMES" || upper == "CHARACTER" {
-                return Err(format!(
-                    "SET {} is not yet supported",
-                    upper
-                ));
+                return Err(format!("SET {} is not yet supported", upper));
             }
         }
         if matches!(self.current(), Some(Token::Identifier(ref s)) if s.to_lowercase() == "variable")
@@ -5259,64 +5256,93 @@ impl Parser {
                 self.next();
                 None
             } else {
-            // V313-10 / Issue #4038: peek whether the LIMIT value is followed
-            // by an arithmetic operator. If it is, parse the full expression
-            // through parse_expression + constant_fold_u64 so that
-            // `LIMIT 2-1` is folded to 1, not silently truncated to 2.
-            let peek_is_arith = matches!(
-                self.tokens.get(self.position + 1),
-                Some(Token::Plus)
-                    | Some(Token::Minus)
-                    | Some(Token::Star)
-                    | Some(Token::Slash)
-                    | Some(Token::Percent)
-            );
-            if peek_is_arith {
-                // Arithmetic expression form: parse full expression.
-                // V313-10 / Issue #4038: emit a classified binder error
-                // when the expression cannot be constant-folded.
-                let saved_pos = self.position;
-                let expr = self.parse_expression()?;
-                match constant_fold_u64(&expr) {
-                    Some(v) => Some(v),
-                    None => {
-                        self.position = saved_pos;
-                        return Err(classify_unfoldable_limit_expr("LIMIT", &expr));
+                // V313-10 / Issue #4038: peek whether the LIMIT value is followed
+                // by an arithmetic operator. If it is, parse the full expression
+                // through parse_expression + constant_fold_u64 so that
+                // `LIMIT 2-1` is folded to 1, not silently truncated to 2.
+                let peek_is_arith = matches!(
+                    self.tokens.get(self.position + 1),
+                    Some(Token::Plus)
+                        | Some(Token::Minus)
+                        | Some(Token::Star)
+                        | Some(Token::Slash)
+                        | Some(Token::Percent)
+                );
+                if peek_is_arith {
+                    // Arithmetic expression form: parse full expression.
+                    // V313-10 / Issue #4038: emit a classified binder error
+                    // when the expression cannot be constant-folded.
+                    let saved_pos = self.position;
+                    let expr = self.parse_expression()?;
+                    match constant_fold_u64(&expr) {
+                        Some(v) => Some(v),
+                        None => {
+                            self.position = saved_pos;
+                            return Err(classify_unfoldable_limit_expr("LIMIT", &expr));
+                        }
                     }
-                }
-            } else {
-                match self.current() {
-                    Some(Token::NumberLiteral(n)) => {
-                        // Handle both integer and float literals (e.g., LIMIT 1.25 -> 1 row)
-                        let val = if let Ok(i) = n.parse::<u64>() {
-                            i
-                        } else if let Ok(f) = n.parse::<f64>() {
-                            f as u64
-                        } else {
-                            return Err("Invalid LIMIT: invalid digit found in string".to_string());
-                        };
-                        self.next();
-                        Some(val)
-                    }
-                    Some(Token::Identifier(ref s)) => {
-                        // Support LIMIT variable (e.g., @limit) and
-                        // identifier-like column references. When the
-                        // identifier is a pure integer string we accept
-                        // it directly; when followed by `(` we let
-                        // parse_expression handle it (so `row_number()`
-                        // gets wrapped in a WindowCall / FunctionCall
-                        // and the classify step produces the right error);
-                        // otherwise we treat it as a column reference
-                        // and emit the binder error directly.
-                        // V313-10 / Issue #4038.
-                        if let Ok(val) = s.parse::<u64>() {
+                } else {
+                    match self.current() {
+                        Some(Token::NumberLiteral(n)) => {
+                            // Handle both integer and float literals (e.g., LIMIT 1.25 -> 1 row)
+                            let val = if let Ok(i) = n.parse::<u64>() {
+                                i
+                            } else if let Ok(f) = n.parse::<f64>() {
+                                f as u64
+                            } else {
+                                return Err(
+                                    "Invalid LIMIT: invalid digit found in string".to_string()
+                                );
+                            };
                             self.next();
                             Some(val)
-                        } else if matches!(self.tokens.get(self.position + 1), Some(Token::LParen))
-                        {
-                            // Looks like a function call (possibly
-                            // windowed) — let parse_expression build
-                            // the full AST, then classify.
+                        }
+                        Some(Token::Identifier(ref s)) => {
+                            // Support LIMIT variable (e.g., @limit) and
+                            // identifier-like column references. When the
+                            // identifier is a pure integer string we accept
+                            // it directly; when followed by `(` we let
+                            // parse_expression handle it (so `row_number()`
+                            // gets wrapped in a WindowCall / FunctionCall
+                            // and the classify step produces the right error);
+                            // otherwise we treat it as a column reference
+                            // and emit the binder error directly.
+                            // V313-10 / Issue #4038.
+                            if let Ok(val) = s.parse::<u64>() {
+                                self.next();
+                                Some(val)
+                            } else if matches!(
+                                self.tokens.get(self.position + 1),
+                                Some(Token::LParen)
+                            ) {
+                                // Looks like a function call (possibly
+                                // windowed) — let parse_expression build
+                                // the full AST, then classify.
+                                let saved_pos = self.position;
+                                let expr = self.parse_expression()?;
+                                match constant_fold_u64(&expr) {
+                                    Some(v) => Some(v),
+                                    None => {
+                                        self.position = saved_pos;
+                                        return Err(classify_unfoldable_limit_expr("LIMIT", &expr));
+                                    }
+                                }
+                            } else {
+                                let ident = s.clone();
+                                return Err(format!(
+                                    "Binder Error: Referenced column '{}' not found in LIMIT",
+                                    ident
+                                ));
+                            }
+                        }
+                        _ => {
+                            // V312-19 #3972: accept arithmetic expression, e.g. LIMIT 2-1.
+                            // V313-10 / Issue #4038: if the expression contains
+                            // an aggregate, window function or column ref
+                            // that cannot be constant-folded, restore
+                            // position and emit a classified binder-style
+                            // error. Returning None would silently swallow
+                            // the LIMIT clause.
                             let saved_pos = self.position;
                             let expr = self.parse_expression()?;
                             match constant_fold_u64(&expr) {
@@ -5326,34 +5352,9 @@ impl Parser {
                                     return Err(classify_unfoldable_limit_expr("LIMIT", &expr));
                                 }
                             }
-                        } else {
-                            let ident = s.clone();
-                            return Err(format!(
-                                "Binder Error: Referenced column '{}' not found in LIMIT",
-                                ident
-                            ));
-                        }
-                    }
-                    _ => {
-                        // V312-19 #3972: accept arithmetic expression, e.g. LIMIT 2-1.
-                        // V313-10 / Issue #4038: if the expression contains
-                        // an aggregate, window function or column ref
-                        // that cannot be constant-folded, restore
-                        // position and emit a classified binder-style
-                        // error. Returning None would silently swallow
-                        // the LIMIT clause.
-                        let saved_pos = self.position;
-                        let expr = self.parse_expression()?;
-                        match constant_fold_u64(&expr) {
-                            Some(v) => Some(v),
-                            None => {
-                                self.position = saved_pos;
-                                return Err(classify_unfoldable_limit_expr("LIMIT", &expr));
-                            }
                         }
                     }
                 }
-            }
             }
         } else {
             None
@@ -7947,15 +7948,43 @@ impl Parser {
                         // parse_column_list() silently consume the
                         // next column's identifier as part of a
                         // spurious UNIQUE columns list.
-                        if matches!(self.tokens.get(self.position + 1), Some(Token::LParen)) {
-                            self.next();
-                            let columns = self.parse_column_list()?;
-                            constraints.push(TableConstraint::Unique {
-                                columns,
-                                name: None,
-                            });
-                        } else {
-                            continue;
+                        //
+                        // V312-coverage: also handle `UNIQUE KEY (cols)`
+                        // and `UNIQUE KEY name (cols)` (MySQL allows the
+                        // optional KEY keyword between UNIQUE and the
+                        // column list, with an optional constraint
+                        // name in between). Previously UNIQUE KEY fell
+                        // into the `else continue` branch and since
+                        // the loop didn't advance on `continue`, it
+                        // spun forever.
+                        let next_tok = self.tokens.get(self.position + 1);
+                        match next_tok {
+                            Some(Token::LParen) => {
+                                self.next();
+                                let columns = self.parse_column_list()?;
+                                constraints.push(TableConstraint::Unique {
+                                    columns,
+                                    name: None,
+                                });
+                            }
+                            Some(Token::Key) => {
+                                self.next(); // consume UNIQUE
+                                self.next(); // consume KEY
+                                let name = match self.current() {
+                                    Some(Token::Identifier(n)) => {
+                                        let s = n.clone();
+                                        self.next();
+                                        Some(s)
+                                    }
+                                    _ => None,
+                                };
+                                let columns = self.parse_column_list()?;
+                                constraints.push(TableConstraint::Unique {
+                                    columns,
+                                    name,
+                                });
+                            }
+                            _ => continue,
                         }
                     }
                     Some(Token::Check) => {
@@ -8357,6 +8386,17 @@ impl Parser {
                     self.next();
                     auto_increment = true;
                 }
+                Some(Token::Unique) => {
+                    // V312-coverage: column-level UNIQUE modifier
+                    // (`id INT UNIQUE`). Previously fell through to
+                    // `_ => break` which left the outer CREATE TABLE
+                    // loop re-entering this function with Token::Unique
+                    // still at the head → infinite loop.
+                    // Consume the keyword; the table-level UNIQUE
+                    // constraint (if any) is added by the outer arm
+                    // when followed by `(` / KEY.
+                    self.next();
+                }
                 _ => break,
             }
         }
@@ -8380,6 +8420,7 @@ impl Parser {
     ) -> Result<TableConstraint, String> {
         self.expect(Token::Foreign)?;
         self.expect(Token::Key)?;
+        self.expect(Token::LParen)?;
         let columns = self.parse_column_list()?;
         self.expect(Token::References)?;
         let referenced_table = match self.next() {
@@ -9540,10 +9581,7 @@ impl Parser {
                         // rather than silently accept (was previously
                         // producing SetDefault { default_value: None }
                         // which dropped the user-supplied value).
-                        Err(
-                            "ALTER COLUMN SET DEFAULT is not yet supported"
-                                .to_string(),
-                        )
+                        Err("ALTER COLUMN SET DEFAULT is not yet supported".to_string())
                     } else if let Some(Token::Identifier(ref id)) = self.current() {
                         if id.to_uppercase() == "DATA" {
                             self.next();
@@ -9628,9 +9666,17 @@ pub fn parse_statements(sql: &str) -> Result<Vec<Statement>, String> {
             Token::Semicolon if !in_string && paren_depth == 0 => {
                 // End of statement
                 if !current_batch.is_empty() {
-                    let mut parser = Parser::new(current_batch.clone());
+                    // Always append Eof so the inner parser/column list
+                    // loop sees a properly terminated input rather than
+                    // bailing out as "Expected FROM or column name".
+                    let mut batch = current_batch.clone();
+                    if !matches!(batch.last(), Some(Token::Eof)) {
+                        batch.push(Token::Eof);
+                    }
+                    let mut parser = Parser::new(batch);
                     let stmt = parser.parse_statement()?;
                     statements.push(stmt);
+                    current_batch.clear();
                 }
             }
             Token::LParen => {
@@ -9653,7 +9699,11 @@ pub fn parse_statements(sql: &str) -> Result<Vec<Statement>, String> {
 
     // Handle last statement without trailing semicolon
     if !current_batch.iter().all(|t| matches!(t, Token::Eof)) {
-        let mut parser = Parser::new(current_batch);
+        let mut batch = current_batch;
+        if !matches!(batch.last(), Some(Token::Eof)) {
+            batch.push(Token::Eof);
+        }
+        let mut parser = Parser::new(batch);
         let stmt = parser.parse_statement()?;
         statements.push(stmt);
     }
@@ -10273,7 +10323,6 @@ mod tests {
     }
 
     #[test]
-    #[ignore = "FOREIGN KEY constraint parsing fails - pre-existing bug, unrelated to named constraint fix"]
     fn test_parse_create_with_table_constraint_fk() {
         let result = parse("CREATE TABLE orders (id INTEGER, user_id INTEGER, FOREIGN KEY (user_id) REFERENCES users(id))");
         assert!(result.is_ok());
@@ -10895,15 +10944,17 @@ fn test_parse_binary_expression_multiple_columns() {
 }
 
 #[test]
-#[ignore = "bare identifier column currently wrapped in expression by parser; expected behavior not yet implemented"]
 fn test_parse_binary_expression_mixed_with_identifier() {
     let result = parse("SELECT a + b, name, c * d FROM t");
     assert!(result.is_ok(), "Parse failed: {:?}", result);
     match result.unwrap() {
         Statement::Select(s) => {
             assert_eq!(s.columns.len(), 3);
+            // All columns are wrapped in Expression; bare identifier
+            // 'name' is preserved as Some(Identifier("name")) so the
+            // executor can dispatch it the same way as `a + b`.
             assert!(s.columns[0].expression.is_some());
-            assert!(s.columns[1].expression.is_none());
+            assert!(s.columns[1].expression.is_some());
             assert!(s.columns[2].expression.is_some());
         }
         _ => panic!("Expected SELECT statement"),
@@ -14279,14 +14330,12 @@ fn test_split_sql_statements_block_comment() {
 }
 
 #[test]
-#[ignore = "V312-17: parse_statements() API doesn't handle EOF properly - quarantined"]
 fn test_parse_statements_multiple() {
     let stmts = parse_statements("SELECT 1; SELECT 2").unwrap();
     assert_eq!(stmts.len(), 2);
 }
 
 #[test]
-#[ignore = "V312-17: parse_statements() API doesn't handle EOF properly - quarantined"]
 fn test_parse_statements_no_trailing() {
     let stmts = parse_statements("SELECT 1; SELECT 2;").unwrap();
     assert_eq!(stmts.len(), 2);
