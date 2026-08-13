@@ -32,7 +32,8 @@ fn make_table_info(name: &str, cols: &[&str]) -> TableInfo {
                 primary_key: c == "id",
                 char_max_length: None,
                 collation: None,
-            })
+
+                default_value: None,            })
             .collect(),
         ..Default::default()
     }

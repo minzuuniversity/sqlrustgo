@@ -896,7 +896,8 @@ mod sqlrustgo_integration {
                             primary_key: true,
                             char_max_length: None,
                             collation: None,
-                        },
+
+                            default_value: None,                        },
                         ColumnDefinition {
                             name: columns::CONTENT.to_string(),
                             data_type: "TEXT".to_string(),
@@ -904,7 +905,8 @@ mod sqlrustgo_integration {
                             primary_key: false,
                             char_max_length: None,
                             collation: None,
-                        },
+
+                            default_value: None,                        },
                         ColumnDefinition {
                             name: columns::METADATA.to_string(),
                             data_type: "TEXT".to_string(),
@@ -912,7 +914,8 @@ mod sqlrustgo_integration {
                             primary_key: false,
                             char_max_length: None,
                             collation: None,
-                        },
+
+                            default_value: None,                        },
                         ColumnDefinition {
                             name: columns::SOURCE.to_string(),
                             data_type: "TEXT".to_string(),
@@ -920,7 +923,8 @@ mod sqlrustgo_integration {
                             primary_key: false,
                             char_max_length: None,
                             collation: None,
-                        },
+
+                            default_value: None,                        },
                         ColumnDefinition {
                             name: columns::VERSION.to_string(),
                             data_type: "INTEGER".to_string(),
@@ -928,7 +932,8 @@ mod sqlrustgo_integration {
                             primary_key: false,
                             char_max_length: None,
                             collation: None,
-                        },
+
+                            default_value: None,                        },
                         ColumnDefinition {
                             name: columns::CREATED_AT.to_string(),
                             data_type: "INTEGER".to_string(),
@@ -936,7 +941,8 @@ mod sqlrustgo_integration {
                             primary_key: false,
                             char_max_length: None,
                             collation: None,
-                        },
+
+                            default_value: None,                        },
                         ColumnDefinition {
                             name: columns::UPDATED_AT.to_string(),
                             data_type: "INTEGER".to_string(),
@@ -944,7 +950,8 @@ mod sqlrustgo_integration {
                             primary_key: false,
                             char_max_length: None,
                             collation: None,
-                        },
+
+                            default_value: None,                        },
                     ],
                     ..Default::default()
                 };
@@ -1191,7 +1198,8 @@ pub mod storage_helpers {
                     primary_key: true,
                     char_max_length: None,
                     collation: None,
-                },
+
+                    default_value: None,                },
                 ColumnDefinition {
                     name: columns::CONTENT.to_string(),
                     data_type: "TEXT".to_string(),
@@ -1199,7 +1207,8 @@ pub mod storage_helpers {
                     primary_key: false,
                     char_max_length: None,
                     collation: None,
-                },
+
+                    default_value: None,                },
                 ColumnDefinition {
                     name: columns::METADATA.to_string(),
                     data_type: "TEXT".to_string(),
@@ -1207,7 +1216,8 @@ pub mod storage_helpers {
                     primary_key: false,
                     char_max_length: None,
                     collation: None,
-                },
+
+                    default_value: None,                },
                 ColumnDefinition {
                     name: columns::SOURCE.to_string(),
                     data_type: "TEXT".to_string(),
@@ -1215,7 +1225,8 @@ pub mod storage_helpers {
                     primary_key: false,
                     char_max_length: None,
                     collation: None,
-                },
+
+                    default_value: None,                },
                 ColumnDefinition {
                     name: columns::VERSION.to_string(),
                     data_type: "INTEGER".to_string(),
@@ -1223,7 +1234,8 @@ pub mod storage_helpers {
                     primary_key: false,
                     char_max_length: None,
                     collation: None,
-                },
+
+                    default_value: None,                },
                 ColumnDefinition {
                     name: columns::CREATED_AT.to_string(),
                     data_type: "INTEGER".to_string(),
@@ -1231,7 +1243,8 @@ pub mod storage_helpers {
                     primary_key: false,
                     char_max_length: None,
                     collation: None,
-                },
+
+                    default_value: None,                },
                 ColumnDefinition {
                     name: columns::UPDATED_AT.to_string(),
                     data_type: "INTEGER".to_string(),
@@ -1239,7 +1252,8 @@ pub mod storage_helpers {
                     primary_key: false,
                     char_max_length: None,
                     collation: None,
-                },
+
+                    default_value: None,                },
             ],
             ..Default::default()
         };

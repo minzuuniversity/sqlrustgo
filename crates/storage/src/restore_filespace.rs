@@ -249,12 +249,12 @@ mod tests {
                     name: "id".to_string(),
                     data_type: "INTEGER".to_string(),
                     ..Default::default()
-                },
+                    },
                 ColumnDefinition {
                     name: "name".to_string(),
                     data_type: "TEXT".to_string(),
                     ..Default::default()
-                },
+                    },
             ],
             ..Default::default()
         };
