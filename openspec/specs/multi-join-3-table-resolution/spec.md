@@ -1,7 +1,11 @@
 # multi-join-3-table-resolution Specification
 
 ## Purpose
-TBD - created by archiving change v390-sprint3-operator-suite-merge. Update Purpose after archive.
+Define column-resolution semantics for 3-table JOIN chains (via qualifier lookup).
+This spec covers N=3; for N≥4 (TPC-H Q7/Q8/Q9 style star/chain joins) see the
+delta spec `openspec/changes/v312-22-multi-way-join-planner-fix/specs/multi-join-n-table-resolution/spec.md`.
+
+Archived from change `v390-sprint3-operator-suite-merge`.
 ## Requirements
 ### Requirement: Multi-table JOIN column resolution via qualifier
 The system SHALL resolve column references in JOIN ON clauses using the table qualifier when present, falling back to bare-name lookup only when no qualifier is given.
@@ -30,4 +34,9 @@ The system SHALL preserve all existing 2-table JOIN behavior (no performance reg
 #### Scenario: 2-table inner join still returns correct rows
 - **WHEN** 2-table JOIN with unambiguous columns
 - **THEN** result SHALL be identical to pre-fix output
+
+### Requirement: Related N-table spec
+For N≥4 joins, see `multi-join-n-table-resolution` (V312-22 delta) which extends
+this spec to hub-and-spoke / chain topologies that the 3-table scenarios cannot
+exercise.
 
