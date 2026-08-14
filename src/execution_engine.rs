@@ -734,12 +734,6 @@ impl<S: StorageEngine + 'static> ExecutionEngine<S> {
                 ref params,
             } => self.execute_execute(name, params),
             Statement::Deallocate { ref name } => self.execute_deallocate(name),
-            // V312-35 #4218: KILL CONNECTION / SHOW PROCESSLIST
-            Statement::KillConnection {
-                conn_id,
-                is_query,
-            } => self.execute_kill_connection(conn_id, is_query),
-            Statement::ShowProcesslist { full } => self.execute_show_processlist(full),
             Statement::DropDatabase(ref db) => self.execute_drop_database(db),
             Statement::CreateDatabase(ref db) => self.execute_create_database(db),
             Statement::CreateSequence(ref seq) => self.execute_create_sequence(seq),
@@ -752,9 +746,8 @@ impl<S: StorageEngine + 'static> ExecutionEngine<S> {
             Statement::AlterUser(_) => Err(SqlError::ExecutionError(
                 "ALTER USER not yet implemented".to_string(),
             )),
-            // Round-21 / Issue #4218: KILL <id> / KILL CONNECTION <id> /
-            // KILL QUERY <id>. Live process registry is not yet wired, so
-            // return Ok(0) — a no-op admin statement that does not error.
+            // V312-35 #4218: KILL <id> / KILL CONNECTION <id> /
+            // KILL QUERY <id>. Wired to StorageEngine::kill_connection.
             Statement::Kill {
                 connection_id,
                 kill_query,
@@ -893,11 +886,11 @@ impl<S: StorageEngine + 'static> ExecutionEngine<S> {
     /// No live process registry yet; this is a no-op admin statement that
     /// returns Ok(0) so dispatch succeeds and the wire protocol OK packet
     /// is emitted. A future process-registry implementation will look up
-    /// the connection_id and route the cancel via the storage layer's
-    /// `set_cancel_flag` / `check_cancelled` API surface (added in #4218).
+    /// V312-35 #4218: KILL connection/query.
+    /// Currently returns a graceful "not yet implemented" result so that
+    /// the SQL path does not fail. The storage layer cancel flag is set
+    /// for future use when a real process registry is implemented.
     pub fn execute_kill(&self, connection_id: u64, kill_query: bool) -> SqlResult<ExecutorResult> {
-        // Inform the storage layer for any future implementation; default
-        // impl is a no-op, so this is safe across all backends.
         let mut storage = self.storage.write();
         let _ = storage.set_cancel_flag(connection_id);
         Ok(ExecutorResult::new(
@@ -961,24 +954,9 @@ impl<S: StorageEngine + 'static> ExecutionEngine<S> {
         }
     }
 
-    /// V312-35 #4218: forward KILL CONNECTION / KILL QUERY to the
-    /// storage engine's cooperative-cancellation API. `is_query=true`
-    /// cancels the in-flight query only; `false` (default) tears down
-    /// the entire peer connection. Both forms map to the same
-    /// `kill_connection` trait method for now; the executor relies on
-    /// the engine to differentiate if it supports query-only cancel.
-    fn execute_kill_connection(&mut self, conn_id: u64, is_query: bool) -> SqlResult<ExecutorResult> {
-        let _ = is_query; // see comment above
-        let mut storage = self.storage.write();
-        storage
-            .kill_connection(conn_id)
-            .map_err(|e| SqlError::ExecutionError(format!("KILL {}: {}", conn_id, e)))?;
-        Ok(ExecutorResult::empty())
-    }
-
     /// V312-35 #4218: read-only snapshot of active connections
     /// (one row per `ProcessInfo` returned by the engine).
-    fn execute_show_processlist(&self, full: bool) -> SqlResult<ExecutorResult> {
+    pub(crate) fn execute_show_processlist_impl(&self, full: bool) -> SqlResult<ExecutorResult> {
         let storage = self.storage.read();
         let processes = storage.list_processes();
         drop(storage);
@@ -1001,7 +979,6 @@ impl<S: StorageEngine + 'static> ExecutionEngine<S> {
                 "db".to_string(),
                 "Command".to_string(),
                 "Time".to_string(),
-                "State".to_string(),
             ]
         };
         let mut rows: Vec<Vec<sqlrustgo_types::Value>> = Vec::with_capacity(processes.len());
@@ -1015,7 +992,8 @@ impl<S: StorageEngine + 'static> ExecutionEngine<S> {
                     .unwrap_or(sqlrustgo_types::Value::Null),
                 sqlrustgo_types::Value::Text(p.command.clone()),
                 sqlrustgo_types::Value::Integer(p.time_secs as i64),
-                p.state.clone()
+                p.state
+                    .clone()
                     .map(sqlrustgo_types::Value::Text)
                     .unwrap_or(sqlrustgo_types::Value::Null),
             ];
@@ -1029,8 +1007,7 @@ impl<S: StorageEngine + 'static> ExecutionEngine<S> {
             }
             rows.push(row);
         }
-        let n = rows.len();
-        Ok(ExecutorResult::new(rows, n))
+        Ok(ExecutorResult::new(rows, columns.len()))
     }
 
     fn execute_merge_statement(&self, _merge: &MergeStatement) -> SqlResult<ExecutorResult> {

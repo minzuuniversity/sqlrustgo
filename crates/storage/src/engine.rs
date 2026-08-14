@@ -15,6 +15,19 @@ pub enum ForeignKeyAction {
     NoAction,
 }
 
+/// V312-35 / Issue #4218: process info for SHOW PROCESSLIST.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct ProcessInfo {
+    pub id: u64,
+    pub user: String,
+    pub host: String,
+    pub db: Option<String>,
+    pub command: String,
+    pub time_secs: u64,
+    pub state: Option<String>,
+    pub info: Option<String>,
+}
+
 /// Foreign key constraint definition
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct ForeignKeyConstraint {
@@ -957,6 +970,20 @@ pub trait StorageEngine: Send + Sync {
     /// Default impl returns false so backends opt in.
     fn check_cancelled(&self, _connection_id: u64) -> bool {
         false
+    }
+
+    /// Round-21 / Issue #4218: kill a connection/thread by id.
+    /// Default impl returns not-supported error.
+    fn kill_connection(&mut self, _connection_id: u64) -> SqlResult<()> {
+        Err(SqlError::ExecutionError(
+            "KILL is not supported by this storage engine".to_string(),
+        ))
+    }
+
+    /// V312-35 / Issue #4218: return list of active processes.
+    /// Default impl returns empty vec so backends opt in.
+    fn list_processes(&self) -> Vec<ProcessInfo> {
+        vec![]
     }
 
     /// Begin a transaction, returns a transaction ID
