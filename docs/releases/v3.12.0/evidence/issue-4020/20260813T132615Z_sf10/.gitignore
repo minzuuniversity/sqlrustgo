@@ -1,0 +1,10 @@
+# Runtime artifacts emitted by sqlrustgo-mysql-server into the per-run
+# data/ subdir. These are reproducibility outputs (~259 MB for the
+# 132615Z run: supplier.json, partial customer/part/partsupp.json,
+# sqlrustgo.wal), not gate evidence. The authoritative proof of this
+# run lives in bulk_load_summary.jsonl, server.log, bulk_load_log.txt,
+# and the per-table *_create.log / *_load.log siblings — see
+# 4020_evidence.md "Throughput root cause (measured)" for the curve
+# that this commit reproduces.
+*.json
+*.wal

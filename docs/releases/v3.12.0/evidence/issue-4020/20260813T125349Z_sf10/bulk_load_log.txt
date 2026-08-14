@@ -1,0 +1,2 @@
+[0;31m[bulk_load_sf10:ERROR][0m Missing .tbl files: customer.tbl part.tbl partsupp.tbl orders.tbl lineitem.tbl
+[0;31m[bulk_load_sf10:ERROR][0m   Generate with: bash scripts/tpch/setup_sf10.sh /tmp/tpch-sf10

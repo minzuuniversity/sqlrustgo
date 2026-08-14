@@ -136,7 +136,8 @@ start_server() {
     local port="$1"
     local data_dir="$RUN_DIR/data"
     mkdir -p "$data_dir"
-    log "starting sqlrustgo-mysql-server on $HOST:$port (auth=none, data=$data_dir, infile=$DATA_DIR)"
+    local wal_sync="${WAL_SYNC:-every}"
+    log "starting sqlrustgo-mysql-server on $HOST:$port (auth=none, data=$data_dir, infile=$DATA_DIR, wal-sync=$wal_sync)"
     "$SERVER_BIN" serve \
         --host "$HOST" --port "$port" \
         --data-dir "$data_dir" \
@@ -145,7 +146,7 @@ start_server() {
         --max-connections 8 \
         --server-threads 4 \
         --storage file \
-        --wal-sync every \
+        --wal-sync "$wal_sync" \
         --log-level info \
         > "$RUN_DIR/server.log" 2>&1 &
     SERVER_PID=$!
@@ -314,7 +315,7 @@ write_metadata() {
     "max_connections": 8,
     "server_threads": 4,
     "storage": "file",
-    "wal_sync": "every"
+    "wal_sync": "${WAL_SYNC:-every}"
   },
   "knobs": {
     "mysql_timeout_sec": $MYSQL_TIMEOUT_SEC,
