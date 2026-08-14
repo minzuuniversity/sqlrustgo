@@ -52,7 +52,16 @@ impl FileStorage {
             tables: HashMap::new(),
             indexes: RwLock::new(HashMap::new()),
             insert_buffer: HashMap::new(),
-            buffer_threshold: 100,
+            // v3.12.0 #4020 follow-up: raise default buffer flush threshold from
+            // 100 to 10_000. Each flush goes through insert_direct, which clones
+            // the full TableData and serializes it via serde_json::to_string_pretty
+            // — an O(rows_loaded) operation. With threshold=100 the bulk-load
+            // cost was O(N^2), which made TPC-H SF=10 supplier only achieve
+            // ~111 rows/s. Micro-bench (bulk_load_quadraticity) shows
+            // threshold=10000 is ~50.6x faster on identical final state.
+            // Callers that need the old behaviour should use
+            // new_with_buffer_config(dir, 100, true).
+            buffer_threshold: 10_000,
             enable_buffer: true,
             current_tx_id: 0,
             triggers: RwLock::new(HashMap::new()),
@@ -108,7 +117,9 @@ impl FileStorage {
             tables: HashMap::new(),
             indexes: RwLock::new(HashMap::new()),
             insert_buffer: HashMap::new(),
-            buffer_threshold: 100,
+            // v3.12.0 #4020 follow-up: see FileStorage::new — default raised to
+            // 10_000 to amortise O(N) insert_direct over a much larger batch.
+            buffer_threshold: 10_000,
             enable_buffer: true, // Transaction boundary handled by buffer flush on commit
             current_tx_id: 0,
             triggers: RwLock::new(HashMap::new()),
@@ -150,7 +161,9 @@ impl FileStorage {
             tables: HashMap::new(),
             indexes: RwLock::new(HashMap::new()),
             insert_buffer: HashMap::new(),
-            buffer_threshold: 100,
+            // v3.12.0 #4020 follow-up: see FileStorage::new — default raised to
+            // 10_000 to amortise O(N) insert_direct over a much larger batch.
+            buffer_threshold: 10_000,
             enable_buffer: true,
             current_tx_id: 0,
             triggers: RwLock::new(HashMap::new()),
