@@ -1297,3 +1297,7 @@ path = "tests/unit/slow_query_log_test.rs"
 [[test]]
 name = "types_value_test"
 path = "tests/unit/types_value_test.rs"
+
+[[test]]
+name = "q2_q17_repro_test"
+path = "tests/integration/q2_q17_repro_test.rs"
