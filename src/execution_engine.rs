@@ -93,7 +93,8 @@ pub struct ExecutionEngine<S: StorageEngine> {
     #[allow(dead_code)]
     pub(crate) checkpoint_manager: Option<Arc<parking_lot::RwLock<CheckpointManager>>>,
     /// Cost model for CBO-driven decisions (parallelism, query planning).
-    pub(crate) cost_model: parking_lot::RwLock<UnifiedCostModel>,
+    /// V312-22 / #4182: pub for integration test introspection.
+    pub cost_model: parking_lot::RwLock<UnifiedCostModel>,
     pub(crate) parallel_degree: usize,
     pub(crate) stmt_cache: sqlrustgo_cache::PreparedStatementCache,
     /// View definitions: view_name → CREATE VIEW SQL text.
@@ -584,6 +585,12 @@ impl<S: StorageEngine + 'static> ExecutionEngine<S> {
 
                 let mut stats_guard = self.stats.write();
                 stats_guard.table_stats.insert(table_name.clone(), stats);
+                drop(stats_guard);
+                // V312-22 / #4182: push the freshly collected column
+                // stats (incl. histogram) into UnifiedCostModel so
+                // planner selectivity uses real data, not the per-op
+                // heuristic, on subsequent queries.
+                self.update_cost_model_stats();
 
                 Ok(ExecutorResult::new(
                     vec![vec![Value::Integer(row_count as i64)]],
