@@ -248,6 +248,10 @@ name = "cbo_integration_test"
 path = "tests/integration/optimizer/cbo_integration_test.rs"
 
 [[test]]
+name = "executor_optimizer_e2e"
+path = "tests/integration/executor_optimizer_e2e.rs"
+
+[[test]]
 name = "stored_proc_catalog_test"
 path = "tests/integration/transaction/stored_proc_catalog_test.rs"
 
