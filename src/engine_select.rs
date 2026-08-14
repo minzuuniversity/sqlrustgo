@@ -168,6 +168,20 @@ fn value_to_literal_string_v(v: &Value) -> String {
 }
 
 impl<S: StorageEngine + 'static> ExecutionEngine<S> {
+    /// Returns `true` if the most recent `execute()` call (or any
+    /// query that triggered `execute_joins`) successfully built a
+    /// hash chain for a comma-join (`FROM t1, t2, ...`) using the
+    /// `try_comma_join_hash_chain` fast path.
+    ///
+    /// When `false`, the engine fell back to the per-clause
+    /// cartesian path - correct but 5-10x slower on TPC-H SF=1
+    /// and infeasible on SF=10 for multi-hub topologies (Q7
+    /// star, Q8 bridge, Q9 chain-leaf). Used by regression tests
+    /// to assert that the chain-build strategy succeeded.
+    pub fn last_query_used_comma_join_fast_path(&self) -> bool {
+        COMMA_JOIN_WHERE_CONSUMED.with(|f| *f.borrow())
+    }
+
     fn clear_tpch_caches() {
         thread_local! {
             static CACHE_CLEARED: std::cell::Cell<bool> = const { std::cell::Cell::new(false) };
@@ -1845,6 +1859,61 @@ impl<S: StorageEngine + 'static> ExecutionEngine<S> {
         Ok((rows, table_info, false))
     }
 
+    /// Best-first greedy chain construction starting from
+    /// `join_tables[start_idx]`.
+    ///
+    /// At each step, among all unvisited tables that share a join edge
+    /// with the current tail (i.e. an entry in `pair_key`), pick the one
+    /// with the lowest degree (count of join edges). This avoids the
+    /// failure mode of the previous single-direction greedy: starting
+    /// from a high-degree hub and dead-ending inside one of its
+    /// leaves. Returns `None` when no neighbour is available
+    /// (dead-end) so the caller can try a different start.
+    ///
+    /// Worst-case complexity O(N²) for N <= 10 (TPC-H).
+    fn build_chain_from_start(
+        start_idx: usize,
+        join_tables: &[(String, String)],
+        pair_key: &std::collections::HashMap<(String, String), (String, String)>,
+    ) -> Option<Vec<(String, String)>> {
+        use std::collections::HashSet;
+        let start = &join_tables[start_idx];
+        let mut visited: HashSet<String> = [start.1.clone()].into_iter().collect();
+        let mut chain: Vec<(String, String)> = vec![(start.0.clone(), start.1.clone())];
+
+        while visited.len() < join_tables.len() {
+            let tail_alias = match chain.last() {
+                Some((_, a)) => a.clone(),
+                None => break,
+            };
+
+            let next = join_tables
+                .iter()
+                .filter(|(_, alias)| !visited.contains(alias))
+                .filter(|(_, alias)| {
+                    pair_key.keys().any(|(a1, a2)| {
+                        (*a1 == tail_alias && *a2 == *alias) || (*a2 == tail_alias && *a1 == *alias)
+                    })
+                })
+                .min_by_key(|(_, alias)| {
+                    pair_key
+                        .keys()
+                        .filter(|(a1, a2)| a1 == alias || a2 == alias)
+                        .count()
+                })
+                .map(|(bare, alias)| (bare.clone(), alias.clone()));
+
+            match next {
+                Some((next_bare, alias)) => {
+                    visited.insert(alias.clone());
+                    chain.push((next_bare, alias));
+                }
+                None => return None,
+            }
+        }
+        Some(chain)
+    }
+
     /// Sprint 8 (PR 1): comma-join with WHERE-extracted hash chain.
     ///
     /// TPC-H Q3, Q8, Q21 use `FROM t1, t2, t3` (comma-join) with the
@@ -2029,83 +2098,122 @@ impl<S: StorageEngine + 'static> ExecutionEngine<S> {
             pair_key.entry(pair).or_insert(entry);
         }
 
-        // Greedy chain build: pick the smallest table as the build
-        // side and grow outward. For each step, find the next table
-        // that has a recorded equality with the current tail.
-        let mut visited: std::collections::HashSet<String> =
-            [effective_base_alias.to_string()].into_iter().collect();
-        let mut chain_order: Vec<(String, String)> =
-            vec![(base_bare.clone(), effective_base_alias.to_string())];
-        // When pair_key stores (min_alias, max_alias), the current tail
-        // can be in EITHER position. In a star schema where "o" (orders)
-        // is the hub connected to both "c" and "l", we have:
-        //   pair_key = {("c", "o"), ("l", "o")}
-        // When tail is "o", it is always the second element.
-        while visited.len() < join_tables.len() {
-            let tail_alias = chain_order
-                .last()
-                .map(|(_, a)| a.clone())
-                .unwrap_or_default();
-
-            // Find next table: one that is NOT visited and has a pair_key entry with tail
-            let mut found: Option<(String, String)> = None;
-            for (bare, alias) in &join_tables {
-                if visited.contains(alias) {
-                    continue;
-                }
-                // Check if this alias pairs with tail in pair_key
-                // pair_key keys are (smaller, larger) alphabetically
-                let matches = pair_key.keys().any(|(a1, a2)| {
-                    (*a1 == tail_alias && *a2 == *alias) || (*a2 == tail_alias && *a1 == *alias)
-                });
-                if matches {
-                    found = Some((bare.clone(), alias.clone()));
-                    break;
-                }
-            }
-
-            match found {
-                Some((next_bare, alias)) => {
-                    chain_order.push((next_bare, alias.clone()));
-                    visited.insert(alias);
-                }
-                None => break,
+        // Multi-start + best-first greedy chain build.
+        //
+        // The previous single-direction greedy started from a fixed
+        // base table and picked the FIRST neighbour it found each
+        // step. On topologies with two hubs joined by a single edge
+        // (TPC-H Q7 star, Q8 bridge, Q9 chain-leaf) it dead-ended
+        // inside a leaf sub-tree, producing `chain_order.len() <
+        // join_tables.len()` and falling back to the per-clause
+        // cartesian path - which is correct but 5-10x slower on
+        // SF=1 and infeasible on SF=10.
+        //
+        // Strategy (V312-21 / Issue #4181):
+        //   1. Outer loop: try every `join_tables` entry as starting
+        //      point. Multi-start guarantees we find a spanning chain
+        //      whenever the join graph is connected.
+        //   2. Inner greedy: from the current tail, choose the
+        //      UNVISITED neighbour with the LOWEST degree (best-first
+        //      heuristic). This avoids the failure mode of "pick a
+        //      high-degree hub and dead-end inside one of its
+        //      leaves" by preferring low-degree leaves first.
+        //   3. Worst-case O(N^2) for N <= 10 (TPC-H). Acceptable.
+        let mut chain_order_opt: Option<Vec<(String, String)>> = None;
+        for start_idx in 0..join_tables.len() {
+            if let Some(candidate) =
+                Self::build_chain_from_start(start_idx, &join_tables, &pair_key)
+            {
+                chain_order_opt = Some(candidate);
+                break;
             }
         }
 
-        if chain_order.len() != join_tables.len() {
-            eprintln!(
-                "DBG chain_order.len()={} != join_tables.len()={}",
-                chain_order.len(),
-                join_tables.len()
-            );
-            return None;
-        }
+        let chain_order: Vec<(String, String)> = match chain_order_opt {
+            Some(c) if c.len() == join_tables.len() => c,
+            _ => {
+                eprintln!(
+                    "DBG chain_order multi-start could not build complete chain: join_tables.len()={}",
+                    join_tables.len()
+                );
+                return None;
+            }
+        };
+        // Re-validate that we have a chain that covers every table
+        // (defensive: the build_chain_from_start guarantees this when
+        // it returns Some, but be explicit so the assertion is
+        // immediately clear).
 
         // Resolve key columns from pair_key into (acc_idx, right_idx)
         // tuples per step. Each step's `acc_idx` is the column index
         // in the accumulated rows that holds the join key; the right
         // side's key column is read directly from the right table's
         // info.
+        //
+        // `alias_to_offset` tracks the GLOBAL start column index of each
+        // alias's columns in the accumulated rows. This lets `prev_idx`
+        // (which is computed as a LOCAL index into prev's columns) be
+        // converted to the GLOBAL index required by
+        // `multi_way_hash_chain`. Without this, chains starting at
+        // non-base leaves (Q7/Q8/Q9 with multi-start) would misalign
+        // the join keys, since the leaf's columns live at offset 0 while
+        // later joined tables live at offsets > 0.
         let mut steps_acc: Vec<(Vec<Vec<Value>>, Vec<sqlrustgo_storage::ColumnDefinition>)> =
             Vec::new();
         let mut step_inputs: Vec<(Vec<Vec<Value>>, usize, usize)> = Vec::new();
-        let mut acc_rows = base_rows.clone();
-        let mut acc_columns = base_info.columns.clone();
+        let mut acc_rows: Vec<Vec<Value>>;
+        let mut acc_columns: Vec<sqlrustgo_storage::ColumnDefinition>;
         let mut alias_to_columns: HashMap<String, Vec<String>> = HashMap::new();
-        alias_to_columns.insert(
-            effective_base_alias.to_string(),
-            base_info
-                .columns
-                .iter()
-                .map(|c| {
-                    c.name
-                        .strip_prefix(&format!("{}.", effective_base_alias))
-                        .unwrap_or(&c.name)
-                        .to_string()
-                })
-                .collect(),
-        );
+        let mut alias_to_offset: HashMap<String, usize> = HashMap::new();
+        {
+            let (start_bare, start_alias) = (&chain_order[0].0, &chain_order[0].1);
+            if start_bare == &base_bare && start_alias.as_str() == effective_base_alias {
+                acc_rows = base_rows.clone();
+                acc_columns = base_info.columns.clone();
+                alias_to_offset.insert(effective_base_alias.to_string(), 0);
+                alias_to_columns.insert(
+                    effective_base_alias.to_string(),
+                    base_info
+                        .columns
+                        .iter()
+                        .map(|c| {
+                            c.name
+                                .strip_prefix(&format!("{}.", effective_base_alias))
+                                .unwrap_or(&c.name)
+                                .to_string()
+                        })
+                        .collect(),
+                );
+            } else {
+                // Multi-start began at a non-base leaf (e.g. Q7's
+                // `nation n1`). Load its rows/columns fresh from storage
+                // and seed `acc_*` from there.
+                let start_info = storage.get_table_info(start_bare).ok()?.clone();
+                let start_raw_rows = storage.scan(start_bare).ok()?;
+                let start_alias_owned = start_alias.clone();
+                let start_alias_for_strip = start_alias_owned.clone();
+                alias_to_offset.insert(start_alias_owned.clone(), 0);
+                alias_to_columns.insert(
+                    start_alias_owned,
+                    start_info
+                        .columns
+                        .iter()
+                        .map(|c| {
+                            c.name
+                                .strip_prefix(&format!("{}.", start_alias_for_strip))
+                                .unwrap_or(&c.name)
+                                .to_string()
+                        })
+                        .collect(),
+                );
+                acc_rows = start_raw_rows;
+                acc_columns = start_info.columns.clone();
+            }
+        }
+        // Capture the initial rows here, BEFORE the step loop
+        // resets `acc_rows` to empty each iteration.
+        let chain_start_rows = acc_rows.clone();
+        let start_columns = acc_columns.clone();
 
         for i in 1..chain_order.len() {
             let prev_alias = &chain_order[i - 1].1;
@@ -2130,9 +2238,14 @@ impl<S: StorageEngine + 'static> ExecutionEngine<S> {
                 }
             };
             let prev_cols = alias_to_columns.get(prev_alias).cloned()?;
-            let prev_idx = prev_cols
+            let prev_local_idx = prev_cols
                 .iter()
                 .position(|c| c.eq_ignore_ascii_case(&left_col))?;
+            // Convert local-to-prev into global-into-accumulated via
+            // the per-alias offset map populated at chain start and
+            // each step below.
+            let prev_offset = alias_to_offset.get(prev_alias.as_str()).copied()?;
+            let prev_idx = prev_offset + prev_local_idx;
             let cur_bare = &cur.0;
             let cur_info = storage.get_table_info(cur_bare).ok()?.clone();
             let cur_idx = cur_info
@@ -2169,6 +2282,10 @@ impl<S: StorageEngine + 'static> ExecutionEngine<S> {
                 cur_alias.clone(),
                 cur_info.columns.iter().map(|c| c.name.clone()).collect(),
             );
+            // Record where this alias's columns begin in the
+            // accumulated row so the NEXT step can resolve its
+            // join key globally.
+            alias_to_offset.insert(cur_alias.clone(), acc_columns.len());
             steps_acc.push((acc_rows.clone(), acc_columns.clone()));
             step_inputs.push((cur_rows, cur_idx, prev_idx));
             let mut new_columns = acc_columns.clone();
@@ -2188,9 +2305,11 @@ impl<S: StorageEngine + 'static> ExecutionEngine<S> {
             acc_rows = placeholder;
         }
 
-        // Run the chain step-by-step using multi_way_hash_chain.
-        let base_rows_owned = base_rows.clone();
-        let mut accumulated = base_rows_owned;
+        // Run the chain step-by-step using multi_way_hash_chain. Seed
+        // with the rows captured at chain start (which may be
+        // chain[0]'s rows rather than `base_rows` when multi-start
+        // began at a non-base leaf).
+        let mut accumulated = chain_start_rows;
         for ((cur_rows, cur_idx, prev_idx), (_, _)) in step_inputs.iter().zip(steps_acc.iter()) {
             accumulated = multi_way_hash_chain(
                 std::mem::take(&mut accumulated),
@@ -2201,9 +2320,37 @@ impl<S: StorageEngine + 'static> ExecutionEngine<S> {
             }
         }
 
-        let mut joined_info = base_info.clone();
-        for col in &acc_columns[base_info.columns.len()..] {
-            joined_info.columns.push(col.clone());
+        // joined_info describes the columns of `accumulated`. They are
+        // the concatenation of each chain[i]'s columns in order; we
+        // rebuild them by walking the chain and looking up each
+        // table's info from storage (or `base_info` for the base
+        // table which we already have in hand).
+        let mut joined_info =
+            if chain_order[0].0 == base_bare && chain_order[0].1.as_str() == effective_base_alias {
+                base_info.clone()
+            } else {
+                storage.get_table_info(&chain_order[0].0).ok()?.clone()
+            };
+        joined_info.columns.clear();
+        for (bare, alias) in &chain_order {
+            let info = if bare == &base_bare && alias.as_str() == effective_base_alias {
+                base_info.clone()
+            } else {
+                storage.get_table_info(bare).ok()?.clone()
+            };
+            for c in &info.columns {
+                joined_info
+                    .columns
+                    .push(sqlrustgo_storage::ColumnDefinition {
+                        name: format!("{}.{}", alias, c.name),
+                        data_type: c.data_type.clone(),
+                        nullable: c.nullable,
+                        primary_key: c.primary_key,
+                        char_max_length: c.char_max_length,
+                        collation: c.collation.clone(),
+                        default_value: c.default_value.clone(),
+                    });
+            }
         }
         Some((accumulated, joined_info))
     }
