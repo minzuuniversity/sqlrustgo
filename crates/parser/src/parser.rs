@@ -80,6 +80,8 @@ pub enum Statement {
     AlterUser(AlterUserStatement),
     Call(CallStatement),
     CreateProcedure(CreateProcedureStatement),
+    /// V312-55A / Issue #4238: DROP PROCEDURE [IF EXISTS] name
+    DropProcedure(DropProcedureStatement),
     Union(UnionStatement),
     CreateTrigger(CreateTriggerStatement),
     /// SQL-92 INTERSECT (V310-06 PR2 / Issue #3723 C-2a).
@@ -290,8 +292,23 @@ pub struct CallStatement {
 #[derive(Debug, Clone, PartialEq)]
 pub struct CreateProcedureStatement {
     pub name: String,
+    /// V312-55A / Issue #4238: when true, replace existing procedure
+    /// with the same name (MySQL `CREATE OR REPLACE PROCEDURE` semantics).
+    /// Stored as `false` for the plain `CREATE PROCEDURE` form.
+    pub or_replace: bool,
     pub params: Vec<StoredProcParam>,
     pub body: Vec<StoredProcStatement>,
+}
+
+/// DROP PROCEDURE statement
+///
+/// V312-55A / Issue #4238: completes the Procedure DDL lifecycle so
+/// procedures can be created, listed, and removed. `IF EXISTS` follows
+/// the same shape as DROP TABLE / DROP VIEW.
+#[derive(Debug, Clone, PartialEq)]
+pub struct DropProcedureStatement {
+    pub name: String,
+    pub if_exists: bool,
 }
 
 /// Stored procedure parameter
@@ -809,6 +826,12 @@ pub enum ShowStatement {
     /// `SHOW FULL PROCESSLIST` with the `full` flag).
     Processlist {
         full: bool,
+    },
+    /// V312-55A / Issue #4238: MySQL `SHOW PROCEDURE STATUS [LIKE 'pat']`.
+    /// The optional `pattern` is a LIKE-style filter applied at the
+    /// executor; `None` lists every procedure.
+    ProcedureStatus {
+        pattern: Option<String>,
     },
 }
 
@@ -2360,7 +2383,17 @@ impl Parser {
                 self.expect(Token::Index)?;
                 self.parse_create_index(true)
             }
-            Some(Token::Procedure) => self.parse_create_procedure(),
+            Some(Token::Procedure) => {
+                // V312-55A / Issue #4238: pass the already-consumed
+                // `OR REPLACE` flag through to parse_create_procedure.
+                let mut stmt = self.parse_create_procedure()?;
+                if or_replace {
+                    if let Statement::CreateProcedure(ref mut cp) = stmt {
+                        cp.or_replace = true;
+                    }
+                }
+                Ok(stmt)
+            }
             Some(Token::Trigger) => self.parse_create_trigger(),
             Some(Token::Role) => self.parse_create_role(),
             Some(Token::View) => self.parse_create_view(),
@@ -2594,6 +2627,13 @@ impl Parser {
     }
 
     fn parse_create_procedure(&mut self) -> Result<Statement, String> {
+        // V312-55A / Issue #4238: CREATE [OR REPLACE] PROCEDURE
+        //
+        // The `OR REPLACE` keyword is consumed by `parse_create` (the
+        // outer CREATE dispatcher) and the flag is patched onto the
+        // resulting `CreateProcedureStatement` after this function
+        // returns. Here we just expect the `PROCEDURE` keyword and
+        // proceed.
         self.expect(Token::Procedure)?;
 
         let name = match self.next() {
@@ -2678,9 +2718,54 @@ impl Parser {
 
         Ok(Statement::CreateProcedure(CreateProcedureStatement {
             name,
+            // OR REPLACE flag is set by the outer parse_create
+            // dispatcher after this returns (consistent with how
+            // CreateTable handles the modifier).
+            or_replace: false,
             params,
             body,
         }))
+    }
+
+    /// V312-55A / Issue #4238: parse `DROP PROCEDURE [IF EXISTS] name`.
+    ///
+    /// Mirrors the `DROP TABLE`/`DROP VIEW` shape: optional `IF EXISTS`
+    /// between `PROCEDURE` and the procedure name. The caller is
+    /// expected to have already consumed the leading `DROP` keyword.
+    fn parse_drop_procedure(&mut self) -> Result<Statement, String> {
+        self.expect(Token::Procedure)?;
+        let if_exists = if matches!(self.current(), Some(Token::If)) {
+            self.next();
+            match self.current() {
+                Some(Token::Exists) => {
+                    self.next();
+                    true
+                }
+                _ => return Err("Expected 'EXISTS' after 'IF'".to_string()),
+            }
+        } else {
+            false
+        };
+        let name = match self.next() {
+            Some(Token::Identifier(name)) => name,
+            // MySQL allows reserved keywords as procedure names; mirror
+            // the CREATE PROCEDURE keyword fallback list so `DROP
+            // PROCEDURE loop` works the same as `CREATE PROCEDURE loop`.
+            Some(Token::While) => "while".to_string(),
+            Some(Token::Loop) => "loop".to_string(),
+            Some(Token::Repeat) => "repeat".to_string(),
+            Some(Token::Return) => "return".to_string(),
+            Some(Token::Leave) => "leave".to_string(),
+            Some(Token::Iterate) => "iterate".to_string(),
+            Some(Token::Set) => "set".to_string(),
+            Some(Token::Declare) => "declare".to_string(),
+            Some(Token::Call) => "call".to_string(),
+            Some(Token::Out) => "out".to_string(),
+            Some(Token::Increment) => "increment".to_string(),
+            Some(t) => return Err(format!("Expected procedure name, got {:?}", t)),
+            None => return Err("Expected procedure name".to_string()),
+        };
+        Ok(Statement::DropProcedure(DropProcedureStatement { name, if_exists }))
     }
 
     /// Parse stored procedure body statements until a terminator token
@@ -8734,15 +8819,18 @@ impl Parser {
             }
             Some(Token::Index) => self.parse_drop_index(),
             Some(Token::View) => self.parse_drop_view(),
+            // V312-55A / Issue #4238: add DROP PROCEDURE to the dispatcher.
+            Some(Token::Procedure) => self.parse_drop_procedure(),
             Some(Token::Role) => self.parse_drop_role(),
             Some(Token::Database) => self.parse_drop_database(),
             Some(Token::Sequence) => self.parse_drop_sequence(),
             Some(t) => Err(format!(
-                "Expected TABLE, INDEX, VIEW, ROLE, SEQUENCE, or DATABASE after DROP, got {:?}",
+                "Expected TABLE, INDEX, VIEW, PROCEDURE, ROLE, SEQUENCE, or DATABASE after DROP, got {:?}",
                 t
             )),
             None => Err(
-                "Expected TABLE, INDEX, VIEW, ROLE, SEQUENCE, or DATABASE after DROP".to_string(),
+                "Expected TABLE, INDEX, VIEW, PROCEDURE, ROLE, SEQUENCE, or DATABASE after DROP"
+                    .to_string(),
             ),
         }
     }
@@ -9013,6 +9101,29 @@ impl Parser {
             Some(Token::Identifier(ref ident)) if ident.to_uppercase() == "SEQUENCES" => {
                 self.next();
                 Ok(Statement::Show(ShowStatement::Sequences))
+            }
+            Some(Token::Procedure) => {
+                // V312-55A / Issue #4238: SHOW PROCEDURE STATUS [LIKE 'pat']
+                self.next();
+                match self.current() {
+                    Some(Token::Identifier(ref ident)) if ident.to_uppercase() == "STATUS" => {
+                        self.next();
+                        let pattern = if matches!(
+                            self.current(),
+                            Some(Token::Identifier(ref ident)) if ident.to_uppercase() == "LIKE"
+                        ) {
+                            self.next();
+                            match self.next() {
+                                Some(Token::StringLiteral(p)) => Some(p),
+                                _ => return Err("Expected pattern string".to_string()),
+                            }
+                        } else {
+                            None
+                        };
+                        Ok(Statement::Show(ShowStatement::ProcedureStatus { pattern }))
+                    }
+                    _ => Err("Expected STATUS after SHOW PROCEDURE".to_string()),
+                }
             }
             Some(t) => Err(format!("Unexpected token after SHOW: {:?}", t)),
             None => Err("Unexpected end of input after SHOW".to_string()),
