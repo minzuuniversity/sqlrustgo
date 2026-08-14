@@ -108,8 +108,13 @@ check "V55C-Trigger-NewOld" \
 # === Section 5: V312-55D Trigger 事务 + WAL + recovery ===
 
 # BEGIN 内 AFTER INSERT 写 audit + ROLLBACK 后 base/audit 均为空;kill -9 replay 一致
+# 使用 `after_insert_rollback_v55d` name filter 严格匹配 1-test。
+# 注意: 测试文件 `tests/integration/migration/e2e_trigger_wal_recovery.rs` 共有
+# 4 个测试 (T-001 INSERT / T-002 UPDATE / T-003 DELETE + V55D AFTER INSERT + ROLLBACK),
+# 但只有 V55D 测试函数名带 `after_insert_rollback_v55d` 子串,确保 `grep -q '1 passed'`
+# 严格 1-test 计数成立。其它 3 个 WAL 回归测试 (T-001/T-002/T-003) 不参与 gate 计数。
 check "V55D-WAL-Recovery" \
-    "cargo test --test e2e_trigger_wal_recovery -- --nocapture 2>&1 | tee '$OUT_DIR/V55D.log' | grep -E 'test result: ok' | grep -q '1 passed'"
+    "cargo test --test e2e_trigger_wal_recovery after_insert_rollback_v55d -- --nocapture 2>&1 | tee '$OUT_DIR/V55D.log' | grep -E 'test result: ok' | grep -q '1 passed'"
 
 # === Section 6: V312-55E Recursion limit ===
 

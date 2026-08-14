@@ -250,16 +250,21 @@ impl TriggerExecutor {
         new_row: Option<&Record>,
     ) -> SqlResult<Record> {
         let body = &trigger.body;
-        let result = new_row.map(|r| r.to_vec());
+        // Build a mutable copy of the NEW row so SET NEW.col = ... statements
+        // can mutate it in place. The captured result is what callers see
+        // after the body executes — before this fix, we returned the
+        // pre-execution snapshot and BEFORE INSERT / UPDATE trigger mutations
+        // never reached storage.
+        let mut result: Record = new_row.map(|r| r.to_vec()).unwrap_or_default();
 
         let statements = self.split_body_statements(body);
         for stmt in statements {
             let expanded =
                 self.expand_row_variables_for_parse(&stmt, &trigger.table_name, old_row, new_row);
-            self.execute_trigger_sql(&expanded, table, old_row, new_row)?;
+            self.execute_trigger_sql_mut(&expanded, table, old_row, &mut result)?;
         }
 
-        Ok(result.unwrap_or_default())
+        Ok(result)
     }
 
     /// Split trigger body into individual SQL statements
@@ -406,6 +411,8 @@ impl TriggerExecutor {
     }
 
     /// Execute a SQL statement within a trigger context
+    #[allow(dead_code)] // preserved for API symmetry; the mutating variant below is the
+                        // actively-used path now (V312-55C trigger body mutation propagation).
     fn execute_trigger_sql(
         &self,
         sql: &str,
@@ -433,6 +440,43 @@ impl TriggerExecutor {
             Ok(())
         } else if sql_upper.starts_with("SELECT") {
             self.execute_trigger_select(sql_trimmed, trigger_table, new_row)
+        } else {
+            Ok(())
+        }
+    }
+
+    /// Mutating variant of `execute_trigger_sql`. Same dispatch as the
+    /// immutable version, but a `SET NEW.col = ...` statement mutates the
+    /// caller-provided `current_new_row` in place via
+    /// `execute_trigger_set_mut`, so subsequent statements and the final
+    /// returned Record see the mutation. Required for V312-55C
+    /// (Trigger row semantics) — the previous immutable snapshot path
+    /// discarded any SET NEW.col = literal assignment made by the trigger.
+    fn execute_trigger_sql_mut(
+        &self,
+        sql: &str,
+        trigger_table: &str,
+        old_row: Option<&Record>,
+        current_new_row: &mut Record,
+    ) -> SqlResult<()> {
+        let sql_trimmed = sql.trim();
+        if sql_trimmed.is_empty() {
+            return Ok(());
+        }
+
+        let sql_upper = sql_trimmed.to_uppercase();
+
+        if sql_upper.starts_with("INSERT") {
+            self.execute_trigger_insert(sql_trimmed, Some(current_new_row))
+        } else if sql_upper.starts_with("UPDATE") {
+            self.execute_trigger_update(sql_trimmed, trigger_table, Some(current_new_row))
+        } else if sql_upper.starts_with("DELETE") {
+            self.execute_trigger_delete(sql_trimmed, trigger_table, old_row)
+        } else if sql_upper.starts_with("SET") {
+            self.execute_trigger_set_mut(sql_trimmed, trigger_table, current_new_row)?;
+            Ok(())
+        } else if sql_upper.starts_with("SELECT") {
+            self.execute_trigger_select(sql_trimmed, trigger_table, Some(current_new_row))
         } else {
             Ok(())
         }
@@ -640,6 +684,8 @@ impl TriggerExecutor {
     }
 
     /// Execute SET within a trigger (modify NEW row)
+    #[allow(dead_code)] // preserved for API symmetry; the mutating variant below is the
+                        // actively-used path now (V312-55C trigger body mutation propagation).
     fn execute_trigger_set(&self, sql: &str, table_name: &str, new_row: &Record) -> SqlResult<()> {
         if let Some(assignments) = self.parse_simple_set_assignments(sql) {
             let table_info = self.storage.read().get_table_info(table_name)?;
@@ -660,9 +706,48 @@ impl TriggerExecutor {
         Ok(())
     }
 
+    /// Mutating variant of `execute_trigger_set`. Parses SET NEW.col = ...
+    /// assignments and folds them directly into the caller-provided
+    /// `current_new_row` instead of allocating a fresh `updated` vector that
+    /// is then discarded. This is the actual mutation sink that the trigger
+    /// body relies on for `BEFORE INSERT` / `BEFORE UPDATE` SET NEW.col =
+    /// <literal> persistence to storage.
+    fn execute_trigger_set_mut(
+        &self,
+        sql: &str,
+        table_name: &str,
+        current_new_row: &mut Record,
+    ) -> SqlResult<()> {
+        if let Some(assignments) = self.parse_simple_set_assignments(sql) {
+            let table_info = self.storage.read().get_table_info(table_name)?;
+            for (col_name, value) in assignments {
+                if let Some(col_idx) = table_info
+                    .columns
+                    .iter()
+                    .position(|c| c.name.eq_ignore_ascii_case(&col_name))
+                {
+                    if col_idx < current_new_row.len() {
+                        current_new_row[col_idx] = value;
+                    }
+                }
+            }
+        }
+        Ok(())
+    }
+
     /// Expand VALUES(...) in INSERT with NEW.row values
     fn expand_insert_values(&self, sql: &str, new_row: Option<&Record>) -> String {
         if let Some(new) = new_row {
+            // V312-55D FIX (Round-26): DELETE triggers can carry an INSERT statement
+            // in their body (e.g. `BEFORE DELETE ... INSERT INTO backup SELECT *`).
+            // `execute_trigger_sql_mut` forwards `current_new_row` (empty Vec for
+            // DELETE) here as `Some(empty_record)`. The for-loop already handles
+            // an empty vec, but the unconditional `&new[0]` below panicked with
+            // `index out of bounds: the len is 0 but the index is 0`. Guard the
+            // named-placeholder substitution on a non-empty record.
+            if new.is_empty() {
+                return sql.to_string();
+            }
             let mut result = sql.to_string();
             for (i, val) in new.iter().enumerate() {
                 let placeholder = format!("NEW[{}]", i);
