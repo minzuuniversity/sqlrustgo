@@ -242,10 +242,7 @@ fn parse_default_literal(s: &str) -> Value {
         return Value::Float(f);
     }
     // Strip surrounding single quotes if present (string literal form).
-    let inner = if trimmed.len() >= 2
-        && trimmed.starts_with('\'')
-        && trimmed.ends_with('\'')
-    {
+    let inner = if trimmed.len() >= 2 && trimmed.starts_with('\'') && trimmed.ends_with('\'') {
         &trimmed[1..trimmed.len() - 1]
     } else {
         trimmed
@@ -1907,7 +1904,7 @@ impl StorageEngine for MemoryStorage {
             .iter_mut()
             .find(|c| c.name == column)
             .ok_or_else(|| SqlError::ExecutionError(format!("Column not found: {}", column)))?;
-        col.default_value = default_value.map(sqlrustgo_types::Value::Text);
+        col.default_value = default_value;
         Ok(())
     }
 

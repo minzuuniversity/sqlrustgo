@@ -62,7 +62,8 @@ fn main() {
                                 char_max_length: None,
                                 collation: None,
 
-                                default_value: None,                            },
+                                default_value: None,
+                            },
                             ColumnDefinition {
                                 name: "l_partkey".to_string(),
                                 data_type: "INTEGER".to_string(),
@@ -71,7 +72,8 @@ fn main() {
                                 char_max_length: None,
                                 collation: None,
 
-                                default_value: None,                            },
+                                default_value: None,
+                            },
                         ],
                         foreign_keys: vec![],
                         unique_constraints: vec![],
@@ -115,7 +117,8 @@ fn main() {
                         char_max_length: None,
                         collation: None,
 
-                        default_value: None,                    },
+                        default_value: None,
+                    },
                     ColumnDefinition {
                         name: "l_partkey".to_string(),
                         data_type: "INTEGER".to_string(),
@@ -124,7 +127,8 @@ fn main() {
                         char_max_length: None,
                         collation: None,
 
-                        default_value: None,                    },
+                        default_value: None,
+                    },
                 ],
                 foreign_keys: vec![],
                 unique_constraints: vec![],

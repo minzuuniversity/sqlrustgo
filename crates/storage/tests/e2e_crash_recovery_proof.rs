@@ -33,7 +33,8 @@ fn make_table_info(name: &str, cols: &[&str]) -> TableInfo {
                 char_max_length: None,
                 collation: None,
 
-                default_value: None,            })
+                default_value: None,
+            })
             .collect(),
         ..Default::default()
     }

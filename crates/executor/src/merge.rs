@@ -541,11 +541,11 @@ mod tests {
                 sqlrustgo_storage::ColumnDefinition {
                     name: "id".to_string(),
                     ..Default::default()
-                    },
+                },
                 sqlrustgo_storage::ColumnDefinition {
                     name: "name".to_string(),
                     ..Default::default()
-                    },
+                },
             ],
             ..Default::default()
         };
@@ -766,11 +766,11 @@ mod tests {
                 sqlrustgo_storage::ColumnDefinition {
                     name: "id".to_string(),
                     ..Default::default()
-                    },
+                },
                 sqlrustgo_storage::ColumnDefinition {
                     name: "name".to_string(),
                     ..Default::default()
-                    },
+                },
             ],
             ..Default::default()
         };
@@ -795,11 +795,11 @@ mod tests {
                     name: "id".to_string(),
                     primary_key: true,
                     ..Default::default()
-                    },
+                },
                 sqlrustgo_storage::ColumnDefinition {
                     name: "val".to_string(),
                     ..Default::default()
-                    },
+                },
             ],
             ..Default::default()
         };
@@ -825,7 +825,7 @@ mod tests {
             columns: vec![sqlrustgo_storage::ColumnDefinition {
                 name: "id".to_string(),
                 ..Default::default()
-                }],
+            }],
             ..Default::default()
         };
         let ex = MergeExecutor::new(
@@ -843,7 +843,7 @@ mod tests {
             columns: vec![sqlrustgo_storage::ColumnDefinition {
                 name: "id".to_string(),
                 ..Default::default()
-                }],
+            }],
             ..Default::default()
         };
         let ex = MergeExecutor::new(
@@ -867,11 +867,11 @@ mod tests {
                 sqlrustgo_storage::ColumnDefinition {
                     name: "id".to_string(),
                     ..Default::default()
-                    },
+                },
                 sqlrustgo_storage::ColumnDefinition {
                     name: "name".to_string(),
                     ..Default::default()
-                    },
+                },
             ],
             ..Default::default()
         };

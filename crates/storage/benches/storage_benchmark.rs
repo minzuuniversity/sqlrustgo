@@ -40,7 +40,8 @@ fn setup_test_storage(
             primary_key: true,
             collation: None,
 
-            default_value: None,        }],
+            default_value: None,
+        }],
         foreign_keys: vec![],
         unique_constraints: vec![],
         collations: std::collections::HashMap::new(),
@@ -284,7 +285,8 @@ fn bench_multi_table_insert(c: &mut Criterion) {
                         primary_key: true,
                         collation: None,
 
-                        default_value: None,                    }],
+                        default_value: None,
+                    }],
                     foreign_keys: vec![],
                     unique_constraints: vec![],
                     collations: std::collections::HashMap::new(),

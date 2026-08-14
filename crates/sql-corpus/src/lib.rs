@@ -69,7 +69,8 @@ impl SimpleExecutor {
                             char_max_length: c.char_max_length,
                             collation: c.collation,
 
-                            default_value: None,                        })
+                            default_value: None,
+                        })
                         .collect(),
                     foreign_keys: vec![],
                     unique_constraints: vec![],
@@ -211,7 +212,8 @@ impl SimpleExecutor {
                             char_max_length: None,
                             collation: None,
 
-                            default_value: None,                        };
+                            default_value: None,
+                        };
                         self.storage
                             .add_column(&alter.table_name, col)
                             .map_err(|e| format!("Add column error: {:?}", e))?;
@@ -284,7 +286,8 @@ impl SimpleExecutor {
                     char_max_length: None,
                     collation: None,
 
-                    default_value: None,                })
+                    default_value: None,
+                })
                 .collect();
             let table_info = TableInfo {
                 name: cte.name.clone(),
@@ -413,7 +416,8 @@ impl SimpleExecutor {
                     char_max_length: None,
                     collation: None,
 
-                    default_value: None,                })
+                    default_value: None,
+                })
                 .collect();
             let table_info = TableInfo {
                 name: name.clone(),
@@ -456,7 +460,8 @@ impl SimpleExecutor {
                     char_max_length: None,
                     collation: None,
 
-                    default_value: None,                })
+                    default_value: None,
+                })
                 .collect();
             let table_info = TableInfo {
                 name: select.table.clone(),
@@ -805,7 +810,8 @@ impl SimpleExecutor {
                             char_max_length: None,
                             collation: None,
 
-                            default_value: None,                        })
+                            default_value: None,
+                        })
                         .collect();
                     let table_info = TableInfo {
                         name: cte.name.clone(),
@@ -875,7 +881,8 @@ impl SimpleExecutor {
                 char_max_length: None,
                 collation: None,
 
-                default_value: None,            })
+                default_value: None,
+            })
             .collect();
         let table_info = TableInfo {
             name: cte.name.clone(),
