@@ -1,10 +1,10 @@
 # v3.12.0 R2 Architectural Invariants Report
 
 - source_agent: `minimax`
-- source_run: `minimax-v312-19-r2-f271dcce46`
-- timestamp: `2026-08-13T13:12:00Z`
+- source_run: `minimax-v312-19-r2-420124bf31`
+- timestamp: `2026-08-14T04:11:53Z`
 - branch: `fix/v312-19-r2-gate-load-infile-drift`
-- commit: `f271dcce4688d4ecb542c4de1559910657090c97`
+- commit: `420124bf31cdca6bc928c3715ed72735b158f611`
 
 | check | status | stdout_sha256 | exit_code |
 |-------|--------|---------------|-----------|
@@ -19,4 +19,4 @@
 
 ---
 
-<!-- report_sha256: 0c2c928f7d30431477874a9c560c3c9e35a97b7a987c5ee1bea7be050ec0aa02 -->
+<!-- report_sha256: 8f952fd1f2ee1398fe38f186ccca98f086b9319fd1991546e0da5cca07cfe4bf -->
