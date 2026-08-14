@@ -112,7 +112,11 @@ Hybrid retrieval / Vector retrieval / SQL-backed graph projection / RAG evidence
 | SQL 基础 DDL/DML | DONE | DONE / 持续硬化 | CREATE/INSERT/SELECT/UPDATE/DELETE 主路径可用，corner cases 由 SQLLogicTest 继续覆盖 |
 | SQL-92 SELECT / JOIN / GROUP BY | DONE | DONE / 持续硬化 | TPC-H 和 SQL corpus 仍暴露 planner/semantic gap |
 | CTE | DONE | DONE | 包括 CTE materialization 改进；递归和复杂兼容仍需按测试声明 |
-| 窗口函数 | PARTIAL | PARTIAL / scope decision | MySQL compat 中 `window_rank_partition` 仍有 deferred/协议问题记录；3.12 是否交付受控子集由 [#4227](http://192.168.0.252:3000/openclaw/sqlrustgo/issues/4227) 决策 |
+| 窗口函数 — 核心 12 函数 + 默认 frame | DONE / 受控 | DONE / 受控 | `crates/executor/src/window_executor.rs` 29 单测 PASS；integration 17/21 PASS；详见 [scope 决策](docs/releases/v3.12.0/sql-feature-corpus/window_json_gis_scope.md) §2 |
+| 窗口函数 — 显式 ROWS/RANGE BETWEEN / EXCLUDE / NULLS FIRST/LAST 语法 | DEFERRED | DEFERRED → v3.13 | integration 4/21 parser FAIL（Issue #4228 to open） |
+| JSON 读路径 (JSON_EXTRACT / JSON_VALUE / JSON_VALID / JSON_TYPE / JSON_KEYS / JSON() / `->` / `->>`) | DONE / 受控 | DONE / 受控 | `crates/executor/tests/json_eval_fn_test.rs` 10/12 PASS；详见 [scope 决策](docs/releases/v3.12.0/sql-feature-corpus/window_json_gis_scope.md) §3 |
+| JSON 写路径 / JSON 列类型 / JSON_TABLE / JSON_MERGE | DEFERRED | DEFERRED → v3.13 | Issue #4229 to open |
+| GIS (ST_Within / ST_Distance / ST_Contains / ST_Intersects 在 Value::Point + WKT 字面量) | DEFERRED | DEFERRED → v3.13 | `sqlrustgo_gis` 14 单测 PASS；无 spatial column / index / WKT I/O；Issue #4230 to open |
 | Optimizer / CBO / Hash Join | DONE | DONE / 持续硬化 | #3909 已通过 PR #4087 close-out；性能债仍按后续 issue 跟踪 |
 | WAL / MVCC | PARTIAL | PARTIAL / blocker | 主路径存在；crash recovery 28/31，backup/restore API drift 和 upgrade/downgrade 需 [#4222](http://192.168.0.252:3000/openclaw/sqlrustgo/issues/4222) 收口 |
 | B+Tree / Hash index | DONE | DONE | 索引能力进入主路径；性能趋势需按具体 workload 阅读 |
