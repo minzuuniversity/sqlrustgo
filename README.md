@@ -1,452 +1,300 @@
-> **更新日期**: 2026-08-09
-> **最新稳定版**: v3.11.0 (GA, 2026-08-09) — 6/6 GA gates PASS, TPC-H SF=1 22/22 verified
-> **下一版本**: v3.12.0 (planning)
-> **v3.11.0 Tag**: `v3.11.0-ga` @ commit `5038b154c` — synced to 250/252/gitcode/gitee/github 5 remotes
+# SQLRustGo
+
+> **更新日期**: 2026-08-14
+> **最新稳定版**: v3.11.0 GA (2026-08-09)
+> **当前开发版**: v3.12.0 ALPHA (DRAFT -> ALPHA: 2026-08-12)
+> **当前开发目标**: 面向 GMP 内审检索系统的 SQLRustGo 数据库、内部向量检索、SQL-backed graph projection 和可审计 evidence bundle
+> **真实性边界**: README 只陈述已有文档或实测证据支持的状态；未完成项标为 `PARTIAL`、`DEFERRED` 或 `OPEN`。属于 v3.12 初始生产边界的 `PARTIAL` 必须绑定 [PARTIAL 功能整改 Issue 计划](docs/releases/v3.12.0/PARTIAL_FEATURE_REMEDIATION_ISSUE_PLAN.md)，不能作为无闭环生产能力宣传。
 
 <p align="center">
   <img src="https://img.shields.io/badge/Rust-1.85+-dea584?style=flat-square&logo=rust" alt="Rust">
-  <img src="https://img.shields.io/badge/v3.11.0-GA-blue?style=flat-square" alt="GA">
+  <img src="https://img.shields.io/badge/v3.11.0-GA-blue?style=flat-square" alt="v3.11.0 GA">
+  <img src="https://img.shields.io/badge/v3.12.0-ALPHA-orange?style=flat-square" alt="v3.12.0 ALPHA">
+  <img src="https://img.shields.io/badge/TPC--H%20SF1-22%2F22%20completed-yellowgreen?style=flat-square" alt="TPC-H SF=1 22/22 completed">
+  <img src="https://img.shields.io/badge/GMP%20Retrieval-v3.12%20target-informational?style=flat-square" alt="GMP retrieval target">
   <img src="https://img.shields.io/badge/license-MIT-green?style=flat-square" alt="License">
-  <img src="https://img.shields.io/badge/TPC--H-SF1%2022%2F22-brightgreen?style=flat-square" alt="TPC-H SF=1 22/22">
-  <img src="https://img.shields.io/badge/Corpus-100.0%25-brightgreen?style=flat-square" alt="Corpus">
-  <img src="https://img.shields.io/badge/9--Dim%20Gate-8%2F8%20PASS-brightgreen?style=flat-square" alt="D9">
-  <img src="https://img.shields.io/badge/INT--1%20(P0)-CLOSED-brightgreen?style=flat-square" alt="INT-1">
 </p>
 
-SQLRustGo 是一个纯 Rust 实现的 SQL 执行引擎，支持完整 SQL-92 语法、窗口函数、CTE、CBO 成本优化器、WAL + MVCC 事务、向量存储与图存储，以及 AI Native GMP 工作流。
+SQLRustGo 是一个纯 Rust 实现的 SQL 数据库项目，包含 SQL 解析、优化、执行、存储、事务、MySQL 风格 wire protocol、GMP/RAG 检索、内部向量检索和 SQL-backed 图投影等模块。
 
-> **v3.11.0 当前状态 (2026-08-09)**: **GA ✅** — 6/6 GA gates PASS, 22/24 V311-XX tasks DONE (2 PARTIAL), 0 TODO. Tag `v3.11.0-ga` @ commit `5038b154c`. 同步到 5 remote (250/252/gitcode/gitee/github). 重大改进: Clustered Index (F-23) / Adaptive Hash Index (F-24) / Change Buffer (F-25) / Double-Write Buffer (F-26) / Row-Level Security (F-29) / Performance Schema hooks (F-31) / MySQL Admin 集成 (F-32) / Password Rotation (F-35) / 列级权限 (F-36) / CREATE SEQUENCE (F-30) / GIS POINT+ST_WITHIN (F-03) / Table Compression LZ4/zstd (F-27) / ALTER RENAME/MODIFY (SEM-3) / 覆盖率 ≥80% (SEM-4) / Hash Semi/Anti Join (PERF-1/2) / Decorrelation (PERF-4) / CTE 物化 (PERF-3) / 高并发 INSERT 修复 (PERF-5). TPC-H SF=1 22/22 verified (519.15s, 0 OOM, 0 panic). 168h SOAK: 343h37m PASS (2.04x > 168h requirement). G3 coverage: sqlrustgo-tools 80.31% line / 80.17% branch (≥80% gate).
->
-> **v3.11.0 ✅ 发布 (2026-08-09)**: 23 项债务清零 + 9 项 F-XX 主路径集成 + Q4 Hash Semi Join — 22/24 V311-XX DONE, 2 PARTIAL. **GA 提前 53 天** (原计划 2026-10-01). 详见 [v3.11.0 GA 报告](docs/releases/v3.11.0/GA_GATE_REPORT.md).
+当前仓库的发布口径是：
+
+- **v3.11.0 GA**: 可作为简单生产环境或受控场景的候选数据库版本，但不能宣称为完整 MySQL 5.7 替代品。
+- **v3.12.0 ALPHA**: 正在补强 v3.11 的弱项，并面向 `~/gmp-platform` 的 GMP 合规内审检索系统建立数据库、向量检索和图投影能力。
+- **v4.0.0 方向**: 才适合规划“通用向量数据库 / 通用图数据库 / 更广义生产替代”的产品目标。
 
 ---
 
 ## 目录
 
-- [核心特性](#核心特性)
-- [架构设计](#架构设计)
+- [当前真实状态](#当前真实状态)
 - [快速开始](#快速开始)
-- [安装部署](#安装部署)
-- [使用示例](#使用示例)
+- [架构概览](#架构概览)
 - [功能矩阵](#功能矩阵)
-- [性能基准](#性能基准)
-- [质量门禁](#质量门禁)
+- [TPC-H 与性能基准](#tpc-h-与性能基准)
+- [GMP / RAG / Vector / Graph](#gmp--rag--vector--graph)
+- [测试与质量门禁](#测试与质量门禁)
 - [文档资源](#文档资源)
+- [历史版本](#历史版本)
 - [贡献指南](#贡献指南)
-- [更新日志](#更新日志)
 - [许可证](#许可证)
 
-## 核心特性
+## 当前真实状态
 
-| 模块 | 能力 |
-|------|------|
-| 🔍 **SQL 解析** | SELECT / INSERT / UPDATE / DELETE / CREATE TABLE / DROP TABLE + CTE + 窗口函数 |
-| ⚙️ **查询优化** | CBO 成本优化器（基于统计信息的 Join 排序优化） |
-| 💾 **存储引擎** | MemoryStorage / FileStorage / ColumnarStorage + Buffer Pool |
-| 🔎 **索引** | B+ Tree / Hash Index / Vector Index (ANN) |
-| 🔄 **事务** | WAL + MVCC（Snapshot Isolation）+ XA 两阶段提交 |
-| 🌐 **网络协议** | TCP/IP + MySQL 风格协议 |
-| 🤖 **AI Native** | Ollama 本地 LLM 推理 + GMP Retrieval v3（BM25 + Vector + Graph + FTS） |
-| 📦 **高级特性** | Prepared Statement / 触发器 / 图数据库（Cypher）|
-| 🔀 **复制** | Semi-sync 复制 / MTS 并行复制 / Multi-source 复制 |
-
----
-
-## 架构设计
-
-```
-┌──────────────────────────────────────────────────────────┐
-│                      SQLRustGo                           │
-├─────────────┬─────────────┬─────────────┬───────────────┤
-│  网络层      │   语法解析   │  查询优化    │  执行引擎     │
-│  (MySQL)    │  (SQL-92)  │   (CBO)    │  (Volcano)   │
-├─────────────┴─────────────┴─────────────┴───────────────┤
-│                     存储引擎                              │
-│  ┌──────────┐ ┌──────────┐ ┌──────────┐ ┌──────────┐  │
-│  │  内存存储  │ │  文件存储  │ │  列式存储  │ │  向量存储  │  │
-│  └──────────┘ └──────────┘ └──────────┘ └──────────┘  │
-├──────────────────────────────────────────────────────────┤
-│  事务管理器         │  Buffer Pool  │   索引管理器      │
-│  (WAL + MVCC)     │  (LRU/Knob)  │  (B+Tree/Hash)  │
-└──────────────────────────────────────────────────────────┘
-```
-
----
+| 项 | 当前状态 | 证据 / 说明 |
+|---|---|---|
+| v3.11.0 阶段 | GA | [v3.11 综合评估](docs/releases/v3.11.0/COMPREHENSIVE_ASSESSMENT_REPORT.md)、[v3.11 STAGE](docs/releases/v3.11.0/STAGE.yaml) |
+| v3.11.0 生产边界 | 受控/简单生产候选 | 不等同完整 MySQL 5.7 替代；TPC-H correctness、LOAD DATA、recovery、upgrade 等仍需 v3.12 补强 |
+| v3.12.0 阶段 | ALPHA | [v3.12 STAGE](docs/releases/v3.12.0/STAGE.yaml) 记录 DRAFT -> ALPHA 于 2026-08-12 完成 |
+| v3.12.0 产品目标 | GMP 内审检索数据库 | [v3.12 README](docs/releases/v3.12.0/README.md)、[GMP 合规矩阵](docs/releases/v3.12.0/GMP_COMPLIANCE_MATRIX.md) |
+| TPC-H SF=1 | 22/22 completed，但 correctness 仍有限定 | [v3.11 TPC-H 报告](docs/releases/v3.11.0/TPCH_SF1_22_22_PASS_REPORT.md)、[v3.12 TPC-H correctness](docs/releases/v3.12.0/evidence/tpch/V312-12-TPCH-CORRECTNESS.md) |
+| TPC-H SF=10 | PARTIAL / 有整改 issue | harness 存在；3/8 SF=10 表已 parity match，剩余大表受 FileStorage 写放大/吞吐瓶颈阻塞；见 [#4020 evidence](docs/releases/v3.12.0/evidence/issue-4020/4020_evidence.md)、[#4217](http://192.168.0.252:3000/openclaw/sqlrustgo/issues/4217) |
+| Bulk-load SF=10 | PARTIAL / OPEN | 不是 schema creation 阶段失败的旧状态；当前是 3/8 表 match，5/8 大表未完成；见 [#4020](http://192.168.0.252:3000/openclaw/sqlrustgo/issues/4020)、[#4217](http://192.168.0.252:3000/openclaw/sqlrustgo/issues/4217) |
+| MySQL wire + LOAD DATA hardening | PARTIAL / 有整改 issue | [V312-13 报告](docs/releases/v3.12.0/evidence/wire_load_data/V312-13-REPORT.md) failed_steps=0，但完整 MySQL 5.7 兼容、prepared statement sysbench 路径、SF=10 full bulk-load 仍需 [#4223](http://192.168.0.252:3000/openclaw/sqlrustgo/issues/4223)、[#4211](http://192.168.0.252:3000/openclaw/sqlrustgo/issues/4211)、[#4020](http://192.168.0.252:3000/openclaw/sqlrustgo/issues/4020) |
+| Sysbench | PARTIAL / 有整改 issue | read_only baseline 已捕获；write/read_write 因行级锁/隔离问题失败，prepared statement 兼容另有缺口；见 [#4210](http://192.168.0.252:3000/openclaw/sqlrustgo/issues/4210)、[#4211](http://192.168.0.252:3000/openclaw/sqlrustgo/issues/4211) |
+| Prometheus metrics | endpoint 已实现并 E2E scrape | [#4021 evidence](docs/releases/v3.12.0/evidence/issue-4021/4021_evidence.md) |
+| Slow query log | 已实现并测试 | [#4022 evidence](docs/releases/v3.12.0/evidence/issue-4022/4022_evidence.md) |
+| SQLLogicTest | smoke gate 25/25 PASS；full official corpus 未声明完成 | [SQLLogicTest smoke report](docs/releases/v3.12.0/evidence/sqllogictest/smoke-report.md)、[v3.12 Scope Table](docs/releases/v3.12.0/SCOPE_TABLE_v3.12.md)、[#4224](http://192.168.0.252:3000/openclaw/sqlrustgo/issues/4224) |
+| 覆盖率 | 分层统计中；不再用单一 workspace 口径宣传全达标 | [综合测试框架与覆盖率基线](docs/releases/v3.12.0/COMPREHENSIVE_TEST_FRAMEWORK_AND_COVERAGE_BASELINE.md) |
 
 ## 快速开始
 
 ```bash
-# 克隆并构建
+# 克隆
 git clone http://192.168.0.252:3000/openclaw/sqlrustgo.git
 cd sqlrustgo
-cargo build --release
 
-# 运行全部测试
+# 构建
+cargo build --all-features
+
+# 运行测试
 cargo test --all-features
 
-# 代码规范检查
-cargo clippy --all-targets -- -D warnings
-cargo fmt --check
+# 格式和 lint
+cargo fmt --check --all
+cargo clippy --all-features -- -D warnings
 
-# 启动 REPL
-cargo run --bin sqlrustgo
+# MySQL 风格服务端
+cargo run --bin sqlrustgo-mysql-server -- serve --host 127.0.0.1 --port 3307
 ```
 
-**提示**: 更多文档请查阅 `docs/releases/v3.9.0/` 目录。
+> 注意：不同历史文档中曾经出现 `sqlrustgo`、`sqlrustgo-sql-cli` 等旧入口。自 v3.8 起，主要运行入口逐步收敛到 `sqlrustgo-mysql-server` 及 workspace crates。
 
----
+## 架构概览
 
-## 安装部署
-
-### 二进制（Linux/macOS）
-
-```bash
-# 下载二进制压缩包
-wget http://192.168.0.252:3000/openclaw/sqlrustgo/releases/download/v3.9.0/sqlrustgo-x86_64.tar.gz
-tar -xzf sqlrustgo-x86_64.tar.gz
-./sqlrustgo
+```text
+SQL / MySQL Wire / Admin
+        |
+Parser -> Planner -> Optimizer -> Executor
+        |                  |
+        |                  +-- TPC-H / SQLLogicTest / MySQL compat paths
+        |
+Storage / Catalog / Transaction / WAL / MVCC
+        |
+GMP schema / chunks / versions / audit log / relations / embeddings
+        |
+Hybrid retrieval / Vector retrieval / SQL-backed graph projection / RAG evidence bundle
 ```
-
-### 源码构建
-
-```bash
-cargo build --release
-cargo install --path .
-```
-
-### Docker
-
-```bash
-docker run -p 5432:5432 sqlrustgo/sqlrustgo:v3.9.0
-```
-
----
-
-## 使用示例
-
-### 基础表操作（CREATE + INSERT + SELECT）
-
-```sql
-CREATE TABLE orders (
-    order_id INTEGER PRIMARY KEY,
-    customer_id INTEGER,
-    order_date TEXT,
-    total_amount REAL
-);
-
-INSERT INTO orders VALUES (1, 100, '2026-01-01', 250.00);
-INSERT INTO orders VALUES (2, 200, '2026-01-02', 150.00);
-
-SELECT customer_id, SUM(total_amount) AS revenue
-FROM orders
-GROUP BY customer_id;
-```
-
-### 窗口函数
-
-```sql
-SELECT
-    l_orderkey,
-    l_quantity,
-    SUM(l_quantity) OVER (PARTITION BY l_orderkey) AS total_qty,
-    AVG(l_quantity) OVER (ORDER BY l_orderkey ROWS BETWEEN 1 PRECEDING AND 1 FOLLOWING) AS moving_avg
-FROM lineitem
-LIMIT 10;
-```
-
-### CTE（公用表表达式）
-
-```sql
-WITH regional_sales AS (
-    SELECT
-        n_name AS region,
-        SUM(l_extendedprice * (1 - l_discount)) AS revenue
-    FROM orders
-    JOIN customer ON o_custkey = c_custkey
-    JOIN nation ON c_nationkey = n_nationkey
-    JOIN lineitem ON o_orderkey = l_orderkey
-    GROUP BY n_name
-)
-SELECT region, revenue FROM regional_sales;
-```
-
----
 
 ## 功能矩阵
 
-| 功能 | SQLRustGo | SQLite | MySQL | PostgreSQL |
-|------|:---------:|:------:|:-----:|:----------:|
-| **SQL-92 SELECT** | ✅ 完全 | ✅ | ✅ | ✅ |
-| **窗口函数** | ✅ | ✅ | ✅ | ✅ |
-| **CTE / 递归 CTE** | ✅ | ✅ | ✅ | ✅ |
-| **CBO 优化器** | ✅ | ❌ | ❌ | ✅ |
-| **WAL 预写日志** | ✅ | ✅ | ❌ | ❌ |
-| **MVCC 事务** | ✅ | ❌ | ✅ | ✅ |
-| **MVCC 隔离级别** | Snapshot（快照隔离） | - | Read Committed | Serializable |
-| **Prepared Statement** | ✅ | ❌ | ✅ | ✅ |
-| **存储过程** | ❌ | ❌ | ✅ | ✅ |
-| **JSON / JSONB** | ✅ | ✅ | ✅ | ✅ (JSONB) |
-| **向量存储 (ANN)** | ✅ | ❌ | ❌ | 扩展 |
-| **图存储 (Cypher)** | ✅ | ❌ | ❌ | ❌ |
-| **B+ Tree 索引** | ✅ | ✅ | ✅ | ✅ |
-| **Hash 索引** | ✅ | ❌ | ✅ | ✅ |
-| **全文搜索 FTS** | ✅ | ✅ (FTS5) | ✅ | ✅ (tsvector) |
-| **复制 (主从)** | ❌ | 外部 | binlog | 流复制 |
-| **分区表** | ❌ | ❌ | ✅ | ✅ |
-| **并行查询** | ❌ | ❌ | 有限 | ✅ |
-| **行级安全** | ❌ | ❌ | ❌ | ✅ |
-| **ACID 完整支持** | ✅ | ✅ | ✅ | ✅ |
-| **Zero-Config 部署** | ✅ | ✅ | ❌ | ❌ |
+状态说明：
 
-> **设计目标**：SQLRustGo 面向教育/研究/嵌入式场景，强调内存安全和 Rust 纯白盒实现，而非替代 PostgreSQL 的企业级功能。
+- `DONE`: 有合并代码和测试/报告证据。
+- `PARTIAL`: 主路径或 smoke 可用，但生产级闭环、边界测试或性能证据不足。
+- `PARTIAL / 有整改 issue`: 仅允许作为 Alpha/Beta 过渡状态；若属于 v3.12 初始生产边界，GA 前必须按 [整改计划](docs/releases/v3.12.0/PARTIAL_FEATURE_REMEDIATION_ISSUE_PLAN.md) 关闭或降级。
+- `DEFERRED`: 已有 owner/expiry/follow-up 或明确规划，当前版本不宣称完成。
+- `OPEN`: 当前仍阻塞或未达到关闭标准。
+- `UNSUPPORTED`: 明确不支持或不作为当前版本目标。
 
-## 性能基准
+| 能力 | v3.11.0 GA | v3.12.0 当前 | 证据边界 |
+|---|---:|---:|---|
+| SQL 基础 DDL/DML | DONE | DONE / 持续硬化 | CREATE/INSERT/SELECT/UPDATE/DELETE 主路径可用，corner cases 由 SQLLogicTest 继续覆盖 |
+| SQL-92 SELECT / JOIN / GROUP BY | DONE | DONE / 持续硬化 | TPC-H 和 SQL corpus 仍暴露 planner/semantic gap |
+| CTE | DONE | DONE | 包括 CTE materialization 改进；递归和复杂兼容仍需按测试声明 |
+| 窗口函数 — 核心 12 函数 + 默认 frame | DONE / 受控 | DONE / 受控 | `crates/executor/src/window_executor.rs` 29 单测 PASS；integration 17/21 PASS；详见 [scope 决策](docs/releases/v3.12.0/sql-feature-corpus/window_json_gis_scope.md) §2 |
+| 窗口函数 — 显式 ROWS/RANGE BETWEEN / EXCLUDE / NULLS FIRST/LAST 语法 | DEFERRED | DEFERRED → v3.13 | integration 4/21 parser FAIL（Issue #4228 to open） |
+| JSON 读路径 (JSON_EXTRACT / JSON_VALUE / JSON_VALID / JSON_TYPE / JSON_KEYS / JSON() / `->` / `->>`) | DONE / 受控 | DONE / 受控 | `crates/executor/tests/json_eval_fn_test.rs` 10/12 PASS；详见 [scope 决策](docs/releases/v3.12.0/sql-feature-corpus/window_json_gis_scope.md) §3 |
+| JSON 写路径 / JSON 列类型 / JSON_TABLE / JSON_MERGE | DEFERRED | DEFERRED → v3.13 | Issue #4229 to open |
+| GIS (ST_Within / ST_Distance / ST_Contains / ST_Intersects 在 Value::Point + WKT 字面量) | DEFERRED | DEFERRED → v3.13 | `sqlrustgo_gis` 14 单测 PASS；无 spatial column / index / WKT I/O；Issue #4230 to open |
+| Optimizer / CBO / Hash Join | DONE | DONE / 持续硬化 | #3909 已通过 PR #4087 close-out；性能债仍按后续 issue 跟踪 |
+| WAL / MVCC — crash recovery（kill mid-tx, WAL replay uncommitted tx, incomplete-tx 检测, 8 scenarios 过程杀进程） | PARTIAL | DONE / 受控 | V312-14 gate 5/5 PASS；`process_kill_crash_test` 8/8 PASS（含 Round-3 FAIL 的 `test_kill_mid_insert_update_uncommitted` + `test_mixed_workload_recovery_report`）；详见 [V312-14-RECHECK](docs/releases/v3.12.0/evidence/crash_recovery/V312-14-CRASH-RECOVERY-RECHECK.md) §2 |
+| WAL / MVCC — backup/restore API（SHA-256 校验, manifest verify, round-trip, corrupted data/WAL detection） | PARTIAL | DONE / 受控 | `backup_restore_test` 51/51 PASS at HEAD 0f497bbef8；Round-3 API drift 已修复；详见 [V312-14-RECHECK](docs/releases/v3.12.0/evidence/crash_recovery/V312-14-CRASH-RECOVERY-RECHECK.md) §3 |
+| WAL / MVCC — v3.10/v3.11 → v3.12 upgrade + rollback fixture（row count / hash / 4-hop preservation） | PARTIAL | DONE / 受控 | `check_upgrade_v310_v311.sh` 11/11 + `upgrade_v310_v311_test` 4/4 + `upgrade_test` 50/50 + `int2_cross_version_upgrade_test` 20/20 + `v380_to_v390_full_upgrade_test` 18/18 + `upgrade_chain_v3_6_to_v3_9_test` 6/6 = 109/109 PASS；详见 [V312-14-RECHECK](docs/releases/v3.12.0/evidence/crash_recovery/V312-14-CRASH-RECOVERY-RECHECK.md) §4 |
+| WAL / MVCC — SF=10 TPC-H 全表 bulk-load 后 crash + WAL replay 大 fixture 行为 | N/A | DEFERRED → v3.13 | V312-13 仅覆盖 SF=1 + SF=10 {region,nation,supplier} bulk-load；lineitem/customer/orders 大 fixture 上 crash-recovery + WAL replay 路径未压测；Issue #4239 to open |
+| B+Tree / Hash index | DONE | DONE | 索引能力进入主路径；性能趋势需按具体 workload 阅读 |
+| Clustered Index / AHI / Change Buffer / Double Write Buffer | DONE | DONE | v3.11 重点功能；仍建议配合 crash/fault injection 继续验证 |
+| MySQL wire protocol — COM_QUERY / COM_STMT_PREPARE/EXECUTE/CLOSE / error packet / reset / TLS handshake / compression primitive | PARTIAL | DONE / 受控 | `crates/tools/src/ephemeral.rs` ephemeral server + 22 v312_13_typed_wrappers / 22 mysql_wire_protocol / wire_smoke_mysql_cli 集成测试 PASS；V312-13 gate 10/10 PASS；详见 [V312-50](docs/releases/v3.12.0/evidence/wire_load_data/V312-50-REPORT.md) §2 |
+| MySQL wire protocol — `COM_RESET_CONNECTION` 在 libmysqlclient 路径下退化为 `Unknown command` warning | N/A | DONE-with-boundary | test 显式接受 `Ok(())` 或 `Unknown command`；非正确性要求，仅 libmysqlclient 优化提示 |
+| Prepared Statement — Sysbench libmysqlclient (PR #4229 修复 `lenenc_int(0x0c)` + non-SELECT `extract_table_name` + INT→LONGLONG) | PARTIAL | DONE | 4/4 sysbench OLTP workloads (oltp_read_only / oltp_insert / oltp_write_only / oltp_read_write) PASS, 0 ignored errors；不再需要 `--db-ps-mode=disable`；证据 `docs/releases/v3.12.0/evidence/issue-4211/20260814T_after_fix2/` |
+| LOAD DATA — SF=1 smoke + full + SF=10 region/nation/supplier smoke | PARTIAL | DONE | `v312_13_load_data_sf1_test` + `v312_13_load_data_sf10_test` PASS；V312-13 step 06.5/07/08 PASS；fixtures via `dbgen -s 10 -f -T {r,n,s}` |
+| LOAD DATA — SF=10 lineitem/customer/orders/part/partsupp 全量 bulk-load 生产路径 | N/A | DEFERRED → v3.13 | Issue #4217 chunked bulk-load 已关闭，但 SF=10 全表 bulk-load 尚未作为 gate；follow-up issue to open |
+| TLS / Compression | PARTIAL | DONE / 受控 | V312-13 step 09 (`force_tls_server_implemented`) + step 10 (`compress_primitives_working`) PASS；rustls + flate2 集成；不宣称 TLS 1.3 全部 cipher suite |
+| Sysbench OLTP (oltp_read_only / oltp_insert / oltp_write_only / oltp_read_write) | N/A | DONE / 受控 | 4/4 PASS at develop HEAD post PR #4229；`mysql_compat/SURFACE_DISPOSITION.md` 12/20 libmysqlclient 表面 PASS |
+| Prometheus `/metrics` | N/A | DONE / 有限制 | endpoint 和 live scrape 已验证；query counter hot path 仍有 observability debt |
+| Slow query log | N/A | DONE / 有限制 | 单元和集成测试通过；未在真实 TPC-H SF=10 长查询上捕获日志 |
+| SQLLogicTest smoke baseline (curated 25 .test 文件覆盖 sqlrustgo_simple/duckdb_samples/duckdb_full/root) | N/A | DONE / 受控 | `scripts/gate/check_sqllogictest_v312.sh` 实跑；25/25 PASS, 100% pass rate；`sqlite-corpus-manifest.json::corpus_stats` + `evidence_hash` 校验通过；详见 [V312-51](docs/releases/v3.12.0/evidence/sqllogictest/V312-51-REPORT.md) §2 |
+| SQLLogicTest 排除注册表 (16 项历史缺陷 + Round-9 5-class 分类) | N/A | DONE / 受控 | 16/16 已关闭（PR #4074/#4073/#4069/#4082/#4055/#4065/#4066 + commit 7a315826fb）；每项含 id / file / root_cause / follow_up_issue / owner / v3.13_expiry / close_boundary / closed_by_commit；详见 §4 |
+| SQLLogicTest — 完整 SQLite 官方 corpus (≈700 files / 6 MB) 集成 + sqlite3 参考输出对比 | N/A | DEFERRED → v3.13 | 当前 25 文件是 curated 子集；完整 corpus 未 vendor；Issue #4238 to open |
+| 覆盖率治理 | PASS with follow-up | PARTIAL / blocker | v3.12 采用 per-crate 分层口径；低覆盖 crate 和 SEM-4 gap 由 [#3943](http://192.168.0.252:3000/openclaw/sqlrustgo/issues/3943) 收口 |
+| GMP schema / version / chunk / relation (CRUD 路径) | N/A | DONE | `sqlrustgo-gmp --lib` 154 tests PASS；`acl.rs` 5 角色 × 12 ops 矩阵编译校验可证 |
+| GMP 审计链 — CRUD on gmp_documents (CREATE/UPDATE/DELETE) | N/A | DONE | SHA-256 `event_hash → previous_hash`；3 hash-chain + 2 event-hash tests PASS；详见 [V312-53](docs/releases/v3.12.0/evidence/gmp_compliance/V312-53-REPORT.md) §3 |
+| GMP 审计链 — 合规操作 (IMPORT/EXPORT/APPROVE/REVIEW/BACKUP/RESTORE) | N/A | DEFERRED → v3.13 | `AuditAction` 枚举仅 Create/Update/Delete；`import_document` / `bulk_import` / `create_backup` / `restore_backup` 未调用 `record_audit_log`；Issue #4231 to open |
+| GMP 篡改检测 — 集成测试 (mutate-then-verify) | N/A | DEFERRED → v3.13 | `test_hash_chain_tamper_detection` 仅验证链完整，未 mutate storage（注释自承）；Issue #4232 to open |
+| GMP 嵌入/图投影 篡改检测 | N/A | DEFERRED → v3.13 | `chunk_embeddings` / graph 表无 `previous_hash` / `event_hash` 列；Issue #4233 to open |
+| ACL 5 角色 × 12 ops 矩阵全枚举测试 | N/A | DEFERRED → v3.13 | 12 个 spot-check ACL tests PASS（含 `test_permission_guard_fail_closed`）；5×12=60 cell 全枚举程序化测试未做；Issue #4234 to open |
+| GMP Hybrid Retrieval | N/A | DONE / 受控 | RRF、filter、citation tests；目标是 GMP 内审检索，不是通用搜索引擎 |
+| RAG Evidence Bundle | N/A | DONE / 受控 | citation/evidence_hash/answer envelope tests；需结合 GMP fixture 做质量评估 |
+| Internal Vector Retrieval — 嵌入 + Flat 索引 + 混合检索 (vector_score / keyword_score / graph_boost / rrf_score + citation_text + chunk_hash) | PARTIAL | DONE / 受控 | `HashEmbeddingModel` 确定性；`vector_hash` SHA-256；`FlatIndex::build/search`；15 单测 PASS（vector_index 3 + vector_search 4 + retrieval 8）；详见 [V312-52](docs/releases/v3.12.0/evidence/vector_retrieval/V312-52-REPORT.md) §2-3 |
+| Internal Vector Retrieval — 固定 GMP audit question fixture 与确定性 top-k | N/A | DEFERRED → v3.13 | 无 ≥5 docs 种子 + 已知 query + 断言 (doc_id, similarity, chunk_hash) 顺序的测试；Issue #4236 to open |
+| Internal Vector Retrieval — `rebuild_flat_index` 持久化索引 + 重建前后稳定 (count/hash/top-k) | N/A | DEFERRED → v3.13 | `rebuild_flat_index` 仅写 metadata，`let _index = FlatIndex::build(...)` 被丢弃（compiler 警告）；Issue #4235 to open |
+| Internal Vector Retrieval — dimension drift / empty index / model-name fail-closed | N/A | DEFERRED → v3.13 | `upsert_embedding` 不校验 dimension；`vector_search` 对空索引返回 `Ok(vec![])` 而非错误；Issue #4237 to open |
+| SQL-backed Graph Projection | N/A | DONE / 受控 | BFS 子图、EvidenceBundle、GraphStats；不宣称通用图数据库 |
+| Row-Level Security / Column Privileges | DONE | DONE / 持续硬化 | v3.11 主路径能力；GMP 权限矩阵仍需 v3.12 生产路径验证 |
+| 存储过程 | DONE / 受控基础功能 | DONE / 受控基础功能 | V312-55 PR [#4259](http://192.168.0.252:3000/openclaw/sqlrustgo/pulls/4259) + [#4262](http://192.168.0.252:3000/openclaw/sqlrustgo/pulls/4262) + [#4264](http://192.168.0.252:3000/openclaw/sqlrustgo/pulls/4264): `CREATE/DROP/SHOW PROCEDURE` + `CALL` + `IN` 参数 + 过程内确定性 SQL 通过 gate, OUT/INOUT/DEFINER/Dynamic SQL 显式 defer v3.13, 证据: [V312-55-VERIFICATION.md](docs/releases/v3.12.0/evidence/procedure_trigger/V312-55-VERIFICATION.md) |
+| 触发器 | DONE / 受控基础功能 | DONE / 受控基础功能 | V312-55 PR [#4262](http://192.168.0.252:3000/openclaw/sqlrustgo/pulls/4262) + [#4264](http://192.168.0.252:3000/openclaw/sqlrustgo/pulls/4264): `BEFORE/AFTER INSERT/UPDATE/DELETE` row trigger + NEW/OLD 上下文 + 事务一致性 + 递归限制 + 权限模型 通过 gate, DEFINER 显式 defer v3.13, 证据: [V312-55-VERIFICATION.md](docs/releases/v3.12.0/evidence/procedure_trigger/V312-55-VERIFICATION.md) |
+| 通用复制 / 分布式 | UNSUPPORTED | UNSUPPORTED | 不作为 v3.12 当前目标 |
+| 完整 MySQL 5.7 替代 | PARTIAL | OPEN / 非当前声明 | 需要 SQLLogicTest、TPC-H correctness、wire、LOAD DATA、recovery、upgrade 等全部闭环；[#4220](http://192.168.0.252:3000/openclaw/sqlrustgo/issues/4220) 要求 README 不得把悬空 PARTIAL 当生产能力 |
+| 通用向量数据库 / 图数据库 | UNSUPPORTED | DEFERRED | v4.0.0 方向，不是 v3.12 对外声明 |
 
-### 测试环境
+## TPC-H 与性能基准
 
-| 项目 | 配置 |
-|------|------|
-| 硬件 | Z440 Workstation (80C / 408GB RAM) / Mac mini M4 |
-| CPU | Intel Xeon (第 4 代) / Apple M4 |
-| Rust | 1.85+ |
-| OS | Linux 6.8 / macOS |
+### 口径说明
 
-### TPC-H 决策支持基准
+TPC-H 的 `22/22 completed` 表示 22 个 query 都跑完且没有 OOM/panic；它不自动等于跨引擎结果完全正确。若要宣称 correctness，需要 row count、canonical SHA256 和外部 oracle 对比。
 
-> TPC-H 是一个决策支持基准测试，包含 22 个 OLAP 查询，评估数据库在复杂聚合、JOIN、排序场景下的性能。
+### 历史与当前 TPC-H 状态
 
-#### SF=0.1（约 60 万行 lineitem，~100MB）
+| 版本 / 场景 | 状态 | 可声明内容 | 不可声明内容 |
+|---|---|---|---|
+| v3.9.0 SF=0.1 | DONE / 历史基准 | SF=0.1 22 query 历史性能基准存在 | 不能外推为 SF=1/SF=10 生产能力 |
+| v3.10.0 并行执行优化 | DONE / 历史优化 | 部分 TPC-H query 在大数据上有并行和 fast-load 优化记录 | 不能宣称所有 query 线性加速 |
+| v3.11.0 SF=1 | DONE with correctness follow-up | 22/22 completed，519.15s，0 OOM，0 panic | 不能宣称 PostgreSQL/MySQL SHA256 零差异 |
+| v3.12.0 SF=1 close-out | 受控 / PARTIAL→DEFERRED | row count baseline + 8 zero-row per-query binding manifest 已闭环 (22/22 可运行, 14 行结果, 8 zero-row DEFERRED) | cross-engine SHA256 闭环 和 zero-row correctness v3.13 由 [#4221](http://192.168.0.252:3000/openclaw/sqlrustgo/issues/4221) → 子 issue [#4272](http://192.168.0.252:3000/openclaw/sqlrustgo/issues/4272) + [#4273](http://192.168.0.252:3000/openclaw/sqlrustgo/issues/4273)~[#4280](http://192.168.0.252:3000/openclaw/sqlrustgo/issues/4280) 收口 |
+| v3.12.0 SF=10 harness | PARTIAL / blocker | harness 可运行；当前不是完整 60M lineitem 生产证据 | 不能宣称真实 SF=10 全量 parity；[#4020](http://192.168.0.252:3000/openclaw/sqlrustgo/issues/4020)、[#4217](http://192.168.0.252:3000/openclaw/sqlrustgo/issues/4217) 继续整改 |
+| v3.12.0 Bulk-load SF=10 | PARTIAL / OPEN | runner/gate/evidence 记录 3/8 表 match，5/8 大表未完成 | 不能宣称 8 表真实 bulk-load 完成 |
 
-> v3.9.0 性能数据。与 v3.8.0 对比：Q1 3x 加速（150ms→50ms），Q9 6.7x 加速（600ms→90ms），总耗时 -92%（30s→2.3s）。
-
-| 查询 | v3.9.0 (ms) | v3.8.0 (ms) | 加速比 | 查询 | v3.9.0 (ms) | v3.8.0 (ms) | 加速比 |
-|------|------------:|------------:|--------:|------|------------:|------------:|--------:|
-| Q1 | **50** | 150 | 3.0x | Q12 | — | — | — |
-| Q2 | **8** | 20 | 2.5x | Q13 | **9** | 25 | 2.8x |
-| Q3 | **12** | 35 | 2.9x | Q14 | — | — | — |
-| Q4 | — | — | — | Q15 | — | — | — |
-| Q5 | — | — | — | Q16 | — | — | — |
-| Q6 | — | — | — | Q17 | 200000 | 200000 | 1.0x |
-| Q7 | **30** | 90 | 3.0x | Q18 | — | — | — |
-| Q8 | — | — | — | Q19 | — | — | — |
-| Q9 | **90** | 600 | **6.7x** | Q20 | — | — | — |
-| Q10 | — | — | — | Q21 | — | — | — |
-| Q11 | — | — | — | Q22 | — | — | — |
-
-**SF=0.1 汇总**：22/22 PASS | v3.9.0 总耗时 **~2.3s**（v3.8.0 约 30s，-92%）
-
-> ⚠️ 使用 `--queries all`，不支持 `--queries 1`（需用 `--queries Q1`）
-> ⚠️ 部分查询 Q4/Q5/Q6/Q8/Q10/Q11/Q12/Q14/Q15/Q16/Q18/Q19/Q20/Q21/Q22 耗时数据未在上表中单独列出，详见 [性能报告](docs/releases/v3.9.0/ga/PERFORMANCE_REPORT.md)
-
-#### v3.10.0 并行执行器优化 (Issue #3792) 🔥 新
-
-> v3.10.0 实施了 6 项并行执行器优化（PR #3370 + #3829），核心改动：
-> - `PARALLEL_MIN_ROWS`: 100K → **2,000,000**（executor / optimizer / storage 三处统一）
-> - 并行触发前置判断（2x overhead gate）— 小数据集自动回退串行
-> - Batch-Parallel 任务调度（8K 行 chunks，调度开销 -50%）
-> - 自适应并行度选择（1-8 线程基于数据规模）
-> - Rayon 线程数动态配置（每 query 独立线程数）
-> - 性能埋点（`partition_ms` / `filter_ms` / `merge_ms` / `total_ms`）
-
-**实测加速比（4 线程 vs 1 线程）**：
-
-| 查询 | 类型 | SF=1.0 (1M 行) | SF=3.0 (3M 行) | 备注 |
-|------|------|:---:|:---:|------|
-| Q1 (Pricing Summary) | 聚合 (10 列) | **1.27x** ✅ | 1.00x | 最佳加速比 |
-| Q3 (Shipping Priority) | 3-way join | **1.08x** ✅ | **1.08x** ✅ | join 并行有效 |
-| Q5 (Local Supplier) | 6-way join | **1.10x** ✅ | **1.10x** ✅ | 大 join 可扩展 |
-| Q4 (Order Priority) | 相关子查询 | 1.00x | 1.02x | v3.11+ Hash Semi Join |
-| Q6 (Forecasting) | 简单过滤 | 1.00x | 0.99x | < 阈值走串行 |
-| **Total** | 混合 | **1.01x** | **1.02x** | 受 Q4 限制 |
-
-**数据加载性能 (`fast_load_tbl_data`)**:
-
-| 数据量 | 旧 INSERT 路径 | 新 fast_load 路径 | 加速比 |
-|--------|:---:|:---:|:---:|
-| 1M 行 (100MB) | ~10+ min | **30s** | **20x** |
-| 3M 行 (300MB) | 不实用 | **60s** | **>60x** |
-
-**线性扩展性 (1M → 3M)**:
-- Q1: 2.78x（O(n) 扫描+聚合）
-- Q3: 3.07x（O(n) join）
-- Q5: 2.97x（O(n) 大 join）
-
-> 详细结果: [`perf/PERFORMANCE_BASELINE.md`](docs/releases/v3.10.0/perf/PERFORMANCE_BASELINE.md) + [`V310_TASK_CLOSURE_VERIFICATION.md`](docs/releases/v3.10.0/V310_TASK_CLOSURE_VERIFICATION.md)
-
-#### SF=1（约 600 万行 lineitem，~1GB）
-
-> ⚠️ SF=1 数据集实际执行已验证（Z6G4，6,001,215 行 lineitem，1.1GB，2026-06-03）。但 gate test 仅实现 10 个查询，6/10 PASS，4 个因 parser 限制报 parse error。剩余 12 个查询未实现。
-
-| 指标 | 数值 |
-|------|------|
-| 数据规模 | customer 150k / orders 1.5M / lineitem 6M / part 200k / partsupp 800k |
-| 数据加载 | 8.6M 行 / 约 50s |
-| gate test PASS | **6/10**（Q1/Q3/Q5/Q6/Q10/Q19） |
-| gate test FAIL | Q7/Q8/Q9/Q12（parser 限制：subquery-in-FROM、OR 优先级） |
-| 未实现查询 | Q2/Q4/Q7/Q8/Q9/Q11/Q12/Q14/Q15/Q16/Q17/Q18/Q20/Q21/Q22 |
-| 4 个 parser 限制 | Q7/Q8/Q9（子查询 in FROM）、Q12（OR 优先级） |
-| Q1 对比 MySQL | SQLRustGo 14.93s vs MySQL 7.08s（2.1x，符合预期） |
-
-**SF=1 gate test 汇总**：6/10 PASS（parser 限制，非执行引擎故障）
-
-> 详见 [TPC-H SF=1 部分结果说明](docs/releases/v3.9.0/ga/TPC-H_PARTIAL_RESULT.md)
-#### SF=0.01 多数据库对比基准 (2026-07-18) 🆕
-
-> SF=0.01 数据集（60K 行 lineitem）在 SQLite、MySQL、PostgreSQL 上的性能对比：
-
-| 数据库 | 类型 | 总耗时 | 相对速度 |
-|--------|------|--------|----------|
-| PostgreSQL | 服务器 | 1.41s | 🥇 最快 |
-| MySQL | 服务器 | 1.37s | 🥈 +3% |
-| SQLite | 嵌入式 | 4.14s | 🥉 2.9x 慢 |
-
-**关键发现**：
-- 简单查询：SQLite 最快（无网络开销）
-- 复杂查询（Q8/Q9/Q21）：MySQL/PostgreSQL 优 10-40x
-- SQLRustGo 定位：嵌入式场景，对标 SQLite
-
-| 查询 | SQLite | MySQL | PostgreSQL | 最快 |
-|------|--------|-------|------------|------|
-| Q1 | 0.042s | 0.090s | 0.064s | SQLite |
-| Q15 | 0.097s | 0.052s | 0.053s | MySQL |
-| Q21 | 2.816s | 0.075s | 0.117s | MySQL |
-
-> 详细数据: [TPC-H-BENCHMARK-v3.0.md](TPC-H-BENCHMARK-v3.0.md)
-
-#### SF=10（约 2200 万行 lineitem，~10GB）
-
-| 阶段 | 状态 |
-|------|------|
-| 数据导入（29M 行） | ✅ 完成（约 96s） |
-| Q1 ~ Q22 | ❌ OOM（查询阶段被 SIGKILL，408GB RAM 仍不足） |
-
-> ⚠️ SF=10 需分批查询或降级测试策略，单次全量查询超出本机 408GB 物理内存。
-
-### TPC-H Cell-Level 正确性
+### v3.11.0 SF=1 关键数据
 
 | 指标 | 结果 |
-|------|------|
-| Cell-level 匹配（vs SQLite） | **21/22** ✅ |
-| Q22 不匹配原因 | SQL 标准三值逻辑差异（NOT LIKE NULL 行为），PostgreSQL/DuckDB 与引擎一致 |
+|---|---:|
+| 数据规模 | lineitem 6,001,215 行，8 表约 8.66M 行 |
+| 加载路径 | BINT mmap fixture，不是 LOAD DATA |
+| 执行结果 | 22/22 query completed |
+| 总耗时 | 519.15s |
+| 稳定性 | 0 OOM / 0 panic |
+| 结果边界 | 8 个 zero-row query 仍需外部 oracle correctness 验证 |
 
-### 长跑测试（SOAK）
+### v3.12.0 SF=10 当前边界
 
-| 测试 | 时长 | 硬件 | 结果 |
-|------|------|------|------|
-| 短稳态阶梯（30m→4h） | 4h | Z440 | ✅ PASS |
-| 24h 真实长跑 | 24h | Z440 | ✅ PASS |
-| 72h 真实长跑（G13 修复前） | 72h | Z440 | ⚠️ 70h36m 出现 G13 deadlock（parking_lot RwLock 问题），已修复 |
-| 72h 真实长跑（G13 修复后） | 120h | Mac mini | ✅ **119h57m，0 错误，0 重连** |
-| v3.9.0 168h 真实长跑 | 168h | Mac mini | ✅ **PASS**（2026-07-12 完成） |
-| **v3.10.0 168h 真实长跑** | **168h** | **gaoyuan** | **🔄 IN PROGRESS**（2026-07-14 启动, 预计 2026-07-21 完成） |
+[#4018 evidence](docs/releases/v3.12.0/evidence/issue-4018/4018_evidence.md) 明确说明：
 
-> **G13 修复**（PR #3680）：`parking_lot::RwLock` + `Fair` 策略 + `storage_read()` 重试循环。Mac mini 119h57m 验证修复有效。
->
-> **v3.10.0 168h SOAK 当前状态 (Issue #3792 后续)**：
-> - **架构**: `sqlrustgo-mysql-server` v3.10.0 GA (commit `8056d5fb66`) + TPC-H Q1/Q6/Q12/Q14 轮询 + 8 线程 OLTP 自定义工作负载 (point_select + range_select + count + insert + update)
-> - **数据集**: TPC-H SF=0.01 (100K lineitem) — 8 表, 115K 行
-> - **当前观察** (5h 37m 后): RSS 1.7GB 稳定, FD 25 稳定, CPU 237%, WAL 77MB, TPC-H 645 轮完成 (200-400ms 延迟), 0 错误
-> - **监控文件**: `/tmp/soak_v310/run_*/metrics.csv` + `tpch_rotation.log` + `oltp_workload.log`
-> - **编排器**: `/tmp/soak_v310/orchestrator_v2.sh` (可复用)
-> - **完整报告**: `/tmp/soak_v310/PROGRESS_REPORT.md`
+- SF=10 harness 和 gate 基础设施已交付。
+- 最新证据中 3/8 TPC-H SF=10 表已完成 `parity=match`。
+- 剩余大表受 FileStorage 全表重序列化导致的吞吐瓶颈阻塞，需 #4217 继续整改。
+- 还没有 8/8 表完整 row-count/hash parity，因此不能声明 SF=10 生产完成。
 
-### 代码质量
+[#4020 evidence](docs/releases/v3.12.0/evidence/issue-4020/4020_evidence.md) 明确说明：
 
-| 指标 | 值 | 备注 |
-|------|-----|------|
-| 覆盖率均值 | **~67%** ⚠️ | G3 条件通过；目标 v3.10.0 GA ≥80% per crate |
-| sqlrustgo-types | ~93% | ✅ |
-| sqlrustgo-storage | ~78% | ⚠️ |
-| sqlrustgo-executor | ~68% | ⚠️ |
-| sqlrustgo-parser | ~60% | ⚠️ |
-| 单元测试 | 3000+ PASS | ✅ |
-| clippy warnings | 0 | ✅ |
-| fmt diff | 0 | ✅ |
+- Bulk-load runner 存在。
+- schema creation 失败是旧阶段问题，最新状态已推进到 3/8 表 `parity=match`。
+- 5/8 大表仍未完成，不能宣称 8 表真实 bulk-load 完成。
 
-> 覆盖率条件通过理由：v3.8.0 GA 基线 ~35% → v3.9.0 ~67%（+32pp 提升）。剩余 gap 在非生产路径代码。所有 44 个忽略测试已审计（17 个性能基准、18 个未实现 SQL 特性、3 个已知 bug 均已修复）。详见 [覆盖率缺口说明](docs/releases/v3.9.0/ga/COVERAGE_GAP_RATIONALE.md)
+因此 README 不再把 SF=10 写成完成状态。
 
----
+## GMP / RAG / Vector / Graph
 
-## 质量门禁
+v3.12.0 的 GMP 方向是“受控内审检索系统数据库”，不是通用数据库产品宣传。
 
-> v3.9.0 GA 门禁状态：9/11 PASS，2 项条件通过，0 项阻塞。
+| 模块 | 当前状态 | 证据 |
+|---|---:|---|
+| GMP schema / version / chunk / relation / audit | DONE | [V312-02](docs/releases/v3.12.0/v312-02-gmp-schema-report.md) |
+| Idempotent GMP markdown ingestion | DONE | [V312-03](docs/releases/v3.12.0/v312-03-gmp-ingestion-report.md) |
+| Embedding provider | DONE / 受控 | [V312-04](docs/releases/v3.12.0/v312-04-embedding-provider-report.md) |
+| Hybrid retrieval | DONE / 受控 | [V312-05](docs/releases/v3.12.0/v312-05-hybrid-retrieval-report.md) |
+| SQL-backed graph projection | DONE / 受控 | [V312-06](docs/releases/v3.12.0/v312-06-graph-projection-report.md) |
+| RAG evidence bundle | DONE / 受控 | [V312-07](docs/releases/v3.12.0/v312-07-rag-evidence-bundle-report.md) |
+| GMP compliance audit controls | 受控 / 子项已闭环 | [GMP 合规矩阵](docs/releases/v3.12.0/GMP_COMPLIANCE_MATRIX.md)、[V312-08](docs/releases/v3.12.0/v312-08-compliance-audit-report.md)、[V312-53](docs/releases/v3.12.0/evidence/gmp_compliance/V312-53-REPORT.md)；子项拆分见 README 行 141-145 (CRUD audit DONE；合规操作/篡改检测/5×12 矩阵 显式 DEFERRED → v3.13)，由 [#4226](http://192.168.0.252:3000/openclaw/sqlrustgo/issues/4226) 收口 |
 
-| 门禁 | 要求 | 结果 |
-|------|------|------|
-| GE1 | RC 门禁 PASS | ✅ |
-| GE2 | RC_GATE_REPORT.md 存在 | ✅ |
-| GE3 | PERFORMANCE_REPORT.md 存在 | ✅ |
-| GE4 | SECURITY_AUDIT.md 存在 | ✅ |
-| GE5 | RC 阶段所有 issue 关闭 | ✅ |
-| G1 | 构建 / WAL 契约 / Clippy / Fmt | ✅ |
-| G2 | 全部测试 PASS（3000+） | ✅ |
-| G3 | 覆盖率 ≥85% 均值 | ⚠️ 条件通过（~67%，理由见文档） |
-| G4 | TPC-H H/22 | ⚠️ 条件通过（6/10，理由见文档） |
-| G5 | 安全扫描 PASS | ✅ |
-| G6 | 文档完整 | ✅ |
-| 长跑 | 72h ✅ / 168h ✅ | ✅ |
+允许的产品声明：SQLRustGo v3.12 支持受控 GMP 内审检索工作负载中的关系存储、chunk、embedding、audit trail、evidence relation、hybrid retrieval 和 SQL-backed graph projection。
 
-详见 [GA 门禁报告](docs/releases/v3.9.0/ga/GA_GATE_REPORT.md)
+禁止的产品声明：v3.12 是通用独立向量数据库、通用图数据库或完整 MySQL 5.7 替代品。
 
----
+## 测试与质量门禁
+
+v3.12.0 采用分层测试体系，避免把慢测试、性能测试、coverage 和 SOAK 混成一个不可维护的总门禁。
+
+| 层级 | 类型 | 当前目标 |
+|---|---|---|
+| L0 | 单元测试 | 受影响 crate 和核心 crate 必须 PASS |
+| L1 | 集成测试 | SQL / storage / transaction / GMP 主路径可复跑 |
+| L2 | E2E / wire / SQLLogicTest smoke | 失败必须 issue-linked，不允许静默 ignore |
+| L3 | per-crate coverage | 统一命令、统一报告；低覆盖必须 owner/expiry/issue |
+| L4 | 性能测试 | TPC-H、Sysbench、bulk-load、RAG/vector 单独产出趋势和 artifact |
+| L5 | SOAK / crash / recovery | Beta/RC/GA 前单独验收，不作为每 PR 门禁 |
+
+关键文档：
+
+- [v3.12 TEST_PLAN](docs/releases/v3.12.0/TEST_PLAN.md)
+- [综合测试框架与覆盖率基线](docs/releases/v3.12.0/COMPREHENSIVE_TEST_FRAMEWORK_AND_COVERAGE_BASELINE.md)
+- [v3.12 Scope Table](docs/releases/v3.12.0/SCOPE_TABLE_v3.12.md)
+- [SQLLogicTest gate 报告](docs/releases/v3.12.0/sqllogictest-oracle-gate-report.md)
 
 ## 文档资源
 
-### 📖 用户文档（mdBook）
-
-> `docs/releases/v3.9.0/` 目录 — 包含完整 SQL 语法参考、部署指南、开发者文档
-
-### 文档导航
-
 | 文档 | 说明 |
-|------|------|
-| [📋 CHANGELOG](CHANGELOG.md) | 版本变更历史 |
-| [📝 发行说明索引](RELEASE_NOTES.md) | 所有版本索引页 |
-| [📖 v3.9.0 文档中心](docs/releases/v3.9.0/) | 当前版本完整文档 |
-| [📊 v3.9.0 GA 门禁报告](docs/releases/v3.9.0/ga/GA_GATE_REPORT.md) | 质量门禁执行证据 |
-| [📊 v3.9.0 性能报告](docs/releases/v3.9.0/ga/PERFORMANCE_REPORT.md) | TPC-H 性能数据 |
-| [🔒 v3.9.0 安全审计](docs/releases/v3.9.0/ga/SECURITY_AUDIT.md) | 安全审计报告 |
-| [📖 v3.9.0 升级指南](docs/releases/v3.9.0/MIGRATION_GUIDE.md) | 从 v3.8.0 升级说明 |
+|---|---|
+| [CHANGELOG](CHANGELOG.md) | 版本变更历史 |
+| [RELEASE_NOTES](RELEASE_NOTES.md) | 发行说明索引 |
+| [v3.11 综合评估](docs/releases/v3.11.0/COMPREHENSIVE_ASSESSMENT_REPORT.md) | v3.11 GA 可信度、边界和遗漏测试 |
+| [v3.11 TPC-H SF=1 报告](docs/releases/v3.11.0/TPCH_SF1_22_22_PASS_REPORT.md) | SF=1 22/22 可运行性证据 |
+| [v3.12 README](docs/releases/v3.12.0/README.md) | v3.12 产品契约 |
+| [v3.12 DEVELOPMENT_PLAN](docs/releases/v3.12.0/DEVELOPMENT_PLAN.md) | v3.12 开发计划 |
+| [v3.12 FEATURE_CHECKLIST](docs/releases/v3.12.0/FEATURE_CHECKLIST.md) | v3.12 功能清单 |
+| [v3.12 PARTIAL 功能整改 Issue 计划](docs/releases/v3.12.0/PARTIAL_FEATURE_REMEDIATION_ISSUE_PLAN.md) | README 中 PARTIAL/OPEN 功能的整改归属、issue 和关闭边界 |
+| [v3.12 STAGE](docs/releases/v3.12.0/STAGE.yaml) | v3.12 阶段 SSOT |
+| [governance](docs/governance/) | 真实性、门禁、Issue 关闭和多 AI 协作规范 |
 
-### 历史版本
+## 历史版本
 
-| 版本 | 文档 | 发布日期 |
-|------|------|----------|
-| v3.9.0 GA | [📂](docs/releases/v3.9.0/) | 2026-07-10 |
-| v3.8.0 GA | [📂](docs/releases/v3.8.0/) | 2026-06-08 |
-| v3.7.0 GA | [📂](docs/releases/v3.7.0/) | 2026-05-30 |
-| v3.6.0 GA | [📂](docs/releases/v3.6.0/) | 2026-05-30 |
-| v3.5.0 GA | [📂](docs/releases/v3.5.0/) | 2026-05-28 |
-| v3.4.0 GA | [📂](docs/releases/v3.4.0/) | 2026-05-24 |
-
----
+| 版本 | 阶段 / 定位 | 说明 |
+|---|---|---|
+| v3.12.0 | ALPHA | GMP 内审检索数据库 + v3.11 弱项硬化 |
+| v3.11.0 | GA | 简单生产/受控场景候选；TPC-H SF=1 可运行性突破；仍有 correctness 和生产边界 |
+| v3.10.0 | GA / 历史 | 并行执行器、fast-load、MySQL 5.7 替代方向推进；部分测试增强未成为阻断门禁 |
+| v3.9.0 | GA / 历史 | TPC-H SF=0.1、长稳、治理真实性修复的重要版本 |
+| v3.8.0 | GA / 历史 | canonical server 入口、WAL/recovery/文档治理演进 |
+| v3.7.0 | GA / 历史 | truthfulness framework 和覆盖率争议治理成形 |
+| v3.6.0 | GA / 历史 | 早期覆盖率和 Beta/GA 口径漂移需以后续版本纠正阅读 |
 
 ## 贡献指南
 
 ```bash
-# 运行全部测试
+# 格式
+cargo fmt --check --all
+
+# 构建
+cargo build --all-features
+
+# 测试
 cargo test --all-features
 
-# clippy 规范检查
-cargo clippy --all-targets -- -D warnings
+# Clippy
+cargo clippy --all-features -- -D warnings
 
-# 格式检查
-cargo fmt --check
-
-# 覆盖率报告
-cargo llvm-cov report --open
+# 文档链接
+bash scripts/gate/check_docs_links.sh
 ```
 
----
+提交文档或关闭 Issue 前，请遵循：
 
-## 更新日志
-
-> 详见 [CHANGELOG.md](CHANGELOG.md) 获取完整版本变更历史。
-
-**v3.9.0 GA**（2026-07-10）：TPC-H 22/22（SF=0.1）、Q9 6.7x 加速、Q13 子查询修正、72h SOAK 119h57m 0 错误 0 重连、168h SOAK PASS、G13 deadlock 修复（parking_lot RwLock）。详见 [v3.9.0 发行说明](docs/releases/v3.9.0/ga/GA_RELEASE_NOTES.md)
-
----
+- [ADR-001 Truthfulness Framework](docs/governance/adr/ADR-001-truthfulness-framework.md)
+- [Anti-Fabrication Policy](docs/governance/ANTI_FABRICATION_POLICY.md)
+- [Issue Closing Verification](docs/governance/ISSUE_CLOSING_VERIFICATION.md)
+- [Document Correction Rules](docs/governance/DOC_CHECK_CORRECTION_RULES.md)
+- [ADR-008 Test Claim Transparency](docs/governance/adr/ADR-008-test-claim-transparency.md)
+- [ADR-014 Multi-AI Coordination](docs/governance/adr/ADR-014-multi-ai-coordination.md)
 
 ## 许可证
 
-MIT License — 详见 [LICENSE](LICENSE) 文件。
+MIT License，详见 [LICENSE](LICENSE)。

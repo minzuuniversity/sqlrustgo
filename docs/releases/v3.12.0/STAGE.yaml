@@ -67,8 +67,20 @@ promotion_to_BETA_requires:
   - "Hybrid retrieval returns source path, version, chunk hash, and citation text"
   - "SQL-backed graph projection supports neighbors and depth-limited paths"
   - "Audit hash-chain tamper tests fail closed"
-  - "SQLLogicTest smoke corpus runs and writes a report"
+  - "SQLLogicTest smoke corpus gate executes via scripts/gate/check_sqllogictest_v312.sh with exit 0"
+  - "SQLLogicTest smoke manifest shows pass_files == total_files, fail_files == 0, and open exclusions == 0"
   - "TPC-H SF=1 correctness close-out plan has per-query artifact format"
+  - "Beta evidence paths are current for the checked-out develop/v3.12.0 commit; stale report existence is not sufficient"
+  - "Coverage baseline, MySQL wire prepared-statement smoke, Sysbench read/write disposition, bulk-load smoke, and crash/recovery smoke are either executed or issue-linked as explicit Beta blockers"
+  # V312-56H / Issue #4258: V312-56 series teaching-capability gating
+  # Each item below is closed in docs/releases/v3.12.0/evidence/v312-56/V312-56-VERIFICATION.md
+  # and verified by scripts/gate/check_beta_v3.12.0.sh (B6_V312_56_TEACHING_CORPUS +
+  # B6_V312_56_EXPLAIN_FIXTURES). Sub-issues must be COMPLETED or explicitly
+  # demoted with a signed governance exception before Beta entry.
+  - "V312-56A: Metadata teaching (Issue #4251) — SHOW COLUMNS LIKE glob matcher + 32/36 sub-tasks COMPLETED"
+  - "V312-56B: SQL teaching corpus (Issue #4252) — tests/compat/teaching_sql_v3_12/ + manifest.yml COMPLETED"
+  - "V312-56C: Transaction / crash-recovery teaching (Issue #4253) — 6 crash tests + 3 tx tests + teaching doc COMPLETED"
+  - "V312-56D: Prepared statement / wire teaching (Issue #4254) — 3 prepared/* fixtures COMPLETED"
 
 promotion_to_RC_requires:
   - "Full ~/gmp-platform/gmp-md ingestion report produced"

@@ -187,7 +187,8 @@ impl TestTableBuilder {
                 primary_key: false,
                 char_max_length: None,
                 collation: None,
-            })
+
+                default_value: None,            })
             .collect();
         sqlrustgo_storage::TableInfo {
             name: self.name.clone(),

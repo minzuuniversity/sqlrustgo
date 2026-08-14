@@ -1,0 +1,21 @@
+[0;32m[bulk_load_sf10][0m starting sqlrustgo-mysql-server on 127.0.0.1:23308 (auth=none, data=/home/openclaw/workspace/dev/sqlrustgo/docs/releases/v3.12.0/evidence/issue-4020/20260814T051026Z_sf10/data, infile=tests/data/tpch-sf001-real, wal-sync=every)
+[0;32m[bulk_load_sf10][0m server listening (pid=1148460)
+[0;32m[bulk_load_sf10][0m creating database + 8 TPC-H schemas
+[0;32m[bulk_load_sf10][0m   schema: region created
+[0;32m[bulk_load_sf10][0m   schema: nation created
+[0;32m[bulk_load_sf10][0m   schema: supplier created
+[0;32m[bulk_load_sf10][0m   schema: customer created
+[0;32m[bulk_load_sf10][0m   schema: part created
+[0;32m[bulk_load_sf10][0m   schema: partsupp created
+[0;32m[bulk_load_sf10][0m   schema: orders created
+[0;32m[bulk_load_sf10][0m   schema: lineitem created
+[0;32m[bulk_load_sf10][0m   region: 5 rows in 0.049s (102 rows/s) — parity=match
+[0;32m[bulk_load_sf10][0m   nation: 25 rows in 0.045s (556 rows/s) — parity=match
+[0;32m[bulk_load_sf10][0m   supplier: 10000 rows in 0.526s (19011 rows/s) — parity=match
+[0;32m[bulk_load_sf10][0m   customer: 150000 rows in 33.621s (4461 rows/s) — parity=match
+[0;32m[bulk_load_sf10][0m   part: 200000 rows in 54.699s (3656 rows/s) — parity=match
+[0;32m[bulk_load_sf10][0m   partsupp: 800000 rows in 579.290s (1381 rows/s) — parity=match
+[0;32m[bulk_load_sf10][0m   orders: 1500000 rows in 2620.239s (572 rows/s) — parity=match
+[0;31m[bulk_load_sf10:ERROR][0m   lineitem: LOAD failed (rc=124) — see /home/openclaw/workspace/dev/sqlrustgo/docs/releases/v3.12.0/evidence/issue-4020/20260814T051026Z_sf10/lineitem_load.log
+[0;33m[bulk_load_sf10:WARN][0m DONE with failures — see /home/openclaw/workspace/dev/sqlrustgo/docs/releases/v3.12.0/evidence/issue-4020/20260814T051026Z_sf10/bulk_load_summary.json
+[0;32m[bulk_load_sf10][0m stopping server (pid=1148460)

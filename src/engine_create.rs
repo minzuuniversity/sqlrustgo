@@ -114,6 +114,7 @@ impl<S: StorageEngine + 'static> ExecutionEngine<S> {
                         primary_key: c.primary_key,
                         char_max_length: c.char_max_length,
                         collation: c.collation.clone(),
+                        default_value: c.default_value.clone(),
                     })
                     .collect()
             } else {
@@ -150,6 +151,7 @@ impl<S: StorageEngine + 'static> ExecutionEngine<S> {
                             primary_key: false,
                             char_max_length: None,
                             collation: None,
+                            default_value: None,
                         }
                     })
                     .collect()
@@ -208,6 +210,7 @@ impl<S: StorageEngine + 'static> ExecutionEngine<S> {
                 primary_key: c.primary_key,
                 char_max_length: c.char_max_length,
                 collation: c.collation.clone(),
+                default_value: c.default_value.clone(),
             })
             .collect();
         // V312-26 / #4077: collect per-column collation (each column
@@ -217,7 +220,11 @@ impl<S: StorageEngine + 'static> ExecutionEngine<S> {
         let collations: std::collections::HashMap<String, String> = create
             .columns
             .iter()
-            .filter_map(|c| c.collation.as_ref().map(|n| (c.name.clone(), n.to_lowercase())))
+            .filter_map(|c| {
+                c.collation
+                    .as_ref()
+                    .map(|n| (c.name.clone(), n.to_lowercase()))
+            })
             .collect();
         let compression = create.compress.as_ref().map(|spec| match spec.algorithm {
             CompressionAlgorithm::Lz4 => "LZ4".to_string(),
@@ -288,7 +295,7 @@ impl<S: StorageEngine + 'static> ExecutionEngine<S> {
                 check_constraints,
                 partition_info: None,
                 compression: None,
-            collations: HashMap::new(),
+                collations: HashMap::new(),
             })?;
             self.clustered_tables
                 .write()

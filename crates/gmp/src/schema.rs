@@ -50,6 +50,7 @@ pub fn document_versions_columns() -> Vec<ColumnDefinition> {
             primary_key: true,
             char_max_length: None,
             collation: None,
+            default_value: None,
         },
         ColumnDefinition {
             name: "doc_id".to_string(),
@@ -58,6 +59,7 @@ pub fn document_versions_columns() -> Vec<ColumnDefinition> {
             primary_key: false,
             char_max_length: None,
             collation: None,
+            default_value: None,
         },
         ColumnDefinition {
             name: "version_number".to_string(),
@@ -66,6 +68,7 @@ pub fn document_versions_columns() -> Vec<ColumnDefinition> {
             primary_key: false,
             char_max_length: None,
             collation: None,
+            default_value: None,
         },
         ColumnDefinition {
             name: "source_hash".to_string(),
@@ -74,6 +77,7 @@ pub fn document_versions_columns() -> Vec<ColumnDefinition> {
             primary_key: false,
             char_max_length: None,
             collation: None,
+            default_value: None,
         },
         ColumnDefinition {
             name: "content_hash".to_string(),
@@ -82,6 +86,7 @@ pub fn document_versions_columns() -> Vec<ColumnDefinition> {
             primary_key: false,
             char_max_length: None,
             collation: None,
+            default_value: None,
         },
         ColumnDefinition {
             name: "created_at".to_string(),
@@ -90,6 +95,7 @@ pub fn document_versions_columns() -> Vec<ColumnDefinition> {
             primary_key: false,
             char_max_length: None,
             collation: None,
+            default_value: None,
         },
         ColumnDefinition {
             name: "change_desc".to_string(),
@@ -98,6 +104,7 @@ pub fn document_versions_columns() -> Vec<ColumnDefinition> {
             primary_key: false,
             char_max_length: None,
             collation: None,
+            default_value: None,
         },
     ]
 }
@@ -131,6 +138,7 @@ pub fn chunks_columns() -> Vec<ColumnDefinition> {
             primary_key: true,
             char_max_length: None,
             collation: None,
+            default_value: None,
         },
         ColumnDefinition {
             name: "doc_id".to_string(),
@@ -139,6 +147,7 @@ pub fn chunks_columns() -> Vec<ColumnDefinition> {
             primary_key: false,
             char_max_length: None,
             collation: None,
+            default_value: None,
         },
         ColumnDefinition {
             name: "version_number".to_string(),
@@ -147,6 +156,7 @@ pub fn chunks_columns() -> Vec<ColumnDefinition> {
             primary_key: false,
             char_max_length: None,
             collation: None,
+            default_value: None,
         },
         ColumnDefinition {
             name: "chunk_index".to_string(),
@@ -155,6 +165,7 @@ pub fn chunks_columns() -> Vec<ColumnDefinition> {
             primary_key: false,
             char_max_length: None,
             collation: None,
+            default_value: None,
         },
         ColumnDefinition {
             name: "section_name".to_string(),
@@ -163,6 +174,7 @@ pub fn chunks_columns() -> Vec<ColumnDefinition> {
             primary_key: false,
             char_max_length: None,
             collation: None,
+            default_value: None,
         },
         ColumnDefinition {
             name: "content_hash".to_string(),
@@ -171,6 +183,7 @@ pub fn chunks_columns() -> Vec<ColumnDefinition> {
             primary_key: false,
             char_max_length: None,
             collation: None,
+            default_value: None,
         },
         ColumnDefinition {
             name: "content_text".to_string(),
@@ -179,6 +192,7 @@ pub fn chunks_columns() -> Vec<ColumnDefinition> {
             primary_key: false,
             char_max_length: None,
             collation: None,
+            default_value: None,
         },
         ColumnDefinition {
             name: "created_at".to_string(),
@@ -187,6 +201,7 @@ pub fn chunks_columns() -> Vec<ColumnDefinition> {
             primary_key: false,
             char_max_length: None,
             collation: None,
+            default_value: None,
         },
     ]
 }
@@ -270,6 +285,7 @@ pub fn relations_columns() -> Vec<ColumnDefinition> {
             primary_key: true,
             char_max_length: None,
             collation: None,
+            default_value: None,
         },
         ColumnDefinition {
             name: "source_doc_id".to_string(),
@@ -278,6 +294,7 @@ pub fn relations_columns() -> Vec<ColumnDefinition> {
             primary_key: false,
             char_max_length: None,
             collation: None,
+            default_value: None,
         },
         ColumnDefinition {
             name: "source_chunk_id".to_string(),
@@ -286,6 +303,7 @@ pub fn relations_columns() -> Vec<ColumnDefinition> {
             primary_key: false,
             char_max_length: None,
             collation: None,
+            default_value: None,
         },
         ColumnDefinition {
             name: "relation_type".to_string(),
@@ -294,6 +312,7 @@ pub fn relations_columns() -> Vec<ColumnDefinition> {
             primary_key: false,
             char_max_length: None,
             collation: None,
+            default_value: None,
         },
         ColumnDefinition {
             name: "target_doc_id".to_string(),
@@ -302,6 +321,7 @@ pub fn relations_columns() -> Vec<ColumnDefinition> {
             primary_key: false,
             char_max_length: None,
             collation: None,
+            default_value: None,
         },
         ColumnDefinition {
             name: "target_chunk_id".to_string(),
@@ -310,6 +330,7 @@ pub fn relations_columns() -> Vec<ColumnDefinition> {
             primary_key: false,
             char_max_length: None,
             collation: None,
+            default_value: None,
         },
         ColumnDefinition {
             name: "properties".to_string(),
@@ -318,6 +339,7 @@ pub fn relations_columns() -> Vec<ColumnDefinition> {
             primary_key: false,
             char_max_length: None,
             collation: None,
+            default_value: None,
         },
         ColumnDefinition {
             name: "created_at".to_string(),
@@ -326,6 +348,7 @@ pub fn relations_columns() -> Vec<ColumnDefinition> {
             primary_key: false,
             char_max_length: None,
             collation: None,
+            default_value: None,
         },
     ]
 }

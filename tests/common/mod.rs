@@ -111,19 +111,62 @@ pub mod wire_proto {
         Ok(payload)
     }
 
+    /// `write_all` that tolerates a transiently full TCP send buffer.
+    ///
+    /// The kernel send buffer fills up when the server is busy parsing
+    /// and bulk-inserting rows (e.g. V312-13 §9 SF=10 `supplier.tbl` is
+    /// 100,000 rows / ~14 MB, which the server must drain before the
+    /// next client chunk can land). A plain `write_all` on a socket with
+    /// a read timeout set surfaces that as `WouldBlock`, panicking the
+    /// test with "write payload: Resource temporarily unavailable (os
+    /// error 11)".
+    ///
+    /// Retries are bounded by `MAX_RETRIES` per stalled write so a truly
+    /// wedged peer fails the test instead of hanging it. A partial write
+    /// counts as progress and resets the counter.
+    fn write_all_retry(stream: &mut TcpStream, mut buf: &[u8], what: &str) -> wire_err::Result<()> {
+        use std::io::Write;
+        let mut retries = 0;
+        while !buf.is_empty() {
+            match stream.write(buf) {
+                Ok(0) => {
+                    return Err(wire_err::msg(format!("write {what}: connection closed")));
+                }
+                Ok(n) => {
+                    buf = &buf[n..];
+                    retries = 0;
+                }
+                Err(e) if e.kind() == std::io::ErrorKind::Interrupted => continue,
+                Err(e) if e.kind() == std::io::ErrorKind::WouldBlock && retries < MAX_RETRIES => {
+                    retries += 1;
+                    std::thread::sleep(std::time::Duration::from_millis(10));
+                    continue;
+                }
+                Err(e) => return Err(wire_err::msg(format!("write {what}: {e}"))),
+            }
+        }
+        Ok(())
+    }
+
     pub fn write_packet(stream: &mut TcpStream, seq: u8, payload: &[u8]) -> wire_err::Result<()> {
+        use std::io::Write;
         let len = payload.len() as u32;
         let header = [len as u8, (len >> 8) as u8, (len >> 16) as u8, seq];
-        use std::io::Write;
-        stream
-            .write_all(&header)
-            .map_err(|e| wire_err::msg(format!("write header: {e}")))?;
-        stream
-            .write_all(payload)
-            .map_err(|e| wire_err::msg(format!("write payload: {e}")))?;
-        stream
-            .flush()
-            .map_err(|e| wire_err::msg(format!("flush: {e}")))?;
+        write_all_retry(stream, &header, "header")?;
+        write_all_retry(stream, payload, "payload")?;
+        let mut retries = 0;
+        loop {
+            match stream.flush() {
+                Ok(()) => break,
+                Err(e) if e.kind() == std::io::ErrorKind::Interrupted => continue,
+                Err(e) if e.kind() == std::io::ErrorKind::WouldBlock && retries < MAX_RETRIES => {
+                    retries += 1;
+                    std::thread::sleep(std::time::Duration::from_millis(10));
+                    continue;
+                }
+                Err(e) => return Err(wire_err::msg(format!("flush: {e}"))),
+            }
+        }
         Ok(())
     }
 
@@ -188,7 +231,17 @@ fn parse_handshake(handshake: &[u8]) -> wire_err::Result<[u8; SCRAMBLE_LEN]> {
 
 /// Compute the mysql_native_password auth response:
 ///   auth_response = SHA1(password) XOR SHA1(scramble + SHA1(SHA1(password)))
-fn native_password_auth(password: &[u8], scramble: &[u8; SCRAMBLE_LEN]) -> [u8; SCRAMBLE_LEN] {
+///
+/// V312-38 / Issue #4176: per MySQL protocol, when `password` is empty
+/// the client MUST send a 0-length auth-response. The previous version
+/// always returned a 20-byte token (SHA1 of empty + scramble), which
+/// makes servers respond with `Access denied ... (using password: YES)`
+/// and obscures the real reason for the failure. Mirrors the fix in
+/// `crates/cli/src/client.rs:native_password_auth`.
+fn native_password_auth(password: &[u8], scramble: &[u8; SCRAMBLE_LEN]) -> Vec<u8> {
+    if password.is_empty() {
+        return Vec::new();
+    }
     let mut h1 = Sha1::new();
     h1.update(password);
     let sha1_pw = h1.finalize();
@@ -206,7 +259,7 @@ fn native_password_auth(password: &[u8], scramble: &[u8; SCRAMBLE_LEN]) -> [u8; 
     for i in 0..SCRAMBLE_LEN {
         out[i] = sha1_pw[i] ^ scramble_sha1_sha1_pw[i];
     }
-    out
+    out.to_vec()
 }
 
 /// Build a HandshakeResponse41 packet body. We use the SECURE_CONNECTION

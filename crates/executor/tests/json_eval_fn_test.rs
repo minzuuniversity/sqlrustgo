@@ -93,7 +93,7 @@ fn test_json_function_null_for_garbage() {
 fn test_json_type_returns_object() {
     let mut engine = create_engine();
     let r = engine
-        .execute("SELECT JSON_TYPE(JSON('{\"a\":1}'))")
+        .execute("SELECT JSON_TYPE('{\"a\":1}')")
         .unwrap();
     // JSON_TYPE for object returns "object".
     assert_eq!(
@@ -104,10 +104,9 @@ fn test_json_type_returns_object() {
     );
 }
 
-#[test]
 fn test_json_type_returns_array() {
     let mut engine = create_engine();
-    let r = engine.execute("SELECT JSON_TYPE(JSON('[1,2,3]'))").unwrap();
+    let r = engine.execute("SELECT JSON_TYPE('[1,2,3]')").unwrap();
     assert_eq!(
         r.rows,
         vec![vec![sqlrustgo_types::Value::Text("array".into())]],

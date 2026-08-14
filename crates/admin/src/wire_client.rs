@@ -110,7 +110,7 @@ impl WireAdmin {
 
     /// Get server status: total queries, slow queries, uptime, connections.
     pub fn status(&mut self) -> Result<StatusReport, WireError> {
-        // SELECT @@global_status → ResultSet::Select { columns, rows }
+        // SELECT @@global_status → ResultSet::Select { columns, rows, .. }
         // Each row is [Variable_name, Value]
         let result = self
             .conn
@@ -229,7 +229,7 @@ impl WireAdmin {
                 }
             };
             let (columns, rows) = match res {
-                sqlrustgo_mysql_client::ResultSet::Select { columns, rows } => (columns, rows),
+                sqlrustgo_mysql_client::ResultSet::Select { columns, rows, .. } => (columns, rows),
                 _ => {
                     // Skip non-Select results (e.g., table is system or has no rows)
                     continue;
@@ -430,6 +430,8 @@ mod additional_tests {
                 column_type: 0x03,
                 flags: 0x0020,
                 decimals: 0x00,
+
+                default_value: None,
             },
             sqlrustgo_mysql_client::ColumnDefinition {
                 catalog: "def".into(),
@@ -443,6 +445,8 @@ mod additional_tests {
                 column_type: 0x0f,
                 flags: 0x0000,
                 decimals: 0x00,
+
+                default_value: None,
             },
         ];
         let rows = vec![
@@ -482,6 +486,8 @@ mod additional_tests {
             column_type: 0x0f,
             flags: 0x0000,
             decimals: 0x00,
+
+            default_value: None,
         }];
         let rows = vec![vec!["a,b".into()]];
         let csv = serialize_result_set_csv(&cols, &rows);
@@ -531,6 +537,7 @@ mod additional_tests {
         let empty_result = ResultSet::Select {
             columns: vec![],
             rows: vec![],
+            status_flags: 0,
         };
         let err = extract_first_cell(&empty_result, "test").unwrap_err();
         assert!(matches!(err, WireError::Protocol(_)));
@@ -549,8 +556,11 @@ mod additional_tests {
                 column_type: 0x03,
                 flags: 0x0020,
                 decimals: 0x00,
+
+                default_value: None,
             }],
             rows: vec![vec![]],
+            status_flags: 0,
         };
         let err = extract_first_cell(&empty_row_result, "test").unwrap_err();
         assert!(matches!(err, WireError::Protocol(_)));
@@ -562,6 +572,7 @@ mod additional_tests {
         let result = ResultSet::Select {
             columns: vec![],
             rows: vec![vec!["hello".into()]],
+            status_flags: 0,
         };
         let cell = extract_first_cell(&result, "test").unwrap();
         assert_eq!(cell, "hello");

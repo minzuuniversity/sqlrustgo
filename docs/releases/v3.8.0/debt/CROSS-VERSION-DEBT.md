@@ -13,25 +13,33 @@
 
 | Category | Total | ✅ CLOSED | ⚠️ PARTIAL | ❌ ACTIVE/OPEN |
 |----------|-------|-----------|-----------|----------------|
-| INT (Integration) | 4 | 1 (25%) | 0 | 3 (75%) |
+| INT (Integration) | 4 | 4 (100%) | 0 | 0 |
 | F-xx (Feature Gap) | 36 | 23 (64%) | 4 (11%) | 9 (25%) |
 | I-xx (Integration Gap) | 12 | 10 (83%) | 2 (17%) | 0 |
 | T-xx (Test Gap) | 20 | 16 (80%) | 2 (10%) | 2 (10%) |
-| **Total** | **72** | **50 (69%)** | **8 (11%)** | **14 (19%)** |
+| **Total** | **72** | **53 (74%)** | **8 (11%)** | **11 (15%)** |
 
-**v3.8.0 Snapshot (2026-06-04)**:
+**v3.8.0 Snapshot (2026-06-04) — superseded 2026-08-13**:
 - INT-1 **CLOSED** by PR-3019 (#2966) — DML force TransactionManager
 - 50/72 debt items CLOSED in v3.8.0 (69%)
 - 14 ACTIVE debt items have v3.9.0+ plan in `archived/ARCH_SEM_DEBT_REMEDIATION_PLAN.md`
 - 8 PARTIAL items tracked in F-01/F-02/F-03/F-07/F-34 + I-11/I-12 + T-06/T-14/T-16
+
+> **⚠️ Supersession note (2026-08-13, V312-19 / #3943 followup)**:
+> The v3.8.0 snapshot above is stale — INT-2 and INT-3 were closed post-snapshot but
+> this file's table entries were not updated. Status table reflects current reality
+> (4/4 INT closed = 100%, total 53/72 closed). Individual rows below were also
+> updated. **Authoritative source going forward**: `docs/governance/debt/debt-registry.yaml`
+> (SSOT per ADR-011 + PR-3149); this file is kept only for legacy `check_int_debt.sh`
+> compatibility. See §6 Audit history for the v3.12.0 sync entry.
 
 ## 1. INT-1 ~ INT-4 (Integration Debt, v3.0.0+ era)
 
 | ID | Topic | Status | Closing PR | Notes |
 |----|-------|--------|------------|-------|
 | **INT-1** | DML force TransactionManager | ✅ **CLOSED** | PR-3019 (#2966) | Storage bypass fixed; ExecutionEngine.execute() routes all DML |
-| INT-2 | Parallel Executor integration | ❌ ACTIVE | (planned v3.9.0) | `crates/executor/src/parallel_executor.rs` ISOLATED, no main path |
-| INT-3 | (TBD) | ❌ ACTIVE | (planned v3.9.0) | tracked in INT_DEBT_REMEDIATION_PLAN.md |
+| **INT-2** | Parallel Executor integration | ✅ **CLOSED** | PR-3767 (#3767), PR-3703 (#3703), PR-3790 (#3790) | `crates/executor/src/parallel_executor.rs` wired into main path; `ParallelVolcanoExecutor::new(self.parallel_degree)` in `crates/executor/src/engine_select.rs:305` (per PR-3790); `--executor-parallelism` CLI flag (PR-3703); parallel GROUP BY + hash join (PR-3736/#3737). Closed at v3.10.0 (2026-07-12). |
+| **INT-3** | expr 双实现合并 (src/expr_utils.rs vs crates/executor/src/expr/) | ✅ **CLOSED** | PR-3200 (#3200), PR-3345 (#3345) | 14 分支全部合入 develop/v3.9.0; PR-3345 (single-expression delegation) was final cosmetic + task-marking pass. Closed 2026-06-28. |
 | INT-4 | VtuGuard enforcement | ✅ CLOSED | PR-2999 (#2973) | TriggerExecutor.execute_dml_in_tx helper; VtuGuard.execute_dml + assert_dml_safe |
 
 ## 2. F-01 ~ F-36 (Feature Debt)
@@ -111,8 +119,8 @@
 
 | ID | Topic | Plan reference |
 |----|-------|----------------|
-| INT-2 | Parallel Executor integration | `archived/INT_DEBT_REMEDIATION_PLAN.md` |
-| INT-3 | (TBD) | `archived/INT_DEBT_REMEDIATION_PLAN.md` |
+| ~~INT-2~~ | ~~Parallel Executor integration~~ | CLOSED 2026-07-12 — see §1 |
+| ~~INT-3~~ | ~~(TBD)~~ | CLOSED 2026-06-28 — see §1 |
 | F-01, F-02, F-03, F-07, F-34 | (PARTIAL items) | `archived/ARCH_SEM_DEBT_REMEDIATION_PLAN.md` |
 | I-11, I-12 | (PARTIAL items) | `archived/INT_DEBT_REMEDIATION_PLAN.md` |
 | T-06, T-14, T-16 | (PARTIAL items) | `archived/ARCH_SEM_DEBT_REMEDIATION_PLAN.md` |
@@ -120,6 +128,7 @@
 
 ## 6. Audit history
 
+- 2026-08-13 — V312-19 / #3943 followup: stale snapshot sync. INT-2 (closed v3.10.0) and INT-3 (closed v3.9.0) were still marked ACTIVE in this legacy file while `docs/governance/debt/debt-registry.yaml` already had `state=CLOSED` for both. Updated §0 table (INT 4/4 closed), §1 row entries (CLOSED with closing PRs), §5 (struck-through), added supersession note pointing at SSOT. Triggered by R2.6 gate reporting DRIFT after v3.12.0 debt consolidation; the gate script `check_int_debt.sh` still uses this file (legacy compatibility), so this fix flips R2.6 from `drift` → `pass`.
 - 2026-06-04 — Created (PR-2933 reorg reconciliation; INT-1 marked CLOSED by PR-3019).
 - 2026-06-03 — Source: `INT5_PLUS_DEBT_INVENTORY.md` v3.0.0 baseline.
 - pre-2026-06-03 — Original `CROSS-VERSION-DEBT.md` existed at v3.8.0 root; superseded by this file after docs reorg.

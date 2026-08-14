@@ -584,17 +584,16 @@ mod tests {
     #[test]
     fn red_v313_09_except_all_multiset_semantics() {
         let mut engine = create_engine();
-        // left  has 1,2,2,3,3,3,4,4,4,4  (4x "2", 3x "3", 4x "4")
+        // left  has 1,2,2,3,3,3,4,4,4,4  (1x "1", 2x "2", 3x "3", 4x "4")
         // right has 1,3,3                     (1x "1", 2x "3")
-        // EXCEPT ALL  -> 2,2,4,4,4           (kept the two "2"s and all four "4"s;
-        //                                     "1" removed once, each "3" removed once
-        //                                     until right-side "3"s exhausted)
+        // EXCEPT ALL  -> 2,2,3,4,4,4,4  (per-row max(0, left_cnt - right_cnt)):
+        //                                     (1) 1-1=0; (2) 2-0=2; (3) 3-2=1; (4) 4-0=4
         let result = engine
             .execute(
-                "SELECT * FROM (VALUES (1),(2),(2),(3),(3),(3),(4),(4),(4),(4)) s(x) \
+                "SELECT x FROM (VALUES (1),(2),(2),(3),(3),(3),(4),(4),(4),(4)) s(x) \
                  EXCEPT ALL \
-                 SELECT * FROM (VALUES (1),(3),(3)) t(x) \
-                 ORDER BY x",
+                 SELECT x FROM (VALUES (1),(3),(3)) t(x) \
+                 ORDER BY 1",
             )
             .expect("EXCEPT ALL must succeed");
         let values: Vec<i64> = result
@@ -607,8 +606,9 @@ mod tests {
             .collect();
         assert_eq!(
             values,
-            vec![2, 2, 4, 4, 4, 4],
-            "EXCEPT ALL must keep two 2s and four 4s; multiset subtraction"
+            vec![2, 2, 3, 4, 4, 4, 4],
+            "EXCEPT ALL multiset subtraction: per-row max(0, left_cnt - right_cnt); \
+             left=1,2,2,3,3,3,4,4,4,4 minus right=1,3,3 -> 2,2,3,4,4,4,4"
         );
     }
 
@@ -622,10 +622,10 @@ mod tests {
         // INTERSECT ALL -> 2,3 (1x of each, limited by min multiplicity)
         let result = engine
             .execute(
-                "SELECT * FROM (VALUES (1),(2),(3)) s(x) \
+                "SELECT x FROM (VALUES (1),(2),(3)) s(x) \
                  INTERSECT ALL \
-                 SELECT * FROM (VALUES (2),(2),(2),(3),(3)) t(x) \
-                 ORDER BY x",
+                 SELECT x FROM (VALUES (2),(2),(2),(3),(3)) t(x) \
+                 ORDER BY 1",
             )
             .expect("INTERSECT ALL must succeed");
         let values: Vec<i64> = result
@@ -728,6 +728,366 @@ mod tests {
         assert_eq!(
             result.affected_rows, 3,
             "UPDATE must report 3 affected rows"
+        );
+    }
+
+    /// V313-followup-5 / Issue #4158 — GREEN: `CREATE TABLE ... AS SELECT ...
+    /// WITH NO DATA` creates the schema and skips data materialisation.
+    #[test]
+    fn green_4158_ctas_with_no_data_creates_empty_table() {
+        let mut engine = create_engine();
+        engine
+            .execute("CREATE TABLE t_no_data AS SELECT 42 AS x WITH NO DATA")
+            .expect("CTAS WITH NO DATA must succeed");
+        let result = engine
+            .execute("SELECT COUNT(*) FROM t_no_data")
+            .expect("SELECT must succeed");
+        assert_eq!(result.rows.len(), 1, "SELECT COUNT(*) returns one row");
+        match &result.rows[0][0] {
+            Value::Integer(n) => assert_eq!(*n, 0, "table must be empty"),
+            other => panic!("expected Integer, got {:?}", other),
+        }
+    }
+
+    /// V313-followup-5 / Issue #4158 — GREEN: `CREATE TABLE ... AS SELECT ...
+    /// WITH DATA` (explicit) populates the table.
+    #[test]
+    fn green_4158_ctas_with_data_populates_table() {
+        let mut engine = create_engine();
+        engine
+            .execute("CREATE TABLE t_with_data AS SELECT 42 AS x WITH DATA")
+            .expect("CTAS WITH DATA must succeed");
+        let result = engine
+            .execute("SELECT COUNT(*) FROM t_with_data")
+            .expect("SELECT must succeed");
+        match &result.rows[0][0] {
+            Value::Integer(n) => assert_eq!(*n, 1, "table must have 1 row"),
+            other => panic!("expected Integer, got {:?}", other),
+        }
+    }
+
+    /// V313-followup-6 / Issue #4159 — GREEN: trailing ORDER BY column_name
+    /// against EXCEPT ALL whose left is `SELECT * FROM (VALUES ...) s(x)`.
+    /// Post-fix: recursion into `from_subquery` surfaces the captured
+    /// column-list names and the rows sort ascending.
+    #[test]
+    fn green_4159_except_all_trailing_order_by_column_name_against_values_alias() {
+        let mut engine = create_engine();
+        let result = engine
+            .execute(
+                "SELECT * FROM (VALUES (1),(2),(2),(3),(3),(3),(4),(4),(4),(4)) s(x) \
+                 EXCEPT ALL \
+                 SELECT * FROM (VALUES (1),(3),(3)) t(x) \
+                 ORDER BY x",
+            )
+            .expect("EXCEPT ALL must succeed");
+        let values: Vec<i64> = result
+            .rows
+            .iter()
+            .map(|r| match &r[0] {
+                Value::Integer(n) => *n,
+                other => panic!("expected Integer, got {:?}", other),
+            })
+            .collect();
+        assert_eq!(
+            values,
+            vec![2, 2, 3, 4, 4, 4, 4],
+            "ORDER BY x must sort ascending: 2,2,3,4,4,4,4 (per-row max(0, left_cnt - right_cnt))"
+        );
+    }
+
+    /// V313-followup-6 / Issue #4159 — GREEN: same fix for INTERSECT ALL.
+    #[test]
+    fn green_4159_intersect_all_trailing_order_by_column_name_against_values_alias() {
+        let mut engine = create_engine();
+        let result = engine
+            .execute(
+                "SELECT * FROM (VALUES (1),(2),(3)) s(x) \
+                 INTERSECT ALL \
+                 SELECT * FROM (VALUES (2),(2),(2),(3),(3)) t(x) \
+                 ORDER BY x",
+            )
+            .expect("INTERSECT ALL must succeed");
+        let values: Vec<i64> = result
+            .rows
+            .iter()
+            .map(|r| match &r[0] {
+                Value::Integer(n) => *n,
+                other => panic!("expected Integer, got {:?}", other),
+            })
+            .collect();
+        assert_eq!(
+            values,
+            vec![2, 3],
+            "ORDER BY x must sort ascending: 2,3 (per-row min(left_cnt, right_cnt))"
+        );
+    }
+
+    /// V313-followup-2 / Issue #4155 — GREEN: `quantile_disc(col, frac)`
+    /// returns the value at sorted-index `floor(frac * (n-1))`.
+    #[test]
+    fn green_4155_quantile_disc_single_fraction() {
+        let mut engine = create_engine();
+        engine
+            .execute("CREATE TABLE t (x INTEGER)")
+            .expect("CREATE TABLE must succeed");
+        engine
+            .execute("INSERT INTO t VALUES (1), (2), (3), (4), (5), (6), (7), (8), (9), (10)")
+            .expect("INSERT must succeed");
+        let result = engine
+            .execute("SELECT quantile_disc(x, 0.50) FROM t")
+            .expect("quantile_disc must succeed");
+        match &result.rows[0][0] {
+            Value::Float(f) => assert_eq!(*f, 5.0, "frac=0.5 on [1..10] -> sorted[4]=5.0"),
+            other => panic!("expected Float, got {:?}", other),
+        }
+    }
+
+    /// V313-followup-2 / Issue #4155 — GREEN: `quantile_cont(col, frac)`
+    /// linearly interpolates between sorted-index neighbours.
+    #[test]
+    fn green_4155_quantile_cont_single_fraction() {
+        let mut engine = create_engine();
+        engine
+            .execute("CREATE TABLE t (x INTEGER)")
+            .expect("CREATE TABLE must succeed");
+        engine
+            .execute("INSERT INTO t VALUES (1), (2), (3), (4), (5), (6), (7), (8), (9), (10)")
+            .expect("INSERT must succeed");
+        let result = engine
+            .execute("SELECT quantile_cont(x, 0.50) FROM t")
+            .expect("quantile_cont must succeed");
+        match &result.rows[0][0] {
+            Value::Float(f) => assert_eq!(*f, 5.5, "frac=0.5 -> 5 + 0.5*(6-5) = 5.5"),
+            other => panic!("expected Float, got {:?}", other),
+        }
+    }
+
+    /// V313-followup-1 / Issue #4154 — GREEN: SET DEFAULT persists
+    /// the literal at the catalog level.
+    #[test]
+    fn green_4154_alter_table_set_default_accepted() {
+        let mut engine = create_engine();
+        engine
+            .execute("CREATE TABLE t (a INTEGER)")
+            .expect("CREATE TABLE must succeed");
+        engine
+            .execute("ALTER TABLE t ADD COLUMN b INTEGER")
+            .expect("ADD COLUMN must succeed");
+        let result = engine
+            .execute("ALTER TABLE t ALTER COLUMN b SET DEFAULT 99")
+            .expect("SET DEFAULT must be accepted (V313-followup-1 wired through to storage.set_column_default)");
+        assert_eq!(result.rows.len(), 0, "ALTER returns no rows");
+    }
+
+    /// V313-followup-1 / Issue #4154 — GREEN: `ALTER TABLE t ALTER
+    /// COLUMN c DROP DEFAULT` clears a previously-set default.
+    #[test]
+    fn green_4154_alter_table_drop_default_accepted() {
+        let mut engine = create_engine();
+        engine
+            .execute("CREATE TABLE t (a INTEGER)")
+            .expect("CREATE TABLE must succeed");
+        engine
+            .execute("ALTER TABLE t ADD COLUMN b INTEGER")
+            .expect("ADD COLUMN must succeed");
+        engine
+            .execute("ALTER TABLE t ALTER COLUMN b SET DEFAULT 99")
+            .expect("SET DEFAULT must succeed");
+        let result = engine
+            .execute("ALTER TABLE t ALTER COLUMN b DROP DEFAULT")
+            .expect("DROP DEFAULT must be accepted");
+        assert_eq!(result.rows.len(), 0, "ALTER returns no rows");
+    }
+
+    /// V313-followup-3 / Issue #4156 — GREEN: `PERCENTILE_CONT(frac)
+    /// WITHIN GROUP (ORDER BY col)` returns the linearly interpolated
+    /// value at sorted-index `frac * (n-1)` (median for frac=0.5).
+    #[test]
+    fn green_4156_percentile_cont_within_group() {
+        let mut engine = create_engine();
+        engine
+            .execute("CREATE TABLE t (x INTEGER)")
+            .expect("CREATE TABLE must succeed");
+        engine
+            .execute("INSERT INTO t VALUES (1), (2), (3), (4), (5), (6), (7), (8), (9), (10)")
+            .expect("INSERT must succeed");
+        let result = engine
+            .execute("SELECT PERCENTILE_CONT(0.5) WITHIN GROUP (ORDER BY x) FROM t")
+            .expect("PERCENTILE_CONT WITHIN GROUP must parse and execute");
+        match &result.rows[0][0] {
+            Value::Float(f) => assert_eq!(*f, 5.5, "frac=0.5 on [1..10] -> 5 + 0.5*(6-5) = 5.5"),
+            other => panic!("expected Float, got {:?}", other),
+        }
+    }
+
+    /// V313-followup-3 / Issue #4156 — GREEN: `PERCENTILE_CONT(0.25)`
+    /// interpolates at index 2.25 (3.25 on [1..10]).
+    #[test]
+    fn green_4156_percentile_cont_quarter() {
+        let mut engine = create_engine();
+        engine
+            .execute("CREATE TABLE t (x INTEGER)")
+            .expect("CREATE TABLE must succeed");
+        engine
+            .execute("INSERT INTO t VALUES (1), (2), (3), (4), (5), (6), (7), (8), (9), (10)")
+            .expect("INSERT must succeed");
+        let result = engine
+            .execute("SELECT PERCENTILE_CONT(0.25) WITHIN GROUP (ORDER BY x) FROM t")
+            .expect("PERCENTILE_CONT(0.25) must succeed");
+        match &result.rows[0][0] {
+            Value::Float(f) => assert_eq!(*f, 3.25, "idx=2.25 -> 3 + 0.25*(4-3) = 3.25"),
+            other => panic!("expected Float, got {:?}", other),
+        }
+    }
+
+    /// V313-followup-3 / Issue #4156 — GREEN: `PERCENTILE_CONT` with a
+    /// fractional value outside [0,1] is rejected.
+    #[test]
+    fn green_4156_percentile_cont_frac_out_of_range() {
+        let mut engine = create_engine();
+        engine
+            .execute("CREATE TABLE t (x INTEGER)")
+            .expect("CREATE TABLE must succeed");
+        engine
+            .execute("INSERT INTO t VALUES (1), (2), (3)")
+            .expect("INSERT must succeed");
+        let result = engine.execute("SELECT PERCENTILE_CONT(1.5) WITHIN GROUP (ORDER BY x) FROM t");
+        assert!(
+            result.is_err(),
+            "frac=1.5 must be rejected (outside [0.0, 1.0])"
+        );
+    }
+
+    /// V313-followup-3 / Issue #4156 — GREEN: `PERCENTILE_CONT` respects
+    /// `WITHIN GROUP (ORDER BY x DESC)` (median invariant, but the sort
+    /// direction is honoured by the executor).
+    #[test]
+    fn green_4156_percentile_cont_desc() {
+        let mut engine = create_engine();
+        engine
+            .execute("CREATE TABLE t (x INTEGER)")
+            .expect("CREATE TABLE must succeed");
+        engine
+            .execute("INSERT INTO t VALUES (1), (2), (3), (4), (5), (6), (7), (8), (9), (10)")
+            .expect("INSERT must succeed");
+        let result = engine
+            .execute("SELECT PERCENTILE_CONT(0.5) WITHIN GROUP (ORDER BY x DESC) FROM t")
+            .expect("PERCENTILE_CONT with DESC must succeed");
+        match &result.rows[0][0] {
+            Value::Float(f) => assert_eq!(*f, 5.5, "median invariant under DESC"),
+            other => panic!("expected Float, got {:?}", other),
+        }
+    }
+
+    /// V313-followup-3 / Issue #4156 — GREEN: `PERCENTILE_CONT` inside
+    /// GROUP BY evaluates per-group (median of [1,2,3]=2, [10,20]=15).
+    #[test]
+    fn green_4156_percentile_cont_group_by() {
+        let mut engine = create_engine();
+        engine
+            .execute("CREATE TABLE g (grp INTEGER, x INTEGER)")
+            .expect("CREATE TABLE must succeed");
+        engine
+            .execute("INSERT INTO g VALUES (1, 1), (1, 2), (1, 3), (2, 10), (2, 20)")
+            .expect("INSERT must succeed");
+        let result = engine
+            .execute(
+                "SELECT grp, PERCENTILE_CONT(0.5) WITHIN GROUP (ORDER BY x) FROM g GROUP BY grp",
+            )
+            .expect("GROUP BY PERCENTILE_CONT must succeed");
+        assert_eq!(result.rows.len(), 2, "two groups");
+        let mut group_values: Vec<(i64, f64)> = result
+            .rows
+            .iter()
+            .map(|r| match (&r[0], &r[1]) {
+                (Value::Integer(g), Value::Float(f)) => (*g, *f),
+                other => panic!("unexpected row {:?}", other),
+            })
+            .collect();
+        group_values.sort_by(|a, b| a.0.cmp(&b.0));
+        assert_eq!(group_values, vec![(1, 2.0), (2, 15.0)]);
+    }
+
+    /// V313-followup-4 / Issue #4157 — GREEN: `SET default_null_order =
+    /// 'nulls_first'` puts NULL at the start of ORDER BY output.
+    #[test]
+    fn green_4157_set_default_null_order_nulls_first() {
+        let mut engine = create_engine();
+        engine
+            .execute("CREATE TABLE t (x INTEGER)")
+            .expect("CREATE TABLE must succeed");
+        engine
+            .execute("INSERT INTO t VALUES (1), (NULL), (3), (NULL), (5)")
+            .expect("INSERT must succeed");
+        engine
+            .execute("SET default_null_order = 'nulls_first'")
+            .expect("SET must succeed");
+        let result = engine
+            .execute("SELECT * FROM t ORDER BY x")
+            .expect("ORDER BY must succeed");
+        let values: Vec<String> = result
+            .rows
+            .iter()
+            .map(|r| match &r[0] {
+                Value::Null => "NULL".to_string(),
+                Value::Integer(n) => n.to_string(),
+                other => panic!("unexpected value {:?}", other),
+            })
+            .collect();
+        assert_eq!(
+            values,
+            vec!["NULL", "NULL", "1", "3", "5"],
+            "nulls_first: NULL appears before non-NULL values"
+        );
+    }
+
+    /// V313-followup-4 / Issue #4157 — GREEN: `SET default_null_order =
+    /// 'nulls_last'` puts NULL at the end of ORDER BY output.
+    #[test]
+    fn green_4157_set_default_null_order_nulls_last() {
+        let mut engine = create_engine();
+        engine
+            .execute("CREATE TABLE t (x INTEGER)")
+            .expect("CREATE TABLE must succeed");
+        engine
+            .execute("INSERT INTO t VALUES (1), (NULL), (3), (NULL), (5)")
+            .expect("INSERT must succeed");
+        engine
+            .execute("SET default_null_order = 'nulls_last'")
+            .expect("SET must succeed");
+        let result = engine
+            .execute("SELECT * FROM t ORDER BY x")
+            .expect("ORDER BY must succeed");
+        let values: Vec<String> = result
+            .rows
+            .iter()
+            .map(|r| match &r[0] {
+                Value::Null => "NULL".to_string(),
+                Value::Integer(n) => n.to_string(),
+                other => panic!("unexpected value {:?}", other),
+            })
+            .collect();
+        assert_eq!(
+            values,
+            vec!["1", "3", "5", "NULL", "NULL"],
+            "nulls_last: NULL appears after non-NULL values"
+        );
+    }
+
+    /// V313-followup-4 / Issue #4157 — GREEN: `SET debug_force_external`
+    /// is accepted without error (DuckDB debug toggle; the engine
+    /// has no spilling path so the SET is a no-op).
+    #[test]
+    fn green_4157_set_debug_force_external_accepted() {
+        let mut engine = create_engine();
+        let result = engine
+            .execute("SET debug_force_external = true")
+            .expect("SET debug_force_external must be accepted (no-op)");
+        assert_eq!(result.rows.len(), 0, "SET returns no rows");
+        assert_eq!(
+            result.affected_rows, 0,
+            "SET is not a write — affected_rows is 0"
         );
     }
 }

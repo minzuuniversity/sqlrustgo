@@ -15,6 +15,19 @@ pub enum ForeignKeyAction {
     NoAction,
 }
 
+/// V312-35 / Issue #4218: process info for SHOW PROCESSLIST.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct ProcessInfo {
+    pub id: u64,
+    pub user: String,
+    pub host: String,
+    pub db: Option<String>,
+    pub command: String,
+    pub time_secs: u64,
+    pub state: Option<String>,
+    pub info: Option<String>,
+}
+
 /// Foreign key constraint definition
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct ForeignKeyConstraint {
@@ -215,6 +228,39 @@ fn to_i64(v: &Value) -> Option<i64> {
         Value::Float(f) => Some(*f as i64),
         _ => None,
     }
+}
+
+/// V313-followup-1 / Issue #4154: parse the raw literal text stored in
+/// `ColumnDefinition::default_value` back into a `Value` at INSERT-time
+/// materialisation. Accepts the SQL literal forms: integers (`42`),
+/// floats (`3.14`), booleans (`true`/`false`), `NULL`, and a string
+/// literal optionally wrapped in single quotes. Unparseable input
+/// falls back to `Value::Null` rather than panicking — materialisation
+/// of a malformed default is treated the same as no default.
+fn parse_default_literal(s: &str) -> Value {
+    let trimmed = s.trim();
+    if trimmed.eq_ignore_ascii_case("NULL") {
+        return Value::Null;
+    }
+    if trimmed.eq_ignore_ascii_case("TRUE") {
+        return Value::Boolean(true);
+    }
+    if trimmed.eq_ignore_ascii_case("FALSE") {
+        return Value::Boolean(false);
+    }
+    if let Ok(n) = trimmed.parse::<i64>() {
+        return Value::Integer(n);
+    }
+    if let Ok(f) = trimmed.parse::<f64>() {
+        return Value::Float(f);
+    }
+    // Strip surrounding single quotes if present (string literal form).
+    let inner = if trimmed.len() >= 2 && trimmed.starts_with('\'') && trimmed.ends_with('\'') {
+        &trimmed[1..trimmed.len() - 1]
+    } else {
+        trimmed
+    };
+    Value::Text(inner.to_string())
 }
 
 fn compare_int(_n: i64, _record: &[Value], _columns: &[String]) -> Option<bool> {
@@ -492,6 +538,33 @@ pub struct TriggerInfo {
     pub body: String,
 }
 
+/// View definition (Round-21 / Issue #4218: API surface restoration).
+///
+/// Mirrors the [CreateViewStatement] parser AST (`name`, `columns`, `query`)
+/// but lives in `storage` so storage backends can persist views without
+/// pulling in the parser crate. The `query` is stored as a string of the
+/// original SQL (sufficient for read-only view expansion; rewrite/refres
+/// h is out of scope for #4218).
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct ViewInfo {
+    pub name: String,
+    pub columns: Vec<String>,
+    pub query_sql: String,
+}
+
+impl ViewInfo {
+    /// Construct a ViewInfo from a parser CreateViewStatement-like shape.
+    /// Exposed so executors can convert without depending on the parser
+    /// crate's exact path.
+    pub fn new(name: String, columns: Vec<String>, query_sql: String) -> Self {
+        Self {
+            name,
+            columns,
+            query_sql,
+        }
+    }
+}
+
 /// Sequence definition (F-30)
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct SequenceInfo {
@@ -658,6 +731,13 @@ pub struct ColumnDefinition {
     /// `None` means binary (case-sensitive) comparison.
     #[serde(default)]
     pub collation: Option<String>,
+    /// V313-followup-1 / Issue #4154: literal default text; INSERT
+    /// materialises when the row omits the column. Kept as
+    /// `Option<String>` to mirror the parser AST (raw literal text)
+    /// and avoid a public API ripple across every `ColumnDefinition`
+    /// literal in the workspace.
+    #[serde(default)]
+    pub default_value: Option<String>,
 }
 
 impl ColumnDefinition {
@@ -669,6 +749,7 @@ impl ColumnDefinition {
             primary_key: false,
             char_max_length: None,
             collation: None,
+            default_value: None,
         }
     }
 }
@@ -825,6 +906,19 @@ pub trait StorageEngine: Send + Sync {
         ))
     }
 
+    /// V313-followup-1 / Issue #4154: SET/DROP DEFAULT on a column;
+    /// default impl returns "not supported" so backends opt in.
+    fn set_column_default(
+        &mut self,
+        _table: &str,
+        _column: &str,
+        _default_value: Option<String>,
+    ) -> SqlResult<()> {
+        Err(SqlError::ExecutionError(
+            "set_column_default not supported by this storage engine".to_string(),
+        ))
+    }
+
     /// Create a trigger on a table
     fn create_trigger(&mut self, info: TriggerInfo) -> SqlResult<()>;
 
@@ -842,6 +936,55 @@ pub trait StorageEngine: Send + Sync {
 
     /// Check if a view exists
     fn has_view(&self, name: &str) -> bool;
+
+    /// Round-21 / Issue #4218: create a view in this storage backend.
+    /// Default impl returns "not supported" so backends opt in.
+    fn create_view(&mut self, _info: ViewInfo) -> SqlResult<()> {
+        Err(SqlError::ExecutionError(
+            "create_view not supported by this storage engine".to_string(),
+        ))
+    }
+
+    /// Round-21 / Issue #4218: look up a view by name.
+    /// Default impl returns None so backends opt in.
+    fn get_view(&self, _name: &str) -> Option<ViewInfo> {
+        None
+    }
+
+    /// Round-21 / Issue #4218: list all view names.
+    /// Default impl returns empty so backends opt in.
+    fn list_views(&self) -> Vec<String> {
+        Vec::new()
+    }
+
+    /// Round-21 / Issue #4218: set the cancel flag for a connection/thread id.
+    /// Default impl returns "not supported" so backends opt in.
+    fn set_cancel_flag(&mut self, _connection_id: u64) -> SqlResult<()> {
+        Err(SqlError::ExecutionError(
+            "set_cancel_flag not supported by this storage engine".to_string(),
+        ))
+    }
+
+    /// Round-21 / Issue #4218: check whether the cancel flag is set for
+    /// a connection/thread id.
+    /// Default impl returns false so backends opt in.
+    fn check_cancelled(&self, _connection_id: u64) -> bool {
+        false
+    }
+
+    /// Round-21 / Issue #4218: kill a connection/thread by id.
+    /// Default impl returns not-supported error.
+    fn kill_connection(&mut self, _connection_id: u64) -> SqlResult<()> {
+        Err(SqlError::ExecutionError(
+            "KILL is not supported by this storage engine".to_string(),
+        ))
+    }
+
+    /// V312-35 / Issue #4218: return list of active processes.
+    /// Default impl returns empty vec so backends opt in.
+    fn list_processes(&self) -> Vec<ProcessInfo> {
+        vec![]
+    }
 
     /// Begin a transaction, returns a transaction ID
     fn begin_transaction(&mut self) -> SqlResult<u64> {
@@ -958,6 +1101,10 @@ pub struct MemoryStorage {
     table_infos: HashMap<String, TableInfo>,
     triggers: HashMap<String, TriggerInfo>,
     views: HashSet<String>,
+    /// Round-21 / Issue #4218: backing store for the create_view/get_view
+    /// StorageEngine trait methods. Kept alongside `views` (which only
+    /// tracks names for has_view) so names and full ViewInfo stay consistent.
+    view_defs: HashMap<String, ViewInfo>,
     /// Sequence definitions (F-30)
     sequences: HashMap<String, SequenceInfo>,
     /// 内存中的数据库集合 (CREATE DATABASE 注册的, in-memory 模式)
@@ -996,6 +1143,7 @@ impl MemoryStorage {
             table_infos: HashMap::new(),
             triggers: HashMap::new(),
             views: HashSet::new(),
+            view_defs: HashMap::new(),
             sequences: HashMap::new(),
             databases: HashSet::new(),
             current_tx_id: 0,
@@ -1208,6 +1356,7 @@ impl MemoryStorage {
             views: self.views.clone(),
             sequences: self.sequences.clone(),
             databases: self.databases.clone(),
+            view_defs: self.view_defs.clone(),
         }
     }
 
@@ -1220,6 +1369,7 @@ impl MemoryStorage {
         self.views = snapshot.views.clone();
         self.sequences = snapshot.sequences.clone();
         self.databases = snapshot.databases.clone();
+        self.view_defs = snapshot.view_defs.clone();
         Ok(())
     }
 }
@@ -1236,6 +1386,9 @@ pub struct SchemaSnapshot {
     pub views: HashSet<String>,
     pub sequences: HashMap<String, SequenceInfo>,
     pub databases: HashSet<String>,
+    /// Round-21 / Issue #4218: backing store for view definitions; carried
+    /// alongside `views` so views survive snapshot → apply_schema round-trips.
+    pub view_defs: HashMap<String, ViewInfo>,
 }
 
 impl Default for MemoryStorage {
@@ -1305,8 +1458,34 @@ impl StorageEngine for MemoryStorage {
 
     fn insert(&mut self, table: &str, records: Vec<Record>) -> SqlResult<()> {
         let table_key = table.to_lowercase();
+        // V313-followup-1 / Issue #4154: pad rows with NULL for
+        // omitted columns so SELECT can resolve later columns.
+        let padded: Vec<Record> = if let Some(info) = self.table_infos.get(&table_key) {
+            let ncols = info.columns.len();
+            records
+                .into_iter()
+                .map(|mut row| {
+                    while row.len() < ncols {
+                        // V313-followup-1 / Issue #4154: fill omitted columns with
+                        // their default_value (NULL if no default). The default
+                        // is stored as raw literal text; parse it into a `Value`
+                        // at materialisation time.
+                        let default = info
+                            .columns
+                            .get(row.len())
+                            .and_then(|c| c.default_value.as_deref())
+                            .map(parse_default_literal)
+                            .unwrap_or(Value::Null);
+                        row.push(default);
+                    }
+                    row
+                })
+                .collect()
+        } else {
+            records
+        };
         if let Some(log) = self.tx_log.as_mut() {
-            for row in &records {
+            for row in &padded {
                 log.inserted.push((table_key.clone(), row.clone()));
             }
         } else {
@@ -1315,9 +1494,9 @@ impl StorageEngine for MemoryStorage {
             self.committed_tables
                 .entry(table_key.clone())
                 .or_default()
-                .extend(records.iter().cloned());
+                .extend(padded.iter().cloned());
         }
-        self.tables.entry(table_key).or_default().extend(records);
+        self.tables.entry(table_key).or_default().extend(padded);
         Ok(())
     }
 
@@ -1535,9 +1714,10 @@ impl StorageEngine for MemoryStorage {
     }
 
     fn add_column(&mut self, table: &str, mut column: ColumnDefinition) -> SqlResult<()> {
-        // V312-19 #3972: case-insensitive table name lookup + lowercase column names
+        // V313-followup-1 / Issue #4154: column name preserved as-is
+        // (no lowercase) so case-exact ALTER COLUMN can disambiguate.
         if let Some(info) = self.table_infos.get_mut(&table.to_lowercase()) {
-            column.name = column.name.to_lowercase();
+            let _ = &mut column;
             info.columns.push(column);
             Ok(())
         } else {
@@ -1594,6 +1774,29 @@ impl StorageEngine for MemoryStorage {
 
     fn has_view(&self, name: &str) -> bool {
         self.views.contains(name)
+    }
+
+    fn create_view(&mut self, info: ViewInfo) -> SqlResult<()> {
+        if self.views.contains(&info.name) {
+            return Err(SqlError::ExecutionError(format!(
+                "View '{}' already exists",
+                info.name
+            )));
+        }
+        let name = info.name.clone();
+        self.view_defs.insert(name.clone(), info);
+        self.views.insert(name);
+        Ok(())
+    }
+
+    fn get_view(&self, name: &str) -> Option<ViewInfo> {
+        self.view_defs.get(name).cloned()
+    }
+
+    fn list_views(&self) -> Vec<String> {
+        let mut names: Vec<String> = self.view_defs.keys().cloned().collect();
+        names.sort();
+        names
     }
 
     // === Sequence support (F-30) ===
@@ -1706,6 +1909,29 @@ impl StorageEngine for MemoryStorage {
                 }
             }
         }
+        Ok(())
+    }
+
+    // V313-followup-1 / Issue #4154: SET/DROP DEFAULT updates the
+    // column's default_value; INSERT-time materialisation lives in
+    // src/engine_dml.rs.
+    fn set_column_default(
+        &mut self,
+        table: &str,
+        column: &str,
+        default_value: Option<String>,
+    ) -> SqlResult<()> {
+        let info = self
+            .table_infos
+            .get_mut(&table.to_lowercase())
+            .ok_or_else(|| SqlError::ExecutionError(format!("Table not found: {}", table)))?;
+        // V313-followup-1 / Issue #4154: case-exact column match.
+        let col = info
+            .columns
+            .iter_mut()
+            .find(|c| c.name == column)
+            .ok_or_else(|| SqlError::ExecutionError(format!("Column not found: {}", column)))?;
+        col.default_value = default_value;
         Ok(())
     }
 
@@ -1854,6 +2080,50 @@ mod tests {
         fn _check_trait(_engine: &dyn StorageEngine) {}
     }
 
+    /// Round-21 / Issue #4218: API surface restoration.
+    /// Asserts that StorageEngine trait declares the 5 new methods:
+    ///   create_view / get_view / list_views / set_cancel_flag / check_cancelled.
+    /// Compile-time check via function-pointer coercion — fails to compile
+    /// before #4218.2 lands.
+    #[test]
+    fn test_storage_engine_api_surface_v312_35() {
+        fn _check_create_view<E: StorageEngine>(e: &mut E) {
+            let _f: fn(&mut E, crate::engine::ViewInfo) -> SqlResult<()> = E::create_view;
+        }
+        fn _check_get_view<E: StorageEngine>(e: &E) {
+            let _f: fn(&E, &str) -> Option<crate::engine::ViewInfo> = E::get_view;
+        }
+        fn _check_list_views<E: StorageEngine>(e: &E) {
+            let _f: fn(&E) -> Vec<String> = E::list_views;
+        }
+        fn _check_set_cancel_flag<E: StorageEngine>(e: &mut E) {
+            let _f: fn(&mut E, u64) -> SqlResult<()> = E::set_cancel_flag;
+        }
+        fn _check_check_cancelled<E: StorageEngine>(e: &E) {
+            let _f: fn(&E, u64) -> bool = E::check_cancelled;
+        }
+        let mut storage = MemoryStorage::new();
+        _check_create_view(&mut storage);
+        _check_get_view(&storage);
+        _check_list_views(&storage);
+    }
+
+    /// Round-21 / Issue #4218: API surface defaults — backends that don't
+    /// implement views/cancellation should still satisfy the trait via the
+    /// default impls (Err / None / empty / false).
+    #[test]
+    fn test_storage_engine_api_surface_defaults_v312_35() {
+        let storage = MemoryStorage::new();
+        // Default-impl methods should be callable and return safe defaults.
+        assert!(!storage.has_view("does_not_exist"));
+        let views = StorageEngine::list_views(&storage);
+        assert!(views.is_empty(), "list_views default should be empty");
+        let got = StorageEngine::get_view(&storage, "does_not_exist");
+        assert!(got.is_none(), "get_view default should be None");
+        let cancelled = StorageEngine::check_cancelled(&storage, 1);
+        assert!(!cancelled, "check_cancelled default should be false");
+    }
+
     #[test]
     fn test_memory_storage_new() {
         let storage = MemoryStorage::new();
@@ -1994,7 +2264,8 @@ mod tests {
                 nullable: false,
                 primary_key: true,
                 char_max_length: None,
-            collation: None,
+                collation: None,
+                default_value: None,
             }],
             foreign_keys: vec![],
             unique_constraints: vec![],
@@ -2201,7 +2472,8 @@ mod tests {
                 nullable: false,
                 primary_key: true,
                 char_max_length: None,
-            collation: None,
+                collation: None,
+                default_value: None,
             }],
             foreign_keys: vec![],
             unique_constraints: vec![],
@@ -2840,7 +3112,7 @@ mod tests {
                 check_constraints: vec![],
                 partition_info: None,
                 compression: None,
-            collations: HashMap::new(),
+                collations: HashMap::new(),
             };
             s.create_table(&info).unwrap();
         }

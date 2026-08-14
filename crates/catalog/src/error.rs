@@ -29,6 +29,18 @@ pub enum CatalogError {
     #[error("Table '{table}' already exists in schema '{schema}'")]
     DuplicateTable { schema: String, table: String },
 
+    /// V312-55A / Issue #4238: stored procedure not found in catalog.
+    /// Carries the *original* (mixed-case) name from the caller so the
+    /// error message matches what the user typed — case-insensitive
+    /// lookup happens transparently in the catalog.
+    #[error("Stored procedure '{0}' not found")]
+    ProcedureNotFound(String),
+
+    /// V312-55A / Issue #4238: stored procedure already exists and the
+    /// caller did not request `OR REPLACE` semantics.
+    #[error("Stored procedure '{0}' already exists")]
+    DuplicateProcedure(String),
+
     /// Duplicate column name
     #[error("Column '{column}' already exists in table '{schema}.{table}'")]
     DuplicateColumn {

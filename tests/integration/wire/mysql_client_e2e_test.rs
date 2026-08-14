@@ -132,7 +132,7 @@ fn test_select_returns_rows() {
         .execute("SELECT id, name FROM t ORDER BY id")
         .expect("SELECT");
     match r {
-        ResultSet::Select { columns, rows } => {
+        ResultSet::Select { columns, rows, .. } => {
             assert_eq!(columns.len(), 2, "expected 2 columns");
             assert!(columns[0].name.eq_ignore_ascii_case("id"));
             assert!(columns[1].name.eq_ignore_ascii_case("name"));
@@ -155,7 +155,7 @@ fn test_select_with_where() {
         .execute("SELECT name FROM t WHERE id = 2")
         .expect("SELECT");
     match r {
-        ResultSet::Select { columns, rows } => {
+        ResultSet::Select { columns, rows, .. } => {
             assert_eq!(columns.len(), 1);
             assert_eq!(rows.len(), 1);
             assert_eq!(rows[0][0], "b");
@@ -394,7 +394,7 @@ fn test_join_select() {
         .execute("SELECT c.name, o.amount FROM customers c JOIN orders o ON c.id = o.customer_id ORDER BY c.name, o.amount")
         .expect("JOIN SELECT");
     match r {
-        ResultSet::Select { columns, rows } => {
+        ResultSet::Select { columns, rows, .. } => {
             assert_eq!(columns.len(), 2, "expected 2 columns");
             assert_eq!(rows.len(), 3, "expected 3 joined rows");
             // alice has 2 orders (120, 250), bob has 1 (80), carol has none
@@ -511,7 +511,7 @@ fn test_aggregate_group_by() {
         .execute("SELECT customer_id, COUNT(*), SUM(amount) FROM orders GROUP BY customer_id ORDER BY customer_id")
         .expect("COUNT GROUP BY");
     match r {
-        ResultSet::Select { columns, rows } => {
+        ResultSet::Select { columns, rows, .. } => {
             assert_eq!(rows.len(), 3, "expected 3 groups");
             // customer 1: count=2, sum=300
             assert_eq!(rows[0][0], "1");

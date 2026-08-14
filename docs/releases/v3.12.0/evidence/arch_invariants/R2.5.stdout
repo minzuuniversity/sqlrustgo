@@ -6,8 +6,8 @@
 
 === Part 1: Integration Debt (INT-1~INT-4) ===
   INT-1: CLOSED
-  INT-2: ACTIVE
-  INT-3: ACTIVE
+  INT-2: CLOSED
+  INT-3: CLOSED
   INT-4: CLOSED
 
 === Part 2: Feature Debt (F-01~F-36) ===
@@ -128,17 +128,15 @@
 
 === Cross-Version Debt Summary ===
   Total debt items tracked: 72
-  ✅ CLOSED:    56
+  ✅ CLOSED:    58
   ⚠️  PARTIAL:   10
   ❌ OPEN:      4
   ⏸️  DEFERRED:  
-  🔄 ACTIVE:    2
+  🔄 ACTIVE:    0
   ❓ UNKNOWN:   
 
 === Gate Criteria Check ===
 /home/openclaw/sqlrustgo_work/scripts/gate/check_cross_version_debt.sh: line 450: [: : integer expression expected
-⚠️  WARNING: 2 ACTIVE debt items found
-    These should be moved to CLOSED or DEFERRED
 ⚠️  WARNING: 4 OPEN debt items found
     See INT5_PLUS_DEBT_INVENTORY.md for fix plans
 ✅ ADR-010 (Ghost PR Resolution) exists - deferred items documented

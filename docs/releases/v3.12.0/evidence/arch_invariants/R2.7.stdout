@@ -9,34 +9,7 @@ Anti-Fabrication Policy Check (AFP) v4
 [PASS]   V312-24: both SQLancer + test-runner report artifacts present and valid
 
 [INFO] CHECK 2: cargo test --workspace --no-run (test compile only, fast)...
-[PASS] Test binaries compile: all 26 failures are KNOWN pre-existing
-[WARN] Pre-existing failures (API evolution, not fabrication):
-[WARN]   (pre-existing) auth_rbac_test
-[WARN]   (pre-existing) buffer_pool_test
-[WARN]   (pre-existing) checksum_corruption_test
-[WARN]   (pre-existing) columnar_storage_test
-[WARN]   (pre-existing) crash_injection_test
-[WARN]   (pre-existing) crash_recovery_test
-[WARN]   (pre-existing) executor_test
-[WARN]   (pre-existing) fk_constraint_test
-[WARN]   (pre-existing) foreign_key_test
-[WARN]   (pre-existing) index_integration_test
-[WARN]   (pre-existing) kill_stress_test
-[WARN]   (pre-existing) local_executor_test
-[WARN]   (pre-existing) mysql_compatibility_test
-[WARN]   (pre-existing) openclaw_api_test
-[WARN]   (pre-existing) optimizer_cost_test
-[WARN]   (pre-existing) outer_join_test
-[WARN]   (pre-existing) parquet_test
-[WARN]   (pre-existing) planner_test
-[WARN]   (pre-existing) snapshot_isolation_test
-[WARN]   (pre-existing) sqlrustgo
-[WARN]   (pre-existing) sqlrustgo-bench
-[WARN]   (pre-existing) tpch_run_query
-[WARN]   (pre-existing) tpch_sf1_test
-[WARN]   (pre-existing) view_test
-[WARN]   (pre-existing) wal_deterministic_test
-[WARN]   (pre-existing) wal_fuzz_test
+[PASS] Test binaries compile PASS
 
 [INFO] CHECK 3: Gate report test counts vs actual cargo test compile output...
 [INFO] docs/releases/v3.8.0/alpha/ALPHA_GATE_REPORT.md: declares 10/10 PASS (test binaries: unknown)
@@ -52,7 +25,7 @@ Anti-Fabrication Policy Check (AFP) v4
 [PASS] Scanned 415 markdown files in docs/releases + docs/governance
 
 ============================================
-Results: ERRORS=0, WARNINGS=28
+Results: ERRORS=0, WARNINGS=0
 ============================================
 
 [PASS] Anti-fabrication check (AFP v4): PASS
