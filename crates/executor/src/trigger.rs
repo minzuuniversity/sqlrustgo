@@ -738,6 +738,16 @@ impl TriggerExecutor {
     /// Expand VALUES(...) in INSERT with NEW.row values
     fn expand_insert_values(&self, sql: &str, new_row: Option<&Record>) -> String {
         if let Some(new) = new_row {
+            // V312-55D FIX (Round-26): DELETE triggers can carry an INSERT statement
+            // in their body (e.g. `BEFORE DELETE ... INSERT INTO backup SELECT *`).
+            // `execute_trigger_sql_mut` forwards `current_new_row` (empty Vec for
+            // DELETE) here as `Some(empty_record)`. The for-loop already handles
+            // an empty vec, but the unconditional `&new[0]` below panicked with
+            // `index out of bounds: the len is 0 but the index is 0`. Guard the
+            // named-placeholder substitution on a non-empty record.
+            if new.is_empty() {
+                return sql.to_string();
+            }
             let mut result = sql.to_string();
             for (i, val) in new.iter().enumerate() {
                 let placeholder = format!("NEW[{}]", i);
