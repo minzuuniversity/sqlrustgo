@@ -1961,7 +1961,7 @@ impl<S: StorageEngine + 'static> ExecutionEngine<S> {
     /// (dead-end) so the caller can try a different start.
     ///
     /// Worst-case complexity O(N²) for N <= 10 (TPC-H).
-    fn build_chain_from_start(
+    pub(crate) fn build_chain_from_start(
         start_idx: usize,
         join_tables: &[(String, String)],
         pair_key: &std::collections::HashMap<(String, String), (String, String)>,
@@ -2224,8 +2224,7 @@ impl<S: StorageEngine + 'static> ExecutionEngine<S> {
         //   3. Worst-case O(N^2) for N <= 10 (TPC-H). Acceptable.
         let mut chain_order_opt: Option<Vec<(String, String)>> = None;
         for start_idx in 0..join_tables.len() {
-            if let Some(candidate) =
-                Self::build_chain_from_start(start_idx, &join_tables, &pair_key)
+            if let Some(candidate) = Self::build_chain_from_start(start_idx, &join_tables, &pair_key)
             {
                 chain_order_opt = Some(candidate);
                 break;
@@ -5194,4 +5193,110 @@ fn build_scalar_agg_index(
         result.insert(k, v);
     }
     result
+}
+
+#[cfg(test)]
+mod chain_builder_tests {
+    //! Unit tests for the executor-side multi-way join chain builder.
+    //!
+    //! Issue #4280: TPC-H Q21's 4-table comma-join returns 100 rows
+    //! but takes ~35s because the chain builder fails to construct
+    //! a complete 4-table chain and falls back to the cartesian path.
+    //!
+    //! These tests call `build_chain_from_start` directly with the
+    //! Q21 join topology so the failure mode is captured in CI
+    //! regardless of whether a dbgen fixture is available.
+
+    use super::*;
+    use std::collections::HashMap;
+
+    /// Q21 join topology:
+    ///   join_tables = [(supplier, supplier), (lineitem, l1),
+    ///                  (orders, orders), (nation, nation)]
+    ///   pair_key (3 edges):
+    ///     (supplier, l1)      → (s_suppkey, l_suppkey)
+    ///     (orders, l1)        → (o_orderkey, l_orderkey)
+    ///     (supplier, nation)  → (s_nationkey, n_nationkey)
+    ///
+    /// The graph is connected, so SOME start_idx must yield a
+    /// spanning chain of length 4. The multi-start loop in
+    /// `try_comma_join_hash_chain` should find it.
+    #[test]
+    fn build_chain_from_start_q21_completes() {
+        let join_tables: Vec<(String, String)> = vec![
+            ("supplier".to_string(), "supplier".to_string()),
+            ("lineitem".to_string(), "l1".to_string()),
+            ("orders".to_string(),   "orders".to_string()),
+            ("nation".to_string(),   "nation".to_string()),
+        ];
+
+        let mut pair_key: HashMap<(String, String), (String, String)> = HashMap::new();
+        pair_key.insert(
+            ("supplier".to_string(), "l1".to_string()),
+            ("s_suppkey".to_string(), "l_suppkey".to_string()),
+        );
+        pair_key.insert(
+            ("orders".to_string(), "l1".to_string()),
+            ("o_orderkey".to_string(), "l_orderkey".to_string()),
+        );
+        pair_key.insert(
+            ("supplier".to_string(), "nation".to_string()),
+            ("s_nationkey".to_string(), "n_nationkey".to_string()),
+        );
+
+        // Try every start_idx; at least one must yield a complete chain.
+        let mut found_complete = false;
+        for start_idx in 0..join_tables.len() {
+            if let Some(chain) =
+                ExecutionEngine::<crate::MemoryStorage>::build_chain_from_start(start_idx, &join_tables, &pair_key)
+            {
+                if chain.len() == join_tables.len() {
+                    found_complete = true;
+                    eprintln!("Q21 chain from start_idx={}: {:?}", start_idx, chain);
+                }
+            }
+        }
+        assert!(
+            found_complete,
+            "Q21 join graph IS connected: some start_idx must yield chain.len()==4, but none did"
+        );
+    }
+
+    /// Defensive test: any single start_idx should still yield a
+    /// complete chain for Q21 (the graph has multiple spanning
+    /// orders, not just one).
+    #[test]
+    fn build_chain_from_start_q21_orders_start_completes() {
+        let join_tables: Vec<(String, String)> = vec![
+            ("supplier".to_string(), "supplier".to_string()),
+            ("lineitem".to_string(), "l1".to_string()),
+            ("orders".to_string(),   "orders".to_string()),
+            ("nation".to_string(),   "nation".to_string()),
+        ];
+
+        let mut pair_key: HashMap<(String, String), (String, String)> = HashMap::new();
+        pair_key.insert(
+            ("supplier".to_string(), "l1".to_string()),
+            ("s_suppkey".to_string(), "l_suppkey".to_string()),
+        );
+        pair_key.insert(
+            ("orders".to_string(), "l1".to_string()),
+            ("o_orderkey".to_string(), "l_orderkey".to_string()),
+        );
+        pair_key.insert(
+            ("supplier".to_string(), "nation".to_string()),
+            ("s_nationkey".to_string(), "n_nationkey".to_string()),
+        );
+
+        // start_idx=2 (orders) is the canonical "leaf" start that
+        // should always produce a complete chain for Q21.
+        let chain = ExecutionEngine::<crate::MemoryStorage>::build_chain_from_start(2, &join_tables, &pair_key)
+            .expect("start from orders should yield Some(chain)");
+        assert_eq!(
+            chain.len(),
+            4,
+            "chain from orders start must cover all 4 tables, got len={}",
+            chain.len()
+        );
+    }
 }
