@@ -1865,7 +1865,7 @@ impl StorageEngine for MemoryStorage {
             .iter_mut()
             .find(|c| c.name == column)
             .ok_or_else(|| SqlError::ExecutionError(format!("Column not found: {}", column)))?;
-        col.default_value = default_value.map(|s| sqlrustgo_types::Value::Text(s));
+        col.default_value = default_value.map(sqlrustgo_types::Value::Text);
         Ok(())
     }
 
