@@ -1,0 +1,20 @@
+[0;32m[bulk_load_sf10][0m starting sqlrustgo-mysql-server on 127.0.0.1:23309 (auth=none, data=/home/openclaw/workspace/dev/sqlrustgo/docs/releases/v3.12.0/evidence/issue-4020/20260814T051033Z_sf10/data, infile=/home/openclaw/tpch-dbgen-master, wal-sync=every)
+[0;32m[bulk_load_sf10][0m server listening (pid=1148700)
+[0;32m[bulk_load_sf10][0m creating database + 8 TPC-H schemas
+[0;32m[bulk_load_sf10][0m   schema: region created
+[0;32m[bulk_load_sf10][0m   schema: nation created
+[0;32m[bulk_load_sf10][0m   schema: supplier created
+[0;32m[bulk_load_sf10][0m   schema: customer created
+[0;32m[bulk_load_sf10][0m   schema: part created
+[0;32m[bulk_load_sf10][0m   schema: partsupp created
+[0;32m[bulk_load_sf10][0m   schema: orders created
+[0;32m[bulk_load_sf10][0m   schema: lineitem created
+[0;32m[bulk_load_sf10][0m   region: 5 rows in 0.050s (100 rows/s) — parity=match
+[0;32m[bulk_load_sf10][0m   nation: 25 rows in 0.043s (581 rows/s) — parity=match
+[0;32m[bulk_load_sf10][0m   supplier: 100000 rows in 14.521s (6887 rows/s) — parity=match
+[0;32m[bulk_load_sf10][0m   customer: 1500000 rows in 2768.298s (542 rows/s) — parity=match
+[0;31m[bulk_load_sf10:ERROR][0m   part: LOAD failed (rc=124) — see /home/openclaw/workspace/dev/sqlrustgo/docs/releases/v3.12.0/evidence/issue-4020/20260814T051033Z_sf10/part_load.log
+[0;31m[bulk_load_sf10:ERROR][0m   partsupp: LOAD failed (rc=1) — see /home/openclaw/workspace/dev/sqlrustgo/docs/releases/v3.12.0/evidence/issue-4020/20260814T051033Z_sf10/partsupp_load.log
+[0;31m[bulk_load_sf10:ERROR][0m   orders: LOAD failed (rc=1) — see /home/openclaw/workspace/dev/sqlrustgo/docs/releases/v3.12.0/evidence/issue-4020/20260814T051033Z_sf10/orders_load.log
+[0;31m[bulk_load_sf10:ERROR][0m   lineitem: LOAD failed (rc=1) — see /home/openclaw/workspace/dev/sqlrustgo/docs/releases/v3.12.0/evidence/issue-4020/20260814T051033Z_sf10/lineitem_load.log
+[0;33m[bulk_load_sf10:WARN][0m DONE with failures — see /home/openclaw/workspace/dev/sqlrustgo/docs/releases/v3.12.0/evidence/issue-4020/20260814T051033Z_sf10/bulk_load_summary.json
