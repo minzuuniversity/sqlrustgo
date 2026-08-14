@@ -371,7 +371,23 @@ impl<S: StorageEngine + 'static> ExecutionEngine<S> {
             // eval_identifier fallback would silently emit
             // Value::Text("t.foobar"). Also catches `WHERE alias`
             // references to SELECT-list aliases, which SQL forbids.
-            crate::engine_utils::validate_select_columns_referenced(select, &table_info)?;
+            // V312-21 / #4181: Join queries (JOIN clause / comma-list)
+            // bind columns against the full joined schema in execute_joins,
+            // so this single-table check must be skipped there — otherwise
+            // a qualified column like `n1.n_name` against the base table's
+            // info is falsely rejected.
+            // V312-21 / #4181 fix-up: any query that references more than one
+            // table (either via `join_clause` for explicit JOIN syntax
+            // OR via `extra_tables` for comma-list FROM, which the parser
+            // sometimes turns into join_clauses for aliased tables) must
+            // skip the single-table binder. The single-table check
+            // falsely rejects qualified columns like `n1.n_name` because
+            // the base table's TableInfo only knows about its own
+            // columns. We run the binder ONLY when both lists are empty
+            // (pure single-table query).
+            if select.join_clause.is_empty() && select.extra_tables.is_empty() {
+                crate::engine_utils::validate_select_columns_referenced(select, &table_info)?;
+            }
             (rows, table_info)
         };
         // The storage read lock is NOT held past this point, ensuring
@@ -1435,30 +1451,12 @@ impl<S: StorageEngine + 'static> ExecutionEngine<S> {
                     }
                 }
                 AggregateFunction::Min => {
-                    let min = values
-                        .iter()
-                        .filter_map(|v| {
-                            if let Value::Integer(n) = v {
-                                Some(*n)
-                            } else {
-                                None
-                            }
-                        })
-                        .min();
-                    min.map(Value::Integer).unwrap_or(Value::Null)
+                    let min = values.iter().filter(|v| !matches!(v, Value::Null)).min();
+                    min.cloned().unwrap_or(Value::Null)
                 }
                 AggregateFunction::Max => {
-                    let max = values
-                        .iter()
-                        .filter_map(|v| {
-                            if let Value::Integer(n) = v {
-                                Some(*n)
-                            } else {
-                                None
-                            }
-                        })
-                        .max();
-                    max.map(Value::Integer).unwrap_or(Value::Null)
+                    let max = values.iter().filter(|v| !matches!(v, Value::Null)).max();
+                    max.cloned().unwrap_or(Value::Null)
                 }
                 // V313-followup-2 / Issue #4155: quantile_disc(frac) and
                 // quantile_cont(frac). The fraction lives in args[1]
@@ -1818,7 +1816,23 @@ impl<S: StorageEngine + 'static> ExecutionEngine<S> {
                 &table_info,
                 &pushdown_filters,
             ) {
-                COMMA_JOIN_WHERE_CONSUMED.with(|f| *f.borrow_mut() = true);
+                // V312-35 (#4182): the hash chain consumes only the
+                // equality join predicates it extracted. If the WHERE
+                // still contains correlated subqueries or other
+                // non-equality residuals (TPC-H Q17: `l_quantity <
+                // (SELECT 0.2*AVG(...))`), those must NOT be marked
+                // consumed — the post-join filter stage (Step 1.5)
+                // re-evaluates them per row. Only mark consumed when
+                // the WHERE is entirely covered by the chain (pure
+                // equality + single-table predicates).
+                let where_fully_consumed = select
+                    .where_clause
+                    .as_ref()
+                    .map(|wc| !where_expr_has_correlated_subquery(wc))
+                    .unwrap_or(true);
+                if where_fully_consumed {
+                    COMMA_JOIN_WHERE_CONSUMED.with(|f| *f.borrow_mut() = true);
+                }
                 return Ok((new_rows, new_info, true));
             }
         }
@@ -3596,6 +3610,24 @@ impl<S: StorageEngine + 'static> ExecutionEngine<S> {
                     for a in &agg.args {
                         visit(a, acc);
                     }
+                }
+                // V312-35 (#4182): a correlated subquery inside a
+                // conjunct (TPC-H Q2: `ps_supplycost = (SELECT MIN(...))`,
+                // Q17: `l_quantity < (SELECT 0.2*AVG(...))`) must mark
+                // the conjunct as multi-table so `extract_single_table_
+                // predicates` refuses to push it into the base scan.
+                // Pushing it down makes `eval_predicate` return Null
+                // for the Subquery node, silently dropping every row.
+                Expression::Subquery(_)
+                | Expression::Exists(_)
+                | Expression::NotExists(_)
+                | Expression::In(_, _)
+                | Expression::NotIn(_, _)
+                | Expression::SubqueryField(_, _)
+                | Expression::QuantifiedOp(_, _, _)
+                    if !acc.iter().any(|x: &String| x == "__subquery__") =>
+                {
+                    acc.push("__subquery__".to_string());
                 }
                 _ => {}
             }

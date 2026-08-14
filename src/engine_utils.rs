@@ -794,6 +794,13 @@ fn substitute_outer_refs_in_expr_with_own(
             // `l_partkey` in `FROM lineitem WHERE l_partkey = p_partkey`).
             // Otherwise the same-named column from the outer row
             // gets substituted, producing `Literal(1) = Literal(1)`.
+            // V312-35 (#4182): TPC-H multi-table subqueries (Q2) use
+            // full table prefixes (ps_partkey, s_suppkey, n_nationkey,
+            // r_regionkey). A column whose name matches a subquery
+            // table's prefix IS a subquery column and must never be
+            // substituted — the outer row of the same query may carry
+            // identically-named columns (Q2 outer `FROM ... partsupp`
+            // also has ps_suppkey).
             if !name.contains('.') && !own_columns.contains(&name.to_lowercase()) {
                 if let Some(idx) = find_column_index(name, outer_table_info) {
                     if let Some(v) = outer_row.get(idx) {
@@ -1085,78 +1092,131 @@ pub fn substitute_outer_refs_in_select(
         q
     };
     // Sprint 5 v11 fix (Q17): build a set of the subquery's OWN
-    // columns (columns of its FROM table). Use the table name's
-    // first letter as a column prefix discriminator (TPC-H
-    // convention: l_partkey for lineitem, p_partkey for part).
-    // Skip substitution for identifiers whose first letter matches
-    // the FROM table's first letter.
-    let own_prefix: Option<char> = select.table.chars().next().map(|c| c.to_ascii_lowercase());
+    // columns (columns of its FROM tables). Use each FROM table's
+    // full TPC-H column prefix (l_ for lineitem, p_ for part,
+    // ps_ for partsupp, s_ for supplier, n_ for nation, r_ for
+    // region). Multi-table subqueries (TPC-H Q2: `FROM partsupp,
+    // supplier, nation, region`) must protect the columns of EVERY
+    // FROM table from substitution — the first table's prefix alone
+    // would leave s_*/n_*/r_* columns of the joined tables exposed
+    // to outer-row substitution. Full prefixes (not first letters)
+    // keep `p_partkey` (outer part column) distinct from `ps_partkey`
+    // (partsupp column).
+    let mut own_prefixes: Vec<String> = Vec::new();
+    let mut own_table_names: Vec<String> = Vec::new();
+    let mut add_table_prefix = |bare: &str| {
+        let lower = bare.to_lowercase();
+        let prefix: &str = match lower.as_str() {
+            "region" => "r",
+            "nation" => "n",
+            "supplier" => "s",
+            "customer" => "c",
+            "part" => "p",
+            "partsupp" => "ps",
+            "orders" => "o",
+            "lineitem" => "l",
+            _ => {
+                if lower.contains('_') {
+                    &lower[..lower.find('_').unwrap()]
+                } else if !lower.is_empty() {
+                    &lower[..1]
+                } else {
+                    ""
+                }
+            }
+        };
+        if !prefix.is_empty() {
+            own_prefixes.push(prefix.to_string());
+        }
+        own_table_names.push(lower);
+    };
+    if !select.table.is_empty() {
+        let bare = select
+            .table
+            .split_once('|')
+            .map(|(t, _)| t)
+            .unwrap_or(&select.table);
+        add_table_prefix(bare);
+    }
+    for extra in &select.extra_tables {
+        let bare = extra.split_once('|').map(|(t, _)| t).unwrap_or(extra);
+        add_table_prefix(bare);
+    }
+    for jc in &select.join_clause {
+        let bare = jc
+            .table
+            .split_once('|')
+            .map(|(t, _)| t)
+            .unwrap_or(&jc.table);
+        add_table_prefix(bare);
+    }
     let own_column_names: std::collections::HashSet<String> = {
         use sqlrustgo_parser::Expression;
         let mut names = std::collections::HashSet::new();
         fn walk(
             e: &Expression,
-            prefix: Option<char>,
+            prefixes: &[String],
             names: &mut std::collections::HashSet<String>,
         ) {
-            if let Some(p) = prefix {
-                if let Expression::Identifier(name) = e {
-                    if !name.contains('.') {
-                        let lower = name.to_lowercase();
-                        if lower.starts_with(p) && lower.chars().nth(1) == Some('_') {
-                            names.insert(lower);
-                        }
+            if let Expression::Identifier(name) = e {
+                if !name.contains('.') {
+                    let lower = name.to_lowercase();
+                    if prefixes
+                        .iter()
+                        .any(|p| lower.starts_with(p.as_str()) && lower.len() > p.len())
+                    {
+                        names.insert(lower);
                     }
-                    return;
                 }
+                return;
             }
             match e {
                 Expression::Identifier(_) => {}
                 Expression::BinaryOp(l, _, r) => {
-                    walk(l, prefix, names);
-                    walk(r, prefix, names);
+                    walk(l, prefixes, names);
+                    walk(r, prefixes, names);
                 }
-                Expression::UnaryOp(_, i) => walk(i, prefix, names),
-                Expression::IsNull(i) | Expression::IsNotNull(i) => walk(i, prefix, names),
+                Expression::UnaryOp(_, i) => walk(i, prefixes, names),
+                Expression::IsNull(i) | Expression::IsNotNull(i) => walk(i, prefixes, names),
                 Expression::InList(l, vs) => {
-                    walk(l, prefix, names);
+                    walk(l, prefixes, names);
                     for v in vs {
-                        walk(v, prefix, names);
+                        walk(v, prefixes, names);
                     }
                 }
                 Expression::NotInList(l, vs) => {
-                    walk(l, prefix, names);
+                    walk(l, prefixes, names);
                     for v in vs {
-                        walk(v, prefix, names);
+                        walk(v, prefixes, names);
                     }
                 }
                 Expression::Between(l, lo, hi) => {
-                    walk(l, prefix, names);
-                    walk(lo, prefix, names);
-                    walk(hi, prefix, names);
+                    walk(l, prefixes, names);
+                    walk(lo, prefixes, names);
+                    walk(hi, prefixes, names);
                 }
                 Expression::NotBetween(l, lo, hi) => {
-                    walk(l, prefix, names);
-                    walk(lo, prefix, names);
-                    walk(hi, prefix, names);
+                    walk(l, prefixes, names);
+                    walk(lo, prefixes, names);
+                    walk(hi, prefixes, names);
                 }
                 Expression::Like(l, p, _) | Expression::NotLike(l, p, _) => {
-                    walk(l, prefix, names);
-                    walk(p, prefix, names);
+                    walk(l, prefixes, names);
+                    walk(p, prefixes, names);
                 }
                 Expression::FunctionCall(_, args) => {
                     for a in args {
-                        walk(a, prefix, names);
+                        walk(a, prefixes, names);
                     }
                 }
                 _ => {}
             }
         }
         if let Some(ref wc) = select.where_clause {
-            walk(wc, own_prefix, &mut names);
+            walk(wc, &own_prefixes, &mut names);
         }
         if let Some(ref h) = select.having {
-            walk(h, own_prefix, &mut names);
+            walk(h, &own_prefixes, &mut names);
         }
         names
     };
