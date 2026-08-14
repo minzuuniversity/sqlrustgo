@@ -3814,6 +3814,8 @@ fn statement_kind(parsed: &Result<Statement, String>) -> &'static str {
             Statement::AlterUser(_) => "ALTER_USER",
             Statement::Call(_) => "CALL",
             Statement::CreateProcedure(_) => "CREATE_PROCEDURE",
+            // V312-55A / Issue #4238: add DROP PROCEDURE to the metric label.
+            Statement::DropProcedure(_) => "DROP_PROCEDURE",
             Statement::Union(_) => "UNION",
             Statement::CreateTrigger(_) => "CREATE_TRIGGER",
             Statement::Intersect(_) => "INTERSECT",
