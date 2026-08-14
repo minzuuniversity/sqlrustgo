@@ -168,6 +168,20 @@ fn value_to_literal_string_v(v: &Value) -> String {
 }
 
 impl<S: StorageEngine + 'static> ExecutionEngine<S> {
+    /// Returns `true` if the most recent `execute()` call (or any
+    /// query that triggered `execute_joins`) successfully built a
+    /// hash chain for a comma-join (`FROM t1, t2, ...`) using the
+    /// `try_comma_join_hash_chain` fast path.
+    ///
+    /// When `false`, the engine fell back to the per-clause
+    /// cartesian path - correct but 5-10x slower on TPC-H SF=1
+    /// and infeasible on SF=10 for multi-hub topologies (Q7
+    /// star, Q8 bridge, Q9 chain-leaf). Used by regression tests
+    /// to assert that the chain-build strategy succeeded.
+    pub fn last_query_used_comma_join_fast_path(&self) -> bool {
+        COMMA_JOIN_WHERE_CONSUMED.with(|f| *f.borrow())
+    }
+
     fn clear_tpch_caches() {
         thread_local! {
             static CACHE_CLEARED: std::cell::Cell<bool> = const { std::cell::Cell::new(false) };
@@ -192,6 +206,16 @@ impl<S: StorageEngine + 'static> ExecutionEngine<S> {
     pub fn execute_select(&self, select: &SelectStatement) -> SqlResult<ExecutorResult> {
         // Debug: print query table structure
         Self::clear_tpch_caches();
+        // V312-22 / Issue #4182: push ANALYZE-collected table stats
+        // (including `Histogram`) into `UnifiedCostModel::column_stats` at
+        // every SELECT entry. This is cheap when CBO is disabled (we skip
+        // outright) and bounded by O(N_tables) when enabled — typically
+        // a handful of tables. The CBO side is idempotent on overwrite,
+        // so per-query refresh is safe and ensures the cost model never
+        // reads stale histograms even if a previous query updated stats.
+        if self.cbo_enabled {
+            self.update_cost_model_stats();
+        }
         // Sprint 1b fix (Q7/Q8/Q9): handle FROM (subquery) AS alias by
         // first executing the subquery to materialize its result into a
         // synthetic in-memory table, then running the outer SELECT against
@@ -357,7 +381,23 @@ impl<S: StorageEngine + 'static> ExecutionEngine<S> {
             // eval_identifier fallback would silently emit
             // Value::Text("t.foobar"). Also catches `WHERE alias`
             // references to SELECT-list aliases, which SQL forbids.
-            crate::engine_utils::validate_select_columns_referenced(select, &table_info)?;
+            // V312-21 / #4181: Join queries (JOIN clause / comma-list)
+            // bind columns against the full joined schema in execute_joins,
+            // so this single-table check must be skipped there — otherwise
+            // a qualified column like `n1.n_name` against the base table's
+            // info is falsely rejected.
+            // V312-21 / #4181 fix-up: any query that references more than one
+            // table (either via `join_clause` for explicit JOIN syntax
+            // OR via `extra_tables` for comma-list FROM, which the parser
+            // sometimes turns into join_clauses for aliased tables) must
+            // skip the single-table binder. The single-table check
+            // falsely rejects qualified columns like `n1.n_name` because
+            // the base table's TableInfo only knows about its own
+            // columns. We run the binder ONLY when both lists are empty
+            // (pure single-table query).
+            if select.join_clause.is_empty() && select.extra_tables.is_empty() {
+                crate::engine_utils::validate_select_columns_referenced(select, &table_info)?;
+            }
             (rows, table_info)
         };
         // The storage read lock is NOT held past this point, ensuring
@@ -526,12 +566,16 @@ impl<S: StorageEngine + 'static> ExecutionEngine<S> {
                                 // dispatch (which lacks aggregate context).
                                 if let sqlrustgo_parser::Expression::FunctionCall(name, _) = expr {
                                     let upper = name.to_uppercase();
-                                    if upper == "QUANTILE_DISC" || upper == "QUANTILE_CONT" {
+                                    if upper == "QUANTILE_DISC"
+                                        || upper == "QUANTILE_CONT"
+                                        || upper == "PERCENTILE_CONT"
+                                    {
                                         if let Some(idx) = select.aggregates.iter().position(|a| {
                                             matches!(
                                                 a.func,
                                                 AggregateFunction::QuantileDisc
                                                     | AggregateFunction::QuantileCont
+                                                    | AggregateFunction::PercentileCont
                                             )
                                         }) {
                                             return agg_values
@@ -877,6 +921,7 @@ impl<S: StorageEngine + 'static> ExecutionEngine<S> {
                             AggregateFunction::Count => "count",
                             AggregateFunction::Avg => "avg",
                             AggregateFunction::Min => "min",
+                            AggregateFunction::PercentileCont => "percentile_cont",
                             AggregateFunction::Max => "max",
                             AggregateFunction::QuantileDisc => "quantile_disc",
                             AggregateFunction::QuantileCont => "quantile_cont",
@@ -1002,6 +1047,26 @@ impl<S: StorageEngine + 'static> ExecutionEngine<S> {
                                     // Try aggregate default name
                                     if let Some(&i) = agg_set.get(&key) {
                                         return row.get(i).cloned().unwrap_or(Value::Null);
+                                    }
+                                    // V313-followup-3 / Issue #4156:
+                                    // PERCENTILE_CONT FunctionCall column
+                                    // (name is the full debug string, so
+                                    // match by expression function name).
+                                    if let Some(Expression::FunctionCall(fname, _)) =
+                                        &col.expression
+                                    {
+                                        let fu = fname.to_uppercase();
+                                        let default_name = match fu.as_str() {
+                                            "PERCENTILE_CONT" => "percentile_cont",
+                                            "QUANTILE_DISC" => "quantile_disc",
+                                            "QUANTILE_CONT" => "quantile_cont",
+                                            _ => "",
+                                        };
+                                        if !default_name.is_empty() {
+                                            if let Some(&i) = agg_set.get(default_name) {
+                                                return row.get(i).cloned().unwrap_or(Value::Null);
+                                            }
+                                        }
                                     }
                                     // Try aggregate alias map
                                     if let Some(&i) = agg_alias_to_pos.get(&key) {
@@ -1274,7 +1339,15 @@ impl<S: StorageEngine + 'static> ExecutionEngine<S> {
     ) -> SqlResult<Vec<Value>> {
         let mut results = Vec::with_capacity(aggregates.len());
         for agg in aggregates {
-            let values: Vec<Value> = if let Some(arg) = agg.args.first() {
+            // V313-followup-3 / Issue #4156: PERCENTILE_CONT encodes the
+            // WITHIN GROUP ORDER BY expression as args[1] (args[0] is the
+            // fraction); DESC is a trailing `__DESC__` literal arg.
+            let val_src_idx = if matches!(agg.func, AggregateFunction::PercentileCont) {
+                1
+            } else {
+                0
+            };
+            let values: Vec<Value> = if let Some(arg) = agg.args.get(val_src_idx) {
                 rows.iter()
                     .map(|row| evaluate_expression(arg, row, table_info).unwrap_or(Value::Null))
                     .collect()
@@ -1388,30 +1461,12 @@ impl<S: StorageEngine + 'static> ExecutionEngine<S> {
                     }
                 }
                 AggregateFunction::Min => {
-                    let min = values
-                        .iter()
-                        .filter_map(|v| {
-                            if let Value::Integer(n) = v {
-                                Some(*n)
-                            } else {
-                                None
-                            }
-                        })
-                        .min();
-                    min.map(Value::Integer).unwrap_or(Value::Null)
+                    let min = values.iter().filter(|v| !matches!(v, Value::Null)).min();
+                    min.cloned().unwrap_or(Value::Null)
                 }
                 AggregateFunction::Max => {
-                    let max = values
-                        .iter()
-                        .filter_map(|v| {
-                            if let Value::Integer(n) = v {
-                                Some(*n)
-                            } else {
-                                None
-                            }
-                        })
-                        .max();
-                    max.map(Value::Integer).unwrap_or(Value::Null)
+                    let max = values.iter().filter(|v| !matches!(v, Value::Null)).max();
+                    max.cloned().unwrap_or(Value::Null)
                 }
                 // V313-followup-2 / Issue #4155: quantile_disc(frac) and
                 // quantile_cont(frac). The fraction lives in args[1]
@@ -1420,19 +1475,77 @@ impl<S: StorageEngine + 'static> ExecutionEngine<S> {
                 // SQL:92 ordered-set aggregate semantics (fraction
                 // interpolated linearly for continuous; rounded down for
                 // discrete).
-                AggregateFunction::QuantileDisc | AggregateFunction::QuantileCont => {
-                    let frac = match agg.args.get(1).and_then(|e| match e {
-                        sqlrustgo_parser::Expression::Literal(lit) => lit.parse::<f64>().ok(),
+                //
+                // V313-followup-3 / Issue #4216: array-fraction form
+                // `quantile_disc(col, [0.25, 0.5, 0.75])` returns a
+                // single Text cell "[v1, v2, ...]" computed by the same
+                // per-fraction algorithm. Multi-row emission (one row per
+                // fraction) is deferred to the next follow-up (#4216.3).
+                AggregateFunction::QuantileDisc
+                | AggregateFunction::QuantileCont
+                | AggregateFunction::PercentileCont => {
+                    let frac_idx = if matches!(agg.func, AggregateFunction::PercentileCont) {
+                        0
+                    } else {
+                        1
+                    };
+                    // Detect array-literal fraction form before attempting
+                    // the single-fraction parse below.
+                    let array_fracs: Option<Vec<f64>> = match agg.args.get(frac_idx) {
+                        Some(sqlrustgo_parser::Expression::ArrayLiteral(elems)) => {
+                            let mut acc = Vec::with_capacity(elems.len());
+                            for e in elems {
+                                let f = match e {
+                                    sqlrustgo_parser::Expression::Literal(lit) => {
+                                        lit.parse::<f64>().ok()
+                                    }
+                                    _ => None,
+                                };
+                                match f {
+                                    Some(v) if (0.0..=1.0).contains(&v) => acc.push(v),
+                                    _ => {
+                                        return Err(SqlError::ExecutionError(format!(
+                                            "quantile_disc / quantile_cont array element out of [0.0, 1.0]: {:?}",
+                                            e
+                                        )));
+                                    }
+                                }
+                            }
+                            Some(acc)
+                        }
                         _ => None,
-                    }) {
-                        Some(f) if (0.0..=1.0).contains(&f) => f,
-                        _ => {
-                            return Err(SqlError::ExecutionError(
+                    };
+                    let frac = match (&array_fracs, agg.args.get(frac_idx)) {
+                        (Some(_), _) => 0.0, // unused in the array branch below
+                        (None, Some(sqlrustgo_parser::Expression::Literal(lit))) => {
+                            match lit.parse::<f64>().ok() {
+                                Some(f) if (0.0..=1.0).contains(&f) => f,
+                                _ => {
+                                    let msg = if matches!(
+                                        agg.func,
+                                        AggregateFunction::PercentileCont
+                                    ) {
+                                        "PercentileCont requires frac arg in [0.0, 1.0]".to_string()
+                                    } else {
+                                        "quantile_disc / quantile_cont requires 2nd arg in [0.0, 1.0]"
+                                            .to_string()
+                                    };
+                                    return Err(SqlError::ExecutionError(msg));
+                                }
+                            }
+                        }
+                        (None, _) => {
+                            let msg = if matches!(agg.func, AggregateFunction::PercentileCont) {
+                                "PercentileCont requires frac arg in [0.0, 1.0]".to_string()
+                            } else {
                                 "quantile_disc / quantile_cont requires 2nd arg in [0.0, 1.0]"
-                                    .to_string(),
-                            ))
+                                    .to_string()
+                            };
+                            return Err(SqlError::ExecutionError(msg));
                         }
                     };
+                    let desc = matches!(agg.func, AggregateFunction::PercentileCont)
+                        && agg.args.last().is_some_and(|e| matches!(e, sqlrustgo_parser::Expression::Literal(l) if l == "__DESC__"));
                     let mut sorted: Vec<f64> = values
                         .iter()
                         .filter_map(|v| match v {
@@ -1442,8 +1555,31 @@ impl<S: StorageEngine + 'static> ExecutionEngine<S> {
                         })
                         .collect();
                     sorted.sort_by(|a, b| a.partial_cmp(b).unwrap_or(std::cmp::Ordering::Equal));
+                    if desc {
+                        sorted.reverse();
+                    }
                     if sorted.is_empty() {
                         Value::Null
+                    } else if let Some(fracs) = array_fracs {
+                        // Array-fraction form: compute one value per
+                        // fraction, emit as Text "[v1, v2, ...]".
+                        let parts: Vec<String> = fracs
+                            .iter()
+                            .map(|f| {
+                                let idx = (f * (sorted.len() as f64 - 1.0)).max(0.0);
+                                let lo = idx.floor() as usize;
+                                let hi = idx.ceil() as usize;
+                                if matches!(agg.func, AggregateFunction::QuantileDisc) || lo == hi {
+                                    let v = sorted[lo.min(sorted.len() - 1)];
+                                    format!("{}", v)
+                                } else {
+                                    let frac_part = idx - lo as f64;
+                                    let v = sorted[lo] + (sorted[hi] - sorted[lo]) * frac_part;
+                                    format!("{}", v)
+                                }
+                            })
+                            .collect();
+                        Value::Text(format!("[{}]", parts.join(", ")))
                     } else {
                         let idx = (frac * (sorted.len() as f64 - 1.0)).max(0.0);
                         let lo = idx.floor() as usize;
@@ -1756,7 +1892,23 @@ impl<S: StorageEngine + 'static> ExecutionEngine<S> {
                 &table_info,
                 &pushdown_filters,
             ) {
-                COMMA_JOIN_WHERE_CONSUMED.with(|f| *f.borrow_mut() = true);
+                // V312-35 (#4182): the hash chain consumes only the
+                // equality join predicates it extracted. If the WHERE
+                // still contains correlated subqueries or other
+                // non-equality residuals (TPC-H Q17: `l_quantity <
+                // (SELECT 0.2*AVG(...))`), those must NOT be marked
+                // consumed — the post-join filter stage (Step 1.5)
+                // re-evaluates them per row. Only mark consumed when
+                // the WHERE is entirely covered by the chain (pure
+                // equality + single-table predicates).
+                let where_fully_consumed = select
+                    .where_clause
+                    .as_ref()
+                    .map(|wc| !where_expr_has_correlated_subquery(wc))
+                    .unwrap_or(true);
+                if where_fully_consumed {
+                    COMMA_JOIN_WHERE_CONSUMED.with(|f| *f.borrow_mut() = true);
+                }
                 return Ok((new_rows, new_info, true));
             }
         }
@@ -1795,6 +1947,61 @@ impl<S: StorageEngine + 'static> ExecutionEngine<S> {
         }
 
         Ok((rows, table_info, false))
+    }
+
+    /// Best-first greedy chain construction starting from
+    /// `join_tables[start_idx]`.
+    ///
+    /// At each step, among all unvisited tables that share a join edge
+    /// with the current tail (i.e. an entry in `pair_key`), pick the one
+    /// with the lowest degree (count of join edges). This avoids the
+    /// failure mode of the previous single-direction greedy: starting
+    /// from a high-degree hub and dead-ending inside one of its
+    /// leaves. Returns `None` when no neighbour is available
+    /// (dead-end) so the caller can try a different start.
+    ///
+    /// Worst-case complexity O(N²) for N <= 10 (TPC-H).
+    fn build_chain_from_start(
+        start_idx: usize,
+        join_tables: &[(String, String)],
+        pair_key: &std::collections::HashMap<(String, String), (String, String)>,
+    ) -> Option<Vec<(String, String)>> {
+        use std::collections::HashSet;
+        let start = &join_tables[start_idx];
+        let mut visited: HashSet<String> = [start.1.clone()].into_iter().collect();
+        let mut chain: Vec<(String, String)> = vec![(start.0.clone(), start.1.clone())];
+
+        while visited.len() < join_tables.len() {
+            let tail_alias = match chain.last() {
+                Some((_, a)) => a.clone(),
+                None => break,
+            };
+
+            let next = join_tables
+                .iter()
+                .filter(|(_, alias)| !visited.contains(alias))
+                .filter(|(_, alias)| {
+                    pair_key.keys().any(|(a1, a2)| {
+                        (*a1 == tail_alias && *a2 == *alias) || (*a2 == tail_alias && *a1 == *alias)
+                    })
+                })
+                .min_by_key(|(_, alias)| {
+                    pair_key
+                        .keys()
+                        .filter(|(a1, a2)| a1 == alias || a2 == alias)
+                        .count()
+                })
+                .map(|(bare, alias)| (bare.clone(), alias.clone()));
+
+            match next {
+                Some((next_bare, alias)) => {
+                    visited.insert(alias.clone());
+                    chain.push((next_bare, alias));
+                }
+                None => return None,
+            }
+        }
+        Some(chain)
     }
 
     /// Sprint 8 (PR 1): comma-join with WHERE-extracted hash chain.
@@ -1981,83 +2188,121 @@ impl<S: StorageEngine + 'static> ExecutionEngine<S> {
             pair_key.entry(pair).or_insert(entry);
         }
 
-        // Greedy chain build: pick the smallest table as the build
-        // side and grow outward. For each step, find the next table
-        // that has a recorded equality with the current tail.
-        let mut visited: std::collections::HashSet<String> =
-            [effective_base_alias.to_string()].into_iter().collect();
-        let mut chain_order: Vec<(String, String)> =
-            vec![(base_bare.clone(), effective_base_alias.to_string())];
-        // When pair_key stores (min_alias, max_alias), the current tail
-        // can be in EITHER position. In a star schema where "o" (orders)
-        // is the hub connected to both "c" and "l", we have:
-        //   pair_key = {("c", "o"), ("l", "o")}
-        // When tail is "o", it is always the second element.
-        while visited.len() < join_tables.len() {
-            let tail_alias = chain_order
-                .last()
-                .map(|(_, a)| a.clone())
-                .unwrap_or_default();
-
-            // Find next table: one that is NOT visited and has a pair_key entry with tail
-            let mut found: Option<(String, String)> = None;
-            for (bare, alias) in &join_tables {
-                if visited.contains(alias) {
-                    continue;
-                }
-                // Check if this alias pairs with tail in pair_key
-                // pair_key keys are (smaller, larger) alphabetically
-                let matches = pair_key.keys().any(|(a1, a2)| {
-                    (*a1 == tail_alias && *a2 == *alias) || (*a2 == tail_alias && *a1 == *alias)
-                });
-                if matches {
-                    found = Some((bare.clone(), alias.clone()));
-                    break;
-                }
-            }
-
-            match found {
-                Some((next_bare, alias)) => {
-                    chain_order.push((next_bare, alias.clone()));
-                    visited.insert(alias);
-                }
-                None => break,
+        // Multi-start + best-first greedy chain build.
+        //
+        // The previous single-direction greedy started from a fixed
+        // base table and picked the FIRST neighbour it found each
+        // step. On topologies with two hubs joined by a single edge
+        // (TPC-H Q7 star, Q8 bridge, Q9 chain-leaf) it dead-ended
+        // inside a leaf sub-tree, producing `chain_order.len() <
+        // join_tables.len()` and falling back to the per-clause
+        // cartesian path - which is correct but 5-10x slower on
+        // SF=1 and infeasible on SF=10.
+        //
+        // Strategy (V312-21 / Issue #4181):
+        //   1. Outer loop: try every `join_tables` entry as starting
+        //      point. Multi-start guarantees we find a spanning chain
+        //      whenever the join graph is connected.
+        //   2. Inner greedy: from the current tail, choose the
+        //      UNVISITED neighbour with the LOWEST degree (best-first
+        //      heuristic). This avoids the failure mode of "pick a
+        //      high-degree hub and dead-end inside one of its
+        //      leaves" by preferring low-degree leaves first.
+        //   3. Worst-case O(N^2) for N <= 10 (TPC-H). Acceptable.
+        let mut chain_order_opt: Option<Vec<(String, String)>> = None;
+        for start_idx in 0..join_tables.len() {
+            if let Some(candidate) =
+                Self::build_chain_from_start(start_idx, &join_tables, &pair_key)
+            {
+                chain_order_opt = Some(candidate);
+                break;
             }
         }
 
-        if chain_order.len() != join_tables.len() {
-            eprintln!(
-                "DBG chain_order.len()={} != join_tables.len()={}",
-                chain_order.len(),
-                join_tables.len()
-            );
-            return None;
-        }
+        let chain_order: Vec<(String, String)> = match chain_order_opt {
+            Some(c) if c.len() == join_tables.len() => c,
+            _ => {
+                eprintln!(
+                    "DBG chain_order multi-start could not build complete chain: join_tables.len()={}",
+                    join_tables.len()
+                );
+                return None;
+            }
+        };
+        // Re-validate that we have a chain that covers every table
+        // (defensive: the build_chain_from_start guarantees this when
+        // it returns Some, but be explicit so the assertion is
+        // immediately clear).
 
         // Resolve key columns from pair_key into (acc_idx, right_idx)
         // tuples per step. Each step's `acc_idx` is the column index
         // in the accumulated rows that holds the join key; the right
         // side's key column is read directly from the right table's
         // info.
+        //
+        // `alias_to_offset` tracks the GLOBAL start column index of each
+        // alias's columns in the accumulated rows. This lets `prev_idx`
+        // (which is computed as a LOCAL index into prev's columns) be
+        // converted to the GLOBAL index required by
+        // `multi_way_hash_chain`. Without this, chains starting at
+        // non-base leaves (Q7/Q8/Q9 with multi-start) would misalign
+        // the join keys, since the leaf's columns live at offset 0 while
+        // later joined tables live at offsets > 0.
         let mut steps_acc: Vec<(Vec<Vec<Value>>, Vec<sqlrustgo_storage::ColumnDefinition>)> =
             Vec::new();
         let mut step_inputs: Vec<(Vec<Vec<Value>>, usize, usize)> = Vec::new();
-        let mut acc_rows = base_rows.clone();
-        let mut acc_columns = base_info.columns.clone();
+        let mut acc_rows: Vec<Vec<Value>>;
+        let mut acc_columns: Vec<sqlrustgo_storage::ColumnDefinition>;
         let mut alias_to_columns: HashMap<String, Vec<String>> = HashMap::new();
-        alias_to_columns.insert(
-            effective_base_alias.to_string(),
-            base_info
-                .columns
-                .iter()
-                .map(|c| {
-                    c.name
-                        .strip_prefix(&format!("{}.", effective_base_alias))
-                        .unwrap_or(&c.name)
-                        .to_string()
-                })
-                .collect(),
-        );
+        let mut alias_to_offset: HashMap<String, usize> = HashMap::new();
+        {
+            let (start_bare, start_alias) = (&chain_order[0].0, &chain_order[0].1);
+            if start_bare == &base_bare && start_alias.as_str() == effective_base_alias {
+                acc_rows = base_rows.clone();
+                acc_columns = base_info.columns.clone();
+                alias_to_offset.insert(effective_base_alias.to_string(), 0);
+                alias_to_columns.insert(
+                    effective_base_alias.to_string(),
+                    base_info
+                        .columns
+                        .iter()
+                        .map(|c| {
+                            c.name
+                                .strip_prefix(&format!("{}.", effective_base_alias))
+                                .unwrap_or(&c.name)
+                                .to_string()
+                        })
+                        .collect(),
+                );
+            } else {
+                // Multi-start began at a non-base leaf (e.g. Q7's
+                // `nation n1`). Load its rows/columns fresh from storage
+                // and seed `acc_*` from there.
+                let start_info = storage.get_table_info(start_bare).ok()?.clone();
+                let start_raw_rows = storage.scan(start_bare).ok()?;
+                let start_alias_owned = start_alias.clone();
+                let start_alias_for_strip = start_alias_owned.clone();
+                alias_to_offset.insert(start_alias_owned.clone(), 0);
+                alias_to_columns.insert(
+                    start_alias_owned,
+                    start_info
+                        .columns
+                        .iter()
+                        .map(|c| {
+                            c.name
+                                .strip_prefix(&format!("{}.", start_alias_for_strip))
+                                .unwrap_or(&c.name)
+                                .to_string()
+                        })
+                        .collect(),
+                );
+                acc_rows = start_raw_rows;
+                acc_columns = start_info.columns.clone();
+            }
+        }
+        // Capture the initial rows here, BEFORE the step loop
+        // resets `acc_rows` to empty each iteration.
+        let chain_start_rows = acc_rows.clone();
 
         for i in 1..chain_order.len() {
             let prev_alias = &chain_order[i - 1].1;
@@ -2082,9 +2327,14 @@ impl<S: StorageEngine + 'static> ExecutionEngine<S> {
                 }
             };
             let prev_cols = alias_to_columns.get(prev_alias).cloned()?;
-            let prev_idx = prev_cols
+            let prev_local_idx = prev_cols
                 .iter()
                 .position(|c| c.eq_ignore_ascii_case(&left_col))?;
+            // Convert local-to-prev into global-into-accumulated via
+            // the per-alias offset map populated at chain start and
+            // each step below.
+            let prev_offset = alias_to_offset.get(prev_alias.as_str()).copied()?;
+            let prev_idx = prev_offset + prev_local_idx;
             let cur_bare = &cur.0;
             let cur_info = storage.get_table_info(cur_bare).ok()?.clone();
             let cur_idx = cur_info
@@ -2121,6 +2371,10 @@ impl<S: StorageEngine + 'static> ExecutionEngine<S> {
                 cur_alias.clone(),
                 cur_info.columns.iter().map(|c| c.name.clone()).collect(),
             );
+            // Record where this alias's columns begin in the
+            // accumulated row so the NEXT step can resolve its
+            // join key globally.
+            alias_to_offset.insert(cur_alias.clone(), acc_columns.len());
             steps_acc.push((acc_rows.clone(), acc_columns.clone()));
             step_inputs.push((cur_rows, cur_idx, prev_idx));
             let mut new_columns = acc_columns.clone();
@@ -2140,9 +2394,11 @@ impl<S: StorageEngine + 'static> ExecutionEngine<S> {
             acc_rows = placeholder;
         }
 
-        // Run the chain step-by-step using multi_way_hash_chain.
-        let base_rows_owned = base_rows.clone();
-        let mut accumulated = base_rows_owned;
+        // Run the chain step-by-step using multi_way_hash_chain. Seed
+        // with the rows captured at chain start (which may be
+        // chain[0]'s rows rather than `base_rows` when multi-start
+        // began at a non-base leaf).
+        let mut accumulated = chain_start_rows;
         for ((cur_rows, cur_idx, prev_idx), (_, _)) in step_inputs.iter().zip(steps_acc.iter()) {
             accumulated = multi_way_hash_chain(
                 std::mem::take(&mut accumulated),
@@ -2153,9 +2409,37 @@ impl<S: StorageEngine + 'static> ExecutionEngine<S> {
             }
         }
 
-        let mut joined_info = base_info.clone();
-        for col in &acc_columns[base_info.columns.len()..] {
-            joined_info.columns.push(col.clone());
+        // joined_info describes the columns of `accumulated`. They are
+        // the concatenation of each chain[i]'s columns in order; we
+        // rebuild them by walking the chain and looking up each
+        // table's info from storage (or `base_info` for the base
+        // table which we already have in hand).
+        let mut joined_info =
+            if chain_order[0].0 == base_bare && chain_order[0].1.as_str() == effective_base_alias {
+                base_info.clone()
+            } else {
+                storage.get_table_info(&chain_order[0].0).ok()?.clone()
+            };
+        joined_info.columns.clear();
+        for (bare, alias) in &chain_order {
+            let info = if bare == &base_bare && alias.as_str() == effective_base_alias {
+                base_info.clone()
+            } else {
+                storage.get_table_info(bare).ok()?.clone()
+            };
+            for c in &info.columns {
+                joined_info
+                    .columns
+                    .push(sqlrustgo_storage::ColumnDefinition {
+                        name: format!("{}.{}", alias, c.name),
+                        data_type: c.data_type.clone(),
+                        nullable: c.nullable,
+                        primary_key: c.primary_key,
+                        char_max_length: c.char_max_length,
+                        collation: c.collation.clone(),
+                        default_value: c.default_value.clone(),
+                    });
+            }
         }
         Some((accumulated, joined_info))
     }
@@ -3318,7 +3602,8 @@ impl<S: StorageEngine + 'static> ExecutionEngine<S> {
             | Expression::SequenceNextVal(_)
             | Expression::SequenceCurrval(_)
             | Expression::SystemVariable(_)
-            | Expression::JsonLiteral(_) => where_expr.clone(),
+            | Expression::JsonLiteral(_)
+            | Expression::ArrayLiteral(_) => where_expr.clone(),
         }
     }
 
@@ -3401,6 +3686,24 @@ impl<S: StorageEngine + 'static> ExecutionEngine<S> {
                     for a in &agg.args {
                         visit(a, acc);
                     }
+                }
+                // V312-35 (#4182): a correlated subquery inside a
+                // conjunct (TPC-H Q2: `ps_supplycost = (SELECT MIN(...))`,
+                // Q17: `l_quantity < (SELECT 0.2*AVG(...))`) must mark
+                // the conjunct as multi-table so `extract_single_table_
+                // predicates` refuses to push it into the base scan.
+                // Pushing it down makes `eval_predicate` return Null
+                // for the Subquery node, silently dropping every row.
+                Expression::Subquery(_)
+                | Expression::Exists(_)
+                | Expression::NotExists(_)
+                | Expression::In(_, _)
+                | Expression::NotIn(_, _)
+                | Expression::SubqueryField(_, _)
+                | Expression::QuantifiedOp(_, _, _)
+                    if !acc.iter().any(|x: &String| x == "__subquery__") =>
+                {
+                    acc.push("__subquery__".to_string());
                 }
                 _ => {}
             }
@@ -4837,6 +5140,10 @@ fn build_scalar_agg_index(
                 // AVG/SUM/COUNT for the Q17 perf fix.
                 let _ = (entry, v.clone(), ci);
             }
+            // V313-followup-3 / Issue #4156: PERCENTILE_CONT WITHIN
+            // GROUP falls back to the serial compute_aggregates path
+            // (this fast-path only supports AVG/SUM/COUNT/MIN/MAX).
+            AggregateFunction::PercentileCont => unreachable!(),
             // V313-followup-2 / Issue #4155: quantile aggregates are
             // sorted-index algorithms; the scalar-aggregate fast-path
             // only handles in-place updaters. Fall through (no update).

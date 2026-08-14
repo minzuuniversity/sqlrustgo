@@ -1,0 +1,5 @@
+
+report: docs/releases/v3.12.0/evidence/sqllogictest/smoke-report.md
+manifest: docs/releases/v3.12.0/evidence/sqllogictest/sqlite-corpus-manifest.json
+exclusions: docs/releases/v3.12.0/evidence/sqllogictest/exclusions.yml
+summary: 5 PASS, 0 FAIL

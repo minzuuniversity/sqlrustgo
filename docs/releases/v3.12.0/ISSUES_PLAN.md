@@ -73,8 +73,8 @@
 
 **优先级**: P0
 **目标**: 把 v3.10 规划、v3.11 未集成到 gate 的 SQLite SQLLogicTest 变成 v3.12 阻断门禁。
-**背景**: v3.10 报告提出使用 SQLite 官方 SQLLogicTest corpus；V310-14 记录 runner 已实现但官方 suite 下载受阻；当前 `crates/sqlrustgo_sqllogictest` 存在，含 22 个本地 `.test` 文件；v3.11 `RELEASE_GATE_CHECKLIST.md` 仍把 sqllogictest runner 标为 TBD。
-**验收**: `cargo build -p sqlrustgo_sqllogictest` 成功；本地 smoke corpus 产生报告；官方/cached SQLite corpus 有 manifest、hash、file count、exclusion policy；新增或规划 `scripts/gate/check_sqllogictest_v312.sh`。
+**背景**: v3.10 报告提出使用 SQLite 官方 SQLLogicTest corpus；V310-14 记录 runner 已实现但官方 suite 下载受阻；`crates/sqlrustgo_sqllogictest` 已在 v3.12 激活，当前 smoke gate 为 25/25 PASS；v3.11 `RELEASE_GATE_CHECKLIST.md` 中 sqllogictest runner TBD 是历史缺口。
+**验收**: `cargo build -p sqlrustgo_sqllogictest` 成功；本地 smoke corpus 产生 `docs/releases/v3.12.0/evidence/sqllogictest/smoke-report.md`；官方/cached SQLite corpus 有 manifest、hash、file count、exclusion policy；`scripts/gate/check_sqllogictest_v312.sh` 集成到 Beta/RC/GA gate，且不只检查文件存在。
 
 ## V312-12：TPC-H SF=1 Correctness Close-out
 
@@ -265,6 +265,86 @@
    - 至少 2 名 reviewer 在 PR 上写了 APPROVED
 4. 关闭报告 `docs/releases/v3.12.0/V312-30_signoff_report.md` 含 6 项 gate 命令的实际输出 + reviewer 名单 + evidence_hash（**重新计算**）+ sha256。
 **禁止关闭条件**: (a) 不允许"openspec 标 done"、"报告标题写已完成"、"PR 已合并"作为关闭证据；(b) 不允许用 baseline evidence_hash 顶替关闭时重算的 hash；(c) 2 pre-existing FAIL/errors 在 mysql-server / storage 若仍未修，V312-30 必须显式列在豁免清单（带 owner + expiry）。
+
+## V312-47：PARTIAL 功能整改总控
+
+**优先级**: P0
+**Gitea Issue**: #4220
+**目标**: README 中属于 v3.12 初始生产边界的 `PARTIAL` 功能不得悬空。
+**范围**: TPC-H、SF=10/bulk-load、Sysbench、wire/prepared/TLS/compression、WAL/recovery/backup/upgrade、SQLLogicTest、coverage、GMP vector、GMP compliance、Window/GIS/JSON scope。
+**验收**: `PARTIAL_FEATURE_REMEDIATION_ISSUE_PLAN.md` 存在；README 每个 `PARTIAL` 都绑定 issue 或降级为 `DEFERRED` / `UNSUPPORTED`；#3887 同步状态。
+
+## V312-48：TPC-H SF=1 correctness 收口
+
+**优先级**: P0
+**Gitea Issue**: #4221
+**目标**: 把 SF=1 从 22/22 可运行推进到 row-count + canonical SHA256 correctness。
+**验收**: 22 query 至少一个外部 oracle 对比；8 个 zero-row query 有逐项证据；README 不再保留悬空 PARTIAL。
+
+## V312-49：Crash recovery / backup-restore / upgrade-downgrade 生产硬化
+
+**优先级**: P0
+**Gitea Issue**: #4222
+**目标**: 关闭 V312-14 中 28/31 后剩余的 3 个 recovery/backup drift 失败。
+**验收**: uncommitted tx 不被 replay；incomplete transaction marker 被检测；backup/restore API drift 修复；upgrade/rollback fixture 有 count/hash 证据。
+
+## V312-50：MySQL wire/TLS/compression 与 Prepared Statement 收口
+
+**优先级**: P0
+**Gitea Issue**: #4223
+**目标**: 把 wire smoke 证据提升为可声明的受控生产边界，并关联 #4211 prepared statement 缺口。
+**验收**: COM_QUERY、COM_STMT、error/reset、TLS/compression 均有当前 HEAD 实跑证据；sysbench prepared-statement path 修复或显式延期。
+
+## V312-51：SQLLogicTest selected corpus / SQLite official corpus RC-GA 扩展
+
+**优先级**: P0
+**Gitea Issue**: #4224
+**目标**: 在 25/25 smoke gate 之外定义 RC/GA selected corpus 与 official/cached corpus 边界。
+**验收**: selected corpus manifest、hash、file count、PASS/FAIL/SKIP 分类和 issue-linked exclusions 完整；README 修正旧 16/22 口径。
+
+## V312-52：GMP vector/retrieval quality 与 index rebuild 生产门禁
+
+**优先级**: P0
+**Gitea Issue**: #4225
+**目标**: 让内部向量检索满足 GMP 受控生产边界，而不是通用向量数据库声明。
+**验收**: top-k fixture 确定；index rebuild 前后 count/hash/top-k 稳定；dimension/hash/empty-index fail-closed。
+
+## V312-53：GMP compliance/access-control production gate
+
+**优先级**: P0
+**Gitea Issue**: #4226
+**目标**: 把 GMP compliance controls 从矩阵和单点报告提升为 import/search/export/review/backup/restore 全链路 gate。
+**验收**: audit hash chain 覆盖生产操作；SQL/vector/graph/GMP retrieval ACL 正反例测试；tamper tests fail closed。
+
+## V312-54：Window/GIS/JSON scope decision
+
+**优先级**: P1
+**Gitea Issue**: #4227
+**目标**: 决定 Window/GIS/JSON 是 v3.12 受控交付，还是降级到 3.13/4.0，不允许长期保持无闭环 PARTIAL。
+**验收**: 每类功能有 DONE/DEFERRED/UNSUPPORTED 子集；进入 3.12 的子集必须有 SQL corpus 正反例和错误边界。
+
+## V312-56：系列教学能力增强
+
+**优先级**: P0 (总控 + 56A/56C/56D/56H), P1 (56B/56E/56F/56G)
+**Gitea Issues**: #4250 (总控), #4251 (56A), #4252 (56B), #4253 (56C), #4254 (56D), #4255 (56E), #4256 (56F), #4257 (56G), #4258 (56H)
+**目标**: 为 SQLRustGo v3.12.0 增加教学 corpus 和 teaching fixtures，涵盖 metadata、SQL teaching、transaction/crash recovery、prepared statement、optimizer EXPLAIN、VIEW/CTE/MERGE disposition 和 Partition/FullText disposition。
+**范围**:
+- V312-56 总控 (#4250): 4.0 前功能整改与 MySQL 教学能力补强总控 — orchestrates 56A~56H
+- V312-56A (#4251): Metadata/SHOW/information_schema 教学与兼容闭环 — SHOW INDEX/SHOW COLUMNS 实现增强
+- V312-56B (#4252): SQL 教学 corpus 与多 oracle 对比 — 创建 `teaching_sql_v3_12/` 目录和 manifest.yml
+- V312-56C (#4253): Transaction/crash recovery 教学实验 — 教学实验文档
+- V312-56D (#4254): Prepared statement 与 wire protocol 教学实验 — teaching fixtures
+- V312-56E (#4255): Optimizer/EXPLAIN 教学实验 — 5 个 EXPLAIN fixtures
+- V312-56F (#4256): VIEW/CTE/MERGE disposition 与门禁 — 状态明确化
+- V312-56G (#4257): Partition/FullText disposition 与 GMP keyword retrieval 决策 — UNSUPPORTED/DEFERRED
+- V312-56H (#4258): Beta gate、文档和 release evidence 集成 — evidence bundle 和文档一致性
+**验收**:
+- `teaching_sql_v3_12/` 目录包含 28+ SQL fixtures
+- manifest.yml 定义 oracle、expected、owner、stage
+- Beta gate 能验证 V312-56A~56D 的完成/降级状态 (B6_V312_56_TEACHING_CORPUS + B6_V312_56_EXPLAIN_FIXTURES)
+- Evidence bundle 包含 branch、commit、PR、merge commit、command、exit code、output、hash
+- `STAGE.yaml` promotion_to_BETA_requires 包含 V312-56A~56D
+- `V312-56-VERIFICATION.md` 归档所有命令、exit code、输出摘要和 evidence hash
 
 ## 附录：英文原文
 

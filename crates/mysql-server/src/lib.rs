@@ -3159,7 +3159,7 @@ fn infer_param_types_from_sql<S: StorageEngine>(sql: &str, storage: &Arc<RwLock<
                         .columns
                         .iter()
                         .find(|c| c.name.eq_ignore_ascii_case(col_name))
-                        .map(|c| col_type_from_string(&c.data_type))
+                        .map(|c| param_bind_type_from_string(&c.data_type))
                         .unwrap_or(col_type::VARSTRING);
                     types.push(col_type_byte);
                 }
@@ -3170,6 +3170,55 @@ fn infer_param_types_from_sql<S: StorageEngine>(sql: &str, storage: &Arc<RwLock<
         }
     }
     vec![col_type::VARSTRING; param_count]
+}
+
+/// Map a SQL column type (e.g. "INTEGER", "CHAR(120)") to the MySQL
+/// binary-protocol type code that clients will encode parameter values
+/// as when binding via libmysqlclient.
+///
+/// This is similar to [`col_type_from_string`] but for the
+/// *parameter bind* wire format: when sysbench (libmysqlclient) binds
+/// `MYSQL_TYPE_LONG`, it actually sends **8 bytes** LE on the wire so
+/// that Lua's double-precision numbers round-trip safely. We therefore
+/// advertise `LONGLONG` (8 bytes) for INTEGER/INT so that subsequent
+/// re-executes with `new_params_bound_flag = 0` (which rely on the
+/// cached types from PREPARE) line up with the actual byte layout.
+///
+/// Result-column metadata continues to use [`col_type_from_string`]
+/// (LONG = 4 bytes for INT) so the Rust mysql crate's wire_decode
+/// for INT result columns is unchanged.
+fn param_bind_type_from_string(t: &str) -> u8 {
+    let u = t.to_uppercase();
+    if u.contains("DATETIME") || u.contains("TIMESTAMP") {
+        col_type::DATETIME
+    } else if u.contains("DATE") {
+        col_type::DATE
+    } else if u.contains("TIME") {
+        col_type::TIME
+    } else if u.contains("VARCHAR") {
+        col_type::VARCHAR
+    } else if u.contains("CHAR") || u.contains("TEXT") {
+        col_type::VARSTRING
+    } else if u.contains("INT") || u.contains("INTEGER") {
+        // Promote INT/INTEGER to LONGLONG (8 bytes) so libmysqlclient's
+        // MYSQL_TYPE_LONG wire encoding (which is 8 bytes LE) decodes
+        // correctly on subsequent COM_STMT_EXECUTE calls.
+        col_type::LONGLONG
+    } else if u.contains("BIGINT") {
+        col_type::LONGLONG
+    } else if u.contains("MEDIUMINT") {
+        col_type::INT24
+    } else if u.contains("SMALLINT") {
+        col_type::SHORT
+    } else if u.contains("TINYINT") {
+        col_type::TINY
+    } else if u.contains("FLOAT") {
+        col_type::FLOAT
+    } else if u.contains("DOUBLE") {
+        col_type::DOUBLE
+    } else {
+        col_type::VARSTRING
+    }
 }
 
 /// A single parameter value ready for `replace_placeholders`.
@@ -3560,6 +3609,7 @@ fn is_numeric_type(type_code: u8) -> bool {
 
 fn extract_table_name(sql: &str) -> Option<String> {
     let u = sql.trim().to_uppercase();
+    // SELECT <cols> FROM <table> [WHERE ...]
     if let Some(rest) = u.strip_prefix("SELECT") {
         if let Some(from_pos) = rest.find("FROM") {
             let after_from = rest[from_pos + 4..].trim();
@@ -3576,6 +3626,91 @@ fn extract_table_name(sql: &str) -> Option<String> {
                 return Some(orig_from[..orig_end].trim().to_string());
             }
         }
+        return None;
+    }
+    // INSERT INTO <table> [(cols)] VALUES (...)
+    if let Some(rest) = u.strip_prefix("INSERT") {
+        // Find the keyword boundary after INSERT (skip whitespace).
+        let after_insert = rest.trim_start();
+        let kw = after_insert
+            .split_whitespace()
+            .next()
+            .unwrap_or("")
+            .trim_end_matches(';');
+        if kw == "INTO" || kw.starts_with("INTO") {
+            let body = after_insert[kw.len()..].trim_start();
+            let table_end = body
+                .find(|c: char| c.is_whitespace() || c == '(' || c == ';' || c == ',')
+                .unwrap_or(body.len());
+            let table = body[..table_end].trim().trim_matches('`').trim_matches('"');
+            if !table.is_empty() {
+                // Mirror back to the original-case SQL.
+                let orig_kw_end = sql.to_uppercase().find("INTO").unwrap() + 4;
+                let orig_body = sql[orig_kw_end..].trim_start();
+                let orig_end = orig_body
+                    .find(|c: char| c.is_whitespace() || c == '(' || c == ';' || c == ',')
+                    .unwrap_or(orig_body.len());
+                let orig_table = orig_body[..orig_end]
+                    .trim()
+                    .trim_matches('`')
+                    .trim_matches('"');
+                if !orig_table.is_empty() {
+                    return Some(orig_table.to_string());
+                }
+            }
+        }
+        return None;
+    }
+    // UPDATE <table> SET ...
+    if let Some(rest) = u.strip_prefix("UPDATE") {
+        let body = rest.trim_start();
+        let table_end = body
+            .find(|c: char| c.is_whitespace() || c == ';' || c == ',')
+            .unwrap_or(body.len());
+        let table = body[..table_end].trim().trim_matches('`').trim_matches('"');
+        if !table.is_empty() {
+            let orig_after = sql.to_uppercase().find("UPDATE").unwrap() + 6;
+            let orig_body = sql[orig_after..].trim_start();
+            let orig_end = orig_body
+                .find(|c: char| c.is_whitespace() || c == ';' || c == ',')
+                .unwrap_or(orig_body.len());
+            let orig_table = orig_body[..orig_end]
+                .trim()
+                .trim_matches('`')
+                .trim_matches('"');
+            if !orig_table.is_empty() {
+                return Some(orig_table.to_string());
+            }
+        }
+        return None;
+    }
+    // DELETE FROM <table> [WHERE ...]
+    if let Some(rest) = u.strip_prefix("DELETE") {
+        if let Some(from_pos) = rest.find("FROM") {
+            let after_from = rest[from_pos + 4..].trim();
+            let table_end = after_from
+                .find(|c: char| c.is_whitespace() || c == ';' || c == ',')
+                .unwrap_or(after_from.len());
+            let table = after_from[..table_end]
+                .trim()
+                .trim_matches('`')
+                .trim_matches('"');
+            if !table.is_empty() {
+                let orig_after = sql.to_uppercase().find("FROM").unwrap();
+                let orig_from = sql[orig_after + 4..].trim();
+                let orig_end = orig_from
+                    .find(|c: char| c.is_whitespace() || c == ';' || c == ',')
+                    .unwrap_or(orig_from.len());
+                let orig_table = orig_from[..orig_end]
+                    .trim()
+                    .trim_matches('`')
+                    .trim_matches('"');
+                if !orig_table.is_empty() {
+                    return Some(orig_table.to_string());
+                }
+            }
+        }
+        return None;
     }
     None
 }
@@ -3679,6 +3814,8 @@ fn statement_kind(parsed: &Result<Statement, String>) -> &'static str {
             Statement::AlterUser(_) => "ALTER_USER",
             Statement::Call(_) => "CALL",
             Statement::CreateProcedure(_) => "CREATE_PROCEDURE",
+            // V312-55A / Issue #4238: add DROP PROCEDURE to the metric label.
+            Statement::DropProcedure(_) => "DROP_PROCEDURE",
             Statement::Union(_) => "UNION",
             Statement::CreateTrigger(_) => "CREATE_TRIGGER",
             Statement::Intersect(_) => "INTERSECT",
@@ -3701,6 +3838,8 @@ fn statement_kind(parsed: &Result<Statement, String>) -> &'static str {
             Statement::Prepare { .. }
             | Statement::Execute { .. }
             | Statement::Deallocate { .. } => "PREPARED_STMT",
+            // Round-21 / Issue #4218: KILL admin statement.
+            Statement::Kill { .. } => "KILL",
         },
     }
 }
@@ -3857,6 +3996,13 @@ fn handle_load_local_infile<S: Read + Write>(
     _delim: char,
     data_dir: std::path::PathBuf,
     bulk_buf_size: usize,
+    // Round-21 / Issue #4217: chunk size for `bulk_insert` flushes.
+    // Replaces the hard-coded `PERIODIC_FLUSH_ROWS = 100` so that
+    // large tables (e.g. TPC-H SF=10 lineitem with 6M rows) can
+    // accumulate more rows per flush instead of paying the
+    // write-lock + Vec allocation cost on every 100 rows.
+    // 0 means "disable periodic flush, only flush when buf drains".
+    rows_per_flush: usize,
     seq: &mut u8,
     _cap: u32,
 ) -> MySqlResult<u64> {
@@ -3973,7 +4119,14 @@ fn handle_load_local_infile<S: Read + Write>(
         // is fully drained, and bulk_insert on the entire pending
         // set blocks the accept loop long enough that the client
         // times out.
-        const PERIODIC_FLUSH_ROWS: usize = 100;
+        //
+        // Round-21 / Issue #4217: chunk size is now configurable via
+        // `rows_per_flush` (default 10_000, was hard-coded 100). The
+        // 100-row default made a 6M-row lineitem SF=10 load take ~60K
+        // `bulk_insert_records` calls; 10_000-row chunks cut that to
+        // ~600 calls and raise throughput dramatically. Setting to 0
+        // disables the periodic flush (legacy V312-32 behavior).
+        let periodic_threshold = rows_per_flush;
         if buf.is_empty() && pending_rows.len() > last_flush_kept_rows {
             let pending = std::mem::take(&mut pending_rows);
             last_flush_kept_rows = 0;
@@ -3997,8 +4150,8 @@ fn handle_load_local_infile<S: Read + Write>(
             let n = bulk_insert(engine, table, pending)
                 .map_err(|e| MySqlError::Other(format!("bulk_insert: {}", e)))?;
             total_rows += n;
-        } else if pending_rows.len() >= PERIODIC_FLUSH_ROWS {
-            // Periodic flush: every PERIODIC_FLUSH_ROWS rows, flush
+        } else if periodic_threshold > 0 && pending_rows.len() >= periodic_threshold {
+            // Periodic flush: every `rows_per_flush` rows, flush
             // even if buf is non-empty. The remaining bytes in buf
             // are a partial line that will complete in a later
             // packet.
@@ -4165,6 +4318,12 @@ fn do_command_loop<S: Read + Write + DrainWrites>(
                         .unwrap_or_else(|| data_dir.clone());
                     let data_dir = load_infile_dir;
                     let bulk_buf = config.bulk_insert_buffer_size;
+                    // Round-21 / Issue #4217: per-handle chunk size
+                    // for LOAD DATA bulk_insert flushes. Default
+                    // 10_000 (raises the previous hard-coded 100 to
+                    // dramatically reduce write-lock acquisitions
+                    // on large tables like TPC-H SF=10 lineitem).
+                    let rows_per_flush = config.bulk_insert_rows_per_flush;
                     // G13-OLTP-1: poisoning recovery on the engine
                     // write lock. A previous LOAD DATA may have
                     // panicked mid-insert (e.g. parse_tbl_line on
@@ -4181,6 +4340,7 @@ fn do_command_loop<S: Read + Write + DrainWrites>(
                         delim,
                         data_dir,
                         bulk_buf,
+                        rows_per_flush,
                         &mut seq,
                         cap,
                     ) {
@@ -4531,6 +4691,11 @@ fn do_command_loop<S: Read + Write + DrainWrites>(
                         write_lenenc_string(&mut param_def, b"").unwrap();
                         write_lenenc_string(&mut param_def, b"?").unwrap();
                         write_lenenc_string(&mut param_def, b"?").unwrap();
+                        // length_of_fixed_fields (lenenc_int): always 0x0c = 12 bytes of
+                        // fixed-size metadata follow (matches write_column_def format).
+                        // Without this byte, libmysqlclient (used by sysbench) misparses
+                        // the entire packet and returns "Unknown or undefined error code".
+                        write_lenenc_int(&mut param_def, 12).unwrap();
                         // MySQL column/param fixed-size fields: charset_collation (2 bytes)
                         // → length (4 bytes) → field_type (1 byte) → flags (2 bytes)
                         // → decimals (1 byte) → filler (2 bytes)
@@ -5070,10 +5235,19 @@ pub fn run_server_v2(
         .ok()
         .filter(|s| !s.is_empty())
         .map(std::path::PathBuf::from);
+    // Round-21 / Issue #4217: read the per-server
+    // `bulk_insert_rows_per_flush` from env so CLI plumbing (in
+    // main.rs) doesn't have to widen `run_server_v2`'s signature.
+    // When unset (or unparseable), fall back to the default 10_000.
+    let bulk_insert_rows_per_flush = std::env::var("SQLRUSTGO_BULK_INSERT_ROWS_PER_FLUSH")
+        .ok()
+        .and_then(|s| s.parse::<usize>().ok())
+        .unwrap_or(10_000);
     let cfg = EphemeralConfig {
         data_dir: Some(std::path::PathBuf::from(data_dir)),
         load_infile_dir,
         server_threads,
+        bulk_insert_rows_per_flush,
         ..Default::default()
     };
 
@@ -6665,6 +6839,15 @@ pub mod testing {
         /// LOAD DATA LOCAL INFILE. Default 1 MB. Tests / perf benches
         /// can set higher (e.g. 16 MB) for fewer INSERT round-trips.
         pub bulk_insert_buffer_size: usize,
+        /// Round-21 / Issue #4217: number of rows per
+        /// `bulk_insert_records` flush during LOAD DATA LOCAL INFILE.
+        /// Default 10_000 (raises the previous hard-coded 100-row
+        /// constant so large tables like TPC-H SF=10 lineitem can
+        /// avoid paying write-lock + Vec allocation cost on every
+        /// 100 rows). Setting to 0 disables the periodic flush and
+        /// falls back to "flush only when the per-packet byte buffer
+        /// fully drains" (V312-32 legacy behavior).
+        pub bulk_insert_rows_per_flush: usize,
         /// Maximum concurrent connection-handler worker threads.
         /// 0 = legacy unbounded `thread::spawn` (backwards compatible).
         /// 1..=80 = bounded `ServerThreadPool` with N workers +
@@ -6713,6 +6896,7 @@ pub mod testing {
                 load_infile_dir: None,
                 bootstrap_sql: Vec::new(),
                 bulk_insert_buffer_size: 1_048_576,
+                bulk_insert_rows_per_flush: 10_000,
                 server_threads: 16,
                 storage: None,
                 port: None,
@@ -7129,6 +7313,7 @@ pub mod testing {
                     bootstrap_tables: true,
                     bootstrap_sql: Vec::new(),
                     bulk_insert_buffer_size: 1_048_576,
+                    bulk_insert_rows_per_flush: 10_000,
                     server_threads: 2,
                     storage: None,
                     data_dir: None,
@@ -7246,6 +7431,7 @@ pub mod testing {
                 data_dir: None,
                 bootstrap_sql: vec!["CREATE TABLE t (id INT)".to_string()],
                 bulk_insert_buffer_size: 4096,
+                bulk_insert_rows_per_flush: 10_000,
                 server_threads: 2,
                 storage: Some("binary".to_string()),
                 port: Some(0),

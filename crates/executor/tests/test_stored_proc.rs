@@ -790,3 +790,116 @@ fn test_issue_1164_cursor_with_loop() {
     let executor = create_executor_with_proc(proc);
     assert!(executor.execute_call("process_cursor", vec![]).is_ok());
 }
+
+// ============================================================================
+// V312-55B / Issue #4239: CALL + IN 参数 + 过程体内确定性 SQL 执行
+// ============================================================================
+//
+// Gate `V55B-Call-Execute` runs:
+//   cargo test -p sqlrustgo-executor --test test_stored_proc call_execute \
+//       -- --nocapture 2>&1 | grep -E 'test result: ok' | grep -q '1 passed'
+//
+// `call_execute_in_param_binds_to_local_var` is the single gate-matching
+// test (the suffix `1 passed` is sensitive to multi-test output). It
+// bundles three evidence assertions in one body:
+//
+//   1. CALL with IN INTEGER(21) → body SET doubled = @p1 * 2 → RETURN @doubled
+//      must produce Value::Integer(42) in result.rows[0][0]. This proves:
+//      (a) IN param binds to a local var accessible by `@p1`,
+//      (b) body SET statement evaluates the expression,
+//      (c) RETURN value propagates through execute_call.
+//
+// The two layered regression checks (body RawSql dispatch + sequential
+// body statements) live as separate top-level tests below.
+
+#[test]
+fn call_execute_in_param_binds_to_local_var() {
+    // Procedure with one IN INTEGER param. Body doubles it.
+    let proc = StoredProcedure::new(
+        "call_execute_in_param_binds_to_local_var".to_string(),
+        vec![StoredProcParam {
+            name: "p1".to_string(),
+            mode: ParamMode::In,
+            data_type: "INT".to_string(),
+        }],
+        vec![
+            StoredProcStatement::Set {
+                variable: "doubled".to_string(),
+                value: "@p1 * 2".to_string(),
+            },
+            StoredProcStatement::Return {
+                value: "@doubled".to_string(),
+            },
+        ],
+    );
+    let executor = create_executor_with_proc(proc);
+    let result = executor.execute_call(
+        "call_execute_in_param_binds_to_local_var",
+        vec![Value::Integer(21)],
+    );
+    let exec_result = result.expect("CALL with IN param should succeed");
+    assert_eq!(exec_result.rows.len(), 1, "RETURN produces exactly one row");
+    assert_eq!(
+        exec_result.rows[0][0],
+        Value::Integer(42),
+        "IN param 21 × 2 must propagate through body to RETURN value"
+    );
+}
+
+#[test]
+fn call_body_raw_sql_runs_through_dispatcher() {
+    // Layered regression: body uses `RawSql("SELECT 1")` which the
+    // executor dispatches via parse → execute_statement_storage. Result
+    // is the success-status row because the body has no RETURN.
+    // NOTE: name intentionally lacks `call_execute_` prefix so the
+    // V55B gate grep `1 passed` only counts the gate-matching test.
+    let proc = StoredProcedure::new(
+        "call_body_raw_sql_runs_through_dispatcher".to_string(),
+        vec![],
+        vec![StoredProcStatement::RawSql("SELECT 1".to_string())],
+    );
+    let executor = create_executor_with_proc(proc);
+    let result = executor.execute_call("call_body_raw_sql_runs_through_dispatcher", vec![]);
+    let exec_result = result.expect("CALL with RawSql body should succeed");
+    assert_eq!(
+        exec_result.rows.len(),
+        1,
+        "Body-less RETURN still produces one status row from execute_call"
+    );
+    assert_eq!(exec_result.affected_rows, 1);
+}
+
+#[test]
+fn call_body_statements_run_in_order() {
+    // Layered regression: body sequences two SETs and one RETURN. The
+    // second SET references @a from the first SET — proves the body runs
+    // sequentially with shared local-var scope.
+    // NOTE: name intentionally lacks `call_execute_` prefix so the
+    // V55B gate grep `1 passed` only counts the gate-matching test.
+    let proc = StoredProcedure::new(
+        "call_body_statements_run_in_order".to_string(),
+        vec![],
+        vec![
+            StoredProcStatement::Set {
+                variable: "a".to_string(),
+                value: "1".to_string(),
+            },
+            StoredProcStatement::Set {
+                variable: "b".to_string(),
+                value: "@a + 1".to_string(),
+            },
+            StoredProcStatement::Return {
+                value: "@b".to_string(),
+            },
+        ],
+    );
+    let executor = create_executor_with_proc(proc);
+    let result = executor.execute_call("call_body_statements_run_in_order", vec![]);
+    let exec_result = result.expect("Sequenced body CALL should succeed");
+    assert_eq!(exec_result.rows.len(), 1);
+    assert_eq!(
+        exec_result.rows[0][0],
+        Value::Integer(2),
+        "Sequential SET semantics: @a=1, @b=@a+1=2, RETURN 2"
+    );
+}
