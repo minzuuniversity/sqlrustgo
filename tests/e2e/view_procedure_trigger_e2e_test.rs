@@ -188,9 +188,7 @@ fn trigger_dml_lit_assignment_persists() {
         .expect("CREATE TABLE t must succeed");
 
     engine
-        .execute(
-            "CREATE TRIGGER t_bi BEFORE INSERT ON t FOR EACH ROW BEGIN SET NEW.val = 42; END",
-        )
+        .execute("CREATE TRIGGER t_bi BEFORE INSERT ON t FOR EACH ROW BEGIN SET NEW.val = 42; END")
         .expect("CREATE TRIGGER BEFORE INSERT must succeed");
 
     engine
@@ -230,9 +228,9 @@ fn trigger_before_insert_invalid_old_ref_fails_closed() {
         )
         .expect("CREATE TRIGGER with OLD.col ref in INSERT body must parse and register (fail closed at evaluate time)");
 
-    engine
-        .execute("INSERT INTO t VALUES (1, 'orig')")
-        .expect("INSERT INTO t must succeed even when trigger body has illegal OLD.col — must fail closed");
+    engine.execute("INSERT INTO t VALUES (1, 'orig')").expect(
+        "INSERT INTO t must succeed even when trigger body has illegal OLD.col — must fail closed",
+    );
 
     let r = engine
         .execute("SELECT val FROM t WHERE id = 1")

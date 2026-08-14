@@ -795,10 +795,8 @@ fn like_match(pattern: &str, haystack: &str) -> bool {
     }
     // Trailing literal
     let last = segments.last().copied().unwrap_or("");
-    if !last.is_empty() {
-        if !haystack.ends_with(last) {
-            return false;
-        }
+    if !last.is_empty() && !haystack.ends_with(last) {
+        return false;
     }
     // Middle segments must appear in order
     for seg in &segments[1..segments.len().saturating_sub(1)] {
@@ -885,4 +883,3 @@ fn wildcard_match(s: &str, pattern: &str) -> bool {
     }
     true
 }
-

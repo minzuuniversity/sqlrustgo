@@ -206,7 +206,10 @@ mod tests {
         // 1) Add procedure — original casing preserved.
         catalog.add_stored_procedure(dummy_proc("MyProc"))?;
         assert!(catalog.has_stored_procedure("MyProc"));
-        assert_eq!(catalog.get_stored_procedure("MyProc").unwrap().name, "MyProc");
+        assert_eq!(
+            catalog.get_stored_procedure("MyProc").unwrap().name,
+            "MyProc"
+        );
         assert_eq!(catalog.stored_procedure_count(), 1);
 
         // 2) Duplicate detection uses case-insensitive name.

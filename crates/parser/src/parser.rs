@@ -2765,7 +2765,10 @@ impl Parser {
             Some(t) => return Err(format!("Expected procedure name, got {:?}", t)),
             None => return Err("Expected procedure name".to_string()),
         };
-        Ok(Statement::DropProcedure(DropProcedureStatement { name, if_exists }))
+        Ok(Statement::DropProcedure(DropProcedureStatement {
+            name,
+            if_exists,
+        }))
     }
 
     /// Parse stored procedure body statements until a terminator token
