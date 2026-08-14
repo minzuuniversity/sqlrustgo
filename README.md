@@ -151,7 +151,8 @@ Hybrid retrieval / Vector retrieval / SQL-backed graph projection / RAG evidence
 | Internal Vector Retrieval — dimension drift / empty index / model-name fail-closed | N/A | DEFERRED → v3.13 | `upsert_embedding` 不校验 dimension；`vector_search` 对空索引返回 `Ok(vec![])` 而非错误；Issue #4237 to open |
 | SQL-backed Graph Projection | N/A | DONE / 受控 | BFS 子图、EvidenceBundle、GraphStats；不宣称通用图数据库 |
 | Row-Level Security / Column Privileges | DONE | DONE / 持续硬化 | v3.11 主路径能力；GMP 权限矩阵仍需 v3.12 生产路径验证 |
-| 存储过程 | UNSUPPORTED | UNSUPPORTED | MySQL compat 明确 `CREATE PROCEDURE` 需要 stored procedure catalog |
+| 存储过程 | DONE / 受控基础功能 | DONE / 受控基础功能 | V312-55 PR [#4259](http://192.168.0.252:3000/openclaw/sqlrustgo/pulls/4259) + [#4262](http://192.168.0.252:3000/openclaw/sqlrustgo/pulls/4262) + [#4264](http://192.168.0.252:3000/openclaw/sqlrustgo/pulls/4264): `CREATE/DROP/SHOW PROCEDURE` + `CALL` + `IN` 参数 + 过程内确定性 SQL 通过 gate, OUT/INOUT/DEFINER/Dynamic SQL 显式 defer v3.13, 证据: [V312-55-VERIFICATION.md](docs/releases/v3.12.0/evidence/procedure_trigger/V312-55-VERIFICATION.md) |
+| 触发器 | DONE / 受控基础功能 | DONE / 受控基础功能 | V312-55 PR [#4262](http://192.168.0.252:3000/openclaw/sqlrustgo/pulls/4262) + [#4264](http://192.168.0.252:3000/openclaw/sqlrustgo/pulls/4264): `BEFORE/AFTER INSERT/UPDATE/DELETE` row trigger + NEW/OLD 上下文 + 事务一致性 + 递归限制 + 权限模型 通过 gate, DEFINER 显式 defer v3.13, 证据: [V312-55-VERIFICATION.md](docs/releases/v3.12.0/evidence/procedure_trigger/V312-55-VERIFICATION.md) |
 | 通用复制 / 分布式 | UNSUPPORTED | UNSUPPORTED | 不作为 v3.12 当前目标 |
 | 完整 MySQL 5.7 替代 | PARTIAL | OPEN / 非当前声明 | 需要 SQLLogicTest、TPC-H correctness、wire、LOAD DATA、recovery、upgrade 等全部闭环；[#4220](http://192.168.0.252:3000/openclaw/sqlrustgo/issues/4220) 要求 README 不得把悬空 PARTIAL 当生产能力 |
 | 通用向量数据库 / 图数据库 | UNSUPPORTED | DEFERRED | v4.0.0 方向，不是 v3.12 对外声明 |
