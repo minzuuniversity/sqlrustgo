@@ -492,6 +492,33 @@ pub struct TriggerInfo {
     pub body: String,
 }
 
+/// View definition (Round-21 / Issue #4218: API surface restoration).
+///
+/// Mirrors the [CreateViewStatement] parser AST (`name`, `columns`, `query`)
+/// but lives in `storage` so storage backends can persist views without
+/// pulling in the parser crate. The `query` is stored as a string of the
+/// original SQL (sufficient for read-only view expansion; rewrite/refres
+/// h is out of scope for #4218).
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct ViewInfo {
+    pub name: String,
+    pub columns: Vec<String>,
+    pub query_sql: String,
+}
+
+impl ViewInfo {
+    /// Construct a ViewInfo from a parser CreateViewStatement-like shape.
+    /// Exposed so executors can convert without depending on the parser
+    /// crate's exact path.
+    pub fn new(name: String, columns: Vec<String>, query_sql: String) -> Self {
+        Self {
+            name,
+            columns,
+            query_sql,
+        }
+    }
+}
+
 /// Sequence definition (F-30)
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct SequenceInfo {
@@ -861,6 +888,41 @@ pub trait StorageEngine: Send + Sync {
     /// Check if a view exists
     fn has_view(&self, name: &str) -> bool;
 
+    /// Round-21 / Issue #4218: create a view in this storage backend.
+    /// Default impl returns "not supported" so backends opt in.
+    fn create_view(&mut self, _info: ViewInfo) -> SqlResult<()> {
+        Err(SqlError::ExecutionError(
+            "create_view not supported by this storage engine".to_string(),
+        ))
+    }
+
+    /// Round-21 / Issue #4218: look up a view by name.
+    /// Default impl returns None so backends opt in.
+    fn get_view(&self, _name: &str) -> Option<ViewInfo> {
+        None
+    }
+
+    /// Round-21 / Issue #4218: list all view names.
+    /// Default impl returns empty so backends opt in.
+    fn list_views(&self) -> Vec<String> {
+        Vec::new()
+    }
+
+    /// Round-21 / Issue #4218: set the cancel flag for a connection/thread id.
+    /// Default impl returns "not supported" so backends opt in.
+    fn set_cancel_flag(&mut self, _connection_id: u64) -> SqlResult<()> {
+        Err(SqlError::ExecutionError(
+            "set_cancel_flag not supported by this storage engine".to_string(),
+        ))
+    }
+
+    /// Round-21 / Issue #4218: check whether the cancel flag is set for
+    /// a connection/thread id.
+    /// Default impl returns false so backends opt in.
+    fn check_cancelled(&self, _connection_id: u64) -> bool {
+        false
+    }
+
     /// Begin a transaction, returns a transaction ID
     fn begin_transaction(&mut self) -> SqlResult<u64> {
         Err(SqlError::ExecutionError(
@@ -976,6 +1038,10 @@ pub struct MemoryStorage {
     table_infos: HashMap<String, TableInfo>,
     triggers: HashMap<String, TriggerInfo>,
     views: HashSet<String>,
+    /// Round-21 / Issue #4218: backing store for the create_view/get_view
+    /// StorageEngine trait methods. Kept alongside `views` (which only
+    /// tracks names for has_view) so names and full ViewInfo stay consistent.
+    view_defs: HashMap<String, ViewInfo>,
     /// Sequence definitions (F-30)
     sequences: HashMap<String, SequenceInfo>,
     /// 内存中的数据库集合 (CREATE DATABASE 注册的, in-memory 模式)
@@ -1014,6 +1080,7 @@ impl MemoryStorage {
             table_infos: HashMap::new(),
             triggers: HashMap::new(),
             views: HashSet::new(),
+            view_defs: HashMap::new(),
             sequences: HashMap::new(),
             databases: HashSet::new(),
             current_tx_id: 0,
@@ -1226,6 +1293,7 @@ impl MemoryStorage {
             views: self.views.clone(),
             sequences: self.sequences.clone(),
             databases: self.databases.clone(),
+            view_defs: self.view_defs.clone(),
         }
     }
 
@@ -1238,6 +1306,7 @@ impl MemoryStorage {
         self.views = snapshot.views.clone();
         self.sequences = snapshot.sequences.clone();
         self.databases = snapshot.databases.clone();
+        self.view_defs = snapshot.view_defs.clone();
         Ok(())
     }
 }
@@ -1254,6 +1323,9 @@ pub struct SchemaSnapshot {
     pub views: HashSet<String>,
     pub sequences: HashMap<String, SequenceInfo>,
     pub databases: HashSet<String>,
+    /// Round-21 / Issue #4218: backing store for view definitions; carried
+    /// alongside `views` so views survive snapshot → apply_schema round-trips.
+    pub view_defs: HashMap<String, ViewInfo>,
 }
 
 impl Default for MemoryStorage {
@@ -1638,6 +1710,29 @@ impl StorageEngine for MemoryStorage {
         self.views.contains(name)
     }
 
+    fn create_view(&mut self, info: ViewInfo) -> SqlResult<()> {
+        if self.views.contains(&info.name) {
+            return Err(SqlError::ExecutionError(format!(
+                "View '{}' already exists",
+                info.name
+            )));
+        }
+        let name = info.name.clone();
+        self.view_defs.insert(name.clone(), info);
+        self.views.insert(name);
+        Ok(())
+    }
+
+    fn get_view(&self, name: &str) -> Option<ViewInfo> {
+        self.view_defs.get(name).cloned()
+    }
+
+    fn list_views(&self) -> Vec<String> {
+        let mut names: Vec<String> = self.view_defs.keys().cloned().collect();
+        names.sort();
+        names
+    }
+
     // === Sequence support (F-30) ===
 
     fn create_sequence(&mut self, seq: SequenceInfo) -> SqlResult<()> {
@@ -1917,6 +2012,50 @@ mod tests {
     #[test]
     fn test_storage_engine_trait_exists() {
         fn _check_trait(_engine: &dyn StorageEngine) {}
+    }
+
+    /// Round-21 / Issue #4218: API surface restoration.
+    /// Asserts that StorageEngine trait declares the 5 new methods:
+    ///   create_view / get_view / list_views / set_cancel_flag / check_cancelled.
+    /// Compile-time check via function-pointer coercion — fails to compile
+    /// before #4218.2 lands.
+    #[test]
+    fn test_storage_engine_api_surface_v312_35() {
+        fn _check_create_view<E: StorageEngine>(e: &mut E) {
+            let _f: fn(&mut E, crate::engine::ViewInfo) -> SqlResult<()> = E::create_view;
+        }
+        fn _check_get_view<E: StorageEngine>(e: &E) {
+            let _f: fn(&E, &str) -> Option<crate::engine::ViewInfo> = E::get_view;
+        }
+        fn _check_list_views<E: StorageEngine>(e: &E) {
+            let _f: fn(&E) -> Vec<String> = E::list_views;
+        }
+        fn _check_set_cancel_flag<E: StorageEngine>(e: &mut E) {
+            let _f: fn(&mut E, u64) -> SqlResult<()> = E::set_cancel_flag;
+        }
+        fn _check_check_cancelled<E: StorageEngine>(e: &E) {
+            let _f: fn(&E, u64) -> bool = E::check_cancelled;
+        }
+        let mut storage = MemoryStorage::new();
+        _check_create_view(&mut storage);
+        _check_get_view(&storage);
+        _check_list_views(&storage);
+    }
+
+    /// Round-21 / Issue #4218: API surface defaults — backends that don't
+    /// implement views/cancellation should still satisfy the trait via the
+    /// default impls (Err / None / empty / false).
+    #[test]
+    fn test_storage_engine_api_surface_defaults_v312_35() {
+        let storage = MemoryStorage::new();
+        // Default-impl methods should be callable and return safe defaults.
+        assert!(!storage.has_view("does_not_exist"));
+        let views = StorageEngine::list_views(&storage);
+        assert!(views.is_empty(), "list_views default should be empty");
+        let got = StorageEngine::get_view(&storage, "does_not_exist");
+        assert!(got.is_none(), "get_view default should be None");
+        let cancelled = StorageEngine::check_cancelled(&storage, 1);
+        assert!(!cancelled, "check_cancelled default should be false");
     }
 
     #[test]

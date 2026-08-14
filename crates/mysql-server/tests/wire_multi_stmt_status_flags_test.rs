@@ -40,6 +40,7 @@ fn boot_ephemeral_server() -> (sqlrustgo_mysql_server::testing::EphemeralHandle,
         port: None, // OS picks a free port
         bootstrap_sql: Vec::new(),
         bulk_insert_buffer_size: 1_048_576,
+        bulk_insert_rows_per_flush: 10_000,
         server_threads: 2,
         storage: None,
         data_dir: None,
