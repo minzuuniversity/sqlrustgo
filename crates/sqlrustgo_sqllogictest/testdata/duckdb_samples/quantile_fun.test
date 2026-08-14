@@ -1,6 +1,26 @@
 # name: test/sql/aggregate/quantile_fun.test
 # description: Test pg_sequence function
 # group: [aggregate]
+#
+# V313-followup-2 / Issue #4155: the single-fraction form
+# `quantile_disc(col, frac)` and `quantile_cont(col, frac)` is now
+# implemented in src/engine_select.rs::compute_aggregates and a
+# separate dedicated fixture (quantile_simple.test) exercises the
+# algorithm on a plain INTEGER table. The remaining cases in this
+# fixture require pre-requisites that are outside the scope of #4155:
+#   - the `range` table function and `random()` (Issue #4156+)
+#   - `UNION ALL VALUES` row construction (Issue #4156+)
+#   - `decimal(N,M)` typed cast with `::type` syntax
+#   - `quantile_disc(col, [fracs])` array-form second argument
+#     (requires `Value::Array` enum variant + array-literal parser —
+#     tracked separately, not closed by #4155)
+#   - `PERCENTILE_CONT(frac) WITHIN GROUP (ORDER BY col)` — implemented by
+#     V313-followup-3 / Issue #4156 (see percentile_cont_simple.test)
+#   - `SET debug_force_external` (Issue #4157)
+#   - `SET default_null_order` (Issue #4157)
+#   - `include test/sql/tpch/tpch_setup.test_template` (TPC-H harness)
+# Restoration of these SQL features is tracked in subsequent
+# V313-followup issues.
 
 set variable sf 0.001
 
@@ -16,8 +36,8 @@ include test/sql/tpch/tpch_setup.test_template
 # [V313-15] statement ok  # SQL feature outside V313-15 harness scope (deferred)
 # [V313-15] SELECT quantile_disc(0.1::decimal(4,1), [0.1, 0.5, 0.9]);  # SQL feature outside V313-15 harness scope (deferred)
 
-# [V313-15] statement ok  # SQL feature outside V313-15 harness scope (deferred)
-# [V313-15] SELECT PERCENTILE_CONT(0.5) WITHIN GROUP (ORDER BY "l_extendedprice") FROM lineitem;  # SQL feature outside V313-15 harness scope (deferred)
+# [V313-15] statement ok  # PERCENTILE_CONT WITHIN GROUP implemented by V313-followup-3 / Issue #4156 (see percentile_cont_simple.test); this exact lineitem query needs the TPC-H setup template which is not shipped
+# [V313-15] SELECT PERCENTILE_CONT(0.5) WITHIN GROUP (ORDER BY "l_extendedprice") FROM lineitem;  # PERCENTILE_CONT WITHIN GROUP implemented by V313-followup-3 / Issue #4156 (see percentile_cont_simple.test); this exact lineitem query needs the TPC-H setup template which is not shipped
 
 # [V313-15] statement ok  # SQL feature outside V313-15 harness scope (deferred)
 # [V313-15] SET default_null_order='nulls_first';  # SQL feature outside V313-15 harness scope (deferred)

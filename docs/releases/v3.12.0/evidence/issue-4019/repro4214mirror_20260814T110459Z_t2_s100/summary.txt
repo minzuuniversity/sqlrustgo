@@ -1,0 +1,7 @@
+repro4214mirror summary:
+  HEAD: 9170661f46d42806f578911a761ff9798ab8f240
+  THREADS: 2  TIME_SEC: 10  TABLE_SIZE: 100
+  rc_oltp_write_only_disable: OK
+  rc_oltp_read_write_disable: OK
+  rc_oltp_write_only_auto: FAIL
+  rc_oltp_read_write_auto: FAIL

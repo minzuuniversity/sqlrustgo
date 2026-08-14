@@ -516,7 +516,11 @@ pub fn find_column_index(
     col_name: &str,
     columns: &[sqlrustgo_storage::ColumnDefinition],
 ) -> Option<usize> {
-    // Fast path: exact match.
+    // V313-followup-1 / Issue #4154: case-exact first, fallback
+    // case-insensitive.
+    if let Some(idx) = columns.iter().position(|c| c.name == col_name) {
+        return Some(idx);
+    }
     if let Some(idx) = columns
         .iter()
         .position(|c| c.name.eq_ignore_ascii_case(col_name))
@@ -1093,9 +1097,7 @@ pub fn eval_fn(name: &str, args: &[Value]) -> Value {
         // V312-26 / #4020: MySQL compat — CLIENT_USER() and USER() are
         // sent by some clients during connection setup. Returning the
         // empty user name keeps the wire protocol happy.
-        "USER" | "CURRENT_USER" | "SESSION_USER" | "SYSTEM_USER" => {
-            Value::Text(String::new())
-        }
+        "USER" | "CURRENT_USER" | "SESSION_USER" | "SYSTEM_USER" => Value::Text(String::new()),
         "LOWER" => args
             .first()
             .map(|v| Value::Text(v.to_sql_string().to_lowercase()))

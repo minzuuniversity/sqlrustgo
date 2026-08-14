@@ -16,6 +16,7 @@ fn start_server(
         bootstrap_tables,
         bootstrap_sql: Vec::new(),
         bulk_insert_buffer_size: 1_048_576,
+        bulk_insert_rows_per_flush: 10_000,
         server_threads: 2,
         storage: None,
         data_dir: None,
@@ -24,6 +25,7 @@ fn start_server(
         // missed by the struct-extension propagation. Default None disables
         // the metrics endpoint.
         metrics_port: None,
+        load_infile_dir: None,
     };
     start_ephemeral(config).expect("server starts")
 }

@@ -29,6 +29,7 @@ fn server_with_slow_log(
     let config = EphemeralConfig {
         bootstrap_tables: false,
         server_threads: 2,
+        metrics_port: None,
         ..Default::default()
     }
     .with_slow_query_log(log_path.clone(), threshold_ms);
@@ -46,6 +47,7 @@ fn test_slow_query_log_disabled_by_default() {
     let config = EphemeralConfig {
         bootstrap_tables: false,
         server_threads: 2,
+        metrics_port: None,
         ..Default::default()
     };
     assert!(
@@ -141,6 +143,7 @@ fn test_set_long_query_time_fractional_seconds() {
         bootstrap_tables: false,
         server_threads: 2,
         slow_query_log: Some(Arc::clone(&slow_log)),
+        metrics_port: None,
         ..Default::default()
     };
     let handle = start_ephemeral(config).expect("ephemeral server starts");

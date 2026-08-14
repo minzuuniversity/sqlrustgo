@@ -34,7 +34,20 @@ fn start_server() -> sqlrustgo_mysql_server::testing::EphemeralHandle {
         bootstrap_tables: false,
         bootstrap_sql: Vec::new(),
         bulk_insert_buffer_size: 1_048_576,
-        server_threads: 2,
+        bulk_insert_rows_per_flush: 10_000,
+        load_infile_dir: None,
+        // V312-26/Round-19 fix: bump from 2 → 8 worker threads.
+        // With 12 wire_smoke tests running in parallel, the previous
+        // pool (2 workers + 8-slot buffer) exhausted under backpressure
+        // — `ServerThreadPool::send_timeout` returned `Timeout` after
+        // 200ms and the accept loop silently DROPPED the connection.
+        // Clients reading the COM_STMT_PREPARE response then panicked
+        // with `UnexpectedEof during read_exact`. 8 workers keeps the
+        // channel buffer (n*4 = 32) large enough that no test's
+        // handshake + CREATE/INSERT/PREPARE sequence waits more than
+        // ~50ms for a free slot. Backpressure counter (BACKPRESSURE_COUNT)
+        // still serves as the canary for any future regression.
+        server_threads: 8,
         storage: None,
         slow_query_log: None,
         metrics_port: None,
@@ -485,45 +498,4 @@ fn test_wire_smoke_load_data_sf1() {
         }
     }
     drop(handle);
-
-    /// Test COM_STMT_PREPARE + COM_STMT_EXECUTE with parameterized SELECT.
-    #[test]
-    fn test_wire_smoke_stmt_prepare_execute_param_int() {
-        let handle = start_server();
-        let port = handle.port;
-        let mut conn = connect(port).expect("connected");
-
-        exec_dml(
-            &mut conn,
-            "CREATE TABLE tp (id INT PRIMARY KEY, name VARCHAR(50))",
-        );
-        exec_dml(&mut conn, "INSERT INTO tp VALUES (1, 'Alice')");
-        exec_dml(&mut conn, "INSERT INTO tp VALUES (2, 'Bob')");
-
-        let stmt = conn
-            .prepare("SELECT id, name FROM tp WHERE id = ?")
-            .expect("prepare succeeds");
-        assert_eq!(stmt.param_count, 1);
-        assert_eq!(stmt.column_count, 2);
-
-        let rs = conn
-            .execute_prepared(stmt.id, &["1"])
-            .expect("execute succeeds");
-        match rs {
-            ResultSet::Select { rows, .. } => {
-                assert_eq!(rows.len(), 1);
-                assert_eq!(rows[0][0], "1");
-                assert_eq!(rows[0][1], "Alice");
-            }
-            ResultSet::Ok { affected_rows, .. } => {
-                panic!("expected Select, got OK({})", affected_rows);
-            }
-            ResultSet::Error { error_message, .. } => {
-                panic!("server error: {}", error_message);
-            }
-        }
-
-        conn.close_statement(stmt.id).expect("close succeeds");
-        drop(handle);
-    }
 }

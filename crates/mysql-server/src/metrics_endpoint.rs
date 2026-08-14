@@ -103,7 +103,10 @@ impl MetricsEndpoint {
             .spawn(move || {
                 tracing::info!(
                     "Prometheus /metrics endpoint listening on http://{}/metrics",
-                    listener.local_addr().map(|a| a.to_string()).unwrap_or_default()
+                    listener
+                        .local_addr()
+                        .map(|a| a.to_string())
+                        .unwrap_or_default()
                 );
                 for stream in listener.incoming() {
                     match stream {

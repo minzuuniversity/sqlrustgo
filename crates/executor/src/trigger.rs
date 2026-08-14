@@ -5,6 +5,7 @@
 
 use log::error as log_error;
 use parking_lot::RwLock;
+use sqlrustgo_catalog::auth::UserIdentity;
 use sqlrustgo_parser::parse;
 use sqlrustgo_storage::{
     Record, StorageEngine, TriggerEvent as StorageTriggerEvent, TriggerInfo,
@@ -94,7 +95,70 @@ impl TriggerType {
 /// Trigger executor for running database triggers
 pub struct TriggerExecutor {
     storage: Arc<RwLock<dyn StorageEngine>>,
+    /// V312-55E (Round-27): recursion depth counter shared across all
+    /// nested invocations of `execute_trigger_body`. Every call increments
+    /// the counter on entry and decrements on exit (via RAII guard). If
+    /// the counter exceeds [`MAX_RECURSION_DEPTH`] the executor aborts
+    /// with [`SqlError::TriggerRecursionLimitExceeded`] instead of letting
+    /// the host stack overflow on a self-referential or mutually-recursive
+    /// trigger pair.
+    recursion_depth: Arc<std::sync::atomic::AtomicUsize>,
+    /// V312-55F / Issue #4243: current SQL session user identity. Mirrors
+    /// `ExecutionEngine::current_user`. When the identity's username is
+    /// `"root"`, the trigger body DML privilege check is short-circuited
+    /// (MySQL convention — root@localhost has implicit full privilege).
+    /// Otherwise `auth_check` is consulted for every body DML statement.
+    current_user: UserIdentity,
+    /// V312-55F / Issue #4243: optional privilege-check hook for trigger
+    /// body DML. Receives the current user, the privilege required
+    /// (`Insert`/`Update`/`Delete`), and the target table name. Returns
+    /// `Ok(())` if the user is allowed, `Err(SqlError::PermissionDenied)`
+    /// otherwise. Default is `None` — unit tests that don't wire a
+    /// catalog continue to run trigger body DML unchecked (matches
+    /// pre-V55F behavior). Production callers (ExecutionEngine) wire
+    /// the closure at engine construction time via
+    /// [`TriggerExecutor::set_auth_check`].
+    auth_check: Option<Arc<dyn TriggerBodyAuthCheck>>,
 }
+
+/// V312-55F / Issue #4243: trait alias for the trigger body DML
+/// privilege-check hook. Splitting this out from a bare `Box<dyn Fn>`
+/// keeps the signature self-documenting at every call site.
+pub trait TriggerBodyAuthCheck: Send + Sync {
+    fn check(
+        &self,
+        user: &UserIdentity,
+        privilege: sqlrustgo_catalog::auth::Privilege,
+        table_name: &str,
+    ) -> SqlResult<()>;
+}
+
+impl TriggerExecutor {
+    /// V312-55F / Issue #4243: enforce the trigger body DML privilege
+    /// check. No-op when `auth_check` is `None` (default — keeps unit
+    /// tests in this crate running unchanged). When set, the hook is
+    /// responsible for short-circuiting `root@localhost` (the
+    /// `ExecutionEngine`-provided hook does this before delegating to
+    /// the catalog's `AuthManager`).
+    fn check_body_privilege(
+        &self,
+        privilege: sqlrustgo_catalog::auth::Privilege,
+        table_name: &str,
+    ) -> SqlResult<()> {
+        if let Some(hook) = self.auth_check.as_ref() {
+            hook.check(&self.current_user, privilege, table_name)?;
+        }
+        Ok(())
+    }
+}
+
+/// V312-55E (Round-27): maximum nested trigger firing depth. Beyond this
+/// limit `TriggerExecutor` returns
+/// [`SqlError::TriggerRecursionLimitExceeded`] with the offending trigger
+/// name, current depth, and configured limit. Tuned to 16 — enough headroom
+/// for legitimate nested audit chains (3-4 deep is the realistic maximum in
+/// production schemas) while keeping stack usage bounded.
+pub const MAX_RECURSION_DEPTH: usize = 16;
 
 // P1 FIX (SGL-005): TriggerExecutor storage bypasses wrapped in transaction
 // boundary. When TriggerExecutor executes trigger body DML (INSERT/UPDATE/DELETE),
@@ -114,11 +178,48 @@ impl TriggerExecutor {
                 );
             }
         }
-        Self { storage }
+        Self {
+            storage,
+            recursion_depth: Arc::new(std::sync::atomic::AtomicUsize::new(0)),
+            current_user: UserIdentity::new("root", "localhost"),
+            auth_check: None,
+        }
     }
 
     pub fn storage(&self) -> Arc<RwLock<dyn StorageEngine>> {
         self.storage.clone()
+    }
+
+    /// V312-55F / Issue #4243: switch the trigger executor's view of the
+    /// current SQL session user. Defaults to `root@localhost` (which
+    /// short-circuits `auth_check`). Callers (e.g. `ExecutionEngine`)
+    /// invoke this when the wire session changes user via
+    /// `SET ROLE` / `SET SESSION_USER` style commands.
+    pub fn set_current_user(&mut self, identity: UserIdentity) {
+        self.current_user = identity;
+    }
+
+    /// V312-55F / Issue #4243: returns the current SQL session user.
+    pub fn current_user(&self) -> &UserIdentity {
+        &self.current_user
+    }
+
+    /// V312-55F / Issue #4243: install a privilege-check hook for trigger
+    /// body DML. Once set, every `INSERT` / `UPDATE` / `DELETE` inside a
+    /// trigger body consults the hook before mutating the target table.
+    /// Pass `None` to remove the hook (tests / dev tooling).
+    pub fn set_auth_check(&mut self, hook: Option<Arc<dyn TriggerBodyAuthCheck>>) {
+        self.auth_check = hook;
+    }
+
+    /// V312-55E (Round-27): expose the shared recursion-depth counter so
+    /// integration tests can drive the depth-limit path deterministically.
+    /// Production callers must NOT mutate this directly — the
+    /// [`execute_trigger_body`] RAII guard is the only sanctioned writer.
+    /// The accessor returns the underlying `Arc<AtomicUsize>` so tests
+    /// can keep a handle to the same counter across calls.
+    pub fn recursion_depth_counter(&self) -> Arc<std::sync::atomic::AtomicUsize> {
+        self.recursion_depth.clone()
     }
 
     /// INT-4: single chokepoint for trigger-body DML. Opens a transaction, runs
@@ -242,24 +343,61 @@ impl TriggerExecutor {
     }
 
     /// Execute a single trigger's body
-    fn execute_trigger_body(
+    pub fn execute_trigger_body(
         &self,
         trigger: &TriggerInfo,
         table: &str,
         old_row: Option<&Record>,
         new_row: Option<&Record>,
     ) -> SqlResult<Record> {
+        // V312-55E (Round-27): enforce recursion depth limit BEFORE running
+        // the body so a self-referential or mutually-recursive trigger pair
+        // cannot stack-overflow the host. Increment on entry, decrement on
+        // exit via Drop guard — even if the body returns Err or panics, the
+        // counter is restored. If the post-increment depth exceeds the limit
+        // we abort with structured fields (trigger_name / depth / limit) so
+        // the parent transaction can be rolled back and the user sees an
+        // actionable error instead of a process crash.
+        let prev = self
+            .recursion_depth
+            .fetch_add(1, std::sync::atomic::Ordering::SeqCst);
+        let depth = prev + 1;
+        struct DepthGuard<'a> {
+            counter: &'a std::sync::atomic::AtomicUsize,
+        }
+        impl<'a> Drop for DepthGuard<'a> {
+            fn drop(&mut self) {
+                self.counter
+                    .fetch_sub(1, std::sync::atomic::Ordering::SeqCst);
+            }
+        }
+        let _guard = DepthGuard {
+            counter: &self.recursion_depth,
+        };
+        if depth > MAX_RECURSION_DEPTH {
+            return Err(SqlError::TriggerRecursionLimitExceeded {
+                trigger_name: trigger.name.clone(),
+                depth,
+                limit: MAX_RECURSION_DEPTH,
+            });
+        }
+
         let body = &trigger.body;
-        let result = new_row.map(|r| r.to_vec());
+        // Build a mutable copy of the NEW row so SET NEW.col = ... statements
+        // can mutate it in place. The captured result is what callers see
+        // after the body executes — before this fix, we returned the
+        // pre-execution snapshot and BEFORE INSERT / UPDATE trigger mutations
+        // never reached storage.
+        let mut result: Record = new_row.map(|r| r.to_vec()).unwrap_or_default();
 
         let statements = self.split_body_statements(body);
         for stmt in statements {
             let expanded =
                 self.expand_row_variables_for_parse(&stmt, &trigger.table_name, old_row, new_row);
-            self.execute_trigger_sql(&expanded, table, old_row, new_row)?;
+            self.execute_trigger_sql_mut(&expanded, table, old_row, &mut result)?;
         }
 
-        Ok(result.unwrap_or_default())
+        Ok(result)
     }
 
     /// Split trigger body into individual SQL statements
@@ -406,6 +544,8 @@ impl TriggerExecutor {
     }
 
     /// Execute a SQL statement within a trigger context
+    #[allow(dead_code)] // preserved for API symmetry; the mutating variant below is the
+                        // actively-used path now (V312-55C trigger body mutation propagation).
     fn execute_trigger_sql(
         &self,
         sql: &str,
@@ -438,6 +578,43 @@ impl TriggerExecutor {
         }
     }
 
+    /// Mutating variant of `execute_trigger_sql`. Same dispatch as the
+    /// immutable version, but a `SET NEW.col = ...` statement mutates the
+    /// caller-provided `current_new_row` in place via
+    /// `execute_trigger_set_mut`, so subsequent statements and the final
+    /// returned Record see the mutation. Required for V312-55C
+    /// (Trigger row semantics) — the previous immutable snapshot path
+    /// discarded any SET NEW.col = literal assignment made by the trigger.
+    fn execute_trigger_sql_mut(
+        &self,
+        sql: &str,
+        trigger_table: &str,
+        old_row: Option<&Record>,
+        current_new_row: &mut Record,
+    ) -> SqlResult<()> {
+        let sql_trimmed = sql.trim();
+        if sql_trimmed.is_empty() {
+            return Ok(());
+        }
+
+        let sql_upper = sql_trimmed.to_uppercase();
+
+        if sql_upper.starts_with("INSERT") {
+            self.execute_trigger_insert(sql_trimmed, Some(current_new_row))
+        } else if sql_upper.starts_with("UPDATE") {
+            self.execute_trigger_update(sql_trimmed, trigger_table, Some(current_new_row))
+        } else if sql_upper.starts_with("DELETE") {
+            self.execute_trigger_delete(sql_trimmed, trigger_table, old_row)
+        } else if sql_upper.starts_with("SET") {
+            self.execute_trigger_set_mut(sql_trimmed, trigger_table, current_new_row)?;
+            Ok(())
+        } else if sql_upper.starts_with("SELECT") {
+            self.execute_trigger_select(sql_trimmed, trigger_table, Some(current_new_row))
+        } else {
+            Ok(())
+        }
+    }
+
     /// Execute INSERT within a trigger
     fn execute_trigger_insert(&self, sql: &str, new_row: Option<&Record>) -> SqlResult<()> {
         // P1 FIX (SGL-005): Wrap in transaction boundary for TX-002 compliance
@@ -448,6 +625,9 @@ impl TriggerExecutor {
 
         if let sqlrustgo_parser::Statement::Insert(insert) = statement {
             let table_name = insert.table.clone();
+            // V312-55F / Issue #4243: privilege check before any DML
+            // mutates storage. Root short-circuits inside the hook.
+            self.check_body_privilege(sqlrustgo_catalog::auth::Privilege::Insert, &table_name)?;
             let table_info = {
                 let storage = self.storage.read();
                 storage.get_table_info(&table_name)?
@@ -501,6 +681,9 @@ impl TriggerExecutor {
             }
             let storage = self.storage.read();
             let table_name = &update.tables[0].name;
+            // V312-55F / Issue #4243: privilege check before any DML
+            // mutates storage. Root short-circuits inside the hook.
+            self.check_body_privilege(sqlrustgo_catalog::auth::Privilege::Update, table_name)?;
             let table_info = storage.get_table_info(table_name)?;
             let target_col_names: Vec<String> =
                 table_info.columns.iter().map(|c| c.name.clone()).collect();
@@ -593,6 +776,12 @@ impl TriggerExecutor {
                     "Trigger DELETE only supports single-table form".to_string(),
                 ));
             }
+            // V312-55F / Issue #4243: privilege check before any DML
+            // mutates storage. Root short-circuits inside the hook.
+            self.check_body_privilege(
+                sqlrustgo_catalog::auth::Privilege::Delete,
+                &delete.tables[0].name,
+            )?;
             self.execute_dml_in_tx(|storage| storage.delete(&delete.tables[0].name, &[]))?;
         }
         Ok(())
@@ -640,6 +829,8 @@ impl TriggerExecutor {
     }
 
     /// Execute SET within a trigger (modify NEW row)
+    #[allow(dead_code)] // preserved for API symmetry; the mutating variant below is the
+                        // actively-used path now (V312-55C trigger body mutation propagation).
     fn execute_trigger_set(&self, sql: &str, table_name: &str, new_row: &Record) -> SqlResult<()> {
         if let Some(assignments) = self.parse_simple_set_assignments(sql) {
             let table_info = self.storage.read().get_table_info(table_name)?;
@@ -660,9 +851,48 @@ impl TriggerExecutor {
         Ok(())
     }
 
+    /// Mutating variant of `execute_trigger_set`. Parses SET NEW.col = ...
+    /// assignments and folds them directly into the caller-provided
+    /// `current_new_row` instead of allocating a fresh `updated` vector that
+    /// is then discarded. This is the actual mutation sink that the trigger
+    /// body relies on for `BEFORE INSERT` / `BEFORE UPDATE` SET NEW.col =
+    /// <literal> persistence to storage.
+    fn execute_trigger_set_mut(
+        &self,
+        sql: &str,
+        table_name: &str,
+        current_new_row: &mut Record,
+    ) -> SqlResult<()> {
+        if let Some(assignments) = self.parse_simple_set_assignments(sql) {
+            let table_info = self.storage.read().get_table_info(table_name)?;
+            for (col_name, value) in assignments {
+                if let Some(col_idx) = table_info
+                    .columns
+                    .iter()
+                    .position(|c| c.name.eq_ignore_ascii_case(&col_name))
+                {
+                    if col_idx < current_new_row.len() {
+                        current_new_row[col_idx] = value;
+                    }
+                }
+            }
+        }
+        Ok(())
+    }
+
     /// Expand VALUES(...) in INSERT with NEW.row values
     fn expand_insert_values(&self, sql: &str, new_row: Option<&Record>) -> String {
         if let Some(new) = new_row {
+            // V312-55D FIX (Round-26): DELETE triggers can carry an INSERT statement
+            // in their body (e.g. `BEFORE DELETE ... INSERT INTO backup SELECT *`).
+            // `execute_trigger_sql_mut` forwards `current_new_row` (empty Vec for
+            // DELETE) here as `Some(empty_record)`. The for-loop already handles
+            // an empty vec, but the unconditional `&new[0]` below panicked with
+            // `index out of bounds: the len is 0 but the index is 0`. Guard the
+            // named-placeholder substitution on a non-empty record.
+            if new.is_empty() {
+                return sql.to_string();
+            }
             let mut result = sql.to_string();
             for (i, val) in new.iter().enumerate() {
                 let placeholder = format!("NEW[{}]", i);

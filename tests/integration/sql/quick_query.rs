@@ -19,6 +19,8 @@ fn quick_query_sfid1() {
         data_dir: Some(data_dir.to_path_buf()),
         bootstrap_tables: false,
         bootstrap_users: true,
+        metrics_port: None,
+
         ..Default::default()
     };
 

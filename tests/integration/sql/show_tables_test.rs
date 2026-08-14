@@ -21,6 +21,7 @@ fn clean_client() -> MySqlTestClient {
     MySqlTestClient::connect_with_config(EphemeralConfig {
         bootstrap_tables: false,
         slow_query_log: None,
+        metrics_port: None,
         ..EphemeralConfig::default()
     })
     .expect("ephemeral server (clean catalog) + raw client should come up")
@@ -95,4 +96,98 @@ fn show_tables_after_drop_reflects_drop() {
         !names.contains(&"drop_me"),
         "drop_me should not appear after DROP"
     );
+}
+
+#[test]
+fn show_columns_returns_column_metadata() {
+    let mut client = clean_client();
+    client
+        .exec("CREATE TABLE users (id INTEGER PRIMARY KEY, name TEXT NOT NULL, email TEXT)")
+        .expect("CREATE users table");
+
+    let rows = client
+        .query_rows("SHOW COLUMNS FROM users")
+        .expect("SHOW COLUMNS should succeed");
+
+    assert_eq!(rows.len(), 3, "expected 3 columns, got {:?}", rows.len());
+
+    let fields: Vec<&str> = rows.iter().map(|r| r[0].as_str()).collect();
+    assert!(fields.contains(&"id"));
+    assert!(fields.contains(&"name"));
+    assert!(fields.contains(&"email"));
+}
+
+#[test]
+fn show_columns_with_like_pattern() {
+    let mut client = clean_client();
+    client
+        .exec("CREATE TABLE products (id INTEGER, name TEXT, price FLOAT, description TEXT)")
+        .expect("CREATE products table");
+
+    let rows = client
+        .query_rows("SHOW COLUMNS FROM products LIKE 'name'")
+        .expect("SHOW COLUMNS LIKE should succeed");
+
+    assert_eq!(
+        rows.len(),
+        1,
+        "expected 1 column matching 'name', got {}",
+        rows.len()
+    );
+    assert_eq!(rows[0][0].as_str(), "name");
+}
+
+#[test]
+fn show_columns_nonexistent_table_returns_error() {
+    let mut client = clean_client();
+    let result = client.query_rows("SHOW COLUMNS FROM nonexistent");
+    assert!(
+        result.is_err(),
+        "SHOW COLUMNS for nonexistent table should fail"
+    );
+}
+
+#[test]
+fn show_index_on_table_without_catalog_returns_empty() {
+    let mut client = clean_client();
+    client
+        .exec("CREATE TABLE orders (id INTEGER PRIMARY KEY, user_id INTEGER, total FLOAT)")
+        .expect("CREATE orders table");
+
+    let rows = client
+        .query_rows("SHOW INDEX FROM orders")
+        .expect("SHOW INDEX should succeed");
+
+    assert!(
+        rows.is_empty(),
+        "expected empty (no catalog), got {} rows: {:?}",
+        rows.len(),
+        rows
+    );
+}
+
+#[test]
+fn show_index_nonexistent_table_returns_error() {
+    let mut client = clean_client();
+    let result = client.query_rows("SHOW INDEX FROM nonexistent");
+    assert!(
+        result.is_err(),
+        "SHOW INDEX for nonexistent table should fail"
+    );
+}
+
+#[test]
+fn describe_table_returns_columns() {
+    let mut client = clean_client();
+    client
+        .exec("CREATE TABLE items (id INTEGER PRIMARY KEY, data TEXT)")
+        .expect("CREATE items table");
+
+    let rows = client
+        .query_rows("DESCRIBE items")
+        .expect("DESCRIBE should succeed");
+
+    assert_eq!(rows.len(), 2, "expected 2 columns, got {}", rows.len());
+    assert_eq!(rows[0][0].as_str(), "id");
+    assert_eq!(rows[1][0].as_str(), "data");
 }

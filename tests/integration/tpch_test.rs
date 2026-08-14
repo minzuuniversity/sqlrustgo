@@ -50,12 +50,6 @@ mod tests {
         let result = engine.execute(sql).unwrap();
         let elapsed = start.elapsed();
 
-        println!(
-            "TPC-H Scan Query: {:?} ({} rows)",
-            elapsed,
-            result.rows.len()
-        );
-
         assert!(!result.rows.is_empty(), "Scan should return results");
         assert_eq!(result.rows.len(), 5, "Should have 5 lineitems");
     }

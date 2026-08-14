@@ -80,6 +80,8 @@ pub enum Statement {
     AlterUser(AlterUserStatement),
     Call(CallStatement),
     CreateProcedure(CreateProcedureStatement),
+    /// V312-55A / Issue #4238: DROP PROCEDURE [IF EXISTS] name
+    DropProcedure(DropProcedureStatement),
     Union(UnionStatement),
     CreateTrigger(CreateTriggerStatement),
     /// SQL-92 INTERSECT (V310-06 PR2 / Issue #3723 C-2a).
@@ -121,6 +123,15 @@ pub enum Statement {
     },
     Deallocate {
         name: String,
+    },
+    /// Round-21 / Issue #4218: MySQL `KILL <connection_id>`.
+    /// `connection_id` is the MySQL thread id of the connection to terminate.
+    /// `kill_query` distinguishes `KILL CONNECTION` (default, terminates
+    /// the connection) from `KILL QUERY <id>` (cancels the running query
+    /// only, leaves the connection alive).
+    Kill {
+        connection_id: u64,
+        kill_query: bool,
     },
 }
 
@@ -281,8 +292,23 @@ pub struct CallStatement {
 #[derive(Debug, Clone, PartialEq)]
 pub struct CreateProcedureStatement {
     pub name: String,
+    /// V312-55A / Issue #4238: when true, replace existing procedure
+    /// with the same name (MySQL `CREATE OR REPLACE PROCEDURE` semantics).
+    /// Stored as `false` for the plain `CREATE PROCEDURE` form.
+    pub or_replace: bool,
     pub params: Vec<StoredProcParam>,
     pub body: Vec<StoredProcStatement>,
+}
+
+/// DROP PROCEDURE statement
+///
+/// V312-55A / Issue #4238: completes the Procedure DDL lifecycle so
+/// procedures can be created, listed, and removed. `IF EXISTS` follows
+/// the same shape as DROP TABLE / DROP VIEW.
+#[derive(Debug, Clone, PartialEq)]
+pub struct DropProcedureStatement {
+    pub name: String,
+    pub if_exists: bool,
 }
 
 /// Stored procedure parameter
@@ -492,6 +518,14 @@ pub enum AggregateFunction {
     Avg,
     Min,
     Max,
+    /// V313-followup-2 / Issue #4155: `quantile_disc(col, frac)` —
+    /// discrete-quantile aggregate (DuckDB-compatible signature).
+    QuantileDisc,
+    /// V313-followup-2 / Issue #4155: `quantile_cont(col, frac)` —
+    /// continuous-quantile aggregate with linear interpolation.
+    QuantileCont,
+    /// V313-followup-3 / Issue #4156: ordered-set aggregate.
+    PercentileCont,
 }
 
 /// Join clause
@@ -788,6 +822,17 @@ pub enum ShowStatement {
         table: String,
     },
     Sequences,
+    /// Round-21 / Issue #4218: MySQL `SHOW PROCESSLIST` (and
+    /// `SHOW FULL PROCESSLIST` with the `full` flag).
+    Processlist {
+        full: bool,
+    },
+    /// V312-55A / Issue #4238: MySQL `SHOW PROCEDURE STATUS [LIKE 'pat']`.
+    /// The optional `pattern` is a LIKE-style filter applied at the
+    /// executor; `None` lists every procedure.
+    ProcedureStatus {
+        pattern: Option<String>,
+    },
 }
 
 /// DESCRIBE statement (aliased as DESC)
@@ -923,6 +968,10 @@ pub enum Expression {
     /// `@@sql_mode`, etc. The `String` is the variable name in lower-case.
     /// The executor resolves the name to a scalar value at evaluation time.
     SystemVariable(String),
+    /// Round-21 / Issue #4216: array literal `[expr, expr, ...]`.
+    /// Used by the array-fraction form of ordered-set aggregates
+    /// (e.g. `quantile_disc(col, [0.25, 0.5, 0.75])`).
+    ArrayLiteral(Vec<Expression>),
 }
 
 /// V312-19 #3972: constant-fold an arithmetic expression to a `u64` LIMIT/OFFSET value.
@@ -1945,6 +1994,14 @@ impl Parser {
             Some(Token::Revoke) => self.parse_revoke(),
             Some(Token::Show) => self.parse_show(),
             Some(Token::Describe) | Some(Token::Desc) => self.parse_describe(),
+            // Round-21 / Issue #4218: KILL is parsed as an Identifier
+            // (no dedicated Token::Kill in the lexer), so match by
+            // uppercased ident here.
+            Some(Token::Identifier(ref ident))
+                if matches!(ident.to_uppercase().as_str(), "KILL") =>
+            {
+                self.parse_kill()
+            }
             Some(t) => Err(format!("Unexpected token: {:?}", t)),
             None => Err("Empty input".to_string()),
         }
@@ -2226,10 +2283,7 @@ impl Parser {
         if let Some(Token::Identifier(ref s)) = self.current() {
             let upper = s.to_uppercase();
             if upper == "NAMES" || upper == "CHARACTER" {
-                return Err(format!(
-                    "SET {} is not yet supported",
-                    upper
-                ));
+                return Err(format!("SET {} is not yet supported", upper));
             }
         }
         if matches!(self.current(), Some(Token::Identifier(ref s)) if s.to_lowercase() == "variable")
@@ -2329,7 +2383,17 @@ impl Parser {
                 self.expect(Token::Index)?;
                 self.parse_create_index(true)
             }
-            Some(Token::Procedure) => self.parse_create_procedure(),
+            Some(Token::Procedure) => {
+                // V312-55A / Issue #4238: pass the already-consumed
+                // `OR REPLACE` flag through to parse_create_procedure.
+                let mut stmt = self.parse_create_procedure()?;
+                if or_replace {
+                    if let Statement::CreateProcedure(ref mut cp) = stmt {
+                        cp.or_replace = true;
+                    }
+                }
+                Ok(stmt)
+            }
             Some(Token::Trigger) => self.parse_create_trigger(),
             Some(Token::Role) => self.parse_create_role(),
             Some(Token::View) => self.parse_create_view(),
@@ -2563,6 +2627,13 @@ impl Parser {
     }
 
     fn parse_create_procedure(&mut self) -> Result<Statement, String> {
+        // V312-55A / Issue #4238: CREATE [OR REPLACE] PROCEDURE
+        //
+        // The `OR REPLACE` keyword is consumed by `parse_create` (the
+        // outer CREATE dispatcher) and the flag is patched onto the
+        // resulting `CreateProcedureStatement` after this function
+        // returns. Here we just expect the `PROCEDURE` keyword and
+        // proceed.
         self.expect(Token::Procedure)?;
 
         let name = match self.next() {
@@ -2647,8 +2718,56 @@ impl Parser {
 
         Ok(Statement::CreateProcedure(CreateProcedureStatement {
             name,
+            // OR REPLACE flag is set by the outer parse_create
+            // dispatcher after this returns (consistent with how
+            // CreateTable handles the modifier).
+            or_replace: false,
             params,
             body,
+        }))
+    }
+
+    /// V312-55A / Issue #4238: parse `DROP PROCEDURE [IF EXISTS] name`.
+    ///
+    /// Mirrors the `DROP TABLE`/`DROP VIEW` shape: optional `IF EXISTS`
+    /// between `PROCEDURE` and the procedure name. The caller is
+    /// expected to have already consumed the leading `DROP` keyword.
+    fn parse_drop_procedure(&mut self) -> Result<Statement, String> {
+        self.expect(Token::Procedure)?;
+        let if_exists = if matches!(self.current(), Some(Token::If)) {
+            self.next();
+            match self.current() {
+                Some(Token::Exists) => {
+                    self.next();
+                    true
+                }
+                _ => return Err("Expected 'EXISTS' after 'IF'".to_string()),
+            }
+        } else {
+            false
+        };
+        let name = match self.next() {
+            Some(Token::Identifier(name)) => name,
+            // MySQL allows reserved keywords as procedure names; mirror
+            // the CREATE PROCEDURE keyword fallback list so `DROP
+            // PROCEDURE loop` works the same as `CREATE PROCEDURE loop`.
+            Some(Token::While) => "while".to_string(),
+            Some(Token::Loop) => "loop".to_string(),
+            Some(Token::Repeat) => "repeat".to_string(),
+            Some(Token::Return) => "return".to_string(),
+            Some(Token::Leave) => "leave".to_string(),
+            Some(Token::Iterate) => "iterate".to_string(),
+            Some(Token::Set) => "set".to_string(),
+            Some(Token::Declare) => "declare".to_string(),
+            Some(Token::Call) => "call".to_string(),
+            Some(Token::Out) => "out".to_string(),
+            Some(Token::Increment) => "increment".to_string(),
+            Some(t) => return Err(format!("Expected procedure name, got {:?}", t)),
+            None => return Err("Expected procedure name".to_string()),
+        };
+        Ok(Statement::DropProcedure(DropProcedureStatement {
+            name,
+            if_exists,
         }))
     }
 
@@ -3327,6 +3446,9 @@ impl Parser {
                                 AggregateFunction::Avg => "AVG",
                                 AggregateFunction::Min => "MIN",
                                 AggregateFunction::Max => "MAX",
+                                AggregateFunction::PercentileCont => "PERCENTILE_CONT",
+                                AggregateFunction::QuantileDisc => "QUANTILE_DISC",
+                                AggregateFunction::QuantileCont => "QUANTILE_CONT",
                             };
 
                             let mut partition_by = Vec::new();
@@ -4238,6 +4360,12 @@ impl Parser {
                         expression: Some(expr),
                     });
                 }
+                // V313-followup-5 / Issue #4158: trailing `WITH [NO] DATA`
+                // marker in CREATE TABLE AS SELECT. Break the column-list
+                // loop without consuming; the caller (parse_create_table)
+                // will recognise the WITH token and parse the trailing
+                // materialization clause.
+                Some(Token::With) => break,
                 _ => {
                     return Err("Expected FROM or column name".to_string());
                 }
@@ -4797,6 +4925,10 @@ impl Parser {
             Some(Token::Order) | Some(Token::Limit) | Some(Token::Offset) => {
                 (String::new(), None, Vec::new())
             }
+            // V313-followup-5 / Issue #4158: `WITH [NO] DATA` terminates
+            // a bare SELECT in CREATE TABLE AS SELECT context; caller
+            // (parse_create_table) consumes the trailing token.
+            Some(Token::With) => (String::new(), None, Vec::new()),
             Some(t) => return Err(format!("Expected FROM or end of query, got {:?}", t)),
         };
 
@@ -5259,64 +5391,93 @@ impl Parser {
                 self.next();
                 None
             } else {
-            // V313-10 / Issue #4038: peek whether the LIMIT value is followed
-            // by an arithmetic operator. If it is, parse the full expression
-            // through parse_expression + constant_fold_u64 so that
-            // `LIMIT 2-1` is folded to 1, not silently truncated to 2.
-            let peek_is_arith = matches!(
-                self.tokens.get(self.position + 1),
-                Some(Token::Plus)
-                    | Some(Token::Minus)
-                    | Some(Token::Star)
-                    | Some(Token::Slash)
-                    | Some(Token::Percent)
-            );
-            if peek_is_arith {
-                // Arithmetic expression form: parse full expression.
-                // V313-10 / Issue #4038: emit a classified binder error
-                // when the expression cannot be constant-folded.
-                let saved_pos = self.position;
-                let expr = self.parse_expression()?;
-                match constant_fold_u64(&expr) {
-                    Some(v) => Some(v),
-                    None => {
-                        self.position = saved_pos;
-                        return Err(classify_unfoldable_limit_expr("LIMIT", &expr));
+                // V313-10 / Issue #4038: peek whether the LIMIT value is followed
+                // by an arithmetic operator. If it is, parse the full expression
+                // through parse_expression + constant_fold_u64 so that
+                // `LIMIT 2-1` is folded to 1, not silently truncated to 2.
+                let peek_is_arith = matches!(
+                    self.tokens.get(self.position + 1),
+                    Some(Token::Plus)
+                        | Some(Token::Minus)
+                        | Some(Token::Star)
+                        | Some(Token::Slash)
+                        | Some(Token::Percent)
+                );
+                if peek_is_arith {
+                    // Arithmetic expression form: parse full expression.
+                    // V313-10 / Issue #4038: emit a classified binder error
+                    // when the expression cannot be constant-folded.
+                    let saved_pos = self.position;
+                    let expr = self.parse_expression()?;
+                    match constant_fold_u64(&expr) {
+                        Some(v) => Some(v),
+                        None => {
+                            self.position = saved_pos;
+                            return Err(classify_unfoldable_limit_expr("LIMIT", &expr));
+                        }
                     }
-                }
-            } else {
-                match self.current() {
-                    Some(Token::NumberLiteral(n)) => {
-                        // Handle both integer and float literals (e.g., LIMIT 1.25 -> 1 row)
-                        let val = if let Ok(i) = n.parse::<u64>() {
-                            i
-                        } else if let Ok(f) = n.parse::<f64>() {
-                            f as u64
-                        } else {
-                            return Err("Invalid LIMIT: invalid digit found in string".to_string());
-                        };
-                        self.next();
-                        Some(val)
-                    }
-                    Some(Token::Identifier(ref s)) => {
-                        // Support LIMIT variable (e.g., @limit) and
-                        // identifier-like column references. When the
-                        // identifier is a pure integer string we accept
-                        // it directly; when followed by `(` we let
-                        // parse_expression handle it (so `row_number()`
-                        // gets wrapped in a WindowCall / FunctionCall
-                        // and the classify step produces the right error);
-                        // otherwise we treat it as a column reference
-                        // and emit the binder error directly.
-                        // V313-10 / Issue #4038.
-                        if let Ok(val) = s.parse::<u64>() {
+                } else {
+                    match self.current() {
+                        Some(Token::NumberLiteral(n)) => {
+                            // Handle both integer and float literals (e.g., LIMIT 1.25 -> 1 row)
+                            let val = if let Ok(i) = n.parse::<u64>() {
+                                i
+                            } else if let Ok(f) = n.parse::<f64>() {
+                                f as u64
+                            } else {
+                                return Err(
+                                    "Invalid LIMIT: invalid digit found in string".to_string()
+                                );
+                            };
                             self.next();
                             Some(val)
-                        } else if matches!(self.tokens.get(self.position + 1), Some(Token::LParen))
-                        {
-                            // Looks like a function call (possibly
-                            // windowed) — let parse_expression build
-                            // the full AST, then classify.
+                        }
+                        Some(Token::Identifier(ref s)) => {
+                            // Support LIMIT variable (e.g., @limit) and
+                            // identifier-like column references. When the
+                            // identifier is a pure integer string we accept
+                            // it directly; when followed by `(` we let
+                            // parse_expression handle it (so `row_number()`
+                            // gets wrapped in a WindowCall / FunctionCall
+                            // and the classify step produces the right error);
+                            // otherwise we treat it as a column reference
+                            // and emit the binder error directly.
+                            // V313-10 / Issue #4038.
+                            if let Ok(val) = s.parse::<u64>() {
+                                self.next();
+                                Some(val)
+                            } else if matches!(
+                                self.tokens.get(self.position + 1),
+                                Some(Token::LParen)
+                            ) {
+                                // Looks like a function call (possibly
+                                // windowed) — let parse_expression build
+                                // the full AST, then classify.
+                                let saved_pos = self.position;
+                                let expr = self.parse_expression()?;
+                                match constant_fold_u64(&expr) {
+                                    Some(v) => Some(v),
+                                    None => {
+                                        self.position = saved_pos;
+                                        return Err(classify_unfoldable_limit_expr("LIMIT", &expr));
+                                    }
+                                }
+                            } else {
+                                let ident = s.clone();
+                                return Err(format!(
+                                    "Binder Error: Referenced column '{}' not found in LIMIT",
+                                    ident
+                                ));
+                            }
+                        }
+                        _ => {
+                            // V312-19 #3972: accept arithmetic expression, e.g. LIMIT 2-1.
+                            // V313-10 / Issue #4038: if the expression contains
+                            // an aggregate, window function or column ref
+                            // that cannot be constant-folded, restore
+                            // position and emit a classified binder-style
+                            // error. Returning None would silently swallow
+                            // the LIMIT clause.
                             let saved_pos = self.position;
                             let expr = self.parse_expression()?;
                             match constant_fold_u64(&expr) {
@@ -5326,34 +5487,9 @@ impl Parser {
                                     return Err(classify_unfoldable_limit_expr("LIMIT", &expr));
                                 }
                             }
-                        } else {
-                            let ident = s.clone();
-                            return Err(format!(
-                                "Binder Error: Referenced column '{}' not found in LIMIT",
-                                ident
-                            ));
-                        }
-                    }
-                    _ => {
-                        // V312-19 #3972: accept arithmetic expression, e.g. LIMIT 2-1.
-                        // V313-10 / Issue #4038: if the expression contains
-                        // an aggregate, window function or column ref
-                        // that cannot be constant-folded, restore
-                        // position and emit a classified binder-style
-                        // error. Returning None would silently swallow
-                        // the LIMIT clause.
-                        let saved_pos = self.position;
-                        let expr = self.parse_expression()?;
-                        match constant_fold_u64(&expr) {
-                            Some(v) => Some(v),
-                            None => {
-                                self.position = saved_pos;
-                                return Err(classify_unfoldable_limit_expr("LIMIT", &expr));
-                            }
                         }
                     }
                 }
-            }
             }
         } else {
             None
@@ -5543,6 +5679,9 @@ impl Parser {
                     "COUNT" => Some(AggregateFunction::Count),
                     "MIN" => Some(AggregateFunction::Min),
                     "MAX" => Some(AggregateFunction::Max),
+                    "QUANTILE_DISC" => Some(AggregateFunction::QuantileDisc),
+                    "PERCENTILE_CONT" => Some(AggregateFunction::PercentileCont),
+                    "QUANTILE_CONT" => Some(AggregateFunction::QuantileCont),
                     _ => None,
                 } {
                     out.push(AggregateCall {
@@ -5908,6 +6047,12 @@ impl Parser {
                         }
                         Some(Token::Comma) => {
                             self.next();
+                        }
+                        // V313-followup-1 / Issue #4154: INSERT VALUES (DEFAULT)
+                        // materialises the column's set default.
+                        Some(Token::Default) => {
+                            self.next();
+                            row.push(Expression::Identifier("DEFAULT".to_string()));
                         }
                         _ => {
                             let expr = self.parse_expression()?;
@@ -6799,6 +6944,23 @@ impl Parser {
                     }
                 }
                 self.expect(Token::RParen)?;
+                // V313-followup-3 / Issue #4156: PERCENTILE_CONT
+                // optionally followed by WITHIN GROUP (ORDER BY col).
+                if name.to_uppercase() == "PERCENTILE_CONT"
+                    && matches!(self.current(), Some(Token::Within))
+                {
+                    self.next();
+                    self.expect(Token::Group)?;
+                    self.expect(Token::LParen)?;
+                    self.expect(Token::Order)?;
+                    self.expect(Token::By)?;
+                    self.parse_expression()?;
+                    while matches!(self.current(), Some(Token::Comma)) {
+                        self.next();
+                        self.parse_expression()?;
+                    }
+                    self.expect(Token::RParen)?;
+                }
                 Ok(Expression::FunctionCall(name.to_string(), args))
             }
             Some(Token::SystemVariable(name)) => {
@@ -7190,13 +7352,54 @@ impl Parser {
                                 }
                             }
                         }
+                        // Consume the CAST's closing paren. The args loop
+                        // above terminates on `AS` (not `)`), so the
+                        // closing `)` of `CAST(expr AS TYPE)` is still
+                        // pending here. Without this, the leftover `)`
+                        // makes a parent column-list loop treat the
+                        // subquery as terminated early, dropping any
+                        // following columns and the FROM clause
+                        // (V312-21 / #4181, TPC-H Q7-Q9 subquery parse).
+                        if matches!(self.current(), Some(Token::RParen)) {
+                            self.next();
+                        }
                         // EXTRACT(field FROM expr) — field is a SQL token (YEAR,
                         // MONTH, DAY, ...). The executor's `EXTRACT` eval_fn
                         // expects a 2-arg FunctionCall where arg[0] is the
                         // field name and arg[1] is the source expression. We
                         // encode it that way: push the field as a quoted
                         // Literal string so it round-trips through the AST.
-                        Ok(Expression::FunctionCall(name, args))
+                        let name_upper = name.to_uppercase();
+                        // V313-followup-3 / Issue #4156: PERCENTILE_CONT
+                        // optionally followed by WITHIN GROUP (ORDER BY col
+                        // [ASC|DESC]). Encode the ORDER BY expression as an
+                        // extra arg so the executor can evaluate it into the
+                        // value list; DESC is encoded as a trailing
+                        // `__DESC__` literal arg.
+                        if name_upper == "PERCENTILE_CONT"
+                            && matches!(self.current(), Some(Token::Within))
+                        {
+                            self.next();
+                            self.expect(Token::Group)?;
+                            self.expect(Token::LParen)?;
+                            self.expect(Token::Order)?;
+                            self.expect(Token::By)?;
+                            let ob_expr = self.parse_expression()?;
+                            args.push(ob_expr);
+                            if matches!(self.current(), Some(Token::Asc)) {
+                                self.next();
+                            } else if matches!(self.current(), Some(Token::Desc)) {
+                                self.next();
+                                args.push(Expression::Literal("__DESC__".to_string()));
+                            }
+                            while matches!(self.current(), Some(Token::Comma)) {
+                                self.next();
+                                args.push(self.parse_expression()?);
+                            }
+                            self.expect(Token::RParen)?;
+                        }
+                        let expr = Expression::FunctionCall(name, args);
+                        Ok(expr)
                     }
                 } else {
                     Ok(Expression::Identifier(name))
@@ -7321,6 +7524,25 @@ impl Parser {
                     }
                 }
             }
+            // Round-21 / Issue #4216: array literal `[expr, expr, ...]`.
+            // Used by the array-fraction form of ordered-set aggregates
+            // (e.g. `quantile_disc(col, [0.25, 0.5, 0.75])`).
+            Some(Token::LBracket) => {
+                self.next(); // consume `[`
+                let mut elems = Vec::new();
+                if !matches!(self.current(), Some(Token::RBracket)) {
+                    loop {
+                        elems.push(self.parse_expression()?);
+                        if matches!(self.current(), Some(Token::Comma)) {
+                            self.next();
+                        } else {
+                            break;
+                        }
+                    }
+                }
+                self.expect(Token::RBracket)?;
+                Ok(Expression::ArrayLiteral(elems))
+            }
             Some(Token::Exists) => {
                 self.next();
                 self.expect(Token::LParen)?;
@@ -7360,6 +7582,9 @@ impl Parser {
                         AggregateFunction::Avg => "AVG",
                         AggregateFunction::Min => "MIN",
                         AggregateFunction::Max => "MAX",
+                        AggregateFunction::PercentileCont => "PERCENTILE_CONT",
+                        AggregateFunction::QuantileDisc => "QUANTILE_DISC",
+                        AggregateFunction::QuantileCont => "QUANTILE_CONT",
                     };
 
                     let mut partition_by = Vec::new();
@@ -7947,15 +8172,40 @@ impl Parser {
                         // parse_column_list() silently consume the
                         // next column's identifier as part of a
                         // spurious UNIQUE columns list.
-                        if matches!(self.tokens.get(self.position + 1), Some(Token::LParen)) {
-                            self.next();
-                            let columns = self.parse_column_list()?;
-                            constraints.push(TableConstraint::Unique {
-                                columns,
-                                name: None,
-                            });
-                        } else {
-                            continue;
+                        //
+                        // V312-coverage: also handle `UNIQUE KEY (cols)`
+                        // and `UNIQUE KEY name (cols)` (MySQL allows the
+                        // optional KEY keyword between UNIQUE and the
+                        // column list, with an optional constraint
+                        // name in between). Previously UNIQUE KEY fell
+                        // into the `else continue` branch and since
+                        // the loop didn't advance on `continue`, it
+                        // spun forever.
+                        let next_tok = self.tokens.get(self.position + 1);
+                        match next_tok {
+                            Some(Token::LParen) => {
+                                self.next();
+                                let columns = self.parse_column_list()?;
+                                constraints.push(TableConstraint::Unique {
+                                    columns,
+                                    name: None,
+                                });
+                            }
+                            Some(Token::Key) => {
+                                self.next(); // consume UNIQUE
+                                self.next(); // consume KEY
+                                let name = match self.current() {
+                                    Some(Token::Identifier(n)) => {
+                                        let s = n.clone();
+                                        self.next();
+                                        Some(s)
+                                    }
+                                    _ => None,
+                                };
+                                let columns = self.parse_column_list()?;
+                                constraints.push(TableConstraint::Unique { columns, name });
+                            }
+                            _ => continue,
                         }
                     }
                     Some(Token::Check) => {
@@ -8046,10 +8296,42 @@ impl Parser {
                         Statement::Select(s) => select = Some(Box::new(s)),
                         _ => return Err("Expected SELECT statement".to_string()),
                     }
-                    with_data = Some(true); // default: WITH DATA
+                    // V313-followup-5 / Issue #4158: PostgreSQL / DuckDB
+                    // standard order is `AS SELECT ... WITH [NO] DATA`.
+                    // Accept the optional trailing WITH clause here; default
+                    // is WITH DATA when the clause is absent.
+                    with_data = match self.current() {
+                        Some(Token::With) => {
+                            self.next();
+                            match self.current() {
+                                Some(Token::No) => {
+                                    self.next();
+                                    match self.current() {
+                                        Some(Token::Identifier(s))
+                                            if s.eq_ignore_ascii_case("DATA") =>
+                                        {
+                                            self.next();
+                                            Some(false)
+                                        }
+                                        _ => return Err("Expected 'DATA' after 'NO'".to_string()),
+                                    }
+                                }
+                                Some(Token::Identifier(s)) if s.eq_ignore_ascii_case("DATA") => {
+                                    self.next();
+                                    Some(true)
+                                }
+                                _ => {
+                                    return Err(
+                                        "Expected 'NO DATA' or 'DATA' after 'WITH'".to_string()
+                                    )
+                                }
+                            }
+                        }
+                        _ => Some(true),
+                    };
                 }
                 Some(Token::With) => {
-                    // WITH NO DATA or WITH DATA
+                    // Legacy V312-18 form: `AS WITH [NO] DATA SELECT ...`.
                     self.next();
                     let data_flag = match self.current() {
                         Some(Token::No) => {
@@ -8068,7 +8350,6 @@ impl Parser {
                         }
                         _ => return Err("Expected 'NO DATA' or 'DATA' after 'WITH'".to_string()),
                     };
-                    // Now parse SELECT after WITH clause
                     match self.current() {
                         Some(Token::Select) => {
                             let select_stmt = self.parse_select()?;
@@ -8357,6 +8638,17 @@ impl Parser {
                     self.next();
                     auto_increment = true;
                 }
+                Some(Token::Unique) => {
+                    // V312-coverage: column-level UNIQUE modifier
+                    // (`id INT UNIQUE`). Previously fell through to
+                    // `_ => break` which left the outer CREATE TABLE
+                    // loop re-entering this function with Token::Unique
+                    // still at the head → infinite loop.
+                    // Consume the keyword; the table-level UNIQUE
+                    // constraint (if any) is added by the outer arm
+                    // when followed by `(` / KEY.
+                    self.next();
+                }
                 _ => break,
             }
         }
@@ -8380,6 +8672,7 @@ impl Parser {
     ) -> Result<TableConstraint, String> {
         self.expect(Token::Foreign)?;
         self.expect(Token::Key)?;
+        self.expect(Token::LParen)?;
         let columns = self.parse_column_list()?;
         self.expect(Token::References)?;
         let referenced_table = match self.next() {
@@ -8529,15 +8822,18 @@ impl Parser {
             }
             Some(Token::Index) => self.parse_drop_index(),
             Some(Token::View) => self.parse_drop_view(),
+            // V312-55A / Issue #4238: add DROP PROCEDURE to the dispatcher.
+            Some(Token::Procedure) => self.parse_drop_procedure(),
             Some(Token::Role) => self.parse_drop_role(),
             Some(Token::Database) => self.parse_drop_database(),
             Some(Token::Sequence) => self.parse_drop_sequence(),
             Some(t) => Err(format!(
-                "Expected TABLE, INDEX, VIEW, ROLE, SEQUENCE, or DATABASE after DROP, got {:?}",
+                "Expected TABLE, INDEX, VIEW, PROCEDURE, ROLE, SEQUENCE, or DATABASE after DROP, got {:?}",
                 t
             )),
             None => Err(
-                "Expected TABLE, INDEX, VIEW, ROLE, SEQUENCE, or DATABASE after DROP".to_string(),
+                "Expected TABLE, INDEX, VIEW, PROCEDURE, ROLE, SEQUENCE, or DATABASE after DROP"
+                    .to_string(),
             ),
         }
     }
@@ -8667,6 +8963,55 @@ impl Parser {
         Ok(Statement::Truncate(TruncateStatement { name }))
     }
 
+    /// Round-21 / Issue #4218: MySQL `KILL [QUERY|CONNECTION] <id>` parser.
+    /// Accepts:
+    ///   KILL <id>              → Statement::Kill { connection_id, kill_query: false }
+    ///   KILL CONNECTION <id>   → Statement::Kill { connection_id, kill_query: false }
+    ///   KILL QUERY <id>        → Statement::Kill { connection_id, kill_query: true }
+    fn parse_kill(&mut self) -> Result<Statement, String> {
+        // Consume the KILL identifier
+        self.expect(Token::Identifier("KILL".to_string()))?;
+        // Match either `CONNECTION` (default) or `QUERY`
+        let kill_query = match self.current() {
+            Some(Token::Identifier(ref ident)) if ident.to_uppercase() == "QUERY" => {
+                self.next();
+                true
+            }
+            Some(Token::Identifier(ref ident)) if ident.to_uppercase() == "CONNECTION" => {
+                self.next();
+                false
+            }
+            _ => false,
+        };
+        // Expect a numeric literal or numeric identifier for connection_id.
+        // Token::NumberLiteral carries the raw digit string (lexer doesn't
+        // pre-parse), so we parse to u64 here.
+        let connection_id = match self.next() {
+            Some(Token::NumberLiteral(n)) => n
+                .parse::<u64>()
+                .map_err(|_| format!("Expected numeric connection id after KILL, got {:?}", n))?,
+            // Some MySQL clients pass the id as an unquoted identifier
+            // (e.g. `KILL 12345`). Accept that form too.
+            Some(Token::Identifier(s)) => s.parse::<u64>().map_err(|_| {
+                format!(
+                    "Expected numeric connection id after KILL, got identifier {:?}",
+                    s
+                )
+            })?,
+            Some(other) => {
+                return Err(format!(
+                    "Expected numeric connection id after KILL, got {:?}",
+                    other
+                ));
+            }
+            None => return Err("Expected connection id after KILL".to_string()),
+        };
+        Ok(Statement::Kill {
+            connection_id,
+            kill_query,
+        })
+    }
+
     fn parse_show(&mut self) -> Result<Statement, String> {
         self.expect(Token::Show)?;
 
@@ -8725,6 +9070,22 @@ impl Parser {
                 };
                 Ok(Statement::Show(ShowStatement::Index { table }))
             }
+            Some(Token::Identifier(ref ident)) if ident.to_uppercase() == "PROCESSLIST" => {
+                // Round-21 / Issue #4218: SHOW [FULL] PROCESSLIST
+                self.next();
+                Ok(Statement::Show(ShowStatement::Processlist { full: false }))
+            }
+            Some(Token::Full) => {
+                // Round-21 / Issue #4218: SHOW FULL PROCESSLIST
+                self.next();
+                match self.current() {
+                    Some(Token::Identifier(ref ident)) if ident.to_uppercase() == "PROCESSLIST" => {
+                        self.next();
+                        Ok(Statement::Show(ShowStatement::Processlist { full: true }))
+                    }
+                    _ => Err("Expected PROCESSLIST after SHOW FULL".to_string()),
+                }
+            }
             Some(Token::Identifier(ref ident)) if ident.to_uppercase() == "GRANTS" => {
                 self.next();
                 self.expect(Token::For)?;
@@ -8743,6 +9104,29 @@ impl Parser {
             Some(Token::Identifier(ref ident)) if ident.to_uppercase() == "SEQUENCES" => {
                 self.next();
                 Ok(Statement::Show(ShowStatement::Sequences))
+            }
+            Some(Token::Procedure) => {
+                // V312-55A / Issue #4238: SHOW PROCEDURE STATUS [LIKE 'pat']
+                self.next();
+                match self.current() {
+                    Some(Token::Identifier(ref ident)) if ident.to_uppercase() == "STATUS" => {
+                        self.next();
+                        let pattern = if matches!(
+                            self.current(),
+                            Some(Token::Identifier(ref ident)) if ident.to_uppercase() == "LIKE"
+                        ) {
+                            self.next();
+                            match self.next() {
+                                Some(Token::StringLiteral(p)) => Some(p),
+                                _ => return Err("Expected pattern string".to_string()),
+                            }
+                        } else {
+                            None
+                        };
+                        Ok(Statement::Show(ShowStatement::ProcedureStatus { pattern }))
+                    }
+                    _ => Err("Expected STATUS after SHOW PROCEDURE".to_string()),
+                }
             }
             Some(t) => Err(format!("Unexpected token after SHOW: {:?}", t)),
             None => Err("Unexpected end of input after SHOW".to_string()),
@@ -9536,14 +9920,36 @@ impl Parser {
                 if matches!(self.current(), Some(Token::Set)) {
                     self.next();
                     if matches!(self.current(), Some(Token::Default)) {
-                        // SET DEFAULT <expr> is not yet implemented; reject
-                        // rather than silently accept (was previously
-                        // producing SetDefault { default_value: None }
-                        // which dropped the user-supplied value).
-                        Err(
-                            "ALTER COLUMN SET DEFAULT is not yet supported"
-                                .to_string(),
-                        )
+                        // V313-followup-1 / Issue #4154: SET DEFAULT <expr>
+                        // now wired through to engine_ddl::set_column_default.
+                        self.next();
+                        let default_value = match self.next() {
+                            Some(Token::NumberLiteral(n)) => n,
+                            Some(Token::StringLiteral(s)) => s,
+                            Some(Token::BooleanLiteral(true)) => "true".to_string(),
+                            Some(Token::BooleanLiteral(false)) => "false".to_string(),
+                            Some(Token::Null) => {
+                                return Err(
+                                    "ALTER COLUMN SET DEFAULT NULL is not supported".to_string()
+                                );
+                            }
+                            Some(t) => {
+                                return Err(format!(
+                                    "Unsupported SET DEFAULT literal token: {:?}",
+                                    t
+                                ));
+                            }
+                            None => return Err("Expected literal after SET DEFAULT".to_string()),
+                        };
+                        Ok(Statement::AlterTable(AlterTableStatement {
+                            table_name,
+                            operation: AlterTableOperation::AlterColumn {
+                                name: col_name,
+                                op: AlterColumnOperation::SetDefault {
+                                    default_value: Some(default_value),
+                                },
+                            },
+                        }))
                     } else if let Some(Token::Identifier(ref id)) = self.current() {
                         if id.to_uppercase() == "DATA" {
                             self.next();
@@ -9628,9 +10034,17 @@ pub fn parse_statements(sql: &str) -> Result<Vec<Statement>, String> {
             Token::Semicolon if !in_string && paren_depth == 0 => {
                 // End of statement
                 if !current_batch.is_empty() {
-                    let mut parser = Parser::new(current_batch.clone());
+                    // Always append Eof so the inner parser/column list
+                    // loop sees a properly terminated input rather than
+                    // bailing out as "Expected FROM or column name".
+                    let mut batch = current_batch.clone();
+                    if !matches!(batch.last(), Some(Token::Eof)) {
+                        batch.push(Token::Eof);
+                    }
+                    let mut parser = Parser::new(batch);
                     let stmt = parser.parse_statement()?;
                     statements.push(stmt);
+                    current_batch.clear();
                 }
             }
             Token::LParen => {
@@ -9653,7 +10067,11 @@ pub fn parse_statements(sql: &str) -> Result<Vec<Statement>, String> {
 
     // Handle last statement without trailing semicolon
     if !current_batch.iter().all(|t| matches!(t, Token::Eof)) {
-        let mut parser = Parser::new(current_batch);
+        let mut batch = current_batch;
+        if !matches!(batch.last(), Some(Token::Eof)) {
+            batch.push(Token::Eof);
+        }
+        let mut parser = Parser::new(batch);
         let stmt = parser.parse_statement()?;
         statements.push(stmt);
     }
@@ -10273,7 +10691,6 @@ mod tests {
     }
 
     #[test]
-    #[ignore = "FOREIGN KEY constraint parsing fails - pre-existing bug, unrelated to named constraint fix"]
     fn test_parse_create_with_table_constraint_fk() {
         let result = parse("CREATE TABLE orders (id INTEGER, user_id INTEGER, FOREIGN KEY (user_id) REFERENCES users(id))");
         assert!(result.is_ok());
@@ -10480,6 +10897,92 @@ mod tests {
                 assert_eq!(table, "users");
             }
             _ => panic!("Expected DESC users statement"),
+        }
+    }
+
+    /// Round-21 / Issue #4218: SHOW PROCESSLIST → Statement::Show(ShowStatement::Processlist { full: false })
+    #[test]
+    fn test_parse_show_processlist_v312_35() {
+        let result = parse("SHOW PROCESSLIST");
+        assert!(result.is_ok(), "Parse failed: {:?}", result);
+        match result.unwrap() {
+            Statement::Show(ShowStatement::Processlist { full }) => {
+                assert!(!full, "Expected SHOW PROCESSLIST (not FULL)");
+            }
+            other => panic!("Expected Statement::Show(Processlist), got {:?}", other),
+        }
+    }
+
+    /// Round-21 / Issue #4218: SHOW FULL PROCESSLIST → Processlist { full: true }
+    #[test]
+    fn test_parse_show_full_processlist_v312_35() {
+        let result = parse("SHOW FULL PROCESSLIST");
+        assert!(result.is_ok(), "Parse failed: {:?}", result);
+        match result.unwrap() {
+            Statement::Show(ShowStatement::Processlist { full }) => {
+                assert!(full, "Expected SHOW FULL PROCESSLIST");
+            }
+            other => panic!(
+                "Expected Statement::Show(Processlist {{ full: true }}), got {:?}",
+                other
+            ),
+        }
+    }
+
+    /// Round-21 / Issue #4218: KILL <id> → Statement::Kill { connection_id, kill_query: false }
+    #[test]
+    fn test_parse_kill_v312_35() {
+        let result = parse("KILL 12345");
+        assert!(result.is_ok(), "Parse failed: {:?}", result);
+        match result.unwrap() {
+            Statement::Kill {
+                connection_id,
+                kill_query,
+            } => {
+                assert_eq!(connection_id, 12345, "Expected connection_id=12345");
+                assert!(!kill_query, "Default KILL is CONNECTION, not QUERY");
+            }
+            other => panic!("Expected Statement::Kill, got {:?}", other),
+        }
+    }
+
+    /// Round-21 / Issue #4218: KILL QUERY <id> → kill_query: true
+    #[test]
+    fn test_parse_kill_query_v312_35() {
+        let result = parse("KILL QUERY 99");
+        assert!(result.is_ok(), "Parse failed: {:?}", result);
+        match result.unwrap() {
+            Statement::Kill {
+                connection_id,
+                kill_query,
+            } => {
+                assert_eq!(connection_id, 99);
+                assert!(kill_query, "Expected KILL QUERY form");
+            }
+            other => panic!(
+                "Expected Statement::Kill {{ kill_query: true }}, got {:?}",
+                other
+            ),
+        }
+    }
+
+    /// Round-21 / Issue #4218: KILL CONNECTION <id> → explicit connection form
+    #[test]
+    fn test_parse_kill_connection_v312_35() {
+        let result = parse("KILL CONNECTION 7");
+        assert!(result.is_ok(), "Parse failed: {:?}", result);
+        match result.unwrap() {
+            Statement::Kill {
+                connection_id,
+                kill_query,
+            } => {
+                assert_eq!(connection_id, 7);
+                assert!(!kill_query, "KILL CONNECTION should leave kill_query=false");
+            }
+            other => panic!(
+                "Expected Statement::Kill {{ kill_query: false }}, got {:?}",
+                other
+            ),
         }
     }
     #[test]
@@ -10895,15 +11398,17 @@ fn test_parse_binary_expression_multiple_columns() {
 }
 
 #[test]
-#[ignore = "bare identifier column currently wrapped in expression by parser; expected behavior not yet implemented"]
 fn test_parse_binary_expression_mixed_with_identifier() {
     let result = parse("SELECT a + b, name, c * d FROM t");
     assert!(result.is_ok(), "Parse failed: {:?}", result);
     match result.unwrap() {
         Statement::Select(s) => {
             assert_eq!(s.columns.len(), 3);
+            // All columns are wrapped in Expression; bare identifier
+            // 'name' is preserved as Some(Identifier("name")) so the
+            // executor can dispatch it the same way as `a + b`.
             assert!(s.columns[0].expression.is_some());
-            assert!(s.columns[1].expression.is_none());
+            assert!(s.columns[1].expression.is_some());
             assert!(s.columns[2].expression.is_some());
         }
         _ => panic!("Expected SELECT statement"),
@@ -14279,14 +14784,12 @@ fn test_split_sql_statements_block_comment() {
 }
 
 #[test]
-#[ignore = "V312-17: parse_statements() API doesn't handle EOF properly - quarantined"]
 fn test_parse_statements_multiple() {
     let stmts = parse_statements("SELECT 1; SELECT 2").unwrap();
     assert_eq!(stmts.len(), 2);
 }
 
 #[test]
-#[ignore = "V312-17: parse_statements() API doesn't handle EOF properly - quarantined"]
 fn test_parse_statements_no_trailing() {
     let stmts = parse_statements("SELECT 1; SELECT 2;").unwrap();
     assert_eq!(stmts.len(), 2);
@@ -14795,4 +15298,46 @@ fn test_parse_select_into() {
 #[test]
 fn test_parse_with_recursive() {
     let _ = parse("WITH RECURSIVE cte AS (SELECT 1 UNION SELECT cte.x + 1 FROM cte WHERE cte.x < 10) SELECT * FROM cte");
+}
+
+// Round-21 / Issue #4216: array-fraction form for quantile_disc/cont.
+// Single-fraction (`quantile_disc(col, 0.5)`) is owned by #4155.
+// Array-fraction (`quantile_disc(col, [0.25, 0.5, 0.75])`) lives here.
+
+#[test]
+fn test_parse_quantile_disc_array_v312_46() {
+    use crate::parser::AggregateFunction;
+    let stmt = parse("SELECT quantile_disc(x, [0.25, 0.5, 0.75]) FROM t").unwrap();
+    if let Statement::Select(sel) = stmt {
+        assert_eq!(sel.aggregates.len(), 1);
+        let agg = &sel.aggregates[0];
+        assert!(matches!(agg.func, AggregateFunction::QuantileDisc));
+        assert_eq!(agg.args.len(), 2);
+        // args[1] should be an ArrayLiteral containing three fraction literals.
+        match &agg.args[1] {
+            Expression::ArrayLiteral(elems) => {
+                assert_eq!(elems.len(), 3);
+            }
+            other => panic!("expected ArrayLiteral, got {:?}", other),
+        }
+    } else {
+        panic!("expected Statement::Select");
+    }
+}
+
+#[test]
+fn test_parse_quantile_cont_array_v312_46() {
+    use crate::parser::AggregateFunction;
+    let stmt = parse("SELECT quantile_cont(x, [0.1, 0.9]) FROM t").unwrap();
+    if let Statement::Select(sel) = stmt {
+        assert_eq!(sel.aggregates.len(), 1);
+        let agg = &sel.aggregates[0];
+        assert!(matches!(agg.func, AggregateFunction::QuantileCont));
+        match &agg.args[1] {
+            Expression::ArrayLiteral(elems) => assert_eq!(elems.len(), 2),
+            other => panic!("expected ArrayLiteral, got {:?}", other),
+        }
+    } else {
+        panic!("expected Statement::Select");
+    }
 }

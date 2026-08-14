@@ -502,7 +502,8 @@ mod tests {
                 nullable: false,
                 primary_key: true,
                 char_max_length: None,
-            collation: None,
+                collation: None,
+                default_value: None,
             }],
             foreign_keys: vec![],
             unique_constraints: vec![],
@@ -638,7 +639,8 @@ mod tests {
                 nullable: true,
                 primary_key: false,
                 char_max_length: None,
-            collation: None,
+                collation: None,
+                default_value: None,
             },
         )
         .unwrap();

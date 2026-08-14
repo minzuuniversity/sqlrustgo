@@ -8,3 +8,12 @@
 *.zip filter=lfs diff=lfs merge=lfs -text
 *.bin filter=lfs diff=lfs merge=lfs -text
 *.html filter=lfs diff=lfs merge=lfs -text
+
+# Local override: these two WAL files in fix/v3943-r2-4-drift-status are
+# stored as plain blobs in git (not LFS), because they predate the LFS
+# migration and are needed as raw evidence bytes. Overriding them here
+# prevents the *.wal pattern from mistakenly invoking the smudge filter,
+# which would otherwise rewrite the 45-byte WAL bytes as a 127-byte LFS
+# pointer and produce false "modified" status.
+docs/releases/v3.12.0/evidence/issue-4019/20260812T181335Z_t2_s100/data/sqlrustgo.wal -filter -diff -merge text
+docs/releases/v3.12.0/evidence/issue-4019/20260812T181429Z_t2_s100/data/sqlrustgo.wal -filter -diff -merge text
