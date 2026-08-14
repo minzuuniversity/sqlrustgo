@@ -39,6 +39,8 @@ fn setup_test_storage(
             nullable: false,
             primary_key: true,
             collation: None,
+
+            default_value: None,
         }],
         foreign_keys: vec![],
         unique_constraints: vec![],
@@ -282,6 +284,8 @@ fn bench_multi_table_insert(c: &mut Criterion) {
                         nullable: false,
                         primary_key: true,
                         collation: None,
+
+                        default_value: None,
                     }],
                     foreign_keys: vec![],
                     unique_constraints: vec![],
