@@ -70,7 +70,8 @@ fn main() {
             char_max_length: None,
             collation: None,
 
-            default_value: None,        },
+            default_value: None,
+        },
         ColumnDefinition {
             name: "l_partkey".to_string(),
             data_type: "INTEGER".to_string(),
@@ -79,7 +80,8 @@ fn main() {
             char_max_length: None,
             collation: None,
 
-            default_value: None,        },
+            default_value: None,
+        },
         ColumnDefinition {
             name: "l_quantity".to_string(),
             data_type: "REAL".to_string(),
@@ -88,7 +90,8 @@ fn main() {
             char_max_length: None,
             collation: None,
 
-            default_value: None,        },
+            default_value: None,
+        },
         ColumnDefinition {
             name: "l_extendedprice".to_string(),
             data_type: "REAL".to_string(),
@@ -97,7 +100,8 @@ fn main() {
             char_max_length: None,
             collation: None,
 
-            default_value: None,        },
+            default_value: None,
+        },
         ColumnDefinition {
             name: "l_discount".to_string(),
             data_type: "REAL".to_string(),
@@ -106,7 +110,8 @@ fn main() {
             char_max_length: None,
             collation: None,
 
-            default_value: None,        },
+            default_value: None,
+        },
     ];
     let info = TableInfo {
         name: "lineitem".to_string(),

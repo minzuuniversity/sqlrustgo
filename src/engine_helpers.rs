@@ -110,10 +110,7 @@ fn parse_default_literal_in_helpers(s: &str) -> Value {
     if let Ok(f) = trimmed.parse::<f64>() {
         return Value::Float(f);
     }
-    let inner = if trimmed.len() >= 2
-        && trimmed.starts_with('\'')
-        && trimmed.ends_with('\'')
-    {
+    let inner = if trimmed.len() >= 2 && trimmed.starts_with('\'') && trimmed.ends_with('\'') {
         &trimmed[1..trimmed.len() - 1]
     } else {
         trimmed

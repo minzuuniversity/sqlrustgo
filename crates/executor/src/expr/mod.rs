@@ -2783,11 +2783,11 @@ mod tests {
             sqlrustgo_storage::ColumnDefinition {
                 name: "id".to_string(),
                 ..Default::default()
-                },
+            },
             sqlrustgo_storage::ColumnDefinition {
                 name: "val".to_string(),
                 ..Default::default()
-                },
+            },
         ];
         assert_eq!(find_column_index("id", &cols), Some(0));
         assert_eq!(find_column_index("val", &cols), Some(1));

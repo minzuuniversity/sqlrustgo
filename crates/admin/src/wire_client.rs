@@ -431,7 +431,8 @@ mod additional_tests {
                 flags: 0x0020,
                 decimals: 0x00,
 
-                default_value: None,            },
+                default_value: None,
+            },
             sqlrustgo_mysql_client::ColumnDefinition {
                 catalog: "def".into(),
                 schema: "testdb".into(),
@@ -445,7 +446,8 @@ mod additional_tests {
                 flags: 0x0000,
                 decimals: 0x00,
 
-                default_value: None,            },
+                default_value: None,
+            },
         ];
         let rows = vec![
             vec!["1".into(), "alice".into()],
@@ -485,7 +487,8 @@ mod additional_tests {
             flags: 0x0000,
             decimals: 0x00,
 
-            default_value: None,        }];
+            default_value: None,
+        }];
         let rows = vec![vec!["a,b".into()]];
         let csv = serialize_result_set_csv(&cols, &rows);
         assert!(!csv.is_empty());
@@ -554,7 +557,8 @@ mod additional_tests {
                 flags: 0x0020,
                 decimals: 0x00,
 
-                default_value: None,            }],
+                default_value: None,
+            }],
             rows: vec![vec![]],
             status_flags: 0,
         };
