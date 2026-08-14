@@ -129,7 +129,8 @@ fn make_table_info(columns: Vec<(&str, &str)>) -> TableInfo {
                 primary_key: false,
                 char_max_length: None,
                 collation: None,
-            })
+
+                default_value: None,            })
             .collect(),
         foreign_keys: vec![],
         unique_constraints: vec![],

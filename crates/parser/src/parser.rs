@@ -9823,9 +9823,7 @@ impl Parser {
                             Some(Token::BooleanLiteral(true)) => "true".to_string(),
                             Some(Token::BooleanLiteral(false)) => "false".to_string(),
                             Some(Token::Null) => {
-                                return Err(
-                                    "ALTER COLUMN SET DEFAULT NULL is not supported".to_string()
-                                );
+                                return Err("ALTER COLUMN SET DEFAULT NULL is not supported".to_string());
                             }
                             Some(t) => {
                                 return Err(format!(
@@ -9835,9 +9833,7 @@ impl Parser {
                             }
                             None => return Err("Expected literal after SET DEFAULT".to_string()),
                         };
-                        AlterColumnOperation::SetDefault {
-                            default_value: Some(default_value.clone()),
-                        };
+                        AlterColumnOperation::SetDefault { default_value: Some(default_value.clone()) };
                         Ok(Statement::AlterTable(AlterTableStatement {
                             table_name,
                             operation: AlterTableOperation::AlterColumn {

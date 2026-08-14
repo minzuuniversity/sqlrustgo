@@ -905,22 +905,22 @@ mod tests {
                     name: "id".to_string(),
                     data_type: "INTEGER".to_string(),
                     ..Default::default()
-                },
+                    },
                 ColumnDefinition {
                     name: "price".to_string(),
                     data_type: "FLOAT".to_string(),
                     ..Default::default()
-                },
+                    },
                 ColumnDefinition {
                     name: "quantity".to_string(),
                     data_type: "INTEGER".to_string(),
                     ..Default::default()
-                },
+                    },
                 ColumnDefinition {
                     name: "total".to_string(),
                     data_type: "FLOAT".to_string(),
                     ..Default::default()
-                },
+                    },
             ],
             ..Default::default()
         };
@@ -1269,7 +1269,7 @@ mod tests {
                 name: "id".to_string(),
                 data_type: "INTEGER".to_string(),
                 ..Default::default()
-            }],
+                }],
             ..Default::default()
         };
         storage.create_table(&orders_table).unwrap();
@@ -1281,7 +1281,7 @@ mod tests {
                 name: "id".to_string(),
                 data_type: "INTEGER".to_string(),
                 ..Default::default()
-            }],
+                }],
             ..Default::default()
         };
         storage.create_table(&products_table).unwrap();
