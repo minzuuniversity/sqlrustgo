@@ -156,6 +156,18 @@ if open_items:
     raise SystemExit('open sqllogictest exclusions: ' + ', '.join(open_items))
 PY"
 check "B6_TPCH_SF1_G4"             "test -f docs/releases/v3.12.0/evidence/G4_tpch_sf1.txt"
+check "B6_V312_56_TEACHING_CORPUS" "test -d tests/compat/teaching_sql_v3_12 && test -f tests/compat/teaching_sql_v3_12/manifest.yml"
+check "B6_V312_56_EXPLAIN_FIXTURES" "python3 - <<'PY'
+import yaml
+from pathlib import Path
+manifest = Path('tests/compat/teaching_sql_v3_12/manifest.yml')
+if not manifest.exists():
+    raise SystemExit('manifest.yml not found')
+data = yaml.safe_load(manifest.read_text())
+explain_files = [f for f in data.get('files', []) if 'explain' in f.get('path', '')]
+if len(explain_files) < 5:
+    raise SystemExit(f'Expected 5+ EXPLAIN fixtures, got {len(explain_files)}')
+PY"
 
 # ============================================================
 # B7: ALPHA gate sanity check (BETA cannot regress ALPHA state)
