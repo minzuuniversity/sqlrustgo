@@ -2040,6 +2040,19 @@ impl<S: StorageEngine + 'static> ExecutionEngine<S> {
     ) -> Option<(Vec<Vec<Value>>, TableInfo)> {
         use std::collections::HashMap;
         let where_expr = select.where_clause.as_ref()?;
+        // V312-35 (#4182) Q2/Q17: bail out of hash chain when WHERE
+        // has a correlated scalar subquery. The chain consumes
+        // equality predicates but the subquery still needs per-row
+        // substitution in the post-join filter. Returning None
+        // forces the per-clause fallback in execute_joins, which
+        // calls pre_evaluate_correlated_exists to substitute the
+        // Subquery node with a scalar literal (Q2: MIN cost per part;
+        // Q17: 0.2*AVG threshold per partkey). This produces the
+        // correct row counts vs the SQLite oracle without dead-ending
+        // in an O(joined_rows × subquery_cost) hang.
+        if where_expr_has_correlated_subquery(where_expr) {
+            return None;
+        }
         let storage = self.storage.read();
 
         // Extract bare table name from base_table (which may be "table" or "table|alias")
@@ -3400,6 +3413,20 @@ impl<S: StorageEngine + 'static> ExecutionEngine<S> {
                     });
                 *cursor += 1;
                 Expression::Literal(if any_row { "true" } else { "false" }.to_string())
+            }
+            // V312-35 (#4182): correlated scalar subquery (TPC-H Q2/Q17)
+            // — execute substituted subquery and replace with scalar literal.
+            Expression::Subquery(subq) => {
+                let substituted =
+                    substitute_outer_refs_in_select(subq, outer_row, outer_table_info);
+                let scalar = match self.execute_select(&substituted) {
+                    Ok(r) if !r.rows.is_empty() => r.rows[0].get(0).cloned(),
+                    _ => None,
+                };
+                match scalar {
+                    Some(v) => Expression::Literal(value_to_literal_string_v(&v)),
+                    None => Expression::Literal("NULL".to_string()),
+                }
             }
             Expression::NotExists(subq) => {
                 let substituted =
