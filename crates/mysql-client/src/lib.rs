@@ -570,8 +570,8 @@ fn parse_text_row(data: &[u8], offset: &mut usize, num_columns: usize) -> MySqlR
 /// Wire formats:
 ///   * Classic EOF (DEPRECATE_EOF=0): 0xfe | warnings(2) | status_flags(2)
 ///   * DEPRECATE_EOF OK (DEPRECATE_EOF=1):
-///       0xfe | lenenc(affected_rows) | lenenc(last_insert_id)
-///           | status_flags(2) | warnings(2) | (optional info + session_state)
+///     0xfe | lenenc(affected_rows) | lenenc(last_insert_id)
+///     | status_flags(2) | warnings(2) | (optional info + session_state)
 ///
 /// Returns 0 if the payload is too short or the length-encoded ints fail to
 /// parse. Callers should treat the trailing EOF as best-effort.
@@ -2163,6 +2163,8 @@ mod tests {
             column_type: 0x03,
             flags: 0x0020,
             decimals: 0x00,
+
+            default_value: None,
         };
 
         let debug = format!("{:?}", col);

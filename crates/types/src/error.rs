@@ -59,6 +59,22 @@ pub enum SqlError {
     /// Authentication error
     #[error("Authentication failed: {0}")]
     AuthError(String),
+
+    /// V312-55E: trigger recursion depth limit exceeded.
+    /// Fired by `TriggerExecutor` when nested BEFORE/AFTER trigger execution
+    /// exceeds the configured maximum depth — the typical scenario is a
+    /// self-referential trigger (`AFTER INSERT ON t ... INSERT INTO t ...`)
+    /// or two triggers that mutually fire each other. Without this guard the
+    /// engine would recurse until the host process stack-overflows. The
+    /// structured fields let callers display the exact trigger name, current
+    /// depth, and configured limit; the parent transaction is rolled back so
+    /// no partial commit is observable on the base or audit tables.
+    #[error("Trigger recursion depth limit exceeded: trigger={trigger_name} depth={depth} limit={limit}")]
+    TriggerRecursionLimitExceeded {
+        trigger_name: String,
+        depth: usize,
+        limit: usize,
+    },
 }
 
 impl SqlError {
@@ -80,6 +96,7 @@ impl SqlError {
             SqlError::TimeoutError(_) => 1205,        // ER_LOCK_WAIT_TIMEOUT
             SqlError::OverflowError(_) => 1366,       // ER_DATA_TOO_LONG
             SqlError::AuthError(_) => 1045,           // ER_ACCESS_DENIED_ERROR
+            SqlError::TriggerRecursionLimitExceeded { .. } => 1105, // ER_UNKNOWN_ERROR
         }
     }
 
@@ -101,6 +118,7 @@ impl SqlError {
             SqlError::TimeoutError(_) => "HY000",
             SqlError::OverflowError(_) => "22001", // string data, right truncation
             SqlError::AuthError(_) => "28000",     // invalid authorization specification
+            SqlError::TriggerRecursionLimitExceeded { .. } => "HY000", // general error
         }
     }
 }
@@ -157,6 +175,11 @@ mod tests {
             SqlError::TimeoutError("test".to_string()),
             SqlError::OverflowError("test".to_string()),
             SqlError::AuthError("test".to_string()),
+            SqlError::TriggerRecursionLimitExceeded {
+                trigger_name: "t_loop".to_string(),
+                depth: 17,
+                limit: 16,
+            },
         ];
 
         for err in errors {
@@ -345,6 +368,11 @@ mod tests {
             SqlError::TimeoutError("t".into()),
             SqlError::OverflowError("t".into()),
             SqlError::AuthError("t".into()),
+            SqlError::TriggerRecursionLimitExceeded {
+                trigger_name: "t".into(),
+                depth: 17,
+                limit: 16,
+            },
         ];
         for err in &errors {
             assert!(err.mysql_error_code() > 0, "{err:?} has zero code");

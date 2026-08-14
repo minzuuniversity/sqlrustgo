@@ -156,6 +156,16 @@ impl StoredProcedure {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::catalog::Catalog;
+    use crate::error::{CatalogError, CatalogResult};
+
+    fn dummy_proc(name: &str) -> StoredProcedure {
+        StoredProcedure::new(
+            name.to_string(),
+            vec![],
+            vec![StoredProcStatement::RawSql("SELECT 1".to_string())],
+        )
+    }
 
     #[test]
     fn test_stored_procedure_creation() {
@@ -179,5 +189,61 @@ mod tests {
         assert!(matches!(ParamMode::In, ParamMode::In));
         assert!(matches!(ParamMode::Out, ParamMode::Out));
         assert!(matches!(ParamMode::InOut, ParamMode::InOut));
+    }
+
+    /// V312-55A / Issue #4238: stored procedure DDL lifecycle.
+    /// Covers: add, duplicate detection, case-insensitive lookup,
+    /// remove, OR REPLACE semantics.
+    ///
+    /// This test is named with `procedure_` prefix so it matches the
+    /// `cargo test -p sqlrustgo-catalog --lib procedure` filter used
+    /// by `scripts/gate/check_v312_procedure_trigger_gate.sh`
+    /// (`V55A-Procedure-DDL` check).
+    #[test]
+    fn procedure_ddl_lifecycle() -> CatalogResult<()> {
+        let mut catalog = Catalog::with_default_database("test_db", "test_db");
+
+        // 1) Add procedure — original casing preserved.
+        catalog.add_stored_procedure(dummy_proc("MyProc"))?;
+        assert!(catalog.has_stored_procedure("MyProc"));
+        assert_eq!(
+            catalog.get_stored_procedure("MyProc").unwrap().name,
+            "MyProc"
+        );
+        assert_eq!(catalog.stored_procedure_count(), 1);
+
+        // 2) Duplicate detection uses case-insensitive name.
+        let dup: CatalogResult<()> = catalog.add_stored_procedure(dummy_proc("myproc"));
+        assert!(matches!(dup, Err(CatalogError::DuplicateProcedure(_))));
+        // Plain all-lowercase dup also rejected.
+        let dup2: CatalogResult<()> = catalog.add_stored_procedure(dummy_proc("MYPROC"));
+        assert!(matches!(dup2, Err(CatalogError::DuplicateProcedure(_))));
+
+        // 3) Case-insensitive lookup returns the original-cased record.
+        assert!(catalog.has_stored_procedure("myproc"));
+        assert!(catalog.has_stored_procedure("MYPROC"));
+        assert!(catalog.has_stored_procedure("MyPrOc"));
+        let looked_up = catalog.get_stored_procedure("MYPROC").unwrap();
+        assert_eq!(looked_up.name, "MyProc", "casing preserved on lookup");
+
+        // 4) OR REPLACE overwrites existing procedure with same key.
+        let replaced = dummy_proc("MyProc");
+        catalog.add_or_replace_stored_procedure(replaced)?;
+        assert_eq!(catalog.stored_procedure_count(), 1);
+        assert!(catalog.get_stored_procedure("MyProc").is_some());
+
+        // 5) OR REPLACE on a fresh name acts like add.
+        catalog.add_or_replace_stored_procedure(dummy_proc("Other_Proc"))?;
+        assert_eq!(catalog.stored_procedure_count(), 2);
+
+        // 6) Remove is case-insensitive.
+        let removed = catalog.remove_stored_procedure("myproc");
+        assert!(removed.is_some(), "case-insensitive remove should succeed");
+        assert_eq!(catalog.stored_procedure_count(), 1);
+
+        // 7) Remove on unknown procedure returns None.
+        assert!(catalog.remove_stored_procedure("does_not_exist").is_none());
+
+        Ok(())
     }
 }

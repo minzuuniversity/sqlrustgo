@@ -55,8 +55,49 @@ impl SimpleCostModel {
                 let merge_cost = (left_rows + right_rows) as f64 * self.cpu_cost_per_row;
                 sort_cost + merge_cost
             }
+            // V312-22 / Issue #4182: HashSemiJoin / HashAntiJoin are
+            // structurally identical to HashJoin (build + probe phases),
+            // but emit at most one row per outer key (semi) or inverse
+            // set (anti). Cost ≈ HashJoin minus the right-table output
+            // amplification term, which for selectivity ≈ 1.0 on the
+            // probe side collapses to build_cost + probe_cost. We charge
+            // a small constant factor for the bloom filter and dedup
+            // bookkeeping so CBO does not over-pick semi/anti for
+            // high-cardinality joins where HashInner is genuinely cheaper.
+            "hash_semi_join" => self.hash_semi_join_cost(left_rows, right_rows),
+            "hash_anti_join" => self.hash_anti_join_cost(left_rows, right_rows),
             _ => (left_rows + right_rows) as f64 * self.cpu_cost_per_row,
         }
+    }
+
+    /// Estimate cost for HashSemiJoin (IN-subquery / EXISTS, O(outer + inner)).
+    ///
+    /// V312-22 / Issue #4182: Equivalent to building a hash index on
+    /// the right (inner) side and probing with left (outer) keys. Output
+    /// cardinality is bounded by `left_rows` (at most one row per outer
+    /// key). Cost = build(inner) + probe(outer) + small bloom/dedup
+    /// overhead.
+    pub fn hash_semi_join_cost(&self, left_rows: u64, right_rows: u64) -> f64 {
+        let build_cost = right_rows as f64 * self.cpu_cost_per_row;
+        let probe_cost = left_rows as f64 * self.cpu_cost_per_row;
+        // Bloom filter + dedup bookkeeping (1024-bit filter per side,
+        // HashSet insert). Constant per probe, so we charge 0.1× per row.
+        let bookkeeping = (left_rows + right_rows) as f64 * 0.1 * self.cpu_cost_per_row;
+        build_cost + probe_cost + bookkeeping
+    }
+
+    /// Estimate cost for HashAntiJoin (NOT IN / NOT EXISTS, O(outer + inner)).
+    ///
+    /// V312-22 / Issue #4182: Mirror of HashSemiJoin; identical cost
+    /// structure (build + probe + bookkeeping). Output cardinality is
+    /// outer_rows minus the matched subset; cost is independent of that
+    /// reduction for planning purposes.
+    pub fn hash_anti_join_cost(&self, left_rows: u64, right_rows: u64) -> f64 {
+        // Identical structure to semi — see hash_semi_join_cost rationale.
+        let build_cost = right_rows as f64 * self.cpu_cost_per_row;
+        let probe_cost = left_rows as f64 * self.cpu_cost_per_row;
+        let bookkeeping = (left_rows + right_rows) as f64 * 0.1 * self.cpu_cost_per_row;
+        build_cost + probe_cost + bookkeeping
     }
 
     /// Estimate cost for aggregation

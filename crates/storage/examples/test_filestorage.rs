@@ -33,6 +33,8 @@ fn main() {
                 primary_key: false,
                 char_max_length: None,
                 collation: None,
+
+                default_value: None,
             },
             ColumnDefinition {
                 name: "name".to_string(),
@@ -41,6 +43,8 @@ fn main() {
                 primary_key: false,
                 char_max_length: None,
                 collation: None,
+
+                default_value: None,
             },
         ],
         foreign_keys: vec![],

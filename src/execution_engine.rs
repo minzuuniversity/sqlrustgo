@@ -16,7 +16,9 @@ use crate::expr_utils::{
 use crate::{parse, SqlError, SqlResult, Value};
 use parking_lot::RwLock;
 use sqlrustgo_catalog::stored_proc::{ParamMode, StoredProcParam, StoredProcStatement};
-use sqlrustgo_catalog::{auth::UserIdentity, Catalog, StoredProcedure};
+use sqlrustgo_catalog::{
+    auth::UserIdentity, AuthErrorCode, Catalog, ObjectRef, Privilege, StoredProcedure,
+};
 use sqlrustgo_executor::ast_adapter::AstAdapter;
 use sqlrustgo_executor::stored_proc::StoredProcExecutor;
 use sqlrustgo_executor::trigger::{
@@ -34,12 +36,12 @@ use sqlrustgo_parser::parser::{
     AlterTableStatement, AlterUserStatement, CallStatement, CompressionAlgorithm,
     CreateDatabaseStatement, CreateIndexStatement, CreateProcedureStatement, CreateRoleStatement,
     CreateSequenceStatement, CreateTableStatement, CreateTriggerStatement, CreateViewStatement,
-    DescribeStatement, DropDatabaseStatement, DropIndexStatement, DropRoleStatement,
-    DropSequenceStatement, DropTableStatement, DropViewStatement, ExceptStatement,
-    GrantRoleStatement, GrantStatement, InsertStatement, IntersectStatement, MergeStatement,
-    ObjectType as ParserObjectType, OrderByExpression, Privilege as ParserPrivilege,
-    RevokeRoleStatement, RevokeStatement, SelectStatement, SetRoleStatement, ShowStatement,
-    StorageEngineSpec, StoredProcParam as ParserStoredProcParam,
+    DescribeStatement, DropDatabaseStatement, DropIndexStatement, DropProcedureStatement,
+    DropRoleStatement, DropSequenceStatement, DropTableStatement, DropViewStatement,
+    ExceptStatement, GrantRoleStatement, GrantStatement, InsertStatement, IntersectStatement,
+    MergeStatement, ObjectType as ParserObjectType, OrderByExpression,
+    Privilege as ParserPrivilege, RevokeRoleStatement, RevokeStatement, SelectStatement,
+    SetRoleStatement, ShowStatement, StorageEngineSpec, StoredProcParam as ParserStoredProcParam,
     StoredProcParamMode as ParserParamMode, StoredProcStatement as ParserStatement,
     TruncateStatement, UnionStatement,
 };
@@ -81,6 +83,10 @@ pub struct ExecutionEngine<S: StorageEngine> {
     pub(crate) tx_readonly: bool,
     pub(crate) default_isolation: TmIsolationLevel,
     pub(crate) current_role: Option<String>,
+    /// V312-55F / Issue #4243: current SQL session user identity. Defaults to
+    /// `root@localhost` (MySQL implicit full privilege). Use `set_current_user`
+    /// to switch identity for privilege-check tests / non-root sessions.
+    pub(crate) current_user: UserIdentity,
     /// V313-followup-4 / Issue #4157: `SET default_null_order` controls
     /// where NULL appears in ORDER BY output. None = engine default
     /// (nulls_first because Value::Null has the lowest discriminant);
@@ -189,6 +195,7 @@ impl<S: StorageEngine + 'static> ExecutionEngine<S> {
             tx_readonly: false,
             default_isolation: TmIsolationLevel::default(),
             current_role: None,
+            current_user: UserIdentity::new("root", "localhost"),
             session_null_order_first: None,
             checkpoint_manager: None,
             parallel_degree,
@@ -207,6 +214,53 @@ impl<S: StorageEngine + 'static> ExecutionEngine<S> {
     /// primary-key access, and warm entries surface via `ahi().lookup(...)`.
     pub fn ahi(&self) -> &Arc<AdaptiveHashIndex> {
         &self.adaptive_hash_index
+    }
+
+    /// V312-55F / Issue #4243: switch the current session user identity.
+    /// The new identity is what every `check_privilege` call uses. Default
+    /// identity is `root@localhost`, which short-circuits all privilege
+    /// checks (MySQL convention — root has implicit full privilege).
+    pub fn set_current_user(&mut self, identity: UserIdentity) {
+        self.current_user = identity;
+    }
+
+    /// V312-55F / Issue #4243: returns the current session user identity.
+    pub fn current_user(&self) -> &UserIdentity {
+        &self.current_user
+    }
+
+    /// V312-55F / Issue #4243: enforce a privilege check on the current user
+    /// against `object`. Returns `Ok(())` for `root@localhost` (implicit
+    /// superuser), otherwise consults the catalog's `AuthManager`.
+    ///
+    /// Errors are mapped to `SqlError::ExecutionError` with the original
+    /// `AuthError` message so the client sees a stable 1105 / HY000 surface
+    /// (matches MySQL's privilege-denied error family).
+    pub fn check_privilege(
+        &self,
+        catalog: &Catalog,
+        privilege: Privilege,
+        object: &ObjectRef,
+    ) -> SqlResult<()> {
+        if self.current_user.username == "root" {
+            return Ok(());
+        }
+        catalog
+            .auth_manager()
+            .check_privilege(&self.current_user, object, privilege)
+            .map_err(|e| {
+                if matches!(e.code, AuthErrorCode::PermissionDenied) {
+                    SqlError::ExecutionError(format!(
+                        "Permission denied: {} on {} for {}@{}",
+                        privilege,
+                        object.object_name,
+                        self.current_user.username,
+                        self.current_user.host
+                    ))
+                } else {
+                    SqlError::ExecutionError(e.message)
+                }
+            })
     }
 
     /// Get the active instrumentation hook. V311-06 (F-31): replace the
@@ -293,6 +347,18 @@ impl<S: StorageEngine + 'static> ExecutionEngine<S> {
     /// Get table statistics for CBO
     pub fn get_table_stats(&self) -> Arc<parking_lot::RwLock<ExecutionStats>> {
         self.stats.clone()
+    }
+
+    /// V312-22 / Issue #4182: count how many columns on this table
+    /// currently have a non-empty `Histogram` inside the CBO
+    /// `UnifiedCostModel::column_stats` map. Returns 0 if the table is
+    /// unknown to CBO or no column has a histogram yet. Used by the
+    /// E2E test (`tests/integration/executor_optimizer_e2e.rs`) to
+    /// prove that `update_cost_model_stats()` actually propagates the
+    /// histograms that `ANALYZE` collects into the cost model.
+    pub fn cbo_histogram_column_count(&self, table_name: &str) -> usize {
+        let cost_model = self.cost_model.read();
+        cost_model.histogram_column_count(table_name)
     }
 
     /// Determine whether a SELECT query should be parallelized.
@@ -507,6 +573,44 @@ impl<S: StorageEngine + 'static> ExecutionEngine<S> {
         Ok(n)
     }
 
+    /// Round-21 / Issue #4217: bulk-insert a large pre-parsed batch,
+    /// chunking internally into `chunk_size`-row slices so the
+    /// `FileStorage` insert buffer's `buffer_threshold` (default 10_000)
+    /// can flush each chunk to disk independently. This is the
+    /// engine-side companion to the LOAD DATA LOCAL INFILE handler's
+    /// `rows_per_flush` knob — callers that already have the entire
+    /// record set in memory (e.g. SQL `INSERT INTO t VALUES (..), (..)`
+    /// with N>>threshold rows, or a parser that emits all rows in one
+    /// pass) can hand the whole `Vec<Record>` here and the helper
+    /// will take care of chunking.
+    ///
+    /// Returns the total number of rows inserted. Like
+    /// `bulk_insert_records`, this does NOT call `flush()` — the
+    /// caller still owns the deferred-persist contract and is
+    /// expected to call `engine.flush()` once after loading completes.
+    ///
+    /// `chunk_size == 0` is treated as "no chunking" (entire batch in
+    /// one call, equivalent to `bulk_insert_records`).
+    pub fn bulk_insert_chunked(
+        &self,
+        table: &str,
+        records: Vec<sqlrustgo_storage::Record>,
+        chunk_size: usize,
+    ) -> SqlResult<u64> {
+        if chunk_size == 0 || records.len() <= chunk_size {
+            return self.bulk_insert_records(table, records);
+        }
+        let mut inserted: u64 = 0;
+        for chunk in records.chunks(chunk_size) {
+            let chunk_owned: Vec<sqlrustgo_storage::Record> = chunk.to_vec();
+            // bulk_insert_records returns the row count for this chunk;
+            // sum the per-chunk counts so the total reflects what storage
+            // actually accepted (matches bulk_insert_records semantics).
+            inserted += self.bulk_insert_records(table, chunk_owned)?;
+        }
+        Ok(inserted)
+    }
+
     // CBO estimation methods extracted to cbo_estimator.rs (SPEC-012).
     // Thin forwarder methods retained for backwards-compatible public API.
 
@@ -607,6 +711,8 @@ impl<S: StorageEngine + 'static> ExecutionEngine<S> {
             Statement::CreateProcedure(ref create_proc) => {
                 self.execute_create_procedure(create_proc)
             }
+            // V312-55A / Issue #4238: route DROP PROCEDURE.
+            Statement::DropProcedure(ref drop_proc) => self.execute_drop_procedure(drop_proc),
             Statement::Transaction(ref txn) => self.execute_transaction(txn),
             // SEM-1 (#3172): SAVEPOINT/ROLLBACK TO SAVEPOINT/RELEASE SAVEPOINT
             Statement::SavepointStatement { ref name, op } => self.execute_savepoint(name, op),
@@ -640,6 +746,13 @@ impl<S: StorageEngine + 'static> ExecutionEngine<S> {
             Statement::AlterUser(_) => Err(SqlError::ExecutionError(
                 "ALTER USER not yet implemented".to_string(),
             )),
+            // Round-21 / Issue #4218: KILL <id> / KILL CONNECTION <id> /
+            // KILL QUERY <id>. Live process registry is not yet wired, so
+            // return Ok(0) — a no-op admin statement that does not error.
+            Statement::Kill {
+                connection_id,
+                kill_query,
+            } => self.execute_kill(connection_id, kill_query),
         }
     }
 
@@ -770,6 +883,27 @@ impl<S: StorageEngine + 'static> ExecutionEngine<S> {
         Ok(ExecutorResult::empty())
     }
 
+    /// Round-21 / Issue #4218: KILL <id> / KILL QUERY <id>.
+    /// No live process registry yet; this is a no-op admin statement that
+    /// returns Ok(0) so dispatch succeeds and the wire protocol OK packet
+    /// is emitted. A future process-registry implementation will look up
+    /// the connection_id and route the cancel via the storage layer's
+    /// `set_cancel_flag` / `check_cancelled` API surface (added in #4218).
+    pub fn execute_kill(&self, connection_id: u64, kill_query: bool) -> SqlResult<ExecutorResult> {
+        // Inform the storage layer for any future implementation; default
+        // impl is a no-op, so this is safe across all backends.
+        let mut storage = self.storage.write();
+        let _ = storage.set_cancel_flag(connection_id);
+        Ok(ExecutorResult::new(
+            vec![vec![Value::Text(format!(
+                "KILL {} {}: not yet implemented",
+                if kill_query { "QUERY" } else { "CONNECTION" },
+                connection_id
+            ))]],
+            0,
+        ))
+    }
+
     fn execute_truncate(&self, truncate: &TruncateStatement) -> SqlResult<ExecutorResult> {
         let mut storage = self.storage.write();
         if !storage.has_table(&truncate.name) {
@@ -830,6 +964,19 @@ impl<S: StorageEngine + 'static> ExecutionEngine<S> {
     fn execute_create_trigger(&self, stmt: &CreateTriggerStatement) -> SqlResult<ExecutorResult> {
         use sqlrustgo_storage::engine::{TriggerEvent, TriggerInfo, TriggerTiming};
 
+        // V312-55F / Issue #4243: privilege check — non-root users need
+        // Create on the target table to install a trigger. Fail closed
+        // before any storage work so privilege denied doesn't leave
+        // partial trigger metadata behind.
+        if let Some(catalog_guard) = self.catalog.as_ref() {
+            let catalog = catalog_guard.read();
+            self.check_privilege(
+                &catalog,
+                Privilege::Create,
+                &ObjectRef::table(&stmt.table),
+            )?;
+        }
+
         let mut storage = self.storage.write();
         let timing = match stmt.timing.to_uppercase().as_str() {
             "BEFORE" => TriggerTiming::Before,
@@ -873,6 +1020,23 @@ impl<S: StorageEngine + 'static> ExecutionEngine<S> {
             SqlError::ExecutionError("CALL statement requires stored procedure catalog".to_string())
         })?;
         let catalog = catalog_guard.read();
+
+        // V312-55F / Issue #4243: privilege check — CALL is treated as
+        // equivalent to executing the procedure body, so we require All
+        // on the procedure name (matches MySQL's EXECUTE privilege,
+        // which we model as `All` since the `Privilege` enum does not
+        // yet have an `Execute` variant).
+        //
+        // ObjectType is `Database` (no Procedure variant yet) so we
+        // namespace the check under a synthetic "<db>.<proc>" key. The
+        // AuthManager only looks at `object_name`, so this is enough to
+        // gate non-root callers without inventing a new ObjectType.
+        let proc_object_name = format!("procedure:{}", call.procedure_name);
+        self.check_privilege(
+            &catalog,
+            Privilege::All,
+            &ObjectRef::database(&proc_object_name),
+        )?;
 
         let procedure = catalog
             .get_stored_procedure(&call.procedure_name)
@@ -974,6 +1138,16 @@ impl<S: StorageEngine + 'static> ExecutionEngine<S> {
         })?;
         let mut catalog = catalog_guard.write();
 
+        // V312-55F / Issue #4243: privilege check — non-root users need
+        // Create on a procedure namespace. ObjectType has no Procedure
+        // variant yet, so we use `database` as the namespacing object.
+        let proc_object_name = format!("procedure:{}", stmt.name);
+        self.check_privilege(
+            &*catalog,
+            Privilege::Create,
+            &ObjectRef::database(&proc_object_name),
+        )?;
+
         let params: Vec<sqlrustgo_catalog::stored_proc::StoredProcParam> = stmt
             .params
             .iter()
@@ -1048,10 +1222,54 @@ impl<S: StorageEngine + 'static> ExecutionEngine<S> {
 
         let procedure = StoredProcedure::new(stmt.name.clone(), params, body);
 
-        catalog.add_stored_procedure(procedure).map_err(|e| {
-            SqlError::ExecutionError(format!("Failed to create procedure: {:?}", e))
-        })?;
+        // V312-55A / Issue #4238: `OR REPLACE` semantics — overwrite an
+        // existing procedure with the same case-insensitive name
+        // instead of failing with DuplicateProcedure.
+        if stmt.or_replace {
+            catalog
+                .add_or_replace_stored_procedure(procedure)
+                .map_err(|e| {
+                    SqlError::ExecutionError(format!(
+                        "Failed to create or replace procedure: {:?}",
+                        e
+                    ))
+                })?;
+        } else {
+            catalog.add_stored_procedure(procedure).map_err(|e| {
+                SqlError::ExecutionError(format!("Failed to create procedure: {:?}", e))
+            })?;
+        }
 
+        Ok(ExecutorResult::empty())
+    }
+
+    /// V312-55A / Issue #4238: drop a stored procedure from the catalog.
+    ///
+    /// `IF EXISTS` makes the operation a no-op when the procedure does
+    /// not exist (instead of returning an error). Without `IF EXISTS`
+    /// we return ProcedureNotFound so callers can detect typos.
+    fn execute_drop_procedure(&self, stmt: &DropProcedureStatement) -> SqlResult<ExecutorResult> {
+        let catalog_guard = self.catalog.as_ref().ok_or_else(|| {
+            SqlError::ExecutionError("DROP PROCEDURE requires stored procedure catalog".to_string())
+        })?;
+        let mut catalog = catalog_guard.write();
+
+        // V312-55F / Issue #4243: privilege check — non-root users need
+        // Drop on the procedure namespace. ObjectType has no Procedure
+        // variant yet, so we use `database` as the namespacing object.
+        let proc_object_name = format!("procedure:{}", stmt.name);
+        self.check_privilege(
+            &*catalog,
+            Privilege::Drop,
+            &ObjectRef::database(&proc_object_name),
+        )?;
+
+        if catalog.remove_stored_procedure(&stmt.name).is_none() && !stmt.if_exists {
+            return Err(SqlError::ExecutionError(format!(
+                "DROP PROCEDURE failed: procedure '{}' not found",
+                stmt.name
+            )));
+        }
         Ok(ExecutorResult::empty())
     }
 
@@ -1350,25 +1568,6 @@ impl<S: StorageEngine + 'static> ExecutionEngine<S> {
 
     fn execute_intersect(&mut self, stmt: &IntersectStatement) -> SqlResult<ExecutorResult> {
         crate::engine_setops::execute_intersect(self, stmt)
-    }
-
-    fn apply_trailing_order_limit_offset(
-        &self,
-        stmt_left: &Statement,
-        order_by: &[sqlrustgo_parser::parser::OrderByExpression],
-        offset: Option<u64>,
-        limit: Option<u64>,
-        rows: &mut Vec<Vec<Value>>,
-    ) {
-        crate::engine_setops::apply_trailing_order_limit_offset(
-            self,
-            self.session_null_order_first,
-            stmt_left,
-            order_by,
-            offset,
-            limit,
-            rows,
-        );
     }
 
     fn execute_except(&mut self, stmt: &ExceptStatement) -> SqlResult<ExecutorResult> {

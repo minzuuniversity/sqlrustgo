@@ -272,6 +272,8 @@ pub enum Token {
     // Syntax
     LParen,
     RParen,
+    LBracket,
+    RBracket,
     Comma,
     Dot,
     Semicolon,
@@ -530,6 +532,8 @@ impl fmt::Display for Token {
             // Syntax
             Token::LParen => write!(f, "("),
             Token::RParen => write!(f, ")"),
+            Token::LBracket => write!(f, "["),
+            Token::RBracket => write!(f, "]"),
             Token::Comma => write!(f, ","),
             Token::Dot => write!(f, "."),
             Token::Semicolon => write!(f, ";"),
