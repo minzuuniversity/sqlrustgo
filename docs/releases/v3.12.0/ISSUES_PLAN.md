@@ -325,23 +325,26 @@
 
 ## V312-56：系列教学能力增强
 
-**优先级**: P1
-**Gitea Issues**: #4250, #4251, #4252, #4253, #4254, #4255, #4256, #4257, #4258
+**优先级**: P0 (总控 + 56A/56C/56D/56H), P1 (56B/56E/56F/56G)
+**Gitea Issues**: #4250 (总控), #4251 (56A), #4252 (56B), #4253 (56C), #4254 (56D), #4255 (56E), #4256 (56F), #4257 (56G), #4258 (56H)
 **目标**: 为 SQLRustGo v3.12.0 增加教学 corpus 和 teaching fixtures，涵盖 metadata、SQL teaching、transaction/crash recovery、prepared statement、optimizer EXPLAIN、VIEW/CTE/MERGE disposition 和 Partition/FullText disposition。
 **范围**:
-- V312-56A (#4250): Metadata teaching - SHOW INDEX/SHOW COLUMNS 实现增强
-- V312-56B (#4251): SQL teaching corpus - 创建 `teaching_sql_v3_12/` 目录和 manifest.yml
-- V312-56C (#4252): Transaction/crash recovery teaching - 教学实验文档
-- V312-56D (#4253): Prepared statement/wire teaching - teaching fixtures
-- V312-56E (#4254): Optimizer/EXPLAIN teaching - 5 个 EXPLAIN fixtures
-- V312-56F (#4255): VIEW/CTE/MERGE disposition - 状态明确化
-- V312-56G (#4256): Partition/FullText disposition - UNSUPPORTED/DEFERRED 决策
-- V312-56H (#4258): Beta gate integration - evidence bundle 和文档一致性
+- V312-56 总控 (#4250): 4.0 前功能整改与 MySQL 教学能力补强总控 — orchestrates 56A~56H
+- V312-56A (#4251): Metadata/SHOW/information_schema 教学与兼容闭环 — SHOW INDEX/SHOW COLUMNS 实现增强
+- V312-56B (#4252): SQL 教学 corpus 与多 oracle 对比 — 创建 `teaching_sql_v3_12/` 目录和 manifest.yml
+- V312-56C (#4253): Transaction/crash recovery 教学实验 — 教学实验文档
+- V312-56D (#4254): Prepared statement 与 wire protocol 教学实验 — teaching fixtures
+- V312-56E (#4255): Optimizer/EXPLAIN 教学实验 — 5 个 EXPLAIN fixtures
+- V312-56F (#4256): VIEW/CTE/MERGE disposition 与门禁 — 状态明确化
+- V312-56G (#4257): Partition/FullText disposition 与 GMP keyword retrieval 决策 — UNSUPPORTED/DEFERRED
+- V312-56H (#4258): Beta gate、文档和 release evidence 集成 — evidence bundle 和文档一致性
 **验收**:
-- `teaching_sql_v3_12/` 目录包含 26+ SQL fixtures
+- `teaching_sql_v3_12/` 目录包含 28+ SQL fixtures
 - manifest.yml 定义 oracle、expected、owner、stage
-- Beta gate 能验证 V312-56A~56D 的完成/降级状态
+- Beta gate 能验证 V312-56A~56D 的完成/降级状态 (B6_V312_56_TEACHING_CORPUS + B6_V312_56_EXPLAIN_FIXTURES)
 - Evidence bundle 包含 branch、commit、PR、merge commit、command、exit code、output、hash
+- `STAGE.yaml` promotion_to_BETA_requires 包含 V312-56A~56D
+- `V312-56-VERIFICATION.md` 归档所有命令、exit code、输出摘要和 evidence hash
 
 ## 附录：英文原文
 

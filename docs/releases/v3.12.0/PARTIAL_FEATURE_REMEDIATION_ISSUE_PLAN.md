@@ -53,3 +53,19 @@
 2. #4220 关闭前，`README.md` 中每个 `PARTIAL` 必须能在本文件找到整改 issue。
 3. #3887 总控必须引用本文件，并在每轮审计中同步 #4220-#4227 与现有 #3943/#4020/#4210/#4211/#4217/#4218/#4219 状态。
 4. 若某功能决定不进入 v3.12 初始生产边界，应把 README 状态从 `PARTIAL` 改为 `DEFERRED` 或 `UNSUPPORTED`，而不是保留模糊 `PARTIAL`。
+
+## 5. V312-56 系列 issue mapping（同步自 ISSUES_PLAN.md，V312-56H / Issue #4258 验收条件 4）
+
+| Issue | V312-56 | 类型 | 整改范围 | 关闭边界 |
+|---|---|---|---|---|
+| #4250 | V312-56 总控 | orchestrator | 4.0 前功能整改与 MySQL 教学能力补强总控 | #4251-#4258 全部 CLOSED 或显式降级 |
+| #4251 | V312-56A | teaching | Metadata/SHOW/information_schema 教学与兼容闭环 | SHOW INDEX/SHOW COLUMNS + `wildcard_match` 实跑 PASS；32/36 子任务 |
+| #4252 | V312-56B | corpus | SQL 教学 corpus 与多 oracle 对比 | `teaching_sql_v3_12/` 28+ SQL fixtures + manifest.yml |
+| #4253 | V312-56C | teaching | Transaction/crash recovery 教学实验 | 6 crash tests + 3 tx tests + V312-56C_TRANSACTION_TEACHING.md |
+| #4254 | V312-56D | teaching | Prepared statement 与 wire protocol 教学实验 | 3 prepared/* fixtures |
+| #4255 | V312-56E | teaching | Optimizer/EXPLAIN 教学实验 | 5 EXPLAIN fixtures + `crates/executor/src/explain.rs` |
+| #4256 | V312-56F | disposition | VIEW/CTE/MERGE disposition 与门禁 | VIEW supported；CTE/MERGE → DEFERRED（带 owner/expiry/关闭边界） |
+| #4257 | V312-56G | disposition | Partition/FullText disposition 与 GMP keyword retrieval 决策 | TABLE PARTITION → UNSUPPORTED；FULLTEXT MATCH → DEFERRED |
+| #4258 | V312-56H | gate/docs/evidence | Beta gate、文档和 release evidence 集成 | STAGE.yaml + TEST_PLAN.md + ISSUES_PLAN.md + V312-56-VERIFICATION.md 四件齐备 |
+
+**注**: V312-56F (#4256) 与 V312-56G (#4257) 是 disposition 类问题，把 `PARTIAL` 改为 `DONE / 受控`（VIEW）或 `DEFERRED`（CTE/MERGE/PARTITION/FULLTEXT MATCH），并写入 README 与 `MYSQL_COMPAT_STATUS.md`。
