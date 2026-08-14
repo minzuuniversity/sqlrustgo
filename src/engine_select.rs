@@ -2222,21 +2222,41 @@ impl<S: StorageEngine + 'static> ExecutionEngine<S> {
         //      high-degree hub and dead-end inside one of its
         //      leaves" by preferring low-degree leaves first.
         //   3. Worst-case O(N^2) for N <= 10 (TPC-H). Acceptable.
-        let mut chain_order_opt: Option<Vec<(String, String)>> = None;
+        // Try every start_idx. We must keep trying even after we find
+        // a `Some` candidate, because `build_chain_from_start` returns
+        // `Some(chain)` for EVERY visited-table count, not just for
+        // a complete spanning chain — wait, that contradicts the
+        // current contract (it returns None on dead-end). Either way,
+        // be defensive: prefer the LONGEST chain found. If multiple
+        // starts yield len == join_tables.len(), the first one wins.
+        //
+        // Issue #4280 root cause: previously the loop broke on the
+        // first `Some(c)` even if `c.len() < join_tables.len()`. While
+        // the current `build_chain_from_start` contract only returns
+        // `Some(full_chain) | None`, future refactors must preserve
+        // the explicit `c.len() == join_tables.len()` filter below.
+        let mut best_chain: Option<Vec<(String, String)>> = None;
+        let mut best_len = 0usize;
         for start_idx in 0..join_tables.len() {
-            if let Some(candidate) = Self::build_chain_from_start(start_idx, &join_tables, &pair_key)
+            if let Some(candidate) =
+                Self::build_chain_from_start(start_idx, &join_tables, &pair_key)
             {
-                chain_order_opt = Some(candidate);
-                break;
+                if candidate.len() > best_len {
+                    best_chain = Some(candidate);
+                    best_len = best_chain.as_ref().unwrap().len();
+                }
+                if best_len == join_tables.len() {
+                    break;
+                }
             }
         }
 
-        let chain_order: Vec<(String, String)> = match chain_order_opt {
+        let chain_order: Vec<(String, String)> = match best_chain {
             Some(c) if c.len() == join_tables.len() => c,
             _ => {
                 eprintln!(
-                    "DBG chain_order multi-start could not build complete chain: join_tables.len()={}",
-                    join_tables.len()
+                    "DBG chain_order multi-start could not build complete chain: join_tables.len()={}, best_len={}",
+                    join_tables.len(), best_len
                 );
                 return None;
             }
