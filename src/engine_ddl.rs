@@ -817,8 +817,8 @@ fn wildcard_match(s: &str, pattern: &str) -> bool {
     let p_bytes = pattern.as_bytes();
     let mut si = 0usize; // current byte position in s
     let mut pi = 0usize; // current byte position in pattern
-    // When we see a `*`, remember the pattern position and where we were in s.
-    // On mismatch later, backtrack to that `*` and consume one more char of s.
+                         // When we see a `*`, remember the pattern position and where we were in s.
+                         // On mismatch later, backtrack to that `*` and consume one more char of s.
     let mut star_pi: Option<usize> = None;
     let mut star_si: usize = 0;
 
