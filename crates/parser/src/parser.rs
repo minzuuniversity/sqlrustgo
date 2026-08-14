@@ -7238,6 +7238,17 @@ impl Parser {
                                 }
                             }
                         }
+                        // Consume the CAST's closing paren. The args loop
+                        // above terminates on `AS` (not `)`), so the
+                        // closing `)` of `CAST(expr AS TYPE)` is still
+                        // pending here. Without this, the leftover `)`
+                        // makes a parent column-list loop treat the
+                        // subquery as terminated early, dropping any
+                        // following columns and the FROM clause
+                        // (V312-21 / #4181, TPC-H Q7-Q9 subquery parse).
+                        if matches!(self.current(), Some(Token::RParen)) {
+                            self.next();
+                        }
                         // EXTRACT(field FROM expr) — field is a SQL token (YEAR,
                         // MONTH, DAY, ...). The executor's `EXTRACT` eval_fn
                         // expects a 2-arg FunctionCall where arg[0] is the
