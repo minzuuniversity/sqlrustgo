@@ -37,6 +37,8 @@
 | V312-G23 | 执行架构与优化器 invariant | DML PhysicalPlan/VTU/Parallel/SIMD route checks、Q4 semi/anti join/decorrelation benchmark | 无已知 bypass；优化器未完成项不得写成性能能力 |
 | V312-G24 | Storage/Index/WAL tooling 回归 | WAL checkpoint、wal-verification、composite index、index stats、checksum/torn-write tests | storage invariant 有输出；未完成项有 issue/owner/expiry |
 | V312-G25 | 测试基础设施激活 | SQLancer、test-runner、test-registry、E2E shell scripts、anti-fabrication binaries | 工具可运行并产出报告，或 documented retired/deferred |
+| V312-G26 | 4.0 前功能整改门禁 | `PARTIAL_FEATURE_REMEDIATION_ISSUE_PLAN.md` 中每个 `PARTIAL` 都有整改 issue；issue mapping 与 `ISSUES_PLAN.md` 一致；READMED 中的 `PARTIAL` 状态与整改计划对齐 | 0 个未归属 `PARTIAL`；mapping diff=0；README 状态列与 plan 同步 |
+| V312-G27 | V312-56 教学能力与 4.0 前功能整改门禁 | V312-56A~56H 子任务在 Beta 准入前已完成或明确降级；`tests/compat/teaching_sql_v3_12/` 28+ SQL fixtures + manifest.yml；SHOW INDEX/SHOW COLUMNS LIKE glob matcher 实跑 PASS；prepared/* + 6 crash tests + 3 tx tests + 5 EXPLAIN fixtures | V312-56A/B/C/D 实跑全 PASS；E/F/G disposition 已写入 `MYSQL_COMPAT_STATUS.md`；H Beta gate integration (B6_V312_56_TEACHING_CORPUS + B6_V312_56_EXPLAIN_FIXTURES) PASS |
 
 ## 2. 必需测试资产
 
@@ -217,6 +219,18 @@ bash scripts/gate/check_v312_coverage_baseline.sh
 | V312-G13 | MySQL wire protocol hardening | COM_QUERY/COM_STMT/error/reset/TLS/compression e2e | deterministic pass/fail artifact |
 | V312-G14 | LOAD DATA / bulk import | SF=1/SF=10 import benchmark + memory cap | no OOM; row-count/hash equality |
 | V312-G15 | Crash recovery and upgrade | kill -9, WAL replay, backup/restore, v3.10->v3.12 upgrade/downgrade | count/hash equality after recovery |
+| V312-G16 | CREATE SEQUENCE executor | DDL, NEXTVAL, default expression, concurrency, tx rollback, WAL/recovery tests | semantics + persistence deterministic; no longer an executor gap |
+| V312-G17 | JSON/GIS controlled features (Window → DEFERRED-3.13, see `sql-feature-corpus/window_json_gis_scope.md`) | JSON_EXTRACT/JSON_VALUE/JSON_UNQUOTE +/-; ST_Distance/ST_Within/ST_Contains/ST_Intersects 2D-Point +/- | JSON/GIS in-scope all PASS; out-of-scope fail with explicit unsupported error; Window not tested, tracked in 3.13 |
+| V312-G18 | Coverage and disabled-test debt | canonical coverage command, disabled/API-drift manifest, flaky test quarantine | parser/mysql-server/mysql-client ≥80% or issue-linked exception; no silent disabled tests |
+| V312-G19 | Performance and observability baseline | TPC-H SF=10, Sysbench OLTP, bulk-load benchmark, Prometheus/Slow Query Log e2e | re-runnable scripts, thresholds, logs and trend comparisons |
+| V312-G20 | SQL corpus and release sign-off | `test_sql_corpus.sh` all targets, R2.1-R2.8 invariant, 2-reviewer sign-off | SQL corpus/architecture invariant output; sign-off with evidence hash |
+| V312-G21 | v3.6-v3.10 historical debt ledger | historical backlog disposition + current verification sampling | each item closed/superseded/carried/deferred, carried items have v3.12 issue |
+| V312-G22 | MySQL compat and SQL surface regression | SHOW, auth, prepared statements, ALTER, TIMESTAMP, connection pool, functions, column-level privilege fixtures | GMP/production-path items PASS; non-target items have explicit unsupported/deferred evidence |
+| V312-G23 | Execution architecture and optimizer invariant | DML PhysicalPlan/VTU/Parallel/SIMD route checks, Q4 semi/anti join/decorrelation benchmark | no known bypass; optimizer WIP must not be claimed as performance capability |
+| V312-G24 | Storage/Index/WAL tooling regression | WAL checkpoint, wal-verification, composite index, index stats, checksum/torn-write tests | storage invariant output; WIP items issue/owner/expiry-linked |
+| V312-G25 | Test infrastructure activation | SQLancer, test-runner, test-registry, E2E shell scripts, anti-fabrication binaries | tools run and produce reports, or documented retired/deferred |
+| V312-G26 | Pre-4.0 PARTIAL remediation gate | every `PARTIAL` in `PARTIAL_FEATURE_REMEDIATION_ISSUE_PLAN.md` has an owner issue; issue mapping matches `ISSUES_PLAN.md`; README `PARTIAL` column aligned | 0 unattributed `PARTIAL`; mapping diff=0; README column matches plan |
+| V312-G27 | V312-56 teaching capability + pre-4.0 remediation gate | V312-56A~56H sub-tasks completed or explicitly demoted before Beta entry; `tests/compat/teaching_sql_v3_12/` 28+ SQL fixtures + manifest.yml; SHOW INDEX/SHOW COLUMNS LIKE glob matcher live PASS; prepared/* + 6 crash tests + 3 tx tests + 5 EXPLAIN fixtures | V312-56A/B/C/D live PASS; E/F/G disposition recorded in `MYSQL_COMPAT_STATUS.md`; H Beta gate integration (B6_V312_56_TEACHING_CORPUS + B6_V312_56_EXPLAIN_FIXTURES) PASS |
 
 ## 2. Required Test Assets
 

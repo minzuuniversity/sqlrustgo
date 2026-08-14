@@ -759,6 +759,7 @@ impl<S: StorageEngine + 'static> ExecutionEngine<S> {
     }
 }
 
+// === V312-55A / Issue #4238: minimal SQL LIKE matcher for SHOW PROCEDURE STATUS LIKE ===
 /// V312-55A / Issue #4238: minimal SQL LIKE matcher used by
 /// `SHOW PROCEDURE STATUS LIKE 'pat'`. Supports `%` as zero-or-more
 /// wildcard; everything else is matched literally. The pattern is
@@ -808,6 +809,62 @@ fn like_match(pattern: &str, haystack: &str) -> bool {
     true
 }
 
+// === V312-56A / Issue #4251: simple glob pattern matcher for SHOW COLUMNS LIKE ===
+/// Simple glob pattern matching for SHOW COLUMNS LIKE pattern.
+/// Supports: * matches any characters, ? matches single character.
+fn wildcard_match(s: &str, pattern: &str) -> bool {
+    let s_bytes = s.as_bytes();
+    let p_bytes = pattern.as_bytes();
+    let mut si = 0usize; // current byte position in s
+    let mut pi = 0usize; // current byte position in pattern
+    // When we see a `*`, remember the pattern position and where we were in s.
+    // On mismatch later, backtrack to that `*` and consume one more char of s.
+    let mut star_pi: Option<usize> = None;
+    let mut star_si: usize = 0;
+
+    while si < s_bytes.len() {
+        if pi < p_bytes.len() {
+            match p_bytes[pi] {
+                b'*' => {
+                    star_pi = Some(pi);
+                    star_si = si;
+                    pi += 1;
+                }
+                b'?' => {
+                    si += 1;
+                    pi += 1;
+                }
+                c => {
+                    if s_bytes[si] == c {
+                        si += 1;
+                        pi += 1;
+                    } else if let Some(saved_pi) = star_pi {
+                        // Backtrack: let the previous `*` consume one more byte of s.
+                        pi = saved_pi + 1;
+                        star_si += 1;
+                        si = star_si;
+                    } else {
+                        return false;
+                    }
+                }
+            }
+        } else if let Some(saved_pi) = star_pi {
+            // Pattern exhausted but s still has bytes — backtrack through last `*`.
+            pi = saved_pi + 1;
+            star_si += 1;
+            si = star_si;
+        } else {
+            return false;
+        }
+    }
+
+    // Allow trailing `*`s in the pattern (they match the empty tail of s).
+    while pi < p_bytes.len() && p_bytes[pi] == b'*' {
+        pi += 1;
+    }
+    pi == p_bytes.len()
+}
+
 #[cfg(test)]
 mod like_match_tests {
     use super::like_match;
@@ -837,43 +894,22 @@ mod like_match_tests {
     }
 }
 
-/// Simple glob pattern matching for SHOW COLUMNS LIKE pattern.
-/// Supports: * matches any characters, ? matches single character.
-fn wildcard_match(s: &str, pattern: &str) -> bool {
-    let mut si = 0;
-    let mut pi = 0;
-    let mut wildcard_stack: Vec<(usize, usize)> = Vec::new();
+#[cfg(test)]
+mod wildcard_match_tests {
+    use super::wildcard_match;
 
-    while si < s.len() || pi < pattern.len() {
-        if pi < pattern.len() {
-            match pattern[pi..].chars().next() {
-                Some('*') => {
-                    wildcard_stack.push((si, pi));
-                    pi += 1;
-                }
-                Some('?') => {
-                    si += 1;
-                    pi += 1;
-                }
-                Some(c) => {
-                    if si < s.len() && s[si..].starts_with(c) {
-                        si += 1;
-                        pi += 1;
-                    } else if let Some((saved_si, saved_pi)) = wildcard_stack.pop() {
-                        si = saved_si + 1;
-                        pi = saved_pi + 1;
-                    } else {
-                        return false;
-                    }
-                }
-                None => break,
-            }
-        } else if let Some((saved_si, saved_pi)) = wildcard_stack.pop() {
-            si = saved_si + 1;
-            pi = saved_pi + 1;
-        } else {
-            return false;
-        }
+    #[test]
+    fn show_columns_wildcard_match_basic() {
+        // * matches any characters
+        assert!(wildcard_match("anything", "*"));
+        assert!(wildcard_match("foobar", "foo*"));
+        assert!(wildcard_match("foo", "foo*"));
+        assert!(!wildcard_match("foobar", "bar*"));
+        // ? matches single character
+        assert!(wildcard_match("foo", "f?o"));
+        assert!(!wildcard_match("foo", "f??o"));
+        // Exact
+        assert!(wildcard_match("foo", "foo"));
+        assert!(!wildcard_match("foo", "bar"));
     }
-    true
 }

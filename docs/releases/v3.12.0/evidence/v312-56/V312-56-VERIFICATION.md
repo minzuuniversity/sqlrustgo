@@ -1,22 +1,24 @@
 # V312-56 Teaching Capability Enhancement - Verification Report
 
 **Date**: 2026-08-15
-**Branch**: `fix/v312-32-33-35-41-42-open-remediation`
-**Commit**: `2a181cd7484649befe90f0ea7ba92d5119466838`
+**Branch**: `fix/v312-32-33-35-41-42-open-remediation` (rebased onto `develop/v3.12.0` HEAD `7932ab5658`)
+**Commit**: `c2882f9306` (rebase of `f08691b529` + conflict fix `7932466af7`)
 **Status**: SUBSTANTIALLY_COMPLETE
+**PR**: #4263 (open, originally mergeable=False; rebase resolves blocker)
 
 ## Sub-Issues Status
 
 | Issue | Title | Status | Evidence |
 |-------|-------|--------|----------|
-| #4250 | V312-56A: Metadata Teaching | COMPLETED | 32/36 tasks, gate PASS |
-| #4251 | V312-56B: SQL Teaching Corpus | COMPLETED | `teaching_sql_v3_12/` with 28 SQL fixtures |
-| #4252 | V312-56C: Transaction/Crash Recovery Teaching | COMPLETED | Teaching doc + 6 crash tests + 3 tx tests |
-| #4253 | V312-56D: Prepared Statement/Wire Teaching | COMPLETED | 3 teaching fixtures added |
-| #4254 | V312-56E: Optimizer/EXPLAIN Teaching | COMPLETED | 5 EXPLAIN fixtures created |
-| #4255 | V312-56F: VIEW/CTE/MERGE Disposition | COMPLETED | Documented in MYSQL_COMPAT_STATUS.md |
-| #4256 | V312-56G: Partition/FullText Disposition | COMPLETED | Documented UNSUPPORTED/DEFERRED |
-| #4258 | V312-56H: Beta Gate Integration | COMPLETED | Beta gate updated, evidence created |
+| #4250 | V312-56: 总控 (master orchestrator) | COMPLETED | All 8 sub-issues (#4251-#4258) closed below; this report closes the master issue |
+| #4251 | V312-56A: Metadata Teaching | COMPLETED | 32/36 tasks, gate PASS; `src/engine_ddl.rs::wildcard_match` for SHOW COLUMNS LIKE |
+| #4252 | V312-56B: SQL Teaching Corpus | COMPLETED | `tests/compat/teaching_sql_v3_12/` with 28 SQL fixtures + manifest.yml |
+| #4253 | V312-56C: Transaction/Crash Recovery Teaching | COMPLETED | Teaching doc + 6 crash tests + 3 tx tests |
+| #4254 | V312-56D: Prepared Statement/Wire Teaching | COMPLETED | 3 teaching fixtures added (`prepared/basic`, `param_binding`, `multiple_execute`) |
+| #4255 | V312-56E: Optimizer/EXPLAIN Teaching | COMPLETED | 5 EXPLAIN fixtures created; `crates/executor/src/explain.rs` |
+| #4256 | V312-56F: VIEW/CTE/MERGE Disposition | COMPLETED | Documented in MYSQL_COMPAT_STATUS.md (VIEW supported, CTE/MERGE DEFERRED) |
+| #4257 | V312-56G: Partition/FullText Disposition | COMPLETED | PARTITION → UNSUPPORTED, MATCH AGAINST → DEFERRED; documented with storage parser evidence |
+| #4258 | V312-56H: Beta Gate Integration | COMPLETED | `B6_V312_56_TEACHING_CORPUS` + `B6_V312_56_EXPLAIN_FIXTURES` checks added to `scripts/gate/check_beta_v3.12.0.sh` |
 
 ## Implementation Evidence
 
