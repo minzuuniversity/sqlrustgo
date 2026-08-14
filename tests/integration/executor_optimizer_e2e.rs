@@ -39,19 +39,39 @@ fn build_5_table_engine() -> MemoryExecutionEngine {
     let mut engine = MemoryExecutionEngine::new(storage);
 
     // Schema: 5 tables, foreign-key relationships, integers + text.
-    engine.execute("CREATE TABLE region (r_regionkey INTEGER, r_name TEXT)").unwrap();
-    engine.execute("CREATE TABLE nation (n_nationkey INTEGER, n_regionkey INTEGER, n_name TEXT)").unwrap();
-    engine.execute("CREATE TABLE supplier (s_suppkey INTEGER, s_nationkey INTEGER, s_name TEXT)").unwrap();
-    engine.execute("CREATE TABLE customer (c_custkey INTEGER, c_nationkey INTEGER, c_name TEXT)").unwrap();
-    engine.execute("CREATE TABLE orders (o_orderkey INTEGER, o_custkey INTEGER, o_total INTEGER)").unwrap();
+    engine
+        .execute("CREATE TABLE region (r_regionkey INTEGER, r_name TEXT)")
+        .unwrap();
+    engine
+        .execute("CREATE TABLE nation (n_nationkey INTEGER, n_regionkey INTEGER, n_name TEXT)")
+        .unwrap();
+    engine
+        .execute("CREATE TABLE supplier (s_suppkey INTEGER, s_nationkey INTEGER, s_name TEXT)")
+        .unwrap();
+    engine
+        .execute("CREATE TABLE customer (c_custkey INTEGER, c_nationkey INTEGER, c_name TEXT)")
+        .unwrap();
+    engine
+        .execute("CREATE TABLE orders (o_orderkey INTEGER, o_custkey INTEGER, o_total INTEGER)")
+        .unwrap();
 
     // Two regions. China has 2 nations; USA has 1.
-    engine.execute("INSERT INTO region VALUES (1, 'CHINA')").unwrap();
-    engine.execute("INSERT INTO region VALUES (2, 'USA')").unwrap();
+    engine
+        .execute("INSERT INTO region VALUES (1, 'CHINA')")
+        .unwrap();
+    engine
+        .execute("INSERT INTO region VALUES (2, 'USA')")
+        .unwrap();
 
-    engine.execute("INSERT INTO nation VALUES (10, 1, 'CN-A')").unwrap();
-    engine.execute("INSERT INTO nation VALUES (11, 1, 'CN-B')").unwrap();
-    engine.execute("INSERT INTO nation VALUES (20, 2, 'US-A')").unwrap();
+    engine
+        .execute("INSERT INTO nation VALUES (10, 1, 'CN-A')")
+        .unwrap();
+    engine
+        .execute("INSERT INTO nation VALUES (11, 1, 'CN-B')")
+        .unwrap();
+    engine
+        .execute("INSERT INTO nation VALUES (20, 2, 'US-A')")
+        .unwrap();
 
     // 6 suppliers across the 3 nations.
     for sk in 100..106 {
@@ -89,7 +109,9 @@ fn build_5_table_engine() -> MemoryExecutionEngine {
         engine
             .execute(&format!(
                 "INSERT INTO orders VALUES ({}, {}, {})",
-                ok, ck, ok * 10
+                ok,
+                ck,
+                ok * 10
             ))
             .unwrap();
     }
@@ -269,7 +291,11 @@ fn test_5_table_join_with_analyze_succeeds() {
         .unwrap();
 
     // Two regions → two groups in the result.
-    assert_eq!(result.rows.len(), 2, "5-table join should yield 2 region groups");
+    assert_eq!(
+        result.rows.len(),
+        2,
+        "5-table join should yield 2 region groups"
+    );
     assert_eq!(result.rows.len(), 2);
     // Verify that aggregate columns are populated (non-null sums).
     for row in &result.rows {
