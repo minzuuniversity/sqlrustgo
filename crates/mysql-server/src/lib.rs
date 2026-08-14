@@ -3159,7 +3159,7 @@ fn infer_param_types_from_sql<S: StorageEngine>(sql: &str, storage: &Arc<RwLock<
                         .columns
                         .iter()
                         .find(|c| c.name.eq_ignore_ascii_case(col_name))
-                        .map(|c| col_type_from_string(&c.data_type))
+                        .map(|c| param_bind_type_from_string(&c.data_type))
                         .unwrap_or(col_type::VARSTRING);
                     types.push(col_type_byte);
                 }
@@ -3170,6 +3170,55 @@ fn infer_param_types_from_sql<S: StorageEngine>(sql: &str, storage: &Arc<RwLock<
         }
     }
     vec![col_type::VARSTRING; param_count]
+}
+
+/// Map a SQL column type (e.g. "INTEGER", "CHAR(120)") to the MySQL
+/// binary-protocol type code that clients will encode parameter values
+/// as when binding via libmysqlclient.
+///
+/// This is similar to [`col_type_from_string`] but for the
+/// *parameter bind* wire format: when sysbench (libmysqlclient) binds
+/// `MYSQL_TYPE_LONG`, it actually sends **8 bytes** LE on the wire so
+/// that Lua's double-precision numbers round-trip safely. We therefore
+/// advertise `LONGLONG` (8 bytes) for INTEGER/INT so that subsequent
+/// re-executes with `new_params_bound_flag = 0` (which rely on the
+/// cached types from PREPARE) line up with the actual byte layout.
+///
+/// Result-column metadata continues to use [`col_type_from_string`]
+/// (LONG = 4 bytes for INT) so the Rust mysql crate's wire_decode
+/// for INT result columns is unchanged.
+fn param_bind_type_from_string(t: &str) -> u8 {
+    let u = t.to_uppercase();
+    if u.contains("DATETIME") || u.contains("TIMESTAMP") {
+        col_type::DATETIME
+    } else if u.contains("DATE") {
+        col_type::DATE
+    } else if u.contains("TIME") {
+        col_type::TIME
+    } else if u.contains("VARCHAR") {
+        col_type::VARCHAR
+    } else if u.contains("CHAR") || u.contains("TEXT") {
+        col_type::VARSTRING
+    } else if u.contains("INT") || u.contains("INTEGER") {
+        // Promote INT/INTEGER to LONGLONG (8 bytes) so libmysqlclient's
+        // MYSQL_TYPE_LONG wire encoding (which is 8 bytes LE) decodes
+        // correctly on subsequent COM_STMT_EXECUTE calls.
+        col_type::LONGLONG
+    } else if u.contains("BIGINT") {
+        col_type::LONGLONG
+    } else if u.contains("MEDIUMINT") {
+        col_type::INT24
+    } else if u.contains("SMALLINT") {
+        col_type::SHORT
+    } else if u.contains("TINYINT") {
+        col_type::TINY
+    } else if u.contains("FLOAT") {
+        col_type::FLOAT
+    } else if u.contains("DOUBLE") {
+        col_type::DOUBLE
+    } else {
+        col_type::VARSTRING
+    }
 }
 
 /// A single parameter value ready for `replace_placeholders`.
@@ -3560,6 +3609,7 @@ fn is_numeric_type(type_code: u8) -> bool {
 
 fn extract_table_name(sql: &str) -> Option<String> {
     let u = sql.trim().to_uppercase();
+    // SELECT <cols> FROM <table> [WHERE ...]
     if let Some(rest) = u.strip_prefix("SELECT") {
         if let Some(from_pos) = rest.find("FROM") {
             let after_from = rest[from_pos + 4..].trim();
@@ -3576,6 +3626,88 @@ fn extract_table_name(sql: &str) -> Option<String> {
                 return Some(orig_from[..orig_end].trim().to_string());
             }
         }
+        return None;
+    }
+    // INSERT INTO <table> [(cols)] VALUES (...)
+    if let Some(rest) = u.strip_prefix("INSERT") {
+        // Find the keyword boundary after INSERT (skip whitespace).
+        let after_insert = rest.trim_start();
+        let kw = after_insert
+            .split_whitespace()
+            .next()
+            .unwrap_or("")
+            .trim_end_matches(';');
+        if kw == "INTO" || kw.starts_with("INTO") {
+            let body = after_insert[kw.len()..].trim_start();
+            let table_end = body
+                .find(|c: char| c.is_whitespace() || c == '(' || c == ';' || c == ',')
+                .unwrap_or(body.len());
+            let table = body[..table_end].trim().trim_matches('`').trim_matches('"');
+            if !table.is_empty() {
+                // Mirror back to the original-case SQL.
+                let orig_kw_end = sql.to_uppercase().find("INTO").unwrap() + 4;
+                let orig_body = sql[orig_kw_end..].trim_start();
+                let orig_end = orig_body
+                    .find(|c: char| c.is_whitespace() || c == '(' || c == ';' || c == ',')
+                    .unwrap_or(orig_body.len());
+                let orig_table = orig_body[..orig_end]
+                    .trim()
+                    .trim_matches('`')
+                    .trim_matches('"');
+                if !orig_table.is_empty() {
+                    return Some(orig_table.to_string());
+                }
+            }
+        }
+        return None;
+    }
+    // UPDATE <table> SET ...
+    if let Some(rest) = u.strip_prefix("UPDATE") {
+        let body = rest.trim_start();
+        let table_end = body
+            .find(|c: char| c.is_whitespace() || c == ';' || c == ',')
+            .unwrap_or(body.len());
+        let table = body[..table_end].trim().trim_matches('`').trim_matches('"');
+        if !table.is_empty() {
+            let orig_after = sql.to_uppercase().find("UPDATE").unwrap() + 6;
+            let orig_body = sql[orig_after..].trim_start();
+            let orig_end = orig_body
+                .find(|c: char| c.is_whitespace() || c == ';' || c == ',')
+                .unwrap_or(orig_body.len());
+            let orig_table = orig_body[..orig_end]
+                .trim()
+                .trim_matches('`')
+                .trim_matches('"');
+            if !orig_table.is_empty() {
+                return Some(orig_table.to_string());
+            }
+        }
+        return None;
+    }
+    // DELETE FROM <table> [WHERE ...]
+    if let Some(rest) = u.strip_prefix("DELETE") {
+        if let Some(from_pos) = rest.find("FROM") {
+            let after_from = rest[from_pos + 4..].trim();
+            let table_end = after_from
+                .find(|c: char| c.is_whitespace() || c == ';' || c == ',')
+                .unwrap_or(after_from.len());
+            let table = after_from[..table_end].trim().trim_matches('`').trim_matches('"');
+            if !table.is_empty() {
+                let orig_after = sql.to_uppercase().find("FROM").unwrap();
+                let orig_from = sql[orig_after + 4..].trim();
+                let orig_end = orig_from
+                    .find(|c: char| c.is_whitespace() || c == ';' || c == ',')
+                    .unwrap_or(orig_from.len());
+                let orig_table = orig_from[..orig_end]
+                    .trim()
+                    .trim_matches('`')
+                    .trim_matches('"');
+                if !orig_table.is_empty() {
+                    return Some(orig_table.to_string());
+                }
+            }
+        }
+        return None;
     }
     None
 }
@@ -4531,6 +4663,11 @@ fn do_command_loop<S: Read + Write + DrainWrites>(
                         write_lenenc_string(&mut param_def, b"").unwrap();
                         write_lenenc_string(&mut param_def, b"?").unwrap();
                         write_lenenc_string(&mut param_def, b"?").unwrap();
+                        // length_of_fixed_fields (lenenc_int): always 0x0c = 12 bytes of
+                        // fixed-size metadata follow (matches write_column_def format).
+                        // Without this byte, libmysqlclient (used by sysbench) misparses
+                        // the entire packet and returns "Unknown or undefined error code".
+                        write_lenenc_int(&mut param_def, 12).unwrap();
                         // MySQL column/param fixed-size fields: charset_collation (2 bytes)
                         // → length (4 bytes) → field_type (1 byte) → flags (2 bytes)
                         // → decimals (1 byte) → filler (2 bytes)
