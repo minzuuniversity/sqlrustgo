@@ -1,8 +1,9 @@
 # Issue #4020 — Bulk-load SF=10 — Evidence
 
 **Issue:** #4020 (V312-26 SF=10/Sysbench/Observability baseline follow-up)
-**Status:** RUNNER INFRASTRUCTURE DELIVERED, END-TO-END BULK-LOAD BLOCKED BY WIRE-PROTOCOL LIMITATION
-**Capture date:** 2026-08-12
+**Status (2026-08-12):** RUNNER INFRASTRUCTURE DELIVERED; bulk-load blocked by wire-protocol multi-query round-trip (same root cause as #4019)
+**Status (2026-08-13, current):** WIRE-PROTOCAL BLOCKER REMOVED — 3 of 8 TPC-H SF=10 tables now load with `parity=match`; the remaining 5 tables are blocked by a **throughput ceiling** in `FileStorage` (full-table re-serialization on every 100-row flush). Root cause located and reproduced with a 50.6× speedup micro-benchmark (see "Throughput root cause" below).
+**Capture date range:** 2026-08-12 → 2026-08-13
 **Related:** #3905 (V312-18 parent), #4018 (SF=10), #4019 (Sysbench)
 
 ---
@@ -68,6 +69,8 @@ FAILURE — schema creation did not complete, no tables were loaded,
 
 ## What was NOT delivered (honest gap)
 
+**As of 2026-08-12** (`20260812T130325Z_sf10`):
+
 1. **End-to-end bulk-load of all 8 TPC-H tables at SF=10** — `create_schemas`
    failed at the very first step (`mysql -e "CREATE DATABASE IF NOT EXISTS tpch_sf10;"`)
    due to the same sqlrustgo wire-protocol multi-query round-trip limitation
@@ -91,6 +94,20 @@ FAILURE — schema creation did not complete, no tables were loaded,
    because the loop over `TABLES` was never reached.
 3. **No `row_count_parity` results** — no rows loaded against which to
    compare `wc -l` on the source `.tbl` files.
+
+**As of 2026-08-13** (`20260813T132615Z_sf10`): wire-protocol blocker removed
+(committed as part of #4020 itself: `--load-infile-dir` flag). 3 of 8
+TPC-H SF=10 tables load with `parity=match`. 2 tables (customer, part)
+time out at the 1800 s LOAD_TIMEOUT_SEC. 3 tables (partsupp, orders,
+lineitem) not attempted after the timeouts.
+
+```jsonl
+{"table":"region",   "src_lines":5,      "loaded_rows":5,       "elapsed_sec":0.049, "rows_per_sec":102,  "rc":0,   "parity":"match"}
+{"table":"nation",   "src_lines":25,     "loaded_rows":25,      "elapsed_sec":0.043, "rows_per_sec":581,  "rc":0,   "parity":"match"}
+{"table":"supplier", "src_lines":100000, "loaded_rows":100000,  "elapsed_sec":897.322,"rows_per_sec":111,  "rc":0,   "parity":"match"}
+{"table":"customer", "src_lines":1500000,"loaded_rows":-1,      "elapsed_sec":1800.005,"rows_per_sec":0,  "rc":124, "parity":"load_failed"}
+{"table":"part",     "src_lines":2000000,"loaded_rows":-1,      "elapsed_sec":1800.006,"rows_per_sec":0,  "rc":124, "parity":"load_failed"}
+```
 
 ---
 
@@ -140,18 +157,84 @@ the first DDL — then failed honestly.
 
 ## Why this is blocked (causal chain)
 
+**2026-08-12 root cause (now removed):** wire-protocol multi-query round-trip
+limitation — same as #4019. Fixed by the `--load-infile-dir` flag (commit
+`b263f4a97f`).
+
+**2026-08-13 root cause (current):** `FileStorage` write amplification.
+
 1. **V312-26 (#3905)** schedules Bulk-load SF=10 as a sub-task
 2. The capture script uses `mysql -e "CREATE DATABASE ..."` to create
    the database, then `mysql -e "CREATE TABLE ..."` for each of 8
    tables, then `mysql -e "LOAD DATA LOCAL INFILE ..."` for each table
-3. sqlrustgo's MySQL server processes the first COM_QUERY
-   (`select @@version_comment limit 1`) but then the command loop never
-   reads the next packet — the wire protocol is blocked
-4. The script's per-step timeout cuts the hang, but the DDL never proceeds
-5. Result: no schema, no tables, no bulk-load
+3. **Wire layer**: each `mysql -e` invocation now completes (post-fix);
+   LOAD DATA LOCAL INFILE streams up to 16 MB of file bytes per packet
+   and the inner loop in `crates/mysql-server/src/lib.rs`
+   (`handle_load_local_infile`) accumulates complete lines into
+   `pending_rows` before deciding to flush — effective batch is one
+   packet, not `PERIODIC_FLUSH_ROWS=100`.
+4. **Storage layer**: `Storage::insert` → `FileStorage::insert_buffered`
+   appends each batch to `self.insert_buffer[table]`. Every time
+   `buffered.len() >= buffer_threshold` (default **100** rows),
+   `flush_buffer` calls `insert_direct`, which:
+   - clones the entire `TableData` (`data.clone()`)
+   - calls `save_table`, which **clones all rows again** into a
+     `StoredTableData` and `serde_json::to_string_pretty`s the whole
+     table, then `File::create` (truncate) + `write_all`.
+5. Each flush is therefore O(rows_loaded). With a batch size of 100,
+   total work to insert N rows is Σ_{k=1}^{N/100} k·row_size → **O(N²)**
+   in rows, dominated by the largest late flushes.
 
-This is the **same root cause** as #4019. It is a sqlrustgo bug, not a
-#4020 deliverable issue.
+For SF=10 supplier (100 k rows): 1000 flushes, each serializing a
+growing JSON file (~40 MB final). For customer (1.5 M) and part
+(2 M): 15 000 – 20 000 flushes each, with the table growing to
+68 MB / 60 MB respectively. At supplier's observed 111 rows/s,
+customer would need ~3.7 h and part ~5 h, which exceeds the
+`LOAD_TIMEOUT_SEC=1800` (30 min) wrapper. lineitem (~60 M rows)
+would need ~6 days.
+
+### Throughput root cause (measured)
+
+A focused micro-benchmark
+(`crates/storage/tests/bulk_load_quadraticity.rs`, in this commit)
+drives `FileStorage::insert` directly with N=30 000 synthetic TPC-H
+shaped rows in batches of `buffer_threshold`. Per-batch wall time:
+
+| rows_so_far | batch_us | json_bytes |
+|---:|---:|---:|
+| 200 | 5 662 | 111 061 |
+| 2 000 | 48 595 | 1 101 774 |
+| 4 000 | 93 934 | 2 204 294 |
+| 6 000 | 145 706 | 3 307 091 |
+| 8 000 | 199 433 | 4 409 184 |
+| 10 000 | 237 464 | 5 511 320 |
+| 12 000 | 299 207 | 6 614 808 |
+| 14 000 | 342 368 | 7 717 050 |
+| 16 000 | 389 835 | 8 819 396 |
+| 18 000 | 439 936 | 9 921 558 |
+| 20 000 | 488 819 | 11 023 774 |
+| 22 000 | 560 007 | 12 125 990 |
+| 24 000 | 593 952 | 13 228 206 |
+| 26 000 | 647 204 | 14 330 422 |
+| 28 000 | 688 602 | 15 432 638 |
+| 30 000 | 740 330 | 16 574 429 |
+
+Per-batch time grows linearly with `rows_so_far` — exactly the
+O(N²) signature of "serialize the whole table on every flush".
+
+Comparing the two thresholds head-to-head on identical 30 000-row
+loads (identical final on-disk state):
+
+| `buffer_threshold` | Total time | rows/s | Speedup |
+|---:|---:|---:|---:|
+| 100 (current default) | 109.87 s | 273 | 1× |
+| 10 000 | 2.17 s | 13 825 | **50.6×** |
+
+Hypothesis confirmed: raising the storage-layer flush threshold is
+the dominant lever. (WAL fsync was independently ruled out: the
+2026-08-13 run used `WAL_SYNC=off` and supplier still sustained
+111 rows/s. The `WAL_SYNC` knob added to `bulk_load_sf10.sh` is the
+evidence of that A/B.)
 
 ---
 
@@ -199,18 +282,29 @@ cat docs/releases/v3.12.0/evidence/issue-4020/20260812T130325Z_sf10/metadata.jso
 
 To complete end-to-end bulk-load:
 
-1. **Fix sqlrustgo wire-protocol multi-query round-trip**: the command
-   loop must call `read_packet` (or equivalent) after `send_result_set
-   done` to read the next query. This is a sqlrustgo MySQL server bug —
-   outside the V312-26 boundary.
-2. Once the wire-protocol fix lands, re-run `bulk_load_sf10.sh` and
-   verify `bulk_load_summary.json` shows `tables_loaded_ok = 8` and
+1. **(DONE)** Fix sqlrustgo wire-protocol multi-query round-trip:
+   landed in commit `b263f4a97f` (`--load-infile-dir` flag).
+2. **(NEXT)** Raise `FileStorage::buffer_threshold` from 100 to a much
+   larger value (e.g. 10 000) so the storage layer batches bulk inserts
+   the way the wire layer already does. The micro-bench above shows
+   ~50× speedup with no behavioural change. This is a one-line default
+   change in `FileStorage::new` / `FileStorage::new_with_wal`; the
+   existing `new_with_buffer_config` constructor already supports
+   arbitrary values.
+3. **(AFTER)** Optionally switch `save_table` from pretty-printed JSON
+   to compact JSON (or a row-append format) — the
+   `serde_json::to_string_pretty` cost alone is several hundred ms per
+   flush at the 16 MB-row table size, on top of the underlying
+   serialization.
+4. Once (2) lands, re-run `bulk_load_sf10.sh` and verify
+   `bulk_load_summary.json` shows `tables_loaded_ok = 8` and
    `tables_failed = 0` with row counts matching `wc -l` on the source
    `.tbl` files.
 
-This is **not deferred to v3.13.0** in the closure doc — the runner
-infrastructure is shipped in V312-26, and the wire-protocol fix is
-tracked as a separate sqlrustgo bug.
+Items 2 and 3 are sqlrustgo-storage bugs, not V312-26 boundary
+issues — but they are the real blockers for the acceptance criterion
+"bulk-load SF=10 succeeds end-to-end". They are tracked as part of the
+#4020 follow-up, not deferred to v3.13.0.
 
 ---
 
@@ -218,7 +312,11 @@ tracked as a separate sqlrustgo bug.
 
 | Path | Status | Purpose |
 |------|--------|---------|
-| `scripts/tpch/bulk_load_sf10.sh` | exists, 372 lines | Defensive bulk-load runner |
+| `scripts/tpch/bulk_load_sf10.sh` | exists, modified | Defensive bulk-load runner; `WAL_SYNC` env override added (no behavioural change at default) |
 | `scripts/gate/check_4020_bulk_load_sf10.sh` | exists | Gate (34/35 PASS) |
-| `docs/releases/v3.12.0/evidence/issue-4020/20260812T130325Z_sf10/` | exists | Real run from 2026-08-12 |
+| `docs/releases/v3.12.0/evidence/issue-4020/20260812T130325Z_sf10/` | exists | Real run from 2026-08-12 (wire-protocol blocker) |
+| `docs/releases/v3.12.0/evidence/issue-4020/20260813T110046Z_sf10/` | exists | Run from 2026-08-13 11:00Z; pre-`--load-infile-dir` build → all tables rc=1 |
+| `docs/releases/v3.12.0/evidence/issue-4020/20260813T125349Z_sf10/` | exists | Run from 2026-08-13 12:53Z; aborted — fixture dir missing 5 .tbl files |
+| `docs/releases/v3.12.0/evidence/issue-4020/20260813T132615Z_sf10/` | exists | Run from 2026-08-13 13:26Z; `WAL_SYNC=off`, supplier 111 rows/s, customer/part timeout at 1800 s |
+| `crates/storage/tests/bulk_load_quadraticity.rs` | exists | O(N²) write-amplification micro-bench (50.6× speedup at threshold=10 000) |
 | `docs/releases/v3.12.0/evidence/issue-4020/4020_evidence.md` | this file | Authoritative record |

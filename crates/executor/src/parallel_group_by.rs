@@ -79,6 +79,7 @@ impl PartialAggregate {
                 AggregateFunction::Avg => self.update_avg(i, &values[i]),
                 AggregateFunction::Min => self.update_min(i, &values[i]),
                 AggregateFunction::Max => self.update_max(i, &values[i]),
+                AggregateFunction::PercentileCont => unreachable!(),
                 // V313-followup-2 / Issue #4155: quantile aggregates
                 // are non-incremental (require sorted finalization), so
                 // they fall back to the serial compute_aggregates path

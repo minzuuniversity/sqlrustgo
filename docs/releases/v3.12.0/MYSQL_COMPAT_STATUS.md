@@ -45,9 +45,35 @@ Specifically deferred (per V312-13-REPORT.md boundary table):
 | `SHOW TABLES` | ✅ Supported | Via `execute()` path |
 | `SHOW TABLES LIKE 'pattern'` | ✅ Supported | Parser supports `ShowStatement::TablesLike` |
 | `DESCRIBE` / `SHOW COLUMNS` | ✅ Supported | Parser supports `Statement::Describe` |
+| `CREATE FULLTEXT INDEX` | ✅ Supported | Parser supports; `FullTextIndex` in storage layer |
+| `CREATE VIEW` | ✅ Supported | Stores view definition; view expansion not implemented |
 | Error packets | ✅ Supported | Well-formed MySQL error packets |
 | `COM_RESET_CONNECTION` | ✅ Client-side | Server returns "Unknown command"; client handles gracefully. **Server-side deferred to #3959 (V312-24)** |
 | `LOAD DATA INFILE` | ✅ Supported | Parser accepts syntax; basic execution verified (2026-08-12). **SF=1/SF=10 full execution deferred to #3959 (V312-24)** |
+| Stored procedures (CREATE/DROP/SHOW + CALL + IN 参数) | ✅ DONE (受控基础) | V312-55 PR [#4259](http://192.168.0.252:3000/openclaw/sqlrustgo/pulls/4259) + [#4262](http://192.168.0.252:3000/openclaw/sqlrustgo/pulls/4262) + [#4264](http://192.168.0.252:3000/openclaw/sqlrustgo/pulls/4264): `CREATE/DROP/SHOW PROCEDURE` + `CALL` + `IN` 参数 + 过程内确定性 SQL — 证据: [V312-55-VERIFICATION.md](evidence/procedure_trigger/V312-55-VERIFICATION.md) |
+| Triggers (BEFORE/AFTER INSERT/UPDATE/DELETE + NEW/OLD) | ✅ DONE (受控基础) | V312-55 PR [#4262](http://192.168.0.252:3000/openclaw/sqlrustgo/pulls/4262) + [#4264](http://192.168.0.252:3000/openclaw/sqlrustgo/pulls/4264): `BEFORE/AFTER INSERT/UPDATE/DELETE` row trigger + NEW/OLD 上下文 + 事务一致性 (rollback 不泄漏 audit) + 递归深度限制 + 权限模型 (5 paths fail-closed) — 证据: [V312-55-VERIFICATION.md](evidence/procedure_trigger/V312-55-VERIFICATION.md) |
+
+### V312-55 受控基础范围
+
+**Supported** (V312-55 PR #4259 / #4262 / #4264):
+- `CREATE/DROP/SHOW PROCEDURE` + `CALL` + `IN` 参数解析
+- 过程内确定性 SQL (INSERT/UPDATE/DELETE/SELECT)
+- `BEFORE/AFTER INSERT/UPDATE/DELETE` row trigger
+- `NEW` / `OLD` 上下文引用
+- trigger body DML 在事务边界内回滚 (WAL recovery 一致)
+- trigger 递归深度限制 (MAX_RECURSION_DEPTH = 16)
+- 5 paths 权限模型 (CREATE/DROP PROCEDURE + CALL + CREATE TRIGGER + trigger body DML)
+
+**Deferred v3.13** (V312-55 issue 跟踪):
+- `OUT` / `INOUT` 参数
+- `DEFINER` / `SQL SECURITY` 子句
+- 动态 SQL inside procedure (PREPARE/EXECUTE inside CALL)
+- `FOR EACH STATEMENT` trigger (目前只支持 row)
+
+**OUT OF SCOPE**:
+- 完整 PL/SQL (DECLARE ... BEGIN ... EXCEPTION ... END)
+- cursor / handler / condition
+- oracle-compatible 存储过程语法
 
 ---
 
@@ -63,7 +89,8 @@ Specifically deferred (per V312-13-REPORT.md boundary table):
 | `ROLLUP` / `CUBE` | 🔜 Deferred | Not yet implemented |
 | `REPLACE INTO` | 🔜 Deferred | Not yet implemented |
 | `RANK()`, `DENSE_RANK()` | 🔜 Deferred | Window functions not implemented |
-| Stored procedures | 🔜 Deferred | PL/SQL not supported |
+| Stored procedures (OUT/INOUT + DEFINER) | 🔜 Deferred v3.13 | V312-55 受控基础已闭环; OUT/INOUT/DEFINER 显式延后, 见 "V312-55 受控基础范围" 章节 |
+| Triggers (DEFINER + FOR EACH STATEMENT) | 🔜 Deferred v3.13 | V312-55 受控基础已闭环; DEFINER/SQL SECURITY 显式延后, 见 "V312-55 受控基础范围" 章节 |
 | Column-level permissions | 🔜 Deferred | Auth system out of scope |
 | Connection pooling | 🔜 Deferred | Server is single-threaded per connection |
 | `information_schema` tables | 🔜 Deferred | Metadata tables not implemented |
@@ -72,6 +99,10 @@ Specifically deferred (per V312-13-REPORT.md boundary table):
 | TIMESTAMP zero-value behavior | 🔜 Deferred | Boundary conditions not tested |
 | Empty-password authentication | 🔜 Deferred | Auth handshake not implemented |
 | `LOAD DATA LOCAL INFILE` | ✅ Client-side | `MySqlTestClient::load_local_infile()` implemented; server-side basic execution verified (2026-08-12). **SF=1/SF=10 deferred to #3959 (V312-24)** |
+| `TABLE PARTITION BY` (RANGE/LIST/HASH) | ❌ Unsupported | Not implemented; `partition_scan` is parallel data partitioning, not MySQL syntax. `HashPartitioner` is vector sharding. |
+| `MATCH() AGAINST()` | 🔜 Deferred | `FullTextIndex` exists in storage layer; `MATCH()` `AGAINST()` SQL function not implemented in executor |
+| `WITH RECURSIVE` | 🔜 Deferred | CTE materialization supported; recursive CTE returns "Recursive CTE not yet supported" |
+| `MERGE` statement | 🔜 Deferred | Returns "MERGE not yet supported via execute()"; LocalExecutorDml path may support |
 
 ---
 

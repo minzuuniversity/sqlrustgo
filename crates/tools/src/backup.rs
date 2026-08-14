@@ -1072,7 +1072,8 @@ pub fn restore_backup(dir: &Path, target: &Path, clean: bool) -> Result<()> {
                 auto_increment: c.auto_increment,
                 references: None,
                 collation: None,
-            })
+
+                default_value: None,            })
             .collect();
 
         let table_schema = TableInfo {
@@ -1281,7 +1282,8 @@ fn create_demo_storage() -> MemoryStorage {
                 auto_increment: true,
                 references: None,
                 collation: None,
-            },
+
+                default_value: None,            },
             ColumnDefinition {
                 name: "name".to_string(),
                 data_type: "TEXT".to_string(),
@@ -1291,7 +1293,8 @@ fn create_demo_storage() -> MemoryStorage {
                 auto_increment: false,
                 references: None,
                 collation: None,
-            },
+
+                default_value: None,            },
             ColumnDefinition {
                 name: "email".to_string(),
                 data_type: "TEXT".to_string(),
@@ -1301,7 +1304,8 @@ fn create_demo_storage() -> MemoryStorage {
                 auto_increment: false,
                 references: None,
                 collation: None,
-            },
+
+                default_value: None,            },
             ColumnDefinition {
                 name: "created_at".to_string(),
                 data_type: "TIMESTAMP".to_string(),
@@ -1312,7 +1316,8 @@ fn create_demo_storage() -> MemoryStorage {
                 references: None,
                 collations: std::collections::HashMap::new(),
                 collation: None,
-            },
+
+                default_value: None,            },
         ],
     };
     storage.create_table(&users_table).unwrap();
@@ -1357,7 +1362,8 @@ fn create_demo_storage() -> MemoryStorage {
                 auto_increment: true,
                 references: None,
                 collation: None,
-            },
+
+                default_value: None,            },
             ColumnDefinition {
                 name: "user_id".to_string(),
                 data_type: "INTEGER".to_string(),
@@ -1372,7 +1378,8 @@ fn create_demo_storage() -> MemoryStorage {
                     on_update: None,
                     collation: None,
                 }),
-            },
+
+                default_value: None,            },
             ColumnDefinition {
                 name: "total".to_string(),
                 data_type: "FLOAT".to_string(),
@@ -1382,7 +1389,8 @@ fn create_demo_storage() -> MemoryStorage {
                 auto_increment: false,
                 references: None,
                 collation: None,
-            },
+
+                default_value: None,            },
             ColumnDefinition {
                 name: "status".to_string(),
                 data_type: "TEXT".to_string(),
@@ -1393,7 +1401,8 @@ fn create_demo_storage() -> MemoryStorage {
                 references: None,
                 collations: std::collections::HashMap::new(),
                 collation: None,
-            },
+
+                default_value: None,            },
         ],
     };
     storage.create_table(&orders_table).unwrap();
@@ -1438,7 +1447,8 @@ fn create_demo_storage() -> MemoryStorage {
                 auto_increment: true,
                 references: None,
                 collation: None,
-            },
+
+                default_value: None,            },
             ColumnDefinition {
                 name: "name".to_string(),
                 data_type: "TEXT".to_string(),
@@ -1448,7 +1458,8 @@ fn create_demo_storage() -> MemoryStorage {
                 auto_increment: false,
                 references: None,
                 collation: None,
-            },
+
+                default_value: None,            },
             ColumnDefinition {
                 name: "price".to_string(),
                 data_type: "FLOAT".to_string(),
@@ -1459,7 +1470,8 @@ fn create_demo_storage() -> MemoryStorage {
                 references: None,
                 collations: std::collections::HashMap::new(),
                 collation: None,
-            },
+
+                default_value: None,            },
         ],
     };
     storage.create_table(&products_table).unwrap();
@@ -1547,7 +1559,8 @@ mod tests {
                     auto_increment: true,
                     references: None,
                     collation: None,
-                },
+
+                    default_value: None,                },
                 ColumnDefinition {
                     name: "name".to_string(),
                     data_type: "TEXT".to_string(),
@@ -1558,7 +1571,8 @@ mod tests {
                     references: None,
                     collations: std::collections::HashMap::new(),
                     collation: None,
-                },
+
+                    default_value: None,                },
             ],
         };
 

@@ -78,6 +78,29 @@ non-empty results in the standard reference:
 | Q16 zero rows | supplier count NOT IN subquery pattern not implemented | P1 |
 | Q21 zero rows | NOT EXISTS correlated subquery pattern not implemented | P1 |
 
+## Post-V312-22 expectation (PENDING merge)
+
+Issue **#4181** (V312-22) replaces the greedy chain walker in
+`src/engine_select.rs::try_comma_join_hash_chain` with a DFS over the `pair_key`
+graph. Branch: `fix/v312-19-r2-gate-load-infile-drift`. Regression test:
+`tests/integration/planner_multi_way_join_test.rs` (3 tests, all pass on branch).
+
+After V312-22 lands on `develop/v3.12.0`:
+
+| Q | pre-fix rows | expected post-fix rows | blocker |
+|---|--------------|------------------------|---------|
+| Q 7 | 0 | 4 (dbgen) | ✅ should match dbgen |
+| Q 8 | timeout | non-timeout, non-zero | ✅ depends on Q7 path also fixed |
+| Q 9 | SKIPPED | rerun; expect 175 (dbgen) | ✅ now reachable |
+| Q21 | 0 | 100 (dbgen) | ⚠️ separate Q21 EXISTS pattern (still P1) |
+
+Q7/Q9 success is gated only on V312-22 merge. Q21 is dual-blocked:
+V312-22 + the EXISTS correlated-subquery pattern (separate issue, still P1).
+Q16 has no dependency on V312-22 and remains P1.
+
+Operator step to verify: regenerate `/tmp/tpch-sf1` fixture, then
+`cargo test --test tpch_sf1_22_vs_3engines_test -- --ignored --nocapture`.
+
 ## How to reproduce
 
 ```bash

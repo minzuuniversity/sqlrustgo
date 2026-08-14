@@ -191,6 +191,17 @@ impl<'a> Lexer<'a> {
                 self.position += 1;
                 Token::RParen
             }
+            // Round-21 / Issue #4216: array literals for the array-fraction
+            // form of ordered-set aggregates, e.g.
+            // `quantile_disc(col, [0.25, 0.5, 0.75])`.
+            '[' => {
+                self.position += 1;
+                Token::LBracket
+            }
+            ']' => {
+                self.position += 1;
+                Token::RBracket
+            }
             ',' => {
                 self.position += 1;
                 Token::Comma
@@ -403,6 +414,7 @@ impl<'a> Lexer<'a> {
                     "MIN" => Token::Min,
                     "MAX" => Token::Max,
                     "GROUP" => Token::Group,
+                    "WITHIN" => Token::Within,
                     "HAVING" => Token::Having,
                     "ORDER" => Token::Order,
                     "LIMIT" => Token::Limit,
