@@ -295,6 +295,18 @@ impl<S: StorageEngine + 'static> ExecutionEngine<S> {
         self.stats.clone()
     }
 
+    /// V312-22 / Issue #4182: count how many columns on this table
+    /// currently have a non-empty `Histogram` inside the CBO
+    /// `UnifiedCostModel::column_stats` map. Returns 0 if the table is
+    /// unknown to CBO or no column has a histogram yet. Used by the
+    /// E2E test (`tests/integration/executor_optimizer_e2e.rs`) to
+    /// prove that `update_cost_model_stats()` actually propagates the
+    /// histograms that `ANALYZE` collects into the cost model.
+    pub fn cbo_histogram_column_count(&self, table_name: &str) -> usize {
+        let cost_model = self.cost_model.read();
+        cost_model.histogram_column_count(table_name)
+    }
+
     /// Determine whether a SELECT query should be parallelized.
     ///
     /// Uses the CBO cost model when enabled, otherwise falls back to the
