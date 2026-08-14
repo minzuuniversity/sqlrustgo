@@ -5,6 +5,7 @@
 
 use log::error as log_error;
 use parking_lot::RwLock;
+use sqlrustgo_catalog::auth::UserIdentity;
 use sqlrustgo_parser::parse;
 use sqlrustgo_storage::{
     Record, StorageEngine, TriggerEvent as StorageTriggerEvent, TriggerInfo,
@@ -102,6 +103,53 @@ pub struct TriggerExecutor {
     /// the host stack overflow on a self-referential or mutually-recursive
     /// trigger pair.
     recursion_depth: Arc<std::sync::atomic::AtomicUsize>,
+    /// V312-55F / Issue #4243: current SQL session user identity. Mirrors
+    /// `ExecutionEngine::current_user`. When the identity's username is
+    /// `"root"`, the trigger body DML privilege check is short-circuited
+    /// (MySQL convention — root@localhost has implicit full privilege).
+    /// Otherwise `auth_check` is consulted for every body DML statement.
+    current_user: UserIdentity,
+    /// V312-55F / Issue #4243: optional privilege-check hook for trigger
+    /// body DML. Receives the current user, the privilege required
+    /// (`Insert`/`Update`/`Delete`), and the target table name. Returns
+    /// `Ok(())` if the user is allowed, `Err(SqlError::PermissionDenied)`
+    /// otherwise. Default is `None` — unit tests that don't wire a
+    /// catalog continue to run trigger body DML unchecked (matches
+    /// pre-V55F behavior). Production callers (ExecutionEngine) wire
+    /// the closure at engine construction time via
+    /// [`TriggerExecutor::set_auth_check`].
+    auth_check: Option<Arc<dyn TriggerBodyAuthCheck>>,
+}
+
+/// V312-55F / Issue #4243: trait alias for the trigger body DML
+/// privilege-check hook. Splitting this out from a bare `Box<dyn Fn>`
+/// keeps the signature self-documenting at every call site.
+pub trait TriggerBodyAuthCheck: Send + Sync {
+    fn check(
+        &self,
+        user: &UserIdentity,
+        privilege: sqlrustgo_catalog::auth::Privilege,
+        table_name: &str,
+    ) -> SqlResult<()>;
+}
+
+impl TriggerExecutor {
+    /// V312-55F / Issue #4243: enforce the trigger body DML privilege
+    /// check. No-op when `auth_check` is `None` (default — keeps unit
+    /// tests in this crate running unchanged). When set, the hook is
+    /// responsible for short-circuiting `root@localhost` (the
+    /// `ExecutionEngine`-provided hook does this before delegating to
+    /// the catalog's `AuthManager`).
+    fn check_body_privilege(
+        &self,
+        privilege: sqlrustgo_catalog::auth::Privilege,
+        table_name: &str,
+    ) -> SqlResult<()> {
+        if let Some(hook) = self.auth_check.as_ref() {
+            hook.check(&self.current_user, privilege, table_name)?;
+        }
+        Ok(())
+    }
 }
 
 /// V312-55E (Round-27): maximum nested trigger firing depth. Beyond this
@@ -133,11 +181,35 @@ impl TriggerExecutor {
         Self {
             storage,
             recursion_depth: Arc::new(std::sync::atomic::AtomicUsize::new(0)),
+            current_user: UserIdentity::new("root", "localhost"),
+            auth_check: None,
         }
     }
 
     pub fn storage(&self) -> Arc<RwLock<dyn StorageEngine>> {
         self.storage.clone()
+    }
+
+    /// V312-55F / Issue #4243: switch the trigger executor's view of the
+    /// current SQL session user. Defaults to `root@localhost` (which
+    /// short-circuits `auth_check`). Callers (e.g. `ExecutionEngine`)
+    /// invoke this when the wire session changes user via
+    /// `SET ROLE` / `SET SESSION_USER` style commands.
+    pub fn set_current_user(&mut self, identity: UserIdentity) {
+        self.current_user = identity;
+    }
+
+    /// V312-55F / Issue #4243: returns the current SQL session user.
+    pub fn current_user(&self) -> &UserIdentity {
+        &self.current_user
+    }
+
+    /// V312-55F / Issue #4243: install a privilege-check hook for trigger
+    /// body DML. Once set, every `INSERT` / `UPDATE` / `DELETE` inside a
+    /// trigger body consults the hook before mutating the target table.
+    /// Pass `None` to remove the hook (tests / dev tooling).
+    pub fn set_auth_check(&mut self, hook: Option<Arc<dyn TriggerBodyAuthCheck>>) {
+        self.auth_check = hook;
     }
 
     /// V312-55E (Round-27): expose the shared recursion-depth counter so
@@ -553,6 +625,12 @@ impl TriggerExecutor {
 
         if let sqlrustgo_parser::Statement::Insert(insert) = statement {
             let table_name = insert.table.clone();
+            // V312-55F / Issue #4243: privilege check before any DML
+            // mutates storage. Root short-circuits inside the hook.
+            self.check_body_privilege(
+                sqlrustgo_catalog::auth::Privilege::Insert,
+                &table_name,
+            )?;
             let table_info = {
                 let storage = self.storage.read();
                 storage.get_table_info(&table_name)?
@@ -606,6 +684,12 @@ impl TriggerExecutor {
             }
             let storage = self.storage.read();
             let table_name = &update.tables[0].name;
+            // V312-55F / Issue #4243: privilege check before any DML
+            // mutates storage. Root short-circuits inside the hook.
+            self.check_body_privilege(
+                sqlrustgo_catalog::auth::Privilege::Update,
+                table_name,
+            )?;
             let table_info = storage.get_table_info(table_name)?;
             let target_col_names: Vec<String> =
                 table_info.columns.iter().map(|c| c.name.clone()).collect();
@@ -698,6 +782,12 @@ impl TriggerExecutor {
                     "Trigger DELETE only supports single-table form".to_string(),
                 ));
             }
+            // V312-55F / Issue #4243: privilege check before any DML
+            // mutates storage. Root short-circuits inside the hook.
+            self.check_body_privilege(
+                sqlrustgo_catalog::auth::Privilege::Delete,
+                &delete.tables[0].name,
+            )?;
             self.execute_dml_in_tx(|storage| storage.delete(&delete.tables[0].name, &[]))?;
         }
         Ok(())
