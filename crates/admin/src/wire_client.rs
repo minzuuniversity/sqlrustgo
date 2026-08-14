@@ -430,6 +430,8 @@ mod additional_tests {
                 column_type: 0x03,
                 flags: 0x0020,
                 decimals: 0x00,
+
+                default_value: None,
             },
             sqlrustgo_mysql_client::ColumnDefinition {
                 catalog: "def".into(),
@@ -443,6 +445,8 @@ mod additional_tests {
                 column_type: 0x0f,
                 flags: 0x0000,
                 decimals: 0x00,
+
+                default_value: None,
             },
         ];
         let rows = vec![
@@ -482,6 +486,8 @@ mod additional_tests {
             column_type: 0x0f,
             flags: 0x0000,
             decimals: 0x00,
+
+            default_value: None,
         }];
         let rows = vec![vec!["a,b".into()]];
         let csv = serialize_result_set_csv(&cols, &rows);
@@ -550,6 +556,8 @@ mod additional_tests {
                 column_type: 0x03,
                 flags: 0x0020,
                 decimals: 0x00,
+
+                default_value: None,
             }],
             rows: vec![vec![]],
             status_flags: 0,
