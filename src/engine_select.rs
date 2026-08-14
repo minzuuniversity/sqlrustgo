@@ -5246,8 +5246,8 @@ mod chain_builder_tests {
         let join_tables: Vec<(String, String)> = vec![
             ("supplier".to_string(), "supplier".to_string()),
             ("lineitem".to_string(), "l1".to_string()),
-            ("orders".to_string(),   "orders".to_string()),
-            ("nation".to_string(),   "nation".to_string()),
+            ("orders".to_string(), "orders".to_string()),
+            ("nation".to_string(), "nation".to_string()),
         ];
 
         let mut pair_key: HashMap<(String, String), (String, String)> = HashMap::new();
@@ -5267,9 +5267,11 @@ mod chain_builder_tests {
         // Try every start_idx; at least one must yield a complete chain.
         let mut found_complete = false;
         for start_idx in 0..join_tables.len() {
-            if let Some(chain) =
-                ExecutionEngine::<crate::MemoryStorage>::build_chain_from_start(start_idx, &join_tables, &pair_key)
-            {
+            if let Some(chain) = ExecutionEngine::<crate::MemoryStorage>::build_chain_from_start(
+                start_idx,
+                &join_tables,
+                &pair_key,
+            ) {
                 if chain.len() == join_tables.len() {
                     found_complete = true;
                     eprintln!("Q21 chain from start_idx={}: {:?}", start_idx, chain);
@@ -5290,8 +5292,8 @@ mod chain_builder_tests {
         let join_tables: Vec<(String, String)> = vec![
             ("supplier".to_string(), "supplier".to_string()),
             ("lineitem".to_string(), "l1".to_string()),
-            ("orders".to_string(),   "orders".to_string()),
-            ("nation".to_string(),   "nation".to_string()),
+            ("orders".to_string(), "orders".to_string()),
+            ("nation".to_string(), "nation".to_string()),
         ];
 
         let mut pair_key: HashMap<(String, String), (String, String)> = HashMap::new();
@@ -5310,8 +5312,12 @@ mod chain_builder_tests {
 
         // start_idx=2 (orders) is the canonical "leaf" start that
         // should always produce a complete chain for Q21.
-        let chain = ExecutionEngine::<crate::MemoryStorage>::build_chain_from_start(2, &join_tables, &pair_key)
-            .expect("start from orders should yield Some(chain)");
+        let chain = ExecutionEngine::<crate::MemoryStorage>::build_chain_from_start(
+            2,
+            &join_tables,
+            &pair_key,
+        )
+        .expect("start from orders should yield Some(chain)");
         assert_eq!(
             chain.len(),
             4,
