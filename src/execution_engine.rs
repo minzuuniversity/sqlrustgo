@@ -519,6 +519,44 @@ impl<S: StorageEngine + 'static> ExecutionEngine<S> {
         Ok(n)
     }
 
+    /// Round-21 / Issue #4217: bulk-insert a large pre-parsed batch,
+    /// chunking internally into `chunk_size`-row slices so the
+    /// `FileStorage` insert buffer's `buffer_threshold` (default 10_000)
+    /// can flush each chunk to disk independently. This is the
+    /// engine-side companion to the LOAD DATA LOCAL INFILE handler's
+    /// `rows_per_flush` knob — callers that already have the entire
+    /// record set in memory (e.g. SQL `INSERT INTO t VALUES (..), (..)`
+    /// with N>>threshold rows, or a parser that emits all rows in one
+    /// pass) can hand the whole `Vec<Record>` here and the helper
+    /// will take care of chunking.
+    ///
+    /// Returns the total number of rows inserted. Like
+    /// `bulk_insert_records`, this does NOT call `flush()` — the
+    /// caller still owns the deferred-persist contract and is
+    /// expected to call `engine.flush()` once after loading completes.
+    ///
+    /// `chunk_size == 0` is treated as "no chunking" (entire batch in
+    /// one call, equivalent to `bulk_insert_records`).
+    pub fn bulk_insert_chunked(
+        &self,
+        table: &str,
+        records: Vec<sqlrustgo_storage::Record>,
+        chunk_size: usize,
+    ) -> SqlResult<u64> {
+        if chunk_size == 0 || records.len() <= chunk_size {
+            return self.bulk_insert_records(table, records);
+        }
+        let mut inserted: u64 = 0;
+        for chunk in records.chunks(chunk_size) {
+            let chunk_owned: Vec<sqlrustgo_storage::Record> = chunk.to_vec();
+            // bulk_insert_records returns the row count for this chunk;
+            // sum the per-chunk counts so the total reflects what storage
+            // actually accepted (matches bulk_insert_records semantics).
+            inserted += self.bulk_insert_records(table, chunk_owned)?;
+        }
+        Ok(inserted)
+    }
+
     // CBO estimation methods extracted to cbo_estimator.rs (SPEC-012).
     // Thin forwarder methods retained for backwards-compatible public API.
 
@@ -652,6 +690,12 @@ impl<S: StorageEngine + 'static> ExecutionEngine<S> {
             Statement::AlterUser(_) => Err(SqlError::ExecutionError(
                 "ALTER USER not yet implemented".to_string(),
             )),
+            // Round-21 / Issue #4218: KILL <id> / KILL CONNECTION <id> /
+            // KILL QUERY <id>. Live process registry is not yet wired, so
+            // return Ok(0) — a no-op admin statement that does not error.
+            Statement::Kill { connection_id, kill_query } => {
+                self.execute_kill(connection_id, kill_query)
+            }
         }
     }
 
@@ -780,6 +824,27 @@ impl<S: StorageEngine + 'static> ExecutionEngine<S> {
         // compatibility but is a no-op. v3.10 multi-database mode will switch
         // the active database context.
         Ok(ExecutorResult::empty())
+    }
+
+    /// Round-21 / Issue #4218: KILL <id> / KILL QUERY <id>.
+    /// No live process registry yet; this is a no-op admin statement that
+    /// returns Ok(0) so dispatch succeeds and the wire protocol OK packet
+    /// is emitted. A future process-registry implementation will look up
+    /// the connection_id and route the cancel via the storage layer's
+    /// `set_cancel_flag` / `check_cancelled` API surface (added in #4218).
+    pub fn execute_kill(&self, connection_id: u64, kill_query: bool) -> SqlResult<ExecutorResult> {
+        // Inform the storage layer for any future implementation; default
+        // impl is a no-op, so this is safe across all backends.
+        let mut storage = self.storage.write();
+        let _ = storage.set_cancel_flag(connection_id);
+        Ok(ExecutorResult::new(
+            vec![vec![Value::Text(format!(
+                "KILL {} {}: not yet implemented",
+                if kill_query { "QUERY" } else { "CONNECTION" },
+                connection_id
+            ))]],
+            0,
+        ))
     }
 
     fn execute_truncate(&self, truncate: &TruncateStatement) -> SqlResult<ExecutorResult> {
