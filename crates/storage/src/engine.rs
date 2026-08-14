@@ -1902,13 +1902,13 @@ impl StorageEngine for MemoryStorage {
             .get_mut(&table.to_lowercase())
             .ok_or_else(|| SqlError::ExecutionError(format!("Table not found: {}", table)))?;
         // V313-followup-1 / Issue #4154: case-exact column match.
-            let col = info
-                .columns
-                .iter_mut()
-                .find(|c| c.name == column)
-                .ok_or_else(|| SqlError::ExecutionError(format!("Column not found: {}", column)))?;
-            col.default_value = default_value;
-            Ok(())
+        let col = info
+            .columns
+            .iter_mut()
+            .find(|c| c.name == column)
+            .ok_or_else(|| SqlError::ExecutionError(format!("Column not found: {}", column)))?;
+        col.default_value = default_value.map(sqlrustgo_types::Value::Text);
+        Ok(())
     }
 
     fn modify_column(

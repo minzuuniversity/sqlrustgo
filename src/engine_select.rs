@@ -1525,8 +1525,7 @@ impl<S: StorageEngine + 'static> ExecutionEngine<S> {
                                         agg.func,
                                         AggregateFunction::PercentileCont
                                     ) {
-                                        "PercentileCont requires frac arg in [0.0, 1.0]"
-                                            .to_string()
+                                        "PercentileCont requires frac arg in [0.0, 1.0]".to_string()
                                     } else {
                                         "quantile_disc / quantile_cont requires 2nd arg in [0.0, 1.0]"
                                             .to_string()
@@ -2304,7 +2303,6 @@ impl<S: StorageEngine + 'static> ExecutionEngine<S> {
         // Capture the initial rows here, BEFORE the step loop
         // resets `acc_rows` to empty each iteration.
         let chain_start_rows = acc_rows.clone();
-        let start_columns = acc_columns.clone();
 
         for i in 1..chain_order.len() {
             let prev_alias = &chain_order[i - 1].1;

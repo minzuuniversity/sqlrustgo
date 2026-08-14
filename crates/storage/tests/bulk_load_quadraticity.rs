@@ -24,9 +24,7 @@
 use std::time::Instant;
 use tempfile::tempdir;
 
-use sqlrustgo_storage::{
-    ColumnDefinition, FileStorage, StorageEngine, TableInfo,
-};
+use sqlrustgo_storage::{ColumnDefinition, FileStorage, StorageEngine, TableInfo};
 use sqlrustgo_types::Value;
 
 fn make_supplier_info() -> TableInfo {
@@ -93,12 +91,9 @@ fn row(id: i64) -> Vec<Value> {
 }
 
 fn run_with_threshold(dir: &tempfile::TempDir, threshold: usize, total_rows: usize) -> (f64, f64) {
-    let mut storage = FileStorage::new_with_buffer_config(
-        dir.path().to_path_buf(),
-        threshold,
-        true,
-    )
-    .expect("FileStorage::new_with_buffer_config");
+    let mut storage =
+        FileStorage::new_with_buffer_config(dir.path().to_path_buf(), threshold, true)
+            .expect("FileStorage::new_with_buffer_config");
 
     storage
         .create_table(&make_supplier_info())

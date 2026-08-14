@@ -221,7 +221,7 @@ README 不得继续写成 3.12 PARTIAL 能力，应改为 DEFERRED/UNSUPPORTED w
 
 - ✅ "对 Window/GIS/JSON 分别给出 3.12 scope: DONE 子集、UNSUPPORTED 子集、
   DEFERRED 子集。" — Sections 2.3, 3.4, 4.3.
-- ✅ "若进入 3.12，必须有正例，反例、错误边界、SQL corpus gate。" —
+- ✅ "若进入 3.12，必须有正例、反例、错误边界、SQL corpus gate。" —
   Sections 2.2, 3.2 list explicit failing tests as error-boundary evidence;
   the corpus gate is deferred to #4228/#4229/#4230 (v3.13).
 - ✅ "若延期到 3.13/4.0，README 不得继续写成 3.12 PARTIAL 能力，应改为
