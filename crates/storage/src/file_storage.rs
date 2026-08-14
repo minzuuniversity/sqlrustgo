@@ -709,7 +709,7 @@ mod tests {
                     data_type: "INTEGER".to_string(),
                     nullable: false,
                     ..Default::default()
-                }],
+                    }],
                 foreign_keys: vec![],
                 unique_constraints: vec![],
                 check_constraints: vec![],
@@ -756,7 +756,7 @@ mod tests {
                     data_type: "INTEGER".to_string(),
                     nullable: false,
                     ..Default::default()
-                }],
+                    }],
                 foreign_keys: vec![],
                 unique_constraints: vec![],
                 check_constraints: vec![],
@@ -798,7 +798,7 @@ mod tests {
                     data_type: "INTEGER".to_string(),
                     nullable: false,
                     ..Default::default()
-                }],
+                    }],
                 foreign_keys: vec![],
                 unique_constraints: vec![],
                 check_constraints: vec![],
@@ -841,13 +841,13 @@ mod tests {
                         data_type: "INTEGER".to_string(),
                         nullable: false,
                         ..Default::default()
-                    },
+                        },
                     ColumnDefinition {
                         name: "value".to_string(),
                         data_type: "INTEGER".to_string(),
                         nullable: false,
                         ..Default::default()
-                    },
+                        },
                 ],
                 foreign_keys: vec![],
                 unique_constraints: vec![],
@@ -909,7 +909,7 @@ mod tests {
                     data_type: "INTEGER".to_string(),
                     nullable: false,
                     ..Default::default()
-                }],
+                    }],
                 foreign_keys: vec![],
                 unique_constraints: vec![],
                 check_constraints: vec![],
@@ -960,7 +960,7 @@ mod tests {
                     data_type: "INTEGER".to_string(),
                     nullable: false,
                     ..Default::default()
-                }],
+                    }],
                 foreign_keys: vec![],
                 unique_constraints: vec![],
                 check_constraints: vec![],
@@ -1002,7 +1002,7 @@ mod tests {
                     data_type: "TEXT".to_string(),
                     nullable: false,
                     ..Default::default()
-                }],
+                    }],
                 foreign_keys: vec![],
                 unique_constraints: vec![],
                 check_constraints: vec![],
@@ -1074,7 +1074,7 @@ mod tests {
                     data_type: "INTEGER".to_string(),
                     nullable: false,
                     ..Default::default()
-                }],
+                    }],
                 foreign_keys: vec![],
                 unique_constraints: vec![],
                 check_constraints: vec![],
@@ -1114,7 +1114,7 @@ mod tests {
                     data_type: "INTEGER".to_string(),
                     nullable: false,
                     ..Default::default()
-                }],
+                    }],
                 foreign_keys: vec![],
                 unique_constraints: vec![],
                 check_constraints: vec![],
@@ -1245,7 +1245,7 @@ mod tests {
                     data_type: "INTEGER".to_string(),
                     nullable: false,
                     ..Default::default()
-                }],
+                    }],
                 foreign_keys: vec![],
                 unique_constraints: vec![],
                 check_constraints: vec![],

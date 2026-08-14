@@ -564,7 +564,11 @@ impl<S: StorageEngine + 'static> ExecutionEngine<S> {
                 }
                 AlterColumnOperation::SetDefault { default_value } => {
                     // V313-followup-1 / Issue #4154: persist the literal default.
-                    storage.set_column_default(&alter.table_name, name, default_value.clone())?;
+                    storage.set_column_default(
+                        &alter.table_name,
+                        name,
+                        default_value.clone(),
+                    )?;
                 }
                 AlterColumnOperation::DropDefault => {
                     // V313-followup-1 / Issue #4154: clear the persisted default.

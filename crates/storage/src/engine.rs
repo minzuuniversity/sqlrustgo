@@ -217,6 +217,42 @@ fn to_i64(v: &Value) -> Option<i64> {
     }
 }
 
+/// V313-followup-1 / Issue #4154: parse the raw literal text stored in
+/// `ColumnDefinition::default_value` back into a `Value` at INSERT-time
+/// materialisation. Accepts the SQL literal forms: integers (`42`),
+/// floats (`3.14`), booleans (`true`/`false`), `NULL`, and a string
+/// literal optionally wrapped in single quotes. Unparseable input
+/// falls back to `Value::Null` rather than panicking — materialisation
+/// of a malformed default is treated the same as no default.
+fn parse_default_literal(s: &str) -> Value {
+    let trimmed = s.trim();
+    if trimmed.eq_ignore_ascii_case("NULL") {
+        return Value::Null;
+    }
+    if trimmed.eq_ignore_ascii_case("TRUE") {
+        return Value::Boolean(true);
+    }
+    if trimmed.eq_ignore_ascii_case("FALSE") {
+        return Value::Boolean(false);
+    }
+    if let Ok(n) = trimmed.parse::<i64>() {
+        return Value::Integer(n);
+    }
+    if let Ok(f) = trimmed.parse::<f64>() {
+        return Value::Float(f);
+    }
+    // Strip surrounding single quotes if present (string literal form).
+    let inner = if trimmed.len() >= 2
+        && trimmed.starts_with('\'')
+        && trimmed.ends_with('\'')
+    {
+        &trimmed[1..trimmed.len() - 1]
+    } else {
+        trimmed
+    };
+    Value::Text(inner.to_string())
+}
+
 fn compare_int(_n: i64, _record: &[Value], _columns: &[String]) -> Option<bool> {
     None
 }
@@ -685,10 +721,13 @@ pub struct ColumnDefinition {
     /// `None` means binary (case-sensitive) comparison.
     #[serde(default)]
     pub collation: Option<String>,
-    /// V313-followup-1 / Issue #4154: literal default; INSERT
-    /// materialises when the row omits the column.
+    /// V313-followup-1 / Issue #4154: literal default text; INSERT
+    /// materialises when the row omits the column. Kept as
+    /// `Option<String>` to mirror the parser AST (raw literal text)
+    /// and avoid a public API ripple across every `ColumnDefinition`
+    /// literal in the workspace.
     #[serde(default)]
-    pub default_value: Option<sqlrustgo_types::Value>,
+    pub default_value: Option<String>,
 }
 
 impl ColumnDefinition {
@@ -1404,11 +1443,14 @@ impl StorageEngine for MemoryStorage {
                 .map(|mut row| {
                     while row.len() < ncols {
                         // V313-followup-1 / Issue #4154: fill omitted columns with
-                        // their default_value (NULL if no default).
+                        // their default_value (NULL if no default). The default
+                        // is stored as raw literal text; parse it into a `Value`
+                        // at materialisation time.
                         let default = info
                             .columns
                             .get(row.len())
-                            .and_then(|c| c.default_value.clone())
+                            .and_then(|c| c.default_value.as_deref())
+                            .map(parse_default_literal)
                             .unwrap_or(Value::Null);
                         row.push(default);
                     }
@@ -1860,13 +1902,13 @@ impl StorageEngine for MemoryStorage {
             .get_mut(&table.to_lowercase())
             .ok_or_else(|| SqlError::ExecutionError(format!("Table not found: {}", table)))?;
         // V313-followup-1 / Issue #4154: case-exact column match.
-        let col = info
-            .columns
-            .iter_mut()
-            .find(|c| c.name == column)
-            .ok_or_else(|| SqlError::ExecutionError(format!("Column not found: {}", column)))?;
-        col.default_value = default_value.map(|s| sqlrustgo_types::Value::Text(s));
-        Ok(())
+            let col = info
+                .columns
+                .iter_mut()
+                .find(|c| c.name == column)
+                .ok_or_else(|| SqlError::ExecutionError(format!("Column not found: {}", column)))?;
+            col.default_value = default_value;
+            Ok(())
     }
 
     fn modify_column(
