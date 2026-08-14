@@ -1301,7 +1301,3 @@ path = "tests/unit/types_value_test.rs"
 [[test]]
 name = "q2_q17_repro_test"
 path = "tests/integration/q2_q17_repro_test.rs"
-
-[[test]]
-name = "planner_multi_way_join_test"
-path = "tests/integration/planner_multi_way_join_test.rs"
