@@ -173,7 +173,7 @@ v3.12.0 有两条同等 P0 主线：
 | V312-13 | MySQL wire + LOAD DATA hardening | P0 | wire e2e、LOAD DATA row/hash/memory 证据 |
 | V312-14 | crash recovery and upgrade/downgrade verification | P0 | WAL replay、backup/restore、upgrade、rollback evidence |
 | V312-15 | CREATE SEQUENCE executor close-out | P0 | sequence DDL/DML、并发、事务、WAL/recovery 测试报告 |
-| V312-16 | Window/GIS/JSON controlled SQL feature delivery | P1 | ROW_NUMBER/RANK/DENSE_RANK、JSON path、GIS distance/intersects/GeoJSON fixtures |
+| V312-16 | JSON/GIS 受控 SQL 特性交付（Window → DEFERRED-3.13，见 `sql-feature-corpus/window_json_gis_scope.md`） | P1 | JSON path (JSON_EXTRACT/VALUE/UNQUOTE + ->/->>)、GIS distance/intersects (ST_* 2D Point)、JSON/GIS 正反例 fixture、错误边界 |
 | V312-17 | coverage and disabled-test debt close-out | P0 | parser/mysql-server/mysql-client ≥80% 或带 issue 的未达标说明；disabled/API-drift manifest |
 | V312-18 | SF=10、Sysbench 与观测性 baseline | P1 | TPC-H SF=10、Sysbench OLTP、Prometheus metrics、Slow Query Log、bulk-load benchmark |
 | V312-19 | SQL corpus、架构 invariant 与 reviewer sign-off gate | P0 | SQL corpus all-target report、R2.1-R2.8 invariant output、2 名 reviewer 签核 |
