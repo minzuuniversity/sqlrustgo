@@ -442,9 +442,59 @@ impl<S: StorageEngine + 'static> ExecutionEngine<S> {
         Ok(ExecutorResult::new(vec![vec![Value::Text(ddl)]], 1))
     }
 
-    /// SHOW INDEX — placeholder (v3.7.0 indexes are not cataloged).
-    pub(crate) fn execute_show_index(&self, _table: &str) -> SqlResult<ExecutorResult> {
-        Ok(ExecutorResult::new(vec![], 0))
+    /// SHOW INDEX — returns index information for a table.
+    /// MySQL format: Table, Non_unique, Key_name, Seq_in_index, Column_name, Index_type
+    pub(crate) fn execute_show_index(&self, table: &str) -> SqlResult<ExecutorResult> {
+        let catalog = match &self.catalog {
+            Some(c) => c,
+            None => {
+                // Fall back to storage if no catalog (e.g., memory storage without catalog)
+                let storage = self.storage.read();
+                if !storage.list_tables().iter().any(|n| n == table) {
+                    return Err(SqlError::ExecutionError(format!(
+                        "Table '{}' does not exist",
+                        table
+                    )));
+                }
+                // Storage doesn't have index metadata, return empty
+                return Ok(ExecutorResult::new(vec![], 0));
+            }
+        };
+        let catalog_guard = catalog.read();
+
+        // Find the table in the catalog
+        let table_ref = catalog_guard
+            .all_schemas()
+            .iter()
+            .find_map(|(_, schema)| schema.get_table(table))
+            .ok_or_else(|| SqlError::ExecutionError(format!("Table '{}' not found", table)))?;
+
+        let mut rows: Vec<Vec<Value>> = Vec::new();
+        for index in &table_ref.indices {
+            for (seq, column_name) in index.columns.iter().enumerate() {
+                let non_unique = if index.is_unique { 0 } else { 1 };
+                let index_type = match index.index_type {
+                    sqlrustgo_catalog::index::IndexType::BTree => "BTREE",
+                    sqlrustgo_catalog::index::IndexType::Hash => "HASH",
+                    sqlrustgo_catalog::index::IndexType::FullText => "FULLTEXT",
+                };
+                rows.push(vec![
+                    Value::Text(table.to_string()),           // Table
+                    Value::Integer(non_unique as i64),            // Non_unique
+                    Value::Text(index.name.clone()),          // Key_name
+                    Value::Integer((seq + 1) as i64),           // Seq_in_index
+                    Value::Text(column_name.clone()),        // Column_name
+                    Value::Text(index_type.to_string()),     // Index_type
+                ]);
+            }
+        }
+
+        // If no indexes found, return empty result
+        if rows.is_empty() {
+            return Ok(ExecutorResult::new(vec![], 0));
+        }
+
+        Ok(ExecutorResult::new(rows, 6))
     }
 
     /// DESCRIBE table — return one row per column with Field/Type/Null/Key/Default/Extra.
@@ -491,13 +541,58 @@ impl<S: StorageEngine + 'static> ExecutionEngine<S> {
         Ok(ExecutorResult::new(vec![], 0))
     }
 
-    /// SHOW COLUMNS — placeholder (v3.7.0 column metadata not exposed).
+    /// SHOW COLUMNS — returns column information for a table.
+    /// MySQL format: Field, Type, Null, Key, Default, Extra
     pub(crate) fn execute_show_columns(
         &self,
-        _table: &str,
-        _pattern: Option<&str>,
+        table: &str,
+        pattern: Option<&str>,
     ) -> SqlResult<ExecutorResult> {
-        Ok(ExecutorResult::new(vec![], 0))
+        let storage = self.storage.read();
+        if !storage.list_tables().iter().any(|n| n == table) {
+            return Err(SqlError::ExecutionError(format!(
+                "Table '{}' does not exist",
+                table
+            )));
+        }
+        let info = storage
+            .get_table_info(table)
+            .map_err(|e| SqlError::ExecutionError(format!("cannot introspect {table}: {e}")))?;
+
+        let mut rows: Vec<Vec<Value>> = info
+            .columns
+            .iter()
+            .filter(|c| {
+                if let Some(p) = pattern {
+                    // Simple glob pattern match
+                    wildcard_match(&c.name, p)
+                } else {
+                    true
+                }
+            })
+            .map(|c| {
+                let null_str = if c.nullable { "YES" } else { "NO" };
+                let key_str = if c.primary_key { "PRI" } else { "" };
+                let type_str = match c.char_max_length {
+                    Some(n) => format!("{}({})", c.data_type, n),
+                    None => c.data_type.clone(),
+                };
+                vec![
+                    Value::Text(c.name.clone()),
+                    Value::Text(type_str),
+                    Value::Text(null_str.to_string()),
+                    Value::Text(key_str.to_string()),
+                    Value::Text("NULL".to_string()),
+                    Value::Text(String::new()),
+                ]
+            })
+            .collect();
+
+        if rows.is_empty() {
+            return Ok(ExecutorResult::new(vec![], 0));
+        }
+
+        Ok(ExecutorResult::new(rows, 6))
     }
 
     pub(crate) fn execute_show_grants_for(&self, user_spec: &str) -> SqlResult<ExecutorResult> {
@@ -665,7 +760,6 @@ impl<S: StorageEngine + 'static> ExecutionEngine<S> {
         Ok(ExecutorResult::empty())
     }
 
-    /// Get prepared statement cache statistics.
     pub fn stmt_cache_stats(&self) -> sqlrustgo_cache::CacheStats {
         self.stmt_cache.stats()
     }
@@ -750,3 +844,45 @@ mod like_match_tests {
         assert!(!like_match("a%c", "abx"));
     }
 }
+
+/// Simple glob pattern matching for SHOW COLUMNS LIKE pattern.
+/// Supports: * matches any characters, ? matches single character.
+fn wildcard_match(s: &str, pattern: &str) -> bool {
+    let mut si = 0;
+    let mut pi = 0;
+    let mut wildcard_stack: Vec<(usize, usize)> = Vec::new();
+
+    while si < s.len() || pi < pattern.len() {
+        if pi < pattern.len() {
+            match pattern[pi..].chars().next() {
+                Some('*') => {
+                    wildcard_stack.push((si, pi));
+                    pi += 1;
+                }
+                Some('?') => {
+                    si += 1;
+                    pi += 1;
+                }
+                Some(c) => {
+                    if si < s.len() && s[si..].starts_with(c) {
+                        si += 1;
+                        pi += 1;
+                    } else if let Some((saved_si, saved_pi)) = wildcard_stack.pop() {
+                        si = saved_si + 1;
+                        pi = saved_pi + 1;
+                    } else {
+                        return false;
+                    }
+                }
+                None => break,
+            }
+        } else if let Some((saved_si, saved_pi)) = wildcard_stack.pop() {
+            si = saved_si + 1;
+            pi = saved_pi + 1;
+        } else {
+            return false;
+        }
+    }
+    true
+}
+
