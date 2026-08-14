@@ -45,6 +45,8 @@ Specifically deferred (per V312-13-REPORT.md boundary table):
 | `SHOW TABLES` | ✅ Supported | Via `execute()` path |
 | `SHOW TABLES LIKE 'pattern'` | ✅ Supported | Parser supports `ShowStatement::TablesLike` |
 | `DESCRIBE` / `SHOW COLUMNS` | ✅ Supported | Parser supports `Statement::Describe` |
+| `CREATE FULLTEXT INDEX` | ✅ Supported | Parser supports; `FullTextIndex` in storage layer |
+| `CREATE VIEW` | ✅ Supported | Stores view definition; view expansion not implemented |
 | Error packets | ✅ Supported | Well-formed MySQL error packets |
 | `COM_RESET_CONNECTION` | ✅ Client-side | Server returns "Unknown command"; client handles gracefully. **Server-side deferred to #3959 (V312-24)** |
 | `LOAD DATA INFILE` | ✅ Supported | Parser accepts syntax; basic execution verified (2026-08-12). **SF=1/SF=10 full execution deferred to #3959 (V312-24)** |
@@ -72,6 +74,10 @@ Specifically deferred (per V312-13-REPORT.md boundary table):
 | TIMESTAMP zero-value behavior | 🔜 Deferred | Boundary conditions not tested |
 | Empty-password authentication | 🔜 Deferred | Auth handshake not implemented |
 | `LOAD DATA LOCAL INFILE` | ✅ Client-side | `MySqlTestClient::load_local_infile()` implemented; server-side basic execution verified (2026-08-12). **SF=1/SF=10 deferred to #3959 (V312-24)** |
+| `TABLE PARTITION BY` (RANGE/LIST/HASH) | ❌ Unsupported | Not implemented; `partition_scan` is parallel data partitioning, not MySQL syntax. `HashPartitioner` is vector sharding. |
+| `MATCH() AGAINST()` | 🔜 Deferred | `FullTextIndex` exists in storage layer; `MATCH()` `AGAINST()` SQL function not implemented in executor |
+| `WITH RECURSIVE` | 🔜 Deferred | CTE materialization supported; recursive CTE returns "Recursive CTE not yet supported" |
+| `MERGE` statement | 🔜 Deferred | Returns "MERGE not yet supported via execute()"; LocalExecutorDml path may support |
 
 ---
 
