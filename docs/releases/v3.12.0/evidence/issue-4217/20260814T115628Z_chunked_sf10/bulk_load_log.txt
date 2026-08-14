@@ -1,0 +1,21 @@
+[0;32m[bulk_load_chunked][0m starting sqlrustgo-mysql-server on 127.0.0.1:23318 (data=/home/openclaw/sqlrustgo_work/docs/releases/v3.12.0/evidence/issue-4217/20260814T115628Z_chunked_sf10/data, infile=/tmp/tpch-evidence, bulk_insert_rows_per_flush=10000, wal-sync=every)
+[0;32m[bulk_load_chunked][0m server listening (pid=1761644)
+[0;32m[bulk_load_chunked][0m creating database + 8 TPC-H schemas
+[0;32m[bulk_load_chunked][0m   schema: region created
+[0;32m[bulk_load_chunked][0m   schema: nation created
+[0;32m[bulk_load_chunked][0m   schema: supplier created
+[0;32m[bulk_load_chunked][0m   schema: customer created
+[0;32m[bulk_load_chunked][0m   schema: part created
+[0;32m[bulk_load_chunked][0m   schema: partsupp created
+[0;32m[bulk_load_chunked][0m   schema: orders created
+[0;32m[bulk_load_chunked][0m   schema: lineitem created
+[0;33m[bulk_load_chunked:WARN][0m   region: 0/3 rows in 0.046s — parity=mismatch
+[0;33m[bulk_load_chunked:WARN][0m   nation: 0/3 rows in 0.043s — parity=mismatch
+[0;33m[bulk_load_chunked:WARN][0m   supplier: 0/3 rows in 0.043s — parity=mismatch
+[0;32m[bulk_load_chunked][0m   customer: 25000 rows in 1.708s (14637 rows/s) — parity=match
+[0;33m[bulk_load_chunked:WARN][0m   part: 0/3 rows in 0.068s — parity=mismatch
+[0;33m[bulk_load_chunked:WARN][0m   partsupp: 0/3 rows in 0.043s — parity=mismatch
+[0;32m[bulk_load_chunked][0m   orders: 25000 rows in 1.938s (12900 rows/s) — parity=match
+[0;33m[bulk_load_chunked:WARN][0m   lineitem: 0/3 rows in 0.062s — parity=mismatch
+[0;32m[bulk_load_chunked][0m DONE — all 8 tables loaded; outputs in /home/openclaw/sqlrustgo_work/docs/releases/v3.12.0/evidence/issue-4217/20260814T115628Z_chunked_sf10
+[0;32m[bulk_load_chunked][0m stopping server (pid=1761644)
