@@ -24,7 +24,8 @@ fn make_test_storage() -> (FileStorage, TempDir) {
             char_max_length: None,
             collation: None,
 
-            default_value: None,        }],
+            default_value: None,
+        }],
         foreign_keys: vec![],
         unique_constraints: vec![],
         check_constraints: vec![],
