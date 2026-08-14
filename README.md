@@ -112,7 +112,11 @@ Hybrid retrieval / Vector retrieval / SQL-backed graph projection / RAG evidence
 | SQL 基础 DDL/DML | DONE | DONE / 持续硬化 | CREATE/INSERT/SELECT/UPDATE/DELETE 主路径可用，corner cases 由 SQLLogicTest 继续覆盖 |
 | SQL-92 SELECT / JOIN / GROUP BY | DONE | DONE / 持续硬化 | TPC-H 和 SQL corpus 仍暴露 planner/semantic gap |
 | CTE | DONE | DONE | 包括 CTE materialization 改进；递归和复杂兼容仍需按测试声明 |
-| 窗口函数 | PARTIAL | PARTIAL / scope decision | MySQL compat 中 `window_rank_partition` 仍有 deferred/协议问题记录；3.12 是否交付受控子集由 [#4227](http://192.168.0.252:3000/openclaw/sqlrustgo/issues/4227) 决策 |
+| 窗口函数 — 核心 12 函数 + 默认 frame | DONE / 受控 | DONE / 受控 | `crates/executor/src/window_executor.rs` 29 单测 PASS；integration 17/21 PASS；详见 [scope 决策](docs/releases/v3.12.0/sql-feature-corpus/window_json_gis_scope.md) §2 |
+| 窗口函数 — 显式 ROWS/RANGE BETWEEN / EXCLUDE / NULLS FIRST/LAST 语法 | DEFERRED | DEFERRED → v3.13 | integration 4/21 parser FAIL（Issue #4228 to open） |
+| JSON 读路径 (JSON_EXTRACT / JSON_VALUE / JSON_VALID / JSON_TYPE / JSON_KEYS / JSON() / `->` / `->>`) | DONE / 受控 | DONE / 受控 | `crates/executor/tests/json_eval_fn_test.rs` 10/12 PASS；详见 [scope 决策](docs/releases/v3.12.0/sql-feature-corpus/window_json_gis_scope.md) §3 |
+| JSON 写路径 / JSON 列类型 / JSON_TABLE / JSON_MERGE | DEFERRED | DEFERRED → v3.13 | Issue #4229 to open |
+| GIS (ST_Within / ST_Distance / ST_Contains / ST_Intersects 在 Value::Point + WKT 字面量) | DEFERRED | DEFERRED → v3.13 | `sqlrustgo_gis` 14 单测 PASS；无 spatial column / index / WKT I/O；Issue #4230 to open |
 | Optimizer / CBO / Hash Join | DONE | DONE / 持续硬化 | #3909 已通过 PR #4087 close-out；性能债仍按后续 issue 跟踪 |
 | WAL / MVCC | PARTIAL | PARTIAL / blocker | 主路径存在；crash recovery 28/31，backup/restore API drift 和 upgrade/downgrade 需 [#4222](http://192.168.0.252:3000/openclaw/sqlrustgo/issues/4222) 收口 |
 | B+Tree / Hash index | DONE | DONE | 索引能力进入主路径；性能趋势需按具体 workload 阅读 |
@@ -124,9 +128,14 @@ Hybrid retrieval / Vector retrieval / SQL-backed graph projection / RAG evidence
 | Sysbench OLTP | 未作为 GA 主证据 | PARTIAL / blocker | read_only: 2870.99 qps / 179.44 tps；write/read_write 因行级锁/隔离问题失败；见 [#4210](http://192.168.0.252:3000/openclaw/sqlrustgo/issues/4210)、[#4211](http://192.168.0.252:3000/openclaw/sqlrustgo/issues/4211) |
 | Prometheus `/metrics` | N/A | DONE / 有限制 | endpoint 和 live scrape 已验证；query counter hot path 仍有 observability debt |
 | Slow query log | N/A | DONE / 有限制 | 单元和集成测试通过；未在真实 TPC-H SF=10 长查询上捕获日志 |
-| SQLLogicTest runner | 规划/非阻断 | DONE / smoke；RC-GA 扩展 | smoke gate 25/25 PASS；full SQLite official corpus 不宣称完成，RC/GA 扩展由 [#4224](http://192.168.0.252:3000/openclaw/sqlrustgo/issues/4224) 收口 |
-| 覆盖率治理 | PASS with follow-up | PARTIAL / blocker | v3.12 采用 per-crate 分层口径；低覆盖 crate 和 SEM-4 gap 由 [#3943](http://192.168.0.252:3000/openclaw/sqlrustgo/issues/3943) 收口 |
-| GMP schema / version / chunk / audit / relation | N/A | DONE | `sqlrustgo-gmp --lib` 154 tests PASS，含 hash-chain tamper tests |
+| SQLLogicTest runner | 规划/非阻断 | PARTIAL | runner/gate 激活；16/22 smoke files deferred to v3.13，不能写成全量 PASS |
+| 覆盖率治理 | PASS with follow-up | PARTIAL | v3.12 采用 per-crate 分层口径；低覆盖 crate 必须 issue-linked |
+| GMP schema / version / chunk / relation (CRUD 路径) | N/A | DONE | `sqlrustgo-gmp --lib` 154 tests PASS；`acl.rs` 5 角色 × 12 ops 矩阵编译校验可证 |
+| GMP 审计链 — CRUD on gmp_documents (CREATE/UPDATE/DELETE) | N/A | DONE | SHA-256 `event_hash → previous_hash`；3 hash-chain + 2 event-hash tests PASS；详见 [V312-53](docs/releases/v3.12.0/evidence/gmp_compliance/V312-53-REPORT.md) §3 |
+| GMP 审计链 — 合规操作 (IMPORT/EXPORT/APPROVE/REVIEW/BACKUP/RESTORE) | N/A | DEFERRED → v3.13 | `AuditAction` 枚举仅 Create/Update/Delete；`import_document` / `bulk_import` / `create_backup` / `restore_backup` 未调用 `record_audit_log`；Issue #4231 to open |
+| GMP 篡改检测 — 集成测试 (mutate-then-verify) | N/A | DEFERRED → v3.13 | `test_hash_chain_tamper_detection` 仅验证链完整，未 mutate storage（注释自承）；Issue #4232 to open |
+| GMP 嵌入/图投影 篡改检测 | N/A | DEFERRED → v3.13 | `chunk_embeddings` / graph 表无 `previous_hash` / `event_hash` 列；Issue #4233 to open |
+| ACL 5 角色 × 12 ops 矩阵全枚举测试 | N/A | DEFERRED → v3.13 | 12 个 spot-check ACL tests PASS（含 `test_permission_guard_fail_closed`）；5×12=60 cell 全枚举程序化测试未做；Issue #4234 to open |
 | GMP Hybrid Retrieval | N/A | DONE / 受控 | RRF、filter、citation tests；目标是 GMP 内审检索，不是通用搜索引擎 |
 | RAG Evidence Bundle | N/A | DONE / 受控 | citation/evidence_hash/answer envelope tests；需结合 GMP fixture 做质量评估 |
 | Internal Vector Retrieval | PARTIAL | PARTIAL / blocker | v3.12 支持内部 GMP/RAG 检索用途；rebuild、dimension/hash、empty-index、质量 fixture 由 [#4225](http://192.168.0.252:3000/openclaw/sqlrustgo/issues/4225) 收口；不宣称通用独立向量数据库 |
@@ -194,7 +203,7 @@ v3.12.0 的 GMP 方向是“受控内审检索系统数据库”，不是通用�
 | Hybrid retrieval | DONE / 受控 | [V312-05](docs/releases/v3.12.0/v312-05-hybrid-retrieval-report.md) |
 | SQL-backed graph projection | DONE / 受控 | [V312-06](docs/releases/v3.12.0/v312-06-graph-projection-report.md) |
 | RAG evidence bundle | DONE / 受控 | [V312-07](docs/releases/v3.12.0/v312-07-rag-evidence-bundle-report.md) |
-| GMP compliance audit controls | PARTIAL / blocker | [GMP 合规矩阵](docs/releases/v3.12.0/GMP_COMPLIANCE_MATRIX.md)、[V312-08](docs/releases/v3.12.0/v312-08-compliance-audit-report.md)；生产 ACL/audit-chain/tamper 全链路由 [#4226](http://192.168.0.252:3000/openclaw/sqlrustgo/issues/4226) 收口 |
+| GMP compliance audit controls | PARTIAL / 持续补强 | [GMP 合规矩阵](docs/releases/v3.12.0/GMP_COMPLIANCE_MATRIX.md)、[V312-08](docs/releases/v3.12.0/v312-08-compliance-audit-report.md)、[V312-53](docs/releases/v3.12.0/evidence/gmp_compliance/V312-53-REPORT.md) |
 
 允许的产品声明：SQLRustGo v3.12 支持受控 GMP 内审检索工作负载中的关系存储、chunk、embedding、audit trail、evidence relation、hybrid retrieval 和 SQL-backed graph projection。
 

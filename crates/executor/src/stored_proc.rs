@@ -1419,6 +1419,10 @@ impl StoredProcExecutor {
             sqlrustgo_parser::Expression::SubqueryField(_, _) => Value::Null,
             sqlrustgo_parser::Expression::SequenceNextVal(_) => Value::Null,
             sqlrustgo_parser::Expression::SequenceCurrval(_) => Value::Null,
+            // Round-21 / Issue #4216: array literals are only meaningful
+            // inside ordered-set aggregate args; in stored-proc expression
+            // context we treat them as Null (consistent with Aggregate).
+            sqlrustgo_parser::Expression::ArrayLiteral(_) => Value::Null,
             sqlrustgo_parser::Expression::SystemVariable(name) => {
                 crate::expr::resolve_system_variable(name)
             }
