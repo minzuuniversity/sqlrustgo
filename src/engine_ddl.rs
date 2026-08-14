@@ -479,12 +479,12 @@ impl<S: StorageEngine + 'static> ExecutionEngine<S> {
                     sqlrustgo_catalog::index::IndexType::FullText => "FULLTEXT",
                 };
                 rows.push(vec![
-                    Value::Text(table.to_string()),           // Table
-                    Value::Integer(non_unique as i64),            // Non_unique
-                    Value::Text(index.name.clone()),          // Key_name
-                    Value::Integer((seq + 1) as i64),           // Seq_in_index
-                    Value::Text(column_name.clone()),        // Column_name
-                    Value::Text(index_type.to_string()),     // Index_type
+                    Value::Text(table.to_string()),      // Table
+                    Value::Integer(non_unique as i64),   // Non_unique
+                    Value::Text(index.name.clone()),     // Key_name
+                    Value::Integer((seq + 1) as i64),    // Seq_in_index
+                    Value::Text(column_name.clone()),    // Column_name
+                    Value::Text(index_type.to_string()), // Index_type
                 ]);
             }
         }

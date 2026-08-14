@@ -128,7 +128,12 @@ fn show_columns_with_like_pattern() {
         .query_rows("SHOW COLUMNS FROM products LIKE 'name'")
         .expect("SHOW COLUMNS LIKE should succeed");
 
-    assert_eq!(rows.len(), 1, "expected 1 column matching 'name', got {}", rows.len());
+    assert_eq!(
+        rows.len(),
+        1,
+        "expected 1 column matching 'name', got {}",
+        rows.len()
+    );
     assert_eq!(rows[0][0].as_str(), "name");
 }
 
@@ -136,7 +141,10 @@ fn show_columns_with_like_pattern() {
 fn show_columns_nonexistent_table_returns_error() {
     let mut client = clean_client();
     let result = client.query_rows("SHOW COLUMNS FROM nonexistent");
-    assert!(result.is_err(), "SHOW COLUMNS for nonexistent table should fail");
+    assert!(
+        result.is_err(),
+        "SHOW COLUMNS for nonexistent table should fail"
+    );
 }
 
 #[test]
@@ -162,7 +170,10 @@ fn show_index_on_table_without_catalog_returns_empty() {
 fn show_index_nonexistent_table_returns_error() {
     let mut client = clean_client();
     let result = client.query_rows("SHOW INDEX FROM nonexistent");
-    assert!(result.is_err(), "SHOW INDEX for nonexistent table should fail");
+    assert!(
+        result.is_err(),
+        "SHOW INDEX for nonexistent table should fail"
+    );
 }
 
 #[test]
