@@ -1,0 +1,75 @@
+# name: test/sql/aggregate/percentile_cont_simple.test
+# description: PERCENTILE_CONT WITHIN GROUP — ordered-set aggregate (V313-followup-3 / Issue #4156)
+# group: [aggregate]
+
+statement ok
+CREATE TABLE t (x INTEGER)
+
+statement ok
+INSERT INTO t VALUES (1), (2), (3), (4), (5), (6), (7), (8), (9), (10)
+
+# V313-followup-3 / Issue #4156: PERCENTILE_CONT(frac) WITHIN GROUP
+# (ORDER BY col) linearly interpolates at sorted-index
+# frac * (n-1). On 10 sorted values [1..10]:
+#   frac=0.25 -> idx=2.25 -> sorted[2]=3 + 0.25*(4-3) = 3.25
+#   frac=0.50 -> idx=4.5  -> sorted[4]=5 + 0.5*(6-5)  = 5.5
+#   frac=0.75 -> idx=6.75 -> sorted[6]=7 + 0.75*(8-7) = 7.75
+query I
+SELECT PERCENTILE_CONT(0.25) WITHIN GROUP (ORDER BY x) FROM t
+----
+3.25
+
+query I
+SELECT PERCENTILE_CONT(0.50) WITHIN GROUP (ORDER BY x) FROM t
+----
+5.5
+
+query I
+SELECT PERCENTILE_CONT(0.75) WITHIN GROUP (ORDER BY x) FROM t
+----
+7.75
+
+# Boundary fractions map to the extreme sorted values.
+query I
+SELECT PERCENTILE_CONT(0.0) WITHIN GROUP (ORDER BY x) FROM t
+----
+1
+
+query I
+SELECT PERCENTILE_CONT(1.0) WITHIN GROUP (ORDER BY x) FROM t
+----
+10
+
+# DESC ordering is honoured (median invariant under reversal).
+query I
+SELECT PERCENTILE_CONT(0.5) WITHIN GROUP (ORDER BY x DESC) FROM t
+----
+5.5
+
+# GROUP BY evaluates per-group:
+#   grp=1 -> [1,2,3]  -> median 2.0
+#   grp=2 -> [10,20]  -> median 15.0
+statement ok
+CREATE TABLE g (grp INTEGER, x INTEGER)
+
+statement ok
+INSERT INTO g VALUES (1, 1), (1, 2), (1, 3), (2, 10), (2, 20)
+
+query II
+SELECT grp, PERCENTILE_CONT(0.5) WITHIN GROUP (ORDER BY x) FROM g GROUP BY grp ORDER BY grp
+----
+1 2
+2 15
+
+# Empty table returns NULL (SQL standard).
+statement ok
+CREATE TABLE empty_t (x INTEGER)
+
+query I
+SELECT PERCENTILE_CONT(0.5) WITHIN GROUP (ORDER BY x) FROM empty_t
+----
+NULL
+
+# Out-of-range fraction emits a classified error.
+statement error .*requires frac arg in \[0.0, 1.0\].*
+SELECT PERCENTILE_CONT(1.5) WITHIN GROUP (ORDER BY x) FROM t

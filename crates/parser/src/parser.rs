@@ -80,6 +80,8 @@ pub enum Statement {
     AlterUser(AlterUserStatement),
     Call(CallStatement),
     CreateProcedure(CreateProcedureStatement),
+    /// V312-55A / Issue #4238: DROP PROCEDURE [IF EXISTS] name
+    DropProcedure(DropProcedureStatement),
     Union(UnionStatement),
     CreateTrigger(CreateTriggerStatement),
     /// SQL-92 INTERSECT (V310-06 PR2 / Issue #3723 C-2a).
@@ -121,6 +123,15 @@ pub enum Statement {
     },
     Deallocate {
         name: String,
+    },
+    /// Round-21 / Issue #4218: MySQL `KILL <connection_id>`.
+    /// `connection_id` is the MySQL thread id of the connection to terminate.
+    /// `kill_query` distinguishes `KILL CONNECTION` (default, terminates
+    /// the connection) from `KILL QUERY <id>` (cancels the running query
+    /// only, leaves the connection alive).
+    Kill {
+        connection_id: u64,
+        kill_query: bool,
     },
 }
 
@@ -281,8 +292,23 @@ pub struct CallStatement {
 #[derive(Debug, Clone, PartialEq)]
 pub struct CreateProcedureStatement {
     pub name: String,
+    /// V312-55A / Issue #4238: when true, replace existing procedure
+    /// with the same name (MySQL `CREATE OR REPLACE PROCEDURE` semantics).
+    /// Stored as `false` for the plain `CREATE PROCEDURE` form.
+    pub or_replace: bool,
     pub params: Vec<StoredProcParam>,
     pub body: Vec<StoredProcStatement>,
+}
+
+/// DROP PROCEDURE statement
+///
+/// V312-55A / Issue #4238: completes the Procedure DDL lifecycle so
+/// procedures can be created, listed, and removed. `IF EXISTS` follows
+/// the same shape as DROP TABLE / DROP VIEW.
+#[derive(Debug, Clone, PartialEq)]
+pub struct DropProcedureStatement {
+    pub name: String,
+    pub if_exists: bool,
 }
 
 /// Stored procedure parameter
@@ -498,6 +524,8 @@ pub enum AggregateFunction {
     /// V313-followup-2 / Issue #4155: `quantile_cont(col, frac)` —
     /// continuous-quantile aggregate with linear interpolation.
     QuantileCont,
+    /// V313-followup-3 / Issue #4156: ordered-set aggregate.
+    PercentileCont,
 }
 
 /// Join clause
@@ -794,6 +822,17 @@ pub enum ShowStatement {
         table: String,
     },
     Sequences,
+    /// Round-21 / Issue #4218: MySQL `SHOW PROCESSLIST` (and
+    /// `SHOW FULL PROCESSLIST` with the `full` flag).
+    Processlist {
+        full: bool,
+    },
+    /// V312-55A / Issue #4238: MySQL `SHOW PROCEDURE STATUS [LIKE 'pat']`.
+    /// The optional `pattern` is a LIKE-style filter applied at the
+    /// executor; `None` lists every procedure.
+    ProcedureStatus {
+        pattern: Option<String>,
+    },
 }
 
 /// DESCRIBE statement (aliased as DESC)
@@ -929,6 +968,10 @@ pub enum Expression {
     /// `@@sql_mode`, etc. The `String` is the variable name in lower-case.
     /// The executor resolves the name to a scalar value at evaluation time.
     SystemVariable(String),
+    /// Round-21 / Issue #4216: array literal `[expr, expr, ...]`.
+    /// Used by the array-fraction form of ordered-set aggregates
+    /// (e.g. `quantile_disc(col, [0.25, 0.5, 0.75])`).
+    ArrayLiteral(Vec<Expression>),
 }
 
 /// V312-19 #3972: constant-fold an arithmetic expression to a `u64` LIMIT/OFFSET value.
@@ -1951,6 +1994,14 @@ impl Parser {
             Some(Token::Revoke) => self.parse_revoke(),
             Some(Token::Show) => self.parse_show(),
             Some(Token::Describe) | Some(Token::Desc) => self.parse_describe(),
+            // Round-21 / Issue #4218: KILL is parsed as an Identifier
+            // (no dedicated Token::Kill in the lexer), so match by
+            // uppercased ident here.
+            Some(Token::Identifier(ref ident))
+                if matches!(ident.to_uppercase().as_str(), "KILL") =>
+            {
+                self.parse_kill()
+            }
             Some(t) => Err(format!("Unexpected token: {:?}", t)),
             None => Err("Empty input".to_string()),
         }
@@ -2332,7 +2383,17 @@ impl Parser {
                 self.expect(Token::Index)?;
                 self.parse_create_index(true)
             }
-            Some(Token::Procedure) => self.parse_create_procedure(),
+            Some(Token::Procedure) => {
+                // V312-55A / Issue #4238: pass the already-consumed
+                // `OR REPLACE` flag through to parse_create_procedure.
+                let mut stmt = self.parse_create_procedure()?;
+                if or_replace {
+                    if let Statement::CreateProcedure(ref mut cp) = stmt {
+                        cp.or_replace = true;
+                    }
+                }
+                Ok(stmt)
+            }
             Some(Token::Trigger) => self.parse_create_trigger(),
             Some(Token::Role) => self.parse_create_role(),
             Some(Token::View) => self.parse_create_view(),
@@ -2566,6 +2627,13 @@ impl Parser {
     }
 
     fn parse_create_procedure(&mut self) -> Result<Statement, String> {
+        // V312-55A / Issue #4238: CREATE [OR REPLACE] PROCEDURE
+        //
+        // The `OR REPLACE` keyword is consumed by `parse_create` (the
+        // outer CREATE dispatcher) and the flag is patched onto the
+        // resulting `CreateProcedureStatement` after this function
+        // returns. Here we just expect the `PROCEDURE` keyword and
+        // proceed.
         self.expect(Token::Procedure)?;
 
         let name = match self.next() {
@@ -2650,8 +2718,56 @@ impl Parser {
 
         Ok(Statement::CreateProcedure(CreateProcedureStatement {
             name,
+            // OR REPLACE flag is set by the outer parse_create
+            // dispatcher after this returns (consistent with how
+            // CreateTable handles the modifier).
+            or_replace: false,
             params,
             body,
+        }))
+    }
+
+    /// V312-55A / Issue #4238: parse `DROP PROCEDURE [IF EXISTS] name`.
+    ///
+    /// Mirrors the `DROP TABLE`/`DROP VIEW` shape: optional `IF EXISTS`
+    /// between `PROCEDURE` and the procedure name. The caller is
+    /// expected to have already consumed the leading `DROP` keyword.
+    fn parse_drop_procedure(&mut self) -> Result<Statement, String> {
+        self.expect(Token::Procedure)?;
+        let if_exists = if matches!(self.current(), Some(Token::If)) {
+            self.next();
+            match self.current() {
+                Some(Token::Exists) => {
+                    self.next();
+                    true
+                }
+                _ => return Err("Expected 'EXISTS' after 'IF'".to_string()),
+            }
+        } else {
+            false
+        };
+        let name = match self.next() {
+            Some(Token::Identifier(name)) => name,
+            // MySQL allows reserved keywords as procedure names; mirror
+            // the CREATE PROCEDURE keyword fallback list so `DROP
+            // PROCEDURE loop` works the same as `CREATE PROCEDURE loop`.
+            Some(Token::While) => "while".to_string(),
+            Some(Token::Loop) => "loop".to_string(),
+            Some(Token::Repeat) => "repeat".to_string(),
+            Some(Token::Return) => "return".to_string(),
+            Some(Token::Leave) => "leave".to_string(),
+            Some(Token::Iterate) => "iterate".to_string(),
+            Some(Token::Set) => "set".to_string(),
+            Some(Token::Declare) => "declare".to_string(),
+            Some(Token::Call) => "call".to_string(),
+            Some(Token::Out) => "out".to_string(),
+            Some(Token::Increment) => "increment".to_string(),
+            Some(t) => return Err(format!("Expected procedure name, got {:?}", t)),
+            None => return Err("Expected procedure name".to_string()),
+        };
+        Ok(Statement::DropProcedure(DropProcedureStatement {
+            name,
+            if_exists,
         }))
     }
 
@@ -3330,6 +3446,7 @@ impl Parser {
                                 AggregateFunction::Avg => "AVG",
                                 AggregateFunction::Min => "MIN",
                                 AggregateFunction::Max => "MAX",
+                                AggregateFunction::PercentileCont => "PERCENTILE_CONT",
                                 AggregateFunction::QuantileDisc => "QUANTILE_DISC",
                                 AggregateFunction::QuantileCont => "QUANTILE_CONT",
                             };
@@ -5563,6 +5680,7 @@ impl Parser {
                     "MIN" => Some(AggregateFunction::Min),
                     "MAX" => Some(AggregateFunction::Max),
                     "QUANTILE_DISC" => Some(AggregateFunction::QuantileDisc),
+                    "PERCENTILE_CONT" => Some(AggregateFunction::PercentileCont),
                     "QUANTILE_CONT" => Some(AggregateFunction::QuantileCont),
                     _ => None,
                 } {
@@ -6826,6 +6944,23 @@ impl Parser {
                     }
                 }
                 self.expect(Token::RParen)?;
+                // V313-followup-3 / Issue #4156: PERCENTILE_CONT
+                // optionally followed by WITHIN GROUP (ORDER BY col).
+                if name.to_uppercase() == "PERCENTILE_CONT"
+                    && matches!(self.current(), Some(Token::Within))
+                {
+                    self.next();
+                    self.expect(Token::Group)?;
+                    self.expect(Token::LParen)?;
+                    self.expect(Token::Order)?;
+                    self.expect(Token::By)?;
+                    self.parse_expression()?;
+                    while matches!(self.current(), Some(Token::Comma)) {
+                        self.next();
+                        self.parse_expression()?;
+                    }
+                    self.expect(Token::RParen)?;
+                }
                 Ok(Expression::FunctionCall(name.to_string(), args))
             }
             Some(Token::SystemVariable(name)) => {
@@ -7217,13 +7352,54 @@ impl Parser {
                                 }
                             }
                         }
+                        // Consume the CAST's closing paren. The args loop
+                        // above terminates on `AS` (not `)`), so the
+                        // closing `)` of `CAST(expr AS TYPE)` is still
+                        // pending here. Without this, the leftover `)`
+                        // makes a parent column-list loop treat the
+                        // subquery as terminated early, dropping any
+                        // following columns and the FROM clause
+                        // (V312-21 / #4181, TPC-H Q7-Q9 subquery parse).
+                        if matches!(self.current(), Some(Token::RParen)) {
+                            self.next();
+                        }
                         // EXTRACT(field FROM expr) — field is a SQL token (YEAR,
                         // MONTH, DAY, ...). The executor's `EXTRACT` eval_fn
                         // expects a 2-arg FunctionCall where arg[0] is the
                         // field name and arg[1] is the source expression. We
                         // encode it that way: push the field as a quoted
                         // Literal string so it round-trips through the AST.
-                        Ok(Expression::FunctionCall(name, args))
+                        let name_upper = name.to_uppercase();
+                        // V313-followup-3 / Issue #4156: PERCENTILE_CONT
+                        // optionally followed by WITHIN GROUP (ORDER BY col
+                        // [ASC|DESC]). Encode the ORDER BY expression as an
+                        // extra arg so the executor can evaluate it into the
+                        // value list; DESC is encoded as a trailing
+                        // `__DESC__` literal arg.
+                        if name_upper == "PERCENTILE_CONT"
+                            && matches!(self.current(), Some(Token::Within))
+                        {
+                            self.next();
+                            self.expect(Token::Group)?;
+                            self.expect(Token::LParen)?;
+                            self.expect(Token::Order)?;
+                            self.expect(Token::By)?;
+                            let ob_expr = self.parse_expression()?;
+                            args.push(ob_expr);
+                            if matches!(self.current(), Some(Token::Asc)) {
+                                self.next();
+                            } else if matches!(self.current(), Some(Token::Desc)) {
+                                self.next();
+                                args.push(Expression::Literal("__DESC__".to_string()));
+                            }
+                            while matches!(self.current(), Some(Token::Comma)) {
+                                self.next();
+                                args.push(self.parse_expression()?);
+                            }
+                            self.expect(Token::RParen)?;
+                        }
+                        let expr = Expression::FunctionCall(name, args);
+                        Ok(expr)
                     }
                 } else {
                     Ok(Expression::Identifier(name))
@@ -7348,6 +7524,25 @@ impl Parser {
                     }
                 }
             }
+            // Round-21 / Issue #4216: array literal `[expr, expr, ...]`.
+            // Used by the array-fraction form of ordered-set aggregates
+            // (e.g. `quantile_disc(col, [0.25, 0.5, 0.75])`).
+            Some(Token::LBracket) => {
+                self.next(); // consume `[`
+                let mut elems = Vec::new();
+                if !matches!(self.current(), Some(Token::RBracket)) {
+                    loop {
+                        elems.push(self.parse_expression()?);
+                        if matches!(self.current(), Some(Token::Comma)) {
+                            self.next();
+                        } else {
+                            break;
+                        }
+                    }
+                }
+                self.expect(Token::RBracket)?;
+                Ok(Expression::ArrayLiteral(elems))
+            }
             Some(Token::Exists) => {
                 self.next();
                 self.expect(Token::LParen)?;
@@ -7387,6 +7582,7 @@ impl Parser {
                         AggregateFunction::Avg => "AVG",
                         AggregateFunction::Min => "MIN",
                         AggregateFunction::Max => "MAX",
+                        AggregateFunction::PercentileCont => "PERCENTILE_CONT",
                         AggregateFunction::QuantileDisc => "QUANTILE_DISC",
                         AggregateFunction::QuantileCont => "QUANTILE_CONT",
                     };
@@ -8626,15 +8822,18 @@ impl Parser {
             }
             Some(Token::Index) => self.parse_drop_index(),
             Some(Token::View) => self.parse_drop_view(),
+            // V312-55A / Issue #4238: add DROP PROCEDURE to the dispatcher.
+            Some(Token::Procedure) => self.parse_drop_procedure(),
             Some(Token::Role) => self.parse_drop_role(),
             Some(Token::Database) => self.parse_drop_database(),
             Some(Token::Sequence) => self.parse_drop_sequence(),
             Some(t) => Err(format!(
-                "Expected TABLE, INDEX, VIEW, ROLE, SEQUENCE, or DATABASE after DROP, got {:?}",
+                "Expected TABLE, INDEX, VIEW, PROCEDURE, ROLE, SEQUENCE, or DATABASE after DROP, got {:?}",
                 t
             )),
             None => Err(
-                "Expected TABLE, INDEX, VIEW, ROLE, SEQUENCE, or DATABASE after DROP".to_string(),
+                "Expected TABLE, INDEX, VIEW, PROCEDURE, ROLE, SEQUENCE, or DATABASE after DROP"
+                    .to_string(),
             ),
         }
     }
@@ -8764,6 +8963,55 @@ impl Parser {
         Ok(Statement::Truncate(TruncateStatement { name }))
     }
 
+    /// Round-21 / Issue #4218: MySQL `KILL [QUERY|CONNECTION] <id>` parser.
+    /// Accepts:
+    ///   KILL <id>              → Statement::Kill { connection_id, kill_query: false }
+    ///   KILL CONNECTION <id>   → Statement::Kill { connection_id, kill_query: false }
+    ///   KILL QUERY <id>        → Statement::Kill { connection_id, kill_query: true }
+    fn parse_kill(&mut self) -> Result<Statement, String> {
+        // Consume the KILL identifier
+        self.expect(Token::Identifier("KILL".to_string()))?;
+        // Match either `CONNECTION` (default) or `QUERY`
+        let kill_query = match self.current() {
+            Some(Token::Identifier(ref ident)) if ident.to_uppercase() == "QUERY" => {
+                self.next();
+                true
+            }
+            Some(Token::Identifier(ref ident)) if ident.to_uppercase() == "CONNECTION" => {
+                self.next();
+                false
+            }
+            _ => false,
+        };
+        // Expect a numeric literal or numeric identifier for connection_id.
+        // Token::NumberLiteral carries the raw digit string (lexer doesn't
+        // pre-parse), so we parse to u64 here.
+        let connection_id = match self.next() {
+            Some(Token::NumberLiteral(n)) => n
+                .parse::<u64>()
+                .map_err(|_| format!("Expected numeric connection id after KILL, got {:?}", n))?,
+            // Some MySQL clients pass the id as an unquoted identifier
+            // (e.g. `KILL 12345`). Accept that form too.
+            Some(Token::Identifier(s)) => s.parse::<u64>().map_err(|_| {
+                format!(
+                    "Expected numeric connection id after KILL, got identifier {:?}",
+                    s
+                )
+            })?,
+            Some(other) => {
+                return Err(format!(
+                    "Expected numeric connection id after KILL, got {:?}",
+                    other
+                ));
+            }
+            None => return Err("Expected connection id after KILL".to_string()),
+        };
+        Ok(Statement::Kill {
+            connection_id,
+            kill_query,
+        })
+    }
+
     fn parse_show(&mut self) -> Result<Statement, String> {
         self.expect(Token::Show)?;
 
@@ -8822,6 +9070,22 @@ impl Parser {
                 };
                 Ok(Statement::Show(ShowStatement::Index { table }))
             }
+            Some(Token::Identifier(ref ident)) if ident.to_uppercase() == "PROCESSLIST" => {
+                // Round-21 / Issue #4218: SHOW [FULL] PROCESSLIST
+                self.next();
+                Ok(Statement::Show(ShowStatement::Processlist { full: false }))
+            }
+            Some(Token::Full) => {
+                // Round-21 / Issue #4218: SHOW FULL PROCESSLIST
+                self.next();
+                match self.current() {
+                    Some(Token::Identifier(ref ident)) if ident.to_uppercase() == "PROCESSLIST" => {
+                        self.next();
+                        Ok(Statement::Show(ShowStatement::Processlist { full: true }))
+                    }
+                    _ => Err("Expected PROCESSLIST after SHOW FULL".to_string()),
+                }
+            }
             Some(Token::Identifier(ref ident)) if ident.to_uppercase() == "GRANTS" => {
                 self.next();
                 self.expect(Token::For)?;
@@ -8840,6 +9104,29 @@ impl Parser {
             Some(Token::Identifier(ref ident)) if ident.to_uppercase() == "SEQUENCES" => {
                 self.next();
                 Ok(Statement::Show(ShowStatement::Sequences))
+            }
+            Some(Token::Procedure) => {
+                // V312-55A / Issue #4238: SHOW PROCEDURE STATUS [LIKE 'pat']
+                self.next();
+                match self.current() {
+                    Some(Token::Identifier(ref ident)) if ident.to_uppercase() == "STATUS" => {
+                        self.next();
+                        let pattern = if matches!(
+                            self.current(),
+                            Some(Token::Identifier(ref ident)) if ident.to_uppercase() == "LIKE"
+                        ) {
+                            self.next();
+                            match self.next() {
+                                Some(Token::StringLiteral(p)) => Some(p),
+                                _ => return Err("Expected pattern string".to_string()),
+                            }
+                        } else {
+                            None
+                        };
+                        Ok(Statement::Show(ShowStatement::ProcedureStatus { pattern }))
+                    }
+                    _ => Err("Expected STATUS after SHOW PROCEDURE".to_string()),
+                }
             }
             Some(t) => Err(format!("Unexpected token after SHOW: {:?}", t)),
             None => Err("Unexpected end of input after SHOW".to_string()),
@@ -9653,9 +9940,6 @@ impl Parser {
                                 ));
                             }
                             None => return Err("Expected literal after SET DEFAULT".to_string()),
-                        };
-                        AlterColumnOperation::SetDefault {
-                            default_value: Some(default_value.clone()),
                         };
                         Ok(Statement::AlterTable(AlterTableStatement {
                             table_name,
@@ -10613,6 +10897,92 @@ mod tests {
                 assert_eq!(table, "users");
             }
             _ => panic!("Expected DESC users statement"),
+        }
+    }
+
+    /// Round-21 / Issue #4218: SHOW PROCESSLIST → Statement::Show(ShowStatement::Processlist { full: false })
+    #[test]
+    fn test_parse_show_processlist_v312_35() {
+        let result = parse("SHOW PROCESSLIST");
+        assert!(result.is_ok(), "Parse failed: {:?}", result);
+        match result.unwrap() {
+            Statement::Show(ShowStatement::Processlist { full }) => {
+                assert!(!full, "Expected SHOW PROCESSLIST (not FULL)");
+            }
+            other => panic!("Expected Statement::Show(Processlist), got {:?}", other),
+        }
+    }
+
+    /// Round-21 / Issue #4218: SHOW FULL PROCESSLIST → Processlist { full: true }
+    #[test]
+    fn test_parse_show_full_processlist_v312_35() {
+        let result = parse("SHOW FULL PROCESSLIST");
+        assert!(result.is_ok(), "Parse failed: {:?}", result);
+        match result.unwrap() {
+            Statement::Show(ShowStatement::Processlist { full }) => {
+                assert!(full, "Expected SHOW FULL PROCESSLIST");
+            }
+            other => panic!(
+                "Expected Statement::Show(Processlist {{ full: true }}), got {:?}",
+                other
+            ),
+        }
+    }
+
+    /// Round-21 / Issue #4218: KILL <id> → Statement::Kill { connection_id, kill_query: false }
+    #[test]
+    fn test_parse_kill_v312_35() {
+        let result = parse("KILL 12345");
+        assert!(result.is_ok(), "Parse failed: {:?}", result);
+        match result.unwrap() {
+            Statement::Kill {
+                connection_id,
+                kill_query,
+            } => {
+                assert_eq!(connection_id, 12345, "Expected connection_id=12345");
+                assert!(!kill_query, "Default KILL is CONNECTION, not QUERY");
+            }
+            other => panic!("Expected Statement::Kill, got {:?}", other),
+        }
+    }
+
+    /// Round-21 / Issue #4218: KILL QUERY <id> → kill_query: true
+    #[test]
+    fn test_parse_kill_query_v312_35() {
+        let result = parse("KILL QUERY 99");
+        assert!(result.is_ok(), "Parse failed: {:?}", result);
+        match result.unwrap() {
+            Statement::Kill {
+                connection_id,
+                kill_query,
+            } => {
+                assert_eq!(connection_id, 99);
+                assert!(kill_query, "Expected KILL QUERY form");
+            }
+            other => panic!(
+                "Expected Statement::Kill {{ kill_query: true }}, got {:?}",
+                other
+            ),
+        }
+    }
+
+    /// Round-21 / Issue #4218: KILL CONNECTION <id> → explicit connection form
+    #[test]
+    fn test_parse_kill_connection_v312_35() {
+        let result = parse("KILL CONNECTION 7");
+        assert!(result.is_ok(), "Parse failed: {:?}", result);
+        match result.unwrap() {
+            Statement::Kill {
+                connection_id,
+                kill_query,
+            } => {
+                assert_eq!(connection_id, 7);
+                assert!(!kill_query, "KILL CONNECTION should leave kill_query=false");
+            }
+            other => panic!(
+                "Expected Statement::Kill {{ kill_query: false }}, got {:?}",
+                other
+            ),
         }
     }
     #[test]
@@ -14928,4 +15298,46 @@ fn test_parse_select_into() {
 #[test]
 fn test_parse_with_recursive() {
     let _ = parse("WITH RECURSIVE cte AS (SELECT 1 UNION SELECT cte.x + 1 FROM cte WHERE cte.x < 10) SELECT * FROM cte");
+}
+
+// Round-21 / Issue #4216: array-fraction form for quantile_disc/cont.
+// Single-fraction (`quantile_disc(col, 0.5)`) is owned by #4155.
+// Array-fraction (`quantile_disc(col, [0.25, 0.5, 0.75])`) lives here.
+
+#[test]
+fn test_parse_quantile_disc_array_v312_46() {
+    use crate::parser::AggregateFunction;
+    let stmt = parse("SELECT quantile_disc(x, [0.25, 0.5, 0.75]) FROM t").unwrap();
+    if let Statement::Select(sel) = stmt {
+        assert_eq!(sel.aggregates.len(), 1);
+        let agg = &sel.aggregates[0];
+        assert!(matches!(agg.func, AggregateFunction::QuantileDisc));
+        assert_eq!(agg.args.len(), 2);
+        // args[1] should be an ArrayLiteral containing three fraction literals.
+        match &agg.args[1] {
+            Expression::ArrayLiteral(elems) => {
+                assert_eq!(elems.len(), 3);
+            }
+            other => panic!("expected ArrayLiteral, got {:?}", other),
+        }
+    } else {
+        panic!("expected Statement::Select");
+    }
+}
+
+#[test]
+fn test_parse_quantile_cont_array_v312_46() {
+    use crate::parser::AggregateFunction;
+    let stmt = parse("SELECT quantile_cont(x, [0.1, 0.9]) FROM t").unwrap();
+    if let Statement::Select(sel) = stmt {
+        assert_eq!(sel.aggregates.len(), 1);
+        let agg = &sel.aggregates[0];
+        assert!(matches!(agg.func, AggregateFunction::QuantileCont));
+        match &agg.args[1] {
+            Expression::ArrayLiteral(elems) => assert_eq!(elems.len(), 2),
+            other => panic!("expected ArrayLiteral, got {:?}", other),
+        }
+    } else {
+        panic!("expected Statement::Select");
+    }
 }

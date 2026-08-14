@@ -37,14 +37,18 @@ pub fn materialise_default_tokens(
     if records.is_empty() {
         return records;
     }
-    let defaults: Vec<Option<Value>> = table_columns
+    // V313-followup-1 / Issue #4154: `default_value` is stored as raw
+    // literal text. Capture the `Option<&str>` reference and parse to
+    // `Value` lazily during materialisation (parse_default_literal
+    // lives in the storage crate and is not re-exported here).
+    let defaults: Vec<Option<&str>> = table_columns
         .iter()
-        .map(|c| c.default_value.clone())
+        .map(|c| c.default_value.as_deref())
         .collect();
-    let positions: Vec<(usize, Option<Value>)> = if column_names.is_empty() {
+    let positions: Vec<(usize, Option<&str>)> = if column_names.is_empty() {
         // INSERT VALUES with no explicit column list — align by index.
         (0..table_columns.len())
-            .map(|i| (i, defaults.get(i).cloned().unwrap_or(None)))
+            .map(|i| (i, defaults.get(i).copied().unwrap_or(None)))
             .collect()
     } else {
         column_names
@@ -61,23 +65,57 @@ pub fn materialise_default_tokens(
                             .iter()
                             .position(|c| c.name.to_lowercase() == name.to_lowercase())
                     })?;
-                Some((row_idx, defaults.get(pos).cloned().unwrap_or(None)))
+                Some((row_idx, defaults.get(pos).copied().unwrap_or(None)))
             })
             .collect()
     };
     let mut out = records;
     for (col_idx, default) in positions {
-        let default = default.clone();
         for row in out.iter_mut() {
             if col_idx < row.len() {
                 let is_default = matches!(&row[col_idx], Value::Text(t) if t == "DEFAULT");
                 if is_default {
-                    row[col_idx] = default.clone().unwrap_or(Value::Null);
+                    // V313-followup-1 / Issue #4154: parse the literal
+                    // text at materialisation time. Parse failures fall
+                    // back to NULL per storage crate contract.
+                    row[col_idx] = match default {
+                        Some(s) => parse_default_literal_in_helpers(s),
+                        None => Value::Null,
+                    };
                 }
             }
         }
     }
     out
+}
+
+/// V313-followup-1 / Issue #4154: local copy of the storage
+/// `parse_default_literal` helper because the storage crate does not
+/// re-export it. Kept in sync with `crates/storage/src/engine.rs`.
+fn parse_default_literal_in_helpers(s: &str) -> Value {
+    use sqlrustgo_types::Value;
+    let trimmed = s.trim();
+    if trimmed.eq_ignore_ascii_case("NULL") {
+        return Value::Null;
+    }
+    if trimmed.eq_ignore_ascii_case("TRUE") {
+        return Value::Boolean(true);
+    }
+    if trimmed.eq_ignore_ascii_case("FALSE") {
+        return Value::Boolean(false);
+    }
+    if let Ok(n) = trimmed.parse::<i64>() {
+        return Value::Integer(n);
+    }
+    if let Ok(f) = trimmed.parse::<f64>() {
+        return Value::Float(f);
+    }
+    let inner = if trimmed.len() >= 2 && trimmed.starts_with('\'') && trimmed.ends_with('\'') {
+        &trimmed[1..trimmed.len() - 1]
+    } else {
+        trimmed
+    };
+    Value::Text(inner.to_string())
 }
 
 /// Materialise a SELECT result into INSERT-shaped records, coercing each
