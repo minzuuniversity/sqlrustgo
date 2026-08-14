@@ -627,10 +627,7 @@ impl TriggerExecutor {
             let table_name = insert.table.clone();
             // V312-55F / Issue #4243: privilege check before any DML
             // mutates storage. Root short-circuits inside the hook.
-            self.check_body_privilege(
-                sqlrustgo_catalog::auth::Privilege::Insert,
-                &table_name,
-            )?;
+            self.check_body_privilege(sqlrustgo_catalog::auth::Privilege::Insert, &table_name)?;
             let table_info = {
                 let storage = self.storage.read();
                 storage.get_table_info(&table_name)?
@@ -686,10 +683,7 @@ impl TriggerExecutor {
             let table_name = &update.tables[0].name;
             // V312-55F / Issue #4243: privilege check before any DML
             // mutates storage. Root short-circuits inside the hook.
-            self.check_body_privilege(
-                sqlrustgo_catalog::auth::Privilege::Update,
-                table_name,
-            )?;
+            self.check_body_privilege(sqlrustgo_catalog::auth::Privilege::Update, table_name)?;
             let table_info = storage.get_table_info(table_name)?;
             let target_col_names: Vec<String> =
                 table_info.columns.iter().map(|c| c.name.clone()).collect();

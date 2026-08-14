@@ -1323,11 +1323,7 @@ fn build_trigger_auth_check<S: StorageEngine + 'static>(
             let catalog = catalog_arc.read();
             catalog
                 .auth_manager()
-                .check_privilege(
-                    user,
-                    &CatalogObjectRef::table(table_name),
-                    privilege,
-                )
+                .check_privilege(user, &CatalogObjectRef::table(table_name), privilege)
                 .map_err(|e| {
                     SqlError::ExecutionError(format!(
                         "Permission denied (trigger body DML): {} on {} for {}@{} ({})",
