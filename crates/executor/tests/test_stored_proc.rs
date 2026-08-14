@@ -859,10 +859,7 @@ fn call_body_raw_sql_runs_through_dispatcher() {
         vec![StoredProcStatement::RawSql("SELECT 1".to_string())],
     );
     let executor = create_executor_with_proc(proc);
-    let result = executor.execute_call(
-        "call_body_raw_sql_runs_through_dispatcher",
-        vec![],
-    );
+    let result = executor.execute_call("call_body_raw_sql_runs_through_dispatcher", vec![]);
     let exec_result = result.expect("CALL with RawSql body should succeed");
     assert_eq!(
         exec_result.rows.len(),
@@ -897,10 +894,7 @@ fn call_body_statements_run_in_order() {
         ],
     );
     let executor = create_executor_with_proc(proc);
-    let result = executor.execute_call(
-        "call_body_statements_run_in_order",
-        vec![],
-    );
+    let result = executor.execute_call("call_body_statements_run_in_order", vec![]);
     let exec_result = result.expect("Sequenced body CALL should succeed");
     assert_eq!(exec_result.rows.len(), 1);
     assert_eq!(

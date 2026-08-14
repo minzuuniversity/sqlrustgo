@@ -36,11 +36,10 @@ use sqlrustgo_parser::parser::{
     CreateSequenceStatement, CreateTableStatement, CreateTriggerStatement, CreateViewStatement,
     DescribeStatement, DropDatabaseStatement, DropIndexStatement, DropProcedureStatement,
     DropRoleStatement, DropSequenceStatement, DropTableStatement, DropViewStatement,
-    ExceptStatement,
-    GrantRoleStatement, GrantStatement, InsertStatement, IntersectStatement, MergeStatement,
-    ObjectType as ParserObjectType, OrderByExpression, Privilege as ParserPrivilege,
-    RevokeRoleStatement, RevokeStatement, SelectStatement, SetRoleStatement, ShowStatement,
-    StorageEngineSpec, StoredProcParam as ParserStoredProcParam,
+    ExceptStatement, GrantRoleStatement, GrantStatement, InsertStatement, IntersectStatement,
+    MergeStatement, ObjectType as ParserObjectType, OrderByExpression,
+    Privilege as ParserPrivilege, RevokeRoleStatement, RevokeStatement, SelectStatement,
+    SetRoleStatement, ShowStatement, StorageEngineSpec, StoredProcParam as ParserStoredProcParam,
     StoredProcParamMode as ParserParamMode, StoredProcStatement as ParserStatement,
     TruncateStatement, UnionStatement,
 };
@@ -1133,9 +1132,14 @@ impl<S: StorageEngine + 'static> ExecutionEngine<S> {
         // existing procedure with the same case-insensitive name
         // instead of failing with DuplicateProcedure.
         if stmt.or_replace {
-            catalog.add_or_replace_stored_procedure(procedure).map_err(|e| {
-                SqlError::ExecutionError(format!("Failed to create or replace procedure: {:?}", e))
-            })?;
+            catalog
+                .add_or_replace_stored_procedure(procedure)
+                .map_err(|e| {
+                    SqlError::ExecutionError(format!(
+                        "Failed to create or replace procedure: {:?}",
+                        e
+                    ))
+                })?;
         } else {
             catalog.add_stored_procedure(procedure).map_err(|e| {
                 SqlError::ExecutionError(format!("Failed to create procedure: {:?}", e))
@@ -1150,14 +1154,9 @@ impl<S: StorageEngine + 'static> ExecutionEngine<S> {
     /// `IF EXISTS` makes the operation a no-op when the procedure does
     /// not exist (instead of returning an error). Without `IF EXISTS`
     /// we return ProcedureNotFound so callers can detect typos.
-    fn execute_drop_procedure(
-        &self,
-        stmt: &DropProcedureStatement,
-    ) -> SqlResult<ExecutorResult> {
+    fn execute_drop_procedure(&self, stmt: &DropProcedureStatement) -> SqlResult<ExecutorResult> {
         let catalog_guard = self.catalog.as_ref().ok_or_else(|| {
-            SqlError::ExecutionError(
-                "DROP PROCEDURE requires stored procedure catalog".to_string(),
-            )
+            SqlError::ExecutionError("DROP PROCEDURE requires stored procedure catalog".to_string())
         })?;
         let mut catalog = catalog_guard.write();
 

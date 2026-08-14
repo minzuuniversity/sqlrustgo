@@ -530,11 +530,7 @@ fn procedure_ddl_create_drop_show_lifecycle() {
         .execute("DROP PROCEDURE MyProc")
         .expect("DROP PROCEDURE should succeed");
     let show3 = engine.execute("SHOW PROCEDURE STATUS").unwrap();
-    assert_eq!(
-        show3.rows.len(),
-        0,
-        "procedure must be gone after DROP"
-    );
+    assert_eq!(show3.rows.len(), 0, "procedure must be gone after DROP");
 }
 
 #[test]

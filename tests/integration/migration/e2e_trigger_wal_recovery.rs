@@ -236,24 +236,18 @@ fn test_trigger_after_insert_rollback_v55d() {
 
         // 事务边界 + ROLLBACK
         client.exec("BEGIN").unwrap();
-        client
-            .exec("INSERT INTO base VALUES (1, 'orig')")
-            .unwrap();
+        client.exec("INSERT INTO base VALUES (1, 'orig')").unwrap();
         client.exec("ROLLBACK").unwrap();
 
         // pre-check: ROLLBACK 后两张表都应为空, trigger 副作用必须随父事务回滚
-        let base_count = client
-            .query_one_i64("SELECT COUNT(*) FROM base")
-            .unwrap();
+        let base_count = client.query_one_i64("SELECT COUNT(*) FROM base").unwrap();
         assert_eq!(
             base_count, 0,
             "V55D pre-check: base must be empty after ROLLBACK (got {})",
             base_count
         );
 
-        let audit_count = client
-            .query_one_i64("SELECT COUNT(*) FROM audit")
-            .unwrap();
+        let audit_count = client.query_one_i64("SELECT COUNT(*) FROM audit").unwrap();
         assert_eq!(
             audit_count, 0,
             "V55D pre-check: audit must be empty after ROLLBACK — trigger side-effect MUST roll back with the parent transaction (got {})",
@@ -265,18 +259,14 @@ fn test_trigger_after_insert_rollback_v55d() {
     // 决定持久化到磁盘且重启后一致 (与 COMMIT 路径形成对比)。
     let mut client = open(&data_dir);
 
-    let base_count = client
-        .query_one_i64("SELECT COUNT(*) FROM base")
-        .unwrap();
+    let base_count = client.query_one_i64("SELECT COUNT(*) FROM base").unwrap();
     assert_eq!(
         base_count, 0,
         "V55D FAIL: base has {} rows after recovery — ROLLBACK did not survive crash",
         base_count
     );
 
-    let audit_count = client
-        .query_one_i64("SELECT COUNT(*) FROM audit")
-        .unwrap();
+    let audit_count = client.query_one_i64("SELECT COUNT(*) FROM audit").unwrap();
     assert_eq!(
         audit_count, 0,
         "V55D FAIL: audit has {} rows after recovery — trigger side-effect did not roll back",
