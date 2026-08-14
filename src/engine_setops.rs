@@ -279,7 +279,7 @@ pub fn apply_trailing_order_limit_offset<S: StorageEngine + 'static>(
                     let vb = &sort_keys[b][i];
                     let is_null_a = matches!(va, Value::Null);
                     let is_null_b = matches!(vb, Value::Null);
-                    let base_ord = if is_null_a && is_null_b {
+                    if is_null_a && is_null_b {
                         std::cmp::Ordering::Equal
                     } else if is_null_a {
                         if nulls_first_eff {
@@ -295,8 +295,7 @@ pub fn apply_trailing_order_limit_offset<S: StorageEngine + 'static>(
                         }
                     } else {
                         va.cmp(vb)
-                    };
-                    base_ord
+                    }
                 } else {
                     std::cmp::Ordering::Equal
                 };
