@@ -138,7 +138,10 @@ Hybrid retrieval / Vector retrieval / SQL-backed graph projection / RAG evidence
 | ACL 5 角色 × 12 ops 矩阵全枚举测试 | N/A | DEFERRED → v3.13 | 12 个 spot-check ACL tests PASS（含 `test_permission_guard_fail_closed`）；5×12=60 cell 全枚举程序化测试未做；Issue #4234 to open |
 | GMP Hybrid Retrieval | N/A | DONE / 受控 | RRF、filter、citation tests；目标是 GMP 内审检索，不是通用搜索引擎 |
 | RAG Evidence Bundle | N/A | DONE / 受控 | citation/evidence_hash/answer envelope tests；需结合 GMP fixture 做质量评估 |
-| Internal Vector Retrieval | PARTIAL | PARTIAL / blocker | v3.12 支持内部 GMP/RAG 检索用途；rebuild、dimension/hash、empty-index、质量 fixture 由 [#4225](http://192.168.0.252:3000/openclaw/sqlrustgo/issues/4225) 收口；不宣称通用独立向量数据库 |
+| Internal Vector Retrieval — 嵌入 + Flat 索引 + 混合检索 (vector_score / keyword_score / graph_boost / rrf_score + citation_text + chunk_hash) | PARTIAL | DONE / 受控 | `HashEmbeddingModel` 确定性；`vector_hash` SHA-256；`FlatIndex::build/search`；15 单测 PASS（vector_index 3 + vector_search 4 + retrieval 8）；详见 [V312-52](docs/releases/v3.12.0/evidence/vector_retrieval/V312-52-REPORT.md) §2-3 |
+| Internal Vector Retrieval — 固定 GMP audit question fixture 与确定性 top-k | N/A | DEFERRED → v3.13 | 无 ≥5 docs 种子 + 已知 query + 断言 (doc_id, similarity, chunk_hash) 顺序的测试；Issue #4236 to open |
+| Internal Vector Retrieval — `rebuild_flat_index` 持久化索引 + 重建前后稳定 (count/hash/top-k) | N/A | DEFERRED → v3.13 | `rebuild_flat_index` 仅写 metadata，`let _index = FlatIndex::build(...)` 被丢弃（compiler 警告）；Issue #4235 to open |
+| Internal Vector Retrieval — dimension drift / empty index / model-name fail-closed | N/A | DEFERRED → v3.13 | `upsert_embedding` 不校验 dimension；`vector_search` 对空索引返回 `Ok(vec![])` 而非错误；Issue #4237 to open |
 | SQL-backed Graph Projection | N/A | DONE / 受控 | BFS 子图、EvidenceBundle、GraphStats；不宣称通用图数据库 |
 | Row-Level Security / Column Privileges | DONE | DONE / 持续硬化 | v3.11 主路径能力；GMP 权限矩阵仍需 v3.12 生产路径验证 |
 | 存储过程 | UNSUPPORTED | UNSUPPORTED | MySQL compat 明确 `CREATE PROCEDURE` 需要 stored procedure catalog |
