@@ -128,7 +128,33 @@ check "B6_EMBEDDING_PROVIDER"      "test -f docs/releases/v3.12.0/v312-04-embedd
 check "B6_HYBRID_RETRIEVAL"        "test -f docs/releases/v3.12.0/v312-05-hybrid-retrieval-report.md"
 check "B6_GRAPH_PROJECTION"        "test -f docs/releases/v3.12.0/v312-06-graph-projection-report.md"
 check "B6_AUDIT_HASH_CHAIN"        "test -f docs/releases/v3.12.0/v312-08-compliance-audit-report.md"
-check "B6_SQLLOGICTEST_SMOKE"      "test -f docs/releases/v3.12.0/sqllogictest-oracle-gate-report.md"
+check "B6_SQLLOGICTEST_SMOKE_GATE" "bash scripts/gate/check_sqllogictest_v312.sh"
+check "B6_SQLLOGICTEST_MANIFEST"   "python3 - <<'PY'
+import json
+from pathlib import Path
+
+manifest = Path('docs/releases/v3.12.0/evidence/sqllogictest/sqlite-corpus-manifest.json')
+data = json.loads(manifest.read_text())
+stats = data.get('corpus_stats', {})
+total = int(stats.get('total_files', -1))
+passed = int(stats.get('pass_files', -1))
+failed = int(stats.get('fail_files', -1))
+if total <= 0 or passed != total or failed != 0:
+    raise SystemExit(f'sqllogictest manifest not clean: total={total} pass={passed} fail={failed}')
+PY"
+check "B6_SQLLOGICTEST_OPEN_EXCLUSIONS" "python3 - <<'PY'
+from pathlib import Path
+import re
+
+text = Path('docs/releases/v3.12.0/evidence/sqllogictest/exclusions.yml').read_text()
+items = re.split(r'^  - id: ', text, flags=re.M)[1:]
+open_items = []
+for item in items:
+    if not re.search(r'^    status: closed\\b', item, flags=re.M):
+        open_items.append(item.splitlines()[0].strip())
+if open_items:
+    raise SystemExit('open sqllogictest exclusions: ' + ', '.join(open_items))
+PY"
 check "B6_TPCH_SF1_G4"             "test -f docs/releases/v3.12.0/evidence/G4_tpch_sf1.txt"
 
 # ============================================================

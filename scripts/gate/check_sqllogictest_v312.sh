@@ -23,6 +23,8 @@ LOG="$LOG_DIR/sqllogictest_${COMMIT}_${TS}.log"
 REPORT="$OUT_DIR/smoke-report.md"
 MANIFEST="$OUT_DIR/sqlite-corpus-manifest.json"
 EXCLUSIONS="$OUT_DIR/exclusions.yml"
+SOURCE_AGENT="${SOURCE_AGENT:-unknown-local-agent}"
+SOURCE_RUN="${SOURCE_RUN:-check_sqllogictest_v312}"
 
 PASS=0
 FAIL=0
@@ -323,8 +325,8 @@ cat >"$REPORT" <<EOF
 
 | Field | Value |
 |---|---|
-| source_agent | minimax-m2.7 |
-| source_run | check_sqllogictest_v312 |
+| source_agent | $SOURCE_AGENT |
+| source_run | $SOURCE_RUN |
 | timestamp | $(date -Iseconds) |
 | commit | $(git rev-parse HEAD 2>/dev/null || echo unknown) |
 | log | $LOG |
