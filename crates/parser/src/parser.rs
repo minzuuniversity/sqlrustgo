@@ -807,7 +807,9 @@ pub enum ShowStatement {
     Sequences,
     /// Round-21 / Issue #4218: MySQL `SHOW PROCESSLIST` (and
     /// `SHOW FULL PROCESSLIST` with the `full` flag).
-    Processlist { full: bool },
+    Processlist {
+        full: bool,
+    },
 }
 
 /// DESCRIBE statement (aliased as DESC)
@@ -1973,10 +1975,7 @@ impl Parser {
             // (no dedicated Token::Kill in the lexer), so match by
             // uppercased ident here.
             Some(Token::Identifier(ref ident))
-                if matches!(
-                    ident.to_uppercase().as_str(),
-                    "KILL"
-                ) =>
+                if matches!(ident.to_uppercase().as_str(), "KILL") =>
             {
                 self.parse_kill()
             }
@@ -8897,12 +8896,9 @@ impl Parser {
         // Token::NumberLiteral carries the raw digit string (lexer doesn't
         // pre-parse), so we parse to u64 here.
         let connection_id = match self.next() {
-            Some(Token::NumberLiteral(n)) => n.parse::<u64>().map_err(|_| {
-                format!(
-                    "Expected numeric connection id after KILL, got {:?}",
-                    n
-                )
-            })?,
+            Some(Token::NumberLiteral(n)) => n
+                .parse::<u64>()
+                .map_err(|_| format!("Expected numeric connection id after KILL, got {:?}", n))?,
             // Some MySQL clients pass the id as an unquoted identifier
             // (e.g. `KILL 12345`). Accept that form too.
             Some(Token::Identifier(s)) => s.parse::<u64>().map_err(|_| {
@@ -8983,9 +8979,7 @@ impl Parser {
                 };
                 Ok(Statement::Show(ShowStatement::Index { table }))
             }
-            Some(Token::Identifier(ref ident))
-                if ident.to_uppercase() == "PROCESSLIST" =>
-            {
+            Some(Token::Identifier(ref ident)) if ident.to_uppercase() == "PROCESSLIST" => {
                 // Round-21 / Issue #4218: SHOW [FULL] PROCESSLIST
                 self.next();
                 Ok(Statement::Show(ShowStatement::Processlist { full: false }))
@@ -8994,9 +8988,7 @@ impl Parser {
                 // Round-21 / Issue #4218: SHOW FULL PROCESSLIST
                 self.next();
                 match self.current() {
-                    Some(Token::Identifier(ref ident))
-                        if ident.to_uppercase() == "PROCESSLIST" =>
-                    {
+                    Some(Token::Identifier(ref ident)) if ident.to_uppercase() == "PROCESSLIST" => {
                         self.next();
                         Ok(Statement::Show(ShowStatement::Processlist { full: true }))
                     }
@@ -9834,9 +9826,6 @@ impl Parser {
                                 ));
                             }
                             None => return Err("Expected literal after SET DEFAULT".to_string()),
-                        };
-                        AlterColumnOperation::SetDefault {
-                            default_value: Some(default_value.clone()),
                         };
                         Ok(Statement::AlterTable(AlterTableStatement {
                             table_name,
@@ -10819,7 +10808,10 @@ mod tests {
             Statement::Show(ShowStatement::Processlist { full }) => {
                 assert!(full, "Expected SHOW FULL PROCESSLIST");
             }
-            other => panic!("Expected Statement::Show(Processlist {{ full: true }}), got {:?}", other),
+            other => panic!(
+                "Expected Statement::Show(Processlist {{ full: true }}), got {:?}",
+                other
+            ),
         }
     }
 
@@ -10829,7 +10821,10 @@ mod tests {
         let result = parse("KILL 12345");
         assert!(result.is_ok(), "Parse failed: {:?}", result);
         match result.unwrap() {
-            Statement::Kill { connection_id, kill_query } => {
+            Statement::Kill {
+                connection_id,
+                kill_query,
+            } => {
                 assert_eq!(connection_id, 12345, "Expected connection_id=12345");
                 assert!(!kill_query, "Default KILL is CONNECTION, not QUERY");
             }
@@ -10843,11 +10838,17 @@ mod tests {
         let result = parse("KILL QUERY 99");
         assert!(result.is_ok(), "Parse failed: {:?}", result);
         match result.unwrap() {
-            Statement::Kill { connection_id, kill_query } => {
+            Statement::Kill {
+                connection_id,
+                kill_query,
+            } => {
                 assert_eq!(connection_id, 99);
                 assert!(kill_query, "Expected KILL QUERY form");
             }
-            other => panic!("Expected Statement::Kill {{ kill_query: true }}, got {:?}", other),
+            other => panic!(
+                "Expected Statement::Kill {{ kill_query: true }}, got {:?}",
+                other
+            ),
         }
     }
 
@@ -10857,11 +10858,17 @@ mod tests {
         let result = parse("KILL CONNECTION 7");
         assert!(result.is_ok(), "Parse failed: {:?}", result);
         match result.unwrap() {
-            Statement::Kill { connection_id, kill_query } => {
+            Statement::Kill {
+                connection_id,
+                kill_query,
+            } => {
                 assert_eq!(connection_id, 7);
                 assert!(!kill_query, "KILL CONNECTION should leave kill_query=false");
             }
-            other => panic!("Expected Statement::Kill {{ kill_query: false }}, got {:?}", other),
+            other => panic!(
+                "Expected Statement::Kill {{ kill_query: false }}, got {:?}",
+                other
+            ),
         }
     }
     #[test]
