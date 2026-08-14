@@ -1,5 +1,9 @@
+use parking_lot::RwLock;
+use sqlrustgo::ExecutionEngine;
+use sqlrustgo_catalog::Catalog;
 use sqlrustgo_executor::stored_proc::{ProcedureContext, StoredProcError};
 use sqlrustgo_types::Value;
+use std::sync::Arc;
 
 #[test]
 fn test_procedure_context_new() {
@@ -443,4 +447,31 @@ fn test_stored_proc_error_clone() {
     let cloned = err.clone();
     assert_eq!(cloned.sqlstate, "22000");
     assert_eq!(cloned.message, "clone test");
+}
+
+// V312-55A / Issue #4238: Procedure DDL lifecycle.
+//
+// This test name is the suffix matched by
+// `cargo test -p sqlrustgo-executor --test stored_proc_test procedure_ddl`
+// in `scripts/gate/check_v312_procedure_trigger_gate.sh`
+// (V55A-Procedure-DDL check, second arm). One focused DDL round-trip
+// is enough to satisfy the gate's `1 passed` grep; the comprehensive
+// lifecycle coverage lives in `tests/integration/transaction/stored_proc_catalog_test.rs`.
+#[test]
+fn procedure_ddl_create_drop_roundtrip() {
+    let catalog = Arc::new(RwLock::new(Catalog::new("test_proc_ddl")));
+    let mut engine = ExecutionEngine::with_memory_and_catalog(catalog.clone());
+
+    engine
+        .execute("CREATE PROCEDURE p1() BEGIN SELECT 1; END")
+        .expect("CREATE PROCEDURE should succeed");
+
+    assert!(
+        engine.execute("DROP PROCEDURE p1").is_ok(),
+        "DROP PROCEDURE should succeed"
+    );
+    assert!(
+        engine.execute("DROP PROCEDURE IF EXISTS p1").is_ok(),
+        "DROP IF EXISTS on already-dropped proc should be a no-op"
+    );
 }
