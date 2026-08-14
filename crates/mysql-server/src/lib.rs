@@ -692,6 +692,16 @@ mod capability {
     /// change data in the packet (only meaningful when
     /// `CLIENT_SESSION_TRACK` is negotiated).
     pub const SERVER_STATUS_SESSION_STATE_CHANGED: u16 = 0x4000;
+    /// SERVER_MORE_RESULTS_EXISTS (0x0008). V312-WIRE-8 fix (regression
+    /// #4019/#4020/#4022 multi-query blocker): status flag set on the
+    /// trailing EOF/OK packet of every result set that is NOT the last
+    /// in a multi-statement COM_QUERY batch. Clients that negotiate
+    /// CLIENT_MULTI_STATEMENTS use this bit to decide whether to read
+    /// another result set from the same packet stream. Without this bit,
+    /// the client stops reading after the first result and the second
+    /// statement's response either gets concatenated into the row
+    /// stream or blocks the client on recvfrom.
+    pub const SERVER_MORE_RESULTS_EXISTS: u16 = 0x0008;
 
     pub const SERVER_DEFAULT: u32 = LONG_PASSWORD
         | FOUND_ROWS
@@ -2233,7 +2243,7 @@ fn make_deprecate_eof_ok_packet(
     client_cap: u32,
 ) -> Vec<Packet> {
     let mut p = Vec::new();
-// V312-WIRE-8 fix (regression #4019.4 fifth pass — replaces the
+    // V312-WIRE-8 fix (regression #4019.4 fifth pass — replaces the
     // retracted V312-WIRE-7 / V312-WIRE-5 hypothesis chain):
     //
     // Per MySQL WL#7766 (https://dev.mysql.com/worklog/task/?id=7766) and
@@ -2710,11 +2720,29 @@ fn send_result_set<W: Write>(
     mut seq: u8,
     cap: u32,
 ) -> MySqlResult<u8> {
+    send_result_set_with_more(w, cols, ctypes, rows, seq, cap, 0)
+}
+
+/// V312-WIRE-8: trailing-status variant. `more_results_flag` is OR'd
+/// into the status_flags of every trailing terminator (EOF for classic
+/// protocol, OK for DEPRECATE_EOF protocol) so multi-statement clients
+/// know whether another result set follows.
+fn send_result_set_with_more<W: Write>(
+    w: &mut W,
+    cols: &[String],
+    ctypes: &[String],
+    rows: &[Vec<Value>],
+    mut seq: u8,
+    cap: u32,
+    more_results_flag: u16,
+) -> MySqlResult<u8> {
+    let trailing_status: u16 = 0x0002 | more_results_flag;
     tracing::info!(
-        "send_result_set: {} cols, {} rows, start_seq={}",
+        "send_result_set: {} cols, {} rows, start_seq={}, more_results=0x{:04x}",
         cols.len(),
         rows.len(),
-        seq
+        seq,
+        more_results_flag
     );
     {
         let mut p = Vec::new();
@@ -2735,7 +2763,7 @@ fn send_result_set<W: Write>(
             seq,
         )?;
     }
-// Inter-record separator between column defs and the row stream.
+    // Inter-record separator between column defs and the row stream.
     // Per MySQL wire protocol (and verified against mysql 8.0 CLI behavior):
     //   - DEPRECATE_EOF = 0 (classic pre-8.0): send a 5-byte EOF packet
     //     so clients can detect "end of column metadata, rows begin".
@@ -2749,6 +2777,11 @@ fn send_result_set<W: Write>(
     // It then stopped reading the row stream, never received the actual
     // rows, and hung waiting for the next command response. Removing the
     // extra OK separator restores wire-protocol compatibility.
+    //
+    // V312-WIRE-8: in classic (DEPRECATE_EOF=0) protocol the inter-record
+    // separator is also a place where MORE_RESULTS_EXISTS is sometimes
+    // surfaced — MySQL 8.0 only sets the bit on the trailing terminator,
+    // so we mirror that here. Keep this packet at 0x0002.
     if cap & capability::DEPRECATE_EOF == 0 {
         make_eof_packet(seq, 0x0002).write_to(w)?;
         seq = seq.wrapping_add(1);
@@ -2789,11 +2822,11 @@ fn send_result_set<W: Write>(
     //     the spec-mandated byte layout per
     //     openspec/changes/2026-06-18-wire-deprecate-eof.
     //
-    // Both branches carry status_flags = 0x0002 (SERVER_STATUS_AUTOCOMMIT)
-    // so the client observes the same autocommit state regardless of
-    // which protocol variant is in use.
+    // Both branches carry status_flags = trailing_status (default
+    // 0x0002 = SERVER_STATUS_AUTOCOMMIT, OR'd with more_results_flag
+    // when this is not the last result of a multi-statement batch).
     if cap & capability::DEPRECATE_EOF == 0 {
-        make_eof_packet(seq, 0x0002).write_to(w)?;
+        make_eof_packet(seq, trailing_status).write_to(w)?;
         seq = seq.wrapping_add(1);
     } else {
         // V312-WIRE-5: `make_deprecate_eof_ok_packet` returns Vec<Packet>
@@ -2802,7 +2835,7 @@ fn send_result_set<W: Write>(
         // and advance seq once per packet.
         seq = write_ok_packets(
             w,
-            make_deprecate_eof_ok_packet(seq, 0, 0, 0x0002, 0, cap),
+            make_deprecate_eof_ok_packet(seq, 0, 0, trailing_status, 0, cap),
             seq,
         )?;
     }
@@ -3126,7 +3159,7 @@ fn infer_param_types_from_sql<S: StorageEngine>(sql: &str, storage: &Arc<RwLock<
                         .columns
                         .iter()
                         .find(|c| c.name.eq_ignore_ascii_case(col_name))
-                        .map(|c| col_type_from_string(&c.data_type))
+                        .map(|c| param_bind_type_from_string(&c.data_type))
                         .unwrap_or(col_type::VARSTRING);
                     types.push(col_type_byte);
                 }
@@ -3137,6 +3170,55 @@ fn infer_param_types_from_sql<S: StorageEngine>(sql: &str, storage: &Arc<RwLock<
         }
     }
     vec![col_type::VARSTRING; param_count]
+}
+
+/// Map a SQL column type (e.g. "INTEGER", "CHAR(120)") to the MySQL
+/// binary-protocol type code that clients will encode parameter values
+/// as when binding via libmysqlclient.
+///
+/// This is similar to [`col_type_from_string`] but for the
+/// *parameter bind* wire format: when sysbench (libmysqlclient) binds
+/// `MYSQL_TYPE_LONG`, it actually sends **8 bytes** LE on the wire so
+/// that Lua's double-precision numbers round-trip safely. We therefore
+/// advertise `LONGLONG` (8 bytes) for INTEGER/INT so that subsequent
+/// re-executes with `new_params_bound_flag = 0` (which rely on the
+/// cached types from PREPARE) line up with the actual byte layout.
+///
+/// Result-column metadata continues to use [`col_type_from_string`]
+/// (LONG = 4 bytes for INT) so the Rust mysql crate's wire_decode
+/// for INT result columns is unchanged.
+fn param_bind_type_from_string(t: &str) -> u8 {
+    let u = t.to_uppercase();
+    if u.contains("DATETIME") || u.contains("TIMESTAMP") {
+        col_type::DATETIME
+    } else if u.contains("DATE") {
+        col_type::DATE
+    } else if u.contains("TIME") {
+        col_type::TIME
+    } else if u.contains("VARCHAR") {
+        col_type::VARCHAR
+    } else if u.contains("CHAR") || u.contains("TEXT") {
+        col_type::VARSTRING
+    } else if u.contains("INT") || u.contains("INTEGER") {
+        // Promote INT/INTEGER to LONGLONG (8 bytes) so libmysqlclient's
+        // MYSQL_TYPE_LONG wire encoding (which is 8 bytes LE) decodes
+        // correctly on subsequent COM_STMT_EXECUTE calls.
+        col_type::LONGLONG
+    } else if u.contains("BIGINT") {
+        col_type::LONGLONG
+    } else if u.contains("MEDIUMINT") {
+        col_type::INT24
+    } else if u.contains("SMALLINT") {
+        col_type::SHORT
+    } else if u.contains("TINYINT") {
+        col_type::TINY
+    } else if u.contains("FLOAT") {
+        col_type::FLOAT
+    } else if u.contains("DOUBLE") {
+        col_type::DOUBLE
+    } else {
+        col_type::VARSTRING
+    }
 }
 
 /// A single parameter value ready for `replace_placeholders`.
@@ -3171,10 +3253,7 @@ pub fn replace_placeholders(sql: &str, params: &[StmtParam]) -> String {
                     // Without this, `WHERE id = ?` with param "1" produces
                     // `WHERE id = '1'` which compares INT to STRING and
                     // matches zero rows (Issue #4130).
-                    if !s.is_empty()
-                        && s.bytes().all(|b| b.is_ascii_digit())
-                        && param.len() < 20
-                    {
+                    if !s.is_empty() && s.bytes().all(|b| b.is_ascii_digit()) && param.len() < 20 {
                         // Treat as numeric literal (no quotes).
                         s
                     } else {
@@ -3530,6 +3609,7 @@ fn is_numeric_type(type_code: u8) -> bool {
 
 fn extract_table_name(sql: &str) -> Option<String> {
     let u = sql.trim().to_uppercase();
+    // SELECT <cols> FROM <table> [WHERE ...]
     if let Some(rest) = u.strip_prefix("SELECT") {
         if let Some(from_pos) = rest.find("FROM") {
             let after_from = rest[from_pos + 4..].trim();
@@ -3546,6 +3626,91 @@ fn extract_table_name(sql: &str) -> Option<String> {
                 return Some(orig_from[..orig_end].trim().to_string());
             }
         }
+        return None;
+    }
+    // INSERT INTO <table> [(cols)] VALUES (...)
+    if let Some(rest) = u.strip_prefix("INSERT") {
+        // Find the keyword boundary after INSERT (skip whitespace).
+        let after_insert = rest.trim_start();
+        let kw = after_insert
+            .split_whitespace()
+            .next()
+            .unwrap_or("")
+            .trim_end_matches(';');
+        if kw == "INTO" || kw.starts_with("INTO") {
+            let body = after_insert[kw.len()..].trim_start();
+            let table_end = body
+                .find(|c: char| c.is_whitespace() || c == '(' || c == ';' || c == ',')
+                .unwrap_or(body.len());
+            let table = body[..table_end].trim().trim_matches('`').trim_matches('"');
+            if !table.is_empty() {
+                // Mirror back to the original-case SQL.
+                let orig_kw_end = sql.to_uppercase().find("INTO").unwrap() + 4;
+                let orig_body = sql[orig_kw_end..].trim_start();
+                let orig_end = orig_body
+                    .find(|c: char| c.is_whitespace() || c == '(' || c == ';' || c == ',')
+                    .unwrap_or(orig_body.len());
+                let orig_table = orig_body[..orig_end]
+                    .trim()
+                    .trim_matches('`')
+                    .trim_matches('"');
+                if !orig_table.is_empty() {
+                    return Some(orig_table.to_string());
+                }
+            }
+        }
+        return None;
+    }
+    // UPDATE <table> SET ...
+    if let Some(rest) = u.strip_prefix("UPDATE") {
+        let body = rest.trim_start();
+        let table_end = body
+            .find(|c: char| c.is_whitespace() || c == ';' || c == ',')
+            .unwrap_or(body.len());
+        let table = body[..table_end].trim().trim_matches('`').trim_matches('"');
+        if !table.is_empty() {
+            let orig_after = sql.to_uppercase().find("UPDATE").unwrap() + 6;
+            let orig_body = sql[orig_after..].trim_start();
+            let orig_end = orig_body
+                .find(|c: char| c.is_whitespace() || c == ';' || c == ',')
+                .unwrap_or(orig_body.len());
+            let orig_table = orig_body[..orig_end]
+                .trim()
+                .trim_matches('`')
+                .trim_matches('"');
+            if !orig_table.is_empty() {
+                return Some(orig_table.to_string());
+            }
+        }
+        return None;
+    }
+    // DELETE FROM <table> [WHERE ...]
+    if let Some(rest) = u.strip_prefix("DELETE") {
+        if let Some(from_pos) = rest.find("FROM") {
+            let after_from = rest[from_pos + 4..].trim();
+            let table_end = after_from
+                .find(|c: char| c.is_whitespace() || c == ';' || c == ',')
+                .unwrap_or(after_from.len());
+            let table = after_from[..table_end]
+                .trim()
+                .trim_matches('`')
+                .trim_matches('"');
+            if !table.is_empty() {
+                let orig_after = sql.to_uppercase().find("FROM").unwrap();
+                let orig_from = sql[orig_after + 4..].trim();
+                let orig_end = orig_from
+                    .find(|c: char| c.is_whitespace() || c == ';' || c == ',')
+                    .unwrap_or(orig_from.len());
+                let orig_table = orig_from[..orig_end]
+                    .trim()
+                    .trim_matches('`')
+                    .trim_matches('"');
+                if !orig_table.is_empty() {
+                    return Some(orig_table.to_string());
+                }
+            }
+        }
+        return None;
     }
     None
 }
@@ -3649,6 +3814,8 @@ fn statement_kind(parsed: &Result<Statement, String>) -> &'static str {
             Statement::AlterUser(_) => "ALTER_USER",
             Statement::Call(_) => "CALL",
             Statement::CreateProcedure(_) => "CREATE_PROCEDURE",
+            // V312-55A / Issue #4238: add DROP PROCEDURE to the metric label.
+            Statement::DropProcedure(_) => "DROP_PROCEDURE",
             Statement::Union(_) => "UNION",
             Statement::CreateTrigger(_) => "CREATE_TRIGGER",
             Statement::Intersect(_) => "INTERSECT",
@@ -3671,6 +3838,8 @@ fn statement_kind(parsed: &Result<Statement, String>) -> &'static str {
             Statement::Prepare { .. }
             | Statement::Execute { .. }
             | Statement::Deallocate { .. } => "PREPARED_STMT",
+            // Round-21 / Issue #4218: KILL admin statement.
+            Statement::Kill { .. } => "KILL",
         },
     }
 }
@@ -3827,6 +3996,13 @@ fn handle_load_local_infile<S: Read + Write>(
     _delim: char,
     data_dir: std::path::PathBuf,
     bulk_buf_size: usize,
+    // Round-21 / Issue #4217: chunk size for `bulk_insert` flushes.
+    // Replaces the hard-coded `PERIODIC_FLUSH_ROWS = 100` so that
+    // large tables (e.g. TPC-H SF=10 lineitem with 6M rows) can
+    // accumulate more rows per flush instead of paying the
+    // write-lock + Vec allocation cost on every 100 rows.
+    // 0 means "disable periodic flush, only flush when buf drains".
+    rows_per_flush: usize,
     seq: &mut u8,
     _cap: u32,
 ) -> MySqlResult<u64> {
@@ -3943,7 +4119,14 @@ fn handle_load_local_infile<S: Read + Write>(
         // is fully drained, and bulk_insert on the entire pending
         // set blocks the accept loop long enough that the client
         // times out.
-        const PERIODIC_FLUSH_ROWS: usize = 100;
+        //
+        // Round-21 / Issue #4217: chunk size is now configurable via
+        // `rows_per_flush` (default 10_000, was hard-coded 100). The
+        // 100-row default made a 6M-row lineitem SF=10 load take ~60K
+        // `bulk_insert_records` calls; 10_000-row chunks cut that to
+        // ~600 calls and raise throughput dramatically. Setting to 0
+        // disables the periodic flush (legacy V312-32 behavior).
+        let periodic_threshold = rows_per_flush;
         if buf.is_empty() && pending_rows.len() > last_flush_kept_rows {
             let pending = std::mem::take(&mut pending_rows);
             last_flush_kept_rows = 0;
@@ -3967,8 +4150,8 @@ fn handle_load_local_infile<S: Read + Write>(
             let n = bulk_insert(engine, table, pending)
                 .map_err(|e| MySqlError::Other(format!("bulk_insert: {}", e)))?;
             total_rows += n;
-        } else if pending_rows.len() >= PERIODIC_FLUSH_ROWS {
-            // Periodic flush: every PERIODIC_FLUSH_ROWS rows, flush
+        } else if periodic_threshold > 0 && pending_rows.len() >= periodic_threshold {
+            // Periodic flush: every `rows_per_flush` rows, flush
             // even if buf is non-empty. The remaining bytes in buf
             // are a partial line that will complete in a later
             // packet.
@@ -4125,7 +4308,22 @@ fn do_command_loop<S: Read + Write + DrainWrites>(
                         .data_dir
                         .clone()
                         .unwrap_or_else(|| std::path::PathBuf::from("/tmp"));
+                    // Issue #4020: prefer the per-handle LOAD DATA
+                    // whitelist when configured; fall back to the
+                    // storage data_dir so the default sandbox semantics
+                    // are preserved.
+                    let load_infile_dir = config
+                        .load_infile_dir
+                        .clone()
+                        .unwrap_or_else(|| data_dir.clone());
+                    let data_dir = load_infile_dir;
                     let bulk_buf = config.bulk_insert_buffer_size;
+                    // Round-21 / Issue #4217: per-handle chunk size
+                    // for LOAD DATA bulk_insert flushes. Default
+                    // 10_000 (raises the previous hard-coded 100 to
+                    // dramatically reduce write-lock acquisitions
+                    // on large tables like TPC-H SF=10 lineitem).
+                    let rows_per_flush = config.bulk_insert_rows_per_flush;
                     // G13-OLTP-1: poisoning recovery on the engine
                     // write lock. A previous LOAD DATA may have
                     // panicked mid-insert (e.g. parse_tbl_line on
@@ -4142,6 +4340,7 @@ fn do_command_loop<S: Read + Write + DrainWrites>(
                         delim,
                         data_dir,
                         bulk_buf,
+                        rows_per_flush,
                         &mut seq,
                         cap,
                     ) {
@@ -4203,8 +4402,24 @@ fn do_command_loop<S: Read + Write + DrainWrites>(
                 // the RwLock poisons all subsequent .read()/.write() calls. Using .into_inner()
                 // recovery allows the server to continue serving queries rather than hard-fail.
                 let stmt_texts = split_top_level_statements(&q);
+                let stmt_count = stmt_texts.len();
                 let mut had_error = false;
-                for stmt_sql in &stmt_texts {
+                for (idx, stmt_sql) in stmt_texts.iter().enumerate() {
+                    // V312-WIRE-8: when the client negotiated CLIENT_MULTI_
+                    // STATEMENTS / CLIENT_MULTI_RESULTS, every result
+                    // terminator (OK or trailing EOF) for a non-final
+                    // statement in the batch MUST have the
+                    // SERVER_MORE_RESULTS_EXISTS (0x0008) bit set in its
+                    // status_flags. Without it, mysql 8.0 stops reading
+                    // after the first result and the remaining statements'
+                    // responses get concatenated into the row stream
+                    // (or block the client on recvfrom).
+                    let is_last_stmt = idx + 1 == stmt_count;
+                    let more_results_flag = if is_last_stmt {
+                        0
+                    } else {
+                        capability::SERVER_MORE_RESULTS_EXISTS
+                    };
                     let parsed = parse(stmt_sql);
                     // G13-OLTP-1: pick read-vs-write lock based on AST.
                     let is_read_only = parsed
@@ -4252,9 +4467,21 @@ fn do_command_loop<S: Read + Write + DrainWrites>(
                                 if let Some(ref slow_log) = config.slow_query_log {
                                     slow_log.set_threshold_ms(ms);
                                 }
+                                // V312-WIRE-8: OR MORE_RESULTS_EXISTS on
+                                // the SET OK packet when this is not the
+                                // last statement of a multi-stmt batch
+                                // (e.g. "SET long_query_time=100; SELECT 1").
                                 seq = write_ok_packets(
                                     stream,
-                                    make_ok_packet(seq, 0, 0, 0x0002, 0, cap, false),
+                                    make_ok_packet(
+                                        seq,
+                                        0,
+                                        0,
+                                        0x0002 | more_results_flag,
+                                        0,
+                                        cap,
+                                        false,
+                                    ),
                                     seq,
                                 )?;
                             }
@@ -4295,7 +4522,8 @@ fn do_command_loop<S: Read + Write + DrainWrites>(
                     // renderer reads the same singleton that the
                     // `/metrics` endpoint serves.
                     let query_type = statement_kind(&parsed);
-                    sqlrustgo_telemetry::GLOBAL_METRICS.record_query(query_type, std::time::Duration::from_millis(elapsed_ms));
+                    sqlrustgo_telemetry::GLOBAL_METRICS
+                        .record_query(query_type, std::time::Duration::from_millis(elapsed_ms));
                     match result {
                         Ok(r) if is_read_only.is_some() => {
                             // Extract real column names from the SQL
@@ -4340,17 +4568,28 @@ fn do_command_loop<S: Read + Write + DrainWrites>(
                             let cols: Vec<String> = real_col_names;
                             let ctypes: Vec<String> =
                                 cols.iter().map(|_| "VARCHAR(255)".to_string()).collect();
-                            seq = send_result_set(stream, &cols, &ctypes, &r.rows, seq, cap)?;
+                            seq = send_result_set_with_more(
+                                stream,
+                                &cols,
+                                &ctypes,
+                                &r.rows,
+                                seq,
+                                cap,
+                                more_results_flag,
+                            )?;
                             *server_last_sent_seq = seq;
                         }
                         Ok(r) => {
+                            // V312-WIRE-8: OR the more_results_flag into
+                            // the OK packet's status_flags when this is
+                            // not the last statement in the batch.
                             seq = write_ok_packets(
                                 stream,
                                 make_ok_packet(
                                     seq,
                                     r.affected_rows as u64,
                                     0,
-                                    0x0002,
+                                    0x0002 | more_results_flag,
                                     0,
                                     cap,
                                     false,
@@ -4452,6 +4691,11 @@ fn do_command_loop<S: Read + Write + DrainWrites>(
                         write_lenenc_string(&mut param_def, b"").unwrap();
                         write_lenenc_string(&mut param_def, b"?").unwrap();
                         write_lenenc_string(&mut param_def, b"?").unwrap();
+                        // length_of_fixed_fields (lenenc_int): always 0x0c = 12 bytes of
+                        // fixed-size metadata follow (matches write_column_def format).
+                        // Without this byte, libmysqlclient (used by sysbench) misparses
+                        // the entire packet and returns "Unknown or undefined error code".
+                        write_lenenc_int(&mut param_def, 12).unwrap();
                         // MySQL column/param fixed-size fields: charset_collation (2 bytes)
                         // → length (4 bytes) → field_type (1 byte) → flags (2 bytes)
                         // → decimals (1 byte) → filler (2 bytes)
@@ -4628,10 +4872,8 @@ fn do_command_loop<S: Read + Write + DrainWrites>(
                 }
                 // V312-18e Issue #4021: record prepared-statement
                 // executions into the Prometheus counters as well.
-                sqlrustgo_telemetry::GLOBAL_METRICS.record_query(
-                    "STMT_EXECUTE",
-                    std::time::Duration::from_millis(elapsed_ms),
-                );
+                sqlrustgo_telemetry::GLOBAL_METRICS
+                    .record_query("STMT_EXECUTE", std::time::Duration::from_millis(elapsed_ms));
                 match result {
                     Ok(r) if is_read_only.is_some() => {
                         let c: Vec<String> = r
@@ -4983,9 +5225,29 @@ pub fn run_server_v2(
     // coexist in the same process without one server's LOAD DATA seeing
     // another's `data_dir`.
     use crate::testing::EphemeralConfig;
+    // Issue #4020: optional LOAD DATA whitelist separate from the
+    // storage data_dir. Read from `SQLRUSTGO_LOAD_INFILE_DIR` so the
+    // CLI plumbing (`--load-infile-dir` in main.rs) doesn't have to
+    // widen the `run_server_v2` signature. When unset (the default),
+    // the LOAD DATA whitelist falls back to `data_dir`, preserving the
+    // pre-#4020 sandbox semantics.
+    let load_infile_dir = std::env::var("SQLRUSTGO_LOAD_INFILE_DIR")
+        .ok()
+        .filter(|s| !s.is_empty())
+        .map(std::path::PathBuf::from);
+    // Round-21 / Issue #4217: read the per-server
+    // `bulk_insert_rows_per_flush` from env so CLI plumbing (in
+    // main.rs) doesn't have to widen `run_server_v2`'s signature.
+    // When unset (or unparseable), fall back to the default 10_000.
+    let bulk_insert_rows_per_flush = std::env::var("SQLRUSTGO_BULK_INSERT_ROWS_PER_FLUSH")
+        .ok()
+        .and_then(|s| s.parse::<usize>().ok())
+        .unwrap_or(10_000);
     let cfg = EphemeralConfig {
         data_dir: Some(std::path::PathBuf::from(data_dir)),
+        load_infile_dir,
         server_threads,
+        bulk_insert_rows_per_flush,
         ..Default::default()
     };
 
@@ -6549,6 +6811,25 @@ pub mod testing {
         /// that needs to share a data dir between two `start_ephemeral`
         /// calls (one to import, one to query).
         pub data_dir: Option<std::path::PathBuf>,
+        /// Issue #4020: directory used as the LOAD DATA LOCAL INFILE
+        /// whitelist. When `Some(path)`, files must canonicalize inside
+        /// THIS path (not the storage `data_dir`) to be accepted. When
+        /// `None` (default), the whitelist falls back to `data_dir` —
+        /// preserving the V312-13 sandbox semantics so existing tests
+        /// (`test_load_local_infile_path_outside_data_dir`) continue
+        /// to pass unchanged. The CLI mirrors this knob via
+        /// `--load-infile-dir`.
+        ///
+        /// Why is this separate from `data_dir`? Because the bulk-load
+        /// runner (`scripts/tpch/bulk_load_sf10.sh`) wants the server's
+        /// *storage* data_dir to live next to the WAL under
+        /// `$RUN_DIR/data` (so the runner can wipe it on exit) while
+        /// the LOAD DATA fixtures live under `$DATA_DIR` (which the
+        /// runner does NOT own — typically a long-lived `/tmp/tpch-sf10`
+        /// shared across runs). Conflating the two would force a
+        /// `cp` of every .tbl into the storage dir on every run; the
+        /// 60M-line SF=10 lineitem.tbl makes that prohibitive.
+        pub load_infile_dir: Option<std::path::PathBuf>,
         /// Extra DDL statements to execute after the internal catalog
         /// tables (if `bootstrap_tables` is true) and before the server
         /// starts accepting connections. Use this to inject the 8 TPC-H
@@ -6558,6 +6839,15 @@ pub mod testing {
         /// LOAD DATA LOCAL INFILE. Default 1 MB. Tests / perf benches
         /// can set higher (e.g. 16 MB) for fewer INSERT round-trips.
         pub bulk_insert_buffer_size: usize,
+        /// Round-21 / Issue #4217: number of rows per
+        /// `bulk_insert_records` flush during LOAD DATA LOCAL INFILE.
+        /// Default 10_000 (raises the previous hard-coded 100-row
+        /// constant so large tables like TPC-H SF=10 lineitem can
+        /// avoid paying write-lock + Vec allocation cost on every
+        /// 100 rows). Setting to 0 disables the periodic flush and
+        /// falls back to "flush only when the per-packet byte buffer
+        /// fully drains" (V312-32 legacy behavior).
+        pub bulk_insert_rows_per_flush: usize,
         /// Maximum concurrent connection-handler worker threads.
         /// 0 = legacy unbounded `thread::spawn` (backwards compatible).
         /// 1..=80 = bounded `ServerThreadPool` with N workers +
@@ -6586,7 +6876,7 @@ pub mod testing {
         /// Build one with
         /// `EphemeralConfig::with_slow_query_log(path, threshold_ms)`.
         pub slow_query_log: Option<Arc<query_stats::SlowQueryLog>>,
-/// V312-26 / Issue #4021: when `Some(port)`, the ephemeral
+        /// V312-26 / Issue #4021: when `Some(port)`, the ephemeral
         /// server spawns a background thread that serves Prometheus
         /// exposition format at `http://<host>:<port>/metrics`. `None`
         /// (the default) means no metrics endpoint is bound. The thread
@@ -6603,8 +6893,10 @@ pub mod testing {
                 bootstrap_tables: true,
                 bootstrap_users: true,
                 data_dir: None,
+                load_infile_dir: None,
                 bootstrap_sql: Vec::new(),
                 bulk_insert_buffer_size: 1_048_576,
+                bulk_insert_rows_per_flush: 10_000,
                 server_threads: 16,
                 storage: None,
                 port: None,
@@ -6630,7 +6922,7 @@ pub mod testing {
             self
         }
 
-/// V312-26 / Issue #4021: enable a Prometheus `/metrics`
+        /// V312-26 / Issue #4021: enable a Prometheus `/metrics`
         /// endpoint bound to `<host>:<port>`. The endpoint renders the
         /// wire-protocol counters (`ACTIVE_CONNECTIONS`,
         /// `TOTAL_QUERIES_SERVED`, etc.) plus the telemetry `Metrics`
@@ -7021,11 +7313,13 @@ pub mod testing {
                     bootstrap_tables: true,
                     bootstrap_sql: Vec::new(),
                     bulk_insert_buffer_size: 1_048_576,
+                    bulk_insert_rows_per_flush: 10_000,
                     server_threads: 2,
                     storage: None,
                     data_dir: None,
                     slow_query_log: None,
                     metrics_port: None,
+                    load_infile_dir: None,
                 };
 
                 // If a server is already on this port (e.g. prior process in
@@ -7137,11 +7431,13 @@ pub mod testing {
                 data_dir: None,
                 bootstrap_sql: vec!["CREATE TABLE t (id INT)".to_string()],
                 bulk_insert_buffer_size: 4096,
+                bulk_insert_rows_per_flush: 10_000,
                 server_threads: 2,
                 storage: Some("binary".to_string()),
                 port: Some(0),
                 slow_query_log: None,
                 metrics_port: None,
+                load_infile_dir: None,
             };
             assert_eq!(cfg.host, "0.0.0.0");
             assert!(!cfg.bootstrap_tables);

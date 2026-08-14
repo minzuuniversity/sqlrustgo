@@ -230,7 +230,7 @@ fn emit_skip_message() {
     );
 }
 
-#[ignore = "requires SF=1.0 fixture at /tmp/tpch-sf1 (dbgen -s 1 -f) AND TPCH_SKIP_PANIC=1 (Q16/Q21 correctness bugs pending); run with --ignored"]
+#[ignore = "V312-26 partial closure (#3899): SF=1.0 fixture at /tmp/tpch-sf1 (dbgen -s 1 -f), BINT v2 at /tmp/tpch-sf1-bin. 8/22 SQLRustGo queries captured (Q1-Q8); Q7-Q22 blocked by multi-way join planner bug (chain_order.len() != join_tables.len()). Run with --ignored and TPCH_SKIP_PANIC=1; expect 8 queries within 20-min runner budget. See docs/releases/v3.12.0/evidence/issue-3899/3899_closeout.md."]
 #[test]
 fn tpch_sf1_22_in_process_regression() {
     if !fixture_present() {
@@ -309,6 +309,8 @@ fn tpch_sf1_22_in_process_regression() {
         bootstrap_users: true,
         bootstrap_sql,
         storage: storage_backend,
+        metrics_port: None,
+
         ..Default::default()
     };
     let handle = start_ephemeral(config).expect("start_ephemeral");

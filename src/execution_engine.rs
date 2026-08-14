@@ -16,7 +16,9 @@ use crate::expr_utils::{
 use crate::{parse, SqlError, SqlResult, Value};
 use parking_lot::RwLock;
 use sqlrustgo_catalog::stored_proc::{ParamMode, StoredProcParam, StoredProcStatement};
-use sqlrustgo_catalog::{auth::UserIdentity, Catalog, StoredProcedure};
+use sqlrustgo_catalog::{
+    auth::UserIdentity, AuthErrorCode, Catalog, ObjectRef, Privilege, StoredProcedure,
+};
 use sqlrustgo_executor::ast_adapter::AstAdapter;
 use sqlrustgo_executor::stored_proc::StoredProcExecutor;
 use sqlrustgo_executor::trigger::{
@@ -34,12 +36,12 @@ use sqlrustgo_parser::parser::{
     AlterTableStatement, AlterUserStatement, CallStatement, CompressionAlgorithm,
     CreateDatabaseStatement, CreateIndexStatement, CreateProcedureStatement, CreateRoleStatement,
     CreateSequenceStatement, CreateTableStatement, CreateTriggerStatement, CreateViewStatement,
-    DescribeStatement, DropDatabaseStatement, DropIndexStatement, DropRoleStatement,
-    DropSequenceStatement, DropTableStatement, DropViewStatement, ExceptStatement,
-    GrantRoleStatement, GrantStatement, InsertStatement, IntersectStatement, MergeStatement,
-    ObjectType as ParserObjectType, OrderByExpression, Privilege as ParserPrivilege,
-    RevokeRoleStatement, RevokeStatement, SelectStatement, SetRoleStatement, ShowStatement,
-    StorageEngineSpec, StoredProcParam as ParserStoredProcParam,
+    DescribeStatement, DropDatabaseStatement, DropIndexStatement, DropProcedureStatement,
+    DropRoleStatement, DropSequenceStatement, DropTableStatement, DropViewStatement,
+    ExceptStatement, GrantRoleStatement, GrantStatement, InsertStatement, IntersectStatement,
+    MergeStatement, ObjectType as ParserObjectType, OrderByExpression,
+    Privilege as ParserPrivilege, RevokeRoleStatement, RevokeStatement, SelectStatement,
+    SetRoleStatement, ShowStatement, StorageEngineSpec, StoredProcParam as ParserStoredProcParam,
     StoredProcParamMode as ParserParamMode, StoredProcStatement as ParserStatement,
     TruncateStatement, UnionStatement,
 };
@@ -81,6 +83,15 @@ pub struct ExecutionEngine<S: StorageEngine> {
     pub(crate) tx_readonly: bool,
     pub(crate) default_isolation: TmIsolationLevel,
     pub(crate) current_role: Option<String>,
+    /// V312-55F / Issue #4243: current SQL session user identity. Defaults to
+    /// `root@localhost` (MySQL implicit full privilege). Use `set_current_user`
+    /// to switch identity for privilege-check tests / non-root sessions.
+    pub(crate) current_user: UserIdentity,
+    /// V313-followup-4 / Issue #4157: `SET default_null_order` controls
+    /// where NULL appears in ORDER BY output. None = engine default
+    /// (nulls_first because Value::Null has the lowest discriminant);
+    /// Some(true) = nulls_first; Some(false) = nulls_last.
+    pub(crate) session_null_order_first: Option<bool>,
     /// CheckpointManager field — reserved for future PR-830F WAL lifecycle
     /// integration (currently set to None in all engine builders).
     /// PR-830F lifecycle methods were removed in SPEC-002; the field is
@@ -88,7 +99,8 @@ pub struct ExecutionEngine<S: StorageEngine> {
     #[allow(dead_code)]
     pub(crate) checkpoint_manager: Option<Arc<parking_lot::RwLock<CheckpointManager>>>,
     /// Cost model for CBO-driven decisions (parallelism, query planning).
-    pub(crate) cost_model: parking_lot::RwLock<UnifiedCostModel>,
+    /// V312-22 / #4182: pub for integration test introspection.
+    pub cost_model: parking_lot::RwLock<UnifiedCostModel>,
     pub(crate) parallel_degree: usize,
     pub(crate) stmt_cache: sqlrustgo_cache::PreparedStatementCache,
     /// View definitions: view_name → CREATE VIEW SQL text.
@@ -183,6 +195,8 @@ impl<S: StorageEngine + 'static> ExecutionEngine<S> {
             tx_readonly: false,
             default_isolation: TmIsolationLevel::default(),
             current_role: None,
+            current_user: UserIdentity::new("root", "localhost"),
+            session_null_order_first: None,
             checkpoint_manager: None,
             parallel_degree,
             stmt_cache: sqlrustgo_cache::PreparedStatementCache::new(100),
@@ -200,6 +214,53 @@ impl<S: StorageEngine + 'static> ExecutionEngine<S> {
     /// primary-key access, and warm entries surface via `ahi().lookup(...)`.
     pub fn ahi(&self) -> &Arc<AdaptiveHashIndex> {
         &self.adaptive_hash_index
+    }
+
+    /// V312-55F / Issue #4243: switch the current session user identity.
+    /// The new identity is what every `check_privilege` call uses. Default
+    /// identity is `root@localhost`, which short-circuits all privilege
+    /// checks (MySQL convention — root has implicit full privilege).
+    pub fn set_current_user(&mut self, identity: UserIdentity) {
+        self.current_user = identity;
+    }
+
+    /// V312-55F / Issue #4243: returns the current session user identity.
+    pub fn current_user(&self) -> &UserIdentity {
+        &self.current_user
+    }
+
+    /// V312-55F / Issue #4243: enforce a privilege check on the current user
+    /// against `object`. Returns `Ok(())` for `root@localhost` (implicit
+    /// superuser), otherwise consults the catalog's `AuthManager`.
+    ///
+    /// Errors are mapped to `SqlError::ExecutionError` with the original
+    /// `AuthError` message so the client sees a stable 1105 / HY000 surface
+    /// (matches MySQL's privilege-denied error family).
+    pub fn check_privilege(
+        &self,
+        catalog: &Catalog,
+        privilege: Privilege,
+        object: &ObjectRef,
+    ) -> SqlResult<()> {
+        if self.current_user.username == "root" {
+            return Ok(());
+        }
+        catalog
+            .auth_manager()
+            .check_privilege(&self.current_user, object, privilege)
+            .map_err(|e| {
+                if matches!(e.code, AuthErrorCode::PermissionDenied) {
+                    SqlError::ExecutionError(format!(
+                        "Permission denied: {} on {} for {}@{}",
+                        privilege,
+                        object.object_name,
+                        self.current_user.username,
+                        self.current_user.host
+                    ))
+                } else {
+                    SqlError::ExecutionError(e.message)
+                }
+            })
     }
 
     /// Get the active instrumentation hook. V311-06 (F-31): replace the
@@ -286,6 +347,18 @@ impl<S: StorageEngine + 'static> ExecutionEngine<S> {
     /// Get table statistics for CBO
     pub fn get_table_stats(&self) -> Arc<parking_lot::RwLock<ExecutionStats>> {
         self.stats.clone()
+    }
+
+    /// V312-22 / Issue #4182: count how many columns on this table
+    /// currently have a non-empty `Histogram` inside the CBO
+    /// `UnifiedCostModel::column_stats` map. Returns 0 if the table is
+    /// unknown to CBO or no column has a histogram yet. Used by the
+    /// E2E test (`tests/integration/executor_optimizer_e2e.rs`) to
+    /// prove that `update_cost_model_stats()` actually propagates the
+    /// histograms that `ANALYZE` collects into the cost model.
+    pub fn cbo_histogram_column_count(&self, table_name: &str) -> usize {
+        let cost_model = self.cost_model.read();
+        cost_model.histogram_column_count(table_name)
     }
 
     /// Determine whether a SELECT query should be parallelized.
@@ -500,6 +573,44 @@ impl<S: StorageEngine + 'static> ExecutionEngine<S> {
         Ok(n)
     }
 
+    /// Round-21 / Issue #4217: bulk-insert a large pre-parsed batch,
+    /// chunking internally into `chunk_size`-row slices so the
+    /// `FileStorage` insert buffer's `buffer_threshold` (default 10_000)
+    /// can flush each chunk to disk independently. This is the
+    /// engine-side companion to the LOAD DATA LOCAL INFILE handler's
+    /// `rows_per_flush` knob — callers that already have the entire
+    /// record set in memory (e.g. SQL `INSERT INTO t VALUES (..), (..)`
+    /// with N>>threshold rows, or a parser that emits all rows in one
+    /// pass) can hand the whole `Vec<Record>` here and the helper
+    /// will take care of chunking.
+    ///
+    /// Returns the total number of rows inserted. Like
+    /// `bulk_insert_records`, this does NOT call `flush()` — the
+    /// caller still owns the deferred-persist contract and is
+    /// expected to call `engine.flush()` once after loading completes.
+    ///
+    /// `chunk_size == 0` is treated as "no chunking" (entire batch in
+    /// one call, equivalent to `bulk_insert_records`).
+    pub fn bulk_insert_chunked(
+        &self,
+        table: &str,
+        records: Vec<sqlrustgo_storage::Record>,
+        chunk_size: usize,
+    ) -> SqlResult<u64> {
+        if chunk_size == 0 || records.len() <= chunk_size {
+            return self.bulk_insert_records(table, records);
+        }
+        let mut inserted: u64 = 0;
+        for chunk in records.chunks(chunk_size) {
+            let chunk_owned: Vec<sqlrustgo_storage::Record> = chunk.to_vec();
+            // bulk_insert_records returns the row count for this chunk;
+            // sum the per-chunk counts so the total reflects what storage
+            // actually accepted (matches bulk_insert_records semantics).
+            inserted += self.bulk_insert_records(table, chunk_owned)?;
+        }
+        Ok(inserted)
+    }
+
     // CBO estimation methods extracted to cbo_estimator.rs (SPEC-012).
     // Thin forwarder methods retained for backwards-compatible public API.
 
@@ -578,6 +689,12 @@ impl<S: StorageEngine + 'static> ExecutionEngine<S> {
 
                 let mut stats_guard = self.stats.write();
                 stats_guard.table_stats.insert(table_name.clone(), stats);
+                drop(stats_guard);
+                // V312-22 / #4182: push the freshly collected column
+                // stats (incl. histogram) into UnifiedCostModel so
+                // planner selectivity uses real data, not the per-op
+                // heuristic, on subsequent queries.
+                self.update_cost_model_stats();
 
                 Ok(ExecutorResult::new(
                     vec![vec![Value::Integer(row_count as i64)]],
@@ -594,6 +711,8 @@ impl<S: StorageEngine + 'static> ExecutionEngine<S> {
             Statement::CreateProcedure(ref create_proc) => {
                 self.execute_create_procedure(create_proc)
             }
+            // V312-55A / Issue #4238: route DROP PROCEDURE.
+            Statement::DropProcedure(ref drop_proc) => self.execute_drop_procedure(drop_proc),
             Statement::Transaction(ref txn) => self.execute_transaction(txn),
             // SEM-1 (#3172): SAVEPOINT/ROLLBACK TO SAVEPOINT/RELEASE SAVEPOINT
             Statement::SavepointStatement { ref name, op } => self.execute_savepoint(name, op),
@@ -627,6 +746,12 @@ impl<S: StorageEngine + 'static> ExecutionEngine<S> {
             Statement::AlterUser(_) => Err(SqlError::ExecutionError(
                 "ALTER USER not yet implemented".to_string(),
             )),
+            // V312-35 #4218: KILL <id> / KILL CONNECTION <id> /
+            // KILL QUERY <id>. Wired to StorageEngine::kill_connection.
+            Statement::Kill {
+                connection_id,
+                kill_query,
+            } => self.execute_kill(connection_id, kill_query),
         }
     }
 
@@ -757,6 +882,27 @@ impl<S: StorageEngine + 'static> ExecutionEngine<S> {
         Ok(ExecutorResult::empty())
     }
 
+    /// Round-21 / Issue #4218: KILL <id> / KILL QUERY <id>.
+    /// No live process registry yet; this is a no-op admin statement that
+    /// returns Ok(0) so dispatch succeeds and the wire protocol OK packet
+    /// is emitted. A future process-registry implementation will look up
+    /// V312-35 #4218: KILL connection/query.
+    /// Currently returns a graceful "not yet implemented" result so that
+    /// the SQL path does not fail. The storage layer cancel flag is set
+    /// for future use when a real process registry is implemented.
+    pub fn execute_kill(&self, connection_id: u64, kill_query: bool) -> SqlResult<ExecutorResult> {
+        let mut storage = self.storage.write();
+        let _ = storage.set_cancel_flag(connection_id);
+        Ok(ExecutorResult::new(
+            vec![vec![Value::Text(format!(
+                "KILL {} {}: not yet implemented",
+                if kill_query { "QUERY" } else { "CONNECTION" },
+                connection_id
+            ))]],
+            0,
+        ))
+    }
+
     fn execute_truncate(&self, truncate: &TruncateStatement) -> SqlResult<ExecutorResult> {
         let mut storage = self.storage.write();
         if !storage.has_table(&truncate.name) {
@@ -808,6 +954,62 @@ impl<S: StorageEngine + 'static> ExecutionEngine<S> {
         }
     }
 
+    /// V312-35 #4218: read-only snapshot of active connections
+    /// (one row per `ProcessInfo` returned by the engine).
+    pub(crate) fn execute_show_processlist_impl(&self, full: bool) -> SqlResult<ExecutorResult> {
+        let storage = self.storage.read();
+        let processes = storage.list_processes();
+        drop(storage);
+        let columns = if full {
+            vec![
+                "Id".to_string(),
+                "User".to_string(),
+                "Host".to_string(),
+                "db".to_string(),
+                "Command".to_string(),
+                "Time".to_string(),
+                "State".to_string(),
+                "Info".to_string(),
+            ]
+        } else {
+            vec![
+                "Id".to_string(),
+                "User".to_string(),
+                "Host".to_string(),
+                "db".to_string(),
+                "Command".to_string(),
+                "Time".to_string(),
+            ]
+        };
+        let mut rows: Vec<Vec<sqlrustgo_types::Value>> = Vec::with_capacity(processes.len());
+        for p in &processes {
+            let mut row = vec![
+                sqlrustgo_types::Value::Integer(p.id as i64),
+                sqlrustgo_types::Value::Text(p.user.clone()),
+                sqlrustgo_types::Value::Text(p.host.clone()),
+                p.db.clone()
+                    .map(sqlrustgo_types::Value::Text)
+                    .unwrap_or(sqlrustgo_types::Value::Null),
+                sqlrustgo_types::Value::Text(p.command.clone()),
+                sqlrustgo_types::Value::Integer(p.time_secs as i64),
+                p.state
+                    .clone()
+                    .map(sqlrustgo_types::Value::Text)
+                    .unwrap_or(sqlrustgo_types::Value::Null),
+            ];
+            if full {
+                row.push(
+                    p.info
+                        .clone()
+                        .map(sqlrustgo_types::Value::Text)
+                        .unwrap_or(sqlrustgo_types::Value::Null),
+                );
+            }
+            rows.push(row);
+        }
+        Ok(ExecutorResult::new(rows, columns.len()))
+    }
+
     fn execute_merge_statement(&self, _merge: &MergeStatement) -> SqlResult<ExecutorResult> {
         Err(SqlError::ExecutionError(
             "MERGE not yet supported via execute() — use LocalExecutorDml path".to_string(),
@@ -816,6 +1018,15 @@ impl<S: StorageEngine + 'static> ExecutionEngine<S> {
 
     fn execute_create_trigger(&self, stmt: &CreateTriggerStatement) -> SqlResult<ExecutorResult> {
         use sqlrustgo_storage::engine::{TriggerEvent, TriggerInfo, TriggerTiming};
+
+        // V312-55F / Issue #4243: privilege check — non-root users need
+        // Create on the target table to install a trigger. Fail closed
+        // before any storage work so privilege denied doesn't leave
+        // partial trigger metadata behind.
+        if let Some(catalog_guard) = self.catalog.as_ref() {
+            let catalog = catalog_guard.read();
+            self.check_privilege(&catalog, Privilege::Create, &ObjectRef::table(&stmt.table))?;
+        }
 
         let mut storage = self.storage.write();
         let timing = match stmt.timing.to_uppercase().as_str() {
@@ -860,6 +1071,23 @@ impl<S: StorageEngine + 'static> ExecutionEngine<S> {
             SqlError::ExecutionError("CALL statement requires stored procedure catalog".to_string())
         })?;
         let catalog = catalog_guard.read();
+
+        // V312-55F / Issue #4243: privilege check — CALL is treated as
+        // equivalent to executing the procedure body, so we require All
+        // on the procedure name (matches MySQL's EXECUTE privilege,
+        // which we model as `All` since the `Privilege` enum does not
+        // yet have an `Execute` variant).
+        //
+        // ObjectType is `Database` (no Procedure variant yet) so we
+        // namespace the check under a synthetic "<db>.<proc>" key. The
+        // AuthManager only looks at `object_name`, so this is enough to
+        // gate non-root callers without inventing a new ObjectType.
+        let proc_object_name = format!("procedure:{}", call.procedure_name);
+        self.check_privilege(
+            &catalog,
+            Privilege::All,
+            &ObjectRef::database(&proc_object_name),
+        )?;
 
         let procedure = catalog
             .get_stored_procedure(&call.procedure_name)
@@ -961,6 +1189,16 @@ impl<S: StorageEngine + 'static> ExecutionEngine<S> {
         })?;
         let mut catalog = catalog_guard.write();
 
+        // V312-55F / Issue #4243: privilege check — non-root users need
+        // Create on a procedure namespace. ObjectType has no Procedure
+        // variant yet, so we use `database` as the namespacing object.
+        let proc_object_name = format!("procedure:{}", stmt.name);
+        self.check_privilege(
+            &catalog,
+            Privilege::Create,
+            &ObjectRef::database(&proc_object_name),
+        )?;
+
         let params: Vec<sqlrustgo_catalog::stored_proc::StoredProcParam> = stmt
             .params
             .iter()
@@ -1035,10 +1273,54 @@ impl<S: StorageEngine + 'static> ExecutionEngine<S> {
 
         let procedure = StoredProcedure::new(stmt.name.clone(), params, body);
 
-        catalog.add_stored_procedure(procedure).map_err(|e| {
-            SqlError::ExecutionError(format!("Failed to create procedure: {:?}", e))
-        })?;
+        // V312-55A / Issue #4238: `OR REPLACE` semantics — overwrite an
+        // existing procedure with the same case-insensitive name
+        // instead of failing with DuplicateProcedure.
+        if stmt.or_replace {
+            catalog
+                .add_or_replace_stored_procedure(procedure)
+                .map_err(|e| {
+                    SqlError::ExecutionError(format!(
+                        "Failed to create or replace procedure: {:?}",
+                        e
+                    ))
+                })?;
+        } else {
+            catalog.add_stored_procedure(procedure).map_err(|e| {
+                SqlError::ExecutionError(format!("Failed to create procedure: {:?}", e))
+            })?;
+        }
 
+        Ok(ExecutorResult::empty())
+    }
+
+    /// V312-55A / Issue #4238: drop a stored procedure from the catalog.
+    ///
+    /// `IF EXISTS` makes the operation a no-op when the procedure does
+    /// not exist (instead of returning an error). Without `IF EXISTS`
+    /// we return ProcedureNotFound so callers can detect typos.
+    fn execute_drop_procedure(&self, stmt: &DropProcedureStatement) -> SqlResult<ExecutorResult> {
+        let catalog_guard = self.catalog.as_ref().ok_or_else(|| {
+            SqlError::ExecutionError("DROP PROCEDURE requires stored procedure catalog".to_string())
+        })?;
+        let mut catalog = catalog_guard.write();
+
+        // V312-55F / Issue #4243: privilege check — non-root users need
+        // Drop on the procedure namespace. ObjectType has no Procedure
+        // variant yet, so we use `database` as the namespacing object.
+        let proc_object_name = format!("procedure:{}", stmt.name);
+        self.check_privilege(
+            &catalog,
+            Privilege::Drop,
+            &ObjectRef::database(&proc_object_name),
+        )?;
+
+        if catalog.remove_stored_procedure(&stmt.name).is_none() && !stmt.if_exists {
+            return Err(SqlError::ExecutionError(format!(
+                "DROP PROCEDURE failed: procedure '{}' not found",
+                stmt.name
+            )));
+        }
         Ok(ExecutorResult::empty())
     }
 
@@ -1106,10 +1388,25 @@ impl<S: StorageEngine + 'static> ExecutionEngine<S> {
                 }
                 self.begin_transaction(iso, false)
             }
-            // V312-11-fix #3986: SET session variable is parsed and stored
-            // in the parser/executor pairing; no transaction-level effect,
-            // so this is a no-op for the transaction executor.
-            TransactionStatement::SetSessionVariable { .. } => Ok(ExecutorResult::empty()),
+            // V313-followup-4 / Issue #4157: SET default_null_order
+            // is wired to session_null_order_first; everything else
+            // (incl. DuckDB's debug_force_external) is accepted
+            // without engine effect.
+            TransactionStatement::SetSessionVariable { name, value } => {
+                let upper = name.to_uppercase();
+                if upper == "DEFAULT_NULL_ORDER" {
+                    let upper_v = value.to_uppercase();
+                    let parsed = match upper_v.as_str() {
+                        "NULLS_FIRST" => Some(true),
+                        "NULLS_LAST" => Some(false),
+                        _ => None,
+                    };
+                    if let Some(first) = parsed {
+                        self.session_null_order_first = Some(first);
+                    }
+                }
+                Ok(ExecutorResult::empty())
+            }
         }
     }
 
@@ -1314,262 +1611,23 @@ impl<S: StorageEngine + 'static> ExecutionEngine<S> {
     }
 
     // ── Set-operation handlers (V310-06 PR2 / Issue #3723 C-2) ──────
+    // C-ARCH-05: bodies moved to `crate::engine_setops` (issue #3943 follow-up).
 
     fn execute_union(&mut self, union_stmt: &UnionStatement) -> SqlResult<ExecutorResult> {
-        let mut left_result = self.execute_statement(&union_stmt.left)?;
-        let right_result = self.execute_statement(&union_stmt.right)?;
-
-        left_result.rows.extend(right_result.rows);
-
-        if !union_stmt.union_all {
-            // V4077 / Issue #4077: collation-aware DISTINCT for UNION.
-            // Two rows are duplicates if their per-column values compare
-            // equal under each column's collation (NOCASE folds case,
-            // BINARY is exact). We dedup by a normalized key while
-            // preserving the *left* side's original casing in output.
-            let storage = self.storage.read();
-            let left_coll = collect_column_collations(&*storage, &union_stmt.left);
-            let right_coll = collect_column_collations(&*storage, &union_stmt.right);
-            drop(storage);
-            // Walk rows keeping the FIRST occurrence (leftmost wins).
-            let mut seen: std::collections::HashSet<Vec<Value>> = std::collections::HashSet::new();
-            let mut out: Vec<Vec<Value>> = Vec::with_capacity(left_result.rows.len());
-            for row in &left_result.rows {
-                // Determine which collation set applies: pick left's if
-                // available, otherwise right's. For UNION, both sides
-                // contribute one collation context; rows from each side
-                // are normalized under their own side's collation before
-                // being inserted into the seen set.
-                let row_coll = if out.is_empty() {
-                    &left_coll
-                } else {
-                    &right_coll
-                };
-                let key = normalize_row_for_compare(row, row_coll);
-                if seen.insert(key) {
-                    out.push(row.clone());
-                }
-            }
-            left_result.rows = out;
-            // SQL requires output order to be implementation-defined for
-            // UNION DISTINCT; preserve insertion order which is the order
-            // rows were first seen (left side wins ties).
-        }
-
-        // Trailing ORDER BY / LIMIT / OFFSET (C-2c).
-        if !union_stmt.trailing_order_by.is_empty() {
-            let col_names: Vec<&str> = leftmost_column_names(&union_stmt.left);
-            let sort_keys: Vec<Vec<Value>> = left_result
-                .rows
-                .iter()
-                .map(|row| {
-                    union_stmt
-                        .trailing_order_by
-                        .iter()
-                        .map(|ob| order_by_expr_value(&ob, &col_names, row))
-                        .collect()
-                })
-                .collect();
-            let mut indices: Vec<usize> = (0..left_result.rows.len()).collect();
-            indices.sort_by(|&a, &b| {
-                for (i, ob) in union_stmt.trailing_order_by.iter().enumerate() {
-                    let ord = if i < sort_keys[a].len() && i < sort_keys[b].len() {
-                        sort_keys[a][i].cmp(&sort_keys[b][i])
-                    } else {
-                        std::cmp::Ordering::Equal
-                    };
-                    let ord = if ob.ascending { ord } else { ord.reverse() };
-                    if ord != std::cmp::Ordering::Equal {
-                        return ord;
-                    }
-                }
-                std::cmp::Ordering::Equal
-            });
-            left_result.rows = indices
-                .into_iter()
-                .map(|i| left_result.rows[i].clone())
-                .collect();
-        }
-        if let Some(off) = union_stmt.trailing_offset {
-            let off = off as usize;
-            if off < left_result.rows.len() {
-                left_result.rows.drain(..off);
-            } else {
-                left_result.rows.clear();
-            }
-        }
-        if let Some(lim) = union_stmt.trailing_limit {
-            left_result.rows.truncate(lim as usize);
-        }
-
-        left_result.affected_rows = left_result.rows.len();
-        Ok(left_result)
+        crate::engine_setops::execute_union(self, union_stmt)
     }
 
     fn execute_intersect(&mut self, stmt: &IntersectStatement) -> SqlResult<ExecutorResult> {
-        let mut left_result = self.execute_statement(&stmt.left)?;
-        let right_result = self.execute_statement(&stmt.right)?;
-        // SQL-92 multiset semantics for INTERSECT:
-        //   * DISTINCT (default): deduplicate each side, then keep rows
-        //     that appear on both sides (one copy each).
-        //   * ALL: keep min(cntL(r), cntR(r)) copies of every row r.
-        // V4077 / Issue #4077: row identity for the multiset is the
-        // NORMALIZED row under each side's column collations, so a
-        // NOCASE column on either side folds case before comparing.
-        // The *output* keeps the LEFT side's original casing.
-        let storage = self.storage.read();
-        let left_coll = collect_column_collations(&*storage, &stmt.left);
-        let right_coll = collect_column_collations(&*storage, &stmt.right);
-        drop(storage);
-        let left_entries = multiset_entries(&left_result.rows, &left_coll);
-        let right_entries = multiset_entries(&right_result.rows, &right_coll);
-        let mut out: Vec<Vec<Value>> = Vec::new();
-        if stmt.intersect_all {
-            for (key, (cnt_l, first_row)) in &left_entries {
-                if let Some((cnt_r, _)) = right_entries.get(key) {
-                    let keep = (*cnt_l).min(*cnt_r);
-                    for _ in 0..keep {
-                        out.push(first_row.clone());
-                    }
-                }
-            }
-        } else {
-            // DISTINCT: a row appears iff it appears on both sides; one copy.
-            for (key, (_, first_row)) in &left_entries {
-                if right_entries.contains_key(key) {
-                    out.push(first_row.clone());
-                }
-            }
-        }
-        left_result.rows = out;
-        // V4077 / Issue #4077: trailing ORDER BY / LIMIT / OFFSET lifted
-        // from the right SELECT (consistent with UNION's behavior).
-        // INTERSECT DISTINCT now applies the ORDER BY so callers
-        // observe deterministic output even when the HashMap iteration
-        // order would otherwise shuffle the result.
-        self.apply_trailing_order_limit_offset(
-            &stmt.left,
-            &stmt.trailing_order_by,
-            stmt.trailing_offset.map(|v| v as u64),
-            stmt.trailing_limit.map(|v| v as u64),
-            &mut left_result.rows,
-        );
-        left_result.affected_rows = left_result.rows.len();
-        Ok(left_result)
-    }
-
-    fn apply_trailing_order_limit_offset(
-        &self,
-        stmt_left: &Statement,
-        order_by: &[sqlrustgo_parser::parser::OrderByExpression],
-        offset: Option<u64>,
-        limit: Option<u64>,
-        rows: &mut Vec<Vec<Value>>,
-    ) {
-        if order_by.is_empty() && offset.is_none() && limit.is_none() {
-            return;
-        }
-        if !order_by.is_empty() {
-            // V4077 / Issue #4077: when the leftmost SELECT uses `*`
-            // (or `table.*`), expand to the actual physical columns of
-            // the source table so that `ORDER BY a` resolves to a
-            // real column index instead of `Value::Null`. Without this
-            // the order-by key collapses to NULL for every row and the
-            // HashMap insertion order leaks into the output.
-            let storage = self.storage.read();
-            let col_names: Vec<String> = expand_column_names(&*storage, stmt_left);
-            drop(storage);
-            let col_names_ref: Vec<&str> = col_names.iter().map(|s| s.as_str()).collect();
-            let sort_keys: Vec<Vec<Value>> = rows
-                .iter()
-                .map(|row| {
-                    order_by
-                        .iter()
-                        .map(|ob| order_by_expr_value(&ob, &col_names_ref, row))
-                        .collect()
-                })
-                .collect();
-            let mut indices: Vec<usize> = (0..rows.len()).collect();
-            indices.sort_by(|&a, &b| {
-                for (i, ob) in order_by.iter().enumerate() {
-                    let ord = if i < sort_keys[a].len() && i < sort_keys[b].len() {
-                        sort_keys[a][i].cmp(&sort_keys[b][i])
-                    } else {
-                        std::cmp::Ordering::Equal
-                    };
-                    let ord = if ob.ascending { ord } else { ord.reverse() };
-                    if ord != std::cmp::Ordering::Equal {
-                        return ord;
-                    }
-                }
-                std::cmp::Ordering::Equal
-            });
-            *rows = indices.into_iter().map(|i| rows[i].clone()).collect();
-        }
-        if let Some(off) = offset {
-            let off = off as usize;
-            if off < rows.len() {
-                rows.drain(..off);
-            } else {
-                rows.clear();
-            }
-        }
-        if let Some(lim) = limit {
-            rows.truncate(lim as usize);
-        }
+        crate::engine_setops::execute_intersect(self, stmt)
     }
 
     fn execute_except(&mut self, stmt: &ExceptStatement) -> SqlResult<ExecutorResult> {
-        let mut left_result = self.execute_statement(&stmt.left)?;
-        let right_result = self.execute_statement(&stmt.right)?;
-        // SQL-92 multiset semantics for EXCEPT:
-        //   * DISTINCT (default): deduplicate each side, then keep rows
-        //     from left that do NOT appear in right (one copy each).
-        //   * ALL: keep max(0, cntL(r) - cntR(r)) copies of every row r.
-        // V4077 / Issue #4077: same normalization for collation as
-        // INTERSECT — NOCASE columns are case-folded for comparison.
-        let storage = self.storage.read();
-        let left_coll = collect_column_collations(&*storage, &stmt.left);
-        let right_coll = collect_column_collations(&*storage, &stmt.right);
-        drop(storage);
-        let left_entries = multiset_entries(&left_result.rows, &left_coll);
-        let right_entries = multiset_entries(&right_result.rows, &right_coll);
-        let mut out: Vec<Vec<Value>> = Vec::new();
-        if stmt.except_all {
-            for (key, (cnt_l, first_row)) in &left_entries {
-                let cnt_r = right_entries.get(key).map(|(c, _)| *c).unwrap_or(0);
-                let keep = cnt_l.saturating_sub(cnt_r);
-                for _ in 0..keep {
-                    out.push(first_row.clone());
-                }
-            }
-        } else {
-            // DISTINCT: a row is kept iff it appears in left and not in right.
-            for (key, (_, first_row)) in &left_entries {
-                if !right_entries.contains_key(key) {
-                    out.push(first_row.clone());
-                }
-            }
-        }
-        left_result.rows = out;
-        // V4077 / Issue #4077: trailing ORDER BY / LIMIT / OFFSET lifted
-        // from the right SELECT (consistent with UNION's behavior).
-        // EXCEPT DISTINCT now applies the ORDER BY so callers
-        // observe deterministic output (e.g. ORDER BY 1 → ascending).
-        self.apply_trailing_order_limit_offset(
-            &stmt.left,
-            &stmt.trailing_order_by,
-            stmt.trailing_offset.map(|v| v as u64),
-            stmt.trailing_limit.map(|v| v as u64),
-            &mut left_result.rows,
-        );
-        left_result.affected_rows = left_result.rows.len();
-        Ok(left_result)
+        crate::engine_setops::execute_except(self, stmt)
     }
 
     /// Execute any parsed statement. Used by the set-operation handlers
     /// for recursive left/right execution of nested set-ops.
-    fn execute_statement(&mut self, stmt: &Statement) -> SqlResult<ExecutorResult> {
+    pub(crate) fn execute_statement(&mut self, stmt: &Statement) -> SqlResult<ExecutorResult> {
         match stmt {
             Statement::Select(s) => self.execute_select(s),
             Statement::Union(u) => self.execute_union(u),
@@ -1582,189 +1640,21 @@ impl<S: StorageEngine + 'static> ExecutionEngine<S> {
     }
 }
 
-/// Walk nested set-operation statements to find the left-most SELECT's
-/// column display names (alias → name). Used by `execute_union` to
-/// resolve trailing ORDER BY column references.
-fn leftmost_column_names(stmt: &Statement) -> Vec<&str> {
-    match stmt {
-        Statement::Select(s) => s
-            .columns
-            .iter()
-            .map(|c| c.alias.as_deref().unwrap_or(&c.name))
-            .collect(),
-        Statement::Union(u) => leftmost_column_names(&u.left),
-        Statement::Intersect(i) => leftmost_column_names(&i.left),
-        Statement::Except(e) => leftmost_column_names(&e.left),
-        _ => Vec::new(),
-    }
-}
+// C-ARCH-05: collation-aware helpers (V4077 / #4077) moved to
+// `crate::engine_collation`. Callers now use:
+//   crate::engine_collation::leftmost_column_names
+//   crate::engine_collation::expand_column_names
+//   crate::engine_collation::multiset_entries
+//   crate::engine_collation::leftmost_select
+//   crate::engine_collation::collect_column_collations
+//   crate::engine_collation::normalize_row_for_compare
+//   crate::engine_collation::normalize_value_for_collation
+//   crate::engine_collation::order_by_expr_value
+// See `src/engine_setops.rs` for the set-operation consumers.
 
-/// V4077 / Issue #4077: expand `*` / `table.*` to the actual physical
-/// column names of the source table, so ORDER BY resolution against a
-/// `SELECT *` left side can find real column indices. Returns owned
-/// strings (rather than `&str`) because the physical columns come from
-/// a fresh `get_table_info` call and live only as long as the storage
-/// read guard.
-fn expand_column_names(
-    storage: &dyn sqlrustgo_storage::StorageEngine,
-    stmt: &Statement,
-) -> Vec<String> {
-    match stmt {
-        Statement::Select(s) => {
-            let raw = s
-                .columns
-                .iter()
-                .map(|c| c.alias.clone().unwrap_or_else(|| c.name.clone()))
-                .collect::<Vec<_>>();
-            // Expand `*` (or `table.*`) once via the source table info.
-            let mut out: Vec<String> = Vec::new();
-            for n in raw {
-                if n == "*" {
-                    if !s.table.is_empty() {
-                        if let Ok(info) = storage.get_table_info(&s.table) {
-                            for col in &info.columns {
-                                out.push(col.name.clone());
-                            }
-                        }
-                    }
-                } else {
-                    out.push(n);
-                }
-            }
-            out
-        }
-        Statement::Union(u) => expand_column_names(storage, &u.left),
-        Statement::Intersect(i) => expand_column_names(storage, &i.left),
-        Statement::Except(e) => expand_column_names(storage, &e.left),
-        _ => Vec::new(),
-    }
-}
-
-/// V4077 / Issue #4077: collation-aware multiset entries.
-/// Returns a map keyed by the *normalized* row (per-column collation
-/// applied) to `(count, first_original_row)`. The first row from the
-/// input slice is preserved so set-op output retains the LEFT side's
-/// original casing for NOCASE columns.
-fn multiset_entries(
-    rows: &[Vec<Value>],
-    collations: &[Option<String>],
-) -> std::collections::HashMap<Vec<Value>, (usize, Vec<Value>)> {
-    let mut entries: std::collections::HashMap<Vec<Value>, (usize, Vec<Value>)> =
-        std::collections::HashMap::new();
-    for row in rows {
-        let key = normalize_row_for_compare(row, collations);
-        let entry = entries.entry(key).or_insert_with(|| (0usize, row.clone()));
-        entry.0 += 1;
-    }
-    entries
-}
-
-/// V4077 / Issue #4077: walk a set-op's left operand to find the
-/// leftmost SELECT statement (so we can look up its source table's
-/// column collations).
-fn leftmost_select(stmt: &Statement) -> Option<&SelectStatement> {
-    match stmt {
-        Statement::Select(s) => Some(s),
-        Statement::Union(u) => leftmost_select(&u.left),
-        Statement::Intersect(i) => leftmost_select(&i.left),
-        Statement::Except(e) => leftmost_select(&e.left),
-        _ => None,
-    }
-}
-
-/// V4077 / Issue #4077: pull each column's COLLATE name from the
-/// source table's TableInfo (if any). Returns a Vec aligned with
-/// SELECT projection positions; position N corresponds to column N
-/// of the SELECT's projection. If the leftmost SELECT references no
-/// resolvable table, returns an empty Vec (caller treats empty as
-/// "no collation context" → binary comparison, the original
-/// behavior).
-fn collect_column_collations(
-    storage: &dyn sqlrustgo_storage::StorageEngine,
-    stmt: &Statement,
-) -> Vec<Option<String>> {
-    let Some(select) = leftmost_select(stmt) else {
-        return Vec::new();
-    };
-    if select.table.is_empty() {
-        return Vec::new();
-    }
-    let Ok(info) = storage.get_table_info(&select.table) else {
-        return Vec::new();
-    };
-    // Column names from the SELECT projection (alias → name). For `*`
-    // (or `table.*`), expand to every physical column of the source
-    // table in declaration order. Otherwise the alias-or-name lookup
-    // would fail for `*` and the collation context would silently
-    // collapse to binary comparison — which is what produced the V4077
-    // NOCASE bug where ABC != abc under binary.
-    let mut names: Vec<String> = Vec::new();
-    for c in &select.columns {
-        let n = c.alias.clone().unwrap_or_else(|| c.name.clone());
-        if n == "*" {
-            for col in &info.columns {
-                names.push(col.name.clone());
-            }
-        } else {
-            names.push(n);
-        }
-    }
-    names
-        .into_iter()
-        .map(|n| {
-            info.columns
-                .iter()
-                .find(|c| c.name == n)
-                .and_then(|c| c.collation.clone())
-        })
-        .collect()
-}
-
-/// V4077 / Issue #4077: produce a comparison key from a row by
-/// applying each column's collation. NOCASE folds ASCII case;
-/// unknown / BINARY leaves the value as-is.
-fn normalize_row_for_compare(row: &[Value], collations: &[Option<String>]) -> Vec<Value> {
-    if collations.is_empty() {
-        return row.to_vec();
-    }
-    row.iter()
-        .enumerate()
-        .map(|(i, v)| {
-            let coll = collations.get(i).and_then(|c| c.as_deref());
-            normalize_value_for_collation(v, coll)
-        })
-        .collect()
-}
-
-fn normalize_value_for_collation(v: &Value, collation: Option<&str>) -> Value {
-    match (v, collation) {
-        (Value::Text(s), Some("NOCASE")) => Value::Text(s.to_uppercase()),
-        (v, _) => v.clone(),
-    }
-}
-
-/// Evaluate a single ORDER BY expression against a row, using column
-/// names (from the left SELECT) or 1-based integer position.
-fn order_by_expr_value(ob: &OrderByExpression, col_names: &[&str], row: &[Value]) -> Value {
-    use sqlrustgo_parser::Expression;
-    match &ob.expression {
-        Expression::Identifier(name) => {
-            if let Some(idx) = col_names.iter().position(|n| *n == name) {
-                if idx < row.len() {
-                    return row[idx].clone();
-                }
-            }
-            Value::Null
-        }
-        Expression::Literal(lit) => {
-            if let Ok(pos) = lit.parse::<usize>() {
-                let idx = pos.saturating_sub(1);
-                if idx < row.len() {
-                    return row[idx].clone();
-                }
-            }
-            Value::Null
-        }
-        _ => Value::Null,
-    }
-}
+#[doc(inline)]
+pub use crate::engine_collation::{
+    collect_column_collations, expand_column_names, leftmost_column_names, leftmost_select,
+    multiset_entries, normalize_row_for_compare, normalize_value_for_collation,
+    order_by_expr_value,
+};

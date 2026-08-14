@@ -115,7 +115,8 @@ impl StorageAdapter {
                     nullable: true,
                     primary_key: false,
                     char_max_length: None,
-                })
+
+                    default_value: None,                })
                 .collect(),
             foreign_keys: vec![],
             unique_constraints: vec![],

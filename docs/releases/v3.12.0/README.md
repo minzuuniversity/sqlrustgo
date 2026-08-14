@@ -5,12 +5,15 @@
 > **状态**: 规划中
 > **产品目标**: 面向 `~/gmp-platform` 的 GMP 内审检索数据库
 > **规划日期**: 2026-08-09
+> **当前整改口径更新**: 2026-08-14
 
 v3.12.0 被规划为 SQLRustGo 第一个明确面向 GMP 内审检索工作负载的版本。它使用 SQLRustGo 作为受监管文档存储、chunk、embedding、audit trail、evidence relation、hybrid retrieval 和 SQL-backed graph projection 的数据库基础。
 
 本版本不得描述为通用向量数据库或通用图数据库；这些是 v4.0.0 的目标。
 
 2026-08-09 规划更新：v3.12.0 同时承担 v3.11.0 GA 弱项补强职责。进入 GA 前，必须关闭或显式重门禁 TPC-H correctness、coverage methodology、MySQL wire protocol、LOAD DATA/bulk import、crash recovery、backup/restore、upgrade/downgrade、dependency audit refresh，以及 v3.10.0 已规划但 v3.11.0 没有成为阻断 gate 的 SQLite SQLLogicTest oracle gate。
+
+2026-08-14 整改更新：README 与历史开发计划中的 `PARTIAL` 不能作为 v3.12 初始生产能力声明。属于 v3.12 生产边界的 `PARTIAL` 必须绑定到 [PARTIAL 功能整改 Issue 计划](PARTIAL_FEATURE_REMEDIATION_ISSUE_PLAN.md)，在 GA 前关闭为 `DONE / 受控`，或降级为 `DEFERRED` / `UNSUPPORTED` 并说明不属于 v3.12 初始生产边界。
 
 ## 发布契约
 
@@ -34,7 +37,8 @@ v3.12.0 被规划为 SQLRustGo 第一个明确面向 GMP 内审检索工作负�
 | `DEVELOPMENT_PLAN.md` | 实施计划和 GMP-Platform 集成工作包 |
 | `VERSION_PLAN.md` | 产品范围和工作包 |
 | `TEST_PLAN.md` | gate 和测试矩阵 |
-| `ISSUES_PLAN.md` | V312-01 到 V312-14 的任务拆分 |
+| `ISSUES_PLAN.md` | V312-01 到 V312-54 的任务拆分和 follow-up |
+| `PARTIAL_FEATURE_REMEDIATION_ISSUE_PLAN.md` | README 中 PARTIAL/OPEN 功能的整改归属、issue 和关闭边界 |
 | `GMP_COMPLIANCE_MATRIX.md` | GMP/ALCOA+ 合规控制映射 |
 | `fixtures/gmp_audit_questions.yml` | 检索质量 fixture seed |
 
@@ -51,6 +55,16 @@ v3.12.0 从 v3.11.0 GA 评估状态出发。进入 v3.12.0 GA 前，必须关闭
 | MySQL wire protocol | 覆盖 COM_QUERY、COM_STMT、error packet、reset、TLS/compression |
 | LOAD DATA / bulk import | 验证导入行数、hash、内存和耗时 |
 | Crash recovery / upgrade | 验证 kill -9、WAL replay、backup/restore、v3.10/v3.11 到 v3.12 升级和回滚 |
+
+## PARTIAL 功能治理
+
+v3.12.0 的目标是“功能比较完备的初始生产版本”，不是把大量半成品功能堆进 release note。因此：
+
+- `PARTIAL` 只能是 Alpha/Beta 过渡状态，不能进入 GA 产品声明。
+- 属于 GMP 内审检索、MySQL-style 基础兼容、TPC-H/SQL correctness、recovery、coverage、bulk-load、Sysbench 的 `PARTIAL` 是 GA blocker。
+- 非 v3.12 初始生产边界的能力，例如通用向量数据库、通用图数据库、存储过程、复制/分布式、未限定的 Window/GIS/JSON，必须改为 `DEFERRED` 或 `UNSUPPORTED`。
+- Window/GIS/JSON 三类 SQL 功能的 v3.12 边界已写入 [`sql-feature-corpus/window_json_gis_scope.md`](./sql-feature-corpus/window_json_gis_scope.md)：Window → `DEFERRED-3.13`，JSON → `DONE-subset`（`JSON_EXTRACT/JSON_VALUE/JSON_UNQUOTE` + `->`/`->>` 操作符），GIS → `DONE-subset`（`ST_DISTANCE/ST_WITHIN/ST_CONTAINS/ST_INTERSECTS`，仅 2D Point/WKT-bbox）。
+- #4220 是 PARTIAL 功能整改总控；#4221-#4227 是本轮新增的缺口 issue；已有 #3943、#4020、#4210、#4211、#4217、#4218、#4219 继续作为对应整改证据入口。
 
 ## 附录：英文原文
 

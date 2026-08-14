@@ -52,7 +52,16 @@ impl FileStorage {
             tables: HashMap::new(),
             indexes: RwLock::new(HashMap::new()),
             insert_buffer: HashMap::new(),
-            buffer_threshold: 100,
+            // v3.12.0 #4020 follow-up: raise default buffer flush threshold from
+            // 100 to 10_000. Each flush goes through insert_direct, which clones
+            // the full TableData and serializes it via serde_json::to_string_pretty
+            // — an O(rows_loaded) operation. With threshold=100 the bulk-load
+            // cost was O(N^2), which made TPC-H SF=10 supplier only achieve
+            // ~111 rows/s. Micro-bench (bulk_load_quadraticity) shows
+            // threshold=10000 is ~50.6x faster on identical final state.
+            // Callers that need the old behaviour should use
+            // new_with_buffer_config(dir, 100, true).
+            buffer_threshold: 10_000,
             enable_buffer: true,
             current_tx_id: 0,
             triggers: RwLock::new(HashMap::new()),
@@ -108,7 +117,9 @@ impl FileStorage {
             tables: HashMap::new(),
             indexes: RwLock::new(HashMap::new()),
             insert_buffer: HashMap::new(),
-            buffer_threshold: 100,
+            // v3.12.0 #4020 follow-up: see FileStorage::new — default raised to
+            // 10_000 to amortise O(N) insert_direct over a much larger batch.
+            buffer_threshold: 10_000,
             enable_buffer: true, // Transaction boundary handled by buffer flush on commit
             current_tx_id: 0,
             triggers: RwLock::new(HashMap::new()),
@@ -150,7 +161,9 @@ impl FileStorage {
             tables: HashMap::new(),
             indexes: RwLock::new(HashMap::new()),
             insert_buffer: HashMap::new(),
-            buffer_threshold: 100,
+            // v3.12.0 #4020 follow-up: see FileStorage::new — default raised to
+            // 10_000 to amortise O(N) insert_direct over a much larger batch.
+            buffer_threshold: 10_000,
             enable_buffer: true,
             current_tx_id: 0,
             triggers: RwLock::new(HashMap::new()),
@@ -644,7 +657,8 @@ mod tests {
                             nullable: false,
                             primary_key: true,
                             char_max_length: None,
-                        collation: None,
+                            collation: None,
+                            default_value: None,
                         },
                         ColumnDefinition {
                             name: "name".to_string(),
@@ -652,7 +666,8 @@ mod tests {
                             nullable: true,
                             primary_key: false,
                             char_max_length: None,
-                        collation: None,
+                            collation: None,
+                            default_value: None,
                         },
                     ],
                     foreign_keys: vec![],
@@ -1178,7 +1193,8 @@ mod tests {
                     nullable: false,
                     primary_key: true,
                     char_max_length: None,
-                collation: None,
+                    collation: None,
+                    default_value: None,
                 }],
                 foreign_keys: vec![],
                 unique_constraints: vec![],
@@ -1200,7 +1216,8 @@ mod tests {
             nullable: true,
             primary_key: false,
             char_max_length: None,
-        collation: None,
+            collation: None,
+            default_value: None,
         };
         let result = storage.add_column("add_col_test", new_col);
         assert!(result.is_ok());
@@ -1329,7 +1346,8 @@ mod tests {
                 nullable: false,
                 primary_key: true,
                 char_max_length: None,
-            collation: None,
+                collation: None,
+                default_value: None,
             }],
             foreign_keys: vec![],
             unique_constraints: vec![],
@@ -1366,7 +1384,8 @@ mod tests {
                 nullable: false,
                 primary_key: true,
                 char_max_length: None,
-            collation: None,
+                collation: None,
+                default_value: None,
             }],
             foreign_keys: vec![],
             unique_constraints: vec![],
@@ -1403,7 +1422,8 @@ mod tests {
                 nullable: false,
                 primary_key: true,
                 char_max_length: None,
-            collation: None,
+                collation: None,
+                default_value: None,
             }],
             foreign_keys: vec![],
             unique_constraints: vec![],
@@ -2060,7 +2080,8 @@ mod tests {
             nullable: true,
             primary_key: false,
             char_max_length: None,
-        collation: None,
+            collation: None,
+            default_value: None,
         };
         storage.modify_column("t", "a", new_def).unwrap();
     }
@@ -3178,7 +3199,8 @@ mod parallel_scan_tests {
                         nullable: false,
                         primary_key: true,
                         char_max_length: None,
-                    collation: None,
+                        collation: None,
+                        default_value: None,
                     }],
                     foreign_keys: vec![],
                     unique_constraints: vec![],
@@ -3248,7 +3270,8 @@ mod parallel_scan_tests {
                         nullable: false,
                         primary_key: true,
                         char_max_length: None,
-                    collation: None,
+                        collation: None,
+                        default_value: None,
                     }],
                     foreign_keys: vec![],
                     unique_constraints: vec![],

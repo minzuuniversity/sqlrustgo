@@ -290,6 +290,7 @@ fn col_def(name: &str, dtype: &str) -> ColumnDefinition {
         // this initializer was missed by the propagation PR #4140.
         // Default None = binary collation (case-sensitive).
         collation: None,
+        default_value: None,
     }
 }
 

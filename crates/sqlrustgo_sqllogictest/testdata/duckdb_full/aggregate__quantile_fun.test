@@ -16,8 +16,8 @@ include test/sql/tpch/tpch_setup.test_template
 # [V313-15] statement ok  # SQL feature outside V313-15 harness scope (deferred)
 # [V313-15] SELECT quantile_disc(0.1::decimal(4,1), [0.1, 0.5, 0.9]);  # SQL feature outside V313-15 harness scope (deferred)
 
-# [V313-15] statement ok  # SQL feature outside V313-15 harness scope (deferred)
-# [V313-15] SELECT PERCENTILE_CONT(0.5) WITHIN GROUP (ORDER BY "l_extendedprice") FROM lineitem;  # SQL feature outside V313-15 harness scope (deferred)
+# [V313-15] statement ok  # PERCENTILE_CONT WITHIN GROUP implemented by V313-followup-3 / Issue #4156 (see percentile_cont_simple.test); this exact lineitem query needs the TPC-H setup template which is not shipped
+# [V313-15] SELECT PERCENTILE_CONT(0.5) WITHIN GROUP (ORDER BY "l_extendedprice") FROM lineitem;  # PERCENTILE_CONT WITHIN GROUP implemented by V313-followup-3 / Issue #4156 (see percentile_cont_simple.test); this exact lineitem query needs the TPC-H setup template which is not shipped
 
 # [V313-15] statement ok  # SQL feature outside V313-15 harness scope (deferred)
 # [V313-15] SET default_null_order='nulls_first';  # SQL feature outside V313-15 harness scope (deferred)

@@ -293,11 +293,13 @@ fn test_ephemeral_config_fields_can_be_overridden() {
         data_dir: Some(std::env::temp_dir()),
         bootstrap_sql: vec!["CREATE TABLE x (id INT)".to_string()],
         bulk_insert_buffer_size: 16 * 1_048_576,
+        bulk_insert_rows_per_flush: 10_000,
         server_threads: 32,
         storage: Some("binary".to_string()),
         port: Some(3307),
         slow_query_log: None,
         metrics_port: None,
+        load_infile_dir: None,
     };
     assert_eq!(cfg.host, "0.0.0.0");
     assert!(!cfg.bootstrap_tables);

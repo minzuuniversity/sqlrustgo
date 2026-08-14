@@ -265,9 +265,7 @@ fn test_batch_insert_empty_values() {
 fn test_batch_insert_mixed_columns() {
     let mut engine = ExecutionEngine::new(Arc::new(RwLock::new(MemoryStorage::new())));
     engine
-        .execute(
-            "CREATE TABLE t (id INTEGER PRIMARY KEY AUTOINCREMENT, a TEXT, b INTEGER, c TEXT)",
-        )
+        .execute("CREATE TABLE t (id INTEGER PRIMARY KEY AUTOINCREMENT, a TEXT, b INTEGER, c TEXT)")
         .unwrap();
 
     // Insert with different column combinations

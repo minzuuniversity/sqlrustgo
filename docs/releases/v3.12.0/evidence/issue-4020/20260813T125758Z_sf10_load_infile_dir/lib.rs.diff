@@ -1,0 +1,90 @@
+diff --git a/crates/mysql-server/src/lib.rs b/crates/mysql-server/src/lib.rs
+index ebd44c9bd6..1e641ec18d 100644
+--- a/crates/mysql-server/src/lib.rs
++++ b/crates/mysql-server/src/lib.rs
+@@ -4155,6 +4155,15 @@ fn do_command_loop<S: Read + Write + DrainWrites>(
+                         .data_dir
+                         .clone()
+                         .unwrap_or_else(|| std::path::PathBuf::from("/tmp"));
++                    // Issue #4020: prefer the per-handle LOAD DATA
++                    // whitelist when configured; fall back to the
++                    // storage data_dir so the default sandbox semantics
++                    // are preserved.
++                    let load_infile_dir = config
++                        .load_infile_dir
++                        .clone()
++                        .unwrap_or_else(|| data_dir.clone());
++                    let data_dir = load_infile_dir;
+                     let bulk_buf = config.bulk_insert_buffer_size;
+                     // G13-OLTP-1: poisoning recovery on the engine
+                     // write lock. A previous LOAD DATA may have
+@@ -5051,8 +5060,19 @@ pub fn run_server_v2(
+     // coexist in the same process without one server's LOAD DATA seeing
+     // another's `data_dir`.
+     use crate::testing::EphemeralConfig;
++    // Issue #4020: optional LOAD DATA whitelist separate from the
++    // storage data_dir. Read from `SQLRUSTGO_LOAD_INFILE_DIR` so the
++    // CLI plumbing (`--load-infile-dir` in main.rs) doesn't have to
++    // widen the `run_server_v2` signature. When unset (the default),
++    // the LOAD DATA whitelist falls back to `data_dir`, preserving the
++    // pre-#4020 sandbox semantics.
++    let load_infile_dir = std::env::var("SQLRUSTGO_LOAD_INFILE_DIR")
++        .ok()
++        .filter(|s| !s.is_empty())
++        .map(std::path::PathBuf::from);
+     let cfg = EphemeralConfig {
+         data_dir: Some(std::path::PathBuf::from(data_dir)),
++        load_infile_dir,
+         server_threads,
+         ..Default::default()
+     };
+@@ -6617,6 +6637,25 @@ pub mod testing {
+         /// that needs to share a data dir between two `start_ephemeral`
+         /// calls (one to import, one to query).
+         pub data_dir: Option<std::path::PathBuf>,
++        /// Issue #4020: directory used as the LOAD DATA LOCAL INFILE
++        /// whitelist. When `Some(path)`, files must canonicalize inside
++        /// THIS path (not the storage `data_dir`) to be accepted. When
++        /// `None` (default), the whitelist falls back to `data_dir` —
++        /// preserving the V312-13 sandbox semantics so existing tests
++        /// (`test_load_local_infile_path_outside_data_dir`) continue
++        /// to pass unchanged. The CLI mirrors this knob via
++        /// `--load-infile-dir`.
++        ///
++        /// Why is this separate from `data_dir`? Because the bulk-load
++        /// runner (`scripts/tpch/bulk_load_sf10.sh`) wants the server's
++        /// *storage* data_dir to live next to the WAL under
++        /// `$RUN_DIR/data` (so the runner can wipe it on exit) while
++        /// the LOAD DATA fixtures live under `$DATA_DIR` (which the
++        /// runner does NOT own — typically a long-lived `/tmp/tpch-sf10`
++        /// shared across runs). Conflating the two would force a
++        /// `cp` of every .tbl into the storage dir on every run; the
++        /// 60M-line SF=10 lineitem.tbl makes that prohibitive.
++        pub load_infile_dir: Option<std::path::PathBuf>,
+         /// Extra DDL statements to execute after the internal catalog
+         /// tables (if `bootstrap_tables` is true) and before the server
+         /// starts accepting connections. Use this to inject the 8 TPC-H
+@@ -6671,6 +6710,7 @@ pub mod testing {
+                 bootstrap_tables: true,
+                 bootstrap_users: true,
+                 data_dir: None,
++                load_infile_dir: None,
+                 bootstrap_sql: Vec::new(),
+                 bulk_insert_buffer_size: 1_048_576,
+                 server_threads: 16,
+@@ -7094,6 +7134,7 @@ pub mod testing {
+                     data_dir: None,
+                     slow_query_log: None,
+                     metrics_port: None,
++                    load_infile_dir: None,
+                 };
+ 
+                 // If a server is already on this port (e.g. prior process in
+@@ -7210,6 +7251,7 @@ pub mod testing {
+                 port: Some(0),
+                 slow_query_log: None,
+                 metrics_port: None,
++                load_infile_dir: None,
+             };
+             assert_eq!(cfg.host, "0.0.0.0");
+             assert!(!cfg.bootstrap_tables);
