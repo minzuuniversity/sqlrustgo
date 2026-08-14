@@ -995,3 +995,339 @@ fn test_ahi_does_not_promote_for_different_tables() {
         ahi.size()
     );
 }
+
+// Round-21 / Issue #4218: executor-level tests for Statement::Kill
+// and SHOW PROCESSLIST dispatch wiring (Task #4218.5).
+
+#[test]
+fn test_executor_kill_v312_35() {
+    let storage = Arc::new(RwLock::new(MemoryStorage::new()));
+    let engine = ExecutionEngine::new(storage);
+
+    // Default KILL <id> form (kill_query=false).
+    let result = engine.execute_kill(42, false);
+    assert!(result.is_ok(), "KILL must succeed: {:?}", result.err());
+    let result = result.unwrap();
+    assert_eq!(result.affected_rows, 0);
+    assert_eq!(result.rows.len(), 1);
+    let cell = format!("{:?}", result.rows[0][0]);
+    assert!(cell.contains("KILL"), "unexpected row: {}", cell);
+    assert!(cell.contains("42"), "missing connection_id: {}", cell);
+
+    // KILL QUERY <id> form.
+    let result_q = engine.execute_kill(7, true);
+    assert!(result_q.is_ok());
+    let result_q = result_q.unwrap();
+    let cell_q = format!("{:?}", result_q.rows[0][0]);
+    assert!(
+        cell_q.contains("QUERY"),
+        "expected QUERY marker: {}",
+        cell_q
+    );
+    assert!(cell_q.contains("7"), "missing connection_id 7: {}", cell_q);
+}
+
+#[test]
+fn test_executor_show_processlist_v312_35() {
+    let storage = Arc::new(RwLock::new(MemoryStorage::new()));
+    let engine = ExecutionEngine::new(storage);
+
+    // SHOW PROCESSLIST — no live process registry yet; must succeed and
+    // return an empty result set (clients see zero rows but no error).
+    let result = engine.execute_show_processlist();
+    assert!(
+        result.is_ok(),
+        "SHOW PROCESSLIST must succeed: {:?}",
+        result.err()
+    );
+    let result = result.unwrap();
+    assert_eq!(result.rows.len(), 0);
+    // 6 = MySQL processlist column count (Id, User, Host, db, Command, Time, State, Info).
+    assert_eq!(result.affected_rows, 6);
+}
+
+#[test]
+fn test_executor_kill_via_sql_v312_35() {
+    // Drive the full dispatch path: KILL 42 → Statement::Kill → execute_kill.
+    let storage = Arc::new(RwLock::new(MemoryStorage::new()));
+    let mut engine = ExecutionEngine::new(storage);
+    let result = engine.execute("KILL 42");
+    assert!(
+        result.is_ok(),
+        "KILL via SQL must succeed: {:?}",
+        result.err()
+    );
+}
+
+#[test]
+fn test_executor_show_processlist_via_sql_v312_35() {
+    let storage = Arc::new(RwLock::new(MemoryStorage::new()));
+    let mut engine = ExecutionEngine::new(storage);
+    let result = engine.execute("SHOW PROCESSLIST");
+    assert!(
+        result.is_ok(),
+        "SHOW PROCESSLIST via SQL must succeed: {:?}",
+        result.err()
+    );
+    let result = result.unwrap();
+    // No live registry → empty result set, but still 0 errors.
+    assert_eq!(result.rows.len(), 0);
+}
+
+#[test]
+fn test_executor_show_full_processlist_via_sql_v312_35() {
+    let storage = Arc::new(RwLock::new(MemoryStorage::new()));
+    let mut engine = ExecutionEngine::new(storage);
+    let result = engine.execute("SHOW FULL PROCESSLIST");
+    assert!(
+        result.is_ok(),
+        "SHOW FULL PROCESSLIST via SQL must succeed: {:?}",
+        result.err()
+    );
+}
+
+// Round-21 / Issue #4216: array-fraction form of quantile_disc /
+// quantile_cont must produce a single Text cell whose contents are
+// "[v1, v2, ...]" (one value per supplied fraction, in input order).
+
+#[test]
+fn test_executor_quantile_disc_array_v312_46() {
+    let storage = Arc::new(RwLock::new(MemoryStorage::new()));
+    let mut engine = ExecutionEngine::new(storage);
+    engine
+        .execute("CREATE TABLE t (x INTEGER)")
+        .expect("CREATE");
+    for i in 1..=10 {
+        engine
+            .execute(&format!("INSERT INTO t VALUES ({})", i))
+            .expect("INSERT");
+    }
+    // Sorted: [1,2,3,4,5,6,7,8,9,10]; len=10.
+    // frac=0.25 -> idx = 0.25*9 = 2.25 -> lo=2, hi=3 -> 3 (disc, pick lo).
+    // frac=0.50 -> idx = 0.50*9 = 4.5  -> lo=4, hi=5 -> 5.
+    // frac=0.75 -> idx = 0.75*9 = 6.75 -> lo=6, hi=7 -> 7.
+    let r = engine
+        .execute("SELECT quantile_disc(x, [0.25, 0.5, 0.75]) FROM t")
+        .expect("SELECT quantile_disc(x, [0.25, 0.5, 0.75]) must succeed");
+    assert_eq!(r.rows.len(), 1, "single aggregated row");
+    let cell = &r.rows[0][0];
+    let s = match cell {
+        Value::Text(t) => t.clone(),
+        other => panic!("expected Text result, got {:?}", other),
+    };
+    assert_eq!(
+        s, "[3, 5, 7]",
+        "quantile_disc([0.25, 0.5, 0.75]) must produce [3, 5, 7]"
+    );
+}
+
+#[test]
+fn test_executor_quantile_cont_array_v312_46() {
+    let storage = Arc::new(RwLock::new(MemoryStorage::new()));
+    let mut engine = ExecutionEngine::new(storage);
+    engine
+        .execute("CREATE TABLE t (x INTEGER)")
+        .expect("CREATE");
+    for i in 1..=10 {
+        engine
+            .execute(&format!("INSERT INTO t VALUES ({})", i))
+            .expect("INSERT");
+    }
+    // Sorted: [1,2,3,4,5,6,7,8,9,10]; len=10.
+    // frac=0.0  -> idx=0   -> lo=0, hi=0 -> 1.
+    // frac=1.0  -> idx=9   -> lo=9, hi=9 -> 10.
+    // frac=0.5  -> idx=4.5 -> lo=4, hi=5 -> sorted[4]=5, sorted[5]=6
+    //                                 -> 5 + (6-5)*0.5 = 5.5.
+    let r = engine
+        .execute("SELECT quantile_cont(x, [0.0, 0.5, 1.0]) FROM t")
+        .expect("SELECT quantile_cont(x, [0.0, 0.5, 1.0]) must succeed");
+    assert_eq!(r.rows.len(), 1);
+    let cell = &r.rows[0][0];
+    let s = match cell {
+        Value::Text(t) => t.clone(),
+        other => panic!("expected Text result, got {:?}", other),
+    };
+    assert_eq!(
+        s, "[1, 5.5, 10]",
+        "quantile_cont([0.0, 0.5, 1.0]) must produce [1, 5.5, 10]"
+    );
+}
+
+#[test]
+fn test_executor_quantile_disc_array_single_frac_v312_46() {
+    // Single-element array should still work as a degenerate case.
+    let storage = Arc::new(RwLock::new(MemoryStorage::new()));
+    let mut engine = ExecutionEngine::new(storage);
+    engine
+        .execute("CREATE TABLE t (x INTEGER)")
+        .expect("CREATE");
+    for i in 1..=10 {
+        engine
+            .execute(&format!("INSERT INTO t VALUES ({})", i))
+            .expect("INSERT");
+    }
+    let r = engine
+        .execute("SELECT quantile_disc(x, [0.5]) FROM t")
+        .expect("SELECT quantile_disc(x, [0.5]) must succeed");
+    let cell = &r.rows[0][0];
+    let s = match cell {
+        Value::Text(t) => t.clone(),
+        other => panic!("expected Text result, got {:?}", other),
+    };
+    assert_eq!(s, "[5]", "single-fraction array must produce [5]");
+}
+
+#[test]
+fn test_executor_quantile_array_out_of_range_v312_46() {
+    // Fractions outside [0.0, 1.0] must error (not silently produce garbage).
+    let storage = Arc::new(RwLock::new(MemoryStorage::new()));
+    let mut engine = ExecutionEngine::new(storage);
+    engine
+        .execute("CREATE TABLE t (x INTEGER)")
+        .expect("CREATE");
+    for i in 1..=5 {
+        engine
+            .execute(&format!("INSERT INTO t VALUES ({})", i))
+            .expect("INSERT");
+    }
+    let r = engine.execute("SELECT quantile_disc(x, [1.5]) FROM t");
+    assert!(
+        r.is_err(),
+        "quantile_disc with out-of-range fraction must error"
+    );
+}
+
+// =============================================================================
+// Round-21 / Issue #4217 — bulk_insert_chunked throughput tests
+// =============================================================================
+// These tests pin the engine-side chunked ingestion helper that pairs with the
+// LOAD DATA LOCAL INFILE `rows_per_flush` knob. The helper takes a large
+// pre-parsed Vec<Record> and splits it into N=ceil(total/chunk_size) calls to
+// bulk_insert_records, so the FileStorage insert_buffer can flush each chunk
+// independently. MemoryStorage is fine for verifying the helper's semantics
+// (chunking + sum-of-counts + row presence); throughput characteristics are
+// exercised in the TPC-H SF=10 wire-level benchmark (issue #4217.6).
+//
+// Three properties are tested:
+//   1. Multi-chunk path: 50_000 rows / chunk_size=10_000 yields exactly the
+//      returned total and all rows are visible via SELECT.
+//   2. Single-chunk path: a batch smaller than chunk_size falls through to a
+//      single bulk_insert_records call (no spurious split).
+//   3. chunk_size=0 fallback: chunking is disabled and the entire batch is
+//      handed to bulk_insert_records in one call.
+//
+// Row presence is checked via SELECT COUNT(*), which is the strongest
+// invariant: if chunking dropped or duplicated any rows, the count would not
+// match `records.len()`.
+
+/// Build a Vec<Record> of size `n` rows for a `(id INTEGER PRIMARY KEY, val INTEGER)`
+/// table. IDs are 1..=n so primary-key uniqueness is preserved.
+fn build_chunked_records(n: usize) -> Vec<sqlrustgo_storage::Record> {
+    let mut records = Vec::with_capacity(n);
+    for i in 1..=n {
+        records.push(vec![
+            Value::Integer(i as i64),
+            Value::Integer((i * 2) as i64),
+        ]);
+    }
+    records
+}
+
+#[test]
+fn test_executor_bulk_insert_chunked_multi_chunk_v312_26() {
+    // Issue #4217 / V312-26 follow-up: bulk_insert_chunked must split a
+    // 50_000-row batch into 5 chunks of 10_000 and return the correct total.
+    let storage = Arc::new(RwLock::new(MemoryStorage::new()));
+    let mut engine = ExecutionEngine::new(storage);
+
+    engine
+        .execute("CREATE TABLE big (id INTEGER PRIMARY KEY, val INTEGER)")
+        .expect("CREATE");
+
+    let records = build_chunked_records(50_000);
+    let inserted = engine
+        .bulk_insert_chunked("big", records, 10_000)
+        .expect("chunked bulk insert");
+    assert_eq!(
+        inserted, 50_000,
+        "bulk_insert_chunked must return the total rows inserted"
+    );
+
+    // Verify all rows are present — chunking must not drop or duplicate any.
+    let count_result = engine
+        .execute("SELECT COUNT(*) FROM big")
+        .expect("SELECT COUNT(*)");
+    assert_eq!(count_result.rows.len(), 1);
+    assert_eq!(count_result.rows[0][0], Value::Integer(50_000));
+}
+
+#[test]
+fn test_executor_bulk_insert_chunked_single_chunk_falls_through_v312_26() {
+    // records.len() < chunk_size must NOT trigger chunking — verify the
+    // helper returns the correct total and all rows are present.
+    let storage = Arc::new(RwLock::new(MemoryStorage::new()));
+    let mut engine = ExecutionEngine::new(storage);
+
+    engine
+        .execute("CREATE TABLE small (id INTEGER PRIMARY KEY, val INTEGER)")
+        .expect("CREATE");
+
+    let records = build_chunked_records(2_500);
+    let inserted = engine
+        .bulk_insert_chunked("small", records, 10_000)
+        .expect("small bulk insert");
+    assert_eq!(inserted, 2_500);
+
+    let count_result = engine
+        .execute("SELECT COUNT(*) FROM small")
+        .expect("SELECT COUNT(*)");
+    assert_eq!(count_result.rows[0][0], Value::Integer(2_500));
+}
+
+#[test]
+fn test_executor_bulk_insert_chunked_zero_chunk_size_disables_chunking_v312_26() {
+    // chunk_size == 0 must disable chunking entirely (single bulk_insert_records
+    // call). This is the documented "no-op chunking" knob for callers that
+    // already batch externally.
+    let storage = Arc::new(RwLock::new(MemoryStorage::new()));
+    let mut engine = ExecutionEngine::new(storage);
+
+    engine
+        .execute("CREATE TABLE no_chunk (id INTEGER PRIMARY KEY, val INTEGER)")
+        .expect("CREATE");
+
+    let records = build_chunked_records(30_000);
+    let inserted = engine
+        .bulk_insert_chunked("no_chunk", records, 0)
+        .expect("zero-chunk bulk insert");
+    assert_eq!(inserted, 30_000);
+
+    let count_result = engine
+        .execute("SELECT COUNT(*) FROM no_chunk")
+        .expect("SELECT COUNT(*)");
+    assert_eq!(count_result.rows[0][0], Value::Integer(30_000));
+}
+
+#[test]
+fn test_executor_bulk_insert_chunked_uneven_remainder_v312_26() {
+    // 25_000 rows / chunk_size=10_000 must produce 3 chunks (10K + 10K + 5K).
+    // Verifies that the last (potentially smaller) chunk is handled correctly
+    // and that Vec::chunks slicing does not lose the trailing remainder.
+    let storage = Arc::new(RwLock::new(MemoryStorage::new()));
+    let mut engine = ExecutionEngine::new(storage);
+
+    engine
+        .execute("CREATE TABLE uneven (id INTEGER PRIMARY KEY, val INTEGER)")
+        .expect("CREATE");
+
+    let records = build_chunked_records(25_000);
+    let inserted = engine
+        .bulk_insert_chunked("uneven", records, 10_000)
+        .expect("uneven bulk insert");
+    assert_eq!(inserted, 25_000);
+
+    let count_result = engine
+        .execute("SELECT COUNT(*) FROM uneven")
+        .expect("SELECT COUNT(*)");
+    assert_eq!(count_result.rows[0][0], Value::Integer(25_000));
+}

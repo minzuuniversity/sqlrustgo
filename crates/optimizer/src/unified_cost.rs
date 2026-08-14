@@ -125,6 +125,18 @@ impl UnifiedCostModel {
         self.table_stats.insert(table_name, (row_count, page_count));
     }
 
+    /// V312-22 / Issue #4182: count the columns of `table_name` that
+    /// currently have a `Histogram` inside CBO `column_stats`. Returns 0
+    /// if the table is unknown to CBO or no column carries a histogram.
+    /// Used by `ExecutionEngine::cbo_histogram_column_count` and the
+    /// E2E test `tests/integration/executor_optimizer_e2e.rs`.
+    pub fn histogram_column_count(&self, table_name: &str) -> usize {
+        self.column_stats
+            .iter()
+            .filter(|((t, _), cs)| t == table_name && cs.histogram.is_some())
+            .count()
+    }
+
     /// V312-22b / Issue #4033: Update table stats **with** column-level
     /// statistics (including histograms). Replaces the legacy 3-arg
     /// `update_table_stats` for callers that have full ANALYZE output.
@@ -333,7 +345,19 @@ impl UnifiedCostModel {
                 let right_rows = right.estimate_cardinality();
                 let join_method = match join_type {
                     JoinType::Inner => "hash_join",
-                    _ => "nested_loop",
+                    // V312-22 / Issue #4182: semi/anti joins are realised via
+                    // HashSemiJoin / HashAntiJoin (O(outer + inner) with
+                    // bloom short-circuit). Mapping them to their dedicated
+                    // cost methods here lets CBO compare them honestly
+                    // against HashJoin (Inner) and NestedLoop fallback.
+                    JoinType::LeftSemi | JoinType::RightSemi => "hash_semi_join",
+                    JoinType::LeftAnti | JoinType::RightAnti => "hash_anti_join",
+                    // Outer joins (LEFT/RIGHT/FULL) and CROSS are not yet
+                    // hash-join accelerated — keep the historical
+                    // nested_loop fallback to avoid silent plan changes.
+                    JoinType::Left | JoinType::Right | JoinType::Full | JoinType::Cross => {
+                        "nested_loop"
+                    }
                 };
                 self.sql_cost_model
                     .join_cost(left_rows, right_rows, join_method)

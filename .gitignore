@@ -71,11 +71,24 @@ tests/data/tpch-sf1/*.tbl
 tests/data/tpch-sf1/*.csv
 tests/data/tpch-sf001-real/*.tbl
 tests/data/tpch-sf001-real/*.csv
+# Server LOAD DATA side effects for tpch-sf001-real/ (table dumps + WAL emitted at runtime)
+tests/data/tpch-sf001-real/*.json
+tests/data/tpch-sf001-real/*.wal
 tests/data/tpch-tiny/
 
 # Test-registry data + integration test data (regenerated at test time)
 tests/integration/data/
 crates/test-registry/data/
+
+# Issue-4020 TPC-H bulk-load evidence: server LOAD DATA side effects
+# (table dumps + WAL emitted at runtime into per-run data/ subdirs).
+# Per-table control logs (.json/.jsonl) and report docs are kept.
+docs/releases/v3.12.0/evidence/issue-4020/*/data/
+docs/releases/v3.12.0/evidence/issue-4020/*/server.log
+docs/releases/v3.12.0/evidence/issue-4020/*/server.pid
+docs/releases/v3.12.0/evidence/issue-4020/*/*_create.log
+docs/releases/v3.12.0/evidence/issue-4020/*/*_load.log
+docs/releases/v3.12.0/evidence/issue-4020/*/schema_create.log
 
 # Build / governance artifacts (specific subdirs already excluded; this catches the rest)
 artifacts/
