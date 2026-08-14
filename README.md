@@ -170,7 +170,7 @@ TPC-H 的 `22/22 completed` 表示 22 个 query 都跑完且没有 OOM/panic；�
 | v3.9.0 SF=0.1 | DONE / 历史基准 | SF=0.1 22 query 历史性能基准存在 | 不能外推为 SF=1/SF=10 生产能力 |
 | v3.10.0 并行执行优化 | DONE / 历史优化 | 部分 TPC-H query 在大数据上有并行和 fast-load 优化记录 | 不能宣称所有 query 线性加速 |
 | v3.11.0 SF=1 | DONE with correctness follow-up | 22/22 completed，519.15s，0 OOM，0 panic | 不能宣称 PostgreSQL/MySQL SHA256 零差异 |
-| v3.12.0 SF=1 close-out | PARTIAL / blocker | row count baseline 和 zero-row explanation 已形成 | cross-engine SHA256 和 zero-row correctness 由 [#4221](http://192.168.0.252:3000/openclaw/sqlrustgo/issues/4221) 收口 |
+| v3.12.0 SF=1 close-out | 受控 / PARTIAL→DEFERRED | row count baseline + 8 zero-row per-query binding manifest 已闭环 (22/22 可运行, 14 行结果, 8 zero-row DEFERRED) | cross-engine SHA256 闭环 和 zero-row correctness v3.13 由 [#4221](http://192.168.0.252:3000/openclaw/sqlrustgo/issues/4221) → 子 issue [#4272](http://192.168.0.252:3000/openclaw/sqlrustgo/issues/4272) + [#4273](http://192.168.0.252:3000/openclaw/sqlrustgo/issues/4273)~[#4280](http://192.168.0.252:3000/openclaw/sqlrustgo/issues/4280) 收口 |
 | v3.12.0 SF=10 harness | PARTIAL / blocker | harness 可运行；当前不是完整 60M lineitem 生产证据 | 不能宣称真实 SF=10 全量 parity；[#4020](http://192.168.0.252:3000/openclaw/sqlrustgo/issues/4020)、[#4217](http://192.168.0.252:3000/openclaw/sqlrustgo/issues/4217) 继续整改 |
 | v3.12.0 Bulk-load SF=10 | PARTIAL / OPEN | runner/gate/evidence 记录 3/8 表 match，5/8 大表未完成 | 不能宣称 8 表真实 bulk-load 完成 |
 
@@ -214,7 +214,7 @@ v3.12.0 的 GMP 方向是“受控内审检索系统数据库”，不是通用�
 | Hybrid retrieval | DONE / 受控 | [V312-05](docs/releases/v3.12.0/v312-05-hybrid-retrieval-report.md) |
 | SQL-backed graph projection | DONE / 受控 | [V312-06](docs/releases/v3.12.0/v312-06-graph-projection-report.md) |
 | RAG evidence bundle | DONE / 受控 | [V312-07](docs/releases/v3.12.0/v312-07-rag-evidence-bundle-report.md) |
-| GMP compliance audit controls | PARTIAL / blocker | [GMP 合规矩阵](docs/releases/v3.12.0/GMP_COMPLIANCE_MATRIX.md)、[V312-08](docs/releases/v3.12.0/v312-08-compliance-audit-report.md)、[V312-53](docs/releases/v3.12.0/evidence/gmp_compliance/V312-53-REPORT.md)；生产 ACL/audit-chain/tamper 全链路由 [#4226](http://192.168.0.252:3000/openclaw/sqlrustgo/issues/4226) 收口 |
+| GMP compliance audit controls | 受控 / 子项已闭环 | [GMP 合规矩阵](docs/releases/v3.12.0/GMP_COMPLIANCE_MATRIX.md)、[V312-08](docs/releases/v3.12.0/v312-08-compliance-audit-report.md)、[V312-53](docs/releases/v3.12.0/evidence/gmp_compliance/V312-53-REPORT.md)；子项拆分见 README 行 141-145 (CRUD audit DONE；合规操作/篡改检测/5×12 矩阵 显式 DEFERRED → v3.13)，由 [#4226](http://192.168.0.252:3000/openclaw/sqlrustgo/issues/4226) 收口 |
 
 允许的产品声明：SQLRustGo v3.12 支持受控 GMP 内审检索工作负载中的关系存储、chunk、embedding、audit trail、evidence relation、hybrid retrieval 和 SQL-backed graph projection。
 
