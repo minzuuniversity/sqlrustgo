@@ -2127,7 +2127,6 @@ impl<S: StorageEngine + 'static> ExecutionEngine<S> {
                 chain_order_opt = Some(candidate);
                 break;
             }
-            chain_order.len() == join_tables.len()
         }
 
         let chain_order: Vec<(String, String)> = match chain_order_opt {
