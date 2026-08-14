@@ -7,6 +7,14 @@
 > **Tracking branch:** `fix/v312-24-round-9-sqllogictest-16-fix`
 > **Purpose:** 提供 v3.12 release 中 #3911 (V312-24) 范围内的明确 scope + 范围外的 deferred binding,作为 close #3911 的依据 (per codex #89306 item #5 "用户/Reviewer 确认 3.12 scope table")
 
+> **Current-status update (2026-08-14):** The Round-9 `16/22 FAIL`
+> scope below is historical. Current `develop/v3.12.0`
+> (`b6aede7996acc6a040bb847012e834e726bc4c03`) has
+> `scripts/gate/check_sqllogictest_v312.sh` PASS, 25/25 smoke files PASS,
+> 0 open exclusions, and 16 closed historical exclusions. The full SQLite
+> official corpus remains an RC/GA expansion item, not a Beta smoke-gate
+> claim.
+
 ---
 
 ## 1. v3.12 In-Scope (已实现并验证 PASS)
@@ -15,12 +23,12 @@
 |---|-------|-------------|----------|--------|
 | 1 | Cargo build | `cargo build -p sqlrustgo_sqllogictest --release` | `docs/releases/v3.12.0/logs/sqllogictest_6792b5fbe6_*.log` (Step `[PASS] cargo build`) | ✅ PASS |
 | 2 | Runner CLI | `cargo run -p sqlrustgo_sqllogictest -- --help` exits 0 | Same log (Step `[PASS] runner --help`) | ✅ PASS |
-| 3 | Testdata shipped | 22 .test files in `crates/sqlrustgo_sqllogictest/testdata/` | Same log (Step `[PASS] local smoke testdata exists`) | ✅ PASS |
+| 3 | Testdata shipped | 25 non-unsupported `.test` files in `crates/sqlrustgo_sqllogictest/testdata/` | `docs/releases/v3.12.0/evidence/sqllogictest/sqlite-corpus-manifest.json` | ✅ PASS |
 | 4 | Runner exit code | Round-9 fix: `std::process::exit(1)` when `files_fail > 0` | `crates/sqlrustgo_sqllogictest/src/main.rs` line 491 | ✅ Implemented |
 | 5 | Gate FAIL detection | Round-9 fix: `grep -c '^FAIL \['` from log + non-zero exit | `scripts/gate/check_sqllogictest_v312.sh` line 80-100 | ✅ Implemented |
 | 6 | Per-file table | Gate LOG promote `=== Per-file results ===` 段 | Same log | ✅ Implemented |
-| 7 | Smoke baseline PASS | 6/22 files PASS (demo, basic_select, null_test, string_test, delete__test_delete, sql__test_delete) | Per-file table in log | ✅ PASS |
-| 8 | Smoke baseline FAIL | 16/22 files FAIL — per codex #89133/#89306 strict gate, deferred to v3.13 with binding | `16-FAIL-PER-FILE-ANALYSIS.md` | ✅ Documented |
+| 7 | Smoke baseline PASS | 25/25 files PASS | `docs/releases/v3.12.0/evidence/sqllogictest/smoke-report.md` generated from `check_sqllogictest_v312.sh` at `b6aede7996` | ✅ PASS |
+| 8 | Historical smoke failures | 16/16 previous exclusions are `status: closed`; open exclusions = 0 | `docs/releases/v3.12.0/evidence/sqllogictest/exclusions.yml` | ✅ CLOSED |
 | 9 | AFP v4 gate | 6 CHECKS PASS, 0 ERROR | `evidence/anti_fabrication/afp_v4_HEAD-*.log` | ✅ PASS |
 | 10 | SQLancer smoke | 1000/1000 successful queries, 0 failed | `evidence/sqlancer/sqlancer-report-*.json` | ✅ PASS |
 | 11 | test-runner probe | 1/1 cargo-version probe | `evidence/test_runner/test-runner-report-*.json` | ✅ PASS |
@@ -30,11 +38,13 @@
 
 ---
 
-## 2. v3.12 Out-of-Scope (deferred to v3.13 with binding)
+## 2. Historical Out-of-Scope Items (Superseded)
 
 ### 2.1. Per-file binding (16 items)
 
-每项 deferred 都对应 v313-08 ~ v313-15 中的一个 OpenSpec,owner + expiry + close_boundary 全部在 `exclusions.yml` 中记录。
+The following table records the Round-9 historical state. These items are no
+longer open v3.12 smoke-gate deferrals. The current `exclusions.yml` marks all
+16 as `status: closed`, with merged PR/commit and verification notes.
 
 | File | OpenSpec | Owner | v3.13 Expiry | Close boundary |
 |------|----------|-------|--------------|----------------|
@@ -55,14 +65,16 @@
 | `aggregate__quantile_fun.test` | v313-15 | openclaw | 2026-12-31 | exit 0 + PASS |
 | `sql__quantile_fun.test` | v313-15 | openclaw | 2026-12-31 | exit 0 + PASS |
 
-### 2.2. Already-merged PRs that partially cover out-of-scope items
+### 2.2. Historical PR context
 
 | PR | Content | Partially covers |
 |----|---------|------------------|
 | #3988 | VALUES constructor in INSERT and FROM clause | v313-08 insert__test_insert_invalid (#1), insert__test_insert (#2) |
 | #3989 | NOT NULL constraints, alias scope validation, CTAS | v313-12 constraints__test_not_null (#10), v313-13 binder (#12), v313-14 create_as (#13) |
 
-These PRs explain why some test files STILL FAIL despite having partially merged fix — the merged implementation does not yet cover every edge case asserted by the corresponding test.
+These PRs explain the earlier partial state. Current smoke-gate status must be
+read from `smoke-report.md`, `sqlite-corpus-manifest.json`, and
+`exclusions.yml`, not from the Round-9 partial table.
 
 ### 2.3. Status taxonomy (Round-9, per codex #89133)
 
@@ -79,7 +91,9 @@ These PRs explain why some test files STILL FAIL despite having partially merged
 
 ## 3. v3.12 Unsupported (永久)
 
-**None.** 所有 16/16 失败项都有 v3.13 修复路径。不存在"永久不支持"。
+**None for the v3.12 smoke corpus.** The historical 16/16 smoke failures are
+closed. Full SQLite official-corpus compatibility is not claimed by this
+scope table and remains governed by the RC/GA SQLLogicTest plan.
 
 ---
 
@@ -92,27 +106,20 @@ These PRs explain why some test files STILL FAIL despite having partially merged
 | **#3911** (本 Issue) | v3.24 test infrastructure activation | **Close based on this SCOPE_TABLE** |
 | **#3988** (VALUES executor) | Already merged — partially covers #1, #2 | Already closed (was merged) |
 | **#3989** (NOT NULL/alias/CTAS) | Already merged — partially covers #10, #12, #13 | Already closed (was merged) |
-| v313-08 ~ v313-15 | OpenSpec follow-ups for 16 FAIL files | **NOT auto-closed** — close individually when respective OpenSpec ships in v3.13.0 GA (2026-12-31) |
+| v313-08 ~ v313-15 | Historical follow-ups for 16 FAIL files | Closed in current `exclusions.yml`; do not use the old deferred table as current state |
 
 ---
 
-## 5. Acceptance Criteria (for ChatGPT/codex Reviewer)
+## 5. Current Acceptance Criteria
 
-请 reviewer 在 #3911 评论中明确以下任一动作:
+For current v3.12 Beta smoke readiness, reviewers should require:
 
-### Option A (Accept scope table → close #3911)
-- 接受 §1 (in-scope) + §2 (out-of-scope deferred to v3.13) + §3 (no permanent unsupported)
-- 在 #3911 评论中写明 "Accept v3.12 scope table; close #3911 per SCOPE_TABLE_v3.12.md"
-- 触发 Gitea `PATCH /repos/openclaw/sqlrustgo/issues/3911 state=closed`
-
-### Option B (Reject scope table → keep #3911 open + Round-10 work)
-- 指出 SCOPE_TABLE 中具体哪些条目不能接受
-- 列出 Round-10 需要补做的 1 个或多个 W 工作
-- minimax 在新分支上推进 Round-10,完成后重新生成 SCOPE_TABLE + 评论
-
-### 不可接受的 reviewer action
-- ❌ 静默关闭 (close without accepting scope)
-- ❌ 关闭但不引用 SCOPE_TABLE
+1. `bash scripts/gate/check_sqllogictest_v312.sh` exits 0 on the current
+   `develop/v3.12.0` commit.
+2. The manifest shows `pass_files == total_files` and `fail_files == 0`.
+3. `exclusions.yml` has no open v3.12-blocking item.
+4. Any claim about the SQLite official corpus is explicitly scoped as RC/GA
+   work unless a separate official/cached-corpus artifact exists.
 
 ---
 
@@ -130,14 +137,14 @@ These PRs explain why some test files STILL FAIL despite having partially merged
 
 | Check | Command | Expected |
 |-------|---------|----------|
-| W1: gate exit code | `bash scripts/gate/check_sqllogictest_v312.sh; echo $?` | `1` (16 FAIL detected) |
-| W2: 5-class taxonomy | `grep '^    status:' docs/releases/v3.12.0/evidence/sqllogictest/exclusions.yml \| sort \| uniq -c` | 5/4/3/4/0/0 (parser/exec/semantic/expected/harness/fixture) |
-| W3: per-file analysis | `cat docs/releases/v3.12.0/evidence/sqllogictest/16-FAIL-PER-FILE-ANALYSIS.md \| head -50` | 16-row table with no empty fields |
+| W1: gate exit code | `bash scripts/gate/check_sqllogictest_v312.sh; echo $?` | `0` |
+| W2: smoke manifest | `python3 -c 'import json; d=json.load(open("docs/releases/v3.12.0/evidence/sqllogictest/sqlite-corpus-manifest.json")); print(d["corpus_stats"])'` | `total_files=25`, `pass_files=25`, `fail_files=0` |
+| W3: open exclusions | `grep -c 'status: closed' docs/releases/v3.12.0/evidence/sqllogictest/exclusions.yml` | `16` closed historical items; no open v3.12-blocking item |
 | W4: scope table | `grep -E '^## (In-Scope|Out-of-Scope|Unsupported)' docs/releases/v3.12.0/SCOPE_TABLE_v3.12.md` | 3 sections |
 | W4: comments posted | `curl -s -u openclaw:details8848 'http://localhost:3000/api/v1/repos/openclaw/sqlrustgo/issues/3911/comments?limit=5'` | Round-9 comment with SCOPE_TABLE link |
 
 ---
 
-**Why:** 满足 codex #89306 第 5 项要求 — "关闭前需要 runner 16/16,或用户/Reviewer 确认 3.12 scope table"。本表就是该 scope table。
-
-**How to apply:** ChatGPT/codex reviewer review this SCOPE_TABLE → choose Option A (close #3911) or Option B (Round-10 work). minimax 不 self-close。
+**Why:** This table now separates historical Round-9 scope from the current
+smoke-gate evidence, preventing stale deferred claims from being reused as
+current Beta readiness data.
