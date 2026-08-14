@@ -9,7 +9,8 @@
 //! Part of the AD-001 / PR-900 file split (issue #3661).
 
 use sqlrustgo_executor::trigger::{
-    TriggerEvent as ExecTriggerEvent, TriggerExecutor, TriggerTiming as ExecTriggerTiming,
+    TriggerBodyAuthCheck, TriggerEvent as ExecTriggerEvent, TriggerExecutor,
+    TriggerTiming as ExecTriggerTiming,
 };
 use sqlrustgo_executor::ExecutorResult;
 use sqlrustgo_parser::parser::{DeleteStatement, InsertStatement, UpdateStatement};
@@ -109,7 +110,13 @@ pub fn execute_insert<S: StorageEngine + 'static>(
     }
 
     // Execute BEFORE INSERT triggers
-    let trigger_executor = TriggerExecutor::new(engine.storage.clone());
+    let mut trigger_executor = TriggerExecutor::new(engine.storage.clone());
+    // V312-55F / Issue #4243: mirror the engine's current session user
+    // and wire the catalog-backed privilege check hook so any DML inside
+    // the trigger body is gated against the same identity as top-level
+    // statements.
+    trigger_executor.set_current_user(engine.current_user().clone());
+    trigger_executor.set_auth_check(Some(build_trigger_auth_check(engine)));
     let before_triggers = trigger_executor.get_triggers_for_operation(
         &table_name,
         ExecTriggerTiming::Before,
@@ -482,7 +489,13 @@ pub fn execute_update<S: StorageEngine + 'static>(
     let updated_rows = apply_set_clauses(&rows_to_update, &set_col_indices, &table_info);
 
     // Execute BEFORE UPDATE triggers (if any)
-    let trigger_executor = TriggerExecutor::new(engine.storage.clone());
+    let mut trigger_executor = TriggerExecutor::new(engine.storage.clone());
+    // V312-55F / Issue #4243: mirror the engine's current session user
+    // and wire the catalog-backed privilege check hook so any DML inside
+    // the trigger body is gated against the same identity as top-level
+    // statements.
+    trigger_executor.set_current_user(engine.current_user().clone());
+    trigger_executor.set_auth_check(Some(build_trigger_auth_check(engine)));
     let trigger_modified_rows = run_before_update_triggers(
         &trigger_executor,
         &table_name,
@@ -654,7 +667,13 @@ pub fn execute_delete<S: StorageEngine + 'static>(
     }
 
     // Execute BEFORE DELETE triggers
-    let trigger_executor = TriggerExecutor::new(engine.storage.clone());
+    let mut trigger_executor = TriggerExecutor::new(engine.storage.clone());
+    // V312-55F / Issue #4243: mirror the engine's current session user
+    // and wire the catalog-backed privilege check hook so any DML inside
+    // the trigger body is gated against the same identity as top-level
+    // statements.
+    trigger_executor.set_current_user(engine.current_user().clone());
+    trigger_executor.set_auth_check(Some(build_trigger_auth_check(engine)));
     let before_triggers = trigger_executor.get_triggers_for_operation(
         &table_name,
         ExecTriggerTiming::Before,
@@ -1236,4 +1255,90 @@ fn execute_delete_clustered<S: StorageEngine + 'static>(
 
     engine.commit_implicit_dml_tx(started_implicit)?;
     Ok(ExecutorResult::new(vec![], count))
+}
+
+// ── V312-55F / Issue #4243: trigger-body privilege hook ───────────────
+//
+// TriggerExecutor::check_body_privilege (defined in crates/executor/src/trigger.rs)
+// calls a `TriggerBodyAuthCheck` callback before any DML inside a trigger
+// body mutates storage. The engine owns the catalog (and therefore the
+// authoritative AuthManager), so we build a thin adapter that forwards
+// the trigger's intent ("user U wants privilege P on table T") back into
+// `ExecutionEngine::check_privilege`. This keeps the trigger crate free
+// of catalog imports while still enforcing fail-closed privilege checks
+// against the same identity as top-level statements.
+//
+// Behavior:
+//   * root@localhost → always OK (MySQL convention; short-circuits before
+//     touching the catalog lock).
+//   * No catalog configured → ExecutionError with stable 1105/HY000 surface.
+//   * Non-root, no grant → ExecutionError "Permission denied (trigger
+//     body DML): ..." before any storage mutation occurs.
+
+/// Build a `TriggerBodyAuthCheck` adapter that delegates to
+/// `ExecutionEngine::check_privilege` against the engine's current user
+/// identity and (if configured) catalog.
+fn build_trigger_auth_check<S: StorageEngine + 'static>(
+    engine: &ExecutionEngine<S>,
+) -> std::sync::Arc<dyn TriggerBodyAuthCheck> {
+    use sqlrustgo_catalog::auth::Privilege as CatalogPrivilege;
+    use sqlrustgo_catalog::auth::UserIdentity as CatalogIdentity;
+    use sqlrustgo_catalog::ObjectRef as CatalogObjectRef;
+
+    struct EngineAuthCheck {
+        catalog: Option<std::sync::Arc<parking_lot::RwLock<sqlrustgo_catalog::Catalog>>>,
+        identity: CatalogIdentity,
+    }
+
+    impl TriggerBodyAuthCheck for EngineAuthCheck {
+        fn check(
+            &self,
+            user: &CatalogIdentity,
+            privilege: CatalogPrivilege,
+            table_name: &str,
+        ) -> SqlResult<()> {
+            // Honor root@localhost bypass first — same rule as top-level
+            // `ExecutionEngine::check_privilege`.
+            if user.username == "root" {
+                return Ok(());
+            }
+            // Non-root must also match the engine's currently-bound
+            // identity. The trigger executor stores its own `current_user`
+            // mirror, but we re-validate here so a mismatched mirror
+            // (e.g. test racing) can't escalate.
+            if user.username != self.identity.username || user.host != self.identity.host {
+                return Err(SqlError::ExecutionError(format!(
+                    "trigger body DML identity mismatch: hook={}@{} engine={}@{}",
+                    user.username, user.host, self.identity.username, self.identity.host
+                )));
+            }
+            let catalog_arc = match self.catalog.as_ref() {
+                Some(c) => c.clone(),
+                None => {
+                    return Err(SqlError::ExecutionError(
+                        "trigger body DML requires a catalog to enforce privileges".to_string(),
+                    ))
+                }
+            };
+            let catalog = catalog_arc.read();
+            catalog
+                .auth_manager()
+                .check_privilege(
+                    user,
+                    &CatalogObjectRef::table(table_name),
+                    privilege,
+                )
+                .map_err(|e| {
+                    SqlError::ExecutionError(format!(
+                        "Permission denied (trigger body DML): {} on {} for {}@{} ({})",
+                        privilege, table_name, user.username, user.host, e.message
+                    ))
+                })
+        }
+    }
+
+    std::sync::Arc::new(EngineAuthCheck {
+        catalog: engine.catalog.clone(),
+        identity: engine.current_user().clone(),
+    })
 }

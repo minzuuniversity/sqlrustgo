@@ -1,0 +1,5 @@
+{"table":"region","src_lines":5,"loaded_rows":5,"elapsed_sec":0.049,"rows_per_sec":102,"rc":0,"parity":"match"}
+{"table":"nation","src_lines":25,"loaded_rows":25,"elapsed_sec":0.043,"rows_per_sec":581,"rc":0,"parity":"match"}
+{"table":"supplier","src_lines":100000,"loaded_rows":100000,"elapsed_sec":897.322,"rows_per_sec":111,"rc":0,"parity":"match"}
+{"table":"customer","src_lines":1500000,"loaded_rows":-1,"elapsed_sec":1800.005,"rows_per_sec":0,"rc":124,"parity":"load_failed"}
+{"table":"part","src_lines":2000000,"loaded_rows":-1,"elapsed_sec":1800.006,"rows_per_sec":0,"rc":124,"parity":"load_failed"}

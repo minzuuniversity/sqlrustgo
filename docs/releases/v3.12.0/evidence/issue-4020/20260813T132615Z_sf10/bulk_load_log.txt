@@ -1,0 +1,16 @@
+[0;32m[bulk_load_sf10][0m starting sqlrustgo-mysql-server on 127.0.0.1:23308 (auth=none, data=/home/openclaw/workspace/dev/sqlrustgo/docs/releases/v3.12.0/evidence/issue-4020/20260813T132615Z_sf10/data, infile=/home/openclaw/tpch-dbgen-master, wal-sync=off)
+[0;32m[bulk_load_sf10][0m server listening (pid=286965)
+[0;32m[bulk_load_sf10][0m creating database + 8 TPC-H schemas
+[0;32m[bulk_load_sf10][0m   schema: region created
+[0;32m[bulk_load_sf10][0m   schema: nation created
+[0;32m[bulk_load_sf10][0m   schema: supplier created
+[0;32m[bulk_load_sf10][0m   schema: customer created
+[0;32m[bulk_load_sf10][0m   schema: part created
+[0;32m[bulk_load_sf10][0m   schema: partsupp created
+[0;32m[bulk_load_sf10][0m   schema: orders created
+[0;32m[bulk_load_sf10][0m   schema: lineitem created
+[0;32m[bulk_load_sf10][0m   region: 5 rows in 0.049s (102 rows/s) — parity=match
+[0;32m[bulk_load_sf10][0m   nation: 25 rows in 0.043s (581 rows/s) — parity=match
+[0;32m[bulk_load_sf10][0m   supplier: 100000 rows in 897.322s (111 rows/s) — parity=match
+[0;31m[bulk_load_sf10:ERROR][0m   customer: LOAD failed (rc=124) — see /home/openclaw/workspace/dev/sqlrustgo/docs/releases/v3.12.0/evidence/issue-4020/20260813T132615Z_sf10/customer_load.log
+[0;31m[bulk_load_sf10:ERROR][0m   part: LOAD failed (rc=124) — see /home/openclaw/workspace/dev/sqlrustgo/docs/releases/v3.12.0/evidence/issue-4020/20260813T132615Z_sf10/part_load.log

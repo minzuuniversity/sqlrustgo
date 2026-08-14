@@ -544,7 +544,7 @@ pub fn build_combined_schema(
             primary_key: c.primary_key,
             char_max_length: c.char_max_length,
             collation: c.collation.clone(),
-            default_value: None,
+            default_value: c.default_value.clone(),
         });
     }
 
@@ -556,7 +556,7 @@ pub fn build_combined_schema(
             primary_key: c.primary_key,
             char_max_length: c.char_max_length,
             collation: c.collation.clone(),
-            default_value: None,
+            default_value: c.default_value.clone(),
         });
     }
 
@@ -586,7 +586,7 @@ pub fn build_multi_table_combined_schema(infos: &[TableInfo], prefixes: &[String
                 primary_key: c.primary_key,
                 char_max_length: c.char_max_length,
                 collation: c.collation.clone(),
-                default_value: None,
+                default_value: c.default_value.clone(),
             });
         }
     }
@@ -1058,7 +1058,8 @@ fn substitute_outer_refs_in_expr_with_own(
         | Expression::SequenceNextVal(_)
         | Expression::SequenceCurrval(_)
         | Expression::SystemVariable(_)
-        | Expression::JsonLiteral(_) => expr.clone(),
+        | Expression::JsonLiteral(_)
+        | Expression::ArrayLiteral(_) => expr.clone(),
     }
 }
 
@@ -1349,7 +1350,8 @@ fn substitute_qualified_outer_refs_in_place(
         | Expression::SequenceNextVal(_)
         | Expression::SequenceCurrval(_)
         | Expression::SystemVariable(_)
-        | Expression::JsonLiteral(_) => {}
+        | Expression::JsonLiteral(_)
+        | Expression::ArrayLiteral(_) => {}
     }
 }
 
@@ -1416,7 +1418,8 @@ pub fn where_expr_has_correlated_subquery(expr: &sqlrustgo_parser::Expression) -
         | Expression::SequenceNextVal(_)
         | Expression::SequenceCurrval(_)
         | Expression::SystemVariable(_)
-        | Expression::JsonLiteral(_) => false,
+        | Expression::JsonLiteral(_)
+        | Expression::ArrayLiteral(_) => false,
     }
 }
 
@@ -1459,6 +1462,7 @@ pub fn where_expr_has_uncorrelated_subquery(expr: &sqlrustgo_parser::Expression)
         | Expression::SequenceNextVal(_)
         | Expression::SequenceCurrval(_)
         | Expression::SystemVariable(_)
-        | Expression::JsonLiteral(_) => false,
+        | Expression::JsonLiteral(_)
+        | Expression::ArrayLiteral(_) => false,
     }
 }
