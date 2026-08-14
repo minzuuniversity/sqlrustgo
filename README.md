@@ -128,9 +128,14 @@ Hybrid retrieval / Vector retrieval / SQL-backed graph projection / RAG evidence
 | Sysbench OLTP | 未作为 GA 主证据 | PARTIAL / blocker | read_only: 2870.99 qps / 179.44 tps；write/read_write 因行级锁/隔离问题失败；见 [#4210](http://192.168.0.252:3000/openclaw/sqlrustgo/issues/4210)、[#4211](http://192.168.0.252:3000/openclaw/sqlrustgo/issues/4211) |
 | Prometheus `/metrics` | N/A | DONE / 有限制 | endpoint 和 live scrape 已验证；query counter hot path 仍有 observability debt |
 | Slow query log | N/A | DONE / 有限制 | 单元和集成测试通过；未在真实 TPC-H SF=10 长查询上捕获日志 |
-| SQLLogicTest runner | 规划/非阻断 | DONE / smoke；RC-GA 扩展 | smoke gate 25/25 PASS；full SQLite official corpus 不宣称完成，RC/GA 扩展由 [#4224](http://192.168.0.252:3000/openclaw/sqlrustgo/issues/4224) 收口 |
-| 覆盖率治理 | PASS with follow-up | PARTIAL / blocker | v3.12 采用 per-crate 分层口径；低覆盖 crate 和 SEM-4 gap 由 [#3943](http://192.168.0.252:3000/openclaw/sqlrustgo/issues/3943) 收口 |
-| GMP schema / version / chunk / audit / relation | N/A | DONE | `sqlrustgo-gmp --lib` 154 tests PASS，含 hash-chain tamper tests |
+| SQLLogicTest runner | 规划/非阻断 | PARTIAL | runner/gate 激活；16/22 smoke files deferred to v3.13，不能写成全量 PASS |
+| 覆盖率治理 | PASS with follow-up | PARTIAL | v3.12 采用 per-crate 分层口径；低覆盖 crate 必须 issue-linked |
+| GMP schema / version / chunk / relation (CRUD 路径) | N/A | DONE | `sqlrustgo-gmp --lib` 154 tests PASS；`acl.rs` 5 角色 × 12 ops 矩阵编译校验可证 |
+| GMP 审计链 — CRUD on gmp_documents (CREATE/UPDATE/DELETE) | N/A | DONE | SHA-256 `event_hash → previous_hash`；3 hash-chain + 2 event-hash tests PASS；详见 [V312-53](docs/releases/v3.12.0/evidence/gmp_compliance/V312-53-REPORT.md) §3 |
+| GMP 审计链 — 合规操作 (IMPORT/EXPORT/APPROVE/REVIEW/BACKUP/RESTORE) | N/A | DEFERRED → v3.13 | `AuditAction` 枚举仅 Create/Update/Delete；`import_document` / `bulk_import` / `create_backup` / `restore_backup` 未调用 `record_audit_log`；Issue #4231 to open |
+| GMP 篡改检测 — 集成测试 (mutate-then-verify) | N/A | DEFERRED → v3.13 | `test_hash_chain_tamper_detection` 仅验证链完整，未 mutate storage（注释自承）；Issue #4232 to open |
+| GMP 嵌入/图投影 篡改检测 | N/A | DEFERRED → v3.13 | `chunk_embeddings` / graph 表无 `previous_hash` / `event_hash` 列；Issue #4233 to open |
+| ACL 5 角色 × 12 ops 矩阵全枚举测试 | N/A | DEFERRED → v3.13 | 12 个 spot-check ACL tests PASS（含 `test_permission_guard_fail_closed`）；5×12=60 cell 全枚举程序化测试未做；Issue #4234 to open |
 | GMP Hybrid Retrieval | N/A | DONE / 受控 | RRF、filter、citation tests；目标是 GMP 内审检索，不是通用搜索引擎 |
 | RAG Evidence Bundle | N/A | DONE / 受控 | citation/evidence_hash/answer envelope tests；需结合 GMP fixture 做质量评估 |
 | Internal Vector Retrieval | PARTIAL | PARTIAL / blocker | v3.12 支持内部 GMP/RAG 检索用途；rebuild、dimension/hash、empty-index、质量 fixture 由 [#4225](http://192.168.0.252:3000/openclaw/sqlrustgo/issues/4225) 收口；不宣称通用独立向量数据库 |
@@ -198,7 +203,7 @@ v3.12.0 的 GMP 方向是“受控内审检索系统数据库”，不是通用�
 | Hybrid retrieval | DONE / 受控 | [V312-05](docs/releases/v3.12.0/v312-05-hybrid-retrieval-report.md) |
 | SQL-backed graph projection | DONE / 受控 | [V312-06](docs/releases/v3.12.0/v312-06-graph-projection-report.md) |
 | RAG evidence bundle | DONE / 受控 | [V312-07](docs/releases/v3.12.0/v312-07-rag-evidence-bundle-report.md) |
-| GMP compliance audit controls | PARTIAL / blocker | [GMP 合规矩阵](docs/releases/v3.12.0/GMP_COMPLIANCE_MATRIX.md)、[V312-08](docs/releases/v3.12.0/v312-08-compliance-audit-report.md)；生产 ACL/audit-chain/tamper 全链路由 [#4226](http://192.168.0.252:3000/openclaw/sqlrustgo/issues/4226) 收口 |
+| GMP compliance audit controls | PARTIAL / 持续补强 | [GMP 合规矩阵](docs/releases/v3.12.0/GMP_COMPLIANCE_MATRIX.md)、[V312-08](docs/releases/v3.12.0/v312-08-compliance-audit-report.md)、[V312-53](docs/releases/v3.12.0/evidence/gmp_compliance/V312-53-REPORT.md) |
 
 允许的产品声明：SQLRustGo v3.12 支持受控 GMP 内审检索工作负载中的关系存储、chunk、embedding、audit trail、evidence relation、hybrid retrieval 和 SQL-backed graph projection。
 
