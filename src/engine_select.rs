@@ -1465,6 +1465,12 @@ impl<S: StorageEngine + 'static> ExecutionEngine<S> {
                 // SQL:92 ordered-set aggregate semantics (fraction
                 // interpolated linearly for continuous; rounded down for
                 // discrete).
+                //
+                // V313-followup-3 / Issue #4216: array-fraction form
+                // `quantile_disc(col, [0.25, 0.5, 0.75])` returns a
+                // single Text cell "[v1, v2, ...]" computed by the same
+                // per-fraction algorithm. Multi-row emission (one row per
+                // fraction) is deferred to the next follow-up (#4216.3).
                 AggregateFunction::QuantileDisc
                 | AggregateFunction::QuantileCont
                 | AggregateFunction::PercentileCont => {
@@ -1473,12 +1479,53 @@ impl<S: StorageEngine + 'static> ExecutionEngine<S> {
                     } else {
                         1
                     };
-                    let frac = match agg.args.get(frac_idx).and_then(|e| match e {
-                        sqlrustgo_parser::Expression::Literal(lit) => lit.parse::<f64>().ok(),
+                    // Detect array-literal fraction form before attempting
+                    // the single-fraction parse below.
+                    let array_fracs: Option<Vec<f64>> = match agg.args.get(frac_idx) {
+                        Some(sqlrustgo_parser::Expression::ArrayLiteral(elems)) => {
+                            let mut acc = Vec::with_capacity(elems.len());
+                            for e in elems {
+                                let f = match e {
+                                    sqlrustgo_parser::Expression::Literal(lit) => {
+                                        lit.parse::<f64>().ok()
+                                    }
+                                    _ => None,
+                                };
+                                match f {
+                                    Some(v) if (0.0..=1.0).contains(&v) => acc.push(v),
+                                    _ => {
+                                        return Err(SqlError::ExecutionError(format!(
+                                            "quantile_disc / quantile_cont array element out of [0.0, 1.0]: {:?}",
+                                            e
+                                        )));
+                                    }
+                                }
+                            }
+                            Some(acc)
+                        }
                         _ => None,
-                    }) {
-                        Some(f) if (0.0..=1.0).contains(&f) => f,
-                        _ => {
+                    };
+                    let frac = match (&array_fracs, agg.args.get(frac_idx)) {
+                        (Some(_), _) => 0.0, // unused in the array branch below
+                        (None, Some(sqlrustgo_parser::Expression::Literal(lit))) => {
+                            match lit.parse::<f64>().ok() {
+                                Some(f) if (0.0..=1.0).contains(&f) => f,
+                                _ => {
+                                    let msg = if matches!(
+                                        agg.func,
+                                        AggregateFunction::PercentileCont
+                                    ) {
+                                        "PercentileCont requires frac arg in [0.0, 1.0]"
+                                            .to_string()
+                                    } else {
+                                        "quantile_disc / quantile_cont requires 2nd arg in [0.0, 1.0]"
+                                            .to_string()
+                                    };
+                                    return Err(SqlError::ExecutionError(msg));
+                                }
+                            }
+                        }
+                        (None, _) => {
                             let msg = if matches!(agg.func, AggregateFunction::PercentileCont) {
                                 "PercentileCont requires frac arg in [0.0, 1.0]".to_string()
                             } else {
@@ -1504,6 +1551,26 @@ impl<S: StorageEngine + 'static> ExecutionEngine<S> {
                     }
                     if sorted.is_empty() {
                         Value::Null
+                    } else if let Some(fracs) = array_fracs {
+                        // Array-fraction form: compute one value per
+                        // fraction, emit as Text "[v1, v2, ...]".
+                        let parts: Vec<String> = fracs
+                            .iter()
+                            .map(|f| {
+                                let idx = (f * (sorted.len() as f64 - 1.0)).max(0.0);
+                                let lo = idx.floor() as usize;
+                                let hi = idx.ceil() as usize;
+                                if matches!(agg.func, AggregateFunction::QuantileDisc) || lo == hi {
+                                    let v = sorted[lo.min(sorted.len() - 1)];
+                                    format!("{}", v)
+                                } else {
+                                    let frac_part = idx - lo as f64;
+                                    let v = sorted[lo] + (sorted[hi] - sorted[lo]) * frac_part;
+                                    format!("{}", v)
+                                }
+                            })
+                            .collect();
+                        Value::Text(format!("[{}]", parts.join(", ")))
                     } else {
                         let idx = (frac * (sorted.len() as f64 - 1.0)).max(0.0);
                         let lo = idx.floor() as usize;
@@ -3527,7 +3594,8 @@ impl<S: StorageEngine + 'static> ExecutionEngine<S> {
             | Expression::SequenceNextVal(_)
             | Expression::SequenceCurrval(_)
             | Expression::SystemVariable(_)
-            | Expression::JsonLiteral(_) => where_expr.clone(),
+            | Expression::JsonLiteral(_)
+            | Expression::ArrayLiteral(_) => where_expr.clone(),
         }
     }
 

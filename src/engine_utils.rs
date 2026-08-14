@@ -1058,7 +1058,8 @@ fn substitute_outer_refs_in_expr_with_own(
         | Expression::SequenceNextVal(_)
         | Expression::SequenceCurrval(_)
         | Expression::SystemVariable(_)
-        | Expression::JsonLiteral(_) => expr.clone(),
+        | Expression::JsonLiteral(_)
+        | Expression::ArrayLiteral(_) => expr.clone(),
     }
 }
 
@@ -1349,7 +1350,8 @@ fn substitute_qualified_outer_refs_in_place(
         | Expression::SequenceNextVal(_)
         | Expression::SequenceCurrval(_)
         | Expression::SystemVariable(_)
-        | Expression::JsonLiteral(_) => {}
+        | Expression::JsonLiteral(_)
+        | Expression::ArrayLiteral(_) => {}
     }
 }
 
@@ -1416,7 +1418,8 @@ pub fn where_expr_has_correlated_subquery(expr: &sqlrustgo_parser::Expression) -
         | Expression::SequenceNextVal(_)
         | Expression::SequenceCurrval(_)
         | Expression::SystemVariable(_)
-        | Expression::JsonLiteral(_) => false,
+        | Expression::JsonLiteral(_)
+        | Expression::ArrayLiteral(_) => false,
     }
 }
 
@@ -1459,6 +1462,7 @@ pub fn where_expr_has_uncorrelated_subquery(expr: &sqlrustgo_parser::Expression)
         | Expression::SequenceNextVal(_)
         | Expression::SequenceCurrval(_)
         | Expression::SystemVariable(_)
-        | Expression::JsonLiteral(_) => false,
+        | Expression::JsonLiteral(_)
+        | Expression::ArrayLiteral(_) => false,
     }
 }

@@ -122,6 +122,15 @@ pub enum Statement {
     Deallocate {
         name: String,
     },
+    /// Round-21 / Issue #4218: MySQL `KILL <connection_id>`.
+    /// `connection_id` is the MySQL thread id of the connection to terminate.
+    /// `kill_query` distinguishes `KILL CONNECTION` (default, terminates
+    /// the connection) from `KILL QUERY <id>` (cancels the running query
+    /// only, leaves the connection alive).
+    Kill {
+        connection_id: u64,
+        kill_query: bool,
+    },
 }
 
 /// SEM-1 (#3172): Savepoint operation kind.
@@ -796,6 +805,9 @@ pub enum ShowStatement {
         table: String,
     },
     Sequences,
+    /// Round-21 / Issue #4218: MySQL `SHOW PROCESSLIST` (and
+    /// `SHOW FULL PROCESSLIST` with the `full` flag).
+    Processlist { full: bool },
 }
 
 /// DESCRIBE statement (aliased as DESC)
@@ -931,6 +943,10 @@ pub enum Expression {
     /// `@@sql_mode`, etc. The `String` is the variable name in lower-case.
     /// The executor resolves the name to a scalar value at evaluation time.
     SystemVariable(String),
+    /// Round-21 / Issue #4216: array literal `[expr, expr, ...]`.
+    /// Used by the array-fraction form of ordered-set aggregates
+    /// (e.g. `quantile_disc(col, [0.25, 0.5, 0.75])`).
+    ArrayLiteral(Vec<Expression>),
 }
 
 /// V312-19 #3972: constant-fold an arithmetic expression to a `u64` LIMIT/OFFSET value.
@@ -1953,6 +1969,17 @@ impl Parser {
             Some(Token::Revoke) => self.parse_revoke(),
             Some(Token::Show) => self.parse_show(),
             Some(Token::Describe) | Some(Token::Desc) => self.parse_describe(),
+            // Round-21 / Issue #4218: KILL is parsed as an Identifier
+            // (no dedicated Token::Kill in the lexer), so match by
+            // uppercased ident here.
+            Some(Token::Identifier(ref ident))
+                if matches!(
+                    ident.to_uppercase().as_str(),
+                    "KILL"
+                ) =>
+            {
+                self.parse_kill()
+            }
             Some(t) => Err(format!("Unexpected token: {:?}", t)),
             None => Err("Empty input".to_string()),
         }
@@ -7410,6 +7437,25 @@ impl Parser {
                     }
                 }
             }
+            // Round-21 / Issue #4216: array literal `[expr, expr, ...]`.
+            // Used by the array-fraction form of ordered-set aggregates
+            // (e.g. `quantile_disc(col, [0.25, 0.5, 0.75])`).
+            Some(Token::LBracket) => {
+                self.next(); // consume `[`
+                let mut elems = Vec::new();
+                if !matches!(self.current(), Some(Token::RBracket)) {
+                    loop {
+                        elems.push(self.parse_expression()?);
+                        if matches!(self.current(), Some(Token::Comma)) {
+                            self.next();
+                        } else {
+                            break;
+                        }
+                    }
+                }
+                self.expect(Token::RBracket)?;
+                Ok(Expression::ArrayLiteral(elems))
+            }
             Some(Token::Exists) => {
                 self.next();
                 self.expect(Token::LParen)?;
@@ -8827,6 +8873,58 @@ impl Parser {
         Ok(Statement::Truncate(TruncateStatement { name }))
     }
 
+    /// Round-21 / Issue #4218: MySQL `KILL [QUERY|CONNECTION] <id>` parser.
+    /// Accepts:
+    ///   KILL <id>              → Statement::Kill { connection_id, kill_query: false }
+    ///   KILL CONNECTION <id>   → Statement::Kill { connection_id, kill_query: false }
+    ///   KILL QUERY <id>        → Statement::Kill { connection_id, kill_query: true }
+    fn parse_kill(&mut self) -> Result<Statement, String> {
+        // Consume the KILL identifier
+        self.expect(Token::Identifier("KILL".to_string()))?;
+        // Match either `CONNECTION` (default) or `QUERY`
+        let kill_query = match self.current() {
+            Some(Token::Identifier(ref ident)) if ident.to_uppercase() == "QUERY" => {
+                self.next();
+                true
+            }
+            Some(Token::Identifier(ref ident)) if ident.to_uppercase() == "CONNECTION" => {
+                self.next();
+                false
+            }
+            _ => false,
+        };
+        // Expect a numeric literal or numeric identifier for connection_id.
+        // Token::NumberLiteral carries the raw digit string (lexer doesn't
+        // pre-parse), so we parse to u64 here.
+        let connection_id = match self.next() {
+            Some(Token::NumberLiteral(n)) => n.parse::<u64>().map_err(|_| {
+                format!(
+                    "Expected numeric connection id after KILL, got {:?}",
+                    n
+                )
+            })?,
+            // Some MySQL clients pass the id as an unquoted identifier
+            // (e.g. `KILL 12345`). Accept that form too.
+            Some(Token::Identifier(s)) => s.parse::<u64>().map_err(|_| {
+                format!(
+                    "Expected numeric connection id after KILL, got identifier {:?}",
+                    s
+                )
+            })?,
+            Some(other) => {
+                return Err(format!(
+                    "Expected numeric connection id after KILL, got {:?}",
+                    other
+                ));
+            }
+            None => return Err("Expected connection id after KILL".to_string()),
+        };
+        Ok(Statement::Kill {
+            connection_id,
+            kill_query,
+        })
+    }
+
     fn parse_show(&mut self) -> Result<Statement, String> {
         self.expect(Token::Show)?;
 
@@ -8884,6 +8982,26 @@ impl Parser {
                     _ => return Err("Expected table name".to_string()),
                 };
                 Ok(Statement::Show(ShowStatement::Index { table }))
+            }
+            Some(Token::Identifier(ref ident))
+                if ident.to_uppercase() == "PROCESSLIST" =>
+            {
+                // Round-21 / Issue #4218: SHOW [FULL] PROCESSLIST
+                self.next();
+                Ok(Statement::Show(ShowStatement::Processlist { full: false }))
+            }
+            Some(Token::Full) => {
+                // Round-21 / Issue #4218: SHOW FULL PROCESSLIST
+                self.next();
+                match self.current() {
+                    Some(Token::Identifier(ref ident))
+                        if ident.to_uppercase() == "PROCESSLIST" =>
+                    {
+                        self.next();
+                        Ok(Statement::Show(ShowStatement::Processlist { full: true }))
+                    }
+                    _ => Err("Expected PROCESSLIST after SHOW FULL".to_string()),
+                }
             }
             Some(Token::Identifier(ref ident)) if ident.to_uppercase() == "GRANTS" => {
                 self.next();
@@ -10676,6 +10794,74 @@ mod tests {
                 assert_eq!(table, "users");
             }
             _ => panic!("Expected DESC users statement"),
+        }
+    }
+
+    /// Round-21 / Issue #4218: SHOW PROCESSLIST → Statement::Show(ShowStatement::Processlist { full: false })
+    #[test]
+    fn test_parse_show_processlist_v312_35() {
+        let result = parse("SHOW PROCESSLIST");
+        assert!(result.is_ok(), "Parse failed: {:?}", result);
+        match result.unwrap() {
+            Statement::Show(ShowStatement::Processlist { full }) => {
+                assert!(!full, "Expected SHOW PROCESSLIST (not FULL)");
+            }
+            other => panic!("Expected Statement::Show(Processlist), got {:?}", other),
+        }
+    }
+
+    /// Round-21 / Issue #4218: SHOW FULL PROCESSLIST → Processlist { full: true }
+    #[test]
+    fn test_parse_show_full_processlist_v312_35() {
+        let result = parse("SHOW FULL PROCESSLIST");
+        assert!(result.is_ok(), "Parse failed: {:?}", result);
+        match result.unwrap() {
+            Statement::Show(ShowStatement::Processlist { full }) => {
+                assert!(full, "Expected SHOW FULL PROCESSLIST");
+            }
+            other => panic!("Expected Statement::Show(Processlist {{ full: true }}), got {:?}", other),
+        }
+    }
+
+    /// Round-21 / Issue #4218: KILL <id> → Statement::Kill { connection_id, kill_query: false }
+    #[test]
+    fn test_parse_kill_v312_35() {
+        let result = parse("KILL 12345");
+        assert!(result.is_ok(), "Parse failed: {:?}", result);
+        match result.unwrap() {
+            Statement::Kill { connection_id, kill_query } => {
+                assert_eq!(connection_id, 12345, "Expected connection_id=12345");
+                assert!(!kill_query, "Default KILL is CONNECTION, not QUERY");
+            }
+            other => panic!("Expected Statement::Kill, got {:?}", other),
+        }
+    }
+
+    /// Round-21 / Issue #4218: KILL QUERY <id> → kill_query: true
+    #[test]
+    fn test_parse_kill_query_v312_35() {
+        let result = parse("KILL QUERY 99");
+        assert!(result.is_ok(), "Parse failed: {:?}", result);
+        match result.unwrap() {
+            Statement::Kill { connection_id, kill_query } => {
+                assert_eq!(connection_id, 99);
+                assert!(kill_query, "Expected KILL QUERY form");
+            }
+            other => panic!("Expected Statement::Kill {{ kill_query: true }}, got {:?}", other),
+        }
+    }
+
+    /// Round-21 / Issue #4218: KILL CONNECTION <id> → explicit connection form
+    #[test]
+    fn test_parse_kill_connection_v312_35() {
+        let result = parse("KILL CONNECTION 7");
+        assert!(result.is_ok(), "Parse failed: {:?}", result);
+        match result.unwrap() {
+            Statement::Kill { connection_id, kill_query } => {
+                assert_eq!(connection_id, 7);
+                assert!(!kill_query, "KILL CONNECTION should leave kill_query=false");
+            }
+            other => panic!("Expected Statement::Kill {{ kill_query: false }}, got {:?}", other),
         }
     }
     #[test]
@@ -14991,4 +15177,46 @@ fn test_parse_select_into() {
 #[test]
 fn test_parse_with_recursive() {
     let _ = parse("WITH RECURSIVE cte AS (SELECT 1 UNION SELECT cte.x + 1 FROM cte WHERE cte.x < 10) SELECT * FROM cte");
+}
+
+// Round-21 / Issue #4216: array-fraction form for quantile_disc/cont.
+// Single-fraction (`quantile_disc(col, 0.5)`) is owned by #4155.
+// Array-fraction (`quantile_disc(col, [0.25, 0.5, 0.75])`) lives here.
+
+#[test]
+fn test_parse_quantile_disc_array_v312_46() {
+    use crate::parser::AggregateFunction;
+    let stmt = parse("SELECT quantile_disc(x, [0.25, 0.5, 0.75]) FROM t").unwrap();
+    if let Statement::Select(sel) = stmt {
+        assert_eq!(sel.aggregates.len(), 1);
+        let agg = &sel.aggregates[0];
+        assert!(matches!(agg.func, AggregateFunction::QuantileDisc));
+        assert_eq!(agg.args.len(), 2);
+        // args[1] should be an ArrayLiteral containing three fraction literals.
+        match &agg.args[1] {
+            Expression::ArrayLiteral(elems) => {
+                assert_eq!(elems.len(), 3);
+            }
+            other => panic!("expected ArrayLiteral, got {:?}", other),
+        }
+    } else {
+        panic!("expected Statement::Select");
+    }
+}
+
+#[test]
+fn test_parse_quantile_cont_array_v312_46() {
+    use crate::parser::AggregateFunction;
+    let stmt = parse("SELECT quantile_cont(x, [0.1, 0.9]) FROM t").unwrap();
+    if let Statement::Select(sel) = stmt {
+        assert_eq!(sel.aggregates.len(), 1);
+        let agg = &sel.aggregates[0];
+        assert!(matches!(agg.func, AggregateFunction::QuantileCont));
+        match &agg.args[1] {
+            Expression::ArrayLiteral(elems) => assert_eq!(elems.len(), 2),
+            other => panic!("expected ArrayLiteral, got {:?}", other),
+        }
+    } else {
+        panic!("expected Statement::Select");
+    }
 }
