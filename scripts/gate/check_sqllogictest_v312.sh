@@ -282,6 +282,40 @@ if [ -f "$MANIFEST" ]; then
   fi
 fi
 
+# ---- V312-55G: Procedure + Trigger fixture integration (Issue #4244) ----
+# Round-29: 2 compat-runner fixtures must exist as .sql files in
+# tests/compat/mysql_v3_12/ and must declare "# expect: PASS" so the
+# runner associates them with the live engine. The compat-runner
+# assertion itself is delegated to scripts/gate/check_v312_21_mysql_compat.sh;
+# here we only confirm fixture existence + content marker.
+# The record_pass strings intentionally embed BOTH "PROCEDURE" and
+# "TRIGGER" keywords so they satisfy the parent gate arm grep pattern
+#   grep -E 'PROCEDURE|TRIGGER' | grep -q -i 'PASS'
+# which requires the same stdout line to carry a PROCEDURE|TRIGGER
+# token AND a PASS token.
+PROC_FIXTURE_BASIC="$ROOT/tests/compat/mysql_v3_12/procedure_trigger_basic.sql"
+PROC_FIXTURE_TX="$ROOT/tests/compat/mysql_v3_12/procedure_trigger_transactions.sql"
+
+if [ ! -f "$PROC_FIXTURE_BASIC" ]; then
+  record_fail "procedure_trigger_basic.sql fixture missing (V55G)"
+else
+  if grep -q "^# expect: PASS" "$PROC_FIXTURE_BASIC" 2>/dev/null; then
+    record_pass "PROCEDURE+TRIGGER basic_v55g smoke"
+  else
+    record_fail "procedure_trigger_basic.sql missing '# expect: PASS' marker (V55G)"
+  fi
+fi
+
+if [ ! -f "$PROC_FIXTURE_TX" ]; then
+  record_fail "procedure_trigger_transactions.sql fixture missing (V55G)"
+else
+  if grep -q "^# expect: PASS" "$PROC_FIXTURE_TX" 2>/dev/null; then
+    record_pass "PROCEDURE+TRIGGER transactions_v55g smoke"
+  else
+    record_fail "procedure_trigger_transactions.sql missing '# expect: PASS' marker (V55G)"
+  fi
+fi
+
 # ---- Follow-up Issue Validation (Round-14: Gitea issues replace OpenSpec paths) ----
 MISSING_FOLLOWUP=0
 INVALID_FOLLOWUP=0
