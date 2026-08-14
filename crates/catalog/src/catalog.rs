@@ -212,38 +212,69 @@ impl Catalog {
     }
 
     // ============ Stored procedure operations ============
+    //
+    // V312-55A / Issue #4238: MySQL stores procedure names case-
+    // insensitively (but preserves the original casing in SHOW).
+    // The catalog therefore normalizes every lookup / insert / remove
+    // key via `to_lowercase()`. The StoredProcedure itself still
+    // carries the original (mixed-case) `name` so SHOW PROCEDURE
+    // STATUS displays what the user typed.
+
+    /// Normalize a stored-procedure name for HashMap lookup.
+    fn proc_key(name: &str) -> String {
+        name.to_lowercase()
+    }
 
     /// Add a stored procedure.
+    ///
+    /// Fails with `DuplicateProcedure` if a procedure with the same
+    /// case-insensitive name already exists. Use
+    /// [`Self::add_or_replace_stored_procedure`] for `OR REPLACE`
+    /// semantics.
     pub fn add_stored_procedure(&mut self, procedure: StoredProcedure) -> CatalogResult<()> {
-        if self.stored_procedures.contains_key(&procedure.name) {
-            return Err(CatalogError::DuplicateTable {
-                schema: self.name.clone(),
-                table: procedure.name.clone(),
-            });
+        let key = Self::proc_key(&procedure.name);
+        if self.stored_procedures.contains_key(&key) {
+            return Err(CatalogError::DuplicateProcedure(procedure.name.clone()));
         }
-        self.stored_procedures
-            .insert(procedure.name.clone(), procedure);
+        self.stored_procedures.insert(key, procedure);
         Ok(())
     }
 
-    /// Get a stored procedure by name.
+    /// V312-55A / Issue #4238: `CREATE OR REPLACE PROCEDURE` semantics.
+    /// If a procedure with the same case-insensitive name already
+    /// exists, drop it and install the new body. Otherwise behaves
+    /// like [`Self::add_stored_procedure`].
+    pub fn add_or_replace_stored_procedure(
+        &mut self,
+        procedure: StoredProcedure,
+    ) -> CatalogResult<()> {
+        let key = Self::proc_key(&procedure.name);
+        self.stored_procedures.insert(key, procedure);
+        Ok(())
+    }
+
+    /// Get a stored procedure by name (case-insensitive).
     pub fn get_stored_procedure(&self, name: &str) -> Option<&StoredProcedure> {
-        self.stored_procedures.get(name)
+        self.stored_procedures.get(&Self::proc_key(name))
     }
 
-    /// Get all stored procedure names.
+    /// Get all stored procedure names (preserves original casing).
     pub fn stored_procedure_names(&self) -> Vec<&str> {
-        self.stored_procedures.keys().map(|s| s.as_str()).collect()
+        self.stored_procedures
+            .values()
+            .map(|p| p.name.as_str())
+            .collect()
     }
 
-    /// Check if a stored procedure exists.
+    /// Check if a stored procedure exists (case-insensitive).
     pub fn has_stored_procedure(&self, name: &str) -> bool {
-        self.stored_procedures.contains_key(name)
+        self.stored_procedures.contains_key(&Self::proc_key(name))
     }
 
-    /// Remove a stored procedure.
+    /// Remove a stored procedure (case-insensitive).
+    /// Returns the removed procedure (with its original casing).
     pub fn remove_stored_procedure(&mut self, name: &str) -> Option<StoredProcedure> {
-        self.stored_procedures.remove(name)
+        self.stored_procedures.remove(&Self::proc_key(name))
     }
 
     /// Get the number of stored procedures.
@@ -482,7 +513,9 @@ mod tests {
         let proc = StoredProcedure::new("test_proc".to_string(), vec![], vec![]);
         catalog.add_stored_procedure(proc.clone()).unwrap();
         let result = catalog.add_stored_procedure(proc);
-        assert!(matches!(result, Err(CatalogError::DuplicateTable { .. })));
+        // V312-55A / Issue #4238: catalog now reports
+        // `DuplicateProcedure` (was `DuplicateTable` previously).
+        assert!(matches!(result, Err(CatalogError::DuplicateProcedure(_))));
     }
 
     #[test]

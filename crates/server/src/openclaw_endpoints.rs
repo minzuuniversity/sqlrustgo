@@ -2157,7 +2157,8 @@ fn execute_sql(
                     auto_increment: col.auto_increment,
                     compression: None,
                     collation: None,
-                })
+
+                    default_value: None,                })
                 .collect();
 
             let table_info = sqlrustgo_storage::engine::TableInfo {
