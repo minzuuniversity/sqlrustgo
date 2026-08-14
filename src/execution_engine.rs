@@ -34,8 +34,9 @@ use sqlrustgo_parser::parser::{
     AlterTableStatement, AlterUserStatement, CallStatement, CompressionAlgorithm,
     CreateDatabaseStatement, CreateIndexStatement, CreateProcedureStatement, CreateRoleStatement,
     CreateSequenceStatement, CreateTableStatement, CreateTriggerStatement, CreateViewStatement,
-    DescribeStatement, DropDatabaseStatement, DropIndexStatement, DropRoleStatement,
-    DropSequenceStatement, DropTableStatement, DropViewStatement, ExceptStatement,
+    DescribeStatement, DropDatabaseStatement, DropIndexStatement, DropProcedureStatement,
+    DropRoleStatement, DropSequenceStatement, DropTableStatement, DropViewStatement,
+    ExceptStatement,
     GrantRoleStatement, GrantStatement, InsertStatement, IntersectStatement, MergeStatement,
     ObjectType as ParserObjectType, OrderByExpression, Privilege as ParserPrivilege,
     RevokeRoleStatement, RevokeStatement, SelectStatement, SetRoleStatement, ShowStatement,
@@ -657,6 +658,8 @@ impl<S: StorageEngine + 'static> ExecutionEngine<S> {
             Statement::CreateProcedure(ref create_proc) => {
                 self.execute_create_procedure(create_proc)
             }
+            // V312-55A / Issue #4238: route DROP PROCEDURE.
+            Statement::DropProcedure(ref drop_proc) => self.execute_drop_procedure(drop_proc),
             Statement::Transaction(ref txn) => self.execute_transaction(txn),
             // SEM-1 (#3172): SAVEPOINT/ROLLBACK TO SAVEPOINT/RELEASE SAVEPOINT
             Statement::SavepointStatement { ref name, op } => self.execute_savepoint(name, op),
@@ -1126,10 +1129,44 @@ impl<S: StorageEngine + 'static> ExecutionEngine<S> {
 
         let procedure = StoredProcedure::new(stmt.name.clone(), params, body);
 
-        catalog.add_stored_procedure(procedure).map_err(|e| {
-            SqlError::ExecutionError(format!("Failed to create procedure: {:?}", e))
-        })?;
+        // V312-55A / Issue #4238: `OR REPLACE` semantics — overwrite an
+        // existing procedure with the same case-insensitive name
+        // instead of failing with DuplicateProcedure.
+        if stmt.or_replace {
+            catalog.add_or_replace_stored_procedure(procedure).map_err(|e| {
+                SqlError::ExecutionError(format!("Failed to create or replace procedure: {:?}", e))
+            })?;
+        } else {
+            catalog.add_stored_procedure(procedure).map_err(|e| {
+                SqlError::ExecutionError(format!("Failed to create procedure: {:?}", e))
+            })?;
+        }
 
+        Ok(ExecutorResult::empty())
+    }
+
+    /// V312-55A / Issue #4238: drop a stored procedure from the catalog.
+    ///
+    /// `IF EXISTS` makes the operation a no-op when the procedure does
+    /// not exist (instead of returning an error). Without `IF EXISTS`
+    /// we return ProcedureNotFound so callers can detect typos.
+    fn execute_drop_procedure(
+        &self,
+        stmt: &DropProcedureStatement,
+    ) -> SqlResult<ExecutorResult> {
+        let catalog_guard = self.catalog.as_ref().ok_or_else(|| {
+            SqlError::ExecutionError(
+                "DROP PROCEDURE requires stored procedure catalog".to_string(),
+            )
+        })?;
+        let mut catalog = catalog_guard.write();
+
+        if catalog.remove_stored_procedure(&stmt.name).is_none() && !stmt.if_exists {
+            return Err(SqlError::ExecutionError(format!(
+                "DROP PROCEDURE failed: procedure '{}' not found",
+                stmt.name
+            )));
+        }
         Ok(ExecutorResult::empty())
     }
 

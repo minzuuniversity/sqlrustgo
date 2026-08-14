@@ -343,6 +343,10 @@ impl<S: StorageEngine + 'static> ExecutionEngine<S> {
             // Round-21 / Issue #4218: SHOW PROCESSLIST — no live process
             // registry yet, return empty result (single col header dropped).
             ShowStatement::Processlist { .. } => self.execute_show_processlist(),
+            // V312-55A / Issue #4238: SHOW PROCEDURE STATUS [LIKE 'pat']
+            ShowStatement::ProcedureStatus { pattern } => {
+                self.execute_show_procedure_status(pattern.as_deref())
+            }
         }
     }
 
@@ -372,6 +376,46 @@ impl<S: StorageEngine + 'static> ExecutionEngine<S> {
         let names = storage.list_sequences();
         let rows: Vec<Vec<Value>> = names.into_iter().map(|n| vec![Value::Text(n)]).collect();
         Ok(ExecutorResult::new(rows, 1))
+    }
+
+    /// V312-55A / Issue #4238: `SHOW PROCEDURE STATUS [LIKE 'pat']`.
+    ///
+    /// Lists procedures from the in-memory catalog. Each row is
+    /// (Name, ParamCount, BodyStatementCount). The catalog must be
+    /// attached (`ExecutionEngine::with_memory_and_catalog`) for this
+    /// to return anything other than an empty set — consistent with
+    /// other Procedure DDL endpoints.
+    pub(crate) fn execute_show_procedure_status(
+        &self,
+        pattern: Option<&str>,
+    ) -> SqlResult<ExecutorResult> {
+        let catalog_guard = self.catalog.as_ref().ok_or_else(|| {
+            SqlError::ExecutionError(
+                "SHOW PROCEDURE STATUS requires stored procedure catalog".to_string(),
+            )
+        })?;
+        let catalog = catalog_guard.read();
+
+        let pattern_lower = pattern.map(|p| p.to_lowercase());
+        let mut rows: Vec<Vec<Value>> = Vec::new();
+        for proc in catalog.stored_procedures() {
+            // MySQL SHOW PROCEDURE STATUS LIKE uses SQL LIKE glob
+            // semantics. We approximate: leading/trailing `%` are
+            // wildcards; the rest must match case-insensitively.
+            // Anything else (e.g. `_`) is treated as a literal — good
+            // enough for the v3.12.0 controlled-subset wire surface.
+            if let Some(ref pat) = pattern_lower {
+                if !like_match(&pat, &proc.name.to_lowercase()) {
+                    continue;
+                }
+            }
+            rows.push(vec![
+                Value::Text(proc.name.clone()),
+                Value::Integer(proc.params.len() as i64),
+                Value::Integer(proc.body.len() as i64),
+            ]);
+        }
+        Ok(ExecutorResult::new(rows, 3))
     }
 
     /// SHOW CREATE TABLE — reconstruct CREATE TABLE from the live schema.
@@ -624,5 +668,85 @@ impl<S: StorageEngine + 'static> ExecutionEngine<S> {
     /// Get prepared statement cache statistics.
     pub fn stmt_cache_stats(&self) -> sqlrustgo_cache::CacheStats {
         self.stmt_cache.stats()
+    }
+}
+
+/// V312-55A / Issue #4238: minimal SQL LIKE matcher used by
+/// `SHOW PROCEDURE STATUS LIKE 'pat'`. Supports `%` as zero-or-more
+/// wildcard; everything else is matched literally. The pattern is
+/// pre-lowercased by the caller; the haystack must also be
+/// pre-lowercased.
+///
+/// This is intentionally tiny — the v3.12.0 controlled subset for
+/// SHOW PROCEDURE STATUS only needs to filter by procedure name, and
+/// the existing wire protocol already case-folds procedure names.
+fn like_match(pattern: &str, haystack: &str) -> bool {
+    if pattern == "%" {
+        return true;
+    }
+    if !pattern.contains('%') {
+        return pattern == haystack;
+    }
+    // Split on '%', iterate segments in order.
+    let segments: Vec<&str> = pattern.split('%').collect();
+    let mut pos = 0usize;
+    let bytes = haystack.as_bytes();
+    // Leading literal
+    let first = segments.first().copied().unwrap_or("");
+    if !first.is_empty() {
+        if !haystack.starts_with(first) {
+            return false;
+        }
+        pos = first.len();
+    }
+    // Trailing literal
+    let last = segments.last().copied().unwrap_or("");
+    if !last.is_empty() {
+        if !haystack.ends_with(last) {
+            return false;
+        }
+    }
+    // Middle segments must appear in order
+    for seg in &segments[1..segments.len().saturating_sub(1)] {
+        if seg.is_empty() {
+            continue;
+        }
+        if pos > bytes.len() {
+            return false;
+        }
+        match haystack[pos..].find(seg) {
+            Some(idx) => pos = pos + idx + seg.len(),
+            None => return false,
+        }
+    }
+    true
+}
+
+#[cfg(test)]
+mod like_match_tests {
+    use super::like_match;
+
+    #[test]
+    fn procedure_like_match_basic() {
+        // % is the universal wildcard
+        assert!(like_match("%", "anything"));
+        // No wildcard → exact match
+        assert!(like_match("foo", "foo"));
+        assert!(!like_match("foo", "bar"));
+        assert!(!like_match("foo", "foobar"));
+        // Leading wildcard
+        assert!(like_match("%bar", "foobar"));
+        assert!(like_match("%bar", "bar"));
+        assert!(!like_match("%bar", "foobaz"));
+        // Trailing wildcard
+        assert!(like_match("foo%", "foobar"));
+        assert!(like_match("foo%", "foo"));
+        // Both sides
+        assert!(like_match("%o%", "foobar"));
+        assert!(!like_match("%z%", "foobar"));
+        // Multiple segments
+        assert!(like_match("a%c", "abc"));
+        assert!(like_match("a%c", "abbc"));
+        assert!(!like_match("a%c", "abx"));
     }
 }
