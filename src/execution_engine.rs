@@ -16,7 +16,9 @@ use crate::expr_utils::{
 use crate::{parse, SqlError, SqlResult, Value};
 use parking_lot::RwLock;
 use sqlrustgo_catalog::stored_proc::{ParamMode, StoredProcParam, StoredProcStatement};
-use sqlrustgo_catalog::{auth::UserIdentity, Catalog, StoredProcedure};
+use sqlrustgo_catalog::{
+    auth::UserIdentity, AuthErrorCode, Catalog, ObjectRef, Privilege, StoredProcedure,
+};
 use sqlrustgo_executor::ast_adapter::AstAdapter;
 use sqlrustgo_executor::stored_proc::StoredProcExecutor;
 use sqlrustgo_executor::trigger::{
@@ -81,6 +83,10 @@ pub struct ExecutionEngine<S: StorageEngine> {
     pub(crate) tx_readonly: bool,
     pub(crate) default_isolation: TmIsolationLevel,
     pub(crate) current_role: Option<String>,
+    /// V312-55F / Issue #4243: current SQL session user identity. Defaults to
+    /// `root@localhost` (MySQL implicit full privilege). Use `set_current_user`
+    /// to switch identity for privilege-check tests / non-root sessions.
+    pub(crate) current_user: UserIdentity,
     /// V313-followup-4 / Issue #4157: `SET default_null_order` controls
     /// where NULL appears in ORDER BY output. None = engine default
     /// (nulls_first because Value::Null has the lowest discriminant);
@@ -189,6 +195,7 @@ impl<S: StorageEngine + 'static> ExecutionEngine<S> {
             tx_readonly: false,
             default_isolation: TmIsolationLevel::default(),
             current_role: None,
+            current_user: UserIdentity::new("root", "localhost"),
             session_null_order_first: None,
             checkpoint_manager: None,
             parallel_degree,
@@ -207,6 +214,53 @@ impl<S: StorageEngine + 'static> ExecutionEngine<S> {
     /// primary-key access, and warm entries surface via `ahi().lookup(...)`.
     pub fn ahi(&self) -> &Arc<AdaptiveHashIndex> {
         &self.adaptive_hash_index
+    }
+
+    /// V312-55F / Issue #4243: switch the current session user identity.
+    /// The new identity is what every `check_privilege` call uses. Default
+    /// identity is `root@localhost`, which short-circuits all privilege
+    /// checks (MySQL convention — root has implicit full privilege).
+    pub fn set_current_user(&mut self, identity: UserIdentity) {
+        self.current_user = identity;
+    }
+
+    /// V312-55F / Issue #4243: returns the current session user identity.
+    pub fn current_user(&self) -> &UserIdentity {
+        &self.current_user
+    }
+
+    /// V312-55F / Issue #4243: enforce a privilege check on the current user
+    /// against `object`. Returns `Ok(())` for `root@localhost` (implicit
+    /// superuser), otherwise consults the catalog's `AuthManager`.
+    ///
+    /// Errors are mapped to `SqlError::ExecutionError` with the original
+    /// `AuthError` message so the client sees a stable 1105 / HY000 surface
+    /// (matches MySQL's privilege-denied error family).
+    pub fn check_privilege(
+        &self,
+        catalog: &Catalog,
+        privilege: Privilege,
+        object: &ObjectRef,
+    ) -> SqlResult<()> {
+        if self.current_user.username == "root" {
+            return Ok(());
+        }
+        catalog
+            .auth_manager()
+            .check_privilege(&self.current_user, object, privilege)
+            .map_err(|e| {
+                if matches!(e.code, AuthErrorCode::PermissionDenied) {
+                    SqlError::ExecutionError(format!(
+                        "Permission denied: {} on {} for {}@{}",
+                        privilege,
+                        object.object_name,
+                        self.current_user.username,
+                        self.current_user.host
+                    ))
+                } else {
+                    SqlError::ExecutionError(e.message)
+                }
+            })
     }
 
     /// Get the active instrumentation hook. V311-06 (F-31): replace the
@@ -910,6 +964,19 @@ impl<S: StorageEngine + 'static> ExecutionEngine<S> {
     fn execute_create_trigger(&self, stmt: &CreateTriggerStatement) -> SqlResult<ExecutorResult> {
         use sqlrustgo_storage::engine::{TriggerEvent, TriggerInfo, TriggerTiming};
 
+        // V312-55F / Issue #4243: privilege check — non-root users need
+        // Create on the target table to install a trigger. Fail closed
+        // before any storage work so privilege denied doesn't leave
+        // partial trigger metadata behind.
+        if let Some(catalog_guard) = self.catalog.as_ref() {
+            let catalog = catalog_guard.read();
+            self.check_privilege(
+                &catalog,
+                Privilege::Create,
+                &ObjectRef::table(&stmt.table),
+            )?;
+        }
+
         let mut storage = self.storage.write();
         let timing = match stmt.timing.to_uppercase().as_str() {
             "BEFORE" => TriggerTiming::Before,
@@ -953,6 +1020,23 @@ impl<S: StorageEngine + 'static> ExecutionEngine<S> {
             SqlError::ExecutionError("CALL statement requires stored procedure catalog".to_string())
         })?;
         let catalog = catalog_guard.read();
+
+        // V312-55F / Issue #4243: privilege check — CALL is treated as
+        // equivalent to executing the procedure body, so we require All
+        // on the procedure name (matches MySQL's EXECUTE privilege,
+        // which we model as `All` since the `Privilege` enum does not
+        // yet have an `Execute` variant).
+        //
+        // ObjectType is `Database` (no Procedure variant yet) so we
+        // namespace the check under a synthetic "<db>.<proc>" key. The
+        // AuthManager only looks at `object_name`, so this is enough to
+        // gate non-root callers without inventing a new ObjectType.
+        let proc_object_name = format!("procedure:{}", call.procedure_name);
+        self.check_privilege(
+            &catalog,
+            Privilege::All,
+            &ObjectRef::database(&proc_object_name),
+        )?;
 
         let procedure = catalog
             .get_stored_procedure(&call.procedure_name)
@@ -1053,6 +1137,16 @@ impl<S: StorageEngine + 'static> ExecutionEngine<S> {
             )
         })?;
         let mut catalog = catalog_guard.write();
+
+        // V312-55F / Issue #4243: privilege check — non-root users need
+        // Create on a procedure namespace. ObjectType has no Procedure
+        // variant yet, so we use `database` as the namespacing object.
+        let proc_object_name = format!("procedure:{}", stmt.name);
+        self.check_privilege(
+            &*catalog,
+            Privilege::Create,
+            &ObjectRef::database(&proc_object_name),
+        )?;
 
         let params: Vec<sqlrustgo_catalog::stored_proc::StoredProcParam> = stmt
             .params
@@ -1159,6 +1253,16 @@ impl<S: StorageEngine + 'static> ExecutionEngine<S> {
             SqlError::ExecutionError("DROP PROCEDURE requires stored procedure catalog".to_string())
         })?;
         let mut catalog = catalog_guard.write();
+
+        // V312-55F / Issue #4243: privilege check — non-root users need
+        // Drop on the procedure namespace. ObjectType has no Procedure
+        // variant yet, so we use `database` as the namespacing object.
+        let proc_object_name = format!("procedure:{}", stmt.name);
+        self.check_privilege(
+            &*catalog,
+            Privilege::Drop,
+            &ObjectRef::database(&proc_object_name),
+        )?;
 
         if catalog.remove_stored_procedure(&stmt.name).is_none() && !stmt.if_exists {
             return Err(SqlError::ExecutionError(format!(
