@@ -1025,11 +1025,7 @@ impl<S: StorageEngine + 'static> ExecutionEngine<S> {
         // partial trigger metadata behind.
         if let Some(catalog_guard) = self.catalog.as_ref() {
             let catalog = catalog_guard.read();
-            self.check_privilege(
-                &catalog,
-                Privilege::Create,
-                &ObjectRef::table(&stmt.table),
-            )?;
+            self.check_privilege(&catalog, Privilege::Create, &ObjectRef::table(&stmt.table))?;
         }
 
         let mut storage = self.storage.write();
@@ -1198,7 +1194,7 @@ impl<S: StorageEngine + 'static> ExecutionEngine<S> {
         // variant yet, so we use `database` as the namespacing object.
         let proc_object_name = format!("procedure:{}", stmt.name);
         self.check_privilege(
-            &*catalog,
+            &catalog,
             Privilege::Create,
             &ObjectRef::database(&proc_object_name),
         )?;
@@ -1314,7 +1310,7 @@ impl<S: StorageEngine + 'static> ExecutionEngine<S> {
         // variant yet, so we use `database` as the namespacing object.
         let proc_object_name = format!("procedure:{}", stmt.name);
         self.check_privilege(
-            &*catalog,
+            &catalog,
             Privilege::Drop,
             &ObjectRef::database(&proc_object_name),
         )?;
