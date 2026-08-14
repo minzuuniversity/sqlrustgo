@@ -472,3 +472,151 @@ fn test_trigger_commit_persists_trigger_modifications() {
     let orders = engine.execute("SELECT * FROM orders").unwrap();
     assert_eq!(orders.rows.len(), 1, "Order row must persist after COMMIT");
 }
+
+// =============================================================================
+// V312-55A / Issue #4238: Procedure DDL lifecycle integration tests
+//
+// Covers the full CREATE → DROP → SHOW PROCEDURE STATUS cycle plus
+// IF EXISTS, OR REPLACE, and case-insensitive name lookup. The test
+// name `procedure_ddl_*` is the suffix matched by
+// `cargo test --test stored_proc_catalog_test procedure_ddl` in
+// scripts/gate/check_v312_procedure_trigger_gate.sh
+// (`V55A-Procedure-DDL` check, second arm).
+// =============================================================================
+
+#[test]
+fn procedure_ddl_create_drop_show_lifecycle() {
+    let catalog = Arc::new(RwLock::new(Catalog::new("test_ddl")));
+    let mut engine = ExecutionEngine::with_memory_and_catalog(catalog.clone());
+
+    // 1) CREATE — original casing preserved
+    engine
+        .execute("CREATE PROCEDURE MyProc() BEGIN SELECT 1; END")
+        .expect("CREATE PROCEDURE should succeed");
+
+    // 2) SHOW PROCEDURE STATUS lists the procedure by original name
+    let show = engine
+        .execute("SHOW PROCEDURE STATUS")
+        .expect("SHOW PROCEDURE STATUS should succeed");
+    assert_eq!(
+        show.rows.len(),
+        1,
+        "exactly one procedure row expected; got {:?}",
+        show.rows
+    );
+    assert_eq!(show.rows[0][0], Value::Text("MyProc".to_string()));
+    assert_eq!(show.rows[0][1], Value::Integer(0), "no params");
+    assert_eq!(show.rows[0][2], Value::Integer(1), "one body statement");
+
+    // 3) Duplicate name → error
+    let dup = engine.execute(
+        "CREATE PROCEDURE myproc() BEGIN SELECT 2; END", /* different casing */
+    );
+    assert!(
+        dup.is_err(),
+        "duplicate (case-insensitive) procedure must fail; got {:?}",
+        dup
+    );
+
+    // 4) OR REPLACE succeeds
+    engine
+        .execute("CREATE OR REPLACE PROCEDURE MyProc() BEGIN SELECT 99; END")
+        .expect("CREATE OR REPLACE should succeed");
+    let show2 = engine.execute("SHOW PROCEDURE STATUS").unwrap();
+    assert_eq!(show2.rows.len(), 1);
+
+    // 5) DROP PROCEDURE removes it
+    engine
+        .execute("DROP PROCEDURE MyProc")
+        .expect("DROP PROCEDURE should succeed");
+    let show3 = engine.execute("SHOW PROCEDURE STATUS").unwrap();
+    assert_eq!(
+        show3.rows.len(),
+        0,
+        "procedure must be gone after DROP"
+    );
+}
+
+#[test]
+fn procedure_ddl_drop_if_exists_semantics() {
+    let catalog = Arc::new(RwLock::new(Catalog::new("test_if_exists")));
+    let mut engine = ExecutionEngine::with_memory_and_catalog(catalog.clone());
+
+    // IF EXISTS on a non-existent procedure must be a no-op (success).
+    engine
+        .execute("DROP PROCEDURE IF EXISTS ghost_proc")
+        .expect("DROP IF EXISTS on missing procedure should succeed");
+
+    // Create then drop with IF EXISTS — also success.
+    engine
+        .execute("CREATE PROCEDURE ghost_proc() BEGIN SELECT 1; END")
+        .unwrap();
+    engine
+        .execute("DROP PROCEDURE IF EXISTS ghost_proc")
+        .unwrap();
+
+    // Without IF EXISTS, dropping an unknown procedure is an error.
+    let bad = engine.execute("DROP PROCEDURE ghost_proc");
+    assert!(
+        bad.is_err(),
+        "DROP PROCEDURE on missing proc without IF EXISTS must fail"
+    );
+}
+
+#[test]
+fn procedure_ddl_or_replace_creates_when_absent() {
+    let catalog = Arc::new(RwLock::new(Catalog::new("test_or_replace")));
+    let mut engine = ExecutionEngine::with_memory_and_catalog(catalog.clone());
+
+    // OR REPLACE on a fresh procedure is equivalent to CREATE.
+    engine
+        .execute("CREATE OR REPLACE PROCEDURE fresh_proc() BEGIN SELECT 1; END")
+        .unwrap();
+    let show = engine.execute("SHOW PROCEDURE STATUS").unwrap();
+    assert_eq!(show.rows.len(), 1);
+    assert_eq!(show.rows[0][0], Value::Text("fresh_proc".to_string()));
+}
+
+#[test]
+fn procedure_ddl_show_status_like_filter() {
+    let catalog = Arc::new(RwLock::new(Catalog::new("test_like")));
+    let mut engine = ExecutionEngine::with_memory_and_catalog(catalog.clone());
+
+    engine
+        .execute("CREATE PROCEDURE alpha_one() BEGIN SELECT 1; END")
+        .unwrap();
+    engine
+        .execute("CREATE PROCEDURE alpha_two() BEGIN SELECT 2; END")
+        .unwrap();
+    engine
+        .execute("CREATE PROCEDURE beta_one() BEGIN SELECT 3; END")
+        .unwrap();
+
+    let all = engine.execute("SHOW PROCEDURE STATUS").unwrap();
+    assert_eq!(all.rows.len(), 3);
+
+    let alpha = engine
+        .execute("SHOW PROCEDURE STATUS LIKE 'alpha%'")
+        .unwrap();
+    assert_eq!(
+        alpha.rows.len(),
+        2,
+        "LIKE alpha% must match alpha_one + alpha_two; got {:?}",
+        alpha.rows
+    );
+
+    let only_one = engine
+        .execute("SHOW PROCEDURE STATUS LIKE '%_one'")
+        .unwrap();
+    assert_eq!(
+        only_one.rows.len(),
+        2,
+        "LIKE %_one must match alpha_one + beta_one; got {:?}",
+        only_one.rows
+    );
+
+    let none = engine
+        .execute("SHOW PROCEDURE STATUS LIKE 'nope%'")
+        .unwrap();
+    assert_eq!(none.rows.len(), 0);
+}
