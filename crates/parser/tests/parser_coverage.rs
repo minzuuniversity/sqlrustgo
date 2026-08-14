@@ -189,12 +189,9 @@ fn t_alt_drop_column() {
     ok!("ALTER TABLE t DROP COLUMN b");
 }
 #[test]
-fn t_alt_set_default_rejected() {
+fn t_alt_set_default_accepted() {
     let result = parse("ALTER TABLE t ALTER COLUMN b SET DEFAULT 42");
-    assert!(
-        result.is_err(),
-        "ALTER TABLE ALTER COLUMN SET DEFAULT not yet supported"
-    );
+    assert!(result.is_ok(), "SET DEFAULT now supported: {:?}", result);
 }
 #[test]
 fn t_alt_set_data_type() {
