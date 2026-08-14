@@ -1,0 +1,198 @@
+# Teaching SQL v3.12 - Manifest
+# This corpus is for teaching SQLRustGo behavior to developers and AI agents
+
+version: "1.0"
+owner: "sqlrustgo-team"
+stage: "teaching"
+
+description: |
+  Teaching corpus for SQLRustGo v3.12. Each SQL file demonstrates
+  a specific SQL feature or behavior pattern. The manifest tracks
+  the expected behavior (PASS/FAIL/SKIP) and any issues.
+
+oracles:
+  - type: "sqlite"
+    description: "SQLite baseline for semantic comparison"
+  - type: "mysql"
+    description: "MySQL 5.7 behavior reference"
+
+files:
+  # EXPLAIN fixtures (V312-56E)
+  - path: "explain/seq_scan.sql"
+    oracle: "sqlite"
+    expected: "PASS"
+    feature: "EXPLAIN"
+    description: "Sequential table scan plan"
+
+  - path: "explain/index_scan.sql"
+    oracle: "sqlite"
+    expected: "PASS"
+    feature: "EXPLAIN"
+    description: "Index scan plan"
+
+  - path: "explain/hash_join.sql"
+    oracle: "sqlite"
+    expected: "PASS"
+    feature: "EXPLAIN"
+    description: "Hash join plan"
+
+  - path: "explain/aggregate.sql"
+    oracle: "sqlite"
+    expected: "PASS"
+    feature: "EXPLAIN"
+    description: "GROUP BY aggregate plan"
+
+  - path: "explain/sort_limit.sql"
+    oracle: "sqlite"
+    expected: "PASS"
+    feature: "EXPLAIN"
+    description: "Sort + Limit plan"
+
+  # SELECT basics
+  - path: "select/basic.sql"
+    oracle: "sqlite"
+    expected: "PASS"
+    feature: "SELECT"
+    description: "Basic SELECT * and column list"
+
+  - path: "select/where.sql"
+    oracle: "sqlite"
+    expected: "PASS"
+    feature: "SELECT"
+    description: "WHERE clause conditions"
+
+  - path: "select/distinct.sql"
+    oracle: "sqlite"
+    expected: "PASS"
+    feature: "SELECT"
+    description: "DISTINCT keyword"
+
+  - path: "select/alias.sql"
+    oracle: "sqlite"
+    expected: "PASS"
+    feature: "SELECT"
+    description: "Column and table aliases with AS"
+
+  # JOIN
+  - path: "join/inner_join.sql"
+    oracle: "sqlite"
+    expected: "PASS"
+    feature: "JOIN"
+    description: "INNER JOIN"
+
+  - path: "join/left_join.sql"
+    oracle: "sqlite"
+    expected: "PASS"
+    feature: "JOIN"
+    description: "LEFT JOIN"
+
+  # GROUP BY
+  - path: "group/group_by.sql"
+    oracle: "sqlite"
+    expected: "PASS"
+    feature: "GROUP_BY"
+    description: "GROUP BY basics"
+
+  - path: "group/having.sql"
+    oracle: "sqlite"
+    expected: "PASS"
+    feature: "GROUP_BY"
+    description: "HAVING clause"
+
+  - path: "group/aggregate.sql"
+    oracle: "sqlite"
+    expected: "PASS"
+    feature: "GROUP_BY"
+    description: "COUNT/SUM/AVG/MIN/MAX"
+
+  # NULL semantics
+  - path: "null/is_null.sql"
+    oracle: "sqlite"
+    expected: "PASS"
+    feature: "NULL"
+    description: "IS NULL / IS NOT NULL"
+
+  - path: "null/coalesce.sql"
+    oracle: "sqlite"
+    expected: "PASS"
+    feature: "NULL"
+    description: "COALESCE function"
+
+  # ORDER BY / LIMIT
+  - path: "order_limit/order_by.sql"
+    oracle: "sqlite"
+    expected: "PASS"
+    feature: "ORDER_BY"
+    description: "ORDER BY ASC/DESC"
+
+  - path: "order_limit/limit_offset.sql"
+    oracle: "sqlite"
+    expected: "PASS"
+    feature: "LIMIT"
+    description: "LIMIT and OFFSET"
+
+  # DDL
+  - path: "ddl/create_table.sql"
+    oracle: "sqlite"
+    expected: "PASS"
+    feature: "DDL"
+    description: "CREATE TABLE"
+
+  - path: "ddl/alter_table.sql"
+    oracle: "sqlite"
+    expected: "PASS"
+    feature: "DDL"
+    description: "ALTER TABLE ADD COLUMN"
+
+  # DML
+  - path: "dml/insert.sql"
+    oracle: "sqlite"
+    expected: "PASS"
+    feature: "DML"
+    description: "INSERT"
+
+  - path: "dml/update.sql"
+    oracle: "sqlite"
+    expected: "PASS"
+    feature: "DML"
+    description: "UPDATE"
+
+  - path: "dml/delete.sql"
+    oracle: "sqlite"
+    expected: "PASS"
+    feature: "DML"
+    description: "DELETE"
+
+  # Transaction
+  - path: "transaction/basic_tx.sql"
+    oracle: "sqlite"
+    expected: "PASS"
+    feature: "TRANSACTION"
+    description: "BEGIN/COMMIT/ROLLBACK"
+
+  # Prepared statements
+  - path: "prepared/basic.sql"
+    oracle: "mysql"
+    expected: "PASS"
+    feature: "PREPARED_STATEMENT"
+    description: "PREPARE/EXECUTE"
+
+  # Error cases
+  - path: "error/division_by_zero.sql"
+    oracle: "sqlite"
+    expected: "PASS"
+    feature: "ERROR"
+    description: "Division by zero handling"
+
+  - path: "error/type_mismatch.sql"
+    oracle: "sqlite"
+    expected: "FAIL"
+    feature: "ERROR"
+    description: "Type mismatch error"
+    issue_link: "TBD"
+    owner: "TBD"
+    expiry: "2026-09-01"
+
+ignore_rules:
+  - pattern: "^#.*ignore"
+    description: "Teaching corpus does not allow silent #[ignore]"

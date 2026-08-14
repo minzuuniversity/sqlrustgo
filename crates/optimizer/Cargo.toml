@@ -17,3 +17,7 @@ async-trait.workspace = true
 
 [dev-dependencies]
 tempfile.workspace = true
+
+[[test]]
+name = "histogram_e2e"
+path = "tests/histogram_e2e.rs"
