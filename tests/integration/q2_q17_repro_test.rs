@@ -7,6 +7,9 @@ use std::sync::Arc;
 // Row counts / values must match the SQLite oracle:
 //   Q2  = 44 rows   (full query incl. ORDER BY)
 //   Q17 = 23512.7528571429
+//
+// data/tpch-tiny is a symlink to data/tpch-sf01 in the repo, so this
+// works regardless of which constant name is used.
 const DATA_DIR: &str = "data/tpch-sf01";
 
 const SCHEMAS: &[&str] = &[
