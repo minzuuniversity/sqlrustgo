@@ -3439,7 +3439,7 @@ impl<S: StorageEngine + 'static> ExecutionEngine<S> {
                 let substituted =
                     substitute_outer_refs_in_select(subq, outer_row, outer_table_info);
                 let scalar = match self.execute_select(&substituted) {
-                    Ok(r) if !r.rows.is_empty() => r.rows[0].get(0).cloned(),
+                    Ok(r) if !r.rows.is_empty() => r.rows[0].first().cloned(),
                     _ => None,
                 };
                 match scalar {
@@ -3593,6 +3593,7 @@ impl<S: StorageEngine + 'static> ExecutionEngine<S> {
             // outer ref value, not outer_row[1]. In JOIN contexts the
             // referenced column may be at a different index (Q17: lineitem
             // cols 0-15, part cols 16-24; `p_partkey` is at index 16).
+            #[allow(unreachable_patterns)]
             Expression::Subquery(_subq) => {
                 // TPC-H Q17 perf fast-path: correlated scalar aggregate
                 // subquery of the shape
