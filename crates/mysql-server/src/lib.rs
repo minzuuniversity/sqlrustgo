@@ -3833,6 +3833,8 @@ fn statement_kind(parsed: &Result<Statement, String>) -> &'static str {
             Statement::Prepare { .. }
             | Statement::Execute { .. }
             | Statement::Deallocate { .. } => "PREPARED_STMT",
+            // Round-21 / Issue #4218: KILL admin statement.
+            Statement::Kill { .. } => "KILL",
         },
     }
 }
@@ -3989,6 +3991,13 @@ fn handle_load_local_infile<S: Read + Write>(
     _delim: char,
     data_dir: std::path::PathBuf,
     bulk_buf_size: usize,
+    // Round-21 / Issue #4217: chunk size for `bulk_insert` flushes.
+    // Replaces the hard-coded `PERIODIC_FLUSH_ROWS = 100` so that
+    // large tables (e.g. TPC-H SF=10 lineitem with 6M rows) can
+    // accumulate more rows per flush instead of paying the
+    // write-lock + Vec allocation cost on every 100 rows.
+    // 0 means "disable periodic flush, only flush when buf drains".
+    rows_per_flush: usize,
     seq: &mut u8,
     _cap: u32,
 ) -> MySqlResult<u64> {
@@ -4105,7 +4114,14 @@ fn handle_load_local_infile<S: Read + Write>(
         // is fully drained, and bulk_insert on the entire pending
         // set blocks the accept loop long enough that the client
         // times out.
-        const PERIODIC_FLUSH_ROWS: usize = 100;
+        //
+        // Round-21 / Issue #4217: chunk size is now configurable via
+        // `rows_per_flush` (default 10_000, was hard-coded 100). The
+        // 100-row default made a 6M-row lineitem SF=10 load take ~60K
+        // `bulk_insert_records` calls; 10_000-row chunks cut that to
+        // ~600 calls and raise throughput dramatically. Setting to 0
+        // disables the periodic flush (legacy V312-32 behavior).
+        let periodic_threshold = rows_per_flush;
         if buf.is_empty() && pending_rows.len() > last_flush_kept_rows {
             let pending = std::mem::take(&mut pending_rows);
             last_flush_kept_rows = 0;
@@ -4129,8 +4145,8 @@ fn handle_load_local_infile<S: Read + Write>(
             let n = bulk_insert(engine, table, pending)
                 .map_err(|e| MySqlError::Other(format!("bulk_insert: {}", e)))?;
             total_rows += n;
-        } else if pending_rows.len() >= PERIODIC_FLUSH_ROWS {
-            // Periodic flush: every PERIODIC_FLUSH_ROWS rows, flush
+        } else if periodic_threshold > 0 && pending_rows.len() >= periodic_threshold {
+            // Periodic flush: every `rows_per_flush` rows, flush
             // even if buf is non-empty. The remaining bytes in buf
             // are a partial line that will complete in a later
             // packet.
@@ -4297,6 +4313,12 @@ fn do_command_loop<S: Read + Write + DrainWrites>(
                         .unwrap_or_else(|| data_dir.clone());
                     let data_dir = load_infile_dir;
                     let bulk_buf = config.bulk_insert_buffer_size;
+                    // Round-21 / Issue #4217: per-handle chunk size
+                    // for LOAD DATA bulk_insert flushes. Default
+                    // 10_000 (raises the previous hard-coded 100 to
+                    // dramatically reduce write-lock acquisitions
+                    // on large tables like TPC-H SF=10 lineitem).
+                    let rows_per_flush = config.bulk_insert_rows_per_flush;
                     // G13-OLTP-1: poisoning recovery on the engine
                     // write lock. A previous LOAD DATA may have
                     // panicked mid-insert (e.g. parse_tbl_line on
@@ -4313,6 +4335,7 @@ fn do_command_loop<S: Read + Write + DrainWrites>(
                         delim,
                         data_dir,
                         bulk_buf,
+                        rows_per_flush,
                         &mut seq,
                         cap,
                     ) {
@@ -5207,10 +5230,19 @@ pub fn run_server_v2(
         .ok()
         .filter(|s| !s.is_empty())
         .map(std::path::PathBuf::from);
+    // Round-21 / Issue #4217: read the per-server
+    // `bulk_insert_rows_per_flush` from env so CLI plumbing (in
+    // main.rs) doesn't have to widen `run_server_v2`'s signature.
+    // When unset (or unparseable), fall back to the default 10_000.
+    let bulk_insert_rows_per_flush = std::env::var("SQLRUSTGO_BULK_INSERT_ROWS_PER_FLUSH")
+        .ok()
+        .and_then(|s| s.parse::<usize>().ok())
+        .unwrap_or(10_000);
     let cfg = EphemeralConfig {
         data_dir: Some(std::path::PathBuf::from(data_dir)),
         load_infile_dir,
         server_threads,
+        bulk_insert_rows_per_flush,
         ..Default::default()
     };
 
@@ -6802,6 +6834,15 @@ pub mod testing {
         /// LOAD DATA LOCAL INFILE. Default 1 MB. Tests / perf benches
         /// can set higher (e.g. 16 MB) for fewer INSERT round-trips.
         pub bulk_insert_buffer_size: usize,
+        /// Round-21 / Issue #4217: number of rows per
+        /// `bulk_insert_records` flush during LOAD DATA LOCAL INFILE.
+        /// Default 10_000 (raises the previous hard-coded 100-row
+        /// constant so large tables like TPC-H SF=10 lineitem can
+        /// avoid paying write-lock + Vec allocation cost on every
+        /// 100 rows). Setting to 0 disables the periodic flush and
+        /// falls back to "flush only when the per-packet byte buffer
+        /// fully drains" (V312-32 legacy behavior).
+        pub bulk_insert_rows_per_flush: usize,
         /// Maximum concurrent connection-handler worker threads.
         /// 0 = legacy unbounded `thread::spawn` (backwards compatible).
         /// 1..=80 = bounded `ServerThreadPool` with N workers +
@@ -6850,6 +6891,7 @@ pub mod testing {
                 load_infile_dir: None,
                 bootstrap_sql: Vec::new(),
                 bulk_insert_buffer_size: 1_048_576,
+                bulk_insert_rows_per_flush: 10_000,
                 server_threads: 16,
                 storage: None,
                 port: None,
@@ -7266,6 +7308,7 @@ pub mod testing {
                     bootstrap_tables: true,
                     bootstrap_sql: Vec::new(),
                     bulk_insert_buffer_size: 1_048_576,
+                    bulk_insert_rows_per_flush: 10_000,
                     server_threads: 2,
                     storage: None,
                     data_dir: None,
@@ -7383,6 +7426,7 @@ pub mod testing {
                 data_dir: None,
                 bootstrap_sql: vec!["CREATE TABLE t (id INT)".to_string()],
                 bulk_insert_buffer_size: 4096,
+                bulk_insert_rows_per_flush: 10_000,
                 server_threads: 2,
                 storage: Some("binary".to_string()),
                 port: Some(0),
