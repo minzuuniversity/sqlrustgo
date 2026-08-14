@@ -1002,7 +1002,7 @@ fn test_ahi_does_not_promote_for_different_tables() {
 #[test]
 fn test_executor_kill_v312_35() {
     let storage = Arc::new(RwLock::new(MemoryStorage::new()));
-    let engine = ExecutionEngine::new(storage);
+    let mut engine = ExecutionEngine::new(storage);
 
     // Default KILL <id> form (kill_query=false).
     let result = engine.execute_kill(42, false);
@@ -1032,9 +1032,8 @@ fn test_executor_show_processlist_v312_35() {
     let storage = Arc::new(RwLock::new(MemoryStorage::new()));
     let engine = ExecutionEngine::new(storage);
 
-    // SHOW PROCESSLIST — no live process registry yet; must succeed and
-    // return an empty result set (clients see zero rows but no error).
-    let result = engine.execute_show_processlist();
+    // SHOW PROCESSLIST — delegates to StorageEngine::list_processes.
+    let result = engine.execute_show_processlist_impl(false);
     assert!(
         result.is_ok(),
         "SHOW PROCESSLIST must succeed: {:?}",

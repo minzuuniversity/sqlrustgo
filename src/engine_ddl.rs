@@ -340,9 +340,10 @@ impl<S: StorageEngine + 'static> ExecutionEngine<S> {
                 self.execute_show_columns(table, pattern.as_deref())
             }
             ShowStatement::Sequences => self.execute_show_sequences(),
-            // Round-21 / Issue #4218: SHOW PROCESSLIST — no live process
-            // registry yet, return empty result (single col header dropped).
-            ShowStatement::Processlist { .. } => self.execute_show_processlist(),
+            // V312-35 #4218: SHOW PROCESSLIST — delegates to
+            // ExecutionEngine::execute_show_processlist_impl for full
+            // process info via StorageEngine::list_processes.
+            ShowStatement::Processlist { full } => self.execute_show_processlist_impl(*full),
             // V312-55A / Issue #4238: SHOW PROCEDURE STATUS [LIKE 'pat']
             ShowStatement::ProcedureStatus { pattern } => {
                 self.execute_show_procedure_status(pattern.as_deref())
@@ -351,13 +352,6 @@ impl<S: StorageEngine + 'static> ExecutionEngine<S> {
     }
 
     /// Round-21 / Issue #4218: SHOW PROCESSLIST / SHOW FULL PROCESSLIST.
-    /// The process registry is not yet implemented in v3.12.0; return an
-    /// empty result set so dispatch does not fail. Clients expecting rows
-    /// will simply see an empty result.
-    pub(crate) fn execute_show_processlist(&self) -> SqlResult<ExecutorResult> {
-        Ok(ExecutorResult::new(vec![], 6))
-    }
-
     pub(crate) fn execute_show_tables(&self) -> SqlResult<ExecutorResult> {
         let storage = self.storage.read();
         let names = storage.list_tables();
