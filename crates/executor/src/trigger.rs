@@ -94,7 +94,23 @@ impl TriggerType {
 /// Trigger executor for running database triggers
 pub struct TriggerExecutor {
     storage: Arc<RwLock<dyn StorageEngine>>,
+    /// V312-55E (Round-27): recursion depth counter shared across all
+    /// nested invocations of `execute_trigger_body`. Every call increments
+    /// the counter on entry and decrements on exit (via RAII guard). If
+    /// the counter exceeds [`MAX_RECURSION_DEPTH`] the executor aborts
+    /// with [`SqlError::TriggerRecursionLimitExceeded`] instead of letting
+    /// the host stack overflow on a self-referential or mutually-recursive
+    /// trigger pair.
+    recursion_depth: Arc<std::sync::atomic::AtomicUsize>,
 }
+
+/// V312-55E (Round-27): maximum nested trigger firing depth. Beyond this
+/// limit `TriggerExecutor` returns
+/// [`SqlError::TriggerRecursionLimitExceeded`] with the offending trigger
+/// name, current depth, and configured limit. Tuned to 16 — enough headroom
+/// for legitimate nested audit chains (3-4 deep is the realistic maximum in
+/// production schemas) while keeping stack usage bounded.
+pub const MAX_RECURSION_DEPTH: usize = 16;
 
 // P1 FIX (SGL-005): TriggerExecutor storage bypasses wrapped in transaction
 // boundary. When TriggerExecutor executes trigger body DML (INSERT/UPDATE/DELETE),
@@ -114,11 +130,24 @@ impl TriggerExecutor {
                 );
             }
         }
-        Self { storage }
+        Self {
+            storage,
+            recursion_depth: Arc::new(std::sync::atomic::AtomicUsize::new(0)),
+        }
     }
 
     pub fn storage(&self) -> Arc<RwLock<dyn StorageEngine>> {
         self.storage.clone()
+    }
+
+    /// V312-55E (Round-27): expose the shared recursion-depth counter so
+    /// integration tests can drive the depth-limit path deterministically.
+    /// Production callers must NOT mutate this directly — the
+    /// [`execute_trigger_body`] RAII guard is the only sanctioned writer.
+    /// The accessor returns the underlying `Arc<AtomicUsize>` so tests
+    /// can keep a handle to the same counter across calls.
+    pub fn recursion_depth_counter(&self) -> Arc<std::sync::atomic::AtomicUsize> {
+        self.recursion_depth.clone()
     }
 
     /// INT-4: single chokepoint for trigger-body DML. Opens a transaction, runs
@@ -242,13 +271,45 @@ impl TriggerExecutor {
     }
 
     /// Execute a single trigger's body
-    fn execute_trigger_body(
+    pub fn execute_trigger_body(
         &self,
         trigger: &TriggerInfo,
         table: &str,
         old_row: Option<&Record>,
         new_row: Option<&Record>,
     ) -> SqlResult<Record> {
+        // V312-55E (Round-27): enforce recursion depth limit BEFORE running
+        // the body so a self-referential or mutually-recursive trigger pair
+        // cannot stack-overflow the host. Increment on entry, decrement on
+        // exit via Drop guard — even if the body returns Err or panics, the
+        // counter is restored. If the post-increment depth exceeds the limit
+        // we abort with structured fields (trigger_name / depth / limit) so
+        // the parent transaction can be rolled back and the user sees an
+        // actionable error instead of a process crash.
+        let prev = self
+            .recursion_depth
+            .fetch_add(1, std::sync::atomic::Ordering::SeqCst);
+        let depth = prev + 1;
+        struct DepthGuard<'a> {
+            counter: &'a std::sync::atomic::AtomicUsize,
+        }
+        impl<'a> Drop for DepthGuard<'a> {
+            fn drop(&mut self) {
+                self.counter
+                    .fetch_sub(1, std::sync::atomic::Ordering::SeqCst);
+            }
+        }
+        let _guard = DepthGuard {
+            counter: &self.recursion_depth,
+        };
+        if depth > MAX_RECURSION_DEPTH {
+            return Err(SqlError::TriggerRecursionLimitExceeded {
+                trigger_name: trigger.name.clone(),
+                depth,
+                limit: MAX_RECURSION_DEPTH,
+            });
+        }
+
         let body = &trigger.body;
         // Build a mutable copy of the NEW row so SET NEW.col = ... statements
         // can mutate it in place. The captured result is what callers see
