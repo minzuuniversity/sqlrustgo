@@ -206,6 +206,16 @@ impl<S: StorageEngine + 'static> ExecutionEngine<S> {
     pub fn execute_select(&self, select: &SelectStatement) -> SqlResult<ExecutorResult> {
         // Debug: print query table structure
         Self::clear_tpch_caches();
+        // V312-22 / Issue #4182: push ANALYZE-collected table stats
+        // (including `Histogram`) into `UnifiedCostModel::column_stats` at
+        // every SELECT entry. This is cheap when CBO is disabled (we skip
+        // outright) and bounded by O(N_tables) when enabled — typically
+        // a handful of tables. The CBO side is idempotent on overwrite,
+        // so per-query refresh is safe and ensures the cost model never
+        // reads stale histograms even if a previous query updated stats.
+        if self.cbo_enabled {
+            self.update_cost_model_stats();
+        }
         // Sprint 1b fix (Q7/Q8/Q9): handle FROM (subquery) AS alias by
         // first executing the subquery to materialize its result into a
         // synthetic in-memory table, then running the outer SELECT against
