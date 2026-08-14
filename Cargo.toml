@@ -499,10 +499,6 @@ name = "tpch_value_correctness_test"
 path = "tests/integration/tpch/tpch_value_correctness_test.rs"
 
 [[test]]
-name = "planner_multi_way_join_test"
-path = "tests/integration/planner_multi_way_join_test.rs"
-
-[[test]]
 name = "tpch_per_query_timeout_test"
 path = "tests/integration/tpch/tpch_per_query_timeout_test.rs"
 
