@@ -128,7 +128,9 @@ Hybrid retrieval / Vector retrieval / SQL-backed graph projection / RAG evidence
 | Sysbench OLTP | 未作为 GA 主证据 | PARTIAL / blocker | read_only: 2870.99 qps / 179.44 tps；write/read_write 因行级锁/隔离问题失败；见 [#4210](http://192.168.0.252:3000/openclaw/sqlrustgo/issues/4210)、[#4211](http://192.168.0.252:3000/openclaw/sqlrustgo/issues/4211) |
 | Prometheus `/metrics` | N/A | DONE / 有限制 | endpoint 和 live scrape 已验证；query counter hot path 仍有 observability debt |
 | Slow query log | N/A | DONE / 有限制 | 单元和集成测试通过；未在真实 TPC-H SF=10 长查询上捕获日志 |
-| SQLLogicTest runner | 规划/非阻断 | DONE / smoke；RC-GA 扩展 | smoke gate 25/25 PASS；full SQLite official corpus 不宣称完成，RC/GA 扩展由 [#4224](http://192.168.0.252:3000/openclaw/sqlrustgo/issues/4224) 收口 |
+| SQLLogicTest smoke baseline (curated 25 .test 文件覆盖 sqlrustgo_simple/duckdb_samples/duckdb_full/root) | N/A | DONE / 受控 | `scripts/gate/check_sqllogictest_v312.sh` 实跑；25/25 PASS, 100% pass rate；`sqlite-corpus-manifest.json::corpus_stats` + `evidence_hash` 校验通过；详见 [V312-51](docs/releases/v3.12.0/evidence/sqllogictest/V312-51-REPORT.md) §2 |
+| SQLLogicTest 排除注册表 (16 项历史缺陷 + Round-9 5-class 分类) | N/A | DONE / 受控 | 16/16 已关闭（PR #4074/#4073/#4069/#4082/#4055/#4065/#4066 + commit 7a315826fb）；每项含 id / file / root_cause / follow_up_issue / owner / v3.13_expiry / close_boundary / closed_by_commit；详见 §4 |
+| SQLLogicTest — 完整 SQLite 官方 corpus (≈700 files / 6 MB) 集成 + sqlite3 参考输出对比 | N/A | DEFERRED → v3.13 | 当前 25 文件是 curated 子集；完整 corpus 未 vendor；Issue #4238 to open |
 | 覆盖率治理 | PASS with follow-up | PARTIAL / blocker | v3.12 采用 per-crate 分层口径；低覆盖 crate 和 SEM-4 gap 由 [#3943](http://192.168.0.252:3000/openclaw/sqlrustgo/issues/3943) 收口 |
 | GMP schema / version / chunk / relation (CRUD 路径) | N/A | DONE | `sqlrustgo-gmp --lib` 154 tests PASS；`acl.rs` 5 角色 × 12 ops 矩阵编译校验可证 |
 | GMP 审计链 — CRUD on gmp_documents (CREATE/UPDATE/DELETE) | N/A | DONE | SHA-256 `event_hash → previous_hash`；3 hash-chain + 2 event-hash tests PASS；详见 [V312-53](docs/releases/v3.12.0/evidence/gmp_compliance/V312-53-REPORT.md) §3 |
