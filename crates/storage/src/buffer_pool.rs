@@ -28,6 +28,23 @@ pub struct BufferPoolStats {
 }
 
 impl BufferPoolStats {
+    /// Construct a new BufferPoolStats with all counters at zero.
+    /// #4169 acceptance criterion: `BufferPoolStats::new()` compiles.
+    pub fn new() -> Self {
+        Self {
+            hits: 0,
+            misses: 0,
+            evictions: 0,
+            prefetch_hits: 0,
+        }
+    }
+
+    /// Get the cache-miss count.
+    /// #4169 acceptance criterion: `stats.misses()` compiles.
+    pub fn misses(&self) -> u64 {
+        self.misses
+    }
+
     pub fn hit_rate(&self) -> f64 {
         let total = self.hits + self.misses;
         if total == 0 {

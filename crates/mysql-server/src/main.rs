@@ -116,6 +116,16 @@ enum Command {
               value_parser = validate_executor_parallelism,
               env = "SQLRUSTGO_EXECUTOR_PARALLELISM")]
         executor_parallelism: usize,
+        /// Round-21 / Issue #4217: number of rows per
+        /// `bulk_insert_records` flush during LOAD DATA LOCAL INFILE.
+        /// Default 10_000 (raises the previous hard-coded 100-row
+        /// constant so large tables like TPC-H SF=10 lineitem can
+        /// avoid paying write-lock + Vec allocation cost on every
+        /// 100 rows). Set to 0 to disable the periodic flush and
+        /// fall back to the legacy "flush only when the per-packet
+        /// byte buffer fully drains" behavior.
+        #[arg(long, default_value_t = 10_000)]
+        bulk_insert_rows_per_flush: usize,
         /// SERVER-01: show detailed startup banner
         #[arg(long, default_value_t = false)]
         verbose: bool,
@@ -212,6 +222,7 @@ fn main() -> ExitCode {
         storage: "file".to_string(),
         wal_sync: "every".to_string(),
         executor_parallelism: 1,
+        bulk_insert_rows_per_flush: 10_000,
         verbose: false,
         metrics_port: None,
     });
@@ -228,6 +239,7 @@ fn main() -> ExitCode {
             storage,
             wal_sync,
             executor_parallelism,
+            bulk_insert_rows_per_flush,
             verbose,
             metrics_port,
         } => {
@@ -288,6 +300,17 @@ fn main() -> ExitCode {
             if let Some(ref lid) = load_infile_dir {
                 std::env::set_var("SQLRUSTGO_LOAD_INFILE_DIR", lid);
             }
+
+            // Round-21 / Issue #4217: forward --bulk-insert-rows-per-flush
+            // to the server via env var (same pattern as
+            // SQLRUSTGO_LOAD_INFILE_DIR above). The server reads
+            // SQLRUSTGO_BULK_INSERT_ROWS_PER_FLUSH at startup and
+            // threads it through to `handle_load_local_infile`. Setting
+            // to 0 disables the periodic flush (legacy V312-32 behavior).
+            std::env::set_var(
+                "SQLRUSTGO_BULK_INSERT_ROWS_PER_FLUSH",
+                bulk_insert_rows_per_flush.to_string(),
+            );
 
             tracing::info!("SQLRustGo MySQL Server starting on {}:{}", host, port);
             if let Err(e) = run_server_v2(

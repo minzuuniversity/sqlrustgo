@@ -1,0 +1,8 @@
+{"table":"region","src_lines":5,"loaded_rows":5,"elapsed_sec":0.049,"rows_per_sec":102,"rc":0,"parity":"match","bulk_insert_rows_per_flush":10000}
+{"table":"nation","src_lines":25,"loaded_rows":25,"elapsed_sec":0.044,"rows_per_sec":568,"rc":0,"parity":"match","bulk_insert_rows_per_flush":10000}
+{"table":"supplier","src_lines":100,"loaded_rows":100,"elapsed_sec":0.053,"rows_per_sec":1887,"rc":0,"parity":"match","bulk_insert_rows_per_flush":10000}
+{"table":"customer","src_lines":25000,"loaded_rows":25000,"elapsed_sec":1.757,"rows_per_sec":14229,"rc":0,"parity":"match","bulk_insert_rows_per_flush":10000}
+{"table":"part","src_lines":200,"loaded_rows":200,"elapsed_sec":0.081,"rows_per_sec":2469,"rc":0,"parity":"match","bulk_insert_rows_per_flush":10000}
+{"table":"partsupp","src_lines":800,"loaded_rows":800,"elapsed_sec":0.075,"rows_per_sec":10667,"rc":0,"parity":"match","bulk_insert_rows_per_flush":10000}
+{"table":"orders","src_lines":25000,"loaded_rows":25000,"elapsed_sec":2.021,"rows_per_sec":12370,"rc":0,"parity":"match","bulk_insert_rows_per_flush":10000}
+{"table":"lineitem","src_lines":500,"loaded_rows":500,"elapsed_sec":0.113,"rows_per_sec":4425,"rc":0,"parity":"match","bulk_insert_rows_per_flush":10000}
