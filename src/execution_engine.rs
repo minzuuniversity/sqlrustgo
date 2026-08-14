@@ -734,6 +734,12 @@ impl<S: StorageEngine + 'static> ExecutionEngine<S> {
                 ref params,
             } => self.execute_execute(name, params),
             Statement::Deallocate { ref name } => self.execute_deallocate(name),
+            // V312-35 #4218: KILL CONNECTION / SHOW PROCESSLIST
+            Statement::KillConnection {
+                conn_id,
+                is_query,
+            } => self.execute_kill_connection(conn_id, is_query),
+            Statement::ShowProcesslist { full } => self.execute_show_processlist(full),
             Statement::DropDatabase(ref db) => self.execute_drop_database(db),
             Statement::CreateDatabase(ref db) => self.execute_create_database(db),
             Statement::CreateSequence(ref seq) => self.execute_create_sequence(seq),
@@ -953,6 +959,78 @@ impl<S: StorageEngine + 'static> ExecutionEngine<S> {
                 drop_view.name
             )))
         }
+    }
+
+    /// V312-35 #4218: forward KILL CONNECTION / KILL QUERY to the
+    /// storage engine's cooperative-cancellation API. `is_query=true`
+    /// cancels the in-flight query only; `false` (default) tears down
+    /// the entire peer connection. Both forms map to the same
+    /// `kill_connection` trait method for now; the executor relies on
+    /// the engine to differentiate if it supports query-only cancel.
+    fn execute_kill_connection(&mut self, conn_id: u64, is_query: bool) -> SqlResult<ExecutorResult> {
+        let _ = is_query; // see comment above
+        let mut storage = self.storage.write();
+        storage
+            .kill_connection(conn_id)
+            .map_err(|e| SqlError::ExecutionError(format!("KILL {}: {}", conn_id, e)))?;
+        Ok(ExecutorResult::empty())
+    }
+
+    /// V312-35 #4218: read-only snapshot of active connections
+    /// (one row per `ProcessInfo` returned by the engine).
+    fn execute_show_processlist(&self, full: bool) -> SqlResult<ExecutorResult> {
+        let storage = self.storage.read();
+        let processes = storage.list_processes();
+        drop(storage);
+        let columns = if full {
+            vec![
+                "Id".to_string(),
+                "User".to_string(),
+                "Host".to_string(),
+                "db".to_string(),
+                "Command".to_string(),
+                "Time".to_string(),
+                "State".to_string(),
+                "Info".to_string(),
+            ]
+        } else {
+            vec![
+                "Id".to_string(),
+                "User".to_string(),
+                "Host".to_string(),
+                "db".to_string(),
+                "Command".to_string(),
+                "Time".to_string(),
+                "State".to_string(),
+            ]
+        };
+        let mut rows: Vec<Vec<sqlrustgo_types::Value>> = Vec::with_capacity(processes.len());
+        for p in &processes {
+            let mut row = vec![
+                sqlrustgo_types::Value::Integer(p.id as i64),
+                sqlrustgo_types::Value::Text(p.user.clone()),
+                sqlrustgo_types::Value::Text(p.host.clone()),
+                p.db.clone()
+                    .map(sqlrustgo_types::Value::Text)
+                    .unwrap_or(sqlrustgo_types::Value::Null),
+                sqlrustgo_types::Value::Text(p.command.clone()),
+                sqlrustgo_types::Value::Integer(p.time_secs as i64),
+                p.state.clone()
+                    .map(sqlrustgo_types::Value::Text)
+                    .unwrap_or(sqlrustgo_types::Value::Null),
+            ];
+            if full {
+                row.push(
+                    p.info
+                        .clone()
+                        .map(sqlrustgo_types::Value::Text)
+                        .unwrap_or(sqlrustgo_types::Value::Null),
+                );
+            }
+            rows.push(row);
+        }
+        let n = rows.len();
+        Ok(ExecutorResult::new(rows, n))
     }
 
     fn execute_merge_statement(&self, _merge: &MergeStatement) -> SqlResult<ExecutorResult> {
