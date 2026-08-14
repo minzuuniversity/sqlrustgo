@@ -118,18 +118,25 @@ Hybrid retrieval / Vector retrieval / SQL-backed graph projection / RAG evidence
 | JSON 写路径 / JSON 列类型 / JSON_TABLE / JSON_MERGE | DEFERRED | DEFERRED → v3.13 | Issue #4229 to open |
 | GIS (ST_Within / ST_Distance / ST_Contains / ST_Intersects 在 Value::Point + WKT 字面量) | DEFERRED | DEFERRED → v3.13 | `sqlrustgo_gis` 14 单测 PASS；无 spatial column / index / WKT I/O；Issue #4230 to open |
 | Optimizer / CBO / Hash Join | DONE | DONE / 持续硬化 | #3909 已通过 PR #4087 close-out；性能债仍按后续 issue 跟踪 |
-| WAL / MVCC | PARTIAL | PARTIAL / blocker | 主路径存在；crash recovery 28/31，backup/restore API drift 和 upgrade/downgrade 需 [#4222](http://192.168.0.252:3000/openclaw/sqlrustgo/issues/4222) 收口 |
+| WAL / MVCC — crash recovery（kill mid-tx, WAL replay uncommitted tx, incomplete-tx 检测, 8 scenarios 过程杀进程） | PARTIAL | DONE / 受控 | V312-14 gate 5/5 PASS；`process_kill_crash_test` 8/8 PASS（含 Round-3 FAIL 的 `test_kill_mid_insert_update_uncommitted` + `test_mixed_workload_recovery_report`）；详见 [V312-14-RECHECK](docs/releases/v3.12.0/evidence/crash_recovery/V312-14-CRASH-RECOVERY-RECHECK.md) §2 |
+| WAL / MVCC — backup/restore API（SHA-256 校验, manifest verify, round-trip, corrupted data/WAL detection） | PARTIAL | DONE / 受控 | `backup_restore_test` 51/51 PASS at HEAD 0f497bbef8；Round-3 API drift 已修复；详见 [V312-14-RECHECK](docs/releases/v3.12.0/evidence/crash_recovery/V312-14-CRASH-RECOVERY-RECHECK.md) §3 |
+| WAL / MVCC — v3.10/v3.11 → v3.12 upgrade + rollback fixture（row count / hash / 4-hop preservation） | PARTIAL | DONE / 受控 | `check_upgrade_v310_v311.sh` 11/11 + `upgrade_v310_v311_test` 4/4 + `upgrade_test` 50/50 + `int2_cross_version_upgrade_test` 20/20 + `v380_to_v390_full_upgrade_test` 18/18 + `upgrade_chain_v3_6_to_v3_9_test` 6/6 = 109/109 PASS；详见 [V312-14-RECHECK](docs/releases/v3.12.0/evidence/crash_recovery/V312-14-CRASH-RECOVERY-RECHECK.md) §4 |
+| WAL / MVCC — SF=10 TPC-H 全表 bulk-load 后 crash + WAL replay 大 fixture 行为 | N/A | DEFERRED → v3.13 | V312-13 仅覆盖 SF=1 + SF=10 {region,nation,supplier} bulk-load；lineitem/customer/orders 大 fixture 上 crash-recovery + WAL replay 路径未压测；Issue #4239 to open |
 | B+Tree / Hash index | DONE | DONE | 索引能力进入主路径；性能趋势需按具体 workload 阅读 |
 | Clustered Index / AHI / Change Buffer / Double Write Buffer | DONE | DONE | v3.11 重点功能；仍建议配合 crash/fault injection 继续验证 |
-| MySQL wire protocol | PARTIAL | PARTIAL / 有整改 issue | e2e/wire 测试有推进；完整 MySQL 5.7 兼容不可宣称；[#4223](http://192.168.0.252:3000/openclaw/sqlrustgo/issues/4223) 定义生产边界 |
-| Prepared Statement | PARTIAL | PARTIAL / blocker | 基本回归有测试；Sysbench prepared statement 仍由 [#4211](http://192.168.0.252:3000/openclaw/sqlrustgo/issues/4211) 和 [#4223](http://192.168.0.252:3000/openclaw/sqlrustgo/issues/4223) 收口 |
-| LOAD DATA | PARTIAL | PARTIAL / blocker | SF=1/smoke 与 wire gate 有证据；SF=10 full bulk-load 由 [#4020](http://192.168.0.252:3000/openclaw/sqlrustgo/issues/4020)、[#4217](http://192.168.0.252:3000/openclaw/sqlrustgo/issues/4217) 收口 |
-| TLS / Compression | PARTIAL | PARTIAL / 有整改 issue | V312-13 有 typed wrapper / handshake / primitive 证据；生产客户端路径边界由 [#4223](http://192.168.0.252:3000/openclaw/sqlrustgo/issues/4223) 收口 |
-| Sysbench OLTP | 未作为 GA 主证据 | PARTIAL / blocker | read_only: 2870.99 qps / 179.44 tps；write/read_write 因行级锁/隔离问题失败；见 [#4210](http://192.168.0.252:3000/openclaw/sqlrustgo/issues/4210)、[#4211](http://192.168.0.252:3000/openclaw/sqlrustgo/issues/4211) |
+| MySQL wire protocol — COM_QUERY / COM_STMT_PREPARE/EXECUTE/CLOSE / error packet / reset / TLS handshake / compression primitive | PARTIAL | DONE / 受控 | `crates/tools/src/ephemeral.rs` ephemeral server + 22 v312_13_typed_wrappers / 22 mysql_wire_protocol / wire_smoke_mysql_cli 集成测试 PASS；V312-13 gate 10/10 PASS；详见 [V312-50](docs/releases/v3.12.0/evidence/wire_load_data/V312-50-REPORT.md) §2 |
+| MySQL wire protocol — `COM_RESET_CONNECTION` 在 libmysqlclient 路径下退化为 `Unknown command` warning | N/A | DONE-with-boundary | test 显式接受 `Ok(())` 或 `Unknown command`；非正确性要求，仅 libmysqlclient 优化提示 |
+| Prepared Statement — Sysbench libmysqlclient (PR #4229 修复 `lenenc_int(0x0c)` + non-SELECT `extract_table_name` + INT→LONGLONG) | PARTIAL | DONE | 4/4 sysbench OLTP workloads (oltp_read_only / oltp_insert / oltp_write_only / oltp_read_write) PASS, 0 ignored errors；不再需要 `--db-ps-mode=disable`；证据 `docs/releases/v3.12.0/evidence/issue-4211/20260814T_after_fix2/` |
+| LOAD DATA — SF=1 smoke + full + SF=10 region/nation/supplier smoke | PARTIAL | DONE | `v312_13_load_data_sf1_test` + `v312_13_load_data_sf10_test` PASS；V312-13 step 06.5/07/08 PASS；fixtures via `dbgen -s 10 -f -T {r,n,s}` |
+| LOAD DATA — SF=10 lineitem/customer/orders/part/partsupp 全量 bulk-load 生产路径 | N/A | DEFERRED → v3.13 | Issue #4217 chunked bulk-load 已关闭，但 SF=10 全表 bulk-load 尚未作为 gate；follow-up issue to open |
+| TLS / Compression | PARTIAL | DONE / 受控 | V312-13 step 09 (`force_tls_server_implemented`) + step 10 (`compress_primitives_working`) PASS；rustls + flate2 集成；不宣称 TLS 1.3 全部 cipher suite |
+| Sysbench OLTP (oltp_read_only / oltp_insert / oltp_write_only / oltp_read_write) | N/A | DONE / 受控 | 4/4 PASS at develop HEAD post PR #4229；`mysql_compat/SURFACE_DISPOSITION.md` 12/20 libmysqlclient 表面 PASS |
 | Prometheus `/metrics` | N/A | DONE / 有限制 | endpoint 和 live scrape 已验证；query counter hot path 仍有 observability debt |
 | Slow query log | N/A | DONE / 有限制 | 单元和集成测试通过；未在真实 TPC-H SF=10 长查询上捕获日志 |
-| SQLLogicTest runner | 规划/非阻断 | PARTIAL | runner/gate 激活；16/22 smoke files deferred to v3.13，不能写成全量 PASS |
-| 覆盖率治理 | PASS with follow-up | PARTIAL | v3.12 采用 per-crate 分层口径；低覆盖 crate 必须 issue-linked |
+| SQLLogicTest smoke baseline (curated 25 .test 文件覆盖 sqlrustgo_simple/duckdb_samples/duckdb_full/root) | N/A | DONE / 受控 | `scripts/gate/check_sqllogictest_v312.sh` 实跑；25/25 PASS, 100% pass rate；`sqlite-corpus-manifest.json::corpus_stats` + `evidence_hash` 校验通过；详见 [V312-51](docs/releases/v3.12.0/evidence/sqllogictest/V312-51-REPORT.md) §2 |
+| SQLLogicTest 排除注册表 (16 项历史缺陷 + Round-9 5-class 分类) | N/A | DONE / 受控 | 16/16 已关闭（PR #4074/#4073/#4069/#4082/#4055/#4065/#4066 + commit 7a315826fb）；每项含 id / file / root_cause / follow_up_issue / owner / v3.13_expiry / close_boundary / closed_by_commit；详见 §4 |
+| SQLLogicTest — 完整 SQLite 官方 corpus (≈700 files / 6 MB) 集成 + sqlite3 参考输出对比 | N/A | DEFERRED → v3.13 | 当前 25 文件是 curated 子集；完整 corpus 未 vendor；Issue #4238 to open |
+| 覆盖率治理 | PASS with follow-up | PARTIAL / blocker | v3.12 采用 per-crate 分层口径；低覆盖 crate 和 SEM-4 gap 由 [#3943](http://192.168.0.252:3000/openclaw/sqlrustgo/issues/3943) 收口 |
 | GMP schema / version / chunk / relation (CRUD 路径) | N/A | DONE | `sqlrustgo-gmp --lib` 154 tests PASS；`acl.rs` 5 角色 × 12 ops 矩阵编译校验可证 |
 | GMP 审计链 — CRUD on gmp_documents (CREATE/UPDATE/DELETE) | N/A | DONE | SHA-256 `event_hash → previous_hash`；3 hash-chain + 2 event-hash tests PASS；详见 [V312-53](docs/releases/v3.12.0/evidence/gmp_compliance/V312-53-REPORT.md) §3 |
 | GMP 审计链 — 合规操作 (IMPORT/EXPORT/APPROVE/REVIEW/BACKUP/RESTORE) | N/A | DEFERRED → v3.13 | `AuditAction` 枚举仅 Create/Update/Delete；`import_document` / `bulk_import` / `create_backup` / `restore_backup` 未调用 `record_audit_log`；Issue #4231 to open |
@@ -138,7 +145,10 @@ Hybrid retrieval / Vector retrieval / SQL-backed graph projection / RAG evidence
 | ACL 5 角色 × 12 ops 矩阵全枚举测试 | N/A | DEFERRED → v3.13 | 12 个 spot-check ACL tests PASS（含 `test_permission_guard_fail_closed`）；5×12=60 cell 全枚举程序化测试未做；Issue #4234 to open |
 | GMP Hybrid Retrieval | N/A | DONE / 受控 | RRF、filter、citation tests；目标是 GMP 内审检索，不是通用搜索引擎 |
 | RAG Evidence Bundle | N/A | DONE / 受控 | citation/evidence_hash/answer envelope tests；需结合 GMP fixture 做质量评估 |
-| Internal Vector Retrieval | PARTIAL | PARTIAL / blocker | v3.12 支持内部 GMP/RAG 检索用途；rebuild、dimension/hash、empty-index、质量 fixture 由 [#4225](http://192.168.0.252:3000/openclaw/sqlrustgo/issues/4225) 收口；不宣称通用独立向量数据库 |
+| Internal Vector Retrieval — 嵌入 + Flat 索引 + 混合检索 (vector_score / keyword_score / graph_boost / rrf_score + citation_text + chunk_hash) | PARTIAL | DONE / 受控 | `HashEmbeddingModel` 确定性；`vector_hash` SHA-256；`FlatIndex::build/search`；15 单测 PASS（vector_index 3 + vector_search 4 + retrieval 8）；详见 [V312-52](docs/releases/v3.12.0/evidence/vector_retrieval/V312-52-REPORT.md) §2-3 |
+| Internal Vector Retrieval — 固定 GMP audit question fixture 与确定性 top-k | N/A | DEFERRED → v3.13 | 无 ≥5 docs 种子 + 已知 query + 断言 (doc_id, similarity, chunk_hash) 顺序的测试；Issue #4236 to open |
+| Internal Vector Retrieval — `rebuild_flat_index` 持久化索引 + 重建前后稳定 (count/hash/top-k) | N/A | DEFERRED → v3.13 | `rebuild_flat_index` 仅写 metadata，`let _index = FlatIndex::build(...)` 被丢弃（compiler 警告）；Issue #4235 to open |
+| Internal Vector Retrieval — dimension drift / empty index / model-name fail-closed | N/A | DEFERRED → v3.13 | `upsert_embedding` 不校验 dimension；`vector_search` 对空索引返回 `Ok(vec![])` 而非错误；Issue #4237 to open |
 | SQL-backed Graph Projection | N/A | DONE / 受控 | BFS 子图、EvidenceBundle、GraphStats；不宣称通用图数据库 |
 | Row-Level Security / Column Privileges | DONE | DONE / 持续硬化 | v3.11 主路径能力；GMP 权限矩阵仍需 v3.12 生产路径验证 |
 | 存储过程 | UNSUPPORTED | UNSUPPORTED | MySQL compat 明确 `CREATE PROCEDURE` 需要 stored procedure catalog |
@@ -203,7 +213,7 @@ v3.12.0 的 GMP 方向是“受控内审检索系统数据库”，不是通用�
 | Hybrid retrieval | DONE / 受控 | [V312-05](docs/releases/v3.12.0/v312-05-hybrid-retrieval-report.md) |
 | SQL-backed graph projection | DONE / 受控 | [V312-06](docs/releases/v3.12.0/v312-06-graph-projection-report.md) |
 | RAG evidence bundle | DONE / 受控 | [V312-07](docs/releases/v3.12.0/v312-07-rag-evidence-bundle-report.md) |
-| GMP compliance audit controls | PARTIAL / 持续补强 | [GMP 合规矩阵](docs/releases/v3.12.0/GMP_COMPLIANCE_MATRIX.md)、[V312-08](docs/releases/v3.12.0/v312-08-compliance-audit-report.md)、[V312-53](docs/releases/v3.12.0/evidence/gmp_compliance/V312-53-REPORT.md) |
+| GMP compliance audit controls | PARTIAL / blocker | [GMP 合规矩阵](docs/releases/v3.12.0/GMP_COMPLIANCE_MATRIX.md)、[V312-08](docs/releases/v3.12.0/v312-08-compliance-audit-report.md)、[V312-53](docs/releases/v3.12.0/evidence/gmp_compliance/V312-53-REPORT.md)；生产 ACL/audit-chain/tamper 全链路由 [#4226](http://192.168.0.252:3000/openclaw/sqlrustgo/issues/4226) 收口 |
 
 允许的产品声明：SQLRustGo v3.12 支持受控 GMP 内审检索工作负载中的关系存储、chunk、embedding、audit trail、evidence relation、hybrid retrieval 和 SQL-backed graph projection。
 

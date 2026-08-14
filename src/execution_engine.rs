@@ -693,9 +693,10 @@ impl<S: StorageEngine + 'static> ExecutionEngine<S> {
             // Round-21 / Issue #4218: KILL <id> / KILL CONNECTION <id> /
             // KILL QUERY <id>. Live process registry is not yet wired, so
             // return Ok(0) — a no-op admin statement that does not error.
-            Statement::Kill { connection_id, kill_query } => {
-                self.execute_kill(connection_id, kill_query)
-            }
+            Statement::Kill {
+                connection_id,
+                kill_query,
+            } => self.execute_kill(connection_id, kill_query),
         }
     }
 
@@ -1427,25 +1428,6 @@ impl<S: StorageEngine + 'static> ExecutionEngine<S> {
 
     fn execute_intersect(&mut self, stmt: &IntersectStatement) -> SqlResult<ExecutorResult> {
         crate::engine_setops::execute_intersect(self, stmt)
-    }
-
-    fn apply_trailing_order_limit_offset(
-        &self,
-        stmt_left: &Statement,
-        order_by: &[sqlrustgo_parser::parser::OrderByExpression],
-        offset: Option<u64>,
-        limit: Option<u64>,
-        rows: &mut Vec<Vec<Value>>,
-    ) {
-        crate::engine_setops::apply_trailing_order_limit_offset(
-            self,
-            self.session_null_order_first,
-            stmt_left,
-            order_by,
-            offset,
-            limit,
-            rows,
-        );
     }
 
     fn execute_except(&mut self, stmt: &ExceptStatement) -> SqlResult<ExecutorResult> {

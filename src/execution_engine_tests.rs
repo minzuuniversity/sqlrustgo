@@ -1019,7 +1019,11 @@ fn test_executor_kill_v312_35() {
     assert!(result_q.is_ok());
     let result_q = result_q.unwrap();
     let cell_q = format!("{:?}", result_q.rows[0][0]);
-    assert!(cell_q.contains("QUERY"), "expected QUERY marker: {}", cell_q);
+    assert!(
+        cell_q.contains("QUERY"),
+        "expected QUERY marker: {}",
+        cell_q
+    );
     assert!(cell_q.contains("7"), "missing connection_id 7: {}", cell_q);
 }
 
@@ -1221,7 +1225,10 @@ fn test_executor_quantile_array_out_of_range_v312_46() {
 fn build_chunked_records(n: usize) -> Vec<sqlrustgo_storage::Record> {
     let mut records = Vec::with_capacity(n);
     for i in 1..=n {
-        records.push(vec![Value::Integer(i as i64), Value::Integer((i * 2) as i64)]);
+        records.push(vec![
+            Value::Integer(i as i64),
+            Value::Integer((i * 2) as i64),
+        ]);
     }
     records
 }

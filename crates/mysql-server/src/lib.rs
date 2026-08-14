@@ -3691,7 +3691,10 @@ fn extract_table_name(sql: &str) -> Option<String> {
             let table_end = after_from
                 .find(|c: char| c.is_whitespace() || c == ';' || c == ',')
                 .unwrap_or(after_from.len());
-            let table = after_from[..table_end].trim().trim_matches('`').trim_matches('"');
+            let table = after_from[..table_end]
+                .trim()
+                .trim_matches('`')
+                .trim_matches('"');
             if !table.is_empty() {
                 let orig_after = sql.to_uppercase().find("FROM").unwrap();
                 let orig_from = sql[orig_after + 4..].trim();
