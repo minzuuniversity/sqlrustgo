@@ -28,7 +28,7 @@
 | V312-G14 | LOAD DATA / 批量导入 | SF=1/SF=10 导入 benchmark + memory cap | 无 OOM；row-count/hash 相等 |
 | V312-G15 | 崩溃恢复与升级 | kill -9、WAL replay、backup/restore、v3.10->v3.12 upgrade/downgrade | 恢复后 count/hash 相等 |
 | V312-G16 | CREATE SEQUENCE executor | DDL、NEXTVAL、default expression、并发、事务回滚、WAL/recovery tests | 语义与持久化结果确定；不再标为 executor gap |
-| V312-G17 | Window/GIS/JSON 受控功能 | ROW_NUMBER/RANK/DENSE_RANK、JSON path、ST_Distance/ST_Intersects/GeoJSON fixtures | 支持范围内全 PASS；超出范围有明确错误和文档 |
+| V312-G17 | JSON/GIS 受控功能（Window → DEFERRED-3.13，见 `sql-feature-corpus/window_json_gis_scope.md`） | JSON_EXTRACT/JSON_VALUE/JSON_UNQUOTE 正反例；ST_Distance/ST_Within/ST_Contains/ST_Intersects 2D-Point 正反例 | JSON/GIS 支持范围内全 PASS，超出范围 fail with explicit unsupported error；Window 不测，3.13 跟进 |
 | V312-G18 | 覆盖率与禁用测试债务 | canonical coverage command、disabled/API-drift manifest、flaky test quarantine | parser/mysql-server/mysql-client ≥80% 或有 issue-linked exception；无静默禁用测试 |
 | V312-G19 | 性能与观测性 baseline | TPC-H SF=10、Sysbench OLTP、bulk-load benchmark、Prometheus/Slow Query Log e2e | 有可复跑脚本、阈值、日志和趋势对比 |
 | V312-G20 | SQL corpus 与发布签核 | `test_sql_corpus.sh` all targets、R2.1-R2.8 invariant、2 reviewer sign-off | SQL corpus/架构 invariant 有输出；签核附 evidence hash |
