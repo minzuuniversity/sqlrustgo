@@ -456,6 +456,10 @@ name = "arch_sem_debt_gate_test"
 path = "tests/integration/optimizer/arch_sem_debt_gate_test.rs"
 
 [[test]]
+name = "planner_multi_way_join_test"
+path = "tests/integration/planner_multi_way_join_test.rs"
+
+[[test]]
 name = "test_plan_integrated_test"
 path = "tests/integration/sql/test_plan_integrated_test.rs"
 
