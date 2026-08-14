@@ -19,7 +19,7 @@
 | v3.11.0 综合评估 | `docs/releases/v3.11.0/COMPREHENSIVE_ASSESSMENT_REPORT.md` | GA 证据边界、弱项补强、遗漏测试清单 |
 | v3.10.0 测试体系报告 | `docs/releases/v3.10.0/TESTING_SYSTEM_BETA_REPORT.md` | SQLLogicTest / SQLite 官方语料计划，Issue #3373 |
 | v3.10.0 issues plan | `docs/releases/v3.10.0/plans/V310_ISSUES_PLAN.md` | V310-14 SQLLogicTest 集成状态和下载缺口 |
-| 现有 SLT runner | `crates/sqlrustgo_sqllogictest` | runner 存在且有 22 个本地 `.test` 文件，但尚不是严格 v3.11 GA gate |
+| 现有 SLT runner | `crates/sqlrustgo_sqllogictest` | runner 存在；当前 v3.12 smoke gate 覆盖 25 个非 `_unsupported` 本地 `.test` 文件，历史 22 文件口径已过时 |
 
 本文档 claim metadata：
 
@@ -110,7 +110,7 @@ v3.12.0 有两条同等 P0 主线：
 |---|---|---|
 | 历史计划 | `docs/releases/v3.10.0/TESTING_SYSTEM_BETA_REPORT.md` 描述使用 SQLite 官方 `.test` 文件，约 623 文件 / 590 万 case | 作为 V312-11 继承 |
 | Issue 计划 | `docs/releases/v3.10.0/plans/V310_ISSUES_PLAN.md` V310-14 记录 runner 已实现，但 SQLite 官方 suite 下载受阻 | 完成 testdata 获取，或定义可复现 mirror/cache |
-| 现有 runner | `crates/sqlrustgo_sqllogictest` 存在，含 22 个本地 `.test` 文件 | 纳入 package build/run gate |
+| 现有 runner | `crates/sqlrustgo_sqllogictest` 存在；当前 smoke gate 覆盖 25 个非 `_unsupported` 本地 `.test` 文件 | 纳入 package build/run gate |
 | v3.11.0 缺口 | `docs/releases/v3.11.0/RELEASE_GATE_CHECKLIST.md` 中 sqllogictest runner all targets 仍是 TBD | 从 TBD 提升为 v3.12 Alpha/Beta/RC/GA 阶段阈值 |
 | 路径漂移 | `scripts/gate/check_beta_gate.sh` 同时检查 `crates/sqllogictest` 和 `crates/sqlrustgo_sqllogictest` | 统一到 `crates/sqlrustgo_sqllogictest` 或记录 rename |
 
@@ -118,9 +118,9 @@ v3.12.0 有两条同等 P0 主线：
 
 | 检查 | 结果 | v3.12.0 后续要求 |
 |---|---|---|
-| `cargo build -p sqlrustgo_sqllogictest` | 可完成，但 `storage` 与 `executor` 依赖仍有 warning | 可作为 Alpha build evidence，但不得宣称 warning-free/clippy-clean，直到 `cargo clippy --all-features -- -D warnings` 通过 |
-| `cargo run -p sqlrustgo_sqllogictest -- --test-dir crates/sqlrustgo_sqllogictest/testdata` | runner 可完成；smoke corpus 为 6/16 文件通过，通过率 27.3% | 必须作为失败基线 triage，不得作为 release gate PASS |
-| SQLite 官方 SQLLogicTest corpus | 尚未集成到当前 gate system | 增加 corpus manifest、cache/mirror procedure、selected-target definition 和 exclusion registry |
+| `cargo build -p sqlrustgo_sqllogictest` | 已由 `scripts/gate/check_sqllogictest_v312.sh` 实跑 PASS | 可作为 smoke gate build evidence；warning-free/clippy-clean 仍以 `cargo clippy --all-features -- -D warnings` 为准 |
+| `cargo run -p sqlrustgo_sqllogictest -- --test-dir crates/sqlrustgo_sqllogictest/testdata` | smoke gate 当前 25/25 文件通过，通过率 100.0%；历史 6/16、27.3% 基线已 superseded | 可作为 Beta smoke evidence；不得外推为完整 SQLite official corpus PASS |
+| SQLite 官方 SQLLogicTest corpus | full official corpus 尚未集成到当前 gate system；当前是本地 smoke corpus | RC/GA 增加 curated/official corpus manifest、cache/mirror procedure、selected-target definition 和 exclusion registry |
 
 ## 4.3 v3.11.0 未完成项承接清单
 
@@ -230,7 +230,7 @@ cargo run -p sqlrustgo_sqllogictest -- --test-dir crates/sqlrustgo_sqllogictest/
 | v3.11.0 comprehensive assessment | `docs/releases/v3.11.0/COMPREHENSIVE_ASSESSMENT_REPORT.md` | GA evidence boundary, weak-point hardening, missing-test list |
 | v3.10.0 testing-system report | `docs/releases/v3.10.0/TESTING_SYSTEM_BETA_REPORT.md` | SQLLogicTest / SQLite official corpus plan, Issue #3373 |
 | v3.10.0 issues plan | `docs/releases/v3.10.0/plans/V310_ISSUES_PLAN.md` | V310-14 SQLLogicTest integration status and known download gap |
-| Existing SLT runner | `crates/sqlrustgo_sqllogictest` | Runner exists with 22 local `.test` files; not yet a strict v3.11 GA gate |
+| Existing SLT runner | `crates/sqlrustgo_sqllogictest` | Runner exists; the current v3.12 smoke gate covers 25 non-`_unsupported` local `.test` files, superseding the older 22-file count |
 
 Claim metadata for this document:
 
@@ -311,7 +311,7 @@ The SQLite-based automatic testing plan is re-adopted as a v3.12.0 P0 quality ga
 |---|---|---|
 | Historical plan | `docs/releases/v3.10.0/TESTING_SYSTEM_BETA_REPORT.md` describes SQLLogicTest using SQLite official `.test` files, about 623 files / 5.9M cases | Carry forward as V312-11 |
 | Issue plan | `docs/releases/v3.10.0/plans/V310_ISSUES_PLAN.md` V310-14 marks runner implemented but SQLite official suite download blocked | Complete testdata acquisition or define a reproducible mirror/cache |
-| Existing runner | `crates/sqlrustgo_sqllogictest` exists with 22 local `.test` files | Make package build/run part of gate |
+| Existing runner | `crates/sqlrustgo_sqllogictest` exists; the current smoke gate covers 25 non-`_unsupported` local `.test` files | Make package build/run part of gate |
 | v3.11.0 gap | `docs/releases/v3.11.0/RELEASE_GATE_CHECKLIST.md` lists sqllogictest runner all targets as TBD | Promote from TBD to required v3.12 Alpha/Beta/RC/GA staged thresholds |
 | Path drift | `scripts/gate/check_beta_gate.sh` checks both `crates/sqllogictest` and `crates/sqlrustgo_sqllogictest` | Normalize checks to `crates/sqlrustgo_sqllogictest` or document the rename |
 
@@ -319,9 +319,9 @@ Current local baseline on 2026-08-09:
 
 | Check | Result | Required v3.12.0 follow-up |
 |---|---|---|
-| `cargo build -p sqlrustgo_sqllogictest` | Succeeds, but dependency warnings remain in `storage` and `executor` | Keep build as Alpha evidence, but do not claim warning-free/clippy-clean until `cargo clippy --all-features -- -D warnings` passes |
-| `cargo run -p sqlrustgo_sqllogictest -- --test-dir crates/sqlrustgo_sqllogictest/testdata` | Runner completes; smoke corpus result is 6/16 files passing, 27.3% pass rate | Treat as a failing baseline to triage, not as a release gate PASS |
-| SQLite official SQLLogicTest corpus | Not integrated into the current gate system | Add corpus manifest, cache/mirror procedure, selected-target definition, and exclusion registry |
+| `cargo build -p sqlrustgo_sqllogictest` | Executed through `scripts/gate/check_sqllogictest_v312.sh`; PASS | Keep as smoke build evidence; warning-free/clippy-clean remains governed by `cargo clippy --all-features -- -D warnings` |
+| `cargo run -p sqlrustgo_sqllogictest -- --test-dir crates/sqlrustgo_sqllogictest/testdata` | Current smoke gate is 25/25 files passing, 100.0%; the historical 6/16, 27.3% baseline is superseded | Valid Beta smoke evidence; do not extrapolate to full SQLite official corpus PASS |
+| SQLite official SQLLogicTest corpus | Full official corpus is not integrated into the current gate system; current scope is local smoke corpus | Add curated/official corpus manifest, cache/mirror procedure, selected-target definition, and exclusion registry for RC/GA |
 
 ## 5. Work Packages
 
@@ -501,14 +501,14 @@ Current local baseline on 2026-08-09:
 
 **Implementation**:
 - Normalize the canonical runner path to `crates/sqlrustgo_sqllogictest` and package name `sqlrustgo_sqllogictest`.
-- Preserve the current 22 local `.test` files as the smoke corpus.
+- Preserve the current 25 non-`_unsupported` local `.test` files as the smoke corpus, and update the manifest whenever the selected smoke set changes.
 - Add a reproducible acquisition path for the SQLite official SQLLogicTest corpus, or a checked-in manifest that records the exact upstream snapshot, source URL, file count, hash list, excluded tests, and exclusion reasons.
 - Define staged thresholds:
   - Alpha: runner builds and `--help` works.
   - Beta: smoke corpus runs and produces a machine-readable report.
   - RC: curated SQLite-compatible subset runs with deterministic pass/fail/skip classification.
   - GA: all selected v3.12 SLT targets pass or have documented, issue-linked exclusions.
-- Save reports under `docs/releases/v3.12.0/sqllogictest-baseline/`.
+- Save reports under `docs/releases/v3.12.0/evidence/sqllogictest/`, with execution logs under `docs/releases/v3.12.0/logs/`.
 - Integrate the gate into `scripts/gate/check_beta_gate.sh` successor logic or a dedicated `scripts/gate/check_sqllogictest_v312.sh`.
 
 **Exit evidence**:
