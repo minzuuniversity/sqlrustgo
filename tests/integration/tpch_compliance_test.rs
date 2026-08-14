@@ -39,6 +39,7 @@ fn setup_sqlrustgo_engine() -> ExecutionEngine<MemoryStorage> {
                         char_max_length: None,
 
                         collation: None,
+
                         default_value: None,
                     },
                     ColumnDefinition {
@@ -49,6 +50,7 @@ fn setup_sqlrustgo_engine() -> ExecutionEngine<MemoryStorage> {
                         char_max_length: None,
 
                         collation: None,
+
                         default_value: None,
                     },
                     ColumnDefinition {
@@ -59,6 +61,7 @@ fn setup_sqlrustgo_engine() -> ExecutionEngine<MemoryStorage> {
                         char_max_length: None,
 
                         collation: None,
+
                         default_value: None,
                     },
                 ],
@@ -82,6 +85,7 @@ fn setup_sqlrustgo_engine() -> ExecutionEngine<MemoryStorage> {
                         char_max_length: None,
 
                         collation: None,
+
                         default_value: None,
                     },
                     ColumnDefinition {
@@ -92,6 +96,7 @@ fn setup_sqlrustgo_engine() -> ExecutionEngine<MemoryStorage> {
                         char_max_length: None,
 
                         collation: None,
+
                         default_value: None,
                     },
                     ColumnDefinition {
@@ -102,6 +107,7 @@ fn setup_sqlrustgo_engine() -> ExecutionEngine<MemoryStorage> {
                         char_max_length: None,
 
                         collation: None,
+
                         default_value: None,
                     },
                     ColumnDefinition {
@@ -112,6 +118,7 @@ fn setup_sqlrustgo_engine() -> ExecutionEngine<MemoryStorage> {
                         char_max_length: None,
 
                         collation: None,
+
                         default_value: None,
                     },
                 ],
@@ -135,6 +142,7 @@ fn setup_sqlrustgo_engine() -> ExecutionEngine<MemoryStorage> {
                         char_max_length: None,
 
                         collation: None,
+
                         default_value: None,
                     },
                     ColumnDefinition {
@@ -145,6 +153,7 @@ fn setup_sqlrustgo_engine() -> ExecutionEngine<MemoryStorage> {
                         char_max_length: None,
 
                         collation: None,
+
                         default_value: None,
                     },
                     ColumnDefinition {
@@ -155,6 +164,7 @@ fn setup_sqlrustgo_engine() -> ExecutionEngine<MemoryStorage> {
                         char_max_length: None,
 
                         collation: None,
+
                         default_value: None,
                     },
                     ColumnDefinition {
@@ -165,6 +175,7 @@ fn setup_sqlrustgo_engine() -> ExecutionEngine<MemoryStorage> {
                         char_max_length: None,
 
                         collation: None,
+
                         default_value: None,
                     },
                     ColumnDefinition {
@@ -175,6 +186,7 @@ fn setup_sqlrustgo_engine() -> ExecutionEngine<MemoryStorage> {
                         char_max_length: None,
 
                         collation: None,
+
                         default_value: None,
                     },
                     ColumnDefinition {
@@ -185,6 +197,7 @@ fn setup_sqlrustgo_engine() -> ExecutionEngine<MemoryStorage> {
                         char_max_length: None,
 
                         collation: None,
+
                         default_value: None,
                     },
                     ColumnDefinition {
@@ -195,6 +208,7 @@ fn setup_sqlrustgo_engine() -> ExecutionEngine<MemoryStorage> {
                         char_max_length: None,
 
                         collation: None,
+
                         default_value: None,
                     },
                     ColumnDefinition {
@@ -205,6 +219,7 @@ fn setup_sqlrustgo_engine() -> ExecutionEngine<MemoryStorage> {
                         char_max_length: None,
 
                         collation: None,
+
                         default_value: None,
                     },
                 ],
@@ -228,6 +243,7 @@ fn setup_sqlrustgo_engine() -> ExecutionEngine<MemoryStorage> {
                         char_max_length: None,
 
                         collation: None,
+
                         default_value: None,
                     },
                     ColumnDefinition {
@@ -238,6 +254,7 @@ fn setup_sqlrustgo_engine() -> ExecutionEngine<MemoryStorage> {
                         char_max_length: None,
 
                         collation: None,
+
                         default_value: None,
                     },
                     ColumnDefinition {
@@ -248,6 +265,7 @@ fn setup_sqlrustgo_engine() -> ExecutionEngine<MemoryStorage> {
                         char_max_length: None,
 
                         collation: None,
+
                         default_value: None,
                     },
                     ColumnDefinition {
@@ -258,6 +276,7 @@ fn setup_sqlrustgo_engine() -> ExecutionEngine<MemoryStorage> {
                         char_max_length: None,
 
                         collation: None,
+
                         default_value: None,
                     },
                     ColumnDefinition {
@@ -268,6 +287,7 @@ fn setup_sqlrustgo_engine() -> ExecutionEngine<MemoryStorage> {
                         char_max_length: None,
 
                         collation: None,
+
                         default_value: None,
                     },
                     ColumnDefinition {
@@ -278,6 +298,7 @@ fn setup_sqlrustgo_engine() -> ExecutionEngine<MemoryStorage> {
                         char_max_length: None,
 
                         collation: None,
+
                         default_value: None,
                     },
                     ColumnDefinition {
@@ -288,6 +309,7 @@ fn setup_sqlrustgo_engine() -> ExecutionEngine<MemoryStorage> {
                         char_max_length: None,
 
                         collation: None,
+
                         default_value: None,
                     },
                 ],
@@ -311,6 +333,7 @@ fn setup_sqlrustgo_engine() -> ExecutionEngine<MemoryStorage> {
                         char_max_length: None,
 
                         collation: None,
+
                         default_value: None,
                     },
                     ColumnDefinition {
@@ -321,6 +344,7 @@ fn setup_sqlrustgo_engine() -> ExecutionEngine<MemoryStorage> {
                         char_max_length: None,
 
                         collation: None,
+
                         default_value: None,
                     },
                     ColumnDefinition {
@@ -331,6 +355,7 @@ fn setup_sqlrustgo_engine() -> ExecutionEngine<MemoryStorage> {
                         char_max_length: None,
 
                         collation: None,
+
                         default_value: None,
                     },
                     ColumnDefinition {
@@ -341,6 +366,7 @@ fn setup_sqlrustgo_engine() -> ExecutionEngine<MemoryStorage> {
                         char_max_length: None,
 
                         collation: None,
+
                         default_value: None,
                     },
                     ColumnDefinition {
@@ -351,6 +377,7 @@ fn setup_sqlrustgo_engine() -> ExecutionEngine<MemoryStorage> {
                         char_max_length: None,
 
                         collation: None,
+
                         default_value: None,
                     },
                     ColumnDefinition {
@@ -361,6 +388,7 @@ fn setup_sqlrustgo_engine() -> ExecutionEngine<MemoryStorage> {
                         char_max_length: None,
 
                         collation: None,
+
                         default_value: None,
                     },
                     ColumnDefinition {
@@ -371,6 +399,7 @@ fn setup_sqlrustgo_engine() -> ExecutionEngine<MemoryStorage> {
                         char_max_length: None,
 
                         collation: None,
+
                         default_value: None,
                     },
                     ColumnDefinition {
@@ -381,6 +410,7 @@ fn setup_sqlrustgo_engine() -> ExecutionEngine<MemoryStorage> {
                         char_max_length: None,
 
                         collation: None,
+
                         default_value: None,
                     },
                     ColumnDefinition {
@@ -391,6 +421,7 @@ fn setup_sqlrustgo_engine() -> ExecutionEngine<MemoryStorage> {
                         char_max_length: None,
 
                         collation: None,
+
                         default_value: None,
                     },
                 ],
@@ -414,6 +445,7 @@ fn setup_sqlrustgo_engine() -> ExecutionEngine<MemoryStorage> {
                         char_max_length: None,
 
                         collation: None,
+
                         default_value: None,
                     },
                     ColumnDefinition {
@@ -424,6 +456,7 @@ fn setup_sqlrustgo_engine() -> ExecutionEngine<MemoryStorage> {
                         char_max_length: None,
 
                         collation: None,
+
                         default_value: None,
                     },
                     ColumnDefinition {
@@ -434,6 +467,7 @@ fn setup_sqlrustgo_engine() -> ExecutionEngine<MemoryStorage> {
                         char_max_length: None,
 
                         collation: None,
+
                         default_value: None,
                     },
                     ColumnDefinition {
@@ -444,6 +478,7 @@ fn setup_sqlrustgo_engine() -> ExecutionEngine<MemoryStorage> {
                         char_max_length: None,
 
                         collation: None,
+
                         default_value: None,
                     },
                     ColumnDefinition {
@@ -454,6 +489,7 @@ fn setup_sqlrustgo_engine() -> ExecutionEngine<MemoryStorage> {
                         char_max_length: None,
 
                         collation: None,
+
                         default_value: None,
                     },
                 ],
@@ -477,6 +513,7 @@ fn setup_sqlrustgo_engine() -> ExecutionEngine<MemoryStorage> {
                         char_max_length: None,
 
                         collation: None,
+
                         default_value: None,
                     },
                     ColumnDefinition {
@@ -487,6 +524,7 @@ fn setup_sqlrustgo_engine() -> ExecutionEngine<MemoryStorage> {
                         char_max_length: None,
 
                         collation: None,
+
                         default_value: None,
                     },
                     ColumnDefinition {
@@ -497,6 +535,7 @@ fn setup_sqlrustgo_engine() -> ExecutionEngine<MemoryStorage> {
                         char_max_length: None,
 
                         collation: None,
+
                         default_value: None,
                     },
                     ColumnDefinition {
@@ -507,6 +546,7 @@ fn setup_sqlrustgo_engine() -> ExecutionEngine<MemoryStorage> {
                         char_max_length: None,
 
                         collation: None,
+
                         default_value: None,
                     },
                     ColumnDefinition {
@@ -517,6 +557,7 @@ fn setup_sqlrustgo_engine() -> ExecutionEngine<MemoryStorage> {
                         char_max_length: None,
 
                         collation: None,
+
                         default_value: None,
                     },
                     ColumnDefinition {
@@ -527,6 +568,7 @@ fn setup_sqlrustgo_engine() -> ExecutionEngine<MemoryStorage> {
                         char_max_length: None,
 
                         collation: None,
+
                         default_value: None,
                     },
                     ColumnDefinition {
@@ -537,6 +579,7 @@ fn setup_sqlrustgo_engine() -> ExecutionEngine<MemoryStorage> {
                         char_max_length: None,
 
                         collation: None,
+
                         default_value: None,
                     },
                     ColumnDefinition {
@@ -547,6 +590,7 @@ fn setup_sqlrustgo_engine() -> ExecutionEngine<MemoryStorage> {
                         char_max_length: None,
 
                         collation: None,
+
                         default_value: None,
                     },
                     ColumnDefinition {
@@ -557,6 +601,7 @@ fn setup_sqlrustgo_engine() -> ExecutionEngine<MemoryStorage> {
                         char_max_length: None,
 
                         collation: None,
+
                         default_value: None,
                     },
                 ],
@@ -580,6 +625,7 @@ fn setup_sqlrustgo_engine() -> ExecutionEngine<MemoryStorage> {
                         char_max_length: None,
 
                         collation: None,
+
                         default_value: None,
                     },
                     ColumnDefinition {
@@ -590,6 +636,7 @@ fn setup_sqlrustgo_engine() -> ExecutionEngine<MemoryStorage> {
                         char_max_length: None,
 
                         collation: None,
+
                         default_value: None,
                     },
                     ColumnDefinition {
@@ -600,6 +647,7 @@ fn setup_sqlrustgo_engine() -> ExecutionEngine<MemoryStorage> {
                         char_max_length: None,
 
                         collation: None,
+
                         default_value: None,
                     },
                     ColumnDefinition {
@@ -610,6 +658,7 @@ fn setup_sqlrustgo_engine() -> ExecutionEngine<MemoryStorage> {
                         char_max_length: None,
 
                         collation: None,
+
                         default_value: None,
                     },
                     ColumnDefinition {
@@ -620,6 +669,7 @@ fn setup_sqlrustgo_engine() -> ExecutionEngine<MemoryStorage> {
                         char_max_length: None,
 
                         collation: None,
+
                         default_value: None,
                     },
                     ColumnDefinition {
@@ -630,6 +680,7 @@ fn setup_sqlrustgo_engine() -> ExecutionEngine<MemoryStorage> {
                         char_max_length: None,
 
                         collation: None,
+
                         default_value: None,
                     },
                     ColumnDefinition {
@@ -640,6 +691,7 @@ fn setup_sqlrustgo_engine() -> ExecutionEngine<MemoryStorage> {
                         char_max_length: None,
 
                         collation: None,
+
                         default_value: None,
                     },
                     ColumnDefinition {
@@ -650,6 +702,7 @@ fn setup_sqlrustgo_engine() -> ExecutionEngine<MemoryStorage> {
                         char_max_length: None,
 
                         collation: None,
+
                         default_value: None,
                     },
                     ColumnDefinition {
@@ -660,6 +713,7 @@ fn setup_sqlrustgo_engine() -> ExecutionEngine<MemoryStorage> {
                         char_max_length: None,
 
                         collation: None,
+
                         default_value: None,
                     },
                     ColumnDefinition {
@@ -670,6 +724,7 @@ fn setup_sqlrustgo_engine() -> ExecutionEngine<MemoryStorage> {
                         char_max_length: None,
 
                         collation: None,
+
                         default_value: None,
                     },
                     ColumnDefinition {
@@ -680,6 +735,7 @@ fn setup_sqlrustgo_engine() -> ExecutionEngine<MemoryStorage> {
                         char_max_length: None,
 
                         collation: None,
+
                         default_value: None,
                     },
                     ColumnDefinition {
@@ -690,6 +746,7 @@ fn setup_sqlrustgo_engine() -> ExecutionEngine<MemoryStorage> {
                         char_max_length: None,
 
                         collation: None,
+
                         default_value: None,
                     },
                     ColumnDefinition {
@@ -700,6 +757,7 @@ fn setup_sqlrustgo_engine() -> ExecutionEngine<MemoryStorage> {
                         char_max_length: None,
 
                         collation: None,
+
                         default_value: None,
                     },
                     ColumnDefinition {
@@ -710,6 +768,7 @@ fn setup_sqlrustgo_engine() -> ExecutionEngine<MemoryStorage> {
                         char_max_length: None,
 
                         collation: None,
+
                         default_value: None,
                     },
                     ColumnDefinition {
@@ -720,6 +779,7 @@ fn setup_sqlrustgo_engine() -> ExecutionEngine<MemoryStorage> {
                         char_max_length: None,
 
                         collation: None,
+
                         default_value: None,
                     },
                     ColumnDefinition {
@@ -730,6 +790,7 @@ fn setup_sqlrustgo_engine() -> ExecutionEngine<MemoryStorage> {
                         char_max_length: None,
 
                         collation: None,
+
                         default_value: None,
                     },
                 ],

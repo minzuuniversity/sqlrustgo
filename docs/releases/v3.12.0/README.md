@@ -63,6 +63,7 @@ v3.12.0 的目标是“功能比较完备的初始生产版本”，不是把大
 - `PARTIAL` 只能是 Alpha/Beta 过渡状态，不能进入 GA 产品声明。
 - 属于 GMP 内审检索、MySQL-style 基础兼容、TPC-H/SQL correctness、recovery、coverage、bulk-load、Sysbench 的 `PARTIAL` 是 GA blocker。
 - 非 v3.12 初始生产边界的能力，例如通用向量数据库、通用图数据库、存储过程、复制/分布式、未限定的 Window/GIS/JSON，必须改为 `DEFERRED` 或 `UNSUPPORTED`。
+- Window/GIS/JSON 三类 SQL 功能的 v3.12 边界已写入 [`sql-feature-corpus/window_json_gis_scope.md`](./sql-feature-corpus/window_json_gis_scope.md)：Window → `DEFERRED-3.13`，JSON → `DONE-subset`（`JSON_EXTRACT/JSON_VALUE/JSON_UNQUOTE` + `->`/`->>` 操作符），GIS → `DONE-subset`（`ST_DISTANCE/ST_WITHIN/ST_CONTAINS/ST_INTERSECTS`，仅 2D Point/WKT-bbox）。
 - #4220 是 PARTIAL 功能整改总控；#4221-#4227 是本轮新增的缺口 issue；已有 #3943、#4020、#4210、#4211、#4217、#4218、#4219 继续作为对应整改证据入口。
 
 ## 附录：英文原文
