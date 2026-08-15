@@ -20,8 +20,8 @@ SQLRustGo 是一个纯 Rust 实现的 SQL 数据库项目，包含 SQL 解析、
 当前仓库的发布口径是：
 
 - **v3.11.0 GA**: 可作为简单生产环境或受控场景的候选数据库版本，但不能宣称为完整 MySQL 5.7 替代品。
-- **v3.12.0 ALPHA**: 正在补强 v3.11 的弱项，并面向 `~/gmp-platform` 的 GMP 合规内审检索系统建立数据库、向量检索和图投影能力。
-- **v4.0.0 方向**: 才适合规划“通用向量数据库 / 通用图数据库 / 更广义生产替代”的产品目标。
+- **v3.12.0 ALPHA (受控基础子集)**: 面向 `~/gmp-platform` 的 GMP 合规内审检索场景建立数据库、向量检索和图投影能力。**Round-24 chatgpt/codex 严格再审查 (2026-08-15)** 后重新定级为 *internal controlled subset*：TPC-H SF=1、SF=10 完整通过、SF=10 端到端 chunked bulk-load、GMP 完整 audit/ACL/版本链、向量/检索/HNSW 真生产对接、4.0 前补强、零行子项等仍按 [v3.13-MASTER #4313](http://192.168.0.252:3000/openclaw/sqlrustgo/issues/4313) 跟踪，不宣称完整 MySQL 5.7 替代或通用向量数据库替代。详见 [`docs/releases/v3.12.0/evidence/V312-ROUND24-REMEDIATION-NOTICE.md`](docs/releases/v3.12.0/evidence/V312-ROUND24-REMEDIATION-NOTICE.md)。
+- **v4.0.0 方向**: 才适合规划”通用向量数据库 / 通用图数据库 / 更广义生产替代”的产品目标。
 
 ---
 
