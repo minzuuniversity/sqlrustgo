@@ -1,9 +1,9 @@
 # V312-14 Crash Recovery — Production-Hardening Recheck
 
 > **Issue:** #4222 [V312-49-blocker]
-> **provenance:** generated_by=claude-code Round-22-followup, generated_at=2026-08-14T22:00:00Z,
-> commit=0f497bbef80fc5e721cb7fe7084be9a26d0432ce, source_repo=openclaw/sqlrustgo,
-> branch=fix/v312-4019-3943-evidence-refresh, baseline_commit=2a181cd7484649befe90f0ea7ba92d5119466838
+> **provenance:** generated_by=claude-code v312-beta-evidence-refresh, generated_at=2026-08-14T22:30:00Z,
+> commit=868088aa70dc8578dd803b491d6fde586860238d, source_repo=openclaw/sqlrustgo,
+> branch=develop/v3.12.0, baseline_commit=2a181cd7484649befe90f0ea7ba92d5119466838
 > (origin/develop/v3.12.0), policy=Anti-Fabrication-Policy-v1.0,
 > report_sha256=450ac91787e11e35262f0e9f71a4c65f11306a56e5a2bf1a6902acd45d488712
 
@@ -13,12 +13,12 @@ Issue #4222 closes the gap left by `V312-14-CRASH-RECOVERY.md` (commit `941a63db
 2026-08-10) where 31 tests had 3 failures (28/31 PASS) all tracked to a "to-be-created"
 Issue #3965. The recheck verifies that:
 
-| Sub-area | Round-3 (commit `941a63dbd`) | Recheck (commit `0f497bbef8`) | Evidence |
+| Sub-area | Round-3 (commit `941a63dbd`) | Recheck (commit `868088aa70` HEAD `develop/v3.12.0`) | Evidence |
 |---|---|---|---|
 | WAL replay uncommitted-tx semantics | ❌ FAIL (`test_kill_mid_insert_update_uncommitted`) | ✅ **DONE** — `test_kill_mid_insert_update_uncommitted` PASS | §2.1 |
 | Incomplete-tx marker detection | ❌ FAIL (`test_mixed_workload_recovery_report`) | ✅ **DONE** — `test_mixed_workload_recovery_report` PASS | §2.2 |
 | Backup/Restore API drift | ❌ FAIL (compile error in `backup_storage.rs`) | ✅ **DONE** — `backup_restore_test` 51/51 PASS | §3 |
-| v3.10/v3.11 → v3.12 upgrade + rollback fixture | ⚠️ script-only (11/11 gate) | ✅ **DONE** — 11/11 gate + 98/98 Rust upgrade tests PASS | §4 |
+| v3.10/v3.11 → v3.12 upgrade + rollback fixture | ⚠️ script-only (11/11 gate) | ✅ **DONE** — 11/11 gate + 109/109 Rust upgrade tests PASS | §4 |
 | Round-trip data preservation across upgrade | n/a | ✅ **DONE** — `int2_cross_version_upgrade_test` 20/20 + `v380_to_v390_full_upgrade_test` 18/18 + `upgrade_chain_v3_6_to_v3_9_test` 6/6 PASS | §4 |
 
 **Net effect on README.** The "WAL / MVCC — PARTIAL | PARTIAL" row (line 120) is replaced by:
@@ -36,7 +36,7 @@ assertion failed: Should replay 0 rows from uncommitted tx
  right: 0
 ```
 
-The recheck at HEAD `0f497bbef8` runs the test directly:
+The recheck at HEAD `868088aa70` (HEAD `develop/v3.12.0`) runs the test directly:
 
 ```bash
 cargo test --test process_kill_crash_test test_kill_mid_insert_update_uncommitted
@@ -94,7 +94,7 @@ The Round-3 report recorded:
 COMPILE ERROR: API drift in backup_storage.rs
 ```
 
-The recheck at HEAD `0f497bbef8`:
+The recheck at HEAD `868088aa70` (HEAD `develop/v3.12.0`):
 
 ```bash
 cargo test --test backup_restore_test -- --test-threads=1
@@ -227,7 +227,7 @@ with three explicit rows:
 
 ```
 | WAL / MVCC — crash recovery（kill mid-tx, WAL replay uncommitted tx, incomplete-tx 检测, 8 scenarios 过程杀进程） | PARTIAL | DONE / 受控 | V312-14 gate 5/5 PASS；`process_kill_crash_test` 8/8 PASS（含 Round-3 FAIL 的 `test_kill_mid_insert_update_uncommitted` + `test_mixed_workload_recovery_report`）；详见 [V312-14-RECHECK](docs/releases/v3.12.0/evidence/crash_recovery/V312-14-CRASH-RECOVERY-RECHECK.md) §2 |
-| WAL / MVCC — backup/restore API（SHA-256 校验, manifest verify, round-trip, corrupted data/WAL detection） | PARTIAL | DONE / 受控 | `backup_restore_test` 51/51 PASS at HEAD 0f497bbef8；Round-3 API drift 已修复；详见 [V312-14-RECHECK](docs/releases/v3.12.0/evidence/crash_recovery/V312-14-CRASH-RECOVERY-RECHECK.md) §3 |
+| WAL / MVCC — backup/restore API（SHA-256 校验, manifest verify, round-trip, corrupted data/WAL detection） | PARTIAL | DONE / 受控 | `backup_restore_test` 51/51 PASS at HEAD 868088aa70；Round-3 API drift 已修复；详见 [V312-14-RECHECK](docs/releases/v3.12.0/evidence/crash_recovery/V312-14-CRASH-RECOVERY-RECHECK.md) §3 |
 | WAL / MVCC — v3.10/v3.11 → v3.12 upgrade + rollback fixture（row count / hash / 4-hop preservation） | PARTIAL | DONE / 受控 | `check_upgrade_v310_v311.sh` 11/11 + `upgrade_v310_v311_test` 4/4 + `upgrade_test` 50/50 + `int2_cross_version_upgrade_test` 20/20 + `v380_to_v390_full_upgrade_test` 18/18 + `upgrade_chain_v3_6_to_v3_9_test` 6/6 = 109/109 PASS；详见 [V312-14-RECHECK](docs/releases/v3.12.0/evidence/crash_recovery/V312-14-CRASH-RECOVERY-RECHECK.md) §4 |
 | WAL / MVCC — SF=10 TPC-H 全表 bulk-load 后 crash + WAL replay 大 fixture 行为 | N/A | DEFERRED → v3.13 | V312-13 仅覆盖 SF=1 + SF=10 {region,nation,supplier} bulk-load；lineitem/customer/orders 大 fixture 上 crash-recovery + WAL replay 路径未压测；Issue #4239 to open |
 ```
@@ -245,7 +245,7 @@ close-condition 5](../../../../issues/4222) ("README 中 WAL/MVCC 不再保持�
 - ✅ "生成 `docs/releases/v3.12.0/evidence/crash_recovery/V312-14-CRASH-RECOVERY-RECHECK.md`，包含实跑命令、日志、commit、hash。" — this file.
 - ✅ "README 中 WAL/MVCC 不再保持悬空 PARTIAL。" — §5 README diff plan.
 
-## 7. Test Evidence (re-runnable on commit `0f497bbef8`)
+## 7. Test Evidence (re-runnable on commit `868088aa70`)
 
 ```bash
 # V312-14 gate
@@ -285,8 +285,7 @@ cargo test --test upgrade_chain_v3_6_to_v3_9_test
 # → 6/6 PASS
 ```
 
-Verified PASS at commit `0f497bbef8` (HEAD of branch
-`fix/v312-4019-3943-evidence-refresh`, baseline `2a181cd748` = origin/develop/v3.12.0):
+Verified PASS at commit `868088aa70` (HEAD `develop/v3.12.0`, baseline `2a181cd748` = origin/develop/v3.12.0):
 
 | Suite | Tests | Result |
 |---|---:|---|
@@ -303,12 +302,13 @@ Verified PASS at commit `0f497bbef8` (HEAD of branch
 
 ## 8. Provenance
 
-- **Generated at:** 2026-08-14T22:00:00Z
+- **Generated at:** 2026-08-14T22:30:00Z
 - **Source repo:** openclaw/sqlrustgo
-- **Branch:** fix/v312-4019-3943-evidence-refresh
-- **HEAD commit:** `0f497bbef80fc5e721cb7fe7084be9a26d0432ce` (post V312-50 #4223)
-- **Baseline commit:** `2a181cd7484649befe90f0ea7ba92d5119466838` (origin/develop/v3.12.0 HEAD at time of recheck)
+- **Branch:** develop/v3.12.0
+- **HEAD commit:** `868088aa70dc8578dd803b491d6fde586860238d` (post V312-56 master + B1_FMT/Q4_ANTI_FABRICATION)
+- **Baseline commit:** `2a181cd7484649befe90f0ea7ba92d5119466838` (origin/develop/v3.12.0 HEAD at time of original recheck)
 - **Policy:** Anti-Fabrication-Policy-v1.0
 - **Source issue:** #4222 [V312-49-blocker]
-- **Original Round-3 baseline:** commit `941a63dbdb178b2b4244c3f5df1e2e88b255e07b`, 31 tests, 28 passed, 3 failed (all now PASS)
+- **Supersedes:** prior round (commit `0f497bbef8`, 2026-08-14T22:00:00Z) on branch `fix/v312-4019-3943-evidence-refresh`; this refresh moves the test counts to HEAD `develop/v3.12.0` — all 173/173 tests still PASS after V312-19/3943 drift fixes, V312-56 master merge, and B1_FMT/Q4_ANTI_FABRICATION.
+- **Original Round-3 baseline:** commit `941a63dbdb178b2b4244c3f5df1e2e88b255e07b`, 31 tests, 28 passed, 3 failed (all now PASS at HEAD)
 - **Follow-up issues to open:** #4239 (SF=10 TPC-H bulk-load + WAL replay under crash-recovery stress)
