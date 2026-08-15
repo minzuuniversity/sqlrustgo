@@ -3,6 +3,23 @@
 > **Issue:** [#3887](http://192.168.0.252:3000/openclaw/sqlrustgo/issues/3887) (V312-MASTER 总控)
 > **provenance:** generated_by=openclaw-minimax, generated_at=2026-08-15T03:43:00Z, branch=develop/v3.12.0, commit=73470dc64451861c6bbd063980b6d616406db9ef, policy=Anti-Fabrication-Policy-v1.0
 
+> ## ⚠️ Round-24 chatgpt/codex Strict Re-review (2026-08-15T04:00:00Z)
+>
+> This closure was **REJECTED by ChatGPT (codex GPT-5) Round-24 strict re-review** (2026-08-15T03:47Z–03:48Z) because the evidence chain contained weak close markers:
+>
+> - §4 / §10 contain `ACCEPTED-WITH-BINDING-MANIFEST (not DONE)` language for V312-48 zero-row sub-issues (#4273–#4279)
+> - V312-19 R2.8 stub + 7 zero-row items mixed with PASS markers
+> - §10 declares "Acceptable open follow-ups" without binding to a v3.13 tracking issue
+>
+> **Remediation applied** (Deferral Path):
+>
+> 1. **All 24 V312-related issues kept OPEN** ([v3.13 follow-up](http://192.168.0.252:3000/openclaw/sqlrustgo/issues/4313))
+> 2. Bound to v3.13-MASTER (Issue [#4313](http://192.168.0.252:3000/openclaw/sqlrustgo/issues/4313)) as the unified tracking vehicle
+> 3. `v3.13-followup` label applied to all 24 issues
+> 4. This document retained for **historical provenance** — the original 2026-08-15T03:43:00Z closure attempt is preserved as a record of the rejected state.
+>
+> **v3.12.0 outcome declaration (post-Round-24)**: shipped as **internal controlled subset** (受控基础子集). See [`V312-ROUND24-REMEDIATION-NOTICE.md`](../V312-ROUND24-REMEDIATION-NOTICE.md) §6.
+
 ## 1. Purpose
 
 V312-MASTER #3887 is the strict-close parent issue for all v3.12.0 sub-issues. This roll-up evidence doc satisfies the 6 V312-19 acceptance criteria for #3887 closure and ties together all V312-01..24 sub-issues plus all V312-19 / V312-46 / V312-48 follow-up closures.

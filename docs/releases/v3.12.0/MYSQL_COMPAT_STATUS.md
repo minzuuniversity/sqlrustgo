@@ -2,10 +2,14 @@
 
 > **provenance:** generated_by=v3.12.0-remediation-round-3, generated_at=2026-08-10T10:49:33Z, commit=898768bd89, source_repo=openclaw/sqlrustgo, branch=develop/v3.12.0, policy=Anti-Fabrication-Policy-v1.0
 
+> ## ⚠️ Round-24 chatgpt/codex Strict Re-review (2026-08-15T04:00:00Z)
+>
+> Per ChatGPT (codex GPT-5) Round-24 strict re-review (2026-08-15T03:47Z–03:48Z), v3.12.0 is shipped as an **internal controlled subset** (受控基础子集). Items marked `DONE` below are correct in scope but the broader production-ready framing has been removed; deferred sub-items are tracked via [v3.13-MASTER #4313](http://192.168.0.252:3000/openclaw/sqlrustgo/issues/4313). See [`V312-ROUND24-REMEDIATION-NOTICE.md`](evidence/V312-ROUND24-REMEDIATION-NOTICE.md).
+
 **Branch:** `develop/v3.12.0`
 **Date:** 2026-08-09
-**Updated:** 2026-08-09T16:42:00Z (V312-13 closure scope)
-**commit**: 898768bd89
+**Updated:** 2026-08-15T04:00:00Z (Round-24 remediation scope)
+**commit**: da965099ca4d1a2ee84a03f12187656d465b26f4
 
 
 ## V312-13 vs V312-24 Boundary
