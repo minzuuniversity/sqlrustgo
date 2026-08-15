@@ -15,6 +15,15 @@ pub enum AuditAction {
     Create,
     Update,
     Delete,
+    // Compliance operation variants (V312-53 followup #4231).
+    // These mirror the operations that must be audit-logged per
+    // GMP access-control policy (acl.rs role×op matrix).
+    Import,
+    Export,
+    Approve,
+    Review,
+    Backup,
+    Restore,
 }
 
 impl AuditAction {
@@ -23,6 +32,12 @@ impl AuditAction {
             AuditAction::Create => "CREATE",
             AuditAction::Update => "UPDATE",
             AuditAction::Delete => "DELETE",
+            AuditAction::Import => "IMPORT",
+            AuditAction::Export => "EXPORT",
+            AuditAction::Approve => "APPROVE",
+            AuditAction::Review => "REVIEW",
+            AuditAction::Backup => "BACKUP",
+            AuditAction::Restore => "RESTORE",
         }
     }
 
@@ -32,6 +47,12 @@ impl AuditAction {
             "CREATE" => Some(AuditAction::Create),
             "UPDATE" => Some(AuditAction::Update),
             "DELETE" => Some(AuditAction::Delete),
+            "IMPORT" => Some(AuditAction::Import),
+            "EXPORT" => Some(AuditAction::Export),
+            "APPROVE" => Some(AuditAction::Approve),
+            "REVIEW" => Some(AuditAction::Review),
+            "BACKUP" => Some(AuditAction::Backup),
+            "RESTORE" => Some(AuditAction::Restore),
             _ => None,
         }
     }
@@ -676,6 +697,60 @@ mod tests {
     }
 
     #[test]
+    fn test_compliance_action_variants_roundtrip() {
+        // V312-53 followup #4231: AuditAction must cover compliance ops
+        // (Import, Export, Approve, Review, Backup, Restore). Each must
+        // round-trip through as_str / from_str and survive a hash-chain
+        // record_audit_log cycle.
+        let cases: [(AuditAction, &str); 6] = [
+            (AuditAction::Import, "IMPORT"),
+            (AuditAction::Export, "EXPORT"),
+            (AuditAction::Approve, "APPROVE"),
+            (AuditAction::Review, "REVIEW"),
+            (AuditAction::Backup, "BACKUP"),
+            (AuditAction::Restore, "RESTORE"),
+        ];
+        for (variant, expected_str) in cases.iter() {
+            assert_eq!(variant.as_str(), *expected_str, "as_str for {:?}", variant);
+            let parsed = AuditAction::from_str(expected_str)
+                .unwrap_or_else(|| panic!("from_str({}) must parse", expected_str));
+            assert_eq!(parsed, *variant, "round-trip mismatch for {}", expected_str);
+        }
+
+        // Record one of each and verify chain remains intact.
+        let mut storage = sqlrustgo_storage::MemoryStorage::new();
+        create_audit_log_table(&mut storage).unwrap();
+        let action_strs: Vec<&str> = cases.iter().map(|(_, s)| *s).collect();
+        for s in &action_strs {
+            record_audit_log(
+                &mut storage,
+                "compliance-user",
+                s,
+                "gmp_documents",
+                Some("doc-1"),
+                None,
+                None,
+                None,
+                None,
+            )
+            .unwrap();
+        }
+        let (ok, broken_at) = verify_audit_chain(&storage).unwrap();
+        assert!(
+            ok,
+            "chain must be intact after 6 compliance ops; broken_at={:?}",
+            broken_at
+        );
+        let logs = query_audit_logs(&storage, None, None, None, None, None).unwrap();
+        assert_eq!(logs.len(), 6);
+        let actions: Vec<&str> = logs.iter().map(|l| l.action.as_str()).collect();
+        assert_eq!(
+            actions,
+            vec!["IMPORT", "EXPORT", "APPROVE", "REVIEW", "BACKUP", "RESTORE"]
+        );
+    }
+
+    #[test]
     fn test_event_hash_deterministic() {
         let log = make_log(1, 1000, "user1");
         let h1 = compute_event_hash(&log);
@@ -760,10 +835,18 @@ mod tests {
 
     #[test]
     fn test_hash_chain_tamper_detection() {
-        // This test would need a storage that allows mutation to fully test.
-        // The verify_audit_chain function is the tamper detection mechanism.
+        // Real tamper integration test:
+        // 1. Insert N audit log rows forming a valid chain.
+        // 2. Verify chain is intact.
+        // 3. Mutate a stored row's column (action) via StorageEngine::update_if.
+        // 4. Verify chain now reports tamper at the mutated row.
+        // Column order: id(0), timestamp(1), user_id(2), action(3),
+        // table_name(4), record_id(5), old_value(6), new_value(7),
+        // ip_address(8), session_id(9), previous_hash(10), event_hash(11).
         let mut storage = sqlrustgo_storage::MemoryStorage::new();
         create_audit_log_table(&mut storage).unwrap();
+
+        // 1. Insert 3 rows forming a chain.
         record_audit_log(
             &mut storage,
             "u1",
@@ -776,9 +859,103 @@ mod tests {
             None,
         )
         .unwrap();
+        record_audit_log(
+            &mut storage,
+            "u1",
+            "UPDATE",
+            "gmp_documents",
+            Some("1"),
+            None,
+            None,
+            None,
+            None,
+        )
+        .unwrap();
+        record_audit_log(
+            &mut storage,
+            "u1",
+            "DELETE",
+            "gmp_documents",
+            Some("1"),
+            None,
+            None,
+            None,
+            None,
+        )
+        .unwrap();
 
-        let (ok, _) = verify_audit_chain(&storage).unwrap();
+        // 2. Chain must be intact before tampering.
+        let (ok, broken_at) = verify_audit_chain(&storage).unwrap();
+        assert!(
+            ok,
+            "chain must be intact after writes; broken_at={:?}",
+            broken_at
+        );
+        assert!(broken_at.is_none());
+
+        // 3. Mutate row id=2 (action column 3) from "UPDATE" to "TAMPERED".
+        // Use a RowFilter that matches only the row with id=2.
+        let filter: sqlrustgo_storage::RowFilter = Box::new(|r: &sqlrustgo_storage::Record| {
+            matches!(r.first(), Some(sqlrustgo_types::Value::Integer(2)))
+        });
+        let mutation = sqlrustgo_storage::RowMutation::new(
+            vec![(3, sqlrustgo_types::Value::Text("TAMPERED".to_string()))],
+            0xDEADBEEFu64,
+        );
+        let updated = storage
+            .update_if("gmp_audit_log", &filter, &mutation)
+            .expect("update_if should succeed against in-memory storage");
+        assert_eq!(updated, 1, "exactly one row should be mutated");
+
+        // 4. Chain must now report tamper at row id=2.
+        let (ok, broken_at) = verify_audit_chain(&storage).unwrap();
+        assert!(
+            !ok,
+            "chain must be reported broken after tampering a stored row"
+        );
+        assert_eq!(
+            broken_at,
+            Some(2),
+            "tamper must be detected at the mutated row id"
+        );
+    }
+
+    #[test]
+    fn test_hash_chain_tamper_detection_negative_no_mutate() {
+        // Sanity: this is the pre-existing behavior — verify_audit_chain
+        // against an untouched chain returns (true, None). Kept as a
+        // named test so the absence of tampering is a distinct assertion.
+        let mut storage = sqlrustgo_storage::MemoryStorage::new();
+        create_audit_log_table(&mut storage).unwrap();
+
+        record_audit_log(
+            &mut storage,
+            "u1",
+            "CREATE",
+            "gmp_documents",
+            Some("1"),
+            None,
+            None,
+            None,
+            None,
+        )
+        .unwrap();
+        record_audit_log(
+            &mut storage,
+            "u1",
+            "UPDATE",
+            "gmp_documents",
+            Some("1"),
+            None,
+            None,
+            None,
+            None,
+        )
+        .unwrap();
+
+        let (ok, broken_at) = verify_audit_chain(&storage).unwrap();
         assert!(ok);
+        assert!(broken_at.is_none());
     }
 
     #[test]

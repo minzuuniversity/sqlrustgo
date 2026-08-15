@@ -402,4 +402,224 @@ mod tests {
         let results = retrieval_search(&storage, "test", 5).unwrap();
         assert!(results.is_empty());
     }
+
+    /// Fixed GMP audit-question fixture for V312-52 followup #4236.
+    ///
+    /// Seeds 8 deterministic documents + chunks + embeddings via
+    /// `HashEmbeddingModel` (which is already deterministic — same text →
+    /// same vector). Runs a known query, asserts top-k ordering, then re-runs
+    /// and asserts byte-for-byte identical results.
+    ///
+    /// This is the canary test that future non-determinism regressions
+    /// (HashMap iteration order, float-precision drift, etc.) would fail.
+    fn seed_audit_question_fixture(
+        storage: &mut sqlrustgo_storage::MemoryStorage,
+    ) -> Vec<(i64, String)> {
+        use crate::chunk::insert_chunk;
+        use crate::document::{create_gmp_tables, insert_document, DocStatus, NewDocument};
+        use crate::embedding::EmbeddingModel;
+        use crate::embedding::HashEmbeddingModel;
+        use crate::vector_search::upsert_embedding;
+
+        create_gmp_tables(storage).unwrap();
+
+        // 8 docs covering a range of distinct keyword + semantic signals.
+        // Title seeds are chosen so that "audit log" has highest vector
+        // similarity to doc #1 (audit-log-record) and clear lexical matches.
+        let docs: [(&str, &str, &str); 8] = [
+            (
+                "audit-log-record",
+                "GUIDE",
+                "the audit log record captures who did what and when",
+            ),
+            (
+                "audit-trail-report",
+                "GUIDE",
+                "audit trail reports track changes over time across the system",
+            ),
+            (
+                "financial-statement",
+                "GUIDE",
+                "balance sheet and income statement for the fiscal year",
+            ),
+            (
+                "unrelated-doc",
+                "GUIDE",
+                "kitchen recipes for sourdough bread and pastries",
+            ),
+            (
+                "security-incident-log",
+                "GUIDE",
+                "security incident log with timestamps and severity levels",
+            ),
+            (
+                "compliance-checklist",
+                "GUIDE",
+                "compliance checklist for SOX and GDPR audit requirements",
+            ),
+            (
+                "database-schema",
+                "GUIDE",
+                "database schema design with normalized tables and indexes",
+            ),
+            (
+                "meeting-minutes",
+                "GUIDE",
+                "meeting minutes from the weekly engineering standup",
+            ),
+        ];
+
+        let model = HashEmbeddingModel::default();
+        let mut seeded: Vec<(i64, String)> = Vec::with_capacity(docs.len());
+        for (idx, (title, doc_type, content)) in docs.iter().enumerate() {
+            let doc_id = insert_document(
+                storage,
+                NewDocument {
+                    title,
+                    doc_type,
+                    version: 1,
+                    created_at: 1_700_000_000 + idx as i64,
+                    updated_at: 1_700_000_000 + idx as i64,
+                    effective_date: 20250101,
+                    status: DocStatus::Active,
+                },
+            )
+            .unwrap();
+            let chunk_id = insert_chunk(storage, doc_id, 1, 0, Some("body"), content).unwrap();
+            // Use a content-derived embedding so identical fixture seeds give
+            // identical vectors without depending on global model state.
+            let embedding = model.generate_embedding(content);
+            upsert_embedding(storage, chunk_id, &embedding).unwrap();
+            seeded.push((doc_id, title.to_string()));
+        }
+        seeded
+    }
+
+    #[test]
+    fn test_hybrid_retrieval_audit_question_fixture_deterministic() {
+        use crate::embedding::EmbeddingModel;
+        use crate::embedding::HashEmbeddingModel;
+
+        // Seed identical fixture twice (two independent storages).
+        let mut storage_a = sqlrustgo_storage::MemoryStorage::new();
+        let mut storage_b = sqlrustgo_storage::MemoryStorage::new();
+        let seeded_a = seed_audit_question_fixture(&mut storage_a);
+        let _seeded_b = seed_audit_question_fixture(&mut storage_b);
+
+        // Pre-compute query embedding once (HashEmbeddingModel is
+        // deterministic — same text → same vector).
+        let model = HashEmbeddingModel::default();
+        let query_embedding = model.generate_embedding("audit log");
+        // We don't pass query_embedding directly because hybrid_retrieval
+        // recomputes it; we only assert that the ordering is stable across
+        // two independent seeds, which proves determinism of the whole
+        // retrieval pipeline.
+        let _ = query_embedding;
+
+        let config = HybridRetrievalConfig {
+            vector_weight: 0.5,
+            keyword_weight: 0.3,
+            graph_weight: 0.2,
+            rrf_k: 60,
+            top_k: 5,
+        };
+        let filter = RetrievalFilter::default();
+
+        let results_a = hybrid_retrieval(&storage_a, "audit log", &config, &filter).unwrap();
+        let results_b = hybrid_retrieval(&storage_b, "audit log", &config, &filter).unwrap();
+
+        // 1. Both must return the same length.
+        assert_eq!(results_a.len(), results_b.len());
+        assert!(
+            !results_a.is_empty(),
+            "fixture must return at least one hit for 'audit log'"
+        );
+        assert!(
+            results_a.len() <= 5,
+            "fixture must not exceed top_k=5; got {}",
+            results_a.len()
+        );
+
+        // 2. Top-3 ordering must be byte-for-byte identical across the two
+        //    independent seeds.
+        for i in 0..results_a.len() {
+            assert_eq!(
+                results_a[i].doc_id, results_b[i].doc_id,
+                "doc_id ordering must be deterministic at rank {}",
+                i
+            );
+            // Similarity should be equal across two seeds because embeddings
+            // are deterministic; allow tiny f32 epsilon for hash collisions.
+            let sim_diff = (results_a[i].similarity - results_b[i].similarity).abs();
+            assert!(
+                sim_diff < 1e-6,
+                "similarity must be deterministic at rank {}: a={}, b={}",
+                i,
+                results_a[i].similarity,
+                results_b[i].similarity
+            );
+            assert_eq!(
+                results_a[i].chunk_hash, results_b[i].chunk_hash,
+                "chunk_hash must be deterministic at rank {}",
+                i
+            );
+        }
+
+        // 3. The first hit must be the "audit-log-record" document
+        //    (highest semantic + lexical match to "audit log").
+        let first_doc_id = results_a[0].doc_id;
+        let first_title = seeded_a
+            .iter()
+            .find(|(id, _)| *id == first_doc_id)
+            .map(|(_, t)| t.clone())
+            .expect("top hit doc_id must come from the seeded set");
+        assert_eq!(
+            first_title, "audit-log-record",
+            "expected 'audit-log-record' to rank #1 for query 'audit log'"
+        );
+
+        // 4. Irrelevant docs (financial, kitchen, schema, meeting) must NOT
+        //    appear in the results for 'audit log'.
+        let result_titles: Vec<&str> = results_a
+            .iter()
+            .map(|r| {
+                seeded_a
+                    .iter()
+                    .find(|(id, _)| *id == r.doc_id)
+                    .map(|(_, t)| t.as_str())
+                    .unwrap_or("?")
+            })
+            .collect();
+        assert!(
+            !result_titles.contains(&"unrelated-doc"),
+            "kitchen recipes must NOT appear for 'audit log'; got {:?}",
+            result_titles
+        );
+        assert!(
+            !result_titles.contains(&"meeting-minutes"),
+            "meeting minutes must NOT appear for 'audit log'; got {:?}",
+            result_titles
+        );
+        assert!(
+            !result_titles.contains(&"financial-statement"),
+            "financial statement must NOT appear for 'audit log'; got {:?}",
+            result_titles
+        );
+
+        // 5. Every result must carry the score components + citation_text +
+        //    chunk_hash payload mandated by V312-52 / Issue #4225.
+        for r in &results_a {
+            assert!(!r.chunk_hash.is_empty(), "chunk_hash must be non-empty");
+            assert!(
+                !r.citation_text.is_empty(),
+                "citation_text must be non-empty"
+            );
+            assert!(!r.source_path.is_empty(), "source_path must be non-empty");
+            assert!(
+                r.scores.rrf_score > 0.0,
+                "rrf_score must be positive at rank {}",
+                r.doc_id
+            );
+        }
+    }
 }

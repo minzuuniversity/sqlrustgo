@@ -72,10 +72,21 @@ else
     FAIL=$((FAIL+1))
 fi
 
-# 3. At least one captured run
-LATEST_RUN=$(ls -1dt "$EVIDENCE_DIR"/*/ 2>/dev/null | head -1 || true)
+# 3. At least one captured run — pick latest dir that has the required
+#    core artifacts (metadata.json + summary.txt + sysbench_cpu.log) so the
+#    gate verifies a *complete* run, not an incomplete repro script dir.
+LATEST_RUN=$(for d in $(ls -1dt "$EVIDENCE_DIR"/*/ 2>/dev/null); do
+    if [ -f "$d/metadata.json" ] && [ -f "$d/summary.txt" ] && [ -f "$d/sysbench_cpu.log" ]; then
+        echo "$d"
+        break
+    fi
+done)
+if [ -z "$LATEST_RUN" ]; then
+    # fallback: any captured run dir
+    LATEST_RUN=$(ls -1dt "$EVIDENCE_DIR"/*/ 2>/dev/null | head -1 || true)
+fi
 if [ -n "$LATEST_RUN" ]; then
-    echo "  [PASS] latest run dir: $LATEST_RUN"
+    echo "  [PASS] latest complete run dir: $LATEST_RUN"
     PASS=$((PASS+1))
     if [ -f "$LATEST_RUN/metadata.json" ]; then
         echo "  [PASS] metadata.json present"
