@@ -395,6 +395,12 @@ pub struct ColumnDefinition {
     pub column_type: u8,
     pub flags: u16,
     pub decimals: u8,
+    /// Optional column default value string (e.g. `Some("0")` for
+    /// `id INT DEFAULT 0`). V312-35 #4169 cascade: mirrors
+    /// `parser::ColumnDefinition.default_value` so wire-protocol tests
+    /// can assert on the cascade without depending on the parser crate.
+    /// `None` means no DEFAULT clause was declared.
+    pub default_value: Option<String>,
 }
 
 /// MySQL wire-protocol status-flag bit indicating that another result
@@ -541,6 +547,12 @@ fn parse_column_definition(data: &[u8], offset: &mut usize) -> MySqlResult<Colum
         column_type,
         flags,
         decimals,
+        // Wire-protocol column-definition packets do NOT carry the
+        // server-side column default value (MySQL COM_FIELD_LIST and
+        // ResultSet packets omit it). The parser/executor layer is
+        // responsible for looking up the default via the catalog when
+        // needed (V312-35 #4169 cascade). Surface as `None` here.
+        default_value: None,
     })
 }
 
