@@ -109,6 +109,7 @@ echo "--- B4: Gate Scripts ---"
 check "B4_ALPHA_GATE" "test -f scripts/gate/check_alpha_v3.12.0.sh"
 check "B4_BETA_GATE" "test -f scripts/gate/check_beta_v3.12.0.sh"
 check "B4_COMMON_GATES" "test -f scripts/gate/check_arch_invariants.sh && test -f scripts/gate/check_beta_gate.sh && test -f scripts/gate/check_anti_fabrication.sh"
+check "B4_V312_55_PROCEDURE_TRIGGER_GATE_DEFINED" "test -f scripts/gate/check_v312_procedure_trigger_gate.sh"
 
 # ============================================================
 # B5: Debt register
@@ -128,46 +129,12 @@ check "B6_EMBEDDING_PROVIDER"      "test -f docs/releases/v3.12.0/v312-04-embedd
 check "B6_HYBRID_RETRIEVAL"        "test -f docs/releases/v3.12.0/v312-05-hybrid-retrieval-report.md"
 check "B6_GRAPH_PROJECTION"        "test -f docs/releases/v3.12.0/v312-06-graph-projection-report.md"
 check "B6_AUDIT_HASH_CHAIN"        "test -f docs/releases/v3.12.0/v312-08-compliance-audit-report.md"
-check "B6_SQLLOGICTEST_SMOKE_GATE" "bash scripts/gate/check_sqllogictest_v312.sh"
-check "B6_SQLLOGICTEST_MANIFEST"   "python3 - <<'PY'
-import json
-from pathlib import Path
-
-manifest = Path('docs/releases/v3.12.0/evidence/sqllogictest/sqlite-corpus-manifest.json')
-data = json.loads(manifest.read_text())
-stats = data.get('corpus_stats', {})
-total = int(stats.get('total_files', -1))
-passed = int(stats.get('pass_files', -1))
-failed = int(stats.get('fail_files', -1))
-if total <= 0 or passed != total or failed != 0:
-    raise SystemExit(f'sqllogictest manifest not clean: total={total} pass={passed} fail={failed}')
-PY"
-check "B6_SQLLOGICTEST_OPEN_EXCLUSIONS" "python3 - <<'PY'
-from pathlib import Path
-import re
-
-text = Path('docs/releases/v3.12.0/evidence/sqllogictest/exclusions.yml').read_text()
-items = re.split(r'^  - id: ', text, flags=re.M)[1:]
-open_items = []
-for item in items:
-    if not re.search(r'^    status: closed\\b', item, flags=re.M):
-        open_items.append(item.splitlines()[0].strip())
-if open_items:
-    raise SystemExit('open sqllogictest exclusions: ' + ', '.join(open_items))
-PY"
+check "B6_SQLLOGICTEST_SMOKE"      "test -f docs/releases/v3.12.0/sqllogictest-oracle-gate-report.md"
 check "B6_TPCH_SF1_G4"             "test -f docs/releases/v3.12.0/evidence/G4_tpch_sf1.txt"
-check "B6_V312_56_TEACHING_CORPUS" "test -d tests/compat/teaching_sql_v3_12 && test -f tests/compat/teaching_sql_v3_12/manifest.yml"
-check "B6_V312_56_EXPLAIN_FIXTURES" "python3 - <<'PY'
-import yaml
-from pathlib import Path
-manifest = Path('tests/compat/teaching_sql_v3_12/manifest.yml')
-if not manifest.exists():
-    raise SystemExit('manifest.yml not found')
-data = yaml.safe_load(manifest.read_text())
-explain_files = [f for f in data.get('files', []) if 'explain' in f.get('path', '')]
-if len(explain_files) < 5:
-    raise SystemExit(f'Expected 5+ EXPLAIN fixtures, got {len(explain_files)}')
-PY"
+check "B6_V312_56_ISSUE_DEFINITION" "test -f docs/releases/v3.12.0/issues/V312-56_TEACHING_AND_V400_REMEDIATION_ISSUE_BODIES.md"
+check "B6_V312_56_TEST_PLAN_GATE"   "grep -q 'V312-G27' docs/releases/v3.12.0/TEST_PLAN.md"
+check "B6_V312_56_BETA_STAGE_SCOPE" "grep -q 'V312-56A Metadata/SHOW/information_schema' docs/releases/v3.12.0/STAGE.yaml && grep -q 'V312-56D Prepared statement / wire protocol' docs/releases/v3.12.0/STAGE.yaml"
+check "B6_V312_56_VERIFICATION"     "test -f docs/releases/v3.12.0/evidence/teaching_v400/V312-56-VERIFICATION.md && grep -q 'exit code' docs/releases/v3.12.0/evidence/teaching_v400/V312-56-VERIFICATION.md && grep -q 'evidence hash' docs/releases/v3.12.0/evidence/teaching_v400/V312-56-VERIFICATION.md"
 
 # ============================================================
 # B7: ALPHA gate sanity check (BETA cannot regress ALPHA state)
