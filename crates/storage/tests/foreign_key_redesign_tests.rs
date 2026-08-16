@@ -78,7 +78,6 @@ fn column_definition_has_collation_field() {
         primary_key: false,
         char_max_length: Some(50),
         collation: Some("NOCASE".to_string()),
-
         default_value: None,
     };
     assert_eq!(col.collation.as_deref(), Some("NOCASE"));
@@ -109,7 +108,6 @@ fn table_info_round_trip_with_foreign_key() {
             primary_key: false,
             char_max_length: None,
             collation: None,
-
             default_value: None,
         }],
         foreign_keys: vec![ForeignKeyConstraint {
