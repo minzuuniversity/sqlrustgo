@@ -230,6 +230,62 @@
 5. **如 baseline 99.4% 反而 regression 到 < 80%**：必须走 fallback，写 `V312-28_corpus_threshold_attestation.md` 含 owner + expiry + replacement-gate + ISSUES_PLAN §V312-24 acceptance 复审记录。
 **禁止关闭条件**: (a) 仅靠"打开了 follow-up 任务"或"修了一部分 subcategory"；(b) 不接受"V312-24 proposal 27.3% 是 baseline" 之类的过时引用；(c) 14 个守护 test 必须有可识别的命名或注释才能算 PASS；(d) 无 sha256 不允许关闭。
 
+## V312-55：存储过程和触发器基础生产子集整改
+
+**优先级**: P0
+**Gitea Issue**: [#4237](http://192.168.0.252:3000/openclaw/sqlrustgo/issues/4237)
+
+**目标**: 将历史版本已经开发过但未闭环的存储过程和触发器能力，在 v3.12.0 内整改为受控基础生产功能。v3.12 GA 前不得再把该能力写成“完全没有”，也不得在缺少 gate 证据时写成“已完成”。
+
+**背景**:
+- 当前源码已有 `CREATE PROCEDURE`、`CALL`、`CREATE TRIGGER` 分派，catalog 和 executor 也存在局部实现。
+- 当前 README 曾写 `UNSUPPORTED`，与源码事实不一致；历史 v2.x/v3.x 文档又曾过度宣称完成，缺少实测闭环。
+- GMP 相关生产环境需要确定性、可审计、fail-closed 的数据库侧行为；隐藏副作用必须受事务、WAL、权限、递归限制和门禁约束。
+
+**范围**:
+- `CREATE PROCEDURE`、`DROP PROCEDURE`、`SHOW PROCEDURE`。
+- `CALL`、`IN` 参数和过程内确定性 SQL 执行，至少覆盖 `SELECT`、`INSERT`、`UPDATE`、`DELETE`。
+- BEFORE/AFTER row trigger，覆盖 `INSERT`、`UPDATE`、`DELETE`。
+- `NEW.col` / `OLD.col` 正确语义和非法上下文 fail-closed。
+- trigger body DML 与外层事务一致，WAL replay / recovery 后 count/hash 一致。
+- 递归触发限制，自触发和互触发不得无限递归或部分提交。
+- 权限正反例：`CREATE/DROP/SHOW PROCEDURE`、`CALL`、`CREATE TRIGGER`、trigger body DML。
+- SQLLogicTest / SQL corpus / E2E / wire 相关门禁接入。
+
+**子任务**:
+
+| 子任务 | 标题 | Owner 建议 | 可并行性 | 关闭边界 |
+|---|---|---|---|---|
+| V312-55A / [#4238](http://192.168.0.252:3000/openclaw/sqlrustgo/issues/4238) | Procedure DDL 生命周期 | claude/opencode | 可并行 | `CREATE/DROP/SHOW PROCEDURE` 正反例和 metadata 测试通过 |
+| V312-55B / [#4239](http://192.168.0.252:3000/openclaw/sqlrustgo/issues/4239) | CALL + IN 参数 + 确定性 SQL 执行 | hermes/omp | 依赖 55A | 过程内 `SELECT/INSERT/UPDATE/DELETE` 有确定输出；无 direct storage bypass |
+| V312-55C / [#4240](http://192.168.0.252:3000/openclaw/sqlrustgo/issues/4240) | Trigger row semantics | hermes/omp | 可并行 | BEFORE/AFTER row trigger 真实执行；`SET NEW.col` 修改真实落库；`NEW/OLD` 正反例通过 |
+| V312-55D / [#4241](http://192.168.0.252:3000/openclaw/sqlrustgo/issues/4241) | Trigger transaction/WAL/recovery | omp | 依赖 55C | 外层 rollback 能回滚 trigger body DML；kill -9/WAL replay 后 count/hash 一致 |
+| V312-55E / [#4242](http://192.168.0.252:3000/openclaw/sqlrustgo/issues/4242) | Recursion limit | opencode | 依赖 55C | 自触发/互触发达到深度限制时报错且无部分提交 |
+| V312-55F / [#4243](http://192.168.0.252:3000/openclaw/sqlrustgo/issues/4243) | Procedure/Trigger 权限 | claude | 可并行 | 未授权 `CREATE/DROP/CALL/TRIGGER` fail closed；授权正例通过 |
+| V312-55G / [#4244](http://192.168.0.252:3000/openclaw/sqlrustgo/issues/4244) | SQLLogicTest / SQL corpus 接入 | opencode | 依赖 55A-55C | procedure/trigger corpus 进入 selected gate；skip/fail 全部 issue-linked |
+| V312-55H / [#4245](http://192.168.0.252:3000/openclaw/sqlrustgo/issues/4245) | E2E、文档、release evidence | codex/claude | 依赖 55A-55G | README/compat docs 修正；`V312-55-VERIFICATION.md` 和 gate log 完整 |
+
+**必需门禁**:
+
+```bash
+bash scripts/gate/check_v312_procedure_trigger_gate.sh
+```
+
+**验收**:
+- V312-55A~55H 对应 PR 全部合并到 `develop/v3.12.0`。
+- `bash scripts/gate/check_v312_procedure_trigger_gate.sh` 在合并后的 `develop/v3.12.0` 退出 0。
+- `cargo test --test stored_proc_catalog_test -- --nocapture`、`cargo test --test view_procedure_trigger_e2e_test -- --nocapture`、`cargo test --test e2e_trigger_wal_recovery -- --nocapture` 有真实输出。
+- `docs/releases/v3.12.0/evidence/procedure_trigger/V312-55-VERIFICATION.md` 包含 branch、commit、PR、merge commit、命令、exit code、输出摘要、evidence hash、不支持范围。
+- README 状态只能在上述证据齐全后从 `PARTIAL / P0 整改中` 改为 `DONE / 受控基础功能`。
+
+**禁止关闭条件**:
+- 仅以“parser 能解析”“CREATE 成功”“测试文件存在”“报告写了 PASS”作为完成证据。
+- 存在 `#[ignore]` 的 gate test，或 gate 脚本使用 `|| true` / WARN-only 掩盖失败。
+- 过程内 SQL 仍绕过事务/trigger 主路径，或 trigger body DML 无法跟随外层事务回滚。
+- 无权限正反例、无 WAL recovery 证据、无 `NEW/OLD` 断言、无 SQLLogicTest/E2E 证据。
+
+**实施计划**: [2026-08-14 v312 procedure/trigger remediation plan](../../plans/2026-08-14-v312-procedure-trigger-remediation-plan.md)。
+
 ## V312-29：Gate Enforcement 接线（V312-24 Phase 6 follow-up）
 
 **优先级**: P0
@@ -323,28 +379,25 @@
 **目标**: 决定 Window/GIS/JSON 是 v3.12 受控交付，还是降级到 3.13/4.0，不允许长期保持无闭环 PARTIAL。
 **验收**: 每类功能有 DONE/DEFERRED/UNSUPPORTED 子集；进入 3.12 的子集必须有 SQL corpus 正反例和错误边界。
 
-## V312-56：系列教学能力增强
+## V312-56：4.0 前功能整改与 MySQL 教学能力补强总控
 
-**优先级**: P0 (总控 + 56A/56C/56D/56H), P1 (56B/56E/56F/56G)
-**Gitea Issues**: #4250 (总控), #4251 (56A), #4252 (56B), #4253 (56C), #4254 (56D), #4255 (56E), #4256 (56F), #4257 (56G), #4258 (56H)
-**目标**: 为 SQLRustGo v3.12.0 增加教学 corpus 和 teaching fixtures，涵盖 metadata、SQL teaching、transaction/crash recovery、prepared statement、optimizer EXPLAIN、VIEW/CTE/MERGE disposition 和 Partition/FullText disposition。
-**范围**:
-- V312-56 总控 (#4250): 4.0 前功能整改与 MySQL 教学能力补强总控 — orchestrates 56A~56H
-- V312-56A (#4251): Metadata/SHOW/information_schema 教学与兼容闭环 — SHOW INDEX/SHOW COLUMNS 实现增强
-- V312-56B (#4252): SQL 教学 corpus 与多 oracle 对比 — 创建 `teaching_sql_v3_12/` 目录和 manifest.yml
-- V312-56C (#4253): Transaction/crash recovery 教学实验 — 教学实验文档
-- V312-56D (#4254): Prepared statement 与 wire protocol 教学实验 — teaching fixtures
-- V312-56E (#4255): Optimizer/EXPLAIN 教学实验 — 5 个 EXPLAIN fixtures
-- V312-56F (#4256): VIEW/CTE/MERGE disposition 与门禁 — 状态明确化
-- V312-56G (#4257): Partition/FullText disposition 与 GMP keyword retrieval 决策 — UNSUPPORTED/DEFERRED
-- V312-56H (#4258): Beta gate、文档和 release evidence 集成 — evidence bundle 和文档一致性
-**验收**:
-- `teaching_sql_v3_12/` 目录包含 28+ SQL fixtures
-- manifest.yml 定义 oracle、expected、owner、stage
-- Beta gate 能验证 V312-56A~56D 的完成/降级状态 (B6_V312_56_TEACHING_CORPUS + B6_V312_56_EXPLAIN_FIXTURES)
-- Evidence bundle 包含 branch、commit、PR、merge commit、command、exit code、output、hash
-- `STAGE.yaml` promotion_to_BETA_requires 包含 V312-56A~56D
-- `V312-56-VERIFICATION.md` 归档所有命令、exit code、输出摘要和 evidence hash
+**优先级**: P0
+**Gitea Issue**: [#4250](http://192.168.0.252:3000/openclaw/sqlrustgo/issues/4250)
+**目标**: 把综合评估报告中列出的“4.0.0 前必须增强和整改的类似功能”和“MySQL 教学场景必须补的能力”转成 Beta 或 Beta 前必须处理的 issue 任务。
+**范围**: Metadata/SHOW/information_schema、SQL 教学 corpus、多 oracle、transaction/crash recovery 教学实验、prepared/wire 教学实验、optimizer/EXPLAIN、VIEW/CTE/MERGE disposition、Partition/FullText/GMP keyword retrieval 决策、Beta gate/docs/release evidence 集成。
+**阶段边界**: V312-56A~56D 是 Beta 准入前 blocker；V312-56E~56H 必须在 Beta 阶段完成或显式降级，不得拖到 RC 才首次定义。
+**验收**: `issues/V312-56_TEACHING_AND_V400_REMEDIATION_ISSUE_BODIES.md` 存在；`STAGE.yaml`、`TEST_PLAN.md`、`PARTIAL_FEATURE_REMEDIATION_ISSUE_PLAN.md`、`COMPREHENSIVE_ASSESSMENT_REPORT.md` 均引用 V312-56；每个子任务有 PR/commit/gate/evidence_hash 或 owner/expiry/关闭边界。
+
+| 子任务 | 优先级 | Beta 阶段要求 | 关闭边界 |
+|---|---:|---|---|
+| V312-56A / [#4251](http://192.168.0.252:3000/openclaw/sqlrustgo/issues/4251) Metadata/SHOW/information_schema 教学与兼容闭环 | P0 | Beta 准入前 | information_schema tables/columns/indexes 或明确 unsupported；SHOW CREATE/COLUMNS/INDEX/DESCRIBE 正反例 |
+| V312-56B / [#4252](http://192.168.0.252:3000/openclaw/sqlrustgo/issues/4252) SQL 教学 corpus + SQLite/PostgreSQL/MySQL oracle | P0 | Beta 准入前 | teaching corpus manifest、oracle、PASS/FAIL/SKIP、issue-linked exclusions |
+| V312-56C / [#4253](http://192.168.0.252:3000/openclaw/sqlrustgo/issues/4253) Transaction/crash recovery 教学实验 | P0 | Beta 准入前 | BEGIN/COMMIT/ROLLBACK/SAVEPOINT、kill -9/WAL replay、backup/restore count/hash |
+| V312-56D / [#4254](http://192.168.0.252:3000/openclaw/sqlrustgo/issues/4254) Prepared statement / wire protocol 教学实验 | P0 | Beta 准入前 | COM_QUERY/COM_STMT/error/reset/LOAD DATA 教学 fixture；TLS/compression 明确 DONE 或 DEFERRED |
+| V312-56E / [#4255](http://192.168.0.252:3000/openclaw/sqlrustgo/issues/4255) Optimizer/EXPLAIN 教学实验 | P1 | Beta 阶段 | plan dump/EXPLAIN、统计信息、hash/semi/anti join 教学 fixture |
+| V312-56F / [#4256](http://192.168.0.252:3000/openclaw/sqlrustgo/issues/4256) VIEW/CTE/MERGE disposition 与门禁 | P1 | Beta 阶段 | VIEW/CTE/MERGE 明确 DONE/DEFERRED/UNSUPPORTED，不保留悬空 PARTIAL |
+| V312-56G / [#4257](http://192.168.0.252:3000/openclaw/sqlrustgo/issues/4257) Partition/FullText disposition 与 GMP keyword retrieval 决策 | P1 | Beta 阶段 | Partition/FullText 与 SQL surface/GMP keyword retrieval 决策一致 |
+| V312-56H / [#4258](http://192.168.0.252:3000/openclaw/sqlrustgo/issues/4258) Beta gate/docs/release evidence 集成 | P0 | Beta 准入前 | Beta gate 检查 V312-56A~56D；`V312-56-VERIFICATION.md` 归档证据 |
 
 ## 附录：英文原文
 

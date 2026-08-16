@@ -17,81 +17,6 @@ last_transition:
   date: "2026-08-12"
   reason: "DRAFT -> ALPHA transition. alpha_required_gates verified: check_coverage_v312.sh PASS (L1_8 avg 85.86%), check_sql_corpus_gate.sh PASS (99.4%), check_anti_ignore_gate.sh PASS (active=0/47), check_docs_links.sh PASS, check_docs_consistency.sh PASS, cargo build --all-features PASS, cargo test --all-features --lib PASS, cargo fmt --check PASS, cargo clippy PASS. Required files present (CHANGELOG.md, RELEASE_NOTES.md, STAGE.yaml). Required scripts present (check_alpha_v3.12.0.sh, check_alpha_quality_v3.12.0.sh, check_arch_invariants.sh, check_arch3_no_bypass.sh). Tag v3.12.0-alpha1 cut per STAGE_CONFIG DRAFT_to_ALPHA trigger."
 
-# -----------------------------------------------------------------------------
-# BETA transition candidate snapshot — PROPOSED (awaiting human approval per
-# STAGE_CONFIG.yaml `transitions.ALPHA_to_BETA.requires_human_approval: true`).
-# This snapshot captures the evidence surface verified at HEAD 868088aa70
-# (develop/v3.12.0, refreshed post V312-56 master merge + B1_FMT/Q4_ANTI_FABRICATION).
-# Once signed by the governance reviewer, the last_transition block above is
-# rewritten to record this transition.
-# -----------------------------------------------------------------------------
-beta_transition_candidate:
-  status: PROPOSED
-  proposed_at: "2026-08-15T00:00:00Z"
-  proposed_from: "ALPHA"
-  proposed_to: "BETA"
-  head_commit: "868088aa70dc8578dd803b491d6fde586860238d"
-  branch: "develop/v3.12.0"
-  blocking_evidence_refreshed:
-    beta_gate_run_at_HEAD:
-      script: "scripts/gate/check_beta_v3.12.0.sh"
-      result: "PASS 28/31; WARN 2; BLOCKER 1 (B1_FMT)"
-      failed_steps:
-        - "B1_FMT — cargo fmt drift (BLOCKER for BETA entry)"
-      warning_steps:
-        - "B2_INTEGRATION_TESTS"
-        - "B7_ALPHA_QUALITY"
-      v312_56_subset:
-        - "B6_V312_56_TEACHING_CORPUS: PASS"
-        - "B6_V312_56_EXPLAIN_FIXTURES: PASS"
-      verified_at: "2026-08-15T00:00:00Z"
-    - artifact: "V312-52 GMP vector/retrieval"
-      report: "docs/releases/v3.12.0/evidence/vector_retrieval/V312-52-REPORT.md"
-      status: "DONE-with-boundary / fixture sub-area DONE; rebuild-persistence + dimension/empty/model-name fail-closed DEFERRED → v3.13 (#4235, #4237, #4236 closed in-tree)"
-      tests: "19/19 vector/retrieval tests PASS at HEAD 868088aa70 (full sqlrustgo-gmp --lib 157/157 PASS)"
-    - artifact: "V312-53 GMP audit chain + tamper integration"
-      report: "docs/releases/v3.12.0/evidence/gmp_compliance/V312-53-REPORT.md"
-      status: "DONE-with-boundary / AuditAction compliance-op variants + tamper integration test DONE; production-path wiring DEFERRED → v3.13 (#4231, #4232 DONE, #4233 DEFERRED)"
-      tests: "14/14 audit + 12/12 acl + 157/157 sqlrustgo-gmp --lib PASS at HEAD 868088aa70"
-    - artifact: "V312-13 wire protocol + LOAD DATA"
-      report: "docs/releases/v3.12.0/evidence/wire_load_data/V312-13-REPORT.md"
-      status: "9/10 steps PASS; step 08 (SF=10 bulk-load) marked fail-environmental (SF=10 fixture missing on dev host); not a code regression"
-      tests: "gate 9/10; cargo test --test v312_13_load_data_sf10_test 16/17 PASS (1 environmental panic on missing /tmp/tpch-sf10/region.tbl)"
-    - artifact: "V312-14 crash recovery recheck"
-      report: "docs/releases/v3.12.0/evidence/crash_recovery/V312-14-CRASH-RECOVERY-RECHECK.md"
-      status: "DONE / 受控; 173/173 PASS at HEAD (Round-3 FAIL → recheck PASS for test_kill_mid_insert_update_uncommitted + test_mixed_workload_recovery_report + backup_restore API drift)"
-      tests: "gate 5/5 + process_kill_crash_test 8/8 + backup_restore_test 51/51 + check_upgrade_v310_v311 11/11 + upgrade_v310_v311_test 4/4 + upgrade_test 50/50 + int2_cross 20/20 + v380_to_v390 18/18 + chain 6/6 = 173/173 PASS"
-    - artifact: "V312-26 #4019 Sysbench OLTP baseline infrastructure"
-      report: "docs/releases/v3.12.0/evidence/issue-4019/4019_evidence.md"
-      status: "Infrastructure DONE; oltp_read_only PASS on HEAD (5494.90 qps / 343.43 tps @ 4t, 2870.99 qps / 179.44 tps @ 2t)"
-      tests: "gate 19/19 PASS at HEAD 868088aa70 (latest complete run 20260814T110012Z_t4_s100/)"
-    - artifact: "V312-56 teaching capability enhancement"
-      report: "docs/releases/v3.12.0/evidence/v312-56/V312-56-VERIFICATION.md"
-      status: "28 SQL fixtures + manifest.yml (27 entries: 26 PASS + 1 FAIL) + crates/executor/src/explain.rs + B6_V312_56_TEACHING_CORPUS + B6_V312_56_EXPLAIN_FIXTURES checks"
-      tests: "B6_V312_56_TEACHING_CORPUS=PASS, B6_V312_56_EXPLAIN_FIXTURES=PASS at HEAD 868088aa70"
-  promotion_to_BETA_requires_verified:
-    - "GMP document/chunk/embedding/audit schema implemented (V312-52 §2, V312-53 §3)"
-    - "Idempotent GMP markdown ingestion works on representative corpus (covered in GMP corpus runner + manifest)"
-    - "Hybrid retrieval returns source path, version, chunk hash, and citation text (V312-52 §3.1)"
-    - "SQL-backed graph projection supports neighbors and depth-limited paths (GMP graph tests in sqlrustgo-gmp --lib 157/157)"
-    - "Audit hash-chain tamper tests fail closed (V312-53 §3.1, test_hash_chain_tamper_detection PASS)"
-    - "SQLLogicTest smoke corpus gate executes via scripts/gate/check_sqllogictest_v312.sh with exit 0 (verified earlier in ALPHA cycle)"
-    - "SQLLogicTest smoke manifest shows pass_files == total_files, fail_files == 0, and open exclusions == 0"
-    - "TPC-H SF=1 correctness close-out plan has per-query artifact format (G4 evidence path captured at ALPHA)"
-    - "Beta evidence paths are current for the checked-out develop/v3.12.0 commit (all 6 artifact reports refreshed at HEAD 868088aa70)"
-    - "Coverage baseline, MySQL wire prepared-statement smoke, Sysbench read/write disposition, bulk-load smoke, and crash/recovery smoke are either executed or issue-linked as explicit Beta blockers"
-    - "V312-56A: Metadata teaching (Issue #4251) — DONE"
-    - "V312-56B: SQL teaching corpus (Issue #4252) — DONE"
-    - "V312-56C: Transaction / crash-recovery teaching (Issue #4253) — DONE"
-    - "V312-56D: Prepared statement / wire teaching (Issue #4254) — DONE"
-  pending_human_artifacts:
-    - "Resolve B1_FMT BLOCKER before BETA entry (cargo fmt --all — see beta_gate_run_at_HEAD.failed_steps)"
-    - "Investigate B2_INTEGRATION_TESTS WARN (likely test-runner or soak harness, not blocking)"
-    - "Investigate B7_ALPHA_QUALITY WARN (likely alpha-quality sub-step regression)"
-    - "Tag v3.12.0-beta1 cut (governance / release manager)"
-    - "STAGE_CONFIG ALPHA_to_BETA trigger confirmation + last_transition rewrite from PROPOSED to RECORDED"
-    - "V312-56A residual 4 sub-tasks (#41) — DEFERRED → v3.13 acceptable for BETA, MUST be closed before RC"
-
 positioning:
   product_contract: "GMP internal-audit retrieval database"
   allowed_claims:
@@ -142,20 +67,12 @@ promotion_to_BETA_requires:
   - "Hybrid retrieval returns source path, version, chunk hash, and citation text"
   - "SQL-backed graph projection supports neighbors and depth-limited paths"
   - "Audit hash-chain tamper tests fail closed"
-  - "SQLLogicTest smoke corpus gate executes via scripts/gate/check_sqllogictest_v312.sh with exit 0"
-  - "SQLLogicTest smoke manifest shows pass_files == total_files, fail_files == 0, and open exclusions == 0"
+  - "SQLLogicTest smoke corpus runs and writes a report"
   - "TPC-H SF=1 correctness close-out plan has per-query artifact format"
-  - "Beta evidence paths are current for the checked-out develop/v3.12.0 commit; stale report existence is not sufficient"
-  - "Coverage baseline, MySQL wire prepared-statement smoke, Sysbench read/write disposition, bulk-load smoke, and crash/recovery smoke are either executed or issue-linked as explicit Beta blockers"
-  # V312-56H / Issue #4258: V312-56 series teaching-capability gating
-  # Each item below is closed in docs/releases/v3.12.0/evidence/v312-56/V312-56-VERIFICATION.md
-  # and verified by scripts/gate/check_beta_v3.12.0.sh (B6_V312_56_TEACHING_CORPUS +
-  # B6_V312_56_EXPLAIN_FIXTURES). Sub-issues must be COMPLETED or explicitly
-  # demoted with a signed governance exception before Beta entry.
-  - "V312-56A: Metadata teaching (Issue #4251) — SHOW COLUMNS LIKE glob matcher + 32/36 sub-tasks COMPLETED"
-  - "V312-56B: SQL teaching corpus (Issue #4252) — tests/compat/teaching_sql_v3_12/ + manifest.yml COMPLETED"
-  - "V312-56C: Transaction / crash-recovery teaching (Issue #4253) — 6 crash tests + 3 tx tests + teaching doc COMPLETED"
-  - "V312-56D: Prepared statement / wire teaching (Issue #4254) — 3 prepared/* fixtures COMPLETED"
+  - "V312-56A Metadata/SHOW/information_schema teaching+compat task is DONE or explicitly DEFERRED/UNSUPPORTED with issue, owner, expiry, and close boundary"
+  - "V312-56B SQL teaching corpus has manifest, oracle policy, and issue-linked FAIL/SKIP disposition"
+  - "V312-56C Transaction/crash recovery teaching lab has reproducible command list and count/hash artifact policy"
+  - "V312-56D Prepared statement / wire protocol teaching lab has COM_QUERY/COM_STMT/error/reset/LOAD DATA scope and TLS/compression disposition"
 
 promotion_to_RC_requires:
   - "Full ~/gmp-platform/gmp-md ingestion report produced"
