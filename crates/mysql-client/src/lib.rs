@@ -2175,6 +2175,7 @@ mod tests {
             column_type: 0x03,
             flags: 0x0020,
             decimals: 0x00,
+            default_value: None,
         };
 
         let debug = format!("{:?}", col);
