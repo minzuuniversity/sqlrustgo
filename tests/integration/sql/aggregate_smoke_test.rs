@@ -35,13 +35,14 @@ fn aggregate_5_basics() {
         sqlrustgo::Value::Float(30.0)
     );
     let r = x.execute("SELECT MIN(v), MAX(v) FROM t").unwrap();
-    // Known bug (Issue #TBD): multi-aggregate SELECT projects
-    // multiple ROWS (one per aggregate) instead of multiple COLUMNS in
-    // a single row. The first row holds MIN's value at column 0; MAX
-    // is in row[1] column 0. See src/execution_engine.rs aggregate
-    // projection path.
+    // Known bug (Issue #TBD): multi-aggregate SELECT projects multiple
+    // COLUMNS in a single row. The correct result should be 1 row with
+    // 2 columns (MIN=10, MAX=50), but due to the bug the aggregates
+    // may be projected incorrectly. This test validates the ACTUAL buggy
+    // behavior (1 row, 2 cols).
+    assert_eq!(r.rows.len(), 1, "Expected 1 row with MIN and MAX as columns");
     assert_eq!(r.rows[0][0], sqlrustgo::Value::Integer(10));
-    assert_eq!(r.rows[1][0], sqlrustgo::Value::Integer(50));
+    assert_eq!(r.rows[0][1], sqlrustgo::Value::Integer(50));
 }
 
 #[test]
