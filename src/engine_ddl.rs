@@ -340,6 +340,19 @@ impl<S: StorageEngine + 'static> ExecutionEngine<S> {
                 self.execute_show_columns(table, pattern.as_deref())
             }
             ShowStatement::Sequences => self.execute_show_sequences(),
+            // V312-55A / #4238: route SHOW PROCEDURE STATUS to its
+            // dedicated executor when a catalog is wired up; otherwise
+            // the dedicated handler returns a clear error.
+            ShowStatement::ProcedureStatus { pattern } => {
+                self.execute_show_procedure_status(pattern.as_deref())
+            }
+            // Round-21 / Issue #4218: SHOW PROCESSLIST is parsed but
+            // Round-21 / Issue #4218: SHOW PROCESSLIST is parsed but
+            // the controlled-subset executor returns an empty result
+            // (no live process registry yet). Tests assert rows.len() == 0
+            // rather than an explicit failure — see
+            // `execution_engine_tests::test_executor_show_processlist_*`.
+            ShowStatement::Processlist { .. } => Ok(ExecutorResult::empty()),
         }
     }
 
@@ -361,6 +374,23 @@ impl<S: StorageEngine + 'static> ExecutionEngine<S> {
         let names = storage.list_sequences();
         let rows: Vec<Vec<Value>> = names.into_iter().map(|n| vec![Value::Text(n)]).collect();
         Ok(ExecutorResult::new(rows, 1))
+    }
+
+    /// V312-55A / Issue #4238: `SHOW PROCEDURE STATUS [LIKE 'pat']`.
+    ///
+    /// Stub implementation for the V312-56A rebase. The full handler
+    /// (catalog-walked procedure enumeration with LIKE filtering) lives
+    /// behind V312-55A gate work; for V312-56A we surface an explicit
+    /// error so callers don't see a silent empty result.
+    pub(crate) fn execute_show_procedure_status(
+        &self,
+        _pattern: Option<&str>,
+    ) -> SqlResult<ExecutorResult> {
+        Err(SqlError::ExecutionError(
+            "SHOW PROCEDURE STATUS is owned by V312-55A (#4238) and not \
+             yet wired into the v3.12.0 executor"
+                .to_string(),
+        ))
     }
 
     /// SHOW CREATE TABLE — reconstruct CREATE TABLE from the live schema.
@@ -759,17 +789,23 @@ impl<S: StorageEngine + 'static> ExecutionEngine<S> {
     }
 }
 
-/// Render a `Value` as a SQL literal suitable for the `DEFAULT` clause
-/// in `SHOW CREATE TABLE`. Strings are single-quoted with embedded `'`
-/// doubled; numerics use `{}`; booleans map to `TRUE`/`FALSE`; NULL is
-/// emitted as the bare keyword; other variants fall back to
-/// `Display::fmt` which the executor already supports.
-fn format_default_literal(v: &Value) -> String {
-    match v {
-        Value::Null => "NULL".to_string(),
-        Value::Text(s) => format!("'{}'", s.replace('\'', "''")),
-        Value::Boolean(b) => if *b { "TRUE" } else { "FALSE" }.to_string(),
-        other => format!("{}", other),
+/// Render a default literal string as the `DEFAULT` clause for
+/// `SHOW CREATE TABLE`. The default is stored as a pre-formatted
+/// SQL literal (e.g. `"pending"`, `42`, `NULL`), so we only need
+/// to add single quotes if it isn't already a NULL or a numeric
+/// literal. Embedded `'` are doubled to keep the DDL parseable.
+fn format_default_literal(s: &str) -> String {
+    let trimmed = s.trim();
+    if trimmed.eq_ignore_ascii_case("NULL") {
+        "NULL".to_string()
+    } else if trimmed.eq_ignore_ascii_case("TRUE")
+        || trimmed.eq_ignore_ascii_case("FALSE")
+        || trimmed.parse::<f64>().is_ok()
+        || (trimmed.starts_with('-') && trimmed[1..].parse::<f64>().is_ok())
+    {
+        trimmed.to_string()
+    } else {
+        format!("'{}'", trimmed.replace('\'', "''"))
     }
 }
 
