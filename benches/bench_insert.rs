@@ -22,7 +22,6 @@ fn create_table_info() -> TableInfo {
             primary_key: false,
             char_max_length: None,
             collation: None,
-
             default_value: None,
         }],
         foreign_keys: vec![],
@@ -99,7 +98,6 @@ fn bench_insert_multi_column(c: &mut Criterion) {
                 primary_key: false,
                 char_max_length: None,
                 collation: None,
-
                 default_value: None,
             },
             ColumnDefinition {
@@ -109,7 +107,6 @@ fn bench_insert_multi_column(c: &mut Criterion) {
                 primary_key: false,
                 char_max_length: None,
                 collation: None,
-
                 default_value: None,
             },
             ColumnDefinition {
@@ -119,7 +116,6 @@ fn bench_insert_multi_column(c: &mut Criterion) {
                 primary_key: false,
                 char_max_length: None,
                 collation: None,
-
                 default_value: None,
             },
         ],
