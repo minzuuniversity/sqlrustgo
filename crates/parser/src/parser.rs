@@ -9033,6 +9033,19 @@ impl Parser {
                 };
                 Ok(Statement::Show(ShowStatement::CreateTable { table }))
             }
+            Some(Token::Create) => {
+                // V312-56A / #4251: the lexer promotes `CREATE` to
+                // `Token::Create` even when it appears inside a SHOW
+                // statement; accept the keyword form so `SHOW CREATE
+                // TABLE <name>` parses to `ShowStatement::CreateTable`.
+                self.next();
+                self.expect(Token::Table)?;
+                let table = match self.next() {
+                    Some(Token::Identifier(name)) => name,
+                    _ => return Err("Expected table name".to_string()),
+                };
+                Ok(Statement::Show(ShowStatement::CreateTable { table }))
+            }
             Some(Token::Identifier(ref ident)) if ident.to_uppercase() == "COLUMNS" => {
                 self.next();
                 self.expect(Token::From)?;
