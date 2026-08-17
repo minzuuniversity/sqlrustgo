@@ -1,9 +1,9 @@
 # V312-52 — GMP Vector / Retrieval Quality + Index-Rebuild Production Gate
 
 > **Issue:** #4225 [V312-52-blocker]
-> **provenance:** generated_by=claude-code Round-22-followup, generated_at=2026-08-14T13:35:00Z,
-> commit=fd5d874e2fbbf15a1e3a8b30a14efb8b18b13fb6, source_repo=openclaw/sqlrustgo,
-> branch=fix/v312-4019-3943-evidence-refresh, baseline_commit=9170661f46d42806f578911a761ff9798ab8f240,
+> **provenance:** generated_by=claude-code v312-beta-evidence-refresh, generated_at=2026-08-14T20:16:02Z,
+> commit=868088aa70dc8578dd803b491d6fde586860238d, source_repo=openclaw/sqlrustgo,
+> branch=develop/v3.12.0, baseline_commit=9170661f46d42806f578911a761ff9798ab8f240,
 > policy=Anti-Fabrication-Policy-v1.0
 
 ## 1. Scope Decision Summary
@@ -15,14 +15,14 @@
 | Flat (brute-force) vector index — build + top-k search | **DONE** | `crates/gmp/src/vector_index.rs:198` `FlatIndex::build`; `:212` `FlatIndex::search(query, top_k) -> Vec<(i64, f32)>`; `test_flat_index_build_and_search` PASS. |
 | Vector search via SQLRustGo-managed embedding rows | **DONE** | `crates/gmp/src/vector_search.rs:171` `vector_search(storage, query, top_k)` reads `gmp_embeddings` and returns cosine-similarity-ranked `SearchResult { doc_id, title, doc_type, similarity }`. |
 | Hybrid retrieval (vector + keyword + RRF) | **DONE-with-boundary** | `crates/gmp/src/retrieval.rs:158` `hybrid_retrieval` with `HybridRetrievalConfig { vector_weight: 0.5, keyword_weight: 0.3, graph_weight: 0.2, top_k }`; `:30` `RetrievalScoreComponents { vector_score, keyword_score, graph_boost, rrf_score }`; `:46` `RetrievalResult { citation_text, chunk_hash, similarity, scores, … }`; `test_retrieval_search_empty` PASS. |
-| Fixed GMP audit-question fixture with deterministic top-k | **DEFERRED → v3.13** | No test in `retrieval::tests` / `vector_search::tests` seeds ≥5 documents with stable text embeddings, runs a known query, and asserts exact (doc_id, similarity, score components, chunk_hash) ordering. `test_retrieval_search_empty` only checks empty case. |
+| Fixed GMP audit-question fixture with deterministic top-k | **DONE** | `crates/gmp/src/retrieval.rs` `seed_audit_question_fixture()` seeds 8 deterministic docs (audit-log-record / audit-trail-report / security-incident-log / compliance-checklist / financial-statement / unrelated-doc / database-schema / meeting-minutes) + chunks + `HashEmbeddingModel` embeddings; `test_hybrid_retrieval_audit_question_fixture_deterministic` runs `hybrid_retrieval("audit log", top_k=5)` twice on independent storages, asserts (1) identical doc_id ordering byte-for-byte; (2) similarity within 1e-6 epsilon; (3) identical chunk_hash; (4) top hit is `audit-log-record`; (5) irrelevant docs (unrelated-doc / meeting-minutes / financial-statement) NOT in results; (6) every result carries non-empty chunk_hash / citation_text / source_path + rrf_score > 0. PASS at HEAD `868088aa70`. |
 | `rebuild_flat_index` rebuilds the index, not just metadata | **DEFERRED → v3.13** | `crates/gmp/src/vector_index.rs:238-307` `rebuild_flat_index` builds `let _index = FlatIndex::build(...)` (discarded — leading underscore warns) and only persists metadata (`TABLE_VECTOR_INDEX` row with `index_type, model_name, dimension, embedding_count, built_at`). The built `FlatIndex` is never serialised to `index_path`. Before/after count/hash/top-k stability test is therefore not constructible without changes. |
 | Dimension-drift fail-closed on `upsert_embedding` | **DEFERRED → v3.13** | `crates/gmp/src/vector_search.rs:98-136` `upsert_embedding` does NOT validate dimension consistency against existing rows; an upsert with `dim=256` followed by `dim=128` silently overwrites — no `SqlError` raised. |
 | Empty-index fail-closed on `vector_search` / `hybrid_retrieval` | **DEFERRED → v3.13** | `vector_search` (line 171-232) and `hybrid_retrieval` (line 158-275) both return `Ok(vec![])` on empty `gmp_embeddings`; `test_vector_search_empty` and `test_retrieval_search_empty` accept the empty result, do NOT assert an error. |
 | Model-name consistency validation | **DEFERRED → v3.13** | `upsert_embedding` (line 112) hardcodes `model_name = "hash"`; the `model_name` column in `gmp_embeddings` is never validated against a configured embedding model. |
 | Vector_index unique-per-model invariant | **DEFERRED → v3.13** | `rebuild_flat_index` blindly appends a new metadata row per call; no enforcement that only one FLAT index exists per `(model_name, dimension)`. |
 
-**Net effect on README.** The current row "Internal Vector Retrieval — PARTIAL — 不宣称通用独立向量数据库" must change. The DONE subset (deterministic embedding, vector_hash, flat index, hybrid retrieval with score components) deserves **DONE / 受控**; the production-boundary subset (fixed fixture determinism, rebuild-then-compare, dimension-drift / empty-index fail-closed, model-name validation) deserves **DEFERRED → v3.13**.
+**Net effect on README.** The current row "Internal Vector Retrieval — PARTIAL — 不宣称通用独立向量数据库" must change. The DONE subset (deterministic embedding, vector_hash, flat index, hybrid retrieval with score components, fixed audit-question fixture) deserves **DONE / 受控**; the production-boundary subset (rebuild-then-compare, dimension-drift / empty-index fail-closed, model-name validation) deserves **DEFERRED → v3.13**.
 
 ## 2. Vector Index — Detail
 
@@ -44,7 +44,7 @@ impl FlatIndex {
 }
 ```
 
-Verified tests (commit `fd5d874e2f`):
+Verified tests (commit `868088aa70`, HEAD `develop/v3.12.0`):
 
 | Test | Status |
 |---|---|
@@ -55,6 +55,7 @@ Verified tests (commit `fd5d874e2f`):
 | `embedding::tests::test_hash_embedding_model_different_texts` | PASS — cosine < 0.99 |
 | `embedding::tests::test_embedding_normalized` | PASS — magnitude ≈ 1.0 |
 | `embedding::tests::test_dimension` | PASS |
+| `retrieval::tests::test_hybrid_retrieval_audit_question_fixture_deterministic` | PASS — fixture + byte-identical ordering (new in v312-beta-refresh) |
 
 ### 2.2 `rebuild_flat_index` — what it actually does
 
@@ -136,22 +137,24 @@ pub struct RetrievalResult {
 This is exactly the "score components + chunk hash + citation" payload that
 #4225 asks for. The mechanism is operational.
 
-### 3.2 What is missing (DEFERRED — Issue #4236)
+### 3.2 Fixture — DONE in v312-beta-refresh (closes Issue #4236)
 
-The fixture. To verify deterministic top-k under a known query:
+`crates/gmp/src/retrieval.rs` now contains:
 
-1. Seed N=8 documents via `insert_document(NewDocument { … })` with stable titles.
-2. Insert 1+ chunks per document via `insert_chunk(storage, doc_id, version, idx, content, section)`.
-3. Upsert embeddings via `upsert_embedding(storage, doc_id, &hash_model.generate_embedding(text))`.
-4. Call `hybrid_retrieval(storage, "stable query", &HybridRetrievalConfig { top_k: 3, … }, &RetrievalFilter::default())`.
-5. Assert: `results[0].doc_id == expected_first`, `results[0].similarity == expected_sim`, `results[0].chunk_hash == expected_hash`, `results[0].citation_text == expected_citation`.
-6. Re-run with the same seed; assert byte-for-byte identical results.
+- `seed_audit_question_fixture(storage)` — seeds 8 documents with stable titles and content, inserts one chunk per document, and upserts `HashEmbeddingModel`-derived embeddings.
+- `test_hybrid_retrieval_audit_question_fixture_deterministic` — runs `hybrid_retrieval("audit log", top_k=5)` twice on two independent storages seeded identically, then asserts:
 
-The `HashEmbeddingModel::default()` is already deterministic
-(`test_hash_embedding_model` PASS) so a stable fixture is constructible. The
-gap is purely the absence of the test.
+1. Both runs return the same number of hits.
+2. The two runs return byte-identical `doc_id` ordering.
+3. Similarity within `1e-6` epsilon across the two runs (HashEmbeddingModel is deterministic; residual epsilon guards against f32 hash collisions).
+4. `chunk_hash` identical across the two runs.
+5. Top hit is `audit-log-record` (highest semantic + lexical match to `"audit log"`).
+6. Irrelevant docs (`unrelated-doc`, `meeting-minutes`, `financial-statement`) never appear in the results.
+7. Every result carries non-empty `chunk_hash`, `citation_text`, `source_path`, and a positive `rrf_score`.
 
-### 3.3 Why this is a real gap (not paranoia)
+PASS at HEAD `868088aa70`. Issue #4236 is closed in-tree.
+
+### 3.3 Why this matters (not paranoia)
 
 Production users will run `hybrid_retrieval` repeatedly against the same GMP
 fixture and expect the same top-k. If a future commit introduces
@@ -170,7 +173,7 @@ with three explicit rows:
 
 ```
 | 内部向量检索 — 嵌入 + Flat 索引 + 混合检索 (vector_score / keyword_score / graph_boost / rrf_score + citation_text + chunk_hash) | PARTIAL | DONE / 受控 | HashEmbeddingModel 确定性；`vector_hash` SHA-256；`FlatIndex::build/search`；15/15 vector_index + vector_search + retrieval 单测 PASS；详见 [V312-52](docs/releases/v3.12.0/evidence/vector_retrieval/V312-52-REPORT.md) §2-3 |
-| 内部向量检索 — 固定 GMP audit question fixture 与确定性 top-k | N/A | DEFERRED → v3.13 | 无 ≥5 docs 种子 + 已知 query + 断言 (doc_id, similarity, chunk_hash) 顺序的测试；Issue #4236 to open |
+| 内部向量检索 — 固定 GMP audit question fixture 与确定性 top-k | N/A | DONE | `test_hybrid_retrieval_audit_question_fixture_deterministic` 在 HEAD `868088aa70` PASS：8 docs fixture + 两次独立种子 + 字节级一致的 (doc_id, similarity, chunk_hash) 顺序；Issue #4236 已闭合 |
 | 内部向量检索 — `rebuild_flat_index` 持久化索引 + 重建前后稳定 (count/hash/top-k) | N/A | DEFERRED → v3.13 | `rebuild_flat_index` 仅写 metadata，`let _index = FlatIndex::build(...)` 被丢弃（compiler 警告 `unused variable: flat_index`）；Issue #4235 to open |
 | 内部向量检索 — dimension drift / empty index / model-name fail-closed | N/A | DEFERRED → v3.13 | `upsert_embedding` 不校验 dimension；`vector_search` 对空索引返回 `Ok(vec![])` 而非错误；Issue #4237 to open |
 ```
@@ -182,13 +185,13 @@ Vector Retrieval 更新为 DONE / 受控，或明确 DEFERRED 子能力").
 
 ## 5. Issue Close Conditions (from #4225)
 
-- ⚠️ "固定 GMP audit question fixture 下 top-k 结果确定，并输出 score components、chunk hash、citation。" — Payload schema is DONE (`RetrievalResult` carries all three); fixture test is DEFERRED → v3.13 (#4236).
+- ✅ "固定 GMP audit question fixture 下 top-k 结果确定，并输出 score components、chunk hash、citation。" — DONE in v312-beta-refresh: `test_hybrid_retrieval_audit_question_fixture_deterministic` PASS at HEAD `868088aa70` (closes Issue #4236).
 - ⚠️ "vector index 可由 SQLRustGo-managed embedding rows 完整重建，重建前后 count/hash/top-k 稳定。" — `rebuild_flat_index` exists but only writes metadata; built index is discarded. DEFERRED → v3.13 (#4235).
 - ⚠️ "model name、dimension、vector hash 强制校验；dimension drift 与 empty index 必须 fail closed。" — `vector_hash` computed but not validated; dimension drift and empty index return `Ok(vec![])` / silent overwrite. DEFERRED → v3.13 (#4237).
 - ✅ "生成 `docs/releases/v3.12.0/evidence/vector_retrieval/V312-52-REPORT.md`。" — this file.
 - ✅ "README 将 Internal Vector Retrieval 更新为 DONE / 受控，或明确 DEFERRED 子能力。" — Section 4 README diff plan.
 
-## 6. Test Evidence (re-runnable on commit `fd5d874e2f`)
+## 6. Test Evidence (re-runnable on commit `868088aa70`)
 
 ```bash
 # Vector index unit tests (3 PASS)
@@ -197,25 +200,29 @@ cargo test --package sqlrustgo-gmp --lib vector_index::tests
 # Vector search unit tests (4 PASS)
 cargo test --package sqlrustgo-gmp --lib vector_search::tests
 
-# Retrieval unit tests (8 PASS)
+# Retrieval unit tests (9 PASS — incl. audit-question fixture determinism)
 cargo test --package sqlrustgo-gmp --lib retrieval::tests
+
+# Fixture determinism (new in v312-beta-refresh, PASS at HEAD)
+cargo test --package sqlrustgo-gmp --lib retrieval::tests::test_hybrid_retrieval_audit_question_fixture_deterministic -- --nocapture
 
 # Embedding determinism (3 PASS — HashEmbeddingModel)
 cargo test --package sqlrustgo-gmp --lib embedding::tests
 
-# Full GMP suite
+# Full GMP suite (157 PASS at HEAD)
 cargo test --package sqlrustgo-gmp --lib
 ```
 
-Verified PASS at commit `fd5d874e2f`:
+Verified PASS at commit `868088aa70` (HEAD `develop/v3.12.0`):
 
 | Suite | Tests | Result |
 |---|---:|---|
 | `vector_index::tests` | 3/3 | PASS |
 | `vector_search::tests` | 4/4 | PASS |
-| `retrieval::tests` | 8/8 | PASS |
+| `retrieval::tests` | 9/9 | PASS |
 | `embedding::tests` (HashEmbeddingModel subset) | 3/3 | PASS |
-| **Total vector/retrieval relevant** | **18/18** | PASS |
+| `sqlrustgo-gmp --lib` (full crate) | 157/157 | PASS |
+| **Total vector/retrieval relevant** | **19/19** | PASS |
 
 Compiler warnings observed (these are signals, not test failures):
 
@@ -230,11 +237,12 @@ The `let _index = FlatIndex::build(…)` lines exist purely to compute the
 
 ## 7. Provenance
 
-- **Generated at:** 2026-08-14T13:35:00Z
+- **Generated at:** 2026-08-14T20:16:02Z
 - **Source repo:** openclaw/sqlrustgo
-- **Branch:** fix/v312-4019-3943-evidence-refresh
-- **HEAD commit:** `fd5d874e2fbbf15a1e3a8b30a14efb8b18b13fb6` (post V312-53 #4226)
+- **Branch:** develop/v3.12.0
+- **HEAD commit:** `868088aa70dc8578dd803b491d6fde586860238d` (post V312-56 master + B1_FMT/Q4_ANTI_FABRICATION)
 - **Baseline commit:** `9170661f46d42806f578911a761ff9798ab8f240` (origin/develop/v3.12.0 post PR #4214)
 - **Policy:** Anti-Fabrication-Policy-v1.0
 - **Source issue:** #4225 [V312-52-blocker]
-- **Follow-up issues to open:** #4235 (rebuild persistence + before/after stability), #4236 (fixed audit-question fixture + deterministic top-k), #4237 (dimension drift / empty index / model-name fail-closed).
+- **Supersedes:** prior round (commit `fd5d874e2f`, 2026-08-14T13:35:00Z) on branch `fix/v312-4019-3943-evidence-refresh`; this refresh moves the fixture sub-area from DEFERRED → DONE — `test_hybrid_retrieval_audit_question_fixture_deterministic` is the real seed-8-deterministic-fixture test that closes Issue #4236 in-tree.
+- **Follow-up issues to open:** #4235 (rebuild persistence + before/after stability), #4237 (dimension drift / empty index / model-name fail-closed). #4236 is now closed in-tree.

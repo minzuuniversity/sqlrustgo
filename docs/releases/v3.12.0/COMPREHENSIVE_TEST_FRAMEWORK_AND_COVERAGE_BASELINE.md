@@ -7,6 +7,7 @@
 > **基线 commit**: `d2fcca56f7bd3259476c9d926b2e45183089a995`  
 > **覆盖率工具**: `cargo-llvm-cov`  
 > **正式口径**: `cargo llvm-cov -p <crate> --all-features --tests --ignore-run-fail --json --summary-only`
+> **Alpha 复核更新**: 2026-08-15，补齐 `check_v312_coverage_baseline.sh --check-config` / `--enforce-stage`，并修正文档污染。
 
 ## 1. 结论
 
@@ -43,6 +44,19 @@ v3.12.0 不应继续沿用“全 workspace 一次性覆盖率 ≥80%”作为 Al
 
 ```bash
 bash scripts/gate/check_v312_coverage_baseline.sh
+```
+
+Alpha / smoke gate 使用轻量配置检查，禁止误触发全量覆盖率：
+
+```bash
+bash scripts/gate/check_v312_coverage_baseline.sh --check-config
+```
+
+夜间、Beta、RC、GA 使用阶段阈值检查。若复核已有 artifact，必须显式传入 `summary.json`；若不传 `--summary`，脚本会先重新采集 16 个 crate 的覆盖率再执行阈值判断：
+
+```bash
+bash scripts/gate/check_v312_coverage_baseline.sh --enforce-stage alpha \
+  --summary docs/releases/v3.12.0/coverage-baseline/current_<commit>_<timestamp>/summary.json
 ```
 
 单 crate 等价命令：
@@ -83,6 +97,12 @@ timeout 120 cargo llvm-cov \
 ## 4. 当前 v3.12.0 覆盖率基线
 
 本表为 2026-08-11 在 `d2fcca56f7` 上实跑结果。命令使用 `--tests --ignore-run-fail`，所以 “coverage 已生成” 不等于 “测试全部 PASS”。
+
+2026-08-15 Alpha 复核时发现本地已有更新的保存基线，例如
+`docs/releases/v3.12.0/coverage-baseline/current_0bf1089f19_20260812_222403/summary.json`。
+该保存基线显示 `sqlrustgo-parser`、`sqlrustgo-vector`、`sqlrustgo-admin` 仍为 report-only failure，
+`sqlrustgo-mysql-server` 仍 timeout/fail 且未产出 JSON，`sqlrustgo-sql-corpus` 仍低于 75%。
+这些结果只能作为 Alpha debt 追踪，不能作为 Beta/RC/GA PASS 证据。
 
 | Crate | Line% | Lines | Functions | 耗时 | 测试健康 | 阶段判断 |
 |---|---:|---:|---:|---:|---|---|
@@ -179,11 +199,25 @@ timeout 120 cargo llvm-cov \
 | TPC-H SF=10 | 数据集路径和导入脚本 | dry run / subset | 22 query duration + memory | 趋势对比，不设不现实 QPS |
 | Sysbench OLTP | schema smoke | point-select/read-write smoke | latency/QPS baseline | 和历史基线比较 |
 | Bulk-load | row-count smoke | SF=1 import | SF=10 import + memory cap | duration/hash trend |
-| RAG/vector | fixed top-k fixture | rebuild + query 再次检查，评审所有 open ISSUE，给出整改要求，或者给出结论后关闭（如果达到关闭的要求）latency | hybrid retrieval benchmark | GMP 内审问题集稳定性 |
+| RAG/vector | fixed top-k fixture | rebuild + query latency | hybrid retrieval benchmark | GMP 内审问题集稳定性 |
 | Graph projection | node/edge count | depth<=3 query | path latency and correctness | evidence bundle trace |
 | SOAK | 不跑 | 24h smoke | 72h/168h | 0 crash、hash-chain 不断裂 |
 
-## 9. 关闭条件
+## 9. Alpha 当前复核与整改结果
+
+本轮按 Alpha 阶段定位复核，不把覆盖率数字当作 GA 通过声明。整改结论如下：
+
+| 项 | 复核结果 | 整改 |
+|---|---|---|
+| Alpha Entry E4 | `check_alpha_entry_v3.12.0.sh` 已调用 `check_v312_coverage_baseline.sh --check-config`，但原脚本未实现该参数 | 已在脚本中实现 `--check-config`，Alpha entry 只校验框架配置，不误跑全量 coverage |
+| RC/GA D9 | `check_rc_ga_gate.sh` 已预期 `--check-config` 和 `--enforce-stage` | 已补齐 `--enforce-stage <alpha|beta|rc|ga>`，支持重新采集或复核已有 `summary.json` |
+| summary 字段 | 文档要求 `run seconds`、ignored/failed count，原脚本未记录 | 新生成 summary 会记录 `run_seconds`、`ignored_count`、`failed_count` |
+| 文档可信度 | 性能测试表混入 issue 审核句子 | 已删除污染文本，避免 AFP Type C 文档污染 |
+| Alpha debt | parser、mysql-server、vector、sql-corpus、admin 等仍有低覆盖或 report-only failure | Alpha 允许 issue-linked debt；Beta/RC 必须按阶段阈值继续收敛 |
+
+Alpha 阶段的正确结论是：**综合测试框架和覆盖率基线机制可以进入 Alpha 门禁配置检查；覆盖率质量本身仍处于 debt tracking，不得写成 v3.12 coverage PASS。**
+
+## 10. 关闭条件
 
 V312-G18 / #3904 关闭前至少满足：
 
@@ -192,4 +226,5 @@ V312-G18 / #3904 关闭前至少满足：
 3. 低于目标或出现 report-only failure 的 crate 均有关联 issue、owner、expiry。
 4. P12/P16 显示无新增静默 ignore；gate test ignore 必须有 ADR-008 exception。
 5. 不再引用 v3.6-v3.11 的历史 PASS claim 作为当前 v3.12 PASS 证据。
-
+6. `bash scripts/gate/check_v312_coverage_baseline.sh --check-config` 必须在 Alpha/RC smoke gate 中 PASS。
+7. Beta/RC/GA 关闭前必须运行 `--enforce-stage <stage>`，并归档 `summary.json`、日志路径和 evidence hash。

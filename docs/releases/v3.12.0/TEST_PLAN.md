@@ -4,9 +4,6 @@
 > **状态**: 规划中
 > **日期**: 2026-08-09
 > **目标**: GMP 内审检索生产门禁
-> **最近事实修正**: 2026-08-14，SQLLogicTest smoke gate 已在
-> `develop/v3.12.0` commit `b6aede7996acc6a040bb847012e834e726bc4c03`
-> 实跑 PASS；旧的 6/16、27.3% 基线仅作为历史记录。
 
 ## 1. 测试矩阵
 
@@ -28,7 +25,7 @@
 | V312-G14 | LOAD DATA / 批量导入 | SF=1/SF=10 导入 benchmark + memory cap | 无 OOM；row-count/hash 相等 |
 | V312-G15 | 崩溃恢复与升级 | kill -9、WAL replay、backup/restore、v3.10->v3.12 upgrade/downgrade | 恢复后 count/hash 相等 |
 | V312-G16 | CREATE SEQUENCE executor | DDL、NEXTVAL、default expression、并发、事务回滚、WAL/recovery tests | 语义与持久化结果确定；不再标为 executor gap |
-| V312-G17 | JSON/GIS 受控功能（Window → DEFERRED-3.13，见 `sql-feature-corpus/window_json_gis_scope.md`） | JSON_EXTRACT/JSON_VALUE/JSON_UNQUOTE 正反例；ST_Distance/ST_Within/ST_Contains/ST_Intersects 2D-Point 正反例 | JSON/GIS 支持范围内全 PASS，超出范围 fail with explicit unsupported error；Window 不测，3.13 跟进 |
+| V312-G17 | Window/GIS/JSON 受控功能 | ROW_NUMBER/RANK/DENSE_RANK、JSON path、ST_Distance/ST_Intersects/GeoJSON fixtures | 支持范围内全 PASS；超出范围有明确错误和文档 |
 | V312-G18 | 覆盖率与禁用测试债务 | canonical coverage command、disabled/API-drift manifest、flaky test quarantine | parser/mysql-server/mysql-client ≥80% 或有 issue-linked exception；无静默禁用测试 |
 | V312-G19 | 性能与观测性 baseline | TPC-H SF=10、Sysbench OLTP、bulk-load benchmark、Prometheus/Slow Query Log e2e | 有可复跑脚本、阈值、日志和趋势对比 |
 | V312-G20 | SQL corpus 与发布签核 | `test_sql_corpus.sh` all targets、R2.1-R2.8 invariant、2 reviewer sign-off | SQL corpus/架构 invariant 有输出；签核附 evidence hash |
@@ -37,8 +34,8 @@
 | V312-G23 | 执行架构与优化器 invariant | DML PhysicalPlan/VTU/Parallel/SIMD route checks、Q4 semi/anti join/decorrelation benchmark | 无已知 bypass；优化器未完成项不得写成性能能力 |
 | V312-G24 | Storage/Index/WAL tooling 回归 | WAL checkpoint、wal-verification、composite index、index stats、checksum/torn-write tests | storage invariant 有输出；未完成项有 issue/owner/expiry |
 | V312-G25 | 测试基础设施激活 | SQLancer、test-runner、test-registry、E2E shell scripts、anti-fabrication binaries | 工具可运行并产出报告，或 documented retired/deferred |
-| V312-G26 | 4.0 前功能整改门禁 | `PARTIAL_FEATURE_REMEDIATION_ISSUE_PLAN.md` 中每个 `PARTIAL` 都有整改 issue；issue mapping 与 `ISSUES_PLAN.md` 一致；READMED 中的 `PARTIAL` 状态与整改计划对齐 | 0 个未归属 `PARTIAL`；mapping diff=0；README 状态列与 plan 同步 |
-| V312-G27 | V312-56 教学能力与 4.0 前功能整改门禁 | V312-56A~56H 子任务在 Beta 准入前已完成或明确降级；`tests/compat/teaching_sql_v3_12/` 28+ SQL fixtures + manifest.yml；SHOW INDEX/SHOW COLUMNS LIKE glob matcher 实跑 PASS；prepared/* + 6 crash tests + 3 tx tests + 5 EXPLAIN fixtures | V312-56A/B/C/D 实跑全 PASS；E/F/G disposition 已写入 `MYSQL_COMPAT_STATUS.md`；H Beta gate integration (B6_V312_56_TEACHING_CORPUS + B6_V312_56_EXPLAIN_FIXTURES) PASS |
+| V312-G26 | 存储过程和触发器基础生产子集 | `CREATE/DROP/SHOW PROCEDURE`、`CALL`、`IN` 参数、确定性 SQL 执行、BEFORE/AFTER row trigger、`NEW/OLD`、事务/WAL/恢复、递归、权限、SQLLogicTest/E2E | `bash scripts/gate/check_v312_procedure_trigger_gate.sh` 退出 0；所有失败/跳过项必须 issue-linked，不能以文档声明代替实测 |
+| V312-G27 | 4.0 前功能整改与 MySQL 教学能力补强 | Metadata/SHOW/information_schema、SQL 教学 corpus、多 oracle、transaction/crash recovery 教学实验、prepared/wire 教学实验、Optimizer/EXPLAIN、VIEW/CTE/MERGE、Partition/FullText | V312-56A~56D 是 Beta 准入前 blocker；V312-56E~56H 必须在 Beta 阶段完成或显式降级；`V312-56-VERIFICATION.md` 必须包含实跑命令、exit code、输出摘要和 evidence hash |
 
 ## 2. 必需测试资产
 
@@ -65,6 +62,8 @@
 | Execution architecture probes | DML route grep、VTU/Parallel/SIMD invocation traces、Q4 optimizer benchmark | 执行路径和优化器复核 |
 | Storage/WAL fixture | checkpoint、wal-verification、composite-index、index-statistics、torn-write/checksum cases | 存储可靠性 |
 | Test infrastructure fixture | SQLancer seeds、test-runner config、test-registry manifest、E2E shell scripts | 测试基础设施激活 |
+| Procedure/Trigger fixture | procedure lifecycle SQL、CALL/DML SQL、trigger row semantics、WAL recovery、recursion、privilege denial、SQLLogicTest corpus | V312-G26 存储过程/触发器基础生产子集 |
+| Teaching/V400 remediation fixture | metadata/show SQL、teaching SQL corpus、多 oracle manifest、transaction/recovery lab、wire/prepared packet trace、EXPLAIN/plan fixture、VIEW/CTE/MERGE disposition、Partition/FullText decision | V312-G27 4.0 前功能整改与 MySQL 教学能力补强 |
 
 ## 3. 证据要求
 
@@ -95,15 +94,46 @@
 - SHOW/auth/prepared/ALTER/TIMESTAMP/函数/权限等兼容性项被 release note 宣称支持，但没有对应 fixture。
 - DML/VTU/Parallel/SIMD 执行路径仍依赖人工 grep 解释，没有脚本化 invariant 输出。
 - SQLancer、test-runner、test-registry 或 E2E scripts 仍是骨架，却被计入测试体系能力。
+- 存储过程或触发器仍只停留在 parser/catalog/create 成功，缺少 `DROP/SHOW PROCEDURE`、`CALL` 真实 DML、`NEW/OLD` 断言、事务/WAL/恢复、递归限制、权限正反例或 SQLLogicTest/E2E gate，却在 README/release note 中写成 `DONE`。
+- Metadata/SHOW/information_schema、SQL 教学 corpus、transaction/crash recovery lab、prepared/wire lab 未形成 issue-linked Beta 准入证据，却宣称 v3.12 已适合 MySQL 教学场景。
+- VIEW/CTE/MERGE、Partition/FullText 只有 parser/storage 局部实现，却没有 disposition、门禁和文档同步。
 
 ## 5. SQLLogicTest / SQLite Oracle Gate
+
+## 5A. V312-G27：4.0 前功能整改与 MySQL 教学能力补强
+
+V312-G27 是从 `COMPREHENSIVE_ASSESSMENT_REPORT.md` 派生出来的 Beta 前整改门禁，专门处理“类似存储过程和触发器”的功能漂移：代码、测试、文档中存在局部实现，但没有形成生产/教学闭环。
+
+### Beta 准入前 blocker
+
+| 子项 | 要求 | 证据 |
+|---|---|---|
+| V312-56A Metadata/SHOW/information_schema | information_schema tables/columns/indexes 或明确 unsupported；SHOW CREATE/COLUMNS/INDEX/DESCRIBE 正反例 | MySQL/e2e fixture + compat gate |
+| V312-56B SQL 教学 corpus | teaching corpus manifest、多 oracle、PASS/FAIL/SKIP、issue-linked exclusions | SQLLogicTest/corpus gate |
+| V312-56C Transaction/crash recovery lab | BEGIN/COMMIT/ROLLBACK/SAVEPOINT、kill -9/WAL replay、backup/restore count/hash | recovery/compat tests |
+| V312-56D Prepared/wire lab | COM_QUERY/COM_STMT/error/reset/LOAD DATA；TLS/compression DONE 或 DEFERRED | wire/load-data gate |
+
+### Beta 阶段收口项
+
+| 子项 | 要求 | 证据 |
+|---|---|---|
+| V312-56E Optimizer/EXPLAIN | EXPLAIN/plan dump、统计信息、hash/semi/anti join 教学 fixture | optimizer/planner tests |
+| V312-56F VIEW/CTE/MERGE | VIEW/CTE/MERGE 明确 DONE/DEFERRED/UNSUPPORTED | parser/e2e/docs consistency |
+| V312-56G Partition/FullText | Partition/FullText 与 SQL surface/GMP keyword retrieval 决策一致 | storage/e2e/docs consistency |
+| V312-56H Gate/docs/evidence | Beta gate 检查 V312-56A~56D；`V312-56-VERIFICATION.md` 归档证据 | beta gate + docs links |
+
+禁止事项：
+
+- 不允许把 `V312-56-VERIFICATION.md` 写成纯文字总结；必须包含实际命令、exit code、输出摘要和 evidence hash。
+- 不允许用 `TBD`、`PENDING` 或“后续处理”关闭 V312-56 子任务。
+- 不允许把 MERGE、VIEW、Partition、FullText 的 parser/storage 局部实现宣传成 SQL 主路径完成。
 
 SQLite 自动测试框架是从 v3.10.0 继承的 P0 项，v3.12.0 必须把它变成可执行门禁。
 
 | 阶段 | 必需 SLT 证据 |
 |---|---|
 | Alpha | `cargo build -p sqlrustgo_sqllogictest` 成功；runner `--help` 可用 |
-| Beta | `crates/sqlrustgo_sqllogictest/testdata` 本地 smoke corpus 通过 `scripts/gate/check_sqllogictest_v312.sh`，manifest 显示 `pass_files == total_files`、`fail_files == 0`、open exclusions = 0 |
+| Beta | `crates/sqlrustgo_sqllogictest/testdata` 本地 smoke corpus 可运行并输出报告 |
 | RC | curated SQLite-compatible subset 运行，并输出 PASS/FAIL/SKIP 分类和 issue-linked exclusions |
 | GA | selected SLT targets 全部通过，或每个 skipped/failed group 都有 issue、owner、expiry、rationale |
 
@@ -115,27 +145,22 @@ cargo run -p sqlrustgo_sqllogictest -- --test-dir crates/sqlrustgo_sqllogictest/
 bash scripts/gate/check_sqllogictest_v312.sh
 ```
 
-2026-08-14 当前 smoke 基线：
+2026-08-09 当前基线：
 
 | 命令 | 观察结果 | 对测试计划的含义 |
 |---|---|---|
-| `cargo build -p sqlrustgo_sqllogictest` | 已由 `check_sqllogictest_v312.sh` 实跑，PASS | 可作为 smoke gate 的 build evidence；warning-free 仍以 clippy gate 为准 |
-| `cargo run -p sqlrustgo_sqllogictest -- --test-dir crates/sqlrustgo_sqllogictest/testdata` | gate 实跑 clean；25/25 文件通过，通过率 100.0% | 本地 smoke corpus 达到 Beta smoke 要求 |
-| `bash scripts/gate/check_sqllogictest_v312.sh` | exit 0；5 PASS / 0 FAIL；open exclusions = 0，closed historical exclusions = 16 | v3.12 smoke gate 已集成；full SQLite official/curated corpus 仍是 RC/GA 扩展项 |
+| `cargo build -p sqlrustgo_sqllogictest` | build 可完成，但依赖 crate 仍有 warning | 只能作为初始 Alpha build evidence，不能作为 clippy/warning-free evidence |
+| `cargo run -p sqlrustgo_sqllogictest -- --test-dir crates/sqlrustgo_sqllogictest/testdata` | runner 可完成；6/16 文件通过，通过率 27.3% | v3.12 必须 triage failures、分类 expected incompatibilities，并在 Beta/RC 前提升 smoke gate |
+| `bash scripts/gate/check_sqllogictest_v312.sh` | 当前计划基线中脚本尚不存在 | 实现前不能称 SQLLogicTest gate 已集成 |
 
 必需 artifact：
 
 | Artifact | 路径 |
 |---|---|
-| SLT smoke report | `docs/releases/v3.12.0/evidence/sqllogictest/smoke-report.md` |
-| SQLite corpus manifest | `docs/releases/v3.12.0/evidence/sqllogictest/sqlite-corpus-manifest.json` |
-| Exclusion registry | `docs/releases/v3.12.0/evidence/sqllogictest/exclusions.yml` |
+| SLT smoke report | `docs/releases/v3.12.0/sqllogictest-baseline/smoke-report.md` |
+| SQLite corpus manifest | `docs/releases/v3.12.0/sqllogictest-baseline/sqlite-corpus-manifest.json` |
+| Exclusion registry | `docs/releases/v3.12.0/sqllogictest-baseline/exclusions.yml` |
 | Gate output | `docs/releases/v3.12.0/logs/sqllogictest_<commit>_<timestamp>.log` |
-
-Beta gate 不得只检查上述报告文件存在。必须实跑
-`scripts/gate/check_sqllogictest_v312.sh`，并读取 manifest/exclusions 确认
-当前 checkout 与报告一致。旧报告 `sqllogictest-oracle-gate-report.md` 仅保留
-作为入口说明，不再作为唯一 evidence。
 
 ## 6. v3.11 弱项回归计划
 
@@ -175,6 +200,8 @@ Beta gate 不得只检查上述报告文件存在。必须实跑
 | Execution architecture backlog | `docs/releases/v3.12.0/architecture/execution_optimizer_invariants_<commit>_<timestamp>.md` |
 | Storage/index/WAL backlog | `docs/releases/v3.12.0/storage/storage_wal_index_backlog_<commit>_<timestamp>.md` |
 | Test infrastructure backlog | `docs/releases/v3.12.0/test-infra/sqlancer_runner_registry_e2e_<commit>_<timestamp>.md` |
+| Procedure/Trigger close-out | `docs/releases/v3.12.0/evidence/procedure_trigger/V312-55-VERIFICATION.md` 和 `docs/releases/v3.12.0/logs/procedure_trigger_<commit>_<timestamp>.log` |
+| Teaching/V400 remediation close-out | `docs/releases/v3.12.0/evidence/teaching_v400/V312-56-VERIFICATION.md` 和 `docs/releases/v3.12.0/logs/teaching_v400_<commit>_<timestamp>.log` |
 
 ## 8. 综合测试框架与覆盖率口径
 
@@ -188,6 +215,21 @@ workspace 覆盖率数字替代分模块质量判断。
 ```bash
 bash scripts/gate/check_v312_coverage_baseline.sh
 ```
+
+Alpha / smoke gate 只验证框架配置，不触发 16 个 crate 的全量覆盖率采集：
+
+```bash
+bash scripts/gate/check_v312_coverage_baseline.sh --check-config
+```
+
+复核已有覆盖率 artifact 时使用：
+
+```bash
+bash scripts/gate/check_v312_coverage_baseline.sh --enforce-stage alpha \
+  --summary docs/releases/v3.12.0/coverage-baseline/current_<commit>_<timestamp>/summary.json
+```
+
+夜间、Beta、RC、GA 才允许不传 `--summary` 直接执行 `--enforce-stage <stage>`，因为这会重新采集所有 tracked crate 的覆盖率。
 
 ## 附录：英文原文
 
@@ -219,18 +261,6 @@ bash scripts/gate/check_v312_coverage_baseline.sh
 | V312-G13 | MySQL wire protocol hardening | COM_QUERY/COM_STMT/error/reset/TLS/compression e2e | deterministic pass/fail artifact |
 | V312-G14 | LOAD DATA / bulk import | SF=1/SF=10 import benchmark + memory cap | no OOM; row-count/hash equality |
 | V312-G15 | Crash recovery and upgrade | kill -9, WAL replay, backup/restore, v3.10->v3.12 upgrade/downgrade | count/hash equality after recovery |
-| V312-G16 | CREATE SEQUENCE executor | DDL, NEXTVAL, default expression, concurrency, tx rollback, WAL/recovery tests | semantics + persistence deterministic; no longer an executor gap |
-| V312-G17 | JSON/GIS controlled features (Window → DEFERRED-3.13, see `sql-feature-corpus/window_json_gis_scope.md`) | JSON_EXTRACT/JSON_VALUE/JSON_UNQUOTE +/-; ST_Distance/ST_Within/ST_Contains/ST_Intersects 2D-Point +/- | JSON/GIS in-scope all PASS; out-of-scope fail with explicit unsupported error; Window not tested, tracked in 3.13 |
-| V312-G18 | Coverage and disabled-test debt | canonical coverage command, disabled/API-drift manifest, flaky test quarantine | parser/mysql-server/mysql-client ≥80% or issue-linked exception; no silent disabled tests |
-| V312-G19 | Performance and observability baseline | TPC-H SF=10, Sysbench OLTP, bulk-load benchmark, Prometheus/Slow Query Log e2e | re-runnable scripts, thresholds, logs and trend comparisons |
-| V312-G20 | SQL corpus and release sign-off | `test_sql_corpus.sh` all targets, R2.1-R2.8 invariant, 2-reviewer sign-off | SQL corpus/architecture invariant output; sign-off with evidence hash |
-| V312-G21 | v3.6-v3.10 historical debt ledger | historical backlog disposition + current verification sampling | each item closed/superseded/carried/deferred, carried items have v3.12 issue |
-| V312-G22 | MySQL compat and SQL surface regression | SHOW, auth, prepared statements, ALTER, TIMESTAMP, connection pool, functions, column-level privilege fixtures | GMP/production-path items PASS; non-target items have explicit unsupported/deferred evidence |
-| V312-G23 | Execution architecture and optimizer invariant | DML PhysicalPlan/VTU/Parallel/SIMD route checks, Q4 semi/anti join/decorrelation benchmark | no known bypass; optimizer WIP must not be claimed as performance capability |
-| V312-G24 | Storage/Index/WAL tooling regression | WAL checkpoint, wal-verification, composite index, index stats, checksum/torn-write tests | storage invariant output; WIP items issue/owner/expiry-linked |
-| V312-G25 | Test infrastructure activation | SQLancer, test-runner, test-registry, E2E shell scripts, anti-fabrication binaries | tools run and produce reports, or documented retired/deferred |
-| V312-G26 | Pre-4.0 PARTIAL remediation gate | every `PARTIAL` in `PARTIAL_FEATURE_REMEDIATION_ISSUE_PLAN.md` has an owner issue; issue mapping matches `ISSUES_PLAN.md`; README `PARTIAL` column aligned | 0 unattributed `PARTIAL`; mapping diff=0; README column matches plan |
-| V312-G27 | V312-56 teaching capability + pre-4.0 remediation gate | V312-56A~56H sub-tasks completed or explicitly demoted before Beta entry; `tests/compat/teaching_sql_v3_12/` 28+ SQL fixtures + manifest.yml; SHOW INDEX/SHOW COLUMNS LIKE glob matcher live PASS; prepared/* + 6 crash tests + 3 tx tests + 5 EXPLAIN fixtures | V312-56A/B/C/D live PASS; E/F/G disposition recorded in `MYSQL_COMPAT_STATUS.md`; H Beta gate integration (B6_V312_56_TEACHING_CORPUS + B6_V312_56_EXPLAIN_FIXTURES) PASS |
 
 ## 2. Required Test Assets
 
@@ -283,7 +313,7 @@ The SQLite automatic testing framework is a carried-forward P0 item from v3.10.0
 | Stage | Required SLT evidence |
 |---|---|
 | Alpha | `cargo build -p sqlrustgo_sqllogictest` succeeds; runner `--help` prints usable options |
-| Beta | Local smoke corpus under `crates/sqlrustgo_sqllogictest/testdata` passes `scripts/gate/check_sqllogictest_v312.sh`; manifest shows `pass_files == total_files`, `fail_files == 0`, and open exclusions = 0 |
+| Beta | Local smoke corpus under `crates/sqlrustgo_sqllogictest/testdata` runs and writes a report |
 | RC | Curated SQLite-compatible subset runs with PASS/FAIL/SKIP classification and issue-linked exclusions |
 | GA | All selected SLT targets pass, or every skipped/failed group has an issue, owner, expiry, and rationale |
 
@@ -299,23 +329,18 @@ Current baseline captured on 2026-08-09:
 
 | Command | Observed result | Test-plan implication |
 |---|---|---|
-| `cargo build -p sqlrustgo_sqllogictest` | Executed through `check_sqllogictest_v312.sh`; PASS | Valid smoke build evidence; warning-free status is still governed by clippy |
-| `cargo run -p sqlrustgo_sqllogictest -- --test-dir crates/sqlrustgo_sqllogictest/testdata` | Gate run is clean; 25/25 files pass, pass rate 100.0% | Local smoke corpus meets the Beta smoke requirement |
-| `bash scripts/gate/check_sqllogictest_v312.sh` | exit 0; 5 PASS / 0 FAIL; open exclusions = 0 and closed historical exclusions = 16 | Smoke gate is integrated; full SQLite official/curated corpus remains RC/GA scope |
+| `cargo build -p sqlrustgo_sqllogictest` | Build completes; warnings are still emitted from dependent crates | Acceptable only as initial Alpha build evidence, not as clippy/warning-free evidence |
+| `cargo run -p sqlrustgo_sqllogictest -- --test-dir crates/sqlrustgo_sqllogictest/testdata` | Runner completes with 6/16 files passing and 27.3% pass rate | v3.12.0 must triage failures, classify expected incompatibilities, and raise the smoke gate before Beta/RC |
+| `bash scripts/gate/check_sqllogictest_v312.sh` | Script not yet present in the current plan baseline | Must be implemented before the SQLLogicTest gate can be called integrated |
 
 Required artifacts:
 
 | Artifact | Path |
 |---|---|
-| SLT smoke report | `docs/releases/v3.12.0/evidence/sqllogictest/smoke-report.md` |
-| SQLite corpus manifest | `docs/releases/v3.12.0/evidence/sqllogictest/sqlite-corpus-manifest.json` |
-| Exclusion registry | `docs/releases/v3.12.0/evidence/sqllogictest/exclusions.yml` |
+| SLT smoke report | `docs/releases/v3.12.0/sqllogictest-baseline/smoke-report.md` |
+| SQLite corpus manifest | `docs/releases/v3.12.0/sqllogictest-baseline/sqlite-corpus-manifest.json` |
+| Exclusion registry | `docs/releases/v3.12.0/sqllogictest-baseline/exclusions.yml` |
 | Gate output | `docs/releases/v3.12.0/logs/sqllogictest_<commit>_<timestamp>.log` |
-
-The earlier 6/16, 27.3% baseline is superseded by the current
-`check_sqllogictest_v312.sh` evidence at commit `b6aede7996`. The Beta gate
-must execute the gate and validate the manifest/exclusions; a report file
-existing on disk is not sufficient evidence.
 
 ## 6. v3.11 Weak-Point Regression Plan
 

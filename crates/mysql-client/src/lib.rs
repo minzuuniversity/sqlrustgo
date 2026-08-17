@@ -395,6 +395,12 @@ pub struct ColumnDefinition {
     pub column_type: u8,
     pub flags: u16,
     pub decimals: u8,
+    /// Optional column default value string (e.g. `Some("0")` for
+    /// `id INT DEFAULT 0`). V312-35 #4169 cascade: mirrors
+    /// `parser::ColumnDefinition.default_value` so wire-protocol tests
+    /// can assert on the cascade without depending on the parser crate.
+    /// `None` means no DEFAULT clause was declared.
+    pub default_value: Option<String>,
 }
 
 /// MySQL wire-protocol status-flag bit indicating that another result
@@ -541,6 +547,12 @@ fn parse_column_definition(data: &[u8], offset: &mut usize) -> MySqlResult<Colum
         column_type,
         flags,
         decimals,
+        // Wire-protocol column-definition packets do NOT carry the
+        // server-side column default value (MySQL COM_FIELD_LIST and
+        // ResultSet packets omit it). The parser/executor layer is
+        // responsible for looking up the default via the catalog when
+        // needed (V312-35 #4169 cascade). Surface as `None` here.
+        default_value: None,
     })
 }
 
@@ -1467,8 +1479,10 @@ mod tests {
 
     #[test]
     fn test_parse_result_set_select_deprecate_eof() {
-        // Same as test_parse_result_set_select_simple but terminator is
-        // OK packet (0x00 prefix, <= 8 bytes) instead of EOF (0xfe).
+        // Same as test_parse_result_set_select_simple but with DEPRECATE_EOF=1.
+        // Per WL#7766, DEPRECATE_EOF=1 omits the inter-record separator
+        // between column defs and rows; the trailing EOF/OK packet (0xfe
+        // prefix) marks the end of the row stream.
         use std::io::Write;
 
         let mut bytes = Vec::new();
@@ -1481,18 +1495,18 @@ mod tests {
         bytes.write_all(&col_len.to_le_bytes()[0..3]).unwrap();
         bytes.write_all(&[0x01]).unwrap();
         bytes.write_all(&col_def).unwrap();
-        // Packet 3: Separator OK packet (DEPRECATE_EOF): 0x00 + 0x00 + 0x00 + 2-byte status + 2-byte warning
-        bytes.write_all(&[0x07, 0x00, 0x00, 0x02]).unwrap();
-        bytes
-            .write_all(&[0x00, 0x00, 0x00, 0x02, 0x00, 0x00, 0x00])
-            .unwrap();
+        // NO inter-record separator when DEPRECATE_EOF=1 (WL#7766).
+        // Packet 3 (was a separator): removed.
         // Packet 4: row "42"
         bytes.write_all(&[0x03, 0x00, 0x00, 0x03]).unwrap();
         bytes.write_all(&[0x02, b'4', b'2']).unwrap();
-        // Packet 5: Terminator OK packet
+        // Packet 5: terminator (0xfe prefix; in DEPRECATE_EOF=1 this is
+        // interpreted as the OK marker for the result set). Payload layout:
+        // 0xfe + lenenc affected_rows (0) + lenenc last_insert_id (0) +
+        // 2-byte status_flags + 2-byte warnings.
         bytes.write_all(&[0x07, 0x00, 0x00, 0x04]).unwrap();
         bytes
-            .write_all(&[0x00, 0x00, 0x00, 0x02, 0x00, 0x00, 0x00])
+            .write_all(&[0xfe, 0x00, 0x00, 0x02, 0x00, 0x00, 0x00])
             .unwrap();
 
         let mut cur = Cursor::new(bytes);
@@ -2163,7 +2177,6 @@ mod tests {
             column_type: 0x03,
             flags: 0x0020,
             decimals: 0x00,
-
             default_value: None,
         };
 

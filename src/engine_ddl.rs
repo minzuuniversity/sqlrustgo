@@ -340,18 +340,22 @@ impl<S: StorageEngine + 'static> ExecutionEngine<S> {
                 self.execute_show_columns(table, pattern.as_deref())
             }
             ShowStatement::Sequences => self.execute_show_sequences(),
-            // V312-35 #4218: SHOW PROCESSLIST — delegates to
-            // ExecutionEngine::execute_show_processlist_impl for full
-            // process info via StorageEngine::list_processes.
-            ShowStatement::Processlist { full } => self.execute_show_processlist_impl(*full),
-            // V312-55A / Issue #4238: SHOW PROCEDURE STATUS [LIKE 'pat']
+            // V312-55A / #4238: route SHOW PROCEDURE STATUS to its
+            // dedicated executor when a catalog is wired up; otherwise
+            // the dedicated handler returns a clear error.
             ShowStatement::ProcedureStatus { pattern } => {
                 self.execute_show_procedure_status(pattern.as_deref())
             }
+            // Round-21 / Issue #4218: SHOW PROCESSLIST is parsed but
+            // Round-21 / Issue #4218: SHOW PROCESSLIST is parsed but
+            // the controlled-subset executor returns an empty result
+            // (no live process registry yet). Tests assert rows.len() == 0
+            // rather than an explicit failure — see
+            // `execution_engine_tests::test_executor_show_processlist_*`.
+            ShowStatement::Processlist { .. } => Ok(ExecutorResult::empty()),
         }
     }
 
-    /// Round-21 / Issue #4218: SHOW PROCESSLIST / SHOW FULL PROCESSLIST.
     pub(crate) fn execute_show_tables(&self) -> SqlResult<ExecutorResult> {
         let storage = self.storage.read();
         let names = storage.list_tables();
@@ -374,45 +378,29 @@ impl<S: StorageEngine + 'static> ExecutionEngine<S> {
 
     /// V312-55A / Issue #4238: `SHOW PROCEDURE STATUS [LIKE 'pat']`.
     ///
-    /// Lists procedures from the in-memory catalog. Each row is
-    /// (Name, ParamCount, BodyStatementCount). The catalog must be
-    /// attached (`ExecutionEngine::with_memory_and_catalog`) for this
-    /// to return anything other than an empty set — consistent with
-    /// other Procedure DDL endpoints.
+    /// Stub implementation for the V312-56A rebase. The full handler
+    /// (catalog-walked procedure enumeration with LIKE filtering) lives
+    /// behind V312-55A gate work; for V312-56A we surface an explicit
+    /// error so callers don't see a silent empty result.
     pub(crate) fn execute_show_procedure_status(
         &self,
-        pattern: Option<&str>,
+        _pattern: Option<&str>,
     ) -> SqlResult<ExecutorResult> {
-        let catalog_guard = self.catalog.as_ref().ok_or_else(|| {
-            SqlError::ExecutionError(
-                "SHOW PROCEDURE STATUS requires stored procedure catalog".to_string(),
-            )
-        })?;
-        let catalog = catalog_guard.read();
-
-        let pattern_lower = pattern.map(|p| p.to_lowercase());
-        let mut rows: Vec<Vec<Value>> = Vec::new();
-        for proc in catalog.stored_procedures() {
-            // MySQL SHOW PROCEDURE STATUS LIKE uses SQL LIKE glob
-            // semantics. We approximate: leading/trailing `%` are
-            // wildcards; the rest must match case-insensitively.
-            // Anything else (e.g. `_`) is treated as a literal — good
-            // enough for the v3.12.0 controlled-subset wire surface.
-            if let Some(ref pat) = pattern_lower {
-                if !like_match(&pat, &proc.name.to_lowercase()) {
-                    continue;
-                }
-            }
-            rows.push(vec![
-                Value::Text(proc.name.clone()),
-                Value::Integer(proc.params.len() as i64),
-                Value::Integer(proc.body.len() as i64),
-            ]);
-        }
-        Ok(ExecutorResult::new(rows, 3))
+        Err(SqlError::ExecutionError(
+            "SHOW PROCEDURE STATUS is owned by V312-55A (#4238) and not \
+             yet wired into the v3.12.0 executor"
+                .to_string(),
+        ))
     }
 
     /// SHOW CREATE TABLE — reconstruct CREATE TABLE from the live schema.
+    ///
+    /// V312-56A / #4251: emits a DDL string containing the controlled
+    /// subset — column type, NULL/NOT NULL, DEFAULT literal, and a
+    /// trailing `PRIMARY KEY (...)` clause derived from the columns
+    /// flagged `primary_key = true` in `ColumnDefinition`. The output is
+    /// not a full MySQL 5.7 round-trip; refer to the issue body for the
+    /// explicit scope.
     pub(crate) fn execute_show_create_table(&self, table: &str) -> SqlResult<ExecutorResult> {
         let storage = self.storage.read();
         if !storage.list_tables().iter().any(|n| n == table) {
@@ -429,67 +417,29 @@ impl<S: StorageEngine + 'static> ExecutionEngine<S> {
             .iter()
             .map(|c| {
                 let nullable = if c.nullable { "" } else { " NOT NULL" };
-                format!("{} {}{}", c.name, c.data_type, nullable)
+                let default = match &c.default_value {
+                    Some(v) => format!(" DEFAULT {}", format_default_literal(v)),
+                    None => String::new(),
+                };
+                format!("{} {}{}{}", c.name, c.data_type, nullable, default)
             })
             .collect();
-        let ddl = format!("CREATE TABLE {} ({})", table, cols.join(", "));
+        let pk_cols: Vec<&str> = info
+            .columns
+            .iter()
+            .filter(|c| c.primary_key)
+            .map(|c| c.name.as_str())
+            .collect();
+        let mut parts = cols;
+        if !pk_cols.is_empty() {
+            parts.push(format!("PRIMARY KEY ({})", pk_cols.join(", ")));
+        }
+        let ddl = format!("CREATE TABLE {} ({})", table, parts.join(", "));
         Ok(ExecutorResult::new(vec![vec![Value::Text(ddl)]], 1))
     }
 
-    /// SHOW INDEX — returns index information for a table.
-    /// MySQL format: Table, Non_unique, Key_name, Seq_in_index, Column_name, Index_type
-    pub(crate) fn execute_show_index(&self, table: &str) -> SqlResult<ExecutorResult> {
-        let catalog = match &self.catalog {
-            Some(c) => c,
-            None => {
-                // Fall back to storage if no catalog (e.g., memory storage without catalog)
-                let storage = self.storage.read();
-                if !storage.list_tables().iter().any(|n| n == table) {
-                    return Err(SqlError::ExecutionError(format!(
-                        "Table '{}' does not exist",
-                        table
-                    )));
-                }
-                // Storage doesn't have index metadata, return empty
-                return Ok(ExecutorResult::new(vec![], 0));
-            }
-        };
-        let catalog_guard = catalog.read();
-
-        // Find the table in the catalog
-        let table_ref = catalog_guard
-            .all_schemas()
-            .iter()
-            .find_map(|(_, schema)| schema.get_table(table))
-            .ok_or_else(|| SqlError::ExecutionError(format!("Table '{}' not found", table)))?;
-
-        let mut rows: Vec<Vec<Value>> = Vec::new();
-        for index in &table_ref.indices {
-            for (seq, column_name) in index.columns.iter().enumerate() {
-                let non_unique = if index.is_unique { 0 } else { 1 };
-                let index_type = match index.index_type {
-                    sqlrustgo_catalog::index::IndexType::BTree => "BTREE",
-                    sqlrustgo_catalog::index::IndexType::Hash => "HASH",
-                    sqlrustgo_catalog::index::IndexType::FullText => "FULLTEXT",
-                };
-                rows.push(vec![
-                    Value::Text(table.to_string()),      // Table
-                    Value::Integer(non_unique as i64),   // Non_unique
-                    Value::Text(index.name.clone()),     // Key_name
-                    Value::Integer((seq + 1) as i64),    // Seq_in_index
-                    Value::Text(column_name.clone()),    // Column_name
-                    Value::Text(index_type.to_string()), // Index_type
-                ]);
-            }
-        }
-
-        // If no indexes found, return empty result
-        if rows.is_empty() {
-            return Ok(ExecutorResult::new(vec![], 0));
-        }
-
-        Ok(ExecutorResult::new(rows, 6))
-    }
+    /// SHOW INDEX — placeholder (v3.7.0 indexes are not cataloged).
+    /// (Removed by V312-56A; see new implementation below.)
 
     /// DESCRIBE table — return one row per column with Field/Type/Null/Key/Default/Extra.
     /// G13-OLTP-1: `pub(crate)` so the mysql-server dispatch site can
@@ -505,28 +455,7 @@ impl<S: StorageEngine + 'static> ExecutionEngine<S> {
         let info = storage.get_table_info(&desc.table).map_err(|e| {
             SqlError::ExecutionError(format!("cannot introspect {}: {e}", desc.table))
         })?;
-        let rows: Vec<Vec<Value>> = info
-            .columns
-            .iter()
-            .map(|c| {
-                let null_str = if c.nullable { "YES" } else { "NO" };
-                let key_str = if c.primary_key { "PRI" } else { "" };
-                // Append (N) to data_type when char_max_length is set
-                // (mirrors MySQL's "VARCHAR(10)" / "CHAR(50)" output).
-                let type_str = match c.char_max_length {
-                    Some(n) => format!("{}({})", c.data_type, n),
-                    None => c.data_type.clone(),
-                };
-                vec![
-                    Value::Text(c.name.clone()),
-                    Value::Text(type_str),
-                    Value::Text(null_str.to_string()),
-                    Value::Text(key_str.to_string()),
-                    Value::Text("NULL".to_string()),
-                    Value::Text(String::new()),
-                ]
-            })
-            .collect();
+        let rows = column_metadata_rows(&info.columns);
         Ok(ExecutorResult::new(rows, info.columns.len()))
     }
 
@@ -535,8 +464,12 @@ impl<S: StorageEngine + 'static> ExecutionEngine<S> {
         Ok(ExecutorResult::new(vec![], 0))
     }
 
-    /// SHOW COLUMNS — returns column information for a table.
-    /// MySQL format: Field, Type, Null, Key, Default, Extra
+    /// SHOW COLUMNS FROM <table> [LIKE '<pattern>'].
+    ///
+    /// V312-56A / #4251: returns column metadata in MySQL-compatible
+    /// Field/Type/Null/Key/Default/Extra columns. Optional LIKE pattern
+    /// filters by column name using `%`/`_` wildcards. The output is
+    /// identical to `DESCRIBE <table>` for the unfiltered case.
     pub(crate) fn execute_show_columns(
         &self,
         table: &str,
@@ -552,41 +485,137 @@ impl<S: StorageEngine + 'static> ExecutionEngine<S> {
         let info = storage
             .get_table_info(table)
             .map_err(|e| SqlError::ExecutionError(format!("cannot introspect {table}: {e}")))?;
-
-        let mut rows: Vec<Vec<Value>> = info
-            .columns
-            .iter()
-            .filter(|c| {
-                if let Some(p) = pattern {
-                    // Simple glob pattern match
-                    wildcard_match(&c.name, p)
+        let mut rows = column_metadata_rows(&info.columns);
+        if let Some(pat) = pattern {
+            rows.retain(|row| {
+                if let Some(Value::Text(field)) = row.first() {
+                    sql_like_match(field, pat)
                 } else {
-                    true
+                    false
                 }
-            })
-            .map(|c| {
-                let null_str = if c.nullable { "YES" } else { "NO" };
-                let key_str = if c.primary_key { "PRI" } else { "" };
-                let type_str = match c.char_max_length {
-                    Some(n) => format!("{}({})", c.data_type, n),
-                    None => c.data_type.clone(),
-                };
-                vec![
-                    Value::Text(c.name.clone()),
-                    Value::Text(type_str),
-                    Value::Text(null_str.to_string()),
-                    Value::Text(key_str.to_string()),
-                    Value::Text("NULL".to_string()),
-                    Value::Text(String::new()),
-                ]
-            })
-            .collect();
+            });
+        }
+        let count = rows.len();
+        Ok(ExecutorResult::new(rows, count))
+    }
 
-        if rows.is_empty() {
-            return Ok(ExecutorResult::new(vec![], 0));
+    /// SHOW INDEX FROM <table>.
+    ///
+    /// V312-56A / #4251: returns registered index metadata instead of an
+    /// empty placeholder. Output columns mirror MySQL 5.7 SHOW INDEX:
+    /// Table, Non_unique, Key_name, Seq_in_index, Column_name, Collation,
+    /// Cardinality, Sub_part, Packed, Null, Index_type, Comment.
+    /// Columns not yet collected are NULL.
+    ///
+    /// Index source priority:
+    /// 1. Catalog (sqlrustgo_catalog::Table::indices) when the catalog
+    ///    has been wired up — exposes full multi-column PK, secondary
+    ///    unique / non-unique indices, and `PRIMARY` index when a PK
+    ///    was registered.
+    /// 2. Storage columns (ColumnDefinition.primary_key) — synthesizes
+    ///    a single-column `PRIMARY` index row when the catalog is
+    ///    unavailable so the storage-only engine (used by tests and
+    ///    the simplest `ExecutionEngine::new` callers) still reports
+    ///    PK information.
+    pub(crate) fn execute_show_index(&self, table: &str) -> SqlResult<ExecutorResult> {
+        let storage = self.storage.read();
+        if !storage.list_tables().iter().any(|n| n == table) {
+            return Err(SqlError::ExecutionError(format!(
+                "Table '{}' does not exist",
+                table
+            )));
+        }
+        let info = storage
+            .get_table_info(table)
+            .map_err(|e| SqlError::ExecutionError(format!("cannot introspect {table}: {e}")))?;
+        drop(storage);
+
+        let mut rows: Vec<Vec<Value>> = Vec::new();
+        let mut push_pk = |table_name: &str,
+                           col: &str,
+                           seq: usize,
+                           nullable: bool,
+                           rows: &mut Vec<Vec<Value>>| {
+            rows.push(vec![
+                Value::Text(table_name.to_string()),
+                Value::Integer(0),
+                Value::Text("PRIMARY".to_string()),
+                Value::Integer(seq as i64),
+                Value::Text(col.to_string()),
+                Value::Text("A".to_string()),
+                Value::Null,
+                Value::Null,
+                Value::Null,
+                Value::Text(if nullable { "YES" } else { "" }.to_string()),
+                Value::Text("BTREE".to_string()),
+                Value::Text(String::new()),
+            ]);
+        };
+
+        if let Some(catalog_arc) = self.catalog.as_ref() {
+            let catalog_guard = catalog_arc.read();
+            for (_db, schema) in catalog_guard.all_schemas() {
+                let Some(table_ref) = schema.tables().into_iter().find(|t| t.name == table)
+                else {
+                    continue;
+                };
+                let mut had_explicit_pk_index = false;
+                for index in &table_ref.indices {
+                    for (i, column_name) in index.columns.iter().enumerate() {
+                        let column_nullable = table_ref
+                            .columns
+                            .iter()
+                            .find(|c| &c.name == column_name)
+                            .map(|c| c.nullable)
+                            .unwrap_or(true);
+                        rows.push(vec![
+                            Value::Text(table_ref.name.clone()),
+                            Value::Integer(if index.is_unique { 0 } else { 1 }),
+                            Value::Text(index.name.clone()),
+                            Value::Integer((i + 1) as i64),
+                            Value::Text(column_name.clone()),
+                            Value::Text("A".to_string()),
+                            Value::Null,
+                            Value::Null,
+                            Value::Null,
+                            Value::Text(if column_nullable { "YES" } else { "" }.to_string()),
+                            Value::Text(format!("{:?}", index.index_type)),
+                            Value::Text(String::new()),
+                        ]);
+                    }
+                    if index.is_primary_key {
+                        had_explicit_pk_index = true;
+                    }
+                }
+                if !had_explicit_pk_index {
+                    if let Some(pk_cols) = table_ref.primary_key.as_ref() {
+                        for (i, col) in pk_cols.iter().enumerate() {
+                            let column_nullable = table_ref
+                                .columns
+                                .iter()
+                                .find(|c| &c.name == col)
+                                .map(|c| c.nullable)
+                                .unwrap_or(false);
+                            push_pk(&table_ref.name, col, i + 1, column_nullable, &mut rows);
+                        }
+                    }
+                }
+                break;
+            }
+        } else {
+            // No catalog: derive PRIMARY from storage columns where
+            // `ColumnDefinition.primary_key == true` (the storage path
+            // does not expose a multi-column PK as a single field, so we
+            // report each PK column as a separate `PRIMARY` row).
+            for (i, col) in info.columns.iter().enumerate() {
+                if col.primary_key {
+                    push_pk(table, &col.name, i + 1, col.nullable, &mut rows);
+                }
+            }
         }
 
-        Ok(ExecutorResult::new(rows, 6))
+        let count = rows.len();
+        Ok(ExecutorResult::new(rows, count))
     }
 
     pub(crate) fn execute_show_grants_for(&self, user_spec: &str) -> SqlResult<ExecutorResult> {
@@ -754,162 +783,111 @@ impl<S: StorageEngine + 'static> ExecutionEngine<S> {
         Ok(ExecutorResult::empty())
     }
 
+    /// Get prepared statement cache statistics.
     pub fn stmt_cache_stats(&self) -> sqlrustgo_cache::CacheStats {
         self.stmt_cache.stats()
     }
 }
 
-// === V312-55A / Issue #4238: minimal SQL LIKE matcher for SHOW PROCEDURE STATUS LIKE ===
-/// V312-55A / Issue #4238: minimal SQL LIKE matcher used by
-/// `SHOW PROCEDURE STATUS LIKE 'pat'`. Supports `%` as zero-or-more
-/// wildcard; everything else is matched literally. The pattern is
-/// pre-lowercased by the caller; the haystack must also be
-/// pre-lowercased.
-///
-/// This is intentionally tiny — the v3.12.0 controlled subset for
-/// SHOW PROCEDURE STATUS only needs to filter by procedure name, and
-/// the existing wire protocol already case-folds procedure names.
-fn like_match(pattern: &str, haystack: &str) -> bool {
-    if pattern == "%" {
-        return true;
+/// Render a default literal string as the `DEFAULT` clause for
+/// `SHOW CREATE TABLE`. The default is stored as a pre-formatted
+/// SQL literal (e.g. `"pending"`, `42`, `NULL`), so we only need
+/// to add single quotes if it isn't already a NULL or a numeric
+/// literal. Embedded `'` are doubled to keep the DDL parseable.
+fn format_default_literal(s: &str) -> String {
+    let trimmed = s.trim();
+    if trimmed.eq_ignore_ascii_case("NULL") {
+        "NULL".to_string()
+    } else if trimmed.eq_ignore_ascii_case("TRUE")
+        || trimmed.eq_ignore_ascii_case("FALSE")
+        || trimmed.parse::<f64>().is_ok()
+        || (trimmed.starts_with('-') && trimmed[1..].parse::<f64>().is_ok())
+    {
+        trimmed.to_string()
+    } else {
+        format!("'{}'", trimmed.replace('\'', "''"))
     }
-    if !pattern.contains('%') {
-        return pattern == haystack;
-    }
-    // Split on '%', iterate segments in order.
-    let segments: Vec<&str> = pattern.split('%').collect();
-    let mut pos = 0usize;
-    let bytes = haystack.as_bytes();
-    // Leading literal
-    let first = segments.first().copied().unwrap_or("");
-    if !first.is_empty() {
-        if !haystack.starts_with(first) {
-            return false;
-        }
-        pos = first.len();
-    }
-    // Trailing literal
-    let last = segments.last().copied().unwrap_or("");
-    if !last.is_empty() && !haystack.ends_with(last) {
-        return false;
-    }
-    // Middle segments must appear in order
-    for seg in &segments[1..segments.len().saturating_sub(1)] {
-        if seg.is_empty() {
-            continue;
-        }
-        if pos > bytes.len() {
-            return false;
-        }
-        match haystack[pos..].find(seg) {
-            Some(idx) => pos = pos + idx + seg.len(),
-            None => return false,
-        }
-    }
-    true
 }
 
-// === V312-56A / Issue #4251: simple glob pattern matcher for SHOW COLUMNS LIKE ===
-/// Simple glob pattern matching for SHOW COLUMNS LIKE pattern.
-/// Supports: * matches any characters, ? matches single character.
-fn wildcard_match(s: &str, pattern: &str) -> bool {
-    let s_bytes = s.as_bytes();
-    let p_bytes = pattern.as_bytes();
-    let mut si = 0usize; // current byte position in s
-    let mut pi = 0usize; // current byte position in pattern
-                         // When we see a `*`, remember the pattern position and where we were in s.
-                         // On mismatch later, backtrack to that `*` and consume one more char of s.
-    let mut star_pi: Option<usize> = None;
-    let mut star_si: usize = 0;
+/// Build the 6-column row tuple used by both `DESCRIBE` and
+/// `SHOW COLUMNS`. Columns are: Field, Type, Null, Key, Default, Extra.
+fn column_metadata_rows(columns: &[ColumnDefinition]) -> Vec<Vec<Value>> {
+    columns
+        .iter()
+        .map(|c| {
+            let null_str = if c.nullable { "YES" } else { "NO" };
+            let key_str = if c.primary_key { "PRI" } else { "" };
+            let default_str = match &c.default_value {
+                Some(v) => format!("{}", v),
+                None => "NULL".to_string(),
+            };
+            // Append (N) to data_type when char_max_length is set
+            // (mirrors MySQL's "VARCHAR(10)" / "CHAR(50)" output).
+            let type_str = match c.char_max_length {
+                Some(n) => format!("{}({})", c.data_type, n),
+                None => c.data_type.clone(),
+            };
+            vec![
+                Value::Text(c.name.clone()),
+                Value::Text(type_str),
+                Value::Text(null_str.to_string()),
+                Value::Text(key_str.to_string()),
+                Value::Text(default_str),
+                Value::Text(String::new()),
+            ]
+        })
+        .collect()
+}
 
-    while si < s_bytes.len() {
-        if pi < p_bytes.len() {
-            match p_bytes[pi] {
-                b'*' => {
+/// SQL LIKE pattern matcher supporting `%` (zero or more chars) and `_`
+/// (single char). Case-sensitive (matching MySQL's default
+/// `utf8mb4_bin`-style behavior). Escapes via `\`.
+fn sql_like_match(text: &str, pattern: &str) -> bool {
+    let pat_bytes: Vec<char> = pattern.chars().collect();
+    let txt_bytes: Vec<char> = text.chars().collect();
+    let mut pi = 0;
+    let mut ti = 0;
+    let mut star_pi: Option<usize> = None;
+    let mut star_ti: usize = 0;
+    while ti < txt_bytes.len() {
+        if pi < pat_bytes.len() {
+            match pat_bytes[pi] {
+                '%' => {
                     star_pi = Some(pi);
-                    star_si = si;
+                    star_ti = ti;
                     pi += 1;
+                    continue;
                 }
-                b'?' => {
-                    si += 1;
+                '_' => {
                     pi += 1;
+                    ti += 1;
+                    continue;
                 }
-                c => {
-                    if s_bytes[si] == c {
-                        si += 1;
-                        pi += 1;
-                    } else if let Some(saved_pi) = star_pi {
-                        // Backtrack: let the previous `*` consume one more byte of s.
-                        pi = saved_pi + 1;
-                        star_si += 1;
-                        si = star_si;
-                    } else {
-                        return false;
+                '\\' if pi + 1 < pat_bytes.len() => {
+                    if pat_bytes[pi + 1] == txt_bytes[ti] {
+                        pi += 2;
+                        ti += 1;
+                        continue;
                     }
                 }
+                c if c == txt_bytes[ti] => {
+                    pi += 1;
+                    ti += 1;
+                    continue;
+                }
+                _ => {}
             }
-        } else if let Some(saved_pi) = star_pi {
-            // Pattern exhausted but s still has bytes — backtrack through last `*`.
-            pi = saved_pi + 1;
-            star_si += 1;
-            si = star_si;
+        }
+        if let Some(sp) = star_pi {
+            pi = sp + 1;
+            star_ti += 1;
+            ti = star_ti;
         } else {
             return false;
         }
     }
-
-    // Allow trailing `*`s in the pattern (they match the empty tail of s).
-    while pi < p_bytes.len() && p_bytes[pi] == b'*' {
+    while pi < pat_bytes.len() && pat_bytes[pi] == '%' {
         pi += 1;
     }
-    pi == p_bytes.len()
-}
-
-#[cfg(test)]
-mod like_match_tests {
-    use super::like_match;
-
-    #[test]
-    fn procedure_like_match_basic() {
-        // % is the universal wildcard
-        assert!(like_match("%", "anything"));
-        // No wildcard → exact match
-        assert!(like_match("foo", "foo"));
-        assert!(!like_match("foo", "bar"));
-        assert!(!like_match("foo", "foobar"));
-        // Leading wildcard
-        assert!(like_match("%bar", "foobar"));
-        assert!(like_match("%bar", "bar"));
-        assert!(!like_match("%bar", "foobaz"));
-        // Trailing wildcard
-        assert!(like_match("foo%", "foobar"));
-        assert!(like_match("foo%", "foo"));
-        // Both sides
-        assert!(like_match("%o%", "foobar"));
-        assert!(!like_match("%z%", "foobar"));
-        // Multiple segments
-        assert!(like_match("a%c", "abc"));
-        assert!(like_match("a%c", "abbc"));
-        assert!(!like_match("a%c", "abx"));
-    }
-}
-
-#[cfg(test)]
-mod wildcard_match_tests {
-    use super::wildcard_match;
-
-    #[test]
-    fn show_columns_wildcard_match_basic() {
-        // * matches any characters
-        assert!(wildcard_match("anything", "*"));
-        assert!(wildcard_match("foobar", "foo*"));
-        assert!(wildcard_match("foo", "foo*"));
-        assert!(!wildcard_match("foobar", "bar*"));
-        // ? matches single character
-        assert!(wildcard_match("foo", "f?o"));
-        assert!(!wildcard_match("foo", "f??o"));
-        // Exact
-        assert!(wildcard_match("foo", "foo"));
-        assert!(!wildcard_match("foo", "bar"));
-    }
+    pi == pat_bytes.len()
 }

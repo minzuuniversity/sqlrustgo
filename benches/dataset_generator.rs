@@ -44,7 +44,6 @@ pub fn simple_table_info(name: &str) -> TableInfo {
             primary_key: true,
             char_max_length: None,
             collation: None,
-
             default_value: None,
         }],
         foreign_keys: vec![],
@@ -68,7 +67,6 @@ pub fn multi_column_table_info(name: &str) -> TableInfo {
                 primary_key: true,
                 char_max_length: None,
                 collation: None,
-
                 default_value: None,
             },
             ColumnDefinition {
@@ -78,7 +76,6 @@ pub fn multi_column_table_info(name: &str) -> TableInfo {
                 primary_key: false,
                 char_max_length: None,
                 collation: None,
-
                 default_value: None,
             },
             ColumnDefinition {
@@ -88,7 +85,6 @@ pub fn multi_column_table_info(name: &str) -> TableInfo {
                 primary_key: false,
                 char_max_length: None,
                 collation: None,
-
                 default_value: None,
             },
         ],
@@ -113,7 +109,6 @@ pub fn orders_table_info() -> TableInfo {
                 primary_key: true,
                 char_max_length: None,
                 collation: None,
-
                 default_value: None,
             },
             ColumnDefinition {
@@ -123,7 +118,6 @@ pub fn orders_table_info() -> TableInfo {
                 primary_key: false,
                 char_max_length: None,
                 collation: None,
-
                 default_value: None,
             },
         ],
