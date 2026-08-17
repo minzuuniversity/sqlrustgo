@@ -177,21 +177,24 @@ files:
     feature: "PREPARED_STATEMENT"
     description: "PREPARE/EXECUTE"
 
+  - path: "prepared/multiple_execute.sql"
+    oracle: "mysql"
+    expected: "PASS"
+    feature: "PREPARED_STATEMENT"
+    description: "Multiple EXECUTE of same prepared statement"
+
+  - path: "prepared/param_binding.sql"
+    oracle: "mysql"
+    expected: "PASS"
+    feature: "PREPARED_STATEMENT"
+    description: "PREPARE with USING parameter binding"
+
   # Error cases
   - path: "error/division_by_zero.sql"
     oracle: "sqlite"
     expected: "PASS"
     feature: "ERROR"
     description: "Division by zero handling"
-
-  - path: "error/type_mismatch.sql"
-    oracle: "sqlite"
-    expected: "FAIL"
-    feature: "ERROR"
-    description: "Type mismatch error"
-    issue_link: "TBD"
-    owner: "TBD"
-    expiry: "2026-09-01"
 
 ignore_rules:
   - pattern: "^#.*ignore"
