@@ -155,16 +155,17 @@ Verified `2026-08-15` against `develop/v3.12.0` HEAD `868088aa70`:
 
 ## V312-56A Residual 4 Sub-Tasks (DEFERRED → v3.13)
 
-V312-56A (#4251) reports 32/36 sub-tasks COMPLETED. The 4 residual sub-tasks below are
-**explicitly deferred** to v3.13 and are NOT blockers for BETA entry per
-`STAGE.yaml` `pending_human_artifacts`:
+V312-56A (#4251) reports 32/36 sub-tasks COMPLETED. After re-evaluation at the
+current HEAD, the 4 residual sub-tasks below are **explicitly deferred** to
+v3.13 and are NOT blockers for BETA entry per `STAGE.yaml`
+`pending_human_artifacts`:
 
-| # | Sub-Task | Current State (at HEAD `868088aa70`) | Why DEFERRED | Target | Owner | Expiry |
+| # | Sub-Task | Current State (at HEAD, post-re-evaluation) | Why DEFERRED | Target | Owner | Expiry |
 |---|---|---|---|---|---|---|
-| 56A-R1 | `SHOW CREATE TABLE` integration test | Parser ✅ (`parser_coverage_tests.rs:1383` + `parser_e2e_test.rs:1051`); executor ✅ (`execute_show_create_table` in `src/engine_ddl.rs:415`); integration ❌ (no entry in `tests/integration/sql/show_tables_test.rs`) | Close-boundary for #4251 specifies "SHOW CREATE TABLE 受控" — implementation present, integration coverage gap | v3.13.0 RC1 | openclaw-minimax | 2026-09-30 |
-| 56A-R2 | `information_schema.*` SQL path integration test | Library ✅ (`crates/information-schema/src/lib.rs` declares schemata/tables/columns/indexes row types); admin CLI usage ✅ (`crates/admin/src/main.rs:214` runs `SELECT * FROM information_schema.processlist`); SQL-path integration ❌ (no `SELECT FROM information_schema.tables/columns/indexes/schemata` test) | Close-boundary for #4251 specifies "information_schema 至少 SQL 路径" — virtual table SQL path not yet covered | v3.13.0 RC1 | openclaw-minimax | 2026-09-30 |
+| 56A-R1 | `SHOW CREATE TABLE` integration test | Parser ✅ (smoke-only before re-eval); executor ✅ (`execute_show_create_table` in `src/engine_ddl.rs:415`); **bug found and fixed**: `parser.rs:9027` matched `Token::Identifier("CREATE")` but the lexer keyword-tokenizes `CREATE` as `Token::Create`, so the arm was dead code and `SHOW CREATE TABLE` parsed with `Unexpected token after SHOW: Create` at runtime; fix adds `Some(Token::Create) =>` match arm in `parse_show`. Integration ✅ (5 tests in `tests/integration/sql/show_tables_test.rs:179-340` — single-row DDL / NOT NULL preservation / nonexistent-table error / ALTER round-trip / DDL round-trip invariants) | Close-boundary for #4251 specifies "SHOW CREATE TABLE 受控" — implementation present (parser fix needed); integration coverage now closed | **DONE at this HEAD** | — | — |
+| 56A-R2 | `information_schema.*` SQL path integration test | Library ✅ (`crates/information-schema/src/lib.rs` declares schemata/tables/columns/indexes row types); admin CLI usage ⚠️ (`crates/admin/src/main.rs:214` runs `SELECT * FROM information_schema.processlist` via mysql-client remote query, but the **server side has no information_schema handler** — admin path is effectively dead code); SQL-path integration ❌; **architectural gap confirmed**: `parse_table_ref` at `crates/parser/src/parser.rs:7844` only accepts single-segment `Token::Identifier` and rejects schema-qualified names; no virtual-table dispatch infrastructure exists in the executor (only `VirtualTableNode` in optimizer metadata) | Close-boundary for #4251 specifies "information_schema 至少 SQL 路径" — virtual table SQL path requires parser-level + executor-level work (parser accepts schema-qualified names, executor dispatches information_schema.* to catalog). Not bounded; needs ~250 LOC and 2-3 hours | v3.13.0 RC1 | openclaw-minimax | 2026-09-30 |
 | 56A-R3 | `SHOW FULL TABLES` / `SHOW TABLE STATUS` | No parser or executor support found (`crates/parser/src/parser.rs` greps return 0 matches for `FULL TABLES`/`TABLE STATUS`) | MySQL-specific admin extensions; BETA scope does not require, can ship without | v3.13.0+ | TBD | TBD |
-| 56A-R4 | `SHOW WARNINGS` / `SHOW ERRORS` / `SHOW STATUS` / `SHOW VARIABLES` integration tests | Parser ✅ (`tests/integration/sql/parser_e2e_test.rs:1062-1082`); integration ❌ (no entry in `tests/integration/sql/show_tables_test.rs` — only parses, no result-set verification) | Parser-stage coverage; runtime data-return path not yet covered. Acceptable to ship BETA without runtime data since MySQL warning/error tracking is parser-only | v3.13.0 RC1 | openclaw-minimax | 2026-09-30 |
+| 56A-R4 | `SHOW WARNINGS` / `SHOW ERRORS` / `SHOW STATUS` / `SHOW VARIABLES` integration tests | Parser ⚠️ (`tests/integration/sql/parser_e2e_test.rs:1062-1082` uses `assert_parses` smoke pattern — only verifies "doesn't panic", no AST production); **architectural gap confirmed**: `ShowStatement` enum at `crates/parser/src/parser.rs:808-836` has NO Warnings/Errors/Status/Variables variants; `execute_show` dispatch at `src/engine_ddl.rs:332` has NO matching arms; storage has no warning/error counter | Close-boundary for #4251 specifies "SHOW WARNINGS/ERRORS runtime data" — parser-only coverage not enough; needs 4 enum variants + 4 parse_show match arms + 4 executor handlers + storage counters. Not bounded; needs ~250+ LOC and 3-4 hours | v3.13.0 RC1 | openclaw-minimax | 2026-09-30 |
 
 ### Closing Condition for #41
 
@@ -172,19 +173,20 @@ V312-56A (#4251) reports 32/36 sub-tasks COMPLETED. The 4 residual sub-tasks bel
 - [x] Each deferred item has current-state evidence (file paths + line refs)
 - [x] Each deferred item has explicit close-boundary from #4251 to ground the scope
 - [x] No #4251 close condition is regressed by this deferral
+- [x] **56A-R1 closed at this HEAD**: parser bug fixed (`parser.rs:9027` dead-code arm + new `Some(Token::Create)` arm), 5 integration tests added (`tests/integration/sql/show_tables_test.rs`). Total residual DEFERRED → 3 (56A-R2, 56A-R3, 56A-R4).
 
-These 4 tasks are tracked in the GitNexus backlog as #4251 sub-items and will
-be closed as part of v3.13 RC1 hardening. BETA entry does not require their
-completion (per `STAGE.yaml:155` `promotion_to_BETA_requires` row
-`V312-56A: Metadata teaching (Issue #4251) — SHOW COLUMNS LIKE glob matcher +
-32/36 sub-tasks COMPLETED`).
+These 3 DEFERRED tasks (plus 56A-R3 disposition) are tracked in the GitNexus
+backlog as #4251 sub-items and will be closed as part of v3.13 RC1 hardening.
+BETA entry does not require their completion (per `STAGE.yaml:155`
+`promotion_to_BETA_requires` row `V312-56A: Metadata teaching (Issue #4251) —
+SHOW COLUMNS LIKE glob matcher + 32/36 sub-tasks COMPLETED`).
 
 ## Next Steps
 
 1. Create PR for V312-56 series — **DONE (PR #4263 merged at HEAD `868088aa70`)**
-2. Complete V312-56A remaining 4 tasks — **DONE (enumerated + DEFERRED → v3.13 with owner/expiry, see table above)**
+2. Complete V312-56A remaining 4 tasks — **DONE (56A-R1 closed at this HEAD via parser fix + 5 integration tests; 56A-R2/R3/R4 enumerated + DEFERRED → v3.13 with owner/expiry, see table above)**
 3. Run Beta gate verification before merge — `B6_V312_56_TEACHING_CORPUS` + `B6_V312_56_EXPLAIN_FIXTURES` verified PASS at HEAD
-4. v3.13 RC1: close 56A-R1/R2/R4 integration tests + decide 56A-R3 disposition
+4. v3.13 RC1: close 56A-R2 (information_schema SQL path) + 56A-R4 (SHOW WARNINGS/ERRORS/STATUS/VARIABLES runtime) + decide 56A-R3 disposition
 
 ## Provenance
 
