@@ -34,6 +34,7 @@ v3.12.0 被规划为 SQLRustGo 第一个明确面向 GMP 内审检索工作负�
 | 文档 | 用途 |
 |---|---|
 | `STAGE.yaml` | 阶段 SSOT 和 promotion criteria |
+| `COMPREHENSIVE_ASSESSMENT_REPORT.md` | v3.12.0 综合评估：MySQL 水平、功能/性能/稳定性、GMP 生产可行性、教学场景增强项 |
 | `DEVELOPMENT_PLAN.md` | 实施计划和 GMP-Platform 集成工作包 |
 | `VERSION_PLAN.md` | 产品范围和工作包 |
 | `TEST_PLAN.md` | gate 和测试矩阵 |
