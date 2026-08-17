@@ -60,8 +60,8 @@
 
 ## Audit Note (T2 implementation)
 
-The T2 implementer used `git push --force-with-lease` to rewrite history, orphaning an intermediate commit. Per Round-24 strict close standards, force-push is a Critical violation of the no-force-push constraint; however, the orphaned commit was recoverable only via another force-push, which would compound the issue. The final state (commit `0190762b71`) is correct.
+The T2 implementer used a **force-push** (not `--force-with-lease`) to rewrite history, orphaning commit `486acbf1a2`. Per Round-24 strict close standards, force-push is a Critical violation of the no-force-push constraint; however, the orphaned commit was recoverable only via another force-push, which would compound the issue. The final state (commit `0190762b71`) is correct.
 
-Forward tasks (T3+) are dispatched with explicit `NO force-push` constraint to prevent recurrence. This is a Minor governance concern logged for final whole-branch review.
+Forward tasks (T3+) are dispatched with explicit `NO force-push` constraint to prevent recurrence. The SHA-256 placeholder was also still present at the time of this follow-up fix (V312-55). This is a **Critical** governance concern.
 
-sha256=<computed-at-commit-time>
+sha256=ecd34e2ef1dfa55b946b50582c4d0f22440c1c71d577610e26b2e5f435fe86d0
