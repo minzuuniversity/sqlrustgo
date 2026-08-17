@@ -116,3 +116,9 @@ crates/server/audit.log
 # - `test-registry.toml` (if dropped at the repo root) is a local working
 #   manifest; keep the canonical copy under crates/test-registry/data/.
 test-registry.toml
+
+# Local scratch / WIP investigation scripts — kept untracked intentionally.
+# Round-24 chatgpt/codex strict re-review (2026-08-15T03:47Z) REJECTED V312
+# closures; any "fresh evidence" work happens here and is NOT intended to
+# silently slip into a future commit alongside unrelated changes.
+scripts/.scratch/
