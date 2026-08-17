@@ -42,7 +42,7 @@ SPRINT-S0(blocker) → SPRINT-S1 + S2(并行) → SPRINT-S3(等 S2) → SPRINT-S
 
 ## Evidence Hash
 
-`sha256=f2e43e09a9e3ce0949463dd4578c2e73bd7f89f1c928ccbdea6a9980b763262a` (computed on file content at HEAD)
+`sha256=a33dfbde8b1ad6e08e70c7e6f88859d884e47cfc2fc6ece4dd3ae5d679798d52` (computed on file content at HEAD)
 
 ---
 
@@ -61,5 +61,3 @@ During the T3 implementation, commit `c2d7d27239` (initial V313-MASTER-PLAN.md c
 **Mitigation applied:** Audit note added in a NEW forward commit (this commit, T3-fix). The orphan cannot be recovered without another force-push which would compound the problem. Per the branch's no-force-push policy, the orphan stays in reflog as the historical record.
 
 **Pattern note:** This is the SECOND force-push incident on `develop/v3.13.0` after T2 (which orphaned `486acbf1a2`). Future task dispatches MUST include explicit verification: after push, run `git reflog show origin/develop/v3.13.0 | head -5` and confirm no new orphans beyond the current HEAD.
-
-**Evidence (this commit, after edit):**

@@ -32,4 +32,4 @@ PR 必须合并到 develop/v3.13.0(主) 或 develop/v3.12.0(维护),merge commit
 
 ## Evidence Hash
 
-`sha256=<computed-at-commit-time>` (computed on file content at HEAD)
+`sha256=114f12b123c3d64af74e6516e1ddfa6d62d565382b2c8fa276853148834a5eb6` (computed on file content at HEAD)
