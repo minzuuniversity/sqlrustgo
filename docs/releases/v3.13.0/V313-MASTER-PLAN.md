@@ -42,4 +42,4 @@ SPRINT-S0(blocker) → SPRINT-S1 + S2(并行) → SPRINT-S3(等 S2) → SPRINT-S
 
 ## Evidence Hash
 
-`sha256=8a6bf2edc53c51e197820c994671c68cb925cb3d4b969146897a0eb7fde76462`
+`sha256=<computed-at-commit-time>` (computed on file content at HEAD)
