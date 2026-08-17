@@ -143,6 +143,37 @@ SQL
 # expect: DEFERRED: follow-up TBD
 SELECT @@max_connections;
 SQL
+
+    # V312-56A / #4251 fixtures: SHOW COLUMNS / SHOW INDEX / SHOW CREATE TABLE.
+    # These exercise the controlled MySQL metadata subset that landed in
+    # v3.12.0 — see `docs/releases/v3.12.0/issues/V312-56_TEACHING_AND_V400_REMEDIATION_ISSUE_BODIES.md`.
+    cat > "${FIXTURE_DIR}/show_columns_basic.sql" <<'SQL'
+# name: show_columns_basic
+# expect: PASS
+CREATE TABLE users (id INTEGER PRIMARY KEY, name TEXT NOT NULL, email TEXT);
+SHOW COLUMNS FROM users;
+SQL
+
+    cat > "${FIXTURE_DIR}/show_columns_like.sql" <<'SQL'
+# name: show_columns_like
+# expect: PASS
+CREATE TABLE users (id INTEGER PRIMARY KEY, name TEXT NOT NULL, email TEXT);
+SHOW COLUMNS FROM users LIKE '%e%';
+SQL
+
+    cat > "${FIXTURE_DIR}/show_index_pk.sql" <<'SQL'
+# name: show_index_pk
+# expect: PASS
+CREATE TABLE users (id INTEGER PRIMARY KEY, name TEXT NOT NULL);
+SHOW INDEX FROM users;
+SQL
+
+    cat > "${FIXTURE_DIR}/show_create_table_pk.sql" <<'SQL'
+# name: show_create_table_pk
+# expect: PASS
+CREATE TABLE users (id INTEGER PRIMARY KEY, name TEXT NOT NULL);
+SHOW CREATE TABLE users;
+SQL
 }
 
 # ---- main -------------------------------------------------------------------

@@ -68,7 +68,6 @@ impl SimpleExecutor {
                             primary_key: c.primary_key,
                             char_max_length: c.char_max_length,
                             collation: c.collation,
-
                             default_value: None,
                         })
                         .collect(),
@@ -211,7 +210,6 @@ impl SimpleExecutor {
                             primary_key: false,
                             char_max_length: None,
                             collation: None,
-
                             default_value: None,
                         };
                         self.storage
@@ -285,7 +283,6 @@ impl SimpleExecutor {
                     primary_key: false,
                     char_max_length: None,
                     collation: None,
-
                     default_value: None,
                 })
                 .collect();
@@ -415,7 +412,6 @@ impl SimpleExecutor {
                     primary_key: false,
                     char_max_length: None,
                     collation: None,
-
                     default_value: None,
                 })
                 .collect();
@@ -459,7 +455,6 @@ impl SimpleExecutor {
                     primary_key: false,
                     char_max_length: None,
                     collation: None,
-
                     default_value: None,
                 })
                 .collect();
@@ -809,7 +804,6 @@ impl SimpleExecutor {
                             primary_key: false,
                             char_max_length: None,
                             collation: None,
-
                             default_value: None,
                         })
                         .collect();
@@ -880,7 +874,6 @@ impl SimpleExecutor {
                 primary_key: false,
                 char_max_length: None,
                 collation: None,
-
                 default_value: None,
             })
             .collect();

@@ -896,7 +896,6 @@ mod sqlrustgo_integration {
                             primary_key: true,
                             char_max_length: None,
                             collation: None,
-
                             default_value: None,
                         },
                         ColumnDefinition {
@@ -906,7 +905,6 @@ mod sqlrustgo_integration {
                             primary_key: false,
                             char_max_length: None,
                             collation: None,
-
                             default_value: None,
                         },
                         ColumnDefinition {
@@ -916,7 +914,6 @@ mod sqlrustgo_integration {
                             primary_key: false,
                             char_max_length: None,
                             collation: None,
-
                             default_value: None,
                         },
                         ColumnDefinition {
@@ -926,7 +923,6 @@ mod sqlrustgo_integration {
                             primary_key: false,
                             char_max_length: None,
                             collation: None,
-
                             default_value: None,
                         },
                         ColumnDefinition {
@@ -936,7 +932,6 @@ mod sqlrustgo_integration {
                             primary_key: false,
                             char_max_length: None,
                             collation: None,
-
                             default_value: None,
                         },
                         ColumnDefinition {
@@ -946,7 +941,6 @@ mod sqlrustgo_integration {
                             primary_key: false,
                             char_max_length: None,
                             collation: None,
-
                             default_value: None,
                         },
                         ColumnDefinition {
@@ -956,7 +950,6 @@ mod sqlrustgo_integration {
                             primary_key: false,
                             char_max_length: None,
                             collation: None,
-
                             default_value: None,
                         },
                     ],
@@ -1205,7 +1198,6 @@ pub mod storage_helpers {
                     primary_key: true,
                     char_max_length: None,
                     collation: None,
-
                     default_value: None,
                 },
                 ColumnDefinition {
@@ -1215,7 +1207,6 @@ pub mod storage_helpers {
                     primary_key: false,
                     char_max_length: None,
                     collation: None,
-
                     default_value: None,
                 },
                 ColumnDefinition {
@@ -1225,7 +1216,6 @@ pub mod storage_helpers {
                     primary_key: false,
                     char_max_length: None,
                     collation: None,
-
                     default_value: None,
                 },
                 ColumnDefinition {
@@ -1235,7 +1225,6 @@ pub mod storage_helpers {
                     primary_key: false,
                     char_max_length: None,
                     collation: None,
-
                     default_value: None,
                 },
                 ColumnDefinition {
@@ -1245,7 +1234,6 @@ pub mod storage_helpers {
                     primary_key: false,
                     char_max_length: None,
                     collation: None,
-
                     default_value: None,
                 },
                 ColumnDefinition {
@@ -1255,7 +1243,6 @@ pub mod storage_helpers {
                     primary_key: false,
                     char_max_length: None,
                     collation: None,
-
                     default_value: None,
                 },
                 ColumnDefinition {
@@ -1265,7 +1252,6 @@ pub mod storage_helpers {
                     primary_key: false,
                     char_max_length: None,
                     collation: None,
-
                     default_value: None,
                 },
             ],

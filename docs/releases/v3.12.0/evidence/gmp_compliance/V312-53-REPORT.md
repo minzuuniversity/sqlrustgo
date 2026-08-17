@@ -1,9 +1,9 @@
 # V312-53 — GMP Compliance / Access-Control / Audit-Chain Gate
 
 > **Issue:** #4226 [V312-53-gate]
-> **provenance:** generated_by=claude-code Round-22-followup, generated_at=2026-08-14T13:25:00Z,
-> commit=c7875166551acb6c13013d0152e8078db62502d6, source_repo=openclaw/sqlrustgo,
-> branch=fix/v312-4019-3943-evidence-refresh, baseline_commit=9170661f46d42806f578911a761ff9798ab8f240,
+> **provenance:** generated_by=claude-code v312-beta-evidence-refresh, generated_at=2026-08-14T20:16:02Z,
+> commit=868088aa70dc8578dd803b491d6fde586860238d, source_repo=openclaw/sqlrustgo,
+> branch=develop/v3.12.0, baseline_commit=9170661f46d42806f578911a761ff9798ab8f240,
 > policy=Anti-Fabrication-Policy-v1.0
 
 ## 1. Scope Decision Summary
@@ -12,15 +12,15 @@
 |---|---|---|
 | ACL role → permission map (5 roles × 12 ops) | **DONE** | `crates/gmp/src/acl.rs:45` `GmpRole` (Admin/Auditor/Editor/Viewer/BackupOperator); `:66` `role_permissions(role)`; `:111` `check_permission(role, op)` returns `AccessDecision::Allowed/Denied` (fail-closed). |
 | Fail-closed ACL guard | **DONE** | `crates/gmp/src/acl.rs:111` `check_permission` returns `Denied { reason }` for unrecognised ops; `test_permission_guard_fail_closed` PASS. |
-| Audit hash chain (SHA-256 event_hash → previous_hash) | **DONE** | `crates/gmp/src/audit.rs:14-18` `AuditAction` enum; `:56-59` `AuditLog.previous_hash: Option<String>` / `event_hash: String`; `test_hash_chain_two_rows` / `test_hash_chain_genesis_previous_hash_none` / `test_hash_chain_tamper_detection` PASS. |
-| AuditAction variants for compliance ops (Import/Export/Approve/Review/Backup/Restore) | **DEFERRED → v3.13** | `crates/gmp/src/audit.rs:14-18` enum only has `Create / Update / Delete`; no `Import / Export / Approve / Review / Backup / Restore`. |
-| `record_audit_log` wiring in production paths | **PARTIAL** | 6 production call sites: `report.rs:519,532,561,587`, `compliance.rs:425`, `soak.rs:190`. **Missing wiring:** `sql_api.rs::import_document` (line 46), `sql_api.rs::bulk_import` (line 107), `backup.rs::create_backup` (line 208), `backup.rs::restore_backup` (line 252), `retrieval.rs::search` (executed retrieval is not audit-logged). |
-| Hash-chain tamper integration test (mutate a stored row, then verify) | **DEFERRED → v3.13** | `crates/gmp/src/audit.rs:762-782` `test_hash_chain_tamper_detection` admits: *"This test would need a storage that allows mutation to fully test"* — current test only verifies chain is intact, never mutates. |
-| Embedding-store tamper detection | **DEFERRED → v3.13** | No test in `crates/gmp/src/embeddings.rs` mutates an embedding and re-validates the chain. |
-| Graph-projection tamper detection | **DEFERRED → v3.13** | No test in `crates/gmp/src/graph.rs` mutates an edge and re-validates the chain. |
+| Audit hash chain (SHA-256 event_hash → previous_hash) | **DONE** | `crates/gmp/src/audit.rs:14-26` `AuditAction` enum (now 9 variants incl. compliance ops); `:56-59` `AuditLog.previous_hash: Option<String>` / `event_hash: String`; `test_hash_chain_two_rows` / `test_hash_chain_genesis_previous_hash_none` / `test_hash_chain_tamper_detection` / `test_hash_chain_tamper_detection_negative_no_mutate` PASS. |
+| AuditAction variants for compliance ops (Import/Export/Approve/Review/Backup/Restore) | **DONE** | `crates/gmp/src/audit.rs:14-26` enum now has all 9 variants; `test_compliance_action_variants_roundtrip` PASS — round-trips all 6 compliance ops through as_str/from_str + records 6 ops + verifies chain intact + verifies query ordering. |
+| `record_audit_log` wiring in production paths | **PARTIAL** | 6 production call sites: `report.rs:519,532,561,587`, `compliance.rs:425`, `soak.rs:190`. **Missing wiring:** `sql_api.rs::import_document` (line 46), `sql_api.rs::bulk_import` (line 107), `backup.rs::create_backup` (line 208), `backup.rs::restore_backup` (line 252), `retrieval.rs::search` (executed retrieval is not audit-logged). Compliance-op wiring is now possible because the AuditAction enum carries the new variants; production call sites for Import/Export/Approve/Review/Backup/Restore are DEFERRED → v3.13 [#4231]. |
+| Hash-chain tamper integration test (mutate a stored row, then verify) | **DONE** | `crates/gmp/src/audit.rs` `test_hash_chain_tamper_detection` rewritten: inserts 3 chained rows, calls `verify_audit_chain` (must return `(true, None)`), then calls `storage.update_if` with a `RowFilter` matching id=2 to mutate action "UPDATE"→"TAMPERED", re-calls `verify_audit_chain` (must return `(false, Some(2))`). PASS at HEAD `868088aa70`. |
+| Embedding-store tamper detection | **DEFERRED → v3.13** | No test in `crates/gmp/src/embeddings.rs` mutates an embedding and re-validates the chain. Followup #4233 still open. |
+| Graph-projection tamper detection | **DEFERRED → v3.13** | No test in `crates/gmp/src/graph.rs` mutates an edge and re-validates the chain. Followup #4233 still open. |
 | ACL coverage test matrix (all 5 roles × 12 ops) | **PARTIAL** | 12 ACL tests exist and PASS (`test_admin_has_all_permissions`, `test_auditor_can_query_audit`, `test_editor_can_import`, `test_backup_operator_only_backup`, `test_viewer_limited_permissions`, `test_permission_guard_fail_closed` etc.); full 5×12 matrix NOT enumerated in a single test. |
 
-**Net effect on README.** The current row "GMP schema / version / chunk / audit / relation — DONE — 154 tests PASS" must be split into two rows: the **core CRUD audit chain** is DONE; the **compliance-operation audit chain** (Import/Export/Approve/Review/Backup/Restore) is DEFERRED → v3.13. The implicit "ACL is done" is now made explicit; the implicit "no tamper integration test" is now made explicit.
+**Net effect on README.** The current row "GMP schema / version / chunk / audit / relation — DONE — 154 tests PASS" must be split into two rows: the **core CRUD audit chain** is DONE; the **compliance-operation audit chain** (Import/Export/Approve/Review/Backup/Restore) is now **DONE at the enum / hash-chain level** (variants exist, roundtrip + 6-op hash-chain test PASS) — only the production-path wiring in `sql_api.rs::import_document` / `bulk_import` / `backup.rs::{create_backup,restore_backup}` and `retrieval.rs::search` remains DEFERRED → v3.13 [#4231]. The **hash-chain tamper integration test is DONE** (real mutate-then-verify test). Embedding-store and graph-projection tamper tests remain DEFERRED → v3.13 [#4233].
 
 ## 2. ACL — Detail
 
@@ -208,27 +208,32 @@ The user-supplied close conditions for #4226 are:
 - ✅ "输出 `docs/releases/v3.12.0/evidence/gmp_compliance/V312-53-REPORT.md`。" — this file.
 - ⚠️ ACL 5×12 full matrix test — coverage gap, not behaviour gap. Belongs in v3.13 hardening.
 
-## 7. Test Evidence (re-runnable on commit `c787516655`)
+## 7. Test Evidence (re-runnable on commit `868088aa70`)
 
 ```bash
-# Full GMP test suite (154 PASS, captured prior session)
+# Full GMP test suite (157 PASS at HEAD, including 3 new tamper/variant tests)
 cargo test --package sqlrustgo-gmp --lib
 
-# Hash-chain tests (5 PASS: 3 chain + 2 event_hash)
-cargo test --package sqlrustgo-gmp --lib audit::tests::test_hash_chain -- --nocapture
-cargo test --package sqlrustgo-gmp --lib audit::tests::test_event_hash -- --nocapture
+# Hash-chain tamper integration test (DONE — actually mutates a stored row)
+cargo test --package sqlrustgo-gmp --lib audit::tests::test_hash_chain_tamper_detection -- --nocapture
+
+# Hash-chain tamper negative-path (no mutate → chain must be intact)
+cargo test --package sqlrustgo-gmp --lib audit::tests::test_hash_chain_tamper_detection_negative_no_mutate -- --nocapture
+
+# Compliance-op AuditAction roundtrip + 6-op chain test (DONE)
+cargo test --package sqlrustgo-gmp --lib audit::tests::test_compliance_action_variants_roundtrip -- --nocapture
 
 # ACL tests (12 PASS, including test_permission_guard_fail_closed)
 cargo test --package sqlrustgo-gmp --lib acl::tests
 ```
 
-Total verified PASS at commit `c787516655`:
+Total verified PASS at commit `868088aa70` (HEAD `develop/v3.12.0`):
 
 | Suite | Tests | Result |
 |---|---:|---|
-| `audit::tests` (chain + event_hash subset shown) | 5/5 | PASS |
+| `audit::tests` (full — incl. 3 new) | 14/14 | PASS |
 | `acl::tests` (full) | 12/12 | PASS |
-| `sqlrustgo-gmp --lib` (full crate) | 154/154 | PASS |
+| `sqlrustgo-gmp --lib` (full crate) | 157/157 | PASS |
 
 The PASS counts above are real test outcomes, not exit-code-only. (Per
 STRICT PROOF MODE: "脚本 exit=0 不是 PASS" — verified by reading the
@@ -236,12 +241,13 @@ STRICT PROOF MODE: "脚本 exit=0 不是 PASS" — verified by reading the
 
 ## 8. Provenance
 
-- **Generated at:** 2026-08-14T13:25:00Z
+- **Generated at:** 2026-08-14T20:16:02Z
 - **Source repo:** openclaw/sqlrustgo
-- **Branch:** fix/v312-4019-3943-evidence-refresh
-- **HEAD commit:** `c7875166551acb6c13013d0152e8078db62502d6` (post V312-54 #4227)
+- **Branch:** develop/v3.12.0
+- **HEAD commit:** `868088aa70dc8578dd803b491d6fde586860238d` (post V312-56 master + B1_FMT/Q4_ANTI_FABRICATION)
 - **Baseline commit:** `9170661f46d42806f578911a761ff9798ab8f240` (origin/develop/v3.12.0 post PR #4214)
 - **Policy:** Anti-Fabrication-Policy-v1.0
 - **Source issue:** #4226 [V312-53-gate]
-- **Supersedes:** `v312-08-compliance-audit-report.md` (commit `1903545d`, 2026-08-09) — V312-08 said "hash chain NOT implemented"; since then the chain has been added and verified (commit history shows additions in `crates/gmp/src/audit.rs:368` and tests at `:705-782`). The current report reflects the present state of `develop/v3.12.0` HEAD, not the V312-08 era.
-- **Follow-up issues to open:** #4231 (AuditAction enum expansion + production wiring), #4232 (tamper integration test), #4233 (embedding/graph chain coverage).
+- **Supersedes:** prior round (commit `c787516655`, 2026-08-14T13:25:00Z) on branch `fix/v312-4019-3943-evidence-refresh`; this refresh moves the test counts and tamper-test verdict to HEAD `develop/v3.12.0` and adds real tamper integration + compliance-op variant tests.
+- **Supersedes:** `v312-08-compliance-audit-report.md` (commit `1903545d`, 2026-08-09) — V312-08 said "hash chain NOT implemented"; since then the chain has been added and verified.
+- **Follow-up issues:** #4231 (AuditAction production-path wiring in sql_api.rs/backup.rs/retrieval.rs — variants now DONE, wiring DEFERRED), #4232 (tamper integration test — DONE), #4233 (embedding/graph tamper tests — DEFERRED).
