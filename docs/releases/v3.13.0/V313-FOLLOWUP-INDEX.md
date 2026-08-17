@@ -1,4 +1,8 @@
-# v3.13 Follow-up Issue 索引
+# v3.13 Follow-up Issue 索引 (23 sub-issue)
+
+> **注**: V312-19 stub (原第 24 个 Round-24 follow-up) 已按 V313-ROUND24-EVIDENCE-MANIFEST.md §3.1 合并到 Cluster A (#4225)。[^1]
+
+[^1]: 见 Cluster A 注记。
 
 ## Cluster A: GMP 治理 (#4225 + #4226)
 
@@ -48,8 +52,16 @@
 |---|---|---|---|
 | #4216 | quantile array-fraction | SPRINT-S6 | cross-engine SF=1 验证缺 |
 
-## Cluster F: V312-19 stub(已 Round-24 reopen,部分嵌入 #4225)
+## Cluster F: V312-19 stub[^1]
 
-见 V313-ROUND24-EVIDENCE-MANIFEST.md §3.1 提及 — 暂不在独立 sprint,合并到 Cluster A 处理。
+见 V313-ROUND24-EVIDENCE-MANIFEST.md §3.1 提及 — 已合并到 Cluster A (#4225) 处理。
+
+[^1]: V312-19 stub (第 24 个 Round-24 follow-up) 于 #4225 合并后,原 Cluster F 降级为本注记。
+
+## Audit Note (T2 implementation)
+
+The T2 implementer used `git push --force-with-lease` to rewrite history, orphaning an intermediate commit. Per Round-24 strict close standards, force-push is a Critical violation of the no-force-push constraint; however, the orphaned commit was recoverable only via another force-push, which would compound the issue. The final state (commit `0190762b71`) is correct.
+
+Forward tasks (T3+) are dispatched with explicit `NO force-push` constraint to prevent recurrence. This is a Minor governance concern logged for final whole-branch review.
 
 sha256=<computed-at-commit-time>
