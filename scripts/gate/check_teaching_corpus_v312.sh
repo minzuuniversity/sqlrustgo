@@ -34,9 +34,31 @@ TS="$(date +%Y%m%d_%H%M%S)"
 COMMIT="$(git rev-parse --short=10 HEAD 2>/dev/null || echo unknown)"
 LOG="$LOG_DIR/teaching_corpus_${COMMIT}_${TS}.log"
 
+# ---- flag parsing ----
+# --with-oracle additionally runs the row-by-row SQLite-vs-SQLRustGo
+# comparison test (tests/integration/sql/teaching_corpus_oracle_test.rs)
+# and folds its pass/fail counts into the JSON summary. Default: off
+# to keep the structural gate fast.
+WITH_ORACLE=0
+for arg in "$@"; do
+  case "$arg" in
+    --with-oracle) WITH_ORACLE=1 ;;
+    --help|-h)
+      echo "usage: $0 [--with-oracle]"
+      exit 0
+      ;;
+    *) echo "unknown argument: $arg" >&2; exit 2 ;;
+  esac
+done
+
 PASS=0
 FAIL=0
 WARN=0
+ORACLE_RUNS=0
+ORACLE_PASS=0
+ORACLE_FAIL=0
+ORACLE_SKIPPED=0
+ORACLE_DIFF_DIR="$OUT_DIR/oracle_diffs"
 
 record_pass() { echo "[PASS] $1" | tee -a "$LOG"; PASS=$((PASS+1)); }
 record_fail() { echo "[FAIL] $1" | tee -a "$LOG"; FAIL=$((FAIL+1)); }
@@ -171,6 +193,36 @@ fail_count="$(grep -c '^[[:space:]]*- path:' "$MANIFEST" \
   | awk '{n=$0; getline; while($0 ~ /^[[:space:]]*[a-z_]+:/ && $0 !~ /^[[:space:]]*- /){getline; if($0 ~ /^[[:space:]]*- path:/){break}; if($0 ~ /^[[:space:]]*expected:[[:space:]]*(FAIL|SKIP)/){c++}} print c+0}')"
 record_warn "FAIL/SKIP entries: $(grep -E '^[[:space:]]*expected:[[:space:]]*(FAIL|SKIP)' "$MANIFEST" | wc -l | tr -d ' ')"
 
+# --- 9. Optional SQLite-vs-SQLRustGo row oracle (--with-oracle) ---
+if [ "$WITH_ORACLE" -eq 1 ]; then
+  echo "[oracle] --with-oracle enabled, running teaching_corpus_oracle_test ..." | tee -a "$LOG"
+  ORACLE_LOG="$LOG_DIR/oracle_${COMMIT}_${TS}.log"
+  if cargo test --test teaching_corpus_oracle_test --all-features -- --nocapture >"$ORACLE_LOG" 2>&1; then
+    record_pass "teaching_corpus_oracle_test (cargo)"
+  else
+    record_fail "teaching_corpus_oracle_test (cargo): see $ORACLE_LOG"
+  fi
+  # Count rowset entries actually compared (vs plan_shape /
+  # dialect_only skipped). Each entry has exactly one
+  # `oracle_mode:` line under `files:`, so a simple grep on the
+  # unique value counts cleanly without hand-rolled YAML parsing.
+  ORACLE_RUNS="$(grep -cE '^[[:space:]]+oracle_mode:[[:space:]]*"rowset"' "$MANIFEST" || true)"
+  ORACLE_RUNS="${ORACLE_RUNS:-0}"
+  ORACLE_SKIPPED_PLAN="$(grep -cE '^[[:space:]]+oracle_mode:[[:space:]]*"plan_shape"' "$MANIFEST" || true)"
+  ORACLE_SKIPPED_DIALECT="$(grep -cE '^[[:space:]]+oracle_mode:[[:space:]]*"dialect_only"' "$MANIFEST" || true)"
+  ORACLE_SKIPPED=$(( ${ORACLE_SKIPPED_PLAN:-0} + ${ORACLE_SKIPPED_DIALECT:-0} ))
+  # Parse test stdout to count passed/failed files (cargo prints
+  # `test ... ok` or `FAILED` for each). The test aggregates all
+  # rowsets into one assertion so a pass=fail=0 unless explicitly
+  # invoking the --list flag (we don't), so map pass/fail to a single
+  # boolean.
+  ORACLE_PASS=$(grep -cE '^test test_teaching_corpus_oracle_rowset_matches_sqlite \.\.\. ok' "$ORACLE_LOG" || true)
+  ORACLE_PASS="${ORACLE_PASS:-0}"
+  ORACLE_FAIL=$(grep -cE '^test test_teaching_corpus_oracle_rowset_matches_sqlite \.\.\. FAILED' "$ORACLE_LOG" || true)
+  ORACLE_FAIL="${ORACLE_FAIL:-0}"
+  record_pass "oracle_diffs dir: $ORACLE_DIFF_DIR"
+fi
+
 LOG_HASH="$(sha256sum "$LOG" 2>/dev/null | cut -d' ' -f1 || echo unavailable)"
 
 cat > "$REPORT" <<EOF
@@ -190,6 +242,12 @@ cat > "$REPORT" <<EOF
 | pass | $PASS |
 | fail | $FAIL |
 | warn | $WARN |
+| with_oracle | $WITH_ORACLE |
+| oracle_runs | ${ORACLE_RUNS:-n/a} |
+| oracle_pass | ${ORACLE_PASS:-n/a} |
+| oracle_fail | ${ORACLE_FAIL:-n/a} |
+| oracle_skipped | ${ORACLE_SKIPPED:-n/a} |
+| oracle_diff_dir | ${ORACLE_DIFF_DIR:-(disabled)} |
 
 ## Scope
 
@@ -204,7 +262,11 @@ This is the V312-56B structural gate. It enforces the manifest contract:
 
 The actual SQLite-vs-SQLRustGo row-by-row oracle comparison is delegated
 to \`cargo test --test teaching_corpus_test\` (manifest integrity) and
-to the Round-21 / #4218 follow-up (row-set parity).
+to \`cargo test --test teaching_corpus_oracle_test\` (per-file row-set
+parity vs SQLite goldens under \`docs/releases/v3.12.0/evidence/teaching_corpus/golden/\`).
+The oracle test runs only when this gate is invoked with
+\`--with-oracle\`; pass/fail counts are then folded into the JSON
+summary and oracle diffs land in \`docs/releases/v3.12.0/evidence/teaching_corpus/oracle_diffs/\`.
 
 ## Boundary
 
@@ -221,7 +283,7 @@ cat > "$SUMMARY" <<JSON
   "pass": $PASS,
   "fail": $FAIL,
   "warn": $WARN,
-  "evidence_hash": "$LOG_HASH"
+  "evidence_hash": "$LOG_HASH"$(if [ "$WITH_ORACLE" -eq 1 ]; then printf ',\n  "oracle_runs": %s,\n  "oracle_pass": %s,\n  "oracle_fail": %s,\n  "oracle_skipped": %s,\n  "oracle_diff_dir": "%s"' "$ORACLE_RUNS" "$ORACLE_PASS" "$ORACLE_FAIL" "$ORACLE_SKIPPED" "$ORACLE_DIFF_DIR"; fi)
 }
 JSON
 

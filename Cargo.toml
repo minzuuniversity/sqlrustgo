@@ -982,6 +982,9 @@ path = "tests/integration/sql/information_schema_test.rs"
 name = "teaching_corpus_test"
 path = "tests/integration/sql/teaching_corpus_test.rs"
 [[test]]
+name = "teaching_corpus_oracle_test"
+path = "tests/integration/sql/teaching_corpus_oracle_test.rs"
+[[test]]
 name = "eval_22_vs_sf01"
 path = "tests/integration/sql/eval_22_vs_sf01.rs"
 [[test]]
