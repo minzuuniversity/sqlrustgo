@@ -117,14 +117,8 @@ fn test_teaching_corpus_files_have_headers() {
     for entry in walk_sql(corpus_root()) {
         let raw = fs::read_to_string(&entry).expect("read sql file");
         let has_name = raw.lines().any(|l| l.trim_start().starts_with("# name:"));
-        let has_expect = raw
-            .lines()
-            .any(|l| l.trim_start().starts_with("# expect:"));
-        assert!(
-            has_name,
-            "{}: missing `# name:` header",
-            entry.display()
-        );
+        let has_expect = raw.lines().any(|l| l.trim_start().starts_with("# expect:"));
+        assert!(has_name, "{}: missing `# name:` header", entry.display());
         assert!(
             has_expect,
             "{}: missing `# expect:` header (PASS/FAIL/SKIP)",

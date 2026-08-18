@@ -17,6 +17,17 @@ last_transition:
   date: "2026-08-12"
   reason: "DRAFT -> ALPHA transition. alpha_required_gates verified: check_coverage_v312.sh PASS (L1_8 avg 85.86%), check_sql_corpus_gate.sh PASS (99.4%), check_anti_ignore_gate.sh PASS (active=0/47), check_docs_links.sh PASS, check_docs_consistency.sh PASS, cargo build --all-features PASS, cargo test --all-features --lib PASS, cargo fmt --check PASS, cargo clippy PASS. Required files present (CHANGELOG.md, RELEASE_NOTES.md, STAGE.yaml). Required scripts present (check_alpha_v3.12.0.sh, check_alpha_quality_v3.12.0.sh, check_arch_invariants.sh, check_arch3_no_bypass.sh). Tag v3.12.0-alpha1 cut per STAGE_CONFIG DRAFT_to_ALPHA trigger."
 
+stage_boundary_lock:
+  status: "ACTIVE"
+  date: "2026-08-18"
+  reason: "252 Gitea open issues drifted from V312 to v3.13 follow-up before v3.12 Beta/RC/GA stage decisions. v3.12 remains ALPHA until #3887 records a stage transition with gate evidence."
+  controlling_report: "docs/releases/v3.12.0/STAGE_GOVERNANCE_REMEDIATION_2026-08-18.md"
+  guard_script: "scripts/gate/check_v312_stage_boundary.sh"
+  v313_policy:
+    status: "FROZEN_FOLLOWUP_ONLY"
+    controlling_issue: "#4313"
+    rule: "develop/v3.13.0 work does not close V312 scope unless backported to develop/v3.12.0 or explicitly deferred by user decision and reflected in v3.12 release claims."
+
 positioning:
   product_contract: "GMP internal-audit retrieval database"
   allowed_claims:
@@ -62,6 +73,7 @@ promotion_to_ALPHA_requires:
   - "P12/P16/anti-ignore failures block Alpha Quality unless a signed governance exception exists"
 
 promotion_to_BETA_requires:
+  - "scripts/gate/check_v312_stage_boundary.sh passes; develop/v3.12.0 has no docs/releases/v3.13.0 release directory and README does not claim v3.13 as current development version"
   - "GMP document/chunk/embedding/audit schema implemented"
   - "Idempotent GMP markdown ingestion works on representative corpus"
   - "Hybrid retrieval returns source path, version, chunk hash, and citation text"

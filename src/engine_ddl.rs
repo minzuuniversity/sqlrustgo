@@ -552,8 +552,7 @@ impl<S: StorageEngine + 'static> ExecutionEngine<S> {
         if let Some(catalog_arc) = self.catalog.as_ref() {
             let catalog_guard = catalog_arc.read();
             for (_db, schema) in catalog_guard.all_schemas() {
-                let Some(table_ref) = schema.tables().into_iter().find(|t| t.name == table)
-                else {
+                let Some(table_ref) = schema.tables().into_iter().find(|t| t.name == table) else {
                     continue;
                 };
                 let mut had_explicit_pk_index = false;

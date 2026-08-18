@@ -15,10 +15,8 @@ fn engine() -> ExecutionEngine<MemoryStorage> {
 /// Convenience helper: build a table with one PK column, one NOT NULL
 /// column, and one nullable column.
 fn make_table(e: &mut ExecutionEngine<MemoryStorage>) {
-    e.execute(
-        "CREATE TABLE users (id INTEGER PRIMARY KEY, name TEXT NOT NULL, email TEXT)",
-    )
-    .unwrap();
+    e.execute("CREATE TABLE users (id INTEGER PRIMARY KEY, name TEXT NOT NULL, email TEXT)")
+        .unwrap();
 }
 
 #[test]
@@ -57,9 +55,7 @@ fn test_show_columns_like_pattern_filters_columns() {
 
     // Only match columns whose name contains "e" -> "name" has no "e", "email" does.
     // MySQL LIKE semantics: case-insensitive for unescaped ASCII letters.
-    let r = e
-        .execute("SHOW COLUMNS FROM users LIKE '%e%'")
-        .unwrap();
+    let r = e.execute("SHOW COLUMNS FROM users LIKE '%e%'").unwrap();
     assert_eq!(r.rows.len(), 2, "expected 2 rows matching LIKE '%e%'");
     let names: Vec<&sqlrustgo::Value> = r.rows.iter().map(|row| &row[0]).collect();
     // id: no 'e'; name: no 'e'; email: has 'e'

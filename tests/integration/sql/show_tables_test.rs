@@ -224,7 +224,11 @@ fn show_create_table_returns_single_ddl_row() {
         "DDL should start with table name + opening paren, got: {}",
         ddl
     );
-    assert!(ddl.contains("id"), "DDL should contain `id` column, got: {}", ddl);
+    assert!(
+        ddl.contains("id"),
+        "DDL should contain `id` column, got: {}",
+        ddl
+    );
     assert!(
         ddl.contains("name"),
         "DDL should contain `name` column, got: {}",
@@ -236,9 +240,7 @@ fn show_create_table_returns_single_ddl_row() {
 fn show_create_table_preserves_not_null_clause() {
     let mut client = clean_client();
     client
-        .exec(
-            "CREATE TABLE accounts (id INTEGER PRIMARY KEY, login TEXT NOT NULL, bio TEXT)",
-        )
+        .exec("CREATE TABLE accounts (id INTEGER PRIMARY KEY, login TEXT NOT NULL, bio TEXT)")
         .expect("CREATE accounts table");
 
     let rows = client

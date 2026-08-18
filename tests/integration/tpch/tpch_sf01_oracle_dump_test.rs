@@ -19,15 +19,15 @@ use std::fs;
 use std::path::PathBuf;
 
 const QUERIES: &[(&str, &str, u64)] = &[
-    ("Q1",  include_str!("../../../queries/q1.sql"),  60),
-    ("Q2",  include_str!("../../../queries/q2.sql"),  60),
-    ("Q3",  include_str!("../../../queries/q3.sql"),  60),
-    ("Q4",  include_str!("../../../queries/q4.sql"),  60),
-    ("Q5",  include_str!("../../../queries/q5.sql"),  60),
-    ("Q6",  include_str!("../../../queries/q6.sql"),  60),
-    ("Q7",  include_str!("../../../queries/q7.sql"),  60),
-    ("Q8",  include_str!("../../../queries/q8.sql"),  60),
-    ("Q9",  include_str!("../../../queries/q9.sql"),  60),
+    ("Q1", include_str!("../../../queries/q1.sql"), 60),
+    ("Q2", include_str!("../../../queries/q2.sql"), 60),
+    ("Q3", include_str!("../../../queries/q3.sql"), 60),
+    ("Q4", include_str!("../../../queries/q4.sql"), 60),
+    ("Q5", include_str!("../../../queries/q5.sql"), 60),
+    ("Q6", include_str!("../../../queries/q6.sql"), 60),
+    ("Q7", include_str!("../../../queries/q7.sql"), 60),
+    ("Q8", include_str!("../../../queries/q8.sql"), 60),
+    ("Q9", include_str!("../../../queries/q9.sql"), 60),
     ("Q10", include_str!("../../../queries/q10.sql"), 60),
     ("Q11", include_str!("../../../queries/q11.sql"), 60),
     ("Q12", include_str!("../../../queries/q12.sql"), 60),
@@ -45,9 +45,7 @@ const QUERIES: &[(&str, &str, u64)] = &[
 
 #[test]
 fn dump_sqlrustgo_sf01_oracle_tsvs() {
-    let out_dir = PathBuf::from(
-        "docs/releases/v3.12.0/evidence/tpch/cross_engine_sf01/sqlrustgo",
-    );
+    let out_dir = PathBuf::from("docs/releases/v3.12.0/evidence/tpch/cross_engine_sf01/sqlrustgo");
     fs::create_dir_all(&out_dir).expect("create out dir");
 
     let mut client = start_sf01();
@@ -72,13 +70,12 @@ fn dump_sqlrustgo_sf01_oracle_tsvs() {
                     })
                     .collect();
                 let tsv_text = tsv.join("\n") + "\n";
-                fs::write(out_dir.join(format!("{}.tsv", name.to_lowercase())), tsv_text)
-                    .expect("write tsv");
-                println!(
-                    "{} rows, {:.2}s",
-                    rows.len(),
-                    elapsed.as_secs_f64()
-                );
+                fs::write(
+                    out_dir.join(format!("{}.tsv", name.to_lowercase())),
+                    tsv_text,
+                )
+                .expect("write tsv");
+                println!("{} rows, {:.2}s", rows.len(), elapsed.as_secs_f64());
                 passed += 1;
             }
             Err(e) => {
