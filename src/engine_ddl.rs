@@ -438,9 +438,6 @@ impl<S: StorageEngine + 'static> ExecutionEngine<S> {
         Ok(ExecutorResult::new(vec![vec![Value::Text(ddl)]], 1))
     }
 
-    /// SHOW INDEX — placeholder (v3.7.0 indexes are not cataloged).
-    /// (Removed by V312-56A; see new implementation below.)
-
     /// DESCRIBE table — return one row per column with Field/Type/Null/Key/Default/Extra.
     /// G13-OLTP-1: `pub(crate)` so the mysql-server dispatch site can
     /// call this on a read-lock guard.
@@ -818,7 +815,7 @@ fn column_metadata_rows(columns: &[ColumnDefinition]) -> Vec<Vec<Value>> {
             let null_str = if c.nullable { "YES" } else { "NO" };
             let key_str = if c.primary_key { "PRI" } else { "" };
             let default_str = match &c.default_value {
-                Some(v) => format!("{}", v),
+                Some(v) => v.to_string(),
                 None => "NULL".to_string(),
             };
             // Append (N) to data_type when char_max_length is set

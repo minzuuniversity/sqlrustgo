@@ -956,6 +956,12 @@ impl<S: StorageEngine + 'static> ExecutionEngine<S> {
 
     /// V312-35 #4218: read-only snapshot of active connections
     /// (one row per `ProcessInfo` returned by the engine).
+    ///
+    /// `#[allow(dead_code)]` — the only callers live in `execution_engine_tests`
+    /// (lib build without `--all-targets` does not see them, hence the false
+    /// `dead_code` warning; the function is exercised by
+    /// `test_executor_show_processlist_v312_35` + `_via_sql`).
+    #[allow(dead_code)]
     pub(crate) fn execute_show_processlist_impl(&self, full: bool) -> SqlResult<ExecutorResult> {
         let storage = self.storage.read();
         let processes = storage.list_processes();
