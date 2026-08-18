@@ -1718,9 +1718,7 @@ pub(crate) fn explain_select_plan(
     let mut lines: Vec<String> = Vec::new();
 
     // 1. FROM clause — seq scan (or subquery materialization).
-    if select.from_subquery.is_some() {
-        lines.push(format!("SeqScan {}", select.table));
-    } else if select.join_clause.is_empty() {
+    if select.from_subquery.is_some() || select.join_clause.is_empty() {
         lines.push(format!("SeqScan {}", select.table));
     } else {
         // Each FROM source → SeqScan; then join operators.
