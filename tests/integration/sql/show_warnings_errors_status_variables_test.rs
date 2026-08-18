@@ -44,9 +44,7 @@ fn show_errors_parses_and_executes_empty() {
 #[test]
 fn show_status_returns_hardcoded_catalog() {
     let mut c = client();
-    let rows = c
-        .query_rows("SHOW STATUS")
-        .expect("SHOW STATUS");
+    let rows = c.query_rows("SHOW STATUS").expect("SHOW STATUS");
     assert!(
         rows.len() >= 4,
         "STATUS should return >=4 hard-coded rows, got {}",
@@ -55,25 +53,38 @@ fn show_status_returns_hardcoded_catalog() {
     let names: Vec<&str> = rows.iter().map(|r| r[0].as_str()).collect();
     assert!(names.contains(&"Uptime"), "STATUS should include Uptime");
     assert!(names.contains(&"Threads"), "STATUS should include Threads");
-    assert!(names.contains(&"Questions"), "STATUS should include Questions");
-    assert!(names.contains(&"Slow_queries"), "STATUS should include Slow_queries");
+    assert!(
+        names.contains(&"Questions"),
+        "STATUS should include Questions"
+    );
+    assert!(
+        names.contains(&"Slow_queries"),
+        "STATUS should include Slow_queries"
+    );
 }
 
 #[test]
 fn show_variables_returns_hardcoded_catalog() {
     let mut c = client();
-    let rows = c
-        .query_rows("SHOW VARIABLES")
-        .expect("SHOW VARIABLES");
+    let rows = c.query_rows("SHOW VARIABLES").expect("SHOW VARIABLES");
     assert!(
         rows.len() >= 4,
         "VARIABLES should return >=4 hard-coded rows, got {}",
         rows.len()
     );
     let names: Vec<&str> = rows.iter().map(|r| r[0].as_str()).collect();
-    assert!(names.contains(&"version"), "VARIABLES should include version");
-    assert!(names.contains(&"sql_mode"), "VARIABLES should include sql_mode");
-    assert!(names.contains(&"autocommit"), "VARIABLES should include autocommit");
+    assert!(
+        names.contains(&"version"),
+        "VARIABLES should include version"
+    );
+    assert!(
+        names.contains(&"sql_mode"),
+        "VARIABLES should include sql_mode"
+    );
+    assert!(
+        names.contains(&"autocommit"),
+        "VARIABLES should include autocommit"
+    );
     assert!(
         names.contains(&"character_set_server"),
         "VARIABLES should include character_set_server"
