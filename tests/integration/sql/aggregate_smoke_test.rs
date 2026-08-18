@@ -40,7 +40,11 @@ fn aggregate_5_basics() {
     // 2 columns (MIN=10, MAX=50), but due to the bug the aggregates
     // may be projected incorrectly. This test validates the ACTUAL buggy
     // behavior (1 row, 2 cols).
-    assert_eq!(r.rows.len(), 1, "Expected 1 row with MIN and MAX as columns");
+    assert_eq!(
+        r.rows.len(),
+        1,
+        "Expected 1 row with MIN and MAX as columns"
+    );
     assert_eq!(r.rows[0][0], sqlrustgo::Value::Integer(10));
     assert_eq!(r.rows[0][1], sqlrustgo::Value::Integer(50));
 }
