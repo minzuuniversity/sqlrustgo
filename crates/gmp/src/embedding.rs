@@ -65,6 +65,17 @@ pub trait EmbeddingModel: Send + Sync {
 
     /// Get the dimension of the embedding vectors
     fn dimension(&self) -> usize;
+
+    /// Get the canonical identifier of this model.
+    ///
+    /// v3.13.0 §4.1.4: caller must record this name alongside the embedding
+    /// so that `vector_search` can verify model-name consistency across all
+    /// stored rows. The default returns `"hash"` for the legacy
+    /// `HashEmbeddingModel`, but downstream models (e.g. future ONNX-backed
+    /// "minilm-l6") must override.
+    fn model_name(&self) -> &'static str {
+        "hash"
+    }
 }
 
 /// Hash-based embedding model
@@ -183,6 +194,15 @@ pub fn euclidean_distance(a: &[f32], b: &[f32]) -> f32 {
 /// Global default embedding model instance
 pub static DEFAULT_MODEL: std::sync::LazyLock<HashEmbeddingModel> =
     std::sync::LazyLock::new(HashEmbeddingModel::default);
+
+/// Canonical model name for the default `HashEmbeddingModel`. Used by
+/// callers that previously hardcoded `"hash"` and need a single source of
+/// truth (v3.13.0 §4.1.4). Returns whatever `DEFAULT_MODEL.model_name()`
+/// says, which today is `"hash"` but may change when a real model is wired
+/// in.
+pub fn default_model_name() -> &'static str {
+    DEFAULT_MODEL.model_name()
+}
 
 /// Generate embedding using the default model
 pub fn generate_embedding(text: &str) -> Vec<f32> {

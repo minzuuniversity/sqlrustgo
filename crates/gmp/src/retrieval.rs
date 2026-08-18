@@ -420,6 +420,7 @@ mod tests {
         use crate::embedding::EmbeddingModel;
         use crate::embedding::HashEmbeddingModel;
         use crate::vector_search::upsert_embedding;
+        let model_name = HashEmbeddingModel::default().model_name();
 
         create_gmp_tables(storage).unwrap();
 
@@ -489,7 +490,7 @@ mod tests {
             // Use a content-derived embedding so identical fixture seeds give
             // identical vectors without depending on global model state.
             let embedding = model.generate_embedding(content);
-            upsert_embedding(storage, chunk_id, &embedding).unwrap();
+            upsert_embedding(storage, chunk_id, &embedding, model_name).unwrap();
             seeded.push((doc_id, title.to_string()));
         }
         seeded
