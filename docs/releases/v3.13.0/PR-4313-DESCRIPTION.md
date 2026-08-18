@@ -52,7 +52,9 @@ v3.13.0 启动已完成 S0 blocker 全部移除:
 
 ## 提交列表
 
-本 PR 包含 24 个 commit (从 `9554dee2bb` 到 `3e507c15b2`):
+本 PR 包含 24 个 commit (从 `9554dee2bb` 到 `3e507c15b2`,不含本审计循环的后续 commit):
+
+**注**: 本表为审计循环快照;实际 origin/develop/v3.13.0 HEAD 在 audit 后续可能含 1-2 个自我引用 commit (即"修改本表"的 commit 本身),按 self-reference-paradox 不计入本表。git log 显示真实总数。
 
 | Commit | 描述 |
 |---|---|
