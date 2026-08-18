@@ -1,5 +1,5 @@
 # V313-MASTER Documentation Inventory (SHA-256)
-# Generated 2026-08-18
+# Generated 2026-08-18 (final pass — after §10/§11 additions)
 # Format: <sha256>  <path>
 # Self-reference note: This file's own SHA-256 is anchored separately to avoid
 # the "include your own hash" chicken-and-egg problem. See git log for the
@@ -21,8 +21,8 @@ e5f26e2089218388f6715793dc3fd981e8b0c0dbf05f57e3cc0b09c9d91e44f4  docs/releases/
 ab3b1ac81430e0a2e9a88012da87987afd288776d25f2483e783bf6848172f39  docs/releases/v3.13.0/V313-FOLLOWUP-INDEX.md
 daa28c8216ce1c83a042254a3fc5a9460dc68f843a80f2724eff8e34993d82ad  docs/releases/v3.13.0/V313-MASTER-PLAN.md
 15bd386c58c6bc7b09b3ebc68e8ea25ebb9fc32e1f7eca92cb1d3425697dfe86  docs/releases/v3.13.0/V313-STRICT-CLOSE-STANDARDS.md
-a695933c429096ab9080917fb8d09613222a9b86676ba33731a8e03fb91024b0  docs/releases/v3.13.0/PR-4313-DESCRIPTION.md
-3df6d56c7f53c27ee245046965e5e5f461a5603e9aea345375e007245f77ea79  docs/releases/v3.13.0/V313-SETUP-VERIFICATION.md
+d8203c83ac0cfefa0f9b1e8b14e0562e5441f32760bedd02f0ea5b634c926cc4  docs/releases/v3.13.0/PR-4313-DESCRIPTION.md
+d4adbe2973f57e56288e81b0e284d5473756a4b1323365dae89bd95924db232a  docs/releases/v3.13.0/V313-SETUP-VERIFICATION.md
 
 # Self-reference anchor (this file's own SHA-256 is NOT included to avoid cyclic dependency):
 # sha256=<captured at commit time, see git log>
