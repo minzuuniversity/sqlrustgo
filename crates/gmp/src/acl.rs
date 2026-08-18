@@ -4,7 +4,6 @@
 //! Covers SQL, vector, graph, and retrieval operations.
 
 use serde::{Deserialize, Serialize};
-use std::collections::HashMap;
 
 /// GMP operation types that require authorization.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize)]

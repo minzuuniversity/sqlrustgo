@@ -85,7 +85,7 @@ impl AuditLog {
     /// Expected column order: id, timestamp, user_id, action, table_name,
     /// record_id, old_value, new_value, ip_address, session_id, previous_hash, event_hash
     pub fn from_row(row: &[Value]) -> Option<Self> {
-        let id = match &row.get(0)? {
+        let id = match &row.first()? {
             Value::Integer(n) => *n,
             _ => return None,
         };
@@ -401,7 +401,7 @@ pub fn record_audit_log(
     let rows = storage.scan(TABLE_AUDIT_LOG)?;
     let next_id = rows
         .iter()
-        .filter_map(|r| match r.get(0)? {
+        .filter_map(|r| match r.first()? {
             Value::Integer(n) => Some(*n),
             _ => None,
         })

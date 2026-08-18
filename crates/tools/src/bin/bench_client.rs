@@ -84,7 +84,7 @@ fn run_thread(
         }
 
         // Execute batch via mysql -e with piped input
-        let input = queries.join(";");
+        let _input = queries.join(";");
         let output = Command::new("mysql")
             .args(["-h", &host, "-P", &port.to_string(), "-u", "root", "-N"])
             .stdin(Stdio::piped())
@@ -94,7 +94,7 @@ fn run_thread(
 
         match output {
             Ok(out) if out.status.success() => {
-                let lines = String::from_utf8_lossy(&out.stdout)
+                let _lines = String::from_utf8_lossy(&out.stdout)
                     .lines()
                     .filter(|l| !l.is_empty())
                     .count();
