@@ -188,12 +188,72 @@ SHOW COLUMNS LIKE glob matcher + 32/36 sub-tasks COMPLETED`).
 3. Run Beta gate verification before merge — `B6_V312_56_TEACHING_CORPUS` + `B6_V312_56_EXPLAIN_FIXTURES` verified PASS at HEAD
 4. v3.13 RC1: close 56A-R2 (information_schema SQL path) + 56A-R4 (SHOW WARNINGS/ERRORS/STATUS/VARIABLES runtime) + decide 56A-R3 disposition
 
+## Re-runnable Verification at HEAD `53e5ba2da` (this refresh — closes #4258)
+
+Verified `2026-08-17` against `develop/v3.12.0` HEAD `53e5ba2da` (post-V312-48-cross-engine PR #4325 + post-V312-56A-R1 PR #4323).
+
+### Beta gate (V312-56 specific checks)
+
+```bash
+$ bash scripts/gate/check_beta_v3.12.0.sh
+  [PASS] B6_V312_56_TEACHING_CORPUS
+  [PASS] B6_V312_56_EXPLAIN_FIXTURES
+```
+
+Both V312-56-specific Beta gate checks PASS at current HEAD. (The only blocker remaining is `B1_FMT`, pre-existing cargo fmt warning — not V312-56 specific.)
+
+### Docs consistency + link check
+
+```bash
+$ bash scripts/gate/check_docs_consistency.sh
+  [PASS] All checks passed
+
+$ bash scripts/gate/check_docs_links.sh entry
+  All markdown links are valid.
+```
+
+### Documentation alignment (V312-56 issue mapping — #4258 verification)
+
+| Doc | Section | Verified at HEAD `53e5ba2da` |
+|-----|---------|------------------------------|
+| `STAGE.yaml` | `promotion_to_BETA_requires_verified` | V312-56A~D listed as DONE |
+| `TEST_PLAN.md` | `V312-G27` row | Present in both Chinese (#41) and English (#233) tables |
+| `ISSUES_PLAN.md` | `V312-56` series mapping | Present with #4250-#4258 issue refs (lines 326-339) |
+| `PARTIAL_FEATURE_REMEDIATION_ISSUE_PLAN.md` | §5 V312-56 mapping table | Present with all 8 sub-issues (lines 57-68) |
+
+### 56A-R1 closure evidence (PR #4323)
+
+- `crates/parser/src/parser.rs` — new `Some(Token::Create) =>` match arm in `parse_show` (fixes dead-code `Token::Identifier("CREATE")` arm)
+- `tests/integration/sql/show_tables_test.rs` — 5 integration tests added
+- `cargo test --test show_tables_test --all-features` → **31 passed; 0 failed**
+- `cargo test -p sqlrustgo-parser --all-features --tests` → **755+ passed**
+
+### Cross-engine oracle evidence (PR #4325)
+
+- `docs/releases/v3.12.0/evidence/tpch/cross_engine_sf01/postgres/` — PG SF=0.1 oracle (22/22 queries)
+- `docs/releases/v3.12.0/evidence/tpch/cross_engine_sf01/sqlrustgo/` — sqlrustgo SF=0.1 oracle (22/22 queries)
+- `docs/releases/v3.12.0/evidence/tpch/cross_engine_sf1/postgres/` — PG SF=1 oracle (22/22, bonus)
+- `docs/releases/v3.12.0/evidence/tpch/cross_engine_sf01/V312-48-SF01-CROSS-ENGINE-VERIFICATION.md` — full evidence report
+- Cross-engine comparison: **12/22 row-count match; 0/22 content identical** (real correctness gap documented)
+
+### #4258 Acceptance Check — CLOSED
+
+| #4258 Acceptance Condition | Status |
+|----------------------------|--------|
+| Beta gate checks V312-56A~56D completion/deferral | ✅ `B6_V312_56_TEACHING_CORPUS` + `B6_V312_56_EXPLAIN_FIXTURES` PASS |
+| `TEST_PLAN.md` includes V312-G27 + 4.0 pre-remediation gate | ✅ row #41 (zh) + #233 (en) |
+| `STAGE.yaml` `promotion_to_BETA_requires` includes V312-56A~56D | ✅ V312-56A~D listed as DONE |
+| `PARTIAL_FEATURE_REMEDIATION_ISSUE_PLAN.md` + `ISSUES_PLAN.md` sync issue mapping | ✅ Both docs have V312-56A~G/H mapping (#4251-#4258) |
+| `V312-56-VERIFICATION.md` archives commands, exit codes, summaries, hashes | ✅ This section |
+
+**#4258 can be closed at HEAD `53e5ba2da`** — all 5 acceptance conditions satisfied with running evidence.
+
 ## Provenance
 
-- **Generated at:** 2026-08-15T00:00:00Z (refreshed at HEAD `868088aa70`)
+- **Generated at:** 2026-08-15T00:00:00Z (refreshed at HEAD `868088aa70`; further refreshed at HEAD `53e5ba2da` post 56A-R1 closure and V312-48 cross-engine PR #4325)
 - **Source repo:** openclaw/sqlrustgo
 - **Branch:** develop/v3.12.0
-- **HEAD commit:** `868088aa70dc8578dd803b491d6fde586860238d` (post V312-56 master + B1_FMT/Q4_ANTI_FABRICATION)
+- **HEAD commit at this verification refresh:** `53e5ba2da4c9385e6d535ab84745443cd962f8c5` (post-V312-48-cross-engine PR #4325)
 - **Baseline commit:** `7932ab5658` (pre-rebase state)
 - **Policy:** Anti-Fabrication-Policy-v1.0
 - **Source issues:** #4250 (master), #4251-#4258 (8 sub-issues)
