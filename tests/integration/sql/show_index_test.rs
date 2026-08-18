@@ -29,10 +29,8 @@ fn index_value(row: &[sqlrustgo::Value], idx: usize) -> String {
 #[test]
 fn test_show_index_returns_primary_key_index() {
     let mut e = engine();
-    e.execute(
-        "CREATE TABLE users (id INTEGER PRIMARY KEY, name TEXT NOT NULL, email TEXT)",
-    )
-    .unwrap();
+    e.execute("CREATE TABLE users (id INTEGER PRIMARY KEY, name TEXT NOT NULL, email TEXT)")
+        .unwrap();
 
     let r = e.execute("SHOW INDEX FROM users").unwrap();
     // PK index is implicit on `id INTEGER PRIMARY KEY`

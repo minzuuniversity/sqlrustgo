@@ -5,7 +5,7 @@
 > **状态**: 规划中
 > **产品目标**: 面向 `~/gmp-platform` 的 GMP 内审检索数据库
 > **规划日期**: 2026-08-09
-> **当前整改口径更新**: 2026-08-14
+> **当前整改口径更新**: 2026-08-18
 
 v3.12.0 被规划为 SQLRustGo 第一个明确面向 GMP 内审检索工作负载的版本。它使用 SQLRustGo 作为受监管文档存储、chunk、embedding、audit trail、evidence relation、hybrid retrieval 和 SQL-backed graph projection 的数据库基础。
 
@@ -14,6 +14,8 @@ v3.12.0 被规划为 SQLRustGo 第一个明确面向 GMP 内审检索工作负�
 2026-08-09 规划更新：v3.12.0 同时承担 v3.11.0 GA 弱项补强职责。进入 GA 前，必须关闭或显式重门禁 TPC-H correctness、coverage methodology、MySQL wire protocol、LOAD DATA/bulk import、crash recovery、backup/restore、upgrade/downgrade、dependency audit refresh，以及 v3.10.0 已规划但 v3.11.0 没有成为阻断 gate 的 SQLite SQLLogicTest oracle gate。
 
 2026-08-14 整改更新：README 与历史开发计划中的 `PARTIAL` 不能作为 v3.12 初始生产能力声明。属于 v3.12 生产边界的 `PARTIAL` 必须绑定到 [PARTIAL 功能整改 Issue 计划](PARTIAL_FEATURE_REMEDIATION_ISSUE_PLAN.md)，在 GA 前关闭为 `DONE / 受控`，或降级为 `DEFERRED` / `UNSUPPORTED` 并说明不属于 v3.12 初始生产边界。
+
+2026-08-18 阶段治理纠偏：v3.12.0 仍处于 `ALPHA`，不得通过把 V312 open issue 批量改成 v3.13 follow-up 来绕过 Beta/RC/GA。详见 [v3.12.0 阶段治理纠偏报告](STAGE_GOVERNANCE_REMEDIATION_2026-08-18.md)。`develop/v3.13.0` 只能作为冻结 follow-up 分支，不能作为关闭 V312 issue 的默认证据来源。
 
 ## 发布契约
 
@@ -34,6 +36,7 @@ v3.12.0 被规划为 SQLRustGo 第一个明确面向 GMP 内审检索工作负�
 | 文档 | 用途 |
 |---|---|
 | `STAGE.yaml` | 阶段 SSOT 和 promotion criteria |
+| `STAGE_GOVERNANCE_REMEDIATION_2026-08-18.md` | v3.12/v3.13 阶段漂移纠偏、Issue 分级和 Beta/RC 边界 |
 | `COMPREHENSIVE_ASSESSMENT_REPORT.md` | v3.12.0 综合评估：MySQL 水平、功能/性能/稳定性、GMP 生产可行性、教学场景增强项 |
 | `DEVELOPMENT_PLAN.md` | 实施计划和 GMP-Platform 集成工作包 |
 | `VERSION_PLAN.md` | 产品范围和工作包 |

@@ -32,7 +32,8 @@ fn engine() -> ExecutionEngine<MemoryStorage> {
 #[test]
 fn test_select_from_information_schema_tables_fails() {
     let mut e = engine();
-    e.execute("CREATE TABLE users (id INTEGER PRIMARY KEY)").unwrap();
+    e.execute("CREATE TABLE users (id INTEGER PRIMARY KEY)")
+        .unwrap();
     let r = e.execute("SELECT * FROM information_schema.tables");
     assert!(
         r.is_err(),
@@ -44,7 +45,8 @@ fn test_select_from_information_schema_tables_fails() {
 #[test]
 fn test_select_from_information_schema_columns_fails() {
     let mut e = engine();
-    e.execute("CREATE TABLE users (id INTEGER PRIMARY KEY)").unwrap();
+    e.execute("CREATE TABLE users (id INTEGER PRIMARY KEY)")
+        .unwrap();
     let r = e.execute("SELECT * FROM information_schema.columns");
     assert!(
         r.is_err(),
@@ -56,7 +58,8 @@ fn test_select_from_information_schema_columns_fails() {
 #[test]
 fn test_select_from_information_schema_indexes_fails() {
     let mut e = engine();
-    e.execute("CREATE TABLE users (id INTEGER PRIMARY KEY)").unwrap();
+    e.execute("CREATE TABLE users (id INTEGER PRIMARY KEY)")
+        .unwrap();
     let r = e.execute("SELECT * FROM information_schema.indexes");
     assert!(
         r.is_err(),
@@ -64,4 +67,3 @@ fn test_select_from_information_schema_indexes_fails() {
          (V312-56A follow-up: wire SQL path or document explicitly)"
     );
 }
-
