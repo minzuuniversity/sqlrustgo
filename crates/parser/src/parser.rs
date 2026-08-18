@@ -9033,7 +9033,7 @@ impl Parser {
                 };
                 Ok(Statement::Show(ShowStatement::CreateTable { table }))
             }
-            Some(Token::Create) => {
+Some(Token::Create) => {
                 // V312-56A / #4251: the lexer promotes `CREATE` to
                 // `Token::Create` even when it appears inside a SHOW
                 // statement; accept the keyword form so `SHOW CREATE
