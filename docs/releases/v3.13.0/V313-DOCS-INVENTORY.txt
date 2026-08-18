@@ -1,0 +1,28 @@
+# V313-MASTER Documentation Inventory (SHA-256)
+# Generated 2026-08-18
+# Format: <sha256>  <path>
+# Self-reference note: This file's own SHA-256 is anchored separately to avoid
+# the "include your own hash" chicken-and-egg problem. See git log for the
+# commit-level hash of V313-DOCS-INVENTORY.txt at each release.
+
+8d15c92117a806ff2b7c623168c9e361931aedc1a95d46fdce4399ada9e58faf  docs/releases/v3.13.0/evidence/V313-S0-ALPHA-QUALITY-PASS.md
+3206e6c508fe64dec56ee2ba1ec85894da3b91211d31099985dd7dac3830f4b1  docs/releases/v3.13.0/evidence/V313-S0-BLOCKERS-COMPLETE.md
+17bec7e2339344b9811148e364f951deb568245eea2d53e6d5b1ac282e2e8cb0  docs/releases/v3.13.0/evidence/V313-S0-MYSQL-ORACLE-EVIDENCE.md
+f654ff6aae61896052089b6616476bf1732f8a56981abbdc0a83bba0fd3c17ed  docs/releases/v3.13.0/evidence/V313-S0-MYSQL-ORACLE-SHA256.txt
+f50167193eefc6f43949583a3ce0f48c984e57eec07ec10f0b991c0d9bf0b795  docs/releases/v3.13.0/evidence/V313-S0-TPCH-SF1-FIXTURE-EVIDENCE.md
+05c25d0c6bafcbd5075430ee86888ca0106806c8760f561e8e3769a716a46f8d  docs/releases/v3.13.0/evidence/V313-S0-TPCH-SF1-FIXTURE-SHA256.txt
+12b254a065777ca4f8530f1993faa21f78d45e5fee17892beaa38f31e26c7707  docs/releases/v3.13.0/PR-4313-DESCRIPTION.md
+6416ff244d5cfc5ca62177f506d573e2b1f95e5f1d27f481e6868c9f0bbcb688  docs/releases/v3.13.0/README.md
+5385d88284b548a6feee2552a2dfe22c3591b635a92155d677ae066e9556ec50  docs/releases/v3.13.0/sprints/SPRINT-S1-GMP.md
+d488e7502cc4dc65e9b5899736b72b5c5fbbf20a87a3fedfa5dde3c8f1b26145  docs/releases/v3.13.0/sprints/SPRINT-S2-TPCH-CROSS.md
+811767a3f1d559799e1deef218f75062cbb0e48eb3474b18a3c3eb99a877c782  docs/releases/v3.13.0/sprints/SPRINT-S3-PLANNER-ZEROROW.md
+4318b0b680da0b6460277b62e19d5a2fd82ed6b7aa4becc40675c9a8c13aaecd  docs/releases/v3.13.0/sprints/SPRINT-S4-V312-56-TEACHING.md
+e5f26e2089218388f6715793dc3fd981e8b0c0dbf05f57e3cc0b09c9d91e44f4  docs/releases/v3.13.0/sprints/SPRINT-S5-META-CLOSURE.md
+2c00b78bb1318092667542f4a7b8f3d1583bc5a4b4bd90367810046f44e731c9  docs/releases/v3.13.0/sprints/SPRINT-S6-ARRAY-FRACTION.md
+ab3b1ac81430e0a2e9a88012da87987afd288776d25f2483e783bf6848172f39  docs/releases/v3.13.0/V313-FOLLOWUP-INDEX.md
+daa28c8216ce1c83a042254a3fc5a9460dc68f843a80f2724eff8e34993d82ad  docs/releases/v3.13.0/V313-MASTER-PLAN.md
+15bd386c58c6bc7b09b3ebc68e8ea25ebb9fc32e1f7eca92cb1d3425697dfe86  docs/releases/v3.13.0/V313-STRICT-CLOSE-STANDARDS.md
+3df6d56c7f53c27ee245046965e5e5f461a5603e9aea345375e007245f77ea79  docs/releases/v3.13.0/V313-SETUP-VERIFICATION.md
+
+# Self-reference anchor (this file's own SHA-256 is NOT included to avoid cyclic dependency):
+# sha256=<captured at commit time, see git log>
