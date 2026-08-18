@@ -77,6 +77,16 @@ Specifically deferred (per V312-13-REPORT.md boundary table):
 
 ---
 
+## V312-56F / V312-56G Disposition (2026-08-17)
+
+| Feature | Status | Notes |
+|---------|--------|-------|
+| `CREATE VIEW` (definition storage) | ✅ Supported (definition-only) | Parser + storage layer. View expansion (SELECT * from view) not implemented. V312-56F / #4256. |
+| `CREATE FULLTEXT INDEX` | ✅ Supported (parser + storage) | Parser + `FullTextIndex` storage layer. SQL `MATCH/AGAINST` **NOT** wired — GMP uses BM25-like via `crates/vector_retrieval`. V312-56G / #4257. |
+| `TABLE PARTITION BY` (RANGE/LIST/HASH) | 🔜 Deferred | Not implemented in v3.12. GMP uses `HashPartitioner` for vector sharding (separate abstraction). V312-56G / #4257. |
+| `WITH RECURSIVE` (CTE materialization) | 🔜 Deferred → v3.13 | CTE materialization supported for non-recursive; recursive CTE returns explicit error. V312-56F / #4256. |
+| `MERGE` statement | 🔜 Deferred → v3.13 | Returns "MERGE not yet supported via execute()"; `LocalExecutorDml` path may support in v3.13. V312-56F / #4256. |
+
 ## Binary Protocol Notes (v3.12.0)
 
 ### Parameterized Queries
