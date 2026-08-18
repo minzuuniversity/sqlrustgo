@@ -1,0 +1,3 @@
+QUERY PLAN
+|--SCAN o
+`--SEARCH u USING INDEX sqlite_autoindex_users_1 (id=?)
