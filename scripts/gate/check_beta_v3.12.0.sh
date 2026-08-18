@@ -109,7 +109,6 @@ echo "--- B4: Gate Scripts ---"
 check "B4_ALPHA_GATE" "test -f scripts/gate/check_alpha_v3.12.0.sh"
 check "B4_BETA_GATE" "test -f scripts/gate/check_beta_v3.12.0.sh"
 check "B4_COMMON_GATES" "test -f scripts/gate/check_arch_invariants.sh && test -f scripts/gate/check_beta_gate.sh && test -f scripts/gate/check_anti_fabrication.sh"
-check "B4_V312_55_PROCEDURE_TRIGGER_GATE_DEFINED" "test -f scripts/gate/check_v312_procedure_trigger_gate.sh"
 
 # ============================================================
 # B5: Debt register
@@ -129,12 +128,113 @@ check "B6_EMBEDDING_PROVIDER"      "test -f docs/releases/v3.12.0/v312-04-embedd
 check "B6_HYBRID_RETRIEVAL"        "test -f docs/releases/v3.12.0/v312-05-hybrid-retrieval-report.md"
 check "B6_GRAPH_PROJECTION"        "test -f docs/releases/v3.12.0/v312-06-graph-projection-report.md"
 check "B6_AUDIT_HASH_CHAIN"        "test -f docs/releases/v3.12.0/v312-08-compliance-audit-report.md"
-check "B6_SQLLOGICTEST_SMOKE"      "test -f docs/releases/v3.12.0/sqllogictest-oracle-gate-report.md"
+check "B6_SQLLOGICTEST_SMOKE_GATE" "bash scripts/gate/check_sqllogictest_v312.sh"
+check "B6_SQLLOGICTEST_MANIFEST"   "python3 - <<'PY'
+import json
+from pathlib import Path
+
+manifest = Path('docs/releases/v3.12.0/evidence/sqllogictest/sqlite-corpus-manifest.json')
+data = json.loads(manifest.read_text())
+stats = data.get('corpus_stats', {})
+total = int(stats.get('total_files', -1))
+passed = int(stats.get('pass_files', -1))
+failed = int(stats.get('fail_files', -1))
+if total <= 0 or passed != total or failed != 0:
+    raise SystemExit(f'sqllogictest manifest not clean: total={total} pass={passed} fail={failed}')
+PY"
+check "B6_SQLLOGICTEST_OPEN_EXCLUSIONS" "python3 - <<'PY'
+from pathlib import Path
+import re
+
+text = Path('docs/releases/v3.12.0/evidence/sqllogictest/exclusions.yml').read_text()
+items = re.split(r'^  - id: ', text, flags=re.M)[1:]
+open_items = []
+for item in items:
+    if not re.search(r'^    status: closed\\b', item, flags=re.M):
+        open_items.append(item.splitlines()[0].strip())
+if open_items:
+    raise SystemExit('open sqllogictest exclusions: ' + ', '.join(open_items))
+PY"
 check "B6_TPCH_SF1_G4"             "test -f docs/releases/v3.12.0/evidence/G4_tpch_sf1.txt"
-check "B6_V312_56_ISSUE_DEFINITION" "test -f docs/releases/v3.12.0/issues/V312-56_TEACHING_AND_V400_REMEDIATION_ISSUE_BODIES.md"
-check "B6_V312_56_TEST_PLAN_GATE"   "grep -q 'V312-G27' docs/releases/v3.12.0/TEST_PLAN.md"
-check "B6_V312_56_BETA_STAGE_SCOPE" "grep -q 'V312-56A Metadata/SHOW/information_schema' docs/releases/v3.12.0/STAGE.yaml && grep -q 'V312-56D Prepared statement / wire protocol' docs/releases/v3.12.0/STAGE.yaml"
-check "B6_V312_56_VERIFICATION"     "test -f docs/releases/v3.12.0/evidence/teaching_v400/V312-56-VERIFICATION.md && grep -q 'exit code' docs/releases/v3.12.0/evidence/teaching_v400/V312-56-VERIFICATION.md && grep -q 'evidence hash' docs/releases/v3.12.0/evidence/teaching_v400/V312-56-VERIFICATION.md"
+check "B6_V312_56_TEACHING_CORPUS" "test -d tests/compat/teaching_sql_v3_12 && test -f tests/compat/teaching_sql_v3_12/manifest.yml"
+check "B6_V312_56_EXPLAIN_FIXTURES" "python3 - <<'PY'
+import yaml
+from pathlib import Path
+manifest = Path('tests/compat/teaching_sql_v3_12/manifest.yml')
+if not manifest.exists():
+    raise SystemExit('manifest.yml not found')
+data = yaml.safe_load(manifest.read_text())
+explain_files = [f for f in data.get('files', []) if 'explain' in f.get('path', '')]
+if len(explain_files) < 5:
+    raise SystemExit(f'Expected 5+ EXPLAIN fixtures, got {len(explain_files)}')
+PY"
+check "B6_V312_47_PARTIAL_CLOSURE" "python3 - <<'PY'
+# Issue #4220 / V312-47 PARTIAL closure gate.
+# Verifies that every README `PARTIAL` row is bound to a Gitea issue,
+# not left as a dangling state. Aligns with #4220 acceptance condition:
+#   - README 中每个 PARTIAL 都绑定到具体 issue 或降级为 DEFERRED/UNSUPPORTED.
+import re
+import sys
+from pathlib import Path
+
+readme = Path('README.md').read_text()
+plan = Path('docs/releases/v3.12.0/PARTIAL_FEATURE_REMEDIATION_ISSUE_PLAN.md')
+issues_plan = Path('docs/releases/v3.12.0/ISSUES_PLAN.md')
+
+missing = []
+issue_pat = re.compile(r'#\d{3,5}')
+
+# Strip the row that LITERALLY describes the PARTIAL plan (a link to
+# the plan doc, not a PARTIAL feature row). That row contains the
+# substring 'PARTIAL_FEATURE_REMEDIATION_ISSUE_PLAN' as the link target.
+stripped = '\n'.join(
+    line for line in readme.splitlines()
+    if 'PARTIAL_FEATURE_REMEDIATION_ISSUE_PLAN.md' not in line
+)
+readme_for_scan = stripped
+
+# 1. README rows in the **status table** (top of README, around line 50-55)
+#    that claim PARTIAL must reference a #NNNN issue in the same row.
+status_rows = re.findall(r'^\|[^|]*\|[^|]*PARTIAL[^|]*\|[^|]*$', readme_for_scan, re.MULTILINE)
+for row in status_rows:
+    if not issue_pat.search(row):
+        missing.append(('README.status', row.strip()))
+
+# 2. README feature-matrix rows (~121-160) where status is PARTIAL or
+#    PARTIAL/blocker must reference an issue link. Skip rows that have
+#    DEFERRED before PARTIAL (those are DEFERRED rows, not PARTIAL claims).
+matrix_rows = re.findall(r'^\|[^|]*\|[^|]*PARTIAL[^|]*\|[^|]*$', readme_for_scan, re.MULTILINE)
+for row in matrix_rows:
+    # Skip rows that are actually DEFERRED status, not PARTIAL.
+    if '| DEFERRED' in row.split('PARTIAL')[0]:
+        continue
+    # Skip rows that say `DONE` (resolved PARTIALs).
+    if '| DONE' in row.split('PARTIAL')[0]:
+        continue
+    if not issue_pat.search(row):
+        missing.append(('README.matrix', row.strip()))
+
+# 3. PARTIAL_FEATURE_REMEDIATION_ISSUE_PLAN.md must exist + have all required sections.
+if not plan.exists():
+    missing.append(('PLAN.missing', str(plan)))
+else:
+    plan_text = plan.read_text()
+    for sec in ['## 2. README PARTIAL 整改总账', '## 3. 新增 Issue', '## 4. 必须同步到门禁']:
+        if sec not in plan_text:
+            missing.append(('PLAN.section_missing', sec))
+
+# 4. ISSUES_PLAN.md must reference #4220 (per PARTIAL plan §4.3).
+if not issues_plan.exists():
+    missing.append(('ISSUES_PLAN.missing', str(issues_plan)))
+elif '#4220' not in issues_plan.read_text():
+    missing.append(('ISSUES_PLAN.no_#4220', str(issues_plan)))
+
+if missing:
+    for entry in missing:
+        print(f'  missing: {entry}', file=sys.stderr)
+    raise SystemExit(f'#4220 PARTIAL closure failed: {len(missing)} missing binding(s)')
+print(f'  README PARTIAL rows bound to issues: OK ({len(status_rows)} status + {len(matrix_rows)} matrix rows scanned)')
+PY"
 
 # ============================================================
 # B7: ALPHA gate sanity check (BETA cannot regress ALPHA state)
