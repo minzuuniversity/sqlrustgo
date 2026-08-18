@@ -122,19 +122,38 @@ docs/releases/v3.13.0/
 
 最终 hash 见 `V313-DOCS-INVENTORY.txt`。
 
-## 10. Pre-existing Clippy 回归诚实披露
+## 10. Pre-existing Clippy 回归诚实披露 + 修复
 
 `cargo clippy --all-features -- -D warnings` 在 `develop/v3.13.0` 当前 HEAD 上失败,**不是 V313 work 引入的回归**。
 
 | 事实 | 证据 |
 |---|---|
-| V313 work 修改的文件 | 仅 `docs/releases/v3.13.0/*.md` + `.txt` (见上方 inventory) |
-| 是否触及任何 `.rs` 文件 | **零** (verified via `git diff --name-only 9554dee2bb..origin/develop/v3.13.0 \| grep '\.rs$'` 为空) |
-| Clippy error 来源 | `src/engine_ddl.rs` (V312-56a rebase 引入,commit `1e0f5018ad`) |
+| V313 SETUP 修改的文件 | 仅 `docs/releases/v3.13.0/*.md` + `.txt` (见上方 inventory) |
+| 是否触及任何 `.rs` 文件 | **零** (SETUP 阶段); clippy 修复阶段触及 `src/engine_ddl.rs` + `src/execution_engine.rs` (3 处 §10 acknowledged) |
+| Clippy error 来源 | `src/engine_ddl.rs` + `src/execution_engine.rs` (V312-56a rebase 引入,commit `1e0f5018ad`) |
 | `develop/v3.12.0` 当前 tip | clippy PASS (因为 9554dee2bb 之后 v3.12.0 修复了此 issue) |
 | `develop/v3.13.0` bootstrap point | `79caf8c4...` (V313 分支从 OLD v3.12.0 HEAD fork,该 HEAD 尚含 clippy regression) |
 
-**结论**: V313 文档工作不影响代码态。PR merge 前需在 v3.13.0 上 cherry-pick 或 rebase v3.12.0 已修复 clippy 的 commit (例 `1e0f5018ad` 之后的 fix),或在新 SPRINT-S1/S2 实施时一次性修。这不是 V313 SETUP 任务本身的阻塞项。
+### 10.1 Resolution (commit `9c3e48c5d7`)
+
+§10 披露的 3 处 clippy 错误于 `9c3e48c5d7` 修复 (本会话独立提交,no force-push):
+
+1. `src/engine_ddl.rs:441-443` — 删除 orphan doc-comment block (原 clipping as empty_line_after_doc_comments)
+2. `src/engine_ddl.rs:821` — `format!("{}", v)` → `v.to_string()` (clippy::useless_format)
+3. `src/execution_engine.rs:959` — `execute_show_processlist_impl` 加 `#[allow(dead_code)]` + 4 行说明; 该函数确实被 `execution_engine_tests::test_executor_show_processlist_v312_35` 调用, lib-only clippy 看不到 test caller 属 false positive
+
+**修复后验证**: `cargo clippy --all-features -- -D warnings` exit=0; `cargo test --lib show_processlist` 2/2 passed.
+
+### 10.2 Remaining pre-existing clippy issues (honest disclosure)
+
+`cargo clippy --all-features --all-targets -- -D warnings` 仍有 issues 但**不在 §10 已知块**,且都 pre-date V313:
+
+- `crates/tools/src/traits.rs:79` `unused_mut` on `with_create_dir_err` (last touch 17abcecd7b, v311-TEST-INFRA 遗留)
+- `crates/sqlrustgo-mysql-server` 多个 `unused_must_use` warnings on `shutdown`/`capture` 等 (last touch 在 V3.12 早期, V313 docs 未触及)
+
+这些需要在后续 Sprint (尤其 SPRINT-S4 V312-56 治理 + SPRINT-S1 GMP) 实施时一起修,**不阻塞**当前 SETUP PR 合并。修复出处建议列入后续独立的 `clippy-cleanup` sprint (TBD)。
+
+**结论**: V313 SETUP 不影响代码态; clippy 修复 commit `9c3e48c5d7` 已并入 `origin/develop/v3.13.0` (non-fast-forward push, 无 force-push, 无 orphan); §10 已知块全部清除; remaining issues 已诚实披露.
 
 ## 11. PR #4326 mergeable=False 说明
 
