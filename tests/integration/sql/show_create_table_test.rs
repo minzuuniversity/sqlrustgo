@@ -41,10 +41,8 @@ fn test_show_create_table_includes_default_clause() {
     // directly. Until the parser gain DEFAULT support, this test
     // asserts the controlled-subset output excludes DEFAULT.
     let mut e = engine();
-    e.execute(
-        "CREATE TABLE users (id INTEGER PRIMARY KEY, status TEXT DEFAULT 'pending')",
-    )
-    .unwrap();
+    e.execute("CREATE TABLE users (id INTEGER PRIMARY KEY, status TEXT DEFAULT 'pending')")
+        .unwrap();
     let out = ddl(&mut e, "SHOW CREATE TABLE users");
     assert!(
         !out.contains("DEFAULT 'pending'"),

@@ -109,6 +109,8 @@ echo "--- B4: Gate Scripts ---"
 check "B4_ALPHA_GATE" "test -f scripts/gate/check_alpha_v3.12.0.sh"
 check "B4_BETA_GATE" "test -f scripts/gate/check_beta_v3.12.0.sh"
 check "B4_COMMON_GATES" "test -f scripts/gate/check_arch_invariants.sh && test -f scripts/gate/check_beta_gate.sh && test -f scripts/gate/check_anti_fabrication.sh"
+check "B4_V312_55_PROCEDURE_TRIGGER_GATE_DEFINED" "test -f scripts/gate/check_v312_procedure_trigger_gate.sh"
+check "B4_V312_STAGE_BOUNDARY" "bash scripts/gate/check_v312_stage_boundary.sh"
 
 # ============================================================
 # B5: Debt register
@@ -170,7 +172,7 @@ if len(explain_files) < 5:
 PY"
 check "B6_V312_47_PARTIAL_CLOSURE" "python3 - <<'PY'
 # Issue #4220 / V312-47 PARTIAL closure gate.
-# Verifies that every README `PARTIAL` row is bound to a Gitea issue,
+# Verifies that every README PARTIAL row is bound to a Gitea issue,
 # not left as a dangling state. Aligns with #4220 acceptance condition:
 #   - README 中每个 PARTIAL 都绑定到具体 issue 或降级为 DEFERRED/UNSUPPORTED.
 import re
@@ -208,7 +210,7 @@ for row in matrix_rows:
     # Skip rows that are actually DEFERRED status, not PARTIAL.
     if '| DEFERRED' in row.split('PARTIAL')[0]:
         continue
-    # Skip rows that say `DONE` (resolved PARTIALs).
+    # Skip rows that say DONE (resolved PARTIALs).
     if '| DONE' in row.split('PARTIAL')[0]:
         continue
     if not issue_pat.search(row):
@@ -235,6 +237,10 @@ if missing:
     raise SystemExit(f'#4220 PARTIAL closure failed: {len(missing)} missing binding(s)')
 print(f'  README PARTIAL rows bound to issues: OK ({len(status_rows)} status + {len(matrix_rows)} matrix rows scanned)')
 PY"
+check "B6_V312_56_ISSUE_DEFINITION" "test -f docs/releases/v3.12.0/issues/V312-56_TEACHING_AND_V400_REMEDIATION_ISSUE_BODIES.md"
+check "B6_V312_56_TEST_PLAN_GATE"   "grep -q 'V312-G27' docs/releases/v3.12.0/TEST_PLAN.md"
+check "B6_V312_56_BETA_STAGE_SCOPE" "grep -q 'V312-56A Metadata/SHOW/information_schema' docs/releases/v3.12.0/STAGE.yaml && grep -q 'V312-56D Prepared statement / wire protocol' docs/releases/v3.12.0/STAGE.yaml"
+check "B6_V312_56_VERIFICATION"     "bash -c 'for f in docs/releases/v3.12.0/evidence/teaching_v400/V312-56-VERIFICATION.md docs/releases/v3.12.0/evidence/v312-56/V312-56-VERIFICATION.md; do test -f \"\$f\" && grep -Eqi \"exit code|exit codes\" \"\$f\" && grep -Eqi \"evidence hash|hashes\" \"\$f\" && exit 0; done; exit 1'"
 
 # ============================================================
 # B7: ALPHA gate sanity check (BETA cannot regress ALPHA state)

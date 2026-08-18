@@ -92,9 +92,7 @@ fn test_json_function_null_for_garbage() {
 #[test]
 fn test_json_type_returns_object() {
     let mut engine = create_engine();
-    let r = engine
-        .execute("SELECT JSON_TYPE('{\"a\":1}')")
-        .unwrap();
+    let r = engine.execute("SELECT JSON_TYPE('{\"a\":1}')").unwrap();
     // JSON_TYPE for object returns "object".
     assert_eq!(
         r.rows,
