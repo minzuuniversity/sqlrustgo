@@ -125,7 +125,7 @@ fn ensure_document(
     let next_id = rows
         .iter()
         .filter_map(|r| {
-            r.get(0).and_then(|v| match v {
+            r.first().and_then(|v| match v {
                 Value::Integer(n) => Some(*n),
                 _ => None,
             })

@@ -4,7 +4,6 @@
 //! Relation types: SOP, CLAUSE, CAPA, DEVIATION, ROLE, EQUIPMENT, AUDIT_FINDING
 
 use crate::schema::{RelationType, TABLE_RELATIONS};
-use serde::{Deserialize, Serialize};
 use sqlrustgo_storage::StorageEngine;
 use sqlrustgo_types::{SqlResult, Value};
 
@@ -58,7 +57,7 @@ impl Relation {
         };
 
         Some(Relation {
-            id: match &row.get(0)? {
+            id: match &row.first()? {
                 Value::Integer(n) => *n,
                 _ => return None,
             },
@@ -133,7 +132,7 @@ pub fn insert_relation(
     let rows = storage.scan(TABLE_RELATIONS)?;
     let next_id = rows
         .iter()
-        .filter_map(|r| match r.get(0)? {
+        .filter_map(|r| match r.first()? {
             Value::Integer(n) => Some(*n),
             _ => None,
         })
@@ -194,7 +193,7 @@ pub fn get_neighbors(
         .filter(|rel| {
             let matches_doc =
                 rel.source_doc_id == Some(doc_id) || rel.target_doc_id == Some(doc_id);
-            let matches_type = relation_type.map_or(true, |t| &rel.relation_type == t);
+            let matches_type = relation_type.is_none_or(|t| &rel.relation_type == t);
             matches_doc && matches_type
         })
         .collect();
@@ -261,6 +260,7 @@ pub fn path_query(
 
     let mut results = Vec::new();
     let mut visited = std::collections::HashSet::new();
+    #[allow(clippy::type_complexity)]
     let mut queue: Vec<(i64, Vec<(i64, Option<i64>)>, Vec<Relation>)> =
         vec![(source_doc_id, vec![(source_doc_id, None)], vec![])];
 

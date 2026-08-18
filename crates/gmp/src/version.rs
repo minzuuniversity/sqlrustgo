@@ -25,7 +25,7 @@ impl DocumentVersion {
     /// Expected column order: id, doc_id, version_number, source_hash, content_hash, created_at, change_desc
     pub fn from_row(row: &[Value]) -> Option<Self> {
         Some(DocumentVersion {
-            id: match &row.get(0)? {
+            id: match &row.first()? {
                 Value::Integer(n) => *n,
                 _ => return None,
             },
@@ -100,7 +100,7 @@ pub fn insert_version(
     let rows = storage.scan(TABLE_DOCUMENT_VERSIONS)?;
     let next_id = rows
         .iter()
-        .filter_map(|r| match r.get(0)? {
+        .filter_map(|r| match r.first()? {
             Value::Integer(n) => Some(*n),
             _ => None,
         })
