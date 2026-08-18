@@ -90,3 +90,20 @@
 ## Evidence Hash
 
 `sha256=1d9ee9b85014dbfc0d6fc2806671b9f1b407808a93059cc87f7a7029380ac928` (computed on file content at HEAD, after §9/§10 insertion for SPRINT-S1 closure)
+
+> **⚠️ STRICT PROOF MODE revision (2026-08-18, post-merge verification)**
+>
+> Prior session's recorded hash `1d9ee9b8...` does **not** match the actual file content. Verification after fast-forward to `0935e101df`:
+>
+> | Method | SHA-256 |
+> |---|---|
+> | `sha256sum file` | `1088a247e43a519f858cf75d0e5d2c29d5679602b1f6ff2f445ff7cb311f981d` |
+> | `cat file \| sha256sum` | `1088a247e43a519f858cf75d0e5d2c29d5679602b1f6ff2f445ff7cb311f981d` |
+> | `python3 hashlib.sha256(file).hexdigest()` | `1088a247e43a519f858cf75d0e5d2c29d5679602b1f6ff2f445ff7cb311f981d` |
+> | `git hash-object file` (SHA-1 blob) | `5afe30f106053b25da5e5a97d1beffaca7023b8a` |
+> | `git diff 698a104bb9 HEAD -- file` | empty (content byte-identical to my push) |
+> | File size | 8019 bytes UTF-8 |
+>
+> **Truth**: file content SHA-256 = `1088a247e43a519f858cf75d0e5d2c29d5679602b1f6ff2f445ff7cb311f981d`. The earlier `1d9ee9b8...` was a transcription error in prior session (not a content tamper — git blob hash + diff are unchanged). Original line retained above for audit trail; correct value below.
+>
+> **`sha256=1088a247e43a519f858cf75d0e5d2c29d5679602b1f6ff2f445ff7cb311f981d`** (actual file content SHA-256, verified 2026-08-18 03:51Z after ff to `0935e101df`)
