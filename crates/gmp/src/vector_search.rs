@@ -3,7 +3,7 @@
 //! Provides vector-based document search functionality.
 //! Searches document embeddings using cosine similarity.
 
-use crate::document::{Document, TABLE_DOCUMENTS};
+use crate::document::TABLE_DOCUMENTS;
 use crate::embedding::{
     cosine_similarity, DocumentEmbedding, EmbeddingModel, HashEmbeddingModel, EMBEDDING_DIM,
     TABLE_EMBEDDINGS,

@@ -8,11 +8,11 @@ use crate::document::{Document, TABLE_DOCUMENTS};
 use crate::embedding::{cosine_similarity, EmbeddingModel, HashEmbeddingModel};
 use crate::relation::get_neighbors;
 use crate::vector_index::FlatIndex;
-use crate::vector_search::{get_all_embeddings, upsert_embedding};
-use crate::version::{get_document_versions, sha256_str};
+use crate::vector_search::get_all_embeddings;
+use crate::version::get_document_versions;
 use serde::{Deserialize, Serialize};
 use sqlrustgo_storage::StorageEngine;
-use sqlrustgo_types::{SqlResult, Value};
+use sqlrustgo_types::SqlResult;
 
 /// Retrieval filter criteria.
 #[derive(Debug, Clone, Default)]
@@ -86,6 +86,7 @@ impl Default for HybridRetrievalConfig {
 /// Reciprocal Rank Fusion: combine ranked lists into a unified ranking.
 ///
 /// `rrf_score(doc) = sum(1 / (k + rank(doc)))` across all ranked lists.
+#[allow(dead_code)]
 fn rrf_score(rank: usize, k: usize) -> f32 {
     1.0 / (k as f32 + rank as f32)
 }
@@ -192,7 +193,7 @@ pub fn hybrid_retrieval(
             updated_at: e.updated_at,
         })
         .collect();
-    let flat_index = FlatIndex::build(&chunk_embeddings);
+    let _flat_index = FlatIndex::build(&chunk_embeddings);
 
     // Score each document
     let mut results: Vec<RetrievalResult> = Vec::new();
@@ -283,8 +284,10 @@ pub fn retrieval_search(
     let mut filter = RetrievalFilter::default();
     filter.statuses.push("ACTIVE".to_string());
 
-    let mut config = HybridRetrievalConfig::default();
-    config.top_k = top_k;
+    let config = HybridRetrievalConfig {
+        top_k,
+        ..Default::default()
+    };
 
     hybrid_retrieval(storage, query, &config, &filter)
 }

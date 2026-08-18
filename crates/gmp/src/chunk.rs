@@ -27,7 +27,7 @@ impl Chunk {
     /// Expected column order: id, doc_id, version_number, chunk_index, section_name, content_hash, content_text, created_at
     pub fn from_row(row: &[Value]) -> Option<Self> {
         Some(Chunk {
-            id: match &row.get(0)? {
+            id: match &row.first()? {
                 Value::Integer(n) => *n,
                 _ => return None,
             },
@@ -136,7 +136,7 @@ pub fn insert_chunk(
     let rows = storage.scan(TABLE_CHUNKS)?;
     let next_id = rows
         .iter()
-        .filter_map(|r| match r.get(0)? {
+        .filter_map(|r| match r.first()? {
             Value::Integer(n) => Some(*n),
             _ => None,
         })
