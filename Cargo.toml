@@ -76,6 +76,7 @@ sqlrustgo-mysql-server = { path = "crates/mysql-server" }
 sqlrustgo-mysql-client = { path = "crates/mysql-client" }
 sqlrustgo-cli = { path = "crates/sqlrustgo-cli" }
 sqlrustgo-tools = { path = "crates/tools" }
+information-schema = { path = "crates/information-schema" }
 tracing = "0.1"
 tracing-subscriber = { version = "0.1", features = ["env-filter"] }
 
@@ -150,6 +151,7 @@ sqlrustgo-cache.workspace = true
 sqlrustgo-catalog.workspace = true
 sqlrustgo-transaction.workspace = true
 sqlrustgo-server.workspace = true
+information-schema.workspace = true
 tokio.workspace = true
 async-trait.workspace = true
 anyhow.workspace = true
