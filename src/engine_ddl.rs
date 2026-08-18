@@ -353,7 +353,64 @@ impl<S: StorageEngine + 'static> ExecutionEngine<S> {
             // rather than an explicit failure — see
             // `execution_engine_tests::test_executor_show_processlist_*`.
             ShowStatement::Processlist { .. } => Ok(ExecutorResult::empty()),
+            // V312-56A / 56A-R4: SHOW WARNINGS / ERRORS / STATUS / VARIABLES.
+            // Controlled-subset executors — no session-warning/error
+            // registry yet, so return empty results with stable schema.
+            // Each handler documents what its real output will look
+            // like once the corresponding MySQL catalog row is wired.
+            ShowStatement::Warnings => self.execute_show_warnings(),
+            ShowStatement::Errors => self.execute_show_errors(),
+            ShowStatement::Status => self.execute_show_status(),
+            ShowStatement::Variables => self.execute_show_variables(),
         }
+    }
+
+    /// V312-56A / 56A-R4: `SHOW WARNINGS`. Returns the current session's
+    /// accumulated warnings as a 3-column result (Level, Code, Message).
+    /// In v3.12 the session accumulator is empty; real wiring is
+    /// deferred to v3.13 (per #4251 / 56A-R4 DEFERRED entry).
+    pub(crate) fn execute_show_warnings(&self) -> SqlResult<ExecutorResult> {
+        // 3-column schema: Level | Code | Message
+        Ok(ExecutorResult::new(Vec::new(), 3))
+    }
+
+    /// V312-56A / 56A-R4: `SHOW ERRORS`. Same schema as WARNINGS;
+    /// returns session errors. Empty in v3.12 (no session-error
+    /// accumulator yet — per #4251 / 56A-R4 DEFERRED entry).
+    pub(crate) fn execute_show_errors(&self) -> SqlResult<ExecutorResult> {
+        Ok(ExecutorResult::new(Vec::new(), 3))
+    }
+
+    /// V312-56A / 56A-R4: `SHOW STATUS`. Returns a fixed catalog of
+    /// server status variables. Controlled-subset v3.12 implementation
+    /// returns a small hard-coded catalog rather than live metrics.
+    pub(crate) fn execute_show_status(&self) -> SqlResult<ExecutorResult> {
+        let rows: Vec<Vec<Value>> = vec![
+            vec![Value::Text("Uptime".to_string()), Value::Integer(0)],
+            vec![Value::Text("Threads".to_string()), Value::Integer(1)],
+            vec![Value::Text("Questions".to_string()), Value::Integer(0)],
+            vec![Value::Text("Slow_queries".to_string()), Value::Integer(0)],
+        ];
+        Ok(ExecutorResult::new(rows, 2))
+    }
+
+    /// V312-56A / 56A-R4: `SHOW VARIABLES`. Returns a fixed catalog of
+    /// server system variables. Controlled-subset v3.12 implementation
+    /// returns a small hard-coded catalog (version, sql_mode, etc.).
+    pub(crate) fn execute_show_variables(&self) -> SqlResult<ExecutorResult> {
+        let rows: Vec<Vec<Value>> = vec![
+            vec![
+                Value::Text("version".to_string()),
+                Value::Text("sqlrustgo-3.12.0-controlled-subset".to_string()),
+            ],
+            vec![Value::Text("sql_mode".to_string()), Value::Text("".to_string())],
+            vec![Value::Text("autocommit".to_string()), Value::Integer(1)],
+            vec![
+                Value::Text("character_set_server".to_string()),
+                Value::Text("utf8".to_string()),
+            ],
+        ];
+        Ok(ExecutorResult::new(rows, 2))
     }
 
     pub(crate) fn execute_show_tables(&self) -> SqlResult<ExecutorResult> {
