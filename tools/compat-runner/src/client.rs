@@ -78,7 +78,7 @@ impl CompatClient {
             ));
         }
         let addr = format!("127.0.0.1:{}", port);
-        let mut stream = TcpStream::connect(&addr)?;
+        let stream = TcpStream::connect(&addr)?;
         stream.set_read_timeout(Some(Duration::from_secs(10))).ok();
         stream.set_write_timeout(Some(Duration::from_secs(10))).ok();
 

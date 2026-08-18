@@ -3,12 +3,11 @@
 //! Provides vector index rebuild functionality for GMP embeddings.
 //! Supports Flat (brute-force) index. HNSW is stubbed for future.
 
-use crate::embedding::{cosine_similarity, DocumentEmbedding, EMBEDDING_DIM};
+use crate::embedding::{cosine_similarity, EMBEDDING_DIM};
 use crate::version::sha256;
 use serde::{Deserialize, Serialize};
 use sqlrustgo_storage::StorageEngine;
 use sqlrustgo_types::{SqlResult, Value};
-use std::collections::HashMap;
 
 /// Vector index type.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
@@ -25,6 +24,7 @@ impl VectorIndexType {
         }
     }
 
+    #[allow(clippy::should_implement_trait)]
     pub fn from_str(s: &str) -> Option<Self> {
         match s.to_uppercase().as_str() {
             "FLAT" => Some(VectorIndexType::Flat),
@@ -56,7 +56,7 @@ pub struct VectorIndexMeta {
 impl VectorIndexMeta {
     pub fn from_row(row: &[Value]) -> Option<Self> {
         Some(VectorIndexMeta {
-            id: match &row.get(0)? {
+            id: match &row.first()? {
                 Value::Integer(n) => *n,
                 _ => return None,
             },
@@ -365,7 +365,7 @@ pub fn rebuild_flat_index(
     let next_id = rows
         .iter()
         .filter_map(|r| {
-            r.get(0).and_then(|v| match v {
+            r.first().and_then(|v| match v {
                 Value::Integer(n) => Some(*n),
                 _ => None,
             })
@@ -443,7 +443,7 @@ pub fn rebuild_flat_index_with_handle(
     let next_id = rows
         .iter()
         .filter_map(|r| {
-            r.get(0).and_then(|v| match v {
+            r.first().and_then(|v| match v {
                 Value::Integer(n) => Some(*n),
                 _ => None,
             })

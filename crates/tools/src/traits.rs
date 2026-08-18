@@ -70,13 +70,13 @@ impl MockIo {
     }
 
     /// Configure `read` to fail with `kind`.
-    pub fn with_read_err(mut self, kind: std::io::ErrorKind) -> Self {
+    pub fn with_read_err(self, kind: std::io::ErrorKind) -> Self {
         *self.read_err.lock() = Some(std::io::Error::new(kind, "mock read error"));
         self
     }
 
     /// Configure `create_dir_all` to fail with `kind`.
-    pub fn with_create_dir_err(mut self, kind: std::io::ErrorKind) -> Self {
+    pub fn with_create_dir_err(self, kind: std::io::ErrorKind) -> Self {
         *self.create_dir_all_err.lock() = Some(std::io::Error::new(kind, "mock dir error"));
         self
     }

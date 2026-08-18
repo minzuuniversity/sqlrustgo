@@ -5,7 +5,7 @@
 
 use crate::chunk::get_chunks_for_version;
 use crate::document::{Document, TABLE_DOCUMENTS};
-use crate::relation::{get_neighbors, path_query, GraphPath, PathEdge, PathNode, Relation};
+use crate::relation::{get_neighbors, GraphPath, PathEdge, Relation};
 use crate::schema::RelationType;
 use crate::version::get_document_versions;
 use serde::{Deserialize, Serialize};
@@ -159,7 +159,7 @@ pub fn project_subgraph(
         .collect();
 
     let rel_rows = storage.scan("gmp_relations")?;
-    let relations: Vec<Relation> = rel_rows
+    let _relations: Vec<Relation> = rel_rows
         .into_iter()
         .filter_map(|r| Relation::from_row(&r))
         .collect();
@@ -191,7 +191,7 @@ pub fn project_subgraph(
         let neighbors: Vec<Relation> = get_neighbors(storage, current_id, None)
             .unwrap_or_default()
             .into_iter()
-            .filter(|r| relation_types.map_or(true, |types| types.contains(&r.relation_type)))
+            .filter(|r| relation_types.is_none_or(|types| types.contains(&r.relation_type)))
             .collect();
 
         for rel in neighbors {
@@ -318,9 +318,9 @@ pub fn get_graph_stats(storage: &dyn StorageEngine) -> SqlResult<GraphStats> {
     };
 
     let mut node_types: Vec<_> = node_type_counts.into_iter().collect();
-    node_types.sort_by(|a, b| b.1.cmp(&a.1));
+    node_types.sort_by_key(|a| std::cmp::Reverse(a.1));
     let mut edge_types: Vec<_> = edge_type_counts.into_iter().collect();
-    edge_types.sort_by(|a, b| b.1.cmp(&a.1));
+    edge_types.sort_by_key(|a| std::cmp::Reverse(a.1));
 
     Ok(GraphStats {
         total_nodes: docs.len(),
