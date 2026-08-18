@@ -833,6 +833,23 @@ pub enum ShowStatement {
     ProcedureStatus {
         pattern: Option<String>,
     },
+    /// V312-56A / 56A-R4 / Issue #4251: MySQL `SHOW WARNINGS`
+    /// (errors/warnings accumulated in the current session).
+    Warnings,
+    /// V312-56A / 56A-R4 / Issue #4251: MySQL `SHOW ERRORS`
+    /// (errors accumulated in the current session; in v3.12 controlled
+    /// subset returns the same rows as SHOW WARNINGS — sqlrustgo does
+    /// not yet distinguish error vs warning severity levels).
+    Errors,
+    /// V312-56A / 56A-R4 / Issue #4251: MySQL `SHOW STATUS`
+    /// (server status variables; in v3.12 controlled subset returns
+    /// a fixed catalog of known status variables — Uptime, Threads_*,
+    /// Questions, Slow_queries).
+    Status,
+    /// V312-56A / 56A-R4 / Issue #4251: MySQL `SHOW VARIABLES`
+    /// (server system variables; in v3.12 controlled subset returns
+    /// a fixed catalog — version, sql_mode, autocommit, character_set_*).
+    Variables,
 }
 
 /// DESCRIBE statement (aliased as DESC)
@@ -9117,6 +9134,28 @@ impl Parser {
             Some(Token::Identifier(ref ident)) if ident.to_uppercase() == "SEQUENCES" => {
                 self.next();
                 Ok(Statement::Show(ShowStatement::Sequences))
+            }
+            // V312-56A / 56A-R4: SHOW WARNINGS / SHOW ERRORS / SHOW STATUS
+            // / SHOW VARIABLES. None of these are keyword-tokenized by
+            // the lexer (Token::Status / Token::Variables are not in
+            // token.rs yet, and WARNINGS / ERRORS aren't either), so all
+            // four arrive as identifiers and we dispatch by uppercased
+            // identifier text.
+            Some(Token::Identifier(ref ident))
+                if matches!(
+                    ident.to_uppercase().as_str(),
+                    "WARNINGS" | "ERRORS" | "STATUS" | "VARIABLES"
+                ) =>
+            {
+                let kw = ident.to_uppercase();
+                self.next();
+                Ok(Statement::Show(match kw.as_str() {
+                    "WARNINGS" => ShowStatement::Warnings,
+                    "ERRORS" => ShowStatement::Errors,
+                    "STATUS" => ShowStatement::Status,
+                    "VARIABLES" => ShowStatement::Variables,
+                    _ => unreachable!(),
+                }))
             }
             Some(Token::Procedure) => {
                 // V312-55A / Issue #4238: SHOW PROCEDURE STATUS [LIKE 'pat']
