@@ -108,7 +108,7 @@ V312-G27 是从 `COMPREHENSIVE_ASSESSMENT_REPORT.md` 派生出来的 Beta 前整
 
 | 子项 | 要求 | 证据 |
 |---|---|---|
-| V312-56A Metadata/SHOW/information_schema | information_schema tables/columns/indexes 或明确 unsupported；SHOW CREATE/COLUMNS/INDEX/DESCRIBE 正反例 | MySQL/e2e fixture + compat gate + `V312-56A_METADATA_TEACHING.md` (56A-R1 DONE @ PR #4323, 56A-R2/R3/R4 DEFERRED → v3.13 RC1) |
+| V312-56A Metadata/SHOW/information_schema | information_schema tables/columns/indexes 或明确 unsupported；SHOW CREATE/COLUMNS/INDEX/DESCRIBE 正反例 | MySQL/e2e fixture + compat gate + `V312-56A_METADATA_TEACHING.md` (56A-R1/R2/R4 DONE @ PR #4323/#4349/#4345, 56A-R3 DEFERRED → v3.13+ MySQL admin extensions) |
 | V312-56B SQL 教学 corpus | teaching corpus manifest、多 oracle、PASS/FAIL/SKIP、issue-linked exclusions | SQLLogicTest/corpus gate + `V312-56B_CORPUS_TEACHING.md` (PR #4327 @ `5c6e640edb`) |
 | V312-56C Transaction/crash recovery lab | BEGIN/COMMIT/ROLLBACK/SAVEPOINT、kill -9/WAL replay、backup/restore count/hash | recovery/compat tests + `V312-56C_TRANSACTION_TEACHING.md` (V312-14 gate PARTIAL,3 FAIL #3965 disclosed) |
 | V312-56D Prepared/wire lab | COM_QUERY/COM_STMT/error/reset/LOAD DATA；TLS/compression DONE 或 DEFERRED | wire/load-data gate + `V312-56D_WIRE_TEACHING.md` (TLS client DEFERRED + wire trace DEFERRED) |

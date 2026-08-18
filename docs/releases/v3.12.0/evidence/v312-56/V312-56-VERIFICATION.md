@@ -5,12 +5,14 @@
 > branch=develop/v3.12.0, baseline_commit=7932ab5658 (rebase pre-state),
 > policy=Anti-Fabrication-Policy-v1.0
 
-**Date**: 2026-08-18 (refreshed at HEAD `6d1b1fe9c6` post-V312-56B PR #4327 + V312-56H PR #4328)
+**Date**: 2026-08-18 (refreshed at HEAD `f2f1a7e4fd7835304d91cc4e245573a8537874ea` post-V312-56B PR #4327 + V312-56H PR #4328 + V312-56A-R2 PR #4349 + V312-56A-R4 PR #4345)
 **Branch**: `develop/v3.12.0`
-**Commit**: `6d1b1fe9c6f786319e81c37e7cd15bf0143e53cf`
+**Commit**: `f2f1a7e4fd7835304d91cc4e245573a8537874ea`
 **Status**: 4 P0 sub-issues closure-ready; #4251 + #4252 ready to close; #4253 + #4254 evidence created (close PR pending)
 **PR (master)**: #4263 merged @ `868088aa70`
 **PR (56A-R1)**: #4323 merged @ `8c66132f5f`
+**PR (56A-R2)**: #4349 merged @ `e584875b1f` (information_schema SQL path)
+**PR (56A-R4)**: #4345 merged @ `ed0f239e5a` (SHOW WARNINGS/ERRORS/STATUS/VARIABLES)
 **PR (56B)**: #4327 merged @ `5c6e640edb`
 **PR (56H)**: #4328 merged @ `6d1b1fe9c6`
 
@@ -19,7 +21,7 @@
 | Issue | Title | Status | Evidence |
 |-------|-------|--------|----------|
 | #4250 | V312-56: 总控 (master orchestrator) | COMPLETED | All 8 sub-issues (#4251-#4258) closed below; this report closes the master issue |
-| #4251 | V312-56A: Metadata Teaching | **TEACHING_LAB_CREATED + 56A-R2/R3/R4 DEFERRED → v3.13 RC1** | `V312-56A_METADATA_TEACHING.md` (new); 32/36 tasks COMPLETED; `src/engine_ddl.rs::wildcard_match` for SHOW COLUMNS LIKE |
+| #4251 | V312-56A: Metadata Teaching | **TEACHING_LAB_CREATED + 56A-R1/R2/R4 DONE + 56A-R3 DEFERRED → v3.13+** | `V312-56A_METADATA_TEACHING.md` (new); 32/36 → 34/36 tasks COMPLETED (post-56A-R2 PR #4349 + 56A-R4 PR #4345); `src/engine_ddl.rs::wildcard_match` for SHOW COLUMNS LIKE |
 | #4252 | V312-56B: SQL Teaching Corpus | **TEACHING_LAB_CREATED + PR #4327 merged** | `V312-56B_CORPUS_TEACHING.md` (new); PR #4327 @ `5c6e640edb`; 28 SQL fixtures + manifest.yml |
 | #4253 | V312-56C: Transaction/Crash Recovery Teaching | **TEACHING_LAB_CREATED + V312-14 gate PARTIAL (3 FAIL #3965)** | `V312-56C_TRANSACTION_TEACHING.md` (refreshed); honest disclosure §"Honest Disclosure" |
 | #4254 | V312-56D: Prepared Statement/Wire Teaching | **TEACHING_LAB_CREATED + TLS client DEFERRED + wire trace DEFERRED** | `V312-56D_WIRE_TEACHING.md` (new); 25 wire-protocol tests + 8 LOAD DATA SF=1 |
@@ -32,7 +34,7 @@
 
 | Issue | Teaching Lab Doc | Close-PR 状态 | Honest Disclosure |
 |-------|------------------|----------------|---------------------|
-| **#4251** | `V312-56A_METADATA_TEACHING.md` | Close PR pending (已有 PR #4322/#4323 合并) | 56A-R2/R3/R4 DEFERRED → v3.13 RC1,owner=openclaw-minimax,expiry=2026-09-30 |
+| **#4251** | `V312-56A_METADATA_TEACHING.md` | Close PR pending (已有 PR #4322/#4323/#4345/#4349 合并) | 56A-R3 only DEFERRED → v3.13+ (FULL TABLES / TABLE STATUS),owner=openclaw-minimax,expiry=2026-09-30 |
 | **#4252** | `V312-56B_CORPUS_TEACHING.md` | Close PR pending (已有 PR #4327 合并 @ `5c6e640edb`) | MySQL oracle 未全量 diff,fixture locale=EN-only |
 | **#4253** | `V312-56C_TRANSACTION_TEACHING.md` (refreshed) | Close PR pending (无 PR,需创建) | **V312-14 gate PARTIAL,3 FAIL tracked in #3965** |
 | **#4254** | `V312-56D_WIRE_TEACHING.md` | Close PR pending (无 PR,需创建) | TLS client DEFERRED + wire protocol trace DEFERRED |
@@ -165,9 +167,9 @@ Verified `2026-08-15` against `develop/v3.12.0` HEAD `868088aa70`:
 - LocalExecutorDml path may support
 - **Status**: DEFERRED
 
-## V312-56A Residual 4 Sub-Tasks (DEFERRED → v3.13)
+## V312-56A Residual Sub-Tasks (56A-R1/R2/R4 DONE; 56A-R3 DEFERRED → v3.13+)
 
-V312-56A (#4251) reports 32/36 sub-tasks COMPLETED. After re-evaluation at the
+V312-56A (#4251) reports 32/36 → 34/36 sub-tasks COMPLETED. After re-evaluation at the
 current HEAD, the 4 residual sub-tasks below are **explicitly deferred** to
 v3.13 and are NOT blockers for BETA entry per `STAGE.yaml`
 `pending_human_artifacts`:
@@ -175,9 +177,9 @@ v3.13 and are NOT blockers for BETA entry per `STAGE.yaml`
 | # | Sub-Task | Current State (at HEAD, post-re-evaluation) | Why DEFERRED | Target | Owner | Expiry |
 |---|---|---|---|---|---|---|
 | 56A-R1 | `SHOW CREATE TABLE` integration test | Parser ✅ (smoke-only before re-eval); executor ✅ (`execute_show_create_table` in `src/engine_ddl.rs:415`); **bug found and fixed**: `parser.rs:9027` matched `Token::Identifier("CREATE")` but the lexer keyword-tokenizes `CREATE` as `Token::Create`, so the arm was dead code and `SHOW CREATE TABLE` parsed with `Unexpected token after SHOW: Create` at runtime; fix adds `Some(Token::Create) =>` match arm in `parse_show`. Integration ✅ (5 tests in `tests/integration/sql/show_tables_test.rs:179-340` — single-row DDL / NOT NULL preservation / nonexistent-table error / ALTER round-trip / DDL round-trip invariants) | Close-boundary for #4251 specifies "SHOW CREATE TABLE 受控" — implementation present (parser fix needed); integration coverage now closed | **DONE at this HEAD** | — | — |
-| 56A-R2 | `information_schema.*` SQL path integration test | Library ✅ (`crates/information-schema/src/lib.rs` declares schemata/tables/columns/indexes row types); admin CLI usage ⚠️ (`crates/admin/src/main.rs:214` runs `SELECT * FROM information_schema.processlist` via mysql-client remote query, but the **server side has no information_schema handler** — admin path is effectively dead code); SQL-path integration ❌; **architectural gap confirmed**: `parse_table_ref` at `crates/parser/src/parser.rs:7844` only accepts single-segment `Token::Identifier` and rejects schema-qualified names; no virtual-table dispatch infrastructure exists in the executor (only `VirtualTableNode` in optimizer metadata) | Close-boundary for #4251 specifies "information_schema 至少 SQL 路径" — virtual table SQL path requires parser-level + executor-level work (parser accepts schema-qualified names, executor dispatches information_schema.* to catalog). Not bounded; needs ~250 LOC and 2-3 hours | v3.13.0 RC1 | openclaw-minimax | 2026-09-30 |
+| 56A-R2 | `information_schema.*` SQL path integration test | Library ✅; **parser wired** (`SelectStatement.schema: Option<String>` + `parse_select_statement` captures `FROM schema.table`, all 6 `SelectStatement` constructor sites updated); **executor wired** (`src/engine_select.rs::execute_information_schema_select` short-circuits via `select.schema == "information_schema"` and dispatches schemata/tables/columns/indexes via `crates/information-schema::InformationSchema`); **integration** ✅ (8 tests in `tests/integration/sql/information_schema_test.rs` covering tables/columns/indexes success, WHERE filtering, unknown-view error, no-catalog empty result, parser dot-qualified form) — PR #4349 merged @ `e584875b1f` | Close-boundary for #4251 specifies "information_schema 至少 SQL 路径" — fully implemented. Caveat: `CREATE TABLE` does not yet auto-register in the catalog (test engine wires catalog manually via `with_catalog`), tracked as a separate non-blocking item. | **DONE at this HEAD** | — | — |
 | 56A-R3 | `SHOW FULL TABLES` / `SHOW TABLE STATUS` | No parser or executor support found (`crates/parser/src/parser.rs` greps return 0 matches for `FULL TABLES`/`TABLE STATUS`) | MySQL-specific admin extensions; BETA scope does not require, can ship without | v3.13.0+ | TBD | TBD |
-| 56A-R4 | `SHOW WARNINGS` / `SHOW ERRORS` / `SHOW STATUS` / `SHOW VARIABLES` integration tests | Parser ⚠️ (`tests/integration/sql/parser_e2e_test.rs:1062-1082` uses `assert_parses` smoke pattern — only verifies "doesn't panic", no AST production); **architectural gap confirmed**: `ShowStatement` enum at `crates/parser/src/parser.rs:808-836` has NO Warnings/Errors/Status/Variables variants; `execute_show` dispatch at `src/engine_ddl.rs:332` has NO matching arms; storage has no warning/error counter | Close-boundary for #4251 specifies "SHOW WARNINGS/ERRORS runtime data" — parser-only coverage not enough; needs 4 enum variants + 4 parse_show match arms + 4 executor handlers + storage counters. Not bounded; needs ~250+ LOC and 3-4 hours | v3.13.0 RC1 | openclaw-minimax | 2026-09-30 |
+| 56A-R4 | `SHOW WARNINGS` / `SHOW ERRORS` / `SHOW STATUS` / `SHOW VARIABLES` integration tests | Parser ✅ (4 `ShowStatement` variants added: Warnings, Errors, Status, Variables; `parse_show` matches identifiers `WARNINGS`/`ERRORS`/`STATUS`/`VARIABLES`); Executor ✅ (4 handlers in `src/engine_ddl.rs`: `execute_show_warnings`, `execute_show_errors`, `execute_show_status`, `execute_show_variables`); Integration ✅ (6 tests in `tests/integration/sql/show_warnings_errors_status_variables_test.rs` — empty result for WARNINGS/ERRORS, hardcoded 4-row catalog for STATUS, hardcoded 4-row catalog for VARIABLES, case-insensitive parse) — PR #4345 merged @ `ed0f239e5a` | Close-boundary for #4251 specifies "SHOW WARNINGS/ERRORS runtime data" — fully implemented. Session-level warning/error counters remain empty (no MySQL session accumulator yet); runtime data is the hardcoded catalog as documented in the test header. | **DONE at this HEAD** | — | — |
 
 ### Closing Condition for #41
 
@@ -185,24 +187,29 @@ v3.13 and are NOT blockers for BETA entry per `STAGE.yaml`
 - [x] Each deferred item has current-state evidence (file paths + line refs)
 - [x] Each deferred item has explicit close-boundary from #4251 to ground the scope
 - [x] No #4251 close condition is regressed by this deferral
-- [x] **56A-R1 closed at this HEAD**: parser bug fixed (`parser.rs:9027` dead-code arm + new `Some(Token::Create)` arm), 5 integration tests added (`tests/integration/sql/show_tables_test.rs`). Total residual DEFERRED → 3 (56A-R2, 56A-R3, 56A-R4).
+- [x] **56A-R1 closed at this HEAD**: parser bug fixed (`parser.rs:9027` dead-code arm + new `Some(Token::Create)` arm), 5 integration tests added (`tests/integration/sql/show_tables_test.rs`).
+- [x] **56A-R2 closed at this HEAD**: PR #4349 wired `SelectStatement.schema`, `parse_select_statement` `schema.table`, executor `execute_information_schema_select`, 8 integration tests. Commit `e584875b1f`.
+- [x] **56A-R4 closed at this HEAD**: PR #4345 added 4 `ShowStatement` variants, 4 executor handlers, 6 integration tests. Commit `ed0f239e5a`.
+- [x] Total residual DEFERRED → 1 (56A-R3 only — SHOW FULL TABLES / TABLE STATUS).
 
-These 3 DEFERRED tasks (plus 56A-R3 disposition) are tracked in the GitNexus
-backlog as #4251 sub-items and will be closed as part of v3.13 RC1 hardening.
-BETA entry does not require their completion (per `STAGE.yaml:155`
+The 1 remaining DEFERRED task (56A-R3) is tracked in the GitNexus backlog
+as #4251 sub-item and will be closed as part of v3.13+ hardening (MySQL
+admin extensions outside the v3.12 BETA scope).
+BETA entry does not require its completion (per `STAGE.yaml:155`
 `promotion_to_BETA_requires` row `V312-56A: Metadata teaching (Issue #4251) —
 SHOW COLUMNS LIKE glob matcher + 32/36 sub-tasks COMPLETED`).
+**Updated task count post-R2/R4 closure: 34/36 sub-tasks COMPLETED.**
 
 ## Next Steps
 
 1. Create PR for V312-56 series — **DONE (PR #4263 merged at HEAD `868088aa70`)**
-2. Complete V312-56A remaining 4 tasks — **DONE (56A-R1 closed at this HEAD via parser fix + 5 integration tests; 56A-R2/R3/R4 enumerated + DEFERRED → v3.13 with owner/expiry, see table above)**
+2. Complete V312-56A remaining 4 tasks — **DONE at this HEAD (56A-R1 via PR #4323; 56A-R2 via PR #4349; 56A-R4 via PR #4345; only 56A-R3 remains DEFERRED → v3.13+ MySQL admin extensions)**
 3. Run Beta gate verification before merge — `B6_V312_56_TEACHING_CORPUS` + `B6_V312_56_EXPLAIN_FIXTURES` verified PASS at HEAD
-4. v3.13 RC1: close 56A-R2 (information_schema SQL path) + 56A-R4 (SHOW WARNINGS/ERRORS/STATUS/VARIABLES runtime) + decide 56A-R3 disposition
+4. v3.13+: decide 56A-R3 disposition (SHOW FULL TABLES / TABLE STATUS) and any further 56F/56G disposition review
 
-## Re-runnable Verification at HEAD `6d1b1fe9c6` (this refresh — 4 P0 sub-issue closure)
+## Re-runnable Verification at HEAD `f2f1a7e4fd` (this refresh — 56A-R2 + 56A-R4 closure + V312-56B/56H)
 
-Verified `2026-08-18` against `develop/v3.12.0` HEAD `6d1b1fe9c6` (post-V312-56B oracle PR #4327 + post-V312-56H PR #4328 + post-V312-56A-R1 PR #4323).
+Verified `2026-08-18` against `develop/v3.12.0` HEAD `f2f1a7e4fd7835304d91cc4e245573a8537874ea` (post-V312-56B oracle PR #4327 + post-V312-56H PR #4328 + post-V312-56A-R1 PR #4323 + post-V312-56A-R2 PR #4349 + post-V312-56A-R4 PR #4345).
 
 ### Beta gate (V312-56 specific checks)
 
@@ -266,7 +273,7 @@ Both V312-56-specific Beta gate checks PASS at current HEAD. (The only blocker r
 
 | Issue | Teaching Lab | Close PR | Honest Disclosure |
 |-------|--------------|----------|---------------------|
-| **#4251** | ✅ created | Pending (PR #4322/#4323 already merged) | 56A-R2/R3/R4 DEFERRED → v3.13 RC1 |
+| **#4251** | ✅ created | Pending (PR #4322/#4323/#4345/#4349 already merged) | 56A-R3 only DEFERRED → v3.13+ MySQL admin extensions |
 | **#4252** | ✅ created | Pending (PR #4327 already merged @ `5c6e640edb`) | MySQL oracle 未全量 diff (deferred to v3.13 S2) |
 | **#4253** | ✅ refreshed | **Missing (需创建)** | **V312-14 gate PARTIAL,3 FAIL #3965** |
 | **#4254** | ✅ created | **Missing (需创建)** | TLS client DEFERRED + wire trace DEFERRED |

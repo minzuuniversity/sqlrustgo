@@ -1,9 +1,9 @@
 # V312-56A: Metadata / SHOW / information_schema 教学与兼容闭环
 
 > **Issue**: #4251
-> **Status**: TEACHING_LAB_CREATED + 56A-R2/R3/R4 DEFERRED → v3.13 RC1
+> **Status**: TEACHING_LAB_CREATED + 56A-R1/R2/R4 DONE + 56A-R3 DEFERRED → v3.13+
 > **Branch**: develop/v3.12.0
-> **HEAD at last refresh**: `6d1b1fe9c6f786319e81c37e7cd15bf0143e53cf`
+> **HEAD at last refresh**: `f2f1a7e4fd7835304d91cc4e245573a8537874ea` (post-56A-R2 PR #4349 + post-56A-R4 PR #4345)
 > **Policy**: Anti-Fabrication-Policy-v1.0
 
 ## §1 Scope
@@ -108,13 +108,19 @@ keyword-tokenize 为 `Token::Create`)。
 
 **Test result**: `cargo test --test show_tables_test --all-features` → **31 passed; 0 failed**
 
-## §5 56A-R2/R3/R4 DEFERRED → v3.13 RC1
+## §5 56A-R3 DEFERRED → v3.13+ (only remaining open item)
 
 | Sub-Task | 当前状态 | DEFERRED 原因 | Owner | Expiry | 预计工作量 |
 |----------|----------|---------------|-------|--------|-----------|
-| **56A-R2** information_schema SQL path | 库已实现,SQL 路径 fail-closed | parser `parse_table_ref` 仅接受单段 identifier,executor 无 virtual-table dispatch 基础设施 | openclaw-minimax | 2026-09-30 | ~250 LOC / 2-3 小时 |
 | **56A-R3** SHOW FULL TABLES / SHOW TABLE STATUS | 无 parser/executor 支持 | MySQL-specific admin extensions,BETA scope 不要求 | TBD | TBD | ~150 LOC / 1-2 小时 |
-| **56A-R4** SHOW WARNINGS / SHOW ERRORS / SHOW STATUS / SHOW VARIABLES | parser 仅 smoke(不产出 AST),executor 无 storage 计数器 | `ShowStatement` enum 缺 4 个 variant;`execute_show` dispatch 缺 4 个 match arm | openclaw-minimax | 2026-09-30 | ~250 LOC / 3-4 小时 |
+
+### Closed at this HEAD (post-56A-R2/R4 closure)
+
+| Sub-Task | 状态 | PR / Commit | Evidence |
+|----------|------|-------------|----------|
+| **56A-R1** SHOW CREATE TABLE integration test | ✅ DONE | PR #4323 @ `8c66132f5f` | 5 tests in `tests/integration/sql/show_tables_test.rs` |
+| **56A-R2** information_schema SQL path | ✅ DONE | PR #4349 @ `e584875b1f` | 8 tests in `tests/integration/sql/information_schema_test.rs`; `src/engine_select.rs::execute_information_schema_select`; `crates/parser/src/parser.rs::parse_select_statement` captures `FROM schema.table` |
+| **56A-R4** SHOW WARNINGS / SHOW ERRORS / SHOW STATUS / SHOW VARIABLES | ✅ DONE | PR #4345 @ `ed0f239e5a` | 6 tests in `tests/integration/sql/show_warnings_errors_status_variables_test.rs`; 4 handlers in `src/engine_ddl.rs` |
 
 ## §6 Verification Commands (re-runnable)
 
@@ -164,7 +170,7 @@ bash scripts/gate/check_v312_21_mysql_compat.sh
 | Run cmd + exit | `cargo test --test show_tables_test --all-features` exit=0,31 passed |
 | 输出摘要 | SHOW CREATE TABLE / SHOW COLUMNS LIKE / SHOW INDEX / information_schema 4/4 实现 |
 | Evidence hash(64-hex) | `sha256=4de2c88cb3d89baeafde9293a60431872d9851e74d7bd925c3cada88b9f392ff` (computed 2026-08-18, content pre-append) |
-| Remaining risk | 56A-R2/R3/R4 DEFERRED → v3.13 RC1,owner=openclaw-minimax,expiry=2026-09-30 |
+| Remaining risk | 56A-R3 DEFERRED → v3.13+ (MySQL admin extensions: SHOW FULL TABLES / SHOW TABLE STATUS),owner=TBD,expiry=TBD |
 
 ## §9 Provenance
 
