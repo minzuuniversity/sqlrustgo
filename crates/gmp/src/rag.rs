@@ -116,7 +116,7 @@ fn build_citation(result: &RetrievalResult, snippet_window: usize) -> Citation {
 
 fn extract_snippet(text: &str, window: usize) -> String {
     let sentences: Vec<_> = text
-        .split(|c: char| c == '.' || c == '!' || c == '?')
+        .split(|c: char| ['.', '!', '?'].contains(&c))
         .filter(|s| !s.trim().is_empty())
         .collect();
 

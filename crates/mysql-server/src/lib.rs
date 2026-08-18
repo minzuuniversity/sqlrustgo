@@ -14,7 +14,6 @@ use sqlrustgo_storage::{
     BinaryTableStorage, BoxStorageEngine, CheckpointManager, FileStorage, MemoryStorage,
     ParallelWalStorage, StorageEngine, WalStorage,
 };
-use sqlrustgo_telemetry::Metrics;
 use sqlrustgo_types::{SqlError, Value};
 use std::collections::HashMap;
 use std::io::{Read, Write};
@@ -2717,7 +2716,7 @@ fn send_result_set<W: Write>(
     cols: &[String],
     ctypes: &[String],
     rows: &[Vec<Value>],
-    mut seq: u8,
+    seq: u8,
     cap: u32,
 ) -> MySqlResult<u8> {
     send_result_set_with_more(w, cols, ctypes, rows, seq, cap, 0)
@@ -7331,7 +7330,7 @@ pub mod testing {
                     Err(e) if e.kind() == std::io::ErrorKind::AddrInUse => {
                         // Another process holds the port — store a passthrough
                         // handle in the slot, then retrieve via the normal path.
-                        let passthrough = EphemeralHandle {
+                        let _passthrough = EphemeralHandle {
                             port,
                             shutdown: None,
                             join: std::sync::Mutex::new(None),
