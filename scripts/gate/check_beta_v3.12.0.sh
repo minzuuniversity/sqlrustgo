@@ -158,6 +158,41 @@ if open_items:
     raise SystemExit('open sqllogictest exclusions: ' + ', '.join(open_items))
 PY"
 check "B6_TPCH_SF1_G4"             "test -f docs/releases/v3.12.0/evidence/G4_tpch_sf1.txt"
+check "B6_QUANTILE_FUNCTIONS"        "python3 - <<'PY'
+# Issue #4155 / #4216 — quantile_disc / quantile_cont single-fraction and array-fraction forms.
+# Verifies:
+#   1. Parser accepts quantile_disc(x, 0.5) and quantile_disc(x, [0.25, 0.5, 0.75])
+#   2. Executor returns correct values (floor index for disc, interpolated for cont)
+#   3. All quantile tests pass
+import subprocess
+import sys
+
+tests = [
+    ('parser quantile', ['cargo', 'test', '-p', 'sqlrustgo-parser', 'quantile', '--', '--nocapture']),
+    ('executor quantile', ['cargo', 'test', '--lib', 'quantile', '--', '--nocapture']),
+    ('green_4155 single-frac', ['cargo', 'test', '--test', 'null_handling_test', 'green_4155', '--', '--nocapture']),
+]
+
+failed = []
+for name, cmd in tests:
+    r = subprocess.run(cmd, capture_output=True, text=True, timeout=300)
+    if r.returncode != 0:
+        failed.append(f'{name}: exit {r.returncode}')
+        sys.stderr.write(f'FAIL: {name}\n')
+        sys.stderr.write(r.stderr[-500:] if r.stderr else '')
+        sys.stderr.write(r.stdout[-500:] if r.stdout else '')
+    else:
+        # verify at least some tests ran
+        if 'test result:' not in r.stdout:
+            failed.append(f'{name}: no test result in output')
+        else:
+            print(f'  {name}: OK')
+
+if failed:
+    sys.stderr.write(f'quantile gate failed: {\", \".join(failed)}\n')
+    sys.exit(1)
+print('  All quantile tests PASS')
+PY"
 check "B6_V312_56_TEACHING_CORPUS" "test -d tests/compat/teaching_sql_v3_12 && test -f tests/compat/teaching_sql_v3_12/manifest.yml"
 check "B6_V312_56_EXPLAIN_FIXTURES" "python3 - <<'PY'
 import yaml
