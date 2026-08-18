@@ -1,5 +1,5 @@
 # V313-MASTER Documentation Inventory (SHA-256)
-# Generated 2026-08-18 (final pass — after §10/§11 additions)
+# Generated 2026-08-18 (pass — after §10.1 clippy resolution + §10.2 remaining honest disclosure)
 # Format: <sha256>  <path>
 # Self-reference note: This file's own SHA-256 is anchored separately to avoid
 # the "include your own hash" chicken-and-egg problem. See git log for the
@@ -22,7 +22,7 @@ ab3b1ac81430e0a2e9a88012da87987afd288776d25f2483e783bf6848172f39  docs/releases/
 daa28c8216ce1c83a042254a3fc5a9460dc68f843a80f2724eff8e34993d82ad  docs/releases/v3.13.0/V313-MASTER-PLAN.md
 15bd386c58c6bc7b09b3ebc68e8ea25ebb9fc32e1f7eca92cb1d3425697dfe86  docs/releases/v3.13.0/V313-STRICT-CLOSE-STANDARDS.md
 d8203c83ac0cfefa0f9b1e8b14e0562e5441f32760bedd02f0ea5b634c926cc4  docs/releases/v3.13.0/PR-4313-DESCRIPTION.md
-d4adbe2973f57e56288e81b0e284d5473756a4b1323365dae89bd95924db232a  docs/releases/v3.13.0/V313-SETUP-VERIFICATION.md
+9bd5a002fec3b68277ebd2138f55275d1614d46f9ee5dbdf3658bf2fe0acd73e  docs/releases/v3.13.0/V313-SETUP-VERIFICATION.md
 
 # Self-reference anchor (this file's own SHA-256 is NOT included to avoid cyclic dependency):
 # sha256=<captured at commit time, see git log>
