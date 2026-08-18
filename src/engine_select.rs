@@ -2053,6 +2053,14 @@ impl<S: StorageEngine + 'static> ExecutionEngine<S> {
         if where_expr_has_correlated_subquery(where_expr) {
             return None;
         }
+        // V312-48-Q5/#4273 & Q9: bail out when nation-bridge pattern detected.
+        // The c_nationkey = s_nationkey bridge requires force_orders_first
+        // to prevent supplier being joined via nation-bridge before orders.
+        // The auto-rewrite loop (tpch_reorder_extra_tables) correctly applies
+        // force_orders_first, but try_comma_join_hash_chain does not.
+        if Self::has_tpch_nation_bridge(where_expr) {
+            return None;
+        }
         let storage = self.storage.read();
 
         // Extract bare table name from base_table (which may be "table" or "table|alias")
@@ -3670,6 +3678,29 @@ impl<S: StorageEngine + 'static> ExecutionEngine<S> {
         }
     }
 
+    /// V312-48-Q5/#4273 & Q9: detect nation-bridge pattern.
+    /// Returns true if c_nationkey = s_nationkey exists.
+    fn has_tpch_nation_bridge(where_expr: &Expression) -> bool {
+        Self::flatten_and_local(where_expr).iter().any(|conj| {
+            if let Expression::BinaryOp(l, op, r) = conj {
+                if op == "=" {
+                    let l_is_c = matches!(l.as_ref(), Expression::Identifier(n) if n.starts_with("c_"));
+                    let l_is_s = matches!(l.as_ref(), Expression::Identifier(n) if n.starts_with("s_"));
+                    let r_is_c = matches!(r.as_ref(), Expression::Identifier(n) if n.starts_with("c_"));
+                    let r_is_s = matches!(r.as_ref(), Expression::Identifier(n) if n.starts_with("s_"));
+                    let l_is_nationkey = matches!(l.as_ref(), Expression::Identifier(n) if n.ends_with("_nationkey"));
+                    let r_is_nationkey = matches!(r.as_ref(), Expression::Identifier(n) if n.ends_with("_nationkey"));
+                    (l_is_c && l_is_nationkey && r_is_s && r_is_nationkey)
+                        || (r_is_c && r_is_nationkey && l_is_s && l_is_nationkey)
+                } else {
+                    false
+                }
+            } else {
+                false
+            }
+        })
+    }
+
     /// TPC-H 1-/2-char column-prefix mapping (s/supplier,
     /// ps/partsupp, n/nation, l/lineitem, ...).  Used by the
     /// predicate-pushdown pipeline to convert a table name
@@ -4105,6 +4136,7 @@ impl<S: StorageEngine + 'static> ExecutionEngine<S> {
             }
         }
         Some(SubqueryIndex {
+            table_info,
             col_idx,
             qualifying_keys,
             qualifying_rows,
@@ -4353,13 +4385,14 @@ impl<S: StorageEngine + 'static> ExecutionEngine<S> {
         // Slow path: residual has outer refs (TPC-H Q21-style).
         // Walk bucket looking for ANY match (NOT EXISTS is FALSE if found).
         let bucket = bucket?;
+        let inner_table_info = &index.table_info;
         for inner in bucket {
             if inner.len() <= index.col_idx {
                 continue;
             }
             let substituted =
                 substitute_outer_refs_in_expr(&index.residual, outer_row, outer_table_info);
-            if eval_predicate(&substituted, inner, /* table_info */ outer_table_info) {
+            if eval_predicate(&substituted, inner, inner_table_info) {
                 return Some(false); // Found a match — NOT EXISTS is false → exclude
             }
         }
@@ -4760,6 +4793,7 @@ fn execute_subq_for_first_col<S: sqlrustgo_storage::StorageEngine + 'static>(
 /// scan.
 #[derive(Debug, Clone)]
 pub struct SubqueryIndex {
+    pub table_info: TableInfo,
     pub col_idx: usize,
     /// O(1) per-outer-row key membership check. Populated during
     /// the build by inserting the key column value of every
