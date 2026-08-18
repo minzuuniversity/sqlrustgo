@@ -174,7 +174,7 @@ TPC-H 的 `22/22 completed` 表示 22 个 query 都跑完且没有 OOM/panic；�
 | v3.11.0 SF=1 | DONE with correctness follow-up | 22/22 completed，519.15s，0 OOM，0 panic | 不能宣称 PostgreSQL/MySQL SHA256 零差异 |
 | v3.12.0 SF=1 close-out | 受控 / PARTIAL→DEFERRED | row count baseline + 8 zero-row per-query binding manifest 已闭环 (22/22 可运行, 14 行结果, 8 zero-row DEFERRED) | cross-engine SHA256 闭环 和 zero-row correctness v3.13 由 [#4221](http://192.168.0.252:3000/openclaw/sqlrustgo/issues/4221) → 子 issue [#4272](http://192.168.0.252:3000/openclaw/sqlrustgo/issues/4272) + [#4273](http://192.168.0.252:3000/openclaw/sqlrustgo/issues/4273)~[#4280](http://192.168.0.252:3000/openclaw/sqlrustgo/issues/4280) 收口 |
 | v3.12.0 SF=10 harness | PARTIAL / blocker | harness 可运行；当前不是完整 60M lineitem 生产证据 | 不能宣称真实 SF=10 全量 parity；[#4020](http://192.168.0.252:3000/openclaw/sqlrustgo/issues/4020)、[#4217](http://192.168.0.252:3000/openclaw/sqlrustgo/issues/4217) 继续整改 |
-| v3.12.0 Bulk-load SF=10 | PARTIAL / OPEN | runner/gate/evidence 记录 3/8 表 match，5/8 大表未完成 | 不能宣称 8 表真实 bulk-load 完成 |
+| v3.12.0 Bulk-load SF=10 | PARTIAL / OPEN | runner/gate/evidence 记录 3/8 表 match，5/8 大表未完成；见 [#4020](http://192.168.0.252:3000/openclaw/sqlrustgo/issues/4020)、[#4217](http://192.168.0.252:3000/openclaw/sqlrustgo/issues/4217) | 不能宣称 8 表真实 bulk-load 完成 |
 
 ### v3.11.0 SF=1 关键数据
 

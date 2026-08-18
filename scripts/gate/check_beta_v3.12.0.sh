@@ -189,32 +189,56 @@ issue_pat = re.compile(r'#\d{3,5}')
 # Strip the row that LITERALLY describes the PARTIAL plan (a link to
 # the plan doc, not a PARTIAL feature row). That row contains the
 # substring 'PARTIAL_FEATURE_REMEDIATION_ISSUE_PLAN' as the link target.
-stripped = '\n'.join(
+lines = [
     line for line in readme.splitlines()
     if 'PARTIAL_FEATURE_REMEDIATION_ISSUE_PLAN.md' not in line
-)
-readme_for_scan = stripped
+]
 
-# 1. README rows in the **status table** (top of README, around line 50-55)
-#    that claim PARTIAL must reference a #NNNN issue in the same row.
-status_rows = re.findall(r'^\|[^|]*\|[^|]*PARTIAL[^|]*\|[^|]*$', readme_for_scan, re.MULTILINE)
-for row in status_rows:
-    if not issue_pat.search(row):
-        missing.append(('README.status', row.strip()))
+# Find all table rows containing PARTIAL. Parse by splitting on '|' and checking columns.
+# Table format: | col1 | col2 (v3.11 status) | col3 (v3.12 status) | col4 (evidence) |
+partial_rows = []
+for line in lines:
+    if '|' not in line:
+        continue
+    cols = [c.strip() for c in line.split('|')]
+    # Filter to rows that look like table rows (5+ cells) and contain PARTIAL
+    if len(cols) >= 4 and 'PARTIAL' in cols[1]:
+        partial_rows.append((line, cols))
 
-# 2. README feature-matrix rows (~121-160) where status is PARTIAL or
-#    PARTIAL/blocker must reference an issue link. Skip rows that have
-#    DEFERRED before PARTIAL (those are DEFERRED rows, not PARTIAL claims).
-matrix_rows = re.findall(r'^\|[^|]*\|[^|]*PARTIAL[^|]*\|[^|]*$', readme_for_scan, re.MULTILINE)
-for row in matrix_rows:
-    # Skip rows that are actually DEFERRED status, not PARTIAL.
-    if '| DEFERRED' in row.split('PARTIAL')[0]:
+# Separate status rows (around line 50-55, col2=v3.11 status, col3=v3.12 status)
+# from matrix rows (around line 100-165, col2=capability, col3=v3.11 status, col4=v3.12 status)
+status_count = 0
+matrix_count = 0
+
+for line, cols in partial_rows:
+    has_issue = bool(issue_pat.search(line))
+    
+    # Determine if this is a status row (col1=capability, col2=v3.11, col3=v3.12)
+    # or a matrix row (col1=capability, col2=label, col3=v3.11 status, col4=v3.12 status)
+    if len(cols) == 4:
+        # Status row format: | capability | v3.11 status | v3.12 status |
+        v312_status = cols[2] if len(cols) > 2 else ''
+        v311_status = cols[1]
+        row_type = 'status'
+        status_count += 1
+    else:
+        # Matrix row format: | capability | label | v3.11 status | v3.12 status | evidence |
+        v312_status = cols[3] if len(cols) > 3 else ''
+        v311_status = cols[2] if len(cols) > 2 else ''
+        row_type = 'matrix'
+        matrix_count += 1
+    
+    # Skip if v3.12 status is DONE (item is resolved)
+    if 'DONE' in v312_status.upper():
         continue
-    # Skip rows that say DONE (resolved PARTIALs).
-    if '| DONE' in row.split('PARTIAL')[0]:
+    
+    # Skip if v3.11 status is DEFERRED (not a PARTIAL claim)
+    if 'DEFERRED' in v311_status.upper():
         continue
-    if not issue_pat.search(row):
-        missing.append(('README.matrix', row.strip()))
+    
+    # This is an unresolved PARTIAL - must have issue reference
+    if not has_issue:
+        missing.append((f'README.{row_type}', line.strip()))
 
 # 3. PARTIAL_FEATURE_REMEDIATION_ISSUE_PLAN.md must exist + have all required sections.
 if not plan.exists():
@@ -235,7 +259,7 @@ if missing:
     for entry in missing:
         print(f'  missing: {entry}', file=sys.stderr)
     raise SystemExit(f'#4220 PARTIAL closure failed: {len(missing)} missing binding(s)')
-print(f'  README PARTIAL rows bound to issues: OK ({len(status_rows)} status + {len(matrix_rows)} matrix rows scanned)')
+print(f'  README PARTIAL rows bound to issues: OK ({status_count} status + {matrix_count} matrix rows scanned, 0 unresolved PARTIAL without issue)')
 PY"
 
 check "B6_V312_56_ISSUE_DEFINITION" "test -f docs/releases/v3.12.0/issues/V312-56_TEACHING_AND_V400_REMEDIATION_ISSUE_BODIES.md"
