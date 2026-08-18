@@ -403,7 +403,10 @@ impl<S: StorageEngine + 'static> ExecutionEngine<S> {
                 Value::Text("version".to_string()),
                 Value::Text("sqlrustgo-3.12.0-controlled-subset".to_string()),
             ],
-            vec![Value::Text("sql_mode".to_string()), Value::Text("".to_string())],
+            vec![
+                Value::Text("sql_mode".to_string()),
+                Value::Text("".to_string()),
+            ],
             vec![Value::Text("autocommit".to_string()), Value::Integer(1)],
             vec![
                 Value::Text("character_set_server".to_string()),
