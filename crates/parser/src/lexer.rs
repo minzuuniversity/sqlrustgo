@@ -365,6 +365,7 @@ impl<'a> Lexer<'a> {
                     "GRANT" => Token::Grant,
                     "REVOKE" => Token::Revoke,
                     "ANALYZE" => Token::Analyze,
+                    "EXPLAIN" => Token::Explain,
                     "FOREIGN" => Token::Foreign,
                     "REFERENCES" => Token::References,
                     "UNIQUE" => Token::Unique,
