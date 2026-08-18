@@ -92,8 +92,9 @@ pub use document::{
 };
 
 pub use embedding::{
-    cosine_similarity, euclidean_distance, generate_embedding, DocumentEmbedding, EmbeddingModel,
-    HashEmbeddingModel, CREATE_EMBEDDINGS_TABLE, DEFAULT_MODEL, EMBEDDING_DIM, TABLE_EMBEDDINGS,
+    cosine_similarity, default_model_name, euclidean_distance, generate_embedding,
+    DocumentEmbedding, EmbeddingModel, HashEmbeddingModel, CREATE_EMBEDDINGS_TABLE, DEFAULT_MODEL,
+    EMBEDDING_DIM, TABLE_EMBEDDINGS,
 };
 
 pub use vector_search::{

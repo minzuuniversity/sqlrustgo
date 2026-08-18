@@ -4,7 +4,7 @@
 //! into SQLRustGo-managed GMP tables.
 
 use crate::chunk::{chunk_text, insert_chunk, ChunkConfig};
-use crate::embedding::generate_embedding;
+use crate::embedding::{default_model_name, generate_embedding};
 use crate::vector_search::upsert_embedding;
 use crate::version::{
     compute_content_hash_from_chunks, find_version_by_source_hash, get_document_versions,
@@ -96,7 +96,7 @@ pub fn ingest_file(
         chunk_hashes.push(chunk_hash);
 
         let embedding = generate_embedding(chunk_text_content);
-        upsert_embedding(storage, idx as i64, &embedding)
+        upsert_embedding(storage, idx as i64, &embedding, default_model_name())
             .map_err(|_| "FAIL: upsert embedding error")?;
     }
 
