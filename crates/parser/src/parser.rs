@@ -556,6 +556,10 @@ pub struct AggregateCall {
 pub struct SelectStatement {
     pub columns: Vec<SelectColumn>,
     pub table: String,
+    /// V312-56A / 56A-R2 / Issue #4251: optional schema prefix from
+    /// `FROM schema.table`. The executor routes `information_schema.<view>`
+    /// to a virtual-table resolver instead of a storage scan.
+    pub schema: Option<String>,
     /// TPC-H Q7/Q8/Q9: FROM `t a` stores `table = "t"`, `from_alias = "a"`.
     /// The executor uses the alias as the column-name prefix in the
     /// scan schema so the user can write `a.col` in subsequent JOIN ON.
@@ -636,6 +640,13 @@ pub struct InsertStatement {
 #[derive(Debug, Clone, PartialEq)]
 pub struct TableRef {
     pub name: String,
+    /// Optional schema/database qualifier (`SELECT ... FROM schema.table`).
+    /// V312-56A / 56A-R2 / Issue #4251: enables `FROM information_schema.<view>`
+    /// virtual-table resolution at the executor level. The parser records
+    /// the prefix; the executor decides whether to route to a virtual
+    /// table (currently only `information_schema`) or to fall through
+    /// to a regular storage scan.
+    pub schema: Option<String>,
     pub alias: Option<String>,
 }
 
@@ -4433,6 +4444,13 @@ impl Parser {
         // RParen means this is a subquery whose caller (parent SELECT) will consume the RParen.
         // TPC-H Sprint 1c: also returns extra_tables (multi-table `FROM t1, t2, t3`
         // list, rest after first).
+        //
+        // V312-56A / 56A-R2: capture the optional `schema` qualifier from
+        // `FROM schema.table` for information_schema routing. Declared in
+        // the outer function scope so the FROM table-list branch (which is
+        // a nested match arm) can populate it, and the final SelectStatement
+        // constructor can read it.
+        let mut schema: Option<String> = None;
         let (table, from_subquery, extra_tables) = match self.current() {
             Some(Token::From) => {
                 self.next(); // consume FROM
@@ -4529,6 +4547,10 @@ impl Parser {
                                     .collect()
                             },
                             table: alias.clone(),
+                            // V312-56A / 56A-R2: subquery-derived
+                            // SelectStatement (FROM subquery path) is
+                            // never schema-qualified.
+                            schema: None,
                             from_alias: None,
                             from_subquery: None,
                             from_values: Some(values),
@@ -4599,6 +4621,7 @@ impl Parser {
                                     expression: None,
                                 }],
                                 table: s.table.clone(),
+                                schema: s.schema.clone(),
                                 from_alias: s.from_alias.clone(),
                                 from_subquery: s.from_subquery.clone(),
                                 from_values: s.from_values.clone(),
@@ -4648,6 +4671,10 @@ impl Parser {
                                                 expression: None,
                                             }],
                                             table: String::new(),
+                                            // V312-56A / 56A-R2: synthetic
+                                            // set-op fallback carries no
+                                            // schema qualifier.
+                                            schema: None,
                                             from_alias: None,
                                             from_subquery: None,
                                             from_values: None,
@@ -4674,6 +4701,10 @@ impl Parser {
                                         expression: None,
                                     }],
                                     table: String::new(),
+                                    // V312-56A / 56A-R2: synthetic
+                                    // set-op fallback carries no
+                                    // schema qualifier.
+                                    schema: None,
                                     from_alias: None,
                                     from_subquery: Some(Box::new(inner_subq)),
                                     from_values: None,
@@ -4748,6 +4779,7 @@ impl Parser {
                                 expression: None,
                             }],
                             table: first_table.clone(),
+                            schema: None,
                             from_alias: first_alias.clone(),
                             from_subquery: None,
                             from_values: None,
@@ -4813,10 +4845,39 @@ impl Parser {
                     // FROM table_list — TPC-H Sprint 1c: collect table names.
                     // First goes into `table`; the rest into `extra_tables` for
                     // later auto-rewrite into chain JOINs.
-                    let first_table = match self.next() {
+                    // V312-56A / 56A-R2: also capture `schema` qualifier
+                    // (`FROM schema.table`) for information_schema routing.
+                    let first_table_raw = match self.next() {
                         Some(Token::Identifier(name)) => name,
                         Some(t) => return Err(format!("Expected table name, got {:?}", t)),
                         None => return Err("Expected table name".to_string()),
+                    };
+                    // V312-56A / 56A-R2: if the first identifier is followed
+                    // by `.`, the left side is a schema qualifier (`FROM
+                    // information_schema.tables`) and the right side is the
+                    // actual table. We capture the schema into the outer
+                    // `schema` binding (declared before the FROM match) so
+                    // the final SelectStatement constructor can route the
+                    // query to the information_schema virtual-table
+                    // executor.
+                    let first_table = if matches!(self.current(), Some(Token::Dot)) {
+                        self.next(); // consume `.`
+                        let t = match self.next() {
+                            Some(Token::Identifier(name)) => name,
+                            Some(t) => {
+                                return Err(format!(
+                                    "Expected table name after `.`, got {:?}",
+                                    t
+                                ))
+                            }
+                            None => {
+                                return Err("Expected table name after `schema.`".to_string())
+                            }
+                        };
+                        schema = Some(first_table_raw.clone());
+                        t
+                    } else {
+                        first_table_raw
                     };
                     // Sprint 5 v4: handle the FIRST table's inline alias
                     // BEFORE the comma loop, so the loop sees the comma
@@ -5031,6 +5092,11 @@ impl Parser {
         } else {
             None
         };
+
+        // V312-56A / 56A-R2: `schema` (declared before the FROM match) is
+        // populated in the FROM table-list branch above when a `schema.`
+        // qualifier is present. Defaults to None for subquery, VALUES,
+        // plain table, and JOIN paths.
 
         // TPC-H Sprint 1c: auto-rewrite `FROM t1, t2, t3 WHERE p1 AND p2 AND ...`
         // into `FROM t1 JOIN t2 ON p_extracted JOIN t3 ON p_extracted WHERE p_rest`.
@@ -5699,6 +5765,10 @@ impl Parser {
         Ok(SelectStatement {
             columns,
             table,
+            // V312-56A / 56A-R2: populate `schema` from the parse path
+            // (already captured in the local `schema` binding earlier
+            // in this function via parse_table_ref).
+            schema,
             from_alias,
             from_subquery,
             from_values: None,
@@ -7898,12 +7968,29 @@ impl Parser {
     }
 
     fn parse_table_ref(&mut self) -> Result<TableRef, String> {
-        let name = match self.next() {
+        let mut name = match self.next() {
             Some(Token::Identifier(name)) => name,
             _ => return Err("Expected table name".to_string()),
         };
+        // V312-56A / 56A-R2 / Issue #4251: parse schema.table
+        // qualification (`FROM information_schema.tables`). Capture the
+        // leading identifier; if a `.` follows, treat it as the
+        // schema prefix and advance to read the table name.
+        let mut schema: Option<String> = None;
+        if matches!(self.current(), Some(Token::Dot)) {
+            self.next(); // consume `.`
+            schema = Some(name);
+            name = match self.next() {
+                Some(Token::Identifier(n)) => n,
+                _ => return Err("Expected table name after `schema.`".to_string()),
+            };
+        }
         let alias = self.parse_optional_alias()?;
-        Ok(TableRef { name, alias })
+        Ok(TableRef {
+            name,
+            schema,
+            alias,
+        })
     }
 
     fn parse_table_ref_list(&mut self, terminator: Token) -> Result<Vec<TableRef>, String> {
@@ -14956,6 +15043,32 @@ fn test_parse_select_having() {
 #[test]
 fn test_parse_select_distinct() {
     assert!(parse("SELECT DISTINCT x FROM t").is_ok());
+}
+
+// V312-56A / 56A-R2 / Issue #4251: parse the `schema.table` form in
+// FROM and capture the qualifier into SelectStatement.schema. Used by
+// the information_schema virtual-table executor to route
+// `SELECT ... FROM information_schema.<view>` without touching storage.
+#[test]
+fn test_parse_select_with_schema_qualifier() {
+    let stmt = parse("SELECT * FROM information_schema.tables").unwrap();
+    if let Statement::Select(s) = stmt {
+        assert_eq!(s.schema.as_deref(), Some("information_schema"));
+        assert_eq!(s.table, "tables");
+    } else {
+        panic!("expected SELECT statement");
+    }
+}
+
+#[test]
+fn test_parse_select_without_schema_qualifier() {
+    let stmt = parse("SELECT * FROM users").unwrap();
+    if let Statement::Select(s) = stmt {
+        assert!(s.schema.is_none(), "no schema qualifier expected");
+        assert_eq!(s.table, "users");
+    } else {
+        panic!("expected SELECT statement");
+    }
 }
 
 #[test]

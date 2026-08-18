@@ -148,6 +148,14 @@ mod tests {
     fn table(name: &str) -> TableRef {
         TableRef {
             name: name.to_string(),
+            // V312-56A / 56A-R2: schema-qualified table references (e.g.
+            // `FROM information_schema.tables`) are recorded as
+            // `schema: Some(...)` on `TableRef`. The executor's
+            // virtual-table interceptor in `engine_select` routes such
+            // tables to the `crates/information-schema` helper instead
+            // of storage. Test/auxiliary TableRef constructions never
+            // set `schema`; they exercise real storage tables only.
+            schema: None,
             alias: None,
         }
     }
