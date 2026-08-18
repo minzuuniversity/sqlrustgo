@@ -99,6 +99,178 @@ fn test_teaching_corpus_oracle_rowset_matches_sqlite() {
     );
 }
 
+/// V312-56E / #4255: Run each `oracle_mode: plan_shape` corpus file
+/// through `ExecutionEngine::execute_explain` and compare the AST-walk
+/// plan dump against the SQLite `EXPLAIN QUERY PLAN` golden after
+/// normalization.
+#[test]
+fn test_teaching_corpus_oracle_plan_shape_matches_sqlite() {
+    let entries = read_manifest();
+    let plan_shape_entries: Vec<&Entry> = entries
+        .iter()
+        .filter(|e| e.oracle_mode == "plan_shape")
+        .collect();
+    assert!(
+        !plan_shape_entries.is_empty(),
+        "no plan_shape entries discovered in manifest"
+    );
+
+    let mut diffs: Vec<OracleDiff> = Vec::new();
+    for entry in &plan_shape_entries {
+        match run_plan_shape_oracle(entry) {
+            Ok(()) => {}
+            Err(diff) => {
+                write_diff_report(entry, &diff);
+                diffs.push(diff);
+            }
+        }
+    }
+
+    assert!(
+        diffs.is_empty(),
+        "{} of {} plan_shape corpus files diverge from SQLite EXPLAIN QUERY PLAN:\n{}",
+        diffs.len(),
+        plan_shape_entries.len(),
+        diffs
+            .iter()
+            .map(|d| d.to_string())
+            .collect::<Vec<_>>()
+            .join("\n")
+    );
+}
+
+// -------- plan_shape oracle execution (V312-56E / #4255) --------
+
+fn run_plan_shape_oracle(entry: &Entry) -> Result<(), OracleDiff> {
+    let sql_path = format!("{}/{}", CORPUS_DIR, entry.path);
+    let raw_sql =
+        fs::read_to_string(&sql_path).unwrap_or_else(|e| panic!("read {}: {}", sql_path, e));
+    let stmts = split_statements(&strip_comments(&raw_sql));
+    assert!(
+        !stmts.is_empty(),
+        "{}: no executable statements after stripping comments",
+        entry.path
+    );
+
+    let storage = Arc::new(RwLock::new(MemoryStorage::new()));
+    let mut engine = ExecutionEngine::new(storage);
+    let mut last_err: Option<String> = None;
+    let mut last_rows: Vec<Vec<Value>> = Vec::new();
+    for stmt in &stmts {
+        match engine.execute(stmt) {
+            Ok(result) => {
+                last_rows = result.rows;
+                last_err = None;
+            }
+            Err(err) => {
+                last_err = Some(format!("{err:?}"));
+            }
+        }
+    }
+    if let Some(err) = last_err {
+        return Err(OracleDiff {
+            path: entry.path.clone(),
+            expected: "<engine should have produced plan rows>".to_string(),
+            actual: err,
+        });
+    }
+
+    let actual_text = normalize_plan_rows(&last_rows);
+    let golden_path = format!("{}/{}", GOLDEN_DIR, entry.path.replace(".sql", ".txt"));
+    let expected_raw = match fs::read_to_string(&golden_path) {
+        Ok(s) => s,
+        Err(e) => {
+            return Err(OracleDiff {
+                path: entry.path.clone(),
+                expected: format!("<missing golden: {e}>"),
+                actual: actual_text,
+            });
+        }
+    };
+
+    let mut expected_lines = normalize_sqlite_plan(&expected_raw);
+    let mut actual_lines = actual_text
+        .lines()
+        .map(|s| s.to_string())
+        .collect::<Vec<_>>();
+    expected_lines.sort();
+    actual_lines.sort();
+
+    if expected_lines == actual_lines {
+        return Ok(());
+    }
+    Err(OracleDiff {
+        path: entry.path.clone(),
+        expected: expected_lines.join("\n"),
+        actual: actual_lines.join("\n"),
+    })
+}
+
+/// Convert SQLRustGo EXPLAIN rows into a normalized multi-line
+/// string. Operators SQLite does not emit are dropped so the two
+/// sides line up structurally.
+fn normalize_plan_rows(rows: &[Vec<Value>]) -> String {
+    let mut out = Vec::new();
+    for row in rows {
+        if let Some(v) = row.first() {
+            let line = v.to_sql_string();
+            if line.starts_with("Projection ")
+                || line == "Distinct"
+                || line.starts_with("Sort (TEMP B-TREE FOR")
+            {
+                continue;
+            }
+            let normalized = if line.starts_with("Sort ") && !line.contains("TEMP") {
+                format!("Sort {}", line.trim_start_matches("Sort "))
+            } else {
+                line.clone()
+            };
+            let normalized = if let Some(rest) = normalized.strip_prefix("GroupBy ") {
+                if rest.ends_with("keys") {
+                    "GroupBy".to_string()
+                } else {
+                    normalized
+                }
+            } else {
+                normalized
+            };
+            out.push(normalized);
+        }
+    }
+    out.join("\n")
+}
+
+/// Normalize a SQLite `EXPLAIN QUERY PLAN` golden into the canonical
+/// operator vocabulary used by SQLRustGo.
+fn normalize_sqlite_plan(raw: &str) -> Vec<String> {
+    let mut out = Vec::new();
+    for line in raw.lines() {
+        let trimmed = line.trim();
+        if trimmed.is_empty() || trimmed == "QUERY PLAN" {
+            continue;
+        }
+        let unindented = trimmed
+            .trim_start_matches("|--")
+            .trim_start_matches("`--")
+            .trim_start_matches("`")
+            .trim_start_matches("|");
+        let mapped = if let Some(rest) = unindented.strip_prefix("SCAN ") {
+            format!("SeqScan {rest}")
+        } else if let Some(rest) = unindented.strip_prefix("SEARCH ") {
+            let table = rest.split_whitespace().next().unwrap_or("");
+            format!("IndexScan {table}")
+        } else if unindented.starts_with("USE TEMP B-TREE FOR GROUP BY") {
+            "GroupBy".to_string()
+        } else if unindented.starts_with("USE TEMP B-TREE FOR ORDER BY") {
+            "Sort".to_string()
+        } else {
+            unindented.to_string()
+        };
+        out.push(mapped);
+    }
+    out
+}
+
 // -------- manifest parsing (hand-rolled, mirrors teaching_corpus_test.rs) --------
 
 fn read_manifest() -> Vec<Entry> {
