@@ -667,6 +667,7 @@ impl<S: StorageEngine + 'static> ExecutionEngine<S> {
 
         match statement {
             Statement::Select(ref select) => self.execute_select(select),
+            Statement::Explain(ref select) => self.execute_explain(select),
             Statement::Insert(ref insert) => self.execute_insert(insert),
             Statement::Update(ref update) => self.execute_update(update),
             Statement::Delete(ref delete) => self.execute_delete(delete),
@@ -769,6 +770,27 @@ impl<S: StorageEngine + 'static> ExecutionEngine<S> {
         with: &sqlrustgo_parser::parser::WithDmlStatement,
     ) -> SqlResult<ExecutorResult> {
         crate::engine_cte::execute_with_dml(self, with)
+    }
+
+    /// V312-56E / #4255: EXPLAIN support. Walks the SelectStatement
+    /// AST and produces a tree-style plan dump (one operator per row).
+    /// This is a controlled-subset EXPLAIN: it covers the simple
+    /// SELECT shapes used by `tests/compat/teaching_sql_v3_12/explain/*`,
+    /// but does NOT yet integrate with the CBO planner's PhysicalPlan
+    /// output (which requires a `plan_select` refactor — deferred).
+    /// Plan lines match the operator vocabulary of the existing
+    /// `crates/executor/src/explain.rs` so the test normalizer can
+    /// compare them to SQLite `EXPLAIN QUERY PLAN` golden files.
+    pub fn execute_explain(
+        &self,
+        select: &sqlrustgo_parser::parser::SelectStatement,
+    ) -> SqlResult<ExecutorResult> {
+        let lines = explain_select_plan(select);
+        let rows: Vec<Vec<Value>> = lines
+            .into_iter()
+            .map(|line| vec![Value::Text(line)])
+            .collect();
+        Ok(ExecutorResult::new(rows, 0))
     }
 
     pub fn execute_insert(&mut self, insert: &InsertStatement) -> SqlResult<ExecutorResult> {
@@ -1658,3 +1680,101 @@ pub use crate::engine_collation::{
     multiset_entries, normalize_row_for_compare, normalize_value_for_collation,
     order_by_expr_value,
 };
+
+// ---------------------------------------------------------------------------
+// V312-56E / #4255 — Controlled-subset EXPLAIN plan dump
+// ---------------------------------------------------------------------------
+//
+// `explain_select_plan` walks a `SelectStatement` AST and emits one
+// operator line per logical step. The line vocabulary is intentionally
+// aligned with the existing `crates/executor/src/explain.rs` operator
+// names and with SQLite `EXPLAIN QUERY PLAN` keywords, so the teaching
+// corpus oracle can compare them after normalization:
+//
+//   SeqScan <table>                (mirrors SQLite `SCAN <table>`)
+//   IndexScan <table>              (mirrors SQLite `SEARCH <table> USING INDEX`)
+//   Filter <expr>                  (WHERE)
+//   HashJoin / NestedLoopJoin      (FROM ... JOIN)
+//   GroupBy <n_keys>               (mirrors `USE TEMP B-TREE FOR GROUP BY`)
+//   Sort <n_keys>                  (ORDER BY; mirrors `USE TEMP B-TREE FOR ORDER BY`)
+//   Limit <n>                      (LIMIT)
+//   Projection <n_cols>            (final SELECT projection)
+//
+// Limitations vs the full CBO planner:
+// - No real cost / row estimates (`estimated_rows` is omitted).
+// - No `IndexScan` heuristic: SELECT always emits `SeqScan` even when
+//   an index exists. This is documented as a known divergence in the
+//   `index_scan.sql` oracle test.
+pub(crate) fn explain_select_plan(
+    select: &sqlrustgo_parser::parser::SelectStatement,
+) -> Vec<String> {
+    use sqlrustgo_parser::parser::{Expression, JoinType};
+    let mut lines: Vec<String> = Vec::new();
+
+    // 1. FROM clause — seq scan (or subquery materialization).
+    if select.from_subquery.is_some() {
+        lines.push(format!("SeqScan {}", select.table));
+    } else if select.join_clause.is_empty() {
+        lines.push(format!("SeqScan {}", select.table));
+    } else {
+        // Each FROM source → SeqScan; then join operators.
+        for join in &select.join_clause {
+            lines.push(format!("SeqScan {}", join.table));
+        }
+        let join_kind = match select.join_clause.first().map(|j| &j.join_type) {
+            Some(JoinType::Inner) => "NestedLoopJoin",
+            Some(JoinType::Left) => "HashJoin",
+            Some(JoinType::Right) => "HashJoin",
+            Some(JoinType::Full) => "HashJoin",
+            Some(JoinType::Cross) => "NestedLoopJoin",
+            None => "NestedLoopJoin",
+        };
+        lines.push(format!("{join_kind}: {} joins", select.join_clause.len()));
+    }
+
+    // 2. WHERE clause → Filter.
+    if let Some(w) = &select.where_clause {
+        lines.push(format!("Filter {}", expr_to_plan_string(w)));
+    }
+
+    // 3. GROUP BY → GroupBy + Sort (TEMP B-TREE FOR GROUP BY).
+    if !select.group_by.is_empty() || !select.aggregates.is_empty() {
+        lines.push(format!("GroupBy {} keys", select.group_by.len().max(1)));
+        lines.push("Sort (TEMP B-TREE FOR GROUP BY)".to_string());
+    }
+
+    // 4. ORDER BY → Sort (TEMP B-TREE FOR ORDER BY).
+    if !select.order_by.is_empty() {
+        lines.push(format!("Sort {} keys", select.order_by.len()));
+        lines.push("Sort (TEMP B-TREE FOR ORDER BY)".to_string());
+    }
+
+    // 5. LIMIT + OFFSET.
+    if let Some(limit) = select.limit {
+        let mut s = format!("Limit {limit}");
+        if let Some(off) = select.offset {
+            s.push_str(&format!(" Offset {off}"));
+        }
+        lines.push(s);
+    } else if let Some(off) = select.offset {
+        lines.push(format!("Limit all Offset {off}"));
+    }
+
+    // 6. DISTINCT → DISTINCT (sort).
+    if select.distinct {
+        lines.push("Distinct".to_string());
+    }
+
+    // 7. Final Projection.
+    lines.push(format!("Projection {} cols", select.columns.len()));
+
+    lines
+}
+
+/// Render an `Expression` for inclusion in a plan line. The corpus
+/// SQL is simple enough that a Debug-format dump is readable; the
+/// oracle normalizer maps whitespace and operator spelling to
+/// canonical form before comparing.
+fn expr_to_plan_string(expr: &sqlrustgo_parser::parser::Expression) -> String {
+    format!("{expr:?}")
+}

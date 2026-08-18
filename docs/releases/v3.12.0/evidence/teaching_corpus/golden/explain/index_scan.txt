@@ -1,0 +1,2 @@
+QUERY PLAN
+`--SEARCH users USING INDEX idx_age (age>?)
