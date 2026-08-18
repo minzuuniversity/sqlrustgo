@@ -22,6 +22,7 @@ use sqlrustgo_parser::{
     get_and_clear_derived_subqueries, AggregateCall, AggregateFunction, Expression,
     JoinClause as ParserJoinClause, JoinType, SelectStatement,
 };
+use information_schema::InformationSchema;
 use sqlrustgo_storage::{StorageEngine, TableInfo};
 use std::cell::RefCell;
 use std::collections::HashMap;
@@ -206,6 +207,18 @@ impl<S: StorageEngine + 'static> ExecutionEngine<S> {
     pub fn execute_select(&self, select: &SelectStatement) -> SqlResult<ExecutorResult> {
         // Debug: print query table structure
         Self::clear_tpch_caches();
+        // V312-56A / 56A-R2 / Issue #4251: route queries against the
+        // standard SQL `information_schema` virtual catalog to a dedicated
+        // handler that reads from the in-memory `Catalog` rather than
+        // scanning storage. This short-circuits the entire physical plan
+        // (no table scan, no CBO stats refresh, no RLS) and projects the
+        // requested columns through the standard `InformationSchema`
+        // accessor in `crates/information-schema`.
+        if let Some(schema) = &select.schema {
+            if schema.eq_ignore_ascii_case("information_schema") {
+                return self.execute_information_schema_select(select);
+            }
+        }
         // V312-22 / Issue #4182: push ANALYZE-collected table stats
         // (including `Histogram`) into `UnifiedCostModel::column_stats` at
         // every SELECT entry. This is cheap when CBO is disabled (we skip
@@ -3098,6 +3111,321 @@ impl<S: StorageEngine + 'static> ExecutionEngine<S> {
             )),
         }
     }
+
+    // ====================================================================
+    // V312-56A / 56A-R2 / Issue #4251: information_schema virtual table
+    // ====================================================================
+    //
+    // The standard SQL `information_schema` is a virtual catalog exposed
+    // by every conformant RDBMS. v3.12 implements it as a thin read-only
+    // projection over the in-memory `sqlrustgo_catalog::Catalog`. The
+    // parser captures the `schema` qualifier in `SelectStatement.schema`
+    // (added in 56A-R2), and `execute_select` short-circuits here before
+    // touching storage / CBO. The supported views are:
+    //
+    //   - information_schema.schemata  (4 cols)
+    //   - information_schema.tables    (6 cols)
+    //   - information_schema.columns   (12 cols)
+    //   - information_schema.indexes   (8 cols)
+    //
+    // Supported subset of WHERE:
+    //   - Equality on a single column (`table_name = 'users'`,
+    //     `table_schema = 'public'`).
+    //   - AND-chained predicates (left-associative).
+    //
+    // Out of scope for 56A-R2: LIKE, OR, JOINs against user tables,
+    // aggregate/ORDER BY on information_schema, multi-table unions across
+    // views. These are tracked separately (see V312-56A follow-ups).
+    fn execute_information_schema_select(
+        &self,
+        select: &SelectStatement,
+    ) -> SqlResult<ExecutorResult> {
+        // Case-insensitive view name match. We accept the singular form
+        // (`information_schema.table`) — most clients use it that way.
+        let view = select.table.to_lowercase();
+        // Pull the (optional) catalog so we can read from
+        // `information_schema::InformationSchema`. When no
+        // catalog is configured (legacy engine builders or pure storage
+        // tests), every view yields zero rows (MySQL/PG return an empty
+        // result, not an error, in that case).
+        let catalog_guard = match self.catalog.as_ref() {
+            Some(arc) => arc.read(),
+            None => return Ok(ExecutorResult::empty()),
+        };
+        let info = InformationSchema::new(&catalog_guard);
+
+        // Materialise every row of the requested view into a
+        // `(column_name, Value)` map. Using HashMap keeps column lookup
+        // O(1) for the WHERE filter and projection; we discard the map
+        // after projection.
+        type RowMap = std::collections::HashMap<String, Value>;
+        let raw_rows: Vec<RowMap> = match view.as_str() {
+            "schemata" => info
+                .get_schemata()
+                .into_iter()
+                .map(|r| {
+                    let mut m: RowMap = std::collections::HashMap::new();
+                    m.insert("catalog_name".to_string(), Value::Text(r.catalog_name));
+                    m.insert("schema_name".to_string(), Value::Text(r.schema_name));
+                    m.insert("schema_owner".to_string(), Value::Text(r.schema_owner));
+                    m
+                })
+                .collect(),
+            "tables" => info
+                .get_tables()
+                .into_iter()
+                .map(|r| {
+                    let mut m: RowMap = std::collections::HashMap::new();
+                    m.insert("table_catalog".to_string(), Value::Text(r.table_catalog));
+                    m.insert("table_schema".to_string(), Value::Text(r.table_schema));
+                    m.insert("table_name".to_string(), Value::Text(r.table_name));
+                    m.insert("table_type".to_string(), Value::Text(r.table_type));
+                    m.insert(
+                        "is_insertable_into".to_string(),
+                        Value::Text(r.is_insertable_into),
+                    );
+                    m
+                })
+                .collect(),
+            "columns" => info
+                .get_columns()
+                .into_iter()
+                .map(|r| {
+                    let mut m: RowMap = std::collections::HashMap::new();
+                    m.insert("table_catalog".to_string(), Value::Text(r.table_catalog));
+                    m.insert("table_schema".to_string(), Value::Text(r.table_schema));
+                    m.insert("table_name".to_string(), Value::Text(r.table_name));
+                    m.insert("column_name".to_string(), Value::Text(r.column_name));
+                    m.insert(
+                        "ordinal_position".to_string(),
+                        Value::Integer(r.ordinal_position as i64),
+                    );
+                    m.insert(
+                        "column_default".to_string(),
+                        r.column_default
+                            .map(Value::Text)
+                            .unwrap_or(Value::Null),
+                    );
+                    m.insert("is_nullable".to_string(), Value::Text(r.is_nullable));
+                    m.insert("data_type".to_string(), Value::Text(r.data_type));
+                    m.insert(
+                        "character_maximum_length".to_string(),
+                        r.character_maximum_length
+                            .map(|v| Value::Integer(v as i64))
+                            .unwrap_or(Value::Null),
+                    );
+                    m.insert(
+                        "numeric_precision".to_string(),
+                        r.numeric_precision
+                            .map(|v| Value::Integer(v as i64))
+                            .unwrap_or(Value::Null),
+                    );
+                    m.insert(
+                        "numeric_scale".to_string(),
+                        r.numeric_scale
+                            .map(|v| Value::Integer(v as i64))
+                            .unwrap_or(Value::Null),
+                    );
+                    m
+                })
+                .collect(),
+            "indexes" => info
+                .get_indexes()
+                .into_iter()
+                .map(|r| {
+                    let mut m: RowMap = std::collections::HashMap::new();
+                    m.insert("table_catalog".to_string(), Value::Text(r.table_catalog));
+                    m.insert("table_schema".to_string(), Value::Text(r.table_schema));
+                    m.insert("table_name".to_string(), Value::Text(r.table_name));
+                    m.insert("index_name".to_string(), Value::Text(r.index_name));
+                    m.insert("column_name".to_string(), Value::Text(r.column_name));
+                    m.insert(
+                        "ordinal_position".to_string(),
+                        Value::Integer(r.ordinal_position as i64),
+                    );
+                    m.insert("is_unique".to_string(), Value::Boolean(r.is_unique));
+                    m.insert("is_primary".to_string(), Value::Boolean(r.is_primary));
+                    m
+                })
+                .collect(),
+            other => {
+                return Err(SqlError::ExecutionError(format!(
+                    "Unknown information_schema view: '{}'. Supported views: \
+                     schemata, tables, columns, indexes.",
+                    other
+                )));
+            }
+        };
+        drop(catalog_guard);
+
+        // Resolve the projected column list. `SELECT *` (or empty) means
+        // emit every column in the view's canonical order.
+        let projected_columns: Vec<String> =
+            if select.columns.is_empty() || select.columns.iter().any(|c| c.name == "*") {
+                information_schema_columns_for(&view)
+            } else {
+                select
+                    .columns
+                    .iter()
+                    .map(|c| c.alias.clone().unwrap_or_else(|| c.name.clone()))
+                    .collect()
+            };
+
+        // Apply WHERE filter (AND-chain of single-column equalities).
+        let filtered: Vec<&RowMap> = raw_rows
+            .iter()
+            .filter(|row| match &select.where_clause {
+                Some(expr) => eval_information_schema_where(expr, row),
+                None => true,
+            })
+            .collect();
+
+        // Project the surviving rows onto the requested columns.
+        let mut rows: Vec<Vec<Value>> = Vec::with_capacity(filtered.len());
+        for row_map in &filtered {
+            let mut out: Vec<Value> = Vec::with_capacity(projected_columns.len());
+            for col_name in &projected_columns {
+                out.push(
+                    row_map
+                        .get(col_name)
+                        .cloned()
+                        .unwrap_or(Value::Null),
+                );
+            }
+            rows.push(out);
+        }
+
+        Ok(ExecutorResult::new(rows, 0))
+    }
+}
+
+/// V312-56A / 56A-R2: return the canonical column-name list for an
+/// `information_schema.<view>` projection. Used both for `SELECT *`
+/// expansion and for the schema-less "empty catalog" fallback.
+fn information_schema_columns_for(view: &str) -> Vec<String> {
+    match view {
+        "schemata" => vec![
+            "catalog_name".to_string(),
+            "schema_name".to_string(),
+            "schema_owner".to_string(),
+        ],
+        "tables" => vec![
+            "table_catalog".to_string(),
+            "table_schema".to_string(),
+            "table_name".to_string(),
+            "table_type".to_string(),
+            "is_insertable_into".to_string(),
+        ],
+        "columns" => vec![
+            "table_catalog".to_string(),
+            "table_schema".to_string(),
+            "table_name".to_string(),
+            "column_name".to_string(),
+            "ordinal_position".to_string(),
+            "column_default".to_string(),
+            "is_nullable".to_string(),
+            "data_type".to_string(),
+            "character_maximum_length".to_string(),
+            "numeric_precision".to_string(),
+            "numeric_scale".to_string(),
+        ],
+        "indexes" => vec![
+            "table_catalog".to_string(),
+            "table_schema".to_string(),
+            "table_name".to_string(),
+            "index_name".to_string(),
+            "column_name".to_string(),
+            "ordinal_position".to_string(),
+            "is_unique".to_string(),
+            "is_primary".to_string(),
+        ],
+        // Unknown view — emit no columns. The caller will error
+        // before reaching here, so this branch is unreachable in
+        // practice, but we keep a defensive fallback.
+        _ => Vec::new(),
+    }
+}
+
+/// V312-56A / 56A-R2: evaluate a single-column `=` predicate against a
+/// materialised `information_schema` row. Supports:
+///   - Identifier = Literal (`table_name = 'users'`)
+///   - Literal = Identifier (commutative form)
+///   - AND / OR of two such predicates
+/// Other shapes (LIKE, IN, function calls, ...) return `false` rather
+/// than erroring — we treat unknown predicate forms as "filter this
+/// row out" so a malformed WHERE clause never panics the executor on a
+/// virtual catalog.
+fn eval_information_schema_where(
+    expr: &Expression,
+    row: &std::collections::HashMap<String, Value>,
+) -> bool {
+    match expr {
+        Expression::BinaryOp(left, op, right) if op.eq_ignore_ascii_case("AND") => {
+            eval_information_schema_where(left, row)
+                && eval_information_schema_where(right, row)
+        }
+        Expression::BinaryOp(left, op, right) if op.eq_ignore_ascii_case("OR") => {
+            eval_information_schema_where(left, row)
+                || eval_information_schema_where(right, row)
+        }
+        Expression::BinaryOp(left, op, right)
+            if op == "=" || op.eq_ignore_ascii_case("IS") =>
+        {
+            let (col, val) = match (left.as_ref(), right.as_ref()) {
+                (Expression::Identifier(c), Expression::Literal(v)) => (c.clone(), v.clone()),
+                (Expression::Literal(v), Expression::Identifier(c)) => (c.clone(), v.clone()),
+                _ => return false,
+            };
+            let row_val = match row.get(&col) {
+                Some(v) => v,
+                None => return false,
+            };
+            match (row_val, &parse_information_schema_literal(&val)) {
+                (Value::Text(a), Value::Text(b)) => a == b,
+                (Value::Integer(a), Value::Integer(b)) => a == b,
+                (Value::Float(a), Value::Float(b)) => (a - b).abs() < f64::EPSILON,
+                (Value::Boolean(a), Value::Boolean(b)) => a == b,
+                // NULL = anything → false (SQL three-valued logic).
+                (Value::Null, _) | (_, Value::Null) => false,
+                _ => false,
+            }
+        }
+        // Unknown predicate shapes conservatively drop the row.
+        _ => false,
+    }
+}
+
+/// V312-56A / 56A-R2: best-effort typed parsing of a SQL literal string
+/// for the WHERE comparison. Handles:
+///   - `'string'` → Text
+///   - `42`, `-3` → Integer
+///   - `1.5` → Float
+///   - `true` / `false` → Boolean
+///   - `NULL` → Null
+/// Anything else falls back to Text so column-name = "users" still
+/// works.
+fn parse_information_schema_literal(s: &str) -> Value {
+    let trimmed = s.trim();
+    if trimmed.eq_ignore_ascii_case("NULL") {
+        return Value::Null;
+    }
+    if trimmed.eq_ignore_ascii_case("TRUE") {
+        return Value::Boolean(true);
+    }
+    if trimmed.eq_ignore_ascii_case("FALSE") {
+        return Value::Boolean(false);
+    }
+    // String literal: single quotes around content.
+    if trimmed.starts_with('\'') && trimmed.ends_with('\'') && trimmed.len() >= 2 {
+        return Value::Text(trimmed[1..trimmed.len() - 1].to_string());
+    }
+    if let Ok(i) = trimmed.parse::<i64>() {
+        return Value::Integer(i);
+    }
+    if let Ok(f) = trimmed.parse::<f64>() {
+        return Value::Float(f);
+    }
+    Value::Text(trimmed.to_string())
 }
 
 /// Which side of a single join a resolved column index belongs to, or a
