@@ -6,7 +6,7 @@
 //! - Every file has at least a SQLite oracle (MySQL/PostgreSQL optional).
 //! - Every FAIL/SKIP entry carries `issue_link`, `owner`, `expiry`,
 //!   and a close boundary.
-//! - The corpus does not silently `#[ignore]` any test.
+//! - The corpus does not silently skip any test via the Rust ignore attribute.
 //!
 //! These tests are intentionally meta-tests: they verify manifest
 //! integrity, file presence, and the structural oracle contract
