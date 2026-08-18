@@ -967,18 +967,6 @@ path = "tests/integration/sql/check_data.rs"
 name = "describe_table_test"
 path = "tests/integration/sql/describe_table_test.rs"
 [[test]]
-name = "show_columns_test"
-path = "tests/integration/sql/show_columns_test.rs"
-[[test]]
-name = "show_index_test"
-path = "tests/integration/sql/show_index_test.rs"
-[[test]]
-name = "show_create_table_test"
-path = "tests/integration/sql/show_create_table_test.rs"
-[[test]]
-name = "information_schema_test"
-path = "tests/integration/sql/information_schema_test.rs"
-[[test]]
 name = "eval_22_vs_sf01"
 path = "tests/integration/sql/eval_22_vs_sf01.rs"
 [[test]]
@@ -1170,6 +1158,9 @@ path = "tests/integration/tpch/tpch_q9_audit.rs"
 [[test]]
 name = "tpch_sf01_22_queries_wire_test"
 path = "tests/integration/tpch/tpch_sf01_22_queries_wire_test.rs"
+[[test]]
+name = "tpch_sf01_oracle_dump"
+path = "tests/integration/tpch/tpch_sf01_oracle_dump_test.rs"
 [[test]]
 name = "tpch_sf01_22_vs_3engines"
 path = "tests/integration/tpch/tpch_sf01_22_vs_3engines.rs"
