@@ -52,7 +52,7 @@ v3.13.0 启动已完成 S0 blocker 全部移除:
 
 ## 提交列表
 
-本 PR 包含 14 个 commit (从 `9554dee2bb` 到 `63d01aa9bb`):
+本 PR 包含 20 个 commit (从 `9554dee2bb` 到 `23b4a8bf26`):
 
 | Commit | 描述 |
 |---|---|
@@ -76,6 +76,8 @@ v3.13.0 启动已完成 S0 blocker 全部移除:
 | `5e389b4b68` | docs(v3.13.0): SPRINT-S4 V312-56 teaching lab plan (#4250-#4258) |
 | `be0381deb4` | docs(v3.13.0): SPRINT-S5 meta closure plan (#3887 + #4220) |
 | `63d01aa9bb` | docs(v3.13.0): SPRINT-S6 array-fraction quantile plan (#4216) |
+| `e6d3f0e146` | docs(v3.13.0): archive V313-MASTER PR #4313 description locally |
+| `23b4a8bf26` | docs(v3.13.0): V313-MASTER setup self-verification report |
 
 ## 测试计划
 
