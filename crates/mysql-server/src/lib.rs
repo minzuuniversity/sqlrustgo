@@ -3840,6 +3840,8 @@ fn statement_kind(parsed: &Result<Statement, String>) -> &'static str {
             | Statement::Deallocate { .. } => "PREPARED_STMT",
             // Round-21 / Issue #4218: KILL admin statement.
             Statement::Kill { .. } => "KILL",
+            // V312-56E / Issue #4255: EXPLAIN plan-shape oracle.
+            Statement::Explain(_) => "EXPLAIN",
         },
     }
 }

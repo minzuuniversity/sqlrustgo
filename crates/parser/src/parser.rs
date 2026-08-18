@@ -56,6 +56,7 @@ pub fn get_and_clear_derived_subqueries() -> std::collections::HashMap<String, B
 #[derive(Debug, Clone, PartialEq)]
 pub enum Statement {
     Select(SelectStatement),
+    Explain(Box<SelectStatement>),
     Insert(InsertStatement),
     Update(UpdateStatement),
     Delete(DeleteStatement),
@@ -1937,6 +1938,7 @@ impl Parser {
     pub fn parse_statement(&mut self) -> Result<Statement, String> {
         match self.current() {
             Some(Token::Select) => self.parse_select(),
+            Some(Token::Explain) => self.parse_explain(),
             Some(Token::Insert) | Some(Token::Replace) => self.parse_insert(),
             Some(Token::Update) => self.parse_update(),
             Some(Token::Delete) => self.parse_delete(),
@@ -3153,6 +3155,43 @@ impl Parser {
 
     fn parse_select(&mut self) -> Result<Statement, String> {
         self.parse_select_or_union()
+    }
+
+    /// V312-56E / #4255: Parse `EXPLAIN <select>` as
+    /// `Statement::Explain(Box<SelectStatement>)`. The optional
+    /// `QUERY PLAN` prefix is accepted but ignored (SQLite-style
+    /// shorthand).
+    fn parse_explain(&mut self) -> Result<Statement, String> {
+        self.next(); // consume EXPLAIN
+                     // Optionally consume QUERY PLAN tokens (SQLite-style).
+        if matches!(
+            self.current(),
+            Some(Token::Identifier(ref s)) if s.to_uppercase() == "QUERY"
+        ) {
+            self.next();
+            if matches!(
+                self.current(),
+                Some(Token::Identifier(ref s)) if s.to_uppercase() == "PLAN"
+            ) {
+                self.next();
+            }
+        }
+        // Expect SELECT (or WITH SELECT) next.
+        match self.current() {
+            Some(Token::Select) => {
+                let inner = self.parse_select_statement()?;
+                Ok(Statement::Explain(Box::new(inner)))
+            }
+            Some(Token::With) => {
+                let stmt = self.parse_with_select()?;
+                if let Statement::WithSelect(ws) = stmt {
+                    Ok(Statement::Explain(Box::new(ws.select)))
+                } else {
+                    Err("EXPLAIN WITH: unexpected statement shape".to_string())
+                }
+            }
+            _ => Err("EXPLAIN must be followed by SELECT".to_string()),
+        }
     }
 
     fn parse_select_or_union(&mut self) -> Result<Statement, String> {
@@ -9033,7 +9072,7 @@ impl Parser {
                 };
                 Ok(Statement::Show(ShowStatement::CreateTable { table }))
             }
-Some(Token::Create) => {
+            Some(Token::Create) => {
                 // V312-56A / #4251: the lexer promotes `CREATE` to
                 // `Token::Create` even when it appears inside a SHOW
                 // statement; accept the keyword form so `SHOW CREATE
