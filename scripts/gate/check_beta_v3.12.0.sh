@@ -71,7 +71,7 @@ echo "Version: $VERSION"
 echo "Branch: $(git rev-parse --abbrev-ref HEAD 2>/dev/null || echo 'unknown') @ $(git rev-parse --short HEAD 2>/dev/null || echo 'unknown')"
 echo ""
 
-# ============================================================
+# =====================================================
 # B1: Build — zero errors
 # ============================================================
 echo "--- B1: Build ---"
@@ -237,10 +237,87 @@ if missing:
     raise SystemExit(f'#4220 PARTIAL closure failed: {len(missing)} missing binding(s)')
 print(f'  README PARTIAL rows bound to issues: OK ({len(status_rows)} status + {len(matrix_rows)} matrix rows scanned)')
 PY"
+
 check "B6_V312_56_ISSUE_DEFINITION" "test -f docs/releases/v3.12.0/issues/V312-56_TEACHING_AND_V400_REMEDIATION_ISSUE_BODIES.md"
 check "B6_V312_56_TEST_PLAN_GATE"   "grep -q 'V312-G27' docs/releases/v3.12.0/TEST_PLAN.md"
 check "B6_V312_56_BETA_STAGE_SCOPE" "grep -q 'V312-56A Metadata/SHOW/information_schema' docs/releases/v3.12.0/STAGE.yaml && grep -q 'V312-56D Prepared statement / wire protocol' docs/releases/v3.12.0/STAGE.yaml"
 check "B6_V312_56_VERIFICATION"     "bash -c 'for f in docs/releases/v3.12.0/evidence/teaching_v400/V312-56-VERIFICATION.md docs/releases/v3.12.0/evidence/v312-56/V312-56-VERIFICATION.md; do test -f \"\$f\" && grep -Eqi \"exit code|exit codes\" \"\$f\" && grep -Eqi \"evidence hash|hashes\" \"\$f\" && exit 0; done; exit 1'"
+=======
+check "B6_V312_56_TEACHING_GAPS" "python3 - <<'PY'
+# Issue #4250 / V312-56 master orchestrator teaching-gap closure gate.
+# Verifies each V312-56B-G sub-issue has at minimum the required artifacts:
+#   - 56B (teaching corpus + manifest): manifest.yml + 28+ SQL files
+#   - 56C (transaction teaching): V312-56C_TRANSACTION_TEACHING.md
+#   - 56D (prepared statement teaching): prepared/* fixtures
+#   - 56E (EXPLAIN teaching): explain/* fixtures + crates/executor/src/explain.rs
+#   - 56F (VIEW/CTE/MERGE disposition): MYSQL_COMPAT_STATUS entries
+#   - 56G (Partition/FullText disposition): MYSQL_COMPAT_STATUS entries
+import sys
+from pathlib import Path
+
+missing = []
+
+# 56B: teaching corpus
+manifest = Path('tests/compat/teaching_sql_v3_12/manifest.yml')
+if not manifest.exists():
+    missing.append('56B.manifest_missing')
+else:
+    sql_count = len(list(Path('tests/compat/teaching_sql_v3_12').rglob('*.sql')))
+    if sql_count < 28:
+        missing.append(f'56B.too_few_sql_files (have {sql_count}, need >=28)')
+
+# 56C: transaction teaching doc
+tx_doc = Path('docs/releases/v3.12.0/evidence/v312-56/V312-56C_TRANSACTION_TEACHING.md')
+if not tx_doc.exists():
+    missing.append('56C.doc_missing')
+
+# 56D: prepared statement fixtures
+prep_dir = Path('tests/compat/teaching_sql_v3_12/prepared')
+if not prep_dir.exists():
+    missing.append('56D.dir_missing')
+else:
+    prep_files = list(prep_dir.glob('*.sql'))
+    if len(prep_files) < 1:
+        missing.append(f'56D.no_sql_files (have {len(prep_files)}, need >=1)')
+
+# 56E: EXPLAIN executor + fixtures
+explain_rs = Path('crates/executor/src/explain.rs')
+if not explain_rs.exists():
+    missing.append('56E.explain_rs_missing')
+explain_dir = Path('tests/compat/teaching_sql_v3_12/explain')
+if not explain_dir.exists():
+    missing.append('56E.dir_missing')
+else:
+    explain_files = list(explain_dir.glob('*.sql'))
+    if len(explain_files) < 5:
+        missing.append(f'56E.too_few_explain (have {len(explain_files)}, need >=5)')
+
+# 56F: VIEW/CTE/MERGE disposition (status entries in MYSQL_COMPAT_STATUS.md)
+compat = Path('docs/releases/v3.12.0/MYSQL_COMPAT_STATUS.md')
+if not compat.exists():
+    missing.append('56F.compat_status_missing')
+else:
+    compat_text = compat.read_text()
+    for keyword, sub in [('CREATE VIEW', '56F.VIEW'), ('WITH RECURSIVE', '56F.CTE'), ('MERGE', '56F.MERGE')]:
+        if keyword not in compat_text:
+            missing.append(f'{sub}.keyword_missing ({keyword})')
+
+# 56G: Partition/FullText disposition
+if not compat.exists():
+    missing.append('56G.compat_status_missing')
+else:
+    compat_text = compat.read_text()
+    for keyword, sub in [('TABLE PARTITION', '56G.PARTITION'), ('FULLTEXT', '56G.FULLTEXT')]:
+        if keyword not in compat_text:
+            missing.append(f'{sub}.keyword_missing ({keyword})')
+
+if missing:
+    for entry in missing:
+        print(f'  missing: {entry}', file=sys.stderr)
+    raise SystemExit(f'#4250 V312-56 teaching gaps: {len(missing)} missing artifact(s)')
+print('  V312-56B-G teaching gaps: all artifacts present')
+PY"
+
 
 # ============================================================
 # B7: ALPHA gate sanity check (BETA cannot regress ALPHA state)
