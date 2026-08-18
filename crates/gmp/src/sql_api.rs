@@ -3,11 +3,12 @@
 //! Provides SQL-compatible API functions for the GMP extension.
 //! These functions work with the sqlrustgo ExecutionEngine.
 
+use crate::audit::{create_audit_log_table, record_audit_log};
 use crate::document::{
     create_gmp_tables, insert_document, insert_document_content, insert_document_keyword,
     DocStatus, NewDocument, TABLE_DOCUMENTS, TABLE_DOCUMENT_CONTENTS,
 };
-use crate::embedding::generate_embedding;
+use crate::embedding::{default_model_name, generate_embedding, TABLE_EMBEDDINGS};
 use crate::vector_search::{
     create_embeddings_table, hybrid_search, upsert_embedding, vector_search, SearchResult,
 };
@@ -81,7 +82,15 @@ impl GmpExecutor {
 
         // Generate and store embedding from content
         let embedding = generate_embedding(content);
-        upsert_embedding(&mut *storage, doc_id, &embedding)?;
+        upsert_embedding(&mut *storage, doc_id, &embedding, default_model_name())?;
+
+        // v3.13.0 §4.2.4 — production wiring: record AuditAction::Import
+        // chained into the audit log. Best-effort: failure does not roll
+        // back the import, but does surface a warning so the operator
+        // knows audit coverage dropped for this op.
+        if let Err(e) = record_import_audit(&mut *storage, doc_id, title) {
+            eprintln!("warning: import audit log write failed: {e}");
+        }
 
         Ok(doc_id)
     }
@@ -157,13 +166,52 @@ impl GmpExecutor {
 
             if !content.is_empty() {
                 let embedding = generate_embedding(&content);
-                upsert_embedding(&mut *storage, doc.id, &embedding)?;
+                upsert_embedding(&mut *storage, doc.id, &embedding, default_model_name())?;
+                // v3.13.0 §4.2.4 — record AuditAction::Update for each
+                // reindexed document. Best-effort.
+                if let Err(e) = record_reindex_audit(&mut *storage, doc.id) {
+                    eprintln!("warning: reindex audit log write failed: {e}");
+                }
                 count += 1;
             }
         }
 
         Ok(count)
     }
+}
+
+fn record_import_audit(
+    storage: &mut dyn StorageEngine,
+    doc_id: i64,
+    title: &str,
+) -> SqlResult<i64> {
+    create_audit_log_table(storage)?;
+    record_audit_log(
+        storage,
+        "system",
+        "IMPORT",
+        TABLE_DOCUMENTS,
+        Some(&doc_id.to_string()),
+        None,
+        Some(title),
+        None,
+        None,
+    )
+}
+
+fn record_reindex_audit(storage: &mut dyn StorageEngine, doc_id: i64) -> SqlResult<i64> {
+    create_audit_log_table(storage)?;
+    record_audit_log(
+        storage,
+        "system",
+        "UPDATE",
+        TABLE_EMBEDDINGS,
+        Some(&doc_id.to_string()),
+        None,
+        None,
+        None,
+        None,
+    )
 }
 
 /// SQL statement builders for GMP operations
@@ -390,6 +438,94 @@ mod tests {
         executor.init().unwrap();
         let count = executor.reindex_all().unwrap();
         assert_eq!(count, 0);
+    }
+
+    // v3.13.0 §4.2.4 — production wiring: import_document records an
+    // AuditAction::Import chained into the audit log.
+    #[test]
+    fn test_gmp_executor_import_writes_audit_log() {
+        use crate::audit::TABLE_AUDIT_LOG;
+        use crate::audit::{get_all_audit_logs, verify_audit_chain};
+        let storage = Arc::new(RwLock::new(MemoryStorage::new()));
+        let executor = GmpExecutor::new(storage.clone());
+        executor.init().unwrap();
+
+        let doc_id = executor
+            .import_document(
+                "Audit Test Doc",
+                "GUIDE",
+                "this is a test for §4.2.4 production wiring",
+                &["audit", "wiring"],
+            )
+            .unwrap();
+        assert!(doc_id > 0);
+
+        // The audit log must exist and contain exactly one IMPORT entry.
+        let inner = storage.read().unwrap();
+        assert!(
+            inner.has_table(TABLE_AUDIT_LOG),
+            "audit log table must exist after import"
+        );
+        let logs = get_all_audit_logs(&*inner).unwrap();
+        assert_eq!(logs.len(), 1, "exactly one audit entry expected");
+        assert_eq!(logs[0].action, "IMPORT");
+        assert_eq!(logs[0].table_name, TABLE_DOCUMENTS);
+        assert_eq!(
+            logs[0].record_id.as_deref(),
+            Some(doc_id.to_string().as_str()),
+            "record_id must reference the imported doc"
+        );
+        assert_eq!(
+            logs[0].new_value.as_deref(),
+            Some("Audit Test Doc"),
+            "new_value must be the imported document title"
+        );
+
+        let (ok, broken_at) = verify_audit_chain(&*inner).unwrap();
+        assert!(ok, "chain must verify; broken_at={:?}", broken_at);
+    }
+
+    // v3.13.0 §4.2.4 — production wiring: reindex_all records an
+    // AuditAction::Update per reindexed document.
+    #[test]
+    fn test_gmp_executor_reindex_writes_audit_log() {
+        use crate::audit::{get_all_audit_logs, verify_audit_chain};
+        let storage = Arc::new(RwLock::new(MemoryStorage::new()));
+        let executor = GmpExecutor::new(storage.clone());
+        executor.init().unwrap();
+
+        executor
+            .import_document("Reindex A", "T", "content A", &["x"])
+            .unwrap();
+        executor
+            .import_document("Reindex B", "T", "content B", &["x"])
+            .unwrap();
+
+        // After two imports: 2 IMPORT entries already in the log.
+        // reindex_all should append one UPDATE per doc → 2 more entries.
+        let count = executor.reindex_all().unwrap();
+        assert_eq!(count, 2);
+
+        let inner = storage.read().unwrap();
+        let logs = get_all_audit_logs(&*inner).unwrap();
+        assert_eq!(
+            logs.len(),
+            4,
+            "2 imports + 2 reindex updates = 4 entries; got {}",
+            logs.len()
+        );
+        // Timeline: IMPORT, IMPORT, UPDATE, UPDATE.
+        assert_eq!(logs[0].action, "IMPORT");
+        assert_eq!(logs[1].action, "IMPORT");
+        assert_eq!(logs[2].action, "UPDATE");
+        assert_eq!(logs[3].action, "UPDATE");
+        // Updates target the embeddings table (reindex changes embeddings).
+        assert_eq!(logs[2].table_name, TABLE_EMBEDDINGS);
+        assert_eq!(logs[3].table_name, TABLE_EMBEDDINGS);
+
+        // The full chain must verify (4 entries chained together).
+        let (ok, broken_at) = verify_audit_chain(&*inner).unwrap();
+        assert!(ok, "chain must verify; broken_at={:?}", broken_at);
     }
 
     #[test]

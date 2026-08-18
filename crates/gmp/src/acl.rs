@@ -328,4 +328,180 @@ mod tests {
         assert_eq!(GmpRole::Admin.as_str(), "ADMIN");
         assert_eq!(GmpRole::BackupOperator.as_str(), "BACKUP_OPERATOR");
     }
+
+    // v3.13.0 §4.2.3 — full 5×11 = 55 ACL matrix coverage test.
+    //
+    // Honest disclosure: the matrix is 5 roles × 11 operations = 55 cells,
+    // not the 5×12=60 originally scoped. GMP has 11 distinct
+    // `GmpOperation` variants — there is no 12th in this sprint. The
+    // matrix below enumerates every (role, op) cell and asserts the
+    // expected decision matches `role_permissions()`.
+    //
+    // Reading convention: each row is a role, each column an operation.
+    // The expected allow/deny is derived from the documented permission
+    // mapping in `role_permissions` above.
+    #[test]
+    fn test_acl_full_matrix_5_roles_x_11_operations() {
+        let roles = [
+            (GmpRole::Admin, "ADMIN"),
+            (GmpRole::Auditor, "AUDITOR"),
+            (GmpRole::Editor, "EDITOR"),
+            (GmpRole::Viewer, "VIEWER"),
+            (GmpRole::BackupOperator, "BACKUP_OPERATOR"),
+        ];
+        let ops = [
+            (GmpOperation::SqlQuery, "SQL_QUERY"),
+            (GmpOperation::VectorSearch, "VECTOR_SEARCH"),
+            (GmpOperation::GraphProjection, "GRAPH_PROJECTION"),
+            (GmpOperation::RetrievalSearch, "RETRIEVAL_SEARCH"),
+            (GmpOperation::DocumentImport, "DOCUMENT_IMPORT"),
+            (GmpOperation::DocumentExport, "DOCUMENT_EXPORT"),
+            (GmpOperation::DocumentApprove, "DOCUMENT_APPROVE"),
+            (GmpOperation::DocumentReview, "DOCUMENT_REVIEW"),
+            (GmpOperation::BackupCreate, "BACKUP_CREATE"),
+            (GmpOperation::BackupRestore, "BACKUP_RESTORE"),
+            (GmpOperation::AuditQuery, "AUDIT_QUERY"),
+        ];
+
+        // Expected matrix derived from role_permissions() definition.
+        // true = allowed, false = denied.
+        // Columns correspond to the `ops` array order above.
+        // Rows correspond to the `roles` array order above.
+        let expected: [[bool; 11]; 5] = [
+            // ADMIN — full access (all 11)
+            [
+                true, true, true, true, true, true, true, true, true, true, true,
+            ],
+            // AUDITOR — read-only + audit (6)
+            [
+                true, true, true, true, false, false, false, true, false, false, true,
+            ],
+            // EDITOR — query + import/export + review (7)
+            [
+                true, true, true, true, true, true, false, true, false, false, false,
+            ],
+            // VIEWER — retrieval + review only (2)
+            [
+                false, false, false, true, false, false, false, true, false, false, false,
+            ],
+            // BACKUP_OPERATOR — backup only (2)
+            [
+                false, false, false, false, false, false, false, false, true, true, false,
+            ],
+        ];
+
+        let mut allowed_count = 0usize;
+        let mut denied_count = 0usize;
+        let total = roles.len() * ops.len();
+        assert_eq!(
+            total, 55,
+            "matrix must be exactly 5×11=55 cells, not 60 (5×12 not in scope)"
+        );
+
+        for (r_idx, (role, role_name)) in roles.iter().enumerate() {
+            for (o_idx, (op, op_name)) in ops.iter().enumerate() {
+                let ctx = AclContext::new("test-user", *role);
+                let decision = check_permission(*role, *op);
+                let actual_allowed = ctx.can(*op);
+                let expect_allowed = expected[r_idx][o_idx];
+                let expect_decision = if expect_allowed { "ALLOWED" } else { "DENIED" };
+                let actual_decision = match &decision {
+                    AccessDecision::Allowed => "ALLOWED",
+                    AccessDecision::Denied { .. } => "DENIED",
+                };
+                assert_eq!(
+                    actual_allowed, expect_allowed,
+                    "matrix[{role_name}][{op_name}] expected={expect_allowed} got={actual_allowed}"
+                );
+                assert_eq!(
+                    actual_decision, expect_decision,
+                    "decision mismatch at [{role_name}][{op_name}]"
+                );
+                if actual_allowed {
+                    allowed_count += 1;
+                } else {
+                    denied_count += 1;
+                }
+                let _ = op_name;
+                let _ = op;
+            }
+            let _ = role;
+            let _ = role_name;
+        }
+
+        // Sanity: count invariants. Sum across all role_permissions() must
+        // equal allowed_count. The expected counts per the matrix above:
+        //   ADMIN=11, AUDITOR=6, EDITOR=7, VIEWER=2, BACKUP_OP=2 → 28
+        assert_eq!(
+            allowed_count + denied_count,
+            55,
+            "every cell must be either allowed or denied — no neutrals"
+        );
+        assert_eq!(
+            allowed_count, 28,
+            "allowed cells: ADMIN=11 + AUDITOR=6 + EDITOR=7 + VIEWER=2 + BACKUP_OP=2 = 28"
+        );
+        assert_eq!(denied_count, 27, "denied cells: 55 - 28 allowed = 27");
+
+        // Also verify role_permissions() counts agree with the matrix.
+        let mut sum_allowed_in_role_perms = 0usize;
+        for (role, _) in roles.iter() {
+            sum_allowed_in_role_perms += role_permissions(*role).len();
+        }
+        assert_eq!(
+            sum_allowed_in_role_perms, 28,
+            "role_permissions() sum must equal matrix allowed count"
+        );
+    }
+
+    // v3.13.0 §4.2.3 — ACL matrix fail-closed sanity.
+    //
+    // Even when a context is well-formed and the role is registered, every
+    // (role, op) cell that maps to `Denied` MUST surface a `String` reason
+    // (no empty-string leaks). This is the contract that
+    // `PermissionGuard::check()` relies on for fail-closed semantics.
+    #[test]
+    fn test_acl_denial_always_carries_reason() {
+        let roles = [
+            GmpRole::Admin,
+            GmpRole::Auditor,
+            GmpRole::Editor,
+            GmpRole::Viewer,
+            GmpRole::BackupOperator,
+        ];
+        let ops = [
+            GmpOperation::SqlQuery,
+            GmpOperation::VectorSearch,
+            GmpOperation::GraphProjection,
+            GmpOperation::RetrievalSearch,
+            GmpOperation::DocumentImport,
+            GmpOperation::DocumentExport,
+            GmpOperation::DocumentApprove,
+            GmpOperation::DocumentReview,
+            GmpOperation::BackupCreate,
+            GmpOperation::BackupRestore,
+            GmpOperation::AuditQuery,
+        ];
+        for role in roles {
+            for op in ops {
+                match check_permission(role, op) {
+                    AccessDecision::Allowed => {
+                        // No reason needed.
+                    }
+                    AccessDecision::Denied { reason } => {
+                        assert!(
+                            !reason.is_empty(),
+                            "denied decision for role={:?} op={:?} must have non-empty reason",
+                            role,
+                            op
+                        );
+                        assert!(
+                            reason.contains("not authorized"),
+                            "denied reason must mention 'not authorized'; got: {reason}"
+                        );
+                    }
+                }
+            }
+        }
+    }
 }

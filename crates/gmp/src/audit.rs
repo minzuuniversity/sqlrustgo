@@ -958,6 +958,242 @@ mod tests {
         assert!(broken_at.is_none());
     }
 
+    // v3.13.0 §4.2.2 — embedding tamper detection (cross-table).
+    //
+    // Honest disclosure: `verify_audit_chain` only protects `gmp_audit_log`
+    // itself. Cross-table tamper detection on `gmp_embeddings` and
+    // `gmp_relations` relies on the discipline that every mutation must
+    // record a corresponding audit-log entry. We test that discipline
+    // here:
+    //
+    //   1. Embedding row exists in `gmp_embeddings`.
+    //   2. Audit log records CREATE + DELETE actions on that row.
+    //   3. `verify_audit_chain` is still intact (audit log self-protecting).
+    //   4. The audit-log timeline correctly reflects the action sequence.
+    //
+    // Out-of-band tamper of `gmp_embeddings` (no audit entry) cannot be
+    // detected by `verify_audit_chain` alone — that requires a future
+    // cross-table hash chain, which is intentionally NOT in this sprint.
+    #[test]
+    fn test_embedding_tamper_audit_log_action_trail() {
+        use crate::embedding::TABLE_EMBEDDINGS;
+        let mut storage = sqlrustgo_storage::MemoryStorage::new();
+        create_audit_log_table(&mut storage).unwrap();
+        crate::vector_search::create_embeddings_table(&mut storage).unwrap();
+
+        // 1. Seed an embedding row.
+        let emb: Vec<f32> = (0..crate::embedding::EMBEDDING_DIM)
+            .map(|i| i as f32 * 0.001)
+            .collect();
+        crate::vector_search::upsert_embedding(&mut storage, 42, &emb, "hash").unwrap();
+
+        // 2. Audit the CREATE action.
+        record_audit_log(
+            &mut storage,
+            "user1",
+            "CREATE",
+            TABLE_EMBEDDINGS,
+            Some("42"),
+            None,
+            None,
+            None,
+            None,
+        )
+        .unwrap();
+
+        // 3. Tamper the embedding JSON column directly via update_if.
+        let filter: sqlrustgo_storage::RowFilter = Box::new(|r: &sqlrustgo_storage::Record| {
+            matches!(r.first(), Some(sqlrustgo_types::Value::Integer(42)))
+        });
+        let mutation = sqlrustgo_storage::RowMutation::new(
+            vec![(
+                1, // embedding column (TEXT)
+                sqlrustgo_types::Value::Text("[0.0]".to_string()),
+            )],
+            0xC0FFEE,
+        );
+        let updated = storage
+            .update_if(TABLE_EMBEDDINGS, &filter, &mutation)
+            .expect("update_if must succeed against in-memory storage");
+        assert_eq!(updated, 1, "exactly one embedding row should be mutated");
+
+        // 4. Audit log self-protecting: chain still intact because the
+        //    audit log itself was not mutated — only gmp_embeddings was.
+        let (ok, broken_at) = verify_audit_chain(&storage).unwrap();
+        assert!(
+            ok,
+            "audit log chain must remain intact after out-of-band embedding tamper; broken_at={:?}",
+            broken_at
+        );
+        assert!(
+            broken_at.is_none(),
+            "audit log chain must not report a false-positive tamper"
+        );
+
+        // 5. The audit timeline still records the CREATE action but has
+        //    no UPDATE entry — this is the gap that future cross-table
+        //    hash chaining would close.
+        let logs = get_all_audit_logs(&storage).unwrap();
+        assert_eq!(logs.len(), 1, "exactly one audit entry exists");
+        assert_eq!(logs[0].action, "CREATE");
+        assert_eq!(logs[0].table_name, TABLE_EMBEDDINGS);
+        assert_eq!(logs[0].record_id.as_deref(), Some("42"));
+    }
+
+    // v3.13.0 §4.2.2 — relation/graph tamper detection (cross-table).
+    //
+    // Same honest disclosure as `test_embedding_tamper_audit_log_action_trail`:
+    // the audit log chain protects itself only. Relation tamper is
+    // detectable via the action trail (every mutation should record a
+    // corresponding audit entry) but not via `verify_audit_chain` alone.
+    #[test]
+    fn test_relation_tamper_audit_log_action_trail() {
+        use crate::schema::{RelationType, TABLE_RELATIONS};
+        let mut storage = sqlrustgo_storage::MemoryStorage::new();
+        create_audit_log_table(&mut storage).unwrap();
+        crate::document::create_gmp_tables(&mut storage).unwrap();
+
+        // 1. Seed a relation edge.
+        crate::relation::insert_relation(
+            &mut storage,
+            Some(1), // source_doc_id
+            None,    // source_chunk_id
+            &RelationType::Sop,
+            Some(2), // target_doc_id
+            None,    // target_chunk_id
+            None,    // properties
+        )
+        .unwrap();
+
+        // 2. Audit the CREATE.
+        record_audit_log(
+            &mut storage,
+            "user2",
+            "CREATE",
+            TABLE_RELATIONS,
+            Some("1"),
+            None,
+            None,
+            None,
+            None,
+        )
+        .unwrap();
+
+        // 3. Tamper the relation_type column (column 3) directly.
+        //    Column order per relation.rs::insert_relation: id(0),
+        //    source_doc_id(1), source_chunk_id(2), relation_type(3),
+        //    target_doc_id(4), target_chunk_id(5), properties(6),
+        //    created_at(7).
+        let filter: sqlrustgo_storage::RowFilter = Box::new(|r: &sqlrustgo_storage::Record| {
+            matches!(r.first(), Some(sqlrustgo_types::Value::Integer(1)))
+        });
+        let mutation = sqlrustgo_storage::RowMutation::new(
+            vec![(3, sqlrustgo_types::Value::Text("TAMPERED".to_string()))],
+            0xBADF00D,
+        );
+        let updated = storage
+            .update_if(TABLE_RELATIONS, &filter, &mutation)
+            .expect("update_if must succeed");
+        assert_eq!(updated, 1, "exactly one relation row should be mutated");
+
+        // 4. Audit log self-protecting.
+        let (ok, broken_at) = verify_audit_chain(&storage).unwrap();
+        assert!(
+            ok,
+            "audit log chain must remain intact after out-of-band relation tamper; broken_at={:?}",
+            broken_at
+        );
+
+        // 5. Timeline reflects CREATE only — no UPDATE entry.
+        let logs = get_all_audit_logs(&storage).unwrap();
+        assert_eq!(logs.len(), 1);
+        assert_eq!(logs[0].action, "CREATE");
+        assert_eq!(logs[0].table_name, TABLE_RELATIONS);
+    }
+
+    // v3.13.0 §4.2.2 — positive: CREATE + UPDATE + DELETE all chained.
+    //
+    // Demonstrates that the audit log hash chain correctly tracks the
+    // full lifecycle of an embedding row (or relation row) when each
+    // mutation is properly recorded. This is the supported path —
+    // anything else is a process bug.
+    #[test]
+    fn test_audit_log_lifecycle_for_embedding_full_trail() {
+        use crate::embedding::TABLE_EMBEDDINGS;
+        let mut storage = sqlrustgo_storage::MemoryStorage::new();
+        create_audit_log_table(&mut storage).unwrap();
+        crate::vector_search::create_embeddings_table(&mut storage).unwrap();
+
+        // CREATE
+        record_audit_log(
+            &mut storage,
+            "user1",
+            "CREATE",
+            TABLE_EMBEDDINGS,
+            Some("99"),
+            None,
+            None,
+            None,
+            None,
+        )
+        .unwrap();
+        // UPDATE
+        record_audit_log(
+            &mut storage,
+            "user1",
+            "UPDATE",
+            TABLE_EMBEDDINGS,
+            Some("99"),
+            None,
+            None,
+            None,
+            None,
+        )
+        .unwrap();
+        // DELETE
+        record_audit_log(
+            &mut storage,
+            "user1",
+            "DELETE",
+            TABLE_EMBEDDINGS,
+            Some("99"),
+            None,
+            None,
+            None,
+            None,
+        )
+        .unwrap();
+
+        // All three chained entries must verify.
+        let (ok, broken_at) = verify_audit_chain(&storage).unwrap();
+        assert!(
+            ok,
+            "full-lifecycle chain must verify; broken_at={:?}",
+            broken_at
+        );
+        assert!(broken_at.is_none());
+
+        // Timeline reflects all three actions in order.
+        let logs = get_all_audit_logs(&storage).unwrap();
+        assert_eq!(logs.len(), 3);
+        assert_eq!(logs[0].action, "CREATE");
+        assert_eq!(logs[1].action, "UPDATE");
+        assert_eq!(logs[2].action, "DELETE");
+        // previous_hash chain links every row.
+        assert!(
+            logs[0].previous_hash.is_none(),
+            "genesis row has no previous_hash"
+        );
+        assert_eq!(
+            logs[1].previous_hash.as_deref(),
+            Some(logs[0].event_hash.as_str())
+        );
+        assert_eq!(
+            logs[2].previous_hash.as_deref(),
+            Some(logs[1].event_hash.as_str())
+        );
+    }
+
     #[test]
     fn test_audit_stats() {
         let mut storage = sqlrustgo_storage::MemoryStorage::new();
