@@ -121,3 +121,21 @@ docs/releases/v3.13.0/
 3. **同类例外**: `PR-4313-DESCRIPTION.md` (PR body,锚定在 Gitea PR 本身)、`README.md` (索引入口,无 anchor 是约定) — 同样不设 self-anchor
 
 最终 hash 见 `V313-DOCS-INVENTORY.txt`。
+
+## 10. Pre-existing Clippy 回归诚实披露
+
+`cargo clippy --all-features -- -D warnings` 在 `develop/v3.13.0` 当前 HEAD 上失败,**不是 V313 work 引入的回归**。
+
+| 事实 | 证据 |
+|---|---|
+| V313 work 修改的文件 | 仅 `docs/releases/v3.13.0/*.md` + `.txt` (见上方 inventory) |
+| 是否触及任何 `.rs` 文件 | **零** (verified via `git diff --name-only 9554dee2bb..origin/develop/v3.13.0 \| grep '\.rs$'` 为空) |
+| Clippy error 来源 | `src/engine_ddl.rs` (V312-56a rebase 引入,commit `1e0f5018ad`) |
+| `develop/v3.12.0` 当前 tip | clippy PASS (因为 9554dee2bb 之后 v3.12.0 修复了此 issue) |
+| `develop/v3.13.0` bootstrap point | `79caf8c4...` (V313 分支从 OLD v3.12.0 HEAD fork,该 HEAD 尚含 clippy regression) |
+
+**结论**: V313 文档工作不影响代码态。PR merge 前需在 v3.13.0 上 cherry-pick 或 rebase v3.12.0 已修复 clippy 的 commit (例 `1e0f5018ad` 之后的 fix),或在新 SPRINT-S1/S2 实施时一次性修。这不是 V313 SETUP 任务本身的阻塞项。
+
+## 11. PR #4326 mergeable=False 说明
+
+`base: develop/v3.12.0 @ 02f1d9afe6` 与 `head: develop/v3.13.0 @ 9e28778ef7` 不在同一祖先链。这是 V313-MASTER-PLAN §1 已知诚实披露: V313 分支从 v3.12.0 旧 fork point (`79caf8c4...`) bootstrap,后续 v3.12.0 上有 13 commit 推进未被 merge 到 v3.13.0。merge 时需 resolve,但 **不在本 SETUP PR scope**。
