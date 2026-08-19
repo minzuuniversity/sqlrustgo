@@ -726,6 +726,7 @@ impl<S: StorageEngine + 'static> ExecutionEngine<S> {
                     char_max_length: None,
                     collation: None,
                     default_value: None,
+                    auto_increment: false,
                 };
                 storage.add_column(&alter.table_name, column)?;
             }
@@ -746,6 +747,7 @@ impl<S: StorageEngine + 'static> ExecutionEngine<S> {
                     char_max_length: *char_max_length,
                     collation: None,
                     default_value: None,
+                    auto_increment: false,
                 };
                 storage.modify_column(&alter.table_name, name, column)?;
             }
@@ -777,6 +779,7 @@ impl<S: StorageEngine + 'static> ExecutionEngine<S> {
                         char_max_length: existing.char_max_length,
                         collation: existing.collation.clone(),
                         default_value: None,
+                        auto_increment: false,
                     };
                     storage.modify_column(&alter.table_name, name, new_def)?;
                 }
