@@ -86,7 +86,9 @@ fn engine_with_catalog() -> ExecutionEngine<MemoryStorage> {
 #[test]
 fn select_from_information_schema_tables_returns_registered_tables() {
     let mut e = engine_with_catalog();
-    let r = e.execute("SELECT * FROM information_schema.tables").unwrap();
+    let r = e
+        .execute("SELECT * FROM information_schema.tables")
+        .unwrap();
     // Catalog has 1 schema ("public") × 2 tables = 2 rows.
     assert_eq!(
         r.rows.len(),
@@ -166,9 +168,7 @@ fn select_information_schema_tables_with_where_filters_to_one_row() {
 fn select_information_schema_columns_with_table_name_filter() {
     let mut e = engine_with_catalog();
     let r = e
-        .execute(
-            "SELECT column_name FROM information_schema.columns WHERE table_name = 'orders'",
-        )
+        .execute("SELECT column_name FROM information_schema.columns WHERE table_name = 'orders'")
         .unwrap();
     // orders has 3 columns: id, user_id, total
     assert_eq!(r.rows.len(), 3);

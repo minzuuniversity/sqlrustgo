@@ -234,7 +234,7 @@ impl SimpleExecutor {
                             name
                         ));
                     }
-                    AlterTableOperation::SetPartitionedBy { .. }
+                    AlterTableOperation::SetPartitionedBy
                     | AlterTableOperation::ResetPartitionedBy => {
                         // V312-40 placeholder: PARTITIONED BY not yet implemented in corpus
                         // Real impl pending: V312-41 follow-up issue

@@ -12,6 +12,7 @@
 use crate::engine_utils::*;
 use crate::expr_utils::*;
 use crate::{ExecutionEngine, ExecutorResult, SqlError, SqlResult, Value};
+use information_schema::InformationSchema;
 use sqlrustgo_executor::join::hash_join::multi_way_hash_chain;
 use sqlrustgo_executor::parallel_executor::{ParallelExecutor, ParallelVolcanoExecutor};
 use sqlrustgo_executor::simd_eval::{
@@ -22,7 +23,6 @@ use sqlrustgo_parser::{
     get_and_clear_derived_subqueries, AggregateCall, AggregateFunction, Expression,
     JoinClause as ParserJoinClause, JoinType, SelectStatement,
 };
-use information_schema::InformationSchema;
 use sqlrustgo_storage::{StorageEngine, TableInfo};
 use std::cell::RefCell;
 use std::collections::HashMap;
@@ -3202,9 +3202,7 @@ impl<S: StorageEngine + 'static> ExecutionEngine<S> {
                     );
                     m.insert(
                         "column_default".to_string(),
-                        r.column_default
-                            .map(Value::Text)
-                            .unwrap_or(Value::Null),
+                        r.column_default.map(Value::Text).unwrap_or(Value::Null),
                     );
                     m.insert("is_nullable".to_string(), Value::Text(r.is_nullable));
                     m.insert("data_type".to_string(), Value::Text(r.data_type));
@@ -3285,12 +3283,7 @@ impl<S: StorageEngine + 'static> ExecutionEngine<S> {
         for row_map in &filtered {
             let mut out: Vec<Value> = Vec::with_capacity(projected_columns.len());
             for col_name in &projected_columns {
-                out.push(
-                    row_map
-                        .get(col_name)
-                        .cloned()
-                        .unwrap_or(Value::Null),
-                );
+                out.push(row_map.get(col_name).cloned().unwrap_or(Value::Null));
             }
             rows.push(out);
         }
@@ -3351,26 +3344,22 @@ fn information_schema_columns_for(view: &str) -> Vec<String> {
 ///   - Identifier = Literal (`table_name = 'users'`)
 ///   - Literal = Identifier (commutative form)
 ///   - AND / OR of two such predicates
-/// Other shapes (LIKE, IN, function calls, ...) return `false` rather
-/// than erroring — we treat unknown predicate forms as "filter this
-/// row out" so a malformed WHERE clause never panics the executor on a
-/// virtual catalog.
+///     Other shapes (LIKE, IN, function calls, ...) return `false` rather
+///     than erroring — we treat unknown predicate forms as "filter this
+///     row out" so a malformed WHERE clause never panics the executor on a
+///     virtual catalog.
 fn eval_information_schema_where(
     expr: &Expression,
     row: &std::collections::HashMap<String, Value>,
 ) -> bool {
     match expr {
         Expression::BinaryOp(left, op, right) if op.eq_ignore_ascii_case("AND") => {
-            eval_information_schema_where(left, row)
-                && eval_information_schema_where(right, row)
+            eval_information_schema_where(left, row) && eval_information_schema_where(right, row)
         }
         Expression::BinaryOp(left, op, right) if op.eq_ignore_ascii_case("OR") => {
-            eval_information_schema_where(left, row)
-                || eval_information_schema_where(right, row)
+            eval_information_schema_where(left, row) || eval_information_schema_where(right, row)
         }
-        Expression::BinaryOp(left, op, right)
-            if op == "=" || op.eq_ignore_ascii_case("IS") =>
-        {
+        Expression::BinaryOp(left, op, right) if op == "=" || op.eq_ignore_ascii_case("IS") => {
             let (col, val) = match (left.as_ref(), right.as_ref()) {
                 (Expression::Identifier(c), Expression::Literal(v)) => (c.clone(), v.clone()),
                 (Expression::Literal(v), Expression::Identifier(c)) => (c.clone(), v.clone()),
@@ -3402,8 +3391,8 @@ fn eval_information_schema_where(
 ///   - `1.5` → Float
 ///   - `true` / `false` → Boolean
 ///   - `NULL` → Null
-/// Anything else falls back to Text so column-name = "users" still
-/// works.
+///     Anything else falls back to Text so column-name = "users" still
+///     works.
 fn parse_information_schema_literal(s: &str) -> Value {
     let trimmed = s.trim();
     if trimmed.eq_ignore_ascii_case("NULL") {

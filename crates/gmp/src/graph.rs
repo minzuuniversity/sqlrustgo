@@ -11,6 +11,7 @@ use crate::version::get_document_versions;
 use serde::{Deserialize, Serialize};
 use sqlrustgo_storage::StorageEngine;
 use sqlrustgo_types::{SqlResult, Value};
+use std::cmp::Reverse;
 use std::collections::HashMap;
 
 /// A graph node with type and metadata.
@@ -191,7 +192,11 @@ pub fn project_subgraph(
         let neighbors: Vec<Relation> = get_neighbors(storage, current_id, None)
             .unwrap_or_default()
             .into_iter()
-            .filter(|r| relation_types.is_none_or(|types| types.contains(&r.relation_type)))
+            .filter(|r| {
+                relation_types
+                    .as_ref()
+                    .is_none_or(|types| types.contains(&r.relation_type))
+            })
             .collect();
 
         for rel in neighbors {
@@ -318,9 +323,9 @@ pub fn get_graph_stats(storage: &dyn StorageEngine) -> SqlResult<GraphStats> {
     };
 
     let mut node_types: Vec<_> = node_type_counts.into_iter().collect();
-    node_types.sort_by_key(|a| std::cmp::Reverse(a.1));
+    node_types.sort_by_key(|a| Reverse(a.1));
     let mut edge_types: Vec<_> = edge_type_counts.into_iter().collect();
-    edge_types.sort_by_key(|a| std::cmp::Reverse(a.1));
+    edge_types.sort_by_key(|a| Reverse(a.1));
 
     Ok(GraphStats {
         total_nodes: docs.len(),

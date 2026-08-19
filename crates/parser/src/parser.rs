@@ -4865,14 +4865,9 @@ impl Parser {
                         let t = match self.next() {
                             Some(Token::Identifier(name)) => name,
                             Some(t) => {
-                                return Err(format!(
-                                    "Expected table name after `.`, got {:?}",
-                                    t
-                                ))
+                                return Err(format!("Expected table name after `.`, got {:?}", t))
                             }
-                            None => {
-                                return Err("Expected table name after `schema.`".to_string())
-                            }
+                            None => return Err("Expected table name after `schema.`".to_string()),
                         };
                         schema = Some(first_table_raw.clone());
                         t

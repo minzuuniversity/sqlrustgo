@@ -1976,7 +1976,7 @@ impl<'a, R: Read> CompressedReader<'a, R> {
         // First: drain any leftover decompressed data from a previous frame
         if self.decompressed_pos < self.decompressed_buf.len() {
             let remaining = self.decompressed_buf[self.decompressed_pos..].to_vec();
-            let seq = self.decompressed_buf.get(0).copied().unwrap_or(0);
+            let seq = self.decompressed_buf.first().copied().unwrap_or(0);
             self.decompressed_buf.clear();
             self.decompressed_pos = 0;
             return Ok((seq, remaining));
@@ -2005,7 +2005,7 @@ impl<'a, R: Read> Read for CompressedReader<'a, R> {
                 Ok(len)
             }
             Err(MySqlError::Io(e)) => Err(e),
-            Err(e) => Err(std::io::Error::new(std::io::ErrorKind::Other, e)),
+            Err(e) => Err(std::io::Error::other(e)),
         }
     }
 }
@@ -2711,6 +2711,7 @@ fn write_column_def<W: Write>(w: &mut W, name: &str, sql_type: &str, seq: u8) ->
     Ok(seq.wrapping_add(1))
 }
 
+#[allow(dead_code)]
 fn send_result_set<W: Write>(
     w: &mut W,
     cols: &[String],
@@ -2868,9 +2869,9 @@ fn send_binary_result_set<W: Write>(
     // ctypes which may say VARCHAR(255) for integer columns).
     // This must match value_col_type so the binary row encoding is consistent.
     let actual_ctypes: Vec<String> = if let Some(first_row) = rows.first() {
-        first_row.iter().map(|v| value_type_string(v)).collect()
+        first_row.iter().map(value_type_string).collect()
     } else {
-        ctypes.iter().cloned().collect()
+        ctypes.to_vec()
     };
 
     // Column definitions — use actual types so client knows how to decode rows
@@ -2902,7 +2903,7 @@ fn send_binary_result_set<W: Write>(
     // integer columns). The encoding in write_binary_row is determined by
     // the Value variant, so we must match that here.
     let col_type_codes: Vec<u8> = if let Some(first_row) = rows.first() {
-        first_row.iter().map(|v| value_col_type(v)).collect()
+        first_row.iter().map(value_col_type).collect()
     } else {
         cols.iter()
             .enumerate()
@@ -4222,6 +4223,7 @@ fn classify_long_query_time_set(stmt: &Statement) -> Option<Result<u64, &'static
     }
 }
 
+#[allow(clippy::too_many_arguments)]
 fn do_command_loop<S: Read + Write + DrainWrites>(
     stream: &mut S,
     addr: SocketAddr,
@@ -4428,7 +4430,7 @@ fn do_command_loop<S: Read + Write + DrainWrites>(
                         .ok()
                         .and_then(|s| read_only_stmt(s).map(|_| s));
                     // G13-OLTP-1: pick read-vs-write lock based on AST.
-                    let is_write_blocked = if !is_read_only.is_some() {
+                    let is_write_blocked = if is_read_only.is_none() {
                         // Task 3.2: check password write blocking before allowing write operations.
                         // We must NOT hold the engine read lock while checking catalog (deadlock risk
                         // since catalog → auth_manager needs its own lock).
@@ -7282,6 +7284,7 @@ pub mod testing {
 
     impl EphemeralServerPool {
         /// Construct the global pool (created lazily on first call).
+        #[allow(clippy::new_without_default)]
         pub fn new() -> Self {
             Self {
                 slots: std::array::from_fn(|_| std::sync::Mutex::new(None)),

@@ -24,8 +24,7 @@ impl VectorIndexType {
         }
     }
 
-    #[allow(clippy::should_implement_trait)]
-    pub fn from_str(s: &str) -> Option<Self> {
+    pub fn parse(s: &str) -> Option<Self> {
         match s.to_uppercase().as_str() {
             "FLAT" => Some(VectorIndexType::Flat),
             "HNSW" => Some(VectorIndexType::Hnsw),
@@ -56,12 +55,12 @@ pub struct VectorIndexMeta {
 impl VectorIndexMeta {
     pub fn from_row(row: &[Value]) -> Option<Self> {
         Some(VectorIndexMeta {
-            id: match &row.first()? {
+            id: match row.first()? {
                 Value::Integer(n) => *n,
                 _ => return None,
             },
             index_type: match &row.get(1)? {
-                Value::Text(s) => VectorIndexType::from_str(s)?,
+                Value::Text(s) => VectorIndexType::parse(s)?,
                 _ => return None,
             },
             model_name: match &row.get(2)? {
@@ -563,15 +562,9 @@ mod tests {
     fn test_index_type_conversion() {
         assert_eq!(VectorIndexType::Flat.as_str(), "FLAT");
         assert_eq!(VectorIndexType::Hnsw.as_str(), "HNSW");
-        assert_eq!(
-            VectorIndexType::from_str("FLAT"),
-            Some(VectorIndexType::Flat)
-        );
-        assert_eq!(
-            VectorIndexType::from_str("HNSW"),
-            Some(VectorIndexType::Hnsw)
-        );
-        assert_eq!(VectorIndexType::from_str("invalid"), None);
+        assert_eq!(VectorIndexType::parse("FLAT"), Some(VectorIndexType::Flat));
+        assert_eq!(VectorIndexType::parse("HNSW"), Some(VectorIndexType::Hnsw));
+        assert_eq!(VectorIndexType::parse("invalid"), None);
     }
 
     // v3.13.0 §4.1.1 — rebuild persistence acceptance test.

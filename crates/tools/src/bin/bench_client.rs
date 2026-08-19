@@ -30,6 +30,7 @@ struct Args {
     batch_size: usize,
 }
 
+#[allow(clippy::too_many_arguments)]
 fn run_thread(
     thread_id: usize,
     host: String,
@@ -135,7 +136,7 @@ fn main() {
         args.oltp_weight, args.olap_weight
     );
     println!("Batch size: {}", args.batch_size);
-    println!("");
+    println!();
 
     let total_oltp = Arc::new(AtomicUsize::new(0));
     let total_olap = Arc::new(AtomicUsize::new(0));
@@ -177,7 +178,7 @@ fn main() {
     let errors = error_count.load(Ordering::Relaxed);
     let total = oltp + olap;
 
-    println!("");
+    println!();
     println!("=== RESULTS ===");
     println!("OLTP queries: {}", oltp);
     println!("OLAP queries: {}", olap);

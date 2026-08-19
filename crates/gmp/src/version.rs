@@ -25,7 +25,7 @@ impl DocumentVersion {
     /// Expected column order: id, doc_id, version_number, source_hash, content_hash, created_at, change_desc
     pub fn from_row(row: &[Value]) -> Option<Self> {
         Some(DocumentVersion {
-            id: match &row.first()? {
+            id: match row.first()? {
                 Value::Integer(n) => *n,
                 _ => return None,
             },
