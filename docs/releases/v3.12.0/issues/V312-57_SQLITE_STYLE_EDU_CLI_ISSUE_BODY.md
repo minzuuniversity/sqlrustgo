@@ -4,7 +4,7 @@
 
 ## Issue
 
-[V312-BETA-BLOCKER][V312-57] sqlite3-like 一体化教学 CLI:支撑 BustubX-EDU 前 4-6 周自动验收
+[V312-BETA-SCOPE][V312-RC-BLOCKER][V312-57] sqlite3-like 一体化教学 CLI:支撑 BustubX-EDU 前 4-6 周自动验收
 
 ## Why
 
@@ -28,6 +28,8 @@ BustubX-EDU 前 4-6 周需要一个可脚本化、低环境成本、类似 `sqli
 - 稳定错误码、错误前缀和退出码。
 
 ## Acceptance
+
+Stage boundary: this issue was added after v3.12 entered BETA. Week01-week04 are BETA-stage remediation requirements and must close before RC; week05-week06 are RC close-out requirements unless explicitly deferred with owner, expiry, close boundary, and release-claim downgrade.
 
 1. PR merged into `develop/v3.12.0` and linked to #4359.
 2. `cargo build -p sqlrustgo-cli --all-features` exits 0.
