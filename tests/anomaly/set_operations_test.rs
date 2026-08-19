@@ -24,6 +24,7 @@ mod tests {
                 collation: None,
 
                 default_value: None,
+                auto_increment: false,
             }],
             foreign_keys: vec![],
             unique_constraints: vec![],
@@ -55,6 +56,7 @@ mod tests {
                 collation: None,
 
                 default_value: None,
+                auto_increment: false,
             }],
             foreign_keys: vec![],
             unique_constraints: vec![],
@@ -134,6 +136,7 @@ mod tests {
                 collation: None,
 
                 default_value: None,
+                auto_increment: false,
             }],
             foreign_keys: vec![],
             unique_constraints: vec![],
@@ -193,6 +196,7 @@ mod tests {
                     collation: None,
 
                     default_value: None,
+                    auto_increment: false,
                 }],
                 foreign_keys: vec![],
                 unique_constraints: vec![],
@@ -232,6 +236,7 @@ mod tests {
                     collation: None,
 
                     default_value: None,
+                    auto_increment: false,
                 }],
                 foreign_keys: vec![],
                 unique_constraints: vec![],

@@ -1172,6 +1172,7 @@ impl StoredProcExecutor {
                             char_max_length: None,
                             collation: None,
                             default_value: default_value.clone(),
+                            auto_increment: false,
                         };
                         storage
                             .add_column(table_name, column)

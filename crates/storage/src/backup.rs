@@ -249,6 +249,7 @@ impl DataRestorer {
                     char_max_length: None,
                     collation: None,
                     default_value: None,
+                    auto_increment: false,
                 })
                 .collect(),
             foreign_keys: vec![],
@@ -322,6 +323,7 @@ impl DataRestorer {
                     char_max_length: None,
                     collation: None,
                     default_value: None,
+                    auto_increment: false,
                 })
                 .collect(),
             foreign_keys: vec![],

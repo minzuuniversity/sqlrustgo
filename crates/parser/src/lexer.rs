@@ -376,7 +376,7 @@ impl<'a> Lexer<'a> {
                     "NO" => Token::No,
                     "ACTION" => Token::Action,
                     "DEFAULT" => Token::Default,
-                    "AUTO_INCREMENT" => Token::AutoIncrement,
+                    "AUTO_INCREMENT" | "AUTOINCREMENT" => Token::AutoIncrement,
                     "LOCK" => Token::Lock,
                     "LOCKED" => Token::Locked,
                     "PASSWORD" => Token::Password,
