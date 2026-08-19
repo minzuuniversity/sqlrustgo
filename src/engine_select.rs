@@ -1935,7 +1935,20 @@ impl<S: StorageEngine + 'static> ExecutionEngine<S> {
                 let where_fully_consumed = select
                     .where_clause
                     .as_ref()
-                    .map(|wc| !where_expr_has_correlated_subquery(wc))
+                    .map(|wc| {
+                        !where_expr_has_correlated_subquery(wc)
+                            // V312-48-Q8 (Issue #4274): the hash chain only
+                            // consumes `=` equi-join predicates. When the
+                            // WHERE also contains range / LIKE / BETWEEN /
+                            // IN-list predicates (TPC-H Q8's
+                            // `o_orderdate >= '1995-01-01' AND o_orderdate <
+                            // '1996-12-31'` is the canonical example), the
+                            // post-join `eval_predicate` step MUST run,
+                            // otherwise the residual predicate is silently
+                            // dropped. Conservative: any non-equi residual
+                            // means "do not mark WHERE as fully consumed".
+                            && !where_expr_has_unhandled_residual(wc)
+                    })
                     .unwrap_or(true);
                 if where_fully_consumed {
                     COMMA_JOIN_WHERE_CONSUMED.with(|f| *f.borrow_mut() = true);
