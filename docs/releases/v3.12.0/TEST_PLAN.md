@@ -113,6 +113,18 @@ V312-G27 是从 `COMPREHENSIVE_ASSESSMENT_REPORT.md` 派生出来的 Beta 前整
 | V312-56C Transaction/crash recovery lab | BEGIN/COMMIT/ROLLBACK/SAVEPOINT、kill -9/WAL replay、backup/restore count/hash | recovery/compat tests + `V312-56C_TRANSACTION_TEACHING.md` (V312-14 gate PARTIAL,3 FAIL #3965 disclosed) |
 | V312-56D Prepared/wire lab | COM_QUERY/COM_STMT/error/reset/LOAD DATA；TLS/compression DONE 或 DEFERRED | wire/load-data gate + `V312-56D_WIRE_TEACHING.md` (TLS client DEFERRED + wire trace DEFERRED) |
 
+### Beta Gate Snapshot (2026-08-19, post-PR #4354 workspace clippy fix)
+
+```
+$ bash scripts/gate/check_beta_v3.12.0.sh
+PASS: 38/40   WARN: 2   BLOCKERS: 0
+✓ All checks pass — ready for BETA promotion.
+```
+
+All 12 `promotion_to_BETA_requires` items from `STAGE.yaml` are satisfied.
+Full snapshot: `docs/releases/v3.12.0/evidence/v312-56/V312-56-VERIFICATION.md`
+(Beta Gate Snapshot section).
+
 ### Beta 阶段收口项
 
 | 子项 | 要求 | 证据 |
