@@ -36,9 +36,9 @@ fn test_v312_32_exec_engine_default_via_new_helper() {
     // parameter), but provides `pub fn new(storage: Arc<RwLock<S>>)
     // -> Self` and `with_cbo(...)` / `with_catalog(...)` constructors.
     // Verify the new() constructor path is reachable.
-    use parking_lot::RwLock;
     use sqlrustgo_storage::{MemoryStorage, StorageEngine};
     use std::sync::Arc;
+    use parking_lot::RwLock;
 
     let storage = Arc::new(RwLock::new(MemoryStorage::new()));
     // Just verify MemoryStorage + Arc + RwLock all compile together

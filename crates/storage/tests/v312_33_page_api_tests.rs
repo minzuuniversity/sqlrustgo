@@ -51,5 +51,5 @@ fn test_page_calculate_checksum_method_documented_as_absent() {
     // the method, they should update this test to verify it.
     let page = Page::new(1);
     let _ = page.page_id(); // currently the only checksum-related accessor
-                            // — page_id is the page identity, not a checksum
+                              // — page_id is the page identity, not a checksum
 }
