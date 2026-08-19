@@ -1,0 +1,16 @@
+sqlite3-like local DB mode (BustubX-EDU teaching CLI, V312-57 #4359)
+
+Usage: sqlrustgo-cli sqlite [OPTIONS] <DB>
+
+Arguments:
+  <DB>  Path to local DB (file or directory)
+
+Options:
+      --batch              
+      --cmd <CMD>          
+      --mode <MODE>        [default: table] [possible values: table, list, csv, json]
+      --headers <HEADERS>  [possible values: true, false]
+      --timer <TIMER>      [possible values: true, false]
+      --explain <EXPLAIN>  [possible values: true, false]
+      --continue-on-error  
+  -h, --help               Print help

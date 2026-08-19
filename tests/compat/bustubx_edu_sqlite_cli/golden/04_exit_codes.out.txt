@@ -1,0 +1,4 @@
+exit_success=0
+exit_parse_error=1
+exit_continue_with_error=1
+exit_empty_db=0

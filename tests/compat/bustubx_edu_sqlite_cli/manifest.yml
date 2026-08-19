@@ -1,0 +1,47 @@
+---
+# V312-57 BustubX-EDU sqlite-like CLI fixture manifest
+#
+# Each fixture is a `.sh` script that runs `sqlrustgo-cli sqlite ...` against a
+# temp DB and writes stdout to /tmp/<name>.out. Golden files in this
+# directory's `golden/` subdir are the expected stdout for comparison.
+#
+# Gate: scripts/gate/check_bustubx_edu_cli_v312.sh
+#
+# Week01: env install, first SQL, scripted execution, exit codes
+# Week02: DDL/DML/DQL, output formats (csv, list)
+# Week03: single-path DB, cross-process persistence, .tables
+# Week04: .schema, stable error codes
+#
+# Per plan §5.3, all queries that don't contain parse errors run via
+# batch stdin (single process) to avoid the cross-process persistence
+# issue in FileStorage that affects table visibility.
+
+version: 1
+bustubx_edu_weeks:
+  week01:
+    - "01_help.sh"
+    - "02_select_one.sh"
+    - "03_stdin_script.sh"
+    - "04_exit_codes.sh"
+  week02:
+    - "01_create_insert_select.sh"
+    - "02_csv_output.sh"
+    - "03_list_output.sh"
+  week03:
+    - "01_single_path_db.sh"
+    - "02_cross_process_persistence.sh"
+    - "03_tables_meta.sh"
+  week04:
+    - "01_schema_meta.sh"
+    - "02_stable_error_codes.sh"
+    - "03_column_not_found.sh"
+
+policy:
+  exit_code:
+    success: 0
+    query_error_batch: 1
+    arg_parse_error: 2
+    storage_init_failure: 3
+  output:
+    stdout: query results + dot-command output
+    stderr: error messages (one-line, "Error: <CODE>: <message>")
