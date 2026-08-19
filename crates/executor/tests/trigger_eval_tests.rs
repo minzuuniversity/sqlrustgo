@@ -289,6 +289,7 @@ fn test_expression_to_value_subquery() {
     let expr = Expression::Subquery(Box::new(sqlrustgo_parser::SelectStatement {
         columns: vec![],
         table: "t".to_string(),
+        schema: None,
         from_alias: None,
         from_subquery: None,
         from_values: None,

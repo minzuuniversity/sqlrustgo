@@ -898,6 +898,9 @@ path = "tests/integration/oracle/diag_q14_only.rs"
 name = "diag_q14_q16"
 path = "tests/integration/oracle/diag_q14_q16.rs"
 [[test]]
+name = "q16_notin_subquery_regression"
+path = "tests/integration/oracle/q16_notin_subquery_regression.rs"
+[[test]]
 name = "diag_q22_minimal"
 path = "tests/integration/oracle/diag_q22_minimal.rs"
 [[test]]

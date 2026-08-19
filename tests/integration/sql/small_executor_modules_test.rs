@@ -31,7 +31,7 @@ use sqlrustgo_executor::execution::{ExecutionEngine, QueryContext};
 use sqlrustgo_executor::mutation_compiler::{
     canonicalize_expr, Assignment, CanonicalExpr, MutationCompiler, RowMutation,
 };
-use sqlrustgo_executor::predicate_compiler::{compile, compile_optional, PredicateCompiler};
+use sqlrustgo_executor::predicate_compiler::{compile, compile_optional};
 use sqlrustgo_executor::trigger_eval::resolver::resolve_column;
 use sqlrustgo_executor::trigger_eval::{EvalContext, TriggerContext};
 use sqlrustgo_planner::{Column, Expr, Operator};
