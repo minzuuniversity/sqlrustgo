@@ -37,10 +37,28 @@ else
     fail "STAGE.yaml version" "docs/releases/v3.12.0/STAGE.yaml must declare version: \"v3.12.0\""
 fi
 
+# Allow ALPHA (pre-transition) or any post-transition stage reached via
+# a recorded transition PR (BETA / RC / GA). The fail message documents
+# the principle: stage changes must come from a stage transition PR with
+# gate evidence, never from direct edits.
 if grep -qE '^current_stage: "(ALPHA|BETA|RC|GA)"' docs/releases/v3.12.0/STAGE.yaml; then
-    pass "STAGE.yaml current_stage is one of ALPHA/BETA/RC/GA"
+    current=$(grep -oE '^current_stage: "[A-Z]+"' docs/releases/v3.12.0/STAGE.yaml | head -1 | grep -oE '"[A-Z]+"' | tr -d '"')
+    if [ "$current" = "ALPHA" ]; then
+        pass "STAGE.yaml current_stage is ALPHA (pre-transition)"
+    else
+        # Post-transition: verify last_transition block has a from + to + reason
+        # (which is the evidence the transition went through a PR).
+        if grep -qE '^last_transition:' docs/releases/v3.12.0/STAGE.yaml \
+            && grep -qE '^\s+from:' docs/releases/v3.12.0/STAGE.yaml \
+            && grep -qE '^\s+to:[[:space:]]*"'"$current"'"' docs/releases/v3.12.0/STAGE.yaml \
+            && grep -qE '^\s+reason:' docs/releases/v3.12.0/STAGE.yaml; then
+            pass "STAGE.yaml current_stage is $current with recorded last_transition block"
+        else
+            fail "STAGE.yaml current_stage" "current_stage is $current but last_transition block is missing/incomplete; record the transition via a stage transition PR with gate evidence."
+        fi
+    fi
 else
-    fail "STAGE.yaml current_stage" "v3.12 must declare current_stage in {ALPHA, BETA, RC, GA}."
+    fail "STAGE.yaml current_stage" "v3.12 is not allowed to skip Beta/RC by document drift; update this only via a stage transition PR with gate evidence."
 fi
 
 if [ ! -d docs/releases/v3.13.0 ]; then
