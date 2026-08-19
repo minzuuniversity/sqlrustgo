@@ -7,6 +7,8 @@ use crate::schema::{RelationType, TABLE_RELATIONS};
 use sqlrustgo_storage::StorageEngine;
 use sqlrustgo_types::{SqlResult, Value};
 
+type BfsQueueEntry = (i64, Vec<(i64, Option<i64>)>, Vec<Relation>);
+
 /// A relation edge between documents/chunks.
 #[derive(Debug, Clone)]
 pub struct Relation {
@@ -39,7 +41,7 @@ impl Relation {
             Value::Text(s) => s.clone(),
             _ => return None,
         };
-        let relation_type = RelationType::from_str(&relation_type_str)?;
+        let relation_type = RelationType::parse(&relation_type_str)?;
         let target_doc_id = match &row.get(4)? {
             Value::Integer(n) => Some(*n),
             Value::Null => None,
@@ -57,7 +59,7 @@ impl Relation {
         };
 
         Some(Relation {
-            id: match &row.first()? {
+            id: match row.first()? {
                 Value::Integer(n) => *n,
                 _ => return None,
             },
@@ -193,7 +195,10 @@ pub fn get_neighbors(
         .filter(|rel| {
             let matches_doc =
                 rel.source_doc_id == Some(doc_id) || rel.target_doc_id == Some(doc_id);
-            let matches_type = relation_type.is_none_or(|t| &rel.relation_type == t);
+            let matches_type = match relation_type {
+                Some(t) => rel.relation_type == *t,
+                None => true,
+            };
             matches_doc && matches_type
         })
         .collect();
@@ -260,9 +265,7 @@ pub fn path_query(
 
     let mut results = Vec::new();
     let mut visited = std::collections::HashSet::new();
-    #[allow(clippy::type_complexity)]
-    let mut queue: Vec<(i64, Vec<(i64, Option<i64>)>, Vec<Relation>)> =
-        vec![(source_doc_id, vec![(source_doc_id, None)], vec![])];
+    let mut queue: Vec<BfsQueueEntry> = vec![(source_doc_id, vec![(source_doc_id, None)], vec![])];
 
     while let Some((current_doc, path_nodes, path_edges)) = queue.pop() {
         if path_nodes.len() > max_depth {

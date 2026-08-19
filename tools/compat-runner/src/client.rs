@@ -24,6 +24,7 @@ const SCRAMBLE_LEN: usize = 20;
 pub enum CompatError {
     Io(std::io::Error),
     Protocol(String),
+    #[allow(dead_code)]
     Eof,
 }
 
@@ -54,6 +55,7 @@ pub struct CompatClient {
     stream: TcpStream,
     user: String,
     password: String,
+    #[allow(dead_code)]
     database: String,
 }
 
@@ -202,6 +204,7 @@ impl CompatClient {
         Ok(())
     }
 
+    #[allow(dead_code)]
     pub fn exec(&mut self, sql: &str) -> Result<()> {
         let mut p = vec![0x03];
         p.extend_from_slice(sql.as_bytes());
@@ -211,7 +214,7 @@ impl CompatClient {
             Some(0x00) => Ok(()),
             Some(0xFF) => Err(CompatError::Protocol(format!(
                 "ERR: {}",
-                String::from_utf8_lossy(&resp.get(9..).unwrap_or(&[]))
+                String::from_utf8_lossy(resp.get(9..).unwrap_or(&[]))
             ))),
             _ => Ok(()), // result-set header — caller will use query_rows
         }
@@ -225,7 +228,7 @@ impl CompatClient {
         if resp.first().copied() == Some(0xFF) {
             return Err(CompatError::Protocol(format!(
                 "ERR: {}",
-                String::from_utf8_lossy(&resp.get(9..).unwrap_or(&[]))
+                String::from_utf8_lossy(resp.get(9..).unwrap_or(&[]))
             )));
         }
         if resp.first().copied() == Some(0x00) {
@@ -256,7 +259,7 @@ impl CompatClient {
             if pkt[0] == 0xFF {
                 return Err(CompatError::Protocol(format!(
                     "ERR during result set: {}",
-                    String::from_utf8_lossy(&pkt.get(3..).unwrap_or(&[]))
+                    String::from_utf8_lossy(pkt.get(3..).unwrap_or(&[]))
                 )));
             }
             let mut rpos = 0;

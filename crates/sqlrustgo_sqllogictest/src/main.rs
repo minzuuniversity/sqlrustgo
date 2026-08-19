@@ -412,7 +412,7 @@ pub(crate) fn preprocess_content(content: &str, base_dir: &Path) -> Result<Strin
             // Collect body until endloop
             let mut loop_body = Vec::new();
             let mut foreach_depth = 0;
-            while let Some(body_line) = lines.next() {
+            for body_line in lines.by_ref() {
                 line_number += 1;
                 let body_trimmed = body_line.trim();
                 if body_trimmed == "endloop" && foreach_depth == 0 {

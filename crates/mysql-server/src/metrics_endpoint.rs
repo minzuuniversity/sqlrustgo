@@ -137,6 +137,7 @@ impl MetricsEndpoint {
     /// runs forever in the current implementation, so callers that
     /// want a bounded join should use `shutdown()` (no-op stub — kept
     /// for API stability).
+    #[allow(dead_code)]
     pub fn shutdown(mut self) {
         if let Some(h) = self.join.take() {
             // Detach so we don't block on an infinite accept loop.

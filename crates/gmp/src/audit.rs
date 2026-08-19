@@ -85,7 +85,7 @@ impl AuditLog {
     /// Expected column order: id, timestamp, user_id, action, table_name,
     /// record_id, old_value, new_value, ip_address, session_id, previous_hash, event_hash
     pub fn from_row(row: &[Value]) -> Option<Self> {
-        let id = match &row.first()? {
+        let id = match row.first()? {
             Value::Integer(n) => *n,
             _ => return None,
         };
