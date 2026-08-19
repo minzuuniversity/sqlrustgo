@@ -169,8 +169,6 @@ rayon.workspace = true
 sqlrustgo-mysql-client.workspace = true
 parking_lot.workspace = true
 
-sqlrustgo-cli.workspace = true
-
 
 [[bench]]
 name = "sql_operations"
