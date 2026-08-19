@@ -80,7 +80,11 @@ fn q16_canonical_subquery_only() {
     let r = engine
         .execute("SELECT s_suppkey FROM supplier WHERE s_comment LIKE '%Customer%Complaints%' ORDER BY s_suppkey")
         .unwrap();
-    assert!(r.rows.len() >= 4, "expected >=4 Customer+Complaints matches, got {}", r.rows.len());
+    assert!(
+        r.rows.len() >= 4,
+        "expected >=4 Customer+Complaints matches, got {}",
+        r.rows.len()
+    );
 }
 
 #[test]
@@ -108,5 +112,9 @@ fn q16_canonical_notin_full() {
                ORDER BY supplier_cnt DESC, p_brand, p_type, p_size";
     let r = engine.execute(sql).unwrap();
     // SQLite sf1 baseline: 18314 rows.
-    assert_eq!(r.rows.len(), 18314, "Q16 row count must match SQLite baseline (18314)");
+    assert_eq!(
+        r.rows.len(),
+        18314,
+        "Q16 row count must match SQLite baseline (18314)"
+    );
 }
