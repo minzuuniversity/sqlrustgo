@@ -269,9 +269,9 @@ fn test_vector_index_type_as_str_roundtrip() {
     use sqlrustgo_gmp::vector_index::VectorIndexType;
     for t in [VectorIndexType::Flat, VectorIndexType::Hnsw] {
         let s = t.as_str();
-        assert_eq!(VectorIndexType::from_str(s), Some(t));
+        assert_eq!(VectorIndexType::parse(s), Some(t));
     }
-    assert_eq!(VectorIndexType::from_str("invalid"), None);
+    assert_eq!(VectorIndexType::parse("invalid"), None);
 }
 
 #[test]
