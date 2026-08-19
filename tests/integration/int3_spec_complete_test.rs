@@ -270,6 +270,7 @@ fn int3_spec_crash_recovery_under_5s() {
                         char_max_length: None,
                         collation: None,
                         default_value: None,
+                        auto_increment: false,
                     },
                     sqlrustgo_storage::ColumnDefinition {
                         name: "payload".to_string(),
@@ -279,6 +280,7 @@ fn int3_spec_crash_recovery_under_5s() {
                         char_max_length: None,
                         collation: None,
                         default_value: None,
+                        auto_increment: false,
                     },
                 ],
                 foreign_keys: vec![],

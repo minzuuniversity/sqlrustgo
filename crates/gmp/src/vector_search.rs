@@ -33,6 +33,7 @@ pub fn create_embeddings_table(storage: &mut dyn StorageEngine) -> SqlResult<()>
                 char_max_length: None,
                 collation: None,
                 default_value: None,
+                auto_increment: false,
             },
             sqlrustgo_storage::ColumnDefinition {
                 name: "embedding".to_string(),
@@ -42,6 +43,7 @@ pub fn create_embeddings_table(storage: &mut dyn StorageEngine) -> SqlResult<()>
                 char_max_length: None,
                 collation: None,
                 default_value: None,
+                auto_increment: false,
             },
             sqlrustgo_storage::ColumnDefinition {
                 name: "updated_at".to_string(),
@@ -51,6 +53,7 @@ pub fn create_embeddings_table(storage: &mut dyn StorageEngine) -> SqlResult<()>
                 char_max_length: None,
                 collation: None,
                 default_value: None,
+                auto_increment: false,
             },
             sqlrustgo_storage::ColumnDefinition {
                 name: "model_name".to_string(),
@@ -60,6 +63,7 @@ pub fn create_embeddings_table(storage: &mut dyn StorageEngine) -> SqlResult<()>
                 char_max_length: None,
                 collation: None,
                 default_value: None,
+                auto_increment: false,
             },
             sqlrustgo_storage::ColumnDefinition {
                 name: "dimension".to_string(),
@@ -69,6 +73,7 @@ pub fn create_embeddings_table(storage: &mut dyn StorageEngine) -> SqlResult<()>
                 char_max_length: None,
                 collation: None,
                 default_value: None,
+                auto_increment: false,
             },
             sqlrustgo_storage::ColumnDefinition {
                 name: "vector_hash".to_string(),
@@ -78,6 +83,7 @@ pub fn create_embeddings_table(storage: &mut dyn StorageEngine) -> SqlResult<()>
                 char_max_length: None,
                 collation: None,
                 default_value: None,
+                auto_increment: false,
             },
         ];
         storage.create_table(&sqlrustgo_storage::TableInfo {

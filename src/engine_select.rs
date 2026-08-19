@@ -286,6 +286,7 @@ impl<S: StorageEngine + 'static> ExecutionEngine<S> {
                             char_max_length: None,
                             collation: None,
                             default_value: None,
+                            auto_increment: false,
                         });
                 }
                 Some((sub_result.rows, table_info))
@@ -348,6 +349,7 @@ impl<S: StorageEngine + 'static> ExecutionEngine<S> {
                         char_max_length: None,
                         collation: None,
                         default_value: None,
+                        auto_increment: false,
                     })
                     .collect(),
                 foreign_keys: Vec::new(),
@@ -1834,6 +1836,7 @@ impl<S: StorageEngine + 'static> ExecutionEngine<S> {
                             char_max_length: None,
                             collation: None,
                             default_value: None,
+                            auto_increment: false,
                         });
                 }
                 DERIVED_RESULTS.with(|cell| {
@@ -2440,6 +2443,7 @@ impl<S: StorageEngine + 'static> ExecutionEngine<S> {
                     char_max_length: col.char_max_length,
                     collation: col.collation.clone(),
                     default_value: None,
+                    auto_increment: false,
                 });
             }
             acc_columns = new_columns;
@@ -2491,6 +2495,7 @@ impl<S: StorageEngine + 'static> ExecutionEngine<S> {
                         char_max_length: c.char_max_length,
                         collation: c.collation.clone(),
                         default_value: c.default_value.clone(),
+                        auto_increment: c.auto_increment,
                     });
             }
         }
@@ -2822,6 +2827,7 @@ impl<S: StorageEngine + 'static> ExecutionEngine<S> {
                         char_max_length: col.char_max_length,
                         collation: col.collation.clone(),
                         default_value: None,
+                        auto_increment: false,
                     });
                 }
                 let combined_schema = TableInfo {
