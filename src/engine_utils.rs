@@ -1377,6 +1377,83 @@ fn value_to_literal_string(v: &Value) -> String {
     }
 }
 
+/// TPC-H Q8 (Issue #4274): detect whether a WHERE expression tree contains
+/// any predicate that the comma-join hash chain fast-path
+/// (`try_comma_join_hash_chain`) does NOT consume. The chain only consumes
+/// `=` equi-join predicates between two distinct joined tables. Range
+/// (`<`, `>`, `<=`, `>=`), `LIKE`, `NOT LIKE`, `BETWEEN`, `IN list`,
+/// `NOT IN list`, and `!=` predicates are NOT consumed by the chain.
+///
+/// When this returns `true`, the caller MUST NOT mark the WHERE as
+/// "fully consumed" (i.e. MUST NOT set `COMMA_JOIN_WHERE_CONSUMED = true`).
+/// Otherwise the post-join `eval_predicate` step is skipped and the
+/// residual predicate is silently dropped — TPC-H Q8 returns 7 rows
+/// instead of 2 because `o_orderdate >= '1995-01-01' AND
+/// o_orderdate < '1996-12-31'` is dropped. Single-table predicates
+/// that target the base table are also handled by `extract_single_table_predicates`
+/// pushdown at line 1787-1799, but this function takes the conservative
+/// approach: any non-equi predicate means "do not skip WHERE post-join".
+///
+/// Conservative: returns `true` on any non-equi match (even inside dead
+/// branches of an AND/OR), since we cannot statically know the truth
+/// value of the AND/OR children.
+pub fn where_expr_has_unhandled_residual(expr: &sqlrustgo_parser::Expression) -> bool {
+    use sqlrustgo_parser::Expression;
+    match expr {
+        // AND/OR of two predicates: walk both sides
+        Expression::BinaryOp(l, op, r) if op.as_str() == "AND" || op.as_str() == "OR" => {
+            where_expr_has_unhandled_residual(l) || where_expr_has_unhandled_residual(r)
+        }
+        // Equi-join between two distinct tables: consumed by chain
+        Expression::BinaryOp(_, op, _) if op.as_str() == "=" => false,
+        // All other binary operators (range, !=, etc.) are NOT consumed
+        Expression::BinaryOp(_, _, _) => true,
+        // Range / pattern / list predicates are NOT consumed by the chain
+        Expression::Like(_, _, _)
+        | Expression::NotLike(_, _, _)
+        | Expression::Between(_, _, _)
+        | Expression::NotBetween(_, _, _)
+        | Expression::InList(_, _)
+        | Expression::NotInList(_, _)
+        | Expression::NotRegexp(_, _) => true,
+        // Subqueries are handled separately (see where_expr_has_correlated_subquery)
+        // — they are NOT unhandled residuals; they trigger a different bail-out.
+        Expression::Exists(_)
+        | Expression::NotExists(_)
+        | Expression::Subquery(_)
+        | Expression::In(_, _)
+        | Expression::NotIn(_, _)
+        | Expression::QuantifiedOp(_, _, _)
+        | Expression::SubqueryField(_, _) => false,
+        // Literals / identifiers alone aren't predicates
+        Expression::Literal(_)
+        | Expression::Identifier(_)
+        | Expression::Aggregate(_)
+        | Expression::WindowCall(_)
+        | Expression::SequenceNextVal(_)
+        | Expression::SequenceCurrval(_)
+        | Expression::SystemVariable(_)
+        | Expression::JsonLiteral(_)
+        | Expression::ArrayLiteral(_) => false,
+        // Function calls (e.g. EXTRACT(YEAR FROM ...)) at the top level are
+        // not predicates; if they appear inside a comparison, the BinaryOp
+        // arm handles them.
+        Expression::FunctionCall(_, args) => args.iter().any(where_expr_has_unhandled_residual),
+        Expression::CaseWhen(whens, else_e) => {
+            whens
+                .iter()
+                .any(|w| where_expr_has_unhandled_residual(&w.condition))
+                || else_e
+                    .as_ref()
+                    .is_some_and(|e| where_expr_has_unhandled_residual(e))
+        }
+        Expression::UnaryOp(_, inner) => where_expr_has_unhandled_residual(inner),
+        Expression::IsNull(inner) | Expression::IsNotNull(inner) => {
+            where_expr_has_unhandled_residual(inner)
+        }
+    }
+}
+
 /// TPC-H Q20/Q21: detect whether a WHERE expression tree contains any
 /// `Expression::Exists(_)` or `Expression::NotExists(_)` subtrees. The
 /// caller uses this to decide whether to take the slow correlated-
