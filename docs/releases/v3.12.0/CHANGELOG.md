@@ -2,10 +2,62 @@
 
 > **provenance:** generated_by=v3.12.0-remediation-round-3, generated_at=2026-08-10T10:49:33Z, commit=1903545df6d036f7f6d5035a0503b5fa932aac51, source_repo=openclaw/sqlrustgo, branch=develop/v3.12.0, policy=Anti-Fabrication-Policy-v1.0
 
-> **状态**: 规划中
-> **日期**: 2026-08-09
+> **状态**: **BETA** (2026-08-19 转入)
+> **日期**: 2026-08-19 (latest); 2026-08-09 (initial)
+> **stage_history**: DRAFT (pre-2026-08-12) → ALPHA (2026-08-12) → **BETA** (2026-08-19)
 
 > **commit**: 1903545df6d036f7f6d5035a0503b5fa932aac51
+> **current_HEAD**: 8ec104930f8a645292c0c5ed1a066c2f5c706f7b (post PR #4354)
+
+## 2026-08-19 ALPHA → BETA transition
+
+v3.12.0 officially promoted to **BETA** on 2026-08-19, recorded in
+`docs/releases/v3.12.0/STAGE.yaml` (current_stage: BETA) and posted
+as comment #95192 on master issue #3887.
+
+### Gate snapshot
+
+```
+$ bash scripts/gate/check_beta_v3.12.0.sh
+PASS: 38/40   WARN: 2   BLOCKERS: 0
+✓ All checks pass — ready for BETA promotion.
+```
+
+All 12 `promotion_to_BETA_requires` items satisfied. Full snapshot
+in `docs/releases/v3.12.0/evidence/v312-56/V312-56-VERIFICATION.md`
+(Beta Gate Snapshot + Promotion to BETA Readiness Checklist sections).
+
+### Resolved blockers (since ALPHA)
+
+- **B1_CLIPPY** — workspace-wide clippy errors resolved by PR #4354
+  (17 files, +68/-75; LFS-managed files unchanged).
+- **B6_QUANTILE_FUNCTIONS** — quantile aggregate gate now PASS.
+- **B6_V312_56_TEACHING_GAPS** — was silently skipped due to orphan
+  `=======` merge marker in `scripts/gate/check_beta_v3.12.0.sh:304`;
+  marker removed by PR #4353.
+- **V312-56A-R2 / 56A-R4** — information_schema SQL path and
+  SHOW WARNINGS/ERRORS/STATUS/VARIABLES implementations merged as
+  PR #4349 / #4345 respectively.
+- **PR #4332 TPC-H zero-row fix** — Q5/Q9/Q10/Q13/Q18 closed by
+  PR #4332 + verification PR #4355.
+
+### Remaining open items at Beta entry
+
+| # | Item | Status | Owner |
+|---|---|---|---|
+| #4221 | V312-48 TPC-H SF=1 umbrella | open | openclaw-minimax |
+| #4274 | TPC-H Q8 (8-way join) zero-row | open | openclaw-minimax |
+| #4278 | TPC-H Q16 (NOT IN subquery) zero-row | open | openclaw-minimax |
+| #4251 | V312-56A Metadata teaching (close PR pending) | closure-ready | openclaw-minimax |
+| #4252-#4254 | V312-56B/C/D sub-issues (close PR pending) | closure-ready | openclaw-minimax |
+| 56A-R3 | SHOW FULL TABLES / TABLE STATUS | DEFERRED → v3.13+ | TBD |
+
+### New tag plan
+
+`v3.12.0-beta1` to be cut immediately after the merge of the
+Beta-transition PR (this commit). Per `STAGE_CONFIG.ALPHA_to_BETA`
+trigger; tag pushed to both 252 and 250 remotes.
+
 ## v3.12.0-planned
 
 这是面向 GMP 合规内审检索场景的初始规划条目。v3.12.0 的目标不是扩张宣传口径，而是在 v3.11.0 GA 的基础上补齐生产弱项，并为 `~/gmp-platform` 提供可审计、可恢复、可验证的数据库底座。
