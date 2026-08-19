@@ -149,6 +149,51 @@ fn csv_quote(s: &str) -> String {
     }
 }
 
+#[allow(dead_code)]
+pub fn format_json(columns: &[String], rows: &[Vec<Value>]) -> String {
+    let cols_json: Vec<String> = columns.iter().map(|c| json_quote(c)).collect();
+    let rows_json: Vec<String> = rows
+        .iter()
+        .map(|row| {
+            let parts: Vec<String> = row.iter().map(json_value).collect();
+            format!("[{}]", parts.join(","))
+        })
+        .collect();
+    format!(
+        r#"{{"columns":[{}],"rows":[{}]}}"#,
+        cols_json.join(","),
+        rows_json.join(",")
+    )
+}
+
+fn json_value(v: &Value) -> String {
+    match v {
+        Value::Null => "null".to_string(),
+        Value::Integer(i) => i.to_string(),
+        Value::Float(f) => f.to_string(),
+        Value::Text(s) => json_quote(s),
+        Value::Boolean(b) => b.to_string(),
+        _ => "null".to_string(),
+    }
+}
+
+fn json_quote(s: &str) -> String {
+    let mut out = String::with_capacity(s.len() + 2);
+    out.push('"');
+    for c in s.chars() {
+        match c {
+            '"' => out.push_str("\\\""),
+            '\\' => out.push_str("\\\\"),
+            '\n' => out.push_str("\\n"),
+            '\r' => out.push_str("\\r"),
+            '\t' => out.push_str("\\t"),
+            c => out.push(c),
+        }
+    }
+    out.push('"');
+    out
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -270,5 +315,48 @@ mod tests {
         let rows = vec![vec![Value::Text("line1\nline2".into())]];
         let out = format_csv(&cols, &rows, false);
         assert_eq!(out, "\"line1\nline2\"\n");
+    }
+
+    #[test]
+    fn json_basic_two_columns() {
+        let cols = vec!["id".to_string(), "name".to_string()];
+        let rows = vec![
+            vec![Value::Integer(1), Value::Text("Alice".into())],
+            vec![Value::Integer(2), Value::Text("Bob".into())],
+        ];
+        let out = format_json(&cols, &rows);
+        assert_eq!(out, r#"{"columns":["id","name"],"rows":[[1,"Alice"],[2,"Bob"]]}"#);
+    }
+
+    #[test]
+    fn json_empty_result_has_empty_arrays() {
+        let cols = vec!["a".to_string()];
+        let rows: Vec<Vec<Value>> = vec![];
+        let out = format_json(&cols, &rows);
+        assert_eq!(out, r#"{"columns":["a"],"rows":[]}"#);
+    }
+
+    #[test]
+    fn json_null_becomes_json_null() {
+        let cols = vec!["x".to_string()];
+        let rows = vec![vec![Value::Null]];
+        let out = format_json(&cols, &rows);
+        assert_eq!(out, r#"{"columns":["x"],"rows":[[null]]}"#);
+    }
+
+    #[test]
+    fn json_quotes_text_values() {
+        let cols = vec!["s".to_string()];
+        let rows = vec![vec![Value::Text("hello".into())]];
+        let out = format_json(&cols, &rows);
+        assert_eq!(out, r#"{"columns":["s"],"rows":[["hello"]]}"#);
+    }
+
+    #[test]
+    fn json_escapes_inner_quotes() {
+        let cols = vec!["s".to_string()];
+        let rows = vec![vec![Value::Text("say \"hi\"".into())]];
+        let out = format_json(&cols, &rows);
+        assert_eq!(out, r#"{"columns":["s"],"rows":[["say \"hi\""]]}"#);
     }
 }
