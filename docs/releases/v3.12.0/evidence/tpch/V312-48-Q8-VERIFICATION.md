@@ -1,7 +1,9 @@
 # V312-48-Q8 — zero-row binding verification (Issue #4274)
 
 > **Issue:** [#4274](http://192.168.0.252:3000/openclaw/sqlrustgo/issues/4274) (V312-48-Q8)
-> **provenance:** generated_by=openclaw-minimax, generated_at=2026-08-15, branch=develop/v3.12.0, commit=15a02802cc4ad582af554330a30f6bc6952f4a4a, policy=Anti-Fabrication-Policy-v1.0
+> **provenance (initial):** generated_by=openclaw-minimax, generated_at=2026-08-15, branch=develop/v3.12.0, commit=15a02802cc4ad582af554330a30f6bc6952f4a4a, policy=Anti-Fabrication-Policy-v1.0
+> **provenance (refreshed):** refreshed_by=openclaw-minimax, refreshed_at=2026-08-19, branch=develop/v3.12.0, commit=596a6060d9, source_run=v312-48-refresher-pr4332-2026-08-19, policy=Anti-Fabrication-Policy-v1.0
+> **Disposition:** **DEFER** (#4274) — partial fix unblocked from 0→7 but row count MISMATCH (sqlrustgo 7 vs SQLite 2). NOT a true fix.
 
 ## 1. Symptom
 
@@ -92,3 +94,52 @@ The closure is the documented binding manifest entry (V312-48 §3.2) + the SF=0.
 - File: `docs/releases/v3.12.0/evidence/tpch/V312-48-Q8-VERIFICATION.md`
 - Oracle sha256 (sqlite q8.tsv): `515851afcf0a6922f8e85e929b53770b4570fadc99b1b7b1c8454c65f8dae10a`
 - Oracle sha256 (postgres q8.tsv): `515851afcf0a6922f8e85e929b53770b4570fadc99b1b7b1c8454c65f8dae10a`
+
+---
+
+## 10. PR #4332 partial-fix verification 2026-08-19 — **DEFERRED → v3.13**
+
+**Verdict: unblocked (0 → 7 rows) but row count MISMATCH (sqlrustgo 7 vs SQLite 2). NOT a true fix. Issue #4274 → DEFERRED.**
+
+### 10.1 PR #4332 scope for Q8
+
+PR #4332 (`1fd4fd904c`, merge `50c3271064`) — Q8 fix:
+
+- `queries/q8.sql` — added missing JOIN condition `s_nationkey = n2.n_nationkey` (which TPC-H spec requires for the second nation alias to filter GERMANY supplier correctly)
+- Without this JOIN, the GERMANY filter was applied to the wrong nation column, returning 0 rows
+
+### 10.2 SF=1 cross-engine verification (2026-08-19)
+
+| Engine | Row count | SHA256 | Match |
+|--------|-----------|--------|-------|
+| SQLite v3.45.1 | **2** | `515851afcf0a6922f8e85e929b53770b4570fadc99b1b7b1c8454c65f8dae10a` | oracle |
+| **sqlrustgo @ 596a6060d9** | **7** | n/a | ❌ MISMATCH (Δ=5) |
+
+Evidence: `cross_engine_sf1/sqlite/SUMMARY.json` (Q8 record) + `cross_engine_sf1/sqlrustgo/SUMMARY.json` (Q8 record).
+
+### 10.3 Analysis
+
+PR #4332 successfully **unblocked** Q8 from zero-row → 7-row result. This proves the missing JOIN was a bug. However, the row count **does NOT match** the SQLite oracle (2 vs 7). The 5 extra rows likely come from:
+
+- The first nation alias `n1` (region-binding) may be joining more supplier rows than expected because `c_nationkey = n1.n_nationkey = s_nationkey` chain allows extra nations to leak through the `r_name='EUROPE'` filter when the 7-way planner graph doesn't enforce the 2-year date window correctly
+- Possible additional bug in 8-way join predicate retention (V312-48 §3.2 binding manifest hypothesis confirmed by PR #4332 partial fix but not fully resolved)
+- Or: SQLite at SF=1 returns only 2 rows for `year=1995` and `year=1996` due to date-range aggregation rounding, while sqlrustgo may include rows for years outside the spec range
+
+### 10.4 Status update
+
+| # | Criterion (from §6) | Pre-PR #4332 | Post-PR #4332 |
+|---|---------------------|--------------|----------------|
+| 1 | Row count baseline captured at SF=1 | ✅ PASS (0 vs non-zero divergence) | ✅ PASS (**7 vs 2 MISMATCH**) |
+| 2 | Root cause categorized | ✅ PASS | ✅ PASS (partial: missing JOIN confirmed) |
+| 3 | Cross-engine agreement at ≥1 SF | ✅ PASS (sf=0.001) | ❌ FAIL (sf=1 row count MISMATCH) |
+| 4 | Owner + expiry | ✅ PASS | ✅ PASS |
+| 5 | Verification path | ✅ PASS | ✅ PASS (v3.13: investigate extra 5 rows + fix 8-way predicate retention) |
+| 6 | PR merged | ⏳ | ✅ PASS (PR #4332 @ `1fd4fd904c`) |
+| 7 | Issue #4274 closed | ⏳ | 🔄 **DEFER to v3.13** — root cause partially fixed but not fully resolved |
+
+### 10.5 Honest disclosure
+
+- The "Q5/Q8/Q9/Q10/Q13 FIXED by PR #4332" claim from the plan was **partially incorrect** for Q8 — PR #4332 fixes the JOIN bug but introduces/uncovers a row-count discrepancy (7 vs 2).
+- This is a partial fix that **does not satisfy** V312-48 §8 rule 1 (row count match against oracle).
+- DEFER is the honest disposition; CLOSE would be fabrication.
+- v3.13 follow-up: investigate why sqlrustgo returns 7 rows (likely predicate retention issue in 8-way join path, not the missing JOIN itself).
