@@ -223,6 +223,7 @@ pub fn run() -> i32 {
     }
 }
 
+#[allow(clippy::too_many_arguments)]
 fn run_sqlite_subcommand(
     db: PathBuf,
     batch: bool,
