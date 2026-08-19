@@ -3,6 +3,12 @@
 //! Provides the `run()` entry point used by `sqlrustgo` binary.
 //! Thin wrapper around `sqlrustgo-mysql-server` for most subcommands.
 
+mod dotcmd;
+mod error;
+mod implicit_alias;
+mod output;
+mod sqlite_mode;
+
 use clap::{Parser, Subcommand};
 use std::process::Command as Proc;
 
