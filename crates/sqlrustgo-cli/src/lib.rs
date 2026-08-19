@@ -4,6 +4,7 @@
 //! Thin wrapper around `sqlrustgo-mysql-server` for most subcommands.
 
 mod error;
+mod output;
 
 use clap::{Parser, Subcommand};
 use std::process::Command as Proc;
