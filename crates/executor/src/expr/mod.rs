@@ -727,12 +727,31 @@ pub fn sql_like_match(text: &str, pattern: &str) -> bool {
 /// for the small TPC-H patterns (`%green%`, etc.) but could be
 /// O(len(text) * len(pat)) in the worst case. A DFA-based matcher
 /// would scale better; the recursive version is fine for now.
+///
+/// Backtracking invariant: `star.0` is the *next* text index to try as
+/// the start of the pattern segment following the most-recently-seen
+/// `%` (i.e. `star.1`). On mismatch, we rewind `t_idx` to `star.0`,
+/// try the segment again at that position, and advance `star.0` by
+/// one so the *following* mismatch starts one position later. This
+/// rewinds correctly even after the algorithm has consumed several
+/// characters past the `%` (e.g. when the segment is "customer" and
+/// the text contains back-to-back `c`s like "ironicCustomer" — the
+/// naive `t_idx += 1` version skips re-trying the second `c`).
+///
+/// Regression for V312-48 #4278: TPC-H Q16's
+/// `s_comment LIKE '%Customer%Complaints%'` was returning false on
+/// supplier 358 (whose comment contains "ironicCustomer"). The naive
+/// algorithm matched the `c` ending "ironic" against the first `c` of
+/// "Customer", then failed to extend to `u`, then backtracked to
+/// `t_idx += 1` which skipped the second `c` (start of "Customer").
 fn like_match_recursive(text: &str, pattern: &str) -> bool {
     let mut t_idx = 0;
     let mut p_idx = 0;
     let t_bytes = text.as_bytes();
     let p_bytes = pattern.as_bytes();
-    let mut star: Option<(usize, usize)> = None; // (text position, pattern position after %)
+    // star = (next text position to try as the segment start,
+    //         pattern position of the segment, i.e. just after %).
+    let mut star: Option<(usize, usize)> = None;
 
     while t_idx < t_bytes.len() {
         if p_idx < p_bytes.len() {
@@ -754,13 +773,20 @@ fn like_match_recursive(text: &str, pattern: &str) -> bool {
                     continue;
                 }
                 _ => {
-                    // Mismatch — if we have a prior `%`, backtrack: advance
-                    // t_idx by one and restart matching from just after the
-                    // saved position. (The saved `ts` is fixed, so we use
-                    // t_idx + 1, not ts + 1, to actually make progress.)
-                    if let Some((_, ps)) = star {
+                    // Mismatch — rewind to the saved start position for
+                    // the segment after the most-recent `%`, advance the
+                    // saved start by one so the next retry starts at the
+                    // next text position, then reset p_idx to the segment
+                    // start. This re-tries `pat[star.1]` at `text[star.0]`
+                    // and on subsequent failures advances star.0 one
+                    // position further. Crucially: if t_idx has been
+                    // advanced past star.0 by a (now-failed) prefix match,
+                    // we still rewind back to star.0 so the failed
+                    // position gets re-tried as a fresh segment start.
+                    if let Some((st, ps)) = star {
+                        star = Some((st + 1, ps));
+                        t_idx = st;
                         p_idx = ps;
-                        t_idx += 1;
                         continue;
                     }
                     return false;
@@ -768,10 +794,12 @@ fn like_match_recursive(text: &str, pattern: &str) -> bool {
             }
         } else {
             // Pattern exhausted but text has more. If we have a prior
-            // `%`, backtrack and advance one more text position.
-            if let Some((_, ps)) = star {
+            // `%`, rewind and advance one more text position for the
+            // next retry.
+            if let Some((st, ps)) = star {
+                star = Some((st + 1, ps));
+                t_idx = st;
                 p_idx = ps;
-                t_idx += 1;
                 continue;
             }
             return false;
@@ -2756,6 +2784,35 @@ mod tests {
         assert!(sql_like_match("hello", "%o"));
         assert!(sql_like_match("hello", "%ell%"));
         assert!(!sql_like_match("hello", "h%d"));
+    }
+
+    // Regression for #4278: TPC-H Q16 has supplier comments like
+    // "ans. ironicCustomer  requests cajole carefullyComplaintsy regular reque"
+    // (note `ironicCustomer` has a back-to-back `cc` pair where the first `c`
+    // ends "ironic" and the second starts "Customer"). A naive iterative
+    // backtracking matcher can fail to re-try the second `c` after matching
+    // the first `c` and failing to extend it to "ustomer". The pattern
+    // `%Customer%Complaints%` should match.
+    #[test]
+    fn test_like_match_double_cc_q16() {
+        // Back-to-back 'c' in text (ir**o**nicCust**o**mer).
+        let text = "ans. ironicCustomer  requests cajole carefullyComplaintsy regular reque";
+        assert!(sql_like_match(text, "%Customer%Complaints%"));
+        assert!(sql_like_match(text, "%customer%complaints%"));
+        // Single-token patterns still work.
+        assert!(sql_like_match(text, "%Customer%"));
+        assert!(sql_like_match(text, "%Complaints%"));
+        // Suppress unused-var lint on rewritten comments above.
+        let _ = text;
+    }
+
+    // Regression for #4278: edge case where the second wildcard consumes
+    // the rest of the pattern.
+    #[test]
+    fn test_like_match_trailing_percent_after_substr() {
+        assert!(sql_like_match("axb", "%a%b%"));
+        assert!(sql_like_match("ab", "%a%b%"));
+        assert!(sql_like_match("xxxabxxxcdxxx", "%ab%cd%"));
     }
 
     #[test]
