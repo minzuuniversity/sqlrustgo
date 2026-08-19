@@ -85,6 +85,7 @@ pub fn materialize_cte_tables<S: StorageEngine + 'static>(
                     char_max_length: None,
                     collation: None,
                     default_value: None,
+                    auto_increment: false,
                 }
             })
             .collect();

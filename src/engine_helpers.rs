@@ -37,56 +37,64 @@ pub fn materialise_default_tokens(
     if records.is_empty() {
         return records;
     }
-    // V313-followup-1 / Issue #4154: `default_value` is stored as raw
-    // literal text. Capture the `Option<&str>` reference and parse to
-    // `Value` lazily during materialisation (parse_default_literal
-    // lives in the storage crate and is not re-exported here).
     let defaults: Vec<Option<&str>> = table_columns
         .iter()
         .map(|c| c.default_value.as_deref())
         .collect();
-    let positions: Vec<(usize, Option<&str>)> = if column_names.is_empty() {
+    if column_names.is_empty() {
         // INSERT VALUES with no explicit column list — align by index.
-        (0..table_columns.len())
-            .map(|i| (i, defaults.get(i).copied().unwrap_or(None)))
-            .collect()
-    } else {
-        column_names
-            .iter()
-            .enumerate()
-            .filter_map(|(row_idx, name)| {
-                // V313-followup-1 / Issue #4154: case-exact first, fallback
-                // case-insensitive if exact fails.
-                let pos = table_columns
-                    .iter()
-                    .position(|c| c.name == *name)
-                    .or_else(|| {
-                        table_columns
-                            .iter()
-                            .position(|c| c.name.to_lowercase() == name.to_lowercase())
-                    })?;
-                Some((row_idx, defaults.get(pos).copied().unwrap_or(None)))
-            })
-            .collect()
-    };
-    let mut out = records;
-    for (col_idx, default) in positions {
+        let mut out = records;
         for row in out.iter_mut() {
-            if col_idx < row.len() {
-                let is_default = matches!(&row[col_idx], Value::Text(t) if t == "DEFAULT");
-                if is_default {
-                    // V313-followup-1 / Issue #4154: parse the literal
-                    // text at materialisation time. Parse failures fall
-                    // back to NULL per storage crate contract.
-                    row[col_idx] = match default {
-                        Some(s) => parse_default_literal_in_helpers(s),
-                        None => Value::Null,
-                    };
+            for (col_idx, default) in defaults.iter().enumerate() {
+                if col_idx < row.len() {
+                    let is_default = matches!(&row[col_idx], Value::Text(t) if t == "DEFAULT");
+                    if is_default {
+                        row[col_idx] = match default {
+                            Some(s) => parse_default_literal_in_helpers(s),
+                            None => Value::Null,
+                        };
+                    }
                 }
             }
         }
+        return out;
     }
-    out
+
+    // INSERT VALUES with explicit column list — reorder columns to match
+    // table_columns order. column_names[i] corresponds to values[i] in
+    // the record; we need to produce a record where position j is the
+    // value for table_columns[j].
+    let mut ordered_records = Vec::with_capacity(records.len());
+    for record in records {
+        let mut ordered = Vec::with_capacity(table_columns.len());
+        for (table_idx, _) in table_columns.iter().enumerate() {
+            let table_col_name = &table_columns[table_idx].name;
+            let default = defaults.get(table_idx).copied().unwrap_or(None);
+            let source_idx = column_names.iter().position(|c| {
+                c == table_col_name || c.to_lowercase() == table_col_name.to_lowercase()
+            });
+            let value = match source_idx {
+                Some(idx) if idx < record.len() => {
+                    let v = record[idx].clone();
+                    if matches!(&v, Value::Text(t) if t == "DEFAULT") {
+                        match default {
+                            Some(s) => parse_default_literal_in_helpers(s),
+                            None => Value::Null,
+                        }
+                    } else {
+                        v
+                    }
+                }
+                _ => match default {
+                    Some(s) => parse_default_literal_in_helpers(s),
+                    None => Value::Null,
+                },
+            };
+            ordered.push(value);
+        }
+        ordered_records.push(ordered);
+    }
+    ordered_records
 }
 
 /// V313-followup-1 / Issue #4154: local copy of the storage
