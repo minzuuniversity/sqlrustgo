@@ -5,7 +5,7 @@
 > **状态**: 规划中
 > **产品目标**: 面向 `~/gmp-platform` 的 GMP 内审检索数据库
 > **规划日期**: 2026-08-09
-> **当前整改口径更新**: 2026-08-18
+> **当前整改口径更新**: 2026-08-19
 
 v3.12.0 被规划为 SQLRustGo 第一个明确面向 GMP 内审检索工作负载的版本。它使用 SQLRustGo 作为受监管文档存储、chunk、embedding、audit trail、evidence relation、hybrid retrieval 和 SQL-backed graph projection 的数据库基础。
 
@@ -16,6 +16,8 @@ v3.12.0 被规划为 SQLRustGo 第一个明确面向 GMP 内审检索工作负�
 2026-08-14 整改更新：README 与历史开发计划中的 `PARTIAL` 不能作为 v3.12 初始生产能力声明。属于 v3.12 生产边界的 `PARTIAL` 必须绑定到 [PARTIAL 功能整改 Issue 计划](PARTIAL_FEATURE_REMEDIATION_ISSUE_PLAN.md)，在 GA 前关闭为 `DONE / 受控`，或降级为 `DEFERRED` / `UNSUPPORTED` 并说明不属于 v3.12 初始生产边界。
 
 2026-08-18 阶段治理纠偏：v3.12.0 仍处于 `ALPHA`，不得通过把 V312 open issue 批量改成 v3.13 follow-up 来绕过 Beta/RC/GA。详见 [v3.12.0 阶段治理纠偏报告](STAGE_GOVERNANCE_REMEDIATION_2026-08-18.md)。`develop/v3.13.0` 只能作为冻结 follow-up 分支，不能作为关闭 V312 issue 的默认证据来源。
+
+2026-08-19 教学入口补强：新增 [V312-57 sqlite3-like 一体化教学 CLI 计划](V312-57_SQLITE_STYLE_EDU_CLI_PLAN.md)，用于支撑 BustubX-EDU 前 4-6 周以 SQLRustGo 替代 `sqlite3` CLI 使用体验进行脚本化验收。该任务不声明 SQLite 文件格式兼容。
 
 ## 发布契约
 
@@ -41,8 +43,9 @@ v3.12.0 被规划为 SQLRustGo 第一个明确面向 GMP 内审检索工作负�
 | `DEVELOPMENT_PLAN.md` | 实施计划和 GMP-Platform 集成工作包 |
 | `VERSION_PLAN.md` | 产品范围和工作包 |
 | `TEST_PLAN.md` | gate 和测试矩阵 |
-| `ISSUES_PLAN.md` | V312-01 到 V312-54 的任务拆分和 follow-up |
+| `ISSUES_PLAN.md` | V312-01 到 V312-57 的任务拆分和 follow-up |
 | `PARTIAL_FEATURE_REMEDIATION_ISSUE_PLAN.md` | README 中 PARTIAL/OPEN 功能的整改归属、issue 和关闭边界 |
+| `V312-57_SQLITE_STYLE_EDU_CLI_PLAN.md` | BustubX-EDU 前 4-6 周 sqlite3-like 一体化教学 CLI 范围、验收和门禁 |
 | `GMP_COMPLIANCE_MATRIX.md` | GMP/ALCOA+ 合规控制映射 |
 | `fixtures/gmp_audit_questions.yml` | 检索质量 fixture seed |
 
