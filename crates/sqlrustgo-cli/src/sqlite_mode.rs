@@ -276,6 +276,45 @@ impl SqliteMode {
             Err(_) => None,
         }
     }
+
+    /// Run interactive REPL from stdin (always continue-on-error, exit 0).
+    pub fn run_repl(&mut self) -> i32 {
+        let stdin = std::io::stdin();
+        let lines: Vec<String> = stdin.lines().map_while(Result::ok).collect();
+        self.run_repl_with_input(lines)
+    }
+
+    /// Run REPL from a pre-collected input (testable). Always exits 0.
+    pub fn run_repl_with_input(&mut self, lines: Vec<String>) -> i32 {
+        for line in lines {
+            let trimmed = line.trim();
+            if trimmed.is_empty() {
+                continue;
+            }
+            if trimmed.starts_with('.') {
+                match crate::dotcmd::parse_dotcmd(trimmed) {
+                    Ok(DotCmd::Quit) => break,
+                    Ok(cmd) => {
+                        if let Err(e) = self.execute_dotcmd(cmd) {
+                            eprintln!("{}", e);
+                            // REPL continues on dot-command errors
+                        }
+                    }
+                    Err(e) => eprintln!("{}", e),
+                }
+            } else {
+                match self.execute_sql(trimmed) {
+                    Ok(_) => {}
+                    Err(e) => {
+                        eprintln!("{}", e);
+                        self.error_seen = true;
+                        // REPL continues regardless
+                    }
+                }
+            }
+        }
+        0 // REPL always exits 0 (continue-on-error by design)
+    }
 }
 
 #[cfg(test)]
@@ -420,6 +459,43 @@ mod tests {
             "/this/path/definitely/does/not/exist.sql",
         )));
         assert!(matches!(result, Err(CliError::Io(_))));
+        let _ = std::fs::remove_dir_all(&tmp);
+    }
+
+    #[test]
+    fn run_repl_executes_stdin_lines() {
+        let tmp = std::env::temp_dir().join("v31257_repl_lines");
+        let _ = std::fs::remove_dir_all(&tmp);
+        let mut mode = SqliteMode::open(&tmp, SqliteState::default(), false).unwrap();
+        mode.state.output = OutputTarget::File(tmp.join("out.txt"));
+        let script = "CREATE TABLE repl_t(x INTEGER);\n\
+                      INSERT INTO repl_t VALUES (99);\n\
+                      SELECT x FROM repl_t;\n.quit\n";
+        let exit = mode.run_repl_with_input(script.lines().map(String::from).collect());
+        assert_eq!(exit, 0);
+        let out = std::fs::read_to_string(tmp.join("out.txt")).unwrap();
+        assert!(
+            out.contains("99"),
+            "expected '99' in output, got: {:?}",
+            out
+        );
+        let _ = std::fs::remove_dir_all(&tmp);
+    }
+
+    #[test]
+    fn run_repl_parse_error_exits_zero_but_continues() {
+        let tmp = std::env::temp_dir().join("v31257_repl_parse_err");
+        let _ = std::fs::remove_dir_all(&tmp);
+        let mut mode = SqliteMode::open(&tmp, SqliteState::default(), false).unwrap();
+        mode.state.output = OutputTarget::File(tmp.join("out.txt"));
+        let exit = mode.run_repl_with_input(vec![
+            "SELEC 1".to_string(),
+            "SELECT 2".to_string(),
+            ".quit".to_string(),
+        ]);
+        assert_eq!(exit, 0);
+        let out = std::fs::read_to_string(tmp.join("out.txt")).unwrap();
+        assert!(out.contains("2"), "expected '2' in output, got: {:?}", out);
         let _ = std::fs::remove_dir_all(&tmp);
     }
 }
