@@ -125,6 +125,30 @@ fn value_to_string(v: &Value) -> String {
     }
 }
 
+#[allow(dead_code)]
+pub fn format_csv(columns: &[String], rows: &[Vec<Value>], include_header: bool) -> String {
+    let mut out = String::new();
+    if include_header {
+        out.push_str(&columns.iter().map(|c| csv_quote(c)).collect::<Vec<_>>().join(","));
+        out.push('\n');
+    }
+    for row in rows {
+        let parts: Vec<String> = row.iter().map(|v| csv_quote(&value_to_string(v))).collect();
+        out.push_str(&parts.join(","));
+        out.push('\n');
+    }
+    out
+}
+
+fn csv_quote(s: &str) -> String {
+    if s.contains(',') || s.contains('"') || s.contains('\n') || s.contains('\r') {
+        let escaped = s.replace('"', "\"\"");
+        format!("\"{}\"", escaped)
+    } else {
+        s.to_string()
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -203,5 +227,48 @@ mod tests {
         let rows: Vec<Vec<Value>> = vec![];
         let out = format_list(&rows);
         assert_eq!(out, "");
+    }
+
+    #[test]
+    fn csv_basic_with_header() {
+        let cols = vec!["id".to_string(), "name".to_string()];
+        let rows = vec![
+            vec![Value::Integer(1), Value::Text("Alice".into())],
+            vec![Value::Integer(2), Value::Text("Bob".into())],
+        ];
+        let out = format_csv(&cols, &rows, true);
+        assert_eq!(out, "id,name\n1,Alice\n2,Bob\n");
+    }
+
+    #[test]
+    fn csv_quotes_values_with_comma() {
+        let cols = vec!["x".to_string()];
+        let rows = vec![vec![Value::Text("a,b".into())]];
+        let out = format_csv(&cols, &rows, false);
+        assert_eq!(out, "\"a,b\"\n");
+    }
+
+    #[test]
+    fn csv_doubles_inner_quotes() {
+        let cols = vec!["x".to_string()];
+        let rows = vec![vec![Value::Text("say \"hi\"".into())]];
+        let out = format_csv(&cols, &rows, false);
+        assert_eq!(out, "\"say \"\"hi\"\"\"\n");
+    }
+
+    #[test]
+    fn csv_null_is_empty_string() {
+        let cols = vec!["a".to_string(), "b".to_string()];
+        let rows = vec![vec![Value::Null, Value::Text("x".into())]];
+        let out = format_csv(&cols, &rows, false);
+        assert_eq!(out, ",x\n");
+    }
+
+    #[test]
+    fn csv_quotes_newlines() {
+        let cols = vec!["x".to_string()];
+        let rows = vec![vec![Value::Text("line1\nline2".into())]];
+        let out = format_csv(&cols, &rows, false);
+        assert_eq!(out, "\"line1\nline2\"\n");
     }
 }
