@@ -259,22 +259,44 @@ impl SqliteMode {
 
     /// Get CREATE TABLE SQL for a table name (best-effort).
     fn table_create_sql(&mut self, name: &str) -> Option<String> {
-        let sql = format!(
-            "SELECT sql FROM sqlite_master WHERE type='table' AND name='{}'",
-            name.replace('\'', "''")
-        );
-        match self.engine.execute(&sql) {
-            Ok(result) => result
-                .rows
-                .into_iter()
-                .filter_map(|row| row.into_iter().next())
-                .filter_map(|v| match v {
-                    sqlrustgo_types::Value::Text(s) => Some(s),
-                    _ => None,
-                })
-                .next(),
-            Err(_) => None,
+        // Read the FileStorage JSON for the table and reconstruct a
+        // CREATE TABLE statement. Avoids relying on sqlite_master, which
+        // the engine may not support.
+        //
+        // The FileStorage table JSON has shape:
+        //   {"name": "users", "columns": [{"name": "id", "data_type": "INTEGER", ...}, ...], ...}
+        //
+        // We do a minimal string-based parse to avoid pulling serde_json
+        // into sqlrustgo-cli's dep tree (the JSON format is internal and stable).
+        let json_path = self.db_path.join(format!("{}.json", name));
+        let content = std::fs::read_to_string(&json_path).ok()?;
+
+        let cols_start = content.find("\"columns\"")?;
+        let arr_start = content[cols_start..].find('[')?;
+        let after_arr = &content[cols_start + arr_start + 1..];
+        let arr_end_rel = after_arr.find(']')?;
+        let cols_block = &after_arr[..arr_end_rel];
+
+        let mut col_defs = Vec::new();
+        let mut rest = cols_block;
+        while let Some(obj_rel) = rest.find('{') {
+            let after_obj = &rest[obj_rel + 1..];
+            let obj_end_rel = after_obj.find('}')?;
+            let obj = &after_obj[..obj_end_rel];
+            let cn = extract_json_string(obj, "name")?;
+            let dt = extract_json_string(obj, "data_type")?;
+            col_defs.push(format!("{} {}", cn, dt));
+            rest = &after_obj[obj_end_rel + 1..];
         }
+
+        if col_defs.is_empty() {
+            return None;
+        }
+        Some(format!(
+            "CREATE TABLE {} ({});",
+            name,
+            col_defs.join(", ")
+        ))
     }
 
     /// Run interactive REPL from stdin (always continue-on-error, exit 0).
@@ -358,6 +380,21 @@ impl SqliteMode {
             0
         }
     }
+}
+
+/// Minimal JSON string-value extractor: find `"key": "value"` and return `value`.
+fn extract_json_string(obj: &str, key: &str) -> Option<String> {
+    let needle = format!("\"{}\"", key);
+    let key_pos = obj.find(&needle)?;
+    let after_key = &obj[key_pos + needle.len()..];
+    let colon = after_key.find(':')?;
+    let after_colon = after_key[colon + 1..].trim_start();
+    if !after_colon.starts_with('"') {
+        return None;
+    }
+    let after_quote = &after_colon[1..];
+    let end_rel = after_quote.find('"')?;
+    Some(after_quote[..end_rel].to_string())
 }
 
 #[cfg(test)]

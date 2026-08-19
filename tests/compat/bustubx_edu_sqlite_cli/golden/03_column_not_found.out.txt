@@ -1,0 +1,1 @@
+Error: RuntimeError: Execution error: Binder error: column 'nonexistent_column' not found in schema
