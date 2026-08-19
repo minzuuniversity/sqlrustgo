@@ -25,16 +25,16 @@
 
 | Q | rows | elapsed (ms) | notes |
 |---|------|---------------|-------|
-| Q13 | 42 | 861772.2 | ok; 42 rows |
+| Q16 | 0 | 114521.8 | ok; 0 rows |
 
 ## Summary
 
 - Queries executed in this run: 1/22
-- Queries returning 0 rows: 0
-- Total rows across executed queries: 42
-- Total elapsed time: 861772.2 ms (861.8 s)
-- Required non-empty query check: PASS for executed queries
-- Slowest query: Q13 (861772.2 ms)
+- Queries returning 0 rows: 1
+- Total rows across executed queries: 0
+- Total elapsed time: 114521.8 ms (114.5 s)
+- Required non-empty query check: FAIL - Q[16] returned 0 rows
+- Slowest query: Q16 (114521.8 ms)
 
 ## Limitations
 

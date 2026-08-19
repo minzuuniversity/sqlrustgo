@@ -642,3 +642,26 @@ done
 - Q18 closure is a **NEW DISCOVERY**: not in original closure scope; PR #4332's broader join reorder inadvertently fixed it
 - Q9 (175 rows) row count MATCH, but Q9 contains float division; SHA256 not claimed
 - Q5/Q10/Q13 row counts are integer (no float), expected bit-exact; SHA256 deferred
+
+**Execution record (2026-08-19T09:28Z, post-PR #4355 squash-merge)**:
+
+| # | Verifier | Actual | Pass? |
+|---|----------|--------|-------|
+| V1 | 5 sub-issues auto-closed via `Closes` keyword | #4273, #4275, #4276, #4277, #4279 all state=closed within 35s of PR merge | ✅ |
+| V2 | 2 DEFER issues remain open with assessment comment | #4274 state=open + 6 comments + milestone=v3.12.0; #4278 state=open + 6 comments + milestone=v3.12.0 | ✅ |
+| V3 | develop HEAD reflects PR #4355 squash merge | `origin/develop/v3.12.0` HEAD = `e597002b0f0f65a746321b2841e886643cc7ccdc` (PR #4355 squash merge) | ✅ |
+| V4 | PR #4355 closed and merged | state=closed, merged=true, merge_commit_sha=`e597002b0f0f…`, base=develop/v3.12.0, head=fix/v312-48-pr4332-verification | ✅ |
+| V5 | `SUMMARY.json` disposition integrity | `v312_48_disposition.fixed_by_pr_4332=[5,9,10,13,18]`, `not_fixed_deferred=[8,16]`, `fixed_unblocked_count_differs=[8]` (Q8 partial unblock but row count diverges) | ✅ |
+| V6 | All 22 queries have SQLite sha256 oracle | 22/22 entries carry `sqlite.sha256` (64-hex); 0 missing | ✅ |
+| V7 | Master doc §11.x subsections present | §11.0 Scope, §11.1 Q5, §11.2 Q8, §11.3 Q9, §11.4 Q10, §11.5 Q13, §11.6 Q16, §11.7 Q18, §11.8 out-of-scope, §11.9 evidence, §11.10 anti-pattern, §11.11 verifier, §11.12 plan — 13/13 PASS | ✅ |
+| V8 | Per-query docs §10 PR #4332 sections | Q5/Q8/Q9/Q10/Q13/Q16/Q18 — 7/7 PASS, each doc has `## 10. PR #4332 verification` section with disposition (FIXED / PARTIAL / NOT FIXED / NEW DISCOVERY) | ✅ |
+
+**DEFERRED comments posted (2026-08-19T09:28Z)**:
+
+- #4274 comment id `95150`: Q8 partial-fix verification, 8-way planner predicate retention root cause, v3.13 follow-up via master #4313
+- #4278 comment id `95160`: Q16 NOT IN + count distinct path uncovered by PR #4332, ZERO_ROW persists, v3.13 follow-up via master #4313
+
+**PR #4332 + PR #4355 closure ledger (re-verified)**:
+
+- PR #4332 (commit `1fd4fd904c`, merge `50c3271064`) → fixed 5/7 (Q5/Q9/Q10/Q13/Q18) + partial 1/7 (Q8 0→7 unblock, count diverges) + not-fixed 1/7 (Q16)
+- PR #4355 (squash merge `e597002b0f`) → supplied missing `Closes` keywords + per-issue DEFERRED disposition; auto-closed 5/5 targets; 2/7 DEFER comments posted; Gitea 252 `Fixes` vs `Closes` gotcha reaffirmed
