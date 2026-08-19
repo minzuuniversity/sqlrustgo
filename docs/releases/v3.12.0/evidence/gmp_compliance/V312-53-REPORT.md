@@ -10,7 +10,7 @@
 
 | Sub-area | 3.12 status | Evidence (file:line) |
 |---|---|---|
-| ACL role → permission map (5 roles × 12 ops) | **DONE** | `crates/gmp/src/acl.rs:45` `GmpRole` (Admin/Auditor/Editor/Viewer/BackupOperator); `:66` `role_permissions(role)`; `:111` `check_permission(role, op)` returns `AccessDecision::Allowed/Denied` (fail-closed). |
+| ACL role → permission map (5 roles × 11 ops) | **DONE** | `crates/gmp/src/acl.rs:45` `GmpRole` (Admin/Auditor/Editor/Viewer/BackupOperator); `:66` `role_permissions(role)`; `:111` `check_permission(role, op)` returns `AccessDecision::Allowed/Denied` (fail-closed). (Note: 11 ops not 12 — see §2.3 honest disclosure.) |
 | Fail-closed ACL guard | **DONE** | `crates/gmp/src/acl.rs:111` `check_permission` returns `Denied { reason }` for unrecognised ops; `test_permission_guard_fail_closed` PASS. |
 | Audit hash chain (SHA-256 event_hash → previous_hash) | **DONE** | `crates/gmp/src/audit.rs:14-26` `AuditAction` enum (now 9 variants incl. compliance ops); `:56-59` `AuditLog.previous_hash: Option<String>` / `event_hash: String`; `test_hash_chain_two_rows` / `test_hash_chain_genesis_previous_hash_none` / `test_hash_chain_tamper_detection` / `test_hash_chain_tamper_detection_negative_no_mutate` PASS. |
 | AuditAction variants for compliance ops (Import/Export/Approve/Review/Backup/Restore) | **DONE** | `crates/gmp/src/audit.rs:14-26` enum now has all 9 variants; `test_compliance_action_variants_roundtrip` PASS — round-trips all 6 compliance ops through as_str/from_str + records 6 ops + verifies chain intact + verifies query ordering. |
@@ -18,7 +18,7 @@
 | Hash-chain tamper integration test (mutate a stored row, then verify) | **DONE** | `crates/gmp/src/audit.rs` `test_hash_chain_tamper_detection` rewritten: inserts 3 chained rows, calls `verify_audit_chain` (must return `(true, None)`), then calls `storage.update_if` with a `RowFilter` matching id=2 to mutate action "UPDATE"→"TAMPERED", re-calls `verify_audit_chain` (must return `(false, Some(2))`). PASS at HEAD `868088aa70`. |
 | Embedding-store tamper detection | **DEFERRED → v3.13** | No test in `crates/gmp/src/embeddings.rs` mutates an embedding and re-validates the chain. Followup #4233 still open. |
 | Graph-projection tamper detection | **DEFERRED → v3.13** | No test in `crates/gmp/src/graph.rs` mutates an edge and re-validates the chain. Followup #4233 still open. |
-| ACL coverage test matrix (all 5 roles × 12 ops) | **PARTIAL** | 12 ACL tests exist and PASS (`test_admin_has_all_permissions`, `test_auditor_can_query_audit`, `test_editor_can_import`, `test_backup_operator_only_backup`, `test_viewer_limited_permissions`, `test_permission_guard_fail_closed` etc.); full 5×12 matrix NOT enumerated in a single test. |
+| ACL coverage test matrix (all 5 roles × 11 ops) | **DONE** | `crates/gmp/src/acl.rs::tests::test_acl_full_matrix_5_roles_x_11_operations` — enumerates 5×11=55 cells, hardcodes expected matrix from `role_permissions`, asserts both `AclContext::can` and `check_permission` agree, verifies 28 allowed + 27 denied invariants. Closed by SPRINT-S1-GMP §4.2.3 (commit `dfaec6d089`). **Note**: matrix is 5×11 not 5×12 — GMP enum has 11 `GmpOperation` variants; "DocumentCreate/Read/Update/Delete" are SQL-level grants, not GMP ACL (see §2.3 for honest disclosure). |
 
 **Net effect on README.** The current row "GMP schema / version / chunk / audit / relation — DONE — 154 tests PASS" must be split into two rows: the **core CRUD audit chain** is DONE; the **compliance-operation audit chain** (Import/Export/Approve/Review/Backup/Restore) is now **DONE at the enum / hash-chain level** (variants exist, roundtrip + 6-op hash-chain test PASS) — only the production-path wiring in `sql_api.rs::import_document` / `bulk_import` / `backup.rs::{create_backup,restore_backup}` and `retrieval.rs::search` remains DEFERRED → v3.13 [#4231]. The **hash-chain tamper integration test is DONE** (real mutate-then-verify test). Embedding-store and graph-projection tamper tests remain DEFERRED → v3.13 [#4233].
 
@@ -54,14 +54,46 @@
 
 `test_permission_guard_fail_closed` PASS — negative path verified.
 
-### 2.3 Gap: 5 × 12 explicit matrix test
+### 2.3 Gap closure: 5 × 11 explicit matrix test (DONE)
 
-The 12 ACL tests cover spot-checks (one positive + one negative per role), not
-the full 60-cell matrix. A missing mapping in `role_permissions` would only
-fail at the spot-check that exercises it. The full matrix is implicitly
-verified by inspection of `role_permissions` at `crates/gmp/src/acl.rs:66`,
-but a programmatic 5×12 enum-iteration test would be the definitive gate.
-This is a test-coverage gap, not a behaviour gap.
+> **provenance:** closed_by=SPRINT-S1-GMP dfaec6d089, closed_at=2026-08-18, verified_at=2026-08-19 HEAD 54c4ebf9b
+
+The 5×11 = 55-cell matrix gap was closed by commit `dfaec6d089` (SPRINT-S1-GMP §4.2.3):
+
+- New test `test_acl_full_matrix_5_roles_x_11_operations` in `crates/gmp/src/acl.rs`
+- Enumerates every (role, op) pair across 5 roles × 11 ops = 55 cells
+- Hardcodes the expected allow/deny matrix derived from `role_permissions()`
+- Asserts both `AclContext::can(op)` and `check_permission(role, op)` agree
+- Verifies count invariants: 28 allowed + 27 denied = 55 cells (no neutrals)
+
+**Note on the 5×11 vs 5×12 distinction**: GMP has 11 distinct `GmpOperation`
+variants (SqlQuery, VectorSearch, GraphProjection, RetrievalSearch,
+DocumentImport, DocumentExport, DocumentApprove, DocumentReview,
+BackupCreate, BackupRestore, AuditQuery). There is no 12th variant in the
+v3.12 ACL enum — the §2.1 matrix's "DocumentCreate/Read/Update/Delete" rows
+correspond to SQL-level grants, not GMP ACL. The test's comment explicitly
+discloses this so a future reader does not "fix" a non-existent gap.
+
+**Verification at HEAD `54c4ebf9b`**:
+
+```
+$ cargo test -p sqlrustgo-gmp --lib acl
+running 14 tests
+test acl::tests::test_acl_full_matrix_5_roles_x_11_operations ... ok
+test acl::tests::test_admin_has_all_permissions ... ok
+test acl::tests::test_viewer_limited_permissions ... ok
+test acl::tests::test_backup_operator_only_backup ... ok
+test acl::tests::test_auditor_can_query_audit ... ok
+test acl::tests::test_editor_can_import ... ok
+test acl::tests::test_permission_guard_fail_closed ... ok
+test acl::tests::test_acl_denial_always_carries_reason ... ok
+... (14 passed; 0 failed)
+```
+
+This closes RC4 partial gap "Security and role-based access tests pass" at
+the GMP ACL layer. Other Security items (production wiring for
+Import/Export/Approve/Review/Backup/Restore in `sql_api.rs::import_document`
+etc.) remain DEFERRED → v3.13 [#4231] per §1.
 
 ## 3. Audit Hash Chain — Detail
 
