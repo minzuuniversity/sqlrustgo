@@ -6,5 +6,10 @@ description = "SQLRustGo canonical CLI entry point"
 
 [dependencies]
 clap = { version = "4", features = ["derive", "env"] }
+parking_lot.workspace = true
+sqlrustgo = { path = "../../" }
+sqlrustgo-catalog = { path = "../catalog" }
 sqlrustgo-mysql-client = { path = "../mysql-client" }
+sqlrustgo-parser = { path = "../parser" }
+sqlrustgo-storage = { path = "../storage" }
 sqlrustgo-types = { path = "../types" }
