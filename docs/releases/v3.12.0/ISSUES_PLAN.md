@@ -405,7 +405,7 @@ bash scripts/gate/check_v312_procedure_trigger_gate.sh
 **Gitea Issue**: [#4359](http://192.168.0.252:3000/openclaw/sqlrustgo/issues/4359)
 **目标**: 为 BustubX-EDU 前 4-6 周课程和自动验收提供可替代 `sqlite3` 使用体验的一体化 SQLRustGo CLI。
 **范围**: 单路径数据库入口、stdin/SQL 参数批处理、稳定退出码、table/list/csv/json 输出、sqlite3-like 元命令子集、教学 SQL 子集、跨进程持久化和错误边界。
-**阶段边界**: v3.12 Beta 前必须完成 Week 1-4 验收;RC 前必须完成 Week 5-6 或显式降级并记录 owner/expiry/关闭边界。
+**阶段边界**: 本任务是在 v3.12 已进入 BETA 后新增的教学入口补强项;Week 1-4 必须作为 BETA 阶段整改完成,Week 5-6 必须在 RC 前完成或显式降级并记录 owner/expiry/关闭边界。
 **验收**: `docs/releases/v3.12.0/V312-57_SQLITE_STYLE_EDU_CLI_PLAN.md` 存在;`scripts/gate/check_bustubx_edu_cli_v312.sh` 退出 0;`tests/compat/bustubx_edu_sqlite_cli/manifest.yml` 至少覆盖 week01-week04;关闭报告包含 PR、commit、实跑命令、exit code、输出摘要和 artifact SHA256。
 **禁止关闭**: 只新增文档、只支持交互 REPL、依赖后台 server、没有稳定输出/退出码、或把 SQLite 自身输出冒充 SQLRustGo 执行结果。
 
