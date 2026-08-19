@@ -36,6 +36,7 @@
 | V312-G25 | 测试基础设施激活 | SQLancer、test-runner、test-registry、E2E shell scripts、anti-fabrication binaries | 工具可运行并产出报告，或 documented retired/deferred |
 | V312-G26 | 存储过程和触发器基础生产子集 | `CREATE/DROP/SHOW PROCEDURE`、`CALL`、`IN` 参数、确定性 SQL 执行、BEFORE/AFTER row trigger、`NEW/OLD`、事务/WAL/恢复、递归、权限、SQLLogicTest/E2E | `bash scripts/gate/check_v312_procedure_trigger_gate.sh` 退出 0；所有失败/跳过项必须 issue-linked，不能以文档声明代替实测 |
 | V312-G27 | 4.0 前功能整改与 MySQL 教学能力补强 | Metadata/SHOW/information_schema、SQL 教学 corpus、多 oracle、transaction/crash recovery 教学实验、prepared/wire 教学实验、Optimizer/EXPLAIN、VIEW/CTE/MERGE、Partition/FullText | V312-56A~56D 是 Beta 准入前 blocker；V312-56E~56H 必须在 Beta 阶段完成或显式降级；`V312-56-VERIFICATION.md` 必须包含实跑命令、exit code、输出摘要和 evidence hash |
+| V312-G28 | BustubX-EDU sqlite3-like 一体化 CLI | `sqlrustgo edu.db`、SQL 参数、stdin 批处理、`.tables`、`.schema`、输出模式、跨进程持久化、错误退出码 | Beta 前 week01-week04 fixture 必须 PASS；RC 前 week05-week06 PASS 或显式降级；`check_bustubx_edu_cli_v312.sh` 必须实跑 CLI 而非只检查文件 |
 
 ## 2. 必需测试资产
 
@@ -64,6 +65,7 @@
 | Test infrastructure fixture | SQLancer seeds、test-runner config、test-registry manifest、E2E shell scripts | 测试基础设施激活 |
 | Procedure/Trigger fixture | procedure lifecycle SQL、CALL/DML SQL、trigger row semantics、WAL recovery、recursion、privilege denial、SQLLogicTest corpus | V312-G26 存储过程/触发器基础生产子集 |
 | Teaching/V400 remediation fixture | metadata/show SQL、teaching SQL corpus、多 oracle manifest、transaction/recovery lab、wire/prepared packet trace、EXPLAIN/plan fixture、VIEW/CTE/MERGE disposition、Partition/FullText decision | V312-G27 4.0 前功能整改与 MySQL 教学能力补强 |
+| BustubX-EDU CLI fixture | `tests/compat/bustubx_edu_sqlite_cli/manifest.yml`、week01-week06 SQL/golden/oracle、CLI stderr/exit-code fixture | V312-G28 sqlite3-like 一体化教学 CLI |
 
 ## 3. 证据要求
 
@@ -97,6 +99,7 @@
 - 存储过程或触发器仍只停留在 parser/catalog/create 成功，缺少 `DROP/SHOW PROCEDURE`、`CALL` 真实 DML、`NEW/OLD` 断言、事务/WAL/恢复、递归限制、权限正反例或 SQLLogicTest/E2E gate，却在 README/release note 中写成 `DONE`。
 - Metadata/SHOW/information_schema、SQL 教学 corpus、transaction/crash recovery lab、prepared/wire lab 未形成 issue-linked Beta 准入证据，却宣称 v3.12 已适合 MySQL 教学场景。
 - VIEW/CTE/MERGE、Partition/FullText 只有 parser/storage 局部实现，却没有 disposition、门禁和文档同步。
+- sqlite3-like 教学 CLI 只停留在计划或 REPL 手工演示,没有 stdin/SQL 参数批处理、稳定输出、稳定退出码和跨进程持久化证据,却宣称可以替代 BustubX-EDU 前 4-6 周的 `sqlite3` 自动验收。
 
 ## 5. SQLLogicTest / SQLite Oracle Gate
 
@@ -141,6 +144,42 @@ Full snapshot: `docs/releases/v3.12.0/evidence/v312-56/V312-56-VERIFICATION.md`
 - 不允许把 MERGE、VIEW、Partition、FullText 的 parser/storage 局部实现宣传成 SQL 主路径完成。
 - 不允许在 V312-14 gate = PARTIAL (3 FAIL #3965) 的情况下,把 56C transaction/crash recovery lab 宣传为 PASS,需诚实披露 PARTIAL 状态。
 - 不允许用 `SUBSTANTIALLY_COMPLETE` / `ACCEPTED-WITH-BINDING-MANIFEST` 关闭标记(per V313-STRICT-CLOSE-STANDARDS §3)。DEFERRED-with-explicit-boundary(带 owner + expiry + close boundary)方可接受。
+
+## 5B. V312-G28：BustubX-EDU sqlite3-like 一体化 CLI
+
+V312-G28 是 BustubX-EDU 前 4-6 周教学自动验收的入口门禁。它不要求 SQLRustGo 兼容 SQLite 文件格式,但必须提供类似 `sqlite3` 的本地 CLI 使用体验:一个数据库路径、可交互、可批处理、可脚本化、输出稳定、退出码稳定。
+
+### Beta 准入前 blocker
+
+| 子项 | 要求 | 证据 |
+|---|---|---|
+| Week 1 环境和第一条 SQL | `sqlrustgo --help`、`sqlrustgo edu.db "SELECT 1;"`、stdin 脚本、退出码 | `check_bustubx_edu_cli_v312.sh` + week01 fixture |
+| Week 2 关系建模和基础 SQL | CREATE/INSERT/SELECT/WHERE/ORDER/LIMIT,支持 list/csv/json 输出 | week02 fixture + golden 或 SQLite oracle |
+| Week 3 CLI/API 和持久化 | 第一次进程 CREATE/INSERT,第二次进程 SELECT 可读;`.tables` 可观察 | week03 persistence fixture |
+| Week 4 Parser/Binder/Catalog | `.schema [table]`、表不存在/列不存在错误、稳定错误码/错误前缀 | week04 schema/error fixture |
+
+### RC 前收口项
+
+| 子项 | 要求 | 证据 |
+|---|---|---|
+| Week 5 执行器观察 | SeqScan/Filter/Projection/ORDER/LIMIT,`EXPLAIN` 或 plan dump 可观察 | week05 executor fixture |
+| Week 6 Join/Aggregate | 简单 JOIN、GROUP BY、COUNT/SUM/MIN/MAX/AVG 与 SQLite oracle 对比 | week06 join/aggregate fixture |
+
+必需命令:
+
+```bash
+cargo build -p sqlrustgo-cli --all-features
+cargo run -p sqlrustgo-cli -- --help
+bash scripts/gate/check_bustubx_edu_cli_v312.sh
+```
+
+禁止事项:
+
+- 不允许把 `sqlrustgo-mysql-server repl` 当成 V312-G28 完成证据。
+- 不允许只支持交互输入而不支持 stdin/SQL 参数批处理。
+- 不允许依赖后台 server、端口或账号配置完成 week01-week04。
+- 不允许用 SQLite 自身输出冒充 SQLRustGo 执行输出。
+- 不允许未实现的 sqlite3 元命令出现在 DONE 文档中。
 
 SQLite 自动测试框架是从 v3.10.0 继承的 P0 项，v3.12.0 必须把它变成可执行门禁。
 
@@ -216,6 +255,7 @@ bash scripts/gate/check_sqllogictest_v312.sh
 | Test infrastructure backlog | `docs/releases/v3.12.0/test-infra/sqlancer_runner_registry_e2e_<commit>_<timestamp>.md` |
 | Procedure/Trigger close-out | `docs/releases/v3.12.0/evidence/procedure_trigger/V312-55-VERIFICATION.md` 和 `docs/releases/v3.12.0/logs/procedure_trigger_<commit>_<timestamp>.log` |
 | Teaching/V400 remediation close-out | `docs/releases/v3.12.0/evidence/teaching_v400/V312-56-VERIFICATION.md` 和 `docs/releases/v3.12.0/logs/teaching_v400_<commit>_<timestamp>.log` |
+| BustubX-EDU sqlite3-like CLI close-out | `docs/releases/v3.12.0/evidence/bustubx_edu_cli/V312-57-VERIFICATION.md` 和 `docs/releases/v3.12.0/logs/bustubx_edu_cli_<commit>_<timestamp>.log` |
 
 ## 8. 综合测试框架与覆盖率口径
 
