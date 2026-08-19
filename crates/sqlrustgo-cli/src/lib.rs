@@ -5,6 +5,7 @@
 
 mod dotcmd;
 mod error;
+mod implicit_alias;
 mod output;
 
 use clap::{Parser, Subcommand};
