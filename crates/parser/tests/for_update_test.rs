@@ -75,6 +75,7 @@ fn test_select_statement_has_lock_clause_field() {
     let s = SelectStatement {
         columns: vec![],
         table: "t".to_string(),
+        schema: None,
         from_alias: None,
         from_subquery: None,
         from_values: None,
