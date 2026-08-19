@@ -49,7 +49,7 @@ SQLRustGo 是一个纯 Rust 实现的 SQL 数据库项目，包含 SQL 解析、
 | v3.11.0 生产边界 | 受控/简单生产候选 | 不等同完整 MySQL 5.7 替代；TPC-H correctness、LOAD DATA、recovery、upgrade 等仍需 v3.12 补强 |
 | v3.12.0 阶段 | ALPHA | [v3.12 STAGE](docs/releases/v3.12.0/STAGE.yaml) 记录 DRAFT -> ALPHA 于 2026-08-12 完成 |
 | v3.12.0 产品目标 | GMP 内审检索数据库 | [v3.12 README](docs/releases/v3.12.0/README.md)、[GMP 合规矩阵](docs/releases/v3.12.0/GMP_COMPLIANCE_MATRIX.md) |
-| TPC-H SF=1 | 22/22 completed，但 correctness 仍有限定 | [v3.11 TPC-H 报告](docs/releases/v3.11.0/TPCH_SF1_22_22_PASS_REPORT.md)、[v3.12 TPC-H correctness](docs/releases/v3.12.0/evidence/tpch/V312-12-TPCH-CORRECTNESS.md) |
+| TPC-H SF=1 | **DONE-with-boundary**（22/22 可运行 + 16/22 row-count MATCH；Q8 #4274 + Q16 #4278 FIXED in v3.12 working-tree；剩余 6 zero-row 由 #4272 治理（issue #4273/#4275-#4280 已收口，无 v3.13 defer）） | [v3.11 TPC-H 报告](docs/releases/v3.11.0/TPCH_SF1_22_22_PASS_REPORT.md)、[v3.12 TPC-H correctness](docs/releases/v3.12.0/evidence/tpch/V312-12-TPCH-CORRECTNESS.md)、[V312-48-Q8](docs/releases/v3.12.0/evidence/tpch/V312-48-Q8-VERIFICATION.md)、[V312-48 子 issue #4272-#4280 收口](http://192.168.0.252:3000/openclaw/sqlrustgo/issues/4221) |
 | TPC-H SF=10 | PARTIAL / 有整改 issue | harness 存在；3/8 SF=10 表已 parity match，剩余大表受 FileStorage 写放大/吞吐瓶颈阻塞；见 [#4020 evidence](docs/releases/v3.12.0/evidence/issue-4020/4020_evidence.md)、[#4217](http://192.168.0.252:3000/openclaw/sqlrustgo/issues/4217) |
 | Bulk-load SF=10 | PARTIAL / OPEN | 不是 schema creation 阶段失败的旧状态；当前是 3/8 表 match，5/8 大表未完成；见 [#4020](http://192.168.0.252:3000/openclaw/sqlrustgo/issues/4020)、[#4217](http://192.168.0.252:3000/openclaw/sqlrustgo/issues/4217) |
 | MySQL wire + LOAD DATA hardening | PARTIAL / 有整改 issue | [V312-13 报告](docs/releases/v3.12.0/evidence/wire_load_data/V312-13-REPORT.md) failed_steps=0，但完整 MySQL 5.7 兼容、prepared statement sysbench 路径、SF=10 full bulk-load 仍需 [#4223](http://192.168.0.252:3000/openclaw/sqlrustgo/issues/4223)、[#4211](http://192.168.0.252:3000/openclaw/sqlrustgo/issues/4211)、[#4020](http://192.168.0.252:3000/openclaw/sqlrustgo/issues/4020) |
@@ -172,7 +172,7 @@ TPC-H 的 `22/22 completed` 表示 22 个 query 都跑完且没有 OOM/panic；�
 | v3.9.0 SF=0.1 | DONE / 历史基准 | SF=0.1 22 query 历史性能基准存在 | 不能外推为 SF=1/SF=10 生产能力 |
 | v3.10.0 并行执行优化 | DONE / 历史优化 | 部分 TPC-H query 在大数据上有并行和 fast-load 优化记录 | 不能宣称所有 query 线性加速 |
 | v3.11.0 SF=1 | DONE with correctness follow-up | 22/22 completed，519.15s，0 OOM，0 panic | 不能宣称 PostgreSQL/MySQL SHA256 零差异 |
-| v3.12.0 SF=1 close-out | 受控 / PARTIAL→DEFERRED | row count baseline + 8 zero-row per-query binding manifest 已闭环 (22/22 可运行, 14 行结果, 8 zero-row DEFERRED) | cross-engine SHA256 闭环 和 zero-row correctness v3.13 由 [#4221](http://192.168.0.252:3000/openclaw/sqlrustgo/issues/4221) → 子 issue [#4272](http://192.168.0.252:3000/openclaw/sqlrustgo/issues/4272) + [#4273](http://192.168.0.252:3000/openclaw/sqlrustgo/issues/4273)~[#4280](http://192.168.0.252:3000/openclaw/sqlrustgo/issues/4280) 收口 |
+| v3.12.0 SF=1 close-out | 受控 / PARTIAL→DONE | row count baseline + 8 zero-row per-query binding manifest 已闭环 (22/22 可运行, 16 行结果, Q8 #4274 + Q16 #4278 在 v3.12 working-tree FIXED 无 v3.13 defer, 6 zero-row 由 #4272 治理) | cross-engine SHA256 闭环 由 [#4221](http://192.168.0.252:3000/openclaw/sqlrustgo/issues/4221) → 子 issue [#4272](http://192.168.0.252:3000/openclaw/sqlrustgo/issues/4272) + [#4273](http://192.168.0.252:3000/openclaw/sqlrustgo/issues/4273)~[#4280](http://192.168.0.252:3000/openclaw/sqlrustgo/issues/4280) 收口 |
 | v3.12.0 SF=10 harness | PARTIAL / blocker | harness 可运行；当前不是完整 60M lineitem 生产证据 | 不能宣称真实 SF=10 全量 parity；[#4020](http://192.168.0.252:3000/openclaw/sqlrustgo/issues/4020)、[#4217](http://192.168.0.252:3000/openclaw/sqlrustgo/issues/4217) 继续整改 |
 | v3.12.0 Bulk-load SF=10 | PARTIAL / OPEN | runner/gate/evidence 记录 3/8 表 match，5/8 大表未完成；见 [#4020](http://192.168.0.252:3000/openclaw/sqlrustgo/issues/4020)、[#4217](http://192.168.0.252:3000/openclaw/sqlrustgo/issues/4217) | 不能宣称 8 表真实 bulk-load 完成 |
 
@@ -185,7 +185,7 @@ TPC-H 的 `22/22 completed` 表示 22 个 query 都跑完且没有 OOM/panic；�
 | 执行结果 | 22/22 query completed |
 | 总耗时 | 519.15s |
 | 稳定性 | 0 OOM / 0 panic |
-| 结果边界 | 8 个 zero-row query 仍需外部 oracle correctness 验证 |
+| 结果边界 | 6 个 zero-row query 仍需外部 oracle correctness 验证（Q8 #4274 + Q16 #4278 已 FIXED in v3.12 working-tree，剩 6 zero-row 由 #4272 治理） |
 
 ### v3.12.0 SF=10 当前边界
 
