@@ -3,6 +3,7 @@
 //! Provides the `run()` entry point used by `sqlrustgo` binary.
 //! Thin wrapper around `sqlrustgo-mysql-server` for most subcommands.
 
+mod dotcmd;
 mod error;
 mod output;
 
