@@ -39,6 +39,15 @@ Codex 在 2026-08-15 创建 V312-56 总控(#4250),指出除存储过程/触发�
 | [#4257](http://192.168.0.252:3000/openclaw/sqlrustgo/issues/4257) | V312-56G Partition/FullText disposition + GMP keyword retrieval | **P1** | TBD | v4.0 + GMP | `cargo test -p sqlrustgo-storage fulltext` + `partition_e2e_test` + `check_docs_consistency.sh` | PartitionInfo 不再冲突 + FullText 决策 + GMP keyword 集成方案 |
 | [#4258](http://192.168.0.252:3000/openclaw/sqlrustgo/issues/4258) | V312-56H Beta gate / docs / release evidence 集成 | P0 | TBD | v3.12 RC1 | `check_docs_links.sh` + `check_docs_consistency.sh` + `check_beta_v3.12.0.sh` | TEST_PLAN G27 + STAGE.yaml promotion_to_BETA_requires + PARTIAL_PLAN + ISSUES_PLAN + V312-56-VERIFICATION.md |
 
+## 3A. 相邻教学入口任务: V312-57 / Issue #4359
+
+V312-57 是独立于 V312-56A~H 的教学入口任务,用于实现 sqlite3-like 一体化 CLI,支撑 BustubX-EDU 前 4-6 周自动验收。它与 V312-56B SQL 教学 corpus 互补,但不等价:
+
+- V312-56B 关注 SQL fixture、oracle 和 corpus 管理。
+- V312-57 关注学生和自动评测实际调用的 CLI 产品形态。
+
+V312-57 的 Beta 前边界是 week01-week04 fixture 通过 `scripts/gate/check_bustubx_edu_cli_v312.sh`;RC 前边界是 week05-week06 executor/join/aggregate fixture 通过或显式降级。不得用 V312-56B corpus 存在来关闭 V312-57,也不得把 V312-57 默认 defer 到 v3.13。
+
 ## 4. 优先级与 v3.12 Beta 阻塞关系
 
 ### Beta 必须完成 (P0)
