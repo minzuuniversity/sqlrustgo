@@ -1,6 +1,7 @@
 use sqlrustgo_types::Value;
 use std::fmt::Write;
 
+#[allow(dead_code)]
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum OutputMode {
     Table,
@@ -9,7 +10,21 @@ pub enum OutputMode {
     Json,
 }
 
-pub fn format(mode: OutputMode, columns: &[String], rows: &[Vec<Value>], csv_header: bool) -> String {
+/// Output target for redirecting query results (stdout or file).
+#[allow(dead_code)]
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum OutputTarget {
+    Stdout,
+    File(std::path::PathBuf),
+}
+
+#[allow(dead_code)]
+pub fn format(
+    mode: OutputMode,
+    columns: &[String],
+    rows: &[Vec<Value>],
+    csv_header: bool,
+) -> String {
     match mode {
         OutputMode::Table => format_table(columns, rows),
         OutputMode::List => format_list(rows),
@@ -146,7 +161,13 @@ fn value_to_string(v: &Value) -> String {
 pub fn format_csv(columns: &[String], rows: &[Vec<Value>], include_header: bool) -> String {
     let mut out = String::new();
     if include_header {
-        out.push_str(&columns.iter().map(|c| csv_quote(c)).collect::<Vec<_>>().join(","));
+        out.push_str(
+            &columns
+                .iter()
+                .map(|c| csv_quote(c))
+                .collect::<Vec<_>>()
+                .join(","),
+        );
         out.push('\n');
     }
     for row in rows {
@@ -342,7 +363,10 @@ mod tests {
             vec![Value::Integer(2), Value::Text("Bob".into())],
         ];
         let out = format_json(&cols, &rows);
-        assert_eq!(out, r#"{"columns":["id","name"],"rows":[[1,"Alice"],[2,"Bob"]]}"#);
+        assert_eq!(
+            out,
+            r#"{"columns":["id","name"],"rows":[[1,"Alice"],[2,"Bob"]]}"#
+        );
     }
 
     #[test]
