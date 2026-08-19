@@ -207,6 +207,21 @@ impl<S: StorageEngine + 'static> ExecutionEngine<S> {
     pub fn execute_select(&self, select: &SelectStatement) -> SqlResult<ExecutorResult> {
         // Debug: print query table structure
         Self::clear_tpch_caches();
+        // V312-48-Q16 (Issue #4278) fix: reset the thread-local
+        // COMMA_JOIN_WHERE_CONSUMED flag at the start of every
+        // execute_select call. The flag is set by the hash-chain
+        // fast path in `try_comma_join_hash_chain` to signal that
+        // the outer WHERE has already been applied during the
+        // join step. When a non-correlated subquery (e.g. TPC-H
+        // Q16's `ps_suppkey NOT IN (SELECT s_suppkey FROM supplier
+        // WHERE s_comment LIKE ...)`) runs its own execute_select
+        // recursively, the parent's flag would otherwise leak into
+        // the subquery and cause the subquery's own WHERE filter
+        // to be skipped — yielding all 10000 supplier rows in the
+        // rewritten NotInList, eliminating every partsupp row and
+        // returning 0 results. Resetting here makes each
+        // execute_select invocation's WHERE handling independent.
+        COMMA_JOIN_WHERE_CONSUMED.with(|f| *f.borrow_mut() = false);
         // V312-56A / 56A-R2 / Issue #4251: route queries against the
         // standard SQL `information_schema` virtual catalog to a dedicated
         // handler that reads from the in-memory `Catalog` rather than
