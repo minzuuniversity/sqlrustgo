@@ -86,6 +86,8 @@ bash scripts/gate/check_bustubx_edu_cli_v312.sh
 
 ## 6. 关闭条件
 
+阶段口径:本任务是在 v3.12 已进入 BETA 后新增的教学入口补强项。Week 1-4 是 BETA 阶段整改项,必须在 RC 前完成;Week 5-6 是 RC 前收口项,只能在有 owner、expiry、关闭边界和 release-claim 降级的情况下显式延期。
+
 - [ ] PR 已合并到 `develop/v3.12.0`,且关联 [#4359](http://192.168.0.252:3000/openclaw/sqlrustgo/issues/4359)。
 - [ ] `cargo build -p sqlrustgo-cli --all-features` 退出 0。
 - [ ] `cargo run -p sqlrustgo-cli -- --help` 展示 sqlite3-like local mode。

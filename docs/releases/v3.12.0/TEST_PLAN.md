@@ -36,7 +36,7 @@
 | V312-G25 | 测试基础设施激活 | SQLancer、test-runner、test-registry、E2E shell scripts、anti-fabrication binaries | 工具可运行并产出报告，或 documented retired/deferred |
 | V312-G26 | 存储过程和触发器基础生产子集 | `CREATE/DROP/SHOW PROCEDURE`、`CALL`、`IN` 参数、确定性 SQL 执行、BEFORE/AFTER row trigger、`NEW/OLD`、事务/WAL/恢复、递归、权限、SQLLogicTest/E2E | `bash scripts/gate/check_v312_procedure_trigger_gate.sh` 退出 0；所有失败/跳过项必须 issue-linked，不能以文档声明代替实测 |
 | V312-G27 | 4.0 前功能整改与 MySQL 教学能力补强 | Metadata/SHOW/information_schema、SQL 教学 corpus、多 oracle、transaction/crash recovery 教学实验、prepared/wire 教学实验、Optimizer/EXPLAIN、VIEW/CTE/MERGE、Partition/FullText | V312-56A~56D 是 Beta 准入前 blocker；V312-56E~56H 必须在 Beta 阶段完成或显式降级；`V312-56-VERIFICATION.md` 必须包含实跑命令、exit code、输出摘要和 evidence hash |
-| V312-G28 | BustubX-EDU sqlite3-like 一体化 CLI | `sqlrustgo edu.db`、SQL 参数、stdin 批处理、`.tables`、`.schema`、输出模式、跨进程持久化、错误退出码 | Beta 前 week01-week04 fixture 必须 PASS；RC 前 week05-week06 PASS 或显式降级；`check_bustubx_edu_cli_v312.sh` 必须实跑 CLI 而非只检查文件 |
+| V312-G28 | BustubX-EDU sqlite3-like 一体化 CLI | `sqlrustgo edu.db`、SQL 参数、stdin 批处理、`.tables`、`.schema`、输出模式、跨进程持久化、错误退出码 | BETA 阶段必须完成 week01-week04 fixture；RC 前 week05-week06 PASS 或显式降级；`check_bustubx_edu_cli_v312.sh` 必须实跑 CLI 而非只检查文件 |
 
 ## 2. 必需测试资产
 
@@ -107,7 +107,7 @@
 
 V312-G27 是从 `COMPREHENSIVE_ASSESSMENT_REPORT.md` 派生出来的 Beta 前整改门禁，专门处理“类似存储过程和触发器”的功能漂移：代码、测试、文档中存在局部实现，但没有形成生产/教学闭环。
 
-### Beta 准入前 blocker
+### BETA 阶段整改项
 
 | 子项 | 要求 | 证据 |
 |---|---|---|
