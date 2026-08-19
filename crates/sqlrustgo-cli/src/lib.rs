@@ -7,6 +7,7 @@ mod dotcmd;
 mod error;
 mod implicit_alias;
 mod output;
+mod sqlite_mode;
 
 use clap::{Parser, Subcommand};
 use std::process::Command as Proc;
