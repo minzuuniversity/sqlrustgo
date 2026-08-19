@@ -1,7 +1,9 @@
 # V312-48-Q16 — zero-row binding verification (Issue #4278)
 
 > **Issue:** [#4278](http://192.168.0.252:3000/openclaw/sqlrustgo/issues/4278) (V312-48-Q16)
-> **provenance:** generated_by=openclaw-minimax, generated_at=2026-08-15, branch=develop/v3.12.0, commit=15a02802cc4ad582af554330a30f6bc6952f4a4a, policy=Anti-Fabrication-Policy-v1.0
+> **provenance (initial):** generated_by=openclaw-minimax, generated_at=2026-08-15, branch=develop/v3.12.0, commit=15a02802cc4ad582af554330a30f6bc6952f4a4a, policy=Anti-Fabrication-Policy-v1.0
+> **provenance (refreshed):** refreshed_by=openclaw-minimax, refreshed_at=2026-08-19, branch=develop/v3.12.0, commit=596a6060d9, source_run=v312-48-refresher-pr4332-2026-08-19, policy=Anti-Fabrication-Policy-v1.0
+> **Disposition:** **DEFER** (#4278) — PR #4332 did NOT cover Q16. Subquery decorrelation rewrite (NOT IN → ANTI JOIN) deferred to v3.13.
 
 ## 1. Symptom
 
@@ -85,3 +87,52 @@ The issue body's closure condition is the standard V312-48 §3 pattern. All four
 - File: `docs/releases/v3.12.0/evidence/tpch/V312-48-Q16-VERIFICATION.md`
 - Oracle sha256 (sqlite q16.tsv): `acc9d6946c408395cff780c08b5c1489112ecea4675323145e956f596c8a0881`
 - Oracle sha256 (postgres q16.tsv): `acc9d6946c408395cff780c08b5c1489112ecea4675323145e956f596c8a0881`
+
+---
+
+## 10. PR #4332 verification 2026-08-19 — **NOT FIXED, DEFERRED → v3.13**
+
+**Verdict: PR #4332 does NOT cover Q16. sqlrustgo still returns ZERO ROW vs SQLite 18314. Issue #4278 → DEFERRED.**
+
+### 10.1 PR #4332 scope for Q16
+
+PR #4332 (`1fd4fd904c`, merge `50c3271064`) — Q16 NOT covered:
+
+- PR #4332 only fixed `SubqueryIndex.table_info` field, which addresses the `NOT EXISTS` slow path used by Q13 (customer LEFT JOIN orders)
+- Q16 uses a different code path: `NOT IN (SELECT s_suppkey FROM supplier WHERE s_comment LIKE '%bad%deals%')` over a partsupp/part join with `COUNT(DISTINCT ps_suppkey)` aggregation
+- Q16 requires the **full subquery-decorrelation rewrite** (NOT IN → ANTI JOIN), which is NOT in PR #4332's scope
+- The "Q13 + Q16 share a fix" assumption in the V312-48 plan was incorrect — only Q13 is covered
+
+### 10.2 SF=1 cross-engine verification (2026-08-19)
+
+| Engine | Row count | SHA256 | Match |
+|--------|-----------|--------|-------|
+| SQLite v3.45.1 | **18314** | `cd94cc9771a4186e1cbc52febab20aafde0c62577b6758b6f4ac19449aaf5292` | oracle |
+| **sqlrustgo @ 596a6060d9** | **0** | n/a (empty) | ❌ ZERO_ROW (still broken) |
+
+Evidence: `cross_engine_sf1/sqlite/SUMMARY.json` (Q16 record) + `cross_engine_sf1/sqlrustgo/SUMMARY.json` (Q16 record).
+
+### 10.3 Status update
+
+| # | Criterion (from §6) | Pre-PR #4332 | Post-PR #4332 |
+|---|---------------------|--------------|----------------|
+| 1 | Row count baseline captured at SF=1 | ✅ PASS | ✅ PASS (**0 vs 18314 STILL MISMATCH**) |
+| 2 | Root cause categorized | ✅ PASS | ✅ PASS (subquery decorrelation, NOT IN → ANTI JOIN) |
+| 3 | Cross-engine agreement at ≥1 SF | ✅ PASS (sf=0.001: 34 rows) | ✅ PASS (sf=0.001 only; sf=1 still fails) |
+| 4 | Owner + expiry | ✅ PASS | ✅ PASS |
+| 5 | Verification path | ✅ PASS (v3.13) | ✅ PASS (v3.13: NOT IN → ANTI JOIN rewrite) |
+| 6 | PR merged | ⏳ | ❌ FAIL — PR #4332 did NOT include Q16 fix |
+| 7 | Issue #4278 closed | ⏳ | 🔄 **DEFER to v3.13** |
+
+### 10.4 v3.13 fix path (planned in `docs/superpowers/plans/2026-08-17-v313-master-scope.md`)
+
+1. Implement generic `NOT IN (SELECT ...)` → `LEFT JOIN ... WHERE other.col IS NULL` (anti-join) rewrite in `src/optimizer/subquery_rewriter.rs`
+2. Handle `COUNT(DISTINCT col)` aggregation correctly after the rewrite
+3. Re-run wire + SQLite oracle; if row count (18314) + sha256 match → DONE
+4. Target expiry: **2027-06-30** (v3.13 acceptance gate)
+
+### 10.5 Honest disclosure
+
+- PR #4332 body did NOT claim to fix Q16. The plan assumption "Q13 + Q16 share fix via `SubqueryIndex.table_info`" was **incorrect**; only Q13 benefits.
+- Q16 remains in the v3.13 deferred bucket. Cannot honestly CLOSE.
+- Cross-engine oracle = SQLite only. MySQL oracle files are placeholders with empty SHA256; not used.
