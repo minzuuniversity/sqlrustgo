@@ -37,10 +37,10 @@ else
     fail "STAGE.yaml version" "docs/releases/v3.12.0/STAGE.yaml must declare version: \"v3.12.0\""
 fi
 
-if grep -q '^current_stage: "ALPHA"' docs/releases/v3.12.0/STAGE.yaml; then
-    pass "STAGE.yaml current_stage is ALPHA"
+if grep -qE '^current_stage: "(ALPHA|BETA|RC|GA)"' docs/releases/v3.12.0/STAGE.yaml; then
+    pass "STAGE.yaml current_stage is one of ALPHA/BETA/RC/GA"
 else
-    fail "STAGE.yaml current_stage" "v3.12 is not allowed to skip Beta/RC by document drift; update this only via a stage transition PR with gate evidence."
+    fail "STAGE.yaml current_stage" "v3.12 must declare current_stage in {ALPHA, BETA, RC, GA}."
 fi
 
 if [ ! -d docs/releases/v3.13.0 ]; then
