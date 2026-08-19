@@ -85,6 +85,7 @@ promotion_to_BETA_requires:
   - "V312-56B SQL teaching corpus has manifest, oracle policy, and issue-linked FAIL/SKIP disposition"
   - "V312-56C Transaction/crash recovery teaching lab has reproducible command list and count/hash artifact policy"
   - "V312-56D Prepared statement / wire protocol teaching lab has COM_QUERY/COM_STMT/error/reset/LOAD DATA scope and TLS/compression disposition"
+  - "V312-57 BustubX-EDU sqlite3-like CLI week01-week04 fixtures pass through scripts/gate/check_bustubx_edu_cli_v312.sh; CLI must support local database path, stdin/SQL argument batch execution, stable output modes, stable exit codes, .tables, .schema, and cross-process persistence"
 
 promotion_to_RC_requires:
   - "Full ~/gmp-platform/gmp-md ingestion report produced"
@@ -95,6 +96,7 @@ promotion_to_RC_requires:
   - "TPC-H SF=1 cross-engine row-count/SHA256 report exists"
   - "MySQL wire protocol and LOAD DATA/bulk import reports exist"
   - "Crash recovery and upgrade/downgrade reports exist"
+  - "V312-57 BustubX-EDU sqlite3-like CLI week05-week06 executor/join/aggregate fixtures pass, or each deferred item has issue, owner, expiry, close boundary, and release-claim downgrade"
   - "No unsupported GMP/RAG production claims remain in docs"
 
 promotion_to_GA_requires:
@@ -121,3 +123,4 @@ thresholds_override:
   LOAD_DATA_BULK_IMPORT_REQUIRED: true
   CRASH_RECOVERY_REQUIRED: true
   UPGRADE_DOWNGRADE_REQUIRED: true
+  BUSTUBX_EDU_SQLITE_CLI_REQUIRED: true

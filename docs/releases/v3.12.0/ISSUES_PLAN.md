@@ -399,6 +399,16 @@ bash scripts/gate/check_v312_procedure_trigger_gate.sh
 | V312-56G / [#4257](http://192.168.0.252:3000/openclaw/sqlrustgo/issues/4257) Partition/FullText disposition 与 GMP keyword retrieval 决策 | P1 | Beta 阶段 | Partition/FullText 与 SQL surface/GMP keyword retrieval 决策一致 |
 | V312-56H / [#4258](http://192.168.0.252:3000/openclaw/sqlrustgo/issues/4258) Beta gate/docs/release evidence 集成 | P0 | Beta 准入前 | Beta gate 检查 V312-56A~56D；`V312-56-VERIFICATION.md` 归档证据 |
 
+## V312-57：sqlite3-like 一体化教学 CLI
+
+**优先级**: P0
+**Gitea Issue**: [#4359](http://192.168.0.252:3000/openclaw/sqlrustgo/issues/4359)
+**目标**: 为 BustubX-EDU 前 4-6 周课程和自动验收提供可替代 `sqlite3` 使用体验的一体化 SQLRustGo CLI。
+**范围**: 单路径数据库入口、stdin/SQL 参数批处理、稳定退出码、table/list/csv/json 输出、sqlite3-like 元命令子集、教学 SQL 子集、跨进程持久化和错误边界。
+**阶段边界**: v3.12 Beta 前必须完成 Week 1-4 验收;RC 前必须完成 Week 5-6 或显式降级并记录 owner/expiry/关闭边界。
+**验收**: `docs/releases/v3.12.0/V312-57_SQLITE_STYLE_EDU_CLI_PLAN.md` 存在;`scripts/gate/check_bustubx_edu_cli_v312.sh` 退出 0;`tests/compat/bustubx_edu_sqlite_cli/manifest.yml` 至少覆盖 week01-week04;关闭报告包含 PR、commit、实跑命令、exit code、输出摘要和 artifact SHA256。
+**禁止关闭**: 只新增文档、只支持交互 REPL、依赖后台 server、没有稳定输出/退出码、或把 SQLite 自身输出冒充 SQLRustGo 执行结果。
+
 ## 附录：英文原文
 
 > 本附录保留本文件改写前的英文原文，便于追溯历史语义；当前正式阅读与执行口径以上方中文正文为准。
