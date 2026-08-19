@@ -292,11 +292,7 @@ impl SqliteMode {
         if col_defs.is_empty() {
             return None;
         }
-        Some(format!(
-            "CREATE TABLE {} ({});",
-            name,
-            col_defs.join(", ")
-        ))
+        Some(format!("CREATE TABLE {} ({});", name, col_defs.join(", ")))
     }
 
     /// Run interactive REPL from stdin (always continue-on-error, exit 0).
