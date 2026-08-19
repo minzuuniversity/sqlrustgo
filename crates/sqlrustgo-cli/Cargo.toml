@@ -7,3 +7,4 @@ description = "SQLRustGo canonical CLI entry point"
 [dependencies]
 clap = { version = "4", features = ["derive", "env"] }
 sqlrustgo-mysql-client = { path = "../mysql-client" }
+sqlrustgo-types = { path = "../types" }
