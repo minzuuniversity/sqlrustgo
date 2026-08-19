@@ -258,6 +258,7 @@ pub fn create_audit_log_table(storage: &mut dyn StorageEngine) -> SqlResult<()> 
                 char_max_length: None,
                 collation: None,
                 default_value: None,
+                auto_increment: false,
             },
             ColumnDefinition {
                 name: "timestamp".to_string(),
@@ -267,6 +268,7 @@ pub fn create_audit_log_table(storage: &mut dyn StorageEngine) -> SqlResult<()> 
                 char_max_length: None,
                 collation: None,
                 default_value: None,
+                auto_increment: false,
             },
             ColumnDefinition {
                 name: "user_id".to_string(),
@@ -276,6 +278,7 @@ pub fn create_audit_log_table(storage: &mut dyn StorageEngine) -> SqlResult<()> 
                 char_max_length: None,
                 collation: None,
                 default_value: None,
+                auto_increment: false,
             },
             ColumnDefinition {
                 name: "action".to_string(),
@@ -285,6 +288,7 @@ pub fn create_audit_log_table(storage: &mut dyn StorageEngine) -> SqlResult<()> 
                 char_max_length: None,
                 collation: None,
                 default_value: None,
+                auto_increment: false,
             },
             ColumnDefinition {
                 name: "table_name".to_string(),
@@ -294,6 +298,7 @@ pub fn create_audit_log_table(storage: &mut dyn StorageEngine) -> SqlResult<()> 
                 char_max_length: None,
                 collation: None,
                 default_value: None,
+                auto_increment: false,
             },
             ColumnDefinition {
                 name: "record_id".to_string(),
@@ -303,6 +308,7 @@ pub fn create_audit_log_table(storage: &mut dyn StorageEngine) -> SqlResult<()> 
                 char_max_length: None,
                 collation: None,
                 default_value: None,
+                auto_increment: false,
             },
             ColumnDefinition {
                 name: "old_value".to_string(),
@@ -312,6 +318,7 @@ pub fn create_audit_log_table(storage: &mut dyn StorageEngine) -> SqlResult<()> 
                 char_max_length: None,
                 collation: None,
                 default_value: None,
+                auto_increment: false,
             },
             ColumnDefinition {
                 name: "new_value".to_string(),
@@ -321,6 +328,7 @@ pub fn create_audit_log_table(storage: &mut dyn StorageEngine) -> SqlResult<()> 
                 char_max_length: None,
                 collation: None,
                 default_value: None,
+                auto_increment: false,
             },
             ColumnDefinition {
                 name: "ip_address".to_string(),
@@ -330,6 +338,7 @@ pub fn create_audit_log_table(storage: &mut dyn StorageEngine) -> SqlResult<()> 
                 char_max_length: None,
                 collation: None,
                 default_value: None,
+                auto_increment: false,
             },
             ColumnDefinition {
                 name: "session_id".to_string(),
@@ -339,6 +348,7 @@ pub fn create_audit_log_table(storage: &mut dyn StorageEngine) -> SqlResult<()> 
                 char_max_length: None,
                 collation: None,
                 default_value: None,
+                auto_increment: false,
             },
             ColumnDefinition {
                 name: "previous_hash".to_string(),
@@ -348,6 +358,7 @@ pub fn create_audit_log_table(storage: &mut dyn StorageEngine) -> SqlResult<()> 
                 char_max_length: None,
                 collation: None,
                 default_value: None,
+                auto_increment: false,
             },
             ColumnDefinition {
                 name: "event_hash".to_string(),
@@ -357,6 +368,7 @@ pub fn create_audit_log_table(storage: &mut dyn StorageEngine) -> SqlResult<()> 
                 char_max_length: None,
                 collation: None,
                 default_value: None,
+                auto_increment: false,
             },
         ];
         storage.create_table(&sqlrustgo_storage::TableInfo {
