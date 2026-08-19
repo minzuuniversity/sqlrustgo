@@ -1,6 +1,23 @@
 use sqlrustgo_types::Value;
 use std::fmt::Write;
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum OutputMode {
+    Table,
+    List,
+    Csv,
+    Json,
+}
+
+pub fn format(mode: OutputMode, columns: &[String], rows: &[Vec<Value>], csv_header: bool) -> String {
+    match mode {
+        OutputMode::Table => format_table(columns, rows),
+        OutputMode::List => format_list(rows),
+        OutputMode::Csv => format_csv(columns, rows, csv_header),
+        OutputMode::Json => format_json(columns, rows),
+    }
+}
+
 #[allow(dead_code)]
 pub fn format_table(columns: &[String], rows: &[Vec<Value>]) -> String {
     let mut out = String::new();
@@ -358,5 +375,45 @@ mod tests {
         let rows = vec![vec![Value::Text("say \"hi\"".into())]];
         let out = format_json(&cols, &rows);
         assert_eq!(out, r#"{"columns":["s"],"rows":[["say \"hi\""]]}"#);
+    }
+
+    #[test]
+    fn dispatch_routes_to_table() {
+        let cols = vec!["a".to_string()];
+        let rows = vec![vec![Value::Integer(1)]];
+        let out = format(OutputMode::Table, &cols, &rows, true);
+        assert!(out.starts_with("a\n"));
+    }
+
+    #[test]
+    fn dispatch_routes_to_list() {
+        let cols = vec!["a".to_string()];
+        let rows = vec![vec![Value::Integer(1)]];
+        let out = format(OutputMode::List, &cols, &rows, true);
+        assert_eq!(out, "1\n");
+    }
+
+    #[test]
+    fn dispatch_routes_to_csv_with_header() {
+        let cols = vec!["a".to_string()];
+        let rows = vec![vec![Value::Integer(1)]];
+        let out = format(OutputMode::Csv, &cols, &rows, true);
+        assert_eq!(out, "a\n1\n");
+    }
+
+    #[test]
+    fn dispatch_routes_to_csv_no_header() {
+        let cols = vec!["a".to_string()];
+        let rows = vec![vec![Value::Integer(1)]];
+        let out = format(OutputMode::Csv, &cols, &rows, false);
+        assert_eq!(out, "1\n");
+    }
+
+    #[test]
+    fn dispatch_routes_to_json() {
+        let cols = vec!["a".to_string()];
+        let rows = vec![vec![Value::Integer(1)]];
+        let out = format(OutputMode::Json, &cols, &rows, true);
+        assert_eq!(out, r#"{"columns":["a"],"rows":[[1]]}"#);
     }
 }
