@@ -315,6 +315,49 @@ impl SqliteMode {
         }
         0 // REPL always exits 0 (continue-on-error by design)
     }
+
+    /// Run a single SQL statement in batch mode. Returns 0 on success, 1 on error.
+    pub fn run_batch(&mut self, sql: &str) -> i32 {
+        match self.execute_sql(sql) {
+            Ok(_) => 0,
+            Err(e) => {
+                eprintln!("{}", e);
+                1
+            }
+        }
+    }
+
+    /// Run batch from stdin (fail-fast unless `continue_on_error`).
+    pub fn run_batch_stdin(&mut self) -> i32 {
+        let stdin = std::io::stdin();
+        let lines: Vec<String> = stdin.lines().map_while(Result::ok).collect();
+        self.run_batch_stdin_with_input(lines)
+    }
+
+    /// Run batch from pre-collected input (testable).
+    pub fn run_batch_stdin_with_input(&mut self, lines: Vec<String>) -> i32 {
+        for line in lines {
+            let trimmed = line.trim();
+            if trimmed.is_empty() {
+                continue;
+            }
+            match self.execute_sql(trimmed) {
+                Ok(_) => {}
+                Err(e) => {
+                    eprintln!("{}", e);
+                    self.error_seen = true;
+                    if !self.continue_on_error {
+                        return 1;
+                    }
+                }
+            }
+        }
+        if self.error_seen {
+            1
+        } else {
+            0
+        }
+    }
 }
 
 #[cfg(test)]
@@ -496,6 +539,72 @@ mod tests {
         assert_eq!(exit, 0);
         let out = std::fs::read_to_string(tmp.join("out.txt")).unwrap();
         assert!(out.contains("2"), "expected '2' in output, got: {:?}", out);
+        let _ = std::fs::remove_dir_all(&tmp);
+    }
+
+    #[test]
+    fn run_batch_single_statement_success() {
+        let tmp = std::env::temp_dir().join("v31257_batch_single");
+        let _ = std::fs::remove_dir_all(&tmp);
+        let mut mode = SqliteMode::open(&tmp, SqliteState::default(), false).unwrap();
+        mode.state.output = OutputTarget::File(tmp.join("out.txt"));
+        let exit = mode.run_batch("SELECT 42");
+        assert_eq!(exit, 0);
+        let out = std::fs::read_to_string(tmp.join("out.txt")).unwrap();
+        assert!(
+            out.contains("42"),
+            "expected '42' in output, got: {:?}",
+            out
+        );
+        let _ = std::fs::remove_dir_all(&tmp);
+    }
+
+    #[test]
+    fn run_batch_parse_error_exit_1_fail_fast() {
+        let tmp = std::env::temp_dir().join("v31257_batch_failfast");
+        let _ = std::fs::remove_dir_all(&tmp);
+        let mut mode = SqliteMode::open(&tmp, SqliteState::default(), false).unwrap();
+        mode.state.output = OutputTarget::File(tmp.join("out.txt"));
+        let exit = mode.run_batch("SELEC 1");
+        assert_eq!(exit, 1);
+        let _ = std::fs::remove_dir_all(&tmp);
+    }
+
+    #[test]
+    fn run_batch_stdin_fail_fast_stops_on_first_error() {
+        let tmp = std::env::temp_dir().join("v31257_batch_stdin_failfast");
+        let _ = std::fs::remove_dir_all(&tmp);
+        let mut mode = SqliteMode::open(&tmp, SqliteState::default(), false).unwrap();
+        mode.state.output = OutputTarget::File(tmp.join("out.txt"));
+        let input = vec![
+            "SELECT 1".to_string(),
+            "SELEC 2".to_string(),
+            "SELECT 3".to_string(),
+        ];
+        let exit = mode.run_batch_stdin_with_input(input);
+        assert_eq!(exit, 1);
+        let out = std::fs::read_to_string(tmp.join("out.txt")).unwrap();
+        assert!(out.contains("1"));
+        assert!(!out.contains("3")); // never reached
+        let _ = std::fs::remove_dir_all(&tmp);
+    }
+
+    #[test]
+    fn run_batch_stdin_continue_on_error_runs_all() {
+        let tmp = std::env::temp_dir().join("v31257_batch_stdin_continue");
+        let _ = std::fs::remove_dir_all(&tmp);
+        let mut mode = SqliteMode::open(&tmp, SqliteState::default(), true).unwrap();
+        mode.state.output = OutputTarget::File(tmp.join("out.txt"));
+        let input = vec![
+            "SELECT 1".to_string(),
+            "SELEC 2".to_string(),
+            "SELECT 3".to_string(),
+        ];
+        let exit = mode.run_batch_stdin_with_input(input);
+        assert_eq!(exit, 1); // any failure → exit 1
+        let out = std::fs::read_to_string(tmp.join("out.txt")).unwrap();
+        assert!(out.contains("1"));
+        assert!(out.contains("3")); // continued past error
         let _ = std::fs::remove_dir_all(&tmp);
     }
 }
