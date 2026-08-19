@@ -738,6 +738,8 @@ pub struct ColumnDefinition {
     /// literal in the workspace.
     #[serde(default)]
     pub default_value: Option<String>,
+    #[serde(default)]
+    pub auto_increment: bool,
 }
 
 impl ColumnDefinition {
@@ -750,6 +752,7 @@ impl ColumnDefinition {
             char_max_length: None,
             collation: None,
             default_value: None,
+            auto_increment: false,
         }
     }
 }
@@ -1458,18 +1461,35 @@ impl StorageEngine for MemoryStorage {
 
     fn insert(&mut self, table: &str, records: Vec<Record>) -> SqlResult<()> {
         let table_key = table.to_lowercase();
-        // V313-followup-1 / Issue #4154: pad rows with NULL for
-        // omitted columns so SELECT can resolve later columns.
-        let padded: Vec<Record> = if let Some(info) = self.table_infos.get(&table_key) {
+        let padded: Vec<Record> = if let Some(info) = self.table_infos.get(&table_key).cloned() {
             let ncols = info.columns.len();
+            let auto_inc_cols: Vec<usize> = info
+                .columns
+                .iter()
+                .enumerate()
+                .filter_map(|(idx, c)| if c.auto_increment { Some(idx) } else { None })
+                .collect();
+            let existing_rows = self.tables.get(&table_key).cloned().unwrap_or_default();
+            let mut next_auto: i64 = auto_inc_cols
+                .iter()
+                .filter_map(|&idx| {
+                    existing_rows
+                        .iter()
+                        .filter_map(|row| {
+                            row.get(idx).and_then(|v| match v {
+                                Value::Integer(n) => Some(*n),
+                                _ => None,
+                            })
+                        })
+                        .max()
+                })
+                .max()
+                .map(|m| m + 1)
+                .unwrap_or(1);
             records
                 .into_iter()
                 .map(|mut row| {
                     while row.len() < ncols {
-                        // V313-followup-1 / Issue #4154: fill omitted columns with
-                        // their default_value (NULL if no default). The default
-                        // is stored as raw literal text; parse it into a `Value`
-                        // at materialisation time.
                         let default = info
                             .columns
                             .get(row.len())
@@ -1477,6 +1497,12 @@ impl StorageEngine for MemoryStorage {
                             .map(parse_default_literal)
                             .unwrap_or(Value::Null);
                         row.push(default);
+                    }
+                    for &col_idx in &auto_inc_cols {
+                        if matches!(row.get(col_idx), Some(Value::Null) | None) {
+                            row[col_idx] = Value::Integer(next_auto);
+                            next_auto += 1;
+                        }
                     }
                     row
                 })

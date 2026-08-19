@@ -212,6 +212,7 @@ fn test_aggregate_delegation() {
 
                 collation: None,
                 default_value: None,
+                auto_increment: false,
             },
             ColumnDefinition {
                 name: "SUM(l_quantity)".to_string(),
@@ -222,6 +223,7 @@ fn test_aggregate_delegation() {
 
                 collation: None,
                 default_value: None,
+                auto_increment: false,
             },
         ],
         foreign_keys: vec![],
@@ -873,6 +875,7 @@ fn test_identifier_delegation() {
 
             collation: None,
             default_value: None,
+            auto_increment: false,
         },
         ColumnDefinition {
             name: "t.name".to_string(),
@@ -883,6 +886,7 @@ fn test_identifier_delegation() {
 
             collation: None,
             default_value: None,
+            auto_increment: false,
         },
         ColumnDefinition {
             name: "a_join_b.a.tag".to_string(),
@@ -893,6 +897,7 @@ fn test_identifier_delegation() {
 
             collation: None,
             default_value: None,
+            auto_increment: false,
         },
     ];
     let table_info = TableInfo {
@@ -969,6 +974,7 @@ fn test_identifier_known_outputs() {
 
             collation: None,
             default_value: None,
+            auto_increment: false,
         },
         ColumnDefinition {
             name: "user_name".to_string(),
@@ -979,6 +985,7 @@ fn test_identifier_known_outputs() {
 
             collation: None,
             default_value: None,
+            auto_increment: false,
         },
     ];
     let row: Vec<Value> = vec![Value::Integer(7), Value::Text("bob".into())];
@@ -1032,6 +1039,7 @@ fn test_find_column_index_known_outputs() {
 
             collation: None,
             default_value: None,
+            auto_increment: false,
         },
         ColumnDefinition {
             name: "t.col".to_string(),
@@ -1042,6 +1050,7 @@ fn test_find_column_index_known_outputs() {
 
             collation: None,
             default_value: None,
+            auto_increment: false,
         },
         ColumnDefinition {
             name: "a_join_b.a.deep".to_string(),
@@ -1052,6 +1061,7 @@ fn test_find_column_index_known_outputs() {
 
             collation: None,
             default_value: None,
+            auto_increment: false,
         },
     ];
 

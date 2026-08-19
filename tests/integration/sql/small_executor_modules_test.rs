@@ -487,6 +487,7 @@ fn test_ast_adapter_to_update_plan_uses_all_when_no_where() {
     let stmt = ParserUpdateStatement {
         tables: vec![sqlrustgo_parser::TableRef {
             name: "users".to_string(),
+            schema: None,
             alias: None,
         }],
         set_clauses: vec![(
@@ -533,6 +534,7 @@ fn test_ast_adapter_to_update_plan_errors_on_unknown_column() {
     let stmt = ParserUpdateStatement {
         tables: vec![sqlrustgo_parser::TableRef {
             name: "users".to_string(),
+            schema: None,
             alias: None,
         }],
         set_clauses: vec![("missing".to_string(), Expression::Literal("x".to_string()))],

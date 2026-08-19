@@ -118,7 +118,7 @@ fn test_cargo_toml_p02_critical_tests() {
 
     let critical = [
         "adaptive_hash_index_test",
-        "buffer_pool_test",
+        "buffer_pool_benchmark_test",
         "e2e_monitoring_test",
         "ci_test",
         "wal_integration_test",
