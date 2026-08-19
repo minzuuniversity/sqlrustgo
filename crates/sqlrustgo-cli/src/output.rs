@@ -103,6 +103,17 @@ pub fn format_table(columns: &[String], rows: &[Vec<Value>]) -> String {
 }
 
 #[allow(dead_code)]
+pub fn format_list(rows: &[Vec<Value>]) -> String {
+    let mut out = String::new();
+    for row in rows {
+        let parts: Vec<String> = row.iter().map(value_to_string).collect();
+        out.push_str(&parts.join("|"));
+        out.push('\n');
+    }
+    out
+}
+
+#[allow(dead_code)]
 fn value_to_string(v: &Value) -> String {
     match v {
         Value::Null => String::new(),
@@ -156,5 +167,41 @@ mod tests {
         let out = format_table(&cols, &rows);
         // column width = max("c".len=1, value.len=18) + 1 (padding) = 19
         assert!(out.contains("------------------")); // 18 dashes + 1
+    }
+
+    #[test]
+    fn list_basic_three_columns() {
+        let rows = vec![
+            vec![
+                Value::Integer(1),
+                Value::Text("Alice".into()),
+                Value::Boolean(true),
+            ],
+            vec![
+                Value::Integer(2),
+                Value::Text("Bob".into()),
+                Value::Boolean(false),
+            ],
+        ];
+        let out = format_list(&rows);
+        assert_eq!(out, "1|Alice|true\n2|Bob|false\n");
+    }
+
+    #[test]
+    fn list_null_is_empty_string() {
+        let rows = vec![vec![
+            Value::Integer(1),
+            Value::Null,
+            Value::Text("x".into()),
+        ]];
+        let out = format_list(&rows);
+        assert_eq!(out, "1||x\n");
+    }
+
+    #[test]
+    fn list_empty_rows_returns_empty_string() {
+        let rows: Vec<Vec<Value>> = vec![];
+        let out = format_list(&rows);
+        assert_eq!(out, "");
     }
 }
