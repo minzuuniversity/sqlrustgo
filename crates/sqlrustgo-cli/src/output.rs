@@ -1,7 +1,6 @@
 use sqlrustgo_types::Value;
 use std::fmt::Write;
 
-#[allow(dead_code)]
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum OutputMode {
     Table,
@@ -11,14 +10,12 @@ pub enum OutputMode {
 }
 
 /// Output target for redirecting query results (stdout or file).
-#[allow(dead_code)]
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum OutputTarget {
     Stdout,
     File(std::path::PathBuf),
 }
 
-#[allow(dead_code)]
 pub fn format(
     mode: OutputMode,
     columns: &[String],
@@ -33,7 +30,6 @@ pub fn format(
     }
 }
 
-#[allow(dead_code)]
 pub fn format_table(columns: &[String], rows: &[Vec<Value>]) -> String {
     let mut out = String::new();
 
@@ -134,7 +130,6 @@ pub fn format_table(columns: &[String], rows: &[Vec<Value>]) -> String {
     out
 }
 
-#[allow(dead_code)]
 pub fn format_list(rows: &[Vec<Value>]) -> String {
     let mut out = String::new();
     for row in rows {
@@ -145,7 +140,6 @@ pub fn format_list(rows: &[Vec<Value>]) -> String {
     out
 }
 
-#[allow(dead_code)]
 fn value_to_string(v: &Value) -> String {
     match v {
         Value::Null => String::new(),
@@ -157,7 +151,6 @@ fn value_to_string(v: &Value) -> String {
     }
 }
 
-#[allow(dead_code)]
 pub fn format_csv(columns: &[String], rows: &[Vec<Value>], include_header: bool) -> String {
     let mut out = String::new();
     if include_header {
@@ -187,7 +180,6 @@ fn csv_quote(s: &str) -> String {
     }
 }
 
-#[allow(dead_code)]
 pub fn format_json(columns: &[String], rows: &[Vec<Value>]) -> String {
     let cols_json: Vec<String> = columns.iter().map(|c| json_quote(c)).collect();
     let rows_json: Vec<String> = rows

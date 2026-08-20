@@ -30,11 +30,12 @@ BEGIN/COMMIT/ROLLBACK.
 ";
 
 #[derive(Debug, Clone)]
-#[allow(dead_code)]
 pub struct SqliteState {
     pub mode: OutputMode,
     pub headers: bool,
+    #[allow(dead_code)] // accepted via CLI/.timer; not yet plumbed to executor
     pub timer: bool,
+    #[allow(dead_code)] // accepted via CLI/.explain; not yet plumbed to executor
     pub explain: bool,
     pub output: OutputTarget,
 }
@@ -51,7 +52,6 @@ impl Default for SqliteState {
     }
 }
 
-#[allow(dead_code)]
 pub struct SqliteMode {
     pub engine: ExecutionEngine<FileStorage>,
     pub state: SqliteState,
@@ -60,7 +60,6 @@ pub struct SqliteMode {
     pub db_path: PathBuf,
 }
 
-#[allow(dead_code)]
 impl SqliteMode {
     pub fn open(db: &Path, state: SqliteState, continue_on_error: bool) -> Result<Self, CliError> {
         // Resolve storage path: if db is a file path, use its parent + basename as subdir.
