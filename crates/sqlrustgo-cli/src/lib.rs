@@ -3,14 +3,39 @@
 //! Provides the `run()` entry point used by `sqlrustgo` binary.
 //! Thin wrapper around `sqlrustgo-mysql-server` for most subcommands.
 
-mod dotcmd;
-mod error;
-mod implicit_alias;
-mod output;
-mod sqlite_mode;
+pub mod dotcmd;
+pub mod error;
+pub mod implicit_alias;
+pub mod output;
+pub mod sqlite_mode;
 
 use clap::{Parser, Subcommand};
+use std::path::PathBuf;
 use std::process::Command as Proc;
+
+use crate::error::EXIT_STORAGE_INIT;
+use crate::output::OutputMode;
+use crate::sqlite_mode::{SqliteMode, SqliteState};
+
+/// clap-friendly enum that maps to OutputMode.
+#[derive(Debug, Clone, Copy, clap::ValueEnum)]
+enum OutputModeArg {
+    Table,
+    List,
+    Csv,
+    Json,
+}
+
+impl From<OutputModeArg> for OutputMode {
+    fn from(v: OutputModeArg) -> Self {
+        match v {
+            OutputModeArg::Table => OutputMode::Table,
+            OutputModeArg::List => OutputMode::List,
+            OutputModeArg::Csv => OutputMode::Csv,
+            OutputModeArg::Json => OutputMode::Json,
+        }
+    }
+}
 
 #[derive(Parser, Debug)]
 #[command(name = "sqlrustgo", about = "SQLRustGo canonical CLI", version)]
@@ -61,16 +86,7 @@ enum SubCmd {
     },
     /// Soak REPL mode: hold a persistent MySQL connection and serve
     /// queries read from stdin, writing tab-separated results to stdout.
-    /// Designed for SOAK testing (PR #3347 alternative to mysql CLI).
-    ///
-    /// Wire protocol:
-    ///   Input (one per line):  SQL statement
-    ///   Output:
-    ///     OK\t<affected_rows>
-    ///     ROWS\t<column_count>
-    ///     COL\t<name>\t<type>
-    ///     DATA\t<row_count>
-    ///     ROW\t<col1>\t<col2>\t...
+    /// Designed for SOAK testing (PR #3347 alternative to mysql CLI)
     Soak {
         #[arg(long, default_value = "127.0.0.1")]
         host: String,
@@ -81,9 +97,43 @@ enum SubCmd {
         #[arg(long = "pass", short = 'w')]
         password: Option<String>,
     },
+    /// sqlite3-like local DB mode (BustubX-EDU teaching CLI).
+    Sqlite {
+        /// Path to local DB (file or directory).
+        db: PathBuf,
+        #[arg(long)]
+        batch: bool,
+        #[arg(long)]
+        cmd: Option<String>,
+        #[arg(long, value_enum, default_value = "table")]
+        mode: OutputModeArg,
+        #[arg(long)]
+        headers: Option<bool>,
+        #[arg(long)]
+        timer: Option<bool>,
+        #[arg(long)]
+        explain: Option<bool>,
+        #[arg(long)]
+        continue_on_error: bool,
+    },
 }
 
 pub fn run() -> i32 {
+    // Implicit-alias fast-path: `sqlrustgo <db-path>` with exactly one positional arg.
+    let args: Vec<String> = std::env::args().collect();
+    if args.len() == 2 && crate::implicit_alias::looks_like_db_path(&args[1]) {
+        return run_sqlite_subcommand(
+            PathBuf::from(&args[1]),
+            false,
+            None,
+            OutputMode::Table,
+            None,
+            None,
+            None,
+            false,
+        );
+    }
+
     let cli = Cli::parse();
 
     match cli.command {
@@ -142,7 +192,60 @@ pub fn run() -> i32 {
             user.as_deref().unwrap_or("root"),
             password.as_deref().unwrap_or(""),
         ),
+        Some(SubCmd::Sqlite {
+            db,
+            batch,
+            cmd,
+            mode,
+            headers,
+            timer,
+            explain,
+            continue_on_error,
+        }) => run_sqlite_subcommand(
+            db,
+            batch,
+            cmd,
+            mode.into(),
+            headers,
+            timer,
+            explain,
+            continue_on_error,
+        ),
     }
+}
+
+#[allow(clippy::too_many_arguments)]
+fn run_sqlite_subcommand(
+    db: PathBuf,
+    batch: bool,
+    cmd: Option<String>,
+    mode: OutputMode,
+    headers: Option<bool>,
+    timer: Option<bool>,
+    explain: Option<bool>,
+    continue_on_error: bool,
+) -> i32 {
+    let state = SqliteState {
+        mode,
+        headers: headers.unwrap_or(!batch),
+        timer: timer.unwrap_or(false),
+        explain: explain.unwrap_or(false),
+        output: crate::output::OutputTarget::Stdout,
+    };
+    let mut runner = match SqliteMode::open(&db, state, continue_on_error) {
+        Ok(m) => m,
+        Err(e) => {
+            eprintln!("{}", e);
+            return EXIT_STORAGE_INIT;
+        }
+    };
+    if let Some(sql) = cmd {
+        return runner.run_batch(&sql);
+    }
+    if batch {
+        return runner.run_batch_stdin();
+    }
+    runner.run_repl()
 }
 
 fn run_bin(subcmd: &str, args: &[(&str, String)]) -> i32 {

@@ -1638,6 +1638,13 @@ impl<S: StorageEngine + 'static> ExecutionEngine<S> {
         self.storage.write().flush()
     }
 
+    /// V312-57: list all tables visible to the storage engine. Used by the
+    /// sqlite3-like teaching CLI (`.tables` dot-command) to enumerate
+    /// user-created tables without going through `information_schema`.
+    pub fn list_tables(&self) -> Vec<String> {
+        self.storage.read().list_tables()
+    }
+
     // ── Set-operation handlers (V310-06 PR2 / Issue #3723 C-2) ──────
     // C-ARCH-05: bodies moved to `crate::engine_setops` (issue #3943 follow-up).
 
