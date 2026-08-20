@@ -411,6 +411,14 @@ name = "show_tables_test"
 path = "tests/integration/sql/show_tables_test.rs"
 
 [[test]]
+name = "show_full_tables_test"
+path = "tests/integration/sql/show_full_tables_test.rs"
+
+[[test]]
+name = "show_table_status_test"
+path = "tests/integration/sql/show_table_status_test.rs"
+
+[[test]]
 name = "table_compression_test"
 path = "tests/integration/sql/table_compression_test.rs"
 
