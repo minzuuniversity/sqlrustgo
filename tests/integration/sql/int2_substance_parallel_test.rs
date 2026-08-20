@@ -23,6 +23,11 @@ use sqlrustgo_executor::parallel_executor::{
 use sqlrustgo_types::Value;
 use std::sync::Arc;
 
+/// Test-only threshold: exercises the partitioning algorithm without
+/// allocating the multi-million-row fixture that the production
+/// `PARALLEL_MIN_ROWS = 2_000_000` threshold would otherwise require.
+const TEST_PARALLEL_MIN_ROWS: usize = 100;
+
 fn make_engine(parallel_degree: usize) -> ExecutionEngine<MemoryStorage> {
     let mut engine = ExecutionEngine::new(Arc::new(RwLock::new(MemoryStorage::new())));
     engine.set_parallel_degree(parallel_degree);
@@ -33,10 +38,11 @@ fn make_engine(parallel_degree: usize) -> ExecutionEngine<MemoryStorage> {
 #[test]
 fn test_int2_partition_scan_correct() {
     let parallel = ParallelVolcanoExecutor::new(4);
-    // Need >= PARALLEL_MIN_ROWS to trigger parallel partitioning
-    let n = PARALLEL_MIN_ROWS + 100;
+    // Use the test-only threshold to avoid allocating PARALLEL_MIN_ROWS = 2M
+    // (production threshold) just to verify the partition algorithm.
+    let n = TEST_PARALLEL_MIN_ROWS + 50;
     let rows: Vec<Vec<Value>> = (0..n).map(|i| vec![Value::Integer(i as i64)]).collect();
-    let parts = parallel.partition_scan(rows, 4);
+    let parts = parallel.partition_rows_with_min(rows, 4, TEST_PARALLEL_MIN_ROWS);
     assert_eq!(parts.len(), 4, "should partition into 4 chunks");
     let total: usize = parts.iter().map(|p| p.len()).sum();
     assert_eq!(total, n, "all rows preserved");
@@ -111,11 +117,12 @@ fn test_int2_build_parallel_executor_api() {
     let parallel = engine.build_parallel_executor();
     assert_eq!(parallel.parallel_degree(), 8);
 
-    // Direct call to partition_scan with sufficient rows
-    let rows: Vec<Vec<Value>> = (0..(PARALLEL_MIN_ROWS + 100))
+    // Use test-only threshold to verify the algorithm without allocating
+    // the full production 2M-row fixture.
+    let rows: Vec<Vec<Value>> = (0..(TEST_PARALLEL_MIN_ROWS + 50))
         .map(|i| vec![Value::Integer(i as i64)])
         .collect();
-    let parts = parallel.partition_scan(rows, 8);
+    let parts = parallel.partition_rows_with_min(rows, 8, TEST_PARALLEL_MIN_ROWS);
     assert_eq!(parts.len(), 8, "8-way partition over threshold");
 }
 
