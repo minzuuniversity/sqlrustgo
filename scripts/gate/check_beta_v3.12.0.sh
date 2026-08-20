@@ -303,6 +303,7 @@ check "B6_V312_56_ISSUE_DEFINITION" "test -f docs/releases/v3.12.0/issues/V312-5
 check "B6_V312_56_TEST_PLAN_GATE"   "grep -q 'V312-G27' docs/releases/v3.12.0/TEST_PLAN.md"
 check "B6_V312_56_BETA_STAGE_SCOPE" "grep -q 'V312-56A Metadata/SHOW/information_schema' docs/releases/v3.12.0/STAGE.yaml && grep -q 'V312-56D Prepared statement / wire protocol' docs/releases/v3.12.0/STAGE.yaml"
 check "B6_V312_56_VERIFICATION"     "bash -c 'for f in docs/releases/v3.12.0/evidence/teaching_v400/V312-56-VERIFICATION.md docs/releases/v3.12.0/evidence/v312-56/V312-56-VERIFICATION.md; do test -f \"\$f\" && grep -Eqi \"exit code|exit codes\" \"\$f\" && grep -Eqi \"evidence hash|hashes\" \"\$f\" && exit 0; done; exit 1'"
+check "B6_V312_56A_R3" "bash -c 'grep -q \"SHOW FULL TABLES\" docs/releases/v3.12.0/MYSQL_COMPAT_STATUS.md && grep -q \"SHOW TABLE STATUS\" docs/releases/v3.12.0/MYSQL_COMPAT_STATUS.md && grep -q \"56A-R3 closed\" docs/releases/v3.12.0/evidence/v312-56/V312-56-VERIFICATION.md && test -f tests/integration/sql/show_full_tables_test.rs && test -f tests/integration/sql/show_table_status_test.rs'"
 check "B6_V312_56_TEACHING_GAPS" "python3 - <<'PY'
 # Issue #4250 / V312-56 master orchestrator teaching-gap closure gate.
 # Verifies each V312-56B-G sub-issue has at minimum the required artifacts:
