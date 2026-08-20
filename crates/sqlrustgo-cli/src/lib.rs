@@ -57,11 +57,8 @@ enum SubCmd {
     Exec {
         sql: String,
     },
-    /// Interactive REPL.
-    Repl {
-        #[arg(long, default_value = "3307")]
-        port: u16,
-    },
+    /// Interactive REPL (local stdin mode; mysql-server repl does not accept --port).
+    Repl {},
     Bench,
     Gmp,
     Diag,
@@ -74,13 +71,15 @@ enum SubCmd {
     },
     /// Connect to a running server and execute a query (NEW).
     Cli {
-        #[arg(short, long, default_value = "3307")]
+        // 显式指定短选项, 避免 clap 自动派生冲突:
+        // port 与 password 首字母都是 p; host 的 h 会与 -h/--help 冲突。
+        #[arg(short = 'p', long, default_value = "3307")]
         port: u16,
-        #[arg(short, long, default_value = "127.0.0.1")]
+        #[arg(long, default_value = "127.0.0.1")]
         host: String,
-        #[arg(short, long)]
+        #[arg(short = 'u', long)]
         user: Option<String>,
-        #[arg(short, long)]
+        #[arg(long = "password", short = 'w')]
         password: Option<String>,
         query: String,
     },
@@ -156,7 +155,8 @@ pub fn run() -> i32 {
             run_bin("serve", &args)
         }
         Some(SubCmd::Exec { sql }) => run_bin_arg_positional("exec", &sql),
-        Some(SubCmd::Repl { port }) => run_bin("repl", &[("--port", port.to_string())]),
+        // mysql-server repl 是本地 stdin 模式, 不接受 --port; 之前误传导致报错。
+        Some(SubCmd::Repl {}) => run_bin("repl", &[]),
         Some(SubCmd::Bench) => run_bin("bench", &[]),
         Some(SubCmd::Gmp) => run_bin("gmp", &[]),
         Some(SubCmd::Diag) => run_bin("diag", &[]),
