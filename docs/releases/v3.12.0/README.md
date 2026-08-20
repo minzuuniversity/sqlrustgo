@@ -19,6 +19,8 @@ v3.12.0 被规划为 SQLRustGo 第一个明确面向 GMP 内审检索工作负�
 
 2026-08-19 教学入口补强：新增 [V312-57 sqlite3-like 一体化教学 CLI 计划](V312-57_SQLITE_STYLE_EDU_CLI_PLAN.md)，用于支撑 BustubX-EDU 前 4-6 周以 SQLRustGo 替代 `sqlite3` CLI 使用体验进行脚本化验收。该任务不声明 SQLite 文件格式兼容。
 
+2026-08-20 V312-57 实现完成：`sqlrustgo` 二进制已实现(单路径数据库、SQL 参数/stdin 批处理、table/list/csv/json 输出、sqlite3-like 元命令、跨进程持久化、稳定退出码)。14/14 gate cases PASS，Beta Gate 0 BLOCKERS。验证报告：[V312-57-EDU-CLI-VERIFICATION.md](evidence/bustubx_edu_cli/V312-57-EDU-CLI-VERIFICATION.md)。
+
 ## 发布契约
 
 允许的 v3.12.0 声明：
