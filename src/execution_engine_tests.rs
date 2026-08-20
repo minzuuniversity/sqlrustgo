@@ -977,11 +977,7 @@ fn test_ahi_does_not_promote_for_different_tables() {
     for _round in 0..17 {
         for t in &["a", "b", "c"] {
             engine
-                .execute(&format!(
-                    "SELECT * FROM {} WHERE id = {}",
-                    t,
-                    1
-                ))
+                .execute(&format!("SELECT * FROM {} WHERE id = {}", t, 1))
                 .expect("SELECT");
         }
     }

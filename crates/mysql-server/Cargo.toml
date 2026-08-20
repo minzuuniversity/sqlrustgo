@@ -22,7 +22,7 @@ crossbeam-channel = "0.5"
 tracing = "0.1"
 serde = { version = "1", features = ["derive"] }
 serde_json = "1"
-clap = { version = "4", features = ["derive"] }
+clap = { version = "4", features = ["derive", "env"] }
 tracing-subscriber = { version = "0.3", features = ["env-filter"] }
 rustls = "0.23"
 rcgen = "0.13"
