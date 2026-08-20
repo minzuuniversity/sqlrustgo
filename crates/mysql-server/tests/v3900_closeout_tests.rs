@@ -18,7 +18,11 @@ fn rows_from_result(rs: ResultSet) -> Vec<Vec<String>> {
     match rs {
         ResultSet::Select { rows, .. } => rows,
         ResultSet::Ok { .. } => panic!("expected Select result set, got Ok"),
-        ResultSet::Error { error_code, error_message, .. } => {
+        ResultSet::Error {
+            error_code,
+            error_message,
+            ..
+        } => {
             panic!("server error {}: {}", error_code, error_message)
         }
     }
@@ -72,8 +76,10 @@ fn test_3900_binary_row_parsing_int_select() {
 
     conn.execute("CREATE TABLE t (id INT PRIMARY KEY, val INT)")
         .expect("create");
-    conn.execute("INSERT INTO t VALUES (1, 100)").expect("insert 1");
-    conn.execute("INSERT INTO t VALUES (2, 200)").expect("insert 2");
+    conn.execute("INSERT INTO t VALUES (1, 100)")
+        .expect("insert 1");
+    conn.execute("INSERT INTO t VALUES (2, 200)")
+        .expect("insert 2");
 
     let rows = expect_rows(conn.execute("SELECT id, val FROM t ORDER BY id"));
     assert_eq!(rows.len(), 2);
@@ -94,7 +100,8 @@ fn test_3900_stmt_prepare_execute_no_param() {
 
     conn.execute("CREATE TABLE t (id INT PRIMARY KEY, x INT)")
         .expect("create");
-    conn.execute("INSERT INTO t VALUES (1, 42)").expect("insert");
+    conn.execute("INSERT INTO t VALUES (1, 42)")
+        .expect("insert");
 
     let stmt = conn.prepare("SELECT x FROM t").expect("prepare");
     assert_eq!(stmt.param_count, 0);
@@ -117,10 +124,14 @@ fn test_3900_stmt_prepare_execute_with_param() {
 
     conn.execute("CREATE TABLE t (id INT PRIMARY KEY, name VARCHAR(50))")
         .expect("create");
-    conn.execute("INSERT INTO t VALUES (1, 'Alice')").expect("insert");
-    conn.execute("INSERT INTO t VALUES (2, 'Bob')").expect("insert");
+    conn.execute("INSERT INTO t VALUES (1, 'Alice')")
+        .expect("insert");
+    conn.execute("INSERT INTO t VALUES (2, 'Bob')")
+        .expect("insert");
 
-    let stmt = conn.prepare("SELECT name FROM t WHERE id = ?").expect("prepare");
+    let stmt = conn
+        .prepare("SELECT name FROM t WHERE id = ?")
+        .expect("prepare");
     assert_eq!(stmt.param_count, 1);
 
     let rows = expect_rows(conn.execute_prepared(stmt.id, &["1"]));

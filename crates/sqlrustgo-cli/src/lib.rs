@@ -1,7 +1,10 @@
 //! SQLRustGo Canonical CLI Library
 //!
-//! Provides the `run()` entry point used by `sqlrustgo` binary.
-//! Thin wrapper around `sqlrustgo-mysql-server` for most subcommands.
+//! Provides:
+//! - `run()` entry point used by the `sqlrustgo` binary (V312-57 sqlite3-like
+//!   local mode + mysql-server compat subcommands)
+//! - sqlite3-like mode (`sqlite_mode`), dot-commands (`dotcmd`), output
+//!   formatters (`output`), and stable error types (`error`)
 
 pub mod dotcmd;
 pub mod error;
@@ -9,12 +12,14 @@ pub mod implicit_alias;
 pub mod output;
 pub mod sqlite_mode;
 
+pub use error::CliError;
+pub use output::{format, OutputMode};
+
 use clap::{Parser, Subcommand};
 use std::path::PathBuf;
 use std::process::Command as Proc;
 
 use crate::error::EXIT_STORAGE_INIT;
-use crate::output::OutputMode;
 use crate::sqlite_mode::{SqliteMode, SqliteState};
 
 /// clap-friendly enum that maps to OutputMode.
@@ -118,9 +123,11 @@ enum SubCmd {
 }
 
 pub fn run() -> i32 {
-    // Implicit-alias fast-path: `sqlrustgo <db-path>` with exactly one positional arg.
+    // Implicit-alias fast-path: `sqlrustgo <db-path>` with exactly one positional
+    // arg, optionally followed by `--continue-on-error`.
     let args: Vec<String> = std::env::args().collect();
-    if args.len() == 2 && crate::implicit_alias::looks_like_db_path(&args[1]) {
+    let alias_continue = args.len() == 3 && args[2] == "--continue-on-error";
+    if (args.len() == 2 || alias_continue) && crate::implicit_alias::looks_like_db_path(&args[1]) {
         return run_sqlite_subcommand(
             PathBuf::from(&args[1]),
             false,
@@ -129,7 +136,7 @@ pub fn run() -> i32 {
             None,
             None,
             None,
-            false,
+            alias_continue,
         );
     }
 

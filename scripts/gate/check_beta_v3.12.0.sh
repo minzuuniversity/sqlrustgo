@@ -110,6 +110,7 @@ check "B4_ALPHA_GATE" "test -f scripts/gate/check_alpha_v3.12.0.sh"
 check "B4_BETA_GATE" "test -f scripts/gate/check_beta_v3.12.0.sh"
 check "B4_COMMON_GATES" "test -f scripts/gate/check_arch_invariants.sh && test -f scripts/gate/check_beta_gate.sh && test -f scripts/gate/check_anti_fabrication.sh"
 check "B4_V312_55_PROCEDURE_TRIGGER_GATE_DEFINED" "test -f scripts/gate/check_v312_procedure_trigger_gate.sh"
+check "B4_V312_57_EDU_CLI_GATE_DEFINED" "test -f scripts/gate/check_bustubx_edu_cli_v312.sh"
 check "B4_V312_STAGE_BOUNDARY" "bash scripts/gate/check_v312_stage_boundary.sh"
 
 # ============================================================
@@ -205,6 +206,7 @@ explain_files = [f for f in data.get('files', []) if 'explain' in f.get('path', 
 if len(explain_files) < 5:
     raise SystemExit(f'Expected 5+ EXPLAIN fixtures, got {len(explain_files)}')
 PY"
+check "B6_V312_57_EDU_CLI_GATE" "bash scripts/gate/check_bustubx_edu_cli_v312.sh"
 check "B6_V312_47_PARTIAL_CLOSURE" "python3 - <<'PY'
 # Issue #4220 / V312-47 PARTIAL closure gate.
 # Verifies that every README PARTIAL row is bound to a Gitea issue,
