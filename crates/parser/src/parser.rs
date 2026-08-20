@@ -9367,14 +9367,12 @@ impl Parser {
         }
     }
 
-        /// V312-59-A / Issue #4384 (56A-R3 anti-deferral): shared suffix
+    /// V312-59-A / Issue #4384 (56A-R3 anti-deferral): shared suffix
     /// parser for `SHOW [FULL] TABLES` / `SHOW TABLE STATUS`:
     /// optional `FROM db`, then optional `LIKE 'pat'`, then optional
     /// `WHERE expr` (checked in a fixed order; MySQL accepts each
     /// independently and at most one of LIKE/WHERE).
-    fn parse_show_filter_suffix(
-        &mut self,
-    ) -> Result<ShowFilterSuffix, String> {
+    fn parse_show_filter_suffix(&mut self) -> Result<ShowFilterSuffix, String> {
         let mut db = None;
         let mut like = None;
         let mut where_clause = None;
@@ -11228,9 +11226,7 @@ mod tests {
         let result = parse("SHOW FULL TABLES FROM test_db");
         assert!(result.is_ok(), "Parse failed: {:?}", result);
         match result.unwrap() {
-            Statement::Show(ShowStatement::FullTables {
-                full, db, like, ..
-            }) => {
+            Statement::Show(ShowStatement::FullTables { full, db, like, .. }) => {
                 assert!(full);
                 assert_eq!(db.as_deref(), Some("test_db"));
                 assert!(like.is_none());

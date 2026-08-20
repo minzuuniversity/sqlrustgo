@@ -53,8 +53,17 @@ fn show_full_tables_returns_name_and_type_columns() {
         .expect("SHOW FULL TABLES should succeed");
     assert_eq!(rows.len(), 2, "expected 2 rows, got {:?}", rows);
     for row in &rows {
-        assert_eq!(row.len(), 2, "FULL TABLES must return 2 columns (Name, Type), got {:?}", row);
-        assert_eq!(row[1], "BASE TABLE", "all created tables are BASE TABLE, got {:?}", row);
+        assert_eq!(
+            row.len(),
+            2,
+            "FULL TABLES must return 2 columns (Name, Type), got {:?}",
+            row
+        );
+        assert_eq!(
+            row[1], "BASE TABLE",
+            "all created tables are BASE TABLE, got {:?}",
+            row
+        );
     }
     let names: Vec<&str> = rows.iter().map(|r| r[0].as_str()).collect();
     assert!(names.contains(&"t1"));
@@ -148,9 +157,7 @@ fn show_full_tables_after_drop_reflects_drop() {
     client
         .exec("CREATE TABLE drop_me (id INTEGER)")
         .expect("CREATE drop_me");
-    client
-        .exec("DROP TABLE drop_me")
-        .expect("DROP drop_me");
+    client.exec("DROP TABLE drop_me").expect("DROP drop_me");
 
     let rows = client
         .query_rows("SHOW FULL TABLES")

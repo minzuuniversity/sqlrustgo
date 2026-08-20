@@ -44,6 +44,8 @@ Specifically deferred (per V312-13-REPORT.md boundary table):
 | Binary result set encoding | ✅ Supported | INT, VARCHAR, NULL types |
 | `SHOW TABLES` | ✅ Supported | Via `execute()` path |
 | `SHOW TABLES LIKE 'pattern'` | ✅ Supported | Parser supports `ShowStatement::TablesLike` |
+| `SHOW FULL TABLES` | ✅ Supported | Returns `Name` + `Type` (`BASE TABLE` / `VIEW`) columns; supports `FROM db`, `LIKE 'pattern'`, `WHERE expr` filters. V312-59-A / #4384 (56A-R3 anti-deferral). |
+| `SHOW TABLE STATUS` | ✅ Supported (controlled subset) | Returns MySQL 18 columns (Name, Engine, Version, Row_format, Rows, Avg_row_length, Data_length, Max_data_length, Index_length, Data_free, Auto_increment, Create_time, Update_time, Check_time, Collation, Checksum, Create_options, Comment); supports `FROM db`, `LIKE 'pattern'`, `WHERE expr`. `Rows` is the real scanned row count; Engine=InnoDB, Version=10, Row_format=Dynamic, Collation=utf8mb4_general_ci. V312-59-A / #4384 (56A-R3 anti-deferral). |
 | `DESCRIBE` / `SHOW COLUMNS` | ✅ Supported | Both `DESCRIBE <table>` and `SHOW COLUMNS FROM <table> [LIKE 'pattern']` return Field/Type/Null/Key/Default/Extra rows. V312-56A / #4251. |
 | `SHOW INDEX FROM <table>` | ✅ Supported (controlled subset) | Returns MySQL 5.7 SHOW INDEX columns. Catalog-driven when wired up; falls back to PK from `ColumnDefinition.primary_key` for storage-only engines. V312-56A / #4251. |
 | `SHOW CREATE TABLE <table>` | ✅ Supported (controlled subset) | Reconstructs `CREATE TABLE <name> (col TYPE [NOT NULL] [DEFAULT ...], ..., PRIMARY KEY (...))` from the live schema. DEFAULT depends on `ColumnDefinition.default_value` being populated (#4154 follow-up for parser-level DEFAULT extraction). V312-56A / #4251. |
