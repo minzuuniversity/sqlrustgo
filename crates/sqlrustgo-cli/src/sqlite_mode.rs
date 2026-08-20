@@ -144,8 +144,11 @@ impl SqliteMode {
             Err(e) => {
                 self.error_seen = true;
                 let msg = e.to_string();
-                let cli_err = if msg.to_lowercase().contains("parse error") {
+                let lower = msg.to_lowercase();
+                let cli_err = if lower.contains("parse error") {
                     CliError::Parse(msg)
+                } else if lower.contains("binder error") || lower.contains("binder") {
+                    CliError::Bind(msg)
                 } else {
                     CliError::Runtime(msg)
                 };
@@ -232,9 +235,13 @@ impl SqliteMode {
                 Ok(())
             }
             DotCmd::Tables(pattern) => {
-                let tables = self.list_tables()?;
+                let mut tables = self.list_tables()?;
+                tables.sort();
                 let filtered: Vec<String> = if let Some(p) = pattern {
-                    let pat = p.replace('%', "").replace('_', "");
+                    let pat = p
+                        .chars()
+                        .filter(|&c| c != '%' && c != '_')
+                        .collect::<String>();
                     tables.into_iter().filter(|t| t.contains(&pat)).collect()
                 } else {
                     tables
@@ -306,7 +313,11 @@ impl SqliteMode {
                 }
             }
         }
-        EXIT_OK
+        if self.error_seen {
+            1
+        } else {
+            EXIT_OK
+        }
     }
 
     pub fn run_batch(&mut self, sql: &str) -> i32 {
@@ -519,7 +530,7 @@ mod tests {
     }
 
     #[test]
-    fn run_repl_parse_error_exits_zero_but_continues() {
+    fn run_repl_parse_error_exits_one_but_continues() {
         let tmp = std::env::temp_dir().join("v31257_repl_parse_err");
         let _ = std::fs::remove_dir_all(&tmp);
         let mut mode = SqliteMode::open(&tmp, SqliteState::default(), false).unwrap();
@@ -529,7 +540,7 @@ mod tests {
             "SELECT 2".to_string(),
             ".quit".to_string(),
         ]);
-        assert_eq!(exit, 0);
+        assert_eq!(exit, 1);
         let out = std::fs::read_to_string(tmp.join("out.txt")).unwrap();
         assert!(out.contains("2"));
         let _ = std::fs::remove_dir_all(&tmp);

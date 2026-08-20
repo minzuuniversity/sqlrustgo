@@ -16,7 +16,9 @@ pub const EXIT_STORAGE_INIT: i32 = 3;
 pub enum CliError {
     /// SQL parser / lexer rejected input. Origin: sqlrustgo-parser error.
     Parse(String),
-    /// Binder / executor / storage error. Origin: sqlrustgo engine error.
+    /// Binder error: unknown table/column, type mismatch caught at bind time.
+    Bind(String),
+    /// Executor / storage error. Origin: sqlrustgo engine error.
     Runtime(String),
     /// File I/O failure (e.g. .read missing file, .output permission denied).
     Io(String),
@@ -30,15 +32,19 @@ impl CliError {
     }
 }
 
+/// Stable error prefixes emitted on stderr. Codes never change between
+/// minor versions (per Anti-Fabrication-Policy v1.0); messages after the
+/// code can change.
 impl fmt::Display for CliError {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         let (code, msg) = match self {
-            CliError::Parse(m) => ("ParseError", m.as_str()),
-            CliError::Runtime(m) => ("RuntimeError", m.as_str()),
-            CliError::Io(m) => ("IoError", m.as_str()),
-            CliError::DotCmd(m) => ("DotCmdError", m.as_str()),
+            CliError::Parse(m) => ("sqlrustgo:error:parse:", m.as_str()),
+            CliError::Bind(m) => ("sqlrustgo:error:bind:", m.as_str()),
+            CliError::Runtime(m) => ("sqlrustgo:error:runtime:", m.as_str()),
+            CliError::Io(m) => ("sqlrustgo:error:io:", m.as_str()),
+            CliError::DotCmd(m) => ("sqlrustgo:error:meta:", m.as_str()),
         };
-        write!(f, "Error: {}: {}", code, msg)
+        write!(f, "Error: {} {}", code, msg)
     }
 }
 
@@ -51,21 +57,40 @@ mod tests {
     #[test]
     fn parse_error_format_includes_code_prefix() {
         let e = CliError::Parse("unexpected token".into());
-        assert_eq!(e.to_string(), "Error: ParseError: unexpected token");
+        assert_eq!(
+            e.to_string(),
+            "Error: sqlrustgo:error:parse: unexpected token"
+        );
+        assert_eq!(e.exit_code(), 1);
+    }
+
+    #[test]
+    fn bind_error_format_includes_code_prefix() {
+        let e = CliError::Bind("column 'x' not found".into());
+        assert_eq!(
+            e.to_string(),
+            "Error: sqlrustgo:error:bind: column 'x' not found"
+        );
         assert_eq!(e.exit_code(), 1);
     }
 
     #[test]
     fn runtime_error_format_includes_code_prefix() {
-        let e = CliError::Runtime("column 'x' not found".into());
-        assert_eq!(e.to_string(), "Error: RuntimeError: column 'x' not found");
+        let e = CliError::Runtime("execution failed".into());
+        assert_eq!(
+            e.to_string(),
+            "Error: sqlrustgo:error:runtime: execution failed"
+        );
         assert_eq!(e.exit_code(), 1);
     }
 
     #[test]
     fn io_error_format_includes_code_prefix() {
         let e = CliError::Io("file not found: missing.sql".into());
-        assert_eq!(e.to_string(), "Error: IoError: file not found: missing.sql");
+        assert_eq!(
+            e.to_string(),
+            "Error: sqlrustgo:error:io: file not found: missing.sql"
+        );
         assert_eq!(e.exit_code(), 1);
     }
 
@@ -74,7 +99,7 @@ mod tests {
         let e = CliError::DotCmd("unknown dot-command: .foo".into());
         assert_eq!(
             e.to_string(),
-            "Error: DotCmdError: unknown dot-command: .foo"
+            "Error: sqlrustgo:error:meta: unknown dot-command: .foo"
         );
         assert_eq!(e.exit_code(), 1);
     }
