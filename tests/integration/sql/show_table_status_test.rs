@@ -86,7 +86,10 @@ fn show_table_status_rows_field_is_real_count() {
     let rows = client
         .query_rows("SHOW TABLE STATUS")
         .expect("SHOW TABLE STATUS should succeed");
-    assert_eq!(rows[0][4], "2", "Rows column (col 4) should be the real row count");
+    assert_eq!(
+        rows[0][4], "2",
+        "Rows column (col 4) should be the real row count"
+    );
 }
 
 #[test]

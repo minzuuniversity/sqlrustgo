@@ -383,7 +383,11 @@ impl<S: StorageEngine + 'static> ExecutionEngine<S> {
                 db,
                 like,
                 where_clause,
-            } => self.execute_show_table_status(db.as_deref(), like.as_deref(), where_clause.as_ref()),
+            } => self.execute_show_table_status(
+                db.as_deref(),
+                like.as_deref(),
+                where_clause.as_ref(),
+            ),
         }
     }
 
@@ -1047,10 +1051,7 @@ fn column_metadata_rows(columns: &[ColumnDefinition]) -> Vec<Vec<Value>> {
 /// 18-column `SHOW TABLE STATUS` row for a table. Numeric stats that
 /// sqlrustgo does not track (Data_length, Index_length, ...) are 0;
 /// timestamps and Checksum are NULL; `Rows` is the real scanned count.
-fn table_status_row<S: StorageEngine + ?Sized>(
-    storage: &S,
-    name: &str,
-) -> SqlResult<Vec<Value>> {
+fn table_status_row<S: StorageEngine + ?Sized>(storage: &S, name: &str) -> SqlResult<Vec<Value>> {
     let row_count = storage.scan(name).map(|r| r.len() as i64).unwrap_or(0);
     let column_count = storage
         .get_table_info(name)
