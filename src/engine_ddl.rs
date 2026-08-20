@@ -6,6 +6,7 @@
 //! (line count limit: 1500). All methods are `impl ExecutionEngine`.
 
 use crate::execution_engine::ExecutionEngine;
+use crate::expr_utils::evaluate_expression;
 use crate::{SqlError, SqlResult, Value};
 use sqlrustgo_catalog::auth::{Privilege, UserIdentity};
 use sqlrustgo_executor::ExecutorResult;
@@ -15,7 +16,8 @@ use sqlrustgo_parser::parser::{
     ObjectType as ParserObjectType, Privilege as ParserPrivilege, RevokeRoleStatement,
     RevokeStatement, SetRoleStatement, ShowStatement,
 };
-use sqlrustgo_storage::{ColumnDefinition, StorageEngine};
+use sqlrustgo_parser::Expression;
+use sqlrustgo_storage::{ColumnDefinition, StorageEngine, TableInfo};
 
 impl<S: StorageEngine + 'static> ExecutionEngine<S> {
     pub(crate) fn execute_grant(&mut self, grant: &GrantStatement) -> SqlResult<ExecutorResult> {
@@ -362,6 +364,26 @@ impl<S: StorageEngine + 'static> ExecutionEngine<S> {
             ShowStatement::Errors => self.execute_show_errors(),
             ShowStatement::Status => self.execute_show_status(),
             ShowStatement::Variables => self.execute_show_variables(),
+            // V312-59-A / Issue #4384 (56A-R3 anti-deferral): SHOW
+            // [FULL] TABLES / SHOW TABLE STATUS. `full` is only ever
+            // true for the FULL form (bare `SHOW TABLES` routes to
+            // `ShowStatement::Tables` above).
+            ShowStatement::FullTables {
+                full,
+                db,
+                like,
+                where_clause,
+            } => self.execute_show_full_tables(
+                *full,
+                db.as_deref(),
+                like.as_deref(),
+                where_clause.as_ref(),
+            ),
+            ShowStatement::TableStatus {
+                db,
+                like,
+                where_clause,
+            } => self.execute_show_table_status(db.as_deref(), like.as_deref(), where_clause.as_ref()),
         }
     }
 
@@ -429,6 +451,129 @@ impl<S: StorageEngine + 'static> ExecutionEngine<S> {
             1,
         ))
     }
+
+    /// V312-59-A / Issue #4384 (56A-R3 anti-deferral): `SHOW [FULL]
+    /// TABLES [FROM db] [LIKE 'pat' | WHERE expr]`. The FULL form
+    /// returns two columns — `Name` and `Type` (`BASE TABLE` or
+    /// `VIEW`); the non-FULL form returns bare table names (the same
+    /// shape as `execute_show_tables`). `LIKE` and `WHERE` filters
+    /// are evaluated against the generated rows, so `SHOW FULL TABLES
+    /// WHERE Table_type != 'VIEW'` really filters.
+    pub(crate) fn execute_show_full_tables(
+        &self,
+        full: bool,
+        _db: Option<&str>,
+        like: Option<&str>,
+        where_clause: Option<&Expression>,
+    ) -> SqlResult<ExecutorResult> {
+        let storage = self.storage.read();
+        let views: Vec<String> = self.views.keys().cloned().collect();
+        let mut names = storage.list_tables();
+        names.extend(views.iter().cloned());
+        let table_type = |name: &str| {
+            if views.iter().any(|v| v == name) {
+                "VIEW"
+            } else {
+                "BASE TABLE"
+            }
+        };
+        let mut rows = Vec::new();
+        for name in &names {
+            let row = if full {
+                vec![
+                    Value::Text(name.clone()),
+                    Value::Text(table_type(name).to_string()),
+                ]
+            } else {
+                vec![Value::Text(name.clone())]
+            };
+            if let Some(pat) = like {
+                if !sql_like_match(name, pat) {
+                    continue;
+                }
+            }
+            if let Some(expr) = where_clause {
+                let table_info = TableInfo {
+                    columns: vec![
+                        ColumnDefinition {
+                            name: "Name".to_string(),
+                            ..Default::default()
+                        },
+                        ColumnDefinition {
+                            name: "Table_type".to_string(),
+                            ..Default::default()
+                        },
+                    ],
+                    ..Default::default()
+                };
+                let value = evaluate_expression(expr, &row, &table_info).map_err(|e| {
+                    SqlError::ExecutionError(format!("SHOW FULL TABLES WHERE failed: {e}"))
+                })?;
+                if !matches!(value, Value::Boolean(true)) {
+                    continue;
+                }
+            }
+            rows.push(row);
+        }
+        Ok(ExecutorResult::new(rows, if full { 2 } else { 1 }))
+    }
+
+    /// V312-59-A / Issue #4384 (56A-R3 anti-deferral): `SHOW TABLE
+    /// STATUS [FROM db] [LIKE 'pat' | WHERE expr]`. Returns MySQL
+    /// 18-column rows: Name, Engine, Version, Row_format, Rows,
+    /// Avg_row_length, Data_length, Max_data_length, Index_length,
+    /// Data_free, Auto_increment, Create_time, Update_time,
+    /// Check_time, Collation, Checksum, Create_options, Comment.
+    /// Controlled-subset values: Engine=InnoDB, Version=10,
+    /// Row_format=Dynamic, Collation=utf8mb4_general_ci, timestamps
+    /// and Checksum NULL, remaining numerics 0. Rows is the real
+    /// scanned row count.
+    pub(crate) fn execute_show_table_status(
+        &self,
+        _db: Option<&str>,
+        like: Option<&str>,
+        where_clause: Option<&Expression>,
+    ) -> SqlResult<ExecutorResult> {
+        let storage = self.storage.read();
+        let names = storage.list_tables();
+        let mut rows = Vec::new();
+        for name in &names {
+            let row = table_status_row(&*storage, name)?;
+            if let Some(pat) = like {
+                if !sql_like_match(name, pat) {
+                    continue;
+                }
+            }
+            if let Some(expr) = where_clause {
+                let table_info = TableInfo {
+                    columns: vec![
+                        ColumnDefinition {
+                            name: "Name".to_string(),
+                            ..Default::default()
+                        },
+                        ColumnDefinition {
+                            name: "Engine".to_string(),
+                            ..Default::default()
+                        },
+                        ColumnDefinition {
+                            name: "Rows".to_string(),
+                            ..Default::default()
+                        },
+                    ],
+                    ..Default::default()
+                };
+                let value = evaluate_expression(expr, &row, &table_info).map_err(|e| {
+                    SqlError::ExecutionError(format!("SHOW TABLE STATUS WHERE failed: {e}"))
+                })?;
+                if !matches!(value, Value::Boolean(true)) {
+                    continue;
+                }
+            }
+            rows.push(row);
+        }
+        Ok(ExecutorResult::new(rows, 18))
+    }
+
     pub(crate) fn execute_show_sequences(&self) -> SqlResult<ExecutorResult> {
         let storage = self.storage.read();
         let names = storage.list_sequences();
@@ -896,6 +1041,41 @@ fn column_metadata_rows(columns: &[ColumnDefinition]) -> Vec<Vec<Value>> {
             ]
         })
         .collect()
+}
+
+/// V312-59-A / Issue #4384 (56A-R3 anti-deferral): build one MySQL
+/// 18-column `SHOW TABLE STATUS` row for a table. Numeric stats that
+/// sqlrustgo does not track (Data_length, Index_length, ...) are 0;
+/// timestamps and Checksum are NULL; `Rows` is the real scanned count.
+fn table_status_row<S: StorageEngine + ?Sized>(
+    storage: &S,
+    name: &str,
+) -> SqlResult<Vec<Value>> {
+    let row_count = storage.scan(name).map(|r| r.len() as i64).unwrap_or(0);
+    let column_count = storage
+        .get_table_info(name)
+        .map(|i| i.columns.len() as i64)
+        .unwrap_or(0);
+    Ok(vec![
+        Value::Text(name.to_string()),
+        Value::Text("InnoDB".to_string()),
+        Value::Integer(10),
+        Value::Text("Dynamic".to_string()),
+        Value::Integer(row_count),
+        Value::Integer(0),
+        Value::Integer(0),
+        Value::Integer(0),
+        Value::Integer(0),
+        Value::Integer(0),
+        Value::Integer(column_count),
+        Value::Null,
+        Value::Null,
+        Value::Null,
+        Value::Text("utf8mb4_general_ci".to_string()),
+        Value::Null,
+        Value::Text(String::new()),
+        Value::Text(String::new()),
+    ])
 }
 
 /// SQL LIKE pattern matcher supporting `%` (zero or more chars) and `_`
