@@ -289,7 +289,7 @@ INSERT INTO posts (user_id, title, content) VALUES
 #[test]
 fn test_import_mode_full() {
     let sql = "CREATE TABLE t (id INT);";
-    let reader = Cursor::new(sql);
+    let _reader = Cursor::new(sql);
     let importer = DumpImporter::new(ImportMode::Full, false);
     assert!(matches!(importer.stats().tables_created, 0));
 }
@@ -297,7 +297,7 @@ fn test_import_mode_full() {
 #[test]
 fn test_import_mode_schema_only() {
     let sql = "CREATE TABLE t (id INT);\nINSERT INTO t VALUES (1);";
-    let reader = Cursor::new(sql);
+    let _reader = Cursor::new(sql);
     let importer = DumpImporter::new(ImportMode::SchemaOnly, false);
     assert!(matches!(importer.stats().tables_created, 0));
 }
@@ -305,7 +305,7 @@ fn test_import_mode_schema_only() {
 #[test]
 fn test_import_mode_data_only() {
     let sql = "CREATE TABLE t (id INT);\nINSERT INTO t VALUES (1);";
-    let reader = Cursor::new(sql);
+    let _reader = Cursor::new(sql);
     let importer = DumpImporter::new(ImportMode::DataOnly, false);
     assert!(matches!(importer.stats().tables_created, 0));
 }

@@ -10,7 +10,6 @@
 
 use parking_lot::RwLock;
 use sqlrustgo::{parse, ExecutionEngine, MemoryStorage};
-use sqlrustgo_types::Value;
 use std::sync::Arc;
 
 /// Helper to test window function parsing

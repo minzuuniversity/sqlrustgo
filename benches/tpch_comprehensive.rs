@@ -311,6 +311,7 @@ impl TpchBenchmark {
                         char_max_length: None,
                         collation: None,
                         default_value: None,
+                        auto_increment: false,
                     },
                     sqlrustgo_storage::ColumnDefinition {
                         name: "l_partkey".to_string(),
@@ -320,6 +321,7 @@ impl TpchBenchmark {
                         char_max_length: None,
                         collation: None,
                         default_value: None,
+                        auto_increment: false,
                     },
                     sqlrustgo_storage::ColumnDefinition {
                         name: "l_suppkey".to_string(),
@@ -329,6 +331,7 @@ impl TpchBenchmark {
                         char_max_length: None,
                         collation: None,
                         default_value: None,
+                        auto_increment: false,
                     },
                     sqlrustgo_storage::ColumnDefinition {
                         name: "l_quantity".to_string(),
@@ -338,6 +341,7 @@ impl TpchBenchmark {
                         char_max_length: None,
                         collation: None,
                         default_value: None,
+                        auto_increment: false,
                     },
                     sqlrustgo_storage::ColumnDefinition {
                         name: "l_extendedprice".to_string(),
@@ -347,6 +351,7 @@ impl TpchBenchmark {
                         char_max_length: None,
                         collation: None,
                         default_value: None,
+                        auto_increment: false,
                     },
                     sqlrustgo_storage::ColumnDefinition {
                         name: "l_discount".to_string(),
@@ -356,6 +361,7 @@ impl TpchBenchmark {
                         char_max_length: None,
                         collation: None,
                         default_value: None,
+                        auto_increment: false,
                     },
                     sqlrustgo_storage::ColumnDefinition {
                         name: "l_tax".to_string(),
@@ -365,6 +371,7 @@ impl TpchBenchmark {
                         char_max_length: None,
                         collation: None,
                         default_value: None,
+                        auto_increment: false,
                     },
                     sqlrustgo_storage::ColumnDefinition {
                         name: "l_returnflag".to_string(),
@@ -374,6 +381,7 @@ impl TpchBenchmark {
                         char_max_length: None,
                         collation: None,
                         default_value: None,
+                        auto_increment: false,
                     },
                     sqlrustgo_storage::ColumnDefinition {
                         name: "l_shipmode".to_string(),
@@ -383,6 +391,7 @@ impl TpchBenchmark {
                         char_max_length: None,
                         collation: None,
                         default_value: None,
+                        auto_increment: false,
                     },
                 ],
                 foreign_keys: vec![],
@@ -406,6 +415,7 @@ impl TpchBenchmark {
                         char_max_length: None,
                         collation: None,
                         default_value: None,
+                        auto_increment: false,
                     },
                     sqlrustgo_storage::ColumnDefinition {
                         name: "o_custkey".to_string(),
@@ -415,6 +425,7 @@ impl TpchBenchmark {
                         char_max_length: None,
                         collation: None,
                         default_value: None,
+                        auto_increment: false,
                     },
                     sqlrustgo_storage::ColumnDefinition {
                         name: "o_orderstatus".to_string(),
@@ -424,6 +435,7 @@ impl TpchBenchmark {
                         char_max_length: None,
                         collation: None,
                         default_value: None,
+                        auto_increment: false,
                     },
                     sqlrustgo_storage::ColumnDefinition {
                         name: "o_totalprice".to_string(),
@@ -433,6 +445,7 @@ impl TpchBenchmark {
                         char_max_length: None,
                         collation: None,
                         default_value: None,
+                        auto_increment: false,
                     },
                     sqlrustgo_storage::ColumnDefinition {
                         name: "o_orderdate".to_string(),
@@ -442,6 +455,7 @@ impl TpchBenchmark {
                         char_max_length: None,
                         collation: None,
                         default_value: None,
+                        auto_increment: false,
                     },
                 ],
                 foreign_keys: vec![],

@@ -14,13 +14,15 @@ impl TestDataLoader {
     pub fn load_json(file: &str) -> Value {
         let path = Self::get_data_path(file);
         let content = std::fs::read_to_string(path)
-            .expect(&format!("Failed to read test data file: {}", file));
-        serde_json::from_str(&content).expect(&format!("Failed to parse test data: {}", file))
+            .unwrap_or_else(|_| panic!("Failed to read test data file: {}", file));
+        serde_json::from_str(&content)
+            .unwrap_or_else(|_| panic!("Failed to parse test data: {}", file))
     }
 
     pub fn load_string(file: &str) -> String {
         let path = Self::get_data_path(file);
-        std::fs::read_to_string(path).expect(&format!("Failed to read test data file: {}", file))
+        std::fs::read_to_string(path)
+            .unwrap_or_else(|_| panic!("Failed to read test data file: {}", file))
     }
 }
 

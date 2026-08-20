@@ -4,7 +4,7 @@
 //! NOTE: SF=1 requires ~5GB memory. Only run on machines with 16GB+ RAM.
 
 use parking_lot::RwLock;
-use sqlrustgo::{parse, ExecutionEngine, MemoryStorage};
+use sqlrustgo::{ExecutionEngine, MemoryStorage};
 use std::path::Path;
 use std::sync::Arc;
 

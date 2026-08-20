@@ -91,7 +91,7 @@ fn test_for_update_disables_parallel_path() {
 
 #[test]
 fn test_cli_flag_propagation_via_env() {
-    let mut engine = ExecutionEngine::new(Arc::new(parking_lot::RwLock::new(MemoryStorage::new())));
+    let engine = ExecutionEngine::new(Arc::new(parking_lot::RwLock::new(MemoryStorage::new())));
     let initial = engine.parallel_degree();
     std::env::set_var("SQLRUSTGO_EXECUTOR_PARALLELISM", "8");
     let engine2 = ExecutionEngine::new(Arc::new(parking_lot::RwLock::new(MemoryStorage::new())));

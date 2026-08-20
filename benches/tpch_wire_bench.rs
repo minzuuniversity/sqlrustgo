@@ -24,6 +24,8 @@
 //! (per Issue #2948 § 3) with per-query p50/p95/p99 + total
 //! wall-clock + row count for sanity.
 
+#![allow(dead_code)]
+
 use criterion::{criterion_group, criterion_main, BenchmarkId, Criterion};
 use serde_json::json;
 use sqlrustgo_mysql_server::testing::{start_ephemeral, EphemeralConfig, EphemeralHandle};

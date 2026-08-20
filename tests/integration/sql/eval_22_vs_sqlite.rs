@@ -6,7 +6,6 @@
 use parking_lot::RwLock;
 use serde_json::Value as JsonValue;
 use sqlrustgo::{ExecutionEngine, MemoryStorage};
-use sqlrustgo_types::Value as SqlValue;
 use std::fs;
 use std::path::PathBuf;
 use std::sync::Arc;
@@ -41,7 +40,7 @@ fn lookup_col_types(table: &str) -> Vec<&'static str> {
                 return cols_str
                     .split(',')
                     .map(|c| {
-                        let p: Vec<&str> = c.trim().split_whitespace().collect();
+                        let p: Vec<&str> = c.split_whitespace().collect();
                         if p.len() >= 2 {
                             p[1]
                         } else {

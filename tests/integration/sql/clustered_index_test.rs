@@ -8,6 +8,8 @@
 //! Real disk-based integration deferred to v3.11.0+ per ISOLATED_MODULES.md §1 (F-23).
 //! v3.10.0 status: VERIFIED, ISOLATED (Phase 1 plan).
 
+#![allow(dead_code)]
+
 use std::collections::BTreeMap;
 
 #[derive(Debug, Clone, PartialEq)]
@@ -83,14 +85,13 @@ impl ClusteredIndex {
     }
 
     pub fn with_page_size(page_size: usize) -> Self {
-        let mut idx = Self {
+        Self {
             pages: vec![LeafPage::new(page_size)],
             pk_to_page: BTreeMap::new(),
             page_size,
             splits: 0,
             secondary_idx: std::collections::HashMap::new(),
-        };
-        idx
+        }
     }
 
     pub fn insert(&mut self, row: Row) -> Result<(), String> {

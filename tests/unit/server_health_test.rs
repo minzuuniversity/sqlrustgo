@@ -39,7 +39,7 @@ fn test_health_checker_new() {
 fn test_health_checker_uptime() {
     let checker = HealthChecker::new("1.0.0");
     let uptime = checker.uptime_seconds();
-    assert!(uptime >= 0);
+    let _ = uptime; // u64 is always >= 0; sanity-check it's reachable
 }
 
 #[test]
@@ -66,7 +66,7 @@ fn test_health_checker_check_ready() {
 fn test_health_checker_check_health() {
     let checker = HealthChecker::new("1.0.0");
     let report = checker.check_health();
-    assert!(report.uptime_seconds >= 0);
+    let _ = report.uptime_seconds; // u64 is always >= 0; sanity-check it's reachable
 }
 
 #[test]

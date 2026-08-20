@@ -259,7 +259,7 @@ fn test_audit_record_update_with_before_after_p2_1() {
 #[test]
 fn test_audit_record_update_batch_p2_1() {
     let mut store = AuditStore::new();
-    for i in 0..5 {
+    for _i in 0..5 {
         store.record("alice", AuditAction::Update, "users");
     }
     assert_eq!(store.query_by_user("alice"), 5);
@@ -298,7 +298,7 @@ fn test_audit_record_delete_cascade_p2_1() {
     let mut store = AuditStore::new();
     // CASCADE delete: 1 parent + 3 children
     store.record("alice", AuditAction::Delete, "parent");
-    for i in 0..3 {
+    for _i in 0..3 {
         store.record("system", AuditAction::Delete, "child");
     }
     assert_eq!(store.count(), 4);

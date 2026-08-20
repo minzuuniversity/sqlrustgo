@@ -4,8 +4,6 @@
 //! **Source**: COMPREHENSIVE_FEATURE_TRACKING.md (DAG Node N2)
 //! **Change**: openspec/changes/p0-2-cargo-toml-test-paths
 
-use std::path::Path;
-
 #[test]
 fn test_cargo_toml_has_test_section() {
     let path = std::env::current_dir().unwrap().join("Cargo.toml");

@@ -9,7 +9,7 @@
 //! v3.12 implements the controlled subset: Table, Non_unique, Key_name,
 //! Seq_in_index, Column_name, Null, Index_type. Other columns are NULL.
 use parking_lot::RwLock;
-use sqlrustgo::{ExecutionEngine, MemoryStorage, StorageEngine};
+use sqlrustgo::{ExecutionEngine, MemoryStorage};
 use std::sync::Arc;
 
 fn engine() -> ExecutionEngine<MemoryStorage> {

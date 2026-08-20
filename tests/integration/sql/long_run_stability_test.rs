@@ -221,7 +221,7 @@ fn test_repeated_create_drop_stability() {
     }
 
     let elapsed = start.elapsed();
-    let ops_per_sec = 200 as f64 / elapsed.as_secs_f64(); // 100 creates + 100 drops
+    let ops_per_sec = 200_f64 / elapsed.as_secs_f64(); // 100 creates + 100 drops
 
     println!(
         "Repeated create/drop: 200 operations in {:?} ({:.2} ops/sec)",
@@ -267,7 +267,7 @@ fn test_memory_stability_under_load() {
     }
 
     let elapsed = start.elapsed();
-    let ops_per_sec = 5000 as f64 / elapsed.as_secs_f64();
+    let ops_per_sec = 5000_f64 / elapsed.as_secs_f64();
 
     println!(
         "Memory stability: 5000 inserts in {:?} ({:.2} ops/sec)",

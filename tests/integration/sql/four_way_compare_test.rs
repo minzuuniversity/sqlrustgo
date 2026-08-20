@@ -11,13 +11,11 @@
 //! Output: docs/releases/v3.9.0/perf/FOUR_WAY_TPCH_REPORT.md (regenerated each run)
 
 use std::collections::BTreeMap;
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 use std::time::Instant;
 
 mod four_way_harness;
-use four_way_harness::{
-    compare_row_counts, default_data_dir, setup_external_db, Engine, QueryResult, TABLE_COLS,
-};
+use four_way_harness::{default_data_dir, setup_external_db, Engine, QueryResult, TABLE_COLS};
 
 /// One entry per (engine, query) produced by the harness.
 #[derive(Debug, Default)]
@@ -127,7 +125,7 @@ fn test_four_way_tpch_22() {
 // Per-engine runners
 // ============================================================================
 
-fn run_sqlrustgo(queries: &[(u8, String)], data_dir: &PathBuf) -> Vec<QueryResult> {
+fn run_sqlrustgo(queries: &[(u8, String)], data_dir: &Path) -> Vec<QueryResult> {
     use parking_lot::RwLock;
     use sqlrustgo::{ExecutionEngine, MemoryStorage};
     use std::sync::Arc;
@@ -188,7 +186,7 @@ fn run_sqlrustgo(queries: &[(u8, String)], data_dir: &PathBuf) -> Vec<QueryResul
     out
 }
 
-fn run_sqlite(queries: &[(u8, String)], data_dir: &PathBuf) -> Vec<QueryResult> {
+fn run_sqlite(queries: &[(u8, String)], data_dir: &Path) -> Vec<QueryResult> {
     use rusqlite::Connection;
     let conn = Connection::open_in_memory().expect("sqlite open");
     for ddl in four_way_harness::tpc_h_schema(Engine::Sqlite) {

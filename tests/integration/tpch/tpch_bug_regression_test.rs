@@ -102,7 +102,7 @@ fn test_bug3_tpch_q1_no_column_name_text_cells() {
             row.len(),
             row
         );
-        for (j, cell) in row.iter().enumerate() {
+        for (j, _cell) in row.iter().enumerate() {
             if let Some(text) = first_text_cell_str(row) {
                 assert_ne!(
                     text, "l_returnflag",
@@ -142,7 +142,7 @@ fn test_bug4_tpch_q1_sum_real_extendedprice_nonzero() {
              FROM lineitem WHERE l_shipdate <= '1998-09-02' \
              GROUP BY l_returnflag ORDER BY l_returnflag";
     let rows = client.query_rows(q).expect("Q1 should not crash");
-    assert!(rows.len() >= 1, "should return ≥1 group");
+    assert!(!rows.is_empty(), "should return ≥1 group");
     let total: f64 = rows
         .iter()
         .filter_map(|row| first_numeric_cell_str(row))
@@ -188,7 +188,7 @@ fn test_bug5_tpch_q1_avg_real_quantity_nonnull() {
              FROM lineitem WHERE l_shipdate <= '1998-09-02' \
              GROUP BY l_returnflag ORDER BY l_returnflag";
     let rows = client.query_rows(q).expect("Q1 should not crash");
-    assert!(rows.len() >= 1, "should return ≥1 group");
+    assert!(!rows.is_empty(), "should return ≥1 group");
     for (i, row) in rows.iter().enumerate() {
         let avg = first_numeric_cell_str(row)
             .unwrap_or_else(|| panic!("row[{}] should have a numeric AVG cell, got: {:?}", i, row));

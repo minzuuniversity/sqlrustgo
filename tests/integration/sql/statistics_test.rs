@@ -11,6 +11,8 @@
 //! Refs: docs/openspec/3181-statistics.md
 //!       V390_TEST_PLAN.md §G10
 
+#![allow(dead_code)]
+
 mod harness {
     use std::collections::HashMap;
 

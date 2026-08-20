@@ -22,11 +22,7 @@ pub struct StatementMetrics {
 
 impl StatementMetrics {
     pub fn avg_time_ns(&self) -> u64 {
-        if self.count == 0 {
-            0
-        } else {
-            self.total_time_ns / self.count
-        }
+        self.total_time_ns.checked_div(self.count).unwrap_or(0)
     }
 
     pub fn record(&mut self, time_ns: u64) {

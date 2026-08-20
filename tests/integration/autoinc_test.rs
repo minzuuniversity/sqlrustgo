@@ -1,7 +1,7 @@
 // AUTO_INCREMENT Integration Tests (Issue #889)
 
 use parking_lot::RwLock;
-use sqlrustgo::{parse, ExecutionEngine, MemoryStorage, StorageEngine};
+use sqlrustgo::{parse, ExecutionEngine, MemoryStorage};
 use sqlrustgo_types::Value;
 use std::sync::Arc;
 

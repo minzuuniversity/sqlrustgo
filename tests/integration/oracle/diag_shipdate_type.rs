@@ -90,7 +90,7 @@ fn test_shipdate_actual_value() {
 
     // Check storage directly
     let s = storage.read();
-    if let Some(rows) = s.scan("lineitem").ok() {
+    if let Ok(rows) = s.scan("lineitem") {
         eprintln!("storage directly - first row: {:?}", rows.first());
         eprintln!(
             "storage directly - l_shipdate value of row 0: {:?}",

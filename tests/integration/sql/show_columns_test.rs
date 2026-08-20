@@ -4,7 +4,7 @@
 //! placeholder. The behavior must mirror `DESCRIBE <table>` and accept an
 //! optional LIKE pattern.
 use parking_lot::RwLock;
-use sqlrustgo::{ExecutionEngine, MemoryStorage, StorageEngine};
+use sqlrustgo::{ExecutionEngine, MemoryStorage};
 use std::sync::Arc;
 
 fn engine() -> ExecutionEngine<MemoryStorage> {

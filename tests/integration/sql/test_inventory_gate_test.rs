@@ -4,8 +4,6 @@
 //! **Source**: COMPREHENSIVE_FEATURE_TRACKING.md (DAG Node N1)
 //! **Change**: openspec/changes/p0-1-integrate-35-tests
 
-use std::path::Path;
-
 #[test]
 fn test_d6_runs_all_tests() {
     let script = std::env::current_dir()

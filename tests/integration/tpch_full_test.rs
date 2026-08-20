@@ -13,7 +13,7 @@
 #[cfg(test)]
 mod tests {
     use parking_lot::RwLock;
-    use sqlrustgo::{parse, ExecutionEngine, MemoryStorage};
+    use sqlrustgo::{ExecutionEngine, MemoryStorage};
     use std::sync::Arc;
     use std::time::Instant;
 
@@ -507,7 +507,7 @@ mod tests {
             let (host, user, password, database) = config;
 
             let output = Command::new("mysql")
-                .args(&[
+                .args([
                     "-h", &host, "-u", &user, "-p", &password, &database, "-e", sql,
                 ])
                 .output()
@@ -539,8 +539,8 @@ mod tests {
         fn test_mysql_tpch_q1() {
             let sql = "SELECT COUNT(*) FROM lineitem";
             let result = run_mysql_query(sql);
-            if result.is_ok() {
-                println!("MySQL Q1: {:?}", result.unwrap());
+            if let Ok(ref r) = result {
+                println!("MySQL Q1: {:?}", r);
             }
         }
 
@@ -586,7 +586,7 @@ mod tests {
             let (host, user, password, database) = config;
 
             let output = Command::new("psql")
-                .args(&[
+                .args([
                     "-h", &host, "-U", &user, "-d", &database, "-c", sql, "-t", "-A",
                 ])
                 .env("PGPASSWORD", &password)

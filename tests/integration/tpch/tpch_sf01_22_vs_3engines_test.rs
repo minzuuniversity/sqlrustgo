@@ -15,7 +15,7 @@ const QUERIES_DIR: &str = "queries";
 
 fn run_md(sql: &str) -> Result<String, String> {
     let out = Command::new("mysql")
-        .args(&["-B", "-N", "tpch_sf01", "-e", sql])
+        .args(["-B", "-N", "tpch_sf01", "-e", sql])
         .output()
         .map_err(|e| e.to_string())?;
     if !out.status.success() {
@@ -28,7 +28,7 @@ fn run_md_count(sql: &str) -> usize {
     let sql_stripped = sql.trim_end_matches(';');
     let count_sql = format!("SELECT COUNT(*) FROM ({}) AS x", sql_stripped);
     let out = Command::new("mysql")
-        .args(&["-B", "-N", "tpch_sf01", "-e", &count_sql])
+        .args(["-B", "-N", "tpch_sf01", "-e", &count_sql])
         .output()
         .expect("mysql count");
     String::from_utf8_lossy(&out.stdout)
@@ -120,7 +120,7 @@ fn tpch_sf01_22_vs_mariadb_cell() {
 
 fn run_pg(sql: &str) -> Result<String, String> {
     let out = Command::new("env")
-        .args(&[
+        .args([
             "PGPASSWORD=",
             "psql",
             "-h",
@@ -148,7 +148,7 @@ fn run_pg_count(sql: &str) -> usize {
     let sql_stripped = sql.trim_end_matches(';');
     let count_sql = format!("SELECT COUNT(*) FROM ({}) AS x", sql_stripped);
     let out = Command::new("env")
-        .args(&[
+        .args([
             "PGPASSWORD=",
             "psql",
             "-h",
@@ -236,7 +236,7 @@ fn cell_match_with_fp_tol(a: &[String], b: &[String]) -> bool {
 fn tpch_sf01_22_vs_postgresql_pgdate_cell() {
     let _guard = SERVER_LOCK.lock().unwrap_or_else(|e| e.into_inner());
     if Command::new("env")
-        .args(&[
+        .args([
             "PGPASSWORD=",
             "psql",
             "-h",

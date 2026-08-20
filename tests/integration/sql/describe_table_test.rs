@@ -1,6 +1,6 @@
 //! Tests for DESCRIBE / DESC statements (CLI-02)
 use parking_lot::RwLock;
-use sqlrustgo::{ExecutionEngine, MemoryStorage, StorageEngine};
+use sqlrustgo::{ExecutionEngine, MemoryStorage};
 use std::sync::Arc;
 
 fn engine() -> ExecutionEngine<MemoryStorage> {

@@ -22,6 +22,8 @@
 //! - docs/audit/status/2026-06-07-tpch-failure-matrix-v390.md
 //! - docs/releases/v3.9.0/perf/FOUR_WAY_TPCH_REPORT.md
 
+#![allow(dead_code)]
+
 mod four_way_harness;
 
 use four_way_harness::{
@@ -240,15 +242,13 @@ fn diff_rows(pg: &[Vec<String>], other: &[Vec<String>]) -> (usize, Vec<SingleCel
         for j in 0..max_cols {
             let pg_val = pg_row.get(j).cloned().unwrap_or_default();
             let other_val = other_row.get(j).cloned().unwrap_or_default();
-            if pg_val != other_val {
-                if diffs.len() < max_diffs {
-                    diffs.push(SingleCellDiff {
-                        row: i,
-                        column: j,
-                        expected: pg_val,
-                        actual: other_val,
-                    });
-                }
+            if pg_val != other_val && diffs.len() < max_diffs {
+                diffs.push(SingleCellDiff {
+                    row: i,
+                    column: j,
+                    expected: pg_val,
+                    actual: other_val,
+                });
             }
         }
     }
@@ -278,15 +278,13 @@ fn diff_rows_normalized(
         for j in 0..max_cols {
             let pg_val = pg_row.get(j).cloned().unwrap_or_default();
             let other_val = other_row.get(j).cloned().unwrap_or_default();
-            if pg_val != other_val {
-                if diffs.len() < max_diffs {
-                    diffs.push(SingleCellDiff {
-                        row: i,
-                        column: j,
-                        expected: pg_val,
-                        actual: other_val,
-                    });
-                }
+            if pg_val != other_val && diffs.len() < max_diffs {
+                diffs.push(SingleCellDiff {
+                    row: i,
+                    column: j,
+                    expected: pg_val,
+                    actual: other_val,
+                });
             }
         }
     }

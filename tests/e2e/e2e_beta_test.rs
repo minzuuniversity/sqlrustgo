@@ -20,6 +20,8 @@
 //!
 //! Reference: docs/releases/v3.10.0/TEST_PLAN.md §2
 
+#![allow(dead_code)]
+
 use std::path::PathBuf;
 use std::time::Duration;
 

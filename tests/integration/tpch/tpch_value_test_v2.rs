@@ -135,7 +135,7 @@ fn test_tpch_22_value_assertions() {
         };
 
         let actual_rc = actual_rows.len() as u32;
-        let actual_first3: Vec<Vec<String>> = actual_rows.iter().take(3).cloned().collect();
+        let _actual_first3: Vec<Vec<String>> = actual_rows.iter().take(3).cloned().collect();
 
         // Build baseline JSON Value for compare_cells
         let baseline_path = PathBuf::from(SF001_DIR)

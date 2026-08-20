@@ -14,7 +14,7 @@
 //! - drop_table() 总是返回 Ok (HashMap.remove 不会失败)
 //! - create_table() 总是返回 Ok (HashMap.insert 覆盖)
 //! - 因此 DROP 不存在 / 重复 DROP / 重复 CREATE 在 MemoryStorage 中不报错
-//! FileStorage 会在真实文件操作中报错
+//!   FileStorage 会在真实文件操作中报错
 //!
 //! # 已知缺口 (Phase 2 修复)
 //! - DROP INDEX: Parser 和 Storage 层支持，但 ExecutionEngine 未分发 (#3170)

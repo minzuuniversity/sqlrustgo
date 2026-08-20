@@ -71,7 +71,7 @@ fn test_oom_during_single_row_insert() {
     let mut success = false;
 
     // Simulate INSERT that allocates 50 bytes
-    if let Ok(_) = budget.try_alloc(50) {
+    if budget.try_alloc(50).is_ok() {
         // Allocate row buffer (should fit since budget is 100)
         match budget.try_alloc(50) {
             Ok(_) => {

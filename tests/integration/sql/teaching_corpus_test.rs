@@ -15,7 +15,7 @@
 //! `scripts/gate/check_sqllogictest_v312.sh --corpus teaching`.
 use std::collections::BTreeSet;
 use std::fs;
-use std::path::{Path, PathBuf};
+use std::path::PathBuf;
 
 const CORPUS_DIR: &str = "tests/compat/teaching_sql_v3_12";
 const MANIFEST_PATH: &str = "tests/compat/teaching_sql_v3_12/manifest.yml";

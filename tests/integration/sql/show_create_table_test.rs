@@ -4,7 +4,7 @@
 //! that round-trips column type, NULL/NOT NULL, PRIMARY KEY, and DEFAULT
 //! for the controlled v3.12 subset.
 use parking_lot::RwLock;
-use sqlrustgo::{ExecutionEngine, MemoryStorage, StorageEngine};
+use sqlrustgo::{ExecutionEngine, MemoryStorage};
 use std::sync::Arc;
 
 fn engine() -> ExecutionEngine<MemoryStorage> {

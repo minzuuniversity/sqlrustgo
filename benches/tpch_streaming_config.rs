@@ -1,3 +1,5 @@
+#![allow(dead_code)]
+
 // TPC-H Streaming Configuration
 // Memory-efficient configuration for large dataset processing
 

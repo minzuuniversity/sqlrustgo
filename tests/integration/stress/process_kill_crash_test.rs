@@ -24,12 +24,11 @@
 //! - Issue #3769 (V310-15 T-20)
 //! - src/engine_builder.rs:238-262 (recover_wal wiring)
 
-use parking_lot::RwLock;
 use std::path::Path;
 
 use sqlrustgo_storage::engine::{ColumnDefinition, StorageEngine, TableInfo, Value};
 use sqlrustgo_storage::recovery_engine::{RecoveryEngine, RecoveryReport, StatefulRecoveryEngine};
-use sqlrustgo_storage::wal::{FileBackedWalManager, WalManager};
+use sqlrustgo_storage::wal::FileBackedWalManager;
 use sqlrustgo_storage::WalStorage;
 use tempfile::TempDir;
 

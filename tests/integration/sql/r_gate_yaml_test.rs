@@ -155,7 +155,7 @@ fn test_yaml_lints_clean() {
 
     // Proper structure: each `-` for list items at consistent indentation
     let lines: Vec<&str> = content.lines().collect();
-    for (_i, _line) in lines.iter().enumerate() {
+    for _line in lines.iter() {
         // Placeholder for future template syntax checks
     }
 }

@@ -3,7 +3,7 @@
 // Note: These tests verify parsing and basic transaction flow.
 
 use parking_lot::RwLock;
-use sqlrustgo::{parse, ExecutionEngine, MemoryStorage, StorageEngine};
+use sqlrustgo::{parse, ExecutionEngine, MemoryStorage};
 use sqlrustgo_types::Value;
 use std::sync::Arc;
 

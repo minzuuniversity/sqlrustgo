@@ -26,8 +26,8 @@ fn extract_balance(
     result: sqlrustgo_types::SqlResult<sqlrustgo::ExecutorResult>,
 ) -> sqlrustgo_types::Value {
     let rows = result.unwrap().rows;
-    rows.get(0)
-        .and_then(|r| r.get(0))
+    rows.first()
+        .and_then(|r| r.first())
         .cloned()
         .unwrap_or(sqlrustgo_types::Value::Null)
 }
@@ -168,7 +168,7 @@ fn test_wal_003_multi_tx_ordering() {
             .rows;
         eprintln!("EXP-G-MULTI: rows={:?}", rows);
 
-        let r1_balance: i64 = match rows.get(0).and_then(|r| r.get(1)) {
+        let r1_balance: i64 = match rows.first().and_then(|r| r.get(1)) {
             Some(sqlrustgo_types::Value::Integer(n)) => *n,
             _ => -1,
         };

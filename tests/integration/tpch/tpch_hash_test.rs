@@ -47,10 +47,7 @@ fn compute_tpch_hash(client: &mut common::MySqlTestClient, queries: &[(&str, &st
     let mut body = String::new();
     for (q_name, q_sql) in queries {
         let (result, _elapsed) = run_query_timed(client, q_sql, 300);
-        let rows = match result {
-            Ok(r) => r,
-            Err(_) => Vec::new(),
-        };
+        let rows: Vec<Vec<String>> = result.unwrap_or_default();
         body.push_str(&format!("---{q_name}---\n"));
         if rows.is_empty() {
             body.push_str("[empty]\n");

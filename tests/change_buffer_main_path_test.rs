@@ -9,7 +9,7 @@
 //!
 //! The ChangeBuffer is now in `crates/storage/src/` (not ISOLATED tests/).
 
-use sqlrustgo_storage::{ChangeBuffer, ChangeEntry, ChangeOp};
+use sqlrustgo_storage::{ChangeBuffer, ChangeOp};
 
 #[test]
 fn test_change_buffer_main_path_integration() {

@@ -332,11 +332,11 @@ fn run_test_file(test_file: &str) -> TestResult {
         let pkg = parts[1];
         let test_path = parts.get(2).unwrap_or(&"");
         Command::new("cargo")
-            .args(&["test", "-p", pkg, "--test", test_path, "--", "--nocapture"])
+            .args(["test", "-p", pkg, "--test", test_path, "--", "--nocapture"])
             .output()
     } else {
         Command::new("cargo")
-            .args(&["test", "--test", test_file, "--", "--nocapture"])
+            .args(["test", "--test", test_file, "--", "--nocapture"])
             .output()
     };
 

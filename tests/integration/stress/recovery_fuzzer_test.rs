@@ -18,6 +18,8 @@
 //!
 //! Refs: GA Remediation Plan §P1 R2 (issue #3268)
 
+#![allow(dead_code)]
+
 use rand::rngs::StdRng;
 use rand::{Rng, SeedableRng};
 use sqlrustgo_storage::engine::{ColumnDefinition, MemoryStorage, StorageEngine, TableInfo};
@@ -433,7 +435,7 @@ fn r2_all_incomplete() {
             table_id: 0,
             key: None,
             data: None,
-            lsn: (i as u64) + 1,
+            lsn: i + 1,
             timestamp: 0,
         });
     }
@@ -512,7 +514,7 @@ fn r2_random_fuzz_smoke_500_iterations() {
     // RecoveryEngine never panics. Statistical invariants are checked
     // loosely.
     let mut rng = StdRng::seed_from_u64(0xBAD_BEEF);
-    let mut panics: u32 = 0;
+    let panics: u32 = 0;
     let mut last_err: Option<String> = None;
 
     for ep in 0..500 {
@@ -589,7 +591,7 @@ fn r2_random_fuzz_full_50k_iterations() {
     //   cargo test --release --test recovery_fuzzer_test r2_random_fuzz_full -- --ignored
     let mut rng = StdRng::seed_from_u64(0xCAFE_BABE);
     let mut err_count: u32 = 0;
-    let mut panic_count: u32 = 0;
+    let panic_count: u32 = 0;
     for ep in 0..50_000 {
         let n_entries: usize = rng.gen_range(1..100);
         let mut entries: Vec<WalEntry> = Vec::new();
@@ -642,9 +644,7 @@ fn r2_seed_reproducibility() {
     let build_pattern = |rng: &mut StdRng| -> Vec<WalEntry> {
         let n = rng.gen_range(5..30);
         let mut entries = Vec::new();
-        let mut lsn: u64 = 0;
-        for _ in 0..n {
-            lsn += 1;
+        for lsn in (1_u64..).take(n) {
             let tx_id = rng.gen_range(1..=3);
             let entry_type = match rng.gen_range(0..6) {
                 0 => WalEntryType::Begin,

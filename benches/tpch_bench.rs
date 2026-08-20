@@ -3,11 +3,14 @@
 //! This module provides TPC-H style benchmarks for SQLRustGo.
 //! It includes data generation and sample TPC-H queries.
 
+#![allow(dead_code)]
+
+type LineitemRow = (i64, i64, f64, f64, f64, f64, f64, i32, &'static str);
+
 use criterion::{criterion_group, criterion_main, Criterion};
 use parking_lot::RwLock;
 use sqlrustgo::{ExecutionEngine, MemoryStorage};
 use std::sync::Arc;
-use std::time::Instant;
 
 struct LatencyCollector {
     samples: Vec<u64>,
@@ -125,8 +128,8 @@ impl TpchDataGenerator {
     }
 
     /// Generate TPC-H lineitem table data
-    fn generate_lineitem_data(&self) -> Vec<(i64, i64, f64, f64, f64, f64, f64, i32, &str)> {
-        let mut data = Vec::new();
+    fn generate_lineitem_data(&self) -> Vec<LineitemRow> {
+        let mut data: Vec<LineitemRow> = Vec::new();
         let num_rows = self.row_count(6_000_000);
 
         for i in 0..num_rows {

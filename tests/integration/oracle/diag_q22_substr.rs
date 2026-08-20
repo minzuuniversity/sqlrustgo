@@ -1,8 +1,9 @@
 //! Q22 parse error - isolate which part fails
 
+#![allow(dead_code)]
+
 use parking_lot::RwLock;
-use sqlrustgo::{ExecutionEngine, MemoryStorage, StorageEngine};
-use sqlrustgo_types::Value as SqlValue;
+use sqlrustgo::{ExecutionEngine, MemoryStorage};
 use std::sync::Arc;
 
 fn diag_q22_substr() {
