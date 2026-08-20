@@ -35,6 +35,35 @@ impl ParallelVolcanoExecutor {
     pub fn partition_rows(&self, rows: Vec<Vec<Value>>, degree: usize) -> Vec<Vec<Vec<Value>>> {
         <Self as ParallelExecutor>::partition_scan(self, rows, degree)
     }
+
+    /// Test-only: partition with a custom `min_rows` threshold. Production code
+    /// always uses the constant `PARALLEL_MIN_ROWS`; this variant exists so unit
+    /// tests can exercise the partitioning algorithm without allocating the
+    /// multi-million-row fixture that the production threshold implies.
+    pub fn partition_rows_with_min(
+        &self,
+        rows: Vec<Vec<Value>>,
+        degree: usize,
+        min_rows: usize,
+    ) -> Vec<Vec<Vec<Value>>> {
+        let degree = degree.max(1);
+        let total = rows.len();
+        if total < min_rows || degree <= 1 {
+            return vec![rows];
+        }
+        let base = total / degree;
+        let rem = total % degree;
+        let mut partitions: Vec<Vec<Vec<Value>>> = Vec::with_capacity(degree);
+        let mut cur = 0;
+        for i in 0..degree {
+            let size = if i < rem { base + 1 } else { base };
+            if size > 0 {
+                partitions.push(rows[cur..cur + size].to_vec());
+            }
+            cur += size;
+        }
+        partitions
+    }
 }
 
 impl Default for ParallelVolcanoExecutor {
