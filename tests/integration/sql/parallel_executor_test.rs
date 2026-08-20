@@ -49,11 +49,7 @@ mod harness {
         }
         pub fn rows_per_partition(&self) -> usize {
             let n = self.num_partitions();
-            if n == 0 {
-                0
-            } else {
-                self.total_rows() / n
-            }
+            self.total_rows().checked_div(n).unwrap_or(0)
         }
     }
 
@@ -233,7 +229,7 @@ fn test_parallel_partition_key_p3_4() {
 fn test_parallel_partition_round_robin_p3_4() {
     let s = MockPartitionStrategy::new(PartitionKind::RoundRobin, 4);
     // Round-robin cycles through shards deterministically
-    let mut last = u64::MAX;
+    let _last = u64::MAX;
     for i in 0..16 {
         let p = s.round_robin_partition(i);
         if i > 0 && i % 4 == 0 {
@@ -283,7 +279,7 @@ fn test_parallel_exchange_repartition_p3_4() {
     let mut target: Vec<Vec<usize>> = vec![Vec::new(); target_partitions];
     for partition in &source {
         for row in partition {
-            target[*row as usize % target_partitions].push(*row);
+            target[*row % target_partitions].push(*row);
         }
     }
     let total: usize = target.iter().map(|v| v.len()).sum();
@@ -337,7 +333,7 @@ fn test_parallel_spill_threshold_p3_4() {
 #[test]
 fn test_parallel_spill_recovery_p3_4() {
     // After spill, the next query can re-read from disk.
-    let spill_files = vec!["part-0.tmp", "part-1.tmp", "part-2.tmp"];
+    let spill_files = ["part-0.tmp", "part-1.tmp", "part-2.tmp"];
     // Each file holds ~mem_limit (1M) at avg 1000 bytes/row
     let bytes_per_row = 1000;
     let rows_per_file = 500_000 / bytes_per_row; // 500 rows

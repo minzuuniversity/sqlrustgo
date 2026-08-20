@@ -2,6 +2,8 @@
 //!
 //! Benchmarks for SQL parsing performance.
 
+#![allow(dead_code)]
+
 use criterion::{criterion_group, criterion_main, Criterion};
 use sqlrustgo::parse;
 

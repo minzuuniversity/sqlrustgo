@@ -11,7 +11,7 @@
 //! authoritative SQLite exactly.
 
 use parking_lot::RwLock;
-use sqlrustgo::{ExecutionEngine, MemoryStorage, StorageEngine};
+use sqlrustgo::{ExecutionEngine, MemoryStorage};
 use std::path::PathBuf;
 use std::sync::Arc;
 
@@ -89,10 +89,7 @@ fn make_engine() -> ExecutionEngine<MemoryStorage> {
         )
         .unwrap();
 
-    let data = PathBuf::from(match option_env!("TPCH_DATA_DIR") {
-        Some(p) => p,
-        None => "tests/data/tpch-sf001",
-    });
+    let data = PathBuf::from(option_env!("TPCH_DATA_DIR").unwrap_or("tests/data/tpch-sf001"));
     let schemas: Vec<(&str, usize)> = vec![
         ("region", 3),
         ("nation", 4),

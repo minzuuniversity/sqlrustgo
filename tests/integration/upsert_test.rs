@@ -88,8 +88,7 @@ fn test_replace_parsing() {
 #[test]
 fn test_insert_ignore_parsing() {
     let stmt = parse("INSERT IGNORE INTO t VALUES (1, 'a')").unwrap();
-    if let sqlrustgo_parser::parser::Statement::Insert(insert) = stmt {
-        assert!(false, "INSERT IGNORE not yet implemented - see SEM-3");
-        println!("✓ INSERT IGNORE 解析正确");
+    if let sqlrustgo_parser::parser::Statement::Insert(_insert) = stmt {
+        panic!("INSERT IGNORE not yet implemented - see SEM-3");
     }
 }

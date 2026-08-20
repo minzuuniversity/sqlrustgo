@@ -37,6 +37,7 @@ mod harness {
     }
 
     #[derive(Debug, Clone)]
+    #[allow(dead_code)]
     pub struct CompatScenario {
         pub case: CompatCase,
         pub from_version: &'static str,
@@ -60,6 +61,7 @@ mod harness {
     }
 
     #[derive(Debug, Clone)]
+    #[allow(dead_code)]
     pub struct CompatReport {
         pub case: CompatCase,
         pub from_version: String,

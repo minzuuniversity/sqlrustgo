@@ -10,6 +10,8 @@
 //!
 //! 复用 qps_benchmark_test.rs 模式 (MemoryExecutionEngine)
 
+#![allow(dead_code)]
+
 use parking_lot::RwLock;
 use sqlrustgo::MemoryExecutionEngine;
 use std::sync::Arc;

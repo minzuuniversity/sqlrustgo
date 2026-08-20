@@ -3,6 +3,8 @@
 //! PB-02: 索引性能对比测试
 //! 验证 IndexScan 性能显著优于 SeqScan
 
+#![allow(dead_code)]
+
 use criterion::{criterion_group, criterion_main, BenchmarkId, Criterion};
 use sqlrustgo::ExecutionEngine;
 use sqlrustgo::MemoryStorage;

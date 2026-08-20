@@ -157,7 +157,7 @@ mod tests {
     fn run_sqlite_query(sql: &str, db_path: &str) -> Result<(usize, std::time::Duration), String> {
         let start = Instant::now();
         let output = Command::new("sqlite3")
-            .args(&[db_path, sql])
+            .args([db_path, sql])
             .output()
             .map_err(|e| format!("Failed to run sqlite3: {}", e))?;
 
@@ -216,7 +216,7 @@ EOSQL
         );
 
         Command::new("bash")
-            .args(&["-c", &bash_script])
+            .args(["-c", &bash_script])
             .output()
             .map_err(|e| format!("Failed to create database: {}", e))?;
 

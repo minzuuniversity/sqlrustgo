@@ -26,7 +26,7 @@ impl TestEngine {
 
     fn execute_ok(&mut self, sql: &str) -> ExecutorResult {
         self.execute(sql)
-            .expect(&format!("SQL should succeed: {}", sql))
+            .unwrap_or_else(|_| panic!("SQL should succeed: {}", sql))
     }
 
     fn row_count(&mut self, table: &str) -> usize {

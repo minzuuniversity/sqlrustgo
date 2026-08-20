@@ -128,7 +128,7 @@ fn test_verify_corrupted_data() {
     backup::tar_extract_all(&out, &staging).unwrap();
     let target = staging.join("data").join("users.json");
     fs::write(&target, b"corrupted data here").unwrap();
-    let corrupted = data_dir.path().join("corrupt.tar.gz");
+    let _corrupted = data_dir.path().join("corrupt.tar.gz");
     let mut manifest = Manifest::read_from(&staging.join("manifest.json")).unwrap();
     for e in &mut manifest.data_files {
         if e.path == "users.json" {
@@ -206,7 +206,7 @@ fn test_backup_then_restore_equals_original() {
 
 #[test]
 fn test_backup_idempotent() {
-    let (data_dir, data_path) = make_data_dir();
+    let (_data_dir, data_path) = make_data_dir();
     let out_dir = TempDir::new().unwrap();
     let out1 = out_dir.path().join("b1.tar.gz");
     let out2 = out_dir.path().join("b2.tar.gz");
@@ -225,7 +225,7 @@ fn test_backup_idempotent() {
 
 #[test]
 fn test_backup_creates_unique_output() {
-    let (data_dir, data_path) = make_data_dir();
+    let (_data_dir, data_path) = make_data_dir();
     let out_dir = TempDir::new().unwrap();
     let out1 = out_dir.path().join("a.tar.gz");
     let out2 = out_dir.path().join("b.tar.gz");
@@ -268,7 +268,7 @@ fn test_backup_with_large_wal() {
     }
     writer.flush().unwrap();
     let out = data_dir.path().join("b.tar.gz");
-    let r = backup::physical_backup(&data_path, Some(&wal), &out).unwrap();
+    let _r = backup::physical_backup(&data_path, Some(&wal), &out).unwrap();
     let r = verify::verify_backup(&out).unwrap();
     assert!(r.errors.is_empty());
 }
@@ -626,7 +626,7 @@ fn test_verify_invalid_manifest() {
     f.write_all(b"\x1f\x8b\x08\x00garbage").unwrap();
     drop(f);
     let r = verify::verify_backup(&out);
-    assert!(r.is_err() || r.unwrap().errors.len() > 0);
+    assert!(r.is_err() || !r.unwrap().errors.is_empty());
 }
 
 #[test]
@@ -722,7 +722,7 @@ fn test_sha256_file_consistent() {
 
 #[test]
 fn test_backup_manifest_sha256_unique() {
-    let (data_dir, data_path) = make_data_dir();
+    let (_data_dir, data_path) = make_data_dir();
     let out_dir = TempDir::new().unwrap();
     let out1 = out_dir.path().join("b1.tar.gz");
     let out2 = out_dir.path().join("b2.tar.gz");

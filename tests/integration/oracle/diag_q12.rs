@@ -88,7 +88,7 @@ fn diag_q12_case_when() {
     // Step 4: full Q12
     let r4 = engine.execute(queries::Q12).unwrap_or_else(|e| {
         eprintln!("Q12 ERR: {}", e);
-        return sqlrustgo::ExecutorResult::new(vec![], 0);
+        sqlrustgo::ExecutorResult::new(vec![], 0)
     });
     eprintln!("Step 4: full Q12: {:?}", r4.rows);
 }

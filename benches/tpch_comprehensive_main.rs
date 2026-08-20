@@ -1,5 +1,7 @@
 //! TPC-H 综合性能测试入口
 
+#![allow(dead_code)]
+
 mod tpch_comprehensive {
     include!("tpch_comprehensive.rs");
 }

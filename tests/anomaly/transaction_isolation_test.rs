@@ -6,12 +6,11 @@
 #[cfg(test)]
 mod tests {
     use parking_lot::RwLock;
-    use sqlrustgo_transaction::deadlock::DeadlockDetector;
-    use sqlrustgo_transaction::manager::{IsolationLevel, TransactionManager};
-    use sqlrustgo_transaction::mvcc::{MvccEngine, Snapshot, TransactionStatus, TxId};
-    use std::collections::HashMap;
+
+    use sqlrustgo_transaction::manager::IsolationLevel;
+    use sqlrustgo_transaction::mvcc::{MvccEngine, Snapshot, TxId};
+
     use std::sync::Arc;
-    use std::time::Duration;
 
     #[test]
     fn test_read_committed_isolation() {
@@ -167,7 +166,7 @@ mod tests {
 
         let ts1 = mvcc.get_global_timestamp();
 
-        let tx1 = mvcc.begin_transaction();
+        let _tx1 = mvcc.begin_transaction();
 
         let ts2 = mvcc.get_global_timestamp();
 
@@ -195,7 +194,7 @@ mod tests {
 mod deadlock_tests {
     use sqlrustgo_transaction::deadlock::DeadlockDetector;
     use sqlrustgo_transaction::mvcc::TxId;
-    use std::collections::HashMap;
+
     use std::time::Duration;
 
     #[test]

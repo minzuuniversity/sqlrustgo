@@ -4,10 +4,10 @@
 //! until the storage loading API is refactored through public interfaces.
 //! Tracking: SEM-3 (ALTER TABLE incomplete).
 
-#![ignore]
+#![allow(dead_code)]
 
 use parking_lot::RwLock;
-use sqlrustgo::{parse, ExecutionEngine, MemoryStorage};
+use sqlrustgo::{ExecutionEngine, MemoryStorage};
 use std::sync::Arc;
 
 const TPCK_DATA_DIR: &str = "data/tpch-sf03";

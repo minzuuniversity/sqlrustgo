@@ -14,7 +14,7 @@
 //! schema used by the other tpch tests.
 
 use parking_lot::RwLock;
-use sqlrustgo::{ExecutionEngine, MemoryStorage, StorageEngine};
+use sqlrustgo::{ExecutionEngine, MemoryStorage};
 use std::sync::Arc;
 
 const SCHEMA_DDL: &[&str] = &["CREATE TABLE lineitem (

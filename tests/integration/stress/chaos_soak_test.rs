@@ -70,13 +70,13 @@ fn test_chaos_io_latency_injectable() {
     } else {
         // Try to apply and immediately remove latency on loopback
         let add_result = Command::new("sudo")
-            .args(&[
+            .args([
                 "tc", "qdisc", "add", "dev", "lo", "root", "netem", "delay", "100ms",
             ])
             .output();
 
         let cleanup_result = Command::new("sudo")
-            .args(&["tc", "qdisc", "del", "dev", "lo", "root"])
+            .args(["tc", "qdisc", "del", "dev", "lo", "root"])
             .output();
 
         match (add_result, cleanup_result) {
@@ -212,7 +212,7 @@ fn test_chaos_controller_script_valid() {
 #[test]
 fn test_chaos_controller_python_syntax() {
     let result = Command::new("python3")
-        .args(&["-m", "py_compile", "scripts/soak/chaos_inject.py"])
+        .args(["-m", "py_compile", "scripts/soak/chaos_inject.py"])
         .output();
 
     assert!(

@@ -44,9 +44,9 @@ fn setup() -> ExecutionEngine<MemoryStorage> {
 }
 
 fn scalar_float(rows: &[Vec<sqlrustgo::Value>]) -> f64 {
-    match rows[0].get(0) {
+    match rows[0].first() {
         Some(sqlrustgo::Value::Float(f)) => *f,
-        _ => panic!("expected Float scalar, got {:?}", rows[0].get(0)),
+        _ => panic!("expected Float scalar, got {:?}", rows[0].first()),
     }
 }
 

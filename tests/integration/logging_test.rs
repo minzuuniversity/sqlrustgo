@@ -5,7 +5,7 @@ fn test_log_level_error_only() {
     let dir = tempfile::tempdir().unwrap();
     let log_dir = dir.path().to_str().unwrap();
 
-    if let Ok(_) = init_logging(log_dir, LogLevel::Error, LogFormat::Text, 1024 * 1024, 5) {
+    if init_logging(log_dir, LogLevel::Error, LogFormat::Text, 1024 * 1024, 5).is_ok() {
         log::error!("error message");
         log::warn!("warn should be filtered");
         std::thread::sleep(std::time::Duration::from_millis(50));
@@ -17,7 +17,7 @@ fn test_log_level_debug() {
     let dir = tempfile::tempdir().unwrap();
     let log_dir = dir.path().to_str().unwrap();
 
-    if let Ok(_) = init_logging(log_dir, LogLevel::Debug, LogFormat::Text, 1024 * 1024, 5) {
+    if init_logging(log_dir, LogLevel::Debug, LogFormat::Text, 1024 * 1024, 5).is_ok() {
         log::error!("error message");
         log::warn!("warn message");
         log::info!("info message");
@@ -31,7 +31,7 @@ fn test_log_format_json() {
     let dir = tempfile::tempdir().unwrap();
     let log_dir = dir.path().to_str().unwrap();
 
-    if let Ok(_) = init_logging(log_dir, LogLevel::Info, LogFormat::Json, 1024 * 1024, 5) {
+    if init_logging(log_dir, LogLevel::Info, LogFormat::Json, 1024 * 1024, 5).is_ok() {
         log::info!("json format test");
         std::thread::sleep(std::time::Duration::from_millis(50));
     }
@@ -42,7 +42,7 @@ fn test_log_multiple_messages() {
     let dir = tempfile::tempdir().unwrap();
     let log_dir = dir.path().to_str().unwrap();
 
-    if let Ok(_) = init_logging(log_dir, LogLevel::Info, LogFormat::Text, 1024 * 1024, 5) {
+    if init_logging(log_dir, LogLevel::Info, LogFormat::Text, 1024 * 1024, 5).is_ok() {
         for i in 0..10 {
             log::info!("message {}", i);
         }

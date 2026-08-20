@@ -2,6 +2,8 @@
 //!
 //! Reusable test data generation utilities for SQLRustGo benchmarks.
 
+#![allow(dead_code)]
+
 use sqlrustgo_storage::{ColumnDefinition, TableInfo};
 use sqlrustgo_types::Value;
 
@@ -45,6 +47,7 @@ pub fn simple_table_info(name: &str) -> TableInfo {
             char_max_length: None,
             collation: None,
             default_value: None,
+            auto_increment: false,
         }],
         foreign_keys: vec![],
         unique_constraints: vec![],
@@ -68,6 +71,7 @@ pub fn multi_column_table_info(name: &str) -> TableInfo {
                 char_max_length: None,
                 collation: None,
                 default_value: None,
+                auto_increment: false,
             },
             ColumnDefinition {
                 name: "name".to_string(),
@@ -77,6 +81,7 @@ pub fn multi_column_table_info(name: &str) -> TableInfo {
                 char_max_length: None,
                 collation: None,
                 default_value: None,
+                auto_increment: false,
             },
             ColumnDefinition {
                 name: "value".to_string(),
@@ -86,6 +91,7 @@ pub fn multi_column_table_info(name: &str) -> TableInfo {
                 char_max_length: None,
                 collation: None,
                 default_value: None,
+                auto_increment: false,
             },
         ],
         foreign_keys: vec![],
@@ -110,6 +116,7 @@ pub fn orders_table_info() -> TableInfo {
                 char_max_length: None,
                 collation: None,
                 default_value: None,
+                auto_increment: false,
             },
             ColumnDefinition {
                 name: "amount".to_string(),
@@ -119,6 +126,7 @@ pub fn orders_table_info() -> TableInfo {
                 char_max_length: None,
                 collation: None,
                 default_value: None,
+                auto_increment: false,
             },
         ],
         foreign_keys: vec![],

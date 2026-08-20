@@ -974,13 +974,13 @@ fn test_ahi_does_not_promote_for_different_tables() {
             .expect("INSERT");
     }
 
-    for round in 0..17 {
+    for _round in 0..17 {
         for t in &["a", "b", "c"] {
             engine
                 .execute(&format!(
                     "SELECT * FROM {} WHERE id = {}",
                     t,
-                    (round % 1) + 1
+                    1
                 ))
                 .expect("SELECT");
         }

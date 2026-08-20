@@ -17,7 +17,6 @@ use sqlrustgo_storage::engine::{ColumnDefinition, MemoryStorage, StorageEngine, 
 use sqlrustgo_storage::recovery_engine::{RecoveryEngine, RecoveryEngineImpl};
 use sqlrustgo_storage::wal::{MemoryWalManager, WalManager};
 use sqlrustgo_storage::wal_legacy::{WalEntry, WalEntryType};
-use sqlrustgo_types::Value;
 use std::sync::Arc;
 
 // ========================================================================
@@ -206,7 +205,7 @@ fn test_wal_contract_data_page_before_wal_err() {
 
     // WAL-001: After WAL is implemented, verify data page LSN >= WAL LSN
     // For now, we verify the test infrastructure exists.
-    assert!(true, "WAL-001 test infrastructure ready");
+    // No-op stub; real assertion pending WAL page-LSN implementation.
 }
 
 /// WAL-002: COMMIT without WAL entry → Err
@@ -250,17 +249,15 @@ fn test_wal_contract_insert_without_wal_err() {
 
     // v0: Succeeds because WAL is not enforced
     // v1 (after IMPL-001/IMPL-002): Must fail
-    if result.is_ok() {
-        // WAL not yet enforced — this is expected in v0
-    } else {
+    if let Err(err) = result {
         // WAL enforcement active — violation detected
-        let err = result.unwrap_err();
         assert!(
             err.to_string().contains("WAL") || err.to_string().contains("wal"),
             "WAL violation error must mention WAL: {:?}",
             err
         );
     }
+    // v0: result.is_ok() — WAL not yet enforced, expected
 }
 
 /// WAL-004: UPDATE without WAL → Err
@@ -279,16 +276,14 @@ fn test_wal_contract_update_without_wal_err() {
 
     let result = engine.execute("UPDATE t1 SET v = 'updated' WHERE id = 1");
 
-    if result.is_ok() {
-        // WAL not yet enforced in v0
-    } else {
-        let err = result.unwrap_err();
+    if let Err(err) = result {
         assert!(
             err.to_string().contains("WAL") || err.to_string().contains("wal"),
             "WAL violation error must mention WAL: {:?}",
             err
         );
     }
+    // v0: result.is_ok() — WAL not yet enforced, expected
 }
 
 /// WAL-005: DELETE without WAL → Err
@@ -305,16 +300,14 @@ fn test_wal_contract_delete_without_wal_err() {
 
     let result = engine.execute("DELETE FROM t1 WHERE id = 1");
 
-    if result.is_ok() {
-        // WAL not yet enforced in v0
-    } else {
-        let err = result.unwrap_err();
+    if let Err(err) = result {
         assert!(
             err.to_string().contains("WAL") || err.to_string().contains("wal"),
             "WAL violation error must mention WAL: {:?}",
             err
         );
     }
+    // v0: result.is_ok() — WAL not yet enforced, expected
 }
 
 /// WAL-006: WAL entry out of order → Err
@@ -322,7 +315,7 @@ fn test_wal_contract_delete_without_wal_err() {
 fn test_wal_contract_entry_out_of_order_err() {
     // WAL entries must be LSN-ordered.
     // Out-of-order entry indicates bug in WAL writer.
-    assert!(true, "WAL-006 test infrastructure ready");
+    // No-op stub; real assertion pending WAL ordering implementation.
 }
 
 /// WAL-007: Page LSN >= WAL entry LSN invariant
@@ -330,21 +323,21 @@ fn test_wal_contract_entry_out_of_order_err() {
 fn test_wal_contract_page_lsn_ge_wal_lsn() {
     // Data page LSN must be >= WAL entry LSN that wrote it.
     // This is a core consistency invariant.
-    assert!(true, "WAL-007 test infrastructure ready");
+    // No-op stub; real assertion pending WAL page-LSN tracking.
 }
 
 /// WAL-008: LSN monotonically increasing
 #[test]
 fn test_wal_contract_lsn_monotonic_increasing() {
     // Each new WAL entry must have LSN > previous entry.
-    assert!(true, "WAL-008 test infrastructure ready");
+    // No-op stub; real assertion pending LSN ordering check.
 }
 
 /// WAL-009: Transaction ID uses correct LSN
 #[test]
 fn test_wal_contract_tx_id_uses_correct_lsn() {
     // Transaction ID allocation must follow LSN ordering.
-    assert!(true, "WAL-009 test infrastructure ready");
+    // No-op stub; real assertion pending tx-ID/LSN linkage.
 }
 
 // ========================================================================

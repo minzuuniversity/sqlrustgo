@@ -1,5 +1,5 @@
 use parking_lot::RwLock;
-use sqlrustgo::{ExecutionEngine, MemoryStorage, StorageEngine};
+use sqlrustgo::{ExecutionEngine, MemoryStorage};
 use std::sync::Arc;
 
 fn make_engine() -> ExecutionEngine<MemoryStorage> {
@@ -391,7 +391,7 @@ fn test_prepare_with_in_clause() {
         .execute("PREPARE q AS 'SELECT v FROM t ORDER BY v ASC'")
         .unwrap();
     let r = engine.execute("EXECUTE q").unwrap();
-    assert!(r.rows.len() >= 1);
+    assert!(!r.rows.is_empty());
 }
 
 #[test]

@@ -64,7 +64,7 @@ fn dump_sqlrustgo_sf01_oracle_tsvs() {
                     .iter()
                     .map(|r| {
                         r.iter()
-                            .map(|c| c.replace('\t', " ").replace('\n', " "))
+                            .map(|c| c.replace(['\t', '\n'], " "))
                             .collect::<Vec<_>>()
                             .join("\t")
                     })

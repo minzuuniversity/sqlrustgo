@@ -36,12 +36,12 @@ fn server_binary_path() -> PathBuf {
     if candidate.exists() {
         return candidate;
     }
-    let candidate_dbg = std::env::current_dir()
+
+    std::env::current_dir()
         .unwrap_or_else(|_| PathBuf::from("."))
         .join("target")
         .join("debug")
-        .join("sqlrustgo-mysql-server");
-    candidate_dbg
+        .join("sqlrustgo-mysql-server")
 }
 
 /// Spawn a server instance on the given port. Returns Child handle and
@@ -82,7 +82,7 @@ impl ServerHandle {
         // Wait for server to accept TCP connections
         let start = Instant::now();
         while start.elapsed() < Duration::from_secs(15) {
-            if let Ok(_) = std::net::TcpStream::connect_timeout(&addr, Duration::from_millis(200)) {
+            if std::net::TcpStream::connect_timeout(&addr, Duration::from_millis(200)).is_ok() {
                 break;
             }
             std::thread::sleep(Duration::from_millis(100));
@@ -124,7 +124,7 @@ fn wire_client_version_is_non_empty() {
     let server = fresh_server();
     let mut admin =
         WireAdmin::connect("127.0.0.1", server.addr.port(), "root", "", "test").expect("connect");
-    let v = admin.version().expect("version query");
+    let _v = admin.version().expect("version query");
     // version can be empty (server may not have @@version)
 }
 
@@ -240,6 +240,6 @@ mod unix_only {
     fn wire_admin_binds_to_localhost_only() {
         // Verify the server only binds to 127.0.0.1, not 0.0.0.0
         let server = fresh_server();
-        assert_eq!(server.addr.ip().is_loopback(), true);
+        assert!(server.addr.ip().is_loopback());
     }
 }

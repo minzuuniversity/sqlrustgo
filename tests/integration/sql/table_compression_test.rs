@@ -74,7 +74,7 @@ fn test_random_data_poor_compression() {
 #[test]
 fn test_compression_stats() {
     let mut comp = TableCompressor::new();
-    comp.compress("t1", &vec![b'z'; 200]);
+    comp.compress("t1", &[b'z'; 200]);
     assert_eq!(comp.original_size("t1"), 200);
     assert!(comp.compressed_size("t1") > 0);
     assert!(comp.compressed_size("t1") < 200);

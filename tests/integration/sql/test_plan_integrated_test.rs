@@ -160,7 +160,7 @@ fn test_no_orphan_tests() {
         "common/mod.rs",  // shared test utilities
         "data_loader.rs", // has its own Cargo entry
     ];
-    let skip_substrings = [
+    let _skip_substrings = [
         "_test.rs", // actual test files - should be in Cargo.toml
     ];
 
@@ -187,12 +187,12 @@ fn test_no_orphan_tests() {
         // Compute cargo name candidates (handle subdir naming variations)
         let rel = f.replace("tests/", "").replace(".rs", "");
         let candidates = vec![
-            rel.clone(),                                     // e2e_query_test
-            rel.replace("/", "_"),                           // e2e_e2e_query_test
+            rel.clone(),                                          // e2e_query_test
+            rel.replace("/", "_"),                                // e2e_e2e_query_test
             rel.replace("e2e/", "e2e_"), // e2e_query_test from e2e/e2e_query_test.rs
             rel.replace("ci/", "ci_"),   // ci_buffer_pool_test from ci/buffer_pool_test.rs
             rel.replace("ci/ci_", "ci_"), // ci_test from ci/ci_test.rs
-            rel.split('/').last().unwrap_or("").to_string(), // basename
+            rel.split('/').next_back().unwrap_or("").to_string(), // basename
         ];
         if !candidates.iter().any(|c| registered_set.contains(c)) {
             orphans.push((f.clone(), candidates));

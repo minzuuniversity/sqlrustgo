@@ -66,7 +66,7 @@ fn test_int2_sequential_skips_parallel() {
             .unwrap();
     }
     let r = engine.execute("SELECT COUNT(*) FROM t").unwrap();
-    assert!(r.rows.len() > 0);
+    assert!(!r.rows.is_empty());
 }
 
 /// INT-2 Integration Test 3: Large table + parallel_degree > 1 exercises parallel path

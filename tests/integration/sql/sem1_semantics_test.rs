@@ -91,7 +91,7 @@ fn sem1_10_error_type_io() {
 fn sem1_11_consistency_invariants() {
     // 4.1-4.4 不变量: 详细见 SEMANTICS.md §4
     // 这里只占位, 实际验证在 E2E tests
-    assert!(true, "See SEMANTICS.md §4 for invariants");
+    // Invariants are validated in E2E tests; this stub keeps the registry entry.
 }
 
 #[test]

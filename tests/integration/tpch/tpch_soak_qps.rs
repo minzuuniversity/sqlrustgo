@@ -35,7 +35,7 @@ fn run_thread_benchmark(tid: usize, duration: Duration) -> (u64, u64, u64) {
         }
         qidx += 1;
 
-        if qidx % 50 == 0 {
+        if qidx.is_multiple_of(50) {
             thread::sleep(Duration::from_micros(100));
         }
     }

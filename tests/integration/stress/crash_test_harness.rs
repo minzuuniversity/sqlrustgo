@@ -101,7 +101,6 @@ pub fn spawn_db_with_crash_point(
 /// crash simulation). On Windows this falls back to `kill()`.
 #[cfg(unix)]
 pub fn kill_hard(child: &mut Child) -> std::io::Result<()> {
-    use std::os::unix::process::CommandExt;
     // kill the process group so children don't survive
     let pid = child.id();
     let _ = Command::new("kill")

@@ -94,7 +94,7 @@ pub fn run_soak_smoke(config: &SoakConfig) -> SoakReport {
     // Simulated query loop. Each iteration is ~1ms of work.
     let target_queries = config.duration_seconds * config.queries_per_second as u64;
     let mut memory_current = config.memory_baseline_bytes;
-    let mut fd_current = config.fd_baseline;
+    let fd_current = config.fd_baseline;
 
     while queries_executed < target_queries {
         // Simulate a query: ~0.5-2ms latency (deterministic).
@@ -104,7 +104,7 @@ pub fn run_soak_smoke(config: &SoakConfig) -> SoakReport {
 
         // Simulate a tiny memory allocation per 100 queries (would
         // be a real leak in production). Bounded by 1 KB.
-        if queries_executed % 100 == 0 {
+        if queries_executed.is_multiple_of(100) {
             memory_current += 1024;
         }
     }
@@ -181,6 +181,13 @@ pub fn expected_queries(level: &str, qps: u32) -> Option<u64> {
     smoke_seconds_for_level(level).map(|s| s * qps as u64)
 }
 
+/// Helper: simulate a Duration for tests that need a real time marker
+/// (without using std::time::Instant::now which would make the test
+/// flaky on slow CI runners).
+pub fn simulated_duration(seconds: u64) -> Duration {
+    Duration::from_secs(seconds)
+}
+
 #[cfg(test)]
 mod harness_tests {
     use super::*;
@@ -223,11 +230,4 @@ mod harness_tests {
         };
         assert!(r.passed());
     }
-}
-
-/// Helper: simulate a Duration for tests that need a real time marker
-/// (without using std::time::Instant::now which would make the test
-/// flaky on slow CI runners).
-pub fn simulated_duration(seconds: u64) -> Duration {
-    Duration::from_secs(seconds)
 }

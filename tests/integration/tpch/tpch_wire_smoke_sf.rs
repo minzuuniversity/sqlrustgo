@@ -304,7 +304,7 @@ fn tpch_wire_smoke_sf001_fixture_loads_and_q1_executes() {
     // least one group (correct value is 6; engine bugs may return
     // 1..=6; 0 is always a sign the fixture failed to load).
     assert!(
-        rows.len() > 0,
+        !rows.is_empty(),
         "Q1 returned {} rows, expected > 0 (engine failed to load fixture or execute Q1)",
         rows.len()
     );

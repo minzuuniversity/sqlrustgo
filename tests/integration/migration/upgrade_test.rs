@@ -15,6 +15,8 @@
 //! Refs: docs/openspec/3176-upgrade-test.md
 //!       V390_TEST_PLAN.md §G9
 
+#![allow(dead_code)]
+
 mod harness {
     #[derive(Debug, Clone)]
     pub struct UpgradeScenario {

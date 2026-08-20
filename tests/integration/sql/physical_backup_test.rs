@@ -11,7 +11,7 @@ use tempfile::TempDir;
 #[test]
 fn test_physical_backup_help() {
     let output = Command::new("cargo")
-        .args(&[
+        .args([
             "run",
             "-p",
             "sqlrustgo-tools",
@@ -44,7 +44,7 @@ fn test_physical_backup_subcommand_help() {
 
     for subcommand in subcommands {
         let output = Command::new("cargo")
-            .args(&[
+            .args([
                 "run",
                 "-p",
                 "sqlrustgo-tools",
@@ -70,7 +70,7 @@ fn test_physical_backup_subcommand_help() {
 fn test_physical_backup_backup_requires_args() {
     // backup 命令缺少必需参数时应失败
     let output = Command::new("cargo")
-        .args(&[
+        .args([
             "run",
             "-p",
             "sqlrustgo-tools",
@@ -96,7 +96,7 @@ fn test_physical_backup_list_empty_directory() {
     fs::create_dir_all(&empty_dir).expect("Failed to create empty directory");
 
     let output = Command::new("cargo")
-        .args(&[
+        .args([
             "run",
             "-p",
             "sqlrustgo-tools",
@@ -133,7 +133,7 @@ fn test_physical_backup_verify_nonexistent() {
     let nonexistent = temp_dir.path().join("nonexistent_backup");
 
     let output = Command::new("cargo")
-        .args(&[
+        .args([
             "run",
             "-p",
             "sqlrustgo-tools",
@@ -160,7 +160,7 @@ fn test_physical_backup_restore_nonexistent() {
     let target = temp_dir.path().join("restore_target");
 
     let output = Command::new("cargo")
-        .args(&[
+        .args([
             "run",
             "-p",
             "sqlrustgo-tools",
@@ -186,7 +186,7 @@ fn test_physical_backup_restore_nonexistent() {
 fn test_physical_backup_unit_tests() {
     // 运行物理备份单元测试
     let output = Command::new("cargo")
-        .args(&[
+        .args([
             "test",
             "-p",
             "sqlrustgo-tools",
@@ -218,7 +218,7 @@ fn test_physical_backup_unit_tests() {
 fn test_physical_backup_all_unit_tests() {
     // 运行 sqlrustgo-tools 的所有单元测试
     let output = Command::new("cargo")
-        .args(&["test", "-p", "sqlrustgo-tools", "--", "--nocapture"])
+        .args(["test", "-p", "sqlrustgo-tools", "--", "--nocapture"])
         .output()
         .expect("Failed to execute command");
 
@@ -242,7 +242,7 @@ fn test_physical_backup_all_unit_tests() {
 #[test]
 fn test_physical_backup_prune_help() {
     let output = Command::new("cargo")
-        .args(&[
+        .args([
             "run",
             "-p",
             "sqlrustgo-tools",
@@ -278,7 +278,7 @@ fn test_physical_backup_prune_requires_args() {
     fs::create_dir_all(&empty_dir).expect("Failed to create empty directory");
 
     let output = Command::new("cargo")
-        .args(&[
+        .args([
             "run",
             "-p",
             "sqlrustgo-tools",
@@ -310,7 +310,7 @@ fn test_physical_backup_prune_nonexistent_directory() {
     let nonexistent = temp_dir.path().join("nonexistent_backup_dir");
 
     let output = Command::new("cargo")
-        .args(&[
+        .args([
             "run",
             "-p",
             "sqlrustgo-tools",
@@ -372,7 +372,7 @@ fn test_physical_backup_prune_dry_run() {
 
     // 使用 --dry-run --keep 2 预览，只保留2个最新的
     let output = Command::new("cargo")
-        .args(&[
+        .args([
             "run",
             "-p",
             "sqlrustgo-tools",

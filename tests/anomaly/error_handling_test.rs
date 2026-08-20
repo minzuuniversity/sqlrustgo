@@ -99,9 +99,7 @@ mod tests {
             vec![vec![sqlrustgo_types::Value::Integer(1)]],
         );
 
-        if result.is_err() {
-            return;
-        }
+        if result.is_err() {}
     }
 
     #[test]

@@ -5,7 +5,7 @@
 //! Locks in the Q06/Q19 cell-diff pattern:
 //! - WHERE date_col >= 'YYYY-MM-DD' (text comparison)
 //! - WHERE date_col < 'YYYY-MM-DD' (text comparison)
-//! TPC-H stores dates as TEXT, so string comparison must work.
+//!   TPC-H stores dates as TEXT, so string comparison must work.
 //!
 //! Acceptance (per Issue #3283):
 //! - Use a minimal fixture (3-5 rows)

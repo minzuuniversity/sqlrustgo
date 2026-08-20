@@ -1,3 +1,5 @@
+#![allow(dead_code)]
+
 // Benchmark tests for large scale data performance
 // Target: 100K+ rows processed efficiently
 

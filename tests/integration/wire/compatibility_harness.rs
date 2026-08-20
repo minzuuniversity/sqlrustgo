@@ -192,8 +192,8 @@ mod harness_tests {
             .collect();
         let agg = aggregate_reports(&reports);
         assert_eq!(agg.len(), 5);
-        assert_eq!(agg["data_dir"], true);
-        assert_eq!(agg["wal_replay"], true);
-        assert_eq!(agg["rollback"], true);
+        assert!(agg["data_dir"]);
+        assert!(agg["wal_replay"]);
+        assert!(agg["rollback"]);
     }
 }

@@ -39,7 +39,7 @@ use common::MySqlTestClient;
 use sqlrustgo_mysql_server::testing::{start_ephemeral, EphemeralConfig};
 use std::sync::atomic::{AtomicBool, AtomicU64, Ordering};
 use std::sync::Arc;
-use std::time::{Duration, Instant};
+use std::time::Duration;
 
 /// Heavy 3-way self-join. On 200 rows, this is ~8M row comparisons,
 /// taking tens of ms each. The bug-starvation effect is observable:

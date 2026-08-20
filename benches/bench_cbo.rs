@@ -5,6 +5,8 @@
 //!
 //! Run: cargo bench --bench bench_cbo
 
+#![allow(dead_code)]
+
 use criterion::{criterion_group, criterion_main, BenchmarkId, Criterion};
 use sqlrustgo::ExecutionEngine;
 use sqlrustgo::MemoryStorage;

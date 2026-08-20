@@ -511,7 +511,9 @@ fn test_aggregate_group_by() {
         .execute("SELECT customer_id, COUNT(*), SUM(amount) FROM orders GROUP BY customer_id ORDER BY customer_id")
         .expect("COUNT GROUP BY");
     match r {
-        ResultSet::Select { columns, rows, .. } => {
+        ResultSet::Select {
+            columns: _, rows, ..
+        } => {
             assert_eq!(rows.len(), 3, "expected 3 groups");
             // customer 1: count=2, sum=300
             assert_eq!(rows[0][0], "1");
