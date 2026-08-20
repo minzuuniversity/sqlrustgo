@@ -15,13 +15,14 @@
 //!
 //! Output: docs/releases/v3.9.0/perf/FOUR_WAY_TPCH_REPORT.md
 
-use std::collections::BTreeMap;
+// Shared 4-way harness used by multiple test files; per-test only some engines
+// are exercised, so a subset of helpers is unused in any single TU.
+#![allow(dead_code)]
+
 use std::fmt;
 use std::fs;
-use std::io::Write;
 use std::path::{Path, PathBuf};
 use std::process::{Command, Stdio};
-use std::time::Instant;
 
 /// 4 DB engines compared.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
@@ -114,7 +115,7 @@ pub const TABLE_COLS: &[(&str, usize)] = &[
 
 /// Load a single TBL file as INSERT statements (one INSERT per row) for
 /// the given engine. Returns the SQL statements.
-pub fn load_tbl_inserts(table: &str, cols: usize, tbl_path: &Path, engine: Engine) -> Vec<String> {
+pub fn load_tbl_inserts(table: &str, cols: usize, tbl_path: &Path, _engine: Engine) -> Vec<String> {
     let content = match fs::read_to_string(tbl_path) {
         Ok(c) => c,
         Err(_) => return vec![],

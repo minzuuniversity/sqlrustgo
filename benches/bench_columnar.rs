@@ -3,6 +3,8 @@
 //! DEPRECATED: The columnar storage API referenced in this file no longer exists.
 //! This file is kept as a stub to allow compilation but benchmarks are disabled.
 
+#![allow(dead_code)]
+
 use criterion::{criterion_group, criterion_main, Criterion};
 
 // Stub benchmark - actual columnar storage benchmarks require a module that doesn't exist

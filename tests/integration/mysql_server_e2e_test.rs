@@ -23,7 +23,7 @@ fn wire_connect_default() {
 fn wire_ping() {
     let mut client = MySqlTestClient::connect_default().expect("connect");
     let raw = client.raw_stream();
-    let mut seq = 0u8;
+    let seq = 0u8;
     // COM_PING = 0x0e
     wire::write_packet(raw, seq, &[0x0e]).expect("write ping");
     let resp = wire::read_packet(raw).expect("read ping");
@@ -119,7 +119,7 @@ fn wire_statement_prepare_execute() {
     client
         .exec("CREATE TABLE t (id INT, name TEXT)")
         .expect("create");
-    let raw = client.raw_stream();
+    let _raw = client.raw_stream();
     let stmt_payload = client
         .stmt_prepare_raw("INSERT INTO t VALUES (?, ?)")
         .expect("prepare");

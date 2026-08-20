@@ -52,7 +52,7 @@ fn test_upgrade_script_has_required_functions() {
 #[test]
 fn test_upgrade_script_syntax() {
     let result = Command::new("bash")
-        .args(&["-n", "scripts/test_upgrade_v310_to_v311.sh"])
+        .args(["-n", "scripts/test_upgrade_v310_to_v311.sh"])
         .output();
 
     let ok = result.as_ref().map(|o| o.status.success()).unwrap_or(false);

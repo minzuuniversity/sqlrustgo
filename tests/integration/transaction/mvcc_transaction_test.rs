@@ -118,7 +118,7 @@ fn test_start_transaction_serializable() {
 // ========================================================================
 
 use sqlrustgo_transaction::mvcc::MvccEngine;
-use sqlrustgo_transaction::{Snapshot, TxId};
+use sqlrustgo_transaction::TxId;
 
 /// T-ISO-01: Dirty Read Prevention (ReadCommitted 隔离级别)
 /// 事务 T1 修改但未提交, 事务 T2 不应读到 T1 的未提交修改
@@ -184,7 +184,7 @@ fn test_t_iso_03_phantom_read_prevention() {
 
     // 初始: tx0 commit at ts=1
     let tx0 = engine.begin_transaction();
-    let initial_ts = engine.commit_transaction(tx0).unwrap();
+    let _initial_ts = engine.commit_transaction(tx0).unwrap();
 
     // T1: 创建 snapshot
     let t1 = engine.begin_transaction();

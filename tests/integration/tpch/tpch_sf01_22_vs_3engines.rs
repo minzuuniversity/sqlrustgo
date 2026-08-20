@@ -89,12 +89,7 @@ fn tpch_sf01_22_vs_mariadb_cell() {
         // Format wire rows as pipe-separated strings (same as engine output).
         let sr_strings: Vec<String> = rows
             .iter()
-            .map(|row| {
-                row.iter()
-                    .map(|cell| fmt_cell(cell))
-                    .collect::<Vec<_>>()
-                    .join("|")
-            })
+            .map(|row| row.iter().map(fmt_cell).collect::<Vec<_>>().join("|"))
             .collect();
         let sr_set: HashSet<String> = sr_strings.iter().cloned().collect();
         let md_result = run_md(&sql);
@@ -108,12 +103,7 @@ fn tpch_sf01_22_vs_mariadb_cell() {
             Ok(s) => s
                 .lines()
                 .filter(|l| !l.is_empty())
-                .map(|l| {
-                    l.split('\t')
-                        .map(|cell| fmt_cell(cell))
-                        .collect::<Vec<_>>()
-                        .join("|")
-                })
+                .map(|l| l.split('\t').map(fmt_cell).collect::<Vec<_>>().join("|"))
                 .collect(),
             Err(_) => vec![],
         };
@@ -151,7 +141,7 @@ fn tpch_sf01_22_vs_mariadb_cell() {
 
 fn run_pg(sql: &str) -> Result<String, String> {
     let out = Command::new("env")
-        .args(&[
+        .args([
             "PGPASSWORD=",
             "psql",
             "-h",
@@ -179,7 +169,7 @@ fn run_pg_count(sql: &str) -> usize {
     let sql_stripped = sql.trim_end_matches(';');
     let count_sql = format!("SELECT COUNT(*) FROM ({}) AS x", sql_stripped);
     let out = Command::new("env")
-        .args(&[
+        .args([
             "PGPASSWORD=",
             "psql",
             "-h",
@@ -208,7 +198,7 @@ fn tpch_sf01_22_vs_postgresql_pgdate_cell() {
         panic!("fixture missing");
     }
     if Command::new("env")
-        .args(&[
+        .args([
             "PGPASSWORD=",
             "psql",
             "-h",
@@ -248,12 +238,7 @@ fn tpch_sf01_22_vs_postgresql_pgdate_cell() {
         // Format wire rows as pipe-separated strings.
         let sr_strings: Vec<String> = rows
             .iter()
-            .map(|row| {
-                row.iter()
-                    .map(|cell| fmt_cell(cell))
-                    .collect::<Vec<_>>()
-                    .join("|")
-            })
+            .map(|row| row.iter().map(fmt_cell).collect::<Vec<_>>().join("|"))
             .collect();
         let pg_result = run_pg(&sql);
         let pg_count = if pg_result.is_ok() {
@@ -271,12 +256,7 @@ fn tpch_sf01_22_vs_postgresql_pgdate_cell() {
                         && !l.starts_with("(")
                         && !l.contains("?column?")
                 })
-                .map(|l| {
-                    l.split('|')
-                        .map(|cell| fmt_cell(cell))
-                        .collect::<Vec<_>>()
-                        .join("|")
-                })
+                .map(|l| l.split('|').map(fmt_cell).collect::<Vec<_>>().join("|"))
                 .collect(),
             Err(_) => vec![],
         };

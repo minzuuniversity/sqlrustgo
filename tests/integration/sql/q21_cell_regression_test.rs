@@ -73,13 +73,13 @@ fn load_tpch_table(
         count += 1;
         if batch.len() >= BATCH_SIZE {
             let mut st = storage.write();
-            st.insert(tbl, batch);
+            let _ = st.insert(tbl, batch);
             batch = Vec::with_capacity(BATCH_SIZE);
         }
     }
     if !batch.is_empty() {
         let mut st = storage.write();
-        st.insert(tbl, batch);
+        let _ = st.insert(tbl, batch);
     }
     count
 }

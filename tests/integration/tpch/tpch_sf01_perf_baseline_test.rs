@@ -24,12 +24,11 @@
 //! Run + save: `SAVE_BASELINE=1 cargo test --test tpch_sf01_perf_baseline_test --release -- --nocapture`
 
 use parking_lot::RwLock;
-use sqlrustgo::{ExecutionEngine, MemoryStorage, StorageEngine};
+use sqlrustgo::{ExecutionEngine, MemoryStorage};
 use sqlrustgo_storage::Record;
 use sqlrustgo_types::Value as SqlValue;
 use std::env;
 use std::fs;
-use std::io::{BufRead, BufReader};
 use std::path::{Path, PathBuf};
 use std::sync::Arc;
 use std::time::Instant;
@@ -105,7 +104,7 @@ fn load_table(engine: &mut ExecutionEngine<MemoryStorage>, name: &str, n_cols: u
     let content = fs::read_to_string(&path).unwrap_or_else(|_| panic!("read {:?}", path));
     let mut records: Vec<Record> = Vec::with_capacity(1024);
     for line in content.lines() {
-        if let Some(vals) = parse_tbl_line(&line, n_cols) {
+        if let Some(vals) = parse_tbl_line(line, n_cols) {
             records.push(vals); // Record = Vec<Value>
         }
     }

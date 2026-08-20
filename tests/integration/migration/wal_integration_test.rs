@@ -260,7 +260,7 @@ fn test_wal_archive_metadata_roundtrip() {
     let dir = create_temp_dir();
     let archive_path = dir.path().join("archive.dat");
 
-    let metadata = vec![
+    let metadata = [
         ("file1.wal".to_string(), 1024u64),
         ("file2.wal".to_string(), 2048u64),
     ];
@@ -281,7 +281,7 @@ fn test_wal_archive_metadata_empty_file() {
     let dir = create_temp_dir();
     let archive_path = dir.path().join("empty_archive.dat");
 
-    fs::write(&archive_path, &[]).unwrap();
+    fs::write(&archive_path, []).unwrap();
     let read_bytes = fs::read(&archive_path).unwrap();
     assert!(read_bytes.is_empty());
 }
@@ -308,7 +308,7 @@ fn test_wal_reader_empty_file() {
     let dir = create_temp_dir();
     let empty_path = dir.path().join("empty.wal");
 
-    std::fs::write(&empty_path, &[]).unwrap();
+    std::fs::write(&empty_path, []).unwrap();
 
     let manager = WalManager::new(empty_path);
     let entries = manager.recover().unwrap();

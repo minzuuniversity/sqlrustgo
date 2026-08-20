@@ -55,11 +55,7 @@ impl MockPartitionAgent {
 
     pub fn rows_per_partition(&self) -> usize {
         let n = self.num_partitions();
-        if n == 0 {
-            0
-        } else {
-            self.total_rows() / n
-        }
+        self.total_rows().checked_div(n).unwrap_or(0)
     }
 }
 

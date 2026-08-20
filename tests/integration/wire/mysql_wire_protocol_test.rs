@@ -48,11 +48,7 @@ fn test_init_db_nonexistent_returns_err() {
         .expect("ephemeral server + raw-protocol client should come up");
     // The embedded server may or may not implement COM_INIT_DB.
     // Accept either OK or ERR as valid behavior.
-    let result = client.init_db("nonexistent");
-    match result {
-        Ok(_) => {}
-        Err(_) => {}
-    }
+    let _ = client.init_db("nonexistent");
     client.quit().ok();
 }
 

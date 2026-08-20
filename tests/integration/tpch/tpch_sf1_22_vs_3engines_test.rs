@@ -65,7 +65,6 @@ const DEFAULT_REPORT_PATH: &str = "docs/releases/v3.11.0/perf/SF1_BASELINE_REPOR
 fn report_path() -> String {
     std::env::var("TPCH_REPORT_PATH").unwrap_or_else(|_| DEFAULT_REPORT_PATH.to_string())
 }
-/// after generation; the test will write to this exact path.
 
 /// Per-query wall-clock time is recorded by the test itself
 /// (Instant::now() / elapsed()) and bounded by the underlying
@@ -281,7 +280,7 @@ fn tpch_sf1_22_in_process_regression() {
                 .filter(|e| e.path().extension().and_then(|s| s.to_str()) == Some("json"))
                 .collect();
             for entry in stale {
-                std::fs::remove_file(&entry.path()).expect("remove stale .json file");
+                std::fs::remove_file(entry.path()).expect("remove stale .json file");
             }
         }
         (dir, !json_ready)
@@ -346,7 +345,7 @@ fn tpch_sf1_22_in_process_regression() {
         let sql_path = format!("{}/q{}.sql", QUERIES_DIR, n);
         let sql = std::fs::read_to_string(&sql_path)
             .unwrap_or_else(|e| panic!("read {}: {}", sql_path, e));
-        if let Some(q) = only_q {
+        if let Some(_q) = only_q {
             // TPCH_ONLY_Q is exclusive — run exactly one and stop
         } else if (std::env::var("TPCH_SKIP_Q9").is_ok() && n == 9)
             || (std::env::var("TPCH_SKIP_Q10").is_ok() && n == 10)

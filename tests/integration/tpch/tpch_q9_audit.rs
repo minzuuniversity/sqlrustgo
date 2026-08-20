@@ -18,6 +18,8 @@
 //! python3 scripts/dev/build_tpch_sf01_sqlite.py
 //! ```
 
+#![allow(dead_code)]
+
 #[path = "../../common/mod.rs"]
 mod common;
 use std::process::Command;
@@ -112,8 +114,8 @@ fn test_tpch_22_wire_sf01_audit() {
             }
         };
 
-        if engine_count.is_some() {
-            eprintln!("Q{:>2}: OK  ({} rows)", q, engine_count.unwrap());
+        if let Some(ref c) = engine_count {
+            eprintln!("Q{:>2}: OK  ({} rows)", q, c);
             ok += 1;
         }
     }

@@ -49,7 +49,7 @@ fn create_and_list_sequence() {
     let info = s.get_sequence("my_seq").expect("sequence should exist");
     assert_eq!(info.name, "my_seq");
     assert_eq!(info.increment_by, 1);
-    assert_eq!(info.cycle, false);
+    assert!(!info.cycle);
 }
 
 #[test]

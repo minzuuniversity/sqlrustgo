@@ -1,6 +1,6 @@
 // Batch Insert Tests - Performance, Concurrency, and Auto-Increment Tests (Issue #964)
 use parking_lot::RwLock;
-use sqlrustgo::{parse, ExecutionEngine, MemoryStorage};
+use sqlrustgo::{ExecutionEngine, MemoryStorage};
 use sqlrustgo_types::Value;
 use std::sync::Arc;
 use std::time::Instant;
@@ -151,7 +151,7 @@ fn test_concurrent_batch_insert_no_deadlock() {
 
     // Re-insert the same data (we can't easily read from other threads' storage)
     // Instead verify no panic/deadlock occurred - that's the key test
-    assert!(true, "Concurrent inserts completed without deadlock");
+    // Test passes by simply completing without panic/deadlock.
 }
 
 // ============== 自增ID连续性测试 ==============

@@ -115,7 +115,7 @@ impl MixedScenario {
         let mut handles = Vec::new();
 
         // Thread 1: TPC-H Q1
-        let engine_t1 = Arc::clone(&engine);
+        let engine_t1 = Arc::clone(engine);
         let stop_t1 = Arc::clone(&self.stop_flag);
         let runs_t1 = Arc::clone(&self.tpch_q1_runs);
         let fails_t1 = Arc::clone(&self.tpch_failures);
@@ -135,7 +135,7 @@ impl MixedScenario {
         }));
 
         // Thread 2: DDL operations
-        let engine_t2 = Arc::clone(&engine);
+        let engine_t2 = Arc::clone(engine);
         let stop_t2 = Arc::clone(&self.stop_flag);
         let runs_t2 = Arc::clone(&self.ddl_runs);
         let fails_t2 = Arc::clone(&self.ddl_failures);
@@ -166,7 +166,7 @@ impl MixedScenario {
         }));
 
         // Thread 3: TPC-H Q3
-        let engine_t3 = Arc::clone(&engine);
+        let engine_t3 = Arc::clone(engine);
         let stop_t3 = Arc::clone(&self.stop_flag);
         let runs_t3 = Arc::clone(&self.tpch_q3_runs);
         let fails_t3 = Arc::clone(&self.tpch_failures);
@@ -186,7 +186,7 @@ impl MixedScenario {
         }));
 
         // Thread 4: TPC-H Q5
-        let engine_t4 = Arc::clone(&engine);
+        let engine_t4 = Arc::clone(engine);
         let stop_t4 = Arc::clone(&self.stop_flag);
         let runs_t4 = Arc::clone(&self.tpch_q5_runs);
         let fails_t4 = Arc::clone(&self.tpch_failures);

@@ -16,7 +16,7 @@ fn test_file_storage_new() {
 #[test]
 fn test_file_storage_get_table() {
     let dir = create_temp_dir();
-    let mut storage = FileStorage::new(dir.path().to_path_buf()).unwrap();
+    let storage = FileStorage::new(dir.path().to_path_buf()).unwrap();
 
     let result = storage.get_table("nonexistent");
     assert!(result.is_none());

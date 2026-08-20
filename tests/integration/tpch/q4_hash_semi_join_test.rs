@@ -158,7 +158,7 @@ fn q4_hash_semi_join_scales_with_inner_table_size() {
         // 10 lineitems per order, half with commitdate < receiptdate (EXISTS true)
         for j in 0..10 {
             let orderkey = i;
-            let commit = 1993_08_00 + (i % 28) + 1;
+            let commit = 19_930_800 + (i % 28) + 1;
             let receipt = if j < 5 { commit + 1 } else { commit - 1 };
             e.execute(&format!(
                 "INSERT INTO lineitem VALUES ({}, '1993-08-{:02}', '1993-08-{:02}')",

@@ -47,7 +47,7 @@ fn test_text_index() {
     let filepath = "data/tpch-sf03/lineitem.tbl";
     if Path::new(&filepath).exists() {
         let mut storage = engine.storage_ref().write();
-        match storage.bulk_load_tbl_file("lineitem", &filepath) {
+        match storage.bulk_load_tbl_file("lineitem", filepath) {
             Ok(count) => {
                 println!("  Loaded {} rows", count);
 

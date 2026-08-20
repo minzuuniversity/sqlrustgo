@@ -180,7 +180,7 @@ fn native_password_auth(password: &[u8], scramble: &[u8; SCRAMBLE_LEN]) -> [u8; 
 fn build_handshake_response41(user: &str, auth_response: &[u8]) -> wire_err::Result<Vec<u8>> {
     let mut p = Vec::with_capacity(64 + user.len() + auth_response.len());
 
-    p.extend_from_slice(&(CLIENT_CAPABILITIES as u32).to_le_bytes());
+    p.extend_from_slice(&CLIENT_CAPABILITIES.to_le_bytes());
     p.extend_from_slice(&MAX_PACKET_SIZE.to_le_bytes());
     p.push(CHARSET_UTF8);
     p.extend_from_slice(&[0u8; 23]); // 23 reserved bytes

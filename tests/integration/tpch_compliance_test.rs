@@ -6,6 +6,8 @@
 //!   cargo test --test tpch_compliance_test        # SQLRustGo vs SQLite
 //!   cargo test --test tpch_compliance_test -- --nocapture  # 显示详细输出
 
+#![allow(dead_code)]
+
 use parking_lot::RwLock;
 use rusqlite::Connection;
 use sqlrustgo::{ExecutionEngine, MemoryStorage, StorageEngine};
@@ -942,10 +944,10 @@ impl QueryResult {
             let mut sqlrustgo_sorted = self.sqlrustgo_data.clone();
 
             for row in sqlite_sorted.iter_mut() {
-                row.sort_by(|a, b| a.to_string().cmp(&b.to_string()));
+                row.sort_by_key(|a| a.to_string());
             }
             for row in sqlrustgo_sorted.iter_mut() {
-                row.sort_by(|a, b| a.to_string().cmp(&b.to_string()));
+                row.sort_by_key(|a| a.to_string());
             }
 
             sqlite_sorted.sort_by(|a, b| {

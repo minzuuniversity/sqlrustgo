@@ -48,8 +48,7 @@
 //! - [x] No new public APIs
 
 use serde_json::Value as JsonValue;
-use std::io::Write;
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 use std::process::{Child, Command, Stdio};
 use std::time::Duration;
 
@@ -63,7 +62,7 @@ struct Server {
 }
 
 impl Server {
-    fn start(data_dir: &PathBuf) -> Result<Self, String> {
+    fn start(data_dir: &Path) -> Result<Self, String> {
         // Build the binary in debug mode if not present.
         // Use CARGO_TARGET_DIR if set, else fall back to target/debug/ relative to repo root.
         let repo_root = PathBuf::from(env!("CARGO_MANIFEST_DIR"))
@@ -189,7 +188,7 @@ const EXPECTED_COUNTS: &[(&str, u64)] = &[
 ];
 
 /// Read a three-way reference. Returns (row_count, first_3_rows joined with |).
-fn read_three_way(data_dir: &PathBuf, qnum: u8) -> Option<(u64, Vec<String>)> {
+fn read_three_way(data_dir: &Path, qnum: u8) -> Option<(u64, Vec<String>)> {
     let p = data_dir
         .join("expected")
         .join(format!("Q{}_three_way.json", qnum));
@@ -233,7 +232,7 @@ fn test_tpch_22_mysql_cli_wire() {
     }
 
     // Start the server
-    let mut server = Server::start(&data_dir).expect("start server");
+    let server = Server::start(&data_dir).expect("start server");
     eprintln!(
         "[server] spawned on port {} (pid {:?})",
         server.port,
@@ -277,7 +276,7 @@ fn test_tpch_22_mysql_cli_wire() {
         }
         // Count
         let count_sql = format!("SELECT COUNT(*) FROM {}", tbl);
-        let (cnt_out, cnt_err, cnt_code) =
+        let (cnt_out, cnt_err, _cnt_code) =
             mysql_exec("127.0.0.1", server.port, "tester", Some(tbl), &count_sql);
         let cnt: u64 = cnt_out
             .trim()

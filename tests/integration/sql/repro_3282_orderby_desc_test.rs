@@ -47,8 +47,8 @@ fn repro_3282_parser_preserves_desc_direction() {
     };
     assert_eq!(sel.order_by.len(), 1);
     let ob = &sel.order_by[0];
-    assert_eq!(
-        ob.ascending, false,
+    assert!(
+        !ob.ascending,
         "ORDER BY DESC should produce ascending=false, got ascending={}",
         ob.ascending
     );

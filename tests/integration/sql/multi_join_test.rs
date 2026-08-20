@@ -3,7 +3,7 @@
 //! correct row counts. Note: 4-way joins and CROSS JOIN are pending
 //! parser support (tracked in #2987 / #2991).
 use parking_lot::RwLock;
-use sqlrustgo::{ExecutionEngine, MemoryStorage, StorageEngine};
+use sqlrustgo::{ExecutionEngine, MemoryStorage};
 use std::sync::Arc;
 
 fn fresh_engine() -> ExecutionEngine<MemoryStorage> {

@@ -8,7 +8,7 @@
 //! for the freeze rationale.
 
 use parking_lot::RwLock;
-use sqlrustgo::{ExecutionEngine, MemoryStorage, StorageEngine};
+use sqlrustgo::{ExecutionEngine, MemoryStorage};
 use std::sync::Arc;
 
 fn fresh() -> ExecutionEngine<MemoryStorage> {

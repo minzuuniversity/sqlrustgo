@@ -108,7 +108,7 @@ fn tpch_soak_sf001_q1_q6() {
     let all_queries = soak_queries();
     let queries: Vec<(&str, &str)> = all_queries
         .into_iter()
-        .filter(|(name, _)| allowed_set.iter().any(|&a| a == *name))
+        .filter(|(name, _)| allowed_set.contains(name))
         .collect();
 
     eprintln!(

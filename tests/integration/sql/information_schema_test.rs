@@ -17,7 +17,7 @@
 //! the catalog — that gap is a separate ticket tracked outside
 //! V312-56A scope).
 use parking_lot::RwLock;
-use sqlrustgo::{ExecutionEngine, MemoryStorage, StorageEngine};
+use sqlrustgo::{ExecutionEngine, MemoryStorage};
 use sqlrustgo_catalog::{
     index::IndexInfo, schema::Schema, Catalog, ColumnDefinition, DataType, Table,
 };

@@ -61,7 +61,7 @@ fn make_engine_with_data() -> Option<ExecutionEngine<MemoryStorage>> {
 fn run_count(engine: &mut ExecutionEngine<MemoryStorage>, sql: &str) -> Option<usize> {
     // Use mpsc channel + worker thread for timeout
     use std::sync::mpsc;
-    use std::time::{Duration, Instant};
+    use std::time::Duration;
     let (tx, rx) = mpsc::channel::<Option<usize>>();
     let sql_owned = sql.to_string();
     let engine_addr: usize = engine as *mut _ as usize;

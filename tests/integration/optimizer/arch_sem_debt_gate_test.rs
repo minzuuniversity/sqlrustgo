@@ -114,15 +114,9 @@ fn test_d8_no_p0_missing_in_plan() {
     // P0 items must have detailed steps
     for p0 in &["ARCH-1", "SEM-1"] {
         // Find the section for this item (e.g., "## 1. ARCH-1: ...")
-        let pattern = format!("## ");
-        let item_pattern = format!(
-            "## {}. {}",
-            p0,
-            if *p0 == "ARCH-1" { "ARCH-1" } else { "SEM-1" }
-        );
         let search = format!(
             "## {}. {}",
-            match p0.as_ref() {
+            match *p0 {
                 "ARCH-1" => "1",
                 "SEM-1" => "4",
                 _ => "1",
@@ -132,7 +126,7 @@ fn test_d8_no_p0_missing_in_plan() {
         let section_start = content
             .find(&search)
             .or_else(|| content.find(p0))
-            .expect(&format!("{} must be in plan", p0));
+            .unwrap_or_else(|| panic!("{} must be in plan", p0));
         // Find next ## N. (top-level) section
         let rest = &content[section_start + p0.len()..];
         let next_section = rest

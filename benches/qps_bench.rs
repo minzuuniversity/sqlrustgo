@@ -9,9 +9,11 @@
 //!   - update(table, filters, updates) -> SqlResult<usize>
 //!   - delete_if(table, filter) -> SqlResult<usize>
 
+#![allow(dead_code)]
+
 use criterion::{criterion_group, criterion_main, BenchmarkId, Criterion, Throughput};
 use sqlrustgo_storage::{
-    ColumnDefinition, MemoryStorage, Record, RowFilter, RowMutation, StorageEngine, TableInfo,
+    ColumnDefinition, MemoryStorage, Record, RowFilter, StorageEngine, TableInfo,
 };
 use sqlrustgo_types::Value;
 use std::hint::black_box;
@@ -44,6 +46,7 @@ fn create_table_info() -> TableInfo {
                 char_max_length: None,
                 collation: None,
                 default_value: None,
+                auto_increment: false,
             },
             ColumnDefinition {
                 name: "k".to_string(),
@@ -53,6 +56,7 @@ fn create_table_info() -> TableInfo {
                 char_max_length: None,
                 collation: None,
                 default_value: None,
+                auto_increment: false,
             },
             ColumnDefinition {
                 name: "c".to_string(),
@@ -62,6 +66,7 @@ fn create_table_info() -> TableInfo {
                 char_max_length: None,
                 collation: None,
                 default_value: None,
+                auto_increment: false,
             },
         ],
         foreign_keys: vec![],
@@ -84,7 +89,7 @@ fn setup_storage(rows: usize) -> Arc<RwLock<MemoryStorage>> {
     storage
 }
 
-/// Filter that matches id == target (uses a thread-local)
+// Filter that matches id == target (uses a thread-local)
 thread_local! {
     static TARGET_ID: std::cell::Cell<i64> = const { std::cell::Cell::new(0) };
 }

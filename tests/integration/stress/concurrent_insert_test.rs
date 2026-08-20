@@ -79,7 +79,7 @@ fn run_concurrent(num_processes: usize, script: &str) -> usize {
 
     let success = Arc::new(AtomicUsize::new(0));
     let handles: Vec<_> = (0..num_processes)
-        .map(|i| {
+        .map(|_i| {
             let script = script.to_string();
             let success = success.clone();
             thread::spawn(move || {

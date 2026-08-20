@@ -22,7 +22,6 @@ use rand::{Rng, SeedableRng};
 use sqlrustgo_storage::engine::{ColumnDefinition, MemoryStorage, StorageEngine, TableInfo};
 use sqlrustgo_storage::recovery_engine::{RecoveryEngine, RecoveryEngineImpl};
 use sqlrustgo_storage::wal::{MemoryWalManager, WalEntry, WalEntryType, WalManager};
-use sqlrustgo_types::Value;
 use std::collections::HashSet;
 use std::sync::Arc;
 
@@ -50,13 +49,13 @@ fn run_episode(rng: &mut StdRng, n_ops: usize, crash_after: usize) -> (usize, u6
     let mut wal = MemoryWalManager::new();
 
     let mut next_id: i64 = 1;
-    let mut committed_inserts: HashSet<i64> = HashSet::new();
-    let mut committed_deletes: HashSet<i64> = HashSet::new();
+    let _committed_inserts: HashSet<i64> = HashSet::new();
+    let _committed_deletes: HashSet<i64> = HashSet::new();
     let mut in_tx: bool = false;
     let mut tx_id: u64 = 1;
     let mut lsn: u64 = 0;
-    let mut attempted_txns: u64 = 0;
-    let mut completed_txns: u64 = 0;
+    let mut _attempted_txns: u64 = 0;
+    let mut _completed_txns: u64 = 0;
 
     for op_idx in 0..n_ops {
         // Pick a random op
@@ -168,7 +167,7 @@ fn run_episode(rng: &mut StdRng, n_ops: usize, crash_after: usize) -> (usize, u6
                         // reported committed count matches our
                         // completed_txns counter.
                     }
-                    completed_txns += 1;
+                    _completed_txns += 1;
                     tx_id += 1;
                     in_tx = false;
                 }
@@ -179,7 +178,7 @@ fn run_episode(rng: &mut StdRng, n_ops: usize, crash_after: usize) -> (usize, u6
         // crash_after. Or always crash if we've passed crash_after.
         let do_crash = op_idx >= crash_after || rng.gen_bool(0.02);
         if do_crash && in_tx {
-            attempted_txns = tx_id;
+            _attempted_txns = tx_id;
             break;
         }
     }
@@ -187,9 +186,9 @@ fn run_episode(rng: &mut StdRng, n_ops: usize, crash_after: usize) -> (usize, u6
     // If we ended still in-tx (never committed/rolled back), that
     // counts as a crash-without-commit attempt.
     if in_tx {
-        attempted_txns = tx_id;
+        _attempted_txns = tx_id;
     } else {
-        attempted_txns = tx_id - 1; // last tx already closed
+        _attempted_txns = tx_id - 1; // last tx already closed
     }
 
     // Recover
@@ -214,16 +213,16 @@ fn run_episode(rng: &mut StdRng, n_ops: usize, crash_after: usize) -> (usize, u6
     // Invariant 3: rows_* are bounded by total WAL entries we appended
     // (we tracked this implicitly via the n_ops loop bound).
     let _max_rows_bound = n_ops;
-    assert!(report.rows_inserted as usize <= _max_rows_bound);
-    assert!(report.rows_updated as usize <= _max_rows_bound);
-    assert!(report.rows_deleted as usize <= _max_rows_bound);
+    assert!(report.rows_inserted <= _max_rows_bound);
+    assert!(report.rows_updated <= _max_rows_bound);
+    assert!(report.rows_deleted <= _max_rows_bound);
 
     // Storage should have *some* state, but it must be a subset of
     // operations (we don't crash inside COMMIT so partial commits are
     // impossible). Just verify scan doesn't panic.
     let rows = storage.scan("t").unwrap_or_default();
 
-    (rows.len(), completed_txns, report.committed_txns as u64)
+    (rows.len(), _completed_txns, report.committed_txns as u64)
 }
 
 #[test]
@@ -239,7 +238,7 @@ fn crash_monkey_smoke_100_iterations() {
         // txns may be filtered out by RecoveryEngine if their DML
         // is invalid).
         assert!(
-            committed <= completed as u64,
+            committed <= completed,
             "ep {ep}: committed({committed}) > completed({completed})"
         );
         // Storage row count is bounded by completed INSERTs.
@@ -325,7 +324,7 @@ fn crash_monkey_long_tx_no_crash() {
     // *all* txns close (no incomplete), and storage has a stable
     // row count.
     assert!(
-        committed <= completed as u64,
+        committed <= completed,
         "no crash → committed({committed}) ≤ completed({completed})"
     );
     assert!(rows < 10_000, "row count {rows} unreasonably large");

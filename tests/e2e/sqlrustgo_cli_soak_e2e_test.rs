@@ -10,6 +10,8 @@
 //! 注意: SELECT 测试标记为 ignored, 因为 server 端 column_def 包格式 bug
 //! (缺 org_name 字段), DML 路径不受影响.
 
+#![allow(dead_code)]
+
 use sqlrustgo_mysql_client::MySqlConnection;
 use sqlrustgo_mysql_server::testing::{start_ephemeral, EphemeralConfig};
 use std::io::{Read, Write};
@@ -217,7 +219,7 @@ fn test_soak_repl_50_dml_queries() {
     let stdin = child.stdin.as_mut().unwrap();
     let mut stdout = child.stdout.take().unwrap();
 
-    let _ = writeln!(stdin, "CREATE TABLE IF NOT EXISTS bench_t (n INTEGER)").unwrap();
+    writeln!(stdin, "CREATE TABLE IF NOT EXISTS bench_t (n INTEGER)").unwrap();
     let n_queries: u32 = 50;
     let start = std::time::Instant::now();
     for i in 0..n_queries {
@@ -271,7 +273,7 @@ fn test_soak_repl_skips_comments_and_blank_lines() {
     let mut stdout = child.stdout.take().unwrap();
 
     writeln!(stdin, "# this is a comment").unwrap();
-    writeln!(stdin, "").unwrap();
+    writeln!(stdin).unwrap();
     writeln!(stdin, "   ").unwrap();
     writeln!(stdin, "SELECT 1").unwrap();
     writeln!(stdin, "QUIT").unwrap();

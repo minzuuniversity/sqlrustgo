@@ -282,5 +282,5 @@ fn test_delegation_matrix_complete() {
     // LIKE 'a%' matches alice (val=100), BETWEEN 200-300 matches bob(200), charlie(300)
     // So COUNT = 3 rows
     // SUM(CASE WHEN val > 150): bob(200) + charlie(300) = 2
-    assert!(r.rows.len() > 0);
+    assert!(!r.rows.is_empty());
 }

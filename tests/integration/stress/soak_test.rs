@@ -19,11 +19,13 @@
 //!       V390_TEST_PLAN.md §G7
 //!       AGENTS.md
 
+#![allow(dead_code)]
+
 // The harness provides the run-soak-smoke loop. We re-declare a
 // minimal local copy (kept in sync via the G7 gate) so this test
 // target compiles standalone.
 mod harness {
-    use std::time::{Duration, Instant};
+    use std::time::Instant;
 
     #[derive(Debug, Clone)]
     pub struct SoakConfig {
@@ -81,7 +83,7 @@ mod harness {
             let latency = 0.5 + (queries_executed % 3) as f64 * 0.5;
             latencies.push(latency);
             queries_executed += 1;
-            if queries_executed % 100 == 0 {
+            if queries_executed.is_multiple_of(100) {
                 memory_current += 1024;
             }
         }
@@ -133,7 +135,7 @@ mod harness {
     }
 }
 
-use harness::{run_soak_smoke, SoakConfig, SoakReport};
+use harness::{run_soak_smoke, SoakConfig};
 
 /// Helper: build a default soak config (5 q/s, 100MB baseline).
 fn default_config(duration_seconds: u64) -> SoakConfig {

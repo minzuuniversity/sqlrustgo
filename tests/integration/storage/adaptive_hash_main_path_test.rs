@@ -7,7 +7,6 @@ use parking_lot::RwLock;
 use sqlrustgo::ExecutionEngine;
 use sqlrustgo::MemoryStorage;
 use std::sync::Arc;
-use std::time::Instant;
 
 fn fresh_engine() -> ExecutionEngine<MemoryStorage> {
     let storage = Arc::new(RwLock::new(MemoryStorage::new()));

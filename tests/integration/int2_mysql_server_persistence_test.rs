@@ -53,7 +53,6 @@ use std::time::Instant;
 use sqlrustgo_mysql_server::testing::EphemeralConfig;
 
 #[path = "../common/mod.rs"]
-#[path = "../common/mod.rs"]
 mod common;
 use common::MySqlTestClient;
 

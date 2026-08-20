@@ -4,7 +4,7 @@
 
 #[cfg(test)]
 mod tests {
-    use sqlrustgo::{parse, ExecutionEngine, MemoryStorage, Value};
+    use sqlrustgo::{ExecutionEngine, MemoryStorage, Value};
 
     use parking_lot::RwLock;
     use std::sync::Arc;
@@ -74,7 +74,7 @@ mod tests {
             .execute("SELECT * FROM products WHERE price > 50")
             .unwrap();
 
-        assert!(result.rows.len() >= 1);
+        assert!(!result.rows.is_empty());
     }
 
     #[test]
@@ -1005,7 +1005,7 @@ mod tests {
                 other => panic!("unexpected row {:?}", other),
             })
             .collect();
-        group_values.sort_by(|a, b| a.0.cmp(&b.0));
+        group_values.sort_by_key(|a| a.0);
         assert_eq!(group_values, vec![(1, 2.0), (2, 15.0)]);
     }
 

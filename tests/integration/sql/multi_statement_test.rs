@@ -24,7 +24,7 @@ use common::MySqlTestClient;
 
 /// Read one raw MySQL packet and return its payload bytes.
 fn read_raw_packet(client: &mut MySqlTestClient) -> Result<Vec<u8>, String> {
-    common::read_packet(&mut client.raw_stream()).map_err(|e| format!("read raw packet: {}", e))
+    common::read_packet(client.raw_stream()).map_err(|e| format!("read raw packet: {}", e))
 }
 
 /// Build a COM_QUERY packet.
@@ -179,8 +179,7 @@ fn test_multi_statement_executes_all() {
                     INSERT INTO ms_t1 (id, val) VALUES (1, 'hello'); \
                     SELECT id, val FROM ms_t1 ORDER BY id";
     let pkt = build_com_query(combined);
-    common::write_packet(&mut client.raw_stream(), 0, &pkt)
-        .expect("write multi-statement COM_QUERY");
+    common::write_packet(client.raw_stream(), 0, &pkt).expect("write multi-statement COM_QUERY");
 
     // Response 1: OK (CREATE TABLE)
     let r1 = expect_ok(&mut client).expect("response 1 must be OK");
@@ -203,7 +202,7 @@ fn test_multi_statement_executes_all() {
     // Phase 2: Two SELECTs in one COM_QUERY -> two result sets.
     // ----------------------------------------------------------------
     let pkt = build_com_query("SELECT id FROM ms_t1; SELECT val FROM ms_t1");
-    common::write_packet(&mut client.raw_stream(), 0, &pkt).expect("write two-SELECT COM_QUERY");
+    common::write_packet(client.raw_stream(), 0, &pkt).expect("write two-SELECT COM_QUERY");
 
     // First result set: id column, 1 row
     let rows_a = read_text_result_set(&mut client).expect("first result set");
@@ -223,7 +222,7 @@ fn test_multi_statement_executes_all() {
     let pkt = build_com_query(
         "INSERT INTO ms_t1 (id, val) VALUES (2, 'world'); SELECT COUNT(*) FROM ms_t1",
     );
-    common::write_packet(&mut client.raw_stream(), 0, &pkt).expect("write INSERT+COUNT COM_QUERY");
+    common::write_packet(client.raw_stream(), 0, &pkt).expect("write INSERT+COUNT COM_QUERY");
 
     expect_ok(&mut client).expect("INSERT in batch must be OK");
 
@@ -242,8 +241,7 @@ fn test_multi_statement_executes_all() {
          INSERT INTO no_such_table VALUES (1); \
          INSERT INTO ms_t1 (id, val) VALUES (4, 'after-err')",
     );
-    common::write_packet(&mut client.raw_stream(), 0, &pkt)
-        .expect("write error-mid-batch COM_QUERY");
+    common::write_packet(client.raw_stream(), 0, &pkt).expect("write error-mid-batch COM_QUERY");
 
     expect_ok(&mut client).expect("first INSERT must be OK");
     expect_err(&mut client).expect("failing INSERT must be ERR");

@@ -151,7 +151,7 @@ fn test_parallel_memory_no_quadruple() {
     let mut counts = Vec::with_capacity(4);
     for mut p in partitions.into_iter() {
         let mut count = 0;
-        while let Some(_) = p.next() {
+        for _ in p.by_ref() {
             count += 1;
         }
         counts.push(count);
@@ -185,7 +185,7 @@ fn test_for_update_still_disables_parallel() {
         .unwrap();
     // Same row count as non-FOR-UPDATE
     assert!(
-        result.rows.len() > 0,
+        !result.rows.is_empty(),
         "FOR UPDATE should still return filtered rows"
     );
 }

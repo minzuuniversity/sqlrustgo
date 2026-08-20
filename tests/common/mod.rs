@@ -485,7 +485,6 @@ impl MySqlTestClient {
     /// Start an ephemeral server on `127.0.0.1` and connect to it as
     /// the `tester` user (password = `tester`). The test harness
     /// pre-creates this user via its bootstrap callback.
-
     /// Return the MySQL capability flags this client sent in HandshakeResponse41.
     pub fn client_capabilities(&self) -> u32 {
         self.client_caps

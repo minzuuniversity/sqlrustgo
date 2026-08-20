@@ -1,3 +1,5 @@
+#![allow(dead_code)]
+
 #[path = "../../common/mod.rs"]
 mod common;
 use common::tpch_wire_harness::start_sf01;
