@@ -31,23 +31,24 @@ fi
 
 echo "=== G9 Gate: P1-4 (#3176) Upgrade Test ==="
 
-# 1. harness file
-[ -f tests/upgrade_test_harness.rs ] || {
-    echo "  ❌ FAIL: tests/upgrade_test_harness.rs not found"
+# 1. harness file (located under tests/integration/migration/ since the
+#    V312 refactor that consolidated integration tests)
+[ -f tests/integration/migration/upgrade_test_harness.rs ] || {
+    echo "  ❌ FAIL: tests/integration/migration/upgrade_test_harness.rs not found"
     exit 1
 }
-echo "  [1/7] ✅ PASS: tests/upgrade_test_harness.rs present"
+echo "  [1/7] ✅ PASS: tests/integration/migration/upgrade_test_harness.rs present"
 
 # 2. test file + registration
-[ -f tests/upgrade_test.rs ] || {
-    echo "  ❌ FAIL: tests/upgrade_test.rs not found"
+[ -f tests/integration/migration/upgrade_test.rs ] || {
+    echo "  ❌ FAIL: tests/integration/migration/upgrade_test.rs not found"
     exit 1
 }
 grep -q 'name = "upgrade_test"' Cargo.toml || {
     echo "  ❌ FAIL: upgrade_test not registered in Cargo.toml"
     exit 1
 }
-echo "  [2/7] ✅ PASS: tests/upgrade_test.rs present + registered"
+echo "  [2/7] ✅ PASS: tests/integration/migration/upgrade_test.rs present + registered"
 
 # 3. 8 upgrade categories each have ≥1 test
 N_TESTS=$(grep -c "^#\[test\]" tests/upgrade_test.rs || echo 0)

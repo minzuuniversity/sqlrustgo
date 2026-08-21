@@ -54,6 +54,8 @@ fn start_server() -> sqlrustgo_mysql_server::testing::EphemeralHandle {
         bootstrap_tables: false,
         bootstrap_sql: Vec::new(),
         bulk_insert_buffer_size: 1_048_576,
+        bulk_insert_rows_per_flush: 10_000,
+        load_infile_dir: None,
         server_threads: 8,
         storage: None,
         slow_query_log: None,
