@@ -1,0 +1,4 @@
+CREATE TABLE t (id INTEGER PRIMARY KEY, name TEXT);
+INSERT INTO t VALUES (1, 'alice');
+INSERT INTO t VALUES (2, 'bob');
+INSERT INTO t VALUES (3, 'charlie');

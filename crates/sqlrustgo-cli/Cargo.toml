@@ -13,3 +13,7 @@ sqlrustgo-mysql-client = { path = "../mysql-client" }
 sqlrustgo-parser = { path = "../parser" }
 sqlrustgo-storage = { path = "../storage" }
 sqlrustgo-types = { path = "../types" }
+
+[[bin]]
+name = "sqlrustgo"
+path = "src/local_bin.rs"

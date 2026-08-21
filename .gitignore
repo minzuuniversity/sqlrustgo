@@ -122,3 +122,6 @@ test-registry.toml
 # closures; any "fresh evidence" work happens here and is NOT intended to
 # silently slip into a future commit alongside unrelated changes.
 scripts/.scratch/
+
+# V312-48 TPC-H SF=1 correctness bundle output (~1.8GB oracle.sqlite)
+docs/releases/v3.12.0/perf/TPCH_SF1_CORRECTNESS_BUNDLE/

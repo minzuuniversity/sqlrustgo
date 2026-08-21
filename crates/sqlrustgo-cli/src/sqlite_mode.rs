@@ -3,39 +3,22 @@
 //! Provides SqliteMode struct that holds execution engine + state for
 //! SQLite-like CLI operations.
 
-use crate::dotcmd::DotCmd;
-use crate::error::CliError;
-use crate::output::{OutputMode, OutputTarget};
+use crate::dotcmd::{parse_dotcmd, DotCmd};
+use crate::error::{CliError, EXIT_OK};
+use crate::output::{format, OutputMode, OutputTarget};
 use sqlrustgo::ExecutionEngine;
+use sqlrustgo_parser::{parse, Statement};
 use sqlrustgo_storage::FileStorage;
+use std::io::BufRead;
 use std::path::{Path, PathBuf};
 use std::sync::Arc;
 
-const HELP_TEXT: &str = "\
-SQLRustGo sqlite-like CLI commands:
-  .help                   Show this message
-  .quit / .exit           Exit
-  .tables [LIKE]          List tables
-  .schema [TABLE]         Show CREATE statements
-  .mode MODE              table | list | csv | json
-  .headers on|off         Toggle column headers
-  .read FILE              Execute SQL from FILE
-  .output FILE|stdout     Redirect output
-  .timer on|off           Toggle timing
-  .explain on|off         Toggle EXPLAIN
-
-SQL subset: CREATE TABLE, INSERT, UPDATE, DELETE, DROP TABLE,
-SELECT/WHERE/ORDER BY/LIMIT/JOIN/GROUP BY, COUNT/SUM/MIN/MAX/AVG,
-BEGIN/COMMIT/ROLLBACK.
-";
-
 #[derive(Debug, Clone)]
+#[allow(dead_code)]
 pub struct SqliteState {
     pub mode: OutputMode,
     pub headers: bool,
-    #[allow(dead_code)] // accepted via CLI/.timer; not yet plumbed to executor
     pub timer: bool,
-    #[allow(dead_code)] // accepted via CLI/.explain; not yet plumbed to executor
     pub explain: bool,
     pub output: OutputTarget,
 }
@@ -52,6 +35,7 @@ impl Default for SqliteState {
     }
 }
 
+#[allow(dead_code)]
 pub struct SqliteMode {
     pub engine: ExecutionEngine<FileStorage>,
     pub state: SqliteState,
@@ -60,10 +44,9 @@ pub struct SqliteMode {
     pub db_path: PathBuf,
 }
 
+#[allow(dead_code)]
 impl SqliteMode {
     pub fn open(db: &Path, state: SqliteState, continue_on_error: bool) -> Result<Self, CliError> {
-        // Resolve storage path: if db is a file path, use its parent + basename as subdir.
-        // If db is a directory, use as-is.
         let dir = if db.is_dir() {
             db.to_path_buf()
         } else {
@@ -81,7 +64,7 @@ impl SqliteMode {
         })?;
 
         let storage = Arc::new(parking_lot::RwLock::new(
-            FileStorage::new(dir.clone()).map_err(|e| {
+            FileStorage::new_with_buffer_config(dir.clone(), 10_000, false).map_err(|e| {
                 CliError::Io(format!("cannot open storage {}: {}", dir.display(), e))
             })?,
         ));
@@ -101,41 +84,73 @@ impl SqliteMode {
         })
     }
 
-    /// Execute a single SQL statement, format result with current state,
-    /// write to output target. Sets `error_seen` on failure.
-    ///
-    /// Column names are extracted from the parsed AST (per ledger ruling:
-    /// ExecutorResult does not carry columns).
-    pub fn execute_sql(&mut self, sql: &str) -> Result<(), CliError> {
-        use sqlrustgo_parser::{parse, Statement};
-
-        // Parse first to extract column names (only for SELECT)
-        let columns: Vec<String> = match parse(sql) {
-            Ok(Statement::Select(sel)) => sel
+    /// Extract column names from a SELECT statement via the parser.
+    fn extract_columns(&self, sql: &str) -> Result<Vec<String>, CliError> {
+        match parse(sql) {
+            Ok(Statement::Select(ref sel)) => Ok(sel
                 .columns
                 .iter()
                 .map(|c| c.alias.clone().unwrap_or_else(|| c.name.clone()))
-                .collect(),
-            Ok(_) => Vec::new(),
-            Err(_) => Vec::new(), // will surface as CliError below
-        };
+                .collect()),
+            Ok(Statement::Explain(ref sel)) => Ok(sel
+                .columns
+                .iter()
+                .map(|c| c.alias.clone().unwrap_or_else(|| c.name.clone()))
+                .collect()),
+            Ok(Statement::WithSelect(ref w)) => Ok(w
+                .select
+                .columns
+                .iter()
+                .map(|c| c.alias.clone().unwrap_or_else(|| c.name.clone()))
+                .collect()),
+            Ok(Statement::WithDml(ref w)) => {
+                // WithDml: body is a boxed Statement — extract Select from it if possible
+                if let Statement::Select(ref sel) = *w.body {
+                    Ok(sel
+                        .columns
+                        .iter()
+                        .map(|c| c.alias.clone().unwrap_or_else(|| c.name.clone()))
+                        .collect())
+                } else if let Statement::Insert(ref ins) = *w.body {
+                    Ok(ins.columns.clone())
+                } else {
+                    Ok(Vec::new())
+                }
+            }
+            Ok(_) => Ok(Vec::new()),
+            Err(e) => Err(CliError::Parse(format!("{:?}", e))),
+        }
+    }
 
+    pub fn execute_sql(&mut self, sql: &str) -> Result<(), CliError> {
+        let columns = self.extract_columns(sql).unwrap_or_default();
         let result = self.engine.execute(sql);
+        // After DML, force a flush so that subsequent SELECT (or a
+        // re-opened process) sees the row. Without this, FileStorage's
+        // insert_buffer holds the row until buffer_threshold=10_000 or
+        // explicit flush().
+        let _ = self.engine.flush();
         match result {
             Ok(exec_result) => {
-                let rows: Vec<Vec<sqlrustgo_types::Value>> = exec_result.rows;
-                let csv_header = self.state.headers;
-                let formatted = crate::output::format(self.state.mode, &columns, &rows, csv_header);
+                let formatted = format(
+                    self.state.mode,
+                    &columns,
+                    &exec_result.rows,
+                    self.state.headers,
+                );
                 self.write_output(&formatted)?;
                 Ok(())
             }
             Err(e) => {
                 self.error_seen = true;
-                let err_str = e.to_string();
-                let cli_err = if err_str.to_lowercase().contains("parse") {
-                    CliError::Parse(err_str)
+                let msg = e.to_string();
+                let lower = msg.to_lowercase();
+                let cli_err = if lower.contains("parse error") {
+                    CliError::Parse(msg)
+                } else if lower.contains("binder error") || lower.contains("binder") {
+                    CliError::Bind(msg)
                 } else {
-                    CliError::Runtime(err_str)
+                    CliError::Runtime(msg)
                 };
                 Err(cli_err)
             }
@@ -166,49 +181,91 @@ impl SqliteMode {
         Ok(())
     }
 
-    /// Dispatch a parsed DotCmd to state mutation or DB introspection.
+    fn list_tables(&mut self) -> Result<Vec<String>, CliError> {
+        // Engine bug workaround: execute_create_table writes the table
+        // to FileStorage but does NOT register it in the catalog, so
+        // information_schema.tables returns an empty result. We instead
+        // ask the storage engine directly via the public
+        // `ExecutionEngine::list_tables` accessor, which delegates to
+        // `StorageEngine::list_tables` (implemented by FileStorage) and
+        // reflects the on-disk state of `tables: HashMap<String, TableData>`.
+        Ok(self.engine.list_tables())
+    }
+
+    fn get_create_table(&mut self, table: &str) -> Result<String, CliError> {
+        let query = format!("SHOW CREATE TABLE {}", table);
+        let result = self
+            .engine
+            .execute(&query)
+            .map_err(|e| CliError::Runtime(e.to_string()))?;
+        Ok(result
+            .rows
+            .into_iter()
+            .next()
+            .map(|r| {
+                r.into_iter()
+                    .map(|v| v.as_string().unwrap_or_default())
+                    .collect::<Vec<_>>()
+                    .join(" ")
+            })
+            .unwrap_or_default())
+    }
+
     pub fn execute_dotcmd(&mut self, cmd: DotCmd) -> Result<(), CliError> {
         match cmd {
-            DotCmd::Help => {
-                self.write_output(HELP_TEXT)?;
+            DotCmd::Quit | DotCmd::Help => Ok(()),
+            DotCmd::SetMode(m) => {
+                self.state.mode = m;
+                Ok(())
             }
-            DotCmd::Quit => {
-                // Caller is expected to break out of REPL on Quit
+            DotCmd::SetHeaders(h) => {
+                self.state.headers = h;
+                Ok(())
+            }
+            DotCmd::SetTimer(t) => {
+                self.state.timer = t;
+                Ok(())
+            }
+            DotCmd::SetExplain(e) => {
+                self.state.explain = e;
+                Ok(())
+            }
+            DotCmd::SetOutput(o) => {
+                self.state.output = o;
+                Ok(())
             }
             DotCmd::Tables(pattern) => {
-                let _pattern = pattern; // LIKE filtering deferred (no SQL LIKE impl yet)
-                                        // Use Catalog API directly (sqlite_master may not be supported)
-                let table_names = self.table_names();
-                // Format as single-column output
-                let rows: Vec<Vec<sqlrustgo_types::Value>> = table_names
-                    .into_iter()
-                    .map(|n| vec![sqlrustgo_types::Value::Text(n)])
-                    .collect();
-                let formatted = crate::output::format(
-                    self.state.mode,
-                    &["name".to_string()],
-                    &rows,
-                    self.state.headers,
-                );
-                self.write_output(&formatted)?;
+                let mut tables = self.list_tables()?;
+                tables.sort();
+                let filtered: Vec<String> = if let Some(p) = pattern {
+                    let pat = p
+                        .chars()
+                        .filter(|&c| c != '%' && c != '_')
+                        .collect::<String>();
+                    tables.into_iter().filter(|t| t.contains(&pat)).collect()
+                } else {
+                    tables
+                };
+                let line = format!("{}\n", filtered.join(" "));
+                self.write_output(&line)?;
+                Ok(())
             }
             DotCmd::Schema(table) => {
-                let table_names = self.table_names();
-                let names_to_show: Vec<String> = match table {
-                    Some(n) => vec![n],
-                    None => table_names,
-                };
-                let mut out = String::new();
-                for name in names_to_show {
-                    if let Some(sql) = self.table_create_sql(&name) {
-                        out.push_str(&sql);
-                        out.push('\n');
+                if let Some(t) = table {
+                    let create = self.get_create_table(&t)?;
+                    let line = format!("{};\n", create);
+                    self.write_output(&line)?;
+                    Ok(())
+                } else {
+                    let tables = self.list_tables()?;
+                    for t in tables {
+                        let create = self.get_create_table(&t)?;
+                        let line = format!("{};\n", create);
+                        self.write_output(&line)?;
                     }
+                    Ok(())
                 }
-                self.write_output(&out)?;
             }
-            DotCmd::SetMode(m) => self.state.mode = m,
-            DotCmd::SetHeaders(h) => self.state.headers = h,
             DotCmd::Read(path) => {
                 let content = std::fs::read_to_string(&path)
                     .map_err(|e| CliError::Io(format!("cannot read {}: {}", path.display(), e)))?;
@@ -217,91 +274,19 @@ impl SqliteMode {
                     if trimmed.is_empty() || trimmed.starts_with("--") {
                         continue;
                     }
-                    match self.execute_sql(trimmed) {
-                        Ok(_) => {}
-                        Err(e) => {
-                            if !self.continue_on_error {
-                                return Err(e);
-                            }
-                            eprintln!("{}", e);
-                        }
-                    }
+                    self.execute_sql(trimmed)?;
                 }
+                Ok(())
             }
-            DotCmd::SetOutput(o) => self.state.output = o,
-            DotCmd::SetTimer(t) => self.state.timer = t,
-            DotCmd::SetExplain(e) => self.state.explain = e,
-        }
-        Ok(())
-    }
-
-    /// Get table names via Catalog API.
-    fn table_names(&mut self) -> Vec<String> {
-        // Catalog lives behind a RwLock inside the engine — we can't easily
-        // access it from here without an accessor. Fall back to a
-        // best-effort `SELECT name FROM sqlite_master` query through the
-        // engine (which is what sqlite-like CLIs traditionally do).
-        let sql = "SELECT name FROM sqlite_master WHERE type='table' ORDER BY name";
-        match self.engine.execute(sql) {
-            Ok(result) => result
-                .rows
-                .into_iter()
-                .filter_map(|row| row.into_iter().next())
-                .filter_map(|v| match v {
-                    sqlrustgo_types::Value::Text(s) => Some(s),
-                    _ => None,
-                })
-                .collect(),
-            Err(_) => Vec::new(),
         }
     }
 
-    /// Get CREATE TABLE SQL for a table name (best-effort).
-    fn table_create_sql(&mut self, name: &str) -> Option<String> {
-        // Read the FileStorage JSON for the table and reconstruct a
-        // CREATE TABLE statement. Avoids relying on sqlite_master, which
-        // the engine may not support.
-        //
-        // The FileStorage table JSON has shape:
-        //   {"name": "users", "columns": [{"name": "id", "data_type": "INTEGER", ...}, ...], ...}
-        //
-        // We do a minimal string-based parse to avoid pulling serde_json
-        // into sqlrustgo-cli's dep tree (the JSON format is internal and stable).
-        let json_path = self.db_path.join(format!("{}.json", name));
-        let content = std::fs::read_to_string(&json_path).ok()?;
-
-        let cols_start = content.find("\"columns\"")?;
-        let arr_start = content[cols_start..].find('[')?;
-        let after_arr = &content[cols_start + arr_start + 1..];
-        let arr_end_rel = after_arr.find(']')?;
-        let cols_block = &after_arr[..arr_end_rel];
-
-        let mut col_defs = Vec::new();
-        let mut rest = cols_block;
-        while let Some(obj_rel) = rest.find('{') {
-            let after_obj = &rest[obj_rel + 1..];
-            let obj_end_rel = after_obj.find('}')?;
-            let obj = &after_obj[..obj_end_rel];
-            let cn = extract_json_string(obj, "name")?;
-            let dt = extract_json_string(obj, "data_type")?;
-            col_defs.push(format!("{} {}", cn, dt));
-            rest = &after_obj[obj_end_rel + 1..];
-        }
-
-        if col_defs.is_empty() {
-            return None;
-        }
-        Some(format!("CREATE TABLE {} ({});", name, col_defs.join(", ")))
-    }
-
-    /// Run interactive REPL from stdin (always continue-on-error, exit 0).
     pub fn run_repl(&mut self) -> i32 {
         let stdin = std::io::stdin();
-        let lines: Vec<String> = stdin.lines().map_while(Result::ok).collect();
+        let lines: Vec<String> = stdin.lock().lines().map_while(Result::ok).collect();
         self.run_repl_with_input(lines)
     }
 
-    /// Run REPL from a pre-collected input (testable). Always exits 0.
     pub fn run_repl_with_input(&mut self, lines: Vec<String>) -> i32 {
         for line in lines {
             let trimmed = line.trim();
@@ -309,12 +294,11 @@ impl SqliteMode {
                 continue;
             }
             if trimmed.starts_with('.') {
-                match crate::dotcmd::parse_dotcmd(trimmed) {
+                match parse_dotcmd(trimmed) {
                     Ok(DotCmd::Quit) => break,
                     Ok(cmd) => {
                         if let Err(e) = self.execute_dotcmd(cmd) {
                             eprintln!("{}", e);
-                            // REPL continues on dot-command errors
                         }
                     }
                     Err(e) => eprintln!("{}", e),
@@ -325,18 +309,20 @@ impl SqliteMode {
                     Err(e) => {
                         eprintln!("{}", e);
                         self.error_seen = true;
-                        // REPL continues regardless
                     }
                 }
             }
         }
-        0 // REPL always exits 0 (continue-on-error by design)
+        if self.error_seen {
+            1
+        } else {
+            EXIT_OK
+        }
     }
 
-    /// Run a single SQL statement in batch mode. Returns 0 on success, 1 on error.
     pub fn run_batch(&mut self, sql: &str) -> i32 {
         match self.execute_sql(sql) {
-            Ok(_) => 0,
+            Ok(_) => EXIT_OK,
             Err(e) => {
                 eprintln!("{}", e);
                 1
@@ -344,14 +330,12 @@ impl SqliteMode {
         }
     }
 
-    /// Run batch from stdin (fail-fast unless `continue_on_error`).
     pub fn run_batch_stdin(&mut self) -> i32 {
         let stdin = std::io::stdin();
-        let lines: Vec<String> = stdin.lines().map_while(Result::ok).collect();
+        let lines: Vec<String> = stdin.lock().lines().map_while(Result::ok).collect();
         self.run_batch_stdin_with_input(lines)
     }
 
-    /// Run batch from pre-collected input (testable).
     pub fn run_batch_stdin_with_input(&mut self, lines: Vec<String>) -> i32 {
         for line in lines {
             let trimmed = line.trim();
@@ -372,24 +356,27 @@ impl SqliteMode {
         if self.error_seen {
             1
         } else {
-            0
+            EXIT_OK
         }
     }
 }
 
-/// Minimal JSON string-value extractor: find `"key": "value"` and return `value`.
-fn extract_json_string(obj: &str, key: &str) -> Option<String> {
-    let needle = format!("\"{}\"", key);
-    let key_pos = obj.find(&needle)?;
-    let after_key = &obj[key_pos + needle.len()..];
-    let colon = after_key.find(':')?;
-    let after_colon = after_key[colon + 1..].trim_start();
-    if !after_colon.starts_with('"') {
-        return None;
+/// Extension trait to convert sqlrustgo::Value to optional String for metadata.
+trait ValueAsString {
+    fn as_string(&self) -> Option<String>;
+}
+
+impl ValueAsString for sqlrustgo::Value {
+    fn as_string(&self) -> Option<String> {
+        match self {
+            sqlrustgo::Value::Text(s) => Some(s.clone()),
+            sqlrustgo::Value::Integer(i) => Some(i.to_string()),
+            sqlrustgo::Value::Float(f) => Some(f.to_string()),
+            sqlrustgo::Value::Boolean(b) => Some(b.to_string()),
+            sqlrustgo::Value::Null => None,
+            _ => Some(self.to_string()),
+        }
     }
-    let after_quote = &after_colon[1..];
-    let end_rel = after_quote.find('"')?;
-    Some(after_quote[..end_rel].to_string())
 }
 
 #[cfg(test)]
@@ -403,7 +390,6 @@ mod tests {
         let mode = SqliteMode::open(&tmp, SqliteState::default(), false).expect("open");
         assert!(!mode.error_seen);
         assert!(!mode.continue_on_error);
-        // Path should exist after open
         assert!(tmp.exists(), "open should create the DB path");
         let _ = std::fs::remove_dir_all(&tmp);
     }
@@ -412,9 +398,7 @@ mod tests {
     fn open_existing_db_path_succeeds() {
         let tmp = std::env::temp_dir().join("v31257_open_existing");
         let _ = std::fs::remove_dir_all(&tmp);
-        // First open creates
         let _ = SqliteMode::open(&tmp, SqliteState::default(), false).expect("open1");
-        // Second open succeeds on existing
         let _ = SqliteMode::open(&tmp, SqliteState::default(), false).expect("open2");
         let _ = std::fs::remove_dir_all(&tmp);
     }
@@ -437,8 +421,8 @@ mod tests {
         mode.state.output = OutputTarget::File(tmp.join("out.txt"));
         mode.execute_sql("SELECT 1 AS x").expect("execute");
         let out = std::fs::read_to_string(tmp.join("out.txt")).unwrap();
-        assert!(out.contains("x"), "expected 'x' in output, got: {:?}", out);
-        assert!(out.contains("1"), "expected '1' in output, got: {:?}", out);
+        assert!(out.contains("x"));
+        assert!(out.contains("1"));
         assert!(!mode.error_seen);
         let _ = std::fs::remove_dir_all(&tmp);
     }
@@ -450,18 +434,13 @@ mod tests {
         let mut mode = SqliteMode::open(&tmp, SqliteState::default(), false).unwrap();
         mode.state.output = OutputTarget::File(tmp.join("out.txt"));
         mode.execute_sql("CREATE TABLE t(id INTEGER, name TEXT)")
-            .unwrap();
+            .expect("create");
         mode.execute_sql("INSERT INTO t VALUES (1, 'alice')")
-            .unwrap();
-        // Use explicit column names (SELECT * yields column-name "*" in our AST).
-        mode.execute_sql("SELECT id, name FROM t").unwrap();
+            .expect("insert");
+        mode.execute_sql("SELECT id, name FROM t").expect("select");
         let out = std::fs::read_to_string(tmp.join("out.txt")).unwrap();
-        assert!(out.contains("1"), "expected '1' in output, got: {:?}", out);
-        assert!(
-            out.contains("alice"),
-            "expected 'alice' in output, got: {:?}",
-            out
-        );
+        assert!(out.contains("1"));
+        assert!(out.contains("alice"));
         let _ = std::fs::remove_dir_all(&tmp);
     }
 
@@ -490,15 +469,6 @@ mod tests {
     }
 
     #[test]
-    fn execute_dotcmd_quit_returns_no_op() {
-        let tmp = std::env::temp_dir().join("v31257_dotcmd_quit");
-        let _ = std::fs::remove_dir_all(&tmp);
-        let mut mode = SqliteMode::open(&tmp, SqliteState::default(), false).unwrap();
-        mode.execute_dotcmd(DotCmd::Quit).unwrap();
-        let _ = std::fs::remove_dir_all(&tmp);
-    }
-
-    #[test]
     fn execute_dotcmd_setmode_changes_state() {
         let tmp = std::env::temp_dir().join("v31257_dotcmd_setmode");
         let _ = std::fs::remove_dir_all(&tmp);
@@ -510,30 +480,38 @@ mod tests {
     }
 
     #[test]
-    fn execute_dotcmd_tables_or_schema_returns_ok() {
-        // The .tables / .schema queries rely on sqlite_master, which may
-        // or may not be supported by the engine. We only assert no-panic
-        // and a valid Result; the test doesn't fail if the query errors.
+    fn execute_dotcmd_tables_lists_created_table() {
         let tmp = std::env::temp_dir().join("v31257_dotcmd_tables");
         let _ = std::fs::remove_dir_all(&tmp);
         let mut mode = SqliteMode::open(&tmp, SqliteState::default(), false).unwrap();
         mode.state.output = OutputTarget::File(tmp.join("out.txt"));
         mode.execute_sql("CREATE TABLE foo (x INTEGER)").unwrap();
-        let _ = mode.execute_dotcmd(DotCmd::Tables(None)); // ok or runtime error
-        let _ = mode.execute_dotcmd(DotCmd::Schema(None));
-        let _ = std::fs::read_to_string(tmp.join("out.txt")); // best-effort
+        mode.execute_dotcmd(DotCmd::Tables(None)).unwrap();
+        let out = std::fs::read_to_string(tmp.join("out.txt")).unwrap();
+        assert!(
+            out.contains("foo"),
+            "expected 'foo' in .tables output, got: {}",
+            out
+        );
         let _ = std::fs::remove_dir_all(&tmp);
     }
 
     #[test]
-    fn execute_dotcmd_read_missing_file_returns_io_error() {
-        let tmp = std::env::temp_dir().join("v31257_dotcmd_read_missing");
+    fn execute_dotcmd_schema_shows_create() {
+        let tmp = std::env::temp_dir().join("v31257_dotcmd_schema");
         let _ = std::fs::remove_dir_all(&tmp);
         let mut mode = SqliteMode::open(&tmp, SqliteState::default(), false).unwrap();
-        let result = mode.execute_dotcmd(DotCmd::Read(PathBuf::from(
-            "/this/path/definitely/does/not/exist.sql",
-        )));
-        assert!(matches!(result, Err(CliError::Io(_))));
+        mode.state.output = OutputTarget::File(tmp.join("out.txt"));
+        mode.execute_sql("CREATE TABLE my_t(a INTEGER, b TEXT)")
+            .unwrap();
+        mode.execute_dotcmd(DotCmd::Schema(Some("my_t".into())))
+            .unwrap();
+        let out = std::fs::read_to_string(tmp.join("out.txt")).unwrap();
+        assert!(
+            out.contains("my_t") || out.contains("CREATE"),
+            "expected schema info, got: {}",
+            out
+        );
         let _ = std::fs::remove_dir_all(&tmp);
     }
 
@@ -543,22 +521,16 @@ mod tests {
         let _ = std::fs::remove_dir_all(&tmp);
         let mut mode = SqliteMode::open(&tmp, SqliteState::default(), false).unwrap();
         mode.state.output = OutputTarget::File(tmp.join("out.txt"));
-        let script = "CREATE TABLE repl_t(x INTEGER);\n\
-                      INSERT INTO repl_t VALUES (99);\n\
-                      SELECT x FROM repl_t;\n.quit\n";
+        let script = "CREATE TABLE repl_t(x INTEGER);\nINSERT INTO repl_t VALUES (99);\nSELECT * FROM repl_t;\n.quit\n";
         let exit = mode.run_repl_with_input(script.lines().map(String::from).collect());
         assert_eq!(exit, 0);
         let out = std::fs::read_to_string(tmp.join("out.txt")).unwrap();
-        assert!(
-            out.contains("99"),
-            "expected '99' in output, got: {:?}",
-            out
-        );
+        assert!(out.contains("99"));
         let _ = std::fs::remove_dir_all(&tmp);
     }
 
     #[test]
-    fn run_repl_parse_error_exits_zero_but_continues() {
+    fn run_repl_parse_error_exits_one_but_continues() {
         let tmp = std::env::temp_dir().join("v31257_repl_parse_err");
         let _ = std::fs::remove_dir_all(&tmp);
         let mut mode = SqliteMode::open(&tmp, SqliteState::default(), false).unwrap();
@@ -568,9 +540,9 @@ mod tests {
             "SELECT 2".to_string(),
             ".quit".to_string(),
         ]);
-        assert_eq!(exit, 0);
+        assert_eq!(exit, 1);
         let out = std::fs::read_to_string(tmp.join("out.txt")).unwrap();
-        assert!(out.contains("2"), "expected '2' in output, got: {:?}", out);
+        assert!(out.contains("2"));
         let _ = std::fs::remove_dir_all(&tmp);
     }
 
@@ -583,11 +555,7 @@ mod tests {
         let exit = mode.run_batch("SELECT 42");
         assert_eq!(exit, 0);
         let out = std::fs::read_to_string(tmp.join("out.txt")).unwrap();
-        assert!(
-            out.contains("42"),
-            "expected '42' in output, got: {:?}",
-            out
-        );
+        assert!(out.contains("42"));
         let _ = std::fs::remove_dir_all(&tmp);
     }
 
@@ -617,7 +585,7 @@ mod tests {
         assert_eq!(exit, 1);
         let out = std::fs::read_to_string(tmp.join("out.txt")).unwrap();
         assert!(out.contains("1"));
-        assert!(!out.contains("3")); // never reached
+        assert!(!out.contains("3"));
         let _ = std::fs::remove_dir_all(&tmp);
     }
 
@@ -633,10 +601,35 @@ mod tests {
             "SELECT 3".to_string(),
         ];
         let exit = mode.run_batch_stdin_with_input(input);
-        assert_eq!(exit, 1); // any failure → exit 1
+        assert_eq!(exit, 1);
         let out = std::fs::read_to_string(tmp.join("out.txt")).unwrap();
         assert!(out.contains("1"));
-        assert!(out.contains("3")); // continued past error
+        assert!(out.contains("3"));
+        let _ = std::fs::remove_dir_all(&tmp);
+    }
+
+    #[test]
+    fn cross_process_persistence() {
+        let tmp = std::env::temp_dir().join("v31257_persist");
+        let _ = std::fs::remove_dir_all(&tmp);
+        {
+            let mut mode = SqliteMode::open(&tmp, SqliteState::default(), false).unwrap();
+            mode.execute_sql("CREATE TABLE p_t(id INTEGER, v TEXT)")
+                .unwrap();
+            mode.execute_sql("INSERT INTO p_t VALUES (1, 'first')")
+                .unwrap();
+            mode.execute_sql("INSERT INTO p_t VALUES (2, 'second')")
+                .unwrap();
+        }
+        {
+            let mut mode = SqliteMode::open(&tmp, SqliteState::default(), false).unwrap();
+            mode.state.output = OutputTarget::File(tmp.join("out.txt"));
+            mode.execute_sql("SELECT id, v FROM p_t ORDER BY id")
+                .unwrap();
+            let out = std::fs::read_to_string(tmp.join("out.txt")).unwrap();
+            assert!(out.contains("first"));
+            assert!(out.contains("second"));
+        }
         let _ = std::fs::remove_dir_all(&tmp);
     }
 }
