@@ -115,3 +115,47 @@ cases:
     expected_exit_code: 1
     oracle_mode: golden
     golden_file: week04/week04_continue.golden
+
+  # ─── Week 5: executor (CREATE/INSERT/SELECT/WHERE) ───
+  - case_id: week05_exec_create_table
+    week: week05
+    sql_file: week05/week05_exec_create_table.sql
+    expected_exit_code: 0
+    oracle_mode: golden
+    golden_file: week05/week05_exec_create_table.golden
+
+  - case_id: week05_exec_filter
+    week: week05
+    sql_file: week05/week05_exec_filter.sql
+    expected_exit_code: 0
+    oracle_mode: golden
+    golden_file: week05/week05_exec_filter.golden
+
+  - case_id: week05_exec_aggregate
+    week: week05
+    sql_file: week05/week05_exec_aggregate.sql
+    expected_exit_code: 0
+    oracle_mode: golden
+    golden_file: week05/week05_exec_aggregate.golden
+
+  # ─── Week 6: JOIN + GROUP BY ───
+  - case_id: week06_join_inner
+    week: week06
+    sql_file: week06/week06_join_inner.sql
+    expected_exit_code: 0
+    oracle_mode: golden
+    golden_file: week06/week06_join_inner.golden
+
+  - case_id: week06_aggregate_group
+    week: week06
+    sql_file: week06/week06_aggregate_group.sql
+    expected_exit_code: 0
+    oracle_mode: golden
+    golden_file: week06/week06_aggregate_group.golden
+
+  - case_id: week06_join_three_tables
+    week: week06
+    sql_file: week06/week06_join_three_tables.sql
+    expected_exit_code: 0
+    oracle_mode: golden
+    golden_file: week06/week06_join_three_tables.golden
