@@ -82,14 +82,14 @@ export SQLRUSTGO_BIN="$BIN"
 
 # 2. Iterate fixtures
 log ""
-log "[2/3] running smoke fixtures (week01-week04)"
+log "[2/3] running smoke fixtures (week01-week06)"
 
 PASS=0
 FAIL=0
 SKIP=0
 FAILED_FIXTURES=""
 
-for week in 01 02 03 04; do
+for week in 01 02 03 04 05 06; do
     week_dir="$FIXTURE_ROOT/week$week"
     if [ ! -d "$week_dir" ]; then
         log "  [WARN] missing week dir: $week_dir"
