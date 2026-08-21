@@ -1,0 +1,19 @@
+===================================================================
+V312-59-C promotion_to_RC gate — Evidence
+Timestamp: 2026-08-21T16:21:17Z
+===================================================================
+
+[1] RC1_GMP_MD_INGESTION — EVIDENCE_FILE: PASS (test not required)
+[2] RC2_RETRIEVAL_QUALITY — EVIDENCE_FILE: PASS (test not required)
+[3] RC3_BACKUP_RESTORE — EVIDENCE_FILE: PASS (test not required)
+[4] RC4_SECURITY_RBAC — EVIDENCE_FILE: PASS (test not required)
+[5] RC5_CURATED_SQLLOGICTEST — EVIDENCE_FILE: PASS (test not required)
+[6] RC6_TPCH_SF1_CROSS_ENGINE — NO-OP (NO-OP-COVERED-BY-V312-58)
+[7] RC7_WIRE_LOAD_DATA — EVIDENCE_FILE: PASS (test not required)
+[8] RC8_CRASH_UPGRADE — EVIDENCE_FILE: PASS (test not required)
+[9] RC9_V312_57_WEEK01_04 — NO-OP (NO-OP-COVERED-BY-PR-4359-4370-4373)
+[1] RC10_V312_57_WEEK05_06 — EVIDENCE_FILE + INTEGRATION_TEST: PASS
+[1] RC11_CLAIM_CLEANUP — EVIDENCE_FILE: PASS (test not required)
+
+
+SUMMARY: pass=9 fail=0 noop=2 total=11
