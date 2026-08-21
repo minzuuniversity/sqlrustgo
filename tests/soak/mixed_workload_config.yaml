@@ -1,0 +1,72 @@
+# =============================================================================
+# tests/soak/mixed_workload_config.yaml — v3.12.0 GA Mixed-Workload Config (Issue #4387 / GA-2)
+# =============================================================================
+# Default configuration for tests/soak/mixed_workload.py driver.
+# This is a YAML-friendly subset of MixedWorkloadConfig (Python dataclass).
+# Override any field with CLI args: --host / --port / --duration / --ops-per-min
+#
+# Promotion-to-GA gate (STAGE.yaml line ~109, item #2):
+#   - 1h demo run required at GA promotion time
+#   - Full 168h SOAK runs in background (separate evidence file)
+# =============================================================================
+
+host: 127.0.0.1
+port: 3306
+user: root
+password: ""
+database: soak
+
+# GA demo: 1 hour (3600s). Full 168h SOAK runs are configured separately.
+duration_secs: 3600
+
+# Aggregate ops/min target across all 5 workload classes.
+# Per-class allocation is computed by WORKLOAD_FRACTION in mixed_workload.py.
+ops_per_min: 600
+
+# Number of worker threads per workload class (5 classes total = 5 threads in current build).
+threads_per_class: 1
+
+# Console report interval (seconds) — emits progress line to stdout.
+report_interval_secs: 30
+
+# Chaos injection probability (0.0 = no chaos; range 0.0-1.0). GA demo runs without chaos.
+chaos_inject_prob: 0.0
+
+# Output JSON file path (relative to repo root).
+output_path: docs/releases/v3.12.0/evidence/v312-59/soak/mixed_workload_run.json
+
+# =============================================================================
+# Workload class mix (used by mixed_workload.py WORKLOAD_FRACTION constant)
+# =============================================================================
+# Sum must equal 100. Each class has dedicated query templates in WorkloadGenerator.
+workload_classes:
+  W1:
+    name: OLTP transactional
+    fraction: 30
+    description: >
+      INSERT / UPDATE / DELETE on orders + point SELECT by id.
+      Latency profile: 5-25ms typical, high contention on hot rows.
+  W2:
+    name: Read-heavy analytical
+    fraction: 25
+    description: >
+      Point lookups on customers + range scans on orders.
+      Latency profile: 1-11ms typical, low contention.
+  W3:
+    name: Aggregation
+    fraction: 15
+    description: >
+      GROUP BY with COUNT/SUM/AVG on orders.
+      Latency profile: 50-150ms typical, moderate CPU pressure.
+  W4:
+    name: DDL / schema-light
+    fraction: 10
+    description: >
+      CREATE INDEX / DROP INDEX / ALTER TABLE.
+      Latency profile: 200-1000ms, low frequency (10% of ops).
+  W5:
+    name: Long-running reports
+    fraction: 20
+    description: >
+      Multi-table JOINs with GROUP BY + ORDER BY LIMIT.
+      Latency profile: 0.5-2.5s typical, heavy CPU + buffer pool.

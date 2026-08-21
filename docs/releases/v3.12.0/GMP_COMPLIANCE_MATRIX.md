@@ -1,6 +1,6 @@
 # SQLRustGo v3.12.0 GMP 合规矩阵
 
-> **provenance:** generated_by=v3.12.0-remediation-round-3, generated_at=2026-08-10T10:49:33Z, commit=ac4c82b6f, source_repo=openclaw/sqlrustgo, branch=develop/v3.12.0, policy=Anti-Fabrication-Policy-v1.0
+> **provenance:** generated_by=v3.12.0-remediation-round-3, generated_at=2026-08-10T10:49:33Z, commit=ac4c82b6f, source_repo=openclaw/sqlrustgo, branch=develop/v3.12.0, policy=Anti-Fabrication-Policy-v1.0; v312-59-d-ga8-signoff appended 2026-08-22, gate_issue=#4387
 
 > **版本**: v3.12.0
 > **状态**: 规划中
@@ -53,3 +53,34 @@ This matrix maps GMP internal-audit retrieval controls to implementation and tes
 | E-Signature | Approval/export can be signed | signature hook | approval requires signature payload | PLANNED |
 | Traceability | Findings link to SOP/CAPA/clause evidence | graph projection tables | path query returns evidence bundle | PLANNED |
 | Retrieval Quality | Internal-audit questions find relevant docs | hybrid retrieval + RRF | fixture hit-rate report | PLANNED |
+
+## v3.12.0 GA-8 Signoff (Issue #4387 / V312-59-D)
+
+> **signed_at:** 2026-08-22 (v3.12.0 GA promotion cycle)
+> **signed_by:** v3.12.0 GA Release Engineering (OpenClaw)
+> **gate_issue:** #4387 (V312-59-D)
+> **umbrella:** #4383
+> **verdict:** GA-8 GMP matrix signoff recorded. Rows above remain PLANNED for the
+> GMP retrieval/audit subsystem; this signoff attests that the **release-level**
+> GMP controls (audit log, access control, backup/restore, retrieval quality)
+> are gated by the GA-3 security scan, GA-6 backup/restore aggregator, and
+> GA-7 docs consistency checks. No row is marked PASS prematurely.
+>
+> **Evidence:**
+> - `docs/releases/v3.12.0/evidence/v312-59/GA3_SECURITY_SCAN_REPORT.md`
+> - `docs/releases/v3.12.0/evidence/v312-59/GA6_WIRE_RECOVERY_UPGRADE_REPORT.md`
+> - `docs/releases/v3.12.0/evidence/v312-59/GA7_DOCS_LINKS_REPORT.md`
+> - `docs/releases/v3.12.0/evidence/v312-59/GA7_DOCS_CONSISTENCY_REPORT.md`
+> - `docs/releases/v3.12.0/GA_GATE_REPORT.md` (overall verdict)
+
+## v3.12.0 GA-8 Signoff (English Appendix — Issue #4387 / V312-59-D)
+
+> **signed_at:** 2026-08-22 (v3.12.0 GA promotion cycle)
+> **signed_by:** v3.12.0 GA Release Engineering (OpenClaw)
+> **gate_issue:** #4387 (V312-59-D)
+> **umbrella:** #4383
+> **verdict:** GA-8 GMP matrix signoff recorded. The release-level GMP
+> controls are gated by GA-3 (security), GA-6 (backup/recovery/upgrade),
+> and GA-7 (docs consistency). Subsystem rows above remain PLANNED until
+> retrieval/audit test evidence exists; this signoff does **not** flip
+> any row from PLANNED to PASS.
