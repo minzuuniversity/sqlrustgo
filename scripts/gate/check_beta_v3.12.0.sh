@@ -85,7 +85,7 @@ check "B1_FMT" "cargo fmt --check --quiet"
 echo ""
 echo "--- B2: Test ---"
 check "B2_LIB_TESTS" "cargo test --all-features --lib --quiet"
-warn "B2_INTEGRATION_TESTS" "cargo test --all-features --test '*' --quiet"
+check "B2_INTEGRATION_TESTS" "cargo test --all-features --test '*' --quiet"
 
 # ============================================================
 # B3: v3.12.0 release files
@@ -385,8 +385,8 @@ PY"
 # ============================================================
 echo ""
 echo "--- B7: ALPHA Gate Sanity (must still pass) ---"
-warn "B7_ALPHA_ENTRY"      "ALPHA_QUALITY_FAST_TEST=1 bash scripts/gate/check_alpha_entry_v3.12.0.sh >/dev/null 2>&1"
-warn "B7_ALPHA_QUALITY"    "ALPHA_QUALITY_FAST_TEST=1 bash scripts/gate/check_alpha_quality_v3.12.0.sh >/dev/null 2>&1"
+check "B7_ALPHA_ENTRY"      "ALPHA_QUALITY_FAST_TEST=1 bash scripts/gate/check_alpha_entry_v3.12.0.sh >/dev/null 2>&1"
+check "B7_ALPHA_QUALITY"    "ALPHA_QUALITY_FAST_TEST=1 bash scripts/gate/check_alpha_quality_v3.12.0.sh >/dev/null 2>&1"
 
 # ============================================================
 # Summary
