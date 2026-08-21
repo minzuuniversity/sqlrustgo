@@ -389,6 +389,18 @@ warn "B7_ALPHA_ENTRY"      "ALPHA_QUALITY_FAST_TEST=1 bash scripts/gate/check_al
 warn "B7_ALPHA_QUALITY"    "ALPHA_QUALITY_FAST_TEST=1 bash scripts/gate/check_alpha_quality_v3.12.0.sh >/dev/null 2>&1"
 
 # ============================================================
+# B8: Thresholds override gate (V312-59-E, issue #4388)
+#       Hard-enforces every field under STAGE.yaml `thresholds_override`
+#       (13 fields) as both a YAML-validity check AND an executable
+#       sub-gate. FAIL is a BETA blocker. INFRASTRUCTURE_MISSING is a
+#       tracked non-veto issue per the V312-59-E spec.
+# ============================================================
+echo ""
+echo "--- B8: Thresholds Override Gate (V312-59-E) ---"
+check "B8_THRESHOLDS_OVERRIDE"        "bash scripts/gate/check_v312_gate_thresholds.sh"
+check "B8_STAGE_YAML_SYNC"            "bash scripts/gate/check_v312_stage_yaml_sync.sh"
+
+# ============================================================
 # Summary
 # ============================================================
 echo ""
