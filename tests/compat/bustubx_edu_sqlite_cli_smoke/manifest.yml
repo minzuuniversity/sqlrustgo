@@ -105,14 +105,64 @@ fixtures:
     expect_stdout_contains: ["1", "3"]
     notes: "--continue-on-error 让 3rd INSERT (在 parse 错误后) 仍执行"
 
-deferred_weeks:
   - week: "05"
-    reason: "V312-57 plan §6 — RC 收口项, 显式延期"
-    owner: "openclaw"
-    expiry: "2026-12-31"
-    close_boundary: "week05 fixtures + .explain on/off 真实实现"
+    name: "01_explain_select_basic"
+    path: "week05/01_explain_select_basic.sh"
+    expect_exit_code: 0
+    expect_stdout_contains: ["SeqScan", "Projection", "Filter"]
+    notes: "EXPLAIN SELECT * 输出查询计划节点 (SeqScan/Projection/Filter)"
+  - week: "05"
+    name: "02_explain_select_filter"
+    path: "week05/02_explain_select_filter.sh"
+    expect_exit_code: 0
+    expect_stdout_contains: ["Filter"]
+    notes: "EXPLAIN SELECT ... WHERE 包含 Filter 节点"
+  - week: "05"
+    name: "03_explain_select_join"
+    path: "week05/03_explain_select_join.sh"
+    expect_exit_code: 0
+    expect_stdout_contains: ["NestedLoopJoin", "HashJoin", "MergeJoin"]
+    notes: "EXPLAIN SELECT ... JOIN 输出连接节点"
+  - week: "05"
+    name: "04_explain_unsupported"
+    path: "week05/04_explain_unsupported.sh"
+    expect_exit_code: 1
+    expect_stderr_contains: ["Error:"]
+    expect_stderr_excludes: ["panic"]
+    notes: "EXPLAIN INSERT 触发稳定 Error: 前缀, 不 panic"
+
   - week: "06"
-    reason: "V312-57 plan §6 — RC 收口项, 显式延期"
-    owner: "openclaw"
-    expiry: "2026-12-31"
-    close_boundary: "week06 fixtures (join / group by / aggregate + SQLite oracle 对比)"
+    name: "01_join_inner"
+    path: "week06/01_join_inner.sh"
+    expect_exit_code: 0
+    notes: "INNER JOIN 2 表 row multiset 匹配 sqlite3 oracle"
+  - week: "06"
+    name: "02_aggregate_sum"
+    path: "week06/02_aggregate_sum.sh"
+    expect_exit_code: 0
+    notes: "SUM(col) GROUP BY row multiset 匹配 sqlite3 oracle"
+  - week: "06"
+    name: "03_aggregate_count"
+    path: "week06/03_aggregate_count.sh"
+    expect_exit_code: 0
+    notes: "COUNT(*) WHERE scalar 匹配 sqlite3 oracle"
+  - week: "06"
+    name: "04_group_by_order"
+    path: "week06/04_group_by_order.sh"
+    expect_exit_code: 0
+    notes: "GROUP BY + ORDER BY ASC row multiset 匹配 sqlite3 oracle (DESC 路径有 V312-58 已知 bug)"
+  - week: "06"
+    name: "05_multi_join"
+    path: "week06/05_multi_join.sh"
+    expect_exit_code: 0
+    notes: "3-way JOIN + ORDER BY row multiset 匹配 sqlite3 oracle"
+
+closed_weeks:
+  - week: "05"
+    completed_in: "feat/v312-57-smoke-w5w6"
+    notes: "EXPLAIN SELECT/EXPLAIN-JOIN smoke + EXPLAIN-INSERT 错误路径 (develop 不支持 EXPLAIN TABLE / EXPLAIN ANALYZE)"
+  - week: "06"
+    completed_in: "feat/v312-57-smoke-w5w6"
+    notes: "JOIN/aggregate/GROUP-BY smoke + sqlite3 oracle 多集比对 (lib/sqlite_oracle.sh)"
+
+deferred_weeks: []
