@@ -2306,9 +2306,10 @@ impl<S: StorageEngine + 'static> ExecutionEngine<S> {
         let chain_order: Vec<(String, String)> = match best_chain {
             Some(c) if c.len() == join_tables.len() => c,
             _ => {
-                eprintln!(
-                    "DBG chain_order multi-start could not build complete chain: join_tables.len()={}, best_len={}",
-                    join_tables.len(), best_len
+                tracing::debug!(
+                    join_tables_len = join_tables.len(),
+                    best_len = best_len,
+                    "multi-start chain builder could not build complete chain"
                 );
                 return None;
             }
