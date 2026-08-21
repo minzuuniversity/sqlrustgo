@@ -912,6 +912,12 @@ path = "tests/integration/oracle/q16_notin_subquery_regression.rs"
 name = "q8_8way_date_range_regression"
 path = "tests/integration/oracle/q8_8way_date_range_regression.rs"
 [[test]]
+name = "q2_5way_comma_limit_regression"
+path = "tests/integration/oracle/q2_5way_comma_limit_regression.rs"
+[[test]]
+name = "lexer_asc_keyword_regression"
+path = "tests/integration/oracle/lexer_asc_keyword_regression.rs"
+[[test]]
 name = "diag_q22_minimal"
 path = "tests/integration/oracle/diag_q22_minimal.rs"
 [[test]]
