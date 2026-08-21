@@ -103,6 +103,7 @@ promotion_to_RC_requires:
   - "V312-57 BustubX-EDU sqlite3-like CLI week01-week04 fixtures pass through scripts/gate/check_bustubx_edu_cli_v312.sh; CLI must support local database path, stdin/SQL argument batch execution, stable output modes, stable exit codes, .tables, .schema, and cross-process persistence"
   - "V312-57 BustubX-EDU sqlite3-like CLI week05-week06 executor/join/aggregate fixtures pass, or each deferred item has issue, owner, expiry, close boundary, and release-claim downgrade"
   - "No unsupported GMP/RAG production claims remain in docs"
+  - "B8_THRESHOLDS_OVERRIDE: 13/13 boolean + executable gates PASS (issue #4388)"
 
 promotion_to_GA_requires:
   - "All v3.12.0 gates pass with execution evidence"
@@ -113,6 +114,7 @@ promotion_to_GA_requires:
   - "Wire protocol, LOAD DATA, crash recovery, backup/restore, and upgrade/downgrade gates PASS"
   - "Documentation links and consistency PASS"
   - "GMP compliance matrix signed off"
+  - "B8_THRESHOLDS_OVERRIDE: 13/13 PASS at GA cut time (issue #4388)"
   - "GA_GATE_REPORT.md records evidence hashes and no unresolved P0 blockers"
 
 thresholds_override:
