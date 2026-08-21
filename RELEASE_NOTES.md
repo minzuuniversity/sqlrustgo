@@ -1,8 +1,8 @@
 # SQLRustGo 发行说明
 
-> **当前活跃版本**: **v3.9.0** (GA, 2026-07-10)
+> **当前活跃版本**: **v3.12.0** (BETA, 2026-08-19 转入)
 > **维护人**: yinglichina8848
-> **更新日期**: 2026-07-11
+> **更新日期**: 2026-08-20
 
 本文件是 **所有发行版本的索引页**。每个版本的详细 release notes 见
 `docs/releases/<version>/RELEASE_NOTES.md`。
@@ -13,7 +13,8 @@
 
 | 版本 | 状态 | 发布日期 | 一句话总结 | 详细 |
 |------|------|---------|-----------|------|
-| **v3.9.0** | **GA** | 2026-07-10 | Production-readiness：TPC-H 22/22（SF=0.1）+ Q9 6.7x 加速 + Q13 子查询修正 + 168h SOAK PASS | [`docs/releases/v3.9.0/RELEASE_NOTES.md`](docs/releases/v3.9.0/RELEASE_NOTES.md) |
+| **v3.12.0** | **BETA** | 2026-08-19 | GMP 内审检索数据库 + V312-57 sqlite3-like 教学 CLI (14/14 gate PASS, Beta Gate 0 BLOCKERS) | [`docs/releases/v3.12.0/RELEASE_NOTES.md`](docs/releases/v3.12.0/RELEASE_NOTES.md) |
+| v3.11.0 | GA | 2026-08-09 | TPC-H SF=1 22/22 PASS + 343h SOAK + 23 V311 tasks | [`docs/releases/v3.11.0/RELEASE_NOTES.md`](docs/releases/v3.11.0/RELEASE_NOTES.md) |
 | v3.8.0 | GA | 2026-06-08 | Long Convergence Release (WAL + MVCC 强约束) | [`docs/releases/v3.8.0/RELEASE_NOTES.md`](docs/releases/v3.8.0/RELEASE_NOTES.md) |
 | v3.7.0 | GA | 2026-05-30 | 稳定性增强（覆盖率 87.36%）| [`docs/releases/v3.7.0/RELEASE_NOTES.md`](docs/releases/v3.7.0/RELEASE_NOTES.md) |
 | v3.6.0 | GA | 2026-05-30 | CBO + TPC-H 22/22 | [`docs/releases/v3.6.0/RELEASE_NOTES.md`](docs/releases/v3.6.0/RELEASE_NOTES.md) |

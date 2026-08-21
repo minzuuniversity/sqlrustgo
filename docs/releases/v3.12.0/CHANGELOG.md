@@ -58,6 +58,41 @@ in `docs/releases/v3.12.0/evidence/v312-56/V312-56-VERIFICATION.md`
 Beta-transition PR (this commit). Per `STAGE_CONFIG.ALPHA_to_BETA`
 trigger; tag pushed to both 252 and 250 remotes.
 
+## 2026-08-20 V312-57 sqlite3-like 一体化教学 CLI (#4359)
+
+**Issue #4359** — BustubX-EDU 前 4-6 周自动验收入口。实现经 PR #4371
+(引擎层) + PR #4372 (clap fix) + PR #4373 (本工作合并, commit `543e15b3f`)
+落地, 替代 `sqlite3` 使用体验的教学 CLI。
+
+### 交付
+
+- `sqlrustgo` 二进制 (crates/sqlrustgo-cli): 单路径数据库、stdin/`--cmd` 批处理、`--continue-on-error`、稳定错误前缀 `sqlrustgo:error:parse|bind|runtime:`。
+- 输出模式 table/list/csv/json + `.headers`; 元命令 `.help/.quit/.exit/.tables/.schema/.mode/.headers/.read/.output/.timer/.explain`。
+- FileStorage 目录型持久化, 跨进程建表→插入→查询验证。
+- 教学 fixture `tests/compat/bustubx_edu_sqlite_cli/` week01-week04 (14 cases) + gate `scripts/gate/check_bustubx_edu_cli_v312.sh`。
+- Beta Gate wiring: B4_V312_57_EDU_CLI_GATE_DEFINED + B6_V312_57_EDU_CLI_GATE 已并入 `check_beta_v3.12.0.sh`。
+
+### Gate snapshot (2026-08-20)
+
+```
+$ bash scripts/gate/check_bustubx_edu_cli_v312.sh
+V312-57 bustubx_edu_cli gate: PASS=14 FAIL=0
+
+$ bash scripts/gate/check_beta_v3.12.0.sh
+PASS: 40/42   WARN: 2   BLOCKERS: 0
+```
+
+- `cargo test -p sqlrustgo-cli --all-features --lib`: **67/67 PASS** (run_repl_parse_error_exits_one_but_continues 等)。
+- clippy `-D warnings`: 0 错误; `cargo fmt --check`: 0 Diff。
+- stage boundary gate `check_v312_stage_boundary.sh`: 6/6 PASS。
+- 完整验证: [`evidence/bustubx_edu_cli/V312-57-EDU-CLI-VERIFICATION.md`](evidence/bustubx_edu_cli/V312-57-EDU-CLI-VERIFICATION.md)。
+
+### 兼容边界
+
+- 不声明 SQLite 文件格式兼容 (单路径是目录型 FileStorage, 非 .db 文件)。
+- `sqlrustgo <db> "SQL"` SQL 位置参数形式不再支持; 批处理走 stdin 重定向或 `--cmd`。
+- 元命令 `.tables` 输出为字母序单行 (`orders users`), 非 sqlite3 多行格式。
+
 ## v3.12.0-planned
 
 这是面向 GMP 合规内审检索场景的初始规划条目。v3.12.0 的目标不是扩张宣传口径，而是在 v3.11.0 GA 的基础上补齐生产弱项，并为 `~/gmp-platform` 提供可审计、可恢复、可验证的数据库底座。

@@ -862,6 +862,35 @@ pub enum ShowStatement {
     /// (server system variables; in v3.12 controlled subset returns
     /// a fixed catalog — version, sql_mode, autocommit, character_set_*).
     Variables,
+    /// V312-59-A / Issue #4384 (56A-R3 anti-deferral): MySQL
+    /// `SHOW [FULL] TABLES [FROM db] [LIKE 'pat' | WHERE expr]`.
+    /// `full` is true for `SHOW FULL TABLES` (the non-FULL form lists
+    /// bare table names like `ShowStatement::Tables`; the FULL form
+    /// adds a second `Type` column — `BASE TABLE` or `VIEW`).
+    FullTables {
+        full: bool,
+        db: Option<String>,
+        like: Option<String>,
+        where_clause: Option<Expression>,
+    },
+    /// V312-59-A / Issue #4384 (56A-R3 anti-deferral): MySQL
+    /// `SHOW TABLE STATUS [FROM db] [LIKE 'pat' | WHERE expr]`.
+    /// Returns MySQL-compatible 18-column table status rows.
+    TableStatus {
+        db: Option<String>,
+        like: Option<String>,
+        where_clause: Option<Expression>,
+    },
+}
+
+/// V312-59-A / Issue #4384 (56A-R3 anti-deferral): parsed `FROM db`,
+/// `LIKE 'pat'` and `WHERE expr` suffix of `SHOW [FULL] TABLES` /
+/// `SHOW TABLE STATUS`.
+#[derive(Debug, Clone, PartialEq, Default)]
+pub struct ShowFilterSuffix {
+    pub db: Option<String>,
+    pub like: Option<String>,
+    pub where_clause: Option<Expression>,
 }
 
 /// DESCRIBE statement (aliased as DESC)
@@ -9234,7 +9263,39 @@ impl Parser {
                         self.next();
                         Ok(Statement::Show(ShowStatement::Processlist { full: true }))
                     }
-                    _ => Err("Expected PROCESSLIST after SHOW FULL".to_string()),
+                    // V312-59-A / Issue #4384 (56A-R3 anti-deferral):
+                    // SHOW FULL TABLES [FROM db] [LIKE 'pat' | WHERE expr]
+                    Some(Token::Identifier(ref ident)) if ident.to_uppercase() == "TABLES" => {
+                        self.next();
+                        let suffix = self.parse_show_filter_suffix()?;
+                        Ok(Statement::Show(ShowStatement::FullTables {
+                            full: true,
+                            db: suffix.db,
+                            like: suffix.like,
+                            where_clause: suffix.where_clause,
+                        }))
+                    }
+                    _ => Err("Expected PROCESSLIST or TABLES after SHOW FULL".to_string()),
+                }
+            }
+            // V312-59-A / Issue #4384 (56A-R3 anti-deferral):
+            // SHOW TABLE STATUS [FROM db] [LIKE 'pat' | WHERE expr].
+            // `TABLE` is keyword-tokenized as Token::Table; `STATUS`
+            // arrives as an identifier (not registered as a keyword to
+            // avoid shadowing `status` column references).
+            Some(Token::Table) => {
+                self.next();
+                match self.current() {
+                    Some(Token::Identifier(ref ident)) if ident.to_uppercase() == "STATUS" => {
+                        self.next();
+                        let suffix = self.parse_show_filter_suffix()?;
+                        Ok(Statement::Show(ShowStatement::TableStatus {
+                            db: suffix.db,
+                            like: suffix.like,
+                            where_clause: suffix.where_clause,
+                        }))
+                    }
+                    _ => Err("Expected STATUS after SHOW TABLE".to_string()),
                 }
             }
             Some(Token::Identifier(ref ident)) if ident.to_uppercase() == "GRANTS" => {
@@ -9304,6 +9365,42 @@ impl Parser {
             Some(t) => Err(format!("Unexpected token after SHOW: {:?}", t)),
             None => Err("Unexpected end of input after SHOW".to_string()),
         }
+    }
+
+    /// V312-59-A / Issue #4384 (56A-R3 anti-deferral): shared suffix
+    /// parser for `SHOW [FULL] TABLES` / `SHOW TABLE STATUS`:
+    /// optional `FROM db`, then optional `LIKE 'pat'`, then optional
+    /// `WHERE expr` (checked in a fixed order; MySQL accepts each
+    /// independently and at most one of LIKE/WHERE).
+    fn parse_show_filter_suffix(&mut self) -> Result<ShowFilterSuffix, String> {
+        let mut db = None;
+        let mut like = None;
+        let mut where_clause = None;
+        if matches!(self.current(), Some(Token::From)) {
+            self.next();
+            match self.next() {
+                Some(Token::Identifier(name)) => db = Some(name),
+                _ => return Err("Expected database name after FROM".to_string()),
+            }
+        }
+        if matches!(self.current(), Some(Token::Like))
+            || matches!(self.current(), Some(Token::Identifier(ref ident)) if ident.to_uppercase() == "LIKE")
+        {
+            self.next();
+            match self.next() {
+                Some(Token::StringLiteral(p)) => like = Some(p),
+                _ => return Err("Expected pattern string after LIKE".to_string()),
+            }
+        }
+        if matches!(self.current(), Some(Token::Where)) {
+            self.next();
+            where_clause = Some(self.parse_expression()?);
+        }
+        Ok(ShowFilterSuffix {
+            db,
+            like,
+            where_clause,
+        })
     }
 
     fn parse_describe(&mut self) -> Result<Statement, String> {
@@ -11099,6 +11196,103 @@ mod tests {
                 "Expected Statement::Show(Processlist {{ full: true }}), got {:?}",
                 other
             ),
+        }
+    }
+
+    /// V312-59-A / Issue #4384 (56A-R3 anti-deferral): SHOW FULL TABLES
+    #[test]
+    fn test_parse_show_full_tables_v312_59_a() {
+        let result = parse("SHOW FULL TABLES");
+        assert!(result.is_ok(), "Parse failed: {:?}", result);
+        match result.unwrap() {
+            Statement::Show(ShowStatement::FullTables {
+                full,
+                db,
+                like,
+                where_clause,
+            }) => {
+                assert!(full, "Expected SHOW FULL TABLES");
+                assert!(db.is_none());
+                assert!(like.is_none());
+                assert!(where_clause.is_none());
+            }
+            other => panic!("Expected Statement::Show(FullTables), got {:?}", other),
+        }
+    }
+
+    /// V312-59-A / Issue #4384 (56A-R3 anti-deferral): SHOW FULL TABLES FROM db
+    #[test]
+    fn test_parse_show_full_tables_from_db_v312_59_a() {
+        let result = parse("SHOW FULL TABLES FROM test_db");
+        assert!(result.is_ok(), "Parse failed: {:?}", result);
+        match result.unwrap() {
+            Statement::Show(ShowStatement::FullTables { full, db, like, .. }) => {
+                assert!(full);
+                assert_eq!(db.as_deref(), Some("test_db"));
+                assert!(like.is_none());
+            }
+            other => panic!("Expected Statement::Show(FullTables), got {:?}", other),
+        }
+    }
+
+    /// V312-59-A / Issue #4384 (56A-R3 anti-deferral): SHOW FULL TABLES
+    /// WHERE Table_type != 'VIEW' — the WHERE expression must parse.
+    #[test]
+    fn test_parse_show_full_tables_where_v312_59_a() {
+        let result = parse("SHOW FULL TABLES WHERE Table_type != 'VIEW'");
+        assert!(result.is_ok(), "Parse failed: {:?}", result);
+        match result.unwrap() {
+            Statement::Show(ShowStatement::FullTables {
+                full,
+                db,
+                like,
+                where_clause,
+            }) => {
+                assert!(full);
+                assert!(db.is_none());
+                assert!(like.is_none());
+                assert!(where_clause.is_some(), "WHERE clause must be parsed");
+            }
+            other => panic!("Expected Statement::Show(FullTables), got {:?}", other),
+        }
+    }
+
+    /// V312-59-A / Issue #4384 (56A-R3 anti-deferral): SHOW TABLE STATUS
+    #[test]
+    fn test_parse_show_table_status_v312_59_a() {
+        let result = parse("SHOW TABLE STATUS");
+        assert!(result.is_ok(), "Parse failed: {:?}", result);
+        match result.unwrap() {
+            Statement::Show(ShowStatement::TableStatus {
+                db,
+                like,
+                where_clause,
+            }) => {
+                assert!(db.is_none());
+                assert!(like.is_none());
+                assert!(where_clause.is_none());
+            }
+            other => panic!("Expected Statement::Show(TableStatus), got {:?}", other),
+        }
+    }
+
+    /// V312-59-A / Issue #4384 (56A-R3 anti-deferral): SHOW TABLE STATUS
+    /// FROM db LIKE 'pattern' — the full suffix form must parse.
+    #[test]
+    fn test_parse_show_table_status_from_db_like_v312_59_a() {
+        let result = parse("SHOW TABLE STATUS FROM test_db LIKE 't%'");
+        assert!(result.is_ok(), "Parse failed: {:?}", result);
+        match result.unwrap() {
+            Statement::Show(ShowStatement::TableStatus {
+                db,
+                like,
+                where_clause,
+            }) => {
+                assert_eq!(db.as_deref(), Some("test_db"));
+                assert_eq!(like.as_deref(), Some("t%"));
+                assert!(where_clause.is_none());
+            }
+            other => panic!("Expected Statement::Show(TableStatus), got {:?}", other),
         }
     }
 
