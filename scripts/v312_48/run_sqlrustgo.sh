@@ -21,8 +21,10 @@ export TPCH_SF1_ROWS_DIR="$BUNDLE/rows/sqlrustgo"
 export TPCH_SKIP_PANIC=1
 
 write_sha() {
-  local q="$1"   # may be "1" or "q1"; we normalize to "q<N>"
+  local q="$1"   # may be "1", "01", or "q1"; we normalize to zero-padded "q<N>"
   local label="${q#q}"                  # strip leading q if present
+  # Zero-pad to 2 digits so q1 -> q01 (matches sqlite_oracle.sh naming).
+  label=$(printf "%02d" "$((10#$label))")
   local fname="q${label}.tsv"
   local f="$BUNDLE/rows/sqlrustgo/${fname}"
   local h
@@ -47,7 +49,14 @@ run_one() {
   echo ">>> running Q${q}" >&2
   TPCH_ONLY_Q="${q}" cargo test --release --test tpch_sf1_22_vs_3engines_test \
     -- --ignored --nocapture >> "$BUNDLE/sqlrustgo_run.log" 2>&1
-  write_sha "${q}"
+  # The test writes q<N>.tsv (not zero-padded). Rename to q<N:02>.tsv
+  # so file naming matches sqlite_oracle.sh output.
+  local label_zero
+  label_zero=$(printf "%02d" "$((10#${q#q}))")
+  if [[ -f "$BUNDLE/rows/sqlrustgo/q${q}.tsv" && ! -f "$BUNDLE/rows/sqlrustgo/q${label_zero}.tsv" ]]; then
+    mv "$BUNDLE/rows/sqlrustgo/q${q}.tsv" "$BUNDLE/rows/sqlrustgo/q${label_zero}.tsv"
+  fi
+  write_sha "${label_zero}"
 }
 
 if [[ -n "${TPCH_ONLY_Q:-}" ]]; then
@@ -66,7 +75,12 @@ else
   for f in "$BUNDLE/rows/sqlrustgo"/q*.tsv; do
     [[ -e "$f" ]] || continue
     q=$(basename "$f" .tsv)
-    write_sha "$q"
+    # Normalize q<N> (no padding) to q<N:02> (zero-padded) for cross-engine consistency.
+    q_padded=$(printf "q%02d" "$((10#${q#q}))")
+    if [[ "$q" != "$q_padded" ]]; then
+      mv "$BUNDLE/rows/sqlrustgo/${q}.tsv" "$BUNDLE/rows/sqlrustgo/${q_padded}.tsv"
+    fi
+    write_sha "$q_padded"
   done
 fi
 
