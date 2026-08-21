@@ -292,6 +292,10 @@ name = "aggregate_functions_test"
 path = "tests/integration/sql/aggregate_functions_test.rs"
 
 [[test]]
+name = "having_filter_test"
+path = "tests/integration/sql/having_filter_test.rs"
+
+[[test]]
 name = "anomaly_boundary_test"
 path = "tests/integration/sql/boundary_test.rs"
 
