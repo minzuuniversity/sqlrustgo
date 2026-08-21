@@ -1,22 +1,28 @@
 //! SQLRustGo Canonical CLI Library
 //!
-//! Provides the `run()` entry point used by `sqlrustgo` binary.
-//! Thin wrapper around `sqlrustgo-mysql-server` for most subcommands.
+//! Provides:
+//! - `run()` entry point used by the `sqlrustgo` binary (V312-57 sqlite3-like
+//!   local mode + mysql-server compat subcommands)
+//! - sqlite3-like mode (`sqlite_mode`), dot-commands (`dotcmd`), output
+//!   formatters (`output`), and stable error types (`error`)
 
-mod dotcmd;
-mod error;
-mod implicit_alias;
-mod output;
-mod sqlite_mode;
+pub mod dotcmd;
+pub mod error;
+pub mod implicit_alias;
+pub mod output;
+pub mod sqlite_mode;
+
+pub use error::CliError;
+pub use output::{format, OutputMode};
 
 use clap::{Parser, Subcommand};
 use std::path::PathBuf;
 use std::process::Command as Proc;
 
 use crate::error::EXIT_STORAGE_INIT;
-use crate::output::{OutputMode, OutputTarget};
 use crate::sqlite_mode::{SqliteMode, SqliteState};
 
+/// clap-friendly enum that maps to OutputMode.
 #[derive(Debug, Clone, Copy, clap::ValueEnum)]
 enum OutputModeArg {
     Table,
@@ -56,11 +62,8 @@ enum SubCmd {
     Exec {
         sql: String,
     },
-    /// Interactive REPL.
-    Repl {
-        #[arg(long, default_value = "3307")]
-        port: u16,
-    },
+    /// Interactive REPL (local stdin mode; mysql-server repl does not accept --port).
+    Repl {},
     Bench,
     Gmp,
     Diag,
@@ -73,28 +76,21 @@ enum SubCmd {
     },
     /// Connect to a running server and execute a query (NEW).
     Cli {
-        #[arg(short, long, default_value = "3307")]
+        // 显式指定短选项, 避免 clap 自动派生冲突:
+        // port 与 password 首字母都是 p; host 的 h 会与 -h/--help 冲突。
+        #[arg(short = 'p', long, default_value = "3307")]
         port: u16,
-        #[arg(short, long, default_value = "127.0.0.1")]
+        #[arg(long, default_value = "127.0.0.1")]
         host: String,
-        #[arg(short, long)]
+        #[arg(short = 'u', long)]
         user: Option<String>,
-        #[arg(short, long)]
+        #[arg(long = "password", short = 'w')]
         password: Option<String>,
         query: String,
     },
     /// Soak REPL mode: hold a persistent MySQL connection and serve
     /// queries read from stdin, writing tab-separated results to stdout.
-    /// Designed for SOAK testing (PR #3347 alternative to mysql CLI).
-    ///
-    /// Wire protocol:
-    ///   Input (one per line):  SQL statement
-    ///   Output:
-    ///     OK\t<affected_rows>
-    ///     ROWS\t<column_count>
-    ///     COL\t<name>\t<type>
-    ///     DATA\t<row_count>
-    ///     ROW\t<col1>\t<col2>\t...
+    /// Designed for SOAK testing (PR #3347 alternative to mysql CLI)
     Soak {
         #[arg(long, default_value = "127.0.0.1")]
         host: String,
@@ -105,7 +101,7 @@ enum SubCmd {
         #[arg(long = "pass", short = 'w')]
         password: Option<String>,
     },
-    /// sqlite3-like local DB mode (BustubX-EDU teaching CLI, V312-57 #4359).
+    /// sqlite3-like local DB mode (BustubX-EDU teaching CLI).
     Sqlite {
         /// Path to local DB (file or directory).
         db: PathBuf,
@@ -127,19 +123,20 @@ enum SubCmd {
 }
 
 pub fn run() -> i32 {
-    // Implicit-alias fast-path: `sqlrustgo <db-path>` with exactly one
-    // positional arg that looks like a DB path enters sqlite-mode immediately.
+    // Implicit-alias fast-path: `sqlrustgo <db-path>` with exactly one positional
+    // arg, optionally followed by `--continue-on-error`.
     let args: Vec<String> = std::env::args().collect();
-    if args.len() == 2 && implicit_alias::looks_like_db_path(&args[1]) {
+    let alias_continue = args.len() == 3 && args[2] == "--continue-on-error";
+    if (args.len() == 2 || alias_continue) && crate::implicit_alias::looks_like_db_path(&args[1]) {
         return run_sqlite_subcommand(
             PathBuf::from(&args[1]),
-            false, // batch
-            None,  // cmd
+            false,
+            None,
             OutputMode::Table,
             None,
             None,
             None,
-            false, // headers, timer, explain, continue_on_error
+            alias_continue,
         );
     }
 
@@ -165,7 +162,8 @@ pub fn run() -> i32 {
             run_bin("serve", &args)
         }
         Some(SubCmd::Exec { sql }) => run_bin_arg_positional("exec", &sql),
-        Some(SubCmd::Repl { port }) => run_bin("repl", &[("--port", port.to_string())]),
+        // mysql-server repl 是本地 stdin 模式, 不接受 --port; 之前误传导致报错。
+        Some(SubCmd::Repl {}) => run_bin("repl", &[]),
         Some(SubCmd::Bench) => run_bin("bench", &[]),
         Some(SubCmd::Gmp) => run_bin("gmp", &[]),
         Some(SubCmd::Diag) => run_bin("diag", &[]),
@@ -234,31 +232,27 @@ fn run_sqlite_subcommand(
     explain: Option<bool>,
     continue_on_error: bool,
 ) -> i32 {
-    let _ = timer; // accepted but not yet plumbed to executor
-    let _ = explain; // accepted but not yet plumbed to executor
-
     let state = SqliteState {
         mode,
         headers: headers.unwrap_or(!batch),
         timer: timer.unwrap_or(false),
         explain: explain.unwrap_or(false),
-        output: OutputTarget::Stdout,
+        output: crate::output::OutputTarget::Stdout,
     };
-    let mut mode_runner = match SqliteMode::open(&db, state, continue_on_error) {
+    let mut runner = match SqliteMode::open(&db, state, continue_on_error) {
         Ok(m) => m,
         Err(e) => {
             eprintln!("{}", e);
             return EXIT_STORAGE_INIT;
         }
     };
-
     if let Some(sql) = cmd {
-        return mode_runner.run_batch(&sql);
+        return runner.run_batch(&sql);
     }
     if batch {
-        return mode_runner.run_batch_stdin();
+        return runner.run_batch_stdin();
     }
-    mode_runner.run_repl()
+    runner.run_repl()
 }
 
 fn run_bin(subcmd: &str, args: &[(&str, String)]) -> i32 {

@@ -2,33 +2,52 @@
 
 > **provenance:** generated_by=v3.12.0-remediation-round-3, generated_at=2026-08-10T10:49:33Z, commit=1903545df6d036f7f6d5035a0503b5fa932aac51, source_repo=openclaw/sqlrustgo, branch=develop/v3.12.0, policy=Anti-Fabrication-Policy-v1.0
 
-> **状态**: DRAFT
-> **日期**: 2026-08-09
-> **说明**: 本文是 v3.12.0 开发入口说明，不是发布完成说明。
-**commit**: 1903545df6d036f7f6d5035a0503b5fa932aac51
+> **状态**: **BETA** (2026-08-19 转入, 2026-08-20 V312-57 CLI 合并)
+> **日期**: 2026-08-20 (latest); 2026-08-09 (initial)
+> **说明**: 本文是 v3.12.0 开发与阶段发布说明；当前阶段 BETA。
+> **commit**: 1903545df6d036f7f6d5035a0503b5fa932aac51
+> **current_HEAD**: 543e15b3f (post PR #4373, V312-57 CLI 合并)
 
 ## 版本定位
 
-v3.12.0 是面向 GMP 内审检索系统的开发版本。目标是在 SQLRustGo 中形成受控的 GMP 数据内核，支持关系存储、内部向量检索、SQL-backed 图谱投影、RAG evidence bundle、审计链和恢复验证。
+v3.12.0 是面向 GMP 内审检索系统的开发版本。目标是在 SQLRustGo 中形成受控的 GMP 数据内核，支持关系存储、内部向量检索、SQL-backed 图谱投影、RAG evidence bundle、审计链和恢复验证。同时承担 v3.11.0 GA 弱项补强职责。
 
 ## 当前状态
 
 - 分支：`develop/v3.12.0`
-- 规划提交：`9e157ed61b68a2a7c61ebae18cd0a6c15ceb79b1`
+- 阶段：**BETA** (2026-08-19 从 ALPHA 转入; STAGE.yaml current_stage: BETA)
 - Gitea 总控 Issue：`#3887`
-- 任务范围：`#3888-#3911`
-- 阶段：DRAFT，准备进入 Alpha 开发。
+- 任务范围：V312-01 ~ V312-57 (ISSUES_PLAN.md)
+- Beta Gate：`bash scripts/gate/check_beta_v3.12.0.sh` → PASS 40/42, WARN 2, BLOCKERS 0
+
+## V312-57 sqlite3-like 一体化教学 CLI (2026-08-20)
+
+**Issue #4359** — 支撑 BustubX-EDU 前 4-6 周自动验收, 合并为 PR #4373 (commit `543e15b3f`, 基于 PR #4371/#4372)。
+
+交付内容:
+
+- `sqlrustgo` 二进制 (crates/sqlrustgo-cli): 单路径数据库 `sqlrustgo edu.db`, 无需 MySQL server/端口/账号。
+- 批处理: stdin 脚本、`--cmd` 单条、`--continue-on-error`; 解析/绑定/执行错误输出稳定前缀 `sqlrustgo:error:parse|bind|runtime:` 并返回非零退出码。
+- 输出模式: 默认 table + `.mode list/csv/json` + `.headers on/off`。
+- 元命令: `.help` `.quit` `.exit` `.tables` `.schema [table]` `.mode` `.headers` `.read` `.output` `.timer` `.explain`。
+- 持久化: FileStorage 目录型数据库, 跨进程建表→插入→查询验证通过。
+- 教学 fixture: `tests/compat/bustubx_edu_sqlite_cli/` week01-week04, 14 cases; gate `scripts/gate/check_bustubx_edu_cli_v312.sh` **14/14 PASS**。
+- 单元测试: `cargo test -p sqlrustgo-cli --lib` **67/67 PASS**。
+- 兼容边界: 不声明 SQLite 文件格式兼容; `sqlrustgo <db> "SQL"` 位置参数形式不再支持(经 implicit alias 走 stdin/`--cmd`)。
+
+本阶段新增教学入口说明见 [`README.md`](README.md) 2026-08-19/2026-08-20 条目; 完整验证报告: [`evidence/bustubx_edu_cli/V312-57-EDU-CLI-VERIFICATION.md`](evidence/bustubx_edu_cli/V312-57-EDU-CLI-VERIFICATION.md)。
 
 ## 本阶段允许声明
 
-- v3.12.0 的开发计划、测试计划、Issue 拆分和初始门禁入口已建立。
-- Hermes/OMP 可以按 V312 Issue 开始实现。
+- v3.12.0 处于 **BETA**: 核心功能 + 教学 CLI 已实现, Beta Gate 0 BLOCKERS。
+- 允许按 BETA 口径声明: 受控 GMP 内审检索工作负载 + BustubX-EDU 教学 CLI 脚本化验收。
+- 允许引用本文档记录的 V312-57 交付与 gate 证据。
 
 ## 本阶段禁止声明
 
-- 禁止声明 v3.12.0 已通过 Alpha/Beta/RC/GA。
-- 禁止声明 SQLLogicTest、TPC-H correctness、wire、LOAD DATA、recovery 或 GMP compliance 已通过。
-- 禁止把本文档当作执行证据。
+- 禁止声明 v3.12.0 已通过 RC/GA。
+- 禁止声明通用向量数据库 / 通用图数据库 / 完整 MySQL 5.7 替代。
+- 禁止把本文档当作 RC/GA 执行证据。
 
 ## 后续入口
 

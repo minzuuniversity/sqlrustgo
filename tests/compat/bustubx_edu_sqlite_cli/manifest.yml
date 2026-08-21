@@ -1,47 +1,117 @@
----
-# V312-57 BustubX-EDU sqlite-like CLI fixture manifest
+# V312-57 BustubX EDU sqlite-style CLI test manifest
 #
-# Each fixture is a `.sh` script that runs `sqlrustgo-cli sqlite ...` against a
-# temp DB and writes stdout to /tmp/<name>.out. Golden files in this
-# directory's `golden/` subdir are the expected stdout for comparison.
-#
-# Gate: scripts/gate/check_bustubx_edu_cli_v312.sh
-#
-# Week01: env install, first SQL, scripted execution, exit codes
-# Week02: DDL/DML/DQL, output formats (csv, list)
-# Week03: single-path DB, cross-process persistence, .tables
-# Week04: .schema, stable error codes
-#
-# Per plan §5.3, all queries that don't contain parse errors run via
-# batch stdin (single process) to avoid the cross-process persistence
-# issue in FileStorage that affects table visibility.
+# See: openspec/changes/v312-57-sqlite-style-edu-cli/specs/sqlite-style-edu-cli/spec.md
 
 version: 1
-bustubx_edu_weeks:
-  week01:
-    - "01_help.sh"
-    - "02_select_one.sh"
-    - "03_stdin_script.sh"
-    - "04_exit_codes.sh"
-  week02:
-    - "01_create_insert_select.sh"
-    - "02_csv_output.sh"
-    - "03_list_output.sh"
-  week03:
-    - "01_single_path_db.sh"
-    - "02_cross_process_persistence.sh"
-    - "03_tables_meta.sh"
-  week04:
-    - "01_schema_meta.sh"
-    - "02_stable_error_codes.sh"
-    - "03_column_not_found.sh"
-
 policy:
-  exit_code:
-    success: 0
-    query_error_batch: 1
-    arg_parse_error: 2
-    storage_init_failure: 3
-  output:
-    stdout: query results + dot-command output
-    stderr: error messages (one-line, "Error: <CODE>: <message>")
+  stable_stderr_prefix: "sqlrustgo:error:"
+  cli_binary: "sqlrustgo"
+
+cases:
+  # ─── Week 1: environment, first SQL, exit codes, stdin ───
+  - case_id: week01_help_exit_zero
+    week: week01
+    sql_file: week01/week01_help.sql
+    expected_exit_code: 0
+    oracle_mode: golden
+    golden_file: week01/week01_help.golden
+
+  - case_id: week01_exit_code_on_error
+    week: week01
+    sql_file: week01/week01_bad_sql.sql
+    expected_exit_code: 1
+    oracle_mode: stderr_prefix
+    expected_stderr_prefix: "sqlrustgo:error:parse:"
+
+  - case_id: week01_stdin_batch
+    week: week01
+    sql_file: week01/week01_stdin.sql
+    stdin_file: week01/week01_stdin.in
+    expected_exit_code: 0
+    oracle_mode: golden
+    golden_file: week01/week01_stdin.golden
+
+  - case_id: week01_continue_on_error
+    week: week01
+    sql_file: week01/week01_stdin.sql
+    stdin_file: week01/week01_continue_on_error.in
+    use_arg_continue_on_error: true
+    expected_exit_code: 1
+    oracle_mode: golden
+    golden_file: week01/week01_continue.golden
+
+  # ─── Week 2: CREATE / INSERT / SELECT, output modes ───
+  - case_id: week02_create_insert_select
+    week: week02
+    sql_file: week02/week02_crud.sql
+    expected_exit_code: 0
+    oracle_mode: golden
+    golden_file: week02/week02_crud.golden
+
+  - case_id: week02_csv_output
+    week: week02
+    sql_file: week02/week02_csv.sql
+    expected_exit_code: 0
+    oracle_mode: golden
+    golden_file: week02/week02_csv.golden
+
+  - case_id: week02_list_output
+    week: week02
+    sql_file: week02/week02_list.sql
+    expected_exit_code: 0
+    oracle_mode: golden
+    golden_file: week02/week02_list.golden
+
+  - case_id: week02_json_output
+    week: week02
+    sql_file: week02/week02_json.sql
+    expected_exit_code: 0
+    oracle_mode: json_schema
+    golden_file: week02/week02_json.golden
+
+  # ─── Week 3: persistence, .tables meta-command ───
+  - case_id: week03_persistence_setup
+    week: week03
+    sql_file: week03/week03_p1.sql
+    expected_exit_code: 0
+    oracle_mode: golden
+    golden_file: week03/week03_p1.golden
+    setup_for: week03_persistence_verify
+
+  - case_id: week03_persistence_verify
+    week: week03
+    sql_file: week03/week03_p2.sql
+    expected_exit_code: 0
+    oracle_mode: golden
+    golden_file: week03/week03_p2.golden
+    depends_on: week03_persistence_setup
+
+  - case_id: week03_dot_tables
+    week: week03
+    sql_file: week03/week03_dot_tables.sql
+    expected_exit_code: 0
+    oracle_mode: golden
+    golden_file: week03/week03_dot_tables.golden
+
+  # ─── Week 4: parser/binder/catalog errors, schema meta ───
+  - case_id: week04_dot_schema
+    week: week04
+    sql_file: week04/week04_dot_schema.sql
+    expected_exit_code: 0
+    oracle_mode: golden
+    golden_file: week04/week04_dot_schema.golden
+
+  - case_id: week04_bind_error_stable_prefix
+    week: week04
+    sql_file: week04/week04_bind.sql
+    expected_exit_code: 1
+    oracle_mode: stderr_prefix
+    expected_stderr_prefix: "sqlrustgo:error:bind:"
+
+  - case_id: week04_continue_on_error_advanced
+    week: week04
+    sql_file: week04/week04_continue.sql
+    use_arg_continue_on_error: true
+    expected_exit_code: 1
+    oracle_mode: golden
+    golden_file: week04/week04_continue.golden
