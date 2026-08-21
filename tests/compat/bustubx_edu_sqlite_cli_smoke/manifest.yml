@@ -1,0 +1,118 @@
+# V312-57 BustubX-EDU sqlite3-like CLI smoke fixtures
+#
+# Lightweight, golden-file-free complement to
+# tests/compat/bustubx_edu_sqlite_cli/ (develop's golden-based suite).
+# Each fixture is a self-asserting shell script that runs `sqlrustgo
+# sqlite --batch <db> ...` and grep-asserts exit code + stdout
+# substring. No .golden / .sql pair to maintain; runs anywhere the
+# `sqlrustgo` binary is built.
+#
+# Gate runner: scripts/gate/check_bustubx_edu_cli_smoke_v312.sh
+
+version: "v3.12.0"
+source: "V312-57_SQLITE_STYLE_EDU_CLI_PLAN.md + develop HEAD #4373"
+prerequisite: "build sqlrustgo-cli (cargo build -p sqlrustgo-cli --all-features)"
+env:
+  SQLRUSTGO_BIN: "absolute path to the built sqlrustgo binary"
+
+fixtures:
+  - week: "01"
+    name: "01_help"
+    path: "week01/01_help.sh"
+    expect_exit_code: 0
+    expect_stdout_contains: ["sqlite", "--mode", "--headers", "--batch", "--cmd", "--continue-on-error"]
+    notes: "`sqlrustgo sqlite --help` 返回 0 + 含 sqlite + 5 个核心 flag (REPL .help 在 develop 是 no-op, 改用 --help flag)"
+  - week: "01"
+    name: "02_select_one"
+    path: "week01/02_select_one.sh"
+    expect_exit_code: 0
+    expect_stdout_contains: ["^1$"]
+    notes: "sqlrustgo sqlite <db> --cmd 'SELECT 1;' 返回 1"
+  - week: "01"
+    name: "03_stdin_script"
+    path: "week01/03_stdin_script.sh"
+    expect_exit_code: 0
+    expect_stdout_contains: ["Hello"]
+    notes: "cat script.sql | sqlrustgo sqlite --batch <db> 多语句批处理"
+  - week: "01"
+    name: "04_exit_code_success"
+    path: "week01/04_exit_code_success.sh"
+    expect_exit_code: 0
+    notes: "正常查询退出码 = 0"
+  - week: "01"
+    name: "05_exit_code_parse_error"
+    path: "week01/05_exit_code_parse_error.sh"
+    expect_exit_code: 1
+    expect_stderr_contains: ["Error:"]
+    expect_stderr_excludes: ["panic"]
+    notes: "parse 错误退出码 = 1 + Error: 前缀 (兼容 'sqlrustgo:error:')"
+
+  - week: "02"
+    name: "01_create_insert_select"
+    path: "week02/01_create_insert_select.sh"
+    expect_exit_code: 0
+    expect_stdout_contains: ["Alice", "Bob"]
+    notes: "CREATE TABLE + INSERT + SELECT (Alice + Bob 在 stdout)"
+  - week: "02"
+    name: "02_csv_output"
+    path: "week02/02_csv_output.sh"
+    expect_exit_code: 0
+    expect_stdout_contains: ["id,name", "Alice"]
+    notes: "--mode csv 输出含 header 'id,name' + Alice 值"
+  - week: "02"
+    name: "03_list_output"
+    path: "week02/03_list_output.sh"
+    expect_exit_code: 0
+    expect_stdout_contains: ["2|Bob"]
+    notes: "--mode list 输出管道分隔 '2|Bob'"
+
+  - week: "03"
+    name: "01_single_path_db"
+    path: "week03/01_single_path_db.sh"
+    expect_exit_code: 0
+    expect_stdout_contains: ["42", "99", "7"]
+    notes: "rel / abs / nested DB path 三种都能正常打开 (sentinel per variant: 42 / 99 / 7)"
+  - week: "03"
+    name: "02_cross_process_persistence"
+    path: "week03/02_cross_process_persistence.sh"
+    expect_exit_code: 0
+    expect_stdout_contains: ["Alice"]
+    notes: "进程 1 写入 → 进程 2 读取 (fresh pid)"
+  - week: "03"
+    name: "03_tables_meta"
+    path: "week03/03_tables_meta.sh"
+    expect_exit_code: 0
+    expect_stdout_contains: ["users", "orders"]
+    notes: ".tables (REPL) 列出 users + orders"
+
+  - week: "04"
+    name: "01_schema_meta"
+    path: "week04/01_schema_meta.sh"
+    expect_exit_code: 0
+    expect_stdout_contains: ["users"]
+    notes: ".schema users (REPL)"
+  - week: "04"
+    name: "02_stable_error_codes"
+    path: "week04/02_stable_error_codes.sh"
+    expect_exit_code: 1
+    expect_stderr_contains: ["Error:"]
+    expect_stderr_excludes: ["panic"]
+    notes: "runtime 错误 (列不存在) exit 1 + stable Error: 前缀"
+  - week: "04"
+    name: "03_continue_on_error"
+    path: "week04/03_continue_on_error.sh"
+    expect_exit_code: 0
+    expect_stdout_contains: ["1", "3"]
+    notes: "--continue-on-error 让 3rd INSERT (在 parse 错误后) 仍执行"
+
+deferred_weeks:
+  - week: "05"
+    reason: "V312-57 plan §6 — RC 收口项, 显式延期"
+    owner: "openclaw"
+    expiry: "2026-12-31"
+    close_boundary: "week05 fixtures + .explain on/off 真实实现"
+  - week: "06"
+    reason: "V312-57 plan §6 — RC 收口项, 显式延期"
+    owner: "openclaw"
+    expiry: "2026-12-31"
+    close_boundary: "week06 fixtures (join / group by / aggregate + SQLite oracle 对比)"
