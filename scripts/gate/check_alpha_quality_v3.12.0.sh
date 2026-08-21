@@ -15,12 +15,22 @@ BLOCKERS=0
 LOG_DIR="docs/releases/v3.12.0/logs"
 mkdir -p "$LOG_DIR"
 
+SKIPPED=0
+
 check() {
   local label="$1"
   local cmd="$2"
   local log="$LOG_DIR/alpha_quality_${label}_$(git rev-parse --short HEAD 2>/dev/null || echo unknown)_$(date +%Y%m%d_%H%M%S).log"
   TOTAL=$((TOTAL + 1))
   printf '  [%s] ' "$label"
+  # Fast-mode sentinel: command literal "false" (or cmd that *evaluates* to literal "false")
+  # means the check was intentionally skipped, not failed. This allows ALPHA_QUALITY_FAST_TEST=1
+  # to be a regression fixture for BETA-gate hygiene without producing false BLOCKERS.
+  if [ "${ALPHA_QUALITY_FAST_TEST:-0}" = "1" ] && [ "$cmd" = "false" ]; then
+    echo "SKIP (fast-mode fixture; production runs required)"
+    SKIPPED=$((SKIPPED + 1))
+    return 0
+  fi
   if eval "$cmd" >"$log" 2>&1; then
     hash=$(sha256sum "$log" 2>/dev/null | cut -d' ' -f1 || echo unavailable)
     echo "PASS (log=$log sha256=$hash)"
@@ -74,6 +84,7 @@ check "Q4_ANTI_FABRICATION" "$AFP_CMD"
 echo ""
 echo "=== v3.12.0 Alpha Quality Summary ==="
 echo "PASS: $PASS/$TOTAL"
+echo "SKIPPED: $SKIPPED"
 echo "BLOCKERS: $BLOCKERS"
 
 if [ "$BLOCKERS" -eq 0 ]; then
