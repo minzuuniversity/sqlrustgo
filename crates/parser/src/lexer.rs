@@ -455,6 +455,17 @@ impl<'a> Lexer<'a> {
                     "SHOW" => Token::Show,
                     "DESCRIBE" => Token::Describe,
                     "DESC" => Token::Desc,
+                    // V312-58 / Issue #4375: the lexer must map `ASC` to
+                    // its keyword token, not a bare Identifier, otherwise
+                    // `ORDER BY col ASC, ... LIMIT n` silently breaks —
+                    // parse_order_by's `Some(Token::Asc)` arm never
+                    // fires, the ASC token is left unconsumed, and the
+                    // trailing comma/list and LIMIT are skipped. Without
+                    // this entry the lexer previously only recognised
+                    // `DESC`, so any TPC-H query that uses `ASC` (Q1
+                    // ASC, Q2 ASC, ...) lost everything from the first
+                    // ASC onward in the ORDER BY / LIMIT chain.
+                    "ASC" => Token::Asc,
                     "NULLS" => Token::Nulls,
                     "FIRST" => Token::First,
                     "LAST" => Token::Last,
