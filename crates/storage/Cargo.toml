@@ -16,6 +16,7 @@ log.workspace = true
 async-trait.workspace = true
 miniz_oxide.workspace = true
 parking_lot.workspace = true
+crc32c = "0.6"
 
 [dev-dependencies]
 sqlrustgo = { path = "../../" }
