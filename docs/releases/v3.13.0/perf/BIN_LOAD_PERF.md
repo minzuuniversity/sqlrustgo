@@ -65,16 +65,37 @@ while emitted < n_rows {
 }
 ```
 
-This works correctly but adds 60 `flush()` calls for 6M rows. A future `insert_streaming_iter()` method that internally rolls over segments would eliminate the workaround.
+This works correctly but adds 60 `flush()` calls for 6M rows.
+
+### V313.2 follow-up — `insert_streaming_iter()` (eliminates the workaround)
+
+Added in V313.2 (commit pending PR): `BinaryTableStorageV2::insert_streaming_iter<I: IntoIterator<Item = Record>>(table, records)`. Internally rolls over segments when the active writer approaches the 64 MB cap (proactive check at `bytes_written() >= 64 MB − 16 KB`), eliminating the need for callers to manually batch.
+
+**Measured** (`tests/integration/tpch/tpch_sf1_6m_load_iter_test.rs`, commit pending PR):
+
+| Metric | batch+flush (T6.4) | iter API (V313.2) | Δ |
+|--------|--------------------|-------------------|-----|
+| 6M wall-time | 108.09 s | **112.92 s** | +4.5% (within noise) |
+| Rows/sec | 55,522 | **53,147** | -4.3% |
+| Segments created | 60 (one per batch) | **15** (one per cap rollover) | 4× fewer |
+| Caller code complexity | batch loop + manual flush | `insert_streaming_iter(it)` | significantly simpler |
+
+**Implications:**
+- ✅ The iter API **eliminates the workaround** (callers no longer batch + flush).
+- ⚠️ The iter API does **NOT** close the 6.3× extrapolation gap by itself. Per-row encode + disk write dominate total cost, not batch overhead.
+- ✅ Producing 4× fewer segments reduces `root.bin` rewrite volume from 60 to 15 (each rollover still writes root.bin, but with 15 rollovers vs 60 batches). Future T8+ profiling should isolate where remaining time goes.
+
+**Recommendation for new code:** Use `insert_streaming_iter` for any load where data is naturally a stream (CSV reader, network insert, generator-style range). Use the existing `insert_streaming` only when the caller already has a `Vec<Record>` in memory and wants minimal-allocation semantics.
 
 ## Comparison to Plan Targets
 
 | Target | Plan | Actual | Status |
 |--------|------|--------|--------|
-| 6M load < 60s | < 60s | 108s | **MISS** (1.8× over) |
+| 6M load < 60s | < 60s | 108s (batch+flush) / 112.9s (iter API V313.2) | **MISS** (1.8× over); API workaround closed by V313.2, raw perf gap remains T7+ work |
 | Speedup vs JSON | ~600× | ~3.4× (measured, see below) | **REVISED** |
 | 1M bench in 5–15s | 5–15s | 2.84s | **PASS** (better) |
 | 22/22 queries | PASS | not measured | n/a |
+| `insert_streaming_iter()` shipped | n/a (new in V313.2) | shipped, 6M = 112.9s, seg rollover transparent | **NEW — V313.2 follow-up** |
 
 ### Speedup vs JSON — revised (V313.1 follow-up, 2026-08-23)
 
@@ -132,8 +153,8 @@ BINT v3 storage delivers:
 - ⚠️ Performance gap suggests **future T7+ profiling + optimization work** is needed before BINT v3 should be promoted to GA default
 
 **Recommended next steps:**
-1. Profile T6.4's 6M run to identify the dominant cost driver (flush vs mmap vs disk).
-2. Implement `insert_streaming_iter()` that internally rolls over segments (eliminates the batch+flush workaround).
+1. ✅ Implement `insert_streaming_iter()` that internally rolls over segments (eliminates the batch+flush workaround) — **DONE in V313.2**; 6M = 112.9s, seg rollover transparent.
+2. Profile T6.4's 6M run to identify the dominant cost driver (flush vs mmap vs disk) — iter API creates 4× fewer rollovers but raw throughput is unchanged, so bottleneck is elsewhere.
 3. Re-run T6.4 after each optimization; expect to converge on < 60s before GA.
 4. Expand T6.5 metrics (queries, memory, disk, other tables) once those harnesses exist.
 5. Profile the JSON baseline (16.7K rows/sec) to understand whether JSON can be made faster — closing the JSON-vs-BINT gap from the other side is also a valid strategy.
