@@ -153,6 +153,7 @@ mod tests {
                     char_max_length: None,
                     collation: None,
                     default_value: None,
+                    auto_increment: false,
                 },
                 crate::engine::ColumnDefinition {
                     name: "name".to_string(),
@@ -162,6 +163,7 @@ mod tests {
                     char_max_length: None,
                     collation: None,
                     default_value: None,
+                    auto_increment: false,
                 },
             ],
             foreign_keys: vec![],
