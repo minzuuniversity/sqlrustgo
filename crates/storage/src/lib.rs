@@ -8,6 +8,7 @@ pub mod bin_segment;
 pub mod binary_format;
 pub mod binary_storage;
 pub mod binary_storage_v2;
+pub mod bin_migration;
 pub mod bplus_tree;
 pub mod buffer_pool;
 pub mod change_buffer;
