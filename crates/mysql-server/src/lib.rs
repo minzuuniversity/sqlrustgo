@@ -4013,16 +4013,6 @@ fn handle_load_local_infile<S: Read + Write>(
 ) -> MySqlResult<u64> {
     use crate::load_data::{apply_wal_sync_mode_override, bulk_insert, parse_tbl_line};
 
-    // T4.1: Apply WAL sync mode override for the bulk load.
-    // WalStorage (if present) switches from Every to Batch(1) so that
-    // individual `bulk_insert` calls skip the per-row fsync.
-    // Restored after flush so subsequent transactional DML is unaffected.
-    let _original_sync_mode = wal_sync_mode_override.and_then(|mode| {
-        let storage = engine.storage_ref();
-        let mut storage_guard = storage.write();
-        apply_wal_sync_mode_override(&mut *storage_guard, mode)
-    });
-
     // 1. Whitelist check — canonicalize both sides and confirm the
     //    file is inside data_dir. This is the only line of defense
     //    against a malicious client pointing us at e.g. /etc/passwd.
@@ -4087,6 +4077,21 @@ fn handle_load_local_infile<S: Read + Write>(
     // check on `buf.len()` to avoid pathological memory growth, but
     // we never flush with unparsed bytes still in the buffer.
     let mut last_flush_kept_rows: usize = 0;
+
+    // T4.1 CRITICAL-FIX: Apply WAL sync mode override immediately before
+    // the main processing loop, AFTER all validation/early-return paths
+    // are exhausted.  This guarantees the override is scoped to the loop
+    // body only — no explicit Drop/restore needed for any return path
+    // (validation errors return before here; bulk_insert errors are
+    // handled inside the loop with `?` which is still inside the scope).
+    // WalStorage (if present) switches from Every to Batch(1) so that
+    // individual `bulk_insert` calls skip the per-row fsync.
+    let _original_sync_mode = wal_sync_mode_override.and_then(|mode| {
+        let storage = engine.storage_ref();
+        let mut storage_guard = storage.write();
+        apply_wal_sync_mode_override(&mut *storage_guard, mode)
+    });
+
     loop {
         let pkt = Packet::read_from(stream)?;
         *seq = pkt.sequence.wrapping_add(1);
@@ -4201,14 +4206,6 @@ fn handle_load_local_infile<S: Read + Write>(
         engine
             .flush()
             .map_err(|e| MySqlError::Other(format!("flush storage: {}", e)))?;
-    }
-
-    // T4.1: Restore original WAL sync mode so subsequent transactional
-    // DML is not affected by the batch-mode override.
-    if let Some(original) = _original_sync_mode {
-        let storage = engine.storage_ref();
-        let mut storage_guard = storage.write();
-        apply_wal_sync_mode_override(&mut *storage_guard, original);
     }
 
     Ok(total_rows)
