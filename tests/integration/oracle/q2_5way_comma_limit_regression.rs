@@ -39,9 +39,7 @@ const SCHEMAS: &[&str] = &[
     "CREATE TABLE partsupp (ps_partkey INTEGER NOT NULL, ps_suppkey INTEGER NOT NULL, ps_availqty INTEGER NOT NULL, ps_supplycost REAL NOT NULL, ps_comment TEXT, PRIMARY KEY (ps_partkey, ps_suppkey))",
 ];
 
-const TBL_FILES: &[&str] = &[
-    "region", "nation", "supplier", "part", "partsupp",
-];
+const TBL_FILES: &[&str] = &["region", "nation", "supplier", "part", "partsupp"];
 
 fn resolve_data_dir() -> String {
     std::env::var("TPCH_SF1_DIR").unwrap_or_else(|_| DATA_DIR.to_string())
@@ -64,7 +62,8 @@ fn setup() -> ExecutionEngine<MemoryStorage> {
     engine
 }
 
-const Q2_SQL: &str = "SELECT s_acctbal, s_name, n_name, p_partkey, p_mfgr, s_address, s_phone, s_comment \
+const Q2_SQL: &str =
+    "SELECT s_acctbal, s_name, n_name, p_partkey, p_mfgr, s_address, s_phone, s_comment \
                        FROM part, supplier, partsupp, nation, region \
                        WHERE p_partkey = ps_partkey \
                          AND s_suppkey = ps_suppkey \

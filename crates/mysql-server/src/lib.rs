@@ -7356,6 +7356,7 @@ pub mod testing {
                     slow_query_log: None,
                     metrics_port: None,
                     load_infile_dir: None,
+                    wal_sync_mode_override: None,
                 };
 
                 // If a server is already on this port (e.g. prior process in
