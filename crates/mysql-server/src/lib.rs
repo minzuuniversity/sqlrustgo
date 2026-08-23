@@ -4005,10 +4005,23 @@ fn handle_load_local_infile<S: Read + Write>(
     // write-lock + Vec allocation cost on every 100 rows.
     // 0 means "disable periodic flush, only flush when buf drains".
     rows_per_flush: usize,
+    // T4.1 / BINT binary storage: when `Some(mode)`, temporarily
+    // override `WalStorage::sync_mode` for the duration of the load.
+    wal_sync_mode_override: Option<sqlrustgo_storage::WalSyncMode>,
     seq: &mut u8,
     _cap: u32,
 ) -> MySqlResult<u64> {
-    use crate::load_data::{bulk_insert, parse_tbl_line};
+    use crate::load_data::{apply_wal_sync_mode_override, bulk_insert, parse_tbl_line};
+
+    // T4.1: Apply WAL sync mode override for the bulk load.
+    // WalStorage (if present) switches from Every to Batch(1) so that
+    // individual `bulk_insert` calls skip the per-row fsync.
+    // Restored after flush so subsequent transactional DML is unaffected.
+    let _original_sync_mode = wal_sync_mode_override.and_then(|mode| {
+        let storage = engine.storage_ref();
+        let mut storage_guard = storage.write();
+        apply_wal_sync_mode_override(&mut *storage_guard, mode)
+    });
 
     // 1. Whitelist check — canonicalize both sides and confirm the
     //    file is inside data_dir. This is the only line of defense
@@ -4190,6 +4203,14 @@ fn handle_load_local_infile<S: Read + Write>(
             .map_err(|e| MySqlError::Other(format!("flush storage: {}", e)))?;
     }
 
+    // T4.1: Restore original WAL sync mode so subsequent transactional
+    // DML is not affected by the batch-mode override.
+    if let Some(original) = _original_sync_mode {
+        let storage = engine.storage_ref();
+        let mut storage_guard = storage.write();
+        apply_wal_sync_mode_override(&mut *storage_guard, original);
+    }
+
     Ok(total_rows)
 }
 
@@ -4327,6 +4348,11 @@ fn do_command_loop<S: Read + Write + DrainWrites>(
                     // dramatically reduce write-lock acquisitions
                     // on large tables like TPC-H SF=10 lineitem).
                     let rows_per_flush = config.bulk_insert_rows_per_flush;
+                    // T4.1 / BINT binary storage: per-server WAL sync mode
+                    // override for bulk-load throughput. None = use current
+                    // mode (default Every); Some(Batch(n)) = switch to batch
+                    // mode for the duration of this LOAD DATA, then restore.
+                    let wal_sync_mode_override = config.wal_sync_mode_override.clone();
                     // G13-OLTP-1: poisoning recovery on the engine
                     // write lock. A previous LOAD DATA may have
                     // panicked mid-insert (e.g. parse_tbl_line on
@@ -4344,6 +4370,7 @@ fn do_command_loop<S: Read + Write + DrainWrites>(
                         data_dir,
                         bulk_buf,
                         rows_per_flush,
+                        wal_sync_mode_override,
                         &mut seq,
                         cap,
                     ) {
@@ -6887,6 +6914,13 @@ pub mod testing {
         /// keeps running and a `tracing::warn!` is emitted.
         /// Build one with `EphemeralConfig::with_metrics_port(port)`.
         pub metrics_port: Option<u16>,
+        /// T4.1 / BINT binary storage: when `Some(mode)`, LOAD DATA
+        /// LOCAL INFILE temporarily overrides `WalStorage::sync_mode`
+        /// to this value for the duration of the load (then restores
+        /// the original). This lets bulk-load workflows bypass the
+        /// per-transaction `fsync` of `WalSyncMode::Every` without
+        /// permanently changing the server's durability setting.
+        pub wal_sync_mode_override: Option<sqlrustgo_storage::WalSyncMode>,
     }
 
     impl Default for EphemeralConfig {
@@ -6905,6 +6939,7 @@ pub mod testing {
                 port: None,
                 slow_query_log: None,
                 metrics_port: None,
+                wal_sync_mode_override: None,
             }
         }
     }

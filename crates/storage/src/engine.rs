@@ -3,6 +3,7 @@
 
 use serde::{Deserialize, Serialize};
 pub use sqlrustgo_types::{SqlError, SqlResult, Value};
+use std::any::Any;
 use std::collections::{HashMap, HashSet};
 use std::sync::Arc;
 
@@ -1096,6 +1097,12 @@ pub trait StorageEngine: Send + Sync {
     fn get_sequence(&self, _name: &str) -> Option<SequenceInfo> {
         None
     }
+
+    /// T4.1 / BINT binary storage: enable downcasting `dyn StorageEngine` to
+    /// concrete types (e.g. `WalStorage<FileStorage, FileBackedWalManager>`).
+    /// This is used by the LOAD DATA LOCAL INFILE handler to temporarily
+    /// override `WalSyncMode` without changing the `StorageEngine` trait API.
+    fn as_any(&self) -> &dyn Any;
 }
 
 /// In-memory storage implementation for testing and caching
@@ -2024,6 +2031,10 @@ impl StorageEngine for MemoryStorage {
             cur += size;
         }
         Ok(partitions)
+    }
+
+    fn as_any(&self) -> &dyn Any {
+        self
     }
 }
 

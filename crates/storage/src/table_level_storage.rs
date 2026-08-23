@@ -9,6 +9,7 @@
 use crate::engine::{ColumnDefinition, Record, SqlError, SqlResult, TableInfo, Value};
 use crate::table_registry::TableRegistry;
 use crate::wal::WalManager;
+use std::any::Any;
 use std::sync::{Arc, RwLock};
 
 /// Storage wrapper with per-table locking instead of global locking
@@ -158,6 +159,10 @@ impl crate::engine::StorageEngine for TableLevelStorage {
     }
     fn has_view(&self, _name: &str) -> bool {
         false
+    }
+
+    fn as_any(&self) -> &dyn Any {
+        self
     }
 }
 
