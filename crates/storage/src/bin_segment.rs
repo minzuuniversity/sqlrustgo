@@ -55,6 +55,21 @@ pub fn decode_row_header(buf: &[u8; 16]) -> RowHeader {
     }
 }
 
+use crc32c::Crc32cHasher;
+use std::hash::Hasher;
+
+/// Compute CRC32C over row bytes (excluding the trailing 4-byte footer).
+pub fn compute_row_crc(row_bytes: &[u8]) -> u32 {
+    let mut hasher = Crc32cHasher::default();
+    hasher.write(row_bytes);
+    hasher.finish() as u32
+}
+
+/// Verify that the given CRC32C matches the row bytes.
+pub fn verify_row_crc(row_bytes: &[u8], expected: u32) -> bool {
+    compute_row_crc(row_bytes) == expected
+}
+
 /// A 16 KB page-aligned segment file writer.
 pub struct SegmentWriter {
     path: PathBuf,
@@ -155,5 +170,24 @@ mod tests {
         assert_eq!(h.row_size, h2.row_size);
         assert_eq!(h.var_field_offset, h2.var_field_offset);
         assert_eq!(h.row_id, h2.row_id);
+    }
+
+    #[test]
+    fn test_row_crc_deterministic() {
+        let row = b"hello world";
+        let crc1 = compute_row_crc(row);
+        let crc2 = compute_row_crc(row);
+        assert_eq!(crc1, crc2);
+        assert_ne!(crc1, 0);
+    }
+
+    #[test]
+    fn test_row_crc_detects_corruption() {
+        let row = b"hello world";
+        let crc = compute_row_crc(row);
+        let mut tampered = row.to_vec();
+        tampered[0] ^= 0xFF;
+        assert!(!verify_row_crc(&tampered, crc));
+        assert!(verify_row_crc(row, crc));
     }
 }
