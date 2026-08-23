@@ -2842,10 +2842,12 @@ mod tests {
         let cols = vec![
             sqlrustgo_storage::ColumnDefinition {
                 name: "id".to_string(),
+                auto_increment: false,
                 ..Default::default()
             },
             sqlrustgo_storage::ColumnDefinition {
                 name: "val".to_string(),
+                auto_increment: false,
                 ..Default::default()
             },
         ];

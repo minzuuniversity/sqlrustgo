@@ -897,6 +897,7 @@ mod sqlrustgo_integration {
                             char_max_length: None,
                             collation: None,
                             default_value: None,
+                            auto_increment: false,
                         },
                         ColumnDefinition {
                             name: columns::CONTENT.to_string(),
@@ -906,6 +907,7 @@ mod sqlrustgo_integration {
                             char_max_length: None,
                             collation: None,
                             default_value: None,
+                            auto_increment: false,
                         },
                         ColumnDefinition {
                             name: columns::METADATA.to_string(),
@@ -915,6 +917,7 @@ mod sqlrustgo_integration {
                             char_max_length: None,
                             collation: None,
                             default_value: None,
+                            auto_increment: false,
                         },
                         ColumnDefinition {
                             name: columns::SOURCE.to_string(),
@@ -924,6 +927,7 @@ mod sqlrustgo_integration {
                             char_max_length: None,
                             collation: None,
                             default_value: None,
+                            auto_increment: false,
                         },
                         ColumnDefinition {
                             name: columns::VERSION.to_string(),
@@ -933,6 +937,7 @@ mod sqlrustgo_integration {
                             char_max_length: None,
                             collation: None,
                             default_value: None,
+                            auto_increment: false,
                         },
                         ColumnDefinition {
                             name: columns::CREATED_AT.to_string(),
@@ -942,6 +947,7 @@ mod sqlrustgo_integration {
                             char_max_length: None,
                             collation: None,
                             default_value: None,
+                            auto_increment: false,
                         },
                         ColumnDefinition {
                             name: columns::UPDATED_AT.to_string(),
@@ -951,6 +957,7 @@ mod sqlrustgo_integration {
                             char_max_length: None,
                             collation: None,
                             default_value: None,
+                            auto_increment: false,
                         },
                     ],
                     ..Default::default()
@@ -1199,6 +1206,7 @@ pub mod storage_helpers {
                     char_max_length: None,
                     collation: None,
                     default_value: None,
+                    auto_increment: false,
                 },
                 ColumnDefinition {
                     name: columns::CONTENT.to_string(),
@@ -1208,6 +1216,7 @@ pub mod storage_helpers {
                     char_max_length: None,
                     collation: None,
                     default_value: None,
+                    auto_increment: false,
                 },
                 ColumnDefinition {
                     name: columns::METADATA.to_string(),
@@ -1217,6 +1226,7 @@ pub mod storage_helpers {
                     char_max_length: None,
                     collation: None,
                     default_value: None,
+                    auto_increment: false,
                 },
                 ColumnDefinition {
                     name: columns::SOURCE.to_string(),
@@ -1226,6 +1236,7 @@ pub mod storage_helpers {
                     char_max_length: None,
                     collation: None,
                     default_value: None,
+                    auto_increment: false,
                 },
                 ColumnDefinition {
                     name: columns::VERSION.to_string(),
@@ -1235,6 +1246,7 @@ pub mod storage_helpers {
                     char_max_length: None,
                     collation: None,
                     default_value: None,
+                    auto_increment: false,
                 },
                 ColumnDefinition {
                     name: columns::CREATED_AT.to_string(),
@@ -1244,6 +1256,7 @@ pub mod storage_helpers {
                     char_max_length: None,
                     collation: None,
                     default_value: None,
+                    auto_increment: false,
                 },
                 ColumnDefinition {
                     name: columns::UPDATED_AT.to_string(),
@@ -1253,6 +1266,7 @@ pub mod storage_helpers {
                     char_max_length: None,
                     collation: None,
                     default_value: None,
+                    auto_increment: false,
                 },
             ],
             ..Default::default()

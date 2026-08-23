@@ -21,6 +21,7 @@ fn make_table_info() -> TableInfo {
                 char_max_length: None,
                 collation: None,
                 default_value: None,
+                auto_increment: false,
             },
             sqlrustgo_storage::ColumnDefinition {
                 name: "v".to_string(),
@@ -30,6 +31,7 @@ fn make_table_info() -> TableInfo {
                 char_max_length: None,
                 collation: None,
                 default_value: None,
+                auto_increment: false,
             },
         ],
         foreign_keys: vec![],

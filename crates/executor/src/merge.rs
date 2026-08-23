@@ -540,10 +540,12 @@ mod tests {
             columns: vec![
                 sqlrustgo_storage::ColumnDefinition {
                     name: "id".to_string(),
+                    auto_increment: false,
                     ..Default::default()
                 },
                 sqlrustgo_storage::ColumnDefinition {
                     name: "name".to_string(),
+                    auto_increment: false,
                     ..Default::default()
                 },
             ],
@@ -765,10 +767,12 @@ mod tests {
             columns: vec![
                 sqlrustgo_storage::ColumnDefinition {
                     name: "id".to_string(),
+                    auto_increment: false,
                     ..Default::default()
                 },
                 sqlrustgo_storage::ColumnDefinition {
                     name: "name".to_string(),
+                    auto_increment: false,
                     ..Default::default()
                 },
             ],
@@ -794,10 +798,12 @@ mod tests {
                 sqlrustgo_storage::ColumnDefinition {
                     name: "id".to_string(),
                     primary_key: true,
+                    auto_increment: false,
                     ..Default::default()
                 },
                 sqlrustgo_storage::ColumnDefinition {
                     name: "val".to_string(),
+                    auto_increment: false,
                     ..Default::default()
                 },
             ],
@@ -824,6 +830,7 @@ mod tests {
             name: "t".to_string(),
             columns: vec![sqlrustgo_storage::ColumnDefinition {
                 name: "id".to_string(),
+                auto_increment: false,
                 ..Default::default()
             }],
             ..Default::default()
@@ -842,6 +849,7 @@ mod tests {
             name: "t".to_string(),
             columns: vec![sqlrustgo_storage::ColumnDefinition {
                 name: "id".to_string(),
+                auto_increment: false,
                 ..Default::default()
             }],
             ..Default::default()
@@ -866,10 +874,12 @@ mod tests {
             columns: vec![
                 sqlrustgo_storage::ColumnDefinition {
                     name: "id".to_string(),
+                    auto_increment: false,
                     ..Default::default()
                 },
                 sqlrustgo_storage::ColumnDefinition {
                     name: "name".to_string(),
+                    auto_increment: false,
                     ..Default::default()
                 },
             ],

@@ -69,6 +69,7 @@ impl SimpleExecutor {
                             char_max_length: c.char_max_length,
                             collation: c.collation,
                             default_value: None,
+                            auto_increment: false,
                         })
                         .collect(),
                     foreign_keys: vec![],
@@ -211,6 +212,7 @@ impl SimpleExecutor {
                             char_max_length: None,
                             collation: None,
                             default_value: None,
+                            auto_increment: false,
                         };
                         self.storage
                             .add_column(&alter.table_name, col)
@@ -284,6 +286,7 @@ impl SimpleExecutor {
                     char_max_length: None,
                     collation: None,
                     default_value: None,
+                    auto_increment: false,
                 })
                 .collect();
             let table_info = TableInfo {
@@ -413,6 +416,7 @@ impl SimpleExecutor {
                     char_max_length: None,
                     collation: None,
                     default_value: None,
+                    auto_increment: false,
                 })
                 .collect();
             let table_info = TableInfo {
@@ -456,6 +460,7 @@ impl SimpleExecutor {
                     char_max_length: None,
                     collation: None,
                     default_value: None,
+                    auto_increment: false,
                 })
                 .collect();
             let table_info = TableInfo {
@@ -805,6 +810,7 @@ impl SimpleExecutor {
                             char_max_length: None,
                             collation: None,
                             default_value: None,
+                            auto_increment: false,
                         })
                         .collect();
                     let table_info = TableInfo {
@@ -875,6 +881,7 @@ impl SimpleExecutor {
                 char_max_length: None,
                 collation: None,
                 default_value: None,
+                auto_increment: false,
             })
             .collect();
         let table_info = TableInfo {

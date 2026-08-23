@@ -138,6 +138,7 @@ mod tests {
                 .into_iter()
                 .map(|n| ColumnDefinition {
                     name: n.to_string(),
+                    auto_increment: false,
                     ..Default::default()
                 })
                 .collect(),
