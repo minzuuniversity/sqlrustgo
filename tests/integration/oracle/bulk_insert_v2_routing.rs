@@ -13,58 +13,61 @@
 //! BinaryTableStorageV2 to exist.
 
 #[path = "../../common/mod.rs"]
+#[cfg(feature = "bin_storage_default")]
 mod common;
 
-use parking_lot::RwLock;
-use sqlrustgo::ExecutionEngine;
-use sqlrustgo_storage::BinaryTableStorageV2;
-use std::sync::Arc;
-use tempfile::TempDir;
-
-fn make_v2_engine(temp_dir: &TempDir) -> ExecutionEngine<BinaryTableStorageV2> {
-    let storage = BinaryTableStorageV2::new(temp_dir.path().to_path_buf()).unwrap();
-    ExecutionEngine::new(Arc::new(RwLock::new(storage)))
-}
-
 #[cfg(feature = "bin_storage_default")]
-#[test]
-fn bulk_insert_routes_to_v2_insert_streaming() {
-    let temp_dir = TempDir::new().expect("Failed to create temp dir");
-    let mut engine = make_v2_engine(&temp_dir);
+mod inner {
+    use parking_lot::RwLock;
+    use sqlrustgo::ExecutionEngine;
+    use sqlrustgo_storage::BinaryTableStorageV2;
+    use std::sync::Arc;
+    use tempfile::TempDir;
 
-    // Create table — use BIGINT to match Value::Integer (i64) byte width.
-    // (INTEGER has known mismatch with Value::Integer encoding; tracked.)
-    engine
-        .execute("CREATE TABLE t (id BIGINT PRIMARY KEY, name TEXT, val BIGINT)")
-        .expect("CREATE TABLE should succeed");
+    fn make_v2_engine(temp_dir: &TempDir) -> ExecutionEngine<BinaryTableStorageV2> {
+        let storage = BinaryTableStorageV2::new(temp_dir.path().to_path_buf()).unwrap();
+        ExecutionEngine::new(Arc::new(RwLock::new(storage)))
+    }
 
-    // Direct call to bulk_insert_records explicitly exercises T4.2 routing.
-    // (Single-row INSERT goes through storage.insert directly, NOT through
-    // bulk_insert_records, so we must call it directly to test the routing.)
-    //
-    // Note: V2's scan() is a T2.2 stub returning vec![], so we cannot use
-    // SELECT COUNT(*) to verify rows landed. Instead we verify (a) the
-    // routing call succeeds and returns the correct count, and (b) flush
-    // completes without error — proving V2's insert_streaming was actually
-    // invoked (its SegmentWriter accepted the rows and was sealed on flush).
-    use sqlrustgo::Value;
-    let records: Vec<Vec<Value>> = (1..=5i64)
-        .map(|i| {
-            vec![
-                Value::Integer(i),
-                Value::Text(format!("name_{}", i)),
-                Value::Integer(i * 10),
-            ]
-        })
-        .collect();
+    #[test]
+    fn bulk_insert_routes_to_v2_insert_streaming() {
+        let temp_dir = TempDir::new().expect("Failed to create temp dir");
+        let mut engine = make_v2_engine(&temp_dir);
 
-    let inserted = engine
-        .bulk_insert_records("t", records)
-        .expect("bulk_insert_records should succeed (V2 routing)");
-    assert_eq!(inserted, 5, "bulk_insert_records should report 5 rows");
+        // Create table — use BIGINT to match Value::Integer (i64) byte width.
+        // (INTEGER has known mismatch with Value::Integer encoding; tracked.)
+        engine
+            .execute("CREATE TABLE t (id BIGINT PRIMARY KEY, name TEXT, val BIGINT)")
+            .expect("CREATE TABLE should succeed");
 
-    // Flush seals the active SegmentWriter and writes root.index — proves
-    // V2's insert_streaming was actually called (the writer it returned
-    // exists in V2's internal state).
-    engine.flush().expect("flush should succeed");
-}
+        // Direct call to bulk_insert_records explicitly exercises T4.2 routing.
+        // (Single-row INSERT goes through storage.insert directly, NOT through
+        // bulk_insert_records, so we must call it directly to test the routing.)
+        //
+        // Note: V2's scan() is a T2.2 stub returning vec![], so we cannot use
+        // SELECT COUNT(*) to verify rows landed. Instead we verify (a) the
+        // routing call succeeds and returns the correct count, and (b) flush
+        // completes without error — proving V2's insert_streaming was actually
+        // invoked (its SegmentWriter accepted the rows and was sealed on flush).
+        use sqlrustgo::Value;
+        let records: Vec<Vec<Value>> = (1..=5i64)
+            .map(|i| {
+                vec![
+                    Value::Integer(i),
+                    Value::Text(format!("name_{}", i)),
+                    Value::Integer(i * 10),
+                ]
+            })
+            .collect();
+
+        let inserted = engine
+            .bulk_insert_records("t", records)
+            .expect("bulk_insert_records should succeed (V2 routing)");
+        assert_eq!(inserted, 5, "bulk_insert_records should report 5 rows");
+
+        // Flush seals the active SegmentWriter and writes root.index — proves
+        // V2's insert_streaming was actually called (the writer it returned
+        // exists in V2's internal state).
+        engine.flush().expect("flush should succeed");
+    }
+} // mod inner

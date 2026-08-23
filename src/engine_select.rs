@@ -693,7 +693,8 @@ impl<S: StorageEngine + 'static> ExecutionEngine<S> {
                 let mut groups: std::collections::HashMap<String, Vec<Vec<Value>>> =
                     std::collections::HashMap::new();
                 let _q7_trace = std::env::var("Q7_TRACE").is_ok();
-                let mut _q7_keys_seen: std::collections::HashSet<String> = std::collections::HashSet::new();
+                let mut _q7_keys_seen: std::collections::HashSet<String> =
+                    std::collections::HashSet::new();
                 if _q7_trace {
                     eprintln!("[Q7_TRACE] group_exprs.len() = {}", group_exprs.len());
                     for (gi, ge) in group_exprs.iter().enumerate() {
@@ -701,7 +702,10 @@ impl<S: StorageEngine + 'static> ExecutionEngine<S> {
                     }
                 }
                 if _q7_trace {
-                    eprintln!("[Q7_TRACE] table_info.columns.len() = {}", table_info.columns.len());
+                    eprintln!(
+                        "[Q7_TRACE] table_info.columns.len() = {}",
+                        table_info.columns.len()
+                    );
                     for (ci, c) in table_info.columns.iter().enumerate() {
                         eprintln!("[Q7_TRACE]   table_info.col[{}] name={:?}", ci, c.name);
                     }
@@ -1014,14 +1018,32 @@ impl<S: StorageEngine + 'static> ExecutionEngine<S> {
                 let is_star_agg =
                     select.columns.is_empty() || select.columns.iter().any(|c| c.name == "*");
                 if _q7_trace {
-                    eprintln!("[Q7_TRACE] select.columns.len() = {}, is_star_agg = {}", select.columns.len(), is_star_agg);
+                    eprintln!(
+                        "[Q7_TRACE] select.columns.len() = {}, is_star_agg = {}",
+                        select.columns.len(),
+                        is_star_agg
+                    );
                     for (ci, c) in select.columns.iter().enumerate() {
-                        eprintln!("[Q7_TRACE]   col[{}] name={:?} alias={:?} expr={:?}", ci, c.name, c.alias, c.expression);
+                        eprintln!(
+                            "[Q7_TRACE]   col[{}] name={:?} alias={:?} expr={:?}",
+                            ci, c.name, c.alias, c.expression
+                        );
                     }
-                    eprintln!("[Q7_TRACE] select.aggregates.len() = {}", select.aggregates.len());
-                    eprintln!("[Q7_TRACE] agg_result_rows BEFORE re-projection: {}", agg_result_rows.len());
+                    eprintln!(
+                        "[Q7_TRACE] select.aggregates.len() = {}",
+                        select.aggregates.len()
+                    );
+                    eprintln!(
+                        "[Q7_TRACE] agg_result_rows BEFORE re-projection: {}",
+                        agg_result_rows.len()
+                    );
                     for (ri, rr) in agg_result_rows.iter().enumerate() {
-                        eprintln!("[Q7_TRACE]   agg_row[{}] (ncols={}) = {:?}", ri, rr.len(), rr);
+                        eprintln!(
+                            "[Q7_TRACE]   agg_row[{}] (ncols={}) = {:?}",
+                            ri,
+                            rr.len(),
+                            rr
+                        );
                     }
                 }
                 let agg_result_rows = if is_star_agg || select.columns.len() <= 1 {

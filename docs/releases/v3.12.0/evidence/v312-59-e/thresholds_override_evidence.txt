@@ -1,10 +1,10 @@
 ===================================================================
 V312-59-E Thresholds Override Gate — Evidence
-Timestamp: 2026-08-21T16:09:45Z
+Timestamp: 2026-08-23T19:50:30Z
 STAGE.yaml: docs/releases/v3.12.0/STAGE.yaml
 ===================================================================
 
-[1] COVERAGE_MIN_PER_CRATE — FIELD_VALIDITY: PASS (value=80) — EXECUTABLE_GATE: PASS
+[1] COVERAGE_MIN_PER_CRATE — FIELD_VALIDITY: PASS (value=80) — EXECUTABLE_GATE: FAIL: sub-gate exit non-zero
 [2] GMP_CORPUS_UNCLASSIFIED_FAILURE_MAX — FIELD_VALIDITY: PASS (value=0) — EXECUTABLE_GATE: PASS
 [3] GMP_AUDIT_TAMPER_TEST_REQUIRED — FIELD_VALIDITY: PASS (value=True) — EXECUTABLE_GATE: PASS
 [4] GMP_RETRIEVAL_CITATION_REQUIRED — FIELD_VALIDITY: PASS (value=True) — EXECUTABLE_GATE: PASS
@@ -19,4 +19,4 @@ STAGE.yaml: docs/releases/v3.12.0/STAGE.yaml
 [13] BUSTUBX_EDU_SQLITE_CLI_REQUIRED — FIELD_VALIDITY: PASS (value=True) — EXECUTABLE_GATE: PASS
 
 
-SUMMARY: pass=13 fail=0 infra=0 total=13/13
+SUMMARY: pass=12 fail=1 infra=0 total=13/13

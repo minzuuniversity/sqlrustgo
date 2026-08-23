@@ -93,7 +93,9 @@ fn time_json_load(rows: &[Record], schema: &[ColumnDefinition]) -> Duration {
     storage.create_table(&info).expect("create_table (JSON)");
 
     let start = Instant::now();
-    storage.insert("lineitem", rows.to_vec()).expect("insert (JSON)");
+    storage
+        .insert("lineitem", rows.to_vec())
+        .expect("insert (JSON)");
     storage.flush().expect("flush (JSON)");
     start.elapsed()
 }

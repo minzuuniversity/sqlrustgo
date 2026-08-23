@@ -118,11 +118,7 @@ impl BinaryTableStorageV2 {
     ///   multiple `insert_streaming_iter` calls.
     /// - On error, the active writer is dropped; subsequent calls
     ///   open a fresh segment.
-    pub fn insert_streaming_iter<I>(
-        &mut self,
-        table: &str,
-        records: I,
-    ) -> SqlResult<()>
+    pub fn insert_streaming_iter<I>(&mut self, table: &str, records: I) -> SqlResult<()>
     where
         I: IntoIterator<Item = Record>,
     {
@@ -144,7 +140,12 @@ impl BinaryTableStorageV2 {
                 writer
                     .seal()
                     .map_err(|e| SqlError::ExecutionError(e.to_string()))?;
-                Self::finalize_sealed_segment_static(&self.data_dir, table, &mut self.root_indices, writer.rows_in_segment())?;
+                Self::finalize_sealed_segment_static(
+                    &self.data_dir,
+                    table,
+                    &mut self.root_indices,
+                    writer.rows_in_segment(),
+                )?;
                 writer = self.open_new_segment(table, schema.clone())?;
             }
             let values: Vec<Option<Vec<u8>>> = record
@@ -479,9 +480,7 @@ mod tests {
             auto_increment: false,
         }];
         storage.create_table("t1", schema).unwrap();
-        let records: Vec<Record> = (0..1000)
-            .map(|i| vec![Value::Integer(i as i64)])
-            .collect();
+        let records: Vec<Record> = (0..1000).map(|i| vec![Value::Integer(i as i64)]).collect();
         // From a Vec<Record> — confirms IntoIterator ergonomics.
         storage.insert_streaming_iter("t1", records).unwrap();
         storage.flush().unwrap();
@@ -583,7 +582,11 @@ mod tests {
         for seg in &idx.segments {
             let path = dir.path().join(&seg.file_name);
             assert!(path.exists(), "missing segment file: {}", seg.file_name);
-            assert!(seg.byte_size > 0, "segment {} has zero byte_size", seg.file_name);
+            assert!(
+                seg.byte_size > 0,
+                "segment {} has zero byte_size",
+                seg.file_name
+            );
         }
     }
 }

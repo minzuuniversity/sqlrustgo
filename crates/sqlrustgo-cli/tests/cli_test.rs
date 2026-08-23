@@ -109,7 +109,11 @@ fn test_implicit_alias_select_1() {
         String::from_utf8_lossy(&o.stderr)
     );
     let stdout = String::from_utf8_lossy(&o.stdout);
-    assert!(stdout.contains('\n') || stdout.contains("1"), "got: {}", stdout);
+    assert!(
+        stdout.contains('\n') || stdout.contains("1"),
+        "got: {}",
+        stdout
+    );
 }
 
 #[test]
