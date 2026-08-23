@@ -628,13 +628,41 @@ impl<S: StorageEngine + 'static> ExecutionEngine<S> {
             } else {
                 let mut groups: std::collections::HashMap<String, Vec<Vec<Value>>> =
                     std::collections::HashMap::new();
+                let _q7_trace = std::env::var("Q7_TRACE").is_ok();
+                let mut _q7_keys_seen: std::collections::HashSet<String> = std::collections::HashSet::new();
+                if _q7_trace {
+                    eprintln!("[Q7_TRACE] group_exprs.len() = {}", group_exprs.len());
+                    for (gi, ge) in group_exprs.iter().enumerate() {
+                        eprintln!("[Q7_TRACE]   group_exprs[{}] = {:?}", gi, ge);
+                    }
+                }
+                if _q7_trace {
+                    eprintln!("[Q7_TRACE] table_info.columns.len() = {}", table_info.columns.len());
+                    for (ci, c) in table_info.columns.iter().enumerate() {
+                        eprintln!("[Q7_TRACE]   table_info.col[{}] name={:?}", ci, c.name);
+                    }
+                    eprintln!("[Q7_TRACE] rows.len() = {}", rows.len());
+                    if let Some(r0) = rows.first() {
+                        eprintln!("[Q7_TRACE] row[0].len() = {}", r0.len());
+                        for (i, v) in r0.iter().enumerate() {
+                            eprintln!("[Q7_TRACE]   row[0][{}] = {:?}", i, v);
+                        }
+                    }
+                }
                 for row in &rows {
                     let key = group_exprs
                         .iter()
                         .map(|expr| evaluate_expr_to_string(expr, row, &table_info))
                         .collect::<Vec<_>>()
                         .join("\x00");
+                    if _q7_trace && _q7_keys_seen.insert(key.clone()) {
+                        eprintln!("[Q7_TRACE] distinct key = {}", key);
+                    }
                     groups.entry(key).or_default().push(row.clone());
+                }
+                if _q7_trace {
+                    eprintln!("[Q7_TRACE] distinct groups = {}", groups.len());
+                    eprintln!("[Q7_TRACE] total rows = {}", rows.len());
                 }
 
                 let mut agg_result_rows: Vec<Vec<Value>> = Vec::new();
@@ -921,6 +949,17 @@ impl<S: StorageEngine + 'static> ExecutionEngine<S> {
                 // values appear in the wrong columns.
                 let is_star_agg =
                     select.columns.is_empty() || select.columns.iter().any(|c| c.name == "*");
+                if _q7_trace {
+                    eprintln!("[Q7_TRACE] select.columns.len() = {}, is_star_agg = {}", select.columns.len(), is_star_agg);
+                    for (ci, c) in select.columns.iter().enumerate() {
+                        eprintln!("[Q7_TRACE]   col[{}] name={:?} alias={:?} expr={:?}", ci, c.name, c.alias, c.expression);
+                    }
+                    eprintln!("[Q7_TRACE] select.aggregates.len() = {}", select.aggregates.len());
+                    eprintln!("[Q7_TRACE] agg_result_rows BEFORE re-projection: {}", agg_result_rows.len());
+                    for (ri, rr) in agg_result_rows.iter().enumerate() {
+                        eprintln!("[Q7_TRACE]   agg_row[{}] (ncols={}) = {:?}", ri, rr.len(), rr);
+                    }
+                }
                 let agg_result_rows = if is_star_agg || select.columns.len() <= 1 {
                     // Star / single column: no re-projection needed
                     agg_result_rows
@@ -1102,9 +1141,18 @@ impl<S: StorageEngine + 'static> ExecutionEngine<S> {
                                     if let Some(&i) = agg_alias_to_pos.get(&key) {
                                         return row.get(i).cloned().unwrap_or(Value::Null);
                                     }
+                                    if _q7_trace {
+                                        eprintln!("[Q7_TRACE]   UNMATCHED col key={:?} (alias={:?} name={:?} expr={:?})", key, col.alias, col.name, col.expression);
+                                    }
                                     Value::Null
                                 })
                                 .collect()
+                        })
+                        .map(|r: Vec<Value>| {
+                            if _q7_trace {
+                                eprintln!("[Q7_TRACE] FINAL row (ncols={}) = {:?}", r.len(), r);
+                            }
+                            r
                         })
                         .collect()
                 };

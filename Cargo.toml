@@ -936,6 +936,21 @@ path = "tests/integration/oracle/diag_q6_filter.rs"
 name = "diag_q6_where_parsed"
 path = "tests/integration/oracle/diag_q6_where_parsed.rs"
 [[test]]
+name = "diag_q7_extract"
+path = "tests/integration/oracle/diag_q7_extract.rs"
+[[test]]
+name = "diag_q7_mini"
+path = "tests/integration/oracle/diag_q7_mini.rs"
+[[test]]
+name = "diag_q7_mini_columns"
+path = "tests/integration/oracle/diag_q7_mini_columns.rs"
+[[test]]
+name = "diag_q7_sf1_real_count"
+path = "tests/integration/oracle/diag_q7_sf1_real_count.rs"
+[[test]]
+name = "diag_q7_subset_columns"
+path = "tests/integration/oracle/diag_q7_subset_columns.rs"
+[[test]]
 name = "diag_shipdate_type"
 path = "tests/integration/oracle/diag_shipdate_type.rs"
 [[test]]
