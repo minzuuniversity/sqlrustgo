@@ -228,6 +228,89 @@ impl Drop for SegmentWriter {
     }
 }
 
+// ============================================================
+// Task 1.8: SegmentReader round-trip
+// ============================================================
+
+/// Reads rows from a sealed BINT v3 segment file.
+pub struct SegmentReader {
+    #[allow(dead_code)]
+    path: PathBuf,
+    #[allow(dead_code)]
+    schema: Vec<ColumnDefinition>,
+    header: SegmentHeader,
+    footer: SegmentFooter,
+    data_region: Vec<u8>,
+}
+
+impl SegmentReader {
+    pub fn open(
+        path: &std::path::Path,
+        schema: Vec<ColumnDefinition>,
+    ) -> Result<Self, RowDecodeError> {
+        let bytes = std::fs::read(path).map_err(|e| {
+            RowDecodeError::InvalidVarLength(format!("read error: {}", e))
+        })?;
+        if bytes.len() < 16384 * 2 {
+            return Err(RowDecodeError::TooShort {
+                expected: 16384 * 2,
+                actual: bytes.len(),
+            });
+        }
+        let header_arr: [u8; 16384] = bytes[0..16384].try_into().unwrap();
+        let header = decode_segment_header(&header_arr)?;
+        // Footer is the last 16 bytes; the final 16 KB page is padding around it
+        let footer_start = bytes.len() - 16384;
+        let footer_arr: [u8; 16] = bytes[footer_start..footer_start + 16].try_into().unwrap();
+        let footer = decode_segment_footer(&footer_arr)?;
+        let data_region = bytes[header.data_start as usize..footer_start].to_vec();
+        Ok(Self {
+            path: path.to_path_buf(),
+            schema,
+            header,
+            footer,
+            data_region,
+        })
+    }
+
+    /// Iterates over all rows in the data region, yielding decode results.
+    /// Corrupted rows produce an `Err` in the iterator output.
+    pub fn iter_rows(
+        &self,
+    ) -> impl Iterator<Item = Result<Vec<Option<Vec<u8>>>, RowDecodeError>> + '_ {
+        let mut pos = 0usize;
+        let data = &self.data_region;
+        let schema = &self.schema;
+        std::iter::from_fn(move || {
+            if pos + ROW_HEADER_SIZE + 2 + ROW_FOOTER_SIZE > data.len() {
+                return None;
+            }
+            let row_size = u32::from_le_bytes(
+                data[pos..pos + 4].try_into().unwrap(),
+            ) as usize;
+            if row_size < ROW_HEADER_SIZE + ROW_FOOTER_SIZE
+                || pos + row_size > data.len()
+            {
+                return None;
+            }
+            let row_bytes = &data[pos..pos + row_size];
+            let result = decode_row(schema, row_bytes);
+            pos += row_size;
+            Some(result)
+        })
+    }
+
+    #[allow(dead_code)]
+    pub fn row_count(&self) -> u32 {
+        self.footer.row_count
+    }
+
+    #[allow(dead_code)]
+    pub fn segment_size(&self) -> u64 {
+        self.footer.segment_size as u64
+    }
+}
+
 /// Returns the fixed byte width of a column, or `None` for variable-length types.
 pub fn column_width(col: &ColumnDefinition) -> Option<usize> {
     let dt = col.data_type.to_uppercase();
@@ -758,5 +841,74 @@ mod tests {
             }
         }
         assert!(success > 0 && success < 20);
+    }
+
+    // ============================================================
+    // Task 1.8: SegmentReader round-trip + corruption skip
+    // ============================================================
+
+    #[test]
+    fn test_segment_writer_reader_roundtrip() {
+        use tempfile::tempdir;
+        let dir = tempdir().unwrap();
+        let path = dir.path().join("rt.bin");
+        let schema = vec![
+            make_col("id", "INT", None),
+            make_col("name", "VARCHAR(255)", None),
+        ];
+        let mut w = SegmentWriter::new(path.clone(), schema.clone()).unwrap();
+        let n = 1000;
+        for i in 0..n {
+            let values = vec![
+                Some((i as i32).to_le_bytes().to_vec()),
+                Some(format!("name_{}", i).into_bytes()),
+            ];
+            w.append(&values).unwrap();
+        }
+        w.seal().unwrap();
+        let reader = SegmentReader::open(&path, schema).unwrap();
+        let rows: Vec<_> = reader.iter_rows().collect::<Result<Vec<_>, _>>().unwrap();
+        assert_eq!(rows.len(), n as usize);
+        for (i, row) in rows.iter().enumerate() {
+            assert_eq!(row[0].as_ref().unwrap(), &(i as i32).to_le_bytes().to_vec());
+            let expected_name = format!("name_{}", i);
+            assert_eq!(row[1].as_ref().unwrap(), &expected_name.into_bytes());
+        }
+    }
+
+    #[test]
+    fn test_segment_reader_skips_corrupted_rows() {
+        use tempfile::tempdir;
+        let dir = tempdir().unwrap();
+        let path = dir.path().join("corrupt.bin");
+        let schema = vec![make_col("x", "INT", None)];
+        let mut w = SegmentWriter::new(path.clone(), schema.clone()).unwrap();
+        for i in 0..10 {
+            w.append(&[Some((i as i32).to_le_bytes().to_vec())]).unwrap();
+        }
+        w.seal().unwrap();
+        // Tamper with row 5's CRC byte (last 4 bytes of the row at known offset)
+        let mut bytes = std::fs::read(&path).unwrap();
+        // Find the 5th row: read first row's row_size header to advance, OR just iterate.
+        // Simpler: data starts at DATA_START_OFFSET; each row has 16-byte header showing row_size.
+        // First row: header[0..4]=row_size (LE), so first row_size is at DATA_START_OFFSET.
+        let first_row_size = u32::from_le_bytes([
+            bytes[DATA_START_OFFSET as usize],
+            bytes[DATA_START_OFFSET as usize + 1],
+            bytes[DATA_START_OFFSET as usize + 2],
+            bytes[DATA_START_OFFSET as usize + 3],
+        ]) as usize;
+        let row5_start = DATA_START_OFFSET as usize + 5 * first_row_size;
+        if row5_start + first_row_size <= bytes.len() {
+            bytes[row5_start + first_row_size - 1] ^= 0xFF; // corrupt last byte (CRC)
+        }
+        std::fs::write(&path, &bytes).unwrap();
+        let reader = SegmentReader::open(&path, schema).unwrap();
+        let rows: Vec<_> = reader
+            .iter_rows()
+            .filter_map(|r| r.ok())
+            .collect();
+        assert!(rows.len() < 10); // at least one row was skipped
+        assert!(rows.len() >= 9); // but most were valid
     }
 }
