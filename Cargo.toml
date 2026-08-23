@@ -892,6 +892,9 @@ path = "tests/integration/oracle/bulk_insert_v2_routing.rs"
 name = "bin_storage_basic_io"
 path = "tests/integration/bin_storage_basic_io.rs"
 [[test]]
+name = "bin_storage_concurrent_select"
+path = "tests/integration/bin_storage_concurrent_select.rs"
+[[test]]
 name = "diag_q11"
 path = "tests/integration/oracle/diag_q11.rs"
 [[test]]
