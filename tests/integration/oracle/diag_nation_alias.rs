@@ -31,55 +31,103 @@ fn build_mini_fixture() -> ExecutionEngine<MemoryStorage> {
     }
 
     let mut st = storage.write();
-    let _ = st.insert("region", vec![vec![
-        sqlrustgo::Value::Integer(1), sqlrustgo::Value::Text("EUROPE".into()), sqlrustgo::Value::Text("".into()),
-    ]]);
+    let _ = st.insert(
+        "region",
+        vec![vec![
+            sqlrustgo::Value::Integer(1),
+            sqlrustgo::Value::Text("EUROPE".into()),
+            sqlrustgo::Value::Text("".into()),
+        ]],
+    );
     // 5 nations
-    for (k, n) in [(0, "GERMANY"), (1, "FRANCE"), (2, "UK"), (3, "USA"), (4, "JAPAN")] {
-        let _ = st.insert("nation", vec![vec![
-            sqlrustgo::Value::Integer(k), sqlrustgo::Value::Text(n.into()),
-            sqlrustgo::Value::Integer(1), sqlrustgo::Value::Text("".into()),
-        ]]);
+    for (k, n) in [
+        (0, "GERMANY"),
+        (1, "FRANCE"),
+        (2, "UK"),
+        (3, "USA"),
+        (4, "JAPAN"),
+    ] {
+        let _ = st.insert(
+            "nation",
+            vec![vec![
+                sqlrustgo::Value::Integer(k),
+                sqlrustgo::Value::Text(n.into()),
+                sqlrustgo::Value::Integer(1),
+                sqlrustgo::Value::Text("".into()),
+            ]],
+        );
     }
     // 5 suppliers (one per nation) — supplier 0 (GERMANY) for ALL lineitem
     for k in 0..5 {
-        let _ = st.insert("supplier", vec![vec![
-            sqlrustgo::Value::Integer(100 + k), sqlrustgo::Value::Text(format!("S#{}", 100 + k)),
-            sqlrustgo::Value::Text("addr".into()), sqlrustgo::Value::Integer(k),
-            sqlrustgo::Value::Text("phone".into()), sqlrustgo::Value::Float(100.0),
-            sqlrustgo::Value::Text("".into()),
-        ]]);
+        let _ = st.insert(
+            "supplier",
+            vec![vec![
+                sqlrustgo::Value::Integer(100 + k),
+                sqlrustgo::Value::Text(format!("S#{}", 100 + k)),
+                sqlrustgo::Value::Text("addr".into()),
+                sqlrustgo::Value::Integer(k),
+                sqlrustgo::Value::Text("phone".into()),
+                sqlrustgo::Value::Float(100.0),
+                sqlrustgo::Value::Text("".into()),
+            ]],
+        );
     }
     // 5 customers (one per nation) — used by orders
     for k in 0..5 {
-        let _ = st.insert("customer", vec![vec![
-            sqlrustgo::Value::Integer(200 + k), sqlrustgo::Value::Text(format!("C#{}", 200 + k)),
-            sqlrustgo::Value::Text("addr".into()), sqlrustgo::Value::Integer(k),
-            sqlrustgo::Value::Text("phone".into()), sqlrustgo::Value::Float(200.0),
-            sqlrustgo::Value::Text("BUILDING".into()), sqlrustgo::Value::Text("".into()),
-        ]]);
+        let _ = st.insert(
+            "customer",
+            vec![vec![
+                sqlrustgo::Value::Integer(200 + k),
+                sqlrustgo::Value::Text(format!("C#{}", 200 + k)),
+                sqlrustgo::Value::Text("addr".into()),
+                sqlrustgo::Value::Integer(k),
+                sqlrustgo::Value::Text("phone".into()),
+                sqlrustgo::Value::Float(200.0),
+                sqlrustgo::Value::Text("BUILDING".into()),
+                sqlrustgo::Value::Text("".into()),
+            ]],
+        );
     }
     // 3 orders across 3 years, each to a different customer
     for (k, year, custk) in [(0, "1995", 0), (1, "1996", 1), (2, "1997", 2)] {
-        let _ = st.insert("orders", vec![vec![
-            sqlrustgo::Value::Integer(300 + k), sqlrustgo::Value::Integer(200 + custk),
-            sqlrustgo::Value::Text("O".into()), sqlrustgo::Value::Float(1000.0),
-            sqlrustgo::Value::Text(format!("{}-06-15", year)), sqlrustgo::Value::Text("1-URGENT".into()),
-            sqlrustgo::Value::Text("Clerk#1".into()), sqlrustgo::Value::Integer(0),
-            sqlrustgo::Value::Text("".into()),
-        ]]);
+        let _ = st.insert(
+            "orders",
+            vec![vec![
+                sqlrustgo::Value::Integer(300 + k),
+                sqlrustgo::Value::Integer(200 + custk),
+                sqlrustgo::Value::Text("O".into()),
+                sqlrustgo::Value::Float(1000.0),
+                sqlrustgo::Value::Text(format!("{}-06-15", year)),
+                sqlrustgo::Value::Text("1-URGENT".into()),
+                sqlrustgo::Value::Text("Clerk#1".into()),
+                sqlrustgo::Value::Integer(0),
+                sqlrustgo::Value::Text("".into()),
+            ]],
+        );
     }
     // 3 lineitems — all use supplier 0 (GERMANY)
     for k in 0..3 {
-        let _ = st.insert("lineitem", vec![vec![
-            sqlrustgo::Value::Integer(300 + k), sqlrustgo::Value::Integer(1), sqlrustgo::Value::Integer(100),
-            sqlrustgo::Value::Integer(1), sqlrustgo::Value::Integer(10), sqlrustgo::Value::Float(1000.0),
-            sqlrustgo::Value::Float(0.05), sqlrustgo::Value::Float(0.0),
-            sqlrustgo::Value::Text("N".into()), sqlrustgo::Value::Text("O".into()),
-            sqlrustgo::Value::Text("1995-08-01".into()), sqlrustgo::Value::Text("1995-08-15".into()),
-            sqlrustgo::Value::Text("1995-08-22".into()), sqlrustgo::Value::Text("DELIVER IN PERSON".into()),
-            sqlrustgo::Value::Text("TRUCK".into()), sqlrustgo::Value::Text("".into()),
-        ]]);
+        let _ = st.insert(
+            "lineitem",
+            vec![vec![
+                sqlrustgo::Value::Integer(300 + k),
+                sqlrustgo::Value::Integer(1),
+                sqlrustgo::Value::Integer(100),
+                sqlrustgo::Value::Integer(1),
+                sqlrustgo::Value::Integer(10),
+                sqlrustgo::Value::Float(1000.0),
+                sqlrustgo::Value::Float(0.05),
+                sqlrustgo::Value::Float(0.0),
+                sqlrustgo::Value::Text("N".into()),
+                sqlrustgo::Value::Text("O".into()),
+                sqlrustgo::Value::Text("1995-08-01".into()),
+                sqlrustgo::Value::Text("1995-08-15".into()),
+                sqlrustgo::Value::Text("1995-08-22".into()),
+                sqlrustgo::Value::Text("DELIVER IN PERSON".into()),
+                sqlrustgo::Value::Text("TRUCK".into()),
+                sqlrustgo::Value::Text("".into()),
+            ]],
+        );
     }
     engine
 }
@@ -89,7 +137,9 @@ fn diag_nation_alias_5x3() {
     let mut engine = build_mini_fixture();
     let sql = std::fs::read_to_string("queries/q7.sql").unwrap();
     let sql = sql.replace('\n', " ");
-    let r = engine.execute(&sql).unwrap_or_else(|e| panic!("Q7 failed: {}", e));
+    let r = engine
+        .execute(&sql)
+        .unwrap_or_else(|e| panic!("Q7 failed: {}", e));
     eprintln!("Q7 returned {} rows", r.rows.len());
     for (i, row) in r.rows.iter().take(20).enumerate() {
         eprintln!("  row[{:2}] = {:?}", i, row);

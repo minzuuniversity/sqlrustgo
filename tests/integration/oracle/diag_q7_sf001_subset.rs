@@ -41,7 +41,9 @@ fn setup() -> ExecutionEngine<MemoryStorage> {
     }
     {
         let mut st = storage.write();
-        for t in ["region", "nation", "supplier", "customer", "orders", "lineitem"] {
+        for t in [
+            "region", "nation", "supplier", "customer", "orders", "lineitem",
+        ] {
             let path = format!("{}/{}.tbl", DATA_DIR, t);
             st.bulk_load_tbl_file(t, &path).unwrap();
         }
@@ -64,7 +66,11 @@ fn q7_sf001_subset_count() {
     let r = engine
         .execute(Q7_SQL)
         .unwrap_or_else(|e| panic!("Q7 failed: {}", e));
-    eprintln!("Q7 SF~0.001 subset returned {} rows × {} cols", r.rows.len(), r.rows.first().map(|r| r.len()).unwrap_or(0));
+    eprintln!(
+        "Q7 SF~0.001 subset returned {} rows × {} cols",
+        r.rows.len(),
+        r.rows.first().map(|r| r.len()).unwrap_or(0)
+    );
     for (i, row) in r.rows.iter().enumerate() {
         eprintln!("  row[{:2}] = {:?}", i, row);
     }

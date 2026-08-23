@@ -98,7 +98,10 @@ fn test_q11_parser_aggregates_consistent() {
         _ => panic!("expected SELECT"),
     };
 
-    assert!(!select.aggregates.is_empty(), "Q11 must populate aggregates");
+    assert!(
+        !select.aggregates.is_empty(),
+        "Q11 must populate aggregates"
+    );
     assert_eq!(select.aggregates[0].func, AggregateFunction::Sum);
     assert!(select.having.is_some(), "Q11 must have HAVING");
 
@@ -110,9 +113,9 @@ fn test_q11_parser_aggregates_consistent() {
                 walk(l, found);
                 walk(r, found);
             }
-            Expression::UnaryOp(_, e)
-            | Expression::IsNull(e)
-            | Expression::IsNotNull(e) => walk(e, found),
+            Expression::UnaryOp(_, e) | Expression::IsNull(e) | Expression::IsNotNull(e) => {
+                walk(e, found)
+            }
             _ => {}
         }
     }

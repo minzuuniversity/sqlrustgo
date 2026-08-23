@@ -42,9 +42,7 @@ fn diag_extract_year_simple_parse_only() {
     // Pure parser smoke test: in-memory table with 1 row, EXTRACT(year FROM ...).
     let storage = Arc::new(RwLock::new(MemoryStorage::new()));
     let mut engine = ExecutionEngine::new(storage.clone());
-    engine
-        .execute("CREATE TABLE t (d TEXT NOT NULL)")
-        .unwrap();
+    engine.execute("CREATE TABLE t (d TEXT NOT NULL)").unwrap();
     {
         let mut st = storage.write();
         st.insert("t", vec![vec![sqlrustgo::Value::Text("1995-06-15".into())]]);
@@ -64,7 +62,9 @@ fn diag_q7_full_count_against_oracle() {
     let mut engine = setup();
     let sql = std::fs::read_to_string("queries/q7.sql").unwrap();
     let sql = sql.replace('\n', " ");
-    let r = engine.execute(&sql).unwrap_or_else(|e| panic!("Q7 failed: {}", e));
+    let r = engine
+        .execute(&sql)
+        .unwrap_or_else(|e| panic!("Q7 failed: {}", e));
     eprintln!("Q7 returned {} rows", r.rows.len());
     for (i, row) in r.rows.iter().take(10).enumerate() {
         eprintln!("  row[{}] = {:?}", i, row);

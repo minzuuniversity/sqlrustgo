@@ -26,6 +26,7 @@ fn start_server(
         // the metrics endpoint.
         metrics_port: None,
         load_infile_dir: None,
+        wal_sync_mode_override: None,
     };
     start_ephemeral(config).expect("server starts")
 }

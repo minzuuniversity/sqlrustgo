@@ -14,8 +14,8 @@
 
 #[path = "../../common/mod.rs"]
 mod common;
-use common::MySqlTestClient;
 use common::tpch_wire_harness::load_fixture;
+use common::MySqlTestClient;
 use sqlrustgo_mysql_server::testing::{start_ephemeral, EphemeralConfig};
 use std::path::PathBuf;
 use std::time::Instant;
@@ -63,7 +63,10 @@ fn diag_q7_subset_columns() {
     let handle = start_ephemeral(config).expect("start_ephemeral");
     let mut client = MySqlTestClient::connect_handle(handle).expect("connect_handle");
     client
-        .set_timeouts(std::time::Duration::from_secs(60), std::time::Duration::from_secs(60))
+        .set_timeouts(
+            std::time::Duration::from_secs(60),
+            std::time::Duration::from_secs(60),
+        )
         .expect("set_timeouts");
     load_fixture(&mut client, dst.to_str().unwrap());
 
@@ -74,7 +77,11 @@ fn diag_q7_subset_columns() {
         .query_rows(&sql)
         .unwrap_or_else(|e| panic!("Q7 failed: {}", e));
     let elapsed = t0.elapsed();
-    eprintln!("Q7 (DE/FR subset) returned {} rows in {:?}", rows.len(), elapsed);
+    eprintln!(
+        "Q7 (DE/FR subset) returned {} rows in {:?}",
+        rows.len(),
+        elapsed
+    );
     for (i, row) in rows.iter().enumerate() {
         eprintln!("row[{}] ncols={}", i, row.len());
         for (j, cell) in row.iter().enumerate() {

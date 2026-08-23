@@ -30,8 +30,8 @@
 //! 3. **禁止** 用本测试下调 6M < 60s 的目标 — 该目标独立于 API 选择
 //! 4. **禁止** 把 "no error" 当作正确 — 必须断言 segment 数 > 1 (说明发生过 rollover)
 
-use sqlrustgo_storage::binary_storage_v2::BinaryTableStorageV2;
 use sqlrustgo_storage::bin_index::read_root_index_file;
+use sqlrustgo_storage::binary_storage_v2::BinaryTableStorageV2;
 use sqlrustgo_storage::engine::{ColumnDefinition, Record, Value};
 use std::time::{Duration, Instant};
 use tempfile::TempDir;
