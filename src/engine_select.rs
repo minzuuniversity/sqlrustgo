@@ -92,6 +92,63 @@ fn scalar_agg_index_cache() -> &'static parking_lot::Mutex<HashMap<String, Scala
     SCALAR_AGG_INDEX_CACHE.get_or_init(|| parking_lot::Mutex::new(HashMap::new()))
 }
 
+// V312-58 Sprint 3 (Phase 1 diagnostic): Atomic counters to verify which
+// path Q17/Q20/Q22 actually take. RESET before each test via
+// `reset_v312_58_sprint3_diag()`. DUMP via `dump_v312_58_sprint3_diag()`.
+use std::sync::atomic::{AtomicU64, Ordering};
+static DIAG_TRY_SCALAR_AGG_CALLS: AtomicU64 = AtomicU64::new(0);
+static DIAG_TRY_SCALAR_AGG_HITS: AtomicU64 = AtomicU64::new(0);
+static DIAG_TRY_SCALAR_AGG_PATTERN_FAIL: AtomicU64 = AtomicU64::new(0);
+static DIAG_TRY_SCALAR_AGG_BUILD: AtomicU64 = AtomicU64::new(0);
+static DIAG_SCALAR_SUBQ_CACHE_HITS: AtomicU64 = AtomicU64::new(0);
+static DIAG_SCALAR_SUBQ_CACHE_MISSES: AtomicU64 = AtomicU64::new(0);
+static DIAG_SCALAR_SUBQ_FALLBACK_EXECUTE: AtomicU64 = AtomicU64::new(0);
+// Step 1.5 entry counters (V312-58 Sprint 3 Phase 1)
+static DIAG_STEP15_ENTERED: AtomicU64 = AtomicU64::new(0);
+static DIAG_STEP15_HAS_CORRELATED: AtomicU64 = AtomicU64::new(0);
+static DIAG_STEP15_SKIPPED_DUE_TO_COMMA_CONSUMED: AtomicU64 = AtomicU64::new(0);
+static DIAG_STEP15_NO_WHERE_CLAUSE: AtomicU64 = AtomicU64::new(0);
+// Q17 path detector: when WHERE has NO correlated subquery detected,
+// Q17 must be going through a different pipeline. Track whether the
+// comma-join path "ate" the correlated subquery first.
+static DIAG_Q17_FROM_CLAUSE_KIND: AtomicU64 = AtomicU64::new(0);
+#[allow(dead_code)]
+pub fn reset_v312_58_sprint3_diag() {
+    DIAG_TRY_SCALAR_AGG_CALLS.store(0, Ordering::SeqCst);
+    DIAG_TRY_SCALAR_AGG_HITS.store(0, Ordering::SeqCst);
+    DIAG_TRY_SCALAR_AGG_PATTERN_FAIL.store(0, Ordering::SeqCst);
+    DIAG_TRY_SCALAR_AGG_BUILD.store(0, Ordering::SeqCst);
+    DIAG_SCALAR_SUBQ_CACHE_HITS.store(0, Ordering::SeqCst);
+    DIAG_SCALAR_SUBQ_CACHE_MISSES.store(0, Ordering::SeqCst);
+    DIAG_SCALAR_SUBQ_FALLBACK_EXECUTE.store(0, Ordering::SeqCst);
+    DIAG_STEP15_ENTERED.store(0, Ordering::SeqCst);
+    DIAG_STEP15_HAS_CORRELATED.store(0, Ordering::SeqCst);
+    DIAG_STEP15_SKIPPED_DUE_TO_COMMA_CONSUMED.store(0, Ordering::SeqCst);
+    DIAG_STEP15_NO_WHERE_CLAUSE.store(0, Ordering::SeqCst);
+    DIAG_Q17_FROM_CLAUSE_KIND.store(0, Ordering::SeqCst);
+}
+#[allow(dead_code)]
+pub fn dump_v312_58_sprint3_diag() -> String {
+    format!(
+        "V312-58 Sprint 3 diag:\n\
+         try_scalar_agg_index_lookup calls={} hits={} pattern_fail={} build={}\n\
+         scalar_subq_cache hits={} misses={} fallback_execute_select={}\n\
+         step15 entered={} has_correlated={} skipped_comma_consumed={} no_where={} q17_from_kind={}",
+        DIAG_TRY_SCALAR_AGG_CALLS.load(Ordering::SeqCst),
+        DIAG_TRY_SCALAR_AGG_HITS.load(Ordering::SeqCst),
+        DIAG_TRY_SCALAR_AGG_PATTERN_FAIL.load(Ordering::SeqCst),
+        DIAG_TRY_SCALAR_AGG_BUILD.load(Ordering::SeqCst),
+        DIAG_SCALAR_SUBQ_CACHE_HITS.load(Ordering::SeqCst),
+        DIAG_SCALAR_SUBQ_CACHE_MISSES.load(Ordering::SeqCst),
+        DIAG_SCALAR_SUBQ_FALLBACK_EXECUTE.load(Ordering::SeqCst),
+        DIAG_STEP15_ENTERED.load(Ordering::SeqCst),
+        DIAG_STEP15_HAS_CORRELATED.load(Ordering::SeqCst),
+        DIAG_STEP15_SKIPPED_DUE_TO_COMMA_CONSUMED.load(Ordering::SeqCst),
+        DIAG_STEP15_NO_WHERE_CLAUSE.load(Ordering::SeqCst),
+        DIAG_Q17_FROM_CLAUSE_KIND.load(Ordering::SeqCst),
+    )
+}
+
 fn extract_first_literal_from_where(select: &SelectStatement) -> Option<Value> {
     use sqlrustgo_parser::Expression;
     fn walk(expr: &Expression, out: &mut Option<Value>) {
@@ -493,6 +550,10 @@ impl<S: StorageEngine + 'static> ExecutionEngine<S> {
             None
         };
         let skip_where = COMMA_JOIN_WHERE_CONSUMED.with(|f| *f.borrow());
+        DIAG_STEP15_ENTERED.fetch_add(1, Ordering::SeqCst);
+        if skip_where {
+            DIAG_STEP15_SKIPPED_DUE_TO_COMMA_CONSUMED.fetch_add(1, Ordering::SeqCst);
+        }
         // Step 1.5: correlated EXISTS / NOT EXISTS pre-evaluation
         // Before applying WHERE row-by-row, substitute the outer column
         // references in the subquery with concrete values from each
@@ -504,6 +565,7 @@ impl<S: StorageEngine + 'static> ExecutionEngine<S> {
         if !skip_where {
             if let Some(ref where_expr) = select.where_clause {
                 if where_expr_has_correlated_subquery(where_expr) {
+                    DIAG_STEP15_HAS_CORRELATED.fetch_add(1, Ordering::SeqCst);
                     // Sprint 5 (Q4 EXISTS perf): pre-build a
                     // `SubqueryIndex` for every correlated EXISTS
                     // subquery before the per-row loop.  This turns
@@ -537,6 +599,8 @@ impl<S: StorageEngine + 'static> ExecutionEngine<S> {
                 } else {
                     rows.retain(|row| eval_predicate(where_expr, row, &table_info));
                 }
+            } else {
+                DIAG_STEP15_NO_WHERE_CLAUSE.fetch_add(1, Ordering::SeqCst);
             }
         }
 
@@ -3886,19 +3950,68 @@ impl<S: StorageEngine + 'static> ExecutionEngine<S> {
                 *cursor += 1;
                 Expression::Literal(if any_row { "true" } else { "false" }.to_string())
             }
-            // V312-35 (#4182): correlated scalar subquery (TPC-H Q2/Q17)
-            // — execute substituted subquery and replace with scalar literal.
-            Expression::Subquery(subq) => {
-                let substituted =
-                    substitute_outer_refs_in_select(subq, outer_row, outer_table_info);
-                let scalar = match self.execute_select(&substituted) {
-                    Ok(r) if !r.rows.is_empty() => r.rows[0].first().cloned(),
-                    _ => None,
-                };
-                match scalar {
-                    Some(v) => Expression::Literal(value_to_literal_string_v(&v)),
-                    None => Expression::Literal("NULL".to_string()),
+            // V312-35 (#4182): correlated scalar subquery (TPC-H Q2/Q17).
+            //
+            // V312-58 Sprint 3 Phase 1 fix: the previous body unconditionally
+            // fell back to `execute_select(&substituted)` per outer row,
+            // which made Q17 at 1M scale O(N_outer × N_inner) = ~200B ops
+            // (Q17 100K took 11.34s; 1M extrapolates to >10min). The
+            // TPC-H Q17 fast-path (try_scalar_agg_index_lookup + per-key
+            // scalar_subq_cache) is now invoked FIRST; only when neither
+            // path applies (e.g. Q2's `MIN(ps_supplycost)` over a non-
+            // indexed column) does it fall back to the recursive
+            // execute_select path. Q2 evidence: this fallback was the
+            // original (#4182) closure path, so its semantics are
+            // preserved.
+            //
+            // Sprint 5 v11 fix (Q17): cache key must be the substituted
+            // outer ref value, not outer_row[1]. In JOIN contexts the
+            // referenced column may be at a different index (Q17: lineitem
+            // cols 0-15, part cols 16-24; `p_partkey` is at index 16).
+            Expression::Subquery(_subq) => {
+                // TPC-H Q17 perf fast-path: correlated scalar aggregate
+                // subquery of the shape
+                //   (SELECT [op] AGG(col) FROM t WHERE key_col = <outer_ref>)
+                // → pre-compute `key_col_value → agg_result` ONCE per
+                // (table, key_col, agg_func, agg_arg) and look up O(1)
+                // per outer row. Q17 was 30s on SF=0.1 (cached per
+                // partkey, but each cache miss re-scanned 60K lineitems).
+                DIAG_TRY_SCALAR_AGG_CALLS.fetch_add(1, Ordering::SeqCst);
+                if let Some(lit) =
+                    self.try_scalar_agg_index_lookup(_subq, outer_row, outer_table_info)
+                {
+                    DIAG_TRY_SCALAR_AGG_HITS.fetch_add(1, Ordering::SeqCst);
+                    return Expression::Literal(lit.to_string());
                 }
+                DIAG_TRY_SCALAR_AGG_PATTERN_FAIL.fetch_add(1, Ordering::SeqCst);
+                let substituted =
+                    substitute_outer_refs_in_select(_subq, outer_row, outer_table_info);
+                let cache_key: Value = extract_first_literal_from_where(&substituted)
+                    .unwrap_or_else(|| {
+                        Value::Text(format!(
+                            "__no_subst_{}_{:?}",
+                            outer_row.len(),
+                            outer_row.first()
+                        ))
+                    });
+                {
+                    let cache = scalar_subq_cache().lock();
+                    if let Some(cached) = cache.get(&cache_key) {
+                        DIAG_SCALAR_SUBQ_CACHE_HITS.fetch_add(1, Ordering::SeqCst);
+                        return Expression::Literal(cached.to_string());
+                    }
+                }
+                DIAG_SCALAR_SUBQ_CACHE_MISSES.fetch_add(1, Ordering::SeqCst);
+                let result = self.execute_select(&substituted);
+                DIAG_SCALAR_SUBQ_FALLBACK_EXECUTE.fetch_add(1, Ordering::SeqCst);
+                let scalar = match result {
+                    Ok(r) if !r.rows.is_empty() => {
+                        r.rows[0].first().cloned().unwrap_or(Value::Null)
+                    }
+                    _ => Value::Null,
+                };
+                scalar_subq_cache().lock().insert(cache_key, scalar.clone());
+                Expression::Literal(scalar.to_string())
             }
             Expression::NotExists(subq) => {
                 let substituted =
@@ -4042,50 +4155,12 @@ impl<S: StorageEngine + 'static> ExecutionEngine<S> {
             | Expression::Between(_, _, _)
             | Expression::NotBetween(_, _, _)
             | Expression::NotRegexp(_, _) => where_expr.clone(),
-            // Sprint 5 v11 fix (Q17): cache key must be the substituted
-            // outer ref value, not outer_row[1]. In JOIN contexts the
-            // referenced column may be at a different index (Q17: lineitem
-            // cols 0-15, part cols 16-24; `p_partkey` is at index 16).
-            #[allow(unreachable_patterns)]
-            Expression::Subquery(_subq) => {
-                // TPC-H Q17 perf fast-path: correlated scalar aggregate
-                // subquery of the shape
-                //   (SELECT [op] AGG(col) FROM t WHERE key_col = <outer_ref>)
-                // → pre-compute `key_col_value → agg_result` ONCE per
-                // (table, key_col, agg_func, agg_arg) and look up O(1)
-                // per outer row. Q17 was 30s on SF=0.1 (cached per
-                // partkey, but each cache miss re-scanned 60K lineitems).
-                if let Some(lit) =
-                    self.try_scalar_agg_index_lookup(_subq, outer_row, outer_table_info)
-                {
-                    return Expression::Literal(lit.to_string());
-                }
-                let substituted =
-                    substitute_outer_refs_in_select(_subq, outer_row, outer_table_info);
-                let cache_key: Value = extract_first_literal_from_where(&substituted)
-                    .unwrap_or_else(|| {
-                        Value::Text(format!(
-                            "__no_subst_{}_{:?}",
-                            outer_row.len(),
-                            outer_row.first()
-                        ))
-                    });
-                {
-                    let cache = scalar_subq_cache().lock();
-                    if let Some(cached) = cache.get(&cache_key) {
-                        return Expression::Literal(cached.to_string());
-                    }
-                }
-                let result = self.execute_select(&substituted);
-                let scalar = match result {
-                    Ok(r) if !r.rows.is_empty() => {
-                        r.rows[0].first().cloned().unwrap_or(Value::Null)
-                    }
-                    _ => Value::Null,
-                };
-                scalar_subq_cache().lock().insert(cache_key, scalar.clone());
-                Expression::Literal(scalar.to_string())
-            }
+            // V312-58 Sprint 3 Phase 1 fix: the Expression::Subquery arm
+            // is handled EARLIER in this match (line 3955) with the
+            // full fast-path (try_scalar_agg_index_lookup + cache).
+            // This arm is intentionally absent — Rust match exhaustiveness
+            // is satisfied by the catch-all `pass-through` arms below.
+            //
             // CASE WHEN / SubqueryField pass through (no substitution needed —
             // these are not correlated scalar subqueries in TPC-H).
             Expression::SubqueryField(_, _) | Expression::CaseWhen(_, _) => where_expr.clone(),
@@ -4709,6 +4784,7 @@ impl<S: StorageEngine + 'static> ExecutionEngine<S> {
                 e.clone()
             } else {
                 drop(cache);
+                DIAG_TRY_SCALAR_AGG_BUILD.fetch_add(1, Ordering::SeqCst);
                 // Build the index by scanning the inner table once and
                 // computing the aggregate per key_col value.
                 let rows = storage.scan(real_table).ok()?;
