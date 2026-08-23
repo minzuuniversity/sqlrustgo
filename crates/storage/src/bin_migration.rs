@@ -53,11 +53,7 @@ fn encode_value_to_bytes(v: &Value) -> Vec<u8> {
 /// 3. Atomically rename .json → .json.bak
 ///
 /// If any step fails, .json remains in place and no .bak is created.
-pub fn migrate_json_to_bin(
-    data_dir: &Path,
-    table: &str,
-    json_data: &TableData,
-) -> SqlResult<()> {
+pub fn migrate_json_to_bin(data_dir: &Path, table: &str, json_data: &TableData) -> SqlResult<()> {
     std::fs::create_dir_all(data_dir).map_err(|e| SqlError::ExecutionError(e.to_string()))?;
 
     // Step 1: Write BIN segment
@@ -65,16 +61,23 @@ pub fn migrate_json_to_bin(
     let mut writer = SegmentWriter::new(seg_path.clone(), json_data.info.columns.clone())
         .map_err(|e| SqlError::ExecutionError(e.to_string()))?;
     for record in &json_data.rows {
-        let values: Vec<Option<Vec<u8>>> = record.iter().map(|v| {
-            if matches!(v, Value::Null) {
-                None
-            } else {
-                Some(encode_value_to_bytes(v))
-            }
-        }).collect();
-        writer.append(&values).map_err(|e| SqlError::ExecutionError(e.to_string()))?;
+        let values: Vec<Option<Vec<u8>>> = record
+            .iter()
+            .map(|v| {
+                if matches!(v, Value::Null) {
+                    None
+                } else {
+                    Some(encode_value_to_bytes(v))
+                }
+            })
+            .collect();
+        writer
+            .append(&values)
+            .map_err(|e| SqlError::ExecutionError(e.to_string()))?;
     }
-    writer.seal().map_err(|e| SqlError::ExecutionError(e.to_string()))?;
+    writer
+        .seal()
+        .map_err(|e| SqlError::ExecutionError(e.to_string()))?;
 
     // Step 2: Write root.index
     let seg_size = std::fs::metadata(&seg_path)
@@ -116,14 +119,20 @@ mod tests {
     fn test_detect_json_only() {
         let dir = tempdir().unwrap();
         std::fs::write(dir.path().join("t1.json"), b"{}").unwrap();
-        assert!(matches!(detect_table_format(dir.path(), "t1"), TableFormat::Json));
+        assert!(matches!(
+            detect_table_format(dir.path(), "t1"),
+            TableFormat::Json
+        ));
     }
 
     #[test]
     fn test_detect_bin_only() {
         let dir = tempdir().unwrap();
         std::fs::write(dir.path().join("t1.root.bin"), b"\0\0\0\0").unwrap();
-        assert!(matches!(detect_table_format(dir.path(), "t1"), TableFormat::Binary));
+        assert!(matches!(
+            detect_table_format(dir.path(), "t1"),
+            TableFormat::Binary
+        ));
     }
 
     #[test]
@@ -131,13 +140,19 @@ mod tests {
         let dir = tempdir().unwrap();
         std::fs::write(dir.path().join("t1.json"), b"{}").unwrap();
         std::fs::write(dir.path().join("t1.root.bin"), b"\0\0\0\0").unwrap();
-        assert!(matches!(detect_table_format(dir.path(), "t1"), TableFormat::Binary));
+        assert!(matches!(
+            detect_table_format(dir.path(), "t1"),
+            TableFormat::Binary
+        ));
     }
 
     #[test]
     fn test_detect_missing() {
         let dir = tempdir().unwrap();
-        assert!(matches!(detect_table_format(dir.path(), "missing"), TableFormat::Missing));
+        assert!(matches!(
+            detect_table_format(dir.path(), "missing"),
+            TableFormat::Missing
+        ));
     }
 
     #[test]
@@ -205,7 +220,11 @@ mod tests {
         // If it fails, no .bak file should be created
         if result.is_err() {
             // No .bak file should be created since migration failed
-            assert!(!dir.path().join("not_a_dir").join(format!("{}.json.bak", table)).exists());
+            assert!(!dir
+                .path()
+                .join("not_a_dir")
+                .join(format!("{}.json.bak", table))
+                .exists());
         }
     }
 }

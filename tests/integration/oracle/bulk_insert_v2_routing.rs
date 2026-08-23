@@ -35,9 +35,7 @@ fn bulk_insert_routes_to_v2_insert_streaming() {
     // Create table — use BIGINT to match Value::Integer (i64) byte width.
     // (INTEGER has known mismatch with Value::Integer encoding; tracked.)
     engine
-        .execute(
-            "CREATE TABLE t (id BIGINT PRIMARY KEY, name TEXT, val BIGINT)",
-        )
+        .execute("CREATE TABLE t (id BIGINT PRIMARY KEY, name TEXT, val BIGINT)")
         .expect("CREATE TABLE should succeed");
 
     // Direct call to bulk_insert_records explicitly exercises T4.2 routing.

@@ -2,12 +2,8 @@
 //!
 //! Replaces FileStorage for write paths. Streaming row append to segment files.
 
-use crate::bin_index::{
-    write_root_index_file, RootIndex, SegmentInfo,
-};
-use crate::bin_segment::{
-    SegmentWriter, DEFAULT_SEGMENT_SIZE_CAP,
-};
+use crate::bin_index::{write_root_index_file, RootIndex, SegmentInfo};
+use crate::bin_segment::{SegmentWriter, DEFAULT_SEGMENT_SIZE_CAP};
 use crate::engine::{
     ColumnDefinition, Record, RowFilter, RowMutation, SqlError, SqlResult, StorageEngine,
     TableData, TableInfo, TriggerInfo,
@@ -38,7 +34,10 @@ impl BinaryTableStorageV2 {
 
     pub fn create_table(&mut self, name: &str, schema: Vec<ColumnDefinition>) -> SqlResult<()> {
         if self.tables.contains_key(name) {
-            return Err(SqlError::ExecutionError(format!("table {} already exists", name)));
+            return Err(SqlError::ExecutionError(format!(
+                "table {} already exists",
+                name
+            )));
         }
         let info = TableInfo {
             name: name.to_string(),
@@ -50,36 +49,52 @@ impl BinaryTableStorageV2 {
             compression: None,
             collations: HashMap::new(),
         };
-        self.tables.insert(name.to_string(), TableData {
-            info,
-            rows: Vec::new(),
-        });
-        self.root_indices.insert(name.to_string(), RootIndex {
-            version: 3,
-            segments: Vec::new(),
-            schema_hash: 0,
-            total_rows: 0,
-            index_crc: 0,
-        });
+        self.tables.insert(
+            name.to_string(),
+            TableData {
+                info,
+                rows: Vec::new(),
+            },
+        );
+        self.root_indices.insert(
+            name.to_string(),
+            RootIndex {
+                version: 3,
+                segments: Vec::new(),
+                schema_hash: 0,
+                total_rows: 0,
+                index_crc: 0,
+            },
+        );
         self.next_segment_ids.insert(name.to_string(), 0);
         Ok(())
     }
 
     /// Stream-insert records into the table. No per-batch disk I/O — append happens in-memory.
     pub fn insert_streaming(&mut self, table: &str, records: Vec<Record>) -> SqlResult<()> {
-        let schema = self.tables.get(table)
+        let schema = self
+            .tables
+            .get(table)
             .ok_or_else(|| SqlError::ExecutionError(format!("table {} not found", table)))?
-            .info.columns.clone();
+            .info
+            .columns
+            .clone();
         let mut writer = self.get_or_open_writer(table, schema)?;
         for record in records {
-            let values: Vec<Option<Vec<u8>>> = record.iter().enumerate().map(|(_i, v)| {
-                if matches!(v, crate::engine::Value::Null) {
-                    None
-                } else {
-                    Some(encode_value_to_bytes(v))
-                }
-            }).collect();
-            writer.append(&values).map_err(|e| SqlError::ExecutionError(e.to_string()))?;
+            let values: Vec<Option<Vec<u8>>> = record
+                .iter()
+                .enumerate()
+                .map(|(_i, v)| {
+                    if matches!(v, crate::engine::Value::Null) {
+                        None
+                    } else {
+                        Some(encode_value_to_bytes(v))
+                    }
+                })
+                .collect();
+            writer
+                .append(&values)
+                .map_err(|e| SqlError::ExecutionError(e.to_string()))?;
             // Update in-memory table data
             self.tables.get_mut(table).unwrap().rows.push(record);
         }
@@ -87,7 +102,11 @@ impl BinaryTableStorageV2 {
         Ok(())
     }
 
-    fn get_or_open_writer(&mut self, table: &str, schema: Vec<ColumnDefinition>) -> SqlResult<SegmentWriter> {
+    fn get_or_open_writer(
+        &mut self,
+        table: &str,
+        schema: Vec<ColumnDefinition>,
+    ) -> SqlResult<SegmentWriter> {
         if let Some(mut w) = self.active_writers.remove(table) {
             if w.bytes_written() < DEFAULT_SEGMENT_SIZE_CAP as u32 - 16384 {
                 return Ok(w);
@@ -99,7 +118,9 @@ impl BinaryTableStorageV2 {
         // Open new segment
         let seg_id = *self.next_segment_ids.entry(table.to_string()).or_insert(0);
         self.next_segment_ids.insert(table.to_string(), seg_id + 1);
-        let path = self.data_dir.join(format!("{}_seg_{:04}.bin", table, seg_id));
+        let path = self
+            .data_dir
+            .join(format!("{}_seg_{:04}.bin", table, seg_id));
         SegmentWriter::new(path, schema).map_err(|e| SqlError::ExecutionError(e.to_string()))
     }
 
@@ -108,12 +129,18 @@ impl BinaryTableStorageV2 {
         let tables: Vec<String> = self.active_writers.keys().cloned().collect();
         for table in tables {
             if let Some(mut writer) = self.active_writers.remove(&table) {
-                writer.seal().map_err(|e| SqlError::ExecutionError(e.to_string()))?;
+                writer
+                    .seal()
+                    .map_err(|e| SqlError::ExecutionError(e.to_string()))?;
                 // Update root index
                 let idx = self.root_indices.get_mut(&table).unwrap();
                 let row_count = writer.rows_in_segment();
-                let path = self.data_dir.join(format!("{}_seg_{:04}.bin", table, idx.segments.len()));
-                let byte_size = std::fs::metadata(&path).map_err(|e| SqlError::ExecutionError(e.to_string()))?.len();
+                let path =
+                    self.data_dir
+                        .join(format!("{}_seg_{:04}.bin", table, idx.segments.len()));
+                let byte_size = std::fs::metadata(&path)
+                    .map_err(|e| SqlError::ExecutionError(e.to_string()))?
+                    .len();
                 idx.segments.push(SegmentInfo {
                     segment_id: idx.segments.len() as u32,
                     file_name: path.file_name().unwrap().to_string_lossy().to_string(),
@@ -122,7 +149,8 @@ impl BinaryTableStorageV2 {
                 });
                 idx.total_rows += row_count as u64;
                 let root_path = self.data_dir.join(format!("{}.root.bin", table));
-                write_root_index_file(&root_path, idx).map_err(|e| SqlError::ExecutionError(e.to_string()))?;
+                write_root_index_file(&root_path, idx)
+                    .map_err(|e| SqlError::ExecutionError(e.to_string()))?;
             }
         }
         Ok(())
@@ -178,7 +206,12 @@ impl StorageEngine for BinaryTableStorageV2 {
         Ok(0)
     }
 
-    fn update_if(&mut self, _table: &str, _filter: &RowFilter, _mutation: &RowMutation) -> SqlResult<usize> {
+    fn update_if(
+        &mut self,
+        _table: &str,
+        _filter: &RowFilter,
+        _mutation: &RowMutation,
+    ) -> SqlResult<usize> {
         Ok(0)
     }
 
@@ -192,7 +225,8 @@ impl StorageEngine for BinaryTableStorageV2 {
     }
 
     fn get_table_info(&self, table: &str) -> SqlResult<TableInfo> {
-        self.tables.get(table)
+        self.tables
+            .get(table)
             .map(|t| t.info.clone())
             .ok_or_else(|| SqlError::ExecutionError(format!("table {} not found", table)))
     }
@@ -311,9 +345,9 @@ mod tests {
             },
         ];
         storage.create_table("t1", schema.clone()).unwrap();
-        let records: Vec<Record> = (0..100).map(|i| {
-            vec![Value::Integer(i as i64), Value::Text(format!("name_{}", i))]
-        }).collect();
+        let records: Vec<Record> = (0..100)
+            .map(|i| vec![Value::Integer(i as i64), Value::Text(format!("name_{}", i))])
+            .collect();
         storage.insert_streaming("t1", records).unwrap();
         storage.flush().unwrap();
         // Verify root.bin exists

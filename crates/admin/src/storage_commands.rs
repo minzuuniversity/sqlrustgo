@@ -1,8 +1,8 @@
 //! Admin commands for BINT storage format management.
 
-use std::path::Path;
 use sqlrustgo_storage::SqlResult;
 use sqlrustgo_types::SqlError;
+use std::path::Path;
 
 pub fn rollback_to_json(data_dir: &Path, table: &str) -> SqlResult<()> {
     let bak = data_dir.join(format!("{}.json.bak", table));
@@ -38,12 +38,17 @@ pub fn cleanup_bak(data_dir: &Path, older_than_days: u32) -> SqlResult<usize> {
     let threshold = std::time::SystemTime::now()
         - std::time::Duration::from_secs(older_than_days as u64 * 86400);
     let mut removed = 0;
-    let entries = std::fs::read_dir(data_dir).map_err(|e| SqlError::ExecutionError(e.to_string()))?;
+    let entries =
+        std::fs::read_dir(data_dir).map_err(|e| SqlError::ExecutionError(e.to_string()))?;
     for entry in entries.flatten() {
         let name = entry.file_name().to_string_lossy().to_string();
         if name.ends_with(".json.bak") {
-            let meta = entry.metadata().map_err(|e| SqlError::ExecutionError(e.to_string()))?;
-            let modified = meta.modified().map_err(|e| SqlError::ExecutionError(e.to_string()))?;
+            let meta = entry
+                .metadata()
+                .map_err(|e| SqlError::ExecutionError(e.to_string()))?;
+            let modified = meta
+                .modified()
+                .map_err(|e| SqlError::ExecutionError(e.to_string()))?;
             if modified < threshold {
                 std::fs::remove_file(entry.path())
                     .map_err(|e| SqlError::ExecutionError(e.to_string()))?;
@@ -66,20 +71,13 @@ mod tests {
         let table = "t1";
         // Set up state: .json.bak exists, .bin + .root.bin exist
         std::fs::write(dir.path().join(format!("{}.json.bak", table)), b"{}").unwrap();
-        std::fs::write(
-            dir.path().join(format!("{}_seg_0000.bin", table)),
-            b"\0",
-        )
-        .unwrap();
+        std::fs::write(dir.path().join(format!("{}_seg_0000.bin", table)), b"\0").unwrap();
         std::fs::write(dir.path().join(format!("{}.root.bin", table)), b"\0").unwrap();
         rollback_to_json(dir.path(), table).unwrap();
         assert!(dir.path().join(format!("{}.json", table)).exists());
         assert!(!dir.path().join(format!("{}.json.bak", table)).exists());
         assert!(!dir.path().join(format!("{}.root.bin", table)).exists());
-        assert!(!dir
-            .path()
-            .join(format!("{}_seg_0000.bin", table))
-            .exists());
+        assert!(!dir.path().join(format!("{}_seg_0000.bin", table)).exists());
     }
 
     #[test]
