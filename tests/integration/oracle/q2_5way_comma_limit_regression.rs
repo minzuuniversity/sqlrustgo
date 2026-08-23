@@ -87,10 +87,47 @@ fn q2_canonical_5way_comma_limit() {
     for (i, row) in r.rows.iter().take(5).enumerate() {
         eprintln!("  row[{}] = {:?}", i, row);
     }
+    // Build TSV dump of the engine output for sha256 comparison vs the
+    // authoritative SQLite oracle (`queries/expected/q2_sf1_5way_comma_limit.tsv`,
+    // sha256 = 0849d0252928b2452e62a5ed341cd66e614ce0c42b4ad5d45a7845be8798e458).
+    // Both sides use the same column separator (|) and float format ({:.2} /
+    // printf '%.2f'), so the two files are bit-exact for a correct engine.
+    let mut out = String::new();
+    for row in &r.rows {
+        let parts: Vec<String> = row.iter().map(|v| match v {
+            sqlrustgo::Value::Float(f) => format!("{:.2}", f),
+            sqlrustgo::Value::Integer(i) => i.to_string(),
+            sqlrustgo::Value::Text(s) => s.clone(),
+            sqlrustgo::Value::Null => "NULL".to_string(),
+            sqlrustgo::Value::Boolean(b) => b.to_string(),
+            _ => format!("{:?}", v),
+        }).collect();
+        out.push_str(&parts.join("|"));
+        out.push('\n');
+    }
+    std::fs::write("/tmp/q2_engine_dump.tsv", &out).unwrap();
+    eprintln!("dumped to /tmp/q2_engine_dump.tsv");
+
     assert_eq!(
         r.rows.len(),
         20,
         "Q2 LIMIT 20 must cap the result at 20 rows (got {})",
         r.rows.len()
+    );
+
+    // Bit-exact content assertion: the engine output must match the
+    // authoritative SQLite oracle byte-for-byte. This is the real regression
+    // gate for #4375 — it verifies that (a) the LIMIT cap applies, (b) the
+    // sort key s_acctbal ASC is interpreted numerically (not lexically), and
+    // (c) the comma-join pushdown doesn't drop or duplicate rows.
+    let oracle_path = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
+        .join("queries/expected/q2_sf1_5way_comma_limit.tsv");
+    let oracle = std::fs::read(&oracle_path)
+        .unwrap_or_else(|e| panic!("missing oracle fixture {}: {}", oracle_path.display(), e));
+    assert_eq!(
+        out.as_bytes(),
+        oracle.as_slice(),
+        "Q2 engine output does not match SQLite oracle (sha256 mismatch). \
+         See /tmp/q2_engine_dump.tsv for actual output."
     );
 }
