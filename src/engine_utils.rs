@@ -46,6 +46,17 @@ pub fn validate_select_columns_referenced(
             .iter()
             .any(|c| c == &stripped.to_ascii_lowercase())
     };
+    // SELECT columns: any explicit `AS` alias is collected so ORDER BY
+    // can resolve it (SQL standard: SELECT-list aliases are visible to
+    // ORDER BY, since ORDER BY is conceptually applied to the SELECT
+    // output). Aliases are NOT visible to WHERE/HAVING — those operate
+    // on the input rows before the SELECT projection.
+    let select_aliases: Vec<String> = select
+        .columns
+        .iter()
+        .filter_map(|c| c.alias.clone())
+        .map(|a| a.to_ascii_lowercase())
+        .collect();
     for col in &select.columns {
         if let Some(ref expr) = col.expression {
             check_expr_references(expr, &exists)?;
@@ -57,8 +68,19 @@ pub fn validate_select_columns_referenced(
     if let Some(ref h) = select.having {
         check_expr_references(h, &exists)?;
     }
+    // ORDER BY: table columns OR explicit SELECT aliases.
+    let order_exists = |raw: &str| -> bool {
+        let stripped = if let Some(dot) = raw.rfind('.') {
+            &raw[dot + 1..]
+        } else {
+            raw
+        };
+        let lowered = stripped.to_ascii_lowercase();
+        column_names.iter().any(|c| c == &lowered)
+            || select_aliases.iter().any(|a| a == &lowered)
+    };
     for ord in &select.order_by {
-        check_expr_references(&ord.expression, &exists)?;
+        check_expr_references(&ord.expression, &order_exists)?;
     }
     Ok(())
 }
