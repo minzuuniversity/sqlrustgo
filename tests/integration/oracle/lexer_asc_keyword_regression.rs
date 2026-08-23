@@ -85,10 +85,8 @@ fn mixed_asc_desc_list_preserves_all_items() {
     let mut e = engine();
     e.execute("CREATE TABLE m (a INTEGER NOT NULL, b INTEGER NOT NULL, c INTEGER NOT NULL)")
         .unwrap();
-    e.execute(
-        "INSERT INTO m VALUES (1, 2, 100), (1, 1, 50), (2, 0, 25), (1, 2, 75)",
-    )
-    .unwrap();
+    e.execute("INSERT INTO m VALUES (1, 2, 100), (1, 1, 50), (2, 0, 25), (1, 2, 75)")
+        .unwrap();
     let r = e
         .execute("SELECT c FROM m ORDER BY a ASC, b DESC, c ASC LIMIT 3")
         .unwrap_or_else(|err| panic!("multi-key ORDER BY ASC LIMIT 3 failed: {}", err));
@@ -102,5 +100,9 @@ fn mixed_asc_desc_list_preserves_all_items() {
         .collect();
     // Expected order: a ASC then b DESC then c ASC, capped at 3.
     // Rows sorted: (1,2,75), (1,2,100), (1,1,50), (2,0,25) -> first 3 = 75,100,50.
-    assert_eq!(got, vec![75, 100, 50], "multi-key ASC/DESC list must sort correctly");
+    assert_eq!(
+        got,
+        vec![75, 100, 50],
+        "multi-key ASC/DESC list must sort correctly"
+    );
 }
