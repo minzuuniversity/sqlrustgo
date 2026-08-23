@@ -4634,25 +4634,40 @@ impl<S: StorageEngine + 'static> ExecutionEngine<S> {
         };
         let col_idx = table_info.columns.iter().position(|c| c.name == bare_col)?;
         let rows = storage.scan(real_table).ok()?;
+        // V312-58 Sprint 3: when the residual has no outer refs (e.g.
+        // Q22's `NOT EXISTS (SELECT * FROM orders WHERE o_custkey =
+        // outer.c_custkey)` → static_predicate == Literal("true")),
+        // the per-outer-row EXISTS/NOT EXISTS answer is determined
+        // SOLELY by key membership in `qualifying_keys`. We can
+        // skip allocating `key_to_rows` and `qualifying_rows` (which
+        // would otherwise clone 1.5M × 9-col rows ≈ 700MB for SF=0.01).
+        let pure_static_residual = !Self::residual_has_outer_ref(static_predicate.as_ref());
         // Store the full inner row alongside the key set so the
         // residual (which may reference outer columns) can be
         // re-evaluated per outer row. The prior key-only design
         // discarded the residual and broke TPC-H Q21.
         let mut qualifying_keys: std::collections::HashSet<Value> =
             std::collections::HashSet::with_capacity(rows.len());
-        let mut qualifying_rows: Vec<Vec<Value>> = Vec::with_capacity(rows.len());
+        let mut qualifying_rows: Vec<Vec<Value>> = Vec::new();
         // V311-15 perf: per-key bucket index for O(1) lookup in the
         // fast path. TPC-H Q4's biggest cost was that pre_eval_exists_indexed
         // iterated ALL qualifying rows per outer row, making it
         // O(outer × qualifying_rows).
+        //
+        // V312-58 Sprint 3: for pure-static residual, leave this
+        // EMPTY. `pre_eval_*_indexed` short-circuits on
+        // `qualifying_keys.contains(&lit)` and never reads
+        // `key_to_rows`, saving 700MB on Q22 SF=0.01.
         let mut key_to_rows: std::collections::HashMap<Value, Vec<Vec<Value>>> =
-            std::collections::HashMap::with_capacity(rows.len());
+            std::collections::HashMap::new();
         for row in rows {
             if eval_predicate(&static_predicate, &row, &table_info) {
                 let key = row[col_idx].clone();
                 qualifying_keys.insert(key.clone());
-                qualifying_rows.push(row.clone());
-                key_to_rows.entry(key).or_default().push(row);
+                if !pure_static_residual {
+                    qualifying_rows.push(row.clone());
+                    key_to_rows.entry(key).or_default().push(row);
+                }
             }
         }
         Some(SubqueryIndex {
@@ -4662,6 +4677,7 @@ impl<S: StorageEngine + 'static> ExecutionEngine<S> {
             qualifying_rows,
             key_to_rows,
             residual: *static_predicate,
+            pure_static_residual,
         })
     }
 
@@ -4850,6 +4866,11 @@ impl<S: StorageEngine + 'static> ExecutionEngine<S> {
         if !index.qualifying_keys.contains(&lit) {
             return Some(false);
         }
+        // V312-58 Sprint 3 fast path: pure-static residual →
+        // `key_to_rows` is empty by construction, answer is true.
+        if index.pure_static_residual {
+            return Some(true);
+        }
         // V311-15 perf: use the per-key bucket for O(1) lookup
         // instead of scanning all qualifying_rows. TPC-H Q4-style
         // queries (pure-static residual) skip per-row residual
@@ -4896,6 +4917,13 @@ impl<S: StorageEngine + 'static> ExecutionEngine<S> {
         // Short-circuit 1: if not in qualifying_keys, NOT EXISTS = true.
         if !index.qualifying_keys.contains(&lit) {
             return Some(true);
+        }
+        // V312-58 Sprint 3 fast path: pure-static residual →
+        // `key_to_rows` is empty by construction, key membership
+        // is the only thing that matters, and we already proved the
+        // key IS present. NOT EXISTS = false.
+        if index.pure_static_residual {
+            return Some(false);
         }
         // Short-circuit 2: pure-static residual pre-applied at build time.
         // Bucket empty after build filter ⇒ no inner row matches ⇒ NOT EXISTS = true.
@@ -5350,6 +5378,14 @@ pub struct SubqueryIndex {
     /// entry. May be `Literal("true")` when the index was built
     /// from a pure-equality pattern (no residual to re-check).
     pub residual: sqlrustgo_parser::Expression,
+    /// V312-58 Sprint 3: true iff `residual` is `Literal("true")`
+    /// or otherwise contains no outer-column references. When true,
+    /// `key_to_rows` and `qualifying_rows` are left empty by
+    /// `build_subquery_index` and the per-row EXISTS/NOT EXISTS
+    /// answer is determined SOLELY by `qualifying_keys.contains(&key)`.
+    /// This saves ~700MB on Q22 SF=0.01 (1.5M orders × 9 cols)
+    /// where the inner WHERE is just `o_custkey = c_custkey`.
+    pub pure_static_residual: bool,
 }
 
 /// Walk a WHERE expression tree, find every correlated EXISTS /
