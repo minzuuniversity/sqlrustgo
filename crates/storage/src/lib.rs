@@ -6,6 +6,7 @@ pub mod backup;
 pub mod bin_index;
 pub mod bin_migration;
 pub mod bin_segment;
+pub mod bin_compactor;
 pub mod binary_format;
 pub mod binary_storage;
 pub mod binary_storage_v2;
