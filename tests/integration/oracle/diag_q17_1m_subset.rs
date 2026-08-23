@@ -52,6 +52,9 @@ fn diag_q17_1m_subset() {
         eprintln!("  row[{:2}] = {:?}", i, row);
     }
     eprintln!();
-    eprintln!("Extrapolation (linear): SF=1 6M rows ≈ {:.0}s", elapsed.as_secs_f64() * 6.0);
+    eprintln!(
+        "Extrapolation (linear): SF=1 6M rows ≈ {:.0}s",
+        elapsed.as_secs_f64() * 6.0
+    );
     eprintln!("SQLite SF=1 oracle: 3713854.4285714287 (sha256 595003bf...)");
 }

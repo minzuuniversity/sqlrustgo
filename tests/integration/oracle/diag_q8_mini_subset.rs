@@ -30,7 +30,9 @@ fn setup() -> ExecutionEngine<MemoryStorage> {
         engine.execute(s).unwrap();
     }
     let mut st = storage.write();
-    for t in ["region", "nation", "supplier", "customer", "orders", "lineitem"] {
+    for t in [
+        "region", "nation", "supplier", "customer", "orders", "lineitem",
+    ] {
         let path = format!("{}/{}.tbl", DATA_DIR, t);
         let _ = st.bulk_load_tbl_file(t, &path);
     }

@@ -93,14 +93,17 @@ fn q2_canonical_5way_comma_limit() {
     // printf '%.2f'), so the two files are bit-exact for a correct engine.
     let mut out = String::new();
     for row in &r.rows {
-        let parts: Vec<String> = row.iter().map(|v| match v {
-            sqlrustgo::Value::Float(f) => format!("{:.2}", f),
-            sqlrustgo::Value::Integer(i) => i.to_string(),
-            sqlrustgo::Value::Text(s) => s.clone(),
-            sqlrustgo::Value::Null => "NULL".to_string(),
-            sqlrustgo::Value::Boolean(b) => b.to_string(),
-            _ => format!("{:?}", v),
-        }).collect();
+        let parts: Vec<String> = row
+            .iter()
+            .map(|v| match v {
+                sqlrustgo::Value::Float(f) => format!("{:.2}", f),
+                sqlrustgo::Value::Integer(i) => i.to_string(),
+                sqlrustgo::Value::Text(s) => s.clone(),
+                sqlrustgo::Value::Null => "NULL".to_string(),
+                sqlrustgo::Value::Boolean(b) => b.to_string(),
+                _ => format!("{:?}", v),
+            })
+            .collect();
         out.push_str(&parts.join("|"));
         out.push('\n');
     }

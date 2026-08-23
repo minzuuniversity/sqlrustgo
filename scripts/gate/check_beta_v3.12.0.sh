@@ -402,8 +402,8 @@ PY"
 # ============================================================
 echo ""
 echo "--- B7: ALPHA Gate Sanity (must still pass) ---"
-check "B7_ALPHA_ENTRY"      "ALPHA_QUALITY_FAST_TEST=1 bash scripts/gate/check_alpha_entry_v3.12.0.sh >/dev/null 2>&1"
-check "B7_ALPHA_QUALITY"    "ALPHA_QUALITY_FAST_TEST=1 bash scripts/gate/check_alpha_quality_v3.12.0.sh >/dev/null 2>&1"
+check "B7_ALPHA_ENTRY"      "bash scripts/gate/check_alpha_entry_v3.12.0.sh"
+check "B7_ALPHA_QUALITY"    "bash scripts/gate/check_alpha_quality_v3.12.0.sh"
 
 # ============================================================
 # B8: Thresholds override gate (V312-59-E, issue #4388)

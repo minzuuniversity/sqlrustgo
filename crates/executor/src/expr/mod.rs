@@ -1449,7 +1449,12 @@ pub fn eval_fn(name: &str, args: &[Value]) -> Value {
                 None => return Value::Null,
             };
             if std::env::var("Q7_TRACE").is_ok() {
-                eprintln!("[Q7_TRACE] EXTRACT field={:?} source={:?} (len={})", field, source, source.len());
+                eprintln!(
+                    "[Q7_TRACE] EXTRACT field={:?} source={:?} (len={})",
+                    field,
+                    source,
+                    source.len()
+                );
             }
             match field.as_str() {
                 "YEAR" if source.len() >= 4 => Value::Text(source[..4].to_string()),

@@ -76,8 +76,7 @@ pub fn validate_select_columns_referenced(
             raw
         };
         let lowered = stripped.to_ascii_lowercase();
-        column_names.iter().any(|c| c == &lowered)
-            || select_aliases.iter().any(|a| a == &lowered)
+        column_names.iter().any(|c| c == &lowered) || select_aliases.iter().any(|a| a == &lowered)
     };
     for ord in &select.order_by {
         check_expr_references(&ord.expression, &order_exists)?;

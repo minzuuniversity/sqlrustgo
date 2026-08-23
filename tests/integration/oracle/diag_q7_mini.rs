@@ -33,38 +33,91 @@ fn build_mini_fixture() -> ExecutionEngine<MemoryStorage> {
     }
 
     let mut st = storage.write();
-    let _ = st.insert("region", vec![vec![
-        sqlrustgo::Value::Integer(1), sqlrustgo::Value::Text("EUROPE".into()), sqlrustgo::Value::Text("".into()),
-    ]]);
-    let _ = st.insert("nation", vec![vec![
-        sqlrustgo::Value::Integer(7), sqlrustgo::Value::Text("GERMANY".into()), sqlrustgo::Value::Integer(1), sqlrustgo::Value::Text("".into()),
-    ]]);
-    let _ = st.insert("nation", vec![vec![
-        sqlrustgo::Value::Integer(8), sqlrustgo::Value::Text("FRANCE".into()), sqlrustgo::Value::Integer(1), sqlrustgo::Value::Text("".into()),
-    ]]);
-    let _ = st.insert("supplier", vec![vec![
-        sqlrustgo::Value::Integer(101), sqlrustgo::Value::Text("S#101".into()), sqlrustgo::Value::Text("addr".into()),
-        sqlrustgo::Value::Integer(7), sqlrustgo::Value::Text("phone".into()), sqlrustgo::Value::Float(100.0), sqlrustgo::Value::Text("".into()),
-    ]]);
-    let _ = st.insert("customer", vec![vec![
-        sqlrustgo::Value::Integer(201), sqlrustgo::Value::Text("C#201".into()), sqlrustgo::Value::Text("addr".into()),
-        sqlrustgo::Value::Integer(8), sqlrustgo::Value::Text("phone".into()), sqlrustgo::Value::Float(200.0),
-        sqlrustgo::Value::Text("BUILDING".into()), sqlrustgo::Value::Text("".into()),
-    ]]);
-    let _ = st.insert("orders", vec![vec![
-        sqlrustgo::Value::Integer(301), sqlrustgo::Value::Integer(201), sqlrustgo::Value::Text("O".into()),
-        sqlrustgo::Value::Text("1995-06-15".into()), sqlrustgo::Value::Text("1-URGENT".into()),
-        sqlrustgo::Value::Text("Clerk#1".into()), sqlrustgo::Value::Integer(0), sqlrustgo::Value::Text("".into()),
-    ]]);
-    let _ = st.insert("lineitem", vec![vec![
-        sqlrustgo::Value::Integer(301), sqlrustgo::Value::Integer(1), sqlrustgo::Value::Integer(101),
-        sqlrustgo::Value::Integer(1), sqlrustgo::Value::Integer(10), sqlrustgo::Value::Float(1000.0),
-        sqlrustgo::Value::Float(0.05), sqlrustgo::Value::Float(0.0),
-        sqlrustgo::Value::Text("N".into()), sqlrustgo::Value::Text("O".into()),
-        sqlrustgo::Value::Text("1995-08-01".into()), sqlrustgo::Value::Text("1995-08-15".into()),
-        sqlrustgo::Value::Text("1995-08-22".into()), sqlrustgo::Value::Text("DELIVER IN PERSON".into()),
-        sqlrustgo::Value::Text("TRUCK".into()), sqlrustgo::Value::Text("".into()),
-    ]]);
+    let _ = st.insert(
+        "region",
+        vec![vec![
+            sqlrustgo::Value::Integer(1),
+            sqlrustgo::Value::Text("EUROPE".into()),
+            sqlrustgo::Value::Text("".into()),
+        ]],
+    );
+    let _ = st.insert(
+        "nation",
+        vec![vec![
+            sqlrustgo::Value::Integer(7),
+            sqlrustgo::Value::Text("GERMANY".into()),
+            sqlrustgo::Value::Integer(1),
+            sqlrustgo::Value::Text("".into()),
+        ]],
+    );
+    let _ = st.insert(
+        "nation",
+        vec![vec![
+            sqlrustgo::Value::Integer(8),
+            sqlrustgo::Value::Text("FRANCE".into()),
+            sqlrustgo::Value::Integer(1),
+            sqlrustgo::Value::Text("".into()),
+        ]],
+    );
+    let _ = st.insert(
+        "supplier",
+        vec![vec![
+            sqlrustgo::Value::Integer(101),
+            sqlrustgo::Value::Text("S#101".into()),
+            sqlrustgo::Value::Text("addr".into()),
+            sqlrustgo::Value::Integer(7),
+            sqlrustgo::Value::Text("phone".into()),
+            sqlrustgo::Value::Float(100.0),
+            sqlrustgo::Value::Text("".into()),
+        ]],
+    );
+    let _ = st.insert(
+        "customer",
+        vec![vec![
+            sqlrustgo::Value::Integer(201),
+            sqlrustgo::Value::Text("C#201".into()),
+            sqlrustgo::Value::Text("addr".into()),
+            sqlrustgo::Value::Integer(8),
+            sqlrustgo::Value::Text("phone".into()),
+            sqlrustgo::Value::Float(200.0),
+            sqlrustgo::Value::Text("BUILDING".into()),
+            sqlrustgo::Value::Text("".into()),
+        ]],
+    );
+    let _ = st.insert(
+        "orders",
+        vec![vec![
+            sqlrustgo::Value::Integer(301),
+            sqlrustgo::Value::Integer(201),
+            sqlrustgo::Value::Text("O".into()),
+            sqlrustgo::Value::Text("1995-06-15".into()),
+            sqlrustgo::Value::Text("1-URGENT".into()),
+            sqlrustgo::Value::Text("Clerk#1".into()),
+            sqlrustgo::Value::Integer(0),
+            sqlrustgo::Value::Text("".into()),
+        ]],
+    );
+    let _ = st.insert(
+        "lineitem",
+        vec![vec![
+            sqlrustgo::Value::Integer(301),
+            sqlrustgo::Value::Integer(1),
+            sqlrustgo::Value::Integer(101),
+            sqlrustgo::Value::Integer(1),
+            sqlrustgo::Value::Integer(10),
+            sqlrustgo::Value::Float(1000.0),
+            sqlrustgo::Value::Float(0.05),
+            sqlrustgo::Value::Float(0.0),
+            sqlrustgo::Value::Text("N".into()),
+            sqlrustgo::Value::Text("O".into()),
+            sqlrustgo::Value::Text("1995-08-01".into()),
+            sqlrustgo::Value::Text("1995-08-15".into()),
+            sqlrustgo::Value::Text("1995-08-22".into()),
+            sqlrustgo::Value::Text("DELIVER IN PERSON".into()),
+            sqlrustgo::Value::Text("TRUCK".into()),
+            sqlrustgo::Value::Text("".into()),
+        ]],
+    );
     engine
 }
 
@@ -73,10 +126,16 @@ fn diag_q7_mini_count_one() {
     let mut engine = build_mini_fixture();
     let sql = std::fs::read_to_string("queries/q7.sql").unwrap();
     let sql = sql.replace('\n', " ");
-    let r = engine.execute(&sql).unwrap_or_else(|e| panic!("Q7 failed: {}", e));
+    let r = engine
+        .execute(&sql)
+        .unwrap_or_else(|e| panic!("Q7 failed: {}", e));
     eprintln!("Q7 returned {} rows", r.rows.len());
     for (i, row) in r.rows.iter().take(5).enumerate() {
         eprintln!("  row[{}] = {:?}", i, row);
     }
-    assert_eq!(r.rows.len(), 1, "Q7 with 1 fact-row must return exactly 1 row");
+    assert_eq!(
+        r.rows.len(),
+        1,
+        "Q7 with 1 fact-row must return exactly 1 row"
+    );
 }

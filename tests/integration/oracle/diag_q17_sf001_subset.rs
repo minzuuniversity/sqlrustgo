@@ -32,8 +32,11 @@ fn setup() -> ExecutionEngine<MemoryStorage> {
         let mut st = storage.write();
         st.bulk_load_tbl_file("part", &format!("{}/part_clean.tbl", DATA_DIR))
             .unwrap();
-        st.bulk_load_tbl_file("lineitem", &format!("{}/q17_lineitem_minimal.tbl", DATA_DIR))
-            .unwrap();
+        st.bulk_load_tbl_file(
+            "lineitem",
+            &format!("{}/q17_lineitem_minimal.tbl", DATA_DIR),
+        )
+        .unwrap();
     }
     engine
 }

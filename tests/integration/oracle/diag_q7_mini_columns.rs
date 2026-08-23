@@ -32,38 +32,91 @@ fn build_mini_fixture() -> ExecutionEngine<MemoryStorage> {
     }
 
     let mut st = storage.write();
-    let _ = st.insert("region", vec![vec![
-        Value::Integer(1), Value::Text("EUROPE".into()), Value::Text("".into()),
-    ]]);
-    let _ = st.insert("nation", vec![vec![
-        Value::Integer(7), Value::Text("GERMANY".into()), Value::Integer(1), Value::Text("".into()),
-    ]]);
-    let _ = st.insert("nation", vec![vec![
-        Value::Integer(8), Value::Text("FRANCE".into()), Value::Integer(1), Value::Text("".into()),
-    ]]);
-    let _ = st.insert("supplier", vec![vec![
-        Value::Integer(101), Value::Text("S#101".into()), Value::Text("addr".into()),
-        Value::Integer(7), Value::Text("phone".into()), Value::Float(100.0), Value::Text("".into()),
-    ]]);
-    let _ = st.insert("customer", vec![vec![
-        Value::Integer(201), Value::Text("C#201".into()), Value::Text("addr".into()),
-        Value::Integer(8), Value::Text("phone".into()), Value::Float(200.0),
-        Value::Text("BUILDING".into()), Value::Text("".into()),
-    ]]);
-    let _ = st.insert("orders", vec![vec![
-        Value::Integer(301), Value::Integer(201), Value::Text("O".into()),
-        Value::Text("1995-06-15".into()), Value::Text("1-URGENT".into()),
-        Value::Text("Clerk#1".into()), Value::Integer(0), Value::Text("".into()),
-    ]]);
-    let _ = st.insert("lineitem", vec![vec![
-        Value::Integer(301), Value::Integer(1), Value::Integer(101),
-        Value::Integer(1), Value::Integer(10), Value::Float(1000.0),
-        Value::Float(0.05), Value::Float(0.0),
-        Value::Text("N".into()), Value::Text("O".into()),
-        Value::Text("1995-08-01".into()), Value::Text("1995-08-15".into()),
-        Value::Text("1995-08-22".into()), Value::Text("DELIVER IN PERSON".into()),
-        Value::Text("TRUCK".into()), Value::Text("".into()),
-    ]]);
+    let _ = st.insert(
+        "region",
+        vec![vec![
+            Value::Integer(1),
+            Value::Text("EUROPE".into()),
+            Value::Text("".into()),
+        ]],
+    );
+    let _ = st.insert(
+        "nation",
+        vec![vec![
+            Value::Integer(7),
+            Value::Text("GERMANY".into()),
+            Value::Integer(1),
+            Value::Text("".into()),
+        ]],
+    );
+    let _ = st.insert(
+        "nation",
+        vec![vec![
+            Value::Integer(8),
+            Value::Text("FRANCE".into()),
+            Value::Integer(1),
+            Value::Text("".into()),
+        ]],
+    );
+    let _ = st.insert(
+        "supplier",
+        vec![vec![
+            Value::Integer(101),
+            Value::Text("S#101".into()),
+            Value::Text("addr".into()),
+            Value::Integer(7),
+            Value::Text("phone".into()),
+            Value::Float(100.0),
+            Value::Text("".into()),
+        ]],
+    );
+    let _ = st.insert(
+        "customer",
+        vec![vec![
+            Value::Integer(201),
+            Value::Text("C#201".into()),
+            Value::Text("addr".into()),
+            Value::Integer(8),
+            Value::Text("phone".into()),
+            Value::Float(200.0),
+            Value::Text("BUILDING".into()),
+            Value::Text("".into()),
+        ]],
+    );
+    let _ = st.insert(
+        "orders",
+        vec![vec![
+            Value::Integer(301),
+            Value::Integer(201),
+            Value::Text("O".into()),
+            Value::Text("1995-06-15".into()),
+            Value::Text("1-URGENT".into()),
+            Value::Text("Clerk#1".into()),
+            Value::Integer(0),
+            Value::Text("".into()),
+        ]],
+    );
+    let _ = st.insert(
+        "lineitem",
+        vec![vec![
+            Value::Integer(301),
+            Value::Integer(1),
+            Value::Integer(101),
+            Value::Integer(1),
+            Value::Integer(10),
+            Value::Float(1000.0),
+            Value::Float(0.05),
+            Value::Float(0.0),
+            Value::Text("N".into()),
+            Value::Text("O".into()),
+            Value::Text("1995-08-01".into()),
+            Value::Text("1995-08-15".into()),
+            Value::Text("1995-08-22".into()),
+            Value::Text("DELIVER IN PERSON".into()),
+            Value::Text("TRUCK".into()),
+            Value::Text("".into()),
+        ]],
+    );
     engine
 }
 
@@ -72,12 +125,18 @@ fn diag_q7_mini_columns_count() {
     let mut engine = build_mini_fixture();
     let sql = std::fs::read_to_string("queries/q7.sql").unwrap();
     let sql = sql.replace('\n', " ");
-    let r = engine.execute(&sql).unwrap_or_else(|e| panic!("Q7 failed: {}", e));
+    let r = engine
+        .execute(&sql)
+        .unwrap_or_else(|e| panic!("Q7 failed: {}", e));
     eprintln!("Q7 returned {} rows", r.rows.len());
     for (i, row) in r.rows.iter().enumerate() {
         eprintln!("row[{}] ncols={}", i, row.len());
         for (j, cell) in row.iter().enumerate() {
-            eprintln!("  col[{}] = {:?} (variant)", j, std::mem::discriminant(cell));
+            eprintln!(
+                "  col[{}] = {:?} (variant)",
+                j,
+                std::mem::discriminant(cell)
+            );
             eprintln!("         display = {:?}", cell);
         }
     }
