@@ -959,6 +959,9 @@ path = "tests/integration/oracle/diag_q22_substr.rs"
 name = "diag_q22_cell_level"
 path = "tests/integration/oracle/diag_q22_cell_level.rs"
 [[test]]
+name = "diag_q22_sprint3_path"
+path = "tests/integration/oracle/diag_q22_sprint3_path.rs"
+[[test]]
 name = "diag_q6_filter"
 path = "tests/integration/oracle/diag_q6_filter.rs"
 [[test]]
