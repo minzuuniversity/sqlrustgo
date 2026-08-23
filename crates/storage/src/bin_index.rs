@@ -9,9 +9,9 @@
 //!   u64: total_rows
 //!   u32: index_crc (over all preceding bytes)
 
-use std::path::PathBuf;
 use crc32c::Crc32cHasher;
 use std::hash::Hasher;
+use std::path::PathBuf;
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct SegmentInfo {
@@ -68,34 +68,48 @@ pub fn decode_root_index(buf: &[u8]) -> Result<RootIndex, IndexError> {
         return Err(IndexError::TooShort);
     }
     let mut pos = 0;
-    let version = u32::from_le_bytes(buf[pos..pos+4].try_into().unwrap()); pos += 4;
+    let version = u32::from_le_bytes(buf[pos..pos + 4].try_into().unwrap());
+    pos += 4;
     if version != 3 {
         return Err(IndexError::InvalidVersion(version));
     }
-    let seg_count = u16::from_le_bytes(buf[pos..pos+2].try_into().unwrap()) as usize; pos += 2;
+    let seg_count = u16::from_le_bytes(buf[pos..pos + 2].try_into().unwrap()) as usize;
+    pos += 2;
     pos += 10; // reserved
     let mut segments = Vec::with_capacity(seg_count);
     for _ in 0..seg_count {
         if pos + 4 + 4 > buf.len() {
             return Err(IndexError::TooShort);
         }
-        let segment_id = u32::from_le_bytes(buf[pos..pos+4].try_into().unwrap()); pos += 4;
-        let name_len = u32::from_le_bytes(buf[pos..pos+4].try_into().unwrap()) as usize; pos += 4;
+        let segment_id = u32::from_le_bytes(buf[pos..pos + 4].try_into().unwrap());
+        pos += 4;
+        let name_len = u32::from_le_bytes(buf[pos..pos + 4].try_into().unwrap()) as usize;
+        pos += 4;
         if pos + name_len + 4 + 8 > buf.len() {
             return Err(IndexError::TooShort);
         }
-        let file_name = String::from_utf8(buf[pos..pos+name_len].to_vec())
-            .map_err(|_| IndexError::TooShort)?; pos += name_len;
-        let row_count = u32::from_le_bytes(buf[pos..pos+4].try_into().unwrap()); pos += 4;
-        let byte_size = u64::from_le_bytes(buf[pos..pos+8].try_into().unwrap()); pos += 8;
-        segments.push(SegmentInfo { segment_id, file_name, row_count, byte_size });
+        let file_name = String::from_utf8(buf[pos..pos + name_len].to_vec())
+            .map_err(|_| IndexError::TooShort)?;
+        pos += name_len;
+        let row_count = u32::from_le_bytes(buf[pos..pos + 4].try_into().unwrap());
+        pos += 4;
+        let byte_size = u64::from_le_bytes(buf[pos..pos + 8].try_into().unwrap());
+        pos += 8;
+        segments.push(SegmentInfo {
+            segment_id,
+            file_name,
+            row_count,
+            byte_size,
+        });
     }
     if pos + 8 + 8 + 4 > buf.len() {
         return Err(IndexError::TooShort);
     }
-    let schema_hash = u64::from_le_bytes(buf[pos..pos+8].try_into().unwrap()); pos += 8;
-    let total_rows = u64::from_le_bytes(buf[pos..pos+8].try_into().unwrap()); pos += 8;
-    let index_crc = u32::from_le_bytes(buf[pos..pos+4].try_into().unwrap());
+    let schema_hash = u64::from_le_bytes(buf[pos..pos + 8].try_into().unwrap());
+    pos += 8;
+    let total_rows = u64::from_le_bytes(buf[pos..pos + 8].try_into().unwrap());
+    pos += 8;
+    let index_crc = u32::from_le_bytes(buf[pos..pos + 4].try_into().unwrap());
     // Verify CRC
     let mut hasher = Crc32cHasher::default();
     hasher.write(&buf[..pos]);
@@ -103,7 +117,13 @@ pub fn decode_root_index(buf: &[u8]) -> Result<RootIndex, IndexError> {
     if computed != index_crc {
         return Err(IndexError::CrcMismatch);
     }
-    Ok(RootIndex { version, segments, schema_hash, total_rows, index_crc })
+    Ok(RootIndex {
+        version,
+        segments,
+        schema_hash,
+        total_rows,
+        index_crc,
+    })
 }
 
 pub fn read_root_index_file(path: &PathBuf) -> Result<RootIndex, IndexError> {
@@ -125,8 +145,18 @@ mod tests {
         let idx = RootIndex {
             version: 3,
             segments: vec![
-                SegmentInfo { segment_id: 0, file_name: "seg_000.bin".into(), row_count: 1000, byte_size: 65536 },
-                SegmentInfo { segment_id: 1, file_name: "seg_001.bin".into(), row_count: 800, byte_size: 50000 },
+                SegmentInfo {
+                    segment_id: 0,
+                    file_name: "seg_000.bin".into(),
+                    row_count: 1000,
+                    byte_size: 65536,
+                },
+                SegmentInfo {
+                    segment_id: 1,
+                    file_name: "seg_001.bin".into(),
+                    row_count: 800,
+                    byte_size: 50000,
+                },
             ],
             schema_hash: 0xCAFEBABEDEADBEEF,
             total_rows: 1800,

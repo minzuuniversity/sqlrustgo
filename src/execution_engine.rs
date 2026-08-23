@@ -572,7 +572,9 @@ impl<S: StorageEngine + 'static> ExecutionEngine<S> {
         // T4.2: Route to BinaryTableStorageV2::insert_streaming when applicable.
         // Uses type_name check to avoid needing the feature flag at workspace level.
         // T4.2 Fix: Changed from .contains() to exact match to avoid false positives.
-        if std::any::type_name::<S>() == "sqlrustgo_storage::binary_storage_v2::BinaryTableStorageV2" {
+        if std::any::type_name::<S>()
+            == "sqlrustgo_storage::binary_storage_v2::BinaryTableStorageV2"
+        {
             // This branch only compiles when BinaryTableStorageV2 is available.
             // The type_name check ensures we only reach this code when S is V2.
             // T4.2 Fix: Suppress clippy warning since bin_storage_default is defined in storage crate.
@@ -582,8 +584,9 @@ impl<S: StorageEngine + 'static> ExecutionEngine<S> {
                 use sqlrustgo_storage::BinaryTableStorageV2;
                 let mut storage = self.storage_write();
                 if let Some(v2) = storage.as_any_mut().downcast_mut::<BinaryTableStorageV2>() {
-                    v2.insert_streaming(table, records)
-                        .map_err(|e| SqlError::ExecutionError(format!("bulk_insert_records: {}", e)))?;
+                    v2.insert_streaming(table, records).map_err(|e| {
+                        SqlError::ExecutionError(format!("bulk_insert_records: {}", e))
+                    })?;
                     // NOTE: intentionally NO flush() here.
                     return Ok(n);
                 }

@@ -1,7 +1,7 @@
 //! L2: Write N rows -> flush -> verify root.bin row count + segment file exists.
 
-use sqlrustgo_storage::binary_storage_v2::BinaryTableStorageV2;
 use sqlrustgo_storage::bin_index::read_root_index_file;
+use sqlrustgo_storage::binary_storage_v2::BinaryTableStorageV2;
 use sqlrustgo_storage::engine::Value;
 use sqlrustgo_storage::ColumnDefinition;
 use tempfile::tempdir;
@@ -9,8 +9,8 @@ use tempfile::tempdir;
 #[test]
 fn test_basic_io_100k_rows() {
     let dir = tempdir().expect("tempdir");
-    let mut storage = BinaryTableStorageV2::new(dir.path().to_path_buf())
-        .expect("BinaryTableStorageV2::new");
+    let mut storage =
+        BinaryTableStorageV2::new(dir.path().to_path_buf()).expect("BinaryTableStorageV2::new");
 
     // BIGINT (8 bytes) matches Value::Integer (i64) encoding width - INTEGER (4) does not.
     let mut id_col = ColumnDefinition::new("id", "BIGINT");
@@ -27,7 +27,9 @@ fn test_basic_io_100k_rows() {
         .map(|i| vec![Value::Integer(i), Value::Text(format!("row_{}", i))])
         .collect();
 
-    storage.insert_streaming("t1", records).expect("insert_streaming");
+    storage
+        .insert_streaming("t1", records)
+        .expect("insert_streaming");
     storage.flush().expect("flush");
 
     // Verify on-disk root.bin reports correct row count (Option A - exercises format)
