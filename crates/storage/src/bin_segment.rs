@@ -244,6 +244,129 @@ pub fn decode_row(
     Ok(values)
 }
 
+// ============================================================
+// Task 1.6: Segment header (16 KB page) + segment footer (16 B)
+// ============================================================
+
+/// Padding added after the 44-byte fixed header to reach 16 KB page size.
+pub const SEGMENT_HEADER_PADDING_SIZE: usize = 16384 - 0x2C;
+
+/// Size of segment footer in bytes (4 + 8 + 4 = 16).
+pub const SEGMENT_FOOTER_SIZE: usize = 16;
+
+/// 44-byte fixed segment header (followed by padding to fill 16 KB).
+#[derive(Debug, Clone, Copy)]
+#[repr(packed)]
+pub struct SegmentHeader {
+    pub magic: [u8; 8],
+    pub version: u32,
+    pub flags: u32,
+    pub ts: u64,
+    pub col_count: u16,
+    pub row_count: u32,
+    pub _reserved1: u16,        // bytes 30..32 (alignment padding)
+    pub schema_offset: u16,
+    pub data_start: u32,
+    pub _reserved2: u16,        // bytes 38..40 (alignment padding)
+    pub header_crc: u32,
+}
+
+impl PartialEq for SegmentHeader {
+    fn eq(&self, other: &Self) -> bool {
+        self.magic == other.magic
+            && self.version == other.version
+            && self.flags == other.flags
+            && self.ts == other.ts
+            && self.col_count == other.col_count
+            && self.row_count == other.row_count
+            && self._reserved1 == other._reserved1
+            && self.schema_offset == other.schema_offset
+            && self.data_start == other.data_start
+            && self._reserved2 == other._reserved2
+            && self.header_crc == other.header_crc
+    }
+}
+
+impl Eq for SegmentHeader {}
+
+/// 16-byte segment footer at end of file.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct SegmentFooter {
+    pub row_count: u32,
+    pub segment_size: u32,
+    pub next_offset: u32,
+    pub footer_crc: u32,
+}
+
+/// Encode segment header into a 16 KB page with CRC32C.
+pub fn encode_segment_header(h: &SegmentHeader) -> Vec<u8> {
+    let mut buf = vec![0u8; 16384];
+    buf[0..8].copy_from_slice(&h.magic);
+    buf[8..12].copy_from_slice(&h.version.to_le_bytes());
+    buf[12..16].copy_from_slice(&h.flags.to_le_bytes());
+    buf[16..24].copy_from_slice(&h.ts.to_le_bytes());
+    buf[24..26].copy_from_slice(&h.col_count.to_le_bytes());
+    buf[26..30].copy_from_slice(&h.row_count.to_le_bytes());
+    // bytes 30..32: _reserved1 (alignment)
+    buf[32..34].copy_from_slice(&h.schema_offset.to_le_bytes());
+    buf[34..38].copy_from_slice(&h.data_start.to_le_bytes());
+    // bytes 38..40: _reserved2 (alignment)
+    // Compute CRC over bytes [0..0x28] then write at [0x28..0x2C]
+    let crc = compute_row_crc(&buf[0..0x28]);
+    buf[0x28..0x2C].copy_from_slice(&crc.to_le_bytes());
+    buf
+}
+
+/// Decode segment header from a 16 KB page; verifies CRC32C.
+pub fn decode_segment_header(buf: &[u8; 16384]) -> Result<SegmentHeader, RowDecodeError> {
+    let expected_crc = u32::from_le_bytes(buf[0x28..0x2C].try_into().unwrap());
+    if !verify_row_crc(&buf[0..0x28], expected_crc) {
+        let computed = compute_row_crc(&buf[0..0x28]);
+        return Err(RowDecodeError::CrcMismatch { computed, expected: expected_crc });
+    }
+    let magic: [u8; 8] = buf[0..8].try_into().unwrap();
+    Ok(SegmentHeader {
+        magic,
+        version: u32::from_le_bytes(buf[8..12].try_into().unwrap()),
+        flags: u32::from_le_bytes(buf[12..16].try_into().unwrap()),
+        ts: u64::from_le_bytes(buf[16..24].try_into().unwrap()),
+        col_count: u16::from_le_bytes(buf[24..26].try_into().unwrap()),
+        row_count: u32::from_le_bytes(buf[26..30].try_into().unwrap()),
+        _reserved1: u16::from_le_bytes(buf[30..32].try_into().unwrap()),
+        schema_offset: u16::from_le_bytes(buf[32..34].try_into().unwrap()),
+        data_start: u32::from_le_bytes(buf[34..38].try_into().unwrap()),
+        _reserved2: u16::from_le_bytes(buf[38..40].try_into().unwrap()),
+        header_crc: expected_crc,
+    })
+}
+
+/// Encode segment footer (16 bytes with CRC32C).
+pub fn encode_segment_footer(f: &SegmentFooter) -> [u8; 16] {
+    let mut buf = [0u8; 16];
+    buf[0..4].copy_from_slice(&f.row_count.to_le_bytes());
+    buf[4..8].copy_from_slice(&f.segment_size.to_le_bytes());
+    buf[8..12].copy_from_slice(&f.next_offset.to_le_bytes());
+    // bytes 12..16 hold CRC32C; compute over [0..12] then write
+    let crc = compute_row_crc(&buf[0..12]);
+    buf[12..16].copy_from_slice(&crc.to_le_bytes());
+    buf
+}
+
+/// Decode segment footer; verifies CRC32C.
+pub fn decode_segment_footer(buf: &[u8; 16]) -> Result<SegmentFooter, RowDecodeError> {
+    let expected_crc = u32::from_le_bytes(buf[12..16].try_into().unwrap());
+    if !verify_row_crc(&buf[0..12], expected_crc) {
+        let computed = compute_row_crc(&buf[0..12]);
+        return Err(RowDecodeError::CrcMismatch { computed, expected: expected_crc });
+    }
+    Ok(SegmentFooter {
+        row_count: u32::from_le_bytes(buf[0..4].try_into().unwrap()),
+        segment_size: u32::from_le_bytes(buf[4..8].try_into().unwrap()),
+        next_offset: u32::from_le_bytes(buf[8..12].try_into().unwrap()),
+        footer_crc: expected_crc,
+    })
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -363,5 +486,81 @@ mod tests {
         let row = encode_row(&schema, &values, 1);
         let decoded = decode_row(&schema, &row).unwrap();
         assert!(decoded[1].is_none());
+    }
+
+    // ============================================================
+    // Task 1.6: Segment header + footer tests
+    // ============================================================
+
+    #[test]
+    fn test_segment_header_size_constant() {
+        use std::mem::size_of;
+        assert_eq!(size_of::<SegmentHeader>(), 0x2C); // 44 bytes (CRC32C at 0x28..0x2C)
+    }
+
+    #[test]
+    fn test_segment_header_roundtrip() {
+        let h = SegmentHeader {
+            magic: *SEGMENT_MAGIC,
+            version: SEGMENT_VERSION,
+            flags: 0,
+            ts: 1234567890,
+            col_count: 5,
+            row_count: 100,
+            _reserved1: 0,
+            schema_offset: 0x0020,
+            data_start: DATA_START_OFFSET,
+            _reserved2: 0,
+            header_crc: 0, // filled by encoder
+        };
+        let buf = encode_segment_header(&h);
+        assert_eq!(buf.len(), 16384);
+        let arr: [u8; 16384] = buf[..16384].try_into().unwrap();
+        let h2 = decode_segment_header(&arr).unwrap();
+        // Copy fields to avoid unaligned reference errors with packed struct
+        let version = h2.version;
+        let col_count = h2.col_count;
+        let row_count = h2.row_count;
+        assert_eq!(version, SEGMENT_VERSION);
+        assert_eq!(col_count, 5);
+        assert_eq!(row_count, 100);
+    }
+
+    #[test]
+    fn test_segment_header_detects_corruption() {
+        let h = SegmentHeader {
+            magic: *SEGMENT_MAGIC,
+            version: SEGMENT_VERSION,
+            flags: 0,
+            ts: 0,
+            col_count: 1,
+            row_count: 0,
+            _reserved1: 0,
+            schema_offset: 0x0020,
+            data_start: DATA_START_OFFSET,
+            _reserved2: 0,
+            header_crc: 0,
+        };
+        let mut buf = encode_segment_header(&h);
+        buf[10] ^= 0xFF; // corrupt version field
+        let arr: [u8; 16384] = buf[..16384].try_into().unwrap();
+        let result = decode_segment_header(&arr);
+        assert!(matches!(result, Err(RowDecodeError::CrcMismatch { .. })));
+    }
+
+    #[test]
+    fn test_segment_footer_roundtrip() {
+        let f = SegmentFooter {
+            row_count: 42,
+            segment_size: 0xDEADBEEFu32,
+            next_offset: 0xCAFEBABEu32,
+            footer_crc: 0,
+        };
+        let buf = encode_segment_footer(&f);
+        assert_eq!(buf.len(), 16);
+        let f2 = decode_segment_footer(&buf).unwrap();
+        assert_eq!(f2.row_count, 42);
+        assert_eq!(f2.segment_size, 0xDEADBEEFu32);
+        assert_eq!(f2.next_offset, 0xCAFEBABEu32);
     }
 }
