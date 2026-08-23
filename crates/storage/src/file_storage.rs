@@ -711,6 +711,7 @@ mod tests {
                     name: "id".to_string(),
                     data_type: "INTEGER".to_string(),
                     nullable: false,
+                    auto_increment: false,
                     ..Default::default()
                 }],
                 foreign_keys: vec![],
@@ -758,6 +759,7 @@ mod tests {
                     name: "id".to_string(),
                     data_type: "INTEGER".to_string(),
                     nullable: false,
+                    auto_increment: false,
                     ..Default::default()
                 }],
                 foreign_keys: vec![],
@@ -800,6 +802,7 @@ mod tests {
                     name: "id".to_string(),
                     data_type: "INTEGER".to_string(),
                     nullable: false,
+                    auto_increment: false,
                     ..Default::default()
                 }],
                 foreign_keys: vec![],
@@ -843,12 +846,14 @@ mod tests {
                         name: "id".to_string(),
                         data_type: "INTEGER".to_string(),
                         nullable: false,
+                        auto_increment: false,
                         ..Default::default()
                     },
                     ColumnDefinition {
                         name: "value".to_string(),
                         data_type: "INTEGER".to_string(),
                         nullable: false,
+                        auto_increment: false,
                         ..Default::default()
                     },
                 ],
@@ -911,6 +916,7 @@ mod tests {
                     name: "id".to_string(),
                     data_type: "INTEGER".to_string(),
                     nullable: false,
+                    auto_increment: false,
                     ..Default::default()
                 }],
                 foreign_keys: vec![],
@@ -962,6 +968,7 @@ mod tests {
                     name: "id".to_string(),
                     data_type: "INTEGER".to_string(),
                     nullable: false,
+                    auto_increment: false,
                     ..Default::default()
                 }],
                 foreign_keys: vec![],
@@ -1004,6 +1011,7 @@ mod tests {
                     name: "name".to_string(),
                     data_type: "TEXT".to_string(),
                     nullable: false,
+                    auto_increment: false,
                     ..Default::default()
                 }],
                 foreign_keys: vec![],
@@ -1076,6 +1084,7 @@ mod tests {
                     name: "id".to_string(),
                     data_type: "INTEGER".to_string(),
                     nullable: false,
+                    auto_increment: false,
                     ..Default::default()
                 }],
                 foreign_keys: vec![],
@@ -1116,6 +1125,7 @@ mod tests {
                     name: "id".to_string(),
                     data_type: "INTEGER".to_string(),
                     nullable: false,
+                    auto_increment: false,
                     ..Default::default()
                 }],
                 foreign_keys: vec![],
@@ -1249,6 +1259,7 @@ mod tests {
                     name: "id".to_string(),
                     data_type: "INTEGER".to_string(),
                     nullable: false,
+                    auto_increment: false,
                     ..Default::default()
                 }],
                 foreign_keys: vec![],

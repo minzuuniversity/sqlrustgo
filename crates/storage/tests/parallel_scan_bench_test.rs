@@ -32,6 +32,7 @@ fn make_test_storage(rows: usize) -> (FileStorage, TempDir) {
             char_max_length: None,
             collation: None,
             default_value: None,
+            auto_increment: false,
         }],
         foreign_keys: vec![],
         unique_constraints: vec![],

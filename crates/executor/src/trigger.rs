@@ -1134,21 +1134,25 @@ mod tests {
                 ColumnDefinition {
                     name: "id".to_string(),
                     data_type: "INTEGER".to_string(),
+                    auto_increment: false,
                     ..Default::default()
                 },
                 ColumnDefinition {
                     name: "price".to_string(),
                     data_type: "FLOAT".to_string(),
+                    auto_increment: false,
                     ..Default::default()
                 },
                 ColumnDefinition {
                     name: "quantity".to_string(),
                     data_type: "INTEGER".to_string(),
+                    auto_increment: false,
                     ..Default::default()
                 },
                 ColumnDefinition {
                     name: "total".to_string(),
                     data_type: "FLOAT".to_string(),
+                    auto_increment: false,
                     ..Default::default()
                 },
             ],
@@ -1498,6 +1502,7 @@ mod tests {
             columns: vec![ColumnDefinition {
                 name: "id".to_string(),
                 data_type: "INTEGER".to_string(),
+                auto_increment: false,
                 ..Default::default()
             }],
             ..Default::default()
@@ -1510,6 +1515,7 @@ mod tests {
             columns: vec![ColumnDefinition {
                 name: "id".to_string(),
                 data_type: "INTEGER".to_string(),
+                auto_increment: false,
                 ..Default::default()
             }],
             ..Default::default()
