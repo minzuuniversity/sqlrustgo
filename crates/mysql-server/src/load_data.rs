@@ -9,6 +9,8 @@
 //!   - Otherwise → Text
 
 use sqlrustgo::ExecutionEngine;
+use sqlrustgo_storage::engine::MemoryStorage;
+use sqlrustgo_storage::wal::MemoryWalManager;
 use sqlrustgo_storage::wal_storage::WalStorage;
 use sqlrustgo_storage::{FileBackedWalManager, FileStorage, StorageEngine};
 use sqlrustgo_types::Value as SqlValue;
@@ -94,19 +96,31 @@ pub fn bulk_insert<S: StorageEngine + 'static>(
 }
 
 /// T4.1: Try to override the WAL sync mode of `storage` to `mode`.
-/// If `storage` is not a `WalStorage<FileStorage, FileBackedWalManager>`
-/// (e.g. it is a `BinaryTableStorage` used with the `binary` backend), this
-/// is a no-op and returns `None`.
+/// If `storage` is not a `WalStorage` (file-backed or memory), this is a no-op
+/// and returns `None`.
 ///
 /// Returns the original sync mode so the caller can restore it.
 pub fn apply_wal_sync_mode_override(
     storage: &mut dyn StorageEngine,
     mode: sqlrustgo_storage::WalSyncMode,
 ) -> Option<sqlrustgo_storage::WalSyncMode> {
-    // downcast_mut requires 'static because we need to know the concrete type.
-    storage
+    // Try file-backed WalStorage first
+    if let Some(result) = storage
         .as_any_mut()
         .downcast_mut::<WalStorage<FileStorage, FileBackedWalManager>>()
+        .map(|wal_storage| {
+            let original = wal_storage.sync_mode();
+            wal_storage.set_sync_mode(mode);
+            original
+        })
+    {
+        return Some(result);
+    }
+
+    // Try memory-based WalStorage
+    storage
+        .as_any_mut()
+        .downcast_mut::<WalStorage<MemoryStorage, MemoryWalManager>>()
         .map(|wal_storage| {
             let original = wal_storage.sync_mode();
             wal_storage.set_sync_mode(mode);
@@ -116,15 +130,27 @@ pub fn apply_wal_sync_mode_override(
 
 /// Restore the WAL sync mode to a previously captured original value.
 /// If `storage` is not a `WalStorage` or `original` is `None`, this is a no-op.
-#[allow(dead_code)]
 pub fn restore_wal_sync_mode(
     storage: &mut dyn StorageEngine,
     original: Option<sqlrustgo_storage::WalSyncMode>,
 ) {
     if let Some(mode) = original {
-        let _ = storage
+        // Try file-backed WalStorage first
+        if storage
             .as_any_mut()
             .downcast_mut::<WalStorage<FileStorage, FileBackedWalManager>>()
+            .map(|wal_storage| {
+                wal_storage.set_sync_mode(mode);
+            })
+            .is_some()
+        {
+            return;
+        }
+
+        // Try memory-based WalStorage
+        let _ = storage
+            .as_any_mut()
+            .downcast_mut::<WalStorage<MemoryStorage, MemoryWalManager>>()
             .map(|wal_storage| {
                 wal_storage.set_sync_mode(mode);
             });
@@ -136,6 +162,8 @@ mod tests {
     use super::*;
     use parking_lot::RwLock;
     use sqlrustgo::{ExecutionEngine, MemoryStorage};
+    use sqlrustgo_storage::wal::MemoryWalManager;
+    use sqlrustgo_storage::wal_storage::WalSyncMode;
     use std::sync::Arc;
 
     #[test]
@@ -213,5 +241,49 @@ mod tests {
                 SqlValue::Text("comment".to_string()),
             ]
         );
+    }
+
+    #[test]
+    fn test_wal_sync_mode_restore_roundtrip() {
+        // Create a WalStorage with known initial sync mode (Every)
+        let inner = MemoryStorage::new();
+        let wal = MemoryWalManager::new();
+        let mut wal_storage = WalStorage::new(inner, wal).unwrap();
+
+        // Verify initial mode is Every (default)
+        assert_eq!(wal_storage.sync_mode(), WalSyncMode::Every);
+
+        // Apply override: change to Batch(1)
+        let original = apply_wal_sync_mode_override(&mut wal_storage, WalSyncMode::Batch(1));
+        assert_eq!(original, Some(WalSyncMode::Every));
+        assert_eq!(wal_storage.sync_mode(), WalSyncMode::Batch(1));
+
+        // Restore to original mode
+        restore_wal_sync_mode(&mut wal_storage, original);
+
+        // Verify restoration: mode should be back to Every
+        assert_eq!(wal_storage.sync_mode(), WalSyncMode::Every);
+    }
+
+    #[test]
+    fn test_apply_wal_sync_mode_override_twice() {
+        // Test calling apply twice verifies second call sees original mode
+        let inner = MemoryStorage::new();
+        let wal = MemoryWalManager::new();
+        let mut wal_storage = WalStorage::new(inner, wal).unwrap();
+
+        // First override
+        let first_original = apply_wal_sync_mode_override(&mut wal_storage, WalSyncMode::Off);
+        assert_eq!(first_original, Some(WalSyncMode::Every));
+
+        // Second override - should capture Batch(1) as "original"
+        let second_original = apply_wal_sync_mode_override(&mut wal_storage, WalSyncMode::Batch(1));
+        assert_eq!(second_original, Some(WalSyncMode::Off));
+
+        // Restore second capture
+        restore_wal_sync_mode(&mut wal_storage, second_original);
+
+        // Should be back to Off (the mode before second override)
+        assert_eq!(wal_storage.sync_mode(), WalSyncMode::Off);
     }
 }

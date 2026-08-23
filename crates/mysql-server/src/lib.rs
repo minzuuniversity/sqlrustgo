@@ -4011,7 +4011,9 @@ fn handle_load_local_infile<S: Read + Write>(
     seq: &mut u8,
     _cap: u32,
 ) -> MySqlResult<u64> {
-    use crate::load_data::{apply_wal_sync_mode_override, bulk_insert, parse_tbl_line};
+    use crate::load_data::{
+        apply_wal_sync_mode_override, bulk_insert, parse_tbl_line, restore_wal_sync_mode,
+    };
 
     // 1. Whitelist check — canonicalize both sides and confirm the
     //    file is inside data_dir. This is the only line of defense
@@ -4207,17 +4209,8 @@ fn handle_load_local_infile<S: Read + Write>(
     }
 
     // T4.1 FIX: Restore original WAL sync mode after all bulk inserts complete.
-    // This ensures subsequent operations use the correct sync mode.
-    if let Some(storage) = engine
-        .storage_ref()
-        .write()
-        .as_any_mut()
-        .downcast_mut::<WalStorage<FileStorage, FileBackedWalManager>>()
-    {
-        if let Some(mode) = original_sync_mode {
-            storage.set_sync_mode(mode);
-        }
-    }
+    // Uses the utility function from load_data.rs for consistency.
+    restore_wal_sync_mode(&mut *engine.storage_ref().write(), original_sync_mode);
 
     Ok(total_rows)
 }
