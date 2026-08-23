@@ -1394,3 +1394,7 @@ path = "tests/unit/types_value_test.rs"
 [[test]]
 name = "q2_q17_repro_test"
 path = "tests/integration/q2_q17_repro_test.rs"
+
+[[test]]
+name = "torn_write_recovery"
+path = "tests/integration/fault_injection/torn_write_recovery.rs"
