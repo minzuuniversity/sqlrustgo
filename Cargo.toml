@@ -1238,6 +1238,9 @@ path = "tests/integration/tpch/tpch_bug_regression_test.rs"
 name = "tpch_hash_test"
 path = "tests/integration/tpch/tpch_hash_test.rs"
 [[test]]
+name = "tpch_json_vs_bint_compare"
+path = "tests/integration/tpch/tpch_json_vs_bint_compare.rs"
+[[test]]
 name = "tpch_q6_q19_oracle_test"
 path = "tests/integration/tpch/tpch_q6_q19_oracle_test.rs"
 [[test]]
