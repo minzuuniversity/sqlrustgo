@@ -15,6 +15,8 @@ use std::path::Path;
 #[derive(Debug, Clone)]
 pub struct CompactorConfig {
     pub max_segment_count: usize,
+    /// Stored for future use; not consulted in current implementation.
+    /// Reserved for a streaming/spill-to-disk compaction path (T6.x).
     pub oom_safe: bool,
 }
 
