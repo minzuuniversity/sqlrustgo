@@ -475,6 +475,7 @@ mod tests {
                     char_max_length: None,
                     collation: None,
                     default_value: None,
+                    auto_increment: false,
                 },
                 crate::ColumnDefinition {
                     name: "name".to_string(),
@@ -484,6 +485,7 @@ mod tests {
                     char_max_length: None,
                     collation: None,
                     default_value: None,
+                    auto_increment: false,
                 },
             ],
             ..Default::default()
@@ -526,6 +528,7 @@ mod tests {
                     char_max_length: None,
                     collation: None,
                     default_value: None,
+                    auto_increment: false,
                 },
                 crate::ColumnDefinition {
                     name: "name".to_string(),
@@ -535,6 +538,7 @@ mod tests {
                     char_max_length: None,
                     collation: None,
                     default_value: None,
+                    auto_increment: false,
                 },
             ],
             ..Default::default()
@@ -624,6 +628,7 @@ mod tests {
                 char_max_length: None,
                 collation: None,
                 default_value: None,
+                auto_increment: false,
             }],
             ..Default::default()
         };
@@ -724,6 +729,7 @@ mod tests {
                 char_max_length: None,
                 collation: None,
                 default_value: None,
+                auto_increment: false,
             }],
             ..Default::default()
         };
@@ -750,6 +756,7 @@ mod tests {
                 char_max_length: None,
                 collation: None,
                 default_value: None,
+                auto_increment: false,
             }],
             ..Default::default()
         };
@@ -782,6 +789,7 @@ mod tests {
                 char_max_length: None,
                 collation: None,
                 default_value: None,
+                auto_increment: false,
             }],
             ..Default::default()
         };
