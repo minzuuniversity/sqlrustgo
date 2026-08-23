@@ -1398,3 +1398,7 @@ path = "tests/integration/q2_q17_repro_test.rs"
 [[test]]
 name = "torn_write_recovery"
 path = "tests/integration/fault_injection/torn_write_recovery.rs"
+
+[[test]]
+name = "row_crc_skip"
+path = "tests/integration/fault_injection/row_crc_skip.rs"
