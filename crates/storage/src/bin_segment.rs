@@ -54,7 +54,9 @@ pub fn decode_row_header(buf: &[u8; 16]) -> RowHeader {
     RowHeader {
         row_size: u32::from_le_bytes([buf[0], buf[1], buf[2], buf[3]]),
         var_field_offset: u32::from_le_bytes([buf[4], buf[5], buf[6], buf[7]]),
-        row_id: u64::from_le_bytes([buf[8], buf[9], buf[10], buf[11], buf[12], buf[13], buf[14], buf[15]]),
+        row_id: u64::from_le_bytes([
+            buf[8], buf[9], buf[10], buf[11], buf[12], buf[13], buf[14], buf[15],
+        ]),
     }
 }
 
@@ -102,7 +104,7 @@ impl SegmentWriter {
         }
         let file = File::create(&path)?;
         let mut writer = BufWriter::with_capacity(1 << 20, file); // 1 MB BufWriter
-        // Write placeholder header (row_count=0; will not rewrite on seal in this task)
+                                                                  // Write placeholder header (row_count=0; will not rewrite on seal in this task)
         let _ = encode_segment_header(&SegmentHeader {
             magic: *SEGMENT_MAGIC,
             version: SEGMENT_VERSION,
@@ -163,9 +165,9 @@ impl SegmentWriter {
                 "segment size cap exceeded".into(),
             ));
         }
-        self.file.write_all(&row).map_err(|e| {
-            RowDecodeError::InvalidVarLength(format!("write error: {}", e))
-        })?;
+        self.file
+            .write_all(&row)
+            .map_err(|e| RowDecodeError::InvalidVarLength(format!("write error: {}", e)))?;
         self.bytes_written += row.len() as u32;
         self.rows_in_segment += 1;
         let id = self.next_row_id;
@@ -182,9 +184,9 @@ impl SegmentWriter {
         let footer_start = ((cur + 16383) / 16384) * 16384;
         let pad = footer_start - cur;
         if pad > 0 {
-            self.file.write_all(&vec![0u8; pad]).map_err(|e| {
-                RowDecodeError::InvalidVarLength(format!("pad error: {}", e))
-            })?;
+            self.file
+                .write_all(&vec![0u8; pad])
+                .map_err(|e| RowDecodeError::InvalidVarLength(format!("pad error: {}", e)))?;
             self.bytes_written += pad as u32;
         }
         let total_size = footer_start as u64 + SEGMENT_FOOTER_SIZE as u64;
@@ -195,19 +197,21 @@ impl SegmentWriter {
             footer_crc: 0,
         });
         // Footer is 16 bytes; pad to fill 16 KB page
-        self.file.write_all(&footer).map_err(|e| {
-            RowDecodeError::InvalidVarLength(format!("footer error: {}", e))
-        })?;
+        self.file
+            .write_all(&footer)
+            .map_err(|e| RowDecodeError::InvalidVarLength(format!("footer error: {}", e)))?;
         let footer_page_pad = 16384 - footer.len();
         if footer_page_pad > 0 {
-            self.file.write_all(&vec![0u8; footer_page_pad]).map_err(|e| {
-                RowDecodeError::InvalidVarLength(format!("footer pad error: {}", e))
-            })?;
+            self.file
+                .write_all(&vec![0u8; footer_page_pad])
+                .map_err(|e| {
+                    RowDecodeError::InvalidVarLength(format!("footer pad error: {}", e))
+                })?;
         }
         self.bytes_written += 16384;
-        self.file.flush().map_err(|e| {
-            RowDecodeError::InvalidVarLength(format!("flush error: {}", e))
-        })?;
+        self.file
+            .flush()
+            .map_err(|e| RowDecodeError::InvalidVarLength(format!("flush error: {}", e)))?;
         self.sealed = true;
         Ok(())
     }
@@ -249,9 +253,8 @@ impl SegmentReader {
         path: &std::path::Path,
         schema: Vec<ColumnDefinition>,
     ) -> Result<Self, RowDecodeError> {
-        let bytes = std::fs::read(path).map_err(|e| {
-            RowDecodeError::InvalidVarLength(format!("read error: {}", e))
-        })?;
+        let bytes = std::fs::read(path)
+            .map_err(|e| RowDecodeError::InvalidVarLength(format!("read error: {}", e)))?;
         if bytes.len() < 16384 * 2 {
             return Err(RowDecodeError::TooShort {
                 expected: 16384 * 2,
@@ -286,12 +289,8 @@ impl SegmentReader {
             if pos + ROW_HEADER_SIZE + 2 + ROW_FOOTER_SIZE > data.len() {
                 return None;
             }
-            let row_size = u32::from_le_bytes(
-                data[pos..pos + 4].try_into().unwrap(),
-            ) as usize;
-            if row_size < ROW_HEADER_SIZE + ROW_FOOTER_SIZE
-                || pos + row_size > data.len()
-            {
+            let row_size = u32::from_le_bytes(data[pos..pos + 4].try_into().unwrap()) as usize;
+            if row_size < ROW_HEADER_SIZE + ROW_FOOTER_SIZE || pos + row_size > data.len() {
                 return None;
             }
             let row_bytes = &data[pos..pos + row_size];
@@ -350,11 +349,7 @@ pub enum RowDecodeError {
 /// `values[i]` is `None` if column `i` is NULL, else `Some(raw_bytes)` where
 /// raw_bytes must already be in the column's on-disk encoding
 /// (i32 LE for Int, UTF-8 for VarChar, etc.).
-pub fn encode_row(
-    schema: &[ColumnDefinition],
-    values: &[Option<Vec<u8>>],
-    row_id: u64,
-) -> Vec<u8> {
+pub fn encode_row(schema: &[ColumnDefinition], values: &[Option<Vec<u8>>], row_id: u64) -> Vec<u8> {
     // Compute null bitmap
     let mut null_bitmap: u16 = 0;
     for (i, v) in values.iter().enumerate() {
@@ -391,7 +386,12 @@ pub fn encode_row(
         }
         if let Some(width) = column_width(col) {
             let val = values[i].as_ref().expect("non-null column must have value");
-            assert_eq!(val.len(), width, "fixed column {} byte width mismatch", col.name);
+            assert_eq!(
+                val.len(),
+                width,
+                "fixed column {} byte width mismatch",
+                col.name
+            );
             buf.extend_from_slice(val);
         }
     }
@@ -431,8 +431,7 @@ pub fn decode_row(
     let header_arr: [u8; 16] = row_bytes[0..16].try_into().unwrap();
     let header = decode_row_header(&header_arr);
     let body = &row_bytes[..row_bytes.len() - ROW_FOOTER_SIZE];
-    let expected_crc =
-        u32::from_le_bytes(row_bytes[row_bytes.len() - 4..].try_into().unwrap());
+    let expected_crc = u32::from_le_bytes(row_bytes[row_bytes.len() - 4..].try_into().unwrap());
     if !verify_row_crc(body, expected_crc) {
         let computed = compute_row_crc(body);
         return Err(RowDecodeError::CrcMismatch {
@@ -461,14 +460,17 @@ pub fn decode_row(
                 ));
             }
             let len = u32::from_le_bytes([
-                row_bytes[var_cur], row_bytes[var_cur + 1],
-                row_bytes[var_cur + 2], row_bytes[var_cur + 3],
+                row_bytes[var_cur],
+                row_bytes[var_cur + 1],
+                row_bytes[var_cur + 2],
+                row_bytes[var_cur + 3],
             ]) as usize;
             var_cur += 4;
             if var_cur + len > row_bytes.len() - ROW_FOOTER_SIZE {
-                return Err(RowDecodeError::InvalidVarLength(
-                    format!("declared length {} exceeds row body", len),
-                ));
+                return Err(RowDecodeError::InvalidVarLength(format!(
+                    "declared length {} exceeds row body",
+                    len
+                )));
             }
             values[i] = Some(row_bytes[var_cur..var_cur + len].to_vec());
             var_cur += len;
@@ -497,10 +499,10 @@ pub struct SegmentHeader {
     pub ts: u64,
     pub col_count: u16,
     pub row_count: u32,
-    pub _reserved1: u16,        // bytes 30..32 (alignment padding)
+    pub _reserved1: u16, // bytes 30..32 (alignment padding)
     pub schema_offset: u16,
     pub data_start: u32,
-    pub _reserved2: u16,        // bytes 38..40 (alignment padding)
+    pub _reserved2: u16, // bytes 38..40 (alignment padding)
     pub header_crc: u32,
 }
 
@@ -555,7 +557,10 @@ pub fn decode_segment_header(buf: &[u8; 16384]) -> Result<SegmentHeader, RowDeco
     let expected_crc = u32::from_le_bytes(buf[0x28..0x2C].try_into().unwrap());
     if !verify_row_crc(&buf[0..0x28], expected_crc) {
         let computed = compute_row_crc(&buf[0..0x28]);
-        return Err(RowDecodeError::CrcMismatch { computed, expected: expected_crc });
+        return Err(RowDecodeError::CrcMismatch {
+            computed,
+            expected: expected_crc,
+        });
     }
     let magic: [u8; 8] = buf[0..8].try_into().unwrap();
     Ok(SegmentHeader {
@@ -590,7 +595,10 @@ pub fn decode_segment_footer(buf: &[u8; 16]) -> Result<SegmentFooter, RowDecodeE
     let expected_crc = u32::from_le_bytes(buf[12..16].try_into().unwrap());
     if !verify_row_crc(&buf[0..12], expected_crc) {
         let computed = compute_row_crc(&buf[0..12]);
-        return Err(RowDecodeError::CrcMismatch { computed, expected: expected_crc });
+        return Err(RowDecodeError::CrcMismatch {
+            computed,
+            expected: expected_crc,
+        });
     }
     Ok(SegmentFooter {
         row_count: u32::from_le_bytes(buf[0..4].try_into().unwrap()),
@@ -606,7 +614,10 @@ pub fn decode_segment_footer(buf: &[u8; 16]) -> Result<SegmentFooter, RowDecodeE
 /// corruption variants for caller diagnostics.
 #[derive(Debug, Error)]
 pub enum BinSegmentError {
-    #[error("row {} CRC32C mismatch: computed {computed:#x}, expected {expected:#x}", row_id)]
+    #[error(
+        "row {} CRC32C mismatch: computed {computed:#x}, expected {expected:#x}",
+        row_id
+    )]
     RowChecksumMismatch {
         row_id: u64,
         computed: u32,
@@ -663,7 +674,10 @@ mod tests {
 
     #[test]
     fn test_column_width_variable_types() {
-        assert_eq!(column_width(&make_col("v", "VARCHAR(255)", Some(255))), None);
+        assert_eq!(
+            column_width(&make_col("v", "VARCHAR(255)", Some(255))),
+            None
+        );
         assert_eq!(column_width(&make_col("t", "TEXT", None)), None);
         assert_eq!(column_width(&make_col("b", "BLOB", None)), None);
         assert_eq!(column_width(&make_col("j", "JSON", None)), None);
@@ -716,10 +730,7 @@ mod tests {
             make_col("id", "INT", None),
             make_col("name", "VARCHAR(255)", None),
         ];
-        let values = vec![
-            Some(42i32.to_le_bytes().to_vec()),
-            Some(b"alice".to_vec()),
-        ];
+        let values = vec![Some(42i32.to_le_bytes().to_vec()), Some(b"alice".to_vec())];
         let row = encode_row(&schema, &values, 1);
         // header(16) + int(4) + null_bitmap(2) + var_len(4) + name(5) + crc(4) = 35
         assert!(row.len() >= 35);
@@ -731,10 +742,7 @@ mod tests {
 
     #[test]
     fn test_encode_row_with_nulls() {
-        let schema = vec![
-            make_col("a", "INT", None),
-            make_col("b", "TEXT", None),
-        ];
+        let schema = vec![make_col("a", "INT", None), make_col("b", "TEXT", None)];
         let values = vec![Some(7i32.to_le_bytes().to_vec()), None];
         let row = encode_row(&schema, &values, 1);
         let decoded = decode_row(&schema, &row).unwrap();
@@ -905,7 +913,8 @@ mod tests {
         let schema = vec![make_col("x", "INT", None)];
         let mut w = SegmentWriter::new(path.clone(), schema.clone()).unwrap();
         for i in 0..10 {
-            w.append(&[Some((i as i32).to_le_bytes().to_vec())]).unwrap();
+            w.append(&[Some((i as i32).to_le_bytes().to_vec())])
+                .unwrap();
         }
         w.seal().unwrap();
         // Tamper with row 5's CRC byte (last 4 bytes of the row at known offset)
@@ -925,10 +934,7 @@ mod tests {
         }
         std::fs::write(&path, &bytes).unwrap();
         let reader = SegmentReader::open(&path, schema).unwrap();
-        let rows: Vec<_> = reader
-            .iter_rows()
-            .filter_map(|r| r.ok())
-            .collect();
+        let rows: Vec<_> = reader.iter_rows().filter_map(|r| r.ok()).collect();
         assert!(rows.len() < 10); // at least one row was skipped
         assert!(rows.len() >= 9); // but most were valid
     }
