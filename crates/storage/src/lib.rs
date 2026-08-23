@@ -5,6 +5,7 @@ pub mod append_only_storage;
 pub mod backup;
 pub mod binary_format;
 pub mod binary_storage;
+pub mod bin_segment;
 pub mod bplus_tree;
 pub mod buffer_pool;
 pub mod change_buffer;
