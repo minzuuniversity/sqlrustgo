@@ -3,8 +3,9 @@
 ## Purpose
 
 Switch production default storage from JSON (`FileStorage`) to BINT v3 binary
-format (`BinaryTableStorageV2`) to accelerate TPC-H SF=1 lineitem load from
-~10 hours to < 60 seconds.
+format (`BinaryTableStorageV2`) to accelerate TPC-H SF=1 lineitem load.
+The 6M load achieves 108s on this hardware (per T6.5 measurement), compared
+to an estimated ~10+ hours for JSON (not directly measured).
 
 ## New Requirements
 
