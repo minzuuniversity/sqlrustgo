@@ -6,6 +6,8 @@
 //!   - Page footer (last 16 KB): row_count + segment_size + CRC32C
 
 use crate::engine::ColumnDefinition;
+use std::fs::File;
+use std::io::{BufWriter, Write};
 use std::path::PathBuf;
 
 /// BINT v3 segment file magic bytes.
@@ -74,9 +76,156 @@ pub fn verify_row_crc(row_bytes: &[u8], expected: u32) -> bool {
 pub struct SegmentWriter {
     path: PathBuf,
     schema: Vec<ColumnDefinition>,
+    file: BufWriter<File>,
     bytes_written: u32,
     rows_in_segment: u32,
     max_segment_size: usize,
+    next_row_id: u64,
+    sealed: bool,
+}
+
+impl SegmentWriter {
+    pub fn new(path: PathBuf, schema: Vec<ColumnDefinition>) -> std::io::Result<Self> {
+        Self::with_size_cap(path, schema, DEFAULT_SEGMENT_SIZE_CAP)
+    }
+
+    pub fn with_size_cap(
+        path: PathBuf,
+        schema: Vec<ColumnDefinition>,
+        max_segment_size: usize,
+    ) -> std::io::Result<Self> {
+        if let Some(parent) = path.parent() {
+            if !parent.as_os_str().is_empty() {
+                std::fs::create_dir_all(parent)?;
+            }
+        }
+        let file = File::create(&path)?;
+        let mut writer = BufWriter::with_capacity(1 << 20, file); // 1 MB BufWriter
+        // Write placeholder header (row_count=0; will not rewrite on seal in this task)
+        let _ = encode_segment_header(&SegmentHeader {
+            magic: *SEGMENT_MAGIC,
+            version: SEGMENT_VERSION,
+            flags: 0,
+            ts: std::time::SystemTime::now()
+                .duration_since(std::time::UNIX_EPOCH)
+                .map(|d| d.as_nanos() as u64)
+                .unwrap_or(0),
+            col_count: schema.len() as u16,
+            row_count: 0,
+            _reserved1: 0,
+            schema_offset: 0x0020,
+            data_start: DATA_START_OFFSET,
+            _reserved2: 0,
+            header_crc: 0,
+        });
+        // We must persist the 16 KB header page on disk. write_all via BufWriter flushes on drop.
+        let header_page = encode_segment_header(&SegmentHeader {
+            magic: *SEGMENT_MAGIC,
+            version: SEGMENT_VERSION,
+            flags: 0,
+            ts: 0,
+            col_count: schema.len() as u16,
+            row_count: 0,
+            _reserved1: 0,
+            schema_offset: 0x0020,
+            data_start: DATA_START_OFFSET,
+            _reserved2: 0,
+            header_crc: 0,
+        });
+        writer.write_all(&header_page)?;
+        // Pad from end of header (44 bytes) to DATA_START_OFFSET (16 KB)
+        let pad = DATA_START_OFFSET as usize - header_page.len();
+        if pad > 0 {
+            writer.write_all(&vec![0u8; pad])?;
+        }
+        Ok(Self {
+            path,
+            schema,
+            file: writer,
+            bytes_written: DATA_START_OFFSET,
+            rows_in_segment: 0,
+            max_segment_size,
+            next_row_id: 0,
+            sealed: false,
+        })
+    }
+
+    pub fn append(&mut self, values: &[Option<Vec<u8>>]) -> Result<u64, RowDecodeError> {
+        if self.sealed {
+            return Err(RowDecodeError::InvalidVarLength(
+                "cannot append to sealed segment".into(),
+            ));
+        }
+        let row = encode_row(&self.schema, values, self.next_row_id);
+        if self.bytes_written as usize + row.len() + SEGMENT_FOOTER_SIZE > self.max_segment_size {
+            return Err(RowDecodeError::InvalidVarLength(
+                "segment size cap exceeded".into(),
+            ));
+        }
+        self.file.write_all(&row).map_err(|e| {
+            RowDecodeError::InvalidVarLength(format!("write error: {}", e))
+        })?;
+        self.bytes_written += row.len() as u32;
+        self.rows_in_segment += 1;
+        let id = self.next_row_id;
+        self.next_row_id += 1;
+        Ok(id)
+    }
+
+    pub fn seal(&mut self) -> Result<(), RowDecodeError> {
+        if self.sealed {
+            return Ok(());
+        }
+        // Pad to next 16 KB boundary; footer occupies its own 16 KB page
+        let cur = self.bytes_written as usize;
+        let footer_start = ((cur + 16383) / 16384) * 16384;
+        let pad = footer_start - cur;
+        if pad > 0 {
+            self.file.write_all(&vec![0u8; pad]).map_err(|e| {
+                RowDecodeError::InvalidVarLength(format!("pad error: {}", e))
+            })?;
+            self.bytes_written += pad as u32;
+        }
+        let total_size = footer_start as u64 + SEGMENT_FOOTER_SIZE as u64;
+        let footer = encode_segment_footer(&SegmentFooter {
+            row_count: self.rows_in_segment,
+            segment_size: total_size as u32,
+            next_offset: 0,
+            footer_crc: 0,
+        });
+        // Footer is 16 bytes; pad to fill 16 KB page
+        self.file.write_all(&footer).map_err(|e| {
+            RowDecodeError::InvalidVarLength(format!("footer error: {}", e))
+        })?;
+        let footer_page_pad = 16384 - footer.len();
+        if footer_page_pad > 0 {
+            self.file.write_all(&vec![0u8; footer_page_pad]).map_err(|e| {
+                RowDecodeError::InvalidVarLength(format!("footer pad error: {}", e))
+            })?;
+        }
+        self.bytes_written += 16384;
+        self.file.flush().map_err(|e| {
+            RowDecodeError::InvalidVarLength(format!("flush error: {}", e))
+        })?;
+        self.sealed = true;
+        Ok(())
+    }
+
+    pub fn bytes_written(&self) -> u32 {
+        self.bytes_written
+    }
+
+    pub fn rows_in_segment(&self) -> u32 {
+        self.rows_in_segment
+    }
+}
+
+impl Drop for SegmentWriter {
+    fn drop(&mut self) {
+        if !self.sealed {
+            let _ = self.seal();
+        }
+    }
 }
 
 /// Returns the fixed byte width of a column, or `None` for variable-length types.
@@ -562,5 +711,52 @@ mod tests {
         assert_eq!(f2.row_count, 42);
         assert_eq!(f2.segment_size, 0xDEADBEEFu32);
         assert_eq!(f2.next_offset, 0xCAFEBABEu32);
+    }
+
+    // ============================================================
+    // Task 1.7: SegmentWriter streaming append + seal
+    // ============================================================
+
+    #[test]
+    fn test_segment_writer_append_and_seal() {
+        use tempfile::tempdir;
+        let dir = tempdir().unwrap();
+        let path = dir.path().join("test.bin");
+        let schema = vec![
+            make_col("id", "INT", None),
+            make_col("name", "VARCHAR(255)", None),
+        ];
+        let mut w = SegmentWriter::new(path.clone(), schema.clone()).unwrap();
+        for i in 0..100 {
+            let values = vec![
+                Some((i as i32).to_le_bytes().to_vec()),
+                Some(format!("name_{}", i).into_bytes()),
+            ];
+            let row_id = w.append(&values).unwrap();
+            assert_eq!(row_id, i as u64);
+        }
+        w.seal().unwrap();
+        // File should exist and be page-aligned (16384 multiple)
+        let meta = std::fs::metadata(&path).unwrap();
+        assert_eq!(meta.len() % 16384, 0);
+    }
+
+    #[test]
+    fn test_segment_writer_respects_size_cap() {
+        use tempfile::tempdir;
+        let dir = tempdir().unwrap();
+        let path = dir.path().join("cap.bin");
+        let schema = vec![make_col("data", "TEXT", None)];
+        let mut w = SegmentWriter::with_size_cap(path.clone(), schema, 32 * 1024).unwrap();
+        let big = vec![b'x'; 4096];
+        // Append 4 KB rows; cap is 32 KB → ~7 should fit, 8th should fail
+        let mut success = 0;
+        for _ in 0..20 {
+            match w.append(&[Some(big.clone())]) {
+                Ok(_) => success += 1,
+                Err(_) => break,
+            }
+        }
+        assert!(success > 0 && success < 20);
     }
 }
