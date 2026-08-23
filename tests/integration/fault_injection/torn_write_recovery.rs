@@ -24,8 +24,7 @@ fn test_truncated_segment_is_rejected() {
     id_col.primary_key = true;
     let schema = vec![id_col];
 
-    let mut writer = SegmentWriter::new(path.clone(), schema.clone())
-        .expect("SegmentWriter::new");
+    let mut writer = SegmentWriter::new(path.clone(), schema.clone()).expect("SegmentWriter::new");
     for i in 0..100i64 {
         writer
             .append(&[Some((i as i64).to_le_bytes().to_vec())])
@@ -34,7 +33,10 @@ fn test_truncated_segment_is_rejected() {
     writer.seal().expect("seal");
 
     let original_size = std::fs::metadata(&path).expect("metadata").len();
-    assert!(original_size >= 32_768, "sealed segment must be >= header+footer pages");
+    assert!(
+        original_size >= 32_768,
+        "sealed segment must be >= header+footer pages"
+    );
 
     // Truncate to half size — guaranteed below 32 KB threshold.
     let half_size = (original_size / 2) as usize;

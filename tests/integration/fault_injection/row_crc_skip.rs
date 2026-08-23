@@ -18,8 +18,7 @@ fn test_corrupted_row_is_skipped() {
     id_col.primary_key = true;
     let schema = vec![id_col];
 
-    let mut writer = SegmentWriter::new(path.clone(), schema.clone())
-        .expect("SegmentWriter::new");
+    let mut writer = SegmentWriter::new(path.clone(), schema.clone()).expect("SegmentWriter::new");
     for i in 0..10i64 {
         writer
             .append(&[Some((i as i64).to_le_bytes().to_vec())])
