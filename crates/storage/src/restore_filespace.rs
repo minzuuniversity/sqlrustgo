@@ -248,11 +248,13 @@ mod tests {
                 ColumnDefinition {
                     name: "id".to_string(),
                     data_type: "INTEGER".to_string(),
+                    auto_increment: false,
                     ..Default::default()
                 },
                 ColumnDefinition {
                     name: "name".to_string(),
                     data_type: "TEXT".to_string(),
+                    auto_increment: false,
                     ..Default::default()
                 },
             ],

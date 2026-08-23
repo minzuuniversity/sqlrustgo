@@ -35,42 +35,49 @@ fn make_supplier_info() -> TableInfo {
                 name: "s_suppkey".into(),
                 data_type: "BIGINT".into(),
                 nullable: false,
+                auto_increment: false,
                 ..Default::default()
             },
             ColumnDefinition {
                 name: "s_name".into(),
                 data_type: "TEXT".into(),
                 nullable: true,
+                auto_increment: false,
                 ..Default::default()
             },
             ColumnDefinition {
                 name: "s_address".into(),
                 data_type: "TEXT".into(),
                 nullable: true,
+                auto_increment: false,
                 ..Default::default()
             },
             ColumnDefinition {
                 name: "s_nationkey".into(),
                 data_type: "INT".into(),
                 nullable: true,
+                auto_increment: false,
                 ..Default::default()
             },
             ColumnDefinition {
                 name: "s_phone".into(),
                 data_type: "TEXT".into(),
                 nullable: true,
+                auto_increment: false,
                 ..Default::default()
             },
             ColumnDefinition {
                 name: "s_acctbal".into(),
                 data_type: "DECIMAL".into(),
                 nullable: true,
+                auto_increment: false,
                 ..Default::default()
             },
             ColumnDefinition {
                 name: "s_comment".into(),
                 data_type: "TEXT".into(),
                 nullable: true,
+                auto_increment: false,
                 ..Default::default()
             },
         ],

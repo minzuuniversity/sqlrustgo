@@ -521,6 +521,7 @@ fn recursion_self_trigger_depth_limit() {
         columns: vec![ColumnDefinition {
             name: "id".to_string(),
             data_type: "INTEGER".to_string(),
+            auto_increment: false,
             ..Default::default()
         }],
         ..Default::default()

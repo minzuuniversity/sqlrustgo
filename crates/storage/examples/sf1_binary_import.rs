@@ -70,6 +70,7 @@ fn main() {
             char_max_length: None,
             collation: None,
             default_value: None,
+            auto_increment: false,
         },
         ColumnDefinition {
             name: "l_partkey".to_string(),
@@ -79,6 +80,7 @@ fn main() {
             char_max_length: None,
             collation: None,
             default_value: None,
+            auto_increment: false,
         },
         ColumnDefinition {
             name: "l_quantity".to_string(),
@@ -88,6 +90,7 @@ fn main() {
             char_max_length: None,
             collation: None,
             default_value: None,
+            auto_increment: false,
         },
         ColumnDefinition {
             name: "l_extendedprice".to_string(),
@@ -97,6 +100,7 @@ fn main() {
             char_max_length: None,
             collation: None,
             default_value: None,
+            auto_increment: false,
         },
         ColumnDefinition {
             name: "l_discount".to_string(),
@@ -106,6 +110,7 @@ fn main() {
             char_max_length: None,
             collation: None,
             default_value: None,
+            auto_increment: false,
         },
     ];
     let info = TableInfo {

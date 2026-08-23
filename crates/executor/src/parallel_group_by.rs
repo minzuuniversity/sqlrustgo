@@ -522,6 +522,7 @@ mod tests {
             columns: vec![ColumnDefinition {
                 name: "id".to_string(),
                 data_type: "INT".to_string(),
+                auto_increment: false,
                 ..Default::default()
             }],
             foreign_keys: vec![],

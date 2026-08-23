@@ -130,6 +130,7 @@ fn make_table_info(columns: Vec<(&str, &str)>) -> TableInfo {
                 char_max_length: None,
                 collation: None,
                 default_value: None,
+                auto_increment: false,
             })
             .collect(),
         foreign_keys: vec![],

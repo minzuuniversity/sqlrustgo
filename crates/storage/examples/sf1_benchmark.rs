@@ -62,6 +62,7 @@ fn main() {
                                 char_max_length: None,
                                 collation: None,
                                 default_value: None,
+                                auto_increment: false,
                             },
                             ColumnDefinition {
                                 name: "l_partkey".to_string(),
@@ -71,6 +72,7 @@ fn main() {
                                 char_max_length: None,
                                 collation: None,
                                 default_value: None,
+                                auto_increment: false,
                             },
                         ],
                         foreign_keys: vec![],
@@ -115,6 +117,7 @@ fn main() {
                         char_max_length: None,
                         collation: None,
                         default_value: None,
+                        auto_increment: false,
                     },
                     ColumnDefinition {
                         name: "l_partkey".to_string(),
@@ -124,6 +127,7 @@ fn main() {
                         char_max_length: None,
                         collation: None,
                         default_value: None,
+                        auto_increment: false,
                     },
                 ],
                 foreign_keys: vec![],
