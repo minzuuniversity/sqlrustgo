@@ -919,6 +919,9 @@ path = "tests/integration/oracle/q8_8way_date_range_regression.rs"
 name = "q2_5way_comma_limit_regression"
 path = "tests/integration/oracle/q2_5way_comma_limit_regression.rs"
 [[test]]
+name = "q11_stock_filter_regression"
+path = "tests/integration/oracle/q11_stock_filter_regression.rs"
+[[test]]
 name = "lexer_asc_keyword_regression"
 path = "tests/integration/oracle/lexer_asc_keyword_regression.rs"
 [[test]]
