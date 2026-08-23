@@ -226,6 +226,7 @@ mod tests {
                 char_max_length: None,
                 collation: None,
                 default_value: None,
+                auto_increment: false,
             }],
             foreign_keys: vec![],
             unique_constraints: vec![],
@@ -249,6 +250,7 @@ mod tests {
                     char_max_length: None,
                     collation: None,
                     default_value: None,
+                    auto_increment: false,
                 },
                 crate::engine::ColumnDefinition {
                     name: "b".into(),
@@ -258,6 +260,7 @@ mod tests {
                     char_max_length: None,
                     collation: None,
                     default_value: None,
+                    auto_increment: false,
                 },
                 crate::engine::ColumnDefinition {
                     name: "c".into(),
@@ -267,6 +270,7 @@ mod tests {
                     char_max_length: None,
                     collation: None,
                     default_value: None,
+                    auto_increment: false,
                 },
                 crate::engine::ColumnDefinition {
                     name: "d".into(),
@@ -276,6 +280,7 @@ mod tests {
                     char_max_length: None,
                     collation: None,
                     default_value: None,
+                    auto_increment: false,
                 },
             ],
             foreign_keys: vec![],
