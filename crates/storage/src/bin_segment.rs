@@ -306,8 +306,8 @@ impl SegmentReader {
     }
 
     #[allow(dead_code)]
-    pub fn segment_size(&self) -> u64 {
-        self.footer.segment_size as u64
+    pub fn segment_size(&self) -> u32 {
+        self.footer.segment_size
     }
 }
 
