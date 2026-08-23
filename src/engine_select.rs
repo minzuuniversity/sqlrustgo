@@ -2484,10 +2484,24 @@ impl<S: StorageEngine + 'static> ExecutionEngine<S> {
             for col in &mut cur_info_prefixed.columns {
                 col.name = format!("{}.{}", cur_alias, col.name);
             }
-            // Lookup pushdown predicates: alias first, then bare name.
+            // Lookup pushdown predicates: alias first, then bare name,
+            // then TPC-H column-prefix (e.g. `n` for `nation`). The
+            // `extract_single_table_predicates` keys filters by the
+            // underscore-prefix extracted from unqualified column
+            // names (line 4098: `n_name` → `n`), so the chain must
+            // resolve the bare table name back to that prefix to find
+            // its entry. Without this third lookup, single-table
+            // filters like Q11's `n_name = 'GERMANY'` are silently
+            // dropped during the hash-chain build — the chain returns
+            // unfiltered nation rows, the post-join WHERE filter is
+            // skipped because `COMMA_JOIN_WHERE_CONSUMED` was set
+            // (line 1954), and the full 80K partsupp × all nations
+            // join leaks into the GROUP BY.
+            // See V312-58 / Issue #4377.
             let pred = pushdown_filters
                 .get(cur_alias.as_str())
-                .or_else(|| pushdown_filters.get(cur_bare.as_str()));
+                .or_else(|| pushdown_filters.get(cur_bare.as_str()))
+                .or_else(|| pushdown_filters.get(Self::tpch_table_prefix(cur_bare)));
             // Apply the filter.
             let cur_rows: Vec<Vec<Value>> = match pred {
                 Some(preds) if !preds.is_empty() => raw_cur_rows
