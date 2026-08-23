@@ -4,6 +4,7 @@ use crate::engine::{
     TriggerInfo, Value,
 };
 use crate::wal::{WalEntry, WalEntryType, WalManager};
+use std::any::Any;
 use std::collections::HashMap;
 use std::path::PathBuf;
 use std::sync::{Arc, RwLock};
@@ -49,7 +50,7 @@ pub struct WalStorage<S: StorageEngine, T: WalManager> {
     /// Empty for autocommit (tx_id=0) — the legacy single-active-tx model.
     active_txs: HashMap<u64, u64>,
 }
-impl<S: StorageEngine, T: WalManager> WalStorage<S, T> {
+impl<S: StorageEngine + 'static, T: WalManager + 'static> WalStorage<S, T> {
     pub fn new(inner: S, wal: T) -> SqlResult<Self> {
         Ok(Self {
             inner,
@@ -424,7 +425,7 @@ impl<S: StorageEngine, T: WalManager> WalStorage<S, T> {
     }
 }
 
-impl<S: StorageEngine, T: WalManager> StorageEngine for WalStorage<S, T> {
+impl<S: StorageEngine + 'static, T: WalManager + 'static> StorageEngine for WalStorage<S, T> {
     fn scan(&self, table: &str) -> SqlResult<Vec<Record>> {
         self.inner.scan(table)
     }
@@ -769,6 +770,10 @@ impl<S: StorageEngine, T: WalManager> StorageEngine for WalStorage<S, T> {
 
     fn is_wal_enabled(&self) -> bool {
         true
+    }
+
+    fn as_any(&self) -> &dyn Any {
+        self
     }
 }
 

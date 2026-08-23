@@ -12,6 +12,7 @@ use crate::engine::{
     ColumnDefinition, Record, RowFilter, RowMutation, SqlError, SqlResult, StorageEngine,
     TableData, TableInfo, TriggerInfo,
 };
+use std::any::Any;
 use std::collections::HashMap;
 use std::path::PathBuf;
 
@@ -266,6 +267,10 @@ impl StorageEngine for BinaryTableStorageV2 {
 
     fn flush_parallel(&mut self) -> SqlResult<()> {
         self.flush()
+    }
+
+    fn as_any(&self) -> &dyn Any {
+        self
     }
 }
 

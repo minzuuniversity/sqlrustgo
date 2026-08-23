@@ -13,6 +13,7 @@
 
 use crate::{Record, RowFilter, RowMutation, StorageEngine, TableInfo, TriggerInfo};
 use sqlrustgo_types::{SqlResult, Value};
+use std::any::Any;
 
 /// VTU Violation Guard Wrapper
 /// Wraps a concrete StorageEngine to detect direct DML calls that bypass VTU.
@@ -22,7 +23,7 @@ pub struct VtuGuard<S> {
     location: &'static str,
 }
 
-impl<S> VtuGuard<S> {
+impl<S: 'static> VtuGuard<S> {
     /// Create a new VtuGuard wrapper
     pub fn new(inner: S, location: &'static str) -> Self {
         Self { inner, location }
@@ -81,7 +82,7 @@ impl<S> VtuGuard<S> {
     }
 }
 
-impl<S: StorageEngine> StorageEngine for VtuGuard<S> {
+impl<S: StorageEngine + 'static> StorageEngine for VtuGuard<S> {
     /// Scan — allowed (read-only)
     fn scan(&self, table: &str) -> SqlResult<Vec<Record>> {
         self.inner.scan(table)
@@ -198,6 +199,10 @@ impl<S: StorageEngine> StorageEngine for VtuGuard<S> {
 
     fn has_view(&self, name: &str) -> bool {
         self.inner.has_view(name)
+    }
+
+    fn as_any(&self) -> &dyn Any {
+        self
     }
 }
 

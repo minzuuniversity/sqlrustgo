@@ -9,6 +9,7 @@ use crate::columnar::segment::{
 use crate::engine::{RowFilter, StorageEngine, TableInfo, TableStats, TriggerInfo, ViewInfo};
 use crate::wal::WalManager;
 use sqlrustgo_types::Value;
+use std::any::Any;
 use std::collections::HashMap;
 use std::fmt::Debug;
 use std::fs;
@@ -944,6 +945,10 @@ impl StorageEngine for ColumnarStorage {
             }
         }
         result
+    }
+
+    fn as_any(&self) -> &dyn Any {
+        self
     }
 }
 
