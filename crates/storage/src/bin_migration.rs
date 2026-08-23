@@ -2,7 +2,7 @@
 
 use crate::bin_index::{write_root_index_file, RootIndex, SegmentInfo};
 use crate::bin_segment::SegmentWriter;
-use crate::engine::{SqlError, SqlResult, TableData, TableInfo, ColumnDefinition, Value};
+use crate::engine::{SqlError, SqlResult, TableData, Value};
 use std::path::Path;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -109,6 +109,7 @@ pub fn migrate_json_to_bin(
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::engine::{ColumnDefinition, TableInfo};
     use tempfile::tempdir;
 
     #[test]
