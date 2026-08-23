@@ -46,7 +46,6 @@ fn test_compaction_preserves_data() {
 
     let compactor = BinCompactor::new(CompactorConfig {
         max_segment_count: 1,
-        oom_safe: true,
     });
     compactor.run(&data_dir, "t1").expect("compactor.run");
 

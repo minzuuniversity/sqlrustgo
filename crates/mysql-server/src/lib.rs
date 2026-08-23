@@ -4081,12 +4081,10 @@ fn handle_load_local_infile<S: Read + Write>(
     // T4.1 CRITICAL-FIX: Apply WAL sync mode override immediately before
     // the main processing loop, AFTER all validation/early-return paths
     // are exhausted.  This guarantees the override is scoped to the loop
-    // body only — no explicit Drop/restore needed for any return path
-    // (validation errors return before here; bulk_insert errors are
-    // handled inside the loop with `?` which is still inside the scope).
-    // WalStorage (if present) switches from Every to Batch(1) so that
-    // individual `bulk_insert` calls skip the per-row fsync.
-    let _original_sync_mode = wal_sync_mode_override.and_then(|mode| {
+    // body only. WalStorage (if present) switches from Every to Batch(1)
+    // so that individual `bulk_insert` calls skip the per-row fsync.
+    // The original sync mode is restored after the loop ends.
+    let original_sync_mode = wal_sync_mode_override.and_then(|mode| {
         let storage = engine.storage_ref();
         let mut storage_guard = storage.write();
         apply_wal_sync_mode_override(&mut *storage_guard, mode)
@@ -4206,6 +4204,19 @@ fn handle_load_local_infile<S: Read + Write>(
         engine
             .flush()
             .map_err(|e| MySqlError::Other(format!("flush storage: {}", e)))?;
+    }
+
+    // T4.1 FIX: Restore original WAL sync mode after all bulk inserts complete.
+    // This ensures subsequent operations use the correct sync mode.
+    if let Some(storage) = engine
+        .storage_ref()
+        .write()
+        .as_any_mut()
+        .downcast_mut::<WalStorage<FileStorage, FileBackedWalManager>>()
+    {
+        if let Some(mode) = original_sync_mode {
+            storage.set_sync_mode(mode);
+        }
     }
 
     Ok(total_rows)
@@ -7475,6 +7486,7 @@ pub mod testing {
                 slow_query_log: None,
                 metrics_port: None,
                 load_infile_dir: None,
+                wal_sync_mode_override: None,
             };
             assert_eq!(cfg.host, "0.0.0.0");
             assert!(!cfg.bootstrap_tables);

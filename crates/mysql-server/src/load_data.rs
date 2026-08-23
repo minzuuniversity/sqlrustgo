@@ -114,6 +114,23 @@ pub fn apply_wal_sync_mode_override(
         })
 }
 
+/// Restore the WAL sync mode to a previously captured original value.
+/// If `storage` is not a `WalStorage` or `original` is `None`, this is a no-op.
+#[allow(dead_code)]
+pub fn restore_wal_sync_mode(
+    storage: &mut dyn StorageEngine,
+    original: Option<sqlrustgo_storage::WalSyncMode>,
+) {
+    if let Some(mode) = original {
+        let _ = storage
+            .as_any_mut()
+            .downcast_mut::<WalStorage<FileStorage, FileBackedWalManager>>()
+            .map(|wal_storage| {
+                wal_storage.set_sync_mode(mode);
+            });
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;

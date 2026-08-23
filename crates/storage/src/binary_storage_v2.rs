@@ -83,8 +83,7 @@ impl BinaryTableStorageV2 {
         for record in records {
             let values: Vec<Option<Vec<u8>>> = record
                 .iter()
-                .enumerate()
-                .map(|(_i, v)| {
+                .map(|v| {
                     if matches!(v, crate::engine::Value::Null) {
                         None
                     } else {
