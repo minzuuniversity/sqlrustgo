@@ -952,6 +952,15 @@ path = "tests/integration/oracle/diag_q7_mini_columns.rs"
 name = "diag_q7_sf1_real_count"
 path = "tests/integration/oracle/diag_q7_sf1_real_count.rs"
 [[test]]
+name = "diag_q7_sf001_subset"
+path = "tests/integration/oracle/diag_q7_sf001_subset.rs"
+[[test]]
+name = "diag_q8_mini_subset"
+path = "tests/integration/oracle/diag_q8_mini_subset.rs"
+[[test]]
+name = "diag_nation_alias"
+path = "tests/integration/oracle/diag_nation_alias.rs"
+[[test]]
 name = "diag_q7_subset_columns"
 path = "tests/integration/oracle/diag_q7_subset_columns.rs"
 [[test]]
