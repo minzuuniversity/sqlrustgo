@@ -4888,13 +4888,24 @@ impl<S: StorageEngine + 'static> ExecutionEngine<S> {
         }
         // Slow path: residual references outer columns
         // (TPC-H Q21-style). Re-evaluate per bucket row.
+        // V312-58 Sprint 3 fix: pass `index.table_info` (inner table),
+        // NOT `outer_table_info` — the residual may reference inner-table
+        // columns (e.g. `ps_availqty`), and `eval_predicate` uses
+        // `table_info.columns` for column lookup. The prior typo passed
+        // `outer_table_info`, causing column lookups to fail and
+        // BinaryOp comparisons to silently evaluate to false (NULL
+        // comparison semantics), which made every correlated EXISTS
+        // with an inner-column reference return 0 rows. See
+        // `pre_eval_not_exists_indexed` for the symmetric correct
+        // pattern (uses `&index.table_info`).
+        let inner_table_info = &index.table_info;
         for inner in bucket {
             if inner.len() <= index.col_idx {
                 continue;
             }
             let substituted =
                 substitute_outer_refs_in_expr(&index.residual, outer_row, outer_table_info);
-            if eval_predicate(&substituted, inner, /* table_info */ outer_table_info) {
+            if eval_predicate(&substituted, inner, inner_table_info) {
                 return Some(true);
             }
         }
