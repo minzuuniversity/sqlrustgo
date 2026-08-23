@@ -20,11 +20,40 @@ pub const DATA_START_OFFSET: u32 = 0x4000;
 /// Default segment size cap (64 MB).
 pub const DEFAULT_SEGMENT_SIZE_CAP: usize = 64 * 1024 * 1024;
 
-/// Row header size (16 bytes: row_size + var_field_offset + row_id + null_bitmap + reserved).
+/// Row header size (16 bytes: row_size + var_field_offset + row_id).
 pub const ROW_HEADER_SIZE: usize = 16;
 
 /// Row footer size (4 bytes: CRC32C).
 pub const ROW_FOOTER_SIZE: usize = 4;
+
+/// 16-byte row header at the start of every BINT v3 row.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct RowHeader {
+    /// Total row size including header, fixed fields, var fields, and footer.
+    pub row_size: u32,
+    /// Byte offset (relative to row start) where variable-length fields begin.
+    pub var_field_offset: u32,
+    /// Logical row id / LSN.
+    pub row_id: u64,
+}
+
+/// Encode row header to 16 bytes (little-endian).
+pub fn encode_row_header(h: &RowHeader) -> [u8; 16] {
+    let mut buf = [0u8; 16];
+    buf[0..4].copy_from_slice(&h.row_size.to_le_bytes());
+    buf[4..8].copy_from_slice(&h.var_field_offset.to_le_bytes());
+    buf[8..16].copy_from_slice(&h.row_id.to_le_bytes());
+    buf
+}
+
+/// Decode 16 bytes back into a row header.
+pub fn decode_row_header(buf: &[u8; 16]) -> RowHeader {
+    RowHeader {
+        row_size: u32::from_le_bytes([buf[0], buf[1], buf[2], buf[3]]),
+        var_field_offset: u32::from_le_bytes([buf[4], buf[5], buf[6], buf[7]]),
+        row_id: u64::from_le_bytes([buf[8], buf[9], buf[10], buf[11], buf[12], buf[13], buf[14], buf[15]]),
+    }
+}
 
 /// A 16 KB page-aligned segment file writer.
 pub struct SegmentWriter {
@@ -104,5 +133,27 @@ mod tests {
         assert_eq!(column_width(&make_col("t", "TEXT", None)), None);
         assert_eq!(column_width(&make_col("b", "BLOB", None)), None);
         assert_eq!(column_width(&make_col("j", "JSON", None)), None);
+    }
+
+    #[test]
+    fn test_row_header_size_constant() {
+        use std::mem::size_of;
+        assert_eq!(size_of::<RowHeader>(), ROW_HEADER_SIZE);
+        assert_eq!(size_of::<RowHeader>(), 16);
+    }
+
+    #[test]
+    fn test_row_header_roundtrip() {
+        let h = RowHeader {
+            row_size: 256,
+            var_field_offset: 64,
+            row_id: 0xDEADBEEFCAFEBABE,
+        };
+        let buf = encode_row_header(&h);
+        assert_eq!(buf.len(), 16);
+        let h2 = decode_row_header(&buf);
+        assert_eq!(h.row_size, h2.row_size);
+        assert_eq!(h.var_field_offset, h2.var_field_offset);
+        assert_eq!(h.row_id, h2.row_id);
     }
 }
