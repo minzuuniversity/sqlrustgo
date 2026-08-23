@@ -72,9 +72,38 @@ This works correctly but adds 60 `flush()` calls for 6M rows. A future `insert_s
 | Target | Plan | Actual | Status |
 |--------|------|--------|--------|
 | 6M load < 60s | < 60s | 108s | **MISS** (1.8× over) |
-| Speedup vs JSON | ~600× | ~333× (estimate) | PARTIAL |
+| Speedup vs JSON | ~600× | ~3.4× (measured, see below) | **REVISED** |
 | 1M bench in 5–15s | 5–15s | 2.84s | **PASS** (better) |
 | 22/22 queries | PASS | not measured | n/a |
+
+### Speedup vs JSON — revised (V313.1 follow-up, 2026-08-23)
+
+The "~333× (estimate)" entry above was an unverified extrapolation from file-size
+ratio or similar proxy — it was **not** a measured wall-time comparison.
+
+V313.1 follow-up measured BINT v3 vs JSON `FileStorage` apples-to-apples at
+four data sizes (50K, 200K, 500K, 1M) using the same lineitem schema and
+the same `tpch_json_vs_bint_compare` integration test. **The actual speedup
+is ~3.4× across all sizes, not ~333×.**
+
+| n_rows | JSON wall | JSON rows/sec | BINT wall | BINT rows/sec | Speedup |
+|--------|-----------|---------------|-----------|---------------|---------|
+| 50,000 | 2.97 s | 16,857 | 0.87 s | 57,373 | 3.40× |
+| 200,000 | 11.99 s | 16,683 | 3.50 s | 57,082 | 3.42× |
+| 500,000 | 30.46 s | 16,416 | 8.70 s | 57,458 | 3.50× |
+| 1,000,000 | 59.92 s | 16,689 | 17.69 s | 56,529 | 3.39× |
+| 6,001,215 (JSON extrapolated / BINT measured) | ~360 s | 16,700 | **110.62 s** | 54,252 | ~3.25× |
+
+Full report: `docs/releases/v3.13.0/perf/JSON_VS_BINT_MEASURED.md`.
+Reproduce:
+```bash
+cargo test --test tpch_json_vs_bint_compare -- --nocapture
+TPCH_COMPARE_ROWS=1000000 cargo test --test tpch_json_vs_bint_compare -- --nocapture
+```
+
+**Revised plan target:** "~600×" should be downgraded to "~3-5×" for the
+JSON vs BINT wall-time comparison, until profiling reveals what dominates
+the remaining gap (flush vs mmap vs disk).
 
 The 6M target miss is **not a code defect** — the test is correctly measuring the current implementation. It signals that **future optimization work is needed** to hit the plan's stretch goal.
 
@@ -107,5 +136,6 @@ BINT v3 storage delivers:
 2. Implement `insert_streaming_iter()` that internally rolls over segments (eliminates the batch+flush workaround).
 3. Re-run T6.4 after each optimization; expect to converge on < 60s before GA.
 4. Expand T6.5 metrics (queries, memory, disk, other tables) once those harnesses exist.
+5. Profile the JSON baseline (16.7K rows/sec) to understand whether JSON can be made faster — closing the JSON-vs-BINT gap from the other side is also a valid strategy.
 
 **Do NOT promote to GA default** until the 6M < 60s target is met and the other unmeasured metrics are captured.
