@@ -92,7 +92,38 @@ fn diag_q17_100k_path() {
 #[ignore]
 fn diag_q17_1m_path() {
     eprintln!("=== Q17 1M subset path diagnostic (timeout 600s) ===");
-    let (elapsed, result, value) = run_q17("q17_lineitem_1m.tbl");
+    // Polling loop: print elapsed + RSS every 10s so we can see
+    // whether the hang is cartesian-memory or CPU-bound.
+    use std::time::Duration;
+    let pid = std::process::id();
+    eprintln!("Q17 1M: pid={}", pid);
+    let t_total = Instant::now();
+    // Spawn the test in a separate thread so we can poll RSS while it runs.
+    let handle = std::thread::spawn(move || {
+        run_q17("q17_lineitem_1m.tbl")
+    });
+    loop {
+        std::thread::sleep(Duration::from_secs(10));
+        if handle.is_finished() {
+            break;
+        }
+        // Read /proc/<pid>/status for VmRSS (kB).
+        let rss_kb = std::fs::read_to_string(format!("/proc/{}/status", pid))
+            .ok()
+            .and_then(|s| {
+                s.lines()
+                    .find(|l| l.starts_with("VmRSS:"))
+                    .and_then(|l| l.split_whitespace().nth(1))
+                    .and_then(|v| v.parse::<u64>().ok())
+            })
+            .unwrap_or(0);
+        eprintln!(
+            "Q17 1M: elapsed={:.1}s rss={}MB",
+            t_total.elapsed().as_secs_f64(),
+            rss_kb / 1024
+        );
+    }
+    let (elapsed, result, value) = handle.join().expect("thread panic");
     eprintln!("Q17 1M: elapsed {:.2}s, result: {}", elapsed, result);
     eprintln!("Q17 1M engine value: {:?}", value);
     eprintln!("\n{}\n", dump_v312_58_sprint3_diag());
