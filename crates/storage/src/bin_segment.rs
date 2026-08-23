@@ -77,6 +77,7 @@ pub fn verify_row_crc(row_bytes: &[u8], expected: u32) -> bool {
 
 /// A 16 KB page-aligned segment file writer.
 pub struct SegmentWriter {
+    #[allow(dead_code)]
     path: PathBuf,
     schema: Vec<ColumnDefinition>,
     file: BufWriter<File>,
@@ -181,7 +182,7 @@ impl SegmentWriter {
         }
         // Pad to next 16 KB boundary; footer occupies its own 16 KB page
         let cur = self.bytes_written as usize;
-        let footer_start = ((cur + 16383) / 16384) * 16384;
+        let footer_start = cur.div_ceil(16384) * 16384;
         let pad = footer_start - cur;
         if pad > 0 {
             self.file
@@ -243,6 +244,7 @@ pub struct SegmentReader {
     path: PathBuf,
     #[allow(dead_code)]
     schema: Vec<ColumnDefinition>,
+    #[allow(dead_code)]
     header: SegmentHeader,
     footer: SegmentFooter,
     data_region: Vec<u8>,
@@ -491,7 +493,7 @@ pub const SEGMENT_FOOTER_SIZE: usize = 16;
 
 /// 44-byte fixed segment header (followed by padding to fill 16 KB).
 #[derive(Debug, Clone, Copy)]
-#[repr(packed)]
+#[repr(C, packed)]
 pub struct SegmentHeader {
     pub magic: [u8; 8],
     pub version: u32,
