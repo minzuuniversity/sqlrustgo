@@ -139,6 +139,12 @@ edition.workspace = true
 authors.workspace = true
 license.workspace = true
 
+[features]
+# Mirrors the storage crate's bin_storage_default feature.
+# This allows the main crate to use #[cfg(feature = "bin_storage_default")]
+# without triggering clippy's unexpected_cfg warning.
+bin_storage_default = ["sqlrustgo-storage/bin_storage_default"]
+
 [dependencies]
 sqlrustgo-common.workspace = true
 sqlrustgo-types.workspace = true
