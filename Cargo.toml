@@ -1316,6 +1316,9 @@ path = "tests/integration/tpch_sf1_test.rs"
 name = "tpch_sf1_6m_load_test"
 path = "tests/integration/tpch/tpch_sf1_6m_load_test.rs"
 [[test]]
+name = "tpch_sf1_6m_load_iter_test"
+path = "tests/integration/tpch/tpch_sf1_6m_load_iter_test.rs"
+[[test]]
 name = "tpch_test"
 path = "tests/integration/tpch_test.rs"
 [[test]]
