@@ -5,8 +5,8 @@
 //! 4 bytes — a known pre-existing bug tracked for the final review. BIGINT
 //! (width 8) matches the encoding.
 
-use sqlrustgo_storage::engine::{ColumnDefinition, Record, StorageEngine, Value};
 use sqlrustgo_storage::binary_storage_v2::BinaryTableStorageV2;
+use sqlrustgo_storage::engine::{ColumnDefinition, Record, StorageEngine, Value};
 use std::sync::Arc;
 use std::thread;
 use std::time::{Duration, Instant};
