@@ -198,6 +198,10 @@ impl<S: StorageEngine + 'static, W: WalManager + 'static> StorageEngine for Para
     fn as_any(&self) -> &dyn Any {
         self
     }
+
+    fn as_any_mut(&mut self) -> &mut dyn Any {
+        self
+    }
 }
 
 #[cfg(test)]
