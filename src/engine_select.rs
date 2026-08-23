@@ -2415,6 +2415,37 @@ impl<S: StorageEngine + 'static> ExecutionEngine<S> {
                 let start_raw_rows = storage.scan(start_bare).ok()?;
                 let start_alias_owned = start_alias.clone();
                 let start_alias_for_strip = start_alias_owned.clone();
+                // V312-58 / Issue #4376 fix: apply pushdown filters
+                // to the chain-start table. Without this, single-table
+                // predicates on the chain-start alias (Q7:
+                // `n1.n_name='GERMANY'`) are silently dropped when
+                // multi-start picks a non-base leaf. The chain then
+                // joins 25 unfiltered nation rows downstream, the
+                // post-join WHERE filter is skipped (consumed by
+                // pushdown + chain), and the result picks up the
+                // `(FRANCE, FRANCE)` rows alongside the expected
+                // `(GERMANY, FRANCE)` rows (SF~0.001 subset: 14
+                // groups instead of 7). Mirror the per-step filter
+                // below (lines 2487-2501).
+                let mut start_info_prefixed = start_info.clone();
+                start_info_prefixed.name = start_alias.clone();
+                for col in &mut start_info_prefixed.columns {
+                    col.name = format!("{}.{}", start_alias, col.name);
+                }
+                let start_pred = pushdown_filters
+                    .get(start_alias.as_str())
+                    .or_else(|| pushdown_filters.get(start_bare.as_str()));
+                let start_rows: Vec<Vec<Value>> = match start_pred {
+                    Some(preds) if !preds.is_empty() => start_raw_rows
+                        .into_iter()
+                        .filter(|r| {
+                            preds
+                                .iter()
+                                .all(|p| eval_predicate(p, r, &start_info_prefixed))
+                        })
+                        .collect(),
+                    _ => start_raw_rows,
+                };
                 alias_to_offset.insert(start_alias_owned.clone(), 0);
                 alias_to_columns.insert(
                     start_alias_owned,
@@ -2429,7 +2460,7 @@ impl<S: StorageEngine + 'static> ExecutionEngine<S> {
                         })
                         .collect(),
                 );
-                acc_rows = start_raw_rows;
+                acc_rows = start_rows;
                 acc_columns = start_info.columns.clone();
             }
         }
