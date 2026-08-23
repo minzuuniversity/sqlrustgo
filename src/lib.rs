@@ -44,6 +44,12 @@ pub use sqlrustgo_types::{SqlError, SqlResult, Value};
 
 pub use execution_engine::{ExecutionEngine, MemoryExecutionEngine};
 
+// V312-58 Sprint 3 Phase 1 diagnostic re-exports. Used by
+// `tests/integration/oracle/diag_q17_sprint3_path.rs` to verify which
+// path TPC-H Q17 actually takes through the correlated-subquery pre-eval
+// pipeline. See comments at the call sites in `engine_select.rs`.
+pub use engine_select::{dump_v312_58_sprint3_diag, reset_v312_58_sprint3_diag};
+
 /// Initialize the database system
 pub fn init() {
     println!("SQLRustGo Database System initialized");
