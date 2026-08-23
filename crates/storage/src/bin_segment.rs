@@ -9,6 +9,7 @@ use crate::engine::ColumnDefinition;
 use std::fs::File;
 use std::io::{BufWriter, Write};
 use std::path::PathBuf;
+use thiserror::Error;
 
 /// BINT v3 segment file magic bytes.
 pub const SEGMENT_MAGIC: &[u8; 8] = b"BINTv3\0\0";
@@ -599,6 +600,26 @@ pub fn decode_segment_footer(buf: &[u8; 16]) -> Result<SegmentFooter, RowDecodeE
     })
 }
 
+/// Top-level error type for BINT v3 segment operations.
+///
+/// Wraps [`RowDecodeError`] (low-level decode failures) and adds higher-level
+/// corruption variants for caller diagnostics.
+#[derive(Debug, Error)]
+pub enum BinSegmentError {
+    #[error("row {} CRC32C mismatch: computed {computed:#x}, expected {expected:#x}", row_id)]
+    RowChecksumMismatch {
+        row_id: u64,
+        computed: u32,
+        expected: u32,
+    },
+    #[error("data corruption at {location}: {detail}")]
+    DataCorruption { location: String, detail: String },
+    #[error("index corruption in {index_file}: {detail}")]
+    IndexCorruption { index_file: String, detail: String },
+    #[error("row decode failed: {0}")]
+    Decode(#[from] RowDecodeError),
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -910,5 +931,49 @@ mod tests {
             .collect();
         assert!(rows.len() < 10); // at least one row was skipped
         assert!(rows.len() >= 9); // but most were valid
+    }
+
+    // ============================================================
+    // Task 1.9: BinSegmentError
+    // ============================================================
+
+    #[test]
+    fn test_bin_segment_error_display() {
+        let e = BinSegmentError::RowChecksumMismatch {
+            row_id: 42,
+            computed: 0xDEAD,
+            expected: 0xBEEF,
+        };
+        let s = format!("{}", e);
+        assert!(s.contains("row 42"));
+        assert!(s.contains("dead"));
+        assert!(s.contains("beef"));
+
+        let e2 = BinSegmentError::DataCorruption {
+            location: "seg_000.bin".into(),
+            detail: "invalid magic".into(),
+        };
+        let s2 = format!("{}", e2);
+        assert!(s2.contains("seg_000.bin"));
+        assert!(s2.contains("invalid magic"));
+
+        let e3 = BinSegmentError::IndexCorruption {
+            index_file: "root.bin".into(),
+            detail: "CRC mismatch".into(),
+        };
+        assert!(format!("{}", e3).contains("root.bin"));
+    }
+
+    #[test]
+    fn test_from_row_decode_error() {
+        let inner = RowDecodeError::CrcMismatch {
+            computed: 0xDEAD,
+            expected: 0xBEEF,
+        };
+        let wrapped: BinSegmentError = inner.into();
+        match wrapped {
+            BinSegmentError::Decode(RowDecodeError::CrcMismatch { .. }) => {}
+            other => panic!("expected Decode(CrcMismatch), got {:?}", other),
+        }
     }
 }
