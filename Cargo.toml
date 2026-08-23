@@ -144,6 +144,8 @@ license.workspace = true
 # This allows the main crate to use #[cfg(feature = "bin_storage_default")]
 # without triggering clippy's unexpected_cfg warning.
 bin_storage_default = ["sqlrustgo-storage/bin_storage_default"]
+# V313.3 profiling experiments; mirrors sqlrustgo-storage/v313_3_profile.
+v313_3_profile = ["sqlrustgo-storage/v313_3_profile"]
 
 [dependencies]
 sqlrustgo-common.workspace = true
@@ -1360,6 +1362,10 @@ path = "tests/integration/tpch/tpch_sf1_6m_load_test.rs"
 [[test]]
 name = "tpch_sf1_6m_load_iter_test"
 path = "tests/integration/tpch/tpch_sf1_6m_load_iter_test.rs"
+[[test]]
+name = "v313_3_profile_experiments"
+path = "tests/integration/tpch/v313_3_profile_experiments.rs"
+required-features = ["sqlrustgo-storage/v313_3_profile"]
 [[test]]
 name = "tpch_test"
 path = "tests/integration/tpch_test.rs"
