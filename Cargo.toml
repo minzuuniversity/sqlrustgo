@@ -995,6 +995,15 @@ path = "tests/integration/oracle/diag_q12_sf01_subset.rs"
 name = "diag_q12_sf1_subset"
 path = "tests/integration/oracle/diag_q12_sf1_subset.rs"
 [[test]]
+name = "diag_q17_sf001_subset"
+path = "tests/integration/oracle/diag_q17_sf001_subset.rs"
+[[test]]
+name = "diag_q17_100k_subset"
+path = "tests/integration/oracle/diag_q17_100k_subset.rs"
+[[test]]
+name = "diag_q17_1m_subset"
+path = "tests/integration/oracle/diag_q17_1m_subset.rs"
+[[test]]
 name = "diag_q7_subset_columns"
 path = "tests/integration/oracle/diag_q7_subset_columns.rs"
 [[test]]
