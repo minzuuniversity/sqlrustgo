@@ -558,12 +558,38 @@ impl<S: StorageEngine + 'static> ExecutionEngine<S> {
     /// immediate `save_table` which serialized and wrote the entire table.
     /// For a 500MB orders table, this caused ~3s per INSERT even with
     /// buffered batching. Now: ~0ms per batch, one 3s flush at the end.
+    ///
+    /// T4.2 / BINT binary storage: when the storage engine is
+    /// `BinaryTableStorageV2`, route to its `insert_streaming` method
+    /// for efficient streaming insert (no per-batch disk I/O).
     pub fn bulk_insert_records(
         &self,
         table: &str,
         records: Vec<sqlrustgo_storage::Record>,
     ) -> SqlResult<u64> {
         let n = records.len() as u64;
+
+        // T4.2: Route to BinaryTableStorageV2::insert_streaming when applicable.
+        // Uses type_name check to avoid needing the feature flag at workspace level.
+        if std::any::type_name::<S>().contains("BinaryTableStorageV2") {
+            // This branch only compiles when BinaryTableStorageV2 is available.
+            // The type_name check ensures we only reach this code when S is V2.
+            #[cfg(feature = "bin_storage_default")]
+            {
+                use sqlrustgo_storage::BinaryTableStorageV2;
+                let mut storage = self.storage_write();
+                if let Some(v2) = storage.as_any_mut().downcast_mut::<BinaryTableStorageV2>() {
+                    v2.insert_streaming(table, records)
+                        .map_err(|e| SqlError::ExecutionError(format!("bulk_insert_records: {}", e)))?;
+                    // NOTE: intentionally NO flush() here.
+                    return Ok(n);
+                }
+            }
+            // When feature is not enabled, type_name won't match (BinaryTableStorageV2 doesn't exist)
+            // so we fall through to the default path below.
+        }
+
+        // Default path: use regular insert
         let mut storage = self.storage_write();
         storage
             .insert(table, records)

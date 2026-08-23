@@ -1103,6 +1103,10 @@ pub trait StorageEngine: Send + Sync {
     /// This is used by the LOAD DATA LOCAL INFILE handler to temporarily
     /// override `WalSyncMode` without changing the `StorageEngine` trait API.
     fn as_any(&self) -> &dyn Any;
+
+    /// T4.2 / BINT binary storage: mutable downcast for routing to
+    /// BinaryTableStorageV2::insert_streaming when available.
+    fn as_any_mut(&mut self) -> &mut dyn Any;
 }
 
 /// In-memory storage implementation for testing and caching
@@ -2034,6 +2038,10 @@ impl StorageEngine for MemoryStorage {
     }
 
     fn as_any(&self) -> &dyn Any {
+        self
+    }
+
+    fn as_any_mut(&mut self) -> &mut dyn Any {
         self
     }
 }

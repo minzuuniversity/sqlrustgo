@@ -604,6 +604,10 @@ impl StorageEngine for BinaryTableStorage {
     fn as_any(&self) -> &dyn Any {
         self
     }
+
+    fn as_any_mut(&mut self) -> &mut dyn Any {
+        self
+    }
 }
 
 /// A `StorageEngine` wrapper that forwards all calls through a `Box<dyn StorageEngine>`.
@@ -755,6 +759,10 @@ impl StorageEngine for BoxStorageEngine {
     }
 
     fn as_any(&self) -> &dyn Any {
+        self
+    }
+
+    fn as_any_mut(&mut self) -> &mut dyn Any {
         self
     }
 }
