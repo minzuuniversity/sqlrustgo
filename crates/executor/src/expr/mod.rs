@@ -1448,6 +1448,9 @@ pub fn eval_fn(name: &str, args: &[Value]) -> Value {
                 Some(v) => v.to_sql_string(),
                 None => return Value::Null,
             };
+            if std::env::var("Q7_TRACE").is_ok() {
+                eprintln!("[Q7_TRACE] EXTRACT field={:?} source={:?} (len={})", field, source, source.len());
+            }
             match field.as_str() {
                 "YEAR" if source.len() >= 4 => Value::Text(source[..4].to_string()),
                 "MONTH" if source.len() >= 7 => Value::Text(source[5..7].to_string()),
