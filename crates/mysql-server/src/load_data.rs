@@ -105,7 +105,7 @@ pub fn apply_wal_sync_mode_override(
 ) -> Option<sqlrustgo_storage::WalSyncMode> {
     // downcast_mut requires 'static because we need to know the concrete type.
     storage
-        .as_any()
+        .as_any_mut()
         .downcast_mut::<WalStorage<FileStorage, FileBackedWalManager>>()
         .map(|wal_storage| {
             let original = wal_storage.sync_mode();

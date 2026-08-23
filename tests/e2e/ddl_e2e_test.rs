@@ -361,8 +361,7 @@ fn test_alter_table_alter_column_set_data_type_accepted_without_cast() {
         .execute("CREATE TABLE t (id INTEGER, name TEXT)")
         .unwrap();
 
-    let result =
-        engine.execute("ALTER TABLE t ALTER COLUMN name SET DATA TYPE VARCHAR(100)");
+    let result = engine.execute("ALTER TABLE t ALTER COLUMN name SET DATA TYPE VARCHAR(100)");
     assert!(
         result.is_ok(),
         "ALTER COLUMN SET DATA TYPE without CAST should succeed (per commit 0b3e9acffa design intent): {:?}",
@@ -396,8 +395,7 @@ fn test_ddl_sequential_create_drop_create() {
         .execute("CREATE TABLE seq_lifecycle (id INTEGER)")
         .unwrap();
     let _ = engine.execute("DROP TABLE seq_lifecycle").unwrap();
-    let result =
-        engine.execute("CREATE TABLE seq_lifecycle (id INTEGER, name TEXT)");
+    let result = engine.execute("CREATE TABLE seq_lifecycle (id INTEGER, name TEXT)");
     assert!(
         result.is_ok(),
         "Re-create after drop failed: {:?}",
