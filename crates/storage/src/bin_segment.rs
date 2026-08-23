@@ -101,6 +101,149 @@ pub fn column_width(col: &ColumnDefinition) -> Option<usize> {
     }
 }
 
+/// Errors that can occur while decoding a row.
+#[derive(Debug, thiserror::Error)]
+pub enum RowDecodeError {
+    #[error("row bytes too short: expected at least {expected}, got {actual}")]
+    TooShort { expected: usize, actual: usize },
+    #[error("row CRC32C mismatch: computed {computed:#x}, expected {expected:#x}")]
+    CrcMismatch { computed: u32, expected: u32 },
+    #[error("invalid var-length field: {0}")]
+    InvalidVarLength(String),
+}
+
+/// Encode one row using fixed+variable layout.
+///
+/// `values[i]` is `None` if column `i` is NULL, else `Some(raw_bytes)` where
+/// raw_bytes must already be in the column's on-disk encoding
+/// (i32 LE for Int, UTF-8 for VarChar, etc.).
+pub fn encode_row(
+    schema: &[ColumnDefinition],
+    values: &[Option<Vec<u8>>],
+    row_id: u64,
+) -> Vec<u8> {
+    // Compute null bitmap
+    let mut null_bitmap: u16 = 0;
+    for (i, v) in values.iter().enumerate() {
+        if v.is_none() {
+            null_bitmap |= 1 << i;
+        }
+    }
+    // Compute fixed field total size (excluding NULLs)
+    let fixed_size: usize = schema
+        .iter()
+        .enumerate()
+        .filter_map(|(i, c)| {
+            if (null_bitmap >> i) & 1 == 1 {
+                None
+            } else {
+                column_width(c)
+            }
+        })
+        .sum();
+    // Layout: header(16) | fixed... | null_bitmap(2) | var fields | footer(4)
+    let var_field_offset = (ROW_HEADER_SIZE + fixed_size) as u32;
+    let header = RowHeader {
+        row_size: 0, // filled below
+        var_field_offset,
+        row_id,
+    };
+    let header_bytes = encode_row_header(&header);
+    let mut buf = Vec::with_capacity(header_bytes.len() + fixed_size + 64);
+    buf.extend_from_slice(&header_bytes);
+    // Write fixed-length fields (in column order, skipping NULLs)
+    for (i, col) in schema.iter().enumerate() {
+        if (null_bitmap >> i) & 1 == 1 {
+            continue;
+        }
+        if let Some(width) = column_width(col) {
+            let val = values[i].as_ref().expect("non-null column must have value");
+            assert_eq!(val.len(), width, "fixed column {} byte width mismatch", col.name);
+            buf.extend_from_slice(val);
+        }
+    }
+    // Write null_bitmap at start of var region (2 bytes LE)
+    buf.extend_from_slice(&null_bitmap.to_le_bytes());
+    // Write variable-length fields: each = u32 length + bytes
+    for (i, col) in schema.iter().enumerate() {
+        if (null_bitmap >> i) & 1 == 1 {
+            continue;
+        }
+        if column_width(col).is_none() {
+            let val = values[i].as_ref().unwrap();
+            buf.extend_from_slice(&(val.len() as u32).to_le_bytes());
+            buf.extend_from_slice(val);
+        }
+    }
+    // Patch row_size in header (now that we know total)
+    let row_size = (buf.len() + ROW_FOOTER_SIZE) as u32;
+    buf[0..4].copy_from_slice(&row_size.to_le_bytes());
+    // Append CRC32C footer over everything except footer itself
+    let crc = compute_row_crc(&buf);
+    buf.extend_from_slice(&crc.to_le_bytes());
+    buf
+}
+
+/// Decode a row back into columnar values (NULL = None).
+pub fn decode_row(
+    schema: &[ColumnDefinition],
+    row_bytes: &[u8],
+) -> Result<Vec<Option<Vec<u8>>>, RowDecodeError> {
+    if row_bytes.len() < ROW_HEADER_SIZE + 2 + ROW_FOOTER_SIZE {
+        return Err(RowDecodeError::TooShort {
+            expected: ROW_HEADER_SIZE + 2 + ROW_FOOTER_SIZE,
+            actual: row_bytes.len(),
+        });
+    }
+    let header_arr: [u8; 16] = row_bytes[0..16].try_into().unwrap();
+    let header = decode_row_header(&header_arr);
+    let body = &row_bytes[..row_bytes.len() - ROW_FOOTER_SIZE];
+    let expected_crc =
+        u32::from_le_bytes(row_bytes[row_bytes.len() - 4..].try_into().unwrap());
+    if !verify_row_crc(body, expected_crc) {
+        let computed = compute_row_crc(body);
+        return Err(RowDecodeError::CrcMismatch {
+            computed,
+            expected: expected_crc,
+        });
+    }
+    // Read null_bitmap at start of var region
+    let var_pos = header.var_field_offset as usize;
+    let null_bitmap = u16::from_le_bytes([body[var_pos], body[var_pos + 1]]);
+    let var_data_start = var_pos + 2;
+    let mut values: Vec<Option<Vec<u8>>> = vec![None; schema.len()];
+    let mut fixed_pos = ROW_HEADER_SIZE;
+    let mut var_cur = var_data_start;
+    for (i, col) in schema.iter().enumerate() {
+        if (null_bitmap >> i) & 1 == 1 {
+            continue;
+        }
+        if let Some(width) = column_width(col) {
+            values[i] = Some(row_bytes[fixed_pos..fixed_pos + width].to_vec());
+            fixed_pos += width;
+        } else {
+            if var_cur + 4 > row_bytes.len() - ROW_FOOTER_SIZE {
+                return Err(RowDecodeError::InvalidVarLength(
+                    "truncated var-length header".into(),
+                ));
+            }
+            let len = u32::from_le_bytes([
+                row_bytes[var_cur], row_bytes[var_cur + 1],
+                row_bytes[var_cur + 2], row_bytes[var_cur + 3],
+            ]) as usize;
+            var_cur += 4;
+            if var_cur + len > row_bytes.len() - ROW_FOOTER_SIZE {
+                return Err(RowDecodeError::InvalidVarLength(
+                    format!("declared length {} exceeds row body", len),
+                ));
+            }
+            values[i] = Some(row_bytes[var_cur..var_cur + len].to_vec());
+            var_cur += len;
+        }
+    }
+    Ok(values)
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -189,5 +332,36 @@ mod tests {
         tampered[0] ^= 0xFF;
         assert!(!verify_row_crc(&tampered, crc));
         assert!(verify_row_crc(row, crc));
+    }
+
+    #[test]
+    fn test_encode_row_int_and_text() {
+        let schema = vec![
+            make_col("id", "INT", None),
+            make_col("name", "VARCHAR(255)", None),
+        ];
+        let values = vec![
+            Some(42i32.to_le_bytes().to_vec()),
+            Some(b"alice".to_vec()),
+        ];
+        let row = encode_row(&schema, &values, 1);
+        // header(16) + int(4) + null_bitmap(2) + var_len(4) + name(5) + crc(4) = 35
+        assert!(row.len() >= 35);
+        let decoded = decode_row(&schema, &row).unwrap();
+        assert_eq!(decoded.len(), 2);
+        assert_eq!(decoded[0].as_ref().unwrap(), &42i32.to_le_bytes().to_vec());
+        assert_eq!(decoded[1].as_ref().unwrap(), b"alice");
+    }
+
+    #[test]
+    fn test_encode_row_with_nulls() {
+        let schema = vec![
+            make_col("a", "INT", None),
+            make_col("b", "TEXT", None),
+        ];
+        let values = vec![Some(7i32.to_le_bytes().to_vec()), None];
+        let row = encode_row(&schema, &values, 1);
+        let decoded = decode_row(&schema, &row).unwrap();
+        assert!(decoded[1].is_none());
     }
 }
