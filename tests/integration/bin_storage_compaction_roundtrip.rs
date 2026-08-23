@@ -10,7 +10,7 @@
 
 use sqlrustgo_storage::bin_compactor::{BinCompactor, CompactorConfig};
 use sqlrustgo_storage::bin_index::read_root_index_file;
-use sqlrustgo_storage::engine::{ColumnDefinition, Record, StorageEngine, Value};
+use sqlrustgo_storage::engine::{ColumnDefinition, Record, Value};
 use sqlrustgo_storage::BinaryTableStorageV2;
 use std::path::PathBuf;
 use tempfile::TempDir;
