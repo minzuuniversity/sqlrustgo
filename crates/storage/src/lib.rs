@@ -61,3 +61,22 @@ pub use page::Page;
 pub use parallel_wal_storage::ParallelWalStorage;
 pub use wal::{FileBackedWalManager, MemoryWalManager, WalManager};
 pub use wal_storage::{WalStorage, WalSyncMode};
+
+#[cfg(feature = "bin_storage_default")]
+pub use binary_storage_v2::BinaryTableStorageV2;
+#[cfg(not(feature = "bin_storage_default"))]
+pub use file_storage::FileStorage as DefaultStorageEngine;
+
+/// Factory that returns the production default storage backend.
+pub fn default_storage_engine(
+    data_dir: std::path::PathBuf,
+) -> std::io::Result<Box<dyn StorageEngine>> {
+    #[cfg(feature = "bin_storage_default")]
+    {
+        Ok(Box::new(BinaryTableStorageV2::new(data_dir)?))
+    }
+    #[cfg(not(feature = "bin_storage_default"))]
+    {
+        Ok(Box::new(FileStorage::new(data_dir)?))
+    }
+}

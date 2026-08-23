@@ -24,6 +24,10 @@ sqlrustgo-wal-verification = { path = "../wal-verification" }
 tempfile.workspace = true
 criterion = "0.8"
 
+[features]
+default = []
+bin_storage_default = []
+
 [[bench]]
 name = "storage_benchmark"
 harness = false
