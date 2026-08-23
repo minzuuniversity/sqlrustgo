@@ -1013,6 +1013,12 @@ path = "tests/integration/oracle/diag_q17_1m_subset.rs"
 name = "diag_q17_sprint3_path"
 path = "tests/integration/oracle/diag_q17_sprint3_path.rs"
 [[test]]
+name = "diag_q20_sprint3_path"
+path = "tests/integration/oracle/diag_q20_sprint3_path.rs"
+[[test]]
+name = "diag_q20_mini_bisect"
+path = "tests/integration/oracle/diag_q20_mini_bisect.rs"
+[[test]]
 name = "diag_q7_subset_columns"
 path = "tests/integration/oracle/diag_q7_subset_columns.rs"
 [[test]]
