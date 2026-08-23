@@ -52,27 +52,29 @@ fn bench_lineitem_1m(c: &mut Criterion) {
                 let records: Vec<Record> = (batch_start..batch_end)
                     .map(|i| {
                         vec![
-                            Value::Integer(i as i64),          // l_orderkey
-                            Value::Integer(i as i64),          // l_partkey
-                            Value::Integer(i as i64),          // l_suppkey
-                            Value::Integer(1i64),              // l_linenumber
-                            Value::Float(1.0),                 // l_quantity
-                            Value::Float(1000.0),              // l_extendedprice
-                            Value::Float(0.05),                // l_discount
-                            Value::Float(0.01),                // l_tax
-                            Value::Text("R".to_string()),      // l_returnflag
-                            Value::Text("F".to_string()),      // l_linestatus
+                            Value::Integer(i as i64),                   // l_orderkey
+                            Value::Integer(i as i64),                   // l_partkey
+                            Value::Integer(i as i64),                   // l_suppkey
+                            Value::Integer(1i64),                       // l_linenumber
+                            Value::Float(1.0),                          // l_quantity
+                            Value::Float(1000.0),                       // l_extendedprice
+                            Value::Float(0.05),                         // l_discount
+                            Value::Float(0.01),                         // l_tax
+                            Value::Text("R".to_string()),               // l_returnflag
+                            Value::Text("F".to_string()),               // l_linestatus
                             Value::Integer((9000 + (i % 1000)) as i64), // l_shipdate
                             Value::Integer((9100 + (i % 1000)) as i64), // l_commitdate
                             Value::Integer((9150 + (i % 1000)) as i64), // l_receiptdate
-                            Value::Text("N".to_string()),     // l_shipinstruct - abbreviated
-                            Value::Text("A".to_string()),      // l_shipmode - abbreviated
-                            Value::Text("x".to_string()),      // l_comment - minimal
+                            Value::Text("N".to_string()), // l_shipinstruct - abbreviated
+                            Value::Text("A".to_string()), // l_shipmode - abbreviated
+                            Value::Text("x".to_string()), // l_comment - minimal
                         ]
                     })
                     .collect();
 
-                storage.insert_streaming("lineitem", records).expect("insert");
+                storage
+                    .insert_streaming("lineitem", records)
+                    .expect("insert");
                 storage.flush().expect("flush");
             }
         })

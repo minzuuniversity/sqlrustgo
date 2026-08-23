@@ -100,8 +100,7 @@ fn lineitem_row(i: usize) -> Record {
 /// the brief.
 fn run_load(n_rows: usize) -> Duration {
     let temp_dir = TempDir::new().expect("create tempdir");
-    let mut storage =
-        BinaryTableStorageV2::new(temp_dir.path().to_path_buf()).expect("V2 init");
+    let mut storage = BinaryTableStorageV2::new(temp_dir.path().to_path_buf()).expect("V2 init");
     storage
         .create_table("lineitem", lineitem_schema())
         .expect("create_table");
@@ -168,6 +167,8 @@ fn tpch_sf1_6m_load_assertion() {
     assert!(
         elapsed < budget,
         "TPC-H SF=1 lineitem load regressed: {:?} (budget {}s, target < {}s)",
-        elapsed, budget_s, budget_s
+        elapsed,
+        budget_s,
+        budget_s
     );
 }

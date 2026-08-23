@@ -15,9 +15,6 @@ use std::path::Path;
 #[derive(Debug, Clone)]
 pub struct CompactorConfig {
     pub max_segment_count: usize,
-    /// Stored for future use; not consulted in current implementation.
-    /// Reserved for a streaming/spill-to-disk compaction path (T6.x).
-    pub oom_safe: bool,
 }
 
 pub struct BinCompactor {
@@ -60,8 +57,7 @@ impl BinCompactor {
             let reader = SegmentReader::open(&seg_path, vec![])
                 .map_err(|e| SqlError::ExecutionError(e.to_string()))?;
             for row_result in reader.iter_rows() {
-                let row = row_result
-                    .map_err(|e| SqlError::ExecutionError(e.to_string()))?;
+                let row = row_result.map_err(|e| SqlError::ExecutionError(e.to_string()))?;
                 merged_writer
                     .append(&row)
                     .map_err(|e| SqlError::ExecutionError(e.to_string()))?;
@@ -74,8 +70,7 @@ impl BinCompactor {
         // Remove old segments
         for seg_info in &idx.segments {
             let p = data_dir.join(&seg_info.file_name);
-            std::fs::remove_file(&p)
-                .map_err(|e| SqlError::ExecutionError(e.to_string()))?;
+            std::fs::remove_file(&p).map_err(|e| SqlError::ExecutionError(e.to_string()))?;
         }
 
         // Write new root.bin pointing at the merged segment
