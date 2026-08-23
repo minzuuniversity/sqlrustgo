@@ -209,6 +209,10 @@ name = "tpch_bench"
 harness = false
 
 [[bench]]
+name = "tpch_load_bench"
+harness = false
+
+[[bench]]
 name = "qps_bench"
 harness = false
 
