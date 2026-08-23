@@ -571,9 +571,12 @@ impl<S: StorageEngine + 'static> ExecutionEngine<S> {
 
         // T4.2: Route to BinaryTableStorageV2::insert_streaming when applicable.
         // Uses type_name check to avoid needing the feature flag at workspace level.
-        if std::any::type_name::<S>().contains("BinaryTableStorageV2") {
+        // T4.2 Fix: Changed from .contains() to exact match to avoid false positives.
+        if std::any::type_name::<S>() == "sqlrustgo_storage::binary_storage_v2::BinaryTableStorageV2" {
             // This branch only compiles when BinaryTableStorageV2 is available.
             // The type_name check ensures we only reach this code when S is V2.
+            // T4.2 Fix: Suppress clippy warning since bin_storage_default is defined in storage crate.
+            #[cfg_attr(feature = "bin_storage_default", allow(unexpected_cfgs))]
             #[cfg(feature = "bin_storage_default")]
             {
                 use sqlrustgo_storage::BinaryTableStorageV2;
