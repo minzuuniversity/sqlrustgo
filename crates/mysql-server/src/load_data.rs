@@ -9,7 +9,8 @@
 //!   - Otherwise → Text
 
 use sqlrustgo::ExecutionEngine;
-use sqlrustgo_storage::StorageEngine;
+use sqlrustgo_storage::wal_storage::WalStorage;
+use sqlrustgo_storage::{FileBackedWalManager, FileStorage, StorageEngine};
 use sqlrustgo_types::Value as SqlValue;
 
 pub fn parse_tbl_line(line: &str, expected_columns: usize) -> Result<Vec<SqlValue>, String> {
@@ -90,6 +91,27 @@ pub fn bulk_insert<S: StorageEngine + 'static>(
         .bulk_insert_records(table, records)
         .map_err(|e| format!("bulk_insert_records failed: {}", e))?;
     Ok(n)
+}
+
+/// T4.1: Try to override the WAL sync mode of `storage` to `mode`.
+/// If `storage` is not a `WalStorage<FileStorage, FileBackedWalManager>`
+/// (e.g. it is a `BinaryTableStorage` used with the `binary` backend), this
+/// is a no-op and returns `None`.
+///
+/// Returns the original sync mode so the caller can restore it.
+pub fn apply_wal_sync_mode_override(
+    storage: &mut dyn StorageEngine,
+    mode: sqlrustgo_storage::WalSyncMode,
+) -> Option<sqlrustgo_storage::WalSyncMode> {
+    // downcast_mut requires 'static because we need to know the concrete type.
+    storage
+        .as_any()
+        .downcast_mut::<WalStorage<FileStorage, FileBackedWalManager>>()
+        .map(|wal_storage| {
+            let original = wal_storage.sync_mode();
+            wal_storage.set_sync_mode(mode);
+            original
+        })
 }
 
 #[cfg(test)]

@@ -6,6 +6,7 @@ use crate::engine::{
     ColumnDefinition, Record, RowFilter, RowMutation, SqlError, SqlResult, StorageEngine,
     TableData, TableInfo, TriggerInfo, Value,
 };
+use std::any::Any;
 use std::collections::HashMap;
 use std::fs::File;
 use std::io::{BufWriter, Write};
@@ -599,6 +600,10 @@ impl StorageEngine for BinaryTableStorage {
     fn is_wal_enabled(&self) -> bool {
         false
     }
+
+    fn as_any(&self) -> &dyn Any {
+        self
+    }
 }
 
 /// A `StorageEngine` wrapper that forwards all calls through a `Box<dyn StorageEngine>`.
@@ -747,6 +752,10 @@ impl StorageEngine for BoxStorageEngine {
     }
     fn is_wal_enabled(&self) -> bool {
         (**self).is_wal_enabled()
+    }
+
+    fn as_any(&self) -> &dyn Any {
+        self
     }
 }
 

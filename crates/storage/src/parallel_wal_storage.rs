@@ -5,6 +5,7 @@
 //! Key insight: WAL writes must be serial (ordering), but table flushes can be parallel.
 
 use crate::engine::{ColumnDefinition, Record, SqlError, SqlResult, StorageEngine, TableInfo};
+use std::any::Any;
 use crate::wal::{WalEntry, WalEntryType, WalManager};
 use crate::wal_storage::WalSyncMode;
 
@@ -18,7 +19,7 @@ pub struct ParallelWalStorage<S: StorageEngine, W: WalManager> {
     next_lsn: u64,
 }
 
-impl<S: StorageEngine, W: WalManager> ParallelWalStorage<S, W> {
+impl<S: StorageEngine + 'static, W: WalManager + 'static> ParallelWalStorage<S, W> {
     pub fn new(inner: S, wal: W) -> Self {
         Self {
             inner,
@@ -46,7 +47,7 @@ impl<S: StorageEngine, W: WalManager> ParallelWalStorage<S, W> {
     }
 }
 
-impl<S: StorageEngine, W: WalManager> StorageEngine for ParallelWalStorage<S, W> {
+impl<S: StorageEngine + 'static, W: WalManager + 'static> StorageEngine for ParallelWalStorage<S, W> {
     fn insert(&mut self, table: &str, records: Vec<Record>) -> SqlResult<()> {
         self.inner.insert(table, records)
     }
@@ -192,6 +193,10 @@ impl<S: StorageEngine, W: WalManager> StorageEngine for ParallelWalStorage<S, W>
     }
     fn has_view(&self, name: &str) -> bool {
         self.inner.has_view(name)
+    }
+
+    fn as_any(&self) -> &dyn Any {
+        self
     }
 }
 

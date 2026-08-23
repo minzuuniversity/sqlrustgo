@@ -7,6 +7,7 @@ use crate::engine::{
     StorageEngine, TableData, TableInfo, TriggerInfo, UniqueConstraint,
 };
 use sqlrustgo_types::{SqlError, SqlResult, Value};
+use std::any::Any;
 use std::collections::{HashMap, HashSet};
 use std::fs::{self, File};
 use std::io::{BufReader, BufWriter, Write};
@@ -3182,6 +3183,10 @@ impl StorageEngine for FileStorage {
             .ok_or_else(|| SqlError::ExecutionError(format!("Column not found: {}", column)))?;
         table_data.info.columns[col_idx] = new_def;
         Ok(())
+    }
+
+    fn as_any(&self) -> &dyn Any {
+        self
     }
 }
 

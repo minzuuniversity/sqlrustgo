@@ -3,6 +3,7 @@
 //! V311-08: Incremental write implementation
 
 use crate::engine::{Record, SqlError, SqlResult, StorageEngine, TableInfo, Value};
+use std::any::Any;
 use std::collections::{BTreeMap, HashSet};
 use std::fs::{File, OpenOptions};
 use std::io::{Read, Seek, Write};
@@ -471,6 +472,10 @@ impl StorageEngine for AppendOnlyStorage {
     }
     fn has_view(&self, _name: &str) -> bool {
         false
+    }
+
+    fn as_any(&self) -> &dyn Any {
+        self
     }
 }
 
