@@ -24,6 +24,12 @@ pub struct BinaryTableStorageV2 {
     /// Test-only; gated by the `v313_3_profile` Cargo feature.
     #[cfg(feature = "v313_3_profile")]
     skip_in_memory_rows: bool,
+    /// V313.3 Experiment B: when true, reuse a single `Vec<u8>` across
+    /// all columns of one row when encoding each value to bytes. Default
+    /// is the existing `encode_value_to_bytes` (which allocates a fresh
+    /// `Vec<u8>` per non-null column). Test-only; feature-gated.
+    #[cfg(feature = "v313_3_profile")]
+    in_place_encoding: bool,
 }
 
 impl BinaryTableStorageV2 {
@@ -37,6 +43,8 @@ impl BinaryTableStorageV2 {
             next_segment_ids: HashMap::new(),
             #[cfg(feature = "v313_3_profile")]
             skip_in_memory_rows: false,
+            #[cfg(feature = "v313_3_profile")]
+            in_place_encoding: false,
         })
     }
 
@@ -89,6 +97,38 @@ impl BinaryTableStorageV2 {
             .clone();
         let mut writer = self.get_or_open_writer(table, schema)?;
         for record in records {
+            #[cfg(feature = "v313_3_profile")]
+            let values: Vec<Option<Vec<u8>>> = if self.in_place_encoding {
+                // Experiment B: reuse a single Vec<u8> across all columns of
+                // one row. Avoids per-column Vec allocation in
+                // `encode_value_to_bytes` for fixed-width types. Note that
+                // we still produce owned `Option<Vec<u8>>` so the rest of
+                // the pipeline is unchanged.
+                let mut row_buf: Vec<u8> = Vec::with_capacity(64);
+                let mut values: Vec<Option<Vec<u8>>> = Vec::with_capacity(record.len());
+                for v in &record {
+                    if matches!(v, crate::engine::Value::Null) {
+                        values.push(None);
+                    } else {
+                        row_buf.clear();
+                        encode_value_to_bytes_into(v, &mut row_buf);
+                        values.push(Some(row_buf.clone()));
+                    }
+                }
+                values
+            } else {
+                record
+                    .iter()
+                    .map(|v| {
+                        if matches!(v, crate::engine::Value::Null) {
+                            None
+                        } else {
+                            Some(encode_value_to_bytes(v))
+                        }
+                    })
+                    .collect()
+            };
+            #[cfg(not(feature = "v313_3_profile"))]
             let values: Vec<Option<Vec<u8>>> = record
                 .iter()
                 .map(|v| {
@@ -165,6 +205,34 @@ impl BinaryTableStorageV2 {
                 )?;
                 writer = self.open_new_segment(table, schema.clone())?;
             }
+            #[cfg(feature = "v313_3_profile")]
+            let values: Vec<Option<Vec<u8>>> = if self.in_place_encoding {
+                // Experiment B: see comment in `insert_streaming`.
+                let mut row_buf: Vec<u8> = Vec::with_capacity(64);
+                let mut values: Vec<Option<Vec<u8>>> = Vec::with_capacity(record.len());
+                for v in &record {
+                    if matches!(v, crate::engine::Value::Null) {
+                        values.push(None);
+                    } else {
+                        row_buf.clear();
+                        encode_value_to_bytes_into(v, &mut row_buf);
+                        values.push(Some(row_buf.clone()));
+                    }
+                }
+                values
+            } else {
+                record
+                    .iter()
+                    .map(|v| {
+                        if matches!(v, crate::engine::Value::Null) {
+                            None
+                        } else {
+                            Some(encode_value_to_bytes(v))
+                        }
+                    })
+                    .collect()
+            };
+            #[cfg(not(feature = "v313_3_profile"))]
             let values: Vec<Option<Vec<u8>>> = record
                 .iter()
                 .map(|v| {
@@ -295,6 +363,24 @@ impl BinaryTableStorageV2 {
     pub fn len_in_memory_rows_for_test(&self, table: &str) -> usize {
         self.tables.get(table).map(|t| t.rows.len()).unwrap_or(0)
     }
+
+    /// V313.3 Experiment B: write fixed-width columns directly into a
+    /// shared per-row `Vec<u8>`, skipping the per-column Vec allocation
+    /// in `encode_value_to_bytes`. This is the "cheap variant" of full
+    /// in-place encoding — full optimization (writing into
+    /// SegmentWriter's row buffer directly) is V313.4 if this experiment
+    /// shows significant gain. Test-only; gated by feature.
+    #[cfg(feature = "v313_3_profile")]
+    pub fn use_in_place_encoding_for_test(&mut self) {
+        self.in_place_encoding = true;
+    }
+
+    /// V313.3 Experiment B accessor: `true` after `use_in_place_encoding_for_test`
+    /// has been called. Test-only.
+    #[cfg(feature = "v313_3_profile")]
+    pub fn is_in_place_encoding_for_test(&self) -> bool {
+        self.in_place_encoding
+    }
 }
 
 /// Encode a `Value` to its BINT v3 on-disk byte representation.
@@ -314,6 +400,28 @@ fn encode_value_to_bytes(v: &crate::engine::Value) -> Vec<u8> {
             buf
         }
         Value::Json(j) => j.to_string().as_bytes().to_vec(),
+    }
+}
+
+/// Encode a `Value` into the provided buffer. Mirrors `encode_value_to_bytes`
+/// but writes into a caller-provided `Vec<u8>` instead of returning a new
+/// allocation. Used by V313.3 Experiment B (in-place encoding) to eliminate
+/// the per-column `Vec<u8>` allocation for fixed-width types.
+#[cfg(feature = "v313_3_profile")]
+fn encode_value_to_bytes_into(v: &crate::engine::Value, buf: &mut Vec<u8>) {
+    use crate::engine::Value;
+    match v {
+        Value::Null => {}
+        Value::Boolean(b) => buf.push(*b as u8),
+        Value::Integer(i) => buf.extend_from_slice(&i.to_le_bytes()),
+        Value::Float(f) => buf.extend_from_slice(&f.to_le_bytes()),
+        Value::Text(s) => buf.extend_from_slice(s.as_bytes()),
+        Value::Blob(b) => buf.extend_from_slice(b),
+        Value::Point(x, y) => {
+            buf.extend_from_slice(&x.to_le_bytes());
+            buf.extend_from_slice(&y.to_le_bytes());
+        }
+        Value::Json(j) => buf.extend_from_slice(j.to_string().as_bytes()),
     }
 }
 

@@ -94,6 +94,44 @@ memory bandwidth (more plentiful on the dev workstation's smaller footprint).
 > Audit findings), so the deciding factor is **the workload's expected
 > memory bandwidth pressure**, not this hardware's near-zero gap.
 
+### Experiment B — in-place row encoding (reuse `Vec<u8>` across columns)
+
+**Hypothesis:** the per-column `Vec<u8>` allocation in
+`encode_value_to_bytes` (`Integer.to_le_bytes().to_vec()`,
+`Float.to_le_bytes().to_vec()`, `Text.as_bytes().to_vec()`) creates
+~16 short-lived heap allocations per row. For 6M rows that's ~96M
+allocations feeding the allocator. Reusing a single `Vec<u8>` buffer
+across all columns of one row should reclaim those allocations.
+
+**Hook:** `BinaryTableStorageV2::use_in_place_encoding_for_test()` sets
+`in_place_encoding = true`. Both streaming insert paths branch into
+`encode_value_to_bytes_into(v, &mut row_buf)` (writes into a shared
+per-row buffer) instead of `encode_value_to_bytes(v)` (returns a fresh
+`Vec<u8>`). The output is still `Vec<Option<Vec<u8>>>` so the rest of the
+pipeline is unchanged.
+
+**Result (Task 3b, median of 3 iterations, 6M rows):**
+
+| Metric | Value |
+|--------|-------|
+| 6M wall-time | **17.87 s** (335,810 rows/sec) |
+| Baseline 6M wall-time | 18.14 s (330,866 rows/sec) |
+| Δ vs baseline | -0.27 s (-1.5%) |
+| `is_in_place_encoding` after run | true (asserted) |
+| Disk FS | ext4 |
+
+**Ranking on this hardware:** Δ -1.5% of 1.14s gap → **24% of gap closed**
+on the HP Z6 G4 (using `(T_baseline − T_exp) / (T_baseline − 17.0)` with
+`T_baseline = 18.14`, `T_exp = 17.87`).
+
+> **Interpretation:** B is **less impactful than A** on this hardware
+> (24% vs 58% of gap closed). Likely cause: the GLIBC malloc fastbin /
+> tcache paths already make ~16-byte Vec allocations essentially free
+> on a fresh process — there's no per-allocation syscall overhead to
+> reclaim. On the Xeon reference with ~96M total allocations, allocator
+> pressure would dominate and the same hook would likely close a
+> larger fraction of the gap.
+
 ## Decision: optimize <top suspect>
 
 (Filled by Task 3)
