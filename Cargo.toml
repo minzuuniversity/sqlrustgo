@@ -950,6 +950,12 @@ path = "tests/integration/oracle/q11_stock_filter_regression.rs"
 name = "q17_small_order_shortage_perf"
 path = "tests/integration/oracle/q17_small_order_shortage_perf.rs"
 [[test]]
+name = "q20_potential_part_promotion_perf"
+path = "tests/integration/oracle/q20_potential_part_promotion_perf.rs"
+[[test]]
+name = "q22_global_sales_opportunity_perf"
+path = "tests/integration/oracle/q22_global_sales_opportunity_perf.rs"
+[[test]]
 name = "lexer_asc_keyword_regression"
 path = "tests/integration/oracle/lexer_asc_keyword_regression.rs"
 [[test]]
