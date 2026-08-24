@@ -597,6 +597,17 @@ impl<S: StorageEngine + 'static> ExecutionEngine<S> {
         // the cloned where_expr with a Literal(true/false) for that
         // specific outer row. The remaining WHERE logic then runs via
         // the standard `eval_predicate` path.
+        // Track whether Step 1.5 already filtered rows with a fully
+        // resolved WHERE (In→InList + Subquery→Literal). When true,
+        // Step 1.6's filter must be skipped because it would re-evaluate
+        // each row against a WHERE that still has un-substituted
+        // nested Subqueries — eval_predicate hits
+        // `BinaryOp(col, OP, Subquery)` and the default `subq_eval`
+        // closure returns `Value::Null`, which fails every comparison
+        // and filters out rows that Step 1.5 just kept. This was the
+        // root cause of TPC-H Q20 L0/L5 returning 0 supplier rows at
+        // Sprint 3 Phase 3 (V312-58 Task #88.7).
+        let mut step_1_5_filtered = false;
         if !skip_where {
             if let Some(ref where_expr) = select.where_clause {
                 if where_expr_has_correlated_subquery(where_expr) {
@@ -611,7 +622,23 @@ impl<S: StorageEngine + 'static> ExecutionEngine<S> {
                     let mut subquery_indexes: Vec<SubqueryIndex> = Vec::new();
                     collect_subquery_indexes(where_expr, self, &mut subquery_indexes);
 
-                    let pre_evaluated_where = where_expr.clone();
+                    // Sprint 4 Task #88.7: pre-rewrite non-correlated
+                    // In/NotIn → InList/NotInList BEFORE the per-row
+                    // loop. The pre-evaluate_correlated_exists path
+                    // handles Exists / top-level Subquery / NotExists
+                    // and recursively into BinaryOp to substitute
+                    // nested Subquery→Literal via try_scalar_agg_index_lookup,
+                    // but its In arm just passes through. Doing the
+                    // In→InList rewrite here means the per-row
+                    // pre_evaluate_correlated_exists operates on a
+                    // WHERE that has BOTH InList (handled by
+                    // eval_predicate via the InList arm) AND
+                    // Subquery→Literal substitution intact, so the
+                    // per-row eval_predicate can fully evaluate the
+                    // WHERE without falling back to Null for nested
+                    // Subqueries.
+                    let pre_evaluated_where =
+                        self.pre_evaluate_non_correlated_in_subquery(where_expr);
                     let mut new_rows: Vec<Vec<Value>> = Vec::with_capacity(rows.len());
                     for row in rows.into_iter() {
                         let mut cursor: usize = 0;
@@ -622,7 +649,8 @@ impl<S: StorageEngine + 'static> ExecutionEngine<S> {
                             &subquery_indexes,
                             &mut cursor,
                         );
-                        if eval_predicate(&replaced, &row, &table_info) {
+                        let pred = eval_predicate(&replaced, &row, &table_info);
+                        if pred {
                             // V311-02 v2: AHI access was recorded at scan time via
                             // `scan_with_ahi()`. Adding per-row hooks here would be
                             // redundant noise; the table-level access is sufficient
@@ -631,6 +659,7 @@ impl<S: StorageEngine + 'static> ExecutionEngine<S> {
                         }
                     }
                     rows = new_rows;
+                    step_1_5_filtered = true;
                 } else {
                     rows.retain(|row| eval_predicate(where_expr, row, &table_info));
                 }
@@ -650,10 +679,24 @@ impl<S: StorageEngine + 'static> ExecutionEngine<S> {
         // HashSet, and rewrite the AST `In/NotIn(expr, subq)` into
         // `InList/NotInList(expr, [Literal...])` so the standard
         // `eval_predicate` path handles it correctly.
-        if let Some(ref where_expr) = select.where_clause {
-            let rewritten = self.pre_evaluate_non_correlated_in_subquery(where_expr);
-            if &rewritten != where_expr {
-                rows.retain(|row| eval_predicate(&rewritten, row, &table_info));
+        //
+        // Sprint 4 Task #88.7: only run Step 1.6 when Step 1.5 did
+        // NOT filter rows. When Step 1.5 ran (correlated subquery
+        // detected), it already pre-rewrote In→InList in its per-row
+        // loop AND handled the nested Subquery-in-BinaryOp case via
+        // pre_evaluate_correlated_exists. Re-running Step 1.6 here
+        // would re-evaluate each row against the original WHERE
+        // which still has un-substituted nested Subqueries — the
+        // default `subq_eval` closure returns Value::Null, breaking
+        // every `col OP Subquery` comparison and dropping rows that
+        // Step 1.5 had correctly kept. Skipping is therefore required
+        // for Q20 L0/L5 to return the expected 30 supplier rows.
+        if !step_1_5_filtered {
+            if let Some(ref where_expr) = select.where_clause {
+                let rewritten = self.pre_evaluate_non_correlated_in_subquery(where_expr);
+                if &rewritten != where_expr {
+                    rows.retain(|row| eval_predicate(&rewritten, row, &table_info));
+                }
             }
         }
 
@@ -4008,9 +4051,9 @@ impl<S: StorageEngine + 'static> ExecutionEngine<S> {
                 // materialization, GROUP BY check, etc.). The
                 // recursive execute_select path is still used as
                 // a fallback for non-trivial subqueries.
-                let any_row = self
-                    .pre_eval_exists_subquery_fast(&substituted, outer_row)
-                    .unwrap_or_else(|| match self.execute_select(&substituted) {
+                let fast_result = self.pre_eval_exists_subquery_fast(&substituted, outer_row);
+                let any_row =
+                    fast_result.unwrap_or_else(|| match self.execute_select(&substituted) {
                         Ok(r) => !r.rows.is_empty(),
                         Err(_) => false,
                     });
