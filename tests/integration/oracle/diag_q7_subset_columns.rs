@@ -48,7 +48,7 @@ fn diag_q7_subset_columns() {
         for entry in std::fs::read_dir(&src_expected).unwrap() {
             let entry = entry.unwrap();
             let dst_path = dst_expected.join(entry.file_name());
-            std::fs::copy(&entry.path(), &dst_path).ok();
+            std::fs::copy(entry.path(), &dst_path).ok();
         }
     }
 
