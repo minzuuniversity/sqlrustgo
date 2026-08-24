@@ -168,6 +168,37 @@ this hardware**, edging out A by ~2x.
 > would likely be smaller — but proportionally larger, since disk cost
 > is the dominant piece of the 6.3× extrapolation gap on the Xeon.
 
+### Experiment D — 64 MB BufWriter capacity (vs default 1 MB)
+
+**Hypothesis:** `SegmentWriter` uses a 1 MB `BufWriter` internally.
+For ~6M lineitem rows producing ~900 MB of segment data, that's ~900
+mid-segment flushes per load. Raising the BufWriter to match the
+64 MB segment cap should let each segment's writes go straight to the
+file with no mid-segment flushes.
+
+**Hook:** `SegmentWriter::with_size_cap_and_buf_capacity(path, schema,
+cap, buf_cap)` (new overload). `BinaryTableStorageV2::open_new_segment`
+branches on `segment_buf_capacity: Option<usize>` (cfg-gated hook set
+by `set_segment_buf_capacity_for_test(cap)`).
+
+**Result (Task 3d, median of 3 iterations, 6M rows):**
+
+| Metric | Value |
+|--------|-------|
+| 6M wall-time (64 MB BufWriter) | **17.39 s** (345,177 rows/sec) |
+| 6M wall-time (1 MB BufWriter, baseline) | 18.14 s (330,866 rows/sec) |
+| Δ vs baseline | -0.75 s (-4.1%) |
+| Disk FS | ext4 |
+
+**Ranking on this hardware:** Δ -4.1% of 1.14s gap → **66% of gap closed**
+on the HP Z6 G4 (using `(T_baseline − T_exp) / (T_baseline − 17.0)` with
+`T_baseline = 18.14`, `T_exp = 17.39`). Second-largest win among the
+promotable experiments (after C, which can't be promoted).
+
+> **Memory trade-off:** a 64 MB BufWriter adds ~63 MB of peak RSS per
+> active segment writer. Default is 1 MB. V313.3 conclusion (Task 4)
+> weighs A (cheaper, lower-risk) vs D (bigger win, +63 MB RSS).
+
 ## Decision: optimize <top suspect>
 
 (Filled by Task 3)
