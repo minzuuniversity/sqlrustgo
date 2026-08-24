@@ -139,48 +139,31 @@ fn baseline_smoke_1k() {
 // ============================================================
 // Experiment A — skip tables.rows.push accumulator
 // ============================================================
+//
+// V313.3 Task 5 applied the A fix as a permanent change: the
+// `tables.rows.push` line is removed from both streaming insert
+// paths. The hook methods `skip_in_memory_rows_for_test()` and
+// `len_in_memory_rows_for_test()` no longer exist. Experiment A's
+// measurement (median of 3, 6M rows = 17.48s, 58% gap closed) was
+// captured before the fix was promoted; the optimized 6M
+// re-measurement is `baseline_6m_no_hooks` re-run after Task 5.
+//
+// What remains here is just the smoke test that verifies the fix
+// does not break the streaming-insert API contract.
 
-/// Run a load with the Experiment A hook set (skip in-memory rows).
-///
-/// Returns (wall-time, segment-count, row-count, in-mem rows after run).
-fn run_load_experiment_a(n_rows: usize) -> (Duration, usize, u64, usize) {
-    let temp_dir = TempDir::new().expect("tempdir");
-    let mut storage = BinaryTableStorageV2::new(temp_dir.path().to_path_buf()).expect("V2 init");
-    storage.create_table("lineitem", lineitem_schema()).expect("create_table");
-    storage.skip_in_memory_rows_for_test();
-    let start = Instant::now();
-    storage
-        .insert_streaming_iter("lineitem", (0..n_rows).map(lineitem_row))
-        .expect("insert_streaming_iter");
-    storage.flush().expect("final flush");
-    let elapsed = start.elapsed();
-    let root_path = temp_dir.path().join("lineitem.root.bin");
-    let idx = read_root_index_file(&root_path).expect("read root index");
-    let in_mem = storage.len_in_memory_rows_for_test("lineitem");
-    (elapsed, idx.segments.len(), idx.total_rows, in_mem)
-}
-
-#[ignore = "6M load with Experiment A hook. Run with --ignored."]
-#[test]
-fn experiment_a_skip_rows_accumulator() {
-    let elapsed = median_of(N_ITER, || run_load_experiment_a(SF1_LINEITEM_ROWS).0);
-    let rows_per_sec = SF1_LINEITEM_ROWS as f64 / elapsed.as_secs_f64();
-    eprintln!(
-        "EXPERIMENT A (no tables.rows.push): 6M rows in {:?} ({:.0} rows/sec)",
-        elapsed, rows_per_sec
-    );
-}
-
+/// Smoke test for the A fix (Task 5): insert a small number of rows
+/// through the streaming-iter API after removing `tables.rows.push`
+/// and verify the load completes + root index is correct.
 #[test]
 fn experiment_a_smoke_1k() {
-    let (elapsed, seg_count, row_count, in_mem) = run_load_experiment_a(SMOKE_LINEITEM_ROWS);
+    let (elapsed, seg_count, row_count) = run_load(SMOKE_LINEITEM_ROWS);
     eprintln!(
-        "EXPERIMENT A 1k: {:?} ({} seg, {} rows, {} in-memory)",
-        elapsed, seg_count, row_count, in_mem
+        "EXPERIMENT A (fix applied, default code path) 1k: {:?} ({} seg, {} rows)",
+        elapsed, seg_count, row_count
     );
     assert!(elapsed < Duration::from_secs(5));
     assert_eq!(row_count, SMOKE_LINEITEM_ROWS as u64);
-    assert_eq!(in_mem, 0, "hook failed: tables.rows should be empty");
+    assert_eq!(seg_count, 1);
 }
 
 // Experiment tests (B/C/D) are added in Task 3b-3d.
