@@ -184,3 +184,50 @@ fn experiment_a_smoke_1k() {
 }
 
 // Experiment tests (B/C/D) are added in Task 3b-3d.
+
+// ============================================================
+// Experiment B — in-place row encoding (reuse Vec<u8> across columns)
+// ============================================================
+
+/// Run a load with the Experiment B hook set (in-place encoding).
+///
+/// Returns (wall-time, segment-count, row-count, is_in_place_encoding flag).
+fn run_load_experiment_b(n_rows: usize) -> (Duration, usize, u64, bool) {
+    let temp_dir = TempDir::new().expect("tempdir");
+    let mut storage = BinaryTableStorageV2::new(temp_dir.path().to_path_buf()).expect("V2 init");
+    storage.create_table("lineitem", lineitem_schema()).expect("create_table");
+    storage.use_in_place_encoding_for_test();
+    let start = Instant::now();
+    storage
+        .insert_streaming_iter("lineitem", (0..n_rows).map(lineitem_row))
+        .expect("insert_streaming_iter");
+    storage.flush().expect("final flush");
+    let elapsed = start.elapsed();
+    let root_path = temp_dir.path().join("lineitem.root.bin");
+    let idx = read_root_index_file(&root_path).expect("read root index");
+    let flag = storage.is_in_place_encoding_for_test();
+    (elapsed, idx.segments.len(), idx.total_rows, flag)
+}
+
+#[ignore = "6M load with Experiment B hook. Run with --ignored."]
+#[test]
+fn experiment_b_in_place_encoding() {
+    let elapsed = median_of(N_ITER, || run_load_experiment_b(SF1_LINEITEM_ROWS).0);
+    let rows_per_sec = SF1_LINEITEM_ROWS as f64 / elapsed.as_secs_f64();
+    eprintln!(
+        "EXPERIMENT B (in-place row encoding): 6M rows in {:?} ({:.0} rows/sec)",
+        elapsed, rows_per_sec
+    );
+}
+
+#[test]
+fn experiment_b_smoke_1k() {
+    let (elapsed, seg_count, row_count, flag) = run_load_experiment_b(SMOKE_LINEITEM_ROWS);
+    eprintln!(
+        "EXPERIMENT B 1k: {:?} ({} seg, {} rows, in_place={})",
+        elapsed, seg_count, row_count, flag
+    );
+    assert!(elapsed < Duration::from_secs(5));
+    assert_eq!(row_count, SMOKE_LINEITEM_ROWS as u64);
+    assert!(flag, "hook failed: is_in_place_encoding should be true");
+}
