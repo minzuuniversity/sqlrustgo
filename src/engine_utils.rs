@@ -1437,11 +1437,16 @@ pub fn where_expr_has_unhandled_residual(expr: &sqlrustgo_parser::Expression) ->
         | Expression::InList(_, _)
         | Expression::NotInList(_, _)
         | Expression::NotRegexp(_, _) => true,
-        // Subqueries are handled separately (see where_expr_has_correlated_subquery)
-        // — they are NOT unhandled residuals; they trigger a different bail-out.
+        // V312-58 (#4379): a correlated scalar subquery in the WHERE is NOT
+        // consumed by the comma-join hash chain. Treating it as a handled
+        // residual would cause COMMA_JOIN_WHERE_CONSUMED to be set and the
+        // post-join WHERE filter (which evaluates the subquery per row) to
+        // be skipped entirely, producing wrong results for TPC-H Q17 et al.
+        Expression::Subquery(_) => true,
+        // Exists/NotExists/In/NotIn are handled via the `where_expr_has_correlated_subquery`
+        // bail-out (see pre_evaluate_correlated_exists in engine_select.rs).
         Expression::Exists(_)
         | Expression::NotExists(_)
-        | Expression::Subquery(_)
         | Expression::In(_, _)
         | Expression::NotIn(_, _)
         | Expression::QuantifiedOp(_, _, _)
