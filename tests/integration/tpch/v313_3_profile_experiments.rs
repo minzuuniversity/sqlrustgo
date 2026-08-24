@@ -231,3 +231,60 @@ fn experiment_b_smoke_1k() {
     assert_eq!(row_count, SMOKE_LINEITEM_ROWS as u64);
     assert!(flag, "hook failed: is_in_place_encoding should be true");
 }
+
+// ============================================================
+// Experiment C — tmpfs (/dev/shm) instead of ext4
+// ============================================================
+
+/// Tmpfs root on Linux: backed by RAM, no fsync cost, near-zero
+/// per-write latency. If C closes most of the gap, the dominant
+/// cost is fsync / dirty-page writeback (not CPU).
+#[cfg(target_os = "linux")]
+const TMPFS_ROOT: &str = "/dev/shm/sqlrustgo_v313_3_exp_c";
+
+/// Run a load with the data directory on tmpfs (RAM-backed FS).
+fn run_load_experiment_c(n_rows: usize) -> (Duration, usize, u64) {
+    let dir = std::path::Path::new(TMPFS_ROOT);
+    std::fs::create_dir_all(dir).expect("create tmpfs dir");
+    // Pre-clear any previous-run segment/root files.
+    if let Ok(read) = std::fs::read_dir(dir) {
+        for entry in read.flatten() {
+            let _ = std::fs::remove_file(entry.path());
+        }
+    }
+    let mut storage = BinaryTableStorageV2::new(dir.to_path_buf()).expect("V2 init");
+    storage.create_table("lineitem", lineitem_schema()).expect("create_table");
+    let start = Instant::now();
+    storage
+        .insert_streaming_iter("lineitem", (0..n_rows).map(lineitem_row))
+        .expect("insert_streaming_iter");
+    storage.flush().expect("final flush");
+    let elapsed = start.elapsed();
+    let root_path = dir.join("lineitem.root.bin");
+    let idx = read_root_index_file(&root_path).expect("read root index");
+    (elapsed, idx.segments.len(), idx.total_rows)
+}
+
+#[cfg(target_os = "linux")]
+#[ignore = "6M load with Experiment C (tmpfs). Run with --ignored."]
+#[test]
+fn experiment_c_tmpfs() {
+    let elapsed = median_of(N_ITER, || run_load_experiment_c(SF1_LINEITEM_ROWS).0);
+    let rows_per_sec = SF1_LINEITEM_ROWS as f64 / elapsed.as_secs_f64();
+    eprintln!(
+        "EXPERIMENT C (tmpfs /dev/shm): 6M rows in {:?} ({:.0} rows/sec)",
+        elapsed, rows_per_sec
+    );
+}
+
+#[cfg(target_os = "linux")]
+#[test]
+fn experiment_c_smoke_1k() {
+    let (elapsed, seg_count, row_count) = run_load_experiment_c(SMOKE_LINEITEM_ROWS);
+    eprintln!(
+        "EXPERIMENT C 1k: {:?} ({} seg, {} rows)",
+        elapsed, seg_count, row_count
+    );
+    assert!(elapsed < Duration::from_secs(5));
+    assert_eq!(row_count, SMOKE_LINEITEM_ROWS as u64);
+}

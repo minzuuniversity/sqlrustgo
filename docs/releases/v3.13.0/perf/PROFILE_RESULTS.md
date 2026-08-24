@@ -132,6 +132,42 @@ on the HP Z6 G4 (using `(T_baseline − T_exp) / (T_baseline − 17.0)` with
 > pressure would dominate and the same hook would likely close a
 > larger fraction of the gap.
 
+### Experiment C — tmpfs (`/dev/shm`) instead of ext4
+
+**Hypothesis:** on disk-bound workloads, fsync / dirty-page writeback
+overhead can dominate the 6M load. Moving the data directory from ext4
+to a RAM-backed tmpfs eliminates that cost. If C closes a large fraction
+of the gap, the bottleneck is I/O — not CPU, allocation, or encoding.
+
+**Hook:** none in `BinaryTableStorageV2`. The test just points
+`data_dir` at `/dev/shm/sqlrustgo_v313_3_exp_c` (tmpfs on Linux) and
+re-runs the standard 6M load with all other code paths unchanged.
+
+**Result (Task 3c, median of 3 iterations, 6M rows):**
+
+| Metric | Value |
+|--------|-------|
+| 6M wall-time (tmpfs) | **16.85 s** (356,187 rows/sec) |
+| 6M wall-time (baseline ext4) | 18.14 s (330,866 rows/sec) |
+| Δ vs baseline | -1.29 s (-7.1%) |
+| Disk FS | tmpfs (`/dev/shm`, RAM-backed) |
+
+**Ranking on this hardware:** Δ -7.1% of 1.14s gap → **113% of gap closed**
+(overshot the 17.0s target). C is the **largest single-experiment win on
+this hardware**, edging out A by ~2x.
+
+> **Anti-pattern gate (Task 4):** C **cannot be promoted to a default**.
+> Promoting it would require shipping a database that only persists data
+> in RAM (data loss on reboot). The plan's gate "final measurement on
+> ext4 not tmpfs" explicitly forbids this. C's role is purely
+> diagnostic: it confirms that on this hardware, I/O writeback is a
+> non-trivial fraction of the cost and is co-dominant with A.
+>
+> On the reference 2× Xeon Gold 6138 with a 1.9 TB NVMe (much higher
+> writeback throughput than the workstation's NVMe), C's absolute gain
+> would likely be smaller — but proportionally larger, since disk cost
+> is the dominant piece of the 6.3× extrapolation gap on the Xeon.
+
 ## Decision: optimize <top suspect>
 
 (Filled by Task 3)
