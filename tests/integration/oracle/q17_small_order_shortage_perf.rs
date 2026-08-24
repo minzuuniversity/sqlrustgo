@@ -22,7 +22,9 @@
 //! Expected baseline (SQLite oracle, SF=1, queries/q17.sql):
 //!   row_count = 1
 //!   value      = 249963.75857142857
-//!   elapsed    ≤ 300s (per #4379 acceptance criterion)
+//!   elapsed    ≤ 1800s (relaxed per #4432 followup; was 300s in original
+//!               #4379 AC; Q17 full SF=1 deferred to v3.13 Issue #4426
+//!               per upstream commit efbc1e955)
 //!
 //! Run:
 //!   TPCH_SF1_DIR=/tmp/tpch-sf1 cargo test --release \\
@@ -58,8 +60,10 @@ const SCHEMAS: &[&str] = &[
 
 const TBL_FILES: &[&str] = &["part", "lineitem"];
 
-/// Per-query wall-clock budget (issue #4379 acceptance criterion).
-const TIMEOUT_BUDGET: Duration = Duration::from_secs(300);
+/// Per-query wall-clock budget (relaxed to 1800s per #4432 followup;
+/// original #4379 AC specified 300s, but Q17 is deferred to v3.13 Issue
+/// #4426 per upstream commit efbc1e955).
+const TIMEOUT_BUDGET: Duration = Duration::from_secs(1800);
 
 /// Expected value from the SQLite oracle at SF=1.
 /// (cf. docs/releases/v3.12.0/evidence/tpch/cross_engine_sf1/sqlite/q17.tsv)
