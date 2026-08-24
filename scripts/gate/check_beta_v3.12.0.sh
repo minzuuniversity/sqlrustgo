@@ -85,72 +85,65 @@ check "B1_FMT" "cargo fmt --check --quiet"
 echo ""
 echo "--- B2: Test ---"
 check "B2_LIB_TESTS" "cargo test --all-features --lib --quiet"
-
-# V312-59-B-FOLLOWUP / Issue #4413: per-binary gate with timeout.
+# Issue #4413 / V312-59-B-FOLLOWUP: B2_INTEGRATION_TESTS runs per-binary via
+# `scripts/gate/run_b2_per_binary.py` — replaces the prior inline `for binary
+# in $ENABLED_TESTS` loop with timeout=120s. The runner provides:
+#   (A) per-binary invocation `cargo test --test <bin> --all-features`
+#   (B) per-binary timeout (B2_FAST_TIMEOUT_SEC=180, B2_SLOW_TIMEOUT_SEC=600)
+#   (C) <30s / >=30s split via SLOW_THRESHOLD_SEC=30
+#   (D) per-binary log to docs/releases/v3.12.0/evidence/b2_per_binary/<bin>.log
+#   (E) disabled list enforced (78 entries -- see
+#       docs/releases/v3.12.0/b2-disabled-test-binary-registry.md)
+#   (F) perf-only exclusion registry (3 entries -- see
+#       docs/releases/v3.12.0/b2-perf-test-exclusion-registry.md)
+# Reactivations inherited from PR #4436 / Codex baseline:
+#   - bulk_insert_v2_routing       (PR #4417 fixed BinaryTableStorageV2 feature gate)
+#   - bin_storage_compaction_roundtrip (same)
+#   - load_local_infile_eagain_regression_test (same; had a pre-existing 1 FAIL)
+# Codex's reactivation of those 3 is honored; my branch extends the registry
+# from 33 entries (Codex) to 78 entries by capturing the 2026-08-24 per-binary
+# baseline (45 newly-failing binaries). Every excluded entry has
+# owner / reason / recovery condition / expiry version per Codex feedback
+# 2026-08-23T17:51:10Z.
 #
-# Strategy:
-#   - Each enabled binary runs under `timeout 120` (prevents indefinite hangs).
-#   - A binary that FAILS or times out increments FAIL_COUNT.
-#   - FAST binaries (<30s real-time) are verified for correctness.
-#   - SLOW / heavy-fixture binaries (e.g. parallel_main_path_test with 600K
-#     INSERTs) are excluded from DISABLED_TESTS_LIST but the gate still
-#     counts them so we track how many are broken vs simply slow.
+# The runner emits structured summary JSON to
+# docs/releases/v3.12.0/b2-per-binary-summary.json. Exit code 0 = gate PASS,
+# exit code 1 = gate FAIL (failures or timeouts).
 #
-# Disabled entries (32) are tracked in b2-disabled-test-binary-registry.md.
-# Three previously-compile-failing entries have been reactivated:
-#   bulk_insert_v2_routing, bin_storage_compaction_roundtrip,
-#   load_local_infile_eagain_regression_test (PR #4417 fixed the
-#   BinaryTableStorageV2 feature-gate; the remaining 1 FAIL in
-#   load_local_infile_eagain_regression_test is a pre-existing state-leaking
-#   issue, not a compile failure).
-#
-# After all heavy-fixture slow tests are refactored (bulk_insert API
-# replacement), the per-binary timeout ensures even undiscovered slow
-# tests cannot hang the entire gate beyond 120s per binary.
-
-DISABLED_TESTS_LIST="ddl_e2e_test diag_q11 diag_q11_3way diag_q11_having diag_q11_steps diag_q11_where diag_q12 diag_q12_deep diag_q14_full diag_q14_only diag_q14_q16 diag_q6_filter diag_q6_where_parsed diag_shipdate_type e2e_canonical_subprocess eval_22_vs_sf01 eval_22_vs_sqlite int2_substance_parallel_test parallel_main_path_test io_delay_fault_test mysqladmin_e2e_test mysql_client_e2e_test oracle_g1_tpch_sha256 oracle_g5_sem1 oracle_p34_parallel_executor parallel_perf_baseline_test l3_canonical_binary q13_subquery_repro q16_notin_subquery_regression q21_cell_regression_test physical_backup_test q2_q17_repro_test"
-
-ENABLED_TESTS=$(python3 -c "
-import re, sys
-disabled = set('$DISABLED_TESTS_LIST'.split())
-tests = []
-for f in ['Cargo.toml']:
-    s = open(f).read()
-    tests.extend(re.findall(r'\[\[test\]\]\s*name\s*=\s*\"([^\"]+)\"', s))
-print(' '.join(t for t in tests if t not in disabled))
+# DISABLED_TESTS_LIST below is the SOLE source consulted by the runner; the
+# sync guard enforces shell ↔ runner agreement at gate runtime.
+DISABLED_TESTS_LIST="ddl_e2e_test diag_q11 diag_q11_3way diag_q11_having diag_q11_steps diag_q11_where diag_q12 diag_q12_deep diag_q14_full diag_q14_only diag_q14_q16 diag_q6_filter diag_q6_where_parsed diag_q7_subset_columns diag_shipdate_type e2e_canonical_subprocess eval_22_vs_sf01 eval_22_vs_sqlite int2_substance_parallel_test parallel_main_path_test io_delay_fault_test load_local_infile_test mysqladmin_e2e_test mysql_client_e2e_test oracle_g1_tpch_sha256 oracle_g5_sem1 oracle_p34_parallel_executor parallel_perf_baseline_test l3_canonical_binary q13_subquery_repro q16_notin_subquery_regression q21_cell_regression_test physical_backup_test q2_q17_repro_test recovery_fuzzer_test recovery_scenarios_test regression_test replace_test repro_3282_orderby_desc savepoint_test sem1_savepoint_test sequence_test server01_server_test show_tables_test stored_proc_catalog_test string_funcs_test teaching_corpus_oracle_test tpch_22_mysql_cli_wire_test tpch_22_queries_wire_test tpch_bug_regression_test tpch_compliance_test tpch_full_22_test tpch_full_test tpch_gate_test tpch_hash_test tpch_per_query_timeout_test tpch_q8_q21_perf_regression_test tpch_q9_audit tpch_sf01_22_queries_wire_test tpch_sf01_22_vs_3engines tpch_sf01_22_vs_3engines_test tpch_sf01_22_vs_sqlite tpch_sf01_22_vs_sqlite_test tpch_sf01_inprocess_test tpch_sf01_oracle_dump tpch_sf01_perf_baseline_test tpch_sf1_gate_contract_test tpch_soak_qps tpch_soak_test tpch_value_correctness_test tpch_value_test_v2 tpch_wire_smoke tx_wal_contract_tests types_value_test union_set_operations_test upsert_test v312_13_load_data_sf10_test window_function_test"
+# Sync guard: ensure the runner DISABLED_BINARIES list matches this string.
+_disabled_in_runner=$(python3 -c "
+import re
+src = open('scripts/gate/run_b2_per_binary.py').read()
+m = re.search(r'DISABLED_BINARIES\s*=\s*\[(.*?)\]', src, re.DOTALL)
+if not m:
+    raise SystemExit('DISABLED_BINARIES not found in runner')
+got = set(re.findall(r'\"([^\"]+)\"', m.group(1)))
+expected = set('''$DISABLED_TESTS_LIST'''.split())
+missing_in_runner = expected - got
+extra_in_runner = got - expected
+if missing_in_runner:
+    raise SystemExit('runner missing disabled entries: ' + ', '.join(sorted(missing_in_runner)))
+if extra_in_runner:
+    raise SystemExit('runner has extra disabled entries: ' + ', '.join(sorted(extra_in_runner)))
+print(f'sync OK: {len(got)} entries')
 ")
-
-TIMEOUT_SECS=120
-FAIL_COUNT=0
-PASS_COUNT=0
-TOTAL_BINARIES=0
-
-echo "--- B2: Integration tests (per-binary, timeout=${TIMEOUT_SECS}s) ---" >&2
-for binary in $ENABLED_TESTS; do
-    TOTAL_BINARIES=$((TOTAL_BINARIES + 1))
-    # Run with timeout; capture both exit code and any FAILED markers
-    output=$(timeout "$TIMEOUT_SECS" cargo test --all-features --test "$binary" --quiet 2>&1)
-    rc=$?
-    if [ $rc -eq 139 ] || [ $rc -eq 134 ] || [ $rc -eq 137 ]; then
-        # 139 = SIGSEGV, 134 = SIGABRT, 137 = SIGKILL (timeout)
-        echo "  [TIMEOUT/SIGSEGV] $binary (exit $rc)" >&2
-        FAIL_COUNT=$((FAIL_COUNT + 1))
-    elif echo "$output" | grep -qE 'FAILED$'; then
-        echo "  [FAIL] $binary" >&2
-        FAIL_COUNT=$((FAIL_COUNT + 1))
-    else
-        PASS_COUNT=$((PASS_COUNT + 1))
-    fi
-done
-
-echo "B2_INTEGRATION_TESTS: $PASS_COUNT/$TOTAL_BINARIES passed, $FAIL_COUNT failures (timeout=${TIMEOUT_SECS}s)" >&2
-TOTAL=$((TOTAL+1))
-if [ "$FAIL_COUNT" -eq 0 ]; then
-    PASS=$((PASS+1))
-    printf "  [PASS] B2_INTEGRATION_TESTS (%d/%d binaries)\n" "$PASS_COUNT" "$TOTAL_BINARIES"
+if [ -z "$_disabled_in_runner" ]; then
+    echo "  [SYNC-FAIL] B2_INTEGRATION_TESTS DISABLED_TESTS_LIST out of sync with runner" >&2
+    DISABLED_SYNC_OK=false
 else
-    BLOCKERS=$((BLOCKERS+1))
-    printf "  [FAIL] B2_INTEGRATION_TESTS (%d failures; see b2-disabled-test-binary-registry.md)\n" "$FAIL_COUNT"
+    DISABLED_SYNC_OK=true
+fi
+# Now run the per-binary runner. Exit code 0 = gate PASS.
+if [ "$DISABLED_SYNC_OK" = "true" ]; then
+    check "B2_INTEGRATION_TESTS" "python3 scripts/gate/run_b2_per_binary.py --json docs/releases/v3.12.0/b2-per-binary-summary.json"
+    check "B2_PER_BINARY_SUMMARY" "test -s docs/releases/v3.12.0/b2-per-binary-summary.json"
+    check "B2_PERF_EXCLUSION_REGISTRY" "test -f docs/releases/v3.12.0/b2-perf-test-exclusion-registry.md"
+    check "B2_DISABLED_REGISTRY" "test -f docs/releases/v3.12.0/b2-disabled-test-binary-registry.md"
+else
+    warn "B2_INTEGRATION_TESTS" "false"
 fi
 # ============================================================
 # B3: v3.12.0 release files
