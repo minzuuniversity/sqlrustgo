@@ -98,13 +98,26 @@ impl SegmentWriter {
         schema: Vec<ColumnDefinition>,
         max_segment_size: usize,
     ) -> std::io::Result<Self> {
+        Self::with_size_cap_and_buf_capacity(path, schema, max_segment_size, 1 << 20)
+    }
+
+    /// V313.3 Experiment D: open a segment writer with a caller-specified
+    /// BufWriter buffer size. The default (`with_size_cap`) uses 1 MB; this
+    /// overload lets the caller raise it to e.g. 64 MB to test whether
+    /// small-flush syscall overhead dominates 6M load cost.
+    pub fn with_size_cap_and_buf_capacity(
+        path: PathBuf,
+        schema: Vec<ColumnDefinition>,
+        max_segment_size: usize,
+        buf_capacity: usize,
+    ) -> std::io::Result<Self> {
         if let Some(parent) = path.parent() {
             if !parent.as_os_str().is_empty() {
                 std::fs::create_dir_all(parent)?;
             }
         }
         let file = File::create(&path)?;
-        let mut writer = BufWriter::with_capacity(1 << 20, file); // 1 MB BufWriter
+        let mut writer = BufWriter::with_capacity(buf_capacity, file); // V313.3 D: was hard-coded 1<<20
                                                                   // Write placeholder header (row_count=0; will not rewrite on seal in this task)
         let _ = encode_segment_header(&SegmentHeader {
             magic: *SEGMENT_MAGIC,

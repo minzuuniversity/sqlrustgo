@@ -288,3 +288,52 @@ fn experiment_c_smoke_1k() {
     assert!(elapsed < Duration::from_secs(5));
     assert_eq!(row_count, SMOKE_LINEITEM_ROWS as u64);
 }
+
+// ============================================================
+// Experiment D — override SegmentWriter BufWriter capacity (default 1 MB → 64 MB)
+// ============================================================
+
+/// Default `BufWriter` capacity in `SegmentWriter::with_size_cap` is 1 MB.
+/// That means each ~430K-row 64 MB segment flushes ~64 times via `write`.
+/// If flushing is the bottleneck, raising the BufWriter to match the
+/// segment cap (64 MB) should reclaim those flush syscalls.
+const EXP_D_BUF_CAP: usize = 64 * 1024 * 1024; // 64 MB
+
+/// Run a load with the Experiment D hook set (64 MB BufWriter).
+fn run_load_experiment_d(n_rows: usize) -> (Duration, usize, u64) {
+    let temp_dir = TempDir::new().expect("tempdir");
+    let mut storage = BinaryTableStorageV2::new(temp_dir.path().to_path_buf()).expect("V2 init");
+    storage.create_table("lineitem", lineitem_schema()).expect("create_table");
+    storage.set_segment_buf_capacity_for_test(EXP_D_BUF_CAP);
+    let start = Instant::now();
+    storage
+        .insert_streaming_iter("lineitem", (0..n_rows).map(lineitem_row))
+        .expect("insert_streaming_iter");
+    storage.flush().expect("final flush");
+    let elapsed = start.elapsed();
+    let root_path = temp_dir.path().join("lineitem.root.bin");
+    let idx = read_root_index_file(&root_path).expect("read root index");
+    (elapsed, idx.segments.len(), idx.total_rows)
+}
+
+#[ignore = "6M load with Experiment D hook (64MB BufWriter). Run with --ignored."]
+#[test]
+fn experiment_d_large_bufwriter() {
+    let elapsed = median_of(N_ITER, || run_load_experiment_d(SF1_LINEITEM_ROWS).0);
+    let rows_per_sec = SF1_LINEITEM_ROWS as f64 / elapsed.as_secs_f64();
+    eprintln!(
+        "EXPERIMENT D (64MB BufWriter): 6M rows in {:?} ({:.0} rows/sec)",
+        elapsed, rows_per_sec
+    );
+}
+
+#[test]
+fn experiment_d_smoke_1k() {
+    let (elapsed, seg_count, row_count) = run_load_experiment_d(SMOKE_LINEITEM_ROWS);
+    eprintln!(
+        "EXPERIMENT D 1k: {:?} ({} seg, {} rows)",
+        elapsed, seg_count, row_count
+    );
+    assert!(elapsed < Duration::from_secs(5));
+    assert_eq!(row_count, SMOKE_LINEITEM_ROWS as u64);
+}
