@@ -18,6 +18,12 @@ pub struct BinaryTableStorageV2 {
     active_writers: HashMap<String, SegmentWriter>,
     root_indices: HashMap<String, RootIndex>,
     next_segment_ids: HashMap<String, u32>,
+    /// V313.3 Experiment A: when true, skip mirroring inserted rows into
+    /// the in-memory `tables.rows` Vec. The Vec is unused by any read path
+    /// (`BinaryTableStorageV2::scan` is a stub returning `vec![]`).
+    /// Test-only; gated by the `v313_3_profile` Cargo feature.
+    #[cfg(feature = "v313_3_profile")]
+    skip_in_memory_rows: bool,
 }
 
 impl BinaryTableStorageV2 {
@@ -29,6 +35,8 @@ impl BinaryTableStorageV2 {
             active_writers: HashMap::new(),
             root_indices: HashMap::new(),
             next_segment_ids: HashMap::new(),
+            #[cfg(feature = "v313_3_profile")]
+            skip_in_memory_rows: false,
         })
     }
 
@@ -95,6 +103,15 @@ impl BinaryTableStorageV2 {
                 .append(&values)
                 .map_err(|e| SqlError::ExecutionError(e.to_string()))?;
             // Update in-memory table data
+            // V313.3: skip mirroring rows into the in-memory Vec when the
+            // skip_in_memory_rows_for_test() hook is set (Experiment A).
+            #[cfg(feature = "v313_3_profile")]
+            {
+                if !self.skip_in_memory_rows {
+                    self.tables.get_mut(table).unwrap().rows.push(record);
+                }
+            }
+            #[cfg(not(feature = "v313_3_profile"))]
             self.tables.get_mut(table).unwrap().rows.push(record);
         }
         self.active_writers.insert(table.to_string(), writer);
@@ -161,6 +178,15 @@ impl BinaryTableStorageV2 {
             writer
                 .append(&values)
                 .map_err(|e| SqlError::ExecutionError(e.to_string()))?;
+            // V313.3 Experiment A: optionally skip mirroring rows into the
+            // in-memory Vec (gated by feature flag; default build unchanged).
+            #[cfg(feature = "v313_3_profile")]
+            {
+                if !self.skip_in_memory_rows {
+                    self.tables.get_mut(table).unwrap().rows.push(record);
+                }
+            }
+            #[cfg(not(feature = "v313_3_profile"))]
             self.tables.get_mut(table).unwrap().rows.push(record);
         }
         self.active_writers.insert(table.to_string(), writer);
@@ -253,6 +279,21 @@ impl BinaryTableStorageV2 {
             }
         }
         Ok(())
+    }
+
+    /// V313.3 Experiment A: skip mirroring inserted rows into the
+    /// in-memory `tables.rows` Vec. Test-only; gated by the
+    /// `v313_3_profile` Cargo feature (compiles to nothing without it).
+    #[cfg(feature = "v313_3_profile")]
+    pub fn skip_in_memory_rows_for_test(&mut self) {
+        self.skip_in_memory_rows = true;
+    }
+
+    /// V313.3 Experiment A accessor: count of rows held in `tables.rows`.
+    /// Test-only; used to assert the hook successfully emptied the Vec.
+    #[cfg(feature = "v313_3_profile")]
+    pub fn len_in_memory_rows_for_test(&self, table: &str) -> usize {
+        self.tables.get(table).map(|t| t.rows.len()).unwrap_or(0)
     }
 }
 
