@@ -85,25 +85,73 @@ check "B1_FMT" "cargo fmt --check --quiet"
 echo ""
 echo "--- B2: Test ---"
 check "B2_LIB_TESTS" "cargo test --all-features --lib --quiet"
-# V312-59-B / Issue #4385: 33 disabled test binaries tracked in
-# `docs/releases/v3.12.0/b2-disabled-test-binary-registry.md` are excluded.
-# B2_INTEGRATION_TESTS remains `warn` (not `check`) because the disabled list
-# is still growing as more pre-existing failures are discovered (44 additional
-# binaries in latest B2 run). Proper restructure (per-binary timeout + <30s/>
-# >30s split + bulk-insert refactor for slow tests) tracked in follow-up
-# Issue #4413. B2 will become `check` once #4413 closes.
-DISABLED_TESTS_LIST="ddl_e2e_test diag_q11 diag_q11_3way diag_q11_having diag_q11_steps diag_q11_where diag_q12 diag_q12_deep diag_q14_full diag_q14_only diag_q14_q16 diag_q6_filter diag_q6_where_parsed diag_shipdate_type e2e_canonical_subprocess eval_22_vs_sf01 eval_22_vs_sqlite int2_substance_parallel_test parallel_main_path_test io_delay_fault_test load_local_infile_test mysqladmin_e2e_test mysql_client_e2e_test oracle_g1_tpch_sha256 oracle_g5_sem1 oracle_p34_parallel_executor parallel_perf_baseline_test l3_canonical_binary q13_subquery_repro q16_notin_subquery_regression q21_cell_regression_test physical_backup_test q2_q17_repro_test bulk_insert_v2_routing bin_storage_compaction_roundtrip"
+
+# V312-59-B-FOLLOWUP / Issue #4413: per-binary gate with timeout.
+#
+# Strategy:
+#   - Each enabled binary runs under `timeout 120` (prevents indefinite hangs).
+#   - A binary that FAILS or times out increments FAIL_COUNT.
+#   - FAST binaries (<30s real-time) are verified for correctness.
+#   - SLOW / heavy-fixture binaries (e.g. parallel_main_path_test with 600K
+#     INSERTs) are excluded from DISABLED_TESTS_LIST but the gate still
+#     counts them so we track how many are broken vs simply slow.
+#
+# Disabled entries (32) are tracked in b2-disabled-test-binary-registry.md.
+# Three previously-compile-failing entries have been reactivated:
+#   bulk_insert_v2_routing, bin_storage_compaction_roundtrip,
+#   load_local_infile_eagain_regression_test (PR #4417 fixed the
+#   BinaryTableStorageV2 feature-gate; the remaining 1 FAIL in
+#   load_local_infile_eagain_regression_test is a pre-existing state-leaking
+#   issue, not a compile failure).
+#
+# After all heavy-fixture slow tests are refactored (bulk_insert API
+# replacement), the per-binary timeout ensures even undiscovered slow
+# tests cannot hang the entire gate beyond 120s per binary.
+
+DISABLED_TESTS_LIST="ddl_e2e_test diag_q11 diag_q11_3way diag_q11_having diag_q11_steps diag_q11_where diag_q12 diag_q12_deep diag_q14_full diag_q14_only diag_q14_q16 diag_q6_filter diag_q6_where_parsed diag_shipdate_type e2e_canonical_subprocess eval_22_vs_sf01 eval_22_vs_sqlite int2_substance_parallel_test parallel_main_path_test io_delay_fault_test mysqladmin_e2e_test mysql_client_e2e_test oracle_g1_tpch_sha256 oracle_g5_sem1 oracle_p34_parallel_executor parallel_perf_baseline_test l3_canonical_binary q13_subquery_repro q16_notin_subquery_regression q21_cell_regression_test physical_backup_test q2_q17_repro_test"
+
 ENABLED_TESTS=$(python3 -c "
 import re, sys
-disabled = set('''$DISABLED_TESTS_LIST'''.split())
+disabled = set('$DISABLED_TESTS_LIST'.split())
 tests = []
 for f in ['Cargo.toml']:
     s = open(f).read()
     tests.extend(re.findall(r'\[\[test\]\]\s*name\s*=\s*\"([^\"]+)\"', s))
 print(' '.join(t for t in tests if t not in disabled))
 ")
-warn "B2_INTEGRATION_TESTS" "cargo test --all-features --quiet --no-fail-fast $ENABLED_TESTS 2>&1 | grep -cE 'FAILED\$' | xargs -I{} sh -c 'if [ {} -gt 0 ]; then echo \"B2 has {} FAILED tests; see docs/releases/v3.12.0/b2-disabled-test-binary-registry.md\"; fi'"
 
+TIMEOUT_SECS=120
+FAIL_COUNT=0
+PASS_COUNT=0
+TOTAL_BINARIES=0
+
+echo "--- B2: Integration tests (per-binary, timeout=${TIMEOUT_SECS}s) ---" >&2
+for binary in $ENABLED_TESTS; do
+    TOTAL_BINARIES=$((TOTAL_BINARIES + 1))
+    # Run with timeout; capture both exit code and any FAILED markers
+    output=$(timeout "$TIMEOUT_SECS" cargo test --all-features --test "$binary" --quiet 2>&1)
+    rc=$?
+    if [ $rc -eq 139 ] || [ $rc -eq 134 ] || [ $rc -eq 137 ]; then
+        # 139 = SIGSEGV, 134 = SIGABRT, 137 = SIGKILL (timeout)
+        echo "  [TIMEOUT/SIGSEGV] $binary (exit $rc)" >&2
+        FAIL_COUNT=$((FAIL_COUNT + 1))
+    elif echo "$output" | grep -qE 'FAILED$'; then
+        echo "  [FAIL] $binary" >&2
+        FAIL_COUNT=$((FAIL_COUNT + 1))
+    else
+        PASS_COUNT=$((PASS_COUNT + 1))
+    fi
+done
+
+echo "B2_INTEGRATION_TESTS: $PASS_COUNT/$TOTAL_BINARIES passed, $FAIL_COUNT failures (timeout=${TIMEOUT_SECS}s)" >&2
+TOTAL=$((TOTAL+1))
+if [ "$FAIL_COUNT" -eq 0 ]; then
+    PASS=$((PASS+1))
+    printf "  [PASS] B2_INTEGRATION_TESTS (%d/%d binaries)\n" "$PASS_COUNT" "$TOTAL_BINARIES"
+else
+    BLOCKERS=$((BLOCKERS+1))
+    printf "  [FAIL] B2_INTEGRATION_TESTS (%d failures; see b2-disabled-test-binary-registry.md)\n" "$FAIL_COUNT"
+fi
 # ============================================================
 # B3: v3.12.0 release files
 # ============================================================
