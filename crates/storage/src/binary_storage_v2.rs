@@ -18,12 +18,12 @@ pub struct BinaryTableStorageV2 {
     active_writers: HashMap<String, SegmentWriter>,
     root_indices: HashMap<String, RootIndex>,
     next_segment_ids: HashMap<String, u32>,
-    /// V313.3 Experiment A: when true, skip mirroring inserted rows into
-    /// the in-memory `tables.rows` Vec. The Vec is unused by any read path
-    /// (`BinaryTableStorageV2::scan` is a stub returning `vec![]`).
-    /// Test-only; gated by the `v313_3_profile` Cargo feature.
-    #[cfg(feature = "v313_3_profile")]
-    skip_in_memory_rows: bool,
+    /// V313.3 Experiment A applied (Task 5): streaming inserts no longer
+    /// mirror rows into `tables.rows`. The Vec had zero read-path consumers
+    /// (audit in PROFILE_RESULTS.md § Audit findings) and grew to ~900 MB
+    /// during a 6M load — a pure leak. The push is deleted from both
+    /// streaming insert paths (see [`insert_streaming`] and
+    /// [`insert_streaming_iter`]).
     /// V313.3 Experiment B: when true, reuse a single `Vec<u8>` across
     /// all columns of one row when encoding each value to bytes. Default
     /// is the existing `encode_value_to_bytes` (which allocates a fresh
@@ -46,8 +46,6 @@ impl BinaryTableStorageV2 {
             active_writers: HashMap::new(),
             root_indices: HashMap::new(),
             next_segment_ids: HashMap::new(),
-            #[cfg(feature = "v313_3_profile")]
-            skip_in_memory_rows: false,
             #[cfg(feature = "v313_3_profile")]
             in_place_encoding: false,
             #[cfg(feature = "v313_3_profile")]
@@ -149,17 +147,11 @@ impl BinaryTableStorageV2 {
             writer
                 .append(&values)
                 .map_err(|e| SqlError::ExecutionError(e.to_string()))?;
-            // Update in-memory table data
-            // V313.3: skip mirroring rows into the in-memory Vec when the
-            // skip_in_memory_rows_for_test() hook is set (Experiment A).
-            #[cfg(feature = "v313_3_profile")]
-            {
-                if !self.skip_in_memory_rows {
-                    self.tables.get_mut(table).unwrap().rows.push(record);
-                }
-            }
-            #[cfg(not(feature = "v313_3_profile"))]
-            self.tables.get_mut(table).unwrap().rows.push(record);
+            // V313.3 Experiment A applied (Task 5): the previous
+            // `self.tables.get_mut(table).unwrap().rows.push(record);`
+            // line is removed. The Vec had zero read-path consumers
+            // (see PROFILE_RESULTS.md § Audit findings) and grew to
+            // ~900 MB during a 6M load — a pure memory leak.
         }
         self.active_writers.insert(table.to_string(), writer);
         Ok(())
@@ -253,16 +245,9 @@ impl BinaryTableStorageV2 {
             writer
                 .append(&values)
                 .map_err(|e| SqlError::ExecutionError(e.to_string()))?;
-            // V313.3 Experiment A: optionally skip mirroring rows into the
-            // in-memory Vec (gated by feature flag; default build unchanged).
-            #[cfg(feature = "v313_3_profile")]
-            {
-                if !self.skip_in_memory_rows {
-                    self.tables.get_mut(table).unwrap().rows.push(record);
-                }
-            }
-            #[cfg(not(feature = "v313_3_profile"))]
-            self.tables.get_mut(table).unwrap().rows.push(record);
+            // V313.3 Experiment A applied (Task 5): the previous
+            // `self.tables.get_mut(table).unwrap().rows.push(record);`
+            // line is removed (see PROFILE_RESULTS.md § Audit findings).
         }
         self.active_writers.insert(table.to_string(), writer);
         Ok(())
@@ -373,20 +358,11 @@ impl BinaryTableStorageV2 {
         Ok(())
     }
 
-    /// V313.3 Experiment A: skip mirroring inserted rows into the
-    /// in-memory `tables.rows` Vec. Test-only; gated by the
-    /// `v313_3_profile` Cargo feature (compiles to nothing without it).
-    #[cfg(feature = "v313_3_profile")]
-    pub fn skip_in_memory_rows_for_test(&mut self) {
-        self.skip_in_memory_rows = true;
-    }
-
-    /// V313.3 Experiment A accessor: count of rows held in `tables.rows`.
-    /// Test-only; used to assert the hook successfully emptied the Vec.
-    #[cfg(feature = "v313_3_profile")]
-    pub fn len_in_memory_rows_for_test(&self, table: &str) -> usize {
-        self.tables.get(table).map(|t| t.rows.len()).unwrap_or(0)
-    }
+    /// V313.3 Experiment A applied (Task 5): the
+    /// `skip_in_memory_rows_for_test()` setter and
+    /// `len_in_memory_rows_for_test()` accessor were removed. The fix
+    /// deletes the `tables.rows.push` line entirely; there is nothing
+    /// left to gate.
 
     /// V313.3 Experiment B: write fixed-width columns directly into a
     /// shared per-row `Vec<u8>`, skipping the per-column Vec allocation
