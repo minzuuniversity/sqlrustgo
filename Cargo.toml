@@ -1039,6 +1039,9 @@ path = "tests/integration/oracle/diag_q20_sprint3_path.rs"
 name = "diag_q20_mini_bisect"
 path = "tests/integration/oracle/diag_q20_mini_bisect.rs"
 [[test]]
+name = "diag_q20_sprint4_inline"
+path = "tests/integration/oracle/diag_q20_sprint4_inline.rs"
+[[test]]
 name = "diag_q7_subset_columns"
 path = "tests/integration/oracle/diag_q7_subset_columns.rs"
 [[test]]
