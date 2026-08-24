@@ -77,7 +77,7 @@ fn scalar_subq_cache() -> &'static parking_lot::Mutex<HashMap<Value, Value>> {
 // TPC-H Q17 perf: pre-computed `key_value → aggregate_result` index for
 // correlated scalar aggregate subqueries of the shape
 //   `(SELECT [op] AGG(col) FROM t WHERE key_col = <outer_ref>)`
-// The index is built ONCE per (table, key_col, agg_func, agg_arg_col) and
+// The index is built ONCE per (table, key_cols, agg_func, agg_arg_col) and
 // queried O(1) per outer row. Q17 was taking 30s on SF=0.1 (2000 partkeys ×
 // 60K-lineitem AVG scan); with this cache it drops to a single 60K scan
 // (~0.5s) plus 9 O(1) lookups.
@@ -4061,12 +4061,9 @@ impl<S: StorageEngine + 'static> ExecutionEngine<S> {
                             outer_row.first()
                         ))
                     });
-                {
-                    let cache = scalar_subq_cache().lock();
-                    if let Some(cached) = cache.get(&cache_key) {
-                        DIAG_SCALAR_SUBQ_CACHE_HITS.fetch_add(1, Ordering::SeqCst);
-                        return Expression::Literal(cached.to_string());
-                    }
+                if let Some(cached) = scalar_subq_cache().lock().get(&cache_key).cloned() {
+                    DIAG_SCALAR_SUBQ_CACHE_HITS.fetch_add(1, Ordering::SeqCst);
+                    return Expression::Literal(cached.to_string());
                 }
                 DIAG_SCALAR_SUBQ_CACHE_MISSES.fetch_add(1, Ordering::SeqCst);
                 let result = self.execute_select(&substituted);
@@ -4700,6 +4697,29 @@ impl<S: StorageEngine + 'static> ExecutionEngine<S> {
             _ => col_name.as_str(),
         };
         let col_idx = table_info.columns.iter().position(|c| c.name == bare_col)?;
+        // V312-58 Phase 3: refuse to build the index when the
+        // residual (the static predicate that remains after
+        // extracting the outer-equality key) contains an
+        // `Expression::Subquery(_)`. The slow path of
+        // `pre_eval_exists_indexed` evaluates the residual via
+        // `eval_predicate`, which cannot execute Subqueries
+        // (it has no arm for `Expression::Subquery`, returning
+        // Value::Null, and SQL 3-value Null comparison yields
+        // false for `ps_availqty > Subquery(...)`).  Returning
+        // None here forces the EXISTS arm in
+        // `pre_evaluate_correlated_exists` to fall back to
+        // `execute_select(&substituted)` for the partsupp
+        // subquery. The recursive `execute_select` then runs
+        // Step 1.5 on partsupp's WHERE, which encounters the
+        // nested `ps_availqty > Subquery(_)` and routes it
+        // through `try_scalar_agg_index_lookup` — the correct
+        // fast-path for `0.5 * SUM(l_quantity)` over composite
+        // keys. Without this guard, TPC-H Q20 L0/L5 (full SUM
+        // subquery) silently produce 0 rows because every bucket
+        // row's eval_predicate returns false.
+        if where_expr_has_uncorrelated_subquery(&static_predicate) {
+            return None;
+        }
         let rows = storage.scan(real_table).ok()?;
         // V312-58 Sprint 3: when the residual has no outer refs (e.g.
         // Q22's `NOT EXISTS (SELECT * FROM orders WHERE o_custkey =
@@ -5861,13 +5881,12 @@ fn find_top_level_equality_literal(where_expr: &Expression, _key_col_idx: usize)
     walk(where_expr)
 }
 
-/// Find an equality leaf in a WHERE expression of the shape
-/// `<inner_col> = <outer_ref>` where:
-///  - `inner_col` is a column of the inner subquery table
-///  - `outer_ref` is an unqualified identifier that maps to a column of
-///    the outer row's table_info
+/// Find ALL equality pairs `<inner_col> = <outer_ref>` in a WHERE
+/// AND-tree, plus any non-equality residual predicate (range, LIKE, etc).
 ///
-/// Returns `(inner_col_name, outer_ref_col_index_in_outer_row)`.
+/// V312-58 Phase 3: extended from the Q17 single-key path to handle
+/// composite-key correlated subqueries (TPC-H Q20 L0/L5 SUM subquery
+/// uses `l_partkey = ps_partkey AND l_suppkey = ps_suppkey`).
 ///
 /// This is used by the Q17 fast-path index lookup to detect the common
 /// correlated scalar aggregate pattern.  We accept equality inside an
@@ -5876,25 +5895,25 @@ fn find_top_level_equality_literal(where_expr: &Expression, _key_col_idx: usize)
 #[allow(dead_code)]
 fn find_equality_inner_outer(
     where_expr: &Expression,
-    agg_arg_expr: &Expression,
     inner_table_name: &str,
     outer_table_info: &TableInfo,
-) -> Option<(String, usize)> {
-    use sqlrustgo_parser::Expression as E;
-
-    // The agg_arg_expr is the expression used in the aggregate
-    // (e.g. Identifier("l_quantity") for AVG(l_quantity)).  We treat it
-    // as a strong hint that the inner column referenced in the equality
-    // is one of the inner table's columns — but the equality leaf
-    // itself can also use any inner column.
+) -> (Vec<(String, usize)>, Option<Box<Expression>>) {
+    // Note: inner helpers (`try_extract_pair`, `walk`) declare their own
+    // `use sqlrustgo_parser::Expression as E;` because Rust requires
+    // `use` inside each function body. The bare `Expression` type used in
+    // the residual re-AND fold below is in scope from the function's
+    // signature.
     let own_prefix: Option<char> = inner_table_name
         .chars()
         .next()
         .map(|c| c.to_ascii_lowercase());
-    let inner_col_lower = match agg_arg_expr {
-        E::Identifier(n) => Some(n.to_lowercase()),
-        _ => None,
-    };
+
+    fn is_inner_col(name: &str, own_prefix: Option<char>) -> bool {
+        let lc = name.to_lowercase();
+        own_prefix
+            .map(|p| lc.starts_with(p) && lc.chars().nth(1) == Some('_'))
+            .unwrap_or(false)
+    }
 
     fn find_outer_col(name: &str, outer_table_info: &TableInfo) -> Option<usize> {
         // 1. Exact match.
@@ -5922,64 +5941,98 @@ fn find_equality_inner_outer(
         None
     }
 
-    fn walk(
-        e: &Expression,
+    fn try_extract_pair(
+        l: &Expression,
+        r: &Expression,
         own_prefix: Option<char>,
-        inner_col_hint: &Option<String>,
         outer_table_info: &TableInfo,
     ) -> Option<(String, usize)> {
         use sqlrustgo_parser::Expression as E;
-        match e {
-            E::BinaryOp(l, op, r) if op == "=" => {
-                let (inner_col, outer_idx) = match (l.as_ref(), r.as_ref()) {
-                    (E::Identifier(li), E::Identifier(ri)) => {
-                        // (l_inner_col = r_outer_col) or (l_outer_col = r_inner_col)
-                        let li_lc = li.to_lowercase();
-                        let ri_lc = ri.to_lowercase();
-                        let li_is_inner = inner_col_hint
-                            .as_ref()
-                            .map(|h| &li_lc == h)
-                            .unwrap_or(false)
-                            || own_prefix
-                                .map(|p| li_lc.starts_with(p) && li_lc.chars().nth(1) == Some('_'))
-                                .unwrap_or(false);
-                        let ri_is_inner = inner_col_hint
-                            .as_ref()
-                            .map(|h| &ri_lc == h)
-                            .unwrap_or(false)
-                            || own_prefix
-                                .map(|p| ri_lc.starts_with(p) && ri_lc.chars().nth(1) == Some('_'))
-                                .unwrap_or(false);
-                        if li_is_inner && !ri_is_inner {
-                            let outer_idx = find_outer_col(ri, outer_table_info)?;
-                            (li.clone(), outer_idx)
-                        } else if ri_is_inner && !li_is_inner {
-                            let outer_idx = find_outer_col(li, outer_table_info)?;
-                            (ri.clone(), outer_idx)
-                        } else {
-                            return None;
-                        }
-                    }
-                    (E::Identifier(_), E::Literal(_)) => {
-                        // (inner_col = literal) — the outer ref must
-                        // be on the left.
-                        // But this case shouldn't appear in correlated
-                        // subqueries before substitution.
-                        return None;
-                    }
-                    _ => return None,
-                };
-                Some((inner_col, outer_idx))
+        match (l, r) {
+            (E::Identifier(li), E::Identifier(ri)) => {
+                let li_is_inner = is_inner_col(li, own_prefix);
+                let ri_is_inner = is_inner_col(ri, own_prefix);
+                if li_is_inner && !ri_is_inner {
+                    let outer_idx = find_outer_col(ri, outer_table_info)?;
+                    Some((li.clone(), outer_idx))
+                } else if ri_is_inner && !li_is_inner {
+                    let outer_idx = find_outer_col(li, outer_table_info)?;
+                    Some((ri.clone(), outer_idx))
+                } else {
+                    None
+                }
             }
-            E::BinaryOp(l, op, r) if op.to_uppercase() == "AND" => {
-                walk(l, own_prefix, inner_col_hint, outer_table_info)
-                    .or_else(|| walk(r, own_prefix, inner_col_hint, outer_table_info))
-            }
+            // (inner_col = literal) shouldn't appear pre-substitution;
+            // classify as residual.
             _ => None,
         }
     }
 
-    walk(where_expr, own_prefix, &inner_col_lower, outer_table_info)
+    fn walk(
+        e: &Expression,
+        own_prefix: Option<char>,
+        outer_table_info: &TableInfo,
+        pairs: &mut Vec<(String, usize)>,
+        residual: &mut Vec<Expression>,
+    ) {
+        use sqlrustgo_parser::Expression as E;
+        match e {
+            E::BinaryOp(l, op, r) if op == "=" => {
+                if let Some(pair) = try_extract_pair(l, r, own_prefix, outer_table_info) {
+                    pairs.push(pair);
+                } else {
+                    residual.push(e.clone());
+                }
+            }
+            E::BinaryOp(l, op, r) if op.to_uppercase() == "AND" => {
+                walk(l, own_prefix, outer_table_info, pairs, residual);
+                walk(r, own_prefix, outer_table_info, pairs, residual);
+            }
+            _ => {
+                residual.push(e.clone());
+            }
+        }
+    }
+
+    let mut pairs = Vec::new();
+    let mut residual_leaves = Vec::new();
+    walk(
+        where_expr,
+        own_prefix,
+        outer_table_info,
+        &mut pairs,
+        &mut residual_leaves,
+    );
+    let residual = if residual_leaves.is_empty() {
+        None
+    } else {
+        // Re-AND the residual leaves in encounter order.
+        let mut iter = residual_leaves.into_iter();
+        let first = iter.next().unwrap();
+        Some(Box::new(iter.fold(first, |acc, e| {
+            Expression::BinaryOp(Box::new(acc), "AND".to_string(), Box::new(e))
+        })))
+    };
+    (pairs, residual)
+}
+
+/// Backwards-compatible single-key wrapper. Returns the first equality
+/// pair found, or `None` if no equalities match. Used by the Q17-style
+/// single-key fast path. For composite-key patterns (Q20 L0/L5),
+/// callers should use `find_equality_pairs_and_residual` directly.
+///
+/// Currently retained as a documentation aid; the single caller has been
+/// migrated to the Vec-based composite API. Will be removed once the
+/// composite-key fast path (Task #83/#84) lands and stabilizes.
+#[allow(dead_code)]
+fn find_equality_inner_outer(
+    where_expr: &Expression,
+    inner_table_name: &str,
+    outer_table_info: &TableInfo,
+) -> Option<(String, usize)> {
+    let (pairs, _residual) =
+        find_equality_pairs_and_residual(where_expr, inner_table_name, outer_table_info);
+    pairs.into_iter().next()
 }
 
 /// V312-58 Sprint 4 (Issue #4374): generalize the Q17 single-key fast-path
@@ -6087,8 +6140,23 @@ fn find_correlated_equalities(
 
 /// Build `key_col_value → aggregate_result` index for a scalar
 /// aggregate subquery.  Scans the inner table once, groups rows by
-/// the key column, computes the aggregate per group, applies the
-/// optional `op_factor` multiplier.
+/// the composite key columns, computes the aggregate per group, applies
+/// the optional `op_factor` multiplier.
+///
+/// `key_col_idxs` is the set of column positions forming the composite
+/// key. For the common single-key case (Q17) this is `&[idx]` with one
+/// element; for composite-key patterns (Q20 L0/L5 SUM subquery) it has
+/// ≥ 2 elements. The map is keyed on a `Vec<Value>` assembled from those
+/// columns in order.
+///
+/// `static_predicate`, when supplied, must reference ONLY inner-table
+/// columns (verified by the caller — see
+/// `try_scalar_agg_index_lookup`). Rows for which the predicate
+/// evaluates to false are excluded from the aggregate, matching the
+/// semantics of an `AND`-chained `WHERE l_col ...` filter on the inner
+/// subquery. This is essential for Q20 L0/L5 SUM subquery, where
+/// `l_shipdate BETWEEN '1994-01-01' AND '1994-12-31'` must scope the
+/// `SUM(l_quantity)` per `(l_partkey, l_suppkey)` group.
 fn build_scalar_agg_index(
     rows: &[Vec<Value>],
     table_info: &TableInfo,
