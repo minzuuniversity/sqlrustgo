@@ -10,22 +10,58 @@ use std::io::Write;
 use std::process::{Command, Stdio};
 
 /// Locate the mysql-server binary (cargo test sets CARGO_BIN_EXE_<name>).
+///
+/// V312-58 / Issue #4374 followup: when running `cargo test --all-features
+/// --all-targets` from a clean checkout (no prior `cargo build --bin
+/// sqlrustgo-mysql-server`), the binary does not yet exist and the test
+/// fails with `Os { code: 2, kind: NotFound }`. Self-heal by invoking
+/// `cargo build --bin sqlrustgo-mysql-server` once if no candidate is
+/// found in the workspace-relative `target/{profile}` directories.
 fn bin_path() -> String {
     std::env::var("CARGO_BIN_EXE_sqlrustgo-mysql-server")
         .ok()
         .or_else(|| std::env::var("SQLRUSTGO_BIN").ok())
         .unwrap_or_else(|| {
-            for candidate in [
-                "target/release/sqlrustgo-mysql-server",
-                "target/debug/sqlrustgo-mysql-server",
-                "../target/release/sqlrustgo-mysql-server",
-                "../target/debug/sqlrustgo-mysql-server",
-            ] {
-                if std::path::Path::new(candidate).exists() {
-                    return candidate.to_string();
+            let profile = if cfg!(debug_assertions) {
+                "debug"
+            } else {
+                "release"
+            };
+            let candidates = [
+                format!("target/{profile}/sqlrustgo-mysql-server"),
+                format!("../target/{profile}/sqlrustgo-mysql-server"),
+                format!("target/release/sqlrustgo-mysql-server"),
+                format!("target/debug/sqlrustgo-mysql-server"),
+            ];
+            for c in &candidates {
+                if std::path::Path::new(c).exists() {
+                    return c.clone();
                 }
             }
-            "sqlrustgo-mysql-server".to_string()
+            // Self-heal: build the bin in the current profile, then retry.
+            let build_status = Command::new("cargo")
+                .args([
+                    "build",
+                    "-q",
+                    "-p",
+                    "sqlrustgo-mysql-server",
+                    "--bin",
+                    "sqlrustgo-mysql-server",
+                ])
+                .status()
+                .expect("failed to invoke cargo build for sqlrustgo-mysql-server");
+            assert!(
+                build_status.success(),
+                "cargo build --bin sqlrustgo-mysql-server failed"
+            );
+            for c in &candidates {
+                if std::path::Path::new(c).exists() {
+                    return c.clone();
+                }
+            }
+            panic!(
+                "sqlrustgo-mysql-server binary still not found after cargo build"
+            );
         })
 }
 
