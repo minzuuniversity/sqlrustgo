@@ -18,6 +18,23 @@ pub struct BinaryTableStorageV2 {
     active_writers: HashMap<String, SegmentWriter>,
     root_indices: HashMap<String, RootIndex>,
     next_segment_ids: HashMap<String, u32>,
+    /// V313.3 Experiment A applied (Task 5): streaming inserts no longer
+    /// mirror rows into `tables.rows`. The Vec had zero read-path consumers
+    /// (audit in PROFILE_RESULTS.md § Audit findings) and grew to ~900 MB
+    /// during a 6M load — a pure leak. The push is deleted from both
+    /// streaming insert paths (see [`insert_streaming`] and
+    /// [`insert_streaming_iter`]).
+    /// V313.3 Experiment B: when true, reuse a single `Vec<u8>` across
+    /// all columns of one row when encoding each value to bytes. Default
+    /// is the existing `encode_value_to_bytes` (which allocates a fresh
+    /// `Vec<u8>` per non-null column). Test-only; feature-gated.
+    #[cfg(feature = "v313_3_profile")]
+    in_place_encoding: bool,
+    /// V313.3 Experiment D: when `Some(cap)`, pass `cap` bytes as the
+    /// `SegmentWriter` BufWriter buffer capacity (default 1 MB).
+    /// Test-only; feature-gated.
+    #[cfg(feature = "v313_3_profile")]
+    segment_buf_capacity: Option<usize>,
 }
 
 impl BinaryTableStorageV2 {
@@ -29,6 +46,10 @@ impl BinaryTableStorageV2 {
             active_writers: HashMap::new(),
             root_indices: HashMap::new(),
             next_segment_ids: HashMap::new(),
+            #[cfg(feature = "v313_3_profile")]
+            in_place_encoding: false,
+            #[cfg(feature = "v313_3_profile")]
+            segment_buf_capacity: None,
         })
     }
 
@@ -81,6 +102,38 @@ impl BinaryTableStorageV2 {
             .clone();
         let mut writer = self.get_or_open_writer(table, schema)?;
         for record in records {
+            #[cfg(feature = "v313_3_profile")]
+            let values: Vec<Option<Vec<u8>>> = if self.in_place_encoding {
+                // Experiment B: reuse a single Vec<u8> across all columns of
+                // one row. Avoids per-column Vec allocation in
+                // `encode_value_to_bytes` for fixed-width types. Note that
+                // we still produce owned `Option<Vec<u8>>` so the rest of
+                // the pipeline is unchanged.
+                let mut row_buf: Vec<u8> = Vec::with_capacity(64);
+                let mut values: Vec<Option<Vec<u8>>> = Vec::with_capacity(record.len());
+                for v in &record {
+                    if matches!(v, crate::engine::Value::Null) {
+                        values.push(None);
+                    } else {
+                        row_buf.clear();
+                        encode_value_to_bytes_into(v, &mut row_buf);
+                        values.push(Some(row_buf.clone()));
+                    }
+                }
+                values
+            } else {
+                record
+                    .iter()
+                    .map(|v| {
+                        if matches!(v, crate::engine::Value::Null) {
+                            None
+                        } else {
+                            Some(encode_value_to_bytes(v))
+                        }
+                    })
+                    .collect()
+            };
+            #[cfg(not(feature = "v313_3_profile"))]
             let values: Vec<Option<Vec<u8>>> = record
                 .iter()
                 .map(|v| {
@@ -94,8 +147,11 @@ impl BinaryTableStorageV2 {
             writer
                 .append(&values)
                 .map_err(|e| SqlError::ExecutionError(e.to_string()))?;
-            // Update in-memory table data
-            self.tables.get_mut(table).unwrap().rows.push(record);
+            // V313.3 Experiment A applied (Task 5): the previous
+            // `self.tables.get_mut(table).unwrap().rows.push(record);`
+            // line is removed. The Vec had zero read-path consumers
+            // (see PROFILE_RESULTS.md § Audit findings) and grew to
+            // ~900 MB during a 6M load — a pure memory leak.
         }
         self.active_writers.insert(table.to_string(), writer);
         Ok(())
@@ -148,6 +204,34 @@ impl BinaryTableStorageV2 {
                 )?;
                 writer = self.open_new_segment(table, schema.clone())?;
             }
+            #[cfg(feature = "v313_3_profile")]
+            let values: Vec<Option<Vec<u8>>> = if self.in_place_encoding {
+                // Experiment B: see comment in `insert_streaming`.
+                let mut row_buf: Vec<u8> = Vec::with_capacity(64);
+                let mut values: Vec<Option<Vec<u8>>> = Vec::with_capacity(record.len());
+                for v in &record {
+                    if matches!(v, crate::engine::Value::Null) {
+                        values.push(None);
+                    } else {
+                        row_buf.clear();
+                        encode_value_to_bytes_into(v, &mut row_buf);
+                        values.push(Some(row_buf.clone()));
+                    }
+                }
+                values
+            } else {
+                record
+                    .iter()
+                    .map(|v| {
+                        if matches!(v, crate::engine::Value::Null) {
+                            None
+                        } else {
+                            Some(encode_value_to_bytes(v))
+                        }
+                    })
+                    .collect()
+            };
+            #[cfg(not(feature = "v313_3_profile"))]
             let values: Vec<Option<Vec<u8>>> = record
                 .iter()
                 .map(|v| {
@@ -161,7 +245,9 @@ impl BinaryTableStorageV2 {
             writer
                 .append(&values)
                 .map_err(|e| SqlError::ExecutionError(e.to_string()))?;
-            self.tables.get_mut(table).unwrap().rows.push(record);
+            // V313.3 Experiment A applied (Task 5): the previous
+            // `self.tables.get_mut(table).unwrap().rows.push(record);`
+            // line is removed (see PROFILE_RESULTS.md § Audit findings).
         }
         self.active_writers.insert(table.to_string(), writer);
         Ok(())
@@ -201,7 +287,24 @@ impl BinaryTableStorageV2 {
         let path = self
             .data_dir
             .join(format!("{}_seg_{:04}.bin", table, seg_id));
-        SegmentWriter::new(path, schema).map_err(|e| SqlError::ExecutionError(e.to_string()))
+        // V313.3 Experiment D: when `segment_buf_capacity` is set, use
+        // the configured BufWriter buffer size; otherwise the default 1 MB.
+        #[cfg(feature = "v313_3_profile")]
+        let result = if let Some(cap) = self.segment_buf_capacity {
+            crate::bin_segment::SegmentWriter::with_size_cap_and_buf_capacity(
+                path,
+                schema,
+                DEFAULT_SEGMENT_SIZE_CAP,
+                cap,
+            )
+            .map_err(|e| SqlError::ExecutionError(e.to_string()))
+        } else {
+            SegmentWriter::new(path, schema).map_err(|e| SqlError::ExecutionError(e.to_string()))
+        };
+        #[cfg(not(feature = "v313_3_profile"))]
+        let result = SegmentWriter::new(path, schema)
+            .map_err(|e| SqlError::ExecutionError(e.to_string()));
+        result
     }
 
     /// Update root index for `table` to include the just-sealed segment
@@ -254,6 +357,38 @@ impl BinaryTableStorageV2 {
         }
         Ok(())
     }
+
+    /// V313.3 Experiment A applied (Task 5): the
+    /// `skip_in_memory_rows_for_test()` setter and
+    /// `len_in_memory_rows_for_test()` accessor were removed. The fix
+    /// deletes the `tables.rows.push` line entirely; there is nothing
+    /// left to gate.
+
+    /// V313.3 Experiment B: write fixed-width columns directly into a
+    /// shared per-row `Vec<u8>`, skipping the per-column Vec allocation
+    /// in `encode_value_to_bytes`. This is the "cheap variant" of full
+    /// in-place encoding — full optimization (writing into
+    /// SegmentWriter's row buffer directly) is V313.4 if this experiment
+    /// shows significant gain. Test-only; gated by feature.
+    #[cfg(feature = "v313_3_profile")]
+    pub fn use_in_place_encoding_for_test(&mut self) {
+        self.in_place_encoding = true;
+    }
+
+    /// V313.3 Experiment B accessor: `true` after `use_in_place_encoding_for_test`
+    /// has been called. Test-only.
+    #[cfg(feature = "v313_3_profile")]
+    pub fn is_in_place_encoding_for_test(&self) -> bool {
+        self.in_place_encoding
+    }
+
+    /// V313.3 Experiment D: override the per-segment `BufWriter` capacity
+    /// (default 1 MB). Setting it to 64 MB matches the segment cap, so
+    /// the BufWriter doesn't flush mid-segment. Test-only.
+    #[cfg(feature = "v313_3_profile")]
+    pub fn set_segment_buf_capacity_for_test(&mut self, cap: usize) {
+        self.segment_buf_capacity = Some(cap);
+    }
 }
 
 /// Encode a `Value` to its BINT v3 on-disk byte representation.
@@ -273,6 +408,28 @@ fn encode_value_to_bytes(v: &crate::engine::Value) -> Vec<u8> {
             buf
         }
         Value::Json(j) => j.to_string().as_bytes().to_vec(),
+    }
+}
+
+/// Encode a `Value` into the provided buffer. Mirrors `encode_value_to_bytes`
+/// but writes into a caller-provided `Vec<u8>` instead of returning a new
+/// allocation. Used by V313.3 Experiment B (in-place encoding) to eliminate
+/// the per-column `Vec<u8>` allocation for fixed-width types.
+#[cfg(feature = "v313_3_profile")]
+fn encode_value_to_bytes_into(v: &crate::engine::Value, buf: &mut Vec<u8>) {
+    use crate::engine::Value;
+    match v {
+        Value::Null => {}
+        Value::Boolean(b) => buf.push(*b as u8),
+        Value::Integer(i) => buf.extend_from_slice(&i.to_le_bytes()),
+        Value::Float(f) => buf.extend_from_slice(&f.to_le_bytes()),
+        Value::Text(s) => buf.extend_from_slice(s.as_bytes()),
+        Value::Blob(b) => buf.extend_from_slice(b),
+        Value::Point(x, y) => {
+            buf.extend_from_slice(&x.to_le_bytes());
+            buf.extend_from_slice(&y.to_le_bytes());
+        }
+        Value::Json(j) => buf.extend_from_slice(j.to_string().as_bytes()),
     }
 }
 

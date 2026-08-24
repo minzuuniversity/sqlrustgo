@@ -27,6 +27,7 @@ criterion = "0.8"
 [features]
 default = []
 bin_storage_default = []
+v313_3_profile = []   # V313.3 profiling experiments; test-only hooks; OFF by default
 
 [[bench]]
 name = "storage_benchmark"
