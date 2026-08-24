@@ -955,6 +955,9 @@ path = "tests/integration/oracle/q17_1m_rss_regression.rs"
 name = "issue_4374_regression"
 path = "tests/integration/oracle/issue_4374_regression.rs"
 [[test]]
+name = "issue_4443_materialization_regression"
+path = "tests/integration/oracle/issue_4443_materialization_regression.rs"
+[[test]]
 name = "q17_small_order_shortage_perf"
 path = "tests/integration/oracle/q17_small_order_shortage_perf.rs"
 [[test]]
