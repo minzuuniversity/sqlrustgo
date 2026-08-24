@@ -122,6 +122,7 @@ fn nested_subqueries_in_complex_expression() {
             SubqueryPattern::NotExistsAnti { .. } => "not_exists",
             SubqueryPattern::InToInnerJoin { .. } => "in",
             SubqueryPattern::ScalarAggGroupBy { .. } => "scalar_agg",
+            SubqueryPattern::ScalarAggInWhere { .. } => "scalar_agg_in_where",
         })
         .collect();
     assert!(kinds.contains(&"in"));
