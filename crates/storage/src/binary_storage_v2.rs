@@ -30,6 +30,11 @@ pub struct BinaryTableStorageV2 {
     /// `Vec<u8>` per non-null column). Test-only; feature-gated.
     #[cfg(feature = "v313_3_profile")]
     in_place_encoding: bool,
+    /// V313.3 Experiment D: when `Some(cap)`, pass `cap` bytes as the
+    /// `SegmentWriter` BufWriter buffer capacity (default 1 MB).
+    /// Test-only; feature-gated.
+    #[cfg(feature = "v313_3_profile")]
+    segment_buf_capacity: Option<usize>,
 }
 
 impl BinaryTableStorageV2 {
@@ -45,6 +50,8 @@ impl BinaryTableStorageV2 {
             skip_in_memory_rows: false,
             #[cfg(feature = "v313_3_profile")]
             in_place_encoding: false,
+            #[cfg(feature = "v313_3_profile")]
+            segment_buf_capacity: None,
         })
     }
 
@@ -295,7 +302,24 @@ impl BinaryTableStorageV2 {
         let path = self
             .data_dir
             .join(format!("{}_seg_{:04}.bin", table, seg_id));
-        SegmentWriter::new(path, schema).map_err(|e| SqlError::ExecutionError(e.to_string()))
+        // V313.3 Experiment D: when `segment_buf_capacity` is set, use
+        // the configured BufWriter buffer size; otherwise the default 1 MB.
+        #[cfg(feature = "v313_3_profile")]
+        let result = if let Some(cap) = self.segment_buf_capacity {
+            crate::bin_segment::SegmentWriter::with_size_cap_and_buf_capacity(
+                path,
+                schema,
+                DEFAULT_SEGMENT_SIZE_CAP,
+                cap,
+            )
+            .map_err(|e| SqlError::ExecutionError(e.to_string()))
+        } else {
+            SegmentWriter::new(path, schema).map_err(|e| SqlError::ExecutionError(e.to_string()))
+        };
+        #[cfg(not(feature = "v313_3_profile"))]
+        let result = SegmentWriter::new(path, schema)
+            .map_err(|e| SqlError::ExecutionError(e.to_string()));
+        result
     }
 
     /// Update root index for `table` to include the just-sealed segment
@@ -380,6 +404,14 @@ impl BinaryTableStorageV2 {
     #[cfg(feature = "v313_3_profile")]
     pub fn is_in_place_encoding_for_test(&self) -> bool {
         self.in_place_encoding
+    }
+
+    /// V313.3 Experiment D: override the per-segment `BufWriter` capacity
+    /// (default 1 MB). Setting it to 64 MB matches the segment cap, so
+    /// the BufWriter doesn't flush mid-segment. Test-only.
+    #[cfg(feature = "v313_3_profile")]
+    pub fn set_segment_buf_capacity_for_test(&mut self, cap: usize) {
+        self.segment_buf_capacity = Some(cap);
     }
 }
 
