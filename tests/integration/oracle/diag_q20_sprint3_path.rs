@@ -87,7 +87,9 @@ fn run_q20() -> (f64, Vec<(String, String)>) {
 #[test]
 #[ignore]
 fn diag_q20_mini_path() {
-    eprintln!("=== Q20 mini path diagnostic (332 suppliers / 100 parts / 332 partsupp / 20 lineitem) ===");
+    eprintln!(
+        "=== Q20 mini path diagnostic (332 suppliers / 100 parts / 332 partsupp / 20 lineitem) ==="
+    );
     let (elapsed, rows) = run_q20();
     eprintln!(
         "Q20 mini: elapsed {:.3}s, {} supplier rows",

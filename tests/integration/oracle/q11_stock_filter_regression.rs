@@ -79,8 +79,7 @@ const Q11_SQL: &str = "SELECT ps_partkey, SUM(ps_supplycost * ps_availqty) AS pa
 const EXPECTED_ROW_COUNT: usize = 29_636;
 
 /// Absolute path (relative to repo root) to the SQLite oracle TSV file.
-const ORACLE_PATH: &str =
-    "docs/releases/v3.12.0/evidence/tpch/cross_engine_sf1/sqlite/q11.tsv";
+const ORACLE_PATH: &str = "docs/releases/v3.12.0/evidence/tpch/cross_engine_sf1/sqlite/q11.tsv";
 
 /// Float comparison tolerance — IEEE-754 f64 summation order may differ
 /// slightly across engines (Rust row-by-row sum vs SQLite's per-group sum)
@@ -180,7 +179,10 @@ fn q11_stock_filter_sf1() {
         assert!(
             diff <= FLOAT_TOL,
             "Q11 aggregate mismatch for partkey {}: engine={}, oracle={}, diff={}",
-            k, engine_v, oracle_v, diff
+            k,
+            engine_v,
+            oracle_v,
+            diff
         );
     }
     eprintln!(
@@ -212,28 +214,32 @@ fn q11_stock_filter_sf1() {
         .collect();
 
     let mut tie_mismatches = 0usize;
-    for (i, ((ek, ev), (ok, ov))) in
-        engine_ordered.iter().zip(oracle_sorted.iter()).enumerate()
-    {
+    for (i, ((ek, ev), (ok, ov))) in engine_ordered.iter().zip(oracle_sorted.iter()).enumerate() {
         if ek != ok {
             // Equal-valued tie reordering is allowed; different value is not.
             assert!(
                 (ev - ov).abs() <= FLOAT_TOL,
                 "Q11 ordering mismatch at row {} (not a tie): \
                  engine=(partkey={}, value={}), oracle=(partkey={}, value={})",
-                i, ek, ev, ok, ov
+                i,
+                ek,
+                ev,
+                ok,
+                ov
             );
             tie_mismatches += 1;
         }
     }
     eprintln!(
         "ordering tie-break mismatches (equal values, different partkey): {} / {}",
-        tie_mismatches, engine_ordered.len()
+        tie_mismatches,
+        engine_ordered.len()
     );
     assert!(
         tie_mismatches <= MAX_TIE_MISMATCHES,
         "Q11 ordering has {} tie-break mismatches (limit {}) — possible \
          non-stable sort bug",
-        tie_mismatches, MAX_TIE_MISMATCHES
+        tie_mismatches,
+        MAX_TIE_MISMATCHES
     );
 }

@@ -79,10 +79,7 @@ fn diag_q17_100k_path() {
             Q17_100K_ORACLE,
             diff
         );
-        eprintln!(
-            "✓ Q17 100K oracle MATCH (diff = {:.2e})",
-            diff
-        );
+        eprintln!("✓ Q17 100K oracle MATCH (diff = {:.2e})", diff);
     } else {
         panic!("Q17 100K: no scalar value returned");
     }
@@ -99,9 +96,7 @@ fn diag_q17_1m_path() {
     eprintln!("Q17 1M: pid={}", pid);
     let t_total = Instant::now();
     // Spawn the test in a separate thread so we can poll RSS while it runs.
-    let handle = std::thread::spawn(move || {
-        run_q17("q17_lineitem_1m.tbl")
-    });
+    let handle = std::thread::spawn(move || run_q17("q17_lineitem_1m.tbl"));
     loop {
         std::thread::sleep(Duration::from_secs(10));
         if handle.is_finished() {
