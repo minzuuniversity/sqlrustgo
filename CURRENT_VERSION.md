@@ -1,16 +1,32 @@
 # 当前版本状态
 
-v3.11.0 GA（6/6 GA 门通过，2026-08-09 发布）
+## 最近已发布
 
-## 阶段信息
+**v3.11.0 GA**（6/6 GA 门通过，2026-08-09 发布）
+
+## 当前正在开发
+
+**v3.12.0 RC** — develop/v3.12.0 @ commit `3ad8ac37d`（截至 2026-08-24）
+- **阶段**: **RC (Release Candidate)**（milestone #38 OPEN）
+- **当前状态**: 等 RC gate 全绿以升级 GA
+- **里程碑 #39 (v3.13)**: ⛔ **已关闭**（2026-08-24 治理整改，见 `docs/governance/incidents/2026-08-24-V313-MILESTONE-PREMATURE.md`）
+
+## v3.11.0 GA 阶段信息（已发布）
 
 - **阶段**: **GA (General Availability)** — 2026-08-09 正式发布到 250/252/gitcode/gitee/github 五个 remote。Tag `v3.11.0-ga` @ commit `83c623835`。所有 6/6 GA gate 通过：(G1) R1-R4 RC 指标 ✅ (G2) 2,060 lib tests ✅ (G3) tools 80.31% line / 80.17% branch ✅ (G4) TPC-H SF=1 22/22 实跑通过（519.15s, 0 OOM, 0 panic）✅ (G5) cargo audit 已知 advisory 可修复 ✅ (G6) CHANGELOG/UPGRADE_GUIDE 完整 ✅
 - **发布日期**: 2026-08-09（GA 正式发布日；PR #3664 merged；tag v3.11.0-ga 创建于 commit 83c623835；已发布到 250/252/gitcode/gitee/github 5 个 remote）
-- **开发分支**: develop/v3.11.0
 - **目标**: 债务清零 + 功能孤岛集成 + 性能突破
 - **协作 Issue**: [#3433](http://192.168.0.252:3000/openclaw/sqlrustgo/issues/3433)（V311-MASTER）
 - **G4 TPC-H SF=1**: Issue [#3650](http://192.168.0.252:3000/openclaw/sqlrustgo/issues/3650) ✅ CLOSED — 22/22 实跑通过
 - **G3 治理真实性**: Issue [#3643](http://192.168.0.252:3000/openclaw/sqlrustgo/issues/3643) ✅ CLOSED — 虚假声明全部修正
+
+## 治理约束（2026-08-24 重要）
+
+> ⚠️ **v3.13 milestone 创建必须等 v3.12.0 GA 之后**。
+> 当前 v3.12.0 仍在 RC 阶段（里程碑 #38 OPEN，**未 GA**）。
+> 任何 v3.13 相关 issue / 任务必须保留在 v3.12.0 范围内。
+>
+> 见 `docs/governance/incidents/2026-08-24-V313-MILESTONE-PREMATURE.md` 了解详情。
 
 ## 版本概述
 
