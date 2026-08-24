@@ -1,0 +1,20 @@
+# Per-binary B2_INTEGRATION_TESTS evidence
+
+This directory holds per-binary cargo test logs from
+`scripts/gate/run_b2_per_binary.py`.
+
+Each file is the captured stdout+stderr of a single
+`cargo test --test <bin> --all-features` invocation, used to triage failures
+into:
+
+- **true regression** (something in `develop/` HEAD regressed)
+- **stale harness** (e.g. test references `BinaryTableStorageV2` which was
+  renamed by PR #4417 — see disabled registry entries 34, 35)
+- **perf-only** (binary is correct but takes >30s — see
+  `b2-perf-test-exclusion-registry.md`)
+- **external fixture** (e.g. mysql-server legacy binary not available on dev)
+
+Files are overwritten on each B2 run. Retention: 5 most-recent runs, prune on
+rollover.
+
+`.gitkeep` preserved so the directory exists before the first B2 run.
