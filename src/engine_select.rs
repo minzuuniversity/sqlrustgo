@@ -262,6 +262,41 @@ impl<S: StorageEngine + 'static> ExecutionEngine<S> {
     }
 
     pub fn execute_select(&self, select: &SelectStatement) -> SqlResult<ExecutorResult> {
+        // V312-58 / Issue #4443 (Phase 2 — materialization driver): invoke
+        // `try_decorrelate` on the WHERE clause BEFORE row-by-row evaluation.
+        // For each detected `ScalarAggInWhere` pattern, pre-build the
+        // `ScalarAggIndex` so the per-row path (`try_scalar_agg_index_lookup`
+        // invoked from `pre_evaluate_correlated_exists`) short-circuits on
+        // the cache and pays only O(1) HashMap lookup per row.
+        //
+        // Without this hook, the first outer row of Q17/Q20 would pay the
+        // full `build_scalar_agg_index` cost (full inner table scan +
+        // group-by).  Pre-warming moves that cost to the start of the
+        // outer query, before any rows are produced, and amortizes it
+        // across all outer rows.
+        if let Some(where_expr) = select.where_clause.as_ref() {
+            let patterns = sqlrustgo_optimizer::decorrelate::find_correlated_subqueries(
+                where_expr,
+                &select
+                    .columns
+                    .iter()
+                    .filter_map(|c| c.expression.clone())
+                    .collect::<Vec<_>>(),
+            );
+            for p in &patterns {
+                if let sqlrustgo_optimizer::decorrelate::SubqueryPattern::ScalarAggInWhere {
+                    inner,
+                    ..
+                } = &p.pattern
+                {
+                    if let sqlrustgo_parser::Expression::Subquery(subq) = inner.as_ref() {
+                        // Best-effort prewarm; non-matching shapes return None
+                        // and the lazy per-row path takes over.
+                        let _ = self.prewarm_scalar_agg_index_for_select(subq);
+                    }
+                }
+            }
+        }
         // Debug: print query table structure
         Self::clear_tpch_caches();
         // V312-48-Q16 (Issue #4278) fix: reset the thread-local
@@ -4722,7 +4757,167 @@ impl<S: StorageEngine + 'static> ExecutionEngine<S> {
     /// (table, key_col, agg_func, agg_arg_col, op_factor) and stores in a
     /// module-level cache.  Subsequent calls do an O(1) HashMap lookup.
     ///
-    /// Returns `Some(agg_result)` if the pattern matches and the outer
+    /// V312-58 / Issue #4443 (Phase 2 — materialization driver):
+    /// pre-build a `ScalarAggIndex` for a subquery without consulting any
+    /// outer row.  Used at the top of `execute_select` to materialize the
+    /// inner SELECT once for the whole outer query (issue #4443 acceptance
+    /// criterion #1: "execute_select invokes try_decorrelate on WHERE
+    /// clause before row-by-row evaluation"; #2: "Materialized results
+    /// cached at module level").  Subsequent per-row calls to
+    /// `try_scalar_agg_index_lookup` short-circuit on the existing cache
+    /// entry (acceptance #3: per-row O(1) substitution).
+    ///
+    /// Returns `Some(())` when the subquery matches the
+    /// `ScalarAggInWhere` pattern (the index is now cached).  Returns
+    /// `None` for non-matching shapes (no JOINs, single-table, single
+    /// aggregate, etc.) so the caller can skip prewarm and fall back to
+    /// the lazy per-row path.
+    pub fn prewarm_scalar_agg_index_for_select(
+        &self,
+        subq: &sqlrustgo_parser::SelectStatement,
+    ) -> Option<()> {
+        use sqlrustgo_parser::Expression as E;
+
+        // ── Pattern check (mirror of try_scalar_agg_index_lookup) ───
+        // 1. Single base table.
+        if !subq.join_clause.is_empty() || subq.from_subquery.is_some() {
+            return None;
+        }
+        if subq.table.is_empty() || !subq.extra_tables.is_empty() {
+            return None;
+        }
+        // 2. Single aggregate, no GROUP BY, no DISTINCT.
+        if subq.aggregates.len() != 1 {
+            return None;
+        }
+        let agg = &subq.aggregates[0];
+        if !subq.group_by.is_empty() || subq.distinct {
+            return None;
+        }
+        // 3. Single projection column.
+        if subq.columns.len() != 1 {
+            return None;
+        }
+        let proj_expr = subq.columns[0].expression.as_ref()?;
+        // 4. Projection must be `op_factor * AGG(col)` or `AGG(col)` (factor 1.0).
+        let op_factor: f64 = match proj_expr {
+            E::Aggregate(agg_inner) if agg_inner == agg => 1.0,
+            E::BinaryOp(l, op, r) if op == "*" => match (l.as_ref(), r.as_ref()) {
+                (E::Literal(s), E::Aggregate(agg_inner)) => {
+                    if agg_inner != agg {
+                        return None;
+                    }
+                    s.parse::<f64>().ok()?
+                }
+                (E::Aggregate(agg_inner), E::Literal(s)) => {
+                    if agg_inner != agg {
+                        return None;
+                    }
+                    s.parse::<f64>().ok()?
+                }
+                _ => return None,
+            },
+            _ => return None,
+        };
+        let agg_arg_expr: &E = agg.args.first()?;
+        let where_expr = subq.where_clause.as_ref()?;
+
+        // For prewarm, we don't have an outer_table_info at hand; build a
+        // synthetic empty one — `find_correlated_equalities` only reads
+        // `columns` for outer-ref matching, and at prewarm time we just
+        // need to *collect* the inner key column names, not resolve the
+        // outer side.  The full per-row path re-resolves against the real
+        // outer_table_info when computing the composite key.
+        let outer_table_info = TableInfo {
+            name: String::new(),
+            columns: Vec::new(),
+            foreign_keys: Vec::new(),
+            unique_constraints: Vec::new(),
+            check_constraints: Vec::new(),
+            partition_info: None,
+            compression: None,
+            collations: std::collections::HashMap::new(),
+        };
+        let (correlated_keys, residual_expr) = find_correlated_equalities(
+            where_expr,
+            agg_arg_expr,
+            &subq.table,
+            &outer_table_info,
+        )
+        .or(None)?;
+        if correlated_keys.is_empty() {
+            return None;
+        }
+        let real_table: &str = match subq.table.find('|') {
+            Some(d) => &subq.table[..d],
+            None => &subq.table,
+        };
+        let storage = self.storage.read();
+        let table_info = storage.get_table_info(real_table).ok()?;
+        let mut key_col_indices: Vec<usize> = Vec::with_capacity(correlated_keys.len());
+        for (inner_col_name, _outer_pos) in &correlated_keys {
+            let idx = table_info
+                .columns
+                .iter()
+                .position(|c| c.name == *inner_col_name)?;
+            key_col_indices.push(idx);
+        }
+        let agg_col_idx: Option<usize> = match agg_arg_expr {
+            E::Identifier(name) => table_info.columns.iter().position(|c| c.name == *name),
+            _ => None,
+        };
+        // ── Compute cache key (must match try_scalar_agg_index_lookup) ──
+        let residual_fp = format!("{:?}", residual_expr);
+        let cache_key = format!(
+            "{}|{}|{:?}|{}|{}|{}",
+            real_table,
+            key_col_indices
+                .iter()
+                .map(|i| i.to_string())
+                .collect::<Vec<_>>()
+                .join(","),
+            agg.func,
+            agg_col_idx.unwrap_or(usize::MAX),
+            op_factor,
+            residual_fp
+        );
+        // ── Build & cache (no-op if already cached) ─────────────────
+        {
+            let cache = scalar_agg_index_cache().lock();
+            if cache.contains_key(&cache_key) {
+                return Some(());
+            }
+        }
+        DIAG_TRY_SCALAR_AGG_BUILD.fetch_add(1, Ordering::SeqCst);
+        let rows = storage.scan(real_table).ok()?;
+        let residual_ref: Option<&sqlrustgo_parser::Expression> =
+            if matches!(&residual_expr, E::Literal(s) if s == "true") {
+                None
+            } else {
+                Some(&residual_expr)
+            };
+        let new_map = build_scalar_agg_index(
+            &rows,
+            &table_info,
+            &key_col_indices,
+            agg_col_idx,
+            agg.func.clone(),
+            op_factor,
+            residual_ref,
+        );
+        let entry = ScalarAggIndexEntry {
+            map: std::sync::Arc::new(new_map),
+        };
+        let mut cache = scalar_agg_index_cache().lock();
+        cache.insert(cache_key, entry);
+        Some(())
+    }
+
+    /// Query an already-built `ScalarAggIndex` by outer-row composite key.
+    /// Called from `pre_evaluate_correlated_exists` after the outer row is
+    /// known.  This is the existing lazy build path (Sprint 4) — the
+    /// prewarm variant above avoids paying the build cost on the first
+    /// outer row.
     /// row's key value is in the index.  Returns `None` if the pattern
     /// doesn't match (caller falls back to the per-row execute_select
     /// path), or `Some(Value::Null)` if the key is not in the index
