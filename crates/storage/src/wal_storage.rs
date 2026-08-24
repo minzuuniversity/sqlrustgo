@@ -70,7 +70,7 @@ impl<S: StorageEngine + 'static, T: WalManager + 'static> WalStorage<S, T> {
     /// # Example
     /// ```
     /// use sqlrustgo_storage::{FileStorage, WalStorage, FileBackedWalManager, WalSyncMode};
-    /// let inner = FileStorage::new("/tmp/db").unwrap();
+    /// let inner = FileStorage::new("/tmp/db".into()).unwrap();
     /// let wal = FileBackedWalManager::new("/tmp/wal".into()).unwrap();
     /// let mut storage = WalStorage::new_with_sync_mode(inner, wal, WalSyncMode::Batch(100));
     /// ```
