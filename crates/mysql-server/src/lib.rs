@@ -4353,7 +4353,7 @@ fn do_command_loop<S: Read + Write + DrainWrites>(
                     // override for bulk-load throughput. None = use current
                     // mode (default Every); Some(Batch(n)) = switch to batch
                     // mode for the duration of this LOAD DATA, then restore.
-                    let wal_sync_mode_override = config.wal_sync_mode_override.clone();
+                    let wal_sync_mode_override = config.wal_sync_mode_override;
                     // G13-OLTP-1: poisoning recovery on the engine
                     // write lock. A previous LOAD DATA may have
                     // panicked mid-insert (e.g. parse_tbl_line on
