@@ -81,7 +81,7 @@ fn scalar_subq_cache() -> &'static parking_lot::Mutex<HashMap<Value, Value>> {
 // queried O(1) per outer row. Q17 was taking 30s on SF=0.1 (2000 partkeys ×
 // 60K-lineitem AVG scan); with this cache it drops to a single 60K scan
 // (~0.5s) plus 9 O(1) lookups.
-type ScalarAggIndexMap = HashMap<Value, Value>;
+type ScalarAggIndexMap = HashMap<Vec<Value>, Value>;
 #[derive(Clone)]
 struct ScalarAggIndexEntry {
     map: std::sync::Arc<ScalarAggIndexMap>,
@@ -2218,19 +2218,29 @@ impl<S: StorageEngine + 'static> ExecutionEngine<S> {
     ) -> Option<(Vec<Vec<Value>>, TableInfo)> {
         use std::collections::HashMap;
         let where_expr = select.where_clause.as_ref()?;
-        // V312-35 (#4182) Q2/Q17: bail out of hash chain when WHERE
-        // has a correlated scalar subquery. The chain consumes
-        // equality predicates but the subquery still needs per-row
-        // substitution in the post-join filter. Returning None
-        // forces the per-clause fallback in execute_joins, which
-        // calls pre_evaluate_correlated_exists to substitute the
-        // Subquery node with a scalar literal (Q2: MIN cost per part;
-        // Q17: 0.2*AVG threshold per partkey). This produces the
-        // correct row counts vs the SQLite oracle without dead-ending
-        // in an O(joined_rows × subquery_cost) hang.
-        if where_expr_has_correlated_subquery(where_expr) {
-            return None;
-        }
+        // V312-58 Sprint 4 (Issue #4374) Q17-1M fix: REMOVED the
+        // bail-out for correlated scalar subqueries. Previously this
+        // forced the per-clause cartesian fallback in `execute_joins`,
+        // producing N_lineitem × N_part matching rows as a single
+        // intermediate Vec (~2M rows × 24 cols ≈ 800 MB at SF=0.1,
+        // linear in N_lineitem → unbounded RSS growth at SF=1).
+        //
+        // The hash chain ONLY consumes the equi-join predicate
+        // (`p_partkey = l_partkey`). The correlated scalar subquery
+        // (`l_quantity < (SELECT 0.2 * AVG(l_quantity) FROM lineitem
+        // WHERE l_partkey = p_partkey)`) is preserved for the
+        // post-join WHERE filter: the caller already guards this via
+        // `!where_expr_has_correlated_subquery(wc)` in `where_fully_consumed`
+        // (line ~2073) before setting COMMA_JOIN_WHERE_CONSUMED. So
+        // `pre_evaluate_correlated_exists` substitutes the subquery per
+        // row at filter time (Q17: `try_scalar_agg_index_lookup`
+        // fast-path provides O(1) per-row lookup against a pre-built
+        // HashMap<Vec<Value>, Value>).
+        //
+        // The cartesian fallback is therefore unnecessary and
+        // pathologically memory-bound; the hash chain produces exactly
+        // the same set of joined rows but in O(N_lineitem + N_part_match)
+        // time and constant additional memory.
         // V312-48-Q5/#4273 & Q9: bail out when nation-bridge pattern detected.
         // The c_nationkey = s_nationkey bridge requires force_orders_first
         // to prevent supplier being joined via nation-bridge before orders.
@@ -4772,15 +4782,21 @@ impl<S: StorageEngine + 'static> ExecutionEngine<S> {
             _ => return None,
         };
         let agg_arg_expr: &E = agg.args.first()?;
-        // 5. WHERE must be `<inner_col> = <outer_ref>` (possibly wrapped in
-        //    AND with trivial static predicates, but for TPC-H Q17 it's
-        //    bare equality).
         let where_expr = subq.where_clause.as_ref()?;
-        // Try a flat-binary equality first; otherwise walk the AST for
-        // an equality leaf.
-        let (inner_col_name, outer_ref_pos) =
-            find_equality_inner_outer(where_expr, agg_arg_expr, &subq.table, outer_table_info)
-                .or(None)?;
+        // V312-58 Sprint 4 (Issue #4374): generalize the Q17 single-key
+        // fast-path to support multiple correlated equalities (Q20:
+        // `l_partkey = ps_partkey AND l_suppkey = ps_suppkey`) plus a
+        // residual predicate (Q20: `l_shipdate >= ... AND l_shipdate < ...`).
+        let (correlated_keys, residual_expr) = find_correlated_equalities(
+            where_expr,
+            agg_arg_expr,
+            &subq.table,
+            outer_table_info,
+        )
+        .or(None)?;
+        if correlated_keys.is_empty() {
+            return None;
+        }
         // Strip `|alias` from subq.table (TPC-H pattern from Q21).
         let real_table: &str = match subq.table.find('|') {
             Some(d) => &subq.table[..d],
@@ -4790,29 +4806,36 @@ impl<S: StorageEngine + 'static> ExecutionEngine<S> {
         // ── Resolve columns ──────────────────────────────────────────
         let storage = self.storage.read();
         let table_info = storage.get_table_info(real_table).ok()?;
-        let key_col_idx = table_info
-            .columns
-            .iter()
-            .position(|c| c.name == inner_col_name)?;
+        let mut key_col_indices: Vec<usize> = Vec::with_capacity(correlated_keys.len());
+        for (inner_col_name, _outer_pos) in &correlated_keys {
+            let idx = table_info
+                .columns
+                .iter()
+                .position(|c| c.name == *inner_col_name)?;
+            key_col_indices.push(idx);
+        }
         let agg_col_idx: Option<usize> = match agg_arg_expr {
             E::Identifier(name) => table_info.columns.iter().position(|c| c.name == *name),
-            // If agg arg is an expression, skip the fast path (would
-            // require evaluating the per-row expression to know which
-            // column to read).  Most TPC-H scalar aggs are simple
-            // Identifier args.
             _ => None,
         };
 
         // ── Compute cache key ────────────────────────────────────────
-        // Cache key = (table, key_col, agg_func, agg_col, op_factor).
-        // Two queries with identical (table,key,agg,op) share the index.
+        // Cache key = (table, key_cols, agg_func, agg_col, op_factor, residual).
+        // The residual fingerprint distinguishes Q17 (no residual) from
+        // Q20 (`l_shipdate >= ... AND l_shipdate < ...`).
+        let residual_fp = format!("{:?}", residual_expr);
         let cache_key = format!(
-            "{}|{}|{:?}|{}|{}",
+            "{}|{}|{:?}|{}|{}|{}",
             real_table,
-            key_col_idx,
+            key_col_indices
+                .iter()
+                .map(|i| i.to_string())
+                .collect::<Vec<_>>()
+                .join(","),
             agg.func,
             agg_col_idx.unwrap_or(usize::MAX),
-            op_factor
+            op_factor,
+            residual_fp
         );
 
         // ── Get or build the index ──────────────────────────────────
@@ -4823,16 +4846,21 @@ impl<S: StorageEngine + 'static> ExecutionEngine<S> {
             } else {
                 drop(cache);
                 DIAG_TRY_SCALAR_AGG_BUILD.fetch_add(1, Ordering::SeqCst);
-                // Build the index by scanning the inner table once and
-                // computing the aggregate per key_col value.
                 let rows = storage.scan(real_table).ok()?;
+                let residual_ref: Option<&sqlrustgo_parser::Expression> =
+                    if matches!(&residual_expr, E::Literal(s) if s == "true") {
+                        None
+                    } else {
+                        Some(&residual_expr)
+                    };
                 let new_map = build_scalar_agg_index(
                     &rows,
                     &table_info,
-                    key_col_idx,
+                    &key_col_indices,
                     agg_col_idx,
                     agg.func.clone(),
                     op_factor,
+                    residual_ref,
                 );
                 let entry = ScalarAggIndexEntry {
                     map: std::sync::Arc::new(new_map),
@@ -4843,30 +4871,40 @@ impl<S: StorageEngine + 'static> ExecutionEngine<S> {
             }
         };
 
-        // ── Lookup by outer key value ────────────────────────────────
-        let key_val = outer_row.get(outer_ref_pos)?;
-        // Try several lookups because outer row may have Integer "123"
-        // and the index may have been built with Text "123" (parses
-        // both to same number on equality but HashMap uses Eq).
-        if let Some(v) = entry.map.get(key_val) {
+        // ── Build composite key from outer row ───────────────────────
+        let mut key_parts: Vec<Value> = Vec::with_capacity(correlated_keys.len());
+        let mut key_missing = false;
+        for (_inner_col_name, outer_ref_pos) in &correlated_keys {
+            match outer_row.get(*outer_ref_pos) {
+                Some(v) => key_parts.push(v.clone()),
+                None => {
+                    key_missing = true;
+                    break;
+                }
+            }
+        }
+        if key_missing {
+            return Some(Value::Null);
+        }
+        // Direct hit
+        if let Some(v) = entry.map.get(&key_parts) {
             return Some(v.clone());
         }
-        // Coerce to string for matching (e.g. Integer(123) vs Text("123")).
-        let key_str = match key_val {
-            Value::Integer(n) => n.to_string(),
-            Value::Text(s) => s.clone(),
-            Value::Float(f) => format!("{}", f),
-            _ => return Some(Value::Null),
-        };
-        for (k, v) in entry.map.iter() {
-            let k_str = match k {
-                Value::Integer(n) => n.to_string(),
-                Value::Text(s) => s.clone(),
-                Value::Float(f) => format!("{}", f),
-                _ => continue,
-            };
-            if k_str == key_str {
-                return Some(v.clone());
+        // Coerce-to-string fallback for cross-type keys (Integer vs Text)
+        fn to_str(v: &Value) -> Option<String> {
+            match v {
+                Value::Integer(n) => Some(n.to_string()),
+                Value::Text(s) => Some(s.clone()),
+                Value::Float(f) => Some(format!("{}", f)),
+                _ => None,
+            }
+        }
+        if let Some(needle) = key_parts.iter().map(to_str).collect::<Option<Vec<_>>>() {
+            for (k, v) in entry.map.iter() {
+                let parts: Option<Vec<String>> = k.iter().map(to_str).collect();
+                if parts.as_deref() == Some(needle.as_slice()) {
+                    return Some(v.clone());
+                }
             }
         }
         // Key not in index → subquery would return zero rows → NULL.
@@ -5640,6 +5678,7 @@ fn find_top_level_equality_literal(where_expr: &Expression, _key_col_idx: usize)
 /// correlated scalar aggregate pattern.  We accept equality inside an
 /// AND chain (e.g. `l_partkey = X AND extra_filter = Y`) by walking
 /// top-down and picking the first matching equality.
+#[allow(dead_code)]
 fn find_equality_inner_outer(
     where_expr: &Expression,
     agg_arg_expr: &Expression,
@@ -5748,27 +5787,153 @@ fn find_equality_inner_outer(
     walk(where_expr, own_prefix, &inner_col_lower, outer_table_info)
 }
 
+/// V312-58 Sprint 4 (Issue #4374): generalize the Q17 single-key fast-path
+/// to N correlated equalities.  Returns the list of (inner_col_name,
+/// outer_pos) pairs and a residual `Expression` containing the original
+/// WHERE with correlated equalities replaced by `Literal("true")` (so that
+/// evaluating the residual per inner row applies the static filters
+/// without re-matching the equality).
+///
+/// Empty result (`Some((vec![], ...))` — caller treats this as "fast-path
+/// not applicable") is returned when no correlated equality is found.
+fn find_correlated_equalities(
+    where_expr: &Expression,
+    agg_arg_expr: &Expression,
+    inner_table_name: &str,
+    outer_table_info: &TableInfo,
+) -> Option<(Vec<(String, usize)>, Expression)> {
+    use sqlrustgo_parser::Expression as E;
+
+    let own_prefix: Option<char> = inner_table_name
+        .chars()
+        .next()
+        .map(|c| c.to_ascii_lowercase());
+    let inner_col_hint: Option<String> = match agg_arg_expr {
+        E::Identifier(n) => Some(n.to_lowercase()),
+        _ => None,
+    };
+
+    fn find_outer_col(name: &str, outer_table_info: &TableInfo) -> Option<usize> {
+        if let Some(idx) = outer_table_info.columns.iter().position(|c| c.name == name) {
+            return Some(idx);
+        }
+        let basename = name.rsplit_once('.').map(|(_, c)| c).unwrap_or(name);
+        if let Some(idx) = outer_table_info
+            .columns
+            .iter()
+            .position(|c| c.name == basename)
+        {
+            return Some(idx);
+        }
+        if let Some(idx) = outer_table_info
+            .columns
+            .iter()
+            .position(|c| c.name.rsplit_once('.').map(|(_, c)| c).unwrap_or(&c.name) == basename)
+        {
+            return Some(idx);
+        }
+        None
+    }
+
+    fn is_inner_col(name_lc: &str, own_prefix: Option<char>, inner_col_hint: &Option<String>) -> bool {
+        inner_col_hint
+            .as_ref()
+            .map(|h| name_lc == h)
+            .unwrap_or(false)
+            || own_prefix
+                .map(|p| name_lc.starts_with(p) && name_lc.chars().nth(1) == Some('_'))
+                .unwrap_or(false)
+    }
+
+    // Walk WHERE; collect correlated equalities; build residual by
+    // replacing each correlated equality with `Literal("true")`.
+    fn walk(
+        e: &Expression,
+        own_prefix: Option<char>,
+        inner_col_hint: &Option<String>,
+        outer_table_info: &TableInfo,
+        pairs: &mut Vec<(String, usize)>,
+    ) -> Option<Expression> {
+        use sqlrustgo_parser::Expression as E;
+        match e {
+            E::BinaryOp(l, op, r) if op == "=" => {
+                if let (E::Identifier(li), E::Identifier(ri)) = (l.as_ref(), r.as_ref()) {
+                    let li_lc = li.to_lowercase();
+                    let ri_lc = ri.to_lowercase();
+                    let li_is_inner = is_inner_col(&li_lc, own_prefix, inner_col_hint);
+                    let ri_is_inner = is_inner_col(&ri_lc, own_prefix, inner_col_hint);
+                    if li_is_inner && !ri_is_inner {
+                        let outer_idx = find_outer_col(ri, outer_table_info)?;
+                        pairs.push((li.clone(), outer_idx));
+                        return Some(E::Literal("true".to_string()));
+                    } else if ri_is_inner && !li_is_inner {
+                        let outer_idx = find_outer_col(li, outer_table_info)?;
+                        pairs.push((ri.clone(), outer_idx));
+                        return Some(E::Literal("true".to_string()));
+                    }
+                    // both inner or both outer → leave as-is in residual
+                    return Some(e.clone());
+                }
+                Some(e.clone())
+            }
+            E::BinaryOp(l, op, r) if op.to_uppercase() == "AND" => {
+                let l_res = walk(l, own_prefix, inner_col_hint, outer_table_info, pairs)?;
+                let r_res = walk(r, own_prefix, inner_col_hint, outer_table_info, pairs)?;
+                Some(E::BinaryOp(Box::new(l_res), op.clone(), Box::new(r_res)))
+            }
+            _ => Some(e.clone()),
+        }
+    }
+
+    let mut pairs: Vec<(String, usize)> = Vec::new();
+    let residual = walk(where_expr, own_prefix, &inner_col_hint, outer_table_info, &mut pairs)?;
+    Some((pairs, residual))
+}
+
 /// Build `key_col_value → aggregate_result` index for a scalar
 /// aggregate subquery.  Scans the inner table once, groups rows by
 /// the key column, computes the aggregate per group, applies the
 /// optional `op_factor` multiplier.
 fn build_scalar_agg_index(
     rows: &[Vec<Value>],
-    _table_info: &TableInfo,
-    key_col_idx: usize,
+    table_info: &TableInfo,
+    key_col_indices: &[usize],
     agg_col_idx: Option<usize>,
     agg_func: AggregateFunction,
     op_factor: f64,
+    residual: Option<&sqlrustgo_parser::Expression>,
 ) -> ScalarAggIndexMap {
+    use sqlrustgo_parser::Expression as E;
     use sqlrustgo_types::Value as V;
-    let mut groups: HashMap<Value, (f64, i64, bool)> = HashMap::new();
+    let mut groups: HashMap<Vec<Value>, (f64, i64, bool)> = HashMap::new();
     // (running_float_sum, count, any_float)
     for row in rows {
-        let key = match row.get(key_col_idx) {
-            Some(v) => v.clone(),
-            None => continue,
-        };
-        let entry = groups.entry(key).or_insert((0.0, 0, false));
+        // Build composite key from inner row
+        let mut key_parts: Vec<Value> = Vec::with_capacity(key_col_indices.len());
+        let mut key_missing = false;
+        for &idx in key_col_indices {
+            match row.get(idx) {
+                Some(v) => key_parts.push(v.clone()),
+                None => {
+                    key_missing = true;
+                    break;
+                }
+            }
+        }
+        if key_missing {
+            continue;
+        }
+        // V312-58 (Q20 / Issue #4374 Sprint 4): evaluate residual predicate
+        // (e.g. `l_shipdate >= '...' AND l_shipdate < '...'`) per inner row.
+        // Residual must reference only the inner table (no outer refs); the
+        // caller is responsible for ensuring that invariant before invoking
+        // the fast-path. Skip rows where residual is false.
+        if let Some(res) = residual {
+            if !crate::engine_utils::eval_predicate(res, row, table_info) {
+                continue;
+            }
+        }
+        let entry = groups.entry(key_parts).or_insert((0.0, 0, false));
         match agg_func {
             AggregateFunction::Count => {
                 // COUNT(*) → 1, COUNT(col) → 1 if not NULL
@@ -5784,13 +5949,7 @@ fn build_scalar_agg_index(
                 let v = row.get(ci);
                 match v {
                     Some(V::Integer(n)) => {
-                        if entry.2 {
-                            entry.0 += *n as f64;
-                        } else {
-                            // Integer accumulator until we see a float
-                            // — for AVG/SUM we just use f64 directly.
-                            entry.0 += *n as f64;
-                        }
+                        entry.0 += *n as f64;
                         entry.1 += 1;
                     }
                     Some(V::Float(f)) => {
@@ -5802,22 +5961,11 @@ fn build_scalar_agg_index(
                 }
             }
             AggregateFunction::Min | AggregateFunction::Max => {
-                // For Min/Max we need to store the actual value, not
-                // f64 accumulator.  Not used by TPC-H Q17; fall back
-                // to a generic path.
                 let Some(ci) = agg_col_idx else { continue };
                 let Some(v) = row.get(ci) else { continue };
-                // Just track count for now; fast-path only covers
-                // AVG/SUM/COUNT for the Q17 perf fix.
                 let _ = (entry, v.clone(), ci);
             }
-            // V313-followup-3 / Issue #4156: PERCENTILE_CONT WITHIN
-            // GROUP falls back to the serial compute_aggregates path
-            // (this fast-path only supports AVG/SUM/COUNT/MIN/MAX).
             AggregateFunction::PercentileCont => unreachable!(),
-            // V313-followup-2 / Issue #4155: quantile aggregates are
-            // sorted-index algorithms; the scalar-aggregate fast-path
-            // only handles in-place updaters. Fall through (no update).
             AggregateFunction::QuantileDisc | AggregateFunction::QuantileCont => {}
         }
     }
@@ -5833,10 +5981,13 @@ fn build_scalar_agg_index(
                     Value::Float((sum / count as f64) * op_factor)
                 }
             }
-            _ => Value::Null, // Min/Max not implemented in fast-path
+            _ => Value::Null,
         };
         result.insert(k, v);
     }
+    // Silence unused-import warning for `Expression` while keeping it
+    // available for future residual variants.
+    let _ = std::any::type_name::<E>();
     result
 }
 
