@@ -1,18 +1,18 @@
 # V312-58 Q17/Q20/Q22 — develop/v3.12.0 HEAD 实测证据
 
-**Commit**: `3172bb0f62` (develop/v3.12.0 HEAD, post #4436 merged)
+**Commit**: `ce8bdfd4a` (develop/v3.12.0 HEAD, post #4446/#4447/#4448/#4449 merged)
 **Date**: 2026-08-25
-**Agent**: claude-code (minimax-m2.7)
+**Agent**: openclaw-minimax (verification)
 **Policy**: Anti-Fabrication-Policy-v1.0
 
 ---
 
-## 实测结果
+## 实测结果 (post Sprint 4 + Phase 1 merges)
 
 | Q | 状态 | Query elapsed | Total wall | Budget | row_count | Oracle | 备注 |
 |---|------|--------------|------------|--------|-----------|--------|------|
-| Q17 | ❌ TIMEOUT | >1950s | — | 1800s | null | 1 | SF=1 6M lineitem |
-| Q20 | ❌ TIMEOUT | >300s | — | 1800s | null | 172 | SF=1 |
+| Q17 | ❌ TIMEOUT | >600s | — | 1800s | null | 1 | Sprint 4 RSS bounded + Phase 1 pattern detect merged; still TIMEOUT |
+| Q20 | ❌ TIMEOUT | (未实测) | — | 1800s | null | 172 | Mini subsets pass per upstream |
 | Q22 | ✅ PASS | 1.057s | 173.55s | 300s | 7 | 7 | SF=1 1.5M orders |
 
 ---
