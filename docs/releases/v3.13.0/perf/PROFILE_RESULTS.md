@@ -199,9 +199,53 @@ promotable experiments (after C, which can't be promoted).
 > active segment writer. Default is 1 MB. V313.3 conclusion (Task 4)
 > weighs A (cheaper, lower-risk) vs D (bigger win, +63 MB RSS).
 
-## Decision: optimize <top suspect>
+## Decision: optimize Experiment A (skip `tables.rows.push`)
 
-(Filled by Task 3)
+Suspects ranked by % of the 1.14s extrapolation gap closed (highest
+first; only promotable fixes shown — C is excluded per anti-pattern
+gate "final measurement on ext4 not tmpfs"):
+
+| Rank | Experiment | Δ vs baseline | % gap closed | Promotable? |
+|------|------------|---------------|--------------|-------------|
+| 1 | D — 64 MB BufWriter | -0.75 s (-4.1%) | **66%** | yes (+63 MB RSS/segment) |
+| 2 | A — skip `tables.rows.push` | -0.66 s (-3.6%) | **58%** | yes (audit-confirmed safe; also fixes ~900 MB peak-RSS leak) |
+| 3 | B — in-place row encoding | -0.27 s (-1.5%) | 24% | yes (marginal) |
+| 4 | C — tmpfs | -1.29 s (-7.1%) | 113% | **NO** (anti-pattern gate) |
+
+### Selection rule
+
+Per Task 4 selection rule:
+- A single suspect at ≥ 50% → fix that one (single-commit).
+- Two-or-three collectively at ≥ 50% → fix all of them.
+
+**Both A and D individually exceed 50%** of the gap, so both qualify
+as "the one". Choosing between them:
+
+**Decision: A.** Three reasons:
+
+1. **Safety.** A is the only suspect with an audit-confirmed
+   read-path absence (`scan` is a stub returning `vec![]`; `tables.rows`
+   has zero consumers in the codebase). D changes runtime BufWriter
+   behavior in a way that has no audit equivalent — if a future
+   reader code path assumed "no partial segment" semantics, raising
+   the BufWriter to match the segment cap could surprise it.
+
+2. **Memory bonus.** The `tables.rows: Vec<Record>` Vec grows to
+   ~6M × ~150 bytes ≈ **900 MB** during a 6M load. This is a real
+   memory leak from the streaming-insert perspective (no reader ever
+   drains it). Deleting the push eliminates the leak; D only trades
+   1 MB RSS for 64 MB RSS per active segment.
+
+3. **On the reference 2× Xeon Gold 6138, A's relative benefit is
+   likely larger than D's.** D's benefit is bounded by the kernel's
+   writeback throughput, which on the Xeon's 1.9 TB NVMe is much
+   higher than on the workstation's NVMe. A's benefit is bounded by
+   memory bandwidth pressure from cloning/pushing 6M Records into a
+   Vec, which on a 40c/80t box running many concurrent loads would
+   be more pronounced.
+
+Cumulative coverage of the top suspect (A): **58%** — meets the 50%
+threshold (anti-pattern gate #2). Task 5 applies the A fix.
 
 ## Optimized measurement
 
