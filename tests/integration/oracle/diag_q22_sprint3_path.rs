@@ -104,7 +104,11 @@ fn run_q22(customer_tbl: &str, orders_tbl: &str) -> (f64, Vec<(String, i64, f64)
 fn diag_q22_mini_path() {
     eprintln!("=== Q22 mini path diagnostic (1000 customer / 6000 orders) ===");
     let (elapsed, rows) = run_q22("q22_customer_mini.tbl", "q22_orders_mini.tbl");
-    eprintln!("Q22 mini: elapsed {:.3}s, {} cntrycode groups", elapsed, rows.len());
+    eprintln!(
+        "Q22 mini: elapsed {:.3}s, {} cntrycode groups",
+        elapsed,
+        rows.len()
+    );
     for (cc, nc, ta) in &rows {
         eprintln!("  {}: numcust={}, totacctbal={}", cc, nc, ta);
     }
