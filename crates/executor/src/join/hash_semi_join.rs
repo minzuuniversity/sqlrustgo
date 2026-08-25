@@ -21,8 +21,10 @@
 //! residual was already applied at build time → bucket contains only matching
 //! rows → Semi simplifies to "bucket non-empty ⇒ emit".
 
+use parking_lot::Mutex;
 use sqlrustgo_types::Value;
 use std::collections::{HashMap, HashSet};
+use std::sync::atomic::{AtomicU64, Ordering};
 
 /// Bloom filter for short-circuit. 128 bytes (16 × u64) for 1024 bits.
 /// Two hash functions (FNV-1a + DJB2) — well-tested combination with
@@ -85,6 +87,16 @@ impl BloomSemiFilter {
 /// Build phase consumes inner rows via `add_inner_row()`.
 /// Probe phase is driven by `probe_outer_key()` which returns outer rows
 /// whose probe key has AT LEAST ONE match in the inner key_index.
+///
+/// V312-58 / Issue #4444 followup: `probe_outer_key` and the metric
+/// counters take `&self` so a single, long-lived `HashSemiJoin` instance
+/// can be reused across many outer-row probes from the call-site
+/// `HashSemiJoinIndex` (Sprint 5 call site in `pre_evaluate_correlated_exists`).
+/// Interior mutability is achieved via `AtomicU64` for the two counters
+/// (single-writer / multi-reader counters → `Relaxed` ordering is enough
+/// because the counters are diagnostic metrics, not control flow) and via
+/// `parking_lot::Mutex<HashSet>` for `matched_outer_keys` (lock is only
+/// taken on the `Matched` path, which is rare relative to `NotMatched`).
 pub struct HashSemiJoin {
     /// Inner row's column index to hash on.
     pub build_key_col: usize,
@@ -98,13 +110,15 @@ pub struct HashSemiJoin {
     /// Inner key → rows (built by `finalize_build()`).
     key_index: HashMap<Value, Vec<Vec<Value>>>,
     /// Outer rows whose key found a match → these are INCLUDED in output.
-    matched_outer_keys: HashSet<Value>,
+    /// Wrapped in `Mutex` so `probe_outer_key(&self, ...)` can record
+    /// a new match without taking `&mut self`.
+    matched_outer_keys: Mutex<HashSet<Value>>,
     /// Total inner rows added (metric).
     pub build_count: usize,
     /// Total probe rows checked (metric).
-    pub probe_count: usize,
+    pub probe_count: AtomicU64,
     /// Bloom short-circuit hits (metric).
-    pub bloom_short_circuits: usize,
+    pub bloom_short_circuits: AtomicU64,
 }
 
 impl Default for HashSemiJoin {
@@ -121,10 +135,10 @@ impl HashSemiJoin {
             inner_rows: Vec::new(),
             bloom: BloomSemiFilter::new(),
             key_index: HashMap::new(),
-            matched_outer_keys: HashSet::new(),
+            matched_outer_keys: Mutex::new(HashSet::new()),
             build_count: 0,
-            probe_count: 0,
-            bloom_short_circuits: 0,
+            probe_count: AtomicU64::new(0),
+            bloom_short_circuits: AtomicU64::new(0),
         }
     }
 
@@ -140,14 +154,19 @@ impl HashSemiJoin {
     /// Probe one outer row. Returns `Matched` if at least one inner row
     /// matches the probe key (→ emit outer row once), `NotMatched` otherwise.
     ///
+    /// Takes `&self` so a single, long-lived `HashSemiJoin` instance can be
+    /// reused across many outer-row probes (V312-58 followup). The two
+    /// counters use `Relaxed` ordering — they are diagnostic metrics only.
+    /// `matched_outer_keys` is locked only on the `Matched` path.
+    ///
     /// The caller is responsible for re-evaluating residual predicates with
     /// outer refs substituted; this method handles only the key_index lookup.
-    pub fn probe_outer_key(&mut self, probe_key: &Value) -> ProbeResult {
-        self.probe_count += 1;
+    pub fn probe_outer_key(&self, probe_key: &Value) -> ProbeResult {
+        self.probe_count.fetch_add(1, Ordering::Relaxed);
         // Bloom short-circuit: if bloom says definitely not in key_index,
         // we know no inner row matches this outer key.
         if !self.bloom.might_contain(probe_key) {
-            self.bloom_short_circuits += 1;
+            self.bloom_short_circuits.fetch_add(1, Ordering::Relaxed);
             return ProbeResult::NotMatched;
         }
         // Bloom MIGHT contain or is false-positive — check key_index for real.
@@ -155,7 +174,7 @@ impl HashSemiJoin {
             None => ProbeResult::NotMatched,
             Some(bucket) if bucket.is_empty() => ProbeResult::NotMatched,
             Some(_) => {
-                self.matched_outer_keys.insert(probe_key.clone());
+                self.matched_outer_keys.lock().insert(probe_key.clone());
                 ProbeResult::Matched
             }
         }
@@ -173,7 +192,7 @@ impl HashSemiJoin {
 
     /// Number of outer keys that found at least one match (semi output size).
     pub fn matched_outer_count(&self) -> usize {
-        self.matched_outer_keys.len()
+        self.matched_outer_keys.lock().len()
     }
 
     /// V312-58 / Issue #4444 (Phase 3): build a `HashSemiJoin` directly from
@@ -264,7 +283,7 @@ mod tests {
         assert_eq!(hsj.probe_outer_key(&pk(&row(2))), ProbeResult::Matched);
         // Probe key 99 → NotMatched (no inner row)
         assert_eq!(hsj.probe_outer_key(&pk(&row(99))), ProbeResult::NotMatched);
-        assert_eq!(hsj.probe_count, 3);
+        assert_eq!(hsj.probe_count.load(Ordering::Relaxed), 3);
     }
 
     /// Test 2 (unique_keys): duplicate inner keys share one bucket.
@@ -299,9 +318,9 @@ mod tests {
         }
         // Bloom short-circuits should have triggered at least once
         assert!(
-            hsj.bloom_short_circuits > 0,
+            hsj.bloom_short_circuits.load(Ordering::Relaxed) > 0,
             "bloom should have short-circuited at least one probe (got {})",
-            hsj.bloom_short_circuits
+            hsj.bloom_short_circuits.load(Ordering::Relaxed)
         );
         // No false-negatives: every present key matches
         for i in 0..100 {
@@ -394,20 +413,12 @@ mod tests {
 
         let join = HashSemiJoin::from_select(&subq, &table_info, &inner_rows, 0, 0)
             .expect("from_select should succeed for valid Q20-shape subq");
-        // Probe for s_suppkey=1 → Matched
-        let mut join = join;
-        assert_eq!(
-            join.probe_outer_key(&Value::Integer(1)),
-            ProbeResult::Matched
-        );
-        assert_eq!(
-            join.probe_outer_key(&Value::Integer(2)),
-            ProbeResult::Matched
-        );
-        assert_eq!(
-            join.probe_outer_key(&Value::Integer(3)),
-            ProbeResult::NotMatched
-        );
+        // Probe for s_suppkey=1 → Matched.
+        // `probe_outer_key` takes `&self` (interior mutability), so we
+        // can reuse the same `HashSemiJoin` instance for every probe.
+        assert_eq!(join.probe_outer_key(&Value::Integer(1)), ProbeResult::Matched);
+        assert_eq!(join.probe_outer_key(&Value::Integer(2)), ProbeResult::Matched);
+        assert_eq!(join.probe_outer_key(&Value::Integer(3)), ProbeResult::NotMatched);
         // 2 distinct outer keys matched.
         assert_eq!(join.matched_outer_count(), 2);
         assert_eq!(join.unique_keys(), 2);
