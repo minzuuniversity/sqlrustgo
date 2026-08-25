@@ -14,12 +14,10 @@ pub fn rollback_to_json(data_dir: &Path, table: &str) -> SqlResult<()> {
     }
     let json = data_dir.join(format!("{}.json", table));
     std::fs::rename(&bak, &json).map_err(|e| SqlError::ExecutionError(e.to_string()))?;
-    // Remove BIN files
-    for ext in &["root.bin"] {
-        let p = data_dir.join(format!("{}.{}", table, ext));
-        if p.exists() {
-            std::fs::remove_file(&p).map_err(|e| SqlError::ExecutionError(e.to_string()))?;
-        }
+    // Remove root.bin (single-element list kept for future extension)
+    let p = data_dir.join(format!("{}.root.bin", table));
+    if p.exists() {
+        std::fs::remove_file(&p).map_err(|e| SqlError::ExecutionError(e.to_string()))?;
     }
     // Remove segment files
     if let Ok(entries) = std::fs::read_dir(data_dir) {

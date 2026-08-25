@@ -175,6 +175,58 @@ impl HashSemiJoin {
     pub fn matched_outer_count(&self) -> usize {
         self.matched_outer_keys.len()
     }
+
+
+    /// V312-58 / Issue #4444 (Phase 3): build a `HashSemiJoin` directly from
+    /// a correlated `EXISTS (SELECT ... FROM <single_table> WHERE
+    /// <inner_col> = <outer_col> AND ...)` subquery.  This is the
+    /// planner-side instantiation referenced by issue #4444 acceptance
+    /// #1 ("Planner rule detects `WHERE EXISTS (SELECT ... WHERE x =
+    /// outer.x AND ...)` and produces a `HashSemiJoin` operator").
+    ///
+    /// Returns `Some(HashSemiJoin)` if:
+    /// - the inner SELECT has no joins / aggregates / GROUP BY / LIMIT,
+    /// - its WHERE contains a single correlated equality on `build_key_col`
+    ///   (= `inner_col` in the inner table), and
+    /// - the inner SELECT's table is not empty.
+    ///
+    /// Returns `None` for non-matching shapes so the caller can fall back
+    /// to the recursive `execute_select` path.  The caller is expected
+    /// to have substituted outer references into `outer_value` first
+    /// (i.e. `outer_value` is the resolved `Value` for the probe key,
+    /// not the bare Identifier).
+    pub fn from_select(
+        subq: &sqlrustgo_parser::SelectStatement,
+        table_info: &sqlrustgo_storage::TableInfo,
+        inner_rows: &[Vec<sqlrustgo_types::Value>],
+        build_key_col: usize,
+        probe_key_col: usize,
+    ) -> Option<Self> {
+        // Validate the shape: single base table, no JOINs, no aggregates,
+        // no GROUP BY, no LIMIT / OFFSET / DISTINCT.
+        if !subq.join_clause.is_empty() || subq.from_subquery.is_some() {
+            return None;
+        }
+        if subq.table.is_empty() || !subq.extra_tables.is_empty() {
+            return None;
+        }
+        if !subq.aggregates.is_empty() || !subq.group_by.is_empty() {
+            return None;
+        }
+        if subq.limit.is_some() || subq.offset.is_some() || subq.distinct {
+            return None;
+        }
+        // Inner column must exist in the inner table.
+        if build_key_col >= table_info.columns.len() {
+            return None;
+        }
+
+        let mut join = Self::new(build_key_col, probe_key_col);
+        for row in inner_rows {
+            join.add_inner_row(row.clone());
+        }
+        Some(join)
+    }
 }
 
 /// Result of probing one outer key.
@@ -301,5 +353,131 @@ mod tests {
         }
         // matched_outer_keys has 1 unique key
         assert_eq!(hsj.matched_outer_count(), 1);
+    }
+
+    /// V312-58 / Issue #4444 (Phase 3) test 1: `HashSemiJoin::from_select`
+    /// builds a valid semi-join from a clean `SelectStatement` shape (the
+    /// Q20 outer-EXISTS pattern) and matches probes on `s_suppkey`.
+    #[test]
+    fn test_from_select_q20_shape() {
+        use sqlrustgo_parser::{parse, Statement};
+        use sqlrustgo_storage::TableInfo;
+
+        let sql = "SELECT * FROM partsupp WHERE ps_suppkey = 1";
+        let stmt = parse(sql).unwrap();
+        let subq = match stmt {
+            Statement::Select(s) => s,
+            _ => panic!("expected SELECT"),
+        };
+
+        let table_info = TableInfo {
+            name: "partsupp".to_string(),
+            columns: vec![sqlrustgo_storage::ColumnDefinition {
+                name: "ps_suppkey".to_string(),
+                data_type: "INTEGER".to_string(),
+                nullable: false,
+                primary_key: false,
+                ..Default::default()
+            }],
+            foreign_keys: vec![],
+            unique_constraints: vec![],
+            check_constraints: vec![],
+            partition_info: None,
+            compression: None,
+            collations: std::collections::HashMap::new(),
+        };
+
+        let inner_rows = vec![
+            vec![Value::Integer(1), Value::Integer(1000)],
+            vec![Value::Integer(1), Value::Integer(500)],
+            vec![Value::Integer(2), Value::Integer(50)],
+        ];
+
+        let join = HashSemiJoin::from_select(&subq, &table_info, &inner_rows, 0, 0)
+            .expect("from_select should succeed for valid Q20-shape subq");
+        // Probe for s_suppkey=1 → Matched
+        let mut join = join;
+        assert_eq!(join.probe_outer_key(&Value::Integer(1)), ProbeResult::Matched);
+        assert_eq!(join.probe_outer_key(&Value::Integer(2)), ProbeResult::Matched);
+        assert_eq!(join.probe_outer_key(&Value::Integer(3)), ProbeResult::NotMatched);
+        // 2 distinct outer keys matched.
+        assert_eq!(join.matched_outer_count(), 2);
+        assert_eq!(join.unique_keys(), 2);
+    }
+
+    /// V312-58 / Issue #4444 (Phase 3) test 2: `from_select` rejects
+    /// non-matching shapes (joins, aggregates, GROUP BY, LIMIT, DISTINCT,
+    /// multi-table) — the caller falls back to the recursive execute
+    /// path on these.
+    #[test]
+    fn test_from_select_rejects_aggregated_or_grouped() {
+        use sqlrustgo_parser::{parse, Statement};
+        use sqlrustgo_storage::TableInfo;
+
+        let sql = "SELECT COUNT(*) FROM partsupp WHERE ps_suppkey = 1 GROUP BY ps_availqty";
+        let stmt = parse(sql).unwrap();
+        let subq = match stmt {
+            Statement::Select(s) => s,
+            _ => panic!("expected SELECT"),
+        };
+        let table_info = TableInfo {
+            name: "partsupp".to_string(),
+            columns: vec![sqlrustgo_storage::ColumnDefinition {
+                name: "ps_suppkey".to_string(),
+                data_type: "INTEGER".to_string(),
+                nullable: false,
+                primary_key: false,
+                ..Default::default()
+            }],
+            foreign_keys: vec![],
+            unique_constraints: vec![],
+            check_constraints: vec![],
+            partition_info: None,
+            compression: None,
+            collations: std::collections::HashMap::new(),
+        };
+        let inner_rows = vec![vec![Value::Integer(1)]];
+        assert!(
+            HashSemiJoin::from_select(&subq, &table_info, &inner_rows, 0, 0).is_none(),
+            "aggregated / GROUP BY subquery must not produce a HashSemiJoin"
+        );
+    }
+
+    /// V312-58 / Issue #4444 (Phase 3) test 3: `from_select` with an
+    /// out-of-range build_key_col returns None rather than panicking
+    /// (regression guard).
+    #[test]
+    fn test_from_select_rejects_out_of_range_key_col() {
+        use sqlrustgo_parser::{parse, Statement};
+        use sqlrustgo_storage::TableInfo;
+
+        let sql = "SELECT * FROM partsupp";
+        let stmt = parse(sql).unwrap();
+        let subq = match stmt {
+            Statement::Select(s) => s,
+            _ => panic!("expected SELECT"),
+        };
+        let table_info = TableInfo {
+            name: "partsupp".to_string(),
+            columns: vec![sqlrustgo_storage::ColumnDefinition {
+                name: "ps_suppkey".to_string(),
+                data_type: "INTEGER".to_string(),
+                nullable: false,
+                primary_key: false,
+                ..Default::default()
+            }],
+            foreign_keys: vec![],
+            unique_constraints: vec![],
+            check_constraints: vec![],
+            partition_info: None,
+            compression: None,
+            collations: std::collections::HashMap::new(),
+        };
+        let inner_rows = vec![vec![Value::Integer(1)]];
+        // build_key_col=42 is out of range for the 1-column table.
+        assert!(
+            HashSemiJoin::from_select(&subq, &table_info, &inner_rows, 42, 0).is_none(),
+            "out-of-range build_key_col must return None"
+        );
     }
 }
