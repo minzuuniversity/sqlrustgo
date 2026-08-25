@@ -118,7 +118,7 @@ impl SegmentWriter {
         }
         let file = File::create(&path)?;
         let mut writer = BufWriter::with_capacity(buf_capacity, file); // V313.3 D: was hard-coded 1<<20
-                                                                  // Write placeholder header (row_count=0; will not rewrite on seal in this task)
+                                                                       // Write placeholder header (row_count=0; will not rewrite on seal in this task)
         let _ = encode_segment_header(&SegmentHeader {
             magic: *SEGMENT_MAGIC,
             version: SEGMENT_VERSION,
