@@ -1219,6 +1219,10 @@ name = "q4_residual_filter_test"
 path = "tests/integration/tpch/q4_residual_filter_test.rs"
 
 [[test]]
+name = "q4_sf1_real_perf_test"
+path = "tests/integration/tpch/q4_sf1_real_perf_test.rs"
+
+[[test]]
 name = "q4_residual_filter_scale_test"
 path = "tests/integration/tpch/q4_residual_filter_scale_test.rs"
 
