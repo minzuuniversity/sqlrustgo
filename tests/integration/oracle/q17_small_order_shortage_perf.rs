@@ -113,7 +113,8 @@ fn q17_small_order_shortage_sf1() {
         elapsed <= TIMEOUT_BUDGET,
         "Q17 elapsed {:?} exceeds TIMEOUT_BUDGET {:?} — correlated subquery \
          not decorrelated",
-        elapsed, TIMEOUT_BUDGET
+        elapsed,
+        TIMEOUT_BUDGET
     );
 
     // 2) Row count parity — SQLite oracle returns 1 row.
@@ -134,6 +135,8 @@ fn q17_small_order_shortage_sf1() {
     assert!(
         diff <= FLOAT_TOL,
         "Q17 value must match SQLite oracle (expected {}, got {}, diff {})",
-        EXPECTED_VALUE, got, diff
+        EXPECTED_VALUE,
+        got,
+        diff
     );
 }
