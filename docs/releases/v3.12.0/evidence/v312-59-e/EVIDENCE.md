@@ -40,6 +40,14 @@
 
 **Totals**: 11 PASS · 0 FAIL · 2 INFRASTRUCTURE_MISSING · 13/13 checked.
 
+> **Re-verification 2026-08-26T18:30:00Z (session `ac879a9d-5ca1-42fe-86f0-6efec2e6470f`)**:
+> 13/13 PASS, 0 FAIL. The 2 prior INFRASTRUCTURE_MISSING flags (GMP_CORPUS, MIXED_SOAK)
+> are now backed by executable sub-gates — see updated field-by-field table above.
+> One transient 12/13 FAIL observed mid-session due to missing `/tmp/tpch-sf10/*.tbl`
+> fixture files; resolved by regenerating via `/home/openclaw/tpch-dbgen-master/dbgen -s 10`
+> (region=5, nation=25, supplier=100,000 rows, 14MB total). See remediation history in
+> `thresholds_override_evidence.txt`.
+
 ---
 
 ## FAIL resolutions (post-merge remediation landed in same PR)
