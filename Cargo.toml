@@ -1213,6 +1213,10 @@ name = "q4_residual_filter_test"
 path = "tests/integration/tpch/q4_residual_filter_test.rs"
 
 [[test]]
+name = "q4_residual_filter_scale_test"
+path = "tests/integration/tpch/q4_residual_filter_scale_test.rs"
+
+[[test]]
 name = "cluster_index_main_path_test"
 path = "tests/integration/storage/cluster_index_main_path_test.rs"
 
