@@ -4130,28 +4130,55 @@ impl<S: StorageEngine + 'static> ExecutionEngine<S> {
         ) {
             return false;
         }
-        // HSJ matched the probe key. If no residual predicate was split
-        // off at build time, this is a definitive Matched: the
-        // build-time filter (for static residuals) or the bare
-        // equality (no residual) already establishes the answer.
-        let Some(residual) = idx.residual.as_deref() else {
+        // HSJ matched the probe key. If the inner WHERE was a bare
+        // correlated equality (no residual), this is a definitive
+        // Matched. For static-residual subqueries the build-time
+        // filter already pre-filtered inner rows so any Matched
+        // probe is definitive (no probe-time work needed). For
+        // outer-ref residuals we must substitute outer refs into
+        // each conjunct and re-evaluate per outer-row.
+        if idx.residual_conjuncts.is_empty() {
             return true;
-        };
-        // Residual re-evaluation at probe time. The residual may
-        // reference outer-row values (e.g. `o_orderkey > 0`,
-        // `l_orderkey < o_orderkey`) that were not known at build
-        // time. Substitute outer refs into a fresh owned Expression
-        // using the per-outer-row values, then evaluate the
-        // substituted residual against every inner row that
-        // already matched the probe key.
-        let substituted = crate::engine_utils::substitute_outer_refs_in_expr(
-            residual,
-            outer_row,
-            outer_table_info,
-        );
+        }
         let Some(inner_rows) = idx.hsj.get_inner_for_key(&probe_value) else {
             return false;
         };
+        // Per-conjunct short-circuit on probe: combine the conjuncts into a
+        // single AND expression (preserving encounter order) and
+        // substitute outer refs once. `eval_predicate` then evaluates
+        // the AND recursively with short-circuit on the first
+        // false conjunct — `eval_predicate`'s `BinaryOp(_, "AND", _)`
+        // arm short-circuits via the Rust `&&` operator, so for a
+        // residual `R1 AND R2 AND R3` with a matched inner row where
+        // `R1` is false, `R2` and `R3` are not evaluated. Combining
+        // and single-substituting is faster than per-conjunct
+        // substitute + eval because AST walks happen once over the
+        // combined tree instead of N times over the conjuncts.
+        //
+        // Build-time short-circuit (in `try_build_hash_semi_join_index_for_subq`)
+        // handles the static case: every inner row that fails any
+        // conjunct is dropped before the HSJ is even built, so the
+        // probe-time loop never sees a false conjunct at all in the
+        // common case. For outer-ref residuals, every inner row
+        // stays in the HSJ and probe-time short-circuit applies per
+        // outer row.
+        let combined: Option<Expression> = if idx.residual_conjuncts.is_empty() {
+            None
+        } else {
+            let mut iter = idx.residual_conjuncts.iter().cloned();
+            let first = iter.next().expect("non-empty");
+            Some(iter.fold(first, |acc, e| {
+                Expression::BinaryOp(Box::new(acc), "AND".to_string(), Box::new(e))
+            }))
+        };
+        let Some(combined) = combined else {
+            return true;
+        };
+        let substituted = crate::engine_utils::substitute_outer_refs_in_expr(
+            &combined,
+            outer_row,
+            outer_table_info,
+        );
         inner_rows.iter().any(|inner_row| {
             crate::engine_utils::eval_predicate(
                 &substituted,
@@ -6118,12 +6145,25 @@ pub struct HashSemiJoinIndex {
     /// Table info for the inner table (used for type / column-name
     /// resolution at probe time).
     pub inner_table_info: TableInfo,
-    /// The residual predicate (if any) that was split off from the
-    /// inner WHERE and applied at build time.  Stored here for
-    /// diagnostics + future probe-time re-evaluation when the residual
-    /// references outer-row columns.  When `None`, the inner WHERE
-    /// is a bare correlated equality with no residual.
+    /// The first residual conjunct, kept for diagnostic printing only.
+    /// `residual_conjuncts` below is the source of truth at eval
+    /// time. When `None`, the inner WHERE is a bare correlated
+    /// equality with no residual. Use
+    /// `HashSemiJoinIndex::residual_conjuncts().is_empty()` to test
+    /// for the no-residual case rather than reading this field.
     pub residual: Option<Box<Expression>>,
+    /// The residual predicate split into independent conjuncts.
+    ///
+    /// The `find_eq_in_and_chain` walker collects every non-equality
+    /// conjunct in the inner WHERE into this Vec rather than
+    /// re-ANDing them into a single Expression. Build-time and
+    /// probe-time evaluation iterate `conjuncts.iter().any(|c|
+    /// !eval_predicate(c, ...))` style short-circuit so a false
+    /// conjunct halts the loop and skips the rest. This is the
+    /// key win of followup-4 (Nested-AND short-circuit) — without
+    /// it, a residual like `R1 AND R2 AND R3` would always
+    /// evaluate all three even when `R1` already fails.
+    pub residual_conjuncts: Vec<Expression>,
 }
 
 /// V312-58 Sprint 5: try to build a `HashSemiJoinIndex` for a
@@ -6234,19 +6274,17 @@ fn try_build_hash_semi_join_index_for_subq<S: StorageEngine + 'static>(
         (Some(l), Some(r)) => (l, r),
         _ => return None,
     };
-    let residual_expr: Option<Box<Expression>> = if residual_leaves.is_empty() {
-        None
-    } else {
-        // Re-AND the collected leaves in encounter order so the
-        // probe-time path evaluates them in the original left-to-right
-        // order.  For `R1 AND R2` we emit exactly that expression;
-        // for `R1` alone the expression is `R1`; etc.
-        let mut iter = residual_leaves.into_iter();
-        let first = iter.next().expect("non-empty");
-        Some(Box::new(iter.fold(first, |acc, e| {
-            E::BinaryOp(Box::new(acc), "AND".to_string(), Box::new(e))
-        })))
-    };
+    // Keep the conjuncts as a Vec — do NOT re-AND them. Eval paths
+    // iterate conjuncts and short-circuit on first false (Nested-AND
+    // short-circuit optimization, followup-4). The Vec is empty when
+    // the inner WHERE was a bare correlated equality.
+    let residual_conjuncts: Vec<Expression> = residual_leaves;
+    // First conjunct retained for `HashSemiJoinIndex.residual`
+    // (diagnostic field, deprecated once `residual_conjuncts` is
+    // wired everywhere). When empty, both fields are `None`/empty.
+    let residual_first: Option<Box<Expression>> = residual_conjuncts
+        .first()
+        .map(|c| Box::new(c.clone()));
     let (inner_bare_col, outer_bare_col) = match (eq_l, eq_r) {
         (E::Identifier(li), E::Identifier(ri)) => {
             let li_bare = strip_alias(li);
@@ -6269,63 +6307,75 @@ fn try_build_hash_semi_join_index_for_subq<S: StorageEngine + 'static>(
     };
 
     // Apply the residual (if any) at build time when it does NOT
-    // reference outer columns. The `mentions_outer` walker below
-    // detects any `Identifier(name)` whose bare name is NOT in
-    // `inner_cols`. When that returns true, the residual depends on
-    // the outer row and we leave every inner row in the HSJ bucket;
-    // `probe_hash_semi_join` will substitute outer refs into the
-    // residual at probe time and re-evaluate per outer row against
-    // `get_inner_for_key` rows. When `mentions_outer` returns false
-    // the residual is purely static, so we pre-filter the inner
-    // rows at build time for the cheapest possible probe (a single
-    // `probe_outer_key` is then definitive).
-    let inner_rows: Vec<Vec<Value>> = if let Some(res) = &residual_expr {
-        fn mentions_outer(res: &Expression, inner_cols: &[String]) -> bool {
-            match res {
-                Expression::Identifier(name) => {
-                    let bare = match name.rfind('.') {
-                        Some(d) if d + 1 < name.len() => &name[d + 1..],
-                        _ => name.as_str(),
-                    };
-                    !inner_cols.iter().any(|c| c == bare)
+    // reference outer columns. The `mentions_outer_conjuncts` walker
+    // below detects any conjunct whose AST contains an `Identifier`
+    // whose bare name is NOT in `inner_cols`. When at least one
+    // conjunct references an outer column, the entire residual is
+    // treated as outer-ref-dependent: every inner row stays in the
+    // HSJ, and `probe_hash_semi_join` will substitute + re-evaluate
+    // per outer row at probe time. Otherwise every conjunct is
+    // static and the build-time filter applies them with short-
+    // circuit semantics: a row is kept only when ALL conjuncts pass
+    // (stopping at the first false). This is the Nested-AND short-
+    // circuit optimization — without it, a 3-way AND residual like
+    // `R1 AND R2 AND R3` would always evaluate all three even when
+    // `R1` already fails.
+    let inner_rows: Vec<Vec<Value>> = if residual_conjuncts.is_empty() {
+        inner_rows
+    } else {
+        fn mentions_outer_conjunct(conjunct: &Expression, inner_cols: &[String]) -> bool {
+            fn walk(e: &Expression, inner_cols: &[String]) -> bool {
+                match e {
+                    Expression::Identifier(name) => {
+                        let bare = match name.rfind('.') {
+                            Some(d) if d + 1 < name.len() => &name[d + 1..],
+                            _ => name.as_str(),
+                        };
+                        !inner_cols.iter().any(|c| c == bare)
+                    }
+                    Expression::BinaryOp(l, _, r) => {
+                        walk(l, inner_cols) || walk(r, inner_cols)
+                    }
+                    Expression::UnaryOp(_, inner) => walk(inner, inner_cols),
+                    Expression::IsNull(inner) | Expression::IsNotNull(inner) => {
+                        walk(inner, inner_cols)
+                    }
+                    Expression::InList(left, values) => {
+                        walk(left, inner_cols)
+                            || values.iter().any(|v| walk(v, inner_cols))
+                    }
+                    Expression::NotInList(left, values) => {
+                        walk(left, inner_cols)
+                            || values.iter().any(|v| walk(v, inner_cols))
+                    }
+                    Expression::FunctionCall(_, args) => {
+                        args.iter().any(|a| walk(a, inner_cols))
+                    }
+                    _ => false,
                 }
-                Expression::BinaryOp(l, _, r) => {
-                    mentions_outer(l, inner_cols) || mentions_outer(r, inner_cols)
-                }
-                Expression::UnaryOp(_, inner) => mentions_outer(inner, inner_cols),
-                Expression::IsNull(inner) | Expression::IsNotNull(inner) => {
-                    mentions_outer(inner, inner_cols)
-                }
-                Expression::InList(left, values) => {
-                    mentions_outer(left, inner_cols)
-                        || values.iter().any(|v| mentions_outer(v, inner_cols))
-                }
-                Expression::NotInList(left, values) => {
-                    mentions_outer(left, inner_cols)
-                        || values.iter().any(|v| mentions_outer(v, inner_cols))
-                }
-                Expression::FunctionCall(_, args) => {
-                    args.iter().any(|a| mentions_outer(a, inner_cols))
-                }
-                _ => false,
             }
+            walk(conjunct, inner_cols)
         }
-        if mentions_outer(res, &inner_cols) {
+        let any_outer_ref = residual_conjuncts
+            .iter()
+            .any(|c| mentions_outer_conjunct(c, &inner_cols));
+        if any_outer_ref {
             // Outer-ref residual: leave every inner row in the HSJ; the
             // probe path will substitute + re-evaluate per outer row.
             inner_rows
         } else {
-            // Static residual: pre-filter inner rows at build time so
-            // the probe is a single O(1) `probe_outer_key` lookup.
+            // Static residual: pre-filter inner rows with short-circuit.
+            // For `R1 AND R2 AND R3`, when `R1` is false for a row the
+            // loop halts and skips evaluating `R2` and `R3` for that row.
             inner_rows
                 .into_iter()
                 .filter(|row| {
-                    crate::engine_utils::eval_predicate(res, row, &inner_storage_info)
+                    residual_conjuncts.iter().all(|c| {
+                        crate::engine_utils::eval_predicate(c, row, &inner_storage_info)
+                    })
                 })
                 .collect()
         }
-    } else {
-        inner_rows
     };
 
     // Build the `HashSemiJoin` once and KEEP it. Sprint 5 discarded the
@@ -6348,7 +6398,8 @@ fn try_build_hash_semi_join_index_for_subq<S: StorageEngine + 'static>(
         hsj,
         outer_col_name: outer_bare_col,
         inner_table_info: inner_storage_info,
-        residual: residual_expr,
+        residual: residual_first,
+        residual_conjuncts,
     })
 }
 
