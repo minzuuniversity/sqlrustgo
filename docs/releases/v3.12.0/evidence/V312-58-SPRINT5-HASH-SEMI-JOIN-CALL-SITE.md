@@ -148,6 +148,71 @@ by this refactor. The followup therefore does **not** claim a Q4 SF=1
 wall-time win — see "Followups" for the residual-filter work that
 would extend `HashSemiJoinIndex` to Q4-shaped queries.
 
+## Resolved: residual filter re-evaluation (followup-2 commit)
+
+Followup-2 on the same V312-58 line addresses the residual-filter
+limitation called out above. The `try_build_hash_semi_join_index_for_subq`
+shape gate now accepts `Equality AND Residual` shapes where the
+residual does **not** reference any outer-row column, and the residual
+is applied to the inner rows at build time via
+`crate::engine_utils::eval_predicate(residual, &row, &inner_table_info)`.
+The pre-filtered inner rows are then fed into `HashSemiJoin::from_select`,
+so per-outer-row probes stay O(1) — there is no probe-time work for
+the residual.
+
+### Changes
+
+| File | Δ | Purpose |
+|------|---|---------|
+| `src/engine_select.rs` (`HashSemiJoinIndex` struct) | +18 lines | Add `residual: Option<Box<Expression>>` field; doc comment updated to describe the build-time application contract. |
+| `src/engine_select.rs` (`try_build_hash_semi_join_index_for_subq`) | +60 lines | Split WHERE into `(equality, residual)` for `Equality AND Residual` shape; `mentions_outer` AST walk conservatively rejects residuals that reference outer-row columns (returns `None` so the caller falls through to `SubqueryIndex` / `pre_eval_exists_subquery_fast`); apply `eval_predicate` to filter inner rows before the HSJ sees them. |
+| `tests/integration/tpch/q4_residual_filter_test.rs` | new (180 lines) | 3 regression tests: canonical TPC-H Q4 (`l_orderkey = o_orderkey AND l_commitdate < l_receiptdate`) exercises the residual-bearing HSJ call site; empty inner table; outer-ref-bearing residual correctly rejected by the shape gate. |
+| `Cargo.toml` | +3 lines | Register the new `q4_residual_filter_test` integration test. |
+
+### Scope limitations
+
+- **Build-time application only**. A residual that references outer-row
+  columns (`mentions_outer(residual) == true`) makes the shape gate
+  return `None`; the query falls back to the existing SubqueryIndex /
+  `pre_eval_exists_subquery_fast` path. Probe-time re-evaluation for
+  outer-ref-bearing residuals is a separate, larger change tracked as
+  a followup.
+- **AND-chain only**. The shape gate parses `Equality AND Residual` (and
+  the symmetric `Residual AND Equality`). Nested ANDs
+  (`Equality AND (Residual1 AND Residual2)`) are not parsed — the
+  second-level AND is treated as the residual expression and
+  `mentions_outer` walks it recursively, which still rejects outer
+  refs correctly, but nested-residual optimization (independent
+  application of each conjunct) is a followup.
+- **`OR`-chains, `NOT`, `LIKE`, `IN`, function calls** in the residual
+  are accepted when `eval_predicate` can handle them (it does for all
+  of these via `crate::expr_utils::evaluate_expression`).
+
+### Verification (sequential, `--test-threads=1`)
+
+- `cargo test --test q4_residual_filter_test -- --test-threads=1`:
+  3 / 3 green.
+  - `q4_real_residual_filter_uses_hash_semi_join_call_site` — canonical Q4
+    shape: HSJ built (builds=1), probe reached (probe_hits>0), row count
+    correct.
+  - `q4_real_residual_filter_empty_inner_table` — empty lineitem:
+    HSJ still built (builds=1) but probe returns NotMatched (probe_hits>0).
+  - `q4_residual_with_outer_ref_falls_back_from_hsj` — `o_orderkey = o_orderkey`
+    tautology triggers `mentions_outer` rejection: builds=0.
+- `cargo test --test issue_4444_hash_semi_join_call_site --test issue_4444_nested_exists_regression --test issue_4374_regression --test issue_4443_materialization_regression --test q4_hash_semi_join_test -- --test-threads=1`:
+  13 / 13 green (no regression in adjacent V312-58 / Q4 / HSJ pipelines).
+- `cargo build --lib` — green.
+- `cargo clippy --lib` — 0 new warnings on touched symbols.
+
+### Result
+
+Canonical TPC-H Q4 SF=1 (with `l_commitdate < l_receiptdate` residual)
+now exercises the `HashSemiJoinIndex` call site instead of falling
+through to `SubqueryIndex` / `pre_eval_exists_subquery_fast`. The
+`probe_hash_semi_join` path stays O(1) per outer row (residual already
+filtered at build time), so the same perf characteristics as the
+single-equality Q4-mini path apply.
+
 ## Pre-fix: Sprint 4 Leftover Cleanup
 
 `develop/v3.12.0` did not compile as of `ae572990b`. The Sprint 4
@@ -179,13 +244,19 @@ introduced by this PR.
 
 ## Followups
 
-- **Residual filter re-evaluation after the probe** — extend
-  `HashSemiJoinIndex` to recognise an additional `WHERE
-  l_commitdate < l_receiptdate`-style predicate on the inner side
-  and re-evaluate it against `get_inner_for_key(probe_key)` rows.
-  This unlocks TPC-H Q4 SF=1 perf gains because the canonical Q4
-  carries this residual; the current `from_select` shape gate
-  returns `None` for it and Q4 falls through to `SubqueryIndex`.
+- **Probe-time residual re-evaluation for outer-ref residuals** —
+  the build-time filter handles purely static residuals (canonical
+  Q4) but bails out on residuals that reference outer-row columns
+  (rare but real). Extend `probe_hash_semi_join` to call
+  `substitute_outer_refs_in_expr(&idx.residual, ...)` per outer row
+  and re-evaluate against `get_inner_for_key(probe_key)` rows.
+  This would close the remaining SubqueryIndex fallback cases for
+  Q4-style shapes.
+- **Nested-AND residual optimization** — the current shape gate
+  accepts only one residual conjunct (the second-level AND after
+  the equality is taken as-is). Splitting nested ANDs into
+  independent conjuncts would let `eval_predicate` short-circuit on
+  the first false and could be more efficient on complex queries.
 - Composite-key `try_scalar_agg_index_lookup` extension to multi-
   column build → Q20 L0/L5 full SUM no longer relies on the
   recursive `execute_select` path.

@@ -1209,6 +1209,10 @@ name = "q4_hash_semi_join_test"
 path = "tests/integration/tpch/q4_hash_semi_join_test.rs"
 
 [[test]]
+name = "q4_residual_filter_test"
+path = "tests/integration/tpch/q4_residual_filter_test.rs"
+
+[[test]]
 name = "cluster_index_main_path_test"
 path = "tests/integration/storage/cluster_index_main_path_test.rs"
 
