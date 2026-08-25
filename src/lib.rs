@@ -48,7 +48,10 @@ pub use execution_engine::{ExecutionEngine, MemoryExecutionEngine};
 // `tests/integration/oracle/diag_q17_sprint3_path.rs` to verify which
 // path TPC-H Q17 actually takes through the correlated-subquery pre-eval
 // pipeline. See comments at the call sites in `engine_select.rs`.
-pub use engine_select::{dump_v312_58_sprint3_diag, reset_v312_58_sprint3_diag};
+pub use engine_select::{
+    dump_v312_58_sprint3_diag, dump_v312_58_sprint5_diag, reset_v312_58_sprint3_diag,
+    reset_v312_58_sprint5_diag,
+};
 
 /// Initialize the database system
 pub fn init() {
