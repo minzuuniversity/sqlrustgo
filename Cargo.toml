@@ -970,6 +970,12 @@ path = "tests/integration/oracle/q17_small_order_shortage_perf.rs"
 name = "q17_sf1_diag"
 path = "tests/integration/oracle/q17_sf1_diag.rs"
 [[test]]
+name = "q17_sf1_watchdog"
+path = "tests/integration/oracle/q17_sf1_watchdog.rs"
+[[test]]
+name = "sf1_bulk_load_bench"
+path = "tests/integration/oracle/sf1_bulk_load_bench.rs"
+[[test]]
 name = "q20_potential_part_promotion_perf"
 path = "tests/integration/oracle/q20_potential_part_promotion_perf.rs"
 [[test]]
