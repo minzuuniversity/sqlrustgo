@@ -80,33 +80,73 @@ issue_4443_materialization_regression:
 Total: 9 / 9 passed.
 ```
 
-## Known Limitation (must be addressed in a follow-up Sprint)
+## Known Limitation (Sprint 5 PR)
 
-`probe_hash_semi_join` rebuilds a fresh `HashSemiJoin` per outer row.
-The reason: `pre_evaluate_correlated_exists` is `&self` (read-only
-context), while `HashSemiJoin::probe_outer_key` requires `&mut self`
-(the underlying `key_index`, `bloom`, and `matched_outer_keys`
-counters need to mutate per probe).
+The Sprint 5 PR shipped the call-site wiring but **rebuilds a fresh
+`HashSemiJoin` per outer row** because `pre_evaluate_correlated_exists`
+is `&self` while `HashSemiJoin::probe_outer_key` required `&mut self`.
+Functional and call-site correctness were both verified by the new
+tests, but the per-row rebuild was O(N_inner) per outer row — exactly
+the work the pre-built index was supposed to amortise. The Sprint 5
+PR intentionally did not claim TPC-H perf wins at SF=1.
 
-Functional and call-site correctness are both verified by the new
-tests, but the per-row rebuild is O(N_inner) per outer row — exactly
-the work the pre-built index was supposed to amortise. **This PR
-intentionally does not claim TPC-H perf wins at SF=1.**
+## Resolved: interior mutability refactor (followup commit)
 
-Recommended fixes (pick one, prefer the second):
+The followup commit on the same branch (`fix/v312-58-sprint5-hash-semi-join-call-site`)
+addresses the limitation via the option-2 approach recommended above:
+**interior mutability inside `HashSemiJoin`**.
 
-1. Wrap `HashSemiJoin` in `parking_lot::Mutex<HashSemiJoin>` inside
-   `HashSemiJoinIndex` and lock around the probe — minimal
-   refactor, costs a mutex on the probe fast path.
-2. Refactor `HashSemiJoin::probe_outer_key` to use interior
-   mutability (`AtomicU64` for the counters, `RwLock` for the
-   key_index). Cleanest, touches `crates/executor`, affects all
-   current HSJ callers.
+### Changes
 
-Either fix is a separate change. After it lands, `probe_hash_semi_join`
-becomes the O(1) per outer row the constructor was designed for and
-Q4's outer × inner loop collapses to outer × {O(1) probe + minor
-work}.
+| File | Δ | Purpose |
+|------|---|---------|
+| `crates/executor/src/join/hash_semi_join.rs` | +39 / -13 | `probe_count` / `bloom_short_circuits` → `AtomicU64`; `matched_outer_keys: HashSet<Value>` → `parking_lot::Mutex<HashSet<Value>>`; `probe_outer_key` signature `&mut self` → `&self` (lock only on the `Matched` path; counters use `Relaxed` ordering — they are diagnostic metrics, not control flow); `matched_outer_count` stays `&self`, locks to read `.len()`; unit tests updated to `.load(Ordering::Relaxed)`. |
+| `src/engine_select.rs` | +35 / -33 | `HashSemiJoinIndex.inner_rows: Vec<Vec<Value>>` → `HashSemiJoinIndex.hsj: HashSemiJoin` (the `from_select` instance is now kept, not discarded); `try_build_hash_semi_join_index_for_subq` retains the built instance; `probe_hash_semi_join` drops the per-row rebuild and now directly calls `idx.hsj.probe_outer_key(...)` (single-line probe). |
+
+### Why interior mutability (option 2) over `Mutex<HashSemiJoin>` (option 1)
+
+- **Zero lock on the `NotMatched` path** — the dominant case for an
+  outer row whose probe key is absent from the inner key_index.
+  `parking_lot::Mutex` wrapping the entire `HashSemiJoin` would lock
+  on every probe.
+- **Counter updates are wait-free** via `AtomicU64::fetch_add(Relaxed)`,
+  which is sufficient because the counters are diagnostic metrics, not
+  control-flow.
+- **HashSet write is rare** — only on the `Matched` path, where we
+  already paid the cost of the bucket lookup; the additional mutex
+  acquisition is in the noise relative to the HashSet allocation.
+
+### Result
+
+`probe_hash_semi_join` is now O(1) per outer row, O(N_inner) once at
+build time. No `&mut self` plumbing through
+`pre_evaluate_correlated_exists` is required; the index holds a
+long-lived `HashSemiJoin` instance and reuses it for every probe.
+
+### Verification
+
+- `cargo test --lib -p sqlrustgo-executor`: 699 / 699 passed
+  (8 / 8 in `join::hash_semi_join::tests` after the unit-test updates).
+- `cargo test --test issue_4444_hash_semi_join_call_site`: 2 / 2 green
+  (Q4-mini single-equality EXISTS, plus the no-matches variant —
+  call-site still reached, counter still advances).
+- `cargo test --test issue_4444_nested_exists_regression`: 2 / 2 green
+  (Q20 + Q4-shape unchanged).
+- `cargo test --test issue_4374_regression`: 2 / 2 green.
+- `cargo test --test issue_4443_materialization_regression`: 3 / 3 green.
+- `cargo clippy --lib` on the touched symbols: 0 new warnings.
+
+### Scope clarification
+
+TPC-H Q4 proper carries a residual `l_commitdate < l_receiptdate`
+predicate in the inner WHERE. The `HashSemiJoinIndex` constructor in
+`HashSemiJoin::from_select` only models the single-equality shape; the
+`try_build_hash_semi_join_index_for_subq` shape gate returns `None`
+for residual-bearing subqueries, so the canonical Q4 falls through to
+`SubqueryIndex` / `pre_eval_exists_subquery_fast` and is unaffected
+by this refactor. The followup therefore does **not** claim a Q4 SF=1
+wall-time win — see "Followups" for the residual-filter work that
+would extend `HashSemiJoinIndex` to Q4-shaped queries.
 
 ## Pre-fix: Sprint 4 Leftover Cleanup
 
@@ -139,9 +179,13 @@ introduced by this PR.
 
 ## Followups
 
-- `parking_lot::Mutex<HashSemiJoin>` in `HashSemiJoinIndex`
-  (or interior-mutability refactor in `HashSemiJoin`) → actual
-  TPC-H SF=1 perf gains for Q4-shape queries.
+- **Residual filter re-evaluation after the probe** — extend
+  `HashSemiJoinIndex` to recognise an additional `WHERE
+  l_commitdate < l_receiptdate`-style predicate on the inner side
+  and re-evaluate it against `get_inner_for_key(probe_key)` rows.
+  This unlocks TPC-H Q4 SF=1 perf gains because the canonical Q4
+  carries this residual; the current `from_select` shape gate
+  returns `None` for it and Q4 falls through to `SubqueryIndex`.
 - Composite-key `try_scalar_agg_index_lookup` extension to multi-
   column build → Q20 L0/L5 full SUM no longer relies on the
   recursive `execute_select` path.
