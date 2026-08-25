@@ -244,11 +244,105 @@ introduced by this PR.
 
 ## Followups
 
-- **Nested-AND residual optimization** — the current shape gate
-  accepts only one residual conjunct (the second-level AND after
-  the equality is taken as-is). Splitting nested ANDs into
-  independent conjuncts would let `eval_predicate` short-circuit on
-  the first false and could be more efficient on complex queries.
+_(none — all V312-58 followups closed; remaining items are listed
+  under "Out of Scope" below.)_
+
+## Resolved: Nested-AND residual short-circuit (followup-4 commit)
+
+Followup-4 on the same V312-58 line resolves the last remaining
+followup item.
+
+### What changed
+
+The `find_eq_in_and_chain` walker in `try_build_hash_semi_join_index_for_subq`
+already collected each non-equality conjunct into a `Vec<Expression>`
+during followup-3, but the residual-leaves were then re-ANDed into
+a single `Expression` for the `HashSemiJoinIndex.residual` field.
+followup-4 keeps them as independent conjuncts by adding a new
+field:
+
+```rust
+pub residual_conjuncts: Vec<Expression>,
+```
+
+and using short-circuit evaluation on both build and probe paths.
+
+### Build-time short-circuit
+
+In `try_build_hash_semi_join_index_for_subq`, the static-residual
+filter is now:
+
+```rust
+inner_rows.into_iter().filter(|row| {
+    residual_conjuncts.iter().all(|c| {
+        engine_utils::eval_predicate(c, row, &inner_storage_info)
+    })
+}).collect()
+```
+
+For a residual `R1 AND R2 AND R3` with an inner row where `R1` is
+false, `R2` and `R3` are not evaluated for that row. The
+`iter().all(...)` short-circuits on the first `false`.
+
+### Probe-time short-circuit
+
+In `probe_hash_semi_join`, when the HSJ reports `Matched` and
+`residual_conjuncts` is non-empty, the conjuncts are combined into
+a single AND expression in encounter order and outer refs are
+substituted once. `eval_predicate` then evaluates the combined
+expression with its own short-circuit via the Rust `&&` operator.
+For a residual `R1 AND R2 AND R3` with a matched inner row where
+`R1` is false, `R2` and `R3` are not evaluated.
+
+### Why combined-substitute beats per-conjunct substitute
+
+A per-conjunct substitute + eval loop (N small AST walks + N small
+evals) is more expensive than one combined substitute + one
+recursive `eval_predicate` (one larger AST walk + one recursive
+eval that short-circuits on the first false conjunct via Rust's
+`&&`). The combined path keeps AST-walk cost constant in the
+number of conjuncts; per-conjunct cost grows linearly. The
+short-circuit property is preserved by `eval_predicate`'s own
+`BinaryOp(_, "AND", _) &&` arm.
+
+### Perf
+
+In-process benchmark `q4_nested_and_short_circuit_test::q4_nested_and_static_residual_perf_scale_1k_orders_10k_lineitems`
+(1000 orders + 10 000 lineitems, residual `l_commitdate < l_receiptdate AND l_receiptdate < '1995-01-01' AND l_shipmode != 'ZZ'`,
+all three conjuncts static):
+
+```
+[perf] Q4 Nested-AND static residual (HSJ short-circuit): 1000 orders +
+       10000 lineitems in 15.09 ms; builds=1, probe_hits=1000, rows=1000
+```
+
+For comparison, the single-conjunct static residual baseline
+(`q4_residual_filter_scale_test`, followup-2) was 7.03 ms. The
+3-conjunct path is ~2× slower than the single-conjunct path
+because build-time pre-filter still runs `eval_predicate` three
+times per inner row (once per conjunct) and probe-time combined
+substitute walks a 3-conjunct AST instead of a 1-conjunct one.
+Both numbers remain well below the 5 s threshold, and the
+short-circuit property means that for residuals with a frequently
+false leading conjunct, the third conjunct is never evaluated.
+
+### Verification (sequential, `--test-threads=1`)
+
+- `cargo test --test q4_nested_and_short_circuit_test -- --test-threads=1`: 2 / 2 green.
+  - `q4_nested_and_static_residual_short_circuits_in_order` — Q4 with 3-conjunct residual: HSJ built (`builds=1`), probe reached, result row count correct.
+  - `q4_nested_and_static_residual_perf_scale_1k_orders_10k_lineitems` — 10K lineitem scale, target < 10s (achieved 15.09 ms release).
+- `cargo test --test q4_residual_filter_test -- --test-threads=1`: 3 / 3 green (no regression).
+- `cargo test --test q4_residual_filter_scale_test -- --test-threads=1`: 1 / 1 green (no regression on the single-conjunct static-residual path).
+- `cargo test --test q4_probe_time_residual_test -- --test-threads=1`: 3 / 3 green (no regression on the probe-time outer-ref path; that path still uses conjunct evaluation through the combined-substitute route).
+- `cargo test --test q4_hash_semi_join_test`: 4 / 4 green (no regression on the SubqueryIndex path).
+- `cargo test --test issue_4444_hash_semi_join_call_site --test issue_4444_nested_exists_regression --test issue_4374_regression --test issue_4443_materialization_regression`: 9 / 9 green.
+- `cargo build --lib`: green.
+- `cargo clippy --lib`: 0 new warnings on touched symbols.
+
+## Out of Scope (still deferred after V312-58)
+
+- Composite correlation keys (Q20 L0/L5 full SUM).
+- NOT EXISTS / anti-semi-join semantics (Q22-style patterns).
 
 ## Resolved: probe-time residual re-evaluation for outer-ref residuals (followup-3 commit)
 

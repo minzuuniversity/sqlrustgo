@@ -1227,6 +1227,10 @@ name = "q4_probe_time_residual_test"
 path = "tests/integration/tpch/q4_probe_time_residual_test.rs"
 
 [[test]]
+name = "q4_nested_and_short_circuit_test"
+path = "tests/integration/tpch/q4_nested_and_short_circuit_test.rs"
+
+[[test]]
 name = "cluster_index_main_path_test"
 path = "tests/integration/storage/cluster_index_main_path_test.rs"
 
