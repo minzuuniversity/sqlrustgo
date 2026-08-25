@@ -101,6 +101,20 @@ static DIAG_TRY_SCALAR_AGG_CALLS: AtomicU64 = AtomicU64::new(0);
 static DIAG_TRY_SCALAR_AGG_HITS: AtomicU64 = AtomicU64::new(0);
 static DIAG_TRY_SCALAR_AGG_PATTERN_FAIL: AtomicU64 = AtomicU64::new(0);
 static DIAG_TRY_SCALAR_AGG_BUILD: AtomicU64 = AtomicU64::new(0);
+static DIAG_AGG_FAIL_JOIN_OR_FROM_SUBQ: AtomicU64 = AtomicU64::new(0);
+static DIAG_AGG_FAIL_EMPTY_TABLE: AtomicU64 = AtomicU64::new(0);
+static DIAG_AGG_FAIL_EXTRA_TABLES: AtomicU64 = AtomicU64::new(0);
+static DIAG_AGG_FAIL_WRONG_AGG_COUNT: AtomicU64 = AtomicU64::new(0);
+static DIAG_AGG_FAIL_HAS_GROUP_BY_OR_DISTINCT: AtomicU64 = AtomicU64::new(0);
+static DIAG_AGG_FAIL_WRONG_COL_COUNT: AtomicU64 = AtomicU64::new(0);
+static DIAG_AGG_FAIL_PROJECTION_PATTERN: AtomicU64 = AtomicU64::new(0);
+static DIAG_AGG_FAIL_NO_AGG_ARG: AtomicU64 = AtomicU64::new(0);
+static DIAG_AGG_FAIL_NO_WHERE_CLAUSE: AtomicU64 = AtomicU64::new(0);
+static DIAG_AGG_FAIL_NO_CORRELATED_KEYS: AtomicU64 = AtomicU64::new(0);
+static DIAG_AGG_FAIL_EMPTY_CORRELATED_KEYS: AtomicU64 = AtomicU64::new(0);
+static DIAG_AGG_FAIL_TABLE_NOT_FOUND: AtomicU64 = AtomicU64::new(0);
+static DIAG_AGG_FAIL_AGG_COL_NOT_FOUND: AtomicU64 = AtomicU64::new(0);
+static DIAG_AGG_FAIL_KEY_COL_NOT_FOUND: AtomicU64 = AtomicU64::new(0);
 static DIAG_SCALAR_SUBQ_CACHE_HITS: AtomicU64 = AtomicU64::new(0);
 static DIAG_SCALAR_SUBQ_CACHE_MISSES: AtomicU64 = AtomicU64::new(0);
 static DIAG_SCALAR_SUBQ_FALLBACK_EXECUTE: AtomicU64 = AtomicU64::new(0);
@@ -126,6 +140,20 @@ pub fn reset_v312_58_sprint3_diag() {
     DIAG_STEP15_HAS_CORRELATED.store(0, Ordering::SeqCst);
     DIAG_STEP15_SKIPPED_DUE_TO_COMMA_CONSUMED.store(0, Ordering::SeqCst);
     DIAG_STEP15_NO_WHERE_CLAUSE.store(0, Ordering::SeqCst);
+    DIAG_AGG_FAIL_JOIN_OR_FROM_SUBQ.store(0, Ordering::SeqCst);
+    DIAG_AGG_FAIL_EMPTY_TABLE.store(0, Ordering::SeqCst);
+    DIAG_AGG_FAIL_EXTRA_TABLES.store(0, Ordering::SeqCst);
+    DIAG_AGG_FAIL_WRONG_AGG_COUNT.store(0, Ordering::SeqCst);
+    DIAG_AGG_FAIL_HAS_GROUP_BY_OR_DISTINCT.store(0, Ordering::SeqCst);
+    DIAG_AGG_FAIL_WRONG_COL_COUNT.store(0, Ordering::SeqCst);
+    DIAG_AGG_FAIL_PROJECTION_PATTERN.store(0, Ordering::SeqCst);
+    DIAG_AGG_FAIL_NO_AGG_ARG.store(0, Ordering::SeqCst);
+    DIAG_AGG_FAIL_NO_WHERE_CLAUSE.store(0, Ordering::SeqCst);
+    DIAG_AGG_FAIL_NO_CORRELATED_KEYS.store(0, Ordering::SeqCst);
+    DIAG_AGG_FAIL_EMPTY_CORRELATED_KEYS.store(0, Ordering::SeqCst);
+    DIAG_AGG_FAIL_TABLE_NOT_FOUND.store(0, Ordering::SeqCst);
+    DIAG_AGG_FAIL_AGG_COL_NOT_FOUND.store(0, Ordering::SeqCst);
+    DIAG_AGG_FAIL_KEY_COL_NOT_FOUND.store(0, Ordering::SeqCst);
     DIAG_Q17_FROM_CLAUSE_KIND.store(0, Ordering::SeqCst);
 }
 // V312-58 Sprint 5 (Phase 3 call-site): diagnostics for the
@@ -155,7 +183,10 @@ pub fn dump_v312_58_sprint3_diag() -> String {
         "V312-58 Sprint 3 diag:\n\
          try_scalar_agg_index_lookup calls={} hits={} pattern_fail={} build={}\n\
          scalar_subq_cache hits={} misses={} fallback_execute_select={}\n\
-         step15 entered={} has_correlated={} skipped_comma_consumed={} no_where={} q17_from_kind={}",
+         step15 entered={} has_correlated={} skipped_comma_consumed={} no_where={} q17_from_kind={}\n\
+         granular agg_fail: join_or_from={} empty_table={} extra_tables={} wrong_agg_count={}\n\
+         has_group_by_or_distinct={} wrong_col_count={} proj_pattern={} no_agg_arg={}\n\
+         no_where={} no_corr_keys={} empty_corr_keys={} tbl_not_found={} agg_col_not_found={} key_col_not_found={}",
         DIAG_TRY_SCALAR_AGG_CALLS.load(Ordering::SeqCst),
         DIAG_TRY_SCALAR_AGG_HITS.load(Ordering::SeqCst),
         DIAG_TRY_SCALAR_AGG_PATTERN_FAIL.load(Ordering::SeqCst),
@@ -168,6 +199,20 @@ pub fn dump_v312_58_sprint3_diag() -> String {
         DIAG_STEP15_SKIPPED_DUE_TO_COMMA_CONSUMED.load(Ordering::SeqCst),
         DIAG_STEP15_NO_WHERE_CLAUSE.load(Ordering::SeqCst),
         DIAG_Q17_FROM_CLAUSE_KIND.load(Ordering::SeqCst),
+        DIAG_AGG_FAIL_JOIN_OR_FROM_SUBQ.load(Ordering::SeqCst),
+        DIAG_AGG_FAIL_EMPTY_TABLE.load(Ordering::SeqCst),
+        DIAG_AGG_FAIL_EXTRA_TABLES.load(Ordering::SeqCst),
+        DIAG_AGG_FAIL_WRONG_AGG_COUNT.load(Ordering::SeqCst),
+        DIAG_AGG_FAIL_HAS_GROUP_BY_OR_DISTINCT.load(Ordering::SeqCst),
+        DIAG_AGG_FAIL_WRONG_COL_COUNT.load(Ordering::SeqCst),
+        DIAG_AGG_FAIL_PROJECTION_PATTERN.load(Ordering::SeqCst),
+        DIAG_AGG_FAIL_NO_AGG_ARG.load(Ordering::SeqCst),
+        DIAG_AGG_FAIL_NO_WHERE_CLAUSE.load(Ordering::SeqCst),
+        DIAG_AGG_FAIL_NO_CORRELATED_KEYS.load(Ordering::SeqCst),
+        DIAG_AGG_FAIL_EMPTY_CORRELATED_KEYS.load(Ordering::SeqCst),
+        DIAG_AGG_FAIL_TABLE_NOT_FOUND.load(Ordering::SeqCst),
+        DIAG_AGG_FAIL_AGG_COL_NOT_FOUND.load(Ordering::SeqCst),
+        DIAG_AGG_FAIL_KEY_COL_NOT_FOUND.load(Ordering::SeqCst),
     )
 }
 
@@ -5112,24 +5157,30 @@ impl<S: StorageEngine + 'static> ExecutionEngine<S> {
         // ── Pattern check ───────────────────────────────────────────
         // 1. Single table (no JOINs, no comma-tables, no FROM subquery).
         if !subq.join_clause.is_empty() || subq.from_subquery.is_some() {
+            DIAG_AGG_FAIL_JOIN_OR_FROM_SUBQ.fetch_add(1, Ordering::SeqCst);
             return None;
         }
         if subq.table.is_empty() {
+            DIAG_AGG_FAIL_EMPTY_TABLE.fetch_add(1, Ordering::SeqCst);
             return None;
         }
         if !subq.extra_tables.is_empty() {
+            DIAG_AGG_FAIL_EXTRA_TABLES.fetch_add(1, Ordering::SeqCst);
             return None;
         }
         // 2. Single aggregate, no GROUP BY, no DISTINCT.
         if subq.aggregates.len() != 1 {
+            DIAG_AGG_FAIL_WRONG_AGG_COUNT.fetch_add(1, Ordering::SeqCst);
             return None;
         }
         let agg = &subq.aggregates[0];
         if !subq.group_by.is_empty() || subq.distinct {
+            DIAG_AGG_FAIL_HAS_GROUP_BY_OR_DISTINCT.fetch_add(1, Ordering::SeqCst);
             return None;
         }
         // 3. Single projection column.
         if subq.columns.len() != 1 {
+            DIAG_AGG_FAIL_WRONG_COL_COUNT.fetch_add(1, Ordering::SeqCst);
             return None;
         }
         let proj_expr = subq.columns[0].expression.as_ref()?;
@@ -5141,30 +5192,72 @@ impl<S: StorageEngine + 'static> ExecutionEngine<S> {
             E::BinaryOp(l, op, r) if op == "*" => match (l.as_ref(), r.as_ref()) {
                 (E::Literal(s), E::Aggregate(agg_inner)) => {
                     if agg_inner != agg {
+                        DIAG_AGG_FAIL_PROJECTION_PATTERN.fetch_add(1, Ordering::SeqCst);
                         return None;
                     }
-                    s.parse::<f64>().ok()?
+                    match s.parse::<f64>().ok() {
+                        Some(v) => v,
+                        None => {
+                            DIAG_AGG_FAIL_PROJECTION_PATTERN.fetch_add(1, Ordering::SeqCst);
+                            return None;
+                        }
+                    }
                 }
                 (E::Aggregate(agg_inner), E::Literal(s)) => {
                     if agg_inner != agg {
+                        DIAG_AGG_FAIL_PROJECTION_PATTERN.fetch_add(1, Ordering::SeqCst);
                         return None;
                     }
-                    s.parse::<f64>().ok()?
+                    match s.parse::<f64>().ok() {
+                        Some(v) => v,
+                        None => {
+                            DIAG_AGG_FAIL_PROJECTION_PATTERN.fetch_add(1, Ordering::SeqCst);
+                            return None;
+                        }
+                    }
                 }
-                _ => return None,
+                _ => {
+                    DIAG_AGG_FAIL_PROJECTION_PATTERN.fetch_add(1, Ordering::SeqCst);
+                    return None;
+                }
             },
-            _ => return None,
+            _ => {
+                DIAG_AGG_FAIL_PROJECTION_PATTERN.fetch_add(1, Ordering::SeqCst);
+                return None;
+            }
         };
-        let agg_arg_expr: &E = agg.args.first()?;
-        let where_expr = subq.where_clause.as_ref()?;
+        let agg_arg_expr: &E = match agg.args.first() {
+            Some(a) => a,
+            None => {
+                DIAG_AGG_FAIL_NO_AGG_ARG.fetch_add(1, Ordering::SeqCst);
+                return None;
+            }
+        };
+        let where_expr = match subq.where_clause.as_ref() {
+            Some(w) => w,
+            None => {
+                DIAG_AGG_FAIL_NO_WHERE_CLAUSE.fetch_add(1, Ordering::SeqCst);
+                return None;
+            }
+        };
         // V312-58 Sprint 4 (Issue #4374): generalize the Q17 single-key
         // fast-path to support multiple correlated equalities (Q20:
         // `l_partkey = ps_partkey AND l_suppkey = ps_suppkey`) plus a
         // residual predicate (Q20: `l_shipdate >= ... AND l_shipdate < ...`).
-        let (correlated_keys, residual_expr) =
-            find_correlated_equalities(where_expr, agg_arg_expr, &subq.table, outer_table_info)
-                .or(None)?;
+        let (correlated_keys, residual_expr) = match find_correlated_equalities(
+            where_expr,
+            agg_arg_expr,
+            &subq.table,
+            outer_table_info,
+        ) {
+            Some(result) => result,
+            None => {
+                DIAG_AGG_FAIL_NO_CORRELATED_KEYS.fetch_add(1, Ordering::SeqCst);
+                return None;
+            }
+        };
         if correlated_keys.is_empty() {
+            DIAG_AGG_FAIL_EMPTY_CORRELATED_KEYS.fetch_add(1, Ordering::SeqCst);
             return None;
         }
         // Strip `|alias` from subq.table (TPC-H pattern from Q21).
@@ -5175,19 +5268,31 @@ impl<S: StorageEngine + 'static> ExecutionEngine<S> {
 
         // ── Resolve columns ──────────────────────────────────────────
         let storage = self.storage.read();
-        let table_info = storage.get_table_info(real_table).ok()?;
+        let table_info = match storage.get_table_info(real_table).ok() {
+            Some(t) => t,
+            None => {
+                DIAG_AGG_FAIL_TABLE_NOT_FOUND.fetch_add(1, Ordering::SeqCst);
+                return None;
+            }
+        };
         let mut key_col_indices: Vec<usize> = Vec::with_capacity(correlated_keys.len());
         for (inner_col_name, _outer_pos) in &correlated_keys {
-            let idx = table_info
-                .columns
-                .iter()
-                .position(|c| c.name == *inner_col_name)?;
+            let idx = match table_info.columns.iter().position(|c| c.name == *inner_col_name) {
+                Some(i) => i,
+                None => {
+                    DIAG_AGG_FAIL_KEY_COL_NOT_FOUND.fetch_add(1, Ordering::SeqCst);
+                    return None;
+                }
+            };
             key_col_indices.push(idx);
         }
         let agg_col_idx: Option<usize> = match agg_arg_expr {
             E::Identifier(name) => table_info.columns.iter().position(|c| c.name == *name),
             _ => None,
         };
+        if agg_col_idx.is_none() {
+            DIAG_AGG_FAIL_AGG_COL_NOT_FOUND.fetch_add(1, Ordering::SeqCst);
+        }
 
         // ── Compute cache key ────────────────────────────────────────
         // Cache key = (table, key_cols, agg_func, agg_col, op_factor, residual).
@@ -6276,141 +6381,6 @@ fn find_top_level_equality_literal(where_expr: &Expression, _key_col_idx: usize)
         }
     }
     walk(where_expr)
-}
-
-/// Find ALL equality pairs `<inner_col> = <outer_ref>` in a WHERE
-/// AND-tree, plus any non-equality residual predicate (range, LIKE, etc).
-///
-/// V312-58 Phase 3: extended from the Q17 single-key path to handle
-/// composite-key correlated subqueries (TPC-H Q20 L0/L5 SUM subquery
-/// uses `l_partkey = ps_partkey AND l_suppkey = ps_suppkey`).
-///
-/// This is used by the Q17 fast-path index lookup to detect the common
-/// correlated scalar aggregate pattern.  We accept equality inside an
-/// AND chain (e.g. `l_partkey = X AND extra_filter = Y`) by walking
-/// top-down and picking the first matching equality.
-#[allow(dead_code)]
-fn find_equality_inner_outer(
-    where_expr: &Expression,
-    inner_table_name: &str,
-    outer_table_info: &TableInfo,
-) -> (Vec<(String, usize)>, Option<Box<Expression>>) {
-    // Note: inner helpers (`try_extract_pair`, `walk`) declare their own
-    // `use sqlrustgo_parser::Expression as E;` because Rust requires
-    // `use` inside each function body. The bare `Expression` type used in
-    // the residual re-AND fold below is in scope from the function's
-    // signature.
-    let own_prefix: Option<char> = inner_table_name
-        .chars()
-        .next()
-        .map(|c| c.to_ascii_lowercase());
-
-    fn is_inner_col(name: &str, own_prefix: Option<char>) -> bool {
-        let lc = name.to_lowercase();
-        own_prefix
-            .map(|p| lc.starts_with(p) && lc.chars().nth(1) == Some('_'))
-            .unwrap_or(false)
-    }
-
-    fn find_outer_col(name: &str, outer_table_info: &TableInfo) -> Option<usize> {
-        // 1. Exact match.
-        if let Some(idx) = outer_table_info.columns.iter().position(|c| c.name == name) {
-            return Some(idx);
-        }
-        // 2. Match by basename after stripping any `alias.` prefix.
-        let basename = name.rsplit_once('.').map(|(_, c)| c).unwrap_or(name);
-        if let Some(idx) = outer_table_info
-            .columns
-            .iter()
-            .position(|c| c.name == basename)
-        {
-            return Some(idx);
-        }
-        // 3. Match by basename after stripping a `alias.` prefix
-        //    from a column name in outer_table_info.
-        if let Some(idx) = outer_table_info
-            .columns
-            .iter()
-            .position(|c| c.name.rsplit_once('.').map(|(_, c)| c).unwrap_or(&c.name) == basename)
-        {
-            return Some(idx);
-        }
-        None
-    }
-
-    fn try_extract_pair(
-        l: &Expression,
-        r: &Expression,
-        own_prefix: Option<char>,
-        outer_table_info: &TableInfo,
-    ) -> Option<(String, usize)> {
-        use sqlrustgo_parser::Expression as E;
-        match (l, r) {
-            (E::Identifier(li), E::Identifier(ri)) => {
-                let li_is_inner = is_inner_col(li, own_prefix);
-                let ri_is_inner = is_inner_col(ri, own_prefix);
-                if li_is_inner && !ri_is_inner {
-                    let outer_idx = find_outer_col(ri, outer_table_info)?;
-                    Some((li.clone(), outer_idx))
-                } else if ri_is_inner && !li_is_inner {
-                    let outer_idx = find_outer_col(li, outer_table_info)?;
-                    Some((ri.clone(), outer_idx))
-                } else {
-                    None
-                }
-            }
-            // (inner_col = literal) shouldn't appear pre-substitution;
-            // classify as residual.
-            _ => None,
-        }
-    }
-
-    fn walk(
-        e: &Expression,
-        own_prefix: Option<char>,
-        outer_table_info: &TableInfo,
-        pairs: &mut Vec<(String, usize)>,
-        residual: &mut Vec<Expression>,
-    ) {
-        use sqlrustgo_parser::Expression as E;
-        match e {
-            E::BinaryOp(l, op, r) if op == "=" => {
-                if let Some(pair) = try_extract_pair(l, r, own_prefix, outer_table_info) {
-                    pairs.push(pair);
-                } else {
-                    residual.push(e.clone());
-                }
-            }
-            E::BinaryOp(l, op, r) if op.to_uppercase() == "AND" => {
-                walk(l, own_prefix, outer_table_info, pairs, residual);
-                walk(r, own_prefix, outer_table_info, pairs, residual);
-            }
-            _ => {
-                residual.push(e.clone());
-            }
-        }
-    }
-
-    let mut pairs = Vec::new();
-    let mut residual_leaves = Vec::new();
-    walk(
-        where_expr,
-        own_prefix,
-        outer_table_info,
-        &mut pairs,
-        &mut residual_leaves,
-    );
-    let residual = if residual_leaves.is_empty() {
-        None
-    } else {
-        // Re-AND the residual leaves in encounter order.
-        let mut iter = residual_leaves.into_iter();
-        let first = iter.next().unwrap();
-        Some(Box::new(iter.fold(first, |acc, e| {
-            Expression::BinaryOp(Box::new(acc), "AND".to_string(), Box::new(e))
-        })))
-    };
-    (pairs, residual)
 }
 
 /// V312-58 Sprint 4 (Issue #4374): generalize the Q17 single-key fast-path
