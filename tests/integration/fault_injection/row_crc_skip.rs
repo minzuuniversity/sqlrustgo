@@ -21,7 +21,7 @@ fn test_corrupted_row_is_skipped() {
     let mut writer = SegmentWriter::new(path.clone(), schema.clone()).expect("SegmentWriter::new");
     for i in 0..10i64 {
         writer
-            .append(&[Some((i as i64).to_le_bytes().to_vec())])
+            .append(&[Some(i.to_le_bytes().to_vec())])
             .expect("append");
     }
     writer.seal().expect("seal");

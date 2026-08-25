@@ -955,6 +955,15 @@ path = "tests/integration/oracle/q17_1m_rss_regression.rs"
 name = "issue_4374_regression"
 path = "tests/integration/oracle/issue_4374_regression.rs"
 [[test]]
+name = "issue_4443_materialization_regression"
+path = "tests/integration/oracle/issue_4443_materialization_regression.rs"
+[[test]]
+name = "issue_4444_nested_exists_regression"
+path = "tests/integration/oracle/issue_4444_nested_exists_regression.rs"
+[[test]]
+name = "issue_4444_hash_semi_join_call_site"
+path = "tests/integration/oracle/issue_4444_hash_semi_join_call_site.rs"
+[[test]]
 name = "q17_small_order_shortage_perf"
 path = "tests/integration/oracle/q17_small_order_shortage_perf.rs"
 [[test]]
@@ -1038,6 +1047,9 @@ path = "tests/integration/oracle/diag_q20_sprint3_path.rs"
 [[test]]
 name = "diag_q20_mini_bisect"
 path = "tests/integration/oracle/diag_q20_mini_bisect.rs"
+[[test]]
+name = "diag_q20_sprint4_inline"
+path = "tests/integration/oracle/diag_q20_sprint4_inline.rs"
 [[test]]
 name = "diag_q7_subset_columns"
 path = "tests/integration/oracle/diag_q7_subset_columns.rs"

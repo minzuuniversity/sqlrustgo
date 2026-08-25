@@ -124,7 +124,8 @@ fn q20_potential_part_promotion_sf1() {
         elapsed <= TIMEOUT_BUDGET,
         "Q20 elapsed {:?} exceeds TIMEOUT_BUDGET {:?} — correlated subqueries \
          not decorrelated",
-        elapsed, TIMEOUT_BUDGET
+        elapsed,
+        TIMEOUT_BUDGET
     );
 
     assert_eq!(
