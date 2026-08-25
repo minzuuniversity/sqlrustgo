@@ -6307,19 +6307,53 @@ fn try_build_hash_semi_join_index_for_subq<S: StorageEngine + 'static>(
     };
 
     // Apply the residual (if any) at build time when it does NOT
-    // reference outer columns. The `mentions_outer_conjuncts` walker
+    // reference outer columns. The `mentions_outer_conjunct` walker
     // below detects any conjunct whose AST contains an `Identifier`
-    // whose bare name is NOT in `inner_cols`. When at least one
-    // conjunct references an outer column, the entire residual is
-    // treated as outer-ref-dependent: every inner row stays in the
-    // HSJ, and `probe_hash_semi_join` will substitute + re-evaluate
-    // per outer row at probe time. Otherwise every conjunct is
-    // static and the build-time filter applies them with short-
-    // circuit semantics: a row is kept only when ALL conjuncts pass
-    // (stopping at the first false). This is the Nested-AND short-
-    // circuit optimization — without it, a 3-way AND residual like
-    // `R1 AND R2 AND R3` would always evaluate all three even when
-    // `R1` already fails.
+    // whose bare name is NOT in `inner_cols`, or any
+    // `Expression::Subquery` / `Expression::SubqueryField` subtree
+    // (conservatively treated as outer-correlated — see the comment
+    // inside `walk` below for the rationale).
+    // When at least one conjunct references an outer column, the
+    // entire residual is treated as outer-ref-dependent: every inner
+    // row stays in the HSJ, and `probe_hash_semi_join` will
+    // substitute + re-evaluate per outer row at probe time.
+    // Otherwise every conjunct is static and the build-time filter
+    // applies them with short-circuit semantics: a row is kept only
+    // when ALL conjuncts pass (stopping at the first false). This is
+    // the Nested-AND short-circuit optimization — without it, a 3-way
+    // AND residual like `R1 AND R2 AND R3` would always evaluate all
+    // TPC-H Q20 followup-6: if ANY residual conjunct contains a
+    // nested `Subquery` / `SubqueryField` subtree, the probe-time
+    // re-evaluation in `probe_hash_semi_join` cannot evaluate it
+    // (the substituted residual still references the subquery, and
+    // `eval_predicate`'s `evaluate_expression` falls through to the
+    // default `subq_eval` closure which returns Null, dropping the
+    // row). Bail out so the caller falls through to `SubqueryIndex`
+    // / full `execute_select`, where Step 1.5 +
+    // `try_scalar_agg_index_lookup` can engage the
+    // `ScalarAggIndex` per outer row.
+    fn residual_has_subquery(e: &Expression) -> bool {
+        match e {
+            Expression::Subquery(_) | Expression::SubqueryField(_, _) => true,
+            Expression::BinaryOp(l, _, r) => {
+                residual_has_subquery(l) || residual_has_subquery(r)
+            }
+            Expression::UnaryOp(_, inner) => residual_has_subquery(inner),
+            Expression::IsNull(inner) | Expression::IsNotNull(inner) => {
+                residual_has_subquery(inner)
+            }
+            Expression::InList(_, values) | Expression::NotInList(_, values) => {
+                values.iter().any(residual_has_subquery)
+            }
+            Expression::FunctionCall(_, args) => {
+                args.iter().any(residual_has_subquery)
+            }
+            _ => false,
+        }
+    }
+    if residual_conjuncts.iter().any(residual_has_subquery) {
+        return None;
+    }
     let inner_rows: Vec<Vec<Value>> = if residual_conjuncts.is_empty() {
         inner_rows
     } else {
@@ -6351,6 +6385,14 @@ fn try_build_hash_semi_join_index_for_subq<S: StorageEngine + 'static>(
                     Expression::FunctionCall(_, args) => {
                         args.iter().any(|a| walk(a, inner_cols))
                     }
+                    // TPC-H Q20 followup-6: defensive — the early
+                    // `residual_has_subquery` bail above prevents
+                    // reaching here with a Subquery in the residual,
+                    // but mark it as outer-correlated anyway so the
+                    // build-time filter is skipped (every inner row
+                    // stays in the HSJ) instead of being dropped via
+                    // the default Null `subq_eval`.
+                    Expression::Subquery(_) | Expression::SubqueryField(_, _) => true,
                     _ => false,
                 }
             }
@@ -6377,7 +6419,6 @@ fn try_build_hash_semi_join_index_for_subq<S: StorageEngine + 'static>(
                 .collect()
         }
     };
-
     // Build the `HashSemiJoin` once and KEEP it. Sprint 5 discarded the
     // result here (because `probe_outer_key` was `&mut self`), forcing a
     // per-outer-row rebuild in `probe_hash_semi_join`. V312-58 followup
