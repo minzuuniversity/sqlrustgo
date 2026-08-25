@@ -4,8 +4,7 @@
 
 use parking_lot::RwLock;
 use sqlrustgo::{
-    dump_v312_58_sprint3_diag, reset_v312_58_sprint3_diag,
-    ExecutionEngine, MemoryStorage,
+    dump_v312_58_sprint3_diag, reset_v312_58_sprint3_diag, ExecutionEngine, MemoryStorage,
 };
 use std::sync::Arc;
 use std::time::Instant;
@@ -28,9 +27,11 @@ fn setup() -> ExecutionEngine<MemoryStorage> {
     let t0 = Instant::now();
     {
         let mut st = storage.write();
-        st.bulk_load_tbl_file("part", &format!("{}/part.tbl", data_dir)).unwrap();
+        st.bulk_load_tbl_file("part", &format!("{}/part.tbl", data_dir))
+            .unwrap();
         eprintln!("part loaded: {:?}", t0.elapsed());
-        st.bulk_load_tbl_file("lineitem", &format!("{}/lineitem.tbl", data_dir)).unwrap();
+        st.bulk_load_tbl_file("lineitem", &format!("{}/lineitem.tbl", data_dir))
+            .unwrap();
         eprintln!("lineitem loaded: {:?}", t0.elapsed());
     }
     engine
@@ -42,8 +43,7 @@ fn q17_sf1_diag() {
     reset_v312_58_sprint3_diag();
     let mut engine = setup();
 
-    const Q17_SQL: &str =
-        "SELECT SUM(l_extendedprice) / 7.0 AS avg_yearly \
+    const Q17_SQL: &str = "SELECT SUM(l_extendedprice) / 7.0 AS avg_yearly \
          FROM lineitem, part \
          WHERE p_partkey = l_partkey \
            AND p_brand = 'Brand#23' \
