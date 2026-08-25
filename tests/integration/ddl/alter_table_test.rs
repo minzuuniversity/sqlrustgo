@@ -30,8 +30,8 @@ fn bin_path() -> String {
             let candidates = [
                 format!("target/{profile}/sqlrustgo-mysql-server"),
                 format!("../target/{profile}/sqlrustgo-mysql-server"),
-                format!("target/release/sqlrustgo-mysql-server"),
-                format!("target/debug/sqlrustgo-mysql-server"),
+                "target/release/sqlrustgo-mysql-server".to_string(),
+                "target/debug/sqlrustgo-mysql-server".to_string(),
             ];
             for c in &candidates {
                 if std::path::Path::new(c).exists() {
