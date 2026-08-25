@@ -20,7 +20,9 @@
 //! `#[ignore]`d tests under `--include-ignored`.
 
 use parking_lot::RwLock;
-use sqlrustgo::{dump_v312_58_sprint3_diag, reset_v312_58_sprint3_diag, ExecutionEngine, MemoryStorage, Value};
+use sqlrustgo::{
+    dump_v312_58_sprint3_diag, reset_v312_58_sprint3_diag, ExecutionEngine, MemoryStorage, Value,
+};
 use std::sync::Arc;
 
 fn fresh_engine() -> ExecutionEngine<MemoryStorage> {
@@ -35,9 +37,14 @@ fn fresh_engine() -> ExecutionEngine<MemoryStorage> {
 #[test]
 fn q17_prewarm_builds_scalar_agg_index_once() {
     let mut e = fresh_engine();
-    e.execute("CREATE TABLE part (p_partkey INTEGER PRIMARY KEY, p_brand TEXT, p_container TEXT)").unwrap();
-    e.execute("CREATE TABLE lineitem (l_partkey INTEGER, l_quantity INTEGER, l_extendedprice REAL)").unwrap();
-    e.execute("INSERT INTO part VALUES (1, 'Brand#23', 'LG CASE')").unwrap();
+    e.execute("CREATE TABLE part (p_partkey INTEGER PRIMARY KEY, p_brand TEXT, p_container TEXT)")
+        .unwrap();
+    e.execute(
+        "CREATE TABLE lineitem (l_partkey INTEGER, l_quantity INTEGER, l_extendedprice REAL)",
+    )
+    .unwrap();
+    e.execute("INSERT INTO part VALUES (1, 'Brand#23', 'LG CASE')")
+        .unwrap();
     // Two distinct partkeys with their own AVG(l_quantity):
     //   partkey=1 → (1+2+100+200)/4 = 75.75
     //   partkey=2 → (10+20+30+40)/4  = 25.0
@@ -45,10 +52,18 @@ fn q17_prewarm_builds_scalar_agg_index_once() {
     //   partkey=1 → 15.15  (passes l_quantity < 15.15: only qty=1, qty=2)
     //   partkey=2 → 5.0    (passes l_quantity < 5.0: only qty=1,2,3,4 not present)
     for q in [1, 2, 100, 200] {
-        e.execute(&format!("INSERT INTO lineitem VALUES (1, {q}, {})", q as f64 * 10.0)).unwrap();
+        e.execute(&format!(
+            "INSERT INTO lineitem VALUES (1, {q}, {})",
+            q as f64 * 10.0
+        ))
+        .unwrap();
     }
     for q in [10, 20, 30, 40] {
-        e.execute(&format!("INSERT INTO lineitem VALUES (2, {q}, {})", q as f64)).unwrap();
+        e.execute(&format!(
+            "INSERT INTO lineitem VALUES (2, {q}, {})",
+            q as f64
+        ))
+        .unwrap();
     }
 
     reset_v312_58_sprint3_diag();
@@ -108,9 +123,14 @@ fn q17_prewarm_builds_scalar_agg_index_once() {
 #[test]
 fn q20_prewarm_yields_correct_filtered_rows() {
     let mut e = fresh_engine();
-    e.execute("CREATE TABLE partsupp (ps_partkey INTEGER, ps_suppkey INTEGER, ps_availqty INTEGER)").unwrap();
-    e.execute("INSERT INTO partsupp VALUES (10, 1, 1000)").unwrap();
-    e.execute("INSERT INTO partsupp VALUES (10, 2, 50)").unwrap();
+    e.execute(
+        "CREATE TABLE partsupp (ps_partkey INTEGER, ps_suppkey INTEGER, ps_availqty INTEGER)",
+    )
+    .unwrap();
+    e.execute("INSERT INTO partsupp VALUES (10, 1, 1000)")
+        .unwrap();
+    e.execute("INSERT INTO partsupp VALUES (10, 2, 50)")
+        .unwrap();
     e.execute("CREATE TABLE lineitem (l_partkey INTEGER, l_suppkey INTEGER, l_quantity INTEGER, l_shipdate TEXT)").unwrap();
     // partkey=10, suppkey=1: in-window sum=130 → 0.5*130=65; ps_availqty=1000 > 65 ✓
     // partkey=10, suppkey=2: in-window sum=130 → 0.5*130=65; ps_availqty=50  < 65 ✗
@@ -121,11 +141,14 @@ fn q20_prewarm_yields_correct_filtered_rows() {
         .unwrap();
     }
     // Out-of-window rows for both suppkeys; should be excluded by residual.
-    e.execute("INSERT INTO lineitem VALUES (10, 1, 1000000, '1995-01-01')").unwrap();
-    e.execute("INSERT INTO lineitem VALUES (10, 2, 1000000, '1995-01-01')").unwrap();
+    e.execute("INSERT INTO lineitem VALUES (10, 1, 1000000, '1995-01-01')")
+        .unwrap();
+    e.execute("INSERT INTO lineitem VALUES (10, 2, 1000000, '1995-01-01')")
+        .unwrap();
 
-    let r = e.execute(
-        "SELECT ps_partkey, ps_suppkey FROM partsupp \
+    let r = e
+        .execute(
+            "SELECT ps_partkey, ps_suppkey FROM partsupp \
          WHERE ps_partkey = 10 \
            AND ps_availqty > (SELECT 0.5 * SUM(l_quantity) FROM lineitem \
                               WHERE l_partkey = ps_partkey \
@@ -133,8 +156,8 @@ fn q20_prewarm_yields_correct_filtered_rows() {
                                 AND l_shipdate >= '1994-01-01' \
                                 AND l_shipdate <  '1995-01-01') \
          ORDER BY ps_suppkey",
-    )
-    .unwrap();
+        )
+        .unwrap();
     assert_eq!(
         r.rows,
         vec![vec![Value::Integer(10), Value::Integer(1)]],
@@ -149,7 +172,8 @@ fn q20_prewarm_yields_correct_filtered_rows() {
 fn execute_select_no_subquery_path_unchanged() {
     let mut e = fresh_engine();
     e.execute("CREATE TABLE t (a INTEGER, b INTEGER)").unwrap();
-    e.execute("INSERT INTO t VALUES (1, 10), (2, 20), (3, 30)").unwrap();
+    e.execute("INSERT INTO t VALUES (1, 10), (2, 20), (3, 30)")
+        .unwrap();
     reset_v312_58_sprint3_diag();
     let r = e.execute("SELECT SUM(b) AS s FROM t WHERE a > 1").unwrap();
     let diag = dump_v312_58_sprint3_diag();

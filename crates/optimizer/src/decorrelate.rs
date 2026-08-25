@@ -37,7 +37,9 @@ pub enum SubqueryPattern {
         outer_expr: Box<Expression>,
         inner: Box<Expression>,
     },
-    ScalarAggGroupBy { inner: Box<Expression> },
+    ScalarAggGroupBy {
+        inner: Box<Expression>,
+    },
     /// V312-58 / Issue #4442 (Phase 1): the Q17 / Q20 shape.
     ScalarAggInWhere {
         cmp_op: String,
@@ -217,7 +219,9 @@ fn try_scalar_agg_in_where(
 /// V312-58 / Issue #4442: read the aggregate function directly from
 /// `SelectStatement::aggregates`.  Returns `None` if zero or more than one
 /// aggregate is present.
-fn extract_single_aggregate(select: &SelectStatement) -> Option<sqlrustgo_parser::AggregateFunction> {
+fn extract_single_aggregate(
+    select: &SelectStatement,
+) -> Option<sqlrustgo_parser::AggregateFunction> {
     let mut iter = select.aggregates.iter();
     let first = iter.next()?;
     if iter.next().is_some() {
@@ -338,7 +342,6 @@ fn flatten_ands(expr: &Expression) -> Vec<Expression> {
 }
 
 fn combine_and(mut parts: Vec<Expression>) -> Expression {
-
     let first = parts.remove(0);
     parts.into_iter().fold(first, |acc, p| {
         Expression::BinaryOp(Box::new(acc), "AND".to_string(), Box::new(p))
