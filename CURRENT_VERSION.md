@@ -6,8 +6,8 @@
 
 ## 当前正在开发
 
-**v3.12.0 RC** — develop/v3.12.0 @ commit `3ad8ac37d`（截至 2026-08-24）
-- **阶段**: **RC (Release Candidate)**（milestone #38 OPEN）
+**v3.12.0 BETA** — develop/v3.12.0 @ commit `0aac6f39fb`（截至 2026-08-26）
+- **阶段**: **BETA**（milestone #38 OPEN；Beta gate 38/40 PASS / 0 BLOCKERS / 2 WARN，见 [`V312-56-VERIFICATION.md`](docs/releases/v3.12.0/evidence/v312-56/V312-56-VERIFICATION.md)）
 - **当前状态**: 等 RC gate 全绿以升级 GA
 - **里程碑 #39 (v3.13)**: ⛔ **已关闭**（2026-08-24 治理整改，见 `docs/governance/incidents/2026-08-24-V313-MILESTONE-PREMATURE.md`）
 
@@ -23,7 +23,7 @@
 ## 治理约束（2026-08-24 重要）
 
 > ⚠️ **v3.13 milestone 创建必须等 v3.12.0 GA 之后**。
-> 当前 v3.12.0 仍在 RC 阶段（里程碑 #38 OPEN，**未 GA**）。
+> 当前 v3.12.0 仍在 BETA 阶段（里程碑 #38 OPEN，**未 GA**；RC 治理尚未启动）。
 > 任何 v3.13 相关 issue / 任务必须保留在 v3.12.0 范围内。
 >
 > 见 `docs/governance/incidents/2026-08-24-V313-MILESTONE-PREMATURE.md` 了解详情。
@@ -74,7 +74,7 @@ v3.11.0 = 债务清零 + 功能孤岛集成 + 性能突破。从 v3.10.0 GA 继�
 ## GA 晋升条件
 
 - GA tag 创建并推送
-- `current_stage: RC → GA`
+- `current_stage: BETA → RC → GA`（RC 治理需先启动；见 `docs/releases/v3.12.0/STAGE.yaml`）
 
 ## 相关文档
 
