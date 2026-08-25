@@ -34,7 +34,10 @@ fn make_info() -> TableInfo {
 }
 
 fn make_data() -> TableData {
-    TableData { info: make_info(), rows: vec![] }
+    TableData {
+        info: make_info(),
+        rows: vec![],
+    }
 }
 
 fn make_dir() -> (TempDir, BinaryTableStorage) {
@@ -57,7 +60,6 @@ fn cov_binary_storage_new_with_data() {
     let temp_dir = TempDir::new().unwrap();
     let _s = BinaryTableStorage::new_with_data(temp_dir.path().to_path_buf()).unwrap();
 }
-
 
 // --------------------------------------------------------------------------
 // Exists
@@ -137,7 +139,10 @@ fn cov_binary_storage_save_load_text() {
         collations: Default::default(),
         compression: None,
     };
-    let mut data = TableData { info: info, rows: vec![] };
+    let mut data = TableData {
+        info: info,
+        rows: vec![],
+    };
     data.rows.push(vec![SqlValue::Text("hello".to_string())]);
     s.save("t", &data).unwrap();
     let loaded = s.load("t").unwrap();
@@ -167,7 +172,10 @@ fn cov_binary_storage_save_load_float() {
         collations: Default::default(),
         compression: None,
     };
-    let mut data = TableData { info: info, rows: vec![] };
+    let mut data = TableData {
+        info: info,
+        rows: vec![],
+    };
     data.rows.push(vec![SqlValue::Float(1.5)]);
     s.save("t", &data).unwrap();
     let _ = s.load("t").unwrap();
@@ -195,7 +203,10 @@ fn cov_binary_storage_save_load_bool() {
         collations: Default::default(),
         compression: None,
     };
-    let mut data = TableData { info: info, rows: vec![] };
+    let mut data = TableData {
+        info: info,
+        rows: vec![],
+    };
     data.rows.push(vec![SqlValue::Boolean(true)]);
     s.save("t", &data).unwrap();
     let _ = s.load("t").unwrap();
@@ -223,7 +234,10 @@ fn cov_binary_storage_save_load_null() {
         collations: Default::default(),
         compression: None,
     };
-    let mut data = TableData { info: info, rows: vec![] };
+    let mut data = TableData {
+        info: info,
+        rows: vec![],
+    };
     data.rows.push(vec![SqlValue::Null]);
     s.save("t", &data).unwrap();
     let _ = s.load("t").unwrap();
@@ -263,8 +277,14 @@ fn cov_binary_storage_save_load_multi_column() {
         collations: Default::default(),
         compression: None,
     };
-    let mut data = TableData { info: info, rows: vec![] };
-    data.rows.push(vec![SqlValue::Integer(1), SqlValue::Text("foo".to_string())]);
+    let mut data = TableData {
+        info: info,
+        rows: vec![],
+    };
+    data.rows.push(vec![
+        SqlValue::Integer(1),
+        SqlValue::Text("foo".to_string()),
+    ]);
     s.save("t", &data).unwrap();
     let _ = s.load("t").unwrap();
 }
@@ -364,9 +384,6 @@ fn cov_binary_storage_engine_has_table() {
     assert!(!s.has_table("missing"));
 }
 
-
-
-
 #[test]
 fn cov_binary_storage_engine_update() {
     let (_t, mut s) = make_dir();
@@ -402,7 +419,6 @@ fn cov_binary_storage_engine_in_tx_false() {
     let (_t, mut s) = make_dir();
     assert!(!s.in_transaction());
 }
-
 
 #[test]
 fn cov_binary_storage_engine_persist_inserted() {

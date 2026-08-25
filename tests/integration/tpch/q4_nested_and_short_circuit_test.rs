@@ -175,8 +175,9 @@ fn q4_nested_and_static_residual_perf_scale_1k_orders_10k_lineitems() {
 
     reset_v312_58_sprint5_diag();
     let start = Instant::now();
-    let r = e.execute(
-        "SELECT o_orderpriority, COUNT(*) AS order_count \
+    let r = e
+        .execute(
+            "SELECT o_orderpriority, COUNT(*) AS order_count \
          FROM orders \
          WHERE o_orderdate >= '1993-07-01' AND o_orderdate < '1993-10-01' \
            AND EXISTS (SELECT * FROM lineitem \
@@ -186,8 +187,8 @@ fn q4_nested_and_static_residual_perf_scale_1k_orders_10k_lineitems() {
                          AND l_shipmode != 'ZZ') \
          GROUP BY o_orderpriority \
          ORDER BY o_orderpriority",
-    )
-    .unwrap();
+        )
+        .unwrap();
     let elapsed = start.elapsed();
 
     let total: i64 = r
@@ -202,8 +203,14 @@ fn q4_nested_and_static_residual_perf_scale_1k_orders_10k_lineitems() {
     let snap = dump_v312_58_sprint5_diag();
     let builds = counter_value(&snap, "hash_semi_join_builds");
     let probe_hits = counter_value(&snap, "hash_semi_join_probe_hits");
-    assert_eq!(builds, 1, "HashSemiJoinIndex must be built once; got builds={builds}");
-    assert!(probe_hits > 0, "Probe call site must be reached; got probe_hits={probe_hits}");
+    assert_eq!(
+        builds, 1,
+        "HashSemiJoinIndex must be built once; got builds={builds}"
+    );
+    assert!(
+        probe_hits > 0,
+        "Probe call site must be reached; got probe_hits={probe_hits}"
+    );
     assert!(
         elapsed.as_secs() < 10,
         "Q4 multi-conjunct residual too slow: {:?} (target: < 10s for 10K lineitems)",

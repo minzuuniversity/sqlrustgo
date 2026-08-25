@@ -225,7 +225,9 @@ mod tests {
         parser::{ExceptStatement, IntersectStatement, OrderByExpression, UnionStatement},
         Expression, SelectColumn, Statement,
     };
-    use sqlrustgo_storage::{ColumnDefinition as StorageColumnDef, MemoryStorage, StorageEngine, TableInfo};
+    use sqlrustgo_storage::{
+        ColumnDefinition as StorageColumnDef, MemoryStorage, StorageEngine, TableInfo,
+    };
 
     fn mk_select(table: &str, cols: &[&str]) -> SelectStatement {
         SelectStatement {
@@ -258,7 +260,11 @@ mod tests {
         }
     }
 
-    fn mk_storage_with_table(name: &str, col_names: &[&str], collations: &[Option<&str>]) -> MemoryStorage {
+    fn mk_storage_with_table(
+        name: &str,
+        col_names: &[&str],
+        collations: &[Option<&str>],
+    ) -> MemoryStorage {
         let mut s = MemoryStorage::new();
         let cols: Vec<StorageColumnDef> = col_names
             .iter()
@@ -367,7 +373,12 @@ mod tests {
         assert_eq!(ls.table, "u");
 
         // Direct select path
-        assert_eq!(leftmost_select(&Statement::Select(s.clone())).unwrap().table, "t");
+        assert_eq!(
+            leftmost_select(&Statement::Select(s.clone()))
+                .unwrap()
+                .table,
+            "t"
+        );
         // Non-select → None
         assert!(leftmost_select(&Statement::Values(vec![])).is_none());
     }
@@ -399,7 +410,10 @@ mod tests {
     #[test]
     fn normalize_value_nocase_non_text_passthrough() {
         let v = Value::Integer(42);
-        assert_eq!(normalize_value_for_collation(&v, Some("NOCASE")), Value::Integer(42));
+        assert_eq!(
+            normalize_value_for_collation(&v, Some("NOCASE")),
+            Value::Integer(42)
+        );
     }
 
     // ---- normalize_row_for_compare ----------------------------------------------
@@ -487,7 +501,10 @@ mod tests {
         s.columns[0].name = "*".to_string();
         let storage = mk_storage_with_table("t", &["x", "y", "z"], &[None, None, None]);
         let names = expand_column_names(&storage, &Statement::Select(s));
-        assert_eq!(names, vec!["x".to_string(), "y".to_string(), "z".to_string()]);
+        assert_eq!(
+            names,
+            vec!["x".to_string(), "y".to_string(), "z".to_string()]
+        );
     }
 
     #[test]
@@ -560,13 +577,12 @@ mod tests {
     fn collect_column_collations_star_uses_physical_order() {
         let mut s = mk_select("t", &["*"]);
         s.columns[0].name = "*".to_string();
-        let storage = mk_storage_with_table(
-            "t",
-            &["x", "y"],
-            &[Some("NOCASE"), Some("BINARY")],
-        );
+        let storage = mk_storage_with_table("t", &["x", "y"], &[Some("NOCASE"), Some("BINARY")]);
         let colls = collect_column_collations(&storage, &Statement::Select(s));
-        assert_eq!(colls, vec![Some("NOCASE".to_string()), Some("BINARY".to_string())]);
+        assert_eq!(
+            colls,
+            vec![Some("NOCASE".to_string()), Some("BINARY".to_string())]
+        );
     }
 
     #[test]

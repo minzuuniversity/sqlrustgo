@@ -4124,10 +4124,7 @@ impl<S: StorageEngine + 'static> ExecutionEngine<S> {
         };
         // Probe the pre-built HashSemiJoin directly. No rebuild.
         DIAG_HASH_SEMI_JOIN_PROBE_HITS.fetch_add(1, Ordering::SeqCst);
-        if !matches!(
-            idx.hsj.probe_outer_key(&probe_value),
-            ProbeResult::Matched
-        ) {
+        if !matches!(idx.hsj.probe_outer_key(&probe_value), ProbeResult::Matched) {
             return false;
         }
         // HSJ matched the probe key. If the inner WHERE was a bare
@@ -4180,11 +4177,7 @@ impl<S: StorageEngine + 'static> ExecutionEngine<S> {
             outer_table_info,
         );
         inner_rows.iter().any(|inner_row| {
-            crate::engine_utils::eval_predicate(
-                &substituted,
-                inner_row,
-                &idx.inner_table_info,
-            )
+            crate::engine_utils::eval_predicate(&substituted, inner_row, &idx.inner_table_info)
         })
     }
 
@@ -5335,7 +5328,11 @@ impl<S: StorageEngine + 'static> ExecutionEngine<S> {
         };
         let mut key_col_indices: Vec<usize> = Vec::with_capacity(correlated_keys.len());
         for (inner_col_name, _outer_pos) in &correlated_keys {
-            let idx = match table_info.columns.iter().position(|c| c.name == *inner_col_name) {
+            let idx = match table_info
+                .columns
+                .iter()
+                .position(|c| c.name == *inner_col_name)
+            {
                 Some(i) => i,
                 None => {
                     DIAG_AGG_FAIL_KEY_COL_NOT_FOUND.fetch_add(1, Ordering::SeqCst);
@@ -6249,7 +6246,8 @@ fn try_build_hash_semi_join_index_for_subq<S: StorageEngine + 'static>(
         match expr {
             // Bare equality at top level (no AND wrapper).
             E::BinaryOp(l, op, r) if op == "=" && eq_l.is_none() => {
-                if matches!(l.as_ref(), E::Identifier(_)) && matches!(r.as_ref(), E::Identifier(_)) {
+                if matches!(l.as_ref(), E::Identifier(_)) && matches!(r.as_ref(), E::Identifier(_))
+                {
                     *eq_l = Some(l.as_ref());
                     *eq_r = Some(r.as_ref());
                     return;
@@ -6282,9 +6280,8 @@ fn try_build_hash_semi_join_index_for_subq<S: StorageEngine + 'static>(
     // First conjunct retained for `HashSemiJoinIndex.residual`
     // (diagnostic field, deprecated once `residual_conjuncts` is
     // wired everywhere). When empty, both fields are `None`/empty.
-    let residual_first: Option<Box<Expression>> = residual_conjuncts
-        .first()
-        .map(|c| Box::new(c.clone()));
+    let residual_first: Option<Box<Expression>> =
+        residual_conjuncts.first().map(|c| Box::new(c.clone()));
     let (inner_bare_col, outer_bare_col) = match (eq_l, eq_r) {
         (E::Identifier(li), E::Identifier(ri)) => {
             let li_bare = strip_alias(li);
@@ -6335,9 +6332,7 @@ fn try_build_hash_semi_join_index_for_subq<S: StorageEngine + 'static>(
     fn residual_has_subquery(e: &Expression) -> bool {
         match e {
             Expression::Subquery(_) | Expression::SubqueryField(_, _) => true,
-            Expression::BinaryOp(l, _, r) => {
-                residual_has_subquery(l) || residual_has_subquery(r)
-            }
+            Expression::BinaryOp(l, _, r) => residual_has_subquery(l) || residual_has_subquery(r),
             Expression::UnaryOp(_, inner) => residual_has_subquery(inner),
             Expression::IsNull(inner) | Expression::IsNotNull(inner) => {
                 residual_has_subquery(inner)
@@ -6345,9 +6340,7 @@ fn try_build_hash_semi_join_index_for_subq<S: StorageEngine + 'static>(
             Expression::InList(_, values) | Expression::NotInList(_, values) => {
                 values.iter().any(residual_has_subquery)
             }
-            Expression::FunctionCall(_, args) => {
-                args.iter().any(residual_has_subquery)
-            }
+            Expression::FunctionCall(_, args) => args.iter().any(residual_has_subquery),
             _ => false,
         }
     }
@@ -6367,24 +6360,18 @@ fn try_build_hash_semi_join_index_for_subq<S: StorageEngine + 'static>(
                         };
                         !inner_cols.iter().any(|c| c == bare)
                     }
-                    Expression::BinaryOp(l, _, r) => {
-                        walk(l, inner_cols) || walk(r, inner_cols)
-                    }
+                    Expression::BinaryOp(l, _, r) => walk(l, inner_cols) || walk(r, inner_cols),
                     Expression::UnaryOp(_, inner) => walk(inner, inner_cols),
                     Expression::IsNull(inner) | Expression::IsNotNull(inner) => {
                         walk(inner, inner_cols)
                     }
                     Expression::InList(left, values) => {
-                        walk(left, inner_cols)
-                            || values.iter().any(|v| walk(v, inner_cols))
+                        walk(left, inner_cols) || values.iter().any(|v| walk(v, inner_cols))
                     }
                     Expression::NotInList(left, values) => {
-                        walk(left, inner_cols)
-                            || values.iter().any(|v| walk(v, inner_cols))
+                        walk(left, inner_cols) || values.iter().any(|v| walk(v, inner_cols))
                     }
-                    Expression::FunctionCall(_, args) => {
-                        args.iter().any(|a| walk(a, inner_cols))
-                    }
+                    Expression::FunctionCall(_, args) => args.iter().any(|a| walk(a, inner_cols)),
                     // TPC-H Q20 followup-6: defensive — the early
                     // `residual_has_subquery` bail above prevents
                     // reaching here with a Subquery in the residual,
@@ -6412,9 +6399,9 @@ fn try_build_hash_semi_join_index_for_subq<S: StorageEngine + 'static>(
             inner_rows
                 .into_iter()
                 .filter(|row| {
-                    residual_conjuncts.iter().all(|c| {
-                        crate::engine_utils::eval_predicate(c, row, &inner_storage_info)
-                    })
+                    residual_conjuncts
+                        .iter()
+                        .all(|c| crate::engine_utils::eval_predicate(c, row, &inner_storage_info))
                 })
                 .collect()
         }
@@ -6426,13 +6413,7 @@ fn try_build_hash_semi_join_index_for_subq<S: StorageEngine + 'static>(
     // interior mutability (`AtomicU64` counters + `parking_lot::Mutex`
     // on the matched-key set), so the pre-built instance can now be
     // reused across all outer-row probes — true O(1) per probe.
-    let hsj = HashSemiJoin::from_select(
-        subq,
-        &inner_storage_info,
-        &inner_rows,
-        build_key_col,
-        0,
-    )?;
+    let hsj = HashSemiJoin::from_select(subq, &inner_storage_info, &inner_rows, build_key_col, 0)?;
     DIAG_HASH_SEMI_JOIN_BUILDS.fetch_add(1, Ordering::SeqCst);
     Some(HashSemiJoinIndex {
         build_key_col,

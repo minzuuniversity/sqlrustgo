@@ -32,9 +32,7 @@
 #[path = "../../common/mod.rs"]
 mod common;
 
-use common::tpch_wire_harness::{
-    load_fixture, read_baseline, run_query_timed, SCHEMA_DDL, TABLES,
-};
+use common::tpch_wire_harness::{load_fixture, read_baseline, run_query_timed, SCHEMA_DDL, TABLES};
 use common::MySqlTestClient;
 use sqlrustgo_mysql_server::testing::{start_ephemeral, EphemeralConfig};
 use std::path::{Path, PathBuf};
@@ -135,11 +133,7 @@ fn q4_sf1_real_perf_canonical_residual() {
         .iter()
         .filter_map(|row| row.last().and_then(|s| s.parse::<i64>().ok()))
         .sum();
-    assert!(
-        total > 0,
-        "total count must be > 0; got rows={:?}",
-        rows
-    );
+    assert!(total > 0, "total count must be > 0; got rows={:?}", rows);
     eprintln!(
         "[perf] Q4 SF=1.0 (HSJ residual path): {} priority groups, total = {}; \
          query elapsed: {:?}; LOAD DATA: {:?}",

@@ -602,7 +602,11 @@ mod tests {
     // ---- PartialAggregate update_* paths ----
 
     fn call(func: AggregateFunction, args: Vec<Expression>) -> AggregateCall {
-        AggregateCall { func, args, distinct: false }
+        AggregateCall {
+            func,
+            args,
+            distinct: false,
+        }
     }
 
     #[test]

@@ -334,12 +334,12 @@ mod tests {
     //!   * `apply_trailing_order_limit_offset`: nulls ordering, ASC/DESC,
     //!     star-expansion, offset/limit edge cases
 
+    use crate::{ExecutionEngine, MemoryStorage, StorageEngine};
     use parking_lot::RwLock;
     use sqlrustgo_storage::engine::TableInfo as StorageTableInfo;
     use sqlrustgo_storage::ColumnDefinition;
     use sqlrustgo_types::Value;
     use std::sync::Arc;
-    use crate::{ExecutionEngine, MemoryStorage, StorageEngine};
 
     fn fresh() -> ExecutionEngine<MemoryStorage> {
         let storage = Arc::new(RwLock::new(MemoryStorage::new()));
@@ -375,15 +375,13 @@ mod tests {
 
     fn int_rows(e: &mut ExecutionEngine<MemoryStorage>, rows: Vec<i64>) -> Vec<i64> {
         let r = e
-            .execute(
-                &format!(
-                    "SELECT * FROM (VALUES {}) AS t(v)",
-                    rows.iter()
-                        .map(|v| format!("({})", v))
-                        .collect::<Vec<_>>()
-                        .join(",")
-                ),
-            )
+            .execute(&format!(
+                "SELECT * FROM (VALUES {}) AS t(v)",
+                rows.iter()
+                    .map(|v| format!("({})", v))
+                    .collect::<Vec<_>>()
+                    .join(",")
+            ))
             .unwrap();
         r.rows
             .iter()
@@ -586,12 +584,11 @@ mod tests {
         let mut e = fresh();
         e.execute("CREATE TABLE t1 (v INTEGER)").unwrap();
         e.execute("CREATE TABLE t2 (v INTEGER)").unwrap();
-        e.execute("INSERT INTO t1 VALUES (1),(2),(3),(4),(5)").unwrap();
+        e.execute("INSERT INTO t1 VALUES (1),(2),(3),(4),(5)")
+            .unwrap();
         e.execute("INSERT INTO t2 VALUES (3)").unwrap();
         let r = e
-            .execute(
-                "SELECT v FROM t1 EXCEPT SELECT v FROM t2 ORDER BY v DESC LIMIT 2 OFFSET 1",
-            )
+            .execute("SELECT v FROM t1 EXCEPT SELECT v FROM t2 ORDER BY v DESC LIMIT 2 OFFSET 1")
             .unwrap();
         // The exact EXCEPT semantics depend on which clauses get lifted
         // to `trailing_*` vs dropped. The executor emits 2 rows in some
@@ -606,7 +603,8 @@ mod tests {
         // SELECT * with ORDER BY col → exercise expand_column_names path.
         let mut e = fresh();
         e.execute("CREATE TABLE s1 (a INTEGER, b TEXT)").unwrap();
-        e.execute("INSERT INTO s1 VALUES (3,'x'),(1,'y'),(2,'z')").unwrap();
+        e.execute("INSERT INTO s1 VALUES (3,'x'),(1,'y'),(2,'z')")
+            .unwrap();
         let r = e.execute("SELECT * FROM s1 ORDER BY a").unwrap();
         let avs: Vec<i64> = r
             .rows
@@ -623,7 +621,8 @@ mod tests {
     fn apply_trailing_nulls_first_then_last() {
         let mut e = fresh();
         e.execute("CREATE TABLE n (v INTEGER)").unwrap();
-        e.execute("INSERT INTO n VALUES (3),(NULL),(1),(NULL),(2)").unwrap();
+        e.execute("INSERT INTO n VALUES (3),(NULL),(1),(NULL),(2)")
+            .unwrap();
         let r1 = e.execute("SELECT v FROM n ORDER BY v").unwrap();
         let vs1: Vec<String> = r1
             .rows
@@ -637,9 +636,7 @@ mod tests {
         // Default nulls_first=true → NULLs come before integers
         assert!(matches!(r1.rows[0][0], Value::Null));
         // explicit NULLS LAST
-        let r2 = e
-            .execute("SELECT v FROM n ORDER BY v NULLS LAST")
-            .unwrap();
+        let r2 = e.execute("SELECT v FROM n ORDER BY v NULLS LAST").unwrap();
         let vs2: Vec<String> = r2
             .rows
             .iter()
@@ -677,8 +674,11 @@ mod tests {
         // depending on parser semantics. Verify the code path runs.
         let mut e = fresh();
         e.execute("CREATE TABLE o (v INTEGER)").unwrap();
-        e.execute("INSERT INTO o VALUES (1),(2),(3),(4),(5)").unwrap();
-        let r = e.execute("SELECT v FROM o UNION ALL SELECT v FROM o OFFSET 2 LIMIT 2").unwrap();
+        e.execute("INSERT INTO o VALUES (1),(2),(3),(4),(5)")
+            .unwrap();
+        let r = e
+            .execute("SELECT v FROM o UNION ALL SELECT v FROM o OFFSET 2 LIMIT 2")
+            .unwrap();
         // 5 + 5 = 10 rows; OFFSET 2 drains first 2 → at most 8 rows.
         assert!(r.rows.len() <= 8, "got {}", r.rows.len());
     }
@@ -705,7 +705,7 @@ mod tests {
         // These calls only construct AST nodes to silence the "unused
         // import" warnings on IntersectStatement / ExceptStatement etc.
         // The AST types are exercised at runtime by the SQL tests above.
-        use sqlrustgo_parser::parser::{IntersectStatement, ExceptStatement, UnionStatement};
+        use sqlrustgo_parser::parser::{ExceptStatement, IntersectStatement, UnionStatement};
         use sqlrustgo_parser::Expression;
         let ob = sqlrustgo_parser::parser::OrderByExpression {
             expression: Expression::Identifier("v".into()),
@@ -741,4 +741,3 @@ mod tests {
         let _ = int_rows;
     }
 }
-

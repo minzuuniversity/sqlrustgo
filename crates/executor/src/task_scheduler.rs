@@ -313,4 +313,3 @@ mod tests {
         assert_eq!(counter.load(std::sync::atomic::Ordering::SeqCst), 1000);
     }
 }
-

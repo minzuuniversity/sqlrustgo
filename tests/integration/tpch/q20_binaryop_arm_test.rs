@@ -317,7 +317,7 @@ fn q20_exact_shape_binaryop_arm_uses_scalar_agg_index() {
     let start = Instant::now();
     let r = e.execute(Q20_EXACT_SHAPE_SQL).unwrap();
     let elapsed = start.elapsed();
-     assert_eq!(
+    assert_eq!(
         r.rows.len(),
         20,
         "Q20 exact-shape EXISTS+SUM must return 20 suppliers; got {}",
