@@ -198,4 +198,148 @@ mod tests {
     fn test_module_compile_optional_none() {
         assert!(compile_optional(None).is_none());
     }
+
+    // ---- Additional coverage: BinaryExpr + UnaryExpr + edge cases ----
+
+    fn two_col_schema() -> Schema {
+        use sqlrustgo_planner::{DataType, Field};
+        Schema::new(vec![
+            Field::new_not_null("a".to_string(), DataType::Boolean),
+            Field::new_not_null("b".to_string(), DataType::Boolean),
+        ])
+    }
+
+    #[test]
+    fn compile_binary_and() {
+        let c = PredicateCompiler::new(two_col_schema());
+        let expr = Expr::BinaryExpr {
+            left: Box::new(Expr::Column(sqlrustgo_planner::Column::new("a".into()))),
+            op: Operator::And,
+            right: Box::new(Expr::Column(sqlrustgo_planner::Column::new("b".into()))),
+        };
+        let f = c.compile(&expr);
+        assert!(f(&vec![Value::Boolean(true), Value::Boolean(true)]));
+        assert!(!f(&vec![Value::Boolean(true), Value::Boolean(false)]));
+        assert!(!f(&vec![Value::Boolean(false), Value::Boolean(true)]));
+    }
+
+    #[test]
+    fn compile_binary_or() {
+        let c = PredicateCompiler::new(two_col_schema());
+        let expr = Expr::BinaryExpr {
+            left: Box::new(Expr::Column(sqlrustgo_planner::Column::new("a".into()))),
+            op: Operator::Or,
+            right: Box::new(Expr::Column(sqlrustgo_planner::Column::new("b".into()))),
+        };
+        let f = c.compile(&expr);
+        assert!(f(&vec![Value::Boolean(true), Value::Boolean(false)]));
+        assert!(!f(&vec![Value::Boolean(false), Value::Boolean(false)]));
+    }
+    #[test]
+    fn compile_binary_eq_on_columns() {
+        // Both sides are column refs: left_filter reads col 'a',
+        // right_filter reads col 'b'; equality compares their bool values.
+        let c = PredicateCompiler::new(two_col_schema());
+        let expr = Expr::BinaryExpr {
+            left: Box::new(Expr::Column(sqlrustgo_planner::Column::new("a".into()))),
+            op: Operator::Eq,
+            right: Box::new(Expr::Column(sqlrustgo_planner::Column::new("b".into()))),
+        };
+        let f = c.compile(&expr);
+        assert!(f(&vec![Value::Boolean(true), Value::Boolean(true)]));
+        assert!(!f(&vec![Value::Boolean(true), Value::Boolean(false)]));
+    }
+
+    #[test]
+    fn compile_binary_noteq_on_columns() {
+        let c = PredicateCompiler::new(two_col_schema());
+        let expr = Expr::BinaryExpr {
+            left: Box::new(Expr::Column(sqlrustgo_planner::Column::new("a".into()))),
+            op: Operator::NotEq,
+            right: Box::new(Expr::Column(sqlrustgo_planner::Column::new("b".into()))),
+        };
+        let f = c.compile(&expr);
+        assert!(f(&vec![Value::Boolean(true), Value::Boolean(false)]));
+        assert!(!f(&vec![Value::Boolean(true), Value::Boolean(true)]));
+    }
+
+    #[test]
+    fn compile_unary_not_on_column() {
+        // Inner expr is a column ref so inner_filter reads actual values.
+        let c = PredicateCompiler::new(two_col_schema());
+        let expr = Expr::UnaryExpr {
+            op: Operator::Not,
+            expr: Box::new(Expr::Column(sqlrustgo_planner::Column::new("a".into()))),
+        };
+        let f = c.compile(&expr);
+        assert!(!f(&vec![Value::Boolean(true), Value::Boolean(false)]));
+        assert!(f(&vec![Value::Boolean(false), Value::Boolean(true)]));
+    }
+
+    #[test]
+    fn compile_unary_unsupported_op_returns_false() {
+        // Operator::Plus on unary → eval_unary_bool_op returns false.
+        let c = PredicateCompiler::new(two_col_schema());
+        let expr = Expr::UnaryExpr {
+            op: Operator::Plus,
+            expr: Box::new(Expr::Literal(Value::Integer(1))),
+        };
+        let f = c.compile(&expr);
+        assert!(!f(&vec![]));
+    }
+
+    #[test]
+    fn compile_qualified_wildcard_always_true() {
+        let c = PredicateCompiler::new(two_col_schema());
+        let expr = Expr::QualifiedWildcard {
+            qualifier: "t".to_string(),
+        };
+        let f = c.compile(&expr);
+        assert!(f(&vec![]));
+    }
+
+    #[test]
+    fn compile_column_with_non_boolean_value_returns_false() {
+        let c = PredicateCompiler::new(two_col_schema());
+        let expr = Expr::Column(sqlrustgo_planner::Column::new("a".into()));
+        let f = c.compile(&expr);
+        let row = vec![Value::Integer(1), Value::Boolean(true)];
+        // column 'a' holds Integer, not Boolean → filter returns false.
+        assert!(!f(&row));
+    }
+
+    #[test]
+    fn compile_unknown_column_returns_false() {
+        let c = PredicateCompiler::new(two_col_schema());
+        let expr = Expr::Column(sqlrustgo_planner::Column::new("missing".into()));
+        let f = c.compile(&expr);
+        assert!(!f(&vec![Value::Boolean(true), Value::Boolean(true)]));
+    }
+
+    #[test]
+    fn compile_column_index_out_of_row_returns_false() {
+        let c = PredicateCompiler::new(two_col_schema());
+        let expr = Expr::Column(sqlrustgo_planner::Column::new("a".into()));
+        let f = c.compile(&expr);
+        // Row too short — idx 0 out of range.
+        assert!(!f(&vec![]));
+    }
+
+    #[test]
+    fn compile_nested_binary_unary() {
+        // !(a AND b)
+        let c = PredicateCompiler::new(two_col_schema());
+        let inner = Expr::BinaryExpr {
+            left: Box::new(Expr::Column(sqlrustgo_planner::Column::new("a".into()))),
+            op: Operator::And,
+            right: Box::new(Expr::Column(sqlrustgo_planner::Column::new("b".into()))),
+        };
+        let expr = Expr::UnaryExpr {
+            op: Operator::Not,
+            expr: Box::new(inner),
+        };
+        let f = c.compile(&expr);
+        assert!(!f(&vec![Value::Boolean(true), Value::Boolean(true)]));
+        assert!(f(&vec![Value::Boolean(true), Value::Boolean(false)]));
+    }
 }

@@ -236,4 +236,115 @@ mod tests {
         assert_eq!(seq_sorted, par_sorted);
         assert_eq!(seq_sorted.len(), 100);
     }
+
+    // ---- partition_rows_with_min + edge cases ----
+
+    #[test]
+    fn partition_rows_with_min_below_threshold_sequential() {
+        let exec = ParallelVolcanoExecutor::new(4);
+        let rows = make_rows(100);
+        // min_rows=200, total=100 < 200 → single partition
+        let parts = exec.partition_rows_with_min(rows, 4, 200);
+        assert_eq!(parts.len(), 1);
+        assert_eq!(parts[0].len(), 100);
+    }
+
+    #[test]
+    fn partition_rows_with_min_degree_one_sequential() {
+        let exec = ParallelVolcanoExecutor::new(1);
+        let rows = make_rows(10_000);
+        let parts = exec.partition_rows_with_min(rows, 1, 100);
+        assert_eq!(parts.len(), 1);
+        assert_eq!(parts[0].len(), 10_000);
+    }
+
+    #[test]
+    fn partition_rows_with_min_even_split() {
+        let exec = ParallelVolcanoExecutor::new(1);
+        let rows = make_rows(1000);
+        let parts = exec.partition_rows_with_min(rows, 4, 100);
+        assert_eq!(parts.len(), 4);
+        for p in &parts {
+            assert_eq!(p.len(), 250);
+        }
+        let total: usize = parts.iter().map(|p| p.len()).sum();
+        assert_eq!(total, 1000);
+    }
+
+    #[test]
+    fn partition_rows_with_min_uneven_split() {
+        let exec = ParallelVolcanoExecutor::new(1);
+        let rows = make_rows(1003);
+        let parts = exec.partition_rows_with_min(rows, 4, 100);
+        // 1003 / 4 = 250 rem 3 → first 3 partitions = 251 rows, last = 250.
+        assert_eq!(parts.len(), 4);
+        assert_eq!(parts[0].len(), 251);
+        assert_eq!(parts[1].len(), 251);
+        assert_eq!(parts[2].len(), 251);
+        assert_eq!(parts[3].len(), 250);
+    }
+
+    #[test]
+    fn partition_rows_with_min_empty() {
+        let exec = ParallelVolcanoExecutor::new(1);
+        let rows: Vec<Vec<Value>> = vec![];
+        // total=0 is not < min=0, so it falls into the partition loop;
+        // since base=0/rem=0, no partitions are pushed and the result is empty.
+        let parts = exec.partition_rows_with_min(rows, 4, 0);
+        assert!(parts.is_empty());
+    }
+
+    #[test]
+    fn partition_rows_with_min_degree_zero_normalizes() {
+        // degree=0 → degree.max(1) = 1 → single partition.
+        let exec = ParallelVolcanoExecutor::new(1);
+        let rows = make_rows(50);
+        let parts = exec.partition_rows_with_min(rows, 0, 0);
+        assert_eq!(parts.len(), 1);
+    }
+
+    #[test]
+    fn partition_scan_degree_zero_normalizes() {
+        // partition_scan also normalizes degree via max(1).
+        let exec = ParallelVolcanoExecutor::new(1);
+        let rows = make_rows(100);
+        let parts = exec.partition_scan(rows, 0);
+        assert_eq!(parts.len(), 1);
+    }
+
+    #[test]
+    fn partition_scan_drops_zero_size_partitions() {
+        // rows.len() < degree means some partitions would be size=0; those
+        // are skipped (the `if size > 0` guard).
+        let exec = ParallelVolcanoExecutor::new(1);
+        let rows = make_rows(2_500_000); // > PARALLEL_MIN_ROWS, partitioned into 8
+        let parts = exec.partition_scan(rows, 8);
+        assert!(parts.len() <= 8);
+        let total: usize = parts.iter().map(|p| p.len()).sum();
+        assert_eq!(total, 2_500_000);
+        // Each non-empty partition has at least 1 row.
+        for p in &parts {
+            assert!(!p.is_empty());
+        }
+    }
+
+    #[test]
+    fn sequential_and_new_consistency() {
+        let seq = ParallelVolcanoExecutor::sequential();
+        let one = ParallelVolcanoExecutor::new(1);
+        assert_eq!(seq.degree(), 1);
+        assert_eq!(one.degree(), 1);
+    }
+
+    #[test]
+    fn new_with_zero_normalizes_to_one() {
+        let exec = ParallelVolcanoExecutor::new(0);
+        assert_eq!(exec.degree(), 1);
+    }
+
+    #[test]
+    fn default_is_sequential() {
+        let exec: ParallelVolcanoExecutor = Default::default();
+        assert_eq!(exec.degree(), 1);
+    }
 }
