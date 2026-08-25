@@ -6,7 +6,7 @@
 //! ## VTU Enforcement
 //! ALL DML operations go through ExecutionEngine::execute() - NO direct storage access.
 
-use sqlrustgo_planner::{Expr, MergeStatement, Operator};
+use sqlrustgo_planner::{Expr, MergeClause, MergeStatement, Operator};
 use sqlrustgo_storage::{StorageEngine, TableInfo};
 use sqlrustgo_types::{SqlResult, Value};
 use std::sync::{Arc, Mutex, RwLock};
@@ -1134,5 +1134,264 @@ mod tests {
             partition_info: None,
         };
         assert_eq!(find_column_index("name", &info), None);
+    }
+
+    // ---- end-to-end execute_merge tests ----
+
+    /// Build a target/source schema where rows match on `id`.
+    fn make_merge_storage() -> Arc<RwLock<MemoryStorage>> {
+        let storage = Arc::new(RwLock::new(MemoryStorage::new()));
+        let info = TableInfo {
+            name: "tgt".to_string(),
+            columns: vec![
+                ColumnDefinition {
+                    name: "id".to_string(),
+                    data_type: "INTEGER".to_string(),
+                    nullable: false,
+                    primary_key: true,
+                    char_max_length: None,
+                    collation: None,
+                    default_value: None,
+                    auto_increment: false,
+                },
+                ColumnDefinition {
+                    name: "val".to_string(),
+                    data_type: "TEXT".to_string(),
+                    nullable: true,
+                    primary_key: false,
+                    char_max_length: None,
+                    collation: None,
+                    default_value: None,
+                    auto_increment: false,
+                },
+            ],
+            foreign_keys: vec![],
+            unique_constraints: vec![],
+            check_constraints: vec![],
+            compression: None,
+            collations: std::collections::HashMap::new(),
+            partition_info: None,
+        };
+        storage.write().unwrap().create_table(&info).unwrap();
+        let src_info = TableInfo {
+            name: "src".to_string(),
+            ..info.clone()
+        };
+        storage.write().unwrap().create_table(&src_info).unwrap();
+        storage
+    }
+
+    #[test]
+    fn execute_merge_not_matched_inserts() {
+        let storage = make_merge_storage();
+        // Target empty, source has 2 rows → both are NOT MATCHED → INSERT.
+        storage
+            .write()
+            .unwrap()
+            .insert("src", vec![vec![Value::Integer(1), Value::Text("a".into())]])
+            .unwrap();
+        storage
+            .write()
+            .unwrap()
+            .insert("src", vec![vec![Value::Integer(2), Value::Text("b".into())]])
+            .unwrap();
+        let exec = MergeExecutor::new(
+            storage.clone(),
+            Arc::new(std::sync::Mutex::new(MockEngine)),
+        );
+        let merge = MergeStatement::new(
+            "tgt".to_string(),
+            "src".to_string(),
+            // ON src.id = tgt.id — always false since tgt is empty.
+            Expr::BinaryExpr {
+                left: Box::new(Expr::Column(sqlrustgo_planner::Column::new("id".into()))),
+                op: Operator::Eq,
+                right: Box::new(Expr::Column(sqlrustgo_planner::Column::new("id".into()))),
+            },
+            None,
+            Some(MergeClause {
+                update_columns: vec![],
+                update_values: vec![],
+                insert_columns: vec!["id".into(), "val".into()],
+                insert_values: vec![
+                    Expr::Column(sqlrustgo_planner::Column::new("id".into())),
+                    Expr::Column(sqlrustgo_planner::Column::new("val".into())),
+                ],
+            }),
+        );
+        let r = exec.execute_merge(&merge).unwrap();
+        assert_eq!(r.affected_rows, 2);
+    }
+
+    #[test]
+    fn execute_merge_matched_updates() {
+        let storage = make_merge_storage();
+        // Both target and source have id=1 → MATCHED branch fires.
+        storage
+            .write()
+            .unwrap()
+            .insert("tgt", vec![vec![Value::Integer(1), Value::Text("old".into())]])
+            .unwrap();
+        storage
+            .write()
+            .unwrap()
+            .insert("src", vec![vec![Value::Integer(1), Value::Text("new".into())]])
+            .unwrap();
+        let exec = MergeExecutor::new(
+            storage.clone(),
+            Arc::new(std::sync::Mutex::new(MockEngine)),
+        );
+        let merge = MergeStatement::new(
+            "tgt".to_string(),
+            "src".to_string(),
+            Expr::BinaryExpr {
+                left: Box::new(Expr::Column(sqlrustgo_planner::Column::new("id".into()))),
+                op: Operator::Eq,
+                right: Box::new(Expr::Column(sqlrustgo_planner::Column::new("id".into()))),
+            },
+            Some(MergeClause {
+                update_columns: vec!["val".into()],
+                update_values: vec![Expr::Column(sqlrustgo_planner::Column::new("val".into()))],
+                insert_columns: vec![],
+                insert_values: vec![],
+            }),
+            None,
+        );
+        let r = exec.execute_merge(&merge).unwrap();
+        assert_eq!(r.affected_rows, 1);
+    }
+
+    #[test]
+    fn execute_merge_mixed_match_and_insert() {
+        let storage = make_merge_storage();
+        // Target has id=1; source has id=1 AND id=2.
+        storage
+            .write()
+            .unwrap()
+            .insert("tgt", vec![vec![Value::Integer(1), Value::Text("x".into())]])
+            .unwrap();
+        storage
+            .write()
+            .unwrap()
+            .insert(
+                "src",
+                vec![
+                    vec![Value::Integer(1), Value::Text("y".into())],
+                    vec![Value::Integer(2), Value::Text("z".into())],
+                ],
+            )
+            .unwrap();
+        let exec = MergeExecutor::new(
+            storage.clone(),
+            Arc::new(std::sync::Mutex::new(MockEngine)),
+        );
+        let merge = MergeStatement::new(
+            "tgt".to_string(),
+            "src".to_string(),
+            Expr::BinaryExpr {
+                left: Box::new(Expr::Column(sqlrustgo_planner::Column::new("id".into()))),
+                op: Operator::Eq,
+                right: Box::new(Expr::Column(sqlrustgo_planner::Column::new("id".into()))),
+            },
+            Some(MergeClause {
+                update_columns: vec!["val".into()],
+                update_values: vec![Expr::Column(sqlrustgo_planner::Column::new("val".into()))],
+                insert_columns: vec![],
+                insert_values: vec![],
+            }),
+            Some(MergeClause {
+                update_columns: vec![],
+                update_values: vec![],
+                insert_columns: vec!["id".into(), "val".into()],
+                insert_values: vec![
+                    Expr::Column(sqlrustgo_planner::Column::new("id".into())),
+                    Expr::Column(sqlrustgo_planner::Column::new("val".into())),
+                ],
+            }),
+        );
+        let r = exec.execute_merge(&merge).unwrap();
+        // 1 matched + 1 inserted = 2
+        assert_eq!(r.affected_rows, 2);
+    }
+
+    #[test]
+    fn execute_merge_source_table_not_found() {
+        // Source table doesn't exist → storage.scan returns error.
+        let storage = make_merge_storage();
+        let exec = MergeExecutor::new(
+            storage.clone(),
+            Arc::new(std::sync::Mutex::new(MockEngine)),
+        );
+        let merge = MergeStatement::new(
+            "tgt".to_string(),
+            "missing_src".to_string(),
+            Expr::Literal(Value::Integer(1)),
+            None,
+            None,
+        );
+        assert!(exec.execute_merge(&merge).is_err());
+    }
+
+    #[test]
+    fn execute_merge_target_table_not_found() {
+        // Target table doesn't exist → get_table_info returns error.
+        let storage: Arc<RwLock<MemoryStorage>> = Arc::new(RwLock::new(MemoryStorage::new()));
+        let src_info = TableInfo {
+            name: "src".to_string(),
+            columns: vec![ColumnDefinition::new("id", "INTEGER")],
+            foreign_keys: vec![],
+            unique_constraints: vec![],
+            check_constraints: vec![],
+            compression: None,
+            collations: std::collections::HashMap::new(),
+            partition_info: None,
+        };
+        storage.write().unwrap().create_table(&src_info).unwrap();
+        let exec = MergeExecutor::new(
+            storage.clone(),
+            Arc::new(std::sync::Mutex::new(MockEngine)),
+        );
+        let merge = MergeStatement::new(
+            "missing_tgt".to_string(),
+            "src".to_string(),
+            Expr::Literal(Value::Integer(1)),
+            None,
+            None,
+        );
+        assert!(exec.execute_merge(&merge).is_err());
+    }
+
+    #[test]
+    fn execute_merge_no_clauses_no_op() {
+        // Both clauses are None → no UPDATE, no INSERT; just count is 0.
+        let storage = make_merge_storage();
+        storage
+            .write()
+            .unwrap()
+            .insert("tgt", vec![vec![Value::Integer(1), Value::Text("x".into())]])
+            .unwrap();
+        storage
+            .write()
+            .unwrap()
+            .insert("src", vec![vec![Value::Integer(1), Value::Text("y".into())]])
+            .unwrap();
+        let exec = MergeExecutor::new(
+            storage.clone(),
+            Arc::new(std::sync::Mutex::new(MockEngine)),
+        );
+        let merge = MergeStatement::new(
+            "tgt".to_string(),
+            "src".to_string(),
+            Expr::BinaryExpr {
+                left: Box::new(Expr::Column(sqlrustgo_planner::Column::new("id".into()))),
+                op: Operator::Eq,
+                right: Box::new(Expr::Column(sqlrustgo_planner::Column::new("id".into()))),
+            },
+            None,
+            None,
+        );
+        let r = exec.execute_merge(&merge).unwrap();
+
+        assert_eq!(r.affected_rows, 0);
     }
 }

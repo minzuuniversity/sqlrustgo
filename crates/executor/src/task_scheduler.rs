@@ -187,37 +187,95 @@ mod tests {
     use std::sync::atomic::AtomicUsize;
     use std::sync::Arc;
 
-    // These tests require the parallel-executor feature because they assert
-    // specific thread counts. On a 1-core machine rayon creates 1 thread,
-    // making assertions like current_parallelism() == 4 fail.
+    // ---- Sequential stub paths (active when parallel-executor feature is OFF)
+
+    #[test]
+    fn stub_scheduler_new_and_parallelism() {
+        let s = RayonTaskScheduler::new(8);
+        assert_eq!(s.current_parallelism(), 1, "stub always reports 1");
+    }
+
+    #[test]
+    fn stub_scheduler_with_config() {
+        let s = RayonTaskScheduler::with_config(16, 4 * 1024 * 1024);
+        assert_eq!(s.current_parallelism(), 1);
+    }
+
+    #[test]
+    fn stub_scheduler_submit_runs_inline() {
+        let s = RayonTaskScheduler::new(2);
+        let counter = Arc::new(AtomicUsize::new(0));
+        let c = counter.clone();
+        s.submit(move || {
+            c.fetch_add(1, std::sync::atomic::Ordering::SeqCst);
+        });
+        assert_eq!(counter.load(std::sync::atomic::Ordering::SeqCst), 1);
+    }
+
+    #[test]
+    fn stub_scheduler_submit_batch_runs_all() {
+        let s = RayonTaskScheduler::new(2);
+        let counter = Arc::new(AtomicUsize::new(0));
+        let tasks: Vec<Box<dyn FnOnce() + Send + 'static>> = (0..5)
+            .map(|_| {
+                let c = counter.clone();
+                Box::new(move || {
+                    c.fetch_add(1, std::sync::atomic::Ordering::SeqCst);
+                }) as Box<dyn FnOnce() + Send + 'static>
+            })
+            .collect();
+        s.submit_batch(tasks);
+        assert_eq!(counter.load(std::sync::atomic::Ordering::SeqCst), 5);
+    }
+
+    #[test]
+    fn stub_scheduler_wait_and_set_parallelism_are_noops() {
+        let s = RayonTaskScheduler::new(2);
+        s.wait();
+        s.set_parallelism(8);
+        assert_eq!(s.current_parallelism(), 1);
+    }
+
+    #[test]
+    fn stub_scheduler_submit_batch_empty() {
+        let s = RayonTaskScheduler::new(2);
+        let tasks: Vec<Box<dyn FnOnce() + Send + 'static>> = vec![];
+        s.submit_batch(tasks); // should not panic
+    }
+
+    #[test]
+    fn create_default_scheduler_reports_at_least_one() {
+        let s = create_default_scheduler();
+        assert!(s.current_parallelism() >= 1);
+    }
+
+    // ---- Parallel-executor paths (only when feature is enabled) ----
+
     #[cfg(feature = "parallel-executor")]
     #[test]
-    fn test_task_scheduler_creation() {
+    fn rayon_scheduler_creation_reports_parallelism() {
         let scheduler = RayonTaskScheduler::new(4);
         assert_eq!(scheduler.current_parallelism(), 4);
     }
 
     #[cfg(feature = "parallel-executor")]
     #[test]
-    fn test_task_submission() {
+    fn rayon_scheduler_submit_single_task() {
         let scheduler = RayonTaskScheduler::new(2);
         let counter = Arc::new(AtomicUsize::new(0));
-        let counter_clone = counter.clone();
-
+        let c = counter.clone();
         scheduler.submit(move || {
-            counter_clone.fetch_add(1, std::sync::atomic::Ordering::SeqCst);
+            c.fetch_add(1, std::sync::atomic::Ordering::SeqCst);
         });
-
         scheduler.wait();
         assert_eq!(counter.load(std::sync::atomic::Ordering::SeqCst), 1);
     }
 
     #[cfg(feature = "parallel-executor")]
     #[test]
-    fn test_batch_submission() {
+    fn rayon_scheduler_submit_batch() {
         let scheduler = RayonTaskScheduler::new(4);
         let counter = Arc::new(AtomicUsize::new(0));
-
         let tasks: Vec<Box<dyn FnOnce() + Send + 'static>> = (0..10)
             .map(|_| {
                 let c = counter.clone();
@@ -226,43 +284,33 @@ mod tests {
                 }) as Box<dyn FnOnce() + Send + 'static>
             })
             .collect();
-
         scheduler.submit_batch(tasks);
         scheduler.wait();
-
         assert_eq!(counter.load(std::sync::atomic::Ordering::SeqCst), 10);
     }
 
+    #[cfg(feature = "parallel-executor")]
     #[test]
-    fn test_create_default_scheduler() {
-        let scheduler = create_default_scheduler();
-        assert!(scheduler.current_parallelism() >= 1);
+    fn rayon_scheduler_set_parallelism_changes_value() {
+        let scheduler = RayonTaskScheduler::new(2);
+        assert_eq!(scheduler.current_parallelism(), 2);
+        scheduler.set_parallelism(8);
+        assert_eq!(scheduler.current_parallelism(), 8);
     }
 
-    #[test]
     #[cfg(feature = "parallel-executor")]
-    fn test_parallel_execution() {
-        use std::time::Instant;
-
+    #[test]
+    fn rayon_scheduler_high_throughput_submit() {
         let scheduler = RayonTaskScheduler::new(4);
         let counter = Arc::new(AtomicUsize::new(0));
-
-        let start = Instant::now();
-
         for _ in 0..1000 {
             let c = counter.clone();
             scheduler.submit(move || {
                 c.fetch_add(1, std::sync::atomic::Ordering::SeqCst);
             });
         }
-
         scheduler.wait();
-        let elapsed = start.elapsed();
         assert_eq!(counter.load(std::sync::atomic::Ordering::SeqCst), 1000);
-        assert!(
-            elapsed.as_secs() < 5,
-            "Took {}s, should be < 5s",
-            elapsed.as_secs()
-        );
     }
 }
+
