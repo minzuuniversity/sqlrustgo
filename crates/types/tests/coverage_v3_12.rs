@@ -63,7 +63,10 @@ fn cov_value_hash_in_hashset_blob() {
 fn cov_value_hash_in_hashmap_key() {
     let mut map = HashMap::new();
     map.insert(Value::Text("k".to_string()), Value::Integer(42));
-    assert_eq!(map.get(&Value::Text("k".to_string())), Some(&Value::Integer(42)));
+    assert_eq!(
+        map.get(&Value::Text("k".to_string())),
+        Some(&Value::Integer(42))
+    );
 }
 
 #[test]
