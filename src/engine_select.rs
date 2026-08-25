@@ -4045,13 +4045,18 @@ impl<S: StorageEngine + 'static> ExecutionEngine<S> {
     ///
     /// On subquery execution error, the original EXISTS / NOT EXISTS
     /// subtree is replaced with `Expression::Literal("false")` (a
-    /// V312-58 Sprint 5: probe a pre-built `HashSemiJoinIndex`
-    /// against one outer row.  Resolves the `outer_col_name`
-    /// recorded at build time against `outer_table_info` to find
-    /// the column index in this row, then asks a freshly-built
-    /// HashSemiJoin for a Matched/NotMatched verdict.  Returns
-    /// `true` iff at least one inner row matches the probe key
-    /// (→ EXISTS passes).
+    /// V312-58 Sprint 5 + followup: probe a pre-built `HashSemiJoinIndex`
+    /// against one outer row.  Resolves the `outer_col_name` recorded at
+    /// build time against `outer_table_info` to find the column index in
+    /// this row, then asks the long-lived `HashSemiJoin` (held inside the
+    /// index) for a `Matched`/`NotMatched` verdict. Returns `true` iff at
+    /// least one inner row matches the probe key (→ EXISTS passes).
+    ///
+    /// V312-58 followup (interior mutability): no per-outer-row rebuild.
+    /// The `HashSemiJoin` was built once in
+    /// `try_build_hash_semi_join_index_for_subq` and its
+    /// `probe_outer_key` now takes `&self`, so we reuse the same
+    /// instance — O(1) per outer row, O(N_inner) once at build time.
     fn probe_hash_semi_join(
         &self,
         idx: &HashSemiJoinIndex,
@@ -4072,17 +4077,12 @@ impl<S: StorageEngine + 'static> ExecutionEngine<S> {
             Some(v) => v.clone(),
             None => return false,
         };
-        // Rebuild the HashSemiJoin from stored inner_rows.  This
-        // O(N_inner) rebuild per outer row is wasted work in
-        // absolute terms (the eventual design uses interior
-        // mutability); for Sprint 5 the goal is to verify the
-        // call-site wiring, not to optimize TPC-H perf.
-        let mut hsj = HashSemiJoin::new(idx.build_key_col, 0);
-        for row in &idx.inner_rows {
-            hsj.add_inner_row(row.clone());
-        }
+        // Probe the pre-built HashSemiJoin directly. No rebuild.
         DIAG_HASH_SEMI_JOIN_PROBE_HITS.fetch_add(1, Ordering::SeqCst);
-        matches!(hsj.probe_outer_key(&probe_value), ProbeResult::Matched)
+        matches!(
+            idx.hsj.probe_outer_key(&probe_value),
+            ProbeResult::Matched
+        )
     }
 
     /// conservative denial) so the row is filtered out — we don't
@@ -5949,11 +5949,16 @@ pub struct HashSemiJoinIndex {
     /// Column position in the inner table's projected row that
     /// will be used as the build-side key.
     pub build_key_col: usize,
-    /// Pre-fetched inner rows (Vec<Value> per row). Kept here so
-    /// we can rebuild a fresh `HashSemiJoin` per probe without
-    /// re-scanning storage (which would re-acquire the storage
-    /// read lock and may deadlock — see #4444 acceptance #4).
-    pub inner_rows: Vec<Vec<Value>>,
+    /// Pre-built `HashSemiJoin` instance holding the inner key_index,
+    /// bloom filter, and matched-set counter.  Built ONCE at
+    /// `try_build_hash_semi_join_index_for_subq` time so per-outer-row
+    /// probes in `probe_hash_semi_join` are O(1) (no rebuild).
+    /// `probe_outer_key` takes `&self` (interior mutability via
+    /// `AtomicU64` counters + `parking_lot::Mutex<HashSet>` for the
+    /// matched-key set) so the same instance can be reused across
+    /// many outer rows without `&mut self` plumbing through
+    /// `pre_evaluate_correlated_exists`.
+    pub hsj: HashSemiJoin,
     /// Name of the outer table column to probe against (we resolve
     /// name → idx against `outer_table_info` per outer row).
     pub outer_col_name: String,
@@ -6039,20 +6044,19 @@ fn try_build_hash_semi_join_index_for_subq<S: StorageEngine + 'static>(
         let storage = engine.storage.read();
         storage.scan(real_table).ok()?
     };
-    // Validate the shape via `HashSemiJoin::from_select` (rejects
-    // joins/aggregates/etc; an empty inner table passes through).
-    // We don't keep the resulting `HashSemiJoin` here because
-    // `pre_evaluate_correlated_exists` only has `&self`, not
-    // `&mut self`, and `probe_outer_key` needs interior mutability
-    // on the underlying bloom/key_index.  Instead we store the
-    // raw `inner_rows` and rebuild a fresh `HashSemiJoin` per
-    // probe in `probe_hash_semi_join`.
-    let _shape_ok =
+    // Build the `HashSemiJoin` once and KEEP it. Sprint 5 discarded the
+    // result here (because `probe_outer_key` was `&mut self`), forcing a
+    // per-outer-row rebuild in `probe_hash_semi_join`. V312-58 followup
+    // reworked `HashSemiJoin::probe_outer_key` to take `&self` via
+    // interior mutability (`AtomicU64` counters + `parking_lot::Mutex`
+    // on the matched-key set), so the pre-built instance can now be
+    // reused across all outer-row probes — true O(1) per probe.
+    let hsj =
         HashSemiJoin::from_select(subq, &inner_storage_info, &inner_rows, build_key_col, 0)?;
     DIAG_HASH_SEMI_JOIN_BUILDS.fetch_add(1, Ordering::SeqCst);
     Some(HashSemiJoinIndex {
         build_key_col,
-        inner_rows,
+        hsj,
         outer_col_name: outer_bare_col,
         inner_table_info: inner_storage_info,
     })
