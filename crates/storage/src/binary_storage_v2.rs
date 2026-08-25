@@ -302,8 +302,8 @@ impl BinaryTableStorageV2 {
             SegmentWriter::new(path, schema).map_err(|e| SqlError::ExecutionError(e.to_string()))
         };
         #[cfg(not(feature = "v313_3_profile"))]
-        let result = SegmentWriter::new(path, schema)
-            .map_err(|e| SqlError::ExecutionError(e.to_string()));
+        let result =
+            SegmentWriter::new(path, schema).map_err(|e| SqlError::ExecutionError(e.to_string()));
         result
     }
 
@@ -363,7 +363,6 @@ impl BinaryTableStorageV2 {
     /// `len_in_memory_rows_for_test()` accessor were removed. The fix
     /// deletes the `tables.rows.push` line entirely; there is nothing
     /// left to gate.
-
     /// V313.3 Experiment B: write fixed-width columns directly into a
     /// shared per-row `Vec<u8>`, skipping the per-column Vec allocation
     /// in `encode_value_to_bytes`. This is the "cheap variant" of full

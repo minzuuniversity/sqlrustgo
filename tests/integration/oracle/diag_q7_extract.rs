@@ -45,7 +45,7 @@ fn diag_extract_year_simple_parse_only() {
     engine.execute("CREATE TABLE t (d TEXT NOT NULL)").unwrap();
     {
         let mut st = storage.write();
-        st.insert("t", vec![vec![sqlrustgo::Value::Text("1995-06-15".into())]]);
+        let _ = st.insert("t", vec![vec![sqlrustgo::Value::Text("1995-06-15".into())]]);
     }
 
     let r = engine

@@ -107,7 +107,8 @@ fn q22_global_sales_opportunity_sf1() {
         elapsed <= TIMEOUT_BUDGET,
         "Q22 elapsed {:?} exceeds TIMEOUT_BUDGET {:?} — correlated subqueries \
          not decorrelated",
-        elapsed, TIMEOUT_BUDGET
+        elapsed,
+        TIMEOUT_BUDGET
     );
 
     assert_eq!(
