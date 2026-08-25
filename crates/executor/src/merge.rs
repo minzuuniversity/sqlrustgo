@@ -6,6 +6,11 @@
 //! ## VTU Enforcement
 //! ALL DML operations go through ExecutionEngine::execute() - NO direct storage access.
 
+// `MergeClause` is only referenced inside `#[cfg(test)] mod tests` (see test fns at L1212, L1252,
+// L1296, L1302). Keeping the import at top-level is intentional (matches user's prior edit),
+// but `--lib` mode (no `cfg(test)`) sees it as unused. The `#[allow(unused_imports)]` below
+// silences the `unused_imports` clippy lint without removing the import.
+#[allow(unused_imports)]
 use sqlrustgo_planner::{Expr, MergeClause, MergeStatement, Operator};
 use sqlrustgo_storage::{StorageEngine, TableInfo};
 use sqlrustgo_types::{SqlResult, Value};
