@@ -1223,6 +1223,10 @@ name = "q4_residual_filter_scale_test"
 path = "tests/integration/tpch/q4_residual_filter_scale_test.rs"
 
 [[test]]
+name = "q20_composite_key_test"
+path = "tests/integration/tpch/q20_composite_key_test.rs"
+
+[[test]]
 name = "q4_probe_time_residual_test"
 path = "tests/integration/tpch/q4_probe_time_residual_test.rs"
 
