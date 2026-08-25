@@ -6038,17 +6038,25 @@ pub fn collect_subquery_indexes<S: StorageEngine + 'static>(
 /// Scope (Sprint 5):
 /// - Single base table, no joins, no aggregates, no GROUP BY, no
 ///   LIMIT/OFFSET/DISTINCT.
-/// - Single correlated equality on the build key column.
-/// - **No** additional residual predicates after the equality (the
-///   constructor does not support them). Falls through to
-///   `SubqueryIndex` for shapes with a residual filter, and to
-///   `pre_eval_exists_subquery_fast` / recursive `execute_select`
-///   for everything else.
+/// - Single correlated equality on the build key column, optionally
+///   `AND`-ed with one residual predicate that does NOT reference
+///   outer-row columns. The residual is applied at build time
+///   (via `crate::engine_utils::eval_predicate`) to filter the inner
+///   rows before they enter the HSJ, so probe-time work stays O(1).
+///   For a residual that DOES reference outer-row columns, the
+///   shape gate returns `None` and the call falls through to
+///   `SubqueryIndex` / `pre_eval_exists_subquery_fast` /
+///   `execute_select`. The canonical TPC-H Q4 shape
+///   (`l_orderkey = o_orderkey AND l_commitdate < l_receiptdate`,
+///   where the residual is purely static) IS supported.
 ///
 /// Out of scope (deferred):
 /// - Composite-key build (Q20 L0/L5 full SUM, two-column equality).
 /// - NOT EXISTS / anti-semi-join semantics (Q22-style patterns).
-/// - Residual filter re-evaluation after the probe.
+/// - Probe-time residual re-evaluation when the residual predicate
+///   references outer-row columns (rare; canonical TPC-H Q4 has a
+///   purely static residual `l_commitdate < l_receiptdate` that the
+///   build-time path already handles).
 #[allow(dead_code)]
 pub struct HashSemiJoinIndex {
     /// Column position in the inner table's projected row that
@@ -6063,6 +6071,15 @@ pub struct HashSemiJoinIndex {
     /// matched-key set) so the same instance can be reused across
     /// many outer rows without `&mut self` plumbing through
     /// `pre_evaluate_correlated_exists`.
+    ///
+    /// When `residual` is `Some(_)` (i.e. the inner WHERE carries an
+    /// additional residual predicate after the correlated equality),
+    /// the HSJ was built from the **residual-filtered** inner rows —
+    /// `add_inner_row` was only called for rows where
+    /// `eval_predicate(residual, &row, &inner_table_info)` is true.
+    /// This is the canonical TPC-H Q4 shape
+    /// (`EXISTS (SELECT ... WHERE l_orderkey = o_orderkey
+    ///   AND l_commitdate < l_receiptdate)`).
     pub hsj: HashSemiJoin,
     /// Name of the outer table column to probe against (we resolve
     /// name → idx against `outer_table_info` per outer row).
@@ -6070,6 +6087,12 @@ pub struct HashSemiJoinIndex {
     /// Table info for the inner table (used for type / column-name
     /// resolution at probe time).
     pub inner_table_info: TableInfo,
+    /// The residual predicate (if any) that was split off from the
+    /// inner WHERE and applied at build time.  Stored here for
+    /// diagnostics + future probe-time re-evaluation when the residual
+    /// references outer-row columns.  When `None`, the inner WHERE
+    /// is a bare correlated equality with no residual.
+    pub residual: Option<Box<Expression>>,
 }
 
 /// V312-58 Sprint 5: try to build a `HashSemiJoinIndex` for a
@@ -6123,24 +6146,53 @@ fn try_build_hash_semi_join_index_for_subq<S: StorageEngine + 'static>(
         }
     };
 
-    // WHERE must be a single equality of two Identifiers. We require
-    // exactly one side to be an inner-table column; the other is the
-    // outer reference (recorded by name for probe-time resolution).
-    let (inner_bare_col, outer_bare_col) = match where_expr {
-        E::BinaryOp(l, op, r) if op == "=" => match (l.as_ref(), r.as_ref()) {
-            (E::Identifier(li), E::Identifier(ri)) => {
-                let li_bare = strip_alias(li);
-                let ri_bare = strip_alias(ri);
-                let li_is_inner = inner_cols.iter().any(|c| c == &li_bare);
-                let ri_is_inner = inner_cols.iter().any(|c| c == &ri_bare);
-                match (li_is_inner, ri_is_inner) {
-                    (true, false) => (li_bare, ri_bare),
-                    (false, true) => (ri_bare, li_bare),
+    // WHERE must be a single correlated equality of two Identifiers,
+    // optionally `AND`-ed with one residual predicate. We require
+    // exactly one side of the equality to be an inner-table column;
+    // the other is the outer reference (recorded by name for probe-time
+    // resolution). The residual, if present, must NOT reference outer
+    // columns — we detect that conservatively below by stripping
+    // outer-side identifiers; if any survive the residual is treated
+    // as out-of-scope and we return `None` so the caller falls through
+    // to `SubqueryIndex` / `pre_eval_exists_subquery_fast`.
+    //
+    // Shapes accepted:
+    //   1. `<inner_col> = <outer_col>`                       (no residual)
+    //   2. `<inner_col> = <outer_col> AND <static-residual>` (build-time)
+    //
+    // Rejected (return None):
+    //   - composite equalities (`AND` between two `=`'s),
+    //   - `OR`-chains, `NOT`, `IN`, `LIKE`, function calls,
+    //   - residuals that mention outer columns (rare; tracked as a
+    //     follow-up for probe-time re-evaluation).
+    let (eq_l, eq_r, residual_expr): (&Expression, &Expression, Option<Box<Expression>>) =
+        match where_expr {
+            E::BinaryOp(l, op, r) if op == "=" => (l.as_ref(), r.as_ref(), None),
+            E::BinaryOp(l, op, r) if op.to_uppercase() == "AND" => {
+                match (l.as_ref(), r.as_ref()) {
+                    (E::BinaryOp(le, eop, re), other) if eop == "=" => {
+                        (le.as_ref(), re.as_ref(), Some(Box::new(other.clone())))
+                    }
+                    (other, E::BinaryOp(le, eop, re)) if eop == "=" => {
+                        (le.as_ref(), re.as_ref(), Some(Box::new(other.clone())))
+                    }
                     _ => return None,
                 }
             }
             _ => return None,
-        },
+        };
+    let (inner_bare_col, outer_bare_col) = match (eq_l, eq_r) {
+        (E::Identifier(li), E::Identifier(ri)) => {
+            let li_bare = strip_alias(li);
+            let ri_bare = strip_alias(ri);
+            let li_is_inner = inner_cols.iter().any(|c| c == &li_bare);
+            let ri_is_inner = inner_cols.iter().any(|c| c == &ri_bare);
+            match (li_is_inner, ri_is_inner) {
+                (true, false) => (li_bare, ri_bare),
+                (false, true) => (ri_bare, li_bare),
+                _ => return None,
+            }
+        }
         _ => return None,
     };
     let build_key_col = inner_cols.iter().position(|c| c == &inner_bare_col)?;
@@ -6149,6 +6201,56 @@ fn try_build_hash_semi_join_index_for_subq<S: StorageEngine + 'static>(
         let storage = engine.storage.read();
         storage.scan(real_table).ok()?
     };
+
+    // Apply the residual (if any) at build time. We only accept residuals
+    // that do NOT reference outer columns: the conservative test below
+    // walks the residual AST looking for `Identifier(name)` whose bare
+    // name is NOT in `inner_cols`. Any such reference means the residual
+    // is outer-row-dependent and the build-time filter would be wrong;
+    // bail out so the caller falls back to `SubqueryIndex` /
+    // `pre_eval_exists_subquery_fast`.
+    let inner_rows: Vec<Vec<Value>> = if let Some(res) = &residual_expr {
+        fn mentions_outer(res: &Expression, inner_cols: &[String]) -> bool {
+            match res {
+                Expression::Identifier(name) => {
+                    let bare = match name.rfind('.') {
+                        Some(d) if d + 1 < name.len() => &name[d + 1..],
+                        _ => name.as_str(),
+                    };
+                    !inner_cols.iter().any(|c| c == bare)
+                }
+                Expression::BinaryOp(l, _, r) => {
+                    mentions_outer(l, inner_cols) || mentions_outer(r, inner_cols)
+                }
+                Expression::UnaryOp(_, inner) => mentions_outer(inner, inner_cols),
+                Expression::IsNull(inner) | Expression::IsNotNull(inner) => {
+                    mentions_outer(inner, inner_cols)
+                }
+                Expression::InList(left, values) => {
+                    mentions_outer(left, inner_cols)
+                        || values.iter().any(|v| mentions_outer(v, inner_cols))
+                }
+                Expression::NotInList(left, values) => {
+                    mentions_outer(left, inner_cols)
+                        || values.iter().any(|v| mentions_outer(v, inner_cols))
+                }
+                Expression::FunctionCall(_, args) => {
+                    args.iter().any(|a| mentions_outer(a, inner_cols))
+                }
+                _ => false,
+            }
+        }
+        if mentions_outer(res, &inner_cols) {
+            return None;
+        }
+        inner_rows
+            .into_iter()
+            .filter(|row| crate::engine_utils::eval_predicate(res, row, &inner_storage_info))
+            .collect()
+    } else {
+        inner_rows
+    };
+
     // Build the `HashSemiJoin` once and KEEP it. Sprint 5 discarded the
     // result here (because `probe_outer_key` was `&mut self`), forcing a
     // per-outer-row rebuild in `probe_hash_semi_join`. V312-58 followup
@@ -6156,14 +6258,20 @@ fn try_build_hash_semi_join_index_for_subq<S: StorageEngine + 'static>(
     // interior mutability (`AtomicU64` counters + `parking_lot::Mutex`
     // on the matched-key set), so the pre-built instance can now be
     // reused across all outer-row probes — true O(1) per probe.
-    let hsj =
-        HashSemiJoin::from_select(subq, &inner_storage_info, &inner_rows, build_key_col, 0)?;
+    let hsj = HashSemiJoin::from_select(
+        subq,
+        &inner_storage_info,
+        &inner_rows,
+        build_key_col,
+        0,
+    )?;
     DIAG_HASH_SEMI_JOIN_BUILDS.fetch_add(1, Ordering::SeqCst);
     Some(HashSemiJoinIndex {
         build_key_col,
         hsj,
         outer_col_name: outer_bare_col,
         inner_table_info: inner_storage_info,
+        residual: residual_expr,
     })
 }
 
