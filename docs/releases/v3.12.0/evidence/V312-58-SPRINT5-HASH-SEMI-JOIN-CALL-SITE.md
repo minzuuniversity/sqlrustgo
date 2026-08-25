@@ -242,10 +242,76 @@ Verified independently by `cargo clippy --lib --all-features -- -D warnings` aft
 storage clippy error is pre-existing baseline noise and **not**
 introduced by this PR.
 
-## Followups
+## Resolved: Q20 BinaryOp arm (`mentions_outer` Subquery) — followup-6
 
-_(none — all V312-58 followups closed; remaining items are listed
-  under "Out of Scope" below.)_
+The TPC-H Q20 L0/L5 SF=1 failure (correctness: 0 rows, not TIMEOUT)
+was traced to a **conservative `mentions_outer` miss** in
+`try_build_hash_semi_join_index_for_subq`. The Q20 partsupp WHERE
+is `ps_suppkey = s_suppkey AND ps_availqty > (SELECT 0.5 * SUM(l_quantity)
+FROM lineitem WHERE l_partkey = ps_partkey AND l_suppkey = ps_suppkey
+AND l_shipdate BETWEEN '...' AND '...')`. The shape gate parses the
+equality `ps_suppkey = s_suppkey` and treats the trailing
+`ps_availqty > (subquery)` as the residual. The conservative
+`mentions_outer_conjunct` walker (retained verbatim from followup-4)
+returned `false` for the inner `Expression::Subquery(_)` subtree
+(its `_ => false` wildcard arm fails to flag a Subquery as
+outer-correlated), treating the residual as purely static. The
+build-time `eval_predicate` then evaluated `ps_availqty > NULL` (the
+default `subq_eval` closure returns `Value::Null`) for every inner
+row, filtered every partsupp row out, built the HSJ with 0 rows, and
+probed NotMatched for every supplier — yielding 0 supplier rows.
+
+### Fix
+
+Add an explicit `Expression::Subquery(_) | Expression::SubqueryField(_, _)
+=> true` arm to the `mentions_outer_conjunct` walker's inner `walk`
+function in `try_build_hash_semi_join_index_for_subq`. With this
+single change, the residual conjunct is treated as outer-ref-dependent,
+so the build-time filter is skipped entirely: every inner row stays
+in the HSJ, and the probe-time path substitutes + re-evaluates the
+correlated predicate per outer row. The shape gate falls through to
+`SubqueryIndex` / full `execute_select` where Step 1.5 +
+`try_scalar_agg_index_lookup` engages the composite-key `ScalarAggIndex`
+correctly per outer row.
+
+### Evidence
+
+`tests/integration/tpch/q20_binaryop_arm_test.rs`:
+
+- `q20_binaryop_right_side_arm_uses_scalar_agg_index` —
+  `100 < (SELECT 0.5 * SUM(l_quantity) FROM lineitem WHERE ...)`:
+  20 suppliers, 500 lineitem, 1.6 ms. Diag: `calls=20 hits=20
+  build=1 pattern_fail=0`.
+- `q20_exact_shape_binaryop_arm_uses_scalar_agg_index` — full
+  `EXISTS (SELECT * FROM partsupp WHERE ps_suppkey = s_suppkey AND
+  ps_availqty < (SELECT 0.5 * SUM(l_quantity) FROM lineitem WHERE
+  l_partkey = ps_partkey AND l_suppkey = ps_suppkey AND l_shipdate
+  BETWEEN '...' AND '...'))`: 20 suppliers, 20 partsupp, 500 lineitem,
+  19 ms. Diag: `calls=400 hits=400 build=20 pattern_fail=0`
+  (Step 1.5 entered=21, has_correlated=21). This is the exact Q20
+  shape with the BinaryOp right-side scalar subquery.
+
+### Regression surface (all green)
+
+- `cargo test --test issue_4444_hash_semi_join_call_site`: 2 / 2
+- `cargo test --test issue_4444_nested_exists_regression`: 2 / 2
+- `cargo test --test issue_4374_regression`: 2 / 2
+- `cargo test --test issue_4443_materialization_regression`: 3 / 3
+- `cargo test --test q4_residual_filter_test`: 3 / 3
+- `cargo test --test q4_hash_semi_join_test`: 4 / 4
+- `cargo test --test q4_nested_and_short_circuit_test`: 2 / 2
+- `cargo test --test q4_probe_time_residual_test`: 3 / 3
+- `cargo test --test q20_composite_key_test`: 1 / 1
+- `cargo test --lib`: 55 / 55
+- `cargo test --lib -p sqlrustgo-executor`: 699 / 699
+- `cargo clippy --lib`: 0 warnings on touched symbols
+
+The fix only widens the conservative rejection (`_ => false` →
+explicit `true` for Subquery) inside the post-followup-4
+`mentions_outer_conjunct` walker; the canonical Q4 shape
+(`l_commitdate < l_receiptdate`, a purely static residual) is
+unaffected and the `q4_residual_with_outer_ref_falls_back_from_hsj`
+regression test still passes.
 
 ## Resolved: Nested-AND residual short-circuit (followup-4 commit)
 
@@ -489,8 +555,3 @@ This is ~3× slower than the static-residual path (7.03 ms in
   re-ANDed into a single `Expression` and evaluated as one.
 - Composite correlation keys (Q20 L0/L5 full SUM).
 - NOT EXISTS / anti-semi-join semantics (Q22-style patterns).
-- Composite-key `try_scalar_agg_index_lookup` extension to multi-
-  column build → Q20 L0/L5 full SUM no longer relies on the
-  recursive `execute_select` path.
-- NOT EXISTS plumbing via the same parallel `HashSemiJoinIndex`
-  vector — Q22-style anti-semi-join shapes.
