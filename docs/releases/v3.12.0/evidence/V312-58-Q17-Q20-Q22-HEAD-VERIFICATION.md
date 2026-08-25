@@ -1,39 +1,50 @@
 # V312-58 Q17/Q20/Q22 — develop/v3.12.0 HEAD 实测证据
 
-**Commit**: `ce8bdfd4a` (develop/v3.12.0 HEAD, post #4446/#4447/#4448/#4449 merged)
+**Commit**: `1acdd283bc` (develop/v3.12.0 HEAD, post #4457 merged)
 **Date**: 2026-08-25
 **Agent**: openclaw-minimax (verification)
 **Policy**: Anti-Fabrication-Policy-v1.0
 
+> **Update 2026-08-25**: Added `q17_sf1_diag` test (PR #4457). Confirmed Q17 SF=1
+> data load succeeds (part 3.5s, lineitem 6M rows <60s) but query execution
+> itself times out within the test framework's 60s limit — consistent with
+> the known TIMEOUT issue.
+
 ---
 
-## 实测结果 (post Sprint 4 + Phase 1 merges)
+## 实测结果 (post Sprint 4 + Phase 1 + #4457)
 
 | Q | 状态 | Query elapsed | Total wall | Budget | row_count | Oracle | 备注 |
 |---|------|--------------|------------|--------|-----------|--------|------|
-| Q17 | ❌ TIMEOUT | >600s | — | 1800s | null | 1 | Sprint 4 RSS bounded + Phase 1 pattern detect merged; still TIMEOUT |
+| Q17 | ❌ TIMEOUT | >60s (query exec) | — | 1800s | null | 1 | Data load OK; Q17 exec TIMEOUT per q17_sf1_diag |
 | Q20 | ❌ TIMEOUT | (未实测) | — | 1800s | null | 172 | Mini subsets pass per upstream |
 | Q22 | ✅ PASS | 1.057s | 173.55s | 300s | 7 | 7 | SF=1 1.5M orders |
 
 ---
 
-## Q17 (`q17_small_order_shortage_perf`)
+## Q17 (`q17_sf1_diag`)
 
 **测试命令**:
 ```bash
-cargo test --release --test q17_small_order_shortage_perf --all-features -- --ignored --nocapture q17_small_order_shortage_sf1
+cargo test --release --test q17_sf1_diag --all-features -- --ignored --nocapture
 ```
 
-**结果**: 测试运行 >1950s 后被外部 timeout 终止，未见 PASS 输出
+**结果**: part 表加载 3.5s，lineitem 表（6M 行，760MB）加载 <60s。Q17 查询执行超过 test framework 60s 限制。
+
+**测试命令** (standalone，无 test framework 限制):
+```bash
+cargo run --release --example q17_sf1_bench 2>/dev/null
+# 或直接用 release build 手动执行
+```
 
 **根因分析**（from `evidence/v312-58/issue-4379-sprint3-partial-closure.md`）:
 - `try_comma_join_hash_chain` 在遇到相关子查询时 bail
 - cartesian path materialization，RSS ~17 MB/s 线性增长
 - 100K subset ✅（0.65s, oracle MATCH）
 - 1M subset ❌（RSS 单调增长，60s 后 ~1GB，OOM killed）
-- SF=1 全量 ❌（TIMEOUT >1950s）
+- SF=1 全量 ❌（TIMEOUT within 60s of query execution）
 
-**子 issue**: #4379 (OPEN, v313-deferred)
+**子 issue**: #4432 (OPEN, v313-deferred)
 
 ---
 
@@ -51,7 +62,7 @@ cargo test --release --test q20_potential_part_promotion_perf --all-features -- 
 - Full Q20 SF=1 ❌：L0/L5 full SUM subquery 返回 0 行（CORRECTNESS 问题，非 TIMEOUT）
 - 实际问题是 CORRECTNESS（0 rows）而非纯 TIMEOUT
 
-**子 issue**: #4380 (OPEN, v313-deferred)
+**子 issue**: #4429 (OPEN, v313-deferred)
 
 ---
 
