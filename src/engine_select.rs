@@ -4087,6 +4087,7 @@ impl<S: StorageEngine + 'static> ExecutionEngine<S> {
 
     /// conservative denial) so the row is filtered out — we don't
     /// want partial subquery errors to silently over-include.
+    #[allow(clippy::too_many_arguments)]
     pub fn pre_evaluate_correlated_exists(
         &self,
         where_expr: &sqlrustgo_parser::Expression,
@@ -4109,11 +4110,9 @@ impl<S: StorageEngine + 'static> ExecutionEngine<S> {
                 // no residual-re-evaluation per bucket row.  Advance
                 // `hash_semi_cursor` regardless of hit/miss so the
                 // parallel cursor stays aligned with `subquery_indexes`.
-                let hsj_result = if let Some(idx) = hash_semi_join_indexes.get(*hash_semi_cursor) {
-                    Some(self.probe_hash_semi_join(idx, outer_row, outer_table_info))
-                } else {
-                    None
-                };
+                let hsj_result = hash_semi_join_indexes
+                    .get(*hash_semi_cursor)
+                    .map(|idx| self.probe_hash_semi_join(idx, outer_row, outer_table_info));
                 *hash_semi_cursor += 1;
                 if let Some(any) = hsj_result {
                     *cursor += 1;
