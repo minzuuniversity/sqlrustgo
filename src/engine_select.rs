@@ -14,6 +14,7 @@ use crate::expr_utils::*;
 use crate::{ExecutionEngine, ExecutorResult, SqlError, SqlResult, Value};
 use information_schema::InformationSchema;
 use sqlrustgo_executor::join::hash_join::multi_way_hash_chain;
+use sqlrustgo_executor::join::hash_semi_join::HashSemiJoin;
 use sqlrustgo_executor::parallel_executor::{ParallelExecutor, ParallelVolcanoExecutor};
 use sqlrustgo_executor::simd_eval::{
     BatchPredicate, BitMask, EqualsPredicate, GreaterThanOrEqualPredicate, GreaterThanPredicate,
@@ -126,6 +127,27 @@ pub fn reset_v312_58_sprint3_diag() {
     DIAG_STEP15_SKIPPED_DUE_TO_COMMA_CONSUMED.store(0, Ordering::SeqCst);
     DIAG_STEP15_NO_WHERE_CLAUSE.store(0, Ordering::SeqCst);
     DIAG_Q17_FROM_CLAUSE_KIND.store(0, Ordering::SeqCst);
+}
+// V312-58 Sprint 5 (Phase 3 call-site): diagnostics for the
+// `HashSemiJoin::from_select` (Issue #4444) call point introduced
+// inside `pre_evaluate_correlated_exists`. RESET before each test
+// via `reset_v312_58_sprint5_diag()`. DUMP via
+// `dump_v312_58_sprint5_diag()`.
+static DIAG_HASH_SEMI_JOIN_BUILDS: AtomicU64 = AtomicU64::new(0);
+static DIAG_HASH_SEMI_JOIN_PROBE_HITS: AtomicU64 = AtomicU64::new(0);
+#[allow(dead_code)]
+pub fn reset_v312_58_sprint5_diag() {
+    DIAG_HASH_SEMI_JOIN_BUILDS.store(0, Ordering::SeqCst);
+    DIAG_HASH_SEMI_JOIN_PROBE_HITS.store(0, Ordering::SeqCst);
+}
+#[allow(dead_code)]
+pub fn dump_v312_58_sprint5_diag() -> String {
+    format!(
+        "V312-58 Sprint 5 diag:\n\
+         hash_semi_join_builds={} hash_semi_join_probe_hits={}",
+        DIAG_HASH_SEMI_JOIN_BUILDS.load(Ordering::SeqCst),
+        DIAG_HASH_SEMI_JOIN_PROBE_HITS.load(Ordering::SeqCst),
+    )
 }
 #[allow(dead_code)]
 pub fn dump_v312_58_sprint3_diag() -> String {
@@ -621,6 +643,17 @@ impl<S: StorageEngine + 'static> ExecutionEngine<S> {
                     // 900M ops → 75K ops at SF 0.1.
                     let mut subquery_indexes: Vec<SubqueryIndex> = Vec::new();
                     collect_subquery_indexes(where_expr, self, &mut subquery_indexes);
+                    // V312-58 Sprint 5 (Phase 3 call-site):
+                    // collect a parallel `HashSemiJoinIndex` for every
+                    // correlated EXISTS so the per-row
+                    // `pre_evaluate_correlated_exists` can probe the
+                    // simplest single-equality shapes via the
+                    // `HashSemiJoin::from_select` (Issue #4444)
+                    // operator. The cursor stays aligned with
+                    // `subquery_indexes` because both are pushed in
+                    // DFS order over the same WHERE tree.
+                    let mut hash_semi_join_indexes: Vec<HashSemiJoinIndex> = Vec::new();
+                    collect_hash_semi_join_indexes(where_expr, self, &mut hash_semi_join_indexes);
 
                     // Sprint 4 Task #88.7: pre-rewrite non-correlated
                     // In/NotIn → InList/NotInList BEFORE the per-row
@@ -642,12 +675,15 @@ impl<S: StorageEngine + 'static> ExecutionEngine<S> {
                     let mut new_rows: Vec<Vec<Value>> = Vec::with_capacity(rows.len());
                     for row in rows.into_iter() {
                         let mut cursor: usize = 0;
+                        let mut hash_semi_cursor: usize = 0;
                         let replaced = self.pre_evaluate_correlated_exists(
                             &pre_evaluated_where,
                             &row,
                             &table_info,
                             &subquery_indexes,
                             &mut cursor,
+                            &hash_semi_join_indexes,
+                            &mut hash_semi_cursor,
                         );
                         let pred = eval_predicate(&replaced, &row, &table_info);
                         if pred {
@@ -4009,6 +4045,46 @@ impl<S: StorageEngine + 'static> ExecutionEngine<S> {
     ///
     /// On subquery execution error, the original EXISTS / NOT EXISTS
     /// subtree is replaced with `Expression::Literal("false")` (a
+    /// V312-58 Sprint 5: probe a pre-built `HashSemiJoinIndex`
+    /// against one outer row.  Resolves the `outer_col_name`
+    /// recorded at build time against `outer_table_info` to find
+    /// the column index in this row, then asks a freshly-built
+    /// HashSemiJoin for a Matched/NotMatched verdict.  Returns
+    /// `true` iff at least one inner row matches the probe key
+    /// (→ EXISTS passes).
+    fn probe_hash_semi_join(
+        &self,
+        idx: &HashSemiJoinIndex,
+        outer_row: &[Value],
+        outer_table_info: &TableInfo,
+    ) -> bool {
+        use sqlrustgo_executor::join::hash_semi_join::ProbeResult;
+        // Resolve the outer column name to its position in this row.
+        let probe_col_idx = match outer_table_info
+            .columns
+            .iter()
+            .position(|c| c.name == idx.outer_col_name)
+        {
+            Some(i) => i,
+            None => return false,
+        };
+        let probe_value = match outer_row.get(probe_col_idx) {
+            Some(v) => v.clone(),
+            None => return false,
+        };
+        // Rebuild the HashSemiJoin from stored inner_rows.  This
+        // O(N_inner) rebuild per outer row is wasted work in
+        // absolute terms (the eventual design uses interior
+        // mutability); for Sprint 5 the goal is to verify the
+        // call-site wiring, not to optimize TPC-H perf.
+        let mut hsj = HashSemiJoin::new(idx.build_key_col, 0);
+        for row in &idx.inner_rows {
+            hsj.add_inner_row(row.clone());
+        }
+        DIAG_HASH_SEMI_JOIN_PROBE_HITS.fetch_add(1, Ordering::SeqCst);
+        matches!(hsj.probe_outer_key(&probe_value), ProbeResult::Matched)
+    }
+
     /// conservative denial) so the row is filtered out — we don't
     /// want partial subquery errors to silently over-include.
     pub fn pre_evaluate_correlated_exists(
@@ -4018,12 +4094,31 @@ impl<S: StorageEngine + 'static> ExecutionEngine<S> {
         outer_table_info: &TableInfo,
         subquery_indexes: &[SubqueryIndex],
         cursor: &mut usize,
+        hash_semi_join_indexes: &[HashSemiJoinIndex],
+        hash_semi_cursor: &mut usize,
     ) -> sqlrustgo_parser::Expression {
         use sqlrustgo_parser::Expression;
         match where_expr {
             Expression::Exists(subq) => {
                 let substituted =
                     substitute_outer_refs_in_select(subq, outer_row, outer_table_info);
+                // V312-58 Sprint 5 (Phase 3 call-site, issue #4444):
+                // O(1) HashSemiJoin probe FIRST for the simplest
+                // single-equality single-table EXISTS shape (Q4-mini).
+                // Cheaper than the SubqueryIndex path because there's
+                // no residual-re-evaluation per bucket row.  Advance
+                // `hash_semi_cursor` regardless of hit/miss so the
+                // parallel cursor stays aligned with `subquery_indexes`.
+                let hsj_result = if let Some(idx) = hash_semi_join_indexes.get(*hash_semi_cursor) {
+                    Some(self.probe_hash_semi_join(idx, outer_row, outer_table_info))
+                } else {
+                    None
+                };
+                *hash_semi_cursor += 1;
+                if let Some(any) = hsj_result {
+                    *cursor += 1;
+                    return Expression::Literal(if any { "true" } else { "false" }.to_string());
+                }
                 // Indexed fast path (Sprint 5 Q4 perf): if the
                 // caller pre-built a `SubqueryIndex` for this
                 // subquery (via `build_subquery_index` in the
@@ -4121,6 +4216,12 @@ impl<S: StorageEngine + 'static> ExecutionEngine<S> {
                 Expression::Literal(scalar.to_string())
             }
             Expression::NotExists(subq) => {
+                // V312-58 Sprint 5: HashSemiJoinIndex only covers
+                // EXISTS in this PR; advance the parallel cursor
+                // unconditionally so it stays aligned with
+                // `subquery_indexes` (NOT EXISTS arm of the DFS
+                // walk corresponds to a position in both vectors).
+                *hash_semi_cursor += 1;
                 let substituted =
                     substitute_outer_refs_in_select(subq, outer_row, outer_table_info);
                 let indexed = if let Some(wc) = substituted.where_clause.as_ref() {
@@ -4154,6 +4255,8 @@ impl<S: StorageEngine + 'static> ExecutionEngine<S> {
                     outer_table_info,
                     subquery_indexes,
                     cursor,
+                    hash_semi_join_indexes,
+                    hash_semi_cursor,
                 )),
                 op.clone(),
                 Box::new(self.pre_evaluate_correlated_exists(
@@ -4162,6 +4265,8 @@ impl<S: StorageEngine + 'static> ExecutionEngine<S> {
                     outer_table_info,
                     subquery_indexes,
                     cursor,
+                    hash_semi_join_indexes,
+                    hash_semi_cursor,
                 )),
             ),
             Expression::UnaryOp(op, inner) => Expression::UnaryOp(
@@ -4172,6 +4277,8 @@ impl<S: StorageEngine + 'static> ExecutionEngine<S> {
                     outer_table_info,
                     subquery_indexes,
                     cursor,
+                    hash_semi_join_indexes,
+                    hash_semi_cursor,
                 )),
             ),
             Expression::IsNull(inner) => {
@@ -4181,6 +4288,8 @@ impl<S: StorageEngine + 'static> ExecutionEngine<S> {
                     outer_table_info,
                     subquery_indexes,
                     cursor,
+                    hash_semi_join_indexes,
+                    hash_semi_cursor,
                 )))
             }
             Expression::IsNotNull(inner) => {
@@ -4190,6 +4299,8 @@ impl<S: StorageEngine + 'static> ExecutionEngine<S> {
                     outer_table_info,
                     subquery_indexes,
                     cursor,
+                    hash_semi_join_indexes,
+                    hash_semi_cursor,
                 )))
             }
             Expression::InList(left, values) => Expression::InList(
@@ -4199,6 +4310,8 @@ impl<S: StorageEngine + 'static> ExecutionEngine<S> {
                     outer_table_info,
                     subquery_indexes,
                     cursor,
+                    hash_semi_join_indexes,
+                    hash_semi_cursor,
                 )),
                 values
                     .iter()
@@ -4209,6 +4322,8 @@ impl<S: StorageEngine + 'static> ExecutionEngine<S> {
                             outer_table_info,
                             subquery_indexes,
                             cursor,
+                            hash_semi_join_indexes,
+                            hash_semi_cursor,
                         )
                     })
                     .collect(),
@@ -4220,6 +4335,8 @@ impl<S: StorageEngine + 'static> ExecutionEngine<S> {
                     outer_table_info,
                     subquery_indexes,
                     cursor,
+                    hash_semi_join_indexes,
+                    hash_semi_cursor,
                 )),
                 values
                     .iter()
@@ -4230,6 +4347,8 @@ impl<S: StorageEngine + 'static> ExecutionEngine<S> {
                             outer_table_info,
                             subquery_indexes,
                             cursor,
+                            hash_semi_join_indexes,
+                            hash_semi_cursor,
                         )
                     })
                     .collect(),
@@ -4244,6 +4363,8 @@ impl<S: StorageEngine + 'static> ExecutionEngine<S> {
                             outer_table_info,
                             subquery_indexes,
                             cursor,
+                            hash_semi_join_indexes,
+                            hash_semi_cursor,
                         )
                     })
                     .collect(),
@@ -4901,13 +5022,9 @@ impl<S: StorageEngine + 'static> ExecutionEngine<S> {
             compression: None,
             collations: std::collections::HashMap::new(),
         };
-        let (correlated_keys, residual_expr) = find_correlated_equalities(
-            where_expr,
-            agg_arg_expr,
-            &subq.table,
-            &outer_table_info,
-        )
-        .or(None)?;
+        let (correlated_keys, residual_expr) =
+            find_correlated_equalities(where_expr, agg_arg_expr, &subq.table, &outer_table_info)
+                .or(None)?;
         if correlated_keys.is_empty() {
             return None;
         }
@@ -4953,12 +5070,12 @@ impl<S: StorageEngine + 'static> ExecutionEngine<S> {
         }
         DIAG_TRY_SCALAR_AGG_BUILD.fetch_add(1, Ordering::SeqCst);
         let rows = storage.scan(real_table).ok()?;
-        let residual_ref: Option<&sqlrustgo_parser::Expression> =
-            if matches!(&residual_expr, E::Literal(s) if s == "true") {
-                None
-            } else {
-                Some(&residual_expr)
-            };
+        let residual_ref: Option<&sqlrustgo_parser::Expression> = if matches!(&residual_expr, E::Literal(s) if s == "true")
+        {
+            None
+        } else {
+            Some(&residual_expr)
+        };
         let new_map = build_scalar_agg_index(
             &rows,
             &table_info,
@@ -5045,13 +5162,9 @@ impl<S: StorageEngine + 'static> ExecutionEngine<S> {
         // fast-path to support multiple correlated equalities (Q20:
         // `l_partkey = ps_partkey AND l_suppkey = ps_suppkey`) plus a
         // residual predicate (Q20: `l_shipdate >= ... AND l_shipdate < ...`).
-        let (correlated_keys, residual_expr) = find_correlated_equalities(
-            where_expr,
-            agg_arg_expr,
-            &subq.table,
-            outer_table_info,
-        )
-        .or(None)?;
+        let (correlated_keys, residual_expr) =
+            find_correlated_equalities(where_expr, agg_arg_expr, &subq.table, outer_table_info)
+                .or(None)?;
         if correlated_keys.is_empty() {
             return None;
         }
@@ -5105,12 +5218,12 @@ impl<S: StorageEngine + 'static> ExecutionEngine<S> {
                 drop(cache);
                 DIAG_TRY_SCALAR_AGG_BUILD.fetch_add(1, Ordering::SeqCst);
                 let rows = storage.scan(real_table).ok()?;
-                let residual_ref: Option<&sqlrustgo_parser::Expression> =
-                    if matches!(&residual_expr, E::Literal(s) if s == "true") {
-                        None
-                    } else {
-                        Some(&residual_expr)
-                    };
+                let residual_ref: Option<&sqlrustgo_parser::Expression> = if matches!(&residual_expr, E::Literal(s) if s == "true")
+                {
+                    None
+                } else {
+                    Some(&residual_expr)
+                };
                 let new_map = build_scalar_agg_index(
                     &rows,
                     &table_info,
@@ -5758,6 +5871,195 @@ pub fn collect_subquery_indexes<S: StorageEngine + 'static>(
     }
 }
 
+/// V312-58 Sprint 5 (Phase 3 call-site): a pre-built `HashSemiJoin`
+/// plus enough metadata to probe it against an outer row.
+///
+/// We deliberately *don't* substitute outer references inside the
+/// subquery. Instead the build side indexes inner rows by the
+/// correlation key column, and the probe side uses
+/// `outer_row[probe_col_idx]` at lookup time. This is the same
+/// model as `SubqueryIndex`, just with a more compact on-disk
+/// representation (HashMap of pre-fetched Value buckets, no residual
+/// re-evaluation tree).
+///
+/// Scope (Sprint 5):
+/// - Single base table, no joins, no aggregates, no GROUP BY, no
+///   LIMIT/OFFSET/DISTINCT.
+/// - Single correlated equality on the build key column.
+/// - **No** additional residual predicates after the equality (the
+///   constructor does not support them). Falls through to
+///   `SubqueryIndex` for shapes with a residual filter, and to
+///   `pre_eval_exists_subquery_fast` / recursive `execute_select`
+///   for everything else.
+///
+/// Out of scope (deferred):
+/// - Composite-key build (Q20 L0/L5 full SUM, two-column equality).
+/// - NOT EXISTS / anti-semi-join semantics (Q22-style patterns).
+/// - Residual filter re-evaluation after the probe.
+#[allow(dead_code)]
+pub struct HashSemiJoinIndex {
+    /// Column position in the inner table's projected row that
+    /// will be used as the build-side key.
+    pub build_key_col: usize,
+    /// Pre-fetched inner rows (Vec<Value> per row). Kept here so
+    /// we can rebuild a fresh `HashSemiJoin` per probe without
+    /// re-scanning storage (which would re-acquire the storage
+    /// read lock and may deadlock — see #4444 acceptance #4).
+    pub inner_rows: Vec<Vec<Value>>,
+    /// Name of the outer table column to probe against (we resolve
+    /// name → idx against `outer_table_info` per outer row).
+    pub outer_col_name: String,
+    /// Table info for the inner table (used for type / column-name
+    /// resolution at probe time).
+    pub inner_table_info: TableInfo,
+}
+
+/// V312-58 Sprint 5: try to build a `HashSemiJoinIndex` for a
+/// single correlated `EXISTS` subquery. Returns `None` for any
+/// shape that the constructor cannot handle (joins, aggregates,
+/// GROUP BY, LIMIT, DISTINCT, additional residual predicates).
+/// On `None` the caller falls through to `SubqueryIndex` or the
+/// existing fallback paths unchanged.
+fn try_build_hash_semi_join_index_for_subq<S: StorageEngine + 'static>(
+    engine: &ExecutionEngine<S>,
+    subq: &SelectStatement,
+) -> Option<HashSemiJoinIndex> {
+    use sqlrustgo_parser::Expression as E;
+
+    // Shape gate — mirrors the early-out checks in
+    // `HashSemiJoin::from_select` so callers see a consistent
+    // diagnostic story.
+    if !subq.join_clause.is_empty() || subq.from_subquery.is_some() {
+        return None;
+    }
+    if subq.table.is_empty() || !subq.extra_tables.is_empty() {
+        return None;
+    }
+    if !subq.aggregates.is_empty() || !subq.group_by.is_empty() {
+        return None;
+    }
+    if subq.limit.is_some() || subq.offset.is_some() || subq.distinct {
+        return None;
+    }
+
+    let where_expr = subq.where_clause.as_ref()?;
+    let real_table: &str = match subq.table.find('|') {
+        Some(d) => &subq.table[..d],
+        None => subq.table.as_str(),
+    };
+
+    let inner_storage_info: TableInfo = {
+        let storage = engine.storage.read();
+        storage.get_table_info(real_table).ok()?
+    };
+    let inner_cols: Vec<String> = inner_storage_info
+        .columns
+        .iter()
+        .map(|c| c.name.clone())
+        .collect();
+
+    let strip_alias = |name: &str| -> String {
+        match name.rfind('.') {
+            Some(d) if d + 1 < name.len() => name[d + 1..].to_string(),
+            _ => name.to_string(),
+        }
+    };
+
+    // WHERE must be a single equality of two Identifiers. We require
+    // exactly one side to be an inner-table column; the other is the
+    // outer reference (recorded by name for probe-time resolution).
+    let (inner_bare_col, outer_bare_col) = match where_expr {
+        E::BinaryOp(l, op, r) if op == "=" => match (l.as_ref(), r.as_ref()) {
+            (E::Identifier(li), E::Identifier(ri)) => {
+                let li_bare = strip_alias(li);
+                let ri_bare = strip_alias(ri);
+                let li_is_inner = inner_cols.iter().any(|c| c == &li_bare);
+                let ri_is_inner = inner_cols.iter().any(|c| c == &ri_bare);
+                match (li_is_inner, ri_is_inner) {
+                    (true, false) => (li_bare, ri_bare),
+                    (false, true) => (ri_bare, li_bare),
+                    _ => return None,
+                }
+            }
+            _ => return None,
+        },
+        _ => return None,
+    };
+    let build_key_col = inner_cols.iter().position(|c| c == &inner_bare_col)?;
+
+    let inner_rows = {
+        let storage = engine.storage.read();
+        storage.scan(real_table).ok()?
+    };
+    // Validate the shape via `HashSemiJoin::from_select` (rejects
+    // joins/aggregates/etc; an empty inner table passes through).
+    // We don't keep the resulting `HashSemiJoin` here because
+    // `pre_evaluate_correlated_exists` only has `&self`, not
+    // `&mut self`, and `probe_outer_key` needs interior mutability
+    // on the underlying bloom/key_index.  Instead we store the
+    // raw `inner_rows` and rebuild a fresh `HashSemiJoin` per
+    // probe in `probe_hash_semi_join`.
+    let _shape_ok =
+        HashSemiJoin::from_select(subq, &inner_storage_info, &inner_rows, build_key_col, 0)?;
+    DIAG_HASH_SEMI_JOIN_BUILDS.fetch_add(1, Ordering::SeqCst);
+    Some(HashSemiJoinIndex {
+        build_key_col,
+        inner_rows,
+        outer_col_name: outer_bare_col,
+        inner_table_info: inner_storage_info,
+    })
+}
+
+/// Walk a WHERE expression tree, find every correlated EXISTS
+/// subtree, and build a `HashSemiJoinIndex` for it when the
+/// subquery shape is the simplest single-equality single-table
+/// case. NOT EXISTS is intentionally skipped (anti-join is out of
+/// Sprint 5 scope). Collected in DFS order, mirroring
+/// `collect_subquery_indexes`, so the per-row probe can consume
+/// the two index vectors via independent cursors that stay aligned
+/// across the same Exists subqueries.
+pub fn collect_hash_semi_join_indexes<S: StorageEngine + 'static>(
+    where_expr: &Expression,
+    engine: &ExecutionEngine<S>,
+    out: &mut Vec<HashSemiJoinIndex>,
+) {
+    use sqlrustgo_parser::Expression as E;
+    match where_expr {
+        E::Exists(subq) => {
+            if let Some(idx) = try_build_hash_semi_join_index_for_subq(engine, subq) {
+                out.push(idx);
+            }
+        }
+        E::NotExists(_) => {
+            // NOT EXISTS is out of Sprint 5 scope. Leave the
+            // `hash_semi_join_indexes` vec at this position empty
+            // so the per-row cursor in `pre_evaluate_correlated_exists`
+            // still advances past this subtree (matching the
+            // `subquery_indexes` cursor advance on the same arm).
+        }
+        E::BinaryOp(l, _, r) => {
+            collect_hash_semi_join_indexes(l, engine, out);
+            collect_hash_semi_join_indexes(r, engine, out);
+        }
+        E::UnaryOp(_, inner) => collect_hash_semi_join_indexes(inner, engine, out),
+        E::IsNull(inner) | E::IsNotNull(inner) => {
+            collect_hash_semi_join_indexes(inner, engine, out);
+        }
+        E::InList(left, values) | E::NotInList(left, values) => {
+            collect_hash_semi_join_indexes(left, engine, out);
+            for v in values {
+                collect_hash_semi_join_indexes(v, engine, out);
+            }
+        }
+        E::FunctionCall(_, args) => {
+            for a in args {
+                collect_hash_semi_join_indexes(a, engine, out);
+            }
+        }
+        _ => {}
+    }
+}
+
 /// Walk an AND-tree of predicates and split out one conjunct of shape
 /// `inner_col = <something-not-an-inner-col-ref>`. Returns
 /// `(inner_col_name, rest_predicate)`. The "something-not-an-inner-col-ref"
@@ -6059,25 +6361,6 @@ fn find_equality_inner_outer(
     (pairs, residual)
 }
 
-/// Backwards-compatible single-key wrapper. Returns the first equality
-/// pair found, or `None` if no equalities match. Used by the Q17-style
-/// single-key fast path. For composite-key patterns (Q20 L0/L5),
-/// callers should use `find_equality_pairs_and_residual` directly.
-///
-/// Currently retained as a documentation aid; the single caller has been
-/// migrated to the Vec-based composite API. Will be removed once the
-/// composite-key fast path (Task #83/#84) lands and stabilizes.
-#[allow(dead_code)]
-fn find_equality_inner_outer(
-    where_expr: &Expression,
-    inner_table_name: &str,
-    outer_table_info: &TableInfo,
-) -> Option<(String, usize)> {
-    let (pairs, _residual) =
-        find_equality_pairs_and_residual(where_expr, inner_table_name, outer_table_info);
-    pairs.into_iter().next()
-}
-
 /// V312-58 Sprint 4 (Issue #4374): generalize the Q17 single-key fast-path
 /// to N correlated equalities.  Returns the list of (inner_col_name,
 /// outer_pos) pairs and a residual `Expression` containing the original
@@ -6126,7 +6409,11 @@ fn find_correlated_equalities(
         None
     }
 
-    fn is_inner_col(name_lc: &str, own_prefix: Option<char>, inner_col_hint: &Option<String>) -> bool {
+    fn is_inner_col(
+        name_lc: &str,
+        own_prefix: Option<char>,
+        inner_col_hint: &Option<String>,
+    ) -> bool {
         inner_col_hint
             .as_ref()
             .map(|h| name_lc == h)
@@ -6177,7 +6464,13 @@ fn find_correlated_equalities(
     }
 
     let mut pairs: Vec<(String, usize)> = Vec::new();
-    let residual = walk(where_expr, own_prefix, &inner_col_hint, outer_table_info, &mut pairs)?;
+    let residual = walk(
+        where_expr,
+        own_prefix,
+        &inner_col_hint,
+        outer_table_info,
+        &mut pairs,
+    )?;
     Some((pairs, residual))
 }
 
