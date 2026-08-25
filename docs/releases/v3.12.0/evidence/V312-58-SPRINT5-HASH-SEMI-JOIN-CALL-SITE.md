@@ -244,19 +244,90 @@ introduced by this PR.
 
 ## Followups
 
-- **Probe-time residual re-evaluation for outer-ref residuals** —
-  the build-time filter handles purely static residuals (canonical
-  Q4) but bails out on residuals that reference outer-row columns
-  (rare but real). Extend `probe_hash_semi_join` to call
-  `substitute_outer_refs_in_expr(&idx.residual, ...)` per outer row
-  and re-evaluate against `get_inner_for_key(probe_key)` rows.
-  This would close the remaining SubqueryIndex fallback cases for
-  Q4-style shapes.
 - **Nested-AND residual optimization** — the current shape gate
   accepts only one residual conjunct (the second-level AND after
   the equality is taken as-is). Splitting nested ANDs into
   independent conjuncts would let `eval_predicate` short-circuit on
   the first false and could be more efficient on complex queries.
+
+## Resolved: probe-time residual re-evaluation for outer-ref residuals (followup-3 commit)
+
+Followup-3 on the same V312-58 line completes the residual filter
+work by handling outer-row-dependent residuals at probe time.
+
+### What changed
+
+The `try_build_hash_semi_join_index_for_subq` shape gate's
+`mentions_outer(residual)` rejection was relaxed: residuals that
+reference outer columns now stay in `HashSemiJoinIndex.residual`,
+and every inner row (including those that would fail the residual)
+is added to the HSJ bucket at build time. Probe-time work, in
+`probe_hash_semi_join`, substitutes the outer row's values into
+the residual using the existing
+`crate::engine_utils::substitute_outer_refs_in_expr`, then
+re-evaluates the substituted residual against every inner row
+returned by `HashSemiJoin::get_inner_for_key(probe_value)`. The
+probe verdict is `Matched` iff at least one inner row passes the
+residual.
+
+The recursive AND-tree walker (`find_eq_in_and_chain`) replaces
+the previous 2-way-only `BinaryOp(_, "AND", _)` match, so nested
+AND-trees like `(<eq> AND <r1>) AND <r2>` are also handled — the
+first top-level `Equality(Identifier, Identifier)` anywhere in
+the tree is the correlated equality, every other conjunct (any
+depth) becomes the residual.
+
+### Static vs outer-ref residual split
+
+- **Static residual** (no outer reference): `try_build_hash_semi_join_index_for_subq`
+  pre-filters inner rows at build time. Probe is a single O(1)
+  `probe_outer_key` lookup.
+- **Outer-ref residual**: every inner row stays in the HSJ. Probe
+  performs the O(1) `probe_outer_key` lookup, then — only on
+  `Matched` — iterates `get_inner_for_key` rows and
+  `eval_predicate`s the substituted residual. The
+  `NotMatched` path is unchanged (zero work after `probe_outer_key`).
+
+### Perf
+
+In-process benchmark `q4_probe_time_residual_test::q4_outer_ref_residual_perf_scale_1k_orders_10k_lineitems`
+(1000 orders + 10 000 lineitems, residual `l_commitdate < l_receiptdate AND o_orderkey > 0`):
+
+```
+[perf] Q4 outer-ref residual (HSJ probe-time path): 1000 orders +
+       10000 lineitems in 21.90 ms; builds=1, probe_hits=1000, rows=1000
+```
+
+This is ~3× slower than the static-residual path (7.03 ms in
+`q4_residual_filter_scale_test`), which is expected: each
+`Matched` outer row now walks its `get_inner_for_key` bucket
+(here, ~10 rows on average) instead of returning immediately.
+
+### Verification (sequential, `--test-threads=1`)
+
+- `cargo test --test q4_probe_time_residual_test -- --test-threads=1`: 3 / 3 green.
+  - `q4_outer_ref_residual_tautology_uses_probe_time_path` — canonical Q4 + `o_orderkey = o_orderkey` tautology residual: HSJ built (`builds=1`), probe reached, row count correct.
+  - `q4_outer_ref_residual_substitutes_per_outer_row` — `o_orderkey > 0` residual: same shape, verifies the per-outer-row substitution.
+  - `q4_outer_ref_residual_perf_scale_1k_orders_10k_lineitems` — 10K lineitem scale, target < 10s (achieved 21.9 ms).
+- `cargo test --test q4_residual_filter_test -- --test-threads=1`: 3 / 3 green.
+  - The stale `q4_residual_with_outer_ref_falls_back_from_hsj`
+    (which expected `builds == 0` under the followup-2 contract)
+    was renamed to `q4_residual_with_outer_ref_uses_probe_time_path`
+    and updated to expect `builds == 1` and a correct result row
+    count.
+- `cargo test --test q4_residual_filter_scale_test -- --test-threads=1`: 1 / 1 green (no regression on the static-residual perf path).
+- `cargo test --test issue_4444_hash_semi_join_call_site --test issue_4444_nested_exists_regression --test issue_4374_regression --test issue_4443_materialization_regression --test q4_hash_semi_join_test`: 13 / 13 green (no regression in adjacent V312-58 / Q4 / HSJ pipelines).
+- `cargo build --lib`: green.
+- `cargo clippy --lib`: 0 new warnings on touched symbols.
+
+### Out of Scope (still deferred after this PR)
+
+- **Nested-AND residual short-circuit optimization** (split
+  `Equality AND (R1 AND R2)` into independent conjuncts and
+  short-circuit on first false). Currently both conjuncts are
+  re-ANDed into a single `Expression` and evaluated as one.
+- Composite correlation keys (Q20 L0/L5 full SUM).
+- NOT EXISTS / anti-semi-join semantics (Q22-style patterns).
 - Composite-key `try_scalar_agg_index_lookup` extension to multi-
   column build → Q20 L0/L5 full SUM no longer relies on the
   recursive `execute_select` path.

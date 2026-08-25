@@ -4124,10 +4124,41 @@ impl<S: StorageEngine + 'static> ExecutionEngine<S> {
         };
         // Probe the pre-built HashSemiJoin directly. No rebuild.
         DIAG_HASH_SEMI_JOIN_PROBE_HITS.fetch_add(1, Ordering::SeqCst);
-        matches!(
+        if !matches!(
             idx.hsj.probe_outer_key(&probe_value),
             ProbeResult::Matched
-        )
+        ) {
+            return false;
+        }
+        // HSJ matched the probe key. If no residual predicate was split
+        // off at build time, this is a definitive Matched: the
+        // build-time filter (for static residuals) or the bare
+        // equality (no residual) already establishes the answer.
+        let Some(residual) = idx.residual.as_deref() else {
+            return true;
+        };
+        // Residual re-evaluation at probe time. The residual may
+        // reference outer-row values (e.g. `o_orderkey > 0`,
+        // `l_orderkey < o_orderkey`) that were not known at build
+        // time. Substitute outer refs into a fresh owned Expression
+        // using the per-outer-row values, then evaluate the
+        // substituted residual against every inner row that
+        // already matched the probe key.
+        let substituted = crate::engine_utils::substitute_outer_refs_in_expr(
+            residual,
+            outer_row,
+            outer_table_info,
+        );
+        let Some(inner_rows) = idx.hsj.get_inner_for_key(&probe_value) else {
+            return false;
+        };
+        inner_rows.iter().any(|inner_row| {
+            crate::engine_utils::eval_predicate(
+                &substituted,
+                inner_row,
+                &idx.inner_table_info,
+            )
+        })
     }
 
     /// conservative denial) so the row is filtered out — we don't
@@ -6146,41 +6177,76 @@ fn try_build_hash_semi_join_index_for_subq<S: StorageEngine + 'static>(
         }
     };
 
-    // WHERE must be a single correlated equality of two Identifiers,
-    // optionally `AND`-ed with one residual predicate. We require
+    // WHERE must contain exactly one correlated equality of two
+    // Identifiers (`<inner_col> = <outer_col>`), optionally
+    // `AND`-ed with one or more residual predicates. We require
     // exactly one side of the equality to be an inner-table column;
     // the other is the outer reference (recorded by name for probe-time
-    // resolution). The residual, if present, must NOT reference outer
-    // columns — we detect that conservatively below by stripping
-    // outer-side identifiers; if any survive the residual is treated
-    // as out-of-scope and we return `None` so the caller falls through
-    // to `SubqueryIndex` / `pre_eval_exists_subquery_fast`.
+    // resolution). The residual, if present, may reference outer-row
+    // columns — at probe time we substitute outer refs and re-evaluate.
     //
     // Shapes accepted:
-    //   1. `<inner_col> = <outer_col>`                       (no residual)
-    //   2. `<inner_col> = <outer_col> AND <static-residual>` (build-time)
+    //   1. `<inner_col> = <outer_col>`                         (no residual)
+    //   2. `<inner_col> = <outer_col> AND <residual1> [AND <residual2> ...]`
     //
     // Rejected (return None):
-    //   - composite equalities (`AND` between two `=`'s),
-    //   - `OR`-chains, `NOT`, `IN`, `LIKE`, function calls,
-    //   - residuals that mention outer columns (rare; tracked as a
-    //     follow-up for probe-time re-evaluation).
-    let (eq_l, eq_r, residual_expr): (&Expression, &Expression, Option<Box<Expression>>) =
-        match where_expr {
-            E::BinaryOp(l, op, r) if op == "=" => (l.as_ref(), r.as_ref(), None),
-            E::BinaryOp(l, op, r) if op.to_uppercase() == "AND" => {
-                match (l.as_ref(), r.as_ref()) {
-                    (E::BinaryOp(le, eop, re), other) if eop == "=" => {
-                        (le.as_ref(), re.as_ref(), Some(Box::new(other.clone())))
-                    }
-                    (other, E::BinaryOp(le, eop, re)) if eop == "=" => {
-                        (le.as_ref(), re.as_ref(), Some(Box::new(other.clone())))
-                    }
-                    _ => return None,
+    //   - composite equalities (`AND` between two `=`'s at the top level
+    //     of the AND-chain — tracked separately for Q20 L0/L5),
+    //   - `OR`-chains, `NOT`, `IN`, `LIKE`, function calls at the top
+    //     level (we still descend into nested ANDs).
+    //
+    // The walker below collects the first top-level `Equality(Identifier,
+    // Identifier)` anywhere in the AND-chain; all other conjuncts (any
+    // depth) become the residual.  This handles both flat 2-way ANDs
+    // (`<eq> AND <residual>`) and nested AND-trees
+    // (`(<eq> AND <r1>) AND <r2>`).
+    fn find_eq_in_and_chain<'a>(
+        expr: &'a Expression,
+        eq_l: &mut Option<&'a Expression>,
+        eq_r: &mut Option<&'a Expression>,
+        residual_out: &mut Vec<Expression>,
+    ) {
+        match expr {
+            // Bare equality at top level (no AND wrapper).
+            E::BinaryOp(l, op, r) if op == "=" && eq_l.is_none() => {
+                if matches!(l.as_ref(), E::Identifier(_)) && matches!(r.as_ref(), E::Identifier(_)) {
+                    *eq_l = Some(l.as_ref());
+                    *eq_r = Some(r.as_ref());
+                    return;
                 }
+                residual_out.push(expr.clone());
             }
-            _ => return None,
-        };
+            // AND node — recurse into both sides.
+            E::BinaryOp(l, op, r) if op.to_uppercase() == "AND" => {
+                find_eq_in_and_chain(l.as_ref(), eq_l, eq_r, residual_out);
+                find_eq_in_and_chain(r.as_ref(), eq_l, eq_r, residual_out);
+            }
+            // Anything else at the top level or under an AND node is
+            // collected into the residual.
+            _ => residual_out.push(expr.clone()),
+        }
+    }
+    let mut eq_l: Option<&Expression> = None;
+    let mut eq_r: Option<&Expression> = None;
+    let mut residual_leaves: Vec<Expression> = Vec::new();
+    find_eq_in_and_chain(where_expr, &mut eq_l, &mut eq_r, &mut residual_leaves);
+    let (eq_l, eq_r) = match (eq_l, eq_r) {
+        (Some(l), Some(r)) => (l, r),
+        _ => return None,
+    };
+    let residual_expr: Option<Box<Expression>> = if residual_leaves.is_empty() {
+        None
+    } else {
+        // Re-AND the collected leaves in encounter order so the
+        // probe-time path evaluates them in the original left-to-right
+        // order.  For `R1 AND R2` we emit exactly that expression;
+        // for `R1` alone the expression is `R1`; etc.
+        let mut iter = residual_leaves.into_iter();
+        let first = iter.next().expect("non-empty");
+        Some(Box::new(iter.fold(first, |acc, e| {
+            E::BinaryOp(Box::new(acc), "AND".to_string(), Box::new(e))
+        })))
+    };
     let (inner_bare_col, outer_bare_col) = match (eq_l, eq_r) {
         (E::Identifier(li), E::Identifier(ri)) => {
             let li_bare = strip_alias(li);
@@ -6202,13 +6268,17 @@ fn try_build_hash_semi_join_index_for_subq<S: StorageEngine + 'static>(
         storage.scan(real_table).ok()?
     };
 
-    // Apply the residual (if any) at build time. We only accept residuals
-    // that do NOT reference outer columns: the conservative test below
-    // walks the residual AST looking for `Identifier(name)` whose bare
-    // name is NOT in `inner_cols`. Any such reference means the residual
-    // is outer-row-dependent and the build-time filter would be wrong;
-    // bail out so the caller falls back to `SubqueryIndex` /
-    // `pre_eval_exists_subquery_fast`.
+    // Apply the residual (if any) at build time when it does NOT
+    // reference outer columns. The `mentions_outer` walker below
+    // detects any `Identifier(name)` whose bare name is NOT in
+    // `inner_cols`. When that returns true, the residual depends on
+    // the outer row and we leave every inner row in the HSJ bucket;
+    // `probe_hash_semi_join` will substitute outer refs into the
+    // residual at probe time and re-evaluate per outer row against
+    // `get_inner_for_key` rows. When `mentions_outer` returns false
+    // the residual is purely static, so we pre-filter the inner
+    // rows at build time for the cheapest possible probe (a single
+    // `probe_outer_key` is then definitive).
     let inner_rows: Vec<Vec<Value>> = if let Some(res) = &residual_expr {
         fn mentions_outer(res: &Expression, inner_cols: &[String]) -> bool {
             match res {
@@ -6241,12 +6311,19 @@ fn try_build_hash_semi_join_index_for_subq<S: StorageEngine + 'static>(
             }
         }
         if mentions_outer(res, &inner_cols) {
-            return None;
+            // Outer-ref residual: leave every inner row in the HSJ; the
+            // probe path will substitute + re-evaluate per outer row.
+            inner_rows
+        } else {
+            // Static residual: pre-filter inner rows at build time so
+            // the probe is a single O(1) `probe_outer_key` lookup.
+            inner_rows
+                .into_iter()
+                .filter(|row| {
+                    crate::engine_utils::eval_predicate(res, row, &inner_storage_info)
+                })
+                .collect()
         }
-        inner_rows
-            .into_iter()
-            .filter(|row| crate::engine_utils::eval_predicate(res, row, &inner_storage_info))
-            .collect()
     } else {
         inner_rows
     };

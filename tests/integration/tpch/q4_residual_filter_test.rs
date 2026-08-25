@@ -186,20 +186,18 @@ fn q4_real_residual_filter_empty_inner_table() {
     );
 }
 
-/// Acceptance #3: residual that **does** reference an outer-row column
-/// is rejected by the shape gate (the build-time filter would be wrong
-/// because the residual depends on the outer row). The HSJ is **not**
-/// built for this subquery; the count of `hash_semi_join_builds` must
-/// stay at 0 (the existing fixture's only EXISTS subquery is rejected).
+/// Acceptance #3 (UPDATED for followup-3): residual that references an
+/// outer-row column is **now accepted** by the shape gate (the build-time
+/// filter is skipped, the residual is re-evaluated at probe time after
+/// substituting outer refs). The HSJ IS built for this subquery; the
+/// count of `hash_semi_join_builds` must be 1 (not 0 as in followup-2).
 ///
 /// We pick a residual that is tautological (`o_orderkey = o_orderkey`)
-/// so the result set is identical to canonical Q4 even when the
-/// fallback path runs. We do not assert the result row count here —
-/// the fallback path's outer-ref substitution is exercised elsewhere
-/// in the regression suite; this test only guards the **shape gate
-/// rejection** behavior.
+/// so the result set is identical to canonical Q4 even though the
+/// residual is outer-column-dependent. The probe-time path substitutes
+/// outer refs and re-evaluates per outer row.
 #[test]
-fn q4_residual_with_outer_ref_falls_back_from_hsj() {
+fn q4_residual_with_outer_ref_uses_probe_time_path() {
     let mut e = fresh_engine();
     e.execute(
         "CREATE TABLE orders (o_orderkey INTEGER PRIMARY KEY, \
@@ -215,12 +213,12 @@ fn q4_residual_with_outer_ref_falls_back_from_hsj() {
         .unwrap();
     e.execute("INSERT INTO lineitem VALUES (1, '1993-08-20', '1993-08-10')")
         .unwrap();
+    e.execute("INSERT INTO orders VALUES (2, '1993-09-15', '2-HIGH')")
+        .unwrap();
+    e.execute("INSERT INTO lineitem VALUES (2, '1993-09-10', '1993-09-20')")
+        .unwrap();
 
     reset_v312_58_sprint5_diag();
-    // Same query as canonical Q4 but with an additional tautological
-    // outer-column reference in the residual: `o_orderkey = o_orderkey`
-    // (always true). This triggers `mentions_outer(residual)` to return
-    // true, so the shape gate returns `None` for this subquery.
     let sql = "SELECT o_orderpriority, COUNT(*) AS order_count \
         FROM orders \
         WHERE o_orderdate >= '1993-07-01' AND o_orderdate < '1993-10-01' \
@@ -230,16 +228,27 @@ fn q4_residual_with_outer_ref_falls_back_from_hsj() {
                         AND o_orderkey = o_orderkey) \
         GROUP BY o_orderpriority \
         ORDER BY o_orderpriority";
-    let _r = e.execute(sql).unwrap();
-    // The shape gate rejects this shape (residual mentions outer), so
-    // the HSJ is NOT built for it. `builds` must stay at 0 for this
-    // specific subquery. (Probe hits may be 0 too — this fixture has
-    // only one correlated EXISTS subquery and it was rejected.)
+    let r = e.execute(sql).unwrap();
+    // Functional: same result as canonical Q4 (1-URGENT priority, count 1).
+    assert_eq!(
+        r.rows,
+        vec![vec![Value::Text("1-URGENT".to_string()), Value::Integer(1)]],
+        "Q4 with outer-ref tautology residual must produce the same result \
+         as canonical Q4; got: {:?}",
+        r.rows
+    );
+    // Behavioral: HSJ IS built (probe-time path takes over).
     let snap = dump_v312_58_sprint5_diag();
     let builds = counter_value(&snap, "hash_semi_join_builds");
+    let probe_hits = counter_value(&snap, "hash_semi_join_probe_hits");
     assert_eq!(
-        builds, 0,
-        "HashSemiJoinIndex must NOT be built when the residual references \
-         an outer column; got builds={builds}. Snapshot:\n{snap}"
+        builds, 1,
+        "HashSemiJoinIndex must be built for the outer-ref residual \
+         shape (probe-time path); got builds={builds}. Snapshot:\n{snap}"
+    );
+    assert!(
+        probe_hits > 0,
+        "Probe call site must be reached; got probe_hits={probe_hits}. \
+         Snapshot:\n{snap}"
     );
 }
