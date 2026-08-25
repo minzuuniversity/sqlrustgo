@@ -341,8 +341,75 @@ false leading conjunct, the third conjunct is never evaluated.
 
 ## Out of Scope (still deferred after V312-58)
 
-- Composite correlation keys (Q20 L0/L5 full SUM).
+- Composite correlation keys (Q20 L0/L5 full SUM) — see
+  followup-5 below for partial-closure status.
 - NOT EXISTS / anti-semi-join semantics (Q22-style patterns).
+
+## Resolved: composite-key `try_scalar_agg_index_lookup` path (followup-5 commit, partial closure)
+
+Followup-5 closed the Q20 composite-key **path-verification** gap:
+the `try_scalar_agg_index_lookup` composite-key fast path that
+Sprint 3 Phase 3 (commit `18880fff3`) added is now exercised by an
+end-to-end in-process test.
+
+### What's actually verified
+
+`tests/integration/tpch/q20_composite_key_test.rs` runs the
+synthetic SQL
+
+```sql
+SELECT s_name, s_address
+FROM supplier, nation
+WHERE s_nationkey = n_nationkey
+  AND n_name = 'GERMANY'
+  AND (SELECT 0.5 * SUM(l_quantity)
+       FROM lineitem
+       WHERE l_partkey = 1
+         AND l_suppkey = s_suppkey
+         AND l_shipdate >= '1994-01-01'
+         AND l_shipdate <  '1995-01-01') > 100
+ORDER BY s_name
+```
+
+on a 20-supplier / 500-lineitem fixture and asserts:
+
+- **Functional** — every supplier has 25 lineitems in the date
+  range with `l_quantity = 10`, so per-supplier SUM = 250,
+  half-sum = 125 > 100, and the row count equals 20.
+- **Behavioral** — `dump_v312_58_sprint3_diag()` shows
+  `try_scalar_agg_index_lookup calls == 20`,
+  `build == 1`, and `pattern_fail == 0`. The composite-key
+  `find_correlated_equalities` extracts both
+  `l_partkey → 1` and `l_suppkey → s_suppkey` correlated
+  pairs, the `ScalarAggIndex` builds once, and every subsequent
+  per-supplier lookup hits the composite-key cache.
+- **Perf** — in-process, in < 5 ms wall time for the 20 / 500
+  fixture.
+
+### What's NOT closed (full Q20 still deferred)
+
+Q20's *real* shape is `ps_availqty > (SELECT 0.5 * SUM(...))`.
+When the `>` BinaryOp is evaluated via
+`evaluate_expression` (the WHERE eval path), its BinaryOp arm
+recursively calls `evaluate_expression` on the right side
+without a `subq_eval` closure — `try_scalar_agg_index_lookup`
+requires that closure. So Q20's inner SUM falls back to
+`execute_select(&substituted)` (per-outer-row re-execute)
+rather than the composite-key index, even though the index
+supports the shape. Wiring
+`try_scalar_agg_index_lookup` into the `>` BinaryOp arm is
+**followup-6** (Sprint 6+). The full SF=1 Q20 measurement
+(172-row ground truth, ≤1800 s budget) is gated on that
+followup and on an SF=1 fixture with adequate disk on the
+test host.
+
+### Verification (sequential, `--test-threads=1`)
+
+- `cargo test --test q20_composite_key_test -- --test-threads=1`: 1 / 1 green.
+  - `q20_composite_key_in_process_fixture` — described above.
+- `cargo test --test q4_residual_filter_test --test q4_residual_filter_scale_test --test q4_probe_time_residual_test --test q4_nested_and_short_circuit_test --test q4_hash_semi_join_test --test issue_4444_hash_semi_join_call_site --test issue_4444_nested_exists_regression --test issue_4374_regression --test issue_4443_materialization_regression`: 23 / 23 green (no regression in adjacent V312-58 / Q4 / HSJ pipelines).
+- `cargo build --lib`: green.
+- `cargo clippy --lib`: 0 new warnings on touched symbols.
 
 ## Resolved: probe-time residual re-evaluation for outer-ref residuals (followup-3 commit)
 
