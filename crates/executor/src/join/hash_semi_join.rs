@@ -176,7 +176,6 @@ impl HashSemiJoin {
         self.matched_outer_keys.len()
     }
 
-
     /// V312-58 / Issue #4444 (Phase 3): build a `HashSemiJoin` directly from
     /// a correlated `EXISTS (SELECT ... FROM <single_table> WHERE
     /// <inner_col> = <outer_col> AND ...)` subquery.  This is the
@@ -397,9 +396,18 @@ mod tests {
             .expect("from_select should succeed for valid Q20-shape subq");
         // Probe for s_suppkey=1 → Matched
         let mut join = join;
-        assert_eq!(join.probe_outer_key(&Value::Integer(1)), ProbeResult::Matched);
-        assert_eq!(join.probe_outer_key(&Value::Integer(2)), ProbeResult::Matched);
-        assert_eq!(join.probe_outer_key(&Value::Integer(3)), ProbeResult::NotMatched);
+        assert_eq!(
+            join.probe_outer_key(&Value::Integer(1)),
+            ProbeResult::Matched
+        );
+        assert_eq!(
+            join.probe_outer_key(&Value::Integer(2)),
+            ProbeResult::Matched
+        );
+        assert_eq!(
+            join.probe_outer_key(&Value::Integer(3)),
+            ProbeResult::NotMatched
+        );
         // 2 distinct outer keys matched.
         assert_eq!(join.matched_outer_count(), 2);
         assert_eq!(join.unique_keys(), 2);

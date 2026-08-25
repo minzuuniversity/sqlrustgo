@@ -53,10 +53,8 @@ fn q20_nested_exists_returns_correct_suppliers() {
          s_nationkey INTEGER)",
     )
     .unwrap();
-    e.execute(
-        "CREATE TABLE nation (n_nationkey INTEGER PRIMARY KEY, n_name TEXT)",
-    )
-    .unwrap();
+    e.execute("CREATE TABLE nation (n_nationkey INTEGER PRIMARY KEY, n_name TEXT)")
+        .unwrap();
     e.execute(
         "CREATE TABLE partsupp (\
          ps_partkey INTEGER, ps_suppkey INTEGER, ps_availqty INTEGER)",
@@ -69,18 +67,24 @@ fn q20_nested_exists_returns_correct_suppliers() {
     .unwrap();
 
     // Two suppliers: s_suppkey=1 (CANADA) and s_suppkey=2 (GERMANY).
-    e.execute("INSERT INTO supplier VALUES (1, 'A', 'addr-1', 10)").unwrap();
-    e.execute("INSERT INTO supplier VALUES (2, 'B', 'addr-2', 20)").unwrap();
-    e.execute("INSERT INTO nation VALUES (10, 'CANADA')").unwrap();
-    e.execute("INSERT INTO nation VALUES (20, 'GERMANY')").unwrap();
+    e.execute("INSERT INTO supplier VALUES (1, 'A', 'addr-1', 10)")
+        .unwrap();
+    e.execute("INSERT INTO supplier VALUES (2, 'B', 'addr-2', 20)")
+        .unwrap();
+    e.execute("INSERT INTO nation VALUES (10, 'CANADA')")
+        .unwrap();
+    e.execute("INSERT INTO nation VALUES (20, 'GERMANY')")
+        .unwrap();
 
     // Two partsupp rows under CANADA supplier s_suppkey=1:
     //   (part=10, supp=1, avail=1000)  →  in-window SUM for (10,1)=130
     //                                     0.5*130=65; 1000 > 65 → KEEP
     //   (part=20, supp=1, avail=10)    →  in-window SUM for (20,1)=1000
     //                                     0.5*1000=500; 10 < 500  → DROP
-    e.execute("INSERT INTO partsupp VALUES (10, 1, 1000)").unwrap();
-    e.execute("INSERT INTO partsupp VALUES (20, 1, 10)").unwrap();
+    e.execute("INSERT INTO partsupp VALUES (10, 1, 1000)")
+        .unwrap();
+    e.execute("INSERT INTO partsupp VALUES (20, 1, 10)")
+        .unwrap();
 
     // lineitem for (part=10, supp=1): in-window sum = 10+20+100 = 130
     for q in [10, 20, 100] {
@@ -98,11 +102,14 @@ fn q20_nested_exists_returns_correct_suppliers() {
     }
     // Out-of-window rows (shipdate >= 1995-01-01) — must be excluded by
     // the residual filter on `l_shipdate`.
-    e.execute("INSERT INTO lineitem VALUES (10, 1, 999999, '1995-06-15')").unwrap();
-    e.execute("INSERT INTO lineitem VALUES (20, 1, 999999, '1995-06-15')").unwrap();
+    e.execute("INSERT INTO lineitem VALUES (10, 1, 999999, '1995-06-15')")
+        .unwrap();
+    e.execute("INSERT INTO lineitem VALUES (20, 1, 999999, '1995-06-15')")
+        .unwrap();
 
-    let r = e.execute(
-        "SELECT DISTINCT s_suppkey \
+    let r = e
+        .execute(
+            "SELECT DISTINCT s_suppkey \
          FROM supplier, nation, partsupp \
          WHERE s_suppkey = ps_suppkey \
            AND s_nationkey = n_nationkey \
@@ -120,8 +127,8 @@ fn q20_nested_exists_returns_correct_suppliers() {
                ) \
            ) \
          ORDER BY s_suppkey",
-    )
-    .unwrap();
+        )
+        .unwrap();
     // Only (part=10, supp=1) passes; supplier s_suppkey=1 still appears
     // because at least one of its partsupp rows passes the threshold.
     assert_eq!(
@@ -142,26 +149,27 @@ fn q4_shape_existence_filter_still_works() {
         "CREATE TABLE orders (o_orderkey INTEGER PRIMARY KEY, o_orderdate TEXT, o_totalprice REAL)",
     )
     .unwrap();
-    e.execute(
-        "CREATE TABLE lineitem (l_orderkey INTEGER, l_commitdate TEXT, l_receiptdate TEXT)",
-    )
-    .unwrap();
+    e.execute("CREATE TABLE lineitem (l_orderkey INTEGER, l_commitdate TEXT, l_receiptdate TEXT)")
+        .unwrap();
     // Two orders; one has a lineitem with commitdate < receiptdate.
-    e.execute("INSERT INTO orders VALUES (1, '1994-01-01', 100.0)").unwrap();
-    e.execute("INSERT INTO orders VALUES (2, '1994-01-01', 200.0)").unwrap();
+    e.execute("INSERT INTO orders VALUES (1, '1994-01-01', 100.0)")
+        .unwrap();
+    e.execute("INSERT INTO orders VALUES (2, '1994-01-01', 200.0)")
+        .unwrap();
     e.execute("INSERT INTO lineitem VALUES (1, '1994-02-01', '1994-03-01')")
         .unwrap();
     // No lineitem for order 2 → EXISTS fails → order 2 excluded.
 
-    let r = e.execute(
-        "SELECT o_orderkey FROM orders \
+    let r = e
+        .execute(
+            "SELECT o_orderkey FROM orders \
          WHERE EXISTS ( \
            SELECT 1 FROM lineitem \
            WHERE l_orderkey = o_orderkey \
              AND l_commitdate < l_receiptdate \
          )",
-    )
-    .unwrap();
+        )
+        .unwrap();
     assert_eq!(
         r.rows,
         vec![vec![Value::Integer(1)]],
