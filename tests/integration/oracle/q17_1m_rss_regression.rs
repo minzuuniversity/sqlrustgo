@@ -64,7 +64,6 @@ fn q17_1m_rss_bounded() {
 
     // Poll RSS during execution.
     let pid = std::process::id();
-    let t_total = Instant::now();
     let handle = std::thread::spawn(move || {
         reset_v312_58_sprint3_diag();
         let start = Instant::now();

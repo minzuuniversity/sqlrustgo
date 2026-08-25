@@ -1480,44 +1480,71 @@ impl StorageEngine for MemoryStorage {
                 .enumerate()
                 .filter_map(|(idx, c)| if c.auto_increment { Some(idx) } else { None })
                 .collect();
-            let existing_rows = self.tables.get(&table_key).cloned().unwrap_or_default();
-            let mut next_auto: i64 = auto_inc_cols
-                .iter()
-                .filter_map(|&idx| {
-                    existing_rows
-                        .iter()
-                        .filter_map(|row| {
-                            row.get(idx).and_then(|v| match v {
-                                Value::Integer(n) => Some(*n),
-                                _ => None,
-                            })
-                        })
-                        .max()
-                })
-                .max()
-                .map(|m| m + 1)
-                .unwrap_or(1);
-            records
-                .into_iter()
-                .map(|mut row| {
-                    while row.len() < ncols {
-                        let default = info
-                            .columns
-                            .get(row.len())
-                            .and_then(|c| c.default_value.as_deref())
-                            .map(parse_default_literal)
-                            .unwrap_or(Value::Null);
-                        row.push(default);
-                    }
-                    for &col_idx in &auto_inc_cols {
-                        if matches!(row.get(col_idx), Some(Value::Null) | None) {
-                            row[col_idx] = Value::Integer(next_auto);
-                            next_auto += 1;
+            // V312-58 Sprint 5 (Issue #4374 SF=1 wall-clock): without this
+            // guard, `bulk_load_tbl_file` for tables WITHOUT auto_increment
+            // (e.g. lineitem, part, customer) used to clone the existing
+            // row set on EVERY batch just to feed the auto_inc scan that
+            // never fires. SF=1 lineitem is ~6M rows in ~5856 batches of
+            // 1024 → ~17B row clones → multi-TB memory churn → bulk_load
+            // hangs. Splitting the branches keeps the auto_inc path
+            // unchanged and turns the non-auto_inc path from O(N^2) into
+            // O(N).
+            if auto_inc_cols.is_empty() {
+                records
+                    .into_iter()
+                    .map(|mut row| {
+                        while row.len() < ncols {
+                            let default = info
+                                .columns
+                                .get(row.len())
+                                .and_then(|c| c.default_value.as_deref())
+                                .map(parse_default_literal)
+                                .unwrap_or(Value::Null);
+                            row.push(default);
                         }
-                    }
-                    row
-                })
-                .collect()
+                        row
+                    })
+                    .collect()
+            } else {
+                let existing_rows = self.tables.get(&table_key).cloned().unwrap_or_default();
+                let mut next_auto: i64 = auto_inc_cols
+                    .iter()
+                    .filter_map(|&idx| {
+                        existing_rows
+                            .iter()
+                            .filter_map(|row| {
+                                row.get(idx).and_then(|v| match v {
+                                    Value::Integer(n) => Some(*n),
+                                    _ => None,
+                                })
+                            })
+                            .max()
+                    })
+                    .max()
+                    .map(|m| m + 1)
+                    .unwrap_or(1);
+                records
+                    .into_iter()
+                    .map(|mut row| {
+                        while row.len() < ncols {
+                            let default = info
+                                .columns
+                                .get(row.len())
+                                .and_then(|c| c.default_value.as_deref())
+                                .map(parse_default_literal)
+                                .unwrap_or(Value::Null);
+                            row.push(default);
+                        }
+                        for &col_idx in &auto_inc_cols {
+                            if matches!(row.get(col_idx), Some(Value::Null) | None) {
+                                row[col_idx] = Value::Integer(next_auto);
+                                next_auto += 1;
+                            }
+                        }
+                        row
+                    })
+                    .collect()
+            }
         } else {
             records
         };
