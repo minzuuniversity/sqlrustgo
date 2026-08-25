@@ -1,6 +1,6 @@
 #!/bin/bash
 # V312-37: Anti-Ignore gate (G19)
-# Threshold: active entries <= 47, total_allowed <= 111
+# Threshold: active entries <= 47, total_allowed <= 116
 # V312-17 round-17 (ADR-008 exception): 9 e2e_wire_protocol #[ignore] markers
 # consolidated into 1 registry entry. New baseline total_allowed = 73 + 23
 # (round-16) = 96. The 73 v3.9.0 baseline is preserved as v3.9.0_legacy field.
@@ -15,11 +15,14 @@
 #       which added 23 entries (round-16: 3418ac19a1, round-17: 628a621bd1).
 #       Bumped 96 -> 97 by V312-59-B (claude-code #4385).
 #       Bumped 97 -> 111 by V312-59-followup (claude-code #4419).
+# V312-58-sprint5 / v313_3: +5 entries for sf1_bulk_load_bench,
+# q4_sf1_real_perf_test and v313_3_profile_experiments #[ignore] markers.
+# Bump 111 -> 116.
 set -e
 
 REGISTRY="tests/baseline/ignore_registry.json"
 ACTIVE_MAX=47
-TOTAL_ALLOWED_MAX=111
+TOTAL_ALLOWED_MAX=116
 
 if [ ! -f "$REGISTRY" ]; then
     echo "FAIL: $REGISTRY not found" >&2
