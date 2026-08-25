@@ -4901,13 +4901,9 @@ impl<S: StorageEngine + 'static> ExecutionEngine<S> {
             compression: None,
             collations: std::collections::HashMap::new(),
         };
-        let (correlated_keys, residual_expr) = find_correlated_equalities(
-            where_expr,
-            agg_arg_expr,
-            &subq.table,
-            &outer_table_info,
-        )
-        .or(None)?;
+        let (correlated_keys, residual_expr) =
+            find_correlated_equalities(where_expr, agg_arg_expr, &subq.table, &outer_table_info)
+                .or(None)?;
         if correlated_keys.is_empty() {
             return None;
         }
@@ -4953,12 +4949,12 @@ impl<S: StorageEngine + 'static> ExecutionEngine<S> {
         }
         DIAG_TRY_SCALAR_AGG_BUILD.fetch_add(1, Ordering::SeqCst);
         let rows = storage.scan(real_table).ok()?;
-        let residual_ref: Option<&sqlrustgo_parser::Expression> =
-            if matches!(&residual_expr, E::Literal(s) if s == "true") {
-                None
-            } else {
-                Some(&residual_expr)
-            };
+        let residual_ref: Option<&sqlrustgo_parser::Expression> = if matches!(&residual_expr, E::Literal(s) if s == "true")
+        {
+            None
+        } else {
+            Some(&residual_expr)
+        };
         let new_map = build_scalar_agg_index(
             &rows,
             &table_info,
@@ -5045,13 +5041,9 @@ impl<S: StorageEngine + 'static> ExecutionEngine<S> {
         // fast-path to support multiple correlated equalities (Q20:
         // `l_partkey = ps_partkey AND l_suppkey = ps_suppkey`) plus a
         // residual predicate (Q20: `l_shipdate >= ... AND l_shipdate < ...`).
-        let (correlated_keys, residual_expr) = find_correlated_equalities(
-            where_expr,
-            agg_arg_expr,
-            &subq.table,
-            outer_table_info,
-        )
-        .or(None)?;
+        let (correlated_keys, residual_expr) =
+            find_correlated_equalities(where_expr, agg_arg_expr, &subq.table, outer_table_info)
+                .or(None)?;
         if correlated_keys.is_empty() {
             return None;
         }
@@ -5105,12 +5097,12 @@ impl<S: StorageEngine + 'static> ExecutionEngine<S> {
                 drop(cache);
                 DIAG_TRY_SCALAR_AGG_BUILD.fetch_add(1, Ordering::SeqCst);
                 let rows = storage.scan(real_table).ok()?;
-                let residual_ref: Option<&sqlrustgo_parser::Expression> =
-                    if matches!(&residual_expr, E::Literal(s) if s == "true") {
-                        None
-                    } else {
-                        Some(&residual_expr)
-                    };
+                let residual_ref: Option<&sqlrustgo_parser::Expression> = if matches!(&residual_expr, E::Literal(s) if s == "true")
+                {
+                    None
+                } else {
+                    Some(&residual_expr)
+                };
                 let new_map = build_scalar_agg_index(
                     &rows,
                     &table_info,
@@ -5180,6 +5172,20 @@ impl<S: StorageEngine + 'static> ExecutionEngine<S> {
         outer_table_info: &TableInfo,
         index: &SubqueryIndex,
     ) -> Option<bool> {
+        // V312-58 Sprint 4 (Task #88 Q20 L0/L5): if the residual
+        // contains a nested Subquery (TPC-H Q20's
+        // `ps_availqty > (SELECT 0.5 * SUM(l_quantity) FROM lineitem
+        // WHERE l_partkey = ps_partkey AND l_suppkey = ps_suppkey)`),
+        // the per-bucket-row `eval_predicate` call below cannot
+        // evaluate the Subquery (no engine / subq_eval callback in
+        // this scope) and silently returns Null → false, which kills
+        // EXISTS for every inner row. Fall through to the slow
+        // `pre_eval_exists_subquery_fast` / `execute_select` path
+        // (which DOES recurse into nested Subqueries via the Subq-ARM
+        // at line 4085+).
+        if Self::residual_has_subquery(&index.residual) {
+            return None;
+        }
         let lit = find_top_level_equality_literal(where_expr, index.col_idx)?;
         if !index.qualifying_keys.contains(&lit) {
             return Some(false);
@@ -5242,6 +5248,13 @@ impl<S: StorageEngine + 'static> ExecutionEngine<S> {
         outer_table_info: &TableInfo,
         index: &SubqueryIndex,
     ) -> Option<bool> {
+        // V312-58 Sprint 4 (Task #88): see pre_eval_exists_indexed —
+        // skip the indexed path when residual contains a Subquery
+        // (eval_predicate can't evaluate it without a subq_eval
+        // callback, would silently return false).
+        if Self::residual_has_subquery(&index.residual) {
+            return None;
+        }
         let lit = find_top_level_equality_literal(where_expr, index.col_idx)?;
         // Short-circuit 1: if not in qualifying_keys, NOT EXISTS = true.
         if !index.qualifying_keys.contains(&lit) {
@@ -5297,6 +5310,34 @@ impl<S: StorageEngine + 'static> ExecutionEngine<S> {
                 Self::residual_has_outer_ref(inner)
             }
             _ => true, // Conservative default for Subquery etc.
+        }
+    }
+
+    /// V312-58 Sprint 4 (Task #88 Q20 L0/L5): does the residual
+    /// predicate reference any nested Subquery expression (i.e. a
+    /// scalar subquery on the right side of a comparison like
+    /// `ps_availqty > (SELECT 0.5 * SUM(...) ...)`)? If so, the
+    /// indexed fast-path in `pre_eval_exists_indexed` /
+    /// `pre_eval_not_exists_indexed` cannot evaluate it (no engine
+    /// / subq_eval callback available) and would silently return
+    /// false, breaking TPC-H Q20 L0/L5. Callers MUST fall through
+    /// to the slow `pre_eval_exists_subquery_fast` / `execute_select`
+    /// path which DOES recurse into nested Subqueries via the
+    /// Subq-ARM.
+    fn residual_has_subquery(residual: &sqlrustgo_parser::Expression) -> bool {
+        use sqlrustgo_parser::Expression;
+        match residual {
+            Expression::Subquery(_) => true,
+            Expression::BinaryOp(l, _, r) => {
+                Self::residual_has_subquery(l) || Self::residual_has_subquery(r)
+            }
+            Expression::UnaryOp(_, inner) => Self::residual_has_subquery(inner),
+            Expression::IsNull(inner) | Expression::IsNotNull(inner) => {
+                Self::residual_has_subquery(inner)
+            }
+            Expression::In(_, _) | Expression::NotIn(_, _) => true,
+            Expression::Exists(_) | Expression::NotExists(_) => true,
+            _ => false,
         }
     }
 
@@ -6126,7 +6167,11 @@ fn find_correlated_equalities(
         None
     }
 
-    fn is_inner_col(name_lc: &str, own_prefix: Option<char>, inner_col_hint: &Option<String>) -> bool {
+    fn is_inner_col(
+        name_lc: &str,
+        own_prefix: Option<char>,
+        inner_col_hint: &Option<String>,
+    ) -> bool {
         inner_col_hint
             .as_ref()
             .map(|h| name_lc == h)
@@ -6177,7 +6222,13 @@ fn find_correlated_equalities(
     }
 
     let mut pairs: Vec<(String, usize)> = Vec::new();
-    let residual = walk(where_expr, own_prefix, &inner_col_hint, outer_table_info, &mut pairs)?;
+    let residual = walk(
+        where_expr,
+        own_prefix,
+        &inner_col_hint,
+        outer_table_info,
+        &mut pairs,
+    )?;
     Some((pairs, residual))
 }
 

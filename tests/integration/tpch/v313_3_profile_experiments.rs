@@ -19,8 +19,8 @@
 
 #![cfg(feature = "v313_3_profile")]
 
-use sqlrustgo_storage::binary_storage_v2::BinaryTableStorageV2;
 use sqlrustgo_storage::bin_index::read_root_index_file;
+use sqlrustgo_storage::binary_storage_v2::BinaryTableStorageV2;
 use sqlrustgo_storage::engine::{ColumnDefinition, Record, Value};
 use std::time::{Duration, Instant};
 use tempfile::TempDir;
@@ -82,7 +82,9 @@ fn lineitem_row(i: usize) -> Record {
 fn run_load(n_rows: usize) -> (Duration, usize, u64) {
     let temp_dir = TempDir::new().expect("tempdir");
     let mut storage = BinaryTableStorageV2::new(temp_dir.path().to_path_buf()).expect("V2 init");
-    storage.create_table("lineitem", lineitem_schema()).expect("create_table");
+    storage
+        .create_table("lineitem", lineitem_schema())
+        .expect("create_table");
     let start = Instant::now();
     storage
         .insert_streaming_iter("lineitem", (0..n_rows).map(lineitem_row))
@@ -178,7 +180,9 @@ fn experiment_a_smoke_1k() {
 fn run_load_experiment_b(n_rows: usize) -> (Duration, usize, u64, bool) {
     let temp_dir = TempDir::new().expect("tempdir");
     let mut storage = BinaryTableStorageV2::new(temp_dir.path().to_path_buf()).expect("V2 init");
-    storage.create_table("lineitem", lineitem_schema()).expect("create_table");
+    storage
+        .create_table("lineitem", lineitem_schema())
+        .expect("create_table");
     storage.use_in_place_encoding_for_test();
     let start = Instant::now();
     storage
@@ -236,7 +240,9 @@ fn run_load_experiment_c(n_rows: usize) -> (Duration, usize, u64) {
         }
     }
     let mut storage = BinaryTableStorageV2::new(dir.to_path_buf()).expect("V2 init");
-    storage.create_table("lineitem", lineitem_schema()).expect("create_table");
+    storage
+        .create_table("lineitem", lineitem_schema())
+        .expect("create_table");
     let start = Instant::now();
     storage
         .insert_streaming_iter("lineitem", (0..n_rows).map(lineitem_row))
@@ -286,7 +292,9 @@ const EXP_D_BUF_CAP: usize = 64 * 1024 * 1024; // 64 MB
 fn run_load_experiment_d(n_rows: usize) -> (Duration, usize, u64) {
     let temp_dir = TempDir::new().expect("tempdir");
     let mut storage = BinaryTableStorageV2::new(temp_dir.path().to_path_buf()).expect("V2 init");
-    storage.create_table("lineitem", lineitem_schema()).expect("create_table");
+    storage
+        .create_table("lineitem", lineitem_schema())
+        .expect("create_table");
     storage.set_segment_buf_capacity_for_test(EXP_D_BUF_CAP);
     let start = Instant::now();
     storage

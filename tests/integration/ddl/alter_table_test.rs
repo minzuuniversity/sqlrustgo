@@ -59,9 +59,7 @@ fn bin_path() -> String {
                     return c.clone();
                 }
             }
-            panic!(
-                "sqlrustgo-mysql-server binary still not found after cargo build"
-            );
+            panic!("sqlrustgo-mysql-server binary still not found after cargo build");
         })
 }
 
