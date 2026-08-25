@@ -81,11 +81,8 @@ fn spawn_canonical_with_client() -> (SubprocessHandle, MySqlTestClient) {
 
         // Create a unique temp data dir for each spawn to avoid
         // "Table already exists" errors when tests run in parallel.
-        let data_dir = std::env::temp_dir().join(format!(
-            "sqlrustgo_test_{}_{}",
-            std::process::id(),
-            port
-        ));
+        let data_dir =
+            std::env::temp_dir().join(format!("sqlrustgo_test_{}_{}", std::process::id(), port));
         let _ = std::fs::create_dir_all(&data_dir);
 
         let mut child = match Command::new(&bin)
@@ -127,7 +124,16 @@ fn spawn_canonical_with_client() -> (SubprocessHandle, MySqlTestClient) {
         }
 
         match MySqlTestClient::connect_at(("127.0.0.1", port), "root", "") {
-            Ok(client) => return (SubprocessHandle { child, port, data_dir }, client),
+            Ok(client) => {
+                return (
+                    SubprocessHandle {
+                        child,
+                        port,
+                        data_dir,
+                    },
+                    client,
+                )
+            }
             Err(e) => {
                 let _ = child.kill();
                 let _ = child.wait();

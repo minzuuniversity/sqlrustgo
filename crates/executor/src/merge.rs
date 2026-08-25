@@ -1193,17 +1193,20 @@ mod tests {
         storage
             .write()
             .unwrap()
-            .insert("src", vec![vec![Value::Integer(1), Value::Text("a".into())]])
+            .insert(
+                "src",
+                vec![vec![Value::Integer(1), Value::Text("a".into())]],
+            )
             .unwrap();
         storage
             .write()
             .unwrap()
-            .insert("src", vec![vec![Value::Integer(2), Value::Text("b".into())]])
+            .insert(
+                "src",
+                vec![vec![Value::Integer(2), Value::Text("b".into())]],
+            )
             .unwrap();
-        let exec = MergeExecutor::new(
-            storage.clone(),
-            Arc::new(std::sync::Mutex::new(MockEngine)),
-        );
+        let exec = MergeExecutor::new(storage.clone(), Arc::new(std::sync::Mutex::new(MockEngine)));
         let merge = MergeStatement::new(
             "tgt".to_string(),
             "src".to_string(),
@@ -1235,17 +1238,20 @@ mod tests {
         storage
             .write()
             .unwrap()
-            .insert("tgt", vec![vec![Value::Integer(1), Value::Text("old".into())]])
+            .insert(
+                "tgt",
+                vec![vec![Value::Integer(1), Value::Text("old".into())]],
+            )
             .unwrap();
         storage
             .write()
             .unwrap()
-            .insert("src", vec![vec![Value::Integer(1), Value::Text("new".into())]])
+            .insert(
+                "src",
+                vec![vec![Value::Integer(1), Value::Text("new".into())]],
+            )
             .unwrap();
-        let exec = MergeExecutor::new(
-            storage.clone(),
-            Arc::new(std::sync::Mutex::new(MockEngine)),
-        );
+        let exec = MergeExecutor::new(storage.clone(), Arc::new(std::sync::Mutex::new(MockEngine)));
         let merge = MergeStatement::new(
             "tgt".to_string(),
             "src".to_string(),
@@ -1273,7 +1279,10 @@ mod tests {
         storage
             .write()
             .unwrap()
-            .insert("tgt", vec![vec![Value::Integer(1), Value::Text("x".into())]])
+            .insert(
+                "tgt",
+                vec![vec![Value::Integer(1), Value::Text("x".into())]],
+            )
             .unwrap();
         storage
             .write()
@@ -1286,10 +1295,7 @@ mod tests {
                 ],
             )
             .unwrap();
-        let exec = MergeExecutor::new(
-            storage.clone(),
-            Arc::new(std::sync::Mutex::new(MockEngine)),
-        );
+        let exec = MergeExecutor::new(storage.clone(), Arc::new(std::sync::Mutex::new(MockEngine)));
         let merge = MergeStatement::new(
             "tgt".to_string(),
             "src".to_string(),
@@ -1323,10 +1329,7 @@ mod tests {
     fn execute_merge_source_table_not_found() {
         // Source table doesn't exist → storage.scan returns error.
         let storage = make_merge_storage();
-        let exec = MergeExecutor::new(
-            storage.clone(),
-            Arc::new(std::sync::Mutex::new(MockEngine)),
-        );
+        let exec = MergeExecutor::new(storage.clone(), Arc::new(std::sync::Mutex::new(MockEngine)));
         let merge = MergeStatement::new(
             "tgt".to_string(),
             "missing_src".to_string(),
@@ -1352,10 +1355,7 @@ mod tests {
             partition_info: None,
         };
         storage.write().unwrap().create_table(&src_info).unwrap();
-        let exec = MergeExecutor::new(
-            storage.clone(),
-            Arc::new(std::sync::Mutex::new(MockEngine)),
-        );
+        let exec = MergeExecutor::new(storage.clone(), Arc::new(std::sync::Mutex::new(MockEngine)));
         let merge = MergeStatement::new(
             "missing_tgt".to_string(),
             "src".to_string(),
@@ -1373,17 +1373,20 @@ mod tests {
         storage
             .write()
             .unwrap()
-            .insert("tgt", vec![vec![Value::Integer(1), Value::Text("x".into())]])
+            .insert(
+                "tgt",
+                vec![vec![Value::Integer(1), Value::Text("x".into())]],
+            )
             .unwrap();
         storage
             .write()
             .unwrap()
-            .insert("src", vec![vec![Value::Integer(1), Value::Text("y".into())]])
+            .insert(
+                "src",
+                vec![vec![Value::Integer(1), Value::Text("y".into())]],
+            )
             .unwrap();
-        let exec = MergeExecutor::new(
-            storage.clone(),
-            Arc::new(std::sync::Mutex::new(MockEngine)),
-        );
+        let exec = MergeExecutor::new(storage.clone(), Arc::new(std::sync::Mutex::new(MockEngine)));
         let merge = MergeStatement::new(
             "tgt".to_string(),
             "src".to_string(),

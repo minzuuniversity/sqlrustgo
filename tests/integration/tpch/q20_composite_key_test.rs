@@ -130,22 +130,27 @@ const Q20_COMPOSITE_KEY_SQL: &str = "SELECT s_name, s_address \
 #[test]
 fn q20_composite_key_in_process_fixture() {
     let mut e = fresh_engine();
-    e.execute("CREATE TABLE nation (\
+    e.execute(
+        "CREATE TABLE nation (\
             n_nationkey INTEGER PRIMARY KEY, \
             n_name TEXT NOT NULL, \
             n_regionkey INTEGER NOT NULL, \
-            n_comment TEXT)")
-        .unwrap();
-    e.execute("CREATE TABLE supplier (\
+            n_comment TEXT)",
+    )
+    .unwrap();
+    e.execute(
+        "CREATE TABLE supplier (\
             s_suppkey INTEGER PRIMARY KEY, \
             s_name TEXT NOT NULL, \
             s_address TEXT NOT NULL, \
             s_nationkey INTEGER NOT NULL, \
             s_phone TEXT NOT NULL, \
             s_acctbal REAL NOT NULL, \
-            s_comment TEXT)")
-        .unwrap();
-    e.execute("CREATE TABLE lineitem (\
+            s_comment TEXT)",
+    )
+    .unwrap();
+    e.execute(
+        "CREATE TABLE lineitem (\
             l_orderkey INTEGER NOT NULL, \
             l_partkey INTEGER NOT NULL, \
             l_suppkey INTEGER NOT NULL, \
@@ -161,8 +166,9 @@ fn q20_composite_key_in_process_fixture() {
             l_receiptdate TEXT NOT NULL, \
             l_shipinstruct TEXT NOT NULL, \
             l_shipmode TEXT NOT NULL, \
-            l_comment TEXT NOT NULL)")
-        .unwrap();
+            l_comment TEXT NOT NULL)",
+    )
+    .unwrap();
 
     let _ = e.execute("INSERT INTO nation VALUES (1, 'GERMANY', 0, 'comment')");
     for s in 1..=20 {

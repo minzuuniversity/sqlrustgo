@@ -416,9 +416,18 @@ mod tests {
         // Probe for s_suppkey=1 → Matched.
         // `probe_outer_key` takes `&self` (interior mutability), so we
         // can reuse the same `HashSemiJoin` instance for every probe.
-        assert_eq!(join.probe_outer_key(&Value::Integer(1)), ProbeResult::Matched);
-        assert_eq!(join.probe_outer_key(&Value::Integer(2)), ProbeResult::Matched);
-        assert_eq!(join.probe_outer_key(&Value::Integer(3)), ProbeResult::NotMatched);
+        assert_eq!(
+            join.probe_outer_key(&Value::Integer(1)),
+            ProbeResult::Matched
+        );
+        assert_eq!(
+            join.probe_outer_key(&Value::Integer(2)),
+            ProbeResult::Matched
+        );
+        assert_eq!(
+            join.probe_outer_key(&Value::Integer(3)),
+            ProbeResult::NotMatched
+        );
         // 2 distinct outer keys matched.
         assert_eq!(join.matched_outer_count(), 2);
         assert_eq!(join.unique_keys(), 2);

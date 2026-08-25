@@ -169,10 +169,10 @@ mod tests {
     //!   * `execute_with_select` and `execute_with_dml`
     //!     (WithDml INSERT/UPDATE/DELETE bodies)
 
+    use crate::MemoryStorage;
     use crate::{ExecutionEngine, MemoryExecutionEngine, Value};
     use parking_lot::RwLock;
     use std::sync::Arc;
-    use crate::MemoryStorage;
 
     fn fresh() -> ExecutionEngine<MemoryStorage> {
         let storage = Arc::new(RwLock::new(MemoryStorage::new()));
@@ -195,8 +195,10 @@ mod tests {
     #[test]
     fn with_select_multiple_ctes() {
         let mut e = fresh();
-        e.execute("CREATE TABLE orders (id INTEGER, amount INTEGER)").unwrap();
-        e.execute("INSERT INTO orders VALUES (1, 100),(2, 200)").unwrap();
+        e.execute("CREATE TABLE orders (id INTEGER, amount INTEGER)")
+            .unwrap();
+        e.execute("INSERT INTO orders VALUES (1, 100),(2, 200)")
+            .unwrap();
         let r = e
             .execute(
                 "WITH os AS (SELECT SUM(amount) AS total FROM orders) \
@@ -223,8 +225,6 @@ mod tests {
         assert_eq!(r.rows.len(), 1);
         assert_eq!(r.rows[0][0], Value::Text("foo".into()));
     }
-
-
 
     #[test]
     fn with_select_empty_cte_result() {
@@ -292,9 +292,8 @@ mod tests {
         e.execute("CREATE TABLE source (id INTEGER)").unwrap();
         e.execute("CREATE TABLE target (id INTEGER)").unwrap();
         e.execute("INSERT INTO source VALUES (1),(2)").unwrap();
-        let r = e.execute(
-            "WITH src AS (SELECT id FROM source) INSERT INTO target SELECT * FROM src",
-        );
+        let r =
+            e.execute("WITH src AS (SELECT id FROM source) INSERT INTO target SELECT * FROM src");
         // Don't require Ok: INSERT can return either row-count or empty.
         if r.is_ok() {
             let target = e.execute("SELECT id FROM target ORDER BY id").unwrap();
@@ -308,7 +307,8 @@ mod tests {
     fn with_dml_update_via_cte() {
         let mut e = fresh();
         e.execute("CREATE TABLE t (id INTEGER, v INTEGER)").unwrap();
-        e.execute("INSERT INTO t VALUES (1, 10),(2, 20),(3, 30)").unwrap();
+        e.execute("INSERT INTO t VALUES (1, 10),(2, 20),(3, 30)")
+            .unwrap();
         // If the parser/executor supports WITH ... UPDATE, this works.
         let r = e.execute(
             "WITH src AS (SELECT id FROM t WHERE id > 1) UPDATE t SET v = v + 1 WHERE id IN (SELECT id FROM src)",

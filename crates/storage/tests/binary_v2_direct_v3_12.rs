@@ -55,7 +55,8 @@ fn cov_v2_create_table() {
 #[test]
 fn cov_v2_create_table_multi() {
     let (_t, mut s) = make_dir();
-    s.create_table("t", vec![bigint_col("a"), bigint_col("b")]).unwrap();
+    s.create_table("t", vec![bigint_col("a"), bigint_col("b")])
+        .unwrap();
 }
 
 #[test]
@@ -70,7 +71,8 @@ fn cov_v2_create_table_duplicate() {
 fn cov_v2_create_table_many() {
     let (_t, mut s) = make_dir();
     for i in 0..5 {
-        s.create_table(&format!("t{}", i), vec![bigint_col("a")]).unwrap();
+        s.create_table(&format!("t{}", i), vec![bigint_col("a")])
+            .unwrap();
     }
 }
 
@@ -86,7 +88,9 @@ fn cov_v2_insert_streaming_single_int() {
 fn cov_v2_insert_streaming_multi_int() {
     let (_t, mut s) = make_dir();
     s.create_table("t", vec![bigint_col("a")]).unwrap();
-    let records: Vec<Record> = (0..10i64).map(|i| vec![sqlrustgo_storage::Value::Integer(i)]).collect();
+    let records: Vec<Record> = (0..10i64)
+        .map(|i| vec![sqlrustgo_storage::Value::Integer(i)])
+        .collect();
     s.insert_streaming("t", records).unwrap();
 }
 
@@ -94,7 +98,9 @@ fn cov_v2_insert_streaming_multi_int() {
 fn cov_v2_insert_streaming_iter() {
     let (_t, mut s) = make_dir();
     s.create_table("t", vec![bigint_col("a")]).unwrap();
-    let records: Vec<Record> = (0..20i64).map(|i| vec![sqlrustgo_storage::Value::Integer(i)]).collect();
+    let records: Vec<Record> = (0..20i64)
+        .map(|i| vec![sqlrustgo_storage::Value::Integer(i)])
+        .collect();
     s.insert_streaming_iter("t", records.into_iter()).unwrap();
 }
 
@@ -109,7 +115,10 @@ fn cov_v2_insert_streaming_iter_empty() {
 #[test]
 fn cov_v2_insert_streaming_missing_table() {
     let (_t, mut s) = make_dir();
-    let r = s.insert_streaming("nonexistent", vec![vec![sqlrustgo_storage::Value::Integer(1)]]);
+    let r = s.insert_streaming(
+        "nonexistent",
+        vec![vec![sqlrustgo_storage::Value::Integer(1)]],
+    );
     assert!(r.is_err());
 }
 
@@ -125,7 +134,8 @@ fn cov_v2_insert_streaming_iter_missing_table() {
 fn cov_v2_insert_then_create_duplicate_fails() {
     let (_t, mut s) = make_dir();
     s.create_table("t", vec![bigint_col("a")]).unwrap();
-    s.insert_streaming("t", vec![vec![sqlrustgo_storage::Value::Integer(1)]]).unwrap();
+    s.insert_streaming("t", vec![vec![sqlrustgo_storage::Value::Integer(1)]])
+        .unwrap();
     let r = s.create_table("t", vec![bigint_col("a")]);
     assert!(r.is_err());
 }
@@ -140,7 +150,8 @@ fn cov_v2_flush_empty() {
 fn cov_v2_flush_with_data() {
     let (_t, mut s) = make_dir();
     s.create_table("t", vec![bigint_col("a")]).unwrap();
-    s.insert_streaming("t", vec![vec![sqlrustgo_storage::Value::Integer(1)]]).unwrap();
+    s.insert_streaming("t", vec![vec![sqlrustgo_storage::Value::Integer(1)]])
+        .unwrap();
     s.flush().unwrap();
 }
 
@@ -148,9 +159,11 @@ fn cov_v2_flush_with_data() {
 fn cov_v2_flush_then_more() {
     let (_t, mut s) = make_dir();
     s.create_table("t", vec![bigint_col("a")]).unwrap();
-    s.insert_streaming("t", vec![vec![sqlrustgo_storage::Value::Integer(1)]]).unwrap();
+    s.insert_streaming("t", vec![vec![sqlrustgo_storage::Value::Integer(1)]])
+        .unwrap();
     s.flush().unwrap();
-    s.insert_streaming("t", vec![vec![sqlrustgo_storage::Value::Integer(2)]]).unwrap();
+    s.insert_streaming("t", vec![vec![sqlrustgo_storage::Value::Integer(2)]])
+        .unwrap();
     s.flush().unwrap();
 }
 
@@ -159,7 +172,8 @@ fn cov_v2_multiple_inserts_no_flush() {
     let (_t, mut s) = make_dir();
     s.create_table("t", vec![bigint_col("a")]).unwrap();
     for i in 0..20i64 {
-        s.insert_streaming("t", vec![vec![sqlrustgo_storage::Value::Integer(i)]]).unwrap();
+        s.insert_streaming("t", vec![vec![sqlrustgo_storage::Value::Integer(i)]])
+            .unwrap();
     }
 }
 
@@ -168,8 +182,10 @@ fn cov_v2_multiple_tables_no_flush() {
     let (_t, mut s) = make_dir();
     s.create_table("a", vec![bigint_col("x")]).unwrap();
     s.create_table("b", vec![bigint_col("y")]).unwrap();
-    s.insert_streaming("a", vec![vec![sqlrustgo_storage::Value::Integer(1)]]).unwrap();
-    s.insert_streaming("b", vec![vec![sqlrustgo_storage::Value::Integer(2)]]).unwrap();
+    s.insert_streaming("a", vec![vec![sqlrustgo_storage::Value::Integer(1)]])
+        .unwrap();
+    s.insert_streaming("b", vec![vec![sqlrustgo_storage::Value::Integer(2)]])
+        .unwrap();
 }
 
 #[test]
@@ -187,7 +203,8 @@ fn cov_v2_insert_bigint_range() {
 fn cov_v2_many_tables_insert() {
     let (_t, mut s) = make_dir();
     for i in 0..10 {
-        s.create_table(&format!("t{}", i), vec![bigint_col("a")]).unwrap();
+        s.create_table(&format!("t{}", i), vec![bigint_col("a")])
+            .unwrap();
     }
     for i in 0..10 {
         s.insert_streaming(
