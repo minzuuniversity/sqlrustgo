@@ -18,7 +18,7 @@ use flate2::read::GzDecoder;
 use flate2::write::GzEncoder;
 use flate2::Compression;
 use serde::{Deserialize, Serialize};
-use sqlrustgo_storage::wal::WalArchiveManager;
+use sqlrustgo_storage::wal_legacy::WalArchiveManager;
 use std::fs::{self, File};
 use std::io::{self, BufReader, Read, Write};
 use std::path::{Path, PathBuf};
@@ -1247,16 +1247,16 @@ mod tests {
         let output = Command::new("cargo")
             .args(&[
                 "run",
+                "--bin",
+                "physical-backup",
                 "-p",
                 "sqlrustgo-tools",
                 "--",
-                "physical-backup",
                 "prune",
                 "--help",
             ])
             .output()
             .expect("Failed to execute command");
-
         assert!(
             output.status.success(),
             "Prune command should be valid: {}",
