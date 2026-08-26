@@ -19,6 +19,8 @@ pub mod config_hot_reload;
 pub mod mysqldump;
 pub mod traits;
 pub mod upgrade;
+pub mod physical_backup;
+
 
 pub use backup_restore::{
     BackupManager, BackupMetadata, BackupStatus, BackupType, ExportOptions, RestoreResult,

@@ -13,10 +13,11 @@ fn test_physical_backup_help() {
     let output = Command::new("cargo")
         .args([
             "run",
+            "--bin",
+            "physical-backup",
             "-p",
             "sqlrustgo-tools",
             "--",
-            "physical-backup",
             "--help",
         ])
         .output()
@@ -46,10 +47,11 @@ fn test_physical_backup_subcommand_help() {
         let output = Command::new("cargo")
             .args([
                 "run",
+                "--bin",
+                "physical-backup",
                 "-p",
                 "sqlrustgo-tools",
                 "--",
-                "physical-backup",
                 subcommand,
                 "--help",
             ])
@@ -72,10 +74,11 @@ fn test_physical_backup_backup_requires_args() {
     let output = Command::new("cargo")
         .args([
             "run",
+            "--bin",
+            "physical-backup",
             "-p",
             "sqlrustgo-tools",
             "--",
-            "physical-backup",
             "backup",
         ])
         .output()
@@ -98,10 +101,11 @@ fn test_physical_backup_list_empty_directory() {
     let output = Command::new("cargo")
         .args([
             "run",
+            "--bin",
+            "physical-backup",
             "-p",
             "sqlrustgo-tools",
             "--",
-            "physical-backup",
             "list",
             "--dir",
             empty_dir.to_str().unwrap(),
@@ -135,10 +139,11 @@ fn test_physical_backup_verify_nonexistent() {
     let output = Command::new("cargo")
         .args([
             "run",
+            "--bin",
+            "physical-backup",
             "-p",
             "sqlrustgo-tools",
             "--",
-            "physical-backup",
             "verify",
             "--dir",
             nonexistent.to_str().unwrap(),
@@ -162,10 +167,11 @@ fn test_physical_backup_restore_nonexistent() {
     let output = Command::new("cargo")
         .args([
             "run",
+            "--bin",
+            "physical-backup",
             "-p",
             "sqlrustgo-tools",
             "--",
-            "physical-backup",
             "restore",
             "--dir",
             nonexistent.to_str().unwrap(),
@@ -244,10 +250,11 @@ fn test_physical_backup_prune_help() {
     let output = Command::new("cargo")
         .args([
             "run",
+            "--bin",
+            "physical-backup",
             "-p",
             "sqlrustgo-tools",
             "--",
-            "physical-backup",
             "prune",
             "--help",
         ])
@@ -280,10 +287,11 @@ fn test_physical_backup_prune_requires_args() {
     let output = Command::new("cargo")
         .args([
             "run",
+            "--bin",
+            "physical-backup",
             "-p",
             "sqlrustgo-tools",
             "--",
-            "physical-backup",
             "prune",
             "--dir",
             empty_dir.to_str().unwrap(),
@@ -312,10 +320,11 @@ fn test_physical_backup_prune_nonexistent_directory() {
     let output = Command::new("cargo")
         .args([
             "run",
+            "--bin",
+            "physical-backup",
             "-p",
             "sqlrustgo-tools",
             "--",
-            "physical-backup",
             "prune",
             "--dir",
             nonexistent.to_str().unwrap(),
@@ -374,10 +383,11 @@ fn test_physical_backup_prune_dry_run() {
     let output = Command::new("cargo")
         .args([
             "run",
+            "--bin",
+            "physical-backup",
             "-p",
             "sqlrustgo-tools",
             "--",
-            "physical-backup",
             "prune",
             "--dir",
             backup_dir.to_str().unwrap(),
