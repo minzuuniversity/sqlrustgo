@@ -2,10 +2,10 @@
 
 > **provenance:** generated_by=v3.12.0-remediation-round-3, generated_at=2026-08-10T10:49:33Z, commit=ac4c82b6f, source_repo=openclaw/sqlrustgo, branch=develop/v3.12.0, policy=Anti-Fabrication-Policy-v1.0
 
-> **状态**: 规划中
+> **状态**: RC (2026-08-26 转入; BETA 2026-08-19, ALPHA 2026-08-12)
 > **产品目标**: 面向 `~/gmp-platform` 的 GMP 内审检索数据库
 > **规划日期**: 2026-08-09
-> **当前整改口径更新**: 2026-08-19
+> **当前整改口径更新**: 2026-08-26 (RC 转入, 见 [RC_GATE_REPORT.md](RC_GATE_REPORT.md) + [V312-59-C-RC-PROMOTION-REPORT.md](V312-59-C-RC-PROMOTION-REPORT.md))
 
 v3.12.0 被规划为 SQLRustGo 第一个明确面向 GMP 内审检索工作负载的版本。它使用 SQLRustGo 作为受监管文档存储、chunk、embedding、audit trail、evidence relation、hybrid retrieval 和 SQL-backed graph projection 的数据库基础。
 
@@ -20,6 +20,8 @@ v3.12.0 被规划为 SQLRustGo 第一个明确面向 GMP 内审检索工作负�
 2026-08-19 教学入口补强：新增 [V312-57 sqlite3-like 一体化教学 CLI 计划](V312-57_SQLITE_STYLE_EDU_CLI_PLAN.md)，用于支撑 BustubX-EDU 前 4-6 周以 SQLRustGo 替代 `sqlite3` CLI 使用体验进行脚本化验收。该任务不声明 SQLite 文件格式兼容。
 
 2026-08-20 V312-57 实现完成：`sqlrustgo` 二进制已实现(单路径数据库、SQL 参数/stdin 批处理、table/list/csv/json 输出、sqlite3-like 元命令、跨进程持久化、稳定退出码)。14/14 gate cases PASS，Beta Gate 0 BLOCKERS。验证报告：[V312-57-EDU-CLI-VERIFICATION.md](evidence/bustubx_edu_cli/V312-57-EDU-CLI-VERIFICATION.md)。
+2026-08-26 BETA → RC 转入：全部 12 项 `promotion_to_RC_requires` 已满足（`bash scripts/gate/check_v312_promotion_to_rc.sh` 报告 9 PASS + 2 NO-OP-covered + B8 13/13）。聚合报告：[RC_GATE_REPORT.md](RC_GATE_REPORT.md)；V312-59-C umbrella：[V312-59-C-RC-PROMOTION-REPORT.md](V312-59-C-RC-PROMOTION-REPORT.md)。Sprint 5 followup-6 (PR #4475) 闭合 Q20 BinaryOp arm 路径（`tests/integration/tpch/q20_binaryop_arm_test.rs` 2/2 PASS）。
+
 
 ## 发布契约
 
@@ -50,6 +52,12 @@ v3.12.0 被规划为 SQLRustGo 第一个明确面向 GMP 内审检索工作负�
 | `V312-57_SQLITE_STYLE_EDU_CLI_PLAN.md` | BustubX-EDU 前 4-6 周 sqlite3-like 一体化教学 CLI 范围、验收和门禁 |
 | `GMP_COMPLIANCE_MATRIX.md` | GMP/ALCOA+ 合规控制映射 |
 | `fixtures/gmp_audit_questions.yml` | 检索质量 fixture seed |
+| `RC_GATE_REPORT.md` | RC 阶段聚合报告：12 项 promotion_to_RC_requires 的 verdict map + 反延期声明 |
+| `V312-59-C-RC-PROMOTION-REPORT.md` | V312-59-C umbrella 报告：cycle provenance + 上游源证据 cross-reference + 关闭边界 |
+| `evidence/v312-59/RC{1..11}_*_REPORT.md` | 每个 RC 项目的 wrapper 报告（含 RC6 TPC-H + RC9 V312-57 week01-04 的 NO-OP wrapper） |
+| `evidence/v312-59-e/thresholds_override_evidence.txt` | B8 thresholds_override 13/13 PASS 证据（issue #4388） |
+| `evidence/tpch/cross_engine_sf1/SUMMARY.json` | RC6 TPC-H SF=1 跨引擎 4-way 矩阵（V312-58 Sprint 5 系列） |
+
 
 ## 对 v3.11.0 的依赖
 
