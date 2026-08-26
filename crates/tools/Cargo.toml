@@ -2,8 +2,6 @@
 name = "sqlrustgo-tools"
 version.workspace = true
 edition.workspace = true
-authors.workspace = true
-license.workspace = true
 
 [dependencies]
 sqlrustgo-catalog.workspace = true
@@ -32,3 +30,7 @@ path = "src/bin/tbl2bin.rs"
 [[bin]]
 name = "bench_client"
 path = "src/bin/bench_client.rs"
+
+[[bin]]
+name = "physical-backup"
+path = "src/bin/physical_backup.rs"

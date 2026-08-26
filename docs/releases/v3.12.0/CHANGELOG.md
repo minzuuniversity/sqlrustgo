@@ -2,12 +2,57 @@
 
 > **provenance:** generated_by=v3.12.0-remediation-round-3, generated_at=2026-08-10T10:49:33Z, commit=1903545df6d036f7f6d5035a0503b5fa932aac51, source_repo=openclaw/sqlrustgo, branch=develop/v3.12.0, policy=Anti-Fabrication-Policy-v1.0
 
-> **状态**: **BETA** (2026-08-19 转入)
-> **日期**: 2026-08-19 (latest); 2026-08-09 (initial)
-> **stage_history**: DRAFT (pre-2026-08-12) → ALPHA (2026-08-12) → **BETA** (2026-08-19)
+> **状态**: **RC** (2026-08-26 转入)
+> **日期**: 2026-08-26 (latest); 2026-08-09 (initial)
+> **stage_history**: DRAFT (pre-2026-08-12) → ALPHA (2026-08-12) → BETA (2026-08-19) → **RC** (2026-08-26)
 
 > **commit**: 1903545df6d036f7f6d5035a0503b5fa932aac51
-> **current_HEAD**: 8ec104930f8a645292c0c5ed1a066c2f5c706f7b (post PR #4354)
+> **current_HEAD**: ba5fc80a6 (post V312-59-C RC gate aggregator merge)
+
+## 2026-08-26 BETA → RC transition
+
+v3.12.0 officially promoted to **RC** on 2026-08-26, recorded in
+`docs/releases/v3.12.0/STAGE.yaml` (current_stage: RC) and tracked
+under issue #4386 (V312-59-C umbrella).
+
+### Gate snapshot
+
+```
+$ bash scripts/gate/check_v312_promotion_to_rc.sh
+PASS:               9 / 11
+FAIL:               0 / 11
+NO-OP (covered):    2 / 11
+Total checked:      11 / 11
+```
+
+All 12 `promotion_to_RC_requires` items satisfied. Full verdict map:
+[`RC_GATE_REPORT.md`](RC_GATE_REPORT.md). Per-item wrapper reports
+under `evidence/v312-59/RC{1..11}_*_REPORT.md`; umbrella aggregator at
+[`V312-59-C-RC-PROMOTION-REPORT.md`](V312-59-C-RC-PROMOTION-REPORT.md).
+
+### Composite evidence
+
+- **B8 thresholds_override**: 13/13 PASS at 2026-08-26T18:30:00Z
+  (issue #4388 re-verified post SF=10 fixture remediation).
+- **RC6 TPC-H SF=1 cross-engine**: NO-OP covered by V312-58 Sprint 5
+  series (`evidence/tpch/cross_engine_sf1/SUMMARY.json`, 4 engines ×
+  22 queries).
+- **RC9 V312-57 week01-04**: NO-OP covered by PRs #4359/#4370/#4373
+  + `evidence/v312-57-smoke/V312-57-SMOKE-FIXTURES-CLOSURE.md`
+  (14/14 PASS).
+
+### Resolved since BETA
+
+- **RC6 TPC-H cross-engine wrapper** — `evidence/v312-59/RC6_TPCH_SF1_CROSS_ENGINE_REPORT.md` added to make the
+  NO-OP verdict auditable.
+- **RC9 V312-57 week01-04 wrapper** — `evidence/v312-59/RC9_V312_57_WEEK01_04_REPORT.md` added.
+- **Sprint 5 followup-6** — `mentions_outer` Subquery gap closed
+  (PR #4475); canonical TPC-H Q4 SF=1 + Q20 BinaryOp arm path
+  verification via `tests/integration/tpch/q20_binaryop_arm_test.rs`
+  (2/2 PASS).
+
+Tag `v3.12.0-rc1` to be cut immediately after the merge of this
+commit per STAGE_CONFIG BETA_to_RC trigger.
 
 ## 2026-08-19 ALPHA → BETA transition
 
