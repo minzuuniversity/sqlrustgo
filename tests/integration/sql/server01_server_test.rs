@@ -13,17 +13,34 @@
 use std::process::{Command, Stdio};
 
 fn get_binary_path() -> String {
-    std::env::var("CARGO_BIN_EXE_sqlrustgo-mysql-server")
-        .ok()
-        .or_else(|| std::env::var("SQLRUSTGO_BIN").ok())
-        .unwrap_or_else(|| {
-            let p = std::path::Path::new("target/release/sqlrustgo-mysql-server");
-            if p.exists() {
-                p.to_string_lossy().to_string()
-            } else {
-                "../srv1/target/release/sqlrustgo-mysql-server".to_string()
-            }
-        })
+    // Priority 1: cargo test auto-set env var (only when test and binary share a package).
+    // This integration test lives in the root `sqlrustgo` crate, but the binary is in
+    // `crates/mysql-server/`, so CARGO_BIN_EXE_sqlrustgo-mysql-server is NOT auto-set —
+    // we fall through to filesystem scanning below.
+    if let Ok(p) = std::env::var("CARGO_BIN_EXE_sqlrustgo-mysql-server") {
+        return p;
+    }
+    // Priority 2: user-supplied override
+    if let Ok(p) = std::env::var("SQLRUSTGO_BIN") {
+        return p;
+    }
+    // Priority 3: scan common target directories. The B2_INTEGRATION_TESTS gate runs
+    // `cargo test` which uses the debug profile, so `target/debug/` is checked first.
+    // Release paths are kept for backwards compatibility with developer workflows.
+    let candidates = [
+        "target/debug/sqlrustgo-mysql-server",
+        "target/release/sqlrustgo-mysql-server",
+        "../srv1/target/debug/sqlrustgo-mysql-server",
+        "../srv1/target/release/sqlrustgo-mysql-server",
+    ];
+    for c in &candidates {
+        let p = std::path::Path::new(c);
+        if p.exists() {
+            return p.to_string_lossy().to_string();
+        }
+    }
+    // No binary found — return the most common path so the failure message is clear.
+    "target/debug/sqlrustgo-mysql-server".to_string()
 }
 
 #[test]
