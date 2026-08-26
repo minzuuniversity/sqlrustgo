@@ -59,14 +59,25 @@ impl<'a> Lexer<'a> {
         while !self.is_eof() {
             let ch = self.peek_char();
             if ch == '-' && self.input[self.position..].starts_with("--") {
-                // Line comment: skip to end of line
+                // Line comment: skip to end of line.
+                // Advance by full UTF-8 char width (not by 1 byte) so that
+                // CJK and other multi-byte characters inside `-- ...` line
+                // comments do not leave `self.position` mid-character (which
+                // would panic at `peek_char` on the next slice).
                 while !self.is_eof() && self.peek_char() != '\n' {
-                    self.position += 1;
+                    let step = self.peek_char().len_utf8();
+                    if step == 0 {
+                        // Invalid UTF-8 byte at position: skip 1 raw byte to
+                        // avoid an infinite loop on stray continuation bytes.
+                        self.position += 1;
+                    } else {
+                        self.position += step;
+                    }
                 }
             } else if !ch.is_whitespace() {
                 break;
             } else {
-                self.position += 1;
+                self.position += ch.len_utf8();
             }
         }
     }
@@ -79,7 +90,11 @@ impl<'a> Lexer<'a> {
             if !ch.is_alphanumeric() && ch != '_' {
                 break;
             }
-            self.position += 1;
+            // Advance by full UTF-8 char width so that CJK / non-ASCII
+            // identifier characters do not split across the byte boundary
+            // (which would panic at the next `peek_char` slice).
+            let step = ch.len_utf8();
+            self.position += if step == 0 { 1 } else { step };
         }
         self.input[start..self.position].to_string()
     }
