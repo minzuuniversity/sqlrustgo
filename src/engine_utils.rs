@@ -529,12 +529,34 @@ pub fn sql_compare(op: &str, left: &Value, right: &Value) -> bool {
         return false;
     }
 
+    // Issue #4492: blank-padded equality for CHAR(n) vs short string.
+    // `sql_compare` is the WHERE-clause entry point and uses strict
+    // PartialEq by default; we add a TEXT-vs-TEXT trim-end branch so
+    // `'F ' = 'F'` returns true. The strict PartialEq remains the
+    // fallback for non-text operands (preserves bool/int/float semantics).
+    let (cmp_left, cmp_right) = match (left, right) {
+        (Value::Text(a), Value::Text(b)) => {
+            let at = a.trim_end();
+            let bt = b.trim_end();
+            (Value::Text(at.to_string()), Value::Text(bt.to_string()))
+        }
+        _ => (left.clone(), right.clone()),
+    };
+
     match op.to_uppercase().as_str() {
         // V312-bug-report-3120 / BUG-4: MySQL CHAR(n) is blank-padded on
         // store, so `sex = 'F'` against CHAR(2) stored as "F " must ignore
         // trailing spaces. Trim both sides for Text equality/inequality
         // (mirrors the eq_cross fix in crates/executor/src/expr/mod.rs).
         // Other types fall through to the strict PartialEq.
+        //
+        // V312-bugfix / #4492: PR #4508 also tried to fix the same CHAR
+        // trim issue by hoisting the trim into pre-trimmed `cmp_left` /
+        // `cmp_right` and then comparing via `==`. Both forms are
+        // semantically equivalent for Value::Text (the pre-trim reduces to
+        // the same trim_end comparison); keep the inline form (matches
+        // the eq_cross fix style and avoids an extra clone on non-text
+        // operands).
         "=" | "==" => match (left, right) {
             (Value::Text(l), Value::Text(r)) => l.trim_end() == r.trim_end(),
             _ => left == right,

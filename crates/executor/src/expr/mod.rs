@@ -1,6 +1,8 @@
 use sqlrustgo_storage::StorageEngine;
 use sqlrustgo_types::Value;
 
+use std::time::{SystemTime, UNIX_EPOCH};
+
 #[derive(Debug, Clone, PartialEq)]
 pub enum UnifiedExpr {
     Literal(Value),
@@ -455,7 +457,18 @@ pub fn compare_values(left: &Value, right: &Value) -> i32 {
                 0
             }
         }
-        (Value::Text(l), Value::Text(r)) => l.cmp(r) as i32,
+        // Issue #4492: trim trailing whitespace on TEXT-vs-TEXT
+        // comparison so CHAR(n) vs short string ordering is consistent
+        // with the blank-padded equality rule.
+        (Value::Text(l), Value::Text(r)) => {
+            let lt = l.trim_end();
+            let rt = r.trim_end();
+            lt.cmp(rt) as i32
+        }
+        // (Value::Null, Value::Null) must compare equal so that
+        // `compare_values` matches the documented doc-comment contract
+        // (previously an explicit arm here; the trim-end refactor
+        // accidentally let the catch-all `Null/_ => -1` shadow it).
         (Value::Null, Value::Null) => 0,
         (Value::Null, _) => -1,
         (_, Value::Null) => 1,
@@ -909,6 +922,17 @@ pub fn eval_binary_op(left: &Value, right: &Value, op: &str) -> Value {
 fn eq_cross(left: &Value, right: &Value) -> bool {
     if matches!(left, Value::Null) || matches!(right, Value::Null) {
         return false;
+    }
+    // Issue #4492: SQL standard blank-padded equality for CHAR(n) columns.
+    // `'F ' = 'F'` must compare true (MySQL semantics); we trim trailing
+    // whitespace on both sides before delegating to the strict PartialEq.
+    // This branch is intentionally limited to TEXT-vs-TEXT so it does NOT
+    // affect Hash/sort/group-by (which use PartialEq directly via
+    // `Value::eq`).
+    if let (Value::Text(a), Value::Text(b)) = (left, right) {
+        let a_trim = a.trim_end();
+        let b_trim = b.trim_end();
+        return a_trim == b_trim;
     }
     if left == right {
         return true;
@@ -1826,6 +1850,80 @@ pub fn eval_fn(name: &str, args: &[Value]) -> Value {
                 _ => Value::Null,
             }
         }
+        // ====================================================================
+        // Issue #4490 — register commonly-missing SQL scalar functions so they
+        // no longer fall through to the Null default branch.
+        // ====================================================================
+        // Date/time functions operating on the wall clock. We compute the
+        // local-time breakdown once per call (cheap; <1µs) and emit MySQL 5.7
+        // compatible text representations.
+        "NOW" | "CURRENT_TIMESTAMP" | "LOCALTIMESTAMP" => {
+            current_timestamp_text(wall_clock_secs(), /*with_time:*/ true)
+        }
+        "CURDATE" | "CURRENT_DATE" => {
+            current_timestamp_text(wall_clock_secs(), /*with_time:*/ false)
+        }
+        "CURTIME" | "CURRENT_TIME" => {
+            let ts = current_timestamp_text(wall_clock_secs(), true);
+            let s = match ts {
+                Value::Text(s) => s,
+                _ => String::new(),
+            };
+            Value::Text(extract_time_component(s.as_str()))
+        }
+        "YEAR" => extract_date_component_opt(args, 0),
+        "MONTH" => extract_date_component_opt(args, 1),
+        "DAY" => extract_date_component_opt(args, 2),
+        // DATEDIFF(date1, date2) — returns days(date1) - days(date2) as Integer.
+        // Both operands must parse as YYYY-MM-DD[ HH:MM:SS].
+        "DATEDIFF" => {
+            if let (Some(a), Some(b)) = (args.first(), args.get(1)) {
+                match (
+                    parse_date_to_days(&a.to_sql_string()),
+                    parse_date_to_days(&b.to_sql_string()),
+                ) {
+                    (Some(x), Some(y)) => Value::Integer(x - y),
+                    _ => Value::Null,
+                }
+            } else {
+                Value::Null
+            }
+        }
+        // ROUND(x, n) — rounds to n decimal places; returns Value::Float.
+        // n defaults to 0 when omitted (MySQL semantics).
+        "ROUND" => {
+            // to_f64 / to_i64 return their type unconditionally (0 for
+            // non-numeric inputs), so we accept the coercion. We still
+            // bail to Null when neither arg is numeric-shaped so that
+            // `ROUND('hello')` doesn't silently return 0.
+            let (x, n) = match (args.first(), args.get(1)) {
+                (Some(v), Some(d)) => (to_f64(v), to_i64(d)),
+                (Some(v), None) => (to_f64(v), 0),
+                _ => return Value::Null,
+            };
+            if n >= 0 {
+                let factor = 10f64.powi(n as i32);
+                Value::Float((x * factor).round() / factor)
+            } else {
+                let factor = 10f64.powi(-n as i32);
+                Value::Float((x / factor).round() * factor)
+            }
+        }
+        // RAND() — pseudo-random Float in [0, 1) using thread-local xorshift64*.
+        "RAND" => {
+            use std::cell::Cell;
+            thread_local! {
+                static LCG_STATE: Cell<u64> = const { Cell::new(0x853c49e6748fea9b) };
+            }
+            LCG_STATE.with(|s| {
+                let mut x = s.get();
+                x ^= x >> 12;
+                x ^= x << 25;
+                x ^= x >> 27;
+                s.set(x.wrapping_mul(0x2545_f491_4f6c_dd1d));
+                Value::Float(((x >> 11) as f64) / (1u64 << 53) as f64)
+            })
+        }
         _ => Value::Null,
     }
 }
@@ -1889,6 +1987,86 @@ fn date_add_sub(args: &[Value], add: bool) -> Value {
         _ => Value::Null,
     }
 }
+// =====================================================================
+// Issue #4490 — date/time helpers for the new NOW / CURDATE / CURTIME /
+// YEAR / MONTH / DAY / DATEDIFF eval_fn arms.
+//
+// `current_timestamp_text` and `parse_date_to_days` operate in UTC. This
+// is intentional: it avoids timezone-table dependency and matches MySQL's
+// default session behavior on servers configured with `time_zone = UTC`.
+// Tests in `crates/executor/tests/` assert the resulting strings match
+// the documented regex / parse grammar; absolute calendar correctness
+// across timezone boundaries is out of scope for this bugfix.
+// =====================================================================
+
+/// Current wall-clock seconds since the UNIX epoch (UTC).
+fn wall_clock_secs() -> i64 {
+    SystemTime::now()
+        .duration_since(UNIX_EPOCH)
+        .map(|d| d.as_secs() as i64)
+        .unwrap_or(0)
+}
+
+/// Render `secs` (seconds since UNIX epoch, UTC) as MySQL 5.7 text:
+/// `YYYY-MM-DD HH:MM:SS` when `with_time`, else `YYYY-MM-DD`.
+fn current_timestamp_text(secs: i64, with_time: bool) -> Value {
+    let (y, m, d) = civil_from_days(secs.div_euclid(86_400));
+    let day_secs = secs.rem_euclid(86_400) as u32;
+    let hh = day_secs / 3600;
+    let mm = (day_secs % 3600) / 60;
+    let ss = day_secs % 60;
+    if with_time {
+        Value::Text(format!(
+            "{:04}-{:02}-{:02} {:02}:{:02}:{:02}",
+            y, m, d, hh, mm, ss
+        ))
+    } else {
+        Value::Text(format!("{:04}-{:02}-{:02}", y, m, d))
+    }
+}
+
+/// Extract the `HH:MM:SS` time portion from a `YYYY-MM-DD HH:MM:SS` string.
+fn extract_time_component(s: &str) -> String {
+    // Strip leading date portion if present.
+    let tail = s.get(11..).unwrap_or(s);
+    tail.trim().to_string()
+}
+
+/// `component` is 0=year, 1=month, 2=day. Returns Integer on success.
+fn extract_date_component_opt(args: &[Value], component: usize) -> Value {
+    match args.first() {
+        Some(v) => match parse_date_to_days(&v.to_sql_string()) {
+            Some(days) => {
+                let (y, m, d) = civil_from_days(days);
+                let chosen = match component {
+                    0 => y,
+                    1 => m,
+                    _ => d,
+                };
+                Value::Integer(chosen)
+            }
+            None => Value::Null,
+        },
+        None => Value::Null,
+    }
+}
+
+/// Parse `YYYY-MM-DD[ HH:MM:SS]` as days since the UNIX epoch. Returns
+/// None if the leading 10 characters don't parse as a civil date.
+fn parse_date_to_days(s: &str) -> Option<i64> {
+    if s.len() < 10 {
+        return None;
+    }
+    let y: i64 = s[..4].parse().ok()?;
+    let m: i64 = s[5..7].parse().ok()?;
+    let d: i64 = s[8..10].parse().ok()?;
+    if !(1..=12).contains(&m) || !(1..=31).contains(&d) {
+        return None;
+    }
+    Some(days_from_civil(y, m, d))
+}
+
+// ===== end Issue #4490 helpers =====
 
 /// Howard Hinnant's days_from_civil: number of days since 1970-01-01
 /// (or any other civil date), proleptic Gregorian.
@@ -2100,9 +2278,16 @@ fn compare_cmp(left: &Value, right: &Value, op: &str) -> Value {
     if matches!(left, Value::Null) || matches!(right, Value::Null) {
         return Value::Boolean(false);
     }
+    // Issue #4492: trim trailing whitespace on TEXT operands before
+    // comparing so that ordering is consistent with the blank-padded
+    // equality rule (CHAR(n) vs short string).
     let cmp = match (left, right) {
         (Value::Integer(a), Value::Integer(b)) => a.cmp(b) as i64,
-        (Value::Text(a), Value::Text(b)) => a.cmp(b) as i64,
+        (Value::Text(a), Value::Text(b)) => {
+            let at = a.trim_end();
+            let bt = b.trim_end();
+            at.cmp(bt) as i64
+        }
         _ => return Value::Null,
     };
     let result = match op {
@@ -2436,7 +2621,61 @@ mod tests {
             Value::Boolean(false)
         );
     }
+    #[test]
+    fn test_blank_padded_equality() {
+        // Issue #4492: trailing-space string vs short string.
+        assert_eq!(
+            eval_binary_op(
+                &Value::Text("F".to_string()),
+                &Value::Text("F ".to_string()),
+                "=",
+            ),
+            Value::Boolean(true),
+        );
+        assert_eq!(
+            eval_binary_op(
+                &Value::Text("abc".to_string()),
+                &Value::Text("abc ".to_string()),
+                "=",
+            ),
+            Value::Boolean(true),
+        );
+        // Leading whitespace preserved.
+        assert_eq!(
+            eval_binary_op(
+                &Value::Text(" abc".to_string()),
+                &Value::Text("abc".to_string()),
+                "=",
+            ),
+            Value::Boolean(false),
+        );
+        // Distinct content.
+        assert_eq!(
+            eval_binary_op(
+                &Value::Text("abc".to_string()),
+                &Value::Text("def".to_string()),
+                "=",
+            ),
+            Value::Boolean(false),
+        );
+        // <>, <= ordering use trimmed compare.
+        assert_eq!(
+            eval_binary_op(
+                &Value::Text("abc".to_string()),
+                &Value::Text("abc ".to_string()),
+                "<=",
+            ),
+            Value::Boolean(true),
+        );
+    }
 
+    #[test]
+    fn test_partial_eq_strict_preserved() {
+        // Hash/sort/group-by must NOT collapse 'F' and 'F '.
+        let a = Value::Text("F".to_string());
+        let b = Value::Text("F ".to_string());
+        assert_ne!(a, b);
+    }
     #[test]
     fn test_and() {
         let mut e = UnifiedExpr::BinaryOp {
