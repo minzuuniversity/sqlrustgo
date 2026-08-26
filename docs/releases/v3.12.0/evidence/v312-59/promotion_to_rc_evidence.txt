@@ -1,6 +1,6 @@
 ===================================================================
 V312-59-C promotion_to_RC gate — Evidence
-Timestamp: 2026-08-26T01:50:17Z
+Timestamp: 2026-08-26T02:19:59Z
 ===================================================================
 
 [1] RC1_GMP_MD_INGESTION — EVIDENCE_FILE: PASS (test not required)
