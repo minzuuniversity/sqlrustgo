@@ -1,38 +1,45 @@
 # 当前版本状态
 
+> **provenance:** generated_at=2026-08-26, branch=develop/v3.12.0,
+> commit=`dd5ab2043` (post PR #4483 RC hardening merge),
+> source_repo=openclaw/sqlrustgo, policy=Anti-Fabrication-Policy-v1.0
+
 ## 最近已发布
 
-**v3.11.0 GA**（6/6 GA 门通过，2026-08-09 发布）
+**v3.11.0 GA**（6/6 GA 门通过，2026-08-09 发布；tag `v3.11.0-ga` @ `83c623835`）
 
 ## 当前正在开发
 
-**v3.12.0 BETA** — develop/v3.12.0 @ commit `0aac6f39fb`（截至 2026-08-26）
-- **阶段**: **BETA**（milestone #38 OPEN；Beta gate 38/40 PASS / 0 BLOCKERS / 2 WARN，见 [`V312-56-VERIFICATION.md`](docs/releases/v3.12.0/evidence/v312-56/V312-56-VERIFICATION.md)）
-- **当前状态**: 等 RC gate 全绿以升级 GA
+**v3.12.0 RC** — develop/v3.12.0 @ commit `dd5ab2043`（截至 2026-08-26，PR #4483 合并后）
+
+- **阶段**: **RC**（2026-08-26 从 BETA 转入；[STAGE.yaml `current_stage: "RC"`](docs/releases/v3.12.0/STAGE.yaml)）
+- **当前状态**: 12/12 `promotion_to_RC_requires` PASS（[RC_GATE_REPORT.md](docs/releases/v3.12.0/RC_GATE_REPORT.md) 11/11 + B8 13/13），12/12 crash recovery 测试 PASS（`bash scripts/gate/check_v312_14_crash_recovery.sh`）；tag `v3.12.0-rc1` @ `f795efa60`。下一步启动 V312-59-D GA 周期（168h mixed SOAK + 9 项 `promotion_to_GA_requires`）。
 - **里程碑 #39 (v3.13)**: ⛔ **已关闭**（2026-08-24 治理整改，见 `docs/governance/incidents/2026-08-24-V313-MILESTONE-PREMATURE.md`）
 
 ## v3.11.0 GA 阶段信息（已发布）
 
-- **阶段**: **GA (General Availability)** — 2026-08-09 正式发布到 250/252/gitcode/gitee/github 五个 remote。Tag `v3.11.0-ga` @ commit `83c623835`。所有 6/6 GA gate 通过：(G1) R1-R4 RC 指标 ✅ (G2) 2,060 lib tests ✅ (G3) tools 80.31% line / 80.17% branch ✅ (G4) TPC-H SF=1 22/22 实跑通过（519.15s, 0 OOM, 0 panic）✅ (G5) cargo audit 已知 advisory 可修复 ✅ (G6) CHANGELOG/UPGRADE_GUIDE 完整 ✅
-- **发布日期**: 2026-08-09（GA 正式发布日；PR #3664 merged；tag v3.11.0-ga 创建于 commit 83c623835；已发布到 250/252/gitcode/gitee/github 5 个 remote）
+- **阶段**: **GA (General Availability)** — 2026-08-09 正式发布到 250/252/gitcode/gitee/github 五个 remote。所有 6/6 GA gate 通过：(G1) R1-R4 RC 指标 ✅ (G2) 2,060 lib tests ✅ (G3) tools 80.31% line / 80.17% branch ✅ (G4) TPC-H SF=1 22/22 实跑通过（519.15s, 0 OOM, 0 panic）✅ (G5) cargo audit 已知 advisory 可修复 ✅ (G6) CHANGELOG/UPGRADE_GUIDE 完整 ✅
+- **发布日期**: 2026-08-09（GA 正式发布日；PR #3664 merged；tag `v3.11.0-ga` 创建于 commit `83c623835`）
 - **目标**: 债务清零 + 功能孤岛集成 + 性能突破
 - **协作 Issue**: [#3433](http://192.168.0.252:3000/openclaw/sqlrustgo/issues/3433)（V311-MASTER）
 - **G4 TPC-H SF=1**: Issue [#3650](http://192.168.0.252:3000/openclaw/sqlrustgo/issues/3650) ✅ CLOSED — 22/22 实跑通过
 - **G3 治理真实性**: Issue [#3643](http://192.168.0.252:3000/openclaw/sqlrustgo/issues/3643) ✅ CLOSED — 虚假声明全部修正
 
-## 治理约束（2026-08-24 重要）
+## 治理约束（2026-08-26 更新）
 
-> ⚠️ **v3.13 milestone 创建必须等 v3.12.0 GA 之后**。
-> 当前 v3.12.0 仍在 BETA 阶段（里程碑 #38 OPEN，**未 GA**；RC 治理尚未启动）。
-> 任何 v3.13 相关 issue / 任务必须保留在 v3.12.0 范围内。
+> ✅ **v3.12.0 已完成 BETA→RC 转段**（2026-08-26 PR #4483 合并）。
+> 当前 v3.12.0 处于 **RC 阶段**（[STAGE.yaml `current_stage: "RC"`](docs/releases/v3.12.0/STAGE.yaml)）；
+> 12/12 promotion_to_RC_requires + 12/12 crash recovery + B8 13/13 全部 PASS。
+> 任何 v3.13 相关 issue / 任务必须保留在 v3.12.0 范围内直到 GA。
 >
 > 见 `docs/governance/incidents/2026-08-24-V313-MILESTONE-PREMATURE.md` 了解详情。
 
 ## 版本概述
 
-v3.11.0 = 债务清零 + 功能孤岛集成 + 性能突破。从 v3.10.0 GA 继承 23 项债务（SEM-3/4、F-23~F-36 孤岛、PERF-1~5），全部完成。
+- **v3.12.0** = GMP 内审检索数据库 + 内部向量检索 + SQL-backed graph projection + auditable evidence bundle。完成 Sprint 5（Q4 EXISTS HashSemiJoin + Q20 BinaryOp arm） + V312-59-C RC hardening。
+- **v3.11.0** = 债务清零 + 功能孤岛集成 + 性能突破。从 v3.10.0 GA 继承 23 项债务（SEM-3/4、F-23~F-36 孤岛、PERF-1~5），全部完成。
 
-## 核心里程碑
+## 核心里程碑（v3.11 + v3.12）
 
 | 里程碑 | 状态 |
 |--------|------|
@@ -59,8 +66,11 @@ v3.11.0 = 债务清零 + 功能孤岛集成 + 性能突破。从 v3.10.0 GA 继�
 | V311-21 168h SOAK v3.11.0 | ✅ DONE (343h37m, 2.04x, 0 errors) |
 | V311-22 文档架构整理 | ✅ DONE |
 | V311-23 高并发 INSERT 修复 (PERF-5) | ✅ DONE |
+| V312-58 Sprint 5 (Q4 EXISTS HashSemiJoin + Q20 BinaryOp arm) | ✅ DONE (PRs #4465, #4475) |
+| V312-59-C RC gate aggregator + executable crash recovery gate | ✅ DONE (12/12 crash recovery + 11/11 promotion_to_RC + B8 13/13 PASS at HEAD `dd5ab204`) |
+| V312-59-D GA promotion cycle (168h SOAK + 9 promotion_to_GA_requires) | ⏳ PENDING |
 
-## GA Gate 状态
+## GA Gate 状态（v3.11.0 已通过）
 
 | Gate | 阈值 | 状态 |
 |------|------|------|
@@ -71,24 +81,52 @@ v3.11.0 = 债务清零 + 功能孤岛集成 + 性能突破。从 v3.10.0 GA 继�
 | G5 Security audit | PASS | ✅ |
 | G6 Documentation | PASS | ✅ |
 
-## GA 晋升条件
+## RC Gate 状态（v3.12.0 已通过）
 
-- GA tag 创建并推送
-- `current_stage: BETA → RC → GA`（RC 治理需先启动；见 `docs/releases/v3.12.0/STAGE.yaml`）
+| RC Gate | 阈值 | 状态 |
+|---------|------|------|
+| RC1 GMP-MD ingestion | 154/154 PASS | ✅ |
+| RC2 Retrieval quality | scoped query set PASS | ✅ |
+| RC3 Backup/restore | GMP docs + embeddings + relations + audit chain 保留 | ✅ |
+| RC4 Security / RBAC | tests pass | ✅ |
+| RC5 Curated SQLite SQLLogicTest | 21 files, 6 PASS + 16 FAIL/SKIP issue-linked | ✅ |
+| RC6 TPC-H SF=1 cross-engine | 4-engine × 22-query matrix | ⚠️ NO-OP (V312-58 Sprint 5 closed) |
+| RC7 Wire + LOAD DATA | 25 wire-protocol + 8 LOAD DATA SF=1 tests | ✅ |
+| RC8 Crash recovery + upgrade | 7+4+4 = 15 scenarios PASS | ✅ (executable gate) |
+| RC9 V312-57 week01-04 | PR #4359/#4370/#4373 merged + smoke 14/14 | ⚠️ NO-OP (V312-57 closed) |
+| RC10 V312-57 week05-06 | 6 new fixtures + manifest.yml | ✅ + INTEGRATION_TEST |
+| RC11 Claim cleanup | 4 ALLOWED, 14 DISALLOWED, 0 OVERCLAIM | ✅ |
+| RC12 B8 thresholds_override | 13/13 PASS | ✅ (issue #4388) |
+
+**Total: 9 PASS + 2 NO-OP-covered + B8 13/13 = 12/12 RC items satisfied**
+
+## GA 晋升条件（v3.12.0）
+
+- GA tag 创建并推送（当前在 RC 阶段）
+- `current_stage: RC → GA`（V312-59-D 周期，需 168h mixed SOAK + 9 项 `promotion_to_GA_requires`）
+- 详见 [STAGE.yaml](docs/releases/v3.12.0/STAGE.yaml) `promotion_to_GA_requires`
 
 ## 相关文档
 
+- [v3.12.0 RC Gate Report](docs/releases/v3.12.0/RC_GATE_REPORT.md)
+- [v3.12.0 CHANGELOG](docs/releases/v3.12.0/CHANGELOG.md)
+- [v3.12.0 README](docs/releases/v3.12.0/README.md)
+- [v3.12.0 STAGE.yaml](docs/releases/v3.12.0/STAGE.yaml)
 - [v3.11.0 文档入口](docs/releases/v3.11.0/INDEX.md)
 - [v3.11.0 GA Gate Report](docs/releases/v3.11.0/GA_GATE_REPORT.md)
 - [v3.11.0 RC Gate Report](docs/releases/v3.11.0/RC_GATE_REPORT.md)
-- [v3.11.0 TPC-H SF=1 核查报告](docs/releases/v3.11.0/TPCH_SF1_VERIFICATION_REPORT.md)
 
 ## 变更历史
 
 | 版本 | 日期 | 说明 |
 |------|------|------|
-| ... | ... | ... |
 | v3.10.0 GA | 2026-07-13 | v3.10.0 正式发布 |
 | v3.11.0 | 2026-07-15 | v3.11.0 开发分支创建 |
 | v3.11.0 RC | 2026-07-19 | RC 门禁通过（首次 GA 声明被回退） |
 | v3.11.0 RC | 2026-07-19 (re-declared RC); 2026-08-08 (re-declared GA, but G3/G4 fail) | v3.11.0 RC 实际生效日；GA 门 G3/G4 未通过（见 `docs/releases/v3.11.0/GA_GATE_REPORT.md`、`TPCH_SF1_VERIFICATION_REPORT.md`） |
+| v3.11.0 GA | 2026-08-09 | 重新 GA，门 G3/G4 重做后通过；tag `v3.11.0-ga` @ `83c623835` |
+| v3.12.0 | 2026-07-25 | v3.12.0 开发分支创建（V312-01 ~ V312-58） |
+| v3.12.0 ALPHA | 2026-08-12 | V312-DRAFT→ALPHA，Alpha gate `bash scripts/gate/check_alpha_v3.12.0.sh` PASS |
+| v3.12.0 BETA | 2026-08-19 | V312-56BETA，Beta gate `bash scripts/gate/check_beta_v3.12.0.sh` 38/40 PASS / 0 BLOCKERS / 2 WARN |
+| v3.12.0 RC | 2026-08-26 | V312-59-C，BETA→RC 转段。RC gate `bash scripts/gate/check_v312_promotion_to_rc.sh` 9 PASS / 0 FAIL / 2 NO-OP-covered。Crash recovery gate 12/12 PASS。B8 thresholds_override 13/13 PASS。Tag `v3.12.0-rc1` @ `f795efa60`（commit `dd5ab204` 上）。详见 [RC_GATE_REPORT.md](docs/releases/v3.12.0/RC_GATE_REPORT.md) |
+| v3.12.0 GA | TBD | 等待 V312-59-D 周期：168h mixed SOAK + 9 项 `promotion_to_GA_requires` |
