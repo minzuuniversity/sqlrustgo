@@ -11,6 +11,40 @@
 
 ---
 
+## [Unreleased] - 2026-08-26 (v3.12.0 RC drift-fix)
+
+> **provenance:** generated_at=2026-08-26, branch=develop/v3.12.0,
+> commit=`cbe1f53f85`, source_repo=openclaw/sqlrustgo,
+> policy=Anti-Fabrication-Policy-v1.0
+
+v3.12.0 RC 期间合并的 commits（详见 [v3.12.0 CHANGELOG](docs/releases/v3.12.0/CHANGELOG.md)）：
+
+### Fixed
+
+- **PR #4493 (commit f118dd896c)** — BUG report v3.12.0 修复 BUG-2/3/4：
+  - BUG-2a: parser.rs CAST 吞右括号 → 仅 CAST 消耗 RParen，其它函数在 args 循环已消耗
+  - BUG-2b: 内置函数静默 Null → eval_fn 注册 NOW/CURDATE/CURTIME/YEAR/MONTH/DAY/DATEDIFF/ROUND/RAND/LENGTH/ABS（RAND 用 thread-local splitmix64 PRNG）
+  - BUG-3a: GROUP BY + JOIN alias.column 返 Null → engine_select.rs re-projection 增加逐组重扫原 rows 首行兜底
+  - BUG-3b: WHERE 标量子查询返 0 行 → substitute_outer_refs_in_select 增加 inner_columns 参数 + eval_predicate_with_subq 闭包
+  - BUG-4: char(n) blank-padded 比较失败 → executor/expr/mod.rs eq_cross + engine_utils.rs sql_compare 双方 trim_end（PartialEq 不变）
+  - Regression: `crates/executor/tests/bug_report_3120_regression_test.rs` 6 个测试覆盖以上 BUG
+- **PR #4495 (commit 821678fcd2)** — parser UTF-8 char-boundary panic：在 `skip_whitespace` 和 `read_identifier` 中按 char len 前进位置（避免按字节索引 panic）
+- **PR #4488 (commit ac90a27ba0)** — 移除 `server01_serve_verbose_shows_mvcc` 测试中过度规约的 TLS:/WAL: 断言
+- **PR #4484 (commit 5e51ec4347)** — `server01_server_test::get_binary_path` 增加 target/debug/ 扫描路径
+
+### Docs
+
+- **PR #4487 (commit 37c0a82cbc)** — README + CURRENT_VERSION 同步到 RC 阶段
+- **PR #4486 (commit 0debdeee80)** — TPC-H SF=1 cell-diff 状态更新：Q08 now clean_match
+
+### Closed Issues
+
+- **#4490** builtin functions silently Null — closed (covered by PR #4493)
+- **#4491** JOIN alias.column / scalar subquery — closed (covered by PR #4493)
+- **#4492** char(n) comparison — closed (covered by PR #4493)
+
+---
+
 ## [3.11.0] - 2026-08-09
 
 ### 🚀 Major Release — TPC-H SF=1 22/22 PASS

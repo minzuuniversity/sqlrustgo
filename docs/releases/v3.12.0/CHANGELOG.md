@@ -7,7 +7,37 @@
 > **stage_history**: DRAFT (pre-2026-08-12) → ALPHA (2026-08-12) → BETA (2026-08-19) → **RC** (2026-08-26)
 
 > **commit**: 1903545df6d036f7f6d5035a0503b5fa932aac51
-> **current_HEAD**: ba5fc80a6 (post V312-59-C RC gate aggregator merge)
+> **current_HEAD**: cbe1f53f85 (drift-fix from `dd5ab204`, post PR #4495 merge; v3.12.0 RC active development)
+
+## 2026-08-26 RC drift-fix (post-RC transition)
+
+HEAD 已从 `dd5ab204` 前移到 `cbe1f53f85`。RC 期间合并的关键 PRs：
+
+### Fixed
+
+- **PR #4493** (f118dd896c) — BUG report v3.12.0 修复 BUG-2/3/4 (清华 A 轨教学兼容性):
+    - BUG-2a parser 嵌套函数 (`year(now())` parse error)
+    - BUG-2b builtin functions (now/curdate/curtime/year/month/day/datediff/round/rand/length/abs) 静默 Null
+    - BUG-3a JOIN alias.column 在 GROUP BY 中返 Null
+    - BUG-3b WHERE 标量子查询返 0 行
+    - BUG-4 char(n) blank-padded 比较失败
+  - 关闭 issues: #4490, #4491, #4492 (closed 2026-08-26 by drift-fix)
+- **PR #4495** (821678fcd2) — parser UTF-8 char-boundary panic 修复 (skip_whitespace / read_identifier 按 char len 前进位置)
+- **PR #4488** (ac90a27ba0) — 移除 server01_serve_verbose 过度规约的 TLS:/WAL: 断言
+- **PR #4484** (5e51ec4347) — server01_server_test::get_binary_path 增加 target/debug/ 扫描
+
+### Docs
+
+- **PR #4487** (37c0a82cbc) — README + CURRENT_VERSION drift-fix (sync to RC)
+- **PR #4486** (0debdeee80) — TPC-H SF=1 cell-diff Q08 clean_match
+
+### Closed PR
+
+- **PR #4494** (closed 2026-08-26) — 与 #4493 文件严重重叠 (expr/mod.rs, parser.rs, engine_utils.rs)，作为重复 PR 关闭
+
+### Active issue
+
+- **#4432** (Q17 SF=1) — 维持 v313-deferred 软标签，等 v3.13 milestone 复开后转入
 
 ## 2026-08-26 BETA → RC transition
 
