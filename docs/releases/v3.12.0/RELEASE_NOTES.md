@@ -2,11 +2,11 @@
 
 > **provenance:** generated_by=v3.12.0-remediation-round-3, generated_at=2026-08-10T10:49:33Z, commit=1903545df6d036f7f6d5035a0503b5fa932aac51, source_repo=openclaw/sqlrustgo, branch=develop/v3.12.0, policy=Anti-Fabrication-Policy-v1.0
 
-> **状态**: **BETA** (2026-08-19 转入, 2026-08-20 V312-57 CLI 合并)
-> **日期**: 2026-08-20 (latest); 2026-08-09 (initial)
-> **说明**: 本文是 v3.12.0 开发与阶段发布说明；当前阶段 BETA。
+> **状态**: **RC** (2026-08-26 转入; 2026-08-19 转入 BETA, 2026-08-20 V312-57 CLI 合并)
+> **日期**: 2026-08-26 (latest); 2026-08-20 (BETA); 2026-08-09 (initial)
+> **说明**: 本文是 v3.12.0 开发与阶段发布说明；当前阶段 RC。
 > **commit**: 1903545df6d036f7f6d5035a0503b5fa932aac51
-> **current_HEAD**: 543e15b3f (post PR #4373, V312-57 CLI 合并)
+> **current_HEAD**: ba5fc80a6 (post V312-59-C RC gate aggregator merge)
 
 ## 版本定位
 
@@ -15,11 +15,11 @@ v3.12.0 是面向 GMP 内审检索系统的开发版本。目标是在 SQLRustGo
 ## 当前状态
 
 - 分支：`develop/v3.12.0`
-- 阶段：**BETA** (2026-08-19 从 ALPHA 转入; STAGE.yaml current_stage: BETA)
-- Gitea 总控 Issue：`#3887`
+- 阶段：**RC** (2026-08-26 从 BETA 转入; STAGE.yaml current_stage: RC)
+- Gitea 总控 Issue：`#3887` (master), `#4386` (V312-59-C RC umbrella)
 - 任务范围：V312-01 ~ V312-57 (ISSUES_PLAN.md)
-- Beta Gate：`bash scripts/gate/check_beta_v3.12.0.sh` → PASS 40/42, WARN 2, BLOCKERS 0
-
+- RC Gate：`bash scripts/gate/check_v312_promotion_to_rc.sh` → PASS 9/11, NO-OP 2/11, BLOCKERS 0
+- RC Gate Report：[`RC_GATE_REPORT.md`](RC_GATE_REPORT.md)
 ## V312-57 sqlite3-like 一体化教学 CLI (2026-08-20)
 
 **Issue #4359** — 支撑 BustubX-EDU 前 4-6 周自动验收, 合并为 PR #4373 (commit `543e15b3f`, 基于 PR #4371/#4372)。
@@ -39,15 +39,16 @@ v3.12.0 是面向 GMP 内审检索系统的开发版本。目标是在 SQLRustGo
 
 ## 本阶段允许声明
 
-- v3.12.0 处于 **BETA**: 核心功能 + 教学 CLI 已实现, Beta Gate 0 BLOCKERS。
-- 允许按 BETA 口径声明: 受控 GMP 内审检索工作负载 + BustubX-EDU 教学 CLI 脚本化验收。
-- 允许引用本文档记录的 V312-57 交付与 gate 证据。
+- v3.12.0 处于 **RC**: 全部 12 项 `promotion_to_RC_requires` 已满足, RC Gate 0 BLOCKERS。
+- 允许按 RC 口径声明: 受控 GMP 内审检索工作负载 + BustubX-EDU 教学 CLI 脚本化验收 + V312-58 Sprint 5 followup-6 (Q20 BinaryOp arm 路径已验证)。
+- 允许引用 [`RC_GATE_REPORT.md`](RC_GATE_REPORT.md) 与 [`evidence/v312-59/RC{1..11}_*_REPORT.md`](evidence/v312-59/) 作为本阶段执行证据。
+- 允许把 `tests/integration/tpch/q20_binaryop_arm_test.rs` (2/2 PASS) 作为 Q20 BinaryOp 右端子查询路径的路径验证证据。
 
 ## 本阶段禁止声明
 
-- 禁止声明 v3.12.0 已通过 RC/GA。
+- 禁止声明 v3.12.0 已通过 GA；GA 仍需 168h mixed SOAK。
 - 禁止声明通用向量数据库 / 通用图数据库 / 完整 MySQL 5.7 替代。
-- 禁止把本文档当作 RC/GA 执行证据。
+- 禁止把本文档当作 GA 执行证据；GA 由 [`promotion_to_GA_requires`](STAGE.yaml) 单独门禁。
 
 ## 后续入口
 
