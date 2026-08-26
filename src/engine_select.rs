@@ -742,7 +742,37 @@ impl<S: StorageEngine + 'static> ExecutionEngine<S> {
                     rows = new_rows;
                     step_1_5_filtered = true;
                 } else {
-                    rows.retain(|row| eval_predicate(where_expr, row, &table_info));
+                    // V312-bug-report-3120 / BUG-3b: the plain
+                    // `eval_predicate` calls `evaluate_expression`,
+                    // whose default subq_eval returns Null for every
+                    // `(SELECT ...)` operand. For a non-correlated
+                    // scalar subquery like
+                    //   `id = (SELECT min(id) FROM s WHERE name = 'bob')`
+                    // this compared id against Null and dropped every
+                    // row. Use `eval_predicate_with_subq` with a
+                    // closure that recurses into `execute_select` to
+                    // materialise the scalar value, so the comparison
+                    // sees the real subquery result.
+                    let subq_eval =
+                        |subq: &sqlrustgo_parser::SelectStatement| -> Result<Value, String> {
+                            self.execute_select(subq)
+                                .map(|res| {
+                                    res.rows
+                                        .into_iter()
+                                        .next()
+                                        .and_then(|mut r| r.pop())
+                                        .unwrap_or(Value::Null)
+                                })
+                                .map_err(|e| format!("Subquery execution failed: {}", e))
+                        };
+                    rows.retain(|row| {
+                        crate::engine_utils::eval_predicate_with_subq(
+                            where_expr,
+                            row,
+                            &table_info,
+                            &subq_eval,
+                        )
+                    });
                 }
             } else {
                 DIAG_STEP15_NO_WHERE_CLAUSE.fetch_add(1, Ordering::SeqCst);
@@ -1385,6 +1415,47 @@ impl<S: StorageEngine + 'static> ExecutionEngine<S> {
                                     // Try aggregate alias map
                                     if let Some(&i) = agg_alias_to_pos.get(&key) {
                                         return row.get(i).cloned().unwrap_or(Value::Null);
+                                    }
+                                    // V312-bug-report-3120 / BUG-3a:
+                                    // MySQL non-strict mode fallback.
+                                    // The SELECT col is neither a GROUP
+                                    // BY expression nor an aggregate
+                                    // (e.g. `s.name` in
+                                    // `SELECT s.name, avg(...) FROM ...
+                                    // GROUP BY sc.sid`). MySQL without
+                                    // ONLY_FULL_GROUP_BY returns the
+                                    // value from an arbitrary row in
+                                    // the group (typically the first).
+                                    // Re-scan the pre-aggregation
+                                    // `rows` (still in scope from the
+                                    // JOIN + WHERE step above) to find
+                                    // the first row matching the
+                                    // current group key, then evaluate
+                                    // the col's expression against it.
+                                    // TPC-H queries do not hit this
+                                    // path (every SELECT col is either
+                                    // a GROUP BY col or an aggregate),
+                                    // so the O(N_rows) scan per
+                                    // unmatched col per agg_result_row
+                                    // only fires for classroom-style
+                                    // queries.
+                                    if let Some(expr) = &col.expression {
+                                        let group_key: Vec<Value> = (0..group_exprs.len())
+                                            .map(|i| row.get(i).cloned().unwrap_or(Value::Null))
+                                            .collect();
+                                        let first_match = rows.iter().find(|r| {
+                                            (0..group_exprs.len()).all(|i| {
+                                                let kv = crate::expr_utils::evaluate_expression(
+                                                    &group_exprs[i], r, &table_info,
+                                                ).unwrap_or(Value::Null);
+                                                kv == group_key[i]
+                                            })
+                                        });
+                                        if let Some(first_row) = first_match {
+                                            return crate::expr_utils::evaluate_expression(
+                                                expr, first_row, &table_info,
+                                            ).unwrap_or(Value::Null);
+                                        }
                                     }
                                     if _q7_trace {
                                         eprintln!("[Q7_TRACE]   UNMATCHED col key={:?} (alias={:?} name={:?} expr={:?})", key, col.alias, col.name, col.expression);
@@ -4198,7 +4269,7 @@ impl<S: StorageEngine + 'static> ExecutionEngine<S> {
         match where_expr {
             Expression::Exists(subq) => {
                 let substituted =
-                    substitute_outer_refs_in_select(subq, outer_row, outer_table_info);
+                    substitute_outer_refs_in_select(subq, outer_row, outer_table_info, None);
                 // V312-58 Sprint 5 (Phase 3 call-site, issue #4444):
                 // O(1) HashSemiJoin probe FIRST for the simplest
                 // single-equality single-table EXISTS shape (Q4-mini).
@@ -4284,8 +4355,47 @@ impl<S: StorageEngine + 'static> ExecutionEngine<S> {
                     return Expression::Literal(lit.to_string());
                 }
                 DIAG_TRY_SCALAR_AGG_PATTERN_FAIL.fetch_add(1, Ordering::SeqCst);
-                let substituted =
-                    substitute_outer_refs_in_select(_subq, outer_row, outer_table_info);
+                // V312-bug-report-3120 / BUG-3b: look up the inner
+                // subquery FROM table actual schema from storage so
+                // that bare column names that are columns of the
+                // inner table are NOT mis-substituted with the outer
+                // row value. Without this, a non-correlated scalar
+                // subquery like SELECT min id FROM s WHERE name bob
+                // shadowing the outer FROM s would have its bare
+                // name column replaced by the outer row name value,
+                // producing a constant predicate and wrong aggregate.
+                // The prefix-based own_column collection in
+                // substitute_outer_refs_in_select only handles TPC-H
+                // table prefixes l_ p_ s_ etc, so for classroom
+                // tables like s id name we must inject the actual
+                // schema here.
+                let inner_columns: std::collections::HashSet<String> = {
+                    let bare = _subq
+                        .table
+                        .split_once('|')
+                        .map(|(t, _)| t)
+                        .unwrap_or(&_subq.table);
+                    if bare.is_empty() {
+                        std::collections::HashSet::new()
+                    } else {
+                        let storage = self.storage_read();
+                        storage
+                            .get_table_info(bare)
+                            .map(|ti| ti.columns.iter().map(|c| c.name.to_lowercase()).collect())
+                            .unwrap_or_default()
+                    }
+                };
+                let inner_columns_ref = if inner_columns.is_empty() {
+                    None
+                } else {
+                    Some(&inner_columns)
+                };
+                let substituted = substitute_outer_refs_in_select(
+                    _subq,
+                    outer_row,
+                    outer_table_info,
+                    inner_columns_ref,
+                );
                 let cache_key: Value = extract_first_literal_from_where(&substituted)
                     .unwrap_or_else(|| {
                         Value::Text(format!(
@@ -4318,7 +4428,7 @@ impl<S: StorageEngine + 'static> ExecutionEngine<S> {
                 // walk corresponds to a position in both vectors).
                 *hash_semi_cursor += 1;
                 let substituted =
-                    substitute_outer_refs_in_select(subq, outer_row, outer_table_info);
+                    substitute_outer_refs_in_select(subq, outer_row, outer_table_info, None);
                 let indexed = if let Some(wc) = substituted.where_clause.as_ref() {
                     subquery_indexes.get(*cursor).and_then(|idx| {
                         // V311-17: try bloom short-circuit first for NOT EXISTS
