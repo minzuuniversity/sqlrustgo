@@ -7502,7 +7502,7 @@ impl Parser {
                                 }
                             }
                         }
-                        // Consume the CAST's closing paren. The args loop
+// Consume the CAST's closing paren. The args loop
                         // above terminates on `AS` (not `)`), so the
                         // closing `)` of `CAST(expr AS TYPE)` is still
                         // pending here. Without this, the leftover `)`
@@ -7521,6 +7521,13 @@ impl Parser {
                         // function's closing paren, breaking nested calls
                         // like `upper(length('alice'))` and `year(now())`
                         // with "Expected RParen, got Eof".
+                        //
+                        // V312-bugfix / #4490: PR #4508 also tried to fix
+                        // the same nested-call issue by removing the entire
+                        // consume block, which would regress TPC-H Q7-Q9
+                        // subquery parsing. Keep the gated CAST-only
+                        // consume; the gated form subsumes the PR #4508
+                        // intent (no extra RParen for non-CAST functions).
                         if name.to_uppercase() == "CAST"
                             && matches!(self.current(), Some(Token::RParen))
                         {
