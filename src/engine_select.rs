@@ -1012,6 +1012,25 @@ impl<S: StorageEngine + 'static> ExecutionEngine<S> {
                         self.compute_aggregates(&select.aggregates, group_rows, &table_info)?;
                     let mut combined = key_values;
                     combined.extend(agg_values);
+                    // Issue #4491(a): append the per-table_info-column
+                    // "first non-null" snapshot for this group so the
+                    // re-project stage can fall back to it when a SELECT
+                    // column is neither a GROUP BY expression nor an
+                    // aggregate (e.g. `s.name` in `SELECT s.name,
+                    // AVG(sc.final) FROM s JOIN sc ... GROUP BY sc.sid`).
+                    let fd_per_col: Vec<Value> = table_info
+                        .columns
+                        .iter()
+                        .map(|c| {
+                            let idx = crate::engine_utils::find_column_index(&c.name, &table_info);
+                            group_rows
+                                .iter()
+                                .filter_map(|row| idx.and_then(|i| row.get(i).cloned()))
+                                .find(|v| !matches!(v, Value::Null))
+                                .unwrap_or(Value::Null)
+                        })
+                        .collect();
+                    combined.extend(fd_per_col);
                     agg_result_rows.push(combined);
                 }
 
@@ -1357,6 +1376,21 @@ impl<S: StorageEngine + 'static> ExecutionEngine<S> {
                         .enumerate()
                         .map(|(i, n)| (n.to_lowercase(), i + group_schema.len()))
                         .collect();
+                    // Issue #4491(a): trailing columns of each agg_result_row
+                    // hold the per-table_info-column "first non-null" snapshot
+                    // (filled in the GROUP BY main loop). The re-project
+                    // stage falls back to this map when a SELECT column
+                    // misses group_set + agg_set (e.g. `s.name` in
+                    // `SELECT s.name, AVG(sc.final) FROM s JOIN sc ...
+                    // GROUP BY sc.sid`). Trailing offset is
+                    // group_schema.len() + agg_default_names.len().
+                    let fd_offset: usize = group_schema.len() + agg_default_names.len();
+                    let fd_set: std::collections::HashMap<String, usize> = table_info
+                        .columns
+                        .iter()
+                        .enumerate()
+                        .map(|(i, c)| (c.name.to_lowercase(), fd_offset + i))
+                        .collect();
                     // For each SELECT column, determine if it's an
                     // aggregate reference or a non-aggregate GROUP BY
                     // expression. Walk select.aggregates in order and
@@ -1480,6 +1514,14 @@ impl<S: StorageEngine + 'static> ExecutionEngine<S> {
                                                 return row.get(i).cloned().unwrap_or(Value::Null);
                                             }
                                         }
+                                    }
+                                    // Issue #4491(a) functional-dependency fallback:
+                                    // pick the first non-null value seen for this
+                                    // column in the group (matches MySQL non-strict
+                                    // GROUP BY semantics for `SELECT s.name,
+                                    // AVG(sc.final) ... GROUP BY sc.sid`).
+                                    if let Some(&i) = fd_set.get(&key) {
+                                        return row.get(i).cloned().unwrap_or(Value::Null);
                                     }
                                     // Try aggregate alias map
                                     if let Some(&i) = agg_alias_to_pos.get(&key) {
