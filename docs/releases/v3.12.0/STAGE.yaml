@@ -10,24 +10,24 @@
 # with execution evidence or explicitly carried as v3.12.0 P0 blockers.
 
 version: "v3.12.0"
-current_stage: "BETA"
+current_stage: "RC"
 last_transition:
-  from: "ALPHA"
-  to: "BETA"
-  date: "2026-08-19"
-  reason: "ALPHA -> BETA transition. beta_required_gates verified: bash scripts/gate/check_beta_v3.12.0.sh reports 38/40 PASS, 0 BLOCKERS, 2 WARN ('ready for BETA promotion'). All 12 promotion_to_BETA_requires items from STAGE.yaml satisfied (see V312-56-VERIFICATION.md Beta Gate Snapshot + Promotion to BETA Readiness Checklist). Stage boundary lock released; #3887 master issue records Beta promotion per Anti-Fabrication-Policy-v1.0. Tag v3.12.0-beta1 to be cut per STAGE_CONFIG ALPHA_to_BETA trigger after this PR merges. Workspace clippy fix landed as PR #4354 (resolves B1_CLIPPY) + workspace fmt clean per cargo fmt --check."
+  from: "BETA"
+  to: "RC"
+  date: "2026-08-26"
+  reason: "BETA -> RC transition. RC gates verified: bash scripts/gate/check_v312_promotion_to_rc.sh reports 9 PASS, 0 FAIL, 2 NO-OP (covered by V312-58 TPC-H cross-engine series + V312-57 BustubX-EDU week01-04 series). All 12 promotion_to_RC_requires items from STAGE.yaml satisfied (see RC_GATE_REPORT.md verdict map). B8 thresholds_override 13/13 PASS (issue #4388 re-verified 2026-08-26T18:30:00Z post SF=10 fixture remediation, including MYSQL_WIRE_E2E_REQUIRED). Stage boundary lock released; #4386 V312-59-C umbrella issue records RC promotion per Anti-Fabrication-Policy-v1.0. Tag v3.12.0-rc1 to be cut per STAGE_CONFIG BETA_to_RC trigger after this PR merges."
   prior_transition:
-    from: "DRAFT"
-    to: "ALPHA"
-    date: "2026-08-12"
-    reason: "DRAFT -> ALPHA transition. alpha_required_gates verified: check_coverage_v312.sh PASS (L1_8 avg 85.86%), check_sql_corpus_gate.sh PASS (99.4%), check_anti_ignore_gate.sh PASS (active=0/47), check_docs_links.sh PASS, check_docs_consistency.sh PASS, cargo build --all-features PASS, cargo test --all-features --lib PASS, cargo fmt --check PASS, cargo clippy PASS. Required files present (CHANGELOG.md, RELEASE_NOTES.md, STAGE.yaml). Required scripts present (check_alpha_v3.12.0.sh, check_alpha_quality_v3.12.0.sh, check_arch_invariants.sh, check_arch3_no_bypass.sh). Tag v3.12.0-alpha1 cut per STAGE_CONFIG DRAFT_to_ALPHA trigger."
+    from: "ALPHA"
+    to: "BETA"
+    date: "2026-08-19"
+    reason: "ALPHA -> BETA transition. beta_required_gates verified: bash scripts/gate/check_beta_v3.12.0.sh reports 38/40 PASS, 0 BLOCKERS, 2 WARN ('ready for BETA promotion'). All 12 promotion_to_BETA_requires items from STAGE.yaml satisfied (see V312-56-VERIFICATION.md Beta Gate Snapshot + Promotion to BETA Readiness Checklist). Stage boundary lock released; #3887 master issue records Beta promotion per Anti-Fabrication-Policy-v1.0. Tag v3.12.0-beta1 to be cut per STAGE_CONFIG ALPHA_to_BETA trigger after this PR merges. Workspace clippy fix landed as PR #4354 (resolves B1_CLIPPY) + workspace fmt clean per cargo fmt --check."
 
 stage_boundary_lock:
   status: "RELEASED"
-  date: "2026-08-19"
-  reason: "Beta promotion authorized. ALPHA -> BETA transition recorded with execution evidence per last_transition; boundary lock released."
-  controlling_report: "docs/releases/v3.12.0/evidence/v312-56/V312-56-VERIFICATION.md (Beta Gate Snapshot)"
-  guard_script: "scripts/gate/check_v312_stage_boundary.sh"
+  date: "2026-08-26"
+  reason: "RC promotion authorized. BETA -> RC transition recorded with execution evidence per last_transition; boundary lock released. RC_GATE_REPORT.md (this cycle) records evidence hashes and per-item verdict."
+  controlling_report: "docs/releases/v3.12.0/RC_GATE_REPORT.md (RC Promotion Verdict Aggregator)"
+  guard_script: "scripts/gate/check_v312_promotion_to_rc.sh"
   v313_policy:
     status: "FROZEN_FOLLOWUP_ONLY"
     controlling_issue: "#4313"
