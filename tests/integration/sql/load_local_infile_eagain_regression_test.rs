@@ -78,22 +78,24 @@ const SCHEMA_DDL: &[&str] = &[
 
 struct SharedServer {
     _handle: EphemeralHandle,
+    _server_data_dir: TempDir,
     port: u16,
 }
 
 static SHARED: OnceLock<SharedServer> = OnceLock::new();
 
-/// Initialize a shared ephemeral server. data_dir points at the
-/// checked-in `tests/data/tpch-sf001/` fixture.
+/// Initialize a shared ephemeral server with isolated storage. The
+/// checked-in `tests/data/tpch-sf001/` fixture is read by the client,
+/// not reused as the server's storage/WAL directory.
 fn shared() -> &'static SharedServer {
     SHARED.get_or_init(|| {
-        let data_dir = PathBuf::from("tests/data/tpch-sf001");
-        if !data_dir.exists() {
+        let fixture_dir = PathBuf::from("tests/data/tpch-sf001");
+        let server_data_dir = TempDir::new().expect("tempdir");
+        if !fixture_dir.exists() {
             // Defer to test body which checks the path.
-            let tmp = TempDir::new().expect("tempdir");
             return SharedServer {
                 _handle: start_ephemeral(EphemeralConfig {
-                    data_dir: Some(tmp.path().to_path_buf()),
+                    data_dir: Some(server_data_dir.path().to_path_buf()),
                     bootstrap_tables: false,
                     bootstrap_users: true,
                     metrics_port: None,
@@ -101,11 +103,12 @@ fn shared() -> &'static SharedServer {
                     ..Default::default()
                 })
                 .expect("start_ephemeral"),
+                _server_data_dir: server_data_dir,
                 port: 0, // not used if data dir missing
             };
         }
         let config = EphemeralConfig {
-            data_dir: Some(data_dir),
+            data_dir: Some(server_data_dir.path().to_path_buf()),
             bootstrap_tables: false,
             bootstrap_users: true,
             metrics_port: None,
@@ -116,6 +119,7 @@ fn shared() -> &'static SharedServer {
         let port = handle.port;
         SharedServer {
             _handle: handle,
+            _server_data_dir: server_data_dir,
             port,
         }
     })

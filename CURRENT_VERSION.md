@@ -1,7 +1,7 @@
 # 当前版本状态
 
 > **provenance:** generated_at=2026-08-26, branch=develop/v3.12.0,
-> commit=`dd5ab2043` (post PR #4483 RC hardening merge),
+> commit=`cbe1f53f85` (post PR #4495 UTF-8 parser fix merge; drift-fix from `dd5ab204`),
 > source_repo=openclaw/sqlrustgo, policy=Anti-Fabrication-Policy-v1.0
 
 ## 最近已发布
@@ -10,7 +10,7 @@
 
 ## 当前正在开发
 
-**v3.12.0 RC** — develop/v3.12.0 @ commit `dd5ab2043`（截至 2026-08-26，PR #4483 合并后）
+**v3.12.0 RC** — develop/v3.12.0 @ commit `cbe1f53f85`（截至 2026-08-26，PR #4493/#4495 合并后）
 
 - **阶段**: **RC**（2026-08-26 从 BETA 转入；[STAGE.yaml `current_stage: "RC"`](docs/releases/v3.12.0/STAGE.yaml)）
 - **当前状态**: 12/12 `promotion_to_RC_requires` PASS（[RC_GATE_REPORT.md](docs/releases/v3.12.0/RC_GATE_REPORT.md) 11/11 + B8 13/13），12/12 crash recovery 测试 PASS（`bash scripts/gate/check_v312_14_crash_recovery.sh`）；tag `v3.12.0-rc1` @ `f795efa60`。下一步启动 V312-59-D GA 周期（168h mixed SOAK + 9 项 `promotion_to_GA_requires`）。
@@ -67,7 +67,7 @@
 | V311-22 文档架构整理 | ✅ DONE |
 | V311-23 高并发 INSERT 修复 (PERF-5) | ✅ DONE |
 | V312-58 Sprint 5 (Q4 EXISTS HashSemiJoin + Q20 BinaryOp arm) | ✅ DONE (PRs #4465, #4475) |
-| V312-59-C RC gate aggregator + executable crash recovery gate | ✅ DONE (12/12 crash recovery + 11/11 promotion_to_RC + B8 13/13 PASS at HEAD `dd5ab204`) |
+| V312-59-C RC gate aggregator + executable crash recovery gate | ✅ DONE (12/12 crash recovery + 11/11 promotion_to_RC + B8 13/13 PASS at HEAD `cbe1f53f85`) |
 | V312-59-D GA promotion cycle (168h SOAK + 9 promotion_to_GA_requires) | ⏳ PENDING |
 
 ## GA Gate 状态（v3.11.0 已通过）
@@ -129,4 +129,5 @@
 | v3.12.0 ALPHA | 2026-08-12 | V312-DRAFT→ALPHA，Alpha gate `bash scripts/gate/check_alpha_v3.12.0.sh` PASS |
 | v3.12.0 BETA | 2026-08-19 | V312-56BETA，Beta gate `bash scripts/gate/check_beta_v3.12.0.sh` 38/40 PASS / 0 BLOCKERS / 2 WARN |
 | v3.12.0 RC | 2026-08-26 | V312-59-C，BETA→RC 转段。RC gate `bash scripts/gate/check_v312_promotion_to_rc.sh` 9 PASS / 0 FAIL / 2 NO-OP-covered。Crash recovery gate 12/12 PASS。B8 thresholds_override 13/13 PASS。Tag `v3.12.0-rc1` @ `f795efa60`（commit `dd5ab204` 上）。详见 [RC_GATE_REPORT.md](docs/releases/v3.12.0/RC_GATE_REPORT.md) |
+| v3.12.0 RC | 2026-08-26 (drift-fix) | drift-fix: 同步 `develop/v3.12.0 @ cbe1f53f85`（HEAD 已前移）。RC 期间合并 PR #4484/#4486/#4487/#4488/#4493/#4495（PR #4493 修复 BUG-2/3/4：内置函数/Join 别名列/标量子查询/char 比较；PR #4495 修复 parser UTF-8 char-boundary panic；PR #4488 移除 server01_serve_verbose 过度规约的 TLS:/WAL: 断言） |
 | v3.12.0 GA | TBD | 等待 V312-59-D 周期：168h mixed SOAK + 9 项 `promotion_to_GA_requires` |
