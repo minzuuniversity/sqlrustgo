@@ -409,40 +409,61 @@ fn replace_by_key<S: StorageEngine>(
 /// entries (every `begin_transaction` used the same `current_tx_id()` without
 /// incrementing it), causing uncommitted inserts to be replayed as if
 /// committed. Span-based detection correctly isolates each transaction.
+/// Filter WAL entries to only include those from committed transactions.
+///
+/// A committed transaction = a contiguous run of entries between a `Begin` entry
+/// and a matching `Commit` entry (per `tx_id`). We buffer DML inside each open
+/// tx span independently and only flush on the matching `Commit`; a
+/// `Rollback` discards the buffer; entries seen without an enclosing
+/// `Begin→Commit` span (autocommit-style fragments) are dropped because we
+/// cannot prove they were committed.
+///
+/// F-09 fix: groups are detected by **Begin→Commit/Rollback span**, not by
+/// `tx_id` alone. Earlier versions grouped by `tx_id` alone which collapsed all
+/// entries (every `begin_transaction` used the same `current_tx_id()` without
+/// incrementing it), causing uncommitted inserts to be replayed as if
+/// committed. Span-based detection correctly isolates each transaction.
+///
+/// Interleaved-transactions fix (V312-59-E / RC8 fuzzer regression):
+/// the previous single-buffer `current_tx_dml` collapsed overlapping tx
+/// spans. WAL patterns like
+///     Begin tx=1, Begin tx=2, Insert(1), Commit tx=1, Insert(2), Commit tx=2
+/// would mis-attribute Insert(2) to tx=1 (because tx=1's Commit
+/// flushed the shared buffer including tx=2's still-uncommitted DML).
+/// Now each `tx_id` maintains its own DML buffer in `tx_dmls: HashMap`.
 fn filter_committed_entries(entries: &[WalEntry]) -> Vec<WalEntry> {
-    let mut result = Vec::new();
-    let mut current_tx_dml: Vec<WalEntry> = Vec::new();
-    let mut in_tx = false;
+    use std::collections::HashMap;
+    let mut result: Vec<WalEntry> = Vec::new();
+    let mut tx_dmls: HashMap<u64, Vec<WalEntry>> = HashMap::new();
 
     for entry in entries {
         match entry.entry_type {
             WalEntryType::Begin => {
-                in_tx = true;
-                current_tx_dml.clear();
+                tx_dmls.entry(entry.tx_id).or_insert_with(Vec::new);
             }
             WalEntryType::Commit => {
-                if in_tx {
-                    result.append(&mut current_tx_dml);
-                    in_tx = false;
+                if let Some(buf) = tx_dmls.remove(&entry.tx_id) {
+                    result.extend(buf);
                 }
+                // Orphan Commit (no matching Begin) drops its (empty)
+                // buffer; no DML ever accumulated for that tx.
             }
             WalEntryType::Rollback => {
-                current_tx_dml.clear();
-                in_tx = false;
+                // Discard this tx's pending DML — explicit rollback.
+                tx_dmls.remove(&entry.tx_id);
             }
             WalEntryType::Checkpoint | WalEntryType::Prepare => {}
             WalEntryType::Insert | WalEntryType::Update | WalEntryType::Delete => {
-                if in_tx {
-                    current_tx_dml.push(entry.clone());
+                // Append to THIS tx's buffer (not a shared one). A
+                // `Begin tx=A` will have allocated an empty vec, so
+                // the `if let Some` always matches; but for autocommit
+                // / orphan DML (no preceding Begin) we fall back to
+                // replaying the entry directly — the WAL fsync contract
+                // guarantees durability for autocommit DML even without
+                // a paired Begin.
+                if let Some(buf) = tx_dmls.get_mut(&entry.tx_id) {
+                    buf.push(entry.clone());
                 } else {
-                    // Autocommit / orphan DML path: the entry was
-                    // written without an enclosing BEGIN/COMMIT
-                    // pair. The caller (WalStorage::insert/
-                    // update/delete) only returns Ok after
-                    // `inner.*` succeeded AND the WAL fsync
-                    // returned, so the entry is durably committed.
-                    // Replay it. (Used by the MySQL wire-protocol
-                    // exec path on a single-statement connection.)
                     result.push(entry.clone());
                 }
             }
@@ -522,54 +543,67 @@ fn entry_in_autocommit_span(entry: &WalEntry, all_entries: &[WalEntry]) -> bool 
 /// - Orphan DML (no preceding Begin) is NOT counted as a transaction;
 ///   it is reflected in rows_inserted / rows_updated / rows_deleted.
 fn count_status(entries: &[WalEntry]) -> (usize, usize, usize) {
+    // Per-tx state map. The previous implementation used a single `in_tx`
+    // boolean which collapsed overlapping transactions: a `Begin tx=A`
+    // while another tx was already open would be silently ignored, and the
+    // first `Commit tx=A` would close ALL currently-open tx spans, leaving
+    // subsequent commits uncounted. The adversarial pattern tested by
+    // `r2_interleaved_transactions_out_of_order` (recovery_fuzzer_test.rs)
+    // covers exactly this case — WAL produces
+    //     Begin tx=1, Begin tx=2, Commit tx=1, Commit tx=2
+    // where the prior code reported `committed_txns=1` instead of 2.
+    //
+    // Track each tx's open state independently. `Begin` opens a tx;
+    // `Commit` closes it as committed; `Rollback` closes it as rolled back;
+    // any tx still open at WAL tail counts as incomplete (crash mid-tx).
+    use std::collections::HashMap;
+    let mut open_txs: HashMap<u64, bool> = HashMap::new(); // tx_id -> open
     let mut committed = 0;
     let mut rolled_back = 0;
     let mut incomplete = 0;
 
-    let mut in_tx = false;
-
     for entry in entries {
         match entry.entry_type {
             WalEntryType::Begin => {
-                // Close out the prior TX if it is still open. Without
-                // an explicit terminator it is incomplete (covers
-                // Begin..no-DML..crash and Begin..DML..crash).
-                if in_tx {
+                // A second `Begin` for the same tx_id without a matching
+                // Commit/Rollback would re-open a closed span — count that
+                // as an incomplete prior tx first (matches the
+                // `Begin tx=3` with no terminator case in the existing
+                // `test_count_status_mixed` regression).
+                if open_txs.contains_key(&entry.tx_id) {
                     incomplete += 1;
                 }
-                in_tx = true;
+                open_txs.insert(entry.tx_id, true);
             }
             WalEntryType::Commit => {
-                if in_tx {
+                if open_txs.remove(&entry.tx_id).is_some() {
                     committed += 1;
-                    in_tx = false;
                 }
+                // Orphan Commit without matching Begin is a no-op
+                // (matches `r2_orphan_commit_no_begin`).
             }
             WalEntryType::Rollback => {
-                if in_tx {
+                if open_txs.remove(&entry.tx_id).is_some() {
                     rolled_back += 1;
-                    in_tx = false;
                 }
             }
             WalEntryType::Prepare
             | WalEntryType::Insert
             | WalEntryType::Update
-            | WalEntryType::Delete => {
-                // Markers only — transaction boundaries are
-                // determined by Begin/Commit/Rollback. DML under a
+            | WalEntryType::Delete
+            | WalEntryType::Checkpoint => {
+                // Markers only — transaction boundaries are determined
+                // exclusively by Begin/Commit/Rollback. DML under a
                 // Begin..no-terminator span is reported via rows_*
                 // counters when filter_committed_entries replays it
                 // (or, more accurately, does NOT replay it because
                 // no Commit was seen).
             }
-            WalEntryType::Checkpoint => {}
         }
     }
 
-    // Trailing Begin without terminator (simulated crash).
-    if in_tx {
-        incomplete += 1;
-    }
+    // Trailing open tx spans without terminator (simulated crash).
+    incomplete += open_txs.len();
 
     (committed, rolled_back, incomplete)
 }
@@ -1150,6 +1184,69 @@ mod tests {
         assert_eq!(committed, 1);
         assert_eq!(rolled_back, 1);
         assert_eq!(incomplete, 1);
+    }
+
+    #[test]
+    fn test_count_status_interleaved() {
+        // Regression: V312-59-E / recovery_fuzzer_test::r2_interleaved_transactions_out_of_order.
+        // WAL order: Begin tx=1, Begin tx=2, Commit tx=1, Commit tx=2.
+        // Prior single-boolean implementation reported committed_txns=1
+        // (the second Commit saw in_tx=false and was skipped). Per-tx
+        // HashMap tracks each tx independently.
+        use crate::wal::WalEntryType;
+        let entries = vec![
+            WalEntry { tx_id: 1, entry_type: WalEntryType::Begin,   table_id: 0, key: None, data: None, lsn: 1, timestamp: 0 },
+            WalEntry { tx_id: 2, entry_type: WalEntryType::Begin,   table_id: 0, key: None, data: None, lsn: 2, timestamp: 0 },
+            WalEntry { tx_id: 1, entry_type: WalEntryType::Commit,  table_id: 0, key: None, data: None, lsn: 3, timestamp: 0 },
+            WalEntry { tx_id: 2, entry_type: WalEntryType::Commit,  table_id: 0, key: None, data: None, lsn: 4, timestamp: 0 },
+        ];
+        let (committed, rolled_back, incomplete) = count_status(&entries);
+        assert_eq!(committed, 2, "both txns must be counted as committed");
+        assert_eq!(rolled_back, 0);
+        assert_eq!(incomplete, 0);
+    }
+
+    #[test]
+    fn test_filter_committed_entries_interleaved() {
+        // Regression: prior shared DML buffer mis-attributed tx=2's
+        // Insert to tx=1 when tx=1's Commit flushed the buffer early.
+        use crate::wal::WalEntryType;
+        let entries = vec![
+            WalEntry { tx_id: 1, entry_type: WalEntryType::Begin,   table_id: 0, key: None, data: None, lsn: 1, timestamp: 0 },
+            WalEntry { tx_id: 2, entry_type: WalEntryType::Begin,   table_id: 0, key: None, data: None, lsn: 2, timestamp: 0 },
+            // Insert for tx=2 (autocommit-style DML — no prior tx=2 Insert;
+            // tx=2's Begin allocated a buffer so the Insert lands in tx=2's bucket).
+            WalEntry { tx_id: 2, entry_type: WalEntryType::Insert,  table_id: 0, key: Some(vec![2u8]), data: None, lsn: 3, timestamp: 0 },
+            WalEntry { tx_id: 1, entry_type: WalEntryType::Commit,  table_id: 0, key: None, data: None, lsn: 4, timestamp: 0 },
+            WalEntry { tx_id: 2, entry_type: WalEntryType::Commit,  table_id: 0, key: None, data: None, lsn: 5, timestamp: 0 },
+        ];
+        let out = filter_committed_entries(&entries);
+        assert_eq!(
+            out.len(),
+            1,
+            "only tx=2's Insert should be replayed (tx=1 had no DML); got {} entries: {:?}",
+            out.len(),
+            out
+        );
+        assert_eq!(out[0].tx_id, 2, "Insert must belong to tx=2, not tx=1");
+    }
+
+    #[test]
+    fn test_count_status_three_way_interleave() {
+        // 3 concurrent txns with mixed Commit/Rollback interleaving.
+        use crate::wal::WalEntryType;
+        let entries = vec![
+            WalEntry { tx_id: 1, entry_type: WalEntryType::Begin,    table_id: 0, key: None, data: None, lsn: 1, timestamp: 0 },
+            WalEntry { tx_id: 2, entry_type: WalEntryType::Begin,    table_id: 0, key: None, data: None, lsn: 2, timestamp: 0 },
+            WalEntry { tx_id: 3, entry_type: WalEntryType::Begin,    table_id: 0, key: None, data: None, lsn: 3, timestamp: 0 },
+            WalEntry { tx_id: 2, entry_type: WalEntryType::Commit,   table_id: 0, key: None, data: None, lsn: 4, timestamp: 0 },
+            WalEntry { tx_id: 1, entry_type: WalEntryType::Rollback, table_id: 0, key: None, data: None, lsn: 5, timestamp: 0 },
+            // tx=3 still open at WAL tail → counts as incomplete.
+        ];
+        let (committed, rolled_back, incomplete) = count_status(&entries);
+        assert_eq!(committed, 1, "tx=2 is the only committed");
+        assert_eq!(rolled_back, 1, "tx=1 was rolled back");
+        assert_eq!(incomplete, 1, "tx=3 never closed (simulated crash)");
     }
 
     #[test]

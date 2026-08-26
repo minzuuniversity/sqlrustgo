@@ -1197,6 +1197,10 @@ path = "tests/integration/sql/parallel_main_path_test.rs"
 [[test]]
 name = "physical_backup_test"
 path = "tests/integration/sql/physical_backup_test.rs"
+
+[[test]]
+name = "sql_injection_test"
+path = "tests/integration/sql/sql_injection_test.rs"
 [[test]]
 name = "prepared_stmt_test"
 path = "tests/integration/sql/prepared_stmt_test.rs"
