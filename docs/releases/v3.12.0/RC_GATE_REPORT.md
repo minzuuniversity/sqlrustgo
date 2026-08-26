@@ -109,10 +109,34 @@ Source: `docs/releases/v3.12.0/evidence/wire_load_data/V312-13-REPORT.md`
 - Re-verified after SF=10 fixture remediation (issue #4388):
   17 passed; 0 failed in `cargo test --test v312_13_load_data_sf10_test`
 
-### RC8: Crash recovery + upgrade/downgrade (wrapper)
+### RC8: Crash recovery + upgrade/downgrade (executable gate)
 
-Gate: `evidence/v312-59/RC8_CRASH_UPGRADE_REPORT.md`
+Gate: `evidence/v312-59/RC8_CRASH_UPGRADE_REPORT.md` (wrapper)
 Source: `docs/releases/v3.12.0/crash-recovery-upgrade-verification-report.md`
+Executable: `scripts/gate/check_v312_14_crash_recovery.sh`
+
+V312-59-E hardening: the crash recovery gate is now **executable**
+(not just file-presence). Pre-V312-59-E a real WAL-replay bug
+(`recovery_fuzzer_test::r2_interleaved_transactions_out_of_order`)
+and the missing `physical-backup` CLI binary slipped past RC.
+
+Current state (re-verified at HEAD `ce79de1d8`):
+
+```
+$ bash scripts/gate/check_v312_14_crash_recovery.sh
+PASS: 12 / 12
+FAIL: 0 / 12
+STATUS: V312-14 CRASH RECOVERY GATE PASS
+```
+
+12 suites executed (per-suite cargo test): `crash_test_framework`
+(16), `process_kill_crash_test` (8), `backup_restore_test` (51),
+`recovery_fuzzer_test` (15), `physical_backup_test` (12),
+`memory_fault_injection_test` (7),
+`network_fault_injection_test` (7), `row_crc_skip` (1),
+`torn_write_recovery` (1), `crash_monkey_test` (4+1 ignored),
+`oracle_g14_real_crash` (24), `sql_injection_test` (10).
+Total: 156 tests + 1 ignored; 0 failures.
 
 - 7 crash scenarios (SIGKILL during INSERT/COMMIT/ROLLBACK/LOAD DATA,
   power loss, disk full, OOM)
