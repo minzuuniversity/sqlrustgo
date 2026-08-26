@@ -918,6 +918,13 @@ fn eq_cross(left: &Value, right: &Value) -> bool {
         (Value::Integer(a), Value::Float(b)) | (Value::Float(b), Value::Integer(a)) => {
             (*a as f64) == *b
         }
+        // V312-bug-report-3120 / BUG-4: MySQL CHAR(n) is blank-padded
+        // on store (e.g. CHAR(2) of 'F' is stored as "F "), so an
+        // equality / inequality against the bare literal 'F' must
+        // ignore trailing spaces. SQLite has the same behaviour.
+        // Trimming here (not in PartialEq/Hash) preserves the
+        // hash/eq invariant for HashMap-backed GROUP BY / DISTINCT.
+        (Value::Text(l), Value::Text(r)) => l.trim_end() == r.trim_end(),
         _ => false,
     }
 }
@@ -1138,6 +1145,128 @@ pub fn eval_fn(name: &str, args: &[Value]) -> Value {
             .first()
             .map(|v| Value::Integer(v.to_sql_string().len() as i64))
             .unwrap_or(Value::Null),
+        // V312-bug-report-3120 / BUG-2b: MySQL date/time + numeric
+        // functions required by 清华 MySQL 课程 A 轨上机. Previously
+        // these returned Null silently because the arms were missing.
+        // NOW()/SYSDATE() -> "YYYY-MM-DD HH:MM:SS" (server local time).
+        // We use civil_from_days on the unix epoch second count so we
+        // don't pull in chrono just for these scalar functions.
+        "NOW" | "SYSDATE" | "CURRENT_TIMESTAMP" => {
+            let secs = std::time::SystemTime::now()
+                .duration_since(std::time::UNIX_EPOCH)
+                .map(|d| d.as_secs() as i64)
+                .unwrap_or(0);
+            let (y, m, d) = civil_from_days(secs / 86400);
+            let tod = secs.rem_euclid(86400);
+            let h = tod / 3600;
+            let mi = (tod % 3600) / 60;
+            let s = tod % 60;
+            Value::Text(format!(
+                "{:04}-{:02}-{:02} {:02}:{:02}:{:02}",
+                y, m, d, h, mi, s
+            ))
+        }
+        "CURDATE" | "CURRENT_DATE" => {
+            let secs = std::time::SystemTime::now()
+                .duration_since(std::time::UNIX_EPOCH)
+                .map(|d| d.as_secs() as i64)
+                .unwrap_or(0);
+            let (y, m, d) = civil_from_days(secs / 86400);
+            Value::Text(format!("{:04}-{:02}-{:02}", y, m, d))
+        }
+        "CURTIME" | "CURRENT_TIME" => {
+            let secs = std::time::SystemTime::now()
+                .duration_since(std::time::UNIX_EPOCH)
+                .map(|d| d.as_secs() as i64)
+                .unwrap_or(0);
+            let tod = secs.rem_euclid(86400);
+            let h = tod / 3600;
+            let mi = (tod % 3600) / 60;
+            let s = tod % 60;
+            Value::Text(format!("{:02}:{:02}:{:02}", h, mi, s))
+        }
+        // YEAR/MONTH/DAY(date) -> Integer. Accept 'YYYY-MM-DD' or any
+        // prefix that has the field bytes available. Returns Null on
+        // bad input rather than panicking on a slice boundary.
+        "YEAR" => parse_date_field(args, 0, 4),
+        "MONTH" => parse_date_field(args, 5, 7),
+        "DAY" | "DAYOFMONTH" => parse_date_field(args, 8, 10),
+        // DATEDIFF(d1, d2) -> Integer days (d1 - d2), MySQL semantics.
+        "DATEDIFF" => {
+            if args.len() != 2 {
+                return Value::Null;
+            }
+            match (
+                parse_date_to_days(&args[0].to_sql_string()),
+                parse_date_to_days(&args[1].to_sql_string()),
+            ) {
+                (Some(a), Some(b)) => Value::Integer(a - b),
+                _ => Value::Null,
+            }
+        }
+        // ROUND(x [, d]) — half-away-from-zero. d default 0.
+        // MySQL returns INTEGER when d<=0, FLOAT when d>0.
+        "ROUND" => {
+            let x = match args.first() {
+                Some(Value::Integer(i)) => *i as f64,
+                Some(Value::Float(f)) => *f,
+                Some(v) => v.to_sql_string().parse::<f64>().unwrap_or(0.0),
+                None => return Value::Null,
+            };
+            let d = match args.get(1) {
+                Some(Value::Integer(i)) => *i,
+                Some(v) => v.to_sql_string().parse::<i64>().unwrap_or(0),
+                None => 0,
+            };
+            let scale = 10f64.powi(d as i32);
+            let rounded = (x * scale).round() / scale;
+            if d <= 0 {
+                Value::Integer(rounded as i64)
+            } else {
+                Value::Float(rounded)
+            }
+        }
+        // RAND([seed]) -> Float in [0, 1). Uses a thread-local
+        // splitmix64-style PRNG seeded from wall-clock nanoseconds so
+        // each call advances state. The optional seed argument, if
+        // Integer, replaces the state (matches MySQL's RAND(N) reseed
+        // semantics well enough for classroom use).
+        "RAND" => {
+            use std::cell::Cell;
+            thread_local!(static SEED: Cell<u64> = Cell::new({
+                std::time::SystemTime::now()
+                    .duration_since(std::time::UNIX_EPOCH)
+                    .map(|d| d.as_nanos() as u64)
+                    .unwrap_or(0xdead_beef_u64)
+                    .wrapping_add(1)
+            }));
+            SEED.with(|c| {
+                if let Some(Value::Integer(n)) = args.first() {
+                    c.set(*n as u64);
+                }
+                let mut s = c.get().wrapping_add(0x9e3779b97f4a7c15);
+                s = (s ^ (s >> 30)).wrapping_mul(0xbf58476d1ce4e5b9);
+                s = (s ^ (s >> 27)).wrapping_mul(0x94d049bb133111eb);
+                s = s ^ (s >> 31);
+                c.set(s);
+                Value::Float((s as f64) / (u64::MAX as f64))
+            })
+        }
+        "ABS" => match args.first() {
+            Some(Value::Integer(i)) => Value::Integer(i.abs()),
+            Some(Value::Float(f)) => Value::Float(f.abs()),
+            Some(v) => {
+                let s = v.to_sql_string();
+                if let Ok(i) = s.parse::<i64>() {
+                    Value::Integer(i.abs())
+                } else if let Ok(f) = s.parse::<f64>() {
+                    Value::Float(f.abs())
+                } else {
+                    Value::Null
+                }
+            }
+            None => Value::Null,
+        },
         // TRIM — MySQL 5.7 supports four forms:
         //   TRIM(str)                                 — 1-arg, trim whitespace
         //   TRIM(remstr, str)                         — 2-arg comma form
@@ -1804,6 +1933,39 @@ fn days_in_month(y: i64, m: i64) -> i64 {
         }
         _ => 30,
     }
+}
+
+/// V312-bug-report-3120 / BUG-2b: extract an Integer field from a
+/// 'YYYY-MM-DD'-shaped string at byte offsets [start, end). Returns
+/// Null on missing arg, short string, non-digit content, or slice
+/// not on a char boundary. Uses str::get so we never panic.
+fn parse_date_field(args: &[Value], start: usize, end: usize) -> Value {
+    let s = match args.first() {
+        Some(v) => v.to_sql_string(),
+        None => return Value::Null,
+    };
+    s.get(start..end)
+        .and_then(|slice| slice.parse::<i64>().ok())
+        .map(Value::Integer)
+        .unwrap_or(Value::Null)
+}
+
+/// V312-bug-report-3120 / BUG-2b: parse 'YYYY-MM-DD' (optionally
+/// followed by ' HH:MM:SS') into days-since-Unix-epoch via
+/// days_from_civil. None on malformed input.
+fn parse_date_to_days(s: &str) -> Option<i64> {
+    let date_part = s.get(..10.min(s.len()))?;
+    let parts: Vec<&str> = date_part.split('-').collect();
+    if parts.len() != 3 {
+        return None;
+    }
+    let y = parts[0].parse::<i64>().ok()?;
+    let m = parts[1].parse::<i64>().ok()?;
+    let d = parts[2].parse::<i64>().ok()?;
+    if !(1..=12).contains(&m) || !(1..=31).contains(&d) {
+        return None;
+    }
+    Some(days_from_civil(y, m, d))
 }
 
 /// Statistical aggregate helpers (eval_fn dispatch). These are

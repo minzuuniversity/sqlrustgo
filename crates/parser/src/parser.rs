@@ -7510,7 +7510,20 @@ impl Parser {
                         // subquery as terminated early, dropping any
                         // following columns and the FROM clause
                         // (V312-21 / #4181, TPC-H Q7-Q9 subquery parse).
-                        if matches!(self.current(), Some(Token::RParen)) {
+                        //
+                        // V312-bug-report-3120 / BUG-2a: the consume must
+                        // be gated on `name == "CAST"`. The args loop above
+                        // already ran `self.expect(Token::RParen)?` for every
+                        // non-CAST call, so for an arbitrary Identifier-path
+                        // function (e.g. `length`, `upper`, `abs`, `year`)
+                        // the closing `)` is already consumed. Unconditionally
+                        // consuming another RParen here ate the *parent*
+                        // function's closing paren, breaking nested calls
+                        // like `upper(length('alice'))` and `year(now())`
+                        // with "Expected RParen, got Eof".
+                        if name.to_uppercase() == "CAST"
+                            && matches!(self.current(), Some(Token::RParen))
+                        {
                             self.next();
                         }
                         // EXTRACT(field FROM expr) — field is a SQL token (YEAR,

@@ -465,6 +465,62 @@ pub fn evaluate_where_clause(expr: &Expression, row: &[Value], table_info: &Tabl
     eval_predicate(expr, row, table_info)
 }
 
+/// V312-bug-report-3120 / BUG-3b: variant of [`eval_predicate`] that
+/// threads a real `subq_eval` closure into the operand evaluators.
+/// The plain `eval_predicate` calls `evaluate_expression`, whose
+/// default `subq_eval` returns `Value::Null` for every
+/// `(SELECT ...)` scalar subquery. That makes a WHERE like
+/// `id = (SELECT min(id) FROM s WHERE name = 'bob')` compare against
+/// Null and discard every row (bug report BUG-3b).
+///
+/// This variant only needs to differ from `eval_predicate` on the
+/// comparison BinaryOp arm (where scalar subqueries appear as the
+/// right-hand operand) and the AND/OR recursion. Other arms
+/// (IN/EXISTS/IsNull/InList) either don't carry scalar subqueries in
+/// the classroom shape or are already handled by the correlated
+/// pre-evaluation step that runs before this function is reached.
+pub fn eval_predicate_with_subq(
+    expr: &Expression,
+    row: &[Value],
+    table_info: &TableInfo,
+    subq_eval: &dyn Fn(&sqlrustgo_parser::SelectStatement) -> Result<Value, String>,
+) -> bool {
+    use sqlrustgo_parser::Expression;
+    match expr {
+        Expression::BinaryOp(left, op, right) if op.to_uppercase() == "AND" => {
+            eval_predicate_with_subq(left, row, table_info, subq_eval)
+                && eval_predicate_with_subq(right, row, table_info, subq_eval)
+        }
+        Expression::BinaryOp(left, op, right) if op.to_uppercase() == "OR" => {
+            eval_predicate_with_subq(left, row, table_info, subq_eval)
+                || eval_predicate_with_subq(right, row, table_info, subq_eval)
+        }
+        // Scalar subquery as a comparison operand: materialise it via
+        // `subq_eval` (engine recursion) instead of Null.
+        Expression::BinaryOp(left, op, right) => {
+            let op_u = op.to_uppercase();
+            let is_comparison = matches!(
+                op_u.as_str(),
+                "=" | "==" | "!=" | "<>" | ">" | ">=" | "<" | "<="
+            );
+            if !is_comparison {
+                return eval_predicate(expr, row, table_info);
+            }
+            let left_val =
+                crate::expr_utils::evaluate_expression_with_subq(left, row, table_info, subq_eval)
+                    .unwrap_or(Value::Null);
+            let right_val =
+                crate::expr_utils::evaluate_expression_with_subq(right, row, table_info, subq_eval)
+                    .unwrap_or(Value::Null);
+            sql_compare(op, &left_val, &right_val)
+        }
+        // Other arms (IsNull/IsNotNull/In/Exists/InList/NotInList/...)
+        // don't carry scalar subqueries in the BUG-3b shape; defer to
+        // the plain path so existing TPC-H behaviour is unchanged.
+        _ => eval_predicate(expr, row, table_info),
+    }
+}
+
 /// SQL comparison operator
 /// Returns false if either operand is NULL (UNKNOWN semantics)
 /// This is Phase 1: UNKNOWN is folded to FALSE for WHERE filtering
@@ -474,8 +530,19 @@ pub fn sql_compare(op: &str, left: &Value, right: &Value) -> bool {
     }
 
     match op.to_uppercase().as_str() {
-        "=" | "==" => left == right,
-        "!=" | "<>" => left != right,
+        // V312-bug-report-3120 / BUG-4: MySQL CHAR(n) is blank-padded on
+        // store, so `sex = 'F'` against CHAR(2) stored as "F " must ignore
+        // trailing spaces. Trim both sides for Text equality/inequality
+        // (mirrors the eq_cross fix in crates/executor/src/expr/mod.rs).
+        // Other types fall through to the strict PartialEq.
+        "=" | "==" => match (left, right) {
+            (Value::Text(l), Value::Text(r)) => l.trim_end() == r.trim_end(),
+            _ => left == right,
+        },
+        "!=" | "<>" => match (left, right) {
+            (Value::Text(l), Value::Text(r)) => l.trim_end() != r.trim_end(),
+            _ => left != right,
+        },
         ">" => crate::expr_utils::compare_values(left, right) > 0,
         ">=" => crate::expr_utils::compare_values(left, right) >= 0,
         "<" => crate::expr_utils::compare_values(left, right) < 0,
@@ -928,9 +995,10 @@ fn substitute_outer_refs_in_expr_with_own(
             subq,
             outer_row,
             outer_table_info,
+            None,
         ))),
         Expression::NotExists(subq) => Expression::NotExists(Box::new(
-            substitute_outer_refs_in_select(subq, outer_row, outer_table_info),
+            substitute_outer_refs_in_select(subq, outer_row, outer_table_info, None),
         )),
         // TPC-H Q13/Q16: `col IN (SELECT ...)` and `NOT IN (SELECT ...)`.
         // Conservative: substitute only in the left column expression
@@ -1098,6 +1166,7 @@ pub fn substitute_outer_refs_in_select(
     select: &sqlrustgo_parser::SelectStatement,
     outer_row: &[Value],
     outer_table_info: &TableInfo,
+    inner_columns: Option<&std::collections::HashSet<String>>,
 ) -> sqlrustgo_parser::SelectStatement {
     let mut new_select = select.clone();
     // TPC-H Q21: the subquery is `FROM lineitem l2 WHERE
@@ -1247,6 +1316,25 @@ pub fn substitute_outer_refs_in_select(
         }
         names
     };
+    // V312-bug-report-3120 / BUG-3b: merge the inner table
+    // actual column names looked up from storage by the caller
+    // via storage.get_table_info into own_column_names. The
+    // prefix-based collection above only handles TPC-H table
+    // conventions l_ p_ s_ ps_ etc. For classroom tables like
+    // s with columns id name, the bare name column would
+    // otherwise be mis-substituted with the outer row name value
+    // when the subquery FROM table shadows the outer FROM table
+    // standard SQL scoping. Merging actual schema columns
+    // protects them from incorrect outer-ref substitution
+    // while preserving the existing TPC-H behaviour. The
+    // actual schema always includes the prefix-named columns
+    // too, so the union is a strict superset of the prefix set.
+    let mut own_column_names = own_column_names;
+    if let Some(extra) = inner_columns {
+        for c in extra {
+            own_column_names.insert(c.clone());
+        }
+    }
     if let Some(ref wc) = select.where_clause {
         new_select.where_clause = Some(substitute_outer_refs_in_expr_with_own(
             wc,
