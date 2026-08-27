@@ -5,10 +5,12 @@
 //! used independently by any module needing expression evaluation.
 
 use sqlrustgo_parser::parser::WhenClause;
+use sqlrustgo_parser::parser::WindowCall;
 use sqlrustgo_parser::Expression;
 use sqlrustgo_parser::SelectStatement;
 use sqlrustgo_storage::TableInfo;
 use sqlrustgo_types::Value;
+use std::collections::HashMap;
 
 pub fn expression_to_string(expr: &sqlrustgo_parser::Expression) -> String {
     match expr {
@@ -436,6 +438,344 @@ pub fn evaluate_expression_with_subq(
             Ok(sqlrustgo_executor::expr::resolve_system_variable(name))
         }
         _ => Ok(Value::Null),
+    }
+}
+
+/// V312-58 / Issue #4517: evaluate a `WindowCall` (`AGG(x) OVER (PARTITION
+/// BY ...) ORDER BY ...`) over the full projection row set, returning one
+/// `Value` per input row in the same order.
+///
+/// The window spec follows standard SQL semantics:
+/// * `partition_by` groups rows into independent windows. Empty partition
+///   means a single global window.
+/// * `order_by` (if non-empty) sorts rows within each partition;
+///   `bool = false` means DESC.
+/// * The aggregate / ordinal function is then evaluated per row over the
+///   full partition (no frame-clause handling for now — issue scope is
+///   `aggregate(expr) OVER (PARTITION BY cols)` plus
+///   `ROW_NUMBER()/RANK()/DENSE_RANK() OVER (...)`).
+///
+/// Supported function names (case-insensitive):
+/// * Aggregates: `SUM`, `AVG`, `COUNT`, `MIN`, `MAX`
+/// * Ordinals:   `ROW_NUMBER`, `RANK`, `DENSE_RANK`
+///
+/// Returns `Ok(Vec<Value>)` whose length equals `rows.len()`. The caller is
+/// responsible for inserting the value at the correct row position; we
+/// preserve the input ordering so a positional lookup is a simple
+/// `results[row_idx]`.
+pub fn evaluate_window_call(
+    call: &WindowCall,
+    rows: &[Vec<Value>],
+    table_info: &TableInfo,
+) -> Result<Vec<Value>, String> {
+    if rows.is_empty() {
+        return Ok(Vec::new());
+    }
+
+    // 1. Compute the partition key for every row.
+    let partition_keys: Vec<Vec<Value>> = if call.window_spec.partition_by.is_empty() {
+        vec![Vec::new(); rows.len()]
+    } else {
+        let mut keys = Vec::with_capacity(rows.len());
+        for row in rows {
+            let mut key = Vec::with_capacity(call.window_spec.partition_by.len());
+            for part_expr in &call.window_spec.partition_by {
+                let v = evaluate_expression(part_expr, row, table_info)?;
+                key.push(v);
+            }
+            keys.push(key);
+        }
+        keys
+    };
+
+    // 2. Bucket row indices by canonicalized partition key string.
+    //    (Value doesn't implement Hash, but the canonical-string form is
+    //    deterministic for use as a partition discriminator.)
+    let canonical_keys: Vec<String> = partition_keys
+        .iter()
+        .map(|k| {
+            k.iter()
+                .map(|v| match v {
+                    Value::Null => "__NULL__".to_string(),
+                    Value::Integer(n) => format!("I:{}", n),
+                    Value::Float(f) => format!("F:{}", f),
+                    Value::Text(s) => format!("T:{}", s),
+                    Value::Boolean(b) => format!("B:{}", b),
+                    _ => format!("O:{}", v.to_sql_string()),
+                })
+                .collect::<Vec<_>>()
+                .join("|")
+        })
+        .collect();
+
+    let mut partitions: HashMap<String, Vec<usize>> = HashMap::new();
+    for (idx, key) in canonical_keys.iter().enumerate() {
+        partitions.entry(key.clone()).or_default().push(idx);
+    }
+
+    // 3. Sort each partition by order_by (stable sort preserves input order
+    //    for ties, matching standard SQL semantics).
+    if !call.window_spec.order_by.is_empty() {
+        for indices in partitions.values_mut() {
+            indices.sort_by(|&a, &b| {
+                let row_a = &rows[a];
+                let row_b = &rows[b];
+                let mut cmp = std::cmp::Ordering::Equal;
+                for (sort_expr, asc) in &call.window_spec.order_by {
+                    let val_a =
+                        evaluate_expression(sort_expr, row_a, table_info).unwrap_or(Value::Null);
+                    let val_b =
+                        evaluate_expression(sort_expr, row_b, table_info).unwrap_or(Value::Null);
+                    // Three-valued comparison: Null sorts after everything,
+                    // matching standard SQL NULLS LAST default.
+                    let step = match (val_a == Value::Null, val_b == Value::Null) {
+                        (true, true) => std::cmp::Ordering::Equal,
+                        (true, false) => std::cmp::Ordering::Greater,
+                        (false, true) => std::cmp::Ordering::Less,
+                        (false, false) => compare_values(&val_a, &val_b).cmp(&0),
+                    };
+                    let step = if *asc { step } else { step.reverse() };
+                    if step != std::cmp::Ordering::Equal {
+                        cmp = step;
+                        break;
+                    }
+                }
+                cmp
+            });
+        }
+    }
+
+    // 4. Allocate output buffer (one Value per input row, in input order).
+    let mut results = vec![Value::Null; rows.len()];
+
+    let func_upper = call.func_name.to_uppercase();
+    for indices in partitions.values() {
+        for (local_idx, &row_idx) in indices.iter().enumerate() {
+            let value = match func_upper.as_str() {
+                "ROW_NUMBER" => Value::Integer((local_idx + 1) as i64),
+                "RANK" => {
+                    // RANK: peers share rank; rank of a row ranks = 1 +
+                    // (number of rows in earlier positions that have a
+                    // strictly different order_by key).
+                    //
+                    // Walk back through the partition (which is already
+                    // sorted by order_by). The current row's rank is
+                    // the 1-based position in the peer group: i.e. count
+                    // the number of rows whose order_by keys differ from
+                    // the current row's keys (those that appear strictly
+                    // before `local_idx` and are in different peer groups).
+                    let mut earlier_diff_groups = 0i64;
+                    for &prev_idx in indices.iter().take(local_idx) {
+                        let mut same = true;
+                        for (sort_expr, _) in &call.window_spec.order_by {
+                            let cur = evaluate_expression(sort_expr, &rows[row_idx], table_info)
+                                .unwrap_or(Value::Null);
+                            let prv = evaluate_expression(sort_expr, &rows[prev_idx], table_info)
+                                .unwrap_or(Value::Null);
+                            if compare_values(&cur, &prv) != 0 {
+                                same = false;
+                                break;
+                            }
+                        }
+                        if !same {
+                            earlier_diff_groups += 1;
+                        }
+                    }
+                    // +1 because positions are 1-based and the row itself
+                    // is not counted.
+                    Value::Integer(earlier_diff_groups + 1)
+                }
+                "DENSE_RANK" => {
+                    // DENSE_RANK: peers share rank; no gaps.
+                    //
+                    // Since the partition is sorted by order_by, count the
+                    // distinct order_by groups among the rows at positions
+                    // [0..local_idx]. A "group" transition is detected by
+                    // comparing adjacent rows in sorted order.
+                    let mut distinct_groups = 1i64;
+                    for pair in indices.windows(2).take(local_idx) {
+                        let prev_idx = pair[0];
+                        let next_idx = pair[1];
+                        let mut same = true;
+                        for (sort_expr, _) in &call.window_spec.order_by {
+                            let a = evaluate_expression(sort_expr, &rows[prev_idx], table_info)
+                                .unwrap_or(Value::Null);
+                            let b = evaluate_expression(sort_expr, &rows[next_idx], table_info)
+                                .unwrap_or(Value::Null);
+                            if compare_values(&a, &b) != 0 {
+                                same = false;
+                                break;
+                            }
+                        }
+                        if !same {
+                            distinct_groups += 1;
+                        }
+                    }
+                    Value::Integer(distinct_groups)
+                }
+                "SUM" | "AVG" | "COUNT" | "MIN" | "MAX" => {
+                    // Aggregate over the full partition (no frame clause yet).
+                    if call.args.is_empty() {
+                        // COUNT(*) equivalent — count rows in partition.
+                        Value::Integer(indices.len() as i64)
+                    } else if call.args.len() == 1 {
+                        let arg = &call.args[0];
+                        let is_star = matches!(arg, Expression::Literal(s) if s == "*");
+                        if is_star && func_upper == "COUNT" {
+                            Value::Integer(indices.len() as i64)
+                        } else {
+                            let collected: Vec<Value> = indices
+                                .iter()
+                                .map(|&i| {
+                                    evaluate_expression(arg, &rows[i], table_info)
+                                        .unwrap_or(Value::Null)
+                                })
+                                .collect();
+                            match func_upper.as_str() {
+                                "SUM" => numeric_agg_sum(&collected),
+                                "AVG" => numeric_agg_avg(&collected),
+                                "COUNT" => Value::Integer(
+                                    collected
+                                        .iter()
+                                        .filter(|v| !matches!(v, Value::Null))
+                                        .count() as i64,
+                                ),
+                                "MIN" => collected
+                                    .iter()
+                                    .filter(|v| !matches!(v, Value::Null))
+                                    .min_by(|a, b| compare_values(a, b).cmp(&0))
+                                    .cloned()
+                                    .unwrap_or(Value::Null),
+                                "MAX" => collected
+                                    .iter()
+                                    .filter(|v| !matches!(v, Value::Null))
+                                    .max_by(|a, b| compare_values(a, b).cmp(&0))
+                                    .cloned()
+                                    .unwrap_or(Value::Null),
+                                _ => unreachable!(),
+                            }
+                        }
+                    } else {
+                        // Multiple args — not meaningful for window aggregates
+                        // at the issue scope; emit Null rather than panic.
+                        Value::Null
+                    }
+                }
+                _ => {
+                    // Unsupported window function — return Null for the row.
+                    Value::Null
+                }
+            };
+            results[row_idx] = value;
+        }
+    }
+
+    Ok(results)
+}
+
+fn numeric_agg_sum(vals: &[Value]) -> Value {
+    let mut int_sum: Option<i64> = Some(0);
+    let mut float_sum: Option<f64> = None;
+    let mut any = false;
+    for v in vals {
+        match v {
+            Value::Integer(n) => {
+                any = true;
+                if let Some(ref mut s) = int_sum {
+                    *s += n;
+                }
+                if let Some(ref mut s) = float_sum {
+                    *s += *n as f64;
+                }
+            }
+            Value::Float(f) => {
+                any = true;
+                if float_sum.is_none() {
+                    float_sum = Some(int_sum.unwrap_or(0) as f64);
+                    int_sum = None;
+                }
+                if let Some(ref mut s) = float_sum {
+                    *s += f;
+                }
+            }
+            Value::Null => {}
+            _ => {
+                // Non-numeric: coerce via to_sql_string->parse.
+                if let Ok(n) = v.to_sql_string().parse::<i64>() {
+                    any = true;
+                    if let Some(ref mut s) = int_sum {
+                        *s += n;
+                    }
+                } else if let Ok(f) = v.to_sql_string().parse::<f64>() {
+                    any = true;
+                    if float_sum.is_none() {
+                        float_sum = Some(int_sum.unwrap_or(0) as f64);
+                        int_sum = None;
+                    }
+                    if let Some(ref mut s) = float_sum {
+                        *s += f;
+                    }
+                }
+            }
+        }
+    }
+    if !any {
+        Value::Null
+    } else if let Some(f) = float_sum {
+        Value::Float(f)
+    } else {
+        Value::Integer(int_sum.unwrap_or(0))
+    }
+}
+
+fn numeric_agg_avg(vals: &[Value]) -> Value {
+    let mut sum_int: i64 = 0;
+    let mut sum_float: Option<f64> = None;
+    let mut count: i64 = 0;
+    for v in vals {
+        match v {
+            Value::Integer(n) => {
+                count += 1;
+                sum_int += n;
+                if let Some(ref mut s) = sum_float {
+                    *s += *n as f64;
+                }
+            }
+            Value::Float(f) => {
+                count += 1;
+                if sum_float.is_none() {
+                    sum_float = Some(sum_int as f64);
+                }
+                if let Some(ref mut s) = sum_float {
+                    *s += f;
+                }
+            }
+            Value::Null => {}
+            _ => {
+                if let Ok(n) = v.to_sql_string().parse::<i64>() {
+                    count += 1;
+                    sum_int += n;
+                    if let Some(ref mut s) = sum_float {
+                        *s += n as f64;
+                    }
+                } else if let Ok(f) = v.to_sql_string().parse::<f64>() {
+                    count += 1;
+                    if sum_float.is_none() {
+                        sum_float = Some(sum_int as f64);
+                    }
+                    if let Some(ref mut s) = sum_float {
+                        *s += f;
+                    }
+                }
+            }
+        }
+    }
+    if count == 0 {
+        Value::Null
+    } else if let Some(f) = sum_float {
+        Value::Float(f / count as f64)
+    } else {
+        Value::Float(sum_int as f64 / count as f64)
     }
 }
 
