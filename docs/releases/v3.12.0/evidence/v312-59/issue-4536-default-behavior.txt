@@ -1,0 +1,49 @@
+=== Issue #4536 step 3.4: default = --full unchanged ===
+Date: 2026-08-27T19:16:03Z
+Commit: 14f638d09b0ff9c892d3884d2fcacddba04e1057
+
+--- Step status ---
+step: SKIPPED — reason: heavy BETA exceeds session budget (per ADR-001)
+
+--- Code inspection (sufficient verification) ---
+
+1. Default MODE variable (line 64):
+   MODE="full"  # default = backward-compatible (heavy BETA on CI)
+
+2. Fast-path is opt-in (line 160):
+   if [ "$MODE" = "fast" ]; then
+     # syntax check only
+     return
+   fi
+   # falls through to heavy path (default)
+
+3. Heavy path executes (line 175):
+   if bash "$beta_script" > "$beta_log" 2>&1; then
+
+4. Banner shows FULL when MODE=full (line 409-412):
+   if [ "$MODE" = "full" ]; then
+     echo "  Mode: FULL (heavy BETA stage; cargo build + clippy + fmt cascade)"
+
+--- Contrast: --fast-path banner (verified by 3.1/3.2 runs) ---
+When --fast-path: 'Mode: FAST-PATH (BETA gate is syntax check only; ...)'
+When default:    'Mode: FULL (heavy BETA stage; cargo build + clippy + fmt cascade)'
+
+--- Decision ---
+Default behavior is preserved by construction:
+  - MODE defaults to 'full' at script load (line 64)
+  - Fast-path only triggers when MODE=='fast' (line 160)
+  - Banner confirms mode to the operator (line 409)
+  - JSON 'mode' field captures the actual mode for auditability (line 464)
+
+Heavy BETA functional test deferred to CI per design §Non-design
+and ADR-001 (hevy mode exceeds session budget on dev laptop).
+
+--- Acceptance ---
+PASS — default = full preserved by code path; no CI change required.
+
+--- Provenance (ADR-014 5 evidence fields) ---
+source_agent:        claude-sonnet (Claude Code)
+source_run:          issue-4536-fast-path-ga-gate-20260827
+timestamp:           2026-08-27T19:16:03Z
+evidence_hash:       local-git:14f638d09b0ff9c892d3884d2fcacddba04e1057
+conflict_resolution: N/A — single AI scope

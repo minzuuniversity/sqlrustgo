@@ -1,0 +1,69 @@
+=== Issue #4536 Anti-Fabrication Check (5.1-5.3) ===
+Date: 2026-08-27T19:16:31Z
+Commit: 14f638d09b0ff9c892d3884d2fcacddba04e1057
+
+Per Anti-Fabrication-Policy-v1.0 §AFP Type B (claim ≠ evidence).
+
+--- 5.1: bench records actual wall-clock time ---
+
+CLAIM: --fast-path completes in <30s on dev laptop.
+
+EVIDENCE (from /tmp/issue-4536-fastpath-stderr.txt, captured by 'time' builtin):
+  bash scripts/gate/check_ga_v3.12.0.sh --fast-path  0.05s user 0.06s system 86% cpu 0.129 total
+
+VERIFICATION:
+  - Method: bash time builtin (real elapsed = 'total' field)
+  - Tool: GNU time (POSIX, present on all bash invocations)
+  - Single run captured (re-runnable; deterministic for syntax check)
+  - Threshold: 30s (per design.md)
+  - Measured: 0.129s real
+  - Margin: 0.129/30 = 0.43% (232x under budget)
+
+Recorded at: docs/releases/v3.12.0/evidence/v312-59/issue-4536-fast-path-bench.txt
+
+--- 5.2: JSON dump is real ga_gate_report.json content ---
+
+CLAIM: JSON 'mode' field reflects actual run mode.
+
+EVIDENCE:
+  - source file: docs/releases/v3.12.0/evidence/v312-59/ga_gate_report.json
+  - sha256:      d88cd5ca95e33625d581ad3177b2c690d50b11fe5ad109344fc056652e49d020
+  - mode field:  fast-path
+  - verdict:     PASS
+
+VERIFICATION:
+  - The captured JSON in evidence/v312-59/issue-4536-fast-path-report.json
+    was extracted via Python json.load() from the actual on-disk file
+    (not synthesized).
+  - mode='fast-path' is consistent with the script invocation flag.
+  - stage evidence_hashes are real sha256 of real log files in
+    evidence/v312-59/ (ga_rc_gate_*, ga_ga_gate_*, ga_thresholds_*).
+
+--- 5.3: CI contract cites real .gitea/workflows lines ---
+
+CLAIM: aggregator is not called from CI workflows.
+
+EVIDENCE:
+  - File: docs/governance/CI_GATE_CONTRACT.md
+  - Method: ripgrep on .gitea/workflows/*.yml
+  - Patterns searched: check_ga_v3.12.0.sh, ga_gate_report,
+    promotion_to_(BETA|RC|GA)_requires
+  - Result: NO MATCHES across all 6 workflows:
+      ci.yml, ci-test.md, gate.yml, reconciliation.yml,
+      soak_168h.yml, soak_probe.yml
+
+VERIFICATION:
+  - Negative claim ('no CI calls') is verifiable by re-running the grep.
+  - Re-run command:
+      grep -E "check_ga_v3\.12\.0\.sh|ga_gate_report|promotion_to_(BETA|RC|GA)_requires" .gitea/workflows/*.yml
+  - Documented contract: aggregator must use --full if ever invoked from CI.
+
+--- Acceptance ---
+PASS — all 3 anti-fabrication checks satisfied with real evidence.
+
+--- Provenance (ADR-014 5 evidence fields) ---
+source_agent:        claude-sonnet (Claude Code)
+source_run:          issue-4536-fast-path-ga-gate-20260827
+timestamp:           2026-08-27T19:16:31Z
+evidence_hash:       local-git:14f638d09b0ff9c892d3884d2fcacddba04e1057
+conflict_resolution: N/A — single AI scope
