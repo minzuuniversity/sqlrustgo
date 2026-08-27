@@ -534,14 +534,14 @@ pub fn sql_compare(op: &str, left: &Value, right: &Value) -> bool {
     // PartialEq by default; we add a TEXT-vs-TEXT trim-end branch so
     // `'F ' = 'F'` returns true. The strict PartialEq remains the
     // fallback for non-text operands (preserves bool/int/float semantics).
-    let (cmp_left, cmp_right) = match (left, right) {
-        (Value::Text(a), Value::Text(b)) => {
-            let at = a.trim_end();
-            let bt = b.trim_end();
-            (Value::Text(at.to_string()), Value::Text(bt.to_string()))
-        }
-        _ => (left.clone(), right.clone()),
-    };
+    //
+    // V312-bugfix / #4492: PR #4508 originally pre-trimmed into
+    // `cmp_left` / `cmp_right` and then compared via `==`. After
+    // rebase on top of develop/v3.12.0 (which already carries
+    // PR #4493's inline trim form), the pre-trim became dead code
+    // and produced "unused variable" warnings. Removed during
+    // PR #4508 merge-conflict resolution; the inline trim is the
+    // single source of truth.
 
     match op.to_uppercase().as_str() {
         // V312-bug-report-3120 / BUG-4: MySQL CHAR(n) is blank-padded on

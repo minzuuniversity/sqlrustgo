@@ -119,13 +119,23 @@ fn b_scalar_subquery_single_table() {
 }
 
 #[test]
-fn b_issue_repro_returns_zero_rows_known_limit() {
+fn b_issue_repro_scalar_subquery_with_inner_filter() {
     // Issue #4491(b) full case: `WHERE id = (SELECT MIN(id) FROM s WHERE
-    // name = 'bob')` returns 0 rows. The scalar-subquery pre-eval pass
-    // would need an outer-ref-aware execution path; the per-row
-    // correlated fast-path also requires it. Pinned as a known
-    // limitation. The simple single-table scalar subquery case
-    // (b_scalar_subquery_single_table) already passes.
+    // name = 'bob')` should return the row matching the scalar
+    // subquery's MIN(id) result.
+    //
+    // PR #4508 originally pinned this as a known limitation (the
+    // scalar-subquery pre-eval hook lived only in DML paths and the
+    // correlated branch conservatively flagged all `Subquery(_)`
+    // arms). PR #4493 (f118dd896c) closed BUG-3b by:
+    // - threading `inner_columns` into `substitute_outer_refs_in_select`
+    //   so inner-table bare column names are not mis-substituted as
+    //   outer-row values, and
+    // - adding `eval_predicate_with_subq` for the non-correlated else
+    //   branch.
+    // After the PR #4508 rebase on top of develop/v3.12.0 (which
+    // carries PR #4493), this case now resolves to the expected
+    // row. Assert it as a regression guard for both fixes.
     let mut e = engine();
     e.execute("CREATE TABLE s(id INTEGER, name CHAR(8))").unwrap();
     e.execute("INSERT INTO s VALUES (1, 'alice'), (2, 'bob')")
@@ -135,11 +145,10 @@ fn b_issue_repro_returns_zero_rows_known_limit() {
         .unwrap();
     assert_eq!(
         r.rows.len(),
-        0,
-        "known limitation (Issue #4491b pre-eval hits the correlated
-         short-circuit branch, since `where_expr_has_correlated_subquery`
-         conservatively flags all `Subquery(_)` arms as correlated). \
-         Future PR must wire scalar-subquery pre-eval into the correlated
-         branch or relax the conservative flag. Got {r:?}",
+        1,
+        "Issue #4491(b) full case: scalar subquery with inner \
+         WHERE filter should resolve to exactly one outer row. \
+         PR #4493 closed BUG-3b. Got {r:?}"
     );
+    assert!(matches!(&r.rows[0][0], Value::Integer(2)));
 }

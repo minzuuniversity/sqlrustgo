@@ -1,8 +1,6 @@
 use sqlrustgo_storage::StorageEngine;
 use sqlrustgo_types::Value;
 
-use std::time::{SystemTime, UNIX_EPOCH};
-
 #[derive(Debug, Clone, PartialEq)]
 pub enum UnifiedExpr {
     Literal(Value),
@@ -1853,77 +1851,16 @@ pub fn eval_fn(name: &str, args: &[Value]) -> Value {
         // ====================================================================
         // Issue #4490 — register commonly-missing SQL scalar functions so they
         // no longer fall through to the Null default branch.
+        //
+        // V312-bugfix / #4490 PR #4508 originally added these arms here.
+        // After rebase on top of develop/v3.12.0 (which already carries
+        // PR #4493's BUG-2b matching arms earlier in the same eval_fn
+        // match block), this block became unreachable. Rust's match
+        // dispatch routes the earlier arms first. Removed during
+        // PR #4508 merge-conflict resolution to silence the
+        // "unreachable pattern" warnings. The PR #4493 implementation
+        // is now the single source of truth.
         // ====================================================================
-        // Date/time functions operating on the wall clock. We compute the
-        // local-time breakdown once per call (cheap; <1µs) and emit MySQL 5.7
-        // compatible text representations.
-        "NOW" | "CURRENT_TIMESTAMP" | "LOCALTIMESTAMP" => {
-            current_timestamp_text(wall_clock_secs(), /*with_time:*/ true)
-        }
-        "CURDATE" | "CURRENT_DATE" => {
-            current_timestamp_text(wall_clock_secs(), /*with_time:*/ false)
-        }
-        "CURTIME" | "CURRENT_TIME" => {
-            let ts = current_timestamp_text(wall_clock_secs(), true);
-            let s = match ts {
-                Value::Text(s) => s,
-                _ => String::new(),
-            };
-            Value::Text(extract_time_component(s.as_str()))
-        }
-        "YEAR" => extract_date_component_opt(args, 0),
-        "MONTH" => extract_date_component_opt(args, 1),
-        "DAY" => extract_date_component_opt(args, 2),
-        // DATEDIFF(date1, date2) — returns days(date1) - days(date2) as Integer.
-        // Both operands must parse as YYYY-MM-DD[ HH:MM:SS].
-        "DATEDIFF" => {
-            if let (Some(a), Some(b)) = (args.first(), args.get(1)) {
-                match (
-                    parse_date_to_days(&a.to_sql_string()),
-                    parse_date_to_days(&b.to_sql_string()),
-                ) {
-                    (Some(x), Some(y)) => Value::Integer(x - y),
-                    _ => Value::Null,
-                }
-            } else {
-                Value::Null
-            }
-        }
-        // ROUND(x, n) — rounds to n decimal places; returns Value::Float.
-        // n defaults to 0 when omitted (MySQL semantics).
-        "ROUND" => {
-            // to_f64 / to_i64 return their type unconditionally (0 for
-            // non-numeric inputs), so we accept the coercion. We still
-            // bail to Null when neither arg is numeric-shaped so that
-            // `ROUND('hello')` doesn't silently return 0.
-            let (x, n) = match (args.first(), args.get(1)) {
-                (Some(v), Some(d)) => (to_f64(v), to_i64(d)),
-                (Some(v), None) => (to_f64(v), 0),
-                _ => return Value::Null,
-            };
-            if n >= 0 {
-                let factor = 10f64.powi(n as i32);
-                Value::Float((x * factor).round() / factor)
-            } else {
-                let factor = 10f64.powi(-n as i32);
-                Value::Float((x / factor).round() * factor)
-            }
-        }
-        // RAND() — pseudo-random Float in [0, 1) using thread-local xorshift64*.
-        "RAND" => {
-            use std::cell::Cell;
-            thread_local! {
-                static LCG_STATE: Cell<u64> = const { Cell::new(0x853c49e6748fea9b) };
-            }
-            LCG_STATE.with(|s| {
-                let mut x = s.get();
-                x ^= x >> 12;
-                x ^= x << 25;
-                x ^= x >> 27;
-                s.set(x.wrapping_mul(0x2545_f491_4f6c_dd1d));
-                Value::Float(((x >> 11) as f64) / (1u64 << 53) as f64)
-            })
-        }
         _ => Value::Null,
     }
 }
@@ -1988,85 +1925,18 @@ fn date_add_sub(args: &[Value], add: bool) -> Value {
     }
 }
 // =====================================================================
-// Issue #4490 — date/time helpers for the new NOW / CURDATE / CURTIME /
-// YEAR / MONTH / DAY / DATEDIFF eval_fn arms.
-//
-// `current_timestamp_text` and `parse_date_to_days` operate in UTC. This
-// is intentional: it avoids timezone-table dependency and matches MySQL's
-// default session behavior on servers configured with `time_zone = UTC`.
-// Tests in `crates/executor/tests/` assert the resulting strings match
-// the documented regex / parse grammar; absolute calendar correctness
-// across timezone boundaries is out of scope for this bugfix.
+// Issue #4490 — date/time helpers (NOW / CURDATE / CURTIME / YEAR / MONTH /
+// DAY / DATEDIFF eval_fn arms) were originally introduced here by PR #4508.
+// After rebase on top of develop/v3.12.0 (which already carries PR #4493's
+// matching arms at the start of the eval_fn match block), the entire helper
+// set is dead code: the matching arms in eval_fn route first, so this file's
+// `parse_date_to_days` / `wall_clock_secs` / `current_timestamp_text` /
+// `extract_time_component` / `extract_date_component_opt` are never reached.
+// Removed during PR #4508 merge-conflict resolution to eliminate the
+// duplicate-`parse_date_to_days` E0428 compile error. PR #4493's helpers
+// further down (`parse_date_field` / `parse_date_to_days` / `civil_from_days` /
+// `days_from_civil`) remain the single source of truth.
 // =====================================================================
-
-/// Current wall-clock seconds since the UNIX epoch (UTC).
-fn wall_clock_secs() -> i64 {
-    SystemTime::now()
-        .duration_since(UNIX_EPOCH)
-        .map(|d| d.as_secs() as i64)
-        .unwrap_or(0)
-}
-
-/// Render `secs` (seconds since UNIX epoch, UTC) as MySQL 5.7 text:
-/// `YYYY-MM-DD HH:MM:SS` when `with_time`, else `YYYY-MM-DD`.
-fn current_timestamp_text(secs: i64, with_time: bool) -> Value {
-    let (y, m, d) = civil_from_days(secs.div_euclid(86_400));
-    let day_secs = secs.rem_euclid(86_400) as u32;
-    let hh = day_secs / 3600;
-    let mm = (day_secs % 3600) / 60;
-    let ss = day_secs % 60;
-    if with_time {
-        Value::Text(format!(
-            "{:04}-{:02}-{:02} {:02}:{:02}:{:02}",
-            y, m, d, hh, mm, ss
-        ))
-    } else {
-        Value::Text(format!("{:04}-{:02}-{:02}", y, m, d))
-    }
-}
-
-/// Extract the `HH:MM:SS` time portion from a `YYYY-MM-DD HH:MM:SS` string.
-fn extract_time_component(s: &str) -> String {
-    // Strip leading date portion if present.
-    let tail = s.get(11..).unwrap_or(s);
-    tail.trim().to_string()
-}
-
-/// `component` is 0=year, 1=month, 2=day. Returns Integer on success.
-fn extract_date_component_opt(args: &[Value], component: usize) -> Value {
-    match args.first() {
-        Some(v) => match parse_date_to_days(&v.to_sql_string()) {
-            Some(days) => {
-                let (y, m, d) = civil_from_days(days);
-                let chosen = match component {
-                    0 => y,
-                    1 => m,
-                    _ => d,
-                };
-                Value::Integer(chosen)
-            }
-            None => Value::Null,
-        },
-        None => Value::Null,
-    }
-}
-
-/// Parse `YYYY-MM-DD[ HH:MM:SS]` as days since the UNIX epoch. Returns
-/// None if the leading 10 characters don't parse as a civil date.
-fn parse_date_to_days(s: &str) -> Option<i64> {
-    if s.len() < 10 {
-        return None;
-    }
-    let y: i64 = s[..4].parse().ok()?;
-    let m: i64 = s[5..7].parse().ok()?;
-    let d: i64 = s[8..10].parse().ok()?;
-    if !(1..=12).contains(&m) || !(1..=31).contains(&d) {
-        return None;
-    }
-    Some(days_from_civil(y, m, d))
-}
-
-// ===== end Issue #4490 helpers =====
 
 /// Howard Hinnant's days_from_civil: number of days since 1970-01-01
 /// (or any other civil date), proleptic Gregorian.
