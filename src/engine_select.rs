@@ -177,6 +177,48 @@ pub fn dump_v312_58_sprint5_diag() -> String {
         DIAG_HASH_SEMI_JOIN_PROBE_HITS.load(Ordering::SeqCst),
     )
 }
+// V312-58 Sprint 6: diagnostics for the `try_decorrelate` wiring
+// introduced into `execute_select`. RESET before each test via
+// `reset_v312_58_sprint6_diag()`. DUMP via `dump_v312_58_sprint6_diag()`.
+// Counters are zero until the wiring commits (3-5) land.
+static DIAG_TRY_DECORRELATE_CALLS: AtomicU64 = AtomicU64::new(0);
+static DIAG_TRY_DECORRELATE_HITS: AtomicU64 = AtomicU64::new(0);
+static DIAG_DECORRELATED_MATERIALIZE: AtomicU64 = AtomicU64::new(0);
+static DIAG_DECORRELATED_SEMI_PROBE: AtomicU64 = AtomicU64::new(0);
+static DIAG_DECORRELATED_ANTI_PROBE: AtomicU64 = AtomicU64::new(0);
+static DIAG_DECORRELATED_IN_PROBE: AtomicU64 = AtomicU64::new(0);
+#[allow(dead_code)]
+pub fn reset_v312_58_sprint6_diag() {
+    DIAG_TRY_DECORRELATE_CALLS.store(0, Ordering::SeqCst);
+    DIAG_TRY_DECORRELATE_HITS.store(0, Ordering::SeqCst);
+    DIAG_DECORRELATED_MATERIALIZE.store(0, Ordering::SeqCst);
+    DIAG_DECORRELATED_SEMI_PROBE.store(0, Ordering::SeqCst);
+    DIAG_DECORRELATED_ANTI_PROBE.store(0, Ordering::SeqCst);
+    DIAG_DECORRELATED_IN_PROBE.store(0, Ordering::SeqCst);
+}
+#[allow(dead_code)]
+pub fn dump_v312_58_sprint6_diag() -> String {
+    // Each counter on its own line with an unambiguous `key=value` token
+    // so `counter_value(&snap, "<key>")` can locate it. Putting multiple
+    // counters on one line (e.g. `calls=2 hits=1`) breaks the substring
+    // search because the needle `"try_decorrelate hits="` does NOT
+    // appear verbatim in `try_decorrelate calls=2 hits=1`.
+    format!(
+        "V312-58 Sprint 6 diag:\n\
+         try_decorrelate_calls={}\n\
+         try_decorrelate_hits={}\n\
+         try_decorrelate_materialize={}\n\
+         decorrelated_probe_semi={}\n\
+         decorrelated_probe_anti={}\n\
+         decorrelated_probe_in={}",
+        DIAG_TRY_DECORRELATE_CALLS.load(Ordering::SeqCst),
+        DIAG_TRY_DECORRELATE_HITS.load(Ordering::SeqCst),
+        DIAG_DECORRELATED_MATERIALIZE.load(Ordering::SeqCst),
+        DIAG_DECORRELATED_SEMI_PROBE.load(Ordering::SeqCst),
+        DIAG_DECORRELATED_ANTI_PROBE.load(Ordering::SeqCst),
+        DIAG_DECORRELATED_IN_PROBE.load(Ordering::SeqCst),
+    )
+}
 #[allow(dead_code)]
 pub fn dump_v312_58_sprint3_diag() -> String {
     format!(
@@ -360,6 +402,33 @@ impl<S: StorageEngine + 'static> ExecutionEngine<S> {
                         // Best-effort prewarm; non-matching shapes return None
                         // and the lazy per-row path takes over.
                         let _ = self.prewarm_scalar_agg_index_for_select(subq);
+                    }
+                }
+            }
+            // V312-58 Sprint 6 (Issue #4444 followup — wire
+            // `try_decorrelate`): call the unified decorator so the
+            // Patterns 1-3 (`ExistsSemi`/`NotExistsAnti`/`InToInnerJoin`)
+            // surfaces are visible to the engine. Pattern 4
+            // (`ScalarAggInWhere`) is handled above via
+            // `prewarm_scalar_agg_index_for_select`; Pattern 1 (`Semi`)
+            // behavior is still routed through the existing
+            // `collect_hash_semi_join_indexes` arm below — the counter
+            // is the witness that `try_decorrelate` reached the
+            // engine. Patterns 2-3 (`Anti`/`In`) wire through commits 4-5.
+            DIAG_TRY_DECORRELATE_CALLS.fetch_add(1, Ordering::SeqCst);
+            if let Some(decorrelated) =
+                sqlrustgo_optimizer::decorrelate::try_decorrelate(where_expr)
+            {
+                if !decorrelated.inner_selects.is_empty() {
+                    DIAG_TRY_DECORRELATE_HITS.fetch_add(1, Ordering::SeqCst);
+                    for _inner in &decorrelated.inner_selects {
+                        // Each inner SELECT will be consumed by the
+                        // appropriate join-kind handler. Today only
+                        // the diagnostic advances; the behavior path
+                        // for Pattern 1 is the existing
+                        // HashSemiJoinIndex probe, for Pattern 2-3 the
+                        // arm lands in commits 4-5.
+                        DIAG_DECORRELATED_MATERIALIZE.fetch_add(1, Ordering::SeqCst);
                     }
                 }
             }
