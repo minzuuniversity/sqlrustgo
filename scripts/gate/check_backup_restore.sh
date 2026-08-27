@@ -4,15 +4,18 @@
 # Verifies P1-1 deliverables:
 #   1. crates/admin crate exists with sqlrustgo-admin binary
 #   2. 4 subcommands (backup, restore, verify, pitr) defined via clap
-#   3. tests/backup_restore_test.rs has >= 50 tests
+#   3. tests/integration/sql/backup_restore_test.rs has >= 50 tests
+#      (canonical e2e test file with 51 tests, registered as
+#       `cargo test --test backup_restore_test -p sqlrustgo`)
 #   4. cargo test -p sqlrustgo-admin PASS
-#   5. cargo test --test backup_restore_test PASS
+#   5. cargo test --test backup_restore_test -p sqlrustgo PASS
 #   6. End-to-end CLI smoke test (4 commands)
 #
 # Exit code: 0 = PASS, 1 = FAIL
 #
 # Refs: docs/openspec/3173-p11-backup-restore.md
 #       V390_TEST_PLAN.md §G6
+#       Issue #4534 — fix test path drift (file is in tests/integration/sql/)
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 PROJECT_ROOT="$(cd "$SCRIPT_DIR/../.." && pwd)"
@@ -53,7 +56,11 @@ done
 echo "  [2/6] PASS: 4 subcommands (backup, restore, verify, pitr) defined"
 
 # 3. e2e test file has >= 50 tests
-TEST_FILE=tests/backup_restore_test.rs
+# Issue #4534: the canonical backup_restore e2e test file lives in
+# tests/integration/sql/backup_restore_test.rs (51 tests, registered via
+# Cargo.toml as `name = "backup_restore_test"` for the integration crate).
+# There is no `tests/backup_restore_test.rs` at the workspace root.
+TEST_FILE=tests/integration/sql/backup_restore_test.rs
 if [ ! -f "$TEST_FILE" ]; then
     echo "  [3/6] FAIL: $TEST_FILE not found"
     exit 1
@@ -63,7 +70,7 @@ if [ "$TESTS" -lt 50 ]; then
     echo "  [3/6] FAIL: only $TESTS tests (expected >= 50)"
     exit 1
 fi
-echo "  [3/6] PASS: $TESTS e2e tests in tests/backup_restore_test.rs"
+echo "  [3/6] PASS: $TESTS e2e tests in $TEST_FILE"
 
 # 4. cargo test -p sqlrustgo-admin PASS
 echo "  [4/6] Running cargo test -p sqlrustgo-admin (5min budget)..."
@@ -76,8 +83,12 @@ fi
 echo "  [4/6] PASS: sqlrustgo-admin unit tests"
 
 # 5. e2e tests PASS
-echo "  [5/6] Running cargo test --test backup_restore_test (5min budget)..."
-timeout 300 cargo test --test backup_restore_test 2>&1 | tail -3
+# Issue #4534: pass `-p sqlrustgo` so cargo picks up the integration test
+# from tests/integration/sql/backup_restore_test.rs (registered as
+# `name = "backup_restore_test"` in root Cargo.toml). Without `-p` cargo
+# looks for a top-level test target that does not exist.
+echo "  [5/6] Running cargo test -p sqlrustgo --test backup_restore_test (5min budget)..."
+timeout 300 cargo test -p sqlrustgo --test backup_restore_test 2>&1 | tail -3
 TEST_RC=${PIPESTATUS[0]}
 if [ "$TEST_RC" -ne 0 ]; then
     echo "  [5/6] FAIL: backup_restore_test failed"
