@@ -34,6 +34,31 @@ Per-class breakdown:
 
 Artifact: `docs/releases/v3.12.0/evidence/v312-59/soak/smoke_60s_v5.json`
 
+## 1b. Sustained SOAK (5min, post-FIX) — PASS
+
+After fixing the v3.12.0 INSERT-path global-lock bottleneck (see §6
+and `SOAK_TUNING_REPORT.md`), a sustained 5min SOAK achieved:
+
+| Metric | Value |
+|---|---|
+| Total ops | 2679 |
+| Succeeded | 2679 |
+| Failed | 0 |
+| Failure rate | 0.0000 |
+| QPS | **8.93** (sustained, design target 10) |
+
+Per-class breakdown:
+
+| Class | ops | avg ms | p99 ms |
+|---|---|---|---|
+| W1 OLTP | 890/890 | 0.11 | 2 |
+| W2 read-heavy | 596/596 | 0.06 | 1 |
+| W3 aggregation | 299/299 | 1.85 | 3 |
+| W4 DDL | 299/299 | 0.00 | 0 |
+| W5 reports | 595/595 | 0.33 | 1 |
+
+Artifact: `docs/releases/v3.12.0/evidence/v312-59/soak/soak_5min_FIXED.json`
+
 ### 1.1 Smoke pre-fixes observed
 
 Before the smoke run reached 0% failure rate, five issues were found in
