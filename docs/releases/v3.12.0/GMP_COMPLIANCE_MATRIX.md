@@ -58,8 +58,8 @@ This matrix maps GMP internal-audit retrieval controls to implementation and tes
 
 > **signed_at:** 2026-08-22 (v3.12.0 GA promotion cycle)
 > **signed_by:** v3.12.0 GA Release Engineering (OpenClaw)
-> **gate_issue:** #4387 (V312-59-D)
-> **umbrella:** #4383
+> **gate_issue:** #4505 (V312-59-D v2; re-activated from #4387)
+> **umbrella:** #4497 (V312-59-D v2; umbrella re-activated from #4383)
 > **verdict:** GA-8 GMP matrix signoff recorded. Rows above remain PLANNED for the
 > GMP retrieval/audit subsystem; this signoff attests that the **release-level**
 > GMP controls (audit log, access control, backup/restore, retrieval quality)
@@ -77,8 +77,8 @@ This matrix maps GMP internal-audit retrieval controls to implementation and tes
 
 > **signed_at:** 2026-08-22 (v3.12.0 GA promotion cycle)
 > **signed_by:** v3.12.0 GA Release Engineering (OpenClaw)
-> **gate_issue:** #4387 (V312-59-D)
-> **umbrella:** #4383
+> **gate_issue:** #4505 (V312-59-D v2; re-activated from #4387)
+> **umbrella:** #4497 (V312-59-D v2; umbrella re-activated from #4383)
 > **verdict:** GA-8 GMP matrix signoff recorded. The release-level GMP
 > controls are gated by GA-3 (security), GA-6 (backup/recovery/upgrade),
 > and GA-7 (docs consistency). Subsystem rows above remain PLANNED until

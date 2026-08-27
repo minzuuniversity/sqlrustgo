@@ -20,6 +20,7 @@ use sqlrustgo_catalog::{
     auth::UserIdentity, AuthErrorCode, Catalog, ObjectRef, Privilege, StoredProcedure,
 };
 use sqlrustgo_executor::ast_adapter::AstAdapter;
+use sqlrustgo_executor::expr as expr_mod;
 use sqlrustgo_executor::stored_proc::StoredProcExecutor;
 use sqlrustgo_executor::trigger::{
     TriggerEvent as ExecTriggerEvent, TriggerExecutor, TriggerTiming as ExecTriggerTiming,
@@ -34,16 +35,17 @@ use sqlrustgo_optimizer::unified_plan::UnifiedPlan;
 use sqlrustgo_parser::parser::{
     AggregateCall, AggregateFunction, AlterSequenceStatement, AlterTableOperation,
     AlterTableStatement, AlterUserStatement, CallStatement, CompressionAlgorithm,
-    CreateDatabaseStatement, CreateIndexStatement, CreateProcedureStatement, CreateRoleStatement,
-    CreateSequenceStatement, CreateTableStatement, CreateTriggerStatement, CreateViewStatement,
-    DescribeStatement, DropDatabaseStatement, DropIndexStatement, DropProcedureStatement,
-    DropRoleStatement, DropSequenceStatement, DropTableStatement, DropViewStatement,
-    ExceptStatement, GrantRoleStatement, GrantStatement, InsertStatement, IntersectStatement,
-    MergeStatement, ObjectType as ParserObjectType, OrderByExpression,
-    Privilege as ParserPrivilege, RevokeRoleStatement, RevokeStatement, SelectStatement,
-    SetRoleStatement, ShowStatement, StorageEngineSpec, StoredProcParam as ParserStoredProcParam,
-    StoredProcParamMode as ParserParamMode, StoredProcStatement as ParserStatement,
-    TruncateStatement, UnionStatement,
+    CreateDatabaseStatement, CreateFunctionStatement, CreateIndexStatement,
+    CreateProcedureStatement, CreateRoleStatement, CreateSequenceStatement, CreateTableStatement,
+    CreateTriggerStatement, CreateUserStatement, CreateViewStatement, DescribeStatement,
+    DropDatabaseStatement, DropFunctionStatement, DropIndexStatement, DropProcedureStatement,
+    DropRoleStatement, DropSequenceStatement, DropTableStatement, DropTriggerStatement,
+    DropUserStatement, DropViewStatement, ExceptStatement, GrantRoleStatement, GrantStatement,
+    InsertStatement, IntersectStatement, MergeStatement, ObjectType as ParserObjectType,
+    OrderByExpression, Privilege as ParserPrivilege, RevokeRoleStatement, RevokeStatement,
+    SelectStatement, SetRoleStatement, ShowStatement, StorageEngineSpec,
+    StoredProcParam as ParserStoredProcParam, StoredProcParamMode as ParserParamMode,
+    StoredProcStatement as ParserStatement, TruncateStatement, UnionStatement,
 };
 use sqlrustgo_parser::transaction::IsolationLevel as ParserIsolationLevel;
 use sqlrustgo_parser::JoinType;
@@ -193,7 +195,13 @@ impl<S: StorageEngine + 'static> ExecutionEngine<S> {
         }
         Self {
             storage,
-            catalog: None,
+            // V312-58 / Issue #4513: auto-initialize a default catalog so
+            // CREATE / CALL / DROP PROCEDURE (and SHOW variants that
+            // route through the catalog) work out-of-the-box for
+            // `ExecutionEngine::new()`. Callers that want a custom
+            // catalog can still override via `with_catalog(...)` /
+            // `with_memory_and_catalog(...)`.
+            catalog: Some(Arc::new(RwLock::new(Catalog::new("default")))),
             stats: Arc::new(RwLock::new(ExecutionStats::default())),
             cbo_enabled,
             transaction_manager: TransactionManager::new(),
@@ -748,12 +756,18 @@ impl<S: StorageEngine + 'static> ExecutionEngine<S> {
             Statement::CreateTrigger(ref create_trigger) => {
                 self.execute_create_trigger(create_trigger)
             }
+            // V312-58 / Issue #4514: DROP TRIGGER removes the
+            // registration from the storage-layer trigger catalog.
+            Statement::DropTrigger(ref drop_trigger) => self.execute_drop_trigger(drop_trigger),
             Statement::Call(ref call) => self.execute_call(call),
             Statement::CreateProcedure(ref create_proc) => {
                 self.execute_create_procedure(create_proc)
             }
             // V312-55A / Issue #4238: route DROP PROCEDURE.
             Statement::DropProcedure(ref drop_proc) => self.execute_drop_procedure(drop_proc),
+            // V312-58 / Issue #4512: scalar UDF lifecycle.
+            Statement::CreateFunction(ref create_fn) => self.execute_create_function(create_fn),
+            Statement::DropFunction(ref drop_fn) => self.execute_drop_function(drop_fn),
             Statement::Transaction(ref txn) => self.execute_transaction(txn),
             // SEM-1 (#3172): SAVEPOINT/ROLLBACK TO SAVEPOINT/RELEASE SAVEPOINT
             Statement::SavepointStatement { ref name, op } => self.execute_savepoint(name, op),
@@ -787,6 +801,10 @@ impl<S: StorageEngine + 'static> ExecutionEngine<S> {
             Statement::AlterUser(_) => Err(SqlError::ExecutionError(
                 "ALTER USER not yet implemented".to_string(),
             )),
+            // V312-58 / Issue #4515: CREATE USER 'name'@'host'
+            Statement::CreateUser(ref create_user) => self.execute_create_user(create_user),
+            // V312-58 / Issue #4515: DROP USER 'name'@'host' [IF EXISTS]
+            Statement::DropUser(ref drop_user) => self.execute_drop_user(drop_user),
             // V312-35 #4218: KILL <id> / KILL CONNECTION <id> /
             // KILL QUERY <id>. Wired to StorageEngine::kill_connection.
             Statement::Kill {
@@ -1134,6 +1152,27 @@ impl<S: StorageEngine + 'static> ExecutionEngine<S> {
         Ok(ExecutorResult::empty())
     }
 
+    /// V312-58 / Issue #4514: DROP TRIGGER.
+    ///
+    /// Mirrors the catalog-not-found handling of DROP PROCEDURE so the
+    /// error surface is consistent across the DDL family. The
+    /// `IF EXISTS` variant is a no-op when the trigger is missing
+    /// (matches MySQL/MariaDB behaviour).
+    fn execute_drop_trigger(&self, stmt: &DropTriggerStatement) -> SqlResult<ExecutorResult> {
+        let mut storage = self.storage.write();
+        if storage.get_trigger(&stmt.name).is_none() {
+            if stmt.if_exists {
+                return Ok(ExecutorResult::empty());
+            }
+            return Err(SqlError::ExecutionError(format!(
+                "Trigger '{}' not found",
+                stmt.name
+            )));
+        }
+        storage.drop_trigger(&stmt.name)?;
+        Ok(ExecutorResult::empty())
+    }
+
     fn execute_call(&self, call: &CallStatement) -> SqlResult<ExecutorResult> {
         let catalog_guard = self.catalog.as_ref().ok_or_else(|| {
             SqlError::ExecutionError("CALL statement requires stored procedure catalog".to_string())
@@ -1386,6 +1425,40 @@ impl<S: StorageEngine + 'static> ExecutionEngine<S> {
         if catalog.remove_stored_procedure(&stmt.name).is_none() && !stmt.if_exists {
             return Err(SqlError::ExecutionError(format!(
                 "DROP PROCEDURE failed: procedure '{}' not found",
+                stmt.name
+            )));
+        }
+        Ok(ExecutorResult::empty())
+    }
+
+    /// V312-58 / Issue #4512: register a scalar UDF in the executor's
+    /// thread-local registry.
+    ///
+    /// Validation is intentionally minimal — the body is re-parsed at
+    /// call time inside `invoke_udf`, so we can defer arity / syntax
+    /// checks until the first invocation. The `return_type` and
+    /// `DETERMINISTIC` clauses are stored as metadata but not yet
+    /// enforced (no plans shipped for optimizer hints / strict-typing
+    /// in v3.12 — see plan §6).
+    fn execute_create_function(&self, stmt: &CreateFunctionStatement) -> SqlResult<ExecutorResult> {
+        let param_names: Vec<String> = stmt.params.iter().map(|p| p.name.clone()).collect();
+        expr_mod::register_udf(
+            &stmt.name,
+            param_names,
+            stmt.return_type.clone(),
+            stmt.body_expr.clone(),
+        );
+        Ok(ExecutorResult::empty())
+    }
+
+    /// V312-58 / Issue #4512: drop a scalar UDF. `IF EXISTS` makes the
+    /// operation a no-op when the UDF does not exist (matches the
+    /// MySQL convention for IF EXISTS on function drops).
+    fn execute_drop_function(&self, stmt: &DropFunctionStatement) -> SqlResult<ExecutorResult> {
+        let removed = expr_mod::drop_udf(&stmt.name);
+        if !removed && !stmt.if_exists {
+            return Err(SqlError::ExecutionError(format!(
+                "DROP FUNCTION failed: function '{}' not found",
                 stmt.name
             )));
         }

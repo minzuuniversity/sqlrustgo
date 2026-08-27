@@ -52,6 +52,28 @@ pub fn get_and_clear_derived_subqueries() -> std::collections::HashMap<String, B
     })
 }
 
+/// V312-58 / Issue #4512: render a token as a SQL fragment suitable
+/// for re-tokenization by the lexer.
+///
+/// Most token variants have a canonical `Display` form that
+/// round-trips through the lexer's keyword table (e.g. `Token::Plus`
+/// → `"+"`, `Token::And` → `"AND"`). For the literal-bearing tokens
+/// (`Identifier`, `StringLiteral`, `NumberLiteral`, `BooleanLiteral`)
+/// we extract the inner payload because their `Display` impl emits
+/// `IDENTIFIER(x)` / `'x'` / `42` / `true` shapes that wouldn't
+/// survive the lexer's strict uppercase-keyword dispatch.
+fn token_to_text(tok: &Token) -> String {
+    match tok {
+        Token::Identifier(s) => s.clone(),
+        Token::StringLiteral(s) => format!("'{}'", s),
+        Token::NumberLiteral(s) => s.clone(),
+        Token::BooleanLiteral(true) => "TRUE".to_string(),
+        Token::BooleanLiteral(false) => "FALSE".to_string(),
+        Token::Semicolon => String::new(),
+        _ => format!("{}", tok),
+    }
+}
+
 /// SQL Statement types
 #[derive(Debug, Clone, PartialEq)]
 pub enum Statement {
@@ -79,12 +101,26 @@ pub enum Statement {
     WithDml(WithDmlStatement),
     AlterTable(AlterTableStatement),
     AlterUser(AlterUserStatement),
+    /// V312-58 / Issue #4515: register a new user.
+    /// Mirrors MySQL `CREATE USER 'name'@'host' [IDENTIFIED BY 'pwd']`.
+    CreateUser(CreateUserStatement),
+    /// V312-58 / Issue #4515: drop a registered user.
+    /// `DROP USER 'name'@'host' [IF EXISTS]`.
+    DropUser(DropUserStatement),
     Call(CallStatement),
     CreateProcedure(CreateProcedureStatement),
     /// V312-55A / Issue #4238: DROP PROCEDURE [IF EXISTS] name
     DropProcedure(DropProcedureStatement),
+    /// V312-58 / Issue #4512: scalar UDF definition.
+    CreateFunction(CreateFunctionStatement),
+    /// V312-58 / Issue #4512: drop a scalar UDF from the engine-local
+    /// registry. `IF EXISTS` follows the standard DROP shape.
+    DropFunction(DropFunctionStatement),
     Union(UnionStatement),
     CreateTrigger(CreateTriggerStatement),
+    /// V312-58 / Issue #4514: remove a trigger from the storage-layer
+    /// trigger catalog. `IF EXISTS` follows the standard DROP shape.
+    DropTrigger(DropTriggerStatement),
     /// SQL-92 INTERSECT (V310-06 PR2 / Issue #3723 C-2a).
     Intersect(IntersectStatement),
     /// SQL-92 EXCEPT (V310-06 PR2 / Issue #3723 C-2b).
@@ -236,6 +272,33 @@ pub struct AlterUserStatement {
     pub new_password_hash: Option<String>,
 }
 
+/// CREATE USER statement
+///
+/// V312-58 / Issue #4515: `CREATE USER 'name'@'host' [IDENTIFIED BY 'pwd']`.
+/// Mirrors the surface required by the MySQL privilege tutorial:
+/// - `name` and `host` are the canonical `user`/`host` pair
+///   (`'name'@'host'` or `'name'@'%'`-style).
+/// - `password_hash` is optional (some sites create accounts without a
+///   password); when present it is stored verbatim in the catalog
+///   auth table — callers are expected to hash first.
+#[derive(Debug, Clone, PartialEq)]
+pub struct CreateUserStatement {
+    pub user: String,
+    pub host: String,
+    pub password_hash: Option<String>,
+}
+
+/// DROP USER statement
+///
+/// V312-58 / Issue #4515: `DROP USER 'name'@'host' [IF EXISTS]`.
+/// `if_exists` follows the standard DROP shape.
+#[derive(Debug, Clone, PartialEq)]
+pub struct DropUserStatement {
+    pub user: String,
+    pub host: String,
+    pub if_exists: bool,
+}
+
 /// ALTER TABLE operation types
 #[derive(Debug, Clone, PartialEq)]
 pub enum AlterTableOperation {
@@ -312,6 +375,42 @@ pub struct DropProcedureStatement {
     pub if_exists: bool,
 }
 
+/// V312-58 / Issue #4512: scalar user-defined function parameter.
+///
+/// Mirrors the StoredProcParam shape but with `mode` fixed to `In`
+/// (UDFs only accept IN parameters; OUT/INOUT are procedure-only).
+/// The data_type is stored as a String (canonical name from the lexer)
+/// so the executor can cast arg values to it on invocation.
+#[derive(Debug, Clone, PartialEq)]
+pub struct UdfParam {
+    pub name: String,
+    pub data_type: String,
+}
+
+/// V312-58 / Issue #4512: CREATE FUNCTION (scalar UDF) statement.
+///
+/// `body_expr` is the raw text after `RETURN` in the source SQL.
+/// The executor re-parses it as a standalone expression when the UDF
+/// is invoked (so a UDF body can reference its declared parameters as
+/// bare identifiers). `deterministic` records the optional
+/// `[DETERMINISTIC]` annotation (MySQL convention; used by the
+/// executor for future caching, currently informational).
+#[derive(Debug, Clone, PartialEq)]
+pub struct CreateFunctionStatement {
+    pub name: String,
+    pub params: Vec<UdfParam>,
+    pub return_type: String,
+    pub deterministic: bool,
+    pub body_expr: String,
+}
+
+/// V312-58 / Issue #4512: DROP FUNCTION [IF EXISTS] name.
+#[derive(Debug, Clone, PartialEq)]
+pub struct DropFunctionStatement {
+    pub name: String,
+    pub if_exists: bool,
+}
+
 /// Stored procedure parameter
 #[derive(Debug, Clone, PartialEq)]
 pub struct StoredProcParam {
@@ -371,6 +470,18 @@ pub struct CreateTriggerStatement {
     pub timing: String,
     pub events: Vec<String>,
     pub body: String,
+}
+
+/// DROP TRIGGER statement.
+///
+/// V312-58 / Issue #4514: `DROP TRIGGER [IF EXISTS] name`.
+/// `if_exists` matches the standard DROP shape — when true, a missing
+/// trigger is silently ignored; when false, a missing trigger is an
+/// error.
+#[derive(Debug, Clone, PartialEq)]
+pub struct DropTriggerStatement {
+    pub name: String,
+    pub if_exists: bool,
 }
 
 /// CREATE VIEW statement
@@ -2492,17 +2603,20 @@ impl Parser {
                 }
                 Ok(stmt)
             }
+            Some(Token::Function) => self.parse_create_function(),
             Some(Token::Trigger) => self.parse_create_trigger(),
             Some(Token::Role) => self.parse_create_role(),
             Some(Token::View) => self.parse_create_view(),
             Some(Token::Database) => self.parse_create_database(),
             Some(Token::Sequence) => self.parse_create_sequence(),
+            // V312-58 / Issue #4515: CREATE USER 'name'@'host'
+            Some(Token::User) => self.parse_create_user(),
             Some(t) => Err(format!(
-                "Expected TABLE, INDEX, PROCEDURE, TRIGGER, ROLE, VIEW, SEQUENCE, or DATABASE after CREATE, got {:?}",
+                "Expected TABLE, INDEX, PROCEDURE, FUNCTION, TRIGGER, ROLE, VIEW, SEQUENCE, DATABASE, or USER after CREATE, got {:?}",
                 t
             )),
             None => Err(
-                "Expected TABLE, INDEX, PROCEDURE, TRIGGER, ROLE, VIEW, SEQUENCE, or DATABASE after CREATE"
+                "Expected TABLE, INDEX, PROCEDURE, FUNCTION, TRIGGER, ROLE, VIEW, SEQUENCE, DATABASE, or USER after CREATE"
                     .to_string(),
             ),
         }
@@ -2869,6 +2983,161 @@ impl Parser {
         }))
     }
 
+    /// V312-58 / Issue #4512: parse `CREATE FUNCTION name(p1 TYPE, ...) RETURNS TYPE [DETERMINISTIC] RETURN expr`.
+    ///
+    /// The caller (`parse_create`) has already consumed the leading
+    /// `CREATE` keyword. We consume `FUNCTION`, parse the signature
+    /// (name, parameter list, return type, optional `DETERMINISTIC`,
+    /// and the `RETURN <expr>` body). The body expression is stored
+    /// as raw text and re-parsed at invocation time by the executor
+    /// so it can resolve UDF parameter references against the
+    /// call-site argument values.
+    ///
+    /// Syntax:
+    ///   CREATE FUNCTION name ( [param TYPE [, param TYPE]*] )
+    ///       RETURNS TYPE
+    ///       [DETERMINISTIC]
+    ///       RETURN expr ;
+    fn parse_create_function(&mut self) -> Result<Statement, String> {
+        self.expect(Token::Function)?;
+
+        let name = match self.next() {
+            Some(Token::Identifier(name)) => name,
+            Some(t) => return Err(format!("Expected function name, got {:?}", t)),
+            None => return Err("Expected function name".to_string()),
+        };
+
+        // Parameter list — same shape as CREATE PROCEDURE but every
+        // param is implicitly IN (UDFs have no OUT/INOUT).
+        self.expect(Token::LParen)?;
+        let mut params = Vec::new();
+        if !matches!(self.current(), Some(Token::RParen) | None) {
+            loop {
+                let param_name = match self.next() {
+                    Some(Token::Identifier(n)) => n,
+                    Some(t) => return Err(format!("Expected UDF parameter name, got {:?}", t)),
+                    None => return Err("Expected UDF parameter name".to_string()),
+                };
+                let data_type = match self.next() {
+                    Some(Token::Identifier(typename)) => typename,
+                    Some(Token::Integer) => "INTEGER".to_string(),
+                    Some(Token::Text) => "TEXT".to_string(),
+                    Some(Token::Float) => "FLOAT".to_string(),
+                    Some(Token::Boolean) => "BOOLEAN".to_string(),
+                    Some(t) => return Err(format!("Expected UDF parameter type, got {:?}", t)),
+                    None => return Err("Expected UDF parameter type".to_string()),
+                };
+                params.push(UdfParam {
+                    name: param_name,
+                    data_type,
+                });
+                if matches!(self.current(), Some(Token::Comma)) {
+                    self.next();
+                } else {
+                    break;
+                }
+            }
+        }
+        self.expect(Token::RParen)?;
+
+        // RETURNS <type>
+        self.expect(Token::Returns)?;
+        let return_type = match self.next() {
+            Some(Token::Identifier(typename)) => typename,
+            Some(Token::Integer) => "INTEGER".to_string(),
+            Some(Token::Text) => "TEXT".to_string(),
+            Some(Token::Float) => "FLOAT".to_string(),
+            Some(Token::Boolean) => "BOOLEAN".to_string(),
+            Some(t) => return Err(format!("Expected return type, got {:?}", t)),
+            None => return Err("Expected return type".to_string()),
+        };
+
+        // Optional DETERMINISTIC modifier (records informational flag).
+        let deterministic = if matches!(self.current(), Some(Token::Deterministic)) {
+            self.next();
+            true
+        } else {
+            false
+        };
+
+        // RETURN <expr> — capture the body as raw text. The executor
+        // re-parses it when the UDF is invoked. We snapshot tokens
+        // until we hit a top-level `;` or EOF (mirrors the simpler
+        // single-expression body MySQL accepts for scalar UDFs).
+        self.expect(Token::Return)?;
+        let mut body_expr = String::new();
+        let mut depth: u32 = 0;
+        loop {
+            match self.current() {
+                None => break,
+                Some(Token::Semicolon) if depth == 0 => break,
+                Some(Token::LParen) => {
+                    depth += 1;
+                    body_expr.push('(');
+                    self.next();
+                }
+                Some(Token::RParen) => {
+                    if depth == 0 {
+                        break;
+                    }
+                    depth -= 1;
+                    body_expr.push(')');
+                    self.next();
+                }
+                Some(tok) => {
+                    // Append a textual representation of this token to the
+                    // body buffer. We use the same `Display` form the lexer
+                    // emits so re-tokenization on invocation produces the
+                    // same span.
+                    body_expr.push_str(&format!("{} ", token_to_text(tok)));
+                    self.next();
+                }
+            }
+        }
+        let body_expr = body_expr.trim().to_string();
+        if body_expr.is_empty() {
+            return Err("CREATE FUNCTION requires a non-empty body after RETURN".to_string());
+        }
+
+        Ok(Statement::CreateFunction(CreateFunctionStatement {
+            name,
+            params,
+            return_type,
+            deterministic,
+            body_expr,
+        }))
+    }
+
+    /// V312-58 / Issue #4512: parse `DROP FUNCTION [IF EXISTS] name`.
+    ///
+    /// The caller (`parse_drop`) has already consumed the leading
+    /// `DROP` keyword. Mirrors the DROP TABLE/DROP VIEW/DROP
+    /// PROCEDURE shape.
+    fn parse_drop_function(&mut self) -> Result<Statement, String> {
+        self.expect(Token::Function)?;
+        let if_exists = if matches!(self.current(), Some(Token::If)) {
+            self.next();
+            match self.current() {
+                Some(Token::Exists) => {
+                    self.next();
+                    true
+                }
+                _ => return Err("Expected 'EXISTS' after 'IF'".to_string()),
+            }
+        } else {
+            false
+        };
+        let name = match self.next() {
+            Some(Token::Identifier(name)) => name,
+            Some(t) => return Err(format!("Expected function name, got {:?}", t)),
+            None => return Err("Expected function name".to_string()),
+        };
+        Ok(Statement::DropFunction(DropFunctionStatement {
+            name,
+            if_exists,
+        }))
+    }
+
     /// Parse stored procedure body statements until a terminator token
     fn parse_sp_body(&mut self, terminators: &[Token]) -> Result<Vec<StoredProcStatement>, String> {
         let mut body = Vec::new();
@@ -2959,7 +3228,9 @@ impl Parser {
                         body.push(StoredProcStatement::RawSql(stmt_str.trim().to_string()));
                     }
                 }
-                Some(Token::Set) | Some(Token::Declare) | Some(Token::Call) => {
+                Some(Token::Set) | Some(Token::Declare) | Some(Token::Call)
+                | Some(Token::Select) | Some(Token::Insert) | Some(Token::Update)
+                | Some(Token::Delete) => {
                     // Flush any pending raw SQL and collect full statement
                     if !current_sql.trim().is_empty() {
                         body.push(StoredProcStatement::RawSql(current_sql.trim().to_string()));
@@ -3123,33 +3394,68 @@ impl Parser {
         self.expect(Token::Each)?;
         self.expect(Token::Row)?;
 
-        self.expect(Token::Begin)?;
+        // V312-58 / Issue #4514: relax to accept either a BEGIN/END
+        // block (multi-statement body) or a single-statement body that
+        // ends at EOF / statement terminator. The original reproduction
+        // from the issue is the single-statement form.
         let mut body = String::new();
-        while !matches!(self.current(), Some(Token::End) | None) {
-            match self.next() {
-                Some(Token::Semicolon) => {
-                    body.push(';');
-                    body.push(' ');
-                }
-                Some(Token::Dot) => {
-                    // Strip trailing space before dot so we get `NEW.name` not `NEW .name`
-                    while body.ends_with(' ') {
-                        body.pop();
+        if matches!(self.current(), Some(Token::Begin)) {
+            self.expect(Token::Begin)?;
+            while !matches!(self.current(), Some(Token::End) | None) {
+                match self.next() {
+                    Some(Token::Semicolon) => {
+                        body.push(';');
+                        body.push(' ');
                     }
-                    body.push('.');
+                    Some(Token::Dot) => {
+                        // Strip trailing space before dot so we get `NEW.name` not `NEW .name`
+                        while body.ends_with(' ') {
+                            body.pop();
+                        }
+                        body.push('.');
+                    }
+                    Some(Token::Identifier(sql)) => {
+                        body.push_str(&sql);
+                        body.push(' ');
+                    }
+                    Some(t) => {
+                        body.push_str(&t.to_string());
+                        body.push(' ');
+                    }
+                    None => return Err("Expected END".to_string()),
                 }
-                Some(Token::Identifier(sql)) => {
-                    body.push_str(&sql);
-                    body.push(' ');
+            }
+            self.expect(Token::End)?;
+        } else {
+            // Single-statement body — collect tokens until the statement
+            // terminator (Semicolon) or EOF.
+            while !matches!(
+                self.current(),
+                Some(Token::Semicolon) | Some(Token::Eof) | None
+            ) {
+                match self.next() {
+                    Some(Token::Dot) => {
+                        // Strip trailing space before dot so we get `NEW.name` not `NEW .name`
+                        while body.ends_with(' ') {
+                            body.pop();
+                        }
+                        body.push('.');
+                    }
+                    Some(Token::Identifier(sql)) => {
+                        body.push_str(&sql);
+                        body.push(' ');
+                    }
+                    Some(t) => {
+                        body.push_str(&t.to_string());
+                        body.push(' ');
+                    }
+                    None => break,
                 }
-                Some(t) => {
-                    body.push_str(&t.to_string());
-                    body.push(' ');
-                }
-                None => return Err("Expected END".to_string()),
+            }
+            if matches!(self.current(), Some(Token::Semicolon)) {
+                self.next();
             }
         }
-        self.expect(Token::End)?;
 
         Ok(Statement::CreateTrigger(CreateTriggerStatement {
             name,
@@ -3157,6 +3463,31 @@ impl Parser {
             timing,
             events,
             body: body.trim().to_string(),
+        }))
+    }
+
+    fn parse_drop_trigger(&mut self) -> Result<Statement, String> {
+        // V312-58 / Issue #4514: `DROP TRIGGER [IF EXISTS] name`.
+        self.expect(Token::Trigger)?;
+        let if_exists = if matches!(self.current(), Some(Token::If)) {
+            self.next();
+            self.expect(Token::Exists)?;
+            true
+        } else {
+            false
+        };
+        let name = match self.next() {
+            Some(Token::Identifier(n)) => n,
+            Some(t) => return Err(format!("Expected trigger name, got {:?}", t)),
+            None => return Err("Expected trigger name".to_string()),
+        };
+        // Optional trailing semicolon.
+        if matches!(self.current(), Some(Token::Semicolon)) {
+            self.next();
+        }
+        Ok(Statement::DropTrigger(DropTriggerStatement {
+            name,
+            if_exists,
         }))
     }
 
@@ -4249,6 +4580,78 @@ impl Parser {
                         });
                         continue;
                     }
+                    // V312-58 / Issue #4518: CONVERT(expr, TYPE) — second
+                    // arg is a type name, NOT a regular expression. The
+                    // general args loop below calls parse_expression which
+                    // would mis-parse `DATE` / `INTEGER` / etc. as keyword
+                    // tokens ("DATE as statement requires a table target").
+                    // Consume the type identifier here, route it as a Literal
+                    // so eval_fn sees [expr, Literal("DATE")] and the existing
+                    // CONVERT passthrough in eval_fn returns the input.
+                    if name == "CONVERT" {
+                        let expr = self.parse_primary_expression()?;
+                        self.expect(Token::Comma)?;
+                        let type_lit = match self.current().cloned() {
+                            Some(Token::Date) | Some(Token::Integer) | Some(Token::Text)
+                            | Some(Token::Float) | Some(Token::Boolean) => {
+                                let s = format!("{:?}", self.current().unwrap());
+                                self.next();
+                                if matches!(self.current(), Some(Token::LParen)) {
+                                    self.next();
+                                    while !matches!(self.current(), Some(Token::RParen)) {
+                                        self.next();
+                                    }
+                                    self.expect(Token::RParen)?;
+                                }
+                                Expression::Literal(s)
+                            }
+                            Some(Token::Identifier(_)) => {
+                                let s = if let Some(Token::Identifier(n)) = self.current() {
+                                    n.clone()
+                                } else {
+                                    String::new()
+                                };
+                                self.next();
+                                if matches!(self.current(), Some(Token::LParen)) {
+                                    self.next();
+                                    while !matches!(self.current(), Some(Token::RParen)) {
+                                        self.next();
+                                    }
+                                    self.expect(Token::RParen)?;
+                                }
+                                Expression::Literal(s)
+                            }
+                            other => {
+                                return Err(format!(
+                                    "Expected type name after CONVERT(..., got {:?}",
+                                    other
+                                ));
+                            }
+                        };
+                        self.expect(Token::RParen)?;
+                        let args = vec![expr, type_lit];
+                        let alias = if matches!(self.current(), Some(Token::As)) {
+                            self.next();
+                            if let Some(Token::Identifier(n)) = self.current() {
+                                let a = n.clone();
+                                self.next();
+                                Some(a)
+                            } else {
+                                None
+                            }
+                        } else {
+                            None
+                        };
+                        columns.push(SelectColumn {
+                            name: format!(
+                                "{:?}",
+                                Expression::FunctionCall(name.to_string(), args.clone())
+                            ),
+                            alias,
+                            expression: Some(Expression::FunctionCall(name.to_string(), args)),
+                        });
+                        continue;
+                    }
                     let mut args = Vec::new();
                     if !matches!(self.current(), Some(Token::RParen)) {
                         loop {
@@ -4488,6 +4891,18 @@ impl Parser {
                 // Delegate to the expression parser, which recognises
                 // SequenceNextVal / SequenceCurrval via parse_primary_expression.
                 Some(Token::NextValue) | Some(Token::Currval) => {
+                    let expr = self.parse_expression()?;
+                    columns.push(SelectColumn {
+                        name: format!("{:?}", expr),
+                        alias: None,
+                        expression: Some(expr),
+                    });
+                }
+                // V312-58 / Issue #4518: USER() in SELECT projection is
+                // a scalar function call (matches MySQL 5.7 semantics).
+                // Without this arm, the column-list loop would fall
+                // through to "Expected FROM or column name".
+                Some(Token::User) => {
                     let expr = self.parse_expression()?;
                     columns.push(SelectColumn {
                         name: format!("{:?}", expr),
@@ -6962,7 +7377,13 @@ impl Parser {
             | Some(Token::Position)
             | Some(Token::Rollup)
             | Some(Token::Cube)
-            | Some(Token::Database) => {
+            | Some(Token::Database)
+            // V312-58 / #4518: USER is also a scalar function in MySQL
+            // (`SELECT USER()`) — same pattern as DATABASE above. The
+            // CREATE/DROP/ALTER USER paths are dispatched elsewhere in
+            // parse_statement before reaching here, so this entry only
+            // affects SELECT-expression parsing.
+            | Some(Token::User) => {
                 let name = match self.current() {
                     Some(Token::Left) => "LEFT",
                     Some(Token::Right) => "RIGHT",
@@ -6978,6 +7399,7 @@ impl Parser {
                     Some(Token::Rollup) => "ROLLUP",
                     Some(Token::Cube) => "CUBE",
                     Some(Token::Database) => "DATABASE",
+                    Some(Token::User) => "USER",
                     _ => unreachable!(),
                 };
                 self.next();
@@ -7119,6 +7541,73 @@ impl Parser {
                     return Ok(Expression::FunctionCall(
                         "SUBSTRING".to_string(),
                         vec![str_expr],
+                    ));
+                }
+                // V312-58 / Issue #4518: CONVERT(expr, TYPE) — second
+                // arg is a type name, NOT a regular expression. The
+                // general args loop calls parse_expression which would
+                // mis-parse `DATE` / `INTEGER` / etc. as keyword tokens
+                // ("DATE as statement requires a table target"). Consume
+                // the type identifier here, route it as a Literal so
+                // eval_fn sees [expr, Literal("DATE")] and the existing
+                // CONVERT passthrough in eval_fn returns the input
+                // (downstream INTEGER()/TEXT() coercion handles type).
+                // V312-58 / Issue #4518: CONVERT(expr, TYPE) — second
+                // arg is a type name, NOT a regular expression. The
+                // general args loop calls parse_expression which would
+                // mis-parse `DATE` / `INTEGER` / etc. as keyword tokens
+                // ("DATE as statement requires a table target"). Consume
+                // the type identifier here, route it as a Literal so
+                // eval_fn sees [expr, Literal("DATE")] and the existing
+                // CONVERT passthrough in eval_fn returns the input
+                // (downstream INTEGER()/TEXT() coercion handles type).
+                if name == "CONVERT" {
+                    let expr = self.parse_primary_expression()?;
+                    self.expect(Token::Comma)?;
+                    let type_lit = match self.current().cloned() {
+                        Some(Token::Date)
+                        | Some(Token::Integer)
+                        | Some(Token::Text)
+                        | Some(Token::Float)
+                        | Some(Token::Boolean) => {
+                            let s = format!("{:?}", self.current().unwrap());
+                            self.next();
+                            if matches!(self.current(), Some(Token::LParen)) {
+                                self.next();
+                                while !matches!(self.current(), Some(Token::RParen)) {
+                                    self.next();
+                                }
+                                self.expect(Token::RParen)?;
+                            }
+                            Expression::Literal(s)
+                        }
+                        Some(Token::Identifier(_)) => {
+                            let s = if let Some(Token::Identifier(n)) = self.current() {
+                                n.clone()
+                            } else {
+                                String::new()
+                            };
+                            self.next();
+                            if matches!(self.current(), Some(Token::LParen)) {
+                                self.next();
+                                while !matches!(self.current(), Some(Token::RParen)) {
+                                    self.next();
+                                }
+                                self.expect(Token::RParen)?;
+                            }
+                            Expression::Literal(s)
+                        }
+                        other => {
+                            return Err(format!(
+                                "Expected type name after CONVERT(..., got {:?}",
+                                other
+                            ));
+                        }
+                    };
+                    self.expect(Token::RParen)?;
+                    return Ok(Expression::FunctionCall(
+                        "CONVERT".to_string(),
+                        vec![expr, type_lit],
                     ));
                 }
                 let mut args = Vec::new();
@@ -9050,15 +9539,21 @@ impl Parser {
             Some(Token::View) => self.parse_drop_view(),
             // V312-55A / Issue #4238: add DROP PROCEDURE to the dispatcher.
             Some(Token::Procedure) => self.parse_drop_procedure(),
+            // V312-58 / Issue #4512: scalar UDF removal.
+            Some(Token::Function) => self.parse_drop_function(),
+            // V312-58 / Issue #4514: trigger removal.
+            Some(Token::Trigger) => self.parse_drop_trigger(),
             Some(Token::Role) => self.parse_drop_role(),
             Some(Token::Database) => self.parse_drop_database(),
             Some(Token::Sequence) => self.parse_drop_sequence(),
+            // V312-58 / Issue #4515: user removal.
+            Some(Token::User) => self.parse_drop_user(),
             Some(t) => Err(format!(
-                "Expected TABLE, INDEX, VIEW, PROCEDURE, ROLE, SEQUENCE, or DATABASE after DROP, got {:?}",
+                "Expected TABLE, INDEX, VIEW, PROCEDURE, FUNCTION, TRIGGER, ROLE, SEQUENCE, DATABASE, or USER after DROP, got {:?}",
                 t
             )),
             None => Err(
-                "Expected TABLE, INDEX, VIEW, PROCEDURE, ROLE, SEQUENCE, or DATABASE after DROP"
+                "Expected TABLE, INDEX, VIEW, PROCEDURE, FUNCTION, TRIGGER, ROLE, SEQUENCE, DATABASE, or USER after DROP"
                     .to_string(),
             ),
         }
@@ -10037,6 +10532,159 @@ impl Parser {
         }))
     }
 
+    /// V312-58 / Issue #4515: `CREATE USER 'name'@'host' [IDENTIFIED BY 'pwd']`.
+    ///
+    /// Mirrors `parse_alter_user`'s `name@host` parsing, then optionally
+    /// accepts an `IDENTIFIED BY 'pwd'` clause. Mirrors the surface area
+    /// required by the issue:
+    /// ```sql
+    /// CREATE USER ex_user@localhost;
+    /// CREATE USER 'alice'@'%' IDENTIFIED BY 'secret';
+    /// ```
+    fn parse_create_user(&mut self) -> Result<Statement, String> {
+        self.expect(Token::User)?;
+
+        // Parse username (string literal or identifier)
+        let user = match self.next() {
+            Some(Token::StringLiteral(s)) => s,
+            Some(Token::Identifier(s)) => s,
+            Some(t) => {
+                return Err(format!(
+                    "Expected username (string or identifier) after CREATE USER, got {:?}",
+                    t
+                ))
+            }
+            None => return Err("Unexpected end of input after CREATE USER".to_string()),
+        };
+
+        // Parse host. Supports three equivalent shapes:
+        //   `'name'@'host'` — quoted name, separate `@` token, quoted host
+        //   `name @host`    — bare name, separate `@` token, bare host
+        //   `name@host`     — lexer glues the `@host` tail into one id
+        // If none of these are present, default to 'localhost'.
+        let host = match self.current() {
+            Some(Token::StringLiteral(s)) => {
+                let h = s.clone();
+                self.next();
+                h
+            }
+            Some(Token::Identifier(s)) if s == "@" => {
+                // `name @host` shape — consume the `@` and read the host.
+                self.next();
+                match self.next() {
+                    Some(Token::StringLiteral(s)) => s,
+                    Some(Token::Identifier(s)) => s,
+                    Some(t) => return Err(format!("Expected host after '@', got {:?}", t)),
+                    None => return Err("Unexpected end of input after '@'".to_string()),
+                }
+            }
+            Some(Token::Identifier(s)) => {
+                // Lexer-glued `@host` shape — strip leading `@` and use
+                // the rest as host (or default to localhost if empty).
+                let h = s.trim_start_matches('@').to_string();
+                self.next();
+                if h.is_empty() {
+                    "localhost".to_string()
+                } else {
+                    h
+                }
+            }
+            _ => "localhost".to_string(),
+        };
+
+        let password_hash = match self.current() {
+            Some(Token::Identified) => {
+                self.next();
+                self.expect(Token::By)?;
+                match self.next() {
+                    Some(Token::StringLiteral(s)) => Some(s),
+                    Some(Token::Identifier(s)) => Some(s),
+                    Some(t) => {
+                        return Err(format!(
+                        "Expected password (string or identifier) after IDENTIFIED BY, got {:?}",
+                        t
+                    ))
+                    }
+                    None => return Err("Unexpected end of input after IDENTIFIED BY".to_string()),
+                }
+            }
+            _ => None,
+        };
+
+        Ok(Statement::CreateUser(CreateUserStatement {
+            user,
+            host,
+            password_hash,
+        }))
+    }
+
+    /// V312-58 / Issue #4515: `DROP USER 'name'@'host' [IF EXISTS]`.
+    ///
+    /// Mirrors the `DROP TRIGGER [IF EXISTS]` shape — IF EXISTS makes a
+    /// missing user a no-op, otherwise we error.
+    fn parse_drop_user(&mut self) -> Result<Statement, String> {
+        self.expect(Token::User)?;
+
+        // Optional `IF EXISTS`
+        let mut if_exists = false;
+        if matches!(self.current(), Some(Token::If)) {
+            self.next();
+            self.expect(Token::Exists)?;
+            if_exists = true;
+        }
+
+        // Parse username (string literal or identifier)
+        let user = match self.next() {
+            Some(Token::StringLiteral(s)) => s,
+            Some(Token::Identifier(s)) => s,
+            Some(t) => {
+                return Err(format!(
+                    "Expected username (string or identifier) after DROP USER, got {:?}",
+                    t
+                ))
+            }
+            None => return Err("Unexpected end of input after DROP USER".to_string()),
+        };
+
+        // Parse host. Supports three equivalent shapes:
+        //   `'name'@'host'` — quoted name, separate `@` token, quoted host
+        //   `name @host`    — bare name, separate `@` token, bare host
+        //   `name@host`     — lexer glues the `@host` tail into one id
+        // If none of these are present, default to 'localhost'.
+        let host = match self.current() {
+            Some(Token::StringLiteral(s)) => {
+                let h = s.clone();
+                self.next();
+                h
+            }
+            Some(Token::Identifier(s)) if s == "@" => {
+                self.next();
+                match self.next() {
+                    Some(Token::StringLiteral(s)) => s,
+                    Some(Token::Identifier(s)) => s,
+                    Some(t) => return Err(format!("Expected host after '@', got {:?}", t)),
+                    None => return Err("Unexpected end of input after '@'".to_string()),
+                }
+            }
+            Some(Token::Identifier(s)) => {
+                let h = s.trim_start_matches('@').to_string();
+                self.next();
+                if h.is_empty() {
+                    "localhost".to_string()
+                } else {
+                    h
+                }
+            }
+            _ => "localhost".to_string(),
+        };
+
+        Ok(Statement::DropUser(DropUserStatement {
+            user,
+            host,
+            if_exists,
+        }))
+    }
+
     fn parse_alter(&mut self) -> Result<Statement, String> {
         self.expect(Token::Alter)?;
         match self.current() {
@@ -10359,6 +11007,18 @@ pub fn parse(sql: &str) -> Result<Statement, String> {
     let tokens = Lexer::new(sql).tokenize();
     let mut parser = Parser::new(tokens);
     parser.parse_statement()
+}
+
+/// V312-58 / Issue #4512: parse a single SQL expression from raw text.
+/// Used by the scalar-UDF evaluator to re-parse the body of a
+/// `CREATE FUNCTION` at call time after substituting declared parameter
+/// names with the call-site argument values. The expression must
+/// consume the entire input; any trailing tokens (besides EOF) are
+/// surfaced as a parse error.
+pub fn parse_expression_str(sql: &str) -> Result<Expression, String> {
+    let tokens = Lexer::new(sql).tokenize();
+    let mut parser = Parser::new(tokens);
+    parser.parse_expression()
 }
 
 /// Parse a SQL string into multiple statements (semicolon-separated)

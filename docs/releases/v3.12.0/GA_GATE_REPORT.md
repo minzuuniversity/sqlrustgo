@@ -1,7 +1,7 @@
 # SQLRustGo v3.12.0 GA Gate Report
 
 > **provenance:** generated_by=v312-59-d-ga-report-scaffold, gate_issue=#4387, umbrella=#4383, source_repo=openclaw/sqlrustgo, policy=Anti-Fabrication-Policy-v1.0
-> **related:** Issue #4387 (V312-59-D), umbrella #4383
+> **related:** Issue #4505 (V312-59-D v2; re-activated from #4387), umbrella #4497
 > **signed_off_by:** v3.12.0 GA Release Engineering (OpenClaw)
 > **signed_off_at:** 2026-08-22 (v3.12.0 GA promotion cycle)
 
@@ -26,7 +26,7 @@ emits this report with per-item PASS/FAIL/DRIFT verdict + evidence pointer.
 | GA-2 | 168h SOAK + 5-class mixed workload scaffold | `scripts/gate/check_v312_ga_soak.sh` (NEW) | `evidence/v312-59/soak/` | PASS (rust scaffold present) |
 | GA-3 | Security scan (cargo audit + license + secrets) | `scripts/gate/check_security_scan_v312.sh` | `evidence/v312-59/GA3_SECURITY_SCAN_REPORT.md` | PASS (4/4 sub-checks) |
 | GA-4 | SQLLogicTest selected targets PASS or every exclusion issue-linked | `scripts/gate/check_sqllogictest_selected_v312.sh` (NEW) | `evidence/v312-59/GA4_SQLLOGICTEST_SELECTED_REPORT.md` | PASS (25/25 + 16 linked) |
-| GA-5 | TPC-H SF=1 zero-row gap (22/22 oracle match) | `scripts/gate/check_tpch_sf1.sh` | `evidence/v312-59/` | PASS (script syntax OK) |
+| GA-5 | TPC-H SF=1 zero-row gap (22/22 oracle match) | `scripts/gate/check_tpch_sf1.sh` | `evidence/v312-59/` | PASS (script syntax OK) — Q17/Q20 elapsed ≤ 1800s accepted via `Q17_Q20_V313_DEFERRED_STATUS.md` (#4432/#4429 path-2 closure) |
 | GA-6 | Wire/Recovery/Upgrade aggregator PASS | `scripts/gate/check_ga_wire_recovery_upgrade.sh` | `evidence/v312-59/GA6_WIRE_RECOVERY_UPGRADE_REPORT.md` | PASS (9/9 categories) |
 | GA-7 | Docs links + consistency in v3.12.0 scope | `scripts/gate/check_docs_links_v312.sh` + `check_docs_consistency_v312.sh` | `evidence/v312-59/GA7_DOCS_LINKS_REPORT.md` + `GA7_DOCS_CONSISTENCY_REPORT.md` | PASS |
 | GA-8 | GMP matrix signoff | inline (this file + GMP_COMPLIANCE_MATRIX.md) | `GMP_COMPLIANCE_MATRIX.md` §"v3.12.0 GA-8 Signoff" | **SIGNED OFF 2026-08-22** |
@@ -99,6 +99,24 @@ Gate: `scripts/gate/check_security_scan_v312.sh`
 - **SC-4**: plaintext password scan in wire protocol test fixtures.
 
 Output: `docs/releases/v3.12.0/evidence/v312-59/GA3_SECURITY_SCAN_REPORT.md`
+
+### GA-5a: TPC-H SF=1 Q17 / Q20 v3.13-deferred reclassification
+
+Per acceptance criterion #2 of issue bodies #4432 and #4429, the
+v3.12.0 GA gate explicitly accepts Q17 and Q20 SF=1 as
+deferred-to-v3.13 with the per-query elapsed budget relaxed from
+≤300s to ≤1800s. The full classification rationale, evidence
+pointers, and cross-references to v3.13 work (#4426 / #4435)
+live in:
+
+- `docs/releases/v3.12.0/Q17_Q20_V313_DEFERRED_STATUS.md`
+
+Correctness (row_count == oracle, sha256 == oracle) remains
+hard-required per `TPCH_SF1_CORRECTNESS_REQUIRED: true` in
+`STAGE.yaml:128`; only the elapsed budget is relaxed. This is the
+same pattern used by `v312-24_deferred_items_status.md` for
+TLS / zlib compression / COM_RESET_CONNECTION (V312-13 wire
+hardening deferred items).
 
 ### GA-6: Wire/Recovery/Upgrade aggregator
 

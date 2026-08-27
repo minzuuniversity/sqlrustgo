@@ -3941,12 +3941,20 @@ fn statement_kind(parsed: &Result<Statement, String>) -> &'static str {
             Statement::WithDml(_) => "WITH_DML",
             Statement::AlterTable(_) => "ALTER_TABLE",
             Statement::AlterUser(_) => "ALTER_USER",
+            // V312-58 / Issue #4515: CREATE USER / DROP USER metrics labels.
+            Statement::CreateUser(_) => "CREATE_USER",
+            Statement::DropUser(_) => "DROP_USER",
             Statement::Call(_) => "CALL",
             Statement::CreateProcedure(_) => "CREATE_PROCEDURE",
             // V312-55A / Issue #4238: add DROP PROCEDURE to the metric label.
             Statement::DropProcedure(_) => "DROP_PROCEDURE",
+            // V312-58 / Issue #4512: scalar UDF catalog dispatch.
+            Statement::CreateFunction(_) => "CREATE_FUNCTION",
+            Statement::DropFunction(_) => "DROP_FUNCTION",
             Statement::Union(_) => "UNION",
             Statement::CreateTrigger(_) => "CREATE_TRIGGER",
+            // V312-58 / Issue #4514: trigger removal.
+            Statement::DropTrigger(_) => "DROP_TRIGGER",
             Statement::Intersect(_) => "INTERSECT",
             Statement::Except(_) => "EXCEPT",
             Statement::Values(_) => "VALUES",

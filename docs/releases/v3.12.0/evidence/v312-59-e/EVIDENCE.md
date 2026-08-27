@@ -48,6 +48,14 @@
 > (region=5, nation=25, supplier=100,000 rows, 14MB total). See remediation history in
 > `thresholds_override_evidence.txt`.
 
+> **Re-verification 2026-08-27T13:40:48Z (issue #4506 GA-cut re-check, session
+> `44a82e97-4a70-4d7b-b5b9-fae23e3b1056`)**: 13/13 PASS, 0 FAIL, 0 INFRASTRUCTURE_MISSING.
+> Composite gate `bash scripts/gate/check_v312_gate_thresholds.sh` produced the
+> verdict at `docs/releases/v3.12.0/evidence/v312-59-e/thresholds_override_evidence.txt`.
+> Drift check `bash scripts/gate/check_v312_stage_yaml_sync.sh` PASS (13 ↔ 13).
+> Both post-merge PRs landed (#4511 PREPARE/EXECUTE, #4516 SHOW DATABASES/TABLES/COLUMNS,
+> #4519 SAVEPOINT physical undo) did not touch any of the 13 thresholds_override fields.
+
 ---
 
 ## FAIL resolutions (post-merge remediation landed in same PR)

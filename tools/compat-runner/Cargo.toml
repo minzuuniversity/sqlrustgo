@@ -2,6 +2,7 @@
 name = "compat-runner"
 version = "0.1.0"
 edition = "2021"
+license.workspace = true
 description = "V312-21 / ISSUE #3908 — drives MySQL compat fixtures through MySqlTestClient and emits SURFACE_DISPOSITION.md"
 
 [dependencies]

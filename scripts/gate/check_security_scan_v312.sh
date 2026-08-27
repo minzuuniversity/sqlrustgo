@@ -141,7 +141,10 @@ run_license_check() {
         local total_license_count=0
         while IFS= read -r cargo_toml; do
             total_license_count=$((total_license_count + 1))
-            if ! grep -qE "^license\s*=" "$cargo_toml"; then
+            # Match both `license = "..."` (inline) and `license.workspace = true`
+            # (workspace inheritance) so license.workspace = true is not falsely
+            # counted as missing (#4533 follow-up).
+            if ! grep -qE "^license(\.workspace)?\s*=" "$cargo_toml"; then
                 unknown_license_count=$((unknown_license_count + 1))
             fi
         done < <(find "$REPO_ROOT" -name "Cargo.toml" -not -path "*/target/*" -not -path "*/.git/*" 2>/dev/null)
