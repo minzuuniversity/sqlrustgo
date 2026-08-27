@@ -9,6 +9,30 @@
 > **commit**: 1903545df6d036f7f6d5035a0503b5fa932aac51
 > **current_HEAD**: cbe1f53f85 (drift-fix from `dd5ab204`, post PR #4495 merge; v3.12.0 RC active development)
 
+## 2026-08-27 #4491 residual scope closure (post-RC)
+
+PR #4493 (commit `f118dd896c`) closed the **integer-keyed** form of BUG-3a
+(JOIN alias.column with INT PK). Issue #4491 tracked the residual scope:
+when the shared JOIN key is **CHAR-typed** (the exact 清华 A-track teaching
+schema — `studentno char(11)`), the MySQL non-strict GROUP BY fallback path
+in `src/engine_select.rs` still returned `Null` for the alias.column
+projection. This section documents the closure of that residual scope.
+
+### Fixed
+
+- **#4491 residual (this PR)** — MySQL non-strict GROUP BY fallback:
+  bridge `Integer↔Text` and trim CHAR padding in the fallback key match
+  (scope-limited to `src/engine_select.rs:1442-1458`).
+  - Pre-fix repro (CHAR(11) shared key, `s JOIN sc ON s.studentno=sc.studentno GROUP BY sc.studentno`):
+    `s.sname` was `Null` while `avg(sc.final)` was correct.
+  - Post-fix: `s.sname` resolves to `'alice'` / `'bob'` correctly.
+  - Evidence: `docs/releases/v3.12.0/evidence/issue-4491/4491_closeout.md`.
+  - Regression test: `tests/integration/oracle/issue_4491_join_groupby_alias_col_and_scalar_subquery.rs`
+    (3 tests, 3 GREEN post-fix).
+  - Scope discipline: `sql_compare` and `compare_values` were intentionally
+    NOT modified. Broader cross-type bridging is deferred — see out-of-scope
+    in evidence doc.
+
 ## 2026-08-26 RC drift-fix (post-RC transition)
 
 HEAD 已从 `dd5ab204` 前移到 `cbe1f53f85`。RC 期间合并的关键 PRs：
