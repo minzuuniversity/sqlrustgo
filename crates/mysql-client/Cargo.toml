@@ -2,6 +2,7 @@
 name = "sqlrustgo-mysql-client"
 version = "3.9.0"
 edition = "2021"
+license.workspace = true
 description = "MySQL wire protocol client library"
 
 [dependencies]
