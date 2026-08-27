@@ -967,6 +967,9 @@ path = "tests/integration/oracle/issue_4444_hash_semi_join_call_site.rs"
 name = "issue_4444_decorrelation_wiring"
 path = "tests/integration/oracle/issue_4444_decorrelation_wiring.rs"
 [[test]]
+name = "issue_4491_join_groupby_alias_col_and_scalar_subquery"
+path = "tests/integration/oracle/issue_4491_join_groupby_alias_col_and_scalar_subquery.rs"
+[[test]]
 name = "q17_small_order_shortage_perf"
 path = "tests/integration/oracle/q17_small_order_shortage_perf.rs"
 [[test]]

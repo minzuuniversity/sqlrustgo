@@ -1517,7 +1517,20 @@ impl<S: StorageEngine + 'static> ExecutionEngine<S> {
                                                 let kv = crate::expr_utils::evaluate_expression(
                                                     &group_exprs[i], r, &table_info,
                                                 ).unwrap_or(Value::Null);
-                                                kv == group_key[i]
+                                                // V312-bug-report-3120 /
+                                                // #4491 residual scope:
+                                                // bridge Integer↔Text by
+                                                // stringifying both sides
+                                                // (matches MySQL cross-type
+                                                // equality for GROUP BY
+                                                // keys). Also trims CHAR
+                                                // padding so CHAR(n)
+                                                // shared JOIN keys match
+                                                // even when the row holds
+                                                // the blank-padded form.
+                                                let lhs = kv.to_sql_string();
+                                                let rhs = group_key[i].to_sql_string();
+                                                lhs.trim_end() == rhs.trim_end()
                                             })
                                         });
                                         if let Some(first_row) = first_match {
