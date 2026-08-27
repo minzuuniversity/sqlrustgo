@@ -37,16 +37,15 @@ use sqlrustgo_parser::parser::{
     AlterTableStatement, AlterUserStatement, CallStatement, CompressionAlgorithm,
     CreateDatabaseStatement, CreateFunctionStatement, CreateIndexStatement,
     CreateProcedureStatement, CreateRoleStatement, CreateSequenceStatement, CreateTableStatement,
-    CreateTriggerStatement, CreateViewStatement, DescribeStatement, DropDatabaseStatement,
-    DropFunctionStatement, DropIndexStatement, DropProcedureStatement, DropRoleStatement,
-    DropSequenceStatement, DropTableStatement, DropTriggerStatement, DropViewStatement,
-    ExceptStatement,
-    GrantRoleStatement, GrantStatement, InsertStatement, IntersectStatement, MergeStatement,
-    ObjectType as ParserObjectType, OrderByExpression, Privilege as ParserPrivilege,
-    RevokeRoleStatement, RevokeStatement, SelectStatement, SetRoleStatement, ShowStatement,
-    StorageEngineSpec, StoredProcParam as ParserStoredProcParam,
-    StoredProcParamMode as ParserParamMode, StoredProcStatement as ParserStatement,
-    TruncateStatement, UnionStatement,
+    CreateTriggerStatement, CreateUserStatement, CreateViewStatement, DescribeStatement,
+    DropDatabaseStatement, DropFunctionStatement, DropIndexStatement, DropProcedureStatement,
+    DropRoleStatement, DropSequenceStatement, DropTableStatement, DropTriggerStatement,
+    DropUserStatement, DropViewStatement, ExceptStatement, GrantRoleStatement, GrantStatement,
+    InsertStatement, IntersectStatement, MergeStatement, ObjectType as ParserObjectType,
+    OrderByExpression, Privilege as ParserPrivilege, RevokeRoleStatement, RevokeStatement,
+    SelectStatement, SetRoleStatement, ShowStatement, StorageEngineSpec,
+    StoredProcParam as ParserStoredProcParam, StoredProcParamMode as ParserParamMode,
+    StoredProcStatement as ParserStatement, TruncateStatement, UnionStatement,
 };
 use sqlrustgo_parser::transaction::IsolationLevel as ParserIsolationLevel;
 use sqlrustgo_parser::JoinType;
@@ -802,6 +801,10 @@ impl<S: StorageEngine + 'static> ExecutionEngine<S> {
             Statement::AlterUser(_) => Err(SqlError::ExecutionError(
                 "ALTER USER not yet implemented".to_string(),
             )),
+            // V312-58 / Issue #4515: CREATE USER 'name'@'host'
+            Statement::CreateUser(ref create_user) => self.execute_create_user(create_user),
+            // V312-58 / Issue #4515: DROP USER 'name'@'host' [IF EXISTS]
+            Statement::DropUser(ref drop_user) => self.execute_drop_user(drop_user),
             // V312-35 #4218: KILL <id> / KILL CONNECTION <id> /
             // KILL QUERY <id>. Wired to StorageEngine::kill_connection.
             Statement::Kill {
