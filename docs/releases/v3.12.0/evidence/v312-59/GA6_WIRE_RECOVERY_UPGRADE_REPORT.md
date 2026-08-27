@@ -1,6 +1,6 @@
 # GA-6 v3.12.0 Wire/Recovery/Upgrade Aggregator Report
 
-> **provenance:** generated_by=check_ga_wire_recovery_upgrade.sh, generated_at=2026-08-21T16:21:59Z, commit=5e147ea0fee9fbb0caa1b323a853d857b7b25873, branch=fix/v312-59-b-beta-warn-remediation, source_repo=openclaw/sqlrustgo, gate_policy_eval_id=v312-ga6-reliability-001, policy=Anti-Fabrication-Policy-v1.0
+> **provenance:** generated_by=check_ga_wire_recovery_upgrade.sh, generated_at=2026-08-27T04:46:49Z, commit=38e2a6b785b39fdc1d7cd9cbc6504664fd57c3e2, branch=develop/v3.12.0, source_repo=openclaw/sqlrustgo, gate_policy_eval_id=v312-ga6-reliability-001, policy=Anti-Fabrication-Policy-v1.0
 > **related:** Issue #4387 (V312-59-D), umbrella #4383
 
 ## Summary
@@ -17,7 +17,7 @@
 | C5 Upgrade/Downgrade script | PASS | scripts/gate/check_upgrade_v310_v311.sh |
 | C5 Upgrade test files | PASS | tests/upgrade_*_test.rs |
 
-**Totals:** PASS=9 FAIL=0 TOTAL=9
+**Totals:** PASS=9 FAIL=0 TOTAL=10
 
 ## Verdict
 
