@@ -101,6 +101,12 @@ pub enum Statement {
     WithDml(WithDmlStatement),
     AlterTable(AlterTableStatement),
     AlterUser(AlterUserStatement),
+    /// V312-58 / Issue #4515: register a new user.
+    /// Mirrors MySQL `CREATE USER 'name'@'host' [IDENTIFIED BY 'pwd']`.
+    CreateUser(CreateUserStatement),
+    /// V312-58 / Issue #4515: drop a registered user.
+    /// `DROP USER 'name'@'host' [IF EXISTS]`.
+    DropUser(DropUserStatement),
     Call(CallStatement),
     CreateProcedure(CreateProcedureStatement),
     /// V312-55A / Issue #4238: DROP PROCEDURE [IF EXISTS] name
@@ -264,6 +270,33 @@ pub struct AlterUserStatement {
     pub password_change: bool,
     /// New password hash if IDENTIFIED BY is specified
     pub new_password_hash: Option<String>,
+}
+
+/// CREATE USER statement
+///
+/// V312-58 / Issue #4515: `CREATE USER 'name'@'host' [IDENTIFIED BY 'pwd']`.
+/// Mirrors the surface required by the MySQL privilege tutorial:
+/// - `name` and `host` are the canonical `user`/`host` pair
+///   (`'name'@'host'` or `'name'@'%'`-style).
+/// - `password_hash` is optional (some sites create accounts without a
+///   password); when present it is stored verbatim in the catalog
+///   auth table — callers are expected to hash first.
+#[derive(Debug, Clone, PartialEq)]
+pub struct CreateUserStatement {
+    pub user: String,
+    pub host: String,
+    pub password_hash: Option<String>,
+}
+
+/// DROP USER statement
+///
+/// V312-58 / Issue #4515: `DROP USER 'name'@'host' [IF EXISTS]`.
+/// `if_exists` follows the standard DROP shape.
+#[derive(Debug, Clone, PartialEq)]
+pub struct DropUserStatement {
+    pub user: String,
+    pub host: String,
+    pub if_exists: bool,
 }
 
 /// ALTER TABLE operation types
@@ -2576,12 +2609,14 @@ impl Parser {
             Some(Token::View) => self.parse_create_view(),
             Some(Token::Database) => self.parse_create_database(),
             Some(Token::Sequence) => self.parse_create_sequence(),
+            // V312-58 / Issue #4515: CREATE USER 'name'@'host'
+            Some(Token::User) => self.parse_create_user(),
             Some(t) => Err(format!(
-                "Expected TABLE, INDEX, PROCEDURE, FUNCTION, TRIGGER, ROLE, VIEW, SEQUENCE, or DATABASE after CREATE, got {:?}",
+                "Expected TABLE, INDEX, PROCEDURE, FUNCTION, TRIGGER, ROLE, VIEW, SEQUENCE, DATABASE, or USER after CREATE, got {:?}",
                 t
             )),
             None => Err(
-                "Expected TABLE, INDEX, PROCEDURE, FUNCTION, TRIGGER, ROLE, VIEW, SEQUENCE, or DATABASE after CREATE"
+                "Expected TABLE, INDEX, PROCEDURE, FUNCTION, TRIGGER, ROLE, VIEW, SEQUENCE, DATABASE, or USER after CREATE"
                     .to_string(),
             ),
         }
@@ -3450,7 +3485,10 @@ impl Parser {
         if matches!(self.current(), Some(Token::Semicolon)) {
             self.next();
         }
-        Ok(Statement::DropTrigger(DropTriggerStatement { name, if_exists }))
+        Ok(Statement::DropTrigger(DropTriggerStatement {
+            name,
+            if_exists,
+        }))
     }
 
     fn parse_create_view(&mut self) -> Result<Statement, String> {
@@ -9350,12 +9388,14 @@ impl Parser {
             Some(Token::Role) => self.parse_drop_role(),
             Some(Token::Database) => self.parse_drop_database(),
             Some(Token::Sequence) => self.parse_drop_sequence(),
+            // V312-58 / Issue #4515: user removal.
+            Some(Token::User) => self.parse_drop_user(),
             Some(t) => Err(format!(
-                "Expected TABLE, INDEX, VIEW, PROCEDURE, FUNCTION, TRIGGER, ROLE, SEQUENCE, or DATABASE after DROP, got {:?}",
+                "Expected TABLE, INDEX, VIEW, PROCEDURE, FUNCTION, TRIGGER, ROLE, SEQUENCE, DATABASE, or USER after DROP, got {:?}",
                 t
             )),
             None => Err(
-                "Expected TABLE, INDEX, VIEW, PROCEDURE, FUNCTION, TRIGGER, ROLE, SEQUENCE, or DATABASE after DROP"
+                "Expected TABLE, INDEX, VIEW, PROCEDURE, FUNCTION, TRIGGER, ROLE, SEQUENCE, DATABASE, or USER after DROP"
                     .to_string(),
             ),
         }
@@ -10331,6 +10371,159 @@ impl Parser {
             password_expire,
             password_change,
             new_password_hash,
+        }))
+    }
+
+    /// V312-58 / Issue #4515: `CREATE USER 'name'@'host' [IDENTIFIED BY 'pwd']`.
+    ///
+    /// Mirrors `parse_alter_user`'s `name@host` parsing, then optionally
+    /// accepts an `IDENTIFIED BY 'pwd'` clause. Mirrors the surface area
+    /// required by the issue:
+    /// ```sql
+    /// CREATE USER ex_user@localhost;
+    /// CREATE USER 'alice'@'%' IDENTIFIED BY 'secret';
+    /// ```
+    fn parse_create_user(&mut self) -> Result<Statement, String> {
+        self.expect(Token::User)?;
+
+        // Parse username (string literal or identifier)
+        let user = match self.next() {
+            Some(Token::StringLiteral(s)) => s,
+            Some(Token::Identifier(s)) => s,
+            Some(t) => {
+                return Err(format!(
+                    "Expected username (string or identifier) after CREATE USER, got {:?}",
+                    t
+                ))
+            }
+            None => return Err("Unexpected end of input after CREATE USER".to_string()),
+        };
+
+        // Parse host. Supports three equivalent shapes:
+        //   `'name'@'host'` — quoted name, separate `@` token, quoted host
+        //   `name @host`    — bare name, separate `@` token, bare host
+        //   `name@host`     — lexer glues the `@host` tail into one id
+        // If none of these are present, default to 'localhost'.
+        let host = match self.current() {
+            Some(Token::StringLiteral(s)) => {
+                let h = s.clone();
+                self.next();
+                h
+            }
+            Some(Token::Identifier(s)) if s == "@" => {
+                // `name @host` shape — consume the `@` and read the host.
+                self.next();
+                match self.next() {
+                    Some(Token::StringLiteral(s)) => s,
+                    Some(Token::Identifier(s)) => s,
+                    Some(t) => return Err(format!("Expected host after '@', got {:?}", t)),
+                    None => return Err("Unexpected end of input after '@'".to_string()),
+                }
+            }
+            Some(Token::Identifier(s)) => {
+                // Lexer-glued `@host` shape — strip leading `@` and use
+                // the rest as host (or default to localhost if empty).
+                let h = s.trim_start_matches('@').to_string();
+                self.next();
+                if h.is_empty() {
+                    "localhost".to_string()
+                } else {
+                    h
+                }
+            }
+            _ => "localhost".to_string(),
+        };
+
+        let password_hash = match self.current() {
+            Some(Token::Identified) => {
+                self.next();
+                self.expect(Token::By)?;
+                match self.next() {
+                    Some(Token::StringLiteral(s)) => Some(s),
+                    Some(Token::Identifier(s)) => Some(s),
+                    Some(t) => {
+                        return Err(format!(
+                        "Expected password (string or identifier) after IDENTIFIED BY, got {:?}",
+                        t
+                    ))
+                    }
+                    None => return Err("Unexpected end of input after IDENTIFIED BY".to_string()),
+                }
+            }
+            _ => None,
+        };
+
+        Ok(Statement::CreateUser(CreateUserStatement {
+            user,
+            host,
+            password_hash,
+        }))
+    }
+
+    /// V312-58 / Issue #4515: `DROP USER 'name'@'host' [IF EXISTS]`.
+    ///
+    /// Mirrors the `DROP TRIGGER [IF EXISTS]` shape — IF EXISTS makes a
+    /// missing user a no-op, otherwise we error.
+    fn parse_drop_user(&mut self) -> Result<Statement, String> {
+        self.expect(Token::User)?;
+
+        // Optional `IF EXISTS`
+        let mut if_exists = false;
+        if matches!(self.current(), Some(Token::If)) {
+            self.next();
+            self.expect(Token::Exists)?;
+            if_exists = true;
+        }
+
+        // Parse username (string literal or identifier)
+        let user = match self.next() {
+            Some(Token::StringLiteral(s)) => s,
+            Some(Token::Identifier(s)) => s,
+            Some(t) => {
+                return Err(format!(
+                    "Expected username (string or identifier) after DROP USER, got {:?}",
+                    t
+                ))
+            }
+            None => return Err("Unexpected end of input after DROP USER".to_string()),
+        };
+
+        // Parse host. Supports three equivalent shapes:
+        //   `'name'@'host'` — quoted name, separate `@` token, quoted host
+        //   `name @host`    — bare name, separate `@` token, bare host
+        //   `name@host`     — lexer glues the `@host` tail into one id
+        // If none of these are present, default to 'localhost'.
+        let host = match self.current() {
+            Some(Token::StringLiteral(s)) => {
+                let h = s.clone();
+                self.next();
+                h
+            }
+            Some(Token::Identifier(s)) if s == "@" => {
+                self.next();
+                match self.next() {
+                    Some(Token::StringLiteral(s)) => s,
+                    Some(Token::Identifier(s)) => s,
+                    Some(t) => return Err(format!("Expected host after '@', got {:?}", t)),
+                    None => return Err("Unexpected end of input after '@'".to_string()),
+                }
+            }
+            Some(Token::Identifier(s)) => {
+                let h = s.trim_start_matches('@').to_string();
+                self.next();
+                if h.is_empty() {
+                    "localhost".to_string()
+                } else {
+                    h
+                }
+            }
+            _ => "localhost".to_string(),
+        };
+
+        Ok(Statement::DropUser(DropUserStatement {
+            user,
+            host,
+            if_exists,
         }))
     }
 
