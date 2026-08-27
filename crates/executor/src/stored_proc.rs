@@ -454,6 +454,18 @@ impl StoredProcExecutor {
             return Ok(ExecutorResult::new(vec![vec![value]], 1));
         }
 
+        // V312-58 / Issue #4513: if the body ended in a SELECT, return
+        // the rows it produced. The body interpreter stashes them in
+        // the `__last_select_result` session var as Value::Json (a
+        // serde_json::Value carrying the rows), and we decode that
+        // back into ExecutorResult rows here.
+        if let Some(Value::Json(jv)) = ctx.get_session_var("__last_select_result") {
+            if let Ok(rows) = serde_json::from_value::<Vec<Vec<Value>>>(jv.clone()) {
+                let row_count = rows.len();
+                return Ok(ExecutorResult::new(rows, row_count));
+            }
+        }
+
         match result {
             Ok(_) => Ok(ExecutorResult::new(
                 vec![vec![Value::Text(format!(
@@ -563,7 +575,7 @@ impl StoredProcExecutor {
             } => {
                 let where_str = where_clause
                     .as_ref()
-                    .map(|w| format!(" WHERE {}", self.expand_variables_in_sql(w, ctx)))
+                    .map(|w| format!(" WHERE {}", self.expand_body_sql(w, ctx)))
                     .unwrap_or_default();
 
                 let cols = if columns.is_empty() {
@@ -805,7 +817,7 @@ impl StoredProcExecutor {
                     return Err(format!("Cursor '{}' not found", name));
                 };
 
-                let expanded = self.expand_variables_in_sql(&query, ctx);
+                let expanded = self.expand_body_sql(&query, ctx);
                 let statement = sqlrustgo_parser::parse(&expanded)
                     .map_err(|e| format!("Failed to parse cursor query: {}", e))?;
 
@@ -838,7 +850,7 @@ impl StoredProcExecutor {
 
     /// Execute a SQL statement using the storage engine
     fn execute_sql(&self, sql: &str, ctx: &mut ProcedureContext) -> Result<(), String> {
-        let expanded_sql = self.expand_variables_in_sql(sql, ctx);
+        let expanded_sql = self.expand_body_sql(sql, ctx);
         let sql_upper = expanded_sql.trim().to_uppercase();
 
         if sql_upper.starts_with("SELECT")
@@ -900,11 +912,22 @@ impl StoredProcExecutor {
                         .map_err(|e| format!("Failed to scan table: {}", e))?
                 };
 
+                // V312-58 / Issue #4513: resolve WHERE column references
+                // against the row context (this is what makes
+                // `WHERE n = target` work in a procedure body — `n` is
+                // the column, `target` is the parameter).
+                let table_columns = self.lookup_table_columns(table_name);
+
                 let filtered: Vec<Vec<Value>> = if let Some(ref where_expr) = select.where_clause {
                     records
                         .into_iter()
-                        .filter(|_row| {
-                            let where_val = self.expression_to_value(where_expr, ctx);
+                        .filter(|row| {
+                            let where_val = self.expression_to_value_with_row(
+                                where_expr,
+                                ctx,
+                                Some(row.as_slice()),
+                                table_columns.as_deref(),
+                            );
                             if let Value::Boolean(b) = where_val {
                                 b
                             } else {
@@ -918,7 +941,12 @@ impl StoredProcExecutor {
 
                 ctx.set_session_var(
                     "__last_select_result",
-                    Value::Text(serde_json::to_string(&filtered).unwrap_or_default()),
+                    // V312-58 / Issue #4513: store as Value::Json so the
+                    // outer CALL can round-trip the rows back out
+                    // (Value derives Serialize/Deserialize; the
+                    // legacy `Value::Text(json)` form was lossy and
+                    // never read back).
+                    Value::Json(serde_json::to_value(&filtered).unwrap_or(serde_json::Value::Null)),
                 );
                 ctx.set_session_var("__found_rows", Value::Integer(filtered.len() as i64));
                 Ok(())
@@ -938,25 +966,42 @@ impl StoredProcExecutor {
                         .map_err(|e| format!("Failed to scan table: {}", e))?
                 };
 
-                let filtered: Vec<Vec<Value>> = if let Some(ref where_expr) = select.where_clause {
-                    records
-                        .into_iter()
-                        .filter(|_row| {
-                            let where_val = self.expression_to_value(where_expr, ctx);
-                            if let Value::Boolean(b) = where_val {
-                                b
-                            } else {
-                                where_val != Value::Null
-                            }
-                        })
-                        .collect()
-                } else {
-                    records
-                };
+                // V312-58 / Issue #4513: resolve WHERE column references
+                // against the row context.
+                let table_columns = self.lookup_table_columns(table_name);
+
+                let mut filtered: Vec<Vec<Value>> =
+                    if let Some(ref where_expr) = select.where_clause {
+                        records
+                            .into_iter()
+                            .filter(|row| {
+                                let where_val = self.expression_to_value_with_row(
+                                    where_expr,
+                                    ctx,
+                                    Some(row.as_slice()),
+                                    table_columns.as_deref(),
+                                );
+                                if let Value::Boolean(b) = where_val {
+                                    b
+                                } else {
+                                    where_val != Value::Null
+                                }
+                            })
+                            .collect()
+                    } else {
+                        records
+                    };
+
+                // V312-58 / Issue #4513: honor `LIMIT n` so the issue
+                // repro `BEGIN SELECT * FROM student LIMIT 3; END`
+                // returns 3 rows instead of the full table.
+                if let Some(lim) = select.limit {
+                    filtered.truncate(lim as usize);
+                }
 
                 ctx.set_session_var(
                     "__last_select_result",
-                    Value::Text(serde_json::to_string(&filtered).unwrap_or_default()),
+                    Value::Json(serde_json::to_value(&filtered).unwrap_or(serde_json::Value::Null)),
                 );
                 ctx.set_session_var("__found_rows", Value::Integer(filtered.len() as i64));
                 Ok(())
@@ -983,12 +1028,21 @@ impl StoredProcExecutor {
                         .scan(&select.table)
                         .map_err(|e| format!("Failed to scan table: {}", e))?;
 
+                    // V312-58 / Issue #4513: column resolution against
+                    // the row context for INSERT...SELECT WHERE.
+                    let select_columns = self.lookup_table_columns(&select.table);
+
                     let selected_rows: Vec<Vec<Value>> =
                         if let Some(ref where_expr) = select.where_clause {
                             records
                                 .into_iter()
-                                .filter(|_row| {
-                                    let where_val = self.expression_to_value(where_expr, ctx);
+                                .filter(|row| {
+                                    let where_val = self.expression_to_value_with_row(
+                                        where_expr,
+                                        ctx,
+                                        Some(row.as_slice()),
+                                        select_columns.as_deref(),
+                                    );
                                     if let Value::Boolean(b) = where_val {
                                         b
                                     } else {
@@ -1250,6 +1304,23 @@ impl StoredProcExecutor {
         expr: &sqlrustgo_parser::Expression,
         ctx: &ProcedureContext,
     ) -> Value {
+        self.expression_to_value_with_row(expr, ctx, None, None)
+    }
+
+    /// Row-aware variant of `expression_to_value`.
+    ///
+    /// `row` / `columns`: when supplied, bare `Identifier` names that are
+    /// not procedure parameters / session variables are resolved against
+    /// the current row by column name. This is what makes
+    /// `WHERE n = target` work in a procedure body — `n` resolves to the
+    /// row's `n` column and `target` resolves to the parameter value.
+    fn expression_to_value_with_row(
+        &self,
+        expr: &sqlrustgo_parser::Expression,
+        ctx: &ProcedureContext,
+        row: Option<&[Value]>,
+        columns: Option<&[sqlrustgo_storage::ColumnDefinition]>,
+    ) -> Value {
         match expr {
             sqlrustgo_parser::Expression::Literal(s) => {
                 let s = s.trim();
@@ -1274,13 +1345,27 @@ impl StoredProcExecutor {
             sqlrustgo_parser::Expression::Identifier(name) => {
                 if let Some(stripped) = name.strip_prefix('@') {
                     ctx.get_var(stripped).cloned().unwrap_or(Value::Null)
+                } else if ctx.has_var(name) {
+                    // V312-58 / Issue #4513: bare procedure parameter or
+                    // local-variable reference in the body SQL resolves
+                    // to its stored value, not the literal name.
+                    ctx.get_var(name).cloned().unwrap_or(Value::Null)
+                } else if let (Some(row_vals), Some(cols)) = (row, columns) {
+                    // V312-58 / Issue #4513: column reference in the body
+                    // resolves to the current row's value (this is what
+                    // makes `WHERE n = target` work — `n` is the row's
+                    // column, `target` is the parameter).
+                    if let Some(idx) = cols.iter().position(|c| c.name.eq_ignore_ascii_case(name)) {
+                        return row_vals.get(idx).cloned().unwrap_or(Value::Null);
+                    }
+                    Value::Text(name.to_string())
                 } else {
                     Value::Text(name.to_string())
                 }
             }
             sqlrustgo_parser::Expression::BinaryOp(left, op, right) => {
-                let left_val = self.expression_to_value(left, ctx);
-                let right_val = self.expression_to_value(right, ctx);
+                let left_val = self.expression_to_value_with_row(left, ctx, row, columns);
+                let right_val = self.expression_to_value_with_row(right, ctx, row, columns);
                 self.evaluate_binary_op(&left_val, &right_val, op)
             }
             sqlrustgo_parser::Expression::Subquery(select) => {
@@ -1292,7 +1377,7 @@ impl StoredProcExecutor {
                 }
             }
             sqlrustgo_parser::Expression::In(left, select) => {
-                let left_val = self.expression_to_value(left, ctx);
+                let left_val = self.expression_to_value_with_row(left, ctx, row, columns);
                 let rows = self.execute_subquery(select);
                 let in_result = rows
                     .iter()
@@ -1300,7 +1385,7 @@ impl StoredProcExecutor {
                 Value::Boolean(in_result)
             }
             sqlrustgo_parser::Expression::NotIn(left, select) => {
-                let left_val = self.expression_to_value(left, ctx);
+                let left_val = self.expression_to_value_with_row(left, ctx, row, columns);
                 let rows = self.execute_subquery(select);
                 let not_in_result = rows
                     .iter()
@@ -1317,7 +1402,7 @@ impl StoredProcExecutor {
             }
             sqlrustgo_parser::Expression::QuantifiedOp(expr, quantifier, select) => {
                 let rows = self.execute_subquery(select);
-                let expr_val = self.expression_to_value(expr, ctx);
+                let expr_val = self.expression_to_value_with_row(expr, ctx, row, columns);
                 match quantifier.as_str() {
                     "ALL" => {
                         let all_match = rows
@@ -1335,50 +1420,50 @@ impl StoredProcExecutor {
                 }
             }
             sqlrustgo_parser::Expression::IsNull(inner) => {
-                let val = self.expression_to_value(inner, ctx);
+                let val = self.expression_to_value_with_row(inner, ctx, row, columns);
                 Value::Boolean(matches!(val, Value::Null))
             }
             sqlrustgo_parser::Expression::IsNotNull(inner) => {
-                let val = self.expression_to_value(inner, ctx);
+                let val = self.expression_to_value_with_row(inner, ctx, row, columns);
                 Value::Boolean(!matches!(val, Value::Null))
             }
             sqlrustgo_parser::Expression::InList(left, values) => {
-                let left_val = self.expression_to_value(left, ctx);
+                let left_val = self.expression_to_value_with_row(left, ctx, row, columns);
                 let value_list: Vec<Value> = values
                     .iter()
-                    .map(|v| self.expression_to_value(v, ctx))
+                    .map(|v| self.expression_to_value_with_row(v, ctx, row, columns))
                     .collect();
                 Value::Boolean(value_list.contains(&left_val))
             }
             sqlrustgo_parser::Expression::NotInList(left, values) => {
-                let left_val = self.expression_to_value(left, ctx);
+                let left_val = self.expression_to_value_with_row(left, ctx, row, columns);
                 let value_list: Vec<Value> = values
                     .iter()
-                    .map(|v| self.expression_to_value(v, ctx))
+                    .map(|v| self.expression_to_value_with_row(v, ctx, row, columns))
                     .collect();
                 Value::Boolean(!value_list.contains(&left_val))
             }
             sqlrustgo_parser::Expression::NotLike(left, pattern, _) => {
-                let left_val = self.expression_to_value(left, ctx);
-                let pattern_val = self.expression_to_value(pattern, ctx);
+                let left_val = self.expression_to_value_with_row(left, ctx, row, columns);
+                let pattern_val = self.expression_to_value_with_row(pattern, ctx, row, columns);
                 let like_result = self.like_match(&left_val, &pattern_val);
                 Value::Boolean(!like_result)
             }
             sqlrustgo_parser::Expression::NotBetween(left, low, high) => {
-                let left_val = self.expression_to_value(left, ctx);
-                let low_val = self.expression_to_value(low, ctx);
-                let high_val = self.expression_to_value(high, ctx);
+                let left_val = self.expression_to_value_with_row(left, ctx, row, columns);
+                let low_val = self.expression_to_value_with_row(low, ctx, row, columns);
+                let high_val = self.expression_to_value_with_row(high, ctx, row, columns);
                 let between_result = self.between_match(&left_val, &low_val, &high_val);
                 Value::Boolean(!between_result)
             }
             sqlrustgo_parser::Expression::NotRegexp(left, pattern) => {
-                let left_val = self.expression_to_value(left, ctx);
-                let pattern_val = self.expression_to_value(pattern, ctx);
+                let left_val = self.expression_to_value_with_row(left, ctx, row, columns);
+                let pattern_val = self.expression_to_value_with_row(pattern, ctx, row, columns);
                 let regexp_result = self.regexp_match(&left_val, &pattern_val);
                 Value::Boolean(!regexp_result)
             }
             sqlrustgo_parser::Expression::UnaryOp(op, expr) => {
-                let val = self.expression_to_value(expr, ctx);
+                let val = self.expression_to_value_with_row(expr, ctx, row, columns);
                 match op.as_str() {
                     "NOT" => {
                         if let Value::Boolean(b) = val {
@@ -1391,25 +1476,31 @@ impl StoredProcExecutor {
                 }
             }
             sqlrustgo_parser::Expression::Like(left, pattern, _) => {
-                let left_val = self.expression_to_value(left, ctx);
-                let pattern_val = self.expression_to_value(pattern, ctx);
+                let left_val = self.expression_to_value_with_row(left, ctx, row, columns);
+                let pattern_val = self.expression_to_value_with_row(pattern, ctx, row, columns);
                 Value::Boolean(self.like_match(&left_val, &pattern_val))
             }
             sqlrustgo_parser::Expression::Between(left, low, high) => {
-                let left_val = self.expression_to_value(left, ctx);
-                let low_val = self.expression_to_value(low, ctx);
-                let high_val = self.expression_to_value(high, ctx);
+                let left_val = self.expression_to_value_with_row(left, ctx, row, columns);
+                let low_val = self.expression_to_value_with_row(low, ctx, row, columns);
+                let high_val = self.expression_to_value_with_row(high, ctx, row, columns);
                 Value::Boolean(self.between_match(&left_val, &low_val, &high_val))
             }
             sqlrustgo_parser::Expression::CaseWhen(when_clauses, else_expr) => {
                 for clause in when_clauses {
-                    let cond_val = self.expression_to_value(&clause.condition, ctx);
+                    let cond_val =
+                        self.expression_to_value_with_row(&clause.condition, ctx, row, columns);
                     if let Value::Boolean(true) = cond_val {
-                        return self.expression_to_value(&clause.result, ctx);
+                        return self.expression_to_value_with_row(
+                            &clause.result,
+                            ctx,
+                            row,
+                            columns,
+                        );
                     }
                 }
                 if let Some(else_box) = else_expr {
-                    self.expression_to_value(else_box, ctx)
+                    self.expression_to_value_with_row(else_box, ctx, row, columns)
                 } else {
                     Value::Null
                 }
@@ -1437,11 +1528,17 @@ impl StoredProcExecutor {
             Ok(r) => r,
             Err(_) => return Vec::new(),
         };
+        let table_columns = self.lookup_table_columns(&select.table);
         if let Some(ref where_expr) = select.where_clause {
             records
                 .into_iter()
-                .filter(|_row| {
-                    let where_val = self.expression_to_value(where_expr, &ProcedureContext::new());
+                .filter(|row| {
+                    let where_val = self.expression_to_value_with_row(
+                        where_expr,
+                        &ProcedureContext::new(),
+                        Some(row.as_slice()),
+                        table_columns.as_deref(),
+                    );
                     if let Value::Boolean(b) = where_val {
                         b
                     } else {
@@ -1468,11 +1565,18 @@ impl StoredProcExecutor {
                     .scan(table_name)
                     .map_err(|e| format!("Failed to scan CTE table: {}", e))?;
 
+                let table_columns = self.lookup_table_columns(table_name);
+
                 if let Some(ref where_expr) = select.where_clause {
                     let filtered: Vec<Vec<Value>> = records
                         .into_iter()
-                        .filter(|_row| {
-                            let where_val = self.expression_to_value(where_expr, ctx);
+                        .filter(|row| {
+                            let where_val = self.expression_to_value_with_row(
+                                where_expr,
+                                ctx,
+                                Some(row.as_slice()),
+                                table_columns.as_deref(),
+                            );
                             if let Value::Boolean(b) = where_val {
                                 b
                             } else {
@@ -2043,6 +2147,117 @@ impl StoredProcExecutor {
         }
     }
 
+    /// Look up the column metadata for a table (used to resolve bare
+    /// column references in WHERE expressions against the current row).
+    /// V312-58 / Issue #4513.
+    fn lookup_table_columns(
+        &self,
+        table_name: &str,
+    ) -> Option<Vec<sqlrustgo_storage::ColumnDefinition>> {
+        if table_name.is_empty() {
+            return None;
+        }
+        let storage = self.storage.read();
+        storage
+            .get_table_info(table_name)
+            .ok()
+            .map(|info| info.columns)
+    }
+
+    /// Pre-process body SQL to bind procedure parameters / local
+    /// variables that appear in clauses (currently `LIMIT`) which the
+    /// parser only accepts as a literal number.
+    ///
+    /// The general string-level expander (`expand_variables_in_sql`)
+    /// intentionally only handles `@var` so that bare column
+    /// references are not silently rewritten. `LIMIT n` and similar
+    /// clauses are an exception because the parser rejects a bare
+    /// identifier with a binder error before the executor gets a
+    /// chance to resolve it against the procedure context.
+    ///
+    /// V312-58 / Issue #4513.
+    fn expand_limit_params(&self, sql: &str, ctx: &ProcedureContext) -> String {
+        let upper = sql.to_uppercase();
+        let bytes = sql.as_bytes();
+        let mut out: Option<String> = None;
+        let mut limit_match: Option<(usize, usize, String)> = None; // (kw_start, ident_end, ident)
+
+        for (i, _) in upper.char_indices() {
+            // Match the standalone keyword `LIMIT` (followed by
+            // whitespace, end-of-input, or another non-ident char) so
+            // we don't accidentally rewrite identifiers like
+            // `my_limit_value`.
+            let kw_ok = upper[i..].starts_with("LIMIT")
+                && (i + 5 == sql.len()
+                    || !bytes
+                        .get(i + 5)
+                        .copied()
+                        .map(|b| b.is_ascii_alphanumeric())
+                        .unwrap_or(false));
+            if !kw_ok {
+                continue;
+            }
+            // Look ahead past whitespace to find the bare identifier.
+            let mut j = i + 5;
+            while j < sql.len() {
+                let b = bytes[j];
+                if !(b as char).is_ascii_whitespace() {
+                    break;
+                }
+                j += 1;
+            }
+            let ident_start = j;
+            while j < sql.len() {
+                let b = bytes[j];
+                if !(b.is_ascii_alphanumeric() || b == b'_') {
+                    break;
+                }
+                j += 1;
+            }
+            if ident_start == j {
+                continue;
+            }
+            let ident = &sql[ident_start..j];
+            // Only bind when the identifier matches a known procedure
+            // parameter / local variable. Column references and unknown
+            // identifiers pass through so the parser / binder can
+            // produce its normal error.
+            if ctx.has_var(ident) {
+                if let Some(value) = ctx.get_var(ident) {
+                    limit_match = Some((i, j, self.escape_sql_value(value)));
+                    break;
+                }
+            }
+        }
+
+        if let Some((kw_start, ident_end, value)) = limit_match {
+            let mut buf = String::with_capacity(sql.len() + value.len());
+            buf.push_str(&sql[..kw_start]);
+            buf.push_str("LIMIT ");
+            buf.push_str(&value);
+            buf.push_str(&sql[ident_end..]);
+            out = Some(buf);
+        }
+        out.unwrap_or_else(|| sql.to_string())
+    }
+
+    /// Expand procedure parameters / local variables referenced in
+    /// a body SQL string. The pipeline is:
+    ///
+    /// 1. `expand_limit_params` rewrites `LIMIT <param>` into a
+    ///    literal so the parser's `LIMIT` clause accepts it (the
+    ///    parser rejects bare identifiers there with a binder error).
+    /// 2. `expand_variables_in_sql` rewrites `@var` references into
+    ///    their literal value.
+    ///
+    /// Bare column references in `WHERE`, `SELECT`, etc. are
+    /// deliberately NOT rewritten at this stage — they are resolved
+    /// against the current row by `expression_to_value_with_row`.
+    fn expand_body_sql(&self, sql: &str, ctx: &ProcedureContext) -> String {
+        let after_limit = self.expand_limit_params(sql, ctx);
+        self.expand_variables_in_sql(&after_limit, ctx)
+    }
+
     fn expand_variables_in_sql(&self, sql: &str, ctx: &ProcedureContext) -> String {
         let chars: Vec<char> = sql.chars().collect();
         let mut result = String::new();
@@ -2061,6 +2276,20 @@ impl StoredProcExecutor {
                     .map(|v| self.escape_sql_value(v))
                     .unwrap_or_else(|| "NULL".to_string());
                 result.push_str(&value);
+            } else if chars[i].is_alphabetic() || chars[i] == '_' {
+                // Bare identifiers are NOT expanded at the string level
+                // (a column reference and a procedure parameter can
+                // share a name, so string-level substitution is
+                // ambiguous). Parameter / local-variable references in
+                // the body are resolved at the AST level instead — see
+                // `expression_to_value_with_row` and the SELECT / WHERE
+                // / LIMIT paths in `execute_statement_storage`.
+                let start = i;
+                while i < chars.len() && (chars[i].is_alphanumeric() || chars[i] == '_') {
+                    i += 1;
+                }
+                let ident: String = chars[start..i].iter().collect();
+                result.push_str(&ident);
             } else {
                 result.push(chars[i]);
                 i += 1;
@@ -2644,6 +2873,80 @@ mod tests {
         assert_eq!(
             executor.expand_variables_in_sql(sql, &ctx),
             "SELECT * FROM users WHERE name = 'Alice'"
+        );
+    }
+
+    #[test]
+    fn test_expand_limit_params_binds_to_value() {
+        // Bare identifier after LIMIT that matches a procedure
+        // parameter should be rewritten to a literal number.
+        let catalog = Arc::new(Catalog::new("test"));
+        let executor = StoredProcExecutor::new_for_test(catalog);
+        let mut ctx = ProcedureContext::new();
+        ctx.set_var("lim", Value::Integer(2));
+        let sql = "SELECT * FROM nums LIMIT lim";
+        assert_eq!(
+            executor.expand_limit_params(sql, &ctx),
+            "SELECT * FROM nums LIMIT 2"
+        );
+    }
+
+    #[test]
+    fn test_expand_limit_params_unknown_var_passthrough() {
+        // Unknown identifiers pass through so the parser / binder
+        // can produce its normal error.
+        let catalog = Arc::new(Catalog::new("test"));
+        let executor = StoredProcExecutor::new_for_test(catalog);
+        let ctx = ProcedureContext::new();
+        let sql = "SELECT * FROM nums LIMIT missing";
+        assert_eq!(
+            executor.expand_limit_params(sql, &ctx),
+            "SELECT * FROM nums LIMIT missing"
+        );
+    }
+
+    #[test]
+    fn test_expand_limit_params_does_not_touch_identifiers() {
+        // Identifiers that contain `LIMIT` as a substring should not
+        // be touched.
+        let catalog = Arc::new(Catalog::new("test"));
+        let executor = StoredProcExecutor::new_for_test(catalog);
+        let mut ctx = ProcedureContext::new();
+        ctx.set_var("x", Value::Integer(5));
+        let sql = "SELECT limit_value FROM t WHERE limit_value = x";
+        assert_eq!(
+            executor.expand_limit_params(sql, &ctx),
+            "SELECT limit_value FROM t WHERE limit_value = x"
+        );
+    }
+
+    #[test]
+    fn test_expand_limit_params_with_offset_comma() {
+        // LIMIT n, m — only the first identifier is rewritten.
+        let catalog = Arc::new(Catalog::new("test"));
+        let executor = StoredProcExecutor::new_for_test(catalog);
+        let mut ctx = ProcedureContext::new();
+        ctx.set_var("off", Value::Integer(3));
+        let sql = "SELECT * FROM nums LIMIT off, 10";
+        assert_eq!(
+            executor.expand_limit_params(sql, &ctx),
+            "SELECT * FROM nums LIMIT 3, 10"
+        );
+    }
+
+    #[test]
+    fn test_expand_body_sql_chains_limit_then_vars() {
+        // The wrapper must run expand_limit_params before
+        // expand_variables_in_sql.
+        let catalog = Arc::new(Catalog::new("test"));
+        let executor = StoredProcExecutor::new_for_test(catalog);
+        let mut ctx = ProcedureContext::new();
+        ctx.set_var("lim", Value::Integer(4));
+        ctx.set_var("name", Value::Text("Alice".to_string()));
+        let sql = "SELECT * FROM users WHERE name = '@name' LIMIT lim";
+        assert_eq!(
+            executor.expand_body_sql(sql, &ctx),
+            "SELECT * FROM users WHERE name = 'Alice' LIMIT 4"
         );
     }
 
