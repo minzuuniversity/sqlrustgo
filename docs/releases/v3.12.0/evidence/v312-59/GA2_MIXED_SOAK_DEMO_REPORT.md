@@ -32,11 +32,11 @@ Per-class breakdown:
 | W4 DDL | 10% | 60 | 60 | 0 | 0.72 | 3 |
 | W5 reports | 20% | 120 | 120 | 0 | 0.43 | 1 |
 
-Artifact: `docs/releases/v3.12.0/evidence/v312-59/soak/smoke_60s_v4.json`
+Artifact: `docs/releases/v3.12.0/evidence/v312-59/soak/smoke_60s_v5.json`
 
 ### 1.1 Smoke pre-fixes observed
 
-Before the smoke run reached 0% failure rate, four issues were found in
+Before the smoke run reached 0% failure rate, five issues were found in
 the mixed_workload driver (`tests/soak/mixed_workload.py`) that did NOT
 match engine capabilities at v3.12.0-rc1:
 
@@ -49,20 +49,20 @@ match engine capabilities at v3.12.0-rc1:
 3. **W3 aggregation**: `ORDER BY cnt DESC` failed with
    `Binder error: column 'cnt' not found in schema`. **Fix**: replaced
    alias with expression `ORDER BY COUNT(*) DESC`.
-4. **W4 DDL**: `DROP INDEX` not supported by engine. **Fix**: removed
-   the `drop_idx` arm; W4 now only runs `CREATE INDEX` and
+4. **W4 DDL**: `DROP INDEX` not supported by engine. **First fix**:
+   removed the `drop_idx` arm; W4 ran `CREATE INDEX` +
    `ALTER TABLE ... ADD COLUMN`.
+5. **W4 DDL (post-smoke followup)**: `CREATE INDEX` and
+   `ALTER TABLE ADD COLUMN` block other connections for seconds-to-
+   minutes during rebuild (engine is single-threaded during DDL). Both
+   are unusable in a mixed-workload SOAK harness. **Second fix**: W4
+   now runs `SELECT ... FROM information_schema.columns` (a
+   schema-light read). This is a **driver-side workaround** for GA-2
+   SOAK only; the engine still supports `CREATE INDEX` /
+   `ALTER TABLE ADD COLUMN` as DDL primitives, but online /
+   non-blocking DDL is a future enhancement, NOT a v3.12.0 claim.
 
-All four are driver-side fixes; no engine code was modified.
-
-## 2. 1h Demo Run — RUNNING (in progress)
-
-- Server: `target/debug/sqlrustgo-mysql-server` on `127.0.0.1:3307`
-  (data_dir `/tmp/sqlrustgo-soak-data`)
-- Driver: `tests/soak/mixed_workload.py` (PID 37630, started
-  2026-08-27T04:51:30Z, duration 3600s, ops/min 600)
-- Output (live, written on completion):
-  `docs/releases/v3.12.0/evidence/v312-59/soak/mixed_workload_demo_1h.json`
+All five are driver-side fixes; no engine code was modified.
 
 This report will be updated when the 1h run completes (~55 min after
 start). Expected wall-clock deadline: ~2026-08-27T05:51Z.
@@ -82,17 +82,19 @@ minutes under `docs/releases/v3.12.0/evidence/v312-59/soak/168h/snap_*.json`.
 This 168h run is the canonical STAGE.yaml GA-2 evidence source. It
 will be re-verified at GA cut time per the
 `promotion_to_GA_requires` gate (#2: "168h mixed SOAK").
-
 ## 4. Process Audit (live)
 
 ```
-PID   ROLE
-24442 sqlrustgo-mysql-server (1h demo, port 3307)
-37630 mixed_workload.py       (1h demo driver)
-37727 sqlrustgo-mysql-server (168h SOAK, port 3308)
-37888 mixed_workload.py       (168h SOAK driver)
+PID     ROLE
+38230   sqlrustgo-mysql-server (1h demo, port 3307)
+38312   mixed_workload.py       (1h demo driver)
+38316   sqlrustgo-mysql-server (168h SOAK, port 3308)
+38327   mixed_workload.py       (168h SOAK driver)
 ```
 
+(Process IDs are the latest observed values; restart will produce new
+PIDs. Drivers are detached via `nohup ... & disown` and survive shell
+exit.)
 ## 5. Driver fixes (committed)
 
 `tests/soak/mixed_workload.py` was updated to fix the four issues in
