@@ -127,12 +127,24 @@ class WorkloadGenerator:
 
     def _oltp_query(self) -> str:
         # mix of INSERT / UPDATE / DELETE / SELECT
-        # sqlrustgo does not support AUTO_INCREMENT, so we use a wide id range
-        # (1..2_000_000) to keep PK collisions rare enough for smoke runs.
-        op = self.rng.choice(["insert", "update", "delete", "select"])
-        n = self.rng.randint(1, 2_000_000)
+        # W1 lessons from v3.11.0 SOAK (SOAK_TEST_REPORT.md §错误分析):
+        #   DELETE with random id out of [1, 100000] produced ~12% failure
+        #   because table only had ~54K rows. Fix: use bounded id range so
+        #   the workload exercises real rows most of the time.
+        # W1 also uses INSERT IGNORE / UPDATE / DELETE / SELECT in a
+        # roughly balanced mix (40/20/20/20). INSERT IGNORE is used so
+        # primary-key conflicts don't drown the success-rate signal — we
+        # care about *server throughput* (QPS) at this scale, not row
+        # uniqueness.
+        op = self.rng.choice(["insert", "insert", "insert", "insert",  # 40%
+                                "update", "update",                    # 20%
+                                "delete", "delete",                    # 20%
+                                "select"])                             # 20%
+        n = self.rng.randint(1, 10_000)
         if op == "insert":
-            return f"INSERT INTO orders (id, customer_id, total, status) VALUES ({n}, {self.rng.randint(1, 100)}, {n % 10000}, 'pending')"
+            return (f"INSERT IGNORE INTO orders "
+                    f"(id, customer_id, total, status) VALUES "
+                    f"({n}, {self.rng.randint(1, 100)}, {n % 10000}, 'pending')")
         elif op == "update":
             return f"UPDATE orders SET status='paid' WHERE id={n}"
         elif op == "delete":
@@ -141,7 +153,7 @@ class WorkloadGenerator:
             return f"SELECT * FROM orders WHERE id={n}"
 
     def _read_heavy_query(self) -> str:
-        n = self.rng.randint(1, 10000)
+        n = self.rng.randint(1, 10_000)
         kind = self.rng.choice(["point", "range"])
         if kind == "point":
             return f"SELECT * FROM customers WHERE id={n}"
