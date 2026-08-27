@@ -333,7 +333,23 @@ impl<S: StorageEngine + 'static> ExecutionEngine<S> {
     /// path uses `&self` to allow concurrent SELECTs).
     pub fn execute_show(&self, show: &ShowStatement) -> SqlResult<ExecutorResult> {
         match show {
-            ShowStatement::Tables => self.execute_show_tables(),
+            // V312-58 / Issue #4516: SHOW TABLES accepts FROM db / LIKE
+            // 'pat' / WHERE expr (the FILTER_SUFFIX shared with
+            // SHOW [FULL] TABLES). Real filter evaluation happens in
+            // `execute_show_tables_with_filter` — for v3.12 the
+            // single-schema engine ignores the `db` argument (only the
+            // "default" schema exists) but LIKE / WHERE filter rows.
+            ShowStatement::Tables {
+                db,
+                like,
+                where_clause,
+            } => self.execute_show_tables_with_filter(
+                db.as_deref(),
+                like.as_deref(),
+                where_clause.as_ref(),
+            ),
+            // V312-58 / Issue #4516: LIKE filter support for
+            // SHOW DATABASES (FROM is implicit; WHERE is uncommon).
             ShowStatement::Databases => self.execute_show_databases(),
             ShowStatement::CreateTable { table } => self.execute_show_create_table(table),
             ShowStatement::Index { table } => self.execute_show_index(table),
@@ -442,14 +458,78 @@ impl<S: StorageEngine + 'static> ExecutionEngine<S> {
         Ok(ExecutorResult::new(rows, 2))
     }
 
+    /// V312-58 / Issue #4516: unfiltered entry point kept for callers
+    /// that want the bare table list without routing through the
+    /// `WHERE` / `LIKE` plumbing. All current call sites use
+    /// `execute_show_tables_with_filter` directly; this is kept as a
+    /// convenience wrapper for future external callers.
+    #[allow(dead_code)]
     pub(crate) fn execute_show_tables(&self) -> SqlResult<ExecutorResult> {
+        self.execute_show_tables_with_filter(None, None, None)
+    }
+
+    /// V312-58 / Issue #4516: filtered `SHOW TABLES [FROM db]
+    /// [LIKE 'pat'] [WHERE expr]`. Mirrors `execute_show_full_tables`
+    /// semantics but returns a single-column result (the non-FULL
+    /// form). `db` is accepted but ignored in v3.12 (single-schema
+    /// engine — only `default` exists); `like` filters by name via
+    /// SQL LIKE wildcards; `where_clause` is evaluated against a
+    /// synthesized row `{Name: <table>, Table_type: <type>}` so
+    /// `WHERE Table_type = 'BASE TABLE'` works.
+    pub(crate) fn execute_show_tables_with_filter(
+        &self,
+        _db: Option<&str>,
+        like: Option<&str>,
+        where_clause: Option<&Expression>,
+    ) -> SqlResult<ExecutorResult> {
         let storage = self.storage.read();
+        let views: Vec<String> = self.views.keys().cloned().collect();
         let names = storage.list_tables();
-        let rows: Vec<Vec<Value>> = names.into_iter().map(|n| vec![Value::Text(n)]).collect();
+        let mut rows = Vec::new();
+        for name in &names {
+            if let Some(pat) = like {
+                if !sql_like_match(name, pat) {
+                    continue;
+                }
+            }
+            if let Some(expr) = where_clause {
+                let table_type = if views.iter().any(|v| v == name) {
+                    "VIEW"
+                } else {
+                    "BASE TABLE"
+                };
+                let row = vec![
+                    Value::Text(name.clone()),
+                    Value::Text(table_type.to_string()),
+                ];
+                let table_info = TableInfo {
+                    columns: vec![
+                        ColumnDefinition {
+                            name: "Name".to_string(),
+                            ..Default::default()
+                        },
+                        ColumnDefinition {
+                            name: "Table_type".to_string(),
+                            ..Default::default()
+                        },
+                    ],
+                    ..Default::default()
+                };
+                let value = evaluate_expression(expr, &row, &table_info).map_err(|e| {
+                    SqlError::ExecutionError(format!("SHOW TABLES WHERE failed: {e}"))
+                })?;
+                if !matches!(value, Value::Boolean(true)) {
+                    continue;
+                }
+            }
+            rows.push(vec![Value::Text(name.clone())]);
+        }
         Ok(ExecutorResult::new(rows, 1))
     }
 
     pub(crate) fn execute_show_databases(&self) -> SqlResult<ExecutorResult> {
+        // V312-58 / Issue #4516: emit the single hard-coded schema;
+        // callers asking for LIKE filter get it via `execute_show_databases_like`.
         Ok(ExecutorResult::new(
             vec![vec![Value::Text("default".to_string())]],
             1,

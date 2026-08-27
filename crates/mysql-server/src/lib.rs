@@ -3780,6 +3780,135 @@ fn read_only_stmt(stmt: &Statement) -> Option<ReadOnlyStmt<'_>> {
     }
 }
 
+/// V312-58 / Issue #4516: Map a parsed read-only statement to the
+/// MySQL-compatible column headers that the wire protocol should
+/// send as the result-set column metadata. `None` means "this
+/// statement has no fixed schema — fall back to SELECT projection
+/// extraction or `col_N`".
+///
+/// Returns `Some(headers)` only for SHOW/DESCRIBE variants that
+/// produce a fixed MySQL schema (Database / Tables_in_db /
+/// Field-Type-Null-Key-Default-Extra / 18-column SHOW TABLE STATUS
+/// / SHOW FULL TABLES / SHOW INDEX 12-column / etc.). The wire
+/// layer uses this in both COM_QUERY and COM_STMT_EXECUTE read-only
+/// dispatch paths so that `mysql --table` output looks like the
+/// real MySQL client.
+pub fn show_column_headers(parsed: &Statement) -> Option<Vec<String>> {
+    use sqlrustgo_parser::parser::ShowStatement;
+    match parsed {
+        Statement::Describe(_) => Some(vec![
+            "Field".to_string(),
+            "Type".to_string(),
+            "Null".to_string(),
+            "Key".to_string(),
+            "Default".to_string(),
+            "Extra".to_string(),
+        ]),
+        Statement::Show(show) => match show {
+            ShowStatement::Databases => Some(vec!["Database".to_string()]),
+            ShowStatement::Tables { db, .. } => {
+                // MySQL labels the column as `Tables_in_<db>` where
+                // <db> is the FROM schema (or the current schema).
+                // v3.12 is single-schema so we always emit
+                // `Tables_in_default` — same label MySQL emits when
+                // running against `USE default`.
+                let db_label = db.as_deref().unwrap_or("default");
+                Some(vec![format!("Tables_in_{db_label}")])
+            }
+            ShowStatement::FullTables { full, .. } => {
+                if *full {
+                    Some(vec!["Name".to_string(), "Table_type".to_string()])
+                } else {
+                    // Non-FULL SHOW TABLES is folded into Tables_in_*
+                    // above; the parser only emits FullTables for the
+                    // FULL form so this branch is reachable only when
+                    // callers explicitly set full=false.
+                    Some(vec!["Tables_in_default".to_string()])
+                }
+            }
+            ShowStatement::Columns { .. } => Some(vec![
+                "Field".to_string(),
+                "Type".to_string(),
+                "Null".to_string(),
+                "Key".to_string(),
+                "Default".to_string(),
+                "Extra".to_string(),
+            ]),
+            ShowStatement::CreateTable { .. } => {
+                Some(vec!["Table".to_string(), "Create Table".to_string()])
+            }
+            ShowStatement::Index { .. } => Some(vec![
+                "Table".to_string(),
+                "Non_unique".to_string(),
+                "Key_name".to_string(),
+                "Seq_in_index".to_string(),
+                "Column_name".to_string(),
+                "Collation".to_string(),
+                "Cardinality".to_string(),
+                "Sub_part".to_string(),
+                "Packed".to_string(),
+                "Null".to_string(),
+                "Index_type".to_string(),
+                "Comment".to_string(),
+            ]),
+            ShowStatement::Processlist { .. } => Some(vec![
+                "Id".to_string(),
+                "User".to_string(),
+                "Host".to_string(),
+                "db".to_string(),
+                "Command".to_string(),
+                "Time".to_string(),
+                "State".to_string(),
+                "Info".to_string(),
+            ]),
+            ShowStatement::Grants { .. } => Some(vec!["Grants for User@Host".to_string()]),
+            ShowStatement::Sequences => Some(vec!["Sequence".to_string()]),
+            ShowStatement::ProcedureStatus { .. } => Some(vec![
+                "Db".to_string(),
+                "Name".to_string(),
+                "Type".to_string(),
+                "Definer".to_string(),
+                "Modified".to_string(),
+                "Created".to_string(),
+                "Security_type".to_string(),
+                "Comment".to_string(),
+                "character_set_client".to_string(),
+                "collation_connection".to_string(),
+                "Database Collation".to_string(),
+            ]),
+            ShowStatement::Warnings | ShowStatement::Errors => Some(vec![
+                "Level".to_string(),
+                "Code".to_string(),
+                "Message".to_string(),
+            ]),
+            ShowStatement::Status | ShowStatement::Variables => {
+                Some(vec!["Variable_name".to_string(), "Value".to_string()])
+            }
+            ShowStatement::TableStatus { .. } => Some(vec![
+                "Name".to_string(),
+                "Engine".to_string(),
+                "Version".to_string(),
+                "Row_format".to_string(),
+                "Rows".to_string(),
+                "Avg_row_length".to_string(),
+                "Data_length".to_string(),
+                "Max_data_length".to_string(),
+                "Index_length".to_string(),
+                "Data_free".to_string(),
+                "Auto_increment".to_string(),
+                "Create_time".to_string(),
+                "Update_time".to_string(),
+                "Check_time".to_string(),
+                "Collation".to_string(),
+                "Checksum".to_string(),
+                "Create_options".to_string(),
+                "Comment".to_string(),
+            ]),
+        },
+        _ => None,
+    }
+}
+
 /// V312-18e Issue #4021: classify a parsed `Statement` into a stable
 /// Prometheus label. Kept on a small allowlist so the cardinality of
 /// `sqlrustgo_queries_total` stays bounded — anything not on the list
@@ -4557,12 +4686,19 @@ fn do_command_loop<S: Read + Write + DrainWrites>(
                         .record_query(query_type, std::time::Duration::from_millis(elapsed_ms));
                     match result {
                         Ok(r) if is_read_only.is_some() => {
-                            // Extract real column names from the SQL
-                            // (after SELECT, before FROM). Falls back to
-                            // col_1, col_2... when ambiguous (e.g. SELECT *).
-                            let real_col_names: Vec<String> = if stmt_sql
-                                .to_uppercase()
-                                .starts_with("SELECT")
+                            // V312-58 / Issue #4516: prefer the parser-
+                            // derived MySQL column headers (Database /
+                            // Tables_in_default / 12-column SHOW INDEX /
+                            // etc.). When the parser did not recognize
+                            // the statement (None), fall back to the
+                            // SELECT projection extractor, and finally
+                            // to col_1, col_2... for ambiguous shapes
+                            // (e.g. SELECT *).
+                            let real_col_names: Vec<String> = if let Some(headers) =
+                                parsed.as_ref().ok().and_then(show_column_headers)
+                            {
+                                headers
+                            } else if stmt_sql.to_uppercase().starts_with("SELECT")
                                 && stmt_sql.to_uppercase().contains(" FROM ")
                             {
                                 let upper = stmt_sql.to_uppercase();
@@ -4907,11 +5043,23 @@ fn do_command_loop<S: Read + Write + DrainWrites>(
                     .record_query("STMT_EXECUTE", std::time::Duration::from_millis(elapsed_ms));
                 match result {
                     Ok(r) if is_read_only.is_some() => {
-                        let c: Vec<String> = r
-                            .rows
-                            .first()
-                            .map(|row| (0..row.len()).map(|i| format!("col_{}", i + 1)).collect())
-                            .unwrap_or_else(|| vec!["result".to_string()]);
+                        // V312-58 / Issue #4516: prefer the parser-
+                        // derived MySQL column headers for SHOW /
+                        // DESCRIBE prepared statements, falling back
+                        // to col_N when the parser did not return a
+                        // fixed schema (e.g. SELECT *).
+                        let c: Vec<String> = if let Some(headers) =
+                            parsed.as_ref().ok().and_then(show_column_headers)
+                        {
+                            headers
+                        } else {
+                            r.rows
+                                .first()
+                                .map(|row| {
+                                    (0..row.len()).map(|i| format!("col_{}", i + 1)).collect()
+                                })
+                                .unwrap_or_else(|| vec!["result".to_string()])
+                        };
                         let t: Vec<String> = c.iter().map(|_| "VARCHAR(255)".to_string()).collect();
                         let c_trimmed: Vec<String> =
                             c.into_iter().take(stmt_col_count as usize).collect();
