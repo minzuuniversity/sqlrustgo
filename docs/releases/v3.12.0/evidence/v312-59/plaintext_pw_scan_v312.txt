@@ -1,6 +1,6 @@
 === Plaintext Password Scan (Wire Protocol) ===
-Timestamp: 2026-08-21T16:21:27Z
-Commit: 5e147ea0fee9fbb0caa1b323a853d857b7b25873
+Timestamp: 2026-08-27T04:46:49Z
+Commit: 38e2a6b785b39fdc1d7cd9cbc6504664fd57c3e2
 
-/home/openclaw/sqlrustgo_work/crates/catalog/src/auth.rs:1706:        let password = "mysecretpassword";
-/home/openclaw/sqlrustgo_work/crates/mysql-client/src/lib.rs:1317:        let password = "tester";
+/Volumes/NVMe1T/workspace/dev/openheart/sqlrustgo/crates/mysql-client/src/lib.rs:1317:        let password = "tester";
+/Volumes/NVMe1T/workspace/dev/openheart/sqlrustgo/crates/catalog/src/auth.rs:1706:        let password = "mysecretpassword";
