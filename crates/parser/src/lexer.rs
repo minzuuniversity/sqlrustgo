@@ -478,6 +478,10 @@ impl<'a> Lexer<'a> {
                     "UNCOMMITTED" => Token::Uncommitted,
                     "CALL" => Token::Call,
                     "PROCEDURE" => Token::Procedure,
+                    // V312-58 / Issue #4512: scalar UDF. Must be a reserved
+                    // keyword so the parser dispatcher can route CREATE
+                    // FUNCTION to the UDF path (vs. CREATE PROCEDURE).
+                    "FUNCTION" => Token::Function,
                     "END" => Token::End,
                     "SHOW" => Token::Show,
                     "DESCRIBE" => Token::Describe,
@@ -547,6 +551,8 @@ impl<'a> Lexer<'a> {
                     "ITERATE" => Token::Iterate,
                     "DECLARE" => Token::Declare,
                     "RETURN" => Token::Return,
+                    // V312-58 / Issue #4512: scalar UDF return-type prefix.
+                    "RETURNS" => Token::Returns,
                     "REPEAT" => Token::Repeat,
                     "UNTIL" => Token::Until,
                     "CONDITION" => Token::Condition,
