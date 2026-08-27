@@ -1,13 +1,19 @@
 # v3.12.0 Feature Checklist
 
 > **SSOT chain:**
-> 1. `docs/governance/STAGE_CONFIG.yaml` (BETA stage definition)
-> 2. `docs/releases/v3.12.0/STAGE.yaml` (per-version promotion_to_BETA_requires)
+> 1. `docs/governance/STAGE_CONFIG.yaml` (RC stage definition)
+> 2. `docs/releases/v3.12.0/STAGE.yaml` (per-version promotion_to_RC_requires)
 > 3. `docs/releases/v3.12.0/FEATURE_CHECKLIST.md` (this file)
 
-This document tracks feature-by-feature readiness for the v3.12.0 BETA
-promotion. Each row maps to one `promotion_to_BETA_requires` bullet from
-`STAGE.yaml` and references the underlying evidence report.
+> **Stage update (2026-08-26):** v3.12.0 is now in **RC** stage (entered 2026-08-26;
+> BETA was 2026-08-19, ALPHA 2026-08-12). All feature rows below were originally
+> verified at BETA promotion; they remain PASS for RC per `RC_GATE_REPORT.md`
+> (12/12 RC items satisfied + B8 13/13 thresholds_override). The original BETA
+> promotion snapshot is preserved below unchanged for traceability.
+
+This document tracks feature-by-feature readiness for the v3.12.0 RC
+promotion (originally BETA). Each row maps to one `promotion_to_BETA_requires`
+bullet from `STAGE.yaml` and references the underlying evidence report.
 
 | # | Feature | Status | Evidence | Gate Check |
 |---|---------|:------:|----------|------------|

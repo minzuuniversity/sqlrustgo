@@ -15,6 +15,13 @@
 > official corpus remains an RC/GA expansion item, not a Beta smoke-gate
 > claim.
 
+> **Stage update (2026-08-26):** v3.12.0 has entered **RC** stage
+> (per `STAGE.yaml` `current_stage: "RC"`; BETA was 2026-08-19). The scope
+> snapshot above (captured at BETA smoke readiness 2026-08-14) remains the
+> underlying SQLLogicTest evidence; the RC layer verdict aggregator is
+> `docs/releases/v3.12.0/RC_GATE_REPORT.md` (12/12 items satisfied + B8
+> 13/13 at HEAD `cbe1f53f85`, drift-fix from `dd5ab204`).
+
 ---
 
 ## 1. v3.12 In-Scope (已实现并验证 PASS)
