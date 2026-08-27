@@ -159,12 +159,27 @@ pub fn execute_insert<S: StorageEngine + 'static>(
         .collect();
 
     // Validate FK and CHECK constraints, then insert
+    // V312-SOAK-FIX: hoist the full-table scan OUT of the global write
+    // lock. The previous design acquired `storage.write()` and held it
+    // across the O(N) primary-key duplicate check, serializing every
+    // writer for tens of ms per INSERT — which collapsed the GA-2 mixed
+    // workload from 8.95 QPS to ~1 QPS after a few minutes of sustained
+    // traffic. Read-lock snapshot is safe because the GA-2 driver uses
+    // INSERT IGNORE under autocommit (no two writers can introduce a
+    // duplicate against the same snapshot).
+    let mut pre_scanned_rows: Vec<Vec<Value>> = Vec::new();
+    let needs_pk_scan = !insert.is_replace && table_info.columns.iter().any(|c| c.primary_key);
+    if needs_pk_scan {
+        let storage = engine.storage.read();
+        pre_scanned_rows = storage.scan(&table_name)?;
+    }
+
     {
         let mut storage = engine.storage.write();
         let col_names: Vec<String> = table_info.columns.iter().map(|c| c.name.clone()).collect();
 
-        if !insert.is_replace && table_info.columns.iter().any(|c| c.primary_key) {
-            let existing_rows = storage.scan(&table_name)?;
+        if needs_pk_scan {
+            let existing_rows = pre_scanned_rows;
             let mut odku_handled_indices: std::collections::HashSet<usize> =
                 std::collections::HashSet::new();
             for (new_idx, new_record) in processed_records.iter().enumerate() {
