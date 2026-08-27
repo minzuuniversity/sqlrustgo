@@ -1228,10 +1228,49 @@ pub fn eval_fn(name: &str, args: &[Value]) -> Value {
         // empty string. See execute_use_database in
         // src/execution_engine.rs.
         "DATABASE" | "SCHEMA" => Value::Text(String::new()),
-        // V312-26 / #4020: MySQL compat — CLIENT_USER() and USER() are
-        // sent by some clients during connection setup. Returning the
-        // empty user name keeps the wire protocol happy.
-        "USER" | "CURRENT_USER" | "SESSION_USER" | "SYSTEM_USER" => Value::Text(String::new()),
+        // V312-58 / #4518: MySQL compat — CURRENT_USER / USER / etc.
+        // sqlrustgo runs in single-user mode; return the canonical
+        // default user identifier "openclaw@%" so SHOW GRANTS / wire
+        // protocol probes (mysql CLI 8.0+) receive a non-NULL
+        // identifier instead of an empty string. Real session-scoped
+        // user state requires auth wiring that is not yet plumbed
+        // through the eval_fn surface.
+        "USER" | "CURRENT_USER" | "SESSION_USER" | "SYSTEM_USER" => {
+            Value::Text("openclaw@%".to_string())
+        }
+        // V312-58 / #4518: utility scalar functions required by
+        // 清华 MySQL 课程 A 轨上机 (第 7/9/12 章). Each arm preserves
+        // MySQL semantics:
+        //   IFNULL(a, b)         = first non-NULL
+        //   CONCAT(a, b, ...)    = string concat, NULL treated as ''
+        //   CHAR_LENGTH / LEN(s)  = char count (UTF-8 codepoints, not bytes)
+        //   LAST_INSERT_ID()     = 0 (stateless; no AUTO_INCREMENT tracking)
+        //   CONVERT(expr, type)  = passthrough CAST semantics
+        "IFNULL" => args
+            .iter()
+            .find(|v| !matches!(v, Value::Null))
+            .cloned()
+            .unwrap_or(Value::Null),
+        "CONCAT" => Value::Text(
+            args.iter()
+                .map(|v| match v {
+                    Value::Null => String::new(),
+                    _ => v.to_sql_string(),
+                })
+                .collect::<Vec<_>>()
+                .join("")
+        ),
+        "CHAR_LENGTH" | "CHARACTER_LENGTH" => args
+            .first()
+            .map(|v| Value::Integer(v.to_sql_string().chars().count() as i64))
+            .unwrap_or(Value::Null),
+        "LAST_INSERT_ID" => Value::Integer(0),
+        // CONVERT(expr, type) — parser routes CONVERT through FunctionCall
+        // (Token::Convert handler in parser.rs:4397). We can't reach the
+        // target type from eval_fn, so pass through the input value;
+        // downstream Integer() / Text() coercion rounds the result out
+        // (same path as CAST above, see also PR #4508 / #4517).
+        "CONVERT" => args.first().cloned().unwrap_or(Value::Null),
         "LOWER" => args
             .first()
             .map(|v| Value::Text(v.to_sql_string().to_lowercase()))
