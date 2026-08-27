@@ -52,6 +52,28 @@ pub fn get_and_clear_derived_subqueries() -> std::collections::HashMap<String, B
     })
 }
 
+/// V312-58 / Issue #4512: render a token as a SQL fragment suitable
+/// for re-tokenization by the lexer.
+///
+/// Most token variants have a canonical `Display` form that
+/// round-trips through the lexer's keyword table (e.g. `Token::Plus`
+/// → `"+"`, `Token::And` → `"AND"`). For the literal-bearing tokens
+/// (`Identifier`, `StringLiteral`, `NumberLiteral`, `BooleanLiteral`)
+/// we extract the inner payload because their `Display` impl emits
+/// `IDENTIFIER(x)` / `'x'` / `42` / `true` shapes that wouldn't
+/// survive the lexer's strict uppercase-keyword dispatch.
+fn token_to_text(tok: &Token) -> String {
+    match tok {
+        Token::Identifier(s) => s.clone(),
+        Token::StringLiteral(s) => format!("'{}'", s),
+        Token::NumberLiteral(s) => s.clone(),
+        Token::BooleanLiteral(true) => "TRUE".to_string(),
+        Token::BooleanLiteral(false) => "FALSE".to_string(),
+        Token::Semicolon => String::new(),
+        _ => format!("{}", tok),
+    }
+}
+
 /// SQL Statement types
 #[derive(Debug, Clone, PartialEq)]
 pub enum Statement {
@@ -83,6 +105,11 @@ pub enum Statement {
     CreateProcedure(CreateProcedureStatement),
     /// V312-55A / Issue #4238: DROP PROCEDURE [IF EXISTS] name
     DropProcedure(DropProcedureStatement),
+    /// V312-58 / Issue #4512: scalar UDF definition.
+    CreateFunction(CreateFunctionStatement),
+    /// V312-58 / Issue #4512: drop a scalar UDF from the engine-local
+    /// registry. `IF EXISTS` follows the standard DROP shape.
+    DropFunction(DropFunctionStatement),
     Union(UnionStatement),
     CreateTrigger(CreateTriggerStatement),
     /// SQL-92 INTERSECT (V310-06 PR2 / Issue #3723 C-2a).
@@ -308,6 +335,42 @@ pub struct CreateProcedureStatement {
 /// the same shape as DROP TABLE / DROP VIEW.
 #[derive(Debug, Clone, PartialEq)]
 pub struct DropProcedureStatement {
+    pub name: String,
+    pub if_exists: bool,
+}
+
+/// V312-58 / Issue #4512: scalar user-defined function parameter.
+///
+/// Mirrors the StoredProcParam shape but with `mode` fixed to `In`
+/// (UDFs only accept IN parameters; OUT/INOUT are procedure-only).
+/// The data_type is stored as a String (canonical name from the lexer)
+/// so the executor can cast arg values to it on invocation.
+#[derive(Debug, Clone, PartialEq)]
+pub struct UdfParam {
+    pub name: String,
+    pub data_type: String,
+}
+
+/// V312-58 / Issue #4512: CREATE FUNCTION (scalar UDF) statement.
+///
+/// `body_expr` is the raw text after `RETURN` in the source SQL.
+/// The executor re-parses it as a standalone expression when the UDF
+/// is invoked (so a UDF body can reference its declared parameters as
+/// bare identifiers). `deterministic` records the optional
+/// `[DETERMINISTIC]` annotation (MySQL convention; used by the
+/// executor for future caching, currently informational).
+#[derive(Debug, Clone, PartialEq)]
+pub struct CreateFunctionStatement {
+    pub name: String,
+    pub params: Vec<UdfParam>,
+    pub return_type: String,
+    pub deterministic: bool,
+    pub body_expr: String,
+}
+
+/// V312-58 / Issue #4512: DROP FUNCTION [IF EXISTS] name.
+#[derive(Debug, Clone, PartialEq)]
+pub struct DropFunctionStatement {
     pub name: String,
     pub if_exists: bool,
 }
@@ -2492,17 +2555,18 @@ impl Parser {
                 }
                 Ok(stmt)
             }
+            Some(Token::Function) => self.parse_create_function(),
             Some(Token::Trigger) => self.parse_create_trigger(),
             Some(Token::Role) => self.parse_create_role(),
             Some(Token::View) => self.parse_create_view(),
             Some(Token::Database) => self.parse_create_database(),
             Some(Token::Sequence) => self.parse_create_sequence(),
             Some(t) => Err(format!(
-                "Expected TABLE, INDEX, PROCEDURE, TRIGGER, ROLE, VIEW, SEQUENCE, or DATABASE after CREATE, got {:?}",
+                "Expected TABLE, INDEX, PROCEDURE, FUNCTION, TRIGGER, ROLE, VIEW, SEQUENCE, or DATABASE after CREATE, got {:?}",
                 t
             )),
             None => Err(
-                "Expected TABLE, INDEX, PROCEDURE, TRIGGER, ROLE, VIEW, SEQUENCE, or DATABASE after CREATE"
+                "Expected TABLE, INDEX, PROCEDURE, FUNCTION, TRIGGER, ROLE, VIEW, SEQUENCE, or DATABASE after CREATE"
                     .to_string(),
             ),
         }
@@ -2867,6 +2931,162 @@ impl Parser {
             name,
             if_exists,
         }))
+    }
+
+    /// V312-58 / Issue #4512: parse `CREATE FUNCTION name(p1 TYPE, ...) RETURNS TYPE [DETERMINISTIC] RETURN expr`.
+    ///
+    /// The caller (`parse_create`) has already consumed the leading
+    /// `CREATE` keyword. We consume `FUNCTION`, parse the signature
+    /// (name, parameter list, return type, optional `DETERMINISTIC`,
+    /// and the `RETURN <expr>` body). The body expression is stored
+    /// as raw text and re-parsed at invocation time by the executor
+    /// so it can resolve UDF parameter references against the
+    /// call-site argument values.
+    ///
+    /// Syntax:
+    ///   CREATE FUNCTION name ( [param TYPE [, param TYPE]*] )
+    ///       RETURNS TYPE
+    ///       [DETERMINISTIC]
+    ///       RETURN expr ;
+    fn parse_create_function(&mut self) -> Result<Statement, String> {
+        self.expect(Token::Function)?;
+
+        let name = match self.next() {
+            Some(Token::Identifier(name)) => name,
+            Some(t) => return Err(format!("Expected function name, got {:?}", t)),
+            None => return Err("Expected function name".to_string()),
+        };
+
+        // Parameter list — same shape as CREATE PROCEDURE but every
+        // param is implicitly IN (UDFs have no OUT/INOUT).
+        self.expect(Token::LParen)?;
+        let mut params = Vec::new();
+        if !matches!(self.current(), Some(Token::RParen) | None) {
+            loop {
+                let param_name = match self.next() {
+                    Some(Token::Identifier(n)) => n,
+                    Some(t) => {
+                        return Err(format!("Expected UDF parameter name, got {:?}", t))
+                    }
+                    None => return Err("Expected UDF parameter name".to_string()),
+                };
+                let data_type = match self.next() {
+                    Some(Token::Identifier(typename)) => typename,
+                    Some(Token::Integer) => "INTEGER".to_string(),
+                    Some(Token::Text) => "TEXT".to_string(),
+                    Some(Token::Float) => "FLOAT".to_string(),
+                    Some(Token::Boolean) => "BOOLEAN".to_string(),
+                    Some(t) => return Err(format!("Expected UDF parameter type, got {:?}", t)),
+                    None => return Err("Expected UDF parameter type".to_string()),
+                };
+                params.push(UdfParam {
+                    name: param_name,
+                    data_type,
+                });
+                if matches!(self.current(), Some(Token::Comma)) {
+                    self.next();
+                } else {
+                    break;
+                }
+            }
+        }
+        self.expect(Token::RParen)?;
+
+        // RETURNS <type>
+        self.expect(Token::Returns)?;
+        let return_type = match self.next() {
+            Some(Token::Identifier(typename)) => typename,
+            Some(Token::Integer) => "INTEGER".to_string(),
+            Some(Token::Text) => "TEXT".to_string(),
+            Some(Token::Float) => "FLOAT".to_string(),
+            Some(Token::Boolean) => "BOOLEAN".to_string(),
+            Some(t) => return Err(format!("Expected return type, got {:?}", t)),
+            None => return Err("Expected return type".to_string()),
+        };
+
+        // Optional DETERMINISTIC modifier (records informational flag).
+        let deterministic = if matches!(self.current(), Some(Token::Deterministic)) {
+            self.next();
+            true
+        } else {
+            false
+        };
+
+        // RETURN <expr> — capture the body as raw text. The executor
+        // re-parses it when the UDF is invoked. We snapshot tokens
+        // until we hit a top-level `;` or EOF (mirrors the simpler
+        // single-expression body MySQL accepts for scalar UDFs).
+        self.expect(Token::Return)?;
+        let mut body_expr = String::new();
+        let mut depth: u32 = 0;
+        loop {
+            match self.current() {
+                None => break,
+                Some(Token::Semicolon) if depth == 0 => break,
+                Some(Token::LParen) => {
+                    depth += 1;
+                    body_expr.push('(');
+                    self.next();
+                }
+                Some(Token::RParen) => {
+                    if depth == 0 {
+                        break;
+                    }
+                    depth -= 1;
+                    body_expr.push(')');
+                    self.next();
+                }
+                Some(tok) => {
+                    // Append a textual representation of this token to the
+                    // body buffer. We use the same `Display` form the lexer
+                    // emits so re-tokenization on invocation produces the
+                    // same span.
+                    body_expr.push_str(&format!("{} ", token_to_text(tok)));
+                    self.next();
+                }
+            }
+        }
+        let body_expr = body_expr.trim().to_string();
+        if body_expr.is_empty() {
+            return Err(
+                "CREATE FUNCTION requires a non-empty body after RETURN".to_string(),
+            );
+        }
+
+        Ok(Statement::CreateFunction(CreateFunctionStatement {
+            name,
+            params,
+            return_type,
+            deterministic,
+            body_expr,
+        }))
+    }
+
+    /// V312-58 / Issue #4512: parse `DROP FUNCTION [IF EXISTS] name`.
+    ///
+    /// The caller (`parse_drop`) has already consumed the leading
+    /// `DROP` keyword. Mirrors the DROP TABLE/DROP VIEW/DROP
+    /// PROCEDURE shape.
+    fn parse_drop_function(&mut self) -> Result<Statement, String> {
+        self.expect(Token::Function)?;
+        let if_exists = if matches!(self.current(), Some(Token::If)) {
+            self.next();
+            match self.current() {
+                Some(Token::Exists) => {
+                    self.next();
+                    true
+                }
+                _ => return Err("Expected 'EXISTS' after 'IF'".to_string()),
+            }
+        } else {
+            false
+        };
+        let name = match self.next() {
+            Some(Token::Identifier(name)) => name,
+            Some(t) => return Err(format!("Expected function name, got {:?}", t)),
+            None => return Err("Expected function name".to_string()),
+        };
+        Ok(Statement::DropFunction(DropFunctionStatement { name, if_exists }))
     }
 
     /// Parse stored procedure body statements until a terminator token
@@ -9050,15 +9270,17 @@ impl Parser {
             Some(Token::View) => self.parse_drop_view(),
             // V312-55A / Issue #4238: add DROP PROCEDURE to the dispatcher.
             Some(Token::Procedure) => self.parse_drop_procedure(),
+            // V312-58 / Issue #4512: scalar UDF removal.
+            Some(Token::Function) => self.parse_drop_function(),
             Some(Token::Role) => self.parse_drop_role(),
             Some(Token::Database) => self.parse_drop_database(),
             Some(Token::Sequence) => self.parse_drop_sequence(),
             Some(t) => Err(format!(
-                "Expected TABLE, INDEX, VIEW, PROCEDURE, ROLE, SEQUENCE, or DATABASE after DROP, got {:?}",
+                "Expected TABLE, INDEX, VIEW, PROCEDURE, FUNCTION, ROLE, SEQUENCE, or DATABASE after DROP, got {:?}",
                 t
             )),
             None => Err(
-                "Expected TABLE, INDEX, VIEW, PROCEDURE, ROLE, SEQUENCE, or DATABASE after DROP"
+                "Expected TABLE, INDEX, VIEW, PROCEDURE, FUNCTION, ROLE, SEQUENCE, or DATABASE after DROP"
                     .to_string(),
             ),
         }
@@ -10359,6 +10581,18 @@ pub fn parse(sql: &str) -> Result<Statement, String> {
     let tokens = Lexer::new(sql).tokenize();
     let mut parser = Parser::new(tokens);
     parser.parse_statement()
+}
+
+/// V312-58 / Issue #4512: parse a single SQL expression from raw text.
+/// Used by the scalar-UDF evaluator to re-parse the body of a
+/// `CREATE FUNCTION` at call time after substituting declared parameter
+/// names with the call-site argument values. The expression must
+/// consume the entire input; any trailing tokens (besides EOF) are
+/// surfaced as a parse error.
+pub fn parse_expression_str(sql: &str) -> Result<Expression, String> {
+    let tokens = Lexer::new(sql).tokenize();
+    let mut parser = Parser::new(tokens);
+    parser.parse_expression()
 }
 
 /// Parse a SQL string into multiple statements (semicolon-separated)

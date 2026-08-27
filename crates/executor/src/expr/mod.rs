@@ -1,5 +1,82 @@
 use sqlrustgo_storage::StorageEngine;
 use sqlrustgo_types::Value;
+use std::cell::RefCell;
+use std::collections::HashMap;
+
+// ============================================================================
+// V312-58 / Issue #4512: scalar UDF (user-defined function) registry.
+//
+// `eval_fn` is a stateless function (no engine reference), so UDFs are
+// stored in a thread-local registry. The active `ExecutionEngine` writes
+// to it on `CREATE FUNCTION` / `DROP FUNCTION`; `eval_fn` reads from it
+// after the built-in arms miss. Each `ExecutionEngine::execute` runs in
+// the calling thread, so single-threaded test/repl usage is the natural
+// fit. Multi-threaded scenarios would need to thread the registry
+// through `evaluate(...)` — out of scope for v3.12.
+// ============================================================================
+#[derive(Debug, Clone)]
+pub struct UdfDefinition {
+    pub params: Vec<String>,
+    /// Return type as declared in the UDF header (e.g. `INTEGER`,
+    /// `VARCHAR(64)`). Stored verbatim for diagnostics and future
+    /// strict-typing enforcement — not consumed by `invoke_udf` in
+    /// v3.12 since `evaluate` infers the value's type from the
+    /// resulting `Value` directly.
+    #[allow(dead_code)]
+    pub return_type: String,
+    pub body_expr: String,
+}
+
+thread_local! {
+    static UDF_REGISTRY: RefCell<HashMap<String, UdfDefinition>> =
+        RefCell::new(HashMap::new());
+}
+
+/// V312-58 / Issue #4512: register a scalar UDF under `name`. Overwrites
+/// any existing definition with the same case-insensitive name (matches
+/// MySQL `CREATE OR REPLACE FUNCTION` semantics for the simple form).
+pub fn register_udf(
+    name: &str,
+    params: Vec<String>,
+    return_type: String,
+    body_expr: String,
+) {
+    UDF_REGISTRY.with(|cell| {
+        cell.borrow_mut().insert(
+            name.to_uppercase(),
+            UdfDefinition {
+                params,
+                return_type,
+                body_expr,
+            },
+        );
+    });
+}
+
+/// V312-58 / Issue #4512: remove a UDF by case-insensitive name. Returns
+/// true if the UDF existed, false otherwise.
+pub fn drop_udf(name: &str) -> bool {
+    UDF_REGISTRY.with(|cell| cell.borrow_mut().remove(&name.to_uppercase()).is_some())
+}
+
+/// V312-58 / Issue #4512: true iff a UDF with this name (case-insensitive)
+/// is currently registered. Used by `eval_fn` to decide whether to fall
+/// through to the UDF evaluator.
+pub fn has_udf(name: &str) -> bool {
+    UDF_REGISTRY.with(|cell| cell.borrow().contains_key(&name.to_uppercase()))
+}
+
+/// V312-58 / Issue #4512: snapshot of the entire UDF registry. Tests and
+/// diagnostics consume it to assert state without taking a mutable
+/// borrow.
+pub fn udf_snapshot() -> Vec<(String, UdfDefinition)> {
+    UDF_REGISTRY.with(|cell| {
+        cell.borrow()
+            .iter()
+            .map(|(k, v)| (k.clone(), v.clone()))
+            .collect()
+    })
+}
 
 #[derive(Debug, Clone, PartialEq)]
 pub enum UnifiedExpr {
@@ -1861,7 +1938,193 @@ pub fn eval_fn(name: &str, args: &[Value]) -> Value {
         // "unreachable pattern" warnings. The PR #4493 implementation
         // is now the single source of truth.
         // ====================================================================
-        _ => Value::Null,
+        // ====================================================================
+        // V312-58 / Issue #4512: scalar UDF dispatch. After all built-in
+        // arms miss, look up the (case-insensitive) name in the
+        // thread-local UDF registry. If found, re-parse the stored
+        // body expression (substituting call-site arg values for the
+        // declared parameter names) and evaluate it. Re-parsing keeps
+        // us on the existing expression evaluator — no need to teach
+        // UDFs about row/column/storage contexts because the body only
+        // sees its own argument values plus literals.
+        // ====================================================================
+        _ => {
+            let udf = UDF_REGISTRY.with(|cell| cell.borrow().get(&name.to_uppercase()).cloned());
+            if let Some(def) = udf {
+                return invoke_udf(&def, args);
+            }
+            Value::Null
+        }
+    }
+}
+
+/// V312-58 / Issue #4512: invoke a registered scalar UDF with the given
+/// arguments. The function:
+/// 1. Re-tokenizes + re-parses the stored body expression text.
+/// 2. Walks the resulting `sqlrustgo_parser::Expression` and substitutes
+///    every `Identifier` whose name matches a declared parameter with a
+///    `Literal` carrying the canonical SQL text form of the matching
+///    argument value (e.g. `Value::Text("o'b")` becomes
+///    `Literal("'o''b'")`).
+/// 3. Converts the resulting `Expression` into a `UnifiedExpr` and
+///    evaluates it in an empty row context.
+///
+/// Any failure (re-parse error, arity mismatch, evaluation error)
+/// collapses to `Value::Null` rather than a hard error — scalar UDFs are
+/// expected to degrade gracefully so a single buggy function does not
+/// bring down the surrounding statement.
+fn invoke_udf(def: &UdfDefinition, args: &[Value]) -> Value {
+    use sqlrustgo_parser::parse_expression_str;
+    let raw_expr = match parse_expression_str(&def.body_expr) {
+        Ok(e) => e,
+        Err(_) => return Value::Null,
+    };
+    if args.len() != def.params.len() {
+        return Value::Null;
+    }
+    let substituted = substitute_udf_params(&raw_expr, &def.params, args);
+    let mut uexpr: UnifiedExpr = UnifiedExpr::from(&substituted);
+    uexpr.evaluate(&[], &[], &mut None)
+}
+
+/// V312-58 / Issue #4512: walk an `Expression` and replace each
+/// `Identifier` that matches one of the declared parameter names with
+/// the matching argument's value. Comparison is case-insensitive, with
+/// the parameter list taking precedence over column names that happen
+/// to share a name (matches MySQL's local-variable-shadowing-column
+/// semantics inside stored functions).
+fn substitute_udf_params(
+    expr: &sqlrustgo_parser::Expression,
+    params: &[String],
+    args: &[Value],
+) -> sqlrustgo_parser::Expression {
+    use sqlrustgo_parser::Expression;
+    let lookup = |name: &str| -> Option<String> {
+        let upper = name.to_ascii_uppercase();
+        params
+            .iter()
+            .position(|p| p.to_ascii_uppercase() == upper)
+            .map(|idx| value_to_sql_literal(&args[idx]))
+    };
+    match expr {
+        Expression::Identifier(name) => match lookup(name) {
+            Some(lit) => Expression::Literal(lit),
+            None => Expression::Identifier(name.clone()),
+        },
+        Expression::Literal(_)
+        | Expression::JsonLiteral(_)
+        | Expression::SystemVariable(_)
+        | Expression::SequenceNextVal(_)
+        | Expression::SequenceCurrval(_)
+        | Expression::Subquery(_)
+        | Expression::SubqueryField(_, _)
+        | Expression::In(_, _)
+        | Expression::NotIn(_, _)
+        | Expression::Exists(_)
+        | Expression::NotExists(_)
+        | Expression::QuantifiedOp(_, _, _)
+        | Expression::Aggregate(_)
+        | Expression::WindowCall(_)
+        | Expression::ArrayLiteral(_) => expr.clone(),
+        Expression::BinaryOp(l, op, r) => Expression::BinaryOp(
+            Box::new(substitute_udf_params(l, params, args)),
+            op.clone(),
+            Box::new(substitute_udf_params(r, params, args)),
+        ),
+        Expression::UnaryOp(op, e) => {
+            Expression::UnaryOp(op.clone(), Box::new(substitute_udf_params(e, params, args)))
+        }
+        Expression::IsNull(e) => {
+            Expression::IsNull(Box::new(substitute_udf_params(e, params, args)))
+        }
+        Expression::IsNotNull(e) => Expression::IsNotNull(Box::new(substitute_udf_params(
+            e, params, args,
+        ))),
+        Expression::InList(e, list) => Expression::InList(
+            Box::new(substitute_udf_params(e, params, args)),
+            list.iter()
+                .map(|i| substitute_udf_params(i, params, args))
+                .collect(),
+        ),
+        Expression::NotInList(e, list) => Expression::NotInList(
+            Box::new(substitute_udf_params(e, params, args)),
+            list.iter()
+                .map(|i| substitute_udf_params(i, params, args))
+                .collect(),
+        ),
+        Expression::Like(e, p, esc) => Expression::Like(
+            Box::new(substitute_udf_params(e, params, args)),
+            Box::new(substitute_udf_params(p, params, args)),
+            *esc,
+        ),
+        Expression::NotLike(e, p, esc) => Expression::NotLike(
+            Box::new(substitute_udf_params(e, params, args)),
+            Box::new(substitute_udf_params(p, params, args)),
+            *esc,
+        ),
+        Expression::Between(e, lo, hi) => Expression::Between(
+            Box::new(substitute_udf_params(e, params, args)),
+            Box::new(substitute_udf_params(lo, params, args)),
+            Box::new(substitute_udf_params(hi, params, args)),
+        ),
+        Expression::NotBetween(e, lo, hi) => Expression::NotBetween(
+            Box::new(substitute_udf_params(e, params, args)),
+            Box::new(substitute_udf_params(lo, params, args)),
+            Box::new(substitute_udf_params(hi, params, args)),
+        ),
+        Expression::NotRegexp(e, p) => Expression::NotRegexp(
+            Box::new(substitute_udf_params(e, params, args)),
+            Box::new(substitute_udf_params(p, params, args)),
+        ),
+        Expression::CaseWhen(whens, else_val) => Expression::CaseWhen(
+            whens
+                .iter()
+                .map(|w| sqlrustgo_parser::WhenClause {
+                    condition: substitute_udf_params(&w.condition, params, args),
+                    result: substitute_udf_params(&w.result, params, args),
+                })
+                .collect(),
+            else_val
+                .as_ref()
+                .map(|e| Box::new(substitute_udf_params(e, params, args))),
+        ),
+        Expression::FunctionCall(name, fargs) => Expression::FunctionCall(
+            name.clone(),
+            fargs
+                .iter()
+                .map(|a| substitute_udf_params(a, params, args))
+                .collect(),
+        ),
+    }
+}
+
+/// V312-58 / Issue #4512: render a `Value` as the canonical SQL literal
+/// text the re-parser expects. `NULL` / `TRUE` / `FALSE` / numerics /
+/// single-quoted strings — every form is produced so that
+/// `parse_lit` round-trips it correctly.
+fn value_to_sql_literal(v: &Value) -> String {
+    match v {
+        Value::Null => "NULL".to_string(),
+        Value::Boolean(true) => "TRUE".to_string(),
+        Value::Boolean(false) => "FALSE".to_string(),
+        Value::Integer(i) => i.to_string(),
+        Value::Float(f) => f.to_string(),
+        Value::Text(s) => format!("'{}'", s.replace('\'', "''")),
+        Value::Json(j) => j.to_string(),
+        Value::Blob(b) => {
+            // V312-58: `hex` crate isn't a direct dependency of the
+            // executor crate, so we encode inline rather than depending
+            // on a transitive path. Values are already bytes so a
+            // simple nibble map is sufficient.
+            const HEX: &[u8; 16] = b"0123456789abcdef";
+            let mut s = String::with_capacity(b.len() * 2);
+            for byte in b {
+                s.push(HEX[(byte >> 4) as usize] as char);
+                s.push(HEX[(byte & 0x0f) as usize] as char);
+            }
+            format!("X'{}'", s)
+        }
+        Value::Point(x, y) => format!("POINT({}, {})", x, y),
     }
 }
 
