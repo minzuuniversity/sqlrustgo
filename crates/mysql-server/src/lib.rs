@@ -3941,6 +3941,9 @@ fn statement_kind(parsed: &Result<Statement, String>) -> &'static str {
             Statement::WithDml(_) => "WITH_DML",
             Statement::AlterTable(_) => "ALTER_TABLE",
             Statement::AlterUser(_) => "ALTER_USER",
+            // V312-58 / Issue #4515: CREATE USER / DROP USER metrics labels.
+            Statement::CreateUser(_) => "CREATE_USER",
+            Statement::DropUser(_) => "DROP_USER",
             Statement::Call(_) => "CALL",
             Statement::CreateProcedure(_) => "CREATE_PROCEDURE",
             // V312-55A / Issue #4238: add DROP PROCEDURE to the metric label.
