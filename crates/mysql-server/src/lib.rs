@@ -3945,6 +3945,9 @@ fn statement_kind(parsed: &Result<Statement, String>) -> &'static str {
             Statement::CreateProcedure(_) => "CREATE_PROCEDURE",
             // V312-55A / Issue #4238: add DROP PROCEDURE to the metric label.
             Statement::DropProcedure(_) => "DROP_PROCEDURE",
+            // V312-58 / Issue #4512: scalar UDF catalog dispatch.
+            Statement::CreateFunction(_) => "CREATE_FUNCTION",
+            Statement::DropFunction(_) => "DROP_FUNCTION",
             Statement::Union(_) => "UNION",
             Statement::CreateTrigger(_) => "CREATE_TRIGGER",
             Statement::Intersect(_) => "INTERSECT",

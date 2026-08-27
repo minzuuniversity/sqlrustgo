@@ -36,15 +36,14 @@ use sqlrustgo_parser::parser::{
     AggregateCall, AggregateFunction, AlterSequenceStatement, AlterTableOperation,
     AlterTableStatement, AlterUserStatement, CallStatement, CompressionAlgorithm,
     CreateDatabaseStatement, CreateFunctionStatement, CreateIndexStatement,
-    CreateProcedureStatement, CreateRoleStatement,
-    CreateSequenceStatement, CreateTableStatement, CreateTriggerStatement, CreateViewStatement,
-    DescribeStatement, DropDatabaseStatement, DropFunctionStatement, DropIndexStatement,
-    DropProcedureStatement,
-    DropRoleStatement, DropSequenceStatement, DropTableStatement, DropViewStatement,
-    ExceptStatement, GrantRoleStatement, GrantStatement, InsertStatement, IntersectStatement,
-    MergeStatement, ObjectType as ParserObjectType, OrderByExpression,
-    Privilege as ParserPrivilege, RevokeRoleStatement, RevokeStatement, SelectStatement,
-    SetRoleStatement, ShowStatement, StorageEngineSpec, StoredProcParam as ParserStoredProcParam,
+    CreateProcedureStatement, CreateRoleStatement, CreateSequenceStatement, CreateTableStatement,
+    CreateTriggerStatement, CreateViewStatement, DescribeStatement, DropDatabaseStatement,
+    DropFunctionStatement, DropIndexStatement, DropProcedureStatement, DropRoleStatement,
+    DropSequenceStatement, DropTableStatement, DropViewStatement, ExceptStatement,
+    GrantRoleStatement, GrantStatement, InsertStatement, IntersectStatement, MergeStatement,
+    ObjectType as ParserObjectType, OrderByExpression, Privilege as ParserPrivilege,
+    RevokeRoleStatement, RevokeStatement, SelectStatement, SetRoleStatement, ShowStatement,
+    StorageEngineSpec, StoredProcParam as ParserStoredProcParam,
     StoredProcParamMode as ParserParamMode, StoredProcStatement as ParserStatement,
     TruncateStatement, UnionStatement,
 };
@@ -196,7 +195,13 @@ impl<S: StorageEngine + 'static> ExecutionEngine<S> {
         }
         Self {
             storage,
-            catalog: None,
+            // V312-58 / Issue #4513: auto-initialize a default catalog so
+            // CREATE / CALL / DROP PROCEDURE (and SHOW variants that
+            // route through the catalog) work out-of-the-box for
+            // `ExecutionEngine::new()`. Callers that want a custom
+            // catalog can still override via `with_catalog(...)` /
+            // `with_memory_and_catalog(...)`.
+            catalog: Some(Arc::new(RwLock::new(Catalog::new("default")))),
             stats: Arc::new(RwLock::new(ExecutionStats::default())),
             cbo_enabled,
             transaction_manager: TransactionManager::new(),
