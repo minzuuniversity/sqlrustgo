@@ -261,10 +261,12 @@ impl<'a> Lexer<'a> {
                 self.position += 1;
                 Token::Colon
             }
-            // MySQL system variable: `@@version_comment`, `@@autocommit`, etc.
-            // The double-`@` is a single token pulled out of the identifier
-            // stream so the parser/executor can resolve it as a scalar value
-            // rather than mistaking each `@` for a column reference.
+            // MySQL user/system variable: `@@version_comment` (system) or
+            // `@session_var` (user-defined). Both forms must be emitted as
+            // a single token rather than split into `@` + `name` so that
+            // expressions like `SELECT @a` and `EXECUTE p USING @a`
+            // resolve to a scalar session-variable lookup rather than a
+            // 2-column projection of `"@"` and `"a"`.
             '@' => {
                 if self.input[self.position..].starts_with("@@")
                     && self.position + 2 < self.input.len()
@@ -276,9 +278,19 @@ impl<'a> Lexer<'a> {
                         return Token::SystemVariable(name);
                     }
                 }
-                // Fallback: single `@` is not legal in this dialect; treat as
-                // an identifier so the parser can produce a clearer error
-                // than the catch-all fallback below.
+                // Single-`@` user variable: `@name` (no `@@`).
+                // If the following char starts an identifier, consume
+                // the whole `@name` as a single Identifier so the
+                // parser sees one token rather than two.
+                let next = self.input.chars().nth(self.position + 1).unwrap_or('\0');
+                if next.is_alphabetic() || next == '_' {
+                    self.position += 1; // consume `@`
+                    let name = self.read_identifier();
+                    return Token::Identifier(format!("@{}", name));
+                }
+                // Lone `@` (not followed by an identifier): keep the
+                // legacy fallback so the parser can produce a clearer
+                // error than the catch-all fallback below.
                 self.position += 1;
                 Token::Identifier("@".to_string())
             }
