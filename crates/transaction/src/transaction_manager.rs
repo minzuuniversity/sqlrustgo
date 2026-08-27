@@ -1,6 +1,7 @@
 use std::collections::HashMap;
 
 use crate::mvcc::{Snapshot, TxId};
+use crate::savepoint::UndoRecord;
 use crate::ssi::{SsiDetectorSync, SsiError};
 
 /// Transaction isolation level
@@ -216,21 +217,72 @@ impl TransactionManager {
 
     /// SEM-1 (#3172): ROLLBACK TO SAVEPOINT.
     ///
-    /// Rolls back (in name only — physical undo is deferred) all DML
-    /// changes made after the named savepoint was set. The savepoint
-    /// itself is preserved; nested savepoints after it are discarded.
+    /// Legacy no-physical-undo variant retained for backward compatibility.
+    /// New callers should prefer [`Self::rollback_to_savepoint_with_undo`]
+    /// which lets the orchestrator drive the actual storage reverse-op
+    /// via a closure (issue #4519 wired this in v3.12).
+    #[deprecated(
+        since = "3.12.0",
+        note = "Use rollback_to_savepoint_with_undo for physical undo"
+    )]
     pub fn rollback_to_savepoint(&mut self, tx_id: TxId, name: &str) -> Result<(), SsiError> {
+        self.rollback_to_savepoint_with_undo(tx_id, name, |_| Ok(()))
+    }
+
+    /// #4519 (清华 MySQL 课程第 9 章核心): physically undo DML after a
+    /// savepoint by handing each `UndoRecord` to the caller-supplied
+    /// closure. The closure is invoked in reverse order
+    /// (last-write-first) so the post-state matches the pre-savepoint
+    /// snapshot.
+    ///
+    /// The orchestrator (`ExecutionEngine`) supplies a closure that
+    /// drives `storage.delete` (Insert undo) or
+    /// `storage.insert(old_value)` (Delete / Update undo) — see
+    /// `src/execution_engine.rs::execute_savepoint`.
+    pub fn rollback_to_savepoint_with_undo<F>(
+        &mut self,
+        tx_id: TxId,
+        name: &str,
+        mut on_undo: F,
+    ) -> Result<(), SsiError>
+    where
+        F: FnMut(&UndoRecord) -> Result<(), String>,
+    {
         let active = self
             .active_transactions
             .get_mut(&tx_id)
             .ok_or(SsiError::TransactionNotFound { tx_id })?;
         active
             .savepoint_manager
-            .rollback_to(name, |_| Ok(()))
+            .rollback_to(name, |rec| on_undo(rec))
             .map_err(|e| match e {
                 crate::savepoint::SavepointError::NotFound => SsiError::LockTimeout,
                 crate::savepoint::SavepointError::InvalidOperation => SsiError::LockTimeout,
             })
+    }
+
+    /// #4519: append a typed `UndoRecord` to the active transaction's
+    /// savepoint undo log. No-op when the transaction has no active
+    /// savepoints (the executor short-circuits before calling this so
+    /// the undo log never grows for savepoint-less transactions).
+    pub fn add_undo_record(&mut self, tx_id: TxId, record: UndoRecord) -> Result<(), SsiError> {
+        let active = self
+            .active_transactions
+            .get_mut(&tx_id)
+            .ok_or(SsiError::TransactionNotFound { tx_id })?;
+        active.savepoint_manager.add_undo(record);
+        Ok(())
+    }
+
+    /// #4519: returns `true` when the active transaction has at least
+    /// one savepoint. The executor uses this guard to decide whether
+    /// to record an undo entry for each DML — without an active
+    /// savepoint the undo record is wasted memory.
+    pub fn has_active_savepoint(&self, tx_id: TxId) -> bool {
+        self.active_transactions
+            .get(&tx_id)
+            .map(|at| at.savepoint_manager.get_savepoint_count() > 0)
+            .unwrap_or(false)
     }
 
     /// SEM-1 (#3172): RELEASE SAVEPOINT.

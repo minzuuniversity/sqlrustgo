@@ -29,6 +29,7 @@ use crate::engine_utils::{
     validate_foreign_keys, validate_not_null,
 };
 use crate::expr_utils::{evaluate_expression, resolve_subqueries_in_expr};
+use crate::savepoint_wiring::{record_delete_undo, record_insert_undo, record_update_undo};
 use crate::{ExecutionEngine, SqlError, SqlResult};
 /// INSERT executor body. ARCH-3 VtuGuard call lives in the `pub fn
 /// execute_insert` wrapper in `execution_engine.rs` (gate requirement).
@@ -278,7 +279,22 @@ pub fn execute_insert<S: StorageEngine + 'static>(
                 // Validate NOT NULL constraints
                 validate_not_null(&table_info, record, &insert.columns)?;
             }
-            storage.insert(&table_name, processed_records)?;
+            storage.insert(&table_name, processed_records.clone())?;
+        }
+    }
+
+    // #4519: SAVEPOINT physical-undo wiring. Append one UndoRecord::Insert
+    // per row actually inserted so a ROLLBACK TO SAVEPOINT can delete by
+    // primary key. The helper short-circuits when no savepoint is active.
+    if let Some(undo_tx) = engine.current_tx_id {
+        for record in &processed_records {
+            record_insert_undo(
+                &mut engine.transaction_manager,
+                undo_tx,
+                &table_name,
+                &table_info,
+                record,
+            );
         }
     }
 
@@ -431,6 +447,10 @@ pub fn execute_update<S: StorageEngine + 'static>(
             }
         }
 
+        let prior_rows_for_undo: Vec<Vec<Value>> = {
+            let storage = engine.storage.read();
+            storage.scan(&table_name)?
+        };
         let mut storage = engine.storage.write();
         // V312-18 / Issue #3971: route the no-WHERE UPDATE path through
         // delete+insert so the WAL layer (which only hooks delete/insert)
@@ -459,6 +479,20 @@ pub fn execute_update<S: StorageEngine + 'static>(
             count += 1;
         }
         drop(storage);
+        // #4519: SAVEPOINT physical-undo wiring. Append one UndoRecord::Update
+        // per row actually updated (no-WHERE path) so a ROLLBACK TO SAVEPOINT
+        // can restore the prior row. Short-circuits when no savepoint is active.
+        if let Some(undo_tx) = engine.current_tx_id {
+            for prior_row in &prior_rows_for_undo {
+                record_update_undo(
+                    &mut engine.transaction_manager,
+                    undo_tx,
+                    &table_name,
+                    &table_info,
+                    prior_row,
+                );
+            }
+        }
         engine.commit_implicit_dml_tx(started_implicit)?;
         return Ok(ExecutorResult::new(vec![], count));
     }
@@ -574,6 +608,21 @@ pub fn execute_update<S: StorageEngine + 'static>(
         }
     }
 
+    // #4519: SAVEPOINT physical-undo wiring. Append one UndoRecord::Update
+    // per row actually updated (with-WHERE path) so a ROLLBACK TO SAVEPOINT
+    // can restore the prior row. Short-circuits when no savepoint is active.
+    if let Some(undo_tx) = engine.current_tx_id {
+        for prior_row in &rows_to_update {
+            record_update_undo(
+                &mut engine.transaction_manager,
+                undo_tx,
+                &table_name,
+                &table_info,
+                prior_row,
+            );
+        }
+    }
+
     // Execute AFTER UPDATE triggers
     let after_triggers = trigger_executor.get_triggers_for_operation(
         &table_name,
@@ -648,9 +697,34 @@ pub fn execute_delete<S: StorageEngine + 'static>(
 
     // If no WHERE clause, delete all rows (current behavior is correct)
     if resolved_delete.where_clause.is_none() {
-        let mut storage = engine.storage.write();
-        let count = storage.delete(&table_name, &[])?;
-        drop(storage);
+        // Capture row snapshot before delete so #4519 can record UndoRecord::Delete.
+        let table_info = {
+            let storage = engine.storage.read();
+            storage.get_table_info(&table_name)?.clone()
+        };
+        let prior_rows_for_undo: Vec<Vec<Value>> = {
+            let storage = engine.storage.read();
+            storage.scan(&table_name)?
+        };
+        let count = {
+            let mut storage = engine.storage.write();
+            storage.delete(&table_name, &[])?
+        };
+        // #4519: SAVEPOINT physical-undo wiring. Append one UndoRecord::Delete
+        // per row actually deleted (no-WHERE path) so a ROLLBACK TO SAVEPOINT
+        // can re-insert the deleted rows verbatim. Short-circuits when no
+        // savepoint is active.
+        if let Some(undo_tx) = engine.current_tx_id {
+            for prior_row in &prior_rows_for_undo {
+                record_delete_undo(
+                    &mut engine.transaction_manager,
+                    undo_tx,
+                    &table_name,
+                    &table_info,
+                    prior_row,
+                );
+            }
+        }
         // INT-1: Autocommit — commit the implicit TX so WAL/MVCC see this.
         engine.commit_implicit_dml_tx(started_implicit)?;
         return Ok(ExecutorResult::new(vec![], count));
@@ -751,6 +825,22 @@ pub fn execute_delete<S: StorageEngine + 'static>(
                 .map(|&i| row.get(i).cloned().unwrap_or(sqlrustgo_types::Value::Null))
                 .collect();
             storage.delete(&table_name, &key_values)?;
+        }
+    }
+
+    // #4519: SAVEPOINT physical-undo wiring. Append one UndoRecord::Delete
+    // per row actually deleted (with-WHERE path) so a ROLLBACK TO SAVEPOINT
+    // can re-insert the deleted rows verbatim. Short-circuits when no
+    // savepoint is active.
+    if let Some(undo_tx) = engine.current_tx_id {
+        for prior_row in &rows_to_delete {
+            record_delete_undo(
+                &mut engine.transaction_manager,
+                undo_tx,
+                &table_name,
+                &table_info,
+                prior_row,
+            );
         }
     }
 
