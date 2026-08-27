@@ -1678,20 +1678,47 @@ impl<S: StorageEngine + 'static> ExecutionEngine<S> {
             // the entry-point pass in `execute_select`, so projection
             // expressions here are plain literals/column refs.
             let rows: Vec<Vec<Value>> = (|| -> SqlResult<Vec<Vec<Value>>> {
+                // V312-58 / Issue #4517: pre-compute any WindowCall columns
+                // (`AGG(x) OVER (PARTITION BY ...) ORDER BY ...`,
+                // `ROW_NUMBER() OVER (...)`, etc.) over the full row set,
+                // then look up by row index during projection. Doing this
+                // once per column is correct because the window spec sees
+                // the entire input — evaluating per-row would be wrong
+                // (and the row-level `evaluate_expression_with_seq` has
+                // no WindowCall arm, so it falls through to Null).
+                let mut window_results: Vec<Option<Vec<Value>>> =
+                    Vec::with_capacity(select.columns.len());
+                for col in &select.columns {
+                    if let Some(Expression::WindowCall(wc)) = &col.expression {
+                        let vals = crate::expr_utils::evaluate_window_call(wc, &rows, &table_info)
+                            .map_err(SqlError::ExecutionError)?;
+                        window_results.push(Some(vals));
+                    } else {
+                        window_results.push(None);
+                    }
+                }
+
                 let mut out = Vec::new();
-                for row in rows {
+                for (row_idx, row) in rows.iter().enumerate() {
                     let mut new_row = Vec::new();
-                    for col in &select.columns {
-                        let v = match &col.expression {
-                            Some(expr) => crate::expr_utils::evaluate_expression_with_seq(
-                                expr,
-                                &row,
-                                &table_info,
-                                Some(&mut *storage_guard),
-                                &|_| Ok(Value::Null),
-                            )
-                            .map_err(SqlError::ExecutionError)?,
-                            None => row.first().cloned().unwrap_or(Value::Null),
+                    for (col_idx, col) in select.columns.iter().enumerate() {
+                        let v = if let Some(precomputed) = &window_results[col_idx] {
+                            // Lookup the value computed by evaluate_window_call.
+                            // The helper returns one Value per input row, so a
+                            // positional lookup at row_idx is safe.
+                            precomputed.get(row_idx).cloned().unwrap_or(Value::Null)
+                        } else {
+                            match &col.expression {
+                                Some(expr) => crate::expr_utils::evaluate_expression_with_seq(
+                                    expr,
+                                    row,
+                                    &table_info,
+                                    Some(&mut *storage_guard),
+                                    &|_| Ok(Value::Null),
+                                )
+                                .map_err(SqlError::ExecutionError)?,
+                                None => row.first().cloned().unwrap_or(Value::Null),
+                            }
                         };
                         new_row.push(v);
                     }
