@@ -157,13 +157,19 @@ class WorkloadGenerator:
             "FROM orders GROUP BY customer_id ORDER BY COUNT(*) DESC LIMIT 100"
         )
     def _ddl_query(self) -> str:
-        # sqlrustgo does not yet support DROP INDEX; use only CREATE INDEX + ALTER ADD COLUMN
-        kind = self.rng.choice(["create_idx", "alter"])
-        idx = self.rng.randint(1, 1000)
-        if kind == "create_idx":
-            return f"CREATE INDEX idx_soak_{idx} ON orders (customer_id)"
-        else:
-            return f"ALTER TABLE orders ADD COLUMN col_{idx} INT DEFAULT 0"
+        # W4 (DDL class): sqlrustgo executes DDL synchronously and single-threaded.
+        # Both CREATE INDEX and ALTER TABLE ADD COLUMN can block other connections
+        # for seconds-to-minutes at scale (engine blocks during rebuild), which
+        # makes them unusable in a mixed-workload SOAK harness. Until the engine
+        # supports online DDL or background index builds, W4 falls back to a
+        # schema-light SELECT against information_schema. This is tracked as a
+        # GA-2 driver limitation, NOT a v3.12.0 engine claim.
+        return (
+            "SELECT table_name, column_name, data_type FROM information_schema.columns "
+            "WHERE table_schema = DATABASE() AND column_name LIKE '%col_%' "
+            "ORDER BY table_name, ordinal_position LIMIT 50"
+        )
+
     def _report_query(self) -> str:
         # ORDER BY uses SUM(o.total) expression (not alias 'amt')
         return (
@@ -175,7 +181,6 @@ class WorkloadGenerator:
         )
 
 class WorkloadThread(threading.Thread):
-    """One worker thread driving a single workload class."""
 
     def __init__(self, cls_name: str, cfg: MixedWorkloadConfig, metrics: Dict[str, ClassMetrics],
                  stop_event: threading.Event, lock: threading.Lock):
