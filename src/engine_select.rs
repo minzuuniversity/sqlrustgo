@@ -371,6 +371,23 @@ impl<S: StorageEngine + 'static> ExecutionEngine<S> {
     }
 
     pub fn execute_select(&self, select: &SelectStatement) -> SqlResult<ExecutorResult> {
+        // Issue #4511 — substitute MySQL session variables (`@name`)
+        // across the whole SelectStatement BEFORE any other pass.
+        // WHERE / HAVING / GROUP BY / ORDER BY / projection then all see
+        // resolved literals, not raw `Identifier("@name")` tokens. The
+        // outer `let select = …` shadows the input parameter so the
+        // rest of this function picks up the substituted version.
+        let select_owned;
+        let select: &SelectStatement = {
+            let session_vars = self.session_vars.read();
+            let substituted =
+                crate::execution_engine::substitute_session_vars_in_select(select, &session_vars);
+            // Safety: `session_vars` guard goes out of scope here; we
+            // only borrow from the cloned SelectStatement below.
+            drop(session_vars);
+            select_owned = substituted;
+            &select_owned
+        };
         // V312-58 / Issue #4443 (Phase 2 — materialization driver): invoke
         // `try_decorrelate` on the WHERE clause BEFORE row-by-row evaluation.
         // For each detected `ScalarAggInWhere` pattern, pre-build the
@@ -1657,6 +1674,9 @@ impl<S: StorageEngine + 'static> ExecutionEngine<S> {
                 .iter()
                 .map(|c| c.alias.clone().unwrap_or_else(|| c.name.clone()))
                 .collect();
+            // Issue #4511 — session variables were already resolved by
+            // the entry-point pass in `execute_select`, so projection
+            // expressions here are plain literals/column refs.
             let rows: Vec<Vec<Value>> = (|| -> SqlResult<Vec<Vec<Value>>> {
                 let mut out = Vec::new();
                 for row in rows {

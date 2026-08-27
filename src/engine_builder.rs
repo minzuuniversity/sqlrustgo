@@ -50,6 +50,7 @@ impl ExecutionEngine<MemoryStorage> {
             adaptive_hash_index: AdaptiveHashIndex::new().into_shared(),
 
             instrumentation: Arc::new(sqlrustgo_executor::instrumentation::NoopInstrumentationHook),
+            session_vars: Arc::new(RwLock::new(std::collections::HashMap::new())),
         }
     }
 
@@ -77,6 +78,7 @@ impl ExecutionEngine<MemoryStorage> {
             adaptive_hash_index: AdaptiveHashIndex::new().into_shared(),
 
             instrumentation: Arc::new(sqlrustgo_executor::instrumentation::NoopInstrumentationHook),
+            session_vars: Arc::new(RwLock::new(std::collections::HashMap::new())),
         }
     }
 
@@ -104,6 +106,7 @@ impl ExecutionEngine<MemoryStorage> {
             adaptive_hash_index: AdaptiveHashIndex::new().into_shared(),
 
             instrumentation: Arc::new(sqlrustgo_executor::instrumentation::NoopInstrumentationHook),
+            session_vars: Arc::new(RwLock::new(std::collections::HashMap::new())),
         }
     }
 }
@@ -142,6 +145,7 @@ impl ExecutionEngine<MemoryStorage> {
             adaptive_hash_index: AdaptiveHashIndex::new().into_shared(),
 
             instrumentation: Arc::new(sqlrustgo_executor::instrumentation::NoopInstrumentationHook),
+            session_vars: Arc::new(RwLock::new(std::collections::HashMap::new())),
         }
     }
 }
@@ -185,6 +189,7 @@ impl ExecutionEngine<MemoryStorage> {
             adaptive_hash_index: AdaptiveHashIndex::new().into_shared(),
 
             instrumentation: Arc::new(sqlrustgo_executor::instrumentation::NoopInstrumentationHook),
+            session_vars: Arc::new(RwLock::new(std::collections::HashMap::new())),
         })
     }
 
@@ -223,6 +228,7 @@ impl ExecutionEngine<MemoryStorage> {
             adaptive_hash_index: AdaptiveHashIndex::new().into_shared(),
 
             instrumentation: Arc::new(sqlrustgo_executor::instrumentation::NoopInstrumentationHook),
+            session_vars: Arc::new(RwLock::new(std::collections::HashMap::new())),
         })
     }
 
@@ -262,6 +268,7 @@ impl ExecutionEngine<MemoryStorage> {
             adaptive_hash_index: AdaptiveHashIndex::new().into_shared(),
 
             instrumentation: Arc::new(sqlrustgo_executor::instrumentation::NoopInstrumentationHook),
+            session_vars: Arc::new(RwLock::new(std::collections::HashMap::new())),
         })
     }
 

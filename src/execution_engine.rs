@@ -124,6 +124,13 @@ pub struct ExecutionEngine<S: StorageEngine> {
     /// Default is NoopInstrumentationHook (zero-cost). Tests/monitoring
     /// can swap in `CountingInstrumentationHook` or a custom implementation.
     pub(crate) instrumentation: Arc<dyn sqlrustgo_executor::instrumentation::InstrumentationHook>,
+    /// V312-58 / Issue #4511: MySQL user session variables (`SET @a = expr`,
+    /// `SELECT @a`). A key/value map keyed by the literal `@name` string
+    /// (the same form the lexer emits). Mutated by the `SET @var = expr`
+    /// handler and consulted by the SELECT projection path so that
+    /// `SELECT @a` and `EXECUTE ... USING @a` resolve to the bound
+    /// value (or `NULL` when unset, matching MySQL semantics).
+    pub(crate) session_vars: Arc<RwLock<HashMap<String, SqlValue>>>,
 }
 
 /// Transaction status for lifecycle enforcement
@@ -205,6 +212,7 @@ impl<S: StorageEngine + 'static> ExecutionEngine<S> {
             clustered_tables: parking_lot::RwLock::new(HashMap::new()),
             adaptive_hash_index: AdaptiveHashIndex::new().into_shared(),
             instrumentation: Arc::new(sqlrustgo_executor::instrumentation::NoopInstrumentationHook),
+            session_vars: Arc::new(RwLock::new(HashMap::new())),
         }
     }
     /// Get a handle to the shared Adaptive Hash Index used for hot-page tracking.
@@ -1465,6 +1473,16 @@ impl<S: StorageEngine + 'static> ExecutionEngine<S> {
                         self.session_null_order_first = Some(first);
                     }
                 }
+                // V312-58 / Issue #4511: MySQL user session variables.
+                // `SET @a = expr` stores `expr` (already stringified by the
+                // parser) into the engine's `session_vars` map, keyed by
+                // the literal `@name`. The value is parsed back into a
+                // `Value` so a follow-up `SELECT @a` returns the bound
+                // value rather than the literal token text.
+                if name.starts_with('@') {
+                    let v = parse_session_value(&value);
+                    self.session_vars.write().insert(name.clone(), v);
+                }
                 Ok(ExecutorResult::empty())
             }
         }
@@ -1820,4 +1838,207 @@ pub(crate) fn explain_select_plan(
 /// canonical form before comparing.
 fn expr_to_plan_string(expr: &sqlrustgo_parser::parser::Expression) -> String {
     format!("{expr:?}")
+}
+
+/// V312-58 / Issue #4511: parse the stringified RHS of `SET @var = expr`
+/// into a `Value`. The parser captures `expr` as raw token text
+/// (number, string literal, bool), so the engine needs to coerce it
+/// back into a typed `Value` for the session-vars map.
+///
+/// Recognised shapes:
+/// - `NULL` (case-insensitive) → `Value::Null`
+/// - `true` / `false` (lowercase, matching the parser output) →
+///   `Value::Boolean`
+/// - signed integer parseable → `Value::Integer`
+/// - otherwise → `Value::Text(s)` (un-quoted identifier or unknown)
+fn parse_session_value(raw: &str) -> SqlValue {
+    let trimmed = raw.trim();
+    if trimmed.is_empty() {
+        return SqlValue::Null;
+    }
+    let upper = trimmed.to_ascii_uppercase();
+    if upper == "NULL" {
+        return SqlValue::Null;
+    }
+    if trimmed == "true" {
+        return SqlValue::Boolean(true);
+    }
+    if trimmed == "false" {
+        return SqlValue::Boolean(false);
+    }
+    if let Ok(n) = trimmed.parse::<i64>() {
+        return SqlValue::Integer(n);
+    }
+    SqlValue::Text(trimmed.to_string())
+}
+
+/// V312-58 / Issue #4511: walk an `Expression` and replace every
+/// `Identifier("@name")` leaf with the matching session-variable
+/// `Literal` (or `Literal("NULL")` when the variable is unbound).
+///
+/// Used by the projection path in `execute_select` so that
+/// `SELECT @a` and `EXECUTE p USING @a` resolve to the bound session
+/// value rather than the legacy `Value::Text("@a")` fallback.
+///
+/// Recursion mirrors the variant set on [`sqlrustgo_parser::Expression`].
+pub(crate) fn substitute_session_vars_in_expr(
+    expr: sqlrustgo_parser::Expression,
+    session_vars: &HashMap<String, SqlValue>,
+) -> sqlrustgo_parser::Expression {
+    use sqlrustgo_parser::Expression;
+    if let Expression::Identifier(ref name) = expr {
+        if let Some(stripped) = name.strip_prefix('@') {
+            let key = format!("@{}", stripped);
+            let lit = match session_vars.get(&key) {
+                Some(SqlValue::Null) => "NULL".to_string(),
+                Some(SqlValue::Boolean(true)) => "true".to_string(),
+                Some(SqlValue::Boolean(false)) => "false".to_string(),
+                Some(SqlValue::Integer(n)) => n.to_string(),
+                Some(SqlValue::Float(f)) => f.to_string(),
+                Some(SqlValue::Text(s)) => format!("'{}'", s.replace('\'', "''")),
+                Some(SqlValue::Blob(_)) | Some(SqlValue::Point(_, _)) | Some(SqlValue::Json(_)) => {
+                    "NULL".to_string()
+                }
+                None => "NULL".to_string(),
+            };
+            return Expression::Literal(lit);
+        }
+    }
+    match expr {
+        Expression::BinaryOp(l, op, r) => Expression::BinaryOp(
+            Box::new(substitute_session_vars_in_expr(*l, session_vars)),
+            op,
+            Box::new(substitute_session_vars_in_expr(*r, session_vars)),
+        ),
+        Expression::UnaryOp(op, inner) => Expression::UnaryOp(
+            op,
+            Box::new(substitute_session_vars_in_expr(*inner, session_vars)),
+        ),
+        Expression::FunctionCall(name, args) => Expression::FunctionCall(
+            name,
+            args.into_iter()
+                .map(|a| substitute_session_vars_in_expr(a, session_vars))
+                .collect(),
+        ),
+        Expression::IsNull(inner) => Expression::IsNull(Box::new(substitute_session_vars_in_expr(
+            *inner,
+            session_vars,
+        ))),
+        Expression::IsNotNull(inner) => Expression::IsNotNull(Box::new(
+            substitute_session_vars_in_expr(*inner, session_vars),
+        )),
+        Expression::InList(left, values) => Expression::InList(
+            Box::new(substitute_session_vars_in_expr(*left, session_vars)),
+            values
+                .into_iter()
+                .map(|v| substitute_session_vars_in_expr(v, session_vars))
+                .collect(),
+        ),
+        Expression::NotInList(left, values) => Expression::NotInList(
+            Box::new(substitute_session_vars_in_expr(*left, session_vars)),
+            values
+                .into_iter()
+                .map(|v| substitute_session_vars_in_expr(v, session_vars))
+                .collect(),
+        ),
+        Expression::Between(l, lo, hi) => Expression::Between(
+            Box::new(substitute_session_vars_in_expr(*l, session_vars)),
+            Box::new(substitute_session_vars_in_expr(*lo, session_vars)),
+            Box::new(substitute_session_vars_in_expr(*hi, session_vars)),
+        ),
+        Expression::NotBetween(l, lo, hi) => Expression::NotBetween(
+            Box::new(substitute_session_vars_in_expr(*l, session_vars)),
+            Box::new(substitute_session_vars_in_expr(*lo, session_vars)),
+            Box::new(substitute_session_vars_in_expr(*hi, session_vars)),
+        ),
+        Expression::Like(l, p, esc) => Expression::Like(
+            Box::new(substitute_session_vars_in_expr(*l, session_vars)),
+            Box::new(substitute_session_vars_in_expr(*p, session_vars)),
+            esc,
+        ),
+        Expression::NotLike(l, p, esc) => Expression::NotLike(
+            Box::new(substitute_session_vars_in_expr(*l, session_vars)),
+            Box::new(substitute_session_vars_in_expr(*p, session_vars)),
+            esc,
+        ),
+        Expression::CaseWhen(whens, default) => Expression::CaseWhen(
+            whens
+                .into_iter()
+                .map(|w| sqlrustgo_parser::parser::WhenClause {
+                    condition: substitute_session_vars_in_expr(w.condition, session_vars),
+                    result: substitute_session_vars_in_expr(w.result, session_vars),
+                })
+                .collect(),
+            default.map(|d| Box::new(substitute_session_vars_in_expr(*d, session_vars))),
+        ),
+        Expression::QuantifiedOp(l, op, subq) => Expression::QuantifiedOp(
+            Box::new(substitute_session_vars_in_expr(*l, session_vars)),
+            op,
+            subq,
+        ),
+        // Terminal / non-recursive variants pass through unchanged.
+        other => other,
+    }
+}
+
+/// Issue #4511 — substitute `@name` session variables across every
+/// expression-bearing field of a `SelectStatement`. This is invoked at
+/// the top of `execute_select` so WHERE / HAVING / GROUP BY / ORDER BY
+/// / projection all see the resolved literal value, not the raw
+/// `Identifier("@name")` token. Bypasses subquery bodies (those are
+/// passed through unchanged and resolved when their own `execute_select`
+/// runs).
+pub(crate) fn substitute_session_vars_in_select(
+    select: &sqlrustgo_parser::SelectStatement,
+    session_vars: &HashMap<String, SqlValue>,
+) -> sqlrustgo_parser::SelectStatement {
+    use sqlrustgo_parser::parser::OrderByExpression;
+    use sqlrustgo_parser::{Expression, SelectColumn, SelectStatement};
+
+    let map_expr =
+        |e: Expression| -> Expression { substitute_session_vars_in_expr(e, session_vars) };
+
+    let columns: Vec<SelectColumn> = select
+        .columns
+        .iter()
+        .map(|c| SelectColumn {
+            name: c.name.clone(),
+            alias: c.alias.clone(),
+            expression: c.expression.clone().map(map_expr),
+        })
+        .collect();
+
+    let group_by: Vec<Expression> = select.group_by.iter().cloned().map(map_expr).collect();
+
+    let order_by: Vec<OrderByExpression> = select
+        .order_by
+        .iter()
+        .map(|o| OrderByExpression {
+            expression: map_expr(o.expression.clone()),
+            ascending: o.ascending,
+            nulls_first: o.nulls_first,
+        })
+        .collect();
+
+    SelectStatement {
+        columns,
+        table: select.table.clone(),
+        schema: select.schema.clone(),
+        from_alias: select.from_alias.clone(),
+        from_subquery: select.from_subquery.clone(),
+        from_values: select.from_values.clone(),
+        where_clause: select.where_clause.clone().map(map_expr),
+        join_clause: select.join_clause.clone(),
+        extra_tables: select.extra_tables.clone(),
+        aggregates: select.aggregates.clone(),
+        group_by,
+        with_rollup: select.with_rollup,
+        with_cube: select.with_cube,
+        having: select.having.clone().map(map_expr),
+        order_by,
+        limit: select.limit,
+        offset: select.offset,
+        distinct: select.distinct,
+        lock_clause: select.lock_clause.clone(),
+    }
 }
