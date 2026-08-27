@@ -1,6 +1,6 @@
 # GA-1..GA-8 Standalone Verification Report (V312-59-D)
 
-> **provenance:** generated_by=check_ga_only_v312.sh, generated_at=2026-08-21T16:21:23Z, commit=5e147ea0fee9fbb0caa1b323a853d857b7b25873, source_repo=openclaw/sqlrustgo, gate_policy_eval_id=v312-ga-only-001, policy=Anti-Fabrication-Policy-v1.0
+> **provenance:** generated_by=check_ga_only_v312.sh, generated_at=2026-08-26T09:45:39Z, commit=37c0a82cbc365acaf3f7d65fed02a4267d85bc85, source_repo=openclaw/sqlrustgo, gate_policy_eval_id=v312-ga-only-001, policy=Anti-Fabrication-Policy-v1.0
 > **related:** Issue #4387 (V312-59-D), umbrella #4383
 
 ## Summary

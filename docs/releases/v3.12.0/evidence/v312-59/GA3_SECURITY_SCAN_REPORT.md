@@ -1,6 +1,6 @@
 # GA-3 v3.12.0 Security Scan Report
 
-> **provenance:** generated_by=check_security_scan_v312.sh, generated_at=2026-08-21T16:21:27Z, commit=5e147ea0fee9fbb0caa1b323a853d857b7b25873, branch=fix/v312-59-b-beta-warn-remediation, source_repo=openclaw/sqlrustgo, gate_policy_eval_id=v312-ga3-security-scan-001, policy=Anti-Fabrication-Policy-v1.0
+> **provenance:** generated_by=check_security_scan_v312.sh, generated_at=2026-08-27T04:46:49Z, commit=38e2a6b785b39fdc1d7cd9cbc6504664fd57c3e2, branch=develop/v3.12.0, source_repo=openclaw/sqlrustgo, gate_policy_eval_id=v312-ga3-security-scan-001, policy=Anti-Fabrication-Policy-v1.0
 > **related:** Issue #4387 (V312-59-D), umbrella #4383
 
 ## Summary
@@ -9,7 +9,7 @@
 |-------|--------|--------|
 
 | SC-1 cargo-audit | PASS | 00 unsound advisories (baseline, no HIGH/CRITICAL) |
-| SC-2 license check | PASS | 132/150 missing license (DRIFT) |
+| SC-2 license check | PASS | 44/50 missing license (DRIFT) |
 | SC-3 secret scan | PASS | 0 hardcoded credentials |
 | SC-4 plaintext pw scan | PASS | 2 potential matches (review docs/releases/v3.12.0/evidence/v312-59/plaintext_pw_scan_v312.txt, expected fixture) |
 
