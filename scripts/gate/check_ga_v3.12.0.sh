@@ -54,7 +54,10 @@ GA_PASS=0;   GA_TOTAL=8;    GA_BLOCKERS=0
 TO_PASS=0;   TO_TOTAL=13;   TO_BLOCKERS=0
 
 # Evidence hash collection
-declare -A STAGE_EVIDENCE_HASH
+BETA_EVIDENCE_HASH="no-evidence"
+RC_EVIDENCE_HASH="no-evidence"
+GA_EVIDENCE_HASH="no-evidence"
+TO_EVIDENCE_HASH="no-evidence"
 
 log_step() { printf "${BLUE}[%s]${NC} %s\n" "$1" "$2"; }
 log_pass() { printf "  ${GREEN}✓ PASS${NC} %s\n" "$1"; }
@@ -107,7 +110,7 @@ run_beta_gate() {
     if bash "$beta_script" > "$beta_log" 2>&1; then
         log_pass "BETA gate (exit 0): see $beta_log"
         BETA_PASS=40
-        STAGE_EVIDENCE_HASH[BETA]=$(evidence_hash "$beta_log")
+        BETA_EVIDENCE_HASH=$(evidence_hash "$beta_log")
     else
         # Count PASS/FAIL/WARN lines to compute partial score
         local pass_lines fail_lines warn_lines
@@ -117,7 +120,7 @@ run_beta_gate() {
         BETA_PASS=$pass_lines
         BETA_BLOCKERS=$fail_lines
         log_warn "BETA gate partial: PASS=$pass_lines FAIL=$fail_lines WARN=$warn_lines (see $beta_log)"
-        STAGE_EVIDENCE_HASH[BETA]=$(evidence_hash "$beta_log")
+        BETA_EVIDENCE_HASH=$(evidence_hash "$beta_log")
     fi
 }
 
@@ -179,7 +182,7 @@ run_rc_gate() {
     else
         log_warn "RC gate: PASS=$rc_pass FAIL=$rc_fail (see $rc_log)"
     fi
-    STAGE_EVIDENCE_HASH[RC]=$(evidence_hash "$rc_log")
+    RC_EVIDENCE_HASH=$(evidence_hash "$rc_log")
 }
 
 # ============================================================================
@@ -270,7 +273,7 @@ run_ga_gate() {
     else
         log_warn "GA gate: PASS=$ga_pass FAIL=$ga_fail (see $ga_log)"
     fi
-    STAGE_EVIDENCE_HASH[GA]=$(evidence_hash "$ga_log")
+    GA_EVIDENCE_HASH=$(evidence_hash "$ga_log")
 }
 
 # ============================================================================
@@ -324,7 +327,7 @@ run_thresholds_override() {
     TO_PASS=$to_pass
     TO_BLOCKERS=$to_fail
     log_pass "thresholds_override ($to_pass/13 verified)"
-    STAGE_EVIDENCE_HASH[TO]=$(evidence_hash "$to_log")
+    TO_EVIDENCE_HASH=$(evidence_hash "$to_log")
 }
 
 # ============================================================================
@@ -391,25 +394,25 @@ main() {
       "pass": $BETA_PASS,
       "total": $BETA_TOTAL,
       "blockers": $BETA_BLOCKERS,
-      "evidence_hash": "${STAGE_EVIDENCE_HASH[BETA]:-no-evidence}"
+      "evidence_hash": "${BETA_EVIDENCE_HASH:-no-evidence}"
     },
     "rc": {
       "pass": $RC_PASS,
       "total": $RC_TOTAL,
       "blockers": $RC_BLOCKERS,
-      "evidence_hash": "${STAGE_EVIDENCE_HASH[RC]:-no-evidence}"
+      "evidence_hash": "${RC_EVIDENCE_HASH:-no-evidence}"
     },
     "ga": {
       "pass": $GA_PASS,
       "total": $GA_TOTAL,
       "blockers": $GA_BLOCKERS,
-      "evidence_hash": "${STAGE_EVIDENCE_HASH[GA]:-no-evidence}"
+      "evidence_hash": "${GA_EVIDENCE_HASH:-no-evidence}"
     },
     "thresholds_override": {
       "pass": $TO_PASS,
       "total": $TO_TOTAL,
       "blockers": $TO_BLOCKERS,
-      "evidence_hash": "${STAGE_EVIDENCE_HASH[TO]:-no-evidence}"
+      "evidence_hash": "${TO_EVIDENCE_HASH:-no-evidence}"
     }
   },
   "totals": {

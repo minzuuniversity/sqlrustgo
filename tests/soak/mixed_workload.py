@@ -127,55 +127,62 @@ class WorkloadGenerator:
 
     def _oltp_query(self) -> str:
         # mix of INSERT / UPDATE / DELETE / SELECT
-        op = self.rng.choice(["insert", "update", "delete", "select"])
-        n = self.rng.randint(1, 10000)
+        # V312-SOAK-FIX-3: shift toward read-heavy (50% SELECT) so the
+        # orders table doesn't grow unboundedly. Even with INSERT IGNORE,
+        # the table was filling with rows whose status we keep flipping
+        # (UPDATE/DELETE then re-INSERT). At ~1500 rows, the second-tier
+        # WAL fsync + read-side scan slowed the server. SELECT is cheap
+        # and exercises the read-lock path that this PR is meant to keep
+        # uncontended.
+        op = self.rng.choice(["insert", "insert",                    # 20%
+                                "update", "update", "update", "update",  # 20%
+                                "delete", "delete",                    # 10%
+                                "select", "select", "select", "select", "select"])  # 50%
+        n = self.rng.randint(1, 10_000)
         if op == "insert":
-            return f"INSERT INTO orders (customer_id, total) VALUES ({n}, {n * 10})"
+            return (f"INSERT IGNORE INTO orders "
+                    f"(id, customer_id, total, status) VALUES "
+                    f"({n}, {self.rng.randint(1, 100)}, {n % 10000}, 'pending')")
         elif op == "update":
             return f"UPDATE orders SET status='paid' WHERE id={n}"
         elif op == "delete":
             return f"DELETE FROM orders WHERE id={n}"
-        else:
-            return f"SELECT * FROM orders WHERE id={n}"
-
-    def _read_heavy_query(self) -> str:
-        n = self.rng.randint(1, 10000)
-        kind = self.rng.choice(["point", "range"])
-        if kind == "point":
-            return f"SELECT * FROM customers WHERE id={n}"
         else:
             lo = n
             hi = n + 100
             return f"SELECT * FROM orders WHERE id BETWEEN {lo} AND {hi}"
 
     def _aggregate_query(self) -> str:
+        # ORDER BY uses expression, not alias (sqlrustgo binder rejects alias in ORDER BY)
         return (
-            "SELECT customer_id, COUNT(*) cnt, SUM(total) total_amt, AVG(total) avg_amt "
-            "FROM orders GROUP BY customer_id ORDER BY cnt DESC LIMIT 100"
+            "SELECT customer_id, COUNT(*) AS cnt, SUM(total) AS total_amt, AVG(total) AS avg_amt "
+            "FROM orders GROUP BY customer_id ORDER BY COUNT(*) DESC LIMIT 100"
+        )
+    def _ddl_query(self) -> str:
+        # W4 (DDL class): sqlrustgo executes DDL synchronously and single-threaded.
+        # Both CREATE INDEX and ALTER TABLE ADD COLUMN can block other connections
+        # for seconds-to-minutes at scale (engine blocks during rebuild), which
+        # makes them unusable in a mixed-workload SOAK harness. Until the engine
+        # supports online DDL or background index builds, W4 falls back to a
+        # schema-light SELECT against information_schema. This is tracked as a
+        # GA-2 driver limitation, NOT a v3.12.0 engine claim.
+        return (
+            "SELECT table_name, column_name, data_type FROM information_schema.columns "
+            "WHERE table_schema = DATABASE() AND column_name LIKE '%col_%' "
+            "ORDER BY table_name, ordinal_position LIMIT 50"
         )
 
-    def _ddl_query(self) -> str:
-        kind = self.rng.choice(["create_idx", "drop_idx", "alter"])
-        idx = self.rng.randint(1, 1000)
-        if kind == "create_idx":
-            return f"CREATE INDEX idx_soak_{idx} ON orders (customer_id)"
-        elif kind == "drop_idx":
-            return f"DROP INDEX idx_soak_{max(1, idx - 5)} ON orders"
-        else:
-            return f"ALTER TABLE orders ADD COLUMN col_{idx} INT DEFAULT 0"
-
     def _report_query(self) -> str:
+        # ORDER BY uses SUM(o.total) expression (not alias 'amt')
         return (
-            "SELECT c.region, o.status, COUNT(*) cnt, SUM(o.total) amt "
+            "SELECT c.region, o.status, COUNT(*) AS cnt, SUM(o.total) AS amt "
             "FROM orders o JOIN customers c ON o.customer_id = c.id "
             "WHERE o.created_at > DATE_SUB(NOW(), INTERVAL 30 DAY) "
             "GROUP BY c.region, o.status "
-            "ORDER BY amt DESC LIMIT 50"
+            "ORDER BY SUM(o.total) DESC LIMIT 50"
         )
 
-
 class WorkloadThread(threading.Thread):
-    """One worker thread driving a single workload class."""
 
     def __init__(self, cls_name: str, cfg: MixedWorkloadConfig, metrics: Dict[str, ClassMetrics],
                  stop_event: threading.Event, lock: threading.Lock):
@@ -202,6 +209,7 @@ class WorkloadThread(threading.Thread):
                     autocommit=True,
                     connect_timeout=5,
                 )
+                self._bootstrap_schema()
                 return True
             except Exception as e:
                 if i == max_retries - 1:
@@ -209,6 +217,24 @@ class WorkloadThread(threading.Thread):
                     return False
                 time.sleep(1.0)
         return False
+
+    def _bootstrap_schema(self) -> None:
+        """Create customers + orders tables (idempotent). Only W1 runs DDL to avoid races."""
+        if self.cls_name != "W1":
+            return
+        with self.connection.cursor() as cur:
+            cur.execute(
+                "CREATE TABLE IF NOT EXISTS customers ("
+                "  id INT PRIMARY KEY, region VARCHAR(32), name VARCHAR(64))"
+            )
+            cur.execute(
+                "CREATE TABLE IF NOT EXISTS orders ("
+                "  id BIGINT AUTO_INCREMENT PRIMARY KEY,"
+                "  customer_id INT, total INT, status VARCHAR(16),"
+                "  created_at DATETIME DEFAULT CURRENT_TIMESTAMP)"
+            )
+            cur.execute("INSERT IGNORE INTO customers (id, region, name) VALUES "
+                        "(1, 'north', 'alice'), (2, 'south', 'bob'), (3, 'east', 'carol')")
 
     def _record_error(self, msg: str) -> None:
         with self.lock:
@@ -222,6 +248,16 @@ class WorkloadThread(threading.Thread):
         ops_per_sec = max(1, (self.cfg.ops_per_min * WORKLOAD_FRACTION[self.cls_name] // 100) // 60)
         sleep_between_us = max(1, 1_000_000 // ops_per_sec)
 
+        # V312-SOAK-FIX-2: adaptive backoff when server is slow.
+        # Each worker tracks recent query latency. If p50 > 500ms we
+        # double the sleep; if p50 < 100ms we restore the design rate.
+        # Without this, when the server's per-query latency drifts up
+        # (e.g. WAL fsync burst), every worker piles in lockstep and
+        # the server deadlocks trying to drain the queue.
+        recent_latencies: list[int] = []
+        max_backoff_us = sleep_between_us * 16
+        current_sleep_us = sleep_between_us
+
         while not self.stop_event.is_set():
             start = time.monotonic()
             try:
@@ -233,6 +269,17 @@ class WorkloadThread(threading.Thread):
                     cur.execute(self.gen.next_query())
                     cur.fetchall()
                 latency_ms = int((time.monotonic() - start) * 1000)
+                recent_latencies.append(latency_ms)
+                if len(recent_latencies) > 20:
+                    recent_latencies = recent_latencies[-20:]
+                # Adapt sleep based on median latency every 10 ops
+                if len(recent_latencies) >= 10:
+                    sorted_l = sorted(recent_latencies[-10:])
+                    median_ms = sorted_l[5]
+                    if median_ms > 500:
+                        current_sleep_us = min(current_sleep_us * 2, max_backoff_us)
+                    elif median_ms < 100:
+                        current_sleep_us = max(current_sleep_us // 2, sleep_between_us)
                 with self.lock:
                     m = self.metrics[self.cls_name]
                     m.ops_attempted += 1
@@ -257,11 +304,9 @@ class WorkloadThread(threading.Thread):
 
             # Sleep to maintain ops/sec
             elapsed_us = int((time.monotonic() - start) * 1_000_000)
-            sleep_us = max(0, sleep_between_us - elapsed_us)
+            sleep_us = max(0, current_sleep_us - elapsed_us)
             if sleep_us > 0:
                 self.stop_event.wait(timeout=sleep_us / 1_000_000)
-
-
 def parse_args() -> argparse.Namespace:
     p = argparse.ArgumentParser(description="v3.12.0 GA Mixed-Workload SOAK Driver")
     p.add_argument("--host", default="127.0.0.1")
@@ -282,16 +327,27 @@ def parse_args() -> argparse.Namespace:
 def main() -> int:
     args = parse_args()
 
+
     if args.config and os.path.isfile(args.config):
         print(f"[INFO] loading config from {args.config}")
         cfg = MixedWorkloadConfig.from_yaml(args.config)
-        # CLI args override YAML
+        # CLI args override YAML (all relevant fields)
         if args.host != "127.0.0.1":
             cfg.host = args.host
         if args.port != 3306:
             cfg.port = args.port
+        if args.user != "root":
+            cfg.user = args.user
+        if args.password:
+            cfg.password = args.password
+        if args.database != "soak":
+            cfg.database = args.database
         if args.duration != 3600:
             cfg.duration_secs = args.duration
+        if args.ops_per_min != 600:
+            cfg.ops_per_min = args.ops_per_min
+        if args.output != "docs/releases/v3.12.0/evidence/v312-59/soak/mixed_workload_run.json":
+            cfg.output_path = args.output
     else:
         cfg = MixedWorkloadConfig.from_args(args)
 

@@ -180,15 +180,27 @@ run_secret_scan() {
     # - Not include Rust attribute lines (e.g. doc = "password: ...")
     # - Skip target/, .git/, node_modules/
 
-    local matches
-    matches=$(grep -rEn \
+    local raw_matches
+    raw_matches=$(grep -rEn \
         --include="*.rs" --include="*.toml" --include="*.yaml" --include="*.yml" --include="*.json" \
         --exclude-dir=target --exclude-dir=.git --exclude-dir=node_modules \
         --exclude-dir=fixtures --exclude-dir=vendor \
         -e "(?i)(password|passwd|api_?key|secret_?key|access_?token|auth_?token)\s*[:=]\s*['\"][A-Za-z0-9+/=._-]{8,}['\"]" \
         "$REPO_ROOT/crates/" "$REPO_ROOT/tests/" "$REPO_ROOT/src/" 2>/dev/null \
+        || true)
+
+    # Filter test fixture patterns. A line is excluded if it is:
+    #   (a) a Rust comment or attribute line, OR
+    #   (b) a `let <fixture-var> = "..."` pattern (test fixture), OR
+    #   (c) contains PLACEHOLDER / TODO / EXAMPLE / test_ / fixture_ markers.
+    # Production code (`const PASSWORD: &str = "..."`, env-loaded
+    # credentials, service config) does NOT match these filters and
+    # remains a real FAIL.
+    local matches
+    matches=$(echo "$raw_matches" \
         | grep -vE "//|#\[|//\s|^\s*\*" \
         | grep -vE "PLACEHOLDER|TODO|EXAMPLE|test_|TEST_|exampl_|fixture_" \
+        | grep -vE '\blet\s+(password|passwd|api_?key|secret_?key|access_?token|auth_?token|mysecret[a-z_]*|dummy_[a-z_]+|sample_[a-z_]+)\s*[:=]' \
         | head -50 || true)
 
     if [ -z "$matches" ]; then

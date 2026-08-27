@@ -1,4 +1,4 @@
 === Broken Links in v3.12.0 Docs ===
-Timestamp: 2026-08-21T16:22:00Z
-Commit: 5e147ea0fee9fbb0caa1b323a853d857b7b25873
+Timestamp: 2026-08-26T09:54:51Z
+Commit: 37c0a82cbc365acaf3f7d65fed02a4267d85bc85
 
