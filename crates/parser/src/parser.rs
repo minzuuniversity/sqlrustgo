@@ -2965,9 +2965,7 @@ impl Parser {
             loop {
                 let param_name = match self.next() {
                     Some(Token::Identifier(n)) => n,
-                    Some(t) => {
-                        return Err(format!("Expected UDF parameter name, got {:?}", t))
-                    }
+                    Some(t) => return Err(format!("Expected UDF parameter name, got {:?}", t)),
                     None => return Err("Expected UDF parameter name".to_string()),
                 };
                 let data_type = match self.next() {
@@ -3048,9 +3046,7 @@ impl Parser {
         }
         let body_expr = body_expr.trim().to_string();
         if body_expr.is_empty() {
-            return Err(
-                "CREATE FUNCTION requires a non-empty body after RETURN".to_string(),
-            );
+            return Err("CREATE FUNCTION requires a non-empty body after RETURN".to_string());
         }
 
         Ok(Statement::CreateFunction(CreateFunctionStatement {
@@ -3086,7 +3082,10 @@ impl Parser {
             Some(t) => return Err(format!("Expected function name, got {:?}", t)),
             None => return Err("Expected function name".to_string()),
         };
-        Ok(Statement::DropFunction(DropFunctionStatement { name, if_exists }))
+        Ok(Statement::DropFunction(DropFunctionStatement {
+            name,
+            if_exists,
+        }))
     }
 
     /// Parse stored procedure body statements until a terminator token
@@ -3179,7 +3178,9 @@ impl Parser {
                         body.push(StoredProcStatement::RawSql(stmt_str.trim().to_string()));
                     }
                 }
-                Some(Token::Set) | Some(Token::Declare) | Some(Token::Call) => {
+                Some(Token::Set) | Some(Token::Declare) | Some(Token::Call)
+                | Some(Token::Select) | Some(Token::Insert) | Some(Token::Update)
+                | Some(Token::Delete) => {
                     // Flush any pending raw SQL and collect full statement
                     if !current_sql.trim().is_empty() {
                         body.push(StoredProcStatement::RawSql(current_sql.trim().to_string()));
