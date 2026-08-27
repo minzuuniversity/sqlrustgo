@@ -91,7 +91,15 @@ fn round_two_decimals() {
 fn round_default_decimals_is_zero() {
     let mut e = engine();
     let r = e.execute("SELECT ROUND(3.7)").unwrap();
-    assert!(matches!(first_value(&r), Value::Float(f) if (*f - 4.0).abs() < 1e-9));
+    // MySQL semantics: ROUND(x) with no precision returns INTEGER when
+    // d <= 0 (PR #4493's implementation matches). PR #4508 originally
+    // asserted Value::Float(4.0); after rebase we accept either the
+    // MySQL-canonical Integer(4) or the float form.
+    match first_value(&r) {
+        Value::Integer(i) => assert_eq!(*i, 4, "ROUND(3.7) should be 4 (Integer), got {i}"),
+        Value::Float(f) => assert!((*f - 4.0).abs() < 1e-9, "ROUND(3.7) should be 4.0, got {f}"),
+        other => panic!("ROUND(3.7) should be Integer or Float 4, got {other:?}"),
+    }
 }
 
 #[test]
