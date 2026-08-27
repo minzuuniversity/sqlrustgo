@@ -3950,6 +3950,8 @@ fn statement_kind(parsed: &Result<Statement, String>) -> &'static str {
             Statement::DropFunction(_) => "DROP_FUNCTION",
             Statement::Union(_) => "UNION",
             Statement::CreateTrigger(_) => "CREATE_TRIGGER",
+            // V312-58 / Issue #4514: trigger removal.
+            Statement::DropTrigger(_) => "DROP_TRIGGER",
             Statement::Intersect(_) => "INTERSECT",
             Statement::Except(_) => "EXCEPT",
             Statement::Values(_) => "VALUES",

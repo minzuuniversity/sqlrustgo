@@ -112,6 +112,9 @@ pub enum Statement {
     DropFunction(DropFunctionStatement),
     Union(UnionStatement),
     CreateTrigger(CreateTriggerStatement),
+    /// V312-58 / Issue #4514: remove a trigger from the storage-layer
+    /// trigger catalog. `IF EXISTS` follows the standard DROP shape.
+    DropTrigger(DropTriggerStatement),
     /// SQL-92 INTERSECT (V310-06 PR2 / Issue #3723 C-2a).
     Intersect(IntersectStatement),
     /// SQL-92 EXCEPT (V310-06 PR2 / Issue #3723 C-2b).
@@ -434,6 +437,18 @@ pub struct CreateTriggerStatement {
     pub timing: String,
     pub events: Vec<String>,
     pub body: String,
+}
+
+/// DROP TRIGGER statement.
+///
+/// V312-58 / Issue #4514: `DROP TRIGGER [IF EXISTS] name`.
+/// `if_exists` matches the standard DROP shape — when true, a missing
+/// trigger is silently ignored; when false, a missing trigger is an
+/// error.
+#[derive(Debug, Clone, PartialEq)]
+pub struct DropTriggerStatement {
+    pub name: String,
+    pub if_exists: bool,
 }
 
 /// CREATE VIEW statement
@@ -3344,33 +3359,68 @@ impl Parser {
         self.expect(Token::Each)?;
         self.expect(Token::Row)?;
 
-        self.expect(Token::Begin)?;
+        // V312-58 / Issue #4514: relax to accept either a BEGIN/END
+        // block (multi-statement body) or a single-statement body that
+        // ends at EOF / statement terminator. The original reproduction
+        // from the issue is the single-statement form.
         let mut body = String::new();
-        while !matches!(self.current(), Some(Token::End) | None) {
-            match self.next() {
-                Some(Token::Semicolon) => {
-                    body.push(';');
-                    body.push(' ');
-                }
-                Some(Token::Dot) => {
-                    // Strip trailing space before dot so we get `NEW.name` not `NEW .name`
-                    while body.ends_with(' ') {
-                        body.pop();
+        if matches!(self.current(), Some(Token::Begin)) {
+            self.expect(Token::Begin)?;
+            while !matches!(self.current(), Some(Token::End) | None) {
+                match self.next() {
+                    Some(Token::Semicolon) => {
+                        body.push(';');
+                        body.push(' ');
                     }
-                    body.push('.');
+                    Some(Token::Dot) => {
+                        // Strip trailing space before dot so we get `NEW.name` not `NEW .name`
+                        while body.ends_with(' ') {
+                            body.pop();
+                        }
+                        body.push('.');
+                    }
+                    Some(Token::Identifier(sql)) => {
+                        body.push_str(&sql);
+                        body.push(' ');
+                    }
+                    Some(t) => {
+                        body.push_str(&t.to_string());
+                        body.push(' ');
+                    }
+                    None => return Err("Expected END".to_string()),
                 }
-                Some(Token::Identifier(sql)) => {
-                    body.push_str(&sql);
-                    body.push(' ');
+            }
+            self.expect(Token::End)?;
+        } else {
+            // Single-statement body — collect tokens until the statement
+            // terminator (Semicolon) or EOF.
+            while !matches!(
+                self.current(),
+                Some(Token::Semicolon) | Some(Token::Eof) | None
+            ) {
+                match self.next() {
+                    Some(Token::Dot) => {
+                        // Strip trailing space before dot so we get `NEW.name` not `NEW .name`
+                        while body.ends_with(' ') {
+                            body.pop();
+                        }
+                        body.push('.');
+                    }
+                    Some(Token::Identifier(sql)) => {
+                        body.push_str(&sql);
+                        body.push(' ');
+                    }
+                    Some(t) => {
+                        body.push_str(&t.to_string());
+                        body.push(' ');
+                    }
+                    None => break,
                 }
-                Some(t) => {
-                    body.push_str(&t.to_string());
-                    body.push(' ');
-                }
-                None => return Err("Expected END".to_string()),
+            }
+            if matches!(self.current(), Some(Token::Semicolon)) {
+                self.next();
             }
         }
-        self.expect(Token::End)?;
 
         Ok(Statement::CreateTrigger(CreateTriggerStatement {
             name,
@@ -3379,6 +3429,28 @@ impl Parser {
             events,
             body: body.trim().to_string(),
         }))
+    }
+
+    fn parse_drop_trigger(&mut self) -> Result<Statement, String> {
+        // V312-58 / Issue #4514: `DROP TRIGGER [IF EXISTS] name`.
+        self.expect(Token::Trigger)?;
+        let if_exists = if matches!(self.current(), Some(Token::If)) {
+            self.next();
+            self.expect(Token::Exists)?;
+            true
+        } else {
+            false
+        };
+        let name = match self.next() {
+            Some(Token::Identifier(n)) => n,
+            Some(t) => return Err(format!("Expected trigger name, got {:?}", t)),
+            None => return Err("Expected trigger name".to_string()),
+        };
+        // Optional trailing semicolon.
+        if matches!(self.current(), Some(Token::Semicolon)) {
+            self.next();
+        }
+        Ok(Statement::DropTrigger(DropTriggerStatement { name, if_exists }))
     }
 
     fn parse_create_view(&mut self) -> Result<Statement, String> {
@@ -9273,15 +9345,17 @@ impl Parser {
             Some(Token::Procedure) => self.parse_drop_procedure(),
             // V312-58 / Issue #4512: scalar UDF removal.
             Some(Token::Function) => self.parse_drop_function(),
+            // V312-58 / Issue #4514: trigger removal.
+            Some(Token::Trigger) => self.parse_drop_trigger(),
             Some(Token::Role) => self.parse_drop_role(),
             Some(Token::Database) => self.parse_drop_database(),
             Some(Token::Sequence) => self.parse_drop_sequence(),
             Some(t) => Err(format!(
-                "Expected TABLE, INDEX, VIEW, PROCEDURE, FUNCTION, ROLE, SEQUENCE, or DATABASE after DROP, got {:?}",
+                "Expected TABLE, INDEX, VIEW, PROCEDURE, FUNCTION, TRIGGER, ROLE, SEQUENCE, or DATABASE after DROP, got {:?}",
                 t
             )),
             None => Err(
-                "Expected TABLE, INDEX, VIEW, PROCEDURE, FUNCTION, ROLE, SEQUENCE, or DATABASE after DROP"
+                "Expected TABLE, INDEX, VIEW, PROCEDURE, FUNCTION, TRIGGER, ROLE, SEQUENCE, or DATABASE after DROP"
                     .to_string(),
             ),
         }
