@@ -1553,12 +1553,19 @@ impl<S: StorageEngine + 'static> ExecutionEngine<S> {
         Ok(ExecutorResult::empty())
     }
 
-    /// SEM-1 (#3172): Execute SAVEPOINT/ROLLBACK TO SAVEPOINT/RELEASE SAVEPOINT.
+    /// SEM-1 (#3172) + #4519 (清华 MySQL 课程第 9 章核心):
+    /// Execute SAVEPOINT/ROLLBACK TO SAVEPOINT/RELEASE SAVEPOINT.
     ///
-    /// Routes the parsed statement to the per-tx SavepointManager. The
-    /// physical undo of tuple changes is deferred to a future iteration;
-    /// this method only manages the savepoint namespace and the undo-log
-    /// cursor.
+    /// Routes the parsed statement to the per-tx SavepointManager. For
+    /// `ROLLBACK TO` the orchestrator now passes a typed on-undo
+    /// closure that drives `storage.delete` / `storage.insert` to
+    /// actually revert the row-level changes recorded by the DML
+    /// executors via `transaction_manager.add_undo_record`.
+    ///
+    /// Reverse order matters: the most recent DML is undone first so
+    /// that referential integrity is preserved (e.g. an INSERT that
+    /// depended on a row inserted later is undone first, leaving the
+    /// dependency row intact).
     fn execute_savepoint(&mut self, name: &str, op: SavepointOp) -> SqlResult<ExecutorResult> {
         // An active transaction is required for any savepoint operation.
         let tx_id = self.current_tx_id.ok_or_else(|| {
@@ -1575,15 +1582,83 @@ impl<S: StorageEngine + 'static> ExecutionEngine<S> {
                 .map_err(|e| {
                     SqlError::ExecutionError(format!("SAVEPOINT {} failed: {}", name, e))
                 })?,
-            SavepointOp::RollbackTo => self
-                .transaction_manager
-                .rollback_to_savepoint(tx_id, name)
-                .map_err(|e| {
-                    SqlError::ExecutionError(format!(
-                        "ROLLBACK TO SAVEPOINT {} failed: {}",
-                        name, e
-                    ))
-                })?,
+            SavepointOp::RollbackTo => {
+                // #4519: physical undo. The closure runs inside
+                // `transaction_manager.rollback_to_savepoint_with_undo`
+                // which holds `&mut self.transaction_manager`; we
+                // therefore must NOT also hold `&self.storage` here.
+                // The closure captures `&mut self.storage` (the
+                // engine-owned Arc<RwLock<StorageEngine>>) and the
+                // storage's interior mutability via `parking_lot::RwLock`
+                // is what makes this sound.
+                let storage = self.storage.clone();
+                self.transaction_manager
+                    .rollback_to_savepoint_with_undo(tx_id, name, move |rec| {
+                        // Re-acquire the write lock per record so we
+                        // don't hold it across the whole rollback
+                        // (which can be thousands of records on a
+                        // long-running workload).
+                        let mut storage = storage.write();
+                        match rec {
+                            sqlrustgo_transaction::savepoint::UndoRecord::Insert { table, key } => {
+                                storage.delete(table, key).map_err(|e| {
+                                    format!(
+                                        "savepoint undo (insert delete on {} pk={:?}): {}",
+                                        table, key, e
+                                    )
+                                })?;
+                                Ok(())
+                            }
+                            sqlrustgo_transaction::savepoint::UndoRecord::Delete {
+                                table,
+                                key: _,
+                                old_value,
+                            } => {
+                                storage
+                                    .insert(table, vec![old_value.clone()])
+                                    .map_err(|e| {
+                                        format!(
+                                            "savepoint undo (delete reinsert on {}): {}",
+                                            table, e
+                                        )
+                                    })?;
+                                Ok(())
+                            }
+                            sqlrustgo_transaction::savepoint::UndoRecord::Update {
+                                table,
+                                key,
+                                old_value,
+                            } => {
+                                // Re-insert under the PK, then drop the
+                                // duplicate (if any) created by the
+                                // forward UPDATE. We delete-by-key first
+                                // to guarantee idempotence in case the
+                                // on-undo closure is retried.
+                                storage.delete(table, key).map_err(|e| {
+                                    format!(
+                                        "savepoint undo (update clear on {} pk={:?}): {}",
+                                        table, key, e
+                                    )
+                                })?;
+                                storage
+                                    .insert(table, vec![old_value.clone()])
+                                    .map_err(|e| {
+                                        format!(
+                                            "savepoint undo (update restore on {}): {}",
+                                            table, e
+                                        )
+                                    })?;
+                                Ok(())
+                            }
+                        }
+                    })
+                    .map_err(|e| {
+                        SqlError::ExecutionError(format!(
+                            "ROLLBACK TO SAVEPOINT {} failed: {}",
+                            name, e
+                        ))
+                    })?;
+            }
             SavepointOp::Release => self
                 .transaction_manager
                 .release_savepoint(tx_id, name)

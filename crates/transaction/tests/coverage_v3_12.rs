@@ -172,7 +172,10 @@ fn cov_savepoint_duplicate_name_is_err() {
 #[test]
 fn cov_savepoint_add_undo() {
     let mut sp = SavepointManager::new();
-    sp.add_undo(sqlrustgo_transaction::savepoint::UndoRecord::Insert { key: b"k".to_vec() });
+    sp.add_undo(sqlrustgo_transaction::savepoint::UndoRecord::Insert {
+        table: "t".to_string(),
+        key: vec![sqlrustgo_types::Value::Integer(1)],
+    });
     assert_eq!(sp.undo_log_len(), 1);
 }
 
@@ -196,7 +199,10 @@ fn cov_savepoint_rollback_to_with_undo_closure() {
     use sqlrustgo_transaction::savepoint::UndoRecord;
     let mut sp = SavepointManager::new();
     sp.savepoint("s1".to_string()).unwrap();
-    sp.add_undo(UndoRecord::Insert { key: b"k".to_vec() });
+    sp.add_undo(UndoRecord::Insert {
+        table: "t".to_string(),
+        key: vec![sqlrustgo_types::Value::Integer(1)],
+    });
     let mut undone = 0;
     sp.rollback_to(
         "s1",

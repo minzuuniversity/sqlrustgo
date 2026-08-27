@@ -16,19 +16,24 @@
 //!   - multi-savepoint LIFO ordering
 
 use sqlrustgo_transaction::savepoint::{SavepointError, SavepointManager, UndoRecord};
+use sqlrustgo_types::Value;
 
 fn make_manager() -> SavepointManager {
     SavepointManager::new()
 }
 
-fn insert_key(k: u8) -> UndoRecord {
-    UndoRecord::Insert { key: vec![k] }
+fn insert_key(k: i64) -> UndoRecord {
+    UndoRecord::Insert {
+        table: "t".to_string(),
+        key: vec![Value::Integer(k)],
+    }
 }
 
-fn delete_key(k: u8) -> UndoRecord {
+fn delete_key(k: i64) -> UndoRecord {
     UndoRecord::Delete {
-        key: vec![k],
-        old_value: vec![k, 0],
+        table: "t".to_string(),
+        key: vec![Value::Integer(k)],
+        old_value: vec![Value::Integer(k), Value::Integer(0)],
     }
 }
 
