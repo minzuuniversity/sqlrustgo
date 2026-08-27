@@ -39,7 +39,8 @@ use sqlrustgo_parser::parser::{
     CreateProcedureStatement, CreateRoleStatement, CreateSequenceStatement, CreateTableStatement,
     CreateTriggerStatement, CreateViewStatement, DescribeStatement, DropDatabaseStatement,
     DropFunctionStatement, DropIndexStatement, DropProcedureStatement, DropRoleStatement,
-    DropSequenceStatement, DropTableStatement, DropViewStatement, ExceptStatement,
+    DropSequenceStatement, DropTableStatement, DropTriggerStatement, DropViewStatement,
+    ExceptStatement,
     GrantRoleStatement, GrantStatement, InsertStatement, IntersectStatement, MergeStatement,
     ObjectType as ParserObjectType, OrderByExpression, Privilege as ParserPrivilege,
     RevokeRoleStatement, RevokeStatement, SelectStatement, SetRoleStatement, ShowStatement,
@@ -756,6 +757,9 @@ impl<S: StorageEngine + 'static> ExecutionEngine<S> {
             Statement::CreateTrigger(ref create_trigger) => {
                 self.execute_create_trigger(create_trigger)
             }
+            // V312-58 / Issue #4514: DROP TRIGGER removes the
+            // registration from the storage-layer trigger catalog.
+            Statement::DropTrigger(ref drop_trigger) => self.execute_drop_trigger(drop_trigger),
             Statement::Call(ref call) => self.execute_call(call),
             Statement::CreateProcedure(ref create_proc) => {
                 self.execute_create_procedure(create_proc)
@@ -1142,6 +1146,27 @@ impl<S: StorageEngine + 'static> ExecutionEngine<S> {
             body: stmt.body.clone(),
         };
         storage.create_trigger(trigger_info)?;
+        Ok(ExecutorResult::empty())
+    }
+
+    /// V312-58 / Issue #4514: DROP TRIGGER.
+    ///
+    /// Mirrors the catalog-not-found handling of DROP PROCEDURE so the
+    /// error surface is consistent across the DDL family. The
+    /// `IF EXISTS` variant is a no-op when the trigger is missing
+    /// (matches MySQL/MariaDB behaviour).
+    fn execute_drop_trigger(&self, stmt: &DropTriggerStatement) -> SqlResult<ExecutorResult> {
+        let mut storage = self.storage.write();
+        if storage.get_trigger(&stmt.name).is_none() {
+            if stmt.if_exists {
+                return Ok(ExecutorResult::empty());
+            }
+            return Err(SqlError::ExecutionError(format!(
+                "Trigger '{}' not found",
+                stmt.name
+            )));
+        }
+        storage.drop_trigger(&stmt.name)?;
         Ok(ExecutorResult::empty())
     }
 
