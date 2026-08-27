@@ -1,7 +1,7 @@
 # SQLRustGo v3.12.0 GA Gate Report
 
 > **provenance:** generated_by=v312-59-d-ga-report-scaffold, gate_issue=#4387, umbrella=#4383, source_repo=openclaw/sqlrustgo, policy=Anti-Fabrication-Policy-v1.0
-> **related:** Issue #4387 (V312-59-D), umbrella #4383
+> **related:** Issue #4505 (V312-59-D v2; re-activated from #4387), umbrella #4497
 > **signed_off_by:** v3.12.0 GA Release Engineering (OpenClaw)
 > **signed_off_at:** 2026-08-22 (v3.12.0 GA promotion cycle)
 
