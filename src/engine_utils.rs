@@ -87,6 +87,13 @@ pub fn validate_select_columns_referenced(
 fn check_expr_references<F: Fn(&str) -> bool>(expr: &Expression, exists: &F) -> SqlResult<()> {
     match expr {
         Expression::Identifier(name) => {
+            // Issue #4511 — MySQL session variables (`@name`) are stored
+            // in the engine's session map and substituted at evaluation
+            // time (see `substitute_session_vars_in_expr`). They are NOT
+            // column references, so the binder must skip them.
+            if name.starts_with('@') {
+                return Ok(());
+            }
             if !exists(name) {
                 return Err(SqlError::ExecutionError(format!(
                     "Binder error: column '{}' not found in schema",

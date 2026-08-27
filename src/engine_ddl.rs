@@ -17,7 +17,7 @@ use sqlrustgo_parser::parser::{
     RevokeStatement, SetRoleStatement, ShowStatement,
 };
 use sqlrustgo_parser::Expression;
-use sqlrustgo_storage::{ColumnDefinition, StorageEngine, TableInfo};
+use sqlrustgo_storage::{ColumnDefinition, StorageEngine, TableInfo, Value as StorageValue};
 
 impl<S: StorageEngine + 'static> ExecutionEngine<S> {
     pub(crate) fn execute_grant(&mut self, grant: &GrantStatement) -> SqlResult<ExecutorResult> {
@@ -976,14 +976,35 @@ impl<S: StorageEngine + 'static> ExecutionEngine<S> {
                 name
             ))
         })?;
-        if !params.is_empty() {
-            return Err(SqlError::ExecutionError(
-                "EXECUTE ... USING with bind parameters is not yet supported in v3.9.0; \
-                 use direct parameter substitution in the SQL body for now"
-                    .to_string(),
-            ));
-        }
-        self.execute(&sql)
+        // V312-58 / Issue #4511: bind each USING param to the next `?`
+        // placeholder in the prepared SQL (positional). Each `params[i]`
+        // is currently expected to be `Expression::ColumnRef("@name")`
+        // (the lexer emits `@a` as a single Identifier); we look up the
+        // bound session variable and rewrite the SQL so the placeholders
+        // become SQL literals before re-parsing.
+        let rewritten = if params.is_empty() {
+            sql
+        } else {
+            let session_vars = self.session_vars.read().clone();
+            let mut values: Vec<sqlrustgo_storage::Value> = Vec::with_capacity(params.len());
+            for p in params {
+                let key = match p {
+                    sqlrustgo_parser::Expression::Identifier(name) => name.clone(),
+                    _ => {
+                        return Err(SqlError::ExecutionError(
+                            "EXECUTE USING expects @name user variables".to_string(),
+                        ))
+                    }
+                };
+                let v = session_vars
+                    .get(&key)
+                    .cloned()
+                    .unwrap_or(sqlrustgo_storage::Value::Null);
+                values.push(v);
+            }
+            substitute_placeholders(&sql, &values)?
+        };
+        self.execute(&rewritten)
     }
 
     pub(crate) fn execute_deallocate(&mut self, name: &str) -> SqlResult<ExecutorResult> {
@@ -1130,4 +1151,91 @@ fn sql_like_match(text: &str, pattern: &str) -> bool {
         pi += 1;
     }
     pi == pat_bytes.len()
+}
+
+/// V312-58 / Issue #4511: rewrite the prepared SQL by substituting each
+/// `?` placeholder (in source order) with the corresponding `Value`'s
+/// SQL-literal text. Matches MySQL's positional binding semantics
+/// (EXECUTE stmt USING @a, @b, @d binds @a → first ?, @b → second ?, etc.).
+///
+/// Strings are rendered with single quotes and embedded single quotes
+/// doubled (per SQL standard). NULL → `NULL`, booleans → `true`/`false`,
+/// numbers rendered via `Display`. Blob / Point / Json are rendered as
+/// `NULL` since the prepared SQL grammar doesn't yet have literal
+/// syntax for them.
+///
+/// Errors when the SQL contains more placeholders than `params` (would
+/// leave a literal `?` in the rewritten SQL and fail to parse). Excess
+/// params (more than placeholders) are an error too — silently dropping
+/// them would mask caller mistakes.
+fn substitute_placeholders(sql: &str, params: &[StorageValue]) -> SqlResult<String> {
+    let bytes = sql.as_bytes();
+    let mut out = String::with_capacity(sql.len());
+    let mut pi: usize = 0; // index into params
+    let mut i: usize = 0; // index into sql bytes
+    let mut in_single = false;
+    let mut in_double = false;
+    while i < bytes.len() {
+        let b = bytes[i];
+        // Track quoted strings (single / double quote) so we don't
+        // mis-detect a `?` inside a string literal as a placeholder.
+        // Backslash escapes are intentionally not handled — the
+        // SQL standard SQL grammar uses doubled-quote escaping for
+        // both single- and double-quoted strings, which our parser
+        // already enforces.
+        if b == b'\'' && !in_double {
+            // Doubled '' inside a single-quoted string is an escape
+            // (SQL standard), not a closing quote. Copy both bytes
+            // verbatim and advance past them.
+            if in_single && i + 1 < bytes.len() && bytes[i + 1] == b'\'' {
+                out.push('\'');
+                out.push('\'');
+                i += 2;
+                continue;
+            }
+            in_single = !in_single;
+            out.push('\'');
+            i += 1;
+            continue;
+        }
+        if b == b'"' && !in_single {
+            in_double = !in_double;
+            out.push('"');
+            i += 1;
+            continue;
+        }
+        if b == b'?' && !in_single && !in_double {
+            let lit = match params.get(pi) {
+                Some(StorageValue::Null) => "NULL".to_string(),
+                Some(StorageValue::Boolean(true)) => "true".to_string(),
+                Some(StorageValue::Boolean(false)) => "false".to_string(),
+                Some(StorageValue::Integer(n)) => n.to_string(),
+                Some(StorageValue::Float(f)) => f.to_string(),
+                Some(StorageValue::Text(s)) => format!("'{}'", s.replace('\'', "''")),
+                Some(StorageValue::Blob(_))
+                | Some(StorageValue::Point(_, _))
+                | Some(StorageValue::Json(_)) => "NULL".to_string(),
+                None => {
+                    return Err(SqlError::ExecutionError(format!(
+                        "EXECUTE USING: not enough parameters (placeholder #{} has no USING value)",
+                        pi + 1
+                    )))
+                }
+            };
+            out.push_str(&lit);
+            pi += 1;
+            i += 1;
+            continue;
+        }
+        out.push(b as char);
+        i += 1;
+    }
+    if pi < params.len() {
+        return Err(SqlError::ExecutionError(format!(
+            "EXECUTE USING: too many parameters ({} provided, {} placeholders)",
+            params.len(),
+            pi
+        )));
+    }
+    Ok(out)
 }

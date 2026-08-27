@@ -2275,7 +2275,34 @@ impl Parser {
             Some(t) => return Err(format!("Expected prepared statement name, got {:?}", t)),
             None => return Err("Expected prepared statement name, got EOF".to_string()),
         };
-        let params = Vec::new();
+        // V312-58 / Issue #4511: `EXECUTE name USING @var1, @var2, ...`
+        // binds the user session variables (in order) to the prepared
+        // statement's `?` placeholders at execution time.
+        let mut params: Vec<Expression> = Vec::new();
+        if self.current() == Some(&Token::Using) {
+            self.next(); // consume USING
+            loop {
+                // Each USING param is a user variable (`@name`); the
+                // lexer emits it as `Identifier("@name")` so the
+                // executor can resolve it via the session variable map.
+                let p = match self.next() {
+                    Some(Token::Identifier(n)) if n.starts_with('@') => Expression::Identifier(n),
+                    Some(t) => {
+                        return Err(format!(
+                            "Expected user variable (@name) in USING clause, got {:?}",
+                            t
+                        ))
+                    }
+                    None => return Err("Expected user variable in USING clause".to_string()),
+                };
+                params.push(p);
+                if self.current() == Some(&Token::Comma) {
+                    self.next();
+                } else {
+                    break;
+                }
+            }
+        }
         Ok(Statement::Execute { name, params })
     }
 
@@ -2286,6 +2313,10 @@ impl Parser {
             if p.to_uppercase() == "PREPARE" {
                 self.next(); // consume PREPARE
             }
+        } else if matches!(self.current(), Some(Token::Prepare)) {
+            // The lexer emits `PREPARE` as a keyword token, so we may
+            // also see `Token::Prepare` here. Treat it identically.
+            self.next();
         }
         let name = match self.next() {
             Some(Token::Identifier(n)) => n,
@@ -7502,7 +7533,7 @@ impl Parser {
                                 }
                             }
                         }
-// Consume the CAST's closing paren. The args loop
+                        // Consume the CAST's closing paren. The args loop
                         // above terminates on `AS` (not `)`), so the
                         // closing `)` of `CAST(expr AS TYPE)` is still
                         // pending here. Without this, the leftover `)`
