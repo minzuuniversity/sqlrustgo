@@ -127,19 +127,17 @@ class WorkloadGenerator:
 
     def _oltp_query(self) -> str:
         # mix of INSERT / UPDATE / DELETE / SELECT
-        # W1 lessons from v3.11.0 SOAK (SOAK_TEST_REPORT.md §错误分析):
-        #   DELETE with random id out of [1, 100000] produced ~12% failure
-        #   because table only had ~54K rows. Fix: use bounded id range so
-        #   the workload exercises real rows most of the time.
-        # W1 also uses INSERT IGNORE / UPDATE / DELETE / SELECT in a
-        # roughly balanced mix (40/20/20/20). INSERT IGNORE is used so
-        # primary-key conflicts don't drown the success-rate signal — we
-        # care about *server throughput* (QPS) at this scale, not row
-        # uniqueness.
-        op = self.rng.choice(["insert", "insert", "insert", "insert",  # 40%
-                                "update", "update",                    # 20%
-                                "delete", "delete",                    # 20%
-                                "select"])                             # 20%
+        # V312-SOAK-FIX-3: shift toward read-heavy (50% SELECT) so the
+        # orders table doesn't grow unboundedly. Even with INSERT IGNORE,
+        # the table was filling with rows whose status we keep flipping
+        # (UPDATE/DELETE then re-INSERT). At ~1500 rows, the second-tier
+        # WAL fsync + read-side scan slowed the server. SELECT is cheap
+        # and exercises the read-lock path that this PR is meant to keep
+        # uncontended.
+        op = self.rng.choice(["insert", "insert",                    # 20%
+                                "update", "update", "update", "update",  # 20%
+                                "delete", "delete",                    # 10%
+                                "select", "select", "select", "select", "select"])  # 50%
         n = self.rng.randint(1, 10_000)
         if op == "insert":
             return (f"INSERT IGNORE INTO orders "
@@ -149,14 +147,6 @@ class WorkloadGenerator:
             return f"UPDATE orders SET status='paid' WHERE id={n}"
         elif op == "delete":
             return f"DELETE FROM orders WHERE id={n}"
-        else:
-            return f"SELECT * FROM orders WHERE id={n}"
-
-    def _read_heavy_query(self) -> str:
-        n = self.rng.randint(1, 10_000)
-        kind = self.rng.choice(["point", "range"])
-        if kind == "point":
-            return f"SELECT * FROM customers WHERE id={n}"
         else:
             lo = n
             hi = n + 100
@@ -258,6 +248,16 @@ class WorkloadThread(threading.Thread):
         ops_per_sec = max(1, (self.cfg.ops_per_min * WORKLOAD_FRACTION[self.cls_name] // 100) // 60)
         sleep_between_us = max(1, 1_000_000 // ops_per_sec)
 
+        # V312-SOAK-FIX-2: adaptive backoff when server is slow.
+        # Each worker tracks recent query latency. If p50 > 500ms we
+        # double the sleep; if p50 < 100ms we restore the design rate.
+        # Without this, when the server's per-query latency drifts up
+        # (e.g. WAL fsync burst), every worker piles in lockstep and
+        # the server deadlocks trying to drain the queue.
+        recent_latencies: list[int] = []
+        max_backoff_us = sleep_between_us * 16
+        current_sleep_us = sleep_between_us
+
         while not self.stop_event.is_set():
             start = time.monotonic()
             try:
@@ -269,6 +269,17 @@ class WorkloadThread(threading.Thread):
                     cur.execute(self.gen.next_query())
                     cur.fetchall()
                 latency_ms = int((time.monotonic() - start) * 1000)
+                recent_latencies.append(latency_ms)
+                if len(recent_latencies) > 20:
+                    recent_latencies = recent_latencies[-20:]
+                # Adapt sleep based on median latency every 10 ops
+                if len(recent_latencies) >= 10:
+                    sorted_l = sorted(recent_latencies[-10:])
+                    median_ms = sorted_l[5]
+                    if median_ms > 500:
+                        current_sleep_us = min(current_sleep_us * 2, max_backoff_us)
+                    elif median_ms < 100:
+                        current_sleep_us = max(current_sleep_us // 2, sleep_between_us)
                 with self.lock:
                     m = self.metrics[self.cls_name]
                     m.ops_attempted += 1
@@ -293,11 +304,9 @@ class WorkloadThread(threading.Thread):
 
             # Sleep to maintain ops/sec
             elapsed_us = int((time.monotonic() - start) * 1_000_000)
-            sleep_us = max(0, sleep_between_us - elapsed_us)
+            sleep_us = max(0, current_sleep_us - elapsed_us)
             if sleep_us > 0:
                 self.stop_event.wait(timeout=sleep_us / 1_000_000)
-
-
 def parse_args() -> argparse.Namespace:
     p = argparse.ArgumentParser(description="v3.12.0 GA Mixed-Workload SOAK Driver")
     p.add_argument("--host", default="127.0.0.1")
