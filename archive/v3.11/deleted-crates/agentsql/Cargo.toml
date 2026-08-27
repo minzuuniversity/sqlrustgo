@@ -2,6 +2,7 @@
 name = "sqlrustgo-agentsql"
 version = "1.6.1"
 edition = "2021"
+license = "MIT"
 description = "AgentSQL Extension for AI Agent database access"
 
 [dependencies]

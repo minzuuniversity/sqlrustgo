@@ -2,6 +2,7 @@
 name = "sqlrustgo-security"
 version = "0.1.0"
 edition = "2021"
+license.workspace = true
 authors = ["SQLRustGo Team"]
 description = "Security module with audit logging and session management"
 

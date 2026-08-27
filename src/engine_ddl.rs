@@ -12,9 +12,10 @@ use sqlrustgo_catalog::auth::{Privilege, UserIdentity};
 use sqlrustgo_executor::ExecutorResult;
 use sqlrustgo_parser::parser::{
     AlterColumnOperation, AlterTableOperation, AlterTableStatement, CreateRoleStatement,
-    DescribeStatement, DropRoleStatement, GrantRoleStatement, GrantStatement,
-    ObjectType as ParserObjectType, Privilege as ParserPrivilege, RevokeRoleStatement,
-    RevokeStatement, SetRoleStatement, ShowStatement,
+    CreateUserStatement, DescribeStatement, DropRoleStatement, DropUserStatement,
+    GrantRoleStatement, GrantStatement, ObjectType as ParserObjectType,
+    Privilege as ParserPrivilege, RevokeRoleStatement, RevokeStatement, SetRoleStatement,
+    ShowStatement,
 };
 use sqlrustgo_parser::Expression;
 use sqlrustgo_storage::{ColumnDefinition, StorageEngine, TableInfo, Value as StorageValue};
@@ -932,6 +933,80 @@ impl<S: StorageEngine + 'static> ExecutionEngine<S> {
             .collect();
 
         Ok(ExecutorResult::new(rows, 4))
+    }
+
+    /// V312-58 / Issue #4515: `CREATE USER 'name'@'host' [IDENTIFIED BY 'pwd']`.
+    ///
+    /// Registers a new user with the catalog's `AuthManager`. When
+    /// `password_hash` is `None` (the user wrote no `IDENTIFIED BY`
+    /// clause), we pass an empty string — `AuthManager::create_user`
+    /// accepts that as "no password".
+    pub(crate) fn execute_create_user(
+        &mut self,
+        stmt: &CreateUserStatement,
+    ) -> SqlResult<ExecutorResult> {
+        let catalog = self
+            .catalog
+            .as_ref()
+            .ok_or_else(|| SqlError::ExecutionError("No catalog available".to_string()))?;
+        let mut catalog_guard = catalog.write();
+
+        let identity = UserIdentity::new(&stmt.user, &stmt.host);
+        let password_hash = stmt.password_hash.as_deref().unwrap_or("");
+
+        catalog_guard
+            .auth_manager_mut()
+            .create_user(&identity, password_hash)
+            .map_err(|e| SqlError::ExecutionError(format!("CREATE USER failed: {}", e)))?;
+
+        Ok(ExecutorResult::new(
+            vec![vec![Value::Text(format!(
+                "User '{}'@'{}' created",
+                stmt.user, stmt.host
+            ))]],
+            1,
+        ))
+    }
+
+    /// V312-58 / Issue #4515: `DROP USER 'name'@'host' [IF EXISTS]`.
+    ///
+    /// Mirrors `DROP TRIGGER [IF EXISTS]`: with `IF EXISTS`, a missing
+    /// user is a no-op; without it, we error.
+    pub(crate) fn execute_drop_user(
+        &mut self,
+        stmt: &DropUserStatement,
+    ) -> SqlResult<ExecutorResult> {
+        let catalog = self
+            .catalog
+            .as_ref()
+            .ok_or_else(|| SqlError::ExecutionError("No catalog available".to_string()))?;
+        let mut catalog_guard = catalog.write();
+
+        let identity = UserIdentity::new(&stmt.user, &stmt.host);
+        let result = catalog_guard.auth_manager_mut().drop_user(&identity);
+
+        match result {
+            Ok(_) => Ok(ExecutorResult::new(
+                vec![vec![Value::Text(format!(
+                    "User '{}'@'{}' dropped",
+                    stmt.user, stmt.host
+                ))]],
+                1,
+            )),
+            Err(e) => {
+                if stmt.if_exists {
+                    Ok(ExecutorResult::new(
+                        vec![vec![Value::Text(format!(
+                            "User '{}'@'{}' did not exist (IF EXISTS, no-op)",
+                            stmt.user, stmt.host
+                        ))]],
+                        1,
+                    ))
+                } else {
+                    Err(SqlError::ExecutionError(format!("DROP USER failed: {}", e)))
+                }
+            }
+        }
     }
 
     pub(crate) fn execute_alter_table(

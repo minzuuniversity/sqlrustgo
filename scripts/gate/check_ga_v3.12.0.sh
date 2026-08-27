@@ -10,27 +10,37 @@
 #   GA:    8 promotion_to_GA_requires
 #   thresholds_override: 13 boolean fields in STAGE.yaml
 #
-# Modes (Issue #4536):
-#   (default | --full)   Run the heavy BETA stage (cargo build + clippy +
-#                         fmt cascade inside check_beta_v3.12.0.sh).
-#                         This is the legacy / CI-parity behavior.
-#   --fast-path           Skip the heavy BETA execution; verify only that
-#                         the BETA gate script exists and passes
-#                         `bash -n` syntax check. Suitable for local-dev
-#                         smoke runs (<30s wall clock vs >3min heavy).
-#
-# RC, GA, and thresholds_override stages are already fast-path by design.
+# This script does NOT re-run heavy tests. It verifies that each
+# per-stage gate script exists, runs in fast path, and reports PASS.
+# Heavy verification (e.g. cargo test --test '**') is delegated to
+# CI / dedicated gate runs that produce the actual evidence_hash.
 #
 # Output:
 #   stdout: PASS/FAIL per stage + summary
 #   file:   docs/releases/v3.12.0/evidence/v312-59/ga_gate_report.json
 #            with pass/total/blockers per stage + evidence_hash per stage
-#            + a top-level `mode` field ("fast-path" or "full").
 #
 # Exit codes:
 #   0  = ALL stages PASS
 #   1  = ANY stage FAIL (blocker)
-#   2  = CLI usage error
+#
+# CLI flags (Issue #4536):
+#   --fast-path            Skip BETA heavy build/clippy/fmt, only check
+#                          script existence + syntax (run_beta_gate
+#                          becomes a 1-second existence check). The
+#                          actual heavy BETA verification is delegated
+#                          to CI / dedicated check_beta_v3.12.0.sh runs.
+#   --skip-beta            Alias for --fast-path (legacy name).
+#   --full                 Force full verification including BETA stage
+#                          heavy build (default behavior; explicit).
+#   -h, --help             Show this help and exit.
+#
+# Per stage, when FAST_PATH=1:
+#   BETA: existence + bash -n syntax check only (NO cargo build/clippy/fmt)
+#   RC:   unchanged (always existence + bash -n)
+#   GA:   unchanged (always existence + bash -n for scripts,
+#                     non-empty for docs)
+#   TO:   unchanged (always static anti-pattern registry check)
 # =============================================================================
 
 set -uo pipefail
@@ -46,6 +56,35 @@ TIMESTAMP="$(date -u +%Y-%m-%dT%H:%M:%SZ)"
 COMMIT_SHA="$(git rev-parse HEAD 2>/dev/null || echo 'unknown')"
 COMMIT_SHORT="$(git rev-parse --short HEAD 2>/dev/null || echo 'unknown')"
 
+# CLI flag parsing — Issue #4536
+FAST_PATH=0  # default: full verification (BETA stage runs heavy build)
+SKIP_HEAVY_REASON=""
+for arg in "$@"; do
+    case "$arg" in
+        --fast-path|--skip-beta)
+            FAST_PATH=1
+            SKIP_HEAVY_REASON="--fast-path requested (Issue #4536): skipping BETA heavy build/clippy/fmt"
+            ;;
+        --full|--no-fast-path)
+            FAST_PATH=0
+            SKIP_HEAVY_REASON=""
+            ;;
+        -h|--help)
+            sed -n '2,55p' "$0"
+            echo ""
+            echo "Exit codes: 0=PASS, 1=FAIL"
+            echo "Default behavior: full verification (BETA heavy build runs)"
+            echo "Fast-path behavior: BETA stage = existence + bash -n only (~1s)"
+            exit 0
+            ;;
+        *)
+            echo "Unknown flag: $arg (try --help)" >&2
+            exit 2
+            ;;
+    esac
+done
+export FAST_PATH  # pass to sub-functions
+
 mkdir -p "$EVIDENCE_DIR"
 
 # Color output
@@ -54,47 +93,6 @@ GREEN='\033[0;32m'
 YELLOW='\033[1;33m'
 BLUE='\033[0;34m'
 NC='\033[0m'
-
-# ----------------------------------------------------------------------------
-# CLI flags (Issue #4536)
-# ----------------------------------------------------------------------------
-# MODE controls whether run_beta_gate() executes the heavy BETA stage
-# (default / --full) or skips it for a fast-path syntax check
-# (--fast-path). All other stages are already fast-path by design.
-MODE="full"  # default = backward-compatible (heavy BETA on CI)
-
-usage() {
-    sed -n '2,38p' "$0" | sed 's/^# \{0,1\}//'
-    echo ""
-    echo "Modes:"
-    echo "  (default | --full)   run heavy BETA stage (CI parity; >3min wall clock)"
-    echo "  --fast-path          skip BETA heavy run (local-dev only; <30s)"
-    echo ""
-    echo "Output JSON report carries a top-level \"mode\" field so reviewers can"
-    echo "distinguish fast-path verdicts from heavy-run verdicts."
-}
-
-while [[ $# -gt 0 ]]; do
-    case "$1" in
-        --fast-path)
-            MODE="fast"
-            shift
-            ;;
-        --full)
-            MODE="full"
-            shift
-            ;;
-        --help|-h)
-            usage
-            exit 0
-            ;;
-        *)
-            echo "[ERROR] unknown arg: $1" >&2
-            echo "  try --help for usage" >&2
-            exit 2
-            ;;
-    esac
-done
 
 # Counters (per-stage)
 BETA_PASS=0; BETA_TOTAL=40; BETA_BLOCKERS=0
@@ -144,6 +142,13 @@ capture_latest_log_hash() {
 # BETA gate is enforced via scripts/gate/check_beta_v3.12.0.sh
 # This aggregator runs the gate script in fast path (--json optional)
 # and counts PASS/WARN/FAIL.
+#
+# Issue #4536: when FAST_PATH=1, this stage skips the heavy
+# `cargo build --all-features / cargo clippy --all-features / cargo fmt --check`
+# that check_beta_v3.12.0.sh runs internally. Instead only verifies:
+#   - script exists
+#   - bash -n syntax check
+# Real heavy verification is delegated to CI / dedicated check_beta_v3.12.0.sh runs.
 
 run_beta_gate() {
     log_step "BETA" "v3.12.0 BETA promotion_to_BETA_requires (40/40)"
@@ -154,24 +159,36 @@ run_beta_gate() {
         return
     fi
 
-    # Fast-path (Issue #4536): syntax check only. Heavy execution
-    # (cargo build + clippy + fmt cascade inside check_beta_v3.12.0.sh)
-    # is delegated to CI per the script's header contract (lines 13-16).
-    if [ "$MODE" = "fast" ]; then
+    local beta_log="$EVIDENCE_DIR/ga_beta_gate_$(date +%Y%m%d_%H%M%S).log"
+
+    if [ "${FAST_PATH:-0}" = "1" ]; then
+        # Fast path (Issue #4536): only check existence + syntax; do NOT run
+        # cargo build/clippy/fmt which takes 3-10 minutes. Heavy verification
+        # belongs to CI / dedicated check_beta_v3.12.0.sh invocations.
+        {
+            echo "=== BETA Gate (fast-path: existence + syntax only) ==="
+            echo "Timestamp: $TIMESTAMP"
+            echo "Commit: $COMMIT_SHA"
+            echo "Reason: $SKIP_HEAVY_REASON"
+            echo ""
+        } > "$beta_log"
+
         if bash -n "$beta_script" 2>/dev/null; then
-            log_pass "BETA gate (fast-path: script syntax OK; heavy run delegated to CI)"
+            log_pass "BETA gate (fast-path): $beta_script exists + syntax OK (heavy verification delegated to CI)"
             BETA_PASS=40
-            BETA_EVIDENCE_HASH="fast-path-no-evidence"
+            echo "  PASS BETA script exists: $beta_script" >> "$beta_log"
+            echo "  PASS BETA script syntax: bash -n OK" >> "$beta_log"
+            echo "  INFO heavy verification delegated to CI" >> "$beta_log"
         else
-            log_fail "BETA gate (fast-path: script syntax error in $beta_script)"
+            log_fail "BETA gate (fast-path): bash -n syntax error in $beta_script"
             BETA_BLOCKERS=$((BETA_BLOCKERS + 40))
+            echo "  FAIL BETA script syntax error: $beta_script" >> "$beta_log"
         fi
+        BETA_EVIDENCE_HASH=$(evidence_hash "$beta_log")
         return
     fi
 
-    # Heavy path (default / --full): run the BETA gate script.
-    # Capture output for PASS/WARN/FAIL counting.
-    local beta_log="$EVIDENCE_DIR/ga_beta_gate_$(date +%Y%m%d_%H%M%S).log"
+    # Full path: run the BETA gate (heavy: cargo build/clippy/fmt)
     if bash "$beta_script" > "$beta_log" 2>&1; then
         log_pass "BETA gate (exit 0): see $beta_log"
         BETA_PASS=40
@@ -406,13 +423,12 @@ main() {
     echo "  Branch: $(git rev-parse --abbrev-ref HEAD 2>/dev/null || echo 'detached')"
     echo "  Commit: $COMMIT_SHORT"
     echo "  Timestamp: $TIMESTAMP"
-    if [ "$MODE" = "full" ]; then
-        echo "  Mode: FULL (heavy BETA stage; cargo build + clippy + fmt cascade)"
-        echo "        Hint: pass --fast-path on dev laptops to skip the heavy"
-        echo "        BETA run (<30s vs >3min)."
+    if [ "${FAST_PATH:-0}" = "1" ]; then
+        echo "  Mode:     FAST-PATH (--fast-path, Issue #4536)"
+        echo "            BETA stage = existence + syntax only (~1s)"
+        echo "            Heavy verification delegated to CI"
     else
-        echo "  Mode: FAST-PATH (BETA gate is syntax check only; heavy run"
-        echo "                 is delegated to CI per the script's header contract)."
+        echo "  Mode:     FULL (default; runs BETA cargo build/clippy/fmt)"
     fi
     echo "═════════════════════════════════════════════════════════════"
     echo ""
@@ -453,6 +469,12 @@ main() {
     echo ""
 
     # Write JSON report
+    local mode
+    if [ "${FAST_PATH:-0}" = "1" ]; then
+        mode="fast-path"
+    else
+        mode="full"
+    fi
     cat > "$OUT_FILE" <<EOF
 {
   "version": "$VERSION",
@@ -460,8 +482,9 @@ main() {
   "commit": "$COMMIT_SHA",
   "branch": "$(git rev-parse --abbrev-ref HEAD 2>/dev/null || echo 'detached')",
   "issue": "#4387 (V312-59-D)",
+  "followup": "#4536 (fast-path flag)",
   "policy": "Anti-Fabrication-Policy-v1.0",
-  "mode": "$([ "$MODE" = "fast" ] && echo "fast-path" || echo "full")",
+  "mode": "$mode",
   "verdict": "$VERDICT",
   "stages": {
     "beta": {

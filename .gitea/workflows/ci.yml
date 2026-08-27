@@ -75,6 +75,93 @@ jobs:
         # g1-tpch-baseline). Once filled, this step is the single source of
         # truth for "did anything change in TPC-H output?".
 
+  ga3-security-scan:
+    # Issue #4532 — GA-3 SC-1 cargo audit: pre-install cargo-audit + pre-fetch
+    # advisory DB. Without pre-install, `cargo audit` would take 4m46s to
+    # compile cargo-audit from source on every CI run, and the advisory DB
+    # fetch would fail in the hermes-runner env (no network access for
+    # https://github.com/RustSec/advisory-db.git during postcheck). This
+    # dedicated job gives SC-1 its own slot so it can `cargo install` once
+    # and `cargo audit --json` to populate the advisory DB before running
+    # check_security_scan_v312.sh.
+    #
+    # The advisory DB lives at $CARGO_HOME/advisory-db. On the self-hosted
+    # hp-z6g4 runner, $CARGO_HOME = ${{ runner.temp }}/.cargo is ephemeral
+    # (one-shot per job), so we re-fetch inside this job. cargo-audit itself
+    # is installed with --locked (deterministic version pin).
+    runs-on: [hp-z6g4]
+    if: contains(github.ref, 'develop/v3.12.0') || contains(github.ref, 'ci/v3.12.0-')
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 1
+      - name: Install cargo-audit (skip if cached on PATH)
+        # 4m46s to compile from source on first run; cached in $CARGO_HOME
+        # which lives in runner.temp so it gets re-installed each CI run,
+        # but only once per job. --locked pins transitive deps to exactly
+        # the versions in the lockfile.
+        run: |
+          set -euo pipefail
+          # Ensure cargo is on PATH
+          if ! command -v cargo >/dev/null 2>&1; then
+            if [ -x "$HOME/.cargo/bin/cargo" ]; then
+              export PATH="$HOME/.cargo/bin:$PATH"
+            fi
+          fi
+          if cargo audit --version >/dev/null 2>&1; then
+            echo "cargo-audit already installed: $(cargo audit --version)"
+          else
+            echo "Installing cargo-audit (4m46s first-time build)..."
+            cargo install cargo-audit --locked --version 0.22.1
+          fi
+          cargo audit --version
+      - name: Pre-fetch advisory DB
+        # Runs `cargo audit --json > /dev/null` which triggers the advisory
+        # DB clone + fetch into $CARGO_HOME/advisory-db. We don't care about
+        # the audit result here — just want the DB populated so the next
+        # step's `cargo audit` runs deterministic and offline-tolerant.
+        run: |
+          set -euo pipefail
+          mkdir -p "$CARGO_HOME"
+          # --no-fetch on a non-existent DB fails; deliberately omit it
+          # so the first run clones the advisory DB.
+          echo "Pre-fetching advisory DB to $CARGO_HOME/advisory-db..."
+          cargo audit --json >/dev/null 2>&1 || true
+          if [ -d "$CARGO_HOME/advisory-db" ]; then
+            echo "advisory DB present: $(du -sh "$CARGO_HOME/advisory-db" | cut -f1)"
+            cd "$CARGO_HOME/advisory-db"
+            git log --oneline -1 || true
+            cd -
+          else
+            echo "WARNING: advisory DB not populated (network may be restricted)"
+          fi
+      - name: Run GA-3 security scan
+        # check_security_scan_v312.sh runs SC-1..SC-4 and writes
+        # docs/releases/v3.12.0/evidence/v312-59/GA3_SECURITY_SCAN_REPORT.md
+        # plus per-check artifacts. This is the SC-1 fresh-audit source of
+        # truth for GA promotion — without this job, SC-1 falls back to
+        # baseline-acknowledged PASS even on fresh advisories.
+        run: |
+          set -euo pipefail
+          chmod +x scripts/gate/check_security_scan_v312.sh
+          bash scripts/gate/check_security_scan_v312.sh 2>&1 | tee ga3_security_scan.log
+          RC=${PIPESTATUS[0]}
+          echo "GA-3 security scan exit=$RC"
+          if [ "$RC" -ne 0 ]; then
+            echo "GA-3 security scan FAILED — see ga3_security_scan.log"
+            exit "$RC"
+          fi
+      - name: Upload GA-3 evidence
+        if: always()
+        run: |
+          mkdir -p artifacts/ga3/v3.12.0
+          cp docs/releases/v3.12.0/evidence/v312-59/GA3_SECURITY_SCAN_REPORT.md artifacts/ga3/v3.12.0/ 2>/dev/null || true
+          cp docs/releases/v3.12.0/evidence/v312-59/cargo_audit_v312.json artifacts/ga3/v3.12.0/ 2>/dev/null || true
+          cp docs/releases/v3.12.0/evidence/v312-59/cargo_audit_v312.txt artifacts/ga3/v3.12.0/ 2>/dev/null || true
+          cp ga3_security_scan.log artifacts/ga3/v3.12.0/ 2>/dev/null || true
+          ls -la artifacts/ga3/v3.12.0/
+
   postcheck:
     runs-on: [hp-z6g4]
     needs: [test]

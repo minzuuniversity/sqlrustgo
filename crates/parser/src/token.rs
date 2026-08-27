@@ -198,6 +198,12 @@ pub enum Token {
     // Stored Procedure keywords
     Call,
     Procedure,
+    /// V312-58 / Issue #4512: scalar UDF (CREATE FUNCTION). Reserved
+    /// alongside `PROCEDURE` so the dispatcher in `parse_create` can
+    /// distinguish `CREATE FUNCTION inc(x INT) RETURNS INT RETURN x+1`
+    /// from `CREATE PROCEDURE ...`. MySQL accepts both forms; we follow
+    /// the MySQL convention.
+    Function,
     End,
     While,
     Do,
@@ -206,6 +212,12 @@ pub enum Token {
     Iterate,
     Declare,
     Return,
+    /// V312-58 / Issue #4512: scalar UDF return-type prefix.
+    /// `CREATE FUNCTION ... RETURNS INTEGER RETURN expr`. Stored
+    /// alongside `Return` so the parser can require `RETURNS` after
+    /// the parameter list before the optional `DETERMINISTIC` and
+    /// the mandatory `RETURN <expr>` body.
+    Returns,
     Condition,
     Signal,
     Resignal,
@@ -433,6 +445,7 @@ impl fmt::Display for Token {
             Token::Uncommitted => write!(f, "UNCOMMITTED"),
             Token::Call => write!(f, "CALL"),
             Token::Procedure => write!(f, "PROCEDURE"),
+            Token::Function => write!(f, "FUNCTION"),
             Token::End => write!(f, "END"),
             Token::While => write!(f, "WHILE"),
             Token::Do => write!(f, "DO"),
@@ -441,6 +454,7 @@ impl fmt::Display for Token {
             Token::Iterate => write!(f, "ITERATE"),
             Token::Declare => write!(f, "DECLARE"),
             Token::Return => write!(f, "RETURN"),
+            Token::Returns => write!(f, "RETURNS"),
             Token::Condition => write!(f, "CONDITION"),
             Token::Signal => write!(f, "SIGNAL"),
             Token::Resignal => write!(f, "RESIGNAL"),
