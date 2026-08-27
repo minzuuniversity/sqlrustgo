@@ -20,7 +20,7 @@ cd "$REPO_ROOT"
 
 # Configuration
 DATA_DIR="${1:-/tmp/tpch-sf1}"
-TIMEOUT="${2:-300}"  # 5 minutes per query
+TIMEOUT="${2:-1800}"  # 30 min per query; v312-58 #4432 GA reclassification (Q17/Q20 v313-deferred)
 RESULTS_DIR="${RESULTS_DIR:-/tmp/tpch-sf1-results}"
 
 # Colors

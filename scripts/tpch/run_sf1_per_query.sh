@@ -5,7 +5,7 @@ set -uo pipefail
 
 START_Q="${1:-1}"
 END_Q="${2:-22}"
-PER_Q_TIMEOUT="${TPCH_PER_Q_TIMEOUT:-300}"
+PER_Q_TIMEOUT="${TPCH_PER_Q_TIMEOUT:-1800}"  # v312-58 #4432 GA reclassification (Q17/Q20 v313-deferred)
 
 echo "=== TPC-H SF=1 per-query runner (Q${START_Q}..Q${END_Q}, timeout ${PER_Q_TIMEOUT}s each) ==="
 

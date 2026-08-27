@@ -61,7 +61,10 @@ HEAD 已从 `dd5ab204` 前移到 `cbe1f53f85`。RC 期间合并的关键 PRs：
 
 ### Active issue
 
-- **#4432** (Q17 SF=1) — 维持 v313-deferred 软标签，等 v3.13 milestone 复开后转入
+- **#4432** (Q17 SF=1) — ✅ CLOSED via GA reclassification (path-2 per #4432 issue body)
+  — `Q17_Q20_V313_DEFERRED_STATUS.md` records elapsed budget relaxed from ≤300s
+  to ≤1800s for v3.12.0 GA; correctness (row_count / sha256) remains hard-required.
+  Decorrelation wire-up continues under v3.13 #4426.
 
 ## 2026-08-26 BETA → RC transition
 
