@@ -1,8 +1,35 @@
+use sqlrustgo_types::Value;
+
+/// An entry in the per-transaction undo log.
+///
+/// `Insert` records the table + primary-key columns of a freshly inserted
+/// row so a rollback can delete it. `Delete` / `Update` carry the full
+/// pre-image row so a rollback can re-insert the old tuple verbatim.
+///
+/// #4519 (清华 MySQL 课程第 9 章核心): prior to this commit the
+/// `key` and `old_value` fields were opaque `Vec<u8>` — the byte-level
+/// representation could not be reverse-mapped back into storage
+/// (`storage.delete(table, &[Value])` takes typed `Value`s). The physical
+/// rollback closure in `SavepointManager::rollback_to` therefore never
+/// ran (the orchestrator wired `|_| Ok(())`). This struct now carries
+/// enough typed information for the executor's on-undo closure to drive
+/// `storage.delete` / `storage.insert` directly.
 #[derive(Debug, Clone)]
 pub enum UndoRecord {
-    Insert { key: Vec<u8> },
-    Delete { key: Vec<u8>, old_value: Vec<u8> },
-    Update { key: Vec<u8>, old_value: Vec<u8> },
+    Insert {
+        table: String,
+        key: Vec<Value>,
+    },
+    Delete {
+        table: String,
+        key: Vec<Value>,
+        old_value: Vec<Value>,
+    },
+    Update {
+        table: String,
+        key: Vec<Value>,
+        old_value: Vec<Value>,
+    },
 }
 
 #[derive(Debug, Clone)]
@@ -171,7 +198,10 @@ mod tests {
 
     #[test]
     fn test_undo_record_insert() {
-        let record = UndoRecord::Insert { key: vec![1, 2, 3] };
+        let record = UndoRecord::Insert {
+            table: "t".to_string(),
+            key: vec![Value::Integer(1)],
+        };
         assert!(matches!(record, UndoRecord::Insert { .. }));
     }
 
@@ -218,7 +248,10 @@ mod tests {
     #[test]
     fn test_add_undo() {
         let mut manager = SavepointManager::new();
-        manager.add_undo(UndoRecord::Insert { key: vec![1, 2, 3] });
+        manager.add_undo(UndoRecord::Insert {
+            table: "t".to_string(),
+            key: vec![Value::Integer(1)],
+        });
         assert_eq!(manager.undo_log.len(), 1);
     }
 
@@ -226,12 +259,14 @@ mod tests {
     fn test_add_undo_update() {
         let mut manager = SavepointManager::new();
         manager.add_undo(UndoRecord::Update {
-            key: vec![1],
-            old_value: vec![2],
+            table: "t".to_string(),
+            key: vec![Value::Integer(1)],
+            old_value: vec![Value::Integer(2)],
         });
         manager.add_undo(UndoRecord::Delete {
-            key: vec![3],
-            old_value: vec![4],
+            table: "t".to_string(),
+            key: vec![Value::Integer(3)],
+            old_value: vec![Value::Integer(4)],
         });
         assert_eq!(manager.undo_log.len(), 2);
     }
@@ -282,11 +317,20 @@ mod tests {
     #[test]
     fn test_savepoint_override() {
         let mut manager = SavepointManager::new();
-        manager.add_undo(UndoRecord::Insert { key: vec![1] });
+        manager.add_undo(UndoRecord::Insert {
+            table: "t".to_string(),
+            key: vec![Value::Integer(1)],
+        });
         manager.savepoint("sp1".to_string()).unwrap();
 
-        manager.add_undo(UndoRecord::Insert { key: vec![2] });
-        manager.add_undo(UndoRecord::Insert { key: vec![3] });
+        manager.add_undo(UndoRecord::Insert {
+            table: "t".to_string(),
+            key: vec![Value::Integer(2)],
+        });
+        manager.add_undo(UndoRecord::Insert {
+            table: "t".to_string(),
+            key: vec![Value::Integer(3)],
+        });
 
         let idx = manager
             .savepoints
