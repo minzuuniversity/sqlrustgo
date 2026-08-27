@@ -4580,6 +4580,78 @@ impl Parser {
                         });
                         continue;
                     }
+                    // V312-58 / Issue #4518: CONVERT(expr, TYPE) — second
+                    // arg is a type name, NOT a regular expression. The
+                    // general args loop below calls parse_expression which
+                    // would mis-parse `DATE` / `INTEGER` / etc. as keyword
+                    // tokens ("DATE as statement requires a table target").
+                    // Consume the type identifier here, route it as a Literal
+                    // so eval_fn sees [expr, Literal("DATE")] and the existing
+                    // CONVERT passthrough in eval_fn returns the input.
+                    if name == "CONVERT" {
+                        let expr = self.parse_primary_expression()?;
+                        self.expect(Token::Comma)?;
+                        let type_lit = match self.current().cloned() {
+                            Some(Token::Date) | Some(Token::Integer) | Some(Token::Text)
+                            | Some(Token::Float) | Some(Token::Boolean) => {
+                                let s = format!("{:?}", self.current().unwrap());
+                                self.next();
+                                if matches!(self.current(), Some(Token::LParen)) {
+                                    self.next();
+                                    while !matches!(self.current(), Some(Token::RParen)) {
+                                        self.next();
+                                    }
+                                    self.expect(Token::RParen)?;
+                                }
+                                Expression::Literal(s)
+                            }
+                            Some(Token::Identifier(_)) => {
+                                let s = if let Some(Token::Identifier(n)) = self.current() {
+                                    n.clone()
+                                } else {
+                                    String::new()
+                                };
+                                self.next();
+                                if matches!(self.current(), Some(Token::LParen)) {
+                                    self.next();
+                                    while !matches!(self.current(), Some(Token::RParen)) {
+                                        self.next();
+                                    }
+                                    self.expect(Token::RParen)?;
+                                }
+                                Expression::Literal(s)
+                            }
+                            other => {
+                                return Err(format!(
+                                    "Expected type name after CONVERT(..., got {:?}",
+                                    other
+                                ));
+                            }
+                        };
+                        self.expect(Token::RParen)?;
+                        let args = vec![expr, type_lit];
+                        let alias = if matches!(self.current(), Some(Token::As)) {
+                            self.next();
+                            if let Some(Token::Identifier(n)) = self.current() {
+                                let a = n.clone();
+                                self.next();
+                                Some(a)
+                            } else {
+                                None
+                            }
+                        } else {
+                            None
+                        };
+                        columns.push(SelectColumn {
+                            name: format!(
+                                "{:?}",
+                                Expression::FunctionCall(name.to_string(), args.clone())
+                            ),
+                            alias,
+                            expression: Some(Expression::FunctionCall(name.to_string(), args)),
+                        });
+                        continue;
+                    }
                     let mut args = Vec::new();
                     if !matches!(self.current(), Some(Token::RParen)) {
                         loop {
@@ -4819,6 +4891,18 @@ impl Parser {
                 // Delegate to the expression parser, which recognises
                 // SequenceNextVal / SequenceCurrval via parse_primary_expression.
                 Some(Token::NextValue) | Some(Token::Currval) => {
+                    let expr = self.parse_expression()?;
+                    columns.push(SelectColumn {
+                        name: format!("{:?}", expr),
+                        alias: None,
+                        expression: Some(expr),
+                    });
+                }
+                // V312-58 / Issue #4518: USER() in SELECT projection is
+                // a scalar function call (matches MySQL 5.7 semantics).
+                // Without this arm, the column-list loop would fall
+                // through to "Expected FROM or column name".
+                Some(Token::User) => {
                     let expr = self.parse_expression()?;
                     columns.push(SelectColumn {
                         name: format!("{:?}", expr),
@@ -7293,7 +7377,13 @@ impl Parser {
             | Some(Token::Position)
             | Some(Token::Rollup)
             | Some(Token::Cube)
-            | Some(Token::Database) => {
+            | Some(Token::Database)
+            // V312-58 / #4518: USER is also a scalar function in MySQL
+            // (`SELECT USER()`) — same pattern as DATABASE above. The
+            // CREATE/DROP/ALTER USER paths are dispatched elsewhere in
+            // parse_statement before reaching here, so this entry only
+            // affects SELECT-expression parsing.
+            | Some(Token::User) => {
                 let name = match self.current() {
                     Some(Token::Left) => "LEFT",
                     Some(Token::Right) => "RIGHT",
@@ -7309,6 +7399,7 @@ impl Parser {
                     Some(Token::Rollup) => "ROLLUP",
                     Some(Token::Cube) => "CUBE",
                     Some(Token::Database) => "DATABASE",
+                    Some(Token::User) => "USER",
                     _ => unreachable!(),
                 };
                 self.next();
@@ -7450,6 +7541,73 @@ impl Parser {
                     return Ok(Expression::FunctionCall(
                         "SUBSTRING".to_string(),
                         vec![str_expr],
+                    ));
+                }
+                // V312-58 / Issue #4518: CONVERT(expr, TYPE) — second
+                // arg is a type name, NOT a regular expression. The
+                // general args loop calls parse_expression which would
+                // mis-parse `DATE` / `INTEGER` / etc. as keyword tokens
+                // ("DATE as statement requires a table target"). Consume
+                // the type identifier here, route it as a Literal so
+                // eval_fn sees [expr, Literal("DATE")] and the existing
+                // CONVERT passthrough in eval_fn returns the input
+                // (downstream INTEGER()/TEXT() coercion handles type).
+                // V312-58 / Issue #4518: CONVERT(expr, TYPE) — second
+                // arg is a type name, NOT a regular expression. The
+                // general args loop calls parse_expression which would
+                // mis-parse `DATE` / `INTEGER` / etc. as keyword tokens
+                // ("DATE as statement requires a table target"). Consume
+                // the type identifier here, route it as a Literal so
+                // eval_fn sees [expr, Literal("DATE")] and the existing
+                // CONVERT passthrough in eval_fn returns the input
+                // (downstream INTEGER()/TEXT() coercion handles type).
+                if name == "CONVERT" {
+                    let expr = self.parse_primary_expression()?;
+                    self.expect(Token::Comma)?;
+                    let type_lit = match self.current().cloned() {
+                        Some(Token::Date)
+                        | Some(Token::Integer)
+                        | Some(Token::Text)
+                        | Some(Token::Float)
+                        | Some(Token::Boolean) => {
+                            let s = format!("{:?}", self.current().unwrap());
+                            self.next();
+                            if matches!(self.current(), Some(Token::LParen)) {
+                                self.next();
+                                while !matches!(self.current(), Some(Token::RParen)) {
+                                    self.next();
+                                }
+                                self.expect(Token::RParen)?;
+                            }
+                            Expression::Literal(s)
+                        }
+                        Some(Token::Identifier(_)) => {
+                            let s = if let Some(Token::Identifier(n)) = self.current() {
+                                n.clone()
+                            } else {
+                                String::new()
+                            };
+                            self.next();
+                            if matches!(self.current(), Some(Token::LParen)) {
+                                self.next();
+                                while !matches!(self.current(), Some(Token::RParen)) {
+                                    self.next();
+                                }
+                                self.expect(Token::RParen)?;
+                            }
+                            Expression::Literal(s)
+                        }
+                        other => {
+                            return Err(format!(
+                                "Expected type name after CONVERT(..., got {:?}",
+                                other
+                            ));
+                        }
+                    };
+                    self.expect(Token::RParen)?;
+                    return Ok(Expression::FunctionCall(
+                        "CONVERT".to_string(),
+                        vec![expr, type_lit],
                     ));
                 }
                 let mut args = Vec::new();
