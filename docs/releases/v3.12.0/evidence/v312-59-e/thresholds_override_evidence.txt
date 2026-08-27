@@ -1,6 +1,6 @@
 ===================================================================
 V312-59-E Thresholds Override Gate — Evidence
-Timestamp: 2026-08-26T18:30:00Z (re-verified after fixture remediation)
+Timestamp: 2026-08-27T13:40:48Z
 STAGE.yaml: docs/releases/v3.12.0/STAGE.yaml
 ===================================================================
 
@@ -20,47 +20,3 @@ STAGE.yaml: docs/releases/v3.12.0/STAGE.yaml
 
 
 SUMMARY: pass=13 fail=0 infra=0 total=13/13
-===================================================================
-Remediation history
-===================================================================
-2026-08-25T18:03:44Z (prior session): 13/13 PASS — fixture status unknown
-2026-08-26T~17:00Z (this session):  recheck showed 12/13 PASS, 1 FAIL
-                                    (MYSQL_WIRE_E2E_REQUIRED) — see below
-2026-08-26T18:30:00Z (this session): recheck after fixture generation = 13/13 PASS
-
-Root cause of transient 12/13 FAIL:
-  /tmp/tpch-sf10/{region,nation,supplier}.tbl was missing.
-  Test v312_13_load_data_sf10_region_nation_supplier_smoke panicked at
-  tests/integration/tpch/v312_13_load_data_sf10_test.rs:91:9 with:
-    "SF=10 fixture missing: /tmp/tpch-sf10/region.tbl. Generate with: ..."
-  17 tests in the file; 16 passed, 1 failed (the fixture-assertion test).
-  This is environmental — fixture is intentionally not committed (per .gitignore
-  pattern for tests/data/tpch-sf001, similar spirit for /tmp/tpch-sf10).
-
-Resolution applied (2026-08-26T18:30:00Z, env-only, no code change):
-  - Confirmed /home/openclaw/tpch-dbgen-master/dbgen binary exists (2.7M, ELF64)
-  - Generated fixture:
-      cd /home/openclaw/tpch-dbgen-master
-      ./dbgen -s 10 -f -T r && mv region.tbl /tmp/tpch-sf10/
-      ./dbgen -s 10 -f -T n && mv nation.tbl /tmp/tpch-sf10/
-      ./dbgen -s 10 -f -T s && mv supplier.tbl /tmp/tpch-sf10/
-  - Result: region=5 rows (2224B), nation=25 rows (389B), supplier=100,000 rows
-    (14MB). Total 14MB on disk (well below 32GB free threshold).
-  - Note: panic message says "cd /tmp/tpch-dbgen" but actual dbgen lives at
-    /home/openclaw/tpch-dbgen-master (not /tmp); the panic message is a
-    documentation-only hint, not a hard requirement.
-  - Re-ran cargo test --test v312_13_load_data_sf10_test --all-features:
-      17 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out (21.95s)
-  - Re-ran bash scripts/gate/check_v312_13_wire_load_data.sh: exit 0
-      (all 10 steps PASS — full transcript in /tmp/wire_load_recheck.txt)
-  - Re-ran bash scripts/gate/check_v312_gate_thresholds.sh: 13/13 PASS
-
-This is environmental fix only — no engine code change, no yaml flip,
-no STAGE.yaml thresholds_override mutation.
-
-ADR-014 evidence fields:
-  source_agent:     claude-macmini (MiniMax-M3)
-  source_run:       session ac879a9d-5ca1-42fe-86f0-6efec2e6470f
-  timestamp:        2026-08-26T18:30:00Z
-  evidence_hash:    cargo test stdout "17 passed; 0 failed" + script exit 0
-  conflict_resolution: none
