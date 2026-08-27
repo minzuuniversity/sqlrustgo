@@ -116,6 +116,8 @@ promotion_to_GA_requires:
   - "GMP compliance matrix signed off"
   - "B8_THRESHOLDS_OVERRIDE: 13/13 PASS at GA cut time (issue #4388)"
   - "GA_GATE_REPORT.md records evidence hashes and no unresolved P0 blockers"
+  # Issue #4536: GA-1 aggregator mode contract (--full required at GA cut)
+  - "GA-1 aggregator run with --full mode (or default) at GA cut time; JSON report's `mode` field MUST be 'full', NOT 'fast-path' (see docs/governance/CI_GATE_CONTRACT.md and openspec/changes/issue-4536-fast-path-ga-gate/)"
 
 thresholds_override:
   COVERAGE_MIN_PER_CRATE: 80

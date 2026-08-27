@@ -1,0 +1,31 @@
+=== Issue #4536 fast-path benchmark (--fast-path) ===
+Date: 2026-08-27T19:15:47Z
+Commit: 14f638d09b0ff9c892d3884d2fcacddba04e1057
+Branch: develop/v3.12.0
+Script: scripts/gate/check_ga_v3.12.0.sh
+
+--- Wall-clock measurement (single run) ---
+bash scripts/gate/check_ga_v3.12.0.sh --fast-path  0.05s user 0.06s system 86% cpu 0.129 total
+
+--- Exit code ---
+EXIT_0 (captured from outer shell)
+
+--- Acceptance criteria ---
+Threshold: <30s
+Measured: 0.129s (129ms)
+Result: PASS — fast-path achieves 232.55x speedup over budget
+
+--- Stage results (from /tmp/issue-4536-fastpath-stdout.txt) ---
+  BETA:             40/40  (blockers: 0)
+  RC:               11/11  (blockers: 0)
+  GA:               8/8  (blockers: 0)
+  thresholds_override: 13/13  (blockers: 0)
+  TOTAL:            72/72  (blockers: 0)
+  VERDICT:          PASS
+
+--- Source agent / run provenance (ADR-014 5 evidence fields) ---
+source_agent:  claude-sonnet (Claude Code)
+source_run:    issue-4536-fast-path-ga-gate-20260827
+timestamp:     2026-08-27T19:15:47Z
+evidence_hash: local-git:14f638d09b0ff9c892d3884d2fcacddba04e1057
+conflict_resolution: N/A — single AI scope
