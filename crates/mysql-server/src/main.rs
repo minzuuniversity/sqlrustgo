@@ -535,20 +535,43 @@ fn run_repl(init_sql: Option<&str>, save_on_exit: Option<&str>) -> Result<(), St
     }
 }
 
-/// CLI-01 Stage 1+2: exec with shared engine + headers option
+/// CLI-01 Stage 1+2: exec with shared engine + headers option.
+///
+/// V312-58 / Issue #4516: parse the SQL before executing so we can
+/// emit MySQL-style column headers (Database / Tables_in_default /
+/// Field-Type-Null-Key-Default-Extra / etc.) for SHOW / DESCRIBE
+/// statements rather than the legacy generic `col_N` placeholder.
+/// The placeholder fallback uses 1-based numbering (col_1, col_2...)
+/// to match MySQL's `mysql --table` output. Empty result sets still
+/// print the header so `SHOW TABLES` on an empty schema shows
+/// `Tables_in_default` instead of just `(0 rows)`.
 fn exec_with_engine_and_options(
     engine: &mut MemoryExecutionEngine,
     sql: &str,
     headers_enabled: bool,
 ) -> Result<(), String> {
+    // Parse eagerly so we know the column schema even before
+    // executing (cheap parse failures surface here, but we tolerate
+    // them and fall back to runtime-shape headers).
+    let parsed_headers = sqlrustgo_parser::parse(sql)
+        .ok()
+        .and_then(|stmt| sqlrustgo_mysql_server::show_column_headers(&stmt));
     match engine.execute(sql) {
         Ok(result) => {
-            if headers_enabled && !result.rows.is_empty() {
-                // CLI-01: print column headers (first row keys if map-like,
-                // else generic "col_N" labels)
-                if let Some(first_row) = result.rows.first() {
-                    let headers: Vec<String> =
-                        (0..first_row.len()).map(|i| format!("col_{i}")).collect();
+            if headers_enabled {
+                let headers: Vec<String> = if let Some(h) = parsed_headers {
+                    h
+                } else if let Some(first_row) = result.rows.first() {
+                    // V312-58 / Issue #4516: 1-based `col_N` (was 0-based
+                    // `col_0` previously — caused user-reported bug
+                    // where SHOW TABLES printed `col_0 | ...` headers).
+                    (0..first_row.len())
+                        .map(|i| format!("col_{}", i + 1))
+                        .collect()
+                } else {
+                    Vec::new()
+                };
+                if !headers.is_empty() {
                     println!("{}", headers.join(" | "));
                 }
             }

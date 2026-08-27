@@ -819,7 +819,15 @@ pub struct TruncateStatement {
 #[derive(Debug, Clone, PartialEq)]
 pub enum ShowStatement {
     Databases,
-    Tables,
+    /// V312-58 / Issue #4516: MySQL `SHOW TABLES [FROM db]
+    /// [LIKE 'pat' | WHERE expr]`. The non-FULL form lists bare table
+    /// names (single column `Tables_in_<db>`); the FULL form lives in
+    /// `ShowStatement::FullTables { full: true, ... }`.
+    Tables {
+        db: Option<String>,
+        like: Option<String>,
+        where_clause: Option<Expression>,
+    },
     Columns {
         table: String,
         pattern: Option<String>,
@@ -9239,8 +9247,16 @@ impl Parser {
                 Ok(Statement::Show(ShowStatement::Databases))
             }
             Some(Token::Identifier(ref ident)) if ident.to_uppercase() == "TABLES" => {
+                // V312-58 / Issue #4516: SHOW TABLES accepts the same
+                // FROM db / LIKE 'pat' / WHERE expr suffix as
+                // SHOW [FULL] TABLES, so we route through the same helper.
                 self.next();
-                Ok(Statement::Show(ShowStatement::Tables))
+                let suffix = self.parse_show_filter_suffix()?;
+                Ok(Statement::Show(ShowStatement::Tables {
+                    db: suffix.db,
+                    like: suffix.like,
+                    where_clause: suffix.where_clause,
+                }))
             }
             Some(Token::Identifier(ref ident)) if ident.to_uppercase() == "CREATE" => {
                 self.next();
@@ -9429,10 +9445,15 @@ impl Parser {
         let mut where_clause = None;
         if matches!(self.current(), Some(Token::From)) {
             self.next();
-            match self.next() {
-                Some(Token::Identifier(name)) => db = Some(name),
+            // V312-58 / Issue #4516: accept a plain identifier OR a
+            // `DEFAULT` keyword (MySQL accepts the implicit default
+            // schema as a bare unquoted name in SHOW TABLES FROM).
+            let name = match self.next() {
+                Some(Token::Identifier(name)) => name,
+                Some(Token::Default) => "default".to_string(),
                 _ => return Err("Expected database name after FROM".to_string()),
-            }
+            };
+            db = Some(name);
         }
         if matches!(self.current(), Some(Token::Like))
             || matches!(self.current(), Some(Token::Identifier(ref ident)) if ident.to_uppercase() == "LIKE")
@@ -11154,8 +11175,71 @@ mod tests {
         let result = parse("SHOW TABLES");
         assert!(result.is_ok(), "Parse failed: {:?}", result);
         match result.unwrap() {
-            Statement::Show(ShowStatement::Tables) => {}
+            Statement::Show(ShowStatement::Tables {
+                db,
+                like,
+                where_clause,
+            }) => {
+                assert!(db.is_none());
+                assert!(like.is_none());
+                assert!(where_clause.is_none());
+            }
             _ => panic!("Expected SHOW TABLES statement"),
+        }
+    }
+
+    /// V312-58 / Issue #4516: `SHOW TABLES FROM <schema>` parses
+    /// (the FROM clause was previously swallowed silently).
+    #[test]
+    fn test_parse_show_tables_from_db() {
+        let result = parse("SHOW TABLES FROM my_db");
+        assert!(result.is_ok(), "Parse failed: {:?}", result);
+        match result.unwrap() {
+            Statement::Show(ShowStatement::Tables {
+                db,
+                like,
+                where_clause,
+            }) => {
+                assert_eq!(db, Some("my_db".to_string()));
+                assert!(like.is_none());
+                assert!(where_clause.is_none());
+            }
+            _ => panic!("Expected SHOW TABLES FROM my_db statement"),
+        }
+    }
+
+    /// V312-58 / Issue #4516: `SHOW TABLES LIKE 'pat'` parses with the
+    /// LIKE pattern captured.
+    #[test]
+    fn test_parse_show_tables_like() {
+        let result = parse("SHOW TABLES LIKE 'a%'");
+        assert!(result.is_ok(), "Parse failed: {:?}", result);
+        match result.unwrap() {
+            Statement::Show(ShowStatement::Tables { like, .. }) => {
+                assert_eq!(like, Some("a%".to_string()));
+            }
+            _ => panic!("Expected SHOW TABLES LIKE 'a%' statement"),
+        }
+    }
+
+    /// V312-58 / Issue #4516: `SHOW TABLES FROM default` parses — the
+    /// bare `DEFAULT` keyword is accepted as a schema name in
+    /// MySQL-compatible SHOW statements.
+    #[test]
+    fn test_parse_show_tables_from_default_keyword() {
+        let result = parse("SHOW TABLES FROM default");
+        assert!(result.is_ok(), "Parse failed: {:?}", result);
+        match result.unwrap() {
+            Statement::Show(ShowStatement::Tables {
+                db,
+                like,
+                where_clause,
+            }) => {
+                assert_eq!(db, Some("default".to_string()));
+                assert!(like.is_none());
+                assert!(where_clause.is_none());
+            }
+            _ => panic!("Expected SHOW TABLES FROM default statement"),
         }
     }
 
