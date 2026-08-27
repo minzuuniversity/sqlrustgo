@@ -2,6 +2,7 @@
 name = "sqlrustgo-cli"
 version = "3.9.0"
 edition = "2021"
+license.workspace = true
 description = "SQLRustGo canonical CLI entry point"
 
 [dependencies]
