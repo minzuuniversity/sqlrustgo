@@ -1,0 +1,4 @@
+error: couldn't fetch advisory database: git operation failed: An IO error occurred when talking to the server
+Caused by:
+  -> An IO error occurred when talking to the server
+  -> error sending request for url (https://github.com/RustSec/advisory-db.git/info/refs?service=git-upload-pack)

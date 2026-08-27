@@ -2,6 +2,7 @@
 name = "sqlrustgo-distributed"
 version = "0.1.0"
 edition = "2021"
+license = "MIT"
 authors = ["SQLRustGo Team"]
 description = "Distributed database support with sharding and 2PC"
 

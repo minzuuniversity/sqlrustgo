@@ -1,6 +1,6 @@
 # GA-4 v3.12.0 SQLLogicTest Selected Targets Report
 
-> **provenance:** generated_by=check_sqllogictest_selected_v312.sh, generated_at=2026-08-26T09:54:52Z, commit=37c0a82cbc365acaf3f7d65fed02a4267d85bc85, branch=develop/v3.12.0, source_repo=openclaw/sqlrustgo, gate_policy_eval_id=v312-ga4-sqllogictest-selected-001, policy=Anti-Fabrication-Policy-v1.0
+> **provenance:** generated_by=check_sqllogictest_selected_v312.sh, generated_at=2026-08-27T16:17:58Z, commit=acff97d50dad20e26ee0180b6c2d403bd26339db, branch=develop/v3.12.0, source_repo=openclaw/sqlrustgo, gate_policy_eval_id=v312-ga4-sqllogictest-selected-001, policy=Anti-Fabrication-Policy-v1.0
 > **related:** Issue #4387 (V312-59-D), umbrella #4383
 
 ## Policy (STAGE.yaml line 111)
@@ -23,10 +23,10 @@
 
 ## Evidence
 
-- Manifest: `/Users/liying/workspace/dev/openheart/sqlrustgo/docs/releases/v3.12.0/evidence/sqllogictest/sqlite-corpus-manifest.json`
-- Exclusions: `/Users/liying/workspace/dev/openheart/sqlrustgo/docs/releases/v3.12.0/evidence/sqllogictest/exclusions.yml`
-- Smoke report: `/Users/liying/workspace/dev/openheart/sqlrustgo/docs/releases/v3.12.0/evidence/sqllogictest/smoke-report.md`
-- Testdata: `/Users/liying/workspace/dev/openheart/sqlrustgo/crates/sqlrustgo_sqllogictest/testdata`
+- Manifest: `/home/yingli/sqlrustgo/docs/releases/v3.12.0/evidence/sqllogictest/sqlite-corpus-manifest.json`
+- Exclusions: `/home/yingli/sqlrustgo/docs/releases/v3.12.0/evidence/sqllogictest/exclusions.yml`
+- Smoke report: `/home/yingli/sqlrustgo/docs/releases/v3.12.0/evidence/sqllogictest/smoke-report.md`
+- Testdata: `/home/yingli/sqlrustgo/crates/sqlrustgo_sqllogictest/testdata`
 
 ## Boundary
 
