@@ -1,5 +1,4 @@
 === Version Inconsistencies in v3.12.0 Docs ===
-Timestamp: 2026-08-26T10:00:55Z
-Commit: 37c0a82cbc365acaf3f7d65fed02a4267d85bc85
+Timestamp: 2026-08-27T15:53:10Z
+Commit: 35d7a6b250084200af88cdcabcce0e72a0572232
 
-DRIFT: CHANGELOG.md mentions versions but not v3.12.0: v3.10.0 v3.11.0 
