@@ -49,8 +49,8 @@ pub use execution_engine::{ExecutionEngine, MemoryExecutionEngine};
 // path TPC-H Q17 actually takes through the correlated-subquery pre-eval
 // pipeline. See comments at the call sites in `engine_select.rs`.
 pub use engine_select::{
-    dump_v312_58_sprint3_diag, dump_v312_58_sprint5_diag, reset_v312_58_sprint3_diag,
-    reset_v312_58_sprint5_diag,
+    dump_v312_58_sprint3_diag, dump_v312_58_sprint5_diag, dump_v312_58_sprint6_diag,
+    reset_v312_58_sprint3_diag, reset_v312_58_sprint5_diag, reset_v312_58_sprint6_diag,
 };
 
 /// Initialize the database system
