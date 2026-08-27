@@ -127,10 +127,12 @@ class WorkloadGenerator:
 
     def _oltp_query(self) -> str:
         # mix of INSERT / UPDATE / DELETE / SELECT
+        # sqlrustgo does not support AUTO_INCREMENT, so we use a wide id range
+        # (1..2_000_000) to keep PK collisions rare enough for smoke runs.
         op = self.rng.choice(["insert", "update", "delete", "select"])
-        n = self.rng.randint(1, 10000)
+        n = self.rng.randint(1, 2_000_000)
         if op == "insert":
-            return f"INSERT INTO orders (customer_id, total) VALUES ({n}, {n * 10})"
+            return f"INSERT INTO orders (id, customer_id, total, status) VALUES ({n}, {self.rng.randint(1, 100)}, {n % 10000}, 'pending')"
         elif op == "update":
             return f"UPDATE orders SET status='paid' WHERE id={n}"
         elif op == "delete":
@@ -149,30 +151,28 @@ class WorkloadGenerator:
             return f"SELECT * FROM orders WHERE id BETWEEN {lo} AND {hi}"
 
     def _aggregate_query(self) -> str:
+        # ORDER BY uses expression, not alias (sqlrustgo binder rejects alias in ORDER BY)
         return (
-            "SELECT customer_id, COUNT(*) cnt, SUM(total) total_amt, AVG(total) avg_amt "
-            "FROM orders GROUP BY customer_id ORDER BY cnt DESC LIMIT 100"
+            "SELECT customer_id, COUNT(*) AS cnt, SUM(total) AS total_amt, AVG(total) AS avg_amt "
+            "FROM orders GROUP BY customer_id ORDER BY COUNT(*) DESC LIMIT 100"
         )
-
     def _ddl_query(self) -> str:
-        kind = self.rng.choice(["create_idx", "drop_idx", "alter"])
+        # sqlrustgo does not yet support DROP INDEX; use only CREATE INDEX + ALTER ADD COLUMN
+        kind = self.rng.choice(["create_idx", "alter"])
         idx = self.rng.randint(1, 1000)
         if kind == "create_idx":
             return f"CREATE INDEX idx_soak_{idx} ON orders (customer_id)"
-        elif kind == "drop_idx":
-            return f"DROP INDEX idx_soak_{max(1, idx - 5)} ON orders"
         else:
             return f"ALTER TABLE orders ADD COLUMN col_{idx} INT DEFAULT 0"
-
     def _report_query(self) -> str:
+        # ORDER BY uses SUM(o.total) expression (not alias 'amt')
         return (
-            "SELECT c.region, o.status, COUNT(*) cnt, SUM(o.total) amt "
+            "SELECT c.region, o.status, COUNT(*) AS cnt, SUM(o.total) AS amt "
             "FROM orders o JOIN customers c ON o.customer_id = c.id "
             "WHERE o.created_at > DATE_SUB(NOW(), INTERVAL 30 DAY) "
             "GROUP BY c.region, o.status "
-            "ORDER BY amt DESC LIMIT 50"
+            "ORDER BY SUM(o.total) DESC LIMIT 50"
         )
-
 
 class WorkloadThread(threading.Thread):
     """One worker thread driving a single workload class."""
@@ -202,6 +202,7 @@ class WorkloadThread(threading.Thread):
                     autocommit=True,
                     connect_timeout=5,
                 )
+                self._bootstrap_schema()
                 return True
             except Exception as e:
                 if i == max_retries - 1:
@@ -209,6 +210,24 @@ class WorkloadThread(threading.Thread):
                     return False
                 time.sleep(1.0)
         return False
+
+    def _bootstrap_schema(self) -> None:
+        """Create customers + orders tables (idempotent). Only W1 runs DDL to avoid races."""
+        if self.cls_name != "W1":
+            return
+        with self.connection.cursor() as cur:
+            cur.execute(
+                "CREATE TABLE IF NOT EXISTS customers ("
+                "  id INT PRIMARY KEY, region VARCHAR(32), name VARCHAR(64))"
+            )
+            cur.execute(
+                "CREATE TABLE IF NOT EXISTS orders ("
+                "  id BIGINT AUTO_INCREMENT PRIMARY KEY,"
+                "  customer_id INT, total INT, status VARCHAR(16),"
+                "  created_at DATETIME DEFAULT CURRENT_TIMESTAMP)"
+            )
+            cur.execute("INSERT IGNORE INTO customers (id, region, name) VALUES "
+                        "(1, 'north', 'alice'), (2, 'south', 'bob'), (3, 'east', 'carol')")
 
     def _record_error(self, msg: str) -> None:
         with self.lock:
@@ -282,16 +301,27 @@ def parse_args() -> argparse.Namespace:
 def main() -> int:
     args = parse_args()
 
+
     if args.config and os.path.isfile(args.config):
         print(f"[INFO] loading config from {args.config}")
         cfg = MixedWorkloadConfig.from_yaml(args.config)
-        # CLI args override YAML
+        # CLI args override YAML (all relevant fields)
         if args.host != "127.0.0.1":
             cfg.host = args.host
         if args.port != 3306:
             cfg.port = args.port
+        if args.user != "root":
+            cfg.user = args.user
+        if args.password:
+            cfg.password = args.password
+        if args.database != "soak":
+            cfg.database = args.database
         if args.duration != 3600:
             cfg.duration_secs = args.duration
+        if args.ops_per_min != 600:
+            cfg.ops_per_min = args.ops_per_min
+        if args.output != "docs/releases/v3.12.0/evidence/v312-59/soak/mixed_workload_run.json":
+            cfg.output_path = args.output
     else:
         cfg = MixedWorkloadConfig.from_args(args)
 
