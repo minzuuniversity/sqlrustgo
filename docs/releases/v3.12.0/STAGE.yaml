@@ -121,7 +121,7 @@ promotion_to_GA_requires:
   # Issue #4540: GA-5 TPC-H SF=1 cell-diff (Q17 perf half)
   - "GA-5 TPC-H SF=1 Q17 cell-diff: half A (22/22 oracle match, #4502) + half B (Q17 elapsed ≤ 300s, #4540). Half B dev-machine path blocked on script bug; CI/Z6G4 runbook at handoff/CI-Z6G4-RUNBOOK.md. See docs/releases/v3.12.0/evidence/v312-58/issue-4540-sf1-cell-diff.md."
   # Issue #4499: GA-2 168h mixed SOAK (non-blocking per V312-59 anti-deferral)
-  - "GA-2 168h mixed SOAK: 60s/3min/5min/10min sustained PASS (8.93 QPS per PR #4520). 1h demo and 168h full run on CI/Z6G4 via .gitea/workflows/z6g4-168h-soak.yml. Per anti-deferral: 1h demo IS the GA gate; 168h runs as background monitoring without blocking GA promotion. See docs/releases/v3.12.0/evidence/v312-59/GA2_MIXED_SOAK_DEMO_REPORT.md."
+  - "GA-2 168h mixed SOAK: **1h demo PASS** (5080/5080 ops, 0% failure, 1.40 QPS) per commit 938e9ba77 on fix/v312-58-4499-driver-w2; sustained 60s/3min/5min/10min PASS (8.93 QPS per PR #4520). Driver bug W2 (_read_heavy_query missing) restored in commit 72c957e3. 168h full run on CI/Z6G4 via .gitea/workflows/z6g4-168h-soak.yml. Per anti-deferral: 1h demo IS the GA gate ✓ ; 168h runs as background monitoring without blocking GA promotion. See docs/releases/v3.12.0/evidence/v312-59/GA2_MIXED_SOAK_DEMO_REPORT.md + docs/releases/v3.12.0/evidence/v312-59/soak/mixed_workload_1h_demo_v2.json."
 
 thresholds_override:
   COVERAGE_MIN_PER_CRATE: 80
