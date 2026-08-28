@@ -1,15 +1,17 @@
 # V312-58 — TPC-H Q17 Small-Order-Shortage Status
 
 **Issue**: [#4379](http://192.168.0.252:3000/openclaw/sqlrustgo/issues/4379) — V312-58-Q17 [BLOCKER] TPC-H SF=1 Q17 small-order-shortage TIMEOUT (>1800s)：必须降到 ≤300s
-**Date**: 2026-08-23
+**Date**: 2026-08-23 (initial FAIL); 2026-08-28 (closure verified — see follow-up below)
 **Verifier**: openclaw
-**Branch**: develop/v3.12.0 @ `10d6f489d`
+**Branch**: develop/v3.12.0 @ `10d6f489d` (initial) → `28bbf6dbab` (closure verified post Sprint 4 + Phase 1+2+3)
+
+> **🟢 Update 2026-08-28**: Acceptance criteria #1, #2, #3, #4 are **NOW MET** on develop/v3.12.0 HEAD per issue #4540 verification. Q17 SF=1 elapsed: **61.6s** ≤ 300s (4.86× headroom); row_count == 1; value 249963.75857142854 matches oracle 249963.75857142857 within FLOAT_TOL 1e-3 (delta 2.91e-11). See `docs/releases/v3.12.0/evidence/issue-4540/V312-58-4540-Q17-SF1-CELLDIFF-PASS.md` for full cell-diff report. Issue #4379 BLOCKER reclassified → v312-shipped.
 
 ---
 
-## TL;DR
+## TL;DR (initial 2026-08-23 snapshot — HISTORICAL FAIL STATE)
 
-Q17 is **STILL BLOCKED** on `develop/v3.12.0`. The correlated scalar subquery in the WHERE clause is not decorrelated, causing a 6M-row × 6M-row nested evaluation. A regression test is added (`q17_small_order_shortage_perf.rs`) that will FAIL until the engine is optimized, providing a permanent regression guard.
+Q17 is **STILL BLOCKED** on `develop/v3.12.0` at commit `10d6f489d`. The correlated scalar subquery in the WHERE clause is not decorrelated, causing a 6M-row × 6M-row nested evaluation. A regression test is added (`q17_small_order_shortage_perf.rs`) that will FAIL until the engine is optimized, providing a permanent regression guard.
 
 | Acceptance criterion | Result |
 |----------------------|--------|
@@ -152,7 +154,7 @@ for pk, qtys in avgs.items():
 
 ## Disposition
 
-**#4379 remains OPEN** — engine fix required.
+**🟢 #4379 BLOCKER STATUS UPDATED 2026-08-28**: Engine fix HAS landed (Phase 1 PR #4449 + Phase 2 PR #4450 + Phase 3 commit 3b6634a7d0 + Sprint 4 Step 1.5/1.6 PR #4453). Regression guard `q17_small_order_shortage_sf1` now PASSES within 300s. See #4540 evidence for full closure proof. Original "**#4379 remains OPEN**" statement below is HISTORICAL (2026-08-23 FAIL state) — do NOT use as current status.
 
 This PR provides:
 - Regression test (FAIL-on-purpose guard for the 300s budget)
