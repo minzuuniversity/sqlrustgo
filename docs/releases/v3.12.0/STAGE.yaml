@@ -118,6 +118,8 @@ promotion_to_GA_requires:
   - "GA_GATE_REPORT.md records evidence hashes and no unresolved P0 blockers"
   # Issue #4536: GA-1 aggregator mode contract (--full required at GA cut)
   - "GA-1 aggregator run with --full mode (or default) at GA cut time; JSON report's `mode` field MUST be 'full', NOT 'fast-path' (see docs/governance/CI_GATE_CONTRACT.md and openspec/changes/issue-4536-fast-path-ga-gate/)"
+  # Issue #4540: GA-5 TPC-H SF=1 cell-diff (Q17 perf half)
+  - "GA-5 TPC-H SF=1 Q17 cell-diff: half A (22/22 oracle match, #4502) + half B (Q17 elapsed ≤ 300s, #4540). Half B dev-machine path blocked on script bug; CI/Z6G4 runbook at handoff/CI-Z6G4-RUNBOOK.md. See docs/releases/v3.12.0/evidence/v312-58/issue-4540-sf1-cell-diff.md."
 
 thresholds_override:
   COVERAGE_MIN_PER_CRATE: 80
