@@ -1090,4 +1090,116 @@ mod tests {
             "SET is not a write — affected_rows is 0"
         );
     }
+
+    /// V312-59-D / Issue #4558 — GREEN regression test:
+    /// multi-row INSERT with an explicit column list (skipping the
+    /// AUTO_INCREMENT PK) used to spuriously fail with
+    /// "Column 'k' cannot be NULL" because `validate_not_null`
+    /// indexed the row using VALUES-order names while the row had already
+    /// been reordered to table column order by `materialise_default_tokens`.
+    ///
+    /// Schema mirrors sysbench `sbtest1`:
+    /// `id INTEGER AUTO_INCREMENT PK` is the "skipped" column; `k`/`c`/
+    /// `pad` are the bulk-inserted NOT NULL columns with explicit defaults
+    /// matching sysbench `oltp_common.lua`.
+    #[test]
+    fn green_v4558_multi_row_insert_explicit_columns_not_null_must_succeed() {
+        let mut engine = create_engine();
+        engine
+            .execute(
+                "CREATE TABLE sbtest1 (id INTEGER AUTO_INCREMENT PRIMARY KEY, \
+                 k INTEGER NOT NULL DEFAULT 0, \
+                 c CHAR(120) NOT NULL DEFAULT '', \
+                 pad CHAR(60) NOT NULL DEFAULT '')",
+            )
+            .expect("CREATE TABLE must succeed");
+
+        // Explicit column list skips `id`; multi-row VALUES; every value
+        // for k/c/pad is explicitly non-null.
+        let result = engine.execute(
+            "INSERT INTO sbtest1(k, c, pad) VALUES \
+             (5041, '66561...', '36032...'), \
+             (5036, '31756...', '38170...'), \
+             (5021, '13988...', '66083...')",
+        );
+        assert!(
+            result.is_ok(),
+            "multi-row INSERT with explicit column list and NOT NULL columns \
+             must succeed (Issue #4558), got: {:?}",
+            result.err()
+        );
+        assert_eq!(
+            result.as_ref().expect("Ok already checked").affected_rows,
+            3,
+            "all 3 VALUES rows should be inserted"
+        );
+
+        let sel = engine
+            .execute("SELECT COUNT(*) FROM sbtest1")
+            .expect("SELECT must succeed");
+        assert_eq!(sel.rows[0][0], Value::Integer(3), "exactly 3 rows stored");
+
+        // Verify the k values were stored as-given (not silently rewritten
+        // by the fix). This guards against a regression where the fix
+        // accidentally overwrites the explicit value with Null/0.
+        let sel = engine
+            .execute("SELECT k FROM sbtest1 ORDER BY id")
+            .expect("SELECT must succeed");
+        assert_eq!(sel.rows[0][0], Value::Integer(5041));
+        assert_eq!(sel.rows[1][0], Value::Integer(5036));
+        assert_eq!(sel.rows[2][0], Value::Integer(5021));
+    }
+
+    /// V312-59-D / Issue #4558 — GREEN regression test:
+    /// multi-row INSERT with explicit column list where a middle row
+    /// contains NULL for a NOT NULL column must still be REJECTED with
+    /// the correct column name. This proves the fix didn't accidentally
+    /// disable NULL checks.
+    #[test]
+    fn green_v4558_multi_row_insert_explicit_columns_null_in_middle_must_fail() {
+        let mut engine = create_engine();
+        engine
+            .execute(
+                "CREATE TABLE t (id INTEGER AUTO_INCREMENT PRIMARY KEY, k INTEGER NOT NULL)",
+            )
+            .expect("CREATE TABLE must succeed");
+
+        let result = engine.execute("INSERT INTO t(k) VALUES (1), (NULL), (3)");
+        assert!(
+            result.is_err(),
+            "INSERT with NULL in middle row for NOT NULL column k \
+             must return an error (data integrity, Issue #4558), got Ok"
+        );
+        let err_msg = format!("{:?}", result.unwrap_err());
+        assert!(
+            err_msg.contains('k'),
+            "Error must identify the offending column 'k', got: {}",
+            err_msg
+        );
+    }
+
+    /// V312-59-D / Issue #4558 — GREEN regression test:
+    /// single-row INSERT with explicit column list must also succeed
+    /// (proves the fix isn't specific to multi-row; aligns the contract).
+    #[test]
+    fn green_v4558_single_row_insert_explicit_columns_not_null_must_succeed() {
+        let mut engine = create_engine();
+        engine
+            .execute(
+                "CREATE TABLE t (id INTEGER AUTO_INCREMENT PRIMARY KEY, \
+                 k INTEGER NOT NULL DEFAULT 0, \
+                 c CHAR(120) NOT NULL DEFAULT '', \
+                 pad CHAR(60) NOT NULL DEFAULT '')",
+            )
+            .expect("CREATE TABLE must succeed");
+
+        let result = engine
+            .execute("INSERT INTO t(k, c, pad) VALUES (1, 'hello', 'world')");
+        assert!(
+            result.is_ok(),
+            "single-row INSERT with explicit column list and NOT NULL columns \
+             must succeed (Issue #4558), got: {:?}",
+            result.err()
+        );
+    }
 }

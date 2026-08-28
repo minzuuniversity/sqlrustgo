@@ -234,7 +234,10 @@ pub fn execute_insert<S: StorageEngine + 'static>(
             if !to_insert.is_empty() {
                 for record in &to_insert {
                     if !table_info.foreign_keys.is_empty() {
-                        validate_foreign_keys(&*storage, &table_info, record, &insert.columns)?;
+                        // #4558: row is already in table column order after
+                        // `materialise_default_tokens` above; pass `&[]` so the
+                        // helpers index by table position, not VALUES position.
+                        validate_foreign_keys(&*storage, &table_info, record, &[])?;
                     }
                     if !table_info.check_constraints.is_empty() {
                         for constraint in &table_info.check_constraints {
@@ -252,14 +255,25 @@ pub fn execute_insert<S: StorageEngine + 'static>(
                         }
                     }
                     // Validate NOT NULL constraints
-                    validate_not_null(&table_info, record, &insert.columns)?;
+                    // #4558: after `materialise_default_tokens` each `record`
+                    // is already aligned to `table_info.columns` order, so we
+                    // pass `&[]` to make `validate_not_null` use table
+                    // positions. Passing `&insert.columns` here (the
+                    // VALUES-order names) caused a spurious
+                    // "Column 'k' cannot be NULL" on multi-row bulk INSERT
+                    // when a NOT-NULL column was absent from the explicit
+                    // column list (its slot then held the default for the
+                    // missing column, often `Value::Null`).
+                    validate_not_null(&table_info, record, &[])?;
                 }
                 storage.insert(&table_name, to_insert)?;
             }
         } else {
             for record in &processed_records {
                 if !table_info.foreign_keys.is_empty() {
-                    validate_foreign_keys(&*storage, &table_info, record, &insert.columns)?;
+                    // #4558: see comment above — pass `&[]` to make the
+                    // helpers index by table position after reordering.
+                    validate_foreign_keys(&*storage, &table_info, record, &[])?;
                 }
                 if !table_info.check_constraints.is_empty() {
                     for constraint in &table_info.check_constraints {
@@ -277,7 +291,8 @@ pub fn execute_insert<S: StorageEngine + 'static>(
                     }
                 }
                 // Validate NOT NULL constraints
-                validate_not_null(&table_info, record, &insert.columns)?;
+                // #4558: see comment above — pass `&[]` after reordering.
+                validate_not_null(&table_info, record, &[])?;
             }
             storage.insert(&table_name, processed_records.clone())?;
         }
