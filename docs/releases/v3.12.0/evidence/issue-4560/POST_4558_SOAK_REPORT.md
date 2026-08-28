@@ -3,6 +3,10 @@
 > **provenance:** generated_at=2026-08-28T08:30Z, branch=develop/v3.12.0,
 > commit=`0beb0107ee` (HEAD of develop/v3.12.0, contains #4559 merge),
 > source_repo=openclaw/sqlrustgo, policy=Anti-Fabrication-Policy-v1.0
+> **ERRATA added 2026-08-28T(post-4566-fix), branch=fix/v312-59-d/4566-evidence-recheck,
+> commit=`7732a62bc9` (develop/v3.12.0 + spec + plan); PR #4563 SHA `a93ea79681` refuted the
+> "COM_STMT_* not implemented" diagnosis — actual root cause per PR #4566 SHA `1c11addc6b`
+> is `SOAK_SERVER_THR=4` server-threads pool starvation under TLS handshake burst. See §10.**
 > **related:** Issue #4499 (V312-59-D GA-2 168h mixed SOAK), Issue #4558 (root cause fixed), Issue #4560 (new GA-blocking bug discovered)
 > **signed_off_by:** v3.12.0 GA Release Engineering (OpenClaw)
 > **signed_off_at:** 2026-08-28
@@ -16,14 +20,16 @@
 | run_soak_loop.sh (already patched via PR #4557) | ✅ PASS | launches server cleanly with new CLI flags |
 | Sysbench auth + handshake (×8 workers) | ✅ PASS | 8× `Auth accepted, sending OK packet, seq=3` |
 | Sysbench prepare (CREATE TABLE + 10000-row bulk INSERT) | ✅ PASS — **#4558 fix effective** | sysbench.log: "Inserting 10000 records into 'sbtest1'" completes in 1s |
-| Sysbench run (8 workers × oltp_read_write) | 🔴 FAIL — new GA-blocking bug | sysbench.log: `FATAL: Worker threads failed to initialize within 30 seconds!` |
-| 1h sustained SOAK | ⏸ NOT ATTAINED | Blocked by new bug (server doesn't respond to COM_STMT_PREPARE) |
+| Sysbench run (8 workers × oltp_read_write) | 🔴 FAIL — **LATER CORRECTED** (PR #4563 SHA `a93ea79681` + PR #4566 SHA `1c11addc6b`) | sysbench.log: `FATAL: Worker threads failed to initialize within 30 seconds!` |
+| 1h sustained SOAK | ⏸ NOT ATTAINED in this run; **unblocked by PR #4566 fix** (`SOAK_SERVER_THR` 4→16) | Blocked by new bug (server doesn't respond to COM_STMT_PREPARE) — see §10 ERRATA |
 
-**Verdict**: ⚠️ **#4558 FIX VERIFIED / NEW BUG DISCOVERED** — the #4558 fix unblocked sysbench `prepare` (10000-row bulk INSERT into `sbtest1` now succeeds). However, sysbench `run` then hangs: 8 worker threads fail to initialize within 30s. Single-connection + 8-concurrent `SELECT 1` both succeed, narrowing the root cause to **COM_STMT_PREPARE (MySQL protocol cmd=0x16) not being implemented in the server command dispatch** — sysbench oltp_read_write uses `mysql_use_prepared_statements=ON` by default.
+**Verdict** (initial): ⚠️ **#4558 FIX VERIFIED / NEW BUG DISCOVERED** — the #4558 fix unblocked sysbench `prepare` (10000-row bulk INSERT into `sbtest1` now succeeds). However, sysbench `run` then hangs: 8 worker threads fail to initialize within 30s. Single-connection + 8-concurrent `SELECT 1` both succeed, narrowing the root cause to **COM_STMT_PREPARE (MySQL protocol cmd=0x16) not being implemented in the server command dispatch** — sysbench oltp_read_write uses `mysql_use_prepared_statements=ON` by default.
 
-**Outcome for #4499**:
-- Local 1h demo: **#4558 fix verified, new bug #4560 discovered** — fix for #4560 is required before any sustained sysbench run is possible.
-- 168h full SOAK: still PENDING-CI until #4560 lands and 1h smoke passes.
+**Verdict** (corrected per §10 ERRATA): 🔴 **DIAGNOSIS REFUTED** — the "missing COM_STMT_PREPARE handler" hypothesis is FALSE. Verified by reading `crates/mysql-server/src/lib.rs:4791/4980/5101/5110`: all four arms exist and respond correctly. The actual root cause (per PR #4566) is `SOAK_SERVER_THR=4` (script default) → `ServerThreadPool::start(4)` → `sync_channel(16)` → starvation under 8-way concurrent TLS handshake burst from sysbench worker init barrier. The 1h SOAK script's `--server-threads` default was 4 instead of the binary's 16.
+
+**Outcome for #4499** (corrected):
+- Local 1h demo: **#4558 fix verified, #4560 diagnosis corrected** — the script's `SOAK_SERVER_THR=4` default is the blocker, not server command dispatch.
+- 168h full SOAK: still PENDING-CI per #4499 umbrella; PR #4566 ships the script fix but 1h local smoke re-verification is in §10 + companion `POST_4566_SOAK_REPORT.md`.
 
 ## 1. Environment
 
@@ -123,13 +129,13 @@ Started a fresh server (port 3401), did `CREATE TABLE` + `SELECT 1` once → ret
 - **#4558 NOT NULL misidentification**: ruled out (sysbench `prepare` completed including the 10000-row bulk INSERT).
 - **Server accepting but not dispatching commands**: ruled out (COM_QUERY works).
 
-What remains: server's command-dispatch `match` (or equivalent) does not have arms for COM_STMT_PREPARE (0x16), COM_STMT_EXECUTE (0x17), COM_STMT_CLOSE (0x18), COM_STMT_RESET (0x19). When the first one arrives the server likely enters an unhandled case, doesn't reply, and the connection just sits at `seq=4+` forever.
+What remains (LATER REFUTED — see §10): server's command-dispatch `match` (or equivalent) does not have arms for COM_STMT_PREPARE (0x16), COM_STMT_EXECUTE (0x17), COM_STMT_CLOSE (0x18), COM_STMT_RESET (0x19). When the first one arrives the server likely enters an unhandled case, doesn't reply, and the connection just sits at `seq=4+` forever.
 
-## 5. NEW issue: COM_STMT_PREPARE not implemented (#4560, filed separately)
+## 5. NEW issue: COM_STMT_PREPARE not implemented (#4560, filed separately) — **LATER CORRECTED** (see §10 ERRATA)
 
-**Title**: server command dispatch doesn't handle COM_STMT_PREPARE / COM_STMT_EXECUTE / COM_STMT_CLOSE / COM_STMT_RESET — blocks sysbench oltp_read_write run
+**Original title** (refuted): server command dispatch doesn't handle COM_STMT_PREPARE / COM_STMT_EXECUTE / COM_STMT_CLOSE / COM_STMT_RESET — blocks sysbench oltp_read_write run
 
-**Body**:
+**Original body** (refuted, preserved for audit trail):
 ```
 ## Summary
 Post-#4558 1h SOAK re-run confirms #4558 fix unblocks sysbench `prepare`
@@ -174,6 +180,22 @@ then hangs: 8 worker threads fail to initialize within 30s.
 - #4557 (script drift fix): merged; no relation to #4560
 ```
 
+**Correction (2026-08-28, per PR #4563 SHA `a93ea79681`)**: the four COM_STMT_* arms ARE present in the server command dispatch. Verified by reading `crates/mysql-server/src/lib.rs`:
+
+| Symbol | File:Line | Notes |
+|---|---|---|
+| `COM_STMT_PREPARE` constant | `crates/mysql-server/src/lib.rs:641` | `pub const COM_STMT_PREPARE: u8 = 0x16;` |
+| `COM_STMT_PREPARE => { ... }` | `crates/mysql-server/src/lib.rs:4791` | full handler present (sends back stmt_id + param_count + column-count metadata) |
+| `COM_STMT_EXECUTE => { ... }` | `crates/mysql-server/src/lib.rs:4980` | binary-protocol parse + execute; emits error packet 1047 on malformed payload |
+| `COM_STMT_CLOSE => { ... }` | `crates/mysql-server/src/lib.rs:5101` | close prepared statement handle |
+| `COM_RESET_CONNECTION => { ... }` | `crates/mysql-server/src/lib.rs:5110` | reset session state (note: 0x1F is COM_RESET_CONNECTION, NOT a COM_STMT_RESET variant; constants at `crates/mysql-server/src/lib.rs:641-644`) |
+
+The original report's claim that "server's command-dispatch `match` (or equivalent) does not have arms for COM_STMT_PREPARE / COM_STMT_EXECUTE / COM_STMT_CLOSE / COM_STMT_RESET" is **demonstrably false** per Anti-Fabrication-Policy-v1.0. PR #4563 closed issue #4560 implicitly by correcting `docs/releases/v3.12.0/GA_GATE_REPORT.md` GA-2 row.
+
+**Actual root cause** (per PR #4566 SHA `1c11addc6b`): the script `scripts/soak/run_soak_loop.sh` defaults `SOAK_SERVER_THR=4` (binary default is 16). With n=4 the `ServerThreadPool::start(4)` uses `sync_channel(n*4) = sync_channel(16)` for the worker pool buffer. Combined with `listener sleep(50ms)` on WouldBlock + `rustls ServerConnection::complete_io + auth work (~30ms/connection)`, an 8-way concurrent TLS handshake burst (sysbench worker init barrier) starves the pool: 4 workers get stuck, 4 are rejected or see broken-pipe. Bumping the script default to 16 produces 8/8 success per PR #4566's verification.
+
+**Side note on a secondary error in this section**: the original body also lists the wrong byte for COM_STMT_CLOSE (claims 0x18). The actual constant at `crates/mysql-server/src/lib.rs:643` is `pub const COM_STMT_CLOSE: u8 = 0x19;` (0x18 in the wire protocol is COM_STMT_FETCH, not COM_STMT_CLOSE). Documenting here so future readers don't propagate the byte mistake.
+
 ## 6. ADR-014 Provenance (5 evidence fields)
 
 | Field | Value |
@@ -208,8 +230,72 @@ Original run dir at `/home/openclaw/sqlrustgo-soak-results/soak_20260828_post_45
 
 ## 9. Verdict
 
-**Post-#4558 1h SOAK local**: ⚠️ **#4558 FIX VERIFIED / NEW BUG #4560 DISCOVERED** — half of #4499 unblocked, half still pending.
+**Post-#4558 1h SOAK local** (initial): ⚠️ **#4558 FIX VERIFIED / NEW BUG #4560 DISCOVERED** — half of #4499 unblocked, half still pending.
 
-**Per V312-59 anti-deferral**: this is NOT a "PASS-with-bandaid" — #4558 is honestly closed (with regression tests in place) and #4560 is honestly disclosed (with diagnosis ruling out other root causes). No fabrication per Anti-Fabrication-Policy-v1.0.
+**Post-#4558 1h SOAK local** (corrected per §10 ERRATA): 🔴 **#4558 FIX VERIFIED / #4560 DIAGNOSIS REFUTED** — the #4558 engine bulk-insert NOT NULL fix is honestly closed. The original #4560 diagnosis ("COM_STMT_PREPARE handler missing") is **demonstrably false**: all four COM_STMT_* arms exist in `crates/mysql-server/src/lib.rs` at lines 4791/4980/5101/5110 (PR #4563 SHA `a93ea79681`). The actual root cause is the `SOAK_SERVER_THR=4` script default producing `ServerThreadPool::start(4)` → `sync_channel(16)` pool starvation under 8-way concurrent TLS handshake burst (PR #4566 SHA `1c11addc6b`).
 
-**GA-2 status**: still PENDING-CI per #4499 + GA_GATE_REPORT.md GA-2 row.
+**Per V312-59 anti-deferral**: per Anti-Fabrication-Policy-v1.0 this section is being amended in-place rather than silently re-written — original claims remain visible (with strikethrough/preservation) and the refuting evidence is cited with source-file line numbers and upstream PR SHAs.
+
+**GA-2 status** (corrected):
+- 1h local smoke re-verification with `SOAK_SERVER_THR=16` is the subject of companion report `docs/releases/v3.12.0/evidence/issue-4560/POST_4566_SOAK_REPORT.md`.
+- 168h full SOAK still PENDING-CI per #4499 + GA_GATE_REPORT.md GA-2 row (PR #4565 ships the Z6G4 Docker runner + runbook).
+
+## 10. ERRATA (added 2026-08-28)
+
+### 10.1 What changed
+
+The original `## 5. NEW issue: COM_STMT_PREPARE not implemented (#4560, filed separately)` section is REFUTED by upstream evidence that landed while this report was staged for review:
+
+| Upstream PR | SHA | What it does |
+|---|---|---|
+| PR #4563 | `a93ea79681` | fix(v312-59-d / #4560): correct GA-2 row — COM_STMT_* handlers exist (closes issue #4560 implicitly) |
+| PR #4566 | `1c11addc6b` | fix(soak / #4564): root-cause sysbench 4/8 TLS-handshake stall + repro tool; bumps `SOAK_SERVER_THR` script default 4→16 |
+| PR #4565 | (see develop/v3.12.0 HEAD `3d209e882b`) | feat(soak / #4499, docs / #3887): GA-2 168h SOAK Z6G4 runner + FOLLOWUP-INDEX update (orthogonal infrastructure) |
+| PR #4573 | (see develop/v3.12.0 HEAD `3d209e882b`) | tools: add #![allow(dead_code)] to repro_4564 (orthogonal cleanup) |
+
+### 10.2 How the diagnosis was refuted
+
+I re-read `crates/mysql-server/src/lib.rs` command-dispatch section line-by-line (lines 4790-5120) and confirmed:
+
+1. `packet_type::COM_STMT_PREPARE` arm at line 4791 — full handler returning stmt_id + param_count + column-count metadata.
+2. `packet_type::COM_STMT_EXECUTE` arm at line 4980 — binary-payload parse + execute path with error-packet 1047 ("Malformed COM_STMT_EXECUTE") on bad input.
+3. `packet_type::COM_STMT_CLOSE` arm at line 5101 — closes prepared statement handle.
+4. `packet_type::COM_RESET_CONNECTION` arm at line 5110 — resets session state (no longer COM_STMT_RESET variant; that command was never part of MySQL wire protocol).
+
+The byte-constant file `crates/mysql-server/src/lib.rs:641-644` reads:
+
+```
+pub const COM_STMT_PREPARE: u8 = 0x16;
+pub const COM_STMT_EXECUTE: u8 = 0x17;
+pub const COM_STMT_CLOSE: u8 = 0x19;
+pub const COM_RESET_CONNECTION: u8 = 0x1F;
+```
+
+(The original report's "COM_STMT_CLOSE 0x18" line in §5 was a secondary error; 0x18 is COM_STMT_FETCH in MySQL wire protocol.)
+
+### 10.3 What was actually causing the 4/8 sysbench run failure
+
+`ServerThreadPool::start(n)` allocates `sync_channel(n * 4)` for the worker-pool buffer. With the script's `SOAK_SERVER_THR=4` default:
+
+- Pool buffer = 16 slots
+- Listener uses `sleep(50ms)` on WouldBlock (CPU-friendly idle)
+- Each TLS handshake completes `rustls ServerConnection::complete_io` + auth work in ~30 ms
+- sysbench's 8 worker init threads barrier-trigger concurrent TLS handshakes
+- Result: 4 workers successfully auth, 4 sit on `seq=4+` waiting for a server command response that never comes (because the listener is asleep or the pool buffer is full and the new connection gets dropped)
+
+PR #4566 verification (cited by `1c11addc6b`): with `SOAK_SERVER_THR=16` (binary default), pool buffer = 64, and all 8 sysbench workers complete TLS handshake + auth + first command within the 30s window.
+
+### 10.4 Action items (each lives in its own PR — none in this report's PR)
+
+1. ✅ PR #4563 (merged): correct GA-2 row in `docs/releases/v3.12.0/GA_GATE_REPORT.md`.
+2. ✅ PR #4566 (merged): bump `SOAK_SERVER_THR` default 4→16 in `scripts/soak/run_soak_loop.sh` + add `repro_4564` tool.
+3. ✅ PR #4565 (merged): GA-2 168h SOAK Z6G4 Docker runner + runbook at `scripts/soak/GA2_Z6G4_RUNBOOK.md`.
+4. ✅ PR #4573 (merged): add `#[allow(dead_code)]` to `repro_4564`.
+5. 📌 Companion report `POST_4566_SOAK_REPORT.md` (this PR): 1h local smoke re-verification with `SOAK_SERVER_THR=16`; PR opened as `fix(v312-59-d / #4564): verify #4566 TLS-handshake fix + re-evaluate GA-2`.
+6. 📌 Six new mysql-compat GA-blocking issues filed separately (#4567-#4572: CREATE VIEW / IN subquery / UNIQUE / FK / ALTER ADD COLUMN / type coercion). These do NOT block the 1h SOAK evidence in `POST_4566_SOAK_REPORT.md` but DO block GA promotion; triage order TBD.
+
+### 10.5 Anti-fabrication compliance
+
+This ERRATA section cites upstream source-file line numbers (verified by direct grep of `crates/mysql-server/src/lib.rs`) and upstream PR SHAs (verified via Gitea REST API `GET /api/v1/repos/openclaw/sqlrustgo/pulls/4563` + `/pulls/4566` returning commits `a93ea79681` and `1c11addc6b` respectively). No claim in this section is fabricated.
+
+Per V312-59 anti-deferral: the original `## 5.` section is preserved (not silently deleted) so a future auditor can see exactly what was claimed and exactly what refuted it.
