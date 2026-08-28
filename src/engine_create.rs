@@ -14,7 +14,10 @@ use sqlrustgo_parser::parser::{
     StorageEngineSpec,
 };
 use sqlrustgo_storage::clustered_table::ClusteredTable;
-use sqlrustgo_storage::{engine::CheckConstraint, ColumnDefinition, StorageEngine, TableInfo};
+use sqlrustgo_storage::engine::{
+    CheckConstraint, ForeignKeyAction, ForeignKeyConstraint, UniqueConstraint,
+};
+use sqlrustgo_storage::{ColumnDefinition, StorageEngine, TableInfo};
 use std::collections::HashMap;
 use std::sync::Arc;
 
@@ -266,11 +269,82 @@ impl<S: StorageEngine + 'static> ExecutionEngine<S> {
             })
             .collect();
 
+        // Issues #4569 / #4570: collect UNIQUE and FOREIGN KEY constraints
+        // (table-level and column-level REFERENCES) into the storage
+        // TableInfo so the INSERT path can enforce them. Previously both
+        // fields were hardcoded to `vec![]` and the constraints parsed by
+        // the grammar were silently dropped.
+        let map_ref_action =
+            |a: &Option<sqlrustgo_parser::parser::ReferentialAction>| -> Option<ForeignKeyAction> {
+                a.as_ref().map(|a| match a {
+                    sqlrustgo_parser::parser::ReferentialAction::Cascade => {
+                        ForeignKeyAction::Cascade
+                    }
+                    sqlrustgo_parser::parser::ReferentialAction::SetNull => {
+                        ForeignKeyAction::SetNull
+                    }
+                    sqlrustgo_parser::parser::ReferentialAction::Restrict => {
+                        ForeignKeyAction::Restrict
+                    }
+                    sqlrustgo_parser::parser::ReferentialAction::NoAction => {
+                        ForeignKeyAction::NoAction
+                    }
+                })
+            };
+        let unique_constraints: Vec<UniqueConstraint> = create
+            .constraints
+            .iter()
+            .filter_map(|c| match c {
+                sqlrustgo_parser::TableConstraint::Unique { columns, name } => {
+                    Some(UniqueConstraint {
+                        name: name.clone(),
+                        columns: columns.clone(),
+                    })
+                }
+                _ => None,
+            })
+            .collect();
+        let mut foreign_keys: Vec<ForeignKeyConstraint> = create
+            .constraints
+            .iter()
+            .filter_map(|c| match c {
+                sqlrustgo_parser::TableConstraint::ForeignKey {
+                    columns,
+                    referenced_table,
+                    referenced_columns,
+                    on_delete,
+                    on_update,
+                    name,
+                } => Some(ForeignKeyConstraint {
+                    name: name.clone(),
+                    columns: columns.clone(),
+                    referenced_table: referenced_table.clone(),
+                    referenced_columns: referenced_columns.clone(),
+                    on_delete: map_ref_action(on_delete),
+                    on_update: map_ref_action(on_update),
+                }),
+                _ => None,
+            })
+            .collect();
+        // Column-level REFERENCES (col INT REFERENCES other(id))
+        for col in &create.columns {
+            if let Some(ref fkref) = col.references {
+                foreign_keys.push(ForeignKeyConstraint {
+                    name: None,
+                    columns: vec![col.name.clone()],
+                    referenced_table: fkref.referenced_table.clone(),
+                    referenced_columns: fkref.referenced_columns.clone(),
+                    on_delete: map_ref_action(&fkref.on_delete),
+                    on_update: map_ref_action(&fkref.on_update),
+                });
+            }
+        }
+
         let info = TableInfo {
             name: create.name.clone(),
             columns: columns.clone(),
-            foreign_keys: vec![],
-            unique_constraints: vec![],
+            foreign_keys: foreign_keys.clone(),
+            unique_constraints: unique_constraints.clone(),
             check_constraints: check_constraints.clone(),
             partition_info: None,
             compression,
@@ -293,8 +367,8 @@ impl<S: StorageEngine + 'static> ExecutionEngine<S> {
             storage.create_table(&TableInfo {
                 name: info.name.clone(),
                 columns,
-                foreign_keys: vec![],
-                unique_constraints: vec![],
+                foreign_keys,
+                unique_constraints,
                 check_constraints,
                 partition_info: None,
                 compression: None,

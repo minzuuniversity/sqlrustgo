@@ -129,18 +129,23 @@ fn last_insert_id_returns_zero_stateless() {
 
 #[test]
 fn convert_returns_input_value_passthrough() {
-    // CONVERT(expr, type) is parser-routed as FunctionCall("CONVERT", [expr]).
-    // eval_fn can't see the target type, so we pass the input through
-    // and let downstream coercion round it out (same shape as CAST).
-    // Uses INTEGER (Identifier path) as the type — DATE keyword path is
-    // gated on Token::Date which is also in primary_expression's match
-    // arm; the CONVERT special-case in parser.rs:7483 handles both.
+    // V312-59-D / Issue #4572: CONVERT now performs real MySQL type
+    // coercion (was a passthrough before #4572). CONVERT('123', INTEGER)
+    // = CAST('123' AS SIGNED) = Integer(123). This is MySQL 2/124
+    // semantics; non-numeric text returns 0 (not error).
     let mut e = engine();
     let r = e.execute("SELECT CONVERT('123', INTEGER)").unwrap();
-    // Expect passthrough (Text) — NOT NULL, NOT error.
     match first_value(&r) {
-        Value::Text(s) => assert_eq!(s, "123"),
-        other => panic!("CONVERT should pass input through, got {other:?}"),
+        Value::Integer(n) => {
+            assert_eq!(*n, 123i64, "CONVERT('123', INTEGER) should be Integer(123)")
+        }
+        other => panic!("CONVERT should coerce to Integer, got {other:?}"),
+    }
+    // Coercion from text containing a non-numeric falls back to 0.
+    let r2 = e.execute("SELECT CONVERT('abc', INTEGER)").unwrap();
+    match first_value(&r2) {
+        Value::Integer(n) => assert_eq!(*n, 0i64, "non-numeric text coerces to 0"),
+        other => panic!("expected Integer(0), got {other:?}"),
     }
 }
 

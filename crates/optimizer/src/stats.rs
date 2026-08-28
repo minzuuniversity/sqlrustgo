@@ -95,7 +95,7 @@ impl Histogram {
         let bucket = &self.buckets[idx];
         let frac_within = match (&bucket.lower_bound, value) {
             (Value::Integer(lo), Value::Integer(v)) if *v <= *lo => 0.0,
-            (Value::Integer(lo), Value::Integer(v)) if *v >= bucket.upper_bound_as_i64() => 1.0,
+            (Value::Integer(_lo), Value::Integer(v)) if *v >= bucket.upper_bound_as_i64() => 1.0,
             (Value::Integer(lo), Value::Integer(v)) => {
                 let span = bucket.upper_bound_as_i64() - lo;
                 if span <= 0 {
@@ -105,7 +105,7 @@ impl Histogram {
                 }
             }
             (Value::Float(lo), Value::Float(v)) if *v <= *lo => 0.0,
-            (Value::Float(lo), Value::Float(v)) if *v >= bucket.upper_bound_as_f64() => 1.0,
+            (Value::Float(_lo), Value::Float(v)) if *v >= bucket.upper_bound_as_f64() => 1.0,
             (Value::Float(lo), Value::Float(v)) => {
                 let span = bucket.upper_bound_as_f64() - lo;
                 if span <= 0.0 {
