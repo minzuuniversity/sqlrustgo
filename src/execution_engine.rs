@@ -105,9 +105,13 @@ pub struct ExecutionEngine<S: StorageEngine> {
     pub cost_model: parking_lot::RwLock<UnifiedCostModel>,
     pub(crate) parallel_degree: usize,
     pub(crate) stmt_cache: sqlrustgo_cache::PreparedStatementCache,
-    /// View definitions: view_name → CREATE VIEW SQL text.
-    /// Used for SHOW CREATE VIEW and view resolution.
-    pub(crate) views: HashMap<String, String>,
+    /// View definitions: view_name → parsed CREATE VIEW statement.
+    /// Issue #4567: previously stored only the Debug-format SQL text, so
+    /// views were acked by CREATE VIEW but never resolvable by SELECT.
+    /// Storing the full AST lets `execute_select` expand a FROM-clause
+    /// view into its defining subquery (view resolution) and lets
+    /// SHOW TABLES / SHOW FULL TABLES list the view by name.
+    pub(crate) views: HashMap<String, CreateViewStatement>,
     /// V311-01 F-23: in-memory registry of `ClusteredTable` instances for
     /// tables opted into clustered primary key storage via
     /// `CREATE TABLE ... ENGINE=InnoDB CLUSTERED`. The base `storage`
@@ -1019,8 +1023,11 @@ impl<S: StorageEngine + 'static> ExecutionEngine<S> {
     }
 
     fn execute_create_view(&mut self, view: &CreateViewStatement) -> SqlResult<ExecutorResult> {
-        // 存储视图定义 (view name → SQL text)
-        self.views.insert(view.name.clone(), format!("{:?}", view));
+        // Issue #4567: store the full parsed statement (name + optional
+        // column aliases + defining SELECT AST) so the view is resolvable.
+        // The old code stored only `format!("{:?}", view)` — a Debug dump
+        // no query path could consume, making every CREATE VIEW a no-op.
+        self.views.insert(view.name.clone(), view.clone());
         Ok(ExecutorResult::empty())
     }
     fn execute_drop_view(&mut self, drop_view: &DropViewStatement) -> SqlResult<ExecutorResult> {

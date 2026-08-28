@@ -485,7 +485,12 @@ impl<S: StorageEngine + 'static> ExecutionEngine<S> {
     ) -> SqlResult<ExecutorResult> {
         let storage = self.storage.read();
         let views: Vec<String> = self.views.keys().cloned().collect();
-        let names = storage.list_tables();
+        // Issue #4567: list views alongside base tables (MySQL semantics —
+        // SHOW TABLES includes views; only SHOW FULL TABLES distinguishes
+        // them via Table_type). Pre-#4567 views were acked by CREATE VIEW
+        // but invisible here.
+        let mut names = storage.list_tables();
+        names.extend(views.iter().cloned());
         let mut rows = Vec::new();
         for name in &names {
             if let Some(pat) = like {
@@ -1020,8 +1025,11 @@ impl<S: StorageEngine + 'static> ExecutionEngine<S> {
                 name,
                 data_type,
                 nullable,
-                default_value: _,
+                default_value,
             } => {
+                // #4571: keep the parsed DEFAULT / NOT NULL — previously
+                // `default_value` was discarded (`default_value: _`) so
+                // `ADD COLUMN c INT DEFAULT 5` lost its default.
                 let column = ColumnDefinition {
                     name: name.clone(),
                     data_type: data_type.clone(),
@@ -1029,7 +1037,7 @@ impl<S: StorageEngine + 'static> ExecutionEngine<S> {
                     primary_key: false,
                     char_max_length: None,
                     collation: None,
-                    default_value: None,
+                    default_value: default_value.clone(),
                     auto_increment: false,
                 };
                 storage.add_column(&alter.table_name, column)?;
