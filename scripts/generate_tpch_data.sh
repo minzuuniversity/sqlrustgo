@@ -157,11 +157,20 @@ mkdir -p "$OUTPUT_DIR"
 
 case "$BACKEND" in
     tpch_data_gen)
+        # The `tpch_data_gen` example lives in `crates/bench/` whose
+        # package name is `sqlrustgo-bench`. The workspace default
+        # package does NOT contain this example, so `cargo build/example`
+        # without `-p sqlrustgo-bench` fails with:
+        #   "no example target named `tpch_data_gen` in default-run
+        #    packages"
+        # which silently aborts generation (Issue #4548). Pinning the
+        # package via `-p` is required for every cargo invocation that
+        # touches bench-only examples.
         echo "[1/3] Building tpch_data_gen (release)..."
-        cargo build --release --example tpch_data_gen
+        cargo build --release -p sqlrustgo-bench --example tpch_data_gen
 
         echo "[2/3] Running tpch_data_gen --sf $SF --output $OUTPUT_DIR"
-        cargo run --release --example tpch_data_gen -- \
+        cargo run --release -p sqlrustgo-bench --example tpch_data_gen -- \
             --sf "$SF" \
             --output "$OUTPUT_DIR"
         ;;
