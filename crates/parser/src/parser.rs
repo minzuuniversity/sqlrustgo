@@ -7995,10 +7995,11 @@ impl Parser {
                         }))
                     } else {
                         // CAST(expr AS TYPE) — consume optional `AS TYPE` suffix.
-                        // We don't propagate the target type to the executor; the
-                        // executor's `eval_fn` for "CAST" passes the value through,
-                        // and downstream INTEGER()/TEXT() context coerces.
-                        // (TPC-H Q7/Q8/Q9 always use CAST(... AS INTEGER) anyway.)
+                        // Issue #4572: propagate the target type to the executor as
+                        // an extra FunctionCall arg (`args[1] = Literal("TYPE")`). The
+                        // executor's `eval_fn("CAST")` arm reads it via `cast_value`
+                        // and performs real MySQL-2/124 coercion
+                        // (CAST('123' AS SIGNED) → Integer(123)).
                         if name.to_uppercase() == "CAST"
                             && matches!(self.current(), Some(Token::As))
                         {
@@ -8006,11 +8007,23 @@ impl Parser {
                                          // Accept any token that names a type (Token::Integer, Token::Text,
                                          // Token::Float, Token::Boolean, or a bare identifier like VARCHAR).
                             match self.current().cloned() {
-                                Some(Token::Integer) | Some(Token::Text) | Some(Token::Float)
-                                | Some(Token::Boolean) => {
+                                Some(Token::Integer) => {
                                     self.next();
+                                    args.push(Expression::Literal("INTEGER".to_string()));
                                 }
-                                Some(Token::Identifier(_)) => {
+                                Some(Token::Text) => {
+                                    self.next();
+                                    args.push(Expression::Literal("TEXT".to_string()));
+                                }
+                                Some(Token::Float) => {
+                                    self.next();
+                                    args.push(Expression::Literal("FLOAT".to_string()));
+                                }
+                                Some(Token::Boolean) => {
+                                    self.next();
+                                    args.push(Expression::Literal("BOOLEAN".to_string()));
+                                }
+                                Some(Token::Identifier(ty)) => {
                                     // Custom type name like VARCHAR(10) — consume identifier
                                     // and optional (length) if present.
                                     self.next();
@@ -8021,6 +8034,10 @@ impl Parser {
                                         }
                                         self.expect(Token::RParen)?;
                                     }
+                                    // SIGNED / UNSIGNED / DATE / ... land here as
+                                    // plain identifiers; push the type name so
+                                    // eval_fn("CAST") can coerce.
+                                    args.push(Expression::Literal(ty));
                                 }
                                 _ => {
                                     return Err(format!(
@@ -8866,6 +8883,12 @@ impl Parser {
                     Some(Token::Primary) => {
                         self.next();
                         self.expect(Token::Key)?;
+                        // #4569 family fix: parse_column_list does not
+                        // consume the leading `(` — consume it here so
+                        // `PRIMARY KEY (a)` yields real columns.
+                        if matches!(self.current(), Some(Token::LParen)) {
+                            self.next();
+                        }
                         let columns = self.parse_column_list()?;
                         constraints.push(TableConstraint::PrimaryKey {
                             columns,
@@ -8899,7 +8922,14 @@ impl Parser {
                         let next_tok = self.tokens.get(self.position + 1);
                         match next_tok {
                             Some(Token::LParen) => {
-                                self.next();
+                                // #4569: consume BOTH `UNIQUE` and the
+                                // opening `(` before parse_column_list —
+                                // the helper does NOT consume the leading
+                                // LParen, so `UNIQUE (a)` previously
+                                // produced `Unique { columns: [] }` (an
+                                // empty, useless constraint).
+                                self.next(); // consume UNIQUE
+                                self.next(); // consume '('
                                 let columns = self.parse_column_list()?;
                                 constraints.push(TableConstraint::Unique {
                                     columns,
@@ -8917,6 +8947,10 @@ impl Parser {
                                     }
                                     _ => None,
                                 };
+                                // #4569: same LParen handling as above.
+                                if matches!(self.current(), Some(Token::LParen)) {
+                                    self.next(); // consume '('
+                                }
                                 let columns = self.parse_column_list()?;
                                 constraints.push(TableConstraint::Unique { columns, name });
                             }
@@ -8940,6 +8974,11 @@ impl Parser {
                                 Some(Token::Primary) => {
                                     self.next();
                                     self.expect(Token::Key)?;
+                                    // #4569 family fix: consume the leading
+                                    // `(` — parse_column_list does not.
+                                    if matches!(self.current(), Some(Token::LParen)) {
+                                        self.next();
+                                    }
                                     let cols = self.parse_column_list()?;
                                     constraints.push(TableConstraint::PrimaryKey {
                                         columns: cols,
@@ -8953,6 +8992,13 @@ impl Parser {
                                 }
                                 Some(Token::Unique) => {
                                     self.next();
+                                    // #4569: consume the opening `(` —
+                                    // parse_column_list does NOT consume it,
+                                    // so `CONSTRAINT uk UNIQUE (a)` previously
+                                    // parsed an empty column list.
+                                    if matches!(self.current(), Some(Token::LParen)) {
+                                        self.next();
+                                    }
                                     let cols = self.parse_column_list()?;
                                     constraints.push(TableConstraint::Unique {
                                         columns: cols,
@@ -9362,7 +9408,18 @@ impl Parser {
                     // Consume the keyword; the table-level UNIQUE
                     // constraint (if any) is added by the outer arm
                     // when followed by `(` / KEY.
+                    //
+                    // #4569: a column-level UNIQUE modifier is a real
+                    // constraint — record it as a single-column table-level
+                    // UNIQUE so the executor stores and enforces it.
+                    // Previously the keyword was consumed and dropped,
+                    // so `CREATE TABLE t(email VARCHAR(100) UNIQUE)` had
+                    // NO uniqueness enforcement at all.
                     self.next();
+                    constraints.push(TableConstraint::Unique {
+                        columns: vec![name.clone()],
+                        name: None,
+                    });
                 }
                 _ => break,
             }
@@ -10725,8 +10782,30 @@ impl Parser {
                     _ => return Err("Expected data type".to_string()),
                 };
 
-                let nullable = true;
-                let default_value = None;
+                // #4571: parse trailing column modifiers instead of
+                // hard-coding `nullable = true, default_value = None`.
+                // Previously `ALTER TABLE t ADD COLUMN c INT DEFAULT 5`
+                // silently dropped the DEFAULT clause and NOT NULL.
+                let mut nullable = true;
+                let mut default_value: Option<String> = None;
+                loop {
+                    match self.current() {
+                        Some(Token::Not) => {
+                            self.next();
+                            self.expect(Token::Null)?;
+                            nullable = false;
+                        }
+                        Some(Token::Null) => {
+                            self.next();
+                            nullable = true;
+                        }
+                        Some(Token::Default) => {
+                            self.next();
+                            default_value = Some(self.parse_simple_value()?);
+                        }
+                        _ => break,
+                    }
+                }
 
                 Ok(Statement::AlterTable(AlterTableStatement {
                     table_name,
