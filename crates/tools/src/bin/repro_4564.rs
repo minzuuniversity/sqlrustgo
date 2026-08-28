@@ -1,3 +1,4 @@
+#![allow(dead_code)]
 //! repro_4564 — Reproduce issue #4564 (sysbench 8-worker 4/8 TLS-handshake stall).
 //!
 //! Mimics sysbench's per-worker wire flow:
