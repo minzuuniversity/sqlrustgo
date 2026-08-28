@@ -211,6 +211,19 @@ pub fn validate_foreign_keys(
 }
 /// Validate NOT NULL constraints for a row before INSERT or UPDATE.
 /// Returns an error if any non-nullable column is NULL.
+///
+/// `row` must be in **table column order** (i.e., aligned to
+/// `table_info.columns`). When called from `execute_insert` the row is
+/// reordered by `materialise_default_tokens` before reaching here; pass
+/// an empty `insert_columns` slice (`&[]`) in that case so the helper
+/// indexes by table position. `insert_columns` is only consulted in
+/// the legacy UPDATE path where the row is in source-attribute order.
+///
+/// #4558: AUTO_INCREMENT NOT NULL PK columns are skipped — at validation
+/// time their slot is still `Value::Null`; the storage engine fills
+/// them with next-id values inside `StorageEngine::insert`, AFTER this
+/// validator runs. Treating them as nullable here matches MySQL
+/// semantics (a freshly-skipped AUTO_INCREMENT PK never trips NOT NULL).
 pub fn validate_not_null(
     table_info: &sqlrustgo_storage::TableInfo,
     row: &[Value],
@@ -232,6 +245,14 @@ pub fn validate_not_null(
     };
 
     for col in &table_info.columns {
+        // #4558: auto_increment columns are filled by storage.insert
+        // AFTER this validator runs, so they are intentionally NOT
+        // checked here. (Equivalent to MySQL semantics: AUTO_INCREMENT
+        // PK columns are NOT NULL in the schema but accept the implicit
+        // next-id on INSERT.)
+        if col.auto_increment {
+            continue;
+        }
         if !col.nullable {
             if let Some(&source_idx) = col_to_row_idx.get(&col.name.to_uppercase()) {
                 if let Some(value) = row.get(source_idx) {
