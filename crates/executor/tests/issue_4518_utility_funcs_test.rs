@@ -151,7 +151,10 @@ fn current_user_returns_default_user_identifier() {
     let mut e = engine();
     let r = e.execute("SELECT CURRENT_USER()").unwrap();
     let s = first_text(&r);
-    assert!(s.contains('@'), "CURRENT_USER should contain '@', got {s:?}");
+    assert!(
+        s.contains('@'),
+        "CURRENT_USER should contain '@', got {s:?}"
+    );
     assert!(!s.is_empty(), "CURRENT_USER should not be empty");
 }
 
