@@ -125,6 +125,33 @@ class WorkloadGenerator:
         else:
             return "SELECT 1"
 
+    def _read_heavy_query(self) -> str:
+        # W2 (Read-heavy class, 25% of workload): point lookups + range scans.
+        # Driver fix 2026-08-28: this method was previously missing, causing
+        # 7118/7118 W2 queries to fail with AttributeError. Now implements
+        # the spec contract: point lookups + range scans on orders table.
+        op = self.rng.choice([
+            "point",       # point lookup by PK
+            "point",       # point lookup by PK (2× weight)
+            "range",       # range scan by PK
+            "range",       # range scan by PK (2× weight)
+            "customer",    # lookup by customer_id (uses index)
+            "status",      # range scan by status
+        ])
+        if op == "point":
+            n = self.rng.randint(1, 10_000)
+            return f"SELECT * FROM orders WHERE id = {n}"
+        elif op == "range":
+            n = self.rng.randint(1, 9_000)
+            return f"SELECT * FROM orders WHERE id BETWEEN {n} AND {n + 100}"
+        elif op == "customer":
+            n = self.rng.randint(1, 100)
+            return f"SELECT * FROM orders WHERE customer_id = {n} ORDER BY id DESC LIMIT 100"
+        else:  # status
+            return ("SELECT customer_id, COUNT(*) AS cnt, AVG(total) AS avg_amt "
+                    "FROM orders WHERE status IN ('paid', 'pending') "
+                    "GROUP BY customer_id LIMIT 50")
+
     def _oltp_query(self) -> str:
         # mix of INSERT / UPDATE / DELETE / SELECT
         # V312-SOAK-FIX-3: shift toward read-heavy (50% SELECT) so the
