@@ -20,9 +20,9 @@ use sqlrustgo_storage::{StorageEngine, TableInfo};
 use sqlrustgo_types::Value;
 
 use crate::engine_helpers::{
-    apply_odku, apply_set_clauses, build_insert_records, ir_validate_update_filter,
-    map_select_result_to_records, materialise_default_tokens, record_matches_unique_key,
-    run_before_update_triggers,
+    apply_odku, apply_set_clauses, build_insert_records, find_conflicting_key,
+    ir_validate_update_filter, key_entry_repr, map_select_result_to_records,
+    materialise_default_tokens, record_matches_unique_key, run_before_update_triggers,
 };
 use crate::engine_utils::{
     build_multi_table_combined_schema, cartesian_product, evaluate_where_clause, find_column_index,
@@ -169,7 +169,11 @@ pub fn execute_insert<S: StorageEngine + 'static>(
     // INSERT IGNORE under autocommit (no two writers can introduce a
     // duplicate against the same snapshot).
     let mut pre_scanned_rows: Vec<Vec<Value>> = Vec::new();
-    let needs_pk_scan = !insert.is_replace && table_info.columns.iter().any(|c| c.primary_key);
+    // #4569: also scan when the table declares UNIQUE constraints —
+    // duplicates on those keys must be detected like PK duplicates.
+    let needs_pk_scan = !insert.is_replace
+        && (table_info.columns.iter().any(|c| c.primary_key)
+            || !table_info.unique_constraints.is_empty());
     if needs_pk_scan {
         let storage = engine.storage.read();
         pre_scanned_rows = storage.scan(&table_name)?;
@@ -201,21 +205,21 @@ pub fn execute_insert<S: StorageEngine + 'static>(
                         odku_handled_indices.insert(new_idx); // Mark as "handled" to skip
                         continue;
                     }
-                    let pk_repr = table_info
-                        .columns
+                    // #4569: report the actually-conflicting key — PRIMARY
+                    // or the UNIQUE constraint that was violated.
+                    let (conflict_key, entry_repr) = existing_rows
                         .iter()
-                        .enumerate()
-                        .find_map(|(i, c)| {
-                            if c.primary_key {
-                                new_record.get(i).map(|v| v.to_sql_string())
-                            } else {
-                                None
-                            }
+                        .filter_map(|existing| {
+                            find_conflicting_key(existing, new_record, &table_info).map(|k| {
+                                let repr = key_entry_repr(&table_info, new_record, &k);
+                                (k, repr)
+                            })
                         })
-                        .unwrap_or_else(|| "?".to_string());
+                        .next()
+                        .unwrap_or_else(|| ("PRIMARY".to_string(), "?".to_string()));
                     return Err(SqlError::ExecutionError(format!(
-                        "Duplicate entry '{}' for key 'PRIMARY'",
-                        pk_repr
+                        "Duplicate entry '{}' for key '{}'",
+                        entry_repr, conflict_key
                     )));
                 }
             }

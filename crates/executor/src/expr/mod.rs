@@ -1085,7 +1085,13 @@ fn to_f64(v: &Value) -> f64 {
                 0.0
             }
         }
-        Value::Null | Value::Text(_) | Value::Blob(_) | Value::Point(_, _) | Value::Json(_) => 0.0,
+        // V312-59-D / Issue #4572: MySQL 2/124 — text→numeric implicit
+        // coercion. Strings that parse as a number return that number;
+        // non-numeric strings return 0 (MySQL's legacy behavior; SQLite
+        // is stricter and returns 0 too). Float parse: full string must
+        // match (allow leading/trailing whitespace); failed parse = 0.0.
+        Value::Text(s) => s.trim().parse::<f64>().unwrap_or(0.0),
+        Value::Null | Value::Blob(_) | Value::Point(_, _) | Value::Json(_) => 0.0,
     }
 }
 
@@ -1099,12 +1105,76 @@ fn to_i64(v: &Value) -> i64 {
                 0
             }
         }
-        Value::Null
-        | Value::Float(_)
-        | Value::Text(_)
-        | Value::Blob(_)
-        | Value::Point(_, _)
-        | Value::Json(_) => 0,
+        // V312-59-D / Issue #4572: text→integer implicit coercion. Numeric
+        // text parses directly. Decimal text (e.g. "3.7") truncates
+        // toward zero (matches MySQL CAST AS SIGNED). Empty / non-numeric
+        // → 0. Float input is also coerced (rounds toward zero via
+        // as_i64 cast). Match MySQL 2/124 legacy semantics.
+        Value::Text(s) => {
+            let trimmed = s.trim();
+            trimmed.parse::<i64>().unwrap_or_else(|_| {
+                // Try decimal parse → truncate to i64 (MySQL CAST AS SIGNED).
+                trimmed.parse::<f64>().map(|f| f as i64).unwrap_or(0)
+            })
+        }
+        Value::Float(f) => *f as i64,
+        Value::Null | Value::Blob(_) | Value::Point(_, _) | Value::Json(_) => 0,
+    }
+}
+
+/// V312-59-D / Issue #4572: explicit type coercion for CAST(... AS TYPE)
+/// and CONVERT(expr, TYPE). Returns the source value converted to the
+/// target type. The target type string is case-insensitive and accepts
+/// MySQL's type aliases.
+///
+/// Supported targets (case-insensitive):
+///   SIGNED, INTEGER, INT           → Integer (text → i64; float → as i64)
+///   UNSIGNED                        → Integer (text/float → i64; negatives clamped to 0)
+///   FLOAT, DOUBLE, REAL, DECIMAL    → Float (text → f64; integer → as f64)
+///   CHAR, TEXT, VARCHAR             → Text (string repr; trim trailing spaces per MySQL)
+///   DATE, DATETIME, TIME            → pass through as Text (full date/time
+///                                    conversion is out of scope; sqlrustgo
+///                                    does not yet have a native date type)
+///   BINARY, BLOB                    → pass through as Blob if Text → bytes
+///   JSON                            → parse text as JSON if possible, else Null
+///   anything else                   → pass through unchanged (no-op)
+///
+/// MySQL semantics: non-numeric text → 0 (not error). sqlrustgo matches
+/// MySQL 5.7 / MariaDB here; SQLite 3.x is stricter.
+fn cast_value(val: &Value, target: &str) -> Value {
+    let target = target.trim();
+    match target.to_uppercase().as_str() {
+        "SIGNED" | "INTEGER" | "INT" => Value::Integer(to_i64(val)),
+        "UNSIGNED" => {
+            let n = to_i64(val);
+            Value::Integer(if n < 0 { 0 } else { n })
+        }
+        "FLOAT" | "DOUBLE" | "REAL" | "DECIMAL" | "NUMERIC" => Value::Float(to_f64(val)),
+        "CHAR" | "TEXT" | "VARCHAR" => {
+            // MySQL CHAR trims trailing spaces per column width; for our
+            // purpose (text→text) trim all trailing whitespace.
+            Value::Text(val.to_sql_string().trim_end().to_string())
+        }
+        "DATE" | "DATETIME" | "TIMESTAMP" | "TIME" => {
+            // sqlrustgo has no native date/time type; preserve the text form.
+            Value::Text(val.to_sql_string().trim().to_string())
+        }
+        "BINARY" | "BLOB" | "VARBINARY" => {
+            // No native blob from text in this path; preserve text round-trip.
+            // (Binary-coercion across types is out of scope for #4572.)
+            Value::Text(val.to_sql_string().trim().to_string())
+        }
+        "JSON" => match val {
+            Value::Json(v) => Value::Json(v.clone()),
+            Value::Text(s) => match serde_json::from_str::<serde_json::Value>(s) {
+                Ok(v) => Value::Json(v),
+                Err(_) => Value::Null,
+            },
+            _ => Value::Null,
+        },
+        "BOOLEAN" | "BOOL" => Value::Boolean(to_i64(val) != 0),
+        "YEAR" => Value::Integer(to_i64(val)),
+        _ => val.clone(),
     }
 }
 
@@ -1260,12 +1330,39 @@ pub fn eval_fn(name: &str, args: &[Value]) -> Value {
             .map(|v| Value::Integer(v.to_sql_string().chars().count() as i64))
             .unwrap_or(Value::Null),
         "LAST_INSERT_ID" => Value::Integer(0),
-        // CONVERT(expr, type) — parser routes CONVERT through FunctionCall
-        // (Token::Convert handler in parser.rs:4397). We can't reach the
-        // target type from eval_fn, so pass through the input value;
-        // downstream Integer() / Text() coercion rounds the result out
-        // (same path as CAST above, see also PR #4508 / #4517).
-        "CONVERT" => args.first().cloned().unwrap_or(Value::Null),
+        // V312-59-D / Issue #4572: CAST(expr AS TYPE) — proper MySQL
+        // type coercion. The parser discards the target type on the
+        // primary route (see crates/parser/src/parser.rs CAST arm),
+        // but the secondary route (where CAST is parsed as
+        // FunctionCall with the type identifier as a second
+        // Expression::Literal arg) lands here. We handle both:
+        //   args[0] = source value
+        //   args[1] = target type (Literal text like "SIGNED", "INTEGER",
+        //                       "TEXT", "CHAR", "DATE", "FLOAT",
+        //                       "DOUBLE", "DECIMAL", "BINARY")
+        // MySQL 2/124 compatibility: CAST('123' AS SIGNED) → Integer(123),
+        // CAST('abc' AS SIGNED) → Integer(0), CAST(1.5 AS SIGNED) → Integer(1).
+        // MySQL 8 CAST AS CHAR behaves as CAST AS TEXT in sqlrustgo.
+        "CAST" => {
+            let val = args.first().cloned().unwrap_or(Value::Null);
+            let target = args
+                .get(1)
+                .map(|v| v.to_sql_string().to_uppercase())
+                .unwrap_or_else(|| "TEXT".to_string());
+            cast_value(&val, &target)
+        }
+        // V312-59-D / Issue #4572: CONVERT(expr, type) — equivalent to
+        // CAST in MySQL. The parser's CONVERT path already routes
+        // TYPE as Expression::Literal (see parser.rs Token::Convert
+        // handler). Use the same cast_value helper as CAST.
+        "CONVERT" => {
+            let val = args.first().cloned().unwrap_or(Value::Null);
+            let target = args
+                .get(1)
+                .map(|v| v.to_sql_string().to_uppercase())
+                .unwrap_or_else(|| "TEXT".to_string());
+            cast_value(&val, &target)
+        }
         "LOWER" => args
             .first()
             .map(|v| Value::Text(v.to_sql_string().to_lowercase()))
@@ -1638,10 +1735,8 @@ pub fn eval_fn(name: &str, args: &[Value]) -> Value {
                 Value::Null
             }
         }
-        // TPC-H Sprint 1 fix (Q7/Q8/Q9): CAST(x AS TYPE) — parser routes CAST
-        // through FunctionCall. We can't reach the target type from here, so
-        // pass through the input. Downstream Integer() context coerces.
-        "CAST" => args.first().cloned().unwrap_or(Value::Null),
+        // (Old CAST passthrough removed by V312-59-D / Issue #4572; the new
+        // CAST arm above threads the target type through eval_fn.)
         // MySQL 5.7 function compatibility (Issue #2988 / MySQL-01)
         // IF(cond, then, else) — ternary; 2-arg form: IF(cond, NULL)
         "IF" | "IFF" => {
@@ -3251,8 +3346,12 @@ mod tests {
         assert_eq!(to_i64(&Value::Boolean(true)), 1);
         assert_eq!(to_i64(&Value::Boolean(false)), 0);
         assert_eq!(to_i64(&Value::Null), 0);
-        assert_eq!(to_i64(&Value::Float(3.14)), 0);
+        // V312-59-D / Issue #4572: Float now coerces via `as i64` (truncate
+        // toward zero, matches MySQL CAST AS SIGNED). Pre-#4572 returned 0.
+        assert_eq!(to_i64(&Value::Float(3.14)), 3);
+        // Non-numeric text returns 0 (MySQL legacy); numeric text parses.
         assert_eq!(to_i64(&Value::Text("hello".into())), 0);
+        assert_eq!(to_i64(&Value::Text("42".into())), 42);
         assert_eq!(to_i64(&Value::Blob(vec![])), 0);
     }
 
@@ -3579,8 +3678,15 @@ mod tests {
 
     #[test]
     fn test_arithmetic_text_type() {
-        assert_eq!(to_f64(&Value::Text("42".into())), 0.0);
-        assert_eq!(to_i64(&Value::Text("42".into())), 0);
+        // V312-59-D / Issue #4572: text→numeric coercion now parses
+        // numeric strings (MySQL 2/124). Pre-#4572 text returned 0/0.0.
+        assert_eq!(to_f64(&Value::Text("42".into())), 42.0);
+        assert_eq!(to_i64(&Value::Text("42".into())), 42);
+        // Non-numeric text still returns 0 (MySQL legacy semantics).
+        assert_eq!(to_f64(&Value::Text("abc".into())), 0.0);
+        assert_eq!(to_i64(&Value::Text("abc".into())), 0);
+        // Decimal text truncates toward zero in to_i64.
+        assert_eq!(to_i64(&Value::Text("3.7".into())), 3);
     }
 
     #[test]
