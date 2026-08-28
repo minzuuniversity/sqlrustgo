@@ -790,6 +790,37 @@ impl RowMutation {
     }
 }
 
+/// #4571: materialise a column DEFAULT literal (`"5"`, `"'abc'"`,
+/// `"NULL"`, `"TRUE"`, ...) into a concrete Value for backfilling
+/// existing rows when a column is added via ALTER TABLE.
+fn default_fill_value(default_value: &Option<String>) -> Value {
+    let Some(s) = default_value else {
+        return Value::Null;
+    };
+    let trimmed = s.trim();
+    if trimmed.eq_ignore_ascii_case("NULL") {
+        return Value::Null;
+    }
+    if trimmed.eq_ignore_ascii_case("TRUE") {
+        return Value::Boolean(true);
+    }
+    if trimmed.eq_ignore_ascii_case("FALSE") {
+        return Value::Boolean(false);
+    }
+    if let Ok(n) = trimmed.parse::<i64>() {
+        return Value::Integer(n);
+    }
+    if let Ok(f) = trimmed.parse::<f64>() {
+        return Value::Float(f);
+    }
+    let inner = if trimmed.len() >= 2 && trimmed.starts_with('\'') && trimmed.ends_with('\'') {
+        &trimmed[1..trimmed.len() - 1]
+    } else {
+        trimmed
+    };
+    Value::Text(inner.to_string())
+}
+
 /// Filter function type for row-level filtering
 pub type RowFilter = Box<dyn Fn(&Record) -> bool + Send + Sync>;
 
@@ -1777,11 +1808,20 @@ impl StorageEngine for MemoryStorage {
         Ok(())
     }
 
-    fn add_column(&mut self, table: &str, mut column: ColumnDefinition) -> SqlResult<()> {
+    fn add_column(&mut self, table: &str, column: ColumnDefinition) -> SqlResult<()> {
         // V313-followup-1 / Issue #4154: column name preserved as-is
         // (no lowercase) so case-exact ALTER COLUMN can disambiguate.
         if let Some(info) = self.table_infos.get_mut(&table.to_lowercase()) {
-            let _ = &mut column;
+            // #4571: backfill every existing row with the new column's
+            // DEFAULT (or NULL) so records stay aligned with the schema.
+            // Previously only the schema was extended — old rows stayed
+            // short and `SELECT *` returned short/missing cells.
+            let fill = default_fill_value(&column.default_value);
+            if let Some(records) = self.tables.get_mut(&table.to_lowercase()) {
+                for row in records.iter_mut() {
+                    row.push(fill.clone());
+                }
+            }
             info.columns.push(column);
             Ok(())
         } else {

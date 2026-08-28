@@ -439,7 +439,7 @@ fn filter_committed_entries(entries: &[WalEntry]) -> Vec<WalEntry> {
     for entry in entries {
         match entry.entry_type {
             WalEntryType::Begin => {
-                tx_dmls.entry(entry.tx_id).or_insert_with(Vec::new);
+                tx_dmls.entry(entry.tx_id).or_default();
             }
             WalEntryType::Commit => {
                 if let Some(buf) = tx_dmls.remove(&entry.tx_id) {
