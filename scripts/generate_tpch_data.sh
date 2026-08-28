@@ -158,10 +158,13 @@ mkdir -p "$OUTPUT_DIR"
 case "$BACKEND" in
     tpch_data_gen)
         echo "[1/3] Building tpch_data_gen (release)..."
-        cargo build --release --example tpch_data_gen
+        # Issue #4548: -p sqlrustgo-bench is required because
+        # tpch_data_gen lives in crates/bench/ (package
+        # sqlrustgo-bench), not the workspace default package.
+        cargo build --release -p sqlrustgo-bench --example tpch_data_gen
 
         echo "[2/3] Running tpch_data_gen --sf $SF --output $OUTPUT_DIR"
-        cargo run --release --example tpch_data_gen -- \
+        cargo run --release -p sqlrustgo-bench --example tpch_data_gen -- \
             --sf "$SF" \
             --output "$OUTPUT_DIR"
         ;;
