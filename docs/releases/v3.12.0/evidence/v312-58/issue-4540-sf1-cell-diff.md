@@ -213,18 +213,17 @@ the automation harness.
 
 ## Open follow-up issues
 
-The two bugs surfaced by this dev-machine attempt should be tracked
-as separate issues:
+The two bugs surfaced by this dev-machine attempt have been filed
+as P0 follow-ups:
 
-1. **scripts/generate_tpch_data.sh** — Missing `-p sqlrustgo-bench`
-   flag. Without it, the script cannot invoke the in-process
-   `tpch_data_gen` example.
-2. **scripts/tpch_sf1_baseline.sh** — Row-count validator has zero
-   tolerance. Should allow a small tolerance (e.g., ±0.05%) to
-   accommodate the in-process generator's rounding behavior.
+1. **Issue #4548** — `scripts/generate_tpch_data.sh` missing
+   `-p sqlrustgo-bench` flag.
+2. **Issue #4549** — `scripts/tpch_sf1_baseline.sh` row-count
+   validator has zero tolerance.
 
-These should be filed under the v3.13 backlog or addressed before
-re-running this verification.
+Both are P0 (Critical Bug) per RC-stage allowance, blocking GA-5
+promotion_to_GA_requires evidence capture. Until resolved, the
+dev-machine path remains BLOCKED.
 
 ## Provenance (ADR-014 5 evidence fields)
 

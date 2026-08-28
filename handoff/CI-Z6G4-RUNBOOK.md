@@ -192,6 +192,28 @@ manual dispatch:
    `tpch_data_gen`).
 5. Monitor the run in the Actions tab.
 
+## Open follow-up issues
+
+The two script bugs surfaced by the dev-machine attempt
+(`docs/releases/v3.12.0/evidence/v312-58/issue-4540-sf1-cell-diff.md`)
+have been filed as P0 follow-ups:
+
+1. **Issue #4548** — `scripts/generate_tpch_data.sh` is missing
+   `-p sqlrustgo-bench` flag. Without it, the script cannot invoke
+   the in-process `tpch_data_gen` example. P0 (blocks GA-5
+   promotion_to_GA_requires evidence capture).
+2. **Issue #4549** — `scripts/tpch_sf1_baseline.sh` row-count
+   validator has zero tolerance. Should allow a small tolerance
+   (e.g., ±0.05%) to accommodate the in-process generator's rounding
+   behavior. P0 (blocks GA-5 promotion_to_GA_requires evidence
+   capture).
+
+Until #4548 and #4549 are resolved, the dev-machine path in §1
+above remains BLOCKED for any operator using the in-process backend.
+The CI/Z6G4 path here uses `dbgen` directly (via
+`/home/openclaw/...`) and is unaffected, but the same `tpch_data_gen`
+backend is also blocked.
+
 ## Anti-fabrication checklist (per ADR-001)
 
 Before posting the cell-diff:
@@ -221,6 +243,8 @@ Before posting the cell-diff:
 - Issue #4432 (Q17 perf acceptance boundary)
 - Issue #4502 (GA-5 oracle match)
 - Issue #4497 (V312-59-D umbrella)
+- Issue #4548 (P0 follow-up: generate_tpch_data.sh missing `-p` flag)
+- Issue #4549 (P0 follow-up: tpch_sf1_baseline.sh zero tolerance)
 - `openspec/changes/issue-4540-tpch-q17-sf1-cell-diff/proposal.md`
 - `openspec/changes/issue-4540-tpch-q17-sf1-cell-diff/design.md`
 - `openspec/changes/issue-4540-tpch-q17-sf1-cell-diff/specs/tpch-sf1-baseline/spec.md`
