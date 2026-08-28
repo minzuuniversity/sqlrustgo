@@ -227,8 +227,21 @@ pub fn apply_odku(
         .collect();
 
     // Use storage.update() with PK filter to update only the matching row
-    if !pk_values.is_empty() && !update.is_empty() {
-        storage.update(table_name, &pk_values, &update)?;
+    if !pk_values.is_empty() {
+        if !update.is_empty() {
+            storage.update(table_name, &pk_values, &update)?;
+        }
+    } else if !update.is_empty() {
+        // #4569: table has no PRIMARY KEY — the conflict was on a UNIQUE
+        // constraint. Locate the conflicting row by full-row equality
+        // with the snapshot taken before the update (an exact match on
+        // all columns identifies exactly one row among the scanned
+        // duplicates) and update it in place.
+        let snapshot: Vec<Value> = existing_row.to_vec();
+        let filter: sqlrustgo_storage::RowFilter =
+            Box::new(move |r: &sqlrustgo_storage::Record| *r == snapshot);
+        let mutation = sqlrustgo_storage::RowMutation::new(update.clone(), 0);
+        storage.update_if(table_name, &filter, &mutation)?;
     }
 
     Ok(())
@@ -256,25 +269,115 @@ pub fn apply_set_clauses(
         .collect()
 }
 
-/// Check if a new record matches an existing row based on primary key columns.
-/// (Unique-index matching was simplified to PK-only in the legacy code path.)
+/// Check if a new record matches an existing row based on primary key columns
+/// or any declared UNIQUE constraint (#4569).
+/// A conflict on *any* unique key (PK or UNIQUE) counts, matching MySQL
+/// semantics for duplicate detection / ON DUPLICATE KEY UPDATE.
+/// NULL values in UNIQUE columns never collide (SQL standard allows
+/// multiple NULLs in a UNIQUE column).
 pub fn record_matches_unique_key(
     existing: &[Value],
     new: &[Value],
     table_info: &TableInfo,
 ) -> bool {
-    for (col_idx, col) in table_info.columns.iter().enumerate() {
-        if col.primary_key {
-            if col_idx < existing.len() && col_idx < new.len() {
-                if existing[col_idx] != new[col_idx] {
-                    return false;
-                }
-            } else {
-                return false;
-            }
+    find_conflicting_key(existing, new, table_info).is_some()
+}
+
+/// #4569: identify which unique key (if any) the two rows conflict on.
+/// Returns `"PRIMARY"` for a primary-key collision, otherwise the UNIQUE
+/// constraint's declared name (falling back to `uk_<col1>_<col2>`).
+pub fn find_conflicting_key(
+    existing: &[Value],
+    new: &[Value],
+    table_info: &TableInfo,
+) -> Option<String> {
+    let cells_equal = |i: usize| {
+        existing
+            .get(i)
+            .zip(new.get(i))
+            .map(|(a, b)| a == b)
+            .unwrap_or(false)
+    };
+
+    // Primary key columns (by definition non-NULL after NOT NULL checks).
+    let pk_idx: Vec<usize> = table_info
+        .columns
+        .iter()
+        .enumerate()
+        .filter(|(_, c)| c.primary_key)
+        .map(|(i, _)| i)
+        .collect();
+    if !pk_idx.is_empty() && pk_idx.iter().all(|&i| cells_equal(i)) {
+        return Some("PRIMARY".to_string());
+    }
+
+    for uc in &table_info.unique_constraints {
+        let idxs: Vec<usize> = uc
+            .columns
+            .iter()
+            .filter_map(|c| {
+                table_info
+                    .columns
+                    .iter()
+                    .position(|col| col.name.eq_ignore_ascii_case(c))
+            })
+            .collect();
+        if idxs.len() != uc.columns.len() || idxs.is_empty() {
+            continue;
+        }
+        // Skip when the new row has NULL in any unique column — multiple
+        // NULLs are permitted under a UNIQUE constraint.
+        if new.get(idxs[0]).is_none_or(|v| matches!(v, Value::Null)) {
+            continue;
+        }
+        if idxs.iter().all(|&i| cells_equal(i)) {
+            return Some(
+                uc.name
+                    .clone()
+                    .unwrap_or_else(|| format!("uk_{}", uc.columns.join("_"))),
+            );
         }
     }
-    true
+    None
+}
+
+/// #4569: first column value of the named key for the error message
+/// (`Duplicate entry '<v>' for key '<key>'`).
+pub fn key_entry_repr(table_info: &TableInfo, row: &[Value], key_name: &str) -> String {
+    let cols: Vec<usize> = if key_name == "PRIMARY" {
+        table_info
+            .columns
+            .iter()
+            .enumerate()
+            .filter(|(_, c)| c.primary_key)
+            .map(|(i, _)| i)
+            .collect()
+    } else {
+        table_info
+            .unique_constraints
+            .iter()
+            .find(|uc| {
+                uc.name.as_deref() == Some(key_name)
+                    || format!("uk_{}", uc.columns.join("_")) == key_name
+            })
+            .map(|uc| {
+                uc.columns
+                    .iter()
+                    .filter_map(|c| {
+                        table_info
+                            .columns
+                            .iter()
+                            .position(|col| col.name.eq_ignore_ascii_case(c))
+                    })
+                    .collect()
+            })
+            .unwrap_or_default()
+    };
+    cols.iter()
+        .filter_map(|&i| row.get(i))
+        .map(|v| v.to_sql_string())
+        .next()
+        .unwrap_or_else(|| "?".to_string())
 }
 
 /// Run BEFORE UPDATE triggers; return rows transformed by triggers
