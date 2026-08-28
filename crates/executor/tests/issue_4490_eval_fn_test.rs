@@ -51,7 +51,11 @@ fn curdate_returns_date_text() {
     let r = e.execute("SELECT CURDATE()").unwrap();
     match first_value(&r) {
         Value::Text(s) => {
-            assert_eq!(s.len(), 10, "CURDATE() should produce YYYY-MM-DD, got {s:?}");
+            assert_eq!(
+                s.len(),
+                10,
+                "CURDATE() should produce YYYY-MM-DD, got {s:?}"
+            );
             let bytes = s.as_bytes();
             assert_eq!(bytes[4], b'-');
             assert_eq!(bytes[7], b'-');
@@ -81,7 +85,10 @@ fn round_two_decimals() {
     let r = e.execute("SELECT ROUND(3.14159, 2)").unwrap();
     match first_value(&r) {
         Value::Float(f) => {
-            assert!((f - 3.14).abs() < 1e-9, "ROUND(3.14159, 2) should be 3.14, got {f}")
+            assert!(
+                (f - 3.14).abs() < 1e-9,
+                "ROUND(3.14159, 2) should be 3.14, got {f}"
+            )
         }
         other => panic!("ROUND should be Float, got {other:?}"),
     }

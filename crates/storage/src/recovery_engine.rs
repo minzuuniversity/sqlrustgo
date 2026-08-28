@@ -1195,10 +1195,42 @@ mod tests {
         // HashMap tracks each tx independently.
         use crate::wal::WalEntryType;
         let entries = vec![
-            WalEntry { tx_id: 1, entry_type: WalEntryType::Begin,   table_id: 0, key: None, data: None, lsn: 1, timestamp: 0 },
-            WalEntry { tx_id: 2, entry_type: WalEntryType::Begin,   table_id: 0, key: None, data: None, lsn: 2, timestamp: 0 },
-            WalEntry { tx_id: 1, entry_type: WalEntryType::Commit,  table_id: 0, key: None, data: None, lsn: 3, timestamp: 0 },
-            WalEntry { tx_id: 2, entry_type: WalEntryType::Commit,  table_id: 0, key: None, data: None, lsn: 4, timestamp: 0 },
+            WalEntry {
+                tx_id: 1,
+                entry_type: WalEntryType::Begin,
+                table_id: 0,
+                key: None,
+                data: None,
+                lsn: 1,
+                timestamp: 0,
+            },
+            WalEntry {
+                tx_id: 2,
+                entry_type: WalEntryType::Begin,
+                table_id: 0,
+                key: None,
+                data: None,
+                lsn: 2,
+                timestamp: 0,
+            },
+            WalEntry {
+                tx_id: 1,
+                entry_type: WalEntryType::Commit,
+                table_id: 0,
+                key: None,
+                data: None,
+                lsn: 3,
+                timestamp: 0,
+            },
+            WalEntry {
+                tx_id: 2,
+                entry_type: WalEntryType::Commit,
+                table_id: 0,
+                key: None,
+                data: None,
+                lsn: 4,
+                timestamp: 0,
+            },
         ];
         let (committed, rolled_back, incomplete) = count_status(&entries);
         assert_eq!(committed, 2, "both txns must be counted as committed");
@@ -1212,13 +1244,53 @@ mod tests {
         // Insert to tx=1 when tx=1's Commit flushed the buffer early.
         use crate::wal::WalEntryType;
         let entries = vec![
-            WalEntry { tx_id: 1, entry_type: WalEntryType::Begin,   table_id: 0, key: None, data: None, lsn: 1, timestamp: 0 },
-            WalEntry { tx_id: 2, entry_type: WalEntryType::Begin,   table_id: 0, key: None, data: None, lsn: 2, timestamp: 0 },
+            WalEntry {
+                tx_id: 1,
+                entry_type: WalEntryType::Begin,
+                table_id: 0,
+                key: None,
+                data: None,
+                lsn: 1,
+                timestamp: 0,
+            },
+            WalEntry {
+                tx_id: 2,
+                entry_type: WalEntryType::Begin,
+                table_id: 0,
+                key: None,
+                data: None,
+                lsn: 2,
+                timestamp: 0,
+            },
             // Insert for tx=2 (autocommit-style DML — no prior tx=2 Insert;
             // tx=2's Begin allocated a buffer so the Insert lands in tx=2's bucket).
-            WalEntry { tx_id: 2, entry_type: WalEntryType::Insert,  table_id: 0, key: Some(vec![2u8]), data: None, lsn: 3, timestamp: 0 },
-            WalEntry { tx_id: 1, entry_type: WalEntryType::Commit,  table_id: 0, key: None, data: None, lsn: 4, timestamp: 0 },
-            WalEntry { tx_id: 2, entry_type: WalEntryType::Commit,  table_id: 0, key: None, data: None, lsn: 5, timestamp: 0 },
+            WalEntry {
+                tx_id: 2,
+                entry_type: WalEntryType::Insert,
+                table_id: 0,
+                key: Some(vec![2u8]),
+                data: None,
+                lsn: 3,
+                timestamp: 0,
+            },
+            WalEntry {
+                tx_id: 1,
+                entry_type: WalEntryType::Commit,
+                table_id: 0,
+                key: None,
+                data: None,
+                lsn: 4,
+                timestamp: 0,
+            },
+            WalEntry {
+                tx_id: 2,
+                entry_type: WalEntryType::Commit,
+                table_id: 0,
+                key: None,
+                data: None,
+                lsn: 5,
+                timestamp: 0,
+            },
         ];
         let out = filter_committed_entries(&entries);
         assert_eq!(
@@ -1236,11 +1308,51 @@ mod tests {
         // 3 concurrent txns with mixed Commit/Rollback interleaving.
         use crate::wal::WalEntryType;
         let entries = vec![
-            WalEntry { tx_id: 1, entry_type: WalEntryType::Begin,    table_id: 0, key: None, data: None, lsn: 1, timestamp: 0 },
-            WalEntry { tx_id: 2, entry_type: WalEntryType::Begin,    table_id: 0, key: None, data: None, lsn: 2, timestamp: 0 },
-            WalEntry { tx_id: 3, entry_type: WalEntryType::Begin,    table_id: 0, key: None, data: None, lsn: 3, timestamp: 0 },
-            WalEntry { tx_id: 2, entry_type: WalEntryType::Commit,   table_id: 0, key: None, data: None, lsn: 4, timestamp: 0 },
-            WalEntry { tx_id: 1, entry_type: WalEntryType::Rollback, table_id: 0, key: None, data: None, lsn: 5, timestamp: 0 },
+            WalEntry {
+                tx_id: 1,
+                entry_type: WalEntryType::Begin,
+                table_id: 0,
+                key: None,
+                data: None,
+                lsn: 1,
+                timestamp: 0,
+            },
+            WalEntry {
+                tx_id: 2,
+                entry_type: WalEntryType::Begin,
+                table_id: 0,
+                key: None,
+                data: None,
+                lsn: 2,
+                timestamp: 0,
+            },
+            WalEntry {
+                tx_id: 3,
+                entry_type: WalEntryType::Begin,
+                table_id: 0,
+                key: None,
+                data: None,
+                lsn: 3,
+                timestamp: 0,
+            },
+            WalEntry {
+                tx_id: 2,
+                entry_type: WalEntryType::Commit,
+                table_id: 0,
+                key: None,
+                data: None,
+                lsn: 4,
+                timestamp: 0,
+            },
+            WalEntry {
+                tx_id: 1,
+                entry_type: WalEntryType::Rollback,
+                table_id: 0,
+                key: None,
+                data: None,
+                lsn: 5,
+                timestamp: 0,
+            },
             // tx=3 still open at WAL tail → counts as incomplete.
         ];
         let (committed, rolled_back, incomplete) = count_status(&entries);

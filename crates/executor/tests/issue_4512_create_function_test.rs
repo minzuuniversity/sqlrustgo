@@ -46,7 +46,11 @@ fn create_function_arithmetic_body() {
         .unwrap();
     let r = e.execute("SELECT double(5)").unwrap();
     assert_eq!(r.rows.len(), 1, "got {r:?}");
-    assert!(matches!(&r.rows[0][0], Value::Integer(10)), "got {:?}", r.rows[0]);
+    assert!(
+        matches!(&r.rows[0][0], Value::Integer(10)),
+        "got {:?}",
+        r.rows[0]
+    );
 }
 
 #[test]
@@ -55,12 +59,14 @@ fn create_function_two_param_body() {
     // We avoid the bare name `add` because ADD is a reserved token in
     // the lexer (used for date arithmetic).
     let mut e = engine();
-    e.execute(
-        "CREATE FUNCTION my_add(x INTEGER, y INTEGER) RETURNS INTEGER RETURN x + y",
-    )
-    .unwrap();
+    e.execute("CREATE FUNCTION my_add(x INTEGER, y INTEGER) RETURNS INTEGER RETURN x + y")
+        .unwrap();
     let r = e.execute("SELECT my_add(3, 4)").unwrap();
-    assert!(matches!(&r.rows[0][0], Value::Integer(7)), "got {:?}", r.rows[0]);
+    assert!(
+        matches!(&r.rows[0][0], Value::Integer(7)),
+        "got {:?}",
+        r.rows[0]
+    );
 }
 
 #[test]
@@ -93,7 +99,11 @@ fn create_function_uses_builtin_inside_body() {
     e.execute("CREATE FUNCTION safe_abs(x INTEGER) RETURNS INTEGER RETURN ABS(x)")
         .unwrap();
     let r = e.execute("SELECT safe_abs(-7)").unwrap();
-    assert!(matches!(&r.rows[0][0], Value::Integer(7)), "got {:?}", r.rows[0]);
+    assert!(
+        matches!(&r.rows[0][0], Value::Integer(7)),
+        "got {:?}",
+        r.rows[0]
+    );
 }
 
 #[test]
@@ -120,7 +130,11 @@ fn drop_function_removes_registration() {
     assert!(matches!(&r1.rows[0][0], Value::Integer(42)));
     e.execute("DROP FUNCTION tmp").unwrap();
     let r2 = e.execute("SELECT tmp(41)").unwrap();
-    assert!(matches!(&r2.rows[0][0], Value::Null), "got {:?}", r2.rows[0]);
+    assert!(
+        matches!(&r2.rows[0][0], Value::Null),
+        "got {:?}",
+        r2.rows[0]
+    );
 }
 
 #[test]
@@ -182,10 +196,8 @@ fn create_function_deterministic_clause_is_accepted() {
     // The DETERMINISTIC clause must parse without error; v3.12 does not
     // yet enforce determinism but the keyword must be accepted.
     let mut e = engine();
-    e.execute(
-        "CREATE FUNCTION dbl(x INTEGER) RETURNS INTEGER DETERMINISTIC RETURN x * 2",
-    )
-    .unwrap();
+    e.execute("CREATE FUNCTION dbl(x INTEGER) RETURNS INTEGER DETERMINISTIC RETURN x * 2")
+        .unwrap();
     let r = e.execute("SELECT dbl(6)").unwrap();
     assert!(matches!(&r.rows[0][0], Value::Integer(12)));
 }
@@ -196,11 +208,14 @@ fn create_function_used_inside_table_select() {
     // from a real table — exercises the UnifiedExpr evaluation path with
     // both a column ref and a FunctionCall.
     let mut e = engine();
-    e.execute("CREATE TABLE t(id INTEGER, qty INTEGER)").unwrap();
+    e.execute("CREATE TABLE t(id INTEGER, qty INTEGER)")
+        .unwrap();
     e.execute("INSERT INTO t VALUES (1, 3), (2, 5)").unwrap();
     e.execute("CREATE FUNCTION triple(x INTEGER) RETURNS INTEGER RETURN x * 3")
         .unwrap();
-    let r = e.execute("SELECT id, triple(qty) FROM t ORDER BY id").unwrap();
+    let r = e
+        .execute("SELECT id, triple(qty) FROM t ORDER BY id")
+        .unwrap();
     assert_eq!(r.rows.len(), 2);
     assert!(matches!(&r.rows[0][1], Value::Integer(9)));
     assert!(matches!(&r.rows[1][1], Value::Integer(15)));
