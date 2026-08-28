@@ -4,7 +4,7 @@
 > **signed_off_by:** v3.12.0 GA Release Engineering (OpenClaw)
 > **signed_off_at:** 2026-08-28 (V312-59-D v2 progress sync — 7/8 GA sub-issues closed; GA-2 待跑)
 > **cycle:** V312-59-D v2 (re-activated 2026-08-26 from #4387)
-> **head_at_sync:** `613cb10649` (develop/v3.12.0, post PR #4551 merge)
+> **head_at_sync:** `0beb0107ee` (develop/v3.12.0, post PR #4559 merge — #4558 engine bulk-insert NOT NULL misidentification fix verified; new GA-blocking bug #4560 discovered)
 
 This document is the overall verdict aggregator for v3.12.0 GA promotion.
 It records the 8 `promotion_to_GA_requires` items (STAGE.yaml lines 107-116),
@@ -24,7 +24,7 @@ emits this report with per-item PASS/FAIL/DRIFT verdict + evidence pointer.
 | # | Item (STAGE.yaml) | Gate script | Evidence file | Status (cycle v2, 2026-08-28) | Closing PR | Merge commit |
 |---|---|---|---|---|---|---|
 | GA-1 | All Beta + RC gates remain 0-WARN | `scripts/gate/check_ga_v3.12.0.sh` (aggregator) | `evidence/v312-59/ga_gate_report.json` | PASS (script syntax OK) — 8/8 stages green per fast-path 2026-08-28 | (aggregator itself; re-runs each cycle) | `43b069ef42` (PR #4544) |
-| **GA-2** | **168h mixed SOAK (SQL + GMP + retrieval + audit + backup/restore)** | `scripts/gate/check_v312_ga_soak.sh` (NEW, **NOT YET IMPLEMENTED**) | `evidence/v312-59/soak/` | **🔴 PENDING — CI/Docker (Z6G4 container) required; cannot run on macOS aarch64 dev box. 1h local smoke scripted but not yet executed (issue #4499)** | n/a (open issue #4499) | n/a |
+| **GA-2** | **168h mixed SOAK (SQL + GMP + retrieval + audit + backup/restore)** | `scripts/gate/check_v312_ga_soak.sh` (NEW, **NOT YET IMPLEMENTED**) | `evidence/v312-59/soak/` + `evidence/issue-4560/POST_4558_SOAK_REPORT.md` | **🔴 PENDING — CI/Docker required. #4558 fix verified via 1h local smoke (sysbench `prepare` 10000-row bulk INSERT now PASS); new GA-blocking bug #4560 discovered (server command dispatch doesn't handle COM_STMT_PREPARE / COM_STMT_EXECUTE / COM_STMT_CLOSE / COM_STMT_RESET → sysbench `run` 8 workers FATAL "failed to initialize within 30s"). See `evidence/issue-4560/POST_4558_SOAK_REPORT.md` §3-5 for diagnosis (single + 8-concurrent `SELECT 1` both succeed → root cause narrowed to MySQL protocol cmd 0x16/0x17/0x18/0x19 not dispatched). Issues: #4499 (umbrella), #4560 (next blocker).** | n/a (open issue #4499 + #4560) | n/a |
 | GA-3 | Security scan (cargo audit + license + secrets) | `scripts/gate/check_security_scan_v312.sh` | `evidence/v312-59/GA3_SECURITY_SCAN_REPORT.md` | **✅ PASS (closed 2026-08-27)** — 4/4 sub-checks (SC-1..SC-4); SC-1 cargo-audit pre-installed in CI via PR #4546 | PR #4531 | `acff97d50d` |
 | GA-4 | SQLLogicTest selected targets PASS or every exclusion issue-linked | `scripts/gate/check_sqllogictest_selected_v312.sh` | `evidence/v312-59/GA4_SQLLOGICTEST_SELECTED_REPORT.md` | **✅ PASS (closed 2026-08-27)** — 25/25 + 16 linked exclusions | PR #4535 | `5e4d91a233` |
 | GA-5 | TPC-H SF=1 zero-row gap (22/22 oracle match) | `scripts/gate/check_tpch_sf1.sh` + `run_q17_sf1_celldiff_v312.sh` | `evidence/v312-58/Q17_SF1_CELLDIFF.json` + `evidence/issue-4540/V312-58-4540-Q17-SF1-CELLDIFF-PASS.md` | **✅ PASS (closed 2026-08-28)** — Q17 SF=1 elapsed **61.6s** ≤ 300s budget (4.86× headroom); row_count=1; cell value 249963.75857142854 ≈ oracle 249963.75857142857 (Δ 2.91e-11 ≪ FLOAT_TOL 1e-3) | PR #4541 (GA reclassification) + PR #4550 (cell-diff verify) | `e169f9bfd1` + `640d672bf8` |
@@ -76,13 +76,13 @@ without blocking GA promotion. The scaffold is:
 
 Gate script: `scripts/gate/check_v312_ga_soak.sh` (NEW — scaffolds GA-2).
 
-**V312-59-D v2 status (2026-08-28): GA-2 PENDING — CI/Docker required.**
-Issue [#4499](http://192.168.0.252:3000/openclaw/sqlrustgo/issues/4499) remains open.
-The 168h SOAK harness scaffold is in place, but the full run requires the
-Z6G4 Docker container (Alpine) — the macOS aarch64 dev box is not suitable
-for 168h production runs (issue body explicitly states: "本机 smoke: 1h SOAK
-验证基础设施 / 168h full: CI/Docker"). A 1h local smoke test is the next
-locally-executable step before CI handoff.
+**V312-59-D v2 status (2026-08-28): GA-2 PENDING — CI/Docker required, with two GA-blocking issues now resolved or in flight.**
+
+- **Issue [#4499](http://192.168.0.252:3000/openclaw/sqlrustgo/issues/4499)** (umbrella): 1h local smoke re-run on 2026-08-28T16:25 against `0beb0107ee` (post-#4559 merge) — sysbench `prepare` PASS (10000-row bulk INSERT into `sbtest1(k,c,pad)` no longer triggers NOT NULL misidentification, confirming PR #4559 / #4558 fix). sysbench `run` 8 workers FATAL "failed to initialize within 30s". Full report: `evidence/issue-4560/POST_4558_SOAK_REPORT.md`.
+
+- **Issue [#4560](http://192.168.0.252:3000/openclaw/sqlrustgo/issues/4560)** (NEW GA-blocking, discovered during post-#4558 1h smoke): server command dispatch does not handle MySQL protocol COM_STMT_PREPARE (cmd 0x16) / COM_STMT_EXECUTE (0x17) / COM_STMT_CLOSE (0x18) / COM_STMT_RESET (0x19). Diagnosis: single-connection + 8-concurrent `SELECT 1` both succeed; 8× `Starting command loop, seq=4+` then complete silence in server.log → server silently drops the first command byte after auth (expected 0x16). Minimal viable fix: graceful error reply (0x07 "Commands out of sync") to trigger sysbench fallback to plain text protocol. Full fix: actual prepared statement handling. Labels: `blocked-ga`, `release-blocker`, `priority/p0`, `mysql-server`, `mysql-compatibility`.
+
+The 168h SOAK harness scaffold is in place, but the full run requires the Z6G4 Docker container (Alpine) — the macOS aarch64 dev box is not suitable for 168h production runs (issue body explicitly states: "本机 smoke: 1h SOAK 验证基础设施 / 168h full: CI/Docker"). **Before CI handoff, both #4558 (✅ merged as PR #4559) AND #4560 (pending) must land and the 1h local smoke must produce real metrics.csv with sustained QPS samples**.
 
 ### GA-4: SQLLogicTest selected targets >= 100
 
