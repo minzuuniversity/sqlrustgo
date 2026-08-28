@@ -1,0 +1,69 @@
+# Dockerfile.soak — v3.12.0 GA-2 168h SOAK runner (Z6G4 Docker container)
+#
+# Builds an Alpine-based container with:
+#   - sqlrustgo-mysql-server release binary
+#   - sysbench 1.0.20 (with LuaJIT)
+#   - bash + coreutils for run_soak_loop.sh
+#   - prometheus metrics exposed on :9300
+#
+# Usage (Z6G4):
+#   docker build -f scripts/soak/Dockerfile.soak -t sqlrustgo-soak:ga2 .
+#   docker run --rm --name sqlrustgo-soak \
+#     -p 3396:3396 -p 9300:9300 \
+#     -v /tmp/sqlrustgo-soak-data:/data \
+#     -v /tmp/sqlrustgo-soak-results:/results \
+#     sqlrustgo-soak:ga2
+#
+# SOAK_HOURS and SOAK_SB_THR are passed via -e.
+
+FROM rust:1.89-alpine AS builder
+WORKDIR /build
+
+# Install build deps
+RUN apk add --no-cache musl-dev pkgconfig openssl-dev linux-headers bash
+
+# Cache deps
+COPY Cargo.toml Cargo.lock ./
+COPY crates ./crates
+RUN mkdir -p target && cargo fetch --locked 2>/dev/null || cargo fetch
+
+# Build release binary (no debug info, stripped, LTO off for build speed)
+RUN cargo build --release -p sqlrustgo-mysql-server && \
+    strip target/release/sqlrustgo-mysql-server
+
+# ── Runtime image ──
+FROM alpine:3.19
+
+RUN apk add --no-cache \
+    bash coreutils util-linux procps \
+    sysbench lua5.1 lua-jit \
+    mysql-client \
+    openssl ca-certificates
+
+# Copy the binary
+COPY --from=builder /build/target/release/sqlrustgo-mysql-server /usr/local/bin/
+
+# Copy the SOAK harness
+COPY scripts/soak/run_soak_loop.sh /usr/local/bin/run_soak_loop.sh
+RUN chmod +x /usr/local/bin/run_soak_loop.sh
+
+# Working directory for results
+WORKDIR /results
+VOLUME ["/data", "/results"]
+
+# Defaults — override with -e
+ENV SOAK_HOURS=168 \
+    SOAK_PORT=3396 \
+    SOAK_TABLE_SIZE=10000 \
+    SOAK_SERVER_THR=16 \
+    SOAK_SB_THR=8 \
+    SOAK_RESULTS_DIR=/results
+
+# Expose wire-protocol port + Prometheus metrics
+EXPOSE 3396 9300
+
+# Healthcheck
+HEALTHCHECK --interval=30s --timeout=5s --retries=3 \
+    CMD mysqladmin ping -h 127.0.0.1 -P 3396 -uroot --silent || exit 1
+
+ENTRYPOINT ["/usr/local/bin/run_soak_loop.sh"]
