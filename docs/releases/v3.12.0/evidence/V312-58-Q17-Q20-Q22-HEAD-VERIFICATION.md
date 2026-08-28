@@ -16,7 +16,7 @@
 
 | Q | 状态 | Query elapsed | Total wall | Budget | row_count | Oracle | 备注 |
 |---|------|--------------|------------|--------|-----------|--------|------|
-| Q17 | ❌ TIMEOUT | >60s (query exec) | — | 1800s | null | 1 | Data load OK; Q17 exec TIMEOUT per q17_sf1_diag |
+| Q17 | ✅ PASS | 61.6s | 92.99s | 300s | 1 | 1 | Sprint 4 + Phase 1+2+3 decorrelation effective; cell-diff 249963.75857142854 ≈ oracle 249963.75857142857 (Δ 2.91e-11 ≪ FLOAT_TOL 1e-3). See `evidence/issue-4540/V312-58-4540-Q17-SF1-CELLDIFF-PASS.md`. |
 | Q20 | ❌ TIMEOUT | (未实测) | — | 1800s | null | 172 | Mini subsets pass per upstream |
 | Q22 | ✅ PASS | 1.057s | 173.55s | 300s | 7 | 7 | SF=1 1.5M orders |
 
@@ -29,22 +29,18 @@
 cargo test --release --test q17_sf1_diag --all-features -- --ignored --nocapture
 ```
 
-**结果**: part 表加载 3.5s，lineitem 表（6M 行，760MB）加载 <60s。Q17 查询执行超过 test framework 60s 限制。
+**结果 (2026-08-25 旧)** ❌: part 表加载 3.5s，lineitem 表（6M 行，760MB）加载 <60s。Q17 查询执行超过 test framework 60s 限制。
 
-**测试命令** (standalone，无 test framework 限制):
-```bash
-cargo run --release --example q17_sf1_bench 2>/dev/null
-# 或直接用 release build 手动执行
-```
+**结果 (2026-08-28 新) ✅**: Q17 elapsed **61.65s** ≤ 300s; row_count=1; value=249963.75857142854 (oracle 249963.75857142857, Δ 2.91e-11 ≪ FLOAT_TOL 1e-3). 完整 cell-diff 报告见 `evidence/issue-4540/V312-58-4540-Q17-SF1-CELLDIFF-PASS.md`. 修复路径: Sprint 4 Phase 1 (PR #4449 `ScalarAggInWhere` pattern detection) + Phase 2 (PR #4450 `try_scalar_agg_index_lookup`) + Phase 3 (commit 3b6634a7d0 HashSemiJoin) + Sprint 4 Step 1.5/1.6 (PR #4453 `residual_has_subquery` gate).
 
 **根因分析**（from `evidence/v312-58/issue-4379-sprint3-partial-closure.md`）:
 - `try_comma_join_hash_chain` 在遇到相关子查询时 bail
 - cartesian path materialization，RSS ~17 MB/s 线性增长
 - 100K subset ✅（0.65s, oracle MATCH）
 - 1M subset ❌（RSS 单调增长，60s 后 ~1GB，OOM killed）
-- SF=1 全量 ❌（TIMEOUT within 60s of query execution）
+- SF=1 全量 ❌ → ✅（TIMEOUT within 60s → 61.6s PASS post Sprint 4）
 
-**子 issue**: #4432 (OPEN, v313-deferred)
+**子 issue**: #4432 (acceptance criterion #1 second half now met; reclassify from `v313-deferred` → `v312-shipped`)
 
 ---
 
