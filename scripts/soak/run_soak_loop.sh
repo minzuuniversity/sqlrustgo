@@ -196,21 +196,21 @@ start_server() {
 
     log "启动服务器 (port=${SOAK_PORT})"
     log "  data-dir: ${CYCLE_DATA}"
-    log "  log-dir:  ${LOG_DIR}"
+    log "  log-dir:  ${LOG_DIR} (server stdout → ${SERVER_LOG}, internal logs go through tracing-subscriber)"
     log "  nice: -n 10"
+    log "  [v312-59-d / #4499 patch] dropped --log-dir / --tls, --monitor-port → --metrics-port, added --wal-sync batch:10000"
 
     nice -n 10 \
         "${BINARY}" serve \
         --host 127.0.0.1 \
         --port "${SOAK_PORT}" \
         --data-dir "${CYCLE_DATA}" \
-        --log-dir "${LOG_DIR}" \
-        --tls off \
         --server-threads "${SOAK_SERVER_THR}" \
         --max-connections 200 \
-        --monitor-port 9300 \
+        --metrics-port 9300 \
         --log-level info \
         --storage file \
+        --wal-sync batch:10000 \
         > "${SERVER_LOG}" 2>&1 &
     local pid=$!
     echo "${pid}" > "${RUN_DIR}/server.pid"
