@@ -17,8 +17,8 @@
 
 use anyhow::{bail, Result};
 use sqlrustgo_tools::physical_backup::{
-    create_physical_backup, list_physical_backups, prune_physical_backups,
-    restore_physical_backup, verify_physical_backup, PhysicalBackupCommand,
+    create_physical_backup, list_physical_backups, prune_physical_backups, restore_physical_backup,
+    verify_physical_backup, PhysicalBackupCommand,
 };
 use structopt::StructOpt;
 
@@ -33,8 +33,9 @@ fn main() -> Result<()> {
             parent,
         } => create_physical_backup(&dir, &data_dir, &wal_dir, compress, parent.as_deref())
             .map_err(|e| anyhow::anyhow!("backup failed: {e}")),
-        PhysicalBackupCommand::List { dir } => list_physical_backups(&dir)
-            .map_err(|e| anyhow::anyhow!("list failed: {e}")),
+        PhysicalBackupCommand::List { dir } => {
+            list_physical_backups(&dir).map_err(|e| anyhow::anyhow!("list failed: {e}"))
+        }
         PhysicalBackupCommand::Verify { dir } => {
             verify_physical_backup(&dir).map_err(|e| anyhow::anyhow!("verify failed: {e}"))?;
             println!("Physical backup OK: {}", dir.display());

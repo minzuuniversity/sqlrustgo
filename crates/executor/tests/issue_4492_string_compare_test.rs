@@ -34,7 +34,8 @@ fn count_where(e: &mut ExecutionEngine<MemoryStorage>, where_clause: &str) -> i6
 fn char_vs_short_string_equal() {
     // Issue #4492 minimal repro: `sex CHAR(2)` vs short string 'F'.
     let mut e = engine();
-    e.execute("CREATE TABLE t(id INTEGER, sex CHAR(2))").unwrap();
+    e.execute("CREATE TABLE t(id INTEGER, sex CHAR(2))")
+        .unwrap();
     e.execute("INSERT INTO t VALUES (1, 'F'), (2, 'M')")
         .unwrap();
     let r = e.execute("SELECT COUNT(*) FROM t WHERE sex = 'F'").unwrap();
@@ -47,12 +48,11 @@ fn char_vs_short_string_equal() {
 #[test]
 fn char_vs_short_string_count_zero_when_neither_matches() {
     let mut e = engine();
-    e.execute("CREATE TABLE t(id INTEGER, sex CHAR(2))").unwrap();
+    e.execute("CREATE TABLE t(id INTEGER, sex CHAR(2))")
+        .unwrap();
     e.execute("INSERT INTO t VALUES (1, 'F'), (2, 'M')")
         .unwrap();
-    let r = e
-        .execute("SELECT COUNT(*) FROM t WHERE sex = 'X'")
-        .unwrap();
+    let r = e.execute("SELECT COUNT(*) FROM t WHERE sex = 'X'").unwrap();
     assert!(matches!(&r.rows[0][0], Value::Integer(0)));
 }
 
@@ -61,7 +61,8 @@ fn trailing_space_text_equal_to_short_text() {
     // WHERE 'abc ' = 'abc' should match both rows.
     let mut e = engine();
     e.execute("CREATE TABLE t(id INTEGER, s TEXT)").unwrap();
-    e.execute("INSERT INTO t VALUES (1, 'abc'), (2, 'abc ')").unwrap();
+    e.execute("INSERT INTO t VALUES (1, 'abc'), (2, 'abc ')")
+        .unwrap();
     let r = e.execute("SELECT COUNT(*) FROM t WHERE s = 'abc'").unwrap();
     assert!(matches!(&r.rows[0][0], Value::Integer(n) if *n == 2));
 }
@@ -81,10 +82,9 @@ fn leading_space_preserved() {
 fn inequality_with_distinct_content() {
     let mut e = engine();
     e.execute("CREATE TABLE t(id INTEGER, s TEXT)").unwrap();
-    e.execute("INSERT INTO t VALUES (1, 'abc'), (2, 'def')").unwrap();
-    let r = e
-        .execute("SELECT COUNT(*) FROM t WHERE s = 'def'")
+    e.execute("INSERT INTO t VALUES (1, 'abc'), (2, 'def')")
         .unwrap();
+    let r = e.execute("SELECT COUNT(*) FROM t WHERE s = 'def'").unwrap();
     assert!(matches!(&r.rows[0][0], Value::Integer(1)));
 }
 
@@ -92,15 +92,14 @@ fn inequality_with_distinct_content() {
 fn not_equal_trailing_space_distinct_content() {
     let mut e = engine();
     e.execute("CREATE TABLE t(id INTEGER, s TEXT)").unwrap();
-    e.execute("INSERT INTO t VALUES (1, 'abc '), (2, 'abcd')").unwrap();
+    e.execute("INSERT INTO t VALUES (1, 'abc '), (2, 'abcd')")
+        .unwrap();
     // 'abc ' (after trim = 'abc') ≠ 'abcd'.
     let r = e
         .execute("SELECT COUNT(*) FROM t WHERE s = 'abcd'")
         .unwrap();
     assert!(matches!(&r.rows[0][0], Value::Integer(1)));
-    let r2 = e
-        .execute("SELECT COUNT(*) FROM t WHERE s = 'abc'")
-        .unwrap();
+    let r2 = e.execute("SELECT COUNT(*) FROM t WHERE s = 'abc'").unwrap();
     assert!(matches!(&r2.rows[0][0], Value::Integer(1))); // only 'abc ' matches 'abc'
 }
 
@@ -111,7 +110,8 @@ fn ordering_respects_trimmed_compare() {
     // that returns 1 for trimmed-equal and verify via SUM.
     let mut e = engine();
     e.execute("CREATE TABLE t(id INTEGER, s TEXT)").unwrap();
-    e.execute("INSERT INTO t VALUES (1, 'abc'), (2, 'abc ')").unwrap();
+    e.execute("INSERT INTO t VALUES (1, 'abc'), (2, 'abc ')")
+        .unwrap();
     // Both rows match 'abc'; SUM(id) = 3.
     let r = e.execute("SELECT SUM(id) FROM t WHERE s = 'abc'").unwrap();
     assert!(matches!(&r.rows[0][0], Value::Integer(n) if *n == 3));
@@ -130,11 +130,11 @@ fn value_partial_eq_strict_for_hash_invariant() {
 #[test]
 fn char_2_vs_short_string_in_where_returns_correct_row() {
     let mut e = engine();
-    e.execute("CREATE TABLE t(id INTEGER, sex CHAR(2))").unwrap();
-    e.execute("INSERT INTO t VALUES (1, 'F'), (2, 'M')").unwrap();
-    let r = e
-        .execute("SELECT id FROM t WHERE sex = 'M'")
+    e.execute("CREATE TABLE t(id INTEGER, sex CHAR(2))")
         .unwrap();
+    e.execute("INSERT INTO t VALUES (1, 'F'), (2, 'M')")
+        .unwrap();
+    let r = e.execute("SELECT id FROM t WHERE sex = 'M'").unwrap();
     assert_eq!(r.rows.len(), 1);
     assert!(matches!(&r.rows[0][0], Value::Integer(2)));
 }
@@ -143,7 +143,8 @@ fn char_2_vs_short_string_in_where_returns_correct_row() {
 fn char_eq_padded_string_in_where() {
     let mut e = engine();
     e.execute("CREATE TABLE t(id INTEGER, s TEXT)").unwrap();
-    e.execute("INSERT INTO t VALUES (1, 'abc'), (2, 'abc ')").unwrap();
+    e.execute("INSERT INTO t VALUES (1, 'abc'), (2, 'abc ')")
+        .unwrap();
     // Trailing-padded string matches plain short string.
     let r = e.execute("SELECT COUNT(*) FROM t WHERE s = 'abc'").unwrap();
     assert!(matches!(&r.rows[0][0], Value::Integer(2)));

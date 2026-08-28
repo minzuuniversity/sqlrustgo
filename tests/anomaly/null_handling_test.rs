@@ -1159,9 +1159,7 @@ mod tests {
     fn green_v4558_multi_row_insert_explicit_columns_null_in_middle_must_fail() {
         let mut engine = create_engine();
         engine
-            .execute(
-                "CREATE TABLE t (id INTEGER AUTO_INCREMENT PRIMARY KEY, k INTEGER NOT NULL)",
-            )
+            .execute("CREATE TABLE t (id INTEGER AUTO_INCREMENT PRIMARY KEY, k INTEGER NOT NULL)")
             .expect("CREATE TABLE must succeed");
 
         let result = engine.execute("INSERT INTO t(k) VALUES (1), (NULL), (3)");
@@ -1193,8 +1191,7 @@ mod tests {
             )
             .expect("CREATE TABLE must succeed");
 
-        let result = engine
-            .execute("INSERT INTO t(k, c, pad) VALUES (1, 'hello', 'world')");
+        let result = engine.execute("INSERT INTO t(k, c, pad) VALUES (1, 'hello', 'world')");
         assert!(
             result.is_ok(),
             "single-row INSERT with explicit column list and NOT NULL columns \

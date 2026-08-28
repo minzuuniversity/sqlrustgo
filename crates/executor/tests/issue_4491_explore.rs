@@ -36,7 +36,8 @@ fn engine() -> ExecutionEngine<MemoryStorage> {
 #[test]
 fn a_issue_repro_returns_non_null_name() {
     let mut e = engine();
-    e.execute("CREATE TABLE s(id INTEGER, name CHAR(8))").unwrap();
+    e.execute("CREATE TABLE s(id INTEGER, name CHAR(8))")
+        .unwrap();
     e.execute("CREATE TABLE sc(sid INTEGER, cid INTEGER, final INTEGER)")
         .unwrap();
     e.execute("INSERT INTO s VALUES (1, 'alice'), (2, 'bob')")
@@ -80,7 +81,8 @@ fn a_unqualified_name_grouped_by_dependent_key() {
     // Same shape with GROUP BY s.id (the directly dependent key). The
     // functional-dependency fallback should also pick up `s.name` here.
     let mut e = engine();
-    e.execute("CREATE TABLE s(id INTEGER, name CHAR(8))").unwrap();
+    e.execute("CREATE TABLE s(id INTEGER, name CHAR(8))")
+        .unwrap();
     e.execute("CREATE TABLE sc(sid INTEGER, final INTEGER)")
         .unwrap();
     e.execute("INSERT INTO s VALUES (1, 'alice'), (2, 'bob')")
@@ -137,7 +139,8 @@ fn b_issue_repro_scalar_subquery_with_inner_filter() {
     // carries PR #4493), this case now resolves to the expected
     // row. Assert it as a regression guard for both fixes.
     let mut e = engine();
-    e.execute("CREATE TABLE s(id INTEGER, name CHAR(8))").unwrap();
+    e.execute("CREATE TABLE s(id INTEGER, name CHAR(8))")
+        .unwrap();
     e.execute("INSERT INTO s VALUES (1, 'alice'), (2, 'bob')")
         .unwrap();
     let r = e

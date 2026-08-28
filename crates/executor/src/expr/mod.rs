@@ -35,12 +35,7 @@ thread_local! {
 /// V312-58 / Issue #4512: register a scalar UDF under `name`. Overwrites
 /// any existing definition with the same case-insensitive name (matches
 /// MySQL `CREATE OR REPLACE FUNCTION` semantics for the simple form).
-pub fn register_udf(
-    name: &str,
-    params: Vec<String>,
-    return_type: String,
-    body_expr: String,
-) {
+pub fn register_udf(name: &str, params: Vec<String>, return_type: String, body_expr: String) {
     UDF_REGISTRY.with(|cell| {
         cell.borrow_mut().insert(
             name.to_uppercase(),
@@ -1258,7 +1253,7 @@ pub fn eval_fn(name: &str, args: &[Value]) -> Value {
                     _ => v.to_sql_string(),
                 })
                 .collect::<Vec<_>>()
-                .join("")
+                .join(""),
         ),
         "CHAR_LENGTH" | "CHARACTER_LENGTH" => args
             .first()
@@ -2076,9 +2071,9 @@ fn substitute_udf_params(
         Expression::IsNull(e) => {
             Expression::IsNull(Box::new(substitute_udf_params(e, params, args)))
         }
-        Expression::IsNotNull(e) => Expression::IsNotNull(Box::new(substitute_udf_params(
-            e, params, args,
-        ))),
+        Expression::IsNotNull(e) => {
+            Expression::IsNotNull(Box::new(substitute_udf_params(e, params, args)))
+        }
         Expression::InList(e, list) => Expression::InList(
             Box::new(substitute_udf_params(e, params, args)),
             list.iter()

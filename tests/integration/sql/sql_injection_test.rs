@@ -145,8 +145,10 @@ fn sql_injection_nested_comment_no_panic() {
 #[test]
 fn sql_injection_like_wildcard_literal_no_panic() {
     let mut e = fresh_engine_with_users();
-    e.execute("INSERT INTO users VALUES (4, 'a%b', 'user')").unwrap();
-    e.execute("INSERT INTO users VALUES (5, 'a_b', 'user')").unwrap();
+    e.execute("INSERT INTO users VALUES (4, 'a%b', 'user')")
+        .unwrap();
+    e.execute("INSERT INTO users VALUES (5, 'a_b', 'user')")
+        .unwrap();
     let _ = e.execute("SELECT id FROM users WHERE name LIKE 'a%b'");
     let _ = e.execute("SELECT id FROM users WHERE name LIKE 'a_b'");
     let _ = e.execute("SELECT id FROM users WHERE name LIKE '%'");
