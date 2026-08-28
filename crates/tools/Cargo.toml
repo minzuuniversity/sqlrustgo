@@ -20,6 +20,9 @@ structopt = "0.3"
 regex = "1.0"
 flate2 = "1.0"
 clap = { version = "4", features = ["derive"] }
+rustls = "0.23"
+rustls-pemfile = "2"
+webpki-roots = "0.26"
 
 [dev-dependencies]
 tempfile = "3.0"
@@ -35,3 +38,7 @@ path = "src/bin/bench_client.rs"
 [[bin]]
 name = "physical-backup"
 path = "src/bin/physical_backup.rs"
+
+[[bin]]
+name = "repro_4564"
+path = "src/bin/repro_4564.rs"
