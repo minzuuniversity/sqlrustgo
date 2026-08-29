@@ -85,7 +85,8 @@ jobs:
         run: |
           cd /workspace/repo
           set -euo pipefail
-          AVAILABLE_KB=$(df --output=avail /tmp | tail -1 | tr -d ' ')
+          # BusyBox df (Alpine image) has no --output=avail; use POSIX awk.
+          AVAILABLE_KB=$(df -k /tmp | awk 'NR==2 {print $4}')
           AVAILABLE_MB=$((AVAILABLE_KB / 1024))
           echo "Available in /tmp: ${AVAILABLE_MB} MB"
           if [[ "$AVAILABLE_MB" -lt 2048 ]]; then
