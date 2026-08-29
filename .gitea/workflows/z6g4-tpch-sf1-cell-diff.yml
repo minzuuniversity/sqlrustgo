@@ -57,17 +57,19 @@ jobs:
     steps:
       - name: Fetch repo from local Gitea
         run: |
+          cd /workspace
           set -euo pipefail
           git lfs install --skip-repo 2>/dev/null || true
           git clone --branch "${{ github.ref }}" --depth 1 \
-            "http://192.168.0.252:3000/${{ github.repository }}.git" /workspace
-          git -C /workspace lfs install 2>/dev/null || true
-          git -C /workspace lfs pull 2>/dev/null || true
+            "http://192.168.0.252:3000/${{ github.repository }}.git" /workspace/repo
+          git -C /workspace/repo lfs install 2>/dev/null || true
+          git -C /workspace/repo lfs pull 2>/dev/null || true
           echo "workspace=/workspace" >> "$GITHUB_ENV"
 
       - name: Confirm commit is on develop/v3.12.0
         shell: bash
         run: |
+          cd /workspace/repo
           set -euo pipefail
           BRANCH="${GITHUB_REF_NAME:-}"
           SHORT_SHA="$(git rev-parse --short HEAD)"
@@ -81,6 +83,7 @@ jobs:
       - name: Verify disk space (≥ 2 GB free in /tmp)
         shell: bash
         run: |
+          cd /workspace/repo
           set -euo pipefail
           AVAILABLE_KB=$(df --output=avail /tmp | tail -1 | tr -d ' ')
           AVAILABLE_MB=$((AVAILABLE_KB / 1024))
@@ -93,6 +96,7 @@ jobs:
       - name: Generate SF=1 fixture (in-process tpch_data_gen)
         shell: bash
         run: |
+          cd /workspace/repo
           set -euo pipefail
           SF1_DIR="${{ inputs.sf1_dir }}"
           BACKEND="${{ inputs.backend }}"
@@ -105,6 +109,7 @@ jobs:
       - name: Verify row counts
         shell: bash
         run: |
+          cd /workspace/repo
           set -euo pipefail
           SF1_DIR="${{ inputs.sf1_dir }}"
           bash scripts/generate_tpch_data.sh --sf 1 \
@@ -114,6 +119,7 @@ jobs:
       - name: Warm file_storage cache (non-Q17 query)
         shell: bash
         run: |
+          cd /workspace/repo
           set -euo pipefail
           # Run Q1 first to warm file_storage cache; cold-cache Q17
           # distorts the elapsed metric (warmup penalty).
@@ -124,6 +130,7 @@ jobs:
       - name: Run TPC-H SF=1 baseline (Q17 perf capture)
         shell: bash
         run: |
+          cd /workspace/repo
           set -euo pipefail
           SF1_DIR="${{ inputs.sf1_dir }}"
           mkdir -p docs/releases/v3.12.0/evidence/v312-58
@@ -133,6 +140,7 @@ jobs:
       - name: Capture cell-diff to evidence file (DRAFT scaffold)
         shell: bash
         run: |
+          cd /workspace/repo
           set -euo pipefail
           mkdir -p docs/releases/v3.12.0/evidence/v312-58
           cat > docs/releases/v3.12.0/evidence/v312-58/issue-4540-sf1-cell-diff.md <<EOF
@@ -152,6 +160,7 @@ jobs:
       - name: Upload evidence to Gitea issue #4432 (DRAFT)
         shell: bash
         run: |
+          cd /workspace/repo
           set -euo pipefail
           # TODO: implement gitea-api post to issue #4432 once DRAFT
           # workflow is enabled. For now, just print the plan.
@@ -159,12 +168,14 @@ jobs:
           echo "  Evidence: docs/releases/v3.12.0/evidence/v312-58/issue-4540-sf1-cell-diff.md"
           echo "  Source run: issue-4540-tpch-q17-sf1-cell-diff-20260827"
 
-      - name: Upload run artifacts
-        uses: actions/upload-artifact@v4
-        with:
-          name: z6g4-tpch-sf1-cell-diff
-          path: |
-            docs/releases/v3.10.0/perf/SF1_BASELINE_REPORT.md
-            docs/releases/v3.12.0/evidence/v312-58/issue-4540-sf1-cell-diff.md
-          if-no-files-found: warn
-          retention-days: 30
+      - name: Upload run artifacts (Gitea)
+        # hermes-z6g4 (2026-08-30): actions/upload-artifact@v4 is a GitHub
+        # marketplace action — fails on the local hermes-runner (blocked
+        # GitHub egress). Tar locally instead.
+        run: |
+          set -euo pipefail
+          cd /workspace/repo
+          TS="$(date -u +%Y%m%dT%H%M%SZ)"
+          tar czf "results/sf1-cell-diff-${TS}.tar.gz" \
+            results/ 2>/dev/null || tar czf "results/sf1-cell-diff-${TS}.tar.gz" .
+          ls -lh "results/sf1-cell-diff-${TS}.tar.gz"

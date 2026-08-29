@@ -85,6 +85,7 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
+          cd "${REPO:-repo}"
           BRANCH="${GITHUB_REF_NAME:-}"
           SHORT_SHA="$(git rev-parse --short HEAD)"
           echo "Branch: $BRANCH"
@@ -110,6 +111,7 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
+          cd "${REPO:-repo}"
           cargo build --release -p sqlrustgo-mysql-server
           ls -lh target/release/sqlrustgo-mysql-server
         timeout-minutes: 30
@@ -118,6 +120,7 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
+          cd "${REPO:-repo}"
           SOAK_HOURS=1 bash scripts/soak/run_soak_loop.sh
         timeout-minutes: 90
         continue-on-error: false
@@ -126,6 +129,7 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
+          cd "${REPO:-repo}"
           SOAK_HOURS="${{ inputs.soak_hours }}" \
           SERVER_THREADS="${{ inputs.server_threads }}" \
           DATA_DIR="${{ inputs.data_dir }}" \
@@ -136,6 +140,7 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
+          cd "${REPO:-repo}"
           mkdir -p docs/releases/v3.12.0/evidence/v312-59/soak
           cat > docs/releases/v3.12.0/evidence/v312-59/soak/GA2_168H_SOAK_REPORT.md <<'EOF'
           # GA-2 168h SOAK Report (Issue #4499)
