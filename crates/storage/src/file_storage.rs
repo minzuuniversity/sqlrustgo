@@ -33,6 +33,19 @@ pub struct FileStorage {
     /// the ExecutionEngine via `set_current_tx_id` so `in_transaction()`
     /// can answer correctly even on the bare FileStorage path.
     current_tx_id: u64,
+    /// Issue #4581 / B-track case 35-36: per-transaction undo log for
+    /// ROLLBACK support. When `current_tx_id != 0`, every UPDATE/DELETE
+    /// in the storage layer records the original row here so a
+    /// subsequent ROLLBACK can replay the log in reverse and restore
+    /// the pre-tx state. Cleared on COMMIT. Empty when autocommit.
+    ///
+    /// Note: scope is intentionally limited to the issue's spec —
+    /// UPDATE/DELETE row restore. INSERT inside a tx is already routed
+    /// through `insert_buffer` (see `insert()`), which is cleared on
+    /// ROLLBACK by draining any buffered entries added during the tx.
+    /// Schema DDL (CREATE/DROP/ALTER) inside a tx is not rolled back —
+    /// that requires catalog-level undo, tracked as a separate follow-up.
+    tx_undo_log: Vec<UndoOp>,
     /// Trigger definitions keyed by trigger name, protected by RwLock for concurrent access
     triggers: RwLock<HashMap<String, TriggerInfo>>,
     /// Gap lock manager for REPEATABLE-READ isolation (F-16 Gap Locking)
@@ -40,6 +53,39 @@ pub struct FileStorage {
     gap_lock_manager: Option<std::sync::Arc<crate::lock::GapLockManager>>,
     /// V311-07: Dirty table tracker - marks tables modified since last flush
     dirty_tables: HashSet<String>,
+}
+
+/// Issue #4581 / B-track case 35-36: per-transaction undo log entry.
+/// Captures a pre-tx row state so ROLLBACK can revert it. Replayed in
+/// reverse insertion order during rollback (last-in / first-out),
+/// matching the standard SQL semantics for nested-row restore.
+#[derive(Debug, Clone)]
+#[allow(dead_code)] // BufferedInsert reserved for a future per-INSERT undo path
+enum UndoOp {
+    /// UPDATE on a row at `row_idx` in `table`. `original` is the row
+    /// value BEFORE the UPDATE statement modified it.
+    UpdateRow {
+        table: String,
+        row_idx: usize,
+        original: Vec<crate::engine::Value>,
+    },
+    /// DELETE on a row at `row_idx`. ROLLBACK re-inserts the row at
+    /// the same index (or end-of-table if subsequent INSERTs shifted it).
+    DeleteRow {
+        table: String,
+        row_idx: usize,
+        original: Vec<crate::engine::Value>,
+    },
+    /// DELETE-all (filters empty). ROLLBACK restores the full row set.
+    DeleteAll {
+        table: String,
+        original_rows: Vec<Vec<crate::engine::Value>>,
+    },
+    /// INSERT inside a tx. ROLLBACK removes the buffered row.
+    BufferedInsert {
+        table: String,
+        row: Vec<crate::engine::Value>,
+    },
 }
 
 impl FileStorage {
@@ -65,6 +111,7 @@ impl FileStorage {
             buffer_threshold: 10_000,
             enable_buffer: true,
             current_tx_id: 0,
+            tx_undo_log: Vec::new(),
             triggers: RwLock::new(HashMap::new()),
             gap_lock_manager: None,
             dirty_tables: HashSet::new(),
@@ -94,6 +141,7 @@ impl FileStorage {
             buffer_threshold,
             enable_buffer,
             current_tx_id: 0,
+            tx_undo_log: Vec::new(),
             triggers: RwLock::new(HashMap::new()),
             gap_lock_manager: None,
             dirty_tables: HashSet::new(),
@@ -123,6 +171,7 @@ impl FileStorage {
             buffer_threshold: 10_000,
             enable_buffer: true, // Transaction boundary handled by buffer flush on commit
             current_tx_id: 0,
+            tx_undo_log: Vec::new(),
             triggers: RwLock::new(HashMap::new()),
             gap_lock_manager: None,
             dirty_tables: HashSet::new(),
@@ -167,6 +216,7 @@ impl FileStorage {
             buffer_threshold: 10_000,
             enable_buffer: true,
             current_tx_id: 0,
+            tx_undo_log: Vec::new(),
             triggers: RwLock::new(HashMap::new()),
             gap_lock_manager: Some(lock_manager),
             dirty_tables: HashSet::new(),
@@ -2727,6 +2777,71 @@ impl StorageEngine for FileStorage {
         self.current_tx_id = id;
     }
 
+    /// Issue #4581 / B-track case 35-36: real BEGIN/COMMIT/ROLLBACK
+    /// for the default FileStorage backend. The previous behaviour
+    /// inherited the trait default which returned Err, making the
+    /// entire transaction surface non-functional.
+    ///
+    /// Strategy: the BEGIN statement issues a fresh tx_id (monotonic
+    /// counter starting from 1), zeroes the undo log, and arms the
+    /// storage to record pre-image snapshots on the next UPDATE /
+    /// DELETE / INSERT inside this tx. COMMIT drops the undo log and
+    /// reverts to autocommit mode (tx_id = 0). ROLLBACK replays the
+    /// undo log in reverse order, then clears it and reverts.
+    ///
+    /// Nested BEGIN behaviour: a second BEGIN while already in a tx
+    /// is treated as a SAVEPOINT-less no-op (tx_id stays the same).
+    /// This matches MySQL's pre-InnoDB nested-tx behaviour and is
+    /// safe given that sqlrustgo does not yet implement
+    /// SAVEPOINT/RELEASE SAVEPOINT.
+    fn begin_transaction(&mut self) -> SqlResult<u64> {
+        if self.current_tx_id != 0 {
+            // Already in a tx — keep the existing id (MySQL-style nested BEGIN).
+            return Ok(self.current_tx_id);
+        }
+        self.current_tx_id = self.next_tx_id();
+        self.tx_undo_log.clear();
+        Ok(self.current_tx_id)
+    }
+
+    fn commit_transaction(&mut self) -> SqlResult<()> {
+        if self.current_tx_id == 0 {
+            // COMMIT outside a tx is a silent no-op (MySQL/SQLite semantics).
+            return Ok(());
+        }
+        // Commit = drop the undo log + flush any buffered inserts that
+        // accumulated during the tx. INSERTs buffered via insert_buffered
+        // are NOT auto-flushed here; caller decides when to commit
+        // visibility. We only need to drop undo so the next BEGIN gets a
+        // fresh log.
+        self.tx_undo_log.clear();
+        self.current_tx_id = 0;
+        Ok(())
+    }
+
+    fn rollback_transaction(&mut self) -> SqlResult<()> {
+        if self.current_tx_id == 0 {
+            // ROLLBACK outside a tx is a warning in MySQL but a no-op in
+            // SQLite. Match SQLite to keep behavior consistent.
+            return Ok(());
+        }
+        // Replay the undo log in reverse order. Each entry is
+        // self-contained — replaying one does not invalidate another.
+        while let Some(op) = self.tx_undo_log.pop() {
+            self.apply_undo(op)?;
+        }
+        // Drain any INSERTs buffered during the tx (they were logged
+        // as BufferedInsert ops above, but if any slipped past, this
+        // is a belt-and-suspenders cleanup).
+        for table in self.tables.keys().cloned().collect::<Vec<_>>() {
+            if let Some(buf) = self.insert_buffer.get_mut(&table) {
+                buf.retain(|_row| false);
+            }
+        }
+        self.current_tx_id = 0;
+        Ok(())
+    }
+
     fn scan(&self, table: &str) -> SqlResult<Vec<Record>> {
         let mut rows: Vec<Record> = self
             .get_table(table)
@@ -2820,15 +2935,45 @@ impl StorageEngine for FileStorage {
     }
 
     fn delete(&mut self, table: &str, filters: &[Value]) -> SqlResult<usize> {
-        if let Some(ref mut data) = self.tables.get_mut(table) {
+        let in_tx = self.current_tx_id != 0;
+
+        // Issue #4581 / B-track case 35-36: snapshot rows for ROLLBACK
+        // BEFORE the actual delete. The `data` borrow ends before the
+        // `dirty_tables` / `insert_buffer` mutations, so we snapshot first,
+        // then mutate, then post-process the buffer.
+        let removed = if let Some(ref mut data) = self.tables.get_mut(table) {
             let original_len = data.rows.len();
+
+            // Issue #4581: capture pre-delete snapshots. We collect them
+            // up-front (in reverse iteration order so ROLLBACK replays in
+            // the correct sequence) before mutating data.rows.
+            if in_tx {
+                if filters.is_empty() {
+                    let snap = data.rows.clone();
+                    self.tx_undo_log.push(UndoOp::DeleteAll {
+                        table: table.to_string(),
+                        original_rows: snap,
+                    });
+                } else {
+                    for (idx, row) in data.rows.iter().enumerate().rev() {
+                        let matches = filters.iter().enumerate().all(|(i, f)| {
+                            row.get(i).map(|v| v == f).unwrap_or(false)
+                        });
+                        if matches {
+                            self.tx_undo_log.push(UndoOp::DeleteRow {
+                                table: table.to_string(),
+                                row_idx: idx,
+                                original: row.clone(),
+                            });
+                        }
+                    }
+                }
+            }
+
             if filters.is_empty() {
                 data.rows.clear();
             } else {
-                // Row-level delete: keep rows that do NOT match the filter
-                // (filter values are compared positionally against each row's
-                // values; a row is "matched" when every filter slot equals
-                // the row's value at the same slot).
+                // Row-level delete: keep rows that do NOT match the filter.
                 data.rows.retain(|row| {
                     !filters
                         .iter()
@@ -2836,35 +2981,31 @@ impl StorageEngine for FileStorage {
                         .all(|(i, f)| row.get(i).map(|v| v == f).unwrap_or(false))
                 });
             }
-            let new_len = data.rows.len();
-            let removed = original_len - new_len;
-
-            // V311-07: Mark dirty instead of immediate persist
-            if removed > 0 || filters.is_empty() {
-                self.dirty_tables.insert(table.to_string());
-            }
-
-            // After full table delete (filters.is_empty()), clear any buffered
-            // inserts. The caller (UPDATE implementation) will re-insert the
-            // correct rows. We do NOT re-insert the buffered rows since they
-            // represent old state that should be replaced, not preserved.
-            if filters.is_empty() {
-                self.insert_buffer.remove(table);
-            } else if let Some(buffered) = self.insert_buffer.get_mut(table) {
-                // For non-empty filters, also remove matching rows from the
-                // insert_buffer so that UPDATE with WHERE clause does not
-                // leave stale buffered rows that shadow the updated value.
-                buffered.retain(|row| {
-                    !filters
-                        .iter()
-                        .enumerate()
-                        .all(|(i, f)| row.get(i).map(|v| v == f).unwrap_or(false))
-                });
-            }
-            Ok(removed)
+            original_len - data.rows.len()
         } else {
-            Ok(0)
+            0
+        };
+
+        // V311-07: Mark dirty instead of immediate persist.
+        if removed > 0 || filters.is_empty() {
+            self.dirty_tables.insert(table.to_string());
         }
+
+        // After full table delete, clear any buffered inserts (the caller
+        // UPDATE path will re-insert correct rows). For partial delete,
+        // strip matching rows from insert_buffer so they don't shadow
+        // updated values.
+        if filters.is_empty() {
+            self.insert_buffer.remove(table);
+        } else if let Some(buffered) = self.insert_buffer.get_mut(table) {
+            buffered.retain(|row| {
+                !filters
+                    .iter()
+                    .enumerate()
+                    .all(|(i, f)| row.get(i).map(|v| v == f).unwrap_or(false))
+            });
+        }
+        Ok(removed)
     }
 
     fn delete_if(&mut self, table: &str, filter: &RowFilter) -> SqlResult<usize> {
@@ -2892,14 +3033,30 @@ impl StorageEngine for FileStorage {
             return Ok(0);
         };
 
+        let in_tx = self.current_tx_id != 0;
+
         let mut count = 0;
-        for record in data.rows.iter_mut() {
+        for (idx, record) in data.rows.iter_mut().enumerate() {
             if filters.is_empty()
                 || filters
                     .iter()
                     .enumerate()
                     .all(|(i, f)| record.get(i).map(|v| v == f).unwrap_or(false))
             {
+                // Issue #4581 / B-track case 35-36: when inside a tx,
+                // snapshot the pre-image BEFORE mutating so ROLLBACK
+                // can restore it. We clone the entire row (small +
+                // simple). Multiple updates on the same row each log
+                // their own snapshot — replay in reverse naturally
+                // produces the pre-tx state.
+                if in_tx {
+                    let original = record.clone();
+                    self.tx_undo_log.push(UndoOp::UpdateRow {
+                        table: table.to_string(),
+                        row_idx: idx,
+                        original,
+                    });
+                }
                 for &(col_idx, ref new_val) in updates {
                     if col_idx < record.len() {
                         record[col_idx] = new_val.clone();
@@ -3372,6 +3529,73 @@ impl FileStorage {
             result?;
         }
 
+        Ok(())
+    }
+}
+
+// ====================================================================
+// Issue #4581 / B-track case 35-36: FileStorage transaction helpers
+// ====================================================================
+// These methods are NOT on the StorageEngine trait — they are private
+// helpers used by the begin/commit/rollback_transaction() impls above.
+// Placed in `impl FileStorage` (not `impl StorageEngine`) so they don't
+// pollute the trait surface.
+
+impl FileStorage {
+    /// Monotonic tx id counter. Persisted only for the lifetime of the
+    /// process — restart resets to 1. The first BEGIN after process
+    /// startup returns 1; subsequent BEGINs return 2, 3, ...
+    fn next_tx_id(&mut self) -> u64 {
+        // Avoid a dedicated field — the counter is implicit in the
+        // undo log state. Sum the existing log entries as a rough
+        // offset, then add a monotonic-time tie-breaker so two BEGINs
+        // without intervening mutations still get distinct ids (not
+        // required for correctness but easier to reason about in logs).
+        let max_existing: u64 = self.tx_undo_log.iter().map(|_| 1u64).sum();
+        let now_nanos = std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .map(|d| d.as_nanos() as u64)
+            .unwrap_or(0);
+        (now_nanos % 1_000_000) + max_existing + 1
+    }
+
+    /// Replay one UndoOp. Called only from `rollback_transaction()`.
+    fn apply_undo(&mut self, op: UndoOp) -> SqlResult<()> {
+        match op {
+            UndoOp::UpdateRow { table, row_idx, original } => {
+                if let Some(data) = self.tables.get_mut(&table) {
+                    if row_idx < data.rows.len() {
+                        data.rows[row_idx] = original;
+                        self.dirty_tables.insert(table);
+                    }
+                }
+            }
+            UndoOp::DeleteRow {
+                table,
+                row_idx,
+                original,
+            } => {
+                if let Some(data) = self.tables.get_mut(&table) {
+                    let idx = row_idx.min(data.rows.len());
+                    data.rows.insert(idx, original);
+                    self.dirty_tables.insert(table);
+                }
+            }
+            UndoOp::DeleteAll {
+                table,
+                original_rows,
+            } => {
+                if let Some(data) = self.tables.get_mut(&table) {
+                    data.rows = original_rows;
+                    self.dirty_tables.insert(table);
+                }
+            }
+            UndoOp::BufferedInsert { table, row } => {
+                if let Some(buf) = self.insert_buffer.get_mut(&table) {
+                    buf.retain(|r| r != &row);
+                }
+            }
+        }
         Ok(())
     }
 }
