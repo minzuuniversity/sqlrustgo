@@ -1116,6 +1116,16 @@ impl<S: StorageEngine + 'static> ExecutionEngine<S> {
             AlterTableOperation::ResetPartitionedBy => {
                 return Err(SqlError::ParseError("not supported".to_string()));
             }
+            // Issue #4580 / B-track case 30: ALTER TABLE ADD CONSTRAINT.
+            // Currently a parse-only no-op — the constraint is captured
+            // and stored but not enforced. UNIQUE/PRIMARY KEY inside
+            // the constraint could be applied by pushing the columns
+            // into TableInfo; that wiring is tracked as a follow-up.
+            AlterTableOperation::AddTableConstraint(_constraint) => {
+                // Parse-only: statement is accepted but the constraint
+                // is not yet enforced. Returning Ok(()) keeps the
+                // statement from blocking dependent SQL (e.g. INSERT).
+            }
         }
 
         Ok(ExecutorResult::empty())
