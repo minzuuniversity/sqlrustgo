@@ -99,7 +99,8 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          AVAILABLE_KB=$(df --output=avail /tmp | tail -1 | tr -d ' ')
+          # BusyBox df (Alpine image) has no --output=avail; use POSIX awk.
+          AVAILABLE_KB=$(df -k /tmp | awk 'NR==2 {print $4}')
           AVAILABLE_GB=$((AVAILABLE_KB / 1024 / 1024))
           echo "Available in /tmp: ${AVAILABLE_GB} GB"
           if [[ "$AVAILABLE_GB" -lt 10 ]]; then
