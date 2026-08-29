@@ -49,14 +49,21 @@ concurrency:
 
 jobs:
   sf1-cell-diff:
-    runs-on: [self-hosted, z6g4-runner, linux, docker]
-    timeout-minutes: 60   # 30 min fixture gen + 30 min Q17 budget
+    # hermes-z6g4 (2026-08-30): route to the Z6G4 local runner (see
+    # z6g4-168h-soak.yml for the full rationale).
+    runs-on: [hp-z6g4]
+    timeout-minutes: 120
 
     steps:
-      - name: Checkout
-        uses: actions/checkout@v4
-        with:
-          fetch-depth: 1
+      - name: Fetch repo from local Gitea
+        run: |
+          set -euo pipefail
+          git lfs install --skip-repo 2>/dev/null || true
+          git clone --branch "${{ github.ref }}" --depth 1 \
+            "http://192.168.0.252:3000/${{ github.repository }}.git" /workspace
+          git -C /workspace lfs install 2>/dev/null || true
+          git -C /workspace lfs pull 2>/dev/null || true
+          echo "workspace=/workspace" >> "$GITHUB_ENV"
 
       - name: Confirm commit is on develop/v3.12.0
         shell: bash
