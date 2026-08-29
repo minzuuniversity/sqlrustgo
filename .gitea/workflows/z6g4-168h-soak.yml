@@ -59,15 +59,27 @@ concurrency:
 
 jobs:
   long-soak:
-    runs-on: [self-hosted, z6g4-runner, linux, docker]
+    # hermes-z6g4 (2026-08-30): route to the Z6G4 local runner.
+    # The old [self-hosted, z6g4-runner, linux, docker] only matched the
+    # z6g4-runner-demo runner on a non-Z6G4 host with blocked GitHub egress,
+    # which failed runs #5684/#5685 in the actions/checkout GitHub clone.
+    # Label `hp-z6g4` matches hermes-runner (devstack-runner-1) and runs the
+    # job in the sqlrustgo-runner:v1 Docker image (cargo 1.95 / mysql / sysbench).
+    # Pattern follows the proven soak_168h.yml / soak_probe.yml local-clone mode.
+    runs-on: [hp-z6g4]
     # 168h = 7 days = 10080 minutes; add 60-min headroom.
     timeout-minutes: 10140
 
     steps:
-      - name: Checkout
-        uses: actions/checkout@v4
-        with:
-          fetch-depth: 1
+      - name: Checkout (local Gitea)
+        run: |
+          REPO="openclaw/sqlrustgo"
+          REF="${GITHUB_REF_NAME:-develop/v3.12.0}"
+          git clone --depth=1 --branch "$REF" \
+            "http://192.168.0.252:3000/$REPO" repo
+          cd repo
+          echo "Checked out $(git rev-parse HEAD) on $REF"
+          echo "REPO=$PWD" >> $GITHUB_ENV
 
       - name: Confirm commit is on develop/v3.12.0
         shell: bash
