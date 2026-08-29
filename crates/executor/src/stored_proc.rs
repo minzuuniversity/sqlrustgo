@@ -1291,6 +1291,11 @@ impl StoredProcExecutor {
                     sqlrustgo_parser::AlterTableOperation::ResetPartitionedBy => {
                         return Err("not supported".to_string());
                     }
+                    // Issue #4580: ALTER TABLE ADD CONSTRAINT — parse-only,
+                    // no-op at the executor level (see also engine_ddl.rs).
+                    sqlrustgo_parser::AlterTableOperation::AddTableConstraint(_) => {
+                        // accepted; enforcement is a follow-up.
+                    }
                 }
                 Ok(())
             }
