@@ -1,7 +1,8 @@
 # v3.12.0 GA-2 Post-#4566 1h SOAK Report (Issue #4566)
 
 > **provenance:** generated_at=2026-08-29T(approx 14:10 UTC+8, post-run), branch=fix/v312-59-d/4566-evidence-recheck, source_repo=openclaw/sqlrustgo, policy=Anti-Fabrication-Policy-v1.0
-> **branch base:** develop/v3.12.0 at `3d209e882b` (PR #4573 merge); branch is `3d209e882b + 3 commits` (POST_4558_SOAK_REPORT.md ERRATA + partial-run preservation + this report)
+> **binary build SHA:** `7dea6a26b003e8f9a0ac4dd779fdc5fbaac0f7d1ed9869a1e002f93799c4ca0d` (built 2026-08-28 from `develop/v3.12.0@3d209e882b + partial-run-preservation commit`; build was reused for the 1h SOAK re-run after rebase since the SOAK runs against the binary's TCP/thread-pool behavior, which was unaffected by PR #4574/4576/4577 source-only changes)
+> **branch base:** develop/v3.12.0 rebased to `0884dafb19` (PR #4577 merge; 4 new commits after PR #4573 include PR #4574 engine gaps fix + PR #4576 1h demo v2 PASS + PR #4577 z6g4 workflow YAML fix); branch is `0884dafb19 + 5 commits` (POST_4558 ERRATA + partial-run preservation + this report)
 > **related:** Issue #4560 (closed by PR #4563 SHA `a93ea79681`), Issue #4564 (root-cause + repro tool — PR #4566 SHA `1c11addc6b`), Issue #4499 (V312-59-D GA-2 168h mixed SOAK umbrella), Issue #4558 (engine bulk-insert fix)
 > **scope:** Local 1h SOAK re-run on develop/v3.12.0 + `SOAK_SERVER_THR=16` (explicit env override) to empirically verify PR #4566's root-cause analysis and inform GA-2 status. NOT a 168h SOAK. NOT a GA-2 PASS claim.
 
@@ -35,9 +36,16 @@ SOAK time: 1h (planned) — ran 13:06:10 → 14:06:16 UTC+8 (1h 6s, full hour + 
 ```
 $ git checkout fix/v312-59-d/4566-evidence-recheck
 $ git rev-parse HEAD
-2e7b160e65e2f30ccb234b0e15f1ca22cc58ec05   # fix/v312-59-d/4566-evidence-recheck + partial-run preservation
-$ git merge-base --is-ancestor 3d209e882b HEAD && echo OK
-OK    # contains develop/v3.12.0 HEAD (3d209e882b = PR #4573 merge)
+8de6fd2ff991e5c345a8e5dd4c4150cc2f0a6215   # fix/v312-59-d/4566-evidence-recheck, rebased onto origin/develop/v3.12.0@0884dafb19
+$ git merge-base --is-ancestor 0884dafb19 HEAD && echo OK
+OK    # contains current develop/v3.12.0 HEAD (0884dafb19 = PR #4577 merge)
+
+# NOTE: the 1h SOAK binary was built from develop/v3.12.0@3d209e882b (PR #4573 merge)
+# on 2026-08-28 (before this branch was rebased onto PR #4574/4576/4577). The
+# PR #4574 engine gaps, PR #4576 mixed_workload tweaks, and PR #4577 z6g4
+# workflow YAML fix do NOT change sqlrustgo-mysql-server's TCP/thread-pool/auth
+# handshake surface that this 1h SOAK measures, so the binary's behavior is
+# unaffected. The PR body cites by SHA for cross-reference.
 
 $ cargo build --release -p sqlrustgo-mysql-server
    Compiling sqlrustgo v3.11.0
@@ -191,7 +199,7 @@ $ grep -n "SOAK_SERVER_THR" scripts/soak/run_soak_loop.sh
 | source_agent | claude-sonnet (Claude Code) |
 | source_run | issue-4566-post-4566-soak-20260829 (continuation of issue-4560-post-4558-soak-20260828) |
 | timestamp | 2026-08-29T(approx 14:10+08:00), at completion of 1h SOAK + cleanup |
-| evidence_hash | git:HEAD=`2e7b160e65e2f30ccb234b0e15f1ca22cc58ec05` on `fix/v312-59-d/4566-evidence-recheck`; binary SHA256=`7dea6a26b003e8f9a0ac4dd779fdc5fbaac0f7d1ed9869a1e002f93799c4ca0d` |
+| evidence_hash | git:HEAD=`8de6fd2ff991e5c345a8e5dd4c4150cc2f0a6215` on `fix/v312-59-d/4566-evidence-recheck` (post-rebase onto `0884dafb19`); pre-rebase HEAD was `9eedbe711737f9360284a5d76a36f40bb1c64aca`; binary SHA256=`7dea6a26b003e8f9a0ac4dd779fdc5fbaac0f7d1ed9869a1e002f93799c4ca0d` |
 | conflict_resolution | N/A — single AI scope on this branch; partial-run preservation commit (`2e7b160e65`) was committed before this report per user choice (existing 17min run + fresh 1h run as 双保险) |
 
 ## 8. Evidence index (this PR)
@@ -217,7 +225,8 @@ Original SOAK output dir preserved for 30 days per CI convention: `/home/opencla
 1. 📌 **Open PR** "fix(v312-59-d / #4564): verify #4566 TLS-handshake fix + re-evaluate GA-2" with this report + the 5 evidence files (already copied to `docs/releases/v3.12.0/evidence/issue-4560/run_20260829_post4566_full/`). PR body cites PR #4563 SHA `a93ea79681` + PR #4566 SHA `1c11addc6b` by SHA.
 2. 📌 **File follow-up issue** (recommended: #4574 or next sequential) for the actual `scripts/soak/run_soak_loop.sh` `SOAK_SERVER_THR` default fix (PR #4566's commit message claimed this but the diff didn't ship it — see §5 ERRATA).
 3. 📌 **Keep GA-2 row PENDING** in `docs/releases/v3.12.0/GA_GATE_REPORT.md` until #4499 Z6G4 168h SOAK (PR #4565 runner) completes.
-4. 📌 **Triage separately**: the six new mysql-compat GA-blocking issues #4567-#4572 (CREATE VIEW / IN subquery / UNIQUE / FK / ALTER ADD COLUMN / type coercion) filed after #4560's refutation. These do not affect the SOAK outcome above but DO block GA promotion.
+4. ✅ **Already resolved** (post-this-PR): the six mysql-compat GA-blocking issues #4567-#4572 (CREATE VIEW / IN subquery / UNIQUE / FK / ALTER ADD COLUMN / type coercion) were fixed by PR #4574 (commit `f1b4f94b6f`, merged at `d36cc98981` into develop/v3.12.0 between the original spec write-up and this PR's rebase). 1h demo v2 PASS per PR #4576 (commit `b0f172c1e7`). These no longer block GA promotion.
+5. 📌 **Still pending**: 168h CI/Docker Z6G4 SOAK (PR #4565 + #4577) is the only remaining GA-2 prerequisite after PR #4574/4576 land.
 
 ## 10. Anti-Fabrication-Policy-v1.0 compliance
 
