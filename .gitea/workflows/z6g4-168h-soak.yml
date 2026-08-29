@@ -156,12 +156,18 @@ jobs:
           EOF
           echo "GA2_168H_SOAK_REPORT.md scaffold written."
 
-      - name: Upload run artifacts
-        uses: actions/upload-artifact@v4
-        with:
-          name: z6g4-168h-soak
-          path: |
-            results/soak-168h/
+      - name: Upload run artifacts (Gitea)
+        # hermes-z6g4 (2026-08-30): actions/upload-artifact@v4 is a GitHub
+        # marketplace action — it would fail on the local hermes-runner for
+        # the same reason as the original #5684/#5685 failures (blocked
+        # GitHub egress). Tar the results locally instead; the evidence
+        # files already live under docs/.../soak/ in the repo.
+        run: |
+          set -euo pipefail
+          cd "${REPO}"
+          TS="$(date -u +%Y%m%dT%H%M%SZ)"
+          tar czf "results/soak-168h-${TS}.tar.gz" \
+            results/soak-168h/ \
             docs/releases/v3.12.0/evidence/v312-59/soak/GA2_168H_SOAK_REPORT.md
-          if-no-files-found: warn
-          retention-days: 30
+          ls -lh "results/soak-168h-${TS}.tar.gz"
+          echo "Artifact tarball ready: results/soak-168h-${TS}.tar.gz"
