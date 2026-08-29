@@ -1434,6 +1434,14 @@ pub fn eval_fn(name: &str, args: &[Value]) -> Value {
                 _ => Value::Null,
             }
         }
+        // Issue #4579 / BustubX-EDU B-track case 15: strftime(format, date)
+        // — SQLite-compatible date formatting. Accepts the same
+        // 'YYYY-MM-DD' / 'YYYY-MM-DD HH:MM:SS' shape as the other date
+        // helpers, plus the literal 'now' for the current UTC instant.
+        // Supported specifiers: %Y %m %d %H %M %S %j %w %% (literal %).
+        // Unknown specifiers pass through verbatim so callers can extend
+        // without an engine change.
+        "STRFTIME" => strftime_value(args),
         // ROUND(x [, d]) — half-away-from-zero. d default 0.
         // MySQL returns INTEGER when d<=0, FLOAT when d>0.
         "ROUND" => {
@@ -2388,6 +2396,126 @@ fn parse_date_field(args: &[Value], start: usize, end: usize) -> Value {
         .and_then(|slice| slice.parse::<i64>().ok())
         .map(Value::Integer)
         .unwrap_or(Value::Null)
+}
+
+/// Issue #4579 / BustubX-EDU B-track case 15: SQLite-compatible
+/// `strftime(format, date)`. Returns Null on any error (no exception
+/// surface). Recognizes 'now' / 'now' suffix as the current UTC
+/// instant for the second argument; otherwise parses 'YYYY-MM-DD' or
+/// 'YYYY-MM-DD HH:MM:SS'.
+///
+/// Supported format specifiers:
+///   %Y 4-digit year      %m 2-digit month     %d 2-digit day
+///   %H 2-digit hour      %M 2-digit minute    %S 2-digit second
+///   %j day-of-year       %w weekday 0..6      %% literal '%'
+///
+/// Unknown specifiers pass through verbatim, matching SQLite's
+/// tolerance for forward-compat with future format codes.
+fn strftime_value(args: &[Value]) -> Value {
+    if args.len() != 2 {
+        return Value::Null;
+    }
+    let fmt = args[0].to_sql_string();
+    let raw = args[1].to_sql_string();
+    let trimmed = raw.trim();
+
+    // Resolve date source: 'now' keyword uses current UTC; otherwise
+    // parse the textual timestamp into (year, month, day, h, m, s).
+    let mut y: i64 = 1970;
+    let mut mo: i64 = 1;
+    let mut d: i64 = 1;
+    let mut hh: i64 = 0;
+    let mut mi: i64 = 0;
+    let mut ss: i64 = 0;
+
+    let mut parsed = false;
+    let lower = trimmed.to_ascii_lowercase();
+    if lower == "now" {
+        let secs = std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .map(|t| t.as_secs() as i64)
+            .unwrap_or(0);
+        let (yy, mm, dd) = civil_from_days(secs / 86400);
+        let tod = secs.rem_euclid(86400);
+        y = yy;
+        mo = mm;
+        d = dd;
+        hh = tod / 3600;
+        mi = (tod % 3600) / 60;
+        ss = tod % 60;
+        parsed = true;
+    } else if trimmed.len() >= 10 {
+        // 'YYYY-MM-DD' or 'YYYY-MM-DD HH:MM:SS'
+        if let (Some(yy), Some(mm), Some(dd)) = (
+            trimmed.get(0..4).and_then(|s| s.parse::<i64>().ok()),
+            trimmed.get(5..7).and_then(|s| s.parse::<i64>().ok()),
+            trimmed.get(8..10).and_then(|s| s.parse::<i64>().ok()),
+        ) {
+            if (1..=12).contains(&mm) && (1..=31).contains(&dd) {
+                y = yy;
+                mo = mm;
+                d = dd;
+                parsed = true;
+            }
+        }
+        // Optional ' HH:MM:SS' suffix
+        if parsed && trimmed.len() >= 19 {
+            if let (Some(h), Some(m), Some(s)) = (
+                trimmed.get(11..13).and_then(|s| s.parse::<i64>().ok()),
+                trimmed.get(14..16).and_then(|s| s.parse::<i64>().ok()),
+                trimmed.get(17..19).and_then(|s| s.parse::<i64>().ok()),
+            ) {
+                if (0..24).contains(&h) && m < 60 && s < 60 {
+                    hh = h;
+                    mi = m;
+                    ss = s;
+                }
+            }
+        }
+    }
+    if !parsed {
+        return Value::Null;
+    }
+
+    // Day-of-year (1..=366) via days_from_civil epoch.
+    let doy = days_from_civil(y, mo, d);
+
+    // Weekday (0=Sunday..6=Saturday). days_from_civil(1970,1,1) was
+    // Thursday (weekday=4). Adjust by hand from a known anchor.
+    let weekday = ((doy + 3).rem_euclid(7)) as i64;
+
+    let mut out = String::with_capacity(fmt.len() + 8);
+    let bytes = fmt.as_bytes();
+    let mut i = 0;
+    while i < bytes.len() {
+        if bytes[i] == b'%' && i + 1 < bytes.len() {
+            let spec = bytes[i + 1] as char;
+            let repl: Option<String> = match spec {
+                'Y' => Some(format!("{:04}", y)),
+                'm' => Some(format!("{:02}", mo)),
+                'd' => Some(format!("{:02}", d)),
+                'H' => Some(format!("{:02}", hh)),
+                'M' => Some(format!("{:02}", mi)),
+                'S' => Some(format!("{:02}", ss)),
+                'j' => Some(format!("{:03}", doy)),
+                'w' => Some(format!("{}", weekday)),
+                '%' => Some("%".to_string()),
+                _ => None, // unknown: pass through verbatim
+            };
+            if let Some(s) = repl {
+                out.push_str(&s);
+                i += 2;
+                continue;
+            }
+            // unknown specifier: fall through to literal
+        }
+        // Push one UTF-8 char (format strings are ASCII in practice;
+        // a multi-byte char passes through unchanged via char boundary).
+        let ch = fmt[i..].chars().next().unwrap();
+        out.push(ch);
+        i += ch.len_utf8();
+    }
+    Value::Text(out)
 }
 
 /// V312-bug-report-3120 / BUG-2b: parse 'YYYY-MM-DD' (optionally
