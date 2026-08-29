@@ -308,6 +308,13 @@ pub enum AlterTableOperation {
         nullable: bool,
         default_value: Option<String>,
     },
+    /// Issue #4580 / B-track case 30: `ALTER TABLE t ADD CONSTRAINT
+    /// <name> {PRIMARY KEY|UNIQUE|FOREIGN KEY|CHECK} (...)`.
+    /// The constraint is captured in the parser so the statement
+    /// parses; executor applies it where supported (PRIMARY KEY /
+    /// UNIQUE are wired into the storage layer; FOREIGN KEY / CHECK
+    /// are accepted but currently no-op at the executor level).
+    AddTableConstraint(TableConstraint),
     DropColumn {
         name: String,
     },
@@ -9569,6 +9576,65 @@ impl Parser {
         Ok(columns)
     }
 
+    /// Issue #4580 / B-track case 30: parse a single
+    /// `CONSTRAINT <name> <kind> (<cols>)` clause, where `<kind>` is
+    /// `PRIMARY KEY`, `UNIQUE`, `FOREIGN KEY`, or `CHECK`. Used by
+    /// both `CREATE TABLE` (inline at table level) and `ALTER TABLE
+    /// ADD CONSTRAINT`. Mirrors the inline logic that already lives
+    /// inside `parse_create_table`'s constraint loop, but factored
+    /// out so ALTER TABLE can reuse it without duplicating the
+    /// PRIMARY KEY / UNIQUE / FOREIGN KEY / CHECK branches.
+    fn parse_one_table_constraint(&mut self) -> Result<TableConstraint, String> {
+        // Caller already consumed the `CONSTRAINT` keyword.
+        let name = match self.next() {
+            Some(Token::Identifier(n)) => n.clone(),
+            _ => return Err("Expected constraint name after CONSTRAINT".to_string()),
+        };
+        match self.current() {
+            Some(Token::Primary) => {
+                self.next();
+                self.expect(Token::Key)?;
+                if matches!(self.current(), Some(Token::LParen)) {
+                    self.next();
+                }
+                let cols = self.parse_column_list()?;
+                Ok(TableConstraint::PrimaryKey {
+                    columns: cols,
+                    name: Some(name),
+                })
+            }
+            Some(Token::Foreign) => {
+                self.next();
+                self.parse_foreign_key_constraint(Some(name))
+            }
+            Some(Token::Unique) => {
+                self.next();
+                if matches!(self.current(), Some(Token::LParen)) {
+                    self.next();
+                }
+                let cols = self.parse_column_list()?;
+                Ok(TableConstraint::Unique {
+                    columns: cols,
+                    name: Some(name),
+                })
+            }
+            Some(Token::Check) => {
+                self.next();
+                self.expect(Token::LParen)?;
+                let expr = self.parse_expression()?;
+                self.expect(Token::RParen)?;
+                Ok(TableConstraint::Check {
+                    expression: expr,
+                    name: Some(name),
+                })
+            }
+            _ => Err(format!(
+                "Expected constraint type, got {:?}",
+                self.current()
+            )),
+        }
+    }
+
     fn parse_drop(&mut self) -> Result<Statement, String> {
         self.expect(Token::Drop)?;
         match self.current() {
@@ -10765,6 +10831,19 @@ impl Parser {
         match self.current() {
             Some(Token::Add) => {
                 self.next();
+                // Issue #4580 / B-track case 30: support
+                //   ALTER TABLE t ADD CONSTRAINT <name> <kind> (<cols>)
+                // by routing to the same CREATE-TABLE constraint
+                // parser as table-level constraints, then wrapping
+                // the result in AlterTableOperation::AddTableConstraint.
+                if matches!(self.current(), Some(Token::Constraint)) {
+                    self.next();
+                    let constraint = self.parse_one_table_constraint()?;
+                    return Ok(Statement::AlterTable(AlterTableStatement {
+                        table_name,
+                        operation: AlterTableOperation::AddTableConstraint(constraint),
+                    }));
+                }
                 if matches!(self.current(), Some(Token::Column)) {
                     self.next();
                 }
