@@ -17,10 +17,14 @@
 //! `storage.delete` / `storage.insert` in reverse order.
 //!
 //! ## Scope discipline (v3.12 RC scope)
-//! The wiring is **only** active when the active transaction has at
-//! least one savepoint (`has_active_savepoint(tx_id) == true`). The
-//! guard short-circuits before any heap allocation so savepoint-less
-//! transactions pay zero cost.
+//! Issue #4581 fix: the wiring is now active for ANY active
+//! transaction (not just savepoint-bearing ones). This enables
+//! top-level `BEGIN; UPDATE; ROLLBACK;` to actually restore data,
+//! since `TransactionManager::rollback_with_undo` re-plays the undo
+//! log via the closure passed by the engine.
+//!
+//! Cost: one `Vec::push` per DML when in a tx; zero when not in a
+//! tx (the engine does not call these from autocommit path).
 
 use sqlrustgo_storage::TableInfo;
 use sqlrustgo_transaction::savepoint::UndoRecord;
@@ -50,9 +54,8 @@ pub fn primary_key_values(table_info: &TableInfo, row: &[Value]) -> Vec<Value> {
 /// Append a typed `UndoRecord::Insert` to the transaction's undo log.
 ///
 /// Callers MUST invoke this AFTER `storage.insert` succeeds; the
-/// record exists so a `ROLLBACK TO` can delete the new row by primary
-/// key. The no-op short-circuit (`has_active_savepoint(tx_id)`) keeps
-/// savepoint-less transactions off the hot path.
+/// record exists so `ROLLBACK [TO SAVEPOINT]` (and top-level
+/// `ROLLBACK` per Issue #4581) can delete the new row by primary key.
 pub fn record_insert_undo(
     tx_manager: &mut TransactionManager,
     tx_id: sqlrustgo_transaction::TxId,
@@ -60,9 +63,6 @@ pub fn record_insert_undo(
     table_info: &TableInfo,
     row: &[Value],
 ) {
-    if !tx_manager.has_active_savepoint(tx_id) {
-        return;
-    }
     let key = primary_key_values(table_info, row);
     let _ = tx_manager.add_undo_record(
         tx_id,
@@ -73,7 +73,7 @@ pub fn record_insert_undo(
     );
 }
 
-/// Append a typed `UndoRecord::Delete` (so a `ROLLBACK TO` re-inserts
+/// Append a typed `UndoRecord::Delete` (so `ROLLBACK` can re-insert
 /// the deleted row verbatim). Call AFTER `storage.delete` succeeds.
 pub fn record_delete_undo(
     tx_manager: &mut TransactionManager,
@@ -82,9 +82,6 @@ pub fn record_delete_undo(
     table_info: &TableInfo,
     row: &[Value],
 ) {
-    if !tx_manager.has_active_savepoint(tx_id) {
-        return;
-    }
     let key = primary_key_values(table_info, row);
     let _ = tx_manager.add_undo_record(
         tx_id,
@@ -96,7 +93,7 @@ pub fn record_delete_undo(
     );
 }
 
-/// Append a typed `UndoRecord::Update` so a `ROLLBACK TO` can restore
+/// Append a typed `UndoRecord::Update` so `ROLLBACK` can restore
 /// the pre-image row. `prior_row` MUST be the snapshot taken BEFORE
 /// the SET clauses were applied.
 pub fn record_update_undo(
@@ -106,9 +103,6 @@ pub fn record_update_undo(
     table_info: &TableInfo,
     prior_row: &[Value],
 ) {
-    if !tx_manager.has_active_savepoint(tx_id) {
-        return;
-    }
     let key = primary_key_values(table_info, prior_row);
     let _ = tx_manager.add_undo_record(
         tx_id,
