@@ -161,6 +161,55 @@ impl TransactionManager {
         Ok(())
     }
 
+    /// Issue #4581 / B-track case 35-36: top-level ROLLBACK physical
+    /// undo. Replays the per-tx undo log in reverse via the `on_undo`
+    /// closure (which performs the actual storage operations). Mirrors
+    /// `rollback_to_savepoint_with_undo` (the SAVEPOINT path), but
+    /// applies to the WHOLE transaction rather than to a named
+    /// savepoint. The caller (ExecutionEngine) provides the closure
+    /// that drives `storage.delete` / `storage.insert` from each
+    /// `UndoRecord`.
+    ///
+    /// Errors from `on_undo` are logged to stderr but DO NOT abort the
+    /// rollback — matches the SAVEPOINT convention at
+    /// `savepoint.rs:129` (best-effort physical undo). The transaction
+    /// state is marked Aborted and the active entry is removed from
+    /// `active_transactions` regardless.
+    pub fn rollback_with_undo<F>(
+        &mut self,
+        tx_id: TxId,
+        mut on_undo: F,
+    ) -> Result<(), SsiError>
+    where
+        F: FnMut(&UndoRecord) -> Result<(), String>,
+    {
+        let active = self
+            .active_transactions
+            .get_mut(&tx_id)
+            .ok_or(SsiError::TransactionNotFound { tx_id })?;
+        active.state = TransactionState::Aborted;
+        // Take ownership of the undo log so the borrow on `active` is
+        // released before the closure runs (the closure re-acquires the
+        // storage write lock via the engine's Arc<RwLock<StorageEngine>>).
+        let undo_log = active.savepoint_manager.take_undo_log();
+        self.ssi_detector.release(tx_id);
+        self.active_transactions.remove(&tx_id);
+        // Reverse iteration: most recent operation is undone first so
+        // referential integrity is preserved (e.g. an INSERT that
+        // depended on a row inserted later is undone first, leaving the
+        // dependency row intact).
+        for record in undo_log.iter().rev() {
+            if let Err(e) = on_undo(record) {
+                eprintln!(
+                    "Transaction {} undo failed (continuing): {}",
+                    tx_id.as_u64(),
+                    e
+                );
+            }
+        }
+        Ok(())
+    }
+
     /// Abort (rollback) a transaction
     ///
     /// # Arguments
