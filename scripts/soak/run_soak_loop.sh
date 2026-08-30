@@ -14,14 +14,18 @@
 #   bash scripts/soak/run_soak_loop.sh
 #
 # 环境变量:
-#   SOAK_HOURS        测试运行时长 (默认 24)
-#   SOAK_PORT         服务器端口 (默认 3396)
-#   SOAK_TABLE_SIZE   sysbench 表行数 (默认 10000)
-#   SOAK_SERVER_THR   服务器线程数 (默认 4)
-#   SOAK_SB_THR       sysbench 线程数 (默认 8)
-#   SOAK_RESULTS_DIR  结果输出目录
-#   SOAK_NO_DETACH    设为 1 关闭自动 detach (默认: stdin 非 TTY 时自动 detach)
-#   SOAK_DETACHED     内部标记, 不要手动设置
+#   SOAK_HOURS         测试运行时长 (默认 24)
+#   SOAK_PORT          服务器端口 (默认 3396)
+#   SOAK_TABLE_SIZE    sysbench 表行数 (默认 10000)
+#   SOAK_SERVER_THR    服务器线程数 (默认 4)
+#   SOAK_SB_THR        sysbench 线程数 (默认 8)
+#   SOAK_RESULTS_DIR   结果输出目录
+#   SOAK_NO_DETACH     设为 1 关闭自动 detach (默认: stdin 非 TTY 时自动 detach)
+#   SOAK_DETACHED      内部标记, 不要手动设置
+#   SOAK_DATA_DIR      server data-dir 路径 (默认 ${HOME}/sqlrustgo-soak-data-${SOAK_PORT})
+#                       — v312-59-d / #4594 P-2: 防止 168h SOAK 跨重启丢失数据
+#   SOAK_NICE_SERVER   server nice level (默认 10) — v312-59-d / #4594 P-3
+#   SOAK_NICE_SYSBENCH sysbench nice level (默认 15) — v312-59-d / #4594 P-3
 #
 # 退出码:
 #   0  — 正常完成
@@ -36,6 +40,11 @@ SOAK_TABLE_SIZE="${SOAK_TABLE_SIZE:-10000}"
 SOAK_SERVER_THR="${SOAK_SERVER_THR:-4}"
 SOAK_SB_THR="${SOAK_SB_THR:-8}"
 SOAK_RESULTS_DIR="${SOAK_RESULTS_DIR:-${HOME}/sqlrustgo-soak-results}"
+# v312-59-d / #4594 P-2: 默认 data-dir 移到 ${HOME}, 不再用 /tmp (tmpfs 重启即失)
+SOAK_DATA_DIR="${SOAK_DATA_DIR:-${HOME}/sqlrustgo-soak-data-${SOAK_PORT}}"
+# v312-59-d / #4594 P-3: nice levels 可经 env 覆盖 (跨主机比较时控制干扰变量)
+SOAK_NICE_SERVER="${SOAK_NICE_SERVER:-10}"
+SOAK_NICE_SYSBENCH="${SOAK_NICE_SYSBENCH:-15}"
 
 PROJECT_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
 BINARY="${PROJECT_ROOT}/target/release/sqlrustgo-mysql-server"
@@ -194,9 +203,40 @@ server_thread_count() {
     fi
 }
 
+# v312-59-d / #4594 P-9: server 实际日志格式是 RESOURCE_MONITOR pid=... total_q={N},
+# 原 regex `qps=[0-9]+\.[0-9]+` 在 7h28m run 中 0 次匹配 (45/45 报告 ServerQPS 为空).
+# 修复: 取最近两条 RESOURCE_MONITOR 行的 total_q, 求差分除以时间间隔得 QPS.
+# State vars (script-level, 初始化在 setup_run_dir 后):
+SOAK_PREV_TOTAL_Q=0
+SOAK_PREV_QPS_TS=0
+
 server_qps() {
-    grep -a "RESOURCE_MONITOR" "${SERVER_LOG}" 2>/dev/null | tail -1 | \
-        grep -oE 'qps=[0-9]+\.[0-9]+' | tail -1 | cut -d= -f2 || echo "0"
+    local last_line cur_total_q cur_ts delta_q delta_t
+    last_line=$(grep -a "RESOURCE_MONITOR" "${SERVER_LOG}" 2>/dev/null | tail -1)
+    if [[ -z "${last_line}" ]]; then
+        echo "0"
+        return
+    fi
+    cur_total_q=$(echo "${last_line}" | grep -oE 'total_q=[0-9]+' | cut -d= -f2 || echo 0)
+    cur_ts=$(date +%s)
+    if [[ ${SOAK_PREV_QPS_TS} -eq 0 || ${SOAK_PREV_TOTAL_Q} -eq 0 ]]; then
+        # 首次采样: 初始化 state, 返回 0 (无前值可比)
+        SOAK_PREV_TOTAL_Q=${cur_total_q}
+        SOAK_PREV_QPS_TS=${cur_ts}
+        echo "0"
+        return
+    fi
+    delta_q=$((cur_total_q - SOAK_PREV_TOTAL_Q))
+    delta_t=$((cur_ts - SOAK_PREV_QPS_TS))
+    # 更新 state
+    SOAK_PREV_TOTAL_Q=${cur_total_q}
+    SOAK_PREV_QPS_TS=${cur_ts}
+    if [[ ${delta_t} -le 0 || ${delta_q} -lt 0 ]]; then
+        # counter reset / 时间倒退 — 返回 0
+        echo "0"
+        return
+    fi
+    awk "BEGIN {printf \"%.2f\", ${delta_q} / ${delta_t}}"
 }
 
 sysbench_qps() {
@@ -232,17 +272,24 @@ preflight() {
 # ── 服务器管理 ──
 
 start_server() {
-    CYCLE_DATA="/tmp/sqlrustgo-soak-data-${SOAK_PORT}"
+    # v312-59-d / #4594 P-2: 默认 data-dir 移到 ${HOME}, 不再用 /tmp (tmpfs 重启即失)
+    CYCLE_DATA="${SOAK_DATA_DIR}"
+    # 检测 tmpfs 并警告 — 跨主机 SOAK 必须显式 SOAK_DATA_DIR= 才能用 /tmp
+    if [[ "$(stat -f -c %T "${CYCLE_DATA}" 2>/dev/null || echo unknown)" == "tmpfs" ]]; then
+        warn "data-dir ${CYCLE_DATA} 在 tmpfs — 168h SOAK 跨重启即失!"
+        warn "  显式覆盖: SOAK_DATA_DIR=/path/to/disk bash scripts/soak/run_soak_loop.sh"
+    fi
     rm -rf "${CYCLE_DATA}"
     mkdir -p "${CYCLE_DATA}" "${LOG_DIR}"
 
     log "启动服务器 (port=${SOAK_PORT})"
     log "  data-dir: ${CYCLE_DATA}"
     log "  log-dir:  ${LOG_DIR} (server stdout → ${SERVER_LOG}, internal logs go through tracing-subscriber)"
-    log "  nice: -n 10"
+    log "  nice: -n ${SOAK_NICE_SERVER}"
     log "  [v312-59-d / #4499 patch] dropped --log-dir / --tls, --monitor-port → --metrics-port, added --wal-sync batch:10000"
 
-    nice -n 10 \
+    # v312-59-d / #4594 P-3: nice level 可经 SOAK_NICE_SERVER 覆盖
+    nice -n "${SOAK_NICE_SERVER}" \
         "${BINARY}" serve \
         --host 127.0.0.1 \
         --port "${SOAK_PORT}" \
@@ -316,8 +363,12 @@ start_sysbench() {
 
     sleep 2
 
-    log "启动 sysbench run (${SOAK_SB_THR} threads, nice -n 15)"
-    nice -n 15 \
+    log "启动 sysbench run (${SOAK_SB_THR} threads, nice -n ${SOAK_NICE_SYSBENCH})"
+    # v312-59-d / #4594 P-4: sysbench --time 必须 ≥ SOAK_HOURS, 否则 SOAK 结束后 sysbench 孤立运行
+    # +1h buffer 确保 sysbench 比 main_loop 后退出, 避免 SOAK 中途 orphan 干扰
+    local sysbench_seconds=$(( (SOAK_HOURS + 1) * 3600 ))
+    # v312-59-d / #4594 P-3: nice level 可经 SOAK_NICE_SYSBENCH 覆盖
+    nice -n "${SOAK_NICE_SYSBENCH}" \
         sysbench oltp_read_write \
         --db-driver=mysql \
         --db-ps-mode=disable \
@@ -329,7 +380,7 @@ start_sysbench() {
         --table-size="${SOAK_TABLE_SIZE}" \
         --tables=1 \
         --threads="${SOAK_SB_THR}" \
-        --time=86400 \
+        --time="${sysbench_seconds}" \
         --report-interval=10 \
         run >> "${SYSBENCH_LOG}" 2>&1 &
     local pid=$!
