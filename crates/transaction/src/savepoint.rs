@@ -174,6 +174,15 @@ impl SavepointManager {
         self.undo_log.push(record);
     }
 
+    /// Issue #4581: drain the undo log so the caller (typically
+    /// `TransactionManager::rollback_with_undo`) can replay the
+    /// entries in reverse via its closure. The SavepointManager keeps
+    /// an empty undo log after this call; subsequent DML operations
+    /// inside the same transaction continue to append fresh entries.
+    pub fn take_undo_log(&mut self) -> Vec<UndoRecord> {
+        std::mem::take(&mut self.undo_log)
+    }
+
     pub fn get_savepoint_count(&self) -> usize {
         self.savepoints.len()
     }

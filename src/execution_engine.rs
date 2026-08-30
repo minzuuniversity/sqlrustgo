@@ -1759,16 +1759,69 @@ impl<S: StorageEngine + 'static> ExecutionEngine<S> {
         let tx_id = self
             .current_tx_id
             .ok_or_else(|| SqlError::ExecutionError("No transaction in progress".to_string()))?;
-        // Delegate to storage engine first so WalStorage writes WAL Rollback entry before clearing state
-        let mut storage = self.storage.write();
+        // Issue #4581 / B-track case 35-36: physically undo the
+        // transaction by replaying the per-tx undo log via a closure
+        // that calls `storage.delete` / `storage.insert`. This mirrors
+        // the SAVEPOINT rollback path (`execute_savepoint`) but for
+        // top-level ROLLBACK. See also
+        // `sqlrustgo_transaction::TransactionManager::rollback_with_undo`
+        // and `src/savepoint_wiring.rs::record_*_undo`.
+        //
+        // We MUST NOT hold `self.storage.write()` while calling
+        // `self.transaction_manager.rollback_with_undo` because both
+        // paths can borrow self mutably. The closure captures a clone
+        // of the storage Arc and re-acquires the write lock per record.
+        let storage = self.storage.clone();
+        self.transaction_manager
+            .rollback_with_undo(tx_id, move |rec| {
+                let mut storage = storage.write();
+                match rec {
+                    sqlrustgo_transaction::savepoint::UndoRecord::Insert { table, key } => {
+                        storage.delete(table, key).map_err(|e| {
+                            format!("rollback delete on {} pk={:?}: {}", table, key, e)
+                        })?;
+                        Ok(())
+                    }
+                    sqlrustgo_transaction::savepoint::UndoRecord::Delete {
+                        table,
+                        key: _,
+                        old_value,
+                    } => {
+                        storage
+                            .insert(table, vec![old_value.clone()])
+                            .map_err(|e| {
+                                format!("rollback reinsert on {}: {}", table, e)
+                            })?;
+                        Ok(())
+                    }
+                    sqlrustgo_transaction::savepoint::UndoRecord::Update {
+                        table,
+                        key,
+                        old_value,
+                    } => {
+                        // Re-insert under the PK (deleting the
+                        // forward-UPDATE's row first to avoid a duplicate
+                        // if the forward UPDATE kept a different row in
+                        // place). This mirrors the SAVEPOINT undo logic
+                        // at `execute_savepoint` (lines 1710+).
+                        storage.delete(table, key).map_err(|e| {
+                            format!("rollback update-delete on {}: {}", table, e)
+                        })?;
+                        storage
+                            .insert(table, vec![old_value.clone()])
+                            .map_err(|e| {
+                                format!("rollback update-insert on {}: {}", table, e)
+                            })?;
+                        Ok(())
+                    }
+                }
+            })
+            .map_err(|e| SqlError::ExecutionError(format!("Failed to rollback transaction: {:?}", e)))?;
+        // F-16 Gap Locking: release all gap locks on rollback
         {
-            let _ = storage.rollback_transaction();
-            // F-16 Gap Locking: release all gap locks on rollback
+            let mut storage = self.storage.write();
             storage.release_all_gap_locks(tx_id.as_u64());
         }
-        self.transaction_manager.rollback(tx_id).map_err(|e| {
-            SqlError::ExecutionError(format!("Failed to rollback transaction: {:?}", e))
-        })?;
         self.current_tx_id = None;
         self.tx_status = TxStatus::Aborted;
         // INT-1: Reset to Idle so the next DML can begin a new TX or run
