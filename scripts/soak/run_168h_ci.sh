@@ -80,19 +80,14 @@ done
 
 # ── 3. Initialize schema (via mysql CLI) ──
 echo "Creating schema..."
+# Only create the database here. Table creation is delegated entirely to
+# `sysbench prepare` below (its oltp_read_write schema owns sbtest1..15).
+# A pre-created sbtest1 here conflicts with sysbench's own CREATE TABLE
+# (error 1105 "already exists") — see PR fix/v312-60-168h-schema-conflict.
 "$MYSQL_BIN" -h 127.0.0.1 -P "$PORT" -uroot --silent \
   -e "CREATE DATABASE IF NOT EXISTS sbtest" || true
 
-"$MYSQL_BIN" -h 127.0.0.1 -P "$PORT" -uroot sbtest --silent <<'SQL' || true
-CREATE TABLE IF NOT EXISTS sbtest1 (
-  id INT PRIMARY KEY AUTO_INCREMENT,
-  k INT DEFAULT 0,
-  c VARCHAR(100) DEFAULT '',
-  pad VARCHAR(100) DEFAULT ''
-);
-SQL
-
-echo "Schema ready"
+echo "Schema ready (tables owned by sysbench prepare)"
 
 # ── 4. sysbench prepare (use --db-ps-mode=disable per run_soak_loop.sh workaround) ──
 echo "=== sysbench prepare (--db-ps-mode=disable) ==="
