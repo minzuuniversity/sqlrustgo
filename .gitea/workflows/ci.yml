@@ -162,6 +162,36 @@ jobs:
           cp ga3_security_scan.log artifacts/ga3/v3.12.0/ 2>/dev/null || true
           ls -la artifacts/ga3/v3.12.0/
 
+  test-soak-detach:
+    # Issue #4595 — Regression guard for run_soak_loop.sh self-detach block
+    # (P-1 fix from PR #4591 commit 66dac1aab2). Without this test, future
+    # refactors of run_soak_loop.sh could silently regress the
+    # setsid+nohup+disown protection, re-introducing the parent-shell reap
+    # bug that killed sqlrustgo mid-SOAK (7h28m evidence salvage).
+    #
+    # This job runs the STATIC check only (~1s, no binary required). The
+    # behavioral sub-test (SIGKILL parent + verify child survives) lives in
+    # `bash scripts/soak/test_run_soak_loop_detach.sh --behavioral` and is
+    # invoked manually on hp-z6g4 (too slow for PR CI gate).
+    #
+    # Branches: v3.12.0 line only (SOAK scripts are v3.12.0+). Fast enough
+    # that we run on EVERY branch, not just v3.12.0 — but skip if branch is
+    # develop/v3.11.x or earlier (the file may not even exist there).
+    runs-on: [hp-z6g4]
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 1
+      - name: Verify scripts/soak/run_soak_loop.sh exists
+        run: |
+          if [[ ! -f scripts/soak/run_soak_loop.sh ]]; then
+            echo "SKIP: scripts/soak/run_soak_loop.sh not present on this branch"
+            exit 0
+          fi
+      - name: Run static detach regression check
+        run: bash scripts/soak/test_run_soak_loop_detach.sh
+
   postcheck:
     runs-on: [hp-z6g4]
     needs: [test]
