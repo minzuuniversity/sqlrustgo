@@ -241,17 +241,22 @@ These are observations about sqlrustgo **itself** based on the 7h28m evidence, N
 
 ## 7. Recommended Follow-up Issue Plan
 
-I propose filing the following issues immediately after this commit lands (using the GitNexus `open issue` API):
+Filed immediately after this commit lands via Gitea REST API. **Actual assigned numbers (post-creation, 2026-08-30 17:35 CST):**
 
-| Issue # | Title | Tier | Body scope |
-|---------|-------|------|-----------|
-| #4592 | **Tier-1 bundle**: SOAK data-dir on persistent storage + `ServerQPS` regex fix + `--time`/`SOAK_HOURS` sync + `nice` env override | 1 | 4 sub-tasks, 1 PR |
-| #4593 | Tier-1 follow-up: CI test that detects parent-reap regression (spawn run_soak_loop.sh from ephemeral parent, verify it survives) | 1 | 1 PR, ~40 lines |
-| #4594 | Tier-2 bundle: workload sweep (oltp_read_only, oltp_update_index, larger table sizes) + periodic_reports JSON-ification + disk-limit restart boundary marker | 2 | 3 sub-tasks, 1 PR |
-| #4595 | Tier-2: chaos drills script (SIGKILL + disk-full + tc netem loss + clock skew) | 2 | 1 PR, new file |
-| #4596 | Tier-3: alerting webhook + thread-ramp mode + 168h local SOP | 3 | 3 sub-tasks, can be deferred |
+| Issue # | Title | Tier | Status |
+|---------|-------|------|--------|
+| **#4594** | [Tier-1] SOAK infra blockers: data-dir /tmp wipe + ServerQPS regex bug + --time/SOAK_HOURS sync + nice env override | 1 | OPEN |
+| **#4595** | [Tier-1] CI test that detects run_soak_loop.sh parent-reap regression | 1 | OPEN |
+| **#4596** | [Tier-2] SOAK infra: workload sweep + periodic_reports JSON + disk-restart boundary marker | 2 | OPEN |
+| **#4597** | [Tier-2] SOAK chaos drills: SIGKILL + disk-full + netem loss + clock skew | 2 | OPEN |
+| **#4598** | [Tier-3] SOAK alerting webhook + thread-ramp mode + 168h local SOP | 3 | OPEN |
 
-**Open question for the user:** whether to (a) file all 5 immediately as separate issues, (b) bundle them into 2-3 issues (one per tier), or (c) land only #4592 and #4593 this sprint.
+**Note on numbering:** planned numbers were #4592-#4596 but two stray debug issues occupied #4592 (DEBUG test) and #4593 (small body test) during POST debugging. Those strays were closed with state=closed and are not actionable; the real follow-up issues received #4594-#4598.
+
+**Next steps for sprint planning:**
+- Tier-1 (#4594, #4595) are the critical path. #4594 contains 4 sub-tasks (P-2/P-3/P-4/P-9), #4595 is the P-1 regression detector.
+- Tier-2 (#4596, #4597) can land as a single combined PR (~140 lines + 7 tests) in the same sprint.
+- Tier-3 (#4598) deferred to v3.13 unless someone volunteers.
 
 ---
 
