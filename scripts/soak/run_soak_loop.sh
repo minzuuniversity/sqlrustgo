@@ -20,6 +20,8 @@
 #   SOAK_SERVER_THR   服务器线程数 (默认 4)
 #   SOAK_SB_THR       sysbench 线程数 (默认 8)
 #   SOAK_RESULTS_DIR  结果输出目录
+#   SOAK_NO_DETACH    设为 1 关闭自动 detach (默认: stdin 非 TTY 时自动 detach)
+#   SOAK_DETACHED     内部标记, 不要手动设置
 #
 # 退出码:
 #   0  — 正常完成
@@ -74,6 +76,46 @@ setup_run_dir() {
 # MONITOR_LOG 可能在 setup_run_dir() 之前被调用 (preflight),
 # 所以提供 fallback 路径.
 MONITOR_LOG="${MONITOR_LOG:-${SOAK_RESULTS_DIR}/preflight.log}"
+
+# ── Self-detach (防止父 shell 被回收时内核 SIGKILL 整个进程组) ──
+# 当脚本以非交互方式启动 (stdin 非 TTY, 如 AI agent / nohup / cron / systemd)
+# 时, 自动用 setsid+nohup 重新 exec, 脱离父进程组 + 父会话, 这样父 shell 被
+# reap 不会带走 sqlrustgo + sysbench + 本脚本。
+# 交互式终端 (stdin=TTY) 保持原行为, 可 Ctrl+C 优雅中断。
+# 参见 docs/releases/v3.12.0/evidence/issue-4560/INCIDENT-REPORT-2026-08-30.md §3, §6
+if [[ -z "${SOAK_DETACHED:-}" && -z "${SOAK_NO_DETACH:-}" && ! -t 0 ]]; then
+    mkdir -p "${SOAK_RESULTS_DIR}"
+    LAUNCHER_TS=$(date '+%Y%m%d_%H%M%S')
+    LAUNCHER_LOG="${SOAK_RESULTS_DIR}/launcher_${LAUNCHER_TS}.log"
+    LAUNCHER_PID_FILE="${SOAK_RESULTS_DIR}/launcher_${LAUNCHER_TS}.pid"
+    export SOAK_DETACHED=1
+    # setsid: 新会话 + 新进程组 (process group leader) — 父 shell reap 不传播
+    # nohup: 忽略 SIGHUP — 即使父会话关闭也不被杀
+    # </dev/null: 断开 stdin, 防止父 shell 关闭时 EOF 触发脚本退出
+    # >>LAUNCHER_LOG 2>&1: 全部输出落入 launcher 日志 (父 stdout 已关闭)
+    # & + disown: 后台运行, 脱离 shell 作业控制
+    if command -v setsid >/dev/null 2>&1; then
+        setsid nohup bash "$0" "$@" </dev/null >>"${LAUNCHER_LOG}" 2>&1 &
+    else
+        # setsid 不可用时的降级: 仅 nohup + & + disown, 仍可挡住大多数 reap 场景
+        nohup bash "$0" "$@" </dev/null >>"${LAUNCHER_LOG}" 2>&1 &
+    fi
+    LAUNCHER_PID=$!
+    disown 2>/dev/null || true
+    echo "${LAUNCHER_PID}" > "${LAUNCHER_PID_FILE}"
+    {
+        echo "[$(date '+%Y-%m-%d %H:%M:%S')] === SOAK detached as background process ==="
+        echo "  PID:           ${LAUNCHER_PID}"
+        echo "  PID file:      ${LAUNCHER_PID_FILE}"
+        echo "  launcher log:  ${LAUNCHER_LOG}"
+        echo "  结果目录:       ${SOAK_RESULTS_DIR}/"
+        echo "  latest_run:    cat ${SOAK_RESULTS_DIR}/latest_run.txt (创建后)"
+        echo "  停止方式:       kill -TERM \$(cat ${LAUNCHER_PID_FILE})"
+        echo "  再次启动:       bash scripts/soak/run_soak_loop.sh (会自动 detach)"
+        echo "  禁用 detach:   SOAK_NO_DETACH=1 bash scripts/soak/run_soak_loop.sh"
+    } >&2
+    exit 0
+fi
 
 log()  { local m="[$(date '+%Y-%m-%d %H:%M:%S')] $*"; echo "${m}" >> "${MONITOR_LOG}"; echo "${m}"; }
 warn() { log "WARN: $*"; }
@@ -400,6 +442,13 @@ main_loop() {
 
         # ── 检查 server 存活 ──
         if ! pid_alive "${server_pid}"; then
+            # 显式记录 PID 死亡事件, 便于事后取证 (参考 INCIDENT-REPORT-2026-08-30.md §3)
+            log "=== UNEXPECTED PID DEATH: server ==="
+            log "  server_pid=${server_pid} (was alive at previous iteration)"
+            log "  sysbench_pid=$(cat "${RUN_DIR}/sysbench.pid" 2>/dev/null || echo 'missing')"
+            log "  last_server_line: $(tail -1 "${SERVER_LOG}" 2>/dev/null | head -c 240)"
+            log "  last_sysbench_line: $(tail -1 "${SYSBENCH_LOG}" 2>/dev/null | head -c 240)"
+            log "  检测时间: $(date '+%Y-%m-%d %H:%M:%S'), restart_count=${restart_count}"
             warn "服务器进程消失! 重启..."
             tail -3 "${SERVER_LOG}" >&2
             restart_count=$((restart_count + 1))
@@ -518,7 +567,11 @@ main() {
 
     setup_run_dir
 
-    trap cleanup EXIT
+    # 捕获 EXIT + 常见信号, 确保任何异常退出都会触发 cleanup, 在 monitor.log
+    # 中留下 `=== 清理 ===` / `=== SOAK 已停止 ===` 标记, 便于事后取证。
+    # 仅 SIGKILL (内核强制) 无法捕获, 此时 PATCHED detach (line 76) 已能
+    # 大幅降低被 SIGKILL 的概率。参见 INCIDENT-REPORT-2026-08-30.md §3.1。
+    trap cleanup EXIT INT TERM HUP QUIT
     main_loop
 }
 
