@@ -243,18 +243,20 @@ These are observations about sqlrustgo **itself** based on the 7h28m evidence, N
 
 Filed immediately after this commit lands via Gitea REST API. **Actual assigned numbers (post-creation, 2026-08-30 17:35 CST):**
 
-| Issue # | Title | Tier | Status |
-|---------|-------|------|--------|
-| **#4594** | [Tier-1] SOAK infra blockers: data-dir /tmp wipe + ServerQPS regex bug + --time/SOAK_HOURS sync + nice env override | 1 | OPEN |
-| **#4595** | [Tier-1] CI test that detects run_soak_loop.sh parent-reap regression | 1 | OPEN |
-| **#4596** | [Tier-2] SOAK infra: workload sweep + periodic_reports JSON + disk-restart boundary marker | 2 | OPEN |
-| **#4597** | [Tier-2] SOAK chaos drills: SIGKILL + disk-full + netem loss + clock skew | 2 | OPEN |
-| **#4598** | [Tier-3] SOAK alerting webhook + thread-ramp mode + 168h local SOP | 3 | OPEN |
+| Issue # | PR # | Title | Tier | Status |
+|---------|------|-------|------|--------|
+| **#4594** | **#4599** | [Tier-1] SOAK infra blockers: data-dir /tmp wipe + ServerQPS regex bug + --time/SOAK_HOURS sync + nice env override | 1 | ✅ CLOSED (PR #4599 merged 2026-08-30 17:49:30 CST @ `a7af55a3b17f`) |
+| **#4595** | **#4591** | [Tier-1] CI test that detects run_soak_loop.sh parent-reap regression | 1 | ✅ CLOSED (commit `89ed65852f`/`3840254213` in PR #4591, merged 2026-08-30 17:47:44 CST @ `5a7e2e53825b`) |
+| **#4596** | — | [Tier-2] SOAK infra: workload sweep + periodic_reports JSON + disk-restart boundary marker | 2 | OPEN |
+| **#4597** | — | [Tier-2] SOAK chaos drills: SIGKILL + disk-full + netem loss + clock skew | 2 | OPEN |
+| **#4598** | — | [Tier-3] SOAK alerting webhook + thread-ramp mode + 168h local SOP | 3 | OPEN |
 
-**Note on numbering:** planned numbers were #4592-#4596 but two stray debug issues occupied #4592 (DEBUG test) and #4593 (small body test) during POST debugging. Those strays were closed with state=closed and are not actionable; the real follow-up issues received #4594-#4598.
+**Note on numbering (updated 2026-08-30 17:49:30 CST):** planned issue numbers were #4592-#4596 but two stray debug issues occupied #4592 (DEBUG test) and #4593 (small body test) during POST debugging. Those strays were closed with state=closed and are not actionable; the real follow-up issues received #4594-#4598.
+
+**IMPORTANT — PR vs Issue counter:** PR counter and Issue counter are SEPARATE Gitea namespaces. The PR for issue #4594 was **NOT** PR #4594 (that number was already taken by another in-flight PR at filing time); it became **PR #4599**. Same risk applies for any future issue→PR pair in this chain: always check current PR count before predicting the actual PR number, and update this table accordingly when each PR lands.
 
 **Next steps for sprint planning:**
-- Tier-1 (#4594, #4595) are the critical path. #4594 contains 4 sub-tasks (P-2/P-3/P-4/P-9), #4595 is the P-1 regression detector.
+- ~~Tier-1 (#4594, #4595) are the critical path.~~ **DONE**: #4594 (PR #4599) + #4595 (PR #4591 commit 89ed65852f) both merged 2026-08-30 17:49 CST.
 - Tier-2 (#4596, #4597) can land as a single combined PR (~140 lines + 7 tests) in the same sprint.
 - Tier-3 (#4598) deferred to v3.13 unless someone volunteers.
 
