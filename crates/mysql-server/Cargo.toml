@@ -31,6 +31,31 @@ flate2 = "1.0"
 rand = "0.8"
 sha1 = "0.10"
 scopeguard = "1"
+
+# V312-59-D P0 leak hunt: optional jemalloc global allocator with profiling
+# enabled. Build with `--features jemalloc-prof` to install jemalloc as
+# the global allocator. **Requires `JEMALLOC_SYS_WITH_MALLOC_CONF="prof:true,prof_active:true"`
+# at cargo build time** because tikv-jemalloc-sys 0.7.x always passes
+# `--with-malloc-conf` to jemalloc's configure (it defaults to
+# `background_thread:...`), and once `--with-malloc-conf` is set the
+# runtime `MALLOC_CONF` env var is ignored. With the build-time setting
+# above, opt.prof and opt.lg_prof_sample are baked in and SIGUSR2 dump
+# in main.rs produces `jeprof.<pid>.<ts>.heap` files analysable by
+# `jeprof --text <binary> <heap>`. Default build keeps the system
+# allocator to avoid disturbing unrelated perf baselines. See task
+# #25 / SOAK 5691 leak investigation.
+#
+# Example:
+#   JEMALLOC_SYS_WITH_MALLOC_CONF="prof:true,prof_active:true,lg_prof_sample:14" \
+#     cargo build -p sqlrustgo-mysql-server --features jemalloc-prof
+tikv-jemallocator = { version = "0.7", optional = true, features = ["profiling", "stats", "unprefixed_malloc_on_supported_platforms"] }
+tikv-jemalloc-sys = { version = "0.7", optional = true }
+tikv-jemalloc-ctl = { version = "0.7", optional = true }
+libc = { version = "0.2", optional = true }
+
+[features]
+jemalloc-prof = ["dep:tikv-jemallocator", "dep:tikv-jemalloc-sys", "dep:tikv-jemalloc-ctl", "dep:libc"]
+
 [lib]
 name = "sqlrustgo_mysql_server"
 path = "src/lib.rs"

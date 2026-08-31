@@ -175,11 +175,7 @@ impl TransactionManager {
     /// `savepoint.rs:129` (best-effort physical undo). The transaction
     /// state is marked Aborted and the active entry is removed from
     /// `active_transactions` regardless.
-    pub fn rollback_with_undo<F>(
-        &mut self,
-        tx_id: TxId,
-        mut on_undo: F,
-    ) -> Result<(), SsiError>
+    pub fn rollback_with_undo<F>(&mut self, tx_id: TxId, mut on_undo: F) -> Result<(), SsiError>
     where
         F: FnMut(&UndoRecord) -> Result<(), String>,
     {

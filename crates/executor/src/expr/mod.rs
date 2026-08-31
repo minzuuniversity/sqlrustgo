@@ -2482,7 +2482,7 @@ fn strftime_value(args: &[Value]) -> Value {
 
     // Weekday (0=Sunday..6=Saturday). days_from_civil(1970,1,1) was
     // Thursday (weekday=4). Adjust by hand from a known anchor.
-    let weekday = ((doy + 3).rem_euclid(7)) as i64;
+    let weekday = (doy + 3).rem_euclid(7);
 
     let mut out = String::with_capacity(fmt.len() + 8);
     let bytes = fmt.as_bytes();

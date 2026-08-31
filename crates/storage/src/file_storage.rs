@@ -2956,9 +2956,10 @@ impl StorageEngine for FileStorage {
                     });
                 } else {
                     for (idx, row) in data.rows.iter().enumerate().rev() {
-                        let matches = filters.iter().enumerate().all(|(i, f)| {
-                            row.get(i).map(|v| v == f).unwrap_or(false)
-                        });
+                        let matches = filters
+                            .iter()
+                            .enumerate()
+                            .all(|(i, f)| row.get(i).map(|v| v == f).unwrap_or(false));
                         if matches {
                             self.tx_undo_log.push(UndoOp::DeleteRow {
                                 table: table.to_string(),
@@ -3562,7 +3563,11 @@ impl FileStorage {
     /// Replay one UndoOp. Called only from `rollback_transaction()`.
     fn apply_undo(&mut self, op: UndoOp) -> SqlResult<()> {
         match op {
-            UndoOp::UpdateRow { table, row_idx, original } => {
+            UndoOp::UpdateRow {
+                table,
+                row_idx,
+                original,
+            } => {
                 if let Some(data) = self.tables.get_mut(&table) {
                     if row_idx < data.rows.len() {
                         data.rows[row_idx] = original;
