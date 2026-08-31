@@ -17,6 +17,137 @@
 //! - `backup` — backup database to a file
 //! - `restore` — restore database from a backup file
 
+// V312-59-D P0 leak hunt: install jemalloc as the global allocator
+// when built with `--features jemalloc-prof`. See Cargo.toml feature
+// flag for details. When MALLOC_CONF includes `prof:true,prof_final:true`
+// jemalloc writes a heap profile to `jeprof.<pid>.heap` on graceful
+// shutdown for offline analysis with `jeprof --text` / `--pdf` / `--dot`.
+// Production (non-prof) builds keep the system allocator.
+#[cfg(feature = "jemalloc-prof")]
+#[global_allocator]
+static GLOBAL: tikv_jemallocator::Jemalloc = tikv_jemallocator::Jemalloc;
+
+// V312-59-D P0 leak hunt: SIGUSR2 handler that triggers a one-shot
+// jemalloc heap dump when running under the `jemalloc-prof` feature.
+// Useful for taking periodic snapshots without restarting the server.
+// Path: `jeprof.<pid>.<unix_ts>.heap` written to /tmp.
+//
+// The whole function is `#[allow(clippy::manual_c_str_literals)]`
+// because jemalloc's mallctl option names are NUL-terminated C strings
+// and the suggested `c"..."` macro is unstable on stable rustc (needs
+// `#![feature(c_str_literals)]`).
+#[cfg(feature = "jemalloc-prof")]
+#[allow(clippy::manual_c_str_literals)]
+fn install_jemalloc_prof_signal_handler() {
+    use std::sync::atomic::{AtomicBool, Ordering};
+    static INSTALLED: AtomicBool = AtomicBool::new(false);
+    if INSTALLED.swap(true, Ordering::SeqCst) {
+        return;
+    }
+    // `b"...\0".as_ptr()` triggers `clippy::manual_c_str_literals` on
+    // rustc 1.97+, but the `c"..."` macro it suggests is nightly-only
+    // (`#![feature(c_str_literals)]`). Keep the byte-string form here
+    // so the binary still builds on stable; the lint is harmless for
+    // these fixed-shape mallctl option names.
+    extern "C" fn handler(_sig: libc::c_int) {
+        unsafe {
+            let pid = libc::getpid();
+            let ts = libc::time(std::ptr::null_mut()) as u64;
+
+            // Diagnostics: report current opt.prof / opt.lg_prof_sample
+            // state so we can verify MALLOC_CONF parsing actually
+            // happened. These are read-only derived getters in
+            // jemalloc 5.x — writing them at runtime is intentionally
+            // not supported (the master switch is opt.prof, which is
+            // config-mtx init-time only).
+            let mut opt_prof: bool = false;
+            let mut opt_prof_len: usize = std::mem::size_of::<bool>();
+            let _ = tikv_jemalloc_sys::mallctl(
+                b"opt.prof\0".as_ptr() as *const libc::c_char,
+                &mut opt_prof as *mut _ as *mut libc::c_void,
+                &mut opt_prof_len,
+                std::ptr::null_mut(),
+                0,
+            );
+            let mut opt_lg: u64 = 0;
+            let mut opt_lg_len: usize = std::mem::size_of::<u64>();
+            let _ = tikv_jemalloc_sys::mallctl(
+                b"opt.lg_prof_sample\0".as_ptr() as *const libc::c_char,
+                &mut opt_lg as *mut _ as *mut libc::c_void,
+                &mut opt_lg_len,
+                std::ptr::null_mut(),
+                0,
+            );
+
+            // Now dump. jemalloc's prof.dump mallctl expects a `const char *`
+            // (pointer-to-string) as the new value, NOT a raw byte buffer.
+            // Its WRITE() macro checks `newlen == sizeof(const char *)`,
+            // so we must pass a pointer to a NUL-terminated C string and
+            // 8 bytes of length (on 64-bit). Embed `\0` in the format
+            // output so the resulting `String` is a valid C string
+            // without needing a separate `into_bytes() + push(0)`.
+            let path = format!("/tmp/jeprof.{}.{}.heap\0", pid, ts);
+            let path_ptr: *const libc::c_char = path.as_ptr() as *const libc::c_char;
+            let r = tikv_jemalloc_sys::mallctl(
+                b"prof.dump\0".as_ptr() as *const libc::c_char,
+                std::ptr::null_mut(),
+                std::ptr::null_mut(),
+                &path_ptr as *const _ as *mut libc::c_void,
+                std::mem::size_of::<*const libc::c_char>(),
+            );
+            let dbg = format!(
+                "[jemalloc-prof] pid={} ts={} opt.prof={} opt.lg_prof_sample={} prof.dump r={} -> {}\n",
+                pid, ts, opt_prof, opt_lg, r, path
+            );
+            let _ = libc::write(2, dbg.as_ptr() as *const _, dbg.len());
+        }
+    }
+    unsafe {
+        let mut sa: libc::sigaction = std::mem::zeroed();
+        sa.sa_sigaction = handler as *const () as libc::sighandler_t;
+        sa.sa_flags = 0;
+        libc::sigaction(libc::SIGUSR2, &sa, std::ptr::null_mut());
+    }
+
+    // Diagnostics: print MALLOC_CONF + opt.prof at startup so we can
+    // tell whether the env var made it to jemalloc's init. MALLOC_CONF
+    // is parsed once at first allocation, so this is the earliest point
+    // we can read opt.prof meaningfully.
+    let opt_prof: bool = unsafe {
+        let mut v: bool = false;
+        let mut len: usize = std::mem::size_of::<bool>();
+        let _ = tikv_jemalloc_sys::mallctl(
+            b"opt.prof\0".as_ptr() as *const libc::c_char,
+            &mut v as *mut _ as *mut libc::c_void,
+            &mut len,
+            std::ptr::null_mut(),
+            0,
+        );
+        v
+    };
+    let config_prof: bool = unsafe {
+        let mut v: bool = false;
+        let mut len: usize = std::mem::size_of::<bool>();
+        let _ = tikv_jemalloc_sys::mallctl(
+            b"config.prof\0".as_ptr() as *const libc::c_char,
+            &mut v as *mut _ as *mut libc::c_void,
+            &mut len,
+            std::ptr::null_mut(),
+            0,
+        );
+        v
+    };
+    let malloc_conf = std::env::var("MALLOC_CONF").unwrap_or_else(|_| "(unset)".to_string());
+    eprintln!(
+        "[jemalloc-prof] startup: MALLOC_CONF=[{}] config.prof={} opt.prof={}",
+        malloc_conf, config_prof, opt_prof
+    );
+    eprintln!("[jemalloc-prof] SIGUSR2 -> heap dump to /tmp/jeprof.<pid>.<ts>.heap");
+}
+
+#[cfg(not(feature = "jemalloc-prof"))]
+fn install_jemalloc_prof_signal_handler() {}
+
 use clap::{Parser, Subcommand};
 use sqlrustgo_mysql_server::run_server_v2;
 use sqlrustgo_tools::backup_restore::{
@@ -178,6 +309,11 @@ enum Command {
 }
 
 fn main() -> ExitCode {
+    // V312-59-D P0 leak hunt: install SIGUSR2 -> heap dump hook when
+    // built with `--features jemalloc-prof`. Idempotent + no-op in
+    // default (non-prof) builds.
+    install_jemalloc_prof_signal_handler();
+
     // Use try_parse_from so we can translate clap's default exit code 2
     // (clap error) to EX_USAGE (64) per
     // openspec/specs/mysql-server-canonical-entry/spec.md (unknown
