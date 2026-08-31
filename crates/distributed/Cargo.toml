@@ -1,0 +1,13 @@
+[package]
+name = "sqlrustgo-distributed"
+version = "0.1.0"
+edition = "2021"
+license.workspace = true
+authors = ["SQLRustGo Team"]
+description = "Distributed database support: read/write splitting and (future) shard routing. Currently provides QueryClass + ReadWriteSplitter for routing SQL statements to primary or replica nodes."
+
+[dependencies]
+sqlrustgo-parser = { path = "../parser" }
+
+[dev-dependencies]
+sqlrustgo-parser = { path = "../parser" }
