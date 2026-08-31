@@ -484,6 +484,10 @@ pub fn execute_update<S: StorageEngine + 'static>(
             .unwrap_or(0);
         let all_rows_no_where = storage.scan(&table_name)?;
         let mut count = 0usize;
+        // v312-60: capture each post-update row in parallel with the prior
+        // snapshot so `record_update_undo` can populate the `new_value`
+        // fallback field for empty-key tables.
+        let mut new_rows_for_undo: Vec<Vec<Value>> = Vec::with_capacity(all_rows_no_where.len());
         for prior_row in all_rows_no_where {
             let mut new_row = prior_row.clone();
             for (col_idx, new_val) in &updates {
@@ -494,7 +498,8 @@ pub fn execute_update<S: StorageEngine + 'static>(
                 .cloned()
                 .unwrap_or(sqlrustgo_types::Value::Null);
             storage.delete(&table_name, std::slice::from_ref(&pk_val))?;
-            storage.insert(&table_name, vec![new_row])?;
+            storage.insert(&table_name, vec![new_row.clone()])?;
+            new_rows_for_undo.push(new_row);
             count += 1;
         }
         drop(storage);
@@ -502,13 +507,14 @@ pub fn execute_update<S: StorageEngine + 'static>(
         // per row actually updated (no-WHERE path) so a ROLLBACK TO SAVEPOINT
         // can restore the prior row. Short-circuits when no savepoint is active.
         if let Some(undo_tx) = engine.current_tx_id {
-            for prior_row in &prior_rows_for_undo {
+            for (prior_row, new_row) in prior_rows_for_undo.iter().zip(new_rows_for_undo.iter()) {
                 record_update_undo(
                     &mut engine.transaction_manager,
                     undo_tx,
                     &table_name,
                     &table_info,
                     prior_row,
+                    new_row,
                 );
             }
         }
@@ -630,14 +636,17 @@ pub fn execute_update<S: StorageEngine + 'static>(
     // #4519: SAVEPOINT physical-undo wiring. Append one UndoRecord::Update
     // per row actually updated (with-WHERE path) so a ROLLBACK TO SAVEPOINT
     // can restore the prior row. Short-circuits when no savepoint is active.
+    // v312-60: also pass the post-update `new_row` so the undo record's
+    // `new_value` fallback field is populated for empty-key tables.
     if let Some(undo_tx) = engine.current_tx_id {
-        for prior_row in &rows_to_update {
+        for (prior_row, new_row) in rows_to_update.iter().zip(trigger_modified_rows.iter()) {
             record_update_undo(
                 &mut engine.transaction_manager,
                 undo_tx,
                 &table_name,
                 &table_info,
                 prior_row,
+                new_row,
             );
         }
     }

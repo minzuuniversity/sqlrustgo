@@ -14,11 +14,32 @@ use sqlrustgo_types::Value;
 /// ran (the orchestrator wired `|_| Ok(())`). This struct now carries
 /// enough typed information for the executor's on-undo closure to drive
 /// `storage.delete` / `storage.insert` directly.
+///
+/// # v312-60: empty-key fallback (`row` / `new_value`)
+/// `key` holds the primary-key column values for the affected row and is
+/// empty when the table has no declared primary key. To let replayers
+/// (see `src/execution_engine.rs::execute_savepoint` and
+/// `TransactionManager::rollback_with_undo`) safely handle that case
+/// without wiping pre-transaction rows, `Insert` carries `row` (the full
+/// inserted row) and `Update` carries `new_value` (the full post-update
+/// row). Replayers MUST fall back to full-row matching
+/// (`storage.delete(table, &row)` / `storage.delete(table, &new_value)`)
+/// when `key` is empty — an empty filter to `storage.delete` means
+/// "clear the whole table" in every storage engine
+/// (`MemoryStorage::delete` / `FileStorage::delete`), which would wipe
+/// pre-transaction rows and corrupt the database.
+///
+/// `Delete` does not need a separate fallback field because it re-inserts
+/// `old_value` (which is already the full row); the empty-key case is
+/// handled by the same fall-back path used by `Update` when needed.
 #[derive(Debug, Clone)]
 pub enum UndoRecord {
     Insert {
         table: String,
         key: Vec<Value>,
+        /// Full inserted row; used by replayers to delete by full-row
+        /// match when the table has no primary key.
+        row: Vec<Value>,
     },
     Delete {
         table: String,
@@ -29,6 +50,10 @@ pub enum UndoRecord {
         table: String,
         key: Vec<Value>,
         old_value: Vec<Value>,
+        /// Full post-update row; used by replayers to delete by
+        /// full-row match when the table has no primary key (so the
+        /// pre-image can be re-inserted via `old_value`).
+        new_value: Vec<Value>,
     },
 }
 
@@ -210,6 +235,7 @@ mod tests {
         let record = UndoRecord::Insert {
             table: "t".to_string(),
             key: vec![Value::Integer(1)],
+            row: vec![Value::Integer(1)],
         };
         assert!(matches!(record, UndoRecord::Insert { .. }));
     }
@@ -260,6 +286,7 @@ mod tests {
         manager.add_undo(UndoRecord::Insert {
             table: "t".to_string(),
             key: vec![Value::Integer(1)],
+            row: vec![Value::Integer(1)],
         });
         assert_eq!(manager.undo_log.len(), 1);
     }
@@ -271,6 +298,7 @@ mod tests {
             table: "t".to_string(),
             key: vec![Value::Integer(1)],
             old_value: vec![Value::Integer(2)],
+            new_value: vec![Value::Integer(3)],
         });
         manager.add_undo(UndoRecord::Delete {
             table: "t".to_string(),
@@ -329,16 +357,19 @@ mod tests {
         manager.add_undo(UndoRecord::Insert {
             table: "t".to_string(),
             key: vec![Value::Integer(1)],
+            row: vec![Value::Integer(1)],
         });
         manager.savepoint("sp1".to_string()).unwrap();
 
         manager.add_undo(UndoRecord::Insert {
             table: "t".to_string(),
             key: vec![Value::Integer(2)],
+            row: vec![Value::Integer(2)],
         });
         manager.add_undo(UndoRecord::Insert {
             table: "t".to_string(),
             key: vec![Value::Integer(3)],
+            row: vec![Value::Integer(3)],
         });
 
         let idx = manager

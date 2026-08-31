@@ -26,6 +26,7 @@ fn insert_key(k: i64) -> UndoRecord {
     UndoRecord::Insert {
         table: "t".to_string(),
         key: vec![Value::Integer(k)],
+        row: vec![Value::Integer(k)],
     }
 }
 
