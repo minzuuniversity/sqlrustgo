@@ -70,15 +70,29 @@ fn test_multiple_savepoints_parsing() {
 
 #[test]
 fn test_nested_savepoint_parsing() {
-    // Test nested savepoint parsing
-    let result = parse("SAVEPOINT outer");
-    assert!(result.is_ok());
+    // Test nested savepoint parsing. The lexer reserves `OUTER` for
+    // `OUTER JOIN`, so savepoint names must avoid that token (and other
+    // reserved keywords); use `outer_sp` / `inner_sp` here.
+    let result = parse("SAVEPOINT outer_sp");
+    assert!(
+        result.is_ok(),
+        "SAVEPOINT outer_sp should parse: {:?}",
+        result.err()
+    );
 
-    let result = parse("SAVEPOINT inner");
-    assert!(result.is_ok());
+    let result = parse("SAVEPOINT inner_sp");
+    assert!(
+        result.is_ok(),
+        "SAVEPOINT inner_sp should parse: {:?}",
+        result.err()
+    );
 
-    let result = parse("ROLLBACK TO SAVEPOINT outer");
-    assert!(result.is_ok());
+    let result = parse("ROLLBACK TO SAVEPOINT outer_sp");
+    assert!(
+        result.is_ok(),
+        "ROLLBACK TO SAVEPOINT outer_sp should parse: {:?}",
+        result.err()
+    );
 
     println!("✓ Nested SAVEPOINTs parsing works");
 }
