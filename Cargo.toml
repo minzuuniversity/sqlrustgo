@@ -3,6 +3,7 @@
 [workspace]
 members = [
     "crates/gis",
+    "crates/distributed",
     "crates/common",
     "crates/parser",
     "crates/planner",
