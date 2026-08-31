@@ -4427,6 +4427,13 @@ dependencies = [
 ]
 
 [[package]]
+name = "sqlrustgo-distributed"
+version = "0.1.0"
+dependencies = [
+ "sqlrustgo-parser",
+]
+
+[[package]]
 name = "sqlrustgo-executor"
 version = "3.11.0"
 dependencies = [
