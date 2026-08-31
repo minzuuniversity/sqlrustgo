@@ -56,6 +56,10 @@ pub fn primary_key_values(table_info: &TableInfo, row: &[Value]) -> Vec<Value> {
 /// Callers MUST invoke this AFTER `storage.insert` succeeds; the
 /// record exists so `ROLLBACK [TO SAVEPOINT]` (and top-level
 /// `ROLLBACK` per Issue #4581) can delete the new row by primary key.
+///
+/// v312-60: also captures the full inserted row so replayers can fall
+/// back to full-row matching (`storage.delete(table, &row)`) when the
+/// table has no primary key — see the doc on `UndoRecord::Insert`.
 pub fn record_insert_undo(
     tx_manager: &mut TransactionManager,
     tx_id: sqlrustgo_transaction::TxId,
@@ -69,6 +73,7 @@ pub fn record_insert_undo(
         UndoRecord::Insert {
             table: table.to_string(),
             key,
+            row: row.to_vec(),
         },
     );
 }
@@ -95,13 +100,19 @@ pub fn record_delete_undo(
 
 /// Append a typed `UndoRecord::Update` so `ROLLBACK` can restore
 /// the pre-image row. `prior_row` MUST be the snapshot taken BEFORE
-/// the SET clauses were applied.
+/// the SET clauses were applied; `new_row` MUST be the snapshot taken
+/// AFTER (the post-update tuple the storage now holds).
+///
+/// v312-60: also captures `new_row` so replayers can fall back to
+/// full-row matching (`storage.delete(table, &new_row)`) when the table
+/// has no primary key — see the doc on `UndoRecord::Update`.
 pub fn record_update_undo(
     tx_manager: &mut TransactionManager,
     tx_id: sqlrustgo_transaction::TxId,
     table: &str,
     table_info: &TableInfo,
     prior_row: &[Value],
+    new_row: &[Value],
 ) {
     let key = primary_key_values(table_info, prior_row);
     let _ = tx_manager.add_undo_record(
@@ -110,6 +121,7 @@ pub fn record_update_undo(
             table: table.to_string(),
             key,
             old_value: prior_row.to_vec(),
+            new_value: new_row.to_vec(),
         },
     );
 }
