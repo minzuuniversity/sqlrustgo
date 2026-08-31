@@ -175,6 +175,7 @@ fn cov_savepoint_add_undo() {
     sp.add_undo(sqlrustgo_transaction::savepoint::UndoRecord::Insert {
         table: "t".to_string(),
         key: vec![sqlrustgo_types::Value::Integer(1)],
+        row: vec![sqlrustgo_types::Value::Integer(1)],
     });
     assert_eq!(sp.undo_log_len(), 1);
 }
@@ -202,6 +203,7 @@ fn cov_savepoint_rollback_to_with_undo_closure() {
     sp.add_undo(UndoRecord::Insert {
         table: "t".to_string(),
         key: vec![sqlrustgo_types::Value::Integer(1)],
+        row: vec![sqlrustgo_types::Value::Integer(1)],
     });
     let mut undone = 0;
     sp.rollback_to(

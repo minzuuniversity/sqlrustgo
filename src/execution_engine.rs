@@ -1680,8 +1680,17 @@ impl<S: StorageEngine + 'static> ExecutionEngine<S> {
                         // long-running workload).
                         let mut storage = storage.write();
                         match rec {
-                            sqlrustgo_transaction::savepoint::UndoRecord::Insert { table, key } => {
-                                storage.delete(table, key).map_err(|e| {
+                            sqlrustgo_transaction::savepoint::UndoRecord::Insert {
+                                table,
+                                key,
+                                row,
+                            } => {
+                                // v312-60: fall back to full-row match
+                                // when the table has no primary key — an
+                                // empty `key` filter would otherwise
+                                // clear the whole table.
+                                let target = if key.is_empty() { row } else { key };
+                                storage.delete(table, target).map_err(|e| {
                                     format!(
                                         "savepoint undo (insert delete on {} pk={:?}): {}",
                                         table, key, e
@@ -1708,13 +1717,18 @@ impl<S: StorageEngine + 'static> ExecutionEngine<S> {
                                 table,
                                 key,
                                 old_value,
+                                new_value,
                             } => {
+                                // v312-60: fall back to deleting by
+                                // post-update row when the table has no
+                                // primary key.
+                                let target = if key.is_empty() { new_value } else { key };
                                 // Re-insert under the PK, then drop the
                                 // duplicate (if any) created by the
                                 // forward UPDATE. We delete-by-key first
                                 // to guarantee idempotence in case the
                                 // on-undo closure is retried.
-                                storage.delete(table, key).map_err(|e| {
+                                storage.delete(table, target).map_err(|e| {
                                     format!(
                                         "savepoint undo (update clear on {} pk={:?}): {}",
                                         table, key, e
@@ -1776,8 +1790,16 @@ impl<S: StorageEngine + 'static> ExecutionEngine<S> {
             .rollback_with_undo(tx_id, move |rec| {
                 let mut storage = storage.write();
                 match rec {
-                    sqlrustgo_transaction::savepoint::UndoRecord::Insert { table, key } => {
-                        storage.delete(table, key).map_err(|e| {
+                    sqlrustgo_transaction::savepoint::UndoRecord::Insert {
+                        table,
+                        key,
+                        row,
+                    } => {
+                        // v312-60: fall back to full-row match when the
+                        // table has no primary key — an empty `key`
+                        // filter would otherwise clear the whole table.
+                        let target = if key.is_empty() { row } else { key };
+                        storage.delete(table, target).map_err(|e| {
                             format!("rollback delete on {} pk={:?}: {}", table, key, e)
                         })?;
                         Ok(())
@@ -1798,13 +1820,17 @@ impl<S: StorageEngine + 'static> ExecutionEngine<S> {
                         table,
                         key,
                         old_value,
+                        new_value,
                     } => {
+                        // v312-60: fall back to deleting by post-update
+                        // row when the table has no primary key.
+                        let target = if key.is_empty() { new_value } else { key };
                         // Re-insert under the PK (deleting the
                         // forward-UPDATE's row first to avoid a duplicate
                         // if the forward UPDATE kept a different row in
                         // place). This mirrors the SAVEPOINT undo logic
                         // at `execute_savepoint` (lines 1710+).
-                        storage.delete(table, key).map_err(|e| {
+                        storage.delete(table, target).map_err(|e| {
                             format!("rollback update-delete on {}: {}", table, e)
                         })?;
                         storage
