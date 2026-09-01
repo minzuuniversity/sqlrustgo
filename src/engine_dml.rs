@@ -805,54 +805,89 @@ pub fn execute_delete<S: StorageEngine + 'static>(
 
     // PR-842: prefer row-level deletes so WAL records one Delete entry
     // per matching row and recovery can replay them without losing the
-    // pre-delete buffer state. We still call `storage.delete(table, &[])`
-    // to clear out buffered rows that did not match the WHERE clause.
-    let rows_to_keep: Vec<Vec<Value>> = {
-        let storage = engine.storage.read();
-        let all_rows = storage.scan(&table_name)?;
-        all_rows
-            .into_iter()
-            .filter(|row| !evaluate_where_clause(where_clause, row, &table_info))
-            .collect()
+    // pre-delete buffer state.
+    //
+    // V312-59-D / Fix B: when only one row matches the WHERE clause
+    // (the common sysbench oltp_delete `DELETE WHERE id=N` pattern),
+    // skip the legacy `storage.delete(&[]) + storage.insert(rows_to_keep)`
+    // round-trip. That path clones the entire surviving-table into
+    // `tx_undo_log` as UndoOp::DeleteAll (O(N) per DELETE) which, on
+    // Linux/Docker/jemalloc's dirty-page retention policy, accumulates
+    // at ~130 MB/min and surfaces as the SOAK 5691 6 GB/h leak. Going
+    // straight to row-level `storage.delete(&key_values)` eliminates
+    // the O(N) clone — the per-row retain is O(N) but no extra clones
+    // are pushed to `tx_undo_log` (only the matching row is cloned,
+    // O(1) per match, see file_storage.rs:2964-2968).
+    //
+    // FIX-2737: Extract ONLY primary key column values for delete,
+    // not all columns. storage.delete() does full row comparison when
+    // key_values is non-empty, so passing all columns causes delete to
+    // fail if any non-PK column differs (e.g., due to serialization).
+    let pk_indices: Vec<usize> = table_info
+        .columns
+        .iter()
+        .enumerate()
+        .filter(|(_, col)| col.primary_key)
+        .map(|(i, _)| i)
+        .collect();
+
+    // If table has primary keys, use only PK columns for delete.
+    // Otherwise, fall back to all columns (backward compatible).
+    let use_indices: Vec<usize> = if pk_indices.is_empty() {
+        (0..rows_to_delete[0].len()).collect()
+    } else {
+        pk_indices
     };
 
-    {
+    if rows_to_delete.len() == 1 {
+        // V312-59-D Fix B — single-row fast path. Skip the
+        // `rows_to_keep` clone (O(N)) and `storage.delete(&[])` (O(N)
+        // clone for tx_undo_log::DeleteAll) entirely. Row-level delete
+        // with the PK tuple removes the matching row from BOTH
+        // `data.rows` AND `insert_buffer`
+        // (file_storage.rs:2978 / :3001-3007), and only clones the
+        // matching row for UndoOp::DeleteRow (O(1)).
         let mut storage = engine.storage.write();
-        // First drop the full table to flush any buffered inserts and
-        // to provide a clean slate (this is what the legacy code did).
-        storage.delete(&table_name, &[])?;
-        if !rows_to_keep.is_empty() {
-            storage.insert(&table_name, rows_to_keep)?;
-        }
-        // Then delete the matching rows from the freshly re-inserted set
-        // so WAL records one Delete entry per affected row.
-        //
-        // FIX-2737: Extract ONLY primary key column values for delete,
-        // not all columns. storage.delete() does full row comparison when
-        // key_values is non-empty, so passing all columns causes delete to
-        // fail if any non-PK column differs (e.g., due to serialization).
-        let pk_indices: Vec<usize> = table_info
-            .columns
+        let row = &rows_to_delete[0];
+        let key_values: Vec<Value> = use_indices
             .iter()
-            .enumerate()
-            .filter(|(_, col)| col.primary_key)
-            .map(|(i, _)| i)
+            .map(|&i| row.get(i).cloned().unwrap_or(sqlrustgo_types::Value::Null))
             .collect();
-
-        // If table has primary keys, use only PK columns for delete.
-        // Otherwise, fall back to all columns (backward compatible).
-        let use_indices: Vec<usize> = if pk_indices.is_empty() {
-            (0..rows_to_delete[0].len()).collect()
-        } else {
-            pk_indices
+        storage.delete(&table_name, &key_values)?;
+    } else {
+        // Multi-row delete: keep the legacy round-trip. It clones
+        // O(N) into tx_undo_log for UndoOp::DeleteAll, but multi-row
+        // deletes are rare in our workloads and the same O(N) work
+        // is needed for the row-level WAL entries anyway. If multi-
+        // row DELETE ever becomes hot, see Fix A (avoid the clone
+        // via std::mem::take + rollback swap).
+        let rows_to_keep: Vec<Vec<Value>> = {
+            let storage = engine.storage.read();
+            let all_rows = storage.scan(&table_name)?;
+            all_rows
+                .into_iter()
+                .filter(|row| !evaluate_where_clause(where_clause, row, &table_info))
+                .collect()
         };
 
-        for row in &rows_to_delete {
-            let key_values: Vec<Value> = use_indices
-                .iter()
-                .map(|&i| row.get(i).cloned().unwrap_or(sqlrustgo_types::Value::Null))
-                .collect();
-            storage.delete(&table_name, &key_values)?;
+        {
+            let mut storage = engine.storage.write();
+            // First drop the full table to flush any buffered inserts
+            // and to provide a clean slate (this is what the legacy
+            // code did).
+            storage.delete(&table_name, &[])?;
+            if !rows_to_keep.is_empty() {
+                storage.insert(&table_name, rows_to_keep)?;
+            }
+            // Then delete the matching rows from the freshly re-inserted
+            // set so WAL records one Delete entry per affected row.
+            for row in &rows_to_delete {
+                let key_values: Vec<Value> = use_indices
+                    .iter()
+                    .map(|&i| row.get(i).cloned().unwrap_or(sqlrustgo_types::Value::Null))
+                    .collect();
+                storage.delete(&table_name, &key_values)?;
+            }
         }
     }
 
