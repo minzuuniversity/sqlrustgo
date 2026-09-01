@@ -466,10 +466,14 @@ pub fn execute_update<S: StorageEngine + 'static>(
             }
         }
 
-        let prior_rows_for_undo: Vec<Vec<Value>> = {
-            let storage = engine.storage.read();
-            storage.scan(&table_name)?
-        };
+        // V312-59-D / Fix C: collapse the read-scan for `prior_rows_for_undo`
+        // and the write-scan for `all_rows_no_where` into a single write-scan.
+        // Previously each UPDATE-without-WHERE cloned the full table twice
+        // (once under read lock for undo, once under write lock for the
+        // delete+insert loop). For the sysbench oltp_read_write workload
+        // (10000 rows × N updates/sec), this 2× O(N) clone per call was the
+        // source of the execute_update 3.6% inuse footprint shown in V3
+        // jeprof. One scan, one clone (for undo), iterate owned rows.
         let mut storage = engine.storage.write();
         // V312-18 / Issue #3971: route the no-WHERE UPDATE path through
         // delete+insert so the WAL layer (which only hooks delete/insert)
@@ -483,23 +487,27 @@ pub fn execute_update<S: StorageEngine + 'static>(
             .position(|c| c.primary_key)
             .unwrap_or(0);
         let all_rows_no_where = storage.scan(&table_name)?;
+        let prior_rows_for_undo = all_rows_no_where.clone();
         let mut count = 0usize;
         // v312-60: capture each post-update row in parallel with the prior
         // snapshot so `record_update_undo` can populate the `new_value`
-        // fallback field for empty-key tables.
+        // fallback field for empty-key tables. Merge with V312-60 / Fix C
+        // (commit ea1bb8d230) — iterate owned rows (no `prior_row.clone()`),
+        // but still clone once for the new_rows_for_undo log since the
+        // same Vec can't be both moved into storage.insert AND pushed onto
+        // new_rows_for_undo. Saves 1 of HEAD's 2 per-row clones.
         let mut new_rows_for_undo: Vec<Vec<Value>> = Vec::with_capacity(all_rows_no_where.len());
-        for prior_row in all_rows_no_where {
-            let mut new_row = prior_row.clone();
+        for mut prior_row in all_rows_no_where {
             for (col_idx, new_val) in &updates {
-                new_row[*col_idx] = new_val.clone();
+                prior_row[*col_idx] = new_val.clone();
             }
             let pk_val = prior_row
                 .get(pk_idx)
                 .cloned()
                 .unwrap_or(sqlrustgo_types::Value::Null);
             storage.delete(&table_name, std::slice::from_ref(&pk_val))?;
-            storage.insert(&table_name, vec![new_row.clone()])?;
-            new_rows_for_undo.push(new_row);
+            new_rows_for_undo.push(prior_row.clone());
+            storage.insert(&table_name, vec![prior_row])?;
             count += 1;
         }
         drop(storage);
@@ -528,6 +536,12 @@ pub fn execute_update<S: StorageEngine + 'static>(
         storage.get_table_info(&table_name)?.clone()
     };
 
+    // V312-59-D / Fix C: avoid the O(N) `all_rows.clone()` before filtering.
+    // The previous code cloned the entire table just to feed `.filter(...).collect()`,
+    // which then dropped the clone via `into_iter`. With iter().cloned().collect()
+    // we only clone the matching rows (O(M) instead of O(N)). For the sysbench
+    // oltp_read_write workload (single-row PK matches), this eliminates the
+    // 10000-row upfront Vec<Value> clone per UPDATE call.
     let all_rows = {
         let storage = engine.storage.read();
         storage.scan(&table_name)?
@@ -535,11 +549,11 @@ pub fn execute_update<S: StorageEngine + 'static>(
 
     let where_clause = resolved_update.where_clause.as_ref().unwrap();
 
-    // Filter rows that match the WHERE clause
+    // Filter rows that match the WHERE clause (no upfront O(N) clone)
     let rows_to_update: Vec<Vec<Value>> = all_rows
-        .clone()
-        .into_iter()
+        .iter()
         .filter(|row| evaluate_where_clause(where_clause, row, &table_info))
+        .cloned()
         .collect();
 
     ir_validate_update_filter(&all_rows, &table_info, &rows_to_update, &resolved_update);
@@ -577,16 +591,12 @@ pub fn execute_update<S: StorageEngine + 'static>(
         &updated_rows,
     )?;
 
-    let mut new_rows: Vec<Vec<Value>> = Vec::new();
-
-    // Build new_rows by replacing matching rows with updated versions
-    for row in &all_rows {
-        if let Some(pos) = rows_to_update.iter().position(|r| r == row) {
-            new_rows.push(trigger_modified_rows[pos].clone());
-        } else {
-            new_rows.push(row.clone());
-        }
-    }
+    // V312-59-D / Fix C: delete the dead `new_rows` build loop that was
+    // previously here. It cloned every row of the table (matching +
+    // non-matching, O(N) total clones) into a Vec that was NEVER used by
+    // the downstream write loop or undo path — the write loop iterates
+    // `rows_to_update` × `trigger_modified_rows` directly. Removing this
+    // loop eliminates the second O(N) clone per UPDATE-with-WHERE call.
 
     {
         let mut storage = engine.storage.write();
