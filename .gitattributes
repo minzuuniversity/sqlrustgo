@@ -18,6 +18,14 @@
 docs/releases/v3.12.0/evidence/issue-4019/20260812T181335Z_t2_s100/data/sqlrustgo.wal -filter -diff -merge text
 docs/releases/v3.12.0/evidence/issue-4019/20260812T181429Z_t2_s100/data/sqlrustgo.wal -filter -diff -merge text
 
+# Local override: docs/releases/v3.12.0/evidence/issue-4019/20260812T125004Z_t2_s10000/data/sqlrustgo.wal
+# predates the LFS migration on this branch and the original LFS object
+# (sha256 57dff84e...) is not reachable from any accessible remote
+# (Gitea 192.168.0.252 unreachable, GitCode returns 404). Storing as a
+# plain text blob (the 127-byte pointer) keeps the evidence file in history
+# without breaking pushes.
+docs/releases/v3.12.0/evidence/issue-4019/20260812T125004Z_t2_s10000/data/sqlrustgo.wal -filter -diff -merge text
+
 # Local override: data/soak-*/*.wal are tiny test fixtures (45-127 bytes)
 # shipped with their companion content.json / documents.json / vectors.json.
 # They should be tracked as plain blobs in git, not LFS. Gitea (origin)
