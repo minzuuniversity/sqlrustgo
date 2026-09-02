@@ -948,12 +948,28 @@ impl<S: StorageEngine + 'static> ExecutionEngine<S> {
                                 })
                                 .map_err(|e| format!("Subquery execution failed: {}", e))
                         };
+                    // V312-64 / Issue #4656: quantified comparison operators
+                    // (e.g. `> ALL (...)`, `= ANY (...)`) need the full
+                    // first-column result set of the right-hand subquery,
+                    // not a single scalar value. Provide that closure
+                    // alongside the scalar one.
+                    let subq_eval_set =
+                        |subq: &sqlrustgo_parser::SelectStatement| -> Result<Vec<Value>, String> {
+                            self.execute_select(subq).map(|res| {
+                                res.rows
+                                    .into_iter()
+                                    .filter_map(|mut r| r.pop())
+                                    .collect()
+                            })
+                            .map_err(|e| format!("Quantified subquery execution failed: {}", e))
+                        };
                     rows.retain(|row| {
-                        crate::engine_utils::eval_predicate_with_subq(
+                        crate::engine_utils::eval_predicate_with_subq_full(
                             where_expr,
                             row,
                             &table_info,
                             &subq_eval,
+                            &subq_eval_set,
                         )
                     });
                 }
@@ -1021,7 +1037,28 @@ impl<S: StorageEngine + 'static> ExecutionEngine<S> {
 
                 if let Some(ref having_expr) = select.having {
                     let having_schema = build_aggregate_schema(&[], &select.aggregates)?;
-                    if !eval_predicate(having_expr, &agg_values, &having_schema) {
+                    // V312-64 / Issue #4657: thread the scalar subquery
+                    // executor through HAVING so e.g.
+                    // `HAVING sum(amt) > (SELECT max(amt) FROM ...)`
+                    // sees a real value instead of Null.
+                    let having_subq_eval =
+                        |subq: &sqlrustgo_parser::SelectStatement| -> Result<Value, String> {
+                            self.execute_select(subq)
+                                .map(|res| {
+                                    res.rows
+                                        .into_iter()
+                                        .next()
+                                        .and_then(|mut r| r.pop())
+                                        .unwrap_or(Value::Null)
+                                })
+                                .map_err(|e| format!("HAVING subquery execution failed: {}", e))
+                        };
+                    if !crate::engine_utils::eval_predicate_with_subq(
+                        having_expr,
+                        &agg_values,
+                        &having_schema,
+                        &having_subq_eval,
+                    ) {
                         return Ok(ExecutorResult::new(vec![], 0));
                     }
                 }
@@ -1168,7 +1205,33 @@ impl<S: StorageEngine + 'static> ExecutionEngine<S> {
 
                 if let Some(ref having_expr) = select.having {
                     let having_schema = build_aggregate_schema(group_exprs, &select.aggregates)?;
-                    agg_result_rows.retain(|row| eval_predicate(having_expr, row, &having_schema));
+                    // V312-64 / Issue #4657: HAVING may reference a scalar
+                    // subquery (e.g. `HAVING count(*) > (SELECT count(*)
+                    // FROM ...)`. The plain `eval_predicate` calls
+                    // `evaluate_expression`, whose default subq_eval
+                    // returns Null, which silently drops every group.
+                    // Switch to `eval_predicate_with_subq` and thread a
+                    // real subquery executor through it.
+                    let having_subq_eval =
+                        |subq: &sqlrustgo_parser::SelectStatement| -> Result<Value, String> {
+                            self.execute_select(subq)
+                                .map(|res| {
+                                    res.rows
+                                        .into_iter()
+                                        .next()
+                                        .and_then(|mut r| r.pop())
+                                        .unwrap_or(Value::Null)
+                                })
+                                .map_err(|e| format!("HAVING subquery execution failed: {}", e))
+                        };
+                    agg_result_rows.retain(|row| {
+                        crate::engine_utils::eval_predicate_with_subq(
+                            having_expr,
+                            row,
+                            &having_schema,
+                            &having_subq_eval,
+                        )
+                    });
                 }
 
                 // MySQL 5.7 WITH ROLLUP / WITH CUBE — emit grouping-set
@@ -1489,6 +1552,7 @@ impl<S: StorageEngine + 'static> ExecutionEngine<S> {
                             AggregateFunction::Max => "max",
                             AggregateFunction::QuantileDisc => "quantile_disc",
                             AggregateFunction::QuantileCont => "quantile_cont",
+                            AggregateFunction::GroupConcat => "group_concat",
                         })
                         .map(|s| s.to_string())
                         .collect();
@@ -1644,6 +1708,25 @@ impl<S: StorageEngine + 'static> ExecutionEngine<S> {
                                         if !default_name.is_empty() {
                                             if let Some(&i) = agg_set.get(default_name) {
                                                 return row.get(i).cloned().unwrap_or(Value::Null);
+                                            }
+                                        }
+                                    }
+                                    // V312-64b / Issue #4650: the SELECT
+                                    // column is itself an Expression::Aggregate
+                                    // (e.g. `SELECT GROUP_CONCAT(val ...)`
+                                    // routed through parse_primary_expression
+                                    // rather than the explicit-aggregate-token
+                                    // path). col.name ends up as the long
+                                    // Debug-formatted aggregate string and
+                                    // none of the lookups above resolve it.
+                                    // Match the expression structurally against
+                                    // select.aggregates to recover the row
+                                    // index.
+                                    if let Some(Expression::Aggregate(agg_expr)) = &col.expression {
+                                        for (agg_idx, sel_agg) in select.aggregates.iter().enumerate() {
+                                            if sel_agg == agg_expr {
+                                                let pos = group_schema.len() + agg_idx;
+                                                return row.get(pos).cloned().unwrap_or(Value::Null);
                                             }
                                         }
                                     }
@@ -2273,6 +2356,144 @@ impl<S: StorageEngine + 'static> ExecutionEngine<S> {
                             };
                         Value::Float(result)
                     }
+                }
+                // V312-64b / Issue #4650: GROUP_CONCAT([DISTINCT]
+                // expr [ORDER BY expr [ASC|DESC]] [SEPARATOR str]).
+                //
+                // Args layout (sentinels are Expression::Literal):
+                //   args[0] = "__DISTINCT__" | "__NO_DISTINCT__"
+                //   args[1] = value expression
+                //   then optional groups of sentinels + operands:
+                //     ("__ORDER_BY__", <expr>, "__ASC__"|"__DESC__")
+                //     ("__SEPARATOR__", <expr>)
+                AggregateFunction::GroupConcat => {
+                    // The `values` vec at the top of this loop was
+                    // collected from `agg.args[0]`, which for
+                    // GROUP_CONCAT is the DISTINCT sentinel — we need
+                    // to re-collect from args[1] (the value expression).
+                    let gc_val_src_idx = 1;
+                    let gc_values: Vec<Value> = if let Some(arg) =
+                        agg.args.get(gc_val_src_idx)
+                    {
+                        rows.iter()
+                            .map(|row| {
+                                evaluate_expression(arg, row, table_info)
+                                    .unwrap_or(Value::Null)
+                            })
+                            .collect()
+                    } else {
+                        Vec::new()
+                    };
+                    // Walk args after the value expression for ORDER BY /
+                    // SEPARATOR sentinels.
+                    let mut order_by_expr: Option<&sqlrustgo_parser::Expression> = None;
+                    let mut descending = false;
+                    let mut separator: String = ",".to_string();
+                    let mut i = gc_val_src_idx + 1;
+                    while i < agg.args.len() {
+                        match &agg.args[i] {
+                            sqlrustgo_parser::Expression::Literal(lit)
+                                if lit == "__ORDER_BY__" =>
+                            {
+                                i += 1;
+                                if i < agg.args.len() {
+                                    order_by_expr = Some(&agg.args[i]);
+                                    i += 1;
+                                }
+                                // Optional ASC/DESC immediately after
+                                if i < agg.args.len() {
+                                    if let sqlrustgo_parser::Expression::Literal(d) =
+                                        &agg.args[i]
+                                    {
+                                        if d == "__DESC__" {
+                                            descending = true;
+                                            i += 1;
+                                        } else if d == "__ASC__" {
+                                            i += 1;
+                                        }
+                                    }
+                                }
+                            }
+                            sqlrustgo_parser::Expression::Literal(lit)
+                                if lit == "__SEPARATOR__" =>
+                            {
+                                i += 1;
+                                if i < agg.args.len() {
+                                    // The SEPARATOR operand is always a
+                                    // string literal; evaluate it via the
+                                    // canonical literal evaluator so
+                                    // outer quotes are stripped correctly
+                                    // (the raw parser Literal preserves
+                                    // the SQL form e.g. "','" — which is
+                                    // 3 chars: quote, comma, quote).
+                                    let sep_expr = &agg.args[i];
+                                    let resolved = match sep_expr {
+                                        sqlrustgo_parser::Expression::Literal(s) => {
+                                            sqlrustgo_executor::expr::eval_literal_from_str(s)
+                                        }
+                                        _ => evaluate_expression(
+                                            sep_expr, &[], table_info,
+                                        )
+                                        .unwrap_or(Value::Null),
+                                    };
+                                    if let Value::Text(s) = resolved {
+                                        separator = s;
+                                    }
+                                    i += 1;
+                                }
+                            }
+                            _ => {
+                                i += 1;
+                            }
+                        }
+                    }
+                    // Build (sort_key, value) pairs. If no ORDER BY, use
+                    // row index as a stable secondary key so output order
+                    // matches input order.
+                    let mut pairs: Vec<(Vec<Value>, Value)> = Vec::with_capacity(rows.len());
+                    for (row_idx, row) in rows.iter().enumerate() {
+                        let v = gc_values
+                            .get(row_idx)
+                            .cloned()
+                            .unwrap_or(Value::Null);
+                        if matches!(v, Value::Null) {
+                            continue;
+                        }
+                        let key = if let Some(ob) = order_by_expr {
+                            let key_val = evaluate_expression(ob, row, table_info)
+                                .unwrap_or(Value::Null);
+                            vec![key_val, Value::Integer(row_idx as i64)]
+                        } else {
+                            vec![Value::Integer(row_idx as i64)]
+                        };
+                        pairs.push((key, v));
+                    }
+                    pairs.sort_by(|a, b| {
+                        for (x, y) in a.0.iter().zip(b.0.iter()) {
+                            let cmp_int = crate::expr_utils::compare_values(x, y);
+                            let cmp = match cmp_int {
+                                -1 => std::cmp::Ordering::Less,
+                                0 => std::cmp::Ordering::Equal,
+                                _ => std::cmp::Ordering::Greater,
+                            };
+                            if cmp != std::cmp::Ordering::Equal {
+                                return if descending { cmp.reverse() } else { cmp };
+                            }
+                        }
+                        std::cmp::Ordering::Equal
+                    });
+                    // Optional DISTINCT dedup (preserve first occurrence).
+                    let mut seen: std::collections::HashSet<String> =
+                        std::collections::HashSet::new();
+                    let mut parts: Vec<String> = Vec::with_capacity(pairs.len());
+                    for (_, v) in pairs.into_iter() {
+                        let repr = value_to_literal_string_v(&v);
+                        if agg.distinct && !seen.insert(repr.clone()) {
+                            continue;
+                        }
+                        parts.push(repr);
+                    }
+                    Value::Text(parts.join(&separator))
                 }
             };
             results.push(result);
@@ -7420,6 +7641,9 @@ fn build_scalar_agg_index(
             }
             AggregateFunction::PercentileCont => unreachable!(),
             AggregateFunction::QuantileDisc | AggregateFunction::QuantileCont => {}
+            // V312-64b / Issue #4650: GROUP_CONCAT is non-incremental;
+            // serial compute_aggregates path.
+            AggregateFunction::GroupConcat => {}
         }
     }
     let mut result: ScalarAggIndexMap = HashMap::with_capacity(groups.len());
