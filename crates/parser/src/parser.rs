@@ -2326,14 +2326,23 @@ impl Parser {
             self.next(); // consume SAVEPOINT
             SavepointOp::Save
         } else {
-            // ROLLBACK [WORK] TO SAVEPOINT <name>
+            // ROLLBACK [WORK] TO [SAVEPOINT] <name>
+            // Issue #4618: SQLite accepts both
+            //   `ROLLBACK TO SAVEPOINT <name>` (MySQL syntax)
+            //   `ROLLBACK TO <name>`            (SQLite shorthand)
+            // The previous code unconditionally required `SAVEPOINT` after
+            // `TO`, failing the SQLite form with
+            //   "Expected Savepoint, got Identifier(\"sp1\")".
             debug_assert_eq!(self.current(), Some(&Token::Rollback));
             self.next(); // consume ROLLBACK
             if self.current() == Some(&Token::Work) {
                 self.next();
             }
             self.expect(Token::To)?;
-            self.expect(Token::Savepoint)?;
+            // SAVEPOINT keyword is optional (SQLite shorthand).
+            if self.current() == Some(&Token::Savepoint) {
+                self.next();
+            }
             SavepointOp::RollbackTo
         };
         // Parse the savepoint name.
@@ -10831,18 +10840,21 @@ impl Parser {
         match self.current() {
             Some(Token::Add) => {
                 self.next();
-                // Issue #4580 / B-track case 30: support
-                //   ALTER TABLE t ADD CONSTRAINT <name> <kind> (<cols>)
-                // by routing to the same CREATE-TABLE constraint
-                // parser as table-level constraints, then wrapping
-                // the result in AlterTableOperation::AddTableConstraint.
+                // Issue #4620: SQLite-compatible — `ALTER TABLE ...
+                // ADD CONSTRAINT ... UNIQUE(col)` is silently accepted
+                // by the parser but the executor no-ops the operation
+                // (`stored_proc.rs::exec_ddl` arm returns Ok(())), so
+                // the resulting UNIQUE constraint never fires and
+                // duplicate inserts pass through. To prevent silent
+                // schema drift, reject the MySQL-only form at parse time
+                // with a clear error pointing users at the SQLite idiom.
                 if matches!(self.current(), Some(Token::Constraint)) {
-                    self.next();
-                    let constraint = self.parse_one_table_constraint()?;
-                    return Ok(Statement::AlterTable(AlterTableStatement {
-                        table_name,
-                        operation: AlterTableOperation::AddTableConstraint(constraint),
-                    }));
+                    return Err(
+                        "ALTER TABLE ... ADD CONSTRAINT not supported (sqlrustgo is SQLite-compatible; \
+                         use CREATE UNIQUE INDEX instead: \
+                         CREATE UNIQUE INDEX <name> ON <table>(<cols>))"
+                            .to_string(),
+                    );
                 }
                 if matches!(self.current(), Some(Token::Column)) {
                     self.next();
@@ -10911,57 +10923,19 @@ impl Parser {
                 }))
             }
             Some(Token::Modify) => {
-                self.next();
-                if matches!(self.current(), Some(Token::Column)) {
-                    self.next();
-                }
-                let col_name = match self.next() {
-                    Some(Token::Identifier(name)) => name,
-                    _ => return Err("Expected column name".to_string()),
-                };
-                let data_type = match self.next() {
-                    Some(Token::Identifier(typename)) => typename,
-                    Some(Token::Integer) => "INTEGER".to_string(),
-                    Some(Token::Text) => "TEXT".to_string(),
-                    Some(Token::Float) => "FLOAT".to_string(),
-                    Some(Token::Boolean) => "BOOLEAN".to_string(),
-                    _ => return Err("Expected data type".to_string()),
-                };
-                // Optional (N) length for CHAR / VARCHAR / DECIMAL etc.
-                let char_max_length: Option<usize> =
-                    if matches!(self.current(), Some(Token::LParen)) {
-                        self.next(); // consume (
-                        let n = match self.next() {
-                            Some(Token::NumberLiteral(s)) => s
-                                .parse::<usize>()
-                                .map_err(|e| format!("Invalid length: {}", e))?,
-                            _ => return Err("Expected integer length in (N)".to_string()),
-                        };
-                        self.expect(Token::RParen)?;
-                        Some(n)
-                    } else {
-                        None
-                    };
-                // Optional [NOT] NULL
-                let nullable = if matches!(self.current(), Some(Token::Not)) {
-                    self.next();
-                    self.expect(Token::Null)?;
-                    false
-                } else if matches!(self.current(), Some(Token::Null)) {
-                    self.next();
-                    true
-                } else {
-                    true
-                };
-                Ok(Statement::AlterTable(AlterTableStatement {
-                    table_name,
-                    operation: AlterTableOperation::ModifyColumn {
-                        name: col_name,
-                        data_type,
-                        nullable,
-                        char_max_length,
-                    },
-                }))
+                // Issue #4620: SQLite-compatible — reject `ALTER TABLE
+                // ... MODIFY <col> <type>`. SQLite itself does not
+                // support MODIFY (only ADD/DROP COLUMN + RENAME). The
+                // previous code silently produced AlterTableOperation::
+                // ModifyColumn which the executor then errored on at
+                // runtime with "not yet implemented in storage layer"
+                // — surfacing the error at parse time is friendlier and
+                // matches the spirit of the issue.
+                Err(
+                    "ALTER TABLE ... MODIFY not supported (sqlrustgo is SQLite-compatible; \
+                     recreate the table with the new column type instead)"
+                        .to_string(),
+                )
             }
             Some(Token::Rename) => {
                 self.next();

@@ -42,6 +42,12 @@ pub struct SqliteMode {
     pub error_seen: bool,
     pub continue_on_error: bool,
     pub db_path: PathBuf,
+    /// Issue #4619: track `BEGIN ... COMMIT/ROLLBACK` nesting depth so
+    /// batch mode can auto-rollback when an error fires inside a
+    /// transaction. Without this, the engine flushes each statement to
+    /// disk before COMMIT even runs, so a duplicate-PK insert inside
+    /// BEGIN still leaves earlier inserts in the database.
+    pub tx_depth: u32,
 }
 
 #[allow(dead_code)]
@@ -81,6 +87,7 @@ impl SqliteMode {
             error_seen: false,
             continue_on_error,
             db_path: dir,
+            tx_depth: 0,
         })
     }
 
@@ -384,11 +391,35 @@ impl SqliteMode {
     /// Shared per-statement dispatch: run `execute_sql`, print errors,
     /// set `error_seen`. Caller decides whether to abort.
     fn dispatch_one(&mut self, sql: &str) {
+        // Issue #4619: track BEGIN/COMMIT/ROLLBACK depth so a runtime
+        // error inside a transaction can be auto-aborted (rollback).
+        let trimmed_upper = sql.trim().to_uppercase();
+        let is_begin = trimmed_upper.starts_with("BEGIN")
+            || trimmed_upper.starts_with("START TRANSACTION");
+        let is_commit = trimmed_upper.starts_with("COMMIT");
+        let is_rollback = trimmed_upper.starts_with("ROLLBACK");
+
         match self.execute_sql(sql) {
-            Ok(_) => {}
+            Ok(_) => {
+                if is_begin {
+                    self.tx_depth = self.tx_depth.saturating_add(1);
+                } else if is_commit && self.tx_depth > 0 {
+                    self.tx_depth -= 1;
+                } else if is_rollback && self.tx_depth > 0 {
+                    self.tx_depth -= 1;
+                }
+            }
             Err(e) => {
                 eprintln!("{}", e);
                 self.error_seen = true;
+                // Issue #4619: error inside a transaction must not leave
+                // prior statements committed. Force a ROLLBACK so any
+                // buffered inserts are discarded, matching SQLite/MySQL
+                // semantics ("statement failure aborts transaction").
+                if self.tx_depth > 0 {
+                    let _ = self.execute_sql("ROLLBACK");
+                    self.tx_depth = 0;
+                }
             }
         }
     }
