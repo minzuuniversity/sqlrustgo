@@ -822,8 +822,17 @@ impl<S: StorageEngine + 'static> ExecutionEngine<S> {
             Statement::CreateUser(ref create_user) => self.execute_create_user(create_user),
             // V312-58 / Issue #4515: DROP USER 'name'@'host' [IF EXISTS]
             Statement::DropUser(ref drop_user) => self.execute_drop_user(drop_user),
+            // V312-64 / Issue #4645: parser accepts MySQL-style
+            // CREATE FULLTEXT INDEX but the executor has no FTS storage
+            // engine yet. Surface a clear runtime error pointing users
+            // to the SQLite-FTS5 alternative.
+            Statement::CreateFulltextIndex(ref ft) => Err(SqlError::ExecutionError(format!(
+                "FULLTEXT INDEX is not yet implemented (issue #4645); use \
+                 CREATE VIRTUAL TABLE {} USING fts5({}) instead",
+                ft.table,
+                ft.columns.join(", ")
+            ))),
             // V312-35 #4218: KILL <id> / KILL CONNECTION <id> /
-            // KILL QUERY <id>. Wired to StorageEngine::kill_connection.
             Statement::Kill {
                 connection_id,
                 kill_query,
