@@ -11542,6 +11542,7 @@ pub fn split_sql_statements(sql: &str) -> Vec<String> {
     let mut i: usize = 0;
     let mut paren_depth: usize = 0;
     let mut bracket_depth: usize = 0;
+    let mut begin_depth: usize = 0;
     let mut in_single_quote: bool = false;
     let mut in_double_quote: bool = false;
     let mut in_line_comment: bool = false;
@@ -11625,7 +11626,42 @@ pub fn split_sql_statements(sql: &str) -> Vec<String> {
                 bracket_depth = bracket_depth.saturating_sub(1);
                 i += 1;
             }
-            b';' if paren_depth == 0 && bracket_depth == 0 => {
+            b'B' | b'b' | b'E' | b'e' => {
+                // V312-63 / Issue #4624: track whole-word BEGIN / END so
+                // semicolons inside compound statements (CREATE TRIGGER
+                // / CREATE PROCEDURE body `BEGIN ... ; ... END`) are not
+                // mistaken for top-level statement terminators. Must be a
+                // whole word: bounded by non-identifier chars (or string
+                // boundary) on both sides, case-insensitive.
+                let is_begin = c == b'B' || c == b'b';
+                let word: &[u8] = if is_begin { b"BEGIN" } else { b"END" };
+                let word_len = word.len();
+                if i + word_len <= bytes.len() {
+                    let mut matches = true;
+                    for k in 0..word_len {
+                        if !bytes[i + k].eq_ignore_ascii_case(&word[k]) {
+                            matches = false;
+                            break;
+                        }
+                    }
+                    if matches {
+                        let prev_ok = i == 0
+                            || !(bytes[i - 1].is_ascii_alphanumeric() || bytes[i - 1] == b'_');
+                        let next_ok = i + word_len == bytes.len()
+                            || !(bytes[i + word_len].is_ascii_alphanumeric()
+                                || bytes[i + word_len] == b'_');
+                        if prev_ok && next_ok {
+                            if is_begin {
+                                begin_depth += 1;
+                            } else {
+                                begin_depth = begin_depth.saturating_sub(1);
+                            }
+                        }
+                    }
+                }
+                i += 1;
+            }
+            b';' if paren_depth == 0 && bracket_depth == 0 && begin_depth == 0 => {
                 let frag = sql[start..i].trim();
                 if !frag.is_empty() {
                     out.push(frag.to_string());
@@ -11677,6 +11713,36 @@ mod split_sql_statements_tests {
         assert_eq!(frags.len(), 2);
         assert!(frags[0].starts_with("INSERT INTO t"));
         assert_eq!(frags[1], "SELECT 1");
+    }
+
+    // V312-63 / Issue #4624 — semicolons inside CREATE TRIGGER's
+    // BEGIN ... ; ... END body must not split the statement.
+    #[test]
+    fn semicolon_inside_begin_end_block_is_preserved() {
+        let sql = "CREATE TRIGGER tr BEFORE INSERT ON t FOR EACH ROW BEGIN INSERT INTO log(msg) VALUES ('x'); END; SELECT 1";
+        let frags = split_sql_statements(sql);
+        assert_eq!(frags.len(), 2, "got {} fragments: {:?}", frags.len(), frags);
+        assert!(frags[0].starts_with("CREATE TRIGGER"));
+        assert!(frags[0].contains("BEGIN") && frags[0].contains("END"));
+        assert_eq!(frags[1], "SELECT 1");
+    }
+
+    #[test]
+    fn nested_begin_end_balances_correctly() {
+        let sql = "BEGIN INSERT INTO a VALUES (1); INSERT INTO b VALUES (2); END; SELECT 2";
+        let frags = split_sql_statements(sql);
+        assert_eq!(frags.len(), 2);
+        assert!(frags[0].starts_with("BEGIN"));
+        assert!(frags[0].contains("END"));
+        assert_eq!(frags[1], "SELECT 2");
+    }
+
+    #[test]
+    fn lowercase_begin_end_is_recognised() {
+        let sql = "create trigger tr before insert on t for each row begin insert into log values (1); end; SELECT 1";
+        let frags = split_sql_statements(sql);
+        assert_eq!(frags.len(), 2);
+        assert!(frags[0].contains("begin") && frags[0].contains("end"));
     }
 
     #[test]

@@ -269,6 +269,41 @@ pub fn validate_not_null(
     Ok(())
 }
 
+/// V312-63 / Issue #4637 — VARCHAR(N) / CHAR(N) length validation.
+///
+/// `row` must be in **table column order** (same convention as
+/// `validate_not_null`). For every text column whose declared
+/// `char_max_length` is `Some(n)`, the row's string value MUST have
+/// `len() <= n`. CHAR(N) and VARCHAR(N) share the same length cap;
+///
+/// - CHAR(N) short strings are silently right-padded to `n` spaces by
+///   the caller (existing #3283 Task 8 logic) — this validator only
+///   fires on the overlong case.
+/// - VARCHAR(N) and BLOB/TEXT columns with `char_max_length = None`
+///   are unaffected (no length cap).
+///
+/// INSERT/UPDATE/ODKU all funnel through this single helper so the
+/// error message is consistent.
+pub fn validate_string_lengths(table_info: &TableInfo, row: &[Value]) -> SqlResult<()> {
+    for (idx, col) in table_info.columns.iter().enumerate() {
+        if let Some(n) = col.char_max_length {
+            if idx < row.len() {
+                if let Value::Text(s) = &row[idx] {
+                    if s.len() > n {
+                        return Err(SqlError::ExecutionError(format!(
+                            "Data too long for column '{}': declared length {}, actual length {}",
+                            col.name,
+                            n,
+                            s.len()
+                        )));
+                    }
+                }
+            }
+        }
+    }
+    Ok(())
+}
+
 /// Evaluate a WHERE clause expression against a row
 /// Returns true if the row matches the WHERE condition
 /// Evaluate a predicate expression to a boolean result
