@@ -80,7 +80,22 @@ pub fn execute_insert<S: StorageEngine + 'static>(
     };
 
     let all_records: Vec<Vec<Value>> =
-        if let Some(ref select) = insert.select {
+        if insert.default_values {
+            // V312-65 / Issue #4643: `INSERT INTO t DEFAULT VALUES` — one
+            // row populated entirely from each column's declared DEFAULT
+            // expression (or NULL when no default is defined). Reuses the
+            // existing `materialise_default_tokens` machinery that already
+            // handles per-value DEFAULT sentinels.
+            let sentinel_row = vec![
+                Value::Text("DEFAULT".to_string());
+                table_info.columns.len()
+            ];
+            materialise_default_tokens(
+                vec![sentinel_row],
+                &[],
+                &table_info.columns,
+            )
+        } else if let Some(ref select) = insert.select {
             let select_result = engine.execute_select(select)?;
             map_select_result_to_records(select_result, &insert.columns, &table_info)?
         } else {
