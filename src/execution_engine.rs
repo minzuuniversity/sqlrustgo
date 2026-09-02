@@ -747,26 +747,66 @@ impl<S: StorageEngine + 'static> ExecutionEngine<S> {
             Statement::WithDml(ref with_dml) => self.execute_with_dml(with_dml),
             Statement::CreateIndex(idx) => self.execute_create_index(&idx),
             Statement::Analyze(ref analyze) => {
-                let table_name = analyze.table_name.as_ref().ok_or_else(|| {
-                    SqlError::ExecutionError("ANALYZE: table name is required".to_string())
-                })?;
-                let stats = self.collect_table_stats(table_name)?;
-                let row_count = stats.row_count;
+                // V312-64 / Issue #4663: when no table_name is supplied we
+                // sweep every known table (SQLite semantics for
+                // `ANALYZE;`). The storage trait already exposes
+                // `list_tables()` which is the canonical catalog view.
+                //
+                // Legacy behaviour (preserved for the single-table form):
+                // the first row of the result holds the analyzed
+                // table's row_count so callers can introspect the
+                // table size after ANALYZE. For the no-table sweep we
+                // return the number of tables refreshed so the caller
+                // gets a deterministic summary value.
+                let table_names: Vec<String> = match analyze.table_name.as_ref() {
+                    Some(name) => vec![name.clone()],
+                    None => {
+                        let tables = self.storage.read().list_tables();
+                        if tables.is_empty() {
+                            // Empty catalog — still report success so callers
+                            // don't choke on the legacy "table name is
+                            // required" branch.
+                            return Ok(ExecutorResult::new(Vec::new(), 0));
+                        }
+                        tables
+                    }
+                };
 
-                let mut stats_guard = self.stats.write();
-                stats_guard.table_stats.insert(table_name.clone(), stats);
-                drop(stats_guard);
+                let mut last_row_count: u64 = 0;
+                for table_name in &table_names {
+                    let stats = self.collect_table_stats(table_name)?;
+                    last_row_count = stats.row_count;
+                    let mut stats_guard = self.stats.write();
+                    stats_guard.table_stats.insert(table_name.clone(), stats);
+                    drop(stats_guard);
+                }
+
                 // V312-22 / #4182: push the freshly collected column
                 // stats (incl. histogram) into UnifiedCostModel so
                 // planner selectivity uses real data, not the per-op
                 // heuristic, on subsequent queries.
                 self.update_cost_model_stats();
 
+                // Preserve the legacy semantics: a single-table ANALYZE
+                // returns the row_count, the no-table sweep returns the
+                // number of tables visited. Callers that key off
+                // `rows[0][0]` continue to work for the common case.
+                let summary = if analyze.table_name.is_some() {
+                    last_row_count as i64
+                } else {
+                    table_names.len() as i64
+                };
                 Ok(ExecutorResult::new(
-                    vec![vec![Value::Integer(row_count as i64)]],
-                    1,
+                    vec![vec![Value::Integer(summary)]],
+                    table_names.len(),
                 ))
             }
+            // V312-64 / Issue #4663: SQLite-style maintenance commands.
+            // Parsed for compatibility; the executor side currently
+            // returns an empty result set (no-op). Future work can wire
+            // real catalog/index maintenance without an AST change.
+            Statement::Vacuum(_) => Ok(ExecutorResult::empty()),
+            Statement::Reindex(_) => Ok(ExecutorResult::empty()),
             Statement::Union(ref union_stmt) => self.execute_union(union_stmt),
             Statement::Intersect(ref stmt) => self.execute_intersect(stmt),
             Statement::Except(ref stmt) => self.execute_except(stmt),

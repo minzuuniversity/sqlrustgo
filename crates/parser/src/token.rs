@@ -20,6 +20,11 @@ pub enum Token {
     Merge,
     Using,
     On,
+    /// V312-64 / Issue #4662: separator word in `CREATE TRIGGER ... INSTEAD OF ...`
+    /// (PostgreSQL/SQLite view trigger timing). Reserved alongside `Instead`
+    /// so `parse_create_trigger` can consume it without treating it as an
+    /// arbitrary identifier.
+    Of,
     When,
     Matched,
     Create,
@@ -152,6 +157,15 @@ pub enum Token {
     Date,
     DateAdd,
     DateSub,
+    // V312-64 / Issue #4662: `INSTEAD OF` trigger timing for views
+    // (PostgreSQL/SQLite). Consumed by parse_create_trigger so the
+    // dispatcher accepts `CREATE TRIGGER ... INSTEAD OF UPDATE ON v ...`.
+    Instead,
+    // V312-64 / Issue #4663: SQLite maintenance commands.
+    // `VACUUM` and `REINDEX` are parsed as no-op DDL (executor returns
+    // ExecutorResult::Empty). ANALYZE was already a keyword.
+    Vacuum,
+    Reindex,
     // V312-63 / Issue #4627: TIMESTAMPDIFF(unit, ts1, ts2) — MySQL 5.7 standard
     // function. The first argument is a unit keyword (MINUTE/HOUR/DAY/...) and
     // must NOT be bound to a column lookup.
@@ -341,6 +355,7 @@ impl fmt::Display for Token {
             Token::Merge => write!(f, "MERGE"),
             Token::Using => write!(f, "USING"),
             Token::On => write!(f, "ON"),
+            Token::Of => write!(f, "OF"),
             Token::When => write!(f, "WHEN"),
             Token::Matched => write!(f, "MATCHED"),
             Token::Create => write!(f, "CREATE"),
@@ -384,6 +399,9 @@ impl fmt::Display for Token {
             Token::Convert => write!(f, "CONVERT"),
             Token::Date => write!(f, "DATE"),
             Token::DateSub => write!(f, "DATE_SUB"),
+            Token::Instead => write!(f, "INSTEAD"),
+            Token::Vacuum => write!(f, "VACUUM"),
+            Token::Reindex => write!(f, "REINDEX"),
             Token::TimestampDiff => write!(f, "TIMESTAMPDIFF"),
             Token::Substring => write!(f, "SUBSTRING"),
             Token::Position => write!(f, "POSITION"),
@@ -654,6 +672,7 @@ pub fn from_keyword(s: &str) -> Option<Token> {
         "ALTER" => Some(Token::Alter),
         "INDEX" => Some(Token::Index),
         "ON" => Some(Token::On),
+        "OF" => Some(Token::Of),
         "PRIMARY" => Some(Token::Primary),
         "KEY" => Some(Token::Key),
         "ADD" => Some(Token::Add),
@@ -791,6 +810,11 @@ pub fn from_keyword(s: &str) -> Option<Token> {
         "ASC" => Some(Token::Asc),
         "DESC" => Some(Token::Desc),
         "LIKE" => Some(Token::Like),
+        // V312-64 / Issue #4662: `INSTEAD OF` trigger timing for views.
+        "INSTEAD" => Some(Token::Instead),
+        // V312-64 / Issue #4663: SQLite-style maintenance commands.
+        "VACUUM" => Some(Token::Vacuum),
+        "REINDEX" => Some(Token::Reindex),
         // F-30 CREATE SEQUENCE
         "SEQUENCE" => Some(Token::Sequence),
         "CYCLE" => Some(Token::Cycle),
@@ -1031,6 +1055,7 @@ mod tests {
         assert_eq!(Token::Merge.to_string(), "MERGE");
         assert_eq!(Token::Using.to_string(), "USING");
         assert_eq!(Token::On.to_string(), "ON");
+        assert_eq!(Token::Of.to_string(), "OF");
         assert_eq!(Token::When.to_string(), "WHEN");
         assert_eq!(Token::Matched.to_string(), "MATCHED");
     }
@@ -1184,6 +1209,10 @@ mod tests {
         assert_eq!(Token::Maxvalue.to_string(), "MAXVALUE");
         assert_eq!(Token::Minvalue.to_string(), "MINVALUE");
         assert_eq!(Token::Date.to_string(), "DATE");
+        // V312-64: new keyword tokens added for #4662/#4663.
+        assert_eq!(Token::Instead.to_string(), "INSTEAD");
+        assert_eq!(Token::Vacuum.to_string(), "VACUUM");
+        assert_eq!(Token::Reindex.to_string(), "REINDEX");
         assert_eq!(Token::Substring.to_string(), "SUBSTRING");
         assert_eq!(Token::Position.to_string(), "POSITION");
         assert_eq!(Token::Interval.to_string(), "INTERVAL");

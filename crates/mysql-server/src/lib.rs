@@ -3939,6 +3939,8 @@ fn statement_kind(parsed: &Result<Statement, String>) -> &'static str {
             Statement::AlterSequence(_) => "ALTER_SEQUENCE",
             Statement::Truncate(_) => "TRUNCATE",
             Statement::Analyze(_) => "ANALYZE",
+            Statement::Vacuum(_) => "VACUUM",
+            Statement::Reindex(_) => "REINDEX",
             Statement::WithSelect(_) => "WITH_SELECT",
             Statement::WithDml(_) => "WITH_DML",
             Statement::AlterTable(_) => "ALTER_TABLE",
