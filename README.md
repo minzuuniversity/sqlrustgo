@@ -1,8 +1,8 @@
 # SQLRustGo
 
-> **更新日期**: 2026-08-26
-> **当前开发版**: v3.12.0 (RC: 2026-08-26, post PR #4483)
-> **当前开发目标**: 面向 GMP 内审检索系统的 SQLRustGo 数据库、内部向量检索、SQL-backed graph projection 和可审计 evidence bundle；v3.12.0 已通过 RC gate（12/12 crash recovery + 11/11 promotion_to_RC），下一步 GA 治理闭环（168h mixed SOAK）。
+> **更新日期**: 2026-09-02
+> **当前开发版**: v3.12.0 (RC / GA candidate preparation, `origin/develop/v3.12.0` @ `d64f0038b9`)
+> **当前开发目标**: 面向 GMP 内审检索系统的 SQLRustGo 数据库、内部向量检索、SQL-backed graph projection 和可审计 evidence bundle；v3.12.0 已通过 RC gate，当前推进 GA 文档闭环，但 GA-2 Linux/Docker SOAK 5691 复验、final full-mode aggregate、安全刷新和 docs gate 刷新仍未完成。
 > **阶段治理锁**: v3.13 follow-up 已冻结，不能替代 v3.12 Beta/RC/GA；见 [v3.12 阶段治理纠偏报告](docs/releases/v3.12.0/STAGE_GOVERNANCE_REMEDIATION_2026-08-18.md)。
 
   <img src="https://img.shields.io/badge/v3.11.0-GA-blue?style=flat-square" alt="v3.11.0 GA">
@@ -13,7 +13,7 @@
 当前仓库的发布口径是：
 
 - **v3.11.0 GA**: 可作为简单生产环境或受控场景的候选数据库版本，但不能宣称为完整 MySQL 5.7 替代品。
-- **v3.12.0 (RC)**: 面向 GMP 内审检索数据库、内部向量检索和 SQL-backed graph projection 的受控版本；2026-08-26 完成 BETA→RC 转段（[RC_GATE_REPORT.md](docs/releases/v3.12.0/RC_GATE_REPORT.md)），12/12 crash recovery 测试 PASS + 11/11 promotion_to_RC_requires PASS + B8 thresholds_override 13/13 PASS；下一步进入 GA 治理闭环（168h mixed SOAK）。已知 partial 项（Q17/Q20 全 SF=1 TIMEOUT）已在 [V312-58-SF1-COMPLETION-STATUS.md](docs/releases/v3.12.0/evidence/V312-58-SF1-COMPLETION-STATUS.md) 文档化为 v313-deferred，不阻塞 RC。
+- **v3.12.0 (RC / GA candidate)**: 面向 GMP 内审检索数据库、内部向量检索和 SQL-backed graph projection 的受控版本；2026-08-26 完成 BETA→RC 转段（[RC_GATE_REPORT.md](docs/releases/v3.12.0/RC_GATE_REPORT.md)），2026-09-02 已进入 GA candidate 文档刷新（[GA_RELEASE_REPORT.md](docs/releases/v3.12.0/GA_RELEASE_REPORT.md)）。TPC-H SF=1 已有 22/22 + Q17 cell-diff evidence；SOAK 已有 1h demo 和 local 8h V5 evidence，但 Linux/Docker 复验仍是 GA-2 证据缺口。
 - **v3.13.0 (冻结 follow-up)**: 只能承接经用户批准延期的事项或后续规划；v3.13 PR 合并不自动关闭 V312 scope。
 - **v4.0.0 方向**: 才适合规划"通用向量数据库 / 通用图数据库 / 更广义生产替代"的产品目标。
 ---
@@ -38,7 +38,7 @@
 |---|---|---|
 | v3.11.0 阶段 | GA | [v3.11 综合评估](docs/releases/v3.11.0/COMPREHENSIVE_ASSESSMENT_REPORT.md)、[v3.11 STAGE](docs/releases/v3.11.0/STAGE.yaml) |
 | v3.11.0 生产边界 | 受控/简单生产候选 | 不等同完整 MySQL 5.7 替代；TPC-H correctness、LOAD DATA、recovery、upgrade 等仍需 v3.12 补强 |
-| v3.12.0 阶段 | RC (2026-08-26) | [v3.12 STAGE](docs/releases/v3.12.0/STAGE.yaml) 记录 DRAFT (pre-2026-08-12) -> ALPHA (2026-08-12) -> BETA (2026-08-19) -> **RC (2026-08-26)**；[RC_GATE_REPORT.md](docs/releases/v3.12.0/RC_GATE_REPORT.md) 12/12 crash recovery + 11/11 promotion_to_RC + B8 13/13 全 PASS |
+| v3.12.0 阶段 | RC / GA candidate preparation | [v3.12 STAGE](docs/releases/v3.12.0/STAGE.yaml) 仍为 `current_stage: RC`；[GA_RELEASE_REPORT.md](docs/releases/v3.12.0/GA_RELEASE_REPORT.md) 记录 2026-09-02 GA candidate 状态、milestone 清零和剩余 hard blockers |
 | v3.12.0 产品目标 | GMP 内审检索数据库 | [v3.12 README](docs/releases/v3.12.0/README.md)、[GMP 合规矩阵](docs/releases/v3.12.0/GMP_COMPLIANCE_MATRIX.md) |
 | TPC-H SF=1 | **DONE-with-boundary**（22/22 可运行 + 16/22 row-count MATCH；Q8 #4274 + Q16 #4278 FIXED in v3.12 working-tree；剩余 6 zero-row 由 #4272 治理（issue #4273/#4275-#4280 已收口，无 v3.13 defer）） | [v3.11 TPC-H 报告](docs/releases/v3.11.0/TPCH_SF1_22_22_PASS_REPORT.md)、[v3.12 TPC-H correctness](docs/releases/v3.12.0/evidence/tpch/V312-12-TPCH-CORRECTNESS.md)、[V312-48-Q8](docs/releases/v3.12.0/evidence/tpch/V312-48-Q8-VERIFICATION.md)、[V312-48 子 issue #4272-#4280 收口](http://192.168.0.252:3000/openclaw/sqlrustgo/issues/4221) |
 | TPC-H SF=10 | PARTIAL / 有整改 issue | harness 存在；3/8 SF=10 表已 parity match，剩余大表受 FileStorage 写放大/吞吐瓶颈阻塞；见 [#4020 evidence](docs/releases/v3.12.0/evidence/issue-4020/4020_evidence.md)、[#4217](http://192.168.0.252:3000/openclaw/sqlrustgo/issues/4217) |
