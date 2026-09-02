@@ -3,11 +3,35 @@
 > **provenance:** generated_by=v3.12.0-remediation-round-3, generated_at=2026-08-10T10:49:33Z, commit=1903545df6d036f7f6d5035a0503b5fa932aac51, source_repo=openclaw/sqlrustgo, branch=develop/v3.12.0, policy=Anti-Fabrication-Policy-v1.0
 
 > **状态**: **RC** (2026-08-26 转入)
-> **日期**: 2026-08-26 (latest); 2026-08-09 (initial)
+> **日期**: 2026-09-02 (GA candidate docs); 2026-08-26 (RC); 2026-08-09 (initial)
 > **stage_history**: DRAFT (pre-2026-08-12) → ALPHA (2026-08-12) → BETA (2026-08-19) → **RC** (2026-08-26)
 
 > **commit**: 1903545df6d036f7f6d5035a0503b5fa932aac51
-> **current_HEAD**: cbe1f53f85 (drift-fix from 1903545df6, post PR #4495 merge; v3.12.0 RC active development)
+> **current_HEAD**: b14ad8df03 (`origin/develop/v3.12.0`, post PR #4609 merge; v3.12.0 RC / GA candidate preparation)
+
+## 2026-09-02 GA candidate documentation refresh
+
+### Docs
+
+- Added [`GA_RELEASE_REPORT.md`](GA_RELEASE_REPORT.md) to record the current
+  GA candidate state, remote HEAD, Gitea milestone state, and remaining hard
+  promotion blockers.
+- Added [`PERFORMANCE_REPORT.md`](PERFORMANCE_REPORT.md) to summarize TPC-H,
+  mixed SOAK demo, local 8h SOAK V5, and the remaining Linux/Docker SOAK gap.
+- Added [`SECURITY_AUDIT.md`](SECURITY_AUDIT.md) to roll up GA-3 security
+  evidence and mark final-cut refresh requirements.
+- Added [`RELEASE_CHECKLIST.md`](RELEASE_CHECKLIST.md) to map
+  `promotion_to_GA_requires` to evidence files and final cut actions.
+
+### Release governance
+
+- Milestone `v3.12.0` is open with `open_issues=0 / closed_issues=79`, but
+  `STAGE.yaml` remains `current_stage: RC`.
+- GA promotion remains blocked on final full-mode aggregate evidence and GA-2
+  SOAK closure/reclassification.
+- New open unmilestoned compatibility issues #4607, #4608, #4610, #4611,
+  #4612, and #4613 restrict broad SQLite teaching / SQL function correctness
+  release claims until they are closed or explicitly scoped out.
 
 ## 2026-08-27 #4491 residual scope closure (post-RC)
 

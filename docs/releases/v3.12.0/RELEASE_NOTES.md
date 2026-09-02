@@ -2,11 +2,11 @@
 
 > **provenance:** generated_by=v3.12.0-remediation-round-3, generated_at=2026-08-10T10:49:33Z, commit=1903545df6d036f7f6d5035a0503b5fa932aac51, source_repo=openclaw/sqlrustgo, branch=develop/v3.12.0, policy=Anti-Fabrication-Policy-v1.0
 
-> **状态**: **RC** (2026-08-26 转入; 2026-08-19 转入 BETA, 2026-08-20 V312-57 CLI 合并)
-> **日期**: 2026-08-26 (latest); 2026-08-20 (BETA); 2026-08-09 (initial)
-> **说明**: 本文是 v3.12.0 开发与阶段发布说明；当前阶段 RC。
+> **状态**: **RC / GA candidate preparation** (2026-09-02 文档刷新; 2026-08-26 转入 RC; 2026-08-19 转入 BETA)
+> **日期**: 2026-09-02 (GA candidate docs); 2026-08-26 (RC); 2026-08-20 (BETA); 2026-08-09 (initial)
+> **说明**: 本文是 v3.12.0 开发与阶段发布说明；当前阶段仍为 RC，尚未 promoted to GA。
 > **commit**: 1903545df6d036f7f6d5035a0503b5fa932aac51
-> **current_HEAD**: ba5fc80a6 (post V312-59-C RC gate aggregator merge)
+> **current_HEAD**: b14ad8df03 (`origin/develop/v3.12.0`, post PR #4609 merge)
 
 ## 版本定位
 
@@ -15,11 +15,32 @@ v3.12.0 是面向 GMP 内审检索系统的开发版本。目标是在 SQLRustGo
 ## 当前状态
 
 - 分支：`develop/v3.12.0`
-- 阶段：**RC** (2026-08-26 从 BETA 转入; STAGE.yaml current_stage: RC)
+- 阶段：**RC / GA candidate preparation** (2026-08-26 从 BETA 转入; STAGE.yaml current_stage: RC)
 - Gitea 总控 Issue：`#3887` (master), `#4386` (V312-59-C RC umbrella)
 - 任务范围：V312-01 ~ V312-57 (ISSUES_PLAN.md)
 - RC Gate：`bash scripts/gate/check_v312_promotion_to_rc.sh` → PASS 9/11, NO-OP 2/11, BLOCKERS 0
 - RC Gate Report：[`RC_GATE_REPORT.md`](RC_GATE_REPORT.md)
+
+## 2026-09-02 GA candidate 推进状态
+
+v3.12.0 milestone 在 Gitea 上已达到 `open_issues=0 / closed_issues=79`，最新
+`origin/develop/v3.12.0` HEAD 为 `b14ad8df03`。这表示 milestone 内任务已清零，
+但不等于 GA gate 已经通过。
+
+当前 GA 推进边界：
+
+- GA-2：已有 1h demo 与 8h local V5 SOAK 证据；Linux/Docker SOAK 5691 复验仍需完成或正式 reclassification。
+- GA-1：最终 GA cut 必须生成 `mode: full` 的 aggregate JSON；现有 fast-path JSON 不可作为最终 GA PASS。
+- GA-3：安全报告有 prior PASS-with-caveat，最终 cut 需要 fresh scan。
+- GA-7：本文档刷新后必须重跑 docs links / consistency。
+- Release claims：新开 #4607、#4608、#4610-#4613 不在 v3.12 milestone，但限制广义 SQLite teaching / SQL function correctness 声明。
+
+新增 GA candidate 文档入口：
+
+- [`GA_RELEASE_REPORT.md`](GA_RELEASE_REPORT.md)
+- [`PERFORMANCE_REPORT.md`](PERFORMANCE_REPORT.md)
+- [`SECURITY_AUDIT.md`](SECURITY_AUDIT.md)
+- [`RELEASE_CHECKLIST.md`](RELEASE_CHECKLIST.md)
 ## V312-57 sqlite3-like 一体化教学 CLI (2026-08-20)
 
 **Issue #4359** — 支撑 BustubX-EDU 前 4-6 周自动验收, 合并为 PR #4373 (commit `543e15b3f`, 基于 PR #4371/#4372)。
@@ -46,7 +67,7 @@ v3.12.0 是面向 GMP 内审检索系统的开发版本。目标是在 SQLRustGo
 
 ## 本阶段禁止声明
 
-- 禁止声明 v3.12.0 已通过 GA；GA 仍需 168h mixed SOAK。
+- 禁止声明 v3.12.0 已通过 GA；GA 仍需 GA-2 SOAK 证据闭环或正式 reclassification，并需要 final full-mode aggregate。
 - 禁止声明通用向量数据库 / 通用图数据库 / 完整 MySQL 5.7 替代。
 - 禁止把本文档当作 GA 执行证据；GA 由 [`promotion_to_GA_requires`](STAGE.yaml) 单独门禁。
 

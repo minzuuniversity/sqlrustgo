@@ -5,7 +5,7 @@
 > **状态**: RC (2026-08-26 转入; BETA 2026-08-19, ALPHA 2026-08-12)
 > **产品目标**: 面向 `~/gmp-platform` 的 GMP 内审检索数据库
 > **规划日期**: 2026-08-09
-> **当前整改口径更新**: 2026-08-26 (RC 转入, 见 [RC_GATE_REPORT.md](RC_GATE_REPORT.md) + [V312-59-C-RC-PROMOTION-REPORT.md](V312-59-C-RC-PROMOTION-REPORT.md))
+> **当前整改口径更新**: 2026-09-02 (GA candidate 文档刷新; `origin/develop/v3.12.0` HEAD `b14ad8df03`; 仍为 RC, 见 [GA_RELEASE_REPORT.md](GA_RELEASE_REPORT.md))
 
 v3.12.0 被规划为 SQLRustGo 第一个明确面向 GMP 内审检索工作负载的版本。它使用 SQLRustGo 作为受监管文档存储、chunk、embedding、audit trail、evidence relation、hybrid retrieval 和 SQL-backed graph projection 的数据库基础。
 
@@ -21,6 +21,8 @@ v3.12.0 被规划为 SQLRustGo 第一个明确面向 GMP 内审检索工作负�
 
 2026-08-20 V312-57 实现完成：`sqlrustgo` 二进制已实现(单路径数据库、SQL 参数/stdin 批处理、table/list/csv/json 输出、sqlite3-like 元命令、跨进程持久化、稳定退出码)。14/14 gate cases PASS，Beta Gate 0 BLOCKERS。验证报告：[V312-57-EDU-CLI-VERIFICATION.md](evidence/bustubx_edu_cli/V312-57-EDU-CLI-VERIFICATION.md)。
 2026-08-26 BETA → RC 转入：全部 12 项 `promotion_to_RC_requires` 已满足（`bash scripts/gate/check_v312_promotion_to_rc.sh` 报告 9 PASS + 2 NO-OP-covered + B8 13/13）。聚合报告：[RC_GATE_REPORT.md](RC_GATE_REPORT.md)；V312-59-C umbrella：[V312-59-C-RC-PROMOTION-REPORT.md](V312-59-C-RC-PROMOTION-REPORT.md)。Sprint 5 followup-6 (PR #4475) 闭合 Q20 BinaryOp arm 路径（`tests/integration/tpch/q20_binaryop_arm_test.rs` 2/2 PASS）。
+
+2026-09-02 GA candidate 文档刷新：Gitea v3.12.0 milestone 为 open，但 milestone 内 `open_issues=0 / closed_issues=79`。最新远端 HEAD 为 `b14ad8df03`。当前仍不得声明 GA：GA-2 Linux/Docker SOAK 5691 复验仍需执行或正式 reclassification，GA-1 final aggregate 仍需 full-mode 重跑，安全与文档门禁需在最终 cut 时刷新。详见 [GA_RELEASE_REPORT.md](GA_RELEASE_REPORT.md)、[PERFORMANCE_REPORT.md](PERFORMANCE_REPORT.md)、[SECURITY_AUDIT.md](SECURITY_AUDIT.md)、[RELEASE_CHECKLIST.md](RELEASE_CHECKLIST.md)。
 
 
 ## 发布契约
@@ -54,6 +56,10 @@ v3.12.0 被规划为 SQLRustGo 第一个明确面向 GMP 内审检索工作负�
 | `fixtures/gmp_audit_questions.yml` | 检索质量 fixture seed |
 | `RC_GATE_REPORT.md` | RC 阶段聚合报告：12 项 promotion_to_RC_requires 的 verdict map + 反延期声明 |
 | `V312-59-C-RC-PROMOTION-REPORT.md` | V312-59-C umbrella 报告：cycle provenance + 上游源证据 cross-reference + 关闭边界 |
+| `GA_RELEASE_REPORT.md` | GA candidate 推进报告：当前 HEAD、milestone 状态、GA blocker 和最终 cut 动作 |
+| `PERFORMANCE_REPORT.md` | GA candidate 性能汇总：TPC-H、mixed SOAK、V5 local 8h 和 Linux/Docker 缺口 |
+| `SECURITY_AUDIT.md` | GA candidate 安全汇总：GA-3 证据、cargo-audit caveat、final cut refresh 要求 |
+| `RELEASE_CHECKLIST.md` | RC→GA 最终检查清单：逐项映射 `promotion_to_GA_requires` 和证据动作 |
 | `evidence/v312-59/RC{1..11}_*_REPORT.md` | 每个 RC 项目的 wrapper 报告（含 RC6 TPC-H + RC9 V312-57 week01-04 的 NO-OP wrapper） |
 | `evidence/v312-59-e/thresholds_override_evidence.txt` | B8 thresholds_override 13/13 PASS 证据（issue #4388） |
 | `evidence/tpch/cross_engine_sf1/SUMMARY.json` | RC6 TPC-H SF=1 跨引擎 4-way 矩阵（V312-58 Sprint 5 系列） |
