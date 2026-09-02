@@ -775,6 +775,11 @@ pub struct InsertStatement {
     /// WHERE clauses are parsed but ignored at execution (the simple form
     /// is sufficient for our regression tests).
     pub on_conflict_clause: Option<OnConflictClause>,
+    /// V312-65 / Issue #4643: `INSERT INTO t DEFAULT VALUES` — one
+    /// row with every column populated from its declared `DEFAULT`
+    /// (or `NULL` when no default is defined). Mutually exclusive with
+    /// non-empty `values` and `select`.
+    pub default_values: bool,
 }
 
 /// V312-63 / Issue #4642: AST node for `ON CONFLICT ... DO ...` clauses.
@@ -6810,6 +6815,10 @@ impl Parser {
             Vec::new()
         };
 
+        // V312-65 / Issue #4643: `INSERT INTO t DEFAULT VALUES` is
+        // signaled via this flag. Set inside the VALUES/SELECT/DEFAULT
+        // dispatch below.
+        let mut default_values = false;
         // Check if INSERT VALUES or INSERT SELECT
         let (values, select) = if matches!(self.current(), Some(Token::Values)) {
             self.next(); // consume VALUES
@@ -6873,8 +6882,16 @@ impl Parser {
                 Statement::Select(s) => (Vec::new(), Some(Box::new(s))),
                 _ => return Err("Expected SELECT statement".to_string()),
             }
+        } else if matches!(self.current(), Some(Token::Default)) {
+            // V312-65 / Issue #4643: `INSERT INTO t DEFAULT VALUES`.
+            // Consume `DEFAULT VALUES` and signal via the `default_values`
+            // flag (set after the (values, select) tuple is bound).
+            self.next(); // consume DEFAULT
+            self.expect(Token::Values)?;
+            default_values = true;
+            (Vec::new(), None)
         } else {
-            return Err("Expected VALUES or SELECT".to_string());
+            return Err("Expected VALUES, SELECT, or DEFAULT VALUES".to_string());
         };
 
         // V312-63 / Issue #4642: ON CONFLICT (SQLite/Postgres) is parsed
@@ -7051,6 +7068,7 @@ impl Parser {
             None
         };
 
+
         Ok(Statement::Insert(InsertStatement {
             table,
             columns,
@@ -7060,6 +7078,7 @@ impl Parser {
             is_ignore,
             on_duplicate_key_update,
             on_conflict_clause,
+            default_values,
         }))
     }
 
@@ -14912,6 +14931,63 @@ mod set_op_tests {
                 assert_eq!(ci.columns, vec!["a", "b"]);
             }
             other => panic!("Expected CreateIndex, got {:?}", other),
+        }
+    }
+
+    // ----- V312-65 / Issue #4643: INSERT INTO t DEFAULT VALUES -----
+
+    #[test]
+    fn test_parse_insert_default_values_basic() {
+        let result = parse("INSERT INTO t DEFAULT VALUES");
+        assert!(result.is_ok(), "Parse failed: {:?}", result);
+        match result.unwrap() {
+            Statement::Insert(ins) => {
+                assert_eq!(ins.table, "t");
+                assert!(ins.columns.is_empty());
+                assert!(ins.values.is_empty());
+                assert!(ins.select.is_none());
+                assert!(ins.default_values, "default_values flag must be true");
+            }
+            other => panic!("Expected Insert, got {:?}", other),
+        }
+    }
+
+    #[test]
+    fn test_parse_insert_default_values_lowercase() {
+        let result = parse("insert into t default values");
+        assert!(result.is_ok(), "Parse failed: {:?}", result);
+        match result.unwrap() {
+            Statement::Insert(ins) => {
+                assert!(ins.default_values);
+            }
+            other => panic!("Expected Insert, got {:?}", other),
+        }
+    }
+
+    #[test]
+    fn test_parse_insert_default_without_values_errors() {
+        let result = parse("INSERT INTO t DEFAULT");
+        let err = result.unwrap_err();
+        assert!(
+            err.contains("Value") || err.contains("VALUES"),
+            "expected missing-VALUES error, got: {}",
+            err
+        );
+    }
+
+    #[test]
+    fn test_parse_insert_values_still_works_after_default_values_added() {
+        // Regression: adding the DEFAULT VALUES branch must not break the
+        // existing VALUES path.
+        let result = parse("INSERT INTO t VALUES (1, 2)");
+        assert!(result.is_ok(), "Parse failed: {:?}", result);
+        match result.unwrap() {
+            Statement::Insert(ins) => {
+                assert!(!ins.default_values);
+                assert_eq!(ins.values.len(), 1);
+                assert_eq!(ins.values[0].len(), 2);
+            }
+            other => panic!("Expected Insert, got {:?}", other),
         }
     }
 
