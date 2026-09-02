@@ -40,9 +40,7 @@ use crate::{ExecutionEngine, SqlError, SqlResult};
 /// `transaction_manager.add_undo_record` so a subsequent `ROLLBACK`
 /// (or `ROLLBACK TO SAVEPOINT`) re-plays the trigger's side-effects in
 /// reverse order along with the parent statement's undo entries.
-fn drain_trigger_undo_into_tx<S: StorageEngine + 'static>(
-    engine: &mut ExecutionEngine<S>,
-) {
+fn drain_trigger_undo_into_tx<S: StorageEngine + 'static>(engine: &mut ExecutionEngine<S>) {
     let pending = std::mem::take(&mut *engine.trigger_undo_sink.lock());
     if pending.is_empty() {
         return;
@@ -81,42 +79,73 @@ pub fn execute_insert<S: StorageEngine + 'static>(
         storage.get_table_info(&table_name)?.clone()
     };
 
-    let all_records: Vec<Vec<Value>> = if let Some(ref select) = insert.select {
-        let select_result = engine.execute_select(select)?;
-        map_select_result_to_records(select_result, &insert.columns, &table_info)?
-    } else {
-        // V312-17 #3970: validate row consistency and column count
-        if insert.values.len() >= 2 {
-            let first_len = insert.values[0].len();
-            for row in &insert.values {
-                if row.len() != first_len {
-                    return Err(SqlError::ExecutionError(
-                        "Parser Error: VALUES lists must all be the same length".to_string(),
-                    ));
+    let all_records: Vec<Vec<Value>> =
+        if let Some(ref select) = insert.select {
+            let select_result = engine.execute_select(select)?;
+            map_select_result_to_records(select_result, &insert.columns, &table_info)?
+        } else {
+            // V312-17 #3970: validate row consistency and column count
+            if insert.values.len() >= 2 {
+                let first_len = insert.values[0].len();
+                for row in &insert.values {
+                    if row.len() != first_len {
+                        return Err(SqlError::ExecutionError(
+                            "Parser Error: VALUES lists must all be the same length".to_string(),
+                        ));
+                    }
                 }
             }
-        }
-        let expected_cols = if !insert.columns.is_empty() {
-            insert.columns.len()
-        } else {
-            table_info.columns.len()
+            let expected_cols = if !insert.columns.is_empty() {
+                insert.columns.len()
+            } else {
+                table_info.columns.len()
+            };
+            // V312-63 / Issue #4640: SQLite-compatible short INSERT
+            // (`INSERT INTO t VALUES (10)` into a 2-column table). When the
+            // user did NOT specify a column list, pad missing columns with
+            // Value::Null. Excess values are still hard-rejected.
+            let padded_values: Vec<Vec<Expression>> =
+                if insert.columns.is_empty() {
+                    insert
+                        .values
+                        .iter()
+                        .map(|row| {
+                            if row.len() > expected_cols {
+                                Err(SqlError::ExecutionError(format!(
+                            "Binder Error: table {} has {} columns but {} values were supplied",
+                            insert.table, expected_cols, row.len()
+                        )))
+                            } else {
+                                let mut padded = row.clone();
+                                while padded.len() < expected_cols {
+                                    padded.push(Expression::Literal("NULL".to_string()));
+                                }
+                                Ok(padded)
+                            }
+                        })
+                        .collect::<SqlResult<Vec<_>>>()?
+                } else {
+                    insert
+                        .values
+                        .iter()
+                        .map(|row| {
+                            if row.len() != expected_cols {
+                                Err(SqlError::ExecutionError(format!(
+                            "Binder Error: table {} has {} columns but {} values were supplied",
+                            insert.table, expected_cols, row.len()
+                        )))
+                            } else {
+                                Ok(row.clone())
+                            }
+                        })
+                        .collect::<SqlResult<Vec<_>>>()?
+                };
+            materialise_default_tokens(
+                build_insert_records(&padded_values),
+                &insert.columns,
+                &table_info.columns,
+            )
         };
-        for row in insert.values.iter() {
-            if row.len() != expected_cols {
-                return Err(SqlError::ExecutionError(format!(
-                    "Binder Error: table {} has {} columns but {} values were supplied",
-                    insert.table,
-                    expected_cols,
-                    row.len()
-                )));
-            }
-        }
-        materialise_default_tokens(
-            build_insert_records(&insert.values),
-            &insert.columns,
-            &table_info.columns,
-        )
-    };
 
     // For REPLACE INTO: if insert.values has a unique/key conflict, delete old row first
     if insert.is_replace {
@@ -228,11 +257,35 @@ pub fn execute_insert<S: StorageEngine + 'static>(
                         if let Some(ref updates) = insert.on_duplicate_key_update {
                             apply_odku(&mut *storage, &table_name, &table_info, existing, updates)?;
                             odku_handled_indices.insert(new_idx);
+                        } else if let Some(ref clause) = insert.on_conflict_clause {
+                            // V312-63 / Issue #4642: SQLite/Postgres UPSERT
+                            // ON CONFLICT DO NOTHING skips duplicates silently;
+                            // ON CONFLICT DO UPDATE SET ... applies the
+                            // supplied assignments against the existing row
+                            // using the same evaluation context as ODKU.
+                            match &clause.action {
+                                sqlrustgo_parser::OnConflictAction::DoNothing => {
+                                    odku_handled_indices.insert(new_idx);
+                                }
+                                sqlrustgo_parser::OnConflictAction::DoUpdate { updates } => {
+                                    apply_odku(
+                                        &mut *storage,
+                                        &table_name,
+                                        &table_info,
+                                        existing,
+                                        updates,
+                                    )?;
+                                    odku_handled_indices.insert(new_idx);
+                                }
+                            }
                         }
                         break;
                     }
                 }
-                if matched && insert.on_duplicate_key_update.is_none() {
+                if matched
+                    && insert.on_duplicate_key_update.is_none()
+                    && insert.on_conflict_clause.is_none()
+                {
                     // V311-23: INSERT IGNORE skips duplicates instead of erroring
                     if insert.is_ignore {
                         odku_handled_indices.insert(new_idx); // Mark as "handled" to skip
@@ -1596,12 +1649,7 @@ fn build_trigger_undo_recorder<S: StorageEngine + 'static>(
     }
 
     impl TriggerUndoRecorder for EngineUndoRecorder {
-        fn record_insert_undo(
-            &self,
-            table: &str,
-            table_info: &TableInfo,
-            row: &[Value],
-        ) {
+        fn record_insert_undo(&self, table: &str, table_info: &TableInfo, row: &[Value]) {
             let key = crate::savepoint_wiring::primary_key_values(table_info, row);
             self.sink.lock().push(UndoRecord::Insert {
                 table: table.to_string(),
@@ -1626,12 +1674,7 @@ fn build_trigger_undo_recorder<S: StorageEngine + 'static>(
             });
         }
 
-        fn record_delete_undo(
-            &self,
-            table: &str,
-            table_info: &TableInfo,
-            row: &[Value],
-        ) {
+        fn record_delete_undo(&self, table: &str, table_info: &TableInfo, row: &[Value]) {
             let key = crate::savepoint_wiring::primary_key_values(table_info, row);
             self.sink.lock().push(UndoRecord::Delete {
                 table: table.to_string(),

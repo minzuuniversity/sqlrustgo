@@ -750,6 +750,30 @@ pub struct InsertStatement {
     pub is_replace: bool,                     // For REPLACE INTO (MySQL compatibility)
     pub is_ignore: bool,                      // For INSERT IGNORE (MySQL compatibility, V311-23)
     pub on_duplicate_key_update: Option<Vec<(String, Expression)>>, // For ON DUPLICATE KEY UPDATE
+    /// V312-63 / Issue #4642: SQLite/Postgres UPSERT clause
+    /// `ON CONFLICT (target_cols) DO NOTHING | DO UPDATE SET ...`. Conflict
+    /// target columns without a WHERE predicate are supported; partial-index
+    /// WHERE clauses are parsed but ignored at execution (the simple form
+    /// is sufficient for our regression tests).
+    pub on_conflict_clause: Option<OnConflictClause>,
+}
+
+/// V312-63 / Issue #4642: AST node for `ON CONFLICT ... DO ...` clauses.
+#[derive(Debug, Clone, PartialEq)]
+pub struct OnConflictClause {
+    /// Optional conflict-target column list (`ON CONFLICT (col1, col2)`).
+    /// When `None`, the conflict applies to any unique constraint (PG
+    /// `ON CONFLICT DO NOTHING` style).
+    pub target_cols: Vec<String>,
+    /// `DO NOTHING` or `DO UPDATE SET col1 = expr1, ...`.
+    pub action: OnConflictAction,
+}
+
+/// V312-63 / Issue #4642: action type for ON CONFLICT.
+#[derive(Debug, Clone, PartialEq)]
+pub enum OnConflictAction {
+    DoNothing,
+    DoUpdate { updates: Vec<(String, Expression)> },
 }
 
 /// A reference to a table (name plus optional alias) used in DML
@@ -4413,6 +4437,7 @@ impl Parser {
                         Some(Token::Convert) => "CONVERT",
                         Some(Token::DateAdd) => "DATE_ADD",
                         Some(Token::DateSub) => "DATE_SUB",
+                        Some(Token::TimestampDiff) => "TIMESTAMPDIFF",
                         Some(Token::Substring) => "SUBSTRING",
                         Some(Token::Position) => "POSITION",
                         Some(Token::Text) => "CHAR",
@@ -4514,6 +4539,73 @@ impl Parser {
                             None
                         };
                         let args = vec![date_expr, n_expr, Expression::Literal(unit)];
+                        columns.push(SelectColumn {
+                            name: format!(
+                                "{:?}",
+                                Expression::FunctionCall(name.to_string(), args.clone())
+                            ),
+                            alias,
+                            expression: Some(Expression::FunctionCall(name.to_string(), args)),
+                        });
+                        continue;
+                    }
+                    // V312-63 / Issue #4627: TIMESTAMPDIFF(<unit>, <ts1>, <ts2>)
+                    // — mirror of the parse_primary_expression dispatch so the
+                    // function works in SELECT-list position.
+                    if name == "TIMESTAMPDIFF" {
+                        let unit = match self.current().cloned() {
+                            Some(Token::StringLiteral(u)) => {
+                                self.next();
+                                u
+                            }
+                            Some(Token::Identifier(u)) => {
+                                let up = u.to_ascii_uppercase();
+                                if !matches!(
+                                    up.as_str(),
+                                    "MICROSECOND"
+                                        | "SECOND"
+                                        | "MINUTE"
+                                        | "HOUR"
+                                        | "DAY"
+                                        | "WEEK"
+                                        | "MONTH"
+                                        | "QUARTER"
+                                        | "YEAR"
+                                ) {
+                                    return Err(format!(
+                                        "TIMESTAMPDIFF unit must be one of \
+                                         MICROSECOND/SECOND/MINUTE/HOUR/DAY/WEEK/\
+                                         MONTH/QUARTER/YEAR; got {u:?}"
+                                    ));
+                                }
+                                self.next();
+                                up
+                            }
+                            other => {
+                                return Err(format!(
+                                    "Expected TIMESTAMPDIFF unit (string or identifier) \
+                                     as first argument; got {other:?}"
+                                ));
+                            }
+                        };
+                        self.expect(Token::Comma)?;
+                        let ts1 = self.parse_expression()?;
+                        self.expect(Token::Comma)?;
+                        let ts2 = self.parse_expression()?;
+                        self.expect(Token::RParen)?;
+                        let args = vec![Expression::Literal(unit), ts1, ts2];
+                        let alias = if matches!(self.current(), Some(Token::As)) {
+                            self.next();
+                            if let Some(Token::Identifier(n)) = self.current() {
+                                let a = n.clone();
+                                self.next();
+                                Some(a)
+                            } else {
+                                None
+                            }
+                        } else {
+                            None
+                        };
                         columns.push(SelectColumn {
                             name: format!(
                                 "{:?}",
@@ -4919,6 +5011,18 @@ impl Parser {
                 // Without this arm, the column-list loop would fall
                 // through to "Expected FROM or column name".
                 Some(Token::User) => {
+                    let expr = self.parse_expression()?;
+                    columns.push(SelectColumn {
+                        name: format!("{:?}", expr),
+                        alias: None,
+                        expression: Some(expr),
+                    });
+                }
+                // V312-63 / Issue #4627: TIMESTAMPDIFF(unit, ts1, ts2) in
+                // the SELECT projection list. Same fix as USER() above —
+                // let `parse_expression()` recognise the function-call
+                // shape so we don't fall out of the projection loop.
+                Some(Token::TimestampDiff) => {
                     let expr = self.parse_expression()?;
                     columns.push(SelectColumn {
                         name: format!("{:?}", expr),
@@ -6705,6 +6809,11 @@ impl Parser {
             return Err("Expected VALUES or SELECT".to_string());
         };
 
+        // V312-63 / Issue #4642: ON CONFLICT (SQLite/Postgres) is parsed
+        // alongside ON DUPLICATE KEY UPDATE; declare `on_conflict_clause`
+        // at this outer scope so the INSERT construction below can use it
+        // regardless of which branch fires.
+        let mut on_conflict_clause: Option<OnConflictClause> = None;
         let on_duplicate_key_update = if matches!(self.current(), Some(Token::On)) {
             self.next();
             match self.current() {
@@ -6716,23 +6825,39 @@ impl Parser {
                     loop {
                         match self.current() {
                             Some(Token::Identifier(_)) => {
-                                let expr = self.parse_expression()?;
-                                match expr {
-                                    Expression::BinaryOp(left, op, right) if op == "=" => {
-                                        match (*left, *right) {
-                                            (Expression::Identifier(col), val) => {
-                                                updates.push((col, val));
-                                            }
-                                            _ => {
-                                                return Err("Expected column = value assignment"
-                                                    .to_string())
-                                            }
-                                        }
+                                // V312-63 / Issue #4642: read the column
+                                // name directly, then consume `=` and
+                                // parse the RHS with `parse_expression()`
+                                // (which understands `+`, `-`, function
+                                // calls, etc.). Going through
+                                // `parse_expression()` for the whole
+                                // `col = rhs` form would route the `=`
+                                // through `parse_comparison_expression`
+                                // which only consumes up to the next
+                                // primary, so `v = v + 1` would be
+                                // captured as `(v = v) + 1` and the
+                                // increment would be silently dropped.
+                                let col = match self.current().cloned() {
+                                    Some(Token::Identifier(name)) => {
+                                        self.next();
+                                        name
                                     }
                                     _ => {
-                                        return Err("Expected column = value assignment".to_string())
+                                        return Err(
+                                            "Expected column name in ON DUPLICATE KEY UPDATE"
+                                                .to_string(),
+                                        )
                                     }
+                                };
+                                if !matches!(self.current(), Some(Token::Equal)) {
+                                    return Err(format!(
+                                        "Expected = after column '{}' in ON DUPLICATE KEY UPDATE",
+                                        col
+                                    ));
                                 }
+                                self.next(); // consume '='
+                                let val = self.parse_expression()?;
+                                updates.push((col, val));
                             }
                             Some(Token::Comma) => {
                                 self.next();
@@ -6747,7 +6872,112 @@ impl Parser {
                     }
                     Some(updates)
                 }
-                _ => return Err("Expected 'DUPLICATE KEY' after 'ON'".to_string()),
+                // V312-63 / Issue #4642: SQLite/Postgres UPSERT clause
+                // `ON CONFLICT (col) DO NOTHING | DO UPDATE SET ...`.
+                // Parse it inline alongside ON DUPLICATE KEY UPDATE so both
+                // forms share the same dispatcher.
+                Some(Token::Conflict) => {
+                    self.next(); // consume CONFLICT
+                    let target_cols = if matches!(self.current(), Some(Token::LParen)) {
+                        self.next(); // consume '('
+                        let mut cols = Vec::new();
+                        loop {
+                            match self.current() {
+                                Some(Token::Identifier(name)) => {
+                                    cols.push(name.clone());
+                                    self.next();
+                                }
+                                Some(Token::Comma) => {
+                                    self.next();
+                                }
+                                Some(Token::RParen) => {
+                                    self.next();
+                                    break;
+                                }
+                                _ => {
+                                    return Err("Expected column names in ON CONFLICT (col_list)"
+                                        .to_string())
+                                }
+                            }
+                        }
+                        cols
+                    } else {
+                        Vec::new()
+                    };
+                    // Optional WHERE clause (partial-index predicate).
+                    // Parsed but ignored for execution in this batch.
+                    if matches!(self.current(), Some(Token::Where)) {
+                        self.next();
+                        let _ = self.parse_expression()?;
+                    }
+                    self.expect(Token::Do)?;
+                    let action = match self.current() {
+                        Some(Token::Nothing) => {
+                            self.next();
+                            OnConflictAction::DoNothing
+                        }
+                        Some(Token::Update) => {
+                            self.next();
+                            self.expect(Token::Set)?;
+                            let mut updates = Vec::new();
+                            loop {
+                                match self.current() {
+                                    Some(Token::Identifier(_)) => {
+                                        // V312-63 / Issue #4642: same
+                                        // fix as ON DUPLICATE KEY UPDATE
+                                        // above — read the LHS column
+                                        // manually then parse the RHS
+                                        // with `parse_expression()` so
+                                        // `v = v + 1` keeps the
+                                        // arithmetic intact.
+                                        let col = match self.current().cloned() {
+                                            Some(Token::Identifier(name)) => {
+                                                self.next();
+                                                name
+                                            }
+                                            _ => {
+                                                return Err("Expected column name in \
+                                                     ON CONFLICT DO UPDATE SET"
+                                                    .to_string());
+                                            }
+                                        };
+                                        if !matches!(self.current(), Some(Token::Equal)) {
+                                            return Err(format!(
+                                                "Expected = after column '{}' \
+                                                 in ON CONFLICT DO UPDATE SET",
+                                                col
+                                            ));
+                                        }
+                                        self.next(); // consume '='
+                                        let val = self.parse_expression()?;
+                                        updates.push((col, val));
+                                    }
+                                    Some(Token::Comma) => {
+                                        self.next();
+                                    }
+                                    _ => break,
+                                }
+                            }
+                            if updates.is_empty() {
+                                return Err("Expected column assignments after \
+                                            ON CONFLICT DO UPDATE SET"
+                                    .to_string());
+                            }
+                            OnConflictAction::DoUpdate { updates }
+                        }
+                        _ => {
+                            return Err(
+                                "Expected NOTHING or UPDATE after ON CONFLICT DO".to_string()
+                            )
+                        }
+                    };
+                    on_conflict_clause = Some(OnConflictClause {
+                        target_cols,
+                        action,
+                    });
+                    None
+                }
+                _ => return Err("Expected 'DUPLICATE KEY' or 'CONFLICT' after 'ON'".to_string()),
             }
         } else {
             None
@@ -6761,6 +6991,7 @@ impl Parser {
             is_replace,
             is_ignore,
             on_duplicate_key_update,
+            on_conflict_clause,
         }))
     }
 
@@ -7389,6 +7620,7 @@ impl Parser {
             | Some(Token::Date)
             | Some(Token::DateAdd)
             | Some(Token::DateSub)
+            | Some(Token::TimestampDiff)
             | Some(Token::Substring)
             | Some(Token::Position)
             | Some(Token::Rollup)
@@ -7410,6 +7642,7 @@ impl Parser {
                     Some(Token::Date) => "DATE",
                     Some(Token::DateAdd) => "DATE_ADD",
                     Some(Token::DateSub) => "DATE_SUB",
+                    Some(Token::TimestampDiff) => "TIMESTAMPDIFF",
                     Some(Token::Substring) => "SUBSTRING",
                     Some(Token::Position) => "POSITION",
                     Some(Token::Rollup) => "ROLLUP",
@@ -7492,6 +7725,60 @@ impl Parser {
                     return Ok(Expression::FunctionCall(
                         name.to_string(),
                         vec![date_expr, n_expr, Expression::Literal(unit)],
+                    ));
+                }
+                // V312-63 / Issue #4627: TIMESTAMPDIFF(<unit>, <ts1>, <ts2>) —
+                // MySQL 5.7 standard. The first argument is a unit keyword
+                // (MICROSECOND/SECOND/MINUTE/HOUR/DAY/WEEK/MONTH/QUARTER/YEAR)
+                // and must NOT be bound to a column lookup. We accept:
+                //   - StringLiteral("MINUTE")  — single-quoted unit
+                //   - Identifier("MINUTE")     — bare unit keyword
+                // and convert to Expression::Literal("MINUTE") so the
+                // executor sees a unit argument in the first slot.
+                if name == "TIMESTAMPDIFF" {
+                    let unit = match self.current().cloned() {
+                        Some(Token::StringLiteral(u)) => {
+                            self.next();
+                            u
+                        }
+                        Some(Token::Identifier(u)) => {
+                            let up = u.to_ascii_uppercase();
+                            if !matches!(
+                                up.as_str(),
+                                "MICROSECOND"
+                                    | "SECOND"
+                                    | "MINUTE"
+                                    | "HOUR"
+                                    | "DAY"
+                                    | "WEEK"
+                                    | "MONTH"
+                                    | "QUARTER"
+                                    | "YEAR"
+                            ) {
+                                return Err(format!(
+                                    "TIMESTAMPDIFF unit must be one of \
+                                     MICROSECOND/SECOND/MINUTE/HOUR/DAY/WEEK/\
+                                     MONTH/QUARTER/YEAR; got {u:?}"
+                                ));
+                            }
+                            self.next();
+                            up
+                        }
+                        other => {
+                            return Err(format!(
+                                "Expected TIMESTAMPDIFF unit (string or identifier) \
+                                 as first argument; got {other:?}"
+                            ));
+                        }
+                    };
+                    self.expect(Token::Comma)?;
+                    let ts1 = self.parse_expression()?;
+                    self.expect(Token::Comma)?;
+                    let ts2 = self.parse_expression()?;
+                    self.expect(Token::RParen)?;
+                    return Ok(Expression::FunctionCall(
+                        "TIMESTAMPDIFF".to_string(),
+                        vec![Expression::Literal(unit), ts1, ts2],
                     ));
                 }
                 // POSITION(needle IN haystack) — MySQL 5.7 special form.
@@ -8506,12 +8793,26 @@ impl Parser {
                 Some(Token::When) => {
                     self.next();
                     let condition = if let Some(ref base) = base_expr {
-                        let value = self.parse_expression()?;
-                        Expression::BinaryOp(
-                            Box::new(base.clone()),
-                            "=".to_string(),
-                            Box::new(value),
-                        )
+                        // V312-63 / Issue #4635: simple CASE
+                        // `CASE val WHEN NULL THEN ... END`. The bare
+                        // `NULL` token isn't an expression literal in
+                        // primary position, so accept it directly. To
+                        // match SQL semantics (NULL = NULL is UNKNOWN
+                        // under standard three-valued logic, but
+                        // simple-CASE WHEN NULL must match NULL rows),
+                        // emit `IsNull(base)` rather than
+                        // `BinaryOp(base, "=", NULL)`.
+                        if matches!(self.current(), Some(Token::Null)) {
+                            self.next();
+                            Expression::IsNull(Box::new(base.clone()))
+                        } else {
+                            let value = self.parse_expression()?;
+                            Expression::BinaryOp(
+                                Box::new(base.clone()),
+                                "=".to_string(),
+                                Box::new(value),
+                            )
+                        }
                     } else {
                         self.parse_expression()?
                     };

@@ -376,6 +376,9 @@ impl<'a> Lexer<'a> {
                     "ALTER" => Token::Alter,
                     "TRUNCATE" => Token::Truncate,
                     "DUPLICATE" => Token::Duplicate,
+                    // V312-63 / Issue #4642: SQLite/PG UPSERT clause.
+                    "CONFLICT" => Token::Conflict,
+                    "NOTHING" => Token::Nothing,
                     "INDEX" => Token::Index,
                     "IDENTIFIED" => Token::Identified,
                     "ON" => Token::On,
@@ -524,6 +527,10 @@ impl<'a> Lexer<'a> {
                     "DATE" => Token::Date,
                     "DATE_ADD" => Token::DateAdd,
                     "DATE_SUB" => Token::DateSub,
+                    // V312-63 / Issue #4627: TIMESTAMPDIFF(unit, ts1, ts2).
+                    // Identifiers matching TIMESTAMPDIFF (any case) are still
+                    // accepted as identifiers via the fallthrough path below.
+                    "TIMESTAMPDIFF" => Token::TimestampDiff,
                     "SUBSTRING" => Token::Substring,
                     "SUBSTR" => Token::Substring,
                     "ROLLUP" => Token::Rollup,
