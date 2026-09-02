@@ -1,10 +1,10 @@
 # SQLRustGo v3.12.0 GA Gate Report
 
-> **provenance:** generated_by=v312-59-d-ga-report-scaffold-v2, gate_issue=#4497, umbrella=#4497 (V312-59-D v2; re-activated from #4387), source_repo=openclaw/sqlrustgo, policy=Anti-Fabrication-Policy-v1.0
+> **provenance:** generated_by=v312-59-d-ga-report-scaffold-v3, gate_issue=#4497, umbrella=#4497 (V312-59-D v3; re-activated from #4387), source_repo=openclaw/sqlrustgo, policy=Anti-Fabrication-Policy-v1.0
 > **signed_off_by:** v3.12.0 GA Release Engineering (OpenClaw)
-> **signed_off_at:** 2026-08-28 (V312-59-D v2 progress sync — 7/8 GA sub-issues closed; GA-2 待跑)
-> **cycle:** V312-59-D v2 (re-activated 2026-08-26 from #4387)
-> **head_at_sync:** `ca5649d424` (develop/v3.12.0, post PR #4561 merge — superseded by this PR; F-5 fmt closed via PR #4562 #55b9bc9cc). **Corrected GA-2 row** is in this PR's commit; the merged PR #4561 GA-2 row contained a technically incorrect claim refuted by `crates/mysql-server/src/lib.rs:4791/4980/5101/5110` (COM_STMT_PREPARE/EXECUTE/CLOSE/COM_RESET_CONNECTION handlers all present). See PR comments 98304 and 98323 for the full review.
+> **signed_off_at:** 2026-09-02 (V312-59-D v3 progress sync — Fix B + Fix C merged, V5 macOS counterfactual landed, GA-2 still PENDING on Linux Docker)
+> **cycle:** V312-59-D v3 (re-activated 2026-08-26 from #4387; v3 = 2026-09-02 sync after PR #4605 + #4606 merge)
+> **head_at_sync:** `b14ad8df03` (develop/v3.12.0, post PR #4606 + #4609 merge — PR #4605 (Fix C `0d044e9953`) and PR #4606 (V5 SOAK evidence `8a7adfce63`) both merged 2026-09-02).
 
 This document is the overall verdict aggregator for v3.12.0 GA promotion.
 It records the 8 `promotion_to_GA_requires` items (STAGE.yaml lines 107-116),
@@ -24,7 +24,7 @@ emits this report with per-item PASS/FAIL/DRIFT verdict + evidence pointer.
 | # | Item (STAGE.yaml) | Gate script | Evidence file | Status (cycle v2, 2026-08-28) | Closing PR | Merge commit |
 |---|---|---|---|---|---|---|
 | GA-1 | All Beta + RC gates remain 0-WARN | `scripts/gate/check_ga_v3.12.0.sh` (aggregator) | `evidence/v312-59/ga_gate_report.json` | PASS (script syntax OK) — 8/8 stages green per fast-path 2026-08-28 | (aggregator itself; re-runs each cycle) | `43b069ef42` (PR #4544) |
-| **GA-2** | **168h mixed SOAK (SQL + GMP + retrieval + audit + backup/restore)** | `scripts/gate/check_v312_ga_soak.sh` (NEW, **NOT YET IMPLEMENTED**) | `evidence/v312-59/soak/` + `evidence/issue-4560/POST_4558_SOAK_REPORT.md` | **🔴 PENDING — CI/Docker (Z6G4 container) required. Post-#4558 1h local smoke result (commit `0beb0107ee`): sysbench `prepare` PASS (10000-row bulk INSERT into `sbtest1(k,c,pad)`), confirming PR #4559 / #4558 fix; sysbench `run` with default `--db-ps-mode=auto` fails to initialize 8 workers within 30s (only 4 of 8 reach server, server.log shows 0 STMT_PREPARE events → client-side 4-of-8 TLS-handshake stall, NOT a server-side missing-handler bug). Workaround: `scripts/soak/run_soak_loop.sh` already passes `--db-ps-mode=disable` and is the canonical GA-2 harness (PR #4557). Issue #4560 reopened with corrected analysis (PR comment 98308). Full report: `evidence/issue-4560/POST_4558_SOAK_REPORT.md`.** | n/a (open issue #4499, in-flight issue #4560) | n/a |
+| **GA-2** | **168h mixed SOAK (SQL + GMP + retrieval + audit + backup/restore)** | `scripts/gate/check_v312_ga_soak.sh` (NEW, **NOT YET IMPLEMENTED**) | `evidence/v312-59/soak/` + `evidence/issue-4560/POST_4558_SOAK_REPORT.md` + `evidence/v312-59/SOAK_V5_FINDINGS.md` | **🔴 PENDING — CI/Docker (Z6G4 container) required. Post-#4558 1h local smoke result (commit `0beb0107ee`): sysbench `prepare` PASS (10000-row bulk INSERT into `sbtest1(k,c,pad)`), confirming PR #4559 / #4558 fix; sysbench `run` with default `--db-ps-mode=auto` fails to initialize 8 workers within 30s (only 4 of 8 reach server, server.log shows 0 STMT_PREPARE events → client-side 4-of-8 TLS-handshake stall, NOT a server-side missing-handler bug). Workaround: `scripts/soak/run_soak_loop.sh` already passes `--db-ps-mode=disable` and is the canonical GA-2 harness (PR #4557). Issue #4560 reopened with corrected analysis (PR comment 98308). Full report: `evidence/issue-4560/POST_4558_SOAK_REPORT.md`.** **Local-environment counterfactual 2026-09-02: `evidence/v312-59/SOAK_V5_FINDINGS.md` (PR #4606 merged `b4b70ff0c7`). 8 h × 4 threads × --rate=4 sysbench oltp_read_write on macOS dev binary with Fix B + Fix C from PR #4605 (`075379bade`): RSS bounded 188–230 MB across 16 snapshots (no monotonic growth, no leak signature), 0 errors, +12 % TPS vs V3. Closes the V312-59-D / V312-60 O(N)-clone-on-DML leak class on the local macOS dev binary. Linux SOAK 5691 re-validation in Docker (Z6G4 container) remains the canonical blocker for GA-2 close.** | n/a (open issue #4499, in-flight issue #4560); V5 evidence merged but Linux Docker re-validation still required | n/a |
 | GA-3 | Security scan (cargo audit + license + secrets) | `scripts/gate/check_security_scan_v312.sh` | `evidence/v312-59/GA3_SECURITY_SCAN_REPORT.md` | **✅ PASS (closed 2026-08-27)** — 4/4 sub-checks (SC-1..SC-4); SC-1 cargo-audit pre-installed in CI via PR #4546 | PR #4531 | `acff97d50d` |
 | GA-4 | SQLLogicTest selected targets PASS or every exclusion issue-linked | `scripts/gate/check_sqllogictest_selected_v312.sh` | `evidence/v312-59/GA4_SQLLOGICTEST_SELECTED_REPORT.md` | **✅ PASS (closed 2026-08-27)** — 25/25 + 16 linked exclusions | PR #4535 | `5e4d91a233` |
 | GA-5 | TPC-H SF=1 zero-row gap (22/22 oracle match) | `scripts/gate/check_tpch_sf1.sh` + `run_q17_sf1_celldiff_v312.sh` | `evidence/v312-58/Q17_SF1_CELLDIFF.json` + `evidence/issue-4540/V312-58-4540-Q17-SF1-CELLDIFF-PASS.md` | **✅ PASS (closed 2026-08-28)** — Q17 SF=1 elapsed **61.6s** ≤ 300s budget (4.86× headroom); row_count=1; cell value 249963.75857142854 ≈ oracle 249963.75857142857 (Δ 2.91e-11 ≪ FLOAT_TOL 1e-3) | PR #4541 (GA reclassification) + PR #4550 (cell-diff verify) | `e169f9bfd1` + `640d672bf8` |
@@ -230,6 +230,38 @@ issues #4500-#4505, each carrying the ADR-014 5 fields (source_agent,
 source_run, timestamp, evidence_hash, conflict_resolution) and a verifiable
 evidence pointer. The umbrella issue #4497 remains open until GA-2 SOAK
 completes (CI handoff, expected 168h ≈ 7 days).
+
+### Cycle V312-59-D v3 (2026-09-02, head `b14ad8df03`)
+
+Recorded 2026-09-02 (HEAD `b14ad8df03`, branch `develop/v3.12.0`) — V312-59-D leak hunt outcome landed:
+
+```
+OVERALL:    7/8 PASS + 1/8 PENDING-CI (no change vs v2; GA-2 still blocked on Linux Docker)
+GA-CLOSED:  GA-3 / GA-4 / GA-5 / GA-6 / GA-7 / GA-8  (and aggregator GA-1)
+GA-PENDING: GA-2 — 168h mixed SOAK (Linux SOAK 5691 Docker re-validation, issue #4499 open)
+LANDED-IN-V3:
+  - Fix B (commit f762addbec): execute_delete single-row fast path — closes O(N)-clone
+    hot path for single-row PK matches (sysbench oltp_delete pattern)
+  - Fix C (commit 0d044e9953, PR #4605 merged 075379bade): execute_update
+    O(N)-clone elimination + double-scan collapse (both with-WHERE and no-WHERE paths)
+  - V5 SOAK evidence (commit 8a7adfce63, PR #4606 merged b4b70ff0c7): 8 h × 4 threads ×
+    --rate=4 sysbench oltp_read_write on macOS dev binary with Fix B + Fix C
+      - RSS bounded 188–230 MB across 16 snapshots (no monotonic growth)
+      - 0 errors, 0 reconnects across 8 h
+      - 63 092 transactions, 2.19 TPS, 43.81 QPS (+12 % vs V3 Fix-B-only)
+      - execute_update per-tx 0.42 KB/tx (V3: 0.43 KB/tx)
+      - Closes the V312-59-D / V312-60 O(N)-clone-on-DML leak class on the local
+        macOS dev binary
+GA-2-BLOCKER-REMAINING:
+  - Linux SOAK 5691 re-validation in Docker (Z6G4 container) is the canonical
+    blocker for GA-2 close. The V5 macOS counterfactual supplements but does not
+    replace it — Linux dirty-page retention behaviour cannot be reproduced on
+    macOS dev environment.
+EVIDENCE-FILES (added in this cycle):
+  - docs/releases/v3.12.0/evidence/v312-59/SOAK_V5_FINDINGS.md (PR #4606)
+  - docs/releases/v3.12.0/evidence/v312-59/soak/soak_v5_summary_20260902_195919.txt (PR #4606)
+FOLLOWUPS:  same as v2; #4497 umbrella remains open pending Linux Docker GA-2 run
+```
 
 The V312-59-D v1 closure (#4387, 2026-08-21) is recorded as superseded: the
 9 GA gates claimed PASS in v1 did not all materialize (GA-5 Q17 SF=1 perf
