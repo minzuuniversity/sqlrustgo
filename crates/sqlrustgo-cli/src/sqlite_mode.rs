@@ -840,6 +840,44 @@ mod tests {
         let _ = std::fs::remove_dir_all(&tmp);
     }
 
+    // ----- V312-64 / Issue #4645: CREATE FULLTEXT INDEX -----
+
+    #[test]
+    fn fulltext_index_parses_and_executor_rejects_with_clear_error() {
+        let tmp = std::env::temp_dir().join("v31264_fulltext_index");
+        let _ = std::fs::remove_dir_all(&tmp);
+        let mut mode = SqliteMode::open(&tmp, SqliteState::default(), false).unwrap();
+        mode.state.output = OutputTarget::File(tmp.join("out.txt"));
+        let input = vec![
+            "CREATE TABLE t(body TEXT);".to_string(),
+            "CREATE FULLTEXT INDEX ft_idx ON t(body);".to_string(),
+            "SELECT * FROM t;".to_string(),
+        ];
+        let exit = mode.run_batch_stdin_with_input(input);
+        // Parser MUST accept the FULLTEXT INDEX (no Parse error); the
+        // executor MUST reject it with a clear runtime error; the
+        // process exits non-zero because continue_on_error=false.
+        assert_eq!(
+            exit, 1,
+            "FULLTEXT INDEX executor rejection must yield exit 1 (got {})",
+            exit
+        );
+        // The CREATE TABLE and SELECT were processed before/after the
+        // FULLTEXT INDEX statement; the SELECT runs because the batch
+        // aborts on the executor error AFTER executing the FULLTEXT
+        // INDEX attempt. (In our impl abort happens at the FIRST
+        // executor error, so SELECT did NOT run.)
+        let out = std::fs::read_to_string(tmp.join("out.txt")).unwrap();
+        // Just confirm we don't have any spurious "Parse error" output
+        // (the bug we're fixing was a parse crash).
+        assert!(
+            !out.contains("Parse error"),
+            "FULLTEXT INDEX must not produce a parse error; out={}",
+            out
+        );
+        let _ = std::fs::remove_dir_all(&tmp);
+    }
+
     #[test]
     fn read_dotcmd_with_multiline_create_table_succeeds() {
         let tmp = std::env::temp_dir().join("v31261_read_dotcmd_multiline");

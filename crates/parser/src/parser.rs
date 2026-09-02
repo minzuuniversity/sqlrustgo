@@ -85,6 +85,8 @@ pub enum Statement {
     Merge(MergeStatement),
     CreateTable(CreateTableStatement),
     CreateIndex(CreateIndexStatement),
+    // V312-64 / Issue #4645: MySQL-compatible fulltext index (parser-accept, executor-reject).
+    CreateFulltextIndex(CreateFulltextIndexStatement),
     CreateView(CreateViewStatement),
     DropTable(DropTableStatement),
     DropIndex(DropIndexStatement),
@@ -242,6 +244,23 @@ pub struct CreateIndexStatement {
     pub table: String,
     pub columns: Vec<String>,
     pub unique: bool,
+}
+
+/// V312-64 / Issue #4645: CREATE FULLTEXT INDEX statement (MySQL-compatible).
+///
+/// The parser accepts the syntax so teaching-seed DDL that uses MySQL-style
+/// full-text indexes can be loaded. The execution engine surfaces a clear
+/// "FULLTEXT INDEX is not yet implemented" runtime error — see
+/// `src/execution_engine.rs` for the dispatch arm.
+///
+/// SQLite-compatible alternatives that DO work in sqlrustgo today:
+///   * `CREATE VIRTUAL TABLE <name> USING fts5(<cols>)` for FTS5.
+#[derive(Debug, Clone, PartialEq)]
+pub struct CreateFulltextIndexStatement {
+    pub name: String,
+    pub table: String,
+    pub columns: Vec<String>,
+    pub if_not_exists: bool,
 }
 
 /// DROP INDEX statement
@@ -2644,6 +2663,12 @@ impl Parser {
                 Ok(stmt)
             }
             Some(Token::Function) => self.parse_create_function(),
+            // V312-64 / Issue #4645: CREATE FULLTEXT INDEX
+            // (MySQL-compatible). Parser accepts, executor rejects.
+            Some(Token::Fulltext) => {
+                self.next();
+                self.parse_create_fulltext_index()
+            }
             Some(Token::Trigger) => self.parse_create_trigger(),
             Some(Token::Role) => self.parse_create_role(),
             Some(Token::View) => self.parse_create_view(),
@@ -2875,6 +2900,49 @@ impl Parser {
             table: table_name,
             columns,
             unique,
+        }))
+    }
+
+    /// V312-64 / Issue #4645: parse `CREATE FULLTEXT INDEX <name>
+    /// [IF NOT EXISTS] ON <table>(<col1>, <col2>, ...)`.
+    ///
+    /// The CALLER (`parse_create`) has already consumed `CREATE` and
+    /// matched on `Token::Fulltext` (the `FULLTEXT` keyword). This
+    /// method consumes `INDEX`, the optional `IF NOT EXISTS`, the
+    /// index name, `ON`, the table name, and the parenthesised column
+    /// list. Mirrors the shape of `parse_create_index` (parser.rs:2878)
+    /// so future FTS5/FTS3 storage work can share most of the wiring.
+    fn parse_create_fulltext_index(&mut self) -> Result<Statement, String> {
+        self.expect(Token::Index)?;
+
+        let mut if_not_exists = false;
+        if matches!(self.current(), Some(Token::If)) {
+            self.next();
+            self.expect(Token::Not)?;
+            self.expect(Token::Exists)?;
+            if_not_exists = true;
+        }
+
+        let index_name = match self.next() {
+            Some(Token::Identifier(name)) => name,
+            Some(t) => {
+                return Err(format!("Expected fulltext index name, got {:?}", t))
+            }
+            None => return Err("Expected fulltext index name".to_string()),
+        };
+        self.expect(Token::On)?;
+        let table_name = match self.next() {
+            Some(Token::Identifier(name)) => name,
+            Some(t) => return Err(format!("Expected table name, got {:?}", t)),
+            None => return Err("Expected table name".to_string()),
+        };
+        self.expect(Token::LParen)?;
+        let columns = self.parse_column_list()?;
+        Ok(Statement::CreateFulltextIndex(CreateFulltextIndexStatement {
+            name: index_name,
+            table: table_name,
+            columns,
+            if_not_exists,
         }))
     }
 
@@ -14845,6 +14913,92 @@ mod set_op_tests {
             }
             other => panic!("Expected CreateIndex, got {:?}", other),
         }
+    }
+
+    // ----- V312-64 / Issue #4645: CREATE FULLTEXT INDEX -----
+
+    #[test]
+    fn test_create_fulltext_index_basic() {
+        let result = parse("CREATE FULLTEXT INDEX ft_idx ON t(body)");
+        assert!(result.is_ok(), "Parse failed: {:?}", result);
+        match result.unwrap() {
+            Statement::CreateFulltextIndex(ft) => {
+                assert_eq!(ft.name, "ft_idx");
+                assert_eq!(ft.table, "t");
+                assert_eq!(ft.columns, vec!["body".to_string()]);
+                assert!(!ft.if_not_exists);
+            }
+            other => panic!("Expected CreateFulltextIndex, got {:?}", other),
+        }
+    }
+
+    #[test]
+    fn test_create_fulltext_index_multi_column() {
+        let result = parse("CREATE FULLTEXT INDEX ft_idx ON articles(title, body, tags)");
+        assert!(result.is_ok(), "Parse failed: {:?}", result);
+        match result.unwrap() {
+            Statement::CreateFulltextIndex(ft) => {
+                assert_eq!(ft.name, "ft_idx");
+                assert_eq!(ft.table, "articles");
+                assert_eq!(
+                    ft.columns,
+                    vec!["title".to_string(), "body".to_string(), "tags".to_string()]
+                );
+            }
+            other => panic!("Expected CreateFulltextIndex, got {:?}", other),
+        }
+    }
+
+    #[test]
+    fn test_create_fulltext_index_if_not_exists() {
+        let result = parse("CREATE FULLTEXT INDEX IF NOT EXISTS ft_idx ON t(body)");
+        assert!(result.is_ok(), "Parse failed: {:?}", result);
+        match result.unwrap() {
+            Statement::CreateFulltextIndex(ft) => {
+                assert!(ft.if_not_exists);
+                assert_eq!(ft.name, "ft_idx");
+            }
+            other => panic!("Expected CreateFulltextIndex, got {:?}", other),
+        }
+    }
+
+    #[test]
+    fn test_create_fulltext_index_lowercase_keyword() {
+        // Keyword recognition is case-insensitive (handled by lexer).
+        let result = parse("create fulltext index ft_idx on t(body)");
+        assert!(result.is_ok(), "Parse failed: {:?}", result);
+        match result.unwrap() {
+            Statement::CreateFulltextIndex(ft) => {
+                assert_eq!(ft.name, "ft_idx");
+            }
+            other => panic!("Expected CreateFulltextIndex, got {:?}", other),
+        }
+    }
+
+    #[test]
+    fn test_create_fulltext_index_missing_name_errors() {
+        let result = parse("CREATE FULLTEXT INDEX ON t(body)");
+        assert!(result.is_err(), "expected parser error, got {:?}", result);
+        let err = result.unwrap_err();
+        assert!(
+            err.contains("Expected fulltext index name"),
+            "expected missing-name error, got: {}",
+            err
+        );
+    }
+
+    fn test_create_fulltext_index_missing_columns_errors() {
+        let result = parse("CREATE FULLTEXT INDEX ft_idx ON t");
+        assert!(result.is_err(), "expected parser error, got {:?}", result);
+        let err = result.unwrap_err();
+        // Either the dispatcher's "Expected LParen" message or our
+        // own "Expected (" wording are acceptable; both signal the
+        // missing column list.
+        assert!(
+            err.contains("LParen") || err.contains("(") || err.contains("Expected column"),
+            "expected column-list error, got: {}",
+            err
+        );
     }
 
     #[test]
