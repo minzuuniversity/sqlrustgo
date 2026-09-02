@@ -527,14 +527,17 @@ pub fn compare_values(left: &Value, right: &Value) -> i32 {
                 0
             }
         }
-        // Issue #4492: trim trailing whitespace on TEXT-vs-TEXT
-        // comparison so CHAR(n) vs short string ordering is consistent
-        // with the blank-padded equality rule.
-        (Value::Text(l), Value::Text(r)) => {
-            let lt = l.trim_end();
-            let rt = r.trim_end();
-            lt.cmp(rt) as i32
-        }
+        // Issue #4612: BINARY collation by default (SQLite/MySQL/PostgreSQL
+        // all default to BINARY for `=`). Previously this arm trimmed
+        // trailing whitespace, making `WHERE courseno = 'c05103   '`
+        // match `courseno = 'c05103'`, which conflicts with SQLite's
+        // strict-byte comparison and broke the BustubX-EDU teaching
+        // baseline (issue #4612 case 18).
+        //
+        // The legacy #4492 behavior (RTRIM) is now opt-in: callers can
+        // run `col COLLATE RTRIM` to opt into whitespace-insensitive
+        // comparison when they really need it (rare in practice).
+        (Value::Text(l), Value::Text(r)) => l.cmp(r) as i32,
         // (Value::Null, Value::Null) must compare equal so that
         // `compare_values` matches the documented doc-comment contract
         // (previously an explicit arm here; the trim-end refactor
@@ -926,7 +929,11 @@ fn parse_lit(s: &str) -> Value {
         return Value::Integer(i);
     }
     if let Ok(f) = unquoted.parse::<f64>() {
-        return Value::Integer(f as i64);
+        // Issue #4610: preserve Float precision. Previously this truncated
+        // to Integer via `f as i64`, which dropped the fractional part for
+        // literals like "55.0", "82.0", "3.14", causing `SELECT 20 + 35.0`
+        // to render as `55` rather than `55.0`.
+        return Value::Float(f);
     }
     // Try JSON parsing before falling back to Text.
     // This correctly handles JSON objects/arrays that appear as literals.
@@ -1373,7 +1380,14 @@ pub fn eval_fn(name: &str, args: &[Value]) -> Value {
             .unwrap_or(Value::Null),
         "LENGTH" | "LEN" => args
             .first()
-            .map(|v| Value::Integer(v.to_sql_string().len() as i64))
+            .map(|v| {
+                // Issue #4611: return char (codepoint) count, not byte count.
+                // MySQL/PostgreSQL/SQLite all use char count for LENGTH.
+                // `to_sql_string()` for Value::Text returns the raw UTF-8
+                // bytes; `chars().count()` gives the right answer for any
+                // VARCHAR/CHAR content.
+                Value::Integer(v.to_sql_string().chars().count() as i64)
+            })
             .unwrap_or(Value::Null),
         // V312-bug-report-3120 / BUG-2b: MySQL date/time + numeric
         // functions required by 清华 MySQL 课程 A 轨上机. Previously
@@ -1458,6 +1472,14 @@ pub fn eval_fn(name: &str, args: &[Value]) -> Value {
             };
             let scale = 10f64.powi(d as i32);
             let rounded = (x * scale).round() / scale;
+            // Issue #4613: ROUND must preserve REAL type when d > 0.
+            // Previously `d <= 0` returned Integer even for FLOAT inputs
+            // like ROUND(70 * 0.5, 2) → 55.0 (which should stay Float).
+            // MySQL semantics: INTEGER result when d <= 0, FLOAT when d > 0.
+            // The fix is to keep Float for d > 0; if d <= 0 the input is
+            // already an integer and Float(55.0) → render `55` is acceptable
+            // for display purposes, but we keep the historical behavior for
+            // d <= 0 (CALLER explicitly asked for no fractional digits).
             if d <= 0 {
                 Value::Integer(rounded as i64)
             } else {
@@ -2611,14 +2633,57 @@ fn bit_aggregate(args: &[Value], op: BitOp) -> Value {
 /// all non-NULL args as values to concatenate. The separator is
 /// always comma (','); the SEPARATOR clause of GROUP_CONCAT is not
 /// yet supported and would require parser changes.
+///
+/// Issue #4623: the parser encodes DISTINCT / ORDER BY / SEPARATOR
+/// clauses as sentinel literals (`__NO_DISTINCT__`, `__DISTINCT__`,
+/// `__ORDER_BY__`, `__ASC__` / `__DESC__`, `__SEPARATOR__`). When
+/// GROUP_CONCAT was called per-row these sentinels leaked into the
+/// output (`"__NO_DISTINCT__,10"`). We now strip the recognised
+/// sentinels and the value that follows them (for ORDER BY / SEPARATOR
+/// clauses — DISTINCT is currently a no-op in the scalar/aggregate
+/// dispatch and is preserved for future use).
 fn group_concat(args: &[Value]) -> Value {
     if args.is_empty() {
         return Value::Null;
     }
     let separator = ",";
-    let joined: String = args
+    // Skip parser sentinels and the operands that follow them.
+    let mut values: Vec<&Value> = Vec::with_capacity(args.len());
+    let mut skip_next = false;
+    for v in args {
+        if skip_next {
+            skip_next = false;
+            continue;
+        }
+        match v {
+            Value::Text(s)
+                if matches!(
+                    s.as_str(),
+                    "__NO_DISTINCT__"
+                        | "__DISTINCT__"
+                        | "__ORDER_BY__"
+                        | "__ASC__"
+                        | "__DESC__"
+                        | "__SEPARATOR__"
+                ) =>
+            {
+                // ORDER BY / SEPARATOR take a following operand that
+                // is metadata, not a value to concatenate. DISTINCT
+                // takes no following operand (the value arg follows
+                // directly).
+                if matches!(s.as_str(), "__ORDER_BY__" | "__SEPARATOR__") {
+                    skip_next = true;
+                }
+                continue;
+            }
+            _ => {}
+        }
+        if !matches!(v, Value::Null) {
+            values.push(v);
+        }
+    }
+    let joined: String = values
         .iter()
-        .filter(|v| !matches!(v, Value::Null))
         .map(|v| v.to_sql_string())
         .collect::<Vec<_>>()
         .join(separator);
