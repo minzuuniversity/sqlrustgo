@@ -170,6 +170,28 @@ jobs:
         run: bash scripts/gate/check_coverage_v312.sh
 
   # ----------------------------------------
+  # SOAK detach regression (#4595, Tier-1)
+  # ----------------------------------------
+  # 防止 P-1 修复 (setsid+nohup+detach 块) 被 refactor/误删后静默回归。
+  # 静态检查 (< 1s): 关键模式 + trap + guard 存在
+  # Tier-1 检查: P-2/P-3/P-4/P-9 env override + QPS 解析
+  # 行为测试 (SIGKILL 父进程后子进程存活) 仅在 nightly / --behavioral 启用,PR CI 只跑静态。
+  soak-detach-regression:
+    name: SOAK Detach Regression (#4595)
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 1
+
+      - name: SOAK self-detach 静态检查 (P-1 回归门禁)
+        run: bash scripts/soak/test_run_soak_loop_detach.sh
+
+      - name: SOAK Tier-1 env override + QPS 解析 (P-2/P-3/P-4/P-9)
+        run: bash scripts/soak/test_run_soak_loop_tier1.sh
+
+  # ----------------------------------------
   # Security audit
   # ----------------------------------------
   security:
