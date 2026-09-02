@@ -26,6 +26,8 @@
 #                       — v312-59-d / #4594 P-2: 防止 168h SOAK 跨重启丢失数据
 #   SOAK_NICE_SERVER   server nice level (默认 10) — v312-59-d / #4594 P-3
 #   SOAK_NICE_SYSBENCH sysbench nice level (默认 15) — v312-59-d / #4594 P-3
+#   SOAK_WORKLOAD      sysbench workload (oltp_read_write|oltp_read_only|oltp_write_only
+#                       |oltp_insert|oltp_update_index; 默认 oltp_read_write) — v312-59-d / #4596 P-6
 #
 # 退出码:
 #   0  — 正常完成
@@ -45,6 +47,9 @@ SOAK_DATA_DIR="${SOAK_DATA_DIR:-${HOME}/sqlrustgo-soak-data-${SOAK_PORT}}"
 # v312-59-d / #4594 P-3: nice levels 可经 env 覆盖 (跨主机比较时控制干扰变量)
 SOAK_NICE_SERVER="${SOAK_NICE_SERVER:-10}"
 SOAK_NICE_SYSBENCH="${SOAK_NICE_SYSBENCH:-15}"
+# v312-59-d / #4596 P-6: SOAK_WORKLOAD env 选 sysbench workload, 默认 read_write
+# 5 个支持的 workload: oltp_read_write|oltp_read_only|oltp_write_only|oltp_insert|oltp_update_index
+SOAK_WORKLOAD="${SOAK_WORKLOAD:-oltp_read_write}"
 
 PROJECT_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
 BINARY="${PROJECT_ROOT}/target/release/sqlrustgo-mysql-server"
@@ -77,6 +82,10 @@ setup_run_dir() {
     METRICS_CSV="${RUN_DIR}/metrics.csv"
     MONITOR_LOG="${RUN_DIR}/monitor.log"
     PERIODIC_LOG="${RUN_DIR}/periodic_reports.log"
+    PERIODIC_JSONL="${RUN_DIR}/periodic_reports.jsonl"
+    # v312-59-d / #4596 P-5: 跨 disk-restart 切分 metrics 按 cycle,
+    # 把 restart_seq 拼到 metrics.csv 文件名, 旧文件保留 (便于拼接)
+    METRICS_CYCLE="${RUN_DIR}/metrics.csv.0"
     echo "${RUN_DIR}" > "${SOAK_RESULTS_DIR}/latest_run.txt"
     echo "data: ${CYCLE_DATA}" >> "${SOAK_RESULTS_DIR}/latest_run.txt"
     echo "log:  ${LOG_DIR}" >> "${SOAK_RESULTS_DIR}/latest_run.txt"
@@ -263,10 +272,17 @@ preflight() {
             fail=1
         fi
     fi
+    # v312-59-d / #4596 P-6: SOAK_WORKLOAD 必须在白名单内, 早失败避免 start_sysbench 才暴露
+    if ! load_workload_args "${SOAK_WORKLOAD}" >/dev/null 2>&1; then
+        err "SOAK_WORKLOAD='${SOAK_WORKLOAD}' 不在白名单"
+        err "支持: oltp_read_write|oltp_read_only|oltp_write_only|oltp_insert|oltp_update_index"
+        fail=1
+    fi
     if [[ $fail -ne 0 ]]; then exit 1; fi
     log "前置检查通过"
     log "  二进制: ${BINARY}"
     log "  sysbench: $(sysbench --version 2>&1 | head -1)"
+    log "  workload: ${SOAK_WORKLOAD}"
 }
 
 # ── 服务器管理 ──
@@ -342,9 +358,35 @@ stop_current_server() {
 
 # ── Sysbench ──
 
+# v312-59-d / #4596 P-6: SOAK_WORKLOAD → sysbench --test=... 映射
+# 支持: oltp_read_write (默认), oltp_read_only, oltp_write_only,
+#       oltp_insert, oltp_update_index
+# 输出: 单行 sysbench --test=X... 参数, 调用者负责前缀
+# 用法: load_workload_args "$SOAK_WORKLOAD"
+load_workload_args() {
+    local wl="${1:-oltp_read_write}"
+    case "${wl}" in
+        oltp_read_write)   printf '%s' "--test=oltp_read_write" ;;
+        oltp_read_only)    printf '%s' "--test=oltp_read_only" ;;
+        oltp_write_only)   printf '%s' "--test=oltp_write_only" ;;
+        oltp_insert)       printf '%s' "--test=oltp_insert" ;;
+        oltp_update_index) printf '%s' "--test=oltp_update_index" ;;
+        *)
+            err "未知 SOAK_WORKLOAD='${wl}'"
+            err "支持: oltp_read_write|oltp_read_only|oltp_write_only|oltp_insert|oltp_update_index"
+            return 1
+            ;;
+    esac
+}
+
 start_sysbench() {
-    log "=== sysbench prepare ==="
-    sysbench oltp_read_write \
+    log "=== sysbench prepare (workload=${SOAK_WORKLOAD}) ==="
+    local wl_args
+    if ! wl_args=$(load_workload_args "${SOAK_WORKLOAD}"); then
+        return 1
+    fi
+    # shellcheck disable=SC2086
+    sysbench ${wl_args} \
         --db-driver=mysql \
         --mysql-host=127.0.0.1 \
         --mysql-port="${SOAK_PORT}" \
@@ -363,13 +405,14 @@ start_sysbench() {
 
     sleep 2
 
-    log "启动 sysbench run (${SOAK_SB_THR} threads, nice -n ${SOAK_NICE_SYSBENCH})"
+    log "启动 sysbench run (${SOAK_SB_THR} threads, workload=${SOAK_WORKLOAD}, nice -n ${SOAK_NICE_SYSBENCH})"
     # v312-59-d / #4594 P-4: sysbench --time 必须 ≥ SOAK_HOURS, 否则 SOAK 结束后 sysbench 孤立运行
     # +1h buffer 确保 sysbench 比 main_loop 后退出, 避免 SOAK 中途 orphan 干扰
     local sysbench_seconds=$(( (SOAK_HOURS + 1) * 3600 ))
     # v312-59-d / #4594 P-3: nice level 可经 SOAK_NICE_SYSBENCH 覆盖
+    # shellcheck disable=SC2086
     nice -n "${SOAK_NICE_SYSBENCH}" \
-        sysbench oltp_read_write \
+        sysbench ${wl_args} \
         --db-driver=mysql \
         --db-ps-mode=disable \
         --mysql-host=127.0.0.1 \
@@ -397,6 +440,8 @@ start_sysbench() {
 
 # ── 10分钟指标报告 ──
 
+# v312-59-d / #4596 P-10: 同步输出 machine-parseable JSON line 到 PERIODIC_JSONL
+# v312-59-d / #4596 P-5:  在 CSV / JSON 中嵌入 restart_seq 列, 跨 cycle 可拼接
 record_metrics() {
     local pid="${1:-}"
     local elapsed="${2:-0}"
@@ -416,8 +461,9 @@ record_metrics() {
     sv_qps=$(server_qps)
     sb_qps=$(sysbench_qps)
 
-    echo "${now},${elapsed},${rss_kb},${fd},${threads},${wal_b},${disk_b},${sv_qps},${sb_qps}" >> "${METRICS_CSV}"
-    echo "${now},${elapsed},${rss_kb},${fd},${threads},${wal_b},${disk_b},${sv_qps},${sb_qps}" >> "${HISTORY_CSV}"
+    # P-5: 写入按 cycle 切分的 METRICS_CYCLE 文件 + 历史汇总 (无 restart_seq)
+    echo "${now},${elapsed},${restart_count:-0},${rss_kb},${fd},${threads},${wal_b},${disk_b},${sv_qps},${sb_qps}" >> "${METRICS_CYCLE}"
+    echo "${now},${elapsed},${restart_count:-0},${rss_kb},${fd},${threads},${wal_b},${disk_b},${sv_qps},${sb_qps}" >> "${HISTORY_CSV}"
 
     local rss_mb wal_mb disk_mb
     rss_mb=$(awk "BEGIN {printf \"%.1f\", ${rss_kb}/1024}")
@@ -429,9 +475,14 @@ record_metrics() {
     local sb_line
     sb_line=$(grep -a "thds:" "${SYSBENCH_LOG}" 2>/dev/null | tail -1)
 
+    # ISO-8601 timestamp 用于 JSON (jq 友好)
+    local iso_ts
+    iso_ts=$(date -u +%Y-%m-%dT%H:%M:%SZ)
+
+    # P-10: 同时输出 human-readable + machine-parseable JSON line
     cat >> "${PERIODIC_LOG}" <<REPORT
 
-$(date '+%Y-%m-%d %H:%M:%S') === SOAK 10min Report ===
+$(date '+%Y-%m-%d %H:%M:%S') === SOAK 10min Report (cycle=${restart_count:-0}) ===
 RSS:       ${rss_mb} MB
 FD:        ${fd}
 Threads:   ${threads}
@@ -443,8 +494,22 @@ ${builtin_line}
 ${sb_line}
 REPORT
 
+    # P-10: 一行一个 JSON object — jq -c '. | {ts,rss_mb,sysbench_qps}' 即可消费
+    # 字段对齐 schema: ts,restart_seq,rss_mb,fd,threads,wal_mb,disk_mb,server_qps,sysbench_qps
+    printf '{"ts":"%s","restart_seq":%d,"rss_mb":%s,"fd":%d,"threads":%d,"wal_mb":%s,"disk_mb":%d,"server_qps":%s,"sysbench_qps":%s}\n' \
+        "${iso_ts}" \
+        "${restart_count:-0}" \
+        "${rss_mb}" \
+        "${fd}" \
+        "${threads}" \
+        "${wal_mb}" \
+        "${disk_mb}" \
+        "${sv_qps}" \
+        "${sb_qps}" \
+        >> "${PERIODIC_JSONL}"
+
     echo ""
-    echo "=== SOAK 10min Report ==="
+    echo "=== SOAK 10min Report (cycle=${restart_count:-0}) ==="
     echo "  RSS: ${rss_mb} MB | FD: ${fd} | Threads: ${threads}"
     echo "  WAL: ${wal_mb} MB | Disk: ${disk_mb}/${disk_limit_mb:-800} MB"
     echo "  Server QPS: ${sv_qps} | Sysbench QPS: ${sb_qps}"
@@ -464,11 +529,16 @@ main_loop() {
     echo "╔══════════════════════════════════════════════════════════════╗"
     echo "║  SQLRustGo SOAK Test                                       ║"
     echo "║  Duration: ${SOAK_HOURS}h | Port: ${SOAK_PORT}                    ║"
+    echo "║  Workload: ${SOAK_WORKLOAD}                                    ║"
     echo "║  Server: nice -n 10 | Sysbench: nice -n 15                 ║"
     echo "║  Stop: kill -TERM \$(cat ${RUN_DIR}/server.pid) or Ctrl+C   ║"
     echo "╚══════════════════════════════════════════════════════════════╝"
     echo ""
-    echo "ts,elapsed_s,rss_kb,fd,threads,wal_bytes,disk_bytes,server_qps,sysbench_qps" > "${METRICS_CSV}"
+    echo "ts,elapsed_s,restart_seq,rss_kb,fd,threads,wal_bytes,disk_bytes,server_qps,sysbench_qps" > "${METRICS_CYCLE}"
+    # HISTORY_CSV 仅在首次初始化时写 header (后续 append)
+    if [[ ! -f "${HISTORY_CSV}" ]]; then
+        echo "ts,elapsed_s,restart_seq,rss_kb,fd,threads,wal_bytes,disk_bytes,server_qps,sysbench_qps" > "${HISTORY_CSV}"
+    fi
 
     if ! start_server; then
         err "服务器启动失败"
@@ -537,8 +607,15 @@ main_loop() {
 
             stop_current_server
 
+            # v312-59-d / #4596 P-5: disk-restart 边界标记
+            # setup_run_dir 重建 RUN_DIR (新 timestamp), 配 setup_run_dir 的 METRICS_CYCLE 初始化
+            # 指向新目录的 metrics.csv.0, 旧 cycle 文件保留. 这里只补 header.
             setup_run_dir
-            echo "ts,elapsed_s,rss_kb,fd,threads,wal_bytes,disk_bytes,server_qps,sysbench_qps" > "${METRICS_CSV}"
+            echo "ts,elapsed_s,restart_seq,rss_kb,fd,threads,wal_bytes,disk_bytes,server_qps,sysbench_qps" > "${METRICS_CYCLE}"
+            # HISTORY_CSV 仅在首次初始化时写 header (后续 append), 跨 RUN_DIR 共享
+            if [[ ! -f "${HISTORY_CSV}" ]]; then
+                echo "ts,elapsed_s,restart_seq,rss_kb,fd,threads,wal_bytes,disk_bytes,server_qps,sysbench_qps" > "${HISTORY_CSV}"
+            fi
 
             if ! start_server; then
                 err "重启失败, 终止"
