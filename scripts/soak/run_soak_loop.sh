@@ -703,4 +703,8 @@ main() {
     main_loop
 }
 
-main "$@"
+# v312-59-D / #4597: 允许 chaos_drills.sh 等被 source 而不自动触发 main().
+# 设置 SOAK_NO_MAIN=1 即可复用 start_server / stop_current_server 等函数.
+if [[ -z "${SOAK_NO_MAIN:-}" ]]; then
+    main "$@"
+fi
