@@ -12,6 +12,11 @@
 
 **v3.12.0 RC** — develop/v3.12.0 @ commit `cbe1f53f85`（截至 2026-08-26，PR #4493/#4495 合并后）
 
+- **CLI 批次输入修复**（2026-09-02 提交 fix/v312-61-issues-4607-4608）：
+  - Issue #4607 — `sqlrustgo-cli sqlite --batch --mode csv` 对独立 `--` 注释行不再报 `Unexpected token: Eof`。
+  - Issue #4608 — 多行 `CREATE TABLE` / `INSERT INTO ... VALUES (...)` 列定义（每列单独一行）可被正确解析。
+  - 修复方法：CLI `run_batch_stdin_with_input` 改为把所有行以 `\n` 拼接后调用 `sqlrustgo_parser::split_sql_statements`（parser.rs:11263）切分；同一修复应用于 `.read` dotcmd 路径。BustubX-EDU teaching-seed.sql 现在可被 sqlrustgo-cli 直接加载。72/72 lib tests 通过（含 7 个新增回归测试）；`cargo clippy --all-features -- -D warnings` 干净。
+
 - **阶段**: **RC**（2026-08-26 从 BETA 转入；[STAGE.yaml `current_stage: "RC"`](docs/releases/v3.12.0/STAGE.yaml)）
 - **当前状态**: 12/12 `promotion_to_RC_requires` PASS（[RC_GATE_REPORT.md](docs/releases/v3.12.0/RC_GATE_REPORT.md) 11/11 + B8 13/13），12/12 crash recovery 测试 PASS（`bash scripts/gate/check_v312_14_crash_recovery.sh`）；tag `v3.12.0-rc1` @ `f795efa60`。下一步启动 V312-59-D GA 周期（168h mixed SOAK + 9 项 `promotion_to_GA_requires`）。
 - **里程碑 #39 (v3.13)**: ⛔ **已关闭**（2026-08-24 治理整改，见 `docs/governance/incidents/2026-08-24-V313-MILESTONE-PREMATURE.md`）
