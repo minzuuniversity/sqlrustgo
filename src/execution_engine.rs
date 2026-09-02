@@ -81,6 +81,17 @@ pub struct ExecutionEngine<S: StorageEngine> {
     pub(crate) cbo_enabled: bool,
     pub(crate) transaction_manager: TransactionManager,
     pub(crate) current_tx_id: Option<TxId>,
+    /// V312-55D (Round-26, follow-up): shared buffer used by the
+    /// trigger-side undo recorder. When the trigger executor's
+    /// `TriggerUndoRecorder` is invoked, it pushes a typed
+    /// `sqlrustgo_transaction::savepoint::UndoRecord` here. The DML
+    /// executor drains this buffer after every trigger fire and forwards
+    /// each record to `transaction_manager.add_undo_record` so a
+    /// top-level ROLLBACK (and SAVEPOINT rollback) re-plays trigger
+    /// side-effects atomically with the parent statement. Without this,
+    /// trigger AFTER-INSERT rows survive the ROLLBACK because the
+    /// parent's undo entry only captures the parent row.
+    pub(crate) trigger_undo_sink: Arc<parking_lot::Mutex<Vec<sqlrustgo_transaction::savepoint::UndoRecord>>>,
     pub(crate) tx_status: TxStatus,
     pub(crate) tx_readonly: bool,
     pub(crate) default_isolation: TmIsolationLevel,
@@ -210,6 +221,7 @@ impl<S: StorageEngine + 'static> ExecutionEngine<S> {
             cbo_enabled,
             transaction_manager: TransactionManager::new(),
             current_tx_id: None,
+            trigger_undo_sink: Arc::new(parking_lot::Mutex::new(Vec::new())),
             tx_status: TxStatus::Idle,
             tx_readonly: false,
             default_isolation: TmIsolationLevel::default(),
@@ -1790,16 +1802,12 @@ impl<S: StorageEngine + 'static> ExecutionEngine<S> {
             .rollback_with_undo(tx_id, move |rec| {
                 let mut storage = storage.write();
                 match rec {
-                    sqlrustgo_transaction::savepoint::UndoRecord::Insert {
-                        table,
-                        key,
-                        row,
-                    } => {
+                    sqlrustgo_transaction::savepoint::UndoRecord::Insert { table, key, row } => {
                         // v312-60: fall back to full-row match when the
                         // table has no primary key — an empty `key`
                         // filter would otherwise clear the whole table.
-                        let target = if key.is_empty() { row } else { key };
-                        storage.delete(table, target).map_err(|e| {
+                        let target = if key.is_empty() { row.clone() } else { key.to_vec() };
+                        storage.delete(table, &target).map_err(|e| {
                             format!("rollback delete on {} pk={:?}: {}", table, key, e)
                         })?;
                         Ok(())
@@ -1811,9 +1819,7 @@ impl<S: StorageEngine + 'static> ExecutionEngine<S> {
                     } => {
                         storage
                             .insert(table, vec![old_value.clone()])
-                            .map_err(|e| {
-                                format!("rollback reinsert on {}: {}", table, e)
-                            })?;
+                            .map_err(|e| format!("rollback reinsert on {}: {}", table, e))?;
                         Ok(())
                     }
                     sqlrustgo_transaction::savepoint::UndoRecord::Update {
@@ -1830,19 +1836,19 @@ impl<S: StorageEngine + 'static> ExecutionEngine<S> {
                         // if the forward UPDATE kept a different row in
                         // place). This mirrors the SAVEPOINT undo logic
                         // at `execute_savepoint` (lines 1710+).
-                        storage.delete(table, target).map_err(|e| {
-                            format!("rollback update-delete on {}: {}", table, e)
-                        })?;
+                        storage
+                            .delete(table, target)
+                            .map_err(|e| format!("rollback update-delete on {}: {}", table, e))?;
                         storage
                             .insert(table, vec![old_value.clone()])
-                            .map_err(|e| {
-                                format!("rollback update-insert on {}: {}", table, e)
-                            })?;
+                            .map_err(|e| format!("rollback update-insert on {}: {}", table, e))?;
                         Ok(())
                     }
                 }
             })
-            .map_err(|e| SqlError::ExecutionError(format!("Failed to rollback transaction: {:?}", e)))?;
+            .map_err(|e| {
+                SqlError::ExecutionError(format!("Failed to rollback transaction: {:?}", e))
+            })?;
         // F-16 Gap Locking: release all gap locks on rollback
         {
             let mut storage = self.storage.write();

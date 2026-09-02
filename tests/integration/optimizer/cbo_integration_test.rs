@@ -271,11 +271,19 @@ fn test_call_statement_returns_error() {
 }
 
 #[test]
-fn test_create_procedure_statement_returns_error() {
+fn test_create_procedure_statement_succeeds() {
     let storage = Arc::new(RwLock::new(MemoryStorage::new()));
     let mut engine = ExecutionEngine::new(storage);
 
-    // CREATE PROCEDURE should return an error (not fully implemented)
+    // V312-58 / Issue #4513: CREATE PROCEDURE is now end-to-end
+    // supported (auto-initialized default catalog in `ExecutionEngine::new`).
+    // Regression guard — was `is_err()` when the procedure catalog was
+    // optional; flipped when #4513 made CREATE PROCEDURE ship. Full
+    // create→call→drop coverage lives in
+    // crates/executor/tests/issue_4513_create_procedure_test.rs.
     let result = engine.execute("CREATE PROCEDURE test_proc() BEGIN END");
-    assert!(result.is_err());
+    assert!(
+        result.is_ok(),
+        "CREATE PROCEDURE should succeed (Issue #4513): {result:?}"
+    );
 }
