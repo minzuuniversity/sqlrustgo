@@ -28,6 +28,12 @@
 #   SOAK_NICE_SYSBENCH sysbench nice level (默认 15) — v312-59-d / #4594 P-3
 #   SOAK_WORKLOAD      sysbench workload (oltp_read_write|oltp_read_only|oltp_write_only
 #                       |oltp_insert|oltp_update_index; 默认 oltp_read_write) — v312-59-d / #4596 P-6
+#   SOAK_ALERT_WEBHOOK webhook URL, 阈值触发 POST JSON (空=禁用) — v312-59-d / #4598 P-11
+#   SOAK_ALERT_RSS_MB  RSS 阈值 (MB), 默认 500
+#   SOAK_ALERT_QPS_DROP_PCT QPS 同比下降阈值 (%), 默认 50
+#   SOAK_ALERT_CURL_TIMEOUT webhook curl --max-time (秒), 默认 5
+#   SOAK_THREAD_RAMP    线程斜坡模式, 空格分隔列表 e.g. "1 2 4 8 16 32" (空=禁用) — v312-59-d / #4598 P-8
+#   SOAK_RAMP_DURATION_MIN 每个 thread level 跑多少分钟 (默认 5)
 #
 # 退出码:
 #   0  — 正常完成
@@ -50,6 +56,16 @@ SOAK_NICE_SYSBENCH="${SOAK_NICE_SYSBENCH:-15}"
 # v312-59-d / #4596 P-6: SOAK_WORKLOAD env 选 sysbench workload, 默认 read_write
 # 5 个支持的 workload: oltp_read_write|oltp_read_only|oltp_write_only|oltp_insert|oltp_update_index
 SOAK_WORKLOAD="${SOAK_WORKLOAD:-oltp_read_write}"
+# v312-59-d / #4598 P-11: 阈值触发 webhook (空=禁用). QPS 同比下降需要 baseline, 见
+# record_metrics() 中 ALERT_PREV_SB_QPS state. curl --max-time 默认 5s, 避免 SOAK 阻塞.
+SOAK_ALERT_WEBHOOK="${SOAK_ALERT_WEBHOOK:-}"
+SOAK_ALERT_RSS_MB="${SOAK_ALERT_RSS_MB:-500}"
+SOAK_ALERT_QPS_DROP_PCT="${SOAK_ALERT_QPS_DROP_PCT:-50}"
+SOAK_ALERT_CURL_TIMEOUT="${SOAK_ALERT_CURL_TIMEOUT:-5}"
+# v312-59-d / #4598 P-8: 线程斜坡模式 — 用同一 workload 在 1/2/4/.../N 线程下各跑一段时间,
+# 找出 sysbench QPS 的饱和点. 例如 "1 2 4 8 16 32" 6 个 level × 5min = 30min 总时长.
+SOAK_THREAD_RAMP="${SOAK_THREAD_RAMP:-}"
+SOAK_RAMP_DURATION_MIN="${SOAK_RAMP_DURATION_MIN:-5}"
 
 PROJECT_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
 BINARY="${PROJECT_ROOT}/target/release/sqlrustgo-mysql-server"
@@ -380,6 +396,10 @@ load_workload_args() {
 }
 
 start_sysbench() {
+    # v312-59-d / #4598 P-8: 接受可选的线程数覆盖 (线程斜坡模式需要).
+    # 默认用 SOAK_SB_THR, 这样既有 main_loop 调用方式不变.
+    local threads_override="${1:-}"
+    local sb_threads="${threads_override:-${SOAK_SB_THR}}"
     log "=== sysbench prepare (workload=${SOAK_WORKLOAD}) ==="
     local wl_args
     if ! wl_args=$(load_workload_args "${SOAK_WORKLOAD}"); then
@@ -405,7 +425,7 @@ start_sysbench() {
 
     sleep 2
 
-    log "启动 sysbench run (${SOAK_SB_THR} threads, workload=${SOAK_WORKLOAD}, nice -n ${SOAK_NICE_SYSBENCH})"
+    log "启动 sysbench run (${sb_threads} threads, workload=${SOAK_WORKLOAD}, nice -n ${SOAK_NICE_SYSBENCH})"
     # v312-59-d / #4594 P-4: sysbench --time 必须 ≥ SOAK_HOURS, 否则 SOAK 结束后 sysbench 孤立运行
     # +1h buffer 确保 sysbench 比 main_loop 后退出, 避免 SOAK 中途 orphan 干扰
     local sysbench_seconds=$(( (SOAK_HOURS + 1) * 3600 ))
@@ -422,7 +442,7 @@ start_sysbench() {
         --mysql-db=sbtest \
         --table-size="${SOAK_TABLE_SIZE}" \
         --tables=1 \
-        --threads="${SOAK_SB_THR}" \
+        --threads="${sb_threads}" \
         --time="${sysbench_seconds}" \
         --report-interval=10 \
         run >> "${SYSBENCH_LOG}" 2>&1 &
@@ -433,6 +453,210 @@ start_sysbench() {
     if ! pid_alive "${pid}"; then
         err "sysbench 启动后立即退出"
         tail -10 "${SYSBENCH_LOG}"
+        return 1
+    fi
+    return 0
+}
+
+stop_sysbench() {
+    local pid=""
+    [[ -f "${RUN_DIR}/sysbench.pid" ]] && pid=$(cat "${RUN_DIR}/sysbench.pid" 2>/dev/null || echo "")
+    if pid_alive "${pid}"; then
+        log "停止 sysbench PID=${pid}"
+        kill -TERM "${pid}" 2>/dev/null || true
+        for _ in 1 2 3 4 5; do
+            ! pid_alive "${pid}" && { log "  sysbench 已停止"; break; }
+            sleep 1
+        done
+        if pid_alive "${pid}"; then
+            kill -KILL "${pid}" 2>/dev/null || true
+            sleep 1
+        fi
+    fi
+    rm -f "${RUN_DIR}/sysbench.pid"
+}
+
+# v312-59-d / #4598 P-8: 解析 SOAK_THREAD_RAMP (空格分隔 e.g. "1 2 4 8 16 32").
+# 校验: 每个值是正整数 1..256, 失败返回 rc=1 (调用方决定 warn 还是 err).
+parse_thread_ramp() {
+    local raw="${1:-}"
+    if [[ -z "${raw}" ]]; then
+        return 1
+    fi
+    local valid=()
+    for tok in ${raw}; do
+        if ! [[ "${tok}" =~ ^[1-9][0-9]*$ ]] || [[ "${tok}" -gt 256 ]]; then
+            err "SOAK_THREAD_RAMP 包含非法值: '${tok}' (必须是 1-256 的正整数)"
+            return 1
+        fi
+        valid+=("${tok}")
+    done
+    if [[ ${#valid[@]} -eq 0 ]]; then
+        return 1
+    fi
+    printf '%s\n' "${valid[@]}"
+    return 0
+}
+
+# v312-59-d / #4598 P-8: 线程斜坡执行器 — 对每个 level:
+#   1. 停当前 sysbench
+#   2. 用 N 线程重启 sysbench
+#   3. 跑 SOAK_RAMP_DURATION_MIN 分钟, 每分钟采样 RSS/QPS
+#   4. 把该 level 的 metrics 追加到 ramp_${level}.csv + ramp_all.csv
+#   5. 完成后停 sysbench, 进入下一 level
+# 返回 rc=0 表示所有 level 完成.
+run_thread_ramp() {
+    local levels
+    if ! levels=$(parse_thread_ramp "${SOAK_THREAD_RAMP}"); then
+        err "SOAK_THREAD_RAMP 解析失败: '${SOAK_THREAD_RAMP}'"
+        return 1
+    fi
+    local level_count
+    level_count=$(printf '%s\n' "${levels}" | wc -l | tr -d ' ')
+    log "=== 线程斜坡模式: ${level_count} 个 level (${SOAK_RAMP_DURATION_MIN}min/level) ==="
+    log "  levels: $(printf '%s ' ${levels})"
+
+    local ramp_all="${RUN_DIR}/ramp_all.csv"
+    echo "level,threads,ts,rss_mb,server_qps,sysbench_qps" > "${ramp_all}"
+
+    local level_idx=0
+    local level pid server_pid
+    while IFS= read -r level; do
+        level_idx=$((level_idx + 1))
+        log "── ramp level ${level_idx}/${level_count}: threads=${level} ──"
+
+        stop_sysbench
+
+        # 每次重启 server 让 baseline 干净 (避免 buffer pool warm 干扰)
+        stop_current_server
+        setup_run_dir
+        if ! start_server; then
+            err "ramp level ${level}: server 启动失败"
+            return 1
+        fi
+        server_pid=$(cat "${RUN_DIR}/server.pid")
+
+        # sysbench 在 SOAK_HOURS 小时内跑 (P-4 buffer), 我们只跑 RAMP_DURATION_MIN
+        # 然后主动 stop_sysbench, 远早于 sysbench_seconds, 不会 orphan.
+        if ! start_sysbench "${level}"; then
+            err "ramp level ${level}: sysbench 启动失败"
+            return 1
+        fi
+        # 重置 QPS baseline 避免 level 切换时 QPS 同比告警 (P-11 baseline reset)
+        ALERT_PREV_SB_QPS=0
+
+        local ramp_csv="${RUN_DIR}/ramp_${level}.csv"
+        echo "ts,elapsed_s,rss_mb,server_qps,sysbench_qps" > "${ramp_csv}"
+
+        local total_ramp_seconds=$((SOAK_RAMP_DURATION_MIN * 60))
+        local ramp_start
+        ramp_start=$(date +%s)
+        local ramp_deadline=$((ramp_start + total_ramp_seconds))
+
+        while [[ $(date +%s) -lt ${ramp_deadline} ]]; do
+            sleep 60
+            local now
+            now=$(date +%s)
+            local elapsed=$((now - ramp_start))
+            local cur_pid
+            cur_pid=$(cat "${RUN_DIR}/server.pid" 2>/dev/null || echo "")
+            local rss_mb
+            rss_mb=$(awk "BEGIN {printf \"%.1f\", $(server_rss_kb "${cur_pid}")/1024}")
+            local sv_qps
+            sv_qps=$(server_qps)
+            local sb_qps
+            sb_qps=$(sysbench_qps)
+            echo "${now},${elapsed},${rss_mb},${sv_qps},${sb_qps}" >> "${ramp_csv}"
+            echo "${level},${level},${now},${rss_mb},${sv_qps},${sb_qps}" >> "${ramp_all}"
+            log "  ramp[${level}] t=${elapsed}s RSS=${rss_mb}MB sv_qps=${sv_qps} sb_qps=${sb_qps}"
+        done
+        log "  ramp[${level}] 完成 (${SOAK_RAMP_DURATION_MIN}min)"
+    done <<< "${levels}"
+
+    stop_sysbench
+    log "=== 线程斜坡完成 ==="
+    log "  per-level CSV: ${RUN_DIR}/ramp_<threads>.csv"
+    log "  aggregated:    ${ramp_all}"
+    return 0
+}
+
+# ── Alerting (v312-59-d / #4598 P-11) ──
+
+# State: QPS baseline 用于检测同比下降, errors 计数用于检测新错误
+ALERT_PREV_SB_QPS=0
+ALERT_PREV_ERR_COUNT=0
+
+# send_alert <severity> <metric> <value> <threshold> <message>
+#   severity: INFO|WARN|CRITICAL
+#   metric:   指标名 (rss_mb / qps_drop_pct / new_errors)
+#   value:    当前数值
+#   threshold: 阈值
+#   message:  人类可读描述
+#
+# 行为:
+#   1. 总是写一行 ALERT 标记到 MONITOR_LOG (事后 grep 友好)
+#   2. 若 SOAK_ALERT_WEBHOOK 非空, POST 一行 JSON (Slack/Email 适配见下)
+#   3. webhook 调用受 SOAK_ALERT_CURL_TIMEOUT (默认 5s) 限制, 失败不阻塞 SOAK
+#
+# JSON payload schema (Slack-compatible incoming webhook 简化):
+#   {"severity":"WARN","metric":"rss_mb","value":612.3,"threshold":500,
+#    "message":"RSS=612.3MB > 500MB","ts":"2026-09-02T21:30:14Z",
+#    "soak_run":"soak_20260902_212823","restart_count":3}
+send_alert() {
+    local severity="${1:-INFO}"
+    local metric="${2:-unknown}"
+    local value="${3:-0}"
+    local threshold="${4:-0}"
+    local message="${5:-}"
+    local iso_ts
+    iso_ts=$(date -u +%Y-%m-%dT%H:%M:%SZ)
+    local run_tag
+    run_tag=$(basename "${RUN_DIR:-unknown}")
+
+    # 1. 总是写 monitor log (事后 grep ALERT 即可定位所有告警)
+    log "ALERT [${severity}] ${metric}=${value} (阈值 ${threshold}) — ${message}"
+
+    # 2. webhook 失败不影响 SOAK 主循环
+    if [[ -z "${SOAK_ALERT_WEBHOOK:-}" ]]; then
+        return 0
+    fi
+    if ! command -v curl >/dev/null 2>&1; then
+        warn "SOAK_ALERT_WEBHOOK 已设但 curl 不可用, 跳过"
+        return 0
+    fi
+
+    # 用 jq 构造 JSON (若 jq 不在, 退到 printf 转义版本)
+    local payload
+    if command -v jq >/dev/null 2>&1; then
+        payload=$(jq -c -n \
+            --arg sev "${severity}" \
+            --arg met "${metric}" \
+            --arg val "${value}" \
+            --arg thr "${threshold}" \
+            --arg msg "${message}" \
+            --arg ts  "${iso_ts}" \
+            --arg run "${run_tag}" \
+            --argjson rc "${restart_count:-0}" \
+            '{severity:$sev,metric:$met,value:$val,threshold:$thr,
+              message:$msg,ts:$ts,soak_run:$run,restart_count:$rc}')
+    else
+        # printf 转义版本: 用 sed 转义双引号 + 反斜杠 (足够覆盖本场景 ASCII-only)
+        local esc_msg
+        esc_msg=$(printf '%s' "${message}" | sed 's/\\/\\\\/g; s/"/\\"/g')
+        payload=$(printf '{"severity":"%s","metric":"%s","value":"%s","threshold":"%s","message":"%s","ts":"%s","soak_run":"%s","restart_count":%d}' \
+            "${severity}" "${metric}" "${value}" "${threshold}" \
+            "${esc_msg}" "${iso_ts}" "${run_tag}" "${restart_count:-0}")
+    fi
+
+    # curl 失败仅 warn, 不阻断主循环
+    if ! curl --silent --show-error --fail \
+            --max-time "${SOAK_ALERT_CURL_TIMEOUT}" \
+            -H "Content-Type: application/json" \
+            -X POST \
+            --data "${payload}" \
+            "${SOAK_ALERT_WEBHOOK}" \
+            >> "${MONITOR_LOG}" 2>&1; then
+        warn "alert webhook POST 失败 (severity=${severity}, metric=${metric}) — 见 ${MONITOR_LOG}"
         return 1
     fi
     return 0
@@ -508,6 +732,31 @@ REPORT
         "${sb_qps}" \
         >> "${PERIODIC_JSONL}"
 
+    # v312-59-d / #4598 P-11: 阈值告警 (RSS > SOAK_ALERT_RSS_MB, QPS drop > 50%)
+    # ERR_PER_S 暂未单独跟踪, 由 SOAK 主循环的 disk-restart / pid-death 分支承担.
+    # QPS 同比: 第一个 sample 不触发 (无 baseline), ALERT_PREV_SB_QPS 初始 0.
+    if [[ -n "${SOAK_ALERT_RSS_MB:-}" ]] \
+        && awk "BEGIN {exit !(${rss_mb} > ${SOAK_ALERT_RSS_MB})}"; then
+        send_alert "WARN" "rss_mb" "${rss_mb}" "${SOAK_ALERT_RSS_MB}" \
+            "RSS=${rss_mb}MB 超过阈值 ${SOAK_ALERT_RSS_MB}MB"
+    fi
+    if [[ "${ALERT_PREV_SB_QPS}" -gt 0 ]] \
+        && awk "BEGIN {exit !(${ALERT_PREV_SB_QPS} > 0 && ${sb_qps} > 0)}"; then
+        local drop_pct
+        drop_pct=$(awk "BEGIN {
+            if (${ALERT_PREV_SB_QPS} <= 0 || ${sb_qps} <= 0) {print \"-1\"; exit}
+            printf \"%.1f\", (1.0 - ${sb_qps} / ${ALERT_PREV_SB_QPS}) * 100.0
+        }")
+        if awk "BEGIN {exit !(${drop_pct} >= ${SOAK_ALERT_QPS_DROP_PCT})}"; then
+            send_alert "WARN" "qps_drop_pct" "${drop_pct}" "${SOAK_ALERT_QPS_DROP_PCT}" \
+                "sysbench QPS=${sb_qps} 较上次 ${ALERT_PREV_SB_QPS} 下降 ${drop_pct}% (≥ ${SOAK_ALERT_QPS_DROP_PCT}%)"
+        fi
+    fi
+    # 仅在 sb_qps 是有效数字时更新 baseline (避免 sysbench 未启动时 0 污染)
+    if awk "BEGIN {exit !(${sb_qps} > 0)}"; then
+        ALERT_PREV_SB_QPS="${sb_qps}"
+    fi
+
     echo ""
     echo "=== SOAK 10min Report (cycle=${restart_count:-0}) ==="
     echo "  RSS: ${rss_mb} MB | FD: ${fd} | Threads: ${threads}"
@@ -550,6 +799,18 @@ main_loop() {
     if ! start_sysbench; then
         err "sysbench 启动失败"
         exit 2
+    fi
+
+    # v312-59-d / #4598 P-8: 线程斜坡模式 — 跳过正常的 N 小时循环,
+    # 改用 run_thread_ramp() 串行执行每个 thread level.
+    # ramp 完成通过 return 0 回到 main() 的 cleanup 路径 (trap EXIT).
+    if [[ -n "${SOAK_THREAD_RAMP:-}" ]]; then
+        log "=== SOAK 线程斜坡模式 (跳过主循环) ==="
+        if ! run_thread_ramp; then
+            err "线程斜坡失败, 终止"
+            exit 2
+        fi
+        return 0
     fi
 
     log "=== SOAK 开始 ==="

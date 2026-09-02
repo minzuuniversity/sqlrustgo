@@ -174,6 +174,12 @@ jobs:
     # for netem/clock drills, and SOAK_NO_MAIN guard on run_soak_loop.sh
     # (so chaos_drills can source functions without triggering main).
     #
+    # Issue #4598 — Tier-3 unit test (T11..T15). Verifies send_alert + curl
+    # payload, parse_thread_ramp validation, run_thread_ramp wiring + per-level
+    # CSV output + ALERT_PREV_SB_QPS reset between levels, and the SOP doc
+    # presence/INDEX update. Behavioral sub-test (T12 sources send_alert
+    # directly with stub log()) — no binary / root / network needed.
+    #
     # This job runs the STATIC check only (~1s, no binary required). The
     # behavioral sub-test (SIGKILL parent + verify child survives) lives in
     # `bash scripts/soak/test_run_soak_loop_detach.sh --behavioral` and is
@@ -200,6 +206,11 @@ jobs:
         run: bash scripts/soak/test_run_soak_loop_detach.sh
       - name: Run static chaos drills regression check (#4597)
         run: bash scripts/soak/test_chaos_drills.sh
+      - name: Run static Tier-3 regression check (#4598)
+        # v312-59-d / #4598 P-11/P-8/P-12: alerting webhook + thread ramp + SOP doc.
+        # Static + light behavioral (T12 sources send_alert with stub log()).
+        # Does NOT require binary / root / network.
+        run: bash scripts/soak/test_run_soak_loop_tier3.sh
 
   postcheck:
     runs-on: [hp-z6g4]
