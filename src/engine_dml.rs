@@ -10,7 +10,7 @@
 
 use sqlrustgo_executor::trigger::{
     TriggerBodyAuthCheck, TriggerEvent as ExecTriggerEvent, TriggerExecutor,
-    TriggerTiming as ExecTriggerTiming,
+    TriggerTiming as ExecTriggerTiming, TriggerUndoRecorder,
 };
 use sqlrustgo_executor::ExecutorResult;
 use sqlrustgo_parser::parser::{DeleteStatement, InsertStatement, UpdateStatement};
@@ -31,6 +31,32 @@ use crate::engine_utils::{
 use crate::expr_utils::{evaluate_expression, resolve_subqueries_in_expr};
 use crate::savepoint_wiring::{record_delete_undo, record_insert_undo, record_update_undo};
 use crate::{ExecutionEngine, SqlError, SqlResult};
+
+/// V312-55D: drain pending trigger-side undo records into the active
+/// transaction's undo log. Called by `execute_insert/update/delete`
+/// AFTER the AFTER trigger has fired. The trigger's
+/// `TriggerUndoRecorder` pushed typed `UndoRecord`s into
+/// `engine.trigger_undo_sink`; here we forward each one to
+/// `transaction_manager.add_undo_record` so a subsequent `ROLLBACK`
+/// (or `ROLLBACK TO SAVEPOINT`) re-plays the trigger's side-effects in
+/// reverse order along with the parent statement's undo entries.
+fn drain_trigger_undo_into_tx<S: StorageEngine + 'static>(
+    engine: &mut ExecutionEngine<S>,
+) {
+    let pending = std::mem::take(&mut *engine.trigger_undo_sink.lock());
+    if pending.is_empty() {
+        return;
+    }
+    let Some(tx_id) = engine.current_tx_id else {
+        // No active transaction — drop the buffer. Trigger
+        // side-effects inside an autocommit statement are already
+        // committed to storage and stay visible.
+        return;
+    };
+    for rec in pending {
+        let _ = engine.transaction_manager.add_undo_record(tx_id, rec);
+    }
+}
 /// INSERT executor body. ARCH-3 VtuGuard call lives in the `pub fn
 /// execute_insert` wrapper in `execution_engine.rs` (gate requirement).
 pub fn execute_insert<S: StorageEngine + 'static>(
@@ -118,6 +144,13 @@ pub fn execute_insert<S: StorageEngine + 'static>(
     // statements.
     trigger_executor.set_current_user(engine.current_user().clone());
     trigger_executor.set_auth_check(Some(build_trigger_auth_check(engine)));
+    // V312-55D: wire the shared trigger-side undo recorder so
+    // AFTER triggers' DML is captured into the active transaction's
+    // undo log (drained via `drain_trigger_undo_into_tx` after the
+    // AFTER trigger returns below). Without this, trigger side-effects
+    // (e.g. AFTER INSERT INTO audit) survive ROLLBACK because the
+    // parent's undo entry only captures the parent statement's row.
+    trigger_executor.set_undo_recorder(Some(build_trigger_undo_recorder(engine)));
     let before_triggers = trigger_executor.get_triggers_for_operation(
         &table_name,
         ExecTriggerTiming::Before,
@@ -328,6 +361,11 @@ pub fn execute_insert<S: StorageEngine + 'static>(
         for record in &all_records {
             trigger_executor.execute_after_insert(&table_name, record)?;
         }
+        // V312-55D: forward trigger-side undo records captured by the
+        // shared recorder (set above) into the active transaction's
+        // undo log so ROLLBACK re-plays them atomically with the
+        // parent INSERT.
+        drain_trigger_undo_into_tx(engine);
     }
 
     // INT-1: autocommit — leave the commit decision to the helper.
@@ -570,6 +608,13 @@ pub fn execute_update<S: StorageEngine + 'static>(
     // statements.
     trigger_executor.set_current_user(engine.current_user().clone());
     trigger_executor.set_auth_check(Some(build_trigger_auth_check(engine)));
+    // V312-55D: wire the shared trigger-side undo recorder so
+    // AFTER triggers' DML is captured into the active transaction's
+    // undo log (drained via `drain_trigger_undo_into_tx` after the
+    // AFTER trigger returns below). Without this, trigger side-effects
+    // (e.g. AFTER INSERT INTO audit) survive ROLLBACK because the
+    // parent's undo entry only captures the parent statement's row.
+    trigger_executor.set_undo_recorder(Some(build_trigger_undo_recorder(engine)));
     let trigger_modified_rows = run_before_update_triggers(
         &trigger_executor,
         &table_name,
@@ -663,6 +708,9 @@ pub fn execute_update<S: StorageEngine + 'static>(
             let old_row = &rows_to_update[i];
             trigger_executor.execute_after_update(&table_name, old_row, updated_row)?;
         }
+        // V312-55D: see execute_insert — forward trigger-side undo
+        // records into the active transaction's undo log.
+        drain_trigger_undo_into_tx(engine);
     }
     engine.commit_implicit_dml_tx(started_implicit)?;
 
@@ -791,6 +839,13 @@ pub fn execute_delete<S: StorageEngine + 'static>(
     // statements.
     trigger_executor.set_current_user(engine.current_user().clone());
     trigger_executor.set_auth_check(Some(build_trigger_auth_check(engine)));
+    // V312-55D: wire the shared trigger-side undo recorder so
+    // AFTER triggers' DML is captured into the active transaction's
+    // undo log (drained via `drain_trigger_undo_into_tx` after the
+    // AFTER trigger returns below). Without this, trigger side-effects
+    // (e.g. AFTER INSERT INTO audit) survive ROLLBACK because the
+    // parent's undo entry only captures the parent statement's row.
+    trigger_executor.set_undo_recorder(Some(build_trigger_undo_recorder(engine)));
     let before_triggers = trigger_executor.get_triggers_for_operation(
         &table_name,
         ExecTriggerTiming::Before,
@@ -883,6 +938,9 @@ pub fn execute_delete<S: StorageEngine + 'static>(
         for row in &rows_to_delete {
             trigger_executor.execute_after_delete(&table_name, row)?;
         }
+        // V312-55D: see execute_insert — forward trigger-side undo
+        // records into the active transaction's undo log.
+        drain_trigger_undo_into_tx(engine);
     }
 
     // INT-1: autocommit — leave the commit decision to the helper.
@@ -1469,5 +1527,76 @@ fn build_trigger_auth_check<S: StorageEngine + 'static>(
     std::sync::Arc::new(EngineAuthCheck {
         catalog: engine.catalog.clone(),
         identity: engine.current_user().clone(),
+    })
+}
+
+/// V312-55D: build a `TriggerUndoRecorder` adapter that pushes typed
+/// `UndoRecord`s into `engine.trigger_undo_sink`. The DML executors
+/// (`execute_insert/update/delete`) drain this buffer AFTER the AFTER
+/// trigger fires and forward each record to
+/// `transaction_manager.add_undo_record`, so a top-level `ROLLBACK`
+/// (and `ROLLBACK TO SAVEPOINT`) re-plays the trigger's side-effects in
+/// reverse order along with the parent statement's undo entries.
+///
+/// Mirrors the [`TriggerBodyAuthCheck`] / `build_trigger_auth_check`
+/// pattern — trait + factory keeps the call site in trigger.rs free of
+/// any `crate::engine_dml::` import.
+fn build_trigger_undo_recorder<S: StorageEngine + 'static>(
+    engine: &ExecutionEngine<S>,
+) -> std::sync::Arc<dyn TriggerUndoRecorder> {
+    use sqlrustgo_transaction::savepoint::UndoRecord;
+
+    struct EngineUndoRecorder {
+        sink: std::sync::Arc<parking_lot::Mutex<Vec<UndoRecord>>>,
+    }
+
+    impl TriggerUndoRecorder for EngineUndoRecorder {
+        fn record_insert_undo(
+            &self,
+            table: &str,
+            table_info: &TableInfo,
+            row: &[Value],
+        ) {
+            let key = crate::savepoint_wiring::primary_key_values(table_info, row);
+            self.sink.lock().push(UndoRecord::Insert {
+                table: table.to_string(),
+                key,
+                row: row.to_vec(),
+            });
+        }
+
+        fn record_update_undo(
+            &self,
+            table: &str,
+            table_info: &TableInfo,
+            prior_row: &[Value],
+            new_row: &[Value],
+        ) {
+            let key = crate::savepoint_wiring::primary_key_values(table_info, prior_row);
+            self.sink.lock().push(UndoRecord::Update {
+                table: table.to_string(),
+                key,
+                old_value: prior_row.to_vec(),
+                new_value: new_row.to_vec(),
+            });
+        }
+
+        fn record_delete_undo(
+            &self,
+            table: &str,
+            table_info: &TableInfo,
+            row: &[Value],
+        ) {
+            let key = crate::savepoint_wiring::primary_key_values(table_info, row);
+            self.sink.lock().push(UndoRecord::Delete {
+                table: table.to_string(),
+                key,
+                old_value: row.to_vec(),
+            });
+        }
+    }
+
+    std::sync::Arc::new(EngineUndoRecorder {
+        sink: engine.trigger_undo_sink.clone(),
     })
 }

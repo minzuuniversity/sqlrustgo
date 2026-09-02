@@ -844,12 +844,21 @@ impl<S: StorageEngine + 'static> ExecutionEngine<S> {
             ]);
         };
 
+        // Track whether the catalog knows about this table; if it does not,
+        // fall through to the storage-columns fallback so a plain
+        // `CREATE TABLE … PRIMARY KEY` (which only registers with
+        // storage when no custom catalog is wired up) still surfaces
+        // its implicit PK. The catalog is auto-provisioned in
+        // `ExecutionEngine::new()` but stays empty for tables created
+        // via the standard storage-only CREATE TABLE path.
+        let mut catalog_had_table = false;
         if let Some(catalog_arc) = self.catalog.as_ref() {
             let catalog_guard = catalog_arc.read();
             for (_db, schema) in catalog_guard.all_schemas() {
                 let Some(table_ref) = schema.tables().into_iter().find(|t| t.name == table) else {
                     continue;
                 };
+                catalog_had_table = true;
                 let mut had_explicit_pk_index = false;
                 for index in &table_ref.indices {
                     for (i, column_name) in index.columns.iter().enumerate() {
@@ -893,11 +902,14 @@ impl<S: StorageEngine + 'static> ExecutionEngine<S> {
                 }
                 break;
             }
-        } else {
-            // No catalog: derive PRIMARY from storage columns where
-            // `ColumnDefinition.primary_key == true` (the storage path
-            // does not expose a multi-column PK as a single field, so we
-            // report each PK column as a separate `PRIMARY` row).
+        }
+        if !catalog_had_table {
+            // No catalog (or the catalog does not know about this table
+            // because it was created via the storage-only CREATE TABLE
+            // path): derive PRIMARY from storage columns where
+            // `ColumnDefinition.primary_key == true`. The storage path
+            // does not expose a multi-column PK as a single field, so
+            // we report each PK column as a separate `PRIMARY` row.
             for (i, col) in info.columns.iter().enumerate() {
                 if col.primary_key {
                     push_pk(table, &col.name, i + 1, col.nullable, &mut rows);
