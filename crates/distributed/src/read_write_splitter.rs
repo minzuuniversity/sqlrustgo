@@ -109,6 +109,7 @@ pub fn classify_statement(statement: &Statement) -> QueryClass {
         // ---- DDL writes ---------------------------------------------------
         Statement::CreateTable(_) => QueryClass::Write,
         Statement::CreateIndex(_) => QueryClass::Write,
+        Statement::CreateFulltextIndex(_) => QueryClass::Write,
         Statement::CreateView(_) => QueryClass::Write,
         Statement::DropTable(_) => QueryClass::Write,
         Statement::DropIndex(_) => QueryClass::Write,
@@ -118,6 +119,11 @@ pub fn classify_statement(statement: &Statement) -> QueryClass {
         Statement::AlterSequence(_) => QueryClass::Write,
         Statement::Truncate(_) => QueryClass::Write,
         Statement::Analyze(_) => QueryClass::Write,
+        // V312-64 / Issue #4663: VACUUM / REINDEX are maintenance DDL
+        // commands; route them as writes (so they always reach the
+        // primary in read-write-split deployments).
+        Statement::Vacuum(_) => QueryClass::Write,
+        Statement::Reindex(_) => QueryClass::Write,
         Statement::AlterTable(_) => QueryClass::Write,
         Statement::AlterUser(_) => QueryClass::Write,
         Statement::CreateUser(_) => QueryClass::Write,

@@ -582,6 +582,16 @@ impl<'a> Lexer<'a> {
                     "MAXVALUE" => Token::Maxvalue,
                     "NOMINVALUE" => Token::NoMinValue,
                     "NOMAXVALUE" => Token::NoMaxValue,
+                    // V312-64 / Issue #4663: SQLite-style maintenance commands.
+                    "VACUUM" => Token::Vacuum,
+                    "REINDEX" => Token::Reindex,
+                    // V312-64 / Issue #4662: `INSTEAD OF` trigger timing.
+                    // `OF` is consumed by parse_create_trigger as an
+                    // identifier to avoid widening the keyword set in
+                    // places where `of` is a legitimate column/table
+                    // name (e.g. reserved for tests).
+                    "INSTEAD" => Token::Instead,
+                    "OF" => Token::Of,
                     _ => Token::Identifier(ident),
                 }
             }

@@ -1820,6 +1820,13 @@ pub fn eval_fn(name: &str, args: &[Value]) -> Value {
         "DATE_ADD" | "ADDDATE" => date_add_sub(args, true),
         // DATE_SUB(date, INTERVAL n unit)
         "DATE_SUB" | "SUBDATE" => date_add_sub(args, false),
+        // V312-64 / Issue #4655: DATE_TRUNC(unit, value) — PostgreSQL /
+        // Snowflake-style truncation. `unit` is one of YEAR, QUARTER,
+        // MONTH, DAY, HOUR, MINUTE, SECOND; `value` is a text date in
+        // YYYY-MM-DD form or an integer epoch-second timestamp. Returns
+        // a text date for YYYY-MM-DD units, an integer for HOUR/MINUTE/
+        // SECOND (epoch seconds floored to the unit boundary).
+        "DATE_TRUNC" => date_trunc(args),
         // V312-63 / Issue #4627: TIMESTAMPDIFF(unit, ts1, ts2) — MySQL 5.7
         // standard. Returns the signed difference ts1 - ts2 in the requested
         // unit. Operates on text dates (YYYY-MM-DD) and integer epoch second
@@ -2401,6 +2408,77 @@ fn timestamp_diff(args: &[Value]) -> Value {
         _ => return Value::Null,
     };
     Value::Integer(v)
+}
+
+/// V312-64 / Issue #4655: DATE_TRUNC(unit, value) — PostgreSQL/Snowflake
+/// style truncation. `unit` is a string token (YEAR/QUARTER/MONTH/DAY/
+/// HOUR/MINUTE/SECOND). `value` is either a text date in YYYY-MM-DD form
+/// or an integer epoch-second timestamp. Returns:
+///   - YEAR/QUARTER/MONTH/DAY → Value::Text("YYYY-MM-DD")
+///   - HOUR/MINUTE/SECOND     → Value::Integer (epoch seconds floored to
+///                              the unit boundary)
+/// Returns Value::Null on any malformed input.
+fn date_trunc(args: &[Value]) -> Value {
+    if args.len() != 2 {
+        return Value::Null;
+    }
+    let unit = args[0].to_sql_string().to_uppercase();
+    let raw = args[1].to_sql_string();
+    match unit.as_str() {
+        "YEAR" => {
+            if raw.len() < 4 {
+                return Value::Null;
+            }
+            let y: i64 = raw[..4].parse().unwrap_or(0);
+            Value::Text(format!("{:04}-01-01", y))
+        }
+        "QUARTER" => {
+            if raw.len() < 7 {
+                return Value::Null;
+            }
+            let y: i64 = raw[..4].parse().unwrap_or(0);
+            let m: i64 = raw[5..7].parse().unwrap_or(1);
+            // Quarter start: 1, 4, 7, 10 → (m - 1) / 3 * 3 + 1
+            let qm = (m - 1) / 3 * 3 + 1;
+            Value::Text(format!("{:04}-{:02}-01", y, qm))
+        }
+        "MONTH" => {
+            if raw.len() < 7 {
+                return Value::Null;
+            }
+            let y: i64 = raw[..4].parse().unwrap_or(0);
+            let m: i64 = raw[5..7].parse().unwrap_or(1);
+            Value::Text(format!("{:04}-{:02}-01", y, m))
+        }
+        "DAY" => {
+            // Accepts both text YYYY-MM-DD (return same text) and integer
+            // epoch seconds (re-format via civil_from_days).
+            if let Ok(secs) = raw.trim().parse::<i64>() {
+                let days = secs.div_euclid(86_400);
+                let (y, m, d) = civil_from_days(days);
+                return Value::Text(format!("{:04}-{:02}-{:02}", y, m, d));
+            }
+            if raw.len() < 10 {
+                return Value::Null;
+            }
+            // Strip everything after the day portion so `YYYY-MM-DD HH:MM:SS`
+            // still truncates cleanly.
+            Value::Text(raw[..10].to_string())
+        }
+        "HOUR" | "MINUTE" | "SECOND" => {
+            let secs = match parse_text_to_secs(&raw) {
+                Some(s) => s,
+                None => return Value::Null,
+            };
+            let truncated = match unit.as_str() {
+                "HOUR" => secs - secs.rem_euclid(3600),
+                "MINUTE" => secs - secs.rem_euclid(60),
+                _ => secs, // SECOND
+            };
+            Value::Integer(truncated)
+        }
+        _ => Value::Null,
+    }
 }
 
 /// Helper: parse a date/timestamp text or integer into epoch seconds.
