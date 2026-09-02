@@ -241,6 +241,12 @@ impl SimpleExecutor {
                         // V312-40 placeholder: PARTITIONED BY not yet implemented in corpus
                         // Real impl pending: V312-41 follow-up issue
                     }
+                    AlterTableOperation::AddTableConstraint(_) => {
+                        // ADD TABLE-level CONSTRAINT (PRIMARY KEY / FOREIGN KEY / UNIQUE
+                        // / CHECK) is a no-op in the corpus storage backend because
+                        // MemoryStorage does not enforce declarative constraints.
+                        // The parser accepts the syntax; runtime stays inert.
+                    }
                 }
                 Ok(ExecutorResult::new(vec![], 0))
             }

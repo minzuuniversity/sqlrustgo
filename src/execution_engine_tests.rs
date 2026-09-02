@@ -750,8 +750,14 @@ fn test_engine_grant_select_multiple_columns() {
 fn test_engine_grant_column_requires_catalog() {
     // E2E: without a catalog, GRANT must fail with a clear error message
     // (not panic). Confirms the catalog-not-available guard.
+    //
+    // Note: ExecutionEngine::new() auto-provisions a default catalog (see
+    // execution_engine.rs:208), so to exercise the None-catalog path we
+    // clear it post-construction. The field is pub(crate) precisely so
+    // in-crate tests can drive the error branch directly.
     let storage = Arc::new(RwLock::new(MemoryStorage::new()));
     let mut engine = ExecutionEngine::new(storage);
+    engine.catalog = None;
 
     let result = engine.execute("GRANT SELECT(email) ON users TO nobody");
     assert!(

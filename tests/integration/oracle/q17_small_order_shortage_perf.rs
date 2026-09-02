@@ -1,3 +1,9 @@
+//! ADR-008-exception: 2026-10-31 (openclaw) — Q17 SF=1 perf benchmark deferral.
+//! See docs/governance/adr/ADR-008-exception-v312-58-q17-sf1.md (index label ADR-008y).
+//! This test remains `#[ignore]`-gated; PASS evidence is captured by
+//! scripts/gate/run_q17_sf1_celldiff_v312.sh via the GA-5 cell-diff path.
+//! Re-evaluate 2026-10-31.
+//!
 //! Performance regression test for V312-58 / Issue #4379: TPC-H SF=1
 //! Q17 small-order-shortage.
 //!

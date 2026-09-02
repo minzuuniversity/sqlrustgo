@@ -7,7 +7,7 @@
 > **stage_history**: DRAFT (pre-2026-08-12) → ALPHA (2026-08-12) → BETA (2026-08-19) → **RC** (2026-08-26)
 
 > **commit**: 1903545df6d036f7f6d5035a0503b5fa932aac51
-> **current_HEAD**: cbe1f53f85 (drift-fix from `dd5ab204`, post PR #4495 merge; v3.12.0 RC active development)
+> **current_HEAD**: cbe1f53f85 (drift-fix from 1903545df6, post PR #4495 merge; v3.12.0 RC active development)
 
 ## 2026-08-27 #4491 residual scope closure (post-RC)
 
