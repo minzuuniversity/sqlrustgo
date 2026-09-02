@@ -3928,6 +3928,8 @@ fn statement_kind(parsed: &Result<Statement, String>) -> &'static str {
             Statement::Merge(_) => "MERGE",
             Statement::CreateTable(_) => "CREATE_TABLE",
             Statement::CreateIndex(_) => "CREATE_INDEX",
+            // V312-64 / Issue #4645: FULLTEXT INDEX metrics label.
+            Statement::CreateFulltextIndex(_) => "CREATE_FULLTEXT_INDEX",
             Statement::CreateView(_) => "CREATE_VIEW",
             Statement::DropTable(_) => "DROP_TABLE",
             Statement::DropIndex(_) => "DROP_INDEX",
