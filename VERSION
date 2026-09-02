@@ -1,5 +1,5 @@
 v3.11.0
 # last released GA tag (tag `v3.11.0-ga` @ commit 5038b154c, 2026-08-09)
-# current dev: v3.12.0 RC (develop/v3.12.0 @ afc3346d6, 2026-08-26)
+# current dev: v3.12.0 RC / GA candidate preparation (develop/v3.12.0 @ d64f0038b9, 2026-09-02)
 # per docs/governance/RELEASE_GOVERNANCE.md — VERSION file is last-released tag only,
 # current dev version lives in docs/releases/v3.12.0/STAGE.yaml (current_stage: RC)
