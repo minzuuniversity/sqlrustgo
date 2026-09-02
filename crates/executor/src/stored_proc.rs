@@ -916,30 +916,36 @@ impl StoredProcExecutor {
                         // Stored as ColumnDefinition to match the type
                         // signature expected by `expression_to_value_with_row`
                         // (`Option<&[ColumnDefinition]>`).
-                        let cte_cols: Vec<sqlrustgo_storage::ColumnDefinition> = if !cte.columns.is_empty() {
-                            cte.columns.iter().map(|n| sqlrustgo_storage::ColumnDefinition {
-                                name: n.clone(),
-                                data_type: "TEXT".to_string(),
-                                nullable: true,
-                                primary_key: false,
-                                char_max_length: None,
-                                collation: None,
-                                default_value: None,
-                                auto_increment: false,
-                            }).collect()
-                        } else {
-                            let width = cte_records.first().map(|r| r.len()).unwrap_or(0);
-                            (1..=width).map(|i| sqlrustgo_storage::ColumnDefinition {
-                                name: format!("col_{}", i),
-                                data_type: "TEXT".to_string(),
-                                nullable: true,
-                                primary_key: false,
-                                char_max_length: None,
-                                collation: None,
-                                default_value: None,
-                                auto_increment: false,
-                            }).collect()
-                        };
+                        let cte_cols: Vec<sqlrustgo_storage::ColumnDefinition> =
+                            if !cte.columns.is_empty() {
+                                cte.columns
+                                    .iter()
+                                    .map(|n| sqlrustgo_storage::ColumnDefinition {
+                                        name: n.clone(),
+                                        data_type: "TEXT".to_string(),
+                                        nullable: true,
+                                        primary_key: false,
+                                        char_max_length: None,
+                                        collation: None,
+                                        default_value: None,
+                                        auto_increment: false,
+                                    })
+                                    .collect()
+                            } else {
+                                let width = cte_records.first().map(|r| r.len()).unwrap_or(0);
+                                (1..=width)
+                                    .map(|i| sqlrustgo_storage::ColumnDefinition {
+                                        name: format!("col_{}", i),
+                                        data_type: "TEXT".to_string(),
+                                        nullable: true,
+                                        primary_key: false,
+                                        char_max_length: None,
+                                        collation: None,
+                                        default_value: None,
+                                        auto_increment: false,
+                                    })
+                                    .collect()
+                            };
                         ctx.cte_tables.insert(cte.name.clone(), cte_records);
                         ctx.cte_columns.insert(cte.name.clone(), cte_cols);
                     }

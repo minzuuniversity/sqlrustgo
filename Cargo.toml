@@ -255,6 +255,9 @@ path = "tests/integration/sql/parser_token_test.rs"
 [[test]]
 name = "parser_e2e_test"
 path = "tests/integration/sql/parser_e2e_test.rs"
+[[test]]
+name = "v312_63_parser_issues_test"
+path = "tests/integration/sql/v312_63_parser_issues_test.rs"
 
 [[test]]
 name = "cbo_integration_test"

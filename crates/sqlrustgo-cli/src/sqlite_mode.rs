@@ -394,8 +394,8 @@ impl SqliteMode {
         // Issue #4619: track BEGIN/COMMIT/ROLLBACK depth so a runtime
         // error inside a transaction can be auto-aborted (rollback).
         let trimmed_upper = sql.trim().to_uppercase();
-        let is_begin = trimmed_upper.starts_with("BEGIN")
-            || trimmed_upper.starts_with("START TRANSACTION");
+        let is_begin =
+            trimmed_upper.starts_with("BEGIN") || trimmed_upper.starts_with("START TRANSACTION");
         let is_commit = trimmed_upper.starts_with("COMMIT");
         let is_rollback = trimmed_upper.starts_with("ROLLBACK");
 
@@ -424,7 +424,6 @@ impl SqliteMode {
         }
     }
 }
-
 
 /// Extension trait to convert sqlrustgo::Value to optional String for metadata.
 trait ValueAsString {
@@ -713,10 +712,7 @@ mod tests {
         let _ = std::fs::remove_dir_all(&tmp);
         let mut mode = SqliteMode::open(&tmp, SqliteState::default(), false).unwrap();
         mode.state.output = OutputTarget::File(tmp.join("out.txt"));
-        let input = vec![
-            "-- only a comment".to_string(),
-            "SELECT 1".to_string(),
-        ];
+        let input = vec!["-- only a comment".to_string(), "SELECT 1".to_string()];
         let exit = mode.run_batch_stdin_with_input(input);
         assert_eq!(exit, EXIT_OK, "standalone -- comment must not error");
         let out = std::fs::read_to_string(tmp.join("out.txt")).unwrap();
@@ -779,7 +775,10 @@ mod tests {
             "SELECT * FROM products;".to_string(),
         ];
         let exit = mode.run_batch_stdin_with_input(input);
-        assert_eq!(exit, EXIT_OK, "mixed comment/blank/multiline input must succeed");
+        assert_eq!(
+            exit, EXIT_OK,
+            "mixed comment/blank/multiline input must succeed"
+        );
         let out = std::fs::read_to_string(tmp.join("out.txt")).unwrap();
         assert!(out.contains("1,100"), "row (1, 100) must appear in output");
         let _ = std::fs::remove_dir_all(&tmp);
@@ -803,13 +802,19 @@ mod tests {
         let exit = mode.run_batch_stdin_with_input(input);
         assert_eq!(exit, 1, "fail-fast on parse error must exit 1");
         let out = std::fs::read_to_string(tmp.join("out.txt")).unwrap();
-        assert!(!out.contains("1\n"), "SELECT 1 must not have run after parse error");
+        assert!(
+            !out.contains("1\n"),
+            "SELECT 1 must not have run after parse error"
+        );
         // The CREATE TABLE succeeded before the parse error, so
         // broken_t DOES exist — verify it is queryable.
         let mut probe_mode = SqliteMode::open(&tmp, SqliteState::default(), false).unwrap();
         probe_mode.state.output = OutputTarget::File(tmp.join("probe.txt"));
         let res = probe_mode.execute_sql("SELECT id FROM broken_t");
-        assert!(res.is_ok(), "broken_t (created before the parse error) must exist");
+        assert!(
+            res.is_ok(),
+            "broken_t (created before the parse error) must exist"
+        );
         let _ = std::fs::remove_dir_all(&tmp);
     }
 
@@ -828,7 +833,10 @@ mod tests {
         let exit = mode.run_batch_stdin_with_input(input);
         assert_eq!(exit, EXIT_OK);
         let out = std::fs::read_to_string(tmp.join("out.txt")).unwrap();
-        assert!(out.contains("a;b;c"), "string literal must be preserved verbatim");
+        assert!(
+            out.contains("a;b;c"),
+            "string literal must be preserved verbatim"
+        );
         let _ = std::fs::remove_dir_all(&tmp);
     }
 
@@ -851,8 +859,10 @@ mod tests {
             .expect("read dotcmd must succeed for multi-line CREATE TABLE");
         mode.execute_dotcmd(DotCmd::Tables(None)).unwrap();
         let out = std::fs::read_to_string(tmp.join("out.txt")).unwrap();
-        assert!(out.contains("courses"), "courses table must exist after .read");
+        assert!(
+            out.contains("courses"),
+            "courses table must exist after .read"
+        );
         let _ = std::fs::remove_dir_all(&tmp);
     }
 }
-

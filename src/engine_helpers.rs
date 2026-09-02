@@ -134,7 +134,11 @@ pub fn map_select_result_to_records(
     target_table_info: &TableInfo,
 ) -> SqlResult<Vec<Vec<Value>>> {
     let target_col_indices: Vec<usize> = if target_columns.is_empty() {
-        if !result.rows.is_empty() && result.rows[0].len() != target_table_info.columns.len() {
+        // V312-63 / Issue #4640: short-insert via INSERT INTO ... SELECT —
+        // pad missing columns with NULL rather than erroring out, mirroring
+        // the VALUES short-form behaviour for consistency. Excess columns
+        // are still hard-rejected.
+        if !result.rows.is_empty() && result.rows[0].len() > target_table_info.columns.len() {
             return Err(SqlError::ExecutionError(format!(
                 "Binder Error: table {} has {} columns but {} values were supplied",
                 target_table_info.name,
@@ -207,12 +211,29 @@ pub fn apply_odku(
 ) -> SqlResult<()> {
     let col_names: Vec<String> = table_info.columns.iter().map(|c| c.name.clone()).collect();
 
-    // Build update list (column index -> new value)
+    // V312-63 / Issue #4642: evaluate RHS expressions against the EXISTING
+    // row context so `v = v + 1` (a column reference on the right) reads
+    // the row's current value rather than returning NULL. Previously this
+    // path called `expression_to_value` (no row context) which made ODKU
+    // a no-op for any reference to the row's own columns.
     let update: Vec<(usize, Value)> = updates
         .iter()
         .filter_map(|(col_name, expr)| {
             let idx = col_names.iter().position(|n| n == col_name)?;
-            let val = expression_to_value(expr);
+            // The parser delivers `(col, Expression)` pairs directly for
+            // ODKU / ON CONFLICT DO UPDATE SET (no `=` wrapper). Older
+            // paths wrapped in `BinaryOp(_, "=", rhs)` — strip it for
+            // compatibility.
+            let rhs = match expr {
+                sqlrustgo_parser::Expression::BinaryOp(_, op, rhs) if op == "=" => rhs,
+                other => other,
+            };
+            // Evaluate the RHS against the existing row so references to
+            // the row's own columns (e.g. `v = v + 1`) work.
+            let val = match crate::expr_utils::evaluate_expression(rhs, existing_row, table_info) {
+                Ok(v) => v,
+                Err(_) => expression_to_value(rhs),
+            };
             Some((idx, val))
         })
         .collect();

@@ -1820,6 +1820,11 @@ pub fn eval_fn(name: &str, args: &[Value]) -> Value {
         "DATE_ADD" | "ADDDATE" => date_add_sub(args, true),
         // DATE_SUB(date, INTERVAL n unit)
         "DATE_SUB" | "SUBDATE" => date_add_sub(args, false),
+        // V312-63 / Issue #4627: TIMESTAMPDIFF(unit, ts1, ts2) — MySQL 5.7
+        // standard. Returns the signed difference ts1 - ts2 in the requested
+        // unit. Operates on text dates (YYYY-MM-DD) and integer epoch second
+        // timestamps. Returns Value::Integer or Value::Null on bad input.
+        "TIMESTAMPDIFF" => timestamp_diff(args),
         // TPC-H Q7/Q8/Q9 use `EXTRACT(YEAR FROM o_orderdate) AS o_year`.
         // The parser encodes this as FunctionCall("EXTRACT", [Literal(field),
         // source_expr]). For text dates in YYYY-MM-DD form, the field slices
@@ -2345,6 +2350,85 @@ fn date_add_sub(args: &[Value], add: bool) -> Value {
         }
         _ => Value::Null,
     }
+}
+
+/// V312-63 / Issue #4627: TIMESTAMPDIFF(unit, ts1, ts2) — MySQL 5.7.
+///
+/// Returns the signed difference `ts2 - ts1` in the requested unit.
+/// Operates on text dates (YYYY-MM-DD form, optionally with ` HH:MM:SS`
+/// suffix) and on integer epoch-second timestamps. Returns Value::Null on
+/// bad input or unknown unit. Supported units: MICROSECOND, SECOND, MINUTE,
+/// HOUR, DAY, WEEK, MONTH, QUARTER, YEAR.
+fn timestamp_diff(args: &[Value]) -> Value {
+    if args.len() != 3 {
+        return Value::Null;
+    }
+    let unit = args[0].to_sql_string().to_uppercase();
+    let ts1 = parse_text_to_secs(&args[1].to_sql_string());
+    let ts2 = parse_text_to_secs(&args[2].to_sql_string());
+    let secs = match (ts1, ts2) {
+        (Some(a), Some(b)) => b - a,
+        _ => return Value::Null,
+    };
+    let v = match unit.as_str() {
+        "MICROSECOND" => secs * 1_000_000,
+        "SECOND" => secs,
+        "MINUTE" => secs / 60,
+        "HOUR" => secs / 3600,
+        "DAY" => secs / 86_400,
+        "WEEK" => secs / (86_400 * 7),
+        "MONTH" => {
+            // Approximate by month-length of 30 days. Acceptable for MySQL
+            // compatibility on coarse inputs; full calendar diff would need
+            // date_partparse. MySQL itself rounds MONTH toward 0.
+            return Value::Integer(match secs.signum() {
+                s if s >= 0 => secs / (86_400 * 30),
+                _ => -(secs.abs() / (86_400 * 30)),
+            });
+        }
+        "QUARTER" => {
+            return Value::Integer(match secs.signum() {
+                s if s >= 0 => secs / (86_400 * 30 * 3),
+                _ => -(secs.abs() / (86_400 * 30 * 3)),
+            });
+        }
+        "YEAR" => {
+            return Value::Integer(match secs.signum() {
+                s if s >= 0 => secs / (86_400 * 365),
+                _ => -(secs.abs() / (86_400 * 365)),
+            });
+        }
+        _ => return Value::Null,
+    };
+    Value::Integer(v)
+}
+
+/// Helper: parse a date/timestamp text or integer into epoch seconds.
+/// Accepts:
+///   - "YYYY-MM-DD" or "YYYY-MM-DD HH:MM:SS" — calendar-aware
+///   - Integer epoch seconds
+/// Returns None for unparsable input.
+fn parse_text_to_secs(s: &str) -> Option<i64> {
+    let trimmed = s.trim();
+    if let Ok(n) = trimmed.parse::<i64>() {
+        // Heuristic: any plain integer is treated as epoch seconds.
+        return Some(n);
+    }
+    if trimmed.len() < 10 {
+        return None;
+    }
+    let y: i64 = trimmed[..4].parse().ok()?;
+    let m: i64 = trimmed[5..7].parse().ok()?;
+    let d: i64 = trimmed[8..10].parse().ok()?;
+    let days = days_from_civil(y, m, d);
+    let mut secs = days * 86_400;
+    if trimmed.len() >= 19 && trimmed.as_bytes()[10] == b' ' {
+        let h: i64 = trimmed[11..13].parse().ok()?;
+        let mn: i64 = trimmed[14..16].parse().ok()?;
+        let sc: i64 = trimmed[17..19].parse().ok()?;
+        secs += h * 3600 + mn * 60 + sc;
+    }
+    Some(secs)
 }
 // =====================================================================
 // Issue #4490 — date/time helpers (NOW / CURDATE / CURTIME / YEAR / MONTH /

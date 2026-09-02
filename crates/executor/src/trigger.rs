@@ -284,13 +284,14 @@ impl TriggerExecutor {
     /// to record an undo entry when a recorder is wired. Returns silently
     /// when no recorder is installed (e.g. unit tests that don't run
     /// against a TransactionManager).
-    fn record_trigger_undo(
-        &self,
-        op: TriggerUndoOp<'_>,
-    ) {
+    fn record_trigger_undo(&self, op: TriggerUndoOp<'_>) {
         if let Some(rec) = self.undo_recorder.as_ref() {
             match op {
-                TriggerUndoOp::Insert { table, table_info, row } => {
+                TriggerUndoOp::Insert {
+                    table,
+                    table_info,
+                    row,
+                } => {
                     rec.record_insert_undo(table, table_info, row);
                 }
                 TriggerUndoOp::Update {
@@ -748,11 +749,8 @@ impl TriggerExecutor {
                 let eval_ctx = crate::trigger_eval::EvalContext::new(&trigger_ctx, None)
                     .with_target_col_names(col_names.clone());
                 for expr in values {
-                    let val = crate::trigger_eval::expression_to_value(
-                        expr,
-                        &eval_ctx,
-                        Some(&col_names),
-                    );
+                    let val =
+                        crate::trigger_eval::expression_to_value(expr, &eval_ctx, Some(&col_names));
                     record.push(val);
                 }
                 while record.len() < num_cols {

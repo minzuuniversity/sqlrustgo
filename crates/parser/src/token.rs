@@ -152,6 +152,10 @@ pub enum Token {
     Date,
     DateAdd,
     DateSub,
+    // V312-63 / Issue #4627: TIMESTAMPDIFF(unit, ts1, ts2) — MySQL 5.7 standard
+    // function. The first argument is a unit keyword (MINUTE/HOUR/DAY/...) and
+    // must NOT be bound to a column lookup.
+    TimestampDiff,
     Substring,
     Position,
     Interval,
@@ -171,6 +175,11 @@ pub enum Token {
 
     // MySQL-specific keywords
     Duplicate,
+    // V312-63 / Issue #4642: SQLite/Postgres UPSERT clause:
+    // `INSERT ... ON CONFLICT (col) DO UPDATE SET ...`. Reserved alongside
+    // `ON` so `parse_insert` can dispatch to the SQLite/PG conflict handler.
+    Conflict,
+    Nothing,
     Database,
     Modify,
     Use,
@@ -363,6 +372,8 @@ impl fmt::Display for Token {
             Token::Replace => write!(f, "REPLACE"),
             Token::Ignore => write!(f, "IGNORE"),
             Token::Duplicate => write!(f, "DUPLICATE"),
+            Token::Conflict => write!(f, "CONFLICT"),
+            Token::Nothing => write!(f, "NOTHING"),
             Token::Database => write!(f, "DATABASE"),
             Token::Use => write!(f, "USE"),
             Token::View => write!(f, "VIEW"),
@@ -373,6 +384,7 @@ impl fmt::Display for Token {
             Token::Convert => write!(f, "CONVERT"),
             Token::Date => write!(f, "DATE"),
             Token::DateSub => write!(f, "DATE_SUB"),
+            Token::TimestampDiff => write!(f, "TIMESTAMPDIFF"),
             Token::Substring => write!(f, "SUBSTRING"),
             Token::Position => write!(f, "POSITION"),
             Token::Interval => write!(f, "INTERVAL"),
@@ -665,6 +677,7 @@ pub fn from_keyword(s: &str) -> Option<Token> {
         "REPLACE" => Some(Token::Replace),
         "IGNORE" => Some(Token::Ignore),
         "DUPLICATE" => Some(Token::Duplicate),
+        "CONFLICT" => Some(Token::Conflict),
         "MODIFY" => Some(Token::Modify),
         "DATABASE" => Some(Token::Database),
         "USE" => Some(Token::Use),

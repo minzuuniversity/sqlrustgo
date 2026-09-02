@@ -91,7 +91,8 @@ pub struct ExecutionEngine<S: StorageEngine> {
     /// side-effects atomically with the parent statement. Without this,
     /// trigger AFTER-INSERT rows survive the ROLLBACK because the
     /// parent's undo entry only captures the parent row.
-    pub(crate) trigger_undo_sink: Arc<parking_lot::Mutex<Vec<sqlrustgo_transaction::savepoint::UndoRecord>>>,
+    pub(crate) trigger_undo_sink:
+        Arc<parking_lot::Mutex<Vec<sqlrustgo_transaction::savepoint::UndoRecord>>>,
     pub(crate) tx_status: TxStatus,
     pub(crate) tx_readonly: bool,
     pub(crate) default_isolation: TmIsolationLevel,
@@ -1806,7 +1807,11 @@ impl<S: StorageEngine + 'static> ExecutionEngine<S> {
                         // v312-60: fall back to full-row match when the
                         // table has no primary key — an empty `key`
                         // filter would otherwise clear the whole table.
-                        let target = if key.is_empty() { row.clone() } else { key.to_vec() };
+                        let target = if key.is_empty() {
+                            row.clone()
+                        } else {
+                            key.to_vec()
+                        };
                         storage.delete(table, &target).map_err(|e| {
                             format!("rollback delete on {} pk={:?}: {}", table, key, e)
                         })?;
