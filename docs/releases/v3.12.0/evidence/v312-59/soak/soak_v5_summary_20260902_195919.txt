@@ -1,0 +1,51 @@
+=== SOAK V5 (8h, 4 threads, --rate=4, Fix B+C) summary ===
+started_at=1788321544
+ended_at=1788350359
+duration_min=480
+rss_kb_t0 = 21648
+rss_kb_pre= 76928
+rss_kb_final=226624
+delta_kb_pre_to_final=149696
+delta_kb_t0_to_final=204976
+
+=== /tmp/jeprof.50529.*.heap ===
+-rw-r--r--@ 1 liying  wheel  37341  9月  2 11:59 /tmp/jeprof.50529.1788321548.heap
+-rw-r--r--@ 1 liying  wheel  40438  9月  2 11:59 /tmp/jeprof.50529.1788321549.heap
+-rw-r--r--@ 1 liying  wheel  50691  9月  2 12:29 /tmp/jeprof.50529.1788323350.heap
+-rw-r--r--@ 1 liying  wheel  49358  9月  2 12:59 /tmp/jeprof.50529.1788325150.heap
+-rw-r--r--@ 1 liying  wheel  54443  9月  2 13:29 /tmp/jeprof.50529.1788326951.heap
+-rw-r--r--@ 1 liying  wheel  53342  9月  2 13:59 /tmp/jeprof.50529.1788328752.heap
+-rw-r--r--@ 1 liying  wheel  56625  9月  2 14:29 /tmp/jeprof.50529.1788330552.heap
+-rw-r--r--@ 1 liying  wheel  51295  9月  2 14:59 /tmp/jeprof.50529.1788332353.heap
+-rw-r--r--@ 1 liying  wheel  53548  9月  2 15:29 /tmp/jeprof.50529.1788334153.heap
+-rw-r--r--@ 1 liying  wheel  53856  9月  2 15:59 /tmp/jeprof.50529.1788335954.heap
+-rw-r--r--@ 1 liying  wheel  52508  9月  2 16:29 /tmp/jeprof.50529.1788337754.heap
+-rw-r--r--@ 1 liying  wheel  52683  9月  2 16:59 /tmp/jeprof.50529.1788339555.heap
+-rw-r--r--@ 1 liying  wheel  53944  9月  2 17:29 /tmp/jeprof.50529.1788341355.heap
+-rw-r--r--@ 1 liying  wheel  49644  9月  2 17:59 /tmp/jeprof.50529.1788343156.heap
+-rw-r--r--@ 1 liying  wheel  50907  9月  2 18:29 /tmp/jeprof.50529.1788344956.heap
+-rw-r--r--@ 1 liying  wheel  53077  9月  2 18:59 /tmp/jeprof.50529.1788346757.heap
+-rw-r--r--@ 1 liying  wheel  54262  9月  2 19:29 /tmp/jeprof.50529.1788348558.heap
+-rw-r--r--@ 1 liying  wheel  47489  9月  2 19:59 /tmp/jeprof.50529.1788350358.heap
+
+=== sysbench tail ===
+    transactions:                        63092  (2.19 per sec.)
+    queries:                             1261840 (43.81 per sec.)
+    ignored errors:                      0      (0.00 per sec.)
+    reconnects:                          0      (0.00 per sec.)
+
+General statistics:
+    total time:                          28801.0721s
+    total number of events:              63092
+
+Latency (ms):
+         min:                                  422.45
+         avg:                              6243030.17
+         max:                             13072719.37
+         95th percentile:                        0.00
+         sum:                         393885259290.30
+
+Threads fairness:
+    events (avg/stddev):           15773.0000/2.24
+    execution time (avg/stddev):   98471314.8226/3459.57
+
