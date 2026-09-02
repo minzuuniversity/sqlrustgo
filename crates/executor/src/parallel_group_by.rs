@@ -87,6 +87,12 @@ impl PartialAggregate {
                 AggregateFunction::QuantileDisc | AggregateFunction::QuantileCont => {
                     unreachable!("quantile aggregates are computed serially in compute_aggregates")
                 }
+                // V312-64b / Issue #4650: GROUP_CONCAT is non-incremental
+                // (needs sorted finalization + separator join) so it falls
+                // back to the serial compute_aggregates path.
+                AggregateFunction::GroupConcat => {
+                    unreachable!("GROUP_CONCAT is computed serially in compute_aggregates")
+                }
             }
         }
     }
