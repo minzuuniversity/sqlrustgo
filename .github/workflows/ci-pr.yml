@@ -194,6 +194,9 @@ jobs:
       - name: SOAK Tier-2 workload sweep + JSON reports + disk-restart boundary (P-6/P-10/P-5)
         run: bash scripts/soak/test_run_soak_loop_tier2.sh
 
+      - name: SOAK chaos drills 结构检查 (#4597)
+        run: bash scripts/soak/test_chaos_drills.sh
+
   # ----------------------------------------
   # Security audit
   # ----------------------------------------
