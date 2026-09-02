@@ -238,6 +238,20 @@ pub fn apply_odku(
         })
         .collect();
 
+    // V312-63 / Issue #4637: VARCHAR(N) / CHAR(N) length validation on
+    // ODKU assignments — build a synthetic post-update row and run the
+    // same validator used by INSERT/UPDATE so the error message and
+    // behaviour are consistent.
+    {
+        let mut synthetic_row: Vec<Value> = existing_row.to_vec();
+        for (idx, val) in &update {
+            if *idx < synthetic_row.len() {
+                synthetic_row[*idx] = val.clone();
+            }
+        }
+        crate::engine_utils::validate_string_lengths(table_info, &synthetic_row)?;
+    }
+
     // Find PK column values for the filter
     let pk_values: Vec<Value> = table_info
         .columns

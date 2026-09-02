@@ -26,7 +26,7 @@ use crate::engine_helpers::{
 };
 use crate::engine_utils::{
     build_multi_table_combined_schema, cartesian_product, evaluate_where_clause, find_column_index,
-    validate_foreign_keys, validate_not_null,
+    validate_foreign_keys, validate_not_null, validate_string_lengths,
 };
 use crate::expr_utils::{evaluate_expression, resolve_subqueries_in_expr};
 use crate::savepoint_wiring::{record_delete_undo, record_insert_undo, record_update_undo};
@@ -197,11 +197,26 @@ pub fn execute_insert<S: StorageEngine + 'static>(
         all_records.clone()
     };
 
-    // Apply CHAR(N) trailing-space padding per SQL standard (#3283 Task 8)
+    // V312-63 / Issue #4637: reject any string whose length exceeds the
+    // declared VARCHAR(N) / CHAR(N) cap on the target column. Must run
+    // before CHAR padding so overlong strings are reported as errors
+    // rather than silently truncated. Both INSERT paths (Heap + Clustered)
+    // funnel through this helper.
+    for record in &processed_records {
+        validate_string_lengths(&table_info, record)?;
+    }
+
+    // Apply CHAR(N) trailing-space padding per SQL standard (#3283 Task 8).
+    // V312-63 / Issue #4637: only pad actual CHAR columns — VARCHAR(N)
+    // stores the string verbatim (no padding). We differentiate by
+    // `col.data_type` (upper-cased canonical name from the parser).
     let processed_records: Vec<Vec<Value>> = processed_records
         .into_iter()
         .map(|mut record| {
             for (idx, col) in table_info.columns.iter().enumerate() {
+                if col.data_type.to_uppercase() != "CHAR" {
+                    continue;
+                }
                 if let Some(n) = col.char_max_length {
                     if idx < record.len() {
                         if let Value::Text(s) = &record[idx] {
@@ -536,6 +551,12 @@ pub fn execute_update<S: StorageEngine + 'static>(
         }
         validate_not_null(&table_info, &synthetic_row, &[])?;
 
+        // V312-63 / Issue #4637: VARCHAR(N) / CHAR(N) length validation.
+        // Reuse the helper on the same synthetic row so the overlong
+        // string check uses the same column-position semantics as
+        // validate_not_null.
+        validate_string_lengths(&table_info, &synthetic_row)?;
+
         // V312-18 #3971: validate CHECK constraints for the synthetic updated row
         if !table_info.check_constraints.is_empty() {
             let col_names: Vec<String> =
@@ -724,6 +745,11 @@ pub fn execute_update<S: StorageEngine + 'static>(
         // SET-only slices). V313-12 / Issue #4040.
         for record in &trigger_modified_rows {
             validate_not_null(&table_info, record, &[])?;
+        }
+
+        // V312-63 / Issue #4637: VARCHAR(N) / CHAR(N) length validation.
+        for record in &trigger_modified_rows {
+            validate_string_lengths(&table_info, record)?;
         }
 
         let pk_idx = table_info
@@ -1355,11 +1381,21 @@ fn execute_insert_clustered<S: StorageEngine + 'static>(
         build_insert_records(&insert.values)
     };
 
-    // Apply CHAR(N) padding (same as Heap path).
+    // V312-63 / Issue #4637: VARCHAR(N) / CHAR(N) length validation
+    // (same as Heap path).
+    for record in &all_records {
+        validate_string_lengths(&table_info, record)?;
+    }
+
+    // Apply CHAR(N) padding (same as Heap path). V312-63 / Issue #4637:
+    // skip VARCHAR — store verbatim.
     let processed_records: Vec<Vec<Value>> = all_records
         .into_iter()
         .map(|mut record| {
             for (idx, col) in table_info.columns.iter().enumerate() {
+                if col.data_type.to_uppercase() != "CHAR" {
+                    continue;
+                }
                 if let Some(n) = col.char_max_length {
                     if idx < record.len() {
                         if let Value::Text(s) = &record[idx] {
@@ -1475,6 +1511,10 @@ fn execute_update_clustered<S: StorageEngine + 'static>(
                     new_row[*col_idx] = new_val;
                 }
             }
+            // V312-63 / Issue #4637: VARCHAR(N) / CHAR(N) length
+            // validation on the post-SET row before writing it back to
+            // the clustered B+ tree.
+            validate_string_lengths(&table_info, &new_row)?;
             let pk_val = row.get(pk_idx).cloned().unwrap_or(Value::Null);
             ct.update_pk(&pk_val, new_row)?;
         }
