@@ -8,7 +8,9 @@
 //! 2. .help 显示全部 13 个 dot commands (Stage 1 修复)
 //! 3. .version 在 persistence REPL 中仍可工作
 //! 4. .timing on 在 persistence REPL 中仍生效
-//! 5. 列名显示 (col_0) 在 persistence REPL 中仍生效
+//! 5. 列名显示 (col_1) 在 persistence REPL 中仍生效 — 1-indexed 命名
+//!    在 `src/bin/sqlrustgo-mysql-server.rs` 的 placeholder 回退分支中
+//!    (修复 `SHOW TABLES` 头部 `col_0 | ...` 用户报告 bug 后启用)。
 //! 6. 多次 SELECT 持续共享 state
 //! 7. Session 间不泄漏 (新 session 新 engine)
 
@@ -102,7 +104,11 @@ fn cli02_persistence_columns_displayed() {
     let (stdout, _stderr, _code) = run_repl_script(
         "CREATE TABLE cli02_c (a INT, b TEXT);\nINSERT INTO cli02_c VALUES (1, 'hi');\nSELECT * FROM cli02_c;\n.exit\n",
     );
-    assert!(stdout.contains("col_0"), "headers should be col_0");
+    // 1-indexed placeholder header (col_1, col_2) — see top-of-file note.
+    assert!(
+        stdout.contains("col_1"),
+        "headers should be col_1 (1-indexed placeholder)"
+    );
     assert!(stdout.contains("Integer(1)"));
     assert!(stdout.contains("Text(\"hi\")"));
 }
