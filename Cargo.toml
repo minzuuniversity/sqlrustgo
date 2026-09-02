@@ -260,6 +260,9 @@ name = "v312_63_parser_issues_test"
 path = "tests/integration/sql/v312_63_parser_issues_test.rs"
 
 [[test]]
+name = "v312_64_fulltext_index_test"
+path = "tests/integration/sql/v312_64_fulltext_index_test.rs"
+[[test]]
 name = "repro_v312_63"
 path = "tests/integration/sql/repro_v312_63.rs"
 
