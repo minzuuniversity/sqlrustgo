@@ -8,7 +8,7 @@ use parking_lot::RwLock;
 use sqlrustgo_catalog::auth::UserIdentity;
 use sqlrustgo_parser::parse;
 use sqlrustgo_storage::{
-    Record, StorageEngine, TriggerEvent as StorageTriggerEvent, TriggerInfo,
+    Record, StorageEngine, TableInfo, TriggerEvent as StorageTriggerEvent, TriggerInfo,
     TriggerTiming as StorageTriggerTiming,
 };
 use sqlrustgo_types::{SqlError, SqlResult, Value};
@@ -119,6 +119,14 @@ pub struct TriggerExecutor {
     /// the closure at engine construction time via
     /// [`TriggerExecutor::set_auth_check`].
     auth_check: Option<Arc<dyn TriggerBodyAuthCheck>>,
+    /// V312-55D (Round-26 follow-up): optional undo-recorder hook. When
+    /// set, every successful trigger body DML inside an outer
+    /// transaction forwards the row to the recorder so that
+    /// `ROLLBACK`'s physical undo can drain trigger-side writes from
+    /// the FileStorage `insert_buffer`. Without this, trigger
+    /// AFTER-INSERT side-effects survive a ROLLBACK because the
+    /// parent statement's undo entry only captures the parent row.
+    undo_recorder: Option<Arc<dyn TriggerUndoRecorder>>,
 }
 
 /// V312-55F / Issue #4243: trait alias for the trigger body DML
@@ -131,6 +139,53 @@ pub trait TriggerBodyAuthCheck: Send + Sync {
         privilege: sqlrustgo_catalog::auth::Privilege,
         table_name: &str,
     ) -> SqlResult<()>;
+}
+
+/// V312-55D (Round-26, follow-up): trait alias for the trigger body DML
+/// undo-recorder hook. After a trigger's INSERT/UPDATE/DELETE mutates
+/// storage inside an outer transaction, the recorder is invoked so the
+/// active transaction's undo log captures the side-effect. Without this,
+/// a top-level `ROLLBACK` would replay the parent DML's undo entry but
+/// leave trigger-side rows in the FileStorage `insert_buffer`, breaking
+/// the user-visible guarantee that trigger effects roll back atomically
+/// with the parent statement.
+///
+/// Implementations should be a no-op when no transaction is active
+/// (auto-commit / no outer `BEGIN`). The engine-side impl wires this
+/// to `sqlrustgo_transaction::TransactionManager::add_undo_record` with
+/// the engine's current `TxId`.
+pub trait TriggerUndoRecorder: Send + Sync {
+    fn record_insert_undo(&self, table: &str, table_info: &TableInfo, row: &[Value]);
+    fn record_update_undo(
+        &self,
+        table: &str,
+        table_info: &TableInfo,
+        prior_row: &[Value],
+        new_row: &[Value],
+    );
+    fn record_delete_undo(&self, table: &str, table_info: &TableInfo, row: &[Value]);
+}
+
+/// V312-55D: enum payload passed to [`TriggerExecutor::record_trigger_undo`]
+/// so the call sites can dispatch on a single match instead of branching
+/// three times. Borrow-only — captures `&str` table name + slices for rows.
+pub(crate) enum TriggerUndoOp<'a> {
+    Insert {
+        table: &'a str,
+        table_info: &'a TableInfo,
+        row: &'a [Value],
+    },
+    Update {
+        table: &'a str,
+        table_info: &'a TableInfo,
+        prior_row: &'a [Value],
+        new_row: &'a [Value],
+    },
+    Delete {
+        table: &'a str,
+        table_info: &'a TableInfo,
+        row: &'a [Value],
+    },
 }
 
 impl TriggerExecutor {
@@ -183,6 +238,7 @@ impl TriggerExecutor {
             recursion_depth: Arc::new(std::sync::atomic::AtomicUsize::new(0)),
             current_user: UserIdentity::new("root", "localhost"),
             auth_check: None,
+            undo_recorder: None,
         }
     }
 
@@ -210,6 +266,50 @@ impl TriggerExecutor {
     /// Pass `None` to remove the hook (tests / dev tooling).
     pub fn set_auth_check(&mut self, hook: Option<Arc<dyn TriggerBodyAuthCheck>>) {
         self.auth_check = hook;
+    }
+
+    /// V312-55D (Round-26 follow-up): install an undo-recorder hook for
+    /// trigger body DML. When set, every successful trigger-side
+    /// `INSERT` / `UPDATE` / `DELETE` inside an outer transaction
+    /// forwards the affected row to the recorder. Production callers
+    /// (ExecutionEngine) wire this to the transaction manager's undo
+    /// log so top-level `ROLLBACK` reverts trigger side-effects together
+    /// with the parent statement. Pass `None` to disable (tests / dev
+    /// tooling without transaction support).
+    pub fn set_undo_recorder(&mut self, recorder: Option<Arc<dyn TriggerUndoRecorder>>) {
+        self.undo_recorder = recorder;
+    }
+
+    /// V312-55D: shared helper used by `execute_trigger_insert/update/delete`
+    /// to record an undo entry when a recorder is wired. Returns silently
+    /// when no recorder is installed (e.g. unit tests that don't run
+    /// against a TransactionManager).
+    fn record_trigger_undo(
+        &self,
+        op: TriggerUndoOp<'_>,
+    ) {
+        if let Some(rec) = self.undo_recorder.as_ref() {
+            match op {
+                TriggerUndoOp::Insert { table, table_info, row } => {
+                    rec.record_insert_undo(table, table_info, row);
+                }
+                TriggerUndoOp::Update {
+                    table,
+                    table_info,
+                    prior_row,
+                    new_row,
+                } => {
+                    rec.record_update_undo(table, table_info, prior_row, new_row);
+                }
+                TriggerUndoOp::Delete {
+                    table,
+                    table_info,
+                    row,
+                } => {
+                    rec.record_delete_undo(table, table_info, row);
+                }
+            }
+        }
     }
 
     /// V312-55E (Round-27): expose the shared recursion-depth counter so
@@ -635,27 +735,56 @@ impl TriggerExecutor {
             let num_cols = table_info.columns.len();
             let col_names: Vec<String> =
                 table_info.columns.iter().map(|c| c.name.clone()).collect();
-            self.execute_dml_in_tx(|storage| {
+            // V312-55D: pre-compute the row tuples so we can both insert them
+            // AND record an undo entry per row. The closure borrows
+            // `storage` mutably while `record_trigger_undo` needs
+            // `&self`, so the undo recording happens AFTER the
+            // closure returns. Storage of the pre-computed rows here
+            // is the bridging step.
+            let mut computed_rows: Vec<Vec<Value>> = Vec::with_capacity(insert.values.len());
+            for values in &insert.values {
+                let mut record = Vec::new();
                 let trigger_ctx = crate::trigger_eval::TriggerContext::new(new_row, None);
-                for values in &insert.values {
-                    let mut record = Vec::new();
-                    let eval_ctx = crate::trigger_eval::EvalContext::new(&trigger_ctx, None)
-                        .with_target_col_names(col_names.clone());
-                    for expr in values {
-                        let val = crate::trigger_eval::expression_to_value(
-                            expr,
-                            &eval_ctx,
-                            Some(&col_names),
-                        );
-                        record.push(val);
-                    }
-                    while record.len() < num_cols {
-                        record.push(Value::Null);
-                    }
-                    storage.insert(&table_name, vec![record])?;
+                let eval_ctx = crate::trigger_eval::EvalContext::new(&trigger_ctx, None)
+                    .with_target_col_names(col_names.clone());
+                for expr in values {
+                    let val = crate::trigger_eval::expression_to_value(
+                        expr,
+                        &eval_ctx,
+                        Some(&col_names),
+                    );
+                    record.push(val);
                 }
+                while record.len() < num_cols {
+                    record.push(Value::Null);
+                }
+                computed_rows.push(record);
+            }
+            let table_name_for_undo = table_name.clone();
+            self.execute_dml_in_tx(|storage| {
+                storage.insert(&table_name, computed_rows.clone())?;
                 Ok(())
             })?;
+            // V312-55D: record undo for each trigger-side row so a
+            // top-level ROLLBACK can replay them via the same
+            // closure path that drains the parent statement. Without
+            // these entries the trigger's audit-style rows remain
+            // in FileStorage's insert_buffer after rollback because
+            // `rollback_with_undo` only iterates the parent's undo
+            // log.
+            //
+            // The recorder is a no-op when no transaction is active
+            // (the engine wires it to `add_undo_record` which
+            // returns `Err(TransactionNotFound)` outside a tx;
+            // `savepoint_wiring::record_*_undo` swallows that with
+            // `let _ = ...`).
+            for row in &computed_rows {
+                self.record_trigger_undo(TriggerUndoOp::Insert {
+                    table: &table_name_for_undo,
+                    table_info: &table_info,
+                    row,
+                });
+            }
             Ok(())
         } else {
             Ok(())
@@ -707,7 +836,8 @@ impl TriggerExecutor {
             let mut modified_rows = Vec::new();
             let mut has_match = false;
 
-            for row in all_rows {
+            for row in all_rows.iter() {
+                let row = row.clone();
                 let trigger_ctx = crate::trigger_eval::TriggerContext::new(new_row, None)
                     .with_new_col_names(trigger_col_names.clone());
                 let eval_ctx = crate::trigger_eval::EvalContext::new(&trigger_ctx, Some(&row))
@@ -745,14 +875,30 @@ impl TriggerExecutor {
             drop(storage);
             if has_match {
                 // INT-4: routed through execute_dml_in_tx for VTU enforcement
+                // V312-55D: snapshot pre-image rows so the post-DML
+                // closure can record undo entries without holding the
+                // storage read lock.
+                let prior_rows = all_rows.clone();
                 let modified = modified_rows.clone();
+                let target_table_name = table_name.to_string();
+                let target_table_info = table_info.clone();
                 self.execute_dml_in_tx(|storage| {
-                    storage.delete(table_name, &[])?;
+                    storage.delete(&target_table_name, &[])?;
                     if !modified.is_empty() {
-                        storage.insert(table_name, modified)?;
+                        storage.insert(&target_table_name, modified.clone())?;
                     }
                     Ok(())
                 })?;
+                // V312-55D: record UndoRecord::Update per modified row
+                // so a top-level ROLLBACK can restore the pre-image.
+                for (prior, new) in prior_rows.iter().zip(modified.iter()) {
+                    self.record_trigger_undo(TriggerUndoOp::Update {
+                        table: &target_table_name,
+                        table_info: &target_table_info,
+                        prior_row: prior,
+                        new_row: new,
+                    });
+                }
             }
         }
         Ok(())
@@ -782,7 +928,22 @@ impl TriggerExecutor {
                 sqlrustgo_catalog::auth::Privilege::Delete,
                 &delete.tables[0].name,
             )?;
-            self.execute_dml_in_tx(|storage| storage.delete(&delete.tables[0].name, &[]))?;
+            // V312-55D: snapshot pre-image rows so the post-DML
+            // closure can record undo entries without holding the
+            // storage read lock.
+            let pre_delete_rows = self.storage.read().scan(&delete.tables[0].name)?;
+            let target_table_name = delete.tables[0].name.clone();
+            let target_table_info = table_info.clone();
+            self.execute_dml_in_tx(|storage| storage.delete(&target_table_name, &[]))?;
+            // V312-55D: record UndoRecord::Delete per deleted row so
+            // a top-level ROLLBACK can re-insert the pre-image.
+            for row in &pre_delete_rows {
+                self.record_trigger_undo(TriggerUndoOp::Delete {
+                    table: &target_table_name,
+                    table_info: &target_table_info,
+                    row,
+                });
+            }
         }
         Ok(())
     }
