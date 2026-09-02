@@ -59,6 +59,15 @@ pub struct ProcedureContext {
     cursors: HashMap<String, Cursor>,
     /// CTE (Common Table Expression) results: CTE name -> rows
     cte_tables: HashMap<String, Vec<Vec<Value>>>,
+    /// CTE column schemas: CTE name -> column defs. Issue #4622:
+    /// nested CTEs (e.g. `WITH a AS (...SELECT id, val FROM t), b AS
+    /// (SELECT * FROM a WHERE val < 25)`) need to know `a`'s columns
+    /// to resolve `val` when binding `b`'s subquery. Without this map
+    /// `b` falls through to the storage scan, which fails because `a`
+    /// isn't a real table. Stored as `ColumnDefinition` to match
+    /// `lookup_table_columns`'s return type so existing binder code
+    /// (which expects `Option<&[ColumnDefinition]>`) keeps working.
+    cte_columns: HashMap<String, Vec<sqlrustgo_storage::ColumnDefinition>>,
 }
 
 /// Exception handler registered by DECLARE HANDLER
@@ -96,6 +105,7 @@ impl ProcedureContext {
             current_exception: None,
             cursors: HashMap::new(),
             cte_tables: HashMap::new(),
+            cte_columns: HashMap::new(),
         }
     }
 
@@ -897,7 +907,41 @@ impl StoredProcExecutor {
                 if let Some(ref with_clause) = with_select.with_clause {
                     for cte in &with_clause.ctes {
                         let cte_records = self.execute_cte_subquery(&cte.subquery, ctx)?;
+                        // Issue #4622: derive the CTE's column list so
+                        // downstream CTEs can resolve `b.val` style
+                        // references against `a`. If the user wrote an
+                        // explicit column list (e.g. `b(id, val) AS ...`)
+                        // use it verbatim; otherwise fall back to the
+                        // first row's width with `col_N` placeholders.
+                        // Stored as ColumnDefinition to match the type
+                        // signature expected by `expression_to_value_with_row`
+                        // (`Option<&[ColumnDefinition]>`).
+                        let cte_cols: Vec<sqlrustgo_storage::ColumnDefinition> = if !cte.columns.is_empty() {
+                            cte.columns.iter().map(|n| sqlrustgo_storage::ColumnDefinition {
+                                name: n.clone(),
+                                data_type: "TEXT".to_string(),
+                                nullable: true,
+                                primary_key: false,
+                                char_max_length: None,
+                                collation: None,
+                                default_value: None,
+                                auto_increment: false,
+                            }).collect()
+                        } else {
+                            let width = cte_records.first().map(|r| r.len()).unwrap_or(0);
+                            (1..=width).map(|i| sqlrustgo_storage::ColumnDefinition {
+                                name: format!("col_{}", i),
+                                data_type: "TEXT".to_string(),
+                                nullable: true,
+                                primary_key: false,
+                                char_max_length: None,
+                                collation: None,
+                                default_value: None,
+                                auto_increment: false,
+                            }).collect()
+                        };
                         ctx.cte_tables.insert(cte.name.clone(), cte_records);
+                        ctx.cte_columns.insert(cte.name.clone(), cte_cols);
                     }
                 }
                 let select = &with_select.select;
@@ -1565,12 +1609,25 @@ impl StoredProcExecutor {
         match statement {
             sqlrustgo_parser::Statement::Select(select) => {
                 let table_name = &select.table;
-                let storage = self.storage.read();
-                let records = storage
-                    .scan(table_name)
-                    .map_err(|e| format!("Failed to scan CTE table: {}", e))?;
+                // Issue #4622: a CTE body may reference an earlier CTE
+                // (e.g. `b AS (SELECT * FROM a WHERE val < 25)`). When
+                // the table is a known CTE, fall through to its in-memory
+                // rows instead of the storage engine, which doesn't
+                // know about the CTE.
+                let records = if let Some(cte_rows) = ctx.cte_tables.get(table_name).cloned() {
+                    cte_rows
+                } else {
+                    let storage = self.storage.read();
+                    storage
+                        .scan(table_name)
+                        .map_err(|e| format!("Failed to scan CTE table: {}", e))?
+                };
 
-                let table_columns = self.lookup_table_columns(table_name);
+                let table_columns = if ctx.cte_columns.contains_key(table_name) {
+                    ctx.cte_columns.get(table_name).cloned()
+                } else {
+                    self.lookup_table_columns(table_name)
+                };
 
                 if let Some(ref where_expr) = select.where_clause {
                     let filtered: Vec<Vec<Value>> = records
