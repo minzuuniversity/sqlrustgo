@@ -169,10 +169,17 @@ jobs:
     # setsid+nohup+disown protection, re-introducing the parent-shell reap
     # bug that killed sqlrustgo mid-SOAK (7h28m evidence salvage).
     #
+    # Issue #4597 — Chaos drills unit test (T8). Verifies chaos_drills.sh
+    # has all 4 drill functions, dispatcher subcommands, EUID root guards
+    # for netem/clock drills, and SOAK_NO_MAIN guard on run_soak_loop.sh
+    # (so chaos_drills can source functions without triggering main).
+    #
     # This job runs the STATIC check only (~1s, no binary required). The
     # behavioral sub-test (SIGKILL parent + verify child survives) lives in
     # `bash scripts/soak/test_run_soak_loop_detach.sh --behavioral` and is
-    # invoked manually on hp-z6g4 (too slow for PR CI gate).
+    # invoked manually on hp-z6g4 (too slow for PR CI gate). Same applies
+    # to `bash scripts/soak/chaos_drills.sh smoke` (drill-1 SIGKILL+restart)
+    # which requires the release binary (~5min build) and ~60s wall-clock.
     #
     # Branches: v3.12.0 line only (SOAK scripts are v3.12.0+). Fast enough
     # that we run on EVERY branch, not just v3.12.0 — but skip if branch is
@@ -191,6 +198,8 @@ jobs:
           fi
       - name: Run static detach regression check
         run: bash scripts/soak/test_run_soak_loop_detach.sh
+      - name: Run static chaos drills regression check (#4597)
+        run: bash scripts/soak/test_chaos_drills.sh
 
   postcheck:
     runs-on: [hp-z6g4]
