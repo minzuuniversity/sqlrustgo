@@ -15353,6 +15353,28 @@ mod set_op_tests {
             err
         );
     }
+    // ----- V312-66 / Issue #4641: QuantifiedOp -----
+
+    #[test]
+    fn test_parse_quantified_op_any() {
+        let result = parse("SELECT * FROM t WHERE val > ANY (SELECT val FROM b)");
+        assert!(result.is_ok(), "Parse failed: {:?}", result);
+        if let Statement::Select(s) = result.unwrap() {
+            let where_expr = s.where_clause.as_ref().expect("WHERE clause present");
+            if let Expression::QuantifiedOp(bin, quant, _subq) = where_expr {
+                assert_eq!(quant, "ANY");
+                if let Expression::BinaryOp(_l, op, _r) = bin.as_ref() {
+                    assert_eq!(op, ">");
+                } else {
+                    panic!("Expected inner BinaryOp");
+                }
+            } else {
+                panic!("Expected QuantifiedOp, got {:?}", where_expr);
+            }
+        } else {
+            panic!("Expected Select");
+        }
+    }
 
     fn test_create_fulltext_index_missing_columns_errors() {
         let result = parse("CREATE FULLTEXT INDEX ft_idx ON t");

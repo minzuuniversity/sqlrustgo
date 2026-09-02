@@ -506,6 +506,12 @@ pub fn eval_predicate(expr: &Expression, row: &[Value], table_info: &TableInfo) 
             // matches the IN/NOT IN pattern.
             true
         }
+        // V312-66 / Issue #4641: same conservative pattern as IN/NOT IN/EXISTS
+        // — full subquery executor not reachable from this free function.
+        // Real per-row evaluation happens in
+        // `engine_select.rs::pre_evaluate_quantified_subquery` before
+        // `eval_predicate` is reached for non-correlated cases.
+        Expression::QuantifiedOp(_, _, _) => true,
         // For other expressions, evaluate and check if truthy.
         // The "TRUE"/"FALSE" literal now maps to Value::Boolean
         // (see parse_lit in crates/executor/src/expr/mod.rs), so
