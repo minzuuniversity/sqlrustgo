@@ -991,6 +991,24 @@ impl<S: StorageEngine + 'static> ExecutionEngine<S> {
                 if &rewritten != where_expr {
                     rows.retain(|row| eval_predicate(&rewritten, row, &table_info));
                 }
+                // V312-66 / Issue #4641: pre-evaluate `val <OP> ANY/ALL (subq)`
+                // per outer row. Executes the subquery once per row (the
+                // inner engine.execute_select reaches the catalog), pulls
+                // the first column, and applies ANY/ALL semantics with
+                // the comparison operator. Correlated subqueries that
+                // reference outer columns fall back to a conservative
+                // `true` (no errors thrown).
+                let mut quantified_new_rows: Vec<Vec<Value>> = Vec::with_capacity(rows.len());
+                for row in &rows {
+                    let pre = self.pre_evaluate_quantified_subquery(
+                        row, &table_info, &rewritten,
+                    );
+                    let expr = pre.unwrap_or_else(|| rewritten.clone());
+                    if eval_predicate(&expr, row, &table_info) {
+                        quantified_new_rows.push(row.clone());
+                    }
+                }
+                rows = quantified_new_rows;
             }
         }
 
@@ -6428,6 +6446,85 @@ impl<S: StorageEngine + 'static> ExecutionEngine<S> {
         match rewrite(self, where_expr) {
             Some(new_expr) => new_expr,
             None => where_expr.clone(),
+        }
+    }
+
+    /// V312-66 / Issue #4641: pre-evaluate `val <OP> ANY (subq)` /
+    /// `<OP> ALL (subq)` against the current outer row. Executes the
+    /// subquery once, extracts the first column, and applies ANY/ALL
+    /// semantics with the comparison operator.
+    ///
+    /// Returns the literal Boolean result. Correlated subqueries
+    /// (which reference outer columns) get the conservative `true`
+    /// fallback — matching the existing IN/EXISTS pattern at
+    /// `eval_predicate`.
+    fn pre_evaluate_quantified_subquery(
+        &self,
+        outer_row: &[sqlrustgo_types::Value],
+        outer_table_info: &TableInfo,
+        expr: &Expression,
+    ) -> Option<Expression> {
+        use sqlrustgo_types::Value as V;
+        match expr {
+            Expression::QuantifiedOp(bin, quant, subq) => {
+                // Pull LHS and op out of the inner BinaryOp
+                // (BinaryOp(LHS, op_string, Literal("ANY_SUBQUERY"))).
+                let (lhs_expr, op_str) = match bin.as_ref() {
+                    Expression::BinaryOp(l, op, _r) => (l.as_ref(), op.clone()),
+                    _ => return None,
+                };
+                let lhs_val = crate::expr_utils::evaluate_expression(
+                    lhs_expr, outer_row, outer_table_info,
+                ).unwrap_or(V::Null);
+                let subq_rows = self.execute_select(subq).ok()?.rows;
+                let subq_values: Vec<V> = subq_rows
+                    .into_iter()
+                    .filter_map(|mut row| {
+                        if row.is_empty() { None } else { Some(row.remove(0)) }
+                    })
+                    .collect();
+                let any = quant.eq_ignore_ascii_case("ANY")
+                    || quant.eq_ignore_ascii_case("SOME");
+                let all = quant.eq_ignore_ascii_case("ALL");
+                let result = if any {
+                    // ANY: TRUE if at least one non-NULL row satisfies.
+                    // FALSE if subquery is empty or all NULL.
+                    subq_values.iter().any(|sv| {
+                        !matches!(sv, V::Null)
+                            && crate::engine_utils::sql_compare(&op_str, &lhs_val, sv)
+                    })
+                } else if all {
+                    // ALL: TRUE if every non-NULL row satisfies (or
+                    // subquery is empty — vacuous truth).
+                    subq_values.iter().all(|sv| {
+                        matches!(sv, V::Null)
+                            || crate::engine_utils::sql_compare(&op_str, &lhs_val, sv)
+                    })
+                } else {
+                    return None;
+                };
+                Some(Expression::Literal(if result { "TRUE".to_string() } else { "FALSE".to_string() }))
+            }
+            Expression::BinaryOp(l, _, r) => {
+                let nl = self.pre_evaluate_quantified_subquery(outer_row, outer_table_info, l);
+                let nr = self.pre_evaluate_quantified_subquery(outer_row, outer_table_info, r);
+                if nl.is_none() && nr.is_none() {
+                    return None;
+                }
+                let op = match expr {
+                    Expression::BinaryOp(_, op, _) => op.clone(),
+                    _ => return None,
+                };
+                Some(Expression::BinaryOp(
+                    Box::new(nl.unwrap_or_else(|| *l.clone())),
+                    op,
+                    Box::new(nr.unwrap_or_else(|| *r.clone())),
+                ))
+            }
+            Expression::UnaryOp(op, inner) => self
+                .pre_evaluate_quantified_subquery(outer_row, outer_table_info, inner)
+                .map(|ni| Expression::UnaryOp(op.clone(), Box::new(ni))),
+            _ => None,
         }
     }
 }

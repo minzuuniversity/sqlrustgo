@@ -267,6 +267,10 @@ path = "tests/integration/sql/v312_64_fulltext_index_test.rs"
 name = "v312_65_insert_default_values_test"
 path = "tests/integration/sql/v312_65_insert_default_values_test.rs"
 [[test]]
+name = "v312_66_quantified_any_all_test"
+path = "tests/integration/sql/v312_66_quantified_any_all_test.rs"
+
+[[test]]
 name = "repro_v312_63"
 path = "tests/integration/sql/repro_v312_63.rs"
 
