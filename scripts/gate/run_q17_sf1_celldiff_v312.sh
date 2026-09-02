@@ -24,6 +24,11 @@
 #   3  test TIMEOUT (>${TIMEOUT_S}s wall clock)
 #
 # Reference: Issue #4540, Issue #4432 (Q17 perf follow-up), Issue #4502 (GA-5)
+#
+# ADR-008-exception: 2026-10-31 (openclaw) — Q17 SF=1 perf benchmark deferral,
+# GA-5 cell-diff gate (run via this script with --ignored) carries the
+# canonical PASS artifact. See docs/governance/adr/ADR-008-exception-v312-58-q17-sf1.md
+# (index label ADR-008y). Re-evaluate 2026-10-31.
 
 set -eo pipefail
 

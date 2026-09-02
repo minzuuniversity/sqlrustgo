@@ -229,18 +229,12 @@ mod tests {
 
     #[test]
     fn classify_insert_as_write() {
-        assert_eq!(
-            classify_sql("INSERT INTO t VALUES (1)"),
-            QueryClass::Write
-        );
+        assert_eq!(classify_sql("INSERT INTO t VALUES (1)"), QueryClass::Write);
     }
 
     #[test]
     fn classify_update_as_write() {
-        assert_eq!(
-            classify_sql("UPDATE t SET a = 1"),
-            QueryClass::Write
-        );
+        assert_eq!(classify_sql("UPDATE t SET a = 1"), QueryClass::Write);
     }
 
     #[test]
