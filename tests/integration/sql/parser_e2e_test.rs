@@ -542,9 +542,37 @@ fn dml_select_case_no_else() {
     assert_parses("SELECT CASE WHEN x > 0 THEN 'pos' END FROM t");
 }
 
+// V312-63 / Issue #4635: CASE <value> WHEN NULL THEN ... must treat the
+// literal NULL token as a Value::Null comparison instead of an identifier.
+#[test]
+fn v312_63_case_value_when_null_literal() {
+    assert_parses("SELECT CASE x WHEN NULL THEN 'null' ELSE 'set' END FROM t");
+    assert_parses("SELECT CASE x WHEN NULL THEN 1 WHEN 0 THEN 0 END FROM t");
+}
+
 #[test]
 fn dml_select_nullif() {
     assert_parses("SELECT NULLIF(x, 0) FROM t");
+}
+
+// V312-63 / Issue #4627: TIMESTAMPDIFF(unit, ts1, ts2) — unit is the first
+// positional argument and must NOT be parsed as a column lookup.
+#[test]
+fn v312_63_timestampdiff_minute_unit_string() {
+    assert_parses("SELECT TIMESTAMPDIFF(MINUTE, '2024-01-01 00:00:00', '2024-01-01 00:30:00')");
+}
+
+#[test]
+fn v312_63_timestampdiff_minute_unit_identifier() {
+    // The unit keyword is parsed as an Identifier token; the executor
+    // resolves it to the unit constant rather than treating it as a
+    // column name.
+    assert_parses("SELECT TIMESTAMPDIFF(MINUTE, started_at, ended_at) FROM events");
+}
+
+#[test]
+fn v312_63_timestampdiff_year_unit() {
+    assert_parses("SELECT TIMESTAMPDIFF(YEAR, '2010-01-01', '2024-01-01') FROM dual");
 }
 
 #[test]
@@ -829,6 +857,20 @@ fn dml_insert_with_cte() {
 #[test]
 fn dml_insert_on_duplicate_key() {
     assert_parses("INSERT INTO t (id, x) VALUES (1, 2) ON DUPLICATE KEY UPDATE x = x + 1");
+}
+
+// V312-63 / Issue #4642: SQLite/Postgres-style UPSERT.
+#[test]
+fn v312_63_insert_on_conflict_do_nothing() {
+    assert_parses("INSERT INTO t (id, x) VALUES (1, 2) ON CONFLICT (id) DO NOTHING");
+    assert_parses("INSERT INTO t (id, x) VALUES (1, 2) ON CONFLICT DO NOTHING");
+}
+
+#[test]
+fn v312_63_insert_on_conflict_do_update_set() {
+    assert_parses(
+        "INSERT INTO t (id, x, v) VALUES (1, 2, 3) ON CONFLICT (id) DO UPDATE SET x = x + 1, v = 99",
+    );
 }
 
 #[test]

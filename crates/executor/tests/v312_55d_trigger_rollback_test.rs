@@ -98,8 +98,7 @@ fn v312_55d_after_update_trigger_rolled_back() {
     e.execute("CREATE TABLE update_audit (id int, old_val int, new_val int)")
         .unwrap();
     // Seed one row so the UPDATE matches something.
-    e.execute("INSERT INTO counters VALUES (1, 100)")
-        .unwrap();
+    e.execute("INSERT INTO counters VALUES (1, 100)").unwrap();
     e.execute(
         "CREATE TRIGGER audit_updates AFTER UPDATE ON counters FOR EACH ROW \
          BEGIN \
@@ -141,7 +140,8 @@ fn v312_55d_after_delete_trigger_rolled_back() {
     let mut e = fresh_engine();
     e.execute("CREATE TABLE customers (id int PRIMARY KEY, name text)")
         .unwrap();
-    e.execute("CREATE TABLE delete_audit (id int, name text)").unwrap();
+    e.execute("CREATE TABLE delete_audit (id int, name text)")
+        .unwrap();
     e.execute("INSERT INTO customers VALUES (7, 'Alice')")
         .unwrap();
     e.execute(
