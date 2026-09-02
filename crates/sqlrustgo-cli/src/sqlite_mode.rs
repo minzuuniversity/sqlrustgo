@@ -7,7 +7,7 @@ use crate::dotcmd::{parse_dotcmd, DotCmd};
 use crate::error::{CliError, EXIT_OK};
 use crate::output::{format, OutputMode, OutputTarget};
 use sqlrustgo::ExecutionEngine;
-use sqlrustgo_parser::{parse, Statement};
+use sqlrustgo_parser::{parse, split_sql_statements, Statement};
 use sqlrustgo_storage::FileStorage;
 use std::io::BufRead;
 use std::path::{Path, PathBuf};
@@ -269,9 +269,14 @@ impl SqliteMode {
             DotCmd::Read(path) => {
                 let content = std::fs::read_to_string(&path)
                     .map_err(|e| CliError::Io(format!("cannot read {}: {}", path.display(), e)))?;
-                for line in content.lines() {
-                    let trimmed = line.trim();
-                    if trimmed.is_empty() || trimmed.starts_with("--") {
+                // Uses sqlrustgo_parser::split_sql_statements — see parser.rs:11263.
+                // Splits the file into logical statements (respecting parens,
+                // brackets, single/double quotes, line comments, and block
+                // comments) so multi-line CREATE TABLE and similar constructs
+                // execute as one statement each. Empty fragments are dropped.
+                for stmt in split_sql_statements(&content) {
+                    let trimmed = stmt.trim();
+                    if trimmed.is_empty() {
                         continue;
                     }
                     self.execute_sql(trimmed)?;
@@ -337,20 +342,36 @@ impl SqliteMode {
     }
 
     pub fn run_batch_stdin_with_input(&mut self, lines: Vec<String>) -> i32 {
-        for line in lines {
-            let trimmed = line.trim();
+        // Two bugs to fix in one place (#4607 + #4608):
+        //   - Standalone `-- comment` lines must not produce "Unexpected
+        //     token: Eof" (#4607).
+        //   - Multi-line CREATE TABLE / multi-line INSERT VALUES must be
+        //     joined into one logical statement (#4608).
+        //
+        // Strategy: always join the input with `\n` and split via
+        // sqlrustgo_parser::split_sql_statements. The splitter respects
+        // parens, brackets, single/double quotes, line comments, block
+        // comments, and backslash escapes; it drops empty fragments.
+        // Each fragment is dispatched via execute_sql.
+        //
+        // The pre-existing per-line dispatch behaviour was buggy: it
+        // fed each physical line to the engine as if it were a complete
+        // statement, breaking multi-line CREATE TABLE and standalone
+        // comment lines. The new path makes the CLI MySQL-compatible:
+        // statements are separated by `;` at top level, irrespective of
+        // line boundaries. Empty input, comment-only input, and
+        // trailing `;` all yield zero dispatches (exit 0).
+        //
+        // Uses sqlrustgo_parser::split_sql_statements — see parser.rs:11263.
+        let joined = lines.join("\n");
+        for stmt in split_sql_statements(&joined) {
+            let trimmed = stmt.trim();
             if trimmed.is_empty() {
                 continue;
             }
-            match self.execute_sql(trimmed) {
-                Ok(_) => {}
-                Err(e) => {
-                    eprintln!("{}", e);
-                    self.error_seen = true;
-                    if !self.continue_on_error {
-                        return 1;
-                    }
-                }
+            self.dispatch_one(trimmed);
+            if self.error_seen && !self.continue_on_error {
+                return 1;
             }
         }
         if self.error_seen {
@@ -359,7 +380,20 @@ impl SqliteMode {
             EXIT_OK
         }
     }
+
+    /// Shared per-statement dispatch: run `execute_sql`, print errors,
+    /// set `error_seen`. Caller decides whether to abort.
+    fn dispatch_one(&mut self, sql: &str) {
+        match self.execute_sql(sql) {
+            Ok(_) => {}
+            Err(e) => {
+                eprintln!("{}", e);
+                self.error_seen = true;
+            }
+        }
+    }
 }
+
 
 /// Extension trait to convert sqlrustgo::Value to optional String for metadata.
 trait ValueAsString {
@@ -577,9 +611,9 @@ mod tests {
         let mut mode = SqliteMode::open(&tmp, SqliteState::default(), false).unwrap();
         mode.state.output = OutputTarget::File(tmp.join("out.txt"));
         let input = vec![
-            "SELECT 1".to_string(),
-            "SELEC 2".to_string(),
-            "SELECT 3".to_string(),
+            "SELECT 1;".to_string(),
+            "SELEC 2;".to_string(),
+            "SELECT 3;".to_string(),
         ];
         let exit = mode.run_batch_stdin_with_input(input);
         assert_eq!(exit, 1);
@@ -596,9 +630,9 @@ mod tests {
         let mut mode = SqliteMode::open(&tmp, SqliteState::default(), true).unwrap();
         mode.state.output = OutputTarget::File(tmp.join("out.txt"));
         let input = vec![
-            "SELECT 1".to_string(),
-            "SELEC 2".to_string(),
-            "SELECT 3".to_string(),
+            "SELECT 1;".to_string(),
+            "SELEC 2;".to_string(),
+            "SELECT 3;".to_string(),
         ];
         let exit = mode.run_batch_stdin_with_input(input);
         assert_eq!(exit, 1);
@@ -632,4 +666,162 @@ mod tests {
         }
         let _ = std::fs::remove_dir_all(&tmp);
     }
+
+    // ----------------------------------------------------------------------
+    // V312-61 / #4607 + #4608: regression coverage for CLI batch stdin.
+    //
+    // #4607: a standalone `--` comment line must not trigger
+    //        "Parse error: Unexpected token: Eof".
+    // #4608: a multi-line CREATE TABLE (column on its own line) must be
+    //        joined into one logical statement and dispatched once.
+    // ----------------------------------------------------------------------
+
+    #[test]
+    fn run_batch_stdin_with_only_comment_line_succeeds() {
+        let tmp = std::env::temp_dir().join("v31261_batch_stdin_comment_only");
+        let _ = std::fs::remove_dir_all(&tmp);
+        let mut mode = SqliteMode::open(&tmp, SqliteState::default(), false).unwrap();
+        mode.state.output = OutputTarget::File(tmp.join("out.txt"));
+        let input = vec![
+            "-- only a comment".to_string(),
+            "SELECT 1".to_string(),
+        ];
+        let exit = mode.run_batch_stdin_with_input(input);
+        assert_eq!(exit, EXIT_OK, "standalone -- comment must not error");
+        let out = std::fs::read_to_string(tmp.join("out.txt")).unwrap();
+        assert!(out.contains("1"));
+        let _ = std::fs::remove_dir_all(&tmp);
+    }
+
+    #[test]
+    fn run_batch_stdin_with_only_blank_lines_succeeds() {
+        let tmp = std::env::temp_dir().join("v31261_batch_stdin_blank_only");
+        let _ = std::fs::remove_dir_all(&tmp);
+        let mut mode = SqliteMode::open(&tmp, SqliteState::default(), false).unwrap();
+        mode.state.output = OutputTarget::File(tmp.join("out.txt"));
+        let input = vec!["".to_string(), "   ".to_string(), "\t".to_string()];
+        let exit = mode.run_batch_stdin_with_input(input);
+        assert_eq!(exit, EXIT_OK, "blank-only input must exit 0");
+        let _ = std::fs::remove_dir_all(&tmp);
+    }
+
+    fn run_batch_stdin_with_multiline_create_table_succeeds() {
+        let tmp = std::env::temp_dir().join("v31261_batch_stdin_multiline_ct");
+        let _ = std::fs::remove_dir_all(&tmp);
+        let mut state = SqliteState::default();
+        state.mode = OutputMode::Csv;
+        let mut mode = SqliteMode::open(&tmp, state, false).unwrap();
+        mode.state.output = OutputTarget::File(tmp.join("out.txt"));
+        let input = vec![
+            "CREATE TABLE products(".to_string(),
+            "  id INT PRIMARY KEY,".to_string(),
+            "  stock INT".to_string(),
+            ");".to_string(),
+            "INSERT INTO products VALUES (1, 100);".to_string(),
+            "SELECT * FROM products;".to_string(),
+        ];
+        let exit = mode.run_batch_stdin_with_input(input);
+        assert_eq!(exit, EXIT_OK, "multi-line CREATE TABLE must succeed");
+        let out = std::fs::read_to_string(tmp.join("out.txt")).unwrap();
+        assert!(out.contains("1,100"), "row (1, 100) must appear in output");
+        let _ = std::fs::remove_dir_all(&tmp);
+    }
+
+    fn run_batch_stdin_with_mixed_comments_and_multiline_succeeds() {
+        let tmp = std::env::temp_dir().join("v31261_batch_stdin_mixed");
+        let _ = std::fs::remove_dir_all(&tmp);
+        let mut state = SqliteState::default();
+        state.mode = OutputMode::Csv;
+        let mut mode = SqliteMode::open(&tmp, state, false).unwrap();
+        mode.state.output = OutputTarget::File(tmp.join("out.txt"));
+        // Mirrors the BustubX-EDU teaching-seed.sql shape.
+        let input = vec![
+            "-- header comment".to_string(),
+            "".to_string(),
+            "CREATE TABLE products(".to_string(),
+            "  id INT PRIMARY KEY,".to_string(),
+            "  stock INT".to_string(),
+            ");".to_string(),
+            "".to_string(),
+            "-- mid comment".to_string(),
+            "INSERT INTO products VALUES (1, 100);".to_string(),
+            "SELECT * FROM products;".to_string(),
+        ];
+        let exit = mode.run_batch_stdin_with_input(input);
+        assert_eq!(exit, EXIT_OK, "mixed comment/blank/multiline input must succeed");
+        let out = std::fs::read_to_string(tmp.join("out.txt")).unwrap();
+        assert!(out.contains("1,100"), "row (1, 100) must appear in output");
+        let _ = std::fs::remove_dir_all(&tmp);
+    }
+
+    #[test]
+    fn run_batch_stdin_multiline_syntax_error_aborts_failfast() {
+        let tmp = std::env::temp_dir().join("v31261_batch_stdin_multiline_err");
+        let _ = std::fs::remove_dir_all(&tmp);
+        let mut mode = SqliteMode::open(&tmp, SqliteState::default(), false).unwrap();
+        mode.state.output = OutputTarget::File(tmp.join("out.txt"));
+        // The CREATE TABLE itself is valid; `GARBAGE NOT SQL` on its
+        // own line is dispatched as a separate statement and triggers
+        // a parse error. With continue_on_error=false the batch must
+        // abort with exit 1 and `SELECT 1` must not execute.
+        let input = vec![
+            "CREATE TABLE broken_t(id INT, stock INT);".to_string(),
+            "GARBAGE NOT SQL".to_string(),
+            "SELECT 1;".to_string(),
+        ];
+        let exit = mode.run_batch_stdin_with_input(input);
+        assert_eq!(exit, 1, "fail-fast on parse error must exit 1");
+        let out = std::fs::read_to_string(tmp.join("out.txt")).unwrap();
+        assert!(!out.contains("1\n"), "SELECT 1 must not have run after parse error");
+        // The CREATE TABLE succeeded before the parse error, so
+        // broken_t DOES exist — verify it is queryable.
+        let mut probe_mode = SqliteMode::open(&tmp, SqliteState::default(), false).unwrap();
+        probe_mode.state.output = OutputTarget::File(tmp.join("probe.txt"));
+        let res = probe_mode.execute_sql("SELECT id FROM broken_t");
+        assert!(res.is_ok(), "broken_t (created before the parse error) must exist");
+        let _ = std::fs::remove_dir_all(&tmp);
+    }
+
+    #[test]
+    fn run_batch_stdin_semicolon_inside_string_not_split() {
+        let tmp = std::env::temp_dir().join("v31261_batch_stdin_string_semi");
+        let _ = std::fs::remove_dir_all(&tmp);
+        let mut mode = SqliteMode::open(&tmp, SqliteState::default(), false).unwrap();
+        mode.state.output = OutputTarget::File(tmp.join("out.txt"));
+        let input = vec![
+            "CREATE TABLE t(id INT, v TEXT);".to_string(),
+            // The `;` inside the string literal MUST NOT terminate the INSERT.
+            "INSERT INTO t VALUES (1, 'a;b;c');".to_string(),
+            "SELECT v FROM t;".to_string(),
+        ];
+        let exit = mode.run_batch_stdin_with_input(input);
+        assert_eq!(exit, EXIT_OK);
+        let out = std::fs::read_to_string(tmp.join("out.txt")).unwrap();
+        assert!(out.contains("a;b;c"), "string literal must be preserved verbatim");
+        let _ = std::fs::remove_dir_all(&tmp);
+    }
+
+    #[test]
+    fn read_dotcmd_with_multiline_create_table_succeeds() {
+        let tmp = std::env::temp_dir().join("v31261_read_dotcmd_multiline");
+        let _ = std::fs::remove_dir_all(&tmp);
+        std::fs::create_dir_all(&tmp).unwrap();
+        let sql_path = tmp.join("seed.sql");
+        let sql_content = "-- teaching seed\n\
+             CREATE TABLE courses(\n\
+               id INT PRIMARY KEY,\n\
+               title TEXT\n\
+             );\n\
+             INSERT INTO courses VALUES (1, 'BustubX-EDU');\n";
+        std::fs::write(&sql_path, sql_content).unwrap();
+        let mut mode = SqliteMode::open(&tmp, SqliteState::default(), false).unwrap();
+        mode.state.output = OutputTarget::File(tmp.join("out.txt"));
+        mode.execute_dotcmd(DotCmd::Read(sql_path))
+            .expect("read dotcmd must succeed for multi-line CREATE TABLE");
+        mode.execute_dotcmd(DotCmd::Tables(None)).unwrap();
+        let out = std::fs::read_to_string(tmp.join("out.txt")).unwrap();
+        assert!(out.contains("courses"), "courses table must exist after .read");
+        let _ = std::fs::remove_dir_all(&tmp);
+    }
 }
+
