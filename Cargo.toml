@@ -271,6 +271,10 @@ name = "repro_v312_63"
 path = "tests/integration/sql/repro_v312_63.rs"
 
 [[test]]
+name = "repro_v312_64a"
+path = "tests/integration/sql/repro_v312_64a.rs"
+
+[[test]]
 name = "cbo_integration_test"
 path = "tests/integration/optimizer/cbo_integration_test.rs"
 

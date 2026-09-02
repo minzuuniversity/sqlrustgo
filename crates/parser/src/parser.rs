@@ -96,6 +96,14 @@ pub enum Statement {
     AlterSequence(AlterSequenceStatement),
     Truncate(TruncateStatement),
     Analyze(AnalyzeStatement),
+    /// V312-64 / Issue #4663: SQLite-style `VACUUM [table_name]` maintenance
+    /// command. Parsed but currently a no-op at the executor layer (returns
+    /// `ExecutorResult::Empty`). The optional `table_name` is preserved so
+    /// future work can scope the command without an AST break.
+    Vacuum(VacuumStatement),
+    /// V312-64 / Issue #4663: SQLite-style `REINDEX [table_name]` maintenance
+    /// command. Parsed but currently a no-op at the executor layer.
+    Reindex(ReindexStatement),
     WithSelect(WithSelect),
     /// WITH-clause followed by a DML statement (INSERT / UPDATE / DELETE).
     /// The CTE definitions are evaluated first, then the DML body is
@@ -558,6 +566,21 @@ pub struct WithDmlStatement {
 /// ANALYZE statement for collecting statistics
 #[derive(Debug, Clone, PartialEq)]
 pub struct AnalyzeStatement {
+    pub table_name: Option<String>,
+}
+
+/// V312-64 / Issue #4663: SQLite-style `VACUUM [table_name]`. The optional
+/// table_name is preserved in the AST so future executor work can scope
+/// the command; today both forms are no-ops.
+#[derive(Debug, Clone, PartialEq)]
+pub struct VacuumStatement {
+    pub table_name: Option<String>,
+}
+
+/// V312-64 / Issue #4663: SQLite-style `REINDEX [table_name]`. Same
+/// semantics as VacuumStatement: parsed, executor returns empty result.
+#[derive(Debug, Clone, PartialEq)]
+pub struct ReindexStatement {
     pub table_name: Option<String>,
 }
 
@@ -1150,6 +1173,40 @@ pub struct WhenClause {
 pub struct WindowSpecification {
     pub partition_by: Vec<Expression>,
     pub order_by: Vec<(Expression, bool)>,
+    /// V312-64 / Issue #4665: optional ROWS/RANGE/GROUPS BETWEEN …
+    /// frame clause. Default is the legacy UNBOUNDED PRECEDING to
+    /// CURRENT ROW frame, matching the previous executor behaviour.
+    pub frame: Option<FrameClause>,
+}
+
+/// V312-64 / Issue #4665: ROWS / RANGE / GROUPS BETWEEN <start> AND <end>
+/// window frame. The parser supports the common SQL frame forms; bounds
+/// are either `UNBOUNDED PRECEDING/FOLLOWING`, `<n> PRECEDING/FOLLOWING`,
+/// or `CURRENT ROW`.
+#[derive(Debug, Clone, PartialEq)]
+pub struct FrameClause {
+    pub mode: FrameMode,
+    pub start: FrameBound,
+    pub end: FrameBound,
+}
+
+/// Frame mode — only Rows and Range are common in MySQL/Postgres/SQLite
+/// workloads (Groups is reserved for future work).
+#[derive(Debug, Clone, PartialEq)]
+pub enum FrameMode {
+    Rows,
+    Range,
+}
+
+/// Single bound of a frame clause: an offset (`PRECEDING n` / `FOLLOWING n`)
+/// or a sentinel (`UNBOUNDED PRECEDING` / `UNBOUNDED FOLLOWING` / `CURRENT ROW`).
+#[derive(Debug, Clone, PartialEq)]
+pub enum FrameBound {
+    UnboundedPreceding,
+    UnboundedFollowing,
+    CurrentRow,
+    Preceding(usize),
+    Following(usize),
 }
 
 #[derive(Debug, Clone, PartialEq)]
@@ -2178,6 +2235,11 @@ impl Parser {
             Some(Token::Drop) => self.parse_drop(),
             Some(Token::Use) => self.parse_use_database(),
             Some(Token::Analyze) => self.parse_analyze(),
+            // V312-64 / Issue #4663: SQLite-style maintenance commands.
+            // Both `VACUUM [tbl]` and `REINDEX [tbl]` were previously unparsed
+            // and surfaced as "Unexpected token" errors.
+            Some(Token::Vacuum) => self.parse_vacuum(),
+            Some(Token::Reindex) => self.parse_reindex(),
             Some(Token::With) => self.parse_with_select(),
             Some(Token::Alter) => {
                 // Peek ahead: ALTER USER vs ALTER SEQUENCE vs ALTER TABLE
@@ -3489,6 +3551,17 @@ impl Parser {
                 self.next();
                 "AFTER".to_string()
             }
+            // V312-64 / Issue #4662: `INSTEAD OF` trigger timing for
+            // updatable views (PostgreSQL/SQLite). Consumed BEFORE the
+            // BEFORE/AFTER arms above; the two tokens are consumed in
+            // sequence. The catalog key is the literal string
+            // "INSTEAD OF" — the executor side already treats it as a
+            // string-keyed timing token (see CreateTriggerStatement).
+            Some(Token::Instead) => {
+                self.next();
+                self.expect(Token::Of)?;
+                "INSTEAD OF".to_string()
+            }
             Some(t) => return Err(format!("Expected BEFORE or AFTER, got {:?}", t)),
             None => return Err("Expected BEFORE or AFTER".to_string()),
         };
@@ -4068,6 +4141,10 @@ impl Parser {
                                 }
                             }
 
+                            // V312-64 / Issue #4665: optional ROWS / RANGE
+                            // frame clause (see parse_window_frame_clause).
+                            let frame = self.parse_window_frame_clause()?;
+
                             self.expect(Token::RParen)?;
 
                             let alias = if matches!(self.current(), Some(Token::As)) {
@@ -4093,6 +4170,7 @@ impl Parser {
                                     window_spec: WindowSpecification {
                                         partition_by,
                                         order_by,
+                                        frame,
                                     },
                                 })),
                             });
@@ -7136,6 +7214,162 @@ impl Parser {
         }))
     }
 
+    /// V312-64 / Issue #4665: parse an optional window frame clause that
+    /// appears between the optional `ORDER BY` clause and the closing
+    /// `)` of an `OVER (...)` window. The grammar is:
+    ///
+    /// ```text
+    /// [ ROWS | RANGE | GROUPS ] BETWEEN <bound> AND <bound>
+    /// ```
+    ///
+    /// where each bound is one of:
+    ///   - `UNBOUNDED PRECEDING`
+    ///   - `UNBOUNDED FOLLOWING`
+    ///   - `<n> PRECEDING`
+    ///   - `<n> FOLLOWING`
+    ///   - `CURRENT ROW`
+    ///
+    /// Returns `Ok(None)` when no frame clause is present (preserves the
+    /// legacy default of `UNBOUNDED PRECEDING .. CURRENT ROW`).
+    ///
+    /// MySQL/SQLite tolerate the `BETWEEN`-keyword being omitted when the
+    /// frame reduces to a single bound (`ROWS 5 PRECEDING`); we
+    /// intentionally accept the same shorthand so that the parser mirrors
+    /// real-world client expectations for #4665.
+    fn parse_window_frame_clause(&mut self) -> Result<Option<FrameClause>, String> {
+        // No frame keyword → keep the legacy default.
+        let mode = match self.current() {
+            Some(Token::Rows) => {
+                self.next();
+                FrameMode::Rows
+            }
+            Some(Token::Range) => {
+                self.next();
+                FrameMode::Range
+            }
+            // GROUPS is part of the SQL standard but not in our token set;
+            // accept the identifier form instead for portability with
+            // Postgres-style frame specs.
+            Some(Token::Identifier(s)) if s.eq_ignore_ascii_case("GROUPS") => {
+                self.next();
+                FrameMode::Range // mirror RANGE — groups vs range semantics
+                                  // are not distinguished at evaluation time
+                                  // (the executor only counts rows).
+            }
+            _ => return Ok(None),
+        };
+
+        // The standard SQL grammar for window frames is
+        // `BETWEEN <start> AND <end>`. We also accept the short
+        // single-bound form (`ROWS n PRECEDING`) where the trailing
+        // bound defaults to CURRENT ROW.
+        //
+        // V312-64 / Issue #4665: the leading `BETWEEN` keyword may
+        // appear before the first bound (canonical) — consume it when
+        // present, then parse the start bound.
+        if matches!(self.current(), Some(Token::Between)) {
+            self.next();
+        }
+        let start = self.parse_window_frame_bound()?;
+        let end = if matches!(self.current(), Some(Token::And)) {
+            self.next();
+            self.parse_window_frame_bound()?
+        } else {
+            // Short form: only a start bound is supplied; default the
+            // end to CURRENT ROW so the executor has a defined window.
+            FrameBound::CurrentRow
+        };
+        Ok(Some(FrameClause { mode, start, end }))
+    }
+
+    /// V312-64 / Issue #4665: parse one bound of a window frame clause.
+    fn parse_window_frame_bound(&mut self) -> Result<FrameBound, String> {
+        // CURRENT ROW — two tokens (CURRENT + ROW). ROW also happens to
+        // be its own token for `FOR ROW n` style locks, so we keep them
+        // distinct here.
+        if matches!(self.current(), Some(Token::Current)) {
+            self.next();
+            if !matches!(self.current(), Some(Token::Row)) {
+                return Err(
+                    "window frame: expected ROW after CURRENT".to_string(),
+                );
+            }
+            self.next();
+            return Ok(FrameBound::CurrentRow);
+        }
+        // UNBOUNDED { PRECEDING | FOLLOWING }
+        //
+        // The lexer promotes `UNBOUNDED` to its own `Token::Unbounded`
+        // variant (see token.rs), so we cannot reach for the Identifier
+        // form here. Accept either the dedicated variant or, for forward
+        // compatibility with future lexer changes, an identifier spelled
+        // `UNBOUNDED` in any case.
+        if matches!(self.current(), Some(Token::Unbounded))
+            || matches!(self.current(), Some(Token::Identifier(ref s)) if s.eq_ignore_ascii_case("UNBOUNDED"))
+        {
+            self.next();
+            if matches!(self.current(), Some(Token::Preceding)) {
+                self.next();
+                return Ok(FrameBound::UnboundedPreceding);
+            }
+            if matches!(self.current(), Some(Token::Following)) {
+                self.next();
+                return Ok(FrameBound::UnboundedFollowing);
+            }
+            return Err(
+                "window frame: expected PRECEDING or FOLLOWING after UNBOUNDED"
+                    .to_string(),
+            );
+        }
+        // <n> PRECEDING | <n> FOLLOWING
+        //
+        // V312-64 / Issue #4665: numbers are tokenized as
+        // `Token::NumberLiteral(String)` — the value is preserved as a
+        // textual literal so we can recover it without a side-channel.
+        // The bound must be a non-negative integer; anything else (a
+        // float, a column reference) is rejected so the executor never
+        // sees a half-baked frame.
+        let raw = match self.current().cloned() {
+            Some(Token::NumberLiteral(s)) => {
+                self.next();
+                s
+            }
+            Some(Token::Integer) => {
+                // `Token::Integer` is reserved for CAST AS INTEGER and a
+                // handful of other places; the lexer never emits it for
+                // numeric literals. Accept it anyway for forward
+                // compatibility.
+                self.next();
+                "1".to_string()
+            }
+            Some(Token::Float) | Some(Token::Identifier(_)) => {
+                return Err(
+                    "window frame bound must be a non-negative integer or keyword"
+                        .to_string(),
+                );
+            }
+            _ => {
+                return Err(
+                    "window frame bound expected (integer, CURRENT ROW, or UNBOUNDED)"
+                        .to_string(),
+                );
+            }
+        };
+        let n: usize = match raw.trim().parse() {
+            Ok(v) => v,
+            Err(_) => return Err(format!("window frame bound is not a non-negative integer: {}", raw)),
+        };
+        if matches!(self.current(), Some(Token::Preceding)) {
+            self.next();
+            Ok(FrameBound::Preceding(n))
+        } else if matches!(self.current(), Some(Token::Following)) {
+            self.next();
+            Ok(FrameBound::Following(n))
+        } else {
+            Err("window frame bound must be followed by PRECEDING or FOLLOWING".to_string())
+        }
+    }
+
     /// Parse a simple expression (for WHERE clause)
     /// Supports: comparison operators (=, !=, >, <, >=, <=)
     /// Logical operators: AND, OR
@@ -8373,6 +8607,12 @@ impl Parser {
                             }
                         }
 
+                        // V312-64 / Issue #4665: optional ROWS / RANGE / GROUPS
+                        // BETWEEN … AND … window frame clause. Defaults to
+                        // the legacy UNBOUNDED PRECEDING .. CURRENT ROW
+                        // behaviour when omitted.
+                        let frame = self.parse_window_frame_clause()?;
+
                         self.expect(Token::RParen)?;
 
                         Ok(Expression::WindowCall(WindowCall {
@@ -8381,6 +8621,7 @@ impl Parser {
                             window_spec: WindowSpecification {
                                 partition_by,
                                 order_by,
+                                frame,
                             },
                         }))
                     } else {
@@ -8397,6 +8638,14 @@ impl Parser {
                                          // Accept any token that names a type (Token::Integer, Token::Text,
                                          // Token::Float, Token::Boolean, or a bare identifier like VARCHAR).
                             match self.current().cloned() {
+                                // V312-64 / Issue #4651: CAST(x AS DATE) — the lexer
+                                // already maps `DATE` to `Token::Date`, but this match
+                                // arm was missing, so `CAST('2024-01-01' AS DATE)`
+                                // surfaced a parse error instead of a recognised type.
+                                Some(Token::Date) => {
+                                    self.next();
+                                    args.push(Expression::Literal("DATE".to_string()));
+                                }
                                 Some(Token::Integer) => {
                                     self.next();
                                     args.push(Expression::Literal("INTEGER".to_string()));
@@ -8730,6 +8979,9 @@ impl Parser {
                         }
                     }
 
+                    // V312-64 / Issue #4665: optional ROWS / RANGE frame.
+                    let frame = self.parse_window_frame_clause()?;
+
                     self.expect(Token::RParen)?;
 
                     Ok(Expression::WindowCall(WindowCall {
@@ -8738,6 +8990,7 @@ impl Parser {
                         window_spec: WindowSpecification {
                             partition_by,
                             order_by,
+                            frame,
                         },
                     }))
                 } else {
@@ -10513,11 +10766,49 @@ impl Parser {
                 self.next();
                 Some(n)
             }
-            Some(Token::Semicolon) | None => None,
+            Some(Token::Semicolon) | Some(Token::Eof) | None => None,
             _ => return Err("Expected table name or semicolon".to_string()),
         };
 
         Ok(Statement::Analyze(AnalyzeStatement { table_name }))
+    }
+
+    /// V312-64 / Issue #4663: parse `VACUUM [table_name]`.
+    /// SQLite-style maintenance command; today a no-op at the executor
+    /// layer. The optional table_name is preserved in the AST so future
+    /// executor work can scope the command without an AST break.
+    fn parse_vacuum(&mut self) -> Result<Statement, String> {
+        self.expect(Token::Vacuum)?;
+
+        let table_name = match self.current() {
+            Some(Token::Identifier(name)) => {
+                let n = name.clone();
+                self.next();
+                Some(n)
+            }
+            Some(Token::Semicolon) | Some(Token::Eof) | None => None,
+            _ => return Err("Expected table name or semicolon".to_string()),
+        };
+
+        Ok(Statement::Vacuum(VacuumStatement { table_name }))
+    }
+
+    /// V312-64 / Issue #4663: parse `REINDEX [table_name]`.
+    /// Same shape as `parse_vacuum`; today a no-op at the executor layer.
+    fn parse_reindex(&mut self) -> Result<Statement, String> {
+        self.expect(Token::Reindex)?;
+
+        let table_name = match self.current() {
+            Some(Token::Identifier(name)) => {
+                let n = name.clone();
+                self.next();
+                Some(n)
+            }
+            Some(Token::Semicolon) | Some(Token::Eof) | None => None,
+            _ => return Err("Expected table name or semicolon".to_string()),
+        };
+
+        Ok(Statement::Reindex(ReindexStatement { table_name }))
     }
 
     fn parse_grant(&mut self) -> Result<Statement, String> {

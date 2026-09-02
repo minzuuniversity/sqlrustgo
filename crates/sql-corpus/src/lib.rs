@@ -251,6 +251,12 @@ impl SimpleExecutor {
                 Ok(ExecutorResult::new(vec![], 0))
             }
             Statement::CreateIndex(_) => Ok(ExecutorResult::new(vec![], 0)),
+            // V312-64 / Issue #4663: VACUUM / REINDEX are no-op maintenance
+            // commands at the corpus fuzz harness level. The executor
+            // already accepts these (returning ExecutorResult::empty()),
+            // so just emit the same shape here.
+            Statement::Vacuum(_) => Ok(ExecutorResult::new(vec![], 0)),
+            Statement::Reindex(_) => Ok(ExecutorResult::new(vec![], 0)),
             Statement::WithSelect(with_select) => {
                 self.execute_with_select(&with_select)?;
                 Ok(ExecutorResult::new(vec![], 0))
