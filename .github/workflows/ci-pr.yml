@@ -191,6 +191,9 @@ jobs:
       - name: SOAK Tier-1 env override + QPS 解析 (P-2/P-3/P-4/P-9)
         run: bash scripts/soak/test_run_soak_loop_tier1.sh
 
+      - name: SOAK Tier-2 workload sweep + JSON reports + disk-restart boundary (P-6/P-10/P-5)
+        run: bash scripts/soak/test_run_soak_loop_tier2.sh
+
   # ----------------------------------------
   # Security audit
   # ----------------------------------------
