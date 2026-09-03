@@ -260,7 +260,8 @@ fn rewrite_expr(expr: &mut sqlrustgo_parser::Expression, from: &str, to: &str) {
         | Expression::SequenceCurrval(_)
         | Expression::JsonLiteral(_)
         | Expression::SystemVariable(_)
-        | Expression::WindowCall(_) => {}
+        | Expression::WindowCall(_)
+        | Expression::Interval(_, _) => {}
     }
 }
 
