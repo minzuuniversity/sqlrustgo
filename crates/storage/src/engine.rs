@@ -1172,6 +1172,14 @@ pub struct MemoryStorage {
     /// the peer's current in-transaction live state. Updated in
     /// `commit_transaction_with_log` and on every autocommit write.
     committed_tables: HashMap<String, Vec<Record>>,
+    /// V312-62 / Issues #4617 & #4621: track `(table, column)` pairs for
+    /// every `CREATE INDEX` so `list_indexes` returns them to the planner
+    /// and the EXPLAIN planner-shape oracle. The actual B+ tree is still
+    /// absent (this is the test/in-memory backend) — `IndexScanExec` here
+    /// means "we know an index would be usable if this storage backed it".
+    /// The index name is auto-generated as `{table}_idx_{column}` to match
+    /// `FileStorage::list_indexes`'s naming convention.
+    indexes: HashSet<(String, String)>,
 }
 
 #[derive(Default, Clone, Debug)]
@@ -1196,6 +1204,7 @@ impl MemoryStorage {
             tx_log: None,
             last_committed_log: parking_lot::Mutex::new(None),
             committed_tables: HashMap::new(),
+            indexes: HashSet::new(),
         }
     }
 
@@ -1800,11 +1809,18 @@ impl StorageEngine for MemoryStorage {
         self.table_infos.keys().cloned().collect()
     }
 
-    fn create_index(&mut self, _table: &str, _column: &str, _column_index: usize) -> SqlResult<()> {
+    fn create_index(&mut self, table: &str, column: &str, _column_index: usize) -> SqlResult<()> {
+        // V312-62 / Issues #4617 & #4621: record the (table, column) pair
+        // so `list_indexes` can answer the planner's "is this column
+        // indexed?" query. FileStorage uses `{table}_idx_{column}` as the
+        // auto-generated name; we mirror that here so the EXPLAIN output
+        // matches across backends.
+        self.indexes.insert((table.to_lowercase(), column.to_string()));
         Ok(())
     }
 
-    fn drop_index(&mut self, _table: &str, _column: &str) -> SqlResult<()> {
+    fn drop_index(&mut self, table: &str, column: &str) -> SqlResult<()> {
+        self.indexes.remove(&(table.to_lowercase(), column.to_string()));
         Ok(())
     }
 
@@ -1974,8 +1990,17 @@ impl StorageEngine for MemoryStorage {
     fn get_sequence(&self, name: &str) -> Option<SequenceInfo> {
         self.sequences.get(name).cloned()
     }
-    fn list_indexes(&self, _table: &str) -> Vec<(String, String)> {
-        Vec::new()
+    fn list_indexes(&self, table: &str) -> Vec<(String, String)> {
+        // V312-62 / Issues #4617 & #4621: return tracked indexes for this
+        // table, formatted with the same `{table}_idx_{column}` naming
+        // convention as `FileStorage::list_indexes`. The planner only
+        // uses this for "is there an index on column X?" so the precise
+        // name string is not load-bearing beyond human-readability.
+        self.indexes
+            .iter()
+            .filter(|(t, _c)| t == &table.to_lowercase())
+            .map(|(t, c)| (c.clone(), format!("{t}_idx_{c}")))
+            .collect()
     }
 
     fn is_wal_enabled(&self) -> bool {
