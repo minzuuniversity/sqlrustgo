@@ -30,7 +30,11 @@ const MAX_RECURSION_ROWS: usize = 1_000_000;
 /// reference the CTE itself. Returns an error for any other shape.
 pub fn decompose_recursive_body(
     stmt: &sqlrustgo_parser::Statement,
-) -> SqlResult<(Box<sqlrustgo_parser::Statement>, Box<sqlrustgo_parser::Statement>, bool)> {
+) -> SqlResult<(
+    Box<sqlrustgo_parser::Statement>,
+    Box<sqlrustgo_parser::Statement>,
+    bool,
+)> {
     use sqlrustgo_parser::Statement;
     match stmt {
         Statement::Union(u) => Ok((u.left.clone(), u.right.clone(), u.union_all)),
@@ -132,7 +136,7 @@ pub fn rewrite_step_table_refs(
     // FROM (subquery) AS alias
     if let Some(from_subq) = cloned.from_subquery.as_mut() {
         let new_select = rewrite_step_table_refs(from_subq.as_ref(), from, to);
-        *from_subq = Box::new(new_select);
+        **from_subq = new_select;
     }
 
     // WHERE / HAVING / SELECT columns
@@ -172,7 +176,7 @@ fn rewrite_expr(expr: &mut sqlrustgo_parser::Expression, from: &str, to: &str) {
         }
         Expression::Subquery(subq) => {
             let new_select = rewrite_step_table_refs(subq.as_ref(), from, to);
-            *subq = Box::new(new_select);
+            **subq = new_select;
         }
         Expression::SubqueryField(inner, _field) => {
             rewrite_expr(inner, from, to);
@@ -180,21 +184,21 @@ fn rewrite_expr(expr: &mut sqlrustgo_parser::Expression, from: &str, to: &str) {
         Expression::In(left, subq) => {
             rewrite_expr(left, from, to);
             let new_select = rewrite_step_table_refs(subq.as_ref(), from, to);
-            *subq = Box::new(new_select);
+            **subq = new_select;
         }
         Expression::NotIn(left, subq) => {
             rewrite_expr(left, from, to);
             let new_select = rewrite_step_table_refs(subq.as_ref(), from, to);
-            *subq = Box::new(new_select);
+            **subq = new_select;
         }
         Expression::Exists(subq) | Expression::NotExists(subq) => {
             let new_select = rewrite_step_table_refs(subq.as_ref(), from, to);
-            *subq = Box::new(new_select);
+            **subq = new_select;
         }
         Expression::QuantifiedOp(left, _op, subq) => {
             rewrite_expr(left, from, to);
             let new_select = rewrite_step_table_refs(subq.as_ref(), from, to);
-            *subq = Box::new(new_select);
+            **subq = new_select;
         }
         Expression::BinaryOp(left, _op, right) => {
             rewrite_expr(left, from, to);
@@ -214,8 +218,7 @@ fn rewrite_expr(expr: &mut sqlrustgo_parser::Expression, from: &str, to: &str) {
             rewrite_expr(left, from, to);
             rewrite_expr(right, from, to);
         }
-        Expression::Between(left, mid, right)
-        | Expression::NotBetween(left, mid, right) => {
+        Expression::Between(left, mid, right) | Expression::NotBetween(left, mid, right) => {
             rewrite_expr(left, from, to);
             rewrite_expr(mid, from, to);
             rewrite_expr(right, from, to);
@@ -279,8 +282,8 @@ fn rewrite_expr(expr: &mut sqlrustgo_parser::Expression, from: &str, to: &str) {
 ///   3. For each round up to MAX_RECURSION_DEPTH:
 ///      a. Execute the rewritten step (referencing `t__work`).
 ///      b. UNION ALL: append all step rows to `t`, replace `t__work`.
-///         UNION (no ALL): dedupe step rows against `t`'s accumulated
-///         rows AND against prior step rows of this round, then append.
+///      For UNION (no ALL): dedupe step rows against accumulated `t`
+///      rows AND against prior step rows of this round, then append.
 ///      c. If no new rows: stop.
 ///      d. If total > MAX_RECURSION_ROWS: drop `t__work`, error.
 ///   4. Drop `t__work`. `t` remains visible to the outer SELECT.
@@ -340,13 +343,11 @@ pub fn materialize_recursive_cte<S: StorageEngine + 'static>(
             .map_err(|e| SqlError::ExecutionError(format!("Create CTE table {}: {}", t, e)))?;
         storage
             .create_table(&table_info_for(&t_work))
-            .map_err(|e| {
-                SqlError::ExecutionError(format!("Create CTE table {}: {}", t_work, e))
-            })?;
+            .map_err(|e| SqlError::ExecutionError(format!("Create CTE table {}: {}", t_work, e)))?;
         if !seed_rows.is_empty() {
-            storage.insert(&t, seed_rows.clone()).map_err(|e| {
-                SqlError::ExecutionError(format!("Insert seed into {}: {}", t, e))
-            })?;
+            storage
+                .insert(&t, seed_rows.clone())
+                .map_err(|e| SqlError::ExecutionError(format!("Insert seed into {}: {}", t, e)))?;
             storage.insert(&t_work, seed_rows.clone()).map_err(|e| {
                 SqlError::ExecutionError(format!("Insert seed into {}: {}", t_work, e))
             })?;
@@ -370,8 +371,7 @@ pub fn materialize_recursive_cte<S: StorageEngine + 'static>(
     // 6. Iterate.
     let mut total: usize = seed_rows.len();
     for _depth in 0..MAX_RECURSION_DEPTH {
-        let step_rows: Vec<Vec<crate::Value>> =
-            engine.execute_select(&step_rewritten)?.rows;
+        let step_rows: Vec<Vec<crate::Value>> = engine.execute_select(&step_rewritten)?.rows;
         if step_rows.is_empty() {
             break;
         }
@@ -403,16 +403,16 @@ pub fn materialize_recursive_cte<S: StorageEngine + 'static>(
         // StorageEngine has no truncate_table; drop + re-create.
         {
             let mut storage = engine.storage.write();
-            storage.insert(&t, new_rows.clone()).map_err(|e| {
-                SqlError::ExecutionError(format!("Insert into {}: {}", t, e))
-            })?;
+            storage
+                .insert(&t, new_rows.clone())
+                .map_err(|e| SqlError::ExecutionError(format!("Insert into {}: {}", t, e)))?;
             let _ = storage.drop_table(&t_work);
-            storage.create_table(&table_info_for(&t_work)).map_err(|e| {
-                SqlError::ExecutionError(format!("Recreate {}: {}", t_work, e))
-            })?;
-            storage.insert(&t_work, new_rows.clone()).map_err(|e| {
-                SqlError::ExecutionError(format!("Insert into {}: {}", t_work, e))
-            })?;
+            storage
+                .create_table(&table_info_for(&t_work))
+                .map_err(|e| SqlError::ExecutionError(format!("Recreate {}: {}", t_work, e)))?;
+            storage
+                .insert(&t_work, new_rows.clone())
+                .map_err(|e| SqlError::ExecutionError(format!("Insert into {}: {}", t_work, e)))?;
         }
         total += new_rows.len();
 
@@ -795,8 +795,7 @@ mod tests {
     fn decompose_recursive_body_union_all_ok() {
         let sql = "SELECT 1 AS n UNION ALL SELECT n + 1 FROM cte WHERE n < 3";
         let stmt = parse(sql).unwrap();
-        let (anchor, step, union_all) =
-            crate::engine_cte::decompose_recursive_body(&stmt).unwrap();
+        let (anchor, step, union_all) = crate::engine_cte::decompose_recursive_body(&stmt).unwrap();
         assert!(union_all, "UNION ALL must set union_all=true");
         assert!(matches!(*anchor, Statement::Select(_)));
         assert!(matches!(*step, Statement::Select(_)));
@@ -873,18 +872,14 @@ mod tests {
     #[test]
     fn rewrite_step_top_level_from() {
         let stmt = parse_select("SELECT id FROM tree WHERE id > 0");
-        let rewritten =
-            crate::engine_cte::rewrite_step_table_refs(&stmt, "tree", "tree__work");
+        let rewritten = crate::engine_cte::rewrite_step_table_refs(&stmt, "tree", "tree__work");
         assert_eq!(rewritten.table, "tree__work");
     }
 
     #[test]
     fn rewrite_step_join_clause() {
-        let stmt = parse_select(
-            "SELECT e.id FROM emp e JOIN tree ON e.mgr_id = tree.id",
-        );
-        let rewritten =
-            crate::engine_cte::rewrite_step_table_refs(&stmt, "tree", "tree__work");
+        let stmt = parse_select("SELECT e.id FROM emp e JOIN tree ON e.mgr_id = tree.id");
+        let rewritten = crate::engine_cte::rewrite_step_table_refs(&stmt, "tree", "tree__work");
         assert_eq!(rewritten.join_clause.len(), 1);
         // The JOIN's `tree` table must be rewritten.
         assert_eq!(rewritten.join_clause[0].table, "tree__work");
@@ -896,11 +891,8 @@ mod tests {
 
     #[test]
     fn rewrite_step_subquery_in_where() {
-        let stmt = parse_select(
-            "SELECT id FROM outer_t WHERE id IN (SELECT id FROM tree)",
-        );
-        let rewritten =
-            crate::engine_cte::rewrite_step_table_refs(&stmt, "tree", "tree__work");
+        let stmt = parse_select("SELECT id FROM outer_t WHERE id IN (SELECT id FROM tree)");
+        let rewritten = crate::engine_cte::rewrite_step_table_refs(&stmt, "tree", "tree__work");
         let inner_table = match rewritten.where_clause.as_ref().unwrap() {
             sqlrustgo_parser::Expression::In(_, subq) => subq.table.clone(),
             other => panic!("expected Expression::In, got {:?}", other),
@@ -910,11 +902,8 @@ mod tests {
 
     #[test]
     fn rewrite_step_preserves_unrelated_tables() {
-        let stmt = parse_select(
-            "SELECT id FROM other_t JOIN tree ON other_t.x = tree.x",
-        );
-        let rewritten =
-            crate::engine_cte::rewrite_step_table_refs(&stmt, "tree", "tree__work");
+        let stmt = parse_select("SELECT id FROM other_t JOIN tree ON other_t.x = tree.x");
+        let rewritten = crate::engine_cte::rewrite_step_table_refs(&stmt, "tree", "tree__work");
         assert_eq!(rewritten.table, "other_t");
         assert_eq!(rewritten.join_clause[0].table, "tree__work");
     }
