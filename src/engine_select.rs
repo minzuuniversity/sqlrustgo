@@ -451,6 +451,54 @@ impl<S: StorageEngine + 'static> ExecutionEngine<S> {
         Some(rewritten)
     }
 
+    /// V312-71 / Issue #4664: synthesize the canonical SQLite
+    /// `sqlite_master` (a.k.a. `sqlite_schema`) view at query time.
+    /// Returns one row per user table with columns
+    /// `type, name, tbl_name, rootpage, sql` (matching the SQLite
+    /// schema layout). The `sql` column is a best-effort synthesized
+    /// `CREATE TABLE ...` statement.
+    ///
+    /// The view is NOT persisted to disk; it's assembled on demand from
+    /// `storage.list_tables()` and `storage.get_table_info(name)`.
+    /// Multi-table joins against `sqlite_master` are not supported.
+    fn query_sqlite_master(&self) -> SqlResult<ExecutorResult> {
+        use sqlrustgo_types::Value;
+        let storage = self.storage.read();
+        let names = storage.list_tables();
+        let row_count = names.len();
+        let mut rows: Vec<Vec<Value>> = Vec::with_capacity(names.len());
+        for name in names {
+            let info = match storage.get_table_info(&name) {
+                Ok(info) => info,
+                Err(_) => continue,
+            };
+            let col_defs: Vec<String> = info
+                .columns
+                .iter()
+                .map(|c| {
+                    let mut s = format!("{} {}", c.name, c.data_type);
+                    if c.primary_key {
+                        s.push_str(" PRIMARY KEY");
+                    }
+                    if !c.nullable {
+                        s.push_str(" NOT NULL");
+                    }
+                    s
+                })
+                .collect();
+            let sql = format!("CREATE TABLE {} ({})", name, col_defs.join(", "));
+            rows.push(vec![
+                Value::Text("table".to_string()),
+                Value::Text(name.clone()),
+                Value::Text(name.clone()),
+                Value::Integer(0),
+                Value::Text(sql),
+            ]);
+        }
+
+        Ok(ExecutorResult::new(rows, row_count))
+    }
+
     /// V312-67 / Issue #4686: execute a scalar subquery used in the
     /// SELECT list projection and return its first row's first column
     /// (or `Value::Null` for an empty result).
@@ -538,7 +586,23 @@ impl<S: StorageEngine + 'static> ExecutionEngine<S> {
         // V312-58 / Issue #4443 (Phase 2 — materialization driver): invoke
         // `try_decorrelate` on the WHERE clause BEFORE row-by-row evaluation.
         // For each detected `ScalarAggInWhere` pattern, pre-build the
-        // `ScalarAggIndex` so the per-row path (`try_scalar_agg_index_lookup`
+        // V312-71 / Issue #4664: synthesize the canonical SQLite
+        // `sqlite_master` / `sqlite_schema` view at query time.
+        // Intercept the bare single-table form (no FROM subquery, no
+        // VALUES, no joins, no extra_tables) to keep the fast path simple.
+        {
+            let bare = select.table.split_once('|').map(|(t, _)| t).unwrap_or(&select.table);
+            let is_system_table = bare.eq_ignore_ascii_case("sqlite_master")
+                || bare.eq_ignore_ascii_case("sqlite_schema");
+            if is_system_table
+                && select.from_subquery.is_none()
+                && select.from_values.is_none()
+                && select.join_clause.is_empty()
+                && select.extra_tables.is_empty()
+            {
+                return self.query_sqlite_master();
+            }
+        }
         // invoked from `pre_evaluate_correlated_exists`) short-circuits on
         // the cache and pays only O(1) HashMap lookup per row.
         //
