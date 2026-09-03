@@ -149,6 +149,30 @@ Full snapshot: `docs/releases/v3.12.0/evidence/v312-56/V312-56-VERIFICATION.md`
 
 V312-G28 是 BustubX-EDU 前 4-6 周教学自动验收的入口门禁。它不要求 SQLRustGo 兼容 SQLite 文件格式,但必须提供类似 `sqlite3` 的本地 CLI 使用体验:一个数据库路径、可交互、可批处理、可脚本化、输出稳定、退出码稳定。
 
+### 2026-09-03 RC-GA B-track hardening update
+
+2026-09-03 的 BustubX-EDU B 轨上机实验暴露了大量 parser/executor
+语义缺陷。此前的 V312-G28 fixtures 只覆盖 week01-week06 的最小
+happy path，不能继续作为 RC-GA 语义充分性的唯一证据。
+
+新的 RC-GA 收口要求见
+[`RC_GA_TRIAGE_AND_GATE_PLAN_2026-09-03.md`](RC_GA_TRIAGE_AND_GATE_PLAN_2026-09-03.md)。
+
+新增 RC-GA gate 要求：
+
+| Gate | Required command | Acceptance |
+|---|---|---|
+| RC-B1 B-track oracle corpus | `bash scripts/gate/check_bustubx_b_track_v312.sh` | Core B-track seed + exercises pass against SQLite oracle or issue-linked exclusion. |
+| RC-B2 Parser real-script gate | `bash scripts/gate/check_v312_parser_real_scripts.sh` | Multi-line DDL, standalone comments, quoted identifiers, Chinese comments/identifiers, basic DML parse. |
+| RC-B3 Semantic no-op guard | `bash scripts/gate/check_v312_no_silent_success.sh` | Accepted DDL/DML has observable postcondition; unsupported SQL returns explicit error. |
+| RC-B4 Type/function conformance | `bash scripts/gate/check_v312_type_function_semantics.sh` | Float, round, length/char_length, math/date/string core functions match oracle. |
+| RC-B5 Join/subquery correctness | `bash scripts/gate/check_v312_join_subquery_semantics.sh` | JOIN USING/NATURAL JOIN, scalar subquery, ANY/ALL, HAVING multi-condition match oracle. |
+| RC-B6 DML/integrity correctness | `bash scripts/gate/check_v312_dml_integrity.sh` | CHECK, AUTO_INCREMENT/AUTOINCREMENT, RETURNING, UPDATE without WHERE are correct or scoped out. |
+| RC-B7 GA aggregate strictness | `bash scripts/gate/check_ga_v3.12.0.sh --full` | No fast-path/syntax-only PASS for semantic gates; JSON verdict PASS with zero blockers. |
+
+这些 gate 在实现前必须视为 RC-GA blocker，不得用既有
+`check_bustubx_edu_cli_v312.sh` 的最小 fixtures PASS 代替。
+
 ### Beta 准入前 blocker
 
 | 子项 | 要求 | 证据 |
