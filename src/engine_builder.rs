@@ -50,117 +50,12 @@ impl ExecutionEngine<MemoryStorage> {
             clustered_tables: parking_lot::RwLock::new(HashMap::new()),
             adaptive_hash_index: AdaptiveHashIndex::new().into_shared(),
 
-            instrumentation: Arc::new(sqlrustgo_executor::instrumentation::NoopInstrumentationHook),
+instrumentation: Arc::new(sqlrustgo_executor::instrumentation::NoopInstrumentationHook),
             session_vars: Arc::new(RwLock::new(std::collections::HashMap::new())),
+            sequence_state: Arc::new(crate::sequence_state::SequenceState::new()),
         }
     }
 
-    /// Create a new execution engine backed by MemoryStorage with custom CBO setting
-    pub fn with_memory_and_cbo(cbo_enabled: bool) -> Self {
-        Self {
-            storage: Arc::new(RwLock::new(MemoryStorage::new())),
-            catalog: None,
-            stats: Arc::new(RwLock::new(ExecutionStats::default())),
-            cbo_enabled,
-            transaction_manager: TransactionManager::new(),
-            current_tx_id: None,
-            trigger_undo_sink: Arc::new(parking_lot::Mutex::new(Vec::new())),
-            tx_status: TxStatus::Idle,
-            tx_readonly: false,
-            default_isolation: TmIsolationLevel::default(),
-            current_role: None,
-            current_user: sqlrustgo_catalog::auth::UserIdentity::new("root", "localhost"),
-            session_null_order_first: None,
-            checkpoint_manager: None,
-            cost_model: parking_lot::RwLock::new(UnifiedCostModel::default_model(0, 0)),
-            parallel_degree: 1,
-            stmt_cache: sqlrustgo_cache::PreparedStatementCache::new(100),
-            views: HashMap::new(),
-            clustered_tables: parking_lot::RwLock::new(HashMap::new()),
-            adaptive_hash_index: AdaptiveHashIndex::new().into_shared(),
-
-            instrumentation: Arc::new(sqlrustgo_executor::instrumentation::NoopInstrumentationHook),
-            session_vars: Arc::new(RwLock::new(std::collections::HashMap::new())),
-        }
-    }
-
-    /// Create a new execution engine with catalog
-    pub fn with_memory_and_catalog(catalog: Arc<RwLock<Catalog>>) -> Self {
-        Self {
-            storage: Arc::new(RwLock::new(MemoryStorage::new())),
-            catalog: Some(catalog),
-            stats: Arc::new(RwLock::new(ExecutionStats::default())),
-            cbo_enabled: true,
-            transaction_manager: TransactionManager::new(),
-            current_tx_id: None,
-            trigger_undo_sink: Arc::new(parking_lot::Mutex::new(Vec::new())),
-            tx_status: TxStatus::Idle,
-            tx_readonly: false,
-            default_isolation: TmIsolationLevel::default(),
-            current_role: None,
-            current_user: sqlrustgo_catalog::auth::UserIdentity::new("root", "localhost"),
-            session_null_order_first: None,
-            checkpoint_manager: None,
-            cost_model: parking_lot::RwLock::new(UnifiedCostModel::default_model(0, 0)),
-            parallel_degree: 1,
-            stmt_cache: sqlrustgo_cache::PreparedStatementCache::new(100),
-            views: HashMap::new(),
-            clustered_tables: parking_lot::RwLock::new(HashMap::new()),
-            adaptive_hash_index: AdaptiveHashIndex::new().into_shared(),
-
-            instrumentation: Arc::new(sqlrustgo_executor::instrumentation::NoopInstrumentationHook),
-            session_vars: Arc::new(RwLock::new(std::collections::HashMap::new())),
-        }
-    }
-}
-
-// =============================================================================
-// LAYER 2 — WAL integration stub layer
-// Does NOT write real WAL entries — flush hook exists, replay mocked
-// Use for: WAL interface exists, flush hook exists, replay mocked
-// =============================================================================
-
-impl ExecutionEngine<MemoryStorage> {
-    pub fn with_wal_stub(
-    ) -> ExecutionEngine<WalStorage<MemoryStorage, sqlrustgo_storage::wal::MemoryWalManager>> {
-        let inner = MemoryStorage::new();
-        let wal = sqlrustgo_storage::wal::MemoryWalManager::new();
-        let wal_storage = WalStorage::new(inner, wal).unwrap();
-        ExecutionEngine {
-            storage: Arc::new(RwLock::new(wal_storage)),
-            catalog: None,
-            stats: Arc::new(RwLock::new(ExecutionStats::default())),
-            cbo_enabled: true,
-            transaction_manager: TransactionManager::new(),
-            current_tx_id: None,
-            trigger_undo_sink: Arc::new(parking_lot::Mutex::new(Vec::new())),
-            tx_status: TxStatus::Idle,
-            tx_readonly: false,
-            default_isolation: TmIsolationLevel::default(),
-            current_role: None,
-            current_user: sqlrustgo_catalog::auth::UserIdentity::new("root", "localhost"),
-            session_null_order_first: None,
-            cost_model: parking_lot::RwLock::new(UnifiedCostModel::default_model(0, 0)),
-            checkpoint_manager: None,
-            parallel_degree: 1,
-            stmt_cache: sqlrustgo_cache::PreparedStatementCache::new(100),
-            views: HashMap::new(),
-            clustered_tables: parking_lot::RwLock::new(HashMap::new()),
-            adaptive_hash_index: AdaptiveHashIndex::new().into_shared(),
-
-            instrumentation: Arc::new(sqlrustgo_executor::instrumentation::NoopInstrumentationHook),
-            session_vars: Arc::new(RwLock::new(std::collections::HashMap::new())),
-        }
-    }
-}
-
-// =============================================================================
-// LAYER 3 — Full WAL layer (Beta Gate required)
-// WAL path: wal_path/.wal
-// Use for: WAL-001~005, RECOVERY-001~008, B1~B3 integration
-// =============================================================================
-
-impl ExecutionEngine<MemoryStorage> {
     /// Create a WAL-backed execution engine with full WAL enabled
     /// WalStorage::new(inner, wal_manager) initializes with given WAL manager
     pub fn with_wal(
@@ -195,6 +90,7 @@ impl ExecutionEngine<MemoryStorage> {
 
             instrumentation: Arc::new(sqlrustgo_executor::instrumentation::NoopInstrumentationHook),
             session_vars: Arc::new(RwLock::new(std::collections::HashMap::new())),
+            sequence_state: Arc::new(crate::sequence_state::SequenceState::new()),
         })
     }
 
@@ -235,6 +131,7 @@ impl ExecutionEngine<MemoryStorage> {
 
             instrumentation: Arc::new(sqlrustgo_executor::instrumentation::NoopInstrumentationHook),
             session_vars: Arc::new(RwLock::new(std::collections::HashMap::new())),
+            sequence_state: Arc::new(crate::sequence_state::SequenceState::new()),
         })
     }
 
@@ -276,6 +173,7 @@ impl ExecutionEngine<MemoryStorage> {
 
             instrumentation: Arc::new(sqlrustgo_executor::instrumentation::NoopInstrumentationHook),
             session_vars: Arc::new(RwLock::new(std::collections::HashMap::new())),
+            sequence_state: Arc::new(crate::sequence_state::SequenceState::new()),
         })
     }
 

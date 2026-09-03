@@ -149,6 +149,17 @@ pub struct ExecutionEngine<S: StorageEngine> {
     /// `SELECT @a` and `EXECUTE ... USING @a` resolve to the bound
     /// value (or `NULL` when unset, matching MySQL semantics).
     pub(crate) session_vars: Arc<RwLock<HashMap<String, SqlValue>>>,
+    /// V312-72 (perf-refactor): standalone in-memory cache of all
+    /// `SequenceInfo` keyed by name. Decouples SELECT projection from
+    /// the global `storage` write lock — `evaluate_expression_with_seq`
+    /// consults this cache instead of `storage.next_sequence_value` /
+    /// `storage.get_sequence`, so concurrent SELECTs no longer
+    /// serialise on `storage.write()`. DDL (`CREATE`/`ALTER`/`DROP
+    /// SEQUENCE`) and explicit `next_value`/`currval` from non-projection
+    /// paths still go through `storage` (for persistence) and publish
+    /// the result here. See `src/sequence_state.rs` and
+    /// `/tmp/perf-evidence/report.md` for the perf rationale.
+    pub(crate) sequence_state: Arc<crate::sequence_state::SequenceState>,
 }
 
 /// Transaction status for lifecycle enforcement
@@ -238,6 +249,7 @@ impl<S: StorageEngine + 'static> ExecutionEngine<S> {
             adaptive_hash_index: AdaptiveHashIndex::new().into_shared(),
             instrumentation: Arc::new(sqlrustgo_executor::instrumentation::NoopInstrumentationHook),
             session_vars: Arc::new(RwLock::new(HashMap::new())),
+            sequence_state: Arc::new(crate::sequence_state::SequenceState::new()),
         }
     }
     /// Get a handle to the shared Adaptive Hash Index used for hot-page tracking.
@@ -1009,7 +1021,13 @@ impl<S: StorageEngine + 'static> ExecutionEngine<S> {
     fn execute_drop_sequence(&self, seq_stmt: &DropSequenceStatement) -> SqlResult<ExecutorResult> {
         let mut storage = self.storage.write();
 
-        if !storage.has_sequence(&seq_stmt.name) {
+        // V312-72 (perf-refactor): consult both storage AND the in-memory
+        // cache — a CREATE-then-DROP in the same session may have already
+        // updated the cache even if the storage layer rejected the prior
+        // persist, or vice versa.
+        if !storage.has_sequence(&seq_stmt.name)
+            && !self.sequence_state.contains(&seq_stmt.name)
+        {
             if seq_stmt.if_exists {
                 return Ok(ExecutorResult::empty());
             }
@@ -1020,6 +1038,7 @@ impl<S: StorageEngine + 'static> ExecutionEngine<S> {
         }
 
         storage.drop_sequence(&seq_stmt.name)?;
+        self.sequence_state.drop_sequence(&seq_stmt.name);
         Ok(ExecutorResult::empty())
     }
 

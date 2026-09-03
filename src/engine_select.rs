@@ -665,7 +665,11 @@ impl<S: StorageEngine + 'static> ExecutionEngine<S> {
         // Intercept the bare single-table form (no FROM subquery, no
         // VALUES, no joins, no extra_tables) to keep the fast path simple.
         {
-            let bare = select.table.split_once('|').map(|(t, _)| t).unwrap_or(&select.table);
+            let bare = select
+                .table
+                .split_once('|')
+                .map(|(t, _)| t)
+                .unwrap_or(&select.table);
             let is_system_table = bare.eq_ignore_ascii_case("sqlite_master")
                 || bare.eq_ignore_ascii_case("sqlite_schema");
             if is_system_table
@@ -1197,9 +1201,7 @@ impl<S: StorageEngine + 'static> ExecutionEngine<S> {
                 // `true` (no errors thrown).
                 let mut quantified_new_rows: Vec<Vec<Value>> = Vec::with_capacity(rows.len());
                 for row in &rows {
-                    let pre = self.pre_evaluate_quantified_subquery(
-                        row, &table_info, &rewritten,
-                    );
+                    let pre = self.pre_evaluate_quantified_subquery(row, &table_info, &rewritten);
                     let expr = pre.unwrap_or_else(|| rewritten.clone());
                     if eval_predicate(&expr, row, &table_info) {
                         quantified_new_rows.push(row.clone());
@@ -2031,22 +2033,26 @@ impl<S: StorageEngine + 'static> ExecutionEngine<S> {
                                                                        // wrong — `idx` would read from the projected row's slot 0,
                                                                        // which is the function output, not the underlying column value).
         let is_star = select.columns.is_empty() || select.columns.iter().any(|c| c.name == "*");
-        // V311-10 fix: pre-acquire the storage write lock so the
-        // SequenceNextVal / SequenceCurrval arms in
-        // `evaluate_expression_with_seq` can advance / read live
-        // sequence state during the projection.
+        // V312-75 / Issue #4636: pre-compute from-table scalar subquery
+        // columns per outer row (`SELECT (SELECT b.val FROM b WHERE
+        // b.id = a.id) AS bval FROM a`). These are correlated — the value
+        // depends on the current outer row — so they cannot be evaluated
+        // lazily inside the projection loop: the loop runs under the
+        // storage write lock (legacy V311-10), and `execute_select` takes
+        // storage read locks, which would deadlock. The values are
+        // computed here (no lock held) via the same substitution
+        // mechanism as the correlated IN path, then looked up
+        // positionally in the projection loop — exactly like the
+        // WindowCall pre-computation above.
         //
-        // V312-75 / Issue #4636: BEFORE that write lock is taken,
-        // pre-compute from-table scalar subquery columns per outer row
-        // (`SELECT (SELECT b.val FROM b WHERE b.id = a.id) AS bval
-        // FROM a`). These are correlated — the value depends on the
-        // current outer row — so they cannot be evaluated lazily
-        // inside the projection loop: the loop runs under the storage
-        // write lock, and `execute_select` takes storage read locks,
-        // which would deadlock. The values are computed here (no lock
-        // held) via the same substitution mechanism as the correlated
-        // IN path, then looked up positionally in the projection loop
-        // — exactly like the WindowCall pre-computation above.
+        // V312-72 (perf-refactor): the projection path no longer holds
+        // the `storage` write lock. `evaluate_expression_with_seq` now
+        // consults `self.sequence_state` (an independent
+        // `Arc<SequenceState>` with a sub-microsecond critical section)
+        // for SequenceNextVal / SequenceCurrval evaluation. Concurrent
+        // SELECTs and SELECT/UPDATE/INSERT/DELETE mix no longer
+        // serialise on a global lock here — restoring 3.11-class
+        // concurrency. See `/tmp/perf-evidence/report.md`.
         let mut scalar_subq_results: Vec<Option<Vec<Value>>> =
             Vec::with_capacity(select.columns.len());
         if !is_star {
@@ -2071,7 +2077,20 @@ impl<S: StorageEngine + 'static> ExecutionEngine<S> {
                 }
             }
         }
-        let mut storage_guard = self.storage.write();
+        let has_sequence_ref = !is_star
+            && select.columns.iter().any(|c| {
+                matches!(
+                    c.expression,
+                    Some(Expression::SequenceNextVal(_)) | Some(Expression::SequenceCurrval(_))
+                )
+            });
+        // Only consult the cache when needed; otherwise pass `None` so
+        // the inner helper short-circuits the seq-state lock entirely.
+        let seq_state_view: Option<&crate::sequence_state::SequenceState> = if has_sequence_ref {
+            Some(&self.sequence_state)
+        } else {
+            None
+        };
         let projected_with_names: (Vec<String>, Vec<Vec<Value>>) = if is_star {
             let names: Vec<String> = if !table_info.columns.is_empty()
                 && table_info.columns.len() == rows.first().map(|r| r.len()).unwrap_or(0)
@@ -2134,7 +2153,7 @@ impl<S: StorageEngine + 'static> ExecutionEngine<S> {
                                     expr,
                                     row,
                                     &table_info,
-                                    Some(&mut *storage_guard),
+                                    seq_state_view,
                                     &|subq: &sqlrustgo_parser::SelectStatement| -> Result<Value, String> {
                                         // V312-67 / Issue #4686: scalar subquery
                                         // in SELECT list projection. Use the
@@ -2603,13 +2622,10 @@ impl<S: StorageEngine + 'static> ExecutionEngine<S> {
                     // GROUP_CONCAT is the DISTINCT sentinel — we need
                     // to re-collect from args[1] (the value expression).
                     let gc_val_src_idx = 1;
-                    let gc_values: Vec<Value> = if let Some(arg) =
-                        agg.args.get(gc_val_src_idx)
-                    {
+                    let gc_values: Vec<Value> = if let Some(arg) = agg.args.get(gc_val_src_idx) {
                         rows.iter()
                             .map(|row| {
-                                evaluate_expression(arg, row, table_info)
-                                    .unwrap_or(Value::Null)
+                                evaluate_expression(arg, row, table_info).unwrap_or(Value::Null)
                             })
                             .collect()
                     } else {
@@ -2623,9 +2639,7 @@ impl<S: StorageEngine + 'static> ExecutionEngine<S> {
                     let mut i = gc_val_src_idx + 1;
                     while i < agg.args.len() {
                         match &agg.args[i] {
-                            sqlrustgo_parser::Expression::Literal(lit)
-                                if lit == "__ORDER_BY__" =>
-                            {
+                            sqlrustgo_parser::Expression::Literal(lit) if lit == "__ORDER_BY__" => {
                                 i += 1;
                                 if i < agg.args.len() {
                                     order_by_expr = Some(&agg.args[i]);
@@ -2633,9 +2647,7 @@ impl<S: StorageEngine + 'static> ExecutionEngine<S> {
                                 }
                                 // Optional ASC/DESC immediately after
                                 if i < agg.args.len() {
-                                    if let sqlrustgo_parser::Expression::Literal(d) =
-                                        &agg.args[i]
-                                    {
+                                    if let sqlrustgo_parser::Expression::Literal(d) = &agg.args[i] {
                                         if d == "__DESC__" {
                                             descending = true;
                                             i += 1;
@@ -2662,10 +2674,8 @@ impl<S: StorageEngine + 'static> ExecutionEngine<S> {
                                         sqlrustgo_parser::Expression::Literal(s) => {
                                             sqlrustgo_executor::expr::eval_literal_from_str(s)
                                         }
-                                        _ => evaluate_expression(
-                                            sep_expr, &[], table_info,
-                                        )
-                                        .unwrap_or(Value::Null),
+                                        _ => evaluate_expression(sep_expr, &[], table_info)
+                                            .unwrap_or(Value::Null),
                                     };
                                     if let Value::Text(s) = resolved {
                                         separator = s;
@@ -2683,16 +2693,13 @@ impl<S: StorageEngine + 'static> ExecutionEngine<S> {
                     // matches input order.
                     let mut pairs: Vec<(Vec<Value>, Value)> = Vec::with_capacity(rows.len());
                     for (row_idx, row) in rows.iter().enumerate() {
-                        let v = gc_values
-                            .get(row_idx)
-                            .cloned()
-                            .unwrap_or(Value::Null);
+                        let v = gc_values.get(row_idx).cloned().unwrap_or(Value::Null);
                         if matches!(v, Value::Null) {
                             continue;
                         }
                         let key = if let Some(ob) = order_by_expr {
-                            let key_val = evaluate_expression(ob, row, table_info)
-                                .unwrap_or(Value::Null);
+                            let key_val =
+                                evaluate_expression(ob, row, table_info).unwrap_or(Value::Null);
                             vec![key_val, Value::Integer(row_idx as i64)]
                         } else {
                             vec![Value::Integer(row_idx as i64)]
@@ -4197,10 +4204,8 @@ impl<S: StorageEngine + 'static> ExecutionEngine<S> {
         if let Some(upairs) = using_pairs.as_ref() {
             let left_col_count = left_table_info.columns.len();
             // Build a sorted list of combined-schema indices to drop.
-            let mut drop_indices: Vec<usize> = upairs
-                .iter()
-                .map(|(_, ri)| left_col_count + ri)
-                .collect();
+            let mut drop_indices: Vec<usize> =
+                upairs.iter().map(|(_, ri)| left_col_count + ri).collect();
             drop_indices.sort_unstable();
             drop_indices.dedup();
 
@@ -6996,18 +7001,21 @@ impl<S: StorageEngine + 'static> ExecutionEngine<S> {
                     Expression::BinaryOp(l, op, _r) => (l.as_ref(), op.clone()),
                     _ => return None,
                 };
-                let lhs_val = crate::expr_utils::evaluate_expression(
-                    lhs_expr, outer_row, outer_table_info,
-                ).unwrap_or(V::Null);
+                let lhs_val =
+                    crate::expr_utils::evaluate_expression(lhs_expr, outer_row, outer_table_info)
+                        .unwrap_or(V::Null);
                 let subq_rows = self.execute_select(subq).ok()?.rows;
                 let subq_values: Vec<V> = subq_rows
                     .into_iter()
                     .filter_map(|mut row| {
-                        if row.is_empty() { None } else { Some(row.remove(0)) }
+                        if row.is_empty() {
+                            None
+                        } else {
+                            Some(row.remove(0))
+                        }
                     })
                     .collect();
-                let any = quant.eq_ignore_ascii_case("ANY")
-                    || quant.eq_ignore_ascii_case("SOME");
+                let any = quant.eq_ignore_ascii_case("ANY") || quant.eq_ignore_ascii_case("SOME");
                 let all = quant.eq_ignore_ascii_case("ALL");
                 let result = if any {
                     // ANY: TRUE if at least one non-NULL row satisfies.
@@ -7026,7 +7034,11 @@ impl<S: StorageEngine + 'static> ExecutionEngine<S> {
                 } else {
                     return None;
                 };
-                Some(Expression::Literal(if result { "TRUE".to_string() } else { "FALSE".to_string() }))
+                Some(Expression::Literal(if result {
+                    "TRUE".to_string()
+                } else {
+                    "FALSE".to_string()
+                }))
             }
             Expression::BinaryOp(l, _, r) => {
                 let nl = self.pre_evaluate_quantified_subquery(outer_row, outer_table_info, l);

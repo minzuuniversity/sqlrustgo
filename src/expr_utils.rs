@@ -282,28 +282,27 @@ pub fn evaluate_expression_with_seq(
     expr: &Expression,
     row: &[Value],
     table_info: &TableInfo,
-    storage: Option<&mut dyn sqlrustgo_storage::StorageEngine>,
+    seq_state: Option<&crate::sequence_state::SequenceState>,
     subq_eval: &dyn Fn(&SelectStatement) -> Result<Value, String>,
 ) -> Result<Value, String> {
-    if let Some(s) = storage {
+    if let Some(state) = seq_state {
         match expr {
             Expression::SequenceNextVal(name) => {
-                return s
-                    .next_sequence_value(name)
+                return state
+                    .next_value(name)
                     .map(Value::Integer)
                     .map_err(|e| format!("NEXT VALUE FOR {}: {}", name, e));
             }
             Expression::SequenceCurrval(name) => {
-                // No public has_sequence_value in the trait; derive the
-                // current value from get_sequence() (which returns
-                // Some(SequenceInfo) for sequences that have been
-                // created). CURRVAL semantics: return current_value
-                // (the value most recently produced by NEXT_VALUE; the
-                // engine has already advanced it on prior NEXT_VALUE_FOR).
-                return match s.get_sequence(name) {
-                    Some(info) => Ok(Value::Integer(info.current_value)),
-                    None => Ok(Value::Null),
-                };
+                // CURRVAL semantics: return the value most recently
+                // produced by NEXT_VALUE. State::currval returns Err
+                // before the first NEXTVAL; we surface that as the
+                // same error message the previous storage-backed path
+                // returned.
+                return state
+                    .currval(name)
+                    .map(Value::Integer)
+                    .map_err(|e| format!("CURRVAL {}: {}", name, e));
             }
             _ => {}
         }
