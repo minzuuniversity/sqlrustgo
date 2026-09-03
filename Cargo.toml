@@ -1592,6 +1592,10 @@ name = "v312_76_sqlite_system_tables_test"
 path = "tests/integration/sql/v312_76_sqlite_system_tables_test.rs"
 
 [[test]]
+name = "issue_4674_char_length_test"
+path = "tests/integration/sql/issue_4674_char_length_test.rs"
+
+[[test]]
 name = "torn_write_recovery"
 path = "tests/integration/fault_injection/torn_write_recovery.rs"
 
