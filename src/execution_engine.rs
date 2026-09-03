@@ -2284,7 +2284,7 @@ fn explain_extract_indexable_column(expr: &sqlrustgo_parser::parser::Expression)
 /// `parse_aggregate_function` in `crates/parser/src/parser.rs`).
 fn is_count_star_only(select: &sqlrustgo_parser::parser::SelectStatement) -> bool {
     use sqlrustgo_parser::parser::AggregateFunction;
-    if !select.where_clause.is_none() || !select.group_by.is_empty() {
+    if select.where_clause.is_some() || !select.group_by.is_empty() {
         return false;
     }
     if select.aggregates.len() != 1 {
