@@ -1570,6 +1570,9 @@ impl StoredProcExecutor {
             // inside ordered-set aggregate args; in stored-proc expression
             // context we treat them as Null (consistent with Aggregate).
             sqlrustgo_parser::Expression::ArrayLiteral(_) => Value::Null,
+            // V312-85 / Issue #4695-INTERVAL: INTERVAL expressions are only
+            // meaningful in date arithmetic; in stored-proc context return Null.
+            sqlrustgo_parser::Expression::Interval(_, _) => Value::Null,
             sqlrustgo_parser::Expression::SystemVariable(name) => {
                 crate::expr::resolve_system_variable(name)
             }

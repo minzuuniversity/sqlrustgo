@@ -1239,14 +1239,14 @@ fn substitute_outer_refs_in_expr_with_own(
             subq.clone(),
         ),
         // Literals and other terminal expressions pass through.
-        // Literals and other terminal expressions pass through.
         Expression::Literal(_)
         | Expression::WindowCall(_)
         | Expression::SequenceNextVal(_)
         | Expression::SequenceCurrval(_)
         | Expression::SystemVariable(_)
         | Expression::JsonLiteral(_)
-        | Expression::ArrayLiteral(_) => expr.clone(),
+        | Expression::ArrayLiteral(_)
+        | Expression::Interval(_, _) => expr.clone(),
     }
 }
 
@@ -1558,7 +1558,8 @@ fn substitute_qualified_outer_refs_in_place(
         | Expression::SequenceCurrval(_)
         | Expression::SystemVariable(_)
         | Expression::JsonLiteral(_)
-        | Expression::ArrayLiteral(_) => {}
+        | Expression::ArrayLiteral(_)
+        | Expression::Interval(_, _) => {}
     }
 }
 
@@ -1641,7 +1642,8 @@ pub fn where_expr_has_unhandled_residual(expr: &sqlrustgo_parser::Expression) ->
         | Expression::SequenceCurrval(_)
         | Expression::SystemVariable(_)
         | Expression::JsonLiteral(_)
-        | Expression::ArrayLiteral(_) => false,
+        | Expression::ArrayLiteral(_)
+        | Expression::Interval(_, _) => false,
         // Function calls (e.g. EXTRACT(YEAR FROM ...)) at the top level are
         // not predicates; if they appear inside a comparison, the BinaryOp
         // arm handles them.
@@ -1708,7 +1710,8 @@ pub fn where_expr_has_correlated_subquery(expr: &sqlrustgo_parser::Expression) -
         | Expression::SequenceCurrval(_)
         | Expression::SystemVariable(_)
         | Expression::JsonLiteral(_)
-        | Expression::ArrayLiteral(_) => false,
+        | Expression::ArrayLiteral(_)
+        | Expression::Interval(_, _) => false,
     }
 }
 
@@ -1752,6 +1755,7 @@ pub fn where_expr_has_uncorrelated_subquery(expr: &sqlrustgo_parser::Expression)
         | Expression::SequenceCurrval(_)
         | Expression::SystemVariable(_)
         | Expression::JsonLiteral(_)
-        | Expression::ArrayLiteral(_) => false,
+        | Expression::ArrayLiteral(_)
+        | Expression::Interval(_, _) => false,
     }
 }

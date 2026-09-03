@@ -1318,6 +1318,10 @@ pub enum Expression {
     /// Used by the array-fraction form of ordered-set aggregates
     /// (e.g. `quantile_disc(col, [0.25, 0.5, 0.75])`).
     ArrayLiteral(Vec<Expression>),
+    /// V312-85 / Issue #4695-INTERVAL: SQL standard `INTERVAL n UNIT` expression
+    /// used in date arithmetic. e.g. `d + INTERVAL '5' DAY`.
+    /// First field: the numeric expression (e.g. `5`). Second field: the unit (e.g. `DAY`).
+    Interval(Box<Expression>, String),
 }
 
 /// V312-19 #3972: constant-fold an arithmetic expression to a `u64` LIMIT/OFFSET value.
@@ -4850,7 +4854,6 @@ impl Parser {
                 | Some(Token::Substring)
                 | Some(Token::Position)
                 | Some(Token::Text)
-                | Some(Token::Interval)
                 | Some(Token::Database) => {
                     let name = match self.current() {
                         Some(Token::Left) => "LEFT",
@@ -4865,7 +4868,6 @@ impl Parser {
                         Some(Token::Substring) => "SUBSTRING",
                         Some(Token::Position) => "POSITION",
                         Some(Token::Text) => "CHAR",
-                        Some(Token::Interval) => "INTERVAL",
                         Some(Token::Database) => "DATABASE",
                         _ => unreachable!(),
                     };
@@ -5460,6 +5462,17 @@ impl Parser {
                 // Without this arm, the column-list loop would fall
                 // through to "Expected FROM or column name".
                 Some(Token::User) => {
+                    let expr = self.parse_expression()?;
+                    columns.push(SelectColumn {
+                        name: format!("{:?}", expr),
+                        alias: None,
+                        expression: Some(expr),
+                    });
+                }
+                // V312-85 / Issue #4695-INTERVAL: INTERVAL 'n' UNIT in SELECT.
+                // Without this arm, bare INTERVAL falls through to the default
+                // case and produces "Expected FROM or column name".
+                Some(Token::Interval) => {
                     let expr = self.parse_expression()?;
                     columns.push(SelectColumn {
                         name: format!("{:?}", expr),
@@ -8406,6 +8419,31 @@ impl Parser {
                 _ => break,
             };
             self.next();
+            // V312-85 / Issue #4695-INTERVAL: `d + INTERVAL '5' DAY` —
+            // INTERVAL binds tighter than `+`/`-`. After consuming the
+            // operator, if the next token is INTERVAL, parse the full
+            // `INTERVAL n UNIT` expression before applying the operator.
+            if matches!(self.current(), Some(Token::Interval)) {
+                self.next(); // consume INTERVAL
+                let n_expr = self.parse_primary_expression()?;
+                let unit = match self.current() {
+                    Some(Token::Identifier(u)) => {
+                        let s = u.clone();
+                        self.next();
+                        s
+                    }
+                    _ => {
+                        return Err(format!(
+                            "Expected unit (DAY/MONTH/...) after INTERVAL value, got {:?}",
+                            self.current()
+                        ));
+                    }
+                };
+                // Build an Interval expression and apply the operator:
+                let interval_expr = Expression::Interval(Box::new(n_expr), unit);
+                left = Expression::BinaryOp(Box::new(left), op.to_string(), Box::new(interval_expr));
+                continue;
+            }
             let right = self.parse_multiplicative_expression()?;
             left = Expression::BinaryOp(Box::new(left), op.to_string(), Box::new(right));
         }
