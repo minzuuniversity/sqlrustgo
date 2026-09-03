@@ -274,13 +274,21 @@ pub fn validate_not_null(
 /// `row` must be in **table column order** (same convention as
 /// `validate_not_null`). For every text column whose declared
 /// `char_max_length` is `Some(n)`, the row's string value MUST have
-/// `len() <= n`. CHAR(N) and VARCHAR(N) share the same length cap;
+/// `chars().count() <= n`. CHAR(N) and VARCHAR(N) share the same
+/// length cap;
 ///
 /// - CHAR(N) short strings are silently right-padded to `n` spaces by
 ///   the caller (existing #3283 Task 8 logic) — this validator only
 ///   fires on the overlong case.
 /// - VARCHAR(N) and BLOB/TEXT columns with `char_max_length = None`
 ///   are unaffected (no length cap).
+/// - V312-75 / Issue #4722: use Unicode **character** count, not
+///   UTF-8 byte count. This matches PostgreSQL semantics where
+///   `LENGTH('许东山') = 3` (chars) rather than MySQL utf8mb4 byte
+///   semantics, allowing Chinese names to fit `CHAR(8)` even though
+///   they occupy 9 UTF-8 bytes. The BustubX-EDU teaching corpus
+///   relies on this so that `teaching-seed.sql` loads cleanly after
+///   the PR #4634 strict-length check landed.
 ///
 /// INSERT/UPDATE/ODKU all funnel through this single helper so the
 /// error message is consistent.
@@ -289,12 +297,11 @@ pub fn validate_string_lengths(table_info: &TableInfo, row: &[Value]) -> SqlResu
         if let Some(n) = col.char_max_length {
             if idx < row.len() {
                 if let Value::Text(s) = &row[idx] {
-                    if s.len() > n {
+                    let char_len = s.chars().count();
+                    if char_len > n {
                         return Err(SqlError::ExecutionError(format!(
                             "Data too long for column '{}': declared length {}, actual length {}",
-                            col.name,
-                            n,
-                            s.len()
+                            col.name, n, char_len
                         )));
                     }
                 }

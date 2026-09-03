@@ -286,6 +286,9 @@ path = "tests/integration/sql/v312_69_insert_returning_test.rs"
 name = "v312_72_alter_table_add_column_test"
 path = "tests/integration/sql/v312_72_alter_table_add_column_test.rs"
 [[test]]
+name = "v312_75_mixed_fixes_test"
+path = "tests/integration/sql/v312_75_mixed_fixes_test.rs"
+[[test]]
 name = "v312_71_sqlite_master_test"
 path = "tests/integration/sql/v312_71_sqlite_master_test.rs"
 [[test]]
