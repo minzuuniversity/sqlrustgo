@@ -3199,6 +3199,18 @@ impl StorageEngine for FileStorage {
     fn add_column(&mut self, table: &str, column: ColumnDefinition) -> SqlResult<()> {
         if let Some(data) = self.tables.get_mut(table) {
             data.info.columns.push(column);
+            // V312-72 / Issue #4647: backfill every existing row with
+            // the new column's DEFAULT (or Value::Null when no default
+            // is specified) so the schema and row layout stay aligned.
+            // Without this, persisted rows would have one fewer column
+            // than the schema claims, and SELECT * would only show the
+            // original columns.
+            let fill = crate::engine::default_fill_value(
+                &data.info.columns.last().map(|c| c.default_value.clone()).unwrap_or(None),
+            );
+            for row in data.rows.iter_mut() {
+                row.push(fill.clone());
+            }
             let table_data = data.clone();
             self.save_table(table, &table_data)?;
         }
