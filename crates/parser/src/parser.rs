@@ -823,7 +823,6 @@ pub struct InsertStatement {
     /// to all table columns at execute time.
     pub returning: Option<Vec<String>>,
 }
-
 /// V312-63 / Issue #4642: AST node for `ON CONFLICT ... DO ...` clauses.
 #[derive(Debug, Clone, PartialEq)]
 pub struct OnConflictClause {
@@ -831,6 +830,11 @@ pub struct OnConflictClause {
     /// When `None`, the conflict applies to any unique constraint (PG
     /// `ON CONFLICT DO NOTHING` style).
     pub target_cols: Vec<String>,
+    /// V312-74 / Issue #4711: optional named constraint target
+    /// (`ON CONFLICT ON CONSTRAINT <name>`). Mutually exclusive with
+    /// `target_cols` — when set, the conflict target is the named
+    /// PRIMARY/UNIQUE/EXCLUDE constraint rather than a column list.
+    pub constraint_name: Option<String>,
     /// `DO NOTHING` or `DO UPDATE SET col1 = expr1, ...`.
     pub action: OnConflictAction,
 }
@@ -7139,32 +7143,62 @@ impl Parser {
                 // forms share the same dispatcher.
                 Some(Token::Conflict) => {
                     self.next(); // consume CONFLICT
-                    let target_cols = if matches!(self.current(), Some(Token::LParen)) {
-                        self.next(); // consume '('
-                        let mut cols = Vec::new();
-                        loop {
-                            match self.current() {
-                                Some(Token::Identifier(name)) => {
-                                    cols.push(name.clone());
-                                    self.next();
-                                }
-                                Some(Token::Comma) => {
-                                    self.next();
-                                }
-                                Some(Token::RParen) => {
-                                    self.next();
-                                    break;
-                                }
-                                _ => {
-                                    return Err("Expected column names in ON CONFLICT (col_list)"
-                                        .to_string())
+                    let (target_cols, constraint_name) =
+                        if matches!(self.current(), Some(Token::LParen)) {
+                            self.next(); // consume '('
+                            let mut cols = Vec::new();
+                            loop {
+                                match self.current() {
+                                    Some(Token::Identifier(name)) => {
+                                        cols.push(name.clone());
+                                        self.next();
+                                    }
+                                    Some(Token::Comma) => {
+                                        self.next();
+                                    }
+                                    Some(Token::RParen) => {
+                                        self.next();
+                                        break;
+                                    }
+                                    _ => {
+                                        return Err(
+                                            "Expected column names in ON CONFLICT (col_list)"
+                                                .to_string(),
+                                        )
+                                    }
                                 }
                             }
-                        }
-                        cols
-                    } else {
-                        Vec::new()
-                    };
+                            (cols, None)
+                        } else if matches!(self.current(), Some(Token::On)) {
+                            // V312-74 / Issue #4711: SQLite standard
+                            // `ON CONFLICT ON CONSTRAINT <name>`. The
+                            // target is a named PRIMARY/UNIQUE/EXCLUDE
+                            // constraint rather than a column list.
+                            // `ON CONSTRAINT` is consumed here so the
+                            // following `DO` token matches as expected.
+                            self.next(); // consume ON
+                            self.expect(Token::Constraint)?;
+                            let name = match self.next() {
+                                Some(Token::Identifier(n)) => n,
+                                Some(t) => {
+                                    return Err(format!(
+                                        "Expected constraint name after \
+                                         ON CONFLICT ON CONSTRAINT, got {:?}",
+                                        t
+                                    ))
+                                }
+                                None => {
+                                    return Err(
+                                        "Expected constraint name after \
+                                         ON CONFLICT ON CONSTRAINT"
+                                            .to_string(),
+                                    )
+                                }
+                            };
+                            (Vec::new(), Some(name))
+                        } else {
+                            (Vec::new(), None)
+                        };
                     // Optional WHERE clause (partial-index predicate).
                     // Parsed but ignored for execution in this batch.
                     if matches!(self.current(), Some(Token::Where)) {
@@ -7234,6 +7268,7 @@ impl Parser {
                     };
                     on_conflict_clause = Some(OnConflictClause {
                         target_cols,
+                        constraint_name,
                         action,
                     });
                     None
@@ -15421,6 +15456,90 @@ mod set_op_tests {
             other => panic!("Expected Insert, got {:?}", other),
         }
     }
+
+    // ----- V312-74 / Issue #4711: ON CONFLICT ON CONSTRAINT <name> -----
+
+    #[test]
+    fn test_parse_on_conflict_on_constraint_do_update() {
+        // SQLite standard: ON CONFLICT ON CONSTRAINT <name> DO UPDATE SET ...
+        let stmt = parse(
+            "INSERT INTO u VALUES (1, 999) \
+             ON CONFLICT ON CONSTRAINT u_pkey DO UPDATE SET val = 999",
+        )
+        .unwrap();
+        if let Statement::Insert(ins) = stmt {
+            let clause = ins
+                .on_conflict_clause
+                .expect("expected ON CONFLICT clause to be parsed");
+            // target_cols is empty — the conflict target is the
+            // named constraint, not a column list.
+            assert_eq!(clause.target_cols, Vec::<String>::new());
+            assert_eq!(clause.constraint_name.as_deref(), Some("u_pkey"));
+            // DO UPDATE SET val = 999.
+            match clause.action {
+                OnConflictAction::DoUpdate { updates } => {
+                    assert_eq!(updates.len(), 1);
+                    assert_eq!(updates[0].0, "val");
+                }
+                other => panic!("expected DoUpdate, got {:?}", other),
+            }
+        } else {
+            panic!("expected Statement::Insert");
+        }
+    }
+
+    #[test]
+    fn test_parse_on_conflict_on_constraint_do_nothing() {
+        // ON CONFLICT ON CONSTRAINT <name> DO NOTHING — the named
+        // constraint form, no column list.
+        let stmt = parse(
+            "INSERT INTO u VALUES (1, 999) \
+             ON CONFLICT ON CONSTRAINT u_pkey DO NOTHING",
+        )
+        .unwrap();
+        if let Statement::Insert(ins) = stmt {
+            let clause = ins.on_conflict_clause.unwrap();
+            assert_eq!(clause.target_cols, Vec::<String>::new());
+            assert_eq!(clause.constraint_name.as_deref(), Some("u_pkey"));
+            assert!(matches!(clause.action, OnConflictAction::DoNothing));
+        } else {
+            panic!("expected Statement::Insert");
+        }
+    }
+
+    #[test]
+    fn test_parse_on_conflict_column_list_still_works() {
+        // Regression: the (col_list) form must still work after adding
+        // the ON CONSTRAINT branch.
+        let stmt = parse(
+            "INSERT INTO m VALUES (1, 1, 999) \
+             ON CONFLICT (a, b) DO UPDATE SET val = val + 1",
+        )
+        .unwrap();
+        if let Statement::Insert(ins) = stmt {
+            let clause = ins.on_conflict_clause.unwrap();
+            assert_eq!(clause.target_cols, vec!["a", "b"]);
+            assert_eq!(clause.constraint_name, None);
+        } else {
+            panic!("expected Statement::Insert");
+        }
+    }
+
+    #[test]
+    fn test_parse_on_conflict_no_target_still_works() {
+        // Regression: bare ON CONFLICT DO NOTHING (no target, no
+        // constraint) must still parse.
+        let stmt =
+            parse("INSERT INTO t VALUES (1) ON CONFLICT DO NOTHING").unwrap();
+        if let Statement::Insert(ins) = stmt {
+            let clause = ins.on_conflict_clause.unwrap();
+            assert_eq!(clause.target_cols, Vec::<String>::new());
+            assert_eq!(clause.constraint_name, None);
+        } else {
+            panic!("expected Statement::Insert");
+        }
+    }
+
 
     // ----- V312-64 / Issue #4645: CREATE FULLTEXT INDEX -----
 
