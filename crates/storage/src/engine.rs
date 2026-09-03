@@ -793,7 +793,7 @@ impl RowMutation {
 /// #4571: materialise a column DEFAULT literal (`"5"`, `"'abc'"`,
 /// `"NULL"`, `"TRUE"`, ...) into a concrete Value for backfilling
 /// existing rows when a column is added via ALTER TABLE.
-fn default_fill_value(default_value: &Option<String>) -> Value {
+pub(crate) fn default_fill_value(default_value: &Option<String>) -> Value {
     let Some(s) = default_value else {
         return Value::Null;
     };
