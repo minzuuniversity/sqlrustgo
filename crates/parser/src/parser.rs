@@ -2934,19 +2934,20 @@ impl Parser {
             match self.current() {
                 Some(Token::Start) => {
                     self.next();
-                    self.expect(Token::With)?;
+                    // V312-80 / Issue #4688: SQL standard allows `START 1`
+                    // (no WITH keyword). Remove the `expect(Token::With)` and accept
+                    // a bare number literal directly after START.
                     let tok = self.next();
                     match tok {
                         Some(Token::NumberLiteral(n)) => start_with = Some(n),
                         Some(Token::Minus) => {
-                            // Negative number
                             if let Some(Token::NumberLiteral(n)) = self.next() {
                                 start_with = Some(format!("-{}", n));
                             } else {
                                 return Err("Expected number after MINUS".to_string());
                             }
                         }
-                        _ => return Err(format!("Expected number in START WITH, got {:?}", tok)),
+                        _ => return Err(format!("Expected number in START, got {:?}", tok)),
                     }
                 }
                 Some(Token::Increment) => {
