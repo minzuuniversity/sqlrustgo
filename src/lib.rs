@@ -24,6 +24,7 @@ pub mod engine_utils;
 pub mod execution_engine;
 pub mod expr_utils;
 pub mod savepoint_wiring;
+pub mod sequence_state;
 
 #[cfg(test)]
 mod execution_engine_tests;
