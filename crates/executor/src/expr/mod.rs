@@ -1721,6 +1721,59 @@ pub fn eval_fn(name: &str, args: &[Value]) -> Value {
                 }
             }
         }
+        // V312-79 / Issue #4670: TRUNCATE / TRUNC and HEX — previously returned NULL.
+        "TRUNCATE" | "TRUNC" => {
+            let x = match args.first() {
+                Some(Value::Float(f)) => *f,
+                Some(Value::Integer(i)) => *i as f64,
+                Some(Value::Null) => return Value::Null,
+                Some(v) => {
+                    let s = v.to_sql_string();
+                    if s.eq_ignore_ascii_case("NULL") {
+                        return Value::Null;
+                    }
+                    match s.parse::<f64>() {
+                        Ok(f) => f,
+                        Err(_) => return Value::Null,
+                    }
+                }
+                None => return Value::Null,
+            };
+            let d = match args.get(1) {
+                Some(Value::Integer(i)) => *i,
+                Some(Value::Null) => return Value::Null,
+                Some(v) => {
+                    let s = v.to_sql_string();
+                    if s.eq_ignore_ascii_case("NULL") {
+                        return Value::Null;
+                    }
+                    match s.parse::<i64>() {
+                        Ok(i) => i,
+                        Err(_) => return Value::Null,
+                    }
+                }
+                None => 0,
+            };
+            if d >= 0 {
+                let scale = 10f64.powi(d as i32);
+                Value::Float((x * scale).trunc() / scale)
+            } else {
+                let scale = 10f64.powi((-d) as i32);
+                Value::Float((x / scale).trunc() * scale)
+            }
+        }
+        "HEX" => {
+            if args.is_empty() {
+                return Value::Null;
+            }
+            match args.first() {
+                Some(Value::Integer(n)) => Value::Text(format!("{:X}", n)),
+                Some(Value::Text(s)) => {
+                    Value::Text(s.as_bytes().iter().map(|b| format!("{:02X}", b)).collect())
+                }
+                _ => Value::Null,
+            }
+        }
         //   TRIM(remstr, str)                         — 2-arg comma form
         //   TRIM([LEADING|TRAILING|BOTH] remstr FROM str) — 3-arg sentinel form
         // The 3-arg form is produced by the parser with a sentinel
