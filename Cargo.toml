@@ -1572,6 +1572,10 @@ name = "q2_q17_repro_test"
 path = "tests/integration/q2_q17_repro_test.rs"
 
 [[test]]
+name = "v312_75_correlated_scalar_subquery_test"
+path = "tests/integration/sql/v312_75_correlated_scalar_subquery_test.rs"
+
+[[test]]
 name = "torn_write_recovery"
 path = "tests/integration/fault_injection/torn_write_recovery.rs"
 
