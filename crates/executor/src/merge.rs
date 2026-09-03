@@ -1089,6 +1089,7 @@ mod tests {
             collations: std::collections::HashMap::new(),
 
             partition_info: None,
+        original_sql: String::new(),
         };
         assert_eq!(find_column_index("t.id", &info), Some(0));
     }
@@ -1105,6 +1106,7 @@ mod tests {
             collations: std::collections::HashMap::new(),
 
             partition_info: None,
+        original_sql: String::new(),
         };
         assert_eq!(find_column_index("id", &info), Some(0));
     }
@@ -1121,6 +1123,7 @@ mod tests {
             collations: std::collections::HashMap::new(),
 
             partition_info: None,
+        original_sql: String::new(),
         };
         assert_eq!(find_column_index("mycol", &info), Some(0));
     }
@@ -1137,6 +1140,7 @@ mod tests {
             collations: std::collections::HashMap::new(),
 
             partition_info: None,
+        original_sql: String::new(),
         };
         assert_eq!(find_column_index("name", &info), None);
     }
@@ -1176,6 +1180,7 @@ mod tests {
             compression: None,
             collations: std::collections::HashMap::new(),
             partition_info: None,
+        original_sql: String::new(),
         };
         storage.write().unwrap().create_table(&info).unwrap();
         let src_info = TableInfo {
@@ -1353,6 +1358,7 @@ mod tests {
             compression: None,
             collations: std::collections::HashMap::new(),
             partition_info: None,
+        original_sql: String::new(),
         };
         storage.write().unwrap().create_table(&src_info).unwrap();
         let exec = MergeExecutor::new(storage.clone(), Arc::new(std::sync::Mutex::new(MockEngine)));

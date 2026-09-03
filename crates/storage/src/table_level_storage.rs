@@ -130,10 +130,10 @@ impl crate::engine::StorageEngine for TableLevelStorage {
         self.tables.update(table, &[], &[])
     }
 
-    fn create_index(&mut self, _table: &str, _column: &str, _column_index: usize) -> SqlResult<()> {
+    fn create_index(&mut self, _info: crate::engine::IndexInfo) -> SqlResult<()> {
         Ok(())
     }
-    fn drop_index(&mut self, _table: &str, _column: &str) -> SqlResult<()> {
+    fn drop_index(&mut self, _table: &str, _index_name: &str) -> SqlResult<()> {
         Ok(())
     }
     fn add_column(&mut self, _table: &str, _column: ColumnDefinition) -> SqlResult<()> {
@@ -197,6 +197,8 @@ mod tests {
 
             partition_info: None,
             compression: None,
+
+            ..Default::default()
         }
     }
 
@@ -305,7 +307,14 @@ mod tests {
         let rf: crate::engine::RowFilter = Box::new(|_| true);
         // delete_if also requires table existence; don't unwrap.
         let _ = s.delete_if("t", &rf);
-        s.create_index("t", "id", 0).unwrap();
+        s.create_index(crate::engine::IndexInfo {
+            name: "t_idx_id".to_string(),
+            table: "t".to_string(),
+            columns: vec!["id".to_string()],
+            is_unique: false,
+            original_sql: "CREATE INDEX t_idx_id ON t(id)".to_string(),
+        })
+        .unwrap();
         s.flush().unwrap();
     }
 }

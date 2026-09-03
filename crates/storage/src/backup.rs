@@ -258,6 +258,7 @@ impl DataRestorer {
             partition_info: None,
             compression: None,
             collations: HashMap::new(),
+            original_sql: String::new(),
         };
 
         let count = rows.len();
@@ -332,6 +333,7 @@ impl DataRestorer {
             partition_info: None,
             compression: None,
             collations: HashMap::new(),
+            original_sql: String::new(),
         };
 
         let count = rows.len();
@@ -381,6 +383,7 @@ impl DataRestorer {
                         partition_info: None,
                         compression: None,
                         collations: HashMap::new(),
+                        original_sql: String::new(),
                     };
                     storage.create_table(&table_info)?;
                 }

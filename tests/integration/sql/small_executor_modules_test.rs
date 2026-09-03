@@ -514,6 +514,7 @@ fn test_ast_adapter_to_update_plan_uses_all_when_no_where() {
         // this initializer was missed by the propagation PR #4140.
         collations: std::collections::HashMap::new(),
         partition_info: None,
+        original_sql: String::new(),
     };
 
     let plan =
@@ -558,6 +559,7 @@ fn test_ast_adapter_to_update_plan_errors_on_unknown_column() {
         // this initializer was missed by the propagation PR #4140.
         collations: std::collections::HashMap::new(),
         partition_info: None,
+        original_sql: String::new(),
     };
     let err = sqlrustgo_executor::ast_adapter::AstAdapter::to_update_plan(&stmt, &info)
         .expect_err("should fail");

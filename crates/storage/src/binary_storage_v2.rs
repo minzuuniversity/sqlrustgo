@@ -69,6 +69,7 @@ impl BinaryTableStorageV2 {
             partition_info: None,
             compression: None,
             collations: HashMap::new(),
+            original_sql: String::new(),
         };
         self.tables.insert(
             name.to_string(),
@@ -494,11 +495,11 @@ impl StorageEngine for BinaryTableStorageV2 {
         self.tables.keys().cloned().collect()
     }
 
-    fn create_index(&mut self, _table: &str, _column: &str, _column_index: usize) -> SqlResult<()> {
+    fn create_index(&mut self, _info: crate::engine::IndexInfo) -> SqlResult<()> {
         Ok(())
     }
 
-    fn drop_index(&mut self, _table: &str, _column: &str) -> SqlResult<()> {
+    fn drop_index(&mut self, _table: &str, _index_name: &str) -> SqlResult<()> {
         Ok(())
     }
 

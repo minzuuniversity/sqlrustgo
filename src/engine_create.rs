@@ -6,6 +6,7 @@
 //! allows methods of the same type to be split across multiple impl
 //! blocks across multiple files. All call sites are unchanged.
 
+use crate::ddl_to_sql;
 use crate::execution_engine::ExecutionEngine;
 use crate::{SqlError, SqlResult, Value};
 use sqlrustgo_executor::ExecutorResult;
@@ -164,6 +165,7 @@ impl<S: StorageEngine + 'static> ExecutionEngine<S> {
 
             // Handle WITH NO DATA - skip data insertion if false
             let with_data = create.with_data.unwrap_or(true);
+            let original_sql = ddl_to_sql::format_create_table_sql(create);
             if !with_data {
                 // Create empty table
                 let info = TableInfo {
@@ -175,6 +177,7 @@ impl<S: StorageEngine + 'static> ExecutionEngine<S> {
                     partition_info: None,
                     compression: None,
                     collations: std::collections::HashMap::new(),
+                    original_sql: original_sql.clone(),
                 };
                 storage.create_table(&info)?;
                 return Ok(ExecutorResult::new(vec![], 0));
@@ -190,6 +193,7 @@ impl<S: StorageEngine + 'static> ExecutionEngine<S> {
                 partition_info: None,
                 compression: None,
                 collations: std::collections::HashMap::new(),
+                original_sql,
             };
             storage.create_table(&info)?;
 
@@ -349,6 +353,7 @@ impl<S: StorageEngine + 'static> ExecutionEngine<S> {
             partition_info: None,
             compression,
             collations: collations.clone(),
+            original_sql: ddl_to_sql::format_create_table_sql(create),
         };
 
         // V311-01 F-23: route to ClusteredTable when storage_engine = Clustered.
@@ -373,6 +378,7 @@ impl<S: StorageEngine + 'static> ExecutionEngine<S> {
                 partition_info: None,
                 compression: None,
                 collations: HashMap::new(),
+                original_sql: info.original_sql.clone(),
             })?;
             self.clustered_tables
                 .write()

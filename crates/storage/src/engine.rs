@@ -545,6 +545,12 @@ pub struct TriggerInfo {
     /// — this field just records the user's intent on the catalog.
     #[serde(default)]
     pub update_columns: Option<Vec<String>>,
+    /// V312-64d / Issue #4664: original `CREATE TRIGGER ...` SQL text,
+    /// captured at execution time. Surfaced through `sqlite_master.sql`.
+    /// `#[serde(default)]` so legacy serialized triggers deserialize
+    /// with an empty string (renders as `""` in system table output).
+    #[serde(default)]
+    pub original_sql: String,
 }
 
 /// View definition (Round-21 / Issue #4218: API surface restoration).
@@ -559,17 +565,58 @@ pub struct ViewInfo {
     pub name: String,
     pub columns: Vec<String>,
     pub query_sql: String,
+    /// V312-64d / Issue #4664: full `CREATE VIEW ... AS ...` SQL text,
+    /// captured at execution time. Surfaced through `sqlite_master.sql`.
+    /// `query_sql` keeps the inner SELECT for view expansion; `original_sql`
+    /// keeps the full statement for system-table introspection.
+    #[serde(default)]
+    pub original_sql: String,
+}
+
+/// V312-64d / Issue #4664: index metadata that captures the original
+/// `CREATE [UNIQUE] INDEX name ON table (cols)` SQL text, plus enough
+/// structural info for `sqlite_master` rendering. Replaces the legacy
+/// `(table, column, column_index)` triple in `StorageEngine::create_index`.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct IndexInfo {
+    pub name: String,
+    pub table: String,
+    pub columns: Vec<String>,
+    #[serde(default)]
+    pub is_unique: bool,
+    #[serde(default)]
+    pub original_sql: String,
 }
 
 impl ViewInfo {
     /// Construct a ViewInfo from a parser CreateViewStatement-like shape.
     /// Exposed so executors can convert without depending on the parser
     /// crate's exact path.
+    /// V312-64d: callers should pass the full `CREATE VIEW ... AS ...`
+    /// SQL as `original_sql`; pass empty string when the caller is unaware
+    /// (e.g. legacy tests, system bootstrap).
     pub fn new(name: String, columns: Vec<String>, query_sql: String) -> Self {
         Self {
             name,
             columns,
             query_sql,
+            original_sql: String::new(),
+        }
+    }
+
+    /// V312-64d: constructor variant that carries the full
+    /// `CREATE VIEW ... AS ...` text for `sqlite_master` projection.
+    pub fn with_original_sql(
+        name: String,
+        columns: Vec<String>,
+        query_sql: String,
+        original_sql: String,
+    ) -> Self {
+        Self {
+            name,
+            columns,
+            query_sql,
+            original_sql,
         }
     }
 }
@@ -718,6 +765,12 @@ pub struct TableInfo {
     /// as binary by the executor.
     #[serde(default)]
     pub collations: HashMap<String, String>,
+    /// V312-64d / Issue #4664: original `CREATE TABLE ...` SQL text,
+    /// captured at execution time. Surfaced through `sqlite_master.sql`.
+    /// `#[serde(default)]` so legacy serialized tables deserialize with
+    /// an empty string (renders as `""` in system table output).
+    #[serde(default)]
+    pub original_sql: String,
 }
 
 /// Column definition for table schema
@@ -913,10 +966,16 @@ pub trait StorageEngine: Send + Sync {
     fn list_tables(&self) -> Vec<String>;
 
     /// Create an index on a table
-    fn create_index(&mut self, table: &str, column: &str, column_index: usize) -> SqlResult<()>;
+    fn create_index(&mut self, info: IndexInfo) -> SqlResult<()>;
 
-    /// Drop an index from a table
-    fn drop_index(&mut self, table: &str, column: &str) -> SqlResult<()>;
+    /// Drop an index from a table by index name
+    fn drop_index(&mut self, table: &str, index_name: &str) -> SqlResult<()>;
+
+    /// V312-64d / Issue #4664: enumerate every index across all tables.
+    /// Used by `sqlite_master` to render the index rows.
+    fn list_all_indexes(&self) -> Vec<IndexInfo> {
+        Vec::new()
+    }
 
     /// Add a column to an existing table
     fn add_column(&mut self, table: &str, column: ColumnDefinition) -> SqlResult<()>;
@@ -1188,6 +1247,13 @@ pub struct MemoryStorage {
     /// The index name is auto-generated as `{table}_idx_{column}` to match
     /// `FileStorage::list_indexes`'s naming convention.
     indexes: HashSet<(String, String)>,
+    /// V312-64d / Issue #4664: index name → IndexInfo mapping that
+    /// preserves the original CREATE INDEX SQL text. Queried by
+    /// `list_all_indexes()` for `sqlite_master` rendering. Legacy
+    /// `(table, column)` pairs in `indexes` above remain for the
+    /// existing `list_indexes(table)` query path that the EXPLAIN
+    /// planner relies on.
+    index_infos: HashMap<String, IndexInfo>,
 }
 
 #[derive(Default, Clone, Debug)]
@@ -1213,6 +1279,7 @@ impl MemoryStorage {
             last_committed_log: parking_lot::Mutex::new(None),
             committed_tables: HashMap::new(),
             indexes: HashSet::new(),
+            index_infos: HashMap::new(),
         }
     }
 
@@ -1817,19 +1884,58 @@ impl StorageEngine for MemoryStorage {
         self.table_infos.keys().cloned().collect()
     }
 
-    fn create_index(&mut self, table: &str, column: &str, _column_index: usize) -> SqlResult<()> {
+    fn create_index(&mut self, info: IndexInfo) -> SqlResult<()> {
         // V312-62 / Issues #4617 & #4621: record the (table, column) pair
         // so `list_indexes` can answer the planner's "is this column
-        // indexed?" query. FileStorage uses `{table}_idx_{column}` as the
-        // auto-generated name; we mirror that here so the EXPLAIN output
-        // matches across backends.
-        self.indexes.insert((table.to_lowercase(), column.to_string()));
+        // indexed?" query. V312-64d / Issue #4664: also retain the full
+        // IndexInfo so `sqlite_master` can render the original SQL.
+        let table_lc = info.table.to_lowercase();
+        for column in &info.columns {
+            self.indexes.insert((table_lc.clone(), column.clone()));
+        }
+        self.index_infos.insert(info.name.to_lowercase(), info);
         Ok(())
     }
 
-    fn drop_index(&mut self, table: &str, column: &str) -> SqlResult<()> {
-        self.indexes.remove(&(table.to_lowercase(), column.to_string()));
+    fn drop_index(&mut self, table: &str, index_name: &str) -> SqlResult<()> {
+        // V312-64d / Issue #4664: drop by name (new API) and remove the
+        // matching (table, column) pairs the legacy `list_indexes(table)`
+        // contract depends on. If the IndexInfo exists we know its columns;
+        // otherwise fall back to a best-effort prune of all (table, _)
+        // entries to keep legacy callers safe.
+        let key = index_name.to_lowercase();
+        if let Some(info) = self.index_infos.remove(&key) {
+            for column in &info.columns {
+                self.indexes.remove(&(table.to_lowercase(), column.clone()));
+            }
+        } else {
+            // Legacy single-column drop: synthesize a column name from
+            // the index suffix `_idx_{column}` if present.
+            if let Some(rest) = index_name.strip_prefix(&format!("{}_idx_", table.to_lowercase())) {
+                self.indexes
+                    .remove(&(table.to_lowercase(), rest.to_string()));
+            } else {
+                let to_remove: Vec<(String, String)> = self
+                    .indexes
+                    .iter()
+                    .filter(|(t, _)| t == &table.to_lowercase())
+                    .cloned()
+                    .collect();
+                for k in to_remove {
+                    self.indexes.remove(&k);
+                }
+            }
+        }
         Ok(())
+    }
+
+    fn list_all_indexes(&self) -> Vec<IndexInfo> {
+        // V312-64d / Issue #4664: enumerate every IndexInfo so
+        // `sqlite_master` can render rows for type='index'. Sorted by
+        // (table, name) for deterministic test output.
+        let mut out: Vec<IndexInfo> = self.index_infos.values().cloned().collect();
+        out.sort_by(|a, b| a.table.cmp(&b.table).then(a.name.cmp(&b.name)));
+        out
     }
 
     fn add_column(&mut self, table: &str, column: ColumnDefinition) -> SqlResult<()> {
@@ -2293,6 +2399,8 @@ mod tests {
             partition_info: None,
             compression: None,
             collations: HashMap::new(),
+
+            ..Default::default()
         };
         storage.create_table(&info).unwrap();
         let tables = storage.list_tables();
@@ -2388,6 +2496,8 @@ mod tests {
             partition_info: None,
             compression: None,
             collations: HashMap::new(),
+
+            ..Default::default()
         };
 
         storage.create_table(&info).unwrap();
@@ -2419,6 +2529,8 @@ mod tests {
             partition_info: None,
             compression: None,
             collations: HashMap::new(),
+
+            ..Default::default()
         };
 
         storage.create_table(&info).unwrap();
@@ -2477,6 +2589,8 @@ mod tests {
             partition_info: None,
             compression: None,
             collations: HashMap::new(),
+
+            ..Default::default()
         };
         let info2 = TableInfo {
             name: "orders".to_string(),
@@ -2487,6 +2601,8 @@ mod tests {
             partition_info: None,
             compression: None,
             collations: HashMap::new(),
+
+            ..Default::default()
         };
         storage.create_table(&info1).unwrap();
         storage.create_table(&info2).unwrap();
@@ -2511,6 +2627,8 @@ mod tests {
             partition_info: None,
             compression: None,
             collations: HashMap::new(),
+
+            ..Default::default()
         };
         storage.create_table(&info).unwrap();
         assert!(storage.has_table("users"));
@@ -2628,6 +2746,8 @@ mod tests {
             partition_info: None,
             compression: None,
             collations: HashMap::new(),
+
+            ..Default::default()
         };
         storage.create_table(&info).unwrap();
         storage
@@ -2949,6 +3069,7 @@ mod tests {
             event: TriggerEvent::Insert,
             body: "BEGIN UPDATE stats SET count = count + 1; END".into(),
             update_columns: None,
+            original_sql: String::new(),
         };
         assert_eq!(ti.name, "trig1");
         assert_eq!(ti.table_name, "users");
@@ -3199,6 +3320,8 @@ mod tests {
             partition_info: None,
             compression: None,
             collations: HashMap::new(),
+
+            ..Default::default()
         };
         s.create_table(&info).unwrap();
         assert!(s.has_table("users"));
@@ -3216,6 +3339,8 @@ mod tests {
             partition_info: None,
             compression: None,
             collations: HashMap::new(),
+
+            ..Default::default()
         };
         s.create_table(&info).unwrap();
         s.drop_table("t").unwrap();
@@ -3234,6 +3359,8 @@ mod tests {
             partition_info: None,
             compression: None,
             collations: HashMap::new(),
+
+            ..Default::default()
         };
         s.create_table(&info).unwrap();
         let got = s.get_table_info("t").unwrap();
@@ -3261,6 +3388,8 @@ mod tests {
                 partition_info: None,
                 compression: None,
                 collations: HashMap::new(),
+
+                ..Default::default()
             };
             s.create_table(&info).unwrap();
         }
@@ -3287,6 +3416,8 @@ mod tests {
             partition_info: None,
             compression: None,
             collations: HashMap::new(),
+
+            ..Default::default()
         };
         s.create_table(&info).unwrap();
         s.add_column("t", ColumnDefinition::new("b", "TEXT"))
@@ -3314,6 +3445,8 @@ mod tests {
             partition_info: None,
             compression: None,
             collations: HashMap::new(),
+
+            ..Default::default()
         };
         s.create_table(&info).unwrap();
         s.insert("old", vec![vec![Value::Integer(1)]]).unwrap();
@@ -3341,6 +3474,7 @@ mod tests {
             event: crate::engine::TriggerEvent::Insert,
             body: "".to_string(),
             update_columns: None,
+            original_sql: String::new(),
         };
         s.create_trigger(trigger).unwrap();
         assert!(s.get_trigger("trig").is_some());
@@ -3371,6 +3505,7 @@ mod tests {
             event: crate::engine::TriggerEvent::Insert,
             body: "".to_string(),
             update_columns: None,
+            original_sql: String::new(),
         };
         let t2 = TriggerInfo {
             name: "b".to_string(),
@@ -3379,6 +3514,7 @@ mod tests {
             event: crate::engine::TriggerEvent::Update,
             body: "".to_string(),
             update_columns: None,
+            original_sql: String::new(),
         };
         s.create_trigger(t1).unwrap();
         s.create_trigger(t2).unwrap();

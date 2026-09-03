@@ -86,15 +86,8 @@ pub fn execute_insert<S: StorageEngine + 'static>(
             // expression (or NULL when no default is defined). Reuses the
             // existing `materialise_default_tokens` machinery that already
             // handles per-value DEFAULT sentinels.
-            let sentinel_row = vec![
-                Value::Text("DEFAULT".to_string());
-                table_info.columns.len()
-            ];
-            materialise_default_tokens(
-                vec![sentinel_row],
-                &[],
-                &table_info.columns,
-            )
+            let sentinel_row = vec![Value::Text("DEFAULT".to_string()); table_info.columns.len()];
+            materialise_default_tokens(vec![sentinel_row], &[], &table_info.columns)
         } else if let Some(ref select) = insert.select {
             let select_result = engine.execute_select(select)?;
             map_select_result_to_records(select_result, &insert.columns, &table_info)?
@@ -309,9 +302,7 @@ pub fn execute_insert<S: StorageEngine + 'static>(
         }
         for record in processed_records.iter_mut() {
             for (col_idx, col) in table_info.columns.iter().enumerate() {
-                if col.auto_increment
-                    && matches!(record.get(col_idx), Some(Value::Null) | None)
-                {
+                if col.auto_increment && matches!(record.get(col_idx), Some(Value::Null) | None) {
                     record[col_idx] = Value::Integer(next_auto_id);
                     next_auto_id += 1;
                 }
@@ -536,7 +527,7 @@ pub fn execute_insert<S: StorageEngine + 'static>(
         return Ok(ExecutorResult::new(projected_rows, row_count));
     }
 
-     Ok(ExecutorResult::new(vec![], all_records.len()))
+    Ok(ExecutorResult::new(vec![], all_records.len()))
 }
 
 /// UPDATE executor body.
@@ -554,7 +545,11 @@ pub fn execute_update<S: StorageEngine + 'static>(
     }
     // V311-01 F-23: ClusteredTable main-path DML routing. SELECT/INSERT
     // already use ClusteredTable; UPDATE must too or it would write to
-    if engine.clustered_tables.read().contains_key(&update.tables[0].name) {
+    if engine
+        .clustered_tables
+        .read()
+        .contains_key(&update.tables[0].name)
+    {
         return execute_update_clustered(engine, update);
     }
     let table_name = update.tables[0].name.clone();

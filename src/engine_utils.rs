@@ -736,6 +736,7 @@ pub fn build_combined_schema(
         partition_info: None,
         compression: None,
         collations: std::collections::HashMap::new(),
+        original_sql: String::new(),
     })
 }
 
@@ -767,6 +768,7 @@ pub fn build_multi_table_combined_schema(infos: &[TableInfo], prefixes: &[String
         partition_info: None,
         compression: None,
         collations: std::collections::HashMap::new(),
+        original_sql: String::new(),
     }
 }
 
@@ -905,9 +907,7 @@ pub fn build_aggregate_schema(
                 // match expression_to_string's
                 // "GROUP_CONCAT(val)" — eval_aggregate_lookup failed
                 // and the projection silently returned Null.
-                crate::expr_utils::expression_to_string(
-                    &Expression::Aggregate(agg.clone()),
-                )
+                crate::expr_utils::expression_to_string(&Expression::Aggregate(agg.clone()))
             }
         };
         columns.push(ColumnDefinition {
@@ -931,6 +931,7 @@ pub fn build_aggregate_schema(
         partition_info: None,
         compression: None,
         collations: std::collections::HashMap::new(),
+        original_sql: String::new(),
     })
 }
 

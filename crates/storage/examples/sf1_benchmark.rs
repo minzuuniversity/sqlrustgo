@@ -81,7 +81,8 @@ fn main() {
                         compression: None,
                         partition_info: None,
                         collations: std::collections::HashMap::new(),
-                    },
+                    original_sql: String::new(),
+},
                     rows,
                 };
                 let batch_len = batch.len();
@@ -136,7 +137,8 @@ fn main() {
                 compression: None,
                 partition_info: None,
                 collations: std::collections::HashMap::new(),
-            },
+            original_sql: String::new(),
+},
             rows: batch,
         };
         storage
