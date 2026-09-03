@@ -571,7 +571,11 @@ impl<'a> Lexer<'a> {
                     "INOUT" => Token::InOut,
                     "CURSOR" => Token::Cursor,
                     "HANDLER" => Token::Handler,
-                    "SQL" => Token::SQL,
+                    // Issue #4682: `sql` is a legitimate column name in
+                    // sqlite_master / sqlite_schema (`SELECT sql FROM
+                    // sqlite_master`). The parser never consumes a dedicated
+                    // SQL keyword token, so lex it as a plain identifier.
+                    "SQL" => Token::Identifier("SQL".to_string()),
                     "LANGUAGE" => Token::Language,
                     "DETERMINISTIC" => Token::Deterministic,
                     "CONTAINS" => Token::Contains,
