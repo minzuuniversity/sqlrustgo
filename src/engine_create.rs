@@ -392,8 +392,12 @@ impl<S: StorageEngine + 'static> ExecutionEngine<S> {
 
         let mut storage = self.storage.write();
 
-        // Check if sequence already exists
-        if storage.has_sequence(&seq_stmt.name) {
+        // Check if sequence already exists (in storage AND cache; the cache may
+        // already know about a sequence that wasn't yet persisted, e.g. one
+        // re-hydrated from a recovery pass).
+        if storage.has_sequence(&seq_stmt.name)
+            || self.sequence_state.contains(&seq_stmt.name)
+        {
             if seq_stmt.if_not_exists {
                 return Ok(ExecutorResult::empty());
             }
@@ -454,7 +458,13 @@ impl<S: StorageEngine + 'static> ExecutionEngine<S> {
             cache,
             cycle,
         };
-        storage.create_sequence(seq_info)?;
+        // V312-72 (perf-refactor): dual-write — persist via storage AND
+        // publish to the in-memory cache that the SELECT projection path
+        // will consult. The cache copy must use the SAME current_value
+        // we just persisted, so that a SELECT issued immediately after
+        // this CREATE SEQUENCE sees a coherent value.
+        storage.create_sequence(seq_info.clone())?;
+        self.sequence_state.install(seq_info);
         Ok(ExecutorResult::empty())
     }
 
@@ -489,8 +499,10 @@ impl<S: StorageEngine + 'static> ExecutionEngine<S> {
             seq_info.current_value = seq_info.start_with - seq_info.increment_by;
         }
 
-        // Update the sequence
-        storage.create_sequence(seq_info)?;
+        // V312-72 (perf-refactor): persist + dual-write cache so the
+        // projection path observes the restart immediately.
+        storage.create_sequence(seq_info.clone())?;
+        self.sequence_state.install(seq_info);
         Ok(ExecutorResult::empty())
     }
 }
