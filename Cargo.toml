@@ -282,8 +282,15 @@ path = "tests/integration/sql/v312_68_substring_zero_test.rs"
 [[test]]
 name = "v312_69_insert_returning_test"
 path = "tests/integration/sql/v312_69_insert_returning_test.rs"
-
-
+[[test]]
+name = "v312_72_alter_table_add_column_test"
+path = "tests/integration/sql/v312_72_alter_table_add_column_test.rs"
+[[test]]
+name = "v312_71_sqlite_master_test"
+path = "tests/integration/sql/v312_71_sqlite_master_test.rs"
+[[test]]
+name = "v312_73_join_using_clause_test"
+path = "tests/integration/sql/v312_73_join_using_clause_test.rs"
 
 [[test]]
 name = "repro_v312_63"
@@ -1566,6 +1573,10 @@ path = "tests/unit/types_value_test.rs"
 [[test]]
 name = "q2_q17_repro_test"
 path = "tests/integration/q2_q17_repro_test.rs"
+
+[[test]]
+name = "v312_75_correlated_scalar_subquery_test"
+path = "tests/integration/sql/v312_75_correlated_scalar_subquery_test.rs"
 
 [[test]]
 name = "torn_write_recovery"
