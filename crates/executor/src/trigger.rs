@@ -1808,7 +1808,8 @@ mod tests {
 
     #[test]
     fn test_value_to_sql_literal_float() {
-        assert_eq!(Value::Float(0.0).to_sql_string(), "0");
+        // Issue #4721: integral floats render with one decimal digit.
+        assert_eq!(Value::Float(0.0).to_sql_string(), "0.0");
         assert_eq!(Value::Float(3.14).to_sql_string(), "3.14");
         assert_eq!(Value::Float(-1.5).to_sql_string(), "-1.5");
     }

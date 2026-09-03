@@ -152,7 +152,21 @@ impl Value {
             Value::Null => "NULL".to_string(),
             Value::Boolean(b) => b.to_string(),
             Value::Integer(i) => i.to_string(),
-            Value::Float(f) => f.to_string(),
+            // Issue #4721: preserve REAL display for integral floats.
+            // `f64::to_string()` renders `35.0` as `"35"`, which made
+            // `SELECT 35.0`, `SELECT 1.5 + 1.5` and `round(35.0, 2)`
+            // lose the `.0` suffix and report an INTEGER-looking value
+            // (SQLite / MySQL 8.0 / PostgreSQL all render `35.0`).
+            // Integral, finite, representable floats now render with one
+            // decimal digit; everything else keeps the default shortest
+            // round-trip formatting.
+            Value::Float(f) => {
+                if f.is_finite() && f.fract() == 0.0 && f.abs() < 1e15 {
+                    format!("{:.1}", f)
+                } else {
+                    f.to_string()
+                }
+            }
             Value::Text(s) => s.clone(),
             Value::Blob(b) => format!("X'{}'", hex::encode(b)),
             Value::Point(x, y) => format!("POINT({}, {})", x, y),
@@ -332,8 +346,12 @@ mod tests {
 
     #[test]
     fn test_value_sql_string_float() {
-        assert_eq!(Value::Float(0.0).to_sql_string(), "0");
+        // Issue #4721: integral floats render with one decimal digit
+        assert_eq!(Value::Float(0.0).to_sql_string(), "0.0");
         assert_eq!(Value::Float(1.5).to_sql_string(), "1.5");
+        assert_eq!(Value::Float(35.0).to_sql_string(), "35.0");
+        assert_eq!(Value::Float(-4.0).to_sql_string(), "-4.0");
+        assert_eq!(Value::Float(3.14).to_sql_string(), "3.14");
     }
 
     #[test]

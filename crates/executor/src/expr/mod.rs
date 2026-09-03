@@ -1464,16 +1464,21 @@ pub fn eval_fn(name: &str, args: &[Value]) -> Value {
             };
             let scale = 10f64.powi(d as i32);
             let rounded = (x * scale).round() / scale;
-            // Issue #4613: ROUND must preserve REAL type when d > 0.
-            // Previously `d <= 0` returned Integer even for FLOAT inputs
-            // like ROUND(70 * 0.5, 2) → 55.0 (which should stay Float).
-            // MySQL semantics: INTEGER result when d <= 0, FLOAT when d > 0.
-            // The fix is to keep Float for d > 0; if d <= 0 the input is
-            // already an integer and Float(55.0) → render `55` is acceptable
-            // for display purposes, but we keep the historical behavior for
-            // d <= 0 (CALLER explicitly asked for no fractional digits).
+            // Issue #4613 / #4721: ROUND's result type follows the input
+            // type. A Float input keeps REAL even when d <= 0, so
+            // `round(3.5, 0)` → `4.0` (REAL) and `round(70.0 * 0.5, 2)`
+            // → `35.0` (REAL), matching SQLite's `round()` which always
+            // returns REAL. An Integer input stays INTEGER (`round(3, 0)`
+            // → `3`), matching MySQL. Previously the `d <= 0` branch
+            // coerced every input to Integer, which truncated the REAL
+            // type of `round(3.5, 0)` and made TPC-H REAL expressions
+            // render as bare integers.
             if d <= 0 {
-                Value::Integer(rounded as i64)
+                if matches!(args.first(), Some(Value::Integer(_))) {
+                    Value::Integer(rounded as i64)
+                } else {
+                    Value::Float(rounded)
+                }
             } else {
                 Value::Float(rounded)
             }
