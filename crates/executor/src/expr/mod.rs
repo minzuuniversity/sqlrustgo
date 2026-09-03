@@ -1737,7 +1737,12 @@ pub fn eval_fn(name: &str, args: &[Value]) -> Value {
             if let (Some(s), Some(start)) = (args.first(), args.get(1)) {
                 let text = s.to_sql_string();
                 let start_idx = match start {
-                    Value::Integer(i) => (*i).saturating_sub(1).max(0) as usize,
+                    // V312-68 / Issue #4681: position 0 (or negative) refers
+                    // to "before start of string" — return an empty substring.
+                    // Position 1 is the first character (1-based indexing per
+                    // SQL/SQLite/PostgreSQL convention).
+                    Value::Integer(i) if *i <= 0 => return Value::Text(String::new()),
+                    Value::Integer(i) => ((*i - 1) as usize).min(text.len()),
                     _ => return Value::Text(String::new()),
                 };
                 if start_idx >= text.len() {
