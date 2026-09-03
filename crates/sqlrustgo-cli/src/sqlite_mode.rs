@@ -442,6 +442,23 @@ impl SqliteMode {
         let is_commit = trimmed_upper.starts_with("COMMIT");
         let is_rollback = trimmed_upper.starts_with("ROLLBACK");
 
+        // V312-RC-GA / Issue #4626: at top-level (tx_depth == 0), a prior
+        // DML statement (INSERT/UPDATE/DELETE/SELECT-FOR-UPDATE) may have
+        // implicitly started a transaction on the engine without bumping
+        // `tx_depth` (the tx_depth tracking only fires on explicit
+        // BEGIN/COMMIT/ROLLBACK). If the next statement in the batch is
+        // an explicit `BEGIN`, the engine's begin_transaction would then
+        // reject with "Transaction already in progress"; if it is
+        // `ROLLBACK`, the engine's rollback_transaction would reject with
+        // "transaction already aborted".
+        //
+        // Clear any lingering implicit-tx **before** an explicit BEGIN at
+        // top-level. The COMMIT call is a no-op when `current_tx_id` is
+        // None, so it is safe when no prior DML ran in this batch.
+        if is_begin && self.tx_depth == 0 {
+            let _ = self.engine.execute("COMMIT");
+        }
+
         match self.execute_sql(sql) {
             Ok(_) => {
                 if is_begin {
