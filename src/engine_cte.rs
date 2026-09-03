@@ -51,6 +51,12 @@ pub fn derive_cte_columns(
         cte.columns.len()
     } else if !seed_rows.is_empty() {
         seed_rows[0].len()
+    } else if !subquery_column_names.is_empty() {
+        // V312-64f / Task 7: empty seed but anchor projected columns
+        // (e.g. anchor = `SELECT n FROM empty_src`). Without this fallback
+        // the CTE table gets 0 columns and the step's references fail
+        // with "column 'n' not found in schema".
+        subquery_column_names.len()
     } else {
         0
     };
