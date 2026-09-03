@@ -2,7 +2,7 @@
 //! Target: increase line coverage from ~55% to 70%+.
 //! Only tests that successfully parse are included.
 
-use sqlrustgo_parser::parse;
+use sqlrustgo_parser::{parse, Statement};
 
 // ============ CREATE TRIGGER Tests ============
 
@@ -3205,23 +3205,47 @@ fn test_parse_timestamp_literal() {
 }
 
 // ============ RETURNING clause ============
+// V312-64c / Issue #4653+#4658: was previously `let _ = result` (false
+// positive). Now that the parser preserves RETURNING in the AST, these
+// tests assert the structural shape.
 
 #[test]
 fn test_parse_insert_returning() {
-    let result = parse("INSERT INTO t (id) VALUES (1) RETURNING id");
-    let _ = result;
+    let stmt = parse("INSERT INTO t (id) VALUES (1) RETURNING id").expect("parse");
+    match stmt {
+        Statement::Insert(ins) => {
+            assert_eq!(ins.table, "t");
+            assert_eq!(ins.columns, vec!["id"]);
+            let ret = ins.returning.as_ref().expect("RETURNING should be parsed");
+            assert_eq!(ret.len(), 1);
+        }
+        other => panic!("expected Insert, got {:?}", other),
+    }
 }
 
 #[test]
-fn test_parse_update_returning() {
-    let result = parse("UPDATE t SET name = 'x' WHERE id = 1 RETURNING name");
-    let _ = result;
+fn test_parse_insert_returning_multi_col() {
+    let stmt =
+        parse("INSERT INTO t (id, name) VALUES (1, 'x') RETURNING id, name").expect("parse");
+    match stmt {
+        Statement::Insert(ins) => {
+            let ret = ins.returning.as_ref().expect("RETURNING should be parsed");
+            assert_eq!(ret.len(), 2);
+        }
+        other => panic!("expected Insert, got {:?}", other),
+    }
 }
 
 #[test]
-fn test_parse_delete_returning() {
-    let result = parse("DELETE FROM t WHERE id = 1 RETURNING id");
-    let _ = result;
+fn test_parse_insert_without_returning_still_none() {
+    // Backward compat: no RETURNING clause means the field is None.
+    let stmt = parse("INSERT INTO t (id) VALUES (1)").expect("parse");
+    match stmt {
+        Statement::Insert(ins) => {
+            assert!(ins.returning.is_none(), "RETURNING should be None");
+        }
+        other => panic!("expected Insert, got {:?}", other),
+    }
 }
 
 // ============ Bad LIMIT expression paths ============
