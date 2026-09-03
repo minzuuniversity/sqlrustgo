@@ -590,115 +590,6 @@ pub fn eval_predicate_with_subq(
     }
 }
 
-/// V312-64 / Issue #4656: variant of [`eval_predicate_with_subq`] that
-/// also knows how to evaluate `Expression::QuantifiedOp` (e.g.
-/// `amt > ALL (SELECT amt FROM orders WHERE cust = 'alice')`).
-/// Quantified operators need the FULL first-column result set of the
-/// right-hand subquery, not just one scalar value, so we thread a
-/// second closure `subq_eval_set` that returns `Vec<Value>` (one entry
-/// per subquery row). The original scalar closure `subq_eval` remains
-/// available for the regular `col OP (SELECT scalar)` shape.
-pub fn eval_predicate_with_subq_full(
-    expr: &Expression,
-    row: &[Value],
-    table_info: &TableInfo,
-    subq_eval: &dyn Fn(&sqlrustgo_parser::SelectStatement) -> Result<Value, String>,
-    subq_eval_set: &dyn Fn(&sqlrustgo_parser::SelectStatement) -> Result<Vec<Value>, String>,
-) -> bool {
-    use sqlrustgo_parser::Expression;
-    match expr {
-        Expression::BinaryOp(left, op, right) if op.to_uppercase() == "AND" => {
-            eval_predicate_with_subq_full(left, row, table_info, subq_eval, subq_eval_set)
-                && eval_predicate_with_subq_full(right, row, table_info, subq_eval, subq_eval_set)
-        }
-        Expression::BinaryOp(left, op, right) if op.to_uppercase() == "OR" => {
-            eval_predicate_with_subq_full(left, row, table_info, subq_eval, subq_eval_set)
-                || eval_predicate_with_subq_full(right, row, table_info, subq_eval, subq_eval_set)
-        }
-        // V312-64 / Issue #4656: `lhs OP ALL|ANY (subquery)`. The parser
-        // stores this as `QuantifiedOp(BinaryOp(lhs_lit, op, ANY_SUBQUERY),
-        // quantifier, subquery)` — unwrap to recover the real LHS
-        // expression and the bare comparison operator. Materialise
-        // the subquery once, pull every first-column value, then run the
-        // comparison against the LHS. SQL standard: empty subquery set
-        // makes `OP ALL` true and `OP ANY` false (vacuous truth).
-        // Per-row NULL semantics: any NULL LHS or NULL RHS value yields
-        // UNKNOWN, which we fold to FALSE.
-        Expression::QuantifiedOp(wrapped_lhs, quantifier, subq) => {
-            // Unwrap the BinaryOp left, op pair the parser built.
-            let (lhs_expr, bare_op) = match wrapped_lhs.as_ref() {
-                Expression::BinaryOp(l, op, _r) => (l.as_ref(), op.clone()),
-                _ => (wrapped_lhs.as_ref(), "=".to_string()),
-            };
-            let lhs_val = crate::expr_utils::evaluate_expression_with_subq(
-                lhs_expr, row, table_info, subq_eval,
-            )
-            .unwrap_or(Value::Null);
-            if matches!(lhs_val, Value::Null) {
-                return false;
-            }
-            let rhs_values = match subq_eval_set(subq) {
-                Ok(v) => v,
-                Err(_) => return false,
-            };
-            let quant_u = quantifier.to_uppercase();
-            let is_all = quant_u == "ALL";
-            let mut any_match = false;
-            let mut all_match = true;
-            let mut saw_null = false;
-            for r in &rhs_values {
-                if matches!(r, Value::Null) {
-                    saw_null = true;
-                    continue;
-                }
-                let cmp = sql_compare(&bare_op, &lhs_val, r);
-                if cmp {
-                    any_match = true;
-                } else {
-                    all_match = false;
-                }
-            }
-            if saw_null && !any_match && !all_match {
-                // UNKNOWN
-                return false;
-            }
-            if is_all {
-                if rhs_values.is_empty() {
-                    true // vacuous
-                } else {
-                    all_match
-                }
-            } else {
-                if rhs_values.is_empty() {
-                    false // vacuous
-                } else {
-                    any_match
-                }
-            }
-        }
-        // Scalar subquery as a comparison operand: materialise it via
-        // `subq_eval` (engine recursion) instead of Null.
-        Expression::BinaryOp(left, op, right) => {
-            let op_u = op.to_uppercase();
-            let is_comparison = matches!(
-                op_u.as_str(),
-                "=" | "==" | "!=" | "<>" | ">" | ">=" | "<" | "<="
-            );
-            if !is_comparison {
-                return eval_predicate(expr, row, table_info);
-            }
-            let left_val =
-                crate::expr_utils::evaluate_expression_with_subq(left, row, table_info, subq_eval)
-                    .unwrap_or(Value::Null);
-            let right_val =
-                crate::expr_utils::evaluate_expression_with_subq(right, row, table_info, subq_eval)
-                    .unwrap_or(Value::Null);
-            sql_compare(op, &left_val, &right_val)
-        }
-        _ => eval_predicate(expr, row, table_info),
-    }
-}
-
 /// SQL comparison operator
 /// Returns false if either operand is NULL (UNKNOWN semantics)
 /// This is Phase 1: UNKNOWN is folded to FALSE for WHERE filtering
@@ -1018,8 +909,18 @@ pub fn build_aggregate_schema(
                 )
             }
             AggregateFunction::GroupConcat => {
+                // V312-64b / Issue #4650: reuse
+                // `expression_to_string`'s canonical GROUP_CONCAT form
+                // so `evaluate_expression`'s Aggregate arm can look up
+                // the precomputed value by name. The previous arm
+                // (joining every arg including sentinels with ", ")
+                // produced names like
+                // "GROUP_CONCAT(__NO_DISTINCT__, val)" that did NOT
+                // match expression_to_string's
+                // "GROUP_CONCAT(val)" — eval_aggregate_lookup failed
+                // and the projection silently returned Null.
                 crate::expr_utils::expression_to_string(
-                    &sqlrustgo_parser::Expression::Aggregate(agg.clone()),
+                    &Expression::Aggregate(agg.clone()),
                 )
             }
         };

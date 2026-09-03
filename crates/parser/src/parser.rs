@@ -5095,11 +5095,36 @@ impl Parser {
                             } else {
                                 None
                             };
-                            columns.push(SelectColumn {
-                                name: format!("{:?}", expr),
-                                alias,
-                                expression: Some(expr),
-                            });
+                            // V312-64b / Issue #4650: when parse_expression
+                            // returns an `Expression::Aggregate` (e.g. for
+                            // GROUP_CONCAT routed through the function-call
+                            // path), it must also be registered in
+                            // `select.aggregates` so the executor's Step 3
+                            // GROUP BY + AGGREGATE branch fires. Otherwise
+                            // the executor treats GROUP_CONCAT as a scalar
+                            // function call (returning Null since the
+                            // scalar helper was removed) and skips the
+                            // real aggregate compute path. Mirror the
+                            // explicit-aggregate-token path: push the
+                            // aggregate into `aggregates` and rename
+                            // `col.name` to `__agg_N` so the reproject
+                            // lookup keys align with the aggregate
+                            // position.
+                            if let Expression::Aggregate(agg) = expr {
+                                let agg_idx = aggregates.len();
+                                aggregates.push(agg.clone());
+                                columns.push(SelectColumn {
+                                    name: format!("__agg_{}", agg_idx),
+                                    alias,
+                                    expression: Some(Expression::Aggregate(agg)),
+                                });
+                            } else {
+                                columns.push(SelectColumn {
+                                    name: format!("{:?}", expr),
+                                    alias,
+                                    expression: Some(expr),
+                                });
+                            }
                         }
                     } else {
                         // Sprint 2 SELECT projection: the column is a plain

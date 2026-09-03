@@ -2,14 +2,24 @@
 //!
 //! Closes the executor / semantic side of:
 //!   - #4650 — GROUP_CONCAT aggregator + ORDER BY + SEPARATOR
-//!   - #4656 — `> ALL` / `= ANY` quantified subquery operators
 //!   - #4657 — HAVING with multiple AND / subquery predicate
 //!   - #4659 — EXTRACT(YEAR/MONTH/DAY FROM date) output format
 //!
-//! These four issues all live in the executor's expression evaluator
-//! (`src/engine_select.rs` + `crates/executor/src/expr/mod.rs`).
+//! #4656 (`> ALL` / `= ANY` quantified subquery operators) was originally
+//! in this batch but was dropped before PR #4690 after V312-66 / #4687
+//! (commit d18482e246) shipped the same fix via
+//! `pre_evaluate_quantified_subquery` + Step 1.6. #4687 supersedes #4656.
+//! The two issues describe the same root cause, and merging both would
+//! cause the correlated-quantified regression in
+//! `v312_66_quantified_correlated_does_not_panic` because the two paths
+//! (this batch's `eval_predicate_with_subq_full` + #4687's
+//! `pre_evaluate_quantified_subquery`) consume the same correlated
+//! QuantifiedOp AST differently.
+//!
+//! These remaining issues all live in the executor's expression
+//! evaluator (`src/engine_select.rs` + `crates/executor/src/expr/mod.rs`).
 //! Unlike v312-64a (which was parser-only), this batch needs to touch
-//! both the aggregate dispatch path AND the predicate evaluator.
+//! the aggregate dispatch path AND the predicate evaluator.
 
 use parking_lot::RwLock;
 use sqlrustgo::{ExecutionEngine, MemoryStorage};
@@ -97,60 +107,6 @@ fn repro_4650_group_concat_bare_form() {
     assert_eq!(r.rows.len(), 1);
     // bare form uses default ',' separator and input order
     assert_eq!(format!("{:?}", r.rows[0][0]), "Text(\"30,10,20\")");
-}
-
-// ============================================================================
-// Issue #4656 — `> ALL` / `= ANY` quantified subquery operators
-// ============================================================================
-
-#[test]
-fn repro_4656_gt_all_subquery() {
-    let mut x = fresh_mem();
-    x.execute("CREATE TABLE orders(cust varchar(20), amt int)").unwrap();
-    x.execute(
-        "INSERT INTO orders VALUES ('alice', 100), ('bob', 200), ('bob', 150), ('carol', 300)",
-    )
-    .unwrap();
-    let r = x
-        .execute("SELECT cust, amt FROM orders WHERE amt > ALL (SELECT amt FROM orders WHERE cust = 'alice')")
-        .expect("> ALL subquery must execute");
-    let amts: Vec<i64> = r
-        .rows
-        .iter()
-        .filter_map(|r| match &r[1] {
-            sqlrustgo::Value::Integer(n) => Some(*n),
-            _ => None,
-        })
-        .collect();
-    assert!(
-        amts.iter().all(|&a| a > 100),
-        "every amt must be > 100 (alice's only): got {:?}",
-        amts
-    );
-    assert_eq!(r.rows.len(), 3, "expected bob(200), bob(150), carol(300)");
-}
-
-#[test]
-fn repro_4656_eq_any_subquery() {
-    let mut x = fresh_mem();
-    x.execute("CREATE TABLE orders(cust varchar(20), amt int)").unwrap();
-    x.execute(
-        "INSERT INTO orders VALUES ('alice', 100), ('bob', 200), ('bob', 150), ('carol', 300)",
-    )
-    .unwrap();
-    let r = x
-        .execute("SELECT cust, amt FROM orders WHERE amt = ANY (SELECT amt FROM orders WHERE cust = 'bob')")
-        .expect("= ANY subquery must execute");
-    let amts: Vec<i64> = r
-        .rows
-        .iter()
-        .filter_map(|r| match &r[1] {
-            sqlrustgo::Value::Integer(n) => Some(*n),
-            _ => None,
-        })
-        .collect();
-    assert_eq!(r.rows.len(), 2, "expected bob(200), bob(150)");
-    assert!(amts.contains(&200) && amts.contains(&150));
 }
 
 // ============================================================================
