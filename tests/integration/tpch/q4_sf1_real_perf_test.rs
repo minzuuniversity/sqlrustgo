@@ -32,7 +32,7 @@
 #[path = "../../common/mod.rs"]
 mod common;
 
-use common::tpch_wire_harness::{load_fixture, read_baseline, run_query_timed, SCHEMA_DDL, TABLES};
+use common::tpch_wire_harness::{load_fixture, read_baseline, run_query_timed, TABLES};
 use common::MySqlTestClient;
 use sqlrustgo_mysql_server::testing::{start_ephemeral, EphemeralConfig};
 use std::path::{Path, PathBuf};
