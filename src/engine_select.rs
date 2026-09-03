@@ -499,6 +499,83 @@ impl<S: StorageEngine + 'static> ExecutionEngine<S> {
         Ok(ExecutorResult::new(rows, row_count))
     }
 
+    /// V312-76 / Issue #4682: column layout of the synthesized SQLite
+    /// system views. Master views (`sqlite_master`, `sqlite_schema`,
+    /// `sqlite_temp_master`) use the canonical 5-column schema;
+    /// `sqlite_sequence` tracks per-table auto-increment counters.
+    const SYSTEM_MASTER_COLUMNS: &'static [(&'static str, &'static str)] = &[
+        ("type", "TEXT"),
+        ("name", "TEXT"),
+        ("tbl_name", "TEXT"),
+        ("rootpage", "INTEGER"),
+        ("sql", "TEXT"),
+    ];
+    const SYSTEM_SEQUENCE_COLUMNS: &'static [(&'static str, &'static str)] =
+        &[("name", "TEXT"), ("seq", "INTEGER")];
+
+    /// V312-76 / Issue #4682: build a `TableInfo` for a synthesized
+    /// system view so its rows can be filtered with `eval_predicate`
+    /// (WHERE pushdown over the early-return path).
+    fn system_view_table_info(cols: &'static [(&'static str, &'static str)]) -> TableInfo {
+        use sqlrustgo_storage::ColumnDefinition;
+        TableInfo {
+            name: String::new(),
+            columns: cols
+                .iter()
+                .map(|(name, ty)| ColumnDefinition {
+                    name: name.to_string(),
+                    data_type: ty.to_string(),
+                    ..Default::default()
+                })
+                .collect(),
+            foreign_keys: vec![],
+            unique_constraints: vec![],
+            check_constraints: vec![],
+            partition_info: None,
+            compression: None,
+            collations: std::collections::HashMap::new(),
+        }
+    }
+
+    /// V312-76 / Issue #4682: synthesize the SQLite `sqlite_sequence`
+    /// view — one `(name, seq)` row per table that owns an
+    /// auto-increment column, where `seq` is the current maximum id
+    /// (the engine computes next ids from existing rows at INSERT
+    /// time, so max == last used). Tables without auto-increment are
+    /// omitted, matching SQLite where the table only exists once some
+    /// table uses AUTOINCREMENT.
+    fn query_sqlite_sequence(&self) -> SqlResult<ExecutorResult> {
+        let storage = self.storage.read();
+        let names = storage.list_tables();
+        let mut rows: Vec<Vec<Value>> = Vec::new();
+        for name in names {
+            let info = match storage.get_table_info(&name) {
+                Ok(info) => info,
+                Err(_) => continue,
+            };
+            let Some((idx, _col)) = info
+                .columns
+                .iter()
+                .enumerate()
+                .find(|(_, c)| c.auto_increment)
+            else {
+                continue;
+            };
+            let seq = storage
+                .scan(&name)
+                .ok()
+                .and_then(|recs| {
+                    recs.iter()
+                        .filter_map(|r| r.get(idx).and_then(|v| v.as_integer()))
+                        .max()
+                })
+                .unwrap_or(0);
+            rows.push(vec![Value::Text(name), Value::Integer(seq)]);
+        }
+        let row_count = rows.len();
+        Ok(ExecutorResult::new(rows, row_count))
+    }
+
     /// V312-67 / Issue #4686: execute a scalar subquery used in the
     /// SELECT list projection and return its first row's first column
     /// (or `Value::Null` for an empty result).
@@ -670,15 +747,71 @@ impl<S: StorageEngine + 'static> ExecutionEngine<S> {
                 .split_once('|')
                 .map(|(t, _)| t)
                 .unwrap_or(&select.table);
-            let is_system_table = bare.eq_ignore_ascii_case("sqlite_master")
-                || bare.eq_ignore_ascii_case("sqlite_schema");
-            if is_system_table
+            let is_master_view = bare.eq_ignore_ascii_case("sqlite_master")
+                || bare.eq_ignore_ascii_case("sqlite_schema")
+                || bare.eq_ignore_ascii_case("sqlite_temp_master");
+            let is_sequence_view = bare.eq_ignore_ascii_case("sqlite_sequence");
+            if (is_master_view || is_sequence_view)
                 && select.from_subquery.is_none()
                 && select.from_values.is_none()
                 && select.join_clause.is_empty()
                 && select.extra_tables.is_empty()
             {
-                return self.query_sqlite_master();
+                // V312-76 / Issue #4682: apply the statement's WHERE
+                // clause to the synthesized rows. The early return here
+                // bypasses the normal Step-1.5/1.6 filtering, so
+                // `WHERE type = 'table'` previously leaked rows of
+                // every other type.
+                // `sqlite_temp_master` lists TEMP-schema objects;
+                // temp tables are not supported, so its catalog is
+                // always empty. `sqlite_master` / `sqlite_schema`
+                // enumerate user tables.
+                let empty = is_master_view && bare.eq_ignore_ascii_case("sqlite_temp_master");
+                let (mut rows, _row_count) = if empty {
+                    (Vec::new(), 0usize)
+                } else if is_master_view {
+                    let res = self.query_sqlite_master()?;
+                    (res.rows, res.affected_rows)
+                } else {
+                    let res = self.query_sqlite_sequence()?;
+                    (res.rows, res.affected_rows)
+                };
+                let ti = Self::system_view_table_info(if is_master_view {
+                    Self::SYSTEM_MASTER_COLUMNS
+                } else {
+                    Self::SYSTEM_SEQUENCE_COLUMNS
+                });
+                if let Some(ref where_expr) = select.where_clause {
+                    rows.retain(|row| eval_predicate(where_expr, row, &ti));
+                }
+                // V312-76 / Issue #4682: apply the SELECT-list projection.
+                // `SELECT sql FROM sqlite_master` previously returned all
+                // 5 raw columns because the early return bypassed the
+                // normal projection step.
+                let expand_star =
+                    select.columns.is_empty() || select.columns.iter().any(|c| c.name == "*");
+                let rows = if expand_star {
+                    rows
+                } else {
+                    let mut projected = Vec::with_capacity(rows.len());
+                    for row in &rows {
+                        let mut out = Vec::with_capacity(select.columns.len());
+                        for col in &select.columns {
+                            let v = match col.expression.as_ref() {
+                                Some(expr) => {
+                                    crate::expr_utils::evaluate_expression(expr, row, &ti)
+                                        .unwrap_or(Value::Null)
+                                }
+                                None => Value::Null,
+                            };
+                            out.push(v);
+                        }
+                        projected.push(out);
+                    }
+                    projected
+                };
+                let filtered_count = rows.len();
+                return Ok(ExecutorResult::new(rows, filtered_count));
             }
         }
         // invoked from `pre_evaluate_correlated_exists`) short-circuits on

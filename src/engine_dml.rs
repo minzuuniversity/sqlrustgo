@@ -69,7 +69,7 @@ pub fn execute_insert<S: StorageEngine + 'static>(
     if engine.clustered_tables.read().contains_key(&insert.table) {
         return execute_insert_clustered(engine, insert);
     }
-    let (_tm_tx_id, started_implicit) =
+    let (_tm_tx_id, _started_implicit) =
         engine.begin_implicit_dml_tx("execute_insert", &insert.table)?;
     let table_name = insert.table.clone();
 
