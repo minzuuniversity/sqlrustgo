@@ -133,19 +133,84 @@ fn rec_cte_empty_anchor() {
 }
 
 #[test]
-fn rec_cte_rejected_when_no_union() {
-    // Per SQL:1999, a recursive CTE body MUST be `SELECT ... UNION [ALL] SELECT ...`.
-    // A bare SELECT (no UNION at all) must be rejected.
+fn rec_cte_nonrecursive_body_in_recursive_clause_works() {
+    // PG/SQLite semantics: WITH RECURSIVE allows mixing recursive and
+    // non-recursive CTEs. A non-UNION body falls through to the simple
+    // materialize-once path (NOT the two-table recursive algorithm).
+    // This is a deliberate divergence from "WITH RECURSIVE only allows
+    // UNION bodies".
     let mut e = fresh_mem();
-    let err = e
+    let r = e
         .execute(
             "WITH RECURSIVE cnt AS (SELECT 1 AS n) SELECT n FROM cnt",
         )
-        .expect_err("non-UNION body must error");
-    let msg = format!("{}", err);
-    assert!(
-        msg.contains("UNION"),
-        "error should mention UNION, got: {}",
-        msg
+        .expect("non-recursive body under WITH RECURSIVE must succeed");
+    assert_eq!(r.rows.len(), 1);
+    assert_eq!(r.rows[0][0], Value::Integer(1));
+}
+
+// ============================================================================
+// Issue #4699 — multiple CTEs mixed + cleanup after recursive CTE
+// ============================================================================
+
+#[test]
+fn rec_cte_mixed_with_nonrecursive_in_recursive_clause() {
+    // PG/SQLite allow mixing non-recursive and recursive CTEs inside a
+    // single WITH RECURSIVE clause. The non-recursive one is just a
+    // regular CTE; the recursive one can reference it.
+    let mut e = fresh_mem();
+    let r = e
+        .execute(
+            "WITH RECURSIVE \
+                src AS (SELECT 1 AS n), \
+                cnt AS ( \
+                    SELECT n FROM src \
+                    UNION ALL \
+                    SELECT n + 1 FROM cnt WHERE n < 4 \
+                 ) \
+             SELECT n FROM cnt ORDER BY n",
+        )
+        .expect("mixed CTEs must execute");
+    assert_eq!(
+        r.rows.len(),
+        4,
+        "expected 4 rows from 1..4, got {}",
+        r.rows.len()
     );
+    assert_eq!(r.rows[0][0], Value::Integer(1));
+    assert_eq!(r.rows[1][0], Value::Integer(2));
+    assert_eq!(r.rows[2][0], Value::Integer(3));
+    assert_eq!(r.rows[3][0], Value::Integer(4));
+}
+
+#[test]
+fn rec_cte_cleanup_drops_temp_tables_after_query() {
+    // After the recursive CTE completes:
+    //   - t__work must be gone (dropped at end of materialize_recursive_cte)
+    //   - t must be gone (dropped by cleanup_cte_tables in execute_with_select)
+    // We probe by trying to CREATE TABLE with the same name and by running
+    // a follow-up SELECT that would error if the temp table leaked.
+    let mut e = fresh_mem();
+    e.execute(
+        "WITH RECURSIVE cnt AS ( \
+            SELECT 1 AS n UNION ALL \
+            SELECT n + 1 FROM cnt WHERE n < 3 \
+         ) SELECT n FROM cnt",
+    )
+    .expect("recursive CTE must succeed");
+
+    // If the temp table leaked, CREATE TABLE with the same name would fail.
+    e.execute("CREATE TABLE cnt(n INT)")
+        .expect("CTE table should be cleaned up; CREATE TABLE cnt must succeed");
+    e.execute("INSERT INTO cnt VALUES (99)").unwrap();
+
+    // SELECT FROM cnt should now see only the freshly-inserted real row.
+    let r = e.execute("SELECT n FROM cnt").unwrap();
+    assert_eq!(
+        r.rows.len(),
+        1,
+        "expected only the real row, got {}",
+        r.rows.len()
+    );
+    assert_eq!(r.rows[0][0], Value::Integer(99));
 }

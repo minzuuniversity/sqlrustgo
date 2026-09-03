@@ -435,104 +435,131 @@ pub fn materialize_recursive_cte<S: StorageEngine + 'static>(
 /// temporary table per CTE, and return the list of created table names so
 /// the caller can clean them up. Returns an empty Vec if `with_clause`
 /// is None.
+/// V312-64f / Issue #4699: per-CTE materialization for the simple (non-
+/// recursive) path. Executes the SELECT once, derives the column schema,
+/// and creates a temp table with the projected rows. Shared between the
+/// pure-non-recursive branch and the per-CTE fallback inside a
+/// `WITH RECURSIVE` clause (PG/SQLite allow mixing recursive and non-
+/// recursive CTEs under one RECURSIVE keyword).
+fn materialize_simple_cte<S: StorageEngine + 'static>(
+    engine: &mut ExecutionEngine<S>,
+    cte: &sqlrustgo_parser::parser::CommonTableExpression,
+) -> SqlResult<()> {
+    use sqlrustgo_parser::Statement;
+    use sqlrustgo_storage::engine::{ColumnDefinition, TableInfo};
+
+    let cte_rows = match cte.subquery.as_ref() {
+        Statement::Select(s) => engine.execute_select(s)?.rows,
+        _ => {
+            return Err(SqlError::ExecutionError(
+                "CTE subquery must be SELECT".to_string(),
+            ));
+        }
+    };
+    // Resolve the column names for this CTE in priority order:
+    //   1. Explicit `name(col1, col2, ...)` form
+    //   2. The subquery's SELECT-column aliases (e.g. `SELECT 'foo' AS a`)
+    //   3. The subquery's SELECT-column names (raw expression-derived)
+    //   4. Fallback `col_<i>`
+    //
+    // V313-13 / Issue #4041: previously step 2/3 was missing, so a CTE
+    // such as `WITH t AS (SELECT 'foo' AS a)` got columns named
+    // `col_0` instead of `a`. Downstream references like
+    // `t.a` then failed (or, worse, `t.foobar` silently fell
+    // through to `Value::Text("t.foobar")` and produced wrong
+    // output). With this fix the CTE column schema matches the
+    // subquery's projection, which is what users (and the
+    // binder__alias_error_10057 fixture) expect.
+    let column_count = if !cte.columns.is_empty() {
+        cte.columns.len()
+    } else if !cte_rows.is_empty() {
+        cte_rows[0].len()
+    } else {
+        // V312-64f / Task 7 fix: empty seed but the anchor's SELECT
+        // still projects columns. Without this fallback the CTE table
+        // is created with 0 columns.
+        match cte.subquery.as_ref() {
+            Statement::Select(s) => s.columns.len(),
+            _ => 0,
+        }
+    };
+    let subquery_column_names: Vec<String> = match cte.subquery.as_ref() {
+        Statement::Select(s) => s
+            .columns
+            .iter()
+            .map(|c| c.alias.clone().unwrap_or_else(|| c.name.clone()))
+            .collect(),
+        _ => Vec::new(),
+    };
+    let columns: Vec<ColumnDefinition> = (0..column_count)
+        .map(|i| {
+            let name = if !cte.columns.is_empty() {
+                cte.columns[i].clone()
+            } else if i < subquery_column_names.len() && !subquery_column_names[i].is_empty() {
+                subquery_column_names[i].clone()
+            } else {
+                format!("col_{}", i)
+            };
+            ColumnDefinition {
+                name,
+                data_type: "TEXT".to_string(),
+                nullable: true,
+                primary_key: false,
+                char_max_length: None,
+                collation: None,
+                default_value: None,
+                auto_increment: false,
+            }
+        })
+        .collect();
+    let table_info = TableInfo {
+        name: cte.name.clone(),
+        columns,
+        foreign_keys: vec![],
+        unique_constraints: vec![],
+        check_constraints: vec![],
+        partition_info: None,
+        compression: None,
+        collations: std::collections::HashMap::new(),
+    };
+    let mut storage = engine.storage.write();
+    storage
+        .create_table(&table_info)
+        .map_err(|e| SqlError::ExecutionError(format!("Create CTE table: {}", e)))?;
+    if !cte_rows.is_empty() {
+        storage
+            .insert(&cte.name, cte_rows)
+            .map_err(|e| SqlError::ExecutionError(format!("Insert CTE rows: {}", e)))?;
+    }
+    Ok(())
+}
+
 pub fn materialize_cte_tables<S: StorageEngine + 'static>(
     engine: &mut ExecutionEngine<S>,
     with_clause: Option<&sqlrustgo_parser::parser::WithClause>,
 ) -> SqlResult<Vec<String>> {
     use sqlrustgo_parser::Statement;
-    use sqlrustgo_storage::engine::{ColumnDefinition, TableInfo};
 
     let Some(with_clause) = with_clause else {
         return Ok(Vec::new());
     };
     if with_clause.recursive {
-        // V312-64f / Issue #4699: route to recursive CTE executor.
-        // Each recursive CTE gets its own two-table algorithm; the
-        // outer SELECT will see only the accumulated `t` (not `t__work`).
+        // V312-64f / Issue #4699: route per CTE based on body shape.
+        // PG/SQLite allow mixing recursive and non-recursive CTEs inside
+        // a single WITH RECURSIVE clause. UNION/UNION ALL bodies use the
+        // two-table algorithm; plain SELECT bodies use the simple
+        // materialize-once path. This matches PG semantics.
         let ctes = with_clause.ctes.clone();
         for cte in &ctes {
-            materialize_recursive_cte(engine, cte)?;
+            match cte.subquery.as_ref() {
+                Statement::Union(_) => materialize_recursive_cte(engine, cte)?,
+                _ => materialize_simple_cte(engine, cte)?,
+            }
         }
         return Ok(ctes.iter().map(|c| c.name.clone()).collect());
     }
     for cte in &with_clause.ctes {
-        let cte_rows = match cte.subquery.as_ref() {
-            Statement::Select(s) => engine.execute_select(s)?.rows,
-            _ => {
-                return Err(SqlError::ExecutionError(
-                    "CTE subquery must be SELECT".to_string(),
-                ));
-            }
-        };
-        // Resolve the column names for this CTE in priority order:
-        //   1. Explicit `name(col1, col2, ...)` form
-        //   2. The subquery's SELECT-column aliases (e.g. `SELECT 'foo' AS a`)
-        //   3. The subquery's SELECT-column names (raw expression-derived)
-        //   4. Fallback `col_<i>`
-        //
-        // V313-13 / Issue #4041: previously step 2/3 was missing, so a CTE
-        // such as `WITH t AS (SELECT 'foo' AS a)` got columns named
-        // `col_0` instead of `a`. Downstream references like
-        // `t.a` then failed (or, worse, `t.foobar` silently fell
-        // through to `Value::Text("t.foobar")` and produced wrong
-        // output). With this fix the CTE column schema matches the
-        // subquery's projection, which is what users (and the
-        // binder__alias_error_10057 fixture) expect.
-        let column_count = if !cte.columns.is_empty() {
-            cte.columns.len()
-        } else if !cte_rows.is_empty() {
-            cte_rows[0].len()
-        } else {
-            0
-        };
-        let subquery_column_names: Vec<String> = match cte.subquery.as_ref() {
-            Statement::Select(s) => s
-                .columns
-                .iter()
-                .map(|c| c.alias.clone().unwrap_or_else(|| c.name.clone()))
-                .collect(),
-            _ => Vec::new(),
-        };
-        let columns: Vec<ColumnDefinition> = (0..column_count)
-            .map(|i| {
-                let name = if !cte.columns.is_empty() {
-                    cte.columns[i].clone()
-                } else if i < subquery_column_names.len() && !subquery_column_names[i].is_empty() {
-                    subquery_column_names[i].clone()
-                } else {
-                    format!("col_{}", i)
-                };
-                ColumnDefinition {
-                    name,
-                    data_type: "TEXT".to_string(),
-                    nullable: true,
-                    primary_key: false,
-                    char_max_length: None,
-                    collation: None,
-                    default_value: None,
-                    auto_increment: false,
-                }
-            })
-            .collect();
-        let table_info = TableInfo {
-            name: cte.name.clone(),
-            columns,
-            foreign_keys: vec![],
-            unique_constraints: vec![],
-            check_constraints: vec![],
-            partition_info: None,
-            compression: None,
-            collations: std::collections::HashMap::new(),
-        };
-        let mut storage = engine.storage.write();
-        storage
-            .create_table(&table_info)
-            .map_err(|e| SqlError::ExecutionError(format!("Create CTE table: {}", e)))?;
-        if !cte_rows.is_empty() {
-            storage
-                .insert(&cte.name, cte_rows)
-                .map_err(|e| SqlError::ExecutionError(format!("Insert CTE rows: {}", e)))?;
-        }
+        materialize_simple_cte(engine, cte)?;
     }
     Ok(with_clause.ctes.iter().map(|c| c.name.clone()).collect())
 }
