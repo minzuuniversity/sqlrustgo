@@ -810,6 +810,12 @@ pub struct InsertStatement {
     /// (or `NULL` when no default is defined). Mutually exclusive with
     /// non-empty `values` and `select`.
     pub default_values: bool,
+    /// V312-69 / Issue #4653: `INSERT ... RETURNING col_list` (PostgreSQL /
+    /// MySQL 8.0+). `None` for INSERTs without a RETURNING clause. When
+    /// `Some`, the executor returns one row per inserted row projected
+    /// to the requested columns. The special column name `"*"` expands
+    /// to all table columns at execute time.
+    pub returning: Option<Vec<String>>,
 }
 
 /// V312-63 / Issue #4642: AST node for `ON CONFLICT ... DO ...` clauses.
@@ -7190,7 +7196,44 @@ impl Parser {
             None
         };
 
-
+        // V312-69 / Issue #4653: optional RETURNING clause
+        // (PostgreSQL/MySQL 8.0+). Parse a comma-separated column
+        // list, or `*` for all columns.
+        let mut returning: Option<Vec<String>> = None;
+        if matches!(self.current(), Some(Token::Returning)) {
+            self.next();
+            let mut cols: Vec<String> = Vec::new();
+            if matches!(self.current(), Some(Token::Star)) {
+                self.next();
+                cols.push("*".to_string());
+            } else {
+                loop {
+                    let name = match self.next() {
+                        Some(Token::Identifier(n)) => n,
+                        Some(t) => {
+                            return Err(format!(
+                                "Expected column name after RETURNING, got {:?}",
+                                t
+                            ))
+                        }
+                        None => {
+                            return Err(
+                                "Unexpected end of input after RETURNING".to_string(),
+                            )
+                        }
+                    };
+                    cols.push(name);
+                    if !matches!(self.current(), Some(Token::Comma)) {
+                        break;
+                    }
+                    self.next();
+                }
+            }
+            if cols.is_empty() {
+                return Err("RETURNING requires at least one column or *".to_string());
+            }
+            returning = Some(cols);
+        }
         Ok(Statement::Insert(InsertStatement {
             table,
             columns,
@@ -7201,6 +7244,7 @@ impl Parser {
             on_duplicate_key_update,
             on_conflict_clause,
             default_values,
+            returning,
         }))
     }
 
