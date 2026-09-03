@@ -7,7 +7,7 @@
 >
 > **supersedes:** none (initial creation)
 > **superseded by:** none yet
-> **linked branch plan:** PR-A5 (per Path B execution plan §2)
+> **linked branch plan:** PR-A3 (per Path B execution plan §2)
 
 | Field | Value |
 |-------|-------|
@@ -24,7 +24,7 @@
 
 Per Round-24 strict-close standards and V312-RC-GA §4, this issue is **CLOSED only** when ALL of the following are true:
 
-1. PR (PR-A5) merged into `develop/v3.12.0` with at least one regression test that fails RED before merge.
+1. PR (PR-A3) merged into `develop/v3.12.0` with at least one regression test that fails RED before merge.
 2. The merged PR body carries:
    - `source_agent` / `source_run` / commit SHA / branch name.
    - One-line summary of the root cause and the fix scope.
@@ -64,7 +64,7 @@ If the issue is left open at GA cut without a proper closure:
 ## 4. Verifier Commands (实跑 — must run, not just declare)
 
 ```bash
-# Pre-condition: PR-PR-A5 merged; merge commit known.
+# Pre-condition: PR-PR-A3 merged; merge commit known.
 MERGE_COMMIT="$(git log --oneline --merges develop/v3.12.0 | grep -iE 'issue-?4668' | head -1 | awk '{print $1}')"
 test -n "$MERGE_COMMIT" || { echo "FATAL: no merge commit found for issue #4668" >&2; exit 1; }
 
@@ -94,7 +94,7 @@ diff /tmp/sqlite-baseline.log /tmp/sqlrustgo-baseline.log
 - Issue #4668: http://192.168.0.252:3000/openclaw/sqlrustgo/issues/4668
 - Triage plan: `docs/releases/v3.12.0/RC_GA_TRIAGE_AND_GATE_PLAN_2026-09-03.md` §3
 - Claim downgrade entry: `docs/releases/v3.12.0/CLAIM_DOWNGRADE_MANIFEST.md` §2 entry #4668
-- Path B plan: `docs/plans/2026-09-04-v312-rc-ga-path-b-execution-plan.md` §2 row PR-A5
+- Path B plan: `docs/plans/2026-09-04-v312-rc-ga-path-b-execution-plan.md` §2 row PR-A3
 - Round-24 review: `docs/releases/v3.12.0/evidence/V312-ROUND24-REMEDIATION-NOTICE.md` §4
 
 ## 7. Evidence Hash
@@ -102,11 +102,11 @@ diff /tmp/sqlite-baseline.log /tmp/sqlrustgo-baseline.log
 | Artifact | SHA-256 |
 |----------|---------|
 | This doc (pending first close) | TBD |
-| PR PR-A5 merge commit (after merge) | TBD |
+| PR PR-A3 merge commit (after merge) | TBD |
 | Regression test log (after fix) | TBD |
 | Oracle diff log (after fix) | TBD |
 
-*When PR-A5 lands and the four artifacts are filled, this hash section is updated,
+*When PR-A3 lands and the four artifacts are filled, this hash section is updated,
 and the issue is closable under §1.*
 
 ---
