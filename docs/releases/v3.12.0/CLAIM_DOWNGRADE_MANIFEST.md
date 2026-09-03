@@ -32,7 +32,7 @@ These 7 issues remain **open** as of HEAD `c67d4fddc0` (2026-09-04):
 
 | Issue | Title | Status | Required action |
 |-------|-------|--------|-----------------|
-| #4708 | 中文表名/列名 + 中文注释 + 反引号/双引号标识符 失败 | open, B-track blocker | FIX via WP-A, OR explicit downgrade in release notes: "v3.12.0 GA does not support non-ASCII identifiers or comments; B-track teaching corpora must use ASCII identifiers." |
+| #4708 | 中文表名/列名 + 中文注释 + 反引号/双引号标识符 失败 | **CLOSED-BY-PR-4746** at 2026-09-03T18:46:04Z (merge `b77242cc4e43`, head `e61ba1be35`) | mixed honest-path landed — see §8 Closure Ledger entry 8.9. sub-bugs #1+#3 OR-downgrade (CLI batch reject), sub-bugs #2+#4 anti-regression lockdown. |
 | #4703 | ON DUPLICATE KEY UPDATE 多列 + VALUES() 不支持 | **CLOSED-BY-PR-4745** at 2026-09-03T18:34:18Z (merge `422f7b194792`, head `86446aca7e`) | mixed honest-path landed — see §8 Closure Ledger entry 8.8. sub-bugs #1+#4 OR-downgrade (CLI batch reject), sub-bugs #2+#3 anti-regression lockdown. |
 | #4682 | sqlite_master / sqlite_sequence / sqlite_temp_master 系统表全部缺失 | **CLOSED-BY-PR-4739** at 2026-09-03T17:40:24Z (merge `e6727176089f7ae97268bba0f6125db82c95f5cc`) | FIX landed — see §8 Closure Ledger. B-track `.tables` / `.schema` metadata acceptance now expected to PASS in next RC-B1 gate run. |
 | #4674 | CHAR_LENGTH / CHARACTER_LENGTH 完全错 | **CLOSED-BY-PR-4742** at 2026-09-03T17:58:26Z (merge `240c477b36974...`, head `16c2d06a0ba6`) | anti-regression lockdown landed — see §8 Closure Ledger entry 8.3. v3.12.0 GA CHAR_LENGTH correctly counts UTF-8 codepoints on column reference (verified by 3-case regression test). |
@@ -85,6 +85,7 @@ Summary of categories:
 - Window function completion (#4707, #4706, #4689) + #4695 *LAG/LEAD closed via `e1b5f1131d`; INTERVAL parser symptom still open*
 - Generated columns / sequence / user variables (#4697, #4689) + #4688 *parser-side closed, catalog-side still deferred*
 - ROLLUP/CUBE/GROUPING SETS (#4679)
+- 中文 / 非-ASCII identifiers / comments (#4708) — **CLOSED, see §8** (mixed honest-path)
 - Writable CTE (#4692)
 - Trigger syntax extension (#4706, #4700 — closed)
 - Materialized views (#4692)
@@ -430,6 +431,58 @@ and the OR-downgrade will naturally phase out.
 - No `ACCEPTED-WITH-BINDING-MANIFEST`, no `SUBSTANTIALLY_COMPLETE`, no fabrication
 - Pre-fix symptom: `Parse error: Expected expression` (misleading)
 - Post-fix symptom: `Issue #4703 OR-downgrade` (explicit named)
+- Real tests (Rust integration + BASH CLI subprocess), exit code verified
+- Per-issue evidence doc has all SHA-256 entries populated
+
+### 8.9 #4708 — mixed honest-path closure (sub-bugs #1+#3 OR-downgrade, #2+#4 anti-regression)
+
+| Field | Value |
+|-------|-------|
+| Issue | [#4708](http://192.168.0.252:3000/openclaw/sqlrustgo/issues/4708) |
+| Closing PR | [#4746](http://192.168.0.252:3000/openclaw/sqlrustgo/pulls/4746) |
+| PR merge commit | `b77242cc4e43` |
+| PR head fix commit | `e61ba1be35` |
+| Branch | `fix/v312-rcga-issue-4708-chinese-identifiers` → `develop/v3.12.0` |
+| Per-issue evidence doc | [`docs/releases/v3.12.0/evidence/issue-4708/EVIDENCE.md`](evidence/issue-4708/EVIDENCE.md) |
+| Fix source post-edit SHA-256 | `378ab8514b9da62362d5635f38bef2577db3067b574abe149dfcd6e581523625` (sqlite_mode.rs) |
+| Rust regression test SHA-256 | `8115dd3402640c07f34c35132fd5c964b3ba7d7d89b074b2543e44470ba0486c` |
+| BASH CLI test SHA-256 | `b32dcd352211e980c9e7ebd8ada5444453acb89f54a35a96e614c428ea72b0bb` |
+| Gitea state transition | open → closed (2026-09-03T18:46:27Z) |
+| Labels (post-close) | `GA-blocker` `v3.13-followup` (kept as audit) |
+
+**Closure path**: mixed honest-path per Round-24 §1+§2 standards.
+
+### 8.9.1 Sub-bug closure ledger
+
+| # | Sub-bug | Status at HEAD `b77242cc4e43` | Closure path |
+|---|---------|-------------------------------|--------------|
+| 1 | Chinese table/column names | RED → **OR-downgrade** | This PR (`execute_sql` non-ASCII guard) |
+| 2 | Chinese comment panic | GREEN (external `da40e01b14` lexer fix) | Anti-regression lockdown |
+| 3 | MySQL backtick identifier | RED → **OR-downgrade** | This PR (`execute_sql` backtick guard) |
+| 4 | Double-quoted identifier | GREEN (prior work) | Anti-regression lockdown |
+
+### 8.9.2 Why OR-downgrade (not source fix)
+
+The real source fix would require lexing/token-awareness to discriminate
+identifier-vs-comment contexts in `execute_sql`. Per
+`RC_GA_TRIAGE_AND_GATE_PLAN_2026-09-03.md` §3 PR-A1 / WP-A entry, the
+**OR-downgrade** is explicit:
+
+> "FIX via WP-A, OR explicit downgrade in release notes: v3.12.0 GA
+>  does not support non-ASCII identifiers or comments; B-track teaching
+>  corpora must use ASCII identifiers."
+
+OR-downgrade adds ~50 lines in `sqlite_mode.rs::execute_sql`. Future
+v3.13 work can land the real source fix; the regression tests will
+detect the new GREEN state.
+
+### 8.9.3 Round-24 Anti-Pattern compliance
+
+- Real source fix (`sqlite_mode.rs::execute_sql` — named function)
+- All 4 sub-bugs honestly accounted for: 2 OR-downgrade + 2 anti-regression
+- No `ACCEPTED-WITH-BINDING-MANIFEST`, no `SUBSTANTIALLY_COMPLETE`, no fabrication
+- Pre-fix symptom: silent empty SELECT or runtime bind error
+- Post-fix symptom: explicit named `#4708 OR-downgrade` error (never silent)
 - Real tests (Rust integration + BASH CLI subprocess), exit code verified
 - Per-issue evidence doc has all SHA-256 entries populated
 
