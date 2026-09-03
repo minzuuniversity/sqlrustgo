@@ -276,6 +276,9 @@ path = "tests/integration/sql/v312_66_quantified_any_all_test.rs"
 [[test]]
 name = "v312_67_scalar_subquery_in_select_test"
 path = "tests/integration/sql/v312_67_scalar_subquery_in_select_test.rs"
+[[test]]
+name = "v312_68_substring_zero_test"
+path = "tests/integration/sql/v312_68_substring_zero_test.rs"
 
 [[test]]
 name = "repro_v312_63"
