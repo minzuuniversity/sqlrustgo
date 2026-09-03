@@ -68,7 +68,7 @@ in `README.md`, `RELEASE_NOTES.md`, and per-subsystem docs:
 | #4694 | SET TIMEZONE / SET TRANSACTION ISOLATION LEVEL 静默接受语法无输出 | "SET TIMEZONE / SET TRANSACTION ISOLATION LEVEL excluded from v3.12 GA — parser returns explicit unsupported error." |
 | #4685 | UPDATE 多表 (UPDATE t1 JOIN t2 SET ...) 与 DELETE p USING q 语法不支持 | "Multi-table UPDATE / DELETE USING excluded from v3.12 GA." |
 | #4676 | 数学函数 MOD/POWER/LOG/EXP/SQRT 完全未实现 | (consolidated into #4698 — see above) |
-| #4675 | POSITION/LOCATE 字符串找子串函数完全未实现 | "POSITION/LOCATE excluded from v3.12 GA — use LIKE or INSTR." |
+| #4675 | POSITION/LOCATE 字符串找子串函数完全未实现 | **CLOSED-BY-COMMIT-8ed76129eb** at 2026-09-04 (orphan-batch) — `POSITION(substr IN str)` + `LOCATE(substr, str[, pos])` source-fix landed; v3.12.0 GA CLAIM no longer excludes this. See §8 entry 8.6. |
 | #4670 | CEIL/CEILING/FLOOR 部分实现 (第 2 列返回空), TRUNCATE/TRUNC 不支持, HEX/MD5/SHA 部分实现 | "CEIL/FLOOR/TRUNCATE/HEX/MD5/SHA2 partial semantics — supported functions match SQLite, missing returns explicit error." |
 | #4646 | JSON_EXTRACT / JSON_EACH 失败 | "JSON support limited to scalar paths via `->`/`->>`; JSON_EXTRACT and JSON_EACH excluded from v3.12 GA." |
 | #4625 | INDEXED BY hint 不被优化器尊重 | "INDEXED BY hint excluded from v3.12 GA — query planner does not honor this hint." |
@@ -83,7 +83,7 @@ Summary of categories:
 
 - Recursive CTE (#4699, #4644, #4717, #4704)
 - Window function completion (#4707, #4706, #4695, #4689)
-- Generated columns / sequence / user variables (#4697, #4688, #4689)
+- Generated columns / sequence / user variables (#4697, #4689) + #4688 *parser-side closed, catalog-side still deferred*
 - ROLLUP/CUBE/GROUPING SETS (#4679)
 - Writable CTE (#4692)
 - Trigger syntax extension (#4706, #4700 — closed)
@@ -277,6 +277,65 @@ the batch.
 - Tests are real (3 Rust + 3 BASH cases), exit code 0 verified
 - No `SUBSTANTIALLY_COMPLETE`, no `ACCEPTED-WITH-BINDING-MANIFEST`
 - Per-issue evidence doc has all SHA-256 entries populated
+
+### 8.5 #4688 — CREATE SEQUENCE START 1 (CLOSED 2026-09-04 orphan-batch, parser-only scope)
+
+| Field | Value |
+|-------|-------|
+| Issue | [#4688](http://192.168.0.252:3000/openclaw/sqlrustgo/issues/4688) |
+| Closing mechanism | Direct-push commit (no PR wrapper) |
+| Source-fix commit | `9d95040e4f7f4801e288736f39a2797214252945` (verified ancestor of HEAD) |
+| Per-issue evidence doc | [`docs/releases/v3.12.0/evidence/issue-4688/EVIDENCE.md`](evidence/issue-4688/EVIDENCE.md) |
+| Evidence doc SHA-256 | `c50ddd92d430192f5d6ac1d79c57eed89efc6b668c25821fd0aa4dfae8da417f` |
+| Gitea state transition | open → closed (2026-09-04, PATCH direct) |
+| Labels (post-close) | `v3.13-followup` (kept as audit; catalog-side scope remains) |
+
+**Scope disclosure (per Round-24)**:
+- **Closed scope**: parser-side `CREATE SEQUENCE foo START 1 INCREMENT BY 1` (SQL-standard syntax without WITH keyword).
+- **Still deferred to v3.13**: full sequence semantics — catalog persistence, NEXTVAL, transaction semantics, ALTER/DROP SEQUENCE.
+
+The triage plan originally classified #4688 in §3 v3.13/defer (broad architecture).
+The actual fix landed as a small parser change. This closure covers only the
+parser-side regression; the catalog/transaction layers remain v3.13 work.
+
+**Why direct-push (no PR)**: commit `9d95040e4f` landed on `develop/v3.12.0`
+via the standard OpenClaw fix pipeline without an associated PR. This created
+the orphan issue state (commit landed but Gitea issue never auto-closed).
+
+**Round-24 Anti-Pattern compliance**:
+- Fix is real (commit reachable as ancestor of HEAD)
+- Regression test present (`test_parse_create_sequence_start_without_with`)
+- No `SUBSTANTIALLY_COMPLETE`, no `ACCEPTED-WITH-BINDING-MANIFEST`
+- Per-issue evidence doc has all entries populated
+- Honest scope: parser-only — §4 of evidence doc explains
+
+### 8.6 #4675 — POSITION / LOCATE string position functions (CLOSED 2026-09-04 orphan-batch)
+
+| Field | Value |
+|-------|-------|
+| Issue | [#4675](http://192.168.0.252:3000/openclaw/sqlrustgo/issues/4675) |
+| Closing mechanism | Direct-push commit (no PR wrapper) |
+| Source-fix commit | `8ed76129eb6a75d6ebbeb12b22cd5733e5663e97` (verified ancestor of HEAD) |
+| Per-issue evidence doc | [`docs/releases/v3.12.0/evidence/issue-4675/EVIDENCE.md`](evidence/issue-4675/EVIDENCE.md) |
+| Evidence doc SHA-256 | `c7591b1a6fa4c80118ec59af32b133cba4c0c60067e61447ccdd7071958db5a0` |
+| Regression test SHA-256 | `b46f3215a59fe21bc93a705ccd4dc782034cea40c4cbd4b79e886d73a9e380c0` (`crates/executor/tests/issue_4675_position_locate_test.rs`) |
+| Gitea state transition | open → closed (2026-09-04, PATCH direct) |
+| Labels (post-close) | `GA-claim-caveat` (kept as audit trail) |
+
+**Scope disclosure (per Round-24)**:
+- POSITION(substr IN str) returns SQL-standard 1-based index, 0 if not found.
+- LOCATE(substr, str[, pos]) is MySQL-compatible with optional 3rd arg (start position).
+
+This was labeled `GA-claim-caveat` (compatibility nice-to-have, not required
+for GA). Fix is real and complete; issue remained open only due to the
+linkage failure between direct-push commits and Gitea issue status.
+
+**Round-24 Anti-Pattern compliance**:
+- Fix is real (commit reachable as ancestor of HEAD)
+- Tests are real (Rust integration test in `crates/executor/tests/`)
+- No `SUBSTANTIALLY_COMPLETE`, no `ACCEPTED-WITH-BINDING-MANIFEST`
+- Per-issue evidence doc has all SHA-256 entries populated
+- Honest scope claim (no over-claiming "full sequence semantics" since not in fix)
 
 ---
 
