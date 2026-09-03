@@ -67,6 +67,173 @@ pub fn derive_cte_columns(
         .collect()
 }
 
+/// V312-64f: clone a SelectStatement, replacing every reference to table
+/// `from` with `to`. Walks top-level FROM, every JOIN's table, every
+/// expression that may contain subqueries (BinaryOp, In, Subquery,
+/// Exists, etc.), and `from_subquery`. Other tables are unchanged.
+///
+/// Required because the recursive step's `FROM t` must resolve to
+/// `t__work` (the working set) rather than `t` (the accumulated result),
+/// so the step only sees the current iteration's rows.
+pub fn rewrite_step_table_refs(
+    stmt: &sqlrustgo_parser::SelectStatement,
+    from: &str,
+    to: &str,
+) -> sqlrustgo_parser::SelectStatement {
+    use sqlrustgo_parser::{Expression, Statement};
+
+    let mut cloned = stmt.clone();
+
+    // Top-level FROM
+    if cloned.table == from {
+        cloned.table = to.to_string();
+    }
+
+    // extra_tables: parser stores multi-table FROM `t1 a, t2 b` here as
+    // "table|alias" strings. Walk and rewrite any that match `from`.
+    for t in cloned.extra_tables.iter_mut() {
+        // Match exact table or "table|alias" form.
+        if t.as_str() == from || t.starts_with(&format!("{}|", from)) {
+            if t.as_str() == from {
+                *t = to.to_string();
+            } else {
+                // Preserve alias suffix.
+                *t = format!("{}{}", to, &t[from.len()..]);
+            }
+        }
+    }
+
+    // JOINs
+    for join in cloned.join_clause.iter_mut() {
+        if join.table == from {
+            join.table = to.to_string();
+        }
+        // ON clause may contain subqueries.
+        rewrite_expr(&mut join.on_clause, from, to);
+    }
+
+    // FROM (subquery) AS alias
+    if let Some(from_subq) = cloned.from_subquery.as_mut() {
+        let new_select = rewrite_step_table_refs(from_subq.as_ref(), from, to);
+        *from_subq = Box::new(new_select);
+    }
+
+    // WHERE / HAVING / SELECT columns
+    if let Some(where_expr) = cloned.where_clause.as_mut() {
+        rewrite_expr(where_expr, from, to);
+    }
+    if let Some(having_expr) = cloned.having.as_mut() {
+        rewrite_expr(having_expr, from, to);
+    }
+    for col in cloned.columns.iter_mut() {
+        if let Some(expr) = col.expression.as_mut() {
+            rewrite_expr(expr, from, to);
+        }
+    }
+    // GROUP BY may contain subqueries (rare).
+    for g in cloned.group_by.iter_mut() {
+        rewrite_expr(g, from, to);
+    }
+
+    cloned
+}
+
+/// Recursively rewrite `from` → `to` inside an Expression. Walks all
+/// variants that may contain SelectStatement subqueries.
+fn rewrite_expr(expr: &mut sqlrustgo_parser::Expression, from: &str, to: &str) {
+    use sqlrustgo_parser::Expression;
+    match expr {
+        Expression::Subquery(subq) => {
+            let new_select = rewrite_step_table_refs(subq.as_ref(), from, to);
+            *subq = Box::new(new_select);
+        }
+        Expression::SubqueryField(inner, _field) => {
+            rewrite_expr(inner, from, to);
+        }
+        Expression::In(left, subq) => {
+            rewrite_expr(left, from, to);
+            let new_select = rewrite_step_table_refs(subq.as_ref(), from, to);
+            *subq = Box::new(new_select);
+        }
+        Expression::NotIn(left, subq) => {
+            rewrite_expr(left, from, to);
+            let new_select = rewrite_step_table_refs(subq.as_ref(), from, to);
+            *subq = Box::new(new_select);
+        }
+        Expression::Exists(subq) | Expression::NotExists(subq) => {
+            let new_select = rewrite_step_table_refs(subq.as_ref(), from, to);
+            *subq = Box::new(new_select);
+        }
+        Expression::QuantifiedOp(left, _op, subq) => {
+            rewrite_expr(left, from, to);
+            let new_select = rewrite_step_table_refs(subq.as_ref(), from, to);
+            *subq = Box::new(new_select);
+        }
+        Expression::BinaryOp(left, _op, right) => {
+            rewrite_expr(left, from, to);
+            rewrite_expr(right, from, to);
+        }
+        Expression::UnaryOp(_op, inner) => {
+            rewrite_expr(inner, from, to);
+        }
+        Expression::IsNull(inner) | Expression::IsNotNull(inner) => {
+            rewrite_expr(inner, from, to);
+        }
+        Expression::Like(left, right, _esc) | Expression::NotLike(left, right, _esc) => {
+            rewrite_expr(left, from, to);
+            rewrite_expr(right, from, to);
+        }
+        Expression::NotRegexp(left, right) => {
+            rewrite_expr(left, from, to);
+            rewrite_expr(right, from, to);
+        }
+        Expression::Between(left, mid, right)
+        | Expression::NotBetween(left, mid, right) => {
+            rewrite_expr(left, from, to);
+            rewrite_expr(mid, from, to);
+            rewrite_expr(right, from, to);
+        }
+        Expression::InList(left, items) | Expression::NotInList(left, items) => {
+            rewrite_expr(left, from, to);
+            for it in items.iter_mut() {
+                rewrite_expr(it, from, to);
+            }
+        }
+        Expression::FunctionCall(_name, args) => {
+            for a in args.iter_mut() {
+                rewrite_expr(a, from, to);
+            }
+        }
+        Expression::CaseWhen(whens, otherwise) => {
+            for w in whens.iter_mut() {
+                rewrite_expr(&mut w.condition, from, to);
+                rewrite_expr(&mut w.result, from, to);
+            }
+            if let Some(else_expr) = otherwise.as_mut() {
+                rewrite_expr(else_expr, from, to);
+            }
+        }
+        Expression::Aggregate(agg) => {
+            for a in agg.args.iter_mut() {
+                rewrite_expr(a, from, to);
+            }
+        }
+        Expression::ArrayLiteral(items) => {
+            for it in items.iter_mut() {
+                rewrite_expr(it, from, to);
+            }
+        }
+        // Variants without subquery nesting:
+        Expression::Literal(_)
+        | Expression::Identifier(_)
+        | Expression::SequenceNextVal(_)
+        | Expression::SequenceCurrval(_)
+        | Expression::JsonLiteral(_)
+        | Expression::SystemVariable(_)
+        | Expression::WindowCall(_) => {}
+    }
+}
+
 /// CTE materialisation helper: execute each CTE's subquery, create a
 /// temporary table per CTE, and return the list of created table names so
 /// the caller can clean them up. Returns an empty Vec if `with_clause`
@@ -461,5 +628,63 @@ mod tests {
         assert_eq!(cols.len(), 2);
         assert_eq!(cols[0].name, "col_0");
         assert_eq!(cols[1].name, "col_1");
+    }
+
+    // ---- rewrite_step_table_refs --------------------------------------------
+
+    fn parse_select(sql: &str) -> sqlrustgo_parser::SelectStatement {
+        match parse(sql).unwrap() {
+            Statement::Select(s) => s,
+            _ => panic!("expected SELECT"),
+        }
+    }
+
+    #[test]
+    fn rewrite_step_top_level_from() {
+        let stmt = parse_select("SELECT id FROM tree WHERE id > 0");
+        let rewritten =
+            crate::engine_cte::rewrite_step_table_refs(&stmt, "tree", "tree__work");
+        assert_eq!(rewritten.table, "tree__work");
+    }
+
+    #[test]
+    fn rewrite_step_join_clause() {
+        let stmt = parse_select(
+            "SELECT e.id FROM emp e JOIN tree ON e.mgr_id = tree.id",
+        );
+        let rewritten =
+            crate::engine_cte::rewrite_step_table_refs(&stmt, "tree", "tree__work");
+        assert_eq!(rewritten.join_clause.len(), 1);
+        // The JOIN's `tree` table must be rewritten.
+        assert_eq!(rewritten.join_clause[0].table, "tree__work");
+        // Parser stores `emp e` as "emp|e" in `table`; must NOT be rewritten.
+        assert_eq!(rewritten.table, "emp|e");
+        // FROM t e stores alias as table="t|e" form (no separate from_alias).
+        assert!(rewritten.from_alias.is_none() || rewritten.from_alias.as_deref() == Some("e"));
+    }
+
+    #[test]
+    fn rewrite_step_subquery_in_where() {
+        let stmt = parse_select(
+            "SELECT id FROM outer_t WHERE id IN (SELECT id FROM tree)",
+        );
+        let rewritten =
+            crate::engine_cte::rewrite_step_table_refs(&stmt, "tree", "tree__work");
+        let inner_table = match rewritten.where_clause.as_ref().unwrap() {
+            sqlrustgo_parser::Expression::In(_, subq) => subq.table.clone(),
+            other => panic!("expected Expression::In, got {:?}", other),
+        };
+        assert_eq!(inner_table, "tree__work");
+    }
+
+    #[test]
+    fn rewrite_step_preserves_unrelated_tables() {
+        let stmt = parse_select(
+            "SELECT id FROM other_t JOIN tree ON other_t.x = tree.x",
+        );
+        let rewritten =
+            crate::engine_cte::rewrite_step_table_refs(&stmt, "tree", "tree__work");
+        assert_eq!(rewritten.table, "other_t");
+        assert_eq!(rewritten.join_clause[0].table, "tree__work");
     }
 }
