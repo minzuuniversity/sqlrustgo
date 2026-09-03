@@ -130,6 +130,56 @@ impl SqliteMode {
     }
 
     pub fn execute_sql(&mut self, sql: &str) -> Result<(), CliError> {
+        // V312-RC-GA / Issue #4703 — OR-downgrade for `INSERT ... ON
+        // DUPLICATE KEY UPDATE` with `VALUES(col)` reference in v3.12.0 GA
+        // CLI batch mode.
+        //
+        // Multi-column ON DUPLICATE KEY UPDATE with VALUES(col) (MySQL-style
+        // upsert semantics) is not yet wired through the v3.12.0
+        // expression parser: `VALUES` in expression context is recognized
+        // as `Token::Values` (keyword) rather than as a function-call
+        // identifier. Without this guard, the parser emits "Parse error:
+        // Expected expression" at parse time, which is misleading
+        // (the user expected a runtime result, not a parse error).
+        //
+        // Per `docs/releases/v3.12.0/RC_GA_TRIAGE_AND_GATE_PLAN_2026-09-03.md`
+        // §3 PR-A4 / WP-A entry for #4703, the GA cut adopts the **OR-downgrade**
+        // contract rather than silently rejecting with bare parse error:
+        //
+        //     "FIX via WP-A, OR downgrade: MySQL-style multi-column upsert
+        //      excluded from v3.12 GA claims."
+        //
+        // Detect INSERT statements that contain both `ON DUPLICATE KEY UPDATE`
+        // and `VALUES(` (the function-call form for VALUES(col) reference).
+        // Single-column upsert with VALUES(...) is also rejected for
+        // simplicity (per the same clause).
+        let trimmed = sql.trim_start();
+        let upper = trimmed.to_ascii_uppercase();
+        let mut eff = upper
+            .strip_suffix(';')
+            .map(|s| s.to_string())
+            .unwrap_or(upper);
+        let has_insert = eff.starts_with("INSERT") || eff.starts_with("REPLACE INTO");
+        let has_on_dup = eff.contains("ON DUPLICATE KEY UPDATE");
+        let has_values_call = eff.contains("VALUES(");
+        if has_insert && has_on_dup && has_values_call {
+            let preview: String = trimmed
+                .chars()
+                .take(60)
+                .collect::<String>()
+                .trim_end()
+                .to_string();
+            return Err(CliError::Runtime(format!(
+                "{} is not supported in v3.12.0 GA CLI batch mode (Issue #4703 \
+                 OR-downgrade). `INSERT ... ON DUPLICATE KEY UPDATE col = VALUES(col)` \
+                 and multi-column variants do not persist VALUES references through \
+                 the v3.12 expression parser; use the engine API directly or wait for \
+                 v3.13. See docs/releases/v3.12.0/CLAIM_DOWNGRADE_MANIFEST.md for the \
+                 release-claim boundary.",
+                preview
+            )));
+        }
+
         // V312-RC-GA / Issue #4652 — OR-downgrade for CREATE PROCEDURE /
         // CREATE FUNCTION in v3.12.0 GA CLI batch mode.
         //
