@@ -2235,6 +2235,14 @@ fn test_parse_create_sequence_basic() {
     let result = parse("CREATE SEQUENCE my_seq START WITH 1 INCREMENT BY 1");
     let _ = result;
 }
+#[test]
+fn test_parse_create_sequence_start_without_with() {
+    // V312-80 / Issue #4688: SQL standard allows `START 1` (no WITH)
+    let result = parse("CREATE SEQUENCE my_seq START 1 INCREMENT BY 1");
+    assert!(result.is_ok(), "START without WITH must parse: {:?}", result);
+    let result2 = parse("CREATE SEQUENCE seq START 100");
+    assert!(result2.is_ok(), "bare START n must parse: {:?}", result2);
+}
 
 #[test]
 fn test_parse_alter_sequence_basic() {
