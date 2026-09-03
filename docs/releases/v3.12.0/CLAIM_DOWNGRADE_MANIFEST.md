@@ -37,7 +37,7 @@ These 7 issues remain **open** as of HEAD `c67d4fddc0` (2026-09-04):
 | #4682 | sqlite_master / sqlite_sequence / sqlite_temp_master 系统表全部缺失 | **CLOSED-BY-PR-4739** at 2026-09-03T17:40:24Z (merge `e6727176089f7ae97268bba0f6125db82c95f5cc`) | FIX landed — see §8 Closure Ledger. B-track `.tables` / `.schema` metadata acceptance now expected to PASS in next RC-B1 gate run. |
 | #4674 | CHAR_LENGTH / CHARACTER_LENGTH 完全错 | open | FIX via WP-B, OR downgrade: "v3.12 length() returns character count, char_length() may not match SQLite for multi-byte; use length() only." |
 | #4668 | NATURAL JOIN / USING(col1,col2) 多列匹配错乱 | open, B-track blocker | FIX via WP-D, OR downgrade: "v3.12 GA only supports JOIN with explicit ON; NATURAL JOIN and multi-column USING excluded." |
-| #4652 | CREATE PROCEDURE / FUNCTION 静默接受但不存储 | open | FIX via WP-C, OR downgrade: "v3.12 GA rejects CREATE PROCEDURE/FUNCTION with explicit error; never silently accepts." |
+| #4652 | CREATE PROCEDURE / FUNCTION 静默接受但不存储 | **CLOSED-BY-PR-4741** at 2026-09-03T17:51:50Z (merge `952f6f7578a7e96e...`, head `8717286f389c...`) | OR-downgrade landed — see §8 Closure Ledger entry 8.2. v3.12.0 GA CLI batch mode now rejects CREATE PROCEDURE / CREATE FUNCTION with explicit named error. |
 | #4626 | SELECT FOR UPDATE 后 ROLLBACK 报 transaction already aborted | open | FIX via WP-C, OR downgrade: "v3.12 GA SELECT FOR UPDATE + ROLLBACK fails closed with explicit transaction-aborted error; do not claim recoverable." |
 
 ### Required release-note language (≥ 1 of these per still-open blocker)
@@ -51,7 +51,7 @@ release claims. Issues remain open and will be addressed in v3.13.0:
 - INSERT ON DUPLICATE KEY UPDATE with multi-column and VALUES() (#4703)
 - NATURAL JOIN and multi-column USING (#4668)
 - CHAR_LENGTH semantics for multi-byte strings (#4674)
-- CREATE PROCEDURE / CREATE FUNCTION storage (#4652)
+- CREATE PROCEDURE / CREATE FUNCTION storage (#4652) — **CLOSED, see §8** (OR-downgrade)
 - sqlite_master / sqlite_sequence / sqlite_temp_master tables (#4682) — **CLOSED, see §8**
 - SELECT FOR UPDATE + ROLLBACK recovery (#4626)
 ```
@@ -161,6 +161,43 @@ test coverage in `tests/integration/sql/v312_76_sqlite_system_tables_test.rs`.
 **Round-24 Anti-Pattern compliance**: PR is real, regression test is real, merge
 commit reachable on `develop/v3.12.0`. No fake markers used. See per-issue
 evidence §7 + §8 for full closure trail.
+
+### 8.2 #4652 — CREATE PROCEDURE / CREATE FUNCTION in CLI batch mode (CLOSED 2026-09-03T17:51:50Z)
+
+| Field | Value |
+|-------|-------|
+| Issue | [#4652](http://192.168.0.252:3000/openclaw/sqlrustgo/issues/4652) |
+| Closing PR | [#4741](http://192.168.0.252:3000/openclaw/sqlrustgo/pulls/4741) |
+| PR merge commit | `952f6f7578a7e96e...` |
+| PR head fix commit | `8717286f389c...` |
+| Branch | `fix/v312-rcga-issue-4652-procedure-or-downgrade` → `develop/v3.12.0` |
+| Per-issue evidence doc | [`docs/releases/v3.12.0/evidence/issue-4652/EVIDENCE.md`](evidence/issue-4652/EVIDENCE.md) |
+| Evidence doc SHA-256 | `353d31f132a1b92d6b054b0cf172d9d352a675ce51d5b3614af0e440dfd684fe` |
+| Regression test (BASH) | `tests/compat/bustubx_edu_b_track/issue_4652_procedure_or_downgrade.sh` |
+| Regression test SHA-256 | `a14a9db03570eb1190318763193eac06041de93b3847b90503839fa9190224a5` |
+| Fix source post-edit SHA-256 | `9d4ae104d6cdcf262213c1037f2f644ecd17598667823b5634d48743b085b863` (sqlite_mode.rs) |
+| Gitea state transition | open → closed (2026-09-03T17:51:50Z) |
+| Labels (post-close) | `GA-blocker` `v3.13-followup` (kept as audit) |
+
+**What was fixed**: PR #4741 added a prelude guard in
+`crates/sqlrustgo-cli/src/sqlite_mode.rs::execute_sql` that explicitly rejects
+`CREATE PROCEDURE` / `CREATE FUNCTION` with a named OR-downgrade error.
+Before this fix, CLI batch mode silently accepted the DDL but did not wire the
+catalog change through FileStorage persistence, so downstream `CALL` reported
+`Stored procedure 'X' not found` — a classic DDL fake-success pattern
+(Round-24 §2 #1).
+
+**Why OR-downgrade (not full fix)**: Full fix (CLI catalog persistence) would
+touch the same path PR #4609 (V312-57 stage2) already iterated on for INSERT.
+The OR-downgrade path satisfies the §3 WP-C OR-downgrade clause
+("v3.12 GA rejects CREATE PROCEDURE/FUNCTION with explicit error; never
+silently accepts") and defers full CLI batch persistence to v3.13.
+
+**Round-24 Anti-Pattern compliance**: PR is real, regression test is real (BASH
+script in `tests/compat/bustubx_edu_b_track/`), merge commit reachable on
+`develop/v3.12.0`. No `SUBSTANTIALLY_COMPLETE`, no
+`ACCEPTED-WITH-BINDING-MANIFEST` markers. See per-issue evidence §7 + §8 for
+full closure trail.
 
 ---
 
