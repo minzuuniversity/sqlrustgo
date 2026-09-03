@@ -109,8 +109,9 @@ diff /tmp/sqlite-baseline.log /tmp/sqlrustgo-baseline.log
 | Oracle diff log (B-track corpus oracle TBD on RC-B1 fixture go-live) | TBD | pending Phase 2 RC-B1 run |
 
 *PR #4741 landed on 2026-09-03T17:51:50Z; Gitea issue #4652 transitioned to closed
-the same minute (linkage restored). This SHA section populated on 2026-09-04
-following the merge commit + verified regression test SHA.*
+at 2026-09-03T17:53:43Z via Gitea PATCH state (linkage auto-restored). This SHA
+section populated on 2026-09-04 following the merge commit + verified regression
+test SHA.*
 
 ---
 
@@ -118,9 +119,11 @@ following the merge commit + verified regression test SHA.*
 
 PR #4741 was merged into `develop/v3.12.0` at merge commit `952f6f7578a7` (head fix commit `8717286f389c`); the merge is reachable on this branch under HEAD `952f6f7578a7...`.
 
-- Issue #4652 state transitioned `open → closed` at the same moment (Gitea linkage auto).
+- Issue #4652 state transitioned `open → closed` at 2026-09-03T17:53:43Z via Gitea PATCH state (linkage auto-restored).
+- Issue title updated via PATCH to add `— CLOSED-BY-PR-4741 (OR-downgrade)` marker.
+- Issue body updated via PATCH to include closure summary cross-ref to this doc + CLAIM_DOWNGRADE §8 entry 8.2.
 - Labels still carry `GA-blocker` + `v3.13-followup` (kept as audit trail).
-- `CLAIM_DOWNGRADE_MANIFEST.md` §2 entry for #4652 should move to a "closed-by-PR-4741" footnote on next manifest refresh.
+- `CLAIM_DOWNGRADE_MANIFEST.md` §2 entry for #4652 marked "CLOSED-BY-PR-4741" + new §8.2 entry added.
 - B-track batch mode now explicitly rejects CREATE PROCEDURE / CREATE FUNCTION with a named OR-downgrade error.
 
 ### 8.1 Why OR-downgrade (not full fix)
