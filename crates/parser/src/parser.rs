@@ -7797,12 +7797,12 @@ impl Parser {
                 let escape = if matches!(self.current(), Some(Token::Escape)) {
                     self.next();
                     match self.current() {
-                        Some(Token::StringLiteral(s)) if s.len() == 1 => {
+                        Some(Token::StringLiteral(s)) if !s.is_empty() => {
                             let esc = s.chars().next().unwrap();
                             self.next();
                             Some(esc)
                         }
-                        _ => return Err("Expected single character after ESCAPE".to_string()),
+                        _ => return Err("Expected string literal after ESCAPE".to_string()),
                     }
                 } else {
                     None
@@ -7878,12 +7878,12 @@ impl Parser {
             let escape = if matches!(self.current(), Some(Token::Escape)) {
                 self.next();
                 match self.current() {
-                    Some(Token::StringLiteral(s)) if s.len() == 1 => {
+                    Some(Token::StringLiteral(s)) if !s.is_empty() => {
                         let esc = s.chars().next().unwrap();
                         self.next();
                         Some(esc)
                     }
-                    _ => return Err("Expected single character after ESCAPE".to_string()),
+                    _ => return Err("Expected string literal after ESCAPE".to_string()),
                 }
             } else {
                 None
@@ -15700,6 +15700,28 @@ mod set_op_tests {
                 assert!(s.where_clause.is_some());
             }
             other => panic!("Expected Select, got {:?}", other),
+        }
+    }
+
+    #[test]
+    fn test_like_escape_with_multi_char_string() {
+        // V312-70 / Issue #4673: SQL source `ESCAPE '\\'` (the
+        // standard backslash escape idiom) lexes to a 2-char string
+        // and must not be rejected. The first character is the escape.
+        let result = parse("SELECT * FROM t WHERE a LIKE 'a\\\\%bc' ESCAPE '\\\\'");
+        assert!(result.is_ok(), "Parse failed: {:?}", result);
+        if let Statement::Select(s) = result.unwrap() {
+            if let Some(expr) = &s.where_clause {
+                if let Expression::Like(_, _, esc) = expr {
+                    assert_eq!(*esc, Some('\\'), "escape char should be backslash");
+                } else {
+                    panic!("Expected Like expression, got {:?}", expr);
+                }
+            } else {
+                panic!("Expected WHERE clause");
+            }
+        } else {
+            panic!("Expected Select");
         }
     }
 
