@@ -74,21 +74,21 @@ fn v312_67_scalar_subquery_empty_inner() {
 }
 
 #[test]
-fn v312_67_scalar_subquery_with_table_returns_error() {
-    // The from-table form is deferred and should surface a clean
-    // runtime error rather than hang.
+fn v312_67_scalar_subquery_with_table_executes() {
+    // V312-75 / Issue #4636: the from-table form now executes.
+    // Previously (v312-67 fix) it surfaced a clean "not yet
+    // implemented" runtime error; the correlated-scalar-subquery work
+    // makes the uncorrelated aggregate form return real rows.
     let mut x = fresh();
     x.execute("CREATE TABLE t (a INT)").unwrap();
     x.execute("INSERT INTO t VALUES (10), (20), (30)").unwrap();
-    let err = x
+    let res = x
         .execute("SELECT (SELECT MAX(a) FROM t) AS m FROM t")
-        .expect_err("from-table scalar subquery must error in this fix");
-    let msg = err.to_string();
-    assert!(
-        msg.contains("issue #4686") || msg.contains("not yet implemented"),
-        "expected clear runtime error mentioning #4686, got: {}",
-        msg
-    );
+        .expect("from-table scalar subquery must execute since #4636");
+    assert_eq!(res.rows.len(), 3);
+    assert_eq!(extract_int(&res, 0, 0), 30);
+    assert_eq!(extract_int(&res, 1, 0), 30);
+    assert_eq!(extract_int(&res, 2, 0), 30);
 }
 
 #[test]
