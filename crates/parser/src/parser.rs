@@ -2727,6 +2727,17 @@ impl Parser {
             false
         };
 
+        // V312-75 / Issue #4693: SQLite/Postgres allow `CREATE [TEMP|TEMPORARY]
+        // TABLE name (...)`. The lexer has no dedicated Temp/Temporary
+        // token, so the keyword arrives as `Identifier("TEMP")` or
+        // `Identifier("TEMPORARY")`. Consume it here and fall through
+        // to the regular CREATE TABLE branch.
+        if let Some(Token::Identifier(ref s)) = self.current() {
+            if s.eq_ignore_ascii_case("TEMP") || s.eq_ignore_ascii_case("TEMPORARY") {
+                self.next();
+            }
+        }
+
         match self.current() {
             Some(Token::Table) => {
                 let mut stmt = self.parse_create_table()?;
@@ -3606,7 +3617,20 @@ impl Parser {
 
         self.expect(Token::For)?;
         self.expect(Token::Each)?;
-        self.expect(Token::Row)?;
+        // V312-75 / Issue #4705: accept either `ROW` (row-level) or
+        // `STATEMENT` (statement-level) granularity. The lexer treats
+        // `STATEMENT` as an identifier (no dedicated Token variant), so
+        // we match it case-insensitively here. Catalog stores ROW as
+        // the default since the executor currently fires per-row only.
+        match self.current() {
+            Some(Token::Row) => {
+                self.next();
+            }
+            Some(Token::Identifier(ref s)) if s.eq_ignore_ascii_case("STATEMENT") => {
+                self.next();
+            }
+            _ => return Err("Expected ROW or STATEMENT after FOR EACH".to_string()),
+        }
 
         // V312-58 / Issue #4514: relax to accept either a BEGIN/END
         // block (multi-statement body) or a single-statement body that
@@ -7427,7 +7451,11 @@ impl Parser {
                 Some(Token::Comma) => {
                     self.next();
                 }
-                Some(Token::Where) | None | Some(Token::Eof) => break,
+                // V312-75 / Issue #4696: also break on `;` so that
+                // `UPDATE t SET x = 1;` (no WHERE, trailing semicolon)
+                // parses cleanly instead of erroring with
+                // `Expected , or WHERE`.
+                Some(Token::Where) | Some(Token::Semicolon) | None | Some(Token::Eof) => break,
                 _ => return Err("Expected , or WHERE".to_string()),
             }
         }
