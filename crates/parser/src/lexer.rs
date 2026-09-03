@@ -538,6 +538,8 @@ impl<'a> Lexer<'a> {
                     "ASOF" => Token::AsOf,
                     "REPLACE" => Token::Replace,
                     "WINDOW" => Token::Window,
+                    // V312-69 / Issue #4653: RETURNING keyword.
+                    "RETURNING" => Token::Returning,
                     "PARTITION" => Token::Partition,
                     "RANGE" => Token::Range,
                     "LIST" => Token::List,
