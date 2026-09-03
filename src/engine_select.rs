@@ -3947,18 +3947,52 @@ impl<S: StorageEngine + 'static> ExecutionEngine<S> {
         // for ON conditions referencing left side columns.
         let left_alias = left_table_info.name.clone();
 
+        // V312-73 / Issue #4649: `JOIN t2 USING (col1, col2, ...)` resolves
+        // to `t1.col_i = t2.col_i` for each column in the list. Build the
+        // (left_idx, right_idx) pairs up front so the existing hash-join
+        // machinery can run with them, and drop the duplicate right-side
+        // USING columns from both the rows and the combined schema below.
+        let using_pairs: Option<Vec<(usize, usize)>> =
+            if let Some(using_cols) = &join_clause.using_columns {
+                let mut pairs = Vec::with_capacity(using_cols.len());
+                for col in using_cols {
+                    let li = lookup_column(left_table_info, col).ok_or_else(|| {
+                        SqlError::ExecutionError(format!(
+                            "USING column '{}' not found on left side",
+                            col
+                        ))
+                    })?;
+                    let ri = lookup_column(&right_table_info, col).ok_or_else(|| {
+                        SqlError::ExecutionError(format!(
+                            "USING column '{}' not found on right side",
+                            col
+                        ))
+                    })?;
+                    pairs.push((li, ri));
+                }
+                Some(pairs)
+            } else {
+                None
+            };
+
         // Extract join key column indices from ON clause
         // For "b.num = c.bid" or "t1.id = t2.id", the canonical form
         // resolves one column from left and one from right.
         // Pass the right *alias* (when set) so qualifiers like `n2.col`
         // route to the right side.
-        let join_key = self.find_join_key_index(
-            &join_clause.on_clause,
-            &left_table_info,
-            &left_alias,
-            &right_table_info,
-            right_alias,
-        )?;
+        let join_key = if using_pairs.is_some() {
+            // USING path: the (left, right) index pairs are already resolved
+            // above; feed them to the existing JoinKey::Pairs matcher.
+            JoinKey::Pairs(using_pairs.clone().unwrap())
+        } else {
+            self.find_join_key_index(
+                &join_clause.on_clause,
+                &left_table_info,
+                &left_alias,
+                &right_table_info,
+                right_alias,
+            )?
+        };
         let pairs: Vec<(usize, usize)> = match join_key {
             JoinKey::Pair(li, ri) => vec![(li, ri)],
             JoinKey::Pairs(v) => v,
@@ -4148,12 +4182,49 @@ impl<S: StorageEngine + 'static> ExecutionEngine<S> {
             }
         };
 
-        let combined_schema = build_combined_schema(
+        let mut combined_schema = build_combined_schema(
             &left_table_info,
             &left_alias,
             &right_table_info,
             right_alias,
         )?;
+
+        // V312-73 / Issue #4649: USING(col_list) projects away the
+        // duplicate right-side USING columns from both the rows and the
+        // combined schema so the user sees each USING column exactly once.
+        // The right-side indices in the combined layout are
+        // `left_col_count + ri` for each `ri` in `using_pairs`.
+        if let Some(upairs) = using_pairs.as_ref() {
+            let left_col_count = left_table_info.columns.len();
+            // Build a sorted list of combined-schema indices to drop.
+            let mut drop_indices: Vec<usize> = upairs
+                .iter()
+                .map(|(_, ri)| left_col_count + ri)
+                .collect();
+            drop_indices.sort_unstable();
+            drop_indices.dedup();
+
+            // Drop the corresponding values from every matched row.
+            for row in &mut matched_results {
+                // Remove in reverse order so earlier indices stay valid.
+                for &idx in drop_indices.iter().rev() {
+                    if idx < row.len() {
+                        row.remove(idx);
+                    }
+                }
+            }
+
+            // Drop the corresponding columns from the combined schema.
+            let mut keep_cols: Vec<sqlrustgo_storage::ColumnDefinition> =
+                Vec::with_capacity(combined_schema.columns.len());
+            for (i, col) in combined_schema.columns.iter().enumerate() {
+                if !drop_indices.contains(&i) {
+                    keep_cols.push(col.clone());
+                }
+            }
+            combined_schema.columns = keep_cols;
+        }
+
         Ok((matched_results, combined_schema))
     }
 
