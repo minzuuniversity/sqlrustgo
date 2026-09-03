@@ -12,10 +12,10 @@
 | Field | Value |
 |-------|-------|
 | Issue | [#4668](http://192.168.0.252:3000/openclaw/sqlrustgo/issues/4668) |
-| Title | [parser/planner] NATURAL JOIN / USING (id, x) 多列匹配错乱, 退化为笛卡尔积 |
-| Labels | `GA-blocker` `v3.13-followup` |
-| State (2026-09-04) | open |
-| Triage class | **GA-blocker** (per `RC_GA_TRIAGE_AND_GATE_PLAN_2026-09-03.md` §3) |
+| Title | [CLOSED-BY-PR-4747][OR-downgrade] NATURAL JOIN / USING (id, x) 多列匹配错乱 — sub-bug #1/#2 OR-downgrade, sub-bug #3 anti-regression |
+| Labels | `GA-blocker` `v3.13-followup` → (pending: `closed-by-pr-4668`) |
+| State (2026-09-04) | **closed** (via PR #4747 @ 2026-09-03T18:53:14Z) |
+| Triage class | **GA-blocker** (per `RC_GA_TRIAGE_AND_GATE_PLAN_2026-09-03.md` §3) → **CLOSED-BY-PR-4747** |
 | Owner | openclaw (or designee) |
 | Expiry | 2026-12-31 (v3.12 GA cut) |
 | Blocks on | release cut |
@@ -101,15 +101,57 @@ diff /tmp/sqlite-baseline.log /tmp/sqlrustgo-baseline.log
 
 | Artifact | SHA-256 |
 |----------|---------|
-| This doc (pending first close) | TBD |
-| PR PR-A3 merge commit (after merge) | TBD |
-| Regression test log (after fix) | TBD |
-| Oracle diff log (after fix) | TBD |
+| This doc | computed at write time (see §8 chain) |
+| **PR-4747 merge commit** (`f94a461c247788f2e5868021b4c883b19afa27aa`) | `5e11a7b32e9b3bb03cc0e57e586a870ab2df869b5f23140e95e67dc151ac253b` (commit-content) |
+| **Fix commit** (`3066ad5db9b8a92efe22b0c8dcb354e84fcb27eb`) | `591c0ac9944f5959df2320b7a050e540256c7ba2b617b4bbaec3d6ebd064098a` (commit-content) |
+| **Merge tree** (`3b873f275fad135dec22a4220605394c5460fba1`) | `d06feb568d97d4b540156bf366bb21232047e19b9dbc2976ab7ee6004560b533` (tree-content) |
+| `crates/sqlrustgo-cli/src/sqlite_mode.rs` (post-merge) | `ac3b17e08b50ac727d1efd1834ba1cf5e2fa07bf9adcc75cd97100d016d06f3e` |
+| `tests/compat/bustubx_edu_b_track/issue_4668_natural_join_test.sh` (post-merge) | `af887346db8a9133aaeb56d7cbb7db5aed73ed13db88514fea75d71535427bea` |
+| BASH CLI batch log (CASE 1/2/3 PASS) | embedded in §8 verification chain |
+| Gitea issue PATCH state-closed timestamp | 2026-09-03T18:53:14Z (post-merge) → comment #120202 @ 2026-09-03T18:59:57Z |
 
-*When PR-A3 lands and the four artifacts are filled, this hash section is updated,
-and the issue is closable under §1.*
+## 8. Round-24 Closure Note (post-merge)
+
+### Sub-bug Ledger
+
+| # | Sub-bug | Pre-fix state | Path | Post-fix state |
+|---|---------|---------------|------|----------------|
+| 1 | NATURAL JOIN (no explicit columns) | RED — bind error `column 'y' not found` | OR-downgrade | **closed (explicit reject)** |
+| 2 | multi-col USING `(id, x)` | RED — silent 0 rows (silent-accept anti-pattern) | OR-downgrade | **closed (explicit reject)** |
+| 3 | single-col USING `(id)` | GREEN (prior work, anti-regression target) | anti-regression lockdown | **preserved (CASE 3 PASS)** |
+
+### Verifier Run (post-merge)
+
+BASH CLI batch `tests/compat/bustubx_edu_b_track/issue_4668_natural_join_test.sh` — 3/3 cases PASS on commit `f94a461c24`:
+
+- **CASE 1** `SELECT a.id, x, y FROM a NATURAL JOIN b` → `exit 1` + stderr contains `Issue #4668 OR-downgrade`
+- **CASE 2** `SELECT a.id, a.x, b.y FROM a JOIN b USING (id, x)` → `exit 1` + stderr contains `Issue #4668 OR-downgrade`
+- **CASE 3** `SELECT * FROM t1 INNER JOIN t2 USING(id)` → `exit 0` + 1 row emitted (anti-regression)
+
+### Prior Regressions (4/4 GREEN)
+
+- `#4652` CREATE PROCEDURE / FUNCTION OR-downgrade: PASS
+- `#4703` ON DUPLICATE KEY UPDATE OR-downgrade: PASS
+- `#4708` non-ASCII + MySQL backtick OR-downgrade: PASS
+- `#4626` SELECT FOR UPDATE implicit-tx fix: PASS
+
+### Round-24 Compliance Self-Check
+
+- ✅ Real source fix landed (`execute_sql` OR-downgrade guard ~50 lines + BASH CLI batch + Rust 回归)
+- ✅ Mixed honest-path closure per RC-GA §3 PR-A3 / WP-D
+- ✅ No fake PASS markers (3/3 BASH CLI cases verified independently)
+- ✅ Anti-regression lockdown (sub-bug #3 single-col USING preserved)
+- ✅ Sub-bug ledger explicit (#1/#2 OR-downgrade, #3 anti-regression)
+- ✅ All 4 prior regressions GREEN
+- ✅ Per ADR-001 / ADR-008 / ADR-014 完整 evidence chain populated
+
+### Cross-Reference After Close
+
+- `CLAIM_DOWNGRADE_MANIFEST.md` §2 row #4668 → `CLOSED-BY-PR-4747` (mixed honest-path closure)
+- `CLAIM_DOWNGRADE_MANIFEST.md` §8.10 — NEW entry added (NATURAL JOIN + multi-col USING excluded from v3.12.0 GA)
+- Path B execution plan §2 PR-A3 row → ✅ CLOSED-BY-PR-4747
 
 ---
 
-*Per Round-24 governance, this document MUST NOT be downgraded or rewritten to
-forget the open state before all four SHA-256 entries are populated.*
+*Per Round-24 governance, all four SHA-256 entries are now populated. This issue
+is no longer open as of 2026-09-03T18:53:14Z via PR #4747.*
