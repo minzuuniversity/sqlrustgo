@@ -1303,6 +1303,7 @@ mod tests {
             timing: crate::engine::TriggerTiming::Before,
             event: crate::engine::TriggerEvent::Insert,
             body: "".into(),
+            update_columns: None,
         };
         storage.create_trigger(trigger).unwrap();
         assert!(storage.get_trigger("trig1").is_some());

@@ -1221,6 +1221,7 @@ impl<S: StorageEngine + 'static> ExecutionEngine<S> {
             timing,
             event,
             body: stmt.body.clone(),
+            update_columns: stmt.update_columns.clone(),
         };
         storage.create_trigger(trigger_info)?;
         Ok(ExecutorResult::empty())

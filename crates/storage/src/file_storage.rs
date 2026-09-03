@@ -1364,6 +1364,7 @@ mod tests {
             timing: crate::engine::TriggerTiming::Before,
             event: crate::engine::TriggerEvent::Insert,
             body: "BEGIN END".to_string(),
+        update_columns: None,
         };
         let result = storage.create_trigger(trigger_info);
         assert!(result.is_ok());
@@ -1978,6 +1979,7 @@ mod tests {
             timing: crate::engine::TriggerTiming::Before,
             event: crate::engine::TriggerEvent::Insert,
             body: "BEGIN UPDATE stats SET n = n + 1; END".into(),
+        update_columns: None,
         };
         storage.create_trigger(trigger).unwrap();
         let got = storage.get_trigger("trig1");
@@ -2003,6 +2005,7 @@ mod tests {
             timing: crate::engine::TriggerTiming::Before,
             event: crate::engine::TriggerEvent::Insert,
             body: "".into(),
+        update_columns: None,
         };
         let trigger2 = TriggerInfo {
             name: "t2".into(),
@@ -2010,6 +2013,7 @@ mod tests {
             timing: crate::engine::TriggerTiming::After,
             event: crate::engine::TriggerEvent::Update,
             body: "".into(),
+        update_columns: None,
         };
         storage.create_trigger(trigger1).unwrap();
         storage.create_trigger(trigger2).unwrap();
@@ -2265,6 +2269,7 @@ mod tests {
             timing: crate::engine::TriggerTiming::Before,
             event: crate::engine::TriggerEvent::Insert,
             body: "BEGIN UPDATE s SET n = n + 1; END".to_string(),
+        update_columns: None,
         };
         storage.create_trigger(trigger).unwrap();
         drop(storage);
@@ -2286,6 +2291,7 @@ mod tests {
             timing: crate::engine::TriggerTiming::After,
             event: crate::engine::TriggerEvent::Update,
             body: "".to_string(),
+        update_columns: None,
         };
         storage.create_trigger(trigger.clone()).unwrap();
         storage.create_trigger(trigger).unwrap();
@@ -2305,6 +2311,7 @@ mod tests {
             timing: crate::engine::TriggerTiming::Before,
             event: crate::engine::TriggerEvent::Delete,
             body: "".to_string(),
+        update_columns: None,
         };
         storage.create_trigger(trigger).unwrap();
         storage.drop_trigger("trig_x").unwrap();

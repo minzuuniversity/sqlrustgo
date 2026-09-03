@@ -534,6 +534,7 @@ fn recursion_self_trigger_depth_limit() {
         timing: TriggerTiming::Before,
         event: TriggerEvent::Insert,
         body: "SET NEW.id = NEW.id".to_string(),
+        update_columns: None,
     };
     storage.create_trigger(trigger).unwrap();
 

@@ -294,6 +294,9 @@ path = "tests/integration/sql/v312_73_join_using_clause_test.rs"
 [[test]]
 name = "v312_74_on_conflict_on_constraint_test"
 path = "tests/integration/sql/v312_74_on_conflict_on_constraint_test.rs"
+[[test]]
+name = "v312_75_update_of_trigger_test"
+path = "tests/integration/sql/v312_75_update_of_trigger_test.rs"
 
 [[test]]
 name = "repro_v312_63"
