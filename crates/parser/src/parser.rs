@@ -13196,28 +13196,23 @@ mod tests {
     }
     #[test]
     fn test_parse_alter_table_modify_column() {
+        // Issue #4620: `ALTER TABLE ... MODIFY [COLUMN]` is now rejected
+        // at parse time (SQLite/MySQL-compatible). The pre-fix parser
+        // accepted the statement and produced a ModifyColumn operation,
+        // but the executor did not implement MODIFY, so `UNIQUE`
+        // constraint checks silently failed. The fix returns an Err.
         let result = parse("ALTER TABLE users MODIFY COLUMN age INTEGER");
-        assert!(result.is_ok(), "Parse failed: {:?}", result);
-        match result.unwrap() {
-            Statement::AlterTable(a) => {
-                assert_eq!(a.table_name, "users");
-                match a.operation {
-                    AlterTableOperation::ModifyColumn {
-                        name,
-                        data_type,
-                        nullable,
-                        char_max_length,
-                    } => {
-                        assert_eq!(name, "age");
-                        assert_eq!(data_type, "INTEGER");
-                        assert!(nullable);
-                        assert_eq!(char_max_length, None);
-                    }
-                    _ => panic!("Expected ModifyColumn operation"),
-                }
-            }
-            _ => panic!("Expected ALTER TABLE statement"),
-        }
+        assert!(
+            result.is_err(),
+            "ALTER TABLE ... MODIFY must be rejected at parse time (got {:?})",
+            result
+        );
+        let err = format!("{:?}", result.unwrap_err());
+        assert!(
+            err.contains("MODIFY"),
+            "error must mention MODIFY, got: {}",
+            err
+        );
     }
 
     #[test]
