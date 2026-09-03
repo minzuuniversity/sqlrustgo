@@ -130,6 +130,70 @@ impl SqliteMode {
     }
 
     pub fn execute_sql(&mut self, sql: &str) -> Result<(), CliError> {
+        // V312-RC-GA / Issue #4668 — OR-downgrade for NATURAL JOIN and
+        // multi-column USING (col1, col2, ...) in v3.12.0 GA CLI batch mode.
+        //
+        // Multi-column USING (USING (col1, col2)) currently silently emits
+        // 0 rows (the join loses its multi-column match constraint) and
+        // NATURAL JOIN triggers `Binder error: column 'y' not found in
+        // schema` for non-shared columns. Per
+        // `docs/releases/v3.12.0/RC_GA_TRIAGE_AND_GATE_PLAN_2026-09-03.md`
+        // §3 PR-A3 / WP-D entry for #4668, the GA cut adopts the **OR-downgrade**
+        // contract rather than silently emitting broken results:
+        //
+        //     "FIX via WP-D, OR downgrade: v3.12 GA only supports JOIN with
+        //      explicit ON; NATURAL JOIN and multi-column USING excluded."
+        //
+        // Detection (raw-Sql heuristic, conservative):
+        //   - `NATURAL JOIN` token sequence → reject
+        //   - `USING (` followed by a comma inside the parens → reject
+        //     (multi-column form; single-column `USING (id)` is GREEN)
+        //
+        // Single-column `USING (id)` is preserved (sub-bug #3 anti-regression).
+        let trimmed_upper = sql.trim().to_ascii_uppercase();
+        if trimmed_upper.contains("NATURAL JOIN") {
+            let preview: String = sql
+                .trim_start()
+                .chars()
+                .take(60)
+                .collect::<String>()
+                .trim_end()
+                .to_string();
+            return Err(CliError::Runtime(format!(
+                "{} contains NATURAL JOIN which is not supported in v3.12.0 \
+                 GA CLI batch mode (Issue #4668 OR-downgrade). Use explicit \
+                 ON clause per RC_GA_TRIAGE_AND_GATE_PLAN §3 WP-D. See \
+                 docs/releases/v3.12.0/CLAIM_DOWNGRADE_MANIFEST.md for the \
+                 release-claim boundary.",
+                preview
+            )));
+        }
+        // Detect multi-column USING: 'USING (' ... commas inside the parens.
+        // Conservatively: any USING clause with comma inside the matching parens.
+        if let Some(using_idx) = trimmed_upper.find("USING (") {
+            let after = &trimmed_upper[using_idx + "USING (".len()..];
+            if let Some(close_paren_offset) = after.find(')') {
+                let inside = &after[..close_paren_offset];
+                if inside.contains(',') {
+                    let preview: String = sql
+                        .trim_start()
+                        .chars()
+                        .take(60)
+                        .collect::<String>()
+                        .trim_end()
+                        .to_string();
+                    return Err(CliError::Runtime(format!(
+                        "{} contains multi-column USING clause which is not \
+                         supported in v3.12.0 GA CLI batch mode (Issue #4668 \
+                         OR-downgrade). Use single-column USING (col) or \
+                         explicit ON clause per RC_GA_TRIAGE_AND_GATE_PLAN §3 \
+                         WP-D. See docs/releases/v3.12.0/CLAIM_DOWNGRADE_MANIFEST.md \
+                         for the release-claim boundary.",
+                        preview
+                    )));
+                }
+            }
+        }
         // V312-RC-GA / Issue #4708 — OR-downgrade for non-ASCII identifiers
         // (Chinese / CJK / Unicode) and MySQL backtick quoted identifiers in
         // v3.12.0 GA CLI batch mode.
