@@ -244,3 +244,59 @@ fn rec_cte_recursion_row_cap_exceeded() {
         msg
     );
 }
+
+// ============================================================================
+// Issue #4699 — aggregation in the anchor + iteration arithmetic
+// ============================================================================
+
+#[test]
+fn rec_cte_aggregate_in_anchor() {
+    // The anchor can use aggregation freely (it's executed once). The
+    // step is `SELECT total FROM agg` — same row; UNION (dedup) makes
+    // the loop terminate after one iteration. Result: 1 row.
+    let mut e = fresh_mem();
+    e.execute("CREATE TABLE nums(n INT)").unwrap();
+    e.execute("INSERT INTO nums VALUES (1), (2), (3), (4), (5)").unwrap();
+
+    let r = e
+        .execute(
+            "WITH RECURSIVE agg AS ( \
+            SELECT SUM(n) AS total FROM nums \
+            UNION \
+            SELECT total FROM agg \
+         ) SELECT total FROM agg",
+        )
+        .expect("aggregation in anchor must succeed");
+    assert_eq!(
+        r.rows.len(),
+        1,
+        "expected 1 row, got {}",
+        r.rows.len()
+    );
+    assert_eq!(r.rows[0][0], Value::Integer(15));
+}
+
+#[test]
+fn rec_cte_running_sum_via_step_arithmetic() {
+    // The step's projection references the CTE itself to maintain a
+    // running sum column. Not a true aggregate function call, but
+    // validates that the step can carry forward aggregate-derived
+    // state across iterations.
+    let mut e = fresh_mem();
+    let r = e
+        .execute(
+            "WITH RECURSIVE running(n, total) AS ( \
+            SELECT 1, 1 \
+            UNION ALL \
+            SELECT n + 1, total + (n + 1) FROM running WHERE n < 5 \
+         ) SELECT n, total FROM running ORDER BY n",
+        )
+        .expect("running-sum step must succeed");
+    assert_eq!(r.rows.len(), 5, "expected 5 rows, got {}", r.rows.len());
+    // (1,1), (2,1+2=3), (3,3+3=6), (4,6+4=10), (5,10+5=15)
+    assert_eq!(r.rows[0], vec![Value::Integer(1), Value::Integer(1)]);
+    assert_eq!(r.rows[1], vec![Value::Integer(2), Value::Integer(3)]);
+    assert_eq!(r.rows[2], vec![Value::Integer(3), Value::Integer(6)]);
+    assert_eq!(r.rows[3], vec![Value::Integer(4), Value::Integer(10)]);
+    assert_eq!(r.rows[4], vec![Value::Integer(5), Value::Integer(15)]);
+}
