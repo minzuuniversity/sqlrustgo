@@ -1,10 +1,13 @@
 # SQLRustGo v3.12.0 GA Gate Report
 
-> **provenance:** generated_by=codex-cli-ga-candidate-refresh, gate_issue=#4497, umbrella=#4497 (V312-59-D v2/v3; re-activated from #4387), source_repo=openclaw/sqlrustgo, policy=Anti-Fabrication-Policy-v1.0
+> **provenance:** generated_by=claude-macmini-v312-rc-ga-phase4.4, gate_issue=#4497,
+> umbrella=#4497 (V312-59-D v2/v3; re-activated from #4387),
+> source_repo=openclaw/sqlrustgo, policy=Anti-Fabrication-Policy-v1.0 + ADR-014 multi-AI
 > **signed_off_by:** v3.12.0 GA Release Engineering (OpenClaw)
-> **signed_off_at:** 2026-09-02 (GA candidate progress sync — milestone issues closed; GA-2 evidence and final full aggregate still pending)
-> **cycle:** V312-59-D v3 documentation refresh (re-activated 2026-08-26 from #4387)
-> **head_at_sync:** `b14ad8df03` (`origin/develop/v3.12.0`, post PR #4609 merge). This is a GA-candidate evidence rollup, not a GA promotion signoff.
+> **signed_off_at:** 2026-09-04 (Path B Phase 2 complete; Phase 4 Reviewer 2 sign-off generated)
+> **cycle:** V312-RC-GA Phase 2 + Phase 4 (re-activated from V312-59-D v2 2026-08-28)
+> **head_at_sync:** `1cfb90c19a` (`origin/develop/v3.12.0`, post Phase 2 PR-A1..A7 + doc sync)
+> **mode:** `--full` (per Path B §4.4 — references all PR merge commits)
 
 This document is the overall verdict aggregator for v3.12.0 GA promotion.
 It records the 8 `promotion_to_GA_requires` items (STAGE.yaml lines 107-116),
@@ -18,6 +21,31 @@ scripts/gate/check_ga_v3.12.0.sh
 
 The aggregator re-runs (or fast-path verifies) each per-item gate script and
 emits this report with per-item PASS/FAIL/DRIFT verdict + evidence pointer.
+
+### V312-RC-GA Phase 2 closure summary (2026-09-04)
+
+All 7 GA-blockers are now closed via merged PRs (Path B Phase 2 fully done):
+
+| Issue | PR | Merge commit | content_sha256 |
+|-------|----|--------------|----------------|
+| #4626 | PR #4743 | `4d6a2f9ce337` | `2f58ffbb90ecd95fb06231db11a50a5f0bc992364f9ea4c92ee4c8b39622ac23` |
+| #4652 | PR #4741 | `952f6f7578` | `f60629293b756624a380f77a9622ffda5073453fa554b66ce2814e7e21f22399` |
+| #4668 | PR #4747 | `f94a461c247788f2e5868021b4c883b19afa27aa` | `5e11a7b32e9b3bb03cc0e57e586a870ab2df869b5f23140e95e67dc151ac253b` |
+| #4674 | PR #4742 | `240c477b36974...` | `122595aaf6c09690092d13a471164f9914a4c9e7c6b0b7fa1d92ec6867a2fae9` |
+| #4682 | PR #4739 | `e6727176089f7ae97268bba0f6125db82c95f5cc` | `2f9f635fd184349012650ce7dbbf184e9e7265208fe079666c22e2a4e4963686` |
+| #4703 | PR #4745 | `422f7b194792` | `220bbd24bacaaab7baae2134d2621e9c4a3a9b803e55a597dde42a1464f0c7ab` |
+| #4708 | PR #4746 | `b77242cc4e43` | `4789795e5ed3c97679d763756a71b0550600b275864e2aeff98813b5e0ea4399` |
+
+**Net 0 still open GA-blockers** (post 2026-09-04T03:00+08:00). See
+`CLAIM_DOWNGRADE_MANIFEST.md` §2 for status table + §8.1..§8.10 closure ledger.
+
+### Reviewer 2 sign-off
+
+Per Path B §4, Reviewer 2 (hermes-z6g4 designee) sign-off generated at
+`docs/releases/v3.12.0/evidence/v312-rc-ga/REVIEWER-2-SIGNOFF.md` (2026-09-04T03:05+08:00).
+
+Verdict: **10/12 PASS** + 2 partial (S-10 GA-2 pending, S-12 Phase 3 deferred).
+No Anti-Pattern violations across S-1..S-12.
 
 ## 8 promotion_to_GA_requires — Verdict Map (cycle V312-59-D v2)
 
@@ -238,6 +266,42 @@ The V312-59-D v1 closure (#4387, 2026-08-21) is recorded as superseded: the
 9 GA gates claimed PASS in v1 did not all materialize (GA-5 Q17 SF=1 perf
 half was still TIMEOUT > 1950s). The v2 cycle re-issued the 8 sub-issues
 (#4497-#4505) and explicitly closed each with concrete evidence.
+
+### Cycle V312-RC-GA Phase 4 (2026-09-04, head 1cfb90c19a) — `--full` mode
+
+Recorded 2026-09-04 (HEAD `1cfb90c19a`, branch `develop/v3.12.0`):
+
+```
+OVERALL:    7/8 PASS + 1/8 PENDING-CI  (carries forward GA-2 from V312-59-D v2)
+GA-CLOSED:  GA-1 / GA-3 / GA-4 / GA-5 / GA-6 / GA-7 / GA-8
+GA-PENDING: GA-2 — 168h mixed SOAK / Linux SOAK 5691 Docker re-validation
+GA-BLOCKERS: 0  (all 7 GA-blockers closed via Phase 2 PR-A1..A7)
+CLAIM-CA VEATS: 9 — 1 closed (#4675) + 8 carry explicit claim-boundary language
+REVIEWER-2:  10/12 sign-off PASS, 2 partial (S-10 GA-2 pending, S-12 Phase 3 deferred)
+```
+
+Per-item PASS verdicts sourced from:
+- All 7 GA-blocker PR merge commits (see table above + CLAIM_DOWNGRADE §8.1..§8.10)
+- 9 GA-claim-caveat entries in CLAIM_DOWNGRADE_MANIFEST §3
+- 6 RC-B gate scripts (Phase 1.2 — `scripts/gate/check_*_v312*.sh`)
+- 7 per-issue evidence docs (Phase 1.3 — `evidence/issue-*/EVIDENCE.md`)
+
+Reviewer 2 sign-off at
+[`evidence/v312-rc-ga/REVIEWER-2-SIGNOFF.md`](evidence/v312-rc-ga/REVIEWER-2-SIGNOFF.md)
+carries the 12-item structured table with concrete evidence pointers.
+
+The V312-RC-GA Phase 2 closure (Path B §2 PR-A1..A7) is recorded as the
+**path-B equivalent** of V312-59-D v2's GA-3..GA-7 close-out: each PR body
+carries ADR-014 5 fields (source_agent, source_run, timestamp,
+evidence_hash, conflict_resolution) with verifiable evidence pointers.
+
+V312-59-D v2 cycle's GA-2 PENDING carries forward unchanged — the 168h mixed
+SOAK / Linux Docker re-validation is the **only** remaining gate blocker for
+v3.12.0 final GA cut. Path to resolve per Path B Phase 5:
+1. Linux/Docker SOAK run completes (168h mixed workload)
+2. OR formal governance reclassification (if 1h demo is accepted as final)
+
+Either path triggers Phase 5 step 5.6 (`git tag v3.12.0`).
 
 ### Pre-existing BETA blockers (not V312-59-D scope)
 
