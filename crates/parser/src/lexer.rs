@@ -108,7 +108,11 @@ impl<'a> Lexer<'a> {
             if ch == '"' {
                 break;
             }
-            self.position += 1;
+            // V312-82 / Issue #4708: advance by full UTF-8 char width
+            // (not 1 byte) so multi-byte characters (CJK, emoji, etc.)
+            // are consumed correctly and don't cause a panic when the
+            // next iteration calls peek_char() on a mid-char position.
+            self.position += ch.len_utf8();
         }
         let result = self.input[start..self.position].to_string();
         if !self.is_eof() {
