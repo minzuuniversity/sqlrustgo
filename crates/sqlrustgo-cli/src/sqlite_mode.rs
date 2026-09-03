@@ -130,6 +130,65 @@ impl SqliteMode {
     }
 
     pub fn execute_sql(&mut self, sql: &str) -> Result<(), CliError> {
+        // V312-RC-GA / Issue #4708 — OR-downgrade for non-ASCII identifiers
+        // (Chinese / CJK / Unicode) and MySQL backtick quoted identifiers in
+        // v3.12.0 GA CLI batch mode.
+        //
+        // Per
+        // `docs/releases/v3.12.0/RC_GA_TRIAGE_AND_GATE_PLAN_2026-09-03.md`
+        // §3 PR-A1 / WP-A entry for #4708, the GA cut adopts the **OR-downgrade**
+        // contract:
+        //
+        //     "FIX via WP-A, OR explicit downgrade in release notes:
+        //      v3.12.0 GA does not support non-ASCII identifiers or comments;
+        //      B-track teaching corpora must use ASCII identifiers."
+        //
+        // The original sub-bug #1 (Chinese identifier) silently accepts at parse
+        // but SELECT returns empty — a misleading silent failure that we
+        // upgrade to an explicit rejection. Sub-bug #3 (MySQL backtick) parses
+        // OK but fails at binder; we also reject at parse boundary so users
+        // get explicit named feedback.
+        //
+        // Detection:
+        //   - `` ` `` (MySQL backtick) anywhere in SQL → reject
+        //   - non-ASCII (codepoint > 0x7F) outside `--` comment lines → reject
+        //
+        //   Comments starting with `--` are NOT rejected (sub-bug #2 already
+        //   works post-`da40e01b14` lexer fix and is consistent with B-track
+        //   Python/CLI output style which mixes Chinese comments with ASCII DDL).
+        let has_backtick = sql.contains('`');
+        let mut non_ascii_outside_comment = false;
+        for line in sql.lines() {
+            if line.trim_start().starts_with("--") {
+                continue;
+            }
+            if line.chars().any(|c| (c as u32) > 0x7F) {
+                non_ascii_outside_comment = true;
+                break;
+            }
+        }
+        if has_backtick || non_ascii_outside_comment {
+            let preview: String = sql
+                .trim_start()
+                .chars()
+                .take(60)
+                .collect::<String>()
+                .trim_end()
+                .to_string();
+            let tag = if has_backtick {
+                "non-ASCII identifiers + MySQL backtick"
+            } else {
+                "non-ASCII identifiers"
+            };
+            return Err(CliError::Runtime(format!(
+                "{} contains {} which are not supported in v3.12.0 GA CLI \
+                 batch mode (Issue #4708 OR-downgrade). B-track teaching corpora \
+                 must use ASCII identifiers per RC_GA_TRIAGE_AND_GATE_PLAN §3. \
+                 See docs/releases/v3.12.0/CLAIM_DOWNGRADE_MANIFEST.md for the \
+                 release-claim boundary.",
+                preview, tag
+            )));
+        }
         // V312-RC-GA / Issue #4703 — OR-downgrade for `INSERT ... ON
         // DUPLICATE KEY UPDATE` with `VALUES(col)` reference in v3.12.0 GA
         // CLI batch mode.
