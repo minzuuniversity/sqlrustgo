@@ -77,9 +77,9 @@ impl SequenceState {
     /// cycle behaviour applied).
     pub fn next_value(&self, name: &str) -> SqlResult<i64> {
         let mut guard = self.sequences.lock();
-        let info = guard.get_mut(name).ok_or_else(|| {
-            SqlError::ExecutionError(format!("Sequence '{name}' not found"))
-        })?;
+        let info = guard
+            .get_mut(name)
+            .ok_or_else(|| SqlError::ExecutionError(format!("Sequence '{name}' not found")))?;
         advance_sequence(info)
     }
 
@@ -88,9 +88,9 @@ impl SequenceState {
     /// has not yet been advanced (`current_value == start_with - increment_by`).
     pub fn currval(&self, name: &str) -> SqlResult<i64> {
         let guard = self.sequences.lock();
-        let info = guard.get(name).ok_or_else(|| {
-            SqlError::ExecutionError(format!("Sequence '{name}' not found"))
-        })?;
+        let info = guard
+            .get(name)
+            .ok_or_else(|| SqlError::ExecutionError(format!("Sequence '{name}' not found")))?;
         if info.current_value == info.start_with - info.increment_by {
             return Err(SqlError::ExecutionError(format!(
                 "Sequence '{name}' has not been advanced yet (CURRVAL before NEXTVAL)"
