@@ -56,6 +56,8 @@ pub enum Token {
     User,
     Identified,
     Ignore,
+    // V312-69 / Issue #4653: RETURNING clause on INSERT (PostgreSQL/MySQL 8.0+).
+    Returning,
     Replace,
 
     // Constraint keywords
@@ -386,6 +388,7 @@ impl fmt::Display for Token {
             Token::Identified => write!(f, "IDENTIFIED"),
             Token::Replace => write!(f, "REPLACE"),
             Token::Ignore => write!(f, "IGNORE"),
+            Token::Returning => write!(f, "RETURNING"),
             Token::Duplicate => write!(f, "DUPLICATE"),
             Token::Conflict => write!(f, "CONFLICT"),
             Token::Nothing => write!(f, "NOTHING"),

@@ -451,10 +451,36 @@ pub fn execute_insert<S: StorageEngine + 'static>(
         drain_trigger_undo_into_tx(engine);
     }
 
-    // INT-1: autocommit — leave the commit decision to the helper.
-    engine.commit_implicit_dml_tx(started_implicit)?;
+    // V312-69 / Issue #4653: project the just-inserted rows to the
+    // RETURNING column list (PostgreSQL/MySQL 8.0+). Special column
+    // name "*" expands to all table columns. Returns the projected
+    // rows; the existing `Ok(vec![], count)` path is preserved for
+    // INSERTs without RETURNING.
+    if let Some(cols) = &insert.returning {
+        let projected_rows: Vec<Vec<Value>> = if cols.len() == 1 && cols[0] == "*" {
+            all_records.clone()
+        } else {
+            all_records
+                .iter()
+                .map(|row| {
+                    cols.iter()
+                        .map(|c| {
+                            table_info
+                                .columns
+                                .iter()
+                                .position(|tc| tc.name == *c)
+                                .and_then(|i| row.get(i).cloned())
+                                .unwrap_or(Value::Null)
+                        })
+                        .collect()
+                })
+                .collect()
+        };
+        let row_count = projected_rows.len();
+        return Ok(ExecutorResult::new(projected_rows, row_count));
+    }
 
-    Ok(ExecutorResult::new(vec![], all_records.len()))
+     Ok(ExecutorResult::new(vec![], all_records.len()))
 }
 
 /// UPDATE executor body.
@@ -472,12 +498,7 @@ pub fn execute_update<S: StorageEngine + 'static>(
     }
     // V311-01 F-23: ClusteredTable main-path DML routing. SELECT/INSERT
     // already use ClusteredTable; UPDATE must too or it would write to
-    // the Heap and leave the clustered B+ tree stale.
-    if engine
-        .clustered_tables
-        .read()
-        .contains_key(&update.tables[0].name)
-    {
+    if engine.clustered_tables.read().contains_key(&update.tables[0].name) {
         return execute_update_clustered(engine, update);
     }
     let table_name = update.tables[0].name.clone();
