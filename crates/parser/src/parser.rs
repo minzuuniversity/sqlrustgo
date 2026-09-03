@@ -687,6 +687,13 @@ pub enum AggregateFunction {
     QuantileCont,
     /// V313-followup-3 / Issue #4156: ordered-set aggregate.
     PercentileCont,
+    /// V312-64 / Issue #4650: MySQL 5.7 `GROUP_CONCAT([DISTINCT] expr
+    /// [ORDER BY ... [ASC|DESC]] [SEPARATOR str])`. The DISTINCT
+    /// flag, ORDER BY expression, ASC/DESC, and SEPARATOR literal are
+    /// encoded as sentinels in `args` (mirrors the PercentileCont
+    /// pattern: `args[0]` is a sentinel literal, the rest are the
+    /// payload expressions).
+    GroupConcat,
 }
 
 /// Join clause
@@ -4099,6 +4106,7 @@ impl Parser {
                                 AggregateFunction::Min => "MIN",
                                 AggregateFunction::Max => "MAX",
                                 AggregateFunction::PercentileCont => "PERCENTILE_CONT",
+                                AggregateFunction::GroupConcat => "GROUP_CONCAT",
                                 AggregateFunction::QuantileDisc => "QUANTILE_DISC",
                                 AggregateFunction::QuantileCont => "QUANTILE_CONT",
                             };
@@ -5087,11 +5095,36 @@ impl Parser {
                             } else {
                                 None
                             };
-                            columns.push(SelectColumn {
-                                name: format!("{:?}", expr),
-                                alias,
-                                expression: Some(expr),
-                            });
+                            // V312-64b / Issue #4650: when parse_expression
+                            // returns an `Expression::Aggregate` (e.g. for
+                            // GROUP_CONCAT routed through the function-call
+                            // path), it must also be registered in
+                            // `select.aggregates` so the executor's Step 3
+                            // GROUP BY + AGGREGATE branch fires. Otherwise
+                            // the executor treats GROUP_CONCAT as a scalar
+                            // function call (returning Null since the
+                            // scalar helper was removed) and skips the
+                            // real aggregate compute path. Mirror the
+                            // explicit-aggregate-token path: push the
+                            // aggregate into `aggregates` and rename
+                            // `col.name` to `__agg_N` so the reproject
+                            // lookup keys align with the aggregate
+                            // position.
+                            if let Expression::Aggregate(agg) = expr {
+                                let agg_idx = aggregates.len();
+                                aggregates.push(agg.clone());
+                                columns.push(SelectColumn {
+                                    name: format!("__agg_{}", agg_idx),
+                                    alias,
+                                    expression: Some(Expression::Aggregate(agg)),
+                                });
+                            } else {
+                                columns.push(SelectColumn {
+                                    name: format!("{:?}", expr),
+                                    alias,
+                                    expression: Some(expr),
+                                });
+                            }
                         }
                     } else {
                         // Sprint 2 SELECT projection: the column is a plain
@@ -6503,6 +6536,16 @@ impl Parser {
             );
         }
 
+        // V312-64 / Issue #4657: also scan the HAVING expression. Without
+        // this, a SELECT whose column list contains only GROUP BY columns
+        // (e.g. `SELECT cust FROM t GROUP BY cust HAVING count(*) >= 2
+        // AND sum(amt) > 100`) leaves `select.aggregates` empty, the
+        // engine takes the non-aggregate branch and returns the raw rows
+        // instead of the grouped + filtered result.
+        if let Some(ref h) = having {
+            Self::find_aggregates_in_expr(h, &mut extra_aggregates);
+        }
+
         for agg in &extra_aggregates {
             if !aggregates
                 .iter()
@@ -6557,6 +6600,7 @@ impl Parser {
                     "QUANTILE_DISC" => Some(AggregateFunction::QuantileDisc),
                     "PERCENTILE_CONT" => Some(AggregateFunction::PercentileCont),
                     "QUANTILE_CONT" => Some(AggregateFunction::QuantileCont),
+                    "GROUP_CONCAT" => Some(AggregateFunction::GroupConcat),
                     _ => None,
                 } {
                     out.push(AggregateCall {
@@ -8495,23 +8539,30 @@ impl Parser {
                         ));
                     }
                     // GROUP_CONCAT([DISTINCT] expr [ORDER BY expr [ASC|DESC]] [SEPARATOR str])
-                    // — MySQL 5.7 aggregate special form. Emit args as a
-                    // flat vec, with optional DISTINCT/ORDER BY/SEPARATOR
-                    // encoded as sentinels so the executor can dispatch.
-                    //   GROUP_CONCAT(x)              -> [Literal("__NO_DISTINCT__"), x]
-                    //   GROUP_CONCAT(DISTINCT x)     -> [Literal("__DISTINCT__"), x]
-                    //   GROUP_CONCAT(DISTINCT x ORDER BY y)        -> [..., Literal("__ORDER_BY__"), y]
-                    //   GROUP_CONCAT(DISTINCT x SEPARATOR s)        -> [..., Literal("__SEPARATOR__"), s]
+                    // — MySQL 5.7 aggregate special form. Emit as an
+                    // `Expression::Aggregate` with `AggregateFunction::GroupConcat`
+                    // so the executor's normal aggregate dispatch path
+                    // (compute_aggregates) handles ordering + separator
+                    // joining. Encoding inside args vec (sentinel literals):
+                    //   GROUP_CONCAT(x)                -> [DISTINCT_FLAG, x]
+                    //   GROUP_CONCAT(DISTINCT x)       -> [DISTINCT_FLAG(true), x]
+                    //   GROUP_CONCAT(x ORDER BY y)    -> [..., ORDER_BY, y, DIR]
+                    //   GROUP_CONCAT(x SEPARATOR s)    -> [..., SEPARATOR, s]
                     if name.to_uppercase() == "GROUP_CONCAT" {
                         let mut gc_args = Vec::new();
-                        let _distinct = if matches!(self.current(), Some(Token::Distinct)) {
+                        // args[0] = boolean sentinel (true=distinct, false=no-distinct)
+                        let distinct = if matches!(self.current(), Some(Token::Distinct)) {
                             self.next();
-                            gc_args.push(Expression::Literal("__DISTINCT__".to_string()));
                             true
                         } else {
-                            gc_args.push(Expression::Literal("__NO_DISTINCT__".to_string()));
                             false
                         };
+                        gc_args.push(Expression::Literal(if distinct {
+                            "__DISTINCT__".to_string()
+                        } else {
+                            "__NO_DISTINCT__".to_string()
+                        }));
+                        // args[1] = value expression
                         if !matches!(self.current(), Some(Token::RParen)) {
                             gc_args.push(self.parse_expression()?);
                         }
@@ -8539,10 +8590,11 @@ impl Parser {
                             gc_args.push(self.parse_expression()?);
                         }
                         self.expect(Token::RParen)?;
-                        return Ok(Expression::FunctionCall(
-                            "GROUP_CONCAT".to_string(),
-                            gc_args,
-                        ));
+                        return Ok(Expression::Aggregate(AggregateCall {
+                            func: AggregateFunction::GroupConcat,
+                            args: gc_args,
+                            distinct,
+                        }));
                     }
                     let mut args = Vec::new();
                     if !matches!(self.current(), Some(Token::RParen)) {
@@ -8939,6 +8991,7 @@ impl Parser {
                         AggregateFunction::PercentileCont => "PERCENTILE_CONT",
                         AggregateFunction::QuantileDisc => "QUANTILE_DISC",
                         AggregateFunction::QuantileCont => "QUANTILE_CONT",
+                        AggregateFunction::GroupConcat => "GROUP_CONCAT",
                     };
 
                     let mut partition_by = Vec::new();

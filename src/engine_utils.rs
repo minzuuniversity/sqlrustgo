@@ -908,6 +908,21 @@ pub fn build_aggregate_schema(
                         .join(", ")
                 )
             }
+            AggregateFunction::GroupConcat => {
+                // V312-64b / Issue #4650: reuse
+                // `expression_to_string`'s canonical GROUP_CONCAT form
+                // so `evaluate_expression`'s Aggregate arm can look up
+                // the precomputed value by name. The previous arm
+                // (joining every arg including sentinels with ", ")
+                // produced names like
+                // "GROUP_CONCAT(__NO_DISTINCT__, val)" that did NOT
+                // match expression_to_string's
+                // "GROUP_CONCAT(val)" — eval_aggregate_lookup failed
+                // and the projection silently returned Null.
+                crate::expr_utils::expression_to_string(
+                    &Expression::Aggregate(agg.clone()),
+                )
+            }
         };
         columns.push(ColumnDefinition {
             name,

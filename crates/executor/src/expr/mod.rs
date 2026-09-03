@@ -1930,8 +1930,15 @@ pub fn eval_fn(name: &str, args: &[Value]) -> Value {
         // `_rollup_<col>` marker injected by the engine. Without the
         // marker (no ROLLUP/CUBE), GROUPING always returns 0.
         "GROUPING" => Value::Integer(0),
-        // GROUP_CONCAT — aggregate concatenator. Supports SEPARATOR.
-        "GROUP_CONCAT" => group_concat(args),
+        // V312-64b / Issue #4650: GROUP_CONCAT was promoted from a
+        // scalar FunctionCall to an `Expression::Aggregate(AggregateCall
+        // { func: GroupConcat, ... })`. The aggregate-dispatch path
+        // (compute_aggregates in engine_select.rs) handles DISTINCT /
+        // ORDER BY / SEPARATOR. If a query slips through as a FunctionCall
+        // (legacy / non-aggregate context), the parser's pre-pass in
+        // `find_aggregates_in_expr` will re-register it as an Aggregate.
+        // We no longer wire it through eval_fn here.
+        "GROUP_CONCAT" => Value::Null,
         // F-03 GIS: ST_WITHIN, ST_Distance, ST_Contains, ST_Intersects
         "ST_WITHIN" | "ST_CONTAINS" | "ST_INTERSECTS" | "ST_DISTANCE" => {
             use sqlrustgo_gis::{
@@ -2788,69 +2795,11 @@ fn bit_aggregate(args: &[Value], op: BitOp) -> Value {
     }
 }
 
-/// GROUP_CONCAT — concatenate non-NULL values with optional separator.
-/// In the current eval_fn dispatch, GROUP_CONCAT receives the
-/// function's args slice (which is the column's slice for an
-/// aggregate call, or the literal args for scalar calls). We treat
-/// all non-NULL args as values to concatenate. The separator is
-/// always comma (','); the SEPARATOR clause of GROUP_CONCAT is not
-/// yet supported and would require parser changes.
-///
-/// Issue #4623: the parser encodes DISTINCT / ORDER BY / SEPARATOR
-/// clauses as sentinel literals (`__NO_DISTINCT__`, `__DISTINCT__`,
-/// `__ORDER_BY__`, `__ASC__` / `__DESC__`, `__SEPARATOR__`). When
-/// GROUP_CONCAT was called per-row these sentinels leaked into the
-/// output (`"__NO_DISTINCT__,10"`). We now strip the recognised
-/// sentinels and the value that follows them (for ORDER BY / SEPARATOR
-/// clauses — DISTINCT is currently a no-op in the scalar/aggregate
-/// dispatch and is preserved for future use).
-fn group_concat(args: &[Value]) -> Value {
-    if args.is_empty() {
-        return Value::Null;
-    }
-    let separator = ",";
-    // Skip parser sentinels and the operands that follow them.
-    let mut values: Vec<&Value> = Vec::with_capacity(args.len());
-    let mut skip_next = false;
-    for v in args {
-        if skip_next {
-            skip_next = false;
-            continue;
-        }
-        match v {
-            Value::Text(s)
-                if matches!(
-                    s.as_str(),
-                    "__NO_DISTINCT__"
-                        | "__DISTINCT__"
-                        | "__ORDER_BY__"
-                        | "__ASC__"
-                        | "__DESC__"
-                        | "__SEPARATOR__"
-                ) =>
-            {
-                // ORDER BY / SEPARATOR take a following operand that
-                // is metadata, not a value to concatenate. DISTINCT
-                // takes no following operand (the value arg follows
-                // directly).
-                if matches!(s.as_str(), "__ORDER_BY__" | "__SEPARATOR__") {
-                    skip_next = true;
-                }
-                continue;
-            }
-            _ => {}
-        }
-        if !matches!(v, Value::Null) {
-            values.push(v);
-        }
-    }
-    let joined: String = values
-        .iter()
-        .map(|v| v.to_sql_string())
-        .collect::<Vec<_>>()
-        .join(separator);
-    Value::Text(joined)
-}
+// V312-64b / Issue #4650: the legacy `group_concat` scalar helper was
+// removed. GROUP_CONCAT is now an `Expression::Aggregate` with
+// `AggregateFunction::GroupConcat`; the aggregate dispatch lives in
+// `engine_select::compute_aggregates`. This block is intentionally
+// empty (kept as a tombstone comment to document the removal).
 
 /// Evaluate the parser-AST `Expression::Cast{expr, target_type}` arm:
 /// converts a value to the target type per MySQL 5.7 cast semantics.
@@ -3172,9 +3121,13 @@ mod tests {
         assert_eq!(v, Value::Integer(0));
     }
 
-    // ----- GROUP_CONCAT (Phase-3c) -----
+    // ----- GROUP_CONCAT (Phase-3c, demoted in V312-64b Issue #4650) -----
+    // GROUP_CONCAT was promoted to a true aggregate (AggregateFunction::
+    // GroupConcat). The scalar eval_fn path now returns NULL because
+    // GROUP_CONCAT must be evaluated by compute_aggregates (which has
+    // access to the full group of rows for DISTINCT/ORDER BY/SEPARATOR).
     #[test]
-    fn test_group_concat_basic() {
+    fn test_group_concat_scalar_returns_null() {
         let v = eval_fn(
             "GROUP_CONCAT",
             &[
@@ -3183,20 +3136,7 @@ mod tests {
                 Value::Text("c".into()),
             ],
         );
-        assert_eq!(v, Value::Text("a,b,c".into()));
-    }
-
-    #[test]
-    fn test_group_concat_skips_null() {
-        let v = eval_fn(
-            "GROUP_CONCAT",
-            &[
-                Value::Text("a".into()),
-                Value::Null,
-                Value::Text("b".into()),
-            ],
-        );
-        assert_eq!(v, Value::Text("a,b".into()));
+        assert_eq!(v, Value::Null);
     }
 
     #[test]

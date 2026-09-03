@@ -115,6 +115,65 @@ pub fn expression_to_string(expr: &sqlrustgo_parser::Expression) -> String {
                         .join(", ")
                 )
             }
+            // V312-64b / Issue #4650: GROUP_CONCAT aggregate. The args contain
+            // sentinel literals (__DISTINCT__/__NO_DISTINCT__/__ORDER_BY__/
+            // __ASC__/__DESC__/__SEPARATOR__) that should NOT appear in the
+            // canonical name — strip them and walk only real operand exprs.
+            sqlrustgo_parser::AggregateFunction::GroupConcat => {
+                let distinct = matches!(
+                    agg.args.first(),
+                    Some(sqlrustgo_parser::Expression::Literal(l)) if l == "__DISTINCT__"
+                );
+                let val_str = agg
+                    .args
+                    .get(1)
+                    .map(expression_to_string)
+                    .unwrap_or_default();
+                let mut parts = Vec::new();
+                if distinct {
+                    parts.push("DISTINCT".to_string());
+                }
+                parts.push(val_str);
+                // Scan args[2..] for ORDER BY / SEPARATOR clauses
+                let mut i = 2;
+                while i < agg.args.len() {
+                    match &agg.args[i] {
+                        sqlrustgo_parser::Expression::Literal(l) if l == "__ORDER_BY__" => {
+                            let mut ob = String::from("ORDER BY ");
+                            if let Some(e) = agg.args.get(i + 1) {
+                                ob.push_str(&expression_to_string(e));
+                                i += 2;
+                            } else {
+                                i += 1;
+                                continue;
+                            }
+                            if let Some(sqlrustgo_parser::Expression::Literal(d)) = agg.args.get(i) {
+                                if d == "__DESC__" {
+                                    ob.push_str(" DESC");
+                                    i += 1;
+                                } else if d == "__ASC__" {
+                                    ob.push_str(" ASC");
+                                    i += 1;
+                                }
+                            }
+                            parts.push(ob);
+                        }
+                        sqlrustgo_parser::Expression::Literal(l) if l == "__SEPARATOR__" => {
+                            if let Some(e) = agg.args.get(i + 1) {
+                                let sep = expression_to_string(e);
+                                parts.push(format!("SEPARATOR {}", sep));
+                                i += 2;
+                            } else {
+                                i += 1;
+                            }
+                        }
+                        _ => {
+                            i += 1;
+                        }
+                    }
+                }
+                format!("GROUP_CONCAT({})", parts.join(" "))
+            }
         },
         _ => "?".to_string(),
     }
