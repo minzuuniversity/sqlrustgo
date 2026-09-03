@@ -288,6 +288,9 @@ path = "tests/integration/sql/v312_72_alter_table_add_column_test.rs"
 [[test]]
 name = "v312_71_sqlite_master_test"
 path = "tests/integration/sql/v312_71_sqlite_master_test.rs"
+[[test]]
+name = "v312_73_join_using_clause_test"
+path = "tests/integration/sql/v312_73_join_using_clause_test.rs"
 
 [[test]]
 name = "repro_v312_63"
