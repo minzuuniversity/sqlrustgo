@@ -948,28 +948,21 @@ impl<S: StorageEngine + 'static> ExecutionEngine<S> {
                                 })
                                 .map_err(|e| format!("Subquery execution failed: {}", e))
                         };
-                    // V312-64 / Issue #4656: quantified comparison operators
-                    // (e.g. `> ALL (...)`, `= ANY (...)`) need the full
-                    // first-column result set of the right-hand subquery,
-                    // not a single scalar value. Provide that closure
-                    // alongside the scalar one.
-                    let subq_eval_set =
-                        |subq: &sqlrustgo_parser::SelectStatement| -> Result<Vec<Value>, String> {
-                            self.execute_select(subq).map(|res| {
-                                res.rows
-                                    .into_iter()
-                                    .filter_map(|mut r| r.pop())
-                                    .collect()
-                            })
-                            .map_err(|e| format!("Quantified subquery execution failed: {}", e))
-                        };
+                    // Note: V312-64b's #4656 plumbing (subq_eval_set +
+                    // eval_predicate_with_subq_full) was reverted because
+                    // it shadows the correlated-subquery branch in Step
+                    // 1.5 and interferes with V312-66 / #4687's
+                    // pre_evaluate_quantified_subquery conservative
+                    // fallback on correlated QuantifiedOp subqueries.
+                    // #4687 already covers the uncorrelated case via
+                    // Step 1.6, so dropping this path keeps #4650 +
+                    // #4657 unique to this PR.
                     rows.retain(|row| {
-                        crate::engine_utils::eval_predicate_with_subq_full(
+                        crate::engine_utils::eval_predicate_with_subq(
                             where_expr,
                             row,
                             &table_info,
                             &subq_eval,
-                            &subq_eval_set,
                         )
                     });
                 }
