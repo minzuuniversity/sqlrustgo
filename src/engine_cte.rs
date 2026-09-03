@@ -11,6 +11,22 @@ use sqlrustgo_storage::StorageEngine;
 
 use crate::{ExecutionEngine, SqlError, SqlResult};
 
+/// V312-64f / Issue #4699: decompose a recursive CTE body into
+/// (anchor, step, union_all). Per SQL:1999, a recursive CTE body MUST
+/// be `SELECT ... UNION [ALL] SELECT ...` where the second SELECT may
+/// reference the CTE itself. Returns an error for any other shape.
+pub fn decompose_recursive_body(
+    stmt: &sqlrustgo_parser::Statement,
+) -> SqlResult<(Box<sqlrustgo_parser::Statement>, Box<sqlrustgo_parser::Statement>, bool)> {
+    use sqlrustgo_parser::Statement;
+    match stmt {
+        Statement::Union(u) => Ok((u.left.clone(), u.right.clone(), u.union_all)),
+        _ => Err(SqlError::ExecutionError(
+            "Recursive CTE body must be UNION or UNION ALL of two SELECTs".to_string(),
+        )),
+    }
+}
+
 /// CTE materialisation helper: execute each CTE's subquery, create a
 /// temporary table per CTE, and return the list of created table names so
 /// the caller can clean them up. Returns an empty Vec if `with_clause`
@@ -327,5 +343,46 @@ mod tests {
             "WITH src AS (SELECT id FROM t WHERE id = 2) DELETE FROM t WHERE id IN (SELECT id FROM src)",
         );
         let _ = r;
+    }
+
+    // ---- V312-64f / Issue #4699 helpers --------------------------------------
+    //
+    // Direct unit tests for `decompose_recursive_body` and
+    // `rewrite_step_table_refs`. These are pure AST transformations that
+    // can be exercised without a storage engine.
+
+    use sqlrustgo_parser::{parse, Statement};
+
+    #[test]
+    fn decompose_recursive_body_union_all_ok() {
+        let sql = "SELECT 1 AS n UNION ALL SELECT n + 1 FROM cte WHERE n < 3";
+        let stmt = parse(sql).unwrap();
+        let (anchor, step, union_all) =
+            crate::engine_cte::decompose_recursive_body(&stmt).unwrap();
+        assert!(union_all, "UNION ALL must set union_all=true");
+        assert!(matches!(*anchor, Statement::Select(_)));
+        assert!(matches!(*step, Statement::Select(_)));
+    }
+
+    #[test]
+    fn decompose_recursive_body_union_distinct_ok() {
+        let sql = "SELECT 1 AS n UNION SELECT n + 1 FROM cte WHERE n < 3";
+        let stmt = parse(sql).unwrap();
+        let (_anchor, _step, union_all) =
+            crate::engine_cte::decompose_recursive_body(&stmt).unwrap();
+        assert!(!union_all, "UNION (no ALL) must set union_all=false");
+    }
+
+    #[test]
+    fn decompose_recursive_body_non_union_rejected() {
+        let stmt = parse("SELECT 1 AS n").unwrap();
+        let r = crate::engine_cte::decompose_recursive_body(&stmt);
+        assert!(r.is_err(), "non-UNION body must be rejected");
+        let msg = r.unwrap_err().to_string();
+        assert!(
+            msg.contains("UNION") || msg.contains("Recursive"),
+            "got: {}",
+            msg
+        );
     }
 }
