@@ -7527,13 +7527,38 @@ impl Parser {
 
     fn parse_update(&mut self) -> Result<Statement, String> {
         self.expect(Token::Update)?;
-        let tables = self.parse_table_ref_list_until_set()?;
-
-        if !matches!(self.current(), Some(Token::Set)) {
-            return Err("Expected SET".to_string());
+        let mut tables = self.parse_table_ref_list_until_set()?;
+        // V312-84 / Issue #4685: MySQL-style `UPDATE t1 JOIN t2 ON ... SET ...`
+        // Accept JOIN keywords after the initial table list. For each JOIN,
+        // parse the join type + table + ON condition and append to tables list.
+        // Stop when SET is reached.
+        while !matches!(self.current(), Some(Token::Set) | None | Some(Token::Eof)) {
+            if matches!(
+                self.current(),
+                Some(Token::Join)
+                    | Some(Token::Left)
+                    | Some(Token::Right)
+                    | Some(Token::Inner)
+                    | Some(Token::Full)
+                    | Some(Token::Cross)
+            ) {
+                // Parse a join clause and extract the table ref from it.
+                let join_clause = self.parse_join_clause()?;
+                // Flatten: extract the joined table from the join clause's right side.
+                // The join clause stores the right table in the `table` field.
+                let right_table = join_clause.table.clone();
+            } else if matches!(self.current(), Some(Token::Comma)) {
+                // Also allow comma-separated additional tables after the initial list.
+                self.next();
+                tables.push(self.parse_table_ref()?);
+            } else {
+                break;
+            }
         }
-        self.next();
-
+        // V312-84: consume the SET token before parsing set_clauses.
+        if matches!(self.current(), Some(Token::Set)) {
+            self.next();
+        }
         let mut set_clauses = Vec::new();
         loop {
             let column = self.parse_set_column_name()?;
@@ -9569,11 +9594,40 @@ impl Parser {
         let (tables, using) = if matches!(self.current(), Some(Token::From)) {
             self.next();
             let tref = self.parse_table_ref()?;
-            (vec![tref], None)
+            // V312-83 / Issue #4685: MySQL-style `DELETE FROM t USING src1, src2 WHERE ...`
+            // Accept USING after the first table to specify additional source tables.
+            let using = if matches!(self.current(), Some(Token::Using)) {
+                self.next();
+                let mut sources = Vec::new();
+                loop {
+                    sources.push(self.parse_table_ref()?);
+                    if matches!(self.current(), Some(Token::Comma)) {
+                        self.next();
+                    } else {
+                        break;
+                    }
+                }
+                Some(sources)
+            } else {
+                None
+            };
+            (vec![tref], using)
         } else {
+            // V312-83 / Issue #4685: MySQL-style `DELETE targets FROM sources [WHERE ...]`
+            // e.g. `DELETE p FROM p JOIN q ON p.id=q.id WHERE q.x=1`
+            // Parse target table(s) until FROM, then source tables after FROM.
             let targets = self.parse_table_ref_list(Token::From)?;
             self.expect(Token::From)?;
-            let sources = self.parse_table_ref_list_end()?;
+            // After FROM, parse source tables (comma-separated, JOIN-aware).
+            let mut sources = Vec::new();
+            loop {
+                sources.push(self.parse_table_ref()?);
+                if matches!(self.current(), Some(Token::Comma)) {
+                    self.next();
+                } else {
+                    break;
+                }
+            }
             (targets, Some(sources))
         };
 
@@ -9652,8 +9706,21 @@ impl Parser {
             self.next();
             out.push(self.parse_table_ref()?);
         }
-        if !matches!(self.current(), Some(Token::Set)) {
-            return Err("Expected SET after table list".to_string());
+        // V312-84 / Issue #4685: also accept JOIN tokens here — the caller
+        // (parse_update) will continue parsing JOIN clauses before reaching SET.
+        if !matches!(
+            self.current(),
+            Some(Token::Set)
+                | Some(Token::Join)
+                | Some(Token::Left)
+                | Some(Token::Right)
+                | Some(Token::Inner)
+                | Some(Token::Full)
+                | Some(Token::Cross)
+                | None
+                | Some(Token::Eof)
+        ) {
+            return Err("Expected SET or JOIN after table list".to_string());
         }
         Ok(out)
     }

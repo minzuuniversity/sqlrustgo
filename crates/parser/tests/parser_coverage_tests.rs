@@ -1245,6 +1245,16 @@ fn test_parse_delete_quick() {
     let result = parse(sql);
     let _ = result; // Accept any result — verify parser doesn't panic
 }
+#[test]
+fn test_parse_delete_using() {
+    // V312-83 / Issue #4685: MySQL-style DELETE with USING clause.
+    // `DELETE FROM t USING src1, src2 WHERE ...`
+    let r = parse("DELETE FROM t1 USING t2 WHERE t1.id=t2.ref_id");
+    assert!(r.is_ok(), "DELETE FROM t USING must parse: {:?}", r);
+    // Also: `DELETE t FROM t JOIN src ON ...`
+    let r2 = parse("DELETE p FROM p JOIN q ON p.id=q.id WHERE q.x=1");
+    assert!(r2.is_ok(), "DELETE t FROM t JOIN src must parse: {:?}", r2);
+}
 
 #[test]
 fn test_parse_drop_index_concurrently() {
