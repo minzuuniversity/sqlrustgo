@@ -1200,11 +1200,23 @@ pub struct WhenClause {
 #[derive(Debug, Clone, PartialEq)]
 pub struct WindowSpecification {
     pub partition_by: Vec<Expression>,
-    pub order_by: Vec<(Expression, bool)>,
+    /// ORDER BY expression list. Tuple form is `(expr, asc, nulls_first)`:
+    /// - `expr` is the sort key
+    /// - `asc` is true for ASC / false for DESC (defaults to true when neither is given)
+    /// - `nulls_first` is `Some(true)` for `NULLS FIRST`, `Some(false)` for
+    ///   `NULLS LAST`, and `None` when the SQL omitted a NULLS clause (so
+    ///   the executor falls back to its standard `NULLS LAST` default for
+    ///   ASC and `NULLS FIRST` default for DESC).
+    pub order_by: Vec<(Expression, bool, Option<bool>)>,
     /// V312-64 / Issue #4665: optional ROWS/RANGE/GROUPS BETWEEN …
     /// frame clause. Default is the legacy UNBOUNDED PRECEDING to
     /// CURRENT ROW frame, matching the previous executor behaviour.
     pub frame: Option<FrameClause>,
+    /// SQL:2003 `EXCLUDE` postfix on a window frame: drops the current
+    /// peer / current row / whole peer group from the frame for each
+    /// output row. `None` means no EXCLUDE was specified (default
+    /// semantics: keep all peer rows).
+    pub frame_exclusion: Option<FrameExclusion>,
 }
 
 /// V312-64 / Issue #4665: ROWS / RANGE / GROUPS BETWEEN <start> AND <end>
@@ -1235,6 +1247,23 @@ pub enum FrameBound {
     CurrentRow,
     Preceding(usize),
     Following(usize),
+}
+
+/// SQL:2003 `EXCLUDE` postfix on a window frame. Controls which peer rows
+/// the executor drops from the frame when computing each output row.
+///
+/// - `CurrentRow`: drop the current row (keep peers before/after it)
+/// - `Ties`: drop all peer rows equal to the current row in the ORDER BY
+/// - `Group`: drop the entire peer group (same as the default for RANGE
+///   frames with a single peer; explicit form here)
+/// - `NoOthers`: keep only the current row's peer group (drop rows that
+///   are neither the current row nor its peers)
+#[derive(Debug, Clone, PartialEq)]
+pub enum FrameExclusion {
+    CurrentRow,
+    Ties,
+    Group,
+    NoOthers,
 }
 
 #[derive(Debug, Clone, PartialEq)]
@@ -3951,16 +3980,9 @@ impl Parser {
                         name
                     }
                     Some(t) => {
-                        return Err(format!(
-                            "Expected column name in UPDATE OF, got {:?}",
-                            t
-                        ))
+                        return Err(format!("Expected column name in UPDATE OF, got {:?}", t))
                     }
-                    None => {
-                        return Err(
-                            "Expected column name in UPDATE OF".to_string()
-                        )
-                    }
+                    None => return Err("Expected column name in UPDATE OF".to_string()),
                 };
                 cols.push(col);
                 if matches!(self.current(), Some(Token::Comma)) {
@@ -3980,9 +4002,7 @@ impl Parser {
         // event — if the user wrote e.g. `INSERT OF col`, that's a
         // syntax error in every SQL dialect.
         if update_columns.is_some() && !events.iter().any(|e| e == "UPDATE") {
-            return Err(
-                "UPDATE OF <column_list> requires an UPDATE event".to_string(),
-            );
+            return Err("UPDATE OF <column_list> requires an UPDATE event".to_string());
         }
         Ok((events, update_columns))
     }
@@ -4354,7 +4374,35 @@ impl Parser {
                                     } else {
                                         true
                                     };
-                                    order_by.push((expr, asc));
+                                    // SQL:1999 ORDER BY <expr> [ASC | DESC] [NULLS FIRST | NULLS LAST]
+                                    // postfix. Mirrors the top-level ORDER BY parser at
+                                    // ~line 6939 — `nulls_first` is None when the SQL
+                                    // omitted a NULLS clause, so the executor keeps its
+                                    // standard `NULLS LAST` / `NULLS FIRST` defaults for
+                                    // ASC / DESC respectively.
+                                    let nulls_first = match self.current() {
+                                        Some(Token::Nulls) => {
+                                            self.next();
+                                            match self.current() {
+                                                Some(Token::First) => {
+                                                    self.next();
+                                                    Some(true)
+                                                }
+                                                Some(Token::Last) => {
+                                                    self.next();
+                                                    Some(false)
+                                                }
+                                                _ => {
+                                                    return Err(
+                                                        "Expected FIRST or LAST after NULLS"
+                                                            .to_string(),
+                                                    )
+                                                }
+                                            }
+                                        }
+                                        _ => None,
+                                    };
+                                    order_by.push((expr, asc, nulls_first));
                                     if matches!(self.current(), Some(Token::Comma)) {
                                         self.next();
                                     } else {
@@ -4366,6 +4414,8 @@ impl Parser {
                             // V312-64 / Issue #4665: optional ROWS / RANGE
                             // frame clause (see parse_window_frame_clause).
                             let frame = self.parse_window_frame_clause()?;
+                            // SQL:2003 EXCLUDE postfix on the frame.
+                            let frame_exclusion = self.parse_window_frame_exclusion()?;
 
                             self.expect(Token::RParen)?;
 
@@ -4393,6 +4443,7 @@ impl Parser {
                                         partition_by,
                                         order_by,
                                         frame,
+                                        frame_exclusion,
                                     },
                                 })),
                             });
@@ -7058,10 +7109,7 @@ impl Parser {
                         name
                     }
                     Some(t) => {
-                        return Err(format!(
-                            "Expected identifier in USING clause, got {:?}",
-                            t
-                        ))
+                        return Err(format!("Expected identifier in USING clause, got {:?}", t))
                     }
                     None => return Err("Expected identifier in USING clause".to_string()),
                 };
@@ -7386,11 +7434,9 @@ impl Parser {
                                     ))
                                 }
                                 None => {
-                                    return Err(
-                                        "Expected constraint name after \
+                                    return Err("Expected constraint name after \
                                          ON CONFLICT ON CONSTRAINT"
-                                            .to_string(),
-                                    )
+                                        .to_string())
                                 }
                             };
                             (Vec::new(), Some(name))
@@ -7762,6 +7808,81 @@ impl Parser {
         } else {
             Err("window frame bound must be followed by PRECEDING or FOLLOWING".to_string())
         }
+    }
+
+    /// SQL:2003 `EXCLUDE` postfix on a window frame. Returns `Ok(None)` when
+    /// the next token is not `EXCLUDE` (the keyword form here is the bare
+    /// `Token::Identifier("EXCLUDE")` — the lexer doesn't promote EXCLUDE
+    /// to its own variant because the word is also a valid column name).
+    ///
+    /// Grammar (SQL:2003 §7.15):
+    /// ```text
+    /// EXCLUDE ( CURRENT ROW | TIES | GROUP | NO OTHERS )
+    /// ```
+    ///
+    /// Only one of the four exclusion modes is allowed per window; the
+    /// grammar is a single keyword set on top of the frame. Anything else
+    /// after `EXCLUDE` is an error so that typos surface immediately.
+    fn parse_window_frame_exclusion(&mut self) -> Result<Option<FrameExclusion>, String> {
+        // EXCLUDE is not its own Token variant (it's also a valid column
+        // name in ordinary identifiers), so we match the bare-identifier
+        // form here.
+        let is_exclude = matches!(self.current(), Some(Token::Identifier(ref s)) if s.eq_ignore_ascii_case("EXCLUDE"));
+        if !is_exclude {
+            return Ok(None);
+        }
+        self.next(); // consume EXCLUDE
+                     // The four SQL:2003 modes are spelled with reserved words: CURRENT
+                     // ROW / TIES / GROUP / NO OTHERS. CURRENT is already its own Token
+                     // variant, and ROW is its own token (used in `FOR ROW n` locks);
+                     // GROUP is a reserved word in our lexer; TIES / NO / OTHERS are
+                     // not reserved and reach the parser as plain identifiers.
+        let mode = match self.current() {
+            Some(Token::Current) => {
+                self.next();
+                if !matches!(self.current(), Some(Token::Row)) {
+                    return Err("EXCLUDE CURRENT requires ROW after CURRENT".to_string());
+                }
+                self.next();
+                FrameExclusion::CurrentRow
+            }
+            Some(Token::Group) => {
+                self.next();
+                FrameExclusion::Group
+            }
+            Some(Token::Identifier(ref s)) if s.eq_ignore_ascii_case("TIES") => {
+                self.next();
+                FrameExclusion::Ties
+            }
+            Some(Token::Identifier(ref s)) if s.eq_ignore_ascii_case("NO") => {
+                self.next();
+                let is_others = matches!(self.current(), Some(Token::Identifier(ref s)) if s.eq_ignore_ascii_case("OTHERS"));
+                if !is_others {
+                    return Err("EXCLUDE NO requires OTHERS after NO".to_string());
+                }
+                self.next(); // consume OTHERS
+                FrameExclusion::NoOthers
+            }
+            // The lexer reserves `NO` as `Token::No` (used in other parts of
+            // the grammar); accept it here too so `EXCLUDE NO OTHERS` parses
+            // whether the lexer reserved the keyword or left it as an
+            // identifier.
+            Some(Token::No) => {
+                self.next();
+                let is_others = matches!(self.current(), Some(Token::Identifier(ref s)) if s.eq_ignore_ascii_case("OTHERS"));
+                if !is_others {
+                    return Err("EXCLUDE NO requires OTHERS after NO".to_string());
+                }
+                self.next(); // consume OTHERS
+                FrameExclusion::NoOthers
+            }
+            _ => {
+                return Err(
+                    "EXCLUDE requires one of CURRENT ROW, TIES, GROUP, NO OTHERS".to_string(),
+                );
+            }
+        };
+        Ok(Some(mode))
     }
 
     /// Parse a simple expression (for WHERE clause)
@@ -9000,7 +9121,31 @@ impl Parser {
                                 } else {
                                     true
                                 };
-                                order_by.push((expr, asc));
+                                // SQL:1999 NULLS FIRST / NULLS LAST postfix.
+                                // None means the SQL omitted a NULLS clause;
+                                // the executor applies the standard
+                                // ASC→NULLS LAST / DESC→NULLS FIRST default.
+                                let nulls_first = match self.current() {
+                                    Some(Token::Nulls) => {
+                                        self.next();
+                                        match self.current() {
+                                            Some(Token::First) => {
+                                                self.next();
+                                                Some(true)
+                                            }
+                                            Some(Token::Last) => {
+                                                self.next();
+                                                Some(false)
+                                            }
+                                            _ => return Err(
+                                                "Expected FIRST or LAST after NULLS"
+                                                    .to_string(),
+                                            ),
+                                        }
+                                    }
+                                    _ => None,
+                                };
+                                order_by.push((expr, asc, nulls_first));
                                 if matches!(self.current(), Some(Token::Comma)) {
                                     self.next();
                                 } else {
@@ -9014,6 +9159,8 @@ impl Parser {
                         // the legacy UNBOUNDED PRECEDING .. CURRENT ROW
                         // behaviour when omitted.
                         let frame = self.parse_window_frame_clause()?;
+                        // SQL:2003 EXCLUDE postfix on the frame.
+                        let frame_exclusion = self.parse_window_frame_exclusion()?;
 
                         self.expect(Token::RParen)?;
 
@@ -9024,6 +9171,7 @@ impl Parser {
                                 partition_by,
                                 order_by,
                                 frame,
+                                frame_exclusion,
                             },
                         }))
                     } else {
@@ -9373,7 +9521,27 @@ impl Parser {
                             } else {
                                 true
                             };
-                            order_by.push((expr, asc));
+                            // SQL:1999 NULLS FIRST / NULLS LAST postfix.
+                            let nulls_first = match self.current() {
+                                Some(Token::Nulls) => {
+                                    self.next();
+                                    match self.current() {
+                                        Some(Token::First) => {
+                                            self.next();
+                                            Some(true)
+                                        }
+                                        Some(Token::Last) => {
+                                            self.next();
+                                            Some(false)
+                                        }
+                                        _ => return Err(
+                                            "Expected FIRST or LAST after NULLS".to_string(),
+                                        ),
+                                    }
+                                }
+                                _ => None,
+                            };
+                            order_by.push((expr, asc, nulls_first));
                             if matches!(self.current(), Some(Token::Comma)) {
                                 self.next();
                             } else {
@@ -9384,6 +9552,8 @@ impl Parser {
 
                     // V312-64 / Issue #4665: optional ROWS / RANGE frame.
                     let frame = self.parse_window_frame_clause()?;
+                    // SQL:2003 EXCLUDE postfix on the frame.
+                    let frame_exclusion = self.parse_window_frame_exclusion()?;
 
                     self.expect(Token::RParen)?;
 
@@ -9394,6 +9564,7 @@ impl Parser {
                             partition_by,
                             order_by,
                             frame,
+                            frame_exclusion,
                         },
                     }))
                 } else {
@@ -13958,10 +14129,7 @@ fn test_parse_create_trigger_update_of_single_column() {
         Statement::CreateTrigger(t) => {
             assert_eq!(t.timing, "BEFORE");
             assert_eq!(t.events, vec!["UPDATE"]);
-            assert_eq!(
-                t.update_columns.as_deref(),
-                Some(&["val".to_string()][..])
-            );
+            assert_eq!(t.update_columns.as_deref(), Some(&["val".to_string()][..]));
         }
         _ => panic!("Expected CREATE TRIGGER statement"),
     }
@@ -15872,8 +16040,7 @@ mod set_op_tests {
     fn test_parse_on_conflict_no_target_still_works() {
         // Regression: bare ON CONFLICT DO NOTHING (no target, no
         // constraint) must still parse.
-        let stmt =
-            parse("INSERT INTO t VALUES (1) ON CONFLICT DO NOTHING").unwrap();
+        let stmt = parse("INSERT INTO t VALUES (1) ON CONFLICT DO NOTHING").unwrap();
         if let Statement::Insert(ins) = stmt {
             let clause = ins.on_conflict_clause.unwrap();
             assert_eq!(clause.target_cols, Vec::<String>::new());
@@ -15882,7 +16049,6 @@ mod set_op_tests {
             panic!("expected Statement::Insert");
         }
     }
-
 
     // ----- V312-64 / Issue #4645: CREATE FULLTEXT INDEX -----
 
@@ -16929,8 +17095,7 @@ mod set_op_tests {
     #[test]
     fn test_parse_join_using_multi_cols() {
         // V312-73 / Issue #4649: USING accepts a comma-separated list.
-        let stmt =
-            parse("SELECT * FROM t1 INNER JOIN t2 USING (id, name)").unwrap();
+        let stmt = parse("SELECT * FROM t1 INNER JOIN t2 USING (id, name)").unwrap();
         if let Statement::Select(sel) = stmt {
             let jc = &sel.join_clause[0];
             assert_eq!(
@@ -16947,8 +17112,7 @@ mod set_op_tests {
     #[test]
     fn test_parse_join_using_left() {
         // LEFT JOIN ... USING — exercises the LEFT type path.
-        let stmt =
-            parse("SELECT * FROM t1 LEFT JOIN t2 USING (id)").unwrap();
+        let stmt = parse("SELECT * FROM t1 LEFT JOIN t2 USING (id)").unwrap();
         if let Statement::Select(sel) = stmt {
             let jc = &sel.join_clause[0];
             assert!(matches!(jc.join_type, JoinType::Left));
@@ -18250,5 +18414,3 @@ fn test_parse_quantile_cont_array_v312_46() {
         panic!("expected Statement::Select");
     }
 }
-
-
