@@ -130,6 +130,49 @@ impl SqliteMode {
     }
 
     pub fn execute_sql(&mut self, sql: &str) -> Result<(), CliError> {
+        // V312-RC-GA / Issue #4652 — OR-downgrade for CREATE PROCEDURE /
+        // CREATE FUNCTION in v3.12.0 GA CLI batch mode.
+        //
+        // Stored-procedure and stored-function catalog changes do not
+        // persist across `sqlrustgo-cli sqlite --batch` invocations in
+        // v3.12.0 (the engine API path supports them, but the CLI batch
+        // path does not wire the catalog change through FileStorage's
+        // persistence layer).  Per
+        // `docs/releases/v3.12.0/RC_GA_TRIAGE_AND_GATE_PLAN_2026-09-03.md`
+        // §3 entry for #4652, the GA cut adopts the **OR-downgrade**
+        // contract rather than silently accepting the DDL and surprising
+        // the user downstream with "Stored procedure 'X' not found":
+        //
+        //     "v3.12 GA rejects CREATE PROCEDURE/FUNCTION with explicit
+        //      error; never silently accepts."
+        //
+        // Detect the SQL prelude (case-insensitive, leading whitespace
+        // and trailing semicolons tolerated). This intentionally refuses
+        // the feature at the boundary instead of producing a fake success.
+        let trimmed = sql.trim_start();
+        let upper = trimmed.to_ascii_uppercase();
+        let effective = upper
+            .strip_suffix(';')
+            .map(|s| s.to_string())
+            .unwrap_or(upper);
+        if effective.starts_with("CREATE PROCEDURE") || effective.starts_with("CREATE FUNCTION")
+        {
+            let preview: String = trimmed
+                .chars()
+                .take(60)
+                .collect::<String>()
+                .trim_end()
+                .to_string();
+            return Err(CliError::Runtime(format!(
+                "{} is not supported in v3.12.0 GA CLI batch mode (Issue #4652 \
+                 OR-downgrade). Stored procedure / function catalog changes do \
+                 not persist across batch invocations in this release; use the \
+                 engine API directly or wait for v3.13. See \
+                 docs/releases/v3.12.0/CLAIM_DOWNGRADE_MANIFEST.md for the \
+                 release-claim boundary.",
+                preview
+            )));
+        }
         let columns = self.extract_columns(sql).unwrap_or_default();
         let result = self.engine.execute(sql);
         // After DML, force a flush so that subsequent SELECT (or a
