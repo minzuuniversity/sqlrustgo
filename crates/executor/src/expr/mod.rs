@@ -1575,8 +1575,152 @@ pub fn eval_fn(name: &str, args: &[Value]) -> Value {
             }
             None => Value::Null,
         },
-        // TRIM — MySQL 5.7 supports four forms:
-        //   TRIM(str)                                 — 1-arg, trim whitespace
+        // V312-77 / Issue #4676: MOD / POWER / LOG / EXP / SQRT — previously fell
+        // through to Value::Null. IEEE 754 f64 arithmetic; domain errors → NULL.
+        "MOD" => {
+            if args.len() < 2 {
+                return Value::Null;
+            }
+            match (&args[0], &args[1]) {
+                (Value::Float(a), Value::Float(b)) => {
+                    if *b == 0.0 {
+                        Value::Null // SQLite: div-by-zero → NULL
+                    } else {
+                        Value::Float(a % b)
+                    }
+                }
+                (Value::Integer(a), Value::Integer(b)) => {
+                    if *b == 0 {
+                        Value::Null
+                    } else {
+                        Value::Float((*a as f64) % (*b as f64))
+                    }
+                }
+                _ => Value::Null,
+            }
+        }
+        "POWER" => {
+            if args.len() < 2 {
+                return Value::Null;
+            }
+            match (&args[0], &args[1]) {
+                (Value::Float(a), Value::Float(b)) => Value::Float(a.powf(*b)),
+                (Value::Integer(a), Value::Integer(b)) => {
+                    Value::Float((*a as f64).powf(*b as f64))
+                }
+                // Mixed: Integer base, Float exponent (e.g. POWER(100, 0.5))
+                (Value::Integer(a), Value::Float(b)) => Value::Float((*a as f64).powf(*b)),
+                // Mixed: Float base, Integer exponent
+                (Value::Float(a), Value::Integer(b)) => Value::Float(a.powf(*b as f64)),
+                _ => Value::Null,
+            }
+        }
+        "SQRT" => {
+            if let Some(v) = args.first() {
+                match v {
+                    Value::Float(f) => {
+                        if *f < 0.0 {
+                            Value::Null
+                        } else {
+                            Value::Float(f.sqrt())
+                        }
+                    }
+                    Value::Integer(i) => {
+                        if *i < 0 {
+                            Value::Null
+                        } else {
+                            Value::Float((*i as f64).sqrt())
+                        }
+                    }
+                    _ => Value::Null,
+                }
+            } else {
+                Value::Null
+            }
+        }
+        "LOG" => {
+            if let Some(v) = args.first() {
+                match v {
+                    Value::Float(f) => {
+                        if *f <= 0.0 {
+                            Value::Null
+                        } else {
+                            Value::Float(f.ln())
+                        }
+                    }
+                    Value::Integer(i) => {
+                        if *i <= 0 {
+                            Value::Null
+                        } else {
+                            Value::Float((*i as f64).ln())
+                        }
+                    }
+                    _ => Value::Null,
+                }
+            } else {
+                Value::Null
+            }
+        }
+        "EXP" => {
+            if let Some(v) = args.first() {
+                match v {
+                    Value::Float(f) => Value::Float(f.exp()),
+                    Value::Integer(i) => Value::Float((*i as f64).exp()),
+                    _ => Value::Null,
+                }
+            } else {
+                Value::Null
+            }
+        }
+        // V312-78 / Issue #4675: POSITION / LOCATE — previously fell through to
+        // Value::Null. SQL standard (POSITION) and MySQL compatibility (LOCATE).
+        "POSITION" => {
+            if args.len() < 2 {
+                return Value::Null;
+            }
+            // V312-78: NULL args must return NULL (to_sql_string() on Null → "NULL" string)
+            if matches!(&args[0], Value::Null) || matches!(&args[1], Value::Null) {
+                return Value::Null;
+            }
+            let substr = args[0].to_sql_string();
+            let s = args[1].to_sql_string();
+            if substr.is_empty() {
+                Value::Integer(1) // Empty substring: SQL standard says position 1
+            } else if let Some(idx) = s.find(&substr) {
+                Value::Integer((idx + 1) as i64) // 1-based
+            } else {
+                Value::Integer(0) // Not found
+            }
+        }
+        "LOCATE" => {
+            // LOCATE(substr, str[, pos]) — MySQL semantics.
+            // pos: optional 1-based start position (default 1).
+            // Note: LOCATE/POSITION do literal matching (not LIKE glob).
+            // Rust's str::find() takes a literal pattern — no escaping needed
+            // for SQL semantics, since SQL pattern chars (%, _, \) are literal here.
+            if args.is_empty() || matches!(&args[0], Value::Null) || matches!(&args[1], Value::Null) {
+                return Value::Null;
+            }
+            let start = match args.get(2) {
+                Some(Value::Integer(i)) if *i > 0 => (*i - 1) as usize, // 1-based → 0-based
+                Some(Value::Null) => return Value::Null,
+                Some(_) => return Value::Null,
+                None => 0usize,
+            };
+            let substr = args[0].to_sql_string();
+            let s = args[1].to_sql_string();
+            if substr.is_empty() {
+                Value::Integer((start + 1) as i64) // Empty substring at start position
+            } else if start >= s.len() {
+                Value::Integer(0) // Start past end → not found
+            } else {
+                let remaining = &s[start..];
+                match remaining.find(&substr) {
+                    Some(idx) => Value::Integer((start + idx + 1) as i64), // Absolute 1-based
+                    None => Value::Integer(0),
+                }
+            }
+        }
         //   TRIM(remstr, str)                         — 2-arg comma form
         //   TRIM([LEADING|TRAILING|BOTH] remstr FROM str) — 3-arg sentinel form
         // The 3-arg form is produced by the parser with a sentinel
