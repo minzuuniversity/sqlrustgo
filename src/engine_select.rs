@@ -451,36 +451,71 @@ impl<S: StorageEngine + 'static> ExecutionEngine<S> {
         Some(rewritten)
     }
 
+    /// V312-71 / Issue #4664: synthesize the canonical SQLite
+    /// `sqlite_master` (a.k.a. `sqlite_schema`) view at query time.
+    /// Returns one row per user table with columns
+    /// `type, name, tbl_name, rootpage, sql` (matching the SQLite
+    /// schema layout). The `sql` column is a best-effort synthesized
+    /// `CREATE TABLE ...` statement.
+    ///
+    /// The view is NOT persisted to disk; it's assembled on demand from
+    /// `storage.list_tables()` and `storage.get_table_info(name)`.
+    /// Multi-table joins against `sqlite_master` are not supported.
+    fn query_sqlite_master(&self) -> SqlResult<ExecutorResult> {
+        use sqlrustgo_types::Value;
+        let storage = self.storage.read();
+        let names = storage.list_tables();
+        let row_count = names.len();
+        let mut rows: Vec<Vec<Value>> = Vec::with_capacity(names.len());
+        for name in names {
+            let info = match storage.get_table_info(&name) {
+                Ok(info) => info,
+                Err(_) => continue,
+            };
+            let col_defs: Vec<String> = info
+                .columns
+                .iter()
+                .map(|c| {
+                    let mut s = format!("{} {}", c.name, c.data_type);
+                    if c.primary_key {
+                        s.push_str(" PRIMARY KEY");
+                    }
+                    if !c.nullable {
+                        s.push_str(" NOT NULL");
+                    }
+                    s
+                })
+                .collect();
+            let sql = format!("CREATE TABLE {} ({})", name, col_defs.join(", "));
+            rows.push(vec![
+                Value::Text("table".to_string()),
+                Value::Text(name.clone()),
+                Value::Text(name.clone()),
+                Value::Integer(0),
+                Value::Text(sql),
+            ]);
+        }
+
+        Ok(ExecutorResult::new(rows, row_count))
+    }
+
     /// V312-67 / Issue #4686: execute a scalar subquery used in the
     /// SELECT list projection and return its first row's first column
     /// (or `Value::Null` for an empty result).
     ///
-    /// Only the no-table literal form is supported
+    /// Only the no-table literal form is supported here
     /// (`SELECT <expr>` with no FROM, no joins, no aggregates, no
     /// WHERE, no GROUP BY, no ORDER BY, no HAVING). This covers
     /// `SELECT (SELECT 1) AS x`, `SELECT (SELECT 1 + 2) AS y`, etc.
-    /// The from-table aggregate form
-    /// (`SELECT (SELECT MAX(a) FROM t) AS m`) is a follow-up.
-    fn execute_subquery_for_scalar(
-        &self,
-        subq: &SelectStatement,
-    ) -> Result<Value, String> {
-        let is_no_table = subq.table.is_empty()
-            && subq.from_subquery.is_none()
-            && subq.from_values.is_none()
-            && subq.join_clause.is_empty()
-            && subq.aggregates.is_empty()
-            && subq.group_by.is_empty()
-            && subq.where_clause.is_none()
-            && subq.having.is_none()
-            && subq.order_by.is_empty();
-        if !is_no_table {
-            return Err(
-                "Scalar subquery in SELECT list is only supported for \
+    /// The from-table form is routed to
+    /// [`Self::execute_subquery_for_scalar_from_table`] by the
+    /// projection call site (pre-computed per outer row).
+    fn execute_subquery_for_scalar(&self, subq: &SelectStatement) -> Result<Value, String> {
+        if !Self::is_no_table_scalar_subq(subq) {
+            return Err("Scalar subquery in SELECT list is only supported for \
                  `SELECT <literal>` (issue #4686). The from-table form \
                  `SELECT (SELECT AGG(col) FROM t)` is not yet implemented."
-                    .to_string()
-            );
+                .to_string());
         }
         if let Some(col) = subq.columns.first() {
             if let Some(expr) = col.expression.as_ref() {
@@ -499,6 +534,93 @@ impl<S: StorageEngine + 'static> ExecutionEngine<S> {
             }
         }
         Ok(Value::Null)
+    }
+
+    /// V312-67: true when `subq` is the no-table literal form that
+    /// [`Self::execute_subquery_for_scalar`] supports (no FROM table,
+    /// no joins, no aggregates, no WHERE / GROUP BY / HAVING /
+    /// ORDER BY).
+    fn is_no_table_scalar_subq(subq: &SelectStatement) -> bool {
+        subq.table.is_empty()
+            && subq.from_subquery.is_none()
+            && subq.from_values.is_none()
+            && subq.join_clause.is_empty()
+            && subq.aggregates.is_empty()
+            && subq.group_by.is_empty()
+            && subq.where_clause.is_none()
+            && subq.having.is_none()
+            && subq.order_by.is_empty()
+    }
+
+    /// V312-75 / Issue #4636: execute a from-table scalar subquery
+    /// (`SELECT (SELECT b.val FROM b WHERE b.id = a.id) AS bval FROM a`)
+    /// for ONE outer row, binding correlated outer references first.
+    ///
+    /// Mechanism (same as the correlated IN path
+    /// [`Self::eval_in_subquery_membership`]): protect the subquery's
+    /// own columns from substitution, rewrite every outer reference —
+    /// bare (`id`) and qualified (`a.id`) — to a literal of the outer
+    /// row's value via `substitute_outer_refs_in_select`, execute the
+    /// now-uncorrelated select through `execute_select`, and return
+    /// its first row's first column (`Value::Null` when the subquery
+    /// yields no rows — standard scalar semantics; multiple rows take
+    /// the first, matching the existing WHERE-path scalar hook).
+    ///
+    /// DEADLOCK NOTE: this takes storage read locks internally, so it
+    /// must NOT be called while the projection loop's storage write
+    /// lock is held. Call sites pre-compute per-outer-row values
+    /// BEFORE acquiring the write lock.
+    fn execute_subquery_for_scalar_from_table(
+        &self,
+        subq: &SelectStatement,
+        outer_row: &[Value],
+        outer_table_info: &TableInfo,
+    ) -> Result<Value, String> {
+        // Collect the subquery's real inner columns so bare
+        // inner-column identifiers are NOT substituted with outer-row
+        // values (shadow protection, V312-bug-report-3120 BUG-3b).
+        let inner_columns: std::collections::HashSet<String> = {
+            let mut cols: std::collections::HashSet<String> =
+                subq.columns.iter().map(|c| c.name.to_lowercase()).collect();
+            let mut tables: Vec<String> =
+                subq.join_clause.iter().map(|j| j.table.clone()).collect();
+            if !subq.table.is_empty() {
+                tables.push(subq.table.clone());
+            }
+            let storage = self.storage_read();
+            for t in tables {
+                let bare = t.split_once('|').map(|(b, _)| b).unwrap_or(&t);
+                if bare.is_empty() {
+                    continue;
+                }
+                if let Ok(info) = storage.get_table_info(bare) {
+                    for c in &info.columns {
+                        cols.insert(c.name.to_lowercase());
+                    }
+                }
+            }
+            cols
+        };
+        let inner_columns_ref = if inner_columns.is_empty() {
+            None
+        } else {
+            Some(&inner_columns)
+        };
+        let substituted = crate::engine_utils::substitute_outer_refs_in_select(
+            subq,
+            outer_row,
+            outer_table_info,
+            inner_columns_ref,
+        );
+        let res = self
+            .execute_select(&substituted)
+            .map_err(|e| format!("Scalar subquery execution failed: {}", e))?;
+        Ok(res
+            .rows
+            .into_iter()
+            .next()
+            .and_then(|r| r.into_iter().next())
+            .unwrap_or(Value::Null))
     }
 
     pub fn execute_select(&self, select: &SelectStatement) -> SqlResult<ExecutorResult> {
@@ -538,7 +660,23 @@ impl<S: StorageEngine + 'static> ExecutionEngine<S> {
         // V312-58 / Issue #4443 (Phase 2 — materialization driver): invoke
         // `try_decorrelate` on the WHERE clause BEFORE row-by-row evaluation.
         // For each detected `ScalarAggInWhere` pattern, pre-build the
-        // `ScalarAggIndex` so the per-row path (`try_scalar_agg_index_lookup`
+        // V312-71 / Issue #4664: synthesize the canonical SQLite
+        // `sqlite_master` / `sqlite_schema` view at query time.
+        // Intercept the bare single-table form (no FROM subquery, no
+        // VALUES, no joins, no extra_tables) to keep the fast path simple.
+        {
+            let bare = select.table.split_once('|').map(|(t, _)| t).unwrap_or(&select.table);
+            let is_system_table = bare.eq_ignore_ascii_case("sqlite_master")
+                || bare.eq_ignore_ascii_case("sqlite_schema");
+            if is_system_table
+                && select.from_subquery.is_none()
+                && select.from_values.is_none()
+                && select.join_clause.is_empty()
+                && select.extra_tables.is_empty()
+            {
+                return self.query_sqlite_master();
+            }
+        }
         // invoked from `pre_evaluate_correlated_exists`) short-circuits on
         // the cache and pays only O(1) HashMap lookup per row.
         //
@@ -1897,6 +2035,42 @@ impl<S: StorageEngine + 'static> ExecutionEngine<S> {
         // SequenceNextVal / SequenceCurrval arms in
         // `evaluate_expression_with_seq` can advance / read live
         // sequence state during the projection.
+        //
+        // V312-75 / Issue #4636: BEFORE that write lock is taken,
+        // pre-compute from-table scalar subquery columns per outer row
+        // (`SELECT (SELECT b.val FROM b WHERE b.id = a.id) AS bval
+        // FROM a`). These are correlated — the value depends on the
+        // current outer row — so they cannot be evaluated lazily
+        // inside the projection loop: the loop runs under the storage
+        // write lock, and `execute_select` takes storage read locks,
+        // which would deadlock. The values are computed here (no lock
+        // held) via the same substitution mechanism as the correlated
+        // IN path, then looked up positionally in the projection loop
+        // — exactly like the WindowCall pre-computation above.
+        let mut scalar_subq_results: Vec<Option<Vec<Value>>> =
+            Vec::with_capacity(select.columns.len());
+        if !is_star {
+            for col in &select.columns {
+                if let Some(sqlrustgo_parser::Expression::Subquery(subq)) = &col.expression {
+                    if Self::is_no_table_scalar_subq(subq) {
+                        // Literal form: row-independent, keep the lazy
+                        // in-projection path.
+                        scalar_subq_results.push(None);
+                    } else {
+                        let vals: Result<Vec<Value>, SqlError> = rows
+                            .iter()
+                            .map(|row| {
+                                self.execute_subquery_for_scalar_from_table(subq, row, &table_info)
+                                    .map_err(SqlError::ExecutionError)
+                            })
+                            .collect();
+                        scalar_subq_results.push(Some(vals?));
+                    }
+                } else {
+                    scalar_subq_results.push(None);
+                }
+            }
+        }
         let mut storage_guard = self.storage.write();
         let projected_with_names: (Vec<String>, Vec<Vec<Value>>) = if is_star {
             let names: Vec<String> = if !table_info.columns.is_empty()
@@ -1948,6 +2122,12 @@ impl<S: StorageEngine + 'static> ExecutionEngine<S> {
                             // The helper returns one Value per input row, so a
                             // positional lookup at row_idx is safe.
                             precomputed.get(row_idx).cloned().unwrap_or(Value::Null)
+                        } else if let Some(subq_vals) = &scalar_subq_results[col_idx] {
+                            // V312-75 / Issue #4636: from-table scalar
+                            // subquery pre-computed per outer row before
+                            // the storage write lock (see above). Same
+                            // positional lookup contract as WindowCall.
+                            subq_vals.get(row_idx).cloned().unwrap_or(Value::Null)
                         } else {
                             match &col.expression {
                                 Some(expr) => crate::expr_utils::evaluate_expression_with_seq(
@@ -3767,18 +3947,52 @@ impl<S: StorageEngine + 'static> ExecutionEngine<S> {
         // for ON conditions referencing left side columns.
         let left_alias = left_table_info.name.clone();
 
+        // V312-73 / Issue #4649: `JOIN t2 USING (col1, col2, ...)` resolves
+        // to `t1.col_i = t2.col_i` for each column in the list. Build the
+        // (left_idx, right_idx) pairs up front so the existing hash-join
+        // machinery can run with them, and drop the duplicate right-side
+        // USING columns from both the rows and the combined schema below.
+        let using_pairs: Option<Vec<(usize, usize)>> =
+            if let Some(using_cols) = &join_clause.using_columns {
+                let mut pairs = Vec::with_capacity(using_cols.len());
+                for col in using_cols {
+                    let li = lookup_column(left_table_info, col).ok_or_else(|| {
+                        SqlError::ExecutionError(format!(
+                            "USING column '{}' not found on left side",
+                            col
+                        ))
+                    })?;
+                    let ri = lookup_column(&right_table_info, col).ok_or_else(|| {
+                        SqlError::ExecutionError(format!(
+                            "USING column '{}' not found on right side",
+                            col
+                        ))
+                    })?;
+                    pairs.push((li, ri));
+                }
+                Some(pairs)
+            } else {
+                None
+            };
+
         // Extract join key column indices from ON clause
         // For "b.num = c.bid" or "t1.id = t2.id", the canonical form
         // resolves one column from left and one from right.
         // Pass the right *alias* (when set) so qualifiers like `n2.col`
         // route to the right side.
-        let join_key = self.find_join_key_index(
-            &join_clause.on_clause,
-            &left_table_info,
-            &left_alias,
-            &right_table_info,
-            right_alias,
-        )?;
+        let join_key = if using_pairs.is_some() {
+            // USING path: the (left, right) index pairs are already resolved
+            // above; feed them to the existing JoinKey::Pairs matcher.
+            JoinKey::Pairs(using_pairs.clone().unwrap())
+        } else {
+            self.find_join_key_index(
+                &join_clause.on_clause,
+                &left_table_info,
+                &left_alias,
+                &right_table_info,
+                right_alias,
+            )?
+        };
         let pairs: Vec<(usize, usize)> = match join_key {
             JoinKey::Pair(li, ri) => vec![(li, ri)],
             JoinKey::Pairs(v) => v,
@@ -3968,12 +4182,49 @@ impl<S: StorageEngine + 'static> ExecutionEngine<S> {
             }
         };
 
-        let combined_schema = build_combined_schema(
+        let mut combined_schema = build_combined_schema(
             &left_table_info,
             &left_alias,
             &right_table_info,
             right_alias,
         )?;
+
+        // V312-73 / Issue #4649: USING(col_list) projects away the
+        // duplicate right-side USING columns from both the rows and the
+        // combined schema so the user sees each USING column exactly once.
+        // The right-side indices in the combined layout are
+        // `left_col_count + ri` for each `ri` in `using_pairs`.
+        if let Some(upairs) = using_pairs.as_ref() {
+            let left_col_count = left_table_info.columns.len();
+            // Build a sorted list of combined-schema indices to drop.
+            let mut drop_indices: Vec<usize> = upairs
+                .iter()
+                .map(|(_, ri)| left_col_count + ri)
+                .collect();
+            drop_indices.sort_unstable();
+            drop_indices.dedup();
+
+            // Drop the corresponding values from every matched row.
+            for row in &mut matched_results {
+                // Remove in reverse order so earlier indices stay valid.
+                for &idx in drop_indices.iter().rev() {
+                    if idx < row.len() {
+                        row.remove(idx);
+                    }
+                }
+            }
+
+            // Drop the corresponding columns from the combined schema.
+            let mut keep_cols: Vec<sqlrustgo_storage::ColumnDefinition> =
+                Vec::with_capacity(combined_schema.columns.len());
+            for (i, col) in combined_schema.columns.iter().enumerate() {
+                if !drop_indices.contains(&i) {
+                    keep_cols.push(col.clone());
+                }
+            }
+            combined_schema.columns = keep_cols;
+        }
+
         Ok((matched_results, combined_schema))
     }
 
