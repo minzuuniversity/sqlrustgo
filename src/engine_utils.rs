@@ -598,42 +598,21 @@ pub fn sql_compare(op: &str, left: &Value, right: &Value) -> bool {
         return false;
     }
 
-    // Issue #4492: blank-padded equality for CHAR(n) vs short string.
-    // `sql_compare` is the WHERE-clause entry point and uses strict
-    // PartialEq by default; we add a TEXT-vs-TEXT trim-end branch so
-    // `'F ' = 'F'` returns true. The strict PartialEq remains the
-    // fallback for non-text operands (preserves bool/int/float semantics).
+    // Issue #4612: BINARY collation by default for the WHERE-clause
+    // entry point too. The legacy #4492 / #4508 RTRIM behaviour has
+    // been removed in favour of strict PartialEq, matching
+    // SQLite/MySQL/PostgreSQL semantics and the eq_cross fix in
+    // crates/executor/src/expr/mod.rs.
     //
-    // V312-bugfix / #4492: PR #4508 originally pre-trimmed into
-    // `cmp_left` / `cmp_right` and then compared via `==`. After
-    // rebase on top of develop/v3.12.0 (which already carries
-    // PR #4493's inline trim form), the pre-trim became dead code
-    // and produced "unused variable" warnings. Removed during
-    // PR #4508 merge-conflict resolution; the inline trim is the
-    // single source of truth.
+    // The legacy RTRIM is now opt-in: callers can declare an explicit
+    // `COLLATE RTRIM` once that syntax is wired up. Until then the
+    // trim has been removed in both eq_cross and sql_compare so the
+    // `WHERE courseno = 'c05103   '` no longer matches
+    // `courseno = 'c05103'`.
 
     match op.to_uppercase().as_str() {
-        // V312-bug-report-3120 / BUG-4: MySQL CHAR(n) is blank-padded on
-        // store, so `sex = 'F'` against CHAR(2) stored as "F " must ignore
-        // trailing spaces. Trim both sides for Text equality/inequality
-        // (mirrors the eq_cross fix in crates/executor/src/expr/mod.rs).
-        // Other types fall through to the strict PartialEq.
-        //
-        // V312-bugfix / #4492: PR #4508 also tried to fix the same CHAR
-        // trim issue by hoisting the trim into pre-trimmed `cmp_left` /
-        // `cmp_right` and then comparing via `==`. Both forms are
-        // semantically equivalent for Value::Text (the pre-trim reduces to
-        // the same trim_end comparison); keep the inline form (matches
-        // the eq_cross fix style and avoids an extra clone on non-text
-        // operands).
-        "=" | "==" => match (left, right) {
-            (Value::Text(l), Value::Text(r)) => l.trim_end() == r.trim_end(),
-            _ => left == right,
-        },
-        "!=" | "<>" => match (left, right) {
-            (Value::Text(l), Value::Text(r)) => l.trim_end() != r.trim_end(),
-            _ => left != right,
-        },
+        "=" | "==" => left == right,
+        "!=" | "<>" => left != right,
         ">" => crate::expr_utils::compare_values(left, right) > 0,
         ">=" => crate::expr_utils::compare_values(left, right) >= 0,
         "<" => crate::expr_utils::compare_values(left, right) < 0,

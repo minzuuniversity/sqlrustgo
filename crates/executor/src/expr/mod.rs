@@ -1000,17 +1000,16 @@ fn eq_cross(left: &Value, right: &Value) -> bool {
     if matches!(left, Value::Null) || matches!(right, Value::Null) {
         return false;
     }
-    // Issue #4492: SQL standard blank-padded equality for CHAR(n) columns.
-    // `'F ' = 'F'` must compare true (MySQL semantics); we trim trailing
-    // whitespace on both sides before delegating to the strict PartialEq.
-    // This branch is intentionally limited to TEXT-vs-TEXT so it does NOT
-    // affect Hash/sort/group-by (which use PartialEq directly via
-    // `Value::eq`).
-    if let (Value::Text(a), Value::Text(b)) = (left, right) {
-        let a_trim = a.trim_end();
-        let b_trim = b.trim_end();
-        return a_trim == b_trim;
-    }
+    // Issue #4612: BINARY collation by default (SQLite/MySQL/PostgreSQL
+    // all default to BINARY for `=`). Pre-fix this branch and the
+    // match-arm below both trimmed trailing whitespace, which made
+    // `WHERE courseno = 'c05103   '` match `courseno = 'c05103'` and
+    // broke the BustubX-EDU teaching baseline (case 18).
+    //
+    // The legacy #4492 RTRIM behaviour is now opt-in: callers who
+    // genuinely need blank-padded equality (rare) can use a separate
+    // function or explicit `col COLLATE RTRIM` once that syntax is
+    // wired up. Until then we delegate to the strict PartialEq.
     if left == right {
         return true;
     }
@@ -1019,13 +1018,6 @@ fn eq_cross(left: &Value, right: &Value) -> bool {
         (Value::Integer(a), Value::Float(b)) | (Value::Float(b), Value::Integer(a)) => {
             (*a as f64) == *b
         }
-        // V312-bug-report-3120 / BUG-4: MySQL CHAR(n) is blank-padded
-        // on store (e.g. CHAR(2) of 'F' is stored as "F "), so an
-        // equality / inequality against the bare literal 'F' must
-        // ignore trailing spaces. SQLite has the same behaviour.
-        // Trimming here (not in PartialEq/Hash) preserves the
-        // hash/eq invariant for HashMap-backed GROUP BY / DISTINCT.
-        (Value::Text(l), Value::Text(r)) => l.trim_end() == r.trim_end(),
         _ => false,
     }
 }
@@ -2844,16 +2836,13 @@ fn compare_cmp(left: &Value, right: &Value, op: &str) -> Value {
     if matches!(left, Value::Null) || matches!(right, Value::Null) {
         return Value::Boolean(false);
     }
-    // Issue #4492: trim trailing whitespace on TEXT operands before
-    // comparing so that ordering is consistent with the blank-padded
-    // equality rule (CHAR(n) vs short string).
+    // Issue #4612: BINARY collation by default for ordering too.
+    // The legacy #4492 trim_end has been removed in favour of
+    // strict PartialOrd, matching SQLite/MySQL/PostgreSQL semantics
+    // and the eq_cross / sql_compare / compare_values fixes.
     let cmp = match (left, right) {
         (Value::Integer(a), Value::Integer(b)) => a.cmp(b) as i64,
-        (Value::Text(a), Value::Text(b)) => {
-            let at = a.trim_end();
-            let bt = b.trim_end();
-            at.cmp(bt) as i64
-        }
+        (Value::Text(a), Value::Text(b)) => a.cmp(b) as i64,
         _ => return Value::Null,
     };
     let result = match op {
@@ -3180,14 +3169,20 @@ mod tests {
     }
     #[test]
     fn test_blank_padded_equality() {
-        // Issue #4492: trailing-space string vs short string.
+        // Issue #4612: BINARY collation by default. The pre-fix
+        // #4492 RTRIM behaviour that made `'F ' = 'F'` true has
+        // been removed (SQLite/MySQL/PostgreSQL all default to
+        // BINARY for `=`). Trailing-space and short string are now
+        // distinct. The pre-fix test's first two assertions are
+        // intentionally inverted below to reflect the new contract.
         assert_eq!(
             eval_binary_op(
                 &Value::Text("F".to_string()),
                 &Value::Text("F ".to_string()),
                 "=",
             ),
-            Value::Boolean(true),
+            Value::Boolean(false),
+            "BINARY: trailing space must NOT match short string",
         );
         assert_eq!(
             eval_binary_op(
@@ -3195,7 +3190,8 @@ mod tests {
                 &Value::Text("abc ".to_string()),
                 "=",
             ),
-            Value::Boolean(true),
+            Value::Boolean(false),
+            "BINARY: trailing space must NOT match short string",
         );
         // Leading whitespace preserved.
         assert_eq!(
@@ -3215,7 +3211,9 @@ mod tests {
             ),
             Value::Boolean(false),
         );
-        // <>, <= ordering use trimmed compare.
+        // BINARY ordering: the shorter string is a strict prefix of
+        // the longer one, so `abc <= abc ` holds (the trailing space
+        // makes the second string strictly greater, not equal).
         assert_eq!(
             eval_binary_op(
                 &Value::Text("abc".to_string()),
@@ -3466,7 +3464,10 @@ mod tests {
             parse_lit("'hello world'"),
             Value::Text("hello world".into())
         );
-        assert_eq!(parse_lit("3.14"), Value::Integer(3));
+        // Issue #4610: Float literals preserve their fractional part
+        // as Value::Float. The pre-fix behaviour truncated `3.14` to
+        // `Value::Integer(3)` via `f as i64`.
+        assert_eq!(parse_lit("3.14"), Value::Float(3.14));
         assert_eq!(parse_lit("unquoted"), Value::Text("unquoted".into()));
     }
 
