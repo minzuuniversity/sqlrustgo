@@ -1608,6 +1608,10 @@ name = "issue_4626_select_for_update_rollback_test"
 path = "tests/integration/sql/issue_4626_select_for_update_rollback_test.rs"
 
 [[test]]
+name = "issue_4708_chinese_identifiers_test"
+path = "tests/integration/sql/issue_4708_chinese_identifiers_test.rs"
+
+[[test]]
 name = "torn_write_recovery"
 path = "tests/integration/fault_injection/torn_write_recovery.rs"
 
