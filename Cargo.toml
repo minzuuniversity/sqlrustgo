@@ -282,6 +282,9 @@ path = "tests/integration/sql/v312_68_substring_zero_test.rs"
 [[test]]
 name = "v312_69_insert_returning_test"
 path = "tests/integration/sql/v312_69_insert_returning_test.rs"
+[[test]]
+name = "v312_71_sqlite_master_test"
+path = "tests/integration/sql/v312_71_sqlite_master_test.rs"
 
 
 
