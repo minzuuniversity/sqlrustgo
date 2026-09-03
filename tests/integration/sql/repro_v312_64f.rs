@@ -103,3 +103,49 @@ fn rec_cte_union_dedup_implicit_termination() {
     assert_eq!(r.rows[1][0], Value::Integer(2));
     assert_eq!(r.rows[2][0], Value::Integer(3));
 }
+
+// ============================================================================
+// Issue #4699 — edge cases: empty anchor + non-UNION rejection
+// ============================================================================
+
+#[test]
+fn rec_cte_empty_anchor() {
+    // Empty anchor: no rows match, so t and t__work start empty.
+    // The step's SELECT against the empty t__work returns 0 rows,
+    // the loop exits, and the outer SELECT sees 0 rows.
+    let mut e = fresh_mem();
+    e.execute("CREATE TABLE empty_src(n INT)").unwrap();
+    let r = e
+        .execute(
+            "WITH RECURSIVE cnt AS ( \
+            SELECT n FROM empty_src \
+            UNION ALL \
+            SELECT n + 1 FROM cnt WHERE n < 10 \
+         ) SELECT n FROM cnt",
+        )
+        .expect("empty anchor must succeed with 0 rows");
+    assert_eq!(
+        r.rows.len(),
+        0,
+        "empty anchor → 0 rows, got {}",
+        r.rows.len()
+    );
+}
+
+#[test]
+fn rec_cte_rejected_when_no_union() {
+    // Per SQL:1999, a recursive CTE body MUST be `SELECT ... UNION [ALL] SELECT ...`.
+    // A bare SELECT (no UNION at all) must be rejected.
+    let mut e = fresh_mem();
+    let err = e
+        .execute(
+            "WITH RECURSIVE cnt AS (SELECT 1 AS n) SELECT n FROM cnt",
+        )
+        .expect_err("non-UNION body must error");
+    let msg = format!("{}", err);
+    assert!(
+        msg.contains("UNION"),
+        "error should mention UNION, got: {}",
+        msg
+    );
+}
