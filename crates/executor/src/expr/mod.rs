@@ -2476,8 +2476,8 @@ fn timestamp_diff(args: &[Value]) -> Value {
 /// or an integer epoch-second timestamp. Returns:
 ///   - YEAR/QUARTER/MONTH/DAY → Value::Text("YYYY-MM-DD")
 ///   - HOUR/MINUTE/SECOND     → Value::Integer (epoch seconds floored to
-///                              the unit boundary)
-/// Returns Value::Null on any malformed input.
+///     the unit boundary)
+///   - Returns Value::Null on any malformed input.
 fn date_trunc(args: &[Value]) -> Value {
     if args.len() != 2 {
         return Value::Null;
@@ -2545,7 +2545,7 @@ fn date_trunc(args: &[Value]) -> Value {
 /// Accepts:
 ///   - "YYYY-MM-DD" or "YYYY-MM-DD HH:MM:SS" — calendar-aware
 ///   - Integer epoch seconds
-/// Returns None for unparsable input.
+///   - Returns None for unparsable input.
 fn parse_text_to_secs(s: &str) -> Option<i64> {
     let trimmed = s.trim();
     if let Ok(n) = trimmed.parse::<i64>() {
