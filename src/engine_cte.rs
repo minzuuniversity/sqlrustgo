@@ -27,6 +27,46 @@ pub fn decompose_recursive_body(
     }
 }
 
+/// V312-64f: derive CTE column definitions from explicit `name(col, ...)` form,
+/// the subquery's SELECT-column aliases, or fallback `col_<i>` placeholders.
+/// Extracted from `materialize_cte_tables` so recursive and non-recursive
+/// paths share the same schema-resolution logic.
+pub fn derive_cte_columns(
+    cte: &sqlrustgo_parser::parser::CommonTableExpression,
+    seed_rows: &[Vec<crate::Value>],
+    subquery_column_names: &[String],
+) -> Vec<sqlrustgo_storage::engine::ColumnDefinition> {
+    use sqlrustgo_storage::engine::ColumnDefinition;
+    let column_count = if !cte.columns.is_empty() {
+        cte.columns.len()
+    } else if !seed_rows.is_empty() {
+        seed_rows[0].len()
+    } else {
+        0
+    };
+    (0..column_count)
+        .map(|i| {
+            let name = if !cte.columns.is_empty() {
+                cte.columns[i].clone()
+            } else if i < subquery_column_names.len() && !subquery_column_names[i].is_empty() {
+                subquery_column_names[i].clone()
+            } else {
+                format!("col_{}", i)
+            };
+            ColumnDefinition {
+                name,
+                data_type: "TEXT".to_string(),
+                nullable: true,
+                primary_key: false,
+                char_max_length: None,
+                collation: None,
+                default_value: None,
+                auto_increment: false,
+            }
+        })
+        .collect()
+}
+
 /// CTE materialisation helper: execute each CTE's subquery, create a
 /// temporary table per CTE, and return the list of created table names so
 /// the caller can clean them up. Returns an empty Vec if `with_clause`
@@ -384,5 +424,42 @@ mod tests {
             "got: {}",
             msg
         );
+    }
+
+    use sqlrustgo_parser::parser::CommonTableExpression;
+    use sqlrustgo_storage::engine::ColumnDefinition;
+
+    #[test]
+    fn derive_cte_columns_explicit() {
+        let cte = CommonTableExpression {
+            name: "t".to_string(),
+            columns: vec!["a".to_string(), "b".to_string()],
+            subquery: Box::new(parse("SELECT 1, 2").unwrap()),
+        };
+        let cols = crate::engine_cte::derive_cte_columns(
+            &cte,
+            &[vec![Value::Integer(1), Value::Integer(2)]],
+            &["a".to_string(), "b".to_string()],
+        );
+        assert_eq!(cols.len(), 2);
+        assert_eq!(cols[0].name, "a");
+        assert_eq!(cols[1].name, "b");
+    }
+
+    #[test]
+    fn derive_cte_columns_fallback_col_i() {
+        let cte = CommonTableExpression {
+            name: "t".to_string(),
+            columns: vec![],
+            subquery: Box::new(parse("SELECT 1, 2").unwrap()),
+        };
+        let cols = crate::engine_cte::derive_cte_columns(
+            &cte,
+            &[vec![Value::Integer(1), Value::Integer(2)]],
+            &[],
+        );
+        assert_eq!(cols.len(), 2);
+        assert_eq!(cols[0].name, "col_0");
+        assert_eq!(cols[1].name, "col_1");
     }
 }
