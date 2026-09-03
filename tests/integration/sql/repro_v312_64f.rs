@@ -214,3 +214,33 @@ fn rec_cte_cleanup_drops_temp_tables_after_query() {
     );
     assert_eq!(r.rows[0][0], Value::Integer(99));
 }
+
+// ============================================================================
+// Issue #4699 — MAX_RECURSION_ROWS exceeded (per-engine cap)
+// ============================================================================
+
+#[test]
+fn rec_cte_recursion_row_cap_exceeded() {
+    // Use the per-engine builder to lower MAX_RECURSION_ROWS so we can
+    // trigger the cap without generating 1M-row fixtures. The CTE below
+    // produces N+1 rows for N iterations of "WHERE n < N" — set the cap
+    // below N to force the error.
+    let storage = Arc::new(RwLock::new(MemoryStorage::new()));
+    let mut e = ExecutionEngine::new(storage).with_recursive_cte_max_rows(5);
+
+    // n=1,2,3,4,5 → 5 rows, then n+1 would be 6, exceeds cap 5 mid-iteration.
+    let err = e
+        .execute(
+            "WITH RECURSIVE cnt AS ( \
+            SELECT 1 AS n UNION ALL \
+            SELECT n + 1 FROM cnt WHERE n < 10 \
+         ) SELECT n FROM cnt",
+        )
+        .expect_err("row cap must be enforced");
+    let msg = format!("{}", err);
+    assert!(
+        msg.contains("row cap"),
+        "error should mention row cap, got: {}",
+        msg
+    );
+}

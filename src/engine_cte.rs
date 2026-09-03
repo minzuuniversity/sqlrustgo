@@ -18,7 +18,10 @@ const MAX_RECURSION_DEPTH: usize = 1000;
 
 /// V312-64f / Issue #4699: hard cap on total rows produced by a
 /// recursive CTE (SQLite default). Protects against memory blowup
-/// when the step's predicate is missing/broken.
+/// when the step's predicate is missing/broken. The engine now reads
+/// its row cap from `ExecutionEngine::recursive_cte_max_rows`, which
+/// defaults to this value via `ExecutionEngine::base_with`.
+#[allow(dead_code)]
 const MAX_RECURSION_ROWS: usize = 1_000_000;
 
 /// V312-64f / Issue #4699: decompose a recursive CTE body into
@@ -413,12 +416,13 @@ pub fn materialize_recursive_cte<S: StorageEngine + 'static>(
         }
         total += new_rows.len();
 
-        if total > MAX_RECURSION_ROWS {
+        let max_rows = engine.recursive_cte_max_rows;
+        if total > max_rows {
             let mut storage = engine.storage.write();
             let _ = storage.drop_table(&t_work);
             return Err(SqlError::ExecutionError(format!(
                 "Recursive CTE {} exceeded {} row cap",
-                t, MAX_RECURSION_ROWS
+                t, max_rows
             )));
         }
     }
