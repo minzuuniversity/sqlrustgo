@@ -11,6 +11,16 @@ use sqlrustgo_storage::StorageEngine;
 
 use crate::{ExecutionEngine, SqlError, SqlResult};
 
+/// V312-64f / Issue #4699: hard cap on recursive CTE depth (SQLite
+/// default). Prevents infinite recursion in case of malformed step
+/// predicates (e.g. WHERE clause that always evaluates true).
+const MAX_RECURSION_DEPTH: usize = 1000;
+
+/// V312-64f / Issue #4699: hard cap on total rows produced by a
+/// recursive CTE (SQLite default). Protects against memory blowup
+/// when the step's predicate is missing/broken.
+const MAX_RECURSION_ROWS: usize = 1_000_000;
+
 /// V312-64f / Issue #4699: decompose a recursive CTE body into
 /// (anchor, step, union_all). Per SQL:1999, a recursive CTE body MUST
 /// be `SELECT ... UNION [ALL] SELECT ...` where the second SELECT may
@@ -80,7 +90,7 @@ pub fn rewrite_step_table_refs(
     from: &str,
     to: &str,
 ) -> sqlrustgo_parser::SelectStatement {
-    use sqlrustgo_parser::{Expression, Statement};
+    use sqlrustgo_parser::Statement;
 
     let mut cloned = stmt.clone();
 
@@ -143,6 +153,16 @@ pub fn rewrite_step_table_refs(
 fn rewrite_expr(expr: &mut sqlrustgo_parser::Expression, from: &str, to: &str) {
     use sqlrustgo_parser::Expression;
     match expr {
+        // Column reference: `tree.id` → `tree__work.id`, or bare `tree` →
+        // `tree__work`. Bare aliases / unqualified references for OTHER
+        // tables are left alone (e.g. `id`, `e.mgr_id`).
+        Expression::Identifier(name) => {
+            if name == from {
+                *name = to.to_string();
+            } else if let Some(rest) = name.strip_prefix(&format!("{}.", from)) {
+                *name = format!("{}.{}", to, rest);
+            }
+        }
         Expression::Subquery(subq) => {
             let new_select = rewrite_step_table_refs(subq.as_ref(), from, to);
             *subq = Box::new(new_select);
@@ -223,15 +243,188 @@ fn rewrite_expr(expr: &mut sqlrustgo_parser::Expression, from: &str, to: &str) {
                 rewrite_expr(it, from, to);
             }
         }
-        // Variants without subquery nesting:
+        // Variants without subquery nesting (Identifier is handled above
+        // because table refs like `tree.id` need rewriting):
         Expression::Literal(_)
-        | Expression::Identifier(_)
         | Expression::SequenceNextVal(_)
         | Expression::SequenceCurrval(_)
         | Expression::JsonLiteral(_)
         | Expression::SystemVariable(_)
         | Expression::WindowCall(_) => {}
     }
+}
+
+/// V312-64f / Issue #4699: materialize a single recursive CTE using
+/// the two-table working/accumulated algorithm (PG/SQLite standard).
+///
+/// For a recursive CTE named `t` with body `anchor UNION [ALL] step`:
+///   - `t` (accumulated): all rows seen so far across iterations.
+///     Visible to the outer SELECT as the CTE result.
+///   - `t__work` (working set): only the rows produced in the most
+///     recent step iteration. The recursive step's body references
+///     `t__work` (via AST-level table-ref substitution in
+///     `rewrite_step_table_refs`), so each iteration sees only its
+///     own newly-derived rows.
+///
+/// Iteration:
+///   1. Execute the anchor → seed rows.
+///   2. Insert seed into both `t` and `t__work`.
+///   3. For each round up to MAX_RECURSION_DEPTH:
+///      a. Execute the rewritten step (referencing `t__work`).
+///      b. UNION ALL: append all step rows to `t`, replace `t__work`.
+///         UNION (no ALL): dedupe step rows against `t`'s accumulated
+///         rows AND against prior step rows of this round, then append.
+///      c. If no new rows: stop.
+///      d. If total > MAX_RECURSION_ROWS: drop `t__work`, error.
+///   4. Drop `t__work`. `t` remains visible to the outer SELECT.
+///
+/// On error mid-iteration: drop `t__work` (best-effort) so the
+/// engine's table registry stays clean.
+pub fn materialize_recursive_cte<S: StorageEngine + 'static>(
+    engine: &mut ExecutionEngine<S>,
+    cte: &sqlrustgo_parser::parser::CommonTableExpression,
+) -> SqlResult<()> {
+    use sqlrustgo_parser::Statement;
+    use sqlrustgo_storage::engine::TableInfo;
+
+    // 1. Decompose body into (anchor, step, union_all).
+    let (anchor_stmt, step_stmt, union_all) = decompose_recursive_body(cte.subquery.as_ref())?;
+
+    // 2. Execute anchor → seed rows.
+    let anchor_select = match anchor_stmt.as_ref() {
+        Statement::Select(s) => s,
+        _ => {
+            return Err(SqlError::ExecutionError(
+                "Recursive CTE anchor must be a SELECT".to_string(),
+            ))
+        }
+    };
+    let seed_rows: Vec<Vec<crate::Value>> = engine.execute_select(anchor_select)?.rows;
+
+    // 3. Derive column schema: explicit cte.columns > anchor's SELECT
+    //    aliases > col_<i> fallback.
+    let subquery_column_names: Vec<String> = match anchor_stmt.as_ref() {
+        Statement::Select(s) => s
+            .columns
+            .iter()
+            .map(|c| c.alias.clone().unwrap_or_else(|| c.name.clone()))
+            .collect(),
+        _ => Vec::new(),
+    };
+    let columns = derive_cte_columns(cte, &seed_rows, &subquery_column_names);
+
+    // 4. Create temp table `t` (accumulated) + `t__work` (working set).
+    let t = cte.name.clone();
+    let t_work = format!("{}__work", cte.name);
+    let table_info_for = |name: &str| TableInfo {
+        name: name.to_string(),
+        columns: columns.clone(),
+        foreign_keys: vec![],
+        unique_constraints: vec![],
+        check_constraints: vec![],
+        partition_info: None,
+        compression: None,
+        collations: std::collections::HashMap::new(),
+    };
+    {
+        let mut storage = engine.storage.write();
+        storage
+            .create_table(&table_info_for(&t))
+            .map_err(|e| SqlError::ExecutionError(format!("Create CTE table {}: {}", t, e)))?;
+        storage
+            .create_table(&table_info_for(&t_work))
+            .map_err(|e| {
+                SqlError::ExecutionError(format!("Create CTE table {}: {}", t_work, e))
+            })?;
+        if !seed_rows.is_empty() {
+            storage.insert(&t, seed_rows.clone()).map_err(|e| {
+                SqlError::ExecutionError(format!("Insert seed into {}: {}", t, e))
+            })?;
+            storage.insert(&t_work, seed_rows.clone()).map_err(|e| {
+                SqlError::ExecutionError(format!("Insert seed into {}: {}", t_work, e))
+            })?;
+        }
+    }
+
+    // 5. Rewrite step's references from `t` to `t__work`.
+    let step_select = match step_stmt.as_ref() {
+        Statement::Select(s) => s,
+        _ => {
+            // Cleanup before returning.
+            let mut storage = engine.storage.write();
+            let _ = storage.drop_table(&t_work);
+            return Err(SqlError::ExecutionError(
+                "Recursive CTE step must be a SELECT".to_string(),
+            ));
+        }
+    };
+    let step_rewritten = rewrite_step_table_refs(step_select, &t, &t_work);
+
+    // 6. Iterate.
+    let mut total: usize = seed_rows.len();
+    for _depth in 0..MAX_RECURSION_DEPTH {
+        let step_rows: Vec<Vec<crate::Value>> =
+            engine.execute_select(&step_rewritten)?.rows;
+        if step_rows.is_empty() {
+            break;
+        }
+
+        // UNION (not ALL): dedupe against accumulated AND against prior
+        // step rows of this round to prevent intra-round duplicates.
+        let new_rows: Vec<Vec<crate::Value>> = if union_all {
+            step_rows
+        } else {
+            let acc_existing: Vec<Vec<crate::Value>> = {
+                let storage = engine.storage.read();
+                storage
+                    .scan(&t)
+                    .map_err(|e| SqlError::ExecutionError(format!("Scan {}: {}", t, e)))?
+            };
+            let mut deduped: Vec<Vec<crate::Value>> = Vec::new();
+            for r in &step_rows {
+                if !acc_existing.contains(r) && !deduped.contains(r) {
+                    deduped.push(r.clone());
+                }
+            }
+            deduped
+        };
+        if new_rows.is_empty() {
+            break;
+        }
+
+        // Append to accumulated; replace working set.
+        // StorageEngine has no truncate_table; drop + re-create.
+        {
+            let mut storage = engine.storage.write();
+            storage.insert(&t, new_rows.clone()).map_err(|e| {
+                SqlError::ExecutionError(format!("Insert into {}: {}", t, e))
+            })?;
+            let _ = storage.drop_table(&t_work);
+            storage.create_table(&table_info_for(&t_work)).map_err(|e| {
+                SqlError::ExecutionError(format!("Recreate {}: {}", t_work, e))
+            })?;
+            storage.insert(&t_work, new_rows.clone()).map_err(|e| {
+                SqlError::ExecutionError(format!("Insert into {}: {}", t_work, e))
+            })?;
+        }
+        total += new_rows.len();
+
+        if total > MAX_RECURSION_ROWS {
+            let mut storage = engine.storage.write();
+            let _ = storage.drop_table(&t_work);
+            return Err(SqlError::ExecutionError(format!(
+                "Recursive CTE {} exceeded {} row cap",
+                t, MAX_RECURSION_ROWS
+            )));
+        }
+    }
+
+    // 7. Drop t__work; `t` remains visible to outer SELECT.
+    {
+        let mut storage = engine.storage.write();
+        let _ = storage.drop_table(&t_work);
+    }
+    Ok(())
 }
 
 /// CTE materialisation helper: execute each CTE's subquery, create a
@@ -249,9 +442,14 @@ pub fn materialize_cte_tables<S: StorageEngine + 'static>(
         return Ok(Vec::new());
     };
     if with_clause.recursive {
-        return Err(SqlError::ExecutionError(
-            "Recursive CTE not yet supported".to_string(),
-        ));
+        // V312-64f / Issue #4699: route to recursive CTE executor.
+        // Each recursive CTE gets its own two-table algorithm; the
+        // outer SELECT will see only the accumulated `t` (not `t__work`).
+        let ctes = with_clause.ctes.clone();
+        for cte in &ctes {
+            materialize_recursive_cte(engine, cte)?;
+        }
+        return Ok(ctes.iter().map(|c| c.name.clone()).collect());
     }
     for cte in &with_clause.ctes {
         let cte_rows = match cte.subquery.as_ref() {
@@ -491,20 +689,18 @@ mod tests {
     }
 
     #[test]
-    fn with_select_recursive_rejected() {
+    fn with_select_recursive_now_supported() {
+        // V312-64f / Issue #4699: recursive CTE is now executed via the
+        // two-table working/accumulated algorithm. Verify the simple
+        // count 1..N case (seed 1, step n+1, terminate at n=3).
         let mut e = fresh();
         e.execute("CREATE TABLE t (n INTEGER)").unwrap();
         e.execute("INSERT INTO t VALUES (1)").unwrap();
         let r = e.execute(
             "WITH RECURSIVE cte AS (SELECT n FROM t UNION ALL SELECT n + 1 FROM cte WHERE n < 3) SELECT * FROM cte",
-        );
-        assert!(r.is_err(), "Recursive CTE must fail");
-        let msg = format!("{}", r.unwrap_err());
-        assert!(
-            msg.contains("Recursive") || msg.contains("not yet supported"),
-            "got: {}",
-            msg
-        );
+        )
+        .expect("recursive CTE must now succeed");
+        assert_eq!(r.rows.len(), 3, "expected n=1, n=2, n=3");
     }
 
     // ---- execute_with_dml paths ---------------------------------------------
