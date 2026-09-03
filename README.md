@@ -246,7 +246,61 @@ v3.12.0 采用分层测试体系，避免把慢测试、性能测试、coverage 
 | [v3.12 FEATURE_CHECKLIST](docs/releases/v3.12.0/FEATURE_CHECKLIST.md) | v3.12 功能清单 |
 | [v3.12 PARTIAL 功能整改 Issue 计划](docs/releases/v3.12.0/PARTIAL_FEATURE_REMEDIATION_ISSUE_PLAN.md) | README 中 PARTIAL/OPEN 功能的整改归属、issue 和关闭边界 |
 | [v3.12 STAGE](docs/releases/v3.12.0/STAGE.yaml) | v3.12 阶段 SSOT |
+| [v3.12 CLAIM_DOWNGRADE_MANIFEST](docs/releases/v3.12.0/CLAIM_DOWNGRADE_MANIFEST.md) | v3.12 GA claim-boundary 清单 (§2 + §3 + §8) |
+| [v3.12 Reviewer 2 Sign-off](docs/releases/v3.12.0/evidence/v312-rc-ga/REVIEWER-2-SIGNOFF.md) | V312-RC-GA Phase 4 Reviewer 2 sign-off (12 items) |
+| [v3.12 GA_GATE_REPORT](docs/releases/v3.12.0/GA_GATE_REPORT.md) | v3.12 GA gate verdict map (`--full` mode) |
 | [governance](docs/governance/) | 真实性、门禁、Issue 关闭和多 AI 协作规范 |
+
+## v3.12.0 GA Known Limitations
+
+> **适用版本**: v3.12.0 GA candidate (post Phase 2 PR-A1..A7 closure 2026-09-04)
+> **来源**: [CLAIM_DOWNGRADE_MANIFEST.md](docs/releases/v3.12.0/CLAIM_DOWNGRADE_MANIFEST.md) §2 + §3
+> **Reviewer 2 sign-off**: 10/12 PASS, see [REVIEWER-2-SIGNOFF.md](docs/releases/v3.12.0/evidence/v312-rc-ga/REVIEWER-2-SIGNOFF.md)
+
+This v3.12.0 GA build **explicitly excludes** the following capabilities from
+its release claims. The corresponding issues remain open and will be addressed
+in v3.13.0:
+
+### GA-claim-caveat (8 open + 1 closed)
+
+| Issue | Title | Claim-boundary line |
+|-------|-------|---------------------|
+| #4719 | sqlite_stat1/sqlite_stat4 + ANALYZE | ANALYZE excluded from v3.12 GA — query planner statistics are managed heuristically; run ANALYZE in SQLite if statistical planning is required. |
+| #4698 | GREATEST/LEAST + math cluster | Math functions (MOD/POWER/LOG/EXP/SQRT) and GREATEST/LEAST excluded from v3.12 GA. Use direct comparison and arithmetic instead. |
+| #4694 | SET TIMEZONE / ISOLATION LEVEL | SET TIMEZONE / SET TRANSACTION ISOLATION LEVEL excluded from v3.12 GA — parser returns explicit unsupported error. |
+| #4685 | Multi-table UPDATE / DELETE USING | Multi-table UPDATE / DELETE USING excluded from v3.12 GA. |
+| #4670 | CEIL/CEILING/FLOOR/TRUNCATE/HEX/MD5/SHA2 | Partial semantics — supported functions match SQLite, missing returns explicit error. |
+| #4646 | JSON_EXTRACT / JSON_EACH | JSON support limited to scalar paths via `->`/`->>`; JSON_EXTRACT and JSON_EACH excluded from v3.12 GA. |
+| #4625 | INDEXED BY hint | INDEXED BY hint excluded from v3.12 GA — query planner does not honor this hint. |
+| #4675 | POSITION/LOCATE | ✅ CLOSED-BY-COMMIT-8ed76129eb (orphan-batch 2026-09-04) — source-fix landed |
+
+### Closed GA-blockers (mixed honest-path / source-fix / OR-downgrade)
+
+All 7 GA-blockers were closed via merged PR + per-issue evidence docs
+before v3.12.0 GA candidate. See §2 row + §8 closure ledger of
+CLAIM_DOWNGRADE_MANIFEST.md for SHA-256 chain.
+
+| Issue | PR | Path |
+|-------|----|------|
+| #4626 SELECT FOR UPDATE + ROLLBACK | PR #4743 | source-fix (pre-flush implicit-tx) |
+| #4652 CREATE PROCEDURE / FUNCTION | PR #4741 | OR-downgrade (explicit reject) |
+| #4668 NATURAL JOIN / USING(col1,col2) | PR #4747 | mixed: OR-downgrade + anti-regression |
+| #4674 CHAR_LENGTH | PR #4742 | anti-regression lockdown |
+| #4682 sqlite_master / sqlite_sequence | PR #4739 | source-fix |
+| #4703 ON DUPLICATE KEY UPDATE + VALUES() | PR #4745 | mixed: OR-downgrade + anti-regression |
+| #4708 中文表名/列名 + 反引号 | PR #4746 | mixed: OR-downgrade + anti-regression |
+
+### v3.12.0 GA cut blocker
+
+The **only** remaining gate blocker for v3.12.0 GA cut is **GA-2 168h mixed
+SOAK / Linux Docker re-validation** (per
+[GA_GATE_REPORT.md](docs/releases/v3.12.0/GA_GATE_REPORT.md) §"Cycle
+V312-RC-GA Phase 4"). Two paths to resolve:
+
+1. **Linux/Docker SOAK run completes** (168h mixed workload)
+2. **Formal governance reclassification** accepting 1h demo as final
+
+Either path triggers Phase 5 step 5.6 (`git tag v3.12.0`).
 
 ## 历史版本
 
