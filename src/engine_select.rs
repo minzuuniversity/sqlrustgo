@@ -451,6 +451,56 @@ impl<S: StorageEngine + 'static> ExecutionEngine<S> {
         Some(rewritten)
     }
 
+    /// V312-67 / Issue #4686: execute a scalar subquery used in the
+    /// SELECT list projection and return its first row's first column
+    /// (or `Value::Null` for an empty result).
+    ///
+    /// Only the no-table literal form is supported
+    /// (`SELECT <expr>` with no FROM, no joins, no aggregates, no
+    /// WHERE, no GROUP BY, no ORDER BY, no HAVING). This covers
+    /// `SELECT (SELECT 1) AS x`, `SELECT (SELECT 1 + 2) AS y`, etc.
+    /// The from-table aggregate form
+    /// (`SELECT (SELECT MAX(a) FROM t) AS m`) is a follow-up.
+    fn execute_subquery_for_scalar(
+        &self,
+        subq: &SelectStatement,
+    ) -> Result<Value, String> {
+        let is_no_table = subq.table.is_empty()
+            && subq.from_subquery.is_none()
+            && subq.from_values.is_none()
+            && subq.join_clause.is_empty()
+            && subq.aggregates.is_empty()
+            && subq.group_by.is_empty()
+            && subq.where_clause.is_none()
+            && subq.having.is_none()
+            && subq.order_by.is_empty();
+        if !is_no_table {
+            return Err(
+                "Scalar subquery in SELECT list is only supported for \
+                 `SELECT <literal>` (issue #4686). The from-table form \
+                 `SELECT (SELECT AGG(col) FROM t)` is not yet implemented."
+                    .to_string()
+            );
+        }
+        if let Some(col) = subq.columns.first() {
+            if let Some(expr) = col.expression.as_ref() {
+                // For a literal expression in a no-table subquery, the
+                // value is independent of the outer row. Evaluate using
+                // a `None` storage handle to avoid holding the storage
+                // write lock from inside the projection loop (which
+                // would deadlock if the inner call ever needed storage).
+                return crate::expr_utils::evaluate_expression_with_seq(
+                    expr,
+                    &[],
+                    &sqlrustgo_storage::TableInfo::default(),
+                    None,
+                    &|_| Ok(Value::Null),
+                );
+            }
+        }
+        Ok(Value::Null)
+    }
+
     pub fn execute_select(&self, select: &SelectStatement) -> SqlResult<ExecutorResult> {
         // Issue #4511 — substitute MySQL session variables (`@name`)
         // across the whole SelectStatement BEFORE any other pass.
@@ -1829,7 +1879,15 @@ impl<S: StorageEngine + 'static> ExecutionEngine<S> {
                                     row,
                                     &table_info,
                                     Some(&mut *storage_guard),
-                                    &|_| Ok(Value::Null),
+                                    &|subq: &sqlrustgo_parser::SelectStatement| -> Result<Value, String> {
+                                        // V312-67 / Issue #4686: scalar subquery
+                                        // in SELECT list projection. Use the
+                                        // dedicated helper (which avoids the
+                                        // re-entrancy hang that naive
+                                        // `self.execute_select` recursion would
+                                        // cause).
+                                        self.execute_subquery_for_scalar(subq)
+                                    }
                                 )
                                 .map_err(SqlError::ExecutionError)?,
                                 None => row.first().cloned().unwrap_or(Value::Null),
