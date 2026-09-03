@@ -149,7 +149,7 @@ pub struct ExecutionEngine<S: StorageEngine> {
     /// `SELECT @a` and `EXECUTE ... USING @a` resolve to the bound
     /// value (or `NULL` when unset, matching MySQL semantics).
     pub(crate) session_vars: Arc<RwLock<HashMap<String, SqlValue>>>,
-    /// V312-72 (perf-refactor): standalone in-memory cache of all
+/// V312-72 (perf-refactor): standalone in-memory cache of all
     /// `SequenceInfo` keyed by name. Decouples SELECT projection from
     /// the global `storage` write lock — `evaluate_expression_with_seq`
     /// consults this cache instead of `storage.next_sequence_value` /
@@ -1053,6 +1053,9 @@ impl<S: StorageEngine + 'static> ExecutionEngine<S> {
         }
 
         storage.drop_sequence(&seq_stmt.name)?;
+        // V312-72: sync the in-memory SequenceState cache so subsequent
+        // NEXT VALUE FOR / CURRVAL on the dropped sequence error out
+        // instead of reading a stale entry.
         self.sequence_state.drop_sequence(&seq_stmt.name);
         Ok(ExecutorResult::empty())
     }
@@ -1113,7 +1116,13 @@ impl<S: StorageEngine + 'static> ExecutionEngine<S> {
             .iter()
             .position(|c| c.name == *col_name)
             .ok_or_else(|| SqlError::ExecutionError("Column not found".to_string()))?;
-        storage.create_index(table_name, col_name, col_idx)?;
+        storage.create_index(sqlrustgo_storage::IndexInfo {
+            name: idx.name.clone(),
+            table: table_name.clone(),
+            columns: idx.columns.clone(),
+            is_unique: idx.unique,
+            original_sql: crate::ddl_to_sql::format_create_index_sql(idx),
+        })?;
         Ok(ExecutorResult::empty())
     }
 
@@ -1129,6 +1138,23 @@ impl<S: StorageEngine + 'static> ExecutionEngine<S> {
         // The old code stored only `format!("{:?}", view)` — a Debug dump
         // no query path could consume, making every CREATE VIEW a no-op.
         self.views.insert(view.name.clone(), view.clone());
+        // V312-64d / Issue #4664: also persist the view to storage so
+        // `sqlite_master` introspection sees the row, alongside the
+        // in-memory view cache used by the view-rewrite path.
+        let mut storage = self.storage.write();
+        let query_sql = match view.query.as_ref() {
+            sqlrustgo_parser::Statement::Select(sel) => {
+                crate::ddl_to_sql::format_create_view_inner_select(sel)
+            }
+            _ => format!("{:?}", view.query),
+        };
+        let info = sqlrustgo_storage::ViewInfo::with_original_sql(
+            view.name.clone(),
+            view.columns.clone(),
+            query_sql,
+            crate::ddl_to_sql::format_create_view_sql(view),
+        );
+        storage.create_view(info)?;
         Ok(ExecutorResult::empty())
     }
     fn execute_drop_view(&mut self, drop_view: &DropViewStatement) -> SqlResult<ExecutorResult> {
@@ -1256,6 +1282,7 @@ impl<S: StorageEngine + 'static> ExecutionEngine<S> {
             event,
             body: stmt.body.clone(),
             update_columns: stmt.update_columns.clone(),
+            original_sql: crate::ddl_to_sql::format_create_trigger_sql(stmt),
         };
         storage.create_trigger(trigger_info)?;
         Ok(ExecutorResult::empty())
@@ -2162,9 +2189,7 @@ pub(crate) fn explain_select_plan(
         && select.where_clause.is_none()
         && select.group_by.is_empty()
         && is_count_star_only(select);
-    if !has_count_only_no_group
-        && (!select.group_by.is_empty() || !select.aggregates.is_empty())
-    {
+    if !has_count_only_no_group && (!select.group_by.is_empty() || !select.aggregates.is_empty()) {
         lines.push(format!("GroupBy {} keys", select.group_by.len().max(1)));
         lines.push("Sort (TEMP B-TREE FOR GROUP BY)".to_string());
     }

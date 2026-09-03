@@ -241,6 +241,7 @@ impl BinaryTableStorage {
             compression: None,
             collations: HashMap::new(),
             partition_info: None,
+            original_sql: String::new(),
         };
 
         // Read rows
@@ -341,6 +342,7 @@ impl StorageEngine for BinaryTableStorage {
                     compression: None,
                     collations: HashMap::new(),
                     partition_info: None,
+                    original_sql: String::new(),
                 },
                 rows: Vec::new(),
             });
@@ -364,6 +366,7 @@ impl StorageEngine for BinaryTableStorage {
                     compression: None,
                     collations: HashMap::new(),
                     partition_info: None,
+                    original_sql: String::new(),
                 },
                 rows: Vec::new(),
             });
@@ -520,12 +523,12 @@ impl StorageEngine for BinaryTableStorage {
         self.tables.keys().cloned().collect()
     }
 
-    fn create_index(&mut self, _table: &str, _column: &str, _column_index: usize) -> SqlResult<()> {
+    fn create_index(&mut self, _info: crate::engine::IndexInfo) -> SqlResult<()> {
         // BinaryTableStorage doesn't support indexes yet
         Ok(())
     }
 
-    fn drop_index(&mut self, _table: &str, _column: &str) -> SqlResult<()> {
+    fn drop_index(&mut self, _table: &str, _index_name: &str) -> SqlResult<()> {
         Ok(())
     }
 
@@ -692,11 +695,11 @@ impl StorageEngine for BoxStorageEngine {
     fn list_tables(&self) -> Vec<String> {
         (**self).list_tables()
     }
-    fn create_index(&mut self, table: &str, column: &str, column_index: usize) -> SqlResult<()> {
-        (**self).create_index(table, column, column_index)
+    fn create_index(&mut self, info: crate::engine::IndexInfo) -> SqlResult<()> {
+        (**self).create_index(info)
     }
-    fn drop_index(&mut self, table: &str, column: &str) -> SqlResult<()> {
-        (**self).drop_index(table, column)
+    fn drop_index(&mut self, table: &str, index_name: &str) -> SqlResult<()> {
+        (**self).drop_index(table, index_name)
     }
     fn add_column(&mut self, table: &str, column: ColumnDefinition) -> SqlResult<()> {
         (**self).add_column(table, column)
@@ -996,6 +999,7 @@ mod tests {
             compression: None,
             collations: std::collections::HashMap::new(),
             partition_info: None,
+            original_sql: String::new(),
         }
     }
 
@@ -1400,6 +1404,7 @@ mod tests {
             event: crate::engine::TriggerEvent::Insert,
             body: "".to_string(),
             update_columns: None,
+            original_sql: String::new(),
         };
         storage.create_trigger(trigger).unwrap();
         std::fs::remove_dir_all(tmp).ok();

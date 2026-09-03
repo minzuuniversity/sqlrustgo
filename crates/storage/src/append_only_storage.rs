@@ -439,10 +439,10 @@ impl StorageEngine for AppendOnlyStorage {
     fn set_current_tx_id(&mut self, tx_id: u64) {
         self.current_tx_id = tx_id;
     }
-    fn create_index(&mut self, _table: &str, _column: &str, _column_index: usize) -> SqlResult<()> {
+    fn create_index(&mut self, _info: crate::engine::IndexInfo) -> SqlResult<()> {
         Ok(())
     }
-    fn drop_index(&mut self, _table: &str, _column: &str) -> SqlResult<()> {
+    fn drop_index(&mut self, _table: &str, _index_name: &str) -> SqlResult<()> {
         Ok(())
     }
     fn add_column(
@@ -522,6 +522,8 @@ mod tests {
 
             partition_info: None,
             compression: None,
+
+            ..Default::default()
         }
     }
 
@@ -637,8 +639,15 @@ mod tests {
         let true_filter: crate::engine::RowFilter = Box::new(|_| true);
         let noop_mutation = crate::engine::RowMutation::new(vec![], 0);
         assert_eq!(s.update_if("t", &true_filter, &noop_mutation).unwrap(), 0);
-        s.create_index("t", "id", 0).unwrap();
-        s.drop_index("t", "id").unwrap();
+        s.create_index(crate::engine::IndexInfo {
+            name: "idx_t_id".to_string(),
+            table: "t".to_string(),
+            columns: vec!["id".to_string()],
+            is_unique: false,
+            original_sql: String::new(),
+        })
+        .unwrap();
+        s.drop_index("t", "idx_t_id").unwrap();
         assert!(s.list_indexes("t").is_empty());
         assert!(!s.has_view("v"));
         s.add_column(
@@ -662,7 +671,8 @@ mod tests {
             timing: crate::engine::TriggerTiming::Before,
             event: crate::engine::TriggerEvent::Insert,
             body: String::new(),
-        update_columns: None,
+            update_columns: None,
+            original_sql: String::new(),
         };
         s.create_trigger(trig).unwrap();
         s.drop_trigger("n").unwrap();

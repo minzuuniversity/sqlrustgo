@@ -410,6 +410,7 @@ impl FileStorage {
                 compression: None,
                 collations: HashMap::new(),
                 partition_info: None,
+                original_sql: String::new(),
             },
             rows: stored.rows,
         })
@@ -729,6 +730,7 @@ mod tests {
                     compression: None,
                     collations: std::collections::HashMap::new(),
                     partition_info: None,
+                    original_sql: String::new(),
                 },
                 rows: vec![vec![Value::Integer(1), Value::Text("Alice".to_string())]],
             };
@@ -1266,6 +1268,7 @@ mod tests {
                 compression: None,
                 collations: std::collections::HashMap::new(),
                 partition_info: None,
+                original_sql: String::new(),
             },
             rows: vec![],
         };
@@ -1364,7 +1367,8 @@ mod tests {
             timing: crate::engine::TriggerTiming::Before,
             event: crate::engine::TriggerEvent::Insert,
             body: "BEGIN END".to_string(),
-        update_columns: None,
+            update_columns: None,
+            original_sql: String::new(),
         };
         let result = storage.create_trigger(trigger_info);
         assert!(result.is_ok());
@@ -1423,6 +1427,7 @@ mod tests {
             compression: None,
             collations: std::collections::HashMap::new(),
             partition_info: None,
+            original_sql: String::new(),
         };
         storage.create_table(&table_info).unwrap();
 
@@ -1462,6 +1467,7 @@ mod tests {
             compression: None,
             collations: std::collections::HashMap::new(),
             partition_info: None,
+            original_sql: String::new(),
         };
         storage.create_table(&table_info).unwrap();
 
@@ -1501,6 +1507,7 @@ mod tests {
             compression: None,
             collations: std::collections::HashMap::new(),
             partition_info: None,
+            original_sql: String::new(),
         };
         storage.create_table(&table_info).unwrap();
 
@@ -1559,6 +1566,7 @@ mod tests {
             compression: None,
             collations: std::collections::HashMap::new(),
             partition_info: None,
+            original_sql: String::new(),
         };
         storage.create_table(&info).unwrap();
         let t = storage.get_table_mut("t");
@@ -1584,6 +1592,7 @@ mod tests {
             compression: None,
             collations: std::collections::HashMap::new(),
             partition_info: None,
+            original_sql: String::new(),
         };
         let data = TableData { info, rows: vec![] };
         storage.insert_table("t1".into(), data).unwrap();
@@ -1603,6 +1612,7 @@ mod tests {
             compression: None,
             collations: std::collections::HashMap::new(),
             partition_info: None,
+            original_sql: String::new(),
         };
         storage.create_table(&info).unwrap();
         let names = storage.table_names();
@@ -1628,6 +1638,7 @@ mod tests {
             compression: None,
             collations: std::collections::HashMap::new(),
             partition_info: None,
+            original_sql: String::new(),
         };
         storage.create_table(&info).unwrap();
         assert!(storage.contains_table("x"));
@@ -1662,6 +1673,7 @@ mod tests {
             compression: None,
             collations: std::collections::HashMap::new(),
             partition_info: None,
+            original_sql: String::new(),
         };
         storage.create_table(&info).unwrap();
         storage.insert("t", vec![vec![Value::Integer(1)]]).unwrap();
@@ -1704,6 +1716,7 @@ mod tests {
             compression: None,
             collations: std::collections::HashMap::new(),
             partition_info: None,
+            original_sql: String::new(),
         };
         storage.create_table(&info).unwrap();
         storage.force_insert("t", vec![Value::Integer(5)]).unwrap();
@@ -1724,6 +1737,7 @@ mod tests {
             compression: None,
             collations: std::collections::HashMap::new(),
             partition_info: None,
+            original_sql: String::new(),
         };
         storage.create_table(&info).unwrap();
         storage
@@ -1782,6 +1796,7 @@ mod tests {
             compression: None,
             collations: std::collections::HashMap::new(),
             partition_info: None,
+            original_sql: String::new(),
         };
         storage.create_table(&info).unwrap();
         storage
@@ -1806,6 +1821,7 @@ mod tests {
             compression: None,
             collations: std::collections::HashMap::new(),
             partition_info: None,
+            original_sql: String::new(),
         };
         storage.create_table(&info).unwrap();
         assert!(storage.has_table("users"));
@@ -1831,6 +1847,7 @@ mod tests {
             compression: None,
             collations: std::collections::HashMap::new(),
             partition_info: None,
+            original_sql: String::new(),
         };
         storage.create_table(&info).unwrap();
         assert!(storage.has_table("x"));
@@ -1850,6 +1867,7 @@ mod tests {
             compression: None,
             collations: std::collections::HashMap::new(),
             partition_info: None,
+            original_sql: String::new(),
         };
         storage.create_table(&info).unwrap();
         let tables = storage.list_tables();
@@ -1869,6 +1887,7 @@ mod tests {
             compression: None,
             collations: std::collections::HashMap::new(),
             partition_info: None,
+            original_sql: String::new(),
         };
         storage.create_table(&info).unwrap();
         storage
@@ -1905,6 +1924,7 @@ mod tests {
             compression: None,
             collations: std::collections::HashMap::new(),
             partition_info: None,
+            original_sql: String::new(),
         };
         storage.create_table(&info).unwrap();
         storage.insert("t", vec![vec![Value::Integer(1)]]).unwrap();
@@ -1932,6 +1952,7 @@ mod tests {
             compression: None,
             collations: std::collections::HashMap::new(),
             partition_info: None,
+            original_sql: String::new(),
         };
         storage.create_table(&info).unwrap();
         storage
@@ -1954,6 +1975,7 @@ mod tests {
             compression: None,
             collations: std::collections::HashMap::new(),
             partition_info: None,
+            original_sql: String::new(),
         };
         storage.create_table(&info).unwrap();
         storage
@@ -1979,7 +2001,8 @@ mod tests {
             timing: crate::engine::TriggerTiming::Before,
             event: crate::engine::TriggerEvent::Insert,
             body: "BEGIN UPDATE stats SET n = n + 1; END".into(),
-        update_columns: None,
+            update_columns: None,
+            original_sql: String::new(),
         };
         storage.create_trigger(trigger).unwrap();
         let got = storage.get_trigger("trig1");
@@ -2005,7 +2028,8 @@ mod tests {
             timing: crate::engine::TriggerTiming::Before,
             event: crate::engine::TriggerEvent::Insert,
             body: "".into(),
-        update_columns: None,
+            update_columns: None,
+            original_sql: String::new(),
         };
         let trigger2 = TriggerInfo {
             name: "t2".into(),
@@ -2013,7 +2037,8 @@ mod tests {
             timing: crate::engine::TriggerTiming::After,
             event: crate::engine::TriggerEvent::Update,
             body: "".into(),
-        update_columns: None,
+            update_columns: None,
+            original_sql: String::new(),
         };
         storage.create_trigger(trigger1).unwrap();
         storage.create_trigger(trigger2).unwrap();
@@ -2042,6 +2067,7 @@ mod tests {
             compression: None,
             collations: std::collections::HashMap::new(),
             partition_info: None,
+            original_sql: String::new(),
         };
         storage.create_table(&info).unwrap();
         storage.insert("t", vec![vec![Value::Integer(1)]]).unwrap();
@@ -2093,6 +2119,7 @@ mod tests {
             compression: None,
             collations: std::collections::HashMap::new(),
             partition_info: None,
+            original_sql: String::new(),
         };
         storage.create_table(&info).unwrap();
         storage
@@ -2126,6 +2153,7 @@ mod tests {
             compression: None,
             collations: std::collections::HashMap::new(),
             partition_info: None,
+            original_sql: String::new(),
         };
         storage.create_table(&info).unwrap();
         let result = storage.drop_column("t", "nonexistent");
@@ -2145,6 +2173,7 @@ mod tests {
             compression: None,
             collations: std::collections::HashMap::new(),
             partition_info: None,
+            original_sql: String::new(),
         };
         storage.create_table(&info).unwrap();
         let new_def = ColumnDefinition {
@@ -2181,6 +2210,7 @@ mod tests {
             compression: None,
             collations: std::collections::HashMap::new(),
             partition_info: None,
+            original_sql: String::new(),
         };
         storage.create_table(&info).unwrap();
         let new_def = ColumnDefinition::new("nonexistent", "TEXT");
@@ -2201,6 +2231,7 @@ mod tests {
             compression: None,
             collations: std::collections::HashMap::new(),
             partition_info: None,
+            original_sql: String::new(),
         };
         storage.create_table(&info).unwrap();
         storage.set_current_tx_id(1);
@@ -2225,6 +2256,7 @@ mod tests {
             compression: None,
             collations: std::collections::HashMap::new(),
             partition_info: None,
+            original_sql: String::new(),
         };
         storage.create_table(&info).unwrap();
         storage.insert("t", vec![vec![Value::Integer(1)]]).unwrap();
@@ -2249,6 +2281,7 @@ mod tests {
             compression: None,
             collations: std::collections::HashMap::new(),
             partition_info: None,
+            original_sql: String::new(),
         };
         storage.create_table(&info).unwrap();
         storage.set_current_tx_id(1);
@@ -2269,7 +2302,8 @@ mod tests {
             timing: crate::engine::TriggerTiming::Before,
             event: crate::engine::TriggerEvent::Insert,
             body: "BEGIN UPDATE s SET n = n + 1; END".to_string(),
-        update_columns: None,
+            update_columns: None,
+            original_sql: String::new(),
         };
         storage.create_trigger(trigger).unwrap();
         drop(storage);
@@ -2291,7 +2325,8 @@ mod tests {
             timing: crate::engine::TriggerTiming::After,
             event: crate::engine::TriggerEvent::Update,
             body: "".to_string(),
-        update_columns: None,
+            update_columns: None,
+            original_sql: String::new(),
         };
         storage.create_trigger(trigger.clone()).unwrap();
         storage.create_trigger(trigger).unwrap();
@@ -2311,7 +2346,8 @@ mod tests {
             timing: crate::engine::TriggerTiming::Before,
             event: crate::engine::TriggerEvent::Delete,
             body: "".to_string(),
-        update_columns: None,
+            update_columns: None,
+            original_sql: String::new(),
         };
         storage.create_trigger(trigger).unwrap();
         storage.drop_trigger("trig_x").unwrap();
@@ -2332,6 +2368,7 @@ mod tests {
             compression: None,
             collations: std::collections::HashMap::new(),
             partition_info: None,
+            original_sql: String::new(),
         };
         storage.create_table(&info).unwrap();
         storage.insert("t", vec![vec![Value::Integer(1)]]).unwrap();
@@ -2358,6 +2395,7 @@ mod tests {
             compression: None,
             collations: std::collections::HashMap::new(),
             partition_info: None,
+            original_sql: String::new(),
         };
         storage.create_table(&info).unwrap();
         storage.insert("t", vec![vec![Value::Integer(1)]]).unwrap();
@@ -2392,6 +2430,7 @@ mod tests {
             compression: None,
             collations: std::collections::HashMap::new(),
             partition_info: None,
+            original_sql: String::new(),
         };
         storage.create_table(&info).unwrap();
         storage
@@ -2420,6 +2459,7 @@ mod tests {
             compression: None,
             collations: std::collections::HashMap::new(),
             partition_info: None,
+            original_sql: String::new(),
         };
         storage.create_table(&info).unwrap();
         storage
@@ -2443,6 +2483,7 @@ mod tests {
             compression: None,
             collations: std::collections::HashMap::new(),
             partition_info: None,
+            original_sql: String::new(),
         };
         storage.create_table(&info).unwrap();
         storage
@@ -2478,6 +2519,7 @@ mod tests {
             compression: None,
             collations: std::collections::HashMap::new(),
             partition_info: None,
+            original_sql: String::new(),
         };
         storage.create_table(&info).unwrap();
         storage
@@ -2505,6 +2547,7 @@ mod tests {
             compression: None,
             collations: std::collections::HashMap::new(),
             partition_info: None,
+            original_sql: String::new(),
         };
         storage.create_table(&info).unwrap();
         storage.set_current_tx_id(1);
@@ -2540,6 +2583,7 @@ mod tests {
             compression: None,
             collations: std::collections::HashMap::new(),
             partition_info: None,
+            original_sql: String::new(),
         };
         storage.create_table(&info).unwrap();
         storage
@@ -2571,6 +2615,7 @@ mod tests {
             compression: None,
             collations: std::collections::HashMap::new(),
             partition_info: None,
+            original_sql: String::new(),
         };
         storage.create_table(&info).unwrap();
         storage
@@ -2608,6 +2653,7 @@ mod tests {
             compression: None,
             collations: std::collections::HashMap::new(),
             partition_info: None,
+            original_sql: String::new(),
         };
         storage.create_table(&info).unwrap();
         storage
@@ -2632,6 +2678,7 @@ mod tests {
             compression: None,
             collations: std::collections::HashMap::new(),
             partition_info: None,
+            original_sql: String::new(),
         };
         storage.create_table(&info).unwrap();
         storage
@@ -3158,44 +3205,53 @@ impl StorageEngine for FileStorage {
         self.tables.keys().cloned().collect()
     }
 
-    fn create_index(&mut self, table: &str, column: &str, column_index: usize) -> SqlResult<()> {
+    fn create_index(&mut self, info: crate::engine::IndexInfo) -> SqlResult<()> {
         // Inline the implementation to avoid potential recursion issues
         // Get table from tables
+        let table = info.table.as_str();
         let table_data = self
             .tables
             .get(table)
             .cloned()
             .ok_or_else(|| SqlError::TableNotFound(table.to_string()))?;
 
-        // Build B+ Tree from existing rows
-        let mut index = crate::bplus_tree::BPlusTree::new();
-        for (row_id, row) in table_data.rows.iter().enumerate() {
-            if let Some(value) = row.get(column_index) {
-                if let Some(key) = value.to_index_key() {
-                    index.insert(key, row_id as u32);
+        // Build a B+ Tree for each column in the index
+        let mut indexes = self.indexes.write().unwrap();
+        for column in info.columns.iter() {
+            let column_index = table_data
+                .info
+                .columns
+                .iter()
+                .position(|c| c.name == *column)
+                .unwrap_or(0);
+            let mut index = crate::bplus_tree::BPlusTree::new();
+            for (row_id, row) in table_data.rows.iter().enumerate() {
+                if let Some(value) = row.get(column_index) {
+                    if let Some(key) = value.to_index_key() {
+                        index.insert(key, row_id as u32);
+                    }
                 }
             }
+
+            // Save to disk
+            self.save_index(table, column, &index)
+                .map_err(SqlError::from)?;
+
+            // Store in memory
+            indexes.insert((table.to_string(), column.clone()), index);
         }
-
-        // Save to disk
-        self.save_index(table, column, &index)
-            .map_err(SqlError::from)?;
-
-        // Store in memory
-        let mut indexes = self.indexes.write().unwrap();
-        indexes.insert((table.to_string(), column.to_string()), index);
 
         Ok(())
     }
 
-    fn drop_index(&mut self, table: &str, column: &str) -> SqlResult<()> {
-        let key = (table.to_string(), column.to_string());
+    fn drop_index(&mut self, table: &str, index_name: &str) -> SqlResult<()> {
+        let key = (table.to_string(), index_name.to_string());
 
         if let Ok(mut indexes) = self.indexes.write() {
             indexes.remove(&key);
         }
 
-        let path = self.index_path(table, column);
+        let path = self.index_path(table, index_name);
         if path.exists() {
             std::fs::remove_file(path).map_err(SqlError::from)?;
         }
@@ -3414,6 +3470,7 @@ mod parallel_scan_tests {
                     compression: None,
                     collations: std::collections::HashMap::new(),
                     partition_info: None,
+                    original_sql: String::new(),
                 },
                 rows: (0..100i64).map(|i| vec![Value::Integer(i)]).collect(),
             };
@@ -3486,6 +3543,7 @@ mod parallel_scan_tests {
                     compression: None,
                     collations: std::collections::HashMap::new(),
                     partition_info: None,
+                    original_sql: String::new(),
                 },
                 rows: vec![vec![Value::Integer(1)], vec![Value::Integer(2)]],
             };

@@ -288,6 +288,7 @@ mod tests {
             check_constraints: vec![],
             partition_info: None,
             collations: Default::default(),
+            original_sql: String::new(),
             compression: None,
         };
         s.create_table(&info).unwrap();

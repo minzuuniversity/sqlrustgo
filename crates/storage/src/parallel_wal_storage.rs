@@ -166,11 +166,11 @@ impl<S: StorageEngine + 'static, W: WalManager + 'static> StorageEngine
         self.inner.update_if(table, filter, mutation)
     }
 
-    fn create_index(&mut self, table: &str, column: &str, column_index: usize) -> SqlResult<()> {
-        self.inner.create_index(table, column, column_index)
+    fn create_index(&mut self, info: crate::engine::IndexInfo) -> SqlResult<()> {
+        self.inner.create_index(info)
     }
-    fn drop_index(&mut self, table: &str, column: &str) -> SqlResult<()> {
-        self.inner.drop_index(table, column)
+    fn drop_index(&mut self, table: &str, index_name: &str) -> SqlResult<()> {
+        self.inner.drop_index(table, index_name)
     }
     fn add_column(&mut self, table: &str, column: ColumnDefinition) -> SqlResult<()> {
         self.inner.add_column(table, column)
@@ -231,6 +231,7 @@ mod tests {
 
             partition_info: None,
             compression: None,
+            original_sql: String::new(),
         }
     }
 

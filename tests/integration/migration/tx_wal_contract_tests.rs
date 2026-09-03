@@ -448,7 +448,8 @@ fn test_recovery_begin_then_crash_rolls_back() {
             compression: None,
             partition_info: None,
             collations: std::collections::HashMap::new(),
-        })
+        original_sql: String::new(),
+})
         .unwrap();
 
     // Hand-craft a WAL with tx_id=1: Begin, Insert (no Commit).
@@ -515,7 +516,8 @@ fn test_recovery_insert_then_crash_rolls_back() {
             compression: None,
             partition_info: None,
             collations: std::collections::HashMap::new(),
-        })
+        original_sql: String::new(),
+})
         .unwrap();
 
     // Begin + 2x Insert (no Commit)
@@ -579,7 +581,8 @@ fn test_recovery_prepare_then_crash_rolls_back() {
             compression: None,
             partition_info: None,
             collations: std::collections::HashMap::new(),
-        })
+        original_sql: String::new(),
+})
         .unwrap();
 
     // Begin + Prepare (no Commit) — 2PC phase 1 done, phase 2 crash
@@ -675,7 +678,8 @@ fn test_recovery_partial_insert_write() {
             compression: None,
             partition_info: None,
             collations: std::collections::HashMap::new(),
-        })
+        original_sql: String::new(),
+})
         .unwrap();
 
     let mut wal = MemoryWalManager::new();
@@ -740,7 +744,8 @@ fn test_recovery_partial_update_write() {
             compression: None,
             partition_info: None,
             collations: std::collections::HashMap::new(),
-        })
+        original_sql: String::new(),
+})
         .unwrap();
 
     // tx 1: Begin + Insert(id=1, "original") + Commit
@@ -843,7 +848,8 @@ fn test_recovery_partial_delete_write() {
             compression: None,
             partition_info: None,
             collations: std::collections::HashMap::new(),
-        })
+        original_sql: String::new(),
+})
         .unwrap();
 
     // Autocommit INSERT id=1, id=2 (each a separate committed tx in real
@@ -968,7 +974,8 @@ fn test_recovery_partial_commit_flush() {
             compression: None,
             partition_info: None,
             collations: std::collections::HashMap::new(),
-        })
+        original_sql: String::new(),
+})
         .unwrap();
 
     // Begin + Insert + Commit (full commit)
@@ -1029,7 +1036,8 @@ fn test_recovery_multiple_tx_crash_order() {
             compression: None,
             partition_info: None,
             collations: std::collections::HashMap::new(),
-        })
+        original_sql: String::new(),
+})
         .unwrap();
 
     // tx 1: Begin + Insert(1) + Commit
@@ -1125,7 +1133,8 @@ fn test_recovery_wal_replay_ordering() {
             compression: None,
             partition_info: None,
             collations: std::collections::HashMap::new(),
-        })
+        original_sql: String::new(),
+})
         .unwrap();
 
     // tx 1: Begin + Insert(1, "first") + Commit

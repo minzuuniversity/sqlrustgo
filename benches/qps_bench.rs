@@ -75,6 +75,7 @@ fn create_table_info() -> TableInfo {
         compression: None,
         collations: std::collections::HashMap::new(),
         partition_info: None,
+        original_sql: String::new(),
     }
 }
 

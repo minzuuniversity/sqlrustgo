@@ -95,6 +95,7 @@ pub fn create_embeddings_table(storage: &mut dyn StorageEngine) -> SqlResult<()>
             compression: None,
             collations: std::collections::HashMap::new(),
             partition_info: None,
+            original_sql: String::new(),
         })?;
     }
     Ok(())

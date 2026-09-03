@@ -161,12 +161,12 @@ impl<S: StorageEngine + 'static> StorageEngine for VtuGuard<S> {
         self.inner.list_tables()
     }
 
-    fn create_index(&mut self, table: &str, column: &str, column_index: usize) -> SqlResult<()> {
-        self.inner.create_index(table, column, column_index)
+    fn create_index(&mut self, info: crate::engine::IndexInfo) -> SqlResult<()> {
+        self.inner.create_index(info)
     }
 
-    fn drop_index(&mut self, table: &str, column: &str) -> SqlResult<()> {
-        self.inner.drop_index(table, column)
+    fn drop_index(&mut self, table: &str, index_name: &str) -> SqlResult<()> {
+        self.inner.drop_index(table, index_name)
     }
 
     fn add_column(&mut self, table: &str, column: crate::ColumnDefinition) -> SqlResult<()> {
@@ -225,6 +225,8 @@ mod tests {
             compression: None,
             collations: std::collections::HashMap::new(),
             partition_info: None,
+
+            ..Default::default()
         }
     }
 
@@ -380,7 +382,8 @@ mod tests {
             timing: crate::engine::TriggerTiming::Before,
             event: crate::engine::TriggerEvent::Insert,
             body: String::new(),
-        update_columns: None,
+            update_columns: None,
+            original_sql: String::new(),
         };
         guarded.create_trigger(trig).unwrap();
         assert!(guarded.get_trigger("tr").is_some());
@@ -434,6 +437,8 @@ mod tests {
                 compression: None,
                 collations: std::collections::HashMap::new(),
                 partition_info: None,
+
+                ..Default::default()
             })
             .unwrap();
         guarded

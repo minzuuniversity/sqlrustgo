@@ -51,6 +51,7 @@ mod tests {
             compression: None,
             collations: std::collections::HashMap::new(),
             partition_info: None,
+            original_sql: String::new(),
         };
 
         storage.create_table(&info).unwrap();
@@ -83,6 +84,7 @@ mod tests {
             compression: None,
             collations: std::collections::HashMap::new(),
             partition_info: None,
+            original_sql: String::new(),
         };
 
         storage.create_table(&info).unwrap();
@@ -125,6 +127,7 @@ mod tests {
             compression: None,
             collations: std::collections::HashMap::new(),
             partition_info: None,
+            original_sql: String::new(),
         };
 
         let result = storage.create_table(&info);
@@ -147,6 +150,7 @@ mod tests {
             compression: None,
             collations: std::collections::HashMap::new(),
             partition_info: None,
+            original_sql: String::new(),
         };
 
         storage.create_table(&info).ok();
@@ -177,6 +181,7 @@ mod tests {
             compression: None,
             collations: std::collections::HashMap::new(),
             partition_info: None,
+            original_sql: String::new(),
         };
 
         storage.create_table(&info).unwrap();
@@ -216,6 +221,7 @@ mod tests {
             compression: None,
             collations: std::collections::HashMap::new(),
             partition_info: None,
+            original_sql: String::new(),
         };
 
         let result = storage.create_table(&info);

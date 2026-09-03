@@ -451,16 +451,38 @@ impl<S: StorageEngine + 'static> ExecutionEngine<S> {
         Some(rewritten)
     }
 
-    /// V312-71 / Issue #4664: synthesize the canonical SQLite
-    /// `sqlite_master` (a.k.a. `sqlite_schema`) view at query time.
-    /// Returns one row per user table with columns
-    /// `type, name, tbl_name, rootpage, sql` (matching the SQLite
-    /// schema layout). The `sql` column is a best-effort synthesized
-    /// `CREATE TABLE ...` statement.
-    ///
-    /// The view is NOT persisted to disk; it's assembled on demand from
-    /// `storage.list_tables()` and `storage.get_table_info(name)`.
-    /// Multi-table joins against `sqlite_master` are not supported.
+/// V312-64d / Issue #4664: dispatch a SELECT that targets one of the
+    /// recognised system tables (`sqlite_master`, `sqlite_schema`,
+    /// `mysql.user`, `mysql.db`). Returns `Some(Ok(...))` when the FROM
+    /// target is a system table, `Some(Err(...))` when something went
+    /// wrong (unknown column in projection, etc.), and `None` when the
+    /// SELECT targets a normal user table — the caller falls through to
+    /// the regular scan path.
+    fn try_system_table_select(
+        &self,
+        select: &SelectStatement,
+    ) -> Option<SqlResult<ExecutorResult>> {
+        let storage = self.storage.read();
+        // Borrow the catalog guard in a let-binding so the auth_manager
+        // reference outlives the system_tables call (the previous
+        // `self.catalog.as_ref().map(|c| c.read().auth_manager())` form
+        // created a temporary ReadGuard and returned a dangling pointer).
+        let catalog_guard;
+        let auth_manager: Option<&sqlrustgo_catalog::AuthManager> =
+            if let Some(c) = self.catalog.as_ref() {
+                catalog_guard = c.read();
+                Some(catalog_guard.auth_manager())
+            } else {
+                None
+            };
+        crate::system_tables::try_system_table_select(select, &*storage, auth_manager)
+    }
+
+    /// V312-76 / Issue #4682: synthesise the SQLite `sqlite_master`
+    /// view on demand. The view is NOT persisted to disk; it's
+    /// assembled from `storage.list_tables()` and
+    /// `storage.get_table_info(name)`. Multi-table joins against
+    /// `sqlite_master` are not supported.
     fn query_sqlite_master(&self) -> SqlResult<ExecutorResult> {
         use sqlrustgo_types::Value;
         let storage = self.storage.read();
@@ -472,21 +494,32 @@ impl<S: StorageEngine + 'static> ExecutionEngine<S> {
                 Ok(info) => info,
                 Err(_) => continue,
             };
-            let col_defs: Vec<String> = info
-                .columns
-                .iter()
-                .map(|c| {
-                    let mut s = format!("{} {}", c.name, c.data_type);
-                    if c.primary_key {
-                        s.push_str(" PRIMARY KEY");
-                    }
-                    if !c.nullable {
-                        s.push_str(" NOT NULL");
-                    }
-                    s
-                })
-                .collect();
-            let sql = format!("CREATE TABLE {} ({})", name, col_defs.join(", "));
+            // Emit row using the original CREATE statement text if
+            // available (V312-64d / Issue #4664), otherwise fall back
+            // to synthesising a CREATE TABLE from the column
+            // definitions. This avoids an asymmetry where PR #4733
+            // dropped the sqlite_master fast path but the
+            // sqlite_sequence / sqlite_temp_master branches still
+            // need a self-contained row generator.
+            let sql = if !info.original_sql.is_empty() {
+                info.original_sql.clone()
+            } else {
+                let col_defs: Vec<String> = info
+                    .columns
+                    .iter()
+                    .map(|c| {
+                        let mut s = format!("{} {}", c.name, c.data_type);
+                        if c.primary_key {
+                            s.push_str(" PRIMARY KEY");
+                        }
+                        if !c.nullable {
+                            s.push_str(" NOT NULL");
+                        }
+                        s
+                    })
+                    .collect();
+                format!("CREATE TABLE {} ({})", name, col_defs.join(", "))
+            };
             rows.push(vec![
                 Value::Text("table".to_string()),
                 Value::Text(name.clone()),
@@ -534,6 +567,7 @@ impl<S: StorageEngine + 'static> ExecutionEngine<S> {
             partition_info: None,
             compression: None,
             collations: std::collections::HashMap::new(),
+            original_sql: String::new(),
         }
     }
 
@@ -584,7 +618,7 @@ impl<S: StorageEngine + 'static> ExecutionEngine<S> {
     /// (`SELECT <expr>` with no FROM, no joins, no aggregates, no
     /// WHERE, no GROUP BY, no ORDER BY, no HAVING). This covers
     /// `SELECT (SELECT 1) AS x`, `SELECT (SELECT 1 + 2) AS y`, etc.
-    /// The from-table form is routed to
+/// The from-table form is routed to
     /// [`Self::execute_subquery_for_scalar_from_table`] by the
     /// projection call site (pre-computed per outer row).
     fn execute_subquery_for_scalar(&self, subq: &SelectStatement) -> Result<Value, String> {
@@ -726,6 +760,13 @@ impl<S: StorageEngine + 'static> ExecutionEngine<S> {
         // fell through to `storage.get_table_info` and failed with
         // "Table not found" (CREATE VIEW only acked, never stored a
         // queryable object).
+        // V312-64d / Issue #4664: system-table interception lives BEFORE
+        // the view rewriter — sqlite_master/mysql.user/mysql.db are not
+        // user-defined views and the rewriter would otherwise try to
+        // materialize them as subqueries.
+        if let Some(result) = self.try_system_table_select(select) {
+            return result;
+        }
         let view_owned;
         let select: &SelectStatement = match self.rewrite_view_from(select) {
             Some(rewritten) => {
@@ -932,6 +973,7 @@ impl<S: StorageEngine + 'static> ExecutionEngine<S> {
                     partition_info: None,
                     compression: None,
                     collations: std::collections::HashMap::new(),
+                    original_sql: String::new(),
                 };
                 for col in &subq.columns {
                     let col_name = col.alias.clone().unwrap_or_else(|| col.name.clone());
@@ -1040,6 +1082,7 @@ impl<S: StorageEngine + 'static> ExecutionEngine<S> {
                 partition_info: None,
                 compression: None,
                 collations: std::collections::HashMap::new(),
+                original_sql: String::new(),
             };
             (rows, info)
         } else if select.table.is_empty() {
@@ -1052,6 +1095,7 @@ impl<S: StorageEngine + 'static> ExecutionEngine<S> {
                 partition_info: None,
                 compression: None,
                 collations: std::collections::HashMap::new(),
+                original_sql: String::new(),
             };
             (vec![Vec::new()], empty_schema)
         } else {
@@ -3058,6 +3102,7 @@ impl<S: StorageEngine + 'static> ExecutionEngine<S> {
                     partition_info: None,
                     compression: None,
                     collations: std::collections::HashMap::new(),
+                    original_sql: String::new(),
                 };
                 for col in &subq.columns {
                     let col_name = col.alias.clone().unwrap_or_else(|| col.name.clone());
@@ -4199,6 +4244,7 @@ impl<S: StorageEngine + 'static> ExecutionEngine<S> {
                     partition_info: None,
                     compression: None,
                     collations: std::collections::HashMap::new(),
+                    original_sql: String::new(),
                 };
                 return Ok((cross, combined_schema));
             }
@@ -6275,6 +6321,7 @@ impl<S: StorageEngine + 'static> ExecutionEngine<S> {
             partition_info: None,
             compression: None,
             collations: std::collections::HashMap::new(),
+            original_sql: String::new(),
         };
         let (correlated_keys, residual_expr) =
             find_correlated_equalities(where_expr, agg_arg_expr, &subq.table, &outer_table_info)
