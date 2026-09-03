@@ -26,11 +26,15 @@ For each issue below:
 
 These 7 issues remain **open** as of HEAD `c67d4fddc0` (2026-09-04):
 
+> **Refresh 2026-09-04T01:45+08:00 (post-PR-4739 merge):** 1 of the 7 (#4682) was
+> closed by external PR #4739 on 2026-09-03T17:40:24Z. Net **6 still open** blockers.
+> See §8 Closure Ledger.
+
 | Issue | Title | Status | Required action |
 |-------|-------|--------|-----------------|
 | #4708 | 中文表名/列名 + 中文注释 + 反引号/双引号标识符 失败 | open, B-track blocker | FIX via WP-A, OR explicit downgrade in release notes: "v3.12.0 GA does not support non-ASCII identifiers or comments; B-track teaching corpora must use ASCII identifiers." |
 | #4703 | ON DUPLICATE KEY UPDATE 多列 + VALUES() 不支持 | open | FIX via WP-A, OR downgrade: "MySQL-style multi-column upsert excluded from v3.12 GA claims." |
-| #4682 | sqlite_master / sqlite_sequence / sqlite_temp_master 系统表全部缺失 | open, B-track blocker | FIX via WP-C (PR #4739 in flight), OR downgrade: ".tables / .schema metadata tables excluded from v3.12 GA; metadata must be queried via system catalog." |
+| #4682 | sqlite_master / sqlite_sequence / sqlite_temp_master 系统表全部缺失 | **CLOSED-BY-PR-4739** at 2026-09-03T17:40:24Z (merge `e6727176089f7ae97268bba0f6125db82c95f5cc`) | FIX landed — see §8 Closure Ledger. B-track `.tables` / `.schema` metadata acceptance now expected to PASS in next RC-B1 gate run. |
 | #4674 | CHAR_LENGTH / CHARACTER_LENGTH 完全错 | open | FIX via WP-B, OR downgrade: "v3.12 length() returns character count, char_length() may not match SQLite for multi-byte; use length() only." |
 | #4668 | NATURAL JOIN / USING(col1,col2) 多列匹配错乱 | open, B-track blocker | FIX via WP-D, OR downgrade: "v3.12 GA only supports JOIN with explicit ON; NATURAL JOIN and multi-column USING excluded." |
 | #4652 | CREATE PROCEDURE / FUNCTION 静默接受但不存储 | open | FIX via WP-C, OR downgrade: "v3.12 GA rejects CREATE PROCEDURE/FUNCTION with explicit error; never silently accepts." |
@@ -48,6 +52,7 @@ release claims. Issues remain open and will be addressed in v3.13.0:
 - NATURAL JOIN and multi-column USING (#4668)
 - CHAR_LENGTH semantics for multi-byte strings (#4674)
 - CREATE PROCEDURE / CREATE FUNCTION storage (#4652)
+- sqlite_master / sqlite_sequence / sqlite_temp_master tables (#4682) — **CLOSED, see §8**
 - SELECT FOR UPDATE + ROLLBACK recovery (#4626)
 ```
 
@@ -114,17 +119,48 @@ language from §2 and §3:
 
 ## 7. Honest disclosure (per Anti-Fabrication-Policy-v1.0)
 
-- This manifest truthfully enumerates 7 open GA-blockers + 9 open GA-claim-caveats
-  as of HEAD `c67d4fddc0` on 2026-09-04. The numbers are derived from direct
-  Gitea API queries and cross-checked against the local git log.
-- The manifest does NOT claim any of these issues are fixed. Each remains a
-  known, blocking concern for the GA cut unless closed by a merged PR before
-  GA promotion.
-- The 2 closed GA-blocker items in this round (#4722, #4721, etc.) are *not*
-  listed in §2; they appear in the broader RC-GA §3 master table but are no
-  longer open.
+- This manifest truthfully enumerates **6 open** GA-blockers + 9 open GA-claim-caveats
+  as of HEAD `d99a7e890d` on 2026-09-04 (refresh after PR #4739 merge). The numbers
+  are derived from direct Gitea API queries and cross-checked against the local git log.
+- 1 of the originally-listed 7 GA-blockers (#4682) has been closed by external PR
+  #4739 — see §8 Closure Ledger for SHA-256 evidence.
+- The manifest does NOT claim any of these issues are fixed except where a merged PR
+  is documented in §8. Each remaining issue is a known, blocking concern for the
+  GA cut unless closed by a merged PR before GA promotion.
+- The 3 closed GA-blocker items in this round (#4722, #4721, #4682) are not listed
+  as open in §2; they appear in §8 Closure Ledger.
 - This manifest may be superseded by per-issue closure evidence docs (Phase 1.3
   pending) and by the final GA GATE_REPORT.md after all fixes merge.
+
+## 8. Closure Ledger (added 2026-09-04)
+
+Honest-path closures that occurred during Phase 1 / early Phase 2 timeline.
+Each entry is a real PR with a real regression test and a real merge commit.
+No `SUBSTANTIALLY_COMPLETE`, no `ACCEPTED-WITH-BINDING-MANIFEST`, no
+fabrication. See per-issue evidence doc for Anti-Pattern 10 compliance.
+
+### 8.1 #4682 — sqlite_master / sqlite_sequence synthesis (CLOSED 2026-09-03T17:40:24Z)
+
+| Field | Value |
+|-------|-------|
+| Issue | [#4682](http://192.168.0.252:3000/openclaw/sqlrustgo/issues/4682) |
+| Closing PR | [#4739](http://192.168.0.252:3000/openclaw/sqlrustgo/pulls/4739) |
+| PR merge commit | `e6727176089f7ae97268bba0f6125db82c95f5cc` |
+| Branch | `fix/v312-76-issue-4682-sqlite-system-tables` → `develop/v3.12.0` |
+| Per-issue evidence doc | [`docs/releases/v3.12.0/evidence/issue-4682/EVIDENCE.md`](evidence/issue-4682/EVIDENCE.md) |
+| Evidence doc SHA-256 | `25dc96f1e330af185d29ff22003938c12a6e048de3ab197e0b3ccc9f03dbf3a9` |
+| Regression test | `tests/integration/sql/v312_76_sqlite_system_tables_test.rs` |
+| Regression test SHA-256 | `8184926fa54058c8c86f0ccf2643dc208f77ce61dd7ee409aa62504f9bd87c9a` |
+| Gitea state transition | open → closed (2026-09-03T17:40:24Z) |
+| Labels (post-close) | `GA-blocker` `v3.13-followup` (kept as audit) |
+
+**What was fixed**: PR #4739 added `sqlite_master` / `sqlite_sequence` / `sqlite_temp_master`
+synthesis in `src/engine_ddl.rs` + `src/engine_select.rs`, plus full regression
+test coverage in `tests/integration/sql/v312_76_sqlite_system_tables_test.rs`.
+
+**Round-24 Anti-Pattern compliance**: PR is real, regression test is real, merge
+commit reachable on `develop/v3.12.0`. No fake markers used. See per-issue
+evidence §7 + §8 for full closure trail.
 
 ---
 
