@@ -381,10 +381,11 @@ pub fn evaluate_expression_with_subq(
         }
         // TPC-H Q9: `WHERE p_name LIKE '%green%'`. SQL LIKE substring
         // match: `%` matches any sequence (including empty), `_` matches
-        // a single char. No ESCAPE handling yet; that's a separate
-        // follow-up.
-        Expression::Like(expr, pattern, _escape) => {
-            // P0-2 §4.5: delegated to `executor::expr::sql_like_match`
+        // a single char. Issue #4677: the parser-supplied ESCAPE
+        // character (if any) is now honored — `LIKE '100!%' ESCAPE '!'`
+        // matches the literal string `100%`.
+        Expression::Like(expr, pattern, escape) => {
+            // P0-2 §4.5: delegated to `executor::expr::sql_like_match_esc`
             // (single source of truth for the LIKE pattern matcher).
             let val = evaluate_expression(expr, row, table_info)
                 .map(|v| v.to_sql_string())
@@ -392,9 +393,9 @@ pub fn evaluate_expression_with_subq(
             let pat = evaluate_expression(pattern, row, table_info)
                 .map(|v| v.to_sql_string())
                 .unwrap_or_default();
-            Ok(Value::Boolean(sqlrustgo_executor::expr::sql_like_match(
-                &val, &pat,
-            )))
+            Ok(Value::Boolean(
+                sqlrustgo_executor::expr::sql_like_match_esc(&val, &pat, *escape),
+            ))
         }
         // Evaluate each WHEN's condition in order; the first one whose
         // value is Boolean(true) (or non-zero/non-null) wins, and we
@@ -446,14 +447,18 @@ pub fn evaluate_expression_with_subq(
             Ok(dispatch_fn(name, &vals))
         }
         // TPC-H Q8/Q12/Q14: CASE WHEN cond THEN a ELSE b END.
-        Expression::NotLike(left, pattern, _escape) => {
-            // P0-2 §4.6: delegated to `executor::expr::sql_like_match`.
+        Expression::NotLike(left, pattern, escape) => {
+            // P0-2 §4.6: delegated to `executor::expr::sql_like_match_esc`.
+            // Issue #4677: NOT LIKE honors ESCAPE the same way LIKE does.
             let lv = evaluate_expression(left, row, table_info)?;
             let pv = evaluate_expression(pattern, row, table_info)?;
-            Ok(Value::Boolean(!sqlrustgo_executor::expr::sql_like_match(
-                &lv.to_sql_string(),
-                &pv.to_sql_string(),
-            )))
+            Ok(Value::Boolean(
+                !sqlrustgo_executor::expr::sql_like_match_esc(
+                    &lv.to_sql_string(),
+                    &pv.to_sql_string(),
+                    *escape,
+                ),
+            ))
         }
         // TPC-H Q1: expr BETWEEN low AND high.
         Expression::Between(expr, low, high) => {
