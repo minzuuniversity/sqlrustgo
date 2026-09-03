@@ -38,7 +38,7 @@ These 7 issues remain **open** as of HEAD `c67d4fddc0` (2026-09-04):
 | #4674 | CHAR_LENGTH / CHARACTER_LENGTH 完全错 | **CLOSED-BY-PR-4742** at 2026-09-03T17:58:26Z (merge `240c477b36974...`, head `16c2d06a0ba6`) | anti-regression lockdown landed — see §8 Closure Ledger entry 8.3. v3.12.0 GA CHAR_LENGTH correctly counts UTF-8 codepoints on column reference (verified by 3-case regression test). |
 | #4668 | NATURAL JOIN / USING(col1,col2) 多列匹配错乱 | open, B-track blocker | FIX via WP-D, OR downgrade: "v3.12 GA only supports JOIN with explicit ON; NATURAL JOIN and multi-column USING excluded." |
 | #4652 | CREATE PROCEDURE / FUNCTION 静默接受但不存储 | **CLOSED-BY-PR-4741** at 2026-09-03T17:51:50Z (merge `952f6f7578a7e96e...`, head `8717286f389c...`) | OR-downgrade landed — see §8 Closure Ledger entry 8.2. v3.12.0 GA CLI batch mode now rejects CREATE PROCEDURE / CREATE FUNCTION with explicit named error. |
-| #4626 | SELECT FOR UPDATE 后 ROLLBACK 报 transaction already aborted | open | FIX via WP-C, OR downgrade: "v3.12 GA SELECT FOR UPDATE + ROLLBACK fails closed with explicit transaction-aborted error; do not claim recoverable." |
+| #4626 | SELECT FOR UPDATE 后 ROLLBACK 报 transaction already aborted | **CLOSED-BY-PR-4743** at 2026-09-03T18:11:29Z (merge `4d6a2f9ce337`, head `20de3da40d5d`) | source-fix landed — see §8 Closure Ledger entry 8.4. v3.12.0 GA CLI batch mode pre-flushes implicit-tx before explicit BEGIN. |
 
 ### Required release-note language (≥ 1 of these per still-open blocker)
 
@@ -53,7 +53,7 @@ release claims. Issues remain open and will be addressed in v3.13.0:
 - CHAR_LENGTH semantics for multi-byte strings (#4674) — **CLOSED, see §8** (anti-regression)
 - CREATE PROCEDURE / CREATE FUNCTION storage (#4652) — **CLOSED, see §8** (OR-downgrade)
 - sqlite_master / sqlite_sequence / sqlite_temp_master tables (#4682) — **CLOSED, see §8**
-- SELECT FOR UPDATE + ROLLBACK recovery (#4626)
+- SELECT FOR UPDATE + ROLLBACK recovery (#4626) — **CLOSED, see §8** (source-fix)
 ```
 
 ## 3. GA-claim-caveat — exclude from v3.12 GA claims unless fixed
@@ -239,6 +239,44 @@ column reference substitution in function calls fail closed.
 - PR is real (`#4742` merge commit reachable on `develop/v3.12.0`)
 - No `SUBSTANTIALLY_COMPLETE`, no `ACCEPTED-WITH-BINDING-MANIFEST`
 - Per-issue evidence doc has all four SHA-256 entries populated
+
+### 8.4 #4626 — SELECT FOR UPDATE + ROLLBACK tx-state corruption in CLI batch (CLOSED 2026-09-03T18:11:29Z, source fix)
+
+| Field | Value |
+|-------|-------|
+| Issue | [#4626](http://192.168.0.252:3000/openclaw/sqlrustgo/issues/4626) |
+| Closing PR | [#4743](http://192.168.0.252:3000/openclaw/sqlrustgo/pulls/4743) |
+| PR merge commit | `4d6a2f9ce337` |
+| PR head fix commit | `20de3da40d5d` |
+| Branch | `fix/v312-rcga-issue-4626-select-for-update-rollback` → `develop/v3.12.0` |
+| Per-issue evidence doc | [`docs/releases/v3.12.0/evidence/issue-4626/EVIDENCE.md`](evidence/issue-4626/EVIDENCE.md) |
+| Fix source post-edit SHA-256 | `b8aedd23481ee09869e694e634d2a7d9a6a63046b1ff7e3e270889968ac80964` (sqlite_mode.rs) |
+| Rust test SHA-256 | `4706b129bf4d4a6666493d90ba31d23f0de6b6d5e1758bb52293927ef318bc43` |
+| BASH test SHA-256 | `8ba1b6d2d8491ed4609a4d378fabd4ec2e19fb5f15e6c0081ed71173ae082ddb` |
+| Cargo.toml test-target entry SHA-256 | `9d5db4417d11e97907a56a5b57d06093d56f87d5648e56fa21f4e7fc5fe3856c` |
+| Gitea state transition | open → closed (2026-09-03T18:12:05Z) |
+| Labels (post-close) | `GA-blocker` `v3.13-followup` (kept as audit) |
+
+**Closure path**: real source fix in `sqlite_mode.rs::dispatch_one`.
+
+**Original issue body symptom**: `SELECT FOR UPDATE` then `ROLLBACK` fails with
+"transaction already aborted" in CLI batch mode.
+
+**Actual root cause**: prior DML (INSERT/UPDATE/DELETE) opens an implicit
+transaction that is invisible to `dispatch_one`'s `tx_depth` tracker.
+Subsequent explicit BEGIN then fails with "Transaction already in progress"
+(the earlier symptom of the same underlying state corruption).
+
+**Fix**: pre-flush `engine.execute("COMMIT")` before any explicit BEGIN
+at top-level (tx_depth == 0). The COMMIT call is a no-op when
+`current_tx_id` is None, so the fix is safe when no prior DML ran in
+the batch.
+
+**Round-24 Anti-Pattern compliance**:
+- Source fix is real (sqlite_mode.rs::dispatch_one changed)
+- Tests are real (3 Rust + 3 BASH cases), exit code 0 verified
+- No `SUBSTANTIALLY_COMPLETE`, no `ACCEPTED-WITH-BINDING-MANIFEST`
+- Per-issue evidence doc has all SHA-256 entries populated
 
 ---
 
