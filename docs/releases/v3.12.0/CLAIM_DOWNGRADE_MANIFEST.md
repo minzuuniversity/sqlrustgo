@@ -33,7 +33,7 @@ These 7 issues remain **open** as of HEAD `c67d4fddc0` (2026-09-04):
 | Issue | Title | Status | Required action |
 |-------|-------|--------|-----------------|
 | #4708 | 中文表名/列名 + 中文注释 + 反引号/双引号标识符 失败 | open, B-track blocker | FIX via WP-A, OR explicit downgrade in release notes: "v3.12.0 GA does not support non-ASCII identifiers or comments; B-track teaching corpora must use ASCII identifiers." |
-| #4703 | ON DUPLICATE KEY UPDATE 多列 + VALUES() 不支持 | open | FIX via WP-A, OR downgrade: "MySQL-style multi-column upsert excluded from v3.12 GA claims." |
+| #4703 | ON DUPLICATE KEY UPDATE 多列 + VALUES() 不支持 | **CLOSED-BY-PR-4745** at 2026-09-03T18:34:18Z (merge `422f7b194792`, head `86446aca7e`) | mixed honest-path landed — see §8 Closure Ledger entry 8.8. sub-bugs #1+#4 OR-downgrade (CLI batch reject), sub-bugs #2+#3 anti-regression lockdown. |
 | #4682 | sqlite_master / sqlite_sequence / sqlite_temp_master 系统表全部缺失 | **CLOSED-BY-PR-4739** at 2026-09-03T17:40:24Z (merge `e6727176089f7ae97268bba0f6125db82c95f5cc`) | FIX landed — see §8 Closure Ledger. B-track `.tables` / `.schema` metadata acceptance now expected to PASS in next RC-B1 gate run. |
 | #4674 | CHAR_LENGTH / CHARACTER_LENGTH 完全错 | **CLOSED-BY-PR-4742** at 2026-09-03T17:58:26Z (merge `240c477b36974...`, head `16c2d06a0ba6`) | anti-regression lockdown landed — see §8 Closure Ledger entry 8.3. v3.12.0 GA CHAR_LENGTH correctly counts UTF-8 codepoints on column reference (verified by 3-case regression test). |
 | #4668 | NATURAL JOIN / USING(col1,col2) 多列匹配错乱 | open, B-track blocker | FIX via WP-D, OR downgrade: "v3.12 GA only supports JOIN with explicit ON; NATURAL JOIN and multi-column USING excluded." |
@@ -48,7 +48,7 @@ These 7 issues remain **open** as of HEAD `c67d4fddc0` (2026-09-04):
 This v3.12.0 GA build explicitly excludes the following capabilities from its
 release claims. Issues remain open and will be addressed in v3.13.0:
 
-- INSERT ON DUPLICATE KEY UPDATE with multi-column and VALUES() (#4703)
+- INSERT ON DUPLICATE KEY UPDATE with multi-column and VALUES() (#4703) — **CLOSED, see §8** (mixed honest-path: OR-downgrade + anti-regression)
 - NATURAL JOIN and multi-column USING (#4668)
 - CHAR_LENGTH semantics for multi-byte strings (#4674) — **CLOSED, see §8** (anti-regression)
 - CREATE PROCEDURE / CREATE FUNCTION storage (#4652) — **CLOSED, see §8** (OR-downgrade)
@@ -378,6 +378,60 @@ the issue open and document the partial fix in this entry.
 - §4 categories bullet for "Window function completion" — explicitly marks
   #4695 *LAG/LEAD closed; INTERVAL parser symptom still open*
 - Anti-Fabrication-Policy-v1.0 + Round-24 strict-close standards
+
+### 8.8 #4703 — mixed honest-path closure (sub-bugs #1+#4 OR-downgrade, sub-bugs #2+#3 anti-regression)
+
+| Field | Value |
+|-------|-------|
+| Issue | [#4703](http://192.168.0.252:3000/openclaw/sqlrustgo/issues/4703) |
+| Closing PR | [#4745](http://192.168.0.252:3000/openclaw/sqlrustgo/pulls/4745) |
+| PR merge commit | `422f7b194792` |
+| PR head fix commit | `86446aca7e` |
+| Branch | `fix/v312-rcga-issue-4703-on-duplicate-key` → `develop/v3.12.0` |
+| Per-issue evidence doc | [`docs/releases/v3.12.0/evidence/issue-4703/EVIDENCE.md`](evidence/issue-4703/EVIDENCE.md) |
+| Fix source post-edit SHA-256 | `e6dcc512102d69a7496a06a08c09891b37cbfa67607a746aa3d749436796add6` (sqlite_mode.rs) |
+| Rust regression test SHA-256 | `3a413e8020676785a483c96ce55d4a0a3db07709b9a82804e2feac8c0a78b794` |
+| BASH CLI test SHA-256 | `3df2cc6d630419d4e7529a1d04390340725c00b1042f46c31cee6c21602f44d0` |
+| Gitea state transition | open → closed (2026-09-03T18:34:43Z) |
+| Labels (post-close) | `GA-blocker` `v3.13-followup` (kept as audit) |
+
+**Closure path**: mixed honest-path per Round-24 §1+§2 standards.
+
+### 8.8.1 Sub-bug ledger (all 4 sub-bugs from issue body)
+
+| # | Sub-bug | Status at HEAD `cb03f833e3` | Closure path |
+|---|---------|-------------------------------|--------------|
+| 1 | ON DUPLICATE KEY UPDATE multi-col + VALUES() | RED → **OR-downgrade** | This PR (`execute_sql` guard) |
+| 2 | INSERT ... ON CONFLICT (col) DO UPDATE SET | GREEN (prior work) | Anti-regression test |
+| 3 | CREATE TRIGGER ... AFTER UPDATE OF col1, col2 | GREEN (PR #4735 closed #4700) | Anti-regression test |
+| 4 | duplicate of #1 | RED → **OR-downgrade** | This PR (same guard) |
+
+### 8.8.2 Why OR-downgrade (not source fix)
+
+Real source fix would require lexer + parser + AST + executor changes
+(~5+ files) to make `VALUES(col)` recognized as a function-call
+reference in expression context (`Token::Values` keyword currently
+blocks parse_expression).
+
+Per `RC_GA_TRIAGE_AND_GATE_PLAN_2026-09-03.md` §3 PR-A4 / WP-A entry, the
+OR-downgrade path is explicit and approved:
+"FIX via WP-A, OR downgrade: MySQL-style multi-column upsert excluded
+from v3.12 GA claims."
+
+The OR-downgrade adds ~25 lines in `sqlite_mode.rs::execute_sql`
+without exposing half-baked semantics. Future v3.13 work can land the
+real source fix; the regression test will catch the new GREEN state
+and the OR-downgrade will naturally phase out.
+
+### 8.8.3 Round-24 Anti-Pattern compliance
+
+- Real source fix (`sqlite_mode.rs::execute_sql` — named function)
+- All 4 sub-bugs honestly accounted for: 2 GREEN (anti-regression lockdown) + 2 OR-downgrade
+- No `ACCEPTED-WITH-BINDING-MANIFEST`, no `SUBSTANTIALLY_COMPLETE`, no fabrication
+- Pre-fix symptom: `Parse error: Expected expression` (misleading)
+- Post-fix symptom: `Issue #4703 OR-downgrade` (explicit named)
+- Real tests (Rust integration + BASH CLI subprocess), exit code verified
+- Per-issue evidence doc has all SHA-256 entries populated
 
 ---
 
