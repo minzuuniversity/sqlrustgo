@@ -15,7 +15,7 @@
 use parking_lot::RwLock;
 use sqlrustgo::{ExecutionEngine, MemoryStorage};
 use sqlrustgo_parser::{
-    parse, Expression, FrameClause, FrameMode, FrameBound, Statement, WindowSpecification,
+    parse, Expression, FrameBound, FrameClause, FrameMode, Statement, WindowSpecification,
 };
 use std::sync::Arc;
 
@@ -41,15 +41,13 @@ fn repro_4651_cast_as_date_parses() {
                 Some(Expression::FunctionCall(name, args)) => {
                     assert_eq!(name.to_uppercase(), "CAST");
                     assert!(
-                        args.iter().any(|a| matches!(a, Expression::Literal(s) if s == "DATE")),
+                        args.iter()
+                            .any(|a| matches!(a, Expression::Literal(s) if s == "DATE")),
                         "CAST AS DATE must carry a 'DATE' literal arg, got: {:?}",
                         args
                     );
                 }
-                other => panic!(
-                    "expected FunctionCall CAST, got: {:?}",
-                    other
-                ),
+                other => panic!("expected FunctionCall CAST, got: {:?}", other),
             }
         }
         other => panic!("expected Statement::Select, got: {:?}", other),
@@ -106,7 +104,10 @@ fn repro_4663_vacuum_no_table_parses() {
     let stmt = parse("VACUUM").expect("VACUUM must parse");
     match stmt {
         Statement::Vacuum(v) => {
-            assert!(v.table_name.is_none(), "bare VACUUM should not bind a table");
+            assert!(
+                v.table_name.is_none(),
+                "bare VACUUM should not bind a table"
+            );
         }
         other => panic!("expected Statement::Vacuum, got: {:?}", other),
     }
@@ -151,7 +152,9 @@ fn repro_4663_analyze_no_table_sweeps_all() {
     let mut x = fresh_mem();
     x.execute("CREATE TABLE t1(id INT)").unwrap();
     x.execute("CREATE TABLE t2(id INT)").unwrap();
-    let r = x.execute("ANALYZE").expect("ANALYZE without table must run");
+    let r = x
+        .execute("ANALYZE")
+        .expect("ANALYZE without table must run");
     assert_eq!(r.rows.len(), 1, "ANALYZE returns 1 summary row");
     match &r.rows[0][0] {
         sqlrustgo::Value::Integer(n) => assert_eq!(*n, 2, "sweep should hit both tables"),
@@ -202,7 +205,8 @@ fn repro_4663_analyze_with_table_returns_row_count() {
 fn repro_4655_date_trunc_year_runs() {
     let mut x = fresh_mem();
     x.execute("CREATE TABLE t(ts TEXT)").unwrap();
-    x.execute("INSERT INTO t VALUES ('2024-07-15 13:45:30')").unwrap();
+    x.execute("INSERT INTO t VALUES ('2024-07-15 13:45:30')")
+        .unwrap();
     let r = x
         .execute("SELECT DATE_TRUNC('YEAR', ts) FROM t")
         .expect("DATE_TRUNC must execute");
@@ -216,7 +220,8 @@ fn repro_4655_date_trunc_year_runs() {
 fn repro_4655_date_trunc_month_runs() {
     let mut x = fresh_mem();
     x.execute("CREATE TABLE t(ts TEXT)").unwrap();
-    x.execute("INSERT INTO t VALUES ('2024-07-15 13:45:30')").unwrap();
+    x.execute("INSERT INTO t VALUES ('2024-07-15 13:45:30')")
+        .unwrap();
     let r = x
         .execute("SELECT DATE_TRUNC('MONTH', ts) FROM t")
         .expect("DATE_TRUNC MONTH must execute");
@@ -228,7 +233,8 @@ fn repro_4655_date_trunc_month_runs() {
 fn repro_4655_date_trunc_quarter_runs() {
     let mut x = fresh_mem();
     x.execute("CREATE TABLE t(ts TEXT)").unwrap();
-    x.execute("INSERT INTO t VALUES ('2024-08-15 13:45:30')").unwrap();
+    x.execute("INSERT INTO t VALUES ('2024-08-15 13:45:30')")
+        .unwrap();
     let r = x
         .execute("SELECT DATE_TRUNC('QUARTER', ts) FROM t")
         .expect("DATE_TRUNC QUARTER must execute");
@@ -241,7 +247,8 @@ fn repro_4655_date_trunc_quarter_runs() {
 fn repro_4655_date_trunc_day_runs() {
     let mut x = fresh_mem();
     x.execute("CREATE TABLE t(ts TEXT)").unwrap();
-    x.execute("INSERT INTO t VALUES ('2024-07-15 13:45:30')").unwrap();
+    x.execute("INSERT INTO t VALUES ('2024-07-15 13:45:30')")
+        .unwrap();
     let r = x
         .execute("SELECT DATE_TRUNC('DAY', ts) FROM t")
         .expect("DATE_TRUNC DAY must execute");
@@ -253,7 +260,8 @@ fn repro_4655_date_trunc_day_runs() {
 fn repro_4655_date_trunc_unknown_unit_returns_null() {
     let mut x = fresh_mem();
     x.execute("CREATE TABLE t(ts TEXT)").unwrap();
-    x.execute("INSERT INTO t VALUES ('2024-07-15 13:45:30')").unwrap();
+    x.execute("INSERT INTO t VALUES ('2024-07-15 13:45:30')")
+        .unwrap();
     let r = x
         .execute("SELECT DATE_TRUNC('UNKNOWN', ts) FROM t")
         .expect("DATE_TRUNC must not error on unknown unit");
@@ -280,12 +288,7 @@ fn repro_4665_rows_between_parses() {
         let col = s
             .columns
             .iter()
-            .find(|c| {
-                matches!(
-                    &c.expression,
-                    Some(Expression::WindowCall(_))
-                )
-            })
+            .find(|c| matches!(&c.expression, Some(Expression::WindowCall(_))))
             .expect("at least one WindowCall column");
         if let Some(Expression::WindowCall(wc)) = &col.expression {
             let frame = wc
@@ -310,10 +313,9 @@ fn repro_4665_rows_between_parses() {
 
 #[test]
 fn repro_4665_range_between_unbounded_parses() {
-    let stmt = parse(
-        "SELECT SUM(v) OVER (ORDER BY x RANGE BETWEEN UNBOUNDED PRECEDING AND CURRENT ROW)",
-    )
-    .expect("RANGE BETWEEN UNBOUNDED PRECEDING AND CURRENT ROW must parse");
+    let stmt =
+        parse("SELECT SUM(v) OVER (ORDER BY x RANGE BETWEEN UNBOUNDED PRECEDING AND CURRENT ROW)")
+            .expect("RANGE BETWEEN UNBOUNDED PRECEDING AND CURRENT ROW must parse");
     if let Statement::Select(s) = stmt {
         let col = &s.columns[0];
         if let Some(Expression::WindowCall(wc)) = &col.expression {
@@ -353,6 +355,7 @@ fn repro_4665_window_spec_struct_has_frame_field() {
         partition_by: vec![],
         order_by: vec![],
         frame: None,
+        frame_exclusion: None,
     };
     let _ = ws;
     let _clause: Option<FrameClause> = None;
