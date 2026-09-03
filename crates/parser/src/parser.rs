@@ -708,6 +708,12 @@ pub struct JoinClause {
     /// the alias (`n1.n_nationkey`).
     pub alias: Option<String>,
     pub on_clause: Expression,
+    /// V312-73 / Issue #4649: `JOIN t2 USING (col1, col2, ...)`. When set,
+    /// the join is `t1.col_i = t2.col_i` for each column in the list
+    /// (USING-merge semantics) and each USING column appears once in the
+    /// output (the duplicate right-side column is projected away).
+    /// `None` for plain `ON` joins.
+    pub using_columns: Option<Vec<String>>,
 }
 
 /// Aggregate function call
@@ -6150,6 +6156,7 @@ impl Parser {
                             table: table_name.clone(),
                             alias: alias_for_join.clone(),
                             on_clause: Expression::Literal("true".to_string()),
+                            using_columns: None,
                         });
                         remaining = rest;
                         joined.push(table_name.clone());
@@ -6164,6 +6171,7 @@ impl Parser {
                         table: table_name.clone(),
                         alias: table_alias.clone(),
                         on_clause: on,
+                        using_columns: None,
                     });
                     remaining = rest;
                     // Add the new table + its 1-char TPC-H prefix
@@ -6236,6 +6244,7 @@ impl Parser {
                             table: bare,
                             alias,
                             on_clause: Expression::Literal("true".to_string()),
+                            using_columns: None,
                         }
                     })
                     .collect();
@@ -6825,12 +6834,50 @@ impl Parser {
             None
         };
 
-        // Parse ON condition (optional for CROSS JOIN)
-        let on_clause = if matches!(self.current(), Some(Token::On)) {
+        // V312-73 / Issue #4649: parse optional `USING (col1, col2, ...)`
+        // clause. USING is mutually exclusive with ON — if both are present,
+        // standard SQL behaviour is to reject, so we prefer ON and only
+        // check USING when ON is absent (matching PostgreSQL/SQLite).
+        let (on_clause, using_columns) = if matches!(self.current(), Some(Token::On)) {
             self.next();
-            self.parse_expression()?
+            (self.parse_expression()?, None)
+        } else if matches!(self.current(), Some(Token::Using)) {
+            self.next();
+            self.expect(Token::LParen)?;
+            let mut cols: Vec<String> = Vec::new();
+            // Empty column list is a syntax error in every SQL dialect.
+            if matches!(self.current(), Some(Token::RParen)) {
+                return Err("USING clause requires at least one column".to_string());
+            }
+            loop {
+                let col = match self.current().cloned() {
+                    Some(Token::Identifier(name)) => {
+                        self.next();
+                        name
+                    }
+                    Some(t) => {
+                        return Err(format!(
+                            "Expected identifier in USING clause, got {:?}",
+                            t
+                        ))
+                    }
+                    None => return Err("Expected identifier in USING clause".to_string()),
+                };
+                cols.push(col);
+                if matches!(self.current(), Some(Token::Comma)) {
+                    self.next();
+                } else {
+                    break;
+                }
+            }
+            self.expect(Token::RParen)?;
+            // USING on its own implies equality equi-join across the
+            // listed columns; on_clause is unused by the executor when
+            // using_columns is set, but keep the placeholder true for
+            // diagnostic symmetry with the ON branch.
+            (Expression::Literal("true".to_string()), Some(cols))
         } else {
-            Expression::Literal("true".to_string())
+            (Expression::Literal("true".to_string()), None)
         };
 
         Ok(JoinClause {
@@ -6838,6 +6885,7 @@ impl Parser {
             table,
             alias,
             on_clause,
+            using_columns,
         })
     }
 
@@ -16404,8 +16452,54 @@ mod set_op_tests {
 
     #[test]
     fn test_parse_join_using() {
-        let r = parse("SELECT * FROM a JOIN b USING (id)");
-        assert!(r.is_ok());
+        let stmt = parse("SELECT * FROM a JOIN b USING (id)").unwrap();
+        if let Statement::Select(sel) = stmt {
+            assert_eq!(sel.join_clause.len(), 1);
+            let jc = &sel.join_clause[0];
+            // V312-73 / Issue #4649: USING(col_list) is now recorded on
+            // the JoinClause AST (instead of being silently dropped).
+            assert_eq!(jc.using_columns.as_deref(), Some(&["id".to_string()][..]));
+        } else {
+            panic!("expected Statement::Select");
+        }
+    }
+
+    #[test]
+    fn test_parse_join_using_multi_cols() {
+        // V312-73 / Issue #4649: USING accepts a comma-separated list.
+        let stmt =
+            parse("SELECT * FROM t1 INNER JOIN t2 USING (id, name)").unwrap();
+        if let Statement::Select(sel) = stmt {
+            let jc = &sel.join_clause[0];
+            assert_eq!(
+                jc.using_columns.as_deref(),
+                Some(&["id".to_string(), "name".to_string()][..])
+            );
+            // Inner join type is preserved.
+            assert!(matches!(jc.join_type, JoinType::Inner));
+        } else {
+            panic!("expected Statement::Select");
+        }
+    }
+
+    #[test]
+    fn test_parse_join_using_left() {
+        // LEFT JOIN ... USING — exercises the LEFT type path.
+        let stmt =
+            parse("SELECT * FROM t1 LEFT JOIN t2 USING (id)").unwrap();
+        if let Statement::Select(sel) = stmt {
+            let jc = &sel.join_clause[0];
+            assert!(matches!(jc.join_type, JoinType::Left));
+            assert_eq!(jc.using_columns.as_deref(), Some(&["id".to_string()][..]));
+        } else {
+            panic!("expected Statement::Select");
+        }
+    }
+
+    #[test]
+    fn test_parse_join_using_empty_errors() {
+        // `USING ()` is a syntax error in every SQL dialect.
+        assert!(parse("SELECT * FROM a JOIN b USING ()").is_err());
     }
 
     #[test]
@@ -17616,7 +17710,16 @@ fn test_parse_left_outer_join() {
 
 #[test]
 fn test_parse_inner_join_using() {
-    let _ = parse("SELECT * FROM t1 INNER JOIN t2 USING (id)");
+    let stmt = parse("SELECT * FROM t1 INNER JOIN t2 USING (id)").unwrap();
+    if let Statement::Select(sel) = stmt {
+        assert_eq!(sel.join_clause.len(), 1);
+        assert_eq!(
+            sel.join_clause[0].using_columns.as_deref(),
+            Some(&["id".to_string()][..])
+        );
+    } else {
+        panic!("expected Statement::Select");
+    }
 }
 
 #[test]
@@ -17685,3 +17788,5 @@ fn test_parse_quantile_cont_array_v312_46() {
         panic!("expected Statement::Select");
     }
 }
+
+

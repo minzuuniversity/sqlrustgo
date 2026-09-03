@@ -215,6 +215,7 @@ fn backtrace_to_clauses(
             table: last_node.base_table.clone(),
             alias: Some(last_node.alias.clone()),
             on_clause,
+            using_columns: None,
         });
 
         current = state.best_prev_state;
