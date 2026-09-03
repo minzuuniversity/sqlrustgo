@@ -794,6 +794,21 @@ pub fn eval_aggregate_lookup(
 /// - `sql_like_match("HELLO", "%ell%")` → `true` (case-insensitive
 ///   on both text and pattern)
 pub fn sql_like_match(text: &str, pattern: &str) -> bool {
+    sql_like_match_esc(text, pattern, None)
+}
+
+/// Issue #4677: LIKE with an explicit `ESCAPE` character.
+///
+/// `escape` is the single-character escape taken from the parser's
+/// `LIKE ... ESCAPE 'c'` clause (the parser rejects multi-char escapes
+/// already). When present, an occurrence of the escape character in the
+/// pattern makes the *next* pattern character literal: with
+/// `ESCAPE '!'`, pattern `100!%` matches the literal string `100%` and
+/// no longer treats `%` as a wildcard. A dangling escape at the very
+/// end of the pattern (no following character) is treated as a literal
+/// occurrence of the escape character itself (lenient, matches what
+/// most engines do for the degenerate case).
+pub fn sql_like_match_esc(text: &str, pattern: &str, escape: Option<char>) -> bool {
     // Strip the surrounding single quotes that the literal parser
     // attaches to string values. `pattern` is usually passed in
     // already without quotes, but be defensive.
@@ -804,7 +819,8 @@ pub fn sql_like_match(text: &str, pattern: &str) -> bool {
         .unwrap_or(pattern.trim());
     let txt = text.to_lowercase();
     let pat = pat.to_lowercase();
-    like_match_recursive(&txt, &pat)
+    let esc_byte = escape.map(|c| c.to_ascii_lowercase() as u8);
+    like_match_recursive(&txt, &pat, esc_byte)
 }
 
 /// Recursive wildcard matcher. Walks the pattern character by character;
@@ -830,7 +846,13 @@ pub fn sql_like_match(text: &str, pattern: &str) -> bool {
 /// algorithm matched the `c` ending "ironic" against the first `c` of
 /// "Customer", then failed to extend to `u`, then backtracked to
 /// `t_idx += 1` which skipped the second `c` (start of "Customer").
-fn like_match_recursive(text: &str, pattern: &str) -> bool {
+///
+/// Issue #4677: `escape` (when present) makes the next pattern byte
+/// literal. An escaped `%`/`_`/any-char consumes two pattern bytes and
+/// compares the second one against the current text byte; a mismatch
+/// flows into the same backtracking branch as an ordinary literal
+/// mismatch, so `%`-rewind semantics are preserved.
+fn like_match_recursive(text: &str, pattern: &str, escape: Option<u8>) -> bool {
     let mut t_idx = 0;
     let mut p_idx = 0;
     let t_bytes = text.as_bytes();
@@ -841,6 +863,24 @@ fn like_match_recursive(text: &str, pattern: &str) -> bool {
 
     while t_idx < t_bytes.len() {
         if p_idx < p_bytes.len() {
+            // Issue #4677: escaped pattern byte is matched literally.
+            if let Some(e) = escape {
+                if p_bytes[p_idx] == e && p_idx + 1 < p_bytes.len() {
+                    if t_bytes[t_idx] == p_bytes[p_idx + 1] {
+                        t_idx += 1;
+                        p_idx += 2;
+                        continue;
+                    }
+                    // Fall through to the mismatch/backtrack branch below.
+                    if let Some((st, ps)) = star {
+                        star = Some((st + 1, ps));
+                        t_idx = st;
+                        p_idx = ps;
+                        continue;
+                    }
+                    return false;
+                }
+            }
             match p_bytes[p_idx] {
                 b'%' => {
                     // Record the position to backtrack to, then advance.
@@ -892,9 +932,20 @@ fn like_match_recursive(text: &str, pattern: &str) -> bool {
         }
     }
 
-    // Text exhausted; remaining pattern must be only `%`s.
-    while p_idx < p_bytes.len() && p_bytes[p_idx] == b'%' {
-        p_idx += 1;
+    // Text exhausted; remaining pattern must be only unescaped `%`s
+    // (an escaped `%` is a literal that cannot match the empty tail).
+    while p_idx < p_bytes.len() {
+        if p_bytes[p_idx] == b'%' {
+            p_idx += 1;
+        } else if let Some(e) = escape {
+            if p_bytes[p_idx] == e && p_idx + 1 < p_bytes.len() && p_bytes[p_idx + 1] == b'%' {
+                // Escaped literal `%` cannot match exhausted text.
+                return false;
+            }
+            break;
+        } else {
+            break;
+        }
     }
     p_idx == p_bytes.len()
 }
@@ -3815,6 +3866,51 @@ mod tests {
         assert!(!sql_like_match("a", ""));
     }
 
+    // Issue #4677: LIKE ... ESCAPE must honor the escape character at the
+    // executor level (parser already accepts the syntax since v312-70).
+    #[test]
+    fn test_like_match_escape_wildcards() {
+        // `!` escapes `%` and `_`: pattern `100!%` matches only "100%".
+        assert!(sql_like_match_esc("100%", "100!%", Some('!')));
+        assert!(!sql_like_match_esc("100X", "100!%", Some('!')));
+        assert!(!sql_like_match_esc("100", "100!%", Some('!')));
+        // Escaped underscore is literal.
+        assert!(sql_like_match_esc("a_b", "a!_b", Some('!')));
+        assert!(!sql_like_match_esc("axb", "a!_b", Some('!')));
+        // Unescaped wildcard still works alongside escapes:
+        // pattern `1!%%` = literal `1`, literal `%`, trailing wildcard.
+        assert!(sql_like_match_esc("1%0", "1!%%", Some('!')));
+        assert!(sql_like_match_esc("1%X", "1!%%", Some('!')));
+        assert!(!sql_like_match_esc("1X0", "1!%%", Some('!')));
+        // Case-insensitivity preserved.
+        assert!(sql_like_match_esc("100%", "100!%", Some('!')));
+    }
+
+    #[test]
+    fn test_like_match_escape_backslash() {
+        // MySQL idiom: backslash escape.
+        assert!(sql_like_match_esc("a%bc", "a\\%bc", Some('\\')));
+        assert!(!sql_like_match_esc("abc", "a\\%bc", Some('\\')));
+        assert!(!sql_like_match_esc("aXbc", "a\\%bc", Some('\\')));
+    }
+
+    #[test]
+    fn test_like_match_escape_dangling_and_escaped_escape() {
+        // Dangling escape at pattern end matches nothing (lenient: no crash).
+        assert!(!sql_like_match_esc("abc", "abc!", Some('!')));
+        // Doubled escape `!!` matches a literal `!`.
+        assert!(sql_like_match_esc("a!b", "a!!b", Some('!')));
+        assert!(!sql_like_match_esc("ab", "a!!b", Some('!')));
+    }
+
+    #[test]
+    fn test_like_match_no_escape_backward_compat() {
+        // sql_like_match (no escape) unchanged.
+        assert!(sql_like_match("hello", "h%"));
+        assert!(sql_like_match("hello", "%o"));
+        assert!(!sql_like_match("hello", "world"));
+    }
+
     #[test]
     fn test_find_column_index_qualified_name() {
         let cols = vec![
@@ -3941,9 +4037,9 @@ mod tests {
 
     #[test]
     fn test_like_match_backtracking() {
-        assert!(like_match_recursive("abcd", "a%cd"));
-        assert!(like_match_recursive("abcd", "%d"));
-        assert!(!like_match_recursive("abc", "a%d"));
+        assert!(like_match_recursive("abcd", "a%cd", None));
+        assert!(like_match_recursive("abcd", "%d", None));
+        assert!(!like_match_recursive("abc", "a%d", None));
     }
 
     #[test]
@@ -4046,8 +4142,8 @@ mod tests {
 
     #[test]
     fn test_like_match_with_special_chars() {
-        assert!(like_match_recursive("hello_world", "hello_world"));
-        assert!(!like_match_recursive("helloworld", "hello_world"));
+        assert!(like_match_recursive("hello_world", "hello_world", None));
+        assert!(!like_match_recursive("helloworld", "hello_world", None));
     }
 
     #[test]
