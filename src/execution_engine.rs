@@ -905,11 +905,16 @@ impl<S: StorageEngine + 'static> ExecutionEngine<S> {
     /// Plan lines match the operator vocabulary of the existing
     /// `crates/executor/src/explain.rs` so the test normalizer can
     /// compare them to SQLite `EXPLAIN QUERY PLAN` golden files.
+    ///
+    /// V312-62 / Issues #4617 & #4621: the storage handle is consulted
+    /// so EXPLAIN can report `IndexScan <table>` when an index covers
+    /// the WHERE predicate (#4617) or when `SELECT count(*) FROM t`
+    /// has any index to use as a covering scan (#4621).
     pub fn execute_explain(
         &self,
         select: &sqlrustgo_parser::parser::SelectStatement,
     ) -> SqlResult<ExecutorResult> {
-        let lines = explain_select_plan(select);
+        let lines = explain_select_plan(select, &*self.storage.read());
         let rows: Vec<Vec<Value>> = lines
             .into_iter()
             .map(|line| vec![Value::Text(line)])
@@ -2057,22 +2062,43 @@ pub use crate::engine_collation::{
 //   Limit <n>                      (LIMIT)
 //   Projection <n_cols>            (final SELECT projection)
 //
+// V312-62 / Issues #4617 & #4621: the scan kind (SeqScan vs IndexScan) is
+// derived from `(WHERE predicate, storage.list_indexes(table))` instead of
+// being hardcoded. The rule matches SQLite/MySQL CBO behavior closely
+// enough for the teaching corpus:
+//   - WHERE col OP lit, index on `col`        → IndexScan (absorb Filter)
+//   - WHERE with no matching index            → SeqScan + Filter
+//   - SELECT count(*) FROM t, no WHERE/GROUP  → IndexScan covering scan
+//                                                if any index exists on t
+//
 // Limitations vs the full CBO planner:
 // - No real cost / row estimates (`estimated_rows` is omitted).
-// - No `IndexScan` heuristic: SELECT always emits `SeqScan` even when
-//   an index exists. This is documented as a known divergence in the
-//   `index_scan.sql` oracle test.
+// - The planner's actual `select_scan` still picks the first available
+//   index without consulting the WHERE predicate; matching it is the
+//   v3.13.0 follow-up tracked under "planner: predicate-aware scan
+//   selection".
 pub(crate) fn explain_select_plan(
     select: &sqlrustgo_parser::parser::SelectStatement,
+    storage: &dyn sqlrustgo_storage::StorageEngine,
 ) -> Vec<String> {
     use sqlrustgo_parser::parser::{Expression, JoinType};
     let mut lines: Vec<String> = Vec::new();
 
-    // 1. FROM clause — seq scan (or subquery materialization).
+    // 1. FROM clause — pick scan kind from indexes + WHERE / COUNT(*).
+    let primary_indexed = explain_choose_indexed_scan(select, storage);
     if select.from_subquery.is_some() || select.join_clause.is_empty() {
-        lines.push(format!("SeqScan {}", select.table));
+        if primary_indexed.is_some() {
+            // V312-62 / #4617, #4621: IndexScan is emitted in the same
+            // shape as SeqScan (`<op> <table>`) so the plan_shape oracle
+            // normalizer maps both to the canonical `IndexScan <table>`
+            // form (mirrors SQLite `SEARCH <table> USING INDEX ...`).
+            lines.push(format!("IndexScan {}", select.table));
+        } else {
+            lines.push(format!("SeqScan {}", select.table));
+        }
     } else {
-        // Each FROM source → SeqScan; then join operators.
+        // Each FROM source — SeqScan (multi-table IndexScan selection is
+        // a v3.13.0 follow-up; tracked under #4617 too). Then joins.
         for join in &select.join_clause {
             lines.push(format!("SeqScan {}", join.table));
         }
@@ -2087,13 +2113,23 @@ pub(crate) fn explain_select_plan(
         lines.push(format!("{join_kind}: {} joins", select.join_clause.len()));
     }
 
-    // 2. WHERE clause → Filter.
-    if let Some(w) = &select.where_clause {
-        lines.push(format!("Filter {}", expr_to_plan_string(w)));
+    // 2. WHERE clause → Filter (suppressed when IndexScan absorbed it).
+    if primary_indexed.is_none() {
+        if let Some(w) = &select.where_clause {
+            lines.push(format!("Filter {}", expr_to_plan_string(w)));
+        }
     }
 
     // 3. GROUP BY → GroupBy + Sort (TEMP B-TREE FOR GROUP BY).
-    if !select.group_by.is_empty() || !select.aggregates.is_empty() {
+    //    For `SELECT count(*) FROM t` with no GROUP BY and no WHERE, the
+    //    covering IndexScan above replaces both this block and the Sort.
+    let has_count_only_no_group = primary_indexed.is_some()
+        && select.where_clause.is_none()
+        && select.group_by.is_empty()
+        && is_count_star_only(select);
+    if !has_count_only_no_group
+        && (!select.group_by.is_empty() || !select.aggregates.is_empty())
+    {
         lines.push(format!("GroupBy {} keys", select.group_by.len().max(1)));
         lines.push("Sort (TEMP B-TREE FOR GROUP BY)".to_string());
     }
@@ -2124,6 +2160,118 @@ pub(crate) fn explain_select_plan(
     lines.push(format!("Projection {} cols", select.columns.len()));
 
     lines
+}
+
+/// V312-62 / Issues #4617 & #4621 helper. Inspects `(select, storage)` and
+/// returns `Some((column, index_name))` when the single-table FROM source
+/// can use an index, else `None` (SeqScan).
+///
+/// Selection rules (in priority order):
+/// 1. WHERE has an equality/range predicate on a column with an index →
+///    use that index. The Filter is folded into the IndexScan.
+/// 2. SELECT is bare `COUNT(*)` with no WHERE and no GROUP BY, and the
+///    table has at least one index → use the first index as a covering
+///    scan (sqlite3's count(*) optimization). The GroupBy/Sort pair is
+///    also suppressed in this case.
+/// 3. Otherwise → SeqScan.
+///
+/// Multi-table FROM (JOIN) is NOT considered here — see the v3.13.0
+/// planner follow-up.
+fn explain_choose_indexed_scan(
+    select: &sqlrustgo_parser::parser::SelectStatement,
+    storage: &dyn sqlrustgo_storage::StorageEngine,
+) -> Option<(String, String)> {
+    // JOIN / subquery-FROM → defer to v3.13.0.
+    if !select.join_clause.is_empty() || select.from_subquery.is_some() {
+        return None;
+    }
+
+    let indexes = storage.list_indexes(&select.table);
+    if indexes.is_empty() {
+        return None;
+    }
+
+    // 1. WHERE-based index selection: walk the AND-conjunction looking
+    //    for an Eq/Lt/Lte/Gt/Gte predicate on a column that has an index.
+    if let Some(w) = &select.where_clause {
+        if let Some(col) = explain_extract_indexable_column(w) {
+            for (idx_col, idx_name) in &indexes {
+                if idx_col.eq_ignore_ascii_case(&col) {
+                    return Some((idx_col.clone(), idx_name.clone()));
+                }
+            }
+        }
+        return None;
+    }
+
+    // 2. Bare `SELECT count(*) FROM t` covering-index optimization.
+    if select.group_by.is_empty() && is_count_star_only(select) {
+        let (idx_col, idx_name) = indexes.into_iter().next().unwrap();
+        return Some((idx_col, idx_name));
+    }
+
+    None
+}
+
+/// V312-62 / #4617 helper. Walk a WHERE expression and return the LHS
+/// column name if it is an Eq/Lt/Lte/Gt/Gte BinaryOp whose other side is
+/// a literal (e.g. `col = 20`, `col > 25`). Recurses into `AND` to
+/// find any conjunct that has an indexable column — mirrors
+/// `optimizer::analyze_predicate_for_index` but operates on the parser
+/// `Expression` AST that EXPLAIN has access to.
+fn explain_extract_indexable_column(expr: &sqlrustgo_parser::parser::Expression) -> Option<String> {
+    use sqlrustgo_parser::parser::Expression;
+    match expr {
+        Expression::BinaryOp(left, op, right) => {
+            // `col = lit`, `lit = col`, `col < lit`, ...
+            const CMP_OPS: &[&str] = &["=", "!=", "<", "<=", ">", ">="];
+            if !CMP_OPS.contains(&op.as_str()) {
+                // `AND` is also matched here so we recurse.
+                if op.eq_ignore_ascii_case("AND") {
+                    return explain_extract_indexable_column(left)
+                        .or_else(|| explain_extract_indexable_column(right));
+                }
+                return None;
+            }
+            // Identifier on the left, Literal on the right.
+            if let Expression::Identifier(name) = left.as_ref() {
+                if matches!(right.as_ref(), Expression::Literal(_)) {
+                    return Some(name.clone());
+                }
+            }
+            // Literal on the left, Identifier on the right.
+            if let Expression::Identifier(name) = right.as_ref() {
+                if matches!(left.as_ref(), Expression::Literal(_)) {
+                    return Some(name.clone());
+                }
+            }
+            None
+        }
+        Expression::UnaryOp(op, inner) if op.eq_ignore_ascii_case("NOT") => {
+            // `NOT (col <op> lit)` — extract from the inner expression.
+            explain_extract_indexable_column(inner)
+        }
+        _ => None,
+    }
+}
+
+/// V312-62 / #4621 helper. Returns true iff `select` is a bare
+/// `SELECT count(*) FROM t` (no WHERE, no GROUP BY, no DISTINCT).
+///
+/// The parser represents `COUNT(*)` as `AggregateCall { func: Count,
+/// args: [], distinct: false }` (the `*` is consumed by the parser
+/// and stored as an empty `args` vec — see
+/// `parse_aggregate_function` in `crates/parser/src/parser.rs`).
+fn is_count_star_only(select: &sqlrustgo_parser::parser::SelectStatement) -> bool {
+    use sqlrustgo_parser::parser::AggregateFunction;
+    if !select.where_clause.is_none() || !select.group_by.is_empty() {
+        return false;
+    }
+    if select.aggregates.len() != 1 {
+        return false;
+    }
+    let agg = &select.aggregates[0];
+    agg.func == AggregateFunction::Count && !agg.distinct && agg.args.is_empty()
 }
 
 /// Render an `Expression` for inclusion in a plan line. The corpus
