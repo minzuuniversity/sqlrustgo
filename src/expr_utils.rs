@@ -676,6 +676,58 @@ pub fn evaluate_window_call(
                     }
                     Value::Integer(distinct_groups)
                 }
+                // V312-81 / Issue #4695: LAG(val, offset, default) — value from
+                // `offset` rows before the current row in the partition.
+                "LAG" => {
+                    let offset = if call.args.len() > 1 {
+                        match &call.args[1] {
+                            Expression::Literal(n) => n.parse::<usize>().unwrap_or(1),
+                            _ => 1,
+                        }
+                    } else {
+                        1
+                    };
+                    let default = if call.args.len() > 2 {
+                        evaluate_expression(&call.args[2], &rows[row_idx], table_info)
+                            .unwrap_or(Value::Null)
+                    } else {
+                        Value::Null
+                    };
+                    if local_idx >= offset {
+                        let target_local_idx = local_idx - offset;
+                        let target_row_idx = indices[target_local_idx];
+                        evaluate_expression(&call.args[0], &rows[target_row_idx], table_info)
+                            .unwrap_or(default)
+                    } else {
+                        default
+                    }
+                }
+                // V312-81 / Issue #4695: LEAD(val, offset, default) — value from
+                // `offset` rows after the current row in the partition.
+                "LEAD" => {
+                    let offset = if call.args.len() > 1 {
+                        match &call.args[1] {
+                            Expression::Literal(n) => n.parse::<usize>().unwrap_or(1),
+                            _ => 1,
+                        }
+                    } else {
+                        1
+                    };
+                    let default = if call.args.len() > 2 {
+                        evaluate_expression(&call.args[2], &rows[row_idx], table_info)
+                            .unwrap_or(Value::Null)
+                    } else {
+                        Value::Null
+                    };
+                    let target_local_idx = local_idx + offset;
+                    if target_local_idx < indices.len() {
+                        let target_row_idx = indices[target_local_idx];
+                        evaluate_expression(&call.args[0], &rows[target_row_idx], table_info)
+                            .unwrap_or(default)
+                    } else {
+                        default
+                    }
+                }
                 "SUM" | "AVG" | "COUNT" | "MIN" | "MAX" => {
                     // Aggregate over the full partition (no frame clause yet).
                     if call.args.is_empty() {
