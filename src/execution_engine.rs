@@ -160,6 +160,12 @@ pub struct ExecutionEngine<S: StorageEngine> {
     /// the result here. See `src/sequence_state.rs` and
     /// `/tmp/perf-evidence/report.md` for the perf rationale.
     pub(crate) sequence_state: Arc<crate::sequence_state::SequenceState>,
+    /// V312-64f / Issue #4699: per-engine override for the recursive CTE
+    /// row cap (`MAX_RECURSION_ROWS` in `engine_cte`). Defaults to
+    /// 1_000_000 (SQLite default). Tests use
+    /// `with_recursive_cte_max_rows` to lower the cap without spinning up
+    /// 1M-row fixtures.
+    pub recursive_cte_max_rows: usize,
 }
 
 /// Transaction status for lifecycle enforcement
@@ -250,6 +256,7 @@ impl<S: StorageEngine + 'static> ExecutionEngine<S> {
             instrumentation: Arc::new(sqlrustgo_executor::instrumentation::NoopInstrumentationHook),
             session_vars: Arc::new(RwLock::new(HashMap::new())),
             sequence_state: Arc::new(crate::sequence_state::SequenceState::new()),
+            recursive_cte_max_rows: 1_000_000,
         }
     }
     /// Get a handle to the shared Adaptive Hash Index used for hot-page tracking.
@@ -272,6 +279,14 @@ impl<S: StorageEngine + 'static> ExecutionEngine<S> {
     /// V312-55F / Issue #4243: returns the current session user identity.
     pub fn current_user(&self) -> &UserIdentity {
         &self.current_user
+    }
+
+    /// V312-64f / Issue #4699: override the recursive CTE row cap for
+    /// this engine. Production default is 1_000_000 (SQLite); tests use
+    /// this builder to lower the cap without generating 1M-row fixtures.
+    pub fn with_recursive_cte_max_rows(mut self, cap: usize) -> Self {
+        self.recursive_cte_max_rows = cap;
+        self
     }
 
     /// V312-55F / Issue #4243: enforce a privilege check on the current user
