@@ -53,6 +53,7 @@ impl ExecutionEngine<MemoryStorage> {
             instrumentation: Arc::new(sqlrustgo_executor::instrumentation::NoopInstrumentationHook),
             session_vars: Arc::new(RwLock::new(std::collections::HashMap::new())),
             sequence_state: Arc::new(crate::sequence_state::SequenceState::new()),
+            recursive_cte_max_rows: 1_000_000,
         }
     }
 
@@ -83,6 +84,7 @@ impl ExecutionEngine<MemoryStorage> {
             instrumentation: Arc::new(sqlrustgo_executor::instrumentation::NoopInstrumentationHook),
             session_vars: Arc::new(RwLock::new(std::collections::HashMap::new())),
             sequence_state: Arc::new(crate::sequence_state::SequenceState::new()),
+            recursive_cte_max_rows: 1_000_000,
         }
     }
 
@@ -113,6 +115,7 @@ impl ExecutionEngine<MemoryStorage> {
             instrumentation: Arc::new(sqlrustgo_executor::instrumentation::NoopInstrumentationHook),
             session_vars: Arc::new(RwLock::new(std::collections::HashMap::new())),
             sequence_state: Arc::new(crate::sequence_state::SequenceState::new()),
+            recursive_cte_max_rows: 1_000_000,
         }
     }
 }
@@ -154,6 +157,7 @@ impl ExecutionEngine<MemoryStorage> {
             instrumentation: Arc::new(sqlrustgo_executor::instrumentation::NoopInstrumentationHook),
             session_vars: Arc::new(RwLock::new(std::collections::HashMap::new())),
             sequence_state: Arc::new(crate::sequence_state::SequenceState::new()),
+            recursive_cte_max_rows: 1_000_000,
         }
     }
 }
@@ -200,6 +204,7 @@ impl ExecutionEngine<MemoryStorage> {
             instrumentation: Arc::new(sqlrustgo_executor::instrumentation::NoopInstrumentationHook),
             session_vars: Arc::new(RwLock::new(std::collections::HashMap::new())),
             sequence_state: Arc::new(crate::sequence_state::SequenceState::new()),
+            recursive_cte_max_rows: 1_000_000,
         })
     }
 
@@ -241,6 +246,7 @@ impl ExecutionEngine<MemoryStorage> {
             instrumentation: Arc::new(sqlrustgo_executor::instrumentation::NoopInstrumentationHook),
             session_vars: Arc::new(RwLock::new(std::collections::HashMap::new())),
             sequence_state: Arc::new(crate::sequence_state::SequenceState::new()),
+            recursive_cte_max_rows: 1_000_000,
         })
     }
 
@@ -283,6 +289,7 @@ impl ExecutionEngine<MemoryStorage> {
             instrumentation: Arc::new(sqlrustgo_executor::instrumentation::NoopInstrumentationHook),
             session_vars: Arc::new(RwLock::new(std::collections::HashMap::new())),
             sequence_state: Arc::new(crate::sequence_state::SequenceState::new()),
+            recursive_cte_max_rows: 1_000_000,
         })
     }
 
