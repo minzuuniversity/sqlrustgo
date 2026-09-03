@@ -1309,12 +1309,10 @@ fn sql_like_match(text: &str, pattern: &str) -> bool {
                     ti += 1;
                     continue;
                 }
-                '\\' if pi + 1 < pat_bytes.len() => {
-                    if pat_bytes[pi + 1] == txt_bytes[ti] {
-                        pi += 2;
-                        ti += 1;
-                        continue;
-                    }
+                '\\' if pi + 1 < pat_bytes.len() && pat_bytes[pi + 1] == txt_bytes[ti] => {
+                    pi += 2;
+                    ti += 1;
+                    continue;
                 }
                 c if c == txt_bytes[ti] => {
                     pi += 1;

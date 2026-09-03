@@ -115,15 +115,13 @@ fn visit(expr: &Expression, loc: &SubqueryLocation, out: &mut Vec<Decorrelatable
                 },
             });
         }
-        Subquery(subq) => {
-            if *loc == SubqueryLocation::Projection {
-                out.push(DecorrelatableSubquery {
-                    location: SubqueryLocation::Projection,
-                    pattern: SubqueryPattern::ScalarAggGroupBy {
-                        inner: Box::new(Expression::Subquery(subq.clone())),
-                    },
-                });
-            }
+        Subquery(subq) if *loc == SubqueryLocation::Projection => {
+            out.push(DecorrelatableSubquery {
+                location: SubqueryLocation::Projection,
+                pattern: SubqueryPattern::ScalarAggGroupBy {
+                    inner: Box::new(Expression::Subquery(subq.clone())),
+                },
+            });
         }
         BinaryOp(l, op, r) => {
             if let Some(pat) = try_scalar_agg_in_where(l, op, r) {
@@ -612,7 +610,7 @@ mod tests {
             _ => panic!("expected SELECT"),
         };
         let where_expr = select.where_clause.as_ref().unwrap();
-        let patterns = find_correlated_subqueries(where_expr, &[]);
+        let _patterns = find_correlated_subqueries(where_expr, &[]);
         let scalar_subs = find_scalar_subqueries(where_expr);
         assert_eq!(scalar_subs, 1, "should find 1 scalar subquery in WHERE");
     }
