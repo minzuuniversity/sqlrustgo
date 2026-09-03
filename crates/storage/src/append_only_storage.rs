@@ -662,6 +662,7 @@ mod tests {
             timing: crate::engine::TriggerTiming::Before,
             event: crate::engine::TriggerEvent::Insert,
             body: String::new(),
+        update_columns: None,
         };
         s.create_trigger(trig).unwrap();
         s.drop_trigger("n").unwrap();

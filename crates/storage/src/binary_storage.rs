@@ -1399,6 +1399,7 @@ mod tests {
             timing: crate::engine::TriggerTiming::Before,
             event: crate::engine::TriggerEvent::Insert,
             body: "".to_string(),
+            update_columns: None,
         };
         storage.create_trigger(trigger).unwrap();
         std::fs::remove_dir_all(tmp).ok();
