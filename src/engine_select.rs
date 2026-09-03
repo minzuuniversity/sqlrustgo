@@ -5706,7 +5706,8 @@ impl<S: StorageEngine + 'static> ExecutionEngine<S> {
             | Expression::SequenceCurrval(_)
             | Expression::SystemVariable(_)
             | Expression::JsonLiteral(_)
-            | Expression::ArrayLiteral(_) => where_expr.clone(),
+            | Expression::ArrayLiteral(_)
+            | Expression::Interval(_, _) => where_expr.clone(),
         }
     }
 

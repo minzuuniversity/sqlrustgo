@@ -2453,7 +2453,8 @@ fn substitute_udf_params(
         | Expression::QuantifiedOp(_, _, _)
         | Expression::Aggregate(_)
         | Expression::WindowCall(_)
-        | Expression::ArrayLiteral(_) => expr.clone(),
+        | Expression::ArrayLiteral(_)
+        | Expression::Interval(_, _) => expr.clone(),
         Expression::BinaryOp(l, op, r) => Expression::BinaryOp(
             Box::new(substitute_udf_params(l, params, args)),
             op.clone(),
