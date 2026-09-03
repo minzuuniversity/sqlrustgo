@@ -132,6 +132,98 @@ fn test_parse_nulls_first() {
     test_window_parse("SELECT ROW_NUMBER() OVER (ORDER BY salary NULLS FIRST) FROM employees");
 }
 
+#[test]
+fn test_parse_nulls_last() {
+    // NULLS LAST postfix
+    test_window_parse("SELECT ROW_NUMBER() OVER (ORDER BY salary NULLS LAST) FROM employees");
+}
+
+#[test]
+fn test_parse_nulls_first_asc_default() {
+    // ASC NULLS FIRST
+    test_window_parse("SELECT ROW_NUMBER() OVER (ORDER BY salary ASC NULLS FIRST) FROM employees");
+}
+
+#[test]
+fn test_parse_nulls_last_desc() {
+    // DESC NULLS LAST (overrides DESC default of NULLS FIRST)
+    test_window_parse("SELECT ROW_NUMBER() OVER (ORDER BY salary DESC NULLS LAST) FROM employees");
+}
+
+#[test]
+fn test_parse_exclude_current_row() {
+    // EXCLUDE CURRENT ROW drops the current row from the frame
+    test_window_parse(
+        "SELECT ROW_NUMBER() OVER (ORDER BY id ROWS BETWEEN UNBOUNDED PRECEDING AND CURRENT ROW EXCLUDE CURRENT ROW) FROM data",
+    );
+}
+
+#[test]
+fn test_parse_exclude_ties() {
+    // EXCLUDE TIES drops all rows tied with the current row
+    test_window_parse(
+        "SELECT ROW_NUMBER() OVER (ORDER BY id ROWS BETWEEN UNBOUNDED PRECEDING AND CURRENT ROW EXCLUDE TIES) FROM data",
+    );
+}
+
+#[test]
+fn test_parse_exclude_group() {
+    // EXCLUDE GROUP drops the entire peer group
+    test_window_parse(
+        "SELECT ROW_NUMBER() OVER (ORDER BY id ROWS BETWEEN UNBOUNDED PRECEDING AND CURRENT ROW EXCLUDE GROUP) FROM data",
+    );
+}
+
+#[test]
+fn test_parse_exclude_no_others() {
+    // EXCLUDE NO OTHERS keeps only the current peer group
+    test_window_parse(
+        "SELECT ROW_NUMBER() OVER (ORDER BY id ROWS BETWEEN UNBOUNDED PRECEDING AND CURRENT ROW EXCLUDE NO OTHERS) FROM data",
+    );
+}
+
+#[test]
+fn test_parse_exclude_without_frame_omitted() {
+    // EXCLUDE without an explicit frame should still parse (EXCLUDE is
+    // an optional postfix; if frame is None the exclusion has no effect).
+    test_window_parse("SELECT ROW_NUMBER() OVER (ORDER BY id EXCLUDE CURRENT ROW) FROM data");
+}
+
+#[test]
+fn test_parse_exclude_lowercase() {
+    // EXCLUDE keyword is case-insensitive
+    test_window_parse(
+        "SELECT ROW_NUMBER() OVER (ORDER BY id ROWS BETWEEN UNBOUNDED PRECEDING AND CURRENT ROW exclude current row) FROM data",
+    );
+}
+
+#[test]
+fn test_parse_exclude_unknown_mode_rejected() {
+    // EXCLUDE with an unknown mode must fail at parse time, not silently
+    // bind to a no-op.
+    let result = parse(
+        "SELECT ROW_NUMBER() OVER (ORDER BY id ROWS BETWEEN UNBOUNDED PRECEDING AND CURRENT ROW EXCLUDE FOO) FROM data",
+    );
+    assert!(
+        result.is_err(),
+        "EXCLUDE FOO must be rejected, got: {:?}",
+        result
+    );
+}
+
+#[test]
+fn test_parse_exclude_current_requires_row() {
+    // EXCLUDE CURRENT without ROW is a malformed SQL:2003 frame postfix.
+    let result = parse(
+        "SELECT ROW_NUMBER() OVER (ORDER BY id ROWS BETWEEN UNBOUNDED PRECEDING AND CURRENT ROW EXCLUDE CURRENT) FROM data",
+    );
+    assert!(
+        result.is_err(),
+        "EXCLUDE CURRENT (without ROW) must be rejected, got: {:?}",
+        result
+    );
+}
+
 // ============================================================================
 // Summary Test - Verify key window functions work
 // ============================================================================
@@ -157,6 +249,110 @@ fn test_summary_window_parse_works() {
             result
         );
     }
+}
+
+// ============================================================================
+// NULLS FIRST / NULLS LAST Executor Behaviour
+// ============================================================================
+
+#[test]
+fn test_execute_nulls_first_default_asc() {
+    // ASC NULLS FIRST: NULLs sort before non-NULLs.
+    // SQL:1999 §6.10 default for ASC is NULLS LAST, so NULLS FIRST
+    // explicitly overrides the default.
+    let mut engine = ExecutionEngine::new(Arc::new(RwLock::new(MemoryStorage::new())));
+    engine
+        .execute("CREATE TABLE t (id INTEGER, v INTEGER)")
+        .unwrap();
+    engine
+        .execute("INSERT INTO t VALUES (1, 10), (2, NULL), (3, 30), (4, NULL), (5, 20)")
+        .unwrap();
+
+    let r = engine
+        .execute("SELECT ROW_NUMBER() OVER (ORDER BY v NULLS FIRST) AS r, v FROM t ORDER BY r")
+        .unwrap();
+    // ROW_NUMBER assigns 1, 2 to NULLs (in input order), then 3, 4, 5 to 10, 20, 30.
+    assert_eq!(r.rows.len(), 5);
+    // First two rows are NULLs (r=1, r=2 in some order)
+    assert!(matches!(r.rows[0][1], sqlrustgo::Value::Null));
+    assert!(matches!(r.rows[1][1], sqlrustgo::Value::Null));
+    // Remaining three are 10, 20, 30 in ascending order
+    assert_eq!(r.rows[2][1], sqlrustgo::Value::Integer(10));
+    assert_eq!(r.rows[3][1], sqlrustgo::Value::Integer(20));
+    assert_eq!(r.rows[4][1], sqlrustgo::Value::Integer(30));
+}
+
+#[test]
+fn test_execute_nulls_last_default_asc() {
+    // ASC NULLS LAST: NULLs sort after non-NULLs (matches SQL:1999 default).
+    let mut engine = ExecutionEngine::new(Arc::new(RwLock::new(MemoryStorage::new())));
+    engine
+        .execute("CREATE TABLE t (id INTEGER, v INTEGER)")
+        .unwrap();
+    engine
+        .execute("INSERT INTO t VALUES (1, 10), (2, NULL), (3, 30), (4, NULL), (5, 20)")
+        .unwrap();
+
+    let r = engine
+        .execute("SELECT ROW_NUMBER() OVER (ORDER BY v NULLS LAST) AS r, v FROM t ORDER BY r")
+        .unwrap();
+    assert_eq!(r.rows.len(), 5);
+    // First three rows are non-NULLs in ascending order: 10, 20, 30
+    assert_eq!(r.rows[0][1], sqlrustgo::Value::Integer(10));
+    assert_eq!(r.rows[1][1], sqlrustgo::Value::Integer(20));
+    assert_eq!(r.rows[2][1], sqlrustgo::Value::Integer(30));
+    // Last two rows are NULLs (r=4, r=5 in some order)
+    assert!(matches!(r.rows[3][1], sqlrustgo::Value::Null));
+    assert!(matches!(r.rows[4][1], sqlrustgo::Value::Null));
+}
+
+#[test]
+fn test_execute_nulls_first_default_desc() {
+    // DESC NULLS FIRST: NULLs sort before non-NULLs (matches SQL:1999 default
+    // for DESC).
+    let mut engine = ExecutionEngine::new(Arc::new(RwLock::new(MemoryStorage::new())));
+    engine
+        .execute("CREATE TABLE t (id INTEGER, v INTEGER)")
+        .unwrap();
+    engine
+        .execute("INSERT INTO t VALUES (1, 10), (2, NULL), (3, 30), (4, NULL), (5, 20)")
+        .unwrap();
+
+    let r = engine
+        .execute("SELECT ROW_NUMBER() OVER (ORDER BY v DESC NULLS FIRST) AS r, v FROM t ORDER BY r")
+        .unwrap();
+    assert_eq!(r.rows.len(), 5);
+    // First two rows are NULLs
+    assert!(matches!(r.rows[0][1], sqlrustgo::Value::Null));
+    assert!(matches!(r.rows[1][1], sqlrustgo::Value::Null));
+    // Remaining three are 30, 20, 10 in descending order
+    assert_eq!(r.rows[2][1], sqlrustgo::Value::Integer(30));
+    assert_eq!(r.rows[3][1], sqlrustgo::Value::Integer(20));
+    assert_eq!(r.rows[4][1], sqlrustgo::Value::Integer(10));
+}
+
+#[test]
+fn test_execute_nulls_last_desc() {
+    // DESC NULLS LAST: NULLs sort after non-NULLs, overriding the DESC default.
+    let mut engine = ExecutionEngine::new(Arc::new(RwLock::new(MemoryStorage::new())));
+    engine
+        .execute("CREATE TABLE t (id INTEGER, v INTEGER)")
+        .unwrap();
+    engine
+        .execute("INSERT INTO t VALUES (1, 10), (2, NULL), (3, 30), (4, NULL), (5, 20)")
+        .unwrap();
+
+    let r = engine
+        .execute("SELECT ROW_NUMBER() OVER (ORDER BY v DESC NULLS LAST) AS r, v FROM t ORDER BY r")
+        .unwrap();
+    assert_eq!(r.rows.len(), 5);
+    // First three rows are non-NULLs in descending order: 30, 20, 10
+    assert_eq!(r.rows[0][1], sqlrustgo::Value::Integer(30));
+    assert_eq!(r.rows[1][1], sqlrustgo::Value::Integer(20));
+    assert_eq!(r.rows[2][1], sqlrustgo::Value::Integer(10));
+    // Last two rows are NULLs
+    assert!(matches!(r.rows[3][1], sqlrustgo::Value::Null));
+    assert!(matches!(r.rows[4][1], sqlrustgo::Value::Null));
 }
 
 // ============================================================================

@@ -147,7 +147,8 @@ pub fn expression_to_string(expr: &sqlrustgo_parser::Expression) -> String {
                                 i += 1;
                                 continue;
                             }
-                            if let Some(sqlrustgo_parser::Expression::Literal(d)) = agg.args.get(i) {
+                            if let Some(sqlrustgo_parser::Expression::Literal(d)) = agg.args.get(i)
+                            {
                                 if d == "__DESC__" {
                                     ob.push_str(" DESC");
                                     i += 1;
@@ -584,20 +585,49 @@ pub fn evaluate_window_call(
                 let row_a = &rows[a];
                 let row_b = &rows[b];
                 let mut cmp = std::cmp::Ordering::Equal;
-                for (sort_expr, asc) in &call.window_spec.order_by {
+                for (sort_expr, asc, nulls_first) in &call.window_spec.order_by {
                     let val_a =
                         evaluate_expression(sort_expr, row_a, table_info).unwrap_or(Value::Null);
                     let val_b =
                         evaluate_expression(sort_expr, row_b, table_info).unwrap_or(Value::Null);
-                    // Three-valued comparison: Null sorts after everything,
-                    // matching standard SQL NULLS LAST default.
-                    let step = match (val_a == Value::Null, val_b == Value::Null) {
-                        (true, true) => std::cmp::Ordering::Equal,
-                        (true, false) => std::cmp::Ordering::Greater,
-                        (false, true) => std::cmp::Ordering::Less,
-                        (false, false) => compare_values(&val_a, &val_b).cmp(&0),
+                    // Three-valued comparison. SQL:1999 §6.10 default is
+                    // NULLS LAST for ASC, NULLS FIRST for DESC. The
+                    // explicit NULLS FIRST / NULLS LAST clause overrides
+                    // that default.
+                    //
+                    // The null-vs-non-null case is independent of ASC/DESC
+                    // direction: NULLS FIRST always puts NULLs at the
+                    // beginning, NULLS LAST always puts them at the end.
+                    // Only the non-null comparison is reversed by DESC.
+                    let nulls_first_default = !*asc; // ASC: NULLS LAST; DESC: NULLS FIRST
+                    let effective_nulls_first = nulls_first.unwrap_or(nulls_first_default);
+                    let nulls_step = match (val_a == Value::Null, val_b == Value::Null) {
+                        (true, true) => return std::cmp::Ordering::Equal,
+                        (true, false) => {
+                            if effective_nulls_first {
+                                std::cmp::Ordering::Less
+                            } else {
+                                std::cmp::Ordering::Greater
+                            }
+                        }
+                        (false, true) => {
+                            if effective_nulls_first {
+                                std::cmp::Ordering::Greater
+                            } else {
+                                std::cmp::Ordering::Less
+                            }
+                        }
+                        (false, false) => std::cmp::Ordering::Equal,
                     };
-                    let step = if *asc { step } else { step.reverse() };
+                    if !matches!(nulls_step, std::cmp::Ordering::Equal) {
+                        cmp = nulls_step;
+                        break;
+                    }
+                    // Both non-null: normal compare, then reverse for DESC.
+                    let mut step = compare_values(&val_a, &val_b).cmp(&0);
+                    if !*asc {
+                        step = step.reverse();
+                    }
                     if step != std::cmp::Ordering::Equal {
                         cmp = step;
                         break;
@@ -630,7 +660,7 @@ pub fn evaluate_window_call(
                     let mut earlier_diff_groups = 0i64;
                     for &prev_idx in indices.iter().take(local_idx) {
                         let mut same = true;
-                        for (sort_expr, _) in &call.window_spec.order_by {
+                        for (sort_expr, _, _) in &call.window_spec.order_by {
                             let cur = evaluate_expression(sort_expr, &rows[row_idx], table_info)
                                 .unwrap_or(Value::Null);
                             let prv = evaluate_expression(sort_expr, &rows[prev_idx], table_info)
@@ -660,7 +690,7 @@ pub fn evaluate_window_call(
                         let prev_idx = pair[0];
                         let next_idx = pair[1];
                         let mut same = true;
-                        for (sort_expr, _) in &call.window_spec.order_by {
+                        for (sort_expr, _, _) in &call.window_spec.order_by {
                             let a = evaluate_expression(sort_expr, &rows[prev_idx], table_info)
                                 .unwrap_or(Value::Null);
                             let b = evaluate_expression(sort_expr, &rows[next_idx], table_info)
