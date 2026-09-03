@@ -90,8 +90,6 @@ pub fn rewrite_step_table_refs(
     from: &str,
     to: &str,
 ) -> sqlrustgo_parser::SelectStatement {
-    use sqlrustgo_parser::Statement;
-
     let mut cloned = stmt.clone();
 
     // Top-level FROM

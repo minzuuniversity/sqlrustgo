@@ -51,3 +51,55 @@ fn rec_cte_hierarchy_issue_body() {
     assert_eq!(r.rows[3][0], Value::Integer(4));
     assert_eq!(r.rows[4][0], Value::Integer(5));
 }
+
+// ============================================================================
+// Issue #4699 — count 1..N (terminating recursion)
+// ============================================================================
+
+#[test]
+fn rec_cte_count_1_to_n() {
+    // Terminating recursion: WHERE n < 10 stops the loop at 10 rows.
+    let mut e = fresh_mem();
+    let r = e
+        .execute(
+            "WITH RECURSIVE cnt AS ( \
+            SELECT 1 AS n UNION ALL \
+            SELECT n + 1 FROM cnt WHERE n < 10 \
+         ) SELECT n FROM cnt ORDER BY n",
+        )
+        .unwrap();
+    assert_eq!(r.rows.len(), 10, "expected 10 rows, got {}", r.rows.len());
+    for i in 0..10 {
+        assert_eq!(r.rows[i][0], Value::Integer((i + 1) as i64));
+    }
+}
+
+#[test]
+fn rec_cte_union_dedup_implicit_termination() {
+    // UNION (not ALL): step produces duplicates; dedup against accumulated
+    // causes termination when no new rows remain.
+    let mut e = fresh_mem();
+    e.execute("CREATE TABLE nums(n INT)").unwrap();
+    e.execute("INSERT INTO nums VALUES (1), (2), (3)").unwrap();
+
+    // Step is `SELECT n FROM nums` — same as anchor; UNION dedupes
+    // against accumulated, so after one iteration no new rows remain.
+    let r = e
+        .execute(
+            "WITH RECURSIVE all_n AS ( \
+            SELECT n FROM nums \
+            UNION \
+            SELECT n FROM nums JOIN all_n ON nums.n = all_n.n \
+         ) SELECT n FROM all_n ORDER BY n",
+        )
+        .unwrap();
+    assert_eq!(
+        r.rows.len(),
+        3,
+        "expected 3 distinct values, got {}",
+        r.rows.len()
+    );
+    assert_eq!(r.rows[0][0], Value::Integer(1));
+    assert_eq!(r.rows[1][0], Value::Integer(2));
+    assert_eq!(r.rows[2][0], Value::Integer(3));
+}
