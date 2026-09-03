@@ -2558,11 +2558,15 @@ impl Parser {
                 // Each USING param is a user variable (`@name`); the
                 // lexer emits it as `Identifier("@name")` so the
                 // executor can resolve it via the session variable map.
+                // Literals (numbers / strings) are also accepted for
+                // MySQL `EXECUTE ... USING 1, 'x'` compatibility.
                 let p = match self.next() {
                     Some(Token::Identifier(n)) if n.starts_with('@') => Expression::Identifier(n),
+                    Some(Token::NumberLiteral(v)) => Expression::Literal(v),
+                    Some(Token::StringLiteral(v)) => Expression::Literal(format!("'{}'", v)),
                     Some(t) => {
                         return Err(format!(
-                            "Expected user variable (@name) in USING clause, got {:?}",
+                            "Expected user variable (@name) or literal in USING clause, got {:?}",
                             t
                         ))
                     }
@@ -2775,6 +2779,13 @@ impl Parser {
                 self.next();
                 self.parse_create_fulltext_index()
             }
+            // V312-76 / Issue #4682: `CREATE VIRTUAL TABLE name USING
+            // module ( args )` (SQLite FTS5 / RTree). VIRTUAL is not a
+            // reserved keyword, so it arrives as a plain Identifier.
+            Some(Token::Identifier(ref id)) if id.eq_ignore_ascii_case("VIRTUAL") => {
+                self.next();
+                self.parse_create_virtual_table()
+            }
             Some(Token::Trigger) => self.parse_create_trigger(),
             Some(Token::Role) => self.parse_create_role(),
             Some(Token::View) => self.parse_create_view(),
@@ -2791,6 +2802,107 @@ impl Parser {
                     .to_string(),
             ),
         }
+    }
+
+    /// V312-76 / Issue #4682: `CREATE VIRTUAL TABLE name USING module
+    /// ( args )` (SQLite FTS5 / RTree). Synthesizes a regular
+    /// `CreateTableStatement`: bare module arguments become TEXT
+    /// columns; `key = value` module options (e.g.
+    /// `tokenize = 'porter'`) are accepted and ignored. The virtual
+    /// table is stored and queryable as an ordinary table (content is
+    /// persisted; no inverted index — `MATCH` is not implemented and
+    /// remains future work).
+    fn parse_create_virtual_table(&mut self) -> Result<Statement, String> {
+        self.expect(Token::Table)?;
+
+        // [IF NOT EXISTS] — same shape as parse_create_table.
+        let if_not_exists = if matches!(self.current(), Some(Token::If)) {
+            self.next();
+            match self.current() {
+                Some(Token::Not) => {
+                    self.next();
+                    match self.current() {
+                        Some(Token::Exists) => {
+                            self.next();
+                            true
+                        }
+                        _ => return Err("Expected 'EXISTS' after 'NOT'".to_string()),
+                    }
+                }
+                _ => return Err("Expected 'NOT EXISTS' after 'IF'".to_string()),
+            }
+        } else {
+            false
+        };
+
+        let name = match self.next() {
+            Some(Token::Identifier(name)) => name,
+            _ => return Err("Expected virtual table name".to_string()),
+        };
+
+        self.expect(Token::Using)?;
+        let _module = match self.next() {
+            Some(Token::Identifier(module)) => module,
+            _ => return Err("Expected module name after USING".to_string()),
+        };
+
+        // Argument list: bare identifiers are column names (FTS5
+        // columns are untyped); `key = value` options are skipped.
+        let mut columns: Vec<ColumnDefinition> = Vec::new();
+        if matches!(self.current(), Some(Token::LParen)) {
+            self.next();
+            loop {
+                match self.current() {
+                    Some(Token::Identifier(arg)) => {
+                        let arg = arg.clone();
+                        self.next();
+                        if matches!(self.current(), Some(Token::Equal)) {
+                            // Module option `key = value` — consume the
+                            // value (identifier or literal) and skip.
+                            self.next();
+                            self.next();
+                        } else {
+                            columns.push(ColumnDefinition {
+                                name: arg,
+                                data_type: "TEXT".to_string(),
+                                nullable: true,
+                                primary_key: false,
+                                char_max_length: None,
+                                collation: None,
+                                default_value: None,
+                                auto_increment: false,
+                                references: None,
+                            });
+                        }
+                    }
+                    Some(Token::Comma) => {
+                        self.next();
+                    }
+                    Some(Token::RParen) => {
+                        self.next();
+                        break;
+                    }
+                    other => {
+                        return Err(format!(
+                            "Unexpected token {:?} in VIRTUAL TABLE argument list",
+                            other
+                        ))
+                    }
+                }
+            }
+        }
+
+        Ok(Statement::CreateTable(CreateTableStatement {
+            name,
+            columns,
+            constraints: Vec::new(),
+            if_not_exists,
+            storage_engine: None,
+            compress: None,
+            select: None,
+            or_replace: false,
+            with_data: None,
+        }))
     }
 
     fn parse_create_sequence(&mut self) -> Result<Statement, String> {
@@ -3031,9 +3143,7 @@ impl Parser {
 
         let index_name = match self.next() {
             Some(Token::Identifier(name)) => name,
-            Some(t) => {
-                return Err(format!("Expected fulltext index name, got {:?}", t))
-            }
+            Some(t) => return Err(format!("Expected fulltext index name, got {:?}", t)),
             None => return Err("Expected fulltext index name".to_string()),
         };
         self.expect(Token::On)?;
@@ -3044,12 +3154,14 @@ impl Parser {
         };
         self.expect(Token::LParen)?;
         let columns = self.parse_column_list()?;
-        Ok(Statement::CreateFulltextIndex(CreateFulltextIndexStatement {
-            name: index_name,
-            table: table_name,
-            columns,
-            if_not_exists,
-        }))
+        Ok(Statement::CreateFulltextIndex(
+            CreateFulltextIndexStatement {
+                name: index_name,
+                table: table_name,
+                columns,
+                if_not_exists,
+            },
+        ))
     }
 
     fn parse_create_procedure(&mut self) -> Result<Statement, String> {
@@ -7384,11 +7496,7 @@ impl Parser {
                                 t
                             ))
                         }
-                        None => {
-                            return Err(
-                                "Unexpected end of input after RETURNING".to_string(),
-                            )
-                        }
+                        None => return Err("Unexpected end of input after RETURNING".to_string()),
                     };
                     cols.push(name);
                     if !matches!(self.current(), Some(Token::Comma)) {
@@ -7513,8 +7621,8 @@ impl Parser {
             Some(Token::Identifier(s)) if s.eq_ignore_ascii_case("GROUPS") => {
                 self.next();
                 FrameMode::Range // mirror RANGE — groups vs range semantics
-                                  // are not distinguished at evaluation time
-                                  // (the executor only counts rows).
+                                 // are not distinguished at evaluation time
+                                 // (the executor only counts rows).
             }
             _ => return Ok(None),
         };
@@ -7550,9 +7658,7 @@ impl Parser {
         if matches!(self.current(), Some(Token::Current)) {
             self.next();
             if !matches!(self.current(), Some(Token::Row)) {
-                return Err(
-                    "window frame: expected ROW after CURRENT".to_string(),
-                );
+                return Err("window frame: expected ROW after CURRENT".to_string());
             }
             self.next();
             return Ok(FrameBound::CurrentRow);
@@ -7577,8 +7683,7 @@ impl Parser {
                 return Ok(FrameBound::UnboundedFollowing);
             }
             return Err(
-                "window frame: expected PRECEDING or FOLLOWING after UNBOUNDED"
-                    .to_string(),
+                "window frame: expected PRECEDING or FOLLOWING after UNBOUNDED".to_string(),
             );
         }
         // <n> PRECEDING | <n> FOLLOWING
@@ -7604,20 +7709,23 @@ impl Parser {
             }
             Some(Token::Float) | Some(Token::Identifier(_)) => {
                 return Err(
-                    "window frame bound must be a non-negative integer or keyword"
-                        .to_string(),
+                    "window frame bound must be a non-negative integer or keyword".to_string(),
                 );
             }
             _ => {
                 return Err(
-                    "window frame bound expected (integer, CURRENT ROW, or UNBOUNDED)"
-                        .to_string(),
+                    "window frame bound expected (integer, CURRENT ROW, or UNBOUNDED)".to_string(),
                 );
             }
         };
         let n: usize = match raw.trim().parse() {
             Ok(v) => v,
-            Err(_) => return Err(format!("window frame bound is not a non-negative integer: {}", raw)),
+            Err(_) => {
+                return Err(format!(
+                    "window frame bound is not a non-negative integer: {}",
+                    raw
+                ))
+            }
         };
         if matches!(self.current(), Some(Token::Preceding)) {
             self.next();
@@ -10503,6 +10611,10 @@ impl Parser {
     /// inside `parse_create_table`'s constraint loop, but factored
     /// out so ALTER TABLE can reuse it without duplicating the
     /// PRIMARY KEY / UNIQUE / FOREIGN KEY / CHECK branches.
+    // Currently no caller routes through this factored-out helper
+    // (CREATE TABLE keeps its inline loop); kept for the planned
+    // ALTER TABLE ADD CONSTRAINT reuse.
+    #[allow(dead_code)]
     fn parse_one_table_constraint(&mut self) -> Result<TableConstraint, String> {
         // Caller already consumed the `CONSTRAINT` keyword.
         let name = match self.next() {
