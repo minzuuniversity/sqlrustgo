@@ -380,6 +380,7 @@ mod tests {
             timing: crate::engine::TriggerTiming::Before,
             event: crate::engine::TriggerEvent::Insert,
             body: String::new(),
+        update_columns: None,
         };
         guarded.create_trigger(trig).unwrap();
         assert!(guarded.get_trigger("tr").is_some());

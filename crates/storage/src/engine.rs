@@ -537,6 +537,14 @@ pub struct TriggerInfo {
     pub timing: TriggerTiming,
     pub event: TriggerEvent,
     pub body: String,
+    /// V312-75 / Issue #4700: column list for column-level
+    /// UPDATE triggers (`UPDATE OF col1, col2, ...`). `None` for
+    /// whole-table UPDATE triggers or INSERT/DELETE events. The
+    /// firing-side column match (i.e. only fire when an UPDATE
+    /// touches one of these columns) is left to the trigger executor
+    /// — this field just records the user's intent on the catalog.
+    #[serde(default)]
+    pub update_columns: Option<Vec<String>>,
 }
 
 /// View definition (Round-21 / Issue #4218: API surface restoration).
@@ -2940,6 +2948,7 @@ mod tests {
             timing: TriggerTiming::Before,
             event: TriggerEvent::Insert,
             body: "BEGIN UPDATE stats SET count = count + 1; END".into(),
+            update_columns: None,
         };
         assert_eq!(ti.name, "trig1");
         assert_eq!(ti.table_name, "users");
@@ -3331,6 +3340,7 @@ mod tests {
             timing: crate::engine::TriggerTiming::Before,
             event: crate::engine::TriggerEvent::Insert,
             body: "".to_string(),
+            update_columns: None,
         };
         s.create_trigger(trigger).unwrap();
         assert!(s.get_trigger("trig").is_some());
@@ -3360,6 +3370,7 @@ mod tests {
             timing: crate::engine::TriggerTiming::Before,
             event: crate::engine::TriggerEvent::Insert,
             body: "".to_string(),
+            update_columns: None,
         };
         let t2 = TriggerInfo {
             name: "b".to_string(),
@@ -3367,6 +3378,7 @@ mod tests {
             timing: crate::engine::TriggerTiming::After,
             event: crate::engine::TriggerEvent::Update,
             body: "".to_string(),
+            update_columns: None,
         };
         s.create_trigger(t1).unwrap();
         s.create_trigger(t2).unwrap();

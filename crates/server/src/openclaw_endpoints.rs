@@ -2605,6 +2605,7 @@ fn execute_sql(
                 timing,
                 event: events[0],
                 body: create.body.clone(),
+                update_columns: None,
             };
 
             let mut storage = storage

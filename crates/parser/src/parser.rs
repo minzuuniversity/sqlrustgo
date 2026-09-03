@@ -503,6 +503,11 @@ pub struct CreateTriggerStatement {
     pub table: String,
     pub timing: String,
     pub events: Vec<String>,
+    /// V312-75 / Issue #4700: optional column list for `UPDATE OF col1, col2`
+    /// column-level triggers (SQLite/MySQL standard). When `Some`, the
+    /// trigger only fires when one of these columns is updated. `None`
+    /// for whole-table UPDATE triggers or INSERT/DELETE events.
+    pub update_columns: Option<Vec<String>>,
     pub body: String,
 }
 
@@ -3589,7 +3594,7 @@ impl Parser {
             None => return Err("Expected BEFORE or AFTER".to_string()),
         };
 
-        let events = self.parse_trigger_events()?;
+        let (events, update_columns) = self.parse_trigger_events_with_update_of()?;
 
         self.expect(Token::On)?;
 
@@ -3671,6 +3676,7 @@ impl Parser {
             table,
             timing,
             events,
+            update_columns,
             body: body.trim().to_string(),
         }))
     }
@@ -3787,6 +3793,61 @@ impl Parser {
             }
         }
         Ok(events)
+    }
+
+    /// V312-75 / Issue #4700: parse trigger events including the
+    /// `UPDATE OF col1, col2, ...` column-list suffix (SQLite/MySQL
+    /// column-level triggers). Returns the event names and the
+    /// optional column list — only set when the trailing `OF` clause
+    /// follows an `UPDATE` event.
+    fn parse_trigger_events_with_update_of(
+        &mut self,
+    ) -> Result<(Vec<String>, Option<Vec<String>>), String> {
+        let events = self.parse_trigger_events()?;
+        let update_columns = if matches!(self.current(), Some(Token::Of)) {
+            self.next(); // consume OF
+            let mut cols: Vec<String> = Vec::new();
+            loop {
+                let col = match self.current().cloned() {
+                    Some(Token::Identifier(name)) => {
+                        self.next();
+                        name
+                    }
+                    Some(t) => {
+                        return Err(format!(
+                            "Expected column name in UPDATE OF, got {:?}",
+                            t
+                        ))
+                    }
+                    None => {
+                        return Err(
+                            "Expected column name in UPDATE OF".to_string()
+                        )
+                    }
+                };
+                cols.push(col);
+                if matches!(self.current(), Some(Token::Comma)) {
+                    self.next();
+                } else {
+                    break;
+                }
+            }
+            if cols.is_empty() {
+                return Err("UPDATE OF requires at least one column".to_string());
+            }
+            Some(cols)
+        } else {
+            None
+        };
+        // `UPDATE OF col_list` only makes sense alongside an UPDATE
+        // event — if the user wrote e.g. `INSERT OF col`, that's a
+        // syntax error in every SQL dialect.
+        if update_columns.is_some() && !events.iter().any(|e| e == "UPDATE") {
+            return Err(
+                "UPDATE OF <column_list> requires an UPDATE event".to_string(),
+            );
+        }
+        Ok((events, update_columns))
     }
 
     fn parse_select(&mut self) -> Result<Statement, String> {
@@ -13675,6 +13736,80 @@ fn test_parse_create_trigger_after_update() {
         }
         _ => panic!("Expected CREATE TRIGGER statement"),
     }
+}
+
+#[test]
+fn test_parse_create_trigger_update_of_single_column() {
+    // V312-75 / Issue #4700: column-level UPDATE trigger
+    // (SQLite/MySQL standard `BEFORE UPDATE OF col`).
+    let sql = "CREATE TRIGGER tr BEFORE UPDATE OF val ON t \
+               FOR EACH ROW BEGIN UPDATE t SET note = 'u' WHERE id = OLD.id; END";
+    let result = parse(sql);
+    assert!(result.is_ok(), "Parse failed: {:?}", result);
+    match result.unwrap() {
+        Statement::CreateTrigger(t) => {
+            assert_eq!(t.timing, "BEFORE");
+            assert_eq!(t.events, vec!["UPDATE"]);
+            assert_eq!(
+                t.update_columns.as_deref(),
+                Some(&["val".to_string()][..])
+            );
+        }
+        _ => panic!("Expected CREATE TRIGGER statement"),
+    }
+}
+
+#[test]
+fn test_parse_create_trigger_update_of_multiple_columns() {
+    // V312-75 / Issue #4700: `UPDATE OF col1, col2` multi-column
+    // trigger — both columns must be recorded on the AST.
+    let sql = "CREATE TRIGGER tr AFTER UPDATE OF val, note ON t \
+               FOR EACH ROW BEGIN SELECT 1; END";
+    let result = parse(sql);
+    assert!(result.is_ok(), "Parse failed: {:?}", result);
+    match result.unwrap() {
+        Statement::CreateTrigger(t) => {
+            assert_eq!(t.timing, "AFTER");
+            assert_eq!(
+                t.update_columns.as_deref(),
+                Some(&["val".to_string(), "note".to_string()][..])
+            );
+        }
+        _ => panic!("Expected CREATE TRIGGER statement"),
+    }
+}
+
+#[test]
+fn test_parse_create_trigger_update_without_of() {
+    // Regression: the bare `UPDATE` (no OF) must still parse with
+    // `update_columns == None`.
+    let sql = "CREATE TRIGGER tr BEFORE UPDATE ON t \
+               FOR EACH ROW BEGIN SELECT 1; END";
+    let result = parse(sql);
+    assert!(result.is_ok(), "Parse failed: {:?}", result);
+    match result.unwrap() {
+        Statement::CreateTrigger(t) => {
+            assert_eq!(t.events, vec!["UPDATE"]);
+            assert_eq!(t.update_columns, None);
+        }
+        _ => panic!("Expected CREATE TRIGGER statement"),
+    }
+}
+
+#[test]
+fn test_parse_create_trigger_insert_of_errors() {
+    // `INSERT OF col` is not a valid event — only UPDATE accepts OF.
+    let sql = "CREATE TRIGGER tr BEFORE INSERT OF col ON t \
+               FOR EACH ROW BEGIN SELECT 1; END";
+    assert!(parse(sql).is_err());
+}
+
+#[test]
+fn test_parse_create_trigger_update_of_empty_errors() {
+    // `UPDATE OF` with no columns is a syntax error.
+    let sql = "CREATE TRIGGER tr BEFORE UPDATE OF ON t \
+               FOR EACH ROW BEGIN SELECT 1; END";
+    assert!(parse(sql).is_err());
 }
 
 #[test]
