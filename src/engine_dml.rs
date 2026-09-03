@@ -263,12 +263,60 @@ pub fn execute_insert<S: StorageEngine + 'static>(
     let mut pre_scanned_rows: Vec<Vec<Value>> = Vec::new();
     // #4569: also scan when the table declares UNIQUE constraints —
     // duplicates on those keys must be detected like PK duplicates.
+    // V312-64c / Issue #4654: also scan when the table has an AUTO_INCREMENT
+    // column — we need existing rows to compute the next id
+    // (= MAX(existing id) + 1).
+    let has_auto_increment = table_info.columns.iter().any(|c| c.auto_increment);
     let needs_pk_scan = !insert.is_replace
         && (table_info.columns.iter().any(|c| c.primary_key)
-            || !table_info.unique_constraints.is_empty());
+            || !table_info.unique_constraints.is_empty()
+            || has_auto_increment);
     if needs_pk_scan {
         let storage = engine.storage.read();
         pre_scanned_rows = storage.scan(&table_name)?;
+    }
+
+    // V312-64c / Issue #4654: AUTO_INCREMENT population. After CHAR
+    // padding, records are fully aligned to table column order. Walk
+    // each auto_increment column and replace Value::Null slots with the
+    // next sequential id (MAX(existing) + 1, starting at 1 for an
+    // empty table). User-supplied values are preserved verbatim —
+    // matching MySQL semantics where AUTO_INCREMENT only fills the
+    // slot when no value (or NULL) was provided.
+    //
+    // We do this BEFORE the FK/CHECK/PK/UNIQUE validation pass and
+    // BEFORE storage.insert so that (a) validate_not_null sees the
+    // populated id (it already skips auto_increment anyway), and
+    // (b) the RETURNING projection at the end sees the same ids the
+    // caller will read back via SELECT.
+    let mut processed_records = processed_records;
+    if has_auto_increment {
+        // Compute starting id from existing rows: filter to auto_increment
+        // columns only, take MAX, then +1 (default 1 if empty table).
+        let mut next_auto_id: i64 = 1;
+        for (col_idx, col) in table_info.columns.iter().enumerate() {
+            if col.auto_increment {
+                let max_existing = pre_scanned_rows
+                    .iter()
+                    .filter_map(|r| r.get(col_idx).and_then(|v| v.as_integer()))
+                    .max()
+                    .unwrap_or(0);
+                next_auto_id = max_existing + 1;
+                break; // Only one auto_increment column is the convention
+                       // (matches MySQL InnoDB; sqlite AUTOINCREMENT is
+                       // also single-column).
+            }
+        }
+        for record in processed_records.iter_mut() {
+            for (col_idx, col) in table_info.columns.iter().enumerate() {
+                if col.auto_increment
+                    && matches!(record.get(col_idx), Some(Value::Null) | None)
+                {
+                    record[col_idx] = Value::Integer(next_auto_id);
+                    next_auto_id += 1;
+                }
+            }
+        }
     }
 
     {
@@ -456,11 +504,19 @@ pub fn execute_insert<S: StorageEngine + 'static>(
     // name "*" expands to all table columns. Returns the projected
     // rows; the existing `Ok(vec![], count)` path is preserved for
     // INSERTs without RETURNING.
+    //
+    // V312-64c / Issue #4658: project from `processed_records` (not
+    // `all_records`) so the RETURNING rows reflect the AUTO_INCREMENT
+    // id we filled in earlier — see the AUTO_INCREMENT population block
+    // above where we mutate `processed_records` to assign sequential
+    // ids to NULL auto_increment slots. The caller reads the same
+    // values via SELECT after commit, so RETURNING must surface them
+    // too.
     if let Some(cols) = &insert.returning {
         let projected_rows: Vec<Vec<Value>> = if cols.len() == 1 && cols[0] == "*" {
-            all_records.clone()
+            processed_records.clone()
         } else {
-            all_records
+            processed_records
                 .iter()
                 .map(|row| {
                     cols.iter()
