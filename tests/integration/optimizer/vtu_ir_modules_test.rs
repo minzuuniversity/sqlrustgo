@@ -52,6 +52,7 @@ fn users_table() -> TableInfo {
         unique_constraints: vec![],
         check_constraints: vec![],
         partition_info: None,
+        original_sql: String::new(),
     }
 }
 
@@ -92,6 +93,7 @@ fn products_table() -> TableInfo {
         unique_constraints: vec![],
         check_constraints: vec![],
         partition_info: None,
+        original_sql: String::new(),
     }
 }
 

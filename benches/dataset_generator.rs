@@ -55,6 +55,7 @@ pub fn simple_table_info(name: &str) -> TableInfo {
         compression: None,
         collations: std::collections::HashMap::new(),
         partition_info: None,
+        original_sql: String::new(),
     }
 }
 
@@ -100,6 +101,7 @@ pub fn multi_column_table_info(name: &str) -> TableInfo {
         compression: None,
         collations: std::collections::HashMap::new(),
         partition_info: None,
+        original_sql: String::new(),
     }
 }
 
@@ -135,6 +137,7 @@ pub fn orders_table_info() -> TableInfo {
         compression: None,
         collations: std::collections::HashMap::new(),
         partition_info: None,
+        original_sql: String::new(),
     }
 }
 

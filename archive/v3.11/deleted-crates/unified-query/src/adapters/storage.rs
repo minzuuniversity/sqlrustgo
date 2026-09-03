@@ -123,6 +123,7 @@ impl StorageAdapter {
             check_constraints: vec![],
                 compression: None,
             partition_info: None,
+        original_sql: String::new(),
         };
 
         // Create table schema

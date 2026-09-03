@@ -232,6 +232,7 @@ fn test_aggregate_delegation() {
         compression: None,
         collations: std::collections::HashMap::new(),
         partition_info: None,
+        original_sql: String::new(),
     };
 
     // Pre-aggregated row (the SELECT/GROUP BY phase would have filled these).
@@ -909,6 +910,7 @@ fn test_identifier_delegation() {
         compression: None,
         collations: std::collections::HashMap::new(),
         partition_info: None,
+        original_sql: String::new(),
     };
     let row: Vec<Value> = vec![
         Value::Integer(42),

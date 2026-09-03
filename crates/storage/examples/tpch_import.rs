@@ -113,7 +113,8 @@ fn create_tables(storage: &mut FileStorage) {
             compression: None,
             partition_info: None,
             collations: std::collections::HashMap::new(),
-        })
+        original_sql: String::new(),
+})
         .unwrap();
 
     // Region
@@ -131,7 +132,8 @@ fn create_tables(storage: &mut FileStorage) {
             compression: None,
             partition_info: None,
             collations: std::collections::HashMap::new(),
-        })
+        original_sql: String::new(),
+})
         .unwrap();
 
     // Supplier
@@ -153,7 +155,8 @@ fn create_tables(storage: &mut FileStorage) {
             compression: None,
             partition_info: None,
             collations: std::collections::HashMap::new(),
-        })
+        original_sql: String::new(),
+})
         .unwrap();
 
     // Part
@@ -177,7 +180,8 @@ fn create_tables(storage: &mut FileStorage) {
             compression: None,
             partition_info: None,
             collations: std::collections::HashMap::new(),
-        })
+        original_sql: String::new(),
+})
         .unwrap();
 
     // PartSupp
@@ -197,7 +201,8 @@ fn create_tables(storage: &mut FileStorage) {
             compression: None,
             partition_info: None,
             collations: std::collections::HashMap::new(),
-        })
+        original_sql: String::new(),
+})
         .unwrap();
 
     // Customer
@@ -220,7 +225,8 @@ fn create_tables(storage: &mut FileStorage) {
             compression: None,
             partition_info: None,
             collations: std::collections::HashMap::new(),
-        })
+        original_sql: String::new(),
+})
         .unwrap();
 
     // Orders
@@ -244,7 +250,8 @@ fn create_tables(storage: &mut FileStorage) {
             compression: None,
             partition_info: None,
             collations: std::collections::HashMap::new(),
-        })
+        original_sql: String::new(),
+})
         .unwrap();
 
     // Lineitem
@@ -275,7 +282,8 @@ fn create_tables(storage: &mut FileStorage) {
             compression: None,
             partition_info: None,
             collations: std::collections::HashMap::new(),
-        })
+        original_sql: String::new(),
+})
         .unwrap();
 }
 

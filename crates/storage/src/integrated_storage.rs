@@ -200,6 +200,7 @@ mod tests {
                 compression: None,
                 collations: std::collections::HashMap::new(),
                 partition_info: None,
+            original_sql: String::new(),
             },
             rows: (1..=n_rows)
                 .map(|i| vec![sqlrustgo_types::Value::Integer(i as i64)])

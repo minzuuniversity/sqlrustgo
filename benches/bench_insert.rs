@@ -31,6 +31,7 @@ fn create_table_info() -> TableInfo {
         compression: None,
         collations: std::collections::HashMap::new(),
         partition_info: None,
+        original_sql: String::new(),
     }
 }
 
@@ -129,6 +130,7 @@ fn bench_insert_multi_column(c: &mut Criterion) {
         compression: None,
         collations: std::collections::HashMap::new(),
         partition_info: None,
+        original_sql: String::new(),
     };
 
     for size in [1_000, 10_000] {

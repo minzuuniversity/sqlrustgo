@@ -994,6 +994,7 @@ mod tests {
             compression: None,
             collations: std::collections::HashMap::new(),
             partition_info: None,
+        original_sql: String::new(),
         };
         storage.create_table(&table_info).unwrap();
         let id = table_name_to_id("orders");

@@ -289,6 +289,7 @@ fn int3_spec_crash_recovery_under_5s() {
                 compression: None,
                 partition_info: None,
                 collations: std::collections::HashMap::new(),
+                original_sql: String::new(),
             };
             wal_storage
                 .create_table(&table_info)

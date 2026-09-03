@@ -48,6 +48,7 @@ fn test_storage_partition_info_field() {
         unique_constraints: vec![],
         check_constraints: vec![],
         collations: std::collections::HashMap::new(),
+        original_sql: String::new(),
         partition_info: Some(PartitionInfo {
             partition_type: PartitionType::Range,
             column: "id".to_string(),
@@ -75,6 +76,7 @@ fn test_storage_partition_type_variants() {
         unique_constraints: vec![],
         check_constraints: vec![],
         collations: std::collections::HashMap::new(),
+        original_sql: String::new(),
         partition_info: Some(PartitionInfo {
             partition_type: PartitionType::Range,
             column: "id".to_string(),
@@ -95,6 +97,7 @@ fn test_storage_partition_type_variants() {
         unique_constraints: vec![],
         check_constraints: vec![],
         collations: std::collections::HashMap::new(),
+        original_sql: String::new(),
         partition_info: Some(PartitionInfo {
             partition_type: PartitionType::List,
             column: "id".to_string(),
@@ -115,6 +118,7 @@ fn test_storage_partition_type_variants() {
         unique_constraints: vec![],
         check_constraints: vec![],
         collations: std::collections::HashMap::new(),
+        original_sql: String::new(),
         partition_info: Some(PartitionInfo {
             partition_type: PartitionType::Hash,
             column: "id".to_string(),

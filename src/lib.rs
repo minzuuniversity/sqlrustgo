@@ -11,6 +11,7 @@
 )]
 
 pub mod cbo_estimator;
+pub mod ddl_to_sql;
 pub mod engine_builder;
 pub mod engine_collation;
 pub mod engine_create;
@@ -25,6 +26,7 @@ pub mod execution_engine;
 pub mod expr_utils;
 pub mod savepoint_wiring;
 pub mod sequence_state;
+pub mod system_tables;
 
 #[cfg(test)]
 mod execution_engine_tests;

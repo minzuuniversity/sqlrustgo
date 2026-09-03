@@ -286,7 +286,7 @@ pub fn evaluate_expression_with_seq(
     seq_state: Option<&crate::sequence_state::SequenceState>,
     subq_eval: &dyn Fn(&SelectStatement) -> Result<Value, String>,
 ) -> Result<Value, String> {
-    if let Some(state) = seq_state {
+if let Some(state) = seq_state {
         match expr {
             Expression::SequenceNextVal(name) => {
                 return state

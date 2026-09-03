@@ -35,7 +35,8 @@ fn fresh_storage() -> MemoryStorage {
         compression: None,
         partition_info: None,
         collations: std::collections::HashMap::new(),
-    })
+    original_sql: String::new(),
+})
     .expect("create_table t");
     s
 }

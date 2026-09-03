@@ -2387,10 +2387,22 @@ fn execute_sql(
             let table_info = storage.get_table_info(&create_idx.table).map_err(|e| e.to_string())?;
             let col_name = create_idx.columns.first()
                 .ok_or_else(|| "Index must have at least one column".to_string())?;
-            let col_idx = table_info.columns.iter()
+            let _col_idx = table_info.columns.iter()
                 .position(|c| c.name.eq_ignore_ascii_case(col_name))
                 .ok_or_else(|| format!("Column '{}' not found", col_name))?;
-            storage.create_index(&create_idx.table, col_name, col_idx)
+            storage.create_index(sqlrustgo_storage::IndexInfo {
+                name: create_idx.name.clone(),
+                table: create_idx.table.clone(),
+                columns: create_idx.columns.clone(),
+                is_unique: create_idx.unique,
+                original_sql: format!(
+                    "CREATE {}INDEX {} ON {} ({})",
+                    if create_idx.unique { "UNIQUE " } else { "" },
+                    create_idx.name,
+                    create_idx.table,
+                    create_idx.columns.join(", "),
+                ),
+            })
                 .map_err(|e| e.to_string())?;
             // Also register the index in the table's catalog entry
             {
