@@ -82,7 +82,7 @@ Already applied via Gitea API in Phase 1.1.
 Summary of categories:
 
 - Recursive CTE (#4699, #4644, #4717, #4704)
-- Window function completion (#4707, #4706, #4695, #4689)
+- Window function completion (#4707, #4706, #4689) + #4695 *LAG/LEAD closed via `e1b5f1131d`; INTERVAL parser symptom still open*
 - Generated columns / sequence / user variables (#4697, #4689) + #4688 *parser-side closed, catalog-side still deferred*
 - ROLLUP/CUBE/GROUPING SETS (#4679)
 - Writable CTE (#4692)
@@ -336,6 +336,48 @@ linkage failure between direct-push commits and Gitea issue status.
 - No `SUBSTANTIALLY_COMPLETE`, no `ACCEPTED-WITH-BINDING-MANIFEST`
 - Per-issue evidence doc has all SHA-256 entries populated
 - Honest scope claim (no over-claiming "full sequence semantics" since not in fix)
+
+---
+
+### 8.7 #4695 — partial-scope note (LAG/LEAD closed; INTERVAL parser still open)
+
+**Closure status: NOT CLOSED — partial fix only.**
+
+| Field | Value |
+|-------|-------|
+| Issue | [#4695](http://192.168.0.252:3000/openclaw/sqlrustgo/issues/4695) |
+| Source-fix commit (partial) | `e1b5f1131d` (reachable as ancestor of HEAD) |
+| Per-issue evidence doc | [`docs/releases/v3.12.0/evidence/issue-4695/EVIDENCE.md`](evidence/issue-4695/EVIDENCE.md) |
+| Gitea state transition | **NO TRANSITION** — issue remains `open` |
+
+**Why this is documented but NOT closed**: The issue body lists two distinct
+symptoms:
+
+1. **INTERVAL '5' DAY parser** — treats `INTERVAL` as a column name (PG-style
+   date arithmetic fails at parse time).
+2. **LAG function** — returns empty result.
+
+Source-fix commit `e1b5f1131d` (verified ancestor of HEAD) only addresses
+symptom #2 (LAG/LEAD window functions, plus LEAD). Symptom #1 (INTERVAL
+parser) is **not yet fixed in any reachable commit**.
+
+**Round-24 strict standard**: Closing an issue with only a partial fix in
+place is **Anti-Pattern §1** ("closing partial = fabricates completion") and
+§2 ("ACCEPTED-WITH-BINDING-MANIFEST"). The honest-path action is to leave
+the issue open and document the partial fix in this entry.
+
+**Path to full closure**:
+1. Implement INTERVAL '5' DAY parser fix as separate commit
+   (e.g., `fix(v312-XX / #4695-interval): accept PG-style interval literal`)
+2. Add regression test in `tests/integration/parser/test_parse_interval.rs`
+3. Then close issue per V312-RC-GA §4 close conditions
+4. Update this §8.7 entry to record INTERVAL-fix SHA
+
+**Cross-references**:
+- Per-issue evidence §4 "Honest Scope Disclosure" (full analysis)
+- §4 categories bullet for "Window function completion" — explicitly marks
+  #4695 *LAG/LEAD closed; INTERVAL parser symptom still open*
+- Anti-Fabrication-Policy-v1.0 + Round-24 strict-close standards
 
 ---
 
