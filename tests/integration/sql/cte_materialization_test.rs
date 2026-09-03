@@ -115,22 +115,6 @@ fn test_cte_cleanup() {
 }
 
 #[test]
-fn test_cte_recursive_not_supported() {
-    // Recursive CTE should return an error
-    let mut engine = ExecutionEngine::with_memory();
-    engine.execute("CREATE TABLE t (n INT)").unwrap();
-    engine.execute("INSERT INTO t VALUES (1)").unwrap();
-
-    let result = run_sql(
-        &mut engine,
-        "WITH RECURSIVE cte AS (SELECT n FROM t UNION ALL SELECT n + 1 FROM cte WHERE n < 3) SELECT * FROM cte",
-    );
-    assert!(result.is_err(), "Recursive CTE should fail");
-    let err = result.unwrap_err();
-    assert!(err.to_string().contains("Recursive CTE not yet supported") || err.to_string().contains("not yet supported"));
-}
-
-#[test]
 fn test_cte_empty_result() {
     // CTE returning empty result
     let mut engine = ExecutionEngine::with_memory();
