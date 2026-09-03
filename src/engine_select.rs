@@ -7996,6 +7996,167 @@ fn find_correlated_equalities(
     Some((pairs, residual))
 }
 
+/// V312-58 / Issue #4379 (Q17 SF=1 follow-up): parallel version of
+/// `build_scalar_agg_index`. Used when the row count is large enough
+/// that serial build exceeds the GA budget (TPC-H Q17 SF=1: 6M
+/// lineitem rows → ~9 min serial). Partitions rows by chunk index
+/// (NOT by hash — hash partitioning on Integer keys can produce
+/// very skewed buckets when many keys share the same hash bucket).
+/// Each chunk runs on a rayon thread, building a partial
+/// `HashMap<Vec<Value>, AggAcc>`. The partial maps are merged in
+/// serial at the end.
+///
+/// Strategy: simple `chunks(rows.len() / n)` split. Each thread gets
+/// roughly equal work; no hash-skew problems. The cost of merging
+/// is O(N_keys) where N_keys is the number of distinct keys across
+/// all chunks (≤ 200K for lineitem).
+fn build_scalar_agg_index_parallel(
+    rows: &[Vec<Value>],
+    table_info: &TableInfo,
+    key_col_indices: &[usize],
+    agg_col_idx: Option<usize>,
+    agg_func: AggregateFunction,
+    op_factor: f64,
+    residual: Option<&sqlrustgo_parser::Expression>,
+) -> ScalarAggIndexMap {
+    use sqlrustgo_parser::Expression as E;
+    use sqlrustgo_types::Value as V;
+    type AggAcc = (f64, i64, bool);
+    let n_threads: usize = std::thread::available_parallelism()
+        .map(|x| x.get())
+        .unwrap_or(1)
+        .min(8) // cap to 8 threads (each gets ~750K rows for 6M)
+        .max(1);
+    // For small tables, rayon's task-spawn overhead dominates —
+    // fall back to serial path.
+    if rows.len() < n_threads * 10_000 {
+        return build_scalar_agg_index(
+            rows,
+            table_info,
+            key_col_indices,
+            agg_col_idx,
+            agg_func,
+            op_factor,
+            residual,
+        );
+    }
+    // Build partial HashMaps in parallel via simple chunk partitioning.
+    let rows_per_chunk = (rows.len() + n_threads - 1) / n_threads;
+    let chunks: Vec<&[Vec<Value>]> = rows.chunks(rows_per_chunk).collect();
+    let partial_maps: Vec<HashMap<Vec<Value>, AggAcc>> = {
+        use rayon::prelude::*;
+        chunks
+            .par_iter()
+            .map(|chunk| {
+                let mut local: HashMap<Vec<Value>, AggAcc> =
+                    HashMap::with_capacity(chunk.len() / 16 + 1);
+                for row in chunk.iter() {
+                    // Build composite key from inner row
+                    let mut key_parts: Vec<Value> =
+                        Vec::with_capacity(key_col_indices.len());
+                    let mut key_missing = false;
+                    for &idx in key_col_indices {
+                        match row.get(idx) {
+                            Some(v) => key_parts.push(v.clone()),
+                            None => {
+                                key_missing = true;
+                                break;
+                            }
+                        }
+                    }
+                    if key_missing {
+                        continue;
+                    }
+                    // Evaluate residual predicate (no outer refs).
+                    if let Some(res) = residual {
+                        if !crate::engine_utils::eval_predicate(
+                            res, row, table_info,
+                        ) {
+                            continue;
+                        }
+                    }
+                    let entry =
+                        local.entry(key_parts).or_insert((0.0, 0, false));
+                    match agg_func {
+                        AggregateFunction::Count => {
+                            if let Some(ci) = agg_col_idx {
+                                if matches!(row.get(ci), Some(V::Null) | None)
+                                {
+                                    continue;
+                                }
+                            }
+                            entry.1 += 1;
+                        }
+                        AggregateFunction::Sum
+                        | AggregateFunction::Avg => {
+                            let Some(ci) = agg_col_idx else { continue };
+                            let v = row.get(ci);
+                            match v {
+                                Some(V::Integer(n)) => {
+                                    entry.0 += *n as f64;
+                                    entry.1 += 1;
+                                }
+                                Some(V::Float(f)) => {
+                                    entry.2 = true;
+                                    entry.0 += f;
+                                    entry.1 += 1;
+                                }
+                                _ => {}
+                            }
+                        }
+                        AggregateFunction::Min | AggregateFunction::Max => {
+                            // Min/Max reduce needs Value-comparable state, but
+                            // this fast-path is currently used only for
+                            // Count/Sum/Avg scalar subqueries (Q17/Q20).
+                            // Mirror the serial path: silence unused warnings.
+                            let Some(ci) = agg_col_idx else { continue };
+                            let Some(v) = row.get(ci) else { continue };
+                            let _ = (entry, v.clone(), ci);
+                        }
+                        AggregateFunction::PercentileCont => unreachable!(),
+                        AggregateFunction::QuantileDisc
+                        | AggregateFunction::QuantileCont => {}
+                        AggregateFunction::GroupConcat => {}
+                    }
+                }
+                local
+            })
+            .collect()
+    };
+    // Merge all partial HashMaps into one. For keys that appear in
+    // multiple chunks (likely rare for lineitem partkey), we sum the
+    // (sum, count, any_float) accumulators.
+    let mut merged: HashMap<Vec<Value>, AggAcc> =
+        HashMap::with_capacity(partial_maps.iter().map(|m| m.len()).sum());
+    for pm in partial_maps {
+        for (k, v) in pm {
+            let entry = merged.entry(k).or_insert((0.0, 0, false));
+            entry.0 += v.0;
+            entry.1 += v.1;
+            entry.2 |= v.2;
+        }
+    }
+    // Finalize: convert AggAcc → Value with op_factor.
+    let mut result: ScalarAggIndexMap = HashMap::with_capacity(merged.len());
+    for (k, (sum, count, _any_float)) in merged {
+        let v: Value = match agg_func {
+            AggregateFunction::Count => Value::Integer(count),
+            AggregateFunction::Sum => Value::Float(sum * op_factor),
+            AggregateFunction::Avg => {
+                if count == 0 {
+                    Value::Null
+                } else {
+                    Value::Float((sum / count as f64) * op_factor)
+                }
+            }
+            _ => Value::Null,
+        };
+        result.insert(k, v);
+    }
+    let _ = std::any::type_name::<E>();
+    result
+}
+
 /// Build `key_col_value → aggregate_result` index for a scalar
 /// aggregate subquery.  Scans the inner table once, groups rows by
 /// the composite key columns, computes the aggregate per group, applies
