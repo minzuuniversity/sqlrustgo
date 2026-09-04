@@ -6637,10 +6637,35 @@ impl Parser {
         };
 
         // Parse GROUP BY clause
+        // V312-86 / Issue #4758: SQL-standard `GROUP BY ROLLUP(cols)` and
+        // `GROUP BY CUBE(cols)` are grouping-set constructs. The lexer
+        // routes ROLLUP/CUBE to scalar-function-call parsing in expression
+        // position (e.g. `SELECT ROLLUP(x)` is not valid SQL but the path
+        // is shared). After parsing the expression list, lift any
+        // `FunctionCall("ROLLUP"/"CUBE", args)` wrapper out of the
+        // group-by list, set the matching flag, and reuse the inner cols
+        // — this gives MySQL 5.7 / SQL:1999 §7.10 semantics.
+        let mut with_rollup = false;
+        let mut with_cube = false;
         let group_by = if matches!(self.current(), Some(Token::Group)) {
             self.next();
             self.expect(Token::By)?;
-            self.parse_expression_list()?
+            let raw = self.parse_expression_list()?;
+            let mut group_by = Vec::new();
+            for expr in raw {
+                match &expr {
+                    Expression::FunctionCall(name, args) if name == "ROLLUP" => {
+                        with_rollup = true;
+                        group_by.extend(args.iter().cloned());
+                    }
+                    Expression::FunctionCall(name, args) if name == "CUBE" => {
+                        with_cube = true;
+                        group_by.extend(args.iter().cloned());
+                    }
+                    _ => group_by.push(expr),
+                }
+            }
+            group_by
         } else {
             Vec::new()
         };
@@ -6648,8 +6673,6 @@ impl Parser {
         // Parse optional WITH ROLLUP / WITH CUBE modifier (MySQL 5.7)
         // Both are SQL grouping-set extensions. Parsed here and
         // attached to the SelectStatement for downstream executors.
-        let mut with_rollup = false;
-        let mut with_cube = false;
         if !group_by.is_empty() && matches!(self.current(), Some(Token::With)) {
             self.next(); // consume WITH
             if matches!(self.current(), Some(Token::Rollup)) {
