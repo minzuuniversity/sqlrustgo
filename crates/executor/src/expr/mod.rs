@@ -1990,11 +1990,20 @@ pub fn eval_fn(name: &str, args: &[Value]) -> Value {
             if let (Some(s), Some(start)) = (args.first(), args.get(1)) {
                 let text = s.to_sql_string();
                 let start_idx = match start {
-                    // V312-68 / Issue #4681: position 0 (or negative) refers
-                    // to "before start of string" — return an empty substring.
-                    // Position 1 is the first character (1-based indexing per
-                    // SQL/SQLite/PostgreSQL convention).
-                    Value::Integer(i) if *i <= 0 => return Value::Text(String::new()),
+                    // V312-68 / Issue #4681: position 0 returns an empty
+                    // substring (SQLite convention: zero-length prefix).
+                    // V312-64h / Issue #4761: negative position counts from
+                    // the end of the string (SQLite convention: |i|th char
+                    // from the right). 0-based start_idx = len - |i|.
+                    Value::Integer(i) if *i == 0 => return Value::Text(String::new()),
+                    Value::Integer(i) if *i < 0 => {
+                        let abs_i = i.unsigned_abs() as usize;
+                        if abs_i >= text.len() {
+                            0
+                        } else {
+                            text.len() - abs_i
+                        }
+                    }
                     Value::Integer(i) => ((*i - 1) as usize).min(text.len()),
                     _ => return Value::Text(String::new()),
                 };
