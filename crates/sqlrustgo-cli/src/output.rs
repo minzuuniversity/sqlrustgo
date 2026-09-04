@@ -144,13 +144,10 @@ fn value_to_string(v: &Value) -> String {
     match v {
         Value::Null => String::new(),
         Value::Integer(i) => i.to_string(),
-        // Issue #4721: delegate Float rendering to `Value::to_sql_string`
-        // so integral floats render as `35.0` (not `35`), matching the
-        // SQL-layer display and SQLite/MySQL 8.0 output. Previously this
-        // duplicated `f.to_string()` and silently dropped the `.0`.
         Value::Float(_) => v.to_sql_string(),
         Value::Text(s) => s.clone(),
         Value::Boolean(b) => b.to_string(),
+        Value::Json(j) => j.to_string(),
         _ => "<other>".to_string(),
     }
 }

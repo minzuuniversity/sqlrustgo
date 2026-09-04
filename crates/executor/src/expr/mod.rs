@@ -1575,6 +1575,45 @@ pub fn eval_fn(name: &str, args: &[Value]) -> Value {
             }
             None => Value::Null,
         },
+        // V312-80 / Issue #4698: GREATEST / LEAST
+        "GREATEST" | "LEAST" => {
+            let mut result: Option<Value> = None;
+            for arg in args {
+                if matches!(arg, Value::Null) {
+                    continue;
+                }
+                match result.take() {
+                    None => result = Some(arg.clone()),
+                    Some(prev) => {
+                        let dominated = match (&prev, arg) {
+                            (Value::Integer(a), Value::Integer(b)) => {
+                                if name == "GREATEST" { *a < *b } else { *a > *b }
+                            }
+                            (Value::Float(a), Value::Float(b)) => {
+                                if name == "GREATEST" { *a < *b } else { *a > *b }
+                            }
+                            (Value::Integer(a), Value::Float(b)) => {
+                                if name == "GREATEST" { (*a as f64) < *b } else { (*a as f64) > *b }
+                            }
+                            (Value::Float(a), Value::Integer(b)) => {
+                                if name == "GREATEST" { *a < (*b as f64) } else { *a > (*b as f64) }
+                            }
+                            _ => {
+                                let prev_s = prev.to_sql_string();
+                                let arg_s = arg.to_sql_string();
+                                if name == "GREATEST" { prev_s < arg_s } else { prev_s > arg_s }
+                            }
+                        };
+                        if dominated {
+                            result = Some(arg.clone());
+                        } else {
+                            result = Some(prev);
+                        }
+                    }
+                }
+            }
+            result.unwrap_or(Value::Null)
+        }
         // V312-77 / Issue #4676: MOD / POWER / LOG / EXP / SQRT — previously fell
         // through to Value::Null. IEEE 754 f64 arithmetic; domain errors → NULL.
         "MOD" => {
@@ -1815,7 +1854,107 @@ pub fn eval_fn(name: &str, args: &[Value]) -> Value {
                 None => Value::Null,
             }
         }
-        //   TRIM(remstr, str)                         — 2-arg comma form
+        // V312-79 / Issue #4670: CEIL / CEILING / FLOOR
+        "CEIL" | "CEILING" | "FLOOR" => {
+            if args.is_empty() {
+                return Value::Null;
+            }
+            match args.first() {
+                Some(Value::Null) => Value::Null,
+                Some(Value::Integer(i)) => Value::Integer(*i),
+                Some(Value::Float(f)) => {
+                    if name == "FLOOR" {
+                        Value::Float(f.floor())
+                    } else {
+                        Value::Float(f.ceil())
+                    }
+                }
+                Some(v) => {
+                    let s = v.to_sql_string();
+                    if s.eq_ignore_ascii_case("NULL") {
+                        Value::Null
+                    } else if let Ok(num) = s.parse::<f64>() {
+                        if name == "FLOOR" {
+                            Value::Float(num.floor())
+                        } else {
+                            Value::Float(num.ceil())
+                        }
+                    } else {
+                        Value::Null
+                    }
+                }
+                None => Value::Null,
+            }
+        }
+        // V312-79 / Issue #4670: SHA2(string, bits)
+        "SHA2" => {
+            use sha2::{Digest, Sha224, Sha256, Sha384, Sha512};
+            if args.is_empty() {
+                return Value::Null;
+            }
+            if matches!(&args[0], Value::Null) {
+                return Value::Null;
+            }
+            let bits = match args.get(1) {
+                Some(Value::Integer(n)) => *n,
+                Some(Value::Null) => return Value::Null,
+                _ => 256,
+            };
+            let s = args[0].to_sql_string();
+            if s.eq_ignore_ascii_case("NULL") {
+                return Value::Null;
+            }
+            let result: String = match bits {
+                224 => {
+                    let hash = Sha224::digest(s.as_bytes());
+                    format!("{:x}", hash)
+                }
+                256 => {
+                    let hash = Sha256::digest(s.as_bytes());
+                    format!("{:x}", hash)
+                }
+                384 => {
+                    let hash = Sha384::digest(s.as_bytes());
+                    format!("{:x}", hash)
+                }
+                512 => {
+                    let hash = Sha512::digest(s.as_bytes());
+                    format!("{:x}", hash)
+                }
+                _ => return Value::Null,
+            };
+            Value::Text(result)
+        }
+        // V312-79 / Issue #4670: UNHEX(string)
+        "UNHEX" => {
+            if args.is_empty() || matches!(&args[0], Value::Null) {
+                return Value::Null;
+            }
+            let s = args[0].to_sql_string();
+            if s.eq_ignore_ascii_case("NULL") {
+                return Value::Null;
+            }
+            let hex: String = s.chars().filter_map(|c| {
+                if c.is_ascii_hexdigit() {
+                    Some(c.to_ascii_lowercase())
+                } else {
+                    None
+                }
+            }).collect();
+            if hex.len() % 2 != 0 {
+                return Value::Null;
+            }
+            let mut bytes = Vec::new();
+            for i in (0..hex.len()).step_by(2) {
+                if let Ok(byte) = u8::from_str_radix(&hex[i..i+2], 16) {
+                    bytes.push(byte);
+                } else {
+                    return Value::Null;
+                }
+            }
+            Value::Text(String::from_utf8(bytes).unwrap_or_else(|_| String::new()))
+        }
+        //   TRIM(remstr, str)
         //   TRIM([LEADING|TRAILING|BOTH] remstr FROM str) — 3-arg sentinel form
         // The 3-arg form is produced by the parser with a sentinel
         // string-literal modifier as args[0]:
