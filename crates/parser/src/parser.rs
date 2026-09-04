@@ -2630,9 +2630,16 @@ impl Parser {
     }
 
     /// SEM-1 (#3172): Parse `RELEASE SAVEPOINT <name>`.
+    ///
+    /// Issue #4754: SQLite shorthand `RELEASE <name>` (without the
+    /// `SAVEPOINT` keyword) is also accepted, mirroring the
+    /// `ROLLBACK TO <name>` shorthand already supported by #4618.
     fn parse_release_savepoint(&mut self) -> Result<Statement, String> {
         self.expect(Token::Release)?;
-        self.expect(Token::Savepoint)?;
+        // SAVEPOINT keyword is optional (SQLite shorthand).
+        if self.current() == Some(&Token::Savepoint) {
+            self.next();
+        }
         let name = match self.next() {
             Some(Token::Identifier(n)) => n,
             Some(t) => return Err(format!("Expected savepoint name (identifier), got {:?}", t)),
@@ -16070,6 +16077,27 @@ mod set_op_tests {
     fn test_release_savepoint() {
         let result = parse("RELEASE SAVEPOINT sp");
         assert!(result.is_ok(), "Parse failed: {:?}", result);
+        match result.unwrap() {
+            Statement::SavepointStatement { name, op } => {
+                assert_eq!(name, "sp");
+                assert_eq!(op, SavepointOp::Release);
+            }
+            other => panic!("Expected SavepointStatement, got {:?}", other),
+        }
+    }
+
+    // Issue #4754: SQLite shorthand `RELEASE <name>` (without the
+    // `SAVEPOINT` keyword) should parse identically to
+    // `RELEASE SAVEPOINT <name>`. Mirrors the `ROLLBACK TO <name>`
+    // shorthand already supported by #4618.
+    #[test]
+    fn test_release_savepoint_shorthand() {
+        let result = parse("RELEASE sp");
+        assert!(
+            result.is_ok(),
+            "RELEASE <name> shorthand should parse (Issue #4754): {:?}",
+            result
+        );
         match result.unwrap() {
             Statement::SavepointStatement { name, op } => {
                 assert_eq!(name, "sp");
