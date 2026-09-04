@@ -1027,9 +1027,24 @@ pub struct AlterSequenceStatement {
 }
 
 /// TRUNCATE TABLE statement
+///
+/// V312-64h / Issue #4762: extended to accept optional `TABLE` keyword
+/// (MySQL/SQLite accept both `TRUNCATE t` and `TRUNCATE TABLE t`) and
+/// optional trailing `CASCADE` / `RESTRICT` clause. Both CASCADE and
+/// RESTRICT are recorded for compatibility; current execution always
+/// truncates all rows regardless (no FK reference tracking yet).
 #[derive(Debug, Clone, PartialEq)]
 pub struct TruncateStatement {
     pub name: String,
+    /// True when `TABLE` keyword was explicitly present
+    /// (TRUNCATE TABLE t). False when omitted (TRUNCATE t).
+    pub has_table_keyword: bool,
+    /// Trailing CASCADE if present. False for RESTRICT or omitted.
+    pub cascade: bool,
+    /// True when `RESTRICT` was explicitly present. Recorded for
+    /// dialect compatibility; semantics same as CASCADE at the
+    /// current executor layer.
+    pub restrict: bool,
 }
 
 /// SHOW statement variants
@@ -11106,13 +11121,41 @@ impl Parser {
     #[allow(dead_code)]
     fn parse_truncate(&mut self) -> Result<Statement, String> {
         self.expect(Token::Truncate)?;
-        self.expect(Token::Table)?;
+        // V312-64h / Issue #4762: accept both `TRUNCATE TABLE t` and
+        // `TRUNCATE t` (MySQL/SQLite allow omitting the TABLE keyword).
+        // The Parser uses a 1-token lookahead: `current()` is the
+        // next token to consume, `peek()` is the one after that.
+        // After `expect(Truncate)`, `current()` points at the
+        // optional TABLE keyword.
+        let has_table_keyword = if self.current() == Some(&Token::Table) {
+            self.next();
+            true
+        } else {
+            false
+        };
         let name = match self.next() {
             Some(Token::Identifier(name)) => name,
             _ => return Err("Expected table name".to_string()),
         };
-
-        Ok(Statement::Truncate(TruncateStatement { name }))
+        // V312-64h / Issue #4762: accept optional trailing
+        // CASCADE / RESTRICT. Both are recorded for dialect
+        // compatibility; current executor truncates all rows
+        // regardless (no FK reference tracking yet).
+        let mut cascade = false;
+        let mut restrict = false;
+        if self.current() == Some(&Token::Cascade) {
+            self.next();
+            cascade = true;
+        } else if self.current() == Some(&Token::Restrict) {
+            self.next();
+            restrict = true;
+        }
+        Ok(Statement::Truncate(TruncateStatement {
+            name,
+            has_table_keyword,
+            cascade,
+            restrict,
+        }))
     }
 
     /// Round-21 / Issue #4218: MySQL `KILL [QUERY|CONNECTION] <id>` parser.
@@ -16304,6 +16347,70 @@ mod set_op_tests {
         match result.unwrap() {
             Statement::Truncate(t) => {
                 assert_eq!(t.name, "t");
+            }
+            other => panic!("Expected Truncate, got {:?}", other),
+        }
+    }
+
+    // V312-64h / Issue #4762: TRUNCATE without TABLE keyword.
+    #[test]
+    fn test_truncate_without_table_keyword() {
+        let result = parse("TRUNCATE t");
+        assert!(result.is_ok(), "Parse failed: {:?}", result);
+        match result.unwrap() {
+            Statement::Truncate(t) => {
+                assert_eq!(t.name, "t");
+                assert!(!t.has_table_keyword, "TABLE keyword must be absent");
+                assert!(!t.cascade);
+                assert!(!t.restrict);
+            }
+            other => panic!("Expected Truncate, got {:?}", other),
+        }
+    }
+
+    // V312-64h / Issue #4762: TRUNCATE TABLE t CASCADE.
+    #[test]
+    fn test_truncate_table_cascade() {
+        let result = parse("TRUNCATE TABLE t CASCADE");
+        assert!(result.is_ok(), "Parse failed: {:?}", result);
+        match result.unwrap() {
+            Statement::Truncate(t) => {
+                assert_eq!(t.name, "t");
+                assert!(t.has_table_keyword);
+                assert!(t.cascade);
+                assert!(!t.restrict);
+            }
+            other => panic!("Expected Truncate, got {:?}", other),
+        }
+    }
+
+    // V312-64h / Issue #4762: TRUNCATE t RESTRICT (no TABLE keyword).
+    #[test]
+    fn test_truncate_restrict_no_table_keyword() {
+        let result = parse("TRUNCATE t RESTRICT");
+        assert!(result.is_ok(), "Parse failed: {:?}", result);
+        match result.unwrap() {
+            Statement::Truncate(t) => {
+                assert_eq!(t.name, "t");
+                assert!(!t.has_table_keyword);
+                assert!(!t.cascade);
+                assert!(t.restrict);
+            }
+            other => panic!("Expected Truncate, got {:?}", other),
+        }
+    }
+
+    // V312-64h / Issue #4762: TRUNCATE TABLE t RESTRICT.
+    #[test]
+    fn test_truncate_table_restrict() {
+        let result = parse("TRUNCATE TABLE users RESTRICT");
+        assert!(result.is_ok(), "Parse failed: {:?}", result);
+        match result.unwrap() {
+            Statement::Truncate(t) => {
+                assert_eq!(t.name, "users");
+                assert!(t.has_table_keyword);
+                assert!(!t.cascade);
+                assert!(t.restrict);
             }
             other => panic!("Expected Truncate, got {:?}", other),
         }
