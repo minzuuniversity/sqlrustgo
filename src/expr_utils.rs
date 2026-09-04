@@ -758,6 +758,27 @@ pub fn evaluate_window_call(
                         default
                     }
                 }
+                "NTILE" => {
+                    // V312-85 / Issue #4750: NTILE(n) buckets the partition
+                    // into `n` roughly equal-sized tiles. Bucket index is
+                    // min(ceil((local_idx+1) * n / partition_size), n).
+                    let n = if call.args.is_empty() {
+                        1
+                    } else {
+                        match &call.args[0] {
+                            Expression::Literal(s) => s.parse::<i64>().unwrap_or(1).max(1),
+                            _ => 1,
+                        }
+                    };
+                    let total = indices.len() as i64;
+                    if n <= 0 || total == 0 {
+                        Value::Null
+                    } else {
+                        let pos = (local_idx as i64) + 1;
+                        let bucket = (pos * n + total - 1) / total;
+                        Value::Integer(bucket.min(n))
+                    }
+                }
                 "SUM" | "AVG" | "COUNT" | "MIN" | "MAX" => {
                     // Aggregate over the full partition (no frame clause yet).
                     if call.args.is_empty() {
