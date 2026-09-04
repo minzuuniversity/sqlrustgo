@@ -11582,6 +11582,11 @@ impl Parser {
     fn parse_analyze(&mut self) -> Result<Statement, String> {
         self.expect(Token::Analyze)?;
 
+        // V312-81 / Issue #4719: optional TABLE keyword (SQLite/MySQL compatible)
+        if matches!(self.current(), Some(Token::Table)) {
+            self.next();
+        }
+
         let table_name = match self.current() {
             Some(Token::Identifier(name)) => {
                 let n = name.clone();
