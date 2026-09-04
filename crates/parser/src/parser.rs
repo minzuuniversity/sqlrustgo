@@ -5401,6 +5401,13 @@ impl Parser {
                             // JSON path operators (MySQL 5.7).
                             || matches!(self.peek(), Some(Token::JsonArrow))
                             || matches!(self.peek(), Some(Token::JsonArrowText))
+                            // V312-85 / Issue #4751: REGEXP/RLIKE peek
+                            || matches!(
+                                self.peek(),
+                                Some(Token::Identifier(ref ident))
+                                    if ident.to_uppercase() == "REGEXP"
+                                        || ident.to_uppercase() == "RLIKE"
+                            )
                     };
 
                     if is_operator {
