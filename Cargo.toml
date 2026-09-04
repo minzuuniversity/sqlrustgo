@@ -342,6 +342,10 @@ name = "repro_v312_85_lead"
 path = "tests/integration/sql/repro_v312_85_lead.rs"
 
 [[test]]
+name = "repro_window_frame"
+path = "tests/integration/sql/repro_window.rs"
+
+[[test]]
 name = "cbo_integration_test"
 path = "tests/integration/optimizer/cbo_integration_test.rs"
 
