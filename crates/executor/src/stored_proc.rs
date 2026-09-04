@@ -1207,8 +1207,11 @@ impl StoredProcExecutor {
                 Ok(())
             }
             sqlrustgo_parser::Statement::Update(update) => {
+                // V312-84 / Issue #4685: multi-table UPDATE (UPDATE t1 JOIN t2 ON ... SET ...)
+                // Currently only single-table UPDATE is fully supported.
+                // Multi-table form parses but requires JOIN ON clause for cross-table references.
                 if update.tables.len() != 1 {
-                    return Err("Stored-proc UPDATE only supports single-table form".to_string());
+                    return Err("Multi-table UPDATE not yet fully implemented".to_string());
                 }
                 let table_name = &update.tables[0].name;
                 let mut storage = self.storage.write();
