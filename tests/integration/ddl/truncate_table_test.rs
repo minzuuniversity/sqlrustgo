@@ -137,3 +137,111 @@ fn test_truncate_and_reinsert() {
         err
     );
 }
+
+// ============================================================================
+// V312-64h / Issue #4762 — TRUNCATE CASCADE / RESTRICT / omitted TABLE keyword
+// ============================================================================
+
+#[test]
+fn test_truncate_table_cascade() {
+    // MySQL/SQLite accept `TRUNCATE TABLE t CASCADE`. sqlrustgo must
+    // parse and execute it identically to bare TRUNCATE.
+    let (out, err, _code) = run_repl(
+        "CREATE TABLE tr_cas (id INT PRIMARY KEY, v INT);\n\
+         INSERT INTO tr_cas VALUES (1, 10),(2, 20),(3, 30);\n\
+         TRUNCATE TABLE tr_cas CASCADE;\n\
+         SELECT COUNT(*) FROM tr_cas;\n\
+         .exit\n",
+    );
+    let combined = format!("{}{}", out, err);
+    assert!(
+        !combined.contains("Error"),
+        "TRUNCATE TABLE tr_cas CASCADE must succeed; got stdout:\n{}\nstderr:\n{}",
+        out,
+        err
+    );
+    assert!(
+        combined.contains("Integer(0)") || combined.contains("0\n"),
+        "post-CASCADE count must be 0; got stdout:\n{}\nstderr:\n{}",
+        out,
+        err
+    );
+}
+
+#[test]
+fn test_truncate_table_restrict() {
+    // MySQL/SQLite accept `TRUNCATE TABLE t RESTRICT`. sqlrustgo
+    // must parse it (RESTRICT is recorded but does not gate the
+    // truncate yet since FK constraints are not enforced).
+    let (out, err, _code) = run_repl(
+        "CREATE TABLE tr_res (id INT PRIMARY KEY, v INT);\n\
+         INSERT INTO tr_res VALUES (1, 10),(2, 20);\n\
+         TRUNCATE TABLE tr_res RESTRICT;\n\
+         SELECT COUNT(*) FROM tr_res;\n\
+         .exit\n",
+    );
+    let combined = format!("{}{}", out, err);
+    assert!(
+        !combined.contains("Error"),
+        "TRUNCATE TABLE tr_res RESTRICT must succeed; got stdout:\n{}\nstderr:\n{}",
+        out,
+        err
+    );
+    assert!(
+        combined.contains("Integer(0)") || combined.contains("0\n"),
+        "post-RESTRICT count must be 0; got stdout:\n{}\nstderr:\n{}",
+        out,
+        err
+    );
+}
+
+#[test]
+fn test_truncate_without_table_keyword() {
+    // MySQL accepts `TRUNCATE t` (omitting TABLE keyword). Verify
+    // sqlrustgo now parses this form.
+    let (out, err, _code) = run_repl(
+        "CREATE TABLE tr_notbl (id INT PRIMARY KEY, v INT);\n\
+         INSERT INTO tr_notbl VALUES (1, 10),(2, 20),(3, 30);\n\
+         TRUNCATE tr_notbl;\n\
+         SELECT COUNT(*) FROM tr_notbl;\n\
+         .exit\n",
+    );
+    let combined = format!("{}{}", out, err);
+    assert!(
+        !combined.contains("Error"),
+        "TRUNCATE tr_notbl (no TABLE keyword) must succeed; got stdout:\n{}\nstderr:\n{}",
+        out,
+        err
+    );
+    assert!(
+        combined.contains("Integer(0)") || combined.contains("0\n"),
+        "post-TRUNCATE count must be 0; got stdout:\n{}\nstderr:\n{}",
+        out,
+        err
+    );
+}
+
+#[test]
+fn test_truncate_without_table_keyword_cascade() {
+    // Combined: omit TABLE keyword + add CASCADE.
+    let (out, err, _code) = run_repl(
+        "CREATE TABLE tr_ntc (id INT PRIMARY KEY, v INT);\n\
+         INSERT INTO tr_ntc VALUES (1, 10);\n\
+         TRUNCATE tr_ntc CASCADE;\n\
+         SELECT COUNT(*) FROM tr_ntc;\n\
+         .exit\n",
+    );
+    let combined = format!("{}{}", out, err);
+    assert!(
+        !combined.contains("Error"),
+        "TRUNCATE tr_ntc CASCADE must succeed; got stdout:\n{}\nstderr:\n{}",
+        out,
+        err
+    );
+    assert!(
+        combined.contains("Integer(0)") || combined.contains("0\n"),
+        "post-TRUNCATE count must be 0; got stdout:\n{}\nstderr:\n{}",
+        out,
+        err
+    );
+}

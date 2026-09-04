@@ -1099,6 +1099,11 @@ impl<S: StorageEngine + 'static> ExecutionEngine<S> {
                 truncate.name
             )));
         }
+        // V312-64h / Issue #4762: CASCADE / RESTRICT are recorded for
+        // dialect compatibility; current executor truncates all rows
+        // regardless (no FK reference tracking yet). RESTRICT would
+        // error only if any FK pointed at the table; sqlrustgo does
+        // not yet enforce FK constraints, so the behavior is the same.
         storage.delete(&truncate.name, &[])?;
         Ok(ExecutorResult::empty())
     }
