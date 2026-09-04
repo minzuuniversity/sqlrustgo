@@ -2723,6 +2723,29 @@ fn date_trunc(args: &[Value]) -> Value {
             // still truncates cleanly.
             Value::Text(raw[..10].to_string())
         }
+        "WEEK" => {
+            // Truncate to the Monday of the ISO week containing the date.
+            // PostgreSQL/Snowflake semantics: Mon=1..Sun=7. Howard Hinnant
+            // epoch: 1970-01-01 (Thu) is day 0; dow for Mon=0..Sun=6 is
+            // (z + 3).rem_euclid(7). Returns Value::Text("YYYY-MM-DD").
+            let (y, m, d) = if let Ok(secs) = raw.trim().parse::<i64>() {
+                let days = secs.div_euclid(86_400);
+                civil_from_days(days)
+            } else {
+                if raw.len() < 10 {
+                    return Value::Null;
+                }
+                let y: i64 = raw[..4].parse().unwrap_or(0);
+                let m: i64 = raw[5..7].parse().unwrap_or(1);
+                let d: i64 = raw[8..10].parse().unwrap_or(1);
+                (y, m, d)
+            };
+            let z = days_from_civil(y, m, d);
+            let dow = (z + 3_i64).rem_euclid(7); // Mon=0..Sun=6
+            let monday_z = z - dow;
+            let (y2, m2, d2) = civil_from_days(monday_z);
+            Value::Text(format!("{:04}-{:02}-{:02}", y2, m2, d2))
+        }
         "HOUR" | "MINUTE" | "SECOND" => {
             let secs = match parse_text_to_secs(&raw) {
                 Some(s) => s,
