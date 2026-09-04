@@ -1349,6 +1349,35 @@ impl StoredProcExecutor {
                 }
                 Ok(())
             }
+            // V312-81 / Issue #4694: SET TIMEZONE/SET TRANSACTION ISOLATION LEVEL
+            sqlrustgo_parser::Statement::Transaction(ref txn) => match txn {
+                sqlrustgo_parser::TransactionStatement::SetSessionVariable { ref name, ref value } => {
+                    // Store session variable (e.g., timezone)
+                    ctx.set_session_var(name, Value::Text(value.clone()));
+                    Ok(())
+                }
+                sqlrustgo_parser::TransactionStatement::SetTransaction { ref isolation_level } => {
+                    // V312-81 / Issue #4694: SET TRANSACTION ISOLATION LEVEL
+                    ctx.set_session_var(
+                        "transaction_isolation_level",
+                        Value::Text(format!("{:?}", isolation_level)),
+                    );
+                    Ok(())
+                }
+                _ => Ok(()),
+            },
+            // V312-81 / Issue #4719: ANALYZE TABLE
+            // SQLite ANALYZE is a no-op that collects statistics into sqlite_stat1.
+            // For now, accept and silently succeed (statistics collection is future work).
+            sqlrustgo_parser::Statement::Analyze(ref analyze) => {
+                let table_name = analyze.table_name.as_deref().unwrap_or("*");
+                // Store that ANALYZE was run for this table (future: populate sqlite_stat1)
+                ctx.set_session_var(
+                    &format!("__analyze_{}", table_name),
+                    Value::Text("analyzed".to_string()),
+                );
+                Ok(())
+            }
             _ => Ok(()),
         }
     }
