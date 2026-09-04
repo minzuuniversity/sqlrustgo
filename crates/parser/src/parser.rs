@@ -5492,6 +5492,17 @@ impl Parser {
                         expression: Some(expr),
                     });
                 }
+                // V312-79 / Issue #4670: TRUNCATE(expr, digits) in SELECT projection.
+                // Same fix as USER() above — let `parse_expression()` handle the
+                // TRUNCATE function call shape so we don't fall out of the loop.
+                Some(Token::Truncate) => {
+                    let expr = self.parse_expression()?;
+                    columns.push(SelectColumn {
+                        name: format!("{:?}", expr),
+                        alias: None,
+                        expression: Some(expr),
+                    });
+                }
                 // V313-followup-5 / Issue #4158: trailing `WITH [NO] DATA`
                 // marker in CREATE TABLE AS SELECT. Break the column-list
                 // loop without consuming; the caller (parse_create_table)
@@ -8505,6 +8516,8 @@ impl Parser {
             // CREATE/DROP/ALTER USER paths are dispatched elsewhere in
             // parse_statement before reaching here, so this entry only
             // affects SELECT-expression parsing.
+            // V312-79 / Issue #4670: TRUNCATE(expr, digits) — same pattern.
+            | Some(Token::Truncate)
             | Some(Token::User) => {
                 let name = match self.current() {
                     Some(Token::Left) => "LEFT",
@@ -8522,6 +8535,7 @@ impl Parser {
                     Some(Token::Rollup) => "ROLLUP",
                     Some(Token::Cube) => "CUBE",
                     Some(Token::Database) => "DATABASE",
+                    Some(Token::Truncate) => "TRUNCATE",
                     Some(Token::User) => "USER",
                     _ => unreachable!(),
                 };
@@ -8537,6 +8551,24 @@ impl Parser {
                 //   (a) DATE_ADD(d, n, 'UNIT')                 — 3-arg
                 //   (b) DATE_ADD(d, INTERVAL n UNIT)            — SQL standard
                 // Mirrors the Identifier arm special form.
+                // V312-79 / Issue #4670: TRUNCATE(expr, digits) uses the general
+                // arg-parsing loop — guard before DATE_ADD so TRUNCATE doesn't
+                // fall through to the date arithmetic special form.
+                if name == "TRUNCATE" {
+                    let mut args = Vec::new();
+                    if !matches!(self.current(), Some(Token::RParen)) {
+                        loop {
+                            args.push(self.parse_expression()?);
+                            if matches!(self.current(), Some(Token::Comma)) {
+                                self.next();
+                            } else {
+                                break;
+                            }
+                        }
+                    }
+                    self.expect(Token::RParen)?;
+                    return Ok(Expression::FunctionCall(name.to_string(), args));
+                }
                 if name == "DATE_ADD" || name == "DATE_SUB" {
                     let date_expr = self.parse_primary_expression()?;
                     if !matches!(self.current(), Some(Token::Comma)) {
