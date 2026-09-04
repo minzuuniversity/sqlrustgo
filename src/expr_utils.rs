@@ -356,8 +356,16 @@ pub fn evaluate_expression_with_subq(
         Expression::BinaryOp(left, op, right) => {
             // P0-2 §4.14: delegated to `executor::expr::eval_binary_op`
             // (single source of truth for the BinaryOp branch).
-            let left_val = evaluate_expression(left, row, table_info).unwrap_or(Value::Null);
-            let right_val = evaluate_expression(right, row, table_info).unwrap_or(Value::Null);
+            //
+            // V312-87 / #4760: thread `subq_eval` through, NOT the bare
+            // `evaluate_expression` wrapper. Without this a subquery on
+            // either side of a comparison evaluates to Null (BinaryOp
+            // collapses to Null), which silently corrupts CASE WHEN
+            // branches that gate on `subq > literal`.
+            let left_val = evaluate_expression_with_subq(left, row, table_info, subq_eval)
+                .unwrap_or(Value::Null);
+            let right_val = evaluate_expression_with_subq(right, row, table_info, subq_eval)
+                .unwrap_or(Value::Null);
             Ok(sqlrustgo_executor::expr::eval_binary_op(
                 &left_val, &right_val, op,
             ))
@@ -365,7 +373,7 @@ pub fn evaluate_expression_with_subq(
         Expression::IsNull(inner) => {
             // P0-2 §4.2: delegated to `executor::expr::eval_is_null`
             // (single source of truth for the IsNull branch).
-            let val = evaluate_expression(inner, row, table_info)?;
+            let val = evaluate_expression_with_subq(inner, row, table_info, subq_eval)?;
             Ok(sqlrustgo_executor::expr::eval_is_null(&val))
         }
         Expression::IsNotNull(inner) => {
@@ -379,7 +387,7 @@ pub fn evaluate_expression_with_subq(
             // the UnifiedExpr::IsNotNull implementation has been correct
             // since v3.8.0) fixes this. Verified by
             // `test_isnull_delegation`'s "empty string (not null)" case.
-            let val = evaluate_expression(inner, row, table_info)?;
+            let val = evaluate_expression_with_subq(inner, row, table_info, subq_eval)?;
             Ok(sqlrustgo_executor::expr::eval_is_not_null(&val))
         }
         // TPC-H Q9: `WHERE p_name LIKE '%green%'`. SQL LIKE substring
@@ -390,10 +398,10 @@ pub fn evaluate_expression_with_subq(
         Expression::Like(expr, pattern, escape) => {
             // P0-2 §4.5: delegated to `executor::expr::sql_like_match_esc`
             // (single source of truth for the LIKE pattern matcher).
-            let val = evaluate_expression(expr, row, table_info)
+            let val = evaluate_expression_with_subq(expr, row, table_info, subq_eval)
                 .map(|v| v.to_sql_string())
                 .unwrap_or_default();
-            let pat = evaluate_expression(pattern, row, table_info)
+            let pat = evaluate_expression_with_subq(pattern, row, table_info, subq_eval)
                 .map(|v| v.to_sql_string())
                 .unwrap_or_default();
             Ok(Value::Boolean(
@@ -410,8 +418,15 @@ pub fn evaluate_expression_with_subq(
             // The evaluate_fn closure threads our local row/table_info
             // through so the algorithm (which lives in the executor)
             // doesn't need to know about TableInfo.
+            //
+            // V312-87 / #4760: must thread the caller's `subq_eval`
+            // through, NOT call `evaluate_expression` (which hard-codes
+            // `subq_eval = |_| Ok(Value::Null)`). Without this, any
+            // scalar subquery inside a WHEN condition evaluates to
+            // Null, the BinaryOp collapses to Null, and the algorithm
+            // always falls through to ELSE — silently wrong.
             sqlrustgo_executor::expr::eval_case_when(whens, else_val.as_deref(), |e| {
-                evaluate_expression(e, row, table_info)
+                evaluate_expression_with_subq(e, row, table_info, subq_eval)
             })
         }
         // TPC-H Q7/Q8/Q9: EXTRACT(field FROM col). The parser encodes this
@@ -445,7 +460,10 @@ pub fn evaluate_expression_with_subq(
             use sqlrustgo_executor::expr::eval_fn as dispatch_fn;
             let vals: Vec<Value> = args
                 .iter()
-                .map(|a| evaluate_expression(a, row, table_info).unwrap_or(Value::Null))
+                .map(|a| {
+                    evaluate_expression_with_subq(a, row, table_info, subq_eval)
+                        .unwrap_or(Value::Null)
+                })
                 .collect();
             Ok(dispatch_fn(name, &vals))
         }
@@ -453,8 +471,8 @@ pub fn evaluate_expression_with_subq(
         Expression::NotLike(left, pattern, escape) => {
             // P0-2 §4.6: delegated to `executor::expr::sql_like_match_esc`.
             // Issue #4677: NOT LIKE honors ESCAPE the same way LIKE does.
-            let lv = evaluate_expression(left, row, table_info)?;
-            let pv = evaluate_expression(pattern, row, table_info)?;
+            let lv = evaluate_expression_with_subq(left, row, table_info, subq_eval)?;
+            let pv = evaluate_expression_with_subq(pattern, row, table_info, subq_eval)?;
             Ok(Value::Boolean(
                 !sqlrustgo_executor::expr::sql_like_match_esc(
                     &lv.to_sql_string(),
@@ -466,16 +484,16 @@ pub fn evaluate_expression_with_subq(
         // TPC-H Q1: expr BETWEEN low AND high.
         Expression::Between(expr, low, high) => {
             // P0-2 §4.7: delegated to `executor::expr::eval_between`.
-            let v = evaluate_expression(expr, row, table_info)?;
-            let lo = evaluate_expression(low, row, table_info)?;
-            let hi = evaluate_expression(high, row, table_info)?;
+            let v = evaluate_expression_with_subq(expr, row, table_info, subq_eval)?;
+            let lo = evaluate_expression_with_subq(low, row, table_info, subq_eval)?;
+            let hi = evaluate_expression_with_subq(high, row, table_info, subq_eval)?;
             Ok(sqlrustgo_executor::expr::eval_between(&v, &lo, &hi))
         }
         Expression::NotBetween(expr, low, high) => {
             // P0-2 §4.8: delegated to `executor::expr::eval_not_between`.
-            let v = evaluate_expression(expr, row, table_info)?;
-            let lo = evaluate_expression(low, row, table_info)?;
-            let hi = evaluate_expression(high, row, table_info)?;
+            let v = evaluate_expression_with_subq(expr, row, table_info, subq_eval)?;
+            let lo = evaluate_expression_with_subq(low, row, table_info, subq_eval)?;
+            let hi = evaluate_expression_with_subq(high, row, table_info, subq_eval)?;
             Ok(sqlrustgo_executor::expr::eval_not_between(&v, &lo, &hi))
         }
         // TPC-H Q20: col IN (subquery) and col NOT IN (subquery).
