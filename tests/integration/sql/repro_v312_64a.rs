@@ -273,6 +273,50 @@ fn repro_4655_date_trunc_unknown_unit_returns_null() {
     );
 }
 
+#[test]
+fn repro_4765_date_trunc_week_returns_monday() {
+    // Issue #4765 — DATE_TRUNC('WEEK', ...) returns NULL. PostgreSQL semantics:
+    // the Monday of the ISO week containing the input date.
+    // 2024-07-15 is a Monday → unchanged.
+    let mut x = fresh_mem();
+    x.execute("CREATE TABLE t(ts TEXT)").unwrap();
+    x.execute("INSERT INTO t VALUES ('2024-07-15 13:45:30')")
+        .unwrap();
+    let r = x
+        .execute("SELECT DATE_TRUNC('WEEK', ts) FROM t")
+        .expect("DATE_TRUNC WEEK must execute");
+    assert_eq!(r.rows.len(), 1);
+    assert_eq!(format!("{:?}", r.rows[0][0]), "Text(\"2024-07-15\")");
+}
+
+#[test]
+fn repro_4765_date_trunc_week_thursday_returns_prior_monday() {
+    // 2026-01-15 is a Thursday → Monday of that ISO week is 2026-01-12.
+    let mut x = fresh_mem();
+    x.execute("CREATE TABLE t(ts TEXT)").unwrap();
+    x.execute("INSERT INTO t VALUES ('2026-01-15 13:45:30')")
+        .unwrap();
+    let r = x
+        .execute("SELECT DATE_TRUNC('WEEK', ts) FROM t")
+        .expect("DATE_TRUNC WEEK must execute");
+    assert_eq!(r.rows.len(), 1);
+    assert_eq!(format!("{:?}", r.rows[0][0]), "Text(\"2026-01-12\")");
+}
+
+#[test]
+fn repro_4765_date_trunc_week_sunday_returns_prior_monday() {
+    // 2024-07-21 is a Sunday → Monday of that ISO week is 2024-07-15.
+    let mut x = fresh_mem();
+    x.execute("CREATE TABLE t(ts TEXT)").unwrap();
+    x.execute("INSERT INTO t VALUES ('2024-07-21 13:45:30')")
+        .unwrap();
+    let r = x
+        .execute("SELECT DATE_TRUNC('WEEK', ts) FROM t")
+        .expect("DATE_TRUNC WEEK must execute");
+    assert_eq!(r.rows.len(), 1);
+    assert_eq!(format!("{:?}", r.rows[0][0]), "Text(\"2024-07-15\")");
+}
+
 // ============================================================================
 // Issue #4665 — ROWS BETWEEN frame clause
 // ============================================================================
