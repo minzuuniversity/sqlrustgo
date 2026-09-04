@@ -1339,6 +1339,95 @@ pub enum Expression {
     Interval(Box<Expression>, String),
 }
 
+/// V312-85 / Issue #4752: human-readable Display for Expression so CHECK
+/// constraint errors don't leak raw `BinaryOp(BinaryOp(...), ...)` AST
+/// to the user.
+impl std::fmt::Display for Expression {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            Expression::Literal(s) => write!(f, "{s}"),
+            Expression::Identifier(s) => write!(f, "{s}"),
+            Expression::BinaryOp(left, op, right) => write!(f, "({left} {op} {right})"),
+            Expression::UnaryOp(op, inner) => write!(f, "{op} ({inner})"),
+            Expression::IsNull(inner) => write!(f, "({inner}) IS NULL"),
+            Expression::IsNotNull(inner) => write!(f, "({inner}) IS NOT NULL"),
+            Expression::Like(left, right, _) => write!(f, "({left}) LIKE ({right})"),
+            Expression::NotLike(left, right, _) => write!(f, "({left}) NOT LIKE ({right})"),
+            Expression::Between(left, lo, hi) => {
+                write!(f, "({left}) BETWEEN ({lo}) AND ({hi})")
+            }
+            Expression::NotBetween(left, lo, hi) => {
+                write!(f, "({left}) NOT BETWEEN ({lo}) AND ({hi})")
+            }
+            Expression::InList(left, vals) => {
+                write!(f, "({left}) IN (")?;
+                for (i, v) in vals.iter().enumerate() {
+                    if i > 0 {
+                        write!(f, ", ")?;
+                    }
+                    write!(f, "{v}")?;
+                }
+                write!(f, ")")
+            }
+            Expression::NotInList(left, vals) => {
+                write!(f, "({left}) NOT IN (")?;
+                for (i, v) in vals.iter().enumerate() {
+                    if i > 0 {
+                        write!(f, ", ")?;
+                    }
+                    write!(f, "{v}")?;
+                }
+                write!(f, ")")
+            }
+            Expression::CaseWhen(whens, else_) => {
+                write!(f, "CASE")?;
+                for w in whens {
+                    write!(f, " WHEN {} THEN {}", w.condition, w.result)?;
+                }
+                if let Some(e) = else_ {
+                    write!(f, " ELSE {e}")?;
+                }
+                write!(f, " END")
+            }
+            Expression::FunctionCall(name, args) => {
+                write!(f, "{name}(")?;
+                for (i, a) in args.iter().enumerate() {
+                    if i > 0 {
+                        write!(f, ", ")?;
+                    }
+                    write!(f, "{a}")?;
+                }
+                write!(f, ")")
+            }
+            Expression::JsonLiteral(s) => write!(f, "{s}"),
+            Expression::SystemVariable(s) => write!(f, "@@{s}"),
+            Expression::ArrayLiteral(items) => {
+                write!(f, "[")?;
+                for (i, a) in items.iter().enumerate() {
+                    if i > 0 {
+                        write!(f, ", ")?;
+                    }
+                    write!(f, "{a}")?;
+                }
+                write!(f, "]")
+            }
+            Expression::Interval(inner, unit) => write!(f, "INTERVAL ({inner}) {unit}"),
+            Expression::Subquery(_) => write!(f, "(SELECT ...)"),
+            Expression::SubqueryField(inner, fld) => write!(f, "({inner}).{fld}"),
+            Expression::In(inner, _) => write!(f, "({inner}) IN (SELECT ...)"),
+            Expression::NotIn(inner, _) => write!(f, "({inner}) NOT IN (SELECT ...)"),
+            Expression::Exists(_) => write!(f, "EXISTS (SELECT ...)"),
+            Expression::NotExists(_) => write!(f, "NOT EXISTS (SELECT ...)"),
+            Expression::Aggregate(agg) => write!(f, "{agg:?}"),
+            Expression::NotRegexp(left, right) => write!(f, "({left}) NOT REGEXP ({right})"),
+            Expression::QuantifiedOp(left, op, _) => write!(f, "({left}) {op} (SELECT ...)"),
+            Expression::WindowCall(_) => write!(f, "(window call)"),
+            Expression::SequenceNextVal(s) => write!(f, "NEXT VALUE FOR {s}"),
+            Expression::SequenceCurrval(s) => write!(f, "CURRVAL({s})"),
+        }
+    }
+}
+
 /// V312-19 #3972: constant-fold an arithmetic expression to a `u64` LIMIT/OFFSET value.
 /// Returns `None` if the expression is not a constant integer.
 /// Supports `+ - * / %` on integer literals.

@@ -405,7 +405,7 @@ pub fn execute_insert<S: StorageEngine + 'static>(
                             )?;
                             if !valid {
                                 return Err(format!(
-                                    "CHECK constraint '{}' violated: {:?}",
+                                    "CHECK constraint '{}' violated: {}",
                                     constraint.name.as_deref().unwrap_or("unnamed"),
                                     constraint.expression
                                 )
@@ -441,7 +441,7 @@ pub fn execute_insert<S: StorageEngine + 'static>(
                         )?;
                         if !valid {
                             return Err(format!(
-                                "CHECK constraint '{}' violated: {:?}",
+                                "CHECK constraint '{}' violated: {}",
                                 constraint.name.as_deref().unwrap_or("unnamed"),
                                 constraint.expression
                             )
@@ -656,7 +656,7 @@ pub fn execute_update<S: StorageEngine + 'static>(
                 )?;
                 if !valid {
                     return Err(format!(
-                        "CHECK constraint '{}' violated: {:?}",
+                        "CHECK constraint '{}' violated: {}",
                         constraint.name.as_deref().unwrap_or("unnamed"),
                         constraint.expression
                     )
@@ -816,7 +816,7 @@ pub fn execute_update<S: StorageEngine + 'static>(
                     )?;
                     if !valid {
                         return Err(format!(
-                            "CHECK constraint '{}' violated: {:?}",
+                            "CHECK constraint '{}' violated: {}",
                             constraint.name.as_deref().unwrap_or("unnamed"),
                             constraint.expression
                         )
