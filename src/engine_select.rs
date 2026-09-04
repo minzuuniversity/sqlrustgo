@@ -451,7 +451,7 @@ impl<S: StorageEngine + 'static> ExecutionEngine<S> {
         Some(rewritten)
     }
 
-/// V312-64d / Issue #4664: dispatch a SELECT that targets one of the
+    /// V312-64d / Issue #4664: dispatch a SELECT that targets one of the
     /// recognised system tables (`sqlite_master`, `sqlite_schema`,
     /// `mysql.user`, `mysql.db`). Returns `Some(Ok(...))` when the FROM
     /// target is a system table, `Some(Err(...))` when something went
@@ -618,7 +618,7 @@ impl<S: StorageEngine + 'static> ExecutionEngine<S> {
     /// (`SELECT <expr>` with no FROM, no joins, no aggregates, no
     /// WHERE, no GROUP BY, no ORDER BY, no HAVING). This covers
     /// `SELECT (SELECT 1) AS x`, `SELECT (SELECT 1 + 2) AS y`, etc.
-/// The from-table form is routed to
+    /// The from-table form is routed to
     /// [`Self::execute_subquery_for_scalar_from_table`] by the
     /// projection call site (pre-computed per outer row).
     fn execute_subquery_for_scalar(&self, subq: &SelectStatement) -> Result<Value, String> {
@@ -1666,10 +1666,7 @@ impl<S: StorageEngine + 'static> ExecutionEngine<S> {
                             let mut parent_rows: Vec<Vec<Value>> = Vec::new();
                             for orig_row in &rows {
                                 let prefix_match = (0..prefix_len).all(|idx| {
-                                    let v = orig_row
-                                        .get(idx)
-                                        .cloned()
-                                        .unwrap_or(Value::Null);
+                                    let v = orig_row.get(idx).cloned().unwrap_or(Value::Null);
                                     let key = match &v {
                                         Value::Null => "NULL".to_string(),
                                         Value::Integer(n) => format!("I{}", n),
@@ -2366,7 +2363,24 @@ impl<S: StorageEngine + 'static> ExecutionEngine<S> {
                                         // re-entrancy hang that naive
                                         // `self.execute_select` recursion would
                                         // cause).
-                                        self.execute_subquery_for_scalar(subq)
+                                        //
+                                        // V312-87 / Issue #4760: this closure is
+                                        // also reached when a scalar subquery
+                                        // appears inside a nested expression
+                                        // like CASE WHEN (SELECT ...) > ...
+                                        // THEN ... END — dispatch on the
+                                        // subquery shape so the from-table
+                                        // variant sees the current `row` and
+                                        // `table_info` instead of bailing with
+                                        // "from-table form is not yet
+                                        // implemented".
+                                        if Self::is_no_table_scalar_subq(subq) {
+                                            self.execute_subquery_for_scalar(subq)
+                                        } else {
+                                            self.execute_subquery_for_scalar_from_table(
+                                                subq, row, &table_info,
+                                            )
+                                        }
                                     }
                                 )
                                 .map_err(SqlError::ExecutionError)?,
@@ -2506,9 +2520,7 @@ impl<S: StorageEngine + 'static> ExecutionEngine<S> {
                             // inverted by ASC/DESC reversal — only the value
                             // comparison reverses. The nulls_first_eff flag
                             // already represents the final position.
-                            if (is_null_a && nulls_first_eff)
-                                || (is_null_b && !nulls_first_eff)
-                            {
+                            if (is_null_a && nulls_first_eff) || (is_null_b && !nulls_first_eff) {
                                 std::cmp::Ordering::Less
                             } else {
                                 std::cmp::Ordering::Greater
@@ -8144,8 +8156,7 @@ fn build_scalar_agg_index_parallel(
                     HashMap::with_capacity(chunk.len() / 16 + 1);
                 for row in chunk.iter() {
                     // Build composite key from inner row
-                    let mut key_parts: Vec<Value> =
-                        Vec::with_capacity(key_col_indices.len());
+                    let mut key_parts: Vec<Value> = Vec::with_capacity(key_col_indices.len());
                     let mut key_missing = false;
                     for &idx in key_col_indices {
                         match row.get(idx) {
@@ -8161,26 +8172,21 @@ fn build_scalar_agg_index_parallel(
                     }
                     // Evaluate residual predicate (no outer refs).
                     if let Some(res) = residual {
-                        if !crate::engine_utils::eval_predicate(
-                            res, row, table_info,
-                        ) {
+                        if !crate::engine_utils::eval_predicate(res, row, table_info) {
                             continue;
                         }
                     }
-                    let entry =
-                        local.entry(key_parts).or_insert((0.0, 0, false));
+                    let entry = local.entry(key_parts).or_insert((0.0, 0, false));
                     match agg_func {
                         AggregateFunction::Count => {
                             if let Some(ci) = agg_col_idx {
-                                if matches!(row.get(ci), Some(V::Null) | None)
-                                {
+                                if matches!(row.get(ci), Some(V::Null) | None) {
                                     continue;
                                 }
                             }
                             entry.1 += 1;
                         }
-                        AggregateFunction::Sum
-                        | AggregateFunction::Avg => {
+                        AggregateFunction::Sum | AggregateFunction::Avg => {
                             let Some(ci) = agg_col_idx else { continue };
                             let v = row.get(ci);
                             match v {
@@ -8206,8 +8212,7 @@ fn build_scalar_agg_index_parallel(
                             let _ = (entry, v.clone(), ci);
                         }
                         AggregateFunction::PercentileCont => unreachable!(),
-                        AggregateFunction::QuantileDisc
-                        | AggregateFunction::QuantileCont => {}
+                        AggregateFunction::QuantileDisc | AggregateFunction::QuantileCont => {}
                         AggregateFunction::GroupConcat => {}
                     }
                 }
