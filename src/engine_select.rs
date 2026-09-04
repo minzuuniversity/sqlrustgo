@@ -2457,11 +2457,15 @@ impl<S: StorageEngine + 'static> ExecutionEngine<S> {
             // DESC, which my earlier version ignored.
             // V313-followup-4 / Issue #4157: also honour session
             // `SET default_null_order` for NULL-first / NULL-last placement.
+            // V312-85 / Issue #4763: SQLite default (verified on 3.51) is
+            // NULLS LAST for both ASC and DESC when no explicit clause
+            // is given. The session override `session_null_order_first`
+            // flips both. Explicit NULLS FIRST/LAST in the SQL overrides.
             zipped.sort_by(|a, b| {
                 for (i, ob) in select.order_by.iter().enumerate() {
                     let nulls_first_eff: bool = ob
                         .nulls_first
-                        .unwrap_or_else(|| self.session_null_order_first.unwrap_or(true));
+                        .unwrap_or_else(|| self.session_null_order_first.unwrap_or(false));
                     let ord = if i < a.0.len() && i < b.0.len() {
                         let va = &a.0[i];
                         let vb = &b.0[i];
@@ -2469,17 +2473,17 @@ impl<S: StorageEngine + 'static> ExecutionEngine<S> {
                         let is_null_b = matches!(vb, Value::Null);
                         if is_null_a && is_null_b {
                             std::cmp::Ordering::Equal
-                        } else if is_null_a {
-                            if nulls_first_eff {
+                        } else if is_null_a || is_null_b {
+                            // V312-85 / Issue #4763: NULL placement must NOT be
+                            // inverted by ASC/DESC reversal — only the value
+                            // comparison reverses. The nulls_first_eff flag
+                            // already represents the final position.
+                            if (is_null_a && nulls_first_eff)
+                                || (is_null_b && !nulls_first_eff)
+                            {
                                 std::cmp::Ordering::Less
                             } else {
                                 std::cmp::Ordering::Greater
-                            }
-                        } else if is_null_b {
-                            if nulls_first_eff {
-                                std::cmp::Ordering::Greater
-                            } else {
-                                std::cmp::Ordering::Less
                             }
                         } else {
                             va.cmp(vb)
@@ -2487,7 +2491,19 @@ impl<S: StorageEngine + 'static> ExecutionEngine<S> {
                     } else {
                         std::cmp::Ordering::Equal
                     };
-                    let ord = if ob.ascending { ord } else { ord.reverse() };
+                    // For non-null comparison: ASC keeps order, DESC reverses.
+                    // For null placement: already set per nulls_first_eff.
+                    let ord = if ob.ascending {
+                        ord
+                    } else {
+                        // Reverse only the non-null part: if either side is
+                        // null we already set the correct ordering above.
+                        if matches!(&a.0[i], Value::Null) || matches!(&b.0[i], Value::Null) {
+                            ord
+                        } else {
+                            ord.reverse()
+                        }
+                    };
                     if ord != std::cmp::Ordering::Equal {
                         return ord;
                     }
