@@ -1620,6 +1620,10 @@ name = "v312_76_sqlite_system_tables_test"
 path = "tests/integration/sql/v312_76_sqlite_system_tables_test.rs"
 
 [[test]]
+name = "v312_87_case_when_subquery_test"
+path = "tests/integration/sql/v312_87_case_when_subquery_test.rs"
+
+[[test]]
 name = "issue_4674_char_length_test"
 path = "tests/integration/sql/issue_4674_char_length_test.rs"
 

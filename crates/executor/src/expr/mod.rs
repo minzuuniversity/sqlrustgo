@@ -1587,21 +1587,41 @@ pub fn eval_fn(name: &str, args: &[Value]) -> Value {
                     Some(prev) => {
                         let dominated = match (&prev, arg) {
                             (Value::Integer(a), Value::Integer(b)) => {
-                                if name == "GREATEST" { *a < *b } else { *a > *b }
+                                if name == "GREATEST" {
+                                    *a < *b
+                                } else {
+                                    *a > *b
+                                }
                             }
                             (Value::Float(a), Value::Float(b)) => {
-                                if name == "GREATEST" { *a < *b } else { *a > *b }
+                                if name == "GREATEST" {
+                                    *a < *b
+                                } else {
+                                    *a > *b
+                                }
                             }
                             (Value::Integer(a), Value::Float(b)) => {
-                                if name == "GREATEST" { (*a as f64) < *b } else { (*a as f64) > *b }
+                                if name == "GREATEST" {
+                                    (*a as f64) < *b
+                                } else {
+                                    (*a as f64) > *b
+                                }
                             }
                             (Value::Float(a), Value::Integer(b)) => {
-                                if name == "GREATEST" { *a < (*b as f64) } else { *a > (*b as f64) }
+                                if name == "GREATEST" {
+                                    *a < (*b as f64)
+                                } else {
+                                    *a > (*b as f64)
+                                }
                             }
                             _ => {
                                 let prev_s = prev.to_sql_string();
                                 let arg_s = arg.to_sql_string();
-                                if name == "GREATEST" { prev_s < arg_s } else { prev_s > arg_s }
+                                if name == "GREATEST" {
+                                    prev_s < arg_s
+                                } else {
+                                    prev_s > arg_s
+                                }
                             }
                         };
                         if dominated {
@@ -1644,9 +1664,7 @@ pub fn eval_fn(name: &str, args: &[Value]) -> Value {
             }
             match (&args[0], &args[1]) {
                 (Value::Float(a), Value::Float(b)) => Value::Float(a.powf(*b)),
-                (Value::Integer(a), Value::Integer(b)) => {
-                    Value::Float((*a as f64).powf(*b as f64))
-                }
+                (Value::Integer(a), Value::Integer(b)) => Value::Float((*a as f64).powf(*b as f64)),
                 // Mixed: Integer base, Float exponent (e.g. POWER(100, 0.5))
                 (Value::Integer(a), Value::Float(b)) => Value::Float((*a as f64).powf(*b)),
                 // Mixed: Float base, Integer exponent
@@ -1737,7 +1755,8 @@ pub fn eval_fn(name: &str, args: &[Value]) -> Value {
             // Note: LOCATE/POSITION do literal matching (not LIKE glob).
             // Rust's str::find() takes a literal pattern — no escaping needed
             // for SQL semantics, since SQL pattern chars (%, _, \) are literal here.
-            if args.is_empty() || matches!(&args[0], Value::Null) || matches!(&args[1], Value::Null) {
+            if args.is_empty() || matches!(&args[0], Value::Null) || matches!(&args[1], Value::Null)
+            {
                 return Value::Null;
             }
             let start = match args.get(2) {
@@ -1934,19 +1953,22 @@ pub fn eval_fn(name: &str, args: &[Value]) -> Value {
             if s.eq_ignore_ascii_case("NULL") {
                 return Value::Null;
             }
-            let hex: String = s.chars().filter_map(|c| {
-                if c.is_ascii_hexdigit() {
-                    Some(c.to_ascii_lowercase())
-                } else {
-                    None
-                }
-            }).collect();
+            let hex: String = s
+                .chars()
+                .filter_map(|c| {
+                    if c.is_ascii_hexdigit() {
+                        Some(c.to_ascii_lowercase())
+                    } else {
+                        None
+                    }
+                })
+                .collect();
             if hex.len() % 2 != 0 {
                 return Value::Null;
             }
             let mut bytes = Vec::new();
             for i in (0..hex.len()).step_by(2) {
-                if let Ok(byte) = u8::from_str_radix(&hex[i..i+2], 16) {
+                if let Ok(byte) = u8::from_str_radix(&hex[i..i + 2], 16) {
                     bytes.push(byte);
                 } else {
                     return Value::Null;
@@ -3311,11 +3333,14 @@ fn compare_cmp(left: &Value, right: &Value, op: &str) -> Value {
     // The legacy #4492 trim_end has been removed in favour of
     // strict PartialOrd, matching SQLite/MySQL/PostgreSQL semantics
     // and the eq_cross / sql_compare / compare_values fixes.
-    let cmp = match (left, right) {
-        (Value::Integer(a), Value::Integer(b)) => a.cmp(b) as i64,
-        (Value::Text(a), Value::Text(b)) => a.cmp(b) as i64,
-        _ => return Value::Null,
-    };
+    //
+    // V312-87 / Issue #4760: delegate to the existing `compare_values`
+    // helper which already handles cross-type Float/Integer promotion
+    // (TPC-H Q11/Q14 fix). Previously the `_ => return Value::Null`
+    // catch-all meant `(SELECT AVG(col) FROM t) > 15` evaluated to
+    // Null when the aggregate returned Float — silently taking the
+    // ELSE branch in CASE WHEN.
+    let cmp = compare_values(left, right) as i64;
     let result = match op {
         ">" => cmp > 0,
         "<" => cmp < 0,
