@@ -1602,6 +1602,15 @@ impl<S: StorageEngine + 'static> ExecutionEngine<S> {
                     let k = group_exprs.len();
                     // Levels: drop trailing i group cols (i=1..k), leaving
                     // a grand-total row when all are dropped.
+                    // V312-86 / Issue #4758: bucket on the pre-aggregation
+                    // rows (`rows`), not `agg_result_rows`. Iterating over
+                    // `agg_result_rows` causes each subtotal level to see
+                    // its own previously-emitted subtotals as input rows —
+                    // which inflates the bucket count (e.g. for
+                    // ROLLUP(g,h), the i=1 pass would also count the i=2
+                    // grand-total row whose leading col is NULL, yielding
+                    // an extra phantom subtotal). The with_cube branch
+                    // already iterates `&rows`; mirror it here.
                     for i in (1..=k).rev() {
                         // Subtotal over rows that match the (k-i) leading
                         // group columns, ignoring the last i.
@@ -1610,7 +1619,7 @@ impl<S: StorageEngine + 'static> ExecutionEngine<S> {
                             String,
                             Vec<Vec<Value>>,
                         > = std::collections::HashMap::new();
-                        for row in &agg_result_rows {
+                        for row in &rows {
                             let key = (0..prefix_len)
                                 .map(|idx| {
                                     let v = row.get(idx).cloned().unwrap_or(Value::Null);
@@ -1630,7 +1639,16 @@ impl<S: StorageEngine + 'static> ExecutionEngine<S> {
                             subtotal_groups.entry(key).or_default().push(row.clone());
                         }
                         for key in subtotal_groups.keys() {
-                            let parts: Vec<&str> = key.split('\x00').collect();
+                            // V312-86 / Issue #4758: filter out the trailing
+                            // empty string that `split('\x00')` produces
+                            // when the key is itself empty (prefix_len=0).
+                            // Otherwise the grand-total row would gain a
+                            // phantom NULL column before the i-pad.
+                            let parts: Vec<&str> = if key.is_empty() {
+                                Vec::new()
+                            } else {
+                                key.split('\x00').collect()
+                            };
                             let mut combined: Vec<Value> =
                                 parts.iter().map(|s| decode_value_key(s)).collect();
                             // Pad NULLs for the dropped i columns
@@ -1640,20 +1658,30 @@ impl<S: StorageEngine + 'static> ExecutionEngine<S> {
                             // Re-aggregate the original rows of each parent
                             // group (so SUM stays correct across rolled-up
                             // levels). We pull the matching pre-aggregation
-                            // rows by re-joining on the full original key.
+                            // rows by re-joining on the prefix values
+                            // directly. Use the same inline key formatter
+                            // as the bucket-building loop so prefix_match
+                            // compares apples to apples (decode_value_key
+                            // expects the "I123"/"Tfoo"/etc. prefix).
                             let mut parent_rows: Vec<Vec<Value>> = Vec::new();
                             for orig_row in &rows {
-                                let orig_key = group_exprs
-                                    .iter()
-                                    .map(|expr| {
-                                        evaluate_expr_to_string(expr, orig_row, &table_info)
-                                    })
-                                    .collect::<Vec<_>>()
-                                    .join("\x00");
-                                let orig_parts: Vec<&str> = orig_key.split('\x00').collect();
                                 let prefix_match = (0..prefix_len).all(|idx| {
-                                    let a = decode_value_key(orig_parts[idx]);
-                                    a == combined[idx]
+                                    let v = orig_row
+                                        .get(idx)
+                                        .cloned()
+                                        .unwrap_or(Value::Null);
+                                    let key = match &v {
+                                        Value::Null => "NULL".to_string(),
+                                        Value::Integer(n) => format!("I{}", n),
+                                        Value::Float(f) => format!("F{}", f),
+                                        Value::Text(s) => format!("T{}", s),
+                                        Value::Boolean(b) => format!("B{}", *b as i32),
+                                        Value::Blob(b) => format!("X{}", b.len()),
+                                        Value::Point(x, y) => format!("POINT({}, {})", x, y),
+                                        Value::Json(v) => format!("J{}", v),
+                                    };
+                                    let decoded = decode_value_key(&key);
+                                    decoded == combined[idx]
                                 });
                                 if prefix_match {
                                     parent_rows.push(orig_row.clone());
