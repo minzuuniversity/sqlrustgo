@@ -1774,6 +1774,47 @@ pub fn eval_fn(name: &str, args: &[Value]) -> Value {
                 _ => Value::Null,
             }
         }
+        // V312-79 / Issue #4670: MD5(string) — returns 32-char hex lowercase.
+        "MD5" => {
+            if args.is_empty() {
+                return Value::Null;
+            }
+            match args.first() {
+                Some(Value::Null) => Value::Null,
+                Some(v) => {
+                    let s = v.to_sql_string();
+                    if s.eq_ignore_ascii_case("NULL") {
+                        Value::Null
+                    } else {
+                        let digest = md5::compute(s.as_bytes());
+                        Value::Text(format!("{:x}", digest))
+                    }
+                }
+                None => Value::Null,
+            }
+        }
+        // V312-79 / Issue #4670: SHA1(string) — returns 40-char hex lowercase.
+        "SHA1" | "SHA" => {
+            use sha1::{Digest, Sha1};
+            if args.is_empty() {
+                return Value::Null;
+            }
+            match args.first() {
+                Some(Value::Null) => Value::Null,
+                Some(v) => {
+                    let s = v.to_sql_string();
+                    if s.eq_ignore_ascii_case("NULL") {
+                        Value::Null
+                    } else {
+                        let mut hasher = Sha1::new();
+                        hasher.update(s.as_bytes());
+                        let result = hasher.finalize();
+                        Value::Text(result.iter().map(|b| format!("{:02x}", b)).collect())
+                    }
+                }
+                None => Value::Null,
+            }
+        }
         //   TRIM(remstr, str)                         — 2-arg comma form
         //   TRIM([LEADING|TRAILING|BOTH] remstr FROM str) — 3-arg sentinel form
         // The 3-arg form is produced by the parser with a sentinel
