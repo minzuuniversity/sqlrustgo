@@ -768,6 +768,21 @@ impl<S: StorageEngine + 'static> ExecutionEngine<S> {
         if let Some(result) = self.try_system_table_select(select) {
             return result;
         }
+        // V312-88 / Issue #4755: table-valued function dispatch.
+        // `SELECT * FROM JSON_EACH('...')` and `JSON_TREE('...')` are
+        // parsed with the function-call argument list stashed in
+        // `select.from_function_args`; the executor materialises the
+        // function into rows here, then projects the SELECT column
+        // list. Returns `None` for non-JSON TVF table names so the
+        // normal scan path takes over.
+        if let Some(args) = &select.from_function_args {
+            if let Some(result) = crate::json_tvf::try_json_tvf_select(&select.table, Some(args)) {
+                return result.and_then(|mut exec_result| {
+                    crate::system_tables::project_select_columns(select, &mut exec_result, crate::json_tvf::JSON_TVF_SCHEMA)
+                        .map(|_| exec_result)
+                });
+            }
+        }
         let view_owned;
         let select: &SelectStatement = match self.rewrite_view_from(select) {
             Some(rewritten) => {

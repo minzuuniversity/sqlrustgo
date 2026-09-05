@@ -752,6 +752,12 @@ pub struct SelectStatement {
     pub from_subquery: Option<Box<SelectStatement>>,
     /// VALUES constructor: FROM (VALUES ...) AS alias
     pub from_values: Option<Vec<Vec<Expression>>>,
+    /// V312-88 / Issue #4755: table-valued function arguments.
+    /// `FROM JSON_EACH('[1,2]')` records `table = "JSON_EACH"`,
+    /// `schema = None`, `from_function_args = Some([Literal("[1,2]")])`.
+    /// The executor dispatches on the table name to materialise the
+    /// table-valued function into rows. None for plain table references.
+    pub from_function_args: Option<Vec<Expression>>,
     pub where_clause: Option<Expression>,
     pub join_clause: Vec<JoinClause>,
     /// TPC-H Sprint 1c: additional tables from `FROM t1, t2, t3` (after the
@@ -5778,6 +5784,7 @@ impl Parser {
         // a nested match arm) can populate it, and the final SelectStatement
         // constructor can read it.
         let mut schema: Option<String> = None;
+        let mut from_function_args: Option<Vec<Expression>> = None;
         let (table, from_subquery, extra_tables) = match self.current() {
             Some(Token::From) => {
                 self.next(); // consume FROM
@@ -5881,6 +5888,7 @@ impl Parser {
                             from_alias: None,
                             from_subquery: None,
                             from_values: Some(values),
+                            from_function_args: None,
                             where_clause: None,
                             join_clause: vec![],
                             extra_tables: vec![],
@@ -5953,6 +5961,7 @@ impl Parser {
                                 from_alias: s.from_alias.clone(),
                                 from_subquery: s.from_subquery.clone(),
                                 from_values: s.from_values.clone(),
+                                from_function_args: s.from_function_args.clone(),
                                 where_clause: s.where_clause.clone(),
                                 join_clause: s.join_clause.clone(),
                                 extra_tables: s.extra_tables.clone(),
@@ -6007,6 +6016,7 @@ impl Parser {
                                             from_alias: None,
                                             from_subquery: None,
                                             from_values: None,
+                                            from_function_args: None,
                                             where_clause: None,
                                             join_clause: vec![],
                                             extra_tables: vec![],
@@ -6038,6 +6048,7 @@ impl Parser {
                                     from_alias: None,
                                     from_subquery: Some(Box::new(inner_subq)),
                                     from_values: None,
+                                    from_function_args: None,
                                     where_clause: None,
                                     join_clause: vec![],
                                     extra_tables: vec![],
@@ -6114,6 +6125,7 @@ impl Parser {
                             from_alias: first_alias.clone(),
                             from_subquery: None,
                             from_values: None,
+                            from_function_args: None,
                             where_clause: None,
                             join_clause: vec![],
                             extra_tables: vec![],
@@ -6206,6 +6218,35 @@ impl Parser {
                     } else {
                         first_table_raw
                     };
+                    // V312-88 / Issue #4755: table-valued functions in FROM
+                    // clause (`FROM JSON_EACH('[1,2]')`). The function-call
+                    // argument list is parsed and stashed in
+                    // `from_function_args`; the executor materialises the
+                    // function into rows when it sees the matching table
+                    // name in `try_system_table_select`. We only accept
+                    // the parenthesised form for the JSON_* TVFs; any
+                    // other identifier followed by `(` would have been
+                    // a parse error before this anyway.
+                    if matches!(self.current(), Some(Token::LParen)) {
+                        let upper = first_table.to_ascii_uppercase();
+                        if upper == "JSON_EACH" || upper == "JSON_TREE" {
+                            self.next(); // consume (
+                            let mut args: Vec<Expression> = Vec::new();
+                            if !matches!(self.current(), Some(Token::RParen)) {
+                                loop {
+                                    let arg = self.parse_expression()?;
+                                    args.push(arg);
+                                    if matches!(self.current(), Some(Token::Comma)) {
+                                        self.next();
+                                    } else {
+                                        break;
+                                    }
+                                }
+                            }
+                            self.expect(Token::RParen)?;
+                            from_function_args = Some(args);
+                        }
+                    }
                     // Sprint 5 v4: handle the FIRST table's inline alias
                     // BEFORE the comma loop, so the loop sees the comma
                     // (not the alias as the next token). Without this,
@@ -7210,6 +7251,7 @@ impl Parser {
             from_alias,
             from_subquery,
             from_values: None,
+            from_function_args,
             where_clause,
             join_clause,
             extra_tables,

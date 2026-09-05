@@ -306,3 +306,81 @@ fn compute_projection(
     }
     Ok(out)
 }
+
+/// V312-88 / Issue #4755: best-effort constant evaluation of an
+/// expression, used by the JSON_EACH / JSON_TREE table-valued
+/// functions to extract the JSON document from the function argument.
+///
+/// Only `Expression::Literal` is currently supported; the parser
+/// stores single-quoted string literals as `Literal("'text'")`
+/// (with the surrounding quotes preserved). Column references and
+/// function calls return `None` and the caller treats that as
+/// "argument is unknown → produce an empty result set".
+pub fn try_evaluate_const(expr: &Expression) -> Option<Value> {
+    use sqlrustgo_parser::Expression as E;
+    match expr {
+        E::Literal(s) => {
+            let trimmed = s.trim();
+            if trimmed.eq_ignore_ascii_case("NULL") {
+                return Some(Value::Null);
+            }
+            // Strip surrounding single quotes.
+            if trimmed.starts_with('\'') && trimmed.ends_with('\'') && trimmed.len() >= 2 {
+                return Some(Value::Text(trimmed[1..trimmed.len() - 1].to_string()));
+            }
+            // Try to coerce bare numerics for completeness.
+            if let Ok(i) = trimmed.parse::<i64>() {
+                return Some(Value::Integer(i));
+            }
+            if let Ok(f) = trimmed.parse::<f64>() {
+                return Some(Value::Float(f));
+            }
+            // Fall back to treating it as a bare text.
+            Some(Value::Text(trimmed.to_string()))
+        }
+        _ => None,
+    }
+}
+
+/// V312-88 / Issue #4755: project an in-memory table-valued result
+/// (`ExecutorResult`) according to the SELECT column list. The TVF
+/// materialiser produces rows in `schema` order; the SELECT list
+/// may request a subset (or `*`). `*` is detected by a single
+/// `SelectColumn` with no alias and either `name == "*"` or no
+/// expression; in that case no projection is applied.
+pub fn project_select_columns(
+    select: &sqlrustgo_parser::SelectStatement,
+    result: &mut ExecutorResult,
+    schema: &[&str],
+) -> SqlResult<()> {
+    let cols = &select.columns;
+    if cols.len() == 1 {
+        let c = &cols[0];
+        if c.alias.is_none() && (c.name == "*" || c.expression.is_none()) {
+            return Ok(());
+        }
+    }
+    let mut indices: Vec<usize> = Vec::with_capacity(cols.len());
+    for c in cols {
+        let unqualified = c
+            .name
+            .rsplit('.')
+            .next()
+            .unwrap_or(&c.name)
+            .trim_matches('"');
+        let idx = schema
+            .iter()
+            .position(|s| s.eq_ignore_ascii_case(unqualified))
+            .ok_or_else(|| {
+                SqlError::ExecutionError(format!("Unknown column '{}' in SELECT list", c.name))
+            })?;
+        indices.push(idx);
+    }
+    let projected: Vec<Vec<Value>> = result
+        .rows
+        .iter()
+        .map(|row| indices.iter().map(|i| row[*i].clone()).collect())
+        .collect();
+    result.rows = projected;
+    Ok(())
+}
