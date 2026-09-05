@@ -367,6 +367,10 @@ name = "repro_v313_96_4717_insert_cte_subquery"
 path = "tests/integration/sql/repro_v313_96_4717_insert_cte_subquery.rs"
 
 [[test]]
+name = "repro_v312_4717_v2"
+path = "tests/integration/sql/repro_v312_4717_v2.rs"
+
+[[test]]
 name = "repro_v313_97_4679_grouping_sets"
 path = "tests/integration/sql/repro_v313_97_4679_grouping_sets.rs"
 

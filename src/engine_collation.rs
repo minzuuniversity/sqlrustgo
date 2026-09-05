@@ -243,6 +243,8 @@ mod tests {
             schema: None,
             from_alias: None,
             from_subquery: None,
+            // V312-95 v2 / Issue #4717: propagate FROM (WITH ...) subquery.
+            from_with_subquery: None,
             from_values: None,
             from_function_args: None,
             where_clause: None,
@@ -259,6 +261,7 @@ mod tests {
             distinct: false,
             index_hints: vec![],
             lock_clause: None,
+            grouping_sets: Vec::new(),
         }
     }
 
