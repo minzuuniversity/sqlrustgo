@@ -2978,6 +2978,19 @@ impl Parser {
                 self.next();
                 self.parse_create_virtual_table()
             }
+            // V313-99 / Issue #4692: PostgreSQL `CREATE MATERIALIZED VIEW
+            // name AS SELECT ...`. The MATERIALIZED keyword arrives as
+            // a plain Identifier; consume it and dispatch to
+            // parse_create_view when the following token is VIEW. The
+            // accompanying view definition is parser-accepted;
+            // executor-side materialisation is out of scope.
+            Some(Token::Identifier(ref id))
+                if id.eq_ignore_ascii_case("MATERIALIZED")
+                    && matches!(self.peek(), Some(Token::View)) =>
+            {
+                self.next();
+                self.parse_create_view()
+            }
             Some(Token::Trigger) => self.parse_create_trigger(),
             Some(Token::Role) => self.parse_create_role(),
             Some(Token::View) => self.parse_create_view(),
@@ -4384,13 +4397,18 @@ impl Parser {
 
             self.expect(Token::As)?;
             self.expect(Token::LParen)?;
-            // Detect nested WITH: if the subquery itself starts with
-            // `WITH`, recurse into parse_with_clause so the nested
-            // WithSelect/WithDml is parsed correctly.
-            let subquery = if matches!(self.current(), Some(Token::With)) {
-                self.parse_with_select()?
-            } else {
-                self.parse_select_or_union()?
+            // V313-99 / Issue #4692: writable CTE (PostgreSQL 11+, SQLite
+            // 3.33+). The CTE body may be a DML statement (DELETE /
+            // UPDATE / INSERT), not just SELECT or WITH. The outer
+            // `WITH` keyword has already been consumed by the caller;
+            // the inner body dispatches on its first token.
+            let subquery = match self.current() {
+                Some(Token::With) => self.parse_with_select()?,
+                Some(Token::Insert) | Some(Token::Replace) => self.parse_insert()?,
+                Some(Token::Update) => self.parse_update()?,
+                Some(Token::Delete) => self.parse_delete()?,
+                Some(Token::Values) => Statement::Select(self.parse_values_as_select()?),
+                _ => self.parse_select_or_union()?,
             };
             self.expect(Token::RParen)?;
 
@@ -8197,6 +8215,23 @@ impl Parser {
             None
         };
 
+        // V313-99 / Issue #4692: RETURNING clause (PG 11+ / SQLite 3.33+).
+        if matches!(self.current(), Some(Token::Returning)) {
+            self.next();
+            if matches!(self.current(), Some(Token::Star)) {
+                self.next();
+            } else {
+                while !matches!(self.current(), Some(Token::RParen) | None) {
+                    self.parse_expression()?;
+                    if matches!(self.current(), Some(Token::Comma)) {
+                        self.next();
+                    } else {
+                        break;
+                    }
+                }
+            }
+        }
+
         Ok(Statement::Update(UpdateStatement {
             tables,
             join_clauses,
@@ -10425,6 +10460,28 @@ impl Parser {
         } else {
             None
         };
+
+        // V313-99 / Issue #4692: RETURNING clause (PG 11+ / SQLite 3.33+).
+        // `DELETE FROM t WHERE ... RETURNING *` is the canonical writable
+        // CTE body. Consume the optional RETURNING <expr-list> and
+        // discard the column list — engine-side RETURNING is out of
+        // scope; the parser only needs to accept the syntax so the CTE
+        // body is well-formed.
+        if matches!(self.current(), Some(Token::Returning)) {
+            self.next();
+            if matches!(self.current(), Some(Token::Star)) {
+                self.next();
+            } else {
+                while !matches!(self.current(), Some(Token::RParen) | None) {
+                    self.parse_expression()?;
+                    if matches!(self.current(), Some(Token::Comma)) {
+                        self.next();
+                    } else {
+                        break;
+                    }
+                }
+            }
+        }
 
         Ok(Statement::Delete(DeleteStatement {
             tables,
