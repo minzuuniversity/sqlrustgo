@@ -519,6 +519,7 @@ mod tests {
             partition_info: None,
             compression: None,
             collations: std::collections::HashMap::new(),
+        original_sql: String::new(),
         }
     }
 
@@ -537,6 +538,7 @@ mod tests {
             partition_info: None,
             compression: None,
             collations: std::collections::HashMap::new(),
+        original_sql: String::new(),
         }
     }
 

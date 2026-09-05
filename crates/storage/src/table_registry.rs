@@ -167,6 +167,8 @@ mod tests {
             check_constraints: vec![],
             collations: std::collections::HashMap::new(),
 
+            original_sql: String::new(),
+
             partition_info: None,
             compression: None,
         }
