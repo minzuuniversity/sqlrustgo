@@ -4497,6 +4497,19 @@ impl Parser {
     }
 
     fn parse_select_statement(&mut self) -> Result<SelectStatement, String> {
+        // V313-96 / Issue #4717: `FROM (WITH cte AS (...) SELECT ...)` subquery.
+        if matches!(self.current(), Some(Token::With)) {
+            let stmt = self.parse_with_select()?;
+            match stmt {
+                Statement::WithSelect(ws) => return Ok(ws.select),
+                other => {
+                    return Err(format!(
+                        "WITH in subquery position must be followed by SELECT, got {:?}",
+                        other
+                    ))
+                }
+            }
+        }
         self.expect(Token::Select)?;
 
         // Check for DISTINCT keyword (MySQL: SELECT DISTINCT col FROM t)
