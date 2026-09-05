@@ -292,6 +292,7 @@ fn test_expression_to_value_subquery() {
         schema: None,
         from_alias: None,
         from_subquery: None,
+        from_with_subquery: None,
         from_values: None,
         from_function_args: None,
         where_clause: None,

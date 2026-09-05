@@ -78,6 +78,7 @@ fn test_select_statement_has_lock_clause_field() {
         schema: None,
         from_alias: None,
         from_subquery: None,
+        from_with_subquery: None,
         from_values: None,
         from_function_args: None,
         where_clause: None,

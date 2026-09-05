@@ -301,7 +301,7 @@ fn rewrite_expr(expr: &mut sqlrustgo_parser::Expression, from: &str, to: &str) {
 /// On error mid-iteration: drop `t__work` (best-effort) so the
 /// engine's table registry stays clean.
 pub fn materialize_recursive_cte<S: StorageEngine + 'static>(
-    engine: &mut ExecutionEngine<S>,
+    engine: &ExecutionEngine<S>,
     cte: &sqlrustgo_parser::parser::CommonTableExpression,
 ) -> SqlResult<()> {
     use sqlrustgo_parser::Statement;
@@ -458,7 +458,7 @@ pub fn materialize_recursive_cte<S: StorageEngine + 'static>(
 /// a temporary table. Handles SELECT and UNION bodies (UNION / UNION ALL /
 /// INTERSECT / EXCEPT) by recursively executing the statement tree.
 fn materialize_simple_cte<S: StorageEngine + 'static>(
-    engine: &mut ExecutionEngine<S>,
+    engine: &ExecutionEngine<S>,
     cte: &sqlrustgo_parser::parser::CommonTableExpression,
 ) -> SqlResult<()> {
     use sqlrustgo_parser::Statement;
@@ -551,7 +551,7 @@ fn materialize_simple_cte<S: StorageEngine + 'static>(
 /// `execute_cte_subquery` in the stored-procedure crate but works on the
 /// main execution engine.
 fn execute_statement_for_cte<S: StorageEngine + 'static>(
-    engine: &mut ExecutionEngine<S>,
+    engine: &ExecutionEngine<S>,
     stmt: &sqlrustgo_parser::Statement,
 ) -> SqlResult<Vec<Vec<crate::Value>>> {
     use sqlrustgo_parser::Statement;
@@ -644,7 +644,7 @@ fn leftmost_select_column_names(stmt: &sqlrustgo_parser::Statement) -> Vec<Strin
 }
 
 pub fn materialize_cte_tables<S: StorageEngine + 'static>(
-    engine: &mut ExecutionEngine<S>,
+    engine: &ExecutionEngine<S>,
     with_clause: Option<&sqlrustgo_parser::parser::WithClause>,
 ) -> SqlResult<Vec<String>> {
     use sqlrustgo_parser::Statement;
@@ -676,7 +676,7 @@ pub fn materialize_cte_tables<S: StorageEngine + 'static>(
 /// Drop a list of temporary CTE tables. Best-effort: a single failed drop
 /// does not abort the loop.
 pub fn cleanup_cte_tables<S: StorageEngine + 'static>(
-    engine: &mut ExecutionEngine<S>,
+    engine: &ExecutionEngine<S>,
     names: &[String],
 ) {
     if names.is_empty() {
