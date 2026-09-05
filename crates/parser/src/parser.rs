@@ -1175,7 +1175,7 @@ pub struct DescribeStatement {
 }
 
 /// Column definition
-#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[derive(Debug, Clone, Default, PartialEq, Serialize, Deserialize)]
 pub struct ColumnDefinition {
     pub name: String,
     pub data_type: String,
@@ -1195,6 +1195,15 @@ pub struct ColumnDefinition {
     /// binary (case-sensitive) comparison.
     #[serde(default)]
     pub collation: Option<String>,
+    /// Optional generated-column definition. V313-#4697.
+    #[serde(default)]
+    pub generated: Option<GeneratedColumn>,
+}
+
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct GeneratedColumn {
+    pub expression: String,
+    pub stored: bool,
 }
 
 /// Foreign key referential action
@@ -3044,13 +3053,7 @@ impl Parser {
                             columns.push(ColumnDefinition {
                                 name: arg,
                                 data_type: "TEXT".to_string(),
-                                nullable: true,
-                                primary_key: false,
-                                char_max_length: None,
-                                collation: None,
-                                default_value: None,
-                                auto_increment: false,
-                                references: None,
+                                ..Default::default()
                             });
                         }
                     }
@@ -11181,6 +11184,7 @@ impl Parser {
         let mut default_value = None;
         let mut references = None;
         let mut collation: Option<String> = None;
+        let mut generated: Option<GeneratedColumn> = None;
 
         loop {
             match self.current() {
@@ -11257,6 +11261,32 @@ impl Parser {
                     self.next();
                     auto_increment = true;
                 }
+                Some(Token::Identifier(s)) if s.eq_ignore_ascii_case("GENERATED") => {
+                    self.next();
+                    match self.next() {
+                        Some(Token::Identifier(t)) if t.eq_ignore_ascii_case("ALWAYS") => {}
+                        _ => return Err("Expected ALWAYS after GENERATED".to_string()),
+                    }
+                    self.expect(Token::As)?;
+                    self.expect(Token::LParen)?;
+                    let expr = self.parse_expression()?;
+                    self.expect(Token::RParen)?;
+                    let stored = match self.current() {
+                        Some(Token::Identifier(s)) if s.eq_ignore_ascii_case("STORED") => {
+                            self.next();
+                            true
+                        }
+                        Some(Token::Identifier(s)) if s.eq_ignore_ascii_case("VIRTUAL") => {
+                            self.next();
+                            false
+                        }
+                        _ => false,
+                    };
+                    generated = Some(GeneratedColumn {
+                        expression: format!("{:?}", expr),
+                        stored,
+                    });
+                }
                 Some(Token::Unique) => {
                     // V312-coverage: column-level UNIQUE modifier
                     // (`id INT UNIQUE`). Previously fell through to
@@ -11293,6 +11323,7 @@ impl Parser {
             references,
             char_max_length,
             collation,
+            generated,
         })
     }
 

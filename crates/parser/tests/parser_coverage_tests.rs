@@ -2249,7 +2249,11 @@ fn test_parse_create_sequence_basic() {
 fn test_parse_create_sequence_start_without_with() {
     // V312-80 / Issue #4688: SQL standard allows `START 1` (no WITH)
     let result = parse("CREATE SEQUENCE my_seq START 1 INCREMENT BY 1");
-    assert!(result.is_ok(), "START without WITH must parse: {:?}", result);
+    assert!(
+        result.is_ok(),
+        "START without WITH must parse: {:?}",
+        result
+    );
     let result2 = parse("CREATE SEQUENCE seq START 100");
     assert!(result2.is_ok(), "bare START n must parse: {:?}", result2);
 }
@@ -2816,13 +2820,41 @@ fn test_parse_generated_column() {
     let result = parse(
         "CREATE TABLE t (id INT, full_name TEXT GENERATED ALWAYS AS (first_name || last_name))",
     );
-    let _ = result;
+    assert!(
+        result.is_ok(),
+        "GENERATED ALWAYS AS (expr) without STORED/VIRTUAL must parse: {:?}",
+        result.as_ref().err()
+    );
 }
 
 #[test]
 fn test_parse_generated_column_stored() {
     let result = parse("CREATE TABLE t (id INT, total INT GENERATED ALWAYS AS (a + b) STORED)");
-    let _ = result;
+    assert!(
+        result.is_ok(),
+        "GENERATED ALWAYS AS (expr) STORED must parse: {:?}",
+        result.as_ref().err()
+    );
+}
+
+#[test]
+fn test_parse_generated_column_virtual() {
+    let result = parse("CREATE TABLE t (id INT, total INT GENERATED ALWAYS AS (a + b) VIRTUAL)");
+    assert!(
+        result.is_ok(),
+        "GENERATED ALWAYS AS (expr) VIRTUAL must parse: {:?}",
+        result.as_ref().err()
+    );
+}
+
+#[test]
+fn test_parse_generated_column_complex_expr() {
+    let result = parse("CREATE TABLE gc(a int, b int, c int GENERATED ALWAYS AS (a + b) STORED)");
+    assert!(
+        result.is_ok(),
+        "Multi-column GENERATED STORED must parse: {:?}",
+        result.as_ref().err()
+    );
 }
 
 // ============ CHECK constraint ============
@@ -3243,8 +3275,7 @@ fn test_parse_insert_returning() {
 
 #[test]
 fn test_parse_insert_returning_multi_col() {
-    let stmt =
-        parse("INSERT INTO t (id, name) VALUES (1, 'x') RETURNING id, name").expect("parse");
+    let stmt = parse("INSERT INTO t (id, name) VALUES (1, 'x') RETURNING id, name").expect("parse");
     match stmt {
         Statement::Insert(ins) => {
             let ret = ins.returning.as_ref().expect("RETURNING should be parsed");
