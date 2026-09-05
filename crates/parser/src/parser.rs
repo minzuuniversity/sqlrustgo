@@ -4547,6 +4547,15 @@ impl Parser {
                 Some(Token::From) | Some(Token::Eof) => {
                     break;
                 }
+                // V313-98 / Issue #4701: bare AS only appears inside an
+                // already-parsed projection (e.g. `(subquery) AS alias`).
+                // If the column-list loop reaches AS as the first token
+                // (because `parse_optional_alias` was not called on the
+                // previous column), break so the outer parser can take
+                // over and report a clean error if AS is otherwise orphan.
+                Some(Token::As) => {
+                    break;
+                }
                 // `||` (string concat): in column position, fall through to
                 // expression parser to handle `'Level ' || n` (Or token between
                 // two primary expressions). This requires special-casing
@@ -4870,14 +4879,21 @@ impl Parser {
                         let _ = start_position;
                         let alias = if matches!(self.current(), Some(Token::As)) {
                             self.next();
-                            match self.current() {
-                                Some(Token::Identifier(name)) => {
-                                    let alias_name = name.clone();
-                                    self.next();
-                                    Some(alias_name)
-                                }
+                            // V313-98 / Issue #4701: accept keyword-form identifiers
+                            // (e.g. `Matched` from `WHEN MATCHED` MERGE clause) as
+                            // column aliases. The lexer marks some words as
+                            // keyword tokens, but users still use them as plain
+                            // identifiers in column position.
+                            let alias_token = self.current().cloned();
+                            let alias_name = match alias_token {
+                                Some(Token::Identifier(name)) => Some(name),
+                                Some(Token::Matched) => Some("matched".to_string()),
                                 _ => None,
+                            };
+                            if alias_name.is_some() {
+                                self.next();
                             }
+                            alias_name
                         } else {
                             None
                         };
@@ -5847,8 +5863,31 @@ impl Parser {
                 // will recognise the WITH token and parse the trailing
                 // materialization clause.
                 Some(Token::With) => break,
+                // V313-98 / Issue #4701: scalar subquery in projection.
+                // `(SELECT count(*) FROM b WHERE ...)` is a full scalar
+                // subquery expression. Dispatch to `parse_expression()`
+                // (the `(SELECT ...)` branch lives there) and stash the
+                // result like any other projection. Consume an optional
+                // trailing `AS alias` so the loop can re-enter on the next
+                // Default: any other token opens a projection expression.
+                // Identifier / NumberLiteral / StringLiteral / function-name
+                // identifiers etc. all flow through `parse_expression`.
+                // V313-98 / Issue #4701: the column may be followed by an optional
+                // `AS alias` (or a bare-identifier alias). Consume the alias in the
+                // same arm so the loop can re-enter on Comma/From/Order/... without
+                // re-encountering the AS keyword.
                 _ => {
-                    return Err("Expected FROM or column name".to_string());
+                    let expr = self.parse_expression()?;
+                    let name = match &expr {
+                        Expression::Identifier(n) => n.clone(),
+                        _ => format!("{:?}", expr),
+                    };
+                    let alias = self.parse_optional_alias()?;
+                    columns.push(SelectColumn {
+                        name,
+                        alias,
+                        expression: Some(expr),
+                    });
                 }
             }
         }
