@@ -194,3 +194,66 @@ fn test_cte_with_dml_insert() {
         assert_row_count(&target_result, 2);
     }
 }
+
+// V312-89 / Issue #4757: Standard SQL:1999 form `INSERT INTO dst WITH cte
+// AS (...) SELECT ...` (CTE after the table, before the source). Was previously
+// rejected with "Parse error: Expected VALUES, SELECT, or DEFAULT VALUES".
+// This is the inverse direction of test_cte_with_dml_insert; both shapes must
+// work and route through execute_with_dml.
+#[test]
+fn test_cte_insert_into_with_cte_select_4757() {
+    let mut engine = fresh_mem();
+    engine.execute("CREATE TABLE source (id INT)").unwrap();
+    engine.execute("CREATE TABLE target (id INT)").unwrap();
+    engine
+        .execute("INSERT INTO source VALUES (1), (2), (3)")
+        .unwrap();
+
+    // The new grammar: CTE appears AFTER `INSERT INTO target`, BEFORE the
+    // SELECT source. Previously failed to parse; now parses to WithDml
+    // and routes through execute_with_dml like the existing form.
+    let result = run_sql(
+        &mut engine,
+        "INSERT INTO target WITH src AS (SELECT id FROM source) SELECT * FROM src",
+    );
+    assert!(
+        result.is_ok(),
+        "INSERT INTO ... WITH cte AS (...) SELECT ... must parse and execute, got: {:?}",
+        result.err()
+    );
+
+    let target_result = run_sql(&mut engine, "SELECT id FROM target ORDER BY id").unwrap();
+    assert_row_count(&target_result, 3);
+    assert_eq!(target_result.rows[0][0], sqlrustgo::Value::Integer(1));
+    assert_eq!(target_result.rows[1][0], sqlrustgo::Value::Integer(2));
+    assert_eq!(target_result.rows[2][0], sqlrustgo::Value::Integer(3));
+}
+
+#[test]
+fn test_cte_insert_into_with_multiple_ctes_select_4757() {
+    let mut engine = fresh_mem();
+    engine.execute("CREATE TABLE t (id INT)").unwrap();
+    engine
+        .execute("INSERT INTO t VALUES (10), (20), (30)")
+        .unwrap();
+    engine.execute("CREATE TABLE dst (id INT)").unwrap();
+
+    // Multiple CTEs after the table name.
+    let result = run_sql(
+        &mut engine,
+        "INSERT INTO dst \
+         WITH small AS (SELECT id FROM t WHERE id <= 20), \
+              big AS (SELECT id FROM t WHERE id > 20) \
+         SELECT * FROM small",
+    );
+    assert!(
+        result.is_ok(),
+        "INSERT INTO ... WITH a, b AS (...) SELECT must parse and execute, got: {:?}",
+        result.err()
+    );
+
+    let target = run_sql(&mut engine, "SELECT id FROM dst ORDER BY id").unwrap();
+    assert_row_count(&target, 2);
+    assert_eq!(target.rows[0][0], sqlrustgo::Value::Integer(10));
+    assert_eq!(target.rows[1][0], sqlrustgo::Value::Integer(20));
+}
