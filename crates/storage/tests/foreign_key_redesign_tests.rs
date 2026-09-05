@@ -125,6 +125,7 @@ fn table_info_round_trip_with_foreign_key() {
         collations: std::collections::HashMap::new(),
         partition_info: None,
         compression: None,
+        original_sql: String::new(),
     };
     assert_eq!(table.foreign_keys.len(), 1);
     assert_eq!(

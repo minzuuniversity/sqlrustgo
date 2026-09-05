@@ -182,6 +182,7 @@ mod tests {
                 partition_info: None,
                 compression: None,
                 collations: Default::default(),
+            original_sql: String::new(),
             },
             rows: vec![vec![Value::Integer(42)]],
         };
@@ -210,6 +211,7 @@ mod tests {
                 partition_info: None,
                 compression: None,
                 collations: Default::default(),
+            original_sql: String::new(),
             },
             rows: vec![],
         };

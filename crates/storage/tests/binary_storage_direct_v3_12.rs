@@ -30,6 +30,7 @@ fn make_info() -> TableInfo {
         partition_info: None,
         collations: Default::default(),
         compression: None,
+    original_sql: String::new(),
     }
 }
 
@@ -138,6 +139,7 @@ fn cov_binary_storage_save_load_text() {
         partition_info: None,
         collations: Default::default(),
         compression: None,
+    original_sql: String::new(),
     };
     let mut data = TableData {
         info: info,
@@ -171,6 +173,7 @@ fn cov_binary_storage_save_load_float() {
         partition_info: None,
         collations: Default::default(),
         compression: None,
+    original_sql: String::new(),
     };
     let mut data = TableData {
         info: info,
@@ -202,6 +205,7 @@ fn cov_binary_storage_save_load_bool() {
         partition_info: None,
         collations: Default::default(),
         compression: None,
+    original_sql: String::new(),
     };
     let mut data = TableData {
         info: info,
@@ -233,6 +237,7 @@ fn cov_binary_storage_save_load_null() {
         partition_info: None,
         collations: Default::default(),
         compression: None,
+    original_sql: String::new(),
     };
     let mut data = TableData {
         info: info,
@@ -276,6 +281,7 @@ fn cov_binary_storage_save_load_multi_column() {
         partition_info: None,
         collations: Default::default(),
         compression: None,
+    original_sql: String::new(),
     };
     let mut data = TableData {
         info: info,
