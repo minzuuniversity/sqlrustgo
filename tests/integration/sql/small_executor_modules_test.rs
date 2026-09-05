@@ -495,6 +495,7 @@ fn test_ast_adapter_to_update_plan_uses_all_when_no_where() {
             Expression::Literal("TRUE".to_string()),
         )],
         where_clause: None,
+        join_clauses: vec![],
     };
     let info = sqlrustgo_storage::TableInfo {
         name: "users".to_string(),
@@ -540,6 +541,7 @@ fn test_ast_adapter_to_update_plan_errors_on_unknown_column() {
         }],
         set_clauses: vec![("missing".to_string(), Expression::Literal("x".to_string()))],
         where_clause: None,
+        join_clauses: vec![],
     };
     let info = sqlrustgo_storage::TableInfo {
         name: "users".to_string(),

@@ -176,6 +176,7 @@ mod tests {
     ) -> ParserUpdateStatement {
         ParserUpdateStatement {
             tables,
+            join_clauses: vec![],
             set_clauses,
             where_clause,
         }

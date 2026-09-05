@@ -92,6 +92,7 @@ fn test_select_statement_has_lock_clause_field() {
         offset: None,
         distinct: false,
         lock_clause: None,
+        index_hints: vec![],
     };
     assert!(s.lock_clause.is_none());
 }
