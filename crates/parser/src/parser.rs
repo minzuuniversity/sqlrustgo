@@ -4244,7 +4244,11 @@ impl Parser {
     }
 
     fn parse_select_or_union(&mut self) -> Result<Statement, String> {
-        let first_select = self.parse_select_statement()?;
+        let first_select = if matches!(self.current(), Some(Token::Values)) {
+            self.parse_values_as_select()?
+        } else {
+            self.parse_select_statement()?
+        };
 
         let mut current = Statement::Select(first_select);
         // A SELECT can be followed by zero or more UNION [ALL] /
@@ -4405,6 +4409,7 @@ impl Parser {
             Some(Token::Insert) | Some(Token::Replace) => self.parse_insert()?,
             Some(Token::Update) => self.parse_update()?,
             Some(Token::Delete) => self.parse_delete()?,
+            Some(Token::Values) => Statement::Select(self.parse_values_as_select()?),
             _ => {
                 let select = self.parse_select_statement()?;
                 return Ok(Statement::WithSelect(WithSelect {
@@ -4417,6 +4422,75 @@ impl Parser {
             with_clause,
             body: Box::new(body),
         }))
+    }
+
+    fn parse_values_as_select(&mut self) -> Result<SelectStatement, String> {
+        self.next();
+        let mut rows = Vec::new();
+        if !matches!(self.current(), Some(Token::LParen)) {
+            return Err("Expected ( after VALUES".to_string());
+        }
+        loop {
+            if !matches!(self.current(), Some(Token::LParen)) {
+                break;
+            }
+            self.next();
+            let mut row = Vec::new();
+            loop {
+                match self.current() {
+                    Some(Token::RParen) => {
+                        self.next();
+                        break;
+                    }
+                    Some(Token::Comma) => {
+                        self.next();
+                    }
+                    Some(_) => {
+                        let expr = self.parse_expression()?;
+                        row.push(expr);
+                    }
+                    None => {
+                        return Err("Unexpected EOF in VALUES row".to_string());
+                    }
+                }
+            }
+            rows.push(row);
+            if matches!(self.current(), Some(Token::Comma)) {
+                self.next();
+                continue;
+            }
+            break;
+        }
+        if rows.is_empty() {
+            return Err("VALUES requires at least one row".to_string());
+        }
+        Ok(SelectStatement {
+            columns: vec![SelectColumn {
+                name: "*".to_string(),
+                alias: None,
+                expression: None,
+            }],
+            table: String::new(),
+            schema: None,
+            from_alias: None,
+            from_subquery: None,
+            from_values: Some(rows),
+            from_function_args: None,
+            where_clause: None,
+            join_clause: vec![],
+            extra_tables: vec![],
+            aggregates: vec![],
+            group_by: vec![],
+            with_rollup: false,
+            with_cube: false,
+            having: None,
+            order_by: vec![],
+            limit: None,
+            offset: None,
+            distinct: false,
+            lock_clause: None,
+            index_hints: vec![],
+        })
     }
 
     fn parse_select_statement(&mut self) -> Result<SelectStatement, String> {
@@ -6062,7 +6136,7 @@ impl Parser {
                                     offset: None,
                                     distinct: false,
                                     lock_clause: None,
-                                index_hints: vec![],
+                                    index_hints: vec![],
                                 }
                             }
                         };
@@ -6462,7 +6536,7 @@ impl Parser {
             match self.current() {
                 Some(Token::Use) => {
                     self.next(); // consume USE
-                    // Check for INDEX keyword
+                                 // Check for INDEX keyword
                     if matches!(self.current(), Some(Token::Index)) {
                         self.next(); // consume INDEX
                     } else if matches!(self.current(), Some(Token::Key)) {
@@ -8892,7 +8966,8 @@ impl Parser {
                 };
                 // Build an Interval expression and apply the operator:
                 let interval_expr = Expression::Interval(Box::new(n_expr), unit);
-                left = Expression::BinaryOp(Box::new(left), op.to_string(), Box::new(interval_expr));
+                left =
+                    Expression::BinaryOp(Box::new(left), op.to_string(), Box::new(interval_expr));
                 continue;
             }
             let right = self.parse_multiplicative_expression()?;
@@ -17177,14 +17252,8 @@ mod set_op_tests {
     // returned "Parse error: Expected VALUES, SELECT, or DEFAULT VALUES".
     #[test]
     fn test_parse_insert_into_with_cte_as_select() {
-        let result = parse(
-            "INSERT INTO dst WITH cte AS (SELECT * FROM src) SELECT * FROM cte",
-        );
-        assert!(
-            result.is_ok(),
-            "Parse failed: {:?}",
-            result.as_ref().err()
-        );
+        let result = parse("INSERT INTO dst WITH cte AS (SELECT * FROM src) SELECT * FROM cte");
+        assert!(result.is_ok(), "Parse failed: {:?}", result.as_ref().err());
         match result.unwrap() {
             Statement::WithDml(wd) => {
                 assert_eq!(wd.with_clause.ctes.len(), 1);
@@ -17207,14 +17276,8 @@ mod set_op_tests {
         // Two CTEs in the WITH clause. We avoid UNION here because
         // INSERT-INTO-SELECT-UNION-SELECT is a separate parser concern
         // that is not in scope for #4757.
-        let result = parse(
-            "INSERT INTO dst WITH a AS (SELECT 1), b AS (SELECT 2) SELECT * FROM a",
-        );
-        assert!(
-            result.is_ok(),
-            "Parse failed: {:?}",
-            result.as_ref().err()
-        );
+        let result = parse("INSERT INTO dst WITH a AS (SELECT 1), b AS (SELECT 2) SELECT * FROM a");
+        assert!(result.is_ok(), "Parse failed: {:?}", result.as_ref().err());
         match result.unwrap() {
             Statement::WithDml(wd) => {
                 assert_eq!(wd.with_clause.ctes.len(), 2);
@@ -17237,14 +17300,8 @@ mod set_op_tests {
         // Standard form `INSERT INTO dst WITH cte ... VALUES (...)` should
         // also work — but for simplicity we keep the grammar accepting
         // VALUES after the CTE list too.
-        let result = parse(
-            "INSERT INTO dst WITH cte AS (SELECT 1) VALUES (42)",
-        );
-        assert!(
-            result.is_ok(),
-            "Parse failed: {:?}",
-            result.as_ref().err()
-        );
+        let result = parse("INSERT INTO dst WITH cte AS (SELECT 1) VALUES (42)");
+        assert!(result.is_ok(), "Parse failed: {:?}", result.as_ref().err());
         match result.unwrap() {
             Statement::WithDml(wd) => {
                 assert_eq!(wd.with_clause.ctes.len(), 1);

@@ -244,6 +244,7 @@ mod tests {
             from_alias: None,
             from_subquery: None,
             from_values: None,
+            from_function_args: None,
             where_clause: None,
             join_clause: vec![],
             extra_tables: vec![],
