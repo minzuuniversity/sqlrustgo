@@ -2,34 +2,34 @@
 
 ## 状态: 部分实现
 
-### 简单函数 ✅ 已实现
+### 解析 ✅ 已实现
 
-`CREATE FUNCTION f1(x int) RETURNS int RETURN x * 2;` 正常工作。
-
-### 多语句函数 ❌ 未实现
+Parser (`crates/parser/src/parser.rs`) 现在支持 `AS BEGIN ... END` 语法：
 
 ```sql
+-- 解析成功
 CREATE FUNCTION f2(x int) RETURNS int AS 
-BEGIN
-  DECLARE r int;
-  SET r = x * 2;
-  RETURN r;
+BEGIN 
+  DECLARE r int; 
+  SET r = x * 2; 
+  RETURN r; 
 END;
--- 错误: Parse error: Expected Return, got As
 ```
 
-Parser (`crates/parser/src/parser.rs:3498-3606`) 只支持 `RETURN expression` 形式。
+- 添加了 `body_block: Option<String>` 字段到 `CreateFunctionStatement`
+- 添加了 `read_until_end_block()` 辅助函数处理嵌套 BEGIN/END
 
-## 根因
+### 执行 ❌ 未实现
 
-`parse_create_function` 不支持 `AS BEGIN ... END` 块和多语句语法。
+多语句函数体存储在 `body_block` 中，但执行器尚未实现多语句逻辑。
 
 ## 待实现
 
-1. Parser 支持 `AS` 关键字和 `BEGIN ... END` 块
-2. 支持 `DECLARE variable_name data_type` 局部变量声明
-3. 支持 `SET variable = expression` 赋值
-4. 支持多语句执行
+1. 实现多语句函数执行：
+   - 解析 DECLARE 变量声明
+   - 实现 SET 赋值
+   - 按顺序执行语句
+   - RETURN 终止执行并返回值
 
 ## 验证命令
 
@@ -38,7 +38,8 @@ Parser (`crates/parser/src/parser.rs:3498-3606`) 只支持 `RETURN expression` �
 CREATE FUNCTION f1(x int) RETURNS int RETURN x * 2;
 SELECT f1(10);  -- 20
 
--- 多语句函数（未工作）
+-- 多语句函数（解析成功，执行返回 NULL）
 CREATE FUNCTION f2(x int) RETURNS int AS 
 BEGIN DECLARE r int; SET r = x * 2; RETURN r; END;
+SELECT f2(10);  -- Null (执行未实现)
 ```
