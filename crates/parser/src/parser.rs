@@ -4266,7 +4266,13 @@ impl Parser {
         Ok(current)
     }
 
-    fn parse_with_select(&mut self) -> Result<Statement, String> {
+    /// V312-89 / Issue #4757: Parse a `WITH [RECURSIVE] cte_list` clause
+    /// and return a `WithClause`. The caller is responsible for parsing the
+    /// trailing body (SELECT for `WithSelect`, INSERT/UPDATE/DELETE for
+    /// `WithDml`). Shared by `parse_with_select` and `parse_insert` so both
+    /// `WITH cte AS (...) SELECT ...` and `INSERT INTO t WITH cte AS (...)
+    /// SELECT ...` parse to the same shape.
+    fn parse_with_clause(&mut self) -> Result<WithClause, String> {
         self.expect(Token::With)?;
 
         let recursive = if matches!(self.current(), Some(Token::Recursive)) {
@@ -4310,8 +4316,8 @@ impl Parser {
             self.expect(Token::As)?;
             self.expect(Token::LParen)?;
             // Detect nested WITH: if the subquery itself starts with
-            // `WITH`, recurse into parse_with_select so the nested
-            // WithSelect is parsed correctly.
+            // `WITH`, recurse into parse_with_clause so the nested
+            // WithSelect/WithDml is parsed correctly.
             let subquery = if matches!(self.current(), Some(Token::With)) {
                 self.parse_with_select()?
             } else {
@@ -4332,7 +4338,11 @@ impl Parser {
             break;
         }
 
-        let with_clause = WithClause { recursive, ctes };
+        Ok(WithClause { recursive, ctes })
+    }
+
+    fn parse_with_select(&mut self) -> Result<Statement, String> {
+        let with_clause = self.parse_with_clause()?;
         // The body following the CTE list can be either a SELECT (the
         // standard WithSelect case) or a DML statement (INSERT, UPDATE,
         // DELETE) when the user wrote e.g. `WITH cte AS (...) UPDATE t ...`.
@@ -7563,6 +7573,19 @@ impl Parser {
             Vec::new()
         };
 
+        // V312-89 / Issue #4757: accept `INSERT INTO dst WITH cte AS (...)
+        // SELECT ...` (and the same shape with VALUES / DEFAULT VALUES).
+        // The standard SQL:1999 form was previously rejected with
+        // "Expected VALUES, SELECT, or DEFAULT VALUES". When WITH is
+        // present we parse the CTE list here and wrap the resulting
+        // INSERT in a WithDml so the existing execute_with_dml path
+        // applies unchanged.
+        let with_clause = if matches!(self.current(), Some(Token::With)) {
+            Some(self.parse_with_clause()?)
+        } else {
+            None
+        };
+
         // V312-65 / Issue #4643: `INSERT INTO t DEFAULT VALUES` is
         // signaled via this flag. Set inside the VALUES/SELECT/DEFAULT
         // dispatch below.
@@ -7879,7 +7902,7 @@ impl Parser {
             }
             returning = Some(cols);
         }
-        Ok(Statement::Insert(InsertStatement {
+        let insert_stmt = Statement::Insert(InsertStatement {
             table,
             columns,
             values,
@@ -7890,7 +7913,18 @@ impl Parser {
             on_conflict_clause,
             default_values,
             returning,
-        }))
+        });
+        // V312-89 / Issue #4757: wrap `INSERT INTO t WITH cte AS (...)
+        // ...` as a WithDml so the existing execute_with_dml path runs
+        // the CTE first, then the INSERT body.
+        if let Some(wc) = with_clause {
+            Ok(Statement::WithDml(WithDmlStatement {
+                with_clause: wc,
+                body: Box::new(insert_stmt),
+            }))
+        } else {
+            Ok(insert_stmt)
+        }
     }
 
     fn parse_update(&mut self) -> Result<Statement, String> {
@@ -17041,6 +17075,96 @@ mod set_op_tests {
         match result.unwrap() {
             Statement::WithDml(wd) => {
                 assert_eq!(wd.with_clause.ctes.len(), 1);
+            }
+            other => panic!("Expected WithDml, got {:?}", other),
+        }
+    }
+
+    // V312-89 / Issue #4757: `INSERT INTO dst WITH cte AS (...) SELECT ...`
+    // is the standard SQL:1999 form (and is what PostgreSQL/SQLite/MySQL 8.0+
+    // accept). The grammar currently only accepts the inverted form
+    // `WITH cte AS (...) INSERT INTO dst SELECT ...`. The missing direction
+    // returned "Parse error: Expected VALUES, SELECT, or DEFAULT VALUES".
+    #[test]
+    fn test_parse_insert_into_with_cte_as_select() {
+        let result = parse(
+            "INSERT INTO dst WITH cte AS (SELECT * FROM src) SELECT * FROM cte",
+        );
+        assert!(
+            result.is_ok(),
+            "Parse failed: {:?}",
+            result.as_ref().err()
+        );
+        match result.unwrap() {
+            Statement::WithDml(wd) => {
+                assert_eq!(wd.with_clause.ctes.len(), 1);
+                assert_eq!(wd.with_clause.ctes[0].name, "cte");
+                assert!(!wd.with_clause.recursive);
+                match *wd.body {
+                    Statement::Insert(i) => {
+                        assert_eq!(i.table, "dst");
+                        assert!(i.select.is_some());
+                    }
+                    other => panic!("Expected Insert body, got {:?}", other),
+                }
+            }
+            other => panic!("Expected WithDml, got {:?}", other),
+        }
+    }
+
+    #[test]
+    fn test_parse_insert_into_with_multiple_ctes_select() {
+        // Two CTEs in the WITH clause. We avoid UNION here because
+        // INSERT-INTO-SELECT-UNION-SELECT is a separate parser concern
+        // that is not in scope for #4757.
+        let result = parse(
+            "INSERT INTO dst WITH a AS (SELECT 1), b AS (SELECT 2) SELECT * FROM a",
+        );
+        assert!(
+            result.is_ok(),
+            "Parse failed: {:?}",
+            result.as_ref().err()
+        );
+        match result.unwrap() {
+            Statement::WithDml(wd) => {
+                assert_eq!(wd.with_clause.ctes.len(), 2);
+                assert_eq!(wd.with_clause.ctes[0].name, "a");
+                assert_eq!(wd.with_clause.ctes[1].name, "b");
+                match *wd.body {
+                    Statement::Insert(i) => {
+                        assert_eq!(i.table, "dst");
+                        assert!(i.select.is_some());
+                    }
+                    other => panic!("Expected Insert body, got {:?}", other),
+                }
+            }
+            other => panic!("Expected WithDml, got {:?}", other),
+        }
+    }
+
+    #[test]
+    fn test_parse_insert_into_with_cte_values() {
+        // Standard form `INSERT INTO dst WITH cte ... VALUES (...)` should
+        // also work — but for simplicity we keep the grammar accepting
+        // VALUES after the CTE list too.
+        let result = parse(
+            "INSERT INTO dst WITH cte AS (SELECT 1) VALUES (42)",
+        );
+        assert!(
+            result.is_ok(),
+            "Parse failed: {:?}",
+            result.as_ref().err()
+        );
+        match result.unwrap() {
+            Statement::WithDml(wd) => {
+                assert_eq!(wd.with_clause.ctes.len(), 1);
+                match *wd.body {
+                    Statement::Insert(i) => {
+                        assert_eq!(i.table, "dst");
+                        assert_eq!(i.values.len(), 1);
+                    }
+                    other => panic!("Expected Insert body, got {:?}", other),
+                }
             }
             other => panic!("Expected WithDml, got {:?}", other),
         }
