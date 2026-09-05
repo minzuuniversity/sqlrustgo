@@ -1768,10 +1768,13 @@ impl<S: StorageEngine + 'static> ExecutionEngine<S> {
         }
         self.tx_status = TxStatus::Active;
         self.tx_readonly = readonly;
-        Ok(ExecutorResult::new(
-            vec![vec![Value::Integer(tx_id.as_u64() as i64)]],
-            1,
-        ))
+        // V312-RC-GA / Issue #4818: BEGIN used to return the tx_id as a
+        // single row, which leaked through the CSV formatter and broke
+        // multi-statement scripts (the next statement's first output row
+        // got prepended with the tx_id). Return empty to match
+        // COMMIT/ROLLBACK which already return `ExecutorResult::empty()`.
+        let _ = tx_id;
+        Ok(ExecutorResult::empty())
     }
 
     fn commit_transaction(&mut self) -> SqlResult<ExecutorResult> {
