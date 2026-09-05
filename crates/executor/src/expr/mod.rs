@@ -2806,7 +2806,14 @@ fn value_to_sql_literal(v: &Value) -> String {
 /// - [date_text, n] (default unit = DAY)
 ///
 /// Returns Value::Text (new date) or Value::Null on bad input.
-fn date_add_sub(args: &[Value], add: bool) -> Value {
+///
+/// V312-95 / Issue #4695: also drives the `d + INTERVAL '5' DAY` form
+/// from the BinaryOp-special-case arm in `expr_utils.rs`. Exposed at
+/// `pub(crate)` so the recursive `evaluate_expression_with_subq` helper
+/// can reuse the exact same calendar arithmetic (DAY / MONTH / YEAR
+/// with proper month-wrap and leap-year clamping) instead of duplicating
+/// the calendar helpers.
+pub fn date_add_sub(args: &[Value], add: bool) -> Value {
     if args.len() < 2 {
         return Value::Null;
     }
