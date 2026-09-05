@@ -371,6 +371,10 @@ name = "repro_v313_97_4679_grouping_sets"
 path = "tests/integration/sql/repro_v313_97_4679_grouping_sets.rs"
 
 [[test]]
+name = "repro_v313_98_4701_multi_select"
+path = "tests/integration/sql/repro_v313_98_4701_multi_select.rs"
+
+[[test]]
 name = "json_tvf_test"
 path = "tests/integration/sql/json_tvf_test.rs"
 
