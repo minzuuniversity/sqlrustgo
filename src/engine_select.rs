@@ -21,9 +21,9 @@ use sqlrustgo_executor::simd_eval::{
     LessThanOrEqualPredicate, LessThanPredicate, NotEqualPredicate,
 };
 use sqlrustgo_parser::{
-    get_and_clear_derived_subqueries, AggregateCall, AggregateFunction, Expression,
-    IndexHint, IndexHintType, JoinClause as ParserJoinClause, JoinType, SelectColumn,
-    SelectStatement, Statement,
+    get_and_clear_derived_subqueries, AggregateCall, AggregateFunction, Expression, IndexHint,
+    IndexHintType, JoinClause as ParserJoinClause, JoinType, SelectColumn, SelectStatement,
+    Statement,
 };
 use sqlrustgo_storage::{StorageEngine, TableInfo};
 use std::cell::RefCell;
@@ -778,8 +778,12 @@ impl<S: StorageEngine + 'static> ExecutionEngine<S> {
         if let Some(args) = &select.from_function_args {
             if let Some(result) = crate::json_tvf::try_json_tvf_select(&select.table, Some(args)) {
                 return result.and_then(|mut exec_result| {
-                    crate::system_tables::project_select_columns(select, &mut exec_result, crate::json_tvf::JSON_TVF_SCHEMA)
-                        .map(|_| exec_result)
+                    crate::system_tables::project_select_columns(
+                        select,
+                        &mut exec_result,
+                        crate::json_tvf::JSON_TVF_SCHEMA,
+                    )
+                    .map(|_| exec_result)
                 });
             }
         }
@@ -1762,6 +1766,59 @@ impl<S: StorageEngine + 'static> ExecutionEngine<S> {
                     }
                 }
 
+                // V313-97 / Issue #4679: GROUPING SETS fan-out. The main aggregation pass
+                // already produced one row per union-group; expand each row
+                // into `grouping_sets.len()` rows, one per set, padding the
+                // missing trailing group columns with Value::Null. The
+                // aggregate tail is identical across the fanned rows.
+                // Empty sets (`()`) are handled separately as single grand-
+                // total rows whose aggregates recompute over the entire
+                // input rather than per-group.
+                if !select.grouping_sets.is_empty() {
+                    let n_group_cols = group_exprs.len();
+                    let n_agg = select.aggregates.len();
+                    let mut fanned: Vec<Vec<Value>> =
+                        Vec::with_capacity(agg_result_rows.len() * select.grouping_sets.len());
+                    let mut saw_empty_set = false;
+                    let mut empty_set_emitted = false;
+                    for row in agg_result_rows.iter() {
+                        let group_part = &row[..n_group_cols];
+                        let agg_part = &row[n_group_cols..n_group_cols + n_agg];
+                        for set in &select.grouping_sets {
+                            if set.is_empty() {
+                                saw_empty_set = true;
+                                if empty_set_emitted {
+                                    continue;
+                                }
+                                empty_set_emitted = true;
+                                let mut new_row: Vec<Value> =
+                                    (0..n_group_cols).map(|_| Value::Null).collect();
+                                let grand_aggs = self.compute_aggregates(
+                                    &select.aggregates,
+                                    &rows,
+                                    &table_info,
+                                )?;
+                                new_row.extend(grand_aggs);
+                                fanned.push(new_row);
+                                continue;
+                            }
+                            let mut new_row: Vec<Value> = (0..n_group_cols)
+                                .map(|idx| {
+                                    let want = &group_exprs[idx];
+                                    if set.iter().any(|e| e == want) {
+                                        group_part[idx].clone()
+                                    } else {
+                                        Value::Null
+                                    }
+                                })
+                                .collect();
+                            new_row.extend_from_slice(agg_part);
+                            fanned.push(new_row);
+                        }
+                    }
+                    agg_result_rows = fanned;
+                }
+
                 // v3.8.0-rc2 Day 7: apply ORDER BY before returning.
                 // Sprint 5 v2 fix (Q3/Q10/Q15/Q18 cell_diff): for
                 // aggregate-typed ORDER BY references (e.g.
@@ -1847,18 +1904,14 @@ impl<S: StorageEngine + 'static> ExecutionEngine<S> {
                             let bv = b.0.get(i);
                             let nulls_first_eff: bool = ob_expr
                                 .nulls_first
-                                .unwrap_or_else(|| {
-                                    self.session_null_order_first.unwrap_or(false)
-                                });
+                                .unwrap_or_else(|| self.session_null_order_first.unwrap_or(false));
                             let ord = match (av, bv) {
                                 (Some(x), Some(y)) => {
                                     // ASC keeps natural order; DESC reverses.
                                     // NULL placement uses `nulls_first_eff`
                                     // directly (independent of ASC/DESC),
                                     // mirroring the non-aggregate path.
-                                    if matches!(x, Value::Null)
-                                        && matches!(y, Value::Null)
-                                    {
+                                    if matches!(x, Value::Null) && matches!(y, Value::Null) {
                                         std::cmp::Ordering::Equal
                                     } else if matches!(x, Value::Null) {
                                         if nulls_first_eff {
@@ -3120,9 +3173,9 @@ impl<S: StorageEngine + 'static> ExecutionEngine<S> {
             return Ok(rows);
         }
         // V312-85 / Issue #4625: check index hints
-        let dominated_use_index = index_hints.iter().any(|h| {
-            matches!(h.hint_type, IndexHintType::UseIndex) && !h.index_names.is_empty()
-        });
+        let dominated_use_index = index_hints
+            .iter()
+            .any(|h| matches!(h.hint_type, IndexHintType::UseIndex) && !h.index_names.is_empty());
         let dominated_ignore_index = index_hints.iter().any(|h| {
             matches!(h.hint_type, IndexHintType::IgnoreIndex) && !h.index_names.is_empty()
         });
@@ -3149,22 +3202,30 @@ impl<S: StorageEngine + 'static> ExecutionEngine<S> {
                         let table_info = storage.get_table_info(table).ok();
                         if let Some(ref info) = table_info {
                             // Find the column for this index
-                            if let Some(col_idx) = info.columns.iter().position(|c| {
-                                c.name.eq_ignore_ascii_case(idx_name)
-                            }) {
+                            if let Some(col_idx) = info
+                                .columns
+                                .iter()
+                                .position(|c| c.name.eq_ignore_ascii_case(idx_name))
+                            {
                                 // For a true index scan we'd need the key value from WHERE
                                 // For now, just try to use the index for any subsequent WHERE
                                 self.instrumentation.on_seq_scan_start(table);
                                 // Attempt index scan with null key to test support
-                                if let Ok(rows) = storage.scan_with_index(table, idx_name, &Value::Null) {
+                                if let Ok(rows) =
+                                    storage.scan_with_index(table, idx_name, &Value::Null)
+                                {
                                     let mut page_id: u64 = 0xcbf29ce484222325;
                                     for &b in table.as_bytes() {
                                         page_id ^= u64::from(b);
                                         page_id = page_id.wrapping_mul(0x100000001b3);
                                     }
                                     let offset = rows.len() as u32;
-                                    self.adaptive_hash_index
-                                        .record_access(table, idx_name.as_bytes(), page_id, offset);
+                                    self.adaptive_hash_index.record_access(
+                                        table,
+                                        idx_name.as_bytes(),
+                                        page_id,
+                                        offset,
+                                    );
                                     return Ok(rows);
                                 }
                                 // scan_with_index not supported or failed, fall through

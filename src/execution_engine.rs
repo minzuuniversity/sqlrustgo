@@ -149,7 +149,7 @@ pub struct ExecutionEngine<S: StorageEngine> {
     /// `SELECT @a` and `EXECUTE ... USING @a` resolve to the bound
     /// value (or `NULL` when unset, matching MySQL semantics).
     pub(crate) session_vars: Arc<RwLock<HashMap<String, SqlValue>>>,
-/// V312-72 (perf-refactor): standalone in-memory cache of all
+    /// V312-72 (perf-refactor): standalone in-memory cache of all
     /// `SequenceInfo` keyed by name. Decouples SELECT projection from
     /// the global `storage` write lock — `evaluate_expression_with_seq`
     /// consults this cache instead of `storage.next_sequence_value` /
@@ -1040,9 +1040,7 @@ impl<S: StorageEngine + 'static> ExecutionEngine<S> {
         // cache — a CREATE-then-DROP in the same session may have already
         // updated the cache even if the storage layer rejected the prior
         // persist, or vice versa.
-        if !storage.has_sequence(&seq_stmt.name)
-            && !self.sequence_state.contains(&seq_stmt.name)
-        {
+        if !storage.has_sequence(&seq_stmt.name) && !self.sequence_state.contains(&seq_stmt.name) {
             if seq_stmt.if_exists {
                 return Ok(ExecutorResult::empty());
             }
@@ -2582,6 +2580,7 @@ pub(crate) fn substitute_session_vars_in_select(
         group_by,
         with_rollup: select.with_rollup,
         with_cube: select.with_cube,
+        grouping_sets: select.grouping_sets.clone(),
         having: select.having.clone().map(map_expr),
         order_by,
         limit: select.limit,
