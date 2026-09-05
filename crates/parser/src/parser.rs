@@ -772,6 +772,10 @@ pub struct SelectStatement {
     pub with_rollup: bool,
     /// MySQL 5.7 WITH CUBE: emit 2^k subtotals over all subsets.
     pub with_cube: bool,
+    /// V313-97 / Issue #4679: SQL:1999 GROUPING SETS((...), (...), ...).
+    /// Each inner Vec is one grouping set; an empty Vec is the grand-total
+    /// set `()` that produces a single NULL-padded row.
+    pub grouping_sets: Vec<Vec<Expression>>,
     pub having: Option<Expression>,
     pub order_by: Vec<OrderByExpression>,
     pub limit: Option<u64>,
@@ -4474,25 +4478,8 @@ impl Parser {
                 expression: None,
             }],
             table: String::new(),
-            schema: None,
-            from_alias: None,
-            from_subquery: None,
             from_values: Some(rows),
-            from_function_args: None,
-            where_clause: None,
-            join_clause: vec![],
-            extra_tables: vec![],
-            aggregates: vec![],
-            group_by: vec![],
-            with_rollup: false,
-            with_cube: false,
-            having: None,
-            order_by: vec![],
-            limit: None,
-            offset: None,
-            distinct: false,
-            lock_clause: None,
-            index_hints: vec![],
+            ..Default::default()
         })
     }
 
@@ -5975,24 +5962,8 @@ impl Parser {
                             // SelectStatement (FROM subquery path) is
                             // never schema-qualified.
                             schema: None,
-                            from_alias: None,
-                            from_subquery: None,
                             from_values: Some(values),
-                            from_function_args: None,
-                            where_clause: None,
-                            join_clause: vec![],
-                            extra_tables: vec![],
-                            aggregates: vec![],
-                            group_by: vec![],
-                            with_rollup: false,
-                            with_cube: false,
-                            having: None,
-                            order_by: vec![],
-                            limit: None,
-                            offset: None,
-                            distinct: false,
-                            lock_clause: None,
-                            index_hints: vec![],
+                            ..Default::default()
                         };
                         (alias, Some(Box::new(synth_select)), Vec::new())
                     } else if matches!(self.current(), Some(Token::Select))
@@ -6059,6 +6030,7 @@ impl Parser {
                                 group_by: s.group_by.clone(),
                                 with_rollup: s.with_rollup,
                                 with_cube: s.with_cube,
+                                grouping_sets: s.grouping_sets.clone(),
                                 having: s.having.clone(),
                                 order_by: s.order_by.clone(),
                                 limit: s.limit,
@@ -6099,28 +6071,8 @@ impl Parser {
                                                 expression: None,
                                             }],
                                             table: String::new(),
-                                            // V312-56A / 56A-R2: synthetic
-                                            // set-op fallback carries no
-                                            // schema qualifier.
                                             schema: None,
-                                            from_alias: None,
-                                            from_subquery: None,
-                                            from_values: None,
-                                            from_function_args: None,
-                                            where_clause: None,
-                                            join_clause: vec![],
-                                            extra_tables: vec![],
-                                            aggregates: vec![],
-                                            group_by: vec![],
-                                            with_rollup: false,
-                                            with_cube: false,
-                                            having: None,
-                                            order_by: vec![],
-                                            limit: None,
-                                            offset: None,
-                                            distinct: false,
-                                            lock_clause: None,
-                                            index_hints: vec![],
+                                            ..Default::default()
                                         }
                                     }
                                 };
@@ -6131,28 +6083,9 @@ impl Parser {
                                         expression: None,
                                     }],
                                     table: String::new(),
-                                    // V312-56A / 56A-R2: synthetic
-                                    // set-op fallback carries no
-                                    // schema qualifier.
                                     schema: None,
-                                    from_alias: None,
                                     from_subquery: Some(Box::new(inner_subq)),
-                                    from_values: None,
-                                    from_function_args: None,
-                                    where_clause: None,
-                                    join_clause: vec![],
-                                    extra_tables: vec![],
-                                    aggregates: vec![],
-                                    group_by: vec![],
-                                    with_rollup: false,
-                                    with_cube: false,
-                                    having: None,
-                                    order_by: vec![],
-                                    limit: None,
-                                    offset: None,
-                                    distinct: false,
-                                    lock_clause: None,
-                                    index_hints: vec![],
+                                    ..Default::default()
                                 }
                             }
                         };
@@ -6213,23 +6146,7 @@ impl Parser {
                             table: first_table.clone(),
                             schema: None,
                             from_alias: first_alias.clone(),
-                            from_subquery: None,
-                            from_values: None,
-                            from_function_args: None,
-                            where_clause: None,
-                            join_clause: vec![],
-                            extra_tables: vec![],
-                            aggregates: vec![],
-                            group_by: vec![],
-                            with_rollup: false,
-                            with_cube: false,
-                            having: None,
-                            order_by: vec![],
-                            limit: None,
-                            offset: None,
-                            distinct: false,
-                            lock_clause: None,
-                            index_hints: vec![],
+                            ..Default::default()
                         };
                         // any JOINs, ON clauses, etc. — we don't model them
                         // in the synthetic SELECT but the executor will at
@@ -7005,25 +6922,80 @@ impl Parser {
         // — this gives MySQL 5.7 / SQL:1999 §7.10 semantics.
         let mut with_rollup = false;
         let mut with_cube = false;
+        let mut grouping_sets: Vec<Vec<Expression>> = Vec::new();
         let group_by = if matches!(self.current(), Some(Token::Group)) {
             self.next();
             self.expect(Token::By)?;
-            let raw = self.parse_expression_list()?;
-            let mut group_by = Vec::new();
-            for expr in raw {
-                match &expr {
-                    Expression::FunctionCall(name, args) if name == "ROLLUP" => {
-                        with_rollup = true;
-                        group_by.extend(args.iter().cloned());
+            // V313-97 / Issue #4679: SQL:1999 GROUPING SETS((...),(...),...).
+            // Detected before the generic expression list; an empty set
+            // `()` is the SQL:1999 grand-total shorthand and is allowed.
+            // The set columns are unioned into `group_by` so the main
+            // aggregation pass groups by every column that appears in any
+            // set; the executor then fans the resulting groups back out
+            // into one row per set, NULL-padding the missing columns.
+            if matches!(self.current(), Some(Token::Grouping)) {
+                self.next();
+                match self.current() {
+                    Some(Token::Identifier(s)) if s.eq_ignore_ascii_case("SETS") => {
+                        self.next();
+                        self.expect(Token::LParen)?;
+                        let mut union_cols: Vec<Expression> = Vec::new();
+                        loop {
+                            self.expect(Token::LParen)?;
+                            let mut set = Vec::new();
+                            if !matches!(self.current(), Some(Token::RParen)) {
+                                loop {
+                                    let expr = self.parse_expression()?;
+                                    if !union_cols.iter().any(|e| e == &expr) {
+                                        union_cols.push(expr.clone());
+                                    }
+                                    set.push(expr);
+                                    if matches!(self.current(), Some(Token::Comma)) {
+                                        self.next();
+                                        if matches!(self.current(), Some(Token::RParen)) {
+                                            break;
+                                        }
+                                    } else {
+                                        break;
+                                    }
+                                }
+                            }
+                            self.expect(Token::RParen)?;
+                            grouping_sets.push(set);
+                            if matches!(self.current(), Some(Token::Comma)) {
+                                self.next();
+                            } else {
+                                break;
+                            }
+                        }
+                        self.expect(Token::RParen)?;
+                        union_cols
                     }
-                    Expression::FunctionCall(name, args) if name == "CUBE" => {
-                        with_cube = true;
-                        group_by.extend(args.iter().cloned());
+                    _ => {
+                        return Err(format!(
+                            "Expected SETS after GROUPING, got {:?}",
+                            self.current()
+                        ));
                     }
-                    _ => group_by.push(expr),
                 }
+            } else {
+                let raw = self.parse_expression_list()?;
+                let mut group_by = Vec::new();
+                for expr in raw {
+                    match &expr {
+                        Expression::FunctionCall(name, args) if name == "ROLLUP" => {
+                            with_rollup = true;
+                            group_by.extend(args.iter().cloned());
+                        }
+                        Expression::FunctionCall(name, args) if name == "CUBE" => {
+                            with_cube = true;
+                            group_by.extend(args.iter().cloned());
+                        }
+                        _ => group_by.push(expr),
+                    }
+                }
+                group_by
             }
-            group_by
         } else {
             Vec::new()
         };
@@ -7349,6 +7321,7 @@ impl Parser {
             group_by,
             with_rollup,
             with_cube,
+            grouping_sets,
             having,
             order_by,
             limit,
