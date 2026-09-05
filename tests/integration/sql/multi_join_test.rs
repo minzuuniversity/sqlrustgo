@@ -94,3 +94,28 @@ fn test_left_join_no_matches_yields_left_rows() {
         "LEFT JOIN with empty right still emits 3 rows"
     );
 }
+
+
+#[test]
+fn test_right_join_preserves_right_rows() {
+    // Issue #4639: RIGHT JOIN should preserve all right-side rows
+    let mut e = fresh_engine();
+    e.execute("CREATE TABLE a (id INTEGER, name TEXT)").unwrap();
+    e.execute("CREATE TABLE b (id INTEGER, city TEXT)").unwrap();
+    // a has 1,2,3; b has 1,3
+    e.execute("INSERT INTO a VALUES (1,'alice'),(2,'bob'),(3,'charlie')")
+        .unwrap();
+    e.execute("INSERT INTO b VALUES (1,'NY'),(3,'LA')").unwrap();
+    // RIGHT JOIN: all rows from b should appear
+    let r = e
+        .execute("SELECT a.id, a.name, b.id, b.city FROM a RIGHT JOIN b ON a.id = b.id")
+        .unwrap();
+    // b has 2 rows (id=1, id=3), both should appear
+    assert_eq!(r.rows.len(), 2, "RIGHT JOIN must emit one row per right");
+    // Find the row for b.id=1 - should have a.name='alice'
+    let row1 = r.rows.iter().find(|row| matches!(&row[2], sqlrustgo::Value::Integer(1))).unwrap();
+    assert!(matches!(&row1[1], sqlrustgo::Value::Text(t) if t == "alice"), "id=1 should match alice");
+    // Find the row for b.id=3 - should have a.name='charlie'
+    let row3 = r.rows.iter().find(|row| matches!(&row[2], sqlrustgo::Value::Integer(3))).unwrap();
+    assert!(matches!(&row3[1], sqlrustgo::Value::Text(t) if t == "charlie"), "id=3 should match charlie");
+}
