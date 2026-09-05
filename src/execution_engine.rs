@@ -1145,6 +1145,10 @@ impl<S: StorageEngine + 'static> ExecutionEngine<S> {
         // `IF EXISTS` matches the SQLite/MySQL/PG convention: silently
         // succeed when the index is missing; without `IF EXISTS` we error
         // with a useful message that names the missing index.
+        //
+        // (This is the post-merge resolution of PR #4789; the prior
+        // conflict-marker version was reverted to the cleaner HEAD side
+        // which uses storage.write() directly without a read/write pair.)
         let mut storage = self.storage.write();
         let owner = storage
             .list_all_indexes()
