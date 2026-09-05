@@ -3108,8 +3108,11 @@ impl Parser {
                 Some(Token::Start) => {
                     self.next();
                     // V312-80 / Issue #4688: SQL standard allows `START 1`
-                    // (no WITH keyword). Remove the `expect(Token::With)` and accept
-                    // a bare number literal directly after START.
+                    // (no WITH keyword). Accept BOTH `START WITH n` (SQL standard)
+                    // and bare `START n` (PostgreSQL-style).
+                    if matches!(self.current(), Some(Token::With)) {
+                        self.next();
+                    }
                     let tok = self.next();
                     match tok {
                         Some(Token::NumberLiteral(n)) => start_with = Some(n),
