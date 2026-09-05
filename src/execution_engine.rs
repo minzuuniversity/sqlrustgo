@@ -1132,6 +1132,7 @@ impl<S: StorageEngine + 'static> ExecutionEngine<S> {
     }
 
     fn execute_drop_index(&self, idx: &DropIndexStatement) -> SqlResult<ExecutorResult> {
+<<<<<<< HEAD
         // V312-91 / Issue #4669: wire DROP INDEX into the storage layer.
         //
         // The parser already lifts `DROP INDEX [IF EXISTS] <name>` into a
@@ -1159,6 +1160,20 @@ impl<S: StorageEngine + 'static> ExecutionEngine<S> {
                 idx.name
             ))),
         }?;
+=======
+        // MySQL syntax: DROP INDEX idx_name [ON tbl_name]
+        // Index names are unique across the database, so find the owning table first.
+        let storage = self.storage.read();
+        let table_name = storage
+            .list_all_indexes()
+            .iter()
+            .find(|i| i.name.to_lowercase() == idx.name.to_lowercase())
+            .map(|i| i.table.clone())
+            .unwrap_or_default();
+        drop(storage);
+        let mut write_storage = self.storage.write();
+        write_storage.drop_index(&table_name, &idx.name)?;
+>>>>>>> d4f6941b4 (feat(v312-83 / #4669): implement DROP INDEX)
         Ok(ExecutorResult::empty())
     }
 
