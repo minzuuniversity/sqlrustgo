@@ -4842,6 +4842,55 @@ impl Parser {
                     // `Token::Or`, so we special-case it here (this is the
                     // same path Identifier uses for the `is_operator` /
                     // `op` branches).
+                    // V312-85 / Issue #4751: also handle REGEXP/RLIKE postfix
+                    // after a string literal — the literal doesn't go through
+                    // parse_comparison_expression (it's already a primary),
+                    // so dispatch the infix here too.
+                    if matches!(
+                        self.current(),
+                        Some(Token::Identifier(ref ident)) if ident.to_uppercase() == "REGEXP"
+                            || ident.to_uppercase() == "RLIKE"
+                    ) {
+                        let op_name = if let Some(Token::Identifier(ident)) = self.current() {
+                            if ident.to_uppercase() == "RLIKE" {
+                                "REGEXP"
+                            } else {
+                                "REGEXP"
+                            }
+                        } else {
+                            "REGEXP"
+                        };
+                        self.next();
+                        let right = self.parse_expression()?;
+                        let expr = Expression::BinaryOp(
+                            Box::new(Expression::Literal(format!("'{}'", s_owned))),
+                            op_name.to_string(),
+                            Box::new(right),
+                        );
+                        let alias = if matches!(self.current(), Some(Token::As)) {
+                            self.next();
+                            match self.current() {
+                                Some(Token::Identifier(name)) => {
+                                    let alias_name = name.clone();
+                                    self.next();
+                                    Some(alias_name)
+                                }
+                                Some(Token::Level) => {
+                                    self.next();
+                                    Some("LEVEL".to_string())
+                                }
+                                _ => None,
+                            }
+                        } else {
+                            None
+                        };
+                        columns.push(SelectColumn {
+                            name: format!("{:?}", expr),
+                            alias,
+                            expression: Some(expr),
+                        });
+                        continue;
+                    }
                     if matches!(self.current(), Some(Token::Or)) {
                         self.next();
                         let right = self.parse_expression()?;
@@ -8562,6 +8611,25 @@ impl Parser {
                 Box::new(left),
                 Box::new(low),
                 Box::new(high),
+            ));
+        }
+
+        // V312-85 / Issue #4751: REGEXP / RLIKE infix (positive case).
+        // The lexer's keyword map doesn't include REGEXP / RLIKE, so they
+        // arrive as Token::Identifier carrying the name. Match the bare
+        // keyword and the case-insensitive identifier form (mirrors the
+        // LIKE handling below). Distinct from the `NOT REGEXP` arm inside
+        if matches!(
+            self.current(),
+            Some(Token::Identifier(ref ident)) if ident.to_uppercase() == "REGEXP"
+                || ident.to_uppercase() == "RLIKE"
+        ) {
+            self.next();
+            let pattern = self.parse_primary_expression()?;
+            return Ok(Expression::BinaryOp(
+                Box::new(left),
+                "REGEXP".to_string(),
+                Box::new(pattern),
             ));
         }
 
