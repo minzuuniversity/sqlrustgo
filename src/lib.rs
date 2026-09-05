@@ -24,6 +24,7 @@ pub mod engine_setops;
 pub mod engine_utils;
 pub mod execution_engine;
 pub mod expr_utils;
+pub mod json_tvf;
 pub mod savepoint_wiring;
 pub mod sequence_state;
 pub mod system_tables;

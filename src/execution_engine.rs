@@ -2574,6 +2574,7 @@ pub(crate) fn substitute_session_vars_in_select(
         from_alias: select.from_alias.clone(),
         from_subquery: select.from_subquery.clone(),
         from_values: select.from_values.clone(),
+        from_function_args: select.from_function_args.clone(),
         where_clause: select.where_clause.clone().map(map_expr),
         join_clause: select.join_clause.clone(),
         extra_tables: select.extra_tables.clone(),
