@@ -353,6 +353,74 @@ pub fn evaluate_expression_with_subq(
         // scope for P0-2. The `executor::expr::cast_val` function
         // IS available (P0-2 §4.13 doc) for future use. Tracked in
         // the OpenSpec tasks.md §4.13.
+        //
+        // V312-95 / Issue #4695: special-case `BinaryOp(_, "+" | "-",
+        // Expression::Interval(_, _))` BEFORE the generic BinaryOp arm.
+        // The parser accepts `d + INTERVAL '5' DAY` and lifts it to
+        // `BinaryOp(d, "+", Interval(Literal("5"), "DAY"))` — but
+        // the generic BinaryOp evaluator evaluates both sides to
+        // `Value`, then calls `eval_binary_op`, which delegates to
+        // `arithmetic_op` for `+`/`-`. `arithmetic_op` returns Null for
+        // non-numeric pairs (date + integer), so every INTERVAL
+        // arithmetic form silently collapses to Null.
+        //
+        // Fix: dispatch to `executor::expr::date_add_sub` (the same
+        // calendar arithmetic used by `DATE_ADD(date, INTERVAL n unit)`
+        // and `DATE_SUB(...)`) for the three supported units
+        // (DAY / MONTH / YEAR). Anything else falls through to the
+        // generic BinaryOp arm so the existing Null/error contract is
+        // preserved.
+        Expression::BinaryOp(left, op, right)
+            if (op == "+" || op == "-")
+                && matches!(right.as_ref(), Expression::Interval(_, _)) =>
+        {
+            // 1. Evaluate the date side (left). Must yield a textual
+            //    YYYY-MM-DD form (or convertible to one via
+            //    `to_sql_string`).
+            let date_val =
+                evaluate_expression_with_subq(left, row, table_info, subq_eval)
+                    .unwrap_or(Value::Null);
+
+            // 2. Resolve the INTERVAL amount and unit. The parser
+            //    always wraps the amount in an Expression::Interval
+            //    (Box<Expression>, String); we evaluate the inner
+            //    expression to a Value. Coerce to Integer — the parser
+            //    emits `Literal("'5'")` for the quoted form, which
+            //    `eval_literal_from_str` returns as `Value::Text("5")`,
+            //    but `date_add_sub` requires `Value::Integer` for the
+            //    amount (it returns Null for any non-Integer second arg).
+            let (n_val, unit) = match right.as_ref() {
+                Expression::Interval(inner_expr, unit_str) => {
+                    let raw = evaluate_expression_with_subq(
+                        inner_expr, row, table_info, subq_eval,
+                    )
+                    .unwrap_or(Value::Null);
+                    let n = match raw {
+                        Value::Integer(i) => Value::Integer(i),
+                        Value::Float(f) => Value::Integer(f as i64),
+                        Value::Text(ref s) => s
+                            .trim()
+                            .trim_matches('\'')
+                            .parse::<i64>()
+                            .map(Value::Integer)
+                            .unwrap_or(Value::Null),
+                        other => other,
+                    };
+                    (n, unit_str.clone())
+                }
+                _ => unreachable!("guarded by the outer matches!"),
+            };
+
+            // 3. Delegate to the existing date_add_sub helper. Pass
+            //    args in [date, n, unit] order so DAY / MONTH / YEAR
+            //    calendar arithmetic (leap-year clamping, month-wrap)
+            //    is reused verbatim from the DATE_ADD path.
+            let unit_upper = unit.to_uppercase();
+            let args = vec![date_val, n_val, Value::Text(unit_upper)];
+            Ok(sqlrustgo_executor::expr::date_add_sub(
+                &args, op == "+",
+            ))
+        }
         Expression::BinaryOp(left, op, right) => {
             // P0-2 §4.14: delegated to `executor::expr::eval_binary_op`
             // (single source of truth for the BinaryOp branch).
