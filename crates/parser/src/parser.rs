@@ -435,7 +435,10 @@ pub struct CreateFunctionStatement {
     pub params: Vec<UdfParam>,
     pub return_type: String,
     pub deterministic: bool,
+    /// Single-expression body (e.g. `RETURN x * 2`)
     pub body_expr: String,
+    /// Multi-statement body block (e.g. `BEGIN DECLARE r int; SET r = x*2; RETURN r; END`)
+    pub body_block: Option<String>,
 }
 
 /// V312-58 / Issue #4512: DROP FUNCTION [IF EXISTS] name.
@@ -3557,44 +3560,50 @@ impl Parser {
             false
         };
 
-        // RETURN <expr> — capture the body as raw text. The executor
-        // re-parses it when the UDF is invoked. We snapshot tokens
-        // until we hit a top-level `;` or EOF (mirrors the simpler
-        // single-expression body MySQL accepts for scalar UDFs).
-        self.expect(Token::Return)?;
-        let mut body_expr = String::new();
-        let mut depth: u32 = 0;
-        loop {
-            match self.current() {
-                None => break,
-                Some(Token::Semicolon) if depth == 0 => break,
-                Some(Token::LParen) => {
-                    depth += 1;
-                    body_expr.push('(');
-                    self.next();
-                }
-                Some(Token::RParen) => {
-                    if depth == 0 {
-                        break;
+        // Issue #4671: support multi-statement function body:
+        //   CREATE FUNCTION f() RETURNS int AS BEGIN ... END
+        //   CREATE FUNCTION f() RETURNS int BEGIN ... END
+        // Fall back to single-expression:
+        //   CREATE FUNCTION f() RETURNS int RETURN expr
+        let (body_expr, body_block) = if matches!(self.current(), Some(Token::As)) {
+            self.next();
+            // Multi-statement: capture everything until matching END
+            let body = self.read_until_end_block()?;
+            (String::new(), Some(body))
+        } else {
+            // Single-expression: expect RETURN <expr>
+            self.expect(Token::Return)?;
+            let mut body_expr = String::new();
+            let mut depth: u32 = 0;
+            loop {
+                match self.current() {
+                    None => break,
+                    Some(Token::Semicolon) if depth == 0 => break,
+                    Some(Token::LParen) => {
+                        depth += 1;
+                        body_expr.push('(');
+                        self.next();
                     }
-                    depth -= 1;
-                    body_expr.push(')');
-                    self.next();
-                }
-                Some(tok) => {
-                    // Append a textual representation of this token to the
-                    // body buffer. We use the same `Display` form the lexer
-                    // emits so re-tokenization on invocation produces the
-                    // same span.
-                    body_expr.push_str(&format!("{} ", token_to_text(tok)));
-                    self.next();
+                    Some(Token::RParen) => {
+                        if depth == 0 {
+                            break;
+                        }
+                        depth -= 1;
+                        body_expr.push(')');
+                        self.next();
+                    }
+                    Some(tok) => {
+                        body_expr.push_str(&format!("{} ", token_to_text(tok)));
+                        self.next();
+                    }
                 }
             }
-        }
-        let body_expr = body_expr.trim().to_string();
-        if body_expr.is_empty() {
-            return Err("CREATE FUNCTION requires a non-empty body after RETURN".to_string());
-        }
+            let body_expr = body_expr.trim().to_string();
+            if body_expr.is_empty() {
+                return Err("CREATE FUNCTION requires a non-empty body".to_string());
+            }
+            (body_expr, None)
+        };
 
         Ok(Statement::CreateFunction(CreateFunctionStatement {
             name,
@@ -3602,7 +3611,43 @@ impl Parser {
             return_type,
             deterministic,
             body_expr,
+            body_block,
         }))
+    }
+
+    /// Issue #4671: read tokens until matching END, handling nested BEGIN/END blocks.
+    fn read_until_end_block(&mut self) -> Result<String, String> {
+        // Expect BEGIN (already consumed AS if present)
+        if matches!(self.current(), Some(Token::Begin)) {
+            self.next();
+        }
+        let mut body = String::new();
+        let mut depth: u32 = 1; // We've consumed BEGIN, so depth starts at 1
+        loop {
+            match self.current() {
+                None => return Err("Unterminated BEGIN...END block in function body".to_string()),
+                Some(Token::End) => {
+                    depth = depth.saturating_sub(1);
+                    if depth == 0 {
+                        body.push_str("END ");
+                        self.next();
+                        break;
+                    }
+                    body.push_str("END ");
+                    self.next();
+                }
+                Some(Token::Begin) => {
+                    depth += 1;
+                    body.push_str("BEGIN ");
+                    self.next();
+                }
+                Some(tok) => {
+                    body.push_str(&format!("{} ", token_to_text(tok)));
+                    self.next();
+                }
+            }
+        }
+        Ok(body.trim().to_string())
     }
 
     /// V312-58 / Issue #4512: parse `DROP FUNCTION [IF EXISTS] name`.
