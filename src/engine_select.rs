@@ -1818,24 +1818,70 @@ impl<S: StorageEngine + 'static> ExecutionEngine<S> {
                     // previous column's order; Q18 needs
                     // `o_totalprice DESC, o_orderdate ASC` to keep
                     // DESC ordering for ties instead of re-sorting
-                    // by o_orderdate alone.
+                    // by o_totalprice alone.
+                    // V312-87 / Issue #4758: ROLLUP/CUBE subtotal rows
+                    // carry NULL in the dropped group columns; respect
+                    // `NULLS FIRST` / `NULLS LAST` (and the session
+                    // default for unset cases) so ORDER BY on a
+                    // grouping-set query places the grand-total row
+                    // where the SQL asked for it, rather than relying
+                    // on the default Value::Null < 全部 discriminant.
                     keyed.sort_by(|a, b| {
                         for (i, ob_expr) in select.order_by.iter().enumerate() {
                             let av = a.0.get(i);
                             let bv = b.0.get(i);
+                            let nulls_first_eff: bool = ob_expr
+                                .nulls_first
+                                .unwrap_or_else(|| {
+                                    self.session_null_order_first.unwrap_or(false)
+                                });
                             let ord = match (av, bv) {
-                                (Some(x), Some(y)) => x.cmp(y),
-                                (Some(_), None) => std::cmp::Ordering::Greater,
-                                (None, Some(_)) => std::cmp::Ordering::Less,
+                                (Some(x), Some(y)) => {
+                                    // ASC keeps natural order; DESC reverses.
+                                    // NULL placement uses `nulls_first_eff`
+                                    // directly (independent of ASC/DESC),
+                                    // mirroring the non-aggregate path.
+                                    if matches!(x, Value::Null)
+                                        && matches!(y, Value::Null)
+                                    {
+                                        std::cmp::Ordering::Equal
+                                    } else if matches!(x, Value::Null) {
+                                        if nulls_first_eff {
+                                            std::cmp::Ordering::Less
+                                        } else {
+                                            std::cmp::Ordering::Greater
+                                        }
+                                    } else if matches!(y, Value::Null) {
+                                        if nulls_first_eff {
+                                            std::cmp::Ordering::Greater
+                                        } else {
+                                            std::cmp::Ordering::Less
+                                        }
+                                    } else if ob_expr.ascending {
+                                        x.cmp(y)
+                                    } else {
+                                        x.cmp(y).reverse()
+                                    }
+                                }
+                                (Some(_), None) => {
+                                    // Treat missing key as Null.
+                                    if nulls_first_eff {
+                                        std::cmp::Ordering::Less
+                                    } else {
+                                        std::cmp::Ordering::Greater
+                                    }
+                                }
+                                (None, Some(_)) => {
+                                    if nulls_first_eff {
+                                        std::cmp::Ordering::Greater
+                                    } else {
+                                        std::cmp::Ordering::Less
+                                    }
+                                }
                                 (None, None) => std::cmp::Ordering::Equal,
                             };
-                            let resolved = if ob_expr.ascending {
-                                ord
-                            } else {
-                                ord.reverse()
-                            };
-                            if resolved != std::cmp::Ordering::Equal {
-                                return resolved;
+                            if ord != std::cmp::Ordering::Equal {
+                                return ord;
                             }
                         }
                         std::cmp::Ordering::Equal
