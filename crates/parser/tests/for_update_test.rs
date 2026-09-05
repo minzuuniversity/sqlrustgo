@@ -79,6 +79,7 @@ fn test_select_statement_has_lock_clause_field() {
         from_alias: None,
         from_subquery: None,
         from_values: None,
+        from_function_args: None,
         where_clause: None,
         join_clause: vec![],
         extra_tables: vec![],

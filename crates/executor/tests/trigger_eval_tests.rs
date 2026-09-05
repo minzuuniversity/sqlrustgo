@@ -293,6 +293,7 @@ fn test_expression_to_value_subquery() {
         from_alias: None,
         from_subquery: None,
         from_values: None,
+        from_function_args: None,
         where_clause: None,
         join_clause: vec![],
         extra_tables: vec![],
@@ -306,6 +307,7 @@ fn test_expression_to_value_subquery() {
         with_cube: false,
         with_rollup: false,
         lock_clause: None,
+        index_hints: vec![],
     }));
     let result = expression_to_value(&expr, &eval_ctx, None);
     assert_eq!(result, Value::Null);

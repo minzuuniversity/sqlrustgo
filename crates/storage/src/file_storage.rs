@@ -772,6 +772,7 @@ mod tests {
                 compression: None,
                 collations: std::collections::HashMap::new(),
                 partition_info: None,
+                original_sql: String::new(),
             },
             rows: vec![],
         };
@@ -820,6 +821,7 @@ mod tests {
                 compression: None,
                 collations: std::collections::HashMap::new(),
                 partition_info: None,
+                original_sql: String::new(),
             },
             rows: vec![],
         };
@@ -863,6 +865,7 @@ mod tests {
                 compression: None,
                 collations: std::collections::HashMap::new(),
                 partition_info: None,
+                original_sql: String::new(),
             },
             rows: vec![],
         };
@@ -915,6 +918,7 @@ mod tests {
                 compression: None,
                 collations: std::collections::HashMap::new(),
                 partition_info: None,
+                original_sql: String::new(),
             },
             rows: vec![
                 vec![Value::Integer(1), Value::Integer(100)],
@@ -977,6 +981,7 @@ mod tests {
                 compression: None,
                 collations: std::collections::HashMap::new(),
                 partition_info: None,
+                original_sql: String::new(),
             },
             rows: vec![],
         };
@@ -1029,6 +1034,7 @@ mod tests {
                 compression: None,
                 collations: std::collections::HashMap::new(),
                 partition_info: None,
+                original_sql: String::new(),
             },
             rows: vec![],
         };
@@ -1072,6 +1078,7 @@ mod tests {
                 compression: None,
                 collations: std::collections::HashMap::new(),
                 partition_info: None,
+                original_sql: String::new(),
             },
             rows: vec![vec![Value::Text("Alice".to_string())]],
         };
@@ -1145,6 +1152,7 @@ mod tests {
                 compression: None,
                 collations: std::collections::HashMap::new(),
                 partition_info: None,
+                original_sql: String::new(),
             },
             rows: vec![],
         };
@@ -1186,6 +1194,7 @@ mod tests {
                 compression: None,
                 collations: std::collections::HashMap::new(),
                 partition_info: None,
+                original_sql: String::new(),
             },
             rows: vec![],
         };
@@ -1321,6 +1330,7 @@ mod tests {
                 compression: None,
                 collations: std::collections::HashMap::new(),
                 partition_info: None,
+                original_sql: String::new(),
             },
             rows: vec![],
         };
