@@ -1132,9 +1132,34 @@ impl<S: StorageEngine + 'static> ExecutionEngine<S> {
     }
 
     fn execute_drop_index(&self, idx: &DropIndexStatement) -> SqlResult<ExecutorResult> {
-        Err(SqlError::ExecutionError(
-            "DROP INDEX not fully supported yet".to_string(),
-        ))
+        // V312-91 / Issue #4669: wire DROP INDEX into the storage layer.
+        //
+        // The parser already lifts `DROP INDEX [IF EXISTS] <name>` into a
+        // `DropIndexStatement { name, if_exists }` (parser.rs:11546), but
+        // the executor was a placeholder returning the literal "DROP INDEX
+        // not fully supported yet" string. Now: scan `list_all_indexes()`
+        // to discover which table owns the index (the parser only carries
+        // the index name, not its owning table), then call
+        // `storage.drop_index(table, name)`.
+        //
+        // `IF EXISTS` matches the SQLite/MySQL/PG convention: silently
+        // succeed when the index is missing; without `IF EXISTS` we error
+        // with a useful message that names the missing index.
+        let mut storage = self.storage.write();
+        let owner = storage
+            .list_all_indexes()
+            .into_iter()
+            .find(|info| info.name == idx.name)
+            .map(|info| info.table);
+        match owner {
+            Some(table) => storage.drop_index(&table, &idx.name),
+            None if idx.if_exists => Ok(()),
+            None => Err(SqlError::ExecutionError(format!(
+                "DROP INDEX failed: index '{}' does not exist",
+                idx.name
+            ))),
+        }?;
+        Ok(ExecutorResult::empty())
     }
 
     fn execute_create_view(&mut self, view: &CreateViewStatement) -> SqlResult<ExecutorResult> {
