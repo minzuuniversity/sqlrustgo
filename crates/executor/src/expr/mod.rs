@@ -1034,7 +1034,31 @@ pub fn eval_binary_op(left: &Value, right: &Value, op: &str) -> Value {
         "+" | "-" | "*" | "/" | "%" => eval_arithmetic(left, right, op),
         "->" => json_extract(left, right, false),
         "->>" => json_extract(left, right, true),
+        "REGEXP" | "RLIKE" => eval_regexp(left, right),
         _ => Value::Null,
+    }
+}
+
+/// V312-85 / Issue #4751: REGEXP/RLIKE implementation.
+fn eval_regexp(left: &Value, right: &Value) -> Value {
+    if matches!(left, Value::Null) || matches!(right, Value::Null) {
+        return Value::Null;
+    }
+    let text = match left {
+        Value::Text(s) => s.clone(),
+        Value::Integer(i) => i.to_string(),
+        Value::Float(f) => f.to_string(),
+        Value::Boolean(b) => if *b { "1" } else { "0" }.to_string(),
+        _ => return Value::Null,
+    };
+    let pattern = match right {
+        Value::Text(s) => s.clone(),
+        Value::Integer(i) => i.to_string(),
+        _ => return Value::Null,
+    };
+    match regex::Regex::new(&pattern) {
+        Ok(re) => Value::Boolean(re.is_match(&text)),
+        Err(_) => Value::Null,
     }
 }
 
@@ -1412,6 +1436,13 @@ pub fn eval_fn(name: &str, args: &[Value]) -> Value {
                 .map(|v| v.to_sql_string().to_uppercase())
                 .unwrap_or_else(|| "TEXT".to_string());
             cast_value(&val, &target)
+        }
+        // V312-85 / Issue #4751: REGEXP/RLIKE function-call form
+        // `REGEXP(text, pattern)` / `RLIKE(text, pattern)`.
+        "REGEXP" | "RLIKE" => {
+            let l = args.first().cloned().unwrap_or(Value::Null);
+            let r = args.get(1).cloned().unwrap_or(Value::Null);
+            eval_regexp(&l, &r)
         }
         "LOWER" => args
             .first()

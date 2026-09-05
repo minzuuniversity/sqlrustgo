@@ -219,6 +219,28 @@ fn apply_op_value(op: &str, lv: &Value, rv: &Value) -> SqlResult<Value> {
         )),
         "=" | "==" => Ok(Value::Boolean(lv == rv)),
         "!=" | "<>" => Ok(Value::Boolean(lv != rv)),
+        // V312-85 / Issue #4751: REGEXP / RLIKE infix.
+        // SQLite/PostgreSQL/MySQL: `expr REGEXP pattern` returns true
+        // when `expr` matches the regex `pattern`. NULL propagation:
+        // NULL input or unparseable pattern returns NULL.
+        "REGEXP" | "RLIKE" => {
+            let text = match lv {
+                Value::Text(s) => s.clone(),
+                Value::Integer(i) => i.to_string(),
+                Value::Float(f) => f.to_string(),
+                Value::Boolean(b) => if *b { "1" } else { "0" }.to_string(),
+                _ => return Ok(Value::Null),
+            };
+            let pattern = match rv {
+                Value::Text(s) => s.clone(),
+                Value::Integer(i) => i.to_string(),
+                _ => return Ok(Value::Null),
+            };
+            match regex::Regex::new(&pattern) {
+                Ok(re) => Ok(Value::Boolean(re.is_match(&text))),
+                Err(_) => Ok(Value::Null),
+            }
+        }
         _ => Err(format!("Unsupported CHECK operator: {}", op).into()),
     }
 }

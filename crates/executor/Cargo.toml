@@ -10,6 +10,7 @@ sqlrustgo-common.workspace = true
 sqlrustgo-types.workspace = true
 sqlrustgo_gis = { path = "../gis" }
 sqlrustgo-parser.workspace = true
+regex.workspace = true
 sqlrustgo-planner.workspace = true
 sqlrustgo-storage.workspace = true
 sqlrustgo-catalog.workspace = true
