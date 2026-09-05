@@ -1073,6 +1073,31 @@ mod tests {
         let _ = std::fs::remove_dir_all(&tmp);
     }
 
+    // V312-RC-GA / Issue #4818 — BEGIN must not leak the tx_id row into the
+    // CSV output stream. Previously the engine returned
+    // `vec![vec![Value::Integer(tx_id)]]` from `begin_transaction` and the
+    // CLI formatted it as a single-row CSV (`2\n`). This test guards
+    // against that regression: it asserts BEGIN alone produces no rows.
+    // (The deeper issue of SELECT-after-BEGIN returning no rows in
+    // `--batch` mode is tracked separately; this test only covers the
+    // BEGIN row-leak subset of #4818.)
+    #[test]
+    fn run_batch_begin_returns_empty_no_tx_id_leak() {
+        let tmp = std::env::temp_dir().join("v31284_begin_no_leak");
+        let _ = std::fs::remove_dir_all(&tmp);
+        let mut mode = SqliteMode::open(&tmp, SqliteState::default(), true).unwrap();
+        mode.state.output = OutputTarget::File(tmp.join("out.txt"));
+        let exit = mode.run_batch_stdin_with_input(vec!["BEGIN;".to_string()]);
+        assert_eq!(exit, EXIT_OK);
+        let out = std::fs::read_to_string(tmp.join("out.txt")).unwrap();
+        assert!(
+            out.trim().is_empty(),
+            "BEGIN must not leak the tx_id row, got: {:?}",
+            out
+        );
+        let _ = std::fs::remove_dir_all(&tmp);
+    }
+
     // ----- V312-64 / Issue #4645: CREATE FULLTEXT INDEX -----
 
     #[test]
