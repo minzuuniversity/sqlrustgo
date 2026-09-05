@@ -24,19 +24,15 @@ const MAX_RECURSION_DEPTH: usize = 1000;
 #[allow(dead_code)]
 const MAX_RECURSION_ROWS: usize = 1_000_000;
 
-/// V312-64f / Issue #4699: decompose a recursive CTE body into
-/// (anchor, step, union_all). Per SQL:1999, a recursive CTE body MUST
-/// be `SELECT ... UNION [ALL] SELECT ...` where the second SELECT may
-/// reference the CTE itself. Returns an error for any other shape.
-/// V312-64f / Issue #4699: decompose a recursive CTE body into
-/// (anchor, step, union_all). Per SQL:1999, a recursive CTE body MUST
-/// be `SELECT ... UNION [ALL] SELECT ...` where the second SELECT may
-/// reference the CTE itself.
+/// V312-93 / Issue #4704: decompose a recursive CTE body into
+/// (anchor, step, union_all).
 ///
 /// For multi-anchor forms like `VALUES(1) UNION ALL VALUES(2) UNION ALL SELECT ...`:
-/// the parser produces a left-associative chain `Union(Union(VALUES1, VALUES2), SELECT)`.
-/// This function recursively unwraps the chain so the leftmost non-Union statement is
-/// the anchor and the rightmost is the step, matching SQLite's seed-row semantics.
+/// the parser produces a left-associative chain `Union(Union(V1, V2), S)`.
+/// This function returns the left side as-is (potentially a Union of all anchors)
+/// and the right side as the step (contains the recursive self-reference).
+/// The anchor is executed via `execute_statement_for_cte` which handles
+/// Union/Intersect/Except natively.
 pub fn decompose_recursive_body(
     stmt: &sqlrustgo_parser::Statement,
 ) -> SqlResult<(
@@ -47,39 +43,14 @@ pub fn decompose_recursive_body(
     use sqlrustgo_parser::Statement;
     match stmt {
         Statement::Union(u) => {
-            // Recursively unwrap the left chain to extract the true anchor.
-            let (anchor, step, union_all) =
-                decompose_recursive_body_inner(&u.left, &u.right, u.union_all)?;
-            Ok((anchor, step, union_all))
+            // Return left chain as-is (may be Union for multi-anchor).
+            // Right side is always the step (contains recursive self-reference).
+            Ok((u.left.clone(), u.right.clone(), u.union_all))
         }
         _ => Err(SqlError::ExecutionError(
             "Recursive CTE body must be UNION or UNION ALL of two SELECTs".to_string(),
         )),
     }
-}
-
-/// Inner recursive helper: finds the leftmost non-Union statement in a
-/// left-associative chain and pairs it with the rightmost statement as step.
-fn decompose_recursive_body_inner(
-    left: &sqlrustgo_parser::Statement,
-    right: &sqlrustgo_parser::Statement,
-    union_all: bool,
-) -> SqlResult<(
-    Box<sqlrustgo_parser::Statement>,
-    Box<sqlrustgo_parser::Statement>,
-    bool,
-)> {
-    use sqlrustgo_parser::Statement;
-    match left {
-        Statement::Union(u) => {
-            // Keep unwrapping left; propagate union_all from the outermost level.
-            decompose_recursive_body_inner(&u.left, right, union_all)
-        }
-        _ => {
-            // left is the anchor (non-Union leaf); right is the step.
-            Ok((Box::new(left.clone()), Box::new(right.clone()), union_all))
-        }
-}
 }
 
 /// V312-64f: derive CTE column definitions
@@ -340,28 +311,26 @@ pub fn materialize_recursive_cte<S: StorageEngine + 'static>(
     let (anchor_stmt, step_stmt, union_all) = decompose_recursive_body(cte.subquery.as_ref())?;
 
     // 2. Execute anchor → seed rows.
-    let anchor_select = match anchor_stmt.as_ref() {
-        Statement::Select(s) => s,
-        _ => {
-            return Err(SqlError::ExecutionError(
-                "Recursive CTE anchor must be a SELECT".to_string(),
-            ))
+    // Use execute_statement_for_cte which handles Union (multi-anchor) natively.
+    let seed_rows: Vec<Vec<crate::Value>> =
+        execute_statement_for_cte(engine, anchor_stmt.as_ref())?;
+
+    // 3. Derive column schema: explicit cte.columns > anchor's leftmost
+    //    SELECT column aliases > seed row width > col_<i> fallback.
+    fn leftmost_select_columns(stmt: &sqlrustgo_parser::Statement) -> Vec<String> {
+        use sqlrustgo_parser::Statement;
+        match stmt {
+            Statement::Select(s) => s
+                .columns
+                .iter()
+                .map(|c| c.alias.clone().unwrap_or_else(|| c.name.clone()))
+                .collect(),
+            Statement::Union(u) => leftmost_select_columns(u.left.as_ref()),
+            _ => Vec::new(), // VALUES or other has no SELECT columns
         }
-    };
-    let seed_rows: Vec<Vec<crate::Value>> = engine.execute_select(anchor_select)?.rows;
-
-    // 3. Derive column schema: explicit cte.columns > anchor's SELECT
-    //    aliases > col_<i> fallback.
-    let subquery_column_names: Vec<String> = match anchor_stmt.as_ref() {
-        Statement::Select(s) => s
-            .columns
-            .iter()
-            .map(|c| c.alias.clone().unwrap_or_else(|| c.name.clone()))
-            .collect(),
-        _ => Vec::new(),
-    };
+    }
+    let subquery_column_names = leftmost_select_columns(anchor_stmt.as_ref());
     let columns = derive_cte_columns(cte, &seed_rows, &subquery_column_names);
-
     // 4. Create temp table `t` (accumulated) + `t__work` (working set).
     let t = cte.name.clone();
     let t_work = format!("{}__work", cte.name);
