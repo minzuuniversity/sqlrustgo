@@ -24,7 +24,10 @@ pub struct UdfDefinition {
     /// resulting `Value` directly.
     #[allow(dead_code)]
     pub return_type: String,
+    /// Single-expression body (e.g. `x * 2`)
     pub body_expr: String,
+    /// Multi-statement body raw SQL text (Issue #4671)
+    pub body_block: Option<String>,
 }
 
 thread_local! {
@@ -43,6 +46,22 @@ pub fn register_udf(name: &str, params: Vec<String>, return_type: String, body_e
                 params,
                 return_type,
                 body_expr,
+                body_block: None,
+            },
+        );
+    });
+}
+
+/// Issue #4671: register a multi-statement scalar UDF.
+pub fn register_udf_with_body(name: &str, params: Vec<String>, return_type: String, body_block: String) {
+    UDF_REGISTRY.with(|cell| {
+        cell.borrow_mut().insert(
+            name.to_uppercase(),
+            UdfDefinition {
+                params,
+                return_type,
+                body_expr: String::new(),
+                body_block: Some(body_block),
             },
         );
     });
@@ -2644,6 +2663,11 @@ pub fn eval_fn(name: &str, args: &[Value]) -> Value {
 /// expected to degrade gracefully so a single buggy function does not
 /// bring down the surrounding statement.
 fn invoke_udf(def: &UdfDefinition, args: &[Value]) -> Value {
+    // Issue #4671: handle multi-statement UDFs
+    if let Some(ref body_block) = def.body_block {
+        return invoke_udf_multi(def, args, body_block);
+    }
+
     use sqlrustgo_parser::parse_expression_str;
     let raw_expr = match parse_expression_str(&def.body_expr) {
         Ok(e) => e,
@@ -2655,6 +2679,33 @@ fn invoke_udf(def: &UdfDefinition, args: &[Value]) -> Value {
     let substituted = substitute_udf_params(&raw_expr, &def.params, args);
     let mut uexpr: UnifiedExpr = UnifiedExpr::from(&substituted);
     uexpr.evaluate(&[], &[], &mut None)
+}
+
+/// Issue #4671: invoke a multi-statement UDF by finding and evaluating RETURN.
+fn invoke_udf_multi(def: &UdfDefinition, args: &[Value], body_block: &str) -> Value {
+    use sqlrustgo_parser::parse_expression_str;
+    
+    if args.len() != def.params.len() {
+        return Value::Null;
+    }
+    
+    // Look for RETURN statement in the body
+    // Simple heuristic: find "RETURN" keyword and get the expression after it
+    let upper = body_block.to_uppercase();
+    if let Some(pos) = upper.find("RETURN ") {
+        let after_return = &body_block[pos + 8..];
+        // Find the semicolon or end of expression
+        let end = after_return.find(';').unwrap_or(after_return.len());
+        let expr_str = after_return[..end].trim();
+        
+        if let Ok(expr) = parse_expression_str(expr_str) {
+            let substituted = substitute_udf_params(&expr, &def.params, args);
+            let mut uexpr: UnifiedExpr = UnifiedExpr::from(&substituted);
+            return uexpr.evaluate(&[], &[], &mut None);
+        }
+    }
+    
+    Value::Null
 }
 
 /// V312-58 / Issue #4512: walk an `Expression` and replace each

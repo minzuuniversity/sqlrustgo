@@ -1612,12 +1612,23 @@ impl<S: StorageEngine + 'static> ExecutionEngine<S> {
     /// in v3.12 — see plan §6).
     fn execute_create_function(&self, stmt: &CreateFunctionStatement) -> SqlResult<ExecutorResult> {
         let param_names: Vec<String> = stmt.params.iter().map(|p| p.name.clone()).collect();
-        expr_mod::register_udf(
-            &stmt.name,
-            param_names,
-            stmt.return_type.clone(),
-            stmt.body_expr.clone(),
-        );
+        if let Some(ref body_block) = stmt.body_block {
+            // Issue #4671: multi-statement UDF
+            expr_mod::register_udf_with_body(
+                &stmt.name,
+                param_names,
+                stmt.return_type.clone(),
+                body_block.clone(),
+            );
+        } else {
+            // Single-expression UDF
+            expr_mod::register_udf(
+                &stmt.name,
+                param_names,
+                stmt.return_type.clone(),
+                stmt.body_expr.clone(),
+            );
+        }
         Ok(ExecutorResult::empty())
     }
 
