@@ -1,62 +1,44 @@
 # Proposal — Issue #4671: CREATE FUNCTION 多语句函数体支持
 
-## 问题
+## 状态: 部分实现
 
-CREATE FUNCTION 仅支持最简单的单 RETURN 形式，不支持多语句函数体。
+### 简单函数 ✅ 已实现
+
+`CREATE FUNCTION f1(x int) RETURNS int RETURN x * 2;` 正常工作。
+
+### 多语句函数 ❌ 未实现
 
 ```sql
--- 简单函数（当前支持）
-CREATE FUNCTION f1(x int) RETURNS int RETURN x * 2;
-SELECT f1(10);  -- 20
-
--- 多语句函数（当前不支持）
-CREATE FUNCTION f2(x int) 
-RETURNS int AS 
+CREATE FUNCTION f2(x int) RETURNS int AS 
 BEGIN
-  DECLARE @result int;
-  SET @result = x * 2;
-  RETURN @result;
+  DECLARE r int;
+  SET r = x * 2;
+  RETURN r;
 END;
-
--- RETURNS TABLE（当前不支持）
-CREATE FUNCTION get_users_by_dept(dept_id int)
-RETURNS TABLE(id int, name varchar(50))
-AS
-BEGIN
-  RETURN QUERY SELECT id, name FROM users WHERE department_id = dept_id;
-END;
+-- 错误: Parse error: Expected Return, got As
 ```
+
+Parser (`crates/parser/src/parser.rs:3498-3606`) 只支持 `RETURN expression` 形式。
 
 ## 根因
 
-Parser 在解析 CREATE FUNCTION 时，只支持 `RETURN expression` 形式的简单函数体，未解析 `BEGIN ... END` 块。
+`parse_create_function` 不支持 `AS BEGIN ... END` 块和多语句语法。
 
-## 方案
+## 待实现
 
-1. **扩展 Parser**:
-   - 修改 `parse_create_function` 以支持 `BEGIN ... END` 块
-   - 支持 `RETURNS TABLE(column_name column_type, ...)` 类型声明
-   - 支持 DECLARE 语句
+1. Parser 支持 `AS` 关键字和 `BEGIN ... END` 块
+2. 支持 `DECLARE variable_name data_type` 局部变量声明
+3. 支持 `SET variable = expression` 赋值
+4. 支持多语句执行
 
-2. **实现多语句执行**:
-   - 解析语句序列（赋值、IF、RETURN 等）
-   - 按顺序执行语句
-   - RETURN 终止执行并返回值
+## 验证命令
 
-3. **实现表返回函数**:
-   - 解析表结构
-   - 支持 RETURN QUERY
+```sql
+-- 简单函数（已工作）
+CREATE FUNCTION f1(x int) RETURNS int RETURN x * 2;
+SELECT f1(10);  -- 20
 
-## 范围与限制
-
-- 支持单函数多语句
-- 支持 RETURNS TABLE 返回表
-- 支持 DECLARE 局部变量
-- 不支持复杂控制流（IF、LOOP 等）
-- 不支持存储过程
-
-## 验证
-
-- 新增 CREATE FUNCTION 测试用例验证多语句函数
-- 新增 RETURNS TABLE 测试用例
-- 回归测试验证简单函数不受影响
+-- 多语句函数（未工作）
+CREATE FUNCTION f2(x int) RETURNS int AS 
+BEGIN DECLARE r int; SET r = x * 2; RETURN r; END;
+```
