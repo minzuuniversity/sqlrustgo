@@ -750,6 +750,13 @@ pub struct SelectStatement {
     /// result into a temporary table named `table`, then runs the outer
     /// SELECT against that table.
     pub from_subquery: Option<Box<SelectStatement>>,
+    /// V312-95 v2 / Issue #4717: `FROM (WITH [RECURSIVE] cte AS (...)
+    /// SELECT ...) AS alias`. Distinct from `from_subquery` because the
+    /// parser dispatches this through `parse_with_select` directly so the
+    /// `WithClause` is preserved for the executor to materialise the CTEs
+    /// BEFORE running the inner SELECT. Without this preservation the
+    /// inner SELECT would fail with `Table not found: cte_name`.
+    pub from_with_subquery: Option<Box<WithSelect>>,
     /// VALUES constructor: FROM (VALUES ...) AS alias
     pub from_values: Option<Vec<Vec<Expression>>>,
     /// V312-88 / Issue #4755: table-valued function arguments.
@@ -4402,12 +4409,18 @@ impl Parser {
             // UPDATE / INSERT), not just SELECT or WITH. The outer
             // `WITH` keyword has already been consumed by the caller;
             // the inner body dispatches on its first token.
+            //
+            // V312-95 v2 / Issue #4717: VALUES is routed through
+            // `parse_select_or_union` (not `parse_values_as_select` in
+            // isolation) so the recursive CTE anchor `VALUES (1) UNION ALL
+            // SELECT ...` is consumed atomically. `parse_select_or_union`
+            // already dispatches VALUES to `parse_values_as_select` for
+            // the leading row, then loops over UNION/INTERSECT/EXCEPT.
             let subquery = match self.current() {
                 Some(Token::With) => self.parse_with_select()?,
                 Some(Token::Insert) | Some(Token::Replace) => self.parse_insert()?,
                 Some(Token::Update) => self.parse_update()?,
                 Some(Token::Delete) => self.parse_delete()?,
-                Some(Token::Values) => Statement::Select(self.parse_values_as_select()?),
                 _ => self.parse_select_or_union()?,
             };
             self.expect(Token::RParen)?;
@@ -4434,17 +4447,27 @@ impl Parser {
         // standard WithSelect case) or a DML statement (INSERT, UPDATE,
         // DELETE) when the user wrote e.g. `WITH cte AS (...) UPDATE t ...`.
         // We dispatch on the next token to handle both.
+        //
+        // V312-95 v2 / Issue #4717: We use `parse_select_or_union` for the
+        // SELECT case so a top-level VALUES anchor (`VALUES (1) UNION ALL
+        // SELECT ...`) is consumed atomically. `parse_select_or_union`
+        // dispatches a leading VALUES through `parse_values_as_select`
+        // and then loops over UNION/INTERSECT/EXCEPT. For the common
+        // `SELECT ... FROM ...` case without set-ops, the dispatch falls
+        // through to `parse_select_statement`.
         let body = match self.current() {
             Some(Token::Insert) | Some(Token::Replace) => self.parse_insert()?,
             Some(Token::Update) => self.parse_update()?,
             Some(Token::Delete) => self.parse_delete()?,
-            Some(Token::Values) => Statement::Select(self.parse_values_as_select()?),
             _ => {
-                let select = self.parse_select_statement()?;
-                return Ok(Statement::WithSelect(WithSelect {
-                    with_clause: Some(with_clause),
-                    select,
-                }));
+                let stmt = self.parse_select_or_union()?;
+                return Ok(match stmt {
+                    Statement::Select(select) => Statement::WithSelect(WithSelect {
+                        with_clause: Some(with_clause),
+                        select,
+                    }),
+                    other => other, // UNION/INTERSECT/EXCEPT body — wrap as WithDml? Out of scope for #4717; pass through.
+                });
             }
         };
         Ok(Statement::WithDml(WithDmlStatement {
@@ -5923,6 +5946,10 @@ impl Parser {
         // constructor can read it.
         let mut schema: Option<String> = None;
         let mut from_function_args: Option<Vec<Expression>> = None;
+        // V312-95 v2 / Issue #4717: side-channel binding for `FROM (WITH ...
+        // SELECT ...)` so the executor can materialise CTEs before running
+        // the inner SELECT. Read at the SelectStatement constructor below.
+        let mut from_with_subquery_bind: Option<Box<WithSelect>> = None;
         let (table, from_subquery, extra_tables) = match self.current() {
             Some(Token::From) => {
                 self.next(); // consume FROM
@@ -6027,11 +6054,56 @@ impl Parser {
                             ..Default::default()
                         };
                         (alias, Some(Box::new(synth_select)), Vec::new())
+                    } else if matches!(self.current(), Some(Token::With)) {
+                        // V312-95 v2 / Issue #4717: `FROM (WITH [RECURSIVE] cte
+                        // AS (...) SELECT ...) AS alias`. Parse via
+                        // `parse_with_select` directly so the WithClause is
+                        // preserved for the executor's CTE materialisation.
+                        // Without this, the executor would lose the CTE
+                        // definitions and fail with `Table not found: cte_name`.
+                        let stmt = self.parse_with_select()?;
+                        match stmt {
+                            Statement::WithSelect(ws) => {
+                                from_with_subquery_bind = Some(Box::new(ws));
+                                self.expect(Token::RParen)?;
+                                if matches!(self.current(), Some(Token::As)) {
+                                    self.next();
+                                }
+                                let alias = match self.next() {
+                                    Some(Token::Identifier(name)) => name,
+                                    Some(t) => {
+                                        return Err(format!(
+                                            "Expected alias for WITH subquery, got {:?}",
+                                            t
+                                        ))
+                                    }
+                                    None => {
+                                        return Err(
+                                            "Expected alias for WITH subquery".to_string()
+                                        )
+                                    }
+                                };
+                                // Signal use of side-channel via empty
+                                // table string: the SelectStatement
+                                // constructor reads from_with_subquery_bind.
+                                (alias, None, Vec::new())
+                            }
+                            other => {
+                                return Err(format!(
+                                    "WITH in FROM subquery position must be followed by SELECT, got {:?}",
+                                    other
+                                ))
+                            }
+                        }
                     } else if matches!(self.current(), Some(Token::Select))
-                        || matches!(self.current(), Some(Token::With))
                         || matches!(self.current(), Some(Token::Values))
                     {
-                        // Subquery: parse as SELECT statement or VALUES constructor
+                        // Subquery: parse as SELECT statement or VALUES constructor.
+                        // V313-96 / Issue #4717: `WITH` is no longer routed
+                        // through `parse_select_statement` because that path
+                        // unwraps the WithClause; the new branch above handles
+                        // `FROM (WITH ...)` by binding the WithSelect via
+                        // `from_with_subquery_bind`.
                         let subquery = self.parse_select_statement()?;
                         self.expect(Token::RParen)?;
                         if matches!(self.current(), Some(Token::As)) {
@@ -6082,6 +6154,11 @@ impl Parser {
                                 schema: s.schema.clone(),
                                 from_alias: s.from_alias.clone(),
                                 from_subquery: s.from_subquery.clone(),
+                                // V312-95 v2 / Issue #4717: nested
+                                // subquery path — propagate the inner's
+                                // WITH-subquery so CTE materialisation
+                                // also works for `FROM ((WITH ...))`.
+                                from_with_subquery: s.from_with_subquery.clone(),
                                 from_values: s.from_values.clone(),
                                 from_function_args: s.from_function_args.clone(),
                                 where_clause: s.where_clause.clone(),
@@ -7373,6 +7450,10 @@ impl Parser {
             schema,
             from_alias,
             from_subquery,
+            // V312-95 v2 / Issue #4717: side-channel binding from the
+            // `FROM (WITH ...)` dispatch path. None for plain table or
+            // subquery FROM.
+            from_with_subquery: from_with_subquery_bind,
             from_values: None,
             from_function_args,
             where_clause,

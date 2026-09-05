@@ -2571,6 +2571,8 @@ pub(crate) fn substitute_session_vars_in_select(
         schema: select.schema.clone(),
         from_alias: select.from_alias.clone(),
         from_subquery: select.from_subquery.clone(),
+        // V312-95 v2 / Issue #4717: propagate FROM (WITH ...) subquery.
+        from_with_subquery: select.from_with_subquery.clone(),
         from_values: select.from_values.clone(),
         from_function_args: select.from_function_args.clone(),
         where_clause: select.where_clause.clone().map(map_expr),
