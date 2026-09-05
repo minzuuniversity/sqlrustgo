@@ -28,6 +28,15 @@ const MAX_RECURSION_ROWS: usize = 1_000_000;
 /// (anchor, step, union_all). Per SQL:1999, a recursive CTE body MUST
 /// be `SELECT ... UNION [ALL] SELECT ...` where the second SELECT may
 /// reference the CTE itself. Returns an error for any other shape.
+/// V312-64f / Issue #4699: decompose a recursive CTE body into
+/// (anchor, step, union_all). Per SQL:1999, a recursive CTE body MUST
+/// be `SELECT ... UNION [ALL] SELECT ...` where the second SELECT may
+/// reference the CTE itself.
+///
+/// For multi-anchor forms like `VALUES(1) UNION ALL VALUES(2) UNION ALL SELECT ...`:
+/// the parser produces a left-associative chain `Union(Union(VALUES1, VALUES2), SELECT)`.
+/// This function recursively unwraps the chain so the leftmost non-Union statement is
+/// the anchor and the rightmost is the step, matching SQLite's seed-row semantics.
 pub fn decompose_recursive_body(
     stmt: &sqlrustgo_parser::Statement,
 ) -> SqlResult<(
@@ -37,14 +46,43 @@ pub fn decompose_recursive_body(
 )> {
     use sqlrustgo_parser::Statement;
     match stmt {
-        Statement::Union(u) => Ok((u.left.clone(), u.right.clone(), u.union_all)),
+        Statement::Union(u) => {
+            // Recursively unwrap the left chain to extract the true anchor.
+            let (anchor, step, union_all) =
+                decompose_recursive_body_inner(&u.left, &u.right, u.union_all)?;
+            Ok((anchor, step, union_all))
+        }
         _ => Err(SqlError::ExecutionError(
             "Recursive CTE body must be UNION or UNION ALL of two SELECTs".to_string(),
         )),
     }
 }
 
-/// V312-64f: derive CTE column definitions from explicit `name(col, ...)` form,
+/// Inner recursive helper: finds the leftmost non-Union statement in a
+/// left-associative chain and pairs it with the rightmost statement as step.
+fn decompose_recursive_body_inner(
+    left: &sqlrustgo_parser::Statement,
+    right: &sqlrustgo_parser::Statement,
+    union_all: bool,
+) -> SqlResult<(
+    Box<sqlrustgo_parser::Statement>,
+    Box<sqlrustgo_parser::Statement>,
+    bool,
+)> {
+    use sqlrustgo_parser::Statement;
+    match left {
+        Statement::Union(u) => {
+            // Keep unwrapping left; propagate union_all from the outermost level.
+            decompose_recursive_body_inner(&u.left, right, union_all)
+        }
+        _ => {
+            // left is the anchor (non-Union leaf); right is the step.
+            Ok((Box::new(left.clone()), Box::new(right.clone()), union_all))
+        }
+}
+}
+
+/// V312-64f: derive CTE column definitions
 /// the subquery's SELECT-column aliases, or fallback `col_<i>` placeholders.
 /// Extracted from `materialize_cte_tables` so recursive and non-recursive
 /// paths share the same schema-resolution logic.
@@ -447,6 +485,9 @@ pub fn materialize_recursive_cte<S: StorageEngine + 'static>(
 /// pure-non-recursive branch and the per-CTE fallback inside a
 /// `WITH RECURSIVE` clause (PG/SQLite allow mixing recursive and non-
 /// recursive CTEs under one RECURSIVE keyword).
+/// V312-93 / Issue #4704: materialize a non-recursive CTE's subquery into
+/// a temporary table. Handles SELECT and UNION bodies (UNION / UNION ALL /
+/// INTERSECT / EXCEPT) by recursively executing the statement tree.
 fn materialize_simple_cte<S: StorageEngine + 'static>(
     engine: &mut ExecutionEngine<S>,
     cte: &sqlrustgo_parser::parser::CommonTableExpression,
@@ -454,19 +495,12 @@ fn materialize_simple_cte<S: StorageEngine + 'static>(
     use sqlrustgo_parser::Statement;
     use sqlrustgo_storage::engine::{ColumnDefinition, TableInfo};
 
-    let cte_rows = match cte.subquery.as_ref() {
-        Statement::Select(s) => engine.execute_select(s)?.rows,
-        _ => {
-            return Err(SqlError::ExecutionError(
-                "CTE subquery must be SELECT".to_string(),
-            ));
-        }
-    };
+    let cte_rows = execute_statement_for_cte(engine, cte.subquery.as_ref())?;
+
     // Resolve the column names for this CTE in priority order:
     //   1. Explicit `name(col1, col2, ...)` form
     //   2. The subquery's SELECT-column aliases (e.g. `SELECT 'foo' AS a`)
-    //   3. The subquery's SELECT-column names (raw expression-derived)
-    //   4. Fallback `col_<i>`
+    //   3. Fallback `col_<i>`
     //
     // V313-13 / Issue #4041: previously step 2/3 was missing, so a CTE
     // such as `WITH t AS (SELECT 'foo' AS a)` got columns named
@@ -486,6 +520,7 @@ fn materialize_simple_cte<S: StorageEngine + 'static>(
         // is created with 0 columns.
         match cte.subquery.as_ref() {
             Statement::Select(s) => s.columns.len(),
+            Statement::Union(u) => leftmost_select_len(&u.left),
             _ => 0,
         }
     };
@@ -495,6 +530,7 @@ fn materialize_simple_cte<S: StorageEngine + 'static>(
             .iter()
             .map(|c| c.alias.clone().unwrap_or_else(|| c.name.clone()))
             .collect(),
+        Statement::Union(u) => leftmost_select_column_names(&u.left),
         _ => Vec::new(),
     };
     let columns: Vec<ColumnDefinition> = (0..column_count)
@@ -539,6 +575,103 @@ fn materialize_simple_cte<S: StorageEngine + 'static>(
             .map_err(|e| SqlError::ExecutionError(format!("Insert CTE rows: {}", e)))?;
     }
     Ok(())
+}
+
+/// V312-93 / Issue #4704: execute a CTE subquery Statement (SELECT or UNION
+/// tree) and return the resulting rows. Mirrors the logic of
+/// `execute_cte_subquery` in the stored-procedure crate but works on the
+/// main execution engine.
+fn execute_statement_for_cte<S: StorageEngine + 'static>(
+    engine: &mut ExecutionEngine<S>,
+    stmt: &sqlrustgo_parser::Statement,
+) -> SqlResult<Vec<Vec<crate::Value>>> {
+    use sqlrustgo_parser::Statement;
+    match stmt {
+        Statement::Select(s) => Ok(engine.execute_select(s)?.rows),
+        Statement::Union(u) => {
+            let left_rows = execute_statement_for_cte(engine, &u.left)?;
+            let right_rows = execute_statement_for_cte(engine, &u.right)?;
+            if u.union_all {
+                Ok(left_rows.into_iter().chain(right_rows).collect())
+            } else {
+                let mut combined = left_rows;
+                combined.extend(right_rows);
+                combined.sort();
+                combined.dedup();
+                Ok(combined)
+            }
+        }
+        Statement::Intersect(i) => {
+            let left_rows = execute_statement_for_cte(engine, &i.left)?;
+            let right_rows = execute_statement_for_cte(engine, &i.right)?;
+            if i.intersect_all {
+                let mut combined: Vec<Vec<crate::Value>> =
+                    left_rows.into_iter().chain(right_rows.clone()).collect();
+                combined.sort();
+                combined.dedup();
+                Ok(combined)
+            } else {
+                let right_set: std::collections::HashSet<_> =
+                    right_rows.iter().collect();
+                let result: Vec<Vec<crate::Value>> = left_rows
+                    .into_iter()
+                    .filter(|r| right_set.contains(r))
+                    .collect();
+                Ok(result)
+            }
+        }
+        Statement::Except(e) => {
+            let left_rows = execute_statement_for_cte(engine, &e.left)?;
+            let right_rows = execute_statement_for_cte(engine, &e.right)?;
+            if e.except_all {
+                let mut result = left_rows;
+                for row in right_rows {
+                    if let Some(pos) = result.iter().position(|r| r == &row) {
+                        result.remove(pos);
+                    }
+                }
+                Ok(result)
+            } else {
+                let right_set: std::collections::HashSet<_> =
+                    right_rows.iter().collect();
+                Ok(left_rows
+                    .into_iter()
+                    .filter(|r| !right_set.contains(r))
+                    .collect())
+            }
+        }
+        _ => Err(SqlError::ExecutionError(
+            "CTE subquery must be SELECT or UNION".to_string(),
+        )),
+    }
+}
+
+/// Return the column count from the leftmost SELECT in a statement tree.
+fn leftmost_select_len(stmt: &sqlrustgo_parser::Statement) -> usize {
+    use sqlrustgo_parser::Statement;
+    match stmt {
+        Statement::Select(s) => s.columns.len(),
+        Statement::Union(u) => leftmost_select_len(&u.left),
+        Statement::Intersect(i) => leftmost_select_len(&i.left),
+        Statement::Except(e) => leftmost_select_len(&e.left),
+        _ => 0,
+    }
+}
+
+/// Return the column names from the leftmost SELECT in a statement tree.
+fn leftmost_select_column_names(stmt: &sqlrustgo_parser::Statement) -> Vec<String> {
+    use sqlrustgo_parser::Statement;
+    match stmt {
+        Statement::Select(s) => s
+            .columns
+            .iter()
+            .map(|c| c.alias.clone().unwrap_or_else(|| c.name.clone()))
+            .collect(),
+        Statement::Union(u) => leftmost_select_column_names(&u.left),
+        Statement::Intersect(i) => leftmost_select_column_names(&i.left),
+        Statement::Except(e) => leftmost_select_column_names(&e.left),
+        _ => Vec::new(),
+    }
 }
 
 pub fn materialize_cte_tables<S: StorageEngine + 'static>(

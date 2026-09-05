@@ -4275,7 +4275,11 @@ impl Parser {
             } else {
                 false
             };
-            let next_select = self.parse_select_statement()?;
+            let next_select = if matches!(self.current(), Some(Token::Values)) {
+                self.parse_values_as_select()?
+            } else {
+                self.parse_select_statement()?
+            };
             // If the right SELECT came back with ORDER BY / LIMIT /
             // OFFSET (the normal SQL form `... UNION SELECT ... ORDER BY x
             // LIMIT n`), lift them onto the UnionStatement so the
