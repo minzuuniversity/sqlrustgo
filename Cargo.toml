@@ -322,6 +322,10 @@ name = "repro_v312_64f"
 path = "tests/integration/sql/repro_v312_64f.rs"
 
 [[test]]
+name = "repro_v312_89_4759"
+path = "tests/integration/sql/repro_v312_89_4759.rs"
+
+[[test]]
 name = "cte_materialization_test"
 path = "tests/integration/sql/cte_materialization_test.rs"
 
