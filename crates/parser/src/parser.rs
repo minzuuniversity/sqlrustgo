@@ -772,6 +772,9 @@ pub struct SelectStatement {
     /// When set, parallel execution MUST be disabled to prevent
     /// deadlocks with the global LockManager singleton.
     pub lock_clause: Option<LockClause>,
+    /// V312-85 / Issue #4625: MySQL-style index hints.
+    /// `SELECT * FROM t USE INDEX (idx) WHERE ...`
+    pub index_hints: Vec<IndexHint>,
 }
 
 /// Lock clause for SELECT statements (FOR UPDATE / LOCK IN SHARE MODE)
@@ -784,6 +787,25 @@ pub struct LockClause {
     /// NOWAIT modifier (don't wait for lock if not available)
     pub nowait: bool,
 }
+
+/// V312-85 / Issue #4625: INDEX HINT types for MySQL-style index hints.
+/// Used in SELECT/FROM clause: `SELECT * FROM t USE INDEX (idx) WHERE ...`
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum IndexHintType {
+    UseIndex,
+    IgnoreIndex,
+    ForceIndex,
+}
+
+/// V312-85 / Issue #4625: INDEX HINT for MySQL-style index hints.
+/// `USE INDEX (idx1, idx2)` / `IGNORE INDEX (idx)` / `FORCE INDEX (idx)`
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct IndexHint {
+    pub hint_type: IndexHintType,
+    /// List of index names in the hint. Empty means "no specific index" (use defaults).
+    pub index_names: Vec<String>,
+}
+
 /// ORDER BY expression
 #[derive(Debug, Clone, PartialEq)]
 pub struct OrderByExpression {
@@ -876,6 +898,10 @@ pub struct UpdateStatement {
     /// `UPDATE t1, t2 SET t1.col = t2.col WHERE ...` populates the
     /// list with both tables.
     pub tables: Vec<TableRef>,
+    /// V312-84 / Issue #4685: JOIN clauses for multi-table UPDATE.
+    /// `UPDATE t1 JOIN t2 ON t1.a = t2.a SET t1.col = t2.col`
+    /// stores the base table in `tables[0]` and the joined table + ON condition here.
+    pub join_clauses: Vec<JoinClause>,
     pub set_clauses: Vec<(String, Expression)>,
     pub where_clause: Option<Expression>,
 }
@@ -5761,6 +5787,7 @@ impl Parser {
                             offset: None,
                             distinct: false,
                             lock_clause: None,
+                            index_hints: vec![],
                         };
                         (alias, Some(Box::new(synth_select)), Vec::new())
                     } else if matches!(self.current(), Some(Token::Select))
@@ -5832,6 +5859,7 @@ impl Parser {
                                 offset: s.offset,
                                 distinct: s.distinct,
                                 lock_clause: s.lock_clause.clone(),
+                                index_hints: s.index_hints.clone(),
                             },
                             _ => {
                                 // Wrap a non-SELECT inner statement in a
@@ -5885,6 +5913,7 @@ impl Parser {
                                             offset: None,
                                             distinct: false,
                                             lock_clause: None,
+                                            index_hints: vec![],
                                         }
                                     }
                                 };
@@ -5915,6 +5944,7 @@ impl Parser {
                                     offset: None,
                                     distinct: false,
                                     lock_clause: None,
+                                index_hints: vec![],
                                 }
                             }
                         };
@@ -5990,6 +6020,7 @@ impl Parser {
                             offset: None,
                             distinct: false,
                             lock_clause: None,
+                            index_hints: vec![],
                         };
                         // any JOINs, ON clauses, etc. — we don't model them
                         // in the synthetic SELECT but the executor will at
@@ -6273,6 +6304,81 @@ impl Parser {
                 | Some(Token::Cross)
         ) {
             join_chain.push(self.parse_join_clause()?);
+        }
+
+        // V312-85 / Issue #4625: parse MySQL-style index hints
+        // `USE INDEX (idx)`, `IGNORE INDEX (idx)`, `FORCE INDEX (idx)`
+        // These come after the table name and JOINs, before WHERE.
+        let mut index_hints: Vec<IndexHint> = Vec::new();
+        loop {
+            match self.current() {
+                Some(Token::Use) => {
+                    self.next(); // consume USE
+                    // Check for INDEX keyword
+                    if matches!(self.current(), Some(Token::Index)) {
+                        self.next(); // consume INDEX
+                    } else if matches!(self.current(), Some(Token::Key)) {
+                        self.next(); // consume KEY (MySQL also accepts KEY)
+                    } else {
+                        // Not an index hint, break
+                        break;
+                    }
+                    // Parse index list in parentheses
+                    self.expect(Token::LParen)?;
+                    let mut indices = Vec::new();
+                    loop {
+                        if let Some(Token::Identifier(name)) = self.current() {
+                            indices.push(name.clone());
+                            self.next();
+                        } else {
+                            break;
+                        }
+                        if matches!(self.current(), Some(Token::Comma)) {
+                            self.next();
+                        } else {
+                            break;
+                        }
+                    }
+                    self.expect(Token::RParen)?;
+                    index_hints.push(IndexHint {
+                        hint_type: IndexHintType::UseIndex,
+                        index_names: indices,
+                    });
+                }
+                Some(Token::Ignore) => {
+                    self.next(); // consume IGNORE
+                    if matches!(self.current(), Some(Token::Index)) {
+                        self.next(); // consume INDEX
+                    } else if matches!(self.current(), Some(Token::Key)) {
+                        self.next(); // consume KEY
+                    } else {
+                        // Not an index hint, break
+                        break;
+                    }
+                    self.expect(Token::LParen)?;
+                    let mut indices = Vec::new();
+                    loop {
+                        if let Some(Token::Identifier(name)) = self.current() {
+                            indices.push(name.clone());
+                            self.next();
+                        } else {
+                            break;
+                        }
+                        if matches!(self.current(), Some(Token::Comma)) {
+                            self.next();
+                        } else {
+                            break;
+                        }
+                    }
+                    self.expect(Token::RParen)?;
+                    index_hints.push(IndexHint {
+                        hint_type: IndexHintType::IgnoreIndex,
+                        index_names: indices,
+                    });
+                }
+                // Note: FORCE INDEX is not yet supported (Token::Force not defined)
+                _ => break,
+            }
         }
 
         let where_clause = if matches!(self.current(), Some(Token::Where)) {
@@ -7010,6 +7116,8 @@ impl Parser {
             offset,
             distinct,
             lock_clause,
+            // V312-85 / Issue #4625: index hints
+            index_hints,
         })
     }
 
@@ -7740,9 +7848,9 @@ impl Parser {
         self.expect(Token::Update)?;
         let mut tables = self.parse_table_ref_list_until_set()?;
         // V312-84 / Issue #4685: MySQL-style `UPDATE t1 JOIN t2 ON ... SET ...`
-        // Accept JOIN keywords after the initial table list. For each JOIN,
-        // parse the join type + table + ON condition and append to tables list.
-        // Stop when SET is reached.
+        // Accept JOIN keywords after the initial table list. Parse each JOIN
+        // clause and store it in join_clauses. Stop when SET is reached.
+        let mut join_clauses: Vec<JoinClause> = Vec::new();
         while !matches!(self.current(), Some(Token::Set) | None | Some(Token::Eof)) {
             if matches!(
                 self.current(),
@@ -7753,11 +7861,9 @@ impl Parser {
                     | Some(Token::Full)
                     | Some(Token::Cross)
             ) {
-                // Parse a join clause and extract the table ref from it.
+                // Parse the join clause and store it.
                 let join_clause = self.parse_join_clause()?;
-                // Flatten: extract the joined table from the join clause's right side.
-                // The join clause stores the right table in the `table` field.
-                let right_table = join_clause.table.clone();
+                join_clauses.push(join_clause);
             } else if matches!(self.current(), Some(Token::Comma)) {
                 // Also allow comma-separated additional tables after the initial list.
                 self.next();
@@ -7814,6 +7920,7 @@ impl Parser {
 
         Ok(Statement::Update(UpdateStatement {
             tables,
+            join_clauses,
             set_clauses,
             where_clause,
         }))

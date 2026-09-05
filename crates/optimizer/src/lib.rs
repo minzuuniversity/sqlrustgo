@@ -58,6 +58,37 @@ impl Optimizer for NoOpOptimizer {
     }
 }
 
+// V312-85 / Issue #4625: Index hint types for query optimization
+/// Index hint type for query planning
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum IndexHintType {
+    UseIndex,
+    IgnoreIndex,
+    ForceIndex,
+}
+
+/// Index hint for forcing or ignoring specific indexes during query planning
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct IndexHint {
+    pub hint_type: IndexHintType,
+    pub index_names: Vec<String>,
+}
+
+/// V312-85 / Issue #4625: RuleContext carries index hints from parser to optimizer
+/// to influence index selection during query planning.
+#[derive(Debug, Clone, Default)]
+pub struct RuleContext {
+    /// Index hints parsed from the query (USE INDEX, IGNORE INDEX, FORCE INDEX)
+    pub index_hints: Vec<IndexHint>,
+}
+
+impl RuleContext {
+    /// Create a RuleContext with index hints
+    pub fn with_index_hints(hints: Vec<IndexHint>) -> Self {
+        RuleContext { index_hints: hints }
+    }
+}
+
 /// RuleSet - collection of optimization rules
 #[allow(clippy::type_complexity)]
 pub struct RuleSet {

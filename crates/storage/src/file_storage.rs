@@ -2908,6 +2908,66 @@ impl StorageEngine for FileStorage {
         }
         Ok(rows)
     }
+
+    fn scan_with_index(
+        &self,
+        table: &str,
+        index_name: &str,
+        key: &Value,
+    ) -> SqlResult<Vec<Record>> {
+        // V312-85 / Issue #4625: Use B+ Tree index for equality lookup
+        // The index_name is the column name in FileStorage's (table, column) key format
+        let indexes = self.indexes.read().unwrap();
+        
+        // Try to find the index - index_name is the column name
+        let index_key = (table.to_string(), index_name.to_string());
+        if let Some(index) = indexes.get(&index_key) {
+            // Convert Value to i64 index key
+            if let Some(search_key) = key.to_index_key() {
+                // Find all row IDs with this key
+                let row_ids = index.search_all(search_key);
+                
+                // Get the table data
+                if let Some(data) = self.tables.get(table) {
+                    // Collect matching rows
+                    let mut results = Vec::new();
+                    for &row_id in &row_ids {
+                        if (row_id as usize) < data.rows.len() {
+                            results.push(data.rows[row_id as usize].clone());
+                        }
+                    }
+                    // Also check insert_buffer
+                    if let Some(buffered) = self.insert_buffer.get(table) {
+                        for record in buffered.iter() {
+                            // Check if this buffered row matches the key
+                            if let Some(col_idx) = data.info.columns.iter().position(|c| c.name == index_name) {
+                                if record.get(col_idx).map(|v| v.to_index_key() == Some(search_key)).unwrap_or(false) {
+                                    results.push(record.clone());
+                                }
+                            }
+                        }
+                    }
+                    return Ok(results);
+                }
+            }
+        }
+        // Index not found or not usable - fall back to full scan with filter
+        let mut rows = self.scan(table)?;
+        // Filter rows by the key value
+        if let Some(table_data) = self.tables.get(table) {
+            if let Some(col_idx) = table_data.info.columns.iter().position(|c| c.name == index_name) {
+                rows.retain(|row| {
+                    row.get(col_idx).map(|v| v == key).unwrap_or(false)
+                });
+                return Ok(rows);
+            }
+        }
+        Err(SqlError::ExecutionError(format!(
+            "Index '{}' on table '{}' not found or not usable",
+            index_name, table
+        )))
+    }
+
     fn parallel_scan(
         &self,
         table: &str,
@@ -2931,7 +2991,6 @@ impl StorageEngine for FileStorage {
         if let Some(buffered) = self.insert_buffer.get(table) {
             rows.extend(buffered.iter().cloned());
         }
-
         let total = rows.len();
         if total == 0 || num_partitions == 0 {
             return Ok(vec![]);

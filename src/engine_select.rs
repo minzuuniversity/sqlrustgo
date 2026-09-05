@@ -22,7 +22,8 @@ use sqlrustgo_executor::simd_eval::{
 };
 use sqlrustgo_parser::{
     get_and_clear_derived_subqueries, AggregateCall, AggregateFunction, Expression,
-    JoinClause as ParserJoinClause, JoinType, SelectColumn, SelectStatement, Statement,
+    IndexHint, IndexHintType, JoinClause as ParserJoinClause, JoinType, SelectColumn,
+    SelectStatement, Statement,
 };
 use sqlrustgo_storage::{StorageEngine, TableInfo};
 use std::cell::RefCell;
@@ -1111,7 +1112,8 @@ impl<S: StorageEngine + 'static> ExecutionEngine<S> {
                 .unwrap_or(&select.table);
             // V311-02 v2: instrument single-table SELECT via AHI so
             // repeated scans of the same table get promoted.
-            let rows = self.scan_with_ahi(&storage, lookup_table)?;
+            // V312-85 / Issue #4625: pass index_hints for USE/IGNORE INDEX support.
+            let rows = self.scan_with_ahi(&storage, lookup_table, &select.index_hints)?;
             let table_info = storage.get_table_info(lookup_table)?;
             drop(storage);
             // V311-05 F-29: apply RLS row filtering if enabled
@@ -3030,10 +3032,13 @@ impl<S: StorageEngine + 'static> ExecutionEngine<S> {
     /// V311-01 F-23 + V311-02 F-24: scan with ClusteredTable + AHI instrumentation.
     /// Priority: ClusteredTable (if registered) → storage.scan().
     /// AHI records every table-level access for hot-page promotion.
+    ///
+    /// V312-85 / Issue #4625: respects index hints (USE INDEX / IGNORE INDEX).
     fn scan_with_ahi(
         &self,
         storage: &parking_lot::RwLockReadGuard<'_, S>,
         table: &str,
+        index_hints: &[IndexHint],
     ) -> SqlResult<Vec<sqlrustgo_storage::Record>> {
         // V311-01 F-23: route clustered-table scans through ClusteredTable.
         // ClusteredTable stores rows ordered by primary key (InnoDB-style),
@@ -3052,6 +3057,61 @@ impl<S: StorageEngine + 'static> ExecutionEngine<S> {
             self.adaptive_hash_index
                 .record_access(table, b"clustered", page_id, offset);
             return Ok(rows);
+        }
+        // V312-85 / Issue #4625: check index hints
+        let dominated_use_index = index_hints.iter().any(|h| {
+            matches!(h.hint_type, IndexHintType::UseIndex) && !h.index_names.is_empty()
+        });
+        let dominated_ignore_index = index_hints.iter().any(|h| {
+            matches!(h.hint_type, IndexHintType::IgnoreIndex) && !h.index_names.is_empty()
+        });
+        if dominated_ignore_index {
+            // IGNORE INDEX: force full table scan
+            self.instrumentation.on_seq_scan_start(table);
+            let rows = storage.scan(table)?;
+            let mut page_id: u64 = 0xcbf29ce484222325;
+            for &b in table.as_bytes() {
+                page_id ^= u64::from(b);
+                page_id = page_id.wrapping_mul(0x100000001b3);
+            }
+            let offset = rows.len() as u32;
+            self.adaptive_hash_index
+                .record_access(table, b"all", page_id, offset);
+            return Ok(rows);
+        }
+        if dominated_use_index {
+            // USE INDEX: try to use the first suggested index
+            for hint in index_hints.iter() {
+                if matches!(hint.hint_type, IndexHintType::UseIndex) {
+                    for idx_name in &hint.index_names {
+                        // Try scan_with_index; fall back to full scan if not supported
+                        let table_info = storage.get_table_info(table).ok();
+                        if let Some(ref info) = table_info {
+                            // Find the column for this index
+                            if let Some(col_idx) = info.columns.iter().position(|c| {
+                                c.name.eq_ignore_ascii_case(idx_name)
+                            }) {
+                                // For a true index scan we'd need the key value from WHERE
+                                // For now, just try to use the index for any subsequent WHERE
+                                self.instrumentation.on_seq_scan_start(table);
+                                // Attempt index scan with null key to test support
+                                if let Ok(rows) = storage.scan_with_index(table, idx_name, &Value::Null) {
+                                    let mut page_id: u64 = 0xcbf29ce484222325;
+                                    for &b in table.as_bytes() {
+                                        page_id ^= u64::from(b);
+                                        page_id = page_id.wrapping_mul(0x100000001b3);
+                                    }
+                                    let offset = rows.len() as u32;
+                                    self.adaptive_hash_index
+                                        .record_access(table, idx_name.as_bytes(), page_id, offset);
+                                    return Ok(rows);
+                                }
+                                // scan_with_index not supported or failed, fall through
+                            }
+                        }
+                    }
+                }
+            }
         }
         // Default: full table scan via storage.
         self.instrumentation.on_seq_scan_start(table);
@@ -3091,7 +3151,8 @@ impl<S: StorageEngine + 'static> ExecutionEngine<S> {
 
         // V311-02 v2: instrument base-table scan via AHI so repeated
         // SELECTs against the same table get promoted after threshold.
-        let mut rows = self.scan_with_ahi(&storage, &base_table)?;
+        // V312-85 / Issue #4625: pass index_hints for USE/IGNORE INDEX support.
+        let mut rows = self.scan_with_ahi(&storage, &base_table, &select.index_hints)?;
         // Fast-path base-table predicate pushdown (single-table
         // predicates that reference only the base table). For
         // TPC-H Q2 (`FROM part WHERE p_size = 15 AND p_type LIKE

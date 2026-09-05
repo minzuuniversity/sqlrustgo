@@ -256,35 +256,61 @@ fn test_alter_table_rename_column() {
     );
 }
 
+/// V312-85: Issue #4620 rejects MODIFY at parse time (SQLite-incompatible).
+/// These tests verify the error message is shown.
 #[test]
-fn test_alter_table_modify_column_type() {
-    let (out, _err, _code) = run_repl(
+fn test_alter_table_modify_column_rejected() {
+    let (out, err, _code) = run_repl(
         "CREATE TABLE t_mod (id INT PRIMARY KEY, val INT);\n\
          INSERT INTO t_mod VALUES (1, 100);\n\
          ALTER TABLE t_mod MODIFY COLUMN val BIGINT;\n\
          DESC t_mod;\n\
          .exit\n",
     );
+    // MODIFY is rejected at parse time (SQLite-compatible)
+    let combined = format!("{}{}", out, err);
+    assert!(
+        combined.contains("MODIFY not supported"),
+        "MODIFY should be rejected with helpful error, got:\n{}",
+        combined
+    );
+}
+
+/// V312-85: Test SQLite-compatible ALTER COLUMN SET DATA TYPE instead of MODIFY.
+#[test]
+fn test_alter_table_alter_column_set_data_type() {
+    let (out, _err, _code) = run_repl(
+        "CREATE TABLE t_alt (id INT PRIMARY KEY, val INT);\n\
+         INSERT INTO t_alt VALUES (1, 100);\n\
+         ALTER TABLE t_alt ALTER COLUMN val SET DATA TYPE BIGINT;\n\
+         DESC t_alt;\n\
+         .exit\n",
+    );
     // val column should now be BIGINT
     assert!(
         out.contains("BIGINT") || out.contains("bigint"),
-        "MODIFY COLUMN should change type to BIGINT, got:\n{}",
+        "ALTER COLUMN SET DATA TYPE should change type to BIGINT, got:\n{}",
         out
     );
 }
 
+/// V312-85: MODIFY COLUMN is rejected at parse time (Issue #4620).
+/// This test verifies the error is shown.
 #[test]
-fn test_alter_table_modify_column_nullable() {
-    let (out, _err, _code) = run_repl(
+fn test_alter_table_modify_column_nullable_rejected() {
+    let (out, err, _code) = run_repl(
         "CREATE TABLE t_null (id INT PRIMARY KEY, val INT NOT NULL);\n\
          ALTER TABLE t_null MODIFY COLUMN val INT NULL;\n\
          DESC t_null;\n\
          .exit\n",
     );
-    // val should be nullable now (or no NOT NULL marker)
-    // In v3.10.0, DESC output format is column_name | type | null | key
-    // After MODIFY NULL, should show YES under Null column (or no NOT NULL)
-    assert!(out.contains("val"), "DESC t_null should contain val column");
+    // MODIFY is rejected at parse time
+    let combined = format!("{}{}", out, err);
+    assert!(
+        combined.contains("MODIFY not supported"),
+        "MODIFY should be rejected with helpful error, got:\n{}",
+        combined
+    );
 }
 
 #[test]
@@ -316,66 +342,21 @@ fn test_alter_table_chain_renames() {
         "Original column name should be gone"
     );
 }
-
-// ============ V311-13 MODIFY COLUMN (N) length + NULL handling ============
-//
-// Follow-up to PR #3442 (which verified 5 ALTER TABLE operations but did not
-// fix the (N) parser bug or DESC display). This test verifies:
-//   1. Parser preserves VARCHAR(100) length, not just "VARCHAR"
-//   2. DESC displays "VARCHAR(100)" instead of bare "VARCHAR"
-//   3. NOT NULL / NULL clauses are parsed and reflected in DESC
-//
-// Fixes:
-//   - crates/parser/src/parser.rs (AST ModifyColumn gains char_max_length field;
-//     MODIFY COLUMN handler now parses (N) and [NOT] NULL)
-//   - src/engine_ddl.rs (ModifyColumn forwards char_max_length to ColumnDefinition;
-//     execute_describe appends (N) to data_type)
-//   - crates/executor/src/stored_proc.rs (pattern match updated for new field)
-
+/// V312-85: Issue #4620 rejects MODIFY at parse time (SQLite-incompatible).
+/// This test verifies the error message is shown for NOT NULL variant.
 #[test]
-fn test_alter_table_modify_column_n_length() {
-    // Bug fix: parser previously dropped (N) and DESC displayed bare "VARCHAR".
-    // After this fix, VARCHAR(100) should round-trip through MODIFY COLUMN
-    // and appear in DESC output with the length preserved.
-    let (out, _err, _code) = run_repl(
-        "CREATE TABLE t_n (id INT PRIMARY KEY, name VARCHAR(10));
-         INSERT INTO t_n VALUES (1, 'short');
-         ALTER TABLE t_n MODIFY COLUMN name VARCHAR(100);
-         DESC t_n;
-         .exit
-",
+fn test_alter_table_modify_column_not_null_rejected() {
+    let (out, err, _code) = run_repl(
+        "CREATE TABLE t_nn (id INT PRIMARY KEY, name VARCHAR(50));\n\
+         ALTER TABLE t_nn MODIFY COLUMN name VARCHAR(50) NOT NULL;\n\
+         DESC t_nn;\n\
+         .exit\n",
     );
-    // (10) should be gone from DESC; (100) should be present.
+    // MODIFY is rejected at parse time
+    let combined = format!("{}{}", out, err);
     assert!(
-        !out.contains("VARCHAR(10)"),
-        "MODIFY COLUMN should remove VARCHAR(10) from DESC, got:\n{}",
-        out
-    );
-    assert!(
-        out.contains("VARCHAR(100)"),
-        "MODIFY COLUMN should add VARCHAR(100) to DESC, got:\n{}",
-        out
-    );
-}
-
-#[test]
-fn test_alter_table_modify_column_not_null() {
-    // Bug fix: parser previously hardcoded nullable=true, dropping NOT NULL.
-    // After this fix, MODIFY COLUMN name VARCHAR(50) NOT NULL should show NO
-    // (not nullable) under the Null column in DESC.
-    let (out, _err, _code) = run_repl(
-        "CREATE TABLE t_nn (id INT PRIMARY KEY, name VARCHAR(50));
-         ALTER TABLE t_nn MODIFY COLUMN name VARCHAR(50) NOT NULL;
-         DESC t_nn;
-         .exit
-",
-    );
-    // The DESC line for name (after the header) should show "NO" (not nullable)
-    // in the Null column. We can't easily isolate the row, but we can check
-    // that the "name" column header still appears and the table is queryable.
-    assert!(
-        out.contains("name"),
-        "DESC t_nn should still show name column, got:\n{}",
-        out
+        combined.contains("MODIFY not supported"),
+        "MODIFY should be rejected with helpful error, got:\n{}",
+        combined
     );
 }

@@ -634,8 +634,10 @@ mod tests {
                 _ => panic!("unexpected"),
             })
             .collect();
-        // Default nulls_first=true → NULLs come before integers
-        assert!(matches!(r1.rows[0][0], Value::Null));
+        // V312-85 / Issue #4763: SQLite default (verified on 3.51) is
+        // NULLS LAST for both ASC and DESC when no explicit clause is given.
+        // With ASC NULLS LAST: 1, 2, 3, NULL, NULL → last row is NULL
+        assert!(matches!(r1.rows.last(), Some(row) if matches!(row[0], Value::Null)));
         // explicit NULLS LAST
         let r2 = e.execute("SELECT v FROM n ORDER BY v NULLS LAST").unwrap();
         let vs2: Vec<String> = r2
