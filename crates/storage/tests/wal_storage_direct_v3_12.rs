@@ -292,6 +292,7 @@ fn cov_wal_storage_full_insert_scan() {
                 check_constraints: vec![],
                 partition_info: None,
                 collations: Default::default(),
+                original_sql: String::new(),
                 compression: None,
             })
             .unwrap();
@@ -327,6 +328,7 @@ fn cov_wal_storage_full_update() {
                 check_constraints: vec![],
                 partition_info: None,
                 collations: Default::default(),
+                original_sql: String::new(),
                 compression: None,
             })
             .unwrap();
@@ -358,6 +360,7 @@ fn cov_wal_storage_full_delete() {
                 check_constraints: vec![],
                 partition_info: None,
                 collations: Default::default(),
+                original_sql: String::new(),
                 compression: None,
             })
             .unwrap();
@@ -389,6 +392,7 @@ fn cov_wal_storage_insert_many() {
                 check_constraints: vec![],
                 partition_info: None,
                 collations: Default::default(),
+                original_sql: String::new(),
                 compression: None,
             })
             .unwrap();

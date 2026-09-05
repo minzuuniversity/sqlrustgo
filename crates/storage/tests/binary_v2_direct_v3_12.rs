@@ -37,6 +37,7 @@ fn make_bigint_info(name: &str) -> TableInfo {
         check_constraints: vec![],
         partition_info: None,
         collations: Default::default(),
+        original_sql: String::new(),
         compression: None,
     }
 }
