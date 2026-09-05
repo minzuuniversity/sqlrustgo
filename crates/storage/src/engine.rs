@@ -890,6 +890,15 @@ pub type RowFilter = Box<dyn Fn(&Record) -> bool + Send + Sync>;
 pub trait StorageEngine: Send + Sync {
     /// Scan all rows from a table
     fn scan(&self, table: &str) -> SqlResult<Vec<Record>>;
+    /// V312-85 / Issue #4625: Scan using a specific index.
+    /// Returns rows where the indexed column equals the given key value.
+    /// Returns error if the index doesn't exist or isn't usable for equality lookups.
+    fn scan_with_index(&self, table: &str, index_name: &str, key: &Value) -> SqlResult<Vec<Record>> {
+        let _ = (table, index_name, key);
+        Err(SqlError::ExecutionError(
+            "scan_with_index not supported by this storage engine".to_string(),
+        ))
+    }
     /// Parallel scan - returns partitions for parallel processing
     ///
     /// v3.10.0 Issue #3703 Phase 2: Storage-layer parallelization.
@@ -1533,6 +1542,45 @@ impl StorageEngine for MemoryStorage {
             .get(&table.to_lowercase())
             .cloned()
             .unwrap_or_default())
+    }
+
+    fn scan_with_index(
+        &self,
+        table: &str,
+        index_name: &str,
+        key: &Value,
+    ) -> SqlResult<Vec<Record>> {
+        // V312-85 / Issue #4625: Scan using index hint.
+        // MemoryStorage tracks index existence via a HashSet<(table, column)>
+        // but doesn't store the actual B+ tree data. Fall back to filtered scan.
+        let table_lower = table.to_lowercase();
+        let index_key = (table_lower.clone(), index_name.to_lowercase());
+        
+        // Check if index is registered
+        if !self.indexes.contains(&index_key) {
+            return Err(SqlError::ExecutionError(format!(
+                "Index '{}' on table '{}' not found",
+                index_name, table
+            )));
+        }
+        
+        // Fall back to full scan with filter on the indexed column
+        let rows = self.scan(&table_lower)?;
+        let col_idx = self.table_infos
+            .get(&table_lower)
+            .and_then(|info| info.columns.iter().position(|c| c.name.eq_ignore_ascii_case(index_name)));
+        
+        if let Some(col_idx) = col_idx {
+            let key = key.clone();
+            Ok(rows.into_iter()
+                .filter(|row| row.get(col_idx).map(|v| v == &key).unwrap_or(false))
+                .collect())
+        } else {
+            Err(SqlError::ExecutionError(format!(
+                "Column '{}' in index '{}' not found",
+                index_name, index_name
+            )))
+        }
     }
 
     fn begin_transaction(&mut self) -> SqlResult<u64> {

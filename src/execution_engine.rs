@@ -2547,5 +2547,6 @@ pub(crate) fn substitute_session_vars_in_select(
         offset: select.offset,
         distinct: select.distinct,
         lock_clause: select.lock_clause.clone(),
+        index_hints: select.index_hints.clone(),
     }
 }

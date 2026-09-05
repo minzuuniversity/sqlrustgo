@@ -256,6 +256,7 @@ mod tests {
             limit: None,
             offset: None,
             distinct: false,
+            index_hints: vec![],
             lock_clause: None,
         }
     }

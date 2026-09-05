@@ -540,7 +540,8 @@ pub fn execute_update<S: StorageEngine + 'static>(
             "UPDATE requires at least one table".to_string(),
         ));
     }
-    if update.tables.len() > 1 {
+    // V312-84 / Issue #4685: multi-table UPDATE with JOIN
+    if update.tables.len() > 1 || !update.join_clauses.is_empty() {
         return execute_update_multi_table(engine, update);
     }
     // V311-01 F-23: ClusteredTable main-path DML routing. SELECT/INSERT
@@ -592,6 +593,7 @@ pub fn execute_update<S: StorageEngine + 'static>(
     };
     let resolved_update = UpdateStatement {
         tables: update.tables.clone(),
+        join_clauses: update.join_clauses.clone(),
         set_clauses: resolved_set,
         where_clause: resolved_where,
     };
@@ -1161,6 +1163,7 @@ pub fn execute_delete<S: StorageEngine + 'static>(
 }
 
 /// Multi-table UPDATE executor body (`UPDATE t1, t2 SET ... WHERE ...`).
+/// V312-84 / Issue #4685: also handles MySQL-style `UPDATE t1 JOIN t2 ON ... SET ...`.
 fn execute_update_multi_table<S: StorageEngine + 'static>(
     engine: &mut ExecutionEngine<S>,
     update: &UpdateStatement,
@@ -1199,8 +1202,28 @@ fn execute_update_multi_table<S: StorageEngine + 'static>(
         ),
         None => None,
     };
+    // V312-84: resolve ON expressions from join clauses
+    let resolved_joins: Vec<(String, Expression)> = update
+        .join_clauses
+        .iter()
+        .map(|jc| {
+            resolve_subqueries_in_expr(&jc.on_clause, &scalar_eval, &list_eval)
+                .map(|expr| (jc.table.clone(), expr))
+        })
+        .collect::<Result<Vec<_>, String>>()
+        .map_err(|e| SqlError::ExecutionError(format!("UPDATE JOIN ON clause: {}", e)))?;
 
-    let table_refs = &update.tables;
+    // V312-84: Build effective table list from update.tables + join_clauses
+    let mut effective_table_refs: Vec<sqlrustgo_parser::TableRef> = update.tables.clone();
+    for jc in &update.join_clauses {
+        effective_table_refs.push(sqlrustgo_parser::TableRef {
+            name: jc.table.clone(),
+            schema: None,
+            alias: jc.alias.clone(),
+        });
+    }
+    let table_refs = &effective_table_refs;
+
     let mut per_table_rows: Vec<Vec<Vec<Value>>> = Vec::with_capacity(table_refs.len());
     let mut per_table_info: Vec<TableInfo> = Vec::with_capacity(table_refs.len());
     let mut per_table_prefix: Vec<String> = Vec::with_capacity(table_refs.len());
@@ -1233,7 +1256,36 @@ fn execute_update_multi_table<S: StorageEngine + 'static>(
         offs
     };
 
-    let combined_rows = cartesian_product(&per_table_rows);
+    // V312-84: For UPDATE with JOIN, we need to join rows based on ON conditions,
+    // not just cartesian product. Build joined rows from the first table and
+    // each joined table filtered by its ON condition.
+    let combined_rows = if update.join_clauses.is_empty() {
+        // Original behavior: cartesian product for comma-separated tables
+        cartesian_product(&per_table_rows)
+    } else {
+        // V312-84: Join-first approach for single JOIN (t1 JOIN t2 ON cond)
+        // For now we support exactly one JOIN clause.
+        // Build joined rows by nested-loop join.
+        let first_rows = &per_table_rows[0];
+        let mut joined_rows: Vec<Vec<Value>> = Vec::new();
+        
+        // Single JOIN: resolved_joins[0] gives us the ON expression and table index 1
+        let (_, on_expr) = &resolved_joins[0];
+        let second_rows = &per_table_rows[1];
+        
+        for r1 in first_rows {
+            for r2 in second_rows {
+                // Build combined row for ON evaluation
+                let mut trial = r1.clone();
+                trial.extend(r2.clone());
+                
+                if evaluate_where_clause(on_expr, &trial, &combined_info) {
+                    joined_rows.push(trial);
+                }
+            }
+        }
+        joined_rows
+    };
 
     let mut per_table_updates: Vec<Vec<(Vec<Value>, Vec<Value>)>> =
         (0..table_refs.len()).map(|_| Vec::new()).collect();
@@ -1261,7 +1313,16 @@ fn execute_update_multi_table<S: StorageEngine + 'static>(
                 }
             }
         }
-        for (t, _) in table_refs.iter().enumerate() {
+        // V312-84: Only push updates for tables that have SET clauses targeting them.
+        // For UPDATE t1 JOIN t2 ON ... SET t1.col = val, only t1 gets updated.
+        for (t, tref) in table_refs.iter().enumerate() {
+            let table_prefix = tref.alias.clone().unwrap_or_else(|| tref.name.clone());
+            let table_has_update = resolved_set.iter().any(|(col, _)| {
+                col.starts_with(&format!("{}.", table_prefix))
+            });
+            if !table_has_update {
+                continue;
+            }
             let cols_start = col_offsets[t];
             let cols_end = cols_start + per_table_info[t].columns.len();
             let before = combined_row[cols_start..cols_end].to_vec();
