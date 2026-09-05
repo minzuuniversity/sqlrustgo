@@ -359,6 +359,10 @@ name = "repro_v312_85_regexp"
 path = "tests/integration/sql/repro_v312_85_regexp.rs"
 
 [[test]]
+name = "json_tvf_test"
+path = "tests/integration/sql/json_tvf_test.rs"
+
+[[test]]
 name = "repro_window_frame"
 path = "tests/integration/sql/repro_window.rs"
 
