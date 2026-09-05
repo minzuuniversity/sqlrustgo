@@ -233,6 +233,8 @@ mod tests {
             check_constraints: vec![],
             collations: std::collections::HashMap::new(),
 
+            original_sql: String::new(),
+
             partition_info: None,
             compression: None,
         }
@@ -287,6 +289,8 @@ mod tests {
             unique_constraints: vec![],
             check_constraints: vec![],
             collations: std::collections::HashMap::new(),
+
+            original_sql: String::new(),
 
             partition_info: None,
             compression: None,
