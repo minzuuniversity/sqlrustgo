@@ -120,9 +120,35 @@ fn test_right_join_preserves_right_rows() {
     assert!(matches!(&row3[1], sqlrustgo::Value::Text(t) if t == "charlie"), "id=3 should match charlie");
 }
 
+#[test]
+fn test_full_outer_join_preserves_both_sides() {
+    // Issue #4639: FULL OUTER JOIN union of matched + unmatched-left + unmatched-right
+    let mut e = fresh_engine();
+    e.execute("CREATE TABLE a (id INTEGER, name TEXT)").unwrap();
+    e.execute("CREATE TABLE b (id INTEGER, city TEXT)").unwrap();
+    // a has 1,2,3; b has 1,3,4 — id=2 unmatched-left, id=4 unmatched-right
+    e.execute("INSERT INTO a VALUES (1,'alice'),(2,'bob'),(3,'charlie')")
+        .unwrap();
+    e.execute("INSERT INTO b VALUES (1,'NY'),(3,'LA'),(4,'SF')")
+        .unwrap();
+    let r = e
+        .execute("SELECT a.id, a.name, b.id, b.city FROM a FULL OUTER JOIN b ON a.id = b.id")
+        .unwrap();
+    // matched (1, 3) + unmatched-left (2) + unmatched-right (4) = 4 rows
+    assert_eq!(r.rows.len(), 4, "FULL OUTER JOIN must emit matched + both unmatched sides");
 
+    // Unmatched left (id=2, bob) should appear with right.id = NULL
+    let row2 = r.rows.iter().find(|row| matches!(&row[0], sqlrustgo::Value::Integer(2))).unwrap();
+    assert!(matches!(&row2[1], sqlrustgo::Value::Text(t) if t == "bob"));
+    assert!(matches!(&row2[2], sqlrustgo::Value::Null), "unmatched left must have NULL right.id");
+    assert!(matches!(&row2[3], sqlrustgo::Value::Null), "unmatched left must have NULL right.city");
 
-
+    // Unmatched right (id=4, SF) should appear with left.id = NULL
+    let row4 = r.rows.iter().find(|row| matches!(&row[2], sqlrustgo::Value::Integer(4))).unwrap();
+    assert!(matches!(&row4[0], sqlrustgo::Value::Null), "unmatched right must have NULL left.id");
+    assert!(matches!(&row4[1], sqlrustgo::Value::Null), "unmatched right must have NULL left.name");
+    assert!(matches!(&row4[3], sqlrustgo::Value::Text(t) if t == "SF"));
+}
 
 #[test]
 fn test_drop_index_removes_index() {
