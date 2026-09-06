@@ -787,6 +787,15 @@ pub struct SelectStatement {
     /// The executor uses the alias as the column-name prefix in the
     /// scan schema so the user can write `a.col` in subsequent JOIN ON.
     pub from_alias: Option<String>,
+    /// V312-95 v2 / Issue #4809: `FROM t INDEXED BY idx_name` hint.
+    /// Captured here so the executor can validate the index exists and
+    /// belongs to the table BEFORE the scan runs. None means "no hint"
+    /// (planner choice).
+    pub from_indexed_by: Option<String>,
+    /// V312-95 v2 / Issue #4809: `FROM t NOT INDEXED` hint. When set,
+    /// the executor forces a sequential scan and refuses any AHI
+    /// promotion.
+    pub from_not_indexed: Option<()>,
     /// TPC-H Sprint 1b fix (Q7/Q8/Q9): FROM (subquery) AS alias.
     /// When set, executor first executes the subquery and materializes its
     /// result into a temporary table named `table`, then runs the outer
@@ -949,6 +958,15 @@ pub struct TableRef {
     /// to a regular storage scan.
     pub schema: Option<String>,
     pub alias: Option<String>,
+    /// V312-95 v2 / Issue #4809: SQLite-style `FROM t INDEXED BY idx_name`
+    /// hint. When `Some(name)`, the executor validates that an index with
+    /// this name exists on the referenced table; otherwise it raises
+    /// `SqlError::IndexNotFound`. None means "no hint" (planner choice).
+    pub indexed_by: Option<String>,
+    /// V312-95 v2 / Issue #4809: SQLite-style `FROM t NOT INDEXED` hint.
+    /// Forces a sequential scan and prevents the planner from promoting
+    /// to an indexed scan. Some(()) when present, None otherwise.
+    pub not_indexed: Option<()>,
 }
 
 /// UPDATE statement
@@ -6046,6 +6064,12 @@ impl Parser {
         // SELECT ...)` so the executor can materialise CTEs before running
         // the inner SELECT. Read at the SelectStatement constructor below.
         let mut from_with_subquery_bind: Option<Box<WithSelect>> = None;
+        // V312-95 v2 / Issue #4809: SQLite-style `FROM t INDEXED BY name`
+        // and `FROM t NOT INDEXED` hints. Populated inside the FROM arm
+        // (see the inline-alias handling for the first table). None for
+        // unhinted queries.
+        let mut from_indexed_by_bind: Option<String> = None;
+        let mut from_not_indexed_bind: Option<()> = None;
         let (table, from_subquery, extra_tables) = match self.current() {
             Some(Token::From) => {
                 self.next(); // consume FROM
@@ -6249,6 +6273,13 @@ impl Parser {
                                 table: s.table.clone(),
                                 schema: s.schema.clone(),
                                 from_alias: s.from_alias.clone(),
+                                // V312-95 v2 / Issue #4809: inherit
+                                // SQLite INDEXED BY / NOT INDEXED hints
+                                // from the inner SELECT when materialising
+                                // set-ops. The clone preserves any hint
+                                // the inner query carried.
+                                from_indexed_by: s.from_indexed_by.clone(),
+                                from_not_indexed: s.from_not_indexed,
                                 from_subquery: s.from_subquery.clone(),
                                 // V312-95 v2 / Issue #4717: nested
                                 // subquery path — propagate the inner's
@@ -6495,8 +6526,17 @@ impl Parser {
                     // from_alias after the loop, leaving the comma and
                     // `emp m` unconsumed (extra_tables=[], the second
                     // table is lost).
+                    //
+                    // V312-95 v2 / Issue #4809: also exclude the bare
+                    // identifier `INDEXED` so it is NOT swallowed as an
+                    // inline alias. Without this exclusion, the parser
+                    // would consume `INDEXED` as the table alias and
+                    // then silently drop the WHERE clause (root cause
+                    // of #4809). The hint is consumed by the explicit
+                    // `parse_optional_index_hint` call below.
                     let first_table_with_alias: String =
-                        if matches!(self.current(), Some(Token::Identifier(_)))
+                        if matches!(self.current(), Some(Token::Identifier(ref n))
+                            if !n.eq_ignore_ascii_case("INDEXED"))
                             && !matches!(
                                 self.current(),
                                 Some(Token::Where)
@@ -6524,6 +6564,17 @@ impl Parser {
                         } else {
                             first_table.clone()
                         };
+                    // V312-95 v2 / Issue #4809: SQLite-style index hint
+                    // on the first table. The hint can be `INDEXED BY
+                    // idx_name` or `NOT INDEXED`. Parsed here, BEFORE
+                    // the comma loop, so the hint applies to the first
+                    // table and not to the next item in the list. The
+                    // bare `INDEXED` identifier was excluded from the
+                    // inline-alias path above specifically to defer it
+                    // to this point.
+                    let (idx_by_first, not_idx_first) = self.parse_optional_index_hint()?;
+                    from_indexed_by_bind = idx_by_first;
+                    from_not_indexed_bind = not_idx_first;
                     let mut tables: Vec<String> = vec![first_table_with_alias];
                     // Phase 4 (TPCH-01 Q15): comma-list can include
                     // a parenthesized subquery aliased, e.g.
@@ -7545,6 +7596,10 @@ impl Parser {
             // in this function via parse_table_ref).
             schema,
             from_alias,
+            // V312-95 v2 / Issue #4809: SQLite-style index hints
+            // captured by the parser. None for unhinted queries.
+            from_indexed_by: from_indexed_by_bind,
+            from_not_indexed: from_not_indexed_bind,
             from_subquery,
             // V312-95 v2 / Issue #4717: side-channel binding from the
             // `FROM (WITH ...)` dispatch path. None for plain table or
@@ -10686,11 +10741,56 @@ impl Parser {
             };
         }
         let alias = self.parse_optional_alias()?;
+        // V312-95 v2 / Issue #4809: SQLite-style index hints. After the
+        // table name + optional alias, the user may write:
+        //   `FROM t INDEXED BY idx_name`  (force using idx_name)
+        //   `FROM t NOT INDEXED`          (force a sequential scan)
+        // These hints must come BEFORE the WHERE / JOIN clauses. The
+        // parser used to silently swallow `INDEXED` as the table alias
+        // and drop the WHERE clause entirely (root cause of #4809).
+        let (indexed_by, not_indexed) = self.parse_optional_index_hint()?;
         Ok(TableRef {
             name,
             schema,
             alias,
+            indexed_by,
+            not_indexed,
         })
+    }
+
+    /// Parse `INDEXED BY <ident>` or `NOT INDEXED` if present at the
+    /// current position. Returns (Some(name), None), (None, Some(())),
+    /// or (None, None) when no hint is present.
+    fn parse_optional_index_hint(&mut self) -> Result<(Option<String>, Option<()>), String> {
+        match self.current() {
+            // `FROM t NOT INDEXED` — `NOT` is reserved, so we match
+            // the Token::Not variant directly.
+            Some(Token::Not) => {
+                self.next(); // consume NOT
+                if !matches!(
+                    self.next(),
+                    Some(Token::Identifier(ref n)) if n.eq_ignore_ascii_case("INDEXED")
+                ) {
+                    return Err("Expected `INDEXED` after `NOT`".to_string());
+                }
+                Ok((None, Some(())))
+            }
+            // `FROM t INDEXED BY idx_name` — `BY` is reserved and
+            // appears as Token::By, but `INDEXED` arrives as a bare
+            // identifier because it is not a reserved keyword.
+            Some(Token::Identifier(ref n)) if n.eq_ignore_ascii_case("INDEXED") => {
+                self.next(); // consume INDEXED
+                if !matches!(self.next(), Some(Token::By)) {
+                    return Err("Expected `BY` after `INDEXED`".to_string());
+                }
+                let idx_name = match self.next() {
+                    Some(Token::Identifier(name)) => name,
+                    _ => return Err("Expected index name after `INDEXED BY`".to_string()),
+                };
+                Ok((Some(idx_name), None))
+            }
+            _ => Ok((None, None)),
+        }
     }
 
     fn parse_table_ref_list(&mut self, terminator: Token) -> Result<Vec<TableRef>, String> {
@@ -10813,6 +10913,18 @@ impl Parser {
             }
             // Bare identifier as alias (only consume if it doesn't look like a keyword)
             Some(Token::Identifier(name)) => {
+                // V312-95 v2 / Issue #4809: bare `INDEXED` is never an alias
+                // — it always starts an `INDEXED BY <ident>` or
+                // `NOT INDEXED` hint. Consuming it here caused the
+                // parser to swallow the INDEXED keyword, mishandle the
+                // following `BY`, and silently drop the WHERE clause
+                // (the `INDEXED` got baked into the table alias as
+                // `t|INDEXED`). Defer to the caller (parse_table_ref /
+                // parse_select_statement) so they can recognise the
+                // hint and preserve WHERE.
+                if name.eq_ignore_ascii_case("INDEXED") {
+                    return Ok(None);
+                }
                 let alias = name.clone();
                 self.next();
                 Ok(Some(alias))

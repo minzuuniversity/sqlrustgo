@@ -489,6 +489,11 @@ fn test_ast_adapter_to_update_plan_uses_all_when_no_where() {
             name: "users".to_string(),
             schema: None,
             alias: None,
+            // V312-95 v2 / Issue #4809: auxiliary TableRef values used
+            // in test plumbing do not carry SQLite INDEXED BY /
+            // NOT INDEXED hints.
+            indexed_by: None,
+            not_indexed: None,
         }],
         set_clauses: vec![(
             "active".to_string(),
@@ -538,6 +543,9 @@ fn test_ast_adapter_to_update_plan_errors_on_unknown_column() {
             name: "users".to_string(),
             schema: None,
             alias: None,
+            // V312-95 v2 / Issue #4809: see the parallel helper above.
+            indexed_by: None,
+            not_indexed: None,
         }],
         set_clauses: vec![("missing".to_string(), Expression::Literal("x".to_string()))],
         where_clause: None,
