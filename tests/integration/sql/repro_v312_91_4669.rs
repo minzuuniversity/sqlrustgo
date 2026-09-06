@@ -174,3 +174,69 @@ fn drop_index_multi_column_4669() {
         names
     );
 }
+
+// ============================================================================
+// V312-95 / Issue #4810 — BustubX-EDU differential_test.py P3-DDL-001
+//
+// The differential test issues the exact 4-statement sequence
+//   DROP TABLE IF EXISTS t;
+//   CREATE TABLE t (id INT, name TEXT);
+//   INSERT INTO t VALUES (1, 'a'), (2, 'b'), (3, 'c');
+//   CREATE INDEX idx_t_name ON t(name);
+//   DROP INDEX idx_t_name;
+// and asserts the final DROP does not error. Before PR #4789, `execute_drop_index`
+// was a placeholder that returned "DROP INDEX not fully supported yet" for
+// every call, so this sequence failed at the DROP step. With PR #4789 the
+// executor now scans `list_all_indexes()` to recover the (table, name)
+// composite key and routes to `storage.drop_index(table, name)`. This test
+// pins the fix to the exact differential-test SQL flow.
+// ============================================================================
+
+#[test]
+fn drop_index_differential_test_p3_ddl_001_4810() {
+    let mut e = fresh_mem();
+    // 1. DROP TABLE IF EXISTS — must not error on first run.
+    e.execute("DROP TABLE IF EXISTS t")
+        .expect("DROP TABLE IF EXISTS on missing table must succeed");
+
+    // 2. CREATE TABLE — must succeed.
+    e.execute("CREATE TABLE t (id INT, name TEXT)")
+        .expect("CREATE TABLE must succeed");
+
+    // 3. INSERT — note: the differential-test SQL uses bare unquoted a/b/c
+    //    which would be parsed as column references and error. We use the
+    //    realistic quoted form to model how a real test driver would
+    //    serialize a parameterised INSERT.
+    e.execute("INSERT INTO t VALUES (1, 'a'), (2, 'b'), (3, 'c')")
+        .expect("INSERT must succeed");
+
+    // 4. CREATE INDEX — must succeed.
+    e.execute("CREATE INDEX idx_t_name ON t(name)")
+        .expect("CREATE INDEX must succeed");
+
+    // Sanity: index visible before DROP.
+    let before = sqlite_master_index_names(&mut e);
+    assert!(
+        before.iter().any(|n| n == "idx_t_name"),
+        "CREATE INDEX must register idx_t_name in sqlite_master; got {:?}",
+        before
+    );
+
+    // 5. DROP INDEX — the bug-report step. Before PR #4789 this raised
+    //    `DROP INDEX failed: index 'idx_t_name' does not exist`.
+    let r = e.execute("DROP INDEX idx_t_name");
+    assert!(
+        r.is_ok(),
+        "DROP INDEX after CREATE INDEX must succeed (Issue #4810 anchor case); \
+         got error: {:?}",
+        r.err()
+    );
+
+    // After DROP: idx_t_name must vanish from sqlite_master.
+    let after = sqlite_master_index_names(&mut e);
+    assert!(
+        !after.iter().any(|n| n == "idx_t_name"),
+        "idx_t_name must be gone after DROP; got {:?}",
+        after
+    );
+}
