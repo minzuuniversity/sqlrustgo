@@ -4,7 +4,7 @@
 use crate::bplus_tree::BPlusTree;
 use crate::engine::{
     ColumnDefinition, ForeignKeyConstraint, Record, RowFilter, RowMutation, SharedSliceIter,
-    StorageEngine, TableData, TableInfo, TriggerInfo, UniqueConstraint,
+    StorageEngine, TableData, TableInfo, TriggerInfo, UniqueConstraint, ViewInfo,
 };
 use sqlrustgo_types::{SqlError, SqlResult, Value};
 use std::any::Any;
@@ -48,6 +48,11 @@ pub struct FileStorage {
     tx_undo_log: Vec<UndoOp>,
     /// Trigger definitions keyed by trigger name, protected by RwLock for concurrent access
     triggers: RwLock<HashMap<String, TriggerInfo>>,
+    /// V312-95 v2 / Issue #4814: view definitions keyed by view name,
+    /// protected by RwLock for concurrent access. Persisted to disk as
+    /// one JSON file per view under `view_<name>.json`, mirroring the
+    /// trigger persistence pattern.
+    views: RwLock<HashMap<String, ViewInfo>>,
     /// Gap lock manager for REPEATABLE-READ isolation (F-16 Gap Locking)
     #[allow(dead_code)]
     gap_lock_manager: Option<std::sync::Arc<crate::lock::GapLockManager>>,
@@ -115,6 +120,7 @@ impl FileStorage {
             triggers: RwLock::new(HashMap::new()),
             gap_lock_manager: None,
             dirty_tables: HashSet::new(),
+            views: RwLock::new(HashMap::new()),
         };
 
         // Load existing tables
@@ -122,6 +128,12 @@ impl FileStorage {
 
         // Load existing indexes
         storage.load_all_indexes()?;
+
+        // V312-95 v2 / Issue #4814: views are normal catalog objects and
+        // must be loaded on plain `new` so they survive process restart
+        // independent of WAL mode (triggers, by contrast, only load under
+        // `new_with_wal`).
+        storage.load_all_views()?;
 
         Ok(storage)
     }
@@ -145,10 +157,12 @@ impl FileStorage {
             triggers: RwLock::new(HashMap::new()),
             gap_lock_manager: None,
             dirty_tables: HashSet::new(),
+            views: RwLock::new(HashMap::new()),
         };
 
         storage.load_all_tables()?;
         storage.load_all_indexes()?;
+        storage.load_all_views()?;
 
         Ok(storage)
     }
@@ -175,6 +189,7 @@ impl FileStorage {
             triggers: RwLock::new(HashMap::new()),
             gap_lock_manager: None,
             dirty_tables: HashSet::new(),
+            views: RwLock::new(HashMap::new()),
         };
 
         // Load existing tables
@@ -185,6 +200,9 @@ impl FileStorage {
 
         // Load existing triggers
         storage.load_all_triggers()?;
+
+        // Load existing views (V312-95 v2 / Issue #4814)
+        storage.load_all_views()?;
 
         Ok(storage)
     }
@@ -220,10 +238,12 @@ impl FileStorage {
             triggers: RwLock::new(HashMap::new()),
             gap_lock_manager: Some(lock_manager),
             dirty_tables: HashSet::new(),
+            views: RwLock::new(HashMap::new()),
         };
 
         storage.load_all_tables()?;
         storage.load_all_indexes()?;
+        storage.load_all_views()?;
 
         Ok(storage)
     }
@@ -242,6 +262,76 @@ impl FileStorage {
     /// Get the path for a trigger file (named after the trigger, not the table)
     fn trigger_path(&self, trigger_name: &str) -> PathBuf {
         self.data_dir.join(format!("trigger_{}.json", trigger_name))
+    }
+
+    /// V312-95 v2 / Issue #4814: get the disk path for a view file.
+    fn view_path(&self, view_name: &str) -> PathBuf {
+        self.data_dir.join(format!("view_{}.json", view_name))
+    }
+
+    /// V312-95 v2 / Issue #4814: load a single view from disk.
+    fn load_view(&self, view_name: &str) -> std::io::Result<ViewInfo> {
+        let path = self.view_path(view_name);
+        let file = File::open(&path)?;
+        let reader = BufReader::new(file);
+        let info: ViewInfo = serde_json::from_reader(reader)
+            .map_err(|e| std::io::Error::new(std::io::ErrorKind::InvalidData, e))?;
+        Ok(info)
+    }
+
+    /// V312-95 v2 / Issue #4814: save a view to disk (WAL-style:
+    /// write-ahead, then mutate in-memory).
+    fn save_view(&self, info: &ViewInfo) -> std::io::Result<()> {
+        let path = self.view_path(&info.name);
+        let file = File::create(&path)?;
+        let mut writer = BufWriter::new(file);
+        let json = serde_json::to_string_pretty(info)
+            .map_err(|e| std::io::Error::new(std::io::ErrorKind::InvalidData, e))?;
+        writer.write_all(json.as_bytes())?;
+        writer.flush()?;
+        Ok(())
+    }
+
+    /// V312-95 v2 / Issue #4814: remove a view file from disk
+    /// (missing file is OK — idempotent).
+    fn remove_view_file(&self, view_name: &str) -> std::io::Result<()> {
+        let path = self.view_path(view_name);
+        match fs::remove_file(&path) {
+            Ok(()) => Ok(()),
+            Err(e) if e.kind() == std::io::ErrorKind::NotFound => Ok(()),
+            Err(e) => Err(e),
+        }
+    }
+
+    /// V312-95 v2 / Issue #4814: scan the data directory for `view_*.json`
+    /// files and load each into the in-memory catalog. Called from
+    /// `new_with_wal` so views survive process restart.
+    fn load_all_views(&mut self) -> std::io::Result<()> {
+        if !self.data_dir.exists() {
+            return Ok(());
+        }
+
+        for entry in fs::read_dir(&self.data_dir)? {
+            let entry = entry?;
+            let path = entry.path();
+
+            if let Some(file_name) = path.file_name().and_then(|s| s.to_str()) {
+                if file_name.starts_with("view_") && file_name.ends_with(".json") {
+                    if let Some(name) = file_name
+                        .strip_prefix("view_")
+                        .and_then(|s| s.strip_suffix(".json"))
+                    {
+                        if let Ok(info) = self.load_view(name) {
+                            if let Ok(mut views) = self.views.write() {
+                                views.insert(name.to_string(), info);
+                            }
+                        }
+                    }
+                }
+            }
+        }
+
+        Ok(())
     }
 
     /// Load a single trigger from disk
@@ -3437,8 +3527,47 @@ impl StorageEngine for FileStorage {
     }
 
     fn has_view(&self, name: &str) -> bool {
-        let _ = name;
-        false
+        let views = self.views.read().unwrap();
+        views.contains_key(name)
+    }
+
+    fn create_view(&mut self, info: ViewInfo) -> SqlResult<()> {
+        // V312-95 v2 / Issue #4814: persist to disk first (WAL-style:
+        // write-ahead, then mutate in-memory) — mirrors `create_trigger`.
+        self.save_view(&info)
+            .map_err(|e| SqlError::ExecutionError(format!("save view: {}", e)))?;
+        let mut views = self.views.write().unwrap();
+        if views.contains_key(&info.name) {
+            return Err(SqlError::ExecutionError(format!(
+                "View '{}' already exists",
+                info.name
+            )));
+        }
+        views.insert(info.name.clone(), info);
+        Ok(())
+    }
+
+    fn get_view(&self, name: &str) -> Option<ViewInfo> {
+        let views = self.views.read().unwrap();
+        views.get(name).cloned()
+    }
+
+    fn list_views(&self) -> Vec<String> {
+        let views = self.views.read().unwrap();
+        let mut names: Vec<String> = views.keys().cloned().collect();
+        names.sort();
+        names
+    }
+
+    fn drop_view(&mut self, name: &str) -> SqlResult<()> {
+        // V312-95 v2 / Issue #4814: idempotent — the executor guards the
+        // IF EXISTS / not-found error path; storage just removes what it
+        // has. Best-effort disk removal (missing file is OK).
+        self.remove_view_file(name)
+            .map_err(|e| SqlError::ExecutionError(format!("remove view: {}", e)))?;
+        let mut views = self.views.write().unwrap();
+        views.remove(name);
+        Ok(())
     }
 
     fn list_indexes(&self, table: &str) -> Vec<(String, String)> {

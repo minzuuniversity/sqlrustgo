@@ -395,6 +395,10 @@ name = "repro_v313_101_4671_create_function"
 path = "tests/integration/sql/repro_v313_101_4671_create_function.rs"
 
 [[test]]
+name = "p3_view_4814_test"
+path = "tests/integration/sql/p3_view_4814_test.rs"
+
+[[test]]
 name = "json_tvf_test"
 path = "tests/integration/sql/json_tvf_test.rs"
 
