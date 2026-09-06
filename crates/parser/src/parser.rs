@@ -3639,13 +3639,13 @@ impl Parser {
                         Some(Token::Text) => "TEXT".to_string(),
                         Some(Token::Float) => "FLOAT".to_string(),
                         Some(Token::Boolean) => "BOOLEAN".to_string(),
-                        Some(t) => return Err(format!(
-                            "Expected TABLE column type, got {:?}",
-                            t
-                        )),
+                        Some(t) => return Err(format!("Expected TABLE column type, got {:?}", t)),
                         None => return Err("Expected TABLE column type".to_string()),
                     };
-                    cols.push(UdfParam { name: col_name, data_type: col_type });
+                    cols.push(UdfParam {
+                        name: col_name,
+                        data_type: col_type,
+                    });
                     if matches!(self.current(), Some(Token::Comma)) {
                         self.next();
                     } else {
@@ -3676,13 +3676,13 @@ impl Parser {
             false
         };
 
-// Issue #4671: support multi-statement function body. Both forms
-// are accepted:
-//   CREATE FUNCTION f() RETURNS int BEGIN ... END
-//   CREATE FUNCTION f() RETURNS int AS BEGIN ... END
-// Fall back to single-expression:
-//   CREATE FUNCTION f() RETURNS int RETURN expr
-//   CREATE FUNCTION f() RETURNS int AS RETURN expr
+        // Issue #4671: support multi-statement function body. Both forms
+        // are accepted:
+        //   CREATE FUNCTION f() RETURNS int BEGIN ... END
+        //   CREATE FUNCTION f() RETURNS int AS BEGIN ... END
+        // Fall back to single-expression:
+        //   CREATE FUNCTION f() RETURNS int RETURN expr
+        //   CREATE FUNCTION f() RETURNS int AS RETURN expr
         let (body_expr, body_block) = if matches!(self.current(), Some(Token::Begin)) {
             // Multi-statement body without AS prefix
             let body = self.read_until_end_block()?;
@@ -3767,6 +3767,10 @@ impl Parser {
                 Some(Token::Begin) => {
                     depth += 1;
                     body.push_str("BEGIN ");
+                    self.next();
+                }
+                Some(Token::Semicolon) => {
+                    body.push_str("; ");
                     self.next();
                 }
                 Some(tok) => {

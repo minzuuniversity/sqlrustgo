@@ -53,7 +53,12 @@ pub fn register_udf(name: &str, params: Vec<String>, return_type: String, body_e
 }
 
 /// Issue #4671: register a multi-statement scalar UDF.
-pub fn register_udf_with_body(name: &str, params: Vec<String>, return_type: String, body_block: String) {
+pub fn register_udf_with_body(
+    name: &str,
+    params: Vec<String>,
+    return_type: String,
+    body_block: String,
+) {
     UDF_REGISTRY.with(|cell| {
         cell.borrow_mut().insert(
             name.to_uppercase(),
@@ -2663,7 +2668,6 @@ pub fn eval_fn(name: &str, args: &[Value]) -> Value {
 /// expected to degrade gracefully so a single buggy function does not
 /// bring down the surrounding statement.
 fn invoke_udf(def: &UdfDefinition, args: &[Value]) -> Value {
-    // Issue #4671: handle multi-statement UDFs
     if let Some(ref body_block) = def.body_block {
         return invoke_udf_multi(def, args, body_block);
     }
@@ -2684,28 +2688,154 @@ fn invoke_udf(def: &UdfDefinition, args: &[Value]) -> Value {
 /// Issue #4671: invoke a multi-statement UDF by finding and evaluating RETURN.
 fn invoke_udf_multi(def: &UdfDefinition, args: &[Value], body_block: &str) -> Value {
     use sqlrustgo_parser::parse_expression_str;
-    
+
     if args.len() != def.params.len() {
         return Value::Null;
     }
-    
-    // Look for RETURN statement in the body
-    // Simple heuristic: find "RETURN" keyword and get the expression after it
-    let upper = body_block.to_uppercase();
-    if let Some(pos) = upper.find("RETURN ") {
-        let after_return = &body_block[pos + 8..];
-        // Find the semicolon or end of expression
-        let end = after_return.find(';').unwrap_or(after_return.len());
-        let expr_str = after_return[..end].trim();
-        
-        if let Ok(expr) = parse_expression_str(expr_str) {
-            let substituted = substitute_udf_params(&expr, &def.params, args);
-            let mut uexpr: UnifiedExpr = UnifiedExpr::from(&substituted);
-            return uexpr.evaluate(&[], &[], &mut None);
+
+    // V313-103 / Issue #4671 sub-2: minimal DECLARE/SET support for
+    // multi-statement UDF bodies. We walk the body looking for
+    //   DECLARE <name> [<type>]
+    //   SET <name> = <expr>
+    //   RETURN <expr>
+    // statements. Local variables shadow the parameter list in the
+    // expression evaluator (a local var with the same name as a
+    // parameter wins, matching MySQL's local-variable-scope rules).
+    let mut locals: std::collections::HashMap<String, Value> = std::collections::HashMap::new();
+
+    // Split the body on top-level semicolons. `find` with an
+    // arithmetic-depth tracker so semicolons inside parens don't
+    // split a statement.
+    let mut statements: Vec<&str> = Vec::new();
+    let mut start = 0;
+    let mut depth: i32 = 0;
+    for (i, ch) in body_block.char_indices() {
+        match ch {
+            '(' => depth += 1,
+            ')' => depth -= 1,
+            ';' if depth == 0 => {
+                let stmt = body_block[start..i].trim();
+                if !stmt.is_empty() {
+                    statements.push(stmt);
+                }
+                start = i + 1;
+            }
+            _ => {}
         }
     }
-    
+    let tail = body_block[start..].trim();
+    if !tail.is_empty() {
+        statements.push(tail);
+    }
+
+    for stmt in &statements {
+        let upper = stmt.to_ascii_uppercase();
+        // V313-103 / Issue #4671: very small statement surface; we
+        // accept DECLARE <name> [<type>] and SET <name> = <expr>
+        // forms that the issue body example uses.
+        if let Some(rest) = upper.strip_prefix("DECLARE ") {
+            // DECLARE <name> [<type>]
+            let name = rest
+                .splitn(2, char::is_whitespace)
+                .next()
+                .unwrap_or("")
+                .to_string();
+            if !name.is_empty() {
+                locals.insert(name.to_ascii_uppercase(), Value::Null);
+            }
+        } else if let Some(rest) = upper.strip_prefix("SET ") {
+            // SET <name> = <expr>
+            if let Some((name_part, expr_part)) = rest.split_once('=') {
+                let name = name_part.trim().to_string();
+                if let Ok(parsed) = parse_expression_str(expr_part.trim()) {
+                    let substituted = substitute_with_locals(&parsed, &def.params, args, &locals);
+                    let mut uexpr: UnifiedExpr = UnifiedExpr::from(&substituted);
+                    let val = uexpr.evaluate(&[], &[], &mut None);
+                    locals.insert(name.to_ascii_uppercase(), val);
+                }
+            }
+        } else if let Some(rest) = upper.strip_prefix("RETURN ") {
+            let expr_src = rest.trim_end_matches(';').trim();
+            if let Ok(expr) = parse_expression_str(expr_src) {
+                let substituted = substitute_with_locals(&expr, &def.params, args, &locals);
+                let mut uexpr: UnifiedExpr = UnifiedExpr::from(&substituted);
+                return uexpr.evaluate(&[], &[], &mut None);
+            }
+        }
+        // Other statement shapes (IF/WHILE/etc.) are out of scope.
+    }
+
     Value::Null
+}
+
+fn substitute_with_locals(
+    expr: &sqlrustgo_parser::Expression,
+    params: &[String],
+    args: &[Value],
+    locals: &std::collections::HashMap<String, Value>,
+) -> sqlrustgo_parser::Expression {
+    use sqlrustgo_parser::Expression;
+    let mut substituted = expr.clone();
+    substitute_walk(&mut substituted, params, args, locals);
+    substituted
+}
+
+fn substitute_walk(
+    expr: &mut sqlrustgo_parser::Expression,
+    params: &[String],
+    args: &[Value],
+    locals: &std::collections::HashMap<String, Value>,
+) {
+    use sqlrustgo_parser::Expression;
+    // Local variables shadow the parameter list, matching MySQL's
+    // local-variable-shadowing-column semantics.
+    let lookup = |name: &str| -> Option<String> {
+        let upper = name.to_ascii_uppercase();
+        if let Some(val) = locals.get(&upper) {
+            return Some(value_to_sql_literal(val));
+        }
+        params
+            .iter()
+            .position(|p| p.to_ascii_uppercase() == upper)
+            .map(|idx| value_to_sql_literal(&args[idx]))
+    };
+    match expr {
+        Expression::Identifier(name) => {
+            if let Some(literal) = lookup(name) {
+                *expr = Expression::Literal(literal);
+            }
+        }
+        Expression::BinaryOp(l, _op, r) => {
+            substitute_walk(l.as_mut(), params, args, locals);
+            substitute_walk(r.as_mut(), params, args, locals);
+        }
+        Expression::UnaryOp(_op, inner) => {
+            substitute_walk(inner.as_mut(), params, args, locals);
+        }
+        Expression::FunctionCall(_name, args_) => {
+            for a in args_ {
+                substitute_walk(a, params, args, locals);
+            }
+        }
+        Expression::CaseWhen(c, else_) => {
+            for when_clause in c.iter_mut() {
+                substitute_walk(&mut when_clause.condition, params, args, locals);
+                substitute_walk(&mut when_clause.result, params, args, locals);
+            }
+            if let Some(else_) = else_.as_mut() {
+                substitute_walk(else_, params, args, locals);
+            }
+        }
+        // All other Expression variants (Subquery, Aggregate, IsNull,
+        // Like, Between, FunctionCall subforms, WindowCall, JsonLiteral,
+        // SystemVariable, SequenceNextVal/Currval, etc.) are walked
+        // conservatively: identifier substitution in any nested
+        // sub-expression is not applicable for the small
+        // DECLARE/SET/RETURN surface we support, so we leave them
+        // as-is. The expression evaluator will resolve any
+        // identifiers at evaluation time.
+        _ => {}
+    }
 }
 
 /// V312-58 / Issue #4512: walk an `Expression` and replace each
