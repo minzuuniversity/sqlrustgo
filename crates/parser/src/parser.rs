@@ -6217,26 +6217,67 @@ impl Parser {
                         }
                     } else if matches!(self.current(), Some(Token::Select))
                         || matches!(self.current(), Some(Token::Values))
+                        || matches!(self.current(), Some(Token::Union))
+                        || matches!(self.current(), Some(Token::Intersect))
+                        || matches!(self.current(), Some(Token::Except))
                     {
-                        // Subquery: parse as SELECT statement or VALUES constructor.
-                        // V313-96 / Issue #4717: `WITH` is no longer routed
-                        // through `parse_select_statement` because that path
-                        // unwraps the WithClause; the new branch above handles
-                        // `FROM (WITH ...)` by binding the WithSelect via
-                        // `from_with_subquery_bind`.
-                        let subquery = self.parse_select_statement()?;
+                        // Subquery: parse as SELECT statement, set-op
+                        // (UNION/INTERSECT/EXCEPT), or VALUES constructor.
+                        // V313-108 / P3-VACUUM-001 follow-up: the inner
+                        // may be a set-op like `(SELECT 1 AS x UNION
+                        // SELECT 2)`, so we dispatch through
+                        // `parse_select_or_union` (which handles both
+                        // plain SELECT and set-ops) rather than
+                        // `parse_select_statement` (which only handles
+                        // a single SELECT). The result is wrapped as a
+                        // synthetic `SELECT * FROM <inner>` so the
+                        // downstream `from_subquery` type stays
+                        // `SelectStatement`. Same shape as the
+                        // nested-LParen branch below.
+                        let inner = self.parse_select_or_union()?;
+                        let inner_subq = match inner {
+                            Statement::Select(s) => s.clone(),
+                            _ => SelectStatement {
+                                columns: vec![SelectColumn {
+                                    name: "*".to_string(),
+                                    alias: None,
+                                    expression: None,
+                                }],
+                                table: String::new(),
+                                schema: None,
+                                ..Default::default()
+                            },
+                        };
+                        let materialised = SelectStatement {
+                            columns: vec![SelectColumn {
+                                name: "*".to_string(),
+                                alias: None,
+                                expression: None,
+                            }],
+                            table: String::new(),
+                            schema: None,
+                            from_subquery: Some(Box::new(inner_subq)),
+                            ..Default::default()
+                        };
                         self.expect(Token::RParen)?;
                         if matches!(self.current(), Some(Token::As)) {
                             self.next();
                         }
+                        // V313-108 follow-up: alias is OPTIONAL (MySQL
+                        // and SQLite auto-derive one for unaliased FROM
+                        // subqueries). Synthesise a placeholder if the
+                        // parser hit the end of the statement before
+                        // finding an explicit identifier.
                         let alias = match self.next() {
                             Some(Token::Identifier(name)) => name,
+                            Some(Token::Eof) | Some(Token::Semicolon) | None => {
+                                format!("__subq_unaliased")
+                            }
                             Some(t) => {
                                 return Err(format!("Expected alias for subquery, got {:?}", t))
                             }
-                            None => return Err("Expected alias for subquery".to_string()),
                         };
-                        (alias, Some(Box::new(subquery)), Vec::new())
+                        (alias, Some(Box::new(materialised)), Vec::new())
                     } else if matches!(self.current(), Some(Token::LParen)) {
                         // V313-09 / Issue #4037: accept a nested
                         // subquery inside the derived table, e.g.
@@ -6743,7 +6784,8 @@ impl Parser {
                 | Some(Token::Full)
                 | Some(Token::Cross)
         ) {
-            join_chain.push(self.parse_join_clause()?);
+            let parsed = self.parse_join_clause()?;
+            join_chain.push(parsed);
         }
 
         // V312-85 / Issue #4625: parse MySQL-style index hints
@@ -9193,7 +9235,7 @@ impl Parser {
             ));
         }
 
-        let right = self.parse_primary_expression()?;
+        let right = self.parse_additive_expression()?;
 
         if matches!(
             self.current(),
