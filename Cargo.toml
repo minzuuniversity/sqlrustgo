@@ -234,6 +234,10 @@ version = "0.39"
 features = ["bundled"]
 
 [[test]]
+name = "verify_4704"
+path = "tests/integration/sql/verify_4704.rs"
+
+[[test]]
 name = "buffer_pool_benchmark_test"
 path = "tests/ci/buffer_pool_benchmark_test.rs"
 
