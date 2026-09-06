@@ -142,3 +142,49 @@ fn v312_95_join_cross_join_still_works() {
         .unwrap();
     assert_eq!(res.rows.len(), 4);
 }
+
+#[test]
+fn v312_95_parser_comparison_rhs_handles_div_arithmetic() {
+    // V313-107 / P3-JOIN-007 regression: the parser used to call
+    // parse_primary_expression for the right-hand side of comparison
+    // operators (<, >, =, ...), which only handled primary expressions
+    // (literals, identifiers, parentheses, function calls) but NOT
+    // arithmetic expressions like `b.y / 10`. After the comparison
+    // operator was consumed, the parser would stop at the division
+    // operator and exit the join-chain loop, breaking 3-table non-equi
+    // joins like `a JOIN b ON a.x < b.y/10 JOIN c ON b.y < c.z`.
+    // Fix: call parse_additive_expression so the right-hand side of
+    // a comparison can contain a multiplicative subexpression.
+    let mut x = fresh();
+    x.execute("CREATE TABLE a (x INT)").unwrap();
+    x.execute("CREATE TABLE b (y INT)").unwrap();
+    x.execute("INSERT INTO a VALUES (1), (2)").unwrap();
+    x.execute("INSERT INTO b VALUES (10), (20)").unwrap();
+    // 2-table: a.x < b.y/10 → a.x < 1 for b.y=10 (false), a.x < 2 for b.y=20 (true).
+    let res = x
+        .execute("SELECT a.x, b.y FROM a JOIN b ON a.x < b.y/10 ORDER BY b.y")
+        .unwrap();
+    assert_eq!(res.rows.len(), 1);
+    assert_eq!(res.rows[0][0], Value::Integer(1));
+    assert_eq!(res.rows[0][1], Value::Integer(20));
+}
+
+#[test]
+fn v312_95_parser_select_expression_with_division() {
+    // The parser precedence fix also covers SELECT-list expressions:
+    // `SELECT a < b/10 FROM ...` used to fail with "Expected expression"
+    // because the comparison parser called parse_primary_expression for
+    // the right-hand side. Now it correctly parses `b/10` as a
+    // multiplicative subexpression.
+    let mut x = fresh();
+    x.execute("CREATE TABLE t (a INT, b INT)").unwrap();
+    x.execute("INSERT INTO t VALUES (1, 10), (5, 50)").unwrap();
+    let res = x
+        .execute("SELECT a < b/10 AS cmp FROM t ORDER BY a")
+        .unwrap();
+    assert_eq!(res.rows.len(), 2);
+    // 1 < 10/10 = 1 < 1 = false (0).
+    assert_eq!(res.rows[0][0], Value::Boolean(false));
+    // 5 < 50/10 = 5 < 5 = false (0).
+    assert_eq!(res.rows[1][0], Value::Boolean(false));
+}
