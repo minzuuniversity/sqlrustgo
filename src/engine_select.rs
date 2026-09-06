@@ -2723,15 +2723,27 @@ impl<S: StorageEngine + 'static> ExecutionEngine<S> {
             // DESC, which my earlier version ignored.
             // V313-followup-4 / Issue #4157: also honour session
             // `SET default_null_order` for NULL-first / NULL-last placement.
-            // V312-85 / Issue #4763: SQLite default (verified on 3.51) is
-            // NULLS LAST for both ASC and DESC when no explicit clause
-            // is given. The session override `session_null_order_first`
-            // flips both. Explicit NULLS FIRST/LAST in the SQL overrides.
+            // V312-85 / Issue #4763 + V312-90 / Issue #4808: SQLite's
+            // default for ASC is NULLS FIRST; for DESC it is NULLS LAST
+            // (NULL < non-NULL per https://www.sqlite.org/datatype3.html
+            // §3.3). The `ob.ascending` flag and explicit NULLS FIRST/LAST
+            // in `ob.nulls_first` override that per-sort-key default.
+            // The session override `session_null_order_first` (set via
+            // `SET default_null_order`) flips the default for both
+            // directions. The fall-back default here (`true`) matches
+            // both the setops path (`engine_setops.rs:276`) and the
+            // SQLite/MySQL behaviour the B-track differential test
+            // expects.
             zipped.sort_by(|a, b| {
                 for (i, ob) in select.order_by.iter().enumerate() {
+                    let default_nulls_first =
+                        if ob.ascending { true } else { false };
                     let nulls_first_eff: bool = ob
                         .nulls_first
-                        .unwrap_or_else(|| self.session_null_order_first.unwrap_or(false));
+                        .unwrap_or_else(|| {
+                            self.session_null_order_first
+                                .unwrap_or(default_nulls_first)
+                        });
                     let ord = if i < a.0.len() && i < b.0.len() {
                         let va = &a.0[i];
                         let vb = &b.0[i];

@@ -1075,6 +1075,70 @@ mod tests {
         );
     }
 
+    /// V312-90 / Issue #4808 — GREEN: with no `SET default_null_order`
+    /// override, SQLite's ORDER BY default is NULLS FIRST for ASC and
+    /// NULLS LAST for DESC (NULL < non-NULL per
+    /// https://www.sqlite.org/datatype3.html §3.3). Prior to the fix
+    /// the engine unconditionally put NULLs at the end for both
+    /// directions, breaking the B-track differential test P3-NULL-001.
+    #[test]
+    fn green_4808_order_by_default_null_placement_asc() {
+        let mut engine = create_engine();
+        engine
+            .execute("CREATE TABLE t (x INTEGER)")
+            .expect("CREATE TABLE must succeed");
+        engine
+            .execute("INSERT INTO t VALUES (10), (NULL), (30), (NULL), (20)")
+            .expect("INSERT must succeed");
+        let result = engine
+            .execute("SELECT x FROM t ORDER BY x")
+            .expect("ORDER BY must succeed");
+        let values: Vec<String> = result
+            .rows
+            .iter()
+            .map(|r| match &r[0] {
+                Value::Null => "NULL".to_string(),
+                Value::Integer(n) => n.to_string(),
+                other => panic!("unexpected value {:?}", other),
+            })
+            .collect();
+        assert_eq!(
+            values,
+            vec!["NULL", "NULL", "10", "20", "30"],
+            "ASC default: NULLs come first (SQLite semantics)"
+        );
+    }
+
+    /// V312-90 / Issue #4808 — GREEN: with no `SET default_null_order`
+    /// override, ORDER BY ... DESC places NULLs at the end.
+    #[test]
+    fn green_4808_order_by_default_null_placement_desc() {
+        let mut engine = create_engine();
+        engine
+            .execute("CREATE TABLE t (x INTEGER)")
+            .expect("CREATE TABLE must succeed");
+        engine
+            .execute("INSERT INTO t VALUES (10), (NULL), (30), (NULL), (20)")
+            .expect("INSERT must succeed");
+        let result = engine
+            .execute("SELECT x FROM t ORDER BY x DESC")
+            .expect("ORDER BY DESC must succeed");
+        let values: Vec<String> = result
+            .rows
+            .iter()
+            .map(|r| match &r[0] {
+                Value::Null => "NULL".to_string(),
+                Value::Integer(n) => n.to_string(),
+                other => panic!("unexpected value {:?}", other),
+            })
+            .collect();
+        assert_eq!(
+            values,
+            vec!["30", "20", "10", "NULL", "NULL"],
+            "DESC default: NULLs come last (SQLite semantics)"
+        );
+    }
+
     /// V313-followup-4 / Issue #4157 — GREEN: `SET debug_force_external`
     /// is accepted without error (DuckDB debug toggle; the engine
     /// has no spilling path so the SET is a no-op).
