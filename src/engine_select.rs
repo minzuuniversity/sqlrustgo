@@ -1237,6 +1237,35 @@ impl<S: StorageEngine + 'static> ExecutionEngine<S> {
                 .split_once('|')
                 .map(|(t, _)| t)
                 .unwrap_or(&select.table);
+            // V312-95 v2 / Issue #4809: SQLite-style INDEXED BY hint
+            // validation. The parser records `FROM t INDEXED BY idx_name`
+            // as `select.from_indexed_by = Some("idx_name")`. Before the
+            // scan runs, confirm the named index exists AND belongs to
+            // this table. The previous behaviour silently ignored the
+            // hint (and dropped the WHERE clause entirely — see the
+            // parser fix in crates/parser/src/parser.rs). NOT INDEXED
+            // (`from_not_indexed = Some(())`) is a planner hint that
+            // doesn't require validation here; we just rely on the
+            // default sequential scan path.
+            if let Some(idx_name) = &select.from_indexed_by {
+                let indexes = storage.list_all_indexes();
+                let owner = indexes.iter().find(|i| i.name == *idx_name);
+                match owner {
+                    None => {
+                        return Err(SqlError::ExecutionError(format!(
+                            "INDEXED BY '{}': index does not exist",
+                            idx_name
+                        )));
+                    }
+                    Some(info) if info.table != lookup_table => {
+                        return Err(SqlError::ExecutionError(format!(
+                            "INDEXED BY '{}': index is on table '{}', not '{}'",
+                            idx_name, info.table, lookup_table
+                        )));
+                    }
+                    Some(_) => {}
+                }
+            }
             // V311-02 v2: instrument single-table SELECT via AHI so
             // repeated scans of the same table get promoted.
             // V312-85 / Issue #4625: pass index_hints for USE/IGNORE INDEX support.
