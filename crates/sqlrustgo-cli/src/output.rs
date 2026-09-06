@@ -142,7 +142,11 @@ pub fn format_list(rows: &[Vec<Value>]) -> String {
 
 fn value_to_string(v: &Value) -> String {
     match v {
-        Value::Null => String::new(),
+        // Issue #4806: NULL must render as an explicit marker in
+        // table/list/csv output, indistinguishable from the empty
+        // string ''. MySQL's --batch mode prints `NULL` the same way;
+        // SQLite CLI users get the same via `.nullvalue NULL`.
+        Value::Null => "NULL".to_string(),
         Value::Integer(i) => i.to_string(),
         Value::Float(_) => v.to_sql_string(),
         Value::Text(s) => s.clone(),
@@ -243,13 +247,13 @@ mod tests {
     }
 
     #[test]
-    fn table_null_becomes_empty() {
+    fn table_null_shows_null_marker() {
         let cols = vec!["x".to_string()];
         let rows = vec![vec![Value::Null]];
         let out = format_table(&cols, &rows);
         assert!(out.contains("x\n"));
         assert!(out.contains("-\n"));
-        assert!(out.contains("\n  \n"));
+        assert!(out.contains("NULL"));
     }
 
     #[test]
@@ -288,14 +292,14 @@ mod tests {
     }
 
     #[test]
-    fn list_null_is_empty_string() {
+    fn list_null_is_null_marker() {
         let rows = vec![vec![
             Value::Integer(1),
             Value::Null,
             Value::Text("x".into()),
         ]];
         let out = format_list(&rows);
-        assert_eq!(out, "1||x\n");
+        assert_eq!(out, "1|NULL|x\n");
     }
 
     #[test]
@@ -333,11 +337,11 @@ mod tests {
     }
 
     #[test]
-    fn csv_null_is_empty_string() {
+    fn csv_null_is_null_marker() {
         let cols = vec!["a".to_string(), "b".to_string()];
         let rows = vec![vec![Value::Null, Value::Text("x".into())]];
         let out = format_csv(&cols, &rows, false);
-        assert_eq!(out, ",x\n");
+        assert_eq!(out, "NULL,x\n");
     }
 
     #[test]
