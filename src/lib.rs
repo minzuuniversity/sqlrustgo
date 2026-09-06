@@ -56,6 +56,7 @@ pub use execution_engine::{ExecutionEngine, MemoryExecutionEngine};
 pub use engine_select::{
     dump_v312_58_sprint3_diag, dump_v312_58_sprint5_diag, dump_v312_58_sprint6_diag,
     reset_v312_58_sprint3_diag, reset_v312_58_sprint5_diag, reset_v312_58_sprint6_diag,
+    snapshot_v312_58_sprint5_diag,
 };
 
 /// Initialize the database system
