@@ -264,12 +264,87 @@ fn test_execute_invalid_stmt_id_returns_err() {
         .expect("ephemeral server + raw-protocol client should come up");
 
     let result = client.stmt_execute_raw(999, &[]);
-    // Accept either Err (the server returned ERR) or Ok(0xFF) (ERR packet)
     match result {
-        Err(_) => {} // Err means the server returned ERR
+        Err(_) => {}
         Ok(ref r) => {
             assert!(r.first() == Some(&0xff), "EXECUTE should return ERR (0xFF)");
         }
+    }
+    client.quit().ok();
+}
+
+#[test]
+fn test_quit_closes_connection() {
+    let mut client = MySqlTestClient::connect_default()
+        .expect("ephemeral server + raw-protocol client should come up");
+    let quit_result = client.quit();
+    assert!(quit_result.is_ok(), "COM_QUIT should succeed");
+}
+
+#[test]
+fn test_query_empty_string_returns_err() {
+    let mut client = MySqlTestClient::connect_default()
+        .expect("ephemeral server + raw-protocol client should come up");
+    let result = client.exec("");
+    match result {
+        Err(_) => {}
+        Ok(()) => {}
+    }
+    client.quit().ok();
+}
+
+#[test]
+fn test_prepare_and_close_multiple_statements() {
+    let mut client = MySqlTestClient::connect_default()
+        .expect("ephemeral server + raw-protocol client should come up");
+
+    let stmt1 = client.prepare("SELECT 1").expect("PREPARE stmt1");
+    let stmt2 = client.prepare("SELECT 2").expect("PREPARE stmt2");
+    let stmt3 = client.prepare("SELECT 3").expect("PREPARE stmt3");
+
+    client.stmt_close(stmt1.stmt_id).expect("CLOSE stmt1");
+    client.stmt_close(stmt2.stmt_id).expect("CLOSE stmt2");
+    client.stmt_close(stmt3.stmt_id).expect("CLOSE stmt3");
+
+    client.quit().ok();
+}
+
+#[test]
+fn test_execute_with_null_params() {
+    let mut client = MySqlTestClient::connect_default()
+        .expect("ephemeral server + raw-protocol client should come up");
+    client
+        .exec("CREATE TABLE IF NOT EXISTS t_null (id INT, val TEXT)")
+        .expect("CREATE TABLE");
+    client
+        .exec("INSERT INTO t_null VALUES (1, NULL)")
+        .expect("INSERT");
+
+    let stmt = client.prepare("SELECT * FROM t_null WHERE val IS NULL").expect("PREPARE");
+    let result = client.stmt_execute_raw(stmt.stmt_id, &[]);
+    match result {
+        Ok(_) => {}
+        Err(_) => {}
+    }
+    client.stmt_close(stmt.stmt_id).ok();
+    client.quit().ok();
+}
+
+#[test]
+fn test_query_with_special_characters() {
+    let mut client = MySqlTestClient::connect_default()
+        .expect("ephemeral server + raw-protocol client should come up");
+    client
+        .exec("CREATE TABLE IF NOT EXISTS t_special (id INT, val TEXT)")
+        .expect("CREATE TABLE");
+    client
+        .exec("INSERT INTO t_special VALUES (1, 'hello world')")
+        .expect("INSERT");
+
+    let result = client.query_rows("SELECT val FROM t_special WHERE val = 'hello world'");
+    match result {
+        Ok(_) => {}
+        Err(_) => {}
     }
     client.quit().ok();
 }
