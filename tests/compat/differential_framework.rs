@@ -1,31 +1,5 @@
-//! Stateful Differential Test Framework
-//!
-//! This module provides a framework for running SQL sequences on both SQLRustGo
-//! and a reference database (SQLite/MySQL), then comparing results.
-//!
-//! Key differences from the old differential testing:
-//! 1. Runs sequences of SQL statements, not just isolated SELECTs
-//! 2. Compares result rows, column metadata, affected rows, and error codes
-//! 3. Supports stateful sessions (transactions, prepared statements)
-//! 4. Can use MySQL as oracle, not just SQLite
-//!
-//! Usage:
-//! ```rust
-//! use differential_framework::DifferentialTest;
-//!
-//! let test = DifferentialTest::new()
-//!     .sql("CREATE TABLE t(id INT, name TEXT)")
-//!     .sql("INSERT INTO t VALUES (1, 'alice')")
-//!     .sql("SELECT * FROM t")
-//!     .expect_rows(vec![vec!["1", "alice"]])
-//!     .expect_affected_rows(1);
-//!
-//! test.run_with_sqlite_oracle();
-//! ```
-
 use std::collections::HashMap;
 
-/// Result of executing a single SQL statement
 #[derive(Debug, Clone)]
 pub struct SqlResult {
     pub columns: Vec<String>,
@@ -35,7 +9,6 @@ pub struct SqlResult {
     pub error_code: Option<i32>,
 }
 
-/// A single step in a differential test
 #[derive(Debug, Clone)]
 pub struct TestStep {
     pub sql: String,
@@ -43,7 +16,6 @@ pub struct TestStep {
     pub description: Option<String>,
 }
 
-/// Configuration for differential test execution
 #[derive(Debug, Clone)]
 pub struct DifferentialConfig {
     /// Whether to compare column metadata
@@ -70,7 +42,6 @@ impl Default for DifferentialConfig {
     }
 }
 
-/// A differential test that runs SQL sequences on both systems
 pub struct DifferentialTest {
     steps: Vec<TestStep>,
     config: DifferentialConfig,
@@ -86,7 +57,6 @@ impl DifferentialTest {
         }
     }
 
-    /// Add a SQL statement to run
     pub fn sql(mut self, sql: &str) -> Self {
         self.steps.push(TestStep {
             sql: sql.to_string(),
@@ -96,7 +66,6 @@ impl DifferentialTest {
         self
     }
 
-    /// Add a SQL statement with expected result
     pub fn sql_with_result(mut self, sql: &str, expected: SqlResult) -> Self {
         self.steps.push(TestStep {
             sql: sql.to_string(),
@@ -106,7 +75,6 @@ impl DifferentialTest {
         self
     }
 
-    /// Add a SQL statement with expected rows
     pub fn expect_rows(mut self, sql: &str, rows: Vec<Vec<&str>>) -> Self {
         self.steps.push(TestStep {
             sql: sql.to_string(),
@@ -122,25 +90,21 @@ impl DifferentialTest {
         self
     }
 
-    /// Add setup SQL that runs before the test
     pub fn setup(mut self, sql: &str) -> Self {
         self.setup_sql.push(sql.to_string());
         self
     }
 
-    /// Configure the test
     pub fn with_config(mut self, config: DifferentialConfig) -> Self {
         self.config = config;
         self
     }
 
-    /// Run the test with SQLite as oracle
     pub fn run_with_sqlite_oracle(&self) -> DifferentialResult {
         let mut runner = SqliteDifferentialRunner::new();
         self.run(&mut runner)
     }
 
-    /// Run the test with a custom oracle
     pub fn run(&self, oracle: &mut dyn DifferentialOracle) -> DifferentialResult {
         let mut result = DifferentialResult {
             passed: true,
@@ -290,12 +254,10 @@ impl std::fmt::Display for DifferentialResult {
     }
 }
 
-/// Trait for differential test oracles
 pub trait DifferentialOracle {
     fn execute_both(&mut self, sql: &str) -> (SqlResult, SqlResult);
 }
 
-/// SQLite-based oracle
 pub struct SqliteDifferentialRunner {
     sqlrustgo_bin: String,
     sqlite_bin: String,
