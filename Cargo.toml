@@ -1732,3 +1732,7 @@ path = "tests/integration/fault_injection/row_crc_skip.rs"
 [[test]]
 name = "differential_corpus_test"
 path = "tests/integration/compat/differential_corpus_test.rs"
+
+[[test]]
+name = "semantic_kernel_test"
+path = "tests/integration/compat/semantic_kernel_test.rs"
