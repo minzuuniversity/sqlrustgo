@@ -1714,3 +1714,7 @@ path = "tests/integration/fault_injection/torn_write_recovery.rs"
 [[test]]
 name = "row_crc_skip"
 path = "tests/integration/fault_injection/row_crc_skip.rs"
+
+[[test]]
+name = "differential_corpus_test"
+path = "tests/integration/compat/differential_corpus_test.rs"
