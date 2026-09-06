@@ -50,3 +50,25 @@ fn verify_4671_udf_single_expr_body() {
     };
     assert_eq!(got, 20);
 }
+
+#[test]
+fn verify_4671_udf_begin_end_declare() {
+    // V313-103 / Issue #4671 sub-2: BEGIN ... END body with
+    // DECLARE / SET / RETURN. The issue-body example is
+    // `f2(x INT) RETURNS INT BEGIN DECLARE r INT; SET r = x + 100;
+    // RETURN r; END`, expecting f2(5) = 105.
+    let mut x = fresh_mem();
+    x.execute(
+        "CREATE FUNCTION f2(x INT) RETURNS INT \
+         BEGIN DECLARE r INT; SET r = x + 100; RETURN r; END",
+    )
+    .expect("multi-statement UDF with DECLARE+SET+RETURN must register");
+    let r = x
+        .execute("SELECT f2(5)")
+        .expect("calling the multi-statement UDF must work");
+    let got: i64 = match &r.rows[0][0] {
+        Value::Integer(v) => *v,
+        other => panic!("expected integer, got {:?}", other),
+    };
+    assert_eq!(got, 105, "f2(5) must compute 5 + 100 = 105");
+}
