@@ -178,6 +178,22 @@ pub fn dump_v312_58_sprint5_diag() -> String {
         DIAG_HASH_SEMI_JOIN_PROBE_HITS.load(Ordering::SeqCst),
     )
 }
+/// Snapshot of the Sprint 5 diag counters at a point in time. The
+/// counters are process-global `AtomicU64`, so the delta between two
+/// snapshots is NOT race-free under cargo's parallel test runner:
+/// parallel tests in the same binary can bump the counter between
+/// Test A's pre-snapshot and Test A's post-snapshot, inflating the
+/// delta. Tests therefore assert `delta >= 1` (path was taken at
+/// least once) rather than `delta == 1`. For exact counts, run with
+/// `--test-threads=1`. The `reset_*` reset path is similarly racy
+/// and should be avoided in parallel test runs.
+#[allow(dead_code)]
+pub fn snapshot_v312_58_sprint5_diag() -> (u64, u64) {
+    (
+        DIAG_HASH_SEMI_JOIN_BUILDS.load(Ordering::SeqCst),
+        DIAG_HASH_SEMI_JOIN_PROBE_HITS.load(Ordering::SeqCst),
+    )
+}
 // V312-58 Sprint 6: diagnostics for the `try_decorrelate` wiring
 // introduced into `execute_select`. RESET before each test via
 // `reset_v312_58_sprint6_diag()`. DUMP via `dump_v312_58_sprint6_diag()`.
