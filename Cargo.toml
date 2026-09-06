@@ -234,6 +234,10 @@ version = "0.39"
 features = ["bundled"]
 
 [[test]]
+name = "verify_4692_4671"
+path = "tests/integration/sql/verify_4692_4671.rs"
+
+[[test]]
 name = "verify_4704"
 path = "tests/integration/sql/verify_4704.rs"
 
