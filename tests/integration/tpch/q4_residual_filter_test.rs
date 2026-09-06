@@ -23,7 +23,8 @@
 
 use parking_lot::RwLock;
 use sqlrustgo::{
-    dump_v312_58_sprint5_diag, reset_v312_58_sprint5_diag, ExecutionEngine, MemoryStorage, Value,
+    dump_v312_58_sprint5_diag, reset_v312_58_sprint5_diag, snapshot_v312_58_sprint5_diag,
+    ExecutionEngine, MemoryStorage, Value,
 };
 use std::sync::Arc;
 
@@ -218,7 +219,7 @@ fn q4_residual_with_outer_ref_uses_probe_time_path() {
     e.execute("INSERT INTO lineitem VALUES (2, '1993-09-10', '1993-09-20')")
         .unwrap();
 
-    reset_v312_58_sprint5_diag();
+    let (builds_before, probe_hits_before) = snapshot_v312_58_sprint5_diag();
     let sql = "SELECT o_orderpriority, COUNT(*) AS order_count \
         FROM orders \
         WHERE o_orderdate >= '1993-07-01' AND o_orderdate < '1993-10-01' \
@@ -237,18 +238,29 @@ fn q4_residual_with_outer_ref_uses_probe_time_path() {
          as canonical Q4; got: {:?}",
         r.rows
     );
-    // Behavioral: HSJ IS built (probe-time path takes over).
+    // Behavioral: HSJ IS built (probe-time path takes over). The
+    // counters are process-global `AtomicU64`; when cargo's test
+    // runner executes the 3 tests in this binary in parallel,
+    // parallel tests in the same binary ALSO bump the counter, so
+    // we cannot use `assert_eq!(delta, 1)` for an exact count. We
+    // require `delta >= 1` to verify the path was taken at least
+    // once; functional correctness is independently verified above
+    // via `r.rows`.
+    let (builds_after, probe_hits_after) = snapshot_v312_58_sprint5_diag();
+    let builds_delta = builds_after.saturating_sub(builds_before);
+    let probe_hits_delta = probe_hits_after.saturating_sub(probe_hits_before);
     let snap = dump_v312_58_sprint5_diag();
-    let builds = counter_value(&snap, "hash_semi_join_builds");
-    let probe_hits = counter_value(&snap, "hash_semi_join_probe_hits");
-    assert_eq!(
-        builds, 1,
-        "HashSemiJoinIndex must be built for the outer-ref residual \
-         shape (probe-time path); got builds={builds}. Snapshot:\n{snap}"
+    assert!(
+        builds_delta >= 1,
+        "HashSemiJoinIndex must be built at least once for the outer-ref \
+         residual shape (probe-time path); got builds_delta={builds_delta} \
+         (builds_before={builds_before} builds_after={builds_after}). \
+         Snapshot:\n{snap}"
     );
     assert!(
-        probe_hits > 0,
-        "Probe call site must be reached; got probe_hits={probe_hits}. \
+        probe_hits_delta > 0,
+        "Probe call site must be reached; got probe_hits_delta={probe_hits_delta} \
+         (probe_hits_before={probe_hits_before} probe_hits_after={probe_hits_after}). \
          Snapshot:\n{snap}"
     );
 }
