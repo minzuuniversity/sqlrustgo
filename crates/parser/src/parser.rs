@@ -466,7 +466,16 @@ pub struct UdfParam {
 pub struct CreateFunctionStatement {
     pub name: String,
     pub params: Vec<UdfParam>,
+    /// V313-101 / Issue #4671: when `RETURNS TABLE(col1 type1, col2 type2, ...)`
+    /// is used, the return type is a synthesized placeholder
+    /// (e.g. `TABLE`) and the actual columns live in `return_columns`.
+    /// For a scalar return the field is the scalar type name and
+    /// `return_columns` is empty.
     pub return_type: String,
+    /// V313-101 / Issue #4671: `RETURNS TABLE(...)` column list. Empty
+    /// for scalar returns. Parsed but not consumed by the executor
+    /// today (table-valued UDFs are deferred to v3.13).
+    pub return_columns: Vec<UdfParam>,
     pub deterministic: bool,
     /// Single-expression body (e.g. `RETURN x * 2`)
     pub body_expr: String,
@@ -3610,15 +3619,53 @@ impl Parser {
         self.expect(Token::RParen)?;
 
         // RETURNS <type>
+        // V313-101 / Issue #4671: support `RETURNS TABLE(col1 type1, ...)`.
+        // If the next token is TABLE, parse a column list; otherwise
+        // fall through to the historical scalar-type match.
         self.expect(Token::Returns)?;
-        let return_type = match self.next() {
-            Some(Token::Identifier(typename)) => typename,
-            Some(Token::Integer) => "INTEGER".to_string(),
-            Some(Token::Text) => "TEXT".to_string(),
-            Some(Token::Float) => "FLOAT".to_string(),
-            Some(Token::Boolean) => "BOOLEAN".to_string(),
-            Some(t) => return Err(format!("Expected return type, got {:?}", t)),
-            None => return Err("Expected return type".to_string()),
+        let (return_type, return_columns) = if matches!(self.current(), Some(Token::Table)) {
+            self.next();
+            self.expect(Token::LParen)?;
+            let mut cols = Vec::new();
+            if !matches!(self.current(), Some(Token::RParen) | None) {
+                loop {
+                    let col_name = match self.next() {
+                        Some(Token::Identifier(n)) => n,
+                        _ => return Err("Expected TABLE return column name".to_string()),
+                    };
+                    let col_type = match self.next() {
+                        Some(Token::Identifier(typename)) => typename,
+                        Some(Token::Integer) => "INTEGER".to_string(),
+                        Some(Token::Text) => "TEXT".to_string(),
+                        Some(Token::Float) => "FLOAT".to_string(),
+                        Some(Token::Boolean) => "BOOLEAN".to_string(),
+                        Some(t) => return Err(format!(
+                            "Expected TABLE column type, got {:?}",
+                            t
+                        )),
+                        None => return Err("Expected TABLE column type".to_string()),
+                    };
+                    cols.push(UdfParam { name: col_name, data_type: col_type });
+                    if matches!(self.current(), Some(Token::Comma)) {
+                        self.next();
+                    } else {
+                        break;
+                    }
+                }
+            }
+            self.expect(Token::RParen)?;
+            ("TABLE".to_string(), cols)
+        } else {
+            let return_type = match self.next() {
+                Some(Token::Identifier(typename)) => typename,
+                Some(Token::Integer) => "INTEGER".to_string(),
+                Some(Token::Text) => "TEXT".to_string(),
+                Some(Token::Float) => "FLOAT".to_string(),
+                Some(Token::Boolean) => "BOOLEAN".to_string(),
+                Some(t) => return Err(format!("Expected return type, got {:?}", t)),
+                None => return Err("Expected return type".to_string()),
+            };
+            (return_type, Vec::new())
         };
 
         // Optional DETERMINISTIC modifier (records informational flag).
@@ -3629,16 +3676,27 @@ impl Parser {
             false
         };
 
-        // Issue #4671: support multi-statement function body:
-        //   CREATE FUNCTION f() RETURNS int AS BEGIN ... END
-        //   CREATE FUNCTION f() RETURNS int BEGIN ... END
-        // Fall back to single-expression:
-        //   CREATE FUNCTION f() RETURNS int RETURN expr
-        let (body_expr, body_block) = if matches!(self.current(), Some(Token::As)) {
-            self.next();
-            // Multi-statement: capture everything until matching END
+// Issue #4671: support multi-statement function body. Both forms
+// are accepted:
+//   CREATE FUNCTION f() RETURNS int BEGIN ... END
+//   CREATE FUNCTION f() RETURNS int AS BEGIN ... END
+// Fall back to single-expression:
+//   CREATE FUNCTION f() RETURNS int RETURN expr
+//   CREATE FUNCTION f() RETURNS int AS RETURN expr
+        let (body_expr, body_block) = if matches!(self.current(), Some(Token::Begin)) {
+            // Multi-statement body without AS prefix
             let body = self.read_until_end_block()?;
             (String::new(), Some(body))
+        } else if matches!(self.current(), Some(Token::As)) {
+            self.next();
+            // AS prefix: followed by either BEGIN...END or a single RETURN expr
+            if matches!(self.current(), Some(Token::Begin)) {
+                let body = self.read_until_end_block()?;
+                (String::new(), Some(body))
+            } else {
+                let expr = self.parse_expression()?;
+                (format!("{:?}", expr), None)
+            }
         } else {
             // Single-expression: expect RETURN <expr>
             self.expect(Token::Return)?;
@@ -3678,6 +3736,7 @@ impl Parser {
             name,
             params,
             return_type,
+            return_columns,
             deterministic,
             body_expr,
             body_block,
