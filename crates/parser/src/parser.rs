@@ -13466,7 +13466,25 @@ pub fn split_sql_statements(sql: &str) -> Vec<String> {
                                 || bytes[i + word_len] == b'_');
                         if prev_ok && next_ok {
                             if is_begin {
-                                begin_depth += 1;
+                                // V312-85 / Issue #4818: a standalone `BEGIN;`
+                                // (followed by `;` or end-of-input with only
+                                // whitespace in between) is a transaction
+                                // control command, NOT a compound body
+                                // starter. Only count BEGIN as a block
+                                // starter when the next non-whitespace byte
+                                // is NOT `;` / EOF. The compound case is
+                                // `CREATE TRIGGER tr ... FOR EACH ROW BEGIN
+                                // ... ; ... END`, which always has body
+                                // content after BEGIN.
+                                let after = &bytes[i + word_len..];
+                                let mut k = 0;
+                                while k < after.len() && after[k].is_ascii_whitespace() {
+                                    k += 1;
+                                }
+                                let next_is_semi_or_eof = k == after.len() || after[k] == b';';
+                                if !next_is_semi_or_eof {
+                                    begin_depth += 1;
+                                }
                             } else {
                                 begin_depth = begin_depth.saturating_sub(1);
                             }
@@ -13549,6 +13567,40 @@ mod split_sql_statements_tests {
         assert!(frags[0].starts_with("BEGIN"));
         assert!(frags[0].contains("END"));
         assert_eq!(frags[1], "SELECT 2");
+    }
+
+    // V312-85 / Issue #4818 — a standalone top-level `BEGIN;` (a
+    // transaction-control command) must NOT be confused with the
+    // compound-body opener `CREATE TRIGGER ... BEGIN ... END;`. The
+    // first must split on its terminating `;`; the second must keep
+    // the body bundled.
+    #[test]
+    fn standalone_begin_splits_on_terminator() {
+        let frags = split_sql_statements("BEGIN; SELECT 2");
+        assert_eq!(frags, vec!["BEGIN", "SELECT 2"]);
+
+        let frags = split_sql_statements("BEGIN   ;\n SELECT 2");
+        assert_eq!(frags, vec!["BEGIN", "SELECT 2"]);
+
+        let frags = split_sql_statements("BEGIN");
+        assert_eq!(frags, vec!["BEGIN"]);
+    }
+
+    #[test]
+    fn multi_statement_transaction_splits_into_three() {
+        let frags = split_sql_statements(
+            "INSERT INTO t VALUES (1); BEGIN; INSERT INTO t VALUES (2); COMMIT; SELECT id FROM t",
+        );
+        assert_eq!(
+            frags,
+            vec![
+                "INSERT INTO t VALUES (1)",
+                "BEGIN",
+                "INSERT INTO t VALUES (2)",
+                "COMMIT",
+                "SELECT id FROM t",
+            ]
+        );
     }
 
     #[test]
