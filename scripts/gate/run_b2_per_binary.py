@@ -140,6 +140,11 @@ DISABLED_BINARIES = [
     "recovery_fuzzer_test",
     "recovery_scenarios_test",
     "types_value_test",
+    # === Added 2026-09-06 from per-binary B2 run (Issue #4444 / V312 RC audit) ===
+    # Environmental: requires /tmp/tpch-sf1 fixture with sqlrustgo.wal; only
+    # populated post-SOAK. Test asserts on `data_dir.exists()` and panics
+    # when the directory is absent. Not a code defect.
+    "quick_query",
 ]
 DISABLED_SET = frozenset(DISABLED_BINARIES)
 
