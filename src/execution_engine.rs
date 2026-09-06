@@ -1109,16 +1109,24 @@ impl<S: StorageEngine + 'static> ExecutionEngine<S> {
     fn execute_create_index(&self, idx: &CreateIndexStatement) -> SqlResult<ExecutorResult> {
         let mut storage = self.storage.write();
         let table_name = &idx.table;
-        let col_name = idx
-            .columns
-            .first()
-            .ok_or_else(|| SqlError::ExecutionError("No columns in index".to_string()))?;
-        let table_info = storage.get_table_info(table_name)?;
-        let col_idx = table_info
-            .columns
-            .iter()
-            .position(|c| c.name == *col_name)
-            .ok_or_else(|| SqlError::ExecutionError("Column not found".to_string()))?;
+        // V313-100 / Issue #4701 sub-1: a CREATE INDEX column list may
+        // start with an arbitrary expression, not a bare column name.
+        // Skip the table-column lookup when the head entry has no
+        // simple name (i.e. is an expression-only spec).
+        if let Some(spec) = idx.columns.first() {
+            if let Some(name) = spec.name.as_deref() {
+                let table_info = storage.get_table_info(table_name)?;
+                let _ = table_info
+                    .columns
+                    .iter()
+                    .position(|c| c.name == name)
+                    .ok_or_else(|| {
+                        SqlError::ExecutionError("Column not found".to_string())
+                    })?;
+            }
+        } else {
+            return Err(SqlError::ExecutionError("No columns in index".to_string()));
+        }
         storage.create_index(sqlrustgo_storage::IndexInfo {
             name: idx.name.clone(),
             table: table_name.clone(),

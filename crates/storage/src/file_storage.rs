@@ -3287,11 +3287,26 @@ impl StorageEngine for FileStorage {
         // Build a B+ Tree for each column in the index
         let mut indexes = self.indexes.write().unwrap();
         for column in info.columns.iter() {
+            // V313-100 / Issue #4701 sub-1: expression-only index
+            // columns (no simple name) cannot back a B+ tree; the
+            // executor does not yet materialise expressions. Skip with
+            // a clear error rather than silently producing a bogus
+            // index keyed off column 0.
+            let column_name = match &column.name {
+                Some(n) => n.clone(),
+                None => {
+                    return Err(SqlError::ExecutionError(format!(
+                        "expression index column `{}` is not supported by the \
+                         file_storage backend (V313-100); use a plain column name",
+                        format!("{:?}", column.expression)
+                    )));
+                }
+            };
             let column_index = table_data
                 .info
                 .columns
                 .iter()
-                .position(|c| c.name == *column)
+                .position(|c| c.name == column_name)
                 .unwrap_or(0);
             let mut index = crate::bplus_tree::BPlusTree::new();
             for (row_id, row) in table_data.rows.iter().enumerate() {
@@ -3303,11 +3318,11 @@ impl StorageEngine for FileStorage {
             }
 
             // Save to disk
-            self.save_index(table, column, &index)
+            self.save_index(table, &column_name, &index)
                 .map_err(SqlError::from)?;
 
             // Store in memory
-            indexes.insert((table.to_string(), column.clone()), index);
+            indexes.insert((table.to_string(), column_name), index);
         }
 
         Ok(())

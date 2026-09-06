@@ -250,8 +250,41 @@ pub struct ExceptStatement {
 pub struct CreateIndexStatement {
     pub name: String,
     pub table: String,
-    pub columns: Vec<String>,
+    pub columns: Vec<IndexColumnSpec>,
     pub unique: bool,
+}
+
+/// V313-100 / Issue #4701 sub-1: an index column is either a bare
+/// column name or an arbitrary expression. The parser accepts both
+/// inside `CREATE INDEX ... ON t(...)`. `name` is set for the
+/// identifier form, `expression` for the computed form.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct IndexColumnSpec {
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub name: Option<String>,
+    // The expression is not round-tripped through serde because
+    // `Expression` is not (yet) `Serialize`/`Deserialize`. A future PR
+    // can add custom (de)serialization once those derives land. Until
+    // then the spec is reconstructed from `name` only — expression
+    // indexes that survive a catalog reload are not supported, which
+    // matches the current executor (no expression materialisation).
+    #[serde(skip, default)]
+    pub expression: Option<Expression>,
+}
+
+impl IndexColumnSpec {
+    pub fn column(name: impl Into<String>) -> Self {
+        Self {
+            name: Some(name.into()),
+            expression: None,
+        }
+    }
+    pub fn expr(expression: Expression) -> Self {
+        Self {
+            name: None,
+            expression: Some(expression),
+        }
+    }
 }
 
 /// V312-64 / Issue #4645: CREATE FULLTEXT INDEX statement (MySQL-compatible).
@@ -3322,7 +3355,7 @@ impl Parser {
             None => return Err("Expected table name".to_string()),
         };
         self.expect(Token::LParen)?;
-        let columns = self.parse_column_list()?;
+        let columns = self.parse_index_column_list()?;
         Ok(Statement::CreateIndex(CreateIndexStatement {
             name: index_name,
             table: table_name,
@@ -11620,6 +11653,34 @@ impl Parser {
                     break;
                 }
                 _ => break,
+            }
+        }
+        Ok(columns)
+    }
+
+    /// V313-100 / Issue #4701 sub-1: parse a `CREATE INDEX` column
+    /// list. Each entry is either a bare identifier (the historical
+    /// form, e.g. `name`) or an arbitrary expression (e.g. `CASE WHEN
+    /// price > 15 THEN 1 ELSE 0 END`). Comma-separated; closes on `)`.
+    fn parse_index_column_list(&mut self) -> Result<Vec<IndexColumnSpec>, String> {
+        let mut columns = Vec::new();
+        loop {
+            match self.current() {
+                Some(Token::RParen) => {
+                    self.next();
+                    break;
+                }
+                Some(Token::Comma) => {
+                    self.next();
+                }
+                Some(Token::Identifier(name)) => {
+                    columns.push(IndexColumnSpec::column(name));
+                    self.next();
+                }
+                _ => {
+                    let expr = self.parse_expression()?;
+                    columns.push(IndexColumnSpec::expr(expr));
+                }
             }
         }
         Ok(columns)

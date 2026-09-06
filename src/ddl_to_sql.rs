@@ -244,7 +244,17 @@ pub fn format_create_index_sql(idx: &CreateIndexStatement) -> String {
     out.push_str(" ON ");
     out.push_str(&idx.table);
     out.push_str(" (");
-    out.push_str(&idx.columns.join(", "));
+    out.push_str(
+        &idx
+            .columns
+            .iter()
+            .map(|c| match &c.name {
+                Some(n) => n.clone(),
+                None => format!("{:?}", c.expression),
+            })
+            .collect::<Vec<_>>()
+            .join(", "),
+    );
     out.push(')');
     out
 }
