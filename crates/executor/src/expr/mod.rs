@@ -1630,6 +1630,46 @@ pub fn eval_fn(name: &str, args: &[Value]) -> Value {
             }
             None => Value::Null,
         },
+        // P3-MATH-005 follow-up to Issue #4698: SIGN(x) was missed by
+        // the PR #4772 math-function batch. Returns -1 / 0 / 1 as Integer
+        // (matching MySQL/SQLite canonical type), with NULL for non-numeric
+        // input and NaN.
+        "SIGN" => match args.first() {
+            Some(Value::Integer(i)) => Value::Integer(i.signum()),
+            Some(Value::Float(f)) => {
+                if f.is_nan() {
+                    Value::Null
+                } else if *f > 0.0 {
+                    Value::Integer(1)
+                } else if *f < 0.0 {
+                    Value::Integer(-1)
+                } else {
+                    Value::Integer(0)
+                }
+            }
+            Some(Value::Null) => Value::Null,
+            Some(v) => {
+                let s = v.to_sql_string();
+                if s.eq_ignore_ascii_case("NULL") {
+                    Value::Null
+                } else if let Ok(i) = s.parse::<i64>() {
+                    Value::Integer(i.signum())
+                } else if let Ok(f) = s.parse::<f64>() {
+                    if f.is_nan() {
+                        Value::Null
+                    } else if f > 0.0 {
+                        Value::Integer(1)
+                    } else if f < 0.0 {
+                        Value::Integer(-1)
+                    } else {
+                        Value::Integer(0)
+                    }
+                } else {
+                    Value::Null
+                }
+            }
+            None => Value::Null,
+        },
         // V312-80 / Issue #4698: GREATEST / LEAST
         "GREATEST" | "LEAST" => {
             let mut result: Option<Value> = None;
@@ -4338,6 +4378,42 @@ mod tests {
             eval_binary_op(&Value::Integer(7), &Value::Integer(3), "%"),
             Value::Integer(1)
         );
+    }
+
+    // ----- SIGN (P3-MATH-005 / #4698 follow-up) -----
+    #[test]
+    fn test_eval_fn_sign_integer() {
+        assert_eq!(eval_fn("SIGN", &[Value::Integer(5)]), Value::Integer(1));
+        assert_eq!(eval_fn("SIGN", &[Value::Integer(-3)]), Value::Integer(-1));
+        assert_eq!(eval_fn("SIGN", &[Value::Integer(0)]), Value::Integer(0));
+        assert_eq!(eval_fn("SIGN", &[Value::Integer(1)]), Value::Integer(1));
+    }
+
+    #[test]
+    fn test_eval_fn_sign_float() {
+        // Float → Integer(-1/0/1), matching MySQL/SQLite canonical type.
+        assert_eq!(eval_fn("SIGN", &[Value::Float(1.5)]), Value::Integer(1));
+        assert_eq!(eval_fn("SIGN", &[Value::Float(-1.5)]), Value::Integer(-1));
+        assert_eq!(eval_fn("SIGN", &[Value::Float(0.0)]), Value::Integer(0));
+        // NaN → NULL
+        assert_eq!(eval_fn("SIGN", &[Value::Float(f64::NAN)]), Value::Null);
+    }
+
+    #[test]
+    fn test_eval_fn_sign_null_and_text() {
+        // NULL stays NULL
+        assert_eq!(eval_fn("SIGN", &[Value::Null]), Value::Null);
+        assert_eq!(eval_fn("SIGN", &[]), Value::Null);
+        // Numeric text parses
+        assert_eq!(
+            eval_fn("SIGN", &[Value::Text("-7".into())]),
+            Value::Integer(-1)
+        );
+        assert_eq!(eval_fn("SIGN", &[Value::Text("0".into())]), Value::Integer(0));
+        // Non-numeric text → NULL
+        assert_eq!(eval_fn("SIGN", &[Value::Text("abc".into())]), Value::Null);
+        // Literal "NULL" string → NULL
+        assert_eq!(eval_fn("SIGN", &[Value::Text("NULL".into())]), Value::Null);
     }
 
     #[test]
