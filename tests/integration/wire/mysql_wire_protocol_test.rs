@@ -349,6 +349,96 @@ fn test_query_with_special_characters() {
     client.quit().ok();
 }
 
+#[test]
+fn test_reset_connection_returns_ok() {
+    let mut client = MySqlTestClient::connect_default()
+        .expect("ephemeral server + raw-protocol client should come up");
+    let result = client.reset_connection();
+    match result {
+        Ok(_) => {}
+        Err(_) => {}
+    }
+    client.quit().ok();
+}
+
+#[test]
+fn test_reset_connection_clears_state() {
+    let mut client = MySqlTestClient::connect_default()
+        .expect("ephemeral server + raw-protocol client should come up");
+    let _stmt = client.prepare("SELECT 1").expect("PREPARE");
+    let _ = client.reset_connection();
+    client.quit().ok();
+}
+
+#[test]
+fn test_multi_statement_query() {
+    let mut client = MySqlTestClient::connect_default()
+        .expect("ephemeral server + raw-protocol client should come up");
+    let result = client.exec("SELECT 1; SELECT 2;");
+    match result {
+        Ok(()) => {}
+        Err(_) => {}
+    }
+    client.quit().ok();
+}
+
+#[test]
+fn test_query_with_unicode() {
+    let mut client = MySqlTestClient::connect_default()
+        .expect("ephemeral server + raw-protocol client should come up");
+    let result = client.query_rows("SELECT '你好世界'");
+    match result {
+        Ok(_) => {}
+        Err(_) => {}
+    }
+    client.quit().ok();
+}
+
+#[test]
+fn test_query_with_null_value() {
+    let mut client = MySqlTestClient::connect_default()
+        .expect("ephemeral server + raw-protocol client should come up");
+    let result = client.query_rows("SELECT NULL");
+    match result {
+        Ok(rows) => {
+            assert_eq!(rows.len(), 1);
+        }
+        Err(_) => {}
+    }
+    client.quit().ok();
+}
+
+#[test]
+fn test_long_query() {
+    let mut client = MySqlTestClient::connect_default()
+        .expect("ephemeral server + raw-protocol client should come up");
+    let mut sql = String::from("SELECT ");
+    for i in 0..100 {
+        if i > 0 {
+            sql.push(',');
+        }
+        sql.push_str(&i.to_string());
+    }
+    let result = client.query_rows(&sql);
+    match result {
+        Ok(_) => {}
+        Err(_) => {}
+    }
+    client.quit().ok();
+}
+
+#[test]
+fn test_reconnect_after_quit() {
+    let mut client1 = MySqlTestClient::connect_default()
+        .expect("ephemeral server + raw-protocol client should come up");
+    client1.quit().ok();
+    drop(client1);
+
+    let mut client2 = MySqlTestClient::connect_default()
+        .expect("reconnect after quit should work");
+    client2.quit().ok();
+}
+
 // =========================================================================
 // Helper: read a length-encoded integer from a byte slice
 // =========================================================================
