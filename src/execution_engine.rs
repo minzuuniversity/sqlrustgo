@@ -1198,7 +1198,18 @@ impl<S: StorageEngine + 'static> ExecutionEngine<S> {
         Ok(ExecutorResult::empty())
     }
     fn execute_drop_view(&mut self, drop_view: &DropViewStatement) -> SqlResult<ExecutorResult> {
-        if self.views.remove(&drop_view.name).is_some() || drop_view.if_exists {
+        // V312-95 v2 / Issue #4814: when the in-memory cache does not have
+        // the view, also probe storage so a `DROP VIEW` issued after a
+        // restart (when the in-memory cache is empty but FileStorage has
+        // the row on disk) still works. If neither side knows the view:
+        // honour `IF EXISTS` as a no-op, otherwise raise.
+        let in_memory_present = self.views.remove(&drop_view.name).is_some();
+        let storage_present = self.storage.read().has_view(&drop_view.name);
+        if in_memory_present || storage_present {
+            // Persist the removal — idempotent on the storage side.
+            self.storage.write().drop_view(&drop_view.name)?;
+            Ok(ExecutorResult::empty())
+        } else if drop_view.if_exists {
             Ok(ExecutorResult::empty())
         } else {
             Err(SqlError::ExecutionError(format!(

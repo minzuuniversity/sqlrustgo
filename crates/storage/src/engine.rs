@@ -1095,6 +1095,18 @@ pub trait StorageEngine: Send + Sync {
         Vec::new()
     }
 
+    /// V312-95 v2 / Issue #4814: drop a view from this storage backend.
+    /// Returns `Ok(())` even if the view does not exist (matches the
+    /// `IF EXISTS` semantics already used by `execute_drop_view`); the
+    /// caller is expected to validate existence first when `IF EXISTS`
+    /// is NOT specified. Default impl returns "not supported" so backends
+    /// opt in.
+    fn drop_view(&mut self, _name: &str) -> SqlResult<()> {
+        Err(SqlError::ExecutionError(
+            "drop_view not supported by this storage engine".to_string(),
+        ))
+    }
+
     /// Round-21 / Issue #4218: set the cancel flag for a connection/thread id.
     /// Default impl returns "not supported" so backends opt in.
     fn set_cancel_flag(&mut self, _connection_id: u64) -> SqlResult<()> {
@@ -2115,6 +2127,16 @@ impl StorageEngine for MemoryStorage {
         let mut names: Vec<String> = self.view_defs.keys().cloned().collect();
         names.sort();
         names
+    }
+
+    fn drop_view(&mut self, name: &str) -> SqlResult<()> {
+        // V312-95 v2 / Issue #4814: idempotent — the executor already
+        // guards the IF EXISTS / not-found error path; storage just
+        // evicts whatever it has. Removing from `view_defs` even if the
+        // name is missing is harmless (HashMap::remove is a no-op).
+        self.view_defs.remove(name);
+        self.views.remove(name);
+        Ok(())
     }
 
     // === Sequence support (F-30) ===
