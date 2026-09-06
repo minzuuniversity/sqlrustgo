@@ -627,6 +627,17 @@ pub fn sql_compare(op: &str, left: &Value, right: &Value) -> bool {
         // TPC-H Q9: `WHERE p_name LIKE '%green%'`. Substring match with
         // `%` (any sequence) and `_` (single char) wildcards.
         "LIKE" => crate::expr_utils::sql_like_match(&left.to_sql_string(), &right.to_sql_string()),
+        // P3-REGEXP-001/002 (Issue #4751 follow-up): REGEXP/RLIKE in
+        // WHERE was silently broken — `sql_compare` fell through to
+        // `false`, filtering every row out. Delegate to the executor
+        // helper so the SELECT-list path and the WHERE predicate path
+        // share the same regex engine.
+        "REGEXP" | "RLIKE" => {
+            matches!(
+                sqlrustgo_executor::expr::eval_regexp(left, right),
+                Value::Boolean(true)
+            )
+        }
         _ => false,
     }
 }
