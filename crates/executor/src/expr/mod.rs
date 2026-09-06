@@ -1738,7 +1738,7 @@ pub fn eval_fn(name: &str, args: &[Value]) -> Value {
             match (&args[0], &args[1]) {
                 (Value::Float(a), Value::Float(b)) => {
                     if *b == 0.0 {
-                        Value::Null // SQLite: div-by-zero → NULL
+                        Value::Null
                     } else {
                         Value::Float(a % b)
                     }
@@ -1747,7 +1747,7 @@ pub fn eval_fn(name: &str, args: &[Value]) -> Value {
                     if *b == 0 {
                         Value::Null
                     } else {
-                        Value::Float((*a as f64) % (*b as f64))
+                        Value::Integer(a % b)
                     }
                 }
                 _ => Value::Null,
