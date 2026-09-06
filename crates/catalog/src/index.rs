@@ -20,7 +20,11 @@ pub struct IndexInfo {
     pub name: String,
     /// Table name this index belongs to
     pub table_name: String,
-    /// Column names that make up the index
+    /// V313-100 / Issue #4701 sub-1: the catalog persists only bare
+    /// column names. The parser accepts expression columns but the
+    /// catalog collapses them to a `None` entry, which the executor
+    /// reads as a missing column. That matches the executor's
+    /// no-expression-materialisation behaviour today.
     pub columns: Vec<String>,
     /// Index type
     pub index_type: IndexType,

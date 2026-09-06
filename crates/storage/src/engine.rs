@@ -2,6 +2,7 @@
 //! Supports multiple storage implementations (File, Memory, etc.)
 
 use serde::{Deserialize, Serialize};
+use sqlrustgo_parser::IndexColumnSpec;
 pub use sqlrustgo_types::{SqlError, SqlResult, Value};
 use std::any::Any;
 use std::collections::{HashMap, HashSet};
@@ -603,7 +604,11 @@ pub struct ViewInfo {
 pub struct IndexInfo {
     pub name: String,
     pub table: String,
-    pub columns: Vec<String>,
+    /// V313-100 / Issue #4701 sub-1: index column list may mix bare
+    /// column names and arbitrary expressions. Old JSON persisted as
+    /// `Vec<String>` loads back as one-column-name spec per entry
+    /// because the new `expression` field is `#[serde(default)]`.
+    pub columns: Vec<sqlrustgo_parser::IndexColumnSpec>,
     #[serde(default)]
     pub is_unique: bool,
     #[serde(default)]
@@ -1959,9 +1964,14 @@ impl StorageEngine for MemoryStorage {
         // so `list_indexes` can answer the planner's "is this column
         // indexed?" query. V312-64d / Issue #4664: also retain the full
         // IndexInfo so `sqlite_master` can render the original SQL.
+        // V313-100 / Issue #4701 sub-1: expression-only columns have no
+        // bare column name; skip them in the (table, column) catalog so
+        // the planner's column lookup does not see them.
         let table_lc = info.table.to_lowercase();
         for column in &info.columns {
-            self.indexes.insert((table_lc.clone(), column.clone()));
+            if let Some(name) = column.name.as_deref() {
+                self.indexes.insert((table_lc.clone(), name.to_string()));
+            }
         }
         self.index_infos.insert(info.name.to_lowercase(), info);
         Ok(())
@@ -1972,11 +1982,15 @@ impl StorageEngine for MemoryStorage {
         // matching (table, column) pairs the legacy `list_indexes(table)`
         // contract depends on. If the IndexInfo exists we know its columns;
         // otherwise fall back to a best-effort prune of all (table, _)
-        // entries to keep legacy callers safe.
+        // entries to keep legacy callers safe. V313-100: only the
+        // bare-name entries participate; expression-only columns are
+        // not in the (table, column) index map.
         let key = index_name.to_lowercase();
         if let Some(info) = self.index_infos.remove(&key) {
             for column in &info.columns {
-                self.indexes.remove(&(table.to_lowercase(), column.clone()));
+                if let Some(name) = column.name.as_deref() {
+                    self.indexes.remove(&(table.to_lowercase(), name.to_string()));
+                }
             }
         } else {
             // Legacy single-column drop: synthesize a column name from

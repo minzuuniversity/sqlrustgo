@@ -141,7 +141,14 @@ fn build_sqlite_master_rows(storage: &dyn StorageEngine) -> Vec<Vec<String>> {
                     if idx.is_unique { "UNIQUE " } else { "" },
                     idx.name,
                     idx.table,
-                    idx.columns.join(", ")
+                    idx.columns
+                        .iter()
+                        .map(|c| match &c.name {
+                            Some(n) => n.clone(),
+                            None => format!("{:?}", c.expression),
+                        })
+                        .collect::<Vec<_>>()
+                        .join(", ")
                 )
             } else {
                 idx.original_sql

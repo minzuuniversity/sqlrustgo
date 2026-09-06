@@ -383,6 +383,10 @@ name = "repro_v313_99_4692_writable_cte"
 path = "tests/integration/sql/repro_v313_99_4692_writable_cte.rs"
 
 [[test]]
+name = "repro_v313_100_4701_expression_index"
+path = "tests/integration/sql/repro_v313_100_4701_expression_index.rs"
+
+[[test]]
 name = "json_tvf_test"
 path = "tests/integration/sql/json_tvf_test.rs"
 
