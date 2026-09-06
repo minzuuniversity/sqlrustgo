@@ -167,3 +167,211 @@ fn test_p3_schema_001_sqlite_master() {
         "CREATE TABLE t(id INT); SELECT type, name FROM sqlite_master WHERE name = 't';",
     );
 }
+
+#[test]
+fn test_p3_agg_003_avg_min_max() {
+    assert_match(
+        "P3-AGG-003: AVG/MIN/MAX",
+        "CREATE TABLE t(val INT); INSERT INTO t VALUES (1), (2), (3), (4), (5); SELECT AVG(val), MIN(val), MAX(val) FROM t;",
+    );
+}
+
+#[test]
+fn test_p3_agg_004_group_by() {
+    assert_match(
+        "P3-AGG-004: GROUP BY",
+        "CREATE TABLE t(dept TEXT, salary INT); INSERT INTO t VALUES ('a', 100), ('a', 200), ('b', 150); SELECT dept, SUM(salary) FROM t GROUP BY dept ORDER BY dept;",
+    );
+}
+
+#[test]
+fn test_p3_agg_005_having() {
+    assert_match(
+        "P3-AGG-005: HAVING",
+        "CREATE TABLE t(dept TEXT, salary INT); INSERT INTO t VALUES ('a', 100), ('a', 200), ('b', 150); SELECT dept, SUM(salary) FROM t GROUP BY dept HAVING SUM(salary) > 200 ORDER BY dept;",
+    );
+}
+
+#[test]
+fn test_p3_join_001_inner_join() {
+    assert_match(
+        "P3-JOIN-001: INNER JOIN",
+        "CREATE TABLE t1(id INT); CREATE TABLE t2(id INT); INSERT INTO t1 VALUES (1), (2); INSERT INTO t2 VALUES (2), (3); SELECT t1.id, t2.id FROM t1 INNER JOIN t2 ON t1.id = t2.id ORDER BY t1.id;",
+    );
+}
+
+#[test]
+fn test_p3_join_002_left_join() {
+    assert_match(
+        "P3-JOIN-002: LEFT JOIN",
+        "CREATE TABLE t1(id INT); CREATE TABLE t2(id INT); INSERT INTO t1 VALUES (1), (2); INSERT INTO t2 VALUES (2), (3); SELECT t1.id, t2.id FROM t1 LEFT JOIN t2 ON t1.id = t2.id ORDER BY t1.id;",
+    );
+}
+
+#[test]
+fn test_p3_sub_001_exists() {
+    assert_match(
+        "P3-SUB-001: EXISTS",
+        "CREATE TABLE t1(id INT); CREATE TABLE t2(id INT); INSERT INTO t1 VALUES (1), (2); INSERT INTO t2 VALUES (2); SELECT * FROM t1 WHERE EXISTS (SELECT 1 FROM t2 WHERE t2.id = t1.id) ORDER BY id;",
+    );
+}
+
+#[test]
+fn test_p3_sub_002_in() {
+    assert_match(
+        "P3-SUB-002: IN subquery",
+        "CREATE TABLE t1(id INT); CREATE TABLE t2(id INT); INSERT INTO t1 VALUES (1), (2), (3); INSERT INTO t2 VALUES (2), (4); SELECT * FROM t1 WHERE id IN (SELECT id FROM t2) ORDER BY id;",
+    );
+}
+
+#[test]
+fn test_p3_limit_001() {
+    assert_match(
+        "P3-LIMIT-001: LIMIT",
+        "CREATE TABLE t(id INT); INSERT INTO t VALUES (1), (2), (3), (4), (5); SELECT id FROM t ORDER BY id LIMIT 3;",
+    );
+}
+
+#[test]
+fn test_p3_limit_002_with_offset() {
+    assert_match(
+        "P3-LIMIT-002: LIMIT with OFFSET",
+        "CREATE TABLE t(id INT); INSERT INTO t VALUES (1), (2), (3), (4), (5); SELECT id FROM t ORDER BY id LIMIT 2 OFFSET 2;",
+    );
+}
+
+#[test]
+fn test_p3_delete_001() {
+    assert_match(
+        "P3-DELETE-001: DELETE",
+        "CREATE TABLE t(id INT); INSERT INTO t VALUES (1), (2), (3); DELETE FROM t WHERE id = 2; SELECT * FROM t ORDER BY id;",
+    );
+}
+
+#[test]
+fn test_p3_alter_001_add_column() {
+    assert_match(
+        "P3-ALTER-001: ALTER TABLE ADD COLUMN",
+        "CREATE TABLE t(id INT); ALTER TABLE t ADD COLUMN name TEXT; INSERT INTO t VALUES (1, 'a'); SELECT * FROM t;",
+    );
+}
+
+#[test]
+fn test_p3_string_001_upper_lower() {
+    assert_match(
+        "P3-STRING-001: UPPER/LOWER",
+        "SELECT UPPER('hello'), LOWER('WORLD');",
+    );
+}
+
+#[test]
+fn test_p3_string_002_substr() {
+    assert_match(
+        "P3-STRING-002: SUBSTR",
+        "SELECT SUBSTR('hello world', 1, 5);",
+    );
+}
+
+#[test]
+fn test_p3_string_003_replace() {
+    assert_match(
+        "P3-STRING-003: REPLACE",
+        "SELECT REPLACE('hello world', 'world', 'rust');",
+    );
+}
+
+#[test]
+fn test_p3_string_004_trim() {
+    assert_match(
+        "P3-STRING-004: TRIM",
+        "SELECT TRIM('  hello  ');",
+    );
+}
+
+#[test]
+fn test_p3_math_002_abs() {
+    assert_match(
+        "P3-MATH-002: ABS",
+        "SELECT ABS(-42);",
+    );
+}
+
+#[test]
+fn test_p3_math_003_round() {
+    assert_match(
+        "P3-MATH-003: ROUND",
+        "SELECT ROUND(3.7);",
+    );
+}
+
+#[test]
+fn test_p3_null_002_coalesce() {
+    assert_match(
+        "P3-NULL-002: COALESCE",
+        "SELECT COALESCE(NULL, 'default');",
+    );
+}
+
+#[test]
+fn test_p3_null_003_ifnull() {
+    assert_match(
+        "P3-NULL-003: IFNULL",
+        "SELECT IFNULL(NULL, 'default');",
+    );
+}
+
+#[test]
+fn test_p3_tx_002_commit() {
+    assert_match(
+        "P3-TX-002: COMMIT",
+        "CREATE TABLE t(id INT, val INT); INSERT INTO t VALUES (1, 10); BEGIN; UPDATE t SET val = 20 WHERE id = 1; COMMIT; SELECT val FROM t WHERE id = 1;",
+    );
+}
+
+#[test]
+fn test_p3_cte_001_simple() {
+    assert_match(
+        "P3-CTE-001: Simple CTE",
+        "CREATE TABLE t(id INT); INSERT INTO t VALUES (1), (2), (3); WITH cte AS (SELECT id FROM t WHERE id > 1) SELECT * FROM cte ORDER BY id;",
+    );
+}
+
+#[test]
+fn test_p3_view_001_create_view() {
+    assert_match(
+        "P3-VIEW-001: CREATE VIEW (may not be implemented)",
+        "CREATE TABLE t(id INT); INSERT INTO t VALUES (1), (2); CREATE VIEW v AS SELECT id FROM t;",
+    );
+}
+
+#[test]
+fn test_p3_index_001_drop_index() {
+    assert_match(
+        "P3-INDEX-001: DROP INDEX (may not be implemented)",
+        "CREATE TABLE t(id INT, name TEXT); CREATE INDEX idx_t_name ON t(name); DROP INDEX idx_t_name;",
+    );
+}
+
+#[test]
+fn test_p3_window_001_row_number() {
+    assert_match(
+        "P3-WINDOW-001: ROW_NUMBER",
+        "CREATE TABLE t(id INT); INSERT INTO t VALUES (1), (2), (3); SELECT id, ROW_NUMBER() OVER (ORDER BY id) AS rn FROM t ORDER BY id;",
+    );
+}
+
+#[test]
+fn test_p3_window_002_rank() {
+    assert_match(
+        "P3-WINDOW-002: RANK",
+        "CREATE TABLE t(id INT, val INT); INSERT INTO t VALUES (1, 10), (2, 10), (3, 20); SELECT id, RANK() OVER (ORDER BY val) AS rk FROM t ORDER BY id;",
+    );
+}
+
+#[test]
+fn test_p3_window_003_ntile() {
+    assert_match(
+        "P3-WINDOW-003: NTILE (not implemented)",
+        "CREATE TABLE t(id INT); INSERT INTO t VALUES (1), (2), (3), (4), (5), (6), (7); SELECT id, NTILE(3) OVER (ORDER BY id) AS bucket FROM t ORDER BY id;",
+    );
+}

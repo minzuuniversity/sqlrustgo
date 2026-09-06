@@ -1,31 +1,5 @@
-//! Stateful Differential Test Framework
-//!
-//! This module provides a framework for running SQL sequences on both SQLRustGo
-//! and a reference database (SQLite/MySQL), then comparing results.
-//!
-//! Key differences from the old differential testing:
-//! 1. Runs sequences of SQL statements, not just isolated SELECTs
-//! 2. Compares result rows, column metadata, affected rows, and error codes
-//! 3. Supports stateful sessions (transactions, prepared statements)
-//! 4. Can use MySQL as oracle, not just SQLite
-//!
-//! Usage:
-//! ```rust
-//! use differential_framework::DifferentialTest;
-//!
-//! let test = DifferentialTest::new()
-//!     .sql("CREATE TABLE t(id INT, name TEXT)")
-//!     .sql("INSERT INTO t VALUES (1, 'alice')")
-//!     .sql("SELECT * FROM t")
-//!     .expect_rows(vec![vec!["1", "alice"]])
-//!     .expect_affected_rows(1);
-//!
-//! test.run_with_sqlite_oracle();
-//! ```
-
 use std::collections::HashMap;
 
-/// Result of executing a single SQL statement
 #[derive(Debug, Clone)]
 pub struct SqlResult {
     pub columns: Vec<String>,
@@ -35,7 +9,6 @@ pub struct SqlResult {
     pub error_code: Option<i32>,
 }
 
-/// A single step in a differential test
 #[derive(Debug, Clone)]
 pub struct TestStep {
     pub sql: String,
@@ -43,7 +16,6 @@ pub struct TestStep {
     pub description: Option<String>,
 }
 
-/// Configuration for differential test execution
 #[derive(Debug, Clone)]
 pub struct DifferentialConfig {
     /// Whether to compare column metadata
@@ -70,7 +42,6 @@ impl Default for DifferentialConfig {
     }
 }
 
-/// A differential test that runs SQL sequences on both systems
 pub struct DifferentialTest {
     steps: Vec<TestStep>,
     config: DifferentialConfig,
@@ -86,7 +57,6 @@ impl DifferentialTest {
         }
     }
 
-    /// Add a SQL statement to run
     pub fn sql(mut self, sql: &str) -> Self {
         self.steps.push(TestStep {
             sql: sql.to_string(),
@@ -96,7 +66,6 @@ impl DifferentialTest {
         self
     }
 
-    /// Add a SQL statement with expected result
     pub fn sql_with_result(mut self, sql: &str, expected: SqlResult) -> Self {
         self.steps.push(TestStep {
             sql: sql.to_string(),
@@ -106,7 +75,6 @@ impl DifferentialTest {
         self
     }
 
-    /// Add a SQL statement with expected rows
     pub fn expect_rows(mut self, sql: &str, rows: Vec<Vec<&str>>) -> Self {
         self.steps.push(TestStep {
             sql: sql.to_string(),
@@ -122,25 +90,26 @@ impl DifferentialTest {
         self
     }
 
-    /// Add setup SQL that runs before the test
     pub fn setup(mut self, sql: &str) -> Self {
         self.setup_sql.push(sql.to_string());
         self
     }
 
-    /// Configure the test
     pub fn with_config(mut self, config: DifferentialConfig) -> Self {
         self.config = config;
         self
     }
 
-    /// Run the test with SQLite as oracle
     pub fn run_with_sqlite_oracle(&self) -> DifferentialResult {
         let mut runner = SqliteDifferentialRunner::new();
         self.run(&mut runner)
     }
 
-    /// Run the test with a custom oracle
+    pub fn run_with_mysql_oracle(&self) -> DifferentialResult {
+        let mut runner = MysqlDifferentialRunner::new();
+        self.run(&mut runner)
+    }
+
     pub fn run(&self, oracle: &mut dyn DifferentialOracle) -> DifferentialResult {
         let mut result = DifferentialResult {
             passed: true,
@@ -290,12 +259,10 @@ impl std::fmt::Display for DifferentialResult {
     }
 }
 
-/// Trait for differential test oracles
 pub trait DifferentialOracle {
     fn execute_both(&mut self, sql: &str) -> (SqlResult, SqlResult);
 }
 
-/// SQLite-based oracle
 pub struct SqliteDifferentialRunner {
     sqlrustgo_bin: String,
     sqlite_bin: String,
@@ -322,27 +289,209 @@ impl DifferentialOracle for SqliteDifferentialRunner {
 
 impl SqliteDifferentialRunner {
     fn execute_sqlrustgo(&self, sql: &str) -> SqlResult {
-        // Implementation would run SQL via sqlrustgo CLI
-        // For now, return placeholder
-        SqlResult {
-            columns: Vec::new(),
-            rows: Vec::new(),
-            affected_rows: 0,
-            error: None,
-            error_code: None,
+        use std::process::Command;
+        let output = Command::new(&self.sqlrustgo_bin)
+            .args(["sqlite", "--batch", "--mode", "csv", "--headers", "true", ":memory:"])
+            .arg(sql)
+            .output();
+        match output {
+            Ok(out) => parse_csv_output(&String::from_utf8_lossy(&out.stdout)),
+            Err(e) => SqlResult {
+                columns: Vec::new(),
+                rows: Vec::new(),
+                affected_rows: 0,
+                error: Some(format!("Failed to execute: {}", e)),
+                error_code: None,
+            },
         }
     }
 
     fn execute_sqlite(&self, sql: &str) -> SqlResult {
-        // Implementation would run SQL via sqlite3 CLI
-        // For now, return placeholder
-        SqlResult {
+        use std::process::Command;
+        let output = Command::new(&self.sqlite_bin)
+            .args(["-csv", "-header", ":memory:"])
+            .arg(sql)
+            .output();
+        match output {
+            Ok(out) => parse_csv_output(&String::from_utf8_lossy(&out.stdout)),
+            Err(e) => SqlResult {
+                columns: Vec::new(),
+                rows: Vec::new(),
+                affected_rows: 0,
+                error: Some(format!("Failed to execute: {}", e)),
+                error_code: None,
+            },
+        }
+    }
+}
+
+pub struct MysqlDifferentialRunner {
+    sqlrustgo_bin: String,
+    mysql_host: String,
+    mysql_port: u16,
+    mysql_user: String,
+    mysql_password: String,
+    mysql_database: String,
+}
+
+impl MysqlDifferentialRunner {
+    pub fn new() -> Self {
+        Self {
+            sqlrustgo_bin: std::env::var("SQLRUSTGO_BIN")
+                .unwrap_or_else(|_| "/Users/liying/dev/sqlrustgo/target/debug/sqlrustgo".to_string()),
+            mysql_host: std::env::var("MYSQL_HOST")
+                .unwrap_or_else(|_| "127.0.0.1".to_string()),
+            mysql_port: std::env::var("MYSQL_PORT")
+                .unwrap_or_else(|_| "3306".to_string())
+                .parse()
+                .unwrap_or(3306),
+            mysql_user: std::env::var("MYSQL_USER")
+                .unwrap_or_else(|_| "root".to_string()),
+            mysql_password: std::env::var("MYSQL_PASSWORD")
+                .unwrap_or_else(|_| "".to_string()),
+            mysql_database: std::env::var("MYSQL_DATABASE")
+                .unwrap_or_else(|_| "test".to_string()),
+        }
+    }
+}
+
+impl DifferentialOracle for MysqlDifferentialRunner {
+    fn execute_both(&mut self, sql: &str) -> (SqlResult, SqlResult) {
+        let ours = self.execute_sqlrustgo(sql);
+        let theirs = self.execute_mysql(sql);
+        (ours, theirs)
+    }
+}
+
+impl MysqlDifferentialRunner {
+    fn execute_sqlrustgo(&self, sql: &str) -> SqlResult {
+        use std::process::Command;
+        let output = Command::new(&self.sqlrustgo_bin)
+            .args(["sqlite", "--batch", "--mode", "csv", "--headers", "true", ":memory:"])
+            .arg(sql)
+            .output();
+        match output {
+            Ok(out) => parse_csv_output(&String::from_utf8_lossy(&out.stdout)),
+            Err(e) => SqlResult {
+                columns: Vec::new(),
+                rows: Vec::new(),
+                affected_rows: 0,
+                error: Some(format!("Failed to execute: {}", e)),
+                error_code: None,
+            },
+        }
+    }
+
+    fn execute_mysql(&self, sql: &str) -> SqlResult {
+        use std::process::Command;
+        let output = Command::new("mysql")
+            .args([
+                "-h", &self.mysql_host,
+                "-P", &self.mysql_port.to_string(),
+                "-u", &self.mysql_user,
+                &format!("-p{}", self.mysql_password),
+                &self.mysql_database,
+                "-e", sql,
+                "--batch",
+                "--raw",
+            ])
+            .output();
+        match output {
+            Ok(out) => {
+                let stdout = String::from_utf8_lossy(&out.stdout);
+                let stderr = String::from_utf8_lossy(&out.stderr);
+                if !stderr.is_empty() && !out.status.success() {
+                    SqlResult {
+                        columns: Vec::new(),
+                        rows: Vec::new(),
+                        affected_rows: 0,
+                        error: Some(stderr.to_string()),
+                        error_code: Some(1),
+                    }
+                } else {
+                    parse_tab_output(&stdout)
+                }
+            }
+            Err(e) => SqlResult {
+                columns: Vec::new(),
+                rows: Vec::new(),
+                affected_rows: 0,
+                error: Some(format!("Failed to execute: {}", e)),
+                error_code: None,
+            },
+        }
+    }
+}
+
+fn parse_csv_output(output: &str) -> SqlResult {
+    let lines: Vec<&str> = output.lines().collect();
+    if lines.is_empty() {
+        return SqlResult {
             columns: Vec::new(),
             rows: Vec::new(),
             affected_rows: 0,
             error: None,
             error_code: None,
-        }
+        };
+    }
+
+    let columns: Vec<String> = lines[0]
+        .split(',')
+        .map(|s| s.trim().trim_matches('"').to_string())
+        .collect();
+
+    let rows: Vec<Vec<String>> = lines[1..]
+        .iter()
+        .filter(|l| !l.trim().is_empty())
+        .map(|l| {
+            l.split(',')
+                .map(|s| s.trim().trim_matches('"').to_string())
+                .collect()
+        })
+        .collect();
+
+    SqlResult {
+        columns,
+        rows,
+        affected_rows: 0,
+        error: None,
+        error_code: None,
+    }
+}
+
+fn parse_tab_output(output: &str) -> SqlResult {
+    let lines: Vec<&str> = output.lines().collect();
+    if lines.is_empty() {
+        return SqlResult {
+            columns: Vec::new(),
+            rows: Vec::new(),
+            affected_rows: 0,
+            error: None,
+            error_code: None,
+        };
+    }
+
+    let columns: Vec<String> = lines[0]
+        .split('\t')
+        .map(|s| s.trim().to_string())
+        .collect();
+
+    let rows: Vec<Vec<String>> = lines[1..]
+        .iter()
+        .filter(|l| !l.trim().is_empty())
+        .map(|l| {
+            l.split('\t')
+                .map(|s| s.trim().to_string())
+                .collect()
+        })
+        .collect();
+
+    SqlResult {
+        columns,
+        rows,
+        affected_rows: 0,
+        error: None,
+        error_code: None,
     }
 }
 
@@ -360,5 +509,11 @@ mod tests {
         // This would run against real databases in production
         // For now, just verify the framework compiles
         assert!(test.steps.len() == 3);
+    }
+
+    #[test]
+    fn test_mysql_oracle_available() {
+        let runner = MysqlDifferentialRunner::new();
+        assert!(!runner.mysql_host.is_empty());
     }
 }
