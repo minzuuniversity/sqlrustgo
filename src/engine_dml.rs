@@ -1226,6 +1226,13 @@ fn execute_update_multi_table<S: StorageEngine + 'static>(
             name: jc.table.clone(),
             schema: None,
             alias: jc.alias.clone(),
+            // V312-95 v2 / Issue #4809: JOIN-driven TableRefs in
+            // UPDATE statements do not inherit the SQLite-style
+            // INDEXED BY / NOT INDEXED hints (those are scoped to the
+            // FROM clause of a SELECT). Defaults preserve the
+            // pre-#4809 contract.
+            indexed_by: None,
+            not_indexed: None,
         });
     }
     let table_refs = &effective_table_refs;

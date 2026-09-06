@@ -158,6 +158,12 @@ mod tests {
             // set `schema`; they exercise real storage tables only.
             schema: None,
             alias: None,
+            // V312-95 v2 / Issue #4809: SQLite INDEXED BY / NOT INDEXED
+            // hints are not meaningful for auxiliary TableRef values used
+            // in unit-test plumbing. The defaults (None / None) preserve
+            // the pre-#4809 contract.
+            indexed_by: None,
+            not_indexed: None,
         }
     }
 

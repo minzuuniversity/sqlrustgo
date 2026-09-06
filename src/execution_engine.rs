@@ -2592,6 +2592,10 @@ pub(crate) fn substitute_session_vars_in_select(
         table: select.table.clone(),
         schema: select.schema.clone(),
         from_alias: select.from_alias.clone(),
+        // V312-95 v2 / Issue #4809: propagate SQLite INDEXED BY /
+        // NOT INDEXED hints through session-var substitution.
+        from_indexed_by: select.from_indexed_by.clone(),
+        from_not_indexed: select.from_not_indexed,
         from_subquery: select.from_subquery.clone(),
         // V312-95 v2 / Issue #4717: propagate FROM (WITH ...) subquery.
         from_with_subquery: select.from_with_subquery.clone(),

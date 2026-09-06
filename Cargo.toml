@@ -385,6 +385,10 @@ name = "repro_v312_4717_v2"
 path = "tests/integration/sql/repro_v312_4717_v2.rs"
 
 [[test]]
+name = "repro_v312_95_4809"
+path = "tests/integration/sql/repro_v312_95_4809.rs"
+
+[[test]]
 name = "repro_v313_97_4679_grouping_sets"
 path = "tests/integration/sql/repro_v313_97_4679_grouping_sets.rs"
 
