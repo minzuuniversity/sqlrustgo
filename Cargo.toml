@@ -409,6 +409,10 @@ name = "p3_view_4814_test"
 path = "tests/integration/sql/p3_view_4814_test.rs"
 
 [[test]]
+name = "repro_v312_4816_ntile"
+path = "tests/integration/sql/repro_v312_4816_ntile.rs"
+
+[[test]]
 name = "json_tvf_test"
 path = "tests/integration/sql/json_tvf_test.rs"
 

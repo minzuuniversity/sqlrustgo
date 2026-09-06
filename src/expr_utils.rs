@@ -983,8 +983,19 @@ pub fn evaluate_window_call(
                 }
                 "NTILE" => {
                     // V312-85 / Issue #4750: NTILE(n) buckets the partition
-                    // into `n` roughly equal-sized tiles. Bucket index is
-                    // min(ceil((local_idx+1) * n / partition_size), n).
+                    // into `n` roughly equal-sized tiles. The standard
+                    // distribution rule (SQLite / SQL:1999 / PostgreSQL
+                    // "balanced" algorithm) is:
+                    //   rows_per_big_bucket = ceil(total / n)
+                    //   big_bucket_count    = total mod n
+                    //   first `big_bucket_count` buckets get rows_per_big_bucket
+                    //   rows each; remaining buckets get one fewer.
+                    //
+                    // V312-86 / Issue #4816: the previous implementation
+                    // used `ceil(pos * n / total)`, which produced a
+                    // non-standard distribution (e.g. for 7 rows / 4
+                    // buckets it produced 1,2,2,3,3,4,4 instead of the
+                    // correct 1,1,2,2,3,3,4).
                     let n = if call.args.is_empty() {
                         1
                     } else {
@@ -998,7 +1009,25 @@ pub fn evaluate_window_call(
                         Value::Null
                     } else {
                         let pos = (local_idx as i64) + 1;
-                        let bucket = (pos * n + total - 1) / total;
+                        // ceil(total / n) = (total + n - 1) / n in integer math.
+                        let rows_per_big_bucket = (total + n - 1) / n;
+                        let big_bucket_count = total % n;
+                        // Number of rows sitting in the first `big_bucket_count`
+                        // (larger) buckets.
+                        let big_threshold = big_bucket_count * rows_per_big_bucket;
+                        let bucket = if pos <= big_threshold {
+                            // pos lives in a "big" bucket: bucket 1..=big_bucket_count.
+                            (pos + rows_per_big_bucket - 1) / rows_per_big_bucket
+                        } else {
+                            // pos lives in a "small" bucket: offset into the
+                            // small region, then divide by rows_per_big_bucket - 1.
+                            let small_bucket_size = rows_per_big_bucket - 1;
+                            let pos_in_small = pos - big_threshold;
+                            let offset_in_small = pos_in_small - 1;
+                            big_bucket_count
+                                + (offset_in_small / small_bucket_size.max(1))
+                                + 1
+                        };
                         Value::Integer(bucket.min(n))
                     }
                 }
