@@ -118,8 +118,10 @@ echo "Sysbench PID: $SYSBENCH_PID"
 
 # ── 6. Metrics header ──
 METRICS="$RESULTS_DIR/metrics.csv"
-echo "ts,elapsed_s,rss_kb,fd,threads,wal_bytes,disk_avail_kb,queries_ok,server_alive,sysbench_alive" > "$METRICS"
+# v312-65: added probe_ok + probe_fails columns for fail-fast stall detection
+echo "ts,elapsed_s,rss_kb,fd,threads,wal_bytes,disk_avail_kb,queries_ok,probe_ok,probe_fails,server_alive,sysbench_alive" > "$METRICS"
 QUERIES_OK=0
+PROBE_FAILS=0
 
 # ── 7. SOAK monitor loop (1 sample/min) ──
 echo "=== SOAK monitor loop started (${HOURS}h) ==="
@@ -154,27 +156,47 @@ while [ $(date +%s) -lt $END_TS ]; do
   WAL=$(du -sb "$DATA_DIR" 2>/dev/null | cut -f1 || echo 0)
   DISK=$(df "$DATA_DIR" 2>/dev/null | tail -1 | awk '{print $4}' || echo 0)
 
-  # Query probe (use mysql CLI, not binary exec)
+  # Query probe (use mysql CLI, not binary exec). v312-65: track consecutive
+  # failures — if the server is alive but probes keep failing (likely disk
+  # stall or hung sysbench), exit with a clear error instead of letting the
+  # script sit in 60-min status-print silence while CI waits.
+  PROBE_OK=1
   if "$MYSQL_BIN" -h 127.0.0.1 -P "$PORT" -uroot --silent \
        -e "SELECT ${SAMPLE}" > /dev/null 2>&1; then
     QUERIES_OK=$((QUERIES_OK + 1))
+    PROBE_FAILS=0
+  else
+    PROBE_OK=0
+    PROBE_FAILS=$((PROBE_FAILS + 1))
   fi
 
-  echo "$TS,$ELAPSED,$RSS,$FD,$THREADS,$WAL,$DISK,$QUERIES_OK,$ALIVE,$SB_ALIVE" >> "$METRICS"
+  # If server alive but 5+ consecutive probes fail (~5 min), fail fast.
+  if [ "$PROBE_FAILS" -ge 5 ]; then
+    echo "!!! SERVER UNRESPONSIVE (${PROBE_FAILS} consecutive probe failures) at elapsed=${ELAPSED}s" | tee -a "$RESULTS_DIR/errors.log"
+    tail -100 "$RESULTS_DIR/server.log" >> "$RESULTS_DIR/errors.log"
+    exit 1
+  fi
 
-  # Status print every 60 samples (60 min)
-  if [ $((SAMPLE % 60)) -eq 0 ]; then
+  # Append metrics row — v312-65: added probe_ok + probe_fails columns
+  echo "$TS,$ELAPSED,$RSS,$FD,$THREADS,$WAL,$DISK,$QUERIES_OK,$PROBE_OK,$PROBE_FAILS,$ALIVE,$SB_ALIVE" >> "$METRICS"
+
+  # Status print every 10 samples (10 min) — was 60 (60 min); v312-65: shorter
+  # interval lets CI surface regressions and disk-stall symptoms within minutes
+  # rather than waiting until the next hourly boundary.
+  if [ $((SAMPLE % 10)) -eq 0 ]; then
     TPS=$((QUERIES_OK / (ELAPSED / 60 + 1)))
     echo "[$(date -u)] h=$((ELAPSED/3600)).$(((ELAPSED%3600)/60)) \
 rss=${RSS}KB fd=$FD thr=$THREADS wal=${WAL} q=${QUERIES_OK} tps=${TPS}/m \
 server_alive=$ALIVE sysbench_alive=$SB_ALIVE"
   fi
 
-  # Snapshot every 6h (360 samples)
-  if [ $((SAMPLE % 360)) -eq 0 ]; then
+  # Snapshot every 60 samples (60 min) — was 360 (6h); v312-65: more frequent
+  # STATUS/snapshot artifacts so a CI failure at hour 3 still leaves evidence
+  # from hours 0..2 instead of only the start.
+  if [ $((SAMPLE % 60)) -eq 0 ]; then
     cp "$METRICS" "$RESULTS_DIR/metrics_${ELAPSED}s.csv"
     cat > "$RESULTS_DIR/STATUS_${ELAPSED}s.md" <<EOF
-## Status at ${ELAPSED}s ($((ELAPSED/3600))h)
+## Status at ${ELAPSED}s ($((ELAPSED/3600))h):
 
 - **Duration**: $((ELAPSED/3600))h $(((ELAPSED%3600)/60))m
 - **RSS**: ${RSS}KB ($((RSS/1024))MB)
