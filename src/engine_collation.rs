@@ -242,6 +242,9 @@ mod tests {
             table: table.to_string(),
             schema: None,
             from_alias: None,
+            // V312-95 v2 / Issue #4809: INDEXED BY / NOT INDEXED hints.
+            from_indexed_by: None,
+            from_not_indexed: None,
             from_subquery: None,
             // V312-95 v2 / Issue #4717: propagate FROM (WITH ...) subquery.
             from_with_subquery: None,
