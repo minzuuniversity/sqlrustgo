@@ -1971,6 +1971,10 @@ pub fn eval_fn(name: &str, args: &[Value]) -> Value {
             }
         }
         // V312-79 / Issue #4670: CEIL / CEILING / FLOOR
+        //
+        // V313-105 / Issue #4670 follow-up: return Integer (not Float)
+        // to match MySQL/SQLite canonical type — the fractional part
+        // is removed, so the result is always a whole number.
         "CEIL" | "CEILING" | "FLOOR" => {
             if args.is_empty() {
                 return Value::Null;
@@ -1980,9 +1984,9 @@ pub fn eval_fn(name: &str, args: &[Value]) -> Value {
                 Some(Value::Integer(i)) => Value::Integer(*i),
                 Some(Value::Float(f)) => {
                     if name == "FLOOR" {
-                        Value::Float(f.floor())
+                        Value::Integer(f.floor() as i64)
                     } else {
-                        Value::Float(f.ceil())
+                        Value::Integer(f.ceil() as i64)
                     }
                 }
                 Some(v) => {
@@ -1991,9 +1995,9 @@ pub fn eval_fn(name: &str, args: &[Value]) -> Value {
                         Value::Null
                     } else if let Ok(num) = s.parse::<f64>() {
                         if name == "FLOOR" {
-                            Value::Float(num.floor())
+                            Value::Integer(num.floor() as i64)
                         } else {
-                            Value::Float(num.ceil())
+                            Value::Integer(num.ceil() as i64)
                         }
                     } else {
                         Value::Null
@@ -4466,6 +4470,38 @@ mod tests {
         assert_eq!(eval_fn("SIGN", &[Value::Text("abc".into())]), Value::Null);
         // Literal "NULL" string → NULL
         assert_eq!(eval_fn("SIGN", &[Value::Text("NULL".into())]), Value::Null);
+    }
+
+    // ----- V313-105 / Issue #4670 follow-up: CEIL / FLOOR return Integer -----
+    #[test]
+    fn test_eval_fn_ceil_floor_returns_integer_for_float() {
+        // V313-105 / Issue #4670 follow-up: previously returned
+        // Value::Float (1.0, 2.0). MySQL/SQLite return Integer for
+        // CEIL/FLOOR — the fractional part is removed, so the result
+        // is always a whole number. Return Integer to match.
+        assert_eq!(eval_fn("CEIL", &[Value::Float(1.5)]), Value::Integer(2));
+        assert_eq!(eval_fn("CEIL", &[Value::Float(2.7)]), Value::Integer(3));
+        assert_eq!(eval_fn("CEIL", &[Value::Float(-1.5)]), Value::Integer(-1));
+        assert_eq!(eval_fn("CEIL", &[Value::Float(0.0)]), Value::Integer(0));
+        assert_eq!(eval_fn("FLOOR", &[Value::Float(1.5)]), Value::Integer(1));
+        assert_eq!(eval_fn("FLOOR", &[Value::Float(2.7)]), Value::Integer(2));
+        assert_eq!(eval_fn("FLOOR", &[Value::Float(-1.5)]), Value::Integer(-2));
+        // CEILING alias.
+        assert_eq!(eval_fn("CEILING", &[Value::Float(1.2)]), Value::Integer(2));
+        // Integer input passes through.
+        assert_eq!(eval_fn("CEIL", &[Value::Integer(3)]), Value::Integer(3));
+    }
+
+    #[test]
+    fn test_eval_fn_ceil_floor_null_and_text() {
+        // NULL → NULL
+        assert_eq!(eval_fn("CEIL", &[Value::Null]), Value::Null);
+        assert_eq!(eval_fn("FLOOR", &[Value::Null]), Value::Null);
+        // No args → NULL
+        assert_eq!(eval_fn("CEIL", &[]), Value::Null);
+        // Text "1.5" → parses to float → ceil=2, floor=1
+        assert_eq!(eval_fn("CEIL", &[Value::Text("1.5".into())]), Value::Integer(2));
+        assert_eq!(eval_fn("FLOOR", &[Value::Text("1.5".into())]), Value::Integer(1));
     }
 
     // ----- V312-90 / P3-DATE-002: EXTRACT returns Integer (not Text) -----
