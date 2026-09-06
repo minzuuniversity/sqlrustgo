@@ -324,7 +324,7 @@ pub fn execute_insert<S: StorageEngine + 'static>(
                     if record_matches_unique_key(existing, new_record, &table_info) {
                         matched = true;
                         if let Some(ref updates) = insert.on_duplicate_key_update {
-                            apply_odku(&mut *storage, &table_name, &table_info, existing, updates)?;
+                            apply_odku(&mut *storage, &table_name, &table_info, existing, new_record, updates)?;
                             odku_handled_indices.insert(new_idx);
                         } else if let Some(ref clause) = insert.on_conflict_clause {
                             // V312-63 / Issue #4642: SQLite/Postgres UPSERT
@@ -332,6 +332,11 @@ pub fn execute_insert<S: StorageEngine + 'static>(
                             // ON CONFLICT DO UPDATE SET ... applies the
                             // supplied assignments against the existing row
                             // using the same evaluation context as ODKU.
+                            //
+                            // V312-90 / Issue #4807: also thread the new
+                            // record so `EXCLUDED.col` references inside
+                            // the SET assignments can resolve against the
+                            // row that conflicted (not the existing row).
                             match &clause.action {
                                 sqlrustgo_parser::OnConflictAction::DoNothing => {
                                     odku_handled_indices.insert(new_idx);
@@ -342,6 +347,7 @@ pub fn execute_insert<S: StorageEngine + 'static>(
                                         &table_name,
                                         &table_info,
                                         existing,
+                                        new_record,
                                         updates,
                                     )?;
                                     odku_handled_indices.insert(new_idx);
