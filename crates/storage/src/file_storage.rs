@@ -3,8 +3,9 @@
 
 use crate::bplus_tree::BPlusTree;
 use crate::engine::{
-    ColumnDefinition, ForeignKeyConstraint, Record, RowFilter, RowMutation, SharedSliceIter,
-    StorageEngine, TableData, TableInfo, TriggerInfo, UniqueConstraint, ViewInfo,
+    ColumnDefinition, ForeignKeyConstraint, IndexInfo, Record, RowFilter, RowMutation,
+    SharedSliceIter, StorageEngine, TableData, TableInfo, TriggerInfo, UniqueConstraint,
+    ViewInfo,
 };
 use sqlrustgo_types::{SqlError, SqlResult, Value};
 use std::any::Any;
@@ -21,8 +22,15 @@ pub struct FileStorage {
     data_dir: PathBuf,
     /// In-memory cache of tables
     tables: HashMap<String, TableData>,
-    /// B+ Tree indexes protected by RwLock for concurrent access
+    /// B+ Tree indexes protected by RwLock for concurrent access.
+    /// Keyed by (table, column) because the on-disk layout is one
+    /// file per (table, column) pair.
     indexes: RwLock<HashMap<(String, String), BPlusTree>>,
+    /// V312-95 v3 / P3-HINT-001 follow-up: index metadata catalog.
+    /// Without this, the default `list_all_indexes()` returns empty,
+    /// so the executor's `INDEXED BY <name>` validator reports
+    /// "index does not exist" for every CLI batch-mode index.
+    index_metadata: RwLock<HashMap<String, IndexInfo>>,
     /// Insert buffer for batching writes
     insert_buffer: HashMap<String, Vec<Record>>,
     /// Threshold to trigger buffer flush
@@ -103,6 +111,7 @@ impl FileStorage {
             data_dir,
             tables: HashMap::new(),
             indexes: RwLock::new(HashMap::new()),
+            index_metadata: RwLock::new(HashMap::new()),
             insert_buffer: HashMap::new(),
             // v3.12.0 #4020 follow-up: raise default buffer flush threshold from
             // 100 to 10_000. Each flush goes through insert_direct, which clones
@@ -149,6 +158,7 @@ impl FileStorage {
             data_dir,
             tables: HashMap::new(),
             indexes: RwLock::new(HashMap::new()),
+            index_metadata: RwLock::new(HashMap::new()),
             insert_buffer: HashMap::new(),
             buffer_threshold,
             enable_buffer,
@@ -179,6 +189,7 @@ impl FileStorage {
             data_dir,
             tables: HashMap::new(),
             indexes: RwLock::new(HashMap::new()),
+            index_metadata: RwLock::new(HashMap::new()),
             insert_buffer: HashMap::new(),
             // v3.12.0 #4020 follow-up: see FileStorage::new — default raised to
             // 10_000 to amortise O(N) insert_direct over a much larger batch.
@@ -228,6 +239,7 @@ impl FileStorage {
             data_dir,
             tables: HashMap::new(),
             indexes: RwLock::new(HashMap::new()),
+            index_metadata: RwLock::new(HashMap::new()),
             insert_buffer: HashMap::new(),
             // v3.12.0 #4020 follow-up: see FileStorage::new — default raised to
             // 10_000 to amortise O(N) insert_direct over a much larger batch.
@@ -743,6 +755,13 @@ impl FileStorage {
 
         if let Ok(mut indexes) = self.indexes.write() {
             indexes.remove(&key);
+        }
+
+        // V312-95 v3 / P3-HINT-001 follow-up: also remove the
+        // metadata-catalog entries that name this (table, column)
+        // pair so `list_all_indexes()` doesn't return a ghost entry.
+        if let Ok(mut md) = self.index_metadata.write() {
+            md.retain(|_, info| !(info.table == table_name && info.columns.iter().any(|c| c.name.as_deref() == Some(column_name))));
         }
 
         let path = self.index_path(table_name, column_name);
@@ -3374,6 +3393,15 @@ impl StorageEngine for FileStorage {
             .cloned()
             .ok_or_else(|| SqlError::TableNotFound(table.to_string()))?;
 
+        // V312-95 v3 / P3-HINT-001 follow-up: register the index in
+        // the metadata catalog so `list_all_indexes()` returns it.
+        // Without this, INDEXED BY <name> validation (see
+        // src/engine_select.rs) reports the index as missing even
+        // though the B+ tree below is correctly built.
+        if let Ok(mut md) = self.index_metadata.write() {
+            md.insert(info.name.clone(), info.clone());
+        }
+
         // Build a B+ Tree for each column in the index
         let mut indexes = self.indexes.write().unwrap();
         for column in info.columns.iter() {
@@ -3425,12 +3453,29 @@ impl StorageEngine for FileStorage {
             indexes.remove(&key);
         }
 
+        // V312-95 v3 / P3-HINT-001 follow-up: also remove the
+        // metadata-catalog entry that names this index.
+        if let Ok(mut md) = self.index_metadata.write() {
+            md.retain(|_, info| !(info.table == table && info.name == index_name));
+        }
+
         let path = self.index_path(table, index_name);
         if path.exists() {
             std::fs::remove_file(path).map_err(SqlError::from)?;
         }
 
         Ok(())
+    }
+
+    /// V312-95 v3 / P3-HINT-001 follow-up: enumerate index metadata
+    /// so the executor's `INDEXED BY <name>` validator can find the
+    /// index. The default trait method returns `Vec::new()`, which
+    /// silently breaks every CLI batch-mode `INDEXED BY` query.
+    fn list_all_indexes(&self) -> Vec<IndexInfo> {
+        self.index_metadata
+            .read()
+            .map(|md| md.values().cloned().collect())
+            .unwrap_or_default()
     }
 
     fn add_column(&mut self, table: &str, column: ColumnDefinition) -> SqlResult<()> {
