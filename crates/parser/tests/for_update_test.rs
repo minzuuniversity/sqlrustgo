@@ -88,6 +88,7 @@ fn test_select_statement_has_lock_clause_field() {
         group_by: vec![],
         with_rollup: false,
         with_cube: false,
+        grouping_sets: vec![],
         having: None,
         order_by: vec![],
         limit: None,
