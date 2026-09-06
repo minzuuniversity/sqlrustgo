@@ -122,10 +122,12 @@ jobs:
         run: |
           set -euo pipefail
           cd "${REPO:-repo}"
-          SOAK_HOURS=1 bash scripts/soak/run_soak_loop.sh
+          # v312-65: SOAK_NO_DETACH=1 forces the loop script to run in the
+          # foreground. Without it, run_soak_loop.sh's stdin-not-TTY auto-detach
+          # exits 0 in ~0 s, leaving the 1h smoke step completely unverified
+          SOAK_NO_DETACH=1 SOAK_HOURS=1 bash scripts/soak/run_soak_loop.sh
         timeout-minutes: 90
         continue-on-error: false
-
       - name: 168h SOAK
         shell: bash
         run: |
