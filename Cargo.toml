@@ -310,6 +310,9 @@ path = "tests/integration/sql/v312_74_on_conflict_on_constraint_test.rs"
 name = "v312_90_sign_function_test"
 path = "tests/integration/sql/v312_90_sign_function_test.rs"
 [[test]]
+name = "v312_90_where_regexp_test"
+path = "tests/integration/sql/v312_90_where_regexp_test.rs"
+[[test]]
 name = "v312_75_update_of_trigger_test"
 path = "tests/integration/sql/v312_75_update_of_trigger_test.rs"
 

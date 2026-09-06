@@ -1064,7 +1064,9 @@ pub fn eval_binary_op(left: &Value, right: &Value, op: &str) -> Value {
 }
 
 /// V312-85 / Issue #4751: REGEXP/RLIKE implementation.
-fn eval_regexp(left: &Value, right: &Value) -> Value {
+/// `pub` so `sql_compare` (WHERE-clause predicate path) can
+/// dispatch the same operator.
+pub fn eval_regexp(left: &Value, right: &Value) -> Value {
     if matches!(left, Value::Null) || matches!(right, Value::Null) {
         return Value::Null;
     }
