@@ -253,6 +253,115 @@ pub fn expression_to_value_from_string(s: &str) -> Value {
     }
 }
 
+/// V312-90 / Issue #4807: resolve `EXCLUDED.col` / `excluded.col` references
+/// in the SET clause of an UPSERT against the **new row** being
+/// inserted (the row that conflicted and triggered the UPDATE path).
+/// Returns the new-row value, or falls through to
+/// `evaluate_expression` against the existing row for non-EXCLUDED
+/// expressions.
+pub fn resolve_excluded_ref(
+    expr: &Expression,
+    new_row: &[Value],
+    table_info: &TableInfo,
+    existing_row: &[Value],
+) -> Value {
+    if let Expression::Identifier(name) = expr {
+        if let Some(col) = name.strip_prefix("excluded.").or_else(|| name.strip_prefix("EXCLUDED.")) {
+            if let Some(idx) = table_info.columns.iter().position(|c| c.name.eq_ignore_ascii_case(col)) {
+                if let Some(v) = new_row.get(idx) {
+                    return v.clone();
+                }
+            }
+        }
+    }
+    // Fallback: generic row evaluator with the existing row as the
+    // column-reference context. This preserves the pre-fix
+    // `evaluate_expression` behaviour for non-EXCLUDED expressions
+    // (e.g. `cnt = cnt + 1` reading the existing row's cnt).
+    match evaluate_expression(expr, existing_row, table_info) {
+        Ok(v) => v,
+        Err(_) => expression_to_value(expr),
+    }
+}
+
+/// Evaluate an expression in a context that supports `EXCLUDED.col`
+/// references. The expression's leaf `Identifier` nodes that begin
+/// with `excluded.` (or `EXCLUDED.`) are resolved against `new_row`;
+/// all other references are resolved against `existing_row`. This is
+/// used by the UPSERT path so plain column references continue to
+/// read the existing row while EXCLUDED.col reads the new one.
+pub fn evaluate_expression_with_excluded(
+    expr: &Expression,
+    existing_row: &[Value],
+    new_row: &[Value],
+    table_info: &TableInfo,
+) -> Result<Value, String> {
+    match expr {
+        Expression::Identifier(name) => {
+            // V312-90 / Issue #4807: special-case EXCLUDED.col /
+            // excluded.col references. The parser collapses the
+            // `table.col` form into a single `Identifier("table.col")`
+            // literal (see `parse_column_name` at
+            // crates/parser/src/parser.rs:5717), so we detect that
+            // pattern here.
+            let lower = name.to_lowercase();
+            if lower.starts_with("excluded.") {
+                let col = &name[9..];
+                if let Some(idx) = table_info.columns.iter().position(|c| c.name.eq_ignore_ascii_case(col)) {
+                    if let Some(v) = new_row.get(idx) {
+                        return Ok(v.clone());
+                    }
+                }
+                return Ok(Value::Null);
+            }
+            // Plain column reference → look up in the existing row.
+            sqlrustgo_executor::expr::eval_identifier(name, existing_row, &table_info.columns)
+        }
+        Expression::BinaryOp(left, op, right) => {
+            // V312-90 / Issue #4807: recurse on both sides so each
+            // sub-expression resolves its own `excluded.*` references
+            // against `new_row` and plain column references against
+            // `existing_row`. A bare `+` / `-` next to an INTERVAL is
+            // still dispatched through `date_add_sub` for date
+            // arithmetic compatibility.
+            if (op == "+" || op == "-")
+                && matches!(right.as_ref(), Expression::Interval(_, _))
+            {
+                let date_val = evaluate_expression_with_excluded(left, existing_row, new_row, table_info)
+                    .unwrap_or(Value::Null);
+                let (n_val, unit) = match right.as_ref() {
+                    Expression::Interval(inner_expr, unit_str) => {
+                        let raw = evaluate_expression_with_excluded(
+                            inner_expr, existing_row, new_row, table_info,
+                        )
+                        .unwrap_or(Value::Null);
+                        let n = match raw {
+                            Value::Integer(i) => Value::Integer(i),
+                            Value::Float(f) => Value::Integer(f as i64),
+                            _ => Value::Null,
+                        };
+                        (n, unit_str.clone())
+                    }
+                    _ => (Value::Null, String::new()),
+                };
+                Ok(sqlrustgo_executor::expr::date_add_sub(
+                    &[date_val.clone(), n_val.clone()],
+                    op != "-",
+                ))
+            } else {
+                let left_val = evaluate_expression_with_excluded(left, existing_row, new_row, table_info)
+                    .unwrap_or(Value::Null);
+                let right_val = evaluate_expression_with_excluded(right, existing_row, new_row, table_info)
+                    .unwrap_or(Value::Null);
+                Ok(sqlrustgo_executor::expr::eval_binary_op(
+                    &left_val, &right_val, op,
+                ))
+            }
+        }
+        _ => evaluate_expression(expr, existing_row, table_info),
+    }
+}
+
 /// Evaluate an expression and return a Value
 pub fn evaluate_expression(
     expr: &Expression,

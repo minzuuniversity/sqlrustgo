@@ -15,7 +15,7 @@ use sqlrustgo_parser::parser::UpdateStatement;
 use sqlrustgo_storage::{ColumnDefinition, StorageEngine, TableInfo};
 use sqlrustgo_types::Value;
 
-use crate::expr_utils::{evaluate_expression, expression_to_value};
+use crate::expr_utils::{evaluate_expression, evaluate_expression_with_excluded, expression_to_value};
 use crate::{SqlError, SqlResult};
 
 /// Convert `INSERT VALUES` expression rows to materialised `Value` records.
@@ -207,15 +207,21 @@ pub fn apply_odku(
     table_name: &str,
     table_info: &TableInfo,
     existing_row: &[Value],
+    new_row: &[Value],
     updates: &[(String, sqlrustgo_parser::Expression)],
 ) -> SqlResult<()> {
     let col_names: Vec<String> = table_info.columns.iter().map(|c| c.name.clone()).collect();
 
-    // V312-63 / Issue #4642: evaluate RHS expressions against the EXISTING
-    // row context so `v = v + 1` (a column reference on the right) reads
-    // the row's current value rather than returning NULL. Previously this
-    // path called `expression_to_value` (no row context) which made ODKU
-    // a no-op for any reference to the row's own columns.
+    // V312-63 / Issue #4642 + V312-90 / Issue #4807: evaluate RHS
+    // expressions with BOTH row contexts. The existing row is the
+    // baseline for plain column references (e.g. `v = v + 1`), and
+    // the new row is the source for `EXCLUDED.col` / `excluded.col`
+    // references (the values that would have been inserted had there
+    // been no conflict). Without the new row context, an `EXCLUDED`
+    // reference would be looked up in the existing row and either
+    // return the wrong value or `Value::Null` when the column happens
+    // to share a name (e.g. `cnt = EXCLUDED.cnt` in a partial-unique
+    // case where the existing row's `cnt` is 0).
     let update: Vec<(usize, Value)> = updates
         .iter()
         .filter_map(|(col_name, expr)| {
@@ -228,9 +234,14 @@ pub fn apply_odku(
                 sqlrustgo_parser::Expression::BinaryOp(_, op, rhs) if op == "=" => rhs,
                 other => other,
             };
-            // Evaluate the RHS against the existing row so references to
-            // the row's own columns (e.g. `v = v + 1`) work.
-            let val = match crate::expr_utils::evaluate_expression(rhs, existing_row, table_info) {
+            // Resolve EXCLUDED.col / excluded.col references against the
+            // NEW row, plain column references against the existing row.
+            // The evaluator walks the expression tree so sub-expressions
+            // like `base + EXCLUDED.delta` resolve each operand against
+            // the correct row context.
+            let val = match evaluate_expression_with_excluded(
+                rhs, existing_row, new_row, table_info,
+            ) {
                 Ok(v) => v,
                 Err(_) => expression_to_value(rhs),
             };
