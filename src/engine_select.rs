@@ -4650,6 +4650,19 @@ impl<S: StorageEngine + 'static> ExecutionEngine<S> {
                     collations: std::collections::HashMap::new(),
                     original_sql: String::new(),
                 };
+                // V313-106 / P3-JOIN-001: apply the ON predicate as a
+                // post-filter on the cartesian product. The hash-join
+                // arm filters below; this arm is reached when the
+                // ON clause has no resolvable equi keys.
+                if !matches!(&join_clause.on_clause, Expression::Literal(s) if s == "true") {
+                    cross.retain(|row| {
+                        crate::engine_utils::eval_predicate(
+                            &join_clause.on_clause,
+                            row,
+                            &combined_schema,
+                        )
+                    });
+                }
                 return Ok((cross, combined_schema));
             }
             JoinKey::Left(_) | JoinKey::Right(_) => {
@@ -4694,6 +4707,60 @@ impl<S: StorageEngine + 'static> ExecutionEngine<S> {
 
         let mut matched_results = match join_type {
             JoinType::Inner | JoinType::Left | JoinType::Right | JoinType::Full => {
+                // V313-106 / P3-JOIN-001: build a minimal combined_schema
+                // (just the column names, sufficient for eval_predicate)
+                // so the post-hash-match ON filter below can resolve
+                // column references. The right columns must be
+                // alias-prefixed (matching build_combined_schema) so
+                // `a.x = b.y` resolves `b.y` in the right side. The
+                // full schema is rebuilt at the end of
+                // execute_single_join.
+                let mut filter_columns = Vec::with_capacity(
+                    left_table_info.columns.len() + right_table_info.columns.len(),
+                );
+                for col in &left_table_info.columns {
+                    filter_columns.push(sqlrustgo_storage::ColumnDefinition {
+                        name: format!("{}.{}", left_alias, col.name),
+                        data_type: col.data_type.clone(),
+                        nullable: col.nullable,
+                        primary_key: col.primary_key,
+                        char_max_length: col.char_max_length,
+                        collation: col.collation.clone(),
+                        default_value: None,
+                        auto_increment: false,
+                    });
+                }
+                for col in &right_table_info.columns {
+                    let bare_col = if join_clause.alias.is_some() {
+                        col.name
+                            .strip_prefix(&format!("{}.", right_alias))
+                            .unwrap_or(&col.name)
+                            .to_string()
+                    } else {
+                        col.name.clone()
+                    };
+                    filter_columns.push(sqlrustgo_storage::ColumnDefinition {
+                        name: format!("{}.{}", right_alias, bare_col),
+                        data_type: col.data_type.clone(),
+                        nullable: col.nullable,
+                        primary_key: col.primary_key,
+                        char_max_length: col.char_max_length,
+                        collation: col.collation.clone(),
+                        default_value: None,
+                        auto_increment: false,
+                    });
+                }
+                let filter_schema = TableInfo {
+                    name: format!("{}_join_{}_filter", left_alias, right_alias),
+                    columns: filter_columns,
+                    foreign_keys: vec![],
+                    unique_constraints: vec![],
+                    check_constraints: vec![],
+                    partition_info: None,
+                    compression: None,
+                    collations: std::collections::HashMap::new(),
+                    original_sql: String::new(),
+                };
                 // Hash-based matching
                 // SQL semantics: NULL = NULL is UNKNOWN (not a match), so skip NULL keys
                 // Store the original index alongside each right row so RIGHT/FULL
@@ -4733,6 +4800,25 @@ impl<S: StorageEngine + 'static> ExecutionEngine<S> {
                             combined.extend((*right_row).clone());
                             matched.push(combined);
                         }
+                    }
+                }
+
+                // V313-106 / P3-JOIN-001: apply the FULL ON predicate to the
+                // matched rows. Must run BEFORE the LEFT/RIGHT/FULL
+                // padding below, because the padding rows have NULL
+                // for the other side and `NULL = x` is UNKNOWN, so
+                // filtering them would drop the very rows the outer
+                // join is supposed to preserve.
+                match &join_clause.on_clause {
+                    Expression::Literal(s) if s == "true" => {}
+                    _ => {
+                        matched.retain(|row| {
+                            crate::engine_utils::eval_predicate(
+                                &join_clause.on_clause,
+                                row,
+                                &filter_schema,
+                            )
+                        });
                     }
                 }
 
@@ -4918,7 +5004,12 @@ impl<S: StorageEngine + 'static> ExecutionEngine<S> {
                 let rk = self.find_join_key_index(
                     right_expr, left_info, left_name, right_info, right_name,
                 )?;
+                // V313-106 / P3-JOIN-001: if either arm returns JoinKey::All
+                // (because the arm's operator is non-equi), the combined
+                // ON clause has a non-equi part, so we must do cartesian
+                // + post-filter. Don't try to keep just the equi parts.
                 match (lk, rk) {
+                    (JoinKey::All, _) | (_, JoinKey::All) => Ok(JoinKey::All),
                     (JoinKey::Pair(li1, ri1), JoinKey::Pair(li2, ri2)) => {
                         Ok(JoinKey::Pairs(vec![(li1, ri1), (li2, ri2)]))
                     }
@@ -4940,7 +5031,19 @@ impl<S: StorageEngine + 'static> ExecutionEngine<S> {
                     )),
                 }
             }
-            Expression::BinaryOp(left_expr, _op, right_expr) => {
+            Expression::BinaryOp(left_expr, op, right_expr) => {
+                // V313-106 / P3-JOIN-001: only `=` (equi-join) can use
+                // the hash-join fast path. Non-equi operators (`<`,
+                // `>`, `<=`, `>=`, `!=`) must produce a cartesian
+                // product + ON post-filter, otherwise the predicate is
+                // silently dropped (e.g. `t1.x < t2.y` would match only
+                // rows where x == y, missing the actual filter intent).
+                // Returning `JoinKey::All` here forces cartesian, and
+                // the post-filter at the end of `execute_single_join`
+                // applies the full ON predicate to every combined row.
+                if !op.eq_ignore_ascii_case("=") {
+                    return Ok(JoinKey::All);
+                }
                 // Standard SQL: left side of `=` references left table,
                 // right side references right table. Resolve each independently.
                 let lk = self
