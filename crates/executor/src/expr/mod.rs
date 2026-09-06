@@ -2393,9 +2393,16 @@ pub fn eval_fn(name: &str, args: &[Value]) -> Value {
         // TPC-H Q7/Q8/Q9 use `EXTRACT(YEAR FROM o_orderdate) AS o_year`.
         // The parser encodes this as FunctionCall("EXTRACT", [Literal(field),
         // source_expr]). For text dates in YYYY-MM-DD form, the field slices
-        // a fixed offset. Returns Text (matches the input type) so the result
-        // can be used in GROUP BY, ORDER BY, and joins without an Integer
-        // coercion round-trip.
+        // a fixed offset.
+        //
+        // V312-90 / P3-DATE-002: previously returned Value::Text ("03"
+        // with leading zero), which is correct for date-part strings but
+        // diverges from MySQL/PostgreSQL which return Integer (3 with
+        // no leading zero). MySQL batch output for EXTRACT(MONTH FROM
+        // '2024-03-15') is the integer 3; SQLite has no native EXTRACT
+        // (returns parse error); sqlrustgo now returns Integer to match
+        // MySQL and to enable direct comparison in GROUP BY / ORDER BY
+        // without an explicit CAST.
         "EXTRACT" => {
             let field = args
                 .first()
@@ -2413,10 +2420,53 @@ pub fn eval_fn(name: &str, args: &[Value]) -> Value {
                     source.len()
                 );
             }
+            // V312-90 / P3-DATE-002: try Integer parse first (matches
+            // when the source is itself an integer result from another
+            // scalar function or a literal). Falls back to text slicing.
+            let parse_int = |s: &str| s.parse::<i64>().ok();
             match field.as_str() {
-                "YEAR" if source.len() >= 4 => Value::Text(source[..4].to_string()),
-                "MONTH" if source.len() >= 7 => Value::Text(source[5..7].to_string()),
-                "DAY" if source.len() >= 10 => Value::Text(source[8..10].to_string()),
+                "YEAR" => {
+                    if source.len() >= 4 {
+                        if let Some(n) = parse_int(&source[..4]) {
+                            return Value::Integer(n);
+                        }
+                        if let Some(n) = parse_int(&source) {
+                            return Value::Integer(n);
+                        }
+                        Value::Null
+                    } else if let Some(n) = parse_int(&source) {
+                        Value::Integer(n)
+                    } else {
+                        Value::Null
+                    }
+                }
+                "MONTH" => {
+                    if source.len() >= 7 {
+                        // For text 'YYYY-MM-DD', MONTH is "MM" (leading zero);
+                        // parse as integer to drop the leading zero so MySQL
+                        // (Integer) and sqlrustgo (Integer) match.
+                        if let Some(n) = parse_int(&source[5..7]) {
+                            return Value::Integer(n);
+                        }
+                        Value::Null
+                    } else if let Some(n) = parse_int(&source) {
+                        Value::Integer(n)
+                    } else {
+                        Value::Null
+                    }
+                }
+                "DAY" => {
+                    if source.len() >= 10 {
+                        if let Some(n) = parse_int(&source[8..10]) {
+                            return Value::Integer(n);
+                        }
+                        Value::Null
+                    } else if let Some(n) = parse_int(&source) {
+                        Value::Integer(n)
+                    } else {
+                        Value::Null
+                    }
+                }
                 _ => Value::Null,
             }
         }
@@ -4416,6 +4466,73 @@ mod tests {
         assert_eq!(eval_fn("SIGN", &[Value::Text("abc".into())]), Value::Null);
         // Literal "NULL" string → NULL
         assert_eq!(eval_fn("SIGN", &[Value::Text("NULL".into())]), Value::Null);
+    }
+
+    // ----- V312-90 / P3-DATE-002: EXTRACT returns Integer (not Text) -----
+    #[test]
+    fn test_eval_fn_extract_year_month_day_from_text_date() {
+        // EXTRACT(YEAR FROM '2024-03-15') → 2024 (Integer, not "2024")
+        assert_eq!(
+            eval_fn(
+                "EXTRACT",
+                &[Value::Text("YEAR".into()), Value::Text("2024-03-15".into())]
+            ),
+            Value::Integer(2024)
+        );
+        // MONTH: drop the leading zero so the result matches MySQL's
+        // integer 3, not sqlrustgo's prior "03" Text.
+        assert_eq!(
+            eval_fn(
+                "EXTRACT",
+                &[Value::Text("MONTH".into()), Value::Text("2024-03-15".into())]
+            ),
+            Value::Integer(3)
+        );
+        // DAY.
+        assert_eq!(
+            eval_fn(
+                "EXTRACT",
+                &[Value::Text("DAY".into()), Value::Text("2024-03-15".into())]
+            ),
+            Value::Integer(15)
+        );
+    }
+
+    #[test]
+    fn test_eval_fn_extract_from_integer_source() {
+        // Integer source (e.g. from another scalar function or a
+        // literal). Per PostgreSQL semantics, YEAR of an integer returns
+        // the integer itself; MONTH/DAY/H/M/S of a bare integer with no
+        // date structure → NULL.
+        assert_eq!(
+            eval_fn(
+                "EXTRACT",
+                &[Value::Text("YEAR".into()), Value::Integer(2024)]
+            ),
+            Value::Integer(2024)
+        );
+    }
+
+    #[test]
+    fn test_eval_fn_extract_null_and_unknown_field() {
+        // NULL source → NULL
+        assert_eq!(
+            eval_fn(
+                "EXTRACT",
+                &[Value::Text("YEAR".into()), Value::Null]
+            ),
+            Value::Null
+        );
+        // Unknown field name → NULL
+        assert_eq!(
+            eval_fn(
+                "EXTRACT",
+                &[Value::Text("CENTURY".into()), Value::Text("2024-03-15".into())]
+            ),
+            Value::Null
+        );
+        // Too few args → NULL
+        assert_eq!(eval_fn("EXTRACT", &[Value::Text("YEAR".into())]), Value::Null);
     }
 
     #[test]
