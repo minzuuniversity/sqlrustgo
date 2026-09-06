@@ -310,7 +310,7 @@ mod tests {
         s.create_index(crate::engine::IndexInfo {
             name: "t_idx_id".to_string(),
             table: "t".to_string(),
-            columns: vec!["id".to_string()],
+            columns: vec![sqlrustgo_parser::IndexColumnSpec::column("id")],
             is_unique: false,
             original_sql: "CREATE INDEX t_idx_id ON t(id)".to_string(),
         })

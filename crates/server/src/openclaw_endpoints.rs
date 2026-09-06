@@ -2400,7 +2400,10 @@ fn execute_sql(
                     if create_idx.unique { "UNIQUE " } else { "" },
                     create_idx.name,
                     create_idx.table,
-                    create_idx.columns.join(", "),
+                    create_idx.columns.iter().map(|c| match &c.name {
+                        Some(n) => n.clone(),
+                        None => format!("{:?}", c.expression),
+                    }).collect::<Vec<_>>().join(", "),
                 ),
             })
                 .map_err(|e| e.to_string())?;
@@ -2412,7 +2415,11 @@ fn execute_sql(
                         table.indices.push(sqlrustgo_catalog::index::IndexInfo::new(
                             &create_idx.name,
                             &create_idx.table,
-                            create_idx.columns.clone(),
+                            create_idx
+                                .columns
+                                .iter()
+                                .filter_map(|c| c.name.clone())
+                                .collect(),
                         ));
                     }
                 }
