@@ -100,12 +100,12 @@ impl<'a> Lexer<'a> {
     }
 
     /// Read a double-quoted identifier (e.g., "MyTable" -> MyTable)
-    fn read_quoted_identifier(&mut self) -> String {
-        self.position += 1; // Skip opening double quote
+    fn read_quoted_identifier(&mut self, quote: char) -> String {
+        self.position += 1; // Skip opening quote
         let start = self.position;
         while !self.is_eof() {
             let ch = self.peek_char();
-            if ch == '"' {
+            if ch == quote {
                 break;
             }
             // V312-82 / Issue #4708: advance by full UTF-8 char width
@@ -116,7 +116,7 @@ impl<'a> Lexer<'a> {
         }
         let result = self.input[start..self.position].to_string();
         if !self.is_eof() {
-            self.position += 1; // Skip closing double quote
+            self.position += 1; // Skip closing quote
         }
         result
     }
@@ -298,7 +298,11 @@ impl<'a> Lexer<'a> {
                 self.position += 1;
                 Token::Identifier("@".to_string())
             }
-            '"' => Token::Identifier(self.read_quoted_identifier()),
+            '"' => Token::Identifier(self.read_quoted_identifier('"')),
+            // V313-109 / Issue #4708: backtick-quoted identifiers (MySQL-style)
+            // are mapped to the same Identifier token as double-quoted. The
+            // CLI's OR-downgrade rejection was removed at the same time.
+            '`' => Token::Identifier(self.read_quoted_identifier('`')),
             '\'' => Token::StringLiteral(self.read_string()),
             '=' => {
                 self.position += 1;

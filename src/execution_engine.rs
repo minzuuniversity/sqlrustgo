@@ -2235,6 +2235,10 @@ pub(crate) fn explain_select_plan(
             Some(JoinType::Right) => "HashJoin",
             Some(JoinType::Full) => "HashJoin",
             Some(JoinType::Cross) => "NestedLoopJoin",
+            Some(JoinType::Natural) => "NestedLoopJoin",
+            Some(JoinType::NaturalLeft) => "HashJoin",
+            Some(JoinType::NaturalRight) => "HashJoin",
+            Some(JoinType::NaturalFull) => "HashJoin",
             None => "NestedLoopJoin",
         };
         lines.push(format!("{join_kind}: {} joins", select.join_clause.len()));
