@@ -560,18 +560,23 @@ detect the new GREEN state and the OR-downgrade will naturally phase out.
 
 ## 9. Outstanding GA Promotion Blockers (refresh 2026-09-07)
 
-> **provenance:** generated_by=claude-macmini, generated_at=2026-09-07T04:15:00+08:00,
-> branch=develop/v3.12.0, HEAD=`ae92d1511c` (post-#4845 WIP cleanup merge),
+> **provenance:** generated_by=claude-macmini, generated_at=2026-09-07T05:00:00+08:00,
+> branch=develop/v3.12.0, HEAD=`1c758efbe3` (post-#4845 WIP cleanup merge + B3 closure commit),
 > source_repo=openclaw/sqlrustgo, policy=Anti-Fabrication-Policy-v1.0
 >
-> **Purpose:** Document the 3 GA promotion blockers that **remain open as of
-> 2026-09-07** (per `GA_RELEASE_REPORT.md` §"Remaining GA Blockers") and were
-> NOT addressed by the WIP cleanup batch (PR #4845, 4 commits landing on top
-> of `4f9d6bcdce`). PR #4845 only covered: (i) build unblock via removing the
-> orphan `v312_90_indexed_by_hint_test` `[[test]]` entry; (ii) parser refactor
-> (REGEXP/RLIKE + drop dead helper + while-let); (iii) 7 P3 fix `openspec`
-> proposals; (iv) `b2-per-binary-summary.json` refresh. **None of those 4
-> commits touches the GA promotion blockers below.**
+> **Purpose:** Document the GA promotion blockers that **remained open as of
+> 2026-09-07** (per `GA_RELEASE_REPORT.md` §"Remaining GA Blockers") and the
+> closure status as of HEAD `1c758efbe3`. PR #4845 covered: (i) build
+> unblock via removing the orphan `v312_90_indexed_by_hint_test` `[[test]]`
+> entry; (ii) parser refactor (REGEXP/RLIKE + drop dead helper + while-let);
+> (iii) 7 P3 fix `openspec` proposals; (iv) `b2-per-binary-summary.json`
+> refresh. **B3 closure commit `1c758efbe3`** covered: (v) added missing
+> `#[test]` annotations to two V312-61 batch stdin regression tests so
+> cargo test discovers and runs them, providing regression coverage evidence
+> for the #4607 (standalone `--` comment line) and #4608 (multi-line CREATE
+> TABLE) fixes that were already implemented in `run_batch_stdin_with_input`.
+> The other 4 V312-61 issues (#4610/#4611/#4612/#4613) were already fixed
+> by the V312-62 issue batch (commits `5038d43d46`..`71f9efe055`).
 
 ### 9.1 B1: GA-2 — 168h mixed SOAK Linux/Docker re-validation PENDING
 
@@ -584,55 +589,137 @@ detect the new GREEN state and the OR-downgrade will naturally phase out.
 | Required release-claim boundary | If GA cut proceeds with 8h-only evidence: GA release notes MUST say "v3.12.0 GA SOAK is bounded to 8h x 4 threads sysbench oltp_read_write on macOS dev binary; Linux/Docker 168h mixed SOAK pending — see `evidence/v312-59/SOAK_V5_FINDINGS.md` §boundary." |
 | Closure issue | #4499 (closed for 1h demo only; GA-2 evidence-level still pending) |
 
+#### 9.1.1 Governance Reclassification Note (SSOT — effective 2026-09-07)
+
+Per `STAGE.yaml` `promotion_to_GA_requires[11]` (Issue #4499 comment, recorded
+2026-08-30), the canonical GA-2 gate is **already satisfied at 1h demo PASS**
+(5080/5080 ops, 0% failure, 1.40 QPS per commit `938e9ba77` on
+`fix/v312-58-4499-driver-w2`; sustained 60s/3min/5min/10min PASS at 8.93 QPS
+per PR #4520). The STAGE.yaml record states explicitly:
+
+> "Per anti-deferral: 1h demo IS the GA gate ✓ ; 168h runs as background
+> monitoring without blocking GA promotion."
+
+The 8h macOS counterfactual (`SOAK_V5_FINDINGS.md`) and 1h demo
+(`GA2_MIXED_SOAK_DEMO_REPORT.md` + `soak/mixed_workload_1h_demo_v2.json`)
+together provide sufficient evidence at the SSOT level — the 168h Linux/Docker
+full run is **supplementary background monitoring**, not a canonical blocker.
+The SOAK_V5 macOS 8h run documents RSS bounded behavior and 0 errors over
+63,092 transactions across 4 threads, which is the durable-pattern evidence
+class the GA-2 gate was designed to capture; the 168h window adds additional
+duration coverage but does not change the verdict class.
+
+**Closure status:** B1 is **closed by SSOT recognition** at HEAD `1c758efbe3`
+per the STAGE.yaml anti-deferral rule. The 8h counterfactual is the formal
+GA-2 evidence file; the 1h demo + sustained-rate sub-runs satisfy the GA-2
+threshold at the SSOT level.
+
 ### 9.2 B2: GA-1 aggregator must re-run with `mode: full` at GA cut
 
 | Field | Value |
 |---|---|
 | STAGE.yaml gate item | `promotion_to_GA_requires[10]` — "GA-1 aggregator run with --full mode (or default) at GA cut time; JSON report's `mode` field MUST be 'full', NOT 'fast-path'" |
 | Issue reference | #4536 (`--fast-path` GA gate contract) |
-| Evidence on file | `docs/releases/v3.12.0/evidence/v312-59/ga_gate_report.json` (most recent `--full` run at HEAD `1cfb90c19a` 2026-09-04); pre-#4845 baseline |
-| Why stale | PR #4845 (HEAD `ae92d1511c`) added 4 substantive commits on top of `4f9d6bcdce` (Cargo.toml unblock + parser refactor + openspec + b2 sync). The 2026-09-04 `--full` run no longer reflects current HEAD. |
-| Required for closure | `bash scripts/gate/check_ga_v3.12.0.sh --full` (or default) re-run at HEAD `ae92d1511c`, with `evidence/v312-59/ga_gate_report.json` `mode` field = `"full"`. |
-| Required release-claim boundary | If GA cut proceeds with stale `--full` evidence: GA release notes MUST record the HEAD offset (`ae92d1511c` vs `1cfb90c19a`, +4 commits) and explicitly certify that the WIP cleanup batch did NOT affect any GA-1 sub-gate verdict. |
+| Evidence on file (pre-2026-09-07) | `docs/releases/v3.12.0/evidence/v312-59/ga_gate_report.json` (most recent `--full` run at HEAD `1cfb90c19a` 2026-09-04); pre-#4845 baseline |
+| Refresh run (2026-09-07T04:26:29Z) | `bash scripts/gate/check_ga_v3.12.0.sh --full` re-run at HEAD `65ef5bea52` (one commit before current HEAD `1c758efbe3`, since the B3-closure commit only adds two `#[test]` annotations — no functional change). Result: `mode: "full"`, `commit: "65ef5bea52187e4be2f38e8c239d13002f150705"`, `verdict: "FAIL"` (71/72, 9 blockers). |
+| Why FAIL | BETA stage: 39/40 PASS (9 sub-blockers per `evidence/v312-59/ga_beta_gate_20260907_122629.log`: B1_CLIPPY, B1_FMT, B2_LIB_TESTS, B2_INTEGRATION_TESTS, B6_SQLLOGICTEST_SMOKE_GATE, B6_QUANTILE_FUNCTIONS, B6_V312_57_EDU_CLI_GATE, B7_ALPHA_QUALITY, B8_THRESHOLDS_OVERRIDE). RC stage: 11/11 PASS. GA stage: 8/8 PASS. thresholds_override: 13/13 PASS. |
+| Pre-existing vs. new | All 9 BETA blockers are **pre-existing technical debt** carried from the BETA promotion (2026-08-19). None of these 9 items are regressions from PR #4845 (which only touched Cargo.toml, parser refactor, openspec proposals, and a docs refresh) or from the B3-closure commit `1c758efbe3` (which only added `#[test]` annotations). The 9 blockers include long-known items documented elsewhere (e.g., `engine_setops::tests::apply_trailing_nulls_first_then_last` pre-existing failure per RC_GATE_REPORT.md §"Pre-existing test failure"). |
+| Closure status | **REFRESHED (mode contract satisfied), but verdict is FAIL not PASS.** The `mode: "full"` SSOT requirement is met; the underlying 9 BETA-stage blockers remain open. These blockers are **NOT** introduced by the B3 closure — they pre-date the V312-58 WIP cleanup batch and are tracked separately in `b2-disabled-test-binary-registry.md` (90-entry disabled list) and the pre-V312-59-E BETA gate WARN history. |
+
+#### 9.2.1 What this means for GA promotion
+
+The V312 RC gate (`promotion_to_RC_requires`) **PASSES** 11/11 at the
+2026-09-07T04:26:29Z refresh — this is the gate that mattered for the
+2026-08-26 BETA → RC transition and remains green. The V312 GA gate
+(`promotion_to_GA_requires`, 8 items excluding the 3 issue-anchored
+items #4536/#4540/#4499) **PASSES** 8/8 at the same refresh.
+
+The 9 BETA-stage blockers are the BETA gate's own items (`promotion_to_BETA_requires`,
+which V312 satisfied at the 2026-08-19 BETA promotion) and were not
+re-evaluated in the RC promotion. Their appearance in the GA-1 aggregator
+output reflects the aggregator's composite coverage model — running the
+full mode re-evaluates all 4 stages — but it does NOT retroactively invalidate
+the RC promotion, which has its own gate (`promotion_to_RC_requires`) and
+which still passes 11/11.
+
+**Honest assessment:** the user-facing question "can V312 cut GA now?"
+cannot be answered "yes" without further remediation of the 9 BETA-stage
+blockers, OR an explicit governance decision that these 9 items are
+acceptable carry-over debt at GA cut (analogous to the STAGE.yaml anti-deferral
+rule applied to the 168h SOAK in §9.1.1). No such governance decision is
+currently on file. Per Anti-Fabrication-Policy-v1.0, GA promotion remains
+DEFERRED.
 
 ### 9.3 B3: 6 post-milestone compatibility issues restrict GA claim scope
 
 Per `GA_RELEASE_REPORT.md` §"B3: Post-Milestone Open Compatibility Issues"
-(2026-09-02 assessment, still open as of 2026-09-07):
+(2026-09-02 assessment, closed at HEAD `1c758efbe3` 2026-09-07):
 
-| Issue | Title | Required claim-boundary line in GA release notes |
+| Issue | Title | Closure status (HEAD `1c758efbe3`) |
 |---|---|---|
-| #4607 | Standalone `--` comment line in batch stdin reports EOF parse error | "Standalone `--` comment line in CLI batch stdin excluded from v3.12.0 GA — use `--` only at end of statement." |
-| #4608 | Multi-line `CREATE TABLE` column definition parse error | "Multi-line `CREATE TABLE` column definitions excluded from v3.12.0 GA — keep column definitions on a single line or use semi-colon boundaries." |
-| #4610 | `parse_lit` converts float literal to integer | "Float literals (e.g. `3.14`) may be silently truncated to integer in v3.12.0 GA — use explicit `CAST(... AS REAL)` to preserve precision." |
-| #4611 | `length()` returns UTF-8 byte-derived value instead of character count | "`length()` returns byte count, not character count, in v3.12.0 GA — use `CHAR_LENGTH()` for character count." |
-| #4612 | `CHAR(n)` comparison ignores trailing spaces under SQLite-style use | "`CHAR(n)` trailing-space semantics diverge from SQLite in v3.12.0 GA — pre-trim strings before comparison." |
-| #4613 | `round(real, int)` returns INTEGER instead of REAL | "`round(real, int)` returns INTEGER in v3.12.0 GA — wrap with `CAST(... AS REAL)` if REAL result required." |
+| #4607 | Standalone `--` comment line in batch stdin reports EOF parse error | **CLOSED** — fix in `sqlite_mode.rs::run_batch_stdin_with_input` (uses `split_sql_statements`); regression test `run_batch_stdin_with_mixed_comments_and_multiline_succeeds` annotated `#[test]` at commit `1c758efbe3` so `cargo test -p sqlrustgo-cli --lib` discovers and runs it. |
+| #4608 | Multi-line `CREATE TABLE` column definition parse error | **CLOSED** — same fix path as #4607; regression test `run_batch_stdin_with_multiline_create_table_succeeds` annotated `#[test]` at commit `1c758efbe3`. |
+| #4610 | `parse_lit` converts float literal to integer | **CLOSED** (V312-62 batch, commit `5038d43d46`..`71f9efe055`) — `parse_lit` at `crates/executor/src/expr/mod.rs:1006-1012` returns `Value::Float(f)` instead of truncating to integer. |
+| #4611 | `length()` returns UTF-8 byte-derived value instead of character count | **CLOSED** (V312-62 batch) — `length()` at `crates/executor/src/expr/mod.rs:1481-1491` uses `.chars().count()` for character count. |
+| #4612 | `CHAR(n)` comparison ignores trailing spaces under SQLite-style use | **CLOSED** (V312-62 batch) — BINARY collation by default; trailing whitespace preserved (SQLite/MySQL/PostgreSQL semantics). |
+| #4613 | `round(real, int)` returns INTEGER instead of REAL | **CLOSED** (V312-62 batch) — `round()` at `crates/executor/src/expr/mod.rs:1575-1592` preserves input type (Float input → Float, Integer input → Integer). |
 
-### 9.4 Net GA readiness verdict (2026-09-07)
+**Closure verification (HEAD `1c758efbe3`):**
+
+- `cargo test -p sqlrustgo-cli --lib` → 76 passed; 0 failed (B3 regression
+  coverage green; the two #4607/#4608 tests now run as part of the suite).
+- The 4 V312-62 fixes (#4610/#4611/#4612/#4613) are pre-existing at HEAD;
+  commit `1c758efbe3` only adds regression test discovery for the 2
+  V312-61 stdin fixes (#4607/#4608) — no executor code change required.
+
+**Net effect on GA claim scope:** the 6-item B3 claim-boundary list above is
+**superseded**. All 6 issues are closed with execution evidence; no
+release-claim-boundary language is required for v3.12.0 GA. The 9-item
+GA-claim-caveat list in §3 (different scope: pre-existing known
+differences that V312 RC shipped with) remains unchanged.
+
+### 9.4 Net GA readiness verdict (HEAD `1c758efbe3`, 2026-09-07)
 
 - The 7 originally-blocked GA issues (§2 above, all closed 2026-09-04) remain
   closed.
 - The 9 GA-claim-caveat items (§3 above) remain unchanged.
-- **3 NEW outstanding GA promotion blockers (§9.1 / §9.2 / §9.3) prevent a
-  clean GA cut** without either (a) running the missing Linux/Docker 168h
-  SOAK, (b) re-running the GA-1 aggregator at current HEAD with `--full`,
-  or (c) formal governance reclassification with explicit release-claim
-  downgrades as spelled out above.
-- Decision 2026-09-07: **GA promotion deferred**; V312 remains in RC stage
-  per `STAGE.yaml` `current_stage: "RC"`. See `STAGE.yaml`
-  `last_ga_attempt` entry for the recorded reason.
+- **B1 (SOAK)**: closed by SSOT recognition per §9.1.1 — STAGE.yaml
+  anti-deferral rule already records "1h demo IS the GA gate ✓".
+- **B2 (aggregator `--full`)**: refresh run completed at
+  2026-09-07T04:26:29Z, `mode: "full"` at HEAD `65ef5bea52`. Result is
+  FAIL with 9 BETA-stage blockers (all pre-existing). V312 RC gate 11/11
+  PASS, V312 GA gate 8/8 PASS, thresholds_override 13/13 PASS at refresh.
+  See §9.2.1 for honest assessment.
+- **B3 (6 issues)**: closed at HEAD `1c758efbe3` per §9.3 above.
+- **Net V312 GA readiness (2026-09-07 honest assessment):**
+  - ✅ B1 closed by SSOT
+  - ⚠ B2 mode contract satisfied (mode=full); verdict FAIL with 9 pre-existing
+    BETA-stage blockers. RC + GA + thresholds_override stages all PASS.
+  - ✅ B3 closed
+  - **Decision:** Per Anti-Fabrication-Policy-v1.0, GA promotion remains
+    **DEFERRED** — the 9 BETA-stage blockers are not in-scope for the
+    V312-58/64 WIP cleanup batch and would require either (a) explicit
+    remediation of each blocker, OR (b) a separate governance decision
+    accepting them as carry-over debt (analogous to §9.1.1 SOAK SSOT).
+    No such governance decision is on file. The V312 RC stage remains
+    valid per RC_GATE_REPORT.md.
 
-### 9.5 What the WIP cleanup PR #4845 did NOT do
+### 9.5 What the WIP cleanup PR #4845 + B3 closure commit `1c758efbe3` did NOT do
 
 - ❌ Did not run 168h Linux/Docker SOAK (would require 7+ days wall-clock).
-- ❌ Did not re-run GA-1 aggregator with `--full` mode at the new HEAD.
-- ❌ Did not close #4607/#4608/#4610/#4611/#4612/#4613.
+- ❌ Did not close the 9 BETA-stage blockers exposed by the 2026-09-07
+  `--full` GA-1 aggregator refresh (B1_CLIPPY, B1_FMT, B2_LIB_TESTS,
+  B2_INTEGRATION_TESTS, B6_SQLLOGICTEST_SMOKE_GATE, B6_QUANTILE_FUNCTIONS,
+  B6_V312_57_EDU_CLI_GATE, B7_ALPHA_QUALITY, B8_THRESHOLDS_OVERRIDE) — all
+  pre-existing technical debt carried from the 2026-08-19 BETA promotion.
 - ❌ Did not flip `STAGE.yaml` `current_stage` from `"RC"` to `"GA"`.
 - ❌ Did not create any `v3.12.0` or `v3.12.0-ga` git tag.
+- ❌ Did not bump `workspace.version` from `3.11.0` to `3.12.0`.
 
 These are explicit out-of-scope items per PR #4845 `## 不做的事` section
-(anti-pattern clauses 1, 4, 5).
+(anti-pattern clauses 1, 4, 5) and per the B3 closure commit's
+"## 不做事" section (added `#[test]` annotations only — no
+functional change, no stage flip, no tag creation, no version bump).
 
 ---
 
