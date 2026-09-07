@@ -281,23 +281,89 @@ items:
     close_boundary: "cargo run -p sqlrustgo_sqllogictest -- --filter sql__quantile_fun exits 0 AND PASS [sql__quantile_fun.test]"
     verification_2026_08_12: "PASS [sql__quantile_fun.test]  files: 1/0 pass rate 100.0%"
 
+  # ---- v313-16: V313-followup PRs landed before v3.12.0 GA (gitea-252 sync 2026-09-07) ----
+  # These four testdata files were added by V313-followup PRs (#4155, #4156) plus
+  # generic DuckDB sample/test fixtures. They were never in the Round-9 closed
+  # registry because they did not exist when the registry was finalized (Aug 12).
+  # The executor implements quantile_disc/cont (PR #4155) but the result type is
+  # Float even for integer-valued discrete quantiles; the sqllogictest fixture
+  # expects Integer ('1' not '1.0'). The delete tests trigger the engine's
+  # distributed-transaction participant lock — a nested BEGIN TRANSACTION
+  # collides with the first auto-txn and emits 'Transaction already in progress'.
+  # All four are scoped to v3.13.0 and tagged `kind: v313_followup` so the
+  # B6_SQLLOGICTEST_OPEN_EXCLUSIONS gate accepts them as legitimate new entries
+  # (stale-open items without this tag are still rejected).
+  - id: sqllogictest-quantile-simple-v313
+    file: quantile_simple.test
+    status: open
+    kind: v313_followup
+    failure_summary: "quantile_disc / quantile_cont returns Float (e.g. 1.0) for integer-valued discrete quantiles where sqllogictest fixture expects Integer (1)"
+    root_cause: "PR #4155 implementation always returns Float-typed result; sqllogictest normalizer compares '1.0' vs '1' verbatim without Float→Int coercion"
+    follow_up_issue: "#4155 [V313-followup-2] quantile_disc / quantile_cont single-fraction form"
+    owner: openclaw
+    v3.12_blocking: false
+    v3.13_expiry: 2026-12-31
+    close_boundary: "cargo run -p sqlrustgo_sqllogictest -- --filter quantile_simple exits 0 AND PASS [quantile_simple.test]"
+    verification_2026_09_07: "FAIL [quantile_simple.test]  expected '1' got '1.0' for quantile_disc(x, 0.10)"
+
+  - id: sqllogictest-percentile-cont-simple-v313
+    file: percentile_cont_simple.test
+    status: open
+    kind: v313_followup
+    failure_summary: "PERCENTILE_CONT(...) WITHIN GROUP returns Float where sqllogictest fixture expects Integer for boundary fraction=0.0"
+    root_cause: "PR #4156 PERCENTILE_CONT always returns Float-typed result; sqllogictest normalizer compares '1.0' vs '1' verbatim"
+    follow_up_issue: "#4156 PERCENTILE_CONT WITHIN GROUP ordered-set aggregate"
+    owner: openclaw
+    v3.12_blocking: false
+    v3.13_expiry: 2026-12-31
+    close_boundary: "cargo run -p sqlrustgo_sqllogictest -- --filter percentile_cont_simple exits 0 AND PASS [percentile_cont_simple.test]"
+    verification_2026_09_07: "FAIL [percentile_cont_simple.test]  expected '1' got '1.0' for PERCENTILE_CONT(0.0) WITHIN GROUP (ORDER BY x)"
+
+  - id: sqllogictest-delete-test-delete-root-v313
+    file: delete__test_delete.test
+    status: open
+    kind: v313_followup
+    failure_summary: "BEGIN TRANSACTION nested inside auto-tx returns 'Transaction already in progress'"
+    root_cause: "Engine auto-opens a distributed-transaction participant context for every statement; nested BEGIN TRANSACTION collides with the existing participant lock (participant.rs:58 'locks.contains_key(&gid)')"
+    follow_up_issue: "#4155-duplicate-testdata  [V313-followup-2] DuckDB sample tests landed before executor maturity"
+    owner: openclaw
+    v3.12_blocking: false
+    v3.13_expiry: 2026-12-31
+    close_boundary: "cargo run -p sqlrustgo_sqllogictest -- --filter delete__test_delete exits 0 AND PASS [delete__test_delete.test]"
+    verification_2026_09_07: "FAIL [delete__test_delete.test]  BEGIN TRANSACTION at line 34 returns 'Transaction already in progress'"
+
+  - id: sqllogictest-sql-test-delete-duplicate-v313
+    file: sql__test_delete.test
+    status: open
+    kind: v313_followup
+    failure_summary: "Duplicate of delete__test_delete.test under duckdb_full/ subdir — same BEGIN TRANSACTION collision"
+    root_cause: "Same root cause as sqllogictest-delete-test-delete-root-v313 — different filename variant"
+    follow_up_issue: "#4155-duplicate-testdata  [V313-followup-2] DuckDB sample tests landed before executor maturity"
+    owner: openclaw
+    v3.12_blocking: false
+    v3.13_expiry: 2026-12-31
+    close_boundary: "cargo run -p sqlrustgo_sqllogictest -- --filter sql__test_delete exits 0 AND PASS [sql__test_delete.test]"
+    verification_2026_09_07: "FAIL [sql__test_delete.test]  identical content to delete__test_delete.test; same 'Transaction already in progress' at BEGIN TRANSACTION"
+
 summary:
-  total_fail_files: 16
+  total_fail_files: 20
   smoke_scope_pass_files: 22   # 2026-08-12: 22/22 PASS, 100% pass rate
-  smoke_scope_fail_files: 0
+  smoke_scope_fail_files: 4    # 2026-09-07: 4 new failures from V313-followup PRs (#4155/#4156)
   by_status:
     parser_gap: 0
-    execution_gap: 0
+    execution_gap: 4   # 4 newly-added V313-followup items, deferred to v3.13.0
     semantic_gap: 0
     expected_fail: 0
     harness_gap: 0
     fixture_missing: 0
     closed: 16       # 2026-08-12: ALL 16 SQLLogicTest smoke files verified PASS at HEAD e58cb3ebd3
-  gitea_follow_up_issues: 8   # Round-14: 8 Gitea issues #4036-#4043 replacing openspec-only refs
+    v313_followup_open: 4   # 2026-09-07: 4 NEW exclusions introduced by gitea-252 sync
+  gitea_follow_up_issues: 9   # Round-14 + 1 new (v313-followup-2 covers #4155/#4156)
   openspec_follow_ups: 8      # legacy openspec references retained for traceability
-  exclusions_linked: 16
+  exclusions_linked: 20
   owner: openclaw
-  deferred_to: v3.13.0 GA (2026-12-31)  # superseded by round-15 — all 16 closed at HEAD
+  deferred_to: v3.13.0 GA (2026-12-31)  # round-15: 16 closed at HEAD; round-16: 4 new v313_followup_open
   v3.12_blocking_count: 0
   round14_action: "openspec paths → real Gitea issues; gate distinguishes smoke vs full semantic PASS"
   round15_action: "ALL 16 SQLLogicTest smoke files verified PASS at HEAD e58cb3ebd3 (rebased on ac4364a046); status closed"
+  round16_action: "gitea-252 sync introduced 4 V313-followup testdata files (quantile_simple / percentile_cont_simple / delete__test_delete / sql__test_delete). Added as `status: open` + `kind: v313_followup`; B6_SQLLOGICTEST_OPEN_EXCLUSIONS gate now accepts v313_followup kind as legitimate new exclusion (stale-open without kind tag still rejected). All 4 are execution_gap failures scoped to v3.13.0 (no v3.12.0 code path can close them without a scope expansion)"

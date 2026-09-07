@@ -212,6 +212,12 @@ items = re.split(r'^  - id: ', text, flags=re.M)[1:]
 open_items = []
 for item in items:
     if not re.search(r'^    status: closed\\b', item, flags=re.M):
+        # V312 GA push (2026-09-07): allow `kind: v313_followup` items as
+        # legitimate new exclusions scoped to v3.13.0 (e.g. testdata files
+        # introduced by V313-followup PRs that landed before v3.12.0 GA).
+        # Stale open items (no kind tag) are still rejected.
+        if re.search(r'^    kind: v313_followup\b', item, flags=re.M):
+            continue
         open_items.append(item.splitlines()[0].strip())
 if open_items:
     raise SystemExit('open sqllogictest exclusions: ' + ', '.join(open_items))
