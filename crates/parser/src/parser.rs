@@ -5176,15 +5176,9 @@ impl Parser {
                         Some(Token::Identifier(ref ident)) if ident.to_uppercase() == "REGEXP"
                             || ident.to_uppercase() == "RLIKE"
                     ) {
-                        let op_name = if let Some(Token::Identifier(ident)) = self.current() {
-                            if ident.to_uppercase() == "RLIKE" {
-                                "REGEXP"
-                            } else {
-                                "REGEXP"
-                            }
-                        } else {
-                            "REGEXP"
-                        };
+                        // V312-95 / Issue #4751: both REGEXP and RLIKE lower to the
+                        // single "REGEXP" BinaryOp (RLIKE is a MySQL alias).
+                        let op_name = "REGEXP";
                         self.next();
                         let right = self.parse_expression()?;
                         let expr = Expression::BinaryOp(
@@ -6584,36 +6578,34 @@ impl Parser {
                     // then silently drop the WHERE clause (root cause
                     // of #4809). The hint is consumed by the explicit
                     // `parse_optional_index_hint` call below.
-                    let first_table_with_alias: String =
-                        if matches!(self.current(), Some(Token::Identifier(ref n))
+                    let first_table_with_alias: String = if matches!(self.current(), Some(Token::Identifier(ref n))
                             if !n.eq_ignore_ascii_case("INDEXED"))
-                            && !matches!(
-                                self.current(),
-                                Some(Token::Where)
-                                    | Some(Token::Group)
-                                    | Some(Token::Order)
-                                    | Some(Token::Limit)
-                                    | Some(Token::RParen)
-                                    | Some(Token::Eof)
-                                    | Some(Token::Comma)
-                                    | Some(Token::Join)
-                                    | Some(Token::Left)
-                                    | Some(Token::Right)
-                                    | Some(Token::Inner)
-                                    | Some(Token::Full)
-                                    | Some(Token::Cross)
-                                    | Some(Token::On)
-                                    | Some(Token::As)
-                            )
-                        {
-                            if let Some(Token::Identifier(a)) = self.next() {
-                                format!("{}|{}", first_table, a)
-                            } else {
-                                first_table.clone()
-                            }
+                        && !matches!(
+                            self.current(),
+                            Some(Token::Where)
+                                | Some(Token::Group)
+                                | Some(Token::Order)
+                                | Some(Token::Limit)
+                                | Some(Token::RParen)
+                                | Some(Token::Eof)
+                                | Some(Token::Comma)
+                                | Some(Token::Join)
+                                | Some(Token::Left)
+                                | Some(Token::Right)
+                                | Some(Token::Inner)
+                                | Some(Token::Full)
+                                | Some(Token::Cross)
+                                | Some(Token::On)
+                                | Some(Token::As)
+                        ) {
+                        if let Some(Token::Identifier(a)) = self.next() {
+                            format!("{}|{}", first_table, a)
                         } else {
                             first_table.clone()
-                        };
+                        }
+                    } else {
+                        first_table.clone()
+                    };
                     // V312-95 v2 / Issue #4809: SQLite-style index hint
                     // on the first table. The hint can be `INDEXED BY
                     // idx_name` or `NOT INDEXED`. Parsed here, BEFORE
@@ -6819,13 +6811,9 @@ impl Parser {
                     // Parse index list in parentheses
                     self.expect(Token::LParen)?;
                     let mut indices = Vec::new();
-                    loop {
-                        if let Some(Token::Identifier(name)) = self.current() {
-                            indices.push(name.clone());
-                            self.next();
-                        } else {
-                            break;
-                        }
+                    while let Some(Token::Identifier(name)) = self.current() {
+                        indices.push(name.clone());
+                        self.next();
                         if matches!(self.current(), Some(Token::Comma)) {
                             self.next();
                         } else {
@@ -6850,13 +6838,9 @@ impl Parser {
                     }
                     self.expect(Token::LParen)?;
                     let mut indices = Vec::new();
-                    loop {
-                        if let Some(Token::Identifier(name)) = self.current() {
-                            indices.push(name.clone());
-                            self.next();
-                        } else {
-                            break;
-                        }
+                    while let Some(Token::Identifier(name)) = self.current() {
+                        indices.push(name.clone());
+                        self.next();
                         if matches!(self.current(), Some(Token::Comma)) {
                             self.next();
                         } else {
@@ -10898,20 +10882,6 @@ impl Parser {
         if !matches!(self.current(), Some(t) if std::mem::discriminant(t) == std::mem::discriminant(&terminator))
         {
             return Err(format!("Expected {:?} after table list", terminator));
-        }
-        Ok(out)
-    }
-
-    fn parse_table_ref_list_end(&mut self) -> Result<Vec<TableRef>, String> {
-        let mut out = Vec::new();
-        out.push(self.parse_table_ref()?);
-        while matches!(self.current(), Some(Token::Comma)) {
-            self.next();
-            out.push(self.parse_table_ref()?);
-        }
-        match self.current() {
-            Some(Token::Where) | None | Some(Token::Eof) | Some(Token::Semicolon) => {}
-            _ => return Err("Expected , or WHERE after table list".to_string()),
         }
         Ok(out)
     }
@@ -17125,7 +17095,13 @@ mod set_op_tests {
         assert!(result.is_ok(), "Parse failed: {:?}", result);
         match result.unwrap() {
             Statement::CreateIndex(ci) => {
-                assert_eq!(ci.columns, vec!["a", "b"]);
+                assert_eq!(
+                    ci.columns,
+                    vec![
+                        IndexColumnSpec::column("a"),
+                        IndexColumnSpec::column("b"),
+                    ]
+                );
             }
             other => panic!("Expected CreateIndex, got {:?}", other),
         }
