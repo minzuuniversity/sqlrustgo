@@ -1,0 +1,25 @@
+[package]
+name = "sqlrustgo-graph"
+version.workspace = true
+edition.workspace = true
+authors.workspace = true
+license.workspace = true
+description = "SQLRustGo Graph Engine — property graph store with Cypher query language, in-memory and disk-backed (WAL) implementations."
+
+[dependencies]
+sqlrustgo-types = { workspace = true }
+sqlrustgo-storage = { workspace = true }
+serde = { workspace = true }
+serde_json = { workspace = true }
+thiserror = { workspace = true }
+anyhow = { workspace = true }
+log = { workspace = true }
+tokio = { workspace = true }
+async-trait = { workspace = true }
+parking_lot = { workspace = true }
+bincode = "1.3"
+crc32fast = "1.4"
+tempfile = { workspace = true }
+
+[dev-dependencies]
+tokio = { workspace = true, features = ["full", "test-util"] }
