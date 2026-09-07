@@ -266,8 +266,15 @@ pub fn resolve_excluded_ref(
     existing_row: &[Value],
 ) -> Value {
     if let Expression::Identifier(name) = expr {
-        if let Some(col) = name.strip_prefix("excluded.").or_else(|| name.strip_prefix("EXCLUDED.")) {
-            if let Some(idx) = table_info.columns.iter().position(|c| c.name.eq_ignore_ascii_case(col)) {
+        if let Some(col) = name
+            .strip_prefix("excluded.")
+            .or_else(|| name.strip_prefix("EXCLUDED."))
+        {
+            if let Some(idx) = table_info
+                .columns
+                .iter()
+                .position(|c| c.name.eq_ignore_ascii_case(col))
+            {
                 if let Some(v) = new_row.get(idx) {
                     return v.clone();
                 }
@@ -307,7 +314,11 @@ pub fn evaluate_expression_with_excluded(
             let lower = name.to_lowercase();
             if lower.starts_with("excluded.") {
                 let col = &name[9..];
-                if let Some(idx) = table_info.columns.iter().position(|c| c.name.eq_ignore_ascii_case(col)) {
+                if let Some(idx) = table_info
+                    .columns
+                    .iter()
+                    .position(|c| c.name.eq_ignore_ascii_case(col))
+                {
                     if let Some(v) = new_row.get(idx) {
                         return Ok(v.clone());
                     }
@@ -324,15 +335,17 @@ pub fn evaluate_expression_with_excluded(
             // `existing_row`. A bare `+` / `-` next to an INTERVAL is
             // still dispatched through `date_add_sub` for date
             // arithmetic compatibility.
-            if (op == "+" || op == "-")
-                && matches!(right.as_ref(), Expression::Interval(_, _))
-            {
-                let date_val = evaluate_expression_with_excluded(left, existing_row, new_row, table_info)
-                    .unwrap_or(Value::Null);
-                let (n_val, unit) = match right.as_ref() {
+            if (op == "+" || op == "-") && matches!(right.as_ref(), Expression::Interval(_, _)) {
+                let date_val =
+                    evaluate_expression_with_excluded(left, existing_row, new_row, table_info)
+                        .unwrap_or(Value::Null);
+                let (n_val, _unit) = match right.as_ref() {
                     Expression::Interval(inner_expr, unit_str) => {
                         let raw = evaluate_expression_with_excluded(
-                            inner_expr, existing_row, new_row, table_info,
+                            inner_expr,
+                            existing_row,
+                            new_row,
+                            table_info,
                         )
                         .unwrap_or(Value::Null);
                         let n = match raw {
@@ -349,10 +362,12 @@ pub fn evaluate_expression_with_excluded(
                     op != "-",
                 ))
             } else {
-                let left_val = evaluate_expression_with_excluded(left, existing_row, new_row, table_info)
-                    .unwrap_or(Value::Null);
-                let right_val = evaluate_expression_with_excluded(right, existing_row, new_row, table_info)
-                    .unwrap_or(Value::Null);
+                let left_val =
+                    evaluate_expression_with_excluded(left, existing_row, new_row, table_info)
+                        .unwrap_or(Value::Null);
+                let right_val =
+                    evaluate_expression_with_excluded(right, existing_row, new_row, table_info)
+                        .unwrap_or(Value::Null);
                 Ok(sqlrustgo_executor::expr::eval_binary_op(
                     &left_val, &right_val, op,
                 ))
@@ -480,15 +495,13 @@ pub fn evaluate_expression_with_subq(
         // generic BinaryOp arm so the existing Null/error contract is
         // preserved.
         Expression::BinaryOp(left, op, right)
-            if (op == "+" || op == "-")
-                && matches!(right.as_ref(), Expression::Interval(_, _)) =>
+            if (op == "+" || op == "-") && matches!(right.as_ref(), Expression::Interval(_, _)) =>
         {
             // 1. Evaluate the date side (left). Must yield a textual
             //    YYYY-MM-DD form (or convertible to one via
             //    `to_sql_string`).
-            let date_val =
-                evaluate_expression_with_subq(left, row, table_info, subq_eval)
-                    .unwrap_or(Value::Null);
+            let date_val = evaluate_expression_with_subq(left, row, table_info, subq_eval)
+                .unwrap_or(Value::Null);
 
             // 2. Resolve the INTERVAL amount and unit. The parser
             //    always wraps the amount in an Expression::Interval
@@ -500,10 +513,8 @@ pub fn evaluate_expression_with_subq(
             //    amount (it returns Null for any non-Integer second arg).
             let (n_val, unit) = match right.as_ref() {
                 Expression::Interval(inner_expr, unit_str) => {
-                    let raw = evaluate_expression_with_subq(
-                        inner_expr, row, table_info, subq_eval,
-                    )
-                    .unwrap_or(Value::Null);
+                    let raw = evaluate_expression_with_subq(inner_expr, row, table_info, subq_eval)
+                        .unwrap_or(Value::Null);
                     let n = match raw {
                         Value::Integer(i) => Value::Integer(i),
                         Value::Float(f) => Value::Integer(f as i64),
@@ -526,9 +537,7 @@ pub fn evaluate_expression_with_subq(
             //    is reused verbatim from the DATE_ADD path.
             let unit_upper = unit.to_uppercase();
             let args = vec![date_val, n_val, Value::Text(unit_upper)];
-            Ok(sqlrustgo_executor::expr::date_add_sub(
-                &args, op == "+",
-            ))
+            Ok(sqlrustgo_executor::expr::date_add_sub(&args, op == "+"))
         }
         Expression::BinaryOp(left, op, right) => {
             // P0-2 §4.14: delegated to `executor::expr::eval_binary_op`
@@ -1024,9 +1033,7 @@ pub fn evaluate_window_call(
                             let small_bucket_size = rows_per_big_bucket - 1;
                             let pos_in_small = pos - big_threshold;
                             let offset_in_small = pos_in_small - 1;
-                            big_bucket_count
-                                + (offset_in_small / small_bucket_size.max(1))
-                                + 1
+                            big_bucket_count + (offset_in_small / small_bucket_size.max(1)) + 1
                         };
                         Value::Integer(bucket.min(n))
                     }

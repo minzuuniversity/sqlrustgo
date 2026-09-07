@@ -1210,45 +1210,49 @@ impl StoredProcExecutor {
                 // V312-84 / Issue #4685: multi-table UPDATE (UPDATE t1 JOIN t2 ON ... SET ...)
                 // If there are JOIN clauses, this is a multi-table UPDATE.
                 let has_joins = !update.join_clauses.is_empty();
-                
+
                 if has_joins {
                     // Multi-table UPDATE: t1 JOIN t2 ON cond SET t1.col = expr
                     if update.tables.is_empty() {
                         return Err("UPDATE requires at least one target table".to_string());
                     }
                     let target_table_name = &update.tables[0].name;
-                    
+
                     // For now, support exactly one JOIN (t1 JOIN t2 ON cond)
                     if update.join_clauses.len() != 1 {
                         return Err("UPDATE with multiple JOINs not yet supported".to_string());
                     }
-                    
+
                     let join_clause = &update.join_clauses[0];
                     let source_table_name = &join_clause.table;
-                    
+
                     // Scan both tables
                     let (target_rows, source_rows) = {
                         let storage = self.storage.read();
-                        let targets = storage.scan(target_table_name)
+                        let targets = storage
+                            .scan(target_table_name)
                             .map_err(|e| format!("Failed to scan {}: {}", target_table_name, e))?;
-                        let sources = storage.scan(source_table_name)
+                        let sources = storage
+                            .scan(source_table_name)
                             .map_err(|e| format!("Failed to scan {}: {}", source_table_name, e))?;
                         (targets, sources)
                     };
-                    
+
                     let target_info = {
                         let storage = self.storage.read();
-                        storage.get_table_info(target_table_name)
-                            .map_err(|e| format!("Failed to get table info for {}: {}", target_table_name, e))?
+                        storage.get_table_info(target_table_name).map_err(|e| {
+                            format!("Failed to get table info for {}: {}", target_table_name, e)
+                        })?
                     };
                     let _source_info = {
                         let storage = self.storage.read();
-                        storage.get_table_info(source_table_name)
-                            .map_err(|e| format!("Failed to get table info for {}: {}", source_table_name, e))?
+                        storage.get_table_info(source_table_name).map_err(|e| {
+                            format!("Failed to get table info for {}: {}", source_table_name, e)
+                        })?
                     };
-                    
+
                     let mut update_count: usize = 0;
-                    
+
                     // For each target row, find matching source rows
                     for target_row in target_rows.iter() {
                         // Find matching source rows based on ON condition
@@ -1260,36 +1264,50 @@ impl StoredProcExecutor {
                                 Some(&[target_row.as_slice(), source_row.as_slice()].concat()),
                                 None,
                             );
-                            
+
                             let matches = if let Value::Boolean(b) = on_val {
                                 b
                             } else {
                                 on_val != Value::Null
                             };
-                            
+
                             if matches {
                                 // Evaluate SET expressions in combined context
                                 for (col_name, expr) in &update.set_clauses {
                                     // Resolve column: first check target table, then source
-                                    if let Some(col_idx) = target_info.columns.iter()
-                                        .position(|c| c.name.eq_ignore_ascii_case(col_name)) 
+                                    if let Some(col_idx) = target_info
+                                        .columns
+                                        .iter()
+                                        .position(|c| c.name.eq_ignore_ascii_case(col_name))
                                     {
                                         let new_val = self.expression_to_value_with_row(
                                             expr,
                                             ctx,
-                                            Some(&[target_row.as_slice(), source_row.as_slice()].concat()),
+                                            Some(
+                                                &[target_row.as_slice(), source_row.as_slice()]
+                                                    .concat(),
+                                            ),
                                             None,
                                         );
-                                        
+
                                         // Update storage
                                         let mut storage = self.storage.write();
-                                        let filter_pk = target_info.columns.iter()
+                                        let filter_pk = target_info
+                                            .columns
+                                            .iter()
                                             .position(|c| c.primary_key)
                                             .and_then(|pk_idx| target_row.get(pk_idx).cloned());
-                                        
+
                                         if let Some(ref pk_val) = filter_pk {
                                             let updates = vec![(col_idx, new_val)];
-                                            if storage.update(target_table_name, &[pk_val.clone()], &updates).is_ok() {
+                                            if storage
+                                                .update(
+                                                    target_table_name,
+                                                    std::slice::from_ref(pk_val),
+                                                    &updates,
+                                                )
+                                                .is_ok()
+                                            {
                                                 update_count += 1;
                                             }
                                         }
@@ -1298,7 +1316,7 @@ impl StoredProcExecutor {
                             }
                         }
                     }
-                    
+
                     ctx.set_session_var("__last_update_count", Value::Integer(update_count as i64));
                     Ok(())
                 } else {
@@ -1448,12 +1466,17 @@ impl StoredProcExecutor {
             }
             // V312-81 / Issue #4694: SET TIMEZONE/SET TRANSACTION ISOLATION LEVEL
             sqlrustgo_parser::Statement::Transaction(ref txn) => match txn {
-                sqlrustgo_parser::TransactionStatement::SetSessionVariable { ref name, ref value } => {
+                sqlrustgo_parser::TransactionStatement::SetSessionVariable {
+                    ref name,
+                    ref value,
+                } => {
                     // Store session variable (e.g., timezone)
                     ctx.set_session_var(name, Value::Text(value.clone()));
                     Ok(())
                 }
-                sqlrustgo_parser::TransactionStatement::SetTransaction { ref isolation_level } => {
+                sqlrustgo_parser::TransactionStatement::SetTransaction {
+                    ref isolation_level,
+                } => {
                     // V312-81 / Issue #4694: SET TRANSACTION ISOLATION LEVEL
                     ctx.set_session_var(
                         "transaction_isolation_level",
