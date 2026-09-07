@@ -35,7 +35,7 @@ pub mod store;
 pub mod types;
 pub mod wal;
 
-pub use cypher::{execute, CypherQuery, ExecutionResult};
+pub use cypher::{execute, parse, ExecutionResult};
 pub use disk_store::{DiskGraphStore, SyncMode};
 pub use store::{Edge, GraphStore, InMemoryGraphStore, Node};
 pub use types::{EdgeId, GraphError, GraphResult, Label, NodeId, PropertyMap, PropertyValue};
