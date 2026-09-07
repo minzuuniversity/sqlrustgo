@@ -1113,18 +1113,92 @@ impl<S: StorageEngine + 'static> ExecutionEngine<S> {
                     collations: std::collections::HashMap::new(),
                     original_sql: String::new(),
                 };
-                for col in &subq.columns {
-                    let col_name = col.alias.clone().unwrap_or_else(|| col.name.clone());
-                    // Type inference: peek at the first non-null value
+                // V312-95 v3 / parallel_executor_integration_test
+                // `test_parallel_with_subquery`: when the parser wraps
+                // `FROM (...) AS sub` as a synthetic `SELECT * FROM <inner>`,
+                // the synthetic materialised SELECT carries `columns = [*]`
+                // and the *actual* column names live on its `from_subquery`
+                // (one level deeper). Resolve them so the outer WHERE /
+                // projection can resolve `id`, `name`, etc.
+                let resolved_columns: Vec<String> = if subq.columns.len() == 1
+                    && subq.columns[0].name == "*"
+                    && subq.columns[0].alias.is_none()
+                {
+                    // Walk one level deeper if the materialised SELECT
+                    // wraps another subquery: prefer its columns.
+                    let inner_select = subq
+                        .from_subquery
+                        .as_deref()
+                        .or(subq.from_with_subquery.as_ref().and_then(|w| {
+                            // from_with_subquery carries a WithSelect;
+                            // its body is a SelectStatement.
+                            Some(&w.select)
+                        }));
+                    if let Some(inner) = inner_select {
+                        if !(inner.columns.len() == 1
+                            && inner.columns[0].name == "*"
+                            && inner.columns[0].alias.is_none())
+                        {
+                            inner
+                                .columns
+                                .iter()
+                                .map(|c| c.alias.clone().unwrap_or_else(|| c.name.clone()))
+                                .collect()
+                        } else if !inner.table.is_empty() {
+                            // Inner references a real storage table.
+                            let storage = self.storage_read();
+                            match storage.get_table_info(&inner.table) {
+                                Ok(info) => info
+                                    .columns
+                                    .iter()
+                                    .map(|c| c.name.clone())
+                                    .collect(),
+                                Err(_) => {
+                                    let width = sub_result
+                                        .rows
+                                        .first()
+                                        .map(|r| r.len())
+                                        .unwrap_or(0);
+                                    (0..width).map(|i| format!("col_{}", i)).collect()
+                                }
+                            }
+                        } else {
+                            let width =
+                                sub_result.rows.first().map(|r| r.len()).unwrap_or(0);
+                            (0..width).map(|i| format!("col_{}", i)).collect()
+                        }
+                    } else if !subq.table.is_empty() {
+                        // Fallback: try the materialised's own `table`.
+                        let storage = self.storage_read();
+                        match storage.get_table_info(&subq.table) {
+                            Ok(info) => info.columns.iter().map(|c| c.name.clone()).collect(),
+                            Err(_) => {
+                                let width = sub_result
+                                    .rows
+                                    .first()
+                                    .map(|r| r.len())
+                                    .unwrap_or(0);
+                                (0..width).map(|i| format!("col_{}", i)).collect()
+                            }
+                        }
+                    } else {
+                        let width = sub_result.rows.first().map(|r| r.len()).unwrap_or(0);
+                        (0..width).map(|i| format!("col_{}", i)).collect()
+                    }
+                } else {
+                    subq.columns
+                        .iter()
+                        .map(|c| c.alias.clone().unwrap_or_else(|| c.name.clone()))
+                        .collect()
+                };
+                for col_name in &resolved_columns {
+                    let col_name = col_name.clone();
                     let inferred_type_str: String = sub_result
                         .rows
                         .iter()
                         .find(|r| r.iter().any(|v| !matches!(v, Value::Null)))
                         .and_then(|first_row| {
-                            let col_idx = subq
-                                .columns
-                                .iter()
-                                .position(|c| c.alias.as_ref().unwrap_or(&c.name) == &col_name)?;
+                            let col_idx = resolved_columns.iter().position(|c| c == &col_name)?;
                             first_row.get(col_idx).map(|v| match v {
                                 Value::Integer(_) => "INTEGER",
                                 Value::Float(_) => "FLOAT",
