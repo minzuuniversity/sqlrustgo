@@ -1275,7 +1275,15 @@ mod tests {
         };
         storage.create_table(&info).unwrap();
         storage.insert("t", vec![vec![Value::Integer(1)]]).unwrap();
-        storage.create_index("t", "a", 0).unwrap();
+        storage
+            .create_index(crate::engine::IndexInfo {
+                name: "a".to_string(),
+                table: "t".to_string(),
+                columns: vec![sqlrustgo_parser::IndexColumnSpec::column("a")],
+                is_unique: false,
+                original_sql: String::new(),
+            })
+            .unwrap();
         storage.drop_index("t", "a").unwrap();
     }
 
