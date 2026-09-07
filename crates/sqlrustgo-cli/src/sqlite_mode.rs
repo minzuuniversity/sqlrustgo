@@ -928,6 +928,7 @@ mod tests {
         let _ = std::fs::remove_dir_all(&tmp);
     }
 
+    #[test]
     fn run_batch_stdin_with_multiline_create_table_succeeds() {
         let tmp = std::env::temp_dir().join("v31261_batch_stdin_multiline_ct");
         let _ = std::fs::remove_dir_all(&tmp);
@@ -950,6 +951,7 @@ mod tests {
         let _ = std::fs::remove_dir_all(&tmp);
     }
 
+    #[test]
     fn run_batch_stdin_with_mixed_comments_and_multiline_succeeds() {
         let tmp = std::env::temp_dir().join("v31261_batch_stdin_mixed");
         let _ = std::fs::remove_dir_all(&tmp);
