@@ -63,7 +63,9 @@ fn v312_66_quantified_all_greater_than_empty() {
     x.execute("CREATE TABLE b (val INT)").unwrap();
     x.execute("INSERT INTO b VALUES (10), (20), (30)").unwrap();
     let res = x
-        .execute("SELECT val FROM a WHERE val > ALL (SELECT val FROM b WHERE val > 100) ORDER BY val")
+        .execute(
+            "SELECT val FROM a WHERE val > ALL (SELECT val FROM b WHERE val > 100) ORDER BY val",
+        )
         .unwrap();
     assert_eq!(res.rows.len(), 3, "ALL with empty subquery = vacuous truth");
     assert_eq!(extract_int(&res, 0, 0), 10);
@@ -129,9 +131,11 @@ fn v312_66_quantified_not_equal_all() {
 fn v312_66_quantified_correlated_does_not_panic() {
     let mut x = fresh();
     x.execute("CREATE TABLE outer_t (val INT)").unwrap();
-    x.execute("INSERT INTO outer_t VALUES (10), (20), (30)").unwrap();
+    x.execute("INSERT INTO outer_t VALUES (10), (20), (30)")
+        .unwrap();
     x.execute("CREATE TABLE inner_t (inner_col INT)").unwrap();
-    x.execute("INSERT INTO inner_t VALUES (5), (15), (25)").unwrap();
+    x.execute("INSERT INTO inner_t VALUES (5), (15), (25)")
+        .unwrap();
     // Correlated subquery: `inner_col < outer_t.val`. The conservative
     // fallback returns true for all outer rows (no panic), matching
     // the existing IN/EXISTS pattern at `eval_predicate`.
@@ -140,5 +144,8 @@ fn v312_66_quantified_correlated_does_not_panic() {
         .unwrap();
     // We don't assert a specific count (correlated is conservative);
     // just verify the executor didn't panic and produced SOME rows.
-    assert!(!res.rows.is_empty(), "correlated quantified should not panic");
+    assert!(
+        !res.rows.is_empty(),
+        "correlated quantified should not panic"
+    );
 }

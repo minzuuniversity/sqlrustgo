@@ -50,7 +50,8 @@ fn v312_69_insert_returning_with_no_clause_unaffected() {
 #[test]
 fn v312_69_insert_returning_star_projects_all_columns() {
     let mut x = fresh();
-    x.execute("CREATE TABLE t(id INT, name VARCHAR(20))").unwrap();
+    x.execute("CREATE TABLE t(id INT, name VARCHAR(20))")
+        .unwrap();
     let res = x
         .execute("INSERT INTO t VALUES (1, 'alice') RETURNING *")
         .unwrap();

@@ -49,9 +49,7 @@ fn row_text(row: &[Value]) -> Vec<String> {
 #[test]
 fn substring_negative_start_full() {
     let mut x = fresh_mem();
-    let r = x
-        .execute("SELECT SUBSTRING('hello world', -5)")
-        .unwrap();
+    let r = x.execute("SELECT SUBSTRING('hello world', -5)").unwrap();
     let rows = r.rows;
     assert_eq!(rows.len(), 1);
     assert_eq!(rows[0][0], Value::Text("world".to_string()));
@@ -60,9 +58,7 @@ fn substring_negative_start_full() {
 #[test]
 fn substring_negative_start_short() {
     let mut x = fresh_mem();
-    let r = x
-        .execute("SELECT SUBSTRING('hello world', -3)")
-        .unwrap();
+    let r = x.execute("SELECT SUBSTRING('hello world', -3)").unwrap();
     let rows = r.rows;
     assert_eq!(rows.len(), 1);
     assert_eq!(rows[0][0], Value::Text("rld".to_string()));
@@ -82,9 +78,7 @@ fn substring_negative_start_exceeds_length() {
     // Upstream PR #4767 (#4761): |i| >= n clamps to 0 (returns full string).
     // SQLite/PG behavior: SUBSTRING('hello', -100) = 'hello'.
     let mut x = fresh_mem();
-    let r = x
-        .execute("SELECT SUBSTRING('hello', -100)")
-        .unwrap();
+    let r = x.execute("SELECT SUBSTRING('hello', -100)").unwrap();
     let rows = r.rows;
     assert_eq!(rows.len(), 1);
     assert_eq!(rows[0][0], Value::Text("hello".to_string()));
@@ -94,9 +88,7 @@ fn substring_negative_start_exceeds_length() {
 fn substring_zero_still_empty() {
     // Position 0 = before start, still returns empty (per #4681)
     let mut x = fresh_mem();
-    let r = x
-        .execute("SELECT SUBSTRING('hello world', 0)")
-        .unwrap();
+    let r = x.execute("SELECT SUBSTRING('hello world', 0)").unwrap();
     let rows = r.rows;
     assert_eq!(rows.len(), 1);
     assert_eq!(rows[0][0], Value::Text("".to_string()));
@@ -109,9 +101,7 @@ fn substring_zero_still_empty() {
 #[test]
 fn substring_with_length() {
     let mut x = fresh_mem();
-    let r = x
-        .execute("SELECT SUBSTRING('hello world', 1, 5)")
-        .unwrap();
+    let r = x.execute("SELECT SUBSTRING('hello world', 1, 5)").unwrap();
     let rows = r.rows;
     assert_eq!(rows.len(), 1);
     assert_eq!(rows[0][0], Value::Text("hello".to_string()));

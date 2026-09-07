@@ -20,7 +20,8 @@ fn fresh() -> ExecutionEngine<MemoryStorage> {
 #[test]
 fn v312_75_update_of_single_column_trigger_creates() {
     let mut x = fresh();
-    x.execute("CREATE TABLE t(id INT, val INT, note TEXT)").unwrap();
+    x.execute("CREATE TABLE t(id INT, val INT, note TEXT)")
+        .unwrap();
     x.execute("INSERT INTO t VALUES (1, 10, 'init')").unwrap();
     // BEFORE UPDATE OF val — column-level trigger must be accepted.
     x.execute(
@@ -36,7 +37,8 @@ fn v312_75_update_of_single_column_trigger_creates() {
 #[test]
 fn v312_75_update_of_multiple_columns_trigger_creates() {
     let mut x = fresh();
-    x.execute("CREATE TABLE t(id INT, val INT, note TEXT)").unwrap();
+    x.execute("CREATE TABLE t(id INT, val INT, note TEXT)")
+        .unwrap();
     x.execute("INSERT INTO t VALUES (1, 10, 'a')").unwrap();
     // AFTER UPDATE OF val, note — multi-column trigger.
     x.execute(

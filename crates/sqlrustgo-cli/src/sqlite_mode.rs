@@ -291,8 +291,7 @@ impl SqliteMode {
             .strip_suffix(';')
             .map(|s| s.to_string())
             .unwrap_or(upper);
-        if effective.starts_with("CREATE PROCEDURE") || effective.starts_with("CREATE FUNCTION")
-        {
+        if effective.starts_with("CREATE PROCEDURE") || effective.starts_with("CREATE FUNCTION") {
             let preview: String = trimmed
                 .chars()
                 .take(60)

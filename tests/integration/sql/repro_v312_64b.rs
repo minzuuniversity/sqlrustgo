@@ -38,7 +38,8 @@ fn fresh_mem() -> ExecutionEngine<MemoryStorage> {
 fn repro_4650_group_concat_aggregates_with_order_by_separator() {
     let mut x = fresh_mem();
     x.execute("CREATE TABLE t(grp int, val int)").unwrap();
-    x.execute("INSERT INTO t VALUES (1,10),(1,20),(1,30),(2,5),(2,15)").unwrap();
+    x.execute("INSERT INTO t VALUES (1,10),(1,20),(1,30),(2,5),(2,15)")
+        .unwrap();
     let r = x
         .execute("SELECT GROUP_CONCAT(val ORDER BY val SEPARATOR ',') FROM t")
         .expect("GROUP_CONCAT must execute");
@@ -59,7 +60,8 @@ fn repro_4650_group_concat_aggregates_with_order_by_separator() {
 fn repro_4650_group_concat_with_group_by() {
     let mut x = fresh_mem();
     x.execute("CREATE TABLE t(grp int, val int)").unwrap();
-    x.execute("INSERT INTO t VALUES (1,10),(1,20),(1,30),(2,5),(2,15)").unwrap();
+    x.execute("INSERT INTO t VALUES (1,10),(1,20),(1,30),(2,5),(2,15)")
+        .unwrap();
     let r = x
         .execute("SELECT grp, GROUP_CONCAT(val ORDER BY val SEPARATOR '|') FROM t GROUP BY grp")
         .expect("GROUP_CONCAT with GROUP BY must execute");
@@ -75,10 +77,7 @@ fn repro_4650_group_concat_with_group_by() {
         };
         let concat = match &row[1] {
             sqlrustgo::Value::Text(s) => s.clone(),
-            other => panic!(
-                "GROUP_CONCAT column should be Text, got {:?}",
-                other
-            ),
+            other => panic!("GROUP_CONCAT column should be Text, got {:?}", other),
         };
         by_grp.insert(grp, concat);
     }
@@ -116,15 +115,14 @@ fn repro_4650_group_concat_bare_form() {
 #[test]
 fn repro_4657_having_with_and_predicate() {
     let mut x = fresh_mem();
-    x.execute("CREATE TABLE orders(cust varchar(20), amt int)").unwrap();
+    x.execute("CREATE TABLE orders(cust varchar(20), amt int)")
+        .unwrap();
     x.execute(
         "INSERT INTO orders VALUES ('alice', 100), ('alice', 50), ('bob', 200), ('bob', 150), ('carol', 300)",
     )
     .unwrap();
     let r = x
-        .execute(
-            "SELECT cust FROM orders GROUP BY cust HAVING count(*) >= 2 AND sum(amt) > 100",
-        )
+        .execute("SELECT cust FROM orders GROUP BY cust HAVING count(*) >= 2 AND sum(amt) > 100")
         .expect("HAVING with AND must execute");
     let custs: Vec<String> = r
         .rows
@@ -147,7 +145,8 @@ fn repro_4657_having_with_and_predicate() {
 #[test]
 fn repro_4657_having_with_subquery() {
     let mut x = fresh_mem();
-    x.execute("CREATE TABLE orders(cust varchar(20), amt int)").unwrap();
+    x.execute("CREATE TABLE orders(cust varchar(20), amt int)")
+        .unwrap();
     x.execute(
         "INSERT INTO orders VALUES ('alice', 100), ('alice', 50), ('bob', 200), ('bob', 150), ('carol', 300)",
     )
@@ -179,7 +178,8 @@ fn repro_4657_having_with_subquery() {
 fn repro_4659_extract_year_per_row() {
     let mut x = fresh_mem();
     x.execute("CREATE TABLE t(dt date)").unwrap();
-    x.execute("INSERT INTO t VALUES ('2026-09-01'), ('2026-09-15'), ('2026-10-01')").unwrap();
+    x.execute("INSERT INTO t VALUES ('2026-09-01'), ('2026-09-15'), ('2026-10-01')")
+        .unwrap();
     let r = x
         .execute("SELECT EXTRACT(YEAR FROM dt) FROM t")
         .expect("EXTRACT YEAR must run");
@@ -198,18 +198,21 @@ fn repro_4659_extract_year_per_row() {
 fn repro_4659_extract_year_month_combined() {
     let mut x = fresh_mem();
     x.execute("CREATE TABLE t(dt date)").unwrap();
-    x.execute("INSERT INTO t VALUES ('2026-09-01'), ('2026-09-15'), ('2026-10-01')").unwrap();
+    x.execute("INSERT INTO t VALUES ('2026-09-01'), ('2026-09-15'), ('2026-10-01')")
+        .unwrap();
     let r = x
         .execute("SELECT EXTRACT(YEAR FROM dt), EXTRACT(MONTH FROM dt) FROM t")
         .expect("EXTRACT YEAR+MONTH must run");
     assert_eq!(r.rows.len(), 3);
-    let expected: Vec<(&str, &str)> = vec![
-        ("2026", "09"),
-        ("2026", "09"),
-        ("2026", "10"),
-    ];
+    let expected: Vec<(&str, &str)> = vec![("2026", "09"), ("2026", "09"), ("2026", "10")];
     for (i, row) in r.rows.iter().enumerate() {
-        assert_eq!(format!("{:?}", row[0]), format!("Text(\"{}\")", expected[i].0));
-        assert_eq!(format!("{:?}", row[1]), format!("Text(\"{}\")", expected[i].1));
+        assert_eq!(
+            format!("{:?}", row[0]),
+            format!("Text(\"{}\")", expected[i].0)
+        );
+        assert_eq!(
+            format!("{:?}", row[1]),
+            format!("Text(\"{}\")", expected[i].1)
+        );
     }
 }

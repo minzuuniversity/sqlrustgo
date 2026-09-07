@@ -17,8 +17,8 @@
 //!      named table (documented behaviour).
 
 use parking_lot::RwLock;
-use sqlrustgo_storage::{FileStorage, MemoryStorage, StorageEngine, ViewInfo};
 use sqlrustgo::{ExecutionEngine, Value};
+use sqlrustgo_storage::{FileStorage, MemoryStorage, StorageEngine, ViewInfo};
 use std::sync::Arc;
 
 // ──────────────────────────── helpers ────────────────────────────
@@ -74,9 +74,7 @@ fn create_view_with_column_aliases() {
     let r = x.execute("SELECT * FROM v ORDER BY id").unwrap();
     assert_eq!(r.rows.len(), 2);
     // column-name projection: `SELECT id, doubled FROM v` must work
-    let r = x
-        .execute("SELECT id, doubled FROM v ORDER BY id")
-        .unwrap();
+    let r = x.execute("SELECT id, doubled FROM v ORDER BY id").unwrap();
     assert_eq!(r.rows.len(), 2);
     assert_eq!(as_int(&r.rows[0][0]), 1);
     assert_eq!(as_int(&r.rows[0][1]), 20);
@@ -86,7 +84,8 @@ fn create_view_with_column_aliases() {
 #[test]
 fn create_view_with_aggregation() {
     let mut x = fresh_mem();
-    x.execute("CREATE TABLE sales (dept TEXT, amt INT)").unwrap();
+    x.execute("CREATE TABLE sales (dept TEXT, amt INT)")
+        .unwrap();
     x.execute("INSERT INTO sales VALUES ('a', 10), ('a', 20), ('b', 5)")
         .unwrap();
     x.execute(

@@ -39,7 +39,10 @@ fn extract_text(res: &sqlrustgo::ExecutorResult, row: usize, col: usize) -> Stri
     }
 }
 
-fn is_err_msg_contains<E: std::fmt::Debug>(res: &Result<sqlrustgo::ExecutorResult, E>, needle: &str) -> bool {
+fn is_err_msg_contains<E: std::fmt::Debug>(
+    res: &Result<sqlrustgo::ExecutorResult, E>,
+    needle: &str,
+) -> bool {
     match res {
         Ok(_) => false,
         Err(e) => format!("{:?}", e).contains(needle),
@@ -192,9 +195,7 @@ fn v312_62_compare_values_text_case_sensitive() {
     let mut x = fresh();
     x.execute("CREATE TABLE s (a TEXT)").unwrap();
     x.execute("INSERT INTO s VALUES ('abc')").unwrap();
-    let r = x
-        .execute("SELECT COUNT(*) FROM s WHERE a = 'ABC'")
-        .unwrap();
+    let r = x.execute("SELECT COUNT(*) FROM s WHERE a = 'ABC'").unwrap();
     // BINARY: 'abc' != 'ABC'.
     assert_eq!(extract_int(&r, 0, 0), 0);
 }
@@ -319,9 +320,17 @@ fn v312_62_executor_pk_conflict_in_tx_rollback_recovers() {
     x.execute("ROLLBACK").unwrap();
 
     let r = x.execute("SELECT v FROM t WHERE id = 1").unwrap();
-    assert_eq!(extract_int(&r, 0, 0), 100, "row (1, 100) must survive rollback");
+    assert_eq!(
+        extract_int(&r, 0, 0),
+        100,
+        "row (1, 100) must survive rollback"
+    );
     let r2 = x.execute("SELECT COUNT(*) FROM t").unwrap();
-    assert_eq!(extract_int(&r2, 0, 0), 1, "insert (2, 200) must be rolled back");
+    assert_eq!(
+        extract_int(&r2, 0, 0),
+        1,
+        "insert (2, 200) must be rolled back"
+    );
 }
 
 #[test]
@@ -382,7 +391,8 @@ fn v312_62_alter_table_add_column_still_works() {
 #[test]
 fn v312_62_nested_cte_with_explicit_column_list() {
     let mut x = fresh();
-    x.execute("CREATE TABLE t (id INTEGER, val INTEGER)").unwrap();
+    x.execute("CREATE TABLE t (id INTEGER, val INTEGER)")
+        .unwrap();
     x.execute("INSERT INTO t VALUES (1, 10), (2, 20), (3, 30)")
         .unwrap();
     // The inner CTE names its columns explicitly; the outer CTE must also
@@ -405,7 +415,8 @@ fn v312_62_nested_cte_with_explicit_column_list() {
 #[test]
 fn v312_62_nested_cte_three_levels() {
     let mut x = fresh();
-    x.execute("CREATE TABLE t (id INTEGER, val INTEGER)").unwrap();
+    x.execute("CREATE TABLE t (id INTEGER, val INTEGER)")
+        .unwrap();
     x.execute("INSERT INTO t VALUES (1, 10), (2, 20), (3, 30)")
         .unwrap();
     let r = x
@@ -500,7 +511,8 @@ fn v312_62_group_concat_distinct_strips_sentinel() {
 #[test]
 fn v312_62_optimizer_uses_index_for_eq_predicate() {
     let mut x = fresh();
-    x.execute("CREATE TABLE t (id INTEGER, val INTEGER)").unwrap();
+    x.execute("CREATE TABLE t (id INTEGER, val INTEGER)")
+        .unwrap();
     x.execute("INSERT INTO t VALUES (1, 10), (2, 20), (3, 30)")
         .unwrap();
     x.execute("CREATE INDEX idx_val ON t(val)").unwrap();
@@ -541,7 +553,8 @@ fn v312_62_optimizer_uses_index_for_range_predicate() {
 #[test]
 fn v312_62_optimizer_seq_scan_when_no_index() {
     let mut x = fresh();
-    x.execute("CREATE TABLE t (id INTEGER, val INTEGER)").unwrap();
+    x.execute("CREATE TABLE t (id INTEGER, val INTEGER)")
+        .unwrap();
     x.execute("INSERT INTO t VALUES (1, 10), (2, 20)").unwrap();
     // No CREATE INDEX → must fall back to SeqScan + Filter.
     let r = x.execute("EXPLAIN SELECT * FROM t WHERE val = 10").unwrap();
@@ -554,7 +567,8 @@ fn v312_62_optimizer_seq_scan_when_no_index() {
 #[test]
 fn v312_62_optimizer_seq_scan_when_index_on_other_column() {
     let mut x = fresh();
-    x.execute("CREATE TABLE t (id INTEGER, val INTEGER)").unwrap();
+    x.execute("CREATE TABLE t (id INTEGER, val INTEGER)")
+        .unwrap();
     x.execute("CREATE INDEX idx_id ON t(id)").unwrap();
     // Index exists but on `id`, not on `val`. WHERE val=... cannot use
     // the index — must remain SeqScan + Filter.
@@ -580,7 +594,8 @@ fn v312_62_optimizer_seq_scan_when_index_on_other_column() {
 #[test]
 fn v312_62_optimizer_count_star_uses_covering_index_when_available() {
     let mut x = fresh();
-    x.execute("CREATE TABLE t (id INTEGER, val INTEGER)").unwrap();
+    x.execute("CREATE TABLE t (id INTEGER, val INTEGER)")
+        .unwrap();
     x.execute("INSERT INTO t VALUES (1, 10), (2, 20), (3, 30), (4, 40), (5, 50)")
         .unwrap();
     x.execute("CREATE INDEX idx_val ON t(val)").unwrap();
@@ -610,32 +625,31 @@ fn v312_62_optimizer_count_star_uses_covering_index_when_available() {
 #[test]
 fn v312_62_optimizer_count_star_falls_back_to_seq_scan_without_index() {
     let mut x = fresh();
-    x.execute("CREATE TABLE t (id INTEGER, val INTEGER)").unwrap();
+    x.execute("CREATE TABLE t (id INTEGER, val INTEGER)")
+        .unwrap();
     x.execute("INSERT INTO t VALUES (1, 10)").unwrap();
     // No CREATE INDEX → COUNT(*) must stay SeqScan + GroupBy + Sort.
     let r = x.execute("EXPLAIN SELECT count(*) FROM t").unwrap();
     let plan = explain_plan_to_string(&r);
     assert!(plan.contains("SeqScan"), "got:\n{}", plan);
     assert!(plan.contains("GroupBy"), "got:\n{}", plan);
-    assert!(
-        plan.contains("TEMP B-TREE FOR GROUP BY"),
-        "got:\n{}",
-        plan
-    );
+    assert!(plan.contains("TEMP B-TREE FOR GROUP BY"), "got:\n{}", plan);
     assert!(!plan.contains("IndexScan"), "got:\n{}", plan);
 }
 
 #[test]
 fn v312_62_optimizer_count_star_with_where_uses_index_predicate() {
     let mut x = fresh();
-    x.execute("CREATE TABLE t (id INTEGER, val INTEGER)").unwrap();
+    x.execute("CREATE TABLE t (id INTEGER, val INTEGER)")
+        .unwrap();
     x.execute("INSERT INTO t VALUES (1, 10), (2, 20), (3, 30)")
         .unwrap();
     x.execute("CREATE INDEX idx_val ON t(val)").unwrap();
     // WHERE pred → use the index for the predicate (Filter absorbed).
     // This is the covering-or-predicate case: the WHERE clause makes
     // it a predicate IndexScan, not a covering scan.
-    let r = x.execute("EXPLAIN SELECT count(*) FROM t WHERE val > 15")
+    let r = x
+        .execute("EXPLAIN SELECT count(*) FROM t WHERE val > 15")
         .unwrap();
     let plan = explain_plan_to_string(&r);
     assert!(

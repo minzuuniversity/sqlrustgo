@@ -48,7 +48,12 @@ fn insert_from_recursive_cte_select_anchor() {
     let r = x
         .execute("SELECT x, y FROM t ORDER BY x")
         .expect("SELECT FROM t should succeed");
-    assert_eq!(r.rows.len(), 3, "expected 3 rows in t, got {}", r.rows.len());
+    assert_eq!(
+        r.rows.len(),
+        3,
+        "expected 3 rows in t, got {}",
+        r.rows.len()
+    );
 
     // Rows are (1, 10), (2, 20), (3, 30) ordered by x.
     let pairs: Vec<(i64, i64)> = r

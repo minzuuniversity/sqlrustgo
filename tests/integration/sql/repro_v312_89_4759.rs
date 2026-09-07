@@ -54,11 +54,7 @@ fn rec_cte_walk_select_star_4759() {
             SELECT n + 1 FROM walk WHERE n < 5 \
          ) SELECT * FROM walk ORDER BY n",
     );
-    assert!(
-        r.is_ok(),
-        "walk(n) with SELECT * failed: {:?}",
-        r.err()
-    );
+    assert!(r.is_ok(), "walk(n) with SELECT * failed: {:?}", r.err());
     let rows = r.unwrap().rows;
     assert_eq!(rows.len(), 5, "expected 5 rows, got {}", rows.len());
     for i in 0..5 {

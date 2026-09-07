@@ -26,8 +26,8 @@ mod tests {
             compression: None,
             partition_info: None,
             collations: std::collections::HashMap::new(),
-        original_sql: String::new(),
-};
+            original_sql: String::new(),
+        };
         storage.lock().unwrap().create_table(&info).unwrap();
 
         let mut handles = vec![];
@@ -71,8 +71,8 @@ mod tests {
             compression: None,
             partition_info: None,
             collations: std::collections::HashMap::new(),
-        original_sql: String::new(),
-};
+            original_sql: String::new(),
+        };
         storage.lock().unwrap().create_table(&info).unwrap();
 
         // 插入测试数据
@@ -124,8 +124,8 @@ mod tests {
             compression: None,
             partition_info: None,
             collations: std::collections::HashMap::new(),
-        original_sql: String::new(),
-};
+            original_sql: String::new(),
+        };
         storage1.lock().unwrap().create_table(&info).unwrap();
         storage1
             .lock()
@@ -176,8 +176,8 @@ mod tests {
             compression: None,
             partition_info: None,
             collations: std::collections::HashMap::new(),
-        original_sql: String::new(),
-};
+            original_sql: String::new(),
+        };
         storage.lock().unwrap().create_table(&info).unwrap();
 
         // 准备数据
@@ -238,8 +238,8 @@ mod tests {
                     compression: None,
                     partition_info: None,
                     collations: std::collections::HashMap::new(),
-                original_sql: String::new(),
-};
+                    original_sql: String::new(),
+                };
 
                 s.create_table(&info).ok();
                 s.insert(&table_name, vec![vec![Value::Integer(i)]]).ok();
@@ -270,8 +270,8 @@ mod tests {
             compression: None,
             partition_info: None,
             collations: std::collections::HashMap::new(),
-        original_sql: String::new(),
-};
+            original_sql: String::new(),
+        };
         storage.lock().unwrap().create_table(&info).unwrap();
 
         let mut handles = vec![];

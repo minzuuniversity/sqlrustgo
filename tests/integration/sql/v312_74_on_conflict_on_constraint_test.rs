@@ -16,7 +16,8 @@ fn fresh() -> ExecutionEngine<MemoryStorage> {
 #[test]
 fn v312_74_on_conflict_on_constraint_updates_existing() {
     let mut x = fresh();
-    x.execute("CREATE TABLE u(id INT PRIMARY KEY, val INT)").unwrap();
+    x.execute("CREATE TABLE u(id INT PRIMARY KEY, val INT)")
+        .unwrap();
     x.execute("INSERT INTO u VALUES (1, 100)").unwrap();
     x.execute(
         "INSERT INTO u VALUES (1, 999) ON CONFLICT ON CONSTRAINT u_pkey \
@@ -32,7 +33,8 @@ fn v312_74_on_conflict_on_constraint_updates_existing() {
 #[test]
 fn v312_74_on_conflict_on_constraint_do_nothing() {
     let mut x = fresh();
-    x.execute("CREATE TABLE u(id INT PRIMARY KEY, val INT)").unwrap();
+    x.execute("CREATE TABLE u(id INT PRIMARY KEY, val INT)")
+        .unwrap();
     x.execute("INSERT INTO u VALUES (1, 100)").unwrap();
     x.execute(
         "INSERT INTO u VALUES (1, 999) ON CONFLICT ON CONSTRAINT u_pkey \
@@ -69,7 +71,8 @@ fn v312_74_on_conflict_bare_do_nothing_still_works() {
     // Regression: bare `ON CONFLICT DO NOTHING` (no target, no
     // constraint) must still parse.
     let mut x = fresh();
-    x.execute("CREATE TABLE t(id INT PRIMARY KEY, val INT)").unwrap();
+    x.execute("CREATE TABLE t(id INT PRIMARY KEY, val INT)")
+        .unwrap();
     x.execute("INSERT INTO t VALUES (1, 100)").unwrap();
     x.execute("INSERT INTO t VALUES (1, 999) ON CONFLICT DO NOTHING")
         .unwrap();
@@ -88,10 +91,8 @@ fn v312_74_on_conflict_bare_do_nothing_still_works() {
 #[test]
 fn v312_90_on_conflict_excluded_dot_col_uses_new_row() {
     let mut x = fresh();
-    x.execute(
-        "CREATE TABLE t(id INT PRIMARY KEY, name TEXT, cnt INT DEFAULT 0)",
-    )
-    .unwrap();
+    x.execute("CREATE TABLE t(id INT PRIMARY KEY, name TEXT, cnt INT DEFAULT 0)")
+        .unwrap();
     x.execute("INSERT INTO t VALUES (1, 'a', 0)").unwrap();
     // EXCLUDED.cnt should resolve to the new row's `cnt` (= 5), not
     // the existing row's `cnt` (= 0).
@@ -132,10 +133,8 @@ fn v312_90_on_conflict_excluded_combined_with_existing_col() {
 fn v312_90_on_conflict_multiple_excluded_columns() {
     // Multiple EXCLUDED.col references in a single SET clause.
     let mut x = fresh();
-    x.execute(
-        "CREATE TABLE t(id INT PRIMARY KEY, name TEXT, val INT, cnt INT)",
-    )
-    .unwrap();
+    x.execute("CREATE TABLE t(id INT PRIMARY KEY, name TEXT, val INT, cnt INT)")
+        .unwrap();
     x.execute("INSERT INTO t VALUES (1, 'a', 10, 100)").unwrap();
     x.execute(
         "INSERT INTO t (id, name, val, cnt) VALUES (1, 'b', 20, 200) \

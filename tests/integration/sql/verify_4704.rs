@@ -36,11 +36,10 @@ fn verify_4704_sub1_values_in_cte_anchor() {
 #[test]
 fn verify_4704_sub3_sqlite_sequence() {
     let mut x = fresh_mem();
-    x.execute(
-        "CREATE TABLE t(id INTEGER PRIMARY KEY AUTOINCREMENT, val INT)",
-    )
-    .unwrap();
-    x.execute("INSERT INTO t(val) VALUES (10), (20), (30)").unwrap();
+    x.execute("CREATE TABLE t(id INTEGER PRIMARY KEY AUTOINCREMENT, val INT)")
+        .unwrap();
+    x.execute("INSERT INTO t(val) VALUES (10), (20), (30)")
+        .unwrap();
     let r = x
         .execute("SELECT * FROM sqlite_sequence")
         .expect("sqlite_sequence should be queryable");
@@ -70,7 +69,11 @@ fn verify_4704_sub2_multi_anchor_union() {
             other => panic!("expected integer, got {:?}", other),
         })
         .collect();
-    assert!(n.len() >= 2, "multi-anchor UNION produced too few rows: {:?}", n);
+    assert!(
+        n.len() >= 2,
+        "multi-anchor UNION produced too few rows: {:?}",
+        n
+    );
     assert!(n.contains(&1), "anchor 1 missing from {:?}", n);
     assert!(n.contains(&10), "anchor 10 missing from {:?}", n);
 }

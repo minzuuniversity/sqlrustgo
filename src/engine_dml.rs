@@ -324,7 +324,14 @@ pub fn execute_insert<S: StorageEngine + 'static>(
                     if record_matches_unique_key(existing, new_record, &table_info) {
                         matched = true;
                         if let Some(ref updates) = insert.on_duplicate_key_update {
-                            apply_odku(&mut *storage, &table_name, &table_info, existing, new_record, updates)?;
+                            apply_odku(
+                                &mut *storage,
+                                &table_name,
+                                &table_info,
+                                existing,
+                                new_record,
+                                updates,
+                            )?;
                             odku_handled_indices.insert(new_idx);
                         } else if let Some(ref clause) = insert.on_conflict_clause {
                             // V312-63 / Issue #4642: SQLite/Postgres UPSERT
@@ -1281,17 +1288,17 @@ fn execute_update_multi_table<S: StorageEngine + 'static>(
         // Build joined rows by nested-loop join.
         let first_rows = &per_table_rows[0];
         let mut joined_rows: Vec<Vec<Value>> = Vec::new();
-        
+
         // Single JOIN: resolved_joins[0] gives us the ON expression and table index 1
         let (_, on_expr) = &resolved_joins[0];
         let second_rows = &per_table_rows[1];
-        
+
         for r1 in first_rows {
             for r2 in second_rows {
                 // Build combined row for ON evaluation
                 let mut trial = r1.clone();
                 trial.extend(r2.clone());
-                
+
                 if evaluate_where_clause(on_expr, &trial, &combined_info) {
                     joined_rows.push(trial);
                 }
@@ -1330,9 +1337,9 @@ fn execute_update_multi_table<S: StorageEngine + 'static>(
         // For UPDATE t1 JOIN t2 ON ... SET t1.col = val, only t1 gets updated.
         for (t, tref) in table_refs.iter().enumerate() {
             let table_prefix = tref.alias.clone().unwrap_or_else(|| tref.name.clone());
-            let table_has_update = resolved_set.iter().any(|(col, _)| {
-                col.starts_with(&format!("{}.", table_prefix))
-            });
+            let table_has_update = resolved_set
+                .iter()
+                .any(|(col, _)| col.starts_with(&format!("{}.", table_prefix)));
             if !table_has_update {
                 continue;
             }

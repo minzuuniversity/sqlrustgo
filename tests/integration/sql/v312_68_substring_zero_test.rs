@@ -28,7 +28,11 @@ fn v312_68_substring_zero_index_returns_empty() {
         .unwrap();
     assert_eq!(res.rows.len(), 1);
     assert_eq!(extract_text(&res, 0, 0), "", "position 0 must be empty");
-    assert_eq!(extract_text(&res, 0, 1), "hello", "position 1 = whole string");
+    assert_eq!(
+        extract_text(&res, 0, 1),
+        "hello",
+        "position 1 = whole string"
+    );
     assert_eq!(extract_text(&res, 0, 2), "o", "position 5 = last char");
 }
 
@@ -39,8 +43,16 @@ fn v312_68_substring_zero_with_length_is_empty() {
         .execute("SELECT SUBSTRING('hello', 0, 3), SUBSTRING('hello', 1, 3)")
         .unwrap();
     assert_eq!(res.rows.len(), 1);
-    assert_eq!(extract_text(&res, 0, 0), "", "start=0 with length=3 is empty");
-    assert_eq!(extract_text(&res, 0, 1), "hel", "start=1 length=3 is first 3");
+    assert_eq!(
+        extract_text(&res, 0, 0),
+        "",
+        "start=0 with length=3 is empty"
+    );
+    assert_eq!(
+        extract_text(&res, 0, 1),
+        "hel",
+        "start=1 length=3 is first 3"
+    );
 }
 
 #[test]

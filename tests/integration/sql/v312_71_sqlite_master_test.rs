@@ -19,7 +19,11 @@ fn v312_71_sqlite_master_returns_one_row_per_table() {
     let res = x.execute("SELECT * FROM sqlite_master").unwrap();
     // The system table is synthesized with 5 columns:
     // type, name, tbl_name, rootpage, sql.
-    assert!(res.rows.len() >= 2, "expected ≥2 rows, got {}", res.rows.len());
+    assert!(
+        res.rows.len() >= 2,
+        "expected ≥2 rows, got {}",
+        res.rows.len()
+    );
     for row in &res.rows {
         assert_eq!(row.len(), 5);
         assert_eq!(row[0], Value::Text("table".to_string()));

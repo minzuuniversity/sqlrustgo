@@ -1120,9 +1120,7 @@ impl<S: StorageEngine + 'static> ExecutionEngine<S> {
                     .columns
                     .iter()
                     .position(|c| c.name == name)
-                    .ok_or_else(|| {
-                        SqlError::ExecutionError("Column not found".to_string())
-                    })?;
+                    .ok_or_else(|| SqlError::ExecutionError("Column not found".to_string()))?;
             }
         } else {
             return Err(SqlError::ExecutionError("No columns in index".to_string()));

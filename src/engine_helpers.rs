@@ -15,7 +15,9 @@ use sqlrustgo_parser::parser::UpdateStatement;
 use sqlrustgo_storage::{ColumnDefinition, StorageEngine, TableInfo};
 use sqlrustgo_types::Value;
 
-use crate::expr_utils::{evaluate_expression, evaluate_expression_with_excluded, expression_to_value};
+use crate::expr_utils::{
+    evaluate_expression, evaluate_expression_with_excluded, expression_to_value,
+};
 use crate::{SqlError, SqlResult};
 
 /// Convert `INSERT VALUES` expression rows to materialised `Value` records.
@@ -239,12 +241,11 @@ pub fn apply_odku(
             // The evaluator walks the expression tree so sub-expressions
             // like `base + EXCLUDED.delta` resolve each operand against
             // the correct row context.
-            let val = match evaluate_expression_with_excluded(
-                rhs, existing_row, new_row, table_info,
-            ) {
-                Ok(v) => v,
-                Err(_) => expression_to_value(rhs),
-            };
+            let val =
+                match evaluate_expression_with_excluded(rhs, existing_row, new_row, table_info) {
+                    Ok(v) => v,
+                    Err(_) => expression_to_value(rhs),
+                };
             Some((idx, val))
         })
         .collect();
