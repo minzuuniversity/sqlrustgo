@@ -115,6 +115,68 @@ impl InMemoryGraphStore {
     pub fn new() -> Self {
         Self::default()
     }
+
+    /// Inserts a node with a caller-chosen id, ignoring the internal counter.
+    ///
+    /// Intended for stores (e.g. `DiskGraphStore`) that maintain their own
+    /// monotonic id allocation and need to replay WAL records whose node ids
+    /// were chosen at write time. If a node with the same id already exists,
+    /// returns [`GraphError::NodeNotFound`] — caller should check first.
+    ///
+    /// Does **not** advance the internal counter; the caller is expected to
+    /// drive id allocation itself.
+    pub fn insert_node_with_id(
+        &self,
+        id: NodeId,
+        labels: Vec<Label>,
+        properties: PropertyMap,
+    ) -> GraphResult<()> {
+        let mut g = self.inner.write();
+        if g.nodes.contains_key(&id) {
+            return Err(GraphError::NodeNotFound(id));
+        }
+        g.nodes.insert(
+            id,
+            Node {
+                id,
+                labels,
+                properties,
+            },
+        );
+        Ok(())
+    }
+
+    /// Inserts an edge with a caller-chosen id.
+    pub fn insert_edge_with_id(
+        &self,
+        id: EdgeId,
+        source: NodeId,
+        target: NodeId,
+        rel_type: Label,
+        properties: PropertyMap,
+    ) -> GraphResult<()> {
+        let mut g = self.inner.write();
+        if g.edges.contains_key(&id) {
+            return Err(GraphError::EdgeNotFound(id));
+        }
+        if !g.nodes.contains_key(&source) || !g.nodes.contains_key(&target) {
+            return Err(GraphError::EdgeEndpointMissing {
+                src: source,
+                dst: target,
+            });
+        }
+        g.edges.insert(
+            id,
+            Edge {
+                id,
+                source,
+                target,
+                rel_type,
+                properties,
+            },
+        );
+        Ok(())
+    }
 }
 
 impl GraphStore for InMemoryGraphStore {
