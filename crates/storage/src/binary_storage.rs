@@ -1381,7 +1381,15 @@ mod tests {
     fn test_bin_create_index_noop() {
         let tmp = std::env::temp_dir().join("bin_test_ci");
         let mut storage = BinaryTableStorage::new(tmp.clone()).unwrap();
-        storage.create_index("t", "c", 0).unwrap();
+        storage
+            .create_index(crate::engine::IndexInfo {
+                name: "c".to_string(),
+                table: "t".to_string(),
+                columns: vec![sqlrustgo_parser::IndexColumnSpec::column("c")],
+                is_unique: false,
+                original_sql: String::new(),
+            })
+            .unwrap();
         std::fs::remove_dir_all(tmp).ok();
     }
 

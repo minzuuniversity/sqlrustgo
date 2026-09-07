@@ -287,7 +287,14 @@ mod tests {
         s.delete("t", &[]).unwrap();
         let true_filter: crate::engine::RowFilter = Box::new(|_| true);
         s.delete_if("t", &true_filter).unwrap();
-        s.create_index("t", "id", 0).unwrap();
+        s.create_index(crate::engine::IndexInfo {
+            name: "id".to_string(),
+            table: "t".to_string(),
+            columns: vec![sqlrustgo_parser::IndexColumnSpec::column("id")],
+            is_unique: false,
+            original_sql: String::new(),
+        })
+        .unwrap();
         assert!(s.list_tables().contains(&"t".to_string()));
     }
 }
