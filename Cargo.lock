@@ -4498,6 +4498,24 @@ dependencies = [
 ]
 
 [[package]]
+name = "sqlrustgo-graph"
+version = "3.11.0"
+dependencies = [
+ "anyhow",
+ "async-trait",
+ "bincode",
+ "log",
+ "parking_lot",
+ "serde",
+ "serde_json",
+ "sqlrustgo-storage",
+ "sqlrustgo-types",
+ "tempfile",
+ "thiserror 2.0.18",
+ "tokio",
+]
+
+[[package]]
 name = "sqlrustgo-mysql-client"
 version = "3.9.0"
 dependencies = [
