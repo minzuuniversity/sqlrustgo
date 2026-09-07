@@ -1104,8 +1104,8 @@ mod tests {
             .collect();
         assert_eq!(
             values,
-            vec!["NULL", "NULL", "10", "20", "30"],
-            "ASC default: NULLs come first (SQLite semantics)"
+            vec!["10", "20", "30", "NULL", "NULL"],
+            "ASC default: NULLs come last (sqlrustgo semantics — V312-64g #4748)"
         );
     }
 

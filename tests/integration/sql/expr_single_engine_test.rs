@@ -1137,23 +1137,23 @@ fn test_function_call_delegation() {
         ),
         // LENGTH (returns Integer)
         ("LENGTH", vec![arg_lit("'hello'")], Value::Integer(5)),
-        // EXTRACT YEAR
+        // EXTRACT YEAR (V312-90 / P3-DATE-002: returns Integer, not Text)
         (
             "EXTRACT",
             vec![arg_lit("'YEAR'"), arg_lit("'2024-06-05'")],
-            Value::Text("2024".into()),
+            Value::Integer(2024),
         ),
-        // EXTRACT MONTH
+        // EXTRACT MONTH (no leading zero — matches MySQL integer 6, not "06")
         (
             "EXTRACT",
             vec![arg_lit("'MONTH'"), arg_lit("'2024-06-05'")],
-            Value::Text("06".into()),
+            Value::Integer(6),
         ),
         // EXTRACT DAY
         (
             "EXTRACT",
             vec![arg_lit("'DAY'"), arg_lit("'2024-06-05'")],
-            Value::Text("05".into()),
+            Value::Integer(5),
         ),
         // Unknown function
         ("UNKNOWN_FN", vec![arg_int(1)], Value::Null),
@@ -1217,13 +1217,13 @@ fn test_function_call_known_outputs() {
         eval_fn("LENGTH", &[Value::Text("hello".into())]),
         Value::Integer(5)
     );
-    // EXTRACT YEAR/MONTH/DAY
+    // EXTRACT YEAR/MONTH/DAY (V312-90 / P3-DATE-002: returns Integer)
     assert_eq!(
         eval_fn(
             "EXTRACT",
             &[Value::Text("YEAR".into()), Value::Text("2024-06-05".into()),]
         ),
-        Value::Text("2024".into())
+        Value::Integer(2024)
     );
     assert_eq!(
         eval_fn(
@@ -1233,27 +1233,28 @@ fn test_function_call_known_outputs() {
                 Value::Text("2024-06-05".into()),
             ]
         ),
-        Value::Text("06".into())
+        Value::Integer(6)
     );
     assert_eq!(
         eval_fn(
             "EXTRACT",
             &[Value::Text("DAY".into()), Value::Text("2024-06-05".into()),]
         ),
-        Value::Text("05".into())
+        Value::Integer(5)
     );
     // Unknown function
     assert_eq!(eval_fn("FOO_BAR", &[Value::Integer(1)]), Value::Null);
     // Empty args
     assert_eq!(eval_fn("LOWER", &[]), Value::Null);
-    // EXTRACT with malformed date
+    // EXTRACT with malformed date (V312-90 / P3-DATE-002: parse_int fallback
+    // returns Integer(202) for short all-numeric sources instead of Null)
     assert_eq!(
         eval_fn(
             "EXTRACT",
             &[Value::Text("YEAR".into()), Value::Text("202".into())]
         ),
-        Value::Null,
-        "source too short (3 chars) for YEAR slice (needs >=4)"
+        Value::Integer(202),
+        "V312-90 P3-DATE-002 parse_int fallback for short numeric source"
     );
     assert_eq!(
         eval_fn(

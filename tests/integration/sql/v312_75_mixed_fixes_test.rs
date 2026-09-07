@@ -155,29 +155,34 @@ fn v312_75_order_by_nulls_last_desc() {
 #[test]
 fn v312_75_order_by_default_unchanged_for_nulls_first_omitted() {
     // When the user omits NULLS FIRST/LAST entirely, the executor
-    // falls back to `session_null_order_first.unwrap_or(true)` —
-    // i.e. NULLs FIRST by default in this engine. This test pins
-    // that pre-existing behaviour so #4667 does not regress it.
+    // falls back to `session_null_order_first.unwrap_or(false)` —
+    // i.e. NULLs LAST by default in this engine. This test pins
+    // that behaviour so #4667 / V312-64g does not regress it.
+    //
+    // History: the test was originally written assuming the legacy
+    // unwrap_or(true) default (NULLs FIRST). V312-64g (#4748) made
+    // null placement independent of ASC/DESC, settling on NULLs LAST
+    // for the omitted-NULLS case. This assertion was updated to match.
     let mut x = fresh();
     x.execute("CREATE TABLE t(id INT, val INT)").unwrap();
     x.execute("INSERT INTO t VALUES (1, 10), (2, NULL), (3, 30), (4, NULL), (5, 20)")
         .unwrap();
     let r = x.execute("SELECT id FROM t ORDER BY val ASC").unwrap();
     assert_eq!(r.rows.len(), 5);
-    // NULL-valued rows (ids 2 and 4) must come first (positions 0 and 1).
+    // Non-nulls ascending first: 10, 20, 30 → ids 1, 5, 3.
+    assert_eq!(r.rows[0][0], Value::Integer(1));
+    assert_eq!(r.rows[1][0], Value::Integer(5));
+    assert_eq!(r.rows[2][0], Value::Integer(3));
+    // Then NULL-valued rows (ids 2 and 4) at positions 3 and 4.
     assert!(matches!(
-        r.rows[0][0],
+        r.rows[3][0],
         Value::Integer(2) | Value::Integer(4)
     ));
     assert!(matches!(
-        r.rows[1][0],
+        r.rows[4][0],
         Value::Integer(2) | Value::Integer(4)
     ));
-    assert_ne!(r.rows[0][0], r.rows[1][0]);
-    // Then non-nulls ascending: 10, 20, 30 → ids 1, 5, 3.
-    assert_eq!(r.rows[2][0], Value::Integer(1));
-    assert_eq!(r.rows[3][0], Value::Integer(5));
-    assert_eq!(r.rows[4][0], Value::Integer(3));
+    assert_ne!(r.rows[3][0], r.rows[4][0]);
 }
 
 // ---------------------------------------------------------------------
