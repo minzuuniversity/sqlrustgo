@@ -22,6 +22,18 @@ last_transition:
     date: "2026-08-19"
     reason: "ALPHA -> BETA transition. beta_required_gates verified: bash scripts/gate/check_beta_v3.12.0.sh reports 38/40 PASS, 0 BLOCKERS, 2 WARN ('ready for BETA promotion'). All 12 promotion_to_BETA_requires items from STAGE.yaml satisfied (see V312-56-VERIFICATION.md Beta Gate Snapshot + Promotion to BETA Readiness Checklist). Stage boundary lock released; #3887 master issue records Beta promotion per Anti-Fabrication-Policy-v1.0. Tag v3.12.0-beta1 to be cut per STAGE_CONFIG ALPHA_to_BETA trigger after this PR merges. Workspace clippy fix landed as PR #4354 (resolves B1_CLIPPY) + workspace fmt clean per cargo fmt --check."
 
+last_ga_attempt:
+  date: "2026-09-07"
+  head: "ae92d1511c"
+  outcome: "DEFERRED"
+  reason: "GA promotion deferred per Anti-Fabrication-Policy-v1.0. 3 outstanding GA promotion blockers prevent clean GA cut: B1 GA-2 168h Linux/Docker SOAK re-validation PENDING (only 8h macOS counterfactual evidence on file at evidence/v312-59/SOAK_V5_FINDINGS.md); B2 GA-1 aggregator must re-run with --full mode at current HEAD (existing evidence/v312-59/ga_gate_report.json is --full but at stale HEAD 1cfb90c19a, +4 commits behind); B3 6 post-milestone compatibility issues #4607/#4608/#4610/#4611/#4612/#4613 restrict GA claim scope per GA_RELEASE_REPORT.md §B3. PR #4845 WIP cleanup batch (4 commits landing on 4f9d6bcdce: Cargo.toml unblock + parser refactor + 7 openspec P3 specs + b2 summary refresh) did NOT address any of these 3 blockers — see CLAIM_DOWNGRADE_MANIFEST.md §9 for full per-blocker analysis and required release-claim-boundary language."
+  required_followup:
+    - "Run Linux/Docker 168h SOAK with post-#4558 + V5 fixes, or obtain governance reclassification of 8h macOS counterfactual as GA-equivalent evidence (B1)"
+    - "Re-run bash scripts/gate/check_ga_v3.12.0.sh --full at current HEAD, refresh evidence/v312-59/ga_gate_report.json with mode=full (B2)"
+    - "Either close #4607/#4608/#4610/#4611/#4612/#4613 or carry explicit GA release-claim-boundary language for each (B3)"
+    - "After B1/B2/B3 closure: re-attempt RC->GA transition, cut v3.12.0 + v3.12.0-ga tags per STAGE_CONFIG RC_to_GA trigger"
+  controlling_decision: "User decision 2026-09-07: '停 GA,只做 RC 收尾(推荐)' — defer GA promotion, complete RC wrap-up only."
+
 stage_boundary_lock:
   status: "RELEASED"
   date: "2026-08-26"

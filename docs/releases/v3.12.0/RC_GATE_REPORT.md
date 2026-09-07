@@ -226,3 +226,59 @@ Individual sub-gate reports are linked above in the verdict map.
   `v312-09-backup-restore-report.md`, `crash-recovery-upgrade-verification-report.md`,
   `evidence/wire_load_data/V312-13-REPORT.md`, `evidence/gmp_compliance/V312-53-REPORT.md`,
   `sqllogictest-baseline/V312-11-VERIFICATION.md` — source primary reports
+
+## RC Gate Refresh — 2026-09-07 (post-#4845 WIP cleanup)
+
+> **provenance:** generated_by=claude-macmini, generated_at=2026-09-07T04:20:00+08:00,
+> branch=develop/v3.12.0, HEAD=`ae92d1511c` (post-#4845 merge commit),
+> source_repo=openclaw/sqlrustgo, policy=Anti-Fabrication-Policy-v1.0
+>
+> **Purpose:** Document that the historical RC Gate Report verdict
+> (12/12 PASS at 2026-08-26 HEAD) **remains valid** after the WIP cleanup
+> PR #4845 (4 commits) landed. No RC gate verdict changed.
+
+### RC verdict remains 12/12 PASS at HEAD `ae92d1511c`
+
+The WIP cleanup PR #4845 (merge commit `ae92d1511c`) added 4 commits on top
+of the pre-cleanup base `4f9d6bcdce`:
+
+| Commit | Type | Scope | RC-gate impact |
+|---|---|---|---|
+| `5ed9663545` | fix(build) | Drop orphan `v312_90_indexed_by_hint_test` `[[test]]` Cargo entry | None — unblocks `cargo build --tests` only; no functional change. |
+| `3f10452724` | refactor(parser) | REGEXP/RLIKE simplify + drop dead helper + while-let loops (×2) | None — verified by `cargo test -p sqlrustgo-parser --lib` 682/682 PASS; no executor/storage/wire surface change. |
+| `23f1204e74` | spec(openspec) | Add 7 P3 fix change specs (`openspec/changes/fix-p3-*`) | None — proposal-only; zero code change. |
+| `239ee2ab35` | docs(b2) | Refresh `b2-per-binary-summary.json` | None — docs-only. |
+
+**Verdict:** All 12 `promotion_to_RC_requires` items remain PASS at HEAD
+`ae92d1511c`. No RC gate re-run required.
+
+### Pre-existing test failure (NOT a regression from PR #4845)
+
+`cargo test --all-features --lib` at HEAD `ae92d1511c` reports **130
+passed, 1 failed**:
+
+```
+engine_setops::tests::apply_trailing_nulls_first_then_last
+thread '...' panicked at src/engine_setops.rs:640:9:
+assertion failed: matches!(r1.rows.last(), Some(row) if matches!(row[0], Value::Null))
+```
+
+Verified pre-existing on the pre-WIP base `4f9d6bcdce` (HEAD before
+#4845): **same assertion failure, same line, same file**. The failure
+is in `crates/executor/src/engine_setops.rs`, which is **not touched
+by any of the 4 #4845 commits** (`git log 4f9d6bcdce..ae92d1511c --
+crates/executor/src/engine_setops.rs` returns empty).
+
+This is consistent with the b2 disabled-test-binary registry entry
+deferring similar NULLS FIRST/LAST executor work to v3.13 triage
+(see `docs/releases/v3.12.0/b2-disabled-test-binary-registry.md` for
+the 90-entry disabled list).
+
+**Verdict:** NOT a regression from PR #4845; pre-existing failure
+that pre-dates this WIP cleanup batch.
+
+### Cross-references
+
+- PR #4845 description: `/tmp/pr-desc-v312-final-cleanup.md`
+- `STAGE.yaml` `last_ga_attempt` entry (2026-09-07) — GA promotion deferred
+- `CLAIM_DOWNGRADE_MANIFEST.md` §9 — 3 outstanding GA promotion blockers
