@@ -719,6 +719,15 @@ pub enum JoinType {
     Right,
     Full,
     Cross,
+    /// V313-109 / Issue #4668: NATURAL JOIN variants. The executor
+    /// auto-detects common column names between the accumulated left
+    /// side and the right table, then joins on `col = col` for each
+    /// common column. The modifier (NaturalLeft/Right/Full) determines
+    /// outer-join padding semantics like the non-natural variants.
+    Natural,
+    NaturalLeft,
+    NaturalRight,
+    NaturalFull,
 }
 
 /// Aggregate function
@@ -6767,6 +6776,7 @@ impl Parser {
                 | Some(Token::Inner)
                 | Some(Token::Full)
                 | Some(Token::Cross)
+                | Some(Token::Natural)
         ) {
             join_clause.push(self.parse_join_clause()?);
         }
@@ -6783,6 +6793,7 @@ impl Parser {
                 | Some(Token::Inner)
                 | Some(Token::Full)
                 | Some(Token::Cross)
+                | Some(Token::Natural)
         ) {
             let parsed = self.parse_join_clause()?;
             join_chain.push(parsed);
@@ -7811,7 +7822,16 @@ impl Parser {
 
     fn parse_join_clause(&mut self) -> Result<JoinClause, String> {
         // Determine join type
-        let join_type = match self.current() {
+        let mut join_type = match self.current() {
+            Some(Token::Natural) => {
+                // V313-109 / Issue #4668: NATURAL JOIN. The executor
+                // auto-detects common column names between the accumulated
+                // left side and the right table, then joins on `col = col`
+                // for each common column. The on_clause here is a no-op
+                // marker (executor ignores it for Natural joins).
+                self.next(); // consume NATURAL
+                JoinType::Natural
+            }
             Some(Token::Inner) => {
                 self.next();
                 JoinType::Inner
@@ -7849,6 +7869,39 @@ impl Parser {
             }
             _ => return Err("Expected JOIN type".to_string()),
         };
+
+        // V313-109 / Issue #4668: For NATURAL JOIN, the optional
+        // INNER/LEFT/RIGHT/FULL modifier follows NATURAL (e.g.
+        // \`NATURAL LEFT JOIN b\`). The executor uses join_type to
+        // determine outer-join padding semantics; the ON clause is
+        // computed from common columns regardless of modifier.
+        if matches!(join_type, JoinType::Natural) {
+            match self.current() {
+                Some(Token::Inner) => { self.next(); }
+                Some(Token::Left) => {
+                    self.next();
+                    if matches!(self.current(), Some(Token::Outer)) {
+                        self.next();
+                    }
+                    join_type = JoinType::NaturalLeft;
+                }
+                Some(Token::Right) => {
+                    self.next();
+                    if matches!(self.current(), Some(Token::Outer)) {
+                        self.next();
+                    }
+                    join_type = JoinType::NaturalRight;
+                }
+                Some(Token::Full) => {
+                    self.next();
+                    if matches!(self.current(), Some(Token::Outer)) {
+                        self.next();
+                    }
+                    join_type = JoinType::NaturalFull;
+                }
+                _ => {}
+            }
+        }
 
         // If join type was LEFT/RIGHT/CROSS, we still need to consume the JOIN token
         if matches!(self.current(), Some(Token::Join)) {

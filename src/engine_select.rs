@@ -4573,6 +4573,43 @@ impl<S: StorageEngine + 'static> ExecutionEngine<S> {
             // USING path: the (left, right) index pairs are already resolved
             // above; feed them to the existing JoinKey::Pairs matcher.
             JoinKey::Pairs(using_pairs.clone().unwrap())
+        } else if matches!(
+            join_clause.join_type,
+            ParserJoinType::Natural
+                | ParserJoinType::NaturalLeft
+                | ParserJoinType::NaturalRight
+                | ParserJoinType::NaturalFull
+        ) {
+            // V313-109 / Issue #4668: NATURAL JOIN. Auto-detect common
+            // column names (case-insensitive match by bare name,
+            // strip the left_alias. prefix first). The accumulated left
+            // side has its columns prefixed with left_alias. (e.g.
+            // "a.id", "a.name"), the right table is `right_info` with
+            // bare names ("id", "val"). We compare the bare column
+            // names. If no common columns exist, NATURAL JOIN returns
+            // zero rows (SQL standard).
+            let right_bare: Vec<String> = right_table_info
+                .columns
+                .iter()
+                .map(|c| c.name.to_ascii_lowercase())
+                .collect();
+            let mut pairs: Vec<(usize, usize)> = Vec::new();
+            for (li, lc) in left_table_info.columns.iter().enumerate() {
+                let lc_bare = lc
+                    .name
+                    .strip_prefix(&format!("{}.", left_alias))
+                    .unwrap_or(&lc.name)
+                    .to_ascii_lowercase();
+                if let Some(ri) = right_bare.iter().position(|r| r == &lc_bare) {
+                    pairs.push((li, ri));
+                }
+            }
+            if pairs.is_empty() {
+                // No common columns -> empty result set.
+                JoinKey::All
+            } else {
+                JoinKey::Pairs(pairs)
+            }
         } else {
             self.find_join_key_index(
                 &join_clause.on_clause,
@@ -4673,12 +4710,19 @@ impl<S: StorageEngine + 'static> ExecutionEngine<S> {
         };
 
         // Determine join type
-        let join_type = match join_clause.join_type {
+        let mut join_type = match join_clause.join_type {
             ParserJoinType::Inner => JoinType::Inner,
             ParserJoinType::Left => JoinType::Left,
             ParserJoinType::Right => JoinType::Right,
             ParserJoinType::Full => JoinType::Full,
             ParserJoinType::Cross => JoinType::Cross,
+            // V313-109 / Issue #4668: NATURAL JOIN variants map to
+            // their non-natural counterparts for outer-join padding;
+            // the join condition is computed from common columns below.
+            ParserJoinType::Natural => JoinType::Inner,
+            ParserJoinType::NaturalLeft => JoinType::Left,
+            ParserJoinType::NaturalRight => JoinType::Right,
+            ParserJoinType::NaturalFull => JoinType::Full,
         };
 
         let left_col_count = left_table_info.columns.len();
@@ -4706,7 +4750,9 @@ impl<S: StorageEngine + 'static> ExecutionEngine<S> {
             pairs.iter().map(|(_, ri)| (*ri, false)).collect();
 
         let mut matched_results = match join_type {
-            JoinType::Inner | JoinType::Left | JoinType::Right | JoinType::Full => {
+            JoinType::Inner | JoinType::Left | JoinType::Right | JoinType::Full
+            | JoinType::Natural | JoinType::NaturalLeft | JoinType::NaturalRight
+            | JoinType::NaturalFull => {
                 // V313-106 / P3-JOIN-001: build a minimal combined_schema
                 // (just the column names, sufficient for eval_predicate)
                 // so the post-hash-match ON filter below can resolve

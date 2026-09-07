@@ -150,24 +150,15 @@ impl SqliteMode {
         //     (multi-column form; single-column `USING (id)` is GREEN)
         //
         // Single-column `USING (id)` is preserved (sub-bug #3 anti-regression).
+        // V313-109 / Issue #4668: NATURAL JOIN is now supported in the
+        // executor (auto-detects common column names between left and right
+        // tables). The CLI no longer rejects it.
+        //
+        // Multi-column USING (USING (col1, col2)) detection: still rejected
+        // because the executor's JoinKey::Pairs handler treats all USING
+        // columns as a single combined hash key (not per-column). Reject
+        // explicitly so users see the failure instead of silently 0 rows.
         let trimmed_upper = sql.trim().to_ascii_uppercase();
-        if trimmed_upper.contains("NATURAL JOIN") {
-            let preview: String = sql
-                .trim_start()
-                .chars()
-                .take(60)
-                .collect::<String>()
-                .trim_end()
-                .to_string();
-            return Err(CliError::Runtime(format!(
-                "{} contains NATURAL JOIN which is not supported in v3.12.0 \
-                 GA CLI batch mode (Issue #4668 OR-downgrade). Use explicit \
-                 ON clause per RC_GA_TRIAGE_AND_GATE_PLAN §3 WP-D. See \
-                 docs/releases/v3.12.0/CLAIM_DOWNGRADE_MANIFEST.md for the \
-                 release-claim boundary.",
-                preview
-            )));
-        }
         // Detect multi-column USING: 'USING (' ... commas inside the parens.
         // Conservatively: any USING clause with comma inside the matching parens.
         if let Some(using_idx) = trimmed_upper.find("USING (") {
@@ -221,38 +212,10 @@ impl SqliteMode {
         //   works post-`da40e01b14` lexer fix and is consistent with B-track
         //   Python/CLI output style which mixes Chinese comments with ASCII DDL).
         let has_backtick = sql.contains('`');
-        let mut non_ascii_outside_comment = false;
-        for line in sql.lines() {
-            if line.trim_start().starts_with("--") {
-                continue;
-            }
-            if line.chars().any(|c| (c as u32) > 0x7F) {
-                non_ascii_outside_comment = true;
-                break;
-            }
-        }
-        if has_backtick || non_ascii_outside_comment {
-            let preview: String = sql
-                .trim_start()
-                .chars()
-                .take(60)
-                .collect::<String>()
-                .trim_end()
-                .to_string();
-            let tag = if has_backtick {
-                "non-ASCII identifiers + MySQL backtick"
-            } else {
-                "non-ASCII identifiers"
-            };
-            return Err(CliError::Runtime(format!(
-                "{} contains {} which are not supported in v3.12.0 GA CLI \
-                 batch mode (Issue #4708 OR-downgrade). B-track teaching corpora \
-                 must use ASCII identifiers per RC_GA_TRIAGE_AND_GATE_PLAN §3. \
-                 See docs/releases/v3.12.0/CLAIM_DOWNGRADE_MANIFEST.md for the \
-                 release-claim boundary.",
-                preview, tag
-            )));
-        }
+        // V313-109 / Issue #4708: backtick-quoted identifiers and non-ASCII
+        // identifiers are now supported. The lexer maps `` `id` `` to the same
+        // Identifier token as `"id"`, and non-ASCII chars in identifiers
+        // (e.g. Chinese column names) work via UTF-8 lexer.
         // V312-RC-GA / Issue #4703 — OR-downgrade for `INSERT ... ON
         // DUPLICATE KEY UPDATE` with `VALUES(col)` reference in v3.12.0 GA
         // CLI batch mode.
