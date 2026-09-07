@@ -994,190 +994,160 @@ impl<S: StorageEngine + 'static> ExecutionEngine<S> {
         // synthetic in-memory table, then running the outer SELECT against
         // it. We collect the materialized rows + schema before acquiring
         // the storage read lock to avoid reentrant lock issues.
-        let materialized: Option<(Vec<Vec<Value>>, TableInfo)> =
-            if let Some(ws) = &select.from_with_subquery {
-                // V312-95 v2 / Issue #4717: FROM (WITH [RECURSIVE] cte AS (...)
-                // SELECT ...) AS alias. Distinct from `from_subquery`
-                // because the inner SELECT references CTE table names
-                // (e.g. `s`) that must be materialised into storage BEFORE
-                // the inner SELECT executes — otherwise the inner SELECT
-                // fails with `Table not found: s`. The parser preserves
-                // the WithClause by routing this through
-                // `parse_with_select` directly into `from_with_subquery`;
-                // we now execute the CTE materialisation path here.
-                let cte_table_names =
-                    crate::engine_cte::materialize_cte_tables(self, ws.with_clause.as_ref())?;
-                // Run the inner SELECT now that the CTE tables exist in
-                // storage. `execute_select` takes `&self`; we already hold
-                // `&self` here so this is a straightforward recursive call.
-                let inner_result = self.execute_select(&ws.select)?;
-                // Capture column names BEFORE cleanup so we can build the
-                // synthetic TableInfo mirroring the from_subquery branch
-                // below.
-                let mut table_info = TableInfo {
-                    name: select.table.clone(),
-                    columns: Vec::new(),
-                    foreign_keys: Vec::new(),
-                    unique_constraints: Vec::new(),
-                    check_constraints: Vec::new(),
-                    partition_info: None,
-                    compression: None,
-                    collations: std::collections::HashMap::new(),
-                    original_sql: String::new(),
-                };
-                // When the inner SELECT is `SELECT *`, `ws.select.columns`
-                // is a single placeholder column with name "*". Expand
-                // against the CTE table's actual columns so downstream
-                // projection (e.g. outer `SELECT *` or `SELECT x, x*10`)
-                // can resolve them.
-                let resolved_columns: Vec<String> = if ws.select.columns.len() == 1
-                    && ws.select.columns[0].name == "*"
-                    && ws.select.columns[0].alias.is_none()
-                {
-                    // Use the CTE name from the inner SELECT (which
-                    // should match the table name it scans). If the inner
-                    // SELECT references multiple tables or a different
-                    // alias, fall back to the row width.
-                    let inner_table = &ws.select.table;
-                    let storage = self.storage_read();
-                    match storage.get_table_info(inner_table) {
-                        Ok(info) => info.columns.iter().map(|c| c.name.clone()).collect(),
-                        Err(_) => {
-                            // Fallback: synthesise col_<i> from row width.
-                            let width = inner_result.rows.first().map(|r| r.len()).unwrap_or(0);
-                            (0..width).map(|i| format!("col_{}", i)).collect()
-                        }
+        let materialized: Option<(Vec<Vec<Value>>, TableInfo)> = if let Some(ws) =
+            &select.from_with_subquery
+        {
+            // V312-95 v2 / Issue #4717: FROM (WITH [RECURSIVE] cte AS (...)
+            // SELECT ...) AS alias. Distinct from `from_subquery`
+            // because the inner SELECT references CTE table names
+            // (e.g. `s`) that must be materialised into storage BEFORE
+            // the inner SELECT executes — otherwise the inner SELECT
+            // fails with `Table not found: s`. The parser preserves
+            // the WithClause by routing this through
+            // `parse_with_select` directly into `from_with_subquery`;
+            // we now execute the CTE materialisation path here.
+            let cte_table_names =
+                crate::engine_cte::materialize_cte_tables(self, ws.with_clause.as_ref())?;
+            // Run the inner SELECT now that the CTE tables exist in
+            // storage. `execute_select` takes `&self`; we already hold
+            // `&self` here so this is a straightforward recursive call.
+            let inner_result = self.execute_select(&ws.select)?;
+            // Capture column names BEFORE cleanup so we can build the
+            // synthetic TableInfo mirroring the from_subquery branch
+            // below.
+            let mut table_info = TableInfo {
+                name: select.table.clone(),
+                columns: Vec::new(),
+                foreign_keys: Vec::new(),
+                unique_constraints: Vec::new(),
+                check_constraints: Vec::new(),
+                partition_info: None,
+                compression: None,
+                collations: std::collections::HashMap::new(),
+                original_sql: String::new(),
+            };
+            // When the inner SELECT is `SELECT *`, `ws.select.columns`
+            // is a single placeholder column with name "*". Expand
+            // against the CTE table's actual columns so downstream
+            // projection (e.g. outer `SELECT *` or `SELECT x, x*10`)
+            // can resolve them.
+            let resolved_columns: Vec<String> = if ws.select.columns.len() == 1
+                && ws.select.columns[0].name == "*"
+                && ws.select.columns[0].alias.is_none()
+            {
+                // Use the CTE name from the inner SELECT (which
+                // should match the table name it scans). If the inner
+                // SELECT references multiple tables or a different
+                // alias, fall back to the row width.
+                let inner_table = &ws.select.table;
+                let storage = self.storage_read();
+                match storage.get_table_info(inner_table) {
+                    Ok(info) => info.columns.iter().map(|c| c.name.clone()).collect(),
+                    Err(_) => {
+                        // Fallback: synthesise col_<i> from row width.
+                        let width = inner_result.rows.first().map(|r| r.len()).unwrap_or(0);
+                        (0..width).map(|i| format!("col_{}", i)).collect()
                     }
-                } else {
-                    ws.select
-                        .columns
-                        .iter()
-                        .map(|c| c.alias.clone().unwrap_or_else(|| c.name.clone()))
-                        .collect()
-                };
-                for col_name in &resolved_columns {
-                    // Type inference from the inner SELECT's first
-                    // non-null row.
-                    let inferred_type_str: String = inner_result
-                        .rows
-                        .iter()
-                        .find(|r| r.iter().any(|v| !matches!(v, Value::Null)))
-                        .and_then(|first_row| {
-                            let col_idx = resolved_columns.iter().position(|c| c == col_name)?;
-                            first_row.get(col_idx).map(|v| match v {
-                                Value::Integer(_) => "INTEGER",
-                                Value::Float(_) => "FLOAT",
-                                Value::Text(_) => "TEXT",
-                                Value::Boolean(_) => "BOOLEAN",
-                                Value::Blob(_) => "BLOB",
-                                Value::Point(_, _) => "POINT",
-                                Value::Json(_) => "JSON",
-                                Value::Null => "NULL",
-                            })
-                        })
-                        .unwrap_or("TEXT")
-                        .to_string();
-                    table_info
-                        .columns
-                        .push(sqlrustgo_storage::ColumnDefinition {
-                            name: col_name.clone(),
-                            data_type: inferred_type_str,
-                            nullable: true,
-                            primary_key: false,
-                            char_max_length: None,
-                            collation: None,
-                            default_value: None,
-                            auto_increment: false,
-                        });
                 }
-                // Cleanup the CTE temp tables now that the inner SELECT
-                // has produced its rows. The outer SELECT will reference
-                // them only via the synthetic TableInfo + the captured
-                // rows, so they can be safely dropped.
-                crate::engine_cte::cleanup_cte_tables(self, &cte_table_names);
-                Some((inner_result.rows, table_info))
-            } else if let Some(subq) = &select.from_subquery {
-                // Drop the read lock (if held) and execute subquery; subquery
-                // itself takes a read lock internally. Since the outer has not
-                // yet acquired a lock, this is a fresh acquisition.
-                let sub_result = self.execute_select(subq)?;
-                // Build a synthetic TableInfo from the subquery's column list.
-                let mut table_info = TableInfo {
-                    name: select.table.clone(),
-                    columns: Vec::new(),
-                    foreign_keys: Vec::new(),
-                    unique_constraints: Vec::new(),
-                    check_constraints: Vec::new(),
-                    partition_info: None,
-                    compression: None,
-                    collations: std::collections::HashMap::new(),
-                    original_sql: String::new(),
-                };
-                // V312-95 v3 / parallel_executor_integration_test
-                // `test_parallel_with_subquery`: when the parser wraps
-                // `FROM (...) AS sub` as a synthetic `SELECT * FROM <inner>`,
-                // the synthetic materialised SELECT carries `columns = [*]`
-                // and the *actual* column names live on its `from_subquery`
-                // (one level deeper). Resolve them so the outer WHERE /
-                // projection can resolve `id`, `name`, etc.
-                let resolved_columns: Vec<String> = if subq.columns.len() == 1
-                    && subq.columns[0].name == "*"
-                    && subq.columns[0].alias.is_none()
-                {
-                    // Walk one level deeper if the materialised SELECT
-                    // wraps another subquery: prefer its columns.
-                    let inner_select = subq
-                        .from_subquery
-                        .as_deref()
-                        .or(subq.from_with_subquery.as_ref().and_then(|w| {
-                            // from_with_subquery carries a WithSelect;
-                            // its body is a SelectStatement.
-                            Some(&w.select)
-                        }));
-                    if let Some(inner) = inner_select {
-                        if !(inner.columns.len() == 1
-                            && inner.columns[0].name == "*"
-                            && inner.columns[0].alias.is_none())
-                        {
-                            inner
-                                .columns
-                                .iter()
-                                .map(|c| c.alias.clone().unwrap_or_else(|| c.name.clone()))
-                                .collect()
-                        } else if !inner.table.is_empty() {
-                            // Inner references a real storage table.
-                            let storage = self.storage_read();
-                            match storage.get_table_info(&inner.table) {
-                                Ok(info) => info
-                                    .columns
-                                    .iter()
-                                    .map(|c| c.name.clone())
-                                    .collect(),
-                                Err(_) => {
-                                    let width = sub_result
-                                        .rows
-                                        .first()
-                                        .map(|r| r.len())
-                                        .unwrap_or(0);
-                                    (0..width).map(|i| format!("col_{}", i)).collect()
-                                }
-                            }
-                        } else {
-                            let width =
-                                sub_result.rows.first().map(|r| r.len()).unwrap_or(0);
-                            (0..width).map(|i| format!("col_{}", i)).collect()
-                        }
-                    } else if !subq.table.is_empty() {
-                        // Fallback: try the materialised's own `table`.
+            } else {
+                ws.select
+                    .columns
+                    .iter()
+                    .map(|c| c.alias.clone().unwrap_or_else(|| c.name.clone()))
+                    .collect()
+            };
+            for col_name in &resolved_columns {
+                // Type inference from the inner SELECT's first
+                // non-null row.
+                let inferred_type_str: String = inner_result
+                    .rows
+                    .iter()
+                    .find(|r| r.iter().any(|v| !matches!(v, Value::Null)))
+                    .and_then(|first_row| {
+                        let col_idx = resolved_columns.iter().position(|c| c == col_name)?;
+                        first_row.get(col_idx).map(|v| match v {
+                            Value::Integer(_) => "INTEGER",
+                            Value::Float(_) => "FLOAT",
+                            Value::Text(_) => "TEXT",
+                            Value::Boolean(_) => "BOOLEAN",
+                            Value::Blob(_) => "BLOB",
+                            Value::Point(_, _) => "POINT",
+                            Value::Json(_) => "JSON",
+                            Value::Null => "NULL",
+                        })
+                    })
+                    .unwrap_or("TEXT")
+                    .to_string();
+                table_info
+                    .columns
+                    .push(sqlrustgo_storage::ColumnDefinition {
+                        name: col_name.clone(),
+                        data_type: inferred_type_str,
+                        nullable: true,
+                        primary_key: false,
+                        char_max_length: None,
+                        collation: None,
+                        default_value: None,
+                        auto_increment: false,
+                    });
+            }
+            // Cleanup the CTE temp tables now that the inner SELECT
+            // has produced its rows. The outer SELECT will reference
+            // them only via the synthetic TableInfo + the captured
+            // rows, so they can be safely dropped.
+            crate::engine_cte::cleanup_cte_tables(self, &cte_table_names);
+            Some((inner_result.rows, table_info))
+        } else if let Some(subq) = &select.from_subquery {
+            // Drop the read lock (if held) and execute subquery; subquery
+            // itself takes a read lock internally. Since the outer has not
+            // yet acquired a lock, this is a fresh acquisition.
+            let sub_result = self.execute_select(subq)?;
+            // Build a synthetic TableInfo from the subquery's column list.
+            let mut table_info = TableInfo {
+                name: select.table.clone(),
+                columns: Vec::new(),
+                foreign_keys: Vec::new(),
+                unique_constraints: Vec::new(),
+                check_constraints: Vec::new(),
+                partition_info: None,
+                compression: None,
+                collations: std::collections::HashMap::new(),
+                original_sql: String::new(),
+            };
+            // V312-95 v3 / parallel_executor_integration_test
+            // `test_parallel_with_subquery`: when the parser wraps
+            // `FROM (...) AS sub` as a synthetic `SELECT * FROM <inner>`,
+            // the synthetic materialised SELECT carries `columns = [*]`
+            // and the *actual* column names live on its `from_subquery`
+            // (one level deeper). Resolve them so the outer WHERE /
+            // projection can resolve `id`, `name`, etc.
+            let resolved_columns: Vec<String> = if subq.columns.len() == 1
+                && subq.columns[0].name == "*"
+                && subq.columns[0].alias.is_none()
+            {
+                // Walk one level deeper if the materialised SELECT
+                // wraps another subquery: prefer its columns.
+                let inner_select = subq
+                    .from_subquery
+                    .as_deref()
+                    .or(subq.from_with_subquery.as_ref().map(|w| &w.select));
+                if let Some(inner) = inner_select {
+                    if !(inner.columns.len() == 1
+                        && inner.columns[0].name == "*"
+                        && inner.columns[0].alias.is_none())
+                    {
+                        inner
+                            .columns
+                            .iter()
+                            .map(|c| c.alias.clone().unwrap_or_else(|| c.name.clone()))
+                            .collect()
+                    } else if !inner.table.is_empty() {
+                        // Inner references a real storage table.
                         let storage = self.storage_read();
-                        match storage.get_table_info(&subq.table) {
+                        match storage.get_table_info(&inner.table) {
                             Ok(info) => info.columns.iter().map(|c| c.name.clone()).collect(),
                             Err(_) => {
-                                let width = sub_result
-                                    .rows
-                                    .first()
-                                    .map(|r| r.len())
-                                    .unwrap_or(0);
+                                let width = sub_result.rows.first().map(|r| r.len()).unwrap_or(0);
                                 (0..width).map(|i| format!("col_{}", i)).collect()
                             }
                         }
@@ -1185,50 +1155,64 @@ impl<S: StorageEngine + 'static> ExecutionEngine<S> {
                         let width = sub_result.rows.first().map(|r| r.len()).unwrap_or(0);
                         (0..width).map(|i| format!("col_{}", i)).collect()
                     }
+                } else if !subq.table.is_empty() {
+                    // Fallback: try the materialised's own `table`.
+                    let storage = self.storage_read();
+                    match storage.get_table_info(&subq.table) {
+                        Ok(info) => info.columns.iter().map(|c| c.name.clone()).collect(),
+                        Err(_) => {
+                            let width = sub_result.rows.first().map(|r| r.len()).unwrap_or(0);
+                            (0..width).map(|i| format!("col_{}", i)).collect()
+                        }
+                    }
                 } else {
-                    subq.columns
-                        .iter()
-                        .map(|c| c.alias.clone().unwrap_or_else(|| c.name.clone()))
-                        .collect()
-                };
-                for col_name in &resolved_columns {
-                    let col_name = col_name.clone();
-                    let inferred_type_str: String = sub_result
-                        .rows
-                        .iter()
-                        .find(|r| r.iter().any(|v| !matches!(v, Value::Null)))
-                        .and_then(|first_row| {
-                            let col_idx = resolved_columns.iter().position(|c| c == &col_name)?;
-                            first_row.get(col_idx).map(|v| match v {
-                                Value::Integer(_) => "INTEGER",
-                                Value::Float(_) => "FLOAT",
-                                Value::Text(_) => "TEXT",
-                                Value::Boolean(_) => "BOOLEAN",
-                                Value::Blob(_) => "BLOB",
-                                Value::Point(_, _) => "POINT",
-                                Value::Json(_) => "JSON",
-                                Value::Null => "NULL",
-                            })
-                        })
-                        .unwrap_or("TEXT")
-                        .to_string();
-                    table_info
-                        .columns
-                        .push(sqlrustgo_storage::ColumnDefinition {
-                            name: col_name,
-                            data_type: inferred_type_str,
-                            nullable: true,
-                            primary_key: false,
-                            char_max_length: None,
-                            collation: None,
-                            default_value: None,
-                            auto_increment: false,
-                        });
+                    let width = sub_result.rows.first().map(|r| r.len()).unwrap_or(0);
+                    (0..width).map(|i| format!("col_{}", i)).collect()
                 }
-                Some((sub_result.rows, table_info))
             } else {
-                None
+                subq.columns
+                    .iter()
+                    .map(|c| c.alias.clone().unwrap_or_else(|| c.name.clone()))
+                    .collect()
             };
+            for col_name in &resolved_columns {
+                let col_name = col_name.clone();
+                let inferred_type_str: String = sub_result
+                    .rows
+                    .iter()
+                    .find(|r| r.iter().any(|v| !matches!(v, Value::Null)))
+                    .and_then(|first_row| {
+                        let col_idx = resolved_columns.iter().position(|c| c == &col_name)?;
+                        first_row.get(col_idx).map(|v| match v {
+                            Value::Integer(_) => "INTEGER",
+                            Value::Float(_) => "FLOAT",
+                            Value::Text(_) => "TEXT",
+                            Value::Boolean(_) => "BOOLEAN",
+                            Value::Blob(_) => "BLOB",
+                            Value::Point(_, _) => "POINT",
+                            Value::Json(_) => "JSON",
+                            Value::Null => "NULL",
+                        })
+                    })
+                    .unwrap_or("TEXT")
+                    .to_string();
+                table_info
+                    .columns
+                    .push(sqlrustgo_storage::ColumnDefinition {
+                        name: col_name,
+                        data_type: inferred_type_str,
+                        nullable: true,
+                        primary_key: false,
+                        char_max_length: None,
+                        collation: None,
+                        default_value: None,
+                        auto_increment: false,
+                    });
+            }
+            Some((sub_result.rows, table_info))
+        } else {
+            None
+        };
         // Step 1: FROM/JOIN - get initial rows and schema.
         // NOTE: For the join path, `execute_joins` manages its own storage
         // read lock.  We deliberately do NOT hold an outer storage guard
