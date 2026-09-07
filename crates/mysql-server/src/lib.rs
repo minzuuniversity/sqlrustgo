@@ -390,6 +390,12 @@ mod utilities_tests {
     use super::*;
     use sqlrustgo_storage::MemoryStorage;
 
+    /// Process-global mutex serializing every test that mutates
+    /// `SQLRUSTGO_AUTH_MODE`. Without this guard, the default
+    /// cargo test parallelism races the env-var reads/writes and
+    /// produces false negatives (issue #4690, fix v3.12.0 RC).
+    static ENV_LOCK: std::sync::Mutex<()> = std::sync::Mutex::new(());
+
     // ---------- build_engine_with_parallelism ----------
 
     #[test]
@@ -444,6 +450,7 @@ mod utilities_tests {
 
     #[test]
     fn skip_auth_defaults_false() {
+        let _guard = ENV_LOCK.lock().unwrap_or_else(|e| e.into_inner());
         let prev = std::env::var("SQLRUSTGO_AUTH_MODE").ok();
         std::env::remove_var("SQLRUSTGO_AUTH_MODE");
         assert!(!skip_auth());
@@ -454,6 +461,7 @@ mod utilities_tests {
 
     #[test]
     fn skip_auth_honors_none_value() {
+        let _guard = ENV_LOCK.lock().unwrap_or_else(|e| e.into_inner());
         let prev = std::env::var("SQLRUSTGO_AUTH_MODE").ok();
         std::env::set_var("SQLRUSTGO_AUTH_MODE", "none");
         assert!(skip_auth());
@@ -468,6 +476,7 @@ mod utilities_tests {
 
     #[test]
     fn skip_auth_rejects_password() {
+        let _guard = ENV_LOCK.lock().unwrap_or_else(|e| e.into_inner());
         let prev = std::env::var("SQLRUSTGO_AUTH_MODE").ok();
         std::env::set_var("SQLRUSTGO_AUTH_MODE", "password");
         assert!(!skip_auth());

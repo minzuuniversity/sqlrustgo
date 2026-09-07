@@ -6274,7 +6274,7 @@ impl Parser {
                         let alias = match self.next() {
                             Some(Token::Identifier(name)) => name,
                             Some(Token::Eof) | Some(Token::Semicolon) | None => {
-                                format!("__subq_unaliased")
+                                "__subq_unaliased".to_string()
                             }
                             Some(t) => {
                                 return Err(format!("Expected alias for subquery, got {:?}", t))
@@ -7861,7 +7861,9 @@ impl Parser {
         // computed from common columns regardless of modifier.
         if matches!(join_type, JoinType::Natural) {
             match self.current() {
-                Some(Token::Inner) => { self.next(); }
+                Some(Token::Inner) => {
+                    self.next();
+                }
                 Some(Token::Left) => {
                     self.next();
                     if matches!(self.current(), Some(Token::Outer)) {
@@ -17097,10 +17099,7 @@ mod set_op_tests {
             Statement::CreateIndex(ci) => {
                 assert_eq!(
                     ci.columns,
-                    vec![
-                        IndexColumnSpec::column("a"),
-                        IndexColumnSpec::column("b"),
-                    ]
+                    vec![IndexColumnSpec::column("a"), IndexColumnSpec::column("b"),]
                 );
             }
             other => panic!("Expected CreateIndex, got {:?}", other),

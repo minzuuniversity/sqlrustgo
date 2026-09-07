@@ -2,7 +2,6 @@
 //! Supports multiple storage implementations (File, Memory, etc.)
 
 use serde::{Deserialize, Serialize};
-use sqlrustgo_parser::IndexColumnSpec;
 pub use sqlrustgo_types::{SqlError, SqlResult, Value};
 use std::any::Any;
 use std::collections::{HashMap, HashSet};
@@ -920,7 +919,12 @@ pub trait StorageEngine: Send + Sync {
     /// V312-85 / Issue #4625: Scan using a specific index.
     /// Returns rows where the indexed column equals the given key value.
     /// Returns error if the index doesn't exist or isn't usable for equality lookups.
-    fn scan_with_index(&self, table: &str, index_name: &str, key: &Value) -> SqlResult<Vec<Record>> {
+    fn scan_with_index(
+        &self,
+        table: &str,
+        index_name: &str,
+        key: &Value,
+    ) -> SqlResult<Vec<Record>> {
         let _ = (table, index_name, key);
         Err(SqlError::ExecutionError(
             "scan_with_index not supported by this storage engine".to_string(),
@@ -1594,7 +1598,7 @@ impl StorageEngine for MemoryStorage {
         // but doesn't store the actual B+ tree data. Fall back to filtered scan.
         let table_lower = table.to_lowercase();
         let index_key = (table_lower.clone(), index_name.to_lowercase());
-        
+
         // Check if index is registered
         if !self.indexes.contains(&index_key) {
             return Err(SqlError::ExecutionError(format!(
@@ -1602,16 +1606,19 @@ impl StorageEngine for MemoryStorage {
                 index_name, table
             )));
         }
-        
+
         // Fall back to full scan with filter on the indexed column
         let rows = self.scan(&table_lower)?;
-        let col_idx = self.table_infos
-            .get(&table_lower)
-            .and_then(|info| info.columns.iter().position(|c| c.name.eq_ignore_ascii_case(index_name)));
-        
+        let col_idx = self.table_infos.get(&table_lower).and_then(|info| {
+            info.columns
+                .iter()
+                .position(|c| c.name.eq_ignore_ascii_case(index_name))
+        });
+
         if let Some(col_idx) = col_idx {
             let key = key.clone();
-            Ok(rows.into_iter()
+            Ok(rows
+                .into_iter()
                 .filter(|row| row.get(col_idx).map(|v| v == &key).unwrap_or(false))
                 .collect())
         } else {
@@ -2001,7 +2008,8 @@ impl StorageEngine for MemoryStorage {
         if let Some(info) = self.index_infos.remove(&key) {
             for column in &info.columns {
                 if let Some(name) = column.name.as_deref() {
-                    self.indexes.remove(&(table.to_lowercase(), name.to_string()));
+                    self.indexes
+                        .remove(&(table.to_lowercase(), name.to_string()));
                 }
             }
         } else {
