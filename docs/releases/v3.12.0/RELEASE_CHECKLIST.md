@@ -34,9 +34,10 @@ Before release notes can say "GA":
 - [ ] SOAK evidence is either completed or formally reclassified.
 - [ ] Security scan is refreshed at release HEAD.
 - [ ] Docs links and consistency checks pass after all release doc edits.
-- [ ] Open unmilestoned issues #4607, #4608, #4610, #4611, #4612, and #4613
-      are closed, moved into a documented non-GA scope, or reflected as
-      release claim caveats.
+- [ ] Open issues #4846, #4847, and #4848 are closed, moved into a documented
+      non-GA scope, or reflected as release claim caveats. #4847 should be
+      treated as a data-integrity GA blocker unless governance explicitly
+      reclassifies it.
 - [ ] Gitea milestone state and issue closure map are recorded with timestamps.
 - [ ] Tag candidate and final release commit are recorded.
 
