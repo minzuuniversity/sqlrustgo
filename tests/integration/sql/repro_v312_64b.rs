@@ -185,9 +185,10 @@ fn repro_4659_extract_year_per_row() {
         .expect("EXTRACT YEAR must run");
     assert_eq!(r.rows.len(), 3, "expected 3 rows, got {}", r.rows.len());
     for (i, row) in r.rows.iter().enumerate() {
+        // V312-90 / P3-DATE-002: EXTRACT(YEAR ...) now returns Integer (was Text).
         assert_eq!(
-            format!("{:?}", row[0]),
-            "Text(\"2026\")",
+            row[0],
+            sqlrustgo::Value::Integer(2026),
             "row {} must be 2026",
             i
         );
@@ -204,15 +205,11 @@ fn repro_4659_extract_year_month_combined() {
         .execute("SELECT EXTRACT(YEAR FROM dt), EXTRACT(MONTH FROM dt) FROM t")
         .expect("EXTRACT YEAR+MONTH must run");
     assert_eq!(r.rows.len(), 3);
-    let expected: Vec<(&str, &str)> = vec![("2026", "09"), ("2026", "09"), ("2026", "10")];
+    // V312-90 / P3-DATE-002: EXTRACT now returns Integer (year) and Integer
+    // (month, no leading zero — matches MySQL behaviour).
+    let expected: Vec<(i64, i64)> = vec![(2026, 9), (2026, 9), (2026, 10)];
     for (i, row) in r.rows.iter().enumerate() {
-        assert_eq!(
-            format!("{:?}", row[0]),
-            format!("Text(\"{}\")", expected[i].0)
-        );
-        assert_eq!(
-            format!("{:?}", row[1]),
-            format!("Text(\"{}\")", expected[i].1)
-        );
+        assert_eq!(row[0], sqlrustgo::Value::Integer(expected[i].0));
+        assert_eq!(row[1], sqlrustgo::Value::Integer(expected[i].1));
     }
 }
