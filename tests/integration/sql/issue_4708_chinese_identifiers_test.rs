@@ -38,7 +38,8 @@ fn chinese_identifier_engine_path() {
     // Currently engine API also has the issue; this test passes if either
     // type of explicit failure occurs.
     let mut e = engine();
-    e.execute("CREATE TABLE 用户(id INTEGER, 姓名 TEXT)").unwrap();
+    e.execute("CREATE TABLE 用户(id INTEGER, 姓名 TEXT)")
+        .unwrap();
     let ins = e.execute("INSERT INTO 用户(姓名) VALUES ('张三')");
     if ins.is_ok() {
         // If insert succeeded, check SELECT sees the row
@@ -60,10 +61,8 @@ fn chinese_comment_does_not_panic() {
 fn chinese_comment_after_create_does_not_panic() {
     // Sub-bug #2 extended: Chinese comment at top of batch with subsequent SELECT.
     let mut e = engine();
-    e.execute(
-        "-- 中文注释 first line\n-- 第二行 still comment\nSELECT 42;",
-    )
-    .unwrap();
+    e.execute("-- 中文注释 first line\n-- 第二行 still comment\nSELECT 42;")
+        .unwrap();
 }
 
 #[test]

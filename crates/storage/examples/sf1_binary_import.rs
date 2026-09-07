@@ -122,8 +122,8 @@ fn main() {
         compression: None,
         partition_info: None,
         collations: std::collections::HashMap::new(),
-    original_sql: String::new(),
-};
+        original_sql: String::new(),
+    };
     let data = TableData {
         info,
         rows: all_rows,

@@ -61,8 +61,18 @@ fn v312_95_join_non_equi_with_arithmetic() {
     let rows: Vec<(i64, i64)> = res
         .rows
         .iter()
-        .map(|r| (match &r[0] { Value::Integer(n) => *n, _ => 0 },
-                  match &r[1] { Value::Integer(n) => *n, _ => 0 }))
+        .map(|r| {
+            (
+                match &r[0] {
+                    Value::Integer(n) => *n,
+                    _ => 0,
+                },
+                match &r[1] {
+                    Value::Integer(n) => *n,
+                    _ => 0,
+                },
+            )
+        })
         .collect();
     assert_eq!(rows, vec![(1, 20)]);
 }
@@ -115,7 +125,9 @@ fn v312_95_join_right_join_padding_preserved() {
     // The ON post-filter must NOT drop the padded row (otherwise the
     // outer-join semantic is broken).
     let res = x
-        .execute("SELECT t1.id, t1.name, t2.val FROM t1 RIGHT JOIN t2 ON t1.id = t2.id ORDER BY t2.val")
+        .execute(
+            "SELECT t1.id, t1.name, t2.val FROM t1 RIGHT JOIN t2 ON t1.id = t2.id ORDER BY t2.val",
+        )
         .unwrap();
     assert_eq!(res.rows.len(), 3);
     // First two rows: matched.

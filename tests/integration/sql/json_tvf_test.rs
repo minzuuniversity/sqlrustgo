@@ -28,10 +28,7 @@ fn test_json_each_array_basic() {
     assert_eq!(r.rows.len(), 4, "root + 3 elements");
     // Root row.
     assert!(matches!(&r.rows[0][0], sqlrustgo::Value::Null));
-    assert_eq!(
-        r.rows[0][1],
-        sqlrustgo::Value::Text("[1,2,3]".to_string())
-    );
+    assert_eq!(r.rows[0][1], sqlrustgo::Value::Text("[1,2,3]".to_string()));
     assert_eq!(r.rows[0][2], sqlrustgo::Value::Text("array".to_string()));
     // Element rows.
     assert_eq!(r.rows[1][0], sqlrustgo::Value::Text("0".to_string()));
@@ -76,9 +73,7 @@ fn test_json_each_object_basic() {
 fn test_json_tree_recursive() {
     let mut x = e();
     let r = x
-        .execute(
-            "SELECT \"key\", value, type, id, parent FROM JSON_TREE('[1,[2,3],{\"x\":4}]')",
-        )
+        .execute("SELECT \"key\", value, type, id, parent FROM JSON_TREE('[1,[2,3],{\"x\":4}]')")
         .unwrap();
     // Expected: root, [0]=1, [1]=[2,3], [1][0]=2, [1][1]=3, [2]={"x":4}, [2].x=4 → 7 rows
     let expected_msg = "root + 3 elements + [2,3] children + {x:4} member";
@@ -136,9 +131,7 @@ fn test_json_each_integer_primitive() {
 fn test_json_each_path_argument() {
     let mut x = e();
     let r = x
-        .execute(
-            "SELECT \"key\", value FROM JSON_EACH('{\"items\":[1,2,3]}', '$.items')",
-        )
+        .execute("SELECT \"key\", value FROM JSON_EACH('{\"items\":[1,2,3]}', '$.items')")
         .unwrap();
     // Root is the items array, plus 3 children.
     assert_eq!(r.rows.len(), 4);

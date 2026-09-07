@@ -78,7 +78,7 @@ impl SimpleExecutor {
                     compression: None,
                     collations: std::collections::HashMap::new(),
                     partition_info: None,
-                original_sql: String::new(),
+                    original_sql: String::new(),
                 };
                 self.storage
                     .create_table(&info)
@@ -311,7 +311,7 @@ impl SimpleExecutor {
                 compression: None,
                 collations: std::collections::HashMap::new(),
                 partition_info: None,
-            original_sql: String::new(),
+                original_sql: String::new(),
             };
             self.storage
                 .create_table(&table_info)
@@ -442,7 +442,7 @@ impl SimpleExecutor {
                 compression: None,
                 collations: std::collections::HashMap::new(),
                 partition_info: None,
-            original_sql: String::new(),
+                original_sql: String::new(),
             };
             self.storage
                 .create_table(&table_info)
@@ -487,7 +487,7 @@ impl SimpleExecutor {
                 compression: None,
                 collations: std::collections::HashMap::new(),
                 partition_info: None,
-            original_sql: String::new(),
+                original_sql: String::new(),
             };
             // Create table only if it doesn't exist yet
             let _ = self.storage.create_table(&table_info);
@@ -563,7 +563,7 @@ impl SimpleExecutor {
                 compression: None,
                 collations: std::collections::HashMap::new(),
                 partition_info: None,
-            original_sql: String::new(),
+                original_sql: String::new(),
             };
 
             // Nested-loop join. The combined row is
@@ -839,7 +839,7 @@ impl SimpleExecutor {
                         compression: None,
                         collations: std::collections::HashMap::new(),
                         partition_info: None,
-                    original_sql: String::new(),
+                        original_sql: String::new(),
                     };
                     self.storage
                         .create_table(&table_info)
@@ -911,7 +911,7 @@ impl SimpleExecutor {
             compression: None,
             collations: std::collections::HashMap::new(),
             partition_info: None,
-        original_sql: String::new(),
+            original_sql: String::new(),
         };
         self.storage
             .create_table(&table_info)

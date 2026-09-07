@@ -21,28 +21,44 @@ fn test_not_indexed_basic() {
 fn test_indexed_by_update() {
     let sql = "UPDATE t1 INDEXED BY idx_name SET col = 1 WHERE x = 2";
     let result = parse(sql);
-    assert!(result.is_ok(), "INDEXED BY UPDATE parsing failed: {:?}", result);
+    assert!(
+        result.is_ok(),
+        "INDEXED BY UPDATE parsing failed: {:?}",
+        result
+    );
 }
 
 #[test]
 fn test_not_indexed_update() {
     let sql = "UPDATE t1 NOT INDEXED SET col = 1 WHERE x = 2";
     let result = parse(sql);
-    assert!(result.is_ok(), "NOT INDEXED UPDATE parsing failed: {:?}", result);
+    assert!(
+        result.is_ok(),
+        "NOT INDEXED UPDATE parsing failed: {:?}",
+        result
+    );
 }
 
 #[test]
 fn test_indexed_by_delete() {
     let sql = "DELETE FROM t1 INDEXED BY idx_name WHERE x = 3";
     let result = parse(sql);
-    assert!(result.is_ok(), "INDEXED BY DELETE parsing failed: {:?}", result);
+    assert!(
+        result.is_ok(),
+        "INDEXED BY DELETE parsing failed: {:?}",
+        result
+    );
 }
 
 #[test]
 fn test_not_indexed_delete() {
     let sql = "DELETE FROM t1 NOT INDEXED WHERE x = 3";
     let result = parse(sql);
-    assert!(result.is_ok(), "NOT INDEXED DELETE parsing failed: {:?}", result);
+    assert!(
+        result.is_ok(),
+        "NOT INDEXED DELETE parsing failed: {:?}",
+        result
+    );
 }
 
 #[test]
@@ -56,5 +72,9 @@ fn test_indexed_by_with_alias() {
 fn test_multiple_tables_indexed_by() {
     let sql = "SELECT * FROM t1 INDEXED BY idx1, t2 INDEXED BY idx2 WHERE t1.id = t2.id";
     let result = parse(sql);
-    assert!(result.is_ok(), "Multiple INDEXED BY parsing failed: {:?}", result);
+    assert!(
+        result.is_ok(),
+        "Multiple INDEXED BY parsing failed: {:?}",
+        result
+    );
 }

@@ -401,9 +401,7 @@ impl<S: StorageEngine + 'static> ExecutionEngine<S> {
         // Check if sequence already exists (in storage AND cache; the cache may
         // already know about a sequence that wasn't yet persisted, e.g. one
         // re-hydrated from a recovery pass).
-        if storage.has_sequence(&seq_stmt.name)
-            || self.sequence_state.contains(&seq_stmt.name)
-        {
+        if storage.has_sequence(&seq_stmt.name) || self.sequence_state.contains(&seq_stmt.name) {
             if seq_stmt.if_not_exists {
                 return Ok(ExecutorResult::empty());
             }

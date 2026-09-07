@@ -1353,8 +1353,8 @@ mod tests {
             timing: StorageTriggerTiming::Before,
             event: StorageTriggerEvent::Insert,
             body: "SET NEW.total = NEW.price * NEW.quantity".to_string(),
-        update_columns: None,
-        original_sql: String::new(),
+            update_columns: None,
+            original_sql: String::new(),
         };
         storage.create_trigger(trigger).unwrap();
 
@@ -1380,8 +1380,8 @@ mod tests {
             timing: StorageTriggerTiming::Before,
             event: StorageTriggerEvent::Insert,
             body: "SET NEW.total = NEW.price * NEW.quantity".to_string(),
-        update_columns: None,
-        original_sql: String::new(),
+            update_columns: None,
+            original_sql: String::new(),
         };
         storage.create_trigger(trigger).unwrap();
 
@@ -1410,8 +1410,8 @@ mod tests {
             timing: StorageTriggerTiming::After,
             event: StorageTriggerEvent::Insert,
             body: "".to_string(),
-        update_columns: None,
-        original_sql: String::new(),
+            update_columns: None,
+            original_sql: String::new(),
         };
         storage.create_trigger(trigger).unwrap();
 
@@ -1439,8 +1439,8 @@ mod tests {
             timing: StorageTriggerTiming::Before,
             event: StorageTriggerEvent::Update,
             body: "SET NEW.total = NEW.price * NEW.quantity".to_string(),
-        update_columns: None,
-        original_sql: String::new(),
+            update_columns: None,
+            original_sql: String::new(),
         };
         storage.create_trigger(trigger).unwrap();
 
@@ -1475,8 +1475,8 @@ mod tests {
             timing: StorageTriggerTiming::Before,
             event: StorageTriggerEvent::Delete,
             body: "".to_string(),
-        update_columns: None,
-        original_sql: String::new(),
+            update_columns: None,
+            original_sql: String::new(),
         };
         storage.create_trigger(trigger).unwrap();
 
@@ -1591,8 +1591,8 @@ mod tests {
             timing: StorageTriggerTiming::Before,
             event: StorageTriggerEvent::Insert,
             body: "SET NEW.total = 0".to_string(),
-        update_columns: None,
-        original_sql: String::new(),
+            update_columns: None,
+            original_sql: String::new(),
         };
         let trigger2 = StorageTriggerInfo {
             name: "after_order_insert".to_string(),
@@ -1600,8 +1600,8 @@ mod tests {
             timing: StorageTriggerTiming::After,
             event: StorageTriggerEvent::Insert,
             body: "".to_string(),
-        update_columns: None,
-        original_sql: String::new(),
+            update_columns: None,
+            original_sql: String::new(),
         };
         let trigger3 = StorageTriggerInfo {
             name: "before_order_update".to_string(),
@@ -1609,8 +1609,8 @@ mod tests {
             timing: StorageTriggerTiming::Before,
             event: StorageTriggerEvent::Update,
             body: "".to_string(),
-        update_columns: None,
-        original_sql: String::new(),
+            update_columns: None,
+            original_sql: String::new(),
         };
 
         storage.create_trigger(trigger1).unwrap();
@@ -1704,8 +1704,8 @@ mod tests {
             timing: StorageTriggerTiming::Before,
             event: StorageTriggerEvent::Insert,
             body: "".to_string(),
-        update_columns: None,
-        original_sql: String::new(),
+            update_columns: None,
+            original_sql: String::new(),
         };
         storage.create_trigger(trigger).unwrap();
 
@@ -1727,8 +1727,8 @@ mod tests {
             timing: StorageTriggerTiming::After,
             event: StorageTriggerEvent::Update,
             body: "".to_string(),
-        update_columns: None,
-        original_sql: String::new(),
+            update_columns: None,
+            original_sql: String::new(),
         };
         storage.create_trigger(trigger).unwrap();
 
@@ -1761,8 +1761,8 @@ mod tests {
             timing: StorageTriggerTiming::After,
             event: StorageTriggerEvent::Delete,
             body: "".to_string(),
-        update_columns: None,
-        original_sql: String::new(),
+            update_columns: None,
+            original_sql: String::new(),
         };
         storage.create_trigger(trigger).unwrap();
 
@@ -2210,8 +2210,8 @@ mod tests {
             timing: StorageTriggerTiming::Before,
             event: StorageTriggerEvent::Insert,
             body: "".to_string(),
-        update_columns: None,
-        original_sql: String::new(),
+            update_columns: None,
+            original_sql: String::new(),
         };
 
         let new_row = vec![
@@ -2235,8 +2235,8 @@ mod tests {
             timing: StorageTriggerTiming::Before,
             event: StorageTriggerEvent::Insert,
             body: "SET NEW.total = NEW.price * NEW.quantity".to_string(),
-        update_columns: None,
-        original_sql: String::new(),
+            update_columns: None,
+            original_sql: String::new(),
         };
 
         let new_row = vec![

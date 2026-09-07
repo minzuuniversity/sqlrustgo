@@ -17,7 +17,8 @@ fn fresh() -> ExecutionEngine<MemoryStorage> {
 fn seed(x: &mut ExecutionEngine<MemoryStorage>) {
     x.execute("CREATE TABLE a (id INT, val INT)").unwrap();
     x.execute("CREATE TABLE b (id INT, val INT)").unwrap();
-    x.execute("INSERT INTO a VALUES (1, 100), (2, 200)").unwrap();
+    x.execute("INSERT INTO a VALUES (1, 100), (2, 200)")
+        .unwrap();
     x.execute("INSERT INTO b VALUES (1, 10), (2, 20)").unwrap();
 }
 
@@ -97,7 +98,9 @@ fn v312_75_uncorrelated_aggregate_scalar_subquery() {
 fn v312_75_literal_scalar_subquery_regression() {
     let mut x = fresh();
     seed(&mut x);
-    let res = x.execute("SELECT (SELECT 1) AS x, (SELECT 1 + 2) AS y").unwrap();
+    let res = x
+        .execute("SELECT (SELECT 1) AS x, (SELECT 1 + 2) AS y")
+        .unwrap();
     assert_eq!(res.rows.len(), 1);
     assert_eq!(extract_int(&res, 0, 0), 1);
     assert_eq!(extract_int(&res, 0, 1), 3);

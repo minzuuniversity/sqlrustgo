@@ -95,7 +95,6 @@ fn test_left_join_no_matches_yields_left_rows() {
     );
 }
 
-
 #[test]
 fn test_right_join_preserves_right_rows() {
     // Issue #4639: RIGHT JOIN should preserve all right-side rows
@@ -113,11 +112,25 @@ fn test_right_join_preserves_right_rows() {
     // b has 2 rows (id=1, id=3), both should appear
     assert_eq!(r.rows.len(), 2, "RIGHT JOIN must emit one row per right");
     // Find the row for b.id=1 - should have a.name='alice'
-    let row1 = r.rows.iter().find(|row| matches!(&row[2], sqlrustgo::Value::Integer(1))).unwrap();
-    assert!(matches!(&row1[1], sqlrustgo::Value::Text(t) if t == "alice"), "id=1 should match alice");
+    let row1 = r
+        .rows
+        .iter()
+        .find(|row| matches!(&row[2], sqlrustgo::Value::Integer(1)))
+        .unwrap();
+    assert!(
+        matches!(&row1[1], sqlrustgo::Value::Text(t) if t == "alice"),
+        "id=1 should match alice"
+    );
     // Find the row for b.id=3 - should have a.name='charlie'
-    let row3 = r.rows.iter().find(|row| matches!(&row[2], sqlrustgo::Value::Integer(3))).unwrap();
-    assert!(matches!(&row3[1], sqlrustgo::Value::Text(t) if t == "charlie"), "id=3 should match charlie");
+    let row3 = r
+        .rows
+        .iter()
+        .find(|row| matches!(&row[2], sqlrustgo::Value::Integer(3)))
+        .unwrap();
+    assert!(
+        matches!(&row3[1], sqlrustgo::Value::Text(t) if t == "charlie"),
+        "id=3 should match charlie"
+    );
 }
 
 #[test]
@@ -135,18 +148,42 @@ fn test_full_outer_join_preserves_both_sides() {
         .execute("SELECT a.id, a.name, b.id, b.city FROM a FULL OUTER JOIN b ON a.id = b.id")
         .unwrap();
     // matched (1, 3) + unmatched-left (2) + unmatched-right (4) = 4 rows
-    assert_eq!(r.rows.len(), 4, "FULL OUTER JOIN must emit matched + both unmatched sides");
+    assert_eq!(
+        r.rows.len(),
+        4,
+        "FULL OUTER JOIN must emit matched + both unmatched sides"
+    );
 
     // Unmatched left (id=2, bob) should appear with right.id = NULL
-    let row2 = r.rows.iter().find(|row| matches!(&row[0], sqlrustgo::Value::Integer(2))).unwrap();
+    let row2 = r
+        .rows
+        .iter()
+        .find(|row| matches!(&row[0], sqlrustgo::Value::Integer(2)))
+        .unwrap();
     assert!(matches!(&row2[1], sqlrustgo::Value::Text(t) if t == "bob"));
-    assert!(matches!(&row2[2], sqlrustgo::Value::Null), "unmatched left must have NULL right.id");
-    assert!(matches!(&row2[3], sqlrustgo::Value::Null), "unmatched left must have NULL right.city");
+    assert!(
+        matches!(&row2[2], sqlrustgo::Value::Null),
+        "unmatched left must have NULL right.id"
+    );
+    assert!(
+        matches!(&row2[3], sqlrustgo::Value::Null),
+        "unmatched left must have NULL right.city"
+    );
 
     // Unmatched right (id=4, SF) should appear with left.id = NULL
-    let row4 = r.rows.iter().find(|row| matches!(&row[2], sqlrustgo::Value::Integer(4))).unwrap();
-    assert!(matches!(&row4[0], sqlrustgo::Value::Null), "unmatched right must have NULL left.id");
-    assert!(matches!(&row4[1], sqlrustgo::Value::Null), "unmatched right must have NULL left.name");
+    let row4 = r
+        .rows
+        .iter()
+        .find(|row| matches!(&row[2], sqlrustgo::Value::Integer(4)))
+        .unwrap();
+    assert!(
+        matches!(&row4[0], sqlrustgo::Value::Null),
+        "unmatched right must have NULL left.id"
+    );
+    assert!(
+        matches!(&row4[1], sqlrustgo::Value::Null),
+        "unmatched right must have NULL left.name"
+    );
     assert!(matches!(&row4[3], sqlrustgo::Value::Text(t) if t == "SF"));
 }
 
@@ -155,7 +192,8 @@ fn test_drop_index_removes_index() {
     // Issue #4669: DROP INDEX should remove the index from storage
     let mut e = fresh_engine();
     e.execute("CREATE TABLE t(a INT, b TEXT)").unwrap();
-    e.execute("INSERT INTO t VALUES (1, 'x'), (2, 'y')").unwrap();
+    e.execute("INSERT INTO t VALUES (1, 'x'), (2, 'y')")
+        .unwrap();
     e.execute("CREATE INDEX idx ON t(a)").unwrap();
 
     // USE INDEX should work with the index

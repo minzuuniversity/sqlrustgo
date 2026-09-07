@@ -320,7 +320,9 @@ fn test_execute_with_null_params() {
         .exec("INSERT INTO t_null VALUES (1, NULL)")
         .expect("INSERT");
 
-    let stmt = client.prepare("SELECT * FROM t_null WHERE val IS NULL").expect("PREPARE");
+    let stmt = client
+        .prepare("SELECT * FROM t_null WHERE val IS NULL")
+        .expect("PREPARE");
     let result = client.stmt_execute_raw(stmt.stmt_id, &[]);
     match result {
         Ok(_) => {}
@@ -434,8 +436,7 @@ fn test_reconnect_after_quit() {
     client1.quit().ok();
     drop(client1);
 
-    let mut client2 = MySqlTestClient::connect_default()
-        .expect("reconnect after quit should work");
+    let mut client2 = MySqlTestClient::connect_default().expect("reconnect after quit should work");
     client2.quit().ok();
 }
 

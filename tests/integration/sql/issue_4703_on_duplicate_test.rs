@@ -23,7 +23,8 @@ fn on_duplicate_key_update_multi_column_with_values_engine_api() {
     // This is the engine-side honest-path: the operation fails explicitly
     // rather than silently executing partial logic.
     let mut e = engine();
-    e.execute("CREATE TABLE m(id INTEGER, name TEXT, val INTEGER)").unwrap();
+    e.execute("CREATE TABLE m(id INTEGER, name TEXT, val INTEGER)")
+        .unwrap();
     e.execute("INSERT INTO m VALUES (1, 'alice', 100)").unwrap();
     let r = e.execute(
         "INSERT INTO m VALUES (1, 'alice_updated', 200) \
@@ -40,11 +41,10 @@ fn on_duplicate_key_update_multi_column_with_values_engine_api() {
 #[test]
 fn on_conflict_do_update_set() {
     let mut e = engine();
-    e.execute("CREATE TABLE o(id INTEGER, val INTEGER)").unwrap();
+    e.execute("CREATE TABLE o(id INTEGER, val INTEGER)")
+        .unwrap();
     e.execute("INSERT INTO o VALUES (1, 999)").unwrap();
-    let r = e.execute(
-        "INSERT INTO o VALUES (1, 999) ON CONFLICT (id) DO UPDATE SET val = val + 1",
-    );
+    let r = e.execute("INSERT INTO o VALUES (1, 999) ON CONFLICT (id) DO UPDATE SET val = val + 1");
     assert!(
         r.is_ok(),
         "ON CONFLICT (col) DO UPDATE SET should parse + execute; got: {:?}",
@@ -55,7 +55,8 @@ fn on_conflict_do_update_set() {
 #[test]
 fn create_trigger_after_update_of_multi_column() {
     let mut e = engine();
-    e.execute("CREATE TABLE t(id INTEGER, val INTEGER, note TEXT)").unwrap();
+    e.execute("CREATE TABLE t(id INTEGER, val INTEGER, note TEXT)")
+        .unwrap();
     let r = e.execute(
         "CREATE TRIGGER tr AFTER UPDATE OF val, note ON t \
          FOR EACH ROW BEGIN SELECT 1; END",
@@ -66,4 +67,3 @@ fn create_trigger_after_update_of_multi_column() {
         r.err().map(|e| e.to_string())
     );
 }
-

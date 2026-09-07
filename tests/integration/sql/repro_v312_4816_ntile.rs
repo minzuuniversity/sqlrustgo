@@ -47,13 +47,10 @@ fn ntile_4_over_7_rows_distribution() {
     let mut x = fresh();
     x.execute("CREATE TABLE t (id INT)").unwrap();
     for v in 1..=7 {
-        x.execute(&format!("INSERT INTO t VALUES ({})", v))
-            .unwrap();
+        x.execute(&format!("INSERT INTO t VALUES ({})", v)).unwrap();
     }
     let r = x
-        .execute(
-            "SELECT id, NTILE(4) OVER (ORDER BY id) AS bucket FROM t ORDER BY id",
-        )
+        .execute("SELECT id, NTILE(4) OVER (ORDER BY id) AS bucket FROM t ORDER BY id")
         .expect("NTILE(4) OVER (ORDER BY id) must succeed");
     assert_eq!(r.rows.len(), 7);
     let expected = [(1, 1), (2, 1), (3, 2), (4, 2), (5, 3), (6, 3), (7, 4)];
@@ -77,13 +74,10 @@ fn ntile_3_over_10_rows_distribution() {
     let mut x = fresh();
     x.execute("CREATE TABLE t (id INT)").unwrap();
     for v in 1..=10 {
-        x.execute(&format!("INSERT INTO t VALUES ({})", v))
-            .unwrap();
+        x.execute(&format!("INSERT INTO t VALUES ({})", v)).unwrap();
     }
     let r = x
-        .execute(
-            "SELECT id, NTILE(3) OVER (ORDER BY id) AS bucket FROM t ORDER BY id",
-        )
+        .execute("SELECT id, NTILE(3) OVER (ORDER BY id) AS bucket FROM t ORDER BY id")
         .expect("NTILE(3) OVER (ORDER BY id) must succeed");
     assert_eq!(r.rows.len(), 10);
     let expected = [
@@ -118,13 +112,10 @@ fn ntile_more_buckets_than_rows() {
     let mut x = fresh();
     x.execute("CREATE TABLE t (id INT)").unwrap();
     for v in 1..=3 {
-        x.execute(&format!("INSERT INTO t VALUES ({})", v))
-            .unwrap();
+        x.execute(&format!("INSERT INTO t VALUES ({})", v)).unwrap();
     }
     let r = x
-        .execute(
-            "SELECT id, NTILE(5) OVER (ORDER BY id) AS bucket FROM t ORDER BY id",
-        )
+        .execute("SELECT id, NTILE(5) OVER (ORDER BY id) AS bucket FROM t ORDER BY id")
         .expect("NTILE(5) over 3 rows must succeed");
     assert_eq!(r.rows.len(), 3);
     assert_eq!(as_int(&r.rows[0][1]), Some(1));
@@ -138,13 +129,10 @@ fn ntile_default_arg_is_one_bucket() {
     let mut x = fresh();
     x.execute("CREATE TABLE t (id INT)").unwrap();
     for v in 1..=4 {
-        x.execute(&format!("INSERT INTO t VALUES ({})", v))
-            .unwrap();
+        x.execute(&format!("INSERT INTO t VALUES ({})", v)).unwrap();
     }
     let r = x
-        .execute(
-            "SELECT id, NTILE() OVER (ORDER BY id) AS bucket FROM t ORDER BY id",
-        )
+        .execute("SELECT id, NTILE() OVER (ORDER BY id) AS bucket FROM t ORDER BY id")
         .expect("NTILE() default arg must succeed");
     assert_eq!(r.rows.len(), 4);
     for row in &r.rows {
@@ -158,13 +146,10 @@ fn ntile_one_bucket_is_all_rows() {
     let mut x = fresh();
     x.execute("CREATE TABLE t (id INT)").unwrap();
     for v in 1..=5 {
-        x.execute(&format!("INSERT INTO t VALUES ({})", v))
-            .unwrap();
+        x.execute(&format!("INSERT INTO t VALUES ({})", v)).unwrap();
     }
     let r = x
-        .execute(
-            "SELECT id, NTILE(1) OVER (ORDER BY id) AS bucket FROM t ORDER BY id",
-        )
+        .execute("SELECT id, NTILE(1) OVER (ORDER BY id) AS bucket FROM t ORDER BY id")
         .expect("NTILE(1) must succeed");
     assert_eq!(r.rows.len(), 5);
     for row in &r.rows {

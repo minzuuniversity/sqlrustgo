@@ -75,7 +75,10 @@ fn power_integer_args() {
 fn power_half_for_sqrt() {
     let mut e = engine();
     let r = e.execute("SELECT POWER(100, 0.5)").unwrap();
-    assert!((first_float(&r) - 10.0).abs() < 1e-10, "POWER(100, 0.5) = 10.0");
+    assert!(
+        (first_float(&r) - 10.0).abs() < 1e-10,
+        "POWER(100, 0.5) = 10.0"
+    );
 }
 
 #[test]
@@ -188,12 +191,18 @@ fn table_column_usage() {
     // Row 2: v=4
     assert!((get_float(&r, 1, 0) - 4.0).abs() < 1e-10);
     assert!((get_float(&r, 1, 1) - 1.0).abs() < 1e-10, "MOD(4,3)=1.0");
-    assert!((get_float(&r, 1, 2) - 16.0).abs() < 1e-10, "POWER(4,2)=16.0");
+    assert!(
+        (get_float(&r, 1, 2) - 16.0).abs() < 1e-10,
+        "POWER(4,2)=16.0"
+    );
     assert!((get_float(&r, 1, 3) - 2.0).abs() < 1e-10, "SQRT(4)=2.0");
 
     // Row 3: v=100
     assert!((get_float(&r, 2, 0) - 100.0).abs() < 1e-10);
     assert!((get_float(&r, 2, 1) - 1.0).abs() < 1e-10, "MOD(100,3)=1.0");
-    assert!((get_float(&r, 2, 2) - 10000.0).abs() < 1e-10, "POWER(100,2)=10000.0");
+    assert!(
+        (get_float(&r, 2, 2) - 10000.0).abs() < 1e-10,
+        "POWER(100,2)=10000.0"
+    );
     assert!((get_float(&r, 2, 3) - 10.0).abs() < 1e-10, "SQRT(100)=10.0");
 }

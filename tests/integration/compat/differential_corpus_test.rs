@@ -1,5 +1,5 @@
-use std::process::Command;
 use std::path::Path;
+use std::process::Command;
 
 fn find_sqlrustgo_bin() -> Option<String> {
     if let Ok(path) = std::env::var("SQLRUSTGO_BIN") {
@@ -22,8 +22,7 @@ fn find_sqlrustgo_bin() -> Option<String> {
 }
 
 fn sqlite_bin() -> String {
-    std::env::var("SQLITE_BIN")
-        .unwrap_or_else(|_| "/usr/bin/sqlite3".to_string())
+    std::env::var("SQLITE_BIN").unwrap_or_else(|_| "/usr/bin/sqlite3".to_string())
 }
 
 fn run_sql(sqlrustgo: bool, sql: &str) -> Option<String> {
@@ -35,7 +34,15 @@ fn run_sql(sqlrustgo: bool, sql: &str) -> Option<String> {
 
     let output = if sqlrustgo {
         Command::new(&bin)
-            .args(["sqlite", "--batch", "--mode", "csv", "--headers", "true", ":memory:"])
+            .args([
+                "sqlite",
+                "--batch",
+                "--mode",
+                "csv",
+                "--headers",
+                "true",
+                ":memory:",
+            ])
             .arg(sql)
             .output()
             .ok()?
@@ -82,8 +89,14 @@ fn assert_match(test_name: &str, sql: &str) {
         println!("  PASS: {}", test_name);
     } else {
         println!("  FAIL: {}", test_name);
-        println!("    SQLRustGo: {}", ours_norm.lines().next().unwrap_or("(empty)"));
-        println!("    SQLite:    {}", theirs_norm.lines().next().unwrap_or("(empty)"));
+        println!(
+            "    SQLRustGo: {}",
+            ours_norm.lines().next().unwrap_or("(empty)")
+        );
+        println!(
+            "    SQLite:    {}",
+            theirs_norm.lines().next().unwrap_or("(empty)")
+        );
         panic!("Differential test failed: {}", test_name);
     }
 }
@@ -130,10 +143,7 @@ fn test_p3_null_001_null_comparison() {
 
 #[test]
 fn test_p3_char_001_char_length() {
-    assert_match(
-        "P3-CHAR-001: CHAR_LENGTH",
-        "SELECT CHAR_LENGTH('hello');",
-    );
+    assert_match("P3-CHAR-001: CHAR_LENGTH", "SELECT CHAR_LENGTH('hello');");
 }
 
 #[test]
@@ -282,42 +292,27 @@ fn test_p3_string_003_replace() {
 
 #[test]
 fn test_p3_string_004_trim() {
-    assert_match(
-        "P3-STRING-004: TRIM",
-        "SELECT TRIM('  hello  ');",
-    );
+    assert_match("P3-STRING-004: TRIM", "SELECT TRIM('  hello  ');");
 }
 
 #[test]
 fn test_p3_math_002_abs() {
-    assert_match(
-        "P3-MATH-002: ABS",
-        "SELECT ABS(-42);",
-    );
+    assert_match("P3-MATH-002: ABS", "SELECT ABS(-42);");
 }
 
 #[test]
 fn test_p3_math_003_round() {
-    assert_match(
-        "P3-MATH-003: ROUND",
-        "SELECT ROUND(3.7);",
-    );
+    assert_match("P3-MATH-003: ROUND", "SELECT ROUND(3.7);");
 }
 
 #[test]
 fn test_p3_null_002_coalesce() {
-    assert_match(
-        "P3-NULL-002: COALESCE",
-        "SELECT COALESCE(NULL, 'default');",
-    );
+    assert_match("P3-NULL-002: COALESCE", "SELECT COALESCE(NULL, 'default');");
 }
 
 #[test]
 fn test_p3_null_003_ifnull() {
-    assert_match(
-        "P3-NULL-003: IFNULL",
-        "SELECT IFNULL(NULL, 'default');",
-    );
+    assert_match("P3-NULL-003: IFNULL", "SELECT IFNULL(NULL, 'default');");
 }
 
 #[test]
