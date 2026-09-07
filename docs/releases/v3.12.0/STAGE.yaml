@@ -34,6 +34,28 @@ last_ga_attempt:
     - "After B1/B2/B3 closure: re-attempt RC->GA transition, cut v3.12.0 + v3.12.0-ga tags per STAGE_CONFIG RC_to_GA trigger"
   controlling_decision: "User decision 2026-09-07: '停 GA,只做 RC 收尾(推荐)' — defer GA promotion, complete RC wrap-up only."
 
+last_status_refresh:
+  date: "2026-09-08"
+  head: "54219264158f86ea23a43edd17e32f7d743b74f5"
+  source: "252 Gitea API + local git fetch/pull"
+  stage_result: "RC_UNCHANGED"
+  open_prs: 0
+  open_issues:
+    - "#4846 CHAR(n) padding/comparison point lookup miss; GA-blocker for teaching compatibility unless fixed or scoped out"
+    - "#4847 explicit transaction semantics divergence across batch/wire/persistent paths; data-integrity GA-blocker unless formally reclassified"
+    - "#4848 ALTER TABLE RENAME COLUMN unsupported; GA-claim-caveat or blocker depending on final teaching/catalog-evolution scope"
+  gate_snapshot:
+    ga_aggregate_file: "docs/releases/v3.12.0/evidence/v312-59/ga_gate_report.json"
+    ga_aggregate_commit: "65ef5bea52187e4be2f38e8c239d13002f150705"
+    ga_aggregate_mode: "full"
+    ga_aggregate_verdict: "FAIL"
+    ga_aggregate_blockers: 9
+  required_followup:
+    - "Fix or explicitly scope #4846/#4847/#4848 before GA claim."
+    - "Replace RC-B skeleton gates with executable BustubX-EDU oracle/corpus checks."
+    - "Re-run bash scripts/gate/check_ga_v3.12.0.sh --full at final HEAD; stale FAIL JSON cannot promote GA."
+    - "Refresh docs/security/SOAK evidence after code and gate fixes."
+
 stage_boundary_lock:
   status: "RELEASED"
   date: "2026-08-26"
