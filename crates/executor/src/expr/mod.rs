@@ -2064,7 +2064,7 @@ pub fn eval_fn(name: &str, args: &[Value]) -> Value {
                     }
                 })
                 .collect();
-            if hex.len() % 2 != 0 {
+            if !hex.len().is_multiple_of(2) {
                 return Value::Null;
             }
             let mut bytes = Vec::new();
@@ -2831,11 +2831,7 @@ fn invoke_udf_multi(def: &UdfDefinition, args: &[Value], body_block: &str) -> Va
         // forms that the issue body example uses.
         if let Some(rest) = upper.strip_prefix("DECLARE ") {
             // DECLARE <name> [<type>]
-            let name = rest
-                .splitn(2, char::is_whitespace)
-                .next()
-                .unwrap_or("")
-                .to_string();
+            let name = rest.split_whitespace().next().unwrap_or("").to_string();
             if !name.is_empty() {
                 locals.insert(name.to_ascii_uppercase(), Value::Null);
             }
@@ -2870,7 +2866,6 @@ fn substitute_with_locals(
     args: &[Value],
     locals: &std::collections::HashMap<String, Value>,
 ) -> sqlrustgo_parser::Expression {
-    use sqlrustgo_parser::Expression;
     let mut substituted = expr.clone();
     substitute_walk(&mut substituted, params, args, locals);
     substituted
@@ -4465,7 +4460,10 @@ mod tests {
             eval_fn("SIGN", &[Value::Text("-7".into())]),
             Value::Integer(-1)
         );
-        assert_eq!(eval_fn("SIGN", &[Value::Text("0".into())]), Value::Integer(0));
+        assert_eq!(
+            eval_fn("SIGN", &[Value::Text("0".into())]),
+            Value::Integer(0)
+        );
         // Non-numeric text → NULL
         assert_eq!(eval_fn("SIGN", &[Value::Text("abc".into())]), Value::Null);
         // Literal "NULL" string → NULL
@@ -4500,8 +4498,14 @@ mod tests {
         // No args → NULL
         assert_eq!(eval_fn("CEIL", &[]), Value::Null);
         // Text "1.5" → parses to float → ceil=2, floor=1
-        assert_eq!(eval_fn("CEIL", &[Value::Text("1.5".into())]), Value::Integer(2));
-        assert_eq!(eval_fn("FLOOR", &[Value::Text("1.5".into())]), Value::Integer(1));
+        assert_eq!(
+            eval_fn("CEIL", &[Value::Text("1.5".into())]),
+            Value::Integer(2)
+        );
+        assert_eq!(
+            eval_fn("FLOOR", &[Value::Text("1.5".into())]),
+            Value::Integer(1)
+        );
     }
 
     // ----- V312-90 / P3-DATE-002: EXTRACT returns Integer (not Text) -----
@@ -4520,7 +4524,10 @@ mod tests {
         assert_eq!(
             eval_fn(
                 "EXTRACT",
-                &[Value::Text("MONTH".into()), Value::Text("2024-03-15".into())]
+                &[
+                    Value::Text("MONTH".into()),
+                    Value::Text("2024-03-15".into())
+                ]
             ),
             Value::Integer(3)
         );
@@ -4553,22 +4560,25 @@ mod tests {
     fn test_eval_fn_extract_null_and_unknown_field() {
         // NULL source → NULL
         assert_eq!(
-            eval_fn(
-                "EXTRACT",
-                &[Value::Text("YEAR".into()), Value::Null]
-            ),
+            eval_fn("EXTRACT", &[Value::Text("YEAR".into()), Value::Null]),
             Value::Null
         );
         // Unknown field name → NULL
         assert_eq!(
             eval_fn(
                 "EXTRACT",
-                &[Value::Text("CENTURY".into()), Value::Text("2024-03-15".into())]
+                &[
+                    Value::Text("CENTURY".into()),
+                    Value::Text("2024-03-15".into())
+                ]
             ),
             Value::Null
         );
         // Too few args → NULL
-        assert_eq!(eval_fn("EXTRACT", &[Value::Text("YEAR".into())]), Value::Null);
+        assert_eq!(
+            eval_fn("EXTRACT", &[Value::Text("YEAR".into())]),
+            Value::Null
+        );
     }
 
     #[test]

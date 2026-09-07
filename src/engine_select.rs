@@ -1005,10 +1005,8 @@ impl<S: StorageEngine + 'static> ExecutionEngine<S> {
                 // the WithClause by routing this through
                 // `parse_with_select` directly into `from_with_subquery`;
                 // we now execute the CTE materialisation path here.
-                let cte_table_names = crate::engine_cte::materialize_cte_tables(
-                    self,
-                    ws.with_clause.as_ref(),
-                )?;
+                let cte_table_names =
+                    crate::engine_cte::materialize_cte_tables(self, ws.with_clause.as_ref())?;
                 // Run the inner SELECT now that the CTE tables exist in
                 // storage. `execute_select` takes `&self`; we already hold
                 // `&self` here so this is a straightforward recursive call.
@@ -1046,11 +1044,7 @@ impl<S: StorageEngine + 'static> ExecutionEngine<S> {
                         Ok(info) => info.columns.iter().map(|c| c.name.clone()).collect(),
                         Err(_) => {
                             // Fallback: synthesise col_<i> from row width.
-                            let width = inner_result
-                                .rows
-                                .first()
-                                .map(|r| r.len())
-                                .unwrap_or(0);
+                            let width = inner_result.rows.first().map(|r| r.len()).unwrap_or(0);
                             (0..width).map(|i| format!("col_{}", i)).collect()
                         }
                     }
@@ -1932,14 +1926,12 @@ impl<S: StorageEngine + 'static> ExecutionEngine<S> {
                     let n_agg = select.aggregates.len();
                     let mut fanned: Vec<Vec<Value>> =
                         Vec::with_capacity(agg_result_rows.len() * select.grouping_sets.len());
-                    let mut saw_empty_set = false;
                     let mut empty_set_emitted = false;
                     for row in agg_result_rows.iter() {
                         let group_part = &row[..n_group_cols];
                         let agg_part = &row[n_group_cols..n_group_cols + n_agg];
                         for set in &select.grouping_sets {
                             if set.is_empty() {
-                                saw_empty_set = true;
                                 if empty_set_emitted {
                                     continue;
                                 }
@@ -2775,20 +2767,15 @@ impl<S: StorageEngine + 'static> ExecutionEngine<S> {
             // in `ob.nulls_first` override that per-sort-key default.
             // The session override `session_null_order_first` (set via
             // `SET default_null_order`) flips the default for both
-            // directions. The fall-back default here (`true`) matches
-            // both the setops path (`engine_setops.rs:276`) and the
-            // SQLite/MySQL behaviour the B-track differential test
-            // expects.
+            // directions. The fall-back default here is NULLS LAST
+            // (V312-85 / Issue #4763: SQLite 3.51 default for both
+            // ASC and DESC, independent of direction — the
+            // ASC/DESC-dependent default was retired in #4748).
             zipped.sort_by(|a, b| {
                 for (i, ob) in select.order_by.iter().enumerate() {
-                    let default_nulls_first =
-                        if ob.ascending { true } else { false };
-                    let nulls_first_eff: bool = ob
-                        .nulls_first
-                        .unwrap_or_else(|| {
-                            self.session_null_order_first
-                                .unwrap_or(default_nulls_first)
-                        });
+                    let nulls_first_eff: bool = ob.nulls_first.unwrap_or_else(|| {
+                        self.session_null_order_first.unwrap_or(false)
+                    });
                     let ord = if i < a.0.len() && i < b.0.len() {
                         let va = &a.0[i];
                         let vb = &b.0[i];
@@ -3367,7 +3354,7 @@ impl<S: StorageEngine + 'static> ExecutionEngine<S> {
                         let table_info = storage.get_table_info(table).ok();
                         if let Some(ref info) = table_info {
                             // Find the column for this index
-                            if let Some(col_idx) = info
+                            if let Some(_col_idx) = info
                                 .columns
                                 .iter()
                                 .position(|c| c.name.eq_ignore_ascii_case(idx_name))
@@ -4750,8 +4737,13 @@ impl<S: StorageEngine + 'static> ExecutionEngine<S> {
             pairs.iter().map(|(_, ri)| (*ri, false)).collect();
 
         let mut matched_results = match join_type {
-            JoinType::Inner | JoinType::Left | JoinType::Right | JoinType::Full
-            | JoinType::Natural | JoinType::NaturalLeft | JoinType::NaturalRight
+            JoinType::Inner
+            | JoinType::Left
+            | JoinType::Right
+            | JoinType::Full
+            | JoinType::Natural
+            | JoinType::NaturalLeft
+            | JoinType::NaturalRight
             | JoinType::NaturalFull => {
                 // V313-106 / P3-JOIN-001: build a minimal combined_schema
                 // (just the column names, sufficient for eval_predicate)
@@ -8611,6 +8603,7 @@ fn find_correlated_equalities(
 /// roughly equal work; no hash-skew problems. The cost of merging
 /// is O(N_keys) where N_keys is the number of distinct keys across
 /// all chunks (≤ 200K for lineitem).
+#[allow(dead_code)]
 fn build_scalar_agg_index_parallel(
     rows: &[Vec<Value>],
     table_info: &TableInfo,
@@ -8626,8 +8619,7 @@ fn build_scalar_agg_index_parallel(
     let n_threads: usize = std::thread::available_parallelism()
         .map(|x| x.get())
         .unwrap_or(1)
-        .min(8) // cap to 8 threads (each gets ~750K rows for 6M)
-        .max(1);
+        .clamp(1, 8);
     // For small tables, rayon's task-spawn overhead dominates —
     // fall back to serial path.
     if rows.len() < n_threads * 10_000 {
@@ -8642,7 +8634,7 @@ fn build_scalar_agg_index_parallel(
         );
     }
     // Build partial HashMaps in parallel via simple chunk partitioning.
-    let rows_per_chunk = (rows.len() + n_threads - 1) / n_threads;
+    let rows_per_chunk = rows.len().div_ceil(n_threads);
     let chunks: Vec<&[Vec<Value>]> = rows.chunks(rows_per_chunk).collect();
     let partial_maps: Vec<HashMap<Vec<Value>, AggAcc>> = {
         use rayon::prelude::*;
