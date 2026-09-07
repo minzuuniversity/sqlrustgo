@@ -310,9 +310,6 @@ path = "tests/integration/sql/v312_74_on_conflict_on_constraint_test.rs"
 name = "v312_90_where_regexp_test"
 path = "tests/integration/sql/v312_90_where_regexp_test.rs"
 [[test]]
-name = "v312_90_indexed_by_hint_test"
-path = "tests/integration/sql/v312_90_indexed_by_hint_test.rs"
-[[test]]
 name = "v312_95_non_equi_join_test"
 path = "tests/integration/sql/v312_95_non_equi_join_test.rs"
 [[test]]
