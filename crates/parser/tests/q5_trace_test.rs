@@ -39,6 +39,10 @@ fn trace_q5_join_order() {
             JoinType::Right => "RIGHT JOIN",
             JoinType::Full => "FULL JOIN",
             JoinType::Cross => "CROSS JOIN",
+            JoinType::Natural => "NATURAL JOIN",
+            JoinType::NaturalLeft => "NATURAL LEFT JOIN",
+            JoinType::NaturalRight => "NATURAL RIGHT JOIN",
+            JoinType::NaturalFull => "NATURAL FULL JOIN",
         };
         let on = match &jc.on_clause {
             Expression::BinaryOp(l, op, r) => {
