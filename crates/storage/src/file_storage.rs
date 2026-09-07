@@ -4,8 +4,7 @@
 use crate::bplus_tree::BPlusTree;
 use crate::engine::{
     ColumnDefinition, ForeignKeyConstraint, IndexInfo, Record, RowFilter, RowMutation,
-    SharedSliceIter, StorageEngine, TableData, TableInfo, TriggerInfo, UniqueConstraint,
-    ViewInfo,
+    SharedSliceIter, StorageEngine, TableData, TableInfo, TriggerInfo, UniqueConstraint, ViewInfo,
 };
 use sqlrustgo_types::{SqlError, SqlResult, Value};
 use std::any::Any;
@@ -761,7 +760,13 @@ impl FileStorage {
         // metadata-catalog entries that name this (table, column)
         // pair so `list_all_indexes()` doesn't return a ghost entry.
         if let Ok(mut md) = self.index_metadata.write() {
-            md.retain(|_, info| !(info.table == table_name && info.columns.iter().any(|c| c.name.as_deref() == Some(column_name))));
+            md.retain(|_, info| {
+                !(info.table == table_name
+                    && info
+                        .columns
+                        .iter()
+                        .any(|c| c.name.as_deref() == Some(column_name)))
+            });
         }
 
         let path = self.index_path(table_name, column_name);
@@ -3037,7 +3042,7 @@ impl StorageEngine for FileStorage {
         // V312-85 / Issue #4625: Use B+ Tree index for equality lookup
         // The index_name is the column name in FileStorage's (table, column) key format
         let indexes = self.indexes.read().unwrap();
-        
+
         // Try to find the index - index_name is the column name
         let index_key = (table.to_string(), index_name.to_string());
         if let Some(index) = indexes.get(&index_key) {
@@ -3045,7 +3050,7 @@ impl StorageEngine for FileStorage {
             if let Some(search_key) = key.to_index_key() {
                 // Find all row IDs with this key
                 let row_ids = index.search_all(search_key);
-                
+
                 // Get the table data
                 if let Some(data) = self.tables.get(table) {
                     // Collect matching rows
@@ -3059,8 +3064,14 @@ impl StorageEngine for FileStorage {
                     if let Some(buffered) = self.insert_buffer.get(table) {
                         for record in buffered.iter() {
                             // Check if this buffered row matches the key
-                            if let Some(col_idx) = data.info.columns.iter().position(|c| c.name == index_name) {
-                                if record.get(col_idx).map(|v| v.to_index_key() == Some(search_key)).unwrap_or(false) {
+                            if let Some(col_idx) =
+                                data.info.columns.iter().position(|c| c.name == index_name)
+                            {
+                                if record
+                                    .get(col_idx)
+                                    .map(|v| v.to_index_key() == Some(search_key))
+                                    .unwrap_or(false)
+                                {
                                     results.push(record.clone());
                                 }
                             }
@@ -3074,10 +3085,13 @@ impl StorageEngine for FileStorage {
         let mut rows = self.scan(table)?;
         // Filter rows by the key value
         if let Some(table_data) = self.tables.get(table) {
-            if let Some(col_idx) = table_data.info.columns.iter().position(|c| c.name == index_name) {
-                rows.retain(|row| {
-                    row.get(col_idx).map(|v| v == key).unwrap_or(false)
-                });
+            if let Some(col_idx) = table_data
+                .info
+                .columns
+                .iter()
+                .position(|c| c.name == index_name)
+            {
+                rows.retain(|row| row.get(col_idx).map(|v| v == key).unwrap_or(false));
                 return Ok(rows);
             }
         }
@@ -3414,9 +3428,9 @@ impl StorageEngine for FileStorage {
                 Some(n) => n.clone(),
                 None => {
                     return Err(SqlError::ExecutionError(format!(
-                        "expression index column `{}` is not supported by the \
+                        "expression index column `{:?}` is not supported by the \
                          file_storage backend (V313-100); use a plain column name",
-                        format!("{:?}", column.expression)
+                        column.expression
                     )));
                 }
             };
@@ -3488,7 +3502,12 @@ impl StorageEngine for FileStorage {
             // than the schema claims, and SELECT * would only show the
             // original columns.
             let fill = crate::engine::default_fill_value(
-                &data.info.columns.last().map(|c| c.default_value.clone()).unwrap_or(None),
+                &data
+                    .info
+                    .columns
+                    .last()
+                    .map(|c| c.default_value.clone())
+                    .unwrap_or(None),
             );
             for row in data.rows.iter_mut() {
                 row.push(fill.clone());
