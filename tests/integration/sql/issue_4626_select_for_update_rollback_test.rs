@@ -33,7 +33,8 @@ fn engine() -> ExecutionEngine<MemoryStorage> {
 #[test]
 fn select_for_update_then_rollback_succeeds() {
     let mut e = engine();
-    e.execute("CREATE TABLE t(id INTEGER, val INTEGER)").unwrap();
+    e.execute("CREATE TABLE t(id INTEGER, val INTEGER)")
+        .unwrap();
     e.execute("BEGIN").unwrap();
     let sel = e
         .execute("SELECT * FROM t WHERE id = 1 FOR UPDATE")
@@ -53,7 +54,8 @@ fn select_for_update_then_commit_succeeds() {
     // when current_tx_id is still set (i.e., SELECT FOR UPDATE did NOT
     // silently abort the tx).
     let mut e = engine();
-    e.execute("CREATE TABLE t(id INTEGER, val INTEGER)").unwrap();
+    e.execute("CREATE TABLE t(id INTEGER, val INTEGER)")
+        .unwrap();
     e.execute("BEGIN").unwrap();
     e.execute("SELECT * FROM t WHERE id = 1 FOR UPDATE")
         .unwrap();
@@ -71,7 +73,8 @@ fn select_for_update_then_begin_again_succeeds() {
     // BEGIN should be possible. This guards against `current_tx_id` being
     // stuck at None after FOR UPDATE.
     let mut e = engine();
-    e.execute("CREATE TABLE t(id INTEGER, val INTEGER)").unwrap();
+    e.execute("CREATE TABLE t(id INTEGER, val INTEGER)")
+        .unwrap();
     e.execute("BEGIN").unwrap();
     e.execute("SELECT * FROM t WHERE id = 1 FOR UPDATE")
         .unwrap();

@@ -403,7 +403,7 @@ mod tests {
             partition_info: None,
             compression: None,
             collations: std::collections::HashMap::new(),
-        original_sql: String::new(),
+            original_sql: String::new(),
         };
 
         let inner_rows = vec![
@@ -464,7 +464,7 @@ mod tests {
             partition_info: None,
             compression: None,
             collations: std::collections::HashMap::new(),
-        original_sql: String::new(),
+            original_sql: String::new(),
         };
         let inner_rows = vec![vec![Value::Integer(1)]];
         assert!(
@@ -502,7 +502,7 @@ mod tests {
             partition_info: None,
             compression: None,
             collations: std::collections::HashMap::new(),
-        original_sql: String::new(),
+            original_sql: String::new(),
         };
         let inner_rows = vec![vec![Value::Integer(1)]];
         // build_key_col=42 is out of range for the 1-column table.

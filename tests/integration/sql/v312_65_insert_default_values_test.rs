@@ -19,7 +19,10 @@ fn extract_int(res: &sqlrustgo::ExecutorResult, row: usize, col: usize) -> i64 {
     match &res.rows[row][col] {
         Value::Integer(n) => *n,
         Value::Null => i64::MIN, // sentinel for NULL — callers compare via is_null_or()
-        other => panic!("expected Integer/Null at [{}][{}], got {:?}", row, col, other),
+        other => panic!(
+            "expected Integer/Null at [{}][{}], got {:?}",
+            row, col, other
+        ),
     }
 }
 
@@ -50,7 +53,11 @@ fn v312_65_insert_default_values_with_defaults() {
     .unwrap();
     x.execute("INSERT INTO t DEFAULT VALUES").unwrap();
     let res = x.execute("SELECT id, val, name FROM t").unwrap();
-    assert_eq!(res.rows.len(), 1, "DEFAULT VALUES must insert exactly one row");
+    assert_eq!(
+        res.rows.len(),
+        1,
+        "DEFAULT VALUES must insert exactly one row"
+    );
     assert!(is_null(&res, 0, 0), "id column has no DEFAULT → NULL");
     assert_eq!(
         extract_int(&res, 0, 1),
@@ -107,7 +114,8 @@ fn v312_65_insert_default_values_lowercase_keyword() {
 #[test]
 fn v312_65_insert_default_values_multiple_rows() {
     let mut x = fresh();
-    x.execute("CREATE TABLE t (a INTEGER, b INTEGER DEFAULT 7)").unwrap();
+    x.execute("CREATE TABLE t (a INTEGER, b INTEGER DEFAULT 7)")
+        .unwrap();
     x.execute("INSERT INTO t DEFAULT VALUES").unwrap();
     x.execute("INSERT INTO t DEFAULT VALUES").unwrap();
     x.execute("INSERT INTO t DEFAULT VALUES").unwrap();

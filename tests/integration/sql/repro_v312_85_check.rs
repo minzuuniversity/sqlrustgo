@@ -12,10 +12,8 @@ fn fresh_mem() -> ExecutionEngine<MemoryStorage> {
 #[test]
 fn check_violation_error_is_human_readable() {
     let mut x = fresh_mem();
-    x.execute(
-        "CREATE TABLE t(val int, CONSTRAINT chk_pos CHECK (val > 0 AND val < 100))",
-    )
-    .unwrap();
+    x.execute("CREATE TABLE t(val int, CONSTRAINT chk_pos CHECK (val > 0 AND val < 100))")
+        .unwrap();
     x.execute("INSERT INTO t VALUES (5)").unwrap();
     let r = x.execute("INSERT INTO t VALUES (200)");
     assert!(r.is_err(), "expected error, got {:?}", r);

@@ -46,9 +46,15 @@ fn repro_4654_autoinc_first_row_assigns_one() {
         .unwrap();
     x.execute("INSERT INTO t(name) VALUES ('alice')").unwrap();
 
-    let r = x.execute("SELECT id, name FROM t ORDER BY id").expect("SELECT");
+    let r = x
+        .execute("SELECT id, name FROM t ORDER BY id")
+        .expect("SELECT");
     assert_eq!(r.rows.len(), 1);
-    assert_eq!(row_int(&r.rows[0], 0), 1, "first AUTO_INCREMENT row must be id=1");
+    assert_eq!(
+        row_int(&r.rows[0], 0),
+        1,
+        "first AUTO_INCREMENT row must be id=1"
+    );
     assert_eq!(row_text(&r.rows[0], 1), "alice");
 }
 
@@ -61,7 +67,9 @@ fn repro_4654_autoinc_sequential_three_rows() {
     x.execute("INSERT INTO t(name) VALUES ('alice'),('bob'),('carol')")
         .unwrap();
 
-    let r = x.execute("SELECT id, name FROM t ORDER BY id").expect("SELECT");
+    let r = x
+        .execute("SELECT id, name FROM t ORDER BY id")
+        .expect("SELECT");
     assert_eq!(r.rows.len(), 3);
     assert_eq!(row_int(&r.rows[0], 0), 1);
     assert_eq!(row_int(&r.rows[1], 0), 2);
@@ -78,11 +86,14 @@ fn repro_4654_autoinc_after_delete_uses_max_plus_one() {
     let mut x = fresh_mem();
     x.execute("CREATE TABLE t(id INT PRIMARY KEY AUTO_INCREMENT, name VARCHAR(20))")
         .unwrap();
-    x.execute("INSERT INTO t(name) VALUES ('a'),('b'),('c')").unwrap();
+    x.execute("INSERT INTO t(name) VALUES ('a'),('b'),('c')")
+        .unwrap();
     x.execute("DELETE FROM t WHERE id = 2").unwrap();
     x.execute("INSERT INTO t(name) VALUES ('d')").unwrap();
 
-    let r = x.execute("SELECT id, name FROM t ORDER BY id").expect("SELECT");
+    let r = x
+        .execute("SELECT id, name FROM t ORDER BY id")
+        .expect("SELECT");
     assert_eq!(r.rows.len(), 3, "a, c, d should remain");
     assert_eq!(row_int(&r.rows[0], 0), 1, "a=1");
     assert_eq!(row_int(&r.rows[1], 0), 3, "c=3");
@@ -96,10 +107,13 @@ fn repro_4654_autoinc_explicit_id_preserved_then_resumes_after_max() {
     let mut x = fresh_mem();
     x.execute("CREATE TABLE t(id INT PRIMARY KEY AUTO_INCREMENT, name VARCHAR(20))")
         .unwrap();
-    x.execute("INSERT INTO t(id, name) VALUES (5, 'x')").unwrap();
+    x.execute("INSERT INTO t(id, name) VALUES (5, 'x')")
+        .unwrap();
     x.execute("INSERT INTO t(name) VALUES ('y')").unwrap();
 
-    let r = x.execute("SELECT id, name FROM t ORDER BY id").expect("SELECT");
+    let r = x
+        .execute("SELECT id, name FROM t ORDER BY id")
+        .expect("SELECT");
     assert_eq!(row_int(&r.rows[0], 0), 5, "explicit id preserved");
     assert_eq!(row_int(&r.rows[1], 0), 6, "auto next is MAX(5)+1 = 6");
 }
@@ -137,7 +151,11 @@ fn repro_4653_insert_returning_multi_col() {
         .expect("INSERT RETURNING must execute");
 
     assert_eq!(r.rows.len(), 1);
-    assert_eq!(r.rows[0].len(), 2, "RETURNING id, name must produce 2 columns");
+    assert_eq!(
+        r.rows[0].len(),
+        2,
+        "RETURNING id, name must produce 2 columns"
+    );
     assert_eq!(row_int(&r.rows[0], 0), 1);
     assert_eq!(row_text(&r.rows[0], 1), "alice");
 }
@@ -147,7 +165,8 @@ fn repro_4653_insert_without_returning_returns_no_rows() {
     // Backward compat: no RETURNING clause → empty rows vector
     // (legacy behaviour preserved by evaluate_returning_rows early-out).
     let mut x = fresh_mem();
-    x.execute("CREATE TABLE t(id INT, name VARCHAR(20))").unwrap();
+    x.execute("CREATE TABLE t(id INT, name VARCHAR(20))")
+        .unwrap();
     let r = x
         .execute("INSERT INTO t VALUES (1, 'alice')")
         .expect("plain INSERT");
@@ -200,7 +219,8 @@ fn repro_4658_insert_returning_autoinc_with_explicit_id() {
     let mut x = fresh_mem();
     x.execute("CREATE TABLE t(id INT PRIMARY KEY AUTO_INCREMENT, name VARCHAR(20))")
         .unwrap();
-    x.execute("INSERT INTO t(id, name) VALUES (10, 'x')").unwrap();
+    x.execute("INSERT INTO t(id, name) VALUES (10, 'x')")
+        .unwrap();
     let r = x
         .execute("INSERT INTO t(name) VALUES ('y') RETURNING id")
         .expect("INSERT RETURNING id");

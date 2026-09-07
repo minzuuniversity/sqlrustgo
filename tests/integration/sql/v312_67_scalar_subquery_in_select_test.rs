@@ -45,7 +45,9 @@ fn v312_67_scalar_subquery_arithmetic_literal() {
 #[test]
 fn v312_67_scalar_subquery_multiple_columns() {
     let mut x = fresh();
-    let res = x.execute("SELECT (SELECT 1) AS a, (SELECT 2) AS b").unwrap();
+    let res = x
+        .execute("SELECT (SELECT 1) AS a, (SELECT 2) AS b")
+        .unwrap();
     assert_eq!(res.rows.len(), 1);
     assert_eq!(extract_int(&res, 0, 0), 1);
     assert_eq!(extract_int(&res, 0, 1), 2);

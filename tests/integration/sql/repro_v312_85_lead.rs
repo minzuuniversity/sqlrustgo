@@ -1,8 +1,8 @@
 //! V312-85 / Issue #4753: LEAD() window function parser + executor
 
 use parking_lot::RwLock;
-use sqlrustgo_parser::parse;
 use sqlrustgo::{ExecutionEngine, MemoryStorage};
+use sqlrustgo_parser::parse;
 use std::sync::Arc;
 
 fn fresh_mem() -> ExecutionEngine<MemoryStorage> {

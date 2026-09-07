@@ -23,8 +23,7 @@
 
 use parking_lot::RwLock;
 use sqlrustgo::{
-    dump_v312_58_sprint5_diag, snapshot_v312_58_sprint5_diag, ExecutionEngine, MemoryStorage,
-    Value,
+    dump_v312_58_sprint5_diag, snapshot_v312_58_sprint5_diag, ExecutionEngine, MemoryStorage, Value,
 };
 use std::sync::Arc;
 use std::time::Instant;

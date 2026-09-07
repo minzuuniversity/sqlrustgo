@@ -108,16 +108,16 @@ fn v312_73_using_multi_columns() {
     // V312-73: USING (col1, col2) matches on the conjunction and projects
     // both USING columns exactly once.
     let mut x = fresh();
-    x.execute("CREATE TABLE t1 (id INT, code INT, a TEXT)").unwrap();
-    x.execute("CREATE TABLE t2 (id INT, code INT, b TEXT)").unwrap();
+    x.execute("CREATE TABLE t1 (id INT, code INT, a TEXT)")
+        .unwrap();
+    x.execute("CREATE TABLE t2 (id INT, code INT, b TEXT)")
+        .unwrap();
     x.execute("INSERT INTO t1 VALUES (1, 100, 'x1'), (1, 200, 'x2')")
         .unwrap();
     x.execute("INSERT INTO t2 VALUES (1, 100, 'B1'), (1, 300, 'B2')")
         .unwrap();
     let res = x
-        .execute(
-            "SELECT * FROM t1 INNER JOIN t2 USING (id, code) ORDER BY t1.a",
-        )
+        .execute("SELECT * FROM t1 INNER JOIN t2 USING (id, code) ORDER BY t1.a")
         .unwrap();
     assert_eq!(res.rows.len(), 1);
     // Layout: [t1.id, t1.code, t1.a, t2.b]  — both right USING cols dropped.

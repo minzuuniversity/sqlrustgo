@@ -218,7 +218,11 @@ fn v312_75_trigger_for_each_row_still_parses() {
         "CREATE TRIGGER tr AFTER INSERT ON t FOR EACH ROW \
          BEGIN INSERT INTO log(msg) VALUES ('inserted'); END;",
     );
-    assert!(r.is_ok(), "FOR EACH ROW trigger must still parse: {:?}", r.err());
+    assert!(
+        r.is_ok(),
+        "FOR EACH ROW trigger must still parse: {:?}",
+        r.err()
+    );
 }
 
 // ---------------------------------------------------------------------

@@ -9,9 +9,9 @@
 //! `CREATE INDEX`. The in-process `MemoryStorage` worked because
 //! it has its own `list_all_indexes` override.
 
+use sqlrustgo_parser::IndexColumnSpec;
 use sqlrustgo_storage::engine::{ColumnDefinition, IndexInfo, StorageEngine, TableInfo};
 use sqlrustgo_storage::FileStorage;
-use sqlrustgo_parser::IndexColumnSpec;
 
 // V312-95 v3: FileStorage has an inherent 3-arg `create_index(table, column, idx)`
 // method that shadows the StorageEngine trait's 1-arg `create_index(IndexInfo)`.
@@ -20,10 +20,7 @@ use sqlrustgo_parser::IndexColumnSpec;
 use std::fs;
 
 fn fresh_dir() -> std::path::PathBuf {
-    let dir = std::env::temp_dir().join(format!(
-        "v312_95_v3_list_idx_{}",
-        std::process::id()
-    ));
+    let dir = std::env::temp_dir().join(format!("v312_95_v3_list_idx_{}", std::process::id()));
     let _ = fs::remove_dir_all(&dir);
     fs::create_dir_all(&dir).unwrap();
     dir
@@ -62,7 +59,11 @@ fn list_all_indexes_after_single_create() {
     storage.create_table(&make_table("t")).unwrap();
     StorageEngine::create_index(&mut storage, make_index("t", "idx_t_name", "name")).unwrap();
     let indexes = storage.list_all_indexes();
-    assert_eq!(indexes.len(), 1, "list_all_indexes must return the just-created index");
+    assert_eq!(
+        indexes.len(),
+        1,
+        "list_all_indexes must return the just-created index"
+    );
     let idx = &indexes[0];
     assert_eq!(idx.name, "idx_t_name");
     assert_eq!(idx.table, "t");

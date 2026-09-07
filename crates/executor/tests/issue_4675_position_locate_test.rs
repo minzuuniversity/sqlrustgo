@@ -113,7 +113,11 @@ fn locate_with_start_position() {
     // This doesn't add up. Let me just use empirical values:
     let mut e = engine();
     let r = e.execute("SELECT LOCATE('bc', 'a%bc%bc', 3)").unwrap();
-    assert_eq!(first_int(&r), 3, "empirical: LOCATE('bc','a%%bc%%bc',3) = 3");
+    assert_eq!(
+        first_int(&r),
+        3,
+        "empirical: LOCATE('bc','a%%bc%%bc',3) = 3"
+    );
 }
 
 #[test]

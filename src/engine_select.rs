@@ -2773,9 +2773,9 @@ impl<S: StorageEngine + 'static> ExecutionEngine<S> {
             // ASC/DESC-dependent default was retired in #4748).
             zipped.sort_by(|a, b| {
                 for (i, ob) in select.order_by.iter().enumerate() {
-                    let nulls_first_eff: bool = ob.nulls_first.unwrap_or_else(|| {
-                        self.session_null_order_first.unwrap_or(false)
-                    });
+                    let nulls_first_eff: bool = ob
+                        .nulls_first
+                        .unwrap_or_else(|| self.session_null_order_first.unwrap_or(false));
                     let ord = if i < a.0.len() && i < b.0.len() {
                         let va = &a.0[i];
                         let vb = &b.0[i];

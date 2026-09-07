@@ -34,14 +34,15 @@ fn rec_cte_hierarchy_issue_body() {
     e.execute("INSERT INTO emp VALUES (1, NULL, 'CEO'), (2, 1, 'VP'), (3, 1, 'CTO'), (4, 2, 'Dev1'), (5, 2, 'Dev2')")
         .unwrap();
 
-    let r = e.execute(
-        "WITH RECURSIVE tree AS ( \
+    let r = e
+        .execute(
+            "WITH RECURSIVE tree AS ( \
             SELECT id, name FROM emp WHERE mgr_id IS NULL \
             UNION ALL \
             SELECT e.id, e.name FROM emp e JOIN tree ON e.mgr_id = tree.id \
          ) SELECT id, name FROM tree ORDER BY id",
-    )
-    .unwrap();
+        )
+        .unwrap();
 
     assert_eq!(r.rows.len(), 5, "expected 5 rows, got {}", r.rows.len());
     assert_eq!(r.rows[0][0], Value::Integer(1));
@@ -141,9 +142,7 @@ fn rec_cte_nonrecursive_body_in_recursive_clause_works() {
     // UNION bodies".
     let mut e = fresh_mem();
     let r = e
-        .execute(
-            "WITH RECURSIVE cnt AS (SELECT 1 AS n) SELECT n FROM cnt",
-        )
+        .execute("WITH RECURSIVE cnt AS (SELECT 1 AS n) SELECT n FROM cnt")
         .expect("non-recursive body under WITH RECURSIVE must succeed");
     assert_eq!(r.rows.len(), 1);
     assert_eq!(r.rows[0][0], Value::Integer(1));
@@ -256,7 +255,8 @@ fn rec_cte_aggregate_in_anchor() {
     // the loop terminate after one iteration. Result: 1 row.
     let mut e = fresh_mem();
     e.execute("CREATE TABLE nums(n INT)").unwrap();
-    e.execute("INSERT INTO nums VALUES (1), (2), (3), (4), (5)").unwrap();
+    e.execute("INSERT INTO nums VALUES (1), (2), (3), (4), (5)")
+        .unwrap();
 
     let r = e
         .execute(
@@ -267,12 +267,7 @@ fn rec_cte_aggregate_in_anchor() {
          ) SELECT total FROM agg",
         )
         .expect("aggregation in anchor must succeed");
-    assert_eq!(
-        r.rows.len(),
-        1,
-        "expected 1 row, got {}",
-        r.rows.len()
-    );
+    assert_eq!(r.rows.len(), 1, "expected 1 row, got {}", r.rows.len());
     assert_eq!(r.rows[0][0], Value::Integer(15));
 }
 

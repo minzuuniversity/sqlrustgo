@@ -580,8 +580,7 @@ fn execute_statement_for_cte<S: StorageEngine + 'static>(
                 combined.dedup();
                 Ok(combined)
             } else {
-                let right_set: std::collections::HashSet<_> =
-                    right_rows.iter().collect();
+                let right_set: std::collections::HashSet<_> = right_rows.iter().collect();
                 let result: Vec<Vec<crate::Value>> = left_rows
                     .into_iter()
                     .filter(|r| right_set.contains(r))
@@ -601,8 +600,7 @@ fn execute_statement_for_cte<S: StorageEngine + 'static>(
                 }
                 Ok(result)
             } else {
-                let right_set: std::collections::HashSet<_> =
-                    right_rows.iter().collect();
+                let right_set: std::collections::HashSet<_> = right_rows.iter().collect();
                 Ok(left_rows
                     .into_iter()
                     .filter(|r| !right_set.contains(r))

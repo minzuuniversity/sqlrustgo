@@ -63,9 +63,7 @@ fn character_length_on_short_ascii_returns_codepoint_count() {
     let mut e = engine();
     e.execute("CREATE TABLE t(name VARCHAR(50))").unwrap();
     e.execute("INSERT INTO t VALUES ('abc')").unwrap();
-    let result = e
-        .execute("SELECT CHARACTER_LENGTH(name) FROM t")
-        .unwrap();
+    let result = e.execute("SELECT CHARACTER_LENGTH(name) FROM t").unwrap();
     let rows = result.rows;
     assert_eq!(rows.len(), 1);
     assert_eq!(

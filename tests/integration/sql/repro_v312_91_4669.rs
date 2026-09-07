@@ -116,7 +116,8 @@ fn drop_index_missing_without_if_exists_errors_4669() {
     // diagnostic instead of silently succeeding.
     let err = format!("{:?}", r.err().unwrap());
     assert!(
-        err.contains("idx_missing") || err.to_lowercase().contains("not exist")
+        err.contains("idx_missing")
+            || err.to_lowercase().contains("not exist")
             || err.to_lowercase().contains("no such"),
         "Error must reference the missing index name or 'not exist'; got: {}",
         err

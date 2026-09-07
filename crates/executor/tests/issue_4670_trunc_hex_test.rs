@@ -45,7 +45,10 @@ fn is_null(result: &sqlrustgo::ExecutorResult) -> bool {
 fn truncate_positive_decimals() {
     let mut e = engine();
     let r = e.execute("SELECT TRUNC(3.14159, 3)").unwrap();
-    assert!((first_float(&r) - 3.141).abs() < 1e-10, "TRUNC(3.14159, 3) = 3.141");
+    assert!(
+        (first_float(&r) - 3.141).abs() < 1e-10,
+        "TRUNC(3.14159, 3) = 3.141"
+    );
 }
 #[test]
 fn truncate_default_zero_decimals() {
@@ -57,7 +60,10 @@ fn truncate_default_zero_decimals() {
 fn truncate_negative_scale() {
     let mut e = engine();
     let r = e.execute("SELECT TRUNC(123.456, -1)").unwrap();
-    assert!((first_float(&r) - 120.0).abs() < 1e-10, "TRUNC(123.456, -1) = 120.0");
+    assert!(
+        (first_float(&r) - 120.0).abs() < 1e-10,
+        "TRUNC(123.456, -1) = 120.0"
+    );
 }
 
 #[test]
@@ -78,7 +84,10 @@ fn truncate_null_input() {
 fn truncate_trunc_alias() {
     let mut e = engine();
     let r = e.execute("SELECT TRUNC(3.14159, 3)").unwrap();
-    assert!((first_float(&r) - 3.141).abs() < 1e-10, "TRUNC is alias for TRUNCATE");
+    assert!(
+        (first_float(&r) - 3.141).abs() < 1e-10,
+        "TRUNC is alias for TRUNCATE"
+    );
 }
 
 // HEX tests
@@ -122,7 +131,8 @@ fn hex_text() {
 fn truncate_table_usage() {
     let mut e = engine();
     e.execute("CREATE TABLE t(v REAL)").unwrap();
-    e.execute("INSERT INTO t VALUES (3.14159), (99.999), (42.0)").unwrap();
+    e.execute("INSERT INTO t VALUES (3.14159), (99.999), (42.0)")
+        .unwrap();
     let r = e
         .execute("SELECT v, TRUNC(v, 2) FROM t ORDER BY v")
         .unwrap();

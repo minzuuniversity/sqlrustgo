@@ -245,8 +245,7 @@ pub fn format_create_index_sql(idx: &CreateIndexStatement) -> String {
     out.push_str(&idx.table);
     out.push_str(" (");
     out.push_str(
-        &idx
-            .columns
+        &idx.columns
             .iter()
             .map(|c| match &c.name {
                 Some(n) => n.clone(),
