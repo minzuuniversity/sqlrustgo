@@ -558,6 +558,82 @@ detect the new GREEN state and the OR-downgrade will naturally phase out.
 - `evidence/issue-4668/EVIDENCE.md` §7 populated with all SHA-256 entries
 - `evidence/issue-4668/EVIDENCE.md` §8 Round-24 closure note added with sub-bug ledger
 
+## 9. Outstanding GA Promotion Blockers (refresh 2026-09-07)
+
+> **provenance:** generated_by=claude-macmini, generated_at=2026-09-07T04:15:00+08:00,
+> branch=develop/v3.12.0, HEAD=`ae92d1511c` (post-#4845 WIP cleanup merge),
+> source_repo=openclaw/sqlrustgo, policy=Anti-Fabrication-Policy-v1.0
+>
+> **Purpose:** Document the 3 GA promotion blockers that **remain open as of
+> 2026-09-07** (per `GA_RELEASE_REPORT.md` §"Remaining GA Blockers") and were
+> NOT addressed by the WIP cleanup batch (PR #4845, 4 commits landing on top
+> of `4f9d6bcdce`). PR #4845 only covered: (i) build unblock via removing the
+> orphan `v312_90_indexed_by_hint_test` `[[test]]` entry; (ii) parser refactor
+> (REGEXP/RLIKE + drop dead helper + while-let); (iii) 7 P3 fix `openspec`
+> proposals; (iv) `b2-per-binary-summary.json` refresh. **None of those 4
+> commits touches the GA promotion blockers below.**
+
+### 9.1 B1: GA-2 — 168h mixed SOAK Linux/Docker re-validation PENDING
+
+| Field | Value |
+|---|---|
+| STAGE.yaml gate item | `promotion_to_GA_requires[1]` — "168h mixed SOAK: SQL + GMP ingest + retrieval + audit + backup/restore" |
+| Evidence on file | `docs/releases/v3.12.0/evidence/v312-59/SOAK_V5_FINDINGS.md` (PR #4606 merged `b4b70ff0c7`) — **8h x 4 threads x --rate=4 sysbench oltp_read_write on macOS dev binary, 63,092 transactions, 0 errors, 0 reconnects, RSS bounded 188-230 MB** |
+| Why insufficient | Per `SOAK_V5_FINDINGS.md` itself: "this does not replace the Linux SOAK 5691 Docker re-validation because that environment-specific dirty-page retention behavior cannot be reproduced on macOS." |
+| Required for closure | Linux/Docker 168h SOAK re-run with the post-#4558 + V5 fixes, OR governance reclassification accepting the 8h macOS counterfactual as GA-equivalent evidence. |
+| Required release-claim boundary | If GA cut proceeds with 8h-only evidence: GA release notes MUST say "v3.12.0 GA SOAK is bounded to 8h x 4 threads sysbench oltp_read_write on macOS dev binary; Linux/Docker 168h mixed SOAK pending — see `evidence/v312-59/SOAK_V5_FINDINGS.md` §boundary." |
+| Closure issue | #4499 (closed for 1h demo only; GA-2 evidence-level still pending) |
+
+### 9.2 B2: GA-1 aggregator must re-run with `mode: full` at GA cut
+
+| Field | Value |
+|---|---|
+| STAGE.yaml gate item | `promotion_to_GA_requires[10]` — "GA-1 aggregator run with --full mode (or default) at GA cut time; JSON report's `mode` field MUST be 'full', NOT 'fast-path'" |
+| Issue reference | #4536 (`--fast-path` GA gate contract) |
+| Evidence on file | `docs/releases/v3.12.0/evidence/v312-59/ga_gate_report.json` (most recent `--full` run at HEAD `1cfb90c19a` 2026-09-04); pre-#4845 baseline |
+| Why stale | PR #4845 (HEAD `ae92d1511c`) added 4 substantive commits on top of `4f9d6bcdce` (Cargo.toml unblock + parser refactor + openspec + b2 sync). The 2026-09-04 `--full` run no longer reflects current HEAD. |
+| Required for closure | `bash scripts/gate/check_ga_v3.12.0.sh --full` (or default) re-run at HEAD `ae92d1511c`, with `evidence/v312-59/ga_gate_report.json` `mode` field = `"full"`. |
+| Required release-claim boundary | If GA cut proceeds with stale `--full` evidence: GA release notes MUST record the HEAD offset (`ae92d1511c` vs `1cfb90c19a`, +4 commits) and explicitly certify that the WIP cleanup batch did NOT affect any GA-1 sub-gate verdict. |
+
+### 9.3 B3: 6 post-milestone compatibility issues restrict GA claim scope
+
+Per `GA_RELEASE_REPORT.md` §"B3: Post-Milestone Open Compatibility Issues"
+(2026-09-02 assessment, still open as of 2026-09-07):
+
+| Issue | Title | Required claim-boundary line in GA release notes |
+|---|---|---|
+| #4607 | Standalone `--` comment line in batch stdin reports EOF parse error | "Standalone `--` comment line in CLI batch stdin excluded from v3.12.0 GA — use `--` only at end of statement." |
+| #4608 | Multi-line `CREATE TABLE` column definition parse error | "Multi-line `CREATE TABLE` column definitions excluded from v3.12.0 GA — keep column definitions on a single line or use semi-colon boundaries." |
+| #4610 | `parse_lit` converts float literal to integer | "Float literals (e.g. `3.14`) may be silently truncated to integer in v3.12.0 GA — use explicit `CAST(... AS REAL)` to preserve precision." |
+| #4611 | `length()` returns UTF-8 byte-derived value instead of character count | "`length()` returns byte count, not character count, in v3.12.0 GA — use `CHAR_LENGTH()` for character count." |
+| #4612 | `CHAR(n)` comparison ignores trailing spaces under SQLite-style use | "`CHAR(n)` trailing-space semantics diverge from SQLite in v3.12.0 GA — pre-trim strings before comparison." |
+| #4613 | `round(real, int)` returns INTEGER instead of REAL | "`round(real, int)` returns INTEGER in v3.12.0 GA — wrap with `CAST(... AS REAL)` if REAL result required." |
+
+### 9.4 Net GA readiness verdict (2026-09-07)
+
+- The 7 originally-blocked GA issues (§2 above, all closed 2026-09-04) remain
+  closed.
+- The 9 GA-claim-caveat items (§3 above) remain unchanged.
+- **3 NEW outstanding GA promotion blockers (§9.1 / §9.2 / §9.3) prevent a
+  clean GA cut** without either (a) running the missing Linux/Docker 168h
+  SOAK, (b) re-running the GA-1 aggregator at current HEAD with `--full`,
+  or (c) formal governance reclassification with explicit release-claim
+  downgrades as spelled out above.
+- Decision 2026-09-07: **GA promotion deferred**; V312 remains in RC stage
+  per `STAGE.yaml` `current_stage: "RC"`. See `STAGE.yaml`
+  `last_ga_attempt` entry for the recorded reason.
+
+### 9.5 What the WIP cleanup PR #4845 did NOT do
+
+- ❌ Did not run 168h Linux/Docker SOAK (would require 7+ days wall-clock).
+- ❌ Did not re-run GA-1 aggregator with `--full` mode at the new HEAD.
+- ❌ Did not close #4607/#4608/#4610/#4611/#4612/#4613.
+- ❌ Did not flip `STAGE.yaml` `current_stage` from `"RC"` to `"GA"`.
+- ❌ Did not create any `v3.12.0` or `v3.12.0-ga` git tag.
+
+These are explicit out-of-scope items per PR #4845 `## 不做的事` section
+(anti-pattern clauses 1, 4, 5).
+
 ---
 
 *maintained as part of V312-RC-GA remediation; supersedes prior scope language but
