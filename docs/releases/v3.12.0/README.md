@@ -115,6 +115,7 @@ Before changing `STAGE.yaml` to GA or cutting tags:
 | `TEST_PLAN.md` | Test strategy and gate expectations. |
 | `COMPREHENSIVE_TEST_FRAMEWORK_AND_COVERAGE_BASELINE.md` | Layered coverage/test framework. |
 | `GMP_COMPLIANCE_MATRIX.md` | GMP/ALCOA+ mapping and signoff boundary. |
+| `STAGE_GOVERNANCE_REMEDIATION_2026-08-18.md` | Stage governance remediation log (2026-08-18 RC→RC reclass + stage drift fixes). |
 
 ## Historical Notes
 
