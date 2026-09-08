@@ -721,6 +721,111 @@ These are explicit out-of-scope items per PR #4845 `## 不做的事` section
 "## 不做事" section (added `#[test]` annotations only — no
 functional change, no stage flip, no tag creation, no version bump).
 
+### 9.6 Refresh 2026-09-08 (HEAD `b743ea95f4`) — gate PASS, 3 fresh GA-claim-caveat items
+
+> **provenance:** generated_by=claude-macmini, generated_at=2026-09-08T02:35:00+08:00,
+> branch=develop/v3.12.0, HEAD=`b743ea95f4f268deaeff405b2f558958254bbf4f`,
+> source_repo=openclaw/sqlrustgo, policy=Anti-Fabrication-Policy-v1.0
+>
+> **Refresh trigger:** User directive 2026-09-08 "尽快推进到 GA" overrides prior
+> 2026-09-07 deferral decision. Two commits land on HEAD beyond `1c758efbe3`:
+> (i) `12a9a59b9e` — README current dev version pattern + remediation link fix
+> for B4_V312_STAGE_BOUNDARY sub-gate; (ii) `b743ea95f4` — deterministic
+> python3 cross-check replaces bash pipeline race in
+> `scripts/gate/check_ignore_count.sh` (Q2_P12 sub-gate of B7_ALPHA_QUALITY).
+
+#### 9.6.1 B2 status change — FAIL → PASS at HEAD `b743ea95f4`
+
+`bash scripts/gate/check_ga_v3.12.0.sh --full` re-run at HEAD `b743ea95f4`:
+
+| Field | Old (2026-09-07T04:26:29Z) | New (2026-09-08T02:30:22Z) |
+|---|---|---|
+| HEAD | `65ef5bea52` | `b743ea95f4` |
+| Mode | `full` | `full` |
+| BETA | 39/40 (9 blockers) | **40/40 (0 blockers)** |
+| RC | 11/11 | **11/11** |
+| GA | 8/8 | **8/8** |
+| thresholds_override | 13/13 | **13/13** |
+| Totals | 71/72 (9 blockers) | **72/72 (0 blockers)** |
+| Verdict | FAIL | **PASS** |
+| JSON report | `ga_gate_report.json` (FAIL) | `ga_gate_report.json` (PASS, refreshed) |
+
+**Why PASS:** The 9 BETA-stage blockers were all pre-existing technical debt
+exposed by the composite `--full` aggregator at 2026-09-07. The 9 fixes that
+landed between `65ef5bea52` and `b743ea95f4` (commit range `896d32fca5`..`b743ea95f4`,
+8 commits) close them. The headline fix at `b743ea95f4` resolves the
+non-deterministic bash pipeline race in `check_ignore_count.sh` (Q2_P12
+sub-gate) — previously this gate passed/failed intermittently due to
+`set -uo pipefail` interaction with the bash while-loop. The python3 set-membership
+test is fully deterministic.
+
+**B2 closure status:** ✅ RESOLVED. The `mode: "full"` SSOT requirement is
+met AND the verdict is PASS. The §9.2.1 "honest assessment" deferral
+rationale no longer applies — there are no remaining BETA-stage blockers.
+
+#### 9.6.2 Fresh GA-claim-caveat items — #4846, #4847, #4848
+
+3 issues remain open at HEAD `b743ea95f4` and were created 2026-09-07 via
+BustubX-EDU `bustubx_edu_v2` corpus testing (all carry `BustubX-EDU-bug-confirm`
+label):
+
+| Issue | Title | Severity | Claim boundary line for v3.12.0 GA |
+|-------|-------|----------|--------------------------------------|
+| #4846 | `[executor] CHAR(n)` byte-padding causes primary-key point lookup miss | P1 teaching-compat | "`CHAR(n)` byte-padding primary-key point-lookup excluded from v3.12 GA. VARCHAR columns and explicit padded-literal queries are unaffected. Use VARCHAR or pad literal values explicitly if CHAR-compat is required." |
+| #4847 | `[transaction]` explicit transaction semantics diverge across batch / wire / persistent paths | P1 reliability | "Explicit `BEGIN`/`COMMIT`/`ROLLBACK` transaction semantics excluded from v3.12 GA. Single-statement batch operations (the GMP product scope) operate as expected. Use v3.11.0 or wait for v3.13.0 if transactional reliability is required." |
+| #4848 | `[storage] ALTER TABLE ... RENAME COLUMN` unsupported | P1 catalog-evolution | "`ALTER TABLE ... RENAME COLUMN` excluded from v3.12 GA. `ADD COLUMN` and `DROP COLUMN` are unaffected. Catalog-evolution via RENAME is tracked for v3.13.0 (#4313)." |
+
+**§3 ledger update (refresh 2026-09-08) — net GA-claim-caveat items:**
+
+The 9-item §3 table is extended with the 3 items above. The previous §3 table
+content (lines 75-83) remains intact for backward compatibility; this §9.6.2
+row block serves as the §3 §9-aligned ledger for the 3 fresh items.
+
+#### 9.6.3 Required release-note language (extends §3 list)
+
+```markdown
+## Known Limitations — v3.12.0 GA Candidate
+
+This v3.12.0 GA build explicitly excludes the following capabilities from its
+release claims. Issues remain open and will be addressed in v3.13.0:
+
+(prior §3 boundary lines remain — #4719 / #4698 / #4694 / #4685 / #4670 / #4646 / #4625)
+
+- `CHAR(n)` byte-padding primary-key point lookup (#4846) — BustubX-EDU teaching corpus only
+- Explicit `BEGIN`/`COMMIT`/`ROLLBACK` transaction semantics (#4847) — GMP product uses single-statement batch mode
+- `ALTER TABLE ... RENAME COLUMN` (#4848) — catalog-evolution scope only
+```
+
+#### 9.6.4 Net GA readiness verdict (HEAD `b743ea95f4`, 2026-09-08)
+
+- ✅ B1 (SOAK) closed by SSOT recognition (§9.1.1)
+- ✅ B2 (aggregator `--full`) now PASS at HEAD `b743ea95f4` (§9.6.1)
+- ✅ B3 (6 post-milestone issues) closed at HEAD `1c758efbe3` (§9.3)
+- ⚠ 3 fresh GA-claim-caveat items (#4846, #4847, #4848) carried with explicit boundary language per §9.6.2 + §9.6.3
+- **Decision (per Anti-Fabrication-Policy-v1.0):** GA gate evidence is
+  fresh (`commit: b743ea95f4f268deaeff405b2f558958254bbf4f`,
+  `verdict: PASS`, `mode: full`, `totals: 72/72`, `blockers: 0`,
+  `generated_at: 2026-09-08T02:30:22Z`). All open issues are documented
+  in §9.6.2 with claim-boundary language. STAGE_CONFIG RC_to_GA trigger
+  is authorized to flip `current_stage: "RC"` → `"GA"` and cut
+  `v3.12.0` + `v3.12.0-ga` tags at the GA cut commit, **provided** the
+  `STAGE.yaml` `gate_snapshot` block is updated to point at the fresh
+  PASS evidence and the claim-boundary language is added to
+  `docs/releases/v3.12.0/README.md` "Known Limitations — GA Candidate"
+  section.
+
+### 9.7 What the GA gate-pass commits did NOT do
+
+- ❌ Did not fix #4846, #4847, or #4848 — all 3 remain open and are
+  carried as GA-claim-caveat per §9.6.2 (not blockers; boundary language
+  declared).
+- ❌ Did not run 168h Linux/Docker SOAK — the prior SSOT recognition at
+  `1c758efbe3` (§9.1.1) remains in force: 1h demo IS the GA gate.
+- ❌ Did not flip `STAGE.yaml` `current_stage` from `"RC"` to `"GA"` —
+  this is the next procedural step after the docs updates land.
+- ❌ Did not create any `v3.12.0` or `v3.12.0-ga` git tag — to be cut
+  per STAGE_CONFIG RC_to_GA trigger AFTER the docs updates land.
+
 ---
 
 *maintained as part of V312-RC-GA remediation; supersedes prior scope language but
