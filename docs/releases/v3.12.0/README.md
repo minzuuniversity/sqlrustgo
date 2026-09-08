@@ -1,7 +1,7 @@
 # SQLRustGo v3.12.0
 
-> **元数据**: generated_by=claude-macmini, generated_at=2026-09-08, source_repo=openclaw/sqlrustgo, branch=develop/v3.12.0, head=`34d8adc56c`, policy=Anti-Fabrication-Policy-v1.0 + ADR-001 + ADR-014
-> **状态**: **GA**（2026-09-08，72/72 gate PASS）
+> **元数据**: generated_by=claude-macmini, generated_at=2026-09-08, source_repo=openclaw/sqlrustgo, branch=develop/v3.12.0, head=`355b5a3837`, policy=Anti-Fabrication-Policy-v1.0 + ADR-001 + ADR-014
+> **状态**: **GA**（2026-09-08，72/72 gate PASS, post-cut re-verification PASS at HEAD `355b5a3837`）
 > **SSOT**: `STAGE.yaml` 是版本阶段的事实来源（Source of Truth）
 
 ---
@@ -18,10 +18,12 @@
 | thresholds_override | 13/13 ✅ PASS |
 | **总计** | **72/72 ✅ PASS** |
 
-- commit: `34d8adc56cc351db19182fb852056d4d7483fa00`
-- generated_at: `2026-09-08T03:48:45Z`
+- commit: `355b5a38378c41ffee2f43a29ad2c4f7bd7097d4`
+- generated_at: `2026-09-08T04:17:15Z`
 - mode: `full`
+- verdict: **PASS** (post-cut re-verification at the GA cut commit itself)
 - blockers: 0
+- GA tags: `v3.12.0`, `v3.12.0-ga` (annotated, both dereference to `355b5a3837`)
 
 ### 版本定位
 
@@ -185,17 +187,18 @@ v3.12.0/
 | ALPHA | 2026-08-19 | ✅ PASS | GMP schema、文档摄取、混合检索、图投影基础 |
 | BETA | 2026-08-19 | ✅ PASS | 40/40 gate PASS |
 | RC | 2026-08-26 | ✅ PASS | 11/11 RC gate PASS |
-| GA | 2026-09-08 | ✅ PASS | 72/72 gate PASS |
+| GA | 2026-09-08 | ✅ PASS | 72/72 gate PASS + post-cut re-verification at HEAD `355b5a3837` |
 
 ---
 
 ## 6. GA 门禁清单
 
-- ✅ 新鲜 `--full` gate verdict PASS at HEAD `34d8adc56c`（72/72, 0 blockers）
-- ✅ `STAGE.yaml` `gate_snapshot` 已更新
+- ✅ 新鲜 `--full` gate verdict PASS at HEAD `355b5a3837`（72/72, 0 blockers, mode=full, generated_at=`2026-09-08T04:17:15Z`）
+- ✅ `STAGE.yaml` `gate_snapshot` 已更新（`ga_aggregate_commit=355b5a3837`）
 - ✅ `CLAIM_DOWNGRADE_MANIFEST.md` §9.6 记录 3 个 GA-claim-caveat 项目
 - ✅ `README.md` "已知限制" 章节列出 3 个边界声明
-- ⏳ 按 STAGE_CONFIG RC_to_GA trigger cut `v3.12.0` + `v3.12.0-ga` tags
+- ✅ 按 STAGE_CONFIG RC_to_GA trigger cut `v3.12.0` + `v3.12.0-ga` tags（annotated, dereference to `355b5a3837`，已推送 origin）
+- ✅ Post-cut re-verification at HEAD `355b5a3837` confirms release readiness
 
 ---
 
@@ -221,7 +224,8 @@ v3.12.0/
 | 日期 | 版本 | 变更 |
 |------|------|------|
 | 2026-08-26 | v3.12.0-rc1 | BETA → RC 推进完成 |
-| 2026-09-08 | v3.12.0 | GA promotion authorized，72/72 gate PASS |
+| 2026-09-08 | v3.12.0 | GA promotion authorized，72/72 gate PASS + post-cut re-verification at HEAD `355b5a3837` |
+| 2026-09-08 | v3.12.0 / v3.12.0-ga | GA tags cut and pushed to origin |
 
 ---
 
