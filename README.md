@@ -1,6 +1,7 @@
 # SQLRustGo
 
 > **当前开发线**: `develop/v3.12.0`
+> **当前开发版**: v3.12.0
 > **当前证据快照**: `542192641` on 252 Gitea, refreshed 2026-09-08T04:33:08+08:00
 > **发布状态**: v3.12.0 remains **RC / GA preparation**. Do not claim GA until the release gate evidence is refreshed at final HEAD.
 > **可信状态入口**: [docs/releases/v3.12.0/STAGE.yaml](docs/releases/v3.12.0/STAGE.yaml)
