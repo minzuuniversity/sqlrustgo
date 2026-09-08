@@ -180,6 +180,19 @@ PERF_ONLY_BINARIES = [
     "int2_substance_parallel_test",  # 200K-row INSERT × 9 tests
 ]
 
+# Per-binary `cargo test` thread override. The default test runner runs each
+# binary's tests in parallel (`--test-threads` defaults to # CPUs). For
+# binaries whose tests touch process-global `AtomicU64` diag counters via
+# `reset_<...>_diag()` + `dump_<...>_diag()` (the sprint5 HashSemiJoin
+# pattern), parallel execution is non-deterministic — sibling tests can
+# reset / bump the counter between this test's reset and read, producing
+# flake. Pin those binaries to single-threaded test execution to make
+# the counter assertion deterministic. The HSJ counter is the only known
+# offender at HEAD a52b2419a1 (V312-GA-prep audit 2026-09-08).
+TEST_THREADS_OVERRIDE = {
+    "q4_residual_filter_test": 1,
+}
+
 # Patterns extracted from cargo test output.
 # Examples observed at HEAD:
 #   `test result: ok. 354 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 12.34s`
@@ -224,6 +237,11 @@ def run_one_binary(name: str, timeout_sec: int) -> BinaryResult:
         "cargo", "test", "--all-features", "--test", name,
         "--quiet", "--no-fail-fast",
     ]
+    # Apply per-binary test-threads override for binaries whose tests touch
+    # process-global diag counters (see TEST_THREADS_OVERRIDE comment).
+    threads = TEST_THREADS_OVERRIDE.get(name)
+    if threads is not None:
+        cmd += ["--", f"--test-threads={threads}"]
     started_at = dt.datetime.now(dt.timezone.utc)
     try:
         proc = subprocess.run(
