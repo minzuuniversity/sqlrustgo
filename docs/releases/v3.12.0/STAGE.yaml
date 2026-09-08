@@ -10,34 +10,39 @@
 # with execution evidence or explicitly carried as v3.12.0 P0 blockers.
 
 version: "v3.12.0"
-current_stage: "RC"
+current_stage: "GA"
 last_transition:
-  from: "BETA"
-  to: "RC"
-  date: "2026-08-26"
-  reason: "BETA -> RC transition. RC gates verified: bash scripts/gate/check_v312_promotion_to_rc.sh reports 9 PASS, 0 FAIL, 2 NO-OP (covered by V312-58 TPC-H cross-engine series + V312-57 BustubX-EDU week01-04 series). All 12 promotion_to_RC_requires items from STAGE.yaml satisfied (see RC_GATE_REPORT.md verdict map). B8 thresholds_override 13/13 PASS (issue #4388 re-verified 2026-08-26T18:30:00Z post SF=10 fixture remediation, including MYSQL_WIRE_E2E_REQUIRED). Stage boundary lock released; #4386 V312-59-C umbrella issue records RC promotion per Anti-Fabrication-Policy-v1.0. Tag v3.12.0-rc1 to be cut per STAGE_CONFIG BETA_to_RC trigger after this PR merges."
+  from: "RC"
+  to: "GA"
+  date: "2026-09-08"
+  reason: "RC -> GA transition. GA gate verdict PASS at HEAD 34d8adc56c (72/72, 0 blockers) per docs/releases/v3.12.0/evidence/v312-59/ga_gate_report.json (generated_at=2026-09-08T03:48:45Z, mode=full, commit=34d8adc56cc351db19182fb852056d4d7483fa00). User directive 2026-09-08: '尽快推进到 GA' provides human-architect approval per STAGE_CONFIG RC_to_GA trigger. BETA 40/40, RC 11/11, GA 8/8, thresholds_override 13/13 — all PASS. B2 per-binary summary: 338 PASS / 0 FAIL / 90 SKIP_DISABLED at HEAD 34d8adc56c. 3 GA-claim-caveat items (#4846 CHAR, #4847 transaction semantics, #4848 ALTER TABLE RENAME COLUMN) carried per CLAIM_DOWNGRADE_MANIFEST.md §3 + §9.6 — release claims explicitly exclude these capabilities; core GMP internal-audit retrieval product contract (single-statement batch mode) unaffected. Prior transition BETA -> RC (2026-08-26) recorded below; prior prior ALPHA -> BETA (2026-08-19) recorded in prior_transition. Tags v3.12.0 + v3.12.0-ga to be cut per STAGE_CONFIG RC_to_GA trigger immediately after this STAGE.yaml commit lands on develop/v3.12.0."
   prior_transition:
-    from: "ALPHA"
-    to: "BETA"
-    date: "2026-08-19"
-    reason: "ALPHA -> BETA transition. beta_required_gates verified: bash scripts/gate/check_beta_v3.12.0.sh reports 38/40 PASS, 0 BLOCKERS, 2 WARN ('ready for BETA promotion'). All 12 promotion_to_BETA_requires items from STAGE.yaml satisfied (see V312-56-VERIFICATION.md Beta Gate Snapshot + Promotion to BETA Readiness Checklist). Stage boundary lock released; #3887 master issue records Beta promotion per Anti-Fabrication-Policy-v1.0. Tag v3.12.0-beta1 to be cut per STAGE_CONFIG ALPHA_to_BETA trigger after this PR merges. Workspace clippy fix landed as PR #4354 (resolves B1_CLIPPY) + workspace fmt clean per cargo fmt --check."
+    from: "BETA"
+    to: "RC"
+    date: "2026-08-26"
+    reason: "BETA -> RC transition. RC gates verified: bash scripts/gate/check_v312_promotion_to_rc.sh reports 9 PASS, 0 FAIL, 2 NO-OP (covered by V312-58 TPC-H cross-engine series + V312-57 BustubX-EDU week01-04 series). All 12 promotion_to_RC_requires items from STAGE.yaml satisfied (see RC_GATE_REPORT.md verdict map). B8 thresholds_override 13/13 PASS (issue #4388 re-verified 2026-08-26T18:30:00Z post SF=10 fixture remediation, including MYSQL_WIRE_E2E_REQUIRED). Stage boundary lock released; #4386 V312-59-C umbrella issue records RC promotion per Anti-Fabrication-Policy-v1.0. Tag v3.12.0-rc1 to be cut per STAGE_CONFIG BETA_to_RC trigger after this PR merges."
+    prior_transition:
+      from: "ALPHA"
+      to: "BETA"
+      date: "2026-08-19"
+      reason: "ALPHA -> BETA transition. beta_required_gates verified: bash scripts/gate/check_beta_v3.12.0.sh reports 38/40 PASS, 0 BLOCKERS, 2 WARN ('ready for BETA promotion'). All 12 promotion_to_BETA_requires items from STAGE.yaml satisfied (see V312-56-VERIFICATION.md Beta Gate Snapshot + Promotion to BETA Readiness Checklist). Stage boundary lock released; #3887 master issue records Beta promotion per Anti-Fabrication-Policy-v1.0. Tag v3.12.0-beta1 to be cut per STAGE_CONFIG ALPHA_to_BETA trigger after this PR merges. Workspace clippy fix landed as PR #4354 (resolves B1_CLIPPY) + workspace fmt clean per cargo fmt --check."
 
 last_ga_attempt:
   date: "2026-09-08"
-  head: "b743ea95f4"
+  head: "34d8adc56c"
   outcome: "PASS_GATE_CLAIM_CAVEAT"
-  reason: "GA gate verdict PASS at HEAD b743ea95f4 (72/72, 0 blockers) per docs/releases/v3.12.0/evidence/v312-59/ga_gate_report.json (generated_at=2026-09-08T02:30:22Z, mode=full, commit=b743ea95f4f268deaeff405b2f558958254bbf4f). User directive 2026-09-08: '尽快推进到 GA' overrides prior 2026-09-07 deferral decision. Prior B1 (168h SOAK) was SSOT-recognized as closed at 1c758efbe3 per STAGE.yaml anti-deferral rule (1h demo IS the GA gate ✓). Prior B2 (--full aggregator) was FAIL at HEAD 65ef5bea52 (71/72, 9 BETA-stage blockers); now RESOLVED at b743ea95f4 via Q2_P12 deterministic python3 cross-check fix (commit b743ea95f4) + B4 stage boundary README fix (commit 12a9a59b9e). Prior B3 (6 post-milestone issues) closed at HEAD 1c758efbe3. 3 fresh post-b743ea95f4 issues (#4846 CHAR, #4847 transaction semantics, #4848 ALTER TABLE RENAME COLUMN) carried as GA-claim-caveat per CLAIM_DOWNGRADE_MANIFEST.md §3 pattern — release-claim-boundary language added to README.md 'Known Limitations' + §9.6 ledger. STAGE_CONFIG RC_to_GA trigger authorised with evidence-clean PASS + claim-scope declared."
+  reason: "GA gate verdict PASS at HEAD 34d8adc56c (72/72, 0 blockers) per docs/releases/v3.12.0/evidence/v312-59/ga_gate_report.json (generated_at=2026-09-08T03:48:45Z, mode=full, commit=34d8adc56cc351db19182fb852056d4d7483fa00). User directive 2026-09-08: '尽快推进到 GA' overrides prior 2026-09-07 deferral decision. Runner fix landed in commit 34d8adc56c pins q4_residual_filter_test to --test-threads=1 to remove HSJ AtomicU64 counter flake. Prior B1 (168h SOAK) was SSOT-recognized as closed at 1c758efbe3 per STAGE.yaml anti-deferral rule (1h demo IS the GA gate ✓). Prior B2 (--full aggregator) was FAIL at HEAD 65ef5bea52 (71/72, 9 BETA-stage blockers); now RESOLVED at b743ea95f4 via Q2_P12 deterministic python3 cross-check fix + B4 stage boundary README fix (commit 12a9a59b9e). Prior B3 (6 post-milestone issues) closed at HEAD 1c758efbe3. 3 fresh post-b743ea95f4 issues (#4846 CHAR, #4847 transaction semantics, #4848 ALTER TABLE RENAME COLUMN) carried as GA-claim-caveat per CLAIM_DOWNGRADE_MANIFEST.md §3 pattern — release-claim-boundary language added to README.md 'Known Limitations' + §9.6 ledger. STAGE_CONFIG RC_to_GA trigger authorised with evidence-clean PASS + claim-scope declared."
   required_followup:
     - "Cut v3.12.0 + v3.12.0-ga tags per STAGE_CONFIG RC_to_GA trigger after this STAGE.yaml update is committed and pushed."
     - "Verify no fabrication in GA cut: gate verdict + claim-boundary language must match the actual HEAD evidence."
-    - "Update README.md 'Known Limitations — GA Candidate' section to mirror CLAIM_DOWNGRADE_MANIFEST.md §9.6 boundary lines."
+    - "Update README.md 'Known Limitations — v3.12.0 GA Candidate' section to mirror CLAIM_DOWNGRADE_MANIFEST.md §9.6 boundary lines."
   controlling_decision: "User directive 2026-09-08: '尽快推进到 GA' (override prior 2026-09-07 deferral)."
 
 last_status_refresh:
   date: "2026-09-08"
-  head: "b743ea95f4"
+  head: "34d8adc56c"
   source: "252 Gitea API + local git fetch/pull"
-  stage_result: "RC_GATE_GREEN_CLAIM_CAVEAT"
+  stage_result: "GA_GATE_GREEN_CLAIM_CAVEAT"
   open_prs: 0
   open_issues:
     - "#4846 CHAR(n) padding/comparison point lookup miss — GA-claim-caveat (teaching scope, excluded per CLAIM_DOWNGRADE_MANIFEST §9.6)"
@@ -45,16 +50,15 @@ last_status_refresh:
     - "#4848 ALTER TABLE RENAME COLUMN unsupported — GA-claim-caveat (catalog-evolution scope, excluded per CLAIM_DOWNGRADE_MANIFEST §9.6)"
   gate_snapshot:
     ga_aggregate_file: "docs/releases/v3.12.0/evidence/v312-59/ga_gate_report.json"
-    ga_aggregate_commit: "b743ea95f4f268deaeff405b2f558958254bbf4f"
+    ga_aggregate_commit: "34d8adc56cc351db19182fb852056d4d7483fa00"
     ga_aggregate_mode: "full"
     ga_aggregate_verdict: "PASS"
     ga_aggregate_blockers: 0
     ga_aggregate_totals: "72/72"
-    ga_aggregate_generated_at: "2026-09-08T02:30:22Z"
+    ga_aggregate_generated_at: "2026-09-08T03:48:45Z"
   claim_scope: "v3.12 GA excludes the 3 GA-claim-caveat items #4846/#4847/#4848 per CLAIM_DOWNGRADE_MANIFEST.md §9.6. Core GMP internal-audit retrieval product contract (single-statement batch mode) unaffected."
   required_followup:
     - "Cut v3.12.0 + v3.12.0-ga tags per STAGE_CONFIG RC_to_GA trigger."
-    - "Re-run bash scripts/gate/check_ga_v3.12.0.sh --full at the GA cut commit to confirm gate evidence is fresh and VERDICT=PASS."
 
 stage_boundary_lock:
   status: "RELEASED"

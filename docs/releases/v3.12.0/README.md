@@ -1,7 +1,7 @@
 # SQLRustGo v3.12.0
 
-> **provenance:** generated_by=claude-macmini, generated_at=2026-09-08T02:35:00+08:00, source_repo=openclaw/sqlrustgo, branch=develop/v3.12.0, head=`b743ea95f4f268deaeff405b2f558958254bbf4f`, policy=Anti-Fabrication-Policy-v1.0 + ADR-001 + ADR-014
-> **status:** RC → GA promotion authorized. STAGE.yaml `gate_snapshot` records fresh PASS at HEAD `b743ea95f4`. Stage flip pending the docs-merge + tag-cut procedural step per STAGE_CONFIG RC_to_GA trigger.
+> **provenance:** generated_by=claude-macmini, generated_at=2026-09-08T11:55:00+08:00, source_repo=openclaw/sqlrustgo, branch=develop/v3.12.0, head=`34d8adc56cc351db19182fb852056d4d7483fa00`, policy=Anti-Fabrication-Policy-v1.0 + ADR-001 + ADR-014
+> **status:** v3.12.0 GA. STAGE.yaml `current_stage: "GA"`. GA gate verdict PASS at HEAD `34d8adc56c` (72/72, 0 blockers). Tags v3.12.0 + v3.12.0-ga to be cut per STAGE_CONFIG RC_to_GA trigger.
 > **SSOT:** `STAGE.yaml` remains the release-stage source of truth.
 
 v3.12.0 is the SQLRustGo line for a controlled GMP internal-audit retrieval
@@ -23,22 +23,22 @@ general-purpose graph database, or a broad MySQL/SQLite replacement.
 |---|---|
 | Canonical remote | `http://192.168.0.252:3000/openclaw/sqlrustgo.git` |
 | Branch | `origin/develop/v3.12.0` |
-| HEAD checked | `b743ea95f4f268deaeff405b2f558958254bbf4f` |
+| HEAD checked | `34d8adc56cc351db19182fb852056d4d7483fa00` |
 | Latest merge at snapshot | PR #4851, graph M4 Cypher parser and executor |
-| Stage SSOT | `STAGE.yaml`: `current_stage: "RC"` (pending flip to `"GA"` after docs merge) |
+| Stage SSOT | `STAGE.yaml`: `current_stage: "GA"` |
 | Live Gitea open issues | #4846, #4847, #4848 (carried as GA-claim-caveat per §9.6.2) |
 | Live open PRs | 0 |
 
 ## GA Status
 
-The GA gate has reached an evidence-clean PASS at HEAD `b743ea95f4`. The
+The GA gate has reached an evidence-clean PASS at HEAD `34d8adc56c`. The
 checked-in GA aggregate
 `docs/releases/v3.12.0/evidence/v312-59/ga_gate_report.json` records:
 
 | Field | Value |
 |---|---|
-| generated_at | `2026-09-08T02:30:22Z` |
-| commit | `b743ea95f4f268deaeff405b2f558958254bbf4f` |
+| generated_at | `2026-09-08T03:48:45Z` |
+| commit | `34d8adc56cc351db19182fb852056d4d7483fa00` |
 | mode | `full` |
 | verdict | **PASS** |
 | totals | **72/72**, `blockers=0` |
@@ -50,7 +50,10 @@ checked-in GA aggregate
 This supersedes the 2026-09-07 stale `FAIL` evidence (71/72, 9 blockers).
 The headline fix at commit `b743ea95f4` is a deterministic python3
 cross-check replacing the non-deterministic bash pipeline race in
-`scripts/gate/check_ignore_count.sh` (Q2_P12 sub-gate of B7_ALPHA_QUALITY).
+`scripts/gate/check_ignore_count.sh` (Q2_P12 sub-gate of B7_ALPHA_QUALITY);
+the runner fix at commit `34d8adc56c` pins `q4_residual_filter_test` to
+`--test-threads=1` to remove the HSJ AtomicU64 counter flake in the
+B2_INTEGRATION_TESTS per-binary pipeline.
 See `CLAIM_DOWNGRADE_MANIFEST.md` §9.6.1 for the full B2 status change
 ledger.
 
@@ -104,7 +107,7 @@ The RC-GA gate set must cover:
 | RC-B4 | `scripts/gate/check_v312_type_function_semantics.sh` | Core type/function behavior matches the selected oracle. |
 | RC-B5 | `scripts/gate/check_v312_join_subquery_semantics.sh` | JOIN, subquery, and HAVING semantics match oracle expectations. |
 | RC-B6 | `scripts/gate/check_v312_dml_integrity.sh` | CHECK, autoincrement, RETURNING, and UPDATE behavior are correct or scoped out. |
-| RC-B7 | `scripts/gate/check_ga_v3.12.0.sh --full` | Final aggregate is full-mode, current-HEAD, and blocker-free. ✅ PASS at HEAD `b743ea95f4` (72/72, 0 blockers) |
+| RC-B7 | `scripts/gate/check_ga_v3.12.0.sh --full` | Final aggregate is full-mode, current-HEAD, and blocker-free. ✅ PASS at HEAD `34d8adc56c` (72/72, 0 blockers) |
 
 At this snapshot, RC-B1 is still a skeleton gate and intentionally exits
 non-zero until the real B-track corpus and oracle artifacts are populated.
@@ -113,8 +116,9 @@ non-zero until the real B-track corpus and oracle artifacts are populated.
 
 Before changing `STAGE.yaml` to GA or cutting tags:
 
-- ✅ Fresh `--full` gate verdict PASS at HEAD `b743ea95f4` (72/72, 0 blockers).
+- ✅ Fresh `--full` gate verdict PASS at HEAD `34d8adc56c` (72/72, 0 blockers).
 - ✅ `STAGE.yaml` `gate_snapshot` updated with the fresh evidence.
+- ✅ `STAGE.yaml` flipped to `current_stage: "GA"`.
 - ✅ `CLAIM_DOWNGRADE_MANIFEST.md` §9.6 documents the 3 open GA-claim-caveat items.
 - ✅ `README.md` "Known Limitations — v3.12.0 GA Candidate" section lists the
   3 boundary lines.
