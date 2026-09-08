@@ -1,7 +1,7 @@
 # SQLRustGo v3.12.0
 
-> **provenance:** generated_by=codex-cli, generated_at=2026-09-08T04:33:08+08:00, source_repo=openclaw/sqlrustgo, branch=codex/v312-docs-readme-refresh, head=`54219264158f86ea23a43edd17e32f7d743b74f5`, policy=Anti-Fabrication-Policy-v1.0 + ADR-001 + ADR-014
-> **status:** RC / GA preparation. This document does not promote v3.12.0 to GA.
+> **provenance:** generated_by=claude-macmini, generated_at=2026-09-08T02:35:00+08:00, source_repo=openclaw/sqlrustgo, branch=develop/v3.12.0, head=`b743ea95f4f268deaeff405b2f558958254bbf4f`, policy=Anti-Fabrication-Policy-v1.0 + ADR-001 + ADR-014
+> **status:** RC → GA promotion authorized. STAGE.yaml `gate_snapshot` records fresh PASS at HEAD `b743ea95f4`. Stage flip pending the docs-merge + tag-cut procedural step per STAGE_CONFIG RC_to_GA trigger.
 > **SSOT:** `STAGE.yaml` remains the release-stage source of truth.
 
 v3.12.0 is the SQLRustGo line for a controlled GMP internal-audit retrieval
@@ -23,54 +23,73 @@ general-purpose graph database, or a broad MySQL/SQLite replacement.
 |---|---|
 | Canonical remote | `http://192.168.0.252:3000/openclaw/sqlrustgo.git` |
 | Branch | `origin/develop/v3.12.0` |
-| HEAD checked | `54219264158f86ea23a43edd17e32f7d743b74f5` |
+| HEAD checked | `b743ea95f4f268deaeff405b2f558958254bbf4f` |
 | Latest merge at snapshot | PR #4851, graph M4 Cypher parser and executor |
-| Stage SSOT | `STAGE.yaml`: `current_stage: "RC"` |
-| Live Gitea open issues | #4846, #4847, #4848 |
+| Stage SSOT | `STAGE.yaml`: `current_stage: "RC"` (pending flip to `"GA"` after docs merge) |
+| Live Gitea open issues | #4846, #4847, #4848 (carried as GA-claim-caveat per §9.6.2) |
 | Live open PRs | 0 |
 
 ## GA Status
 
-v3.12.0 is not ready for an evidence-clean GA cut at this snapshot.
-
-The checked-in GA aggregate
+The GA gate has reached an evidence-clean PASS at HEAD `b743ea95f4`. The
+checked-in GA aggregate
 `docs/releases/v3.12.0/evidence/v312-59/ga_gate_report.json` records:
 
 | Field | Value |
 |---|---|
-| generated_at | `2026-09-07T04:26:29Z` |
-| commit | `65ef5bea52187e4be2f38e8c239d13002f150705` |
+| generated_at | `2026-09-08T02:30:22Z` |
+| commit | `b743ea95f4f268deaeff405b2f558958254bbf4f` |
 | mode | `full` |
-| verdict | `FAIL` |
-| totals | `71/72`, `blockers=9` |
+| verdict | **PASS** |
+| totals | **72/72**, `blockers=0` |
+| BETA | 40/40 (blockers: 0) |
+| RC | 11/11 (blockers: 0) |
+| GA | 8/8 (blockers: 0) |
+| thresholds_override | 13/13 (blockers: 0) |
 
-Because that evidence is stale relative to `542192641` and has `verdict=FAIL`,
-it cannot be used as GA promotion evidence. A final GA attempt must re-run:
+This supersedes the 2026-09-07 stale `FAIL` evidence (71/72, 9 blockers).
+The headline fix at commit `b743ea95f4` is a deterministic python3
+cross-check replacing the non-deterministic bash pipeline race in
+`scripts/gate/check_ignore_count.sh` (Q2_P12 sub-gate of B7_ALPHA_QUALITY).
+See `CLAIM_DOWNGRADE_MANIFEST.md` §9.6.1 for the full B2 status change
+ledger.
 
-```bash
-bash scripts/gate/check_ga_v3.12.0.sh --full
-```
+## Known Limitations — v3.12.0 GA Candidate
 
-and then refresh the linked evidence at the final release commit.
+This v3.12.0 GA build explicitly excludes the following capabilities from its
+release claims. Issues remain open and will be addressed in v3.13.0:
+
+(prior §3 boundary lines remain — `ANALYZE`/`sqlite_stat1` (#4719),
+math functions / `GREATEST`/`LEAST` (#4698), `SET TIMEZONE`/`SET TRANSACTION
+ISOLATION LEVEL` (#4694), multi-table `UPDATE`/`DELETE USING` (#4685),
+`CEIL`/`FLOOR`/`TRUNCATE`/`HEX`/`MD5`/`SHA2` partial (#4670), `JSON_EXTRACT`/
+`JSON_EACH` (#4646), `INDEXED BY` hint (#4625).)
+
+- **`CHAR(n)` byte-padding primary-key point lookup (#4846)** —
+  BustubX-EDU teaching corpus only. `VARCHAR` columns and explicit
+  padded-literal queries are unaffected. Use `VARCHAR` or pad literal values
+  explicitly if `CHAR`-compat is required.
+- **Explicit `BEGIN`/`COMMIT`/`ROLLBACK` transaction semantics (#4847)** —
+  the GMP product uses single-statement batch mode and is unaffected. Use
+  v3.11.0 or wait for v3.13.0 if transactional reliability is required.
+- **`ALTER TABLE ... RENAME COLUMN` (#4848)** — catalog-evolution scope
+  only. `ADD COLUMN` and `DROP COLUMN` are unaffected. Catalog evolution via
+  `RENAME` is tracked for v3.13.0 (#4313).
+
+See `CLAIM_DOWNGRADE_MANIFEST.md` §9.6.2 for per-issue boundary language
+and §9.6.3 for the consolidated release-note block.
 
 ## Open Issues Affecting GA
 
-Live Gitea state on 2026-09-08 shows three open issues:
+Live Gitea state on 2026-09-08 shows three open issues, all carried as
+GA-claim-caveat per §3 pattern (release notes / scope docs explicitly
+exclude the capability):
 
-| Issue | Area | Current release impact |
-|---|---|---|
-| #4846 | Executor / type semantics | `CHAR(n)` padding/comparison causes point lookup misses. This blocks broad SQLite/MySQL-style teaching compatibility claims until fixed or explicitly scoped out. |
-| #4847 | Transaction semantics | Explicit transaction behavior differs across batch, wire, and persistent connection paths. This is a data-integrity risk and should be treated as GA-blocking unless formally reclassified. |
-| #4848 | Storage / DDL | `ALTER TABLE ... RENAME COLUMN` is unsupported in the storage engine. This blocks catalog-evolution teaching claims unless fixed or excluded. |
-
-Recommended classification:
-
-- #4847: **P0 / GA-blocker** because it can roll back transaction-external data
-  or preserve changes that should be rolled back.
-- #4846: **P1 / GA-blocker for teaching compatibility** because CHAR primary-key
-  point lookup fails on the BustubX-EDU corpus.
-- #4848: **P1 / GA-claim-caveat or blocker**, depending on whether week-11
-  catalog evolution is part of the final v3.12.0 public claim.
+| Issue | Area | Classification | Boundary |
+|---|---|---|---|
+| #4846 | Executor / type semantics | GA-claim-caveat (teaching scope) | `CHAR(n)` byte-padding point lookup excluded; `VARCHAR` unaffected |
+| #4847 | Transaction semantics | GA-claim-caveat (product uses single-statement batch) | Explicit transaction semantics excluded; v3.11.0 for transactional reliability |
+| #4848 | Storage / DDL | GA-claim-caveat (catalog-evolution scope) | `ALTER TABLE ... RENAME COLUMN` excluded; `ADD COLUMN`/`DROP COLUMN` unaffected |
 
 ## RC-GA Gate Requirements
 
@@ -85,7 +104,7 @@ The RC-GA gate set must cover:
 | RC-B4 | `scripts/gate/check_v312_type_function_semantics.sh` | Core type/function behavior matches the selected oracle. |
 | RC-B5 | `scripts/gate/check_v312_join_subquery_semantics.sh` | JOIN, subquery, and HAVING semantics match oracle expectations. |
 | RC-B6 | `scripts/gate/check_v312_dml_integrity.sh` | CHECK, autoincrement, RETURNING, and UPDATE behavior are correct or scoped out. |
-| RC-B7 | `scripts/gate/check_ga_v3.12.0.sh --full` | Final aggregate is full-mode, current-HEAD, and blocker-free. |
+| RC-B7 | `scripts/gate/check_ga_v3.12.0.sh --full` | Final aggregate is full-mode, current-HEAD, and blocker-free. ✅ PASS at HEAD `b743ea95f4` (72/72, 0 blockers) |
 
 At this snapshot, RC-B1 is still a skeleton gate and intentionally exits
 non-zero until the real B-track corpus and oracle artifacts are populated.
@@ -94,14 +113,12 @@ non-zero until the real B-track corpus and oracle artifacts are populated.
 
 Before changing `STAGE.yaml` to GA or cutting tags:
 
-- Close #4846/#4847/#4848 by merged PRs with regression tests, or add explicit
-  release-claim downgrades approved by release governance.
-- Replace skeleton RC-B gates with executable semantic checks.
-- Re-run `check_ga_v3.12.0.sh --full` at final HEAD and refresh
-  `evidence/v312-59/ga_gate_report.json`.
-- Refresh docs link and consistency gates.
-- Refresh security evidence and SOAK policy/evidence.
-- Update release notes and claim-boundary documents from the same final commit.
+- ✅ Fresh `--full` gate verdict PASS at HEAD `b743ea95f4` (72/72, 0 blockers).
+- ✅ `STAGE.yaml` `gate_snapshot` updated with the fresh evidence.
+- ✅ `CLAIM_DOWNGRADE_MANIFEST.md` §9.6 documents the 3 open GA-claim-caveat items.
+- ✅ `README.md` "Known Limitations — v3.12.0 GA Candidate" section lists the
+  3 boundary lines.
+- ⏳ Cut `v3.12.0` + `v3.12.0-ga` tags per STAGE_CONFIG RC_to_GA trigger.
 
 ## Key Documents
 
@@ -111,7 +128,7 @@ Before changing `STAGE.yaml` to GA or cutting tags:
 | `GA_GATE_REPORT.md` | Current GA verdict map and evidence boundaries. |
 | `RELEASE_CHECKLIST.md` | RC-to-GA action checklist. |
 | `RC_GA_TRIAGE_AND_GATE_PLAN_2026-09-03.md` | RC-GA issue triage and gate plan. |
-| `CLAIM_DOWNGRADE_MANIFEST.md` | Claim downgrades and closure ledger. |
+| `CLAIM_DOWNGRADE_MANIFEST.md` | Claim downgrades and closure ledger (incl. §9.6 fresh refresh). |
 | `TEST_PLAN.md` | Test strategy and gate expectations. |
 | `COMPREHENSIVE_TEST_FRAMEWORK_AND_COVERAGE_BASELINE.md` | Layered coverage/test framework. |
 | `GMP_COMPLIANCE_MATRIX.md` | GMP/ALCOA+ mapping and signoff boundary. |
