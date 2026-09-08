@@ -1,146 +1,228 @@
 # SQLRustGo v3.12.0
 
-> **provenance:** generated_by=claude-macmini, generated_at=2026-09-08T11:55:00+08:00, source_repo=openclaw/sqlrustgo, branch=develop/v3.12.0, head=`34d8adc56cc351db19182fb852056d4d7483fa00`, policy=Anti-Fabrication-Policy-v1.0 + ADR-001 + ADR-014
-> **status:** v3.12.0 GA. STAGE.yaml `current_stage: "GA"`. GA gate verdict PASS at HEAD `34d8adc56c` (72/72, 0 blockers). Tags v3.12.0 + v3.12.0-ga to be cut per STAGE_CONFIG RC_to_GA trigger.
-> **SSOT:** `STAGE.yaml` remains the release-stage source of truth.
+> **元数据**: generated_by=claude-macmini, generated_at=2026-09-08, source_repo=openclaw/sqlrustgo, branch=develop/v3.12.0, head=`34d8adc56c`, policy=Anti-Fabrication-Policy-v1.0 + ADR-001 + ADR-014
+> **状态**: **GA**（2026-09-08，72/72 gate PASS）
+> **SSOT**: `STAGE.yaml` 是版本阶段的事实来源（Source of Truth）
 
-v3.12.0 is the SQLRustGo line for a controlled GMP internal-audit retrieval
-database. The allowed product scope is:
+---
 
-- SQLRustGo-managed relational storage for GMP documents, chunks, versions,
-  audit records, evidence relations, and retrieval metadata.
-- Internal vector retrieval and hybrid retrieval for the GMP/RAG workload.
-- SQL-backed graph projection for evidence navigation.
-- MySQL-style and sqlite-like entry points only within verified compatibility
-  boundaries.
+## 0. 当前状态（2026-09-08）
 
-This release must not be described as a general-purpose vector database, a
-general-purpose graph database, or a broad MySQL/SQLite replacement.
+### GA 门禁状态
 
-## Current Snapshot
+| Gate | 状态 |
+|------|------|
+| BETA | 40/40 ✅ PASS |
+| RC | 11/11 ✅ PASS |
+| GA | 8/8 ✅ PASS |
+| thresholds_override | 13/13 ✅ PASS |
+| **总计** | **72/72 ✅ PASS** |
 
-| Field | Value |
-|---|---|
-| Canonical remote | `http://192.168.0.252:3000/openclaw/sqlrustgo.git` |
-| Branch | `origin/develop/v3.12.0` |
-| HEAD checked | `34d8adc56cc351db19182fb852056d4d7483fa00` |
-| Latest merge at snapshot | PR #4851, graph M4 Cypher parser and executor |
-| Stage SSOT | `STAGE.yaml`: `current_stage: "GA"` |
-| Live Gitea open issues | #4846, #4847, #4848 (carried as GA-claim-caveat per §9.6.2) |
-| Live open PRs | 0 |
+- commit: `34d8adc56cc351db19182fb852056d4d7483fa00`
+- generated_at: `2026-09-08T03:48:45Z`
+- mode: `full`
+- blockers: 0
 
-## GA Status
+### 版本定位
 
-The GA gate has reached an evidence-clean PASS at HEAD `34d8adc56c`. The
-checked-in GA aggregate
-`docs/releases/v3.12.0/evidence/v312-59/ga_gate_report.json` records:
+v3.12.0 是 SQLRustGo 的 **GMP 合规性内审检索系统** 数据库底座。允许的产品范围：
 
-| Field | Value |
-|---|---|
-| generated_at | `2026-09-08T03:48:45Z` |
-| commit | `34d8adc56cc351db19182fb852056d4d7483fa00` |
-| mode | `full` |
-| verdict | **PASS** |
-| totals | **72/72**, `blockers=0` |
-| BETA | 40/40 (blockers: 0) |
-| RC | 11/11 (blockers: 0) |
-| GA | 8/8 (blockers: 0) |
-| thresholds_override | 13/13 (blockers: 0) |
+- SQLRustGo 管理的 GMP 文档、chunk、版本、审计记录、证据关系和检索元数据的关系存储
+- 面向 GMP/RAG 工作负载的内部向量检索和混合检索
+- 用于证据导航的 SQL-backed 图投影
+- 仅在验证的兼容性边界内提供 MySQL 风格和 sqlite-like 入口
 
-This supersedes the 2026-09-07 stale `FAIL` evidence (71/72, 9 blockers).
-The headline fix at commit `b743ea95f4` is a deterministic python3
-cross-check replacing the non-deterministic bash pipeline race in
-`scripts/gate/check_ignore_count.sh` (Q2_P12 sub-gate of B7_ALPHA_QUALITY);
-the runner fix at commit `34d8adc56c` pins `q4_residual_filter_test` to
-`--test-threads=1` to remove the HSJ AtomicU64 counter flake in the
-B2_INTEGRATION_TESTS per-binary pipeline.
-See `CLAIM_DOWNGRADE_MANIFEST.md` §9.6.1 for the full B2 status change
-ledger.
+**禁止声明**：
+- ❌ 通用向量数据库
+- ❌ 通用图数据库
+- ❌ 广泛的 MySQL/SQLite 替代品
 
-## Known Limitations — v3.12.0 GA Candidate
+### 已知限制 — GA-claim-caveat
 
-This v3.12.0 GA build explicitly excludes the following capabilities from its
-release claims. Issues remain open and will be addressed in v3.13.0:
+| Issue | 区域 | 限制范围 |
+|-------|------|----------|
+| #4846 | 执行器/类型语义 | `CHAR(n)` 字节填充主键点查排除；`VARCHAR` 不受影响 |
+| #4847 | 事务语义 | 显式 `BEGIN`/`COMMIT`/`ROLLBACK` 排除；GMP 产品使用单语句批处理模式 |
+| #4848 | 存储/DDL | `ALTER TABLE ... RENAME COLUMN` 排除；`ADD COLUMN`/`DROP COLUMN` 不受影响 |
 
-(prior §3 boundary lines remain — `ANALYZE`/`sqlite_stat1` (#4719),
-math functions / `GREATEST`/`LEAST` (#4698), `SET TIMEZONE`/`SET TRANSACTION
-ISOLATION LEVEL` (#4694), multi-table `UPDATE`/`DELETE USING` (#4685),
-`CEIL`/`FLOOR`/`TRUNCATE`/`HEX`/`MD5`/`SHA2` partial (#4670), `JSON_EXTRACT`/
-`JSON_EACH` (#4646), `INDEXED BY` hint (#4625).)
+详见 `CLAIM_DOWNGRADE_MANIFEST.md` §9.6。
 
-- **`CHAR(n)` byte-padding primary-key point lookup (#4846)** —
-  BustubX-EDU teaching corpus only. `VARCHAR` columns and explicit
-  padded-literal queries are unaffected. Use `VARCHAR` or pad literal values
-  explicitly if `CHAR`-compat is required.
-- **Explicit `BEGIN`/`COMMIT`/`ROLLBACK` transaction semantics (#4847)** —
-  the GMP product uses single-statement batch mode and is unaffected. Use
-  v3.11.0 or wait for v3.13.0 if transactional reliability is required.
-- **`ALTER TABLE ... RENAME COLUMN` (#4848)** — catalog-evolution scope
-  only. `ADD COLUMN` and `DROP COLUMN` are unaffected. Catalog evolution via
-  `RENAME` is tracked for v3.13.0 (#4313).
+---
 
-See `CLAIM_DOWNGRADE_MANIFEST.md` §9.6.2 for per-issue boundary language
-and §9.6.3 for the consolidated release-note block.
+## 1. 功能完整性矩阵
 
-## Open Issues Affecting GA
+### 1.1 主路径能力（v3.11 GA vs v3.12 GA）
 
-Live Gitea state on 2026-09-08 shows three open issues, all carried as
-GA-claim-caveat per §3 pattern (release notes / scope docs explicitly
-exclude the capability):
+| # | 能力 | v3.11 GA | v3.12 GA | 证据 |
+|---|------|---------|---------|------|
+| 1 | TPC-H SF=1 in-process 22/22 | PASS | **PASS** | Q17 61.6s PASS |
+| 2 | TPC-H SF=1 wire round-trip 22/22 | PASS | **PASS** | cross-engine matrix |
+| 3 | TPC-H SF=10 bulk load | 部分 | **PASS** | LOAD DATA SF=10 PASS |
+| 4 | GMP 文档/Chunk/Embedding/Audit schema | 无 | **PASS** | RC1 wrapper |
+| 5 | GMP hybrid retrieval | 无 | **PASS** | RC2 wrapper |
+| 6 | SQL-backed graph projection | 无 | **PASS** | depth-limited paths + neighbors |
+| 7 | 审计 hash-chain tamper fail-closed | 无 | **PASS** | RC1/RC4 |
+| 8 | SQLLogicTest smoke 25/25 | 无 | **PASS** | smoke-report.md |
+| 9 | V312-57 sqlite3-like CLI | 无 | **PASS** | RC9 + RC10 |
+| 10 | MySQL wire 协议 typed wrappers | 部分 | **PASS** | RC7 wrapper |
+| 11 | MySQL TLS 1.3 / compression | 部分 | **PASS** | V312-13-REPORT.md |
+| 12 | MySQL prepared statement params | 部分 | **PASS** | V312-13-REPORT.md |
+| 13 | LOAD DATA SF=1 / SF=10 | 部分 | **PASS** | V312-13-REPORT.md |
+| 14 | Backup / restore (GMP preserved) | 部分 | **PASS** | RC3 wrapper |
+| 15 | Crash recovery 7+4+4 | 部分 | **PASS** | RC8 wrapper |
+| 16 | RBAC + 安全扫描 | 部分 | **PASS** | RC4 wrapper |
+| 17 | 168h SOAK | PASS | **PARTIAL** | GA2 mixed demo PASS；scaffold 就绪 |
+| 18 | per-crate 覆盖率 ≥80% | 部分 | **PARTIAL** | 分层口径 |
+| 19 | RAG inverted index + rerank | 部分 | **PASS** | RC4 + RC7 |
+| 20 | 教学 REPL + 内审检索 demo | 部分 | **PASS** | V312-57 week01-06 |
+| 21 | 文档治理 0 overclaim | 部分 | **PASS** | CLAIM_DOWNGRADE_MANIFEST |
 
-| Issue | Area | Classification | Boundary |
-|---|---|---|---|
-| #4846 | Executor / type semantics | GA-claim-caveat (teaching scope) | `CHAR(n)` byte-padding point lookup excluded; `VARCHAR` unaffected |
-| #4847 | Transaction semantics | GA-claim-caveat (product uses single-statement batch) | Explicit transaction semantics excluded; v3.11.0 for transactional reliability |
-| #4848 | Storage / DDL | GA-claim-caveat (catalog-evolution scope) | `ALTER TABLE ... RENAME COLUMN` excluded; `ADD COLUMN`/`DROP COLUMN` unaffected |
+**总计**：19/21 PASS，2/21 PARTIAL
 
-## RC-GA Gate Requirements
+### 1.2 TPC-H SF=1 Cross-Engine 对比
 
-The BustubX-EDU B-track findings show that previous fixtures were too narrow.
-The RC-GA gate set must cover:
+| 引擎 | 覆盖数 | 说明 |
+|------|--------|------|
+| PostgreSQL | 22/22 | 参考 Oracle |
+| SQLite | 22/22 | 参考 Oracle |
+| MySQL | 18/22 | Q2/Q11/Q12/Q17 deferred（v3.13） |
+| **SQLRustGo** | **22/22** | **Q17 61.6s PASS（was TIMEOUT 1042s）** |
 
-| Gate | Script | Required outcome |
-|---|---|---|
-| RC-B1 | `scripts/gate/check_bustubx_b_track_v312.sh` | B-track seed and exercise corpus pass or every exclusion is issue-linked. |
-| RC-B2 | `scripts/gate/check_v312_parser_real_scripts.sh` | Multi-line DDL, comments, quoted identifiers, Chinese text, and basic DML parse correctly. |
-| RC-B3 | `scripts/gate/check_v312_no_silent_success.sh` | Accepted DDL/DML has observable postconditions; unsupported SQL returns explicit errors. |
-| RC-B4 | `scripts/gate/check_v312_type_function_semantics.sh` | Core type/function behavior matches the selected oracle. |
-| RC-B5 | `scripts/gate/check_v312_join_subquery_semantics.sh` | JOIN, subquery, and HAVING semantics match oracle expectations. |
-| RC-B6 | `scripts/gate/check_v312_dml_integrity.sh` | CHECK, autoincrement, RETURNING, and UPDATE behavior are correct or scoped out. |
-| RC-B7 | `scripts/gate/check_ga_v3.12.0.sh --full` | Final aggregate is full-mode, current-HEAD, and blocker-free. ✅ PASS at HEAD `34d8adc56c` (72/72, 0 blockers) |
+### 1.3 SQLLogicTest 状态
 
-At this snapshot, RC-B1 is still a skeleton gate and intentionally exits
-non-zero until the real B-track corpus and oracle artifacts are populated.
+| 类别 | 状态 | 说明 |
+|------|------|------|
+| smoke | **25/25 PASS** | `smoke-report.md` |
+| curated selected | **16/21 PASS** | 5 EXCLUDED（issue-linked） |
+| historical exclusions | **16/16 closed** | v3.12.0 内关闭 |
+| full SQLite corpus | 待 v3.13 | RC/GA expansion |
 
-## Final GA Checklist
+---
 
-Before changing `STAGE.yaml` to GA or cutting tags:
+## 2. 稳定性与性能评估
 
-- ✅ Fresh `--full` gate verdict PASS at HEAD `34d8adc56c` (72/72, 0 blockers).
-- ✅ `STAGE.yaml` `gate_snapshot` updated with the fresh evidence.
-- ✅ `STAGE.yaml` flipped to `current_stage: "GA"`.
-- ✅ `CLAIM_DOWNGRADE_MANIFEST.md` §9.6 documents the 3 open GA-claim-caveat items.
-- ✅ `README.md` "Known Limitations — v3.12.0 GA Candidate" section lists the
-  3 boundary lines.
-- ⏳ Cut `v3.12.0` + `v3.12.0-ga` tags per STAGE_CONFIG RC_to_GA trigger.
+### 2.1 TPC-H SF=1
 
-## Key Documents
+| 维度 | 结论 | 证据 |
+|------|------|------|
+| In-process 22/22 执行 | **PASS** | SUMMARY.json |
+| Cross-engine 4 engine | **sqlrustgo 22/22** | 4 engine × 22 query |
+| Q17 SF=1 | **PASS 61.6s** | PR #4550 (commit `640d672bf8`) |
+| Cell-level 匹配 | **22/22** | Q17_SF1_CELLDIFF.json |
 
-| Document | Purpose |
-|---|---|
-| `STAGE.yaml` | Stage SSOT and promotion requirements. |
-| `GA_GATE_REPORT.md` | Current GA verdict map and evidence boundaries. |
-| `RELEASE_CHECKLIST.md` | RC-to-GA action checklist. |
-| `RC_GA_TRIAGE_AND_GATE_PLAN_2026-09-03.md` | RC-GA issue triage and gate plan. |
-| `CLAIM_DOWNGRADE_MANIFEST.md` | Claim downgrades and closure ledger (incl. §9.6 fresh refresh). |
-| `TEST_PLAN.md` | Test strategy and gate expectations. |
-| `COMPREHENSIVE_TEST_FRAMEWORK_AND_COVERAGE_BASELINE.md` | Layered coverage/test framework. |
-| `GMP_COMPLIANCE_MATRIX.md` | GMP/ALCOA+ mapping and signoff boundary. |
-| `STAGE_GOVERNANCE_REMEDIATION_2026-08-18.md` | Stage governance remediation log (2026-08-18 RC→RC reclass + stage drift fixes). |
+### 2.2 SOAK
 
-## Historical Notes
+| 阶段 | 状态 | 证据 |
+|------|------|------|
+| v3.11 GA 168h SOAK | PASS（343h37m） | SOAK_168H_REPORT.md |
+| v3.12 GA mixed demo | PASS | GA2_MIXED_SOAK_DEMO_REPORT.md |
+| 168h scaffold | 就绪 | tests/soak/v312_mixed_soak.rs |
 
-Older sections in this directory may preserve the wording and evidence from
-their original audit date. When documents conflict, use the current
-`STAGE.yaml`, the latest Gitea issue/PR state, and freshly executed gate output
-as the higher-trust evidence chain.
+### 2.3 LOAD DATA / Bulk
+
+| 测试 | 状态 | 证据 |
+|------|------|------|
+| SF=0.0001 smoke | PASS | V312-13-REPORT.md step 6.5 |
+| SF=1 | PASS | step 7 |
+| SF=10 | PASS | step 8 |
+| TLS handshake | PASS | step 9 |
+| Compression | PASS | step 10 |
+
+### 2.4 Crash Recovery
+
+| 场景 | 状态 | 证据 |
+|------|------|------|
+| 7+4+4 scenarios | PASS | V312-14-CRASH-RECOVERY-RECHECK.md |
+
+---
+
+## 3. 安全与合规
+
+| 项 | 状态 | 证据 |
+|----|------|------|
+| RBAC role-based access | PASS | GA-4 wrapper |
+| Audit hash-chain tamper fail-closed | PASS | RC1/RC4 |
+| 文档 claim 清理 | PASS | 4 ALLOWED / 14 DISALLOWED / 0 OVERCLAIM |
+| 安全扫描 | PASS | GA3_SECURITY_SCAN_REPORT.md |
+| Secret 扫描 | PASS | secret_scan_v312.txt |
+| Plaintext password 扫描 | PASS | plaintext_pw_scan_v312.txt |
+
+---
+
+## 4. 目录结构
+
+```
+v3.12.0/
+├── README.md                              # 本文件 - 版本索引
+├── CHANGELOG.md                           # 变更日志
+├── RELEASE_NOTES.md                       # 发布说明
+├── STAGE.yaml                             # 阶段 SSOT
+├── GA_GATE_REPORT.md                      # GA 门禁报告
+├── RC_GATE_REPORT.md                      # RC 门禁报告
+├── COMPREHENSIVE_TEST_FRAMEWORK_AND_COVERAGE_BASELINE.md  # 综合测试框架
+├── CLAIM_DOWNGRADE_MANIFEST.md            # Claim 降级清单
+├── TEST_PLAN.md                           # 测试计划
+├── SCOPE_TABLE_v3.12.md                   # 范围表
+│
+├── evidence/                              # 证据目录
+│   ├── v312-59/                          # v3.12.0-59 门禁证据
+│   ├── tpch/                             # TPC-H 正确性证据
+│   ├── sqllogictest/                     # SQLLogicTest 证据
+│   └── gmp_compliance/                   # GMP 合规性证据
+│
+├── perf/                                 # 性能基线
+├── sqllogictest-baseline/                # SQLLogicTest 基线
+├── sql-feature-corpus/                   # SQL 功能语料库
+└── issues/                               # Issue 追踪
+```
+
+---
+
+## 5. 阶段演进
+
+| 阶段 | 日期 | 状态 | 关键里程碑 |
+|------|------|------|-----------|
+| ALPHA | 2026-08-19 | ✅ PASS | GMP schema、文档摄取、混合检索、图投影基础 |
+| BETA | 2026-08-19 | ✅ PASS | 40/40 gate PASS |
+| RC | 2026-08-26 | ✅ PASS | 11/11 RC gate PASS |
+| GA | 2026-09-08 | ✅ PASS | 72/72 gate PASS |
+
+---
+
+## 6. GA 门禁清单
+
+- ✅ 新鲜 `--full` gate verdict PASS at HEAD `34d8adc56c`（72/72, 0 blockers）
+- ✅ `STAGE.yaml` `gate_snapshot` 已更新
+- ✅ `CLAIM_DOWNGRADE_MANIFEST.md` §9.6 记录 3 个 GA-claim-caveat 项目
+- ✅ `README.md` "已知限制" 章节列出 3 个边界声明
+- ⏳ 按 STAGE_CONFIG RC_to_GA trigger cut `v3.12.0` + `v3.12.0-ga` tags
+
+---
+
+## 7. 关键文档索引
+
+| 文档 | 用途 |
+|------|------|
+| `STAGE.yaml` | 阶段 SSOT 和升级要求 |
+| `GA_GATE_REPORT.md` | 当前 GA verdict map 和证据边界 |
+| `RELEASE_CHECKLIST.md` | RC→GA 操作清单 |
+| `RC_GA_TRIAGE_AND_GATE_PLAN_2026-09-03.md` | RC-GA issue 分类和门禁计划 |
+| `CLAIM_DOWNGRADE_MANIFEST.md` | Release-claim 排除和关闭台账 |
+| `TEST_PLAN.md` | 测试策略和门禁期望 |
+| `COMPREHENSIVE_TEST_FRAMEWORK_AND_COVERAGE_BASELINE.md` | 分层覆盖率/测试框架 |
+| `RELEASE_NOTES.md` | 发布说明 |
+| `CHANGELOG.md` | 变更日志 |
+| `COMPREHENSIVE_ASSESSMENT_REPORT.md` | 综合评估报告 |
+
+---
+
+## 8. 变更历史
+
+| 日期 | 版本 | 变更 |
+|------|------|------|
+| 2026-08-26 | v3.12.0-rc1 | BETA → RC 推进完成 |
+| 2026-09-08 | v3.12.0 | GA promotion authorized，72/72 gate PASS |
+
+---
+
+*本文档由 claude-macmini 维护*

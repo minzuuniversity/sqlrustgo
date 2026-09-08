@@ -203,6 +203,38 @@ timeout 120 cargo llvm-cov \
 | Graph projection | node/edge count | depth<=3 query | path latency and correctness | evidence bundle trace |
 | SOAK | 不跑 | 24h smoke | 72h/168h | 0 crash、hash-chain 不断裂 |
 
+### 8.1 TPC-H SF=1 Cross-Engine 状态（2026-08-28 更新）
+
+| 引擎 | 覆盖数 | 说明 |
+|------|--------|------|
+| PostgreSQL | 22/22 | 参考 Oracle |
+| SQLite | 22/22 | 参考 Oracle |
+| MySQL | 18/22 | Q2/Q11/Q12/Q17 deferred（v3.13） |
+| **SQLRustGo** | **22/22** | **Q17 61.6s PASS（was TIMEOUT 1042s）** |
+
+**关键证据**：
+- `evidence/tpch/cross_engine_sf1/SUMMARY.json` — 4 engine × 22 query matrix
+- `evidence/v312-58/Q17_SF1_CELLDIFF.json` — machine-readable verdict (`pass: true`)
+- PR #4550 (commit `640d672bf8`) — Q17 cell-diff verified PASS
+
+**Q17 证据链**：
+1. Initial SUMMARY.json: Q17 elapsed = 1042s（超出 300s 预算）
+2. PR #4550: Q17 SF=1 elapsed **61.6s** ≤ 300s，row_count=1，cell value ≈ oracle（Δ 2.91e-11 ≪ FLOAT_TOL 1e-3）
+
+### 8.2 SQLLogicTest 状态
+
+| 类别 | 状态 | 说明 |
+|------|------|------|
+| smoke | **25/25 PASS** | `SCOPE_TABLE_v3.12.md` |
+| curated selected | **16/21 PASS** | 5 EXCLUDED（issue-linked） |
+| historical exclusions | **16/16 closed** | v3.12.0 内关闭 |
+| full SQLite corpus | 待 v3.13 | RC/GA expansion item |
+
+**证据**：
+- `sqllogictest-baseline/smoke-report.md` — 25/25 smoke PASS
+- `sqllogictest-baseline/exclusions.yml` — 16 FAIL 文件均有 issue 追踪
+- `openspec/changes/v313-*/` — deferred 项追踪
+
 ## 9. Alpha 当前复核与整改结果
 
 本轮按 Alpha 阶段定位复核，不把覆盖率数字当作 GA 通过声明。整改结论如下：
