@@ -120,17 +120,45 @@ if [ -z "$registry_files" ]; then
     echo "          Continuing with empty registry check"
 fi
 
-FAIL=0
+# Cross-check via python3 (deterministic; avoids bash pipeline races)
+# The previous bash `echo | grep -qxF` loop was non-deterministic and
+# intermittently flagged registered files as missing (V312-GA-prep audit).
+# python3 set membership test is fully deterministic.
+python3 - "$IGNORE_DETAILS" "$REGISTRY" <<'PYEOF' > /tmp/p12_check.txt
+import json, sys
+details_file, registry_file = sys.argv[1], sys.argv[2]
+
+src_files = set()
+with open(details_file) as f:
+    for line in f:
+        line = line.rstrip("\n")
+        if not line:
+            continue
+        path = line.partition(":")[0].lstrip("./")
+        if path:
+            src_files.add(path)
+
+reg_files = set()
+with open(registry_file) as f:
+    data = json.load(f)
+for e in data.get("ignored_tests", []):
+    reg_files.add(e["file"].split(":")[0])
+
+unregistered = sorted(src_files - reg_files)
+print("\n".join(unregistered))
+print(f"__FAIL__:{len(unregistered)}")
+PYEOF
+
 unregistered=()
-while IFS= read -r file; do
-    [ -z "$file" ] && continue
-    if echo "$registry_files" | grep -qxF "$file"; then
-        : # registered, OK
-    else
-        unregistered+=("$file")
-        FAIL=$((FAIL+1))
-    fi
-done <<< "$ignore_files"
+if [ -s /tmp/p12_check.txt ]; then
+    while IFS= read -r line; do
+        case "$line" in
+            "__FAIL__:"*) ;;
+            *) [ -n "$line" ] && unregistered+=("$line") ;;
+        esac
+    done < /tmp/p12_check.txt
+fi
+FAIL=${#unregistered[@]}
 
 if [ "$FAIL" -gt 0 ]; then
     echo "  ❌ FAIL: $FAIL file(s) have #[ignore] but NOT in registry:"
@@ -143,6 +171,7 @@ if [ "$FAIL" -gt 0 ]; then
 else
     echo "  ✅ PASS: all #[ignore] tests are in registry"
 fi
+rm -f /tmp/p12_check.txt
 
 # ---------------------------------------------------------------------------
 # Step 4: Report
