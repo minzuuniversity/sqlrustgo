@@ -125,3 +125,30 @@ scripts/.scratch/
 
 # V312-48 TPC-H SF=1 correctness bundle output (~1.8GB oracle.sqlite)
 docs/releases/v3.12.0/perf/TPCH_SF1_CORRECTNESS_BUNDLE/
+
+# v4.0.0 commit hygiene (user rule 2026-09-08):
+#   No *.log, *.tbl, *.json files in commits.
+#   Single file < 100MB (GitHub compatibility).
+#   Allowed: small JSON config (Cargo.toml, package.json, tsconfig.json,
+#   *.config.json, docs/governance/*.json, docs/releases/*/manifest.json,
+#   docs/releases/*/evidence/*/summary.json)
+#   Verification: scripts/gate/check_no_log_tbl_json.sh
+*.log
+*.tbl
+*.json
+# Allowlist (negation rules override the broad patterns above)
+!Cargo.toml
+!package.json
+!tsconfig.json
+!Cargo.lock
+!package-lock.json
+!.gitignore
+!.gitattributes
+!.eslintrc.json
+!.prettierrc.json
+!tsconfig.*.json
+!*config.json
+!docs/governance/*.json
+!docs/releases/*/manifest.json
+!docs/releases/*/evidence/*/summary.json
+# keep other tracked JSON if explicitly staged via 'git add -f'
