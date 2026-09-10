@@ -4,6 +4,7 @@
 > **当前开发版**: v3.12.0
 > **发布状态**: **GA promotion authorized**（2026-09-08，72/72 gate PASS）
 > **可信状态入口**: [docs/releases/v3.12.0/STAGE.yaml](docs/releases/v3.12.0/STAGE.yaml)
+> **GA 发布证据入口**: [docs/releases/v3.12.0/GA_PUBLICATION_EVIDENCE_INDEX.md](docs/releases/v3.12.0/GA_PUBLICATION_EVIDENCE_INDEX.md)
 
 ---
 
@@ -37,7 +38,8 @@ SQLRustGo 是一个用 Rust 实现的 SQL 数据库项目，包含 MySQL 风格�
 | thresholds_override | 13/13 ✅ PASS |
 | **总计** | **72/72 ✅ PASS** |
 
-- commit: `b743ea95f4f268deaeff405b2f558958254bbf4f`
+- commit: `355b5a38378c41ffee2f43a29ad2c4f7bd7097d4`
+- post-cut docs/evidence refresh HEAD: `9febebb255f984387ac78c26510d5b46d73f6046`
 - mode: `full`
 - blockers: 0
 

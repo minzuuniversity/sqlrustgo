@@ -1,6 +1,6 @@
 # GA-7 v3.12.0 Documentation Links Report
 
-> **provenance:** generated_by=check_docs_links_v312.sh, generated_at=2026-09-07T20:37:11Z, commit=54219264158f86ea23a43edd17e32f7d743b74f5, branch=codex/v312-docs-readme-refresh, source_repo=openclaw/sqlrustgo, gate_policy_eval_id=v312-ga7-docs-links-001, policy=Anti-Fabrication-Policy-v1.0
+> **provenance:** generated_by=check_docs_links_v312.sh, generated_at=2026-09-10T17:32:12Z, commit=9febebb255f984387ac78c26510d5b46d73f6046, branch=develop/v3.12.0, source_repo=openclaw/sqlrustgo, gate_policy_eval_id=v312-ga7-docs-links-001, policy=Anti-Fabrication-Policy-v1.0
 > **related:** Issue #4387 (V312-59-D), umbrella #4383
 
 ## Summary

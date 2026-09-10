@@ -178,14 +178,14 @@ Replace the current row:
 with three explicit rows:
 
 ```
-| SQLLogicTest smoke baseline (curated 25 .test 文件覆盖 sqlrustgo_simple/duckdb_samples/duckdb_full/root) | N/A | DONE / 受控 | `scripts/gate/check_sqllogictest_v312.sh` 实跑；25/25 PASS, 100% pass rate；`sqlite-corpus-manifest.json::corpus_stats` + `evidence_hash` 校验通过；详见 [V312-51](docs/releases/v3.12.0/evidence/sqllogictest/V312-51-REPORT.md) §2 |
+| SQLLogicTest smoke baseline (curated 25 .test 文件覆盖 sqlrustgo_simple/duckdb_samples/duckdb_full/root) | N/A | DONE / 受控 | `scripts/gate/check_sqllogictest_v312.sh` 实跑；25/25 PASS, 100% pass rate；`sqlite-corpus-manifest.json::corpus_stats` + `evidence_hash` 校验通过；详见本文 §2 |
 | SQLLogicTest 排除注册表 (16 项历史缺陷 + Round-9 5-class 分类) | N/A | DONE / 受控 | 16/16 已关闭（PR #4074/#4073/#4069/#4082/#4055/#4065/#4066 + commit 7a315826fb）；每项含 id / file / root_cause / follow_up_issue / owner / v3.13_expiry / close_boundary / closed_by_commit；详见 §4 |
 | SQLLogicTest — 完整 SQLite 官方 corpus (≈700 files / 6 MB) 集成 + sqlite3 参考输出对比 | N/A | DEFERRED → v3.13 | 当前 25 文件是 curated 子集；完整 corpus 未 vendor；Issue #4238 to open |
 ```
 
 This removes the floating "PARTIAL / 不能写成全量 PASS" entry and replaces
 it with explicit DONE-with-boundary or DEFERRED-with-issue rows, satisfying
-[Issue #4224 close-condition 1](../../../../issues/4224) ("README 把
+[Issue #4224 close-condition 1](http://192.168.0.252:3000/openclaw/sqlrustgo/issues/4224) ("README 把
 SQLLogicTest 状态改为 DONE / 受控，明确写 25/25 smoke pass 和全量 corpus
 NOT claimed").
 

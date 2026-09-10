@@ -203,10 +203,10 @@ with the explicit per-area rows below (kept in the same table format):
 ```
 | 窗口函数 — 核心 12 函数 (ROW_NUMBER/RANK/DENSE_RANK/PERCENT_RANK/CUME_DIST/
   LEAD/LAG/FIRST_VALUE/LAST_VALUE/NTH_VALUE + 聚合窗口) + 默认 frame | DONE / 受控 | DONE / 受控 | 29 executor 单测 PASS；17/21 integration parsing PASS；
-  见 [scope 决策](sql-feature-corpus/window_json_gis_scope.md) |
+  见 [scope 决策](window_json_gis_scope.md) |
 | 窗口函数 — 显式 ROWS/RANGE BETWEEN / EXCLUDE / NULLS FIRST/LAST 语法 | DEFERRED | DEFERRED → v3.13 | 4/21 integration parser FAIL；Issue #4228 |
 | JSON 读路径 (JSON_EXTRACT / JSON_VALUE / JSON_VALID / JSON_TYPE /
-  JSON_KEYS / JSON() / `->` / `->>`) | DONE / 受控 | DONE / 受控 | 10/12 单测 PASS；[scope 决策](sql-feature-corpus/window_json_gis_scope.md) |
+  JSON_KEYS / JSON() / `->` / `->>`) | DONE / 受控 | DONE / 受控 | 10/12 单测 PASS；[scope 决策](window_json_gis_scope.md) |
 | JSON 写路径 / JSON 列类型 / JSON_TABLE / JSON_MERGE | DEFERRED | DEFERRED → v3.13 | Issue #4229 |
 | GIS (ST_Within / ST_Distance / ST_Contains / ST_Intersects 在 Value::Point + WKT 字面量) | DEFERRED | DEFERRED → v3.13 | sqlrustgo_gis 14 单测 PASS；
   无 spatial column / index / WKT I/O；Issue #4230 |
@@ -214,7 +214,7 @@ with the explicit per-area rows below (kept in the same table format):
 
 This removes the floating "PARTIAL" entries and replaces them with explicit
 DONE-with-boundary or DEFERRED-with-issue rows, satisfying
-[Issue #4227 close-condition 4](../../../../issues/4227) ("若延期到 3.13/4.0，
+[Issue #4227 close-condition 4](http://192.168.0.252:3000/openclaw/sqlrustgo/issues/4227) ("若延期到 3.13/4.0，
 README 不得继续写成 3.12 PARTIAL 能力，应改为 DEFERRED/UNSUPPORTED with issue").
 
 ## 6. Issue Close Conditions (from #4227)

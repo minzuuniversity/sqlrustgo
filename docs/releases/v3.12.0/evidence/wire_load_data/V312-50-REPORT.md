@@ -192,7 +192,7 @@ with explicit DONE-with-boundary or DEFERRED-with-issue rows (see section
 1 for the full mapping; excerpts below):
 
 ```
-| MySQL wire protocol — COM_QUERY / COM_STMT_PREPARE/EXECUTE/CLOSE / error packet / reset / TLS handshake / compression primitive | PARTIAL | DONE / 受控 | `crates/tools/src/ephemeral.rs` ephemeral server + 22 v312_13_typed_wrappers / mysql_wire_protocol / wire_smoke_mysql_cli 集成测试 PASS；V312-13 gate 10/10 PASS；详见 [V312-50](docs/releases/v3.12.0/evidence/wire_load_data/V312-50-REPORT.md) §2 |
+| MySQL wire protocol — COM_QUERY / COM_STMT_PREPARE/EXECUTE/CLOSE / error packet / reset / TLS handshake / compression primitive | PARTIAL | DONE / 受控 | `crates/tools/src/ephemeral.rs` ephemeral server + 22 v312_13_typed_wrappers / mysql_wire_protocol / wire_smoke_mysql_cli 集成测试 PASS；V312-13 gate 10/10 PASS；详见本文 §2 |
 | MySQL wire protocol — `COM_RESET_CONNECTION` 在 libmysqlclient 路径下退化为 `Unknown command` warning | N/A | DONE-with-boundary | test 显式接受 `Ok(())` 或 `Unknown command`；非正确性要求，仅 libmysqlclient 优化提示 |
 | Prepared Statement — Sysbench libmysqlclient (PR #4229 修复 `lenenc_int(0x0c)` + non-SELECT `extract_table_name` + INT→LONGLONG) | PARTIAL | DONE | 4/4 sysbench OLTP workloads PASS, 0 ignored errors；证据 `docs/releases/v3.12.0/evidence/issue-4211/20260814T_after_fix2/` |
 | LOAD DATA — SF=1 smoke + full + SF=10 region/nation/supplier smoke | PARTIAL | DONE | `v312_13_load_data_sf1_test` + `v312_13_load_data_sf10_test` PASS；V312-13 step 06.5/07/08 PASS；fixtures via `dbgen -s 10` |
@@ -203,7 +203,7 @@ with explicit DONE-with-boundary or DEFERRED-with-issue rows (see section
 
 This removes the floating "PARTIAL" entries and replaces them with explicit
 DONE-with-boundary or DEFERRED-with-issue rows, satisfying
-[Issue #4223 close-condition 4](../../../../issues/4223) ("README 的 MySQL wire、
+[Issue #4223 close-condition 4](http://192.168.0.252:3000/openclaw/sqlrustgo/issues/4223) ("README 的 MySQL wire、
 Prepared Statement、TLS/Compression 状态更新为 DONE-with-boundary 或 DEFERRED-with-issue").
 
 ## 6. Issue Close Conditions (from #4223)

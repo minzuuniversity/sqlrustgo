@@ -229,7 +229,7 @@ SQLRustGo v2.8.0 的恢复机制在 **30 个测试**（8 崩溃恢复 + 16 WAL �
 - [备份恢复报告](./BACKUP_RESTORE_REPORT.md)
 - [稳定性测试报告](./STABILITY_REPORT.md)
 - [功能矩阵](./FEATURE_MATRIX.md)
-- [crash_recovery_test.rs](../../../tests/stress/crash_recovery_test.rs)
+- [recovery_scenarios_test.rs](../../../tests/integration/stress/recovery_scenarios_test.rs)
 - [wal_integration_test.rs](../../../tests/integration/migration/wal_integration_test.rs)
 - [pitr_recovery.rs](../../../crates/storage/src/pitr_recovery.rs)
 

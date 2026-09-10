@@ -226,9 +226,9 @@ Replace the current row 120:
 with three explicit rows:
 
 ```
-| WAL / MVCC — crash recovery（kill mid-tx, WAL replay uncommitted tx, incomplete-tx 检测, 8 scenarios 过程杀进程） | PARTIAL | DONE / 受控 | V312-14 gate 5/5 PASS；`process_kill_crash_test` 8/8 PASS（含 Round-3 FAIL 的 `test_kill_mid_insert_update_uncommitted` + `test_mixed_workload_recovery_report`）；详见 [V312-14-RECHECK](docs/releases/v3.12.0/evidence/crash_recovery/V312-14-CRASH-RECOVERY-RECHECK.md) §2 |
-| WAL / MVCC — backup/restore API（SHA-256 校验, manifest verify, round-trip, corrupted data/WAL detection） | PARTIAL | DONE / 受控 | `backup_restore_test` 51/51 PASS at HEAD 868088aa70；Round-3 API drift 已修复；详见 [V312-14-RECHECK](docs/releases/v3.12.0/evidence/crash_recovery/V312-14-CRASH-RECOVERY-RECHECK.md) §3 |
-| WAL / MVCC — v3.10/v3.11 → v3.12 upgrade + rollback fixture（row count / hash / 4-hop preservation） | PARTIAL | DONE / 受控 | `check_upgrade_v310_v311.sh` 11/11 + `upgrade_v310_v311_test` 4/4 + `upgrade_test` 50/50 + `int2_cross_version_upgrade_test` 20/20 + `v380_to_v390_full_upgrade_test` 18/18 + `upgrade_chain_v3_6_to_v3_9_test` 6/6 = 109/109 PASS；详见 [V312-14-RECHECK](docs/releases/v3.12.0/evidence/crash_recovery/V312-14-CRASH-RECOVERY-RECHECK.md) §4 |
+| WAL / MVCC — crash recovery（kill mid-tx, WAL replay uncommitted tx, incomplete-tx 检测, 8 scenarios 过程杀进程） | PARTIAL | DONE / 受控 | V312-14 gate 5/5 PASS；`process_kill_crash_test` 8/8 PASS（含 Round-3 FAIL 的 `test_kill_mid_insert_update_uncommitted` + `test_mixed_workload_recovery_report`）；详见本文 §2 |
+| WAL / MVCC — backup/restore API（SHA-256 校验, manifest verify, round-trip, corrupted data/WAL detection） | PARTIAL | DONE / 受控 | `backup_restore_test` 51/51 PASS at HEAD 868088aa70；Round-3 API drift 已修复；详见本文 §3 |
+| WAL / MVCC — v3.10/v3.11 → v3.12 upgrade + rollback fixture（row count / hash / 4-hop preservation） | PARTIAL | DONE / 受控 | `check_upgrade_v310_v311.sh` 11/11 + `upgrade_v310_v311_test` 4/4 + `upgrade_test` 50/50 + `int2_cross_version_upgrade_test` 20/20 + `v380_to_v390_full_upgrade_test` 18/18 + `upgrade_chain_v3_6_to_v3_9_test` 6/6 = 109/109 PASS；详见本文 §4 |
 | WAL / MVCC — SF=10 TPC-H 全表 bulk-load 后 crash + WAL replay 大 fixture 行为 | N/A | DEFERRED → v3.13 | V312-13 仅覆盖 SF=1 + SF=10 {region,nation,supplier} bulk-load；lineitem/customer/orders 大 fixture 上 crash-recovery + WAL replay 路径未压测；Issue #4239 to open |
 ```
 
