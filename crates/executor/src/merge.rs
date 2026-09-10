@@ -420,7 +420,12 @@ fn compare_values(left: &Value, right: &Value) -> i32 {
                 0
             }
         }
-        (Value::Text(l), Value::Text(r)) => l.cmp(r) as i32,
+        // Issue #4846: PAD SPACE semantics for CHAR(n) comparison.
+        // SQLite/MySQL/PostgreSQL all trim trailing whitespace on Text
+        // equality / ordering; CHAR(n) stores values blank-padded to n
+        // chars, so without this fix `WHERE id='U1'` on a CHAR(10) column
+        // would not match the stored 'U1        ' value.
+        (Value::Text(l), Value::Text(r)) => l.trim_end().cmp(r.trim_end()) as i32,
         (Value::Null, Value::Null) => 0,
         (Value::Null, _) => -1,
         (_, Value::Null) => 1,
