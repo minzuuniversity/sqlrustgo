@@ -172,7 +172,7 @@ Replace the current row:
 with three explicit rows:
 
 ```
-| 内部向量检索 — 嵌入 + Flat 索引 + 混合检索 (vector_score / keyword_score / graph_boost / rrf_score + citation_text + chunk_hash) | PARTIAL | DONE / 受控 | HashEmbeddingModel 确定性；`vector_hash` SHA-256；`FlatIndex::build/search`；15/15 vector_index + vector_search + retrieval 单测 PASS；详见 [V312-52](docs/releases/v3.12.0/evidence/vector_retrieval/V312-52-REPORT.md) §2-3 |
+| 内部向量检索 — 嵌入 + Flat 索引 + 混合检索 (vector_score / keyword_score / graph_boost / rrf_score + citation_text + chunk_hash) | PARTIAL | DONE / 受控 | HashEmbeddingModel 确定性；`vector_hash` SHA-256；`FlatIndex::build/search`；15/15 vector_index + vector_search + retrieval 单测 PASS；详见本文 §2-3 |
 | 内部向量检索 — 固定 GMP audit question fixture 与确定性 top-k | N/A | DONE | `test_hybrid_retrieval_audit_question_fixture_deterministic` 在 HEAD `868088aa70` PASS：8 docs fixture + 两次独立种子 + 字节级一致的 (doc_id, similarity, chunk_hash) 顺序；Issue #4236 已闭合 |
 | 内部向量检索 — `rebuild_flat_index` 持久化索引 + 重建前后稳定 (count/hash/top-k) | N/A | DEFERRED → v3.13 | `rebuild_flat_index` 仅写 metadata，`let _index = FlatIndex::build(...)` 被丢弃（compiler 警告 `unused variable: flat_index`）；Issue #4235 to open |
 | 内部向量检索 — dimension drift / empty index / model-name fail-closed | N/A | DEFERRED → v3.13 | `upsert_embedding` 不校验 dimension；`vector_search` 对空索引返回 `Ok(vec![])` 而非错误；Issue #4237 to open |
@@ -180,7 +180,7 @@ with three explicit rows:
 
 This removes the floating "PARTIAL" entry and replaces it with explicit
 DONE-with-boundary or DEFERRED-with-issue rows, satisfying
-[Issue #4225 close-condition 4](../../../../issues/4225) ("README 将 Internal
+[Issue #4225 close-condition 4](http://192.168.0.252:3000/openclaw/sqlrustgo/issues/4225) ("README 将 Internal
 Vector Retrieval 更新为 DONE / 受控，或明确 DEFERRED 子能力").
 
 ## 5. Issue Close Conditions (from #4225)

@@ -9,7 +9,7 @@ bug 会静默回归 — 因为本地 SOAK 通常从 AI agent Bash tool / nohup /
 
 需要一个 CI 测试作为回归门禁, 在每个 PR 上自动验证 detach 块仍然存在且行为正确。
 
-来源: [SOAK-INFRA-REVIEW-2026-08-30.md §1 P-1 §6.1](../../docs/releases/v3.12.0/evidence/issue-4560/SOAK-INFRA-REVIEW-2026-08-30.md)
+来源: [SOAK-INFRA-REVIEW-2026-08-30.md §1 P-1 §6.1](../../../docs/releases/v3.12.0/evidence/issue-4560/SOAK-INFRA-REVIEW-2026-08-30.md)
 关联: Issue #4595, PR #4591 (commit 66dac1aab2)
 
 ## What Changes

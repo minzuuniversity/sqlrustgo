@@ -1,13 +1,28 @@
 # SQLRustGo v3.12.0 变更日志
 
-> **provenance:** generated_by=v3.12.0-remediation-round-3, generated_at=2026-08-10T10:49:33Z, commit=1903545df6d036f7f6d5035a0503b5fa932aac51, source_repo=openclaw/sqlrustgo, branch=develop/v3.12.0, policy=Anti-Fabrication-Policy-v1.0
+> **provenance:** generated_by=codex, generated_at=2026-09-11T00:00:00+08:00, source_repo=openclaw/sqlrustgo, branch=develop/v3.12.0, policy=Anti-Fabrication-Policy-v1.0 + ADR-001 + ADR-014
 
-> **状态**: **RC** (2026-08-26 转入)
-> **日期**: 2026-09-02 (GA candidate docs); 2026-08-26 (RC); 2026-08-09 (initial)
-> **stage_history**: DRAFT (pre-2026-08-12) → ALPHA (2026-08-12) → BETA (2026-08-19) → **RC** (2026-08-26)
+> **状态**: **GA** (2026-09-08)
+> **日期**: 2026-09-11 (GA publication doc refresh); 2026-09-08 (GA cut); 2026-08-26 (RC); 2026-08-19 (BETA); 2026-08-09 (initial)
+> **stage_history**: DRAFT (pre-2026-08-12) → ALPHA (2026-08-12) → BETA (2026-08-19) → RC (2026-08-26) → **GA** (2026-09-08)
 
-> **commit**: 1903545df6d036f7f6d5035a0503b5fa932aac51
-> **current_HEAD**: b14ad8df03 (`origin/develop/v3.12.0`, post PR #4609 merge; v3.12.0 RC / GA candidate preparation)
+> **ga_tag_commit**: `355b5a38378c41ffee2f43a29ad2c4f7bd7097d4`
+> **post_cut_refresh_head**: `9febebb255f984387ac78c26510d5b46d73f6046`
+
+## 2026-09-11 GA publication documentation refresh
+
+### Docs
+
+- Rewrote [`RELEASE_NOTES.md`](RELEASE_NOTES.md), [`RELEASE_CHECKLIST.md`](RELEASE_CHECKLIST.md), [`GA_RELEASE_REPORT.md`](GA_RELEASE_REPORT.md), [`GA_GATE_REPORT.md`](GA_GATE_REPORT.md), [`PERFORMANCE_REPORT.md`](PERFORMANCE_REPORT.md), [`SECURITY_AUDIT.md`](SECURITY_AUDIT.md), and [`COMPREHENSIVE_ASSESSMENT_REPORT.md`](COMPREHENSIVE_ASSESSMENT_REPORT.md) to use the final GA state instead of stale RC / GA-candidate wording.
+- Added [`GA_PUBLICATION_EVIDENCE_INDEX.md`](GA_PUBLICATION_EVIDENCE_INDEX.md) as the single publication evidence entry point.
+- Added [`DOC_RECTIFICATION_WORK_REPORT_2026-09-11.md`](DOC_RECTIFICATION_WORK_REPORT_2026-09-11.md) for the document correction audit trail.
+
+### Release governance
+
+- GA SSOT: [`STAGE.yaml`](STAGE.yaml) records `current_stage: "GA"`.
+- Final aggregate evidence: [`evidence/v312-59/ga_gate_report.json`](evidence/v312-59/ga_gate_report.json), generated at `2026-09-08T04:17:15Z`, mode `full`, commit `355b5a3837`, totals `72/72 PASS, blockers 0`.
+- GA tags: `v3.12.0` and `v3.12.0-ga`, both dereference to `355b5a3837`.
+- Current known limitations remain outside GA claims: #4846 / #4847 / #4848. 252 Gitea also has open follow-up PRs #4868 / #4870 / #4869, which are not included in the GA tag until merged and verified.
 
 ## 2026-09-02 GA candidate documentation refresh
 
