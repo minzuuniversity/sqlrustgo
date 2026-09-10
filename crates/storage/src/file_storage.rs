@@ -3686,6 +3686,52 @@ impl StorageEngine for FileStorage {
         Ok(())
     }
 
+    // Issue #4848: rename a column in a table. Row data in FileStorage
+    // is positional (Vec<Vec<Value>>), so renaming only requires
+    // updating the schema (info.columns[col_idx].name); the row data
+    // itself is unchanged. We also reject the rename if the new name
+    // already exists, matching MySQL 8.0 (ERROR_DUP_FIELDNAME 1060) and
+    // SQLite (Error: duplicate column name) semantics. Mirrors the
+    // MemoryStorage implementation at engine.rs:2315 but persists
+    // via save_table (the default-trait impl in engine.rs:1033
+    // returns "rename_column not supported" which broke the v3.12.0
+    // GA CLI batch mode for `ALTER TABLE ... RENAME COLUMN`).
+    fn rename_column(
+        &mut self,
+        table: &str,
+        old_name: &str,
+        new_name: &str,
+    ) -> SqlResult<()> {
+        let table_data = self
+            .tables
+            .get_mut(table)
+            .ok_or_else(|| SqlError::ExecutionError(format!("Table not found: {}", table)))?;
+        let col_idx = table_data
+            .info
+            .columns
+            .iter()
+            .position(|c| c.name == old_name)
+            .ok_or_else(|| SqlError::ExecutionError(format!("Column not found: {}", old_name)))?;
+        // Reject duplicate destination name (MySQL 8.0 + SQLite parity).
+        let new_lower = new_name.to_lowercase();
+        if table_data
+            .info
+            .columns
+            .iter()
+            .enumerate()
+            .any(|(idx, c)| idx != col_idx && c.name.to_lowercase() == new_lower)
+        {
+            return Err(SqlError::ExecutionError(format!(
+                "Duplicate column name: {}",
+                new_name
+            )));
+        }
+        table_data.info.columns[col_idx].name = new_name.to_lowercase();
+        let table_data_clone = table_data.clone();
+        self.save_table(table, &table_data_clone)?;
+        Ok(())
+    }
+
     fn modify_column(
         &mut self,
         table: &str,
