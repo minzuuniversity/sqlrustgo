@@ -227,7 +227,7 @@ with three explicit rows:
 
 This removes the floating "DONE" entry and replaces it with explicit
 DONE-with-boundary or DEFERRED-with-issue rows, satisfying
-[Issue #4226 close-condition 3](../../../../issues/4226) ("若延期到 3.13/4.0，
+[Issue #4226 close-condition 3](http://192.168.0.252:3000/openclaw/sqlrustgo/issues/4226) ("若延期到 3.13/4.0，
 README 不得继续写成 3.12 PARTIAL/DONE 能力，应改为 DEFERRED/UNSUPPORTED with issue").
 
 ## 6. Issue Close Conditions (from #4226)

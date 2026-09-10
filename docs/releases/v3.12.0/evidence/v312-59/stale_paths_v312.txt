@@ -1,6 +1,6 @@
 === Stale Relative Paths in v3.12.0 Docs ===
-Timestamp: 2026-09-07T20:37:11Z
-Commit: 54219264158f86ea23a43edd17e32f7d743b74f5
+Timestamp: 2026-09-10T17:32:12Z
+Commit: 9febebb255f984387ac78c26510d5b46d73f6046
 
 (Excludes CHANGELOG.md which is an immutable historical archive
  and may legitimately contain references to past worktree paths.)

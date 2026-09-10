@@ -3,6 +3,7 @@
 > **元数据**: generated_by=claude-macmini, generated_at=2026-09-08, source_repo=openclaw/sqlrustgo, branch=develop/v3.12.0, head=`355b5a3837`, policy=Anti-Fabrication-Policy-v1.0 + ADR-001 + ADR-014
 > **状态**: **GA**（2026-09-08，72/72 gate PASS, post-cut re-verification PASS at HEAD `355b5a3837`）
 > **SSOT**: `STAGE.yaml` 是版本阶段的事实来源（Source of Truth）
+> **发布证据入口**: [`GA_PUBLICATION_EVIDENCE_INDEX.md`](GA_PUBLICATION_EVIDENCE_INDEX.md)
 
 ---
 
@@ -24,6 +25,7 @@
 - verdict: **PASS** (post-cut re-verification at the GA cut commit itself)
 - blockers: 0
 - GA tags: `v3.12.0`, `v3.12.0-ga` (annotated, both dereference to `355b5a3837`)
+- post-cut docs/evidence refresh HEAD: `9febebb255f984387ac78c26510d5b46d73f6046`
 
 ### 版本定位
 
@@ -43,9 +45,9 @@ v3.12.0 是 SQLRustGo 的 **GMP 合规性内审检索系统** 数据库底座。
 
 | Issue | 区域 | 限制范围 |
 |-------|------|----------|
-| #4846 | 执行器/类型语义 | `CHAR(n)` 字节填充主键点查排除；`VARCHAR` 不受影响 |
-| #4847 | 事务语义 | 显式 `BEGIN`/`COMMIT`/`ROLLBACK` 排除；GMP 产品使用单语句批处理模式 |
-| #4848 | 存储/DDL | `ALTER TABLE ... RENAME COLUMN` 排除；`ADD COLUMN`/`DROP COLUMN` 不受影响 |
+| #4846 | 执行器/类型语义 | `CHAR(n)` 字节填充主键点查排除；`VARCHAR` 不受影响；252 Gitea PR #4868 open |
+| #4847 | 事务语义 | 显式 `BEGIN`/`COMMIT`/`ROLLBACK` 排除；GMP 产品使用单语句批处理模式；252 Gitea PR #4870 open |
+| #4848 | 存储/DDL | `ALTER TABLE ... RENAME COLUMN` 排除；`ADD COLUMN`/`DROP COLUMN` 不受影响；252 Gitea PR #4869 open |
 
 详见 `CLAIM_DOWNGRADE_MANIFEST.md` §9.6。
 

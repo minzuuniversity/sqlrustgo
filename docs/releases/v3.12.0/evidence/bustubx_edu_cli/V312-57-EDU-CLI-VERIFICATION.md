@@ -4,7 +4,7 @@
 >
 > **关联 Issue:** [#4359](http://192.168.0.252:3000/openclaw/sqlrustgo/issues/4359)
 >
-> **关联计划:** [V312-57_SQLITE_STYLE_EDU_CLI_PLAN.md](../V312-57_SQLITE_STYLE_EDU_CLI_PLAN.md)
+> **关联计划:** [V312-57_SQLITE_STYLE_EDU_CLI_PLAN.md](../../V312-57_SQLITE_STYLE_EDU_CLI_PLAN.md)
 
 ## 1. 交付摘要
 
