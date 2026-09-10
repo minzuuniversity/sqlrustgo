@@ -284,7 +284,7 @@ bash scripts/gate/check_v312_procedure_trigger_gate.sh
 - 过程内 SQL 仍绕过事务/trigger 主路径，或 trigger body DML 无法跟随外层事务回滚。
 - 无权限正反例、无 WAL recovery 证据、无 `NEW/OLD` 断言、无 SQLLogicTest/E2E 证据。
 
-**实施计划**: [2026-08-14 v312 procedure/trigger remediation plan](../../plans/2026-08-14-v312-procedure-trigger-remediation-plan.md)。
+**实施计划**: 2026-08-14 v312 procedure/trigger remediation plan（历史计划名；当前仓库未保留该计划文件）。
 
 ## V312-29：Gate Enforcement 接线（V312-24 Phase 6 follow-up）
 

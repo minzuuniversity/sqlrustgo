@@ -162,5 +162,5 @@ cargo run -p sqlrustgo-cli -- sqlite /tmp/test.db "SELECT * FROM t;"
 - Plan: [`docs/releases/v3.12.0/V312-57_SQLITE_STYLE_EDU_CLI_PLAN.md`](../../V312-57_SQLITE_STYLE_EDU_CLI_PLAN.md)
 - Closure report: [`docs/releases/v3.12.0/evidence/v312-57/CLOSURE_REPORT.md`](./CLOSURE_REPORT.md)
 - Gate log: [`docs/releases/v3.12.0/evidence/v312-57/20260821T153019Z/gate.log`](./20260821T153019Z/gate.log)
-- Manifest: [`tests/compat/bustubx_edu_sqlite_cli/manifest.yml`](../../../../tests/compat/bustubx_edu_sqlite_cli/manifest.yml)
-- Gate script: [`scripts/gate/check_bustubx_edu_cli_v312.sh`](../../../../scripts/gate/check_bustubx_edu_cli_v312.sh)
+- Manifest: [`tests/compat/bustubx_edu_sqlite_cli/manifest.yml`](../../../../../tests/compat/bustubx_edu_sqlite_cli/manifest.yml)
+- Gate script: [`scripts/gate/check_bustubx_edu_cli_v312.sh`](../../../../../scripts/gate/check_bustubx_edu_cli_v312.sh)
