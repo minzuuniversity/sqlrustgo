@@ -569,13 +569,29 @@ impl SqliteMode {
     /// Shared per-statement dispatch: run `execute_sql`, print errors,
     /// set `error_seen`. Caller decides whether to abort.
     fn dispatch_one(&mut self, sql: &str) {
-        // Issue #4619: track BEGIN/COMMIT/ROLLBACK depth so a runtime
-        // error inside a transaction can be auto-aborted (rollback).
-        let trimmed_upper = sql.trim().to_uppercase();
-        let is_begin =
-            trimmed_upper.starts_with("BEGIN") || trimmed_upper.starts_with("START TRANSACTION");
-        let is_commit = trimmed_upper.starts_with("COMMIT");
-        let is_rollback = trimmed_upper.starts_with("ROLLBACK");
+        // Issue #4847: detect BEGIN/COMMIT/ROLLBACK on **any** line of
+        // the statement, not just the first non-whitespace token. The
+        // input is a post-split logical statement which may contain a
+        // leading line comment that confuses `starts_with("BEGIN")`:
+        // e.g. `-- comment\nBEGIN;` is one logical statement but the
+        // first non-whitespace token is `--`, so the prior #4626
+        // workaround never fired and the engine's begin_transaction
+        // rejected with "Transaction already in progress".
+        //
+        // We split on `\n`, then check each line for a leading BEGIN/
+        // COMMIT/ROLLBACK token. The split keeps the first non-blank
+        // line as the "primary" line for engine dispatch; the per-line
+        // check here is purely for BEGIN/COMMIT/ROLLBACK detection.
+        let is_begin = sql.lines().any(|line| {
+            let t = line.trim_start().to_uppercase();
+            t.starts_with("BEGIN") || t.starts_with("START TRANSACTION")
+        });
+        let is_commit = sql
+            .lines()
+            .any(|line| line.trim_start().to_uppercase().starts_with("COMMIT"));
+        let is_rollback = sql
+            .lines()
+            .any(|line| line.trim_start().to_uppercase().starts_with("ROLLBACK"));
 
         // V312-RC-GA / Issue #4626: at top-level (tx_depth == 0), a prior
         // DML statement (INSERT/UPDATE/DELETE/SELECT-FOR-UPDATE) may have
@@ -587,9 +603,21 @@ impl SqliteMode {
         // `ROLLBACK`, the engine's rollback_transaction would reject with
         // "transaction already aborted".
         //
-        // Clear any lingering implicit-tx **before** an explicit BEGIN at
-        // top-level. The COMMIT call is a no-op when `current_tx_id` is
-        // None, so it is safe when no prior DML ran in this batch.
+        // Issue #4847 follow-up: the previous design did
+        // `execute("COMMIT")` to clear the implicit tx. This was wrong
+        // — COMMIT persisted the implicit INSERT before BEGIN, and a
+        // subsequent ROLLBACK would then only undo the UPDATE inside
+        // the new tx, leaving the INSERT committed. SQLite/MySQL
+        // semantics for `INSERT; BEGIN; UPDATE; ROLLBACK; SELECT` are:
+        //   - INSERT is autocommitted (the implicit tx is committed
+        //     before BEGIN, NOT rolled back) because BEGIN starts a
+        //     *new* transaction.
+        //   - The new tx (with the UPDATE) is rolled back.
+        //   - The row from the INSERT must still be visible.
+        //
+        // Concretely: COMMIT the implicit tx (autocommit semantics),
+        // then start the explicit tx. The COMMIT is a no-op when no
+        // implicit tx was open.
         if is_begin && self.tx_depth == 0 {
             let _ = self.engine.execute("COMMIT");
         }
