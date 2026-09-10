@@ -465,7 +465,12 @@ fn compare_values(a: &Value, b: &Value) -> std::cmp::Ordering {
         (Value::Float(x), Value::Integer(y)) => {
             x.partial_cmp(&(*y as f64)).unwrap_or(std::cmp::Ordering::Equal)
         }
-        (Value::Text(x), Value::Text(y)) => x.cmp(y),
+        // Issue #4846: PAD SPACE semantics for CHAR(n) comparison.
+        // SQLite/MySQL/PostgreSQL all trim trailing whitespace on Text
+        // equality; CHAR(n) values are stored blank-padded, so without
+        // this fix `WHERE id='U1'` on a CHAR(10) column would not match
+        // the stored 'U1        ' value.
+        (Value::Text(x), Value::Text(y)) => x.trim_end().cmp(y.trim_end()),
         (Value::Date(x), Value::Date(y)) => x.cmp(y),
         (Value::Timestamp(x), Value::Timestamp(y)) => x.cmp(y),
         _ => std::cmp::Ordering::Equal, // Null, mixed types: equal (degraded)
