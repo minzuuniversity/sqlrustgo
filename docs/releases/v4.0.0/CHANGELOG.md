@@ -16,7 +16,9 @@
   - (\*GitHub 当前 blocked by v3.12.0 GA commit 含 251MB server.log,Phase 0 必须 git filter-branch)
 - ✅ `docs/releases/v4.0.0/LEGACY_ISSUES.md` 整理 (21 必修 + 12 caveat + 8 重新评估)
 - ✅ `docs/releases/v4.0.0/ROADMAP.md` 4 Phase 路线图 (draft → alpha → beta → rc → ga)
-- ✅ `docs/releases/v4.0.0/DEV_PLAN.md` 18 WP + 依赖图 + 估算 76 人周
+- ✅ `docs/releases/v4.0.0/DEV_PLAN.md` 19 WP + 依赖图 + 估算 80 人周
+- ✅ `docs/releases/v4.0.0/GMP_PLATFORM_REQUIREMENTS.md` 新增 GMP-Platform v1.5/v1.6 consumer contract
+- ✅ `docs/releases/v4.0.0/TEST_PLAN.md` 扩展到 V400-G11/G12,覆盖 legacy regression 与 GMP consumer gate
 - ⏳ `.gitignore` 增加 log/tbl/json 排除 (用户 2026-09-08 规则)
 - ⏳ `scripts/gate/check_no_log_tbl_json.sh` CI gate
 - ⏳ `milestone v4.0.0` Gitea 创建
@@ -33,6 +35,7 @@
 - SQL/vector/graph/GMP data 的 unified backup/restore
 - unified access control and audit (覆盖所有路径)
 - 168h multi-model SOAK
+- V400-10 GMP-Platform consumer regression: compile,408,REST/WebUI,audit,CJK,upload smoke
 
 ### v3.12.0 遗留必修 (进入 v4.0.0 GA 前必须关闭)
 
@@ -69,6 +72,8 @@
 - 没有 WAL-backed graph recovery 时,不得宣称 graph database。
 - 没有 cross-model transaction tests 时,不得宣称 multi-model production。
 - 没有 168h multi-model SOAK 时,不得宣称 GA。
+- 没有 V400-10 consumer evidence 时,不得宣称满足 GMP-Platform v1.5/v1.6 全量需求。
+- 408/WebUI/audit 失败未分离 SQLRustGo/GMP/corpus/LLM 责任时,不得用作 GA pass 证据。
 
 ---
 

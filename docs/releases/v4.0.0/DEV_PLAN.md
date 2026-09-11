@@ -2,7 +2,7 @@
 
 > **版本**: v4.0.0
 > **状态**: draft (2026-09-08)
-> **目标**: 落地 18 个 WP,每个 WP 都有 owner + exit evidence + 测试要求
+> **目标**: 落地 19 个 WP,每个 WP 都有 owner + exit evidence + 测试要求
 > **配合**: `ROADMAP.md` (阶段), `LEGACY_ISSUES.md` (issue 来源), `TEST_PLAN.md` (gate), `VERSION_PLAN.md` (产品)
 
 ---
@@ -319,6 +319,30 @@ area ∈ {`v400`, `v400-vec`, `v400-graph`, `v400-txn`, `v400-sec`, `v400-opt`, 
 
 ---
 
+### V400-10 — GMP-Platform consumer regression
+
+**Phase**: 1 entry,2/3 repeat,GA blocking
+**Owner**: release engineering + GMP integration
+**依赖**: V400-01,V400-02,V400-03,V400-04,V400-05,WP-A..WP-G
+**估计**: 每阶段 1 周准备 + 按需运行
+
+**任务**:
+
+1. 维护 `GMP_PLATFORM_REQUIREMENTS.md`,把 GMP-Platform v1.5/v1.6 的新增要求转为验收项。
+2. 建立 GMP-Platform consumer worktree,统一指向当前 SQLRustGo v4.0.0 checkout。
+3. 跑编译矩阵:`gmp-storage`,`gmp-server`,`gmp-graph`,`gmp-kg`。
+4. 跑功能 smoke:Cypher/RAG/vector load,CJK query,REST `/healthz`/`/api/stats`/`/api/search`,upload-then-search。
+5. 跑 408 regression,记录 pass rate、失败归因、p50/p95,并分离 SQLRustGo/GMP/corpus/LLM 责任。
+6. 跑 audit/WebUI parity smoke,覆盖 v1.6 8502/8503 路径。
+7. 刷新 `GMP_PLATFORM_INTEGRATION_VERIFICATION.md` 到最新 GMP commit。
+
+**Exit evidence**:
+- `docs/releases/v4.0.0/evidence/gmp-platform-consumer/summary.md`
+- `GMP_PLATFORM_INTEGRATION_VERIFICATION.md` 引用最新 GMP branch/commit
+- 未通过项全部进入 v4.0.0 issue 或 claim exclusion
+
+---
+
 ### WP-A — v3.12.0 parser 必修
 
 **Phase**: 1
@@ -431,6 +455,8 @@ WP-A (parser) ── WP-B (types) ── WP-C (DDL/integrity) ──┐
    ├─ WP-G (CHAR) ───────────────────────────────────────────────┐  │ │
    │                                                             │  │ │
 V400-01 (vector SQL) ── V400-02 (WAL vec) ── V400-03 (graph) ── V400-04 (graph qry) ── V400-05 (cross txn)
+       │                         │                  │                         │                  │
+       └─────────────────────────┴──────────────────┴──────── V400-10 consumer gate ─────────────┘
                                                                      │                  │
                                                                      └─ V400-08 (optimizer) ┘
                                                                                 │
@@ -453,11 +479,13 @@ V400-01 (vector SQL) ── V400-02 (WAL vec) ── V400-03 (graph) ── V400
 - `cargo test --workspace`
 - `scripts/gate/check_no_log_tbl_json.sh` (V400-00)
 - file size check (`*.log/*.tbl/*.json` < 1MB;`*.anything` < 100MB)
+- consumer-impact note if PR touches storage/vector/graph/rag/mysql-server/string functions
 
 ### 4.2 每晚
 
 - `cargo bench` regression
 - `docs/releases/v4.0.0/evidence/` 自动生成 manifest
+- V400-10 smoke subset when consumer-impact note is present
 
 ### 4.3 Phase 退出
 
@@ -465,6 +493,7 @@ V400-01 (vector SQL) ── V400-02 (WAL vec) ── V400-03 (graph) ── V400
 - beta: B-G1..G6
 - rc: RC-G1..G5
 - ga: GA-G1..G6
+- GMP consumer: V400-G12 at alpha/beta/rc/ga
 
 每 gate 必有 `*.json` evidence file。
 
@@ -472,7 +501,7 @@ V400-01 (vector SQL) ── V400-02 (WAL vec) ── V400-03 (graph) ── V400
 
 ## 5. 测试矩阵
 
-按 TEST_PLAN.md 的 10 个 gate 实施。每个 gate 一个或多个 `crates/*/tests/v400_*.rs`。
+按 TEST_PLAN.md 的 V400-G1..G12 实施。每个 gate 一个或多个 `crates/*/tests/v400_*.rs` 或 `docs/releases/v4.0.0/evidence/gmp-platform-consumer/*`。
 
 ---
 
@@ -480,9 +509,9 @@ V400-01 (vector SQL) ── V400-02 (WAL vec) ── V400-03 (graph) ── V400
 
 ### 6.1 GMP-Platform integration
 
-- PR #207 仍 blocked by self-approval
-- 解决:Phase 0 增加 `merge_whitelist_usernames = ["openclaw", "hermes-agent"]`,或 split PR
-- 影响:GMP-Platform regression suite 必须能跑 (Phase 1 entry criteria)
+- PR #207 仍 blocked by self-approval;同时 GMP-Platform v1.6 已新增 audit/WebUI/eval-408 要求
+- 解决:Phase 0 增加 `merge_whitelist_usernames = ["openclaw", "hermes-agent"]`,或 split PR;并用 V400-10 跟踪 v1.5/v1.6 consumer contract
+- 影响:GMP-Platform regression suite 必须能跑 (Phase 1 entry criteria),GA 前必须刷新到最新 GMP release branch
 
 ### 6.2 llama.cpp embeddings
 
@@ -501,6 +530,12 @@ V400-01 (vector SQL) ── V400-02 (WAL vec) ── V400-03 (graph) ── V400
 - .250 + .252 是仅有的 Gitea,GitHub 尚未 unblock
 - 168h SOAK 需要 7×24 持续运行,需提前申请资源窗口
 
+### 6.5 GMP 运行时问题回流
+
+- CJK `SUBSTRING`/LIKE/identifier 边界必须进入 WP-A/WP-B regression。
+- Ollama/llama.cpp crash 或超时不能计入 SQLRustGo gate pass/fail;408 报告必须拆分责任。
+- gmp-server contention/high CPU 必须进入 V400-09 mixed workload 和 V400-10 REST/audit smoke。
+
 ---
 
 ## 7. 估算与排期
@@ -517,6 +552,7 @@ V400-01 (vector SQL) ── V400-02 (WAL vec) ── V400-03 (graph) ── V400
 | V400-07 | 6 | 3 |
 | V400-08 | 8 | 3 |
 | V400-09 | 168h 实际运行 + 1 周准备 | 3 |
+| V400-10 | 每阶段 1 周 + consumer runs | 1/2/3/GA |
 | WP-A | 4 | 1 |
 | WP-B | 3 | 1 |
 | WP-C | 4 | 2 |
@@ -526,7 +562,7 @@ V400-01 (vector SQL) ── V400-02 (WAL vec) ── V400-03 (graph) ── V400
 | WP-G | 2 | 1 |
 | WP-H | 8 | 2/3 |
 
-**总工作量**: ~76 人周 (~19 人月)
+**总工作量**: ~80 人周 (~20 人月),不含 168h SOAK 实际等待时间
 
 并行假设:
 - parser / types / executor 三组并行
@@ -548,6 +584,7 @@ V400-01 (vector SQL) ── V400-02 (WAL vec) ── V400-03 (graph) ── V400
 | security 负责人 | V400-07 |
 | optimizer 负责人 | V400-08 |
 | ops 负责人 | V400-00, V400-06, V400-09 |
+| release/GMP integration 负责人 | V400-10 |
 | docs 负责人 | LEGACY_ISSUES / ROADMAP / TEST_PLAN / VERSION_PLAN / CHANGELOG 维护 |
 
 ---
@@ -557,14 +594,16 @@ V400-01 (vector SQL) ── V400-02 (WAL vec) ── V400-03 (graph) ── V400
 - [x] `develop/v4.0.0` branch created at `9febebb255` and pushed to 3 remotes
 - [x] LEGACY_ISSUES.md (21+12+8)
 - [x] ROADMAP.md (4 phases)
-- [x] DEV_PLAN.md (本文,18 WP)
-- [ ] CHANGELOG.md 更新 draft phase
+- [x] DEV_PLAN.md (本文,19 WP)
+- [x] GMP_PLATFORM_REQUIREMENTS.md (GMP-Platform v1.5/v1.6 consumer contract)
+- [x] CHANGELOG.md 更新 draft phase
 - [ ] Gitea branch protection: develop/v4.0.0 (草稿期)
 - [ ] `scripts/gate/check_no_log_tbl_json.sh` 完成
 - [ ] `.gitignore` 加入 log/tbl/json 排除
 - [ ] milestone `v4.0.0` 创建
 - [ ] 至少 3 个 v4.0.0 issue 创建 (V400-01, V400-02, V400-00)
 - [ ] GMP-Platform PR #207 合并或 split
+- [ ] V400-10 issue 创建,并刷新 GMP_PLATFORM_INTEGRATION_VERIFICATION.md 到最新 GMP commit
 
 ---
 
@@ -574,4 +613,5 @@ V400-01 (vector SQL) ── V400-02 (WAL vec) ── V400-03 (graph) ── V400
 1. 写 V400-01 issue + spec
 2. 开始 vector SQL syntax 设计
 3. 启动 .252 llama.cpp `--embeddings` flag (ops)
-4. 每周 stand-up 同步 phase exit evidence
+4. 写 V400-10 issue,建立 GMP-Platform consumer worktree
+5. 每周 stand-up 同步 phase exit evidence
