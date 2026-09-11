@@ -60,6 +60,82 @@ fn parse_wal_sync_mode(s: &str) -> sqlrustgo_storage::WalSyncMode {
     }
 }
 
+/// v3.12.0 Issue #4682: per-connection idle (read) timeout. The
+/// previous 600 s default was the root cause of CLOSE_WAIT zombies
+/// accumulating: when a client closed its socket abruptly, the
+/// server's blocking `read_exact` sat waiting for the full 600 s
+/// before noticing. 30 s is a sane default — long enough for
+/// legitimate long-running queries, short enough that dead
+/// connections are reaped within one watchdog cycle.
+fn read_idle_timeout_secs() -> u64 {
+    std::env::var("SQLRUSTGO_IDLE_TIMEOUT_SECS")
+        .ok()
+        .and_then(|s| s.parse::<u64>().ok())
+        .filter(|n| *n >= 1)
+        .unwrap_or(30)
+}
+
+/// v3.12.0 Issue #4682: scan interval for the idle-connection
+/// reaper. The reaper force-closes any connection whose last
+/// activity was more than `read_idle_timeout_secs()` ago.
+fn read_reaper_interval_secs() -> u64 {
+    std::env::var("SQLRUSTGO_REAPER_INTERVAL_SECS")
+        .ok()
+        .and_then(|s| s.parse::<u64>().ok())
+        .filter(|n| *n >= 1)
+        .unwrap_or(5)
+}
+
+fn now_ms() -> u64 {
+    std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .map(|d| d.as_millis() as u64)
+        .unwrap_or(0)
+}
+
+// v3.12.0 Issue #4682: thread-local handle to the current
+// connection's `conn_id`. `handle_connection` sets this on entry;
+// `do_command_loop` calls `touch_connection` with it on every
+// read. When the connection thread exits, the scopeguard calls
+// `deregister_connection` and clears the thread-local.
+thread_local! {
+    static CURRENT_CONN_ID: std::cell::Cell<u64> = const { std::cell::Cell::new(0) };
+}
+
+/// v3.12.0 Issue #4682: per-connection idle tracker. Stored in a
+/// global registry keyed by a monotonically increasing `conn_id`.
+/// `touch()` is called on every successful read; the reaper reads
+/// `idle_secs()` and force-closes anything above the threshold.
+#[derive(Debug)]
+pub struct ConnectionTracker {
+    last_activity_ms: std::sync::atomic::AtomicU64,
+}
+
+impl ConnectionTracker {
+    pub fn new() -> Self {
+        Self {
+            last_activity_ms: std::sync::atomic::AtomicU64::new(now_ms()),
+        }
+    }
+
+    pub fn touch(&self) {
+        self.last_activity_ms
+            .store(now_ms(), std::sync::atomic::Ordering::Relaxed);
+    }
+
+    pub fn idle_secs(&self) -> u64 {
+        let now = now_ms();
+        let last = self
+            .last_activity_ms
+            .load(std::sync::atomic::Ordering::Relaxed);
+        if now <= last {
+            0
+        } else {
+            (now - last) / 1000
+        }
+    }
+}
+
 /// v3.10.0 Issue #3703: build an `ExecutionEngine` with intra-query
 /// parallelism pre-configured from the CLI flag / env var. Centralizes
 /// the wiring so all engine construction sites pick up parallelism
@@ -125,6 +201,116 @@ pub fn spawn_resource_monitor(interval_s: u64) {
             }
         })
         .ok();
+}
+
+/// v3.12.0 Issue #4682: global registry of live connections keyed
+/// by monotonically-increasing `conn_id`. The value holds a
+/// `ConnectionTracker` plus a `Weak<TcpStream>` so the reaper does
+/// not keep dead connections alive. When `handle_connection` exits
+/// the strong count on the `Arc<TcpStream>` drops to zero, the
+/// `Weak` here fails to upgrade, and the entry is dropped on the
+/// next reap sweep.
+static CONNECTION_REGISTRY: std::sync::LazyLock<
+    parking_lot::RwLock<
+        std::collections::HashMap<u64, (ConnectionTracker, std::sync::Weak<std::net::TcpStream>)>,
+    >,
+> = std::sync::LazyLock::new(|| {
+    parking_lot::RwLock::new(std::collections::HashMap::new())
+});
+
+static CONNECTION_NEXT_ID: std::sync::atomic::AtomicU64 =
+    std::sync::atomic::AtomicU64::new(1);
+
+/// v3.12.0 Issue #4682: register a freshly-accepted connection.
+/// Returns the assigned `conn_id`. Caller is responsible for
+/// calling `deregister_connection(conn_id)` on exit.
+pub fn register_connection(
+    stream: std::sync::Arc<std::net::TcpStream>,
+) -> u64 {
+    let conn_id =
+        CONNECTION_NEXT_ID.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
+    let weak = std::sync::Arc::downgrade(&stream);
+    CONNECTION_REGISTRY.write().insert(
+        conn_id,
+        (ConnectionTracker::new(), weak),
+    );
+    conn_id
+}
+
+/// v3.12.0 Issue #4682: update the per-connection last-activity
+/// timestamp. Cheap: a single atomic store.
+pub fn touch_connection(conn_id: u64) {
+    if let Some((tracker, _)) = CONNECTION_REGISTRY.read().get(&conn_id) {
+        tracker.touch();
+    }
+}
+
+/// v3.12.0 Issue #4682: remove a connection from the registry.
+/// Called by the `scopeguard` in `handle_connection` so the
+/// registry never holds stale entries.
+pub fn deregister_connection(conn_id: u64) {
+    CONNECTION_REGISTRY.write().remove(&conn_id);
+}
+
+/// v3.12.0 Issue #4682: idle-connection reaper thread. Spawned
+/// once per process. Wakes every `interval` seconds and
+/// force-closes any connection idle > `idle_timeout` seconds by
+/// setting its read timeout to 1 ms — the next `read_exact` then
+/// returns `TimedOut`, the loop exits cleanly, and the socket is
+/// released. This is the load-bearing fix for the high-CPU bug
+/// where the importer's abrupt closes left CLOSE_WAIT sockets
+/// that tokio worker threads busy-polled forever.
+pub fn spawn_idle_connection_reaper() {
+    let interval = read_reaper_interval_secs();
+    let idle_timeout = read_idle_timeout_secs();
+    let _ = std::thread::Builder::new()
+        .name("sqlrustgo-idle-reaper".to_string())
+        .spawn(move || {
+            tracing::info!(
+                "idle_connection_reaper started: interval={}s idle_timeout={}s",
+                interval,
+                idle_timeout
+            );
+            loop {
+                std::thread::sleep(Duration::from_secs(interval));
+                let now_idle_timeout = read_idle_timeout_secs();
+                let mut registry = CONNECTION_REGISTRY.write();
+                let mut reaped = 0usize;
+
+                registry.retain(|&conn_id, (tracker, weak)| {
+                    let idle = tracker.idle_secs();
+                    if idle > now_idle_timeout {
+                        if let Some(strong) = weak.upgrade() {
+                            // v3.12.0 Issue #4682: shutdown(Both) is
+                            // the only reliable way to wake a stuck
+                            // connection thread because rustls
+                            // ignores SO_RCVTIMEO. shutdown() makes
+                            // any blocking recv return 0 immediately,
+                            // which the command loop sees as EOF and
+                            // exits cleanly.
+                            let _ = strong.shutdown(std::net::Shutdown::Both);
+                            reaped += 1;
+                            tracing::info!(
+                                "idle-reaper: closing conn_id={} (idle {}s > {}s)",
+                                conn_id,
+                                idle,
+                                now_idle_timeout
+                            );
+                        }
+                        false
+                    } else {
+                        true
+                    }
+                });
+                if reaped > 0 {
+                    tracing::info!(
+                        "idle-reaper: reaped {} connections this cycle",
+                        reaped
+                    );
+                }
+            }
+        })
+        .expect("sqlrustgo-idle-reaper spawn");
 }
 
 #[cfg(test)]
@@ -209,6 +395,81 @@ mod helpers_tests {
             sqlrustgo_storage::WalSyncMode::Off => {}
             other => panic!("case-insensitive OFF should parse"),
         }
+    }
+
+    // ---------- v3.12.0 Issue #4682: idle-reaper helpers ----------
+
+    #[test]
+    fn read_idle_timeout_defaults_to_30_seconds() {
+        let prev = std::env::var("SQLRUSTGO_IDLE_TIMEOUT_SECS").ok();
+        std::env::remove_var("SQLRUSTGO_IDLE_TIMEOUT_SECS");
+        assert_eq!(read_idle_timeout_secs(), 30);
+        if let Some(v) = prev {
+            std::env::set_var("SQLRUSTGO_IDLE_TIMEOUT_SECS", v);
+        }
+    }
+
+    #[test]
+    fn read_idle_timeout_honors_env() {
+        let prev = std::env::var("SQLRUSTGO_IDLE_TIMEOUT_SECS").ok();
+        std::env::set_var("SQLRUSTGO_IDLE_TIMEOUT_SECS", "120");
+        assert_eq!(read_idle_timeout_secs(), 120);
+        if let Some(v) = prev {
+            std::env::set_var("SQLRUSTGO_IDLE_TIMEOUT_SECS", v);
+        } else {
+            std::env::remove_var("SQLRUSTGO_IDLE_TIMEOUT_SECS");
+        }
+    }
+
+    #[test]
+    fn read_idle_timeout_clamps_zero() {
+        let prev = std::env::var("SQLRUSTGO_IDLE_TIMEOUT_SECS").ok();
+        std::env::set_var("SQLRUSTGO_IDLE_TIMEOUT_SECS", "0");
+        assert_eq!(read_idle_timeout_secs(), 30);
+        if let Some(v) = prev {
+            std::env::set_var("SQLRUSTGO_IDLE_TIMEOUT_SECS", v);
+        } else {
+            std::env::remove_var("SQLRUSTGO_IDLE_TIMEOUT_SECS");
+        }
+    }
+
+    #[test]
+    fn read_reaper_interval_defaults_to_5_seconds() {
+        let prev = std::env::var("SQLRUSTGO_REAPER_INTERVAL_SECS").ok();
+        std::env::remove_var("SQLRUSTGO_REAPER_INTERVAL_SECS");
+        assert_eq!(read_reaper_interval_secs(), 5);
+        if let Some(v) = prev {
+            std::env::set_var("SQLRUSTGO_REAPER_INTERVAL_SECS", v);
+        }
+    }
+
+    #[test]
+    fn connection_tracker_idle_secs_starts_at_zero() {
+        let tracker = ConnectionTracker::new();
+        assert!(tracker.idle_secs() <= 1, "fresh tracker should be near-zero idle");
+    }
+
+    #[test]
+    fn connection_tracker_touch_resets_idle() {
+        let tracker = ConnectionTracker::new();
+        std::thread::sleep(std::time::Duration::from_millis(20));
+        assert!(tracker.idle_secs() >= 0);
+        tracker.touch();
+        assert!(tracker.idle_secs() <= 1, "touch should reset idle to ~0");
+    }
+
+    #[test]
+    fn connection_register_and_deregister() {
+        let listener = std::net::TcpListener::bind("127.0.0.1:0").expect("bind");
+        let port = listener.local_addr().unwrap().port();
+        let _client = std::net::TcpStream::connect(("127.0.0.1", port)).expect("connect");
+        let (server, _) = listener.accept().expect("accept");
+        let arc = std::sync::Arc::new(server);
+        let cid = register_connection(arc.clone());
+        assert!(cid > 0);
+        assert!(CONNECTION_REGISTRY.read().contains_key(&cid));
+        deregister_connection(cid);
+        assert!(!CONNECTION_REGISTRY.read().contains_key(&cid));
     }
 
     // ---------- compute_double_sha1 ----------
@@ -4413,7 +4674,20 @@ fn do_command_loop<S: Read + Write + DrainWrites>(
     config: &crate::testing::EphemeralConfig,
 ) -> MySqlResult<()> {
     loop {
-        let pkt = Packet::read_from(stream)?;
+        let pkt = match Packet::read_from(stream) {
+            Ok(p) => {
+                // v3.12.0 Issue #4682: refresh the idle-reaper
+                // timestamp on every successful read.
+                CURRENT_CONN_ID.with(|c| {
+                    let cid = c.get();
+                    if cid != 0 {
+                        touch_connection(cid);
+                    }
+                });
+                p
+            }
+            Err(e) => return Err(e),
+        };
         let cmd = pkt.payload.first().copied().unwrap_or(0);
         let payload = &pkt.payload[1..];
         // MySQL/MariaDB protocol: every new client command starts with
@@ -5160,14 +5434,31 @@ fn handle_connection(
     // Prometheus singleton so `/metrics` exposes
     // `sqlrustgo_connections_active` / `sqlrustgo_connections_total`.
     sqlrustgo_telemetry::GLOBAL_METRICS.connection_acquired();
-    let _guard = scopeguard::guard((), |_| {
+    // v3.12.0 Issue #4682: cell-wrapped so the scopeguard closure
+    // can read the conn_id at drop time without holding a mutable
+    // borrow across the function body.
+    let _conn_id_cell = std::sync::Arc::new(std::sync::Mutex::new(0u64));
+    let _conn_id_for_guard = std::sync::Arc::clone(&_conn_id_cell);
+    let _guard = scopeguard::guard((), move |_| {
         // Always decrement on exit, even on panic
         ACTIVE_CONNECTIONS.fetch_sub(1, Ordering::Relaxed);
         sqlrustgo_telemetry::GLOBAL_METRICS.connection_released();
+        // v3.12.0 Issue #4682: drop the entry from the idle-reaper
+        // registry so the reaper does not try to close an already-
+        // closed socket.
+        let cid = *_conn_id_for_guard.lock().unwrap();
+        if cid != 0 {
+            deregister_connection(cid);
+        }
     });
     stream
-        .set_read_timeout(Some(std::time::Duration::from_secs(600)))
+        .set_read_timeout(Some(std::time::Duration::from_secs(
+            read_idle_timeout_secs()
+        )))
         .ok();
+    let cid = register_connection(Arc::new(stream.try_clone().unwrap()));
+    *_conn_id_cell.lock().unwrap() = cid;
+    CURRENT_CONN_ID.with(|c| c.set(cid));
     stream
         .set_write_timeout(Some(std::time::Duration::from_secs(60)))
         .ok();
@@ -5488,11 +5779,11 @@ pub fn run_server_v2(
 /// accept loop starts.
 pub fn run_server_with_listener(listener: TcpListener) -> MySqlResult<()> {
     let shutdown = std::sync::Arc::new(std::sync::atomic::AtomicBool::new(false));
-    // Spawn the resource monitor (1 sample per 30s by default).
-    // The monitor writes periodic "RESOURCE_MONITOR" log lines that
-    // capture RSS, FD, thread count, and connection counters. This is
-    // the primary diagnostic tool for crash analysis.
-    spawn_resource_monitor(30);
+    // v3.12.0 Issue #4682: monitor + reaper are spawned in the
+    // underlying `_with_bootstrap_tables_and_sql` function so they
+    // fire exactly once per process. Previously both this entrypoint
+    // and that one called `spawn_*`, leading to 2x resource monitors
+    // and 2x idle reapers.
     run_server_with_listener_and_shutdown(listener, shutdown)
 }
 
@@ -5532,6 +5823,12 @@ pub(crate) fn run_server_with_listener_and_shutdown_with_bootstrap_tables_and_sq
     // `bulk_insert_buffer_size`, not a process-global.
     config: std::sync::Arc<crate::testing::EphemeralConfig>,
 ) -> MySqlResult<()> {
+    // v3.12.0 Issue #4682: spawn the background threads here too —
+    // not just in `run_server_with_listener` — so that production
+    // `run_server_v2` (which calls this function directly) gets the
+    // resource monitor and the idle-connection reaper.
+    spawn_resource_monitor(30);
+    spawn_idle_connection_reaper();
     let tls_config = Arc::new(make_tls_config());
     tracing::info!("TLS ready (self-signed cert)");
 
@@ -5594,10 +5891,11 @@ pub(crate) fn run_server_with_listener_and_shutdown_with_bootstrap_tables_and_sq
                 match recovery.recover(&mut file_storage, &mut wal_manager_for_recovery) {
                     Ok(report) => {
                         tracing::info!(
-                            "WAL recovery: total={} committed_txns={} rows_inserted={}",
+                            "WAL recovery: total={} committed_txns={} rows_inserted={} skipped={}",
                             report.entries_total,
                             report.committed_txns,
-                            report.rows_inserted
+                            report.rows_inserted,
+                            report.skipped_entries
                         );
                         let _ = file_storage.flush();
                     }
@@ -5651,10 +5949,11 @@ pub(crate) fn run_server_with_listener_and_shutdown_with_bootstrap_tables_and_sq
                 match recovery.recover(&mut file_storage, &mut wal_manager_for_recovery) {
                     Ok(report) => {
                         tracing::info!(
-                            "WAL recovery: total={} committed_txns={} rows_inserted={}",
+                            "WAL recovery: total={} committed_txns={} rows_inserted={} skipped={}",
                             report.entries_total,
                             report.committed_txns,
-                            report.rows_inserted
+                            report.rows_inserted,
+                            report.skipped_entries
                         );
                         let _ = file_storage.flush();
                     }
