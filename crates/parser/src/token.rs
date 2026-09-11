@@ -133,6 +133,12 @@ pub enum Token {
     Maxvalue,
     Minvalue,
     Over,
+    // V400-01 / Issue #4877: vector SQL syntax.
+    // `VECTOR(N[, dtype])` column type and `distance(vec, vec)` function.
+    Vector,
+    Hnsw,
+    Ivf,
+    Distance,
     Between,
     Unbounded,
     Escape,
@@ -533,6 +539,11 @@ impl fmt::Display for Token {
             Token::Maxvalue => write!(f, "MAXVALUE"),
             Token::Minvalue => write!(f, "MINVALUE"),
             Token::Over => write!(f, "OVER"),
+            // V400-01 / Issue #4877
+            Token::Vector => write!(f, "VECTOR"),
+            Token::Hnsw => write!(f, "HNSW"),
+            Token::Ivf => write!(f, "IVF"),
+            Token::Distance => write!(f, "DISTANCE"),
             Token::Between => write!(f, "BETWEEN"),
             Token::Escape => write!(f, "ESCAPE"),
             Token::Nulls => write!(f, "NULLS"),
