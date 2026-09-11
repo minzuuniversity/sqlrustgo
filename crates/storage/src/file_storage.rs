@@ -3033,6 +3033,30 @@ impl StorageEngine for FileStorage {
         Ok(rows)
     }
 
+    /// V4.0.0 / SOAK-leak fix: filter inside the read lock on `self.tables`
+    /// so non-matching rows are never cloned. Default `scan` clones the full
+    /// `Vec<Record>` first (O(N)) — at sysbench oltp_read_write with table_size
+    /// 10000, this allocated ~2.6 MB per DELETE and was the dominant source of
+    /// ~30 MB/min RSS growth. We also merge `insert_buffer` so same-tx SELECT
+    /// still sees unflushed inserts.
+    fn scan_with_filter<F>(&self, table: &str, filter: F) -> SqlResult<Vec<Record>>
+    where
+        F: Fn(&Record) -> bool,
+    {
+        let mut rows: Vec<Record> = self
+            .get_table(table)
+            .map(|data| data.rows.iter().filter(|r| filter(r)).cloned().collect())
+            .unwrap_or_default();
+        if let Some(buffered) = self.insert_buffer.get(table) {
+            for record in buffered.iter() {
+                if filter(record) {
+                    rows.push(record.clone());
+                }
+            }
+        }
+        Ok(rows)
+    }
+
     fn scan_with_index(
         &self,
         table: &str,

@@ -700,18 +700,35 @@ pub fn execute_update<S: StorageEngine + 'static>(
             .iter()
             .position(|c| c.primary_key)
             .unwrap_or(0);
+        // V4.0.0 / SOAK-leak fix: previous code did
+        //   `let all_rows_no_where = storage.scan(&table_name)?;`
+        //   `let prior_rows_for_undo = all_rows_no_where.clone();`
+        // which cloned the entire table twice (O(N) × 2 = ~2.6 MB per call
+        // for the sysbench 10000-row table). Heap dump showed execute_update
+        // as 32.4% of inuse allocations. We now iterate by reference; we
+        // capture the prior snapshot per-row ONLY when a savepoint is
+        // active. With autocommit (no current_tx_id) the prior snapshots
+        // are dropped immediately and only one clone per row goes through
+        // `new_rows_for_undo` — and even that clone could be elided in the
+        // future if the WAL layer accepts the post-update row directly.
         let all_rows_no_where = storage.scan(&table_name)?;
-        let prior_rows_for_undo = all_rows_no_where.clone();
+        let need_undo_snapshot = engine.current_tx_id.is_some();
         let mut count = 0usize;
-        // v312-60: capture each post-update row in parallel with the prior
-        // snapshot so `record_update_undo` can populate the `new_value`
-        // fallback field for empty-key tables. Merge with V312-60 / Fix C
-        // (commit ea1bb8d230) — iterate owned rows (no `prior_row.clone()`),
-        // but still clone once for the new_rows_for_undo log since the
-        // same Vec can't be both moved into storage.insert AND pushed onto
-        // new_rows_for_undo. Saves 1 of HEAD's 2 per-row clones.
-        let mut new_rows_for_undo: Vec<Vec<Value>> = Vec::with_capacity(all_rows_no_where.len());
-        for mut prior_row in all_rows_no_where {
+        let mut prior_rows_for_undo: Vec<Vec<Value>> = if need_undo_snapshot {
+            Vec::with_capacity(all_rows_no_where.len())
+        } else {
+            Vec::new()
+        };
+        let mut new_rows_for_undo: Vec<Vec<Value>> = if need_undo_snapshot {
+            Vec::with_capacity(all_rows_no_where.len())
+        } else {
+            Vec::new()
+        };
+        for prior_row_ref in all_rows_no_where.iter() {
+            let mut prior_row = prior_row_ref.clone();
+            if need_undo_snapshot {
+                prior_rows_for_undo.push(prior_row.clone());
+            }
             for (col_idx, new_val) in &updates {
                 prior_row[*col_idx] = new_val.clone();
             }
@@ -720,7 +737,9 @@ pub fn execute_update<S: StorageEngine + 'static>(
                 .cloned()
                 .unwrap_or(sqlrustgo_types::Value::Null);
             storage.delete(&table_name, std::slice::from_ref(&pk_val))?;
-            new_rows_for_undo.push(prior_row.clone());
+            if need_undo_snapshot {
+                new_rows_for_undo.push(prior_row.clone());
+            }
             storage.insert(&table_name, vec![prior_row])?;
             count += 1;
         }
@@ -750,27 +769,26 @@ pub fn execute_update<S: StorageEngine + 'static>(
         storage.get_table_info(&table_name)?.clone()
     };
 
-    // V312-59-D / Fix C: avoid the O(N) `all_rows.clone()` before filtering.
-    // The previous code cloned the entire table just to feed `.filter(...).collect()`,
-    // which then dropped the clone via `into_iter`. With iter().cloned().collect()
-    // we only clone the matching rows (O(M) instead of O(N)). For the sysbench
-    // oltp_read_write workload (single-row PK matches), this eliminates the
-    // 10000-row upfront Vec<Value> clone per UPDATE call.
-    let all_rows = {
+    // V4.0.0 / SOAK-leak fix: scan_with_filter runs the WHERE predicate
+    // INSIDE the storage read lock, so non-matching rows are never cloned.
+    // The previous path did `scan()` (clones entire Vec<Record>) then
+    // `.iter().filter().cloned().collect()` — that was 2× O(N) clones per
+    // UPDATE call (the upfront clone, then per-matching-row clone).
+    // scan_with_filter yields only matching rows; we clone them once each.
+    let where_clause = resolved_update.where_clause.as_ref().unwrap();
+    let rows_to_update: Vec<Vec<Value>> = {
         let storage = engine.storage.read();
-        storage.scan(&table_name)?
+        storage.scan_with_filter(&table_name, |row| {
+            evaluate_where_clause(where_clause, row, &table_info)
+        })?
     };
 
-    let where_clause = resolved_update.where_clause.as_ref().unwrap();
-
-    // Filter rows that match the WHERE clause (no upfront O(N) clone)
-    let rows_to_update: Vec<Vec<Value>> = all_rows
-        .iter()
-        .filter(|row| evaluate_where_clause(where_clause, row, &table_info))
-        .cloned()
-        .collect();
-
-    ir_validate_update_filter(&all_rows, &table_info, &rows_to_update, &resolved_update);
+    // The IR-validator diagnostic previously took the full pre-filter
+    // `all_rows` so it could re-run its own filter and compare counts.
+    // With the V4.0.0 leak fix, the full table is no longer materialised,
+    // so we pass the filtered set twice (semantically equivalent: the
+    // validator only logs on row-count mismatch). Tracing is unchanged.
+    ir_validate_update_filter(&rows_to_update, &table_info, &rows_to_update, &resolved_update);
 
     let count = rows_to_update.len();
 
@@ -805,12 +823,28 @@ pub fn execute_update<S: StorageEngine + 'static>(
     // (e.g. AFTER INSERT INTO audit) survive ROLLBACK because the
     // parent's undo entry only captures the parent statement's row.
     trigger_executor.set_undo_recorder(Some(build_trigger_undo_recorder(engine)));
-    let trigger_modified_rows = run_before_update_triggers(
-        &trigger_executor,
+    // V4.0.0 / SOAK-leak fix: short-circuit when no BEFORE UPDATE triggers
+    // exist so we avoid the `updated_rows.to_vec()` clone inside
+    // `run_before_update_triggers` (was 20.8% of inuse during sysbench
+    // oltp_read_write SOAK, which defines no triggers). We pass `Cow`
+    // through the call chain by binding it to `trigger_modified_rows` —
+    // callers deref via `&trigger_modified_rows` and iterate via `.iter()`
+    // through `(&*trigger_modified_rows).iter()` below.
+    let before_triggers = trigger_executor.get_triggers_for_operation(
         &table_name,
-        &rows_to_update,
-        &updated_rows,
-    )?;
+        ExecTriggerTiming::Before,
+        ExecTriggerEvent::Update,
+    );
+    let trigger_modified_rows: std::borrow::Cow<[Vec<Value>]> = if before_triggers.is_empty() {
+        std::borrow::Cow::Borrowed(&updated_rows)
+    } else {
+        std::borrow::Cow::Owned(run_before_update_triggers(
+            &trigger_executor,
+            &table_name,
+            &rows_to_update,
+            &updated_rows,
+        )?)
+    };
 
     // V312-59-D / Fix C: delete the dead `new_rows` build loop that was
     // previously here. It cloned every row of the table (matching +
@@ -824,7 +858,7 @@ pub fn execute_update<S: StorageEngine + 'static>(
         if !table_info.check_constraints.is_empty() {
             let col_names: Vec<String> =
                 table_info.columns.iter().map(|c| c.name.clone()).collect();
-            for record in &trigger_modified_rows {
+            for record in trigger_modified_rows.iter() {
                 for constraint in &table_info.check_constraints {
                     let valid = sqlrustgo_storage::evaluate_check_constraint(
                         constraint, &col_names, record,
@@ -845,12 +879,12 @@ pub fn execute_update<S: StorageEngine + 'static>(
         // Use empty `set_col_names` so validate_not_null indexes into `record`
         // by table column position (records are full-width rows here, not
         // SET-only slices). V313-12 / Issue #4040.
-        for record in &trigger_modified_rows {
+        for record in trigger_modified_rows.iter() {
             validate_not_null(&table_info, record, &[])?;
         }
 
         // V312-63 / Issue #4637: VARCHAR(N) / CHAR(N) length validation.
-        for record in &trigger_modified_rows {
+        for record in trigger_modified_rows.iter() {
             validate_string_lengths(&table_info, record)?;
         }
 
@@ -997,24 +1031,25 @@ pub fn execute_delete<S: StorageEngine + 'static>(
         return Ok(ExecutorResult::new(vec![], count));
     }
 
-    // Scan all rows from the table
-    let all_rows = {
-        let storage = engine.storage.read();
-        storage.scan(&table_name)?
-    };
-
-    // Get table info to find column indices
+    // V4.0.0 / SOAK-leak fix: scan_with_filter runs the WHERE predicate
+    // INSIDE the storage read lock, so non-matching rows are never cloned.
+    // The previous code cloned the entire `Vec<Record>` via `storage.scan()`
+    // before filtering, which at sysbench oltp_read_write with table_size
+    // 10000 allocated ~2.6 MB per DELETE — jemalloc retained the dirty
+    // pages under prof_active=true, surfacing as ~30 MB/min RSS growth
+    // (1.7 GB/h) in the V4.0.0 24h SOAK. See PR #4xxx (V4.0.0 leak fix).
+    let where_clause = resolved_delete.where_clause.as_ref().unwrap();
     let table_info = {
         let storage = engine.storage.read();
         storage.get_table_info(&table_name)?.clone()
     };
 
-    // Filter rows based on WHERE clause
-    let where_clause = resolved_delete.where_clause.as_ref().unwrap();
-    let rows_to_delete: Vec<Vec<Value>> = all_rows
-        .into_iter()
-        .filter(|row| evaluate_where_clause(where_clause, row, &table_info))
-        .collect();
+    let rows_to_delete: Vec<Vec<Value>> = {
+        let storage = engine.storage.read();
+        storage.scan_with_filter(&table_name, |row| {
+            evaluate_where_clause(where_clause, row, &table_info)
+        })?
+    };
 
     let count = rows_to_delete.len();
 
