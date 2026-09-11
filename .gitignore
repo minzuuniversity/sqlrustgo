@@ -177,3 +177,51 @@ docs/releases/v3.12.0/perf/TPCH_SF1_CORRECTNESS_BUNDLE/
 # Match the existing *.log/*.tbl/*.json negation block
 !docs/formal/*TTrace*.bin
 !docs/formal/*_TTrace_*.bin
+
+# 2026-09-11: additional untracked artifacts found during worktree audit
+# Test output directories (timestamps appended) — not for tracking
+benchmark_results/
+.coverage-baseline/
+test_results_72h/
+results/
+
+# Build artifacts / runtime dumps
+data/customer.tbl
+data/lineitem.tbl
+data/nation.tbl
+data/orders.tbl
+data/part.tbl
+data/partsupp.tbl
+data/region.tbl
+data/soak-final/
+data/soak-fixed/
+data/soak-manual/
+data/soak-mysql/
+data/soak-simple/
+data/soak-sysbench/
+data/.DS_Store
+data/.sqlrustgo/
+
+# Release artifacts (local builds, not source)
+releases/
+
+# Evidence-binding output directory (regenerated each run)
+evidence_binding_out/
+
+# Gate results from past runs
+docs/releases/v3.10.0/gate-results/
+
+# Duplicate AI collaboration dir (canonical is docs/AI增强软件工程/)
+docs/ai_collaboration/
+
+# Teaching plans (not for tracking)
+docs/tutorials/教学实战/
+docs/tutorials/教学计划/
+docs/教学实战/
+docs/教学计划/
+data/soak-test/
+data/soak-test-final/
+data/soak-test2/
+
+# Claude Code workspace config (per-user, not for tracking)
+.claude/claude_desktop_config.json
