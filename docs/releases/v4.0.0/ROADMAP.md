@@ -46,8 +46,9 @@ v3.12.0 (GA: 2026-09-04)             v4.0.0 (target)
 | v4.0.0 LEGACY_ISSUES.md | **新创建** (2026-09-08) |
 | v4.0.0 DEV_PLAN.md | **新创建** (2026-09-08) |
 | v4.0.0 ROADMAP.md | **本文档** (2026-09-08) |
+| GMP-Platform consumer contract | `GMP_PLATFORM_REQUIREMENTS.md` (2026-09-11) |
 | sqlrustgo-graph crate | M1-M5 已合并到 develop/v3.12.0 (`feature/gmp-graph-publish-v2` PR #4851) |
-| GMP-Platform 集成 | PR #207 打开 (blocked by self-approval) |
+| GMP-Platform 集成 | v1.5/v1.6 consumer 要求已回流为 V400-10;PR #207/self-approval blocker 仍需处理 |
 
 ---
 
@@ -70,6 +71,8 @@ v3.12.0 (GA: 2026-09-04)             v4.0.0 (target)
 10. ⏳ **Vector SQL 语法 spec**: parser 增加 `VECTOR(N,)` + vector index DDL
 11. ⏳ **Graph crate (sqlrustgo-graph) 升级**: 第一等公民暴露 (V400-04) 的 query surface
 12. ⏳ **milestone 创建**: Gitea 上 `v4.0.0` milestone (open state)
+13. ✅ **GMP-Platform consumer contract**: `GMP_PLATFORM_REQUIREMENTS.md` 建立 v1.5/v1.6 要求矩阵
+14. ⏳ **GMP-Platform 验证刷新**: `GMP_PLATFORM_INTEGRATION_VERIFICATION.md` 更新到 v1.6 分支或后续 develop/v1.6.0
 
 **退出证据**:
 
@@ -77,6 +80,7 @@ v3.12.0 (GA: 2026-09-04)             v4.0.0 (target)
 - `develop/v4.0.0` branch protection 已 enable
 - 至少 3 个 `v4.0.0` issues 创建
 - `scripts/gate/check_no_log_tbl_json.sh` 写完 + dry-run 通过
+- GMP-Platform consumer gate 已创建 issue,并明确 408/WebUI/audit/CJK 验证命令
 
 ---
 
@@ -217,6 +221,7 @@ v4.0.0 工作包 (沿用 VERSION_PLAN §4 但加入 v3.12.0 遗留 + 治理项):
 | **V400-07** | unified ACL + audit | Phase 3 | security | permission bypass fails closed |
 | **V400-08** | multi-model optimizer + metadata filters | Phase 3 | optimizer | query plan evidence |
 | **V400-09** | 168h multi-model SOAK | Phase 3 | ops | 168h SOAK report |
+| **V400-10** | GMP-Platform consumer regression | Phase 1/2/3/GA | release eng + GMP integration | latest GMP compile + 408/WebUI/audit smoke |
 | **WP-A** | v3.12.0 parser 必修 (#4708 #4696 #4710 etc) | Phase 1 | parser | 17 issues closed |
 | **WP-B** | v3.12.0 type/function 必修 (#4721 #4674 etc) | Phase 1 | types | 7 issues closed |
 | **WP-C** | v3.12.0 DDL/integrity 必修 (#4652 #4672 #4682) | Phase 2 | storage | 6 issues closed |
@@ -226,7 +231,7 @@ v4.0.0 工作包 (沿用 VERSION_PLAN §4 但加入 v3.12.0 遗留 + 治理项):
 | **WP-G** | type/comparison 必修 (#4846) | Phase 1 | types | 1 issue closed |
 | **WP-H** | v3.13/defer 重新评估 (#4707 #4699 #4688 #4671 等) | Phase 2/3 | mixed | 8 issues triage 完成 |
 
-**总工作包**: 18 个
+**总工作包**: 19 个
 
 ---
 
@@ -236,6 +241,8 @@ v4.0.0 工作包 (沿用 VERSION_PLAN §4 但加入 v3.12.0 遗留 + 治理项):
 Phase 0: V400-00
             │
 Phase 1:   WP-A → WP-D → WP-F → WP-G → V400-01 → V400-02 → WP-B
+            │                                      │
+            └────────────── V400-10 consumer compile/smoke ──────────────┐
                                                       │
                                               ┌───────┴───────┐
 Phase 2:                                       ▼               ▼
@@ -254,6 +261,9 @@ Phase 3:                                                  ▼
                                                           ▼
                                               V400-09 (168h SOAK)
                                                   │
+                                                  ▼
+                                          V400-10 final consumer gate
+                                                  │
 Phase 4:                                          ▼
                                               GA gate (8 items)
 ```
@@ -268,6 +278,9 @@ Phase 4:                                          ▼
 | cross-model transaction 性能 | 168h SOAK fail | 中 | Phase 2 早期做 micro-bench;defer 复杂 case 到 v4.1 |
 | GMP-Platform PR #207 self-approval | GMP 集成延后 | 中 | Phase 0 增加 admin PR merge whitelist (openclaw + hermes-agent) |
 | sqlrustgo-graph 升级破坏现有 caller | regression | 中 | Phase 2 早期 regression suite + GMP-Platform consumer test |
+| GMP-Platform v1.6 新增 audit/WebUI/408 UI 要求未回流 | GA overclaim | 高 | V400-10 + `GMP_PLATFORM_REQUIREMENTS.md` 作为 consumer contract |
+| CJK 字符串边界/LIKE/SUBSTRING panic | GMP WebUI/REST 不稳定 | 中 | GMP-CJK gate + WP-A/WP-B regression |
+| LLM/Ollama crash 被误算为 DB failure | 测试误判 | 中 | 408 报告必须分离 SQLRustGo/GMP/corpus/LLM 责任 |
 | 168h SOAK 暴露一致性 bug | GA 推迟 | 中 | Phase 2 24h 试,问题 early-detection |
 | 多模型 optimizer 复杂度 | V400-08 推迟 | 中 | Phase 1 skeleton,Phase 3 完整 |
 
