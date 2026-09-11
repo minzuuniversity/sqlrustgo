@@ -110,6 +110,8 @@ pub fn classify_statement(statement: &Statement) -> QueryClass {
         Statement::CreateTable(_) => QueryClass::Write,
         Statement::CreateIndex(_) => QueryClass::Write,
         Statement::CreateFulltextIndex(_) => QueryClass::Write,
+        // V400-01 / Issue #4877: VECTOR INDEX is a write (DDL).
+        Statement::CreateVectorIndex(_) => QueryClass::Write,
         Statement::CreateView(_) => QueryClass::Write,
         Statement::DropTable(_) => QueryClass::Write,
         Statement::DropIndex(_) => QueryClass::Write,

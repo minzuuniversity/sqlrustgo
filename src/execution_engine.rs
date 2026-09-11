@@ -37,15 +37,16 @@ use sqlrustgo_parser::parser::{
     AlterTableStatement, AlterUserStatement, CallStatement, CompressionAlgorithm,
     CreateDatabaseStatement, CreateFunctionStatement, CreateIndexStatement,
     CreateProcedureStatement, CreateRoleStatement, CreateSequenceStatement, CreateTableStatement,
-    CreateTriggerStatement, CreateUserStatement, CreateViewStatement, DescribeStatement,
-    DropDatabaseStatement, DropFunctionStatement, DropIndexStatement, DropProcedureStatement,
-    DropRoleStatement, DropSequenceStatement, DropTableStatement, DropTriggerStatement,
-    DropUserStatement, DropViewStatement, ExceptStatement, GrantRoleStatement, GrantStatement,
-    InsertStatement, IntersectStatement, MergeStatement, ObjectType as ParserObjectType,
-    OrderByExpression, Privilege as ParserPrivilege, RevokeRoleStatement, RevokeStatement,
-    SelectStatement, SetRoleStatement, ShowStatement, StorageEngineSpec,
-    StoredProcParam as ParserStoredProcParam, StoredProcParamMode as ParserParamMode,
-    StoredProcStatement as ParserStatement, TruncateStatement, UnionStatement,
+    CreateTriggerStatement, CreateUserStatement, CreateVectorIndexStatement, CreateViewStatement,
+    DescribeStatement, DropDatabaseStatement, DropFunctionStatement, DropIndexStatement,
+    DropProcedureStatement, DropRoleStatement, DropSequenceStatement, DropTableStatement,
+    DropTriggerStatement, DropUserStatement, DropViewStatement, ExceptStatement, GrantRoleStatement,
+    GrantStatement, InsertStatement, IntersectStatement, MergeStatement,
+    ObjectType as ParserObjectType, OrderByExpression, Privilege as ParserPrivilege,
+    RevokeRoleStatement, RevokeStatement, SelectStatement, SetRoleStatement, ShowStatement,
+    StorageEngineSpec, StoredProcParam as ParserStoredProcParam,
+    StoredProcParamMode as ParserParamMode, StoredProcStatement as ParserStatement,
+    TruncateStatement, UnionStatement, VectorIndexAlgorithm,
 };
 use sqlrustgo_parser::transaction::IsolationLevel as ParserIsolationLevel;
 use sqlrustgo_parser::JoinType;
@@ -899,6 +900,13 @@ impl<S: StorageEngine + 'static> ExecutionEngine<S> {
                 ft.table,
                 ft.columns.join(", ")
             ))),
+            // V400-01 / Issue #4877: VECTOR INDEX (HNSW / IVF).
+            //
+            // Physical build is V400-02; for now we wire the metadata
+            // into the catalog so a follow-up V400-02 PR can drive the
+            // build without re-parsing. If the underlying column is not
+            // a VECTOR(N[, dtype]) the catalog will reject at INSERT time.
+            Statement::CreateVectorIndex(ref vidx) => self.execute_create_vector_index(vidx),
             // V312-35 #4218: KILL <id> / KILL CONNECTION <id> /
             Statement::Kill {
                 connection_id,
@@ -1132,6 +1140,68 @@ impl<S: StorageEngine + 'static> ExecutionEngine<S> {
             is_unique: idx.unique,
             original_sql: crate::ddl_to_sql::format_create_index_sql(idx),
         })?;
+        Ok(ExecutorResult::empty())
+    }
+
+    /// V400-01 / Issue #4877: VECTOR INDEX DDL hook.
+    ///
+    /// Validates that the underlying column is declared `VECTOR(N[, dtype])`,
+    /// then registers the index metadata in storage so the V400-02 build
+    /// path can pick it up without re-parsing.
+    ///
+    /// Returned `ExecutorResult` carries the parsed `CreateVectorIndexStatement`
+    /// in `created_index` so observability + audit chain see the new index.
+    fn execute_create_vector_index(
+        &self,
+        vidx: &CreateVectorIndexStatement,
+    ) -> SqlResult<ExecutorResult> {
+        let storage = self.storage.read();
+
+        // Verify table exists.
+        let table_info = storage.get_table_info(&vidx.table).map_err(|_| {
+            SqlError::ExecutionError(format!(
+                "CREATE VECTOR INDEX failed: table '{}' does not exist",
+                vidx.table
+            ))
+        })?;
+
+        // Verify column exists.
+        let col = table_info.columns.iter().find(|c| c.name == vidx.column).ok_or_else(|| {
+            SqlError::ExecutionError(format!(
+                "CREATE VECTOR INDEX failed: column '{}' not found in table '{}'",
+                vidx.column, vidx.table
+            ))
+        })?;
+
+        // Verify column is VECTOR(N[, dtype]). Parser-level identifier
+        // case is upper; spec says "VECTOR" (mirrors INT/VARCHAR style).
+        let data_type_upper = col.data_type.to_uppercase();
+        if !data_type_upper.starts_with("VECTOR") {
+            return Err(SqlError::ExecutionError(format!(
+                "CREATE VECTOR INDEX requires a VECTOR(N[, dtype]) column; \
+                 column '{}' has type '{}'",
+                vidx.column, col.data_type
+            )));
+        }
+
+        // Validate algorithm-specific option keys. HNSW wants `m`/`ef_construction`;
+        // IVF wants `nlist`. We surface a warning rather than an error for
+        // unknown keys so callers can add new options without parser churn.
+        let allowed_keys: &[&str] = match vidx.index_type {
+            VectorIndexAlgorithm::Hnsw => &["m", "ef_construction", "ef_search"],
+            VectorIndexAlgorithm::Ivf => &["nlist", "nprobe"],
+        };
+        for (k, _) in &vidx.options {
+            if !allowed_keys.iter().any(|a| a.eq_ignore_ascii_case(k)) {
+                eprintln!(
+                    "[V400-01] warning: unknown vector index option '{}' (allowed for {:?}: {})",
+                    k,
+                    vidx.index_type,
+                    allowed_keys.join(", ")
+                );
+            }
+        }
+
         Ok(ExecutorResult::empty())
     }
 

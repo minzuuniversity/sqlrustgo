@@ -87,6 +87,8 @@ pub enum Statement {
     CreateIndex(CreateIndexStatement),
     // V312-64 / Issue #4645: MySQL-compatible fulltext index (parser-accept, executor-reject).
     CreateFulltextIndex(CreateFulltextIndexStatement),
+    // V400-01 / Issue #4877: vector index (HNSW / IVF).
+    CreateVectorIndex(CreateVectorIndexStatement),
     CreateView(CreateViewStatement),
     DropTable(DropTableStatement),
     DropIndex(DropIndexStatement),
@@ -302,6 +304,46 @@ pub struct CreateFulltextIndexStatement {
     pub table: String,
     pub columns: Vec<String>,
     pub if_not_exists: bool,
+}
+
+/// V400-01 / Issue #4877: CREATE VECTOR INDEX statement.
+///
+/// Syntax (per docs/releases/v4.0.0/DEV_PLAN.md §V400-01):
+/// ```sql
+/// CREATE VECTOR INDEX idx_name ON table USING HNSW (column) WITH (m=16, ef_construction=200);
+/// CREATE VECTOR INDEX idx_name ON table USING IVF  (column) WITH (nlist=100);
+/// ```
+///
+/// The parser accepts both forms. Execution backend is wired through
+/// `crates/gmp::vector_index::VectorIndexType` (Hnsw / Ivf). Physical index
+/// build is the V400-02 work; this PR is syntax + AST + parser dispatch only.
+#[derive(Debug, Clone, PartialEq)]
+pub struct CreateVectorIndexStatement {
+    pub name: String,
+    pub table: String,
+    pub column: String,
+    /// `Hnsw` or `Ivf`.
+    pub index_type: VectorIndexAlgorithm,
+    /// Free-form WITH (...) options as key=value pairs, preserved for executor.
+    /// Examples: `m=16`, `ef_construction=200`, `nlist=100`.
+    pub options: Vec<(String, String)>,
+}
+
+/// V400-01 / Issue #4877: vector index algorithm kind.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub enum VectorIndexAlgorithm {
+    Hnsw,
+    Ivf,
+}
+
+impl VectorIndexAlgorithm {
+    /// Render the algorithm keyword as it appears in CREATE VECTOR INDEX.
+    pub fn as_keyword(&self) -> &'static str {
+        match self {
+            Self::Hnsw => "HNSW",
+            Self::Ivf => "IVF",
+        }
+    }
 }
 
 /// DROP INDEX statement
@@ -3047,6 +3089,9 @@ impl Parser {
                 self.next();
                 self.parse_create_fulltext_index()
             }
+            // V400-01 / Issue #4877: CREATE VECTOR INDEX
+            // (HNSW / IVF). Parser accepts, executor wires to GMP vector_index.
+            Some(Token::Vector) => self.parse_create_vector_index(),
             // V312-76 / Issue #4682: `CREATE VIRTUAL TABLE name USING
             // module ( args )` (SQLite FTS5 / RTree). VIRTUAL is not a
             // reserved keyword, so it arrives as a plain Identifier.
@@ -3441,6 +3486,122 @@ impl Parser {
                 if_not_exists,
             },
         ))
+    }
+
+    /// V400-01 / Issue #4877: parse `CREATE VECTOR INDEX ... ON t USING HNSW (col) WITH (...)`.
+    ///
+    /// Grammar:
+    /// ```text
+    /// CREATE VECTOR INDEX [IF NOT EXISTS] name ON table USING HNSW (column) WITH (opt=value, ...);
+    /// CREATE VECTOR INDEX [IF NOT EXISTS] name ON table USING IVF  (column) WITH (opt=value, ...);
+    /// ```
+    fn parse_create_vector_index(&mut self) -> Result<Statement, String> {
+        // CREATE VECTOR already partially consumed at dispatch site; consume `VECTOR`.
+        self.expect(Token::Vector)?;
+        self.expect(Token::Index)?;
+
+        let _if_not_exists = if matches!(self.current(), Some(Token::If)) {
+            self.next();
+            self.expect(Token::Not)?;
+            self.expect(Token::Exists)?;
+            true
+        } else {
+            false
+        };
+
+        let index_name = match self.next() {
+            Some(Token::Identifier(name)) => name,
+            Some(t) => return Err(format!("Expected vector index name, got {:?}", t)),
+            None => return Err("Expected vector index name".to_string()),
+        };
+
+        self.expect(Token::On)?;
+
+        let table_name = match self.next() {
+            Some(Token::Identifier(name)) => name,
+            Some(t) => return Err(format!("Expected table name after ON, got {:?}", t)),
+            None => return Err("Expected table name after ON".to_string()),
+        };
+
+        self.expect(Token::Using)?;
+
+        let index_type = match self.current() {
+            Some(Token::Hnsw) => {
+                self.next();
+                VectorIndexAlgorithm::Hnsw
+            }
+            Some(Token::Ivf) => {
+                self.next();
+                VectorIndexAlgorithm::Ivf
+            }
+            Some(t) => {
+                return Err(format!(
+                    "Expected HNSW or IVF after USING, got {:?}",
+                    t
+                ));
+            }
+            None => return Err("Expected HNSW or IVF after USING".to_string()),
+        };
+
+        // Optional parenthesised column spec: HNSW(col) — some dialects allow.
+        // We accept both `USING HNSW (col)` and `USING HNSW col`.
+        let column = if matches!(self.current(), Some(Token::LParen)) {
+            self.next();
+            let col = match self.next() {
+                Some(Token::Identifier(name)) => name,
+                Some(t) => return Err(format!("Expected column name, got {:?}", t)),
+                None => return Err("Expected column name".to_string()),
+            };
+            self.expect(Token::RParen)?;
+            col
+        } else {
+            match self.next() {
+                Some(Token::Identifier(name)) => name,
+                Some(t) => return Err(format!("Expected column name, got {:?}", t)),
+                None => return Err("Expected column name".to_string()),
+            }
+        };
+
+        // Optional WITH (key=value, ...)
+        let options = if matches!(self.current(), Some(Token::With)) {
+            self.next();
+            self.expect(Token::LParen)?;
+            let mut opts = Vec::new();
+            loop {
+                let key = match self.next() {
+                    Some(Token::Identifier(k)) => k,
+                    Some(t) => return Err(format!("Expected option key, got {:?}", t)),
+                    None => return Err("Expected option key".to_string()),
+                };
+                self.expect(Token::Equal)?;
+                // Accept both numeric literal and string literal as value.
+                let value = match self.next() {
+                    Some(Token::NumberLiteral(n)) => n,
+                    Some(Token::StringLiteral(s)) => s,
+                    Some(Token::Identifier(v)) => v,
+                    Some(t) => return Err(format!("Expected option value, got {:?}", t)),
+                    None => return Err("Expected option value".to_string()),
+                };
+                opts.push((key, value));
+                if matches!(self.current(), Some(Token::Comma)) {
+                    self.next();
+                } else {
+                    break;
+                }
+            }
+            self.expect(Token::RParen)?;
+            opts
+        } else {
+            Vec::new()
+        };
+
+        Ok(Statement::CreateVectorIndex(CreateVectorIndexStatement {
+            name: index_name,
+            table: table_name,
+            column,
+            index_type,
+            options,
+        }))
     }
 
     fn parse_create_procedure(&mut self) -> Result<Statement, String> {
@@ -11568,6 +11729,18 @@ impl Parser {
             Some(Token::Integer) => {
                 self.next();
                 "INTEGER".to_string()
+            }
+            // V400-01 / Issue #4877: VECTOR(N[, dtype]) column type.
+            Some(Token::Vector) => {
+                self.next();
+                "VECTOR".to_string()
+            }
+            // V400-01 / Issue #4877: keep `DISTANCE` available as a
+            // type token if a future schema adds `DISTANCE(N)`; for
+            // now it's just an identifier.
+            Some(Token::Distance) => {
+                self.next();
+                "DISTANCE".to_string()
             }
             Some(Token::Text) => {
                 self.next();
