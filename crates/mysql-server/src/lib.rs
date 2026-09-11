@@ -2215,7 +2215,7 @@ fn make_ok_packet(
     }]
 }
 
-fn make_err_packet(seq: u8, code: u16, state: &str, msg: &str) -> Packet {
+pub(crate) fn make_err_packet(seq: u8, code: u16, state: &str, msg: &str) -> Packet {
     let mut p = Vec::new();
     p.push(0xff);
     p.write_u16::<LittleEndian>(code).unwrap();
@@ -5755,11 +5755,32 @@ pub(crate) fn run_server_with_listener_and_shutdown_with_bootstrap_tables_and_sq
                             Err(crate::testing::SendTimeoutError::Timeout(returned_job)) => {
                                 crate::testing::BACKPRESSURE_COUNT
                                     .fetch_add(1, std::sync::atomic::Ordering::Relaxed);
-                                tracing::debug!(
-                                    "worker pool full; rejecting connection from {} \
-                                     (BACKPRESSURE_COUNT incremented)",
-                                    returned_job.addr
-                                );
+                                crate::testing::BACKPRESSURE_REJECTED_COUNT
+                                    .fetch_add(1, std::sync::atomic::Ordering::Relaxed);
+                                // V4.0.0 SOAK fix: send a proper MySQL
+                                // ERR packet (1040 ER_CON_COUNT_ERROR)
+                                // before tearing down the socket, and
+                                // promote the log from `debug` to `warn`
+                                // so the saturation event surfaces in
+                                // normal logs instead of being hidden.
+                                // See `testing::write_pool_rejection` and
+                                // `crates/mysql-server/tests/v400_pool_rejection_test.rs`.
+                                match crate::testing::write_pool_rejection(returned_job.stream) {
+                                    Ok(()) => {
+                                        tracing::warn!(
+                                            "worker pool full; sent ER_CON_COUNT_ERROR to {} \
+                                             (BACKPRESSURE_REJECTED_COUNT incremented)",
+                                            returned_job.addr
+                                        );
+                                    }
+                                    Err(e) => {
+                                        tracing::warn!(
+                                            "worker pool full; rejection ERR write failed \
+                                             for {}: {} (BACKPRESSURE_REJECTED_COUNT incremented)",
+                                            returned_job.addr, e
+                                        );
+                                    }
+                                }
                             }
                             Err(crate::testing::SendTimeoutError::Disconnected(returned_job)) => {
                                 tracing::warn!(
@@ -6893,6 +6914,47 @@ pub mod testing {
     /// process. Exposed via [`ServerThreadPool::backpressure_count`].
     pub static BACKPRESSURE_COUNT: std::sync::atomic::AtomicU64 =
         std::sync::atomic::AtomicU64::new(0);
+
+    /// Counter of connections that were actually DROPPED because the
+    /// worker pool was saturated for the full 200ms backpressure
+    /// window. Distinct from `BACKPRESSURE_COUNT` (which fires on
+    /// every `send_timeout` retry attempt that did not find a slot,
+    /// even if a subsequent retry succeeds). `BACKPRESSURE_REJECTED_COUNT`
+    /// only ticks when the connection is being torn down, so it is
+    /// the right metric to alert on for "server is shedding load".
+    pub static BACKPRESSURE_REJECTED_COUNT: std::sync::atomic::AtomicU64 =
+        std::sync::atomic::AtomicU64::new(0);
+
+    /// Build the MySQL ERR packet (code 1040 ER_CON_COUNT_ERROR,
+    /// SQL state "08004", message "Too many connections") that the
+    /// server writes to a client whose connection could not be
+    /// enqueued onto the worker pool. Sequence id is 0 because no
+    /// handshake has been sent yet — this is a pre-handshake rejection.
+    ///
+    /// V4.0.0 SOAK: before this helper existed, the accept loop
+    /// silently dropped the `TcpStream` and only logged at
+    /// `tracing::debug`. Clients (sysbench, mysql CLI) saw a raw TCP
+    /// close and retried indefinitely, hiding the real bottleneck
+    /// (pool saturation / engine lock contention) under a flood of
+    /// reconnect attempts. See `crates/mysql-server/tests/v400_pool_rejection_test.rs`.
+    pub fn make_rejection_err_packet() -> crate::Packet {
+        crate::make_err_packet(0, 1040, "08004", "Too many connections")
+    }
+
+    /// Send the rejection ERR packet on `stream` then half-close it.
+    /// Best-effort: returns `Err` if the write fails (client already
+    /// gone, kernel buffer full, etc.) — callers should log and move
+    /// on; the connection is doomed either way.
+    pub fn write_pool_rejection(mut stream: std::net::TcpStream) -> std::io::Result<()> {
+        use std::io::Write;
+        let pkt = make_rejection_err_packet();
+        pkt.write_to(&mut stream)
+            .map_err(|e| std::io::Error::other(format!("make_rejection_err_packet write_to: {e}")))?;
+        let _ = stream.flush();
+        let _ = stream.shutdown(std::net::Shutdown::Both);
+        Ok(())
+    }
+
     const CHANNEL_BUFFER_MULTIPLIER: usize = 4;
 
     impl ServerThreadPool {
