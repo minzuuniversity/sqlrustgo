@@ -916,6 +916,31 @@ pub type RowFilter = Box<dyn Fn(&Record) -> bool + Send + Sync>;
 pub trait StorageEngine: Send + Sync {
     /// Scan all rows from a table
     fn scan(&self, table: &str) -> SqlResult<Vec<Record>>;
+    /// V4.0.0 / SOAK-leak fix: scan with a row-level predicate evaluated
+    /// **inside** the storage lock, so non-matching rows are never cloned.
+    ///
+    /// The default implementation falls back to `scan + filter`, which
+    /// clones every row before filtering — this is the O(N) hot path that
+    /// drove the 30 MB/min SOAK RSS growth. Storage engines that hold
+    /// in-memory or disk-cached row data MUST override this to filter
+    /// while the borrow on the cached `Vec<Record>` is still live.
+    ///
+    /// Used by `execute_delete` (engine_dml.rs) to avoid cloning the full
+    /// table for every WHERE-DELETE.
+    ///
+    /// NOTE: `Self: Sized` keeps `dyn StorageEngine` object-safe — this
+    /// method is excluded from dyn dispatch and only available on the
+    /// concrete `FileStorage` / `MemoryStorage` types. The `execute_delete`
+    /// call site uses the concrete type via `EngineStorage` (`Storage`),
+    /// not the trait object.
+    fn scan_with_filter<F>(&self, table: &str, filter: F) -> SqlResult<Vec<Record>>
+    where
+        F: Fn(&Record) -> bool,
+        Self: Sized,
+    {
+        let _ = filter;
+        self.scan(table)
+    }
     /// V312-85 / Issue #4625: Scan using a specific index.
     /// Returns rows where the indexed column equals the given key value.
     /// Returns error if the index doesn't exist or isn't usable for equality lookups.
@@ -1585,6 +1610,20 @@ impl StorageEngine for MemoryStorage {
             .get(&table.to_lowercase())
             .cloned()
             .unwrap_or_default())
+    }
+
+    /// V4.0.0 / SOAK-leak fix: iterate the cached `Vec<Record>` by reference
+    /// and only clone rows that pass the predicate. Avoids the O(N) full-table
+    /// clone that drove ~30 MB/min RSS growth during SOAK.
+    fn scan_with_filter<F>(&self, table: &str, filter: F) -> SqlResult<Vec<Record>>
+    where
+        F: Fn(&Record) -> bool,
+    {
+        let key = table.to_lowercase();
+        let Some(rows) = self.tables.get(&key) else {
+            return Ok(Vec::new());
+        };
+        Ok(rows.iter().filter(|r| filter(r)).cloned().collect())
     }
 
     fn scan_with_index(
