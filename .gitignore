@@ -152,3 +152,28 @@ docs/releases/v3.12.0/perf/TPCH_SF1_CORRECTNESS_BUNDLE/
 !docs/releases/*/manifest.json
 !docs/releases/*/evidence/*/summary.json
 # keep other tracked JSON if explicitly staged via 'git add -f'
+
+
+# v4.0.0 FILE_GOVERNANCE §1 — additional forbidden extensions (2026-09-11)
+# See docs/governance/FILE_GOVERNANCE.md for allowlist + exception process
+*.db
+*.wal
+*.html
+*.tar.gz
+*.zip
+*.bin
+!docs/formal/*TTrace*.bin
+!docs/formal/*_TTrace_*.bin
+*.pptx
+*.profraw
+*.docx
+*.pdf
+*.tsv
+*.dat
+*.csv
+*.out
+*.tsv.gz
+
+# Match the existing *.log/*.tbl/*.json negation block
+!docs/formal/*TTrace*.bin
+!docs/formal/*_TTrace_*.bin
