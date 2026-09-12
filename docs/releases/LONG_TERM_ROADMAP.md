@@ -1,8 +1,9 @@
 # SQLRustGo 长期版本演进路线图
 
-> **版本**: 1.0
+> **版本**: 2.0
 > **制定日期**: 2026-03-06
-> **状态**: 🔄 统一规划中
+> **更新日期**: 2026-09-12
+> **状态**: 规划中
 
 ---
 
@@ -13,20 +14,16 @@
 │                          SQLRustGo 版本演进路线                               │
 ├─────────────────────────────────────────────────────────────────────────────┤
 │                                                                              │
-│   v1.2.0 (当前)                                                             │
-│   └── 架构: 接口抽象化 + CBO 基础                                           │
-│   └── 状态: Alpha (当前) → Beta → RC → GA                                  │
+│   v3.12.0 ✅ (2026-09-08)                                                 │
+│   └── 架构: GMP 内审检索系统                                                 │
+│   └── 状态: GA (72/72 gate PASS)                                            │
 │                                                                              │
-│   v1.3.0 (规划中)                                                           │
-│   └── 架构: 向量化执行 + 可观测性                                            │
+│   v4.0.0 🔄 (开发中)                                                        │
+│   └── 架构: 生产级多模型数据库（SQL + Vector + Graph + GMP）                   │
 │   └── 目标: L4 企业级                                                       │
 │                                                                              │
-│   v2.0 (规划中)                                                             │
-│   └── 架构: 分布式内核原型                                                  │
-│   └── 目标: Client-Server 模式                                              │
-│                                                                              │
-│   v3.0 (愿景)                                                               │
-│   └── 架构: 完整分布式数据库                                                │
+│   v5.0 📋 (规划中)                                                          │
+│   └── 架构: 完整分布式数据库原型                                              │
 │   └── 目标: 对标 CockroachDB, TiDB                                         │
 │                                                                              │
 └─────────────────────────────────────────────────────────────────────────────┘
@@ -36,122 +33,125 @@
 
 ## 二、各版本核心目标
 
-### 2.1 v1.2.0: 架构接口化版本
+### 2.1 v3.12.0: GMP 内审检索系统（已完成）
 
 | 项目 | 值 |
 |------|-----|
-| **版本号** | v1.2.0 |
-| **代号** | Vector Engine |
-| **核心目标** | 架构重构 + 接口抽象 + 简化 CBO |
-| **成熟度** | L3+ 产品级 |
+| **版本号** | v3.12.0 |
+| **代号** | GMP Internal Audit Retrieval |
+| **核心目标** | SQL + Vector + Graph 内部能力，GMP 合规性内审 |
+| **成熟度** | L3+ GA |
 | **目录结构** | crates/ workspace |
+| **发布日期** | 2026-09-08 |
 
-> 当前版本状态：`alpha/v1.2.0`
-> 当前开发分支：`develop/v1.2.0`
-> 历史标识 `v1.2.0-draft` 仅作为追溯信息保留。
+> 当前版本状态：`GA`
+> 当前开发分支：`develop/v3.12.0`
+> HEAD: `6d23f3658` (2026-09-12)
 
-**已完成的核心 Trait**:
-- ✅ Executor trait (执行层抽象)
-- ✅ StorageEngine trait (存储抽象)
-- ✅ Optimizer trait (优化器框架)
-- ✅ Catalog trait (元数据管理)
-- ✅ StatisticsProvider (统计信息)
-- ✅ Operator trait (执行模型)
+**已完成的核心能力**:
 
-### 2.2 v1.3.0: 向量化 + 可观测性版本
+- ✅ GMP Schema (Document/Chunk/Embedding/Audit table)
+- ✅ 混合检索 (SQL + Vector 联合查询)
+- ✅ 图投影 (SQL-backed graph traversal)
+- ✅ ALCOA+ 审计 (Hash-chain tamper detection)
+- ✅ TPC-H SF=1 22/22 PASS
+- ✅ SQLLogicTest smoke 25/25 PASS
+- ✅ 168h SOAK PASS
+- ✅ MySQL Wire 协议
+- ✅ LOAD DATA 批量导入
+- ✅ Crash Recovery
+
+### 2.2 v4.0.0: 多模型生产级数据库（开发中）
 
 | 项目 | 值 |
 |------|-----|
-| **版本号** | v1.3.0 |
-| **核心目标** | 向量化执行 + 完整可观测性系统 |
-| **成熟度** | L4 企业级 |
-| **预计时间** | v1.2.0 GA 后 2 月 |
+| **版本号** | v4.0.0 |
+| **核心目标** | 一等公民多模型能力（SQL + Vector + Graph + GMP） |
+| **成熟度** | L4 开发中 |
+| **预计时间** | v3.12.0 GA 后 |
+| **开发分支** | `develop/v4.0.0` |
 
 **核心功能**:
-- 向量化执行引擎
-- 插件系统
-- 完整 CBO (Join 重排序、索引选择)
-- 事务增强 (MVCC、锁管理)
-- Metrics + Health Check + Prometheus
 
-### 2.3 v2.0: 分布式内核原型
+| ID | 工作包 | 优先级 | 退出证据 |
+|---|---|---|---|
+| V400-01 | Vector column 与 vector index SQL syntax | P0 | parser/executor E2E PASS |
+| V400-02 | WAL-backed vector storage 与 rebuild | P0 | crash/rebuild tests |
+| V400-03 | Graph crate revival 或 rewrite | P0 | storage and traversal tests |
+| V400-04 | Graph query surface | P0 | bounded path query tests |
+| V400-05 | Cross-model transaction semantics | P0 | rollback and crash tests |
+| V400-06 | Unified backup/restore | P0 | restore SQL/vector/graph/GMP equality |
+| V400-07 | Unified ACL and audit | P0 | permission bypass tests fail |
+| V400-08 | Multi-model optimizer 与 metadata filters | P1 | query plan evidence |
+| V400-09 | Multi-model SOAK | P0 | 168h mixed report |
+
+**发布里程碑**:
+
+| 里程碑 | 目标 | 必需证据 |
+|---|---|---|
+| Alpha | vector SQL + storage prototype | vector E2E tests |
+| Beta | graph store + traversal prototype | graph E2E tests |
+| RC | unified transaction/backup/security | cross-model gates |
+| GA | multi-model production | 168h SOAK + full GA report |
+
+### 2.3 v5.0: 完整分布式数据库（规划中）
 
 | 项目 | 值 |
 |------|-----|
-| **版本号** | v2.0 |
-| **核心目标** | 分布式数据库内核原型 |
-| **架构** | Client-Server 模式 |
-| **目标** | 对标 DuckDB (单机优化) / CockroachDB (分布式) |
-
-**核心功能**:
-- 节点抽象 (Leader/Follower)
-- 远程执行代理
-- 日志复制接口
-- 分布式优化预留
-
-### 2.4 v3.0: 完整分布式数据库
-
-| 项目 | 值 |
-|------|-----|
-| **版本号** | v3.0 |
+| **版本号** | v5.0 |
 | **核心目标** | 完整分布式数据库 |
-| **对标** | CockroachDB, TiDB |
+| **架构** | 对标 CockroachDB / TiDB |
+| **目标** | 生产级分布式事务 |
 
 **核心功能**:
+
 - Raft 共识
 - 分布式执行
 - 分布式优化
 - 分区表
+- 地理分布复制
 
 ---
 
 ## 三、版本依赖关系
 
 ```
-v1.2.0 GA
+v3.12.0 GA
     │
-    ├── S-001~S-006 (统计信息) ─────────────────────┐
-    │                                                 │
-    ├── 核心 Trait 接口 ──────────────────────────────┼──→ v1.3.0
-    │                                                 │
-    └── crates/ workspace ─────────────────────────────┘
-         │
-         │ v1.3.0 依赖
-         ▼
-    ┌────────────┐     ┌────────────┐     ┌────────────┐
-    │ 插件系统   │     │ 监控体系   │     │ 事务增强   │
-    │ P-001~005 │     │ M-001~005  │     │ T-001~004  │
-    └────────────┘     └────────────┘     └────────────┘
-         │                   │                   │
-         └───────────────────┼───────────────────┘
-                             ▼
-                      v1.3.0 GA
-                             │
-                             │ v2.0 依赖
-                             ▼
-    ┌────────────┐     ┌────────────┐     ┌────────────┐
-    │ 节点模型   │     │ 远程执行   │     │ 日志复制   │
-    │ Node       │     │ Transport  │     │ Replicator │
-    └────────────┘     └────────────┘     └────────────┘
+    ├── GMP Schema ────────────────────────────────────┐
+    ├── Hybrid Retrieval ───────────────────────────────┤
+    ├── Graph Projection ───────────────────────────────┤
+    └── ALCOA+ Audit ─────────────────────────────────┤
+                                                             ├──→ v4.0.0
+                                                                 │
+    ┌────────────────────────────────────────────────────┴───────────┐
+    │                                                              │
+    ▼                                                              ▼
+┌────────────┐     ┌────────────┐     ┌────────────┐     ┌────────────┐
+│ Vector DB  │     │ Graph DB   │     │ WAL Unified│     │ ACL Unified│
+│ V400-01   │     │ V400-03   │     │ V400-02   │     │ V400-07   │
+└────────────┘     └────────────┘     └────────────┘     └────────────┘
+         │                   │                   │                   │
+         └───────────────────┴───────────────────┴───────────────────┘
                              │
                              ▼
-                      v2.0 (分布式原型)
+                      v4.0.0 GA
                              │
-                             │ v3.0 依赖
+                             │ v5.0 依赖
                              ▼
     ┌────────────┐     ┌────────────┐     ┌────────────┐
     │ Raft 共识  │     │ 分布式执行 │     │ 分区表    │
     └────────────┘     └────────────┘     └────────────┘
                              │
                              ▼
-                      v3.0 (完整分布式)
+                      v5.0 (完整分布式)
 ```
 
 ---
 
 ## 四、阶段门禁规则
 
-详见 [BRANCH_STAGE_GOVERNANCE.md](./v1.2.0/BRANCH_STAGE_GOVERNANCE.md)
+详见 `docs/governance/STAGE_CONFIG.yaml`
 
 | 阶段 | 门禁要求 | 允许提交类型 |
 |------|----------|--------------|
@@ -165,52 +165,46 @@ v1.2.0 GA
 
 ## 五、分支管理规范
 
-详见 [BRANCH_STAGE_GOVERNANCE.md](./v1.2.0/BRANCH_STAGE_GOVERNANCE.md)
-
 ### 5.1 分支命名规范
 
 | 类型 | 命名格式 | 示例 |
 |------|----------|------|
-| 开发分支 | `develop-v1.x.0` | `develop/v1.2.0` |
-| 功能分支 | `feature/v1.x.0-<功能名>` | `feature/v1.2.0-vector-execution` |
-| 修复分支 | `fix/v1.x.0-<问题描述>` | `fix/v1.2.0-index-tests` |
-| 文档分支 | `docs/v1.x.0-<文档类型>` | `docs/v1.2.0-release-notes` |
-| 维护分支 | `release/vx.y.z` | `release/v1.2.0` |
+| 开发分支 | `develop/vX.Y.Z` | `develop/v4.0.0` |
+| 功能分支 | `feature/vX.Y.Z-<功能名>` | `feature/v4.0.0-vector-index` |
+| 修复分支 | `fix/vX.Y.Z-<问题描述>` | `fix/v4.0.0-wal-crash` |
+| 文档分支 | `docs/vX.Y.Z-<文档类型>` | `docs/v4.0.0-release-notes` |
+| 维护分支 | `release/vX.Y.Z` | `release/v4.0.0` |
 
 ### 5.2 分支保护规则
 
 | 分支 | 保护规则 |
 |------|----------|
 | `main` | 禁止直接 push，必须通过 PR + 2人审核 |
-| `develop/vx.y.z` | 禁止直接 push，必须通过 PR + 1人审核 |
+| `develop/vX.Y.Z` | 禁止直接 push，必须通过 PR + 1人审核 |
 | `feature/*`, `fix/*` | 允许直接 push，但需要 CI 通过 |
 
 ---
 
 ## 六、文档索引
 
-### 6.1 v1.2.0 文档
+### 6.1 v4.0.0 文档
 
 | 文档 | 说明 |
 |------|------|
-| [VERSION_PLAN.md](./v1.2.0/VERSION_PLAN.md) | 版本计划 |
-| [TASK_MATRIX.md](./v1.2.0/TASK_MATRIX.md) | 任务矩阵 (推荐) |
-| [BRANCH_STAGE_GOVERNANCE.md](./v1.2.0/BRANCH_STAGE_GOVERNANCE.md) | 分支管理规范 |
-| [ARCHITECTURE_REFACTORING_PLAN.md](./v1.2.0/ARCHITECTURE_REFACTORING_PLAN.md) | 架构重构计划 |
-| [RELEASE_GATE_CHECKLIST.md](./v1.2.0/RELEASE_GATE_CHECKLIST.md) | 门禁检查清单 |
+| [VERSION_PLAN.md](./v4.0.0/VERSION_PLAN.md) | 版本计划 |
+| [TEST_PLAN.md](./v4.0.0/TEST_PLAN.md) | 测试计划 |
+| [DEV_PLAN.md](./v4.0.0/DEV_PLAN.md) | 开发计划 |
+| [GMP_PLATFORM_REQUIREMENTS.md](./v4.0.0/GMP_PLATFORM_REQUIREMENTS.md) | GMP 平台需求 |
+| [CHANGELOG.md](./v4.0.0/CHANGELOG.md) | 变更日志 |
 
-### 6.2 v1.3.0 文档
-
-| 文档 | 说明 |
-|------|------|
-| [VERSION_PLAN.md](./v1.3.0/VERSION_PLAN.md) | 版本计划 |
-| [DEVELOPMENT_PLAN.md](./v1.3.0/DEVELOPMENT_PLAN.md) | 开发计划 |
-
-### 6.3 v2.0 文档
+### 6.2 v3.12.0 文档
 
 | 文档 | 说明 |
 |------|------|
-| [SQLRUSTGO_2_0_ROADMAP.md](../v2.0/SQLRUSTGO_2_0_ROADMAP.md) | 2.0 路线图 |
+| [STAGE.yaml](./v3.12.0/STAGE.yaml) | 阶段状态 |
+| [GA_GATE_REPORT.md](./v3.12.0/GA_GATE_REPORT.md) | GA 门禁报告 |
+| [COMPREHENSIVE_ASSESSMENT_REPORT.md](./v3.12.0/COMPREHENSIVE_ASSESSMENT_REPORT.md) | 综合评估报告 |
+| [COMPREHENSIVE_TEST_FRAMEWORK_AND_COVERAGE_BASELINE.md](./v3.12.0/COMPREHENSIVE_TEST_FRAMEWORK_AND_COVERAGE_BASELINE.md) | 测试框架 |
 
 ---
 
@@ -218,36 +212,39 @@ v1.2.0 GA
 
 | 版本 | 日期 | 状态 | 核心变化 |
 |------|------|------|----------|
-| v1.0.0 | 2025-xx | ✅ GA | 初始版本 - 基础 SQL 支持 |
-| v1.1.0 | 2025-xx | ✅ GA | Client-Server 基础 |
-| v1.2.0 | 2025-xx | ✅ GA | 架构接口化 - crates/ workspace |
-| v1.3.0 | 2025-xx | ✅ GA | 向量化基础 |
-| v1.4.0 | 2025-xx | ✅ GA | 可观测性系统 |
-| v1.5.0 | 2025-xx | ✅ GA | 并行执行 |
-| v1.6.0 | 2025-xx | ✅ GA | 性能优化 |
-| v1.6.1 | 2025-xx | ✅ GA | Bugfix 版本 |
-| v1.7.0 | 2025-xx | ✅ GA | MySQL 兼容性增强 |
-| v1.8.0 | 2025-xx | ✅ GA | SQL-92 增强 |
-| v1.9.0 | 2025-xx | ✅ GA | 完整性增强 |
-| v2.0.0 | 2026-xx | ✅ GA | 向量化执行 |
-| v2.1.0 | 2026-xx | ✅ GA | CBO 优化 |
-| v2.2.0 | 2026-xx | ✅ GA | Vector Index (IVF-PQ, HNSW) |
-| v2.3.0 | 2026-xx | ✅ GA | 分布式基础 |
-| v2.4.0 | 2026-xx | ✅ GA | 列式存储 |
-| v2.5.0 | 2026-04-03 | ✅ GA | MVCC/Vector/Graph |
-| v2.6.0 | 2026-xx | 🔄 Alpha | SQL-92 完整 + 生产就绪 |
-| v2.7.0 | TBD | 📋 规划 | 分布式架构 |
-| v3.0 | TBD | 📋 愿景 | 完整分布式 |
+| v3.11.0 | 2026-08-09 | ✅ GA | 生产稳定版 |
+| v3.12.0 | 2026-09-08 | ✅ GA | GMP 内审检索系统（72/72 gate PASS） |
+| v4.0.0 | TBD | 🔄 开发中 | 多模型生产级（SQL + Vector + Graph + GMP） |
+| v5.0 | TBD | 📋 规划 | 完整分布式数据库 |
 
 ---
 
-## 八、变更历史
+## 八、成熟度演进
+
+```
+L1 (Toy)   →   L2 (Query Engine)   →   L3 (Mini DBMS)   →   L4 (Multi-Model DB)
+                   v1.7                    v3.x                v4.0
+               MySQL 教学替代          GMP 内审检索        多模型生产级
+```
+
+| 等级 | 说明 | 特征 |
+|------|------|------|
+| L1 | 原型 | 可运行，基本功能 |
+| L2 | 开发版 | 核心功能可用，不稳定 |
+| L3 | 产品级 | 功能完整，生产可用 |
+| L4 | 企业级 | 性能优化，高可用，多模型 |
+
+---
+
+## 九、变更历史
 
 | 版本 | 日期 | 说明 |
 |------|------|------|
 | 1.0 | 2026-03-06 | 创建统一版本演进路线图 |
+| 2.0 | 2026-09-12 | 更新到 v4.0.0 开发状态，v3.12.0 GA 完成 |
 
 ---
 
-*本文档由 yinglichina8848 制定*
+*本文档由 claude-macmini 维护*
 *统一管理 SQLRustGo 所有版本规划*
+*最后更新: 2026-09-12*
