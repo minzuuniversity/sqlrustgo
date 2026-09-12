@@ -308,6 +308,27 @@ impl StorageEngine for BinaryTableStorage {
             .unwrap_or_default())
     }
 
+    /// V4.0.0 / SOAK-hang fix: honour the filter predicate. Without this
+    /// override, the trait default at engine.rs:936-943 returns ALL rows
+    /// regardless of filter — execute_update (engine_dml.rs:780) gets the
+    /// full 10000-row table even when `WHERE id=N` is given.
+    ///
+    /// Same pattern as `MemoryStorage::scan_with_filter`
+    /// (engine.rs:1618-1627): clone only the matching rows while the
+    /// borrow on `data.rows` is still live. `BoxStorageEngine` inherits
+    /// this via Deref so no separate override is needed there.
+    fn scan_with_filter<F>(&self, table: &str, filter: F) -> SqlResult<Vec<Record>>
+    where
+        F: Fn(&Record) -> bool,
+        Self: Sized,
+    {
+        Ok(self
+            .tables
+            .get(table)
+            .map(|data| data.rows.iter().filter(|r| filter(r)).cloned().collect())
+            .unwrap_or_default())
+    }
+
     fn insert(&mut self, table: &str, records: Vec<Record>) -> SqlResult<()> {
         // BINT is a "pre-loaded snapshot" store: `new_with_data` populates
         // `self.tables` from `.bin` files on disk before any DDL runs. A

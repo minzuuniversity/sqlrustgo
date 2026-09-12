@@ -430,6 +430,23 @@ impl<S: StorageEngine + 'static, T: WalManager + 'static> StorageEngine for WalS
         self.inner.scan(table)
     }
 
+    /// V4.0.0 / SOAK-hang fix: delegate `scan_with_filter` to the inner
+    /// engine's optimized implementation. Without this override, the trait
+    /// default at engine.rs:936-943 runs (ignores filter, returns full
+    /// table), defeating the leak fix at engine_dml.rs:772-784.
+    ///
+    /// When `WalStorage<FileStorage>` is used (SOAK default) this routes
+    /// to `FileStorage::scan_with_filter` (file_storage.rs:3042-3058).
+    /// When `WalStorage<MemoryStorage>` is used (REPL/CLI) it routes to
+    /// `MemoryStorage::scan_with_filter` (engine.rs:1618-1627).
+    fn scan_with_filter<F>(&self, table: &str, filter: F) -> SqlResult<Vec<Record>>
+    where
+        F: Fn(&Record) -> bool,
+        Self: Sized,
+    {
+        self.inner.scan_with_filter(table, filter)
+    }
+
     fn flush(&mut self) -> SqlResult<()> {
         self.inner.flush()
     }
@@ -482,12 +499,38 @@ impl<S: StorageEngine + 'static, T: WalManager + 'static> StorageEngine for WalS
     fn delete(&mut self, table: &str, filters: &[Value]) -> SqlResult<usize> {
         let table_id = Self::table_name_to_id(table);
 
-        let rows = self.inner.scan(table)?;
-        for row in &rows {
-            if Self::row_matches_filter(row, filters) {
-                let key = Self::record_key(row);
-                self.log_delete(table_id, key)?;
+        // V4.0.0 / SOAK-hang fix: avoid O(N) inner.scan() under the exclusive
+        // write lock held by execute_update (engine_dml.rs:857). See
+        // [[v400-soak-1h-rwlock-contention-hang]] — under sysbench
+        // oltp_read_write with 4 worker threads this serialization collapsed
+        // QPS to 0.03.
+        //
+        // Two distinct call patterns:
+        //
+        // 1. `DELETE WHERE pk = N` (execute_update line 901,
+        //    execute_delete line ~X for PK deletes): `filters[0]` IS the PK
+        //    value. We derive the WAL key O(1) from `filters[0]` alone — no
+        //    inner.scan() needed. The recovery path
+        //    (recovery_engine.rs:711-721) maps one Delete entry to one
+        //    storage.delete(key) call, which uses the PK to locate the row.
+        //
+        // 2. `DELETE FROM <table>` (no WHERE, engine_dml.rs:1012, 1159):
+        //    `filters.is_empty() == true`. We must log one WAL delete entry
+        //    per row actually deleted, otherwise recovery can only undo
+        //    one row instead of N. The O(N) scan is required here for
+        //    correctness, not performance.
+        if filters.is_empty() {
+            let rows = self.inner.scan(table)?;
+            for row in &rows {
+                if Self::row_matches_filter(row, filters) {
+                    let key = Self::record_key(row);
+                    self.log_delete(table_id, key)?;
+                }
             }
+        } else {
+            let pk_value = filters[0].clone();
+            let key = Self::record_key(std::slice::from_ref(&pk_value));
+            self.log_delete(table_id, key)?;
         }
 
         self.inner.delete(table, filters)
@@ -1139,6 +1182,226 @@ mod tests {
         storage.insert("t", vec![vec![Value::Integer(1)]]).unwrap();
         let filter: RowFilter = Box::new(|row: &Record| row[0] == Value::Integer(1));
         storage.delete_if("t", &filter).unwrap();
+    }
+
+    /// V4.0.0 / SOAK-hang fix verification:
+    /// WalStorage::delete with a non-empty filter MUST derive the WAL key
+    /// O(1) from `filters[0]` without invoking `inner.scan()`. The prior
+    /// implementation did `self.inner.scan(table)?` (full O(N) Vec<Record>
+    /// clone) just to extract WAL keys, which under sysbench oltp_read_write
+    /// turned every UPDATE into a serialized multi-second operation and
+    /// collapsed QPS to 0.03. See [[v400-soak-1h-rwlock-contention-hang]].
+    #[test]
+    fn test_wal_delete_with_filter_avoids_inner_scan() {
+        use crate::engine::IndexInfo;
+        use std::sync::atomic::{AtomicU32, Ordering};
+
+        /// Wrapper that forwards every StorageEngine call to an inner
+        /// MemoryStorage but counts how many times `scan` is invoked.
+        /// `WalStorage::delete` MUST NOT call `inner.scan()` when the filter
+        /// is non-empty (PK already in `filters[0]`).
+        struct ScanCountingStorage {
+            inner: MemoryStorage,
+            scan_calls: AtomicU32,
+        }
+
+        impl StorageEngine for ScanCountingStorage {
+            fn scan(&self, table: &str) -> SqlResult<Vec<Record>> {
+                self.scan_calls.fetch_add(1, Ordering::SeqCst);
+                self.inner.scan(table)
+            }
+            fn scan_with_filter<F>(&self, table: &str, filter: F) -> SqlResult<Vec<Record>>
+            where
+                F: Fn(&Record) -> bool,
+                Self: Sized,
+            {
+                self.inner.scan_with_filter(table, filter)
+            }
+            fn insert(&mut self, table: &str, records: Vec<Record>) -> SqlResult<()> {
+                self.inner.insert(table, records)
+            }
+            fn force_insert(&mut self, table: &str, record: Vec<Value>) -> SqlResult<()> {
+                self.inner.force_insert(table, record)
+            }
+            fn delete(&mut self, table: &str, filters: &[Value]) -> SqlResult<usize> {
+                self.inner.delete(table, filters)
+            }
+            fn delete_if(&mut self, table: &str, filter: &RowFilter) -> SqlResult<usize> {
+                self.inner.delete_if(table, filter)
+            }
+            fn update(
+                &mut self,
+                table: &str,
+                filters: &[Value],
+                updates: &[(usize, Value)],
+            ) -> SqlResult<usize> {
+                self.inner.update(table, filters, updates)
+            }
+            fn update_if(
+                &mut self,
+                table: &str,
+                filter: &RowFilter,
+                mutation: &RowMutation,
+            ) -> SqlResult<usize> {
+                self.inner.update_if(table, filter, mutation)
+            }
+            fn create_table(&mut self, info: &TableInfo) -> SqlResult<()> {
+                self.inner.create_table(info)
+            }
+            fn drop_table(&mut self, table: &str) -> SqlResult<()> {
+                self.inner.drop_table(table)
+            }
+            fn get_table_info(&self, table: &str) -> SqlResult<TableInfo> {
+                self.inner.get_table_info(table)
+            }
+            fn has_table(&self, table: &str) -> bool {
+                self.inner.has_table(table)
+            }
+            fn list_tables(&self) -> Vec<String> {
+                self.inner.list_tables()
+            }
+            fn create_index(&mut self, info: IndexInfo) -> SqlResult<()> {
+                self.inner.create_index(info)
+            }
+            fn drop_index(&mut self, table: &str, index_name: &str) -> SqlResult<()> {
+                self.inner.drop_index(table, index_name)
+            }
+            fn list_all_indexes(&self) -> Vec<IndexInfo> {
+                self.inner.list_all_indexes()
+            }
+            fn add_column(&mut self, table: &str, column: ColumnDefinition) -> SqlResult<()> {
+                self.inner.add_column(table, column)
+            }
+            fn rename_table(&mut self, table: &str, new_name: &str) -> SqlResult<()> {
+                self.inner.rename_table(table, new_name)
+            }
+            fn create_trigger(&mut self, info: TriggerInfo) -> SqlResult<()> {
+                self.inner.create_trigger(info)
+            }
+            fn drop_trigger(&mut self, name: &str) -> SqlResult<()> {
+                self.inner.drop_trigger(name)
+            }
+            fn get_trigger(&self, name: &str) -> Option<TriggerInfo> {
+                self.inner.get_trigger(name)
+            }
+            fn list_triggers(&self, table: &str) -> Vec<TriggerInfo> {
+                self.inner.list_triggers(table)
+            }
+            fn list_indexes(&self, table: &str) -> Vec<(String, String)> {
+                self.inner.list_indexes(table)
+            }
+            fn has_view(&self, name: &str) -> bool {
+                self.inner.has_view(name)
+            }
+            fn as_any(&self) -> &dyn std::any::Any {
+                self
+            }
+            fn as_any_mut(&mut self) -> &mut dyn std::any::Any {
+                self
+            }
+        }
+
+        let inner = ScanCountingStorage {
+            inner: MemoryStorage::new(),
+            scan_calls: AtomicU32::new(0),
+        };
+        let wal = MemoryWalManager::new();
+        let mut storage = WalStorage::new(inner, wal).unwrap();
+
+        let info = TableInfo {
+            name: "t".into(),
+            columns: vec![ColumnDefinition::new("id", "INTEGER")],
+            foreign_keys: vec![],
+            unique_constraints: vec![],
+            check_constraints: vec![],
+            compression: None,
+            collations: std::collections::HashMap::new(),
+            partition_info: None,
+            original_sql: String::new(),
+        };
+        storage.create_table(&info).unwrap();
+
+        // Insert 1000 rows so any full-table scan would be measurably costly.
+        let rows: Vec<Record> = (1..=1000).map(|i| vec![Value::Integer(i)]).collect();
+        storage.insert("t", rows).unwrap();
+
+        // Reset the scan counter (some insert paths may have triggered scans
+        // internally via insert_buffer on MemoryStorage; we only care about
+        // the delete call below).
+        storage.inner().scan_calls.store(0, Ordering::SeqCst);
+
+        // Delete one row by PK — must NOT trigger an inner.scan() call.
+        let deleted = storage.delete("t", &[Value::Integer(42)]).unwrap();
+        assert_eq!(deleted, 1, "expected exactly one row to be deleted");
+        assert_eq!(
+            storage.inner().scan_calls.load(Ordering::SeqCst),
+            0,
+            "WalStorage::delete must NOT call inner.scan() when filter is non-empty; \
+             the PK in filters[0] is enough to derive the WAL key."
+        );
+
+        // The actual table mutation must still happen via inner.delete().
+        let remaining = storage.inner().inner.scan("t").unwrap().len();
+        assert_eq!(remaining, 999, "inner.delete must still remove the row");
+    }
+
+    /// V4.0.0 / SOAK-hang fix verification (recovery-correctness invariant):
+    /// WalStorage::delete with empty filters (`DELETE FROM <table>`) MUST log
+    /// one WAL delete entry per row. recovery_engine.rs:711-721 maps each
+    /// delete entry back to a single `storage.delete(key)` call; if we
+    /// logged only one entry, only one row would be undeleted on recovery.
+    #[test]
+    fn test_wal_delete_no_where_logs_one_entry_per_row() {
+        let inner = MemoryStorage::new();
+        let wal = MemoryWalManager::new();
+        let mut storage = WalStorage::new(inner, wal).unwrap();
+
+        let info = TableInfo {
+            name: "t".into(),
+            columns: vec![ColumnDefinition::new("id", "INTEGER")],
+            foreign_keys: vec![],
+            unique_constraints: vec![],
+            check_constraints: vec![],
+            compression: None,
+            collations: std::collections::HashMap::new(),
+            partition_info: None,
+            original_sql: String::new(),
+        };
+        storage.create_table(&info).unwrap();
+        storage
+            .insert(
+                "t",
+                vec![
+                    vec![Value::Integer(1)],
+                    vec![Value::Integer(2)],
+                    vec![Value::Integer(3)],
+                    vec![Value::Integer(4)],
+                    vec![Value::Integer(5)],
+                ],
+            )
+            .unwrap();
+
+        let deleted = storage.delete("t", &[]).unwrap();
+        assert_eq!(deleted, 5, "DELETE without WHERE must remove all 5 rows");
+
+        let entries = storage.recover().unwrap();
+        let delete_entries: Vec<_> = entries
+            .iter()
+            .filter(|e| e.entry_type == WalEntryType::Delete)
+            .collect();
+        assert_eq!(
+            delete_entries.len(),
+            5,
+            "WAL must contain one Delete entry per row, so recovery_engine.rs:711-721 \
+             can undo all 5 rows instead of just 1."
+        );
+        // Each entry must carry a key derived from the row's PK.
+        for entry in &delete_entries {
+            assert!(
+                entry.key.is_some() && !entry.key.as_ref().unwrap().is_empty(),
+                "Delete entry must carry a non-empty PK key for recovery"
+            );
+        }
     }
 
     #[test]
