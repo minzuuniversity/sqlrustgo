@@ -429,20 +429,20 @@ pub fn key_entry_repr(table_info: &TableInfo, row: &[Value], key_name: &str) -> 
 
 /// Run BEFORE UPDATE triggers; return rows transformed by triggers
 /// (or unmodified if no triggers). Extracted from `execute_update`.
+///
+/// V4.0.0 / SOAK-leak fix: caller MUST check `get_triggers_for_operation`
+/// first and bypass this helper when the list is empty — otherwise the
+/// previous `updated_rows.to_vec()` clones the entire Vec (O(M)) on every
+/// UPDATE. Heap dump showed this call as 20.8% of inuse allocations during
+/// the sysbench oltp_read_write SOAK (no triggers defined). The
+/// `execute_update` call site now short-circuits with a borrowed slice
+/// when there are no BEFORE UPDATE triggers.
 pub fn run_before_update_triggers(
     trigger_executor: &TriggerExecutor,
     table_name: &str,
     rows_to_update: &[Vec<Value>],
     updated_rows: &[Vec<Value>],
 ) -> SqlResult<Vec<Vec<Value>>> {
-    let before_triggers = trigger_executor.get_triggers_for_operation(
-        table_name,
-        ExecTriggerTiming::Before,
-        ExecTriggerEvent::Update,
-    );
-    if before_triggers.is_empty() {
-        return Ok(updated_rows.to_vec());
-    }
     let mut modified = Vec::new();
     for (i, updated_row) in updated_rows.iter().enumerate() {
         let old_row = &rows_to_update[i];
