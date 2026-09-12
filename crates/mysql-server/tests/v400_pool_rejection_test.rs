@@ -61,7 +61,9 @@ fn rejected_connection_receives_err_packet_with_code_1040() {
     });
 
     let mut client = TcpStream::connect(addr).expect("connect");
-    client.set_read_timeout(Some(Duration::from_secs(5))).unwrap();
+    client
+        .set_read_timeout(Some(Duration::from_secs(5)))
+        .unwrap();
     let pkt = read_one_packet(&mut client).expect("read err packet");
 
     server_thread.join().expect("server thread");
@@ -71,7 +73,10 @@ fn rejected_connection_receives_err_packet_with_code_1040() {
     let payload = &pkt[4..4 + payload_len];
     let sequence = pkt[3];
 
-    assert_eq!(sequence, 0, "rejection packet must be sequence 0 (pre-handshake)");
+    assert_eq!(
+        sequence, 0,
+        "rejection packet must be sequence 0 (pre-handshake)"
+    );
     assert!(payload.len() >= 7, "payload too short for ERR packet");
     assert_eq!(
         payload[0], 0xff,
@@ -91,7 +96,10 @@ fn rejected_connection_receives_err_packet_with_code_1040() {
         payload[3]
     );
     let sql_state = std::str::from_utf8(&payload[4..9]).unwrap_or("");
-    assert_eq!(sql_state, "08004", "SQL state must be 08004 for ER_CON_COUNT_ERROR");
+    assert_eq!(
+        sql_state, "08004",
+        "SQL state must be 08004 for ER_CON_COUNT_ERROR"
+    );
     // Message (null-terminated) starts at offset 9
     let msg_bytes = &payload[9..payload.len()];
     let msg = std::str::from_utf8(msg_bytes).unwrap_or("");
@@ -113,12 +121,16 @@ fn rejected_connection_sees_graceful_close_after_err_packet() {
     });
 
     let mut client = TcpStream::connect(addr).expect("connect");
-    client.set_read_timeout(Some(Duration::from_secs(5))).unwrap();
+    client
+        .set_read_timeout(Some(Duration::from_secs(5)))
+        .unwrap();
     let _ = read_one_packet(&mut client).expect("first packet");
 
     // Second read must hit EOF (clean shutdown), not RST/connection-reset.
     let mut tail = [0u8; 16];
-    let n = client.read(&mut tail).expect("second read returns 0 on EOF");
+    let n = client
+        .read(&mut tail)
+        .expect("second read returns 0 on EOF");
     assert_eq!(
         n, 0,
         "client must observe clean EOF (0 bytes) after ERR packet, got {} bytes",
