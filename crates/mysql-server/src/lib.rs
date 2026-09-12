@@ -2503,6 +2503,53 @@ fn make_eof_packet(seq: u8, status: u16) -> Packet {
     }
 }
 
+/// Build the **first** OK packet of a COM_STMT_PREPARE response.
+///
+/// Wire format (MySQL 8.0 protocol spec):
+/// ```text
+///   0x00              — OK marker
+///   u32 LE            — statement_id
+///   u16 LE            — column_count
+///   u16 LE            — param_count
+///   0x00              — filler
+///   u16 LE            — warnings (always 0)
+///   [lenenc info]     — ONLY when CLIENT_SESSION_TRACK is negotiated
+/// ```
+///
+/// V4.0.0 task #95 second pass (extends the `make_deprecate_eof_ok_packet`
+/// fix to cover the initial STMT_PREPARE response): when
+/// `CLIENT_SESSION_TRACK` is negotiated, libmysqlclient ALWAYS expects the
+/// trailing lenenc `info` byte after `warnings` — regardless of whether
+/// status has `SERVER_STATUS_SESSION_STATE_CHANGED`. Pre-fix, this packet
+/// omitted `info`, so `mysql_stmt_prepare()` (used by sysbench) saw a
+/// 12-byte OK and read the next packet's header as the info length,
+/// desynced, and surfaced error 2027 "Malformed packet". The fix appends
+/// `lenenc 0` for `info` whenever SESSION_TRACK is negotiated; the
+/// `session_state_changes` lenenc is intentionally NOT appended here
+/// because the initial STMT_PREPARE OK does not carry 0x4000 (session state
+/// has not changed in the act of preparing a statement).
+fn make_stmt_prepare_initial_ok_packet(
+    stmt_id: u32,
+    column_count: u16,
+    param_count: u16,
+    client_cap: u32,
+) -> Vec<u8> {
+    let mut p = Vec::with_capacity(16);
+    p.push(0x00);
+    p.write_u32::<LittleEndian>(stmt_id).unwrap();
+    p.write_u16::<LittleEndian>(column_count).unwrap();
+    p.write_u16::<LittleEndian>(param_count).unwrap();
+    p.push(0x00);
+    p.write_u16::<LittleEndian>(0).unwrap();
+    if client_cap & capability::SESSION_TRACK != 0 {
+        // lenenc info — always present after warnings when SESSION_TRACK is
+        // negotiated. Empty (0) when there is no session-state info to
+        // report. Mirrors the V312-WIRE-3 fix in `make_ok_packet`.
+        write_lenenc_int(&mut p, 0).unwrap();
+    }
+    p
+}
+
 fn make_deprecate_eof_ok_packet(
     seq: u8,
     affected: u64,
@@ -2566,20 +2613,45 @@ fn make_deprecate_eof_ok_packet(
     actual_status |= 0x0002;
     p.write_u16::<LittleEndian>(actual_status).unwrap();
     p.write_u16::<LittleEndian>(warnings).unwrap();
-    // session_state_changes is appended IFF status has 0x4000 (i.e. session
-    // state actually changed in this statement). The canonical spec wraps
-    // session_state in lenenc(info) + lenenc(session_state) — but for the
-    // no-change case (0x4000 unset), there is NO info field and NO
-    // session_state field at all. This matches real MySQL 8.0.46 wire
-    // bytes for plain SELECTs (no info byte, no session_state byte).
-    if actual_status & capability::SERVER_STATUS_SESSION_STATE_CHANGED != 0
-        && client_cap & capability::SESSION_TRACK != 0
-    {
-        // lenenc info (always present after warnings when SESSION_TRACK +
-        // 0x4000 is negotiated, even if empty)
+    // V4.0.0 task #95 fix (regression "STMT PREPARE Malformed packet 2027"):
+    //
+    // libmysqlclient (used by sysbench via `mysql_stmt_prepare()`) parses
+    // the trailing result-set terminator of the COM_STMT_PREPARE response
+    // and EXPECTS the trailing lenenc `info` field whenever
+    // CLIENT_SESSION_TRACK is negotiated — REGARDLESS of whether status has
+    // SESSION_STATE_CHANGED (0x4000). Pre-fix, `info` was wrongly gated on
+    // `0x4000 && SESSION_TRACK`, so the common SELECT/INSERT terminator
+    // (status=0x0002, no 0x4000) emitted a 7-byte terminator without
+    // `info`. libmysqlclient then read the next packet's header byte as
+    // `info`-length, desynced, and surfaced error 2027 "Malformed packet"
+    // — which killed sysbench `prepare` in 8/8 threads before any
+    // transaction could run. Verified empirically against MySQL 8.0.46
+    // wire bytes and reproduced locally with `sysbench
+    // /usr/share/sysbench/oltp_read_write.lua --mysql-db=test prepare`.
+    //
+    // Fix: split the condition — `info` is written whenever SESSION_TRACK
+    // is negotiated (matching `make_ok_packet` at lib.rs:2200-2210);
+    // `session_state_changes` only when 0x4000 is set. This mirrors the
+    // protocol spec at
+    // https://dev.mysql.com/doc/dev/mysql-server/latest/page_protocol_basic_ok_packet.html
+    // and matches real MySQL 8.0.46 wire shape for COM_STMT_PREPARE
+    // terminators.
+    //
+    // The wire-byte difference between (a) SESSION_TRACK-only path and
+    // (b) SESSION_TRACK + 0x4000 path is exactly one lenenc byte (the
+    // `info` byte), not the (0x4000-gated) `session_state_changes`
+    // byte. So the (b) path gets 9 bytes total: 0xFE + 2 lenenc + 2
+    // status + 2 warnings + 1 info + 1 session_state = 9 bytes.
+    if client_cap & capability::SESSION_TRACK != 0 {
+        // lenenc info — ALWAYS present after warnings when SESSION_TRACK
+        // is negotiated, even if 0x4000 is unset. Empty (0) when there
+        // is no session-state info to report.
         write_lenenc_int(&mut p, 0).unwrap();
-        // lenenc session_state_changes
-        write_lenenc_int(&mut p, 0).unwrap();
+        // lenenc session_state_changes — ONLY when status has 0x4000
+        // (i.e. session state actually changed in this statement).
+        if actual_status & capability::SERVER_STATUS_SESSION_STATE_CHANGED != 0 {
+            write_lenenc_int(&mut p, 0).unwrap();
+        }
     }
     vec![Packet {
         length: p.len() as u32,
@@ -5116,13 +5188,7 @@ fn do_command_loop<S: Read + Write + DrainWrites>(
                 let stmt_id =
                     ps_manager.add(sql.clone(), param_count, column_count, param_types.clone());
 
-                let mut p = Vec::new();
-                p.push(0x00);
-                p.write_u32::<LittleEndian>(stmt_id).unwrap();
-                p.write_u16::<LittleEndian>(column_count).unwrap();
-                p.write_u16::<LittleEndian>(param_count).unwrap();
-                p.push(0x00);
-                p.write_u16::<LittleEndian>(0).unwrap();
+                let p = make_stmt_prepare_initial_ok_packet(stmt_id, column_count, param_count, cap);
                 let ok_pkt_bytes = {
                     let mut pb = Vec::new();
                     pb.write_u24::<LittleEndian>(p.len() as u32).unwrap();
@@ -6524,11 +6590,18 @@ mod integration_tests {
         // treat the terminator as a regular OK packet and hang waiting
         // for a 5th recvfrom that never came.
         //
-        // For plain SELECTs (no session-state change), the terminator is
-        // exactly 7 bytes: 0xFE + lenenc(0) + lenenc(0) + status(0x0002)
-        // + warnings(0). No 0x4000, no info, no session_state_changes —
-        // matching real MySQL 8.0.46 wire bytes for `select
-        // @@version_comment limit 1` captured via strace.
+        // V400-#95 UPDATE: when CLIENT_SESSION_TRACK is negotiated,
+        // libmysqlclient ALWAYS reads the lenenc(info) byte after warnings
+        // regardless of status 0x4000. This is why COM_STMT_PREPARE on a
+        // plain SELECT (status=0x0002) previously emitted only 7 bytes
+        // and caused libmysqlclient to surface 2027 "Malformed packet".
+        //
+        // For plain SELECTs (no session-state change) WITH SESSION_TRACK
+        // negotiated, the terminator is exactly 8 bytes: 0xFE + 2 lenenc +
+        // status(0x0002) + warnings(0) + lenenc(info=0). No 0x4000, no
+        // session_state_changes. Without SESSION_TRACK, the terminator is
+        // the original 7 bytes — see the explicit no-session-track test
+        // in `mod stmt_prepare_terminator_tests`.
         let cap = capability::SESSION_TRACK;
         let packets = make_deprecate_eof_ok_packet(5, 0, 0, 0x0002, 0, cap);
         assert_eq!(
@@ -6557,11 +6630,13 @@ mod integration_tests {
         );
         assert_eq!(p[5], 0x00, "warnings high");
         assert_eq!(p[6], 0x00, "warnings low");
+        // lenenc(info=0) trailing — SESSION_TRACK negotiated → always present
+        assert_eq!(p[7], 0x00, "lenenc(info=0)");
         assert_eq!(
             p.len(),
-            7,
-            "plain SELECT terminator payload must be exactly 7 bytes \
-             (0xFE + 2 lenenc + status + warnings), no info, no session_state"
+            8,
+            "plain SELECT terminator with SESSION_TRACK must be exactly 8 bytes \
+             (0xFE + 2 lenenc + status + warnings + info lenenc)"
         );
     }
 
@@ -8082,5 +8157,316 @@ mod compression_tests {
         let (seq, recovered) = read_compressed_packet(&mut reader).expect("decompress");
         assert_eq!(seq, 0);
         assert_eq!(recovered, payload);
+    }
+}
+
+/// V4.0.0 task #95 — STMT PREPARE "Malformed packet" (2027) regression.
+///
+/// libmysqlclient (the C client library used by sysbench via
+/// `mysql_stmt_prepare()`) parses the trailing result-set terminator of
+/// the COM_STMT_PREPARE response. Under `CLIENT_DEPRECATE_EOF` that
+/// terminator is an OK packet starting with `0xFE`, and per the MySQL
+/// protocol spec (and verified empirically against MySQL 8.0.46) when
+/// `CLIENT_SESSION_TRACK` is negotiated the terminator MUST always carry
+/// a trailing lenenc `info` byte after `warnings` — REGARDLESS of
+/// whether `SERVER_STATUS_SESSION_STATE_CHANGED` (0x4000) is set in
+/// `status_flags`.
+///
+/// Pre-fix: `make_deprecate_eof_ok_packet` gated BOTH `info` and
+/// `session_state_changes` on `0x4000 && SESSION_TRACK`, so the common
+/// SELECT / AUTOCOMMIT path (status = 0x0002, no 0x4000) emitted a
+/// 7-byte terminator without `info`. libmysqlclient then read the next
+/// packet header's first byte as the `info` length, desynced, and
+/// surfaced error 2027 "Malformed packet" — which killed sysbench
+/// `prepare` in 8/8 threads before any transaction could run.
+///
+/// Fix: split the condition — `info` is written whenever
+/// `SESSION_TRACK` is negotiated (mirroring `make_ok_packet`'s
+/// behavior at lib.rs:2200-2210); `session_state_changes` only when
+/// 0x4000 is set. See [[v400-leak-root-cause]] for the wider V4.0.0
+/// SOAK context that surfaced this regression.
+#[cfg(test)]
+mod stmt_prepare_terminator_tests {
+    use super::*;
+
+    /// RED test (Task #97): the terminator MUST include the trailing
+    /// lenenc `info` byte whenever `SESSION_TRACK` is negotiated,
+    /// even when `status_flags` does NOT have `0x4000`. Pre-fix this
+    /// test FAILS because the code path emits 7 bytes (no info);
+    /// post-fix it PASSES with 8 bytes (0xFE + 2 lenenc + 2 status +
+    /// 2 warnings + 1 info = 8).
+    #[test]
+    fn deprecate_eof_terminator_includes_info_field_when_session_track_negotiated() {
+        // Negotiate SESSION_TRACK + DEPRECATE_EOF + PROTOCOL_41 (the
+        // capability set that mysql CLI 8.0+ / libmysqlclient uses by
+        // default).
+        let client_cap =
+            capability::SESSION_TRACK | capability::DEPRECATE_EOF | capability::PROTOCOL_41;
+
+        // status=0x0002 (AUTOCOMMIT only, NO 0x4000) — the common
+        // SELECT/DML terminator path. This is the exact case that
+        // broke sysbench: every prepared INSERT terminator carries
+        // 0x0002, never 0x4002.
+        let packets = make_deprecate_eof_ok_packet(
+            /*seq=*/ 0,
+            /*affected=*/ 0,
+            /*last_id=*/ 0,
+            /*status=*/ 0x0002,
+            /*warnings=*/ 0,
+            client_cap,
+        );
+
+        assert_eq!(packets.len(), 1, "must return exactly one OK packet");
+        let payload = &packets[0].payload;
+
+        // Expected payload layout (post-fix):
+        //   offset 0: 0xFE       EOF/OK marker             (1 byte)
+        //   offset 1: lenenc(0)  affected_rows             (1 byte)
+        //   offset 2: lenenc(0)  last_insert_id            (1 byte)
+        //   offset 3-4: u16 LE    status_flags = 0x0002     (2 bytes)
+        //   offset 5-6: u16 LE    warnings = 0              (2 bytes)
+        //   offset 7: lenenc(0)  info (ALWAYS when SESSION_TRACK)
+        // TOTAL: 8 bytes
+        //
+        // Pre-fix bug: 7 bytes — no trailing info byte.
+        assert_eq!(
+            payload.len(),
+            8,
+            "terminator payload must be 8 bytes (incl. info lenenc) \
+             when SESSION_TRACK is negotiated; got {} bytes: {:02x?}",
+            payload.len(),
+            payload
+        );
+
+        assert_eq!(payload[0], 0xFE, "first byte must be 0xFE (DEPRECATE_EOF marker)");
+        assert_eq!(payload[1], 0x00, "affected_rows lenenc = 0");
+        assert_eq!(payload[2], 0x00, "last_insert_id lenenc = 0");
+        assert_eq!(
+            u16::from_le_bytes([payload[3], payload[4]]),
+            0x0002,
+            "status_flags must be AUTOCOMMIT only (no 0x4000)"
+        );
+        assert_eq!(
+            u16::from_le_bytes([payload[5], payload[6]]),
+            0x0000,
+            "warnings must be 0"
+        );
+        assert_eq!(
+            payload[7], 0x00,
+            "trailing info lenenc MUST be 0 (regression #95: \
+             libmysqlclient reads this byte to verify packet structure; \
+             omission → 2027 Malformed packet at STMT_PREPARE)"
+        );
+    }
+
+    /// Companion test: when SESSION_TRACK is NOT negotiated, the
+    /// terminator MUST stay 7 bytes — the wire shape that the prior
+    /// V312-WIRE-8 investigation proved correct against real MySQL
+    /// 8.0.46 for `select @@version_comment limit 1`. Guards against
+    /// the fix going too far and regressing the COM_QUERY SELECT path
+    /// that already works in V3.12+.
+    #[test]
+    fn deprecate_eof_terminator_omits_info_field_when_session_track_not_negotiated() {
+        let client_cap = capability::DEPRECATE_EOF | capability::PROTOCOL_41; // NO SESSION_TRACK
+
+        let packets = make_deprecate_eof_ok_packet(
+            /*seq=*/ 0,
+            /*affected=*/ 0,
+            /*last_id=*/ 0,
+            /*status=*/ 0x0002,
+            /*warnings=*/ 0,
+            client_cap,
+        );
+
+        let payload = &packets[0].payload;
+
+        assert_eq!(
+            payload.len(),
+            7,
+            "without SESSION_TRACK, terminator must remain 7 bytes \
+             (matches real MySQL 8.0.46 wire shape for plain SELECT \
+             under DEPRECATE_EOF); got {} bytes: {:02x?}",
+            payload.len(),
+            payload
+        );
+    }
+
+    /// Companion test: when BOTH `SESSION_TRACK` AND `0x4000` are set,
+    /// the terminator MUST include BOTH `info` AND
+    /// `session_state_changes` lenenc bytes (9 bytes total).
+    /// Mirrors the `make_ok_packet` semantics — only the COM_QUERY
+    /// non-terminator OK packet path (lib.rs:2200-2210) had this
+    /// right; `make_deprecate_eof_ok_packet` was missing the
+    /// unconditional `info` write.
+    #[test]
+    fn deprecate_eof_terminator_includes_info_and_session_state_when_session_changed() {
+        let client_cap =
+            capability::SESSION_TRACK | capability::DEPRECATE_EOF | capability::PROTOCOL_41;
+
+        let packets = make_deprecate_eof_ok_packet(
+            /*seq=*/ 0,
+            /*affected=*/ 0,
+            /*last_id=*/ 0,
+            /*status=*/ 0x4002, // AUTOCOMMIT + SESSION_STATE_CHANGED
+            /*warnings=*/ 0,
+            client_cap,
+        );
+
+        let payload = &packets[0].payload;
+
+        // 0xFE + 2 lenenc + 2 status + 2 warnings + 1 info + 1 session_state = 9
+        assert_eq!(
+            payload.len(),
+            9,
+            "with SESSION_TRACK + 0x4000, terminator must be 9 bytes \
+             (incl. info AND session_state_changes lenenc); got {} bytes: {:02x?}",
+            payload.len(),
+            payload
+        );
+    }
+
+    /// Final guard: the `make_deprecate_eof_ok_packet` function MUST
+    /// produce identical wire shape to `make_ok_packet` when
+    /// `SESSION_TRACK` is negotiated — both must include the trailing
+    /// `info` lenenc byte. They diverge only in the leading marker
+    /// (0x00 vs 0xFE) and in NOT auto-OR'ing 0x4000. This test
+    /// catches any future divergence introduced by one-sided edits.
+    #[test]
+    fn deprecate_eof_terminator_matches_ok_packet_info_field_under_session_track() {
+        // Use status WITHOUT 0x4000 — the path that breaks in the wild.
+        let status = 0x0002u16;
+        let warnings = 0u16;
+        let cap = capability::SESSION_TRACK
+            | capability::DEPRECATE_EOF
+            | capability::PROTOCOL_41;
+
+        let ok_packets = make_ok_packet(
+            /*seq=*/ 0,
+            /*affected=*/ 0,
+            /*last_id=*/ 0,
+            status,
+            warnings,
+            cap,
+            /*is_auth_ok=*/ false,
+        );
+        let deprecate_eof_packets = make_deprecate_eof_ok_packet(
+            0, 0, 0, status, warnings, cap,
+        );
+
+        // Both must have the info byte; the only legal difference is
+        // payload[0] (0x00 vs 0xFE) and possibly status_flags[2..4] if
+        // make_ok_packet auto-OR's 0x4000 (which it does when SESSION_TRACK
+        // is negotiated and !is_auth_ok).
+        assert!(ok_packets.len() == 1 && deprecate_eof_packets.len() == 1);
+        let ok_payload = &ok_packets[0].payload;
+        let dep_payload = &deprecate_eof_packets[0].payload;
+
+        // The trailing info byte MUST be present in both, at the
+        // same offset from the end (last byte = info lenenc 0).
+        assert_eq!(
+            ok_payload.last(),
+            Some(&0x00),
+            "make_ok_packet must emit trailing info lenenc under SESSION_TRACK"
+        );
+        assert_eq!(
+            dep_payload.last(),
+            Some(&0x00),
+            "make_deprecate_eof_ok_packet must emit trailing info lenenc \
+             under SESSION_TRACK (regression #95)"
+        );
+    }
+
+    // ============ Task #102 RED: initial STMT_PREPARE OK packet tests ============
+    //
+    // SOAK sysbench run on 2026-09-12 revealed that the FIRST packet of
+    // the COM_STMT_PREPARE response (the initial OK carrying stmt_id /
+    // column_count / param_count) ALSO needed the trailing lenenc `info`
+    // byte when SESSION_TRACK is negotiated. Without it,
+    // `mysql_stmt_prepare()` reads the next packet's header as the
+    // info length and emits 2027 "Malformed packet". The terminator fix
+    // was insufficient because sysbench consumes the initial OK first.
+
+    /// RED test (Task #102): initial STMT_PREPARE OK packet MUST include
+    /// the trailing lenenc `info` byte when SESSION_TRACK is negotiated.
+    /// Pre-fix the packet was 12 bytes (no info); post-fix it is 13
+    /// bytes (info lenenc 0 appended).
+    #[test]
+    fn stmt_prepare_initial_ok_includes_info_field_when_session_track_negotiated() {
+        let client_cap = capability::SESSION_TRACK
+            | capability::DEPRECATE_EOF
+            | capability::PROTOCOL_41;
+        let payload =
+            make_stmt_prepare_initial_ok_packet(/*stmt_id=*/ 42, /*column_count=*/ 3,
+                                                /*param_count=*/ 1, client_cap);
+
+        // Expected payload layout (post-fix):
+        //   offset 0: 0x00       OK marker                   (1 byte)
+        //   offset 1: 0x2A000000 stmt_id=42 (u32 LE)         (4 bytes)
+        //   offset 5: 0x0300     column_count=3 (u16 LE)     (2 bytes)
+        //   offset 7: 0x0100     param_count=1 (u16 LE)      (2 bytes)
+        //   offset 9: 0x00       filler                      (1 byte)
+        //   offset 10: 0x0000    warnings=0 (u16 LE)         (2 bytes)
+        //   offset 12: 0x00      lenenc(info=0)              (1 byte)
+        //   total: 13 bytes
+        assert_eq!(
+            payload.len(),
+            13,
+            "initial STMT_PREPARE OK MUST include info lenenc when \
+             SESSION_TRACK is negotiated (sysbench 2027 regression #95). \
+             Got {} bytes: {:02x?}",
+            payload.len(),
+            &payload[..]
+        );
+
+        assert_eq!(payload[0], 0x00, "OK marker");
+        assert_eq!(
+            u32::from_le_bytes([payload[1], payload[2], payload[3], payload[4]]),
+            42,
+            "stmt_id"
+        );
+        assert_eq!(
+            u16::from_le_bytes([payload[5], payload[6]]),
+            3,
+            "column_count"
+        );
+        assert_eq!(
+            u16::from_le_bytes([payload[7], payload[8]]),
+            1,
+            "param_count"
+        );
+        assert_eq!(payload[9], 0x00, "filler");
+        assert_eq!(u16::from_le_bytes([payload[10], payload[11]]), 0, "warnings");
+        assert_eq!(
+            payload[12], 0x00,
+            "lenenc(info=0) trailing — must be present when SESSION_TRACK negotiated"
+        );
+    }
+
+    /// Counterpart: when SESSION_TRACK is NOT negotiated, the initial
+    /// STMT_PREPARE OK packet stays at 12 bytes (no info byte). Matches
+    /// pre-fix behavior so legacy clients (non-session-track) are not
+    /// impacted by the new code path.
+    #[test]
+    fn stmt_prepare_initial_ok_omits_info_field_when_session_track_not_negotiated() {
+        let client_cap = capability::PROTOCOL_41; // no SESSION_TRACK
+        let payload = make_stmt_prepare_initial_ok_packet(7, 1, 0, client_cap);
+
+        assert_eq!(
+            payload.len(),
+            12,
+            "without SESSION_TRACK, initial STMT_PREPARE OK stays at 12 bytes \
+             (no info byte) — legacy clients must keep working"
+        );
+        assert_eq!(payload[0], 0x00, "OK marker");
+        assert_eq!(
+            u32::from_le_bytes([payload[1], payload[2], payload[3], payload[4]]),
+            7,
+            "stmt_id"
+        );
+        assert_eq!(u16::from_le_bytes([payload[5], payload[6]]), 1, "column_count");
+        assert_eq!(u16::from_le_bytes([payload[7], payload[8]]), 0, "param_count");
+        assert_eq!(payload[9], 0x00, "filler");
+        assert_eq!(u16::from_le_bytes([payload[10], payload[11]]), 0, "warnings");
+        // No byte 12 — packet ends at offset 11 (warnings).
     }
 }
