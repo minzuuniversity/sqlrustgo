@@ -225,3 +225,11 @@ data/soak-test2/
 
 # Claude Code workspace config (per-user, not for tracking)
 .claude/claude_desktop_config.json
+
+# 教学实践 (teaching practice materials, gaoyuanyiyao.com personal)
+docs/教学实践/
+docs/tutorials/教学实践/
+
+# macOS metadata files (Finder/Spotlight)
+.DS_Store
+**/.DS_Store
