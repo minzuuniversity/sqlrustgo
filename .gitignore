@@ -19,6 +19,28 @@ v1.0.0/api-doc/*
 CLAUDE.md
 .claude/skills/
 
+# =============================================================================
+# v4.0.0 File Governance Rule (2026-09-08)
+# =============================================================================
+# *.log, *.tbl, *.json files are NOT allowed in commits
+# Exception: Cargo.toml, package.json, tsconfig.json, *.config.json, docs/governance/*.json
+*.log
+*.tbl
+# JSON files - most are disallowed (allowed list below)
+*.json
+# Allowlist exceptions
+!**/Cargo.toml
+!**/package.json
+!**/tsconfig.json
+!**/.gitignore
+!**/.gitattributes
+!**/*.config.json
+!**/docs/governance/*.json
+!**/docs/releases/*/manifest.json
+!**/docs/releases/*/evidence/*/summary.json
+!**/.claude/**/*.json
+!**/.gitea/workflows/*.json
+
 # Server LOAD DATA side effects: .json (table metadata dumps) and .wal (WAL files) emitted into data_dir at runtime
 tests/data/tpch-sf001/*.json
 tests/data/tpch-sf001/*.wal
