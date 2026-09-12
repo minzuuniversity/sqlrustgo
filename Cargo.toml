@@ -46,7 +46,7 @@ members = [
 ]
 
 [workspace.package]
-version = "3.11.0"
+version = "3.12.0-fix-zombie"
 edition = "2021"
 authors = ["SQLRustGo Team"]
 license = "MIT"

@@ -4281,7 +4281,7 @@ dependencies = [
 
 [[package]]
 name = "sqlrustgo"
-version = "3.11.0"
+version = "3.12.0-fix-zombie"
 dependencies = [
  "anyhow",
  "async-trait",
@@ -4333,7 +4333,7 @@ dependencies = [
 
 [[package]]
 name = "sqlrustgo-admin"
-version = "3.11.0"
+version = "3.12.0-fix-zombie"
 dependencies = [
  "anyhow",
  "chrono",
@@ -4381,7 +4381,7 @@ dependencies = [
 
 [[package]]
 name = "sqlrustgo-cache"
-version = "3.11.0"
+version = "3.12.0-fix-zombie"
 dependencies = [
  "parking_lot",
  "sqlrustgo-parser",
@@ -4391,7 +4391,7 @@ dependencies = [
 
 [[package]]
 name = "sqlrustgo-catalog"
-version = "3.11.0"
+version = "3.12.0-fix-zombie"
 dependencies = [
  "hmac 0.12.1",
  "log",
@@ -4423,7 +4423,7 @@ dependencies = [
 
 [[package]]
 name = "sqlrustgo-common"
-version = "3.11.0"
+version = "3.12.0-fix-zombie"
 dependencies = [
  "anyhow",
  "async-trait",
@@ -4447,7 +4447,7 @@ dependencies = [
 
 [[package]]
 name = "sqlrustgo-executor"
-version = "3.11.0"
+version = "3.12.0-fix-zombie"
 dependencies = [
  "log",
  "md5",
@@ -4475,7 +4475,7 @@ dependencies = [
 
 [[package]]
 name = "sqlrustgo-gmp"
-version = "3.11.0"
+version = "3.12.0-fix-zombie"
 dependencies = [
  "anyhow",
  "async-trait",
@@ -4499,7 +4499,7 @@ dependencies = [
 
 [[package]]
 name = "sqlrustgo-graph"
-version = "3.11.0"
+version = "3.12.0-fix-zombie"
 dependencies = [
  "anyhow",
  "async-trait",
@@ -4578,7 +4578,7 @@ dependencies = [
 
 [[package]]
 name = "sqlrustgo-optimizer"
-version = "3.11.0"
+version = "3.12.0-fix-zombie"
 dependencies = [
  "async-trait",
  "log",
@@ -4593,7 +4593,7 @@ dependencies = [
 
 [[package]]
 name = "sqlrustgo-parser"
-version = "3.11.0"
+version = "3.12.0-fix-zombie"
 dependencies = [
  "log",
  "serde",
@@ -4605,7 +4605,7 @@ dependencies = [
 
 [[package]]
 name = "sqlrustgo-planner"
-version = "3.11.0"
+version = "3.12.0-fix-zombie"
 dependencies = [
  "log",
  "serde",
@@ -4654,7 +4654,7 @@ dependencies = [
 
 [[package]]
 name = "sqlrustgo-server"
-version = "3.11.0"
+version = "3.12.0-fix-zombie"
 dependencies = [
  "actix-web",
  "async-trait",
@@ -4682,7 +4682,7 @@ dependencies = [
 
 [[package]]
 name = "sqlrustgo-soak"
-version = "3.11.0"
+version = "3.12.0-fix-zombie"
 dependencies = [
  "anyhow",
  "chrono",
@@ -4708,7 +4708,7 @@ dependencies = [
 
 [[package]]
 name = "sqlrustgo-sql-corpus"
-version = "3.11.0"
+version = "3.12.0-fix-zombie"
 dependencies = [
  "serde",
  "sqlrustgo",
@@ -4721,7 +4721,7 @@ dependencies = [
 
 [[package]]
 name = "sqlrustgo-storage"
-version = "3.11.0"
+version = "3.12.0-fix-zombie"
 dependencies = [
  "async-trait",
  "crc32c",
@@ -4743,7 +4743,7 @@ dependencies = [
 
 [[package]]
 name = "sqlrustgo-telemetry"
-version = "3.11.0"
+version = "3.12.0-fix-zombie"
 dependencies = [
  "log",
  "parking_lot",
@@ -4755,7 +4755,7 @@ dependencies = [
 
 [[package]]
 name = "sqlrustgo-tools"
-version = "3.11.0"
+version = "3.12.0-fix-zombie"
 dependencies = [
  "anyhow",
  "clap 4.6.1",
@@ -4780,7 +4780,7 @@ dependencies = [
 
 [[package]]
 name = "sqlrustgo-transaction"
-version = "3.11.0"
+version = "3.12.0-fix-zombie"
 dependencies = [
  "log",
  "serde",
@@ -4794,7 +4794,7 @@ dependencies = [
 
 [[package]]
 name = "sqlrustgo-types"
-version = "3.11.0"
+version = "3.12.0-fix-zombie"
 dependencies = [
  "hex",
  "log",
