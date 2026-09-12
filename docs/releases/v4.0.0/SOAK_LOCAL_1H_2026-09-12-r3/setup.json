@@ -1,0 +1,11 @@
+{
+  "port": 56739,
+  "data_dir": "/tmp/soak-v4-1h-data-56739",
+  "results_dir": "/tmp/soak-v4-1h-20260912-r3",
+  "duration_seconds": 3600,
+  "table_size": 10000,
+  "threads": 8,
+  "binary": "target/release/sqlrustgo-mysql-server",
+  "binary_sha": "11d96613fcde78ff145a91da2141312c12292fdc",
+  "note": "r3: error log level (less spam), 1h SOAK"
+}
