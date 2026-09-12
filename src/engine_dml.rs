@@ -61,6 +61,9 @@ pub fn execute_insert<S: StorageEngine + 'static>(
     engine: &mut ExecutionEngine<S>,
     insert: &InsertStatement,
 ) -> SqlResult<ExecutorResult> {
+    if engine.clustered_tables.read().contains_key(&insert.table) {
+        return execute_insert_clustered(engine, insert);
+    }
     // V311-01 F-23: ClusteredTable main-path DML routing. The SELECT path
     // already reads via ClusteredTable (engine_select.rs::scan_with_ahi);
     // here we route INSERT to ClusteredTable.insert() so the rows actually
@@ -69,14 +72,19 @@ pub fn execute_insert<S: StorageEngine + 'static>(
     if engine.clustered_tables.read().contains_key(&insert.table) {
         return execute_insert_clustered(engine, insert);
     }
-    let (_tm_tx_id, _started_implicit) =
-        engine.begin_implicit_dml_tx("execute_insert", &insert.table)?;
+    let started_implicit = match engine.begin_implicit_dml_tx("execute_insert", &insert.table) {
+        Ok((_tm_tx_id, si)) => si,
+        Err(e) => return Err(e),
+    };
     let table_name = insert.table.clone();
 
     // Get table info first (need it for triggers and FK validation)
     let table_info = {
         let storage = engine.storage.read();
-        storage.get_table_info(&table_name)?.clone()
+        match storage.get_table_info(&table_name) {
+            Ok(info) => info.clone(),
+            Err(e) => return Err(e),
+        }
     };
 
     let all_records: Vec<Vec<Value>> =
@@ -574,9 +582,13 @@ pub fn execute_insert<S: StorageEngine + 'static>(
                 .collect()
         };
         let row_count = projected_rows.len();
+        // INT-1: auto-commit before returning.
+        engine.commit_implicit_dml_tx(started_implicit)?;
         return Ok(ExecutorResult::new(projected_rows, row_count));
     }
 
+    // INT-1: auto-commit.
+    engine.commit_implicit_dml_tx(started_implicit)?;
     Ok(ExecutorResult::new(vec![], all_records.len()))
 }
 

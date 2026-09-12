@@ -1566,11 +1566,9 @@ impl<S: StorageEngine + 'static> ExecutionEngine<S> {
     }
 
     pub(super) fn commit_transaction(&mut self) -> SqlResult<ExecutorResult> {
-        // IMPL-004: Double-commit prevention — check before ok_or_else (current_tx_id set to None after commit)
+        // V312-77 / Issue #4847 Path B: no explicit tx active → no-op (MySQL compat).
         if self.current_tx_id.is_none() {
-            return Err(SqlError::ExecutionError(
-                "transaction already committed".to_string(),
-            ));
+            return Ok(ExecutorResult::empty());
         }
         let tx_id = self
             .current_tx_id
@@ -1749,11 +1747,9 @@ impl<S: StorageEngine + 'static> ExecutionEngine<S> {
     }
 
     pub(super) fn rollback_transaction(&mut self) -> SqlResult<ExecutorResult> {
-        // IMPL-004: Double-rollback prevention — check before ok_or_else
+        // V312-77 / Issue #4847 Path C: no explicit tx active → no-op.
         if self.current_tx_id.is_none() {
-            return Err(SqlError::ExecutionError(
-                "transaction already aborted".to_string(),
-            ));
+            return Ok(ExecutorResult::empty());
         }
         let tx_id = self
             .current_tx_id

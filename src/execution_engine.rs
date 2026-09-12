@@ -97,6 +97,12 @@ pub struct ExecutionEngine<S: StorageEngine> {
     pub(crate) trigger_undo_sink:
         Arc<parking_lot::Mutex<Vec<sqlrustgo_transaction::savepoint::UndoRecord>>>,
     pub(crate) tx_status: TxStatus,
+    /// V312-77 / Issue #4847: distinguishes an explicit BEGIN (set to true
+    /// when `begin_transaction` is called) from an implicit DML transaction
+    /// (set to false). Only explicit transactions should be tracked by
+    /// `commit_implicit_dml_tx` / `rollback_transaction` so that DML inside
+    /// an explicit BEGIN does not auto-commit and ROLLBACK can undo it.
+    pub(crate) is_explicit_transaction: bool,
     pub(crate) tx_readonly: bool,
     pub(crate) default_isolation: TmIsolationLevel,
     pub(crate) current_role: Option<String>,
@@ -260,6 +266,7 @@ impl<S: StorageEngine + 'static> ExecutionEngine<S> {
             current_tx_id: None,
             trigger_undo_sink: Arc::new(parking_lot::Mutex::new(Vec::new())),
             tx_status: TxStatus::Idle,
+            is_explicit_transaction: false,
             tx_readonly: false,
             default_isolation: TmIsolationLevel::default(),
             current_role: None,

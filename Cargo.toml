@@ -1737,6 +1737,10 @@ name = "v312_76_sqlite_system_tables_test"
 path = "tests/integration/sql/v312_76_sqlite_system_tables_test.rs"
 
 [[test]]
+name = "v312_77_explicit_tx_semantics_test"
+path = "tests/integration/sql/v312_77_explicit_tx_semantics_test.rs"
+
+[[test]]
 name = "v312_87_case_when_subquery_test"
 path = "tests/integration/sql/v312_87_case_when_subquery_test.rs"
 

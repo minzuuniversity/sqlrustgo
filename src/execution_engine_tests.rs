@@ -389,19 +389,20 @@ fn test_tx_lifecycle_insert_after_rollback_autocommits() {
     assert_eq!(result.affected_rows, 1);
 }
 
+// V312-77 / Issue #4847 Path B revision: double-COMMIT is now a no-op
+// (MySQL-compat) rather than a panic. COMMIT with no active tx returns
+// Ok(empty). This matches the PR #4884 fix and the v312_77 regression
+// suite (`v312_77_commit_no_active_tx_is_noop`).
 #[test]
-#[should_panic(expected = "transaction already committed")]
-fn test_tx_lifecycle_double_commit_panics() {
-    // TX-006: COMMIT twice → must panic
-    // Source: TX_LIFECYCLE_SPEC.md §2.2 "COMMITTED | COMMIT | panic"
+fn test_tx_lifecycle_double_commit_is_noop() {
     let storage = Arc::new(RwLock::new(MemoryStorage::new()));
     let mut engine = ExecutionEngine::new(storage);
     engine.execute("BEGIN").unwrap();
     engine.execute("COMMIT").unwrap();
-    // Double COMMIT → must panic
-    engine.execute("COMMIT").unwrap();
+    // Double COMMIT → no-op (not panic).
+    let result = engine.execute("COMMIT");
+    assert!(result.is_ok(), "second COMMIT must succeed as no-op, got {:?}", result);
 }
-
 // ========================================================================
 // WAL CONTRACT TESTS (TASK_REGISTRY: WAL-003 ~ WAL-005)
 // Hermes B: Shadow Tester — WAL Ordering Validation
