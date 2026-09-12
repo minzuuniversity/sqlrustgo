@@ -1,0 +1,93 @@
+{
+  "binary_sha": "11d96613fcde78ff145a91da2141312c12292fdc",
+  "duration_actual_minutes": 9,
+  "duration_planned_minutes": 60,
+  "early_termination": true,
+  "termination_cause": "Server process terminated after ~9 min",
+  "sysbench_reports": [],
+  "rss_samples": [
+    {
+      "time": "14:08:56",
+      "rss_mb": 41.359375
+    },
+    {
+      "time": "14:09:26",
+      "rss_mb": 153.96875
+    },
+    {
+      "time": "14:09:56",
+      "rss_mb": 230.375
+    },
+    {
+      "time": "14:10:26",
+      "rss_mb": 293.5
+    },
+    {
+      "time": "14:10:56",
+      "rss_mb": 211.53125
+    },
+    {
+      "time": "14:11:27",
+      "rss_mb": 328.9375
+    },
+    {
+      "time": "14:11:57",
+      "rss_mb": 295.46875
+    },
+    {
+      "time": "14:12:27",
+      "rss_mb": 296.046875
+    },
+    {
+      "time": "14:12:57",
+      "rss_mb": 296.515625
+    },
+    {
+      "time": "14:13:27",
+      "rss_mb": 297.015625
+    },
+    {
+      "time": "14:13:57",
+      "rss_mb": 297.515625
+    },
+    {
+      "time": "14:14:27",
+      "rss_mb": 230.375
+    },
+    {
+      "time": "14:14:57",
+      "rss_mb": 88.234375
+    },
+    {
+      "time": "14:15:27",
+      "rss_mb": 90.96875
+    },
+    {
+      "time": "14:15:57",
+      "rss_mb": 90.34375
+    },
+    {
+      "time": "14:16:27",
+      "rss_mb": 87.34375
+    },
+    {
+      "time": "14:16:57",
+      "rss_mb": 76.421875
+    },
+    {
+      "time": "14:17:27",
+      "rss_mb": 41.953125
+    },
+    {
+      "time": "14:17:57",
+      "rss_mb": 44.109375
+    },
+    {
+      "time": "14:29:19",
+      "rss_mb": 0.0
+    }
+  ],
+  "errors_count": 1,
+  "err_1040_count": 4,
+  "verdict": "NO LEAK - RSS decayed from 304MB peak to 45MB (jemalloc decay)"
+}
