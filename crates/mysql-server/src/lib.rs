@@ -5188,20 +5188,8 @@ fn do_command_loop<S: Read + Write + DrainWrites>(
                 let stmt_id =
                     ps_manager.add(sql.clone(), param_count, column_count, param_types.clone());
 
-                let p = make_stmt_prepare_initial_ok_packet(stmt_id, column_count, param_count, cap);
-                let ok_pkt_bytes = {
-                    let mut pb = Vec::new();
-                    pb.write_u24::<LittleEndian>(p.len() as u32).unwrap();
-                    pb.write_u8(seq).unwrap();
-                    pb.extend_from_slice(&p);
-                    pb
-                };
-                tracing::debug!(
-                    "STMT_PREPARE OK pkt: seq={}, len={}, hex={:02x?}",
-                    seq,
-                    ok_pkt_bytes.len(),
-                    &ok_pkt_bytes[..]
-                );
+                let p =
+                    make_stmt_prepare_initial_ok_packet(stmt_id, column_count, param_count, cap);
                 Packet {
                     length: p.len() as u32,
                     sequence: seq,
@@ -5244,18 +5232,34 @@ fn do_command_loop<S: Read + Write + DrainWrites>(
                         *server_last_sent_seq = seq;
                         seq = seq.wrapping_add(1);
                     }
-                    if cap & capability::DEPRECATE_EOF != 0 {
-                        seq = write_ok_packets(
-                            stream,
-                            make_deprecate_eof_ok_packet(seq, 0, 0, 0x0002, 0, cap),
-                            seq,
-                        )?;
-                        *server_last_sent_seq = seq;
-                    } else {
+                    // V4.0.0 task #95 third pass (regression "STMT PREPARE Malformed
+                    // packet 2027" / protocol spec):
+                    //
+                    // Per the MySQL 8.0 wire protocol and ProxySQL PR #2684, when
+                    // CLIENT_DEPRECATE_EOF is negotiated the COM_STMT_PREPARE
+                    // response has NO terminator packets between param definitions
+                    // and column definitions, and NO terminator packet after column
+                    // definitions either — packet boundaries alone signal the end
+                    // of each section. Sending a 0xFE "OK-as-terminator" (or
+                    // classic 5-byte EOF) here makes libmysqlclient (sysbench)
+                    // surface error 2027 "Malformed packet" because it has already
+                    // consumed exactly `num_params` param_def packets and reads
+                    // the next byte as the column_count packet header.
+                    //
+                    // The previous fix in commit 77f1570fc1 went the wrong way —
+                    // it added a trailing lenenc(info) under SESSION_TRACK to the
+                    // 0xFE terminator, which is what real MySQL 5.7 EOF looks
+                    // like, but real MySQL 8.0 under CLIENT_DEPRECATE_EOF does
+                    // NOT send the terminator at all. The correct fix is to skip
+                    // the terminator entirely under CLIENT_DEPRECATE_EOF.
+                    if cap & capability::DEPRECATE_EOF == 0 {
+                        // Classic protocol (pre-8.0 clients): send 5-byte EOF
+                        // packet (0xFE + warnings + status_flags) as terminator.
                         make_eof_packet(seq, 0x0002).write_to(stream)?;
                         *server_last_sent_seq = seq;
                         seq = seq.wrapping_add(1);
                     }
+                    // DEPRECATE_EOF=1: NO terminator between params and columns.
                 }
 
                 if column_count > 0 {
@@ -5306,14 +5310,10 @@ fn do_command_loop<S: Read + Write + DrainWrites>(
                             .unwrap_or_else(|| format!("col_{}", i + 1));
                         seq = write_column_def(stream, &col_name, "VARCHAR(255)", seq)?;
                     }
-                    if cap & capability::DEPRECATE_EOF != 0 {
-                        seq = write_ok_packets(
-                            stream,
-                            make_deprecate_eof_ok_packet(seq, 0, 0, 0x0002, 0, cap),
-                            seq,
-                        )?;
-                        *server_last_sent_seq = seq;
-                    } else {
+                    // V4.0.0 task #95 third pass: skip trailing terminator under
+                    // CLIENT_DEPRECATE_EOF (see full rationale on the param-side
+                    // branch above). Classic protocol still emits a 5-byte EOF.
+                    if cap & capability::DEPRECATE_EOF == 0 {
                         make_eof_packet(seq, 0x0002).write_to(stream)?;
                         *server_last_sent_seq = seq;
                         seq = seq.wrapping_add(1);
@@ -6142,7 +6142,8 @@ pub(crate) fn run_server_with_listener_and_shutdown_with_bootstrap_tables_and_sq
                                         tracing::warn!(
                                             "worker pool full; rejection ERR write failed \
                                              for {}: {} (BACKPRESSURE_REJECTED_COUNT incremented)",
-                                            returned_job.addr, e
+                                            returned_job.addr,
+                                            e
                                         );
                                     }
                                 }
@@ -7322,8 +7323,9 @@ pub mod testing {
     pub fn write_pool_rejection(mut stream: std::net::TcpStream) -> std::io::Result<()> {
         use std::io::Write;
         let pkt = make_rejection_err_packet();
-        pkt.write_to(&mut stream)
-            .map_err(|e| std::io::Error::other(format!("make_rejection_err_packet write_to: {e}")))?;
+        pkt.write_to(&mut stream).map_err(|e| {
+            std::io::Error::other(format!("make_rejection_err_packet write_to: {e}"))
+        })?;
         let _ = stream.flush();
         let _ = stream.shutdown(std::net::Shutdown::Both);
         Ok(())
@@ -8208,12 +8210,8 @@ mod stmt_prepare_terminator_tests {
         // broke sysbench: every prepared INSERT terminator carries
         // 0x0002, never 0x4002.
         let packets = make_deprecate_eof_ok_packet(
-            /*seq=*/ 0,
-            /*affected=*/ 0,
-            /*last_id=*/ 0,
-            /*status=*/ 0x0002,
-            /*warnings=*/ 0,
-            client_cap,
+            /*seq=*/ 0, /*affected=*/ 0, /*last_id=*/ 0, /*status=*/ 0x0002,
+            /*warnings=*/ 0, client_cap,
         );
 
         assert_eq!(packets.len(), 1, "must return exactly one OK packet");
@@ -8238,7 +8236,10 @@ mod stmt_prepare_terminator_tests {
             payload
         );
 
-        assert_eq!(payload[0], 0xFE, "first byte must be 0xFE (DEPRECATE_EOF marker)");
+        assert_eq!(
+            payload[0], 0xFE,
+            "first byte must be 0xFE (DEPRECATE_EOF marker)"
+        );
         assert_eq!(payload[1], 0x00, "affected_rows lenenc = 0");
         assert_eq!(payload[2], 0x00, "last_insert_id lenenc = 0");
         assert_eq!(
@@ -8270,12 +8271,8 @@ mod stmt_prepare_terminator_tests {
         let client_cap = capability::DEPRECATE_EOF | capability::PROTOCOL_41; // NO SESSION_TRACK
 
         let packets = make_deprecate_eof_ok_packet(
-            /*seq=*/ 0,
-            /*affected=*/ 0,
-            /*last_id=*/ 0,
-            /*status=*/ 0x0002,
-            /*warnings=*/ 0,
-            client_cap,
+            /*seq=*/ 0, /*affected=*/ 0, /*last_id=*/ 0, /*status=*/ 0x0002,
+            /*warnings=*/ 0, client_cap,
         );
 
         let payload = &packets[0].payload;
@@ -8304,12 +8301,9 @@ mod stmt_prepare_terminator_tests {
             capability::SESSION_TRACK | capability::DEPRECATE_EOF | capability::PROTOCOL_41;
 
         let packets = make_deprecate_eof_ok_packet(
-            /*seq=*/ 0,
-            /*affected=*/ 0,
-            /*last_id=*/ 0,
+            /*seq=*/ 0, /*affected=*/ 0, /*last_id=*/ 0,
             /*status=*/ 0x4002, // AUTOCOMMIT + SESSION_STATE_CHANGED
-            /*warnings=*/ 0,
-            client_cap,
+            /*warnings=*/ 0, client_cap,
         );
 
         let payload = &packets[0].payload;
@@ -8336,22 +8330,13 @@ mod stmt_prepare_terminator_tests {
         // Use status WITHOUT 0x4000 — the path that breaks in the wild.
         let status = 0x0002u16;
         let warnings = 0u16;
-        let cap = capability::SESSION_TRACK
-            | capability::DEPRECATE_EOF
-            | capability::PROTOCOL_41;
+        let cap = capability::SESSION_TRACK | capability::DEPRECATE_EOF | capability::PROTOCOL_41;
 
         let ok_packets = make_ok_packet(
-            /*seq=*/ 0,
-            /*affected=*/ 0,
-            /*last_id=*/ 0,
-            status,
-            warnings,
-            cap,
+            /*seq=*/ 0, /*affected=*/ 0, /*last_id=*/ 0, status, warnings, cap,
             /*is_auth_ok=*/ false,
         );
-        let deprecate_eof_packets = make_deprecate_eof_ok_packet(
-            0, 0, 0, status, warnings, cap,
-        );
+        let deprecate_eof_packets = make_deprecate_eof_ok_packet(0, 0, 0, status, warnings, cap);
 
         // Both must have the info byte; the only legal difference is
         // payload[0] (0x00 vs 0xFE) and possibly status_flags[2..4] if
@@ -8392,12 +8377,11 @@ mod stmt_prepare_terminator_tests {
     /// bytes (info lenenc 0 appended).
     #[test]
     fn stmt_prepare_initial_ok_includes_info_field_when_session_track_negotiated() {
-        let client_cap = capability::SESSION_TRACK
-            | capability::DEPRECATE_EOF
-            | capability::PROTOCOL_41;
-        let payload =
-            make_stmt_prepare_initial_ok_packet(/*stmt_id=*/ 42, /*column_count=*/ 3,
-                                                /*param_count=*/ 1, client_cap);
+        let client_cap =
+            capability::SESSION_TRACK | capability::DEPRECATE_EOF | capability::PROTOCOL_41;
+        let payload = make_stmt_prepare_initial_ok_packet(
+            /*stmt_id=*/ 42, /*column_count=*/ 3, /*param_count=*/ 1, client_cap,
+        );
 
         // Expected payload layout (post-fix):
         //   offset 0: 0x00       OK marker                   (1 byte)
@@ -8435,7 +8419,11 @@ mod stmt_prepare_terminator_tests {
             "param_count"
         );
         assert_eq!(payload[9], 0x00, "filler");
-        assert_eq!(u16::from_le_bytes([payload[10], payload[11]]), 0, "warnings");
+        assert_eq!(
+            u16::from_le_bytes([payload[10], payload[11]]),
+            0,
+            "warnings"
+        );
         assert_eq!(
             payload[12], 0x00,
             "lenenc(info=0) trailing — must be present when SESSION_TRACK negotiated"
@@ -8463,10 +8451,22 @@ mod stmt_prepare_terminator_tests {
             7,
             "stmt_id"
         );
-        assert_eq!(u16::from_le_bytes([payload[5], payload[6]]), 1, "column_count");
-        assert_eq!(u16::from_le_bytes([payload[7], payload[8]]), 0, "param_count");
+        assert_eq!(
+            u16::from_le_bytes([payload[5], payload[6]]),
+            1,
+            "column_count"
+        );
+        assert_eq!(
+            u16::from_le_bytes([payload[7], payload[8]]),
+            0,
+            "param_count"
+        );
         assert_eq!(payload[9], 0x00, "filler");
-        assert_eq!(u16::from_le_bytes([payload[10], payload[11]]), 0, "warnings");
+        assert_eq!(
+            u16::from_le_bytes([payload[10], payload[11]]),
+            0,
+            "warnings"
+        );
         // No byte 12 — packet ends at offset 11 (warnings).
     }
 }
