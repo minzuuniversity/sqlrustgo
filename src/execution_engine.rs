@@ -1886,12 +1886,30 @@ impl<S: StorageEngine + 'static> ExecutionEngine<S> {
         let tx_id = self
             .current_tx_id
             .ok_or_else(|| SqlError::ExecutionError("No transaction in progress".to_string()))?;
-        // Delegate to storage engine first so WalStorage writes WAL Commit entry before clearing state
-        let mut storage = self.storage.write();
-        {
-            let _ = storage.commit_transaction();
-            // F-16 Gap Locking: release all gap locks on commit
+        // Phase B Step 3 follow-up #3: prefer the lockfree path so we
+        // don't take the global `Arc<RwLock<storage>>` write lock for
+        // the COMMIT. Same fallback as `begin_transaction`.
+        let lockfree_ok = {
+            let storage = self.storage.read();
+            storage.commit_transaction_lockfree().is_ok()
+        };
+        if lockfree_ok {
+            // F-16 Gap Locking: release all gap locks on commit (lockfree
+            // path skips these for now — TODO: gap-lock-free variant).
+            // Note: `release_all_gap_locks` requires &mut self, so we
+            // must escalate. This is still cheaper than the full
+            // `commit_transaction` because the WAL append and
+            // tx_id clear already happened in the lockfree path.
+            let mut storage = self.storage.write();
             storage.release_all_gap_locks(tx_id.as_u64());
+        } else {
+            // Fallback: lockfree not supported.
+            let mut storage = self.storage.write();
+            {
+                let _ = storage.commit_transaction();
+                // F-16 Gap Locking: release all gap locks on commit
+                storage.release_all_gap_locks(tx_id.as_u64());
+            }
         }
         self.transaction_manager.commit(tx_id).map_err(|e| {
             SqlError::ExecutionError(format!("Failed to commit transaction: {:?}", e))
@@ -2055,10 +2073,15 @@ impl<S: StorageEngine + 'static> ExecutionEngine<S> {
         // `sqlrustgo_transaction::TransactionManager::rollback_with_undo`
         // and `src/savepoint_wiring.rs::record_*_undo`.
         //
-        // We MUST NOT hold `self.storage.write()` while calling
-        // `self.transaction_manager.rollback_with_undo` because both
-        // paths can borrow self mutably. The closure captures a clone
-        // of the storage Arc and re-acquires the write lock per record.
+        // Phase B Step 3 follow-up #3: call `rollback_transaction_lockfree`
+        // first to release tx state and discard buffered writes without
+        // taking the global `Arc<RwLock<storage>>` write lock. The
+        // per-record undo replay still needs the write lock (one at a
+        // time, inside the closure) — this is the same as the legacy path.
+        {
+            let storage_read = self.storage.read();
+            let _ = storage_read.rollback_transaction_lockfree();
+        }
         let storage = self.storage.clone();
         self.transaction_manager
             .rollback_with_undo(tx_id, move |rec| {
