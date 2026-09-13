@@ -5,10 +5,29 @@ use crate::engine::{
 };
 use crate::wal::{WalEntry, WalEntryType, WalManager};
 use std::any::Any;
+use std::cell::UnsafeCell;
 use std::collections::HashMap;
 use std::path::PathBuf;
 use std::sync::atomic::{AtomicU64, Ordering};
 use std::sync::{Arc, Mutex, RwLock};
+
+// SAFETY: `WalStorage` contains an `UnsafeCell<S>` which is not `Sync` by
+// default. However, all access to `inner` goes through:
+//   * `&mut self` (exclusive access, single-writer per call site) — the
+//     engine serializes these via the engine's own mutex.
+//   * `*_transaction_lockfree(&self)` paths which only access `inner`
+//     through the `_lockfree` methods that serialize via the engine
+//     mutex. These methods are the only `&self` → `&mut inner` path
+//     and are the sole reason we need `UnsafeCell` in the first place.
+//   * `recover_split_mut` / `inner_mut` which require `&mut self`,
+//     serialized via the caller (single-threaded recovery or engine).
+// `S: StorageEngine` already requires `Sync`, and our access patterns
+// never expose `&mut S` through shared references. This is the standard
+// pattern for `UnsafeCell` inside `Sync` containers.
+unsafe impl<S: StorageEngine + 'static, T: WalManager + 'static> Sync
+    for WalStorage<S, T>
+{
+}
 
 /// WAL sync mode - controls fsync frequency for performance tuning.
 ///
@@ -28,7 +47,16 @@ pub enum WalSyncMode {
 }
 
 pub struct WalStorage<S: StorageEngine, T: WalManager> {
-    inner: S,
+    /// Inner storage engine wrapped in `UnsafeCell` so the
+    /// `*_transaction_lockfree(&self)` engine paths can obtain
+    /// `&mut S` without holding the global `Arc<RwLock<storage>>`
+    /// write lock. Soundness: the engine serializes `_lockfree`
+    /// calls against other writers via the engine's own mutex;
+    /// concurrent readers hold a separate `parking_lot::RwLockReadGuard`
+    /// and never share `&mut`.
+    ///
+    /// Phase B Step 3 follow-up #4 (see PHASE_B_STEP3_SOAK.md).
+    inner: UnsafeCell<S>,
     /// WAL manager wrapped in `Mutex` so `*_lockfree(&self)` engine paths
     /// can perform WAL appends without holding the global `Arc<RwLock<storage>>`
     /// write lock. The lock duration is just the WAL `append` call (~µs),
@@ -67,7 +95,7 @@ pub struct WalStorage<S: StorageEngine, T: WalManager> {
 impl<S: StorageEngine + 'static, T: WalManager + 'static> WalStorage<S, T> {
     pub fn new(inner: S, wal: T) -> SqlResult<Self> {
         Ok(Self {
-            inner,
+            inner: UnsafeCell::new(inner),
             wal: parking_lot::Mutex::new(wal),
             wal_enabled: true,
             sync_mode: WalSyncMode::default(),
@@ -90,7 +118,7 @@ impl<S: StorageEngine + 'static, T: WalManager + 'static> WalStorage<S, T> {
     /// ```
     pub fn new_with_sync_mode(inner: S, wal: T, sync_mode: WalSyncMode) -> SqlResult<Self> {
         Ok(Self {
-            inner,
+            inner: UnsafeCell::new(inner),
             wal: parking_lot::Mutex::new(wal),
             wal_enabled: true,
             sync_mode,
@@ -110,7 +138,7 @@ impl<S: StorageEngine + 'static, T: WalManager + 'static> WalStorage<S, T> {
         checkpoint_manager: Arc<RwLock<CheckpointManager>>,
     ) -> SqlResult<Self> {
         Ok(Self {
-            inner,
+            inner: UnsafeCell::new(inner),
             wal: parking_lot::Mutex::new(wal),
             wal_enabled: true,
             sync_mode,
@@ -182,7 +210,15 @@ impl<S: StorageEngine + 'static, T: WalManager + 'static> WalStorage<S, T> {
     }
 
     pub fn inner(&self) -> &S {
-        &self.inner
+        // SAFETY: callers cannot obtain `&mut S` from `&self` via this
+        // method (the UnsafeCell::get_mut path requires &mut self, see
+        // inner_mut). The only ways to get `&mut S` are:
+        //   * `inner_mut(&mut self)` — caller holds &mut self, so no
+        //     `&S` is alive concurrently.
+        //   * `*_transaction_lockfree(&self)` paths which serialize all
+        //     mutating access through the engine's own mutex.
+        // Therefore no `&mut S` aliases this `&S`.
+        unsafe { &*self.inner.get() }
     }
 
     pub fn wal(&self) -> parking_lot::MutexGuard<'_, T> {
@@ -192,9 +228,12 @@ impl<S: StorageEngine + 'static, T: WalManager + 'static> WalStorage<S, T> {
     /// Mutable access to the inner storage engine.
     /// (The legacy `wal_mut`/`split` accessors were removed in Phase B
     /// Step 3 — `wal` is now a `Mutex<T>` so callers must lock it
-    /// explicitly via `storage.wal.lock()`.)
+    /// explicitly via `storage.wal.lock()`. For inner, see `inner_mut`
+    /// which uses `UnsafeCell::get_mut` for sound interior mutability.)
     pub fn inner_mut(&mut self) -> &mut S {
-        &mut self.inner
+        // SAFETY: we have `&mut self` (the only path to `inner_mut` is
+        // `&mut self`), so no other reference to `inner` exists.
+        unsafe { &mut *self.inner.get() }
     }
 
     // ----- Legacy compat shims -----
@@ -215,7 +254,9 @@ impl<S: StorageEngine + 'static, T: WalManager + 'static> WalStorage<S, T> {
     #[doc(hidden)]
     pub fn split(&mut self) -> (&mut S, parking_lot::MutexGuard<'_, T>) {
         let wal = self.wal.lock();
-        (&mut self.inner, wal)
+        // SAFETY: we have &mut self so no other reference to `inner` exists.
+        let inner = unsafe { &mut *self.inner.get() };
+        (inner, wal)
     }
 
     /// Recover-grade split: take `&mut self` and return disjoint
@@ -223,10 +264,12 @@ impl<S: StorageEngine + 'static, T: WalManager + 'static> WalStorage<S, T> {
     /// both. Safe because we hold `&mut self` for the duration of the
     /// returned borrows — no other `&mut` to the same fields can exist.
     pub fn recover_split_mut(&mut self) -> (&mut S, &mut T) {
-        (&mut self.inner, self.wal.get_mut())
+        // SAFETY: same as `inner_mut` — we have &mut self.
+        let inner = unsafe { &mut *self.inner.get() };
+        (inner, self.wal.get_mut())
     }
 
-    /// SAFETY: cast `&Self` → `&mut Self` via raw pointer. Used by
+    /// Obtain `&mut S` from `&self WalStorage`. Used by
     /// `*_transaction_lockfree` methods (Phase B Step 3) which need
     /// `&mut self.inner` (for `discard_all_buffers` / `set_current_tx_id`).
     ///
@@ -238,10 +281,16 @@ impl<S: StorageEngine + 'static, T: WalManager + 'static> WalStorage<S, T> {
     ///     `RwLockReadGuard`); they never share `&mut`.
     ///   * Recovery (engine_builder::recover_wal) holds
     ///     `storage.write()` and runs single-threaded.
-    #[allow(clippy::missing_safety_doc, invalid_reference_casting)]
-    fn as_mut_ref(&self) -> &mut Self {
-        // SAFETY: see invariants above.
-        unsafe { &mut *(self as *const Self as *mut Self) }
+    ///
+    /// This replaces the previous `unsafe { &mut *(self as *const Self as *mut Self) }`
+    /// cast with a sound `UnsafeCell::get` — the new Phase B Step 3
+    /// follow-up #4. The old `#[allow(invalid_reference_casting)]` is
+    /// no longer needed.
+    fn as_inner_mut(&self) -> &mut S {
+        // SAFETY: see invariants above. `inner: UnsafeCell<S>` is the
+        // ONLY field that requires this. `wal: parking_lot::Mutex<T>`
+        // already provides &mut via `lock()`. We never alias `&S` here.
+        unsafe { &mut *self.inner.get() }
     }
 
     fn table_name_to_id(table: &str) -> u64 {
@@ -464,12 +513,12 @@ impl<S: StorageEngine + 'static, T: WalManager + 'static> WalStorage<S, T> {
             self.append_wal_entry(entry)?;
             self.wal.lock().sync()?;
         }
-        // Issue #3964: previously this called `self.inner.flush()`,
+        // Issue #3964: previously this called `self.inner_mut().flush()`,
         // which persisted the rolled-back tx's buffered inserts to
         // data.rows and then to disk via the post-flush dirty-table
         // save path. ROLLBACK must discard in-memory writes without
         // persisting them, so we discard the buffer instead.
-        self.inner.discard_all_buffers();
+        self.inner_mut().discard_all_buffers();
         // #3223 Phase 1: remove from active set on rollback.
         if let Ok(mut active) = self.active_txs.lock() {
             active.remove(&tx_id);
@@ -497,7 +546,7 @@ impl<S: StorageEngine + 'static, T: WalManager + 'static> WalStorage<S, T> {
 
 impl<S: StorageEngine + 'static, T: WalManager + 'static> StorageEngine for WalStorage<S, T> {
     fn scan(&self, table: &str) -> SqlResult<Vec<Record>> {
-        self.inner.scan(table)
+        self.inner().scan(table)
     }
 
     /// V4.0.0 / SOAK-hang fix: delegate `scan_with_filter` to the inner
@@ -514,11 +563,11 @@ impl<S: StorageEngine + 'static, T: WalManager + 'static> StorageEngine for WalS
         F: Fn(&Record) -> bool,
         Self: Sized,
     {
-        self.inner.scan_with_filter(table, filter)
+        self.inner().scan_with_filter(table, filter)
     }
 
     fn flush(&mut self) -> SqlResult<()> {
-        self.inner.flush()
+        self.inner_mut().flush()
     }
 
     fn insert(&mut self, table: &str, records: Vec<Record>) -> SqlResult<()> {
@@ -563,7 +612,7 @@ impl<S: StorageEngine + 'static, T: WalManager + 'static> StorageEngine for WalS
                 self.log_insert(table_id, key, data)?;
             }
         }
-        self.inner.insert(table, records)
+        self.inner_mut().insert(table, records)
     }
 
     fn delete(&mut self, table: &str, filters: &[Value]) -> SqlResult<usize> {
@@ -590,7 +639,7 @@ impl<S: StorageEngine + 'static, T: WalManager + 'static> StorageEngine for WalS
         //    one row instead of N. The O(N) scan is required here for
         //    correctness, not performance.
         if filters.is_empty() {
-            let rows = self.inner.scan(table)?;
+            let rows = self.inner().scan(table)?;
             for row in &rows {
                 if Self::row_matches_filter(row, filters) {
                     let key = Self::record_key(row);
@@ -603,14 +652,14 @@ impl<S: StorageEngine + 'static, T: WalManager + 'static> StorageEngine for WalS
             self.log_delete(table_id, key)?;
         }
 
-        self.inner.delete(table, filters)
+        self.inner_mut().delete(table, filters)
     }
 
     fn delete_if(&mut self, table: &str, filter: &RowFilter) -> SqlResult<usize> {
         let table_id = Self::table_name_to_id(table);
         let key = format!("RowFilter-{:p}", filter).into_bytes();
         self.log_delete(table_id, key)?;
-        self.inner.delete_if(table, filter)
+        self.inner_mut().delete_if(table, filter)
     }
 
     fn update(
@@ -622,7 +671,7 @@ impl<S: StorageEngine + 'static, T: WalManager + 'static> StorageEngine for WalS
         let table_id = Self::table_name_to_id(table);
 
         // Step 1: Get all rows and find those matching the filter (before-image)
-        let all_rows = self.inner.scan(table)?;
+        let all_rows = self.inner().scan(table)?;
         let rows_to_update: Vec<(Vec<u8>, Vec<Value>)> = all_rows
             .iter()
             .filter(|r| Self::row_matches_filter(r, filters))
@@ -646,7 +695,7 @@ impl<S: StorageEngine + 'static, T: WalManager + 'static> StorageEngine for WalS
         }
 
         // Step 4: Call inner update (inner.update may be a stub, but we already logged)
-        let _ = self.inner.update(table, filters, updates)?;
+        let _ = self.inner_mut().update(table, filters, updates)?;
 
         Ok(count)
     }
@@ -663,75 +712,75 @@ impl<S: StorageEngine + 'static, T: WalManager + 'static> StorageEngine for WalS
         // RowFilter closure cannot be reconstructed, so this is best-effort.
         let data = format!("{:?}", mutation).into_bytes();
         self.log_update(table_id, key, data)?;
-        self.inner.update_if(table, filter, mutation)
+        self.inner_mut().update_if(table, filter, mutation)
     }
 
     fn create_database(&mut self, db_name: &str) -> SqlResult<()> {
-        self.inner.create_database(db_name)
+        self.inner_mut().create_database(db_name)
     }
 
     fn drop_database(&mut self, db_name: &str) -> SqlResult<()> {
-        self.inner.drop_database(db_name)
+        self.inner_mut().drop_database(db_name)
     }
 
     fn create_table(&mut self, info: &TableInfo) -> SqlResult<()> {
-        self.inner.create_table(info)
+        self.inner_mut().create_table(info)
     }
 
     fn drop_table(&mut self, table: &str) -> SqlResult<()> {
-        self.inner.drop_table(table)
+        self.inner_mut().drop_table(table)
     }
 
     fn get_table_info(&self, table: &str) -> SqlResult<TableInfo> {
-        self.inner.get_table_info(table)
+        self.inner().get_table_info(table)
     }
 
     fn has_table(&self, table: &str) -> bool {
-        self.inner.has_table(table)
+        self.inner().has_table(table)
     }
 
     fn list_tables(&self) -> Vec<String> {
-        self.inner.list_tables()
+        self.inner().list_tables()
     }
 
     fn create_index(&mut self, info: crate::engine::IndexInfo) -> SqlResult<()> {
-        self.inner.create_index(info)
+        self.inner_mut().create_index(info)
     }
 
     fn drop_index(&mut self, table: &str, index_name: &str) -> SqlResult<()> {
-        self.inner.drop_index(table, index_name)
+        self.inner_mut().drop_index(table, index_name)
     }
 
     fn add_column(&mut self, table: &str, column: ColumnDefinition) -> SqlResult<()> {
-        self.inner.add_column(table, column)
+        self.inner_mut().add_column(table, column)
     }
 
     fn rename_table(&mut self, table: &str, new_name: &str) -> SqlResult<()> {
-        self.inner.rename_table(table, new_name)
+        self.inner_mut().rename_table(table, new_name)
     }
 
     fn create_trigger(&mut self, info: TriggerInfo) -> SqlResult<()> {
-        self.inner.create_trigger(info)
+        self.inner_mut().create_trigger(info)
     }
 
     fn drop_trigger(&mut self, name: &str) -> SqlResult<()> {
-        self.inner.drop_trigger(name)
+        self.inner_mut().drop_trigger(name)
     }
 
     fn get_trigger(&self, name: &str) -> Option<TriggerInfo> {
-        self.inner.get_trigger(name)
+        self.inner().get_trigger(name)
     }
 
     fn list_triggers(&self, table: &str) -> Vec<TriggerInfo> {
-        self.inner.list_triggers(table)
+        self.inner().list_triggers(table)
     }
 
     fn list_indexes(&self, table: &str) -> Vec<(String, String)> {
-        self.inner.list_indexes(table)
+        self.inner().list_indexes(table)
     }
 
     fn has_view(&self, name: &str) -> bool {
-        self.inner.has_view(name)
+        self.inner().has_view(name)
     }
 
     fn begin_transaction(&mut self) -> SqlResult<u64> {
@@ -820,7 +869,7 @@ impl<S: StorageEngine + 'static, T: WalManager + 'static> StorageEngine for WalS
             }
         }
 
-        self.inner.flush()?;
+        self.inner_mut().flush()?;
 
         // Truncate WAL up to checkpoint
         if commit_lsn > 0 {
@@ -859,7 +908,7 @@ impl<S: StorageEngine + 'static, T: WalManager + 'static> StorageEngine for WalS
         // 1. Update tx_id atomically (no lock needed).
         self.current_tx_id.store(tx_id, Ordering::Relaxed);
         // 2. Propagate to inner engine (FileStorage tracks tx for undo log).
-        self.as_mut_ref().inner.set_current_tx_id(tx_id);
+        self.as_inner_mut().set_current_tx_id(tx_id);
         // 3. Append Begin WAL entry — uses Mutex<wal> internally.
         if self.wal_enabled {
             let entry = WalEntry {
@@ -914,7 +963,7 @@ impl<S: StorageEngine + 'static, T: WalManager + 'static> StorageEngine for WalS
         // Clear tx state AFTER appending WAL so concurrent readers see
         // consistent state.
         self.current_tx_id.store(0, Ordering::Relaxed);
-        self.as_mut_ref().inner.set_current_tx_id(0);
+        self.as_inner_mut().set_current_tx_id(0);
         if let Ok(mut active) = self.active_txs.lock() {
             active.remove(&tx_id);
         }
@@ -945,10 +994,10 @@ impl<S: StorageEngine + 'static, T: WalManager + 'static> StorageEngine for WalS
             self.wal.lock().append(entry)?;
             self.wal.lock().sync()?;
         }
-        let mut_ref = self.as_mut_ref();
-        mut_ref.inner.discard_all_buffers();
+        let inner_mut = self.as_inner_mut();
+        inner_mut.discard_all_buffers();
         self.current_tx_id.store(0, Ordering::Relaxed);
-        mut_ref.inner.set_current_tx_id(0);
+        inner_mut.set_current_tx_id(0);
         if let Ok(mut active) = self.active_txs.lock() {
             active.remove(&tx_id);
         }
@@ -977,12 +1026,12 @@ impl<S: StorageEngine + 'static, T: WalManager + 'static> StorageEngine for WalS
         if let Ok(mut active) = self.active_txs.lock() {
             active.remove(&tx_id);
         }
-        // Issue #3964: previously this called `self.inner.flush()`,
+        // Issue #3964: previously this called `self.inner_mut().flush()`,
         // which persisted the rolled-back tx's buffered inserts to
         // data.rows and then to disk via the post-flush dirty-table
         // save path. ROLLBACK must discard in-memory writes without
         // persisting them, so we discard the buffer instead.
-        self.inner.discard_all_buffers();
+        self.inner_mut().discard_all_buffers();
         Ok(())
     }
 
@@ -999,7 +1048,7 @@ impl<S: StorageEngine + 'static, T: WalManager + 'static> StorageEngine for WalS
         // PR-842: also propagate to the inner engine so its in_transaction
         // gate sees the right state (FileStorage's insert buffers tx-scoped
         // writes to avoid leaking uncommitted rows to disk on crash).
-        self.inner.set_current_tx_id(id);
+        self.inner_mut().set_current_tx_id(id);
     }
 
     fn is_wal_enabled(&self) -> bool {
@@ -1378,7 +1427,7 @@ mod tests {
     /// V4.0.0 / SOAK-hang fix verification:
     /// WalStorage::delete with a non-empty filter MUST derive the WAL key
     /// O(1) from `filters[0]` without invoking `inner.scan()`. The prior
-    /// implementation did `self.inner.scan(table)?` (full O(N) Vec<Record>
+    /// implementation did `self.inner().scan(table)?` (full O(N) Vec<Record>
     /// clone) just to extract WAL keys, which under sysbench oltp_read_write
     /// turned every UPDATE into a serialized multi-second operation and
     /// collapsed QPS to 0.03. See [[v400-soak-1h-rwlock-contention-hang]].
@@ -1394,6 +1443,15 @@ mod tests {
         struct ScanCountingStorage {
             inner: MemoryStorage,
             scan_calls: AtomicU32,
+        }
+
+        impl ScanCountingStorage {
+            fn inner(&self) -> &MemoryStorage {
+                &self.inner
+            }
+            fn inner_mut(&mut self) -> &mut MemoryStorage {
+                &mut self.inner
+            }
         }
 
         impl StorageEngine for ScanCountingStorage {
@@ -1451,26 +1509,29 @@ mod tests {
             fn list_tables(&self) -> Vec<String> {
                 self.inner.list_tables()
             }
-            fn create_index(&mut self, info: IndexInfo) -> SqlResult<()> {
-                self.inner.create_index(info)
+            fn create_database(&mut self, db_name: &str) -> SqlResult<()> {
+                self.inner.create_database(db_name)
             }
             fn drop_index(&mut self, table: &str, index_name: &str) -> SqlResult<()> {
-                self.inner.drop_index(table, index_name)
+                self.inner_mut().drop_index(table, index_name)
+            }
+            fn create_index(&mut self, info: IndexInfo) -> SqlResult<()> {
+                self.inner_mut().create_index(info)
             }
             fn list_all_indexes(&self) -> Vec<IndexInfo> {
-                self.inner.list_all_indexes()
+                self.inner().list_all_indexes()
             }
             fn add_column(&mut self, table: &str, column: ColumnDefinition) -> SqlResult<()> {
-                self.inner.add_column(table, column)
+                self.inner_mut().add_column(table, column)
             }
             fn rename_table(&mut self, table: &str, new_name: &str) -> SqlResult<()> {
-                self.inner.rename_table(table, new_name)
+                self.inner_mut().rename_table(table, new_name)
             }
             fn create_trigger(&mut self, info: TriggerInfo) -> SqlResult<()> {
-                self.inner.create_trigger(info)
+                self.inner_mut().create_trigger(info)
             }
             fn drop_trigger(&mut self, name: &str) -> SqlResult<()> {
-                self.inner.drop_trigger(name)
+                self.inner_mut().drop_trigger(name)
             }
             fn get_trigger(&self, name: &str) -> Option<TriggerInfo> {
                 self.inner.get_trigger(name)
