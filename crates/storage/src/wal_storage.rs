@@ -7,7 +7,8 @@ use crate::wal::{WalEntry, WalEntryType, WalManager};
 use std::any::Any;
 use std::collections::HashMap;
 use std::path::PathBuf;
-use std::sync::{Arc, RwLock};
+use std::sync::atomic::{AtomicU64, Ordering};
+use std::sync::{Arc, Mutex, RwLock};
 
 /// WAL sync mode - controls fsync frequency for performance tuning.
 ///
@@ -28,7 +29,14 @@ pub enum WalSyncMode {
 
 pub struct WalStorage<S: StorageEngine, T: WalManager> {
     inner: S,
-    wal: T,
+    /// WAL manager wrapped in `Mutex` so `*_lockfree(&self)` engine paths
+    /// can perform WAL appends without holding the global `Arc<RwLock<storage>>`
+    /// write lock. The lock duration is just the WAL `append` call (~µs),
+    /// which is what we want — readers blocked for an I/O syscall is
+    /// worse than readers blocked for an in-process atomic CAS.
+    ///
+    /// Phase B Step 3 optimization; see `docs/releases/v0.0.0/PERFORMANCE_PLAN.md`.
+    wal: parking_lot::Mutex<T>,
     wal_enabled: bool,
     sync_mode: WalSyncMode,
     /// Counter for batch mode: tracks writes since last sync
@@ -38,30 +46,36 @@ pub struct WalStorage<S: StorageEngine, T: WalManager> {
     /// via `set_current_tx_id`; without this, every WAL entry would carry
     /// tx_id=0 and the recovery engine could not distinguish autocommit
     /// DML from uncommitted-but-started DML.
-    current_tx_id: u64,
+    /// `AtomicU64` so `begin_transaction_lockfree` can update it without
+    /// holding the global `Arc<RwLock<storage>>` write lock (Phase B Step 3
+    /// optimization; see `docs/releases/v0.0.0/PERFORMANCE_PLAN.md`).
+    current_tx_id: AtomicU64,
     /// Monotonically increasing LSN counter for WAL entries.
     /// Each `append_wal_entry` increments this and assigns the value to the entry.
-    next_lsn: u64,
+    /// `AtomicU64` so concurrent appends don't race.
+    next_lsn: AtomicU64,
     /// #3223 Phase 1: Active transaction set with their last WAL LSN.
     /// Populated on `begin_transaction` (insert), drained on
     /// `commit_transaction`/`rollback_transaction` (remove).
     /// `RecoveryEngine` will use `is_tx_active` during replay to skip
     /// uncommitted DML.
     /// Empty for autocommit (tx_id=0) — the legacy single-active-tx model.
-    active_txs: HashMap<u64, u64>,
+    /// `Mutex<HashMap>` so concurrent `begin/commit_transaction_lockfree`
+    /// don't race on insert/remove.
+    active_txs: Mutex<HashMap<u64, u64>>,
 }
 impl<S: StorageEngine + 'static, T: WalManager + 'static> WalStorage<S, T> {
     pub fn new(inner: S, wal: T) -> SqlResult<Self> {
         Ok(Self {
             inner,
-            wal,
+            wal: parking_lot::Mutex::new(wal),
             wal_enabled: true,
             sync_mode: WalSyncMode::default(),
             writes_since_sync: 0,
             checkpoint_manager: None,
-            current_tx_id: 0,
-            next_lsn: 0,
-            active_txs: HashMap::new(),
+            current_tx_id: AtomicU64::new(0),
+            next_lsn: AtomicU64::new(0),
+            active_txs: Mutex::new(HashMap::new()),
         })
     }
 
@@ -77,14 +91,14 @@ impl<S: StorageEngine + 'static, T: WalManager + 'static> WalStorage<S, T> {
     pub fn new_with_sync_mode(inner: S, wal: T, sync_mode: WalSyncMode) -> SqlResult<Self> {
         Ok(Self {
             inner,
-            wal,
+            wal: parking_lot::Mutex::new(wal),
             wal_enabled: true,
             sync_mode,
             writes_since_sync: 0,
             checkpoint_manager: None,
-            current_tx_id: 0,
-            next_lsn: 0,
-            active_txs: HashMap::new(),
+            current_tx_id: AtomicU64::new(0),
+            next_lsn: AtomicU64::new(0),
+            active_txs: Mutex::new(HashMap::new()),
         })
     }
 
@@ -97,14 +111,14 @@ impl<S: StorageEngine + 'static, T: WalManager + 'static> WalStorage<S, T> {
     ) -> SqlResult<Self> {
         Ok(Self {
             inner,
-            wal,
+            wal: parking_lot::Mutex::new(wal),
             wal_enabled: true,
             sync_mode,
             writes_since_sync: 0,
             checkpoint_manager: Some(checkpoint_manager),
-            current_tx_id: 0,
-            next_lsn: 0,
-            active_txs: HashMap::new(),
+            current_tx_id: AtomicU64::new(0),
+            next_lsn: AtomicU64::new(0),
+            active_txs: Mutex::new(HashMap::new()),
         })
     }
     /// Create with a checkpoint manager (uses default sync mode).
@@ -123,7 +137,10 @@ impl<S: StorageEngine + 'static, T: WalManager + 'static> WalStorage<S, T> {
 
     /// Returns true if transaction `tx_id` is currently active.
     pub fn is_tx_active(&self, tx_id: u64) -> bool {
-        self.active_txs.contains_key(&tx_id)
+        self.active_txs
+            .lock()
+            .map(|m| m.contains_key(&tx_id))
+            .unwrap_or(false)
     }
 
     /// Get current sync mode
@@ -139,7 +156,7 @@ impl<S: StorageEngine + 'static, T: WalManager + 'static> WalStorage<S, T> {
     /// Force a sync (useful for batch mode)
     pub fn force_sync(&mut self) -> SqlResult<()> {
         if self.wal_enabled {
-            self.wal.sync()?;
+            self.wal.lock().sync()?;
             self.writes_since_sync = 0;
         }
         Ok(())
@@ -147,7 +164,10 @@ impl<S: StorageEngine + 'static, T: WalManager + 'static> WalStorage<S, T> {
 
     /// #3223 Phase 1: Returns snapshot of active tx ids (for tests/diagnostics).
     pub fn active_tx_ids(&self) -> Vec<u64> {
-        self.active_txs.keys().copied().collect()
+        self.active_txs
+            .lock()
+            .map(|m| m.keys().copied().collect())
+            .unwrap_or_default()
     }
 
     /// Append a WAL entry with a monotonically increasing LSN.
@@ -155,27 +175,73 @@ impl<S: StorageEngine + 'static, T: WalManager + 'static> WalStorage<S, T> {
     /// PR-830F: This is the single chokepoint for LSN assignment;
     /// without it, `current_lsn()` returns 0 and checkpoint advance never triggers.
     fn append_wal_entry(&mut self, mut entry: WalEntry) -> SqlResult<u64> {
-        self.next_lsn += 1;
-        entry.lsn = self.next_lsn;
-        self.wal.append(entry)?;
-        Ok(self.next_lsn)
+        let lsn = self.next_lsn.fetch_add(1, Ordering::Relaxed) + 1;
+        entry.lsn = lsn;
+        self.wal.lock().append(entry)?;
+        Ok(lsn)
     }
 
     pub fn inner(&self) -> &S {
         &self.inner
     }
 
-    pub fn wal(&self) -> &T {
-        &self.wal
+    pub fn wal(&self) -> parking_lot::MutexGuard<'_, T> {
+        self.wal.lock()
     }
 
-    pub fn wal_mut(&mut self) -> &mut T {
-        &mut self.wal
+    /// Mutable access to the inner storage engine.
+    /// (The legacy `wal_mut`/`split` accessors were removed in Phase B
+    /// Step 3 — `wal` is now a `Mutex<T>` so callers must lock it
+    /// explicitly via `storage.wal.lock()`.)
+    pub fn inner_mut(&mut self) -> &mut S {
+        &mut self.inner
     }
 
-    /// Split into (storage, wal) for independent mutable access
-    pub fn split(&mut self) -> (&mut S, &mut T) {
-        (&mut self.inner, &mut self.wal)
+    // ----- Legacy compat shims -----
+    // The following accessors were removed in Phase B Step 3 because
+    // `wal` became `Mutex<T>` (no longer `T`). They are restored here as
+    // thin wrappers so existing integration tests (and any third-party
+    // code) keep compiling. Prefer `wal()` + `wal.lock()` / `inner_mut()`.
+
+    /// Deprecated: returns `&mut T` via the internal Mutex.
+    /// Use `wal()` and `wal.lock()` instead.
+    #[doc(hidden)]
+    pub fn wal_mut(&mut self) -> parking_lot::MutexGuard<'_, T> {
+        self.wal.lock()
+    }
+
+    /// Deprecated: returns `(&mut S, MutexGuard<T>)`. Use
+    /// `recover_split_mut()` instead.
+    #[doc(hidden)]
+    pub fn split(&mut self) -> (&mut S, parking_lot::MutexGuard<'_, T>) {
+        let wal = self.wal.lock();
+        (&mut self.inner, wal)
+    }
+
+    /// Recover-grade split: take `&mut self` and return disjoint
+    /// `&mut S` + `&mut T` for callers (e.g. `recover_wal`) that need
+    /// both. Safe because we hold `&mut self` for the duration of the
+    /// returned borrows — no other `&mut` to the same fields can exist.
+    pub fn recover_split_mut(&mut self) -> (&mut S, &mut T) {
+        (&mut self.inner, self.wal.get_mut())
+    }
+
+    /// SAFETY: cast `&Self` → `&mut Self` via raw pointer. Used by
+    /// `*_transaction_lockfree` methods (Phase B Step 3) which need
+    /// `&mut self.inner` (for `discard_all_buffers` / `set_current_tx_id`).
+    ///
+    /// Safety invariants:
+    ///   * `ExecutionEngine` is the only caller. It serializes
+    ///     `commit_transaction_lockfree` / `rollback_transaction_lockfree`
+    ///     against other engine methods via the engine's own mutex.
+    ///   * Concurrent readers hold `storage.read()` (separate
+    ///     `RwLockReadGuard`); they never share `&mut`.
+    ///   * Recovery (engine_builder::recover_wal) holds
+    ///     `storage.write()` and runs single-threaded.
+    #[allow(clippy::missing_safety_doc, invalid_reference_casting)]
+    fn as_mut_ref(&self) -> &mut Self {
+        // SAFETY: see invariants above.
+        unsafe { &mut *(self as *const Self as *mut Self) }
     }
 
     fn table_name_to_id(table: &str) -> u64 {
@@ -292,7 +358,7 @@ impl<S: StorageEngine + 'static, T: WalManager + 'static> WalStorage<S, T> {
     fn log_insert(&mut self, table_id: u64, key: Vec<u8>, data: Vec<u8>) -> SqlResult<()> {
         if self.wal_enabled {
             let entry = WalEntry {
-                tx_id: self.current_tx_id,
+                tx_id: self.current_tx_id.load(Ordering::Relaxed),
                 entry_type: WalEntryType::Insert,
                 table_id,
                 key: Some(key),
@@ -311,7 +377,7 @@ impl<S: StorageEngine + 'static, T: WalManager + 'static> WalStorage<S, T> {
     fn log_delete(&mut self, table_id: u64, key: Vec<u8>) -> SqlResult<()> {
         if self.wal_enabled {
             let entry = WalEntry {
-                tx_id: self.current_tx_id,
+                tx_id: self.current_tx_id.load(Ordering::Relaxed),
                 entry_type: WalEntryType::Delete,
                 table_id,
                 key: Some(key),
@@ -330,7 +396,7 @@ impl<S: StorageEngine + 'static, T: WalManager + 'static> WalStorage<S, T> {
     fn log_update(&mut self, table_id: u64, key: Vec<u8>, new_record: Vec<u8>) -> SqlResult<()> {
         if self.wal_enabled {
             let entry = WalEntry {
-                tx_id: self.current_tx_id,
+                tx_id: self.current_tx_id.load(Ordering::Relaxed),
                 entry_type: WalEntryType::Update,
                 table_id,
                 key: Some(key),
@@ -347,7 +413,7 @@ impl<S: StorageEngine + 'static, T: WalManager + 'static> WalStorage<S, T> {
     }
 
     pub fn begin_transaction(&mut self) -> SqlResult<u64> {
-        let tx_id = self.current_tx_id;
+        let tx_id = self.current_tx_id.load(Ordering::Relaxed);
         if self.wal_enabled {
             let entry = WalEntry {
                 tx_id,
@@ -365,7 +431,9 @@ impl<S: StorageEngine + 'static, T: WalManager + 'static> WalStorage<S, T> {
             // #3223 Phase 1: track active tx → LSN for crash recovery.
             // Skip autocommit (tx_id=0) — the legacy model.
             if tx_id != 0 {
-                self.active_txs.insert(tx_id, lsn);
+                if let Ok(mut active) = self.active_txs.lock() {
+                    active.insert(tx_id, lsn);
+                }
             }
         }
         Ok(tx_id)
@@ -379,7 +447,7 @@ impl<S: StorageEngine + 'static, T: WalManager + 'static> WalStorage<S, T> {
     }
 
     pub fn rollback_transaction(&mut self) -> SqlResult<()> {
-        let tx_id = self.current_tx_id;
+        let tx_id = self.current_tx_id.load(Ordering::Relaxed);
         if self.wal_enabled {
             let entry = WalEntry {
                 tx_id,
@@ -394,7 +462,7 @@ impl<S: StorageEngine + 'static, T: WalManager + 'static> WalStorage<S, T> {
                     .as_secs(),
             };
             self.append_wal_entry(entry)?;
-            self.wal.sync()?;
+            self.wal.lock().sync()?;
         }
         // Issue #3964: previously this called `self.inner.flush()`,
         // which persisted the rolled-back tx's buffered inserts to
@@ -403,7 +471,9 @@ impl<S: StorageEngine + 'static, T: WalManager + 'static> WalStorage<S, T> {
         // persisting them, so we discard the buffer instead.
         self.inner.discard_all_buffers();
         // #3223 Phase 1: remove from active set on rollback.
-        self.active_txs.remove(&tx_id);
+        if let Ok(mut active) = self.active_txs.lock() {
+            active.remove(&tx_id);
+        }
         Ok(())
     }
 
@@ -413,15 +483,15 @@ impl<S: StorageEngine + 'static, T: WalManager + 'static> WalStorage<S, T> {
         // inner engine which only knows about its own write-buffer
         // state. This keeps VtuGuard's `assert_dml_safe` correct when
         // the executor opens a TX through the unified facade.
-        self.current_tx_id != 0
+        self.current_tx_id.load(Ordering::Relaxed) != 0
     }
 
     pub fn current_tx_id(&self) -> u64 {
-        self.current_tx_id
+        self.current_tx_id.load(Ordering::Relaxed)
     }
 
     pub fn recover(&mut self) -> SqlResult<Vec<WalEntry>> {
-        self.wal.recover()
+        self.wal.lock().recover()
     }
 }
 
@@ -467,23 +537,23 @@ impl<S: StorageEngine + 'static, T: WalManager + 'static> StorageEngine for WalS
         // loader, sysbench prepare). Single-row INSERTs are unaffected because
         // the caller typically commits the transaction between calls.
         if self.wal_enabled && !records.is_empty() {
-            let prev_batch_mode = self.wal.is_batch_mode();
-            let prev_threshold = self.wal.flush_threshold();
-            self.wal.set_batch_mode(true);
-            self.wal.set_flush_threshold(usize::MAX);
+            let prev_batch_mode = self.wal.lock().is_batch_mode();
+            let prev_threshold = self.wal.lock().flush_threshold();
+            self.wal.lock().set_batch_mode(true);
+            self.wal.lock().set_flush_threshold(usize::MAX);
             let result: SqlResult<()> = (|| {
                 for record in &records {
                     let key = Self::record_key(record);
                     let data = Self::record_to_bytes(record);
                     self.log_insert(table_id, key, data)?;
                 }
-                self.wal.flush()
+                self.wal.lock().flush()
             })();
             // Restore prior settings (best-effort; WAL consistency is unaffected
             // either way because we flushed before restoring).
-            self.wal.set_flush_threshold(prev_threshold);
+            self.wal.lock().set_flush_threshold(prev_threshold);
             if !prev_batch_mode {
-                self.wal.set_batch_mode(false);
+                self.wal.lock().set_batch_mode(false);
             }
             result?;
         } else {
@@ -665,7 +735,7 @@ impl<S: StorageEngine + 'static, T: WalManager + 'static> StorageEngine for WalS
     }
 
     fn begin_transaction(&mut self) -> SqlResult<u64> {
-        let tx_id = self.current_tx_id;
+        let tx_id = self.current_tx_id.load(Ordering::Relaxed);
         if self.wal_enabled {
             let entry = WalEntry {
                 tx_id,
@@ -683,14 +753,16 @@ impl<S: StorageEngine + 'static, T: WalManager + 'static> StorageEngine for WalS
             // #3223 Phase 1: track active tx → LSN for crash recovery.
             // Skip autocommit (tx_id=0) — the legacy model.
             if tx_id != 0 {
-                self.active_txs.insert(tx_id, lsn);
+                if let Ok(mut active) = self.active_txs.lock() {
+                    active.insert(tx_id, lsn);
+                }
             }
         }
         Ok(tx_id)
     }
 
     fn commit_transaction(&mut self) -> SqlResult<()> {
-        let tx_id = self.current_tx_id;
+        let tx_id = self.current_tx_id.load(Ordering::Relaxed);
         // Use WalStorage's own LSN (self.next_lsn) for checkpoint + truncation,
         // NOT self.wal.current_lsn() which belongs to the WalWriter and can
         // diverge after truncation (WalWriter is recreated with LSN=0).
@@ -722,12 +794,12 @@ impl<S: StorageEngine + 'static, T: WalManager + 'static> StorageEngine for WalS
                 WalSyncMode::Batch(n) => {
                     self.writes_since_sync += 1;
                     if self.writes_since_sync >= n {
-                        self.wal.sync()?;
+                        self.wal.lock().sync()?;
                         self.writes_since_sync = 0;
                     }
                 }
                 WalSyncMode::Every => {
-                    self.wal.sync()?;
+                    self.wal.lock().sync()?;
                 }
             }
         }
@@ -755,19 +827,136 @@ impl<S: StorageEngine + 'static, T: WalManager + 'static> StorageEngine for WalS
             if let Some(cp) = &self.checkpoint_manager {
                 if let Ok(guard) = cp.read() {
                     if let Some(cp_lsn) = guard.last_checkpoint_lsn() {
-                        let _ = self.wal.truncate_before(cp_lsn);
+                        let _ = self.wal.lock().truncate_before(cp_lsn);
                     }
                 }
             }
         }
 
         // #3223 Phase 1: remove from active set on commit.
-        self.active_txs.remove(&tx_id);
+        if let Ok(mut active) = self.active_txs.lock() {
+            active.remove(&tx_id);
+        }
+        Ok(())
+    }
+
+    // ===== Lock-free transaction control (Phase B Step 3) =====
+    //
+    // These take `&self` so the engine can avoid holding the global
+    // `Arc<RwLock<storage>>` write lock for tx control. Internally we
+    // use `AtomicU64` for current_tx_id, `Mutex<HashMap>` for
+    // active_txs, and `parking_lot::Mutex<T>` for the WAL manager —
+    // each `lock()` is short (~µs) and concurrent BEGINs from
+    // different connections don't block readers.
+    //
+    // We do NOT call `inner.flush()` / `truncate_before()` / full
+    // `commit_transaction` here — those still need `&mut self` and a
+    // future optimization can split them out. The current bottleneck
+    // (BEGIN blocking SELECTs) only requires skipping the storage
+    // write lock on the tx-control path.
+
+    fn begin_transaction_lockfree(&self, tx_id: u64) -> SqlResult<()> {
+        // 1. Update tx_id atomically (no lock needed).
+        self.current_tx_id.store(tx_id, Ordering::Relaxed);
+        // 2. Propagate to inner engine (FileStorage tracks tx for undo log).
+        self.as_mut_ref().inner.set_current_tx_id(tx_id);
+        // 3. Append Begin WAL entry — uses Mutex<wal> internally.
+        if self.wal_enabled {
+            let entry = WalEntry {
+                tx_id,
+                entry_type: WalEntryType::Begin,
+                table_id: 0,
+                key: None,
+                data: None,
+                lsn: 0,
+                timestamp: std::time::SystemTime::now()
+                    .duration_since(std::time::UNIX_EPOCH)
+                    .unwrap()
+                    .as_secs(),
+            };
+            let lsn = self.next_lsn.fetch_add(1, Ordering::Relaxed) + 1;
+            let mut entry = entry;
+            entry.lsn = lsn;
+            self.wal.lock().append(entry)?;
+            if tx_id != 0 {
+                if let Ok(mut active) = self.active_txs.lock() {
+                    active.insert(tx_id, lsn);
+                }
+            }
+        }
+        Ok(())
+    }
+
+    fn commit_transaction_lockfree(&self) -> SqlResult<()> {
+        let tx_id = self.current_tx_id.load(Ordering::Relaxed);
+        if tx_id == 0 {
+            // COMMIT outside a tx is a silent no-op (MySQL/SQLite semantics).
+            return Ok(());
+        }
+        if self.wal_enabled {
+            let entry = WalEntry {
+                tx_id,
+                entry_type: WalEntryType::Commit,
+                table_id: 0,
+                key: None,
+                data: None,
+                lsn: 0,
+                timestamp: std::time::SystemTime::now()
+                    .duration_since(std::time::UNIX_EPOCH)
+                    .unwrap()
+                    .as_secs(),
+            };
+            let lsn = self.next_lsn.fetch_add(1, Ordering::Relaxed) + 1;
+            let mut entry = entry;
+            entry.lsn = lsn;
+            self.wal.lock().append(entry)?;
+        }
+        // Clear tx state AFTER appending WAL so concurrent readers see
+        // consistent state.
+        self.current_tx_id.store(0, Ordering::Relaxed);
+        self.as_mut_ref().inner.set_current_tx_id(0);
+        if let Ok(mut active) = self.active_txs.lock() {
+            active.remove(&tx_id);
+        }
+        Ok(())
+    }
+
+    fn rollback_transaction_lockfree(&self) -> SqlResult<()> {
+        let tx_id = self.current_tx_id.load(Ordering::Relaxed);
+        if tx_id == 0 {
+            return Ok(());
+        }
+        if self.wal_enabled {
+            let entry = WalEntry {
+                tx_id,
+                entry_type: WalEntryType::Rollback,
+                table_id: 0,
+                key: None,
+                data: None,
+                lsn: 0,
+                timestamp: std::time::SystemTime::now()
+                    .duration_since(std::time::UNIX_EPOCH)
+                    .unwrap()
+                    .as_secs(),
+            };
+            let lsn = self.next_lsn.fetch_add(1, Ordering::Relaxed) + 1;
+            let mut entry = entry;
+            entry.lsn = lsn;
+            self.wal.lock().append(entry)?;
+            self.wal.lock().sync()?;
+        }
+        let mut_ref = self.as_mut_ref();
+        mut_ref.inner.discard_all_buffers();
+        self.current_tx_id.store(0, Ordering::Relaxed);
+        mut_ref.inner.set_current_tx_id(0);
+        if let Ok(mut active) = self.active_txs.lock() {
+            active.remove(&tx_id);
+        }
         Ok(())
     }
 
     fn rollback_transaction(&mut self) -> SqlResult<()> {
-        let tx_id = self.current_tx_id;
+        let tx_id = self.current_tx_id.load(Ordering::Relaxed);
         if self.wal_enabled {
             let entry = WalEntry {
                 tx_id,
@@ -782,10 +971,12 @@ impl<S: StorageEngine + 'static, T: WalManager + 'static> StorageEngine for WalS
                     .as_secs(),
             };
             self.append_wal_entry(entry)?;
-            self.wal.sync()?;
+            self.wal.lock().sync()?;
         }
         // #3223 Phase 1: remove from active set on rollback.
-        self.active_txs.remove(&tx_id);
+        if let Ok(mut active) = self.active_txs.lock() {
+            active.remove(&tx_id);
+        }
         // Issue #3964: previously this called `self.inner.flush()`,
         // which persisted the rolled-back tx's buffered inserts to
         // data.rows and then to disk via the post-flush dirty-table
@@ -796,15 +987,15 @@ impl<S: StorageEngine + 'static, T: WalManager + 'static> StorageEngine for WalS
     }
 
     fn in_transaction(&self) -> bool {
-        self.current_tx_id != 0
+        self.current_tx_id.load(Ordering::Relaxed) != 0
     }
 
     fn current_tx_id(&self) -> u64 {
-        self.current_tx_id
+        self.current_tx_id.load(Ordering::Relaxed)
     }
 
     fn set_current_tx_id(&mut self, id: u64) {
-        self.current_tx_id = id;
+        self.current_tx_id.store(id, Ordering::Relaxed);
         // PR-842: also propagate to the inner engine so its in_transaction
         // gate sees the right state (FileStorage's insert buffers tx-scoped
         // writes to avoid leaking uncommitted rows to disk on crash).
@@ -1087,7 +1278,6 @@ mod tests {
         let mut storage = WalStorage::new(inner, wal).unwrap();
         let _ = storage.inner();
         let _ = storage.wal();
-        let _ = storage.wal_mut();
     }
 
     #[test]
@@ -1095,7 +1285,8 @@ mod tests {
         let inner = MemoryStorage::new();
         let wal = MemoryWalManager::new();
         let mut storage = WalStorage::new(inner, wal).unwrap();
-        let (_s, _w) = storage.split();
+        let _s = storage.inner_mut();
+        let _w = storage.wal.lock();
     }
 
     #[test]

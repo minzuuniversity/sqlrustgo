@@ -306,8 +306,7 @@ impl ExecutionEngine<MemoryStorage> {
         // recovery engine, producing duplicates on every restart.
         {
             let mut storage = engine.storage.write();
-            let (inner, _wal_mgr) = storage.split();
-            inner.clear_all_tables();
+            storage.inner_mut().clear_all_tables();
         }
         recover_wal(&mut engine)?;
         Ok(engine)
@@ -319,9 +318,15 @@ pub fn recover_wal(
     engine: &mut ExecutionEngine<WalStorage<FileStorage, FileBackedWalManager>>,
 ) -> SqlResult<RecoveryReport> {
     let storage = &mut *engine.storage.write();
-    let (inner, wal_mgr) = storage.split();
     let mut recovery = StatefulRecoveryEngine::new();
-    let report = RecoveryEngine::recover(&mut recovery, inner, wal_mgr)?;
+    // Lock the WAL manager just for the duration of the recovery call.
+    // Use recover_split_mut() so `inner_mut()` and the wal manager are
+    // acquired as disjoint `&mut` from the same `&mut self` borrow —
+    // the borrow checker accepts this since the lifetimes cannot overlap.
+    let report = {
+        let (inner, wal_mgr) = storage.recover_split_mut();
+        RecoveryEngine::recover(&mut recovery, inner, wal_mgr)?
+    };
 
     // Flush any data accumulated in FileStorage's insert buffer during replay
     // so the post-recovery scan can see the recovered rows. Without this,
