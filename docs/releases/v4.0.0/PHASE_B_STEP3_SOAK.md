@@ -75,11 +75,47 @@ The 4% regression on small tables is likely the cost of:
 
 1. Replace the `as_mut_ref` `unsafe` with `UnsafeCell` wrapping of
    `inner: S` — eliminates the cast's UB risk and may compile to
-   identical code on modern LLVM.
+   identical code on modern LLVM. Estimated 1-2 hours. **Defer — the
+   `unsafe` is scoped to a single function with detailed safety
+   invariants; not a blocker for the current session.**
 2. Split `inner.flush()` / `truncate_before()` out of `commit_transaction`
-   so `_lockfree` can do a full commit without `&mut self`.
+   so `_lockfree` can do a full commit without `&mut self`. Requires
+   `FileStorage::flush` to become lockfree (needs `Mutex<HashSet>` for
+   `dirty_tables` + `RwLock<HashMap>` for `tables`). Estimated 4-6 hours.
+   **Defer — separate session.**
 3. Profile with larger table (100k+) where the per-call overhead
-   becomes negligible vs the work.
+   becomes negligible vs the work. The 100k-table case stresses the
+   WHERE-eval + scan path more than the tx-control path, so we may
+   see additional bottlenecks that don't appear at 1k or 10k.
 4. Consider `parking_lot::RwLock<S>` instead of `Mutex<T>` for the
    WAL manager if the engine does heavy WAL reads (currently it does
    only writes).
+
+## 5. Session 2 conclusions (2026-09-13)
+
+* **Step 3 is complete** (commit `e57171469`) and pushed to all 5
+  remotes. Profile shows 19% fewer writer waits; SOAK shows -3.9% to
+  +1.3% (net neutral) across realistic workloads.
+* **No further changes in this session**: Items 1-2 above would each
+  be 1-6 hours of careful work and don't promise a measurable TPS
+  win. Following the Phase A lesson ("small optimizations don't
+  matter at scale"), we document the path forward but stop here.
+* **Step 4 (MVCC)** is the next high-leverage change but is explicitly
+  scoped to a separate session (8-16 hours, requires redo-undo
+  compatibility work).
+* **Step 5 (BufferPool integration)** is dependent on Step 4 and
+  similarly scoped to a future session.
+
+### Final baseline (after Step 3)
+
+| Workload                | NEW TPS | OLD TPS | Δ       |
+|-------------------------|---------|---------|---------|
+| oltp_read_only  4t × 1k | 166.0   | 172.8   | -3.9%   |
+| oltp_read_only  8t × 10k| 129.4   | 127.7   | +1.3%   |
+| oltp_read_write 8t × 10k| 191.1   | 191.3   | -0.1%   |
+
+**Net assessment**: architectural improvement (write lock contention
+reduced 19%) with negligible throughput impact. The bottleneck for
+further SELECTs parallelism is no longer the global `BEGIN/COMMIT`
+write lock — it is the `Arc<RwLock<BoxStorageEngine>>` around every
+`execute_select` (which is what Step 4 MVCC would address).
