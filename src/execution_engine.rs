@@ -1848,8 +1848,20 @@ impl<S: StorageEngine + 'static> ExecutionEngine<S> {
         // detect explicit transactions and apply the per-tx boundary rule
         // when filtering committed entries. Without this, every DML entry
         // appears to be autocommit and uncommitted work leaks into recovery.
-        let mut storage = self.storage.write();
-        {
+        // Phase B Step 3: prefer the lockfree path when available so we
+        // don't take the global `Arc<RwLock<storage>>` write lock for
+        // the BEGIN. The lockfree variant performs the WAL append under
+        // an internal `parking_lot::Mutex` and updates tx_id atomically.
+        // The trait default impl returns Err; engines that haven't been
+        // updated (e.g. tests using MemoryStorage) fall back to the
+        // legacy `begin_transaction` path.
+        let lockfree_ok = {
+            let storage = self.storage.read();
+            storage.begin_transaction_lockfree(tx_id.as_u64()).is_ok()
+        };
+        if !lockfree_ok {
+            // Fallback: lockfree not supported by this storage engine.
+            let mut storage = self.storage.write();
             storage.set_current_tx_id(tx_id.as_u64());
             let _ = storage.begin_transaction();
         }

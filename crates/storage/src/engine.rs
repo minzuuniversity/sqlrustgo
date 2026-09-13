@@ -1186,6 +1186,42 @@ pub trait StorageEngine: Send + Sync {
         ))
     }
 
+    /// Begin a transaction via interior mutability (no `&mut self`).
+    ///
+    /// Optimization variant of `begin_transaction` that lets the engine
+    /// start a tx WITHOUT holding the global `Arc<RwLock<storage>>` write
+    /// lock. Internally the storage uses `AtomicU64` + `Mutex<HashMap>`
+    /// so concurrent BEGINs across connections don't block each other
+    /// (or readers).
+    ///
+    /// Default impl returns an error. Engines that don't implement this
+    /// fall back to the `set_current_tx_id` + `begin_transaction` pair
+    /// which require the storage write lock.
+    ///
+    /// Contract: identical to `set_current_tx_id(tx_id); begin_transaction()`,
+    /// but performs both atomically without the engine holding a write lock.
+    fn begin_transaction_lockfree(&self, _tx_id: u64) -> SqlResult<()> {
+        Err(SqlError::ExecutionError(
+            "begin_transaction_lockfree not supported".to_string(),
+        ))
+    }
+
+    /// Commit a transaction via interior mutability.
+    /// See [`begin_transaction_lockfree`] for rationale.
+    fn commit_transaction_lockfree(&self) -> SqlResult<()> {
+        Err(SqlError::ExecutionError(
+            "commit_transaction_lockfree not supported".to_string(),
+        ))
+    }
+
+    /// Rollback a transaction via interior mutability.
+    /// See [`begin_transaction_lockfree`] for rationale.
+    fn rollback_transaction_lockfree(&self) -> SqlResult<()> {
+        Err(SqlError::ExecutionError(
+            "rollback_transaction_lockfree not supported".to_string(),
+        ))
+    }
+
     /// Release all gap locks held by a transaction
     ///
     /// Called during transaction commit/rollback to release gap locks.
