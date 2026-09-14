@@ -3279,6 +3279,99 @@ impl StorageEngine for FileStorage {
         Ok(removed)
     }
 
+    /// Phase B Step 4.1: like `delete`, but returns the list of
+    /// primary keys (column 0) of deleted rows so the MVCC wrapper
+    /// can tombstone them precisely. For an empty-filter delete (full
+    /// table wipe) we return an empty Vec — the MVCC wrapper handles
+    /// that by tombstoning all visible rows (correct semantics for
+    /// "delete everything").
+    fn delete_collect_pks(&mut self, table: &str, filters: &[Value]) -> SqlResult<Vec<Value>> {
+        let in_tx = self.current_tx_id != 0;
+
+        // Snapshot rows for ROLLBACK (same as `delete`).
+        let removed_pks: Vec<Value> = if let Some(ref mut data) = self.tables.get_mut(table) {
+            let original_len = data.rows.len();
+
+            // Capture pre-delete undo log entries (same as `delete`).
+            if in_tx {
+                if filters.is_empty() {
+                    let snap = data.rows.clone();
+                    self.tx_undo_log.push(UndoOp::DeleteAll {
+                        table: table.to_string(),
+                        original_rows: snap,
+                    });
+                } else {
+                    for (idx, row) in data.rows.iter().enumerate().rev() {
+                        let matches = filters
+                            .iter()
+                            .enumerate()
+                            .all(|(i, f)| row.get(i).map(|v| v == f).unwrap_or(false));
+                        if matches {
+                            self.tx_undo_log.push(UndoOp::DeleteRow {
+                                table: table.to_string(),
+                                row_idx: idx,
+                                original: row.clone(),
+                            });
+                        }
+                    }
+                }
+            }
+
+            // Collect PKs of rows that match the filter (before deletion).
+            let pks: Vec<Value> = if filters.is_empty() {
+                // Full table wipe: caller (MVCC) handles by tombstoning
+                // all visible rows. Return empty to signal that.
+                Vec::new()
+            } else {
+                data.rows
+                    .iter()
+                    .filter(|row| {
+                        filters
+                            .iter()
+                            .enumerate()
+                            .all(|(i, f)| row.get(i).map(|v| v == f).unwrap_or(false))
+                    })
+                    .filter_map(|row| row.first().cloned()) // PK = column 0
+                    .collect()
+            };
+
+            // Now perform the actual deletion (same logic as `delete`).
+            if filters.is_empty() {
+                data.rows.clear();
+            } else {
+                data.rows.retain(|row| {
+                    !filters
+                        .iter()
+                        .enumerate()
+                        .all(|(i, f)| row.get(i).map(|v| v == f).unwrap_or(false))
+                });
+            }
+            debug_assert_eq!(pks.len(), original_len - data.rows.len());
+            pks
+        } else {
+            Vec::new()
+        };
+
+        // Mark dirty if anything was removed.
+        if !removed_pks.is_empty() || filters.is_empty() {
+            self.dirty_tables.insert(table.to_string());
+        }
+
+        // After full table delete, clear any buffered inserts.
+        // For partial delete, strip matching rows from insert_buffer.
+        if filters.is_empty() {
+            self.insert_buffer.remove(table);
+        } else if let Some(buffered) = self.insert_buffer.get_mut(table) {
+            buffered.retain(|row| {
+                !filters
+                    .iter()
+                    .enumerate()
+                    .all(|(i, f)| row.get(i).map(|v| v == f).unwrap_or(false))
+            });
+        }
+        Ok(removed_pks)
+    }
+
     fn delete_if(&mut self, table: &str, filter: &RowFilter) -> SqlResult<usize> {
         if let Some(ref mut data) = self.tables.get_mut(table) {
             let original_len = data.rows.len();

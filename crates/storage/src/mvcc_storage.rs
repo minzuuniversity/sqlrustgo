@@ -176,22 +176,34 @@ impl<S: StorageEngine + 'static> StorageEngine for MvccStorage<S> {
     }
 
     fn delete(&mut self, table: &str, _filters: &[Value]) -> SqlResult<usize> {
-        // Phase 4: delegate fully to inner; tombstone MVCC rows below.
-        let n = self.inner.delete(table, _filters)?;
-        if n > 0 {
-            let mvcc = self.mvcc_table(table);
-            // Append a tombstone for every visible row at current
-            // snapshot. This is a coarse approximation (we don't know
-            // which specific PKs were deleted), but it correctly hides
-            // *all* visible rows from readers after the delete commit.
-            // Future Step 4.1 will narrow this to specific PKs.
-            let pairs = mvcc.scan_visible(mvcc.begin_snapshot());
-            let ts = mvcc.next_snapshot_ts();
-            for (pk, _) in pairs {
-                mvcc.delete(&pk, ts, ts);
+        // Phase 4.1: prefer `delete_collect_pks` so we can tombstone
+        // only the affected rows instead of the whole table. The
+        // default impl returns an empty Vec, in which case we fall
+        // back to the pre-Step-4.1 coarse "tombstone all visible
+        // rows" behavior.
+        let removed_pks = self.inner.delete_collect_pks(table, _filters)?;
+        if removed_pks.is_empty() {
+            // Either nothing was deleted, or the engine doesn't know
+            // which PKs were deleted (default impl). If filters were
+            // empty (full-table delete) we still need to tombstone
+            // every visible row.
+            if _filters.is_empty() {
+                let mvcc = self.mvcc_table(table);
+                let pairs = mvcc.scan_visible(mvcc.begin_snapshot());
+                let ts = mvcc.next_snapshot_ts();
+                for (pk, _) in pairs {
+                    mvcc.delete(&pk, ts, ts);
+                }
             }
+            return Ok(0);
         }
-        Ok(n)
+        // Tombstone exactly the affected PKs.
+        let mvcc = self.mvcc_table(table);
+        let ts = mvcc.next_snapshot_ts();
+        for pk in &removed_pks {
+            mvcc.delete(pk, ts, ts);
+        }
+        Ok(removed_pks.len())
     }
 
     fn delete_if(&mut self, table: &str, filter: &RowFilter) -> SqlResult<usize> {
@@ -426,7 +438,20 @@ mod tests {
         assert_eq!(before.len(), 3);
         s.delete("t", &[Value::Integer(2)]).unwrap();
         let after = s.scan("t").unwrap();
-        assert_eq!(after.len(), 0, "coarse Phase-4 delete tombstones all rows");
+        // Phase 4.1: precise tombstone — only PK=2 is gone, PK=1 and
+        // PK=3 remain visible.
+        assert_eq!(
+            after.len(),
+            2,
+            "Phase 4.1 delete tombstones only the matched PK"
+        );
+        let pks: Vec<i64> = after
+            .iter()
+            .filter_map(|r| r.first().and_then(|v| if let Value::Integer(i) = v { Some(*i) } else { None }))
+            .collect();
+        assert!(pks.contains(&1));
+        assert!(pks.contains(&3));
+        assert!(!pks.contains(&2));
     }
 
     #[test]
