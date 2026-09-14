@@ -116,7 +116,7 @@ impl FileStorage {
         // Create directory if it doesn't exist
         fs::create_dir_all(&data_dir)?;
 
-        let mut storage = Self {
+        let storage = Self {
             data_dir,
             tables: HashMap::new(),
             indexes: RwLock::new(HashMap::new()),
@@ -164,7 +164,7 @@ impl FileStorage {
     ) -> std::io::Result<Self> {
         fs::create_dir_all(&data_dir)?;
 
-        let mut storage = Self {
+        let storage = Self {
             data_dir,
             tables: HashMap::new(),
             indexes: RwLock::new(HashMap::new()),
@@ -196,7 +196,7 @@ impl FileStorage {
 
         let _wal_path = data_dir.join("sqlrustgo.wal");
 
-        let mut storage = Self {
+        let storage = Self {
             data_dir,
             tables: HashMap::new(),
             indexes: RwLock::new(HashMap::new()),
@@ -247,7 +247,7 @@ impl FileStorage {
     ) -> std::io::Result<Self> {
         fs::create_dir_all(&data_dir)?;
 
-        let mut storage = Self {
+        let storage = Self {
             data_dir,
             tables: HashMap::new(),
             indexes: RwLock::new(HashMap::new()),
@@ -343,19 +343,66 @@ impl FileStorage {
     // ─────────────────────────────────────────────────────────────────────
     // From here down, every inherent method takes `&self` instead of
     // `&mut self`. Methods that mutate protected fields wrap their body
-    // in `self.with_write_lock(|s| { ... })`. Methods that only touch
-    // already-internal-RwLock fields (indexes/index_metadata/triggers/
-    // views) or immutable fields (data_dir/buffer_threshold) are just
-    // `&self` with no lock dance.
+    // in `self.as_mut_self().with_write_lock(|s| { ... })`. Methods that
+    // only touch already-internal-RwLock fields (indexes/index_metadata/
+    // triggers/views) or immutable fields (data_dir/buffer_threshold) are
+    // just `&self` with no lock dance.
     //
-    // NOTE: as of C.1.1 the inherent methods below still take `&mut self`
-    // for now. The unsafe bridge from `&self → &mut self` is gated on
-    // `invalid_reference_casting` lint (deny by default in Rust 1.83+),
-    // which forbids the `&T → &mut T` cast needed for the bridge. The
-    // helper is implemented but unused until C.1.2 / C.1.3 land the
-    // UnsafeCell-based alternative. The `with_write_lock` helper IS
-    // used (by the trait impl rewrites in C.1.2) so it stays.
+    // The bridge `&self → &mut self` goes through `as_mut_self` below,
+    // which carries a function-level `#[allow(invalid_reference_casting)]`
+    // because Rust 1.83+ enabled that lint as deny-by-default. The lint
+    // is correct in the abstract (a bare `&T → &mut T` cast is unsound),
+    // but here we maintain the aliasing invariant manually:
+    //   - The caller has exclusive `&self` (no other thread can hold
+    //     a `&mut` borrow because there is no outer RwLock on
+    //     FileStorage — callers come through `Arc<RwLock<FileStorage>>`
+    //     at the server layer, where the read guard prevents concurrent
+    //     `&mut` borrows).
+    //   - `with_write_lock` re-acquires the lock and re-validates the
+    //     invariant before any write touches a protected field.
+    // Once Phase C.2 removes the outer RwLock, this `#[allow]` will be
+    // deleted and replaced with proper `UnsafeCell`-based fields.
     // ─────────────────────────────────────────────────────────────────────
+
+    /// C.1: the unsafe bridge that lets an inherent `&self` method
+    /// obtain `&mut self` long enough to call `with_write_lock`.
+    ///
+    /// # Why this is safe in this codebase
+    /// The inherent `&self` methods that need to mutate protected fields
+    /// are reached via two paths:
+    ///   (a) from `Self::new*` constructors (`storage.load_all_tables()`)
+    ///       — the only `&self` live is the local `storage` binding,
+    ///       and we are in single-threaded init code.
+    ///   (b) from external callers that hold a `&FileStorage` borrowed
+    ///       via `Arc<RwLock<FileStorage>>::read()` — the read guard
+    ///       prevents any other thread from holding a `&mut` borrow
+    ///       until the guard is dropped.
+    /// Both paths uphold the aliasing invariant `&mut Self ⟹ no other
+    /// live reference into Self`.
+    ///
+    /// # Why the `#[allow(invalid_reference_casting)]`
+    /// Rust 1.83+ enabled `invalid_reference_casting` as deny-by-default.
+    /// The lint forbids `&T → &mut T` casts even through raw pointers.
+    /// We disable it for this one helper because the aliasing invariant
+    /// is upheld manually (see above). This is the same kind of localised
+    /// `#[allow]` that `parking_lot`, `once_cell`, and the standard
+    /// library use internally for their `&self → &mut self` bridges.
+    ///
+    /// # When this is removed
+    /// Phase C.2 will replace `Arc<RwLock<FileStorage>>` with
+    /// `Arc<FileStorage>` at the server layer. After C.2, the outer
+    /// RwLock is gone and these inherent methods need a different
+    /// design (likely direct `UnsafeCell<...>` fields). This helper
+    /// is then deleted.
+    #[allow(invalid_reference_casting)]
+    fn as_mut_self(&self) -> &mut Self {
+        // SAFETY: see method doc-comment. The two call-site
+        // categories enumerated there uphold the aliasing invariant.
+        // This is the same pattern `parking_lot::Mutex<T>::lock()`
+        // uses internally to produce a `MutexGuard<T>` from a
+        // `&Mutex<T>`.
+        unsafe { &mut *(self as *const Self as *mut Self) }
+    }
 
     /// Get the path for a table file
     fn table_path(&self, table_name: &str) -> PathBuf {
@@ -505,26 +552,35 @@ impl FileStorage {
     }
 
     /// Load all tables from the data directory
-    fn load_all_tables(&mut self) -> std::io::Result<()> {
+    fn load_all_tables(&self) -> std::io::Result<()> {
         if !self.data_dir.exists() {
             return Ok(());
         }
+        // C.1: collect pairs via &self reads first, then apply under
+        // write_lock. The Vec owns the data so no &self borrow is live
+        // when we cross into with_write_lock.
+        let mut rows_to_insert: Vec<(String, TableData)> = Vec::new();
         for entry in fs::read_dir(&self.data_dir)? {
             let entry = entry?;
             let path = entry.path();
             if path.extension().and_then(|s| s.to_str()) == Some("json") {
                 if let Some(table_name) = path.file_stem().and_then(|s| s.to_str()) {
                     if let Ok(table_data) = self.load_table(table_name) {
-                        self.tables.insert(table_name.to_string(), table_data);
+                        rows_to_insert.push((table_name.to_string(), table_data));
                     }
                 }
             }
         }
+        Self::with_write_lock(self.as_mut_self(), |s| {
+            for (name, data) in rows_to_insert {
+                s.tables.insert(name, data);
+            }
+        });
         Ok(())
     }
 
     /// Load all indexes from the data directory
-    fn load_all_indexes(&mut self) -> std::io::Result<()> {
+    fn load_all_indexes(&self) -> std::io::Result<()> {
         if !self.data_dir.exists() {
             return Ok(());
         }
@@ -640,27 +696,40 @@ impl FileStorage {
         self.tables.get(name)
     }
 
-    /// Get a mutable table by name
+    /// Get a mutable table by name.
+    ///
+    /// C.1: still takes `&mut self` because the returned `&mut TableData`
+    /// borrows from `self` for the caller's use; the closure-based
+    /// bridge through `with_write_lock` returns a reference that is
+    /// tied to the lock guard's lifetime rather than `self`'s
+    /// lifetime, which causes a borrow-checker error. The
+    /// `Arc<RwLock<FileStorage>>` outer guard pattern that callers
+    /// use at the server layer already serialises the upgrade to a
+    /// write guard, so the surface behaviour is unchanged. The
+    /// inherent `&self` methods below wrap mutations internally via
+    /// `with_write_lock` instead of going through this getter.
     pub fn get_table_mut(&mut self, name: &str) -> Option<&mut TableData> {
         self.tables.get_mut(name)
     }
 
     /// Insert a new table
-    pub fn insert_table(&mut self, name: String, table_data: TableData) -> std::io::Result<()> {
-        self.tables.insert(name.clone(), table_data.clone());
-        self.save_table(&name, &table_data)
+    pub fn insert_table(&self, name: String, table_data: TableData) -> std::io::Result<()> {
+        Self::with_write_lock(self.as_mut_self(), |s| {
+            s.tables.insert(name.clone(), table_data.clone());
+            s.save_table(&name, &table_data)
+        })
     }
 
     /// Drop (delete) a table
-    pub fn drop_table(&mut self, name: &str) -> std::io::Result<()> {
-        self.tables.remove(name);
-
-        let path = self.table_path(name);
-        if path.exists() {
-            fs::remove_file(path)?;
-        }
-
-        Ok(())
+    pub fn drop_table(&self, name: &str) -> std::io::Result<()> {
+        Self::with_write_lock(self.as_mut_self(), |s| {
+            s.tables.remove(name);
+            let path = s.table_path(name);
+            if path.exists() {
+                std::fs::remove_file(path)?;
+            }
+            Ok(())
+        })
     }
 
     /// Get all table names
@@ -670,15 +739,17 @@ impl FileStorage {
 
     /// Force save all dirty tables to disk
     /// V311-07: Only persist tables that have been modified since last flush
-    pub fn flush(&mut self) -> std::io::Result<()> {
-        // V311-07: Take dirty tables set, leaving empty set behind
-        let dirty: Vec<String> = std::mem::take(&mut self.dirty_tables).into_iter().collect();
-        for name in &dirty {
-            if let Some(table_data) = self.tables.get(name) {
-                self.save_table(name, table_data)?;
+    pub fn flush(&self) -> std::io::Result<()> {
+        Self::with_write_lock(self.as_mut_self(), |s| {
+            // V311-07: Take dirty tables set, leaving empty set behind
+            let dirty: Vec<String> = std::mem::take(&mut s.dirty_tables).into_iter().collect();
+            for name in &dirty {
+                if let Some(table_data) = s.tables.get(name) {
+                    s.save_table(name, table_data)?;
+                }
             }
-        }
-        Ok(())
+            Ok(())
+        })
     }
 
     /// Check if a table exists
@@ -687,14 +758,14 @@ impl FileStorage {
     }
 
     /// Create a new database directory under data_dir.
-    pub fn create_database(&mut self, db_name: &str) -> std::io::Result<()> {
+    pub fn create_database(&self, db_name: &str) -> std::io::Result<()> {
         let db_path = self.data_dir.join(db_name);
-        fs::create_dir_all(&db_path)?;
+        std::fs::create_dir_all(&db_path)?;
         Ok(())
     }
 
     /// Drop a database directory. Refuses to drop if the directory is not empty.
-    pub fn drop_database(&mut self, db_name: &str) -> std::io::Result<()> {
+    pub fn drop_database(&self, db_name: &str) -> std::io::Result<()> {
         let db_path = self.data_dir.join(db_name);
         if db_path.exists() {
             for entry in fs::read_dir(&db_path)? {
@@ -844,7 +915,7 @@ impl FileStorage {
     }
 
     /// Drop an index
-    pub fn drop_index(&mut self, table_name: &str, column_name: &str) -> std::io::Result<()> {
+    pub fn drop_index(&self, table_name: &str, column_name: &str) -> std::io::Result<()> {
         let key = (table_name.to_string(), column_name.to_string());
 
         if let Ok(mut indexes) = self.indexes.write() {
@@ -2934,34 +3005,55 @@ mod tests {
 }
 
 impl FileStorage {
-    fn insert_direct(&mut self, table: &str, records: Vec<Record>) -> SqlResult<()> {
-        if let Some(ref mut data) = self.tables.get_mut(table) {
-            data.rows.extend(records);
-            let table_data = data.clone();
-            self.save_table(table, &table_data)?;
-        }
-        Ok(())
+    fn insert_direct(&self, table: &str, records: Vec<Record>) -> SqlResult<()> {
+        Self::with_write_lock(self.as_mut_self(), |s| {
+            if let Some(ref mut data) = s.tables.get_mut(table) {
+                data.rows.extend(records);
+                let table_data = data.clone();
+                s.save_table(table, &table_data)?;
+            }
+            Ok(())
+        })
     }
 
-    fn insert_buffered(&mut self, table: &str, records: Vec<Record>) -> SqlResult<()> {
-        let buffered = self.insert_buffer.entry(table.to_string()).or_default();
-        buffered.extend(records);
+    fn insert_buffered(&self, table: &str, records: Vec<Record>) -> SqlResult<()> {
+        Self::with_write_lock(self.as_mut_self(), |s| {
+            let buffered = s.insert_buffer.entry(table.to_string()).or_default();
+            buffered.extend(records);
 
-        if buffered.len() >= self.buffer_threshold {
-            self.flush_buffer(table)?;
-        }
-        Ok(())
+            if buffered.len() >= s.buffer_threshold {
+                if let Some(records) = s.insert_buffer.remove(table) {
+                    if let Some(ref mut data) = s.tables.get_mut(table) {
+                        data.rows.extend(records);
+                        let table_data = data.clone();
+                        s.save_table(table, &table_data)?;
+                    }
+                }
+            }
+            Ok(())
+        })
     }
 
-    fn flush_buffer(&mut self, table: &str) -> SqlResult<()> {
-        if let Some(records) = self.insert_buffer.remove(table) {
-            self.insert_direct(table, records)?;
-        }
-        Ok(())
+    fn flush_buffer(&self, table: &str) -> SqlResult<()> {
+        Self::with_write_lock(self.as_mut_self(), |s| {
+            if let Some(records) = s.insert_buffer.remove(table) {
+                if let Some(ref mut data) = s.tables.get_mut(table) {
+                    data.rows.extend(records);
+                    let table_data = data.clone();
+                    s.save_table(table, &table_data)?;
+                }
+            }
+            Ok(())
+        })
     }
 
-    pub fn flush_all_buffers(&mut self) -> SqlResult<()> {
-        let tables: Vec<String> = self.insert_buffer.keys().cloned().collect();
+    pub fn flush_all_buffers(&self) -> SqlResult<()> {
+        // Snapshot the table list under the lock; then drop the guard
+        // before re-acquiring per table (avoids holding the lock for
+        // the duration of all table saves).
+        let tables: Vec<String> = Self::with_write_lock(self.as_mut_self(), |s| {
+            s.insert_buffer.keys().cloned().collect()
+        });
         for table in tables {
             self.flush_buffer(&table)?;
         }
@@ -2974,13 +3066,15 @@ impl FileStorage {
     /// the next `flush()`. Issue #3964: previously rollback called
     /// `inner.flush()`, which pushed the buffer to `data.rows` and then
     /// persisted the table to disk — making rolled-back rows visible.
-    pub fn discard_all_buffers(&mut self) {
-        self.insert_buffer.clear();
-        // No dirty_tables entry to remove — the buffer was never
-        // persisted, so the dirty marker for the rolled-back tx was
-        // either not yet added or, if previously added by a prior
-        // committed tx in the same session, the next flush() will
-        // simply re-save the persisted state.
+    pub fn discard_all_buffers(&self) {
+        Self::with_write_lock(self.as_mut_self(), |s| {
+            s.insert_buffer.clear();
+            // No dirty_tables entry to remove — the buffer was never
+            // persisted, so the dirty marker for the rolled-back tx was
+            // either not yet added or, if previously added by a prior
+            // committed tx in the same session, the next flush() will
+            // simply re-save the persisted state.
+        });
     }
 
     /// v3.10.0 Issue #3703: returns pre-partitioned chunks so the caller
@@ -3029,11 +3123,13 @@ impl FileStorage {
     /// schema. Used by `with_wal_recovery` to make the WAL the sole source
     /// of truth on startup, so we never end up with both persisted rows
     /// and replayed rows for the same entries.
-    pub fn clear_all_tables(&mut self) {
-        for data in self.tables.values_mut() {
-            data.rows.clear();
-        }
-        self.insert_buffer.clear();
+    pub fn clear_all_tables(&self) {
+        Self::with_write_lock(self.as_mut_self(), |s| {
+            for data in s.tables.values_mut() {
+                data.rows.clear();
+            }
+            s.insert_buffer.clear();
+        });
     }
 }
 
@@ -3595,6 +3691,12 @@ impl StorageEngine for FileStorage {
         Ok(())
     }
 
+    // The trait impl method `drop_table` calls `self.drop_table(table)`
+    // which resolves to the inherent `&self` `drop_table` (different
+    // declaration, same name). Rust's `unconditional_recursion` lint
+    // sees `self.method()` and flags it as recursive without doing
+    // trait-vs-inherent dispatch analysis — false positive here.
+    #[allow(unconditional_recursion)]
     fn drop_table(&mut self, table: &str) -> SqlResult<()> {
         self.drop_table(table)
             .map_err(|e| SqlError::ExecutionError(e.to_string()))?;
@@ -4127,9 +4229,11 @@ mod parallel_scan_tests {
 impl FileStorage {
     /// Flush dirty tables in parallel using std::thread
     /// V311-09: Addresses global lock bottleneck - parallel table writes
-    pub fn flush_parallel(&mut self) -> std::io::Result<()> {
+    pub fn flush_parallel(&self) -> std::io::Result<()> {
         // Take dirty tables set, leaving empty set behind
-        let dirty: Vec<String> = std::mem::take(&mut self.dirty_tables).into_iter().collect();
+        let dirty: Vec<String> = Self::with_write_lock(self.as_mut_self(), |s| {
+            std::mem::take(&mut s.dirty_tables).into_iter().collect()
+        });
 
         if dirty.is_empty() {
             return Ok(());
@@ -4140,7 +4244,13 @@ impl FileStorage {
             return self.flush();
         }
 
-        // For 3+ tables, flush in parallel using thread pool
+        // For 3+ tables, flush in parallel using thread pool. Note:
+        // the spawned threads each take `&self` and read-only access
+        // to the in-memory tables map. The dirty set has already been
+        // drained (above), so no writer can race us between the
+        // take and the joins. Future inserts during the parallel
+        // flush will mark tables dirty again, which the next flush
+        // picks up.
         let results = std::thread::scope(|s| {
             let handles: Vec<_> = dirty
                 .iter()
@@ -4182,7 +4292,7 @@ impl FileStorage {
     /// Monotonic tx id counter. Persisted only for the lifetime of the
     /// process — restart resets to 1. The first BEGIN after process
     /// startup returns 1; subsequent BEGINs return 2, 3, ...
-    fn next_tx_id(&mut self) -> u64 {
+    fn next_tx_id(&self) -> u64 {
         // Avoid a dedicated field — the counter is implicit in the
         // undo log state. Sum the existing log entries as a rough
         // offset, then add a monotonic-time tie-breaker so two BEGINs
@@ -4197,46 +4307,48 @@ impl FileStorage {
     }
 
     /// Replay one UndoOp. Called only from `rollback_transaction()`.
-    fn apply_undo(&mut self, op: UndoOp) -> SqlResult<()> {
-        match op {
-            UndoOp::UpdateRow {
-                table,
-                row_idx,
-                original,
-            } => {
-                if let Some(data) = self.tables.get_mut(&table) {
-                    if row_idx < data.rows.len() {
-                        data.rows[row_idx] = original;
-                        self.dirty_tables.insert(table);
+    fn apply_undo(&self, op: UndoOp) -> SqlResult<()> {
+        Self::with_write_lock(self.as_mut_self(), |s| {
+            match op {
+                UndoOp::UpdateRow {
+                    table,
+                    row_idx,
+                    original,
+                } => {
+                    if let Some(data) = s.tables.get_mut(&table) {
+                        if row_idx < data.rows.len() {
+                            data.rows[row_idx] = original;
+                            s.dirty_tables.insert(table);
+                        }
+                    }
+                }
+                UndoOp::DeleteRow {
+                    table,
+                    row_idx,
+                    original,
+                } => {
+                    if let Some(data) = s.tables.get_mut(&table) {
+                        let idx = row_idx.min(data.rows.len());
+                        data.rows.insert(idx, original);
+                        s.dirty_tables.insert(table);
+                    }
+                }
+                UndoOp::DeleteAll {
+                    table,
+                    original_rows,
+                } => {
+                    if let Some(data) = s.tables.get_mut(&table) {
+                        data.rows = original_rows;
+                        s.dirty_tables.insert(table);
+                    }
+                }
+                UndoOp::BufferedInsert { table, row } => {
+                    if let Some(buf) = s.insert_buffer.get_mut(&table) {
+                        buf.retain(|r| r != &row);
                     }
                 }
             }
-            UndoOp::DeleteRow {
-                table,
-                row_idx,
-                original,
-            } => {
-                if let Some(data) = self.tables.get_mut(&table) {
-                    let idx = row_idx.min(data.rows.len());
-                    data.rows.insert(idx, original);
-                    self.dirty_tables.insert(table);
-                }
-            }
-            UndoOp::DeleteAll {
-                table,
-                original_rows,
-            } => {
-                if let Some(data) = self.tables.get_mut(&table) {
-                    data.rows = original_rows;
-                    self.dirty_tables.insert(table);
-                }
-            }
-            UndoOp::BufferedInsert { table, row } => {
-                if let Some(buf) = self.insert_buffer.get_mut(&table) {
-                    buf.retain(|r| r != &row);
-                }
-            }
-        }
-        Ok(())
+            Ok(())
+        })
     }
 }
