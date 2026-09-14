@@ -22,7 +22,7 @@ use crate::engine::{
     ColumnDefinition, Record, RowFilter, RowMutation, SqlResult, StorageEngine, TableInfo,
     TriggerInfo, Value,
 };
-use crate::mvcc::{VersionedTable, VersionedRow};
+use crate::mvcc::{find_visible, VersionedRow, VersionedTable};
 use sqlrustgo_types::SqlError;
 use std::any::Any;
 use std::collections::HashMap;
@@ -168,6 +168,34 @@ impl<S: StorageEngine + 'static> StorageEngine for MvccStorage<S> {
         // — covers the rebuild-lag case where rows were committed
         // before MVCC rebuilt its chain.
         self.inner.scan_pk(table, pk)
+    }
+
+    /// Phase B Step 4.3: O(log N + k) PK range scan. Returns the
+    /// visible rows whose primary key falls in `low..=high` (inclusive),
+    /// in primary-key order. Uses MVCC chains for visibility check;
+    /// falls back to the inner engine for the rebuild-lag case.
+    fn scan_pk_range(
+        &self,
+        table: &str,
+        low: &Value,
+        high: &Value,
+    ) -> SqlResult<Vec<Record>> {
+        use std::ops::Bound;
+        let mvcc = self.mvcc_table(table);
+        let snapshot_ts = mvcc.begin_snapshot();
+        // BTreeMap::range over [low, high] is O(log N + k) where k
+        // is the number of matching keys — much cheaper than a full
+        // scan followed by per-row filter.
+        let r = mvcc.versions.read();
+        let mut out = Vec::new();
+        for (_, chain) in r.range((Bound::Included(low), Bound::Included(high))) {
+            if let Some(visible) = find_visible(chain, snapshot_ts) {
+                if !visible.deleted {
+                    out.push(visible.row.clone());
+                }
+            }
+        }
+        Ok(out)
     }
     fn scan(&self, table: &str) -> SqlResult<Vec<Record>> {
         let mvcc = self.mvcc_table(table);
@@ -565,5 +593,40 @@ mod tests {
         assert!(s.get_visible("t", &Value::Integer(2)).is_none());
         // PK=1 still visible.
         assert!(s.get_visible("t", &Value::Integer(1)).is_some());
+    }
+
+    #[test]
+    fn test_scan_pk_range() {
+        // Phase B Step 4.3: inclusive range lookup should return
+        // only the rows in [low, high].
+        let mut s = make_storage();
+        s.insert(
+            "t",
+            vec![
+                vec![Value::Integer(1), Value::Text("a".into())],
+                vec![Value::Integer(2), Value::Text("b".into())],
+                vec![Value::Integer(3), Value::Text("c".into())],
+                vec![Value::Integer(4), Value::Text("d".into())],
+                vec![Value::Integer(5), Value::Text("e".into())],
+            ],
+        )
+        .unwrap();
+        let rows = s
+            .scan_pk_range("t", &Value::Integer(2), &Value::Integer(4))
+            .unwrap();
+        assert_eq!(rows.len(), 3);
+        let pks: Vec<i64> = rows
+            .iter()
+            .filter_map(|r| {
+                r.first().and_then(|v| {
+                    if let Value::Integer(i) = v {
+                        Some(*i)
+                    } else {
+                        None
+                    }
+                })
+            })
+            .collect();
+        assert_eq!(pks, vec![2, 3, 4]);
     }
 }
