@@ -12,6 +12,7 @@ use std::sync::Arc;
 use sqlrustgo_catalog::Catalog;
 use sqlrustgo_storage::{
     adaptive_hash_index::AdaptiveHashIndex,
+    mvcc_storage::MvccStorage,
     recovery_engine::{RecoveryEngine, RecoveryEngineImpl, RecoveryReport, StatefulRecoveryEngine},
     wal::{FileBackedWalManager, MemoryWalManager},
     FileStorage, MemoryStorage, StorageEngine, WalStorage,
@@ -212,11 +213,21 @@ impl ExecutionEngine<MemoryStorage> {
     ///
     /// Creates storage and WAL manager, wraps in WalStorage, returns Engine.
     /// Does NOT run WAL recovery — call recover_wal() after crash recovery.
+    ///
+    /// Phase B Step 4: wraps `FileStorage` in `MvccStorage` so reads
+    /// use snapshot-based visibility instead of the outer
+    /// `Arc<RwLock<storage>>` read lock.
     pub fn with_wal_file(
         data_dir: PathBuf,
-    ) -> SqlResult<ExecutionEngine<WalStorage<FileStorage, FileBackedWalManager>>> {
-        let inner = FileStorage::new_with_wal(data_dir.clone())
+    ) -> SqlResult<ExecutionEngine<WalStorage<MvccStorage<FileStorage>, FileBackedWalManager>>> {
+        let file = FileStorage::new_with_wal(data_dir.clone())
             .map_err(|e| SqlError::ExecutionError(format!("FileStorage init failed: {}", e)))?;
+        let inner = MvccStorage::new(file);
+        // Populate MVCC from current FileStorage state. For a fresh
+        // server this is a no-op (empty tables); for a recovered
+        // server, WAL recovery runs first via recover_wal() and
+        // FileStorage will already contain the committed rows.
+        inner.rebuild_from_inner()?;
         let wal_path = data_dir.join("sqlrustgo.wal");
         let wal_manager = FileBackedWalManager::new(wal_path)?;
         let wal_storage = WalStorage::new(inner, wal_manager)?;
@@ -251,12 +262,15 @@ impl ExecutionEngine<MemoryStorage> {
     }
 
     /// Create a WAL-backed engine with CheckpointManager for WAL lifecycle control.
+    /// Phase B Step 4: wraps FileStorage in MvccStorage for snapshot reads.
     pub fn with_wal_and_checkpoint(
         data_dir: PathBuf,
         checkpoint_dir: PathBuf,
-    ) -> SqlResult<ExecutionEngine<WalStorage<FileStorage, FileBackedWalManager>>> {
-        let inner = FileStorage::new_with_wal(data_dir.clone())
+    ) -> SqlResult<ExecutionEngine<WalStorage<MvccStorage<FileStorage>, FileBackedWalManager>>> {
+        let file = FileStorage::new_with_wal(data_dir.clone())
             .map_err(|e| SqlError::ExecutionError(format!("FileStorage init failed: {}", e)))?;
+        let inner = MvccStorage::new(file);
+        inner.rebuild_from_inner()?;
         let wal_path = data_dir.join("sqlrustgo.wal");
         let wal_manager = FileBackedWalManager::new(wal_path)?;
         let wal_storage = WalStorage::new(inner, wal_manager)?;
@@ -298,7 +312,7 @@ impl ExecutionEngine<MemoryStorage> {
     /// For production use with WAL persistence.
     pub fn with_wal_recovery(
         data_dir: PathBuf,
-    ) -> SqlResult<ExecutionEngine<WalStorage<FileStorage, FileBackedWalManager>>> {
+    ) -> SqlResult<ExecutionEngine<WalStorage<MvccStorage<FileStorage>, FileBackedWalManager>>> {
         let mut engine = Self::with_wal_file(data_dir)?;
         // PR-842: clear in-memory rows loaded from t.json before replay so
         // the WAL is the sole source of truth. Without this the rows
@@ -306,16 +320,24 @@ impl ExecutionEngine<MemoryStorage> {
         // recovery engine, producing duplicates on every restart.
         {
             let mut storage = engine.storage.write();
-            storage.inner_mut().clear_all_tables();
+            storage.inner_mut().inner_mut().clear_all_tables();
         }
         recover_wal(&mut engine)?;
+        // Phase B Step 4: rebuild MVCC layer from FileStorage after WAL
+        // recovery completes — recovery just wrote all committed rows
+        // into FileStorage, so the MVCC version chains must be
+        // repopulated for SELECTs to see them.
+        {
+            let storage = engine.storage.read();
+            storage.inner().rebuild_from_inner()?;
+        }
         Ok(engine)
     }
 }
 
 /// Recover a WAL-backed engine after crash: replay committed WAL entries
 pub fn recover_wal(
-    engine: &mut ExecutionEngine<WalStorage<FileStorage, FileBackedWalManager>>,
+    engine: &mut ExecutionEngine<WalStorage<MvccStorage<FileStorage>, FileBackedWalManager>>,
 ) -> SqlResult<RecoveryReport> {
     let storage = &mut *engine.storage.write();
     let mut recovery = StatefulRecoveryEngine::new();
@@ -325,6 +347,7 @@ pub fn recover_wal(
     // the borrow checker accepts this since the lifetimes cannot overlap.
     let report = {
         let (inner, wal_mgr) = storage.recover_split_mut();
+        let inner = inner.inner_mut(); // MvccStorage -> &mut FileStorage
         RecoveryEngine::recover(&mut recovery, inner, wal_mgr)?
     };
 
