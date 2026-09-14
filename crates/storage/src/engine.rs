@@ -987,6 +987,16 @@ pub trait StorageEngine: Send + Sync {
 
     /// Delete rows matching a filter
     fn delete(&mut self, table: &str, _filters: &[Value]) -> SqlResult<usize>;
+    /// Phase B Step 4.1: like `delete`, but returns the list of
+    /// primary keys of the deleted rows so the MVCC wrapper can
+    /// tombstone only the affected rows instead of the whole table.
+    /// The default implementation falls back to `delete` and returns
+    /// an empty PK list (callers must handle that by tombstoning all
+    /// visible rows as before).
+    fn delete_collect_pks(&mut self, table: &str, filters: &[Value]) -> SqlResult<Vec<Value>> {
+        let _ = (table, filters);
+        Ok(Vec::new())
+    }
     fn delete_if(&mut self, table: &str, filter: &RowFilter) -> SqlResult<usize>;
     fn update(
         &mut self,
@@ -1880,6 +1890,54 @@ impl StorageEngine for MemoryStorage {
             keep
         });
         Ok(original_len - records.len())
+    }
+
+    /// Phase B Step 4.1: collect primary keys (column 0) of deleted rows
+    /// so the MVCC wrapper can tombstone them precisely. Returns the
+    /// list of deleted PKs (empty Vec means nothing was deleted, or
+    /// the caller wants the coarse "tombstone all" fallback for full
+    /// table wipes).
+    fn delete_collect_pks(&mut self, table: &str, filters: &[Value]) -> SqlResult<Vec<Value>> {
+        let Some(records) = self.tables.get_mut(table) else {
+            return Ok(Vec::new());
+        };
+        if filters.is_empty() {
+            // Full table wipe: caller (MVCC) handles by tombstoning
+            // all visible rows. Empty Vec signals that.
+            if let Some(log) = self.tx_log.as_mut() {
+                for row in records.iter() {
+                    log.deleted.push((table.to_string(), row.clone()));
+                }
+            } else if let Some(committed) = self.committed_tables.get_mut(table) {
+                committed.clear();
+            }
+            records.clear();
+            return Ok(Vec::new());
+        }
+        // Collect PKs of rows that match the filter.
+        let pks: Vec<Value> = records
+            .iter()
+            .filter(|r| {
+                filters
+                    .iter()
+                    .enumerate()
+                    .all(|(i, f)| r.get(i).map(|v| v == f).unwrap_or(false))
+            })
+            .filter_map(|r| r.first().cloned())
+            .collect();
+        // Same retain logic as `delete`.
+        records.retain(|r| {
+            let keep = !filters.iter().enumerate().all(|(i, v)| r.get(i) == Some(v));
+            if !keep {
+                if let Some(log) = self.tx_log.as_mut() {
+                    log.deleted.push((table.to_string(), r.clone()));
+                } else if let Some(committed) = self.committed_tables.get_mut(table) {
+                    committed.retain(|c| c != r);
+                }
+            }
+            keep
+        });
+        Ok(pks)
     }
 
     fn delete_if(&mut self, table: &str, filter: &RowFilter) -> SqlResult<usize> {
