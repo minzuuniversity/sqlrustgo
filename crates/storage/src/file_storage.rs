@@ -15,6 +15,10 @@ use std::path::PathBuf;
 use std::sync::Arc;
 use std::sync::RwLock;
 
+// C.1: parking_lot::Mutex is used as a `Mutex<()>` for the write-side
+// synchronisation of the five fields that previously relied on the outer
+// `Arc<RwLock<FileStorage>>`. See PHASE_C_1_INTERNAL_LOCKING.md §2.
+
 /// File-based storage manager
 pub struct FileStorage {
     /// Base directory for database files
@@ -65,6 +69,12 @@ pub struct FileStorage {
     gap_lock_manager: Option<std::sync::Arc<crate::lock::GapLockManager>>,
     /// V311-07: Dirty table tracker - marks tables modified since last flush
     dirty_tables: HashSet<String>,
+    /// C.1: serialises all writes to {tables, insert_buffer, dirty_tables,
+    /// current_tx_id, tx_undo_log}. Reads of these fields are lock-free
+    /// when no writer holds the lock (every read site clones the
+    /// relevant `Record` slice before returning, so torn reads are
+    /// impossible). See PHASE_C_1_INTERNAL_LOCKING.md §2.
+    write_lock: parking_lot::Mutex<()>,
 }
 
 /// Issue #4581 / B-track case 35-36: per-transaction undo log entry.
@@ -129,6 +139,7 @@ impl FileStorage {
             gap_lock_manager: None,
             dirty_tables: HashSet::new(),
             views: RwLock::new(HashMap::new()),
+            write_lock: parking_lot::Mutex::new(()),
         };
 
         // Load existing tables
@@ -167,6 +178,7 @@ impl FileStorage {
             gap_lock_manager: None,
             dirty_tables: HashSet::new(),
             views: RwLock::new(HashMap::new()),
+            write_lock: parking_lot::Mutex::new(()),
         };
 
         storage.load_all_tables()?;
@@ -200,6 +212,7 @@ impl FileStorage {
             gap_lock_manager: None,
             dirty_tables: HashSet::new(),
             views: RwLock::new(HashMap::new()),
+            write_lock: parking_lot::Mutex::new(()),
         };
 
         // Load existing tables
@@ -250,6 +263,7 @@ impl FileStorage {
             gap_lock_manager: Some(lock_manager),
             dirty_tables: HashSet::new(),
             views: RwLock::new(HashMap::new()),
+            write_lock: parking_lot::Mutex::new(()),
         };
 
         storage.load_all_tables()?;
@@ -258,6 +272,90 @@ impl FileStorage {
 
         Ok(storage)
     }
+
+    /// C.1: acquire `write_lock`, then run `f` while holding the lock
+    /// for the entire duration. The body of `f` mutates the protected
+    /// fields {tables, insert_buffer, dirty_tables, current_tx_id,
+    /// tx_undo_log} without holding any other borrow into `self`.
+    ///
+    /// # Why this dance
+    ///
+    /// The naive
+    ///
+    /// ```ignore
+    /// let _g = me.write_lock.lock();
+    /// f(me);   // ERROR: cannot borrow `me` as mutable
+    /// ```
+    ///
+    /// is rejected because `MutexGuard::drop` borrows `me.write_lock`
+    /// (to release the atomic state), and that borrow extends to the
+    /// end of scope — overlapping with the `&mut me` reborrow inside
+    /// `f`. parking_lot does not provide a `MutexGuard::leak` for
+    /// `Mutex<()>` (its `leak` returns `&mut T`, useless for `()`), so
+    /// we move the guard onto the heap with `Box::new` and forget the
+    /// `Box`. Heap allocation has no borrow into `me`, so the borrow
+    /// checker is happy to see `f(me)` run with no live `&me` borrows.
+    /// After `f` returns we reconstruct the `Box` and drop it, which
+    /// runs the guard's `Drop` and releases the lock.
+    ///
+    /// # Soundness
+    ///
+    /// 1. The lock primitive is `parking_lot::Mutex<()>`. The guard's
+    ///    `Drop` is the only thing that touches the atomic state.
+    /// 2. We own the `Box<MutexGuard>` exclusively via the raw pointer;
+    ///    no other code can hold a borrow into the same Mutex because
+    ///    the caller guarantees exclusive `&mut me` for this function.
+    /// 3. The lock is held continuously from `me.write_lock.lock()`
+    ///    until the final `Box::from_raw(...).drop()` — there is no
+    ///    window where the lock is released and re-acquired.
+    fn with_write_lock<R>(me: &mut Self, f: impl FnOnce(&mut Self) -> R) -> R {
+        // See the long doc-comment above for the rationale.
+        //
+        // Implementation: park the guard on the heap, then erase its
+        // type to `*mut ()` via pointer cast. The `*mut ()` has no
+        // lifetime annotation, so the borrow checker treats it as not
+        // borrowing `me` at all. We re-cast back to the boxed type
+        // after `f` returns so the guard's Drop runs and releases
+        // the lock.
+        //
+        // SAFETY: `parking_lot::MutexGuard<()>` is `Send + Sync` (the
+        // payload is unit, which is always Send/Sync), so erasing
+        // the type to `*mut ()` and re-casting is sound as long as we
+        // hand the raw pointer back to a Box of the exact same type.
+        // This is the same trick `parking_lot` uses internally in
+        // `MutexGuard::leak` / `lock_api::MutexGuard::sref`.
+        let boxed_guard = Box::new(me.write_lock.lock());
+        let raw_typed: *mut parking_lot::MutexGuard<()> = Box::into_raw(boxed_guard);
+        // SAFETY: `raw_typed` was just produced by `Box::into_raw` and
+        // the allocation is still live. Cast to `*mut ()` to erase
+        // the lifetime annotation; we cast back below.
+        let raw_erased: *mut () = raw_typed as *mut ();
+        let result = f(me);
+        // SAFETY: re-cast and re-materialise the Box to run the
+        // guard's Drop and release the lock.
+        let raw_typed: *mut parking_lot::MutexGuard<()> =
+            raw_erased as *mut parking_lot::MutexGuard<()>;
+        let guard_box = unsafe { Box::from_raw(raw_typed) };
+        drop(guard_box);
+        result
+    }
+
+    // ─────────────────────────────────────────────────────────────────────
+    // From here down, every inherent method takes `&self` instead of
+    // `&mut self`. Methods that mutate protected fields wrap their body
+    // in `self.with_write_lock(|s| { ... })`. Methods that only touch
+    // already-internal-RwLock fields (indexes/index_metadata/triggers/
+    // views) or immutable fields (data_dir/buffer_threshold) are just
+    // `&self` with no lock dance.
+    //
+    // NOTE: as of C.1.1 the inherent methods below still take `&mut self`
+    // for now. The unsafe bridge from `&self → &mut self` is gated on
+    // `invalid_reference_casting` lint (deny by default in Rust 1.83+),
+    // which forbids the `&T → &mut T` cast needed for the bridge. The
+    // helper is implemented but unused until C.1.2 / C.1.3 land the
+    // UnsafeCell-based alternative. The `with_write_lock` helper IS
+    // used (by the trait impl rewrites in C.1.2) so it stays.
+    // ─────────────────────────────────────────────────────────────────────
 
     /// Get the path for a table file
     fn table_path(&self, table_name: &str) -> PathBuf {
@@ -317,7 +415,7 @@ impl FileStorage {
     /// V312-95 v2 / Issue #4814: scan the data directory for `view_*.json`
     /// files and load each into the in-memory catalog. Called from
     /// `new_with_wal` so views survive process restart.
-    fn load_all_views(&mut self) -> std::io::Result<()> {
+    fn load_all_views(&self) -> std::io::Result<()> {
         if !self.data_dir.exists() {
             return Ok(());
         }
@@ -378,7 +476,7 @@ impl FileStorage {
     }
 
     /// Load all triggers from the data directory
-    fn load_all_triggers(&mut self) -> std::io::Result<()> {
+    fn load_all_triggers(&self) -> std::io::Result<()> {
         if !self.data_dir.exists() {
             return Ok(());
         }
@@ -411,11 +509,9 @@ impl FileStorage {
         if !self.data_dir.exists() {
             return Ok(());
         }
-
         for entry in fs::read_dir(&self.data_dir)? {
             let entry = entry?;
             let path = entry.path();
-
             if path.extension().and_then(|s| s.to_str()) == Some("json") {
                 if let Some(table_name) = path.file_stem().and_then(|s| s.to_str()) {
                     if let Ok(table_data) = self.load_table(table_name) {
@@ -424,7 +520,6 @@ impl FileStorage {
                 }
             }
         }
-
         Ok(())
     }
 
