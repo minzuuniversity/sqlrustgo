@@ -69,6 +69,12 @@ pub struct WalStorage<S: StorageEngine, T: WalManager> {
     sync_mode: WalSyncMode,
     /// Counter for batch mode: tracks writes since last sync
     writes_since_sync: u32,
+    /// Phase B Step 3 follow-up #2: number of commits since the last
+    /// inner-engine flush. The default `commit_transaction` defers
+    /// `inner.flush()` (relying on WAL replay for durability), and
+    /// `drain_pending_flushes` runs a single flush when this counter
+    /// is non-zero. `commit_transaction_and_flush` always flushes.
+    pending_flush_count: std::sync::atomic::AtomicU64,
     checkpoint_manager: Option<Arc<RwLock<CheckpointManager>>>,
     /// Active transaction id. The ExecutionEngine pushes the real id here
     /// via `set_current_tx_id`; without this, every WAL entry would carry
@@ -100,6 +106,7 @@ impl<S: StorageEngine + 'static, T: WalManager + 'static> WalStorage<S, T> {
             wal_enabled: true,
             sync_mode: WalSyncMode::default(),
             writes_since_sync: 0,
+            pending_flush_count: std::sync::atomic::AtomicU64::new(0),
             checkpoint_manager: None,
             current_tx_id: AtomicU64::new(0),
             next_lsn: AtomicU64::new(0),
@@ -123,6 +130,7 @@ impl<S: StorageEngine + 'static, T: WalManager + 'static> WalStorage<S, T> {
             wal_enabled: true,
             sync_mode,
             writes_since_sync: 0,
+            pending_flush_count: std::sync::atomic::AtomicU64::new(0),
             checkpoint_manager: None,
             current_tx_id: AtomicU64::new(0),
             next_lsn: AtomicU64::new(0),
@@ -143,6 +151,7 @@ impl<S: StorageEngine + 'static, T: WalManager + 'static> WalStorage<S, T> {
             wal_enabled: true,
             sync_mode,
             writes_since_sync: 0,
+            pending_flush_count: std::sync::atomic::AtomicU64::new(0),
             checkpoint_manager: Some(checkpoint_manager),
             current_tx_id: AtomicU64::new(0),
             next_lsn: AtomicU64::new(0),
@@ -869,7 +878,20 @@ impl<S: StorageEngine + 'static, T: WalManager + 'static> StorageEngine for WalS
             }
         }
 
-        self.inner_mut().flush()?;
+        // Phase B Step 3 follow-up #2: defer inner.flush() out of the
+        // commit critical path. The Commit WAL entry is the source of
+        // truth for durability — on crash, WAL replay restores the
+        // data even without an on-disk snapshot. We track pending
+        // flushes in `pending_flush_count`; the next read or a
+        // background sweeper drains them.
+        //
+        // The original behaviour (synchronous flush on commit) is
+        // preserved as the explicit `commit_transaction_and_flush`
+        // method below for callers that need strong durability.
+        if commit_lsn > 0 {
+            self.pending_flush_count
+                .fetch_add(1, std::sync::atomic::Ordering::Relaxed);
+        }
 
         // Truncate WAL up to checkpoint
         if commit_lsn > 0 {
@@ -887,6 +909,39 @@ impl<S: StorageEngine + 'static, T: WalManager + 'static> StorageEngine for WalS
             active.remove(&tx_id);
         }
         Ok(())
+    }
+
+    /// Phase B Step 3 follow-up #2: variant of `commit_transaction`
+    /// that ALSO flushes the inner storage engine synchronously. Use
+    /// this when the caller needs strong durability (the on-disk
+    /// snapshot matches the WAL state). The default `commit_transaction`
+    /// skips the flush and relies on WAL replay for recovery.
+    fn commit_transaction_and_flush(&mut self) -> SqlResult<()> {
+        <Self as StorageEngine>::commit_transaction(self)?;
+        // Drain any deferred flushes first (e.g. from previous
+        // non-flushing commits) so this call represents a true fsync
+        // barrier.
+        let pending = self
+            .pending_flush_count
+            .swap(0, std::sync::atomic::Ordering::Relaxed);
+        if pending > 0 {
+            self.inner_mut().flush()?;
+        }
+        Ok(())
+    }
+
+    /// Phase B Step 3 follow-up #2: drain any deferred inner-engine
+    /// flushes. Called by the read path or a background sweeper.
+    /// Returns the number of flushes performed (0 if no work).
+    fn drain_pending_flushes(&mut self) -> SqlResult<usize> {
+        let pending = self
+            .pending_flush_count
+            .swap(0, std::sync::atomic::Ordering::Relaxed);
+        if pending == 0 {
+            return Ok(0);
+        }
+        self.inner_mut().flush()?;
+        Ok(pending as usize)
     }
 
     // ===== Lock-free transaction control (Phase B Step 3) =====
