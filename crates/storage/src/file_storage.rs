@@ -3143,7 +3143,9 @@ impl StorageEngine for FileStorage {
     }
 
     fn set_current_tx_id(&mut self, id: u64) {
-        self.current_tx_id = id;
+        Self::with_write_lock(self.as_mut_self(), |s| {
+            s.current_tx_id = id;
+        });
     }
 
     /// Issue #4581 / B-track case 35-36: real BEGIN/COMMIT/ROLLBACK
@@ -3164,13 +3166,19 @@ impl StorageEngine for FileStorage {
     /// safe given that sqlrustgo does not yet implement
     /// SAVEPOINT/RELEASE SAVEPOINT.
     fn begin_transaction(&mut self) -> SqlResult<u64> {
-        if self.current_tx_id != 0 {
-            // Already in a tx — keep the existing id (MySQL-style nested BEGIN).
-            return Ok(self.current_tx_id);
-        }
-        self.current_tx_id = self.next_tx_id();
-        self.tx_undo_log.clear();
-        Ok(self.current_tx_id)
+        // `next_tx_id` is an inherent `&self` method — read-only on
+        // tx_undo_log. Compute it outside the lock so the closure
+        // body only touches the write-protected fields.
+        let id = self.next_tx_id();
+        Self::with_write_lock(self.as_mut_self(), |s| {
+            if s.current_tx_id != 0 {
+                // Already in a tx — keep the existing id (MySQL-style nested BEGIN).
+                return Ok(s.current_tx_id);
+            }
+            s.current_tx_id = id;
+            s.tx_undo_log.clear();
+            Ok(s.current_tx_id)
+        })
     }
 
     fn commit_transaction(&mut self) -> SqlResult<()> {
@@ -3178,13 +3186,15 @@ impl StorageEngine for FileStorage {
             // COMMIT outside a tx is a silent no-op (MySQL/SQLite semantics).
             return Ok(());
         }
-        // Commit = drop the undo log + flush any buffered inserts that
-        // accumulated during the tx. INSERTs buffered via insert_buffered
-        // are NOT auto-flushed here; caller decides when to commit
-        // visibility. We only need to drop undo so the next BEGIN gets a
-        // fresh log.
-        self.tx_undo_log.clear();
-        self.current_tx_id = 0;
+        Self::with_write_lock(self.as_mut_self(), |s| {
+            // Commit = drop the undo log + flush any buffered inserts that
+            // accumulated during the tx. INSERTs buffered via insert_buffered
+            // are NOT auto-flushed here; caller decides when to commit
+            // visibility. We only need to drop undo so the next BEGIN gets a
+            // fresh log.
+            s.tx_undo_log.clear();
+            s.current_tx_id = 0;
+        });
         Ok(())
     }
 
@@ -3194,20 +3204,71 @@ impl StorageEngine for FileStorage {
             // SQLite. Match SQLite to keep behavior consistent.
             return Ok(());
         }
-        // Replay the undo log in reverse order. Each entry is
-        // self-contained — replaying one does not invalidate another.
-        while let Some(op) = self.tx_undo_log.pop() {
-            self.apply_undo(op)?;
-        }
-        // Drain any INSERTs buffered during the tx (they were logged
-        // as BufferedInsert ops above, but if any slipped past, this
-        // is a belt-and-suspenders cleanup).
-        for table in self.tables.keys().cloned().collect::<Vec<_>>() {
-            if let Some(buf) = self.insert_buffer.get_mut(&table) {
-                buf.retain(|_row| false);
+        // C.1.2: drain undo log + drain insert_buffer + zero tx_id, all
+        // under write_lock. The original code called `self.apply_undo(op)`
+        // per entry, but apply_undo is an inherent `&self` method that
+        // itself takes the lock — we cannot nest `with_write_lock` from
+        // within an outer `with_write_lock`. Instead we inline the
+        // apply_undo logic here (the bodies are short and only touch
+        // {tables, dirty_tables, insert_buffer} — all protected).
+        //
+        // SAFETY NOTE: holding the lock for the duration of all undo
+        // operations is fine — these are O(N_undo) and rarely deep
+        // (typical N_undo is 0–10). The original per-op lock+release
+        // pattern offered no concurrency benefit because ROLLBACK is
+        // already exclusive at the tx layer.
+        Self::with_write_lock(self.as_mut_self(), |s| {
+            while let Some(op) = s.tx_undo_log.pop() {
+                match op {
+                    UndoOp::UpdateRow {
+                        table,
+                        row_idx,
+                        original,
+                    } => {
+                        if let Some(data) = s.tables.get_mut(&table) {
+                            if row_idx < data.rows.len() {
+                                data.rows[row_idx] = original;
+                                s.dirty_tables.insert(table);
+                            }
+                        }
+                    }
+                    UndoOp::DeleteRow {
+                        table,
+                        row_idx,
+                        original,
+                    } => {
+                        if let Some(data) = s.tables.get_mut(&table) {
+                            let idx = row_idx.min(data.rows.len());
+                            data.rows.insert(idx, original);
+                            s.dirty_tables.insert(table);
+                        }
+                    }
+                    UndoOp::DeleteAll {
+                        table,
+                        original_rows,
+                    } => {
+                        if let Some(data) = s.tables.get_mut(&table) {
+                            data.rows = original_rows;
+                            s.dirty_tables.insert(table);
+                        }
+                    }
+                    UndoOp::BufferedInsert { table, row } => {
+                        if let Some(buf) = s.insert_buffer.get_mut(&table) {
+                            buf.retain(|r| r != &row);
+                        }
+                    }
+                }
             }
-        }
-        self.current_tx_id = 0;
+            // Drain any INSERTs buffered during the tx (they were logged
+            // as BufferedInsert ops above, but if any slipped past, this
+            // is a belt-and-suspenders cleanup).
+            for table in s.tables.keys().cloned().collect::<Vec<_>>() {
+                if let Some(buf) = s.insert_buffer.get_mut(&table) {
+                    buf.retain(|_row| false);
+                }
+            }
+            s.current_tx_id = 0;
+        });
         Ok(())
     }
 
@@ -3387,6 +3448,13 @@ impl StorageEngine for FileStorage {
     }
 
     fn insert(&mut self, table: &str, records: Vec<Record>) -> SqlResult<()> {
+        // C.1.2: in_transaction / insert_buffered / insert_direct are
+        // inherent `&self` methods — safe to call from outside the
+        // lock and from inside (Rust reborrows `&mut Self` as `&Self`
+        // automatically). The only bare-field write inside the trait
+        // body is the dirty_tables insert at the end; that goes under
+        // the lock.
+        //
         // PR-842: route inserts through the buffer when we are inside a
         // transaction so that a crash before COMMIT does not leak partially
         // applied rows to disk. Outside a transaction (autocommit) the
@@ -3407,7 +3475,9 @@ impl StorageEngine for FileStorage {
             self.insert_buffered(table, records)?
         };
         // V311-07: Mark table dirty for optimized flush
-        self.dirty_tables.insert(table.to_string());
+        Self::with_write_lock(self.as_mut_self(), |s| {
+            s.dirty_tables.insert(table.to_string());
+        });
         Ok(())
     }
 
@@ -3420,78 +3490,84 @@ impl StorageEngine for FileStorage {
     }
 
     fn delete(&mut self, table: &str, filters: &[Value]) -> SqlResult<usize> {
-        let in_tx = self.current_tx_id != 0;
+        // C.1.2: the entire body is wrapped in `with_write_lock` because
+        // every step touches {tables, dirty_tables, tx_undo_log,
+        // insert_buffer}. Splitting would mean multiple lock acquisitions
+        // and risk of observing torn state between them.
+        Self::with_write_lock(self.as_mut_self(), |s| {
+            let in_tx = s.current_tx_id != 0;
 
-        // Issue #4581 / B-track case 35-36: snapshot rows for ROLLBACK
-        // BEFORE the actual delete. The `data` borrow ends before the
-        // `dirty_tables` / `insert_buffer` mutations, so we snapshot first,
-        // then mutate, then post-process the buffer.
-        let removed = if let Some(ref mut data) = self.tables.get_mut(table) {
-            let original_len = data.rows.len();
+            // Issue #4581 / B-track case 35-36: snapshot rows for ROLLBACK
+            // BEFORE the actual delete. The `data` borrow ends before the
+            // `dirty_tables` / `insert_buffer` mutations, so we snapshot first,
+            // then mutate, then post-process the buffer.
+            let removed = if let Some(ref mut data) = s.tables.get_mut(table) {
+                let original_len = data.rows.len();
 
-            // Issue #4581: capture pre-delete snapshots. We collect them
-            // up-front (in reverse iteration order so ROLLBACK replays in
-            // the correct sequence) before mutating data.rows.
-            if in_tx {
-                if filters.is_empty() {
-                    let snap = data.rows.clone();
-                    self.tx_undo_log.push(UndoOp::DeleteAll {
-                        table: table.to_string(),
-                        original_rows: snap,
-                    });
-                } else {
-                    for (idx, row) in data.rows.iter().enumerate().rev() {
-                        let matches = filters
-                            .iter()
-                            .enumerate()
-                            .all(|(i, f)| row.get(i).map(|v| v == f).unwrap_or(false));
-                        if matches {
-                            self.tx_undo_log.push(UndoOp::DeleteRow {
-                                table: table.to_string(),
-                                row_idx: idx,
-                                original: row.clone(),
-                            });
+                // Issue #4581: capture pre-delete snapshots. We collect them
+                // up-front (in reverse iteration order so ROLLBACK replays in
+                // the correct sequence) before mutating data.rows.
+                if in_tx {
+                    if filters.is_empty() {
+                        let snap = data.rows.clone();
+                        s.tx_undo_log.push(UndoOp::DeleteAll {
+                            table: table.to_string(),
+                            original_rows: snap,
+                        });
+                    } else {
+                        for (idx, row) in data.rows.iter().enumerate().rev() {
+                            let matches = filters
+                                .iter()
+                                .enumerate()
+                                .all(|(i, f)| row.get(i).map(|v| v == f).unwrap_or(false));
+                            if matches {
+                                s.tx_undo_log.push(UndoOp::DeleteRow {
+                                    table: table.to_string(),
+                                    row_idx: idx,
+                                    original: row.clone(),
+                                });
+                            }
                         }
                     }
                 }
+
+                if filters.is_empty() {
+                    data.rows.clear();
+                } else {
+                    // Row-level delete: keep rows that do NOT match the filter.
+                    data.rows.retain(|row| {
+                        !filters
+                            .iter()
+                            .enumerate()
+                            .all(|(i, f)| row.get(i).map(|v| v == f).unwrap_or(false))
+                    });
+                }
+                original_len - data.rows.len()
+            } else {
+                0
+            };
+
+            // V311-07: Mark dirty instead of immediate persist.
+            if removed > 0 || filters.is_empty() {
+                s.dirty_tables.insert(table.to_string());
             }
 
+            // After full table delete, clear any buffered inserts (the caller
+            // UPDATE path will re-insert correct rows). For partial delete,
+            // strip matching rows from insert_buffer so they don't shadow
+            // updated values.
             if filters.is_empty() {
-                data.rows.clear();
-            } else {
-                // Row-level delete: keep rows that do NOT match the filter.
-                data.rows.retain(|row| {
+                s.insert_buffer.remove(table);
+            } else if let Some(buffered) = s.insert_buffer.get_mut(table) {
+                buffered.retain(|row| {
                     !filters
                         .iter()
                         .enumerate()
                         .all(|(i, f)| row.get(i).map(|v| v == f).unwrap_or(false))
                 });
             }
-            original_len - data.rows.len()
-        } else {
-            0
-        };
-
-        // V311-07: Mark dirty instead of immediate persist.
-        if removed > 0 || filters.is_empty() {
-            self.dirty_tables.insert(table.to_string());
-        }
-
-        // After full table delete, clear any buffered inserts (the caller
-        // UPDATE path will re-insert correct rows). For partial delete,
-        // strip matching rows from insert_buffer so they don't shadow
-        // updated values.
-        if filters.is_empty() {
-            self.insert_buffer.remove(table);
-        } else if let Some(buffered) = self.insert_buffer.get_mut(table) {
-            buffered.retain(|row| {
-                !filters
-                    .iter()
-                    .enumerate()
-                    .all(|(i, f)| row.get(i).map(|v| v == f).unwrap_or(false))
-            });
-        }
-        Ok(removed)
+            Ok(removed)
+        })
     }
 
     /// Phase B Step 4.1: like `delete`, but returns the list of
@@ -3501,105 +3577,113 @@ impl StorageEngine for FileStorage {
     /// that by tombstoning all visible rows (correct semantics for
     /// "delete everything").
     fn delete_collect_pks(&mut self, table: &str, filters: &[Value]) -> SqlResult<Vec<Value>> {
-        let in_tx = self.current_tx_id != 0;
+        // C.1.2: see `delete` for rationale — wrap the entire body in
+        // `with_write_lock` because every step touches the protected
+        // fields. Splitting would mean multiple lock acquisitions
+        // and risk of torn state.
+        Self::with_write_lock(self.as_mut_self(), |s| {
+            let in_tx = s.current_tx_id != 0;
 
-        // Snapshot rows for ROLLBACK (same as `delete`).
-        let removed_pks: Vec<Value> = if let Some(ref mut data) = self.tables.get_mut(table) {
-            let original_len = data.rows.len();
+            // Snapshot rows for ROLLBACK (same as `delete`).
+            let removed_pks: Vec<Value> = if let Some(ref mut data) = s.tables.get_mut(table) {
+                let original_len = data.rows.len();
 
-            // Capture pre-delete undo log entries (same as `delete`).
-            if in_tx {
-                if filters.is_empty() {
-                    let snap = data.rows.clone();
-                    self.tx_undo_log.push(UndoOp::DeleteAll {
-                        table: table.to_string(),
-                        original_rows: snap,
-                    });
-                } else {
-                    for (idx, row) in data.rows.iter().enumerate().rev() {
-                        let matches = filters
-                            .iter()
-                            .enumerate()
-                            .all(|(i, f)| row.get(i).map(|v| v == f).unwrap_or(false));
-                        if matches {
-                            self.tx_undo_log.push(UndoOp::DeleteRow {
-                                table: table.to_string(),
-                                row_idx: idx,
-                                original: row.clone(),
-                            });
+                // Capture pre-delete undo log entries (same as `delete`).
+                if in_tx {
+                    if filters.is_empty() {
+                        let snap = data.rows.clone();
+                        s.tx_undo_log.push(UndoOp::DeleteAll {
+                            table: table.to_string(),
+                            original_rows: snap,
+                        });
+                    } else {
+                        for (idx, row) in data.rows.iter().enumerate().rev() {
+                            let matches = filters
+                                .iter()
+                                .enumerate()
+                                .all(|(i, f)| row.get(i).map(|v| v == f).unwrap_or(false));
+                            if matches {
+                                s.tx_undo_log.push(UndoOp::DeleteRow {
+                                    table: table.to_string(),
+                                    row_idx: idx,
+                                    original: row.clone(),
+                                });
+                            }
                         }
                     }
                 }
-            }
 
-            // Collect PKs of rows that match the filter (before deletion).
-            let pks: Vec<Value> = if filters.is_empty() {
-                // Full table wipe: caller (MVCC) handles by tombstoning
-                // all visible rows. Return empty to signal that.
-                Vec::new()
-            } else {
-                data.rows
-                    .iter()
-                    .filter(|row| {
-                        filters
+                // Collect PKs of rows that match the filter (before deletion).
+                let pks: Vec<Value> = if filters.is_empty() {
+                    // Full table wipe: caller (MVCC) handles by tombstoning
+                    // all visible rows. Return empty to signal that.
+                    Vec::new()
+                } else {
+                    data.rows
+                        .iter()
+                        .filter(|row| {
+                            filters
+                                .iter()
+                                .enumerate()
+                                .all(|(i, f)| row.get(i).map(|v| v == f).unwrap_or(false))
+                        })
+                        .filter_map(|row| row.first().cloned()) // PK = column 0
+                        .collect()
+                };
+
+                // Now perform the actual deletion (same logic as `delete`).
+                if filters.is_empty() {
+                    data.rows.clear();
+                } else {
+                    data.rows.retain(|row| {
+                        !filters
                             .iter()
                             .enumerate()
                             .all(|(i, f)| row.get(i).map(|v| v == f).unwrap_or(false))
-                    })
-                    .filter_map(|row| row.first().cloned()) // PK = column 0
-                    .collect()
+                    });
+                }
+                debug_assert_eq!(pks.len(), original_len - data.rows.len());
+                pks
+            } else {
+                Vec::new()
             };
 
-            // Now perform the actual deletion (same logic as `delete`).
+            // Mark dirty if anything was removed.
+            if !removed_pks.is_empty() || filters.is_empty() {
+                s.dirty_tables.insert(table.to_string());
+            }
+
+            // After full table delete, clear any buffered inserts.
+            // For partial delete, strip matching rows from insert_buffer.
             if filters.is_empty() {
-                data.rows.clear();
-            } else {
-                data.rows.retain(|row| {
+                s.insert_buffer.remove(table);
+            } else if let Some(buffered) = s.insert_buffer.get_mut(table) {
+                buffered.retain(|row| {
                     !filters
                         .iter()
                         .enumerate()
                         .all(|(i, f)| row.get(i).map(|v| v == f).unwrap_or(false))
                 });
             }
-            debug_assert_eq!(pks.len(), original_len - data.rows.len());
-            pks
-        } else {
-            Vec::new()
-        };
-
-        // Mark dirty if anything was removed.
-        if !removed_pks.is_empty() || filters.is_empty() {
-            self.dirty_tables.insert(table.to_string());
-        }
-
-        // After full table delete, clear any buffered inserts.
-        // For partial delete, strip matching rows from insert_buffer.
-        if filters.is_empty() {
-            self.insert_buffer.remove(table);
-        } else if let Some(buffered) = self.insert_buffer.get_mut(table) {
-            buffered.retain(|row| {
-                !filters
-                    .iter()
-                    .enumerate()
-                    .all(|(i, f)| row.get(i).map(|v| v == f).unwrap_or(false))
-            });
-        }
-        Ok(removed_pks)
+            Ok(removed_pks)
+        })
     }
 
     fn delete_if(&mut self, table: &str, filter: &RowFilter) -> SqlResult<usize> {
-        if let Some(ref mut data) = self.tables.get_mut(table) {
-            let original_len = data.rows.len();
-            data.rows.retain(|r| !filter(r));
-            let new_len = data.rows.len();
-            // V311-07: Mark dirty instead of immediate persist
-            if new_len < original_len {
-                self.dirty_tables.insert(table.to_string());
+        Self::with_write_lock(self.as_mut_self(), |s| {
+            if let Some(ref mut data) = s.tables.get_mut(table) {
+                let original_len = data.rows.len();
+                data.rows.retain(|r| !filter(r));
+                let new_len = data.rows.len();
+                // V311-07: Mark dirty instead of immediate persist
+                if new_len < original_len {
+                    s.dirty_tables.insert(table.to_string());
+                }
+                Ok(original_len - new_len)
+            } else {
+                Ok(0)
             }
-            Ok(original_len - new_len)
-        } else {
-            Ok(0)
-        }
+        })
     }
 
     fn update(
@@ -3710,8 +3794,16 @@ impl StorageEngine for FileStorage {
     }
 
     fn flush(&mut self) -> SqlResult<()> {
+        // C.1.2: drain dirty tables and flush each. The original
+        // implementation took `&mut self.dirty_tables` directly; now
+        // we take it under the write_lock. The save calls themselves
+        // only need `&self` on the in-memory table data, so we hold
+        // the lock only long enough to take the dirty set, then flush
+        // each table outside the lock (saves are slow — file I/O).
+        let dirty: Vec<String> = Self::with_write_lock(self.as_mut_self(), |s| {
+            std::mem::take(&mut s.dirty_tables).into_iter().collect()
+        });
         self.flush_all_buffers()?;
-        let dirty: Vec<String> = std::mem::take(&mut self.dirty_tables).into_iter().collect();
         for name in dirty {
             if let Some(table_data) = self.tables.get(&name).cloned() {
                 self.save_table(&name, &table_data)?;
@@ -3720,11 +3812,17 @@ impl StorageEngine for FileStorage {
         Ok(())
     }
 
+    // C.1.2: delegate to the inherent `&self` implementation; this is
+    // NOT recursion (different declaration, same name). The
+    // `unconditional_recursion` lint can't tell trait-vs-inherent
+    // dispatch apart from a syntactic `self.method()` call.
+    #[allow(unconditional_recursion)]
     fn discard_all_buffers(&mut self) {
         // StorageEngine::discard_all_buffers default is a no-op; for
         // FileStorage we actually drop the buffered inserts. Issue
-        // #3964: rollback must NOT persist.
-        self.insert_buffer.clear();
+        // #3964: rollback must NOT persist. Delegate to the inherent
+        // `&self` implementation which already takes the write_lock.
+        self.discard_all_buffers();
     }
 
     fn has_table(&self, table: &str) -> bool {
@@ -3831,70 +3929,74 @@ impl StorageEngine for FileStorage {
     }
 
     fn add_column(&mut self, table: &str, column: ColumnDefinition) -> SqlResult<()> {
-        if let Some(data) = self.tables.get_mut(table) {
-            data.info.columns.push(column);
-            // V312-72 / Issue #4647: backfill every existing row with
-            // the new column's DEFAULT (or Value::Null when no default
-            // is specified) so the schema and row layout stay aligned.
-            // Without this, persisted rows would have one fewer column
-            // than the schema claims, and SELECT * would only show the
-            // original columns.
-            let fill = crate::engine::default_fill_value(
-                &data
-                    .info
-                    .columns
-                    .last()
-                    .map(|c| c.default_value.clone())
-                    .unwrap_or(None),
-            );
-            for row in data.rows.iter_mut() {
-                row.push(fill.clone());
+        Self::with_write_lock(self.as_mut_self(), |s| {
+            if let Some(data) = s.tables.get_mut(table) {
+                data.info.columns.push(column);
+                // V312-72 / Issue #4647: backfill every existing row with
+                // the new column's DEFAULT (or Value::Null when no default
+                // is specified) so the schema and row layout stay aligned.
+                // Without this, persisted rows would have one fewer column
+                // than the schema claims, and SELECT * would only show the
+                // original columns.
+                let fill = crate::engine::default_fill_value(
+                    &data
+                        .info
+                        .columns
+                        .last()
+                        .map(|c| c.default_value.clone())
+                        .unwrap_or(None),
+                );
+                for row in data.rows.iter_mut() {
+                    row.push(fill.clone());
+                }
+                let table_data = data.clone();
+                s.save_table(table, &table_data)?;
             }
-            let table_data = data.clone();
-            self.save_table(table, &table_data)?;
-        }
-        Ok(())
+            Ok(())
+        })
     }
 
     fn rename_table(&mut self, table: &str, new_name: &str) -> SqlResult<()> {
-        if let Some(mut table_data) = self.tables.remove(table) {
-            table_data.info.name = new_name.to_string();
-            let old_path = self.table_path(table);
-            let new_path = self.table_path(new_name);
+        Self::with_write_lock(self.as_mut_self(), |s| {
+            if let Some(mut table_data) = s.tables.remove(table) {
+                table_data.info.name = new_name.to_string();
+                let old_path = s.table_path(table);
+                let new_path = s.table_path(new_name);
 
-            self.save_table(new_name, &table_data)?;
+                s.save_table(new_name, &table_data)?;
 
-            if old_path.exists() {
-                std::fs::rename(&old_path, &new_path).map_err(SqlError::from)?;
-            }
+                if old_path.exists() {
+                    std::fs::rename(&old_path, &new_path).map_err(SqlError::from)?;
+                }
 
-            self.tables.insert(new_name.to_string(), table_data);
+                s.tables.insert(new_name.to_string(), table_data);
 
-            if let Ok(mut indexes) = self.indexes.write() {
-                let keys: Vec<_> = indexes.keys().cloned().collect();
-                for key in keys {
-                    if key.0 == table {
-                        let new_key = (new_name.to_string(), key.1.clone());
-                        if let Some(idx) = indexes.remove(&key) {
-                            indexes.insert(new_key, idx);
+                if let Ok(mut indexes) = s.indexes.write() {
+                    let keys: Vec<_> = indexes.keys().cloned().collect();
+                    for key in keys {
+                        if key.0 == table {
+                            let new_key = (new_name.to_string(), key.1.clone());
+                            if let Some(idx) = indexes.remove(&key) {
+                                indexes.insert(new_key, idx);
+                            }
+                        }
+                    }
+                }
+
+                if let Ok(indexes) = s.indexes.read() {
+                    for key in indexes.keys() {
+                        if key.0 == new_name {
+                            let old_idx_path = s.index_path(table, &key.1);
+                            let new_idx_path = s.index_path(new_name, &key.1);
+                            if old_idx_path.exists() {
+                                std::fs::rename(&old_idx_path, &new_idx_path).ok();
+                            }
                         }
                     }
                 }
             }
-
-            if let Ok(indexes) = self.indexes.read() {
-                for key in indexes.keys() {
-                    if key.0 == new_name {
-                        let old_idx_path = self.index_path(table, &key.1);
-                        let new_idx_path = self.index_path(new_name, &key.1);
-                        if old_idx_path.exists() {
-                            std::fs::rename(&old_idx_path, &new_idx_path).ok();
-                        }
-                    }
-                }
-            }
-        }
-        Ok(())
+            Ok(())
+        })
     }
 
     fn create_trigger(&mut self, info: TriggerInfo) -> SqlResult<()> {
@@ -4306,7 +4408,16 @@ impl FileStorage {
         (now_nanos % 1_000_000) + max_existing + 1
     }
 
-    /// Replay one UndoOp. Called only from `rollback_transaction()`.
+    /// Replay one UndoOp.
+    ///
+    /// C.1.2: `rollback_transaction` now inlines this logic to avoid
+    /// nesting `with_write_lock` (the inherent `apply_undo` itself
+    /// acquires the lock). This function is kept as `#[allow(dead_code)]`
+    /// because (a) the logic is exercised by the inline copy and
+    /// (b) we may want it for other callers (e.g. a future
+    /// savepoint / nested-tx implementation). Delete only if a
+    /// follow-up proves no caller ever needs it.
+    #[allow(dead_code)]
     fn apply_undo(&self, op: UndoOp) -> SqlResult<()> {
         Self::with_write_lock(self.as_mut_self(), |s| {
             match op {
