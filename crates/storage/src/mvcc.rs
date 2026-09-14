@@ -139,6 +139,21 @@ impl VersionedTable {
         out
     }
 
+    /// Phase B Step 4.2: O(log N) point-lookup by primary key.
+    /// Returns the visible row at `snapshot_ts` for the given `pk`,
+    /// or `None` if the row is missing or tombstoned at this snapshot.
+    /// Avoids the O(N) full scan that `scan_visible` performs.
+    pub fn get_visible(&self, pk: &Value, snapshot_ts: u64) -> Option<Vec<Value>> {
+        let r = self.versions.read();
+        let chain = r.get(pk)?;
+        let visible = find_visible(chain, snapshot_ts)?;
+        if visible.deleted {
+            None
+        } else {
+            Some(visible.row.clone())
+        }
+    }
+
     /// Count of distinct primary keys with at least one version.
     pub fn key_count(&self) -> usize {
         self.versions.read().len()
@@ -387,5 +402,32 @@ mod tests {
         // Final snapshot sees all 100 rows.
         let final_rows = t.scan_visible(last_ts);
         assert_eq!(final_rows.len(), 100);
+    }
+
+    #[test]
+    fn test_get_visible_pk_lookup() {
+        // Phase B Step 4.2: PK lookup must be O(log N) and skip
+        // tombstones, mirroring scan_visible semantics.
+        let t = VersionedTable::new();
+        let ts1 = t.next_snapshot_ts();
+        t.put(int(1), vec![int(10), int(20)], ts1, 1);
+        let ts2 = t.next_snapshot_ts();
+        t.put(int(1), vec![int(99)], ts2, 2);
+        let ts3 = t.next_snapshot_ts();
+        t.delete(&int(1), ts3, 3);
+
+        // Missing PK → None.
+        assert!(t.get_visible(&int(42), ts2).is_none());
+
+        // PK=1 at snapshot ts1 returns the first version.
+        let r1 = t.get_visible(&int(1), ts1).expect("row present");
+        assert_eq!(r1, vec![int(10), int(20)]);
+
+        // PK=1 at snapshot ts2 returns the updated version.
+        let r2 = t.get_visible(&int(1), ts2).expect("row present");
+        assert_eq!(r2, vec![int(99)]);
+
+        // PK=1 at snapshot ts3 is tombstoned → None.
+        assert!(t.get_visible(&int(1), ts3).is_none());
     }
 }

@@ -107,6 +107,17 @@ impl<S: StorageEngine + 'static> MvccStorage<S> {
         total
     }
 
+    /// Phase B Step 4.2: O(log N) point-lookup by primary key.
+    /// Returns the visible row at the current snapshot, or None if
+    /// the row is missing or tombstoned. Returns the cloned row data
+    /// to match the scan-with-filter interface (caller does NOT need
+    /// to additionally clone).
+    pub fn get_visible(&self, table: &str, pk: &Value) -> Option<Vec<Value>> {
+        let mvcc = self.mvcc_table(table);
+        let snapshot_ts = mvcc.begin_snapshot();
+        mvcc.get_visible(pk, snapshot_ts)
+    }
+
     /// Rebuild the MVCC layer from the inner engine's current rows.
     /// Used at server startup (after WAL recovery) so SELECTs see the
     /// committed state without having to wait for the first writer.
@@ -138,6 +149,26 @@ impl<S: StorageEngine + 'static> MvccStorage<S> {
 }
 
 impl<S: StorageEngine + 'static> StorageEngine for MvccStorage<S> {
+    /// Phase B Step 4.2: PK lookup using MVCC chain. Fast path:
+    /// MVCC chain lookup (O(log N)). If MVCC has no entry (rebuild
+    /// lag), fall back to the inner engine (which has the B+ Tree
+    /// index, also O(log N)).
+    ///
+    /// The returned row is a clone (caller doesn't need to clone
+    /// again). To avoid double-cloning when the inner engine already
+    /// returns a freshly cloned row, callers should prefer this
+    /// method over `inner.scan_pk` + MVCC chain check.
+    fn scan_pk(&self, table: &str, pk: &Value) -> SqlResult<Option<Record>> {
+        let mvcc = self.mvcc_table(table);
+        let snapshot_ts = mvcc.begin_snapshot();
+        if let Some(row) = mvcc.get_visible(pk, snapshot_ts) {
+            return Ok(Some(row));
+        }
+        // MVCC has no visible row for this PK. Try the inner engine
+        // — covers the rebuild-lag case where rows were committed
+        // before MVCC rebuilt its chain.
+        self.inner.scan_pk(table, pk)
+    }
     fn scan(&self, table: &str) -> SqlResult<Vec<Record>> {
         let mvcc = self.mvcc_table(table);
         let snapshot_ts = mvcc.begin_snapshot();
@@ -509,5 +540,30 @@ mod tests {
         s.rebuild_from_inner().unwrap();
         let rows = s.scan("t").unwrap();
         assert_eq!(rows.len(), 3);
+    }
+
+    #[test]
+    fn test_get_visible_pk_lookup() {
+        // Phase B Step 4.2: PK lookup must return the visible row at
+        // the current snapshot.
+        let mut s = make_storage();
+        s.insert(
+            "t",
+            vec![
+                vec![Value::Integer(1), Value::Text("a".into())],
+                vec![Value::Integer(2), Value::Text("b".into())],
+            ],
+        )
+        .unwrap();
+        // PK=1 → present.
+        let r1 = s.get_visible("t", &Value::Integer(1)).expect("row");
+        assert_eq!(r1[1], Value::Text("a".into()));
+        // PK=999 → missing.
+        assert!(s.get_visible("t", &Value::Integer(999)).is_none());
+        // Delete PK=2 → next snapshot hides it.
+        s.delete("t", &[Value::Integer(2)]).unwrap();
+        assert!(s.get_visible("t", &Value::Integer(2)).is_none());
+        // PK=1 still visible.
+        assert!(s.get_visible("t", &Value::Integer(1)).is_some());
     }
 }

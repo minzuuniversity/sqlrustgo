@@ -20,6 +20,7 @@ pub mod engine_ddl;
 pub mod engine_dml;
 pub mod engine_helpers;
 pub mod engine_select;
+pub mod engine_select_pk;
 pub mod engine_setops;
 pub mod engine_utils;
 pub mod execution_engine;
