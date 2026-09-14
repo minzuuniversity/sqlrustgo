@@ -915,6 +915,18 @@ pub type RowFilter = Box<dyn Fn(&Record) -> bool + Send + Sync>;
 /// Enables multiple storage backends (FileStorage, MemoryStorage, etc.)
 pub trait StorageEngine: Send + Sync {
     /// Scan all rows from a table
+    /// Phase B Step 4.2: O(log N) primary-key lookup. Returns the
+    /// row with primary key `pk` in `table`, or `None` if not found
+    /// or invisible. Default implementation falls back to a full
+    /// scan with a filter — engines that have a real PK index
+    /// (FileStorage via B+ Tree) override this for true O(log N).
+    fn scan_pk(&self, table: &str, pk: &Value) -> SqlResult<Option<Record>> {
+        let pk = pk.clone();
+        Ok(self
+            .scan(table)?
+            .into_iter()
+            .find(|row| row.first() == Some(&pk)))
+    }
     fn scan(&self, table: &str) -> SqlResult<Vec<Record>>;
     /// V4.0.0 / SOAK-leak fix: scan with a row-level predicate evaluated
     /// **inside** the storage lock, so non-matching rows are never cloned.

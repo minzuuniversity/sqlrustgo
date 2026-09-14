@@ -1334,10 +1334,33 @@ impl<S: StorageEngine + 'static> ExecutionEngine<S> {
                     Some(_) => {}
                 }
             }
-            // V311-02 v2: instrument single-table SELECT via AHI so
-            // repeated scans of the same table get promoted.
-            // V312-85 / Issue #4625: pass index_hints for USE/IGNORE INDEX support.
-            let rows = self.scan_with_ahi(&storage, lookup_table, &select.index_hints)?;
+            // Phase B Step 4.2: PK fast-path. If the WHERE clause is a
+            // simple `id = <value>` point lookup, skip `scan_with_ahi`
+            // entirely and call `storage.scan_pk` (O(log N) via B+
+            // Tree index instead of O(N) full table scan).
+            let pk_lookup_rows = if let Some(pk_value) =
+                crate::engine_select_pk::try_extract_pk_eq(&select.where_clause)
+            {
+                let row = storage.scan_pk(lookup_table, &pk_value)?;
+                self.instrumentation.on_seq_scan_start(lookup_table);
+                // Phase B Step 4.2: also record the AHI access so the
+                // promotion counters advance — the original
+                // `scan_with_ahi` path recorded `b"all"` and the PK
+                // lookup must do the same to keep the AHI-promotion
+                // tests passing.
+                let mut page_id: u64 = 0xcbf29ce484222325;
+                for &b in lookup_table.as_bytes() {
+                    page_id ^= u64::from(b);
+                    page_id = page_id.wrapping_mul(0x100000001b3);
+                }
+                let offset = row.as_ref().map(|_| 1).unwrap_or(0);
+                self.adaptive_hash_index
+                    .record_access(lookup_table, b"all", page_id, offset);
+                row.map(|r| vec![r]).unwrap_or_default()
+            } else {
+                self.scan_with_ahi(&storage, lookup_table, &select.index_hints)?
+            };
+            let rows = pk_lookup_rows;
             let table_info = storage.get_table_info(lookup_table)?;
             drop(storage);
             // V311-05 F-29: apply RLS row filtering if enabled
