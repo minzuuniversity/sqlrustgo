@@ -22,6 +22,8 @@ pub mod integrated_storage;
 pub mod file_storage;
 pub mod file_table;
 pub mod io_delay;
+pub mod mvcc;
+pub mod mvcc_storage;
 pub mod parallel_wal_storage;
 pub mod table_engine;
 pub mod table_level_storage;
