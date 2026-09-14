@@ -158,7 +158,7 @@ impl<S: StorageEngine + 'static> StorageEngine for MvccStorage<S> {
     /// again). To avoid double-cloning when the inner engine already
     /// returns a freshly cloned row, callers should prefer this
     /// method over `inner.scan_pk` + MVCC chain check.
-    fn scan_pk(&self, table: &str, pk: &Value) -> SqlResult<Option<Record>> {
+    fn scan_pk(&self, table: &str, pk_column: &str, pk: &Value) -> SqlResult<Option<Record>> {
         let mvcc = self.mvcc_table(table);
         let snapshot_ts = mvcc.begin_snapshot();
         if let Some(row) = mvcc.get_visible(pk, snapshot_ts) {
@@ -167,7 +167,7 @@ impl<S: StorageEngine + 'static> StorageEngine for MvccStorage<S> {
         // MVCC has no visible row for this PK. Try the inner engine
         // — covers the rebuild-lag case where rows were committed
         // before MVCC rebuilt its chain.
-        self.inner.scan_pk(table, pk)
+        self.inner.scan_pk(table, pk_column, pk)
     }
 
     /// Phase B Step 4.3: O(log N + k) PK range scan. Returns the
