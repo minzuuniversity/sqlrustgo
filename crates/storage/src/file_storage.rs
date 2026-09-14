@@ -3313,12 +3313,13 @@ impl StorageEngine for FileStorage {
     /// table's primary key index. Returns the row matching the PK, or
     /// None if not found. Falls back to scan_with_index for tables
     /// without a primary key index.
-    fn scan_pk(&self, table: &str, pk: &Value) -> SqlResult<Option<Record>> {
-        // The primary key column is "id" by convention. Try the PK
-        // index first.
+    fn scan_pk(&self, table: &str, pk_column: &str, pk: &Value) -> SqlResult<Option<Record>> {
+        // Phase D.1: `pk_column` is now an explicit parameter
+        // (previously hard-coded to `"id"`, which broke lookup on any
+        // table whose PK column had a different name).
         if let Some(info) = self.get_table_info(table).ok() {
-            if let Some(_pk_col) = info.columns.iter().find(|c| c.primary_key) {
-                let rows = self.scan_with_index(table, "id", pk)?;
+            if info.columns.iter().any(|c| c.primary_key) {
+                let rows = self.scan_with_index(table, pk_column, pk)?;
                 if !rows.is_empty() {
                     return Ok(rows.into_iter().next());
                 }

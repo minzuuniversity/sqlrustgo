@@ -1349,10 +1349,24 @@ impl<S: StorageEngine + 'static> ExecutionEngine<S> {
             // for future use; enable when the engine has a real
             // B+ Tree range scan (file_storage.rs::scan_with_index
             // currently only has `search_all`).
+            // Phase D.1: resolve the PK column once per query and pass it
+            // through both the WHERE-clause matcher and the storage
+            // layer. Without this, tables whose PK column is named
+            // anything other than `id` (e.g. `o_orderkey`) silently
+            // fall through to the full-scan path even when a real PK
+            // index exists. Fetching `table_info` here is cheap
+            // (HashMap lookup on `Arc<RwLock>` metadata) and the same
+            // `table_info` is reused by the binding / projection code
+            // below.
+            let table_info = storage.get_table_info(lookup_table)?;
+            let pk_column = crate::engine_select_pk::resolve_pk_column(&table_info);
             let pk_lookup_rows = if let Some(pk_value) =
-                crate::engine_select_pk::try_extract_pk_eq(&select.where_clause)
+                crate::engine_select_pk::try_extract_pk_eq_with_col(
+                    &select.where_clause,
+                    &pk_column,
+                )
             {
-                let row = storage.scan_pk(lookup_table, &pk_value)?;
+                let row = storage.scan_pk(lookup_table, &pk_column, &pk_value)?;
                 self.instrumentation.on_seq_scan_start(lookup_table);
                 // Phase B Step 4.2: also record the AHI access so the
                 // promotion counters advance — the original
@@ -1372,7 +1386,9 @@ impl<S: StorageEngine + 'static> ExecutionEngine<S> {
                 self.scan_with_ahi(&storage, lookup_table, &select.index_hints)?
             };
             let rows = pk_lookup_rows;
-            let table_info = storage.get_table_info(lookup_table)?;
+            // table_info was already fetched above (Phase D.1 moved it
+            // up for `resolve_pk_column`). Reuse it here to avoid the
+            // duplicate lookup the pre-D.1 code paid.
             drop(storage);
             // V311-05 F-29: apply RLS row filtering if enabled
             let rows = self.apply_rls_filter(lookup_table, rows, &table_info)?;

@@ -11,11 +11,32 @@
 //! in-memory filter.
 
 use sqlrustgo_parser::Expression;
+use sqlrustgo_storage::TableInfo;
 use sqlrustgo_types::Value;
 
 /// Default name of the primary-key column. Matches `FileStorage`'s
 /// PK convention (the schema's `primary_key: true` column).
 pub const DEFAULT_PK_COLUMN: &str = "id";
+
+/// Resolve the primary-key column name for a table.
+///
+/// Returns the column whose `primary_key: true` flag is set, or
+/// `DEFAULT_PK_COLUMN` ("id") as a fallback when the table has no
+/// declared PK (legacy tables, system views, or `CREATE TABLE`
+/// statements without a `PRIMARY KEY` clause).
+///
+/// Phase D.1: previously the PK column was hard-coded to `"id"`,
+/// which meant tables with a non-`"id"` PK column (e.g. `o_orderkey`)
+/// silently fell through to full-table scan + linear find, losing the
+/// O(log N) B+Tree lookup speedup.
+pub fn resolve_pk_column(table_info: &TableInfo) -> String {
+    table_info
+        .columns
+        .iter()
+        .find(|c| c.primary_key)
+        .map(|c| c.name.clone())
+        .unwrap_or_else(|| DEFAULT_PK_COLUMN.to_string())
+}
 
 /// Inclusive range bounds `(low, high)` for a PK range scan.
 pub type PkRange = (Value, Value);
@@ -98,6 +119,93 @@ fn parse_literal_token(s: &str) -> Option<Value> {
         Some(Value::Float(f))
     } else {
         Some(Value::Text(s.to_string()))
+    }
+}
+
+#[cfg(test)]
+mod resolve_pk_column_tests {
+    use super::*;
+    use sqlrustgo_storage::{ColumnDefinition, TableInfo};
+
+    fn col(name: &str, primary_key: bool) -> ColumnDefinition {
+        ColumnDefinition {
+            name: name.into(),
+            data_type: "BIGINT".into(),
+            nullable: !primary_key,
+            primary_key,
+            char_max_length: None,
+            collation: None,
+            default_value: None,
+            auto_increment: false,
+        }
+    }
+
+    fn info_with_pk(pk_name: &str) -> TableInfo {
+        TableInfo {
+            name: "orders".into(),
+            columns: vec![
+                col(pk_name, true),
+                col("o_custkey", false),
+                col("o_orderstatus", false),
+            ],
+            foreign_keys: vec![],
+            unique_constraints: vec![],
+            check_constraints: vec![],
+            partition_info: None,
+            compression: None,
+            collations: std::collections::HashMap::new(),
+            original_sql: String::new(),
+        }
+    }
+
+    #[test]
+    fn test_resolve_pk_column_returns_named_pk() {
+        let info = info_with_pk("o_orderkey");
+        assert_eq!(resolve_pk_column(&info), "o_orderkey");
+    }
+
+    #[test]
+    fn test_resolve_pk_column_id_default() {
+        let info = info_with_pk("id");
+        assert_eq!(resolve_pk_column(&info), "id");
+    }
+
+    #[test]
+    fn test_resolve_pk_column_no_pk_falls_back_to_id() {
+        // Legacy tables without a `PRIMARY KEY` clause have no
+        // `primary_key: true` flag. Phase D.1 falls back to
+        // DEFAULT_PK_COLUMN ("id") which matches the pre-D.1
+        // behavior.
+        let info = TableInfo {
+            name: "legacy".into(),
+            columns: vec![col("foo", false), col("bar", false)],
+            foreign_keys: vec![],
+            unique_constraints: vec![],
+            check_constraints: vec![],
+            partition_info: None,
+            compression: None,
+            collations: std::collections::HashMap::new(),
+            original_sql: String::new(),
+        };
+        assert_eq!(resolve_pk_column(&info), DEFAULT_PK_COLUMN);
+    }
+
+    #[test]
+    fn test_resolve_pk_column_picks_first_when_multi_pk_flagged() {
+        // Defensive: if multiple columns are flagged (shouldn't
+        // happen per SQL standard but be robust), pick the first.
+        let info = TableInfo {
+            name: "weird".into(),
+            columns: vec![col("first_pk", true), col("second_pk", true)],
+            foreign_keys: vec![],
+            unique_constraints: vec![],
+            check_constraints: vec![],
+            partition_info: None,
+            compression: None,
+            collations: std::collections::HashMap::new(),
+            original_sql: String::new(),
+        };
+        assert_eq!(resolve_pk_column(&info), "first_pk");
     }
 }
 
