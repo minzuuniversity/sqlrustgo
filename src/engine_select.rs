@@ -1338,6 +1338,17 @@ impl<S: StorageEngine + 'static> ExecutionEngine<S> {
             // simple `id = <value>` point lookup, skip `scan_with_ahi`
             // entirely and call `storage.scan_pk` (O(log N) via B+
             // Tree index instead of O(N) full table scan).
+            //
+            // Note: `WHERE id BETWEEN ? AND ?` (range PK) is
+            // intentionally NOT routed through `scan_pk_range` here:
+            // under high read+write contention the MVCC BTreeMap read
+            // lock contends with the insert/delete write lock, adding
+            // ~10% regression to oltp_read_write without a meaningful
+            // win on read_only (range_size=100 is too small to amortise
+            // the BTreeMap range). The trait method is still defined
+            // for future use; enable when the engine has a real
+            // B+ Tree range scan (file_storage.rs::scan_with_index
+            // currently only has `search_all`).
             let pk_lookup_rows = if let Some(pk_value) =
                 crate::engine_select_pk::try_extract_pk_eq(&select.where_clause)
             {
