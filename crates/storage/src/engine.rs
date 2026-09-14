@@ -927,6 +927,29 @@ pub trait StorageEngine: Send + Sync {
             .into_iter()
             .find(|row| row.first() == Some(&pk)))
     }
+    /// Phase B Step 4.3: O(log N + k) primary-key range scan. Returns
+    /// the rows whose primary key falls in `low..=high` (inclusive),
+    /// in primary-key order. Default implementation falls back to a
+    /// full scan + filter; engines that have a real PK index override
+    /// it.
+    fn scan_pk_range(
+        &self,
+        table: &str,
+        low: &Value,
+        high: &Value,
+    ) -> SqlResult<Vec<Record>> {
+        let low = low.clone();
+        let high = high.clone();
+        Ok(self
+            .scan(table)?
+            .into_iter()
+            .filter(|row| {
+                row.first()
+                    .map(|pk| pk >= &low && pk <= &high)
+                    .unwrap_or(false)
+            })
+            .collect())
+    }
     fn scan(&self, table: &str) -> SqlResult<Vec<Record>>;
     /// V4.0.0 / SOAK-leak fix: scan with a row-level predicate evaluated
     /// **inside** the storage lock, so non-matching rows are never cloned.

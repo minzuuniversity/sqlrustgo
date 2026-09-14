@@ -59,7 +59,7 @@ pub struct VersionedRow {
 pub struct VersionedTable {
     /// BTreeMap<primary_key, Vec<VersionedRow>> — versions are kept in
     /// ascending `visible_from_ts` order (oldest first).
-    versions: RwLock<BTreeMap<Value, Vec<VersionedRow>>>,
+    pub(crate) versions: parking_lot::RwLock<BTreeMap<Value, Vec<VersionedRow>>>,
     /// Global snapshot timestamp counter — incremented atomically.
     /// Each committed transaction that wrote a version advances this.
     snapshot_counter: AtomicU64,
@@ -208,7 +208,7 @@ impl VersionedTable {
 ///
 /// Linear scan is fine for Phase 4 because version chains are kept
 /// short by GC. If chains grow large, replace with `partition_point`.
-fn find_visible<'a>(chain: &'a [VersionedRow], snapshot_ts: u64) -> Option<&'a VersionedRow> {
+pub(crate) fn find_visible<'a>(chain: &'a [VersionedRow], snapshot_ts: u64) -> Option<&'a VersionedRow> {
     chain
         .iter()
         .rev()
