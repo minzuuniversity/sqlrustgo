@@ -950,6 +950,27 @@ pub trait StorageEngine: Send + Sync {
             })
             .collect())
     }
+    /// Phase B Step 3 follow-up #2: variant of `commit_transaction`
+    /// that ALSO flushes the inner storage engine synchronously. Use
+    /// this when the caller needs strong durability (the on-disk
+    /// snapshot matches the WAL state). The default `commit_transaction`
+    /// skips the flush and relies on WAL replay for recovery.
+    ///
+    /// Default impl: call `commit_transaction` then `flush`. Engines
+    /// that batch flushes (e.g. `WalStorage`) override to coalesce
+    /// pending writes.
+    fn commit_transaction_and_flush(&mut self) -> SqlResult<()> {
+        self.commit_transaction()?;
+        self.flush()?;
+        Ok(())
+    }
+    /// Phase B Step 3 follow-up #2: drain any deferred inner-engine
+    /// flushes. Called by the read path or a background sweeper.
+    /// Returns the number of flushes performed (0 if no work).
+    fn drain_pending_flushes(&mut self) -> SqlResult<usize> {
+        self.flush()?;
+        Ok(1)
+    }
     fn scan(&self, table: &str) -> SqlResult<Vec<Record>>;
     /// V4.0.0 / SOAK-leak fix: scan with a row-level predicate evaluated
     /// **inside** the storage lock, so non-matching rows are never cloned.
