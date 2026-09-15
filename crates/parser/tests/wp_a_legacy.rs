@@ -344,10 +344,6 @@ mod test_4720_user_variables {
         let sql = "SELECT @@session.max_connections";
         let result = parse(sql);
         // System variables use @@ prefix, should parse
-        assert!(
-            result.is_ok(),
-            "System variable should parse: {:?}",
-            result
-        );
+        assert!(result.is_ok(), "System variable should parse: {:?}", result);
     }
 }

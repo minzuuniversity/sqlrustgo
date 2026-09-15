@@ -24,10 +24,7 @@ use std::sync::{Arc, Mutex, RwLock};
 // `S: StorageEngine` already requires `Sync`, and our access patterns
 // never expose `&mut S` through shared references. This is the standard
 // pattern for `UnsafeCell` inside `Sync` containers.
-unsafe impl<S: StorageEngine + 'static, T: WalManager + 'static> Sync
-    for WalStorage<S, T>
-{
-}
+unsafe impl<S: StorageEngine + 'static, T: WalManager + 'static> Sync for WalStorage<S, T> {}
 
 /// WAL sync mode - controls fsync frequency for performance tuning.
 ///
@@ -295,6 +292,7 @@ impl<S: StorageEngine + 'static, T: WalManager + 'static> WalStorage<S, T> {
     /// cast with a sound `UnsafeCell::get` — the new Phase B Step 3
     /// follow-up #4. The old `#[allow(invalid_reference_casting)]` is
     /// no longer needed.
+    #[allow(clippy::mut_from_ref)]
     fn as_inner_mut(&self) -> &mut S {
         // SAFETY: see invariants above. `inner: UnsafeCell<S>` is the
         // ONLY field that requires this. `wal: parking_lot::Mutex<T>`

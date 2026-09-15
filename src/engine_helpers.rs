@@ -7,9 +7,8 @@
 //! `execution_engine.rs` under its 1500-line target.
 
 use sqlrustgo_executor::ast_adapter::AstAdapter;
-use sqlrustgo_executor::trigger::{
-    TriggerEvent as ExecTriggerEvent, TriggerExecutor, TriggerTiming as ExecTriggerTiming,
-};
+#[allow(unused_imports)]
+use sqlrustgo_executor::trigger::{TriggerExecutor, TriggerTiming as ExecTriggerTiming};
 use sqlrustgo_executor::ExecutorResult;
 use sqlrustgo_parser::parser::UpdateStatement;
 use sqlrustgo_storage::{ColumnDefinition, StorageEngine, TableInfo};

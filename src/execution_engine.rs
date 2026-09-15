@@ -40,8 +40,8 @@ use sqlrustgo_parser::parser::{
     CreateTriggerStatement, CreateUserStatement, CreateVectorIndexStatement, CreateViewStatement,
     DescribeStatement, DropDatabaseStatement, DropFunctionStatement, DropIndexStatement,
     DropProcedureStatement, DropRoleStatement, DropSequenceStatement, DropTableStatement,
-    DropTriggerStatement, DropUserStatement, DropViewStatement, ExceptStatement, GrantRoleStatement,
-    GrantStatement, InsertStatement, IntersectStatement, MergeStatement,
+    DropTriggerStatement, DropUserStatement, DropViewStatement, ExceptStatement,
+    GrantRoleStatement, GrantStatement, InsertStatement, IntersectStatement, MergeStatement,
     ObjectType as ParserObjectType, OrderByExpression, Privilege as ParserPrivilege,
     RevokeRoleStatement, RevokeStatement, SelectStatement, SetRoleStatement, ShowStatement,
     StorageEngineSpec, StoredProcParam as ParserStoredProcParam,
@@ -1166,12 +1166,16 @@ impl<S: StorageEngine + 'static> ExecutionEngine<S> {
         })?;
 
         // Verify column exists.
-        let col = table_info.columns.iter().find(|c| c.name == vidx.column).ok_or_else(|| {
-            SqlError::ExecutionError(format!(
-                "CREATE VECTOR INDEX failed: column '{}' not found in table '{}'",
-                vidx.column, vidx.table
-            ))
-        })?;
+        let col = table_info
+            .columns
+            .iter()
+            .find(|c| c.name == vidx.column)
+            .ok_or_else(|| {
+                SqlError::ExecutionError(format!(
+                    "CREATE VECTOR INDEX failed: column '{}' not found in table '{}'",
+                    vidx.column, vidx.table
+                ))
+            })?;
 
         // Verify column is VECTOR(N[, dtype]). Parser-level identifier
         // case is upper; spec says "VECTOR" (mirrors INT/VARCHAR style).

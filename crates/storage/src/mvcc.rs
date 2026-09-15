@@ -107,7 +107,7 @@ impl VersionedTable {
             deleted: false,
         };
         let mut w = self.versions.write();
-        w.entry(pk).or_insert_with(Vec::new).push(version);
+        w.entry(pk).or_default().push(version);
     }
 
     /// Mark a row as deleted at `visible_from_ts`. Appends a
@@ -121,7 +121,7 @@ impl VersionedTable {
             deleted: true,
         };
         let mut w = self.versions.write();
-        w.entry(pk.clone()).or_insert_with(Vec::new).push(version);
+        w.entry(pk.clone()).or_default().push(version);
     }
 
     /// Scan all visible rows at `snapshot_ts`. Tombstones are skipped.
@@ -208,7 +208,7 @@ impl VersionedTable {
 ///
 /// Linear scan is fine for Phase 4 because version chains are kept
 /// short by GC. If chains grow large, replace with `partition_point`.
-pub(crate) fn find_visible<'a>(chain: &'a [VersionedRow], snapshot_ts: u64) -> Option<&'a VersionedRow> {
+pub(crate) fn find_visible(chain: &[VersionedRow], snapshot_ts: u64) -> Option<&VersionedRow> {
     chain
         .iter()
         .rev()

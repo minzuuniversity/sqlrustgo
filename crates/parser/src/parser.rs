@@ -3535,10 +3535,7 @@ impl Parser {
                 VectorIndexAlgorithm::Ivf
             }
             Some(t) => {
-                return Err(format!(
-                    "Expected HNSW or IVF after USING, got {:?}",
-                    t
-                ));
+                return Err(format!("Expected HNSW or IVF after USING, got {:?}", t));
             }
             None => return Err("Expected HNSW or IVF after USING".to_string()),
         };

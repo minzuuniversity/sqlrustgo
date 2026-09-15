@@ -5,7 +5,7 @@
 //!
 //! Dependencies: V400-02 (WAL-backed storage)
 
-use sqlrustgo_graph::types::{EdgeId, Label, NodeId, PropertyValue, PropertyMap};
+use sqlrustgo_graph::types::{EdgeId, Label, NodeId, PropertyMap, PropertyValue};
 
 // ============================================================================
 // Node CRUD Tests
@@ -130,7 +130,11 @@ struct NodeRecord {
 
 impl NodeRecord {
     fn new(id: NodeId, labels: Vec<Label>, properties: PropertyMap) -> Self {
-        Self { id, labels, properties }
+        Self {
+            id,
+            labels,
+            properties,
+        }
     }
 }
 
@@ -295,7 +299,13 @@ impl GraphStoreWithEdges {
         id
     }
 
-    fn create_edge(&mut self, src: NodeId, dst: NodeId, label: Label, properties: PropertyMap) -> Option<EdgeId> {
+    fn create_edge(
+        &mut self,
+        src: NodeId,
+        dst: NodeId,
+        label: Label,
+        properties: PropertyMap,
+    ) -> Option<EdgeId> {
         if !self.nodes.iter().any(|n| n.id == src) || !self.nodes.iter().any(|n| n.id == dst) {
             return None;
         }
@@ -323,7 +333,8 @@ impl GraphStoreWithEdges {
     }
 
     fn find_edges_between(&self, src: NodeId, dst: NodeId) -> Vec<&EdgeRecord> {
-        self.edges.iter()
+        self.edges
+            .iter()
             .filter(|e| e.src == src && e.dst == dst)
             .collect()
     }
@@ -360,7 +371,9 @@ fn edge_read() {
     let n1 = store.create_node(vec![Label::new("Person")], PropertyMap::new());
     let n2 = store.create_node(vec![Label::new("Person")], PropertyMap::new());
 
-    let edge_id = store.create_edge(n1, n2, Label::new("KNOWS"), PropertyMap::new()).unwrap();
+    let edge_id = store
+        .create_edge(n1, n2, Label::new("KNOWS"), PropertyMap::new())
+        .unwrap();
 
     let edge = store.read_edge(edge_id);
     assert!(edge.is_some());
@@ -375,7 +388,9 @@ fn edge_delete() {
     let n1 = store.create_node(vec![Label::new("Person")], PropertyMap::new());
     let n2 = store.create_node(vec![Label::new("Person")], PropertyMap::new());
 
-    let edge_id = store.create_edge(n1, n2, Label::new("KNOWS"), PropertyMap::new()).unwrap();
+    let edge_id = store
+        .create_edge(n1, n2, Label::new("KNOWS"), PropertyMap::new())
+        .unwrap();
 
     assert_eq!(store.edges.len(), 1);
 
@@ -452,7 +467,12 @@ pub struct GraphWalEntry {
 }
 
 impl GraphWalEntry {
-    pub fn new_create_node(tx_id: u64, node_id: NodeId, labels: Vec<Label>, props: PropertyMap) -> Self {
+    pub fn new_create_node(
+        tx_id: u64,
+        node_id: NodeId,
+        labels: Vec<Label>,
+        props: PropertyMap,
+    ) -> Self {
         Self {
             tx_id,
             entry_type: GraphWalEntryType::CreateNode,
@@ -465,7 +485,14 @@ impl GraphWalEntry {
         }
     }
 
-    pub fn new_create_edge(tx_id: u64, edge_id: EdgeId, src: NodeId, dst: NodeId, label: Label, props: PropertyMap) -> Self {
+    pub fn new_create_edge(
+        tx_id: u64,
+        edge_id: EdgeId,
+        src: NodeId,
+        dst: NodeId,
+        label: Label,
+        props: PropertyMap,
+    ) -> Self {
         Self {
             tx_id,
             entry_type: GraphWalEntryType::CreateEdge,
@@ -562,9 +589,24 @@ fn simulate_graph_recovery(entries: Vec<GraphWalEntry>) -> Result<Vec<String>, S
 #[test]
 fn graph_crash_recovery_create_nodes() {
     let entries = vec![
-        GraphWalEntry::new_create_node(1, NodeId(1), vec![Label::new("Person")], PropertyMap::new()),
-        GraphWalEntry::new_create_node(2, NodeId(2), vec![Label::new("Person")], PropertyMap::new()),
-        GraphWalEntry::new_create_node(3, NodeId(3), vec![Label::new("Product")], PropertyMap::new()),
+        GraphWalEntry::new_create_node(
+            1,
+            NodeId(1),
+            vec![Label::new("Person")],
+            PropertyMap::new(),
+        ),
+        GraphWalEntry::new_create_node(
+            2,
+            NodeId(2),
+            vec![Label::new("Person")],
+            PropertyMap::new(),
+        ),
+        GraphWalEntry::new_create_node(
+            3,
+            NodeId(3),
+            vec![Label::new("Product")],
+            PropertyMap::new(),
+        ),
     ];
 
     let results = simulate_graph_recovery(entries).expect("recovery should succeed");
@@ -574,9 +616,26 @@ fn graph_crash_recovery_create_nodes() {
 #[test]
 fn graph_crash_recovery_create_edges() {
     let entries = vec![
-        GraphWalEntry::new_create_node(1, NodeId(1), vec![Label::new("Person")], PropertyMap::new()),
-        GraphWalEntry::new_create_node(2, NodeId(2), vec![Label::new("Person")], PropertyMap::new()),
-        GraphWalEntry::new_create_edge(3, EdgeId(1), NodeId(1), NodeId(2), Label::new("KNOWS"), PropertyMap::new()),
+        GraphWalEntry::new_create_node(
+            1,
+            NodeId(1),
+            vec![Label::new("Person")],
+            PropertyMap::new(),
+        ),
+        GraphWalEntry::new_create_node(
+            2,
+            NodeId(2),
+            vec![Label::new("Person")],
+            PropertyMap::new(),
+        ),
+        GraphWalEntry::new_create_edge(
+            3,
+            EdgeId(1),
+            NodeId(1),
+            NodeId(2),
+            Label::new("KNOWS"),
+            PropertyMap::new(),
+        ),
     ];
 
     let results = simulate_graph_recovery(entries).expect("recovery should succeed");
@@ -586,11 +645,40 @@ fn graph_crash_recovery_create_edges() {
 #[test]
 fn graph_crash_recovery_mixed_operations() {
     let entries = vec![
-        GraphWalEntry::new_create_node(1, NodeId(1), vec![Label::new("Person")], PropertyMap::new()),
-        GraphWalEntry::new_create_node(2, NodeId(2), vec![Label::new("Person")], PropertyMap::new()),
-        GraphWalEntry::new_create_edge(3, EdgeId(1), NodeId(1), NodeId(2), Label::new("KNOWS"), PropertyMap::new()),
-        GraphWalEntry::new_create_node(4, NodeId(3), vec![Label::new("Product")], PropertyMap::new()),
-        GraphWalEntry::new_create_edge(5, EdgeId(2), NodeId(1), NodeId(3), Label::new("BOUGHT"), PropertyMap::new()),
+        GraphWalEntry::new_create_node(
+            1,
+            NodeId(1),
+            vec![Label::new("Person")],
+            PropertyMap::new(),
+        ),
+        GraphWalEntry::new_create_node(
+            2,
+            NodeId(2),
+            vec![Label::new("Person")],
+            PropertyMap::new(),
+        ),
+        GraphWalEntry::new_create_edge(
+            3,
+            EdgeId(1),
+            NodeId(1),
+            NodeId(2),
+            Label::new("KNOWS"),
+            PropertyMap::new(),
+        ),
+        GraphWalEntry::new_create_node(
+            4,
+            NodeId(3),
+            vec![Label::new("Product")],
+            PropertyMap::new(),
+        ),
+        GraphWalEntry::new_create_edge(
+            5,
+            EdgeId(2),
+            NodeId(1),
+            NodeId(3),
+            Label::new("BOUGHT"),
+            PropertyMap::new(),
+        ),
     ];
 
     let results = simulate_graph_recovery(entries).expect("recovery should succeed");
@@ -605,34 +693,25 @@ fn graph_crash_recovery_mixed_operations() {
 fn graph_realistic_social_network() {
     let mut store = GraphStoreWithEdges::new();
 
-    let alice = store.create_node(
-        vec![Label::new("Person"), Label::new("User")],
-        {
-            let mut props = PropertyMap::new();
-            props.insert("name", PropertyValue::String("Alice".to_string()));
-            props.insert("age", PropertyValue::Int(30));
-            props
-        },
-    );
+    let alice = store.create_node(vec![Label::new("Person"), Label::new("User")], {
+        let mut props = PropertyMap::new();
+        props.insert("name", PropertyValue::String("Alice".to_string()));
+        props.insert("age", PropertyValue::Int(30));
+        props
+    });
 
-    let bob = store.create_node(
-        vec![Label::new("Person"), Label::new("User")],
-        {
-            let mut props = PropertyMap::new();
-            props.insert("name", PropertyValue::String("Bob".to_string()));
-            props.insert("age", PropertyValue::Int(25));
-            props
-        },
-    );
+    let bob = store.create_node(vec![Label::new("Person"), Label::new("User")], {
+        let mut props = PropertyMap::new();
+        props.insert("name", PropertyValue::String("Bob".to_string()));
+        props.insert("age", PropertyValue::Int(25));
+        props
+    });
 
-    let charlie = store.create_node(
-        vec![Label::new("Person"), Label::new("User")],
-        {
-            let mut props = PropertyMap::new();
-            props.insert("name", PropertyValue::String("Charlie".to_string()));
-            props
-        },
-    );
+    let charlie = store.create_node(vec![Label::new("Person"), Label::new("User")], {
+        let mut props = PropertyMap::new();
+        props.insert("name", PropertyValue::String("Charlie".to_string()));
+        props
+    });
 
     store.create_edge(alice, bob, Label::new("KNOWS"), PropertyMap::new());
     store.create_edge(bob, charlie, Label::new("KNOWS"), PropertyMap::new());
@@ -646,25 +725,19 @@ fn graph_realistic_social_network() {
 fn graph_realistic_knowledge_graph() {
     let mut store = GraphStoreWithEdges::new();
 
-    let sqlrustgo = store.create_node(
-        vec![Label::new("Software"), Label::new("Database")],
-        {
-            let mut props = PropertyMap::new();
-            props.insert("name", PropertyValue::String("SQLRustGo".to_string()));
-            props.insert("language", PropertyValue::String("Rust".to_string()));
-            props
-        },
-    );
+    let sqlrustgo = store.create_node(vec![Label::new("Software"), Label::new("Database")], {
+        let mut props = PropertyMap::new();
+        props.insert("name", PropertyValue::String("SQLRustGo".to_string()));
+        props.insert("language", PropertyValue::String("Rust".to_string()));
+        props
+    });
 
-    let rust = store.create_node(
-        vec![Label::new("ProgrammingLanguage")],
-        {
-            let mut props = PropertyMap::new();
-            props.insert("name", PropertyValue::String("Rust".to_string()));
-            props.insert("paradigm", PropertyValue::String("Systems".to_string()));
-            props
-        },
-    );
+    let rust = store.create_node(vec![Label::new("ProgrammingLanguage")], {
+        let mut props = PropertyMap::new();
+        props.insert("name", PropertyValue::String("Rust".to_string()));
+        props.insert("paradigm", PropertyValue::String("Systems".to_string()));
+        props
+    });
 
     store.create_edge(sqlrustgo, rust, Label::new("WRITTEN_IN"), {
         let mut props = PropertyMap::new();
@@ -703,7 +776,12 @@ fn graph_large_edge_count() {
     }
 
     for i in 1..100 {
-        store.create_edge(node_ids[0], node_ids[i], Label::new("CONNECTED"), PropertyMap::new());
+        store.create_edge(
+            node_ids[0],
+            node_ids[i],
+            Label::new("CONNECTED"),
+            PropertyMap::new(),
+        );
     }
 
     assert_eq!(store.nodes.len(), 100);

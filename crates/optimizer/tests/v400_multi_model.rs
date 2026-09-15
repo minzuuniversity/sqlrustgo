@@ -6,11 +6,11 @@
 //! - Hybrid query planning (SQL + vector + graph)
 //! - EXPLAIN output for vector/graph nodes
 
-use sqlrustgo_optimizer::graph_cost::{GraphCostModel, GraphCostFactors, GraphIndexType};
+use sqlrustgo_optimizer::graph_cost::{GraphCostFactors, GraphCostModel, GraphIndexType};
 use sqlrustgo_optimizer::rules::{BinaryOperator, Expr, JoinType};
 use sqlrustgo_optimizer::unified_cost::{ExecutionPath, UnifiedCostModel};
 use sqlrustgo_optimizer::unified_plan::{GraphPattern, GraphScanType, UnifiedPlan, VectorScanType};
-use sqlrustgo_optimizer::vector_cost::{VectorCostModel, VectorCostFactors, VectorIndexType};
+use sqlrustgo_optimizer::vector_cost::{VectorCostFactors, VectorCostModel, VectorIndexType};
 
 /// Test vector cost model with different index types
 mod vector_cost_tests {
@@ -102,7 +102,8 @@ mod vector_cost_tests {
         let model = VectorCostModel::default_model();
 
         // Vector search is cheaper for highly selective queries (small result set)
-        let vector_cheaper = model.vector_scan_cheaper_than_sql(10, 10000, 128, &VectorIndexType::Hnsw);
+        let vector_cheaper =
+            model.vector_scan_cheaper_than_sql(10, 10000, 128, &VectorIndexType::Hnsw);
         assert!(
             vector_cheaper,
             "Vector scan should be cheaper for selective queries"
@@ -135,8 +136,14 @@ mod graph_cost_tests {
         let depth3_cost = model.traversal_cost(3, avg_degree, &GraphIndexType::AdjacencyList);
         let depth4_cost = model.traversal_cost(4, avg_degree, &GraphIndexType::AdjacencyList);
 
-        assert!(depth2_cost < depth3_cost, "Deeper traversal should cost more");
-        assert!(depth3_cost < depth4_cost, "Deeper traversal should cost more");
+        assert!(
+            depth2_cost < depth3_cost,
+            "Deeper traversal should cost more"
+        );
+        assert!(
+            depth3_cost < depth4_cost,
+            "Deeper traversal should cost more"
+        );
     }
 
     #[test]
@@ -145,16 +152,10 @@ mod graph_cost_tests {
         let max_depth = 3;
         let avg_degree = 10.0;
 
-        let adjacency_cost = model.traversal_cost(
-            max_depth,
-            avg_degree,
-            &GraphIndexType::AdjacencyList,
-        );
-        let labeled_cost = model.traversal_cost(
-            max_depth,
-            avg_degree,
-            &GraphIndexType::LabeledIndex,
-        );
+        let adjacency_cost =
+            model.traversal_cost(max_depth, avg_degree, &GraphIndexType::AdjacencyList);
+        let labeled_cost =
+            model.traversal_cost(max_depth, avg_degree, &GraphIndexType::LabeledIndex);
 
         assert!(
             labeled_cost < adjacency_cost,
@@ -185,16 +186,10 @@ mod graph_cost_tests {
             path_pattern: "(User)-[:BUYS]->(Product)<-[:SELLS]-(Store)".to_string(),
         };
 
-        let simple_cost = model.pattern_match_cost(
-            &simple_pattern,
-            graph_size,
-            &GraphIndexType::LabeledIndex,
-        );
-        let complex_cost = model.pattern_match_cost(
-            &complex_pattern,
-            graph_size,
-            &GraphIndexType::LabeledIndex,
-        );
+        let simple_cost =
+            model.pattern_match_cost(&simple_pattern, graph_size, &GraphIndexType::LabeledIndex);
+        let complex_cost =
+            model.pattern_match_cost(&complex_pattern, graph_size, &GraphIndexType::LabeledIndex);
 
         assert!(
             simple_cost < complex_cost,
@@ -222,8 +217,10 @@ mod graph_cost_tests {
         let model = GraphCostModel::default_model();
         let avg_degree = 10.0;
 
-        let small_graph_cost = model.shortest_path_cost(1000, avg_degree, &GraphIndexType::AdjacencyList);
-        let large_graph_cost = model.shortest_path_cost(100000, avg_degree, &GraphIndexType::AdjacencyList);
+        let small_graph_cost =
+            model.shortest_path_cost(1000, avg_degree, &GraphIndexType::AdjacencyList);
+        let large_graph_cost =
+            model.shortest_path_cost(100000, avg_degree, &GraphIndexType::AdjacencyList);
 
         assert!(
             small_graph_cost < large_graph_cost,
@@ -320,7 +317,10 @@ mod unified_cost_tests {
             scan_type: VectorScanType::Knn { k: 10 },
             limit: Some(10),
         });
-        assert!(cost > pure_vector_cost, "Hybrid should cost more than pure vector");
+        assert!(
+            cost > pure_vector_cost,
+            "Hybrid should cost more than pure vector"
+        );
     }
 
     #[test]
@@ -479,10 +479,7 @@ mod unified_cost_tests {
             projection: None,
         });
 
-        let plan = UnifiedPlan::Limit {
-            limit: 10,
-            input,
-        };
+        let plan = UnifiedPlan::Limit { limit: 10, input };
 
         let cost = model.estimate_cost(&plan);
         assert!(cost > 0.0, "Limit should have positive cost");
@@ -650,7 +647,10 @@ mod statistics_tests {
             model.estimate_cost(&plan)
         };
 
-        assert!(large_cost > small_cost, "Larger table should have higher cost");
+        assert!(
+            large_cost > small_cost,
+            "Larger table should have higher cost"
+        );
     }
 
     #[test]
@@ -724,10 +724,7 @@ mod cardinality_tests {
             table_name: "users".to_string(),
             projection: None,
         });
-        let plan = UnifiedPlan::Limit {
-            limit: 10,
-            input,
-        };
+        let plan = UnifiedPlan::Limit { limit: 10, input };
         assert_eq!(plan.estimate_cardinality(), 10);
     }
 
@@ -909,10 +906,7 @@ mod plan_type_tests {
 
     #[test]
     fn test_plan_type_name() {
-        assert_eq!(
-            UnifiedPlan::EmptyRelation.type_name(),
-            "EmptyRelation"
-        );
+        assert_eq!(UnifiedPlan::EmptyRelation.type_name(), "EmptyRelation");
         assert_eq!(
             UnifiedPlan::TableScan {
                 table_name: "users".to_string(),
@@ -1084,9 +1078,7 @@ mod explain_tests {
         // Simulated EXPLAIN output
         let explain = format!(
             "-> {}: {} (k=10, limit={})",
-            type_name,
-            "embeddings_idx",
-            cardinality
+            type_name, "embeddings_idx", cardinality
         );
         assert!(explain.contains("VectorScan"));
         assert!(explain.contains("embeddings_idx"));
@@ -1104,8 +1096,7 @@ mod explain_tests {
         // Simulated EXPLAIN output
         let explain = format!(
             "-> {}: {} (depth=3, start=user_123)",
-            type_name,
-            "social_graph"
+            type_name, "social_graph"
         );
         assert!(explain.contains("GraphScan"));
         assert!(explain.contains("social_graph"));
@@ -1125,8 +1116,7 @@ mod explain_tests {
 
         let explain = format!(
             "-> {}: {} (filter=active, k=10)",
-            type_name,
-            "embeddings_idx"
+            type_name, "embeddings_idx"
         );
         assert!(explain.contains("HybridVectorScan"));
         assert!(explain.contains("filter=active"));

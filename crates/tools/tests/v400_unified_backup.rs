@@ -44,7 +44,12 @@ pub struct ModelBackup {
 }
 
 impl ModelBackup {
-    pub fn new(model_type: ModelType, table_name: &str, record_count: u64, data: Vec<Vec<u8>>) -> Self {
+    pub fn new(
+        model_type: ModelType,
+        table_name: &str,
+        record_count: u64,
+        data: Vec<Vec<u8>>,
+    ) -> Self {
         let checksum = Self::calculate_checksum(&data);
         Self {
             model_type,
@@ -172,12 +177,7 @@ fn backup_create_vector_model() {
 
 #[test]
 fn backup_create_graph_model() {
-    let backup = ModelBackup::new(
-        ModelType::Graph,
-        "nodes",
-        200,
-        vec![vec![1], vec![2]],
-    );
+    let backup = ModelBackup::new(ModelType::Graph, "nodes", 200, vec![vec![1], vec![2]]);
 
     assert_eq!(backup.model_type, ModelType::Graph);
     assert!(backup.verify());
@@ -214,12 +214,7 @@ fn unified_backup_manifest_empty() {
 fn unified_backup_add_single_model() {
     let mut manifest = UnifiedBackupManifest::new("backup_001", "4.0.0");
 
-    let sql_backup = ModelBackup::new(
-        ModelType::Sql,
-        "users",
-        1000,
-        vec![vec![1, 2, 3]],
-    );
+    let sql_backup = ModelBackup::new(ModelType::Sql, "users", 1000, vec![vec![1, 2, 3]]);
     manifest.add_entry(sql_backup);
 
     assert_eq!(manifest.models.len(), 1);
@@ -268,7 +263,12 @@ fn unified_backup_finalize() {
 fn unified_backup_verify() {
     let mut manifest = UnifiedBackupManifest::new("backup_001", "4.0.0");
 
-    manifest.add_entry(ModelBackup::new(ModelType::Sql, "users", 1000, vec![vec![1, 2, 3]]));
+    manifest.add_entry(ModelBackup::new(
+        ModelType::Sql,
+        "users",
+        1000,
+        vec![vec![1, 2, 3]],
+    ));
     manifest.finalize();
 
     assert!(manifest.verify());
@@ -300,8 +300,18 @@ fn backup_serialization_roundtrip() {
 fn manifest_serialization_roundtrip() {
     let mut manifest = UnifiedBackupManifest::new("backup_001", "4.0.0");
 
-    manifest.add_entry(ModelBackup::new(ModelType::Sql, "users", 1000, vec![vec![1, 2]]));
-    manifest.add_entry(ModelBackup::new(ModelType::Vector, "emb", 500, vec![vec![3, 4]]));
+    manifest.add_entry(ModelBackup::new(
+        ModelType::Sql,
+        "users",
+        1000,
+        vec![vec![1, 2]],
+    ));
+    manifest.add_entry(ModelBackup::new(
+        ModelType::Vector,
+        "emb",
+        500,
+        vec![vec![3, 4]],
+    ));
     manifest.finalize();
 
     let json = serde_json::to_string(&manifest).expect("should serialize");
@@ -326,7 +336,10 @@ fn simulate_restore(manifest: &UnifiedBackupManifest) -> RestoreResult {
                 if entry.verify() {
                     total_restored += entry.record_count;
                 } else {
-                    errors.push(format!("Checksum mismatch for {:?}:{}", model, entry.table_name));
+                    errors.push(format!(
+                        "Checksum mismatch for {:?}:{}",
+                        model, entry.table_name
+                    ));
                 }
             }
         }
@@ -342,7 +355,12 @@ fn simulate_restore(manifest: &UnifiedBackupManifest) -> RestoreResult {
 #[test]
 fn restore_single_model() {
     let mut manifest = UnifiedBackupManifest::new("backup_001", "4.0.0");
-    manifest.add_entry(ModelBackup::new(ModelType::Sql, "users", 1000, vec![vec![1, 2, 3]]));
+    manifest.add_entry(ModelBackup::new(
+        ModelType::Sql,
+        "users",
+        1000,
+        vec![vec![1, 2, 3]],
+    ));
     manifest.finalize();
 
     let result = simulate_restore(&manifest);
@@ -425,7 +443,7 @@ fn backup_sql_schema_and_data() {
         "users",
         10000,
         vec![
-            vec![1, 2, 3], // Schema
+            vec![1, 2, 3],    // Schema
             vec![10, 20, 30], // Data rows
         ],
     );
@@ -445,12 +463,7 @@ fn backup_vector_embeddings() {
         data.push(vec![0u8; embedding_size]);
     }
 
-    let backup = ModelBackup::new(
-        ModelType::Vector,
-        "embeddings",
-        num_embeddings as u64,
-        data,
-    );
+    let backup = ModelBackup::new(ModelType::Vector, "embeddings", num_embeddings as u64, data);
 
     assert_eq!(backup.record_count, num_embeddings as u64);
     assert!(backup.verify());
@@ -512,12 +525,7 @@ impl IncrementalBackup {
 
 #[test]
 fn incremental_backup_base() {
-    let backup = ModelBackup::new(
-        ModelType::Sql,
-        "users",
-        1000,
-        vec![],
-    );
+    let backup = ModelBackup::new(ModelType::Sql, "users", 1000, vec![]);
 
     assert_eq!(backup.record_count, 1000);
 }
@@ -631,8 +639,18 @@ fn cross_model_backup_dependencies() {
 fn backup_size_calculation() {
     let mut manifest = UnifiedBackupManifest::new("backup_001", "4.0.0");
 
-    manifest.add_entry(ModelBackup::new(ModelType::Sql, "users", 10000, vec![vec![0u8; 1024]; 100]));
-    manifest.add_entry(ModelBackup::new(ModelType::Vector, "emb", 5000, vec![vec![0u8; 1536]; 5000]));
+    manifest.add_entry(ModelBackup::new(
+        ModelType::Sql,
+        "users",
+        10000,
+        vec![vec![0u8; 1024]; 100],
+    ));
+    manifest.add_entry(ModelBackup::new(
+        ModelType::Vector,
+        "emb",
+        5000,
+        vec![vec![0u8; 1536]; 5000],
+    ));
 
     // Each vector is 1536 bytes * 5000 = 7.68 MB
     // SQL data is 1024 bytes * 100 = 100 KB
@@ -665,14 +683,34 @@ fn scenario_daily_backup() {
     manifest.add_entry(ModelBackup::new(ModelType::Sql, "orders", 200000, vec![]));
 
     // Vector embeddings
-    manifest.add_entry(ModelBackup::new(ModelType::Vector, "doc_embeddings", 1000000, vec![]));
-    manifest.add_entry(ModelBackup::new(ModelType::Vector, "user_embeddings", 50000, vec![]));
+    manifest.add_entry(ModelBackup::new(
+        ModelType::Vector,
+        "doc_embeddings",
+        1000000,
+        vec![],
+    ));
+    manifest.add_entry(ModelBackup::new(
+        ModelType::Vector,
+        "user_embeddings",
+        50000,
+        vec![],
+    ));
 
     // Graph
-    manifest.add_entry(ModelBackup::new(ModelType::Graph, "social_graph", 100000, vec![]));
+    manifest.add_entry(ModelBackup::new(
+        ModelType::Graph,
+        "social_graph",
+        100000,
+        vec![],
+    ));
 
     // Audit
-    manifest.add_entry(ModelBackup::new(ModelType::Audit, "audit_log", 5000000, vec![]));
+    manifest.add_entry(ModelBackup::new(
+        ModelType::Audit,
+        "audit_log",
+        5000000,
+        vec![],
+    ));
 
     manifest.finalize();
 

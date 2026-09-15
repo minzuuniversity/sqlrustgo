@@ -6,7 +6,7 @@
 //! Note: Full vector storage implementation is in V400-02.
 //! This file tests the executor integration and placeholder behavior.
 
-use sqlrustgo_parser::{parse, Statement, CreateVectorIndexStatement, VectorIndexAlgorithm};
+use sqlrustgo_parser::{parse, CreateVectorIndexStatement, Statement, VectorIndexAlgorithm};
 
 /// Helper to extract CreateVectorIndex statement for testing
 fn extract_vector_index(sql: &str) -> CreateVectorIndexStatement {
@@ -42,7 +42,10 @@ fn v400_exec_create_vector_index_with_options() {
     );
     assert_eq!(v.options.len(), 3);
     assert_eq!(v.options[0], ("m".to_string(), "16".to_string()));
-    assert_eq!(v.options[1], ("ef_construction".to_string(), "200".to_string()));
+    assert_eq!(
+        v.options[1],
+        ("ef_construction".to_string(), "200".to_string())
+    );
     assert_eq!(v.options[2], ("ef_search".to_string(), "64".to_string()));
 }
 
@@ -68,9 +71,7 @@ fn v400_exec_vector_index_different_column_names() {
 
 #[test]
 fn v400_exec_hnsw_m_metric() {
-    let v = extract_vector_index(
-        "CREATE VECTOR INDEX idx ON t USING HNSW (emb) WITH (m=32);",
-    );
+    let v = extract_vector_index("CREATE VECTOR INDEX idx ON t USING HNSW (emb) WITH (m=32);");
     assert_eq!(v.options, vec![("m".to_string(), "32".to_string())]);
 }
 
@@ -79,30 +80,31 @@ fn v400_exec_hnsw_ef_construction() {
     let v = extract_vector_index(
         "CREATE VECTOR INDEX idx ON t USING HNSW (emb) WITH (ef_construction=400);",
     );
-    assert_eq!(v.options, vec![("ef_construction".to_string(), "400".to_string())]);
+    assert_eq!(
+        v.options,
+        vec![("ef_construction".to_string(), "400".to_string())]
+    );
 }
 
 #[test]
 fn v400_exec_hnsw_ef_search() {
-    let v = extract_vector_index(
-        "CREATE VECTOR INDEX idx ON t USING HNSW (emb) WITH (ef_search=128);",
+    let v =
+        extract_vector_index("CREATE VECTOR INDEX idx ON t USING HNSW (emb) WITH (ef_search=128);");
+    assert_eq!(
+        v.options,
+        vec![("ef_search".to_string(), "128".to_string())]
     );
-    assert_eq!(v.options, vec![("ef_search".to_string(), "128".to_string())]);
 }
 
 #[test]
 fn v400_exec_ivf_nlist() {
-    let v = extract_vector_index(
-        "CREATE VECTOR INDEX idx ON t USING IVF (emb) WITH (nlist=256);",
-    );
+    let v = extract_vector_index("CREATE VECTOR INDEX idx ON t USING IVF (emb) WITH (nlist=256);");
     assert_eq!(v.options, vec![("nlist".to_string(), "256".to_string())]);
 }
 
 #[test]
 fn v400_exec_ivf_nprobe() {
-    let v = extract_vector_index(
-        "CREATE VECTOR INDEX idx ON t USING IVF (emb) WITH (nprobe=16);",
-    );
+    let v = extract_vector_index("CREATE VECTOR INDEX idx ON t USING IVF (emb) WITH (nprobe=16);");
     assert_eq!(v.options, vec![("nprobe".to_string(), "16".to_string())]);
 }
 
@@ -113,7 +115,10 @@ fn v400_exec_hnsw_cosine_metric() {
     let v = extract_vector_index(
         "CREATE VECTOR INDEX idx ON t USING HNSW (emb) WITH (metric='cosine');",
     );
-    assert_eq!(v.options, vec![("metric".to_string(), "cosine".to_string())]);
+    assert_eq!(
+        v.options,
+        vec![("metric".to_string(), "cosine".to_string())]
+    );
 }
 
 #[test]
@@ -121,7 +126,10 @@ fn v400_exec_hnsw_euclidean_metric() {
     let v = extract_vector_index(
         "CREATE VECTOR INDEX idx ON t USING HNSW (emb) WITH (metric='euclidean');",
     );
-    assert_eq!(v.options, vec![("metric".to_string(), "euclidean".to_string())]);
+    assert_eq!(
+        v.options,
+        vec![("metric".to_string(), "euclidean".to_string())]
+    );
 }
 
 #[test]
@@ -129,16 +137,17 @@ fn v400_exec_hnsw_dot_product_metric() {
     let v = extract_vector_index(
         "CREATE VECTOR INDEX idx ON t USING HNSW (emb) WITH (metric='dot_product');",
     );
-    assert_eq!(v.options, vec![("metric".to_string(), "dot_product".to_string())]);
+    assert_eq!(
+        v.options,
+        vec![("metric".to_string(), "dot_product".to_string())]
+    );
 }
 
 // --- IF NOT EXISTS ---------------------------------------------------------
 
 #[test]
 fn v400_exec_vector_index_if_not_exists() {
-    let v = extract_vector_index(
-        "CREATE VECTOR INDEX IF NOT EXISTS idx ON t USING HNSW (emb);",
-    );
+    let v = extract_vector_index("CREATE VECTOR INDEX IF NOT EXISTS idx ON t USING HNSW (emb);");
     assert_eq!(v.name, "idx");
 }
 
@@ -155,18 +164,14 @@ fn v400_exec_vector_index_if_not_exists_with_options() {
 
 #[test]
 fn v400_exec_vector_index_all_lowercase() {
-    let v = extract_vector_index(
-        "create vector index idx on t using hnsw (emb);",
-    );
+    let v = extract_vector_index("create vector index idx on t using hnsw (emb);");
     assert_eq!(v.name, "idx");
     assert_eq!(v.index_type, VectorIndexAlgorithm::Hnsw);
 }
 
 #[test]
 fn v400_exec_vector_index_mixed_case() {
-    let v = extract_vector_index(
-        "Create VECTOR Index Idx On T Using Hnsw (Emb);",
-    );
+    let v = extract_vector_index("Create VECTOR Index Idx On T Using Hnsw (Emb);");
     assert_eq!(v.name, "Idx");
     assert_eq!(v.index_type, VectorIndexAlgorithm::Hnsw);
 }
@@ -411,7 +416,8 @@ fn v400_exec_hybrid_search_with_filter() {
 
     // Vector search with metadata filter
     // Note: Full vector search syntax is V400-02 scope; this tests metadata filter parsing
-    let sql = "SELECT id, text, score FROM documents WHERE category = 'SOP' ORDER BY score LIMIT 10;";
+    let sql =
+        "SELECT id, text, score FROM documents WHERE category = 'SOP' ORDER BY score LIMIT 10;";
     let stmts = parse_statements(sql).expect("parse should succeed");
     match &stmts[0] {
         Statement::Select(_) => {}

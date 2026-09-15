@@ -230,7 +230,11 @@ fn cross_model_tx_lifecycle() {
     let entry1 = CrossModelEntry::new(1, CrossModelEntryType::SqlInsert, Some("users".to_string()));
     assert!(tx.add_entry(entry1).is_ok());
 
-    let entry2 = CrossModelEntry::new(1, CrossModelEntryType::VectorInsert, Some("emb_1".to_string()));
+    let entry2 = CrossModelEntry::new(
+        1,
+        CrossModelEntryType::VectorInsert,
+        Some("emb_1".to_string()),
+    );
     assert!(tx.add_entry(entry2).is_ok());
 
     // Commit
@@ -244,7 +248,11 @@ fn cross_model_tx_rollback() {
     let mut tx = CrossModelTransaction::new(1);
 
     tx.begin().unwrap();
-    let entry = CrossModelEntry::new(1, CrossModelEntryType::GraphCreateNode, Some("node_1".to_string()));
+    let entry = CrossModelEntry::new(
+        1,
+        CrossModelEntryType::GraphCreateNode,
+        Some("node_1".to_string()),
+    );
     tx.add_entry(entry).unwrap();
 
     assert!(tx.rollback().is_ok());
@@ -282,10 +290,15 @@ fn cross_model_tx_sql_and_vector() {
 
     tx.begin().unwrap();
 
-    let sql_entry = CrossModelEntry::new(1, CrossModelEntryType::SqlInsert, Some("docs".to_string()));
+    let sql_entry =
+        CrossModelEntry::new(1, CrossModelEntryType::SqlInsert, Some("docs".to_string()));
     tx.add_entry(sql_entry).unwrap();
 
-    let vector_entry = CrossModelEntry::new(1, CrossModelEntryType::VectorInsert, Some("emb_1".to_string()));
+    let vector_entry = CrossModelEntry::new(
+        1,
+        CrossModelEntryType::VectorInsert,
+        Some("emb_1".to_string()),
+    );
     tx.add_entry(vector_entry).unwrap();
 
     tx.commit().unwrap();
@@ -301,9 +314,24 @@ fn cross_model_tx_sql_vector_graph() {
 
     tx.begin().unwrap();
 
-    tx.add_entry(CrossModelEntry::new(1, CrossModelEntryType::SqlInsert, Some("users".to_string()))).unwrap();
-    tx.add_entry(CrossModelEntry::new(1, CrossModelEntryType::VectorInsert, Some("emb_1".to_string()))).unwrap();
-    tx.add_entry(CrossModelEntry::new(1, CrossModelEntryType::GraphCreateNode, Some("node_1".to_string()))).unwrap();
+    tx.add_entry(CrossModelEntry::new(
+        1,
+        CrossModelEntryType::SqlInsert,
+        Some("users".to_string()),
+    ))
+    .unwrap();
+    tx.add_entry(CrossModelEntry::new(
+        1,
+        CrossModelEntryType::VectorInsert,
+        Some("emb_1".to_string()),
+    ))
+    .unwrap();
+    tx.add_entry(CrossModelEntry::new(
+        1,
+        CrossModelEntryType::GraphCreateNode,
+        Some("node_1".to_string()),
+    ))
+    .unwrap();
 
     tx.commit().unwrap();
 
@@ -317,13 +345,33 @@ fn cross_model_tx_all_models() {
     tx.begin().unwrap();
 
     // SQL
-    tx.add_entry(CrossModelEntry::new(1, CrossModelEntryType::SqlInsert, Some("users".to_string()))).unwrap();
+    tx.add_entry(CrossModelEntry::new(
+        1,
+        CrossModelEntryType::SqlInsert,
+        Some("users".to_string()),
+    ))
+    .unwrap();
     // Vector
-    tx.add_entry(CrossModelEntry::new(1, CrossModelEntryType::VectorInsert, Some("emb_1".to_string()))).unwrap();
+    tx.add_entry(CrossModelEntry::new(
+        1,
+        CrossModelEntryType::VectorInsert,
+        Some("emb_1".to_string()),
+    ))
+    .unwrap();
     // Graph
-    tx.add_entry(CrossModelEntry::new(1, CrossModelEntryType::GraphCreateNode, Some("node_1".to_string()))).unwrap();
+    tx.add_entry(CrossModelEntry::new(
+        1,
+        CrossModelEntryType::GraphCreateNode,
+        Some("node_1".to_string()),
+    ))
+    .unwrap();
     // Audit
-    tx.add_entry(CrossModelEntry::new(1, CrossModelEntryType::AuditWrite, Some("audit_1".to_string()))).unwrap();
+    tx.add_entry(CrossModelEntry::new(
+        1,
+        CrossModelEntryType::AuditWrite,
+        Some("audit_1".to_string()),
+    ))
+    .unwrap();
 
     tx.commit().unwrap();
 
@@ -337,10 +385,30 @@ fn cross_model_tx_model_order() {
     tx.begin().unwrap();
 
     // Add in different order
-    tx.add_entry(CrossModelEntry::new(1, CrossModelEntryType::AuditWrite, Some("audit_1".to_string()))).unwrap();
-    tx.add_entry(CrossModelEntry::new(1, CrossModelEntryType::GraphCreateNode, Some("node_1".to_string()))).unwrap();
-    tx.add_entry(CrossModelEntry::new(1, CrossModelEntryType::VectorInsert, Some("emb_1".to_string()))).unwrap();
-    tx.add_entry(CrossModelEntry::new(1, CrossModelEntryType::SqlInsert, Some("users".to_string()))).unwrap();
+    tx.add_entry(CrossModelEntry::new(
+        1,
+        CrossModelEntryType::AuditWrite,
+        Some("audit_1".to_string()),
+    ))
+    .unwrap();
+    tx.add_entry(CrossModelEntry::new(
+        1,
+        CrossModelEntryType::GraphCreateNode,
+        Some("node_1".to_string()),
+    ))
+    .unwrap();
+    tx.add_entry(CrossModelEntry::new(
+        1,
+        CrossModelEntryType::VectorInsert,
+        Some("emb_1".to_string()),
+    ))
+    .unwrap();
+    tx.add_entry(CrossModelEntry::new(
+        1,
+        CrossModelEntryType::SqlInsert,
+        Some("users".to_string()),
+    ))
+    .unwrap();
 
     tx.commit().unwrap();
 
@@ -385,13 +453,22 @@ fn entry_model_type_detection() {
     let sql_entry = CrossModelEntry::new(1, CrossModelEntryType::SqlInsert, Some("t".to_string()));
     assert_eq!(sql_entry.model, ModelType::Sql);
 
-    let vector_entry = CrossModelEntry::new(1, CrossModelEntryType::VectorSearch, Some("idx".to_string()));
+    let vector_entry = CrossModelEntry::new(
+        1,
+        CrossModelEntryType::VectorSearch,
+        Some("idx".to_string()),
+    );
     assert_eq!(vector_entry.model, ModelType::Vector);
 
-    let graph_entry = CrossModelEntry::new(1, CrossModelEntryType::GraphCreateNode, Some("n".to_string()));
+    let graph_entry = CrossModelEntry::new(
+        1,
+        CrossModelEntryType::GraphCreateNode,
+        Some("n".to_string()),
+    );
     assert_eq!(graph_entry.model, ModelType::Graph);
 
-    let audit_entry = CrossModelEntry::new(1, CrossModelEntryType::AuditWrite, Some("a".to_string()));
+    let audit_entry =
+        CrossModelEntry::new(1, CrossModelEntryType::AuditWrite, Some("a".to_string()));
     assert_eq!(audit_entry.model, ModelType::Audit);
 }
 
@@ -404,10 +481,30 @@ fn atomicity_all_models_succeed() {
     let mut tx = CrossModelTransaction::new(1);
 
     tx.begin().unwrap();
-    tx.add_entry(CrossModelEntry::new(1, CrossModelEntryType::SqlInsert, Some("t".to_string()))).unwrap();
-    tx.add_entry(CrossModelEntry::new(1, CrossModelEntryType::VectorInsert, Some("v".to_string()))).unwrap();
-    tx.add_entry(CrossModelEntry::new(1, CrossModelEntryType::GraphCreateNode, Some("n".to_string()))).unwrap();
-    tx.add_entry(CrossModelEntry::new(1, CrossModelEntryType::AuditWrite, Some("a".to_string()))).unwrap();
+    tx.add_entry(CrossModelEntry::new(
+        1,
+        CrossModelEntryType::SqlInsert,
+        Some("t".to_string()),
+    ))
+    .unwrap();
+    tx.add_entry(CrossModelEntry::new(
+        1,
+        CrossModelEntryType::VectorInsert,
+        Some("v".to_string()),
+    ))
+    .unwrap();
+    tx.add_entry(CrossModelEntry::new(
+        1,
+        CrossModelEntryType::GraphCreateNode,
+        Some("n".to_string()),
+    ))
+    .unwrap();
+    tx.add_entry(CrossModelEntry::new(
+        1,
+        CrossModelEntryType::AuditWrite,
+        Some("a".to_string()),
+    ))
+    .unwrap();
 
     assert!(tx.commit().is_ok());
     assert_eq!(tx.state, TxState::Committed);
@@ -418,8 +515,18 @@ fn atomicity_rollback_clears_all() {
     let mut tx = CrossModelTransaction::new(1);
 
     tx.begin().unwrap();
-    tx.add_entry(CrossModelEntry::new(1, CrossModelEntryType::SqlInsert, Some("t".to_string()))).unwrap();
-    tx.add_entry(CrossModelEntry::new(1, CrossModelEntryType::VectorInsert, Some("v".to_string()))).unwrap();
+    tx.add_entry(CrossModelEntry::new(
+        1,
+        CrossModelEntryType::SqlInsert,
+        Some("t".to_string()),
+    ))
+    .unwrap();
+    tx.add_entry(CrossModelEntry::new(
+        1,
+        CrossModelEntryType::VectorInsert,
+        Some("v".to_string()),
+    ))
+    .unwrap();
 
     assert!(tx.rollback().is_ok());
     assert_eq!(tx.state, TxState::RolledBack);
@@ -439,10 +546,20 @@ fn consistency_foreign_key_graph_constraint() {
     tx.begin().unwrap();
 
     // Insert SQL record first
-    tx.add_entry(CrossModelEntry::new(1, CrossModelEntryType::SqlInsert, Some("user_1".to_string()))).unwrap();
+    tx.add_entry(CrossModelEntry::new(
+        1,
+        CrossModelEntryType::SqlInsert,
+        Some("user_1".to_string()),
+    ))
+    .unwrap();
 
     // Then create graph edge referencing it
-    tx.add_entry(CrossModelEntry::new(1, CrossModelEntryType::GraphCreateEdge, Some("edge_1".to_string()))).unwrap();
+    tx.add_entry(CrossModelEntry::new(
+        1,
+        CrossModelEntryType::GraphCreateEdge,
+        Some("edge_1".to_string()),
+    ))
+    .unwrap();
 
     assert!(tx.commit().is_ok());
 }
@@ -455,10 +572,20 @@ fn consistency_vector_index_depends_on_table() {
     tx.begin().unwrap();
 
     // Create table first
-    tx.add_entry(CrossModelEntry::new(1, CrossModelEntryType::SqlInsert, Some("docs".to_string()))).unwrap();
+    tx.add_entry(CrossModelEntry::new(
+        1,
+        CrossModelEntryType::SqlInsert,
+        Some("docs".to_string()),
+    ))
+    .unwrap();
 
     // Then create vector index
-    tx.add_entry(CrossModelEntry::new(1, CrossModelEntryType::VectorInsert, Some("idx_emb".to_string()))).unwrap();
+    tx.add_entry(CrossModelEntry::new(
+        1,
+        CrossModelEntryType::VectorInsert,
+        Some("idx_emb".to_string()),
+    ))
+    .unwrap();
 
     assert!(tx.commit().is_ok());
 }
@@ -476,8 +603,18 @@ fn isolation_concurrent_tx_different_models() {
     tx1.begin().unwrap();
     tx2.begin().unwrap();
 
-    tx1.add_entry(CrossModelEntry::new(1, CrossModelEntryType::SqlInsert, Some("t1".to_string()))).unwrap();
-    tx2.add_entry(CrossModelEntry::new(2, CrossModelEntryType::GraphCreateNode, Some("n1".to_string()))).unwrap();
+    tx1.add_entry(CrossModelEntry::new(
+        1,
+        CrossModelEntryType::SqlInsert,
+        Some("t1".to_string()),
+    ))
+    .unwrap();
+    tx2.add_entry(CrossModelEntry::new(
+        2,
+        CrossModelEntryType::GraphCreateNode,
+        Some("n1".to_string()),
+    ))
+    .unwrap();
 
     // Both should be able to commit independently
     assert!(tx1.commit().is_ok());
@@ -493,8 +630,18 @@ fn isolation_concurrent_tx_same_resource() {
     tx1.begin().unwrap();
     tx2.begin().unwrap();
 
-    tx1.add_entry(CrossModelEntry::new(1, CrossModelEntryType::SqlUpdate, Some("users".to_string()))).unwrap();
-    tx2.add_entry(CrossModelEntry::new(2, CrossModelEntryType::SqlUpdate, Some("users".to_string()))).unwrap();
+    tx1.add_entry(CrossModelEntry::new(
+        1,
+        CrossModelEntryType::SqlUpdate,
+        Some("users".to_string()),
+    ))
+    .unwrap();
+    tx2.add_entry(CrossModelEntry::new(
+        2,
+        CrossModelEntryType::SqlUpdate,
+        Some("users".to_string()),
+    ))
+    .unwrap();
 
     // First commits
     assert!(tx1.commit().is_ok());
@@ -512,8 +659,18 @@ fn durability_wal_entries_persisted() {
     let mut tx = CrossModelTransaction::new(1);
 
     tx.begin().unwrap();
-    tx.add_entry(CrossModelEntry::new(1, CrossModelEntryType::SqlInsert, Some("t".to_string()))).unwrap();
-    tx.add_entry(CrossModelEntry::new(1, CrossModelEntryType::VectorInsert, Some("v".to_string()))).unwrap();
+    tx.add_entry(CrossModelEntry::new(
+        1,
+        CrossModelEntryType::SqlInsert,
+        Some("t".to_string()),
+    ))
+    .unwrap();
+    tx.add_entry(CrossModelEntry::new(
+        1,
+        CrossModelEntryType::VectorInsert,
+        Some("v".to_string()),
+    ))
+    .unwrap();
     tx.commit().unwrap();
 
     // All entries should be recorded for recovery
@@ -526,7 +683,11 @@ fn durability_recovery_replay() {
     let entries = vec![
         CrossModelEntry::new(1, CrossModelEntryType::SqlBegin, None),
         CrossModelEntry::new(1, CrossModelEntryType::SqlInsert, Some("t".to_string())),
-        CrossModelEntry::new(1, CrossModelEntryType::GraphCreateNode, Some("n".to_string())),
+        CrossModelEntry::new(
+            1,
+            CrossModelEntryType::GraphCreateNode,
+            Some("n".to_string()),
+        ),
         CrossModelEntry::new(1, CrossModelEntryType::SqlCommit, None),
     ];
 
@@ -534,9 +695,15 @@ fn durability_recovery_replay() {
     let mut replayed_tx = CrossModelTransaction::new(1);
     for entry in entries {
         match entry.entry_type {
-            CrossModelEntryType::SqlBegin => { replayed_tx.begin().unwrap(); }
-            CrossModelEntryType::SqlCommit => { assert!(replayed_tx.commit().is_ok()); }
-            _ => { replayed_tx.add_entry(entry).unwrap(); }
+            CrossModelEntryType::SqlBegin => {
+                replayed_tx.begin().unwrap();
+            }
+            CrossModelEntryType::SqlCommit => {
+                assert!(replayed_tx.commit().is_ok());
+            }
+            _ => {
+                replayed_tx.add_entry(entry).unwrap();
+            }
         }
     }
 
@@ -555,19 +722,44 @@ fn scenario_document_ingestion() {
     tx.begin().unwrap();
 
     // 1. Create SQL document record
-    tx.add_entry(CrossModelEntry::new(1, CrossModelEntryType::SqlInsert, Some("documents:123".to_string()))).unwrap();
+    tx.add_entry(CrossModelEntry::new(
+        1,
+        CrossModelEntryType::SqlInsert,
+        Some("documents:123".to_string()),
+    ))
+    .unwrap();
 
     // 2. Generate and store vector embedding
-    tx.add_entry(CrossModelEntry::new(1, CrossModelEntryType::VectorInsert, Some("embedding:123".to_string()))).unwrap();
+    tx.add_entry(CrossModelEntry::new(
+        1,
+        CrossModelEntryType::VectorInsert,
+        Some("embedding:123".to_string()),
+    ))
+    .unwrap();
 
     // 3. Create graph node for document relationships
-    tx.add_entry(CrossModelEntry::new(1, CrossModelEntryType::GraphCreateNode, Some("doc_node:123".to_string()))).unwrap();
+    tx.add_entry(CrossModelEntry::new(
+        1,
+        CrossModelEntryType::GraphCreateNode,
+        Some("doc_node:123".to_string()),
+    ))
+    .unwrap();
 
     // 4. Link to author via graph edge
-    tx.add_entry(CrossModelEntry::new(1, CrossModelEntryType::GraphCreateEdge, Some("author_edge:123".to_string()))).unwrap();
+    tx.add_entry(CrossModelEntry::new(
+        1,
+        CrossModelEntryType::GraphCreateEdge,
+        Some("author_edge:123".to_string()),
+    ))
+    .unwrap();
 
     // 5. Audit trail
-    tx.add_entry(CrossModelEntry::new(1, CrossModelEntryType::AuditWrite, Some("audit:ingest:123".to_string()))).unwrap();
+    tx.add_entry(CrossModelEntry::new(
+        1,
+        CrossModelEntryType::AuditWrite,
+        Some("audit:ingest:123".to_string()),
+    ))
+    .unwrap();
 
     assert!(tx.commit().is_ok());
     assert_eq!(tx.participants.len(), 4);
@@ -580,10 +772,30 @@ fn scenario_user_registration() {
 
     tx.begin().unwrap();
 
-    tx.add_entry(CrossModelEntry::new(1, CrossModelEntryType::SqlInsert, Some("users:456".to_string()))).unwrap();
-    tx.add_entry(CrossModelEntry::new(1, CrossModelEntryType::GraphCreateNode, Some("user_node:456".to_string()))).unwrap();
-    tx.add_entry(CrossModelEntry::new(1, CrossModelEntryType::VectorInsert, Some("user_pref_vec:456".to_string()))).unwrap();
-    tx.add_entry(CrossModelEntry::new(1, CrossModelEntryType::AuditWrite, Some("audit:register:456".to_string()))).unwrap();
+    tx.add_entry(CrossModelEntry::new(
+        1,
+        CrossModelEntryType::SqlInsert,
+        Some("users:456".to_string()),
+    ))
+    .unwrap();
+    tx.add_entry(CrossModelEntry::new(
+        1,
+        CrossModelEntryType::GraphCreateNode,
+        Some("user_node:456".to_string()),
+    ))
+    .unwrap();
+    tx.add_entry(CrossModelEntry::new(
+        1,
+        CrossModelEntryType::VectorInsert,
+        Some("user_pref_vec:456".to_string()),
+    ))
+    .unwrap();
+    tx.add_entry(CrossModelEntry::new(
+        1,
+        CrossModelEntryType::AuditWrite,
+        Some("audit:register:456".to_string()),
+    ))
+    .unwrap();
 
     assert!(tx.commit().is_ok());
 }
@@ -595,10 +807,30 @@ fn scenario_relationship_creation() {
 
     tx.begin().unwrap();
 
-    tx.add_entry(CrossModelEntry::new(1, CrossModelEntryType::SqlInsert, Some("friendship:1:2".to_string()))).unwrap();
-    tx.add_entry(CrossModelEntry::new(1, CrossModelEntryType::VectorSearch, Some("similarity:1:2".to_string()))).unwrap();
-    tx.add_entry(CrossModelEntry::new(1, CrossModelEntryType::GraphCreateEdge, Some("knows:1:2".to_string()))).unwrap();
-    tx.add_entry(CrossModelEntry::new(1, CrossModelEntryType::AuditWrite, Some("audit:friend:1:2".to_string()))).unwrap();
+    tx.add_entry(CrossModelEntry::new(
+        1,
+        CrossModelEntryType::SqlInsert,
+        Some("friendship:1:2".to_string()),
+    ))
+    .unwrap();
+    tx.add_entry(CrossModelEntry::new(
+        1,
+        CrossModelEntryType::VectorSearch,
+        Some("similarity:1:2".to_string()),
+    ))
+    .unwrap();
+    tx.add_entry(CrossModelEntry::new(
+        1,
+        CrossModelEntryType::GraphCreateEdge,
+        Some("knows:1:2".to_string()),
+    ))
+    .unwrap();
+    tx.add_entry(CrossModelEntry::new(
+        1,
+        CrossModelEntryType::AuditWrite,
+        Some("audit:friend:1:2".to_string()),
+    ))
+    .unwrap();
 
     assert!(tx.commit().is_ok());
 }
@@ -620,7 +852,12 @@ fn edge_case_empty_transaction() {
 fn edge_case_single_entry() {
     let mut tx = CrossModelTransaction::new(1);
     tx.begin().unwrap();
-    tx.add_entry(CrossModelEntry::new(1, CrossModelEntryType::AuditWrite, Some("a".to_string()))).unwrap();
+    tx.add_entry(CrossModelEntry::new(
+        1,
+        CrossModelEntryType::AuditWrite,
+        Some("a".to_string()),
+    ))
+    .unwrap();
     assert!(tx.commit().is_ok());
 }
 
@@ -630,7 +867,12 @@ fn edge_case_many_entries() {
     tx.begin().unwrap();
 
     for i in 0..100 {
-        tx.add_entry(CrossModelEntry::new(1, CrossModelEntryType::SqlInsert, Some(format!("t_{}", i)))).unwrap();
+        tx.add_entry(CrossModelEntry::new(
+            1,
+            CrossModelEntryType::SqlInsert,
+            Some(format!("t_{}", i)),
+        ))
+        .unwrap();
     }
 
     assert!(tx.commit().is_ok());
@@ -644,7 +886,12 @@ fn edge_case_same_resource_multiple_times() {
 
     // Same SQL table, multiple operations
     for i in 0..5 {
-        tx.add_entry(CrossModelEntry::new(1, CrossModelEntryType::SqlInsert, Some(format!("t_{}", i)))).unwrap();
+        tx.add_entry(CrossModelEntry::new(
+            1,
+            CrossModelEntryType::SqlInsert,
+            Some(format!("t_{}", i)),
+        ))
+        .unwrap();
     }
 
     assert!(tx.commit().is_ok());
@@ -659,7 +906,12 @@ fn perf_many_small_transactions() {
     for tx_id in 0..50 {
         let mut tx = CrossModelTransaction::new(tx_id);
         tx.begin().unwrap();
-        tx.add_entry(CrossModelEntry::new(tx_id, CrossModelEntryType::SqlInsert, Some(format!("t_{}", tx_id)))).unwrap();
+        tx.add_entry(CrossModelEntry::new(
+            tx_id,
+            CrossModelEntryType::SqlInsert,
+            Some(format!("t_{}", tx_id)),
+        ))
+        .unwrap();
         assert!(tx.commit().is_ok());
     }
 }
@@ -676,7 +928,8 @@ fn perf_single_large_transaction() {
             2 => CrossModelEntryType::GraphCreateNode,
             _ => CrossModelEntryType::AuditWrite,
         };
-        tx.add_entry(CrossModelEntry::new(1, model, Some(format!("res_{}", i)))).unwrap();
+        tx.add_entry(CrossModelEntry::new(1, model, Some(format!("res_{}", i))))
+            .unwrap();
     }
 
     assert!(tx.commit().is_ok());

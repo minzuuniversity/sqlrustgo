@@ -65,7 +65,8 @@ fn v400_create_vector_index_hnsw_with_options() {
 
 #[test]
 fn v400_create_vector_index_ivf_with_options() {
-    let v = parse_create_vector("CREATE VECTOR INDEX idx_ivf ON t USING IVF (vec) WITH (nlist=100);");
+    let v =
+        parse_create_vector("CREATE VECTOR INDEX idx_ivf ON t USING IVF (vec) WITH (nlist=100);");
     assert_eq!(v.index_type, VectorIndexAlgorithm::Ivf);
     assert_eq!(v.options, vec![("nlist".to_string(), "100".to_string())]);
 }
@@ -97,9 +98,8 @@ fn v400_create_vector_index_with_string_option_value() {
 
 #[test]
 fn v400_create_vector_index_with_identifier_option_value() {
-    let v = parse_create_vector(
-        "CREATE VECTOR INDEX idx ON t USING HNSW (emb) WITH (metric=cosine);",
-    );
+    let v =
+        parse_create_vector("CREATE VECTOR INDEX idx ON t USING HNSW (emb) WITH (metric=cosine);");
     assert_eq!(
         v.options,
         vec![("metric".to_string(), "cosine".to_string())]
@@ -160,10 +160,9 @@ fn v400_create_vector_index_with_missing_eq_errors() {
 
 #[test]
 fn v400_create_table_with_vector_column_parses() {
-    let stmts = parse_statements(
-        "CREATE TABLE t(id INT PRIMARY KEY, embedding VECTOR(384, FLOAT32));",
-    )
-    .expect("parse should succeed");
+    let stmts =
+        parse_statements("CREATE TABLE t(id INT PRIMARY KEY, embedding VECTOR(384, FLOAT32));")
+            .expect("parse should succeed");
     match &stmts[0] {
         Statement::CreateTable(ct) => {
             assert_eq!(ct.columns.len(), 2);

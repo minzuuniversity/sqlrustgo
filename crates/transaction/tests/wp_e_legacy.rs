@@ -39,7 +39,8 @@ mod test_4847_transaction_semantics {
     fn test_rollback_not_affect_dml_outside_tx() {
         // ROLLBACK should only affect the current transaction
         // DML executed outside transaction should not be rolled back
-        let sql = "INSERT INTO t VALUES (0); BEGIN; INSERT INTO t VALUES (1); ROLLBACK; SELECT * FROM t";
+        let sql =
+            "INSERT INTO t VALUES (0); BEGIN; INSERT INTO t VALUES (1); ROLLBACK; SELECT * FROM t";
         // Should return 1 row (id=0), not 0 rows
         let expected_row_count = 1;
         assert_eq!(expected_row_count, 1);
@@ -64,7 +65,8 @@ mod test_4847_transaction_semantics {
     #[test]
     fn test_nested_transaction() {
         // Nested transaction (if supported)
-        let sql = "BEGIN; INSERT INTO t VALUES (1); BEGIN; INSERT INTO t VALUES (2); COMMIT; COMMIT";
+        let sql =
+            "BEGIN; INSERT INTO t VALUES (1); BEGIN; INSERT INTO t VALUES (2); COMMIT; COMMIT";
         let expected = true;
         assert!(expected);
     }
@@ -83,7 +85,8 @@ mod test_4626_select_for_update_rollback {
     #[test]
     fn test_select_for_update_with_insert_then_rollback() {
         // SELECT FOR UPDATE + INSERT, then rollback
-        let sql = "BEGIN; SELECT * FROM t WHERE id = 1 FOR UPDATE; INSERT INTO t VALUES (2); ROLLBACK";
+        let sql =
+            "BEGIN; SELECT * FROM t WHERE id = 1 FOR UPDATE; INSERT INTO t VALUES (2); ROLLBACK";
         let expected = true;
         assert!(expected);
     }

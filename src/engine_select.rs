@@ -1364,8 +1364,7 @@ impl<S: StorageEngine + 'static> ExecutionEngine<S> {
                 crate::engine_select_pk::try_extract_pk_eq_with_col(
                     &select.where_clause,
                     &pk_column,
-                )
-            {
+                ) {
                 let row = storage.scan_pk(lookup_table, &pk_column, &pk_value)?;
                 self.instrumentation.on_seq_scan_start(lookup_table);
                 // Phase B Step 4.2: also record the AHI access so the

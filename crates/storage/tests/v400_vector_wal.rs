@@ -59,7 +59,12 @@ pub struct VectorWalEntry {
 }
 
 impl VectorWalEntry {
-    pub fn new_vector_insert(tx_id: u64, table_id: u64, key: Vec<u8>, vector_data: Vec<u8>) -> Self {
+    pub fn new_vector_insert(
+        tx_id: u64,
+        table_id: u64,
+        key: Vec<u8>,
+        vector_data: Vec<u8>,
+    ) -> Self {
         Self {
             tx_id,
             entry_type: VectorWalEntryType::VectorInsert,
@@ -257,9 +262,14 @@ fn vector_wal_entry_type_serialization() {
 #[test]
 fn vector_wal_entry_insert_roundtrip() {
     let entry = VectorWalEntry::new_vector_insert(
-        42, 1, vec![1, 2, 3], vec![0.1f32.to_le_bytes(), 0.2f32.to_le_bytes()].concat(),
+        42,
+        1,
+        vec![1, 2, 3],
+        vec![0.1f32.to_le_bytes(), 0.2f32.to_le_bytes()].concat(),
     );
-    let recovered = entry.serialization_roundtrip().expect("roundtrip should succeed");
+    let recovered = entry
+        .serialization_roundtrip()
+        .expect("roundtrip should succeed");
     assert_eq!(entry.tx_id, recovered.tx_id);
     assert_eq!(entry.table_id, recovered.table_id);
     assert_eq!(entry.entry_type, recovered.entry_type);
@@ -270,14 +280,25 @@ fn vector_wal_entry_insert_roundtrip() {
 #[test]
 fn vector_wal_entry_create_index_roundtrip() {
     let entry = VectorWalEntry::new_create_index(
-        100, 2, "idx_emb".to_string(), "HNSW".to_string(),
-        vec![("m".to_string(), "16".to_string()), ("ef".to_string(), "200".to_string())],
+        100,
+        2,
+        "idx_emb".to_string(),
+        "HNSW".to_string(),
+        vec![
+            ("m".to_string(), "16".to_string()),
+            ("ef".to_string(), "200".to_string()),
+        ],
     );
-    let recovered = entry.serialization_roundtrip().expect("roundtrip should succeed");
+    let recovered = entry
+        .serialization_roundtrip()
+        .expect("roundtrip should succeed");
     assert_eq!(entry.tx_id, recovered.tx_id);
     assert_eq!(entry.index_name, recovered.index_name);
     assert_eq!(entry.index_type, recovered.index_type);
-    assert_eq!(entry.index_options.as_ref().map(|o| o.len()), recovered.index_options.as_ref().map(|o| o.len()));
+    assert_eq!(
+        entry.index_options.as_ref().map(|o| o.len()),
+        recovered.index_options.as_ref().map(|o| o.len())
+    );
 }
 
 // ============================================================================
@@ -327,16 +348,22 @@ fn replay_vector_wal_entry(entry: &VectorWalEntry) -> Result<(), String> {
 
 #[test]
 fn wal_replay_vector_insert() {
-    let entry = VectorWalEntry::new_vector_insert(1, 1, vec![1], vec![0.1f32.to_le_bytes()].concat());
+    let entry =
+        VectorWalEntry::new_vector_insert(1, 1, vec![1], vec![0.1f32.to_le_bytes()].concat());
     replay_vector_wal_entry(&entry).expect("replay should succeed");
 }
 
 #[test]
 fn wal_replay_vector_update() {
     let entry = VectorWalEntry {
-        tx_id: 2, entry_type: VectorWalEntryType::VectorUpdate, table_id: 1,
-        key: Some(vec![1]), vector_data: Some(vec![0.2f32.to_le_bytes()].concat()),
-        index_name: None, index_type: None, index_options: None,
+        tx_id: 2,
+        entry_type: VectorWalEntryType::VectorUpdate,
+        table_id: 1,
+        key: Some(vec![1]),
+        vector_data: Some(vec![0.2f32.to_le_bytes()].concat()),
+        index_name: None,
+        index_type: None,
+        index_options: None,
     };
     replay_vector_wal_entry(&entry).expect("replay should succeed");
 }
@@ -344,9 +371,14 @@ fn wal_replay_vector_update() {
 #[test]
 fn wal_replay_vector_delete() {
     let entry = VectorWalEntry {
-        tx_id: 3, entry_type: VectorWalEntryType::VectorDelete, table_id: 1,
-        key: Some(vec![1]), vector_data: None,
-        index_name: None, index_type: None, index_options: None,
+        tx_id: 3,
+        entry_type: VectorWalEntryType::VectorDelete,
+        table_id: 1,
+        key: Some(vec![1]),
+        vector_data: None,
+        index_name: None,
+        index_type: None,
+        index_options: None,
     };
     replay_vector_wal_entry(&entry).expect("replay should succeed");
 }
@@ -354,7 +386,10 @@ fn wal_replay_vector_delete() {
 #[test]
 fn wal_replay_create_hnsw_index() {
     let entry = VectorWalEntry::new_create_index(
-        4, 1, "idx_hnsw".to_string(), "HNSW".to_string(),
+        4,
+        1,
+        "idx_hnsw".to_string(),
+        "HNSW".to_string(),
         vec![("m".to_string(), "16".to_string())],
     );
     replay_vector_wal_entry(&entry).expect("replay should succeed");
@@ -363,7 +398,10 @@ fn wal_replay_create_hnsw_index() {
 #[test]
 fn wal_replay_create_ivf_index() {
     let entry = VectorWalEntry::new_create_index(
-        5, 1, "idx_ivf".to_string(), "IVF".to_string(),
+        5,
+        1,
+        "idx_ivf".to_string(),
+        "IVF".to_string(),
         vec![("nlist".to_string(), "100".to_string())],
     );
     replay_vector_wal_entry(&entry).expect("replay should succeed");
@@ -372,9 +410,14 @@ fn wal_replay_create_ivf_index() {
 #[test]
 fn wal_replay_drop_index() {
     let entry = VectorWalEntry {
-        tx_id: 6, entry_type: VectorWalEntryType::DropVectorIndex, table_id: 1,
-        key: None, vector_data: None,
-        index_name: Some("idx_emb".to_string()), index_type: None, index_options: None,
+        tx_id: 6,
+        entry_type: VectorWalEntryType::DropVectorIndex,
+        table_id: 1,
+        key: None,
+        vector_data: None,
+        index_name: Some("idx_emb".to_string()),
+        index_type: None,
+        index_options: None,
     };
     replay_vector_wal_entry(&entry).expect("replay should succeed");
 }
@@ -382,9 +425,14 @@ fn wal_replay_drop_index() {
 #[test]
 fn wal_replay_rebuild_index() {
     let entry = VectorWalEntry {
-        tx_id: 7, entry_type: VectorWalEntryType::RebuildVectorIndex, table_id: 1,
-        key: None, vector_data: None,
-        index_name: Some("idx_emb".to_string()), index_type: None, index_options: None,
+        tx_id: 7,
+        entry_type: VectorWalEntryType::RebuildVectorIndex,
+        table_id: 1,
+        key: None,
+        vector_data: None,
+        index_name: Some("idx_emb".to_string()),
+        index_type: None,
+        index_options: None,
     };
     replay_vector_wal_entry(&entry).expect("replay should succeed");
 }
@@ -427,9 +475,16 @@ fn crash_recovery_with_index_rebuild() {
     let entries = vec![
         VectorWalEntry::new_vector_insert(1, 1, vec![1], vec![0.1f32.to_le_bytes()].concat()),
         VectorWalEntry::new_create_index(2, 1, "idx_emb".to_string(), "HNSW".to_string(), vec![]),
-        VectorWalEntry { tx_id: 0, entry_type: VectorWalEntryType::RebuildVectorIndex, table_id: 1,
-            key: None, vector_data: None,
-            index_name: Some("idx_emb".to_string()), index_type: None, index_options: None },
+        VectorWalEntry {
+            tx_id: 0,
+            entry_type: VectorWalEntryType::RebuildVectorIndex,
+            table_id: 1,
+            key: None,
+            vector_data: None,
+            index_name: Some("idx_emb".to_string()),
+            index_type: None,
+            index_options: None,
+        },
     ];
     let results = simulate_crash_recovery(entries).expect("recovery should succeed");
     assert_eq!(results.len(), 3);
@@ -442,7 +497,10 @@ fn crash_recovery_with_index_rebuild() {
 #[test]
 fn hnsw_options_parsing() {
     let entry = VectorWalEntry::new_create_index(
-        1, 1, "idx_hnsw".to_string(), "HNSW".to_string(),
+        1,
+        1,
+        "idx_hnsw".to_string(),
+        "HNSW".to_string(),
         vec![
             ("m".to_string(), "16".to_string()),
             ("ef_construction".to_string(), "200".to_string()),
@@ -458,7 +516,10 @@ fn hnsw_options_parsing() {
 #[test]
 fn ivf_options_parsing() {
     let entry = VectorWalEntry::new_create_index(
-        1, 1, "idx_ivf".to_string(), "IVF".to_string(),
+        1,
+        1,
+        "idx_ivf".to_string(),
+        "IVF".to_string(),
         vec![
             ("nlist".to_string(), "100".to_string()),
             ("nprobe".to_string(), "10".to_string()),
@@ -482,7 +543,7 @@ fn vector_wal_entry_empty_vector() {
         entry_type: VectorWalEntryType::VectorInsert,
         table_id: 1,
         key: Some(vec![1]),
-        vector_data: None,  // None for this test
+        vector_data: None, // None for this test
         index_name: None,
         index_type: None,
         index_options: None,
@@ -499,7 +560,9 @@ fn vector_wal_entry_large_dimension() {
         data.extend_from_slice(&(i as f32).to_le_bytes());
     }
     let entry = VectorWalEntry::new_vector_insert(1, 1, vec![1], data);
-    let recovered = entry.serialization_roundtrip().expect("roundtrip should succeed");
+    let recovered = entry
+        .serialization_roundtrip()
+        .expect("roundtrip should succeed");
     assert_eq!(recovered.vector_data.unwrap().len(), 1536 * 4);
 }
 
