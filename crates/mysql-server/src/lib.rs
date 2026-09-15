@@ -2002,6 +2002,20 @@ impl Packet {
         w.flush()?;
         Ok(())
     }
+
+    /// Phase D.3: write packet header + payload without flushing.
+    ///
+    /// Callers that batch many packets into one TCP write should use
+    /// this and call `w.flush()` once at the end. Per-packet `flush()`
+    /// is a syscall (~5-10µs even on localhost); for a 5-column ×
+    /// 1-row result the old code did 9 flush syscalls per query, now
+    /// we do 1.
+    pub fn write_to_no_flush<W: Write>(&self, w: &mut W) -> MySqlResult<()> {
+        w.write_u24::<LittleEndian>(self.length)?;
+        w.write_u8(self.sequence)?;
+        w.write_all(&self.payload)?;
+        Ok(())
+    }
 }
 
 /// A `Read`+`Write` wrapper around `rustls::ServerConnection` that
@@ -2673,6 +2687,20 @@ fn write_ok_packets<W: Write>(w: &mut W, packets: Vec<Packet>, mut seq: u8) -> M
     Ok(seq)
 }
 
+/// Phase D.3: variant that skips the per-packet flush so callers can
+/// batch many packets into one TCP write + flush.
+fn write_ok_packets_no_flush<W: Write>(
+    w: &mut W,
+    packets: Vec<Packet>,
+    mut seq: u8,
+) -> MySqlResult<u8> {
+    for pkt in packets {
+        pkt.write_to_no_flush(w)?;
+        seq = seq.wrapping_add(1);
+    }
+    Ok(seq)
+}
+
 struct HandshakeResponse {
     capability_flags: u32,
     username: String,
@@ -3053,6 +3081,38 @@ fn write_column_def<W: Write>(w: &mut W, name: &str, sql_type: &str, seq: u8) ->
     Ok(seq.wrapping_add(1))
 }
 
+/// Phase D.3: variant that skips the per-packet flush so callers can
+/// batch many column-def packets into one TCP write + flush.
+fn write_column_def_no_flush<W: Write>(
+    w: &mut W,
+    name: &str,
+    sql_type: &str,
+    seq: u8,
+) -> MySqlResult<u8> {
+    let mut p = Vec::new();
+    write_lenenc_string(&mut p, b"def").unwrap();
+    write_lenenc_string(&mut p, b"").unwrap();
+    write_lenenc_string(&mut p, b"").unwrap();
+    write_lenenc_string(&mut p, b"").unwrap();
+    write_lenenc_string(&mut p, name.as_bytes()).unwrap();
+    write_lenenc_string(&mut p, name.as_bytes()).unwrap();
+    write_lenenc_int(&mut p, 12).unwrap();
+    p.write_u16::<LittleEndian>(0x0030).unwrap();
+    p.write_u32::<LittleEndian>(col_len_from_type(sql_type))
+        .unwrap();
+    p.push(col_type_from_string(sql_type));
+    p.write_u16::<LittleEndian>(0x0000).unwrap();
+    p.push(0x00);
+    p.write_u16::<LittleEndian>(0).unwrap();
+    Packet {
+        length: p.len() as u32,
+        sequence: seq,
+        payload: p,
+    }
+    .write_to_no_flush(w)?;
+    Ok(seq.wrapping_add(1))
+}
+
 #[allow(dead_code)]
 fn send_result_set<W: Write>(
     w: &mut W,
@@ -3086,6 +3146,9 @@ fn send_result_set_with_more<W: Write>(
         seq,
         more_results_flag
     );
+    // Phase D.3: use write_to_no_flush for every packet inside this
+    // function and flush once at the end. Eliminates per-packet
+    // flush syscall (1 syscall instead of 2+N+rows+1+1 per query).
     {
         let mut p = Vec::new();
         write_lenenc_int(&mut p, cols.len() as u64).unwrap();
@@ -3094,11 +3157,11 @@ fn send_result_set_with_more<W: Write>(
             sequence: seq,
             payload: p,
         }
-        .write_to(w)?;
+        .write_to_no_flush(w)?;
         seq = seq.wrapping_add(1);
     }
     for (i, n) in cols.iter().enumerate() {
-        seq = write_column_def(
+        seq = write_column_def_no_flush(
             w,
             n,
             ctypes.get(i).map(|s| s.as_str()).unwrap_or("VARCHAR(255)"),
@@ -3125,7 +3188,7 @@ fn send_result_set_with_more<W: Write>(
     // surfaced — MySQL 8.0 only sets the bit on the trailing terminator,
     // so we mirror that here. Keep this packet at 0x0002.
     if cap & capability::DEPRECATE_EOF == 0 {
-        make_eof_packet(seq, 0x0002).write_to(w)?;
+        make_eof_packet(seq, 0x0002).write_to_no_flush(w)?;
         seq = seq.wrapping_add(1);
     }
     // DEPRECATE_EOF=1: do NOT send any inter-record separator.
@@ -3138,7 +3201,7 @@ fn send_result_set_with_more<W: Write>(
             sequence: seq,
             payload: p,
         }
-        .write_to(w)?;
+        .write_to_no_flush(w)?;
         seq = seq.wrapping_add(1);
     }
     // Trailing terminator for the row stream.
@@ -3168,19 +3231,25 @@ fn send_result_set_with_more<W: Write>(
     // 0x0002 = SERVER_STATUS_AUTOCOMMIT, OR'd with more_results_flag
     // when this is not the last result of a multi-statement batch).
     if cap & capability::DEPRECATE_EOF == 0 {
-        make_eof_packet(seq, trailing_status).write_to(w)?;
+        make_eof_packet(seq, trailing_status).write_to_no_flush(w)?;
         seq = seq.wrapping_add(1);
     } else {
         // V312-WIRE-5: `make_deprecate_eof_ok_packet` returns Vec<Packet>
         // (1 OK packet, optionally +1 separate session_state_info packet
-        // when status has 0x4000). Use `write_ok_packets` to emit them all
-        // and advance seq once per packet.
-        seq = write_ok_packets(
+        // when status has 0x4000). Use `write_ok_packets_no_flush` to emit
+        // them all and advance seq once per packet.
+        seq = write_ok_packets_no_flush(
             w,
             make_deprecate_eof_ok_packet(seq, 0, 0, trailing_status, 0, cap),
             seq,
         )?;
     }
+    // Phase D.3: single flush at the end. Without this each
+    // write_to_no_flush leaves data in the kernel buffer; pymysql
+    // is blocking so it'd block on recv anyway, but flushing at the
+    // end lets TCP_NODELAY coalesce the whole result-set into a
+    // single segment.
+    w.flush()?;
     tracing::info!("send_result_set done: final_seq={}", seq);
     Ok(seq)
 }
