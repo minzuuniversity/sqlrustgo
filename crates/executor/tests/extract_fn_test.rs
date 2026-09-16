@@ -41,7 +41,7 @@ fn test_extract_year_in_where_filter() {
         .unwrap();
 
     let result = engine
-        .execute("SELECT o_orderkey FROM orders WHERE EXTRACT(YEAR FROM o_orderdate) = '1995'")
+        .execute("SELECT o_orderkey FROM orders WHERE EXTRACT(YEAR FROM o_orderdate) = 1995")
         .unwrap();
 
     // 2 rows in 1995.
@@ -90,7 +90,7 @@ fn test_extract_month_in_where() {
         .unwrap();
 
     let result = engine
-        .execute("SELECT o_orderkey FROM orders WHERE EXTRACT(MONTH FROM o_orderdate) = '03'")
+        .execute("SELECT o_orderkey FROM orders WHERE EXTRACT(MONTH FROM o_orderdate) = 3")
         .unwrap();
 
     // Rows 1 and 3 are in March.
