@@ -4417,6 +4417,9 @@ fn statement_kind(parsed: &Result<Statement, String>) -> &'static str {
             Statement::DropRole(_) => "DROP_ROLE",
             Statement::CreateDatabase(_) => "CREATE_DATABASE",
             Statement::DropDatabase(_) => "DROP_DATABASE",
+            // V400-03 / Issue #3731 (G1): first-class graph DDL dispatch names.
+            Statement::CreateGraph(_) => "CREATE_GRAPH",
+            Statement::DropGraph(_) => "DROP_GRAPH",
             Statement::UseDatabase(_) => "USE_DATABASE",
             Statement::SetRole(_) => "SET_ROLE",
             Statement::SavepointStatement { .. } => "SAVEPOINT",
