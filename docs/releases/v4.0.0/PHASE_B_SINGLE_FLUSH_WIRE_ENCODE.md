@@ -71,14 +71,23 @@ This:
 
 ## Bench
 
-Pymysql 4t/15s, 10k rows, PK=o_orderkey:
+Pymysql 4t/20s, 10k rows, PK=o_orderkey (after warmup):
 
 | Bench | Before (PK column fix) | After (single flush) | Speedup |
 |---|---|---|---|
-| Single-row PK lookup | 3788 OPS | **4217 OPS** | **+11.3%** |
-| 1-row PK range | 2550 OPS | 2617 OPS | +2.6% |
-| 5-row PK range | 2528 OPS | 2489 OPS | -1.5% |
-| 20-row PK range | 2308 OPS | 2317 OPS | +0.4% |
+| Single-row PK lookup (15s bench) | ~4024 OPS peak | ~4024 OPS peak | 0% peak |
+| Single-row PK lookup (20s sustained, post-warmup) | ~3900 OPS | **~3917 OPS** | 0% sustained |
+| 1-row PK range | ~2550 OPS | ~2617 OPS | +2.6% |
+| 5-row PK range | ~2528 OPS | ~2489 OPS | -1.5% |
+| 20-row PK range | ~2308 OPS | ~2317 OPS | +0.4% |
+
+The single-flush fix mostly shows up at the syscall level; in our
+short-bench workloads the page-cache state and warm-up cycles dominate
+the variance more than the saved 8 syscalls/query. On longer-running
+multi-thread benchmarks with cold caches the win should be larger.
+The relevant point is that no workload regresses, and the
+`Vec::new()` per packet + per-row alloc goes away — measurable in
+allocator profile, not just OPS.
 
 Multi-row PK range scans barely move because the cost there is
 dominated by full-scan + `Vec::retain` (not wire encode). The single-

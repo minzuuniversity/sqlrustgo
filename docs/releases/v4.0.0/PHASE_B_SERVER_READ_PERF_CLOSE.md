@@ -21,14 +21,14 @@ The single-process UnsafeCell/Arc<S> rewrite remains invasive and
 | Phase | What it does | TPS impact | Status |
 |---|---|---|---|
 | [C.1](PHASE_B_INTERNAL_LOCKING_FOUNDATION.md) | FileStorage internal `write_lock` — correctness prerequisite for any future server-layer lock removal | +0% (correctness only) | committed |
-| [D.1](PHASE_B_PK_COLUMN_HARDCODED_FIX.md) | `scan_pk` and `try_extract_pk_eq` honour the actual PK column name instead of hard-coded `"id"` | 1977 → 4024 OPS (**+103%** for non-`id` schemas) | committed |
-| [D.3](PHASE_B_SINGLE_FLUSH_WIRE_ENCODE.md) | Single flush per result-set via `write_to_no_flush` packet variant | 3788 → 4217 OPS (+11%) | committed |
+| [D.1](PHASE_B_PK_COLUMN_HARDCODED_FIX.md) | `scan_pk` and `try_extract_pk_eq` honour the actual PK column name instead of hard-coded `"id"` | 1977 → 4024 OPS peak (**+103%** for non-`id` PK schemas) | committed |
+| [D.3](PHASE_B_SINGLE_FLUSH_WIRE_ENCODE.md) | Single flush per result-set via `write_to_no_flush` packet variant | 0% peak / 0% sustained; saves 8 syscalls/query | committed |
 | [D.5](PHASE_B_HORIZONTAL_SCALING_POC.md) | Multi-process horizontal scaling POC — 4 shards × 2t × 2500 rows | **16163 OPS = 3.83× baseline** (10-core box) | bench-only, no code |
 
-**Cumulative**: Phase B baseline 2056 OPS → Phase B + D.1 + D.3
-**4217 OPS = +105%** (single process). Add horizontal sharding
-(Phase D.5 POC) and the figure rises to **16163 OPS = +686% (≈ 7.8×)**
-on the same 10-core box.
+**Cumulative** (single process): Phase B baseline 2056 OPS →
+Phase B + D.1 + D.3 ≈ 3917 OPS sustained (**+91%**, peak 4024).
+Add horizontal sharding (Phase D.5 POC) and the figure rises to
+**16163 OPS = +686% (≈ 7.8×)** on the same 10-core box.
 
 ## Order of operations matters
 
