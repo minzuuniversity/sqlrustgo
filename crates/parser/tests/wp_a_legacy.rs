@@ -264,11 +264,7 @@ mod test_4710_timestampdiff {
         // 复杂表达式（如除法）可能需要额外支持
         let sql = "SELECT TIMESTAMPDIFF(SECOND, created_at, NOW())";
         let result = parse(sql);
-        assert!(
-            result.is_ok(),
-            "TIMESTAMPDIFF should parse: {:?}",
-            result
-        );
+        assert!(result.is_ok(), "TIMESTAMPDIFF should parse: {:?}", result);
     }
 }
 
