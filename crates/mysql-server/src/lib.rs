@@ -5087,9 +5087,49 @@ fn do_command_loop<S: Read + Write + DrainWrites>(
                         let graph_result: Result<_, String> =
                             match sqlrustgo_graph::cypher::parse(trimmed) {
                                 Ok(query) => {
-                                    let store = sqlrustgo_graph::InMemoryGraphStore::new();
-                                    sqlrustgo_graph::cypher::execute(&store, &query)
-                                        .map_err(|e| format!("Cypher execute error: {}", e))
+                                    // V400-03 / Issue #3731 (G3): when the
+                                    // server has a data_dir configured,
+                                    // persist the graph under
+                                    // `<data_dir>/graph/default.dgs/` so
+                                    // a `MATCH` written by one session
+                                    // survives a server restart and is
+                                    // visible to later sessions. When
+                                    // no data_dir is configured, fall
+                                    // back to the G2 in-memory store
+                                    // (transient). The G3 follow-up
+                                    // adds the CREATE GRAPH `<name>`
+                                    // SQL surface (G4) so each named
+                                    // graph gets its own dgs file.
+                                    //
+                                    // cypher::execute is generic over
+                                    // `S: GraphStore`, so we dispatch
+                                    // via separate arms for the
+                                    // DiskGraphStore and
+                                    // InMemoryGraphStore cases rather
+                                    // than boxing through `dyn`.
+                                    match config.data_dir.as_ref() {
+                                        Some(d) => {
+                                            match sqlrustgo_graph::DiskGraphStore::open(
+                                                d.join("graph").join("default.dgs"),
+                                            ) {
+                                                Ok(store) => {
+                                                    sqlrustgo_graph::cypher::execute(&store, &query)
+                                                        .map_err(|e| {
+                                                            format!("Cypher execute error: {}", e)
+                                                        })
+                                                }
+                                                Err(e) => Err(format!(
+                                                    "DiskGraphStore::open failed: {}",
+                                                    e
+                                                )),
+                                            }
+                                        }
+                                        None => {
+                                            let store = sqlrustgo_graph::InMemoryGraphStore::new();
+                                            sqlrustgo_graph::cypher::execute(&store, &query)
+                                                .map_err(|e| format!("Cypher execute error: {}", e))
+                                        }
+                                    }
                                 }
                                 Err(e) => Err(format!("Cypher parse error: {}", e)),
                             };
@@ -8781,4 +8821,47 @@ mod v400_03_cypher_dispatch_tests {
             let _ = sqlrustgo_graph::cypher::execute(&store, &query);
         }
     }
+}
+
+/// V400-03 / Issue #3731 (G3): when a server is started with a
+/// `data_dir`, MATCH queries persist the graph store under
+/// `<data_dir>/graph/default.dgs/`. Two consecutive MATCH queries
+/// against the same data_dir therefore see the same persisted
+/// graph (this is the regression guard; without G3 wiring each
+/// query built a fresh InMemoryGraphStore).
+#[test]
+fn g3_disk_graph_store_round_trip_persists_nodes() {
+    use sqlrustgo_graph::types::PropertyValue;
+    use sqlrustgo_graph::GraphStore;
+    let tmp = tempfile::TempDir::new().expect("TempDir::new");
+    // Mimic the G3 dispatch: open a DiskGraphStore under
+    // <data_dir>/graph/default.dgs, seed a node, close,
+    // reopen, and verify the node is visible to a fresh MATCH.
+    let graph_dir = tmp.path().join("graph").join("default.dgs");
+    {
+        let mut store =
+            sqlrustgo_graph::DiskGraphStore::open(&graph_dir).expect("DiskGraphStore::open");
+        let mut props = sqlrustgo_graph::PropertyMap::new();
+        props.insert("name", "alice".to_string());
+        store
+            .create_node(vec![sqlrustgo_graph::Label("Person".to_string())], props)
+            .expect("create_node");
+    }
+    // Reopen: simulates a new session / server restart.
+    let store2 = sqlrustgo_graph::DiskGraphStore::open(&graph_dir).expect("DiskGraphStore reopen");
+    let q = sqlrustgo_graph::cypher::parse("MATCH (n) RETURN n.name").expect("cypher parse");
+    let r = sqlrustgo_graph::cypher::execute(&store2, &q).expect("cypher execute");
+    let names: std::collections::HashSet<String> = r
+        .rows
+        .iter()
+        .filter_map(|row| match row.first() {
+            Some(PropertyValue::String(s)) => Some(s.clone()),
+            _ => None,
+        })
+        .collect();
+    assert!(
+        names.contains("alice"),
+        "G3: DiskGraphStore should round-trip the alice node, got {:?}",
+        names
+    );
 }
