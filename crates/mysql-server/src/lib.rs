@@ -60,18 +60,13 @@ fn parse_wal_sync_mode(s: &str) -> sqlrustgo_storage::WalSyncMode {
         // e.g. group:32,1000  -> max_batch=32, max_wait_us=1000 (1ms)
         let rest = &s[6..];
         let mut parts = rest.splitn(2, ',');
-        let max_batch: u32 = parts
-            .next()
-            .and_then(|p| p.parse().ok())
-            .unwrap_or(32);
-        let max_wait_us: u64 = parts
-            .next()
-            .and_then(|p| p.parse().ok())
-            .unwrap_or(1_000);
+        let max_batch: u32 = parts.next().and_then(|p| p.parse().ok()).unwrap_or(32);
+        let max_wait_us: u64 = parts.next().and_then(|p| p.parse().ok()).unwrap_or(1_000);
         tracing::info!(
             "WAL group-commit mode: max_batch={}, max_wait_us={} (1ms=1000us). \
              Up to max_batch-1 tx loss on crash.",
-            max_batch, max_wait_us
+            max_batch,
+            max_wait_us
         );
         sqlrustgo_storage::WalSyncMode::GroupCommit {
             max_batch,
@@ -6060,7 +6055,23 @@ pub(crate) fn run_server_with_listener_and_shutdown_with_bootstrap_tables_and_sq
                 std::env::var("SQLRUSTGO_WAL_SYNC").unwrap_or_else(|_| "every".to_string());
             let sync_mode = parse_wal_sync_mode(&wal_sync_mode);
             tracing::info!("WAL sync mode: {:?}", sync_mode);
-            let mut parallel_storage = ParallelWalStorage::new(file_storage, wal_manager);
+            // V400-MVCC-ENABLE: wrap FileStorage in MvccStorage so
+            // read paths use snapshot-based visibility instead of
+            // taking the outer Arc<RwLock<storage>> read lock. This
+            // is the key change for reader concurrency: with MVCC,
+            // SELECTs run on per-table RwLocks in the MVCC chain,
+            // not the global storage lock. rebuild_from_inner()
+            // populates the MVCC chain from the post-recovery
+            // FileStorage state.
+            let mvcc_inner = sqlrustgo_storage::MvccStorage::new(file_storage);
+            mvcc_inner
+                .rebuild_from_inner()
+                .map_err(|e| MySqlError::Sql(format!("MVCC rebuild_from_inner failed: {}", e)))?;
+            tracing::info!(
+                "MVCC layer rebuilt: {} tables, snapshot isolation enabled for reads",
+                mvcc_inner.list_tables().len()
+            );
+            let mut parallel_storage = ParallelWalStorage::new(mvcc_inner, wal_manager);
             parallel_storage.set_sync_mode(sync_mode);
             // Note: the `--wal-sync group:...` CLI flag is accepted and
             // parsed into `WalSyncMode::GroupCommit`, but the server
@@ -6128,8 +6139,22 @@ pub(crate) fn run_server_with_listener_and_shutdown_with_bootstrap_tables_and_sq
                 std::env::var("SQLRUSTGO_WAL_SYNC").unwrap_or_else(|_| "every".to_string());
             let sync_mode = parse_wal_sync_mode(&wal_sync_mode);
             tracing::info!("WAL sync mode: {:?}", sync_mode);
+            // V400-MVCC-ENABLE: wrap FileStorage in MvccStorage so
+            // read paths use snapshot-based visibility instead of
+            // taking the outer Arc<RwLock<storage>> read lock. The
+            // rebuild_from_inner() call populates the MVCC chain
+            // from the post-recovery FileStorage state, so the very
+            // first SELECT after startup can use snapshot reads.
+            let mvcc_inner = sqlrustgo_storage::MvccStorage::new(file_storage);
+            mvcc_inner
+                .rebuild_from_inner()
+                .map_err(|e| MySqlError::Sql(format!("MVCC rebuild_from_inner failed: {}", e)))?;
+            tracing::info!(
+                "MVCC layer rebuilt: {} tables, snapshot isolation enabled for reads",
+                mvcc_inner.list_tables().len()
+            );
             let wal_storage = WalStorage::new_with_sync_mode_and_checkpoint(
-                file_storage,
+                mvcc_inner,
                 wal_manager,
                 sync_mode,
                 checkpoint_manager,
