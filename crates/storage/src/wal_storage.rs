@@ -50,10 +50,7 @@ pub enum WalSyncMode {
     /// `ParallelWalStorage` path uses them). To activate group commit,
     /// use `ParallelWalStorage::set_group_commit(coordinator)` after
     /// construction.
-    GroupCommit {
-        max_batch: u32,
-        max_wait_us: u64,
-    },
+    GroupCommit { max_batch: u32, max_wait_us: u64 },
 }
 
 pub struct WalStorage<S: StorageEngine, T: WalManager> {
