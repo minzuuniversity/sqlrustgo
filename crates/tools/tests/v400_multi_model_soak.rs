@@ -139,7 +139,8 @@ impl WorkloadStats {
         if self.latencies.is_empty() {
             return;
         }
-        self.latencies.sort_by(|a, b| a.partial_cmp(b).unwrap_or(std::cmp::Ordering::Equal));
+        self.latencies
+            .sort_by(|a, b| a.partial_cmp(b).unwrap_or(std::cmp::Ordering::Equal));
         let len = self.latencies.len();
         self.p50_latency_ms = self.latencies[len / 2];
         self.p99_latency_ms = self.latencies[((len as f64 * 0.99) as usize).min(len - 1)];
@@ -189,9 +190,7 @@ pub struct MultiModelSoakReport {
 
 impl MultiModelSoakReport {
     pub fn passed(&self) -> bool {
-        self.base_report.passed()
-            && self.crash_incidents == 0
-            && self.consistency_violations == 0
+        self.base_report.passed() && self.crash_incidents == 0 && self.consistency_violations == 0
     }
 }
 
@@ -273,7 +272,10 @@ pub fn run_multi_model_soak(config: &MultiModelSoakConfig) -> MultiModelSoakRepo
         .flat_map(|s| s.latencies.clone())
         .collect();
     all_latencies.sort_by(|a, b| a.partial_cmp(b).unwrap_or(std::cmp::Ordering::Equal));
-    let p50 = all_latencies.get(all_latencies.len() / 2).copied().unwrap_or(0.0);
+    let p50 = all_latencies
+        .get(all_latencies.len() / 2)
+        .copied()
+        .unwrap_or(0.0);
     let p99 = all_latencies
         .get((all_latencies.len() as f64 * 0.99) as usize)
         .copied()
@@ -391,8 +393,14 @@ mod multi_model_soak_tests {
     fn test_multi_model_soak_24h_vector_queries() {
         let config = default_multi_model_config(60);
         let report = run_multi_model_soak(&config);
-        let vector_stats = report.workload_stats.get(&WorkloadType::VectorSearch).unwrap();
-        assert!(vector_stats.executed > 0, "Vector queries should be executed");
+        let vector_stats = report
+            .workload_stats
+            .get(&WorkloadType::VectorSearch)
+            .unwrap();
+        assert!(
+            vector_stats.executed > 0,
+            "Vector queries should be executed"
+        );
     }
 
     // --------------------------------------------------------------------
@@ -419,7 +427,10 @@ mod multi_model_soak_tests {
     fn test_multi_model_soak_72h_graph_queries() {
         let config = default_multi_model_config(180);
         let report = run_multi_model_soak(&config);
-        let graph_stats = report.workload_stats.get(&WorkloadType::GraphTraversal).unwrap();
+        let graph_stats = report
+            .workload_stats
+            .get(&WorkloadType::GraphTraversal)
+            .unwrap();
         assert!(graph_stats.executed > 0, "Graph queries should be executed");
     }
 
@@ -440,8 +451,14 @@ mod multi_model_soak_tests {
     fn test_multi_model_soak_168h_cross_model_queries() {
         let config = default_multi_model_config(420);
         let report = run_multi_model_soak(&config);
-        let cross_stats = report.workload_stats.get(&WorkloadType::CrossModelTx).unwrap();
-        assert!(cross_stats.executed > 0, "Cross-model queries should be executed");
+        let cross_stats = report
+            .workload_stats
+            .get(&WorkloadType::CrossModelTx)
+            .unwrap();
+        assert!(
+            cross_stats.executed > 0,
+            "Cross-model queries should be executed"
+        );
     }
 
     #[test]
@@ -459,14 +476,20 @@ mod multi_model_soak_tests {
     fn test_multi_model_soak_168h_no_crashes() {
         let config = default_multi_model_config(420);
         let report = run_multi_model_soak(&config);
-        assert_eq!(report.crash_incidents, 0, "No crash incidents in healthy SOAK");
+        assert_eq!(
+            report.crash_incidents, 0,
+            "No crash incidents in healthy SOAK"
+        );
     }
 
     #[test]
     fn test_multi_model_soak_168h_no_consistency_violations() {
         let config = default_multi_model_config(420);
         let report = run_multi_model_soak(&config);
-        assert_eq!(report.consistency_violations, 0, "No consistency violations");
+        assert_eq!(
+            report.consistency_violations, 0,
+            "No consistency violations"
+        );
     }
 
     // --------------------------------------------------------------------
@@ -477,14 +500,20 @@ mod multi_model_soak_tests {
     fn test_multi_model_soak_p50_latency() {
         let config = default_multi_model_config(60);
         let report = run_multi_model_soak(&config);
-        assert!(report.base_report.p50_latency_ms > 0.0, "P50 should be recorded");
+        assert!(
+            report.base_report.p50_latency_ms > 0.0,
+            "P50 should be recorded"
+        );
     }
 
     #[test]
     fn test_multi_model_soak_p99_latency() {
         let config = default_multi_model_config(60);
         let report = run_multi_model_soak(&config);
-        assert!(report.base_report.p99_latency_ms > 0.0, "P99 should be recorded");
+        assert!(
+            report.base_report.p99_latency_ms > 0.0,
+            "P99 should be recorded"
+        );
         assert!(
             report.base_report.p99_latency_ms >= report.base_report.p50_latency_ms,
             "P99 >= P50"
@@ -496,7 +525,10 @@ mod multi_model_soak_tests {
         let config = default_multi_model_config(60);
         let report = run_multi_model_soak(&config);
         let sql_stats = report.workload_stats.get(&WorkloadType::SqlOltp).unwrap();
-        let vector_stats = report.workload_stats.get(&WorkloadType::VectorSearch).unwrap();
+        let vector_stats = report
+            .workload_stats
+            .get(&WorkloadType::VectorSearch)
+            .unwrap();
         if vector_stats.executed > 0 && sql_stats.executed > 0 {
             assert!(
                 vector_stats.p99_latency_ms >= sql_stats.p99_latency_ms,
@@ -509,7 +541,10 @@ mod multi_model_soak_tests {
     fn test_multi_model_soak_cross_model_latency_highest() {
         let config = default_multi_model_config(60);
         let report = run_multi_model_soak(&config);
-        let cross_stats = report.workload_stats.get(&WorkloadType::CrossModelTx).unwrap();
+        let cross_stats = report
+            .workload_stats
+            .get(&WorkloadType::CrossModelTx)
+            .unwrap();
         if cross_stats.executed > 0 {
             let mut max_latency: f64 = 0.0;
             for stats in report.workload_stats.values() {

@@ -11,9 +11,7 @@
 //! - TPC-H regression baseline verified
 //! - Performance metrics tracked
 
-use sqlrustgo_gmp::{
-    cosine_similarity, generate_embedding, GmpExecutor,
-};
+use sqlrustgo_gmp::{cosine_similarity, generate_embedding, GmpExecutor};
 use sqlrustgo_storage::MemoryStorage;
 use std::sync::{Arc, RwLock};
 
@@ -58,12 +56,7 @@ mod document_lifecycle_tests {
         let executor = default_executor();
 
         let doc_id = executor
-            .import_document(
-                "Version Test",
-                "CLAUSE",
-                "Version 1.0",
-                &["version"],
-            )
+            .import_document("Version Test", "CLAUSE", "Version 1.0", &["version"])
             .unwrap();
 
         let doc_id_v2 = executor
@@ -243,12 +236,7 @@ mod vector_search_tests {
         let executor = default_executor();
 
         executor
-            .import_document(
-                "Apple Document",
-                "REPORT",
-                "Apple content",
-                &["apple"],
-            )
+            .import_document("Apple Document", "REPORT", "Apple content", &["apple"])
             .unwrap();
 
         let results = executor.search("xyznonexistent123", 5).unwrap();
@@ -493,9 +481,7 @@ mod regression_tests {
         let results = executor.search("apple", 5).unwrap();
         assert!(!results.is_empty());
 
-        let apple_found = results
-            .iter()
-            .any(|r| r.doc_id > 0 && r.similarity > 0.0);
+        let apple_found = results.iter().any(|r| r.doc_id > 0 && r.similarity > 0.0);
         assert!(apple_found, "Should find Apple documents");
     }
 
@@ -611,12 +597,7 @@ mod integration_tests {
         let executor = default_executor();
 
         executor
-            .import_document(
-                "Apple Document",
-                "REPORT",
-                "Apple content",
-                &["apple"],
-            )
+            .import_document("Apple Document", "REPORT", "Apple content", &["apple"])
             .unwrap();
 
         // Search for something that exists

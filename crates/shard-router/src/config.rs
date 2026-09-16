@@ -10,7 +10,10 @@ use std::path::PathBuf;
 /// from a service registry, but for v4.0.0 POC scope we accept
 /// inline config.
 #[derive(Debug, Clone, Parser)]
-#[command(name = "sqlrustgo-shard-router", about = "MySQL-protocol shard router for sqlrustgo")]
+#[command(
+    name = "sqlrustgo-shard-router",
+    about = "MySQL-protocol shard router for sqlrustgo"
+)]
 pub struct ShardRouterConfig {
     /// Address to bind the router to (e.g. 0.0.0.0:3306).
     #[arg(long, env = "SHARD_ROUTER_LISTEN")]

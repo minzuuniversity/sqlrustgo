@@ -5,8 +5,8 @@
 //! parser layer (`parser_ext`), not here.
 
 use std::io;
-use std::sync::Arc;
 use std::sync::atomic::{AtomicU64, Ordering};
+use std::sync::Arc;
 
 use crate::config::ShardRouterConfig;
 

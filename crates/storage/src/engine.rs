@@ -942,12 +942,7 @@ pub trait StorageEngine: Send + Sync {
     /// in primary-key order. Default implementation falls back to a
     /// full scan + filter; engines that have a real PK index override
     /// it.
-    fn scan_pk_range(
-        &self,
-        table: &str,
-        low: &Value,
-        high: &Value,
-    ) -> SqlResult<Vec<Record>> {
+    fn scan_pk_range(&self, table: &str, low: &Value, high: &Value) -> SqlResult<Vec<Record>> {
         let low = low.clone();
         let high = high.clone();
         Ok(self
