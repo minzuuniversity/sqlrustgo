@@ -1243,6 +1243,14 @@ impl<S: StorageEngine + 'static, T: WalManager + 'static> StorageEngine for WalS
         self
     }
 
+    fn gc(&self, gc_lag: u64) -> usize {
+        // Route to the inner engine's gc (e.g. MvccStorage::gc).
+        // `self.inner()` returns `&S`; we can call the trait method
+        // on it via UFCS.
+        use crate::engine::StorageEngine;
+        StorageEngine::gc(self.inner(), gc_lag)
+    }
+
     fn as_any_mut(&mut self) -> &mut dyn Any {
         self
     }
@@ -1732,7 +1740,12 @@ mod tests {
             fn as_any(&self) -> &dyn std::any::Any {
                 self
             }
-            fn as_any_mut(&mut self) -> &mut dyn std::any::Any {
+        
+    fn gc(&self, _gc_lag: u64) -> usize {
+        0
+    }
+
+    fn as_any_mut(&mut self) -> &mut dyn std::any::Any {
                 self
             }
         }

@@ -6362,6 +6362,22 @@ pub(crate) fn run_server_with_listener_and_shutdown_with_bootstrap_tables_and_sq
             }
         }
     }
+    // V400-MVCC-GC: start the MVCC background GC runner. Without this,
+    // every INSERT/UPDATE/DELETE adds a new version to the per-table
+    // MVCC chain with no reclamation, leading to unbounded RSS growth
+    // (observed: 30 MB/s in the v4.0.0 SOAK). The runner reclaims
+    // versions older than `gc_lag` every `interval` seconds.
+    //
+    // We don't actually need to keep the handle — it lives for the
+    // server's lifetime and is dropped on shutdown. But we have to
+    // assign it to a binding so the thread isn't dropped prematurely.
+    let _mvcc_gc = sqlrustgo_storage::MvccGCRunner::start(
+        storage.clone(),
+        sqlrustgo_storage::MvccGCRunnerConfig::default(),
+    );
+    tracing::info!(
+        "MVCC GC background thread started (interval=5s, gc_lag=1000)"
+    );
     let mut user_store = UserStore::new();
     if let Some(bs) = bootstrap {
         bs(&mut user_store);

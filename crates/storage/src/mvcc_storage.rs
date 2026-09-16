@@ -481,6 +481,11 @@ impl<S: StorageEngine + 'static> StorageEngine for MvccStorage<S> {
     fn drop_trigger(&mut self, name: &str) -> SqlResult<()> {
         self.inner.drop_trigger(name)
     }
+
+    fn gc(&self, gc_lag: u64) -> usize {
+        // Delegate to the inherent `gc` method on `MvccStorage`.
+        MvccStorage::gc(self, gc_lag)
+    }
 }
 
 #[cfg(test)]

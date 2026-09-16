@@ -58,6 +58,20 @@ impl<S: StorageEngine + 'static, W: WalManager + 'static> ParallelWalStorage<S, 
         }
     }
 
+    /// Run garbage collection on the inner storage engine. This
+    /// delegates to the inner's own `gc()` method (e.g. MvccStorage
+    /// reclaims old version chains). Returns the number of stale
+    /// entries reclaimed.
+    ///
+    /// The caller is responsible for invoking this periodically from a
+    /// background thread (see `MvccGCRunner`). This method takes
+    /// `&self`, so it is safe to call concurrently with normal
+    /// read/write traffic.
+    pub fn gc(&self, gc_lag: u64) -> usize {
+        use crate::engine::StorageEngine;
+        StorageEngine::gc(&self.inner, gc_lag)
+    }
+
     pub fn set_sync_mode(&mut self, mode: WalSyncMode) {
         self.sync_mode = mode;
     }
@@ -266,6 +280,13 @@ impl<S: StorageEngine + 'static, W: WalManager + 'static> StorageEngine
 
     fn as_any_mut(&mut self) -> &mut dyn Any {
         self
+    }
+
+    fn gc(&self, gc_lag: u64) -> usize {
+        // Route to the inherent `pub fn gc` which forwards to the
+        // inner engine. Without this override, the trait default
+        // returns 0 and MVCC GC never runs.
+        ParallelWalStorage::gc(self, gc_lag)
     }
 }
 
