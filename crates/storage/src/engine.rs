@@ -1089,6 +1089,15 @@ pub trait StorageEngine: Send + Sync {
     /// Create a table
     fn create_table(&mut self, info: &TableInfo) -> SqlResult<()>;
 
+    /// V400-02 / Issue #3730 (V4): mark a table as a vector storage
+    /// path so the WAL layer's `entry_type_for_table` heuristic can
+    /// route row DML into the vector WAL entry types. No-op by
+    /// default; the default `MemoryStorage` ignores this so unit
+    /// tests that don't care about vector WAL routing still pass.
+    /// The actual `VectorStore::register_column` binding is owned
+    /// by the recovery engine (V5) and is a follow-up commit.
+    fn mark_vector_table(&mut self, _table: &str) {}
+
     /// Drop a table
     fn drop_table(&mut self, table: &str) -> SqlResult<()>;
 
