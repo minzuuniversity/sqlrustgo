@@ -41,6 +41,19 @@ pub enum WalSyncMode {
     Batch(u32),
     /// No sync at all (fastest, no durability guarantee)
     Off,
+    /// Group commit: coalesce up to `max_batch` concurrent commits into
+    /// a single fsync, or force-sync after `max_wait_us` microseconds.
+    /// Trades durability (up to `max_batch - 1` tx loss on crash) for
+    /// throughput. See `crates/storage/src/wal/group_commit.rs`.
+    ///
+    /// The fields are ignored on the `WalStorage` path (the
+    /// `ParallelWalStorage` path uses them). To activate group commit,
+    /// use `ParallelWalStorage::set_group_commit(coordinator)` after
+    /// construction.
+    GroupCommit {
+        max_batch: u32,
+        max_wait_us: u64,
+    },
 }
 
 pub struct WalStorage<S: StorageEngine, T: WalManager> {
@@ -855,6 +868,12 @@ impl<S: StorageEngine + 'static, T: WalManager + 'static> StorageEngine for WalS
                     }
                 }
                 WalSyncMode::Every => {
+                    self.wal.lock().sync()?;
+                }
+                WalSyncMode::GroupCommit { .. } => {
+                    // WalStorage path doesn't install a coordinator;
+                    // fall back to every-tx fsync for safety. Use the
+                    // ParallelWalStorage path for actual group commit.
                     self.wal.lock().sync()?;
                 }
             }
