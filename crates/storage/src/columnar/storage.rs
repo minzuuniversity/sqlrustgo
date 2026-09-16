@@ -947,6 +947,11 @@ impl StorageEngine for ColumnarStorage {
         result
     }
 
+
+    fn gc(&self, _gc_lag: u64) -> usize {
+        0
+    }
+
     fn as_any(&self) -> &dyn Any {
         self
     }
