@@ -204,7 +204,7 @@ mod test_4676_math_functions {
         let sql = "SELECT LN(-1)";
         // Should return NULL or error for invalid input
         // LN of negative is undefined
-        let expected = None; // or error
+        let expected: Option<f64> = None; // or error
         assert_eq!(expected, None);
     }
 
@@ -242,7 +242,7 @@ mod test_4676_math_functions {
     fn test_sqrt_negative() {
         let sql = "SELECT SQRT(-1)";
         // Should return NULL or error
-        let expected = None; // or error
+        let expected: Option<f64> = None; // or error
         assert_eq!(expected, None);
     }
 }
