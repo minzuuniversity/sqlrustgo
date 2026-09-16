@@ -39,8 +39,12 @@ pub async fn run(
     config: ShardRouterConfig,
     cancel: CancellationToken,
 ) -> std::io::Result<std::net::SocketAddr> {
-    let bind_addr: std::net::SocketAddr = config.listen_addr.parse()
-        .map_err(|e| std::io::Error::new(std::io::ErrorKind::InvalidInput, format!("listen_addr parse: {e}")))?;
+    let bind_addr: std::net::SocketAddr = config.listen_addr.parse().map_err(|e| {
+        std::io::Error::new(
+            std::io::ErrorKind::InvalidInput,
+            format!("listen_addr parse: {e}"),
+        )
+    })?;
     let listener = TcpListener::bind(bind_addr).await?;
     let local_addr = listener.local_addr()?;
     let shards = Arc::new(ShardSet::from_config(&config)?);

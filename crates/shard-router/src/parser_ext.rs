@@ -94,12 +94,13 @@ pub fn route_statement(stmt: &Statement, num_shards: usize) -> RoutingDecision {
             },
             PartitionKey::None => RoutingDecision::Broadcast,
         },
-        Statement::Update(_) | Statement::Delete(_) => match extract_partition_key(stmt, num_shards)
-        {
-            PartitionKey::Bytes(b) => RoutingDecision::Single {
-                shard_index: crate::hash::shard_index_for(&b, num_shards),
-            },
-            PartitionKey::None => RoutingDecision::Broadcast,
+        Statement::Update(_) | Statement::Delete(_) => {
+            match extract_partition_key(stmt, num_shards) {
+                PartitionKey::Bytes(b) => RoutingDecision::Single {
+                    shard_index: crate::hash::shard_index_for(&b, num_shards),
+                },
+                PartitionKey::None => RoutingDecision::Broadcast,
+            }
         }
 
         // Other variants — route to a single shard (round-robin at

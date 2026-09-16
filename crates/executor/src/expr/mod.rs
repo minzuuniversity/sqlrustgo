@@ -1127,9 +1127,7 @@ fn eq_cross(left: &Value, right: &Value) -> bool {
     // is still documented but not yet wired up; re-evaluate if a
     // downstream user reports a real BINARY-needs-trailing-space case.
     let eq = match (left, right) {
-        (Value::Text(a), Value::Text(b)) => {
-                    a.trim_end() == b.trim_end()
-        },
+        (Value::Text(a), Value::Text(b)) => a.trim_end() == b.trim_end(),
         _ => left == right,
     };
     if eq {

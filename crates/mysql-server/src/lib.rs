@@ -214,26 +214,19 @@ static CONNECTION_REGISTRY: std::sync::LazyLock<
     parking_lot::RwLock<
         std::collections::HashMap<u64, (ConnectionTracker, std::sync::Weak<std::net::TcpStream>)>,
     >,
-> = std::sync::LazyLock::new(|| {
-    parking_lot::RwLock::new(std::collections::HashMap::new())
-});
+> = std::sync::LazyLock::new(|| parking_lot::RwLock::new(std::collections::HashMap::new()));
 
-static CONNECTION_NEXT_ID: std::sync::atomic::AtomicU64 =
-    std::sync::atomic::AtomicU64::new(1);
+static CONNECTION_NEXT_ID: std::sync::atomic::AtomicU64 = std::sync::atomic::AtomicU64::new(1);
 
 /// v3.12.0 Issue #4682: register a freshly-accepted connection.
 /// Returns the assigned `conn_id`. Caller is responsible for
 /// calling `deregister_connection(conn_id)` on exit.
-pub fn register_connection(
-    stream: std::sync::Arc<std::net::TcpStream>,
-) -> u64 {
-    let conn_id =
-        CONNECTION_NEXT_ID.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
+pub fn register_connection(stream: std::sync::Arc<std::net::TcpStream>) -> u64 {
+    let conn_id = CONNECTION_NEXT_ID.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
     let weak = std::sync::Arc::downgrade(&stream);
-    CONNECTION_REGISTRY.write().insert(
-        conn_id,
-        (ConnectionTracker::new(), weak),
-    );
+    CONNECTION_REGISTRY
+        .write()
+        .insert(conn_id, (ConnectionTracker::new(), weak));
     conn_id
 }
 
@@ -303,10 +296,7 @@ pub fn spawn_idle_connection_reaper() {
                     }
                 });
                 if reaped > 0 {
-                    tracing::info!(
-                        "idle-reaper: reaped {} connections this cycle",
-                        reaped
-                    );
+                    tracing::info!("idle-reaper: reaped {} connections this cycle", reaped);
                 }
             }
         })
@@ -446,7 +436,10 @@ mod helpers_tests {
     #[test]
     fn connection_tracker_idle_secs_starts_at_zero() {
         let tracker = ConnectionTracker::new();
-        assert!(tracker.idle_secs() <= 1, "fresh tracker should be near-zero idle");
+        assert!(
+            tracker.idle_secs() <= 1,
+            "fresh tracker should be near-zero idle"
+        );
     }
 
     #[test]
@@ -5588,7 +5581,7 @@ fn handle_connection(
     });
     stream
         .set_read_timeout(Some(std::time::Duration::from_secs(
-            read_idle_timeout_secs()
+            read_idle_timeout_secs(),
         )))
         .ok();
     let cid = register_connection(Arc::new(stream.try_clone().unwrap()));

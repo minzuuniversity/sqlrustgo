@@ -22,8 +22,7 @@ use crate::engine::{
     ColumnDefinition, Record, RowFilter, RowMutation, SqlResult, StorageEngine, TableInfo,
     TriggerInfo, Value,
 };
-use crate::mvcc::{find_visible, VersionedRow, VersionedTable};
-use sqlrustgo_types::SqlError;
+use crate::mvcc::{find_visible, VersionedTable};
 use std::any::Any;
 use std::collections::HashMap;
 use std::sync::Arc;
@@ -174,12 +173,7 @@ impl<S: StorageEngine + 'static> StorageEngine for MvccStorage<S> {
     /// visible rows whose primary key falls in `low..=high` (inclusive),
     /// in primary-key order. Uses MVCC chains for visibility check;
     /// falls back to the inner engine for the rebuild-lag case.
-    fn scan_pk_range(
-        &self,
-        table: &str,
-        low: &Value,
-        high: &Value,
-    ) -> SqlResult<Vec<Record>> {
+    fn scan_pk_range(&self, table: &str, low: &Value, high: &Value) -> SqlResult<Vec<Record>> {
         use std::ops::Bound;
         let mvcc = self.mvcc_table(table);
         let snapshot_ts = mvcc.begin_snapshot();
@@ -506,7 +500,15 @@ mod tests {
         );
         let pks: Vec<i64> = after
             .iter()
-            .filter_map(|r| r.first().and_then(|v| if let Value::Integer(i) = v { Some(*i) } else { None }))
+            .filter_map(|r| {
+                r.first().and_then(|v| {
+                    if let Value::Integer(i) = v {
+                        Some(*i)
+                    } else {
+                        None
+                    }
+                })
+            })
             .collect();
         assert!(pks.contains(&1));
         assert!(pks.contains(&3));

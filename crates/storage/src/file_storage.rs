@@ -394,7 +394,7 @@ impl FileStorage {
     /// RwLock is gone and these inherent methods need a different
     /// design (likely direct `UnsafeCell<...>` fields). This helper
     /// is then deleted.
-    #[allow(invalid_reference_casting)]
+    #[allow(invalid_reference_casting, clippy::mut_from_ref)]
     fn as_mut_self(&self) -> &mut Self {
         // SAFETY: see method doc-comment. The two call-site
         // categories enumerated there uphold the aliasing invariant.
@@ -3317,7 +3317,7 @@ impl StorageEngine for FileStorage {
         // Phase D.1: `pk_column` is now an explicit parameter
         // (previously hard-coded to `"id"`, which broke lookup on any
         // table whose PK column had a different name).
-        if let Some(info) = self.get_table_info(table).ok() {
+        if let Ok(info) = self.get_table_info(table) {
             if info.columns.iter().any(|c| c.primary_key) {
                 let rows = self.scan_with_index(table, pk_column, pk)?;
                 if !rows.is_empty() {
@@ -3327,11 +3327,10 @@ impl StorageEngine for FileStorage {
             }
         }
         // Fallback: full scan.
-        let pk = pk.clone();
         Ok(self
             .scan(table)?
             .into_iter()
-            .find(|row| row.first() == Some(&pk)))
+            .find(|row| row.first() == Some(pk)))
     }
 
     fn scan_with_index(
@@ -3781,7 +3780,7 @@ impl StorageEngine for FileStorage {
     // declaration, same name). Rust's `unconditional_recursion` lint
     // sees `self.method()` and flags it as recursive without doing
     // trait-vs-inherent dispatch analysis — false positive here.
-    #[allow(unconditional_recursion)]
+    #[allow(unconditional_recursion, clippy::only_used_in_recursion)]
     fn drop_table(&mut self, table: &str) -> SqlResult<()> {
         self.drop_table(table)
             .map_err(|e| SqlError::ExecutionError(e.to_string()))?;
@@ -4137,12 +4136,7 @@ impl StorageEngine for FileStorage {
     // via save_table (the default-trait impl in engine.rs:1033
     // returns "rename_column not supported" which broke the v3.12.0
     // GA CLI batch mode for `ALTER TABLE ... RENAME COLUMN`).
-    fn rename_column(
-        &mut self,
-        table: &str,
-        old_name: &str,
-        new_name: &str,
-    ) -> SqlResult<()> {
+    fn rename_column(&mut self, table: &str, old_name: &str, new_name: &str) -> SqlResult<()> {
         let table_data = self
             .tables
             .get_mut(table)
