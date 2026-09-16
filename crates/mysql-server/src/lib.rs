@@ -153,10 +153,21 @@ impl ConnectionTracker {
     }
 }
 
+impl Default for ConnectionTracker {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
 /// v3.10.0 Issue #3703: build an `ExecutionEngine` with intra-query
 /// parallelism pre-configured from the CLI flag / env var. Centralizes
 /// the wiring so all engine construction sites pick up parallelism
 /// uniformly.
+/// Hold the connection-id side-effect out of the `Packet::read_from`
+/// match so clippy's `question_mark` lint accepts it. The touch is
+/// intentionally fired only after a *successful* read; an I/O
+/// error must not refresh the idle timestamp (that would let a
+/// dead connection stay registered forever).
 #[allow(dead_code)]
 pub(crate) fn build_engine_with_parallelism<S: StorageEngine + 'static>(
     storage: Arc<parking_lot::RwLock<S>>,
@@ -227,11 +238,13 @@ pub fn spawn_resource_monitor(interval_s: u64) {
 /// the strong count on the `Arc<TcpStream>` drops to zero, the
 /// `Weak` here fails to upgrade, and the entry is dropped on the
 /// next reap sweep.
-static CONNECTION_REGISTRY: std::sync::LazyLock<
-    parking_lot::RwLock<
-        std::collections::HashMap<u64, (ConnectionTracker, std::sync::Weak<std::net::TcpStream>)>,
-    >,
-> = std::sync::LazyLock::new(|| parking_lot::RwLock::new(std::collections::HashMap::new()));
+/// Connection registry entry: an idle-tracker plus a `Weak<TcpStream>`
+/// so the reaper does not keep dead connections alive.
+type ConnectionRegistryEntry = (ConnectionTracker, std::sync::Weak<std::net::TcpStream>);
+type ConnectionRegistryMap = std::collections::HashMap<u64, ConnectionRegistryEntry>;
+
+static CONNECTION_REGISTRY: std::sync::LazyLock<parking_lot::RwLock<ConnectionRegistryMap>> =
+    std::sync::LazyLock::new(|| parking_lot::RwLock::new(ConnectionRegistryMap::new()));
 
 static CONNECTION_NEXT_ID: std::sync::atomic::AtomicU64 = std::sync::atomic::AtomicU64::new(1);
 
@@ -328,6 +341,9 @@ mod helpers_tests {
 
     #[test]
     fn read_executor_parallelism_defaults_to_one() {
+        let _guard = super::utilities_tests::ENV_LOCK
+            .lock()
+            .unwrap_or_else(|e| e.into_inner());
         let prev = std::env::var("SQLRUSTGO_EXECUTOR_PARALLELISM").ok();
         std::env::remove_var("SQLRUSTGO_EXECUTOR_PARALLELISM");
         assert_eq!(read_executor_parallelism(), 1);
@@ -665,7 +681,7 @@ mod utilities_tests {
     /// `SQLRUSTGO_AUTH_MODE`. Without this guard, the default
     /// cargo test parallelism races the env-var reads/writes and
     /// produces false negatives (issue #4690, fix v3.12.0 RC).
-    static ENV_LOCK: std::sync::Mutex<()> = std::sync::Mutex::new(());
+    pub(crate) static ENV_LOCK: std::sync::Mutex<()> = std::sync::Mutex::new(());
 
     // ---------- build_engine_with_parallelism ----------
 
@@ -896,11 +912,16 @@ fn read_fd_limit() -> (usize, usize) {
 }
 
 fn list_threads() -> usize {
-    let mut count = 0;
+    // Linux: count entries under /proc/self/task (each thread has a TID).
     if let Ok(entries) = std::fs::read_dir("/proc/self/task") {
-        count = entries.count();
+        return entries.count();
     }
-    count
+    // macOS / BSD: /proc/self/task does not exist. Fall back to the
+    // runtime hint + at least the main thread.
+    let n = std::thread::available_parallelism()
+        .map(|n| n.get())
+        .unwrap_or(1);
+    std::cmp::max(1, n)
 }
 #[allow(dead_code)]
 const AUTH_PLUGIN: &str = "mysql_native_password";
@@ -4825,10 +4846,16 @@ fn do_command_loop<S: Read + Write + DrainWrites>(
     config: &crate::testing::EphemeralConfig,
 ) -> MySqlResult<()> {
     loop {
+        // v3.12.0 Issue #4682: refresh the idle-reaper timestamp on
+        // every successful read. The touch must happen AFTER a
+        // successful read, so we read the packet first and only touch
+        // if the read succeeded. clippy's `question_mark` would
+        // skip the touch on read failure and falsely report a
+        // connection as idle; the explicit `match` preserves
+        // the side-effect ordering.
+        #[allow(clippy::question_mark)]
         let pkt = match Packet::read_from(stream) {
             Ok(p) => {
-                // v3.12.0 Issue #4682: refresh the idle-reaper
-                // timestamp on every successful read.
                 CURRENT_CONN_ID.with(|c| {
                     let cid = c.get();
                     if cid != 0 {
