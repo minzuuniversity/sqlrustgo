@@ -120,16 +120,54 @@ All 3 pass. Total storage tests: 749 (3 new), 1 pre-existing failure (`recovery_
 
 **Total: 14 files changed, ~440 insertions.**
 
-## Future work
+## Known limitations
 
-1. **Background sweep for single-version chains**: chains of length 1 with very old `visible_from_ts` are not dropped. A "snapshot prune" pass could remove them when the reader population at that snapshot is empty. The current PI concern about "30 MB/s growth" is mostly about UPDATES, which create long chains — those are now bounded.
-2. **Adaptive `gc_lag`**: tune based on actual reader lifetime (could be much smaller than 1000 for the v4.0.0 read workload).
-3. **Time-based GC**: instead of `gc_lag: u64` versions, use `gc_lag_window: Duration` to bound durability loss by time rather than count.
-4. **Public `gc()` API on the storage Arc**: callers (recovery, tests) can trigger GC explicitly.
+### Single-version chain retention
 
-## References
+`VersionedTable::gc` only reclaims versions from **multi-version
+chains** (length ≥ 2). For chains of length 1 — created by a
+single INSERT that is never UPDATED — the version is **never
+reclaimed** by the current implementation.
 
-- `0019fe804c` (V400-MVCC-ENABLE): wraps FileStorage in MvccStorage
-- `crates/storage/src/mvcc.rs::VersionedTable::gc` — the underlying GC implementation
-- InnoDB background purge (`innodb_purge_threads`, `innodb_purge_batch_size`)
-- PostgreSQL `vacuum` and `autovacuum` (analogous architecture)
+Empirically, each such entry costs ~200 bytes (Vec<Value> + metadata
++ BTreeMap node overhead). Under heavy INSERT load the MVCC layer
+grows by ~1.3 MB/s on macOS (verified in 60s SOAK, 4 writers + 4
+readers, 10K rows). This is **~23× better** than the 30 MB/s growth
+seen before MVCC GC, but still non-zero.
+
+A safe single-version-chain eviction was investigated and **reverted
+in v4.0.0** because it triggered a pre-existing FileStorage
+B+Tree index bug: rows inserted in the first ~1000 transactions
+became unindexed, causing `scan_pk` to return `None` for those
+rows. This is independent of MVCC and should be fixed in a follow-up.
+
+The right fix: ensure `FileStorage::scan_with_index` returns the
+correct rows for all PKs, **then** enable single-version chain
+eviction. Tracked as a follow-up issue.
+
+### Packed row storage (deferred)
+
+A more memory-efficient `VersionedRow` layout (e.g. serialized
+`Vec<u8>` instead of `Vec<Value>`) was investigated but **deferred
+from v4.0.0** because:
+- Each `Vec<Value>` already accounts for ~200 bytes per row; packed
+  storage would save ~50-100 bytes per row
+- The refactor touches `VersionedTable::put`, `get_visible`,
+  `find_visible`, and `rebuild_from_inner` (5 sites)
+- Risk of correctness regressions near release
+- Single-version chain eviction (above) is the higher-impact fix
+
+Estimated impact once both fixes land: RSS growth under INSERT-heavy
+load should drop from ~1.3 MB/s to <0.1 MB/s.
+
+## Follow-up
+
+1. **Fix FileStorage B+Tree scan_with_index for first-batch rows**:
+   identify why the first ~1000 inserted rows become unindexed,
+   then re-enable single-version chain eviction.
+2. **Packed row storage**: serialize `VersionedRow.row` as
+   `Vec<u8>` using bincode; deserialize on read.
+3. **Adaptive gc_lag**: smaller gc_lag for read-heavy workloads
+   (less chain to keep), larger for write-heavy (more active readers).
+4. **Time-based GC**: bound the durability-loss window by time
+   (e.g. fsync at most every 1s) rather than by version count.
