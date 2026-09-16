@@ -196,6 +196,10 @@ impl<S: StorageEngine + 'static> ExecutionEngine<S> {
                 original_sql,
             };
             storage.create_table(&info)?;
+            // V400-02 (V4): see top-level hook.
+            if create.name.starts_with("vec_") {
+                storage.mark_vector_table(&create.name);
+            }
 
             // Insert rows from SELECT result
             let insert_count = if !select_result.rows.is_empty() {
@@ -386,6 +390,23 @@ impl<S: StorageEngine + 'static> ExecutionEngine<S> {
             return Ok(ExecutorResult::empty());
         }
         storage.create_table(&info)?;
+        // V400-02 / Issue #3730 (V4): when the new table name
+        // follows the `vec_` convention used by
+        // `crates/vector::VectorStore::register_column`, mark it
+        // as a vector storage path. The actual `VectorStore`
+        // binding is owned by the recovery engine (V5), but
+        // `StorageEngine::is_vector_table` is the dispatch hook the
+        // insert / delete paths query at runtime (see V3
+        // `entry_type_for_table`).
+        //
+        // Minimal-storage-shape contract: a table whose name starts
+        // with `vec_` is recognised as a vector table by the WAL
+        // layer, and the row-DML insert / delete paths emit
+        // `VectorInsert` / `VectorDelete` WAL entries instead of the
+        // SQL DML `Insert` / `Delete` entries.
+        if info.name.starts_with("vec_") {
+            storage.mark_vector_table(&info.name);
+        }
         Ok(ExecutorResult::empty())
     }
 
