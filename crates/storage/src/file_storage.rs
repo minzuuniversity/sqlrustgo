@@ -3323,7 +3323,12 @@ impl StorageEngine for FileStorage {
                 if !rows.is_empty() {
                     return Ok(rows.into_iter().next());
                 }
-                return Ok(None);
+                // V400-MVCC-PKFAST: B+Tree lookup returned empty.
+                // This can mean either (a) no such PK in the table,
+                // or (b) the table has a PK column but no B+Tree
+                // index was ever created. In case (b) the row might
+                // still exist in `data.rows` — fall through to the
+                // full-scan fallback below to find it.
             }
         }
         // Fallback: full scan.

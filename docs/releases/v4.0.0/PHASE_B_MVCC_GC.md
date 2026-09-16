@@ -248,6 +248,55 @@ are exercised. No data loss observed under this workload.
 0019fe804c feat(v4.0.0): enable MVCC in production server
 ```
 
+
+## Data integrity fix (2026-09-16, round 2)
+
+After a 10-min SOAK revealed that GC eviction was silently dropping
+rows from the MVCC layer (visible to readers), two fixes landed:
+
+### Bug 1: FileStorage::scan_pk returned None when B+Tree was empty
+
+When a table has a PK column but no `CREATE INDEX`, `scan_with_index`
+returns an empty `Vec`. The previous code did `return Ok(None)` in
+that case — but the row might still exist in `data.rows`. Fix:
+fall through to the full-scan fallback instead of returning None.
+
+### Bug 2: MvccStorage::scan / scan_with_filter did not consult inner
+
+The MVCC layer maintains version chains. When background GC evicts
+chains (to bound memory), `MvccStorage::scan` would return only the
+remaining chain rows — silently losing the GC'd rows from the
+reader's perspective. The data was still in `inner.data.rows` (the
+underlying FileStorage), but the MVCC scan never looked there.
+
+Fix: `MvccStorage::scan` and `scan_with_filter` now merge
+`inner.scan()` results, deduplicating by PK (MVCC version wins).
+
+### Trade-off: scan performance
+
+The fix uses O(N) full scans as a fallback. For tables without a
+B+Tree index, every PK lookup becomes O(N). The 10-min SOAK shows
+throughput drops from ~150k writes/min to ~12k writes/min under the
+same workload. For the v4.0.0 POC this is acceptable; a follow-up
+should auto-populate the B+Tree on insert (see Limitations #2 in
+this document).
+
+### Verified 10-min SOAK (2 writers + 4 readers)
+
+| Metric | Before fix | After fix |
+|---|---|---|
+| Writes | 922,491 | 75,273 |
+| Reads | 1,182,085 | 101,212 |
+| Errors (write side) | 0 | 0 |
+| Final COUNT | 6,899 (data loss) | **76,273 (correct)** |
+| Final PK 0 | None (data loss) | **'0' (correct)** |
+| RSS growth | 4.93 MB/s | **0.33 MB/s** |
+| Max RSS | 2.6 GB | 349 MB |
+
+The throughput drop is the cost of correct data visibility under
+GC eviction; users who need higher PK-lookup throughput should
+add `CREATE INDEX` to enable the B+Tree fast path.
+
 ### References
 
 - `crates/storage/src/mvcc_gc.rs` — background runner
