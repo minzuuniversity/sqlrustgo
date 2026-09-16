@@ -23,6 +23,7 @@ pub mod file_storage;
 pub mod file_table;
 pub mod io_delay;
 pub mod mvcc;
+pub mod mvcc_gc;
 pub mod mvcc_storage;
 pub mod parallel_wal_storage;
 pub mod table_engine;
@@ -61,6 +62,7 @@ pub use engine::{
 };
 pub use file_storage::FileStorage;
 pub use lock::{GapLock, GapLockManager, GapLockType, IsolationLevel};
+pub use mvcc_gc::{MvccGCRunner, MvccGCRunnerConfig};
 pub use mvcc_storage::MvccStorage;
 pub use page::Page;
 pub use parallel_wal_storage::ParallelWalStorage;
