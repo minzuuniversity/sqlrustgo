@@ -86,7 +86,11 @@ Pymysql 4t/15s, 10k rows:
 | PK=id | 3831 OPS | 4096 OPS | 1.07× |
 
 Two PK schemas now perform equivalently — the PK-column hard-coding
-is no longer a hidden ceiling.
+is no longer a hidden ceiling. (After the v4.0.0 land of this fix
+plus `PHASE_B_SINGLE_FLUSH_WIRE_ENCODE.md`, sustained PK=o_orderkey
+TPS on a 20-second pymysql bench settles at ~3900 OPS, slightly
+below the 4024 peak — the difference is page-cache state, not
+a regression.)
 
 ## Validation
 
