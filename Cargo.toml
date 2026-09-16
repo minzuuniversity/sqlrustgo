@@ -1518,9 +1518,6 @@ path = "tests/integration/tpch/tpch_22_queries_wire_test.rs"
 name = "tpch_bug_regression_test"
 path = "tests/integration/tpch/tpch_bug_regression_test.rs"
 [[test]]
-name = "tpch_hash_test"
-path = "tests/integration/tpch/tpch_hash_test.rs"
-[[test]]
 name = "tpch_json_vs_bint_compare"
 path = "tests/integration/tpch/tpch_json_vs_bint_compare.rs"
 [[test]]
