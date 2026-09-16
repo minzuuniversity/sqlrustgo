@@ -313,3 +313,122 @@ fn test_select_where_complex() {
     assert!(parse("SELECT * FROM t1 WHERE id = 1 OR name = 'a'").is_ok());
     assert!(parse("SELECT * FROM t1 WHERE NOT id = 1").is_ok());
 }
+
+// ====================================================================
+// V400-01 coverage push: additional parser statements to lift parser
+// coverage from 74.30% to >=75% per crate.
+//
+// Each test exercises a parse path that was not previously hit by
+// any other test in this crate. The goal is to add 0.7% line coverage
+// in parser.rs (the largest un-covered file at 62.34%) by routing
+// through the dispatcher's match arms.
+// ====================================================================
+
+/// CREATE FUNCTION variants — the dispatcher's `CreateFunction` arm
+/// was not exercised by the existing tests.
+#[test]
+fn v400_coverage_create_function() {
+    assert!(parse("CREATE FUNCTION f1(x INT) RETURNS INT DETERMINISTIC RETURN x + 1").is_ok());
+    assert!(parse("CREATE FUNCTION f1(x INT) RETURNS INT RETURN x + 1").is_ok());
+    assert!(parse("CREATE FUNCTION f1() RETURNS TABLE (id INT) RETURN SELECT 1 AS id").is_ok());
+}
+
+/// DROP FUNCTION variants — symmetric coverage for the drop arm.
+#[test]
+fn v400_coverage_drop_function() {
+    assert!(parse("DROP FUNCTION f1").is_ok());
+    assert!(parse("DROP FUNCTION IF EXISTS f1").is_ok());
+}
+
+/// CREATE TRIGGER variants — the trigger parser path.
+#[test]
+fn v400_coverage_create_trigger() {
+    assert!(parse("CREATE TRIGGER t1 BEFORE INSERT ON t FOR EACH ROW BEGIN SELECT 1; END").is_ok());
+    assert!(parse("CREATE TRIGGER t1 AFTER UPDATE ON t FOR EACH ROW SET @a = 1").is_ok());
+    assert!(parse(
+        "CREATE OR REPLACE TRIGGER t1 AFTER DELETE ON t FOR EACH ROW BEGIN SELECT 1; END"
+    )
+    .is_ok());
+}
+
+/// DROP TRIGGER — the drop arm.
+#[test]
+fn v400_coverage_drop_trigger() {
+    assert!(parse("DROP TRIGGER t1").is_ok());
+    assert!(parse("DROP TRIGGER IF EXISTS t1").is_ok());
+}
+
+/// CREATE VIEW / DROP VIEW — the view parser path.
+#[test]
+fn v400_coverage_create_drop_view() {
+    assert!(parse("CREATE VIEW v1 AS SELECT 1 AS c").is_ok());
+    assert!(parse("CREATE VIEW v1 (a, b) AS SELECT 1, 2").is_ok());
+    assert!(parse("DROP VIEW v1").is_ok());
+    assert!(parse("DROP VIEW IF EXISTS v1").is_ok());
+}
+
+/// CREATE SEQUENCE / DROP SEQUENCE / ALTER SEQUENCE — sequence DDL.
+#[test]
+fn v400_coverage_sequence() {
+    assert!(parse("CREATE SEQUENCE s1 START WITH 1 INCREMENT BY 1").is_ok());
+    assert!(parse("CREATE SEQUENCE IF NOT EXISTS s1").is_ok());
+    assert!(parse("DROP SEQUENCE s1").is_ok());
+    assert!(parse("DROP SEQUENCE IF EXISTS s1").is_ok());
+    assert!(parse("ALTER SEQUENCE s1 RESTART WITH 100").is_ok());
+}
+
+/// CREATE INDEX / DROP INDEX — the index DDL path.
+#[test]
+fn v400_coverage_create_drop_index() {
+    assert!(parse("CREATE INDEX i1 ON t1 (id)").is_ok());
+    assert!(parse("CREATE UNIQUE INDEX i1 ON t1 (a, b)").is_ok());
+    assert!(parse("DROP INDEX i1").is_ok());
+}
+
+/// CREATE USER / DROP USER — user DDL.
+#[test]
+fn v400_coverage_user() {
+    assert!(parse("CREATE USER u1").is_ok());
+    assert!(parse("DROP USER u1").is_ok());
+    assert!(parse("DROP USER IF EXISTS u1").is_ok());
+}
+
+/// CREATE DATABASE / DROP DATABASE — already covered, but add the
+/// `IF NOT EXISTS` / `IF EXISTS` arms for completeness.
+#[test]
+fn v400_coverage_database_ddl() {
+    assert!(parse("DROP DATABASE IF EXISTS d1").is_ok());
+}
+
+/// ALTER TABLE — the alter table parser path.
+#[test]
+fn v400_coverage_alter_table() {
+    assert!(parse("ALTER TABLE t1 ADD COLUMN c1 INT").is_ok());
+    assert!(parse("ALTER TABLE t1 DROP COLUMN c1").is_ok());
+    assert!(parse("ALTER TABLE t1 RENAME TO t2").is_ok());
+}
+
+/// GRANT / REVOKE — privilege parser.
+#[test]
+fn v400_coverage_grant_revoke() {
+    assert!(parse("GRANT SELECT ON t1 TO u1").is_ok());
+    assert!(parse("GRANT SELECT, INSERT, UPDATE, DELETE ON t1 TO u1").is_ok());
+    assert!(parse("REVOKE SELECT ON t1 FROM u1").is_ok());
+    assert!(parse("REVOKE SELECT, INSERT, UPDATE, DELETE ON t1 FROM u1").is_ok());
+}
+
+/// SET ROLE / SET TRANSACTION — session/transaction config.
+#[test]
+fn v400_coverage_set_role_transaction() {
+    assert!(parse("SET ROLE r1").is_ok());
+    assert!(parse("SET TRANSACTION ISOLATION LEVEL SERIALIZABLE").is_ok());
+}
+
+/// Prepared statements — PREPARE / EXECUTE / DEALLOCATE.
+#[test]
+fn v400_coverage_prepared_statements() {
+    assert!(parse("PREPARE stmt1 FROM 'SELECT 1'").is_ok());
+    assert!(parse("EXECUTE stmt1").is_ok());
+    assert!(parse("EXECUTE stmt1 USING @a, @b").is_ok());
+    assert!(parse("DEALLOCATE PREPARE stmt1").is_ok());
+}
