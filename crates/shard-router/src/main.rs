@@ -23,8 +23,10 @@ async fn main() -> std::process::ExitCode {
 
     tokio::spawn(async move {
         // SIGINT / SIGTERM -> graceful shutdown
-        let mut sigint = tokio::signal::unix::signal(tokio::signal::unix::SignalKind::interrupt()).expect("signal handler");
-        let mut sigterm = tokio::signal::unix::signal(tokio::signal::unix::SignalKind::terminate()).expect("signal handler");
+        let mut sigint = tokio::signal::unix::signal(tokio::signal::unix::SignalKind::interrupt())
+            .expect("signal handler");
+        let mut sigterm = tokio::signal::unix::signal(tokio::signal::unix::SignalKind::terminate())
+            .expect("signal handler");
         tokio::select! {
             _ = sigint.recv() => tracing::info!(target: "shard_router", "SIGINT received, shutting down"),
             _ = sigterm.recv() => tracing::info!(target: "shard_router", "SIGTERM received, shutting down"),

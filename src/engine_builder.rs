@@ -219,7 +219,8 @@ impl ExecutionEngine<MemoryStorage> {
     /// `Arc<RwLock<storage>>` read lock.
     pub fn with_wal_file(
         data_dir: PathBuf,
-    ) -> SqlResult<ExecutionEngine<WalStorage<MvccStorage<FileStorage>, FileBackedWalManager>>> {
+    ) -> SqlResult<ExecutionEngine<WalStorage<MvccStorage<FileStorage>, FileBackedWalManager>>>
+    {
         let file = FileStorage::new_with_wal(data_dir.clone())
             .map_err(|e| SqlError::ExecutionError(format!("FileStorage init failed: {}", e)))?;
         let inner = MvccStorage::new(file);
@@ -266,7 +267,8 @@ impl ExecutionEngine<MemoryStorage> {
     pub fn with_wal_and_checkpoint(
         data_dir: PathBuf,
         checkpoint_dir: PathBuf,
-    ) -> SqlResult<ExecutionEngine<WalStorage<MvccStorage<FileStorage>, FileBackedWalManager>>> {
+    ) -> SqlResult<ExecutionEngine<WalStorage<MvccStorage<FileStorage>, FileBackedWalManager>>>
+    {
         let file = FileStorage::new_with_wal(data_dir.clone())
             .map_err(|e| SqlError::ExecutionError(format!("FileStorage init failed: {}", e)))?;
         let inner = MvccStorage::new(file);
@@ -312,7 +314,8 @@ impl ExecutionEngine<MemoryStorage> {
     /// For production use with WAL persistence.
     pub fn with_wal_recovery(
         data_dir: PathBuf,
-    ) -> SqlResult<ExecutionEngine<WalStorage<MvccStorage<FileStorage>, FileBackedWalManager>>> {
+    ) -> SqlResult<ExecutionEngine<WalStorage<MvccStorage<FileStorage>, FileBackedWalManager>>>
+    {
         let mut engine = Self::with_wal_file(data_dir)?;
         // PR-842: clear in-memory rows loaded from t.json before replay so
         // the WAL is the sole source of truth. Without this the rows

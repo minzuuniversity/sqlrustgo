@@ -788,7 +788,12 @@ pub fn execute_update<S: StorageEngine + 'static>(
     // With the V4.0.0 leak fix, the full table is no longer materialised,
     // so we pass the filtered set twice (semantically equivalent: the
     // validator only logs on row-count mismatch). Tracing is unchanged.
-    ir_validate_update_filter(&rows_to_update, &table_info, &rows_to_update, &resolved_update);
+    ir_validate_update_filter(
+        &rows_to_update,
+        &table_info,
+        &rows_to_update,
+        &resolved_update,
+    );
 
     let count = rows_to_update.len();
 

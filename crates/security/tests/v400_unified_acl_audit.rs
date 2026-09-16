@@ -85,7 +85,13 @@ pub struct AclEntry {
 }
 
 impl AclEntry {
-    pub fn new(principal: PrincipalType, resource_type: ResourceType, resource_id: &str, permission: Permission, grant: bool) -> Self {
+    pub fn new(
+        principal: PrincipalType,
+        resource_type: ResourceType,
+        resource_id: &str,
+        permission: Permission,
+        grant: bool,
+    ) -> Self {
         Self {
             principal,
             resource_type,
@@ -104,30 +110,44 @@ pub struct UnifiedAcl {
 
 impl UnifiedAcl {
     pub fn new() -> Self {
-        Self { entries: Vec::new() }
+        Self {
+            entries: Vec::new(),
+        }
     }
 
     pub fn add_entry(&mut self, entry: AclEntry) {
         self.entries.push(entry);
     }
 
-    pub fn check_permission(&self, principal: &PrincipalType, resource_type: ResourceType, resource_id: &str, permission: Permission) -> bool {
+    pub fn check_permission(
+        &self,
+        principal: &PrincipalType,
+        resource_type: ResourceType,
+        resource_id: &str,
+        permission: Permission,
+    ) -> bool {
         // Check if there's a matching GRANT entry
         self.entries.iter().any(|e| {
             e.principal == *principal
-            && e.resource_type == resource_type
-            && e.resource_id == resource_id
-            && e.permission == permission
-            && e.grant
+                && e.resource_type == resource_type
+                && e.resource_id == resource_id
+                && e.permission == permission
+                && e.grant
         })
     }
 
-    pub fn revoke_permission(&mut self, principal: &PrincipalType, resource_type: ResourceType, resource_id: &str, permission: Permission) {
+    pub fn revoke_permission(
+        &mut self,
+        principal: &PrincipalType,
+        resource_type: ResourceType,
+        resource_id: &str,
+        permission: Permission,
+    ) {
         self.entries.retain(|e| {
             !(e.principal == *principal
-            && e.resource_type == resource_type
-            && e.resource_id == resource_id
-            && e.permission == permission)
+                && e.resource_type == resource_type
+                && e.resource_id == resource_id
+                && e.permission == permission)
         });
     }
 }
@@ -208,15 +228,23 @@ pub struct AuditLog {
 
 impl AuditLog {
     pub fn new() -> Self {
-        Self { entries: Vec::new(), next_id: 1 }
+        Self {
+            entries: Vec::new(),
+            next_id: 1,
+        }
     }
 
     pub fn append(&mut self, entry: AuditEntry) {
         self.entries.push(entry);
     }
 
-    pub fn query(&self, principal: Option<&str>, action: Option<AuditEntryType>) -> Vec<&AuditEntry> {
-        self.entries.iter()
+    pub fn query(
+        &self,
+        principal: Option<&str>,
+        action: Option<AuditEntryType>,
+    ) -> Vec<&AuditEntry> {
+        self.entries
+            .iter()
             .filter(|e| {
                 let matches_principal = principal.map(|p| e.principal == p).unwrap_or(true);
                 let matches_action = action.map(|a| e.action == a).unwrap_or(true);
@@ -488,9 +516,30 @@ fn audit_log_append() {
 #[test]
 fn audit_log_query_by_principal() {
     let mut log = AuditLog::new();
-    log.append(AuditEntry::new(1, "alice", AuditEntryType::Read, ResourceType::SqlTable, "t1", true));
-    log.append(AuditEntry::new(2, "bob", AuditEntryType::Write, ResourceType::SqlTable, "t2", true));
-    log.append(AuditEntry::new(3, "alice", AuditEntryType::Write, ResourceType::SqlTable, "t3", true));
+    log.append(AuditEntry::new(
+        1,
+        "alice",
+        AuditEntryType::Read,
+        ResourceType::SqlTable,
+        "t1",
+        true,
+    ));
+    log.append(AuditEntry::new(
+        2,
+        "bob",
+        AuditEntryType::Write,
+        ResourceType::SqlTable,
+        "t2",
+        true,
+    ));
+    log.append(AuditEntry::new(
+        3,
+        "alice",
+        AuditEntryType::Write,
+        ResourceType::SqlTable,
+        "t3",
+        true,
+    ));
 
     let results = log.query(Some("alice"), None);
 
@@ -500,9 +549,30 @@ fn audit_log_query_by_principal() {
 #[test]
 fn audit_log_query_by_action() {
     let mut log = AuditLog::new();
-    log.append(AuditEntry::new(1, "alice", AuditEntryType::Read, ResourceType::SqlTable, "t1", true));
-    log.append(AuditEntry::new(2, "bob", AuditEntryType::Write, ResourceType::SqlTable, "t2", true));
-    log.append(AuditEntry::new(3, "charlie", AuditEntryType::Read, ResourceType::SqlTable, "t3", true));
+    log.append(AuditEntry::new(
+        1,
+        "alice",
+        AuditEntryType::Read,
+        ResourceType::SqlTable,
+        "t1",
+        true,
+    ));
+    log.append(AuditEntry::new(
+        2,
+        "bob",
+        AuditEntryType::Write,
+        ResourceType::SqlTable,
+        "t2",
+        true,
+    ));
+    log.append(AuditEntry::new(
+        3,
+        "charlie",
+        AuditEntryType::Read,
+        ResourceType::SqlTable,
+        "t3",
+        true,
+    ));
 
     let results = log.query(None, Some(AuditEntryType::Read));
 
@@ -512,9 +582,30 @@ fn audit_log_query_by_action() {
 #[test]
 fn audit_log_query_combined() {
     let mut log = AuditLog::new();
-    log.append(AuditEntry::new(1, "alice", AuditEntryType::Read, ResourceType::SqlTable, "t1", true));
-    log.append(AuditEntry::new(2, "alice", AuditEntryType::Write, ResourceType::SqlTable, "t2", true));
-    log.append(AuditEntry::new(3, "bob", AuditEntryType::Read, ResourceType::SqlTable, "t3", true));
+    log.append(AuditEntry::new(
+        1,
+        "alice",
+        AuditEntryType::Read,
+        ResourceType::SqlTable,
+        "t1",
+        true,
+    ));
+    log.append(AuditEntry::new(
+        2,
+        "alice",
+        AuditEntryType::Write,
+        ResourceType::SqlTable,
+        "t2",
+        true,
+    ));
+    log.append(AuditEntry::new(
+        3,
+        "bob",
+        AuditEntryType::Read,
+        ResourceType::SqlTable,
+        "t3",
+        true,
+    ));
 
     let results = log.query(Some("alice"), Some(AuditEntryType::Read));
 
@@ -524,9 +615,30 @@ fn audit_log_query_combined() {
 #[test]
 fn audit_log_verify_chain() {
     let mut log = AuditLog::new();
-    log.append(AuditEntry::new(1, "alice", AuditEntryType::Login, ResourceType::SqlTable, "system", true));
-    log.append(AuditEntry::new(2, "alice", AuditEntryType::Read, ResourceType::SqlTable, "users", true));
-    log.append(AuditEntry::new(3, "alice", AuditEntryType::Logout, ResourceType::SqlTable, "system", true));
+    log.append(AuditEntry::new(
+        1,
+        "alice",
+        AuditEntryType::Login,
+        ResourceType::SqlTable,
+        "system",
+        true,
+    ));
+    log.append(AuditEntry::new(
+        2,
+        "alice",
+        AuditEntryType::Read,
+        ResourceType::SqlTable,
+        "users",
+        true,
+    ));
+    log.append(AuditEntry::new(
+        3,
+        "alice",
+        AuditEntryType::Logout,
+        ResourceType::SqlTable,
+        "system",
+        true,
+    ));
 
     assert!(log.verify_chain());
 }
