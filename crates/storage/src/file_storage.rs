@@ -10,10 +10,9 @@ use sqlrustgo_types::{SqlError, SqlResult, Value};
 use std::any::Any;
 use std::collections::{HashMap, HashSet};
 use std::fs::{self, File};
-use std::io::{BufReader, BufWriter, Write};
+use std::io::{BufRead, BufReader, BufWriter, Write};
 use std::path::PathBuf;
-use std::sync::Arc;
-use std::sync::RwLock;
+use std::sync::{Arc, Mutex, RwLock};
 
 // C.1: parking_lot::Mutex is used as a `Mutex<()>` for the write-side
 // synchronisation of the five fields that previously relied on the outer
@@ -69,6 +68,11 @@ pub struct FileStorage {
     gap_lock_manager: Option<std::sync::Arc<crate::lock::GapLockManager>>,
     /// V311-07: Dirty table tracker - marks tables modified since last flush
     dirty_tables: HashSet<String>,
+    /// V400-PERF-DELTA: per-table count of rows that have been persisted
+    /// to disk (either in the base JSON or in the .delta file). Used
+    /// by `save_table` to decide whether to write anything, and to
+    /// limit incremental writes to only the new rows.
+    last_saved_row_count: Mutex<HashMap<String, usize>>,
     /// C.1: serialises all writes to {tables, insert_buffer, dirty_tables,
     /// current_tx_id, tx_undo_log}. Reads of these fields are lock-free
     /// when no writer holds the lock (every read site clones the
@@ -138,6 +142,7 @@ impl FileStorage {
             triggers: RwLock::new(HashMap::new()),
             gap_lock_manager: None,
             dirty_tables: HashSet::new(),
+            last_saved_row_count: Mutex::new(HashMap::new()),
             views: RwLock::new(HashMap::new()),
             write_lock: parking_lot::Mutex::new(()),
         };
@@ -177,6 +182,7 @@ impl FileStorage {
             triggers: RwLock::new(HashMap::new()),
             gap_lock_manager: None,
             dirty_tables: HashSet::new(),
+            last_saved_row_count: Mutex::new(HashMap::new()),
             views: RwLock::new(HashMap::new()),
             write_lock: parking_lot::Mutex::new(()),
         };
@@ -211,6 +217,7 @@ impl FileStorage {
             triggers: RwLock::new(HashMap::new()),
             gap_lock_manager: None,
             dirty_tables: HashSet::new(),
+            last_saved_row_count: Mutex::new(HashMap::new()),
             views: RwLock::new(HashMap::new()),
             write_lock: parking_lot::Mutex::new(()),
         };
@@ -262,6 +269,7 @@ impl FileStorage {
             triggers: RwLock::new(HashMap::new()),
             gap_lock_manager: Some(lock_manager),
             dirty_tables: HashSet::new(),
+            last_saved_row_count: Mutex::new(HashMap::new()),
             views: RwLock::new(HashMap::new()),
             write_lock: parking_lot::Mutex::new(()),
         };
@@ -654,29 +662,107 @@ impl FileStorage {
     /// Load a single table from disk
     fn load_table(&self, table_name: &str) -> std::io::Result<TableData> {
         let path = self.table_path(table_name);
-        let file = File::open(&path)?;
-        let reader = BufReader::new(file);
-        let stored: StoredTableData = serde_json::from_reader(reader)
-            .map_err(|e| std::io::Error::new(std::io::ErrorKind::InvalidData, e))?;
+        // V400-PERF-DELTA: a missing JSON is OK if the delta file
+        // exists — that's the cold-start case where the base JSON
+        // was already compacted away.
+        let (name, columns, foreign_keys, unique_constraints, mut rows) = if path.exists() {
+            let file = File::open(&path)?;
+            let reader = BufReader::new(file);
+            let stored: StoredTableData = serde_json::from_reader(reader)
+                .map_err(|e| std::io::Error::new(std::io::ErrorKind::InvalidData, e))?;
+            (
+                stored.name,
+                stored.columns,
+                stored.foreign_keys,
+                stored.unique_constraints,
+                stored.rows,
+            )
+        } else {
+            // No base snapshot — use empty schema (caller will provide
+            // via TableInfo at insert time).
+            (
+                table_name.to_string(),
+                Vec::new(),
+                Vec::new(),
+                Vec::new(),
+                Vec::new(),
+            )
+        };
+        // Apply pending deltas on top of the base snapshot.
+        let delta_rows = self.load_table_delta(table_name)?;
+        rows.extend(delta_rows);
 
         Ok(TableData {
             info: TableInfo {
-                name: stored.name,
-                columns: stored.columns,
-                foreign_keys: stored.foreign_keys,
-                unique_constraints: stored.unique_constraints,
+                name,
+                columns,
+                foreign_keys,
+                unique_constraints,
                 check_constraints: vec![],
                 compression: None,
                 collations: HashMap::new(),
                 partition_info: None,
                 original_sql: String::new(),
             },
-            rows: stored.rows,
+            rows,
         })
     }
 
     /// Save a table to disk
+    /// Save a table to disk.
+    ///
+    /// V400-PERF-DELTA: instead of writing the entire table on every
+    /// call, append only the new rows (delta) to `<table>.delta` (a
+    /// binary length-prefixed log). The base `<table>.json` snapshot
+    /// is rewritten lazily — when (a) the table has no delta yet,
+    /// (b) the delta exceeds ~10 MB, or (c) `compact_table` is
+    /// called. This makes the common "append a few rows" path O(new
+    /// rows) instead of O(total rows).
     fn save_table(&self, table_name: &str, table_data: &TableData) -> std::io::Result<()> {
+        let total_rows = table_data.rows.len();
+        let last_saved = *self
+            .last_saved_row_count
+            .lock()
+            .unwrap()
+            .get(table_name)
+            .unwrap_or(&0);
+
+        // V400-PERF-DELTA: on the very first save (or after a delete
+        // shrunk the row count to 0), we must still emit the JSON
+        // because cold-start load relies on it for table schema.
+        if total_rows == 0 || last_saved == 0 {
+            return self.save_table_full(table_name, table_data);
+        }
+
+        if total_rows <= last_saved {
+            // Pure DELETE/UPDATE path: the row set may have shrunk.
+            // Force a full snapshot to keep on-disk consistent.
+            return self.save_table_full(table_name, table_data);
+        }
+
+        // Delta-only path: append the new rows to <table>.delta.
+        let new_rows = &table_data.rows[last_saved..];
+        self.append_table_delta(table_name, new_rows)?;
+        self.last_saved_row_count
+            .lock()
+            .unwrap()
+            .insert(table_name.to_string(), total_rows);
+
+        // Periodic compaction: when delta size exceeds threshold,
+        // rewrite the base snapshot and clear the delta file.
+        let delta_path = self.delta_path(table_name);
+        if let Ok(meta) = std::fs::metadata(&delta_path) {
+            if meta.len() > 10 * 1024 * 1024 {
+                let _ = self.save_table_full(table_name, table_data);
+            }
+        }
+        Ok(())
+    }
+
+    /// V400-PERF-DELTA: write the full table JSON snapshot. Called by
+    /// `save_table` on the first write, after a schema change, and
+    /// when the delta file grows too large.
+    fn save_table_full(&self, table_name: &str, table_data: &TableData) -> std::io::Result<()> {
         let path = self.table_path(table_name);
         let file = File::create(&path)?;
         let mut writer = BufWriter::new(file);
@@ -694,8 +780,63 @@ impl FileStorage {
 
         writer.write_all(json.as_bytes())?;
         writer.flush()?;
-
+        // Drop any pending deltas — they're now incorporated.
+        let _ = std::fs::remove_file(self.delta_path(table_name));
+        self.last_saved_row_count
+            .lock()
+            .unwrap()
+            .insert(table_name.to_string(), table_data.rows.len());
         Ok(())
+    }
+
+    /// V400-PERF-DELTA: append `rows` to `<table>.delta` in a
+    /// JSON-line format (one row per line). Lines are chosen over
+    /// bincode to keep the delta file human-inspectable and
+    /// dependency-free. Each line is `serde_json::to_string(row)`.
+    fn append_table_delta(&self, table_name: &str, rows: &[Vec<Value>]) -> std::io::Result<()> {
+        use std::io::Write;
+        let path = self.delta_path(table_name);
+        let file = std::fs::OpenOptions::new()
+            .create(true)
+            .append(true)
+            .open(&path)?;
+        let mut writer = BufWriter::new(file);
+        for row in rows {
+            let line = serde_json::to_string(row)
+                .map_err(|e| std::io::Error::new(std::io::ErrorKind::InvalidData, e))?;
+            writer.write_all(line.as_bytes())?;
+            writer.write_all(b"\n")?;
+        }
+        writer.flush()?;
+        Ok(())
+    }
+
+    /// V400-PERF-DELTA: read all delta rows from `<table>.delta`.
+    /// Returns the rows in append order.
+    fn load_table_delta(&self, table_name: &str) -> std::io::Result<Vec<Vec<Value>>> {
+        let path = self.delta_path(table_name);
+        if !path.exists() {
+            return Ok(Vec::new());
+        }
+        let file = File::open(&path)?;
+        let reader = std::io::BufReader::new(file);
+        let mut all_rows: Vec<Vec<Value>> = Vec::new();
+        use std::io::BufRead;
+        for line in reader.lines() {
+            let line = line?;
+            if line.is_empty() {
+                continue;
+            }
+            let row: Vec<Value> = serde_json::from_str(&line)
+                .map_err(|e| std::io::Error::new(std::io::ErrorKind::InvalidData, e))?;
+            all_rows.push(row);
+        }
+        Ok(all_rows)
+    }
+
+    /// V400-PERF-DELTA: get the on-disk delta path for a table.
+    fn delta_path(&self, table_name: &str) -> std::path::PathBuf {
+        self.data_dir.join(format!("{}.delta", table_name))
     }
 
     /// Get a table by name
