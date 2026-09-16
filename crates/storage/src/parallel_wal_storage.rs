@@ -5,14 +5,24 @@
 //! Key insight: WAL writes must be serial (ordering), but table flushes can be parallel.
 
 use crate::engine::{ColumnDefinition, Record, SqlError, SqlResult, StorageEngine, TableInfo};
-use crate::wal::{WalEntry, WalEntryType, WalManager};
+use crate::wal::{GroupCommitCoordinator, WalEntry, WalEntryType, WalManager};
 use crate::wal_storage::WalSyncMode;
 use std::any::Any;
+use std::sync::{Arc, Mutex};
 
 pub struct ParallelWalStorage<S: StorageEngine, W: WalManager> {
     inner: S,
-    wal: W,
+    /// WAL manager wrapped in `Arc<Mutex<W>>` so that
+    /// `commit_transaction` can route its fsync through a
+    /// `GroupCommitCoordinator` that shares the same lock. The lock is
+    /// only held for the `sync()` syscall (the coordinator's leader
+    /// holds it briefly; waiters don't).
+    wal: Arc<Mutex<W>>,
     sync_mode: WalSyncMode,
+    /// Optional group-commit coordinator. When set, commit_transaction
+    /// uses it instead of `wal.lock().sync()` directly. Created lazily
+    /// via `set_group_commit` so existing call sites are unaffected.
+    group_commit: Option<Arc<GroupCommitCoordinator<W>>>,
     writes_since_sync: usize,
     wal_enabled: bool,
     current_tx_id: u64,
@@ -23,8 +33,24 @@ impl<S: StorageEngine + 'static, W: WalManager + 'static> ParallelWalStorage<S, 
     pub fn new(inner: S, wal: W) -> Self {
         Self {
             inner,
+            wal: Arc::new(Mutex::new(wal)),
+            sync_mode: WalSyncMode::Every,
+            group_commit: None,
+            writes_since_sync: 0,
+            wal_enabled: true,
+            current_tx_id: 0,
+            next_lsn: 0,
+        }
+    }
+
+    /// Construct from a pre-shared `Arc<Mutex<W>>`. Use this when you
+    /// want the same `W` to back a `GroupCommitCoordinator`.
+    pub fn new_with_shared_wal(inner: S, wal: Arc<Mutex<W>>) -> Self {
+        Self {
+            inner,
             wal,
             sync_mode: WalSyncMode::Every,
+            group_commit: None,
             writes_since_sync: 0,
             wal_enabled: true,
             current_tx_id: 0,
@@ -36,12 +62,25 @@ impl<S: StorageEngine + 'static, W: WalManager + 'static> ParallelWalStorage<S, 
         self.sync_mode = mode;
     }
 
+    /// Install a group-commit coordinator. Once set, every
+    /// `commit_transaction` (regardless of `sync_mode`) routes its
+    /// fsync through the coordinator. Pass `None` to disable.
+    pub fn set_group_commit(&mut self, coord: Option<Arc<GroupCommitCoordinator<W>>>) {
+        self.group_commit = coord;
+    }
+
+    /// Returns a reference to the installed group-commit coordinator, if
+    /// any.
+    pub fn group_commit(&self) -> Option<&Arc<GroupCommitCoordinator<W>>> {
+        self.group_commit.as_ref()
+    }
+
     fn append_wal_entry(&mut self, mut entry: WalEntry) -> SqlResult<u64> {
         let lsn = self.next_lsn;
         self.next_lsn += 1;
         entry.lsn = lsn;
-        self.wal
-            .append(entry)
+        let mut wal = self.wal.lock().expect("wal mutex poisoned");
+        wal.append(entry)
             .map_err(|e| SqlError::ExecutionError(format!("WAL append error: {}", e)))?;
         Ok(lsn)
     }
@@ -114,23 +153,47 @@ impl<S: StorageEngine + 'static, W: WalManager + 'static> StorageEngine
             self.append_wal_entry(entry)?;
         }
 
-        // 2. Sync WAL based on sync_mode
+        // 2. Sync WAL based on sync_mode (or via the group-commit
+        //    coordinator if one is installed).
         if self.wal_enabled {
-            match self.sync_mode {
-                WalSyncMode::Off => {}
-                WalSyncMode::Batch(n) => {
-                    self.writes_since_sync += 1;
-                    if self.writes_since_sync >= n as usize {
-                        self.wal.sync().map_err(|e| {
+            if let Some(coord) = self.group_commit.as_ref() {
+                // Group commit path: route through the coordinator. The
+                // coordinator coalesces concurrent fsyncs and returns
+                // Ok(()) once our LSN is durable.
+                let lsn = self.next_lsn.saturating_sub(1);
+                coord
+                    .commit_lsn(lsn)
+                    .map_err(|e| SqlError::ExecutionError(format!("WAL group commit error: {}", e)))?;
+            } else {
+                match self.sync_mode {
+                    WalSyncMode::Off => {}
+                    WalSyncMode::Batch(n) => {
+                        self.writes_since_sync += 1;
+                        if self.writes_since_sync >= n as usize {
+                            let mut wal = self.wal.lock().expect("wal mutex poisoned");
+                            wal.sync().map_err(|e| {
+                                SqlError::ExecutionError(format!("WAL sync error: {}", e))
+                            })?;
+                            drop(wal);
+                            self.writes_since_sync = 0;
+                        }
+                    }
+                    WalSyncMode::Every => {
+                        let mut wal = self.wal.lock().expect("wal mutex poisoned");
+                        wal.sync().map_err(|e| {
                             SqlError::ExecutionError(format!("WAL sync error: {}", e))
                         })?;
-                        self.writes_since_sync = 0;
                     }
-                }
-                WalSyncMode::Every => {
-                    self.wal
-                        .sync()
-                        .map_err(|e| SqlError::ExecutionError(format!("WAL sync error: {}", e)))?;
+                    WalSyncMode::GroupCommit { .. } => {
+                        // GroupCommit variant is informational; the
+                        // coordinator (if installed) drives the actual
+                        // fsync. Without a coordinator, fall back to
+                        // every-tx fsync.
+                        let mut wal = self.wal.lock().expect("wal mutex poisoned");
+                        wal.sync().map_err(|e| {
+                            SqlError::ExecutionError(format!("WAL sync error: {}", e))
+                        })?;
+                    }
                 }
             }
         }
