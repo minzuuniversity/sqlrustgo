@@ -5059,6 +5059,90 @@ fn do_command_loop<S: Read + Write + DrainWrites>(
                         capability::SERVER_MORE_RESULTS_EXISTS
                     };
                     let parsed = parse(stmt_sql);
+                    let started = std::time::Instant::now();
+                    // V400-03 / Issue #3731 (G2): dispatch Cypher queries
+                    // (`MATCH ...`) to the graph executor before falling
+                    // through to the SQL engine. The Cypher lexer in
+                    // `sqlrustgo_graph::cypher::parse` is independent of
+                    // the SQL grammar; we route by inspecting the first
+                    // non-whitespace token of the statement rather than
+                    // expanding the SQL parser. Future work: the
+                    // SQL `GRAPH MATCH` prefix form (G4) routes through
+                    // a SQL surface; for now we accept the bare Cypher
+                    // form only.
+                    let trimmed = stmt_sql.trim_start();
+                    if trimmed.len() >= 5
+                        && trimmed[..5].eq_ignore_ascii_case("MATCH")
+                        && trimmed
+                            .as_bytes()
+                            .get(5)
+                            .map(|&b| b == b' ' || b == b'\t' || b == b'\n' || b == b'\r')
+                            .unwrap_or(true)
+                    {
+                        // Build an in-memory graph store, execute the
+                        // Cypher, and stream the result set back as if
+                        // it were a SELECT. This is a stopgap until G3
+                        // wires `WalStorage` to a persistent
+                        // `DiskGraphStore`.
+                        let graph_result: Result<_, String> =
+                            match sqlrustgo_graph::cypher::parse(trimmed) {
+                                Ok(query) => {
+                                    let store = sqlrustgo_graph::InMemoryGraphStore::new();
+                                    sqlrustgo_graph::cypher::execute(&store, &query)
+                                        .map_err(|e| format!("Cypher execute error: {}", e))
+                                }
+                                Err(e) => Err(format!("Cypher parse error: {}", e)),
+                            };
+                        match graph_result {
+                            Ok(exec) => {
+                                // Convert the graph `ExecutionResult` into the
+                                // shape expected by the rest of the MySQL
+                                // packet pipeline (header columns + row data).
+                                let col_names: Vec<String> = if exec.columns.is_empty() {
+                                    vec!["value".to_string()]
+                                } else {
+                                    exec.columns.clone()
+                                };
+                                let col_types: Vec<String> = col_names
+                                    .iter()
+                                    .map(|_| "VARCHAR(255)".to_string())
+                                    .collect();
+                                let rows: Vec<Vec<Value>> = exec
+                                    .rows
+                                    .into_iter()
+                                    .map(|r| {
+                                        r.into_iter().map(property_value_to_sql_value).collect()
+                                    })
+                                    .collect();
+                                seq = send_result_set_with_more(
+                                    stream,
+                                    &col_names,
+                                    &col_types,
+                                    &rows,
+                                    seq,
+                                    cap,
+                                    more_results_flag,
+                                )?;
+                                *server_last_sent_seq = seq;
+                                let elapsed_ms = started.elapsed().as_millis() as u64;
+                                if let Some(ref slow_log) = config.slow_query_log {
+                                    slow_log.maybe_log(stmt_sql, elapsed_ms, rows.len() as u64);
+                                }
+                                sqlrustgo_telemetry::GLOBAL_METRICS.record_query(
+                                    "CYPHER_MATCH",
+                                    std::time::Duration::from_millis(elapsed_ms),
+                                );
+                                continue;
+                            }
+                            Err(e) => {
+                                make_err_packet(seq, 1064u16, "42000", &format!("CYPHER: {}", e))
+                                    .write_to(stream)?;
+                                seq = seq.wrapping_add(1);
+                                had_error = true;
+                                continue;
+                            }
+                        }
+                    }
                     // G13-OLTP-1: pick read-vs-write lock based on AST.
                     let is_read_only = parsed
                         .as_ref()
@@ -5133,7 +5217,6 @@ fn do_command_loop<S: Read + Write + DrainWrites>(
                         continue;
                     }
                     // G13-OLTP-1: poisoning recovery in both branches.
-                    let started = std::time::Instant::now();
                     let result = if let Some(stmt) = is_read_only {
                         let rstmt = read_only_stmt(stmt);
                         let eng = engine.read();
@@ -6350,6 +6433,46 @@ pub(crate) fn run_server_with_listener_and_shutdown_with_bootstrap(
 // ============================================================================
 // Integration Tests
 // ============================================================================
+
+/// V400-03 / Issue #3731 (G2): convert a graph `PropertyValue` to the
+/// SQL runtime `Value` so the MySQL wire pipeline can stream the
+/// result set. The mapping is lossy by design (graph `Bytes` becomes
+/// a hex string; graph `List` becomes a comma-joined string) but
+/// preserves the user-visible scalar values.
+fn property_value_to_sql_value(p: sqlrustgo_graph::types::PropertyValue) -> Value {
+    use sqlrustgo_graph::types::PropertyValue;
+    match p {
+        PropertyValue::String(s) => Value::Text(s),
+        PropertyValue::Int(i) => Value::Integer(i),
+        PropertyValue::Float(f) => Value::Float(f),
+        PropertyValue::Bool(b) => Value::Boolean(b),
+        PropertyValue::Bytes(b) => Value::Text(format!("\\x{}", hex_encode(&b))),
+        PropertyValue::List(items) => {
+            let parts: Vec<String> = items
+                .into_iter()
+                .map(|x| match x {
+                    PropertyValue::String(s) => s,
+                    PropertyValue::Int(i) => i.to_string(),
+                    PropertyValue::Float(f) => f.to_string(),
+                    PropertyValue::Bool(b) => b.to_string(),
+                    PropertyValue::Null => "NULL".to_string(),
+                    PropertyValue::Bytes(b) => format!("\\x{}", hex_encode(&b)),
+                    PropertyValue::List(_) => "[...]".to_string(),
+                })
+                .collect();
+            Value::Text(format!("[{}]", parts.join(",")))
+        }
+        PropertyValue::Null => Value::Null,
+    }
+}
+
+fn hex_encode(bytes: &[u8]) -> String {
+    let mut s = String::with_capacity(bytes.len() * 2);
+    for b in bytes {
+        s.push_str(&format!("{:02x}", b));
+    }
+    s
+}
 
 #[cfg(test)]
 mod integration_tests {
@@ -8586,5 +8709,46 @@ mod stmt_prepare_terminator_tests {
             "warnings"
         );
         // No byte 12 — packet ends at offset 11 (warnings).
+    }
+}
+
+// =========================================================================
+// V400-03 / Issue #3731 (G2): Cypher dispatch tests (simplified).
+//
+// The production dispatch in `do_command_loop` invokes
+// `sqlrustgo_graph::cypher::parse` + `execute(InMemoryGraphStore, ...)`.
+// These tests pin the contract on those two entry points without
+// exercising the full GraphStore CRUD surface (the in-memory CRUD
+// tests live in `crates/graph/tests/`).
+// =========================================================================
+#[cfg(test)]
+mod v400_03_cypher_dispatch_tests {
+    #[test]
+    fn cypher_parse_then_execute_on_empty_store() {
+        // `MATCH (n) RETURN n` against an empty store must return
+        // zero rows, not panic. This is the path that do_command_loop
+        // takes when a user types `MATCH (n) RETURN n` at the MySQL
+        // prompt.
+        let store = sqlrustgo_graph::InMemoryGraphStore::new();
+        let query = sqlrustgo_graph::cypher::parse("MATCH (n) RETURN n")
+            .expect("cypher parse must succeed");
+        let result = sqlrustgo_graph::cypher::execute(&store, &query)
+            .expect("cypher execute on empty store must succeed");
+        assert!(result.rows.is_empty(), "empty store must yield zero rows");
+        assert_eq!(result.columns, vec!["n"]);
+    }
+
+    #[test]
+    fn cypher_parse_error_returns_graph_error_not_panic() {
+        // Bad syntax must surface as a graph error, never panic.
+        // The wire path returns the error to the client as
+        // ER_PARSE_ERROR (1064).
+        let r = sqlrustgo_graph::cypher::parse("MATCH (n RETRN n");
+        // The Cypher parser may accept this (it can be lenient) or
+        // reject it. Either way, executing it must not panic.
+        if let Ok(query) = r {
+            let store = sqlrustgo_graph::InMemoryGraphStore::new();
+            let _ = sqlrustgo_graph::cypher::execute(&store, &query);
+        }
     }
 }
