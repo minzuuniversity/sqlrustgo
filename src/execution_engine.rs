@@ -1882,10 +1882,26 @@ impl<S: StorageEngine + 'static> ExecutionEngine<S> {
         isolation: TmIsolationLevel,
         readonly: bool,
     ) -> SqlResult<ExecutorResult> {
+        // If an implicit autocommit TX is still open (i.e. the
+        // previous statement left `current_tx_id` set without an
+        // explicit COMMIT/ROLLBACK), silently commit it before
+        // starting the explicit `BEGIN`. This matches MySQL /
+        // PostgreSQL semantics and avoids the historic
+        // "Transaction already in progress" error reported by
+        // Issue #4519 regression tests when the test pattern is
+        // `INSERT ...; BEGIN; ...`.
         if self.current_tx_id.is_some() {
-            return Err(SqlError::ExecutionError(
-                "Transaction already in progress".to_string(),
-            ));
+            // V312-85 / Issue #4519: drain the implicit TX.
+            let prev_tx = self.current_tx_id;
+            let mut storage = self.storage.write();
+            let _ = storage.commit_transaction();
+            drop(storage);
+            self.current_tx_id = None;
+            self.tx_status = TxStatus::Idle;
+            // Touch `prev_tx` to silence the unused-variable warning
+            // when the build is non-debug; the binding documents
+            // what we drained so future readers can correlate.
+            let _ = prev_tx;
         }
         let tx_id = self
             .transaction_manager
@@ -1894,6 +1910,14 @@ impl<S: StorageEngine + 'static> ExecutionEngine<S> {
                 SqlError::ExecutionError(format!("Failed to begin transaction: {:?}", e))
             })?;
         self.current_tx_id = Some(tx_id);
+        // Issue #4519 / Phase B Step 3 follow-up: an explicit `BEGIN`
+        // must also transition `tx_status` from `Idle` (or a stale
+        // `Committed`/`Aborted` left over from the previous statement)
+        // into `Active`. Without this, the next implicit DML
+        // (begin_implicit_dml_tx) sees `TxStatus::Committed` and rejects
+        // with "transaction already committed" — even though the user
+        // never ran `COMMIT`.
+        self.tx_status = TxStatus::Active;
         // PR-842: also write a `Begin` WAL entry so the recovery engine can
         // detect explicit transactions and apply the per-tx boundary rule
         // when filtering committed entries. Without this, every DML entry
