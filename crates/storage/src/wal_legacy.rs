@@ -33,10 +33,31 @@ pub enum WalEntryType {
     Checkpoint = 7,
     /// Prepare for 2PC commit (distributed transaction)
     Prepare = 8,
+    // V400-02 / Issue #3730: vector ops are first-class WAL entries
+    // so that a crash mid-vector-insert replays correctly. The
+    // `key` field carries the (table, column, vector_id) triple
+    // and `data` carries the encoded embedding bytes; both forms
+    // are exercised by `crates/storage/tests/v400_vector_wal.rs`.
+    /// Insert a vector into a column-indexed vector store.
+    VectorInsert = 9,
+    /// Update (overwrite) a vector at a specific id.
+    VectorUpdate = 10,
+    /// Delete a vector by id.
+    VectorDelete = 11,
+    /// Create a vector index (HNSW or IVF) on a column.
+    CreateVectorIndex = 12,
+    /// Drop a vector index by name.
+    DropVectorIndex = 13,
+    /// Rebuild an existing vector index (re-train from current data).
+    RebuildVectorIndex = 14,
 }
 
 impl WalEntryType {
-    fn from_u8(v: u8) -> Option<Self> {
+    /// Decode a single-byte discriminant into a `WalEntryType`.
+    /// `pub` so external tests (e.g. `v400_wal_entry_type_extension`)
+    /// can pin the 14-variant encoding; the production code paths
+    /// call it through `WalEntry::from_bytes` only.
+    pub fn from_u8(v: u8) -> Option<Self> {
         match v {
             1 => Some(WalEntryType::Begin),
             2 => Some(WalEntryType::Insert),
@@ -46,6 +67,12 @@ impl WalEntryType {
             6 => Some(WalEntryType::Rollback),
             7 => Some(WalEntryType::Checkpoint),
             8 => Some(WalEntryType::Prepare),
+            9 => Some(WalEntryType::VectorInsert),
+            10 => Some(WalEntryType::VectorUpdate),
+            11 => Some(WalEntryType::VectorDelete),
+            12 => Some(WalEntryType::CreateVectorIndex),
+            13 => Some(WalEntryType::DropVectorIndex),
+            14 => Some(WalEntryType::RebuildVectorIndex),
             _ => None,
         }
     }
@@ -1554,8 +1581,26 @@ mod tests {
         assert_eq!(WalEntryType::from_u8(6), Some(WalEntryType::Rollback));
         assert_eq!(WalEntryType::from_u8(7), Some(WalEntryType::Checkpoint));
         assert_eq!(WalEntryType::from_u8(8), Some(WalEntryType::Prepare));
+        // V400-02 / Issue #3730 (V1): vector WAL entries 9-14.
+        assert_eq!(WalEntryType::from_u8(9), Some(WalEntryType::VectorInsert));
+        assert_eq!(WalEntryType::from_u8(10), Some(WalEntryType::VectorUpdate));
+        assert_eq!(WalEntryType::from_u8(11), Some(WalEntryType::VectorDelete));
+        assert_eq!(
+            WalEntryType::from_u8(12),
+            Some(WalEntryType::CreateVectorIndex)
+        );
+        assert_eq!(
+            WalEntryType::from_u8(13),
+            Some(WalEntryType::DropVectorIndex)
+        );
+        assert_eq!(
+            WalEntryType::from_u8(14),
+            Some(WalEntryType::RebuildVectorIndex)
+        );
+        // 0 and 15+ remain `None` (out-of-range).
         assert_eq!(WalEntryType::from_u8(0), None);
-        assert_eq!(WalEntryType::from_u8(9), None);
+        assert_eq!(WalEntryType::from_u8(15), None);
+        assert_eq!(WalEntryType::from_u8(255), None);
     }
 
     #[test]
