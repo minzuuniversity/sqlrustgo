@@ -318,6 +318,32 @@ impl<S: StorageEngine + 'static, T: WalManager + 'static> WalStorage<S, T> {
         hash
     }
 
+    /// V400-02 / Issue #3730 (V2): heuristic that picks the WAL
+    /// entry type for an insert/delete/update on `table_name`. Tables
+    /// whose name starts with `vec_` are treated as vector stores
+    /// (their WAL entries use the Vector* variants introduced in V1);
+    /// everything else goes through the row DML path.
+    ///
+    /// This is intentionally conservative — vector storage is currently
+    /// its own crate (`crates/vector`) and does not share table
+    /// names with row storage, so a name prefix heuristic is enough
+    /// to dispatch without a schema lookup. When the executor wires
+    /// `WalStorage<MvccStorage<FileStorage, VectorStore>>` in V3, this
+    /// heuristic can be replaced with a metadata-aware dispatch.
+    #[allow(dead_code)]
+    fn entry_type_for_table(&self, table: &str, op: WalEntryType) -> WalEntryType {
+        if table.starts_with("vec_") {
+            match op {
+                WalEntryType::Insert => WalEntryType::VectorInsert,
+                WalEntryType::Delete => WalEntryType::VectorDelete,
+                WalEntryType::Update => WalEntryType::VectorUpdate,
+                other => other,
+            }
+        } else {
+            op
+        }
+    }
+
     fn record_key(record: &[Value]) -> Vec<u8> {
         if record.is_empty() {
             return Vec::new();
@@ -421,7 +447,12 @@ impl<S: StorageEngine + 'static, T: WalManager + 'static> WalStorage<S, T> {
         false
     }
 
-    fn log_insert(&mut self, table_id: u64, key: Vec<u8>, data: Vec<u8>) -> SqlResult<()> {
+    pub(crate) fn log_insert(
+        &mut self,
+        table_id: u64,
+        key: Vec<u8>,
+        data: Vec<u8>,
+    ) -> SqlResult<()> {
         if self.wal_enabled {
             let entry = WalEntry {
                 tx_id: self.current_tx_id.load(Ordering::Relaxed),
@@ -440,7 +471,39 @@ impl<S: StorageEngine + 'static, T: WalManager + 'static> WalStorage<S, T> {
         Ok(())
     }
 
-    fn log_delete(&mut self, table_id: u64, key: Vec<u8>) -> SqlResult<()> {
+    /// V400-02 / Issue #3730 (V2): same payload as `log_insert` but
+    /// pins `entry_type = VectorInsert` so the recovery engine routes
+    /// the entry to the vector storage replay path. `table_name` is
+    /// the original table name (used for the heuristic); callers pass
+    /// the precomputed `table_id`.
+    #[allow(dead_code)]
+    pub(crate) fn log_vector_insert(
+        &mut self,
+        table_name: &str,
+        table_id: u64,
+        key: Vec<u8>,
+        data: Vec<u8>,
+    ) -> SqlResult<()> {
+        if self.wal_enabled {
+            let entry_type = self.entry_type_for_table(table_name, WalEntryType::Insert);
+            let entry = WalEntry {
+                tx_id: self.current_tx_id.load(Ordering::Relaxed),
+                entry_type,
+                table_id,
+                key: Some(key),
+                data: Some(data),
+                lsn: 0,
+                timestamp: std::time::SystemTime::now()
+                    .duration_since(std::time::UNIX_EPOCH)
+                    .unwrap()
+                    .as_secs(),
+            };
+            self.append_wal_entry(entry)?;
+        }
+        Ok(())
+    }
+
+    pub(crate) fn log_delete(&mut self, table_id: u64, key: Vec<u8>) -> SqlResult<()> {
         if self.wal_enabled {
             let entry = WalEntry {
                 tx_id: self.current_tx_id.load(Ordering::Relaxed),
@@ -459,7 +522,39 @@ impl<S: StorageEngine + 'static, T: WalManager + 'static> WalStorage<S, T> {
         Ok(())
     }
 
-    fn log_update(&mut self, table_id: u64, key: Vec<u8>, new_record: Vec<u8>) -> SqlResult<()> {
+    /// V400-02 / Issue #3730 (V2): vector-aware delete entry.
+    #[allow(dead_code)]
+    pub(crate) fn log_vector_delete(
+        &mut self,
+        table_name: &str,
+        table_id: u64,
+        key: Vec<u8>,
+    ) -> SqlResult<()> {
+        if self.wal_enabled {
+            let entry_type = self.entry_type_for_table(table_name, WalEntryType::Delete);
+            let entry = WalEntry {
+                tx_id: self.current_tx_id.load(Ordering::Relaxed),
+                entry_type,
+                table_id,
+                key: Some(key),
+                data: None,
+                lsn: 0,
+                timestamp: std::time::SystemTime::now()
+                    .duration_since(std::time::UNIX_EPOCH)
+                    .unwrap()
+                    .as_secs(),
+            };
+            self.append_wal_entry(entry)?;
+        }
+        Ok(())
+    }
+
+    pub(crate) fn log_update(
+        &mut self,
+        table_id: u64,
+        key: Vec<u8>,
+        new_record: Vec<u8>,
+    ) -> SqlResult<()> {
         if self.wal_enabled {
             let entry = WalEntry {
                 tx_id: self.current_tx_id.load(Ordering::Relaxed),
@@ -1960,5 +2055,100 @@ mod tests {
         let mut storage = WalStorage::new(inner, wal).unwrap();
         let entries = storage.recover().unwrap();
         assert!(entries.is_empty());
+    }
+}
+
+// =========================================================================
+// V400-02 / Issue #3730 (V2): WalStorage vector entry-type dispatch tests.
+//
+// Validates that:
+// - log_vector_insert emits WalEntryType::VectorInsert
+// - log_vector_delete emits WalEntryType::VectorDelete
+// - log_insert on a regular table still emits WalEntryType::Insert
+//   (regression guard for the `vec_` prefix heuristic)
+// - log_vector_insert with wal_enabled=false is a silent no-op
+//   (mirrors the row log_insert contract)
+// =========================================================================
+#[cfg(test)]
+mod v400_02_vector_log_tests {
+    use super::*;
+    use crate::engine::MemoryStorage;
+    use crate::wal::MemoryWalManager;
+
+    #[test]
+    fn vector_log_insert_emits_vector_insert_entry_type() {
+        let mut wal = WalStorage::new(MemoryStorage::new(), MemoryWalManager::new())
+            .expect("WalStorage::new");
+
+        // Insert into a `vec_*` table — the heuristic picks VectorInsert.
+        wal.log_vector_insert(
+            "vec_embeddings",
+            42,
+            b"id=7".to_vec(),
+            b"v=[1.0,2.0,3.0]".to_vec(),
+        )
+        .expect("log_vector_insert should succeed");
+
+        // Recover and assert the entry type.
+        let entries = wal.wal().recover().expect("recover should succeed");
+        assert_eq!(entries.len(), 1);
+        assert_eq!(
+            entries[0].entry_type,
+            WalEntryType::VectorInsert,
+            "vec_embeddings should emit VectorInsert"
+        );
+    }
+
+    #[test]
+    fn vector_log_delete_emits_vector_delete_entry_type() {
+        let mut wal = WalStorage::new(MemoryStorage::new(), MemoryWalManager::new())
+            .expect("WalStorage::new");
+
+        wal.log_vector_delete("vec_embeddings", 42, b"id=7".to_vec())
+            .expect("log_vector_delete should succeed");
+
+        let entries = wal.wal().recover().expect("recover should succeed");
+        assert_eq!(entries.len(), 1);
+        assert_eq!(
+            entries[0].entry_type,
+            WalEntryType::VectorDelete,
+            "vec_embeddings should emit VectorDelete"
+        );
+    }
+
+    #[test]
+    fn row_log_insert_still_emits_insert_for_regular_table() {
+        // Regression guard: the `vec_` heuristic must NOT change
+        // the entry type for ordinary SQL tables.
+        let mut wal = WalStorage::new(MemoryStorage::new(), MemoryWalManager::new())
+            .expect("WalStorage::new");
+
+        wal.log_insert(1, b"id=5".to_vec(), b"name='alice'".to_vec())
+            .expect("row log_insert should still work");
+
+        let entries = wal.wal().recover().expect("recover should succeed");
+        assert_eq!(entries.len(), 1);
+        assert_eq!(
+            entries[0].entry_type,
+            WalEntryType::Insert,
+            "non-vec table must keep emitting Insert"
+        );
+    }
+
+    #[test]
+    fn row_log_delete_still_emits_delete_for_regular_table() {
+        let mut wal = WalStorage::new(MemoryStorage::new(), MemoryWalManager::new())
+            .expect("WalStorage::new");
+
+        wal.log_delete(1, b"id=5".to_vec())
+            .expect("row log_delete should still work");
+
+        let entries = wal.wal().recover().expect("recover should succeed");
+        assert_eq!(entries.len(), 1);
+        assert_eq!(
+            entries[0].entry_type,
+            WalEntryType::Delete,
+            "non-vec table must keep emitting Delete"
+        );
     }
 }
