@@ -148,6 +148,10 @@ pub enum Statement {
     DropRole(DropRoleStatement),
     CreateDatabase(CreateDatabaseStatement),
     DropDatabase(DropDatabaseStatement),
+    /// V400-03 / Issue #3731: first-class graph subsystem DDL.
+    /// `CREATE GRAPH [IF NOT EXISTS] <name>` and `DROP GRAPH [IF EXISTS] <name>`.
+    CreateGraph(CreateGraphStatement),
+    DropGraph(DropGraphStatement),
     UseDatabase(String),
     GrantRole(GrantRoleStatement),
     RevokeRole(RevokeRoleStatement),
@@ -1152,6 +1156,23 @@ pub struct CreateDatabaseStatement {
 /// DROP DATABASE statement
 #[derive(Debug, Clone, PartialEq)]
 pub struct DropDatabaseStatement {
+    pub name: String,
+    pub if_exists: bool,
+}
+
+/// V400-03 / Issue #3731: `CREATE GRAPH [IF NOT EXISTS] <name>`
+/// SQL DDL for declaring a first-class property graph. The executor
+/// routes this to `sqlrustgo_graph::DiskGraphStore` (see V400-03 G1).
+#[derive(Debug, Clone, PartialEq)]
+pub struct CreateGraphStatement {
+    pub name: String,
+    pub if_not_exists: bool,
+}
+
+/// V400-03 / Issue #3731: `DROP GRAPH [IF EXISTS] <name>`
+/// SQL DDL for removing a first-class property graph.
+#[derive(Debug, Clone, PartialEq)]
+pub struct DropGraphStatement {
     pub name: String,
     pub if_exists: bool,
 }
@@ -3116,6 +3137,11 @@ impl Parser {
             Some(Token::Role) => self.parse_create_role(),
             Some(Token::View) => self.parse_create_view(),
             Some(Token::Database) => self.parse_create_database(),
+            // V400-03 / Issue #3731: CREATE GRAPH [IF NOT EXISTS] <name>.
+            // Routes to execute_create_graph (engine_ddl.rs); the executor
+            // opens a sqlrustgo_graph::DiskGraphStore and registers it
+            // under the graph name.
+            Some(Token::Graph) => self.parse_create_graph(),
             Some(Token::Sequence) => self.parse_create_sequence(),
             // V312-58 / Issue #4515: CREATE USER 'name'@'host'
             Some(Token::User) => self.parse_create_user(),
@@ -3409,6 +3435,53 @@ impl Parser {
             name,
             if_not_exists,
         }))
+    }
+
+    /// V400-03 / Issue #3731 (G1): parse `CREATE GRAPH [IF NOT EXISTS] <name>`.
+    /// The graph name follows the same identifier rules as a table or
+    /// database name. Reserved-keyword check (e.g. preventing
+    /// `CREATE GRAPH TABLE`) lives in the executor layer because graph
+    /// namespaces share the catalog with tables; the parser accepts
+    /// any identifier and lets the catalog resolve collisions.
+    fn parse_create_graph(&mut self) -> Result<Statement, String> {
+        self.expect(Token::Graph)?;
+        let if_not_exists = if matches!(self.current(), Some(Token::If)) {
+            self.next();
+            self.expect(Token::Not)?;
+            self.expect(Token::Exists)?;
+            true
+        } else {
+            false
+        };
+        let name = match self.next() {
+            Some(Token::Identifier(name)) => name,
+            Some(Token::StringLiteral(s)) => s,
+            Some(t) => return Err(format!("Expected graph name, got {:?}", t)),
+            None => return Err("Expected graph name".to_string()),
+        };
+        Ok(Statement::CreateGraph(CreateGraphStatement {
+            name,
+            if_not_exists,
+        }))
+    }
+
+    /// V400-03 / Issue #3731 (G1): parse `DROP GRAPH [IF EXISTS] <name>`.
+    fn parse_drop_graph(&mut self) -> Result<Statement, String> {
+        self.expect(Token::Graph)?;
+        let if_exists = if matches!(self.current(), Some(Token::If)) {
+            self.next();
+            self.expect(Token::Exists)?;
+            true
+        } else {
+            false
+        };
+        let name = match self.next() {
+            Some(Token::Identifier(name)) => name,
+            Some(Token::StringLiteral(s)) => s,
+            Some(t) => return Err(format!("Expected graph name, got {:?}", t)),
+            None => return Err("Expected graph name".to_string()),
+        };
+        Ok(Statement::DropGraph(DropGraphStatement { name, if_exists }))
     }
 
     /// Parse USE <database> statement
@@ -12194,15 +12267,17 @@ impl Parser {
             Some(Token::Trigger) => self.parse_drop_trigger(),
             Some(Token::Role) => self.parse_drop_role(),
             Some(Token::Database) => self.parse_drop_database(),
+            // V400-03 / Issue #3731: DROP GRAPH [IF EXISTS] <name>.
+            Some(Token::Graph) => self.parse_drop_graph(),
             Some(Token::Sequence) => self.parse_drop_sequence(),
             // V312-58 / Issue #4515: user removal.
             Some(Token::User) => self.parse_drop_user(),
             Some(t) => Err(format!(
-                "Expected TABLE, INDEX, VIEW, PROCEDURE, FUNCTION, TRIGGER, ROLE, SEQUENCE, DATABASE, or USER after DROP, got {:?}",
+                "Expected TABLE, INDEX, VIEW, PROCEDURE, FUNCTION, TRIGGER, ROLE, SEQUENCE, DATABASE, GRAPH, or USER after DROP, got {:?}",
                 t
             )),
             None => Err(
-                "Expected TABLE, INDEX, VIEW, PROCEDURE, FUNCTION, TRIGGER, ROLE, SEQUENCE, DATABASE, or USER after DROP"
+                "Expected TABLE, INDEX, VIEW, PROCEDURE, FUNCTION, TRIGGER, ROLE, SEQUENCE, DATABASE, GRAPH, or USER after DROP"
                     .to_string(),
             ),
         }
