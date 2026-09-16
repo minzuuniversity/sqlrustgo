@@ -26,6 +26,7 @@ members = [
     "crates/test-results",
     "crates/test-reporter",
     "crates/gmp",
+    "crates/shard-router",
     "crates/vector",
     "crates/rag",
     "crates/admin",
