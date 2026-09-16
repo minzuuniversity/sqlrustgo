@@ -206,6 +206,11 @@ pub enum Token {
     Modify,
     Use,
     View,
+    /// V400-03 / Issue #3731: `CREATE GRAPH <name>` / `DROP GRAPH <name>`
+    /// SQL DDL for declaring a first-class property graph. The parser
+    /// recognizes the keyword; the executor layer (engine_ddl.rs) wires
+    /// it to `sqlrustgo_graph::DiskGraphStore` per `V400-03 G1` plan.
+    Graph,
     // Transaction keywords
     Transaction,
     Work,
@@ -399,6 +404,7 @@ impl fmt::Display for Token {
             Token::Conflict => write!(f, "CONFLICT"),
             Token::Nothing => write!(f, "NOTHING"),
             Token::Database => write!(f, "DATABASE"),
+            Token::Graph => write!(f, "GRAPH"),
             Token::Use => write!(f, "USE"),
             Token::View => write!(f, "VIEW"),
             Token::HighPriority => write!(f, "HIGH_PRIORITY"),
@@ -713,6 +719,7 @@ pub fn from_keyword(s: &str) -> Option<Token> {
         "CONFLICT" => Some(Token::Conflict),
         "MODIFY" => Some(Token::Modify),
         "DATABASE" => Some(Token::Database),
+        "GRAPH" => Some(Token::Graph),
         "USE" => Some(Token::Use),
         "SHOW" => Some(Token::Show),
         "DESCRIBE" => Some(Token::Describe),
@@ -1175,6 +1182,7 @@ mod tests {
     fn test_token_display_mysql_keywords() {
         assert_eq!(Token::Duplicate.to_string(), "DUPLICATE");
         assert_eq!(Token::Database.to_string(), "DATABASE");
+        assert_eq!(Token::Graph.to_string(), "GRAPH");
         assert_eq!(Token::Use.to_string(), "USE");
         assert_eq!(Token::View.to_string(), "VIEW");
         assert_eq!(Token::HighPriority.to_string(), "HIGH_PRIORITY");

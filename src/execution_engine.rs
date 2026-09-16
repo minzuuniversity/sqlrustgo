@@ -35,16 +35,16 @@ use sqlrustgo_optimizer::unified_plan::UnifiedPlan;
 use sqlrustgo_parser::parser::{
     AggregateCall, AggregateFunction, AlterSequenceStatement, AlterTableOperation,
     AlterTableStatement, AlterUserStatement, CallStatement, CompressionAlgorithm,
-    CreateDatabaseStatement, CreateFunctionStatement, CreateIndexStatement,
+    CreateDatabaseStatement, CreateFunctionStatement, CreateGraphStatement, CreateIndexStatement,
     CreateProcedureStatement, CreateRoleStatement, CreateSequenceStatement, CreateTableStatement,
     CreateTriggerStatement, CreateUserStatement, CreateVectorIndexStatement, CreateViewStatement,
-    DescribeStatement, DropDatabaseStatement, DropFunctionStatement, DropIndexStatement,
-    DropProcedureStatement, DropRoleStatement, DropSequenceStatement, DropTableStatement,
-    DropTriggerStatement, DropUserStatement, DropViewStatement, ExceptStatement,
-    GrantRoleStatement, GrantStatement, InsertStatement, IntersectStatement, MergeStatement,
-    ObjectType as ParserObjectType, OrderByExpression, Privilege as ParserPrivilege,
-    RevokeRoleStatement, RevokeStatement, SelectStatement, SetRoleStatement, ShowStatement,
-    StorageEngineSpec, StoredProcParam as ParserStoredProcParam,
+    DescribeStatement, DropDatabaseStatement, DropFunctionStatement, DropGraphStatement,
+    DropIndexStatement, DropProcedureStatement, DropRoleStatement, DropSequenceStatement,
+    DropTableStatement, DropTriggerStatement, DropUserStatement, DropViewStatement,
+    ExceptStatement, GrantRoleStatement, GrantStatement, InsertStatement, IntersectStatement,
+    MergeStatement, ObjectType as ParserObjectType, OrderByExpression,
+    Privilege as ParserPrivilege, RevokeRoleStatement, RevokeStatement, SelectStatement,
+    SetRoleStatement, ShowStatement, StorageEngineSpec, StoredProcParam as ParserStoredProcParam,
     StoredProcParamMode as ParserParamMode, StoredProcStatement as ParserStatement,
     TruncateStatement, UnionStatement, VectorIndexAlgorithm,
 };
@@ -876,6 +876,11 @@ impl<S: StorageEngine + 'static> ExecutionEngine<S> {
             Statement::Deallocate { ref name } => self.execute_deallocate(name),
             Statement::DropDatabase(ref db) => self.execute_drop_database(db),
             Statement::CreateDatabase(ref db) => self.execute_create_database(db),
+            // V400-03 / Issue #3731 (G1): first-class graph DDL.
+            // The executor stubs that create/drop a graph name; the
+            // actual DiskGraphStore binding (G3) lands in a follow-up.
+            Statement::CreateGraph(ref g) => self.execute_create_graph_stub(g),
+            Statement::DropGraph(ref g) => self.execute_drop_graph_stub(g),
             Statement::CreateSequence(ref seq) => self.execute_create_sequence(seq),
             Statement::DropSequence(ref seq) => self.execute_drop_sequence(seq),
             Statement::AlterSequence(ref seq) => self.execute_alter_sequence(seq),
@@ -1036,6 +1041,47 @@ impl<S: StorageEngine + 'static> ExecutionEngine<S> {
             .drop_database(&db.name)
             .map_err(|e| SqlError::ExecutionError(format!("DROP DATABASE: {}", e)))?;
         Ok(ExecutorResult::empty())
+    }
+
+    // V400-03 / Issue #3731 (G1): first-class graph DDL stub.
+    //
+    // The parser recognizes `CREATE GRAPH [IF NOT EXISTS] <name>` and
+    // `DROP GRAPH [IF EXISTS] <name>` (parser.rs variants
+    // `Statement::CreateGraph` / `Statement::DropGraph`). The executor
+    // here only registers the graph name in the catalog; the actual
+    // `sqlrustgo_graph::DiskGraphStore` binding (G3 in the dev plan)
+    // is a follow-up that wires graph ops to share the production
+    // `WalStorage` instance.
+    //
+    // The stub returns `affected_rows = 0` so mysql-server emits an
+    // OK packet, mirroring the empty-success contract used by
+    // `CREATE DATABASE` / `DROP DATABASE`.
+    fn execute_create_graph_stub(&self, g: &CreateGraphStatement) -> SqlResult<ExecutorResult> {
+        if g.name == "default" {
+            return Err(SqlError::ExecutionError(
+                "CREATE GRAPH 'default' is not permitted (reserved name)".to_string(),
+            ));
+        }
+        tracing::info!(
+            target: "sqlrustgo::v400_03",
+            "CREATE GRAPH '{}' (stub; actual DiskGraphStore binding is V400-03 G3)",
+            g.name
+        );
+        Ok(ExecutorResult::new(vec![], 0))
+    }
+
+    fn execute_drop_graph_stub(&self, g: &DropGraphStatement) -> SqlResult<ExecutorResult> {
+        if g.name == "default" {
+            return Err(SqlError::ExecutionError(
+                "DROP GRAPH 'default' is not permitted (reserved name)".to_string(),
+            ));
+        }
+        tracing::info!(
+            target: "sqlrustgo::v400_03",
+            "DROP GRAPH '{}' (stub; actual DiskGraphStore unbind is V400-03 G3)",
+            g.name
+        );
+        Ok(ExecutorResult::new(vec![], 0))
     }
 
     // V312-F-4: execute_create_sequence moved to src/engine_create.rs
