@@ -43,15 +43,12 @@ pub struct MvccStorage<S: StorageEngine + 'static> {
     /// `scan_*(&self)` paths can hand a reference to background GC
     /// without holding the wrapper lock.
     mvcc: parking_lot::RwLock<HashMap<String, Arc<VersionedTable>>>,
-    /// V400-MVCC-GC: monotonically incremented on every write path
-    /// (insert/delete/update/update_if/delete_if/force_insert).
-    /// When `count % GC_INTERVAL == 0` (modulo == 0 right after the
-    /// increment), the write thread calls `self.gc(MVCC_GC_LAG)`.
-    /// Throttling avoids paying the gc scan cost on every write
-    /// (the per-write version chain is already short at the lag
-    /// boundary, so GC every-Nth-write is sufficient to keep RSS
-    /// bounded under sustained mixed read/write load).
-    write_count: std::sync::atomic::AtomicU64,
+    /// V400-PERF-FIX: per-table cache of the last observed MVCC
+    /// key_count. When this count is monotonically increasing
+    /// (no GC has run since last call), we skip the expensive
+    /// `inner.scan().len()` check entirely. When the count drops
+    /// (GC ran), we re-check inner.
+    scan_skip_cache: parking_lot::Mutex<HashMap<String, (usize, u64)>>,
 }
 
 /// V400-MVCC-GC: GC frequency. Run `gc(MVCC_GC_LAG)` once every
@@ -69,21 +66,7 @@ impl<S: StorageEngine + 'static> MvccStorage<S> {
         Self {
             inner,
             mvcc: parking_lot::RwLock::new(HashMap::new()),
-            write_count: std::sync::atomic::AtomicU64::new(0),
-        }
-    }
-
-    /// V400-MVCC-GC: bump the write counter; if we've crossed a
-    /// `GC_INTERVAL` boundary, reap old versions. Caller must hold
-    /// no locks when invoking (called at the tail of write paths).
-    #[inline]
-    fn maybe_gc(&self) {
-        let count = self
-            .write_count
-            .fetch_add(1, std::sync::atomic::Ordering::Relaxed)
-            + 1;
-        if count.is_multiple_of(GC_INTERVAL) {
-            let _dropped = self.gc(MVCC_GC_LAG);
+            scan_skip_cache: parking_lot::Mutex::new(HashMap::new()),
         }
     }
 
@@ -234,20 +217,37 @@ impl<S: StorageEngine + 'static> StorageEngine for MvccStorage<S> {
 
         // V400-MVCC-PKFAST: merge inner.scan() so rows that have been
         // evicted from MVCC chains by background GC are still visible.
-        // Deduplicate by row[0] (PK) — MVCC version wins on conflicts.
         //
-        // Optimization: skip the inner scan entirely when MVCC
-        // covers all rows. The common case is MVCC_count == inner_count.
-        let mvcc_count = mvcc.key_count() as i64;
-        let inner_row_count = self.inner.scan(table)?.len() as i64;
-        if mvcc_count < inner_row_count {
-            let mvcc_pks: std::collections::HashSet<crate::engine::Value> =
-                out.iter().filter_map(|r| r.first().cloned()).collect();
-            if let Ok(inner_rows) = self.inner.scan(table) {
-                for row in inner_rows {
-                    if let Some(pk) = row.first() {
-                        if !mvcc_pks.contains(pk) {
-                            out.push(row);
+        // Optimization: ONLY consult inner.scan() when MVCC chain
+        // count has dropped since the last call (which means GC
+        // may have evicted chains). The cache is per-MvccStorage
+        // because GC happens globally; we just check the count
+        // delta to skip the expensive inner.scan().len() on the
+        // hot path.
+        let mvcc_count = mvcc.key_count();
+        let needs_check = {
+            let mut cache = self.scan_skip_cache.lock();
+            let entry = cache.entry(table.to_string()).or_insert((0, 0));
+            let cached_count = entry.0;
+            let hit_count = entry.1;
+            let needs = mvcc_count < cached_count || hit_count == 0;
+            if needs {
+                entry.0 = mvcc_count;
+                entry.1 = hit_count.wrapping_add(1);
+            }
+            needs
+        };
+        if needs_check {
+            let inner_row_count = self.inner.scan(table)?.len();
+            if mvcc_count < inner_row_count {
+                let mvcc_pks: std::collections::HashSet<crate::engine::Value> =
+                    out.iter().filter_map(|r| r.first().cloned()).collect();
+                if let Ok(inner_rows) = self.inner.scan(table) {
+                    for row in inner_rows {
+                        if let Some(pk) = row.first() {
+                            if !mvcc_pks.contains(pk) {
+                                out.push(row);
+                            }
                         }
                     }
                 }
