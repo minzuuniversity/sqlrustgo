@@ -196,28 +196,12 @@ impl<S: StorageEngine + 'static> StorageEngine for MvccStorage<S> {
             return Ok(Some(row));
         }
         // MVCC has no visible row for this PK. Try the inner engine
-        // first — covers the rebuild-lag case where rows were
-        // committed before MVCC rebuilt its chain.
-        if let Some(row) = self.inner.scan_pk(table, pk_column, pk)? {
-            return Ok(Some(row));
-        }
-        // V400-MVCC-PKFAST: GC may have evicted a single-version chain
-        // (see VersionedTable::gc step 2). The inner engine's PK fast
-        // path only returns rows that have an index entry — for tables
-        // without a B+Tree, it returns None. Fall back to a full scan
-        // so MVCC+GC eviction is transparent to readers. We compare
-        // each returned row's columns to `pk` looking for any column
-        // that matches — for the common case (single-column PK) this
-        // finds the row correctly.
-        let rows = self.inner.scan(table)?;
-        for row in rows {
-            for v in &row {
-                if v == pk {
-                    return Ok(Some(row));
-                }
-            }
-        }
-        Ok(None)
+        // — covers both (a) the rebuild-lag case and (b) the case
+        // where GC has evicted the MVCC chain but the row is still
+        // in inner.data.rows. The inner's scan_pk is now O(log N)
+        // thanks to the auto-built PK B+Tree index (see
+        // FileStorage::rebuild_pk_indexes / create_table).
+        self.inner.scan_pk(table, pk_column, pk)
     }
 
     /// Phase B Step 4.3: O(log N + k) PK range scan. Returns the
