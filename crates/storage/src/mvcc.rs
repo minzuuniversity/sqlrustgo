@@ -166,29 +166,59 @@ impl VersionedTable {
     }
 
     /// Garbage-collect versions older than `snapshot_ts - GC_LAG`.
-    /// For Phase 4 we keep a simple policy: drop any version whose
-    /// `visible_from_ts + GC_LAG < snapshot_ts` AND is not the
-    /// newest version in its chain (i.e. not the live version).
+    ///
+    /// Policy:
+    /// 1. **Multi-version chains** (length ≥ 2): drop versions whose
+    ///    `visible_from_ts < cutoff` and that are not the live version.
+    ///    The live version (last entry) is always kept so readers can
+    ///    resolve the current state of the PK.
+    /// 2. **Single-version chains** (length 1): drop the version if
+    ///    its `visible_from_ts < cutoff`. This is safe because
+    ///    `MvccStorage::scan_pk` falls back to the inner engine
+    ///    (FileStorage) when the MVCC chain returns None, and the
+    ///    inner still holds the row. The version is regenerated on
+    ///    the next `rebuild_from_inner()` at server restart. Without
+    ///    this, a workload dominated by INSERTs would accumulate one
+    ///    un-reclaimable entry per PK forever (each PK's chain stays
+    ///    at length 1).
     ///
     /// Returns the number of versions dropped.
     pub fn gc(&self, snapshot_ts: u64, gc_lag: u64) -> usize {
         let cutoff = snapshot_ts.saturating_sub(gc_lag);
         let mut w = self.versions.write();
         let mut dropped = 0;
-        for chain in w.values_mut() {
-            // Drop versions whose visible_from_ts < cutoff AND are not
-            // the live version (last entry with `visible_from_ts <=
-            // cutoff`). We keep at minimum the latest tombstone so
-            // deletes stay visible.
-            let mut i = 0;
-            while i + 1 < chain.len() {
-                if chain[i].visible_from_ts < cutoff {
-                    chain.remove(i);
-                    dropped += 1;
-                } else {
-                    i += 1;
+        // Collect keys whose entire chain we want to evict so we can
+        // remove them from the map in one pass. We can't mutate the
+        // map while iterating its values.
+        let mut to_evict: Vec<Value> = Vec::new();
+        for (pk, chain) in w.iter_mut() {
+            if chain.is_empty() {
+                continue;
+            }
+            // Step 1: trim multi-version chains (existing behavior).
+            if chain.len() > 1 {
+                let mut i = 0;
+                while i + 1 < chain.len() {
+                    if chain[i].visible_from_ts < cutoff {
+                        chain.remove(i);
+                        dropped += 1;
+                    } else {
+                        i += 1;
+                    }
                 }
             }
+            // Step 2: evict single-version chains whose version is
+            // older than the cutoff. (The version's visible_from_ts is
+            // < cutoff, which means no reader with snapshot_ts <=
+            // current snapshot_ts - gc_lag would have looked at this
+            // entry anyway.)
+            if chain.len() == 1 && chain[0].visible_from_ts < cutoff {
+                to_evict.push(pk.clone());
+            }
+        }
+        for pk in &to_evict {
+            w.remove(pk);
+            dropped += 1;
         }
         dropped
     }

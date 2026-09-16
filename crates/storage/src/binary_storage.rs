@@ -801,6 +801,15 @@ impl StorageEngine for BoxStorageEngine {
         self
     }
 
+    /// V400-MVCC-PKFAST: explicit override of the default trait impl.
+    /// The default does a full table scan + linear find; forwarding
+    /// to the inner engine's B+Tree-backed scan_pk gives O(log N)
+    /// lookup. Without this override, BoxStorageEngine's Deref to
+    /// `dyn StorageEngine` resolves to the default trait impl.
+    fn scan_pk(&self, table: &str, pk_column: &str, pk: &Value) -> SqlResult<Option<Record>> {
+        (**self).scan_pk(table, pk_column, pk)
+    }
+
     fn gc(&self, gc_lag: u64) -> usize {
         // Delegate to the wrapped engine via the trait method (dyn
         // dispatch). For MvccStorage-wrapped engines this routes to
