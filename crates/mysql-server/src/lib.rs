@@ -45,7 +45,7 @@ fn read_executor_parallelism() -> usize {
 }
 
 /// Parse WAL sync mode from string (from --wal-sync CLI flag).
-/// Formats: "every", "off", "batch:N"
+/// Formats: "every", "off", "batch:N", "group:MAX_BATCH,MAX_WAIT_US"
 fn parse_wal_sync_mode(s: &str) -> sqlrustgo_storage::WalSyncMode {
     let s = s.trim();
     if s.eq_ignore_ascii_case("off") {
@@ -55,6 +55,28 @@ fn parse_wal_sync_mode(s: &str) -> sqlrustgo_storage::WalSyncMode {
         let n: u32 = s[6..].parse().unwrap_or(100);
         tracing::info!("WAL batch mode: sync every {} transactions", n);
         sqlrustgo_storage::WalSyncMode::Batch(n)
+    } else if s.to_lowercase().starts_with("group:") {
+        // group:MAX_BATCH,MAX_WAIT_US
+        // e.g. group:32,1000  -> max_batch=32, max_wait_us=1000 (1ms)
+        let rest = &s[6..];
+        let mut parts = rest.splitn(2, ',');
+        let max_batch: u32 = parts
+            .next()
+            .and_then(|p| p.parse().ok())
+            .unwrap_or(32);
+        let max_wait_us: u64 = parts
+            .next()
+            .and_then(|p| p.parse().ok())
+            .unwrap_or(1_000);
+        tracing::info!(
+            "WAL group-commit mode: max_batch={}, max_wait_us={} (1ms=1000us). \
+             Up to max_batch-1 tx loss on crash.",
+            max_batch, max_wait_us
+        );
+        sqlrustgo_storage::WalSyncMode::GroupCommit {
+            max_batch,
+            max_wait_us,
+        }
     } else {
         sqlrustgo_storage::WalSyncMode::Every
     }
@@ -6040,6 +6062,15 @@ pub(crate) fn run_server_with_listener_and_shutdown_with_bootstrap_tables_and_sq
             tracing::info!("WAL sync mode: {:?}", sync_mode);
             let mut parallel_storage = ParallelWalStorage::new(file_storage, wal_manager);
             parallel_storage.set_sync_mode(sync_mode);
+            // Note: the `--wal-sync group:...` CLI flag is accepted and
+            // parsed into `WalSyncMode::GroupCommit`, but the server
+            // does not yet install a `GroupCommitCoordinator` here. To
+            // use group commit, construct a `ParallelWalStorage` with
+            // a `GroupCommitCoordinator` programmatically (see
+            // `crates/storage/tests/group_commit_integration.rs` for an
+            // example). The storage layer's commit path already routes
+            // through the coordinator when one is installed; this
+            // server just hasn't been wired up to construct one yet.
             Arc::new(parking_lot::RwLock::new(BoxStorageEngine::new(
                 parallel_storage,
             )))
