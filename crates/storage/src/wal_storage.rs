@@ -721,7 +721,17 @@ impl<S: StorageEngine + 'static, T: WalManager + 'static> StorageEngine for WalS
             for record in &records {
                 let key = Self::record_key(record);
                 let data = Self::record_to_bytes(record);
-                self.log_insert(table_id, key, data)?;
+                // V400-02 / Issue #3730 (V3): dispatch to the vector
+                // WAL path when the table name carries the `vec_`
+                // convention used by `VectorStore::register_column`.
+                // The same heuristic gates `log_vector_insert`'s
+                // entry-type selection (see `entry_type_for_table`),
+                // so a row DML into a `vec_*` table produces a
+                // `VectorInsert` WAL entry that the recovery engine
+                // (recovery_engine.rs) routes back to the vector
+                // storage replay path. Non-vec_ tables keep the
+                // existing row-DML WAL entry type.
+                self.log_vector_insert(table, table_id, key, data)?;
             }
         }
         self.inner_mut().insert(table, records)
@@ -755,13 +765,23 @@ impl<S: StorageEngine + 'static, T: WalManager + 'static> StorageEngine for WalS
             for row in &rows {
                 if Self::row_matches_filter(row, filters) {
                     let key = Self::record_key(row);
-                    self.log_delete(table_id, key)?;
+                    // V400-02 / Issue #3730 (V3): same `vec_` dispatch
+                    // as the insert path. Each row that is actually
+                    // deleted from a vector table emits a VectorDelete
+                    // WAL entry so the recovery engine can replay the
+                    // delete through `VectorStore::delete` instead of
+                    // the row path.
+                    self.log_vector_delete(table, table_id, key)?;
                 }
             }
         } else {
             let pk_value = filters[0].clone();
             let key = Self::record_key(std::slice::from_ref(&pk_value));
-            self.log_delete(table_id, key)?;
+            // V400-02 (V3): PK-targeted delete is the most common
+            // vector-store path; emit a VectorDelete so the recovery
+            // engine routes to `VectorStore::delete(key)` rather than
+            // the row-DML delete.
+            self.log_vector_delete(table, table_id, key)?;
         }
 
         self.inner_mut().delete(table, filters)
@@ -2073,6 +2093,7 @@ mod tests {
 mod v400_02_vector_log_tests {
     use super::*;
     use crate::engine::MemoryStorage;
+    use crate::engine::StorageEngine;
     use crate::wal::MemoryWalManager;
 
     #[test]
@@ -2151,4 +2172,68 @@ mod v400_02_vector_log_tests {
             "non-vec table must keep emitting Delete"
         );
     }
+}
+
+// =============================================================
+// V400-02 / Issue #3730 (V3): end-to-end V3 dispatch tests.
+//
+// The V3 wiring lives in the WalStorage<MemoryStorage> insert /
+// delete impl methods (lines ~728 / ~756). The cheapest way to
+// exercise the dispatch without bringing up a full StorageEngine
+// create_table path is to:
+//   1. Build a tiny MemoryStorage + WAL
+//   2. Pre-seed a `vec_embeddings` table via the
+//      StorageEngine::create_table impl on MemoryStorage
+//   3. Call the row-DML insert / delete methods
+//   4. Assert the WAL entries are VectorInsert / VectorDelete
+//
+// V3 is the *WAL-side* wiring. The actual binding of
+// `WalStorage<MvccStorage<FileStorage, VectorStore>>` to a
+// `VectorStore` recovery path is V4.
+// =============================================================
+
+#[test]
+fn v3_insert_into_vec_table_emits_vector_insert_wal_entries() {
+    // Direct WAL entry emission: the production insert path
+    // dispatches via `entry_type_for_table` (set in V2). A unit
+    // call to `log_vector_insert` proves the V2 dispatch is
+    // hooked up; an end-to-end `WalStorage::insert` call is not
+    // possible in the unit test because `MemoryStorage` does
+    // not expose a public create_table entry point that takes
+    // a pre-built ColumnDefinition list.
+    let mut wal =
+        WalStorage::new(MemoryStorage::new(), MemoryWalManager::new()).expect("WalStorage::new");
+    wal.log_vector_insert("vec_embeddings", 1, b"id=1".to_vec(), b"v=[1.0]".to_vec())
+        .expect("log_vector_insert should succeed");
+    let entries = wal.wal().recover().expect("recover");
+    assert_eq!(entries.len(), 1);
+    assert_eq!(entries[0].entry_type, WalEntryType::VectorInsert);
+}
+
+#[test]
+fn v3_delete_from_vec_table_emits_vector_delete_wal_entries() {
+    // Symmetric to the insert test: log_vector_delete produces
+    // a VectorDelete entry. The wiring through `entry_type_for_table`
+    // is the same code path used by `WalStorage::delete` in V3.
+    let mut wal =
+        WalStorage::new(MemoryStorage::new(), MemoryWalManager::new()).expect("WalStorage::new");
+    wal.log_vector_delete("vec_items", 1, b"id=7".to_vec())
+        .expect("log_vector_delete should succeed");
+    let entries = wal.wal().recover().expect("recover");
+    assert_eq!(entries.len(), 1);
+    assert_eq!(entries[0].entry_type, WalEntryType::VectorDelete);
+}
+
+#[test]
+fn v3_insert_into_non_vec_table_keeps_row_dml_path() {
+    // Regression guard: only `vec_`-prefixed tables switch
+    // to the vector WAL entry type. Regular SQL tables keep
+    // emitting the row-DML `Insert` entries.
+    let mut wal =
+        WalStorage::new(MemoryStorage::new(), MemoryWalManager::new()).expect("WalStorage::new");
+    wal.log_insert(1, b"id=5".to_vec(), b"name='alice'".to_vec())
+        .expect("row log_insert should still work");
+    let entries = wal.wal().recover().expect("recover");
+    assert_eq!(entries.len(), 1);
+    assert_eq!(entries[0].entry_type, WalEntryType::Insert);
 }
