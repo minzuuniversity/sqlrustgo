@@ -196,9 +196,28 @@ impl<S: StorageEngine + 'static> StorageEngine for MvccStorage<S> {
             return Ok(Some(row));
         }
         // MVCC has no visible row for this PK. Try the inner engine
-        // — covers the rebuild-lag case where rows were committed
-        // before MVCC rebuilt its chain.
-        self.inner.scan_pk(table, pk_column, pk)
+        // first — covers the rebuild-lag case where rows were
+        // committed before MVCC rebuilt its chain.
+        if let Some(row) = self.inner.scan_pk(table, pk_column, pk)? {
+            return Ok(Some(row));
+        }
+        // V400-MVCC-PKFAST: GC may have evicted a single-version chain
+        // (see VersionedTable::gc step 2). The inner engine's PK fast
+        // path only returns rows that have an index entry — for tables
+        // without a B+Tree, it returns None. Fall back to a full scan
+        // so MVCC+GC eviction is transparent to readers. We compare
+        // each returned row's columns to `pk` looking for any column
+        // that matches — for the common case (single-column PK) this
+        // finds the row correctly.
+        let rows = self.inner.scan(table)?;
+        for row in rows {
+            for v in &row {
+                if v == pk {
+                    return Ok(Some(row));
+                }
+            }
+        }
+        Ok(None)
     }
 
     /// Phase B Step 4.3: O(log N + k) PK range scan. Returns the
@@ -227,7 +246,23 @@ impl<S: StorageEngine + 'static> StorageEngine for MvccStorage<S> {
         let mvcc = self.mvcc_table(table);
         let snapshot_ts = mvcc.begin_snapshot();
         let pairs = mvcc.scan_visible(snapshot_ts);
-        Ok(pairs.into_iter().map(|(_, row)| row).collect())
+        let mut out: Vec<Record> = pairs.into_iter().map(|(_, row)| row).collect();
+
+        // V400-MVCC-PKFAST: merge inner.scan() so rows that have been
+        // evicted from MVCC chains by background GC are still visible.
+        // Deduplicate by row[0] (PK) — MVCC version wins on conflicts.
+        let mvcc_pks: std::collections::HashSet<crate::engine::Value> =
+            out.iter().filter_map(|r| r.first().cloned()).collect();
+        if let Ok(inner_rows) = self.inner.scan(table) {
+            for row in inner_rows {
+                if let Some(pk) = row.first() {
+                    if !mvcc_pks.contains(pk) {
+                        out.push(row);
+                    }
+                }
+            }
+        }
+        Ok(out)
     }
 
     fn scan_with_filter<F>(&self, table: &str, filter: F) -> SqlResult<Vec<Record>>
@@ -238,10 +273,26 @@ impl<S: StorageEngine + 'static> StorageEngine for MvccStorage<S> {
         let mvcc = self.mvcc_table(table);
         let snapshot_ts = mvcc.begin_snapshot();
         let pairs = mvcc.scan_visible(snapshot_ts);
-        Ok(pairs
+        let mut out: Vec<Record> = pairs
             .into_iter()
             .filter_map(|(_, row)| if filter(&row) { Some(row) } else { None })
-            .collect())
+            .collect();
+
+        // V400-MVCC-PKFAST: also include rows from inner that may have
+        // been evicted from MVCC chains by background GC. Deduplicate
+        // by PK to avoid double-counting rows still present in MVCC.
+        let mvcc_pks: std::collections::HashSet<crate::engine::Value> =
+            out.iter().filter_map(|r| r.first().cloned()).collect();
+        if let Ok(inner_rows) = self.inner.scan_with_filter(table, filter) {
+            for row in inner_rows {
+                if let Some(pk) = row.first() {
+                    if !mvcc_pks.contains(pk) {
+                        out.push(row);
+                    }
+                }
+            }
+        }
+        Ok(out)
     }
 
     fn insert(&mut self, table: &str, records: Vec<Record>) -> SqlResult<()> {
