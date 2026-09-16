@@ -3212,8 +3212,12 @@ impl FileStorage {
                 }
                 result
             });
-        if let Some((columns, start_row_id, row_count)) = snap {
-            Self::update_pk_index(self, table, &columns, start_row_id as usize, row_count);
+        if let Some((columns, start_row_id, _row_count)) = snap {
+            // V400-PERF-FIX: pass &records directly so the index
+            // helper reads PK values from the input rather than
+            // cloning the entire `data.rows` vector. The clone
+            // was O(N) per insert and dominated write throughput.
+            Self::update_pk_index(self, table, &columns, &records, start_row_id as usize);
         }
         Ok(())
     }
@@ -3244,8 +3248,18 @@ impl FileStorage {
                     result
                 },
             );
-        if let Some((start_row_id, row_count, columns)) = snap {
-            Self::update_pk_index(self, table, &columns, start_row_id, row_count);
+        if let Some((start_row_id, _row_count, columns)) = snap {
+            // V400-PERF-FIX: pass &records directly. The closure
+            // returns the columns/start_row_id but the records
+            // have been moved into the closure body. Since
+            // `records: Vec<Record>` is owned by this function
+            // and the closure took ownership of the move
+            // (`buffered.extend(records.iter().cloned())` does
+            // clone, then `s.insert_buffer.remove(table)` moves
+            // the buffer out — but `records` is still owned by
+            // us at this point because we cloned into the buffer),
+            // we can pass &records to read PKs directly.
+            Self::update_pk_index(self, table, &columns, &records, start_row_id);
         }
         Ok(())
     }
@@ -3272,39 +3286,101 @@ impl FileStorage {
                 },
             );
         if let Some((start_row_id, row_count, columns)) = snap {
-            Self::update_pk_index(self, table, &columns, start_row_id, row_count);
+            // V400-PERF-FIX: flush_buffer has no caller-side records
+            // (they were consumed by the closure via
+            // `s.insert_buffer.remove(table)`). Use a separate
+            // helper that reads ONLY the [start_row_id, +row_count)
+            // window of data.rows — O(row_count) not O(table_size).
+            Self::update_pk_index_window(
+                self,
+                table,
+                &columns,
+                start_row_id,
+                row_count,
+            );
         }
         Ok(())
     }
 
     /// V400-MVCC-PKFAST: helper to update the PK B+Tree index for the
-    /// freshly inserted/flushed rows `[start_row_id, start_row_id+count)`.
-    /// Acquires `indexes.write()` and `tables.read()` separately to
-    /// avoid lock-order issues.
+    /// rows just inserted. Caller passes the `records` it inserted so
+    /// we don't have to clone the entire `data.rows` vector just to
+    /// extract PK values for `count` rows.
+    ///
+    /// Acquires `indexes.write()` to perform the B+Tree inserts.
     fn update_pk_index(
+        &self,
+        table: &str,
+        columns: &[ColumnDefinition],
+        records: &[Vec<Value>],
+        start_row_id: usize,
+    ) {
+        let pk_col_idx = columns.iter().position(|c| c.primary_key);
+        let Some(pk_idx) = pk_col_idx else { return };
+        let pk_col_name = columns[pk_idx].name.clone();
+        let mut updates: Vec<(i64, u32)> = Vec::with_capacity(records.len());
+        for (i, row) in records.iter().enumerate() {
+            if let Some(v) = row.get(pk_idx) {
+                if let Some(ikey) = v.to_index_key() {
+                    updates.push((ikey, (start_row_id + i) as u32));
+                }
+            }
+        }
+        if updates.is_empty() {
+            return;
+        }
+        if let Ok(mut indexes) = self.indexes.write() {
+            if let Some(index) = indexes.get_mut(&(table.to_string(), pk_col_name.clone())) {
+                for (ikey, rid) in updates {
+                    index.insert(ikey, rid);
+                }
+            }
+        }
+    }
+
+    /// V400-PERF-FIX: variant of `update_pk_index` for callers that
+    /// have already moved the records into `data.rows` and only know
+    /// the row-id window. Reads ONLY that window — O(row_count) not
+    /// O(table_size).
+    fn update_pk_index_window(
         &self,
         table: &str,
         columns: &[ColumnDefinition],
         start_row_id: usize,
         count: usize,
     ) {
+        if count == 0 {
+            return;
+        }
         let pk_col_idx = columns.iter().position(|c| c.primary_key);
         let Some(pk_idx) = pk_col_idx else { return };
         let pk_col_name = columns[pk_idx].name.clone();
+        // Snapshot only the [start_row_id, start_row_id+count) window
+        // so we don't pay O(table_size) for an O(count) operation.
         let rows_snapshot = Self::with_write_lock(self.as_mut_self(), |s| {
-            s.tables.get(table).map(|t| t.rows.clone())
+            s.tables.get(table).map(|t| {
+                let end = (start_row_id + count).min(t.rows.len());
+                if start_row_id < t.rows.len() {
+                    t.rows[start_row_id..end].to_vec()
+                } else {
+                    Vec::new()
+                }
+            })
         });
         let Some(rows) = rows_snapshot else { return };
-        let mut updates: Vec<(i64, u32)> = Vec::with_capacity(count);
-        for i in 0..count {
-            let row_id = start_row_id + i;
-            if row_id < rows.len() {
-                if let Some(v) = rows[row_id].get(pk_idx) {
-                    if let Some(ikey) = v.to_index_key() {
-                        updates.push((ikey, row_id as u32));
-                    }
+        if rows.is_empty() {
+            return;
+        }
+        let mut updates: Vec<(i64, u32)> = Vec::with_capacity(rows.len());
+        for (i, row) in rows.iter().enumerate() {
+            if let Some(v) = row.get(pk_idx) {
+                if let Some(ikey) = v.to_index_key() {
+                    updates.push((ikey, (start_row_id + i) as u32));
                 }
             }
+        }
+        if updates.is_empty() {
+            return;
         }
         if let Ok(mut indexes) = self.indexes.write() {
             if let Some(index) = indexes.get_mut(&(table.to_string(), pk_col_name.clone())) {
