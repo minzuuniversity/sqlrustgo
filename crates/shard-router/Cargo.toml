@@ -1,0 +1,34 @@
+[package]
+name = "sqlrustgo-shard-router"
+version = "0.1.0"
+edition = "2021"
+license.workspace = true
+authors = ["SQLRustGo Team"]
+description = "Lightweight MySQL-protocol-aware shard router for sqlrustgo horizontal scaling POC"
+publish = false
+
+# V400 shard router POC: Forwards MySQL queries to one of N backend
+# sqlrustgo-mysql-server shards based on hash of partition key (PK or
+# WHERE clause). Falls back to broadcast (one query per shard) for
+# cross-shard statements. Single-process, no consensus/raft/2PC.
+
+[dependencies]
+tokio = { version = "1", features = ["full"] }
+tokio-util = { version = "0.7", features = ["rt"] }
+parking_lot.workspace = true
+sqlrustgo-parser = { path = "../parser" }
+clap = { version = "4", features = ["derive", "env"] }
+tracing = "0.1"
+tracing-subscriber = { version = "0.3", features = ["env-filter"] }
+thiserror = "1"
+bytes = "1"
+twox-hash = "1"
+serde = { version = "1", features = ["derive"] }
+
+[[bin]]
+name = "sqlrustgo-shard-router"
+path = "src/main.rs"
+
+[lib]
+name = "sqlrustgo_shard_router"
+path = "src/lib.rs"
