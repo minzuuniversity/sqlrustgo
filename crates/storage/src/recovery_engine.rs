@@ -487,6 +487,25 @@ fn filter_committed_entries(entries: &[WalEntry]) -> Vec<WalEntry> {
                 if let Some(buf) = tx_dmls.get_mut(&entry.tx_id) {
                     buf.push(entry.clone());
                 } else {
+                    // V400-02 / Issue #3730: vector ops are DML-class
+                    // entries and follow the same commit-or-replay
+                    // semantics as Insert/Update/Delete.
+                    result.push(entry.clone());
+                }
+            }
+            // V400-02 / Issue #3730: vector ops are treated as DML for
+            // commit ordering. Each entry is appended to its tx's
+            // pending buffer (if there is one) or replayed directly
+            // (autocommit path).
+            WalEntryType::VectorInsert
+            | WalEntryType::VectorUpdate
+            | WalEntryType::VectorDelete
+            | WalEntryType::CreateVectorIndex
+            | WalEntryType::DropVectorIndex
+            | WalEntryType::RebuildVectorIndex => {
+                if let Some(buf) = tx_dmls.get_mut(&entry.tx_id) {
+                    buf.push(entry.clone());
+                } else {
                     result.push(entry.clone());
                 }
             }
@@ -555,7 +574,16 @@ fn entry_in_autocommit_span(entry: &WalEntry, all_entries: &[WalEntry]) -> bool 
             WalEntryType::Insert
             | WalEntryType::Update
             | WalEntryType::Delete
-            | WalEntryType::Checkpoint => {}
+            | WalEntryType::Checkpoint
+            // V400-02 / Issue #3730: vector ops don't open explicit
+            // tx spans (they are autocommit); the entry_in_autocommit_span
+            // walk leaves the `in_explicit_tx` flag unchanged for them.
+            | WalEntryType::VectorInsert
+            | WalEntryType::VectorUpdate
+            | WalEntryType::VectorDelete
+            | WalEntryType::CreateVectorIndex
+            | WalEntryType::DropVectorIndex
+            | WalEntryType::RebuildVectorIndex => {}
         }
     }
     // If we never reached `entry`, treat as autocommit to be safe
@@ -614,7 +642,17 @@ fn count_status(entries: &[WalEntry]) -> (usize, usize, usize) {
             | WalEntryType::Insert
             | WalEntryType::Update
             | WalEntryType::Delete
-            | WalEntryType::Checkpoint => {
+            | WalEntryType::Checkpoint
+            // V400-02 / Issue #3730: vector ops are autocommit-class
+            // for tx-boundary bookkeeping; their DML is still replayed
+            // via filter_committed_entries (the Vector* arms added in
+            // that function above).
+            | WalEntryType::VectorInsert
+            | WalEntryType::VectorUpdate
+            | WalEntryType::VectorDelete
+            | WalEntryType::CreateVectorIndex
+            | WalEntryType::DropVectorIndex
+            | WalEntryType::RebuildVectorIndex => {
                 // Markers only — transaction boundaries are determined
                 // exclusively by Begin/Commit/Rollback. DML under a
                 // Begin..no-terminator span is reported via rows_*
