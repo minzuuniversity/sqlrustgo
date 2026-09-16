@@ -150,18 +150,13 @@ impl Session {
                 // wins"; this matches the bench methodology where each
                 // shard holds a disjoint slice of data.
                 if self.shards.is_empty() {
-                    return Err(io::Error::new(
-                        io::ErrorKind::Other,
-                        "no shards configured",
-                    ));
+                    return Err(io::Error::new(io::ErrorKind::Other, "no shards configured"));
                 }
                 self.forward_to_shard(0, sql).await?;
                 for idx in 1..self.shards.len() {
                     // Best-effort: fan out writes silently; the client
                     // gets the response from shard 0.
-                    let _ = self
-                        .forward_to_shard_quiet(idx, sql)
-                        .await;
+                    let _ = self.forward_to_shard_quiet(idx, sql).await;
                 }
             }
             RoutingDecision::Connection => {
@@ -251,8 +246,8 @@ impl Session {
         // auth-plugin-data-part-1 (8 bytes of zeros — no challenge)
         body.extend_from_slice(&[0u8; 8]);
         body.push(0x00); // filler
-        // capability flags lower 2 bytes: CLIENT_PROTOCOL_41 |
-        // CLIENT_TRANSACTIONS
+                         // capability flags lower 2 bytes: CLIENT_PROTOCOL_41 |
+                         // CLIENT_TRANSACTIONS
         let caps: u32 = 0x0001_0000 | 0x0000_2000;
         body.extend_from_slice(&(caps as u16).to_le_bytes());
         body.push(SERVER_CHARSET_UTF8);
@@ -304,7 +299,12 @@ impl Session {
 async fn forward_one(shard: &crate::shard::ShardEndpoint, sql: &str) -> io::Result<Vec<u8>> {
     let mut stream = match TcpStream::connect(&shard.addr).await {
         Ok(s) => s,
-        Err(e) => return Err(io::Error::new(io::ErrorKind::Other, format!("connect: {e}"))),
+        Err(e) => {
+            return Err(io::Error::new(
+                io::ErrorKind::Other,
+                format!("connect: {e}"),
+            ))
+        }
     };
 
     // 1. Read backend handshake.
@@ -325,7 +325,14 @@ async fn forward_one(shard: &crate::shard::ShardEndpoint, sql: &str) -> io::Resu
     body.extend_from_slice(&[0u8; 20]);
     body.extend_from_slice(b"mysql_native_password\0");
     let pkt_len = body.len() as u32;
-    stream.write_all(&[pkt_len as u8, (pkt_len >> 8) as u8, (pkt_len >> 16) as u8, 1]).await?;
+    stream
+        .write_all(&[
+            pkt_len as u8,
+            (pkt_len >> 8) as u8,
+            (pkt_len >> 16) as u8,
+            1,
+        ])
+        .await?;
     stream.write_all(&body).await?;
 
     // 3. Read backend OK to handshake (discard it; we send our own standard OK).
@@ -340,7 +347,14 @@ async fn forward_one(shard: &crate::shard::ShardEndpoint, sql: &str) -> io::Resu
     q.push(COM_QUERY);
     q.extend_from_slice(sql.as_bytes());
     let pkt_len = q.len() as u32;
-    stream.write_all(&[pkt_len as u8, (pkt_len >> 8) as u8, (pkt_len >> 16) as u8, 0]).await?;
+    stream
+        .write_all(&[
+            pkt_len as u8,
+            (pkt_len >> 8) as u8,
+            (pkt_len >> 16) as u8,
+            0,
+        ])
+        .await?;
     stream.write_all(&q).await?;
     stream.flush().await.ok();
 
@@ -407,5 +421,3 @@ async fn forward_one(shard: &crate::shard::ShardEndpoint, sql: &str) -> io::Resu
     tracing::debug!(target: "shard_router", sql, "backend returned {} bytes", out.len());
     Ok(out)
 }
-
-

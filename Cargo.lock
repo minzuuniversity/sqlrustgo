@@ -4681,6 +4681,23 @@ dependencies = [
 ]
 
 [[package]]
+name = "sqlrustgo-shard-router"
+version = "0.1.0"
+dependencies = [
+ "bytes",
+ "clap 4.6.1",
+ "parking_lot",
+ "serde",
+ "sqlrustgo-parser",
+ "thiserror 1.0.69",
+ "tokio",
+ "tokio-util",
+ "tracing",
+ "tracing-subscriber",
+ "twox-hash 1.6.3",
+]
+
+[[package]]
 name = "sqlrustgo-soak"
 version = "3.12.0-fix-zombie"
 dependencies = [
@@ -5332,6 +5349,7 @@ dependencies = [
  "bytes",
  "futures-core",
  "futures-sink",
+ "futures-util",
  "pin-project-lite",
  "tokio",
 ]
