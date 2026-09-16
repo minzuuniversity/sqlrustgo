@@ -513,6 +513,7 @@ impl<'a> Lexer<'a> {
                     "LAST" => Token::Last,
                     "TRIGGER" => Token::Trigger,
                     "DATABASE" => Token::Database,
+                    "GRAPH" => Token::Graph,
                     "VIEW" => Token::View,
                     "BEFORE" => Token::Before,
                     "AFTER" => Token::After,

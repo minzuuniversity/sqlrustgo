@@ -60,18 +60,13 @@ fn parse_wal_sync_mode(s: &str) -> sqlrustgo_storage::WalSyncMode {
         // e.g. group:32,1000  -> max_batch=32, max_wait_us=1000 (1ms)
         let rest = &s[6..];
         let mut parts = rest.splitn(2, ',');
-        let max_batch: u32 = parts
-            .next()
-            .and_then(|p| p.parse().ok())
-            .unwrap_or(32);
-        let max_wait_us: u64 = parts
-            .next()
-            .and_then(|p| p.parse().ok())
-            .unwrap_or(1_000);
+        let max_batch: u32 = parts.next().and_then(|p| p.parse().ok()).unwrap_or(32);
+        let max_wait_us: u64 = parts.next().and_then(|p| p.parse().ok()).unwrap_or(1_000);
         tracing::info!(
             "WAL group-commit mode: max_batch={}, max_wait_us={} (1ms=1000us). \
              Up to max_batch-1 tx loss on crash.",
-            max_batch, max_wait_us
+            max_batch,
+            max_wait_us
         );
         sqlrustgo_storage::WalSyncMode::GroupCommit {
             max_batch,
@@ -4401,6 +4396,9 @@ fn statement_kind(parsed: &Result<Statement, String>) -> &'static str {
             Statement::DropRole(_) => "DROP_ROLE",
             Statement::CreateDatabase(_) => "CREATE_DATABASE",
             Statement::DropDatabase(_) => "DROP_DATABASE",
+            // V400-03 / Issue #3731 (G1): first-class graph DDL dispatch names.
+            Statement::CreateGraph(_) => "CREATE_GRAPH",
+            Statement::DropGraph(_) => "DROP_GRAPH",
             Statement::UseDatabase(_) => "USE_DATABASE",
             Statement::SetRole(_) => "SET_ROLE",
             Statement::SavepointStatement { .. } => "SAVEPOINT",
