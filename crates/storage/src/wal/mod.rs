@@ -19,9 +19,11 @@
 //! 3. **Testable**: MemoryWalManager enables unit testing without filesystem.
 
 pub mod file_backed_wal_manager;
+pub mod group_commit;
 pub mod memory_wal_manager;
 
 pub use file_backed_wal_manager::FileBackedWalManager;
+pub use group_commit::GroupCommitCoordinator;
 pub use memory_wal_manager::MemoryWalManager;
 
 pub use crate::wal_legacy::{

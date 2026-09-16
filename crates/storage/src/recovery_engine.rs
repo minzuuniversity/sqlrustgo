@@ -242,10 +242,20 @@ fn bytes_to_record(data: &[u8]) -> Result<Vec<Value>, crate::engine::SqlError> {
                 pos = start + end + 1;
             }
             _ => {
-                return Err(crate::engine::SqlError::ExecutionError(format!(
-                    "RecoveryEngine: unknown value prefix: {:02x?}",
+                // v3.12.0 Issue #4682: an unknown value prefix (e.g.
+                // produced by a newer writer that an older reader does
+                // not understand, or by a corrupt page) should not
+                // abort the entire record parse. Substitute `Value::Null`
+                // for the affected field and advance by the 2-byte
+                // prefix only. The caller still gets the recovered
+                // record; the unknown field is recoverable from the WAL
+                // (the entry remains in `recover()`'s output).
+                log::debug!(
+                    "bytes_to_record: unknown value prefix {:02x?}, substituting Null",
                     &data[pos..pos + 2]
-                )));
+                );
+                record.push(Value::Null);
+                pos += 2;
             }
         }
     }
