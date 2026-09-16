@@ -171,3 +171,67 @@ load should drop from ~1.3 MB/s to <0.1 MB/s.
    (less chain to keep), larger for write-heavy (more active readers).
 4. **Time-based GC**: bound the durability-loss window by time
    (e.g. fsync at most every 1s) rather than by version count.
+
+
+## Investigation results (2026-09-16)
+
+A subsequent attempt to also evict single-version chains in
+`VersionedTable::gc` (reclaim rows for never-updated PKs) was **reverted
+in v4.0.0** after investigation revealed two pre-existing issues that
+block safe single-version eviction:
+
+### 1. StorageEngine::scan_pk default impl uses full scan, not B+Tree
+
+In `crates/storage/src/engine.rs:929`, the **default trait impl** of
+`scan_pk` is:
+```rust
+fn scan_pk(&self, table: &str, _pk_column: &str, pk: &Value)
+    -> SqlResult<Option<Record>>
+{
+    let pk = pk.clone();
+    Ok(self.scan(table)?.into_iter()
+        .find(|row| row.first() == Some(&pk)))
+}
+```
+
+This is a full scan + linear find, **not** the B+Tree index lookup.
+The `FileStorage::scan_pk` trait impl at `file_storage.rs:3320` does
+the B+Tree lookup, but `BoxStorageEngine` does not override
+`scan_pk` — it uses Deref to `dyn StorageEngine`, which dispatches
+to the default trait impl. So in production (where storage is
+wrapped in `BoxStorageEngine`), the PK fast path actually does a
+full scan, not an index lookup.
+
+When the test reverted the B+Tree index updates, single-version
+chain eviction caused **data loss** that the full scan couldn't
+recover: rows that should have been in `data.rows` (added by
+`MvccStorage::insert` writing through to the inner) were not visible
+to the full scan because... [TBD — root cause under investigation]
+
+### 2. The actual root cause is still under investigation
+
+What we know:
+- **Without** my single-version chain eviction: all 2000 rows visible, COUNT=2000
+- **With** the eviction: PK 0 returns None, COUNT=1001
+- The 999 "missing" rows are not in `data.rows` after the eviction
+- The `FileStorage::scan()` function (which my eprintln showed was
+  never called even for COUNT(*)) is bypassed because
+  `MvccStorage::scan_pk` finds the chain entry first
+
+The exact mechanism by which 999 rows disappear from `data.rows` is
+not yet understood. It may be related to:
+- `MvccStorage::rebuild_from_inner` running at unexpected times
+- The MVCC chain eviction triggering a side-effect in the inner
+- A buffer-flush race
+
+### Conclusion for v4.0.0
+
+The current state is **safe and acceptable**:
+- Multi-version chain GC reclaims ~200,000 versions per 5s pass
+- Single-version chains retain ~200B each, growing RSS at 0.4 MB/s
+- Total RSS after 5min heavy SOAK: 172 MB (vs 9 GB without any GC)
+- 0 errors, 0 panics
+
+This is good enough for v4.0.0. The single-version chain optimization
+is **deferred to a follow-up** that includes fixing the underlying
+storage engine bug.
