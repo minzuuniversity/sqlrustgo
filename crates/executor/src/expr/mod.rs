@@ -551,35 +551,12 @@ pub fn compare_values(left: &Value, right: &Value) -> i32 {
                 0
             }
         }
-        // Issue #4846: CHAR(n) PAD SPACE semantics (SQLite/MySQL/PostgreSQL
-        // default for CHAR comparison). When comparing Text values, trim
-        // trailing whitespace on both sides — this implements the
-        // PAD SPACE collation that SQL:1992 mandates for CHARACTER type.
-        //
-        // Rationale: CHAR(n) values are stored blank-padded to n chars
-        // (e.g. CHAR(10) of 'U1' is stored as 'U1        '), so a literal
-        // comparison `'U1' = 'U1        '` would fail without PAD SPACE.
-        // SQLite/MySQL/PostgreSQL all apply PAD SPACE by default for CHAR;
-        // see SQL:1992 §4.4.3 and §8.2.3.
-        //
-        // Note: this also keeps the legacy #4492 RTRIM behaviour intact
-        // (single-column comparison `sex CHAR(2) = 'F'`) and Issue #4612
-        // BINARY default collation for non-CHAR text columns where trailing
-        // spaces ARE significant. The fix below is intentionally generic
-        // (applies to all Text/Text) — this restores BustubX-EDU teaching
-        // baseline (`teaching-seed.sql` CHAR primary keys point-look-up)
-        // without breaking any other test, because the only places where
-        // trailing-whitespace semantics mattered were:
-        //   1. CHAR(n) point-look-ups (issue #4846, the regression)
-        //   2. The legacy issue #4492 `sex = 'F'` case, which expects
-        //      PAD SPACE and is now restored.
-        //
-        // Issue #4612's "BINARY default" argument only applies to
-        // string-vs-string with INTENTIONAL trailing-space significance
-        // (rare in practice); the BustubX-EDU baseline + general SQL
-        // convention both want PAD SPACE. Re-evaluate if a downstream
-        // user reports a real BINARY-needs-trailing-space case.
-        (Value::Text(l), Value::Text(r)) => l.trim_end().cmp(r.trim_end()) as i32,
+        // Issue #4612: BINARY collation by default (matches SQLite/MySQL/
+        // PostgreSQL for `=` on string-typed values). Trailing-space
+        // is significant. Removed: PAD SPACE (Issue #4846) and
+        // legacy RTRIM (Issue #4492). See the matching comment in
+        // `eq_cross` above for the rationale.
+        (Value::Text(l), Value::Text(r)) => l.cmp(r) as i32,
         // (Value::Null, Value::Null) must compare equal so that
         // `compare_values` matches the documented doc-comment contract
         // (previously an explicit arm here; the trim-end refactor
@@ -1119,15 +1096,17 @@ fn eq_cross(left: &Value, right: &Value) -> bool {
     if matches!(left, Value::Null) || matches!(right, Value::Null) {
         return false;
     }
-    // Issue #4846: CHAR(n) PAD SPACE semantics (SQLite/MySQL/PostgreSQL
-    // default). Both sides trimmed of trailing whitespace before
-    // strict equality check — same rationale as compare_values.
+    // Issue #4612: BINARY collation by default. SQLite/MySQL/PostgreSQL
+    // all default to BINARY for `=` on string-typed values, where
+    // trailing-space is significant. The legacy #4492 RTRIM behaviour
+    // (and the cross-type #4846 PAD SPACE behaviour) are intentionally
+    // removed: VARCHAR / TEXT columns are now compared byte-for-byte.
     //
-    // Issue #4612 (BINARY default) opt-in via `col COLLATE RTRIM`
-    // is still documented but not yet wired up; re-evaluate if a
-    // downstream user reports a real BINARY-needs-trailing-space case.
+    // CHAR(n) PAD SPACE semantics (Issue #4846 / WP-G) is a separate
+    // open work item; see #3745. When that lands, the trim should
+    // move to column-type-aware code in the executor, NOT here.
     let eq = match (left, right) {
-        (Value::Text(a), Value::Text(b)) => a.trim_end() == b.trim_end(),
+        (Value::Text(a), Value::Text(b)) => a == b,
         _ => left == right,
     };
     if eq {
