@@ -920,7 +920,17 @@ pub trait StorageEngine: Send + Sync {
     /// or invisible. Default implementation falls back to a full
     /// scan with a filter — engines that have a real PK index
     /// (FileStorage via B+ Tree) override this for true O(log N).
-    fn scan_pk(&self, table: &str, pk: &Value) -> SqlResult<Option<Record>> {
+    ///
+    /// Phase D.1: `pk_column` is now explicit. Previously `FileStorage`
+    /// hard-coded `"id"` as the index name, which meant any table with a
+    /// different PK column name (e.g. `o_orderkey`) silently fell through
+    /// to the full-scan fallback. The caller (engine_select) now resolves
+    /// the actual PK column name from `TableInfo` and passes it through.
+    fn scan_pk(&self, table: &str, _pk_column: &str, pk: &Value) -> SqlResult<Option<Record>> {
+        // `_pk_column` is unused in the default impl: the fallback is
+        // a full table scan + linear find, which doesn't need to know
+        // the index name. Engines that override this method (e.g.
+        // FileStorage) use `_pk_column` to address the right B+Tree.
         let pk = pk.clone();
         Ok(self
             .scan(table)?
