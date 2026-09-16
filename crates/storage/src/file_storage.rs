@@ -576,6 +576,13 @@ impl FileStorage {
                 s.tables.insert(name, data);
             }
         });
+        // V400-MVCC-PKFAST: auto-build the PK B+Tree index for every
+        // loaded table. This ensures scan_with_index finds rows by PK
+        // even without an explicit `CREATE INDEX`, restoring O(log N)
+        // PK lookups in production (which never issues CREATE INDEX).
+        if let Err(e) = self.rebuild_pk_indexes() {
+            eprintln!("[v400] rebuild_pk_indexes after load: {}", e);
+        }
         Ok(())
     }
 
@@ -843,6 +850,48 @@ impl FileStorage {
             indexes.insert((table_name.to_string(), column_name.to_string()), index);
         }
 
+        Ok(())
+    }
+
+    /// V400-MVCC-PKFAST: for every loaded table that has a PRIMARY KEY
+    /// column, build the B+Tree PK index from existing rows. This
+    /// eliminates the need for explicit `CREATE INDEX` on the PK and
+    /// restores O(log N) PK lookup in production workloads.
+    pub fn rebuild_pk_indexes(&self) -> std::io::Result<()> {
+        // Snapshot table info first (clone columns)
+        let tables_snapshot: Vec<(String, Vec<ColumnDefinition>)> =
+            Self::with_write_lock(self.as_mut_self(), |s| {
+                s.tables
+                    .iter()
+                    .map(|(name, t)| (name.clone(), t.info.columns.clone()))
+                    .collect()
+            });
+        for (table_name, columns) in tables_snapshot {
+            // Find PK column
+            let pk_col = columns.iter().find(|c| c.primary_key);
+            let Some(pk_col) = pk_col else { continue };
+            let pk_col_name = pk_col.name.clone();
+            let pk_col_idx = columns.iter().position(|c| c.name == pk_col_name).unwrap();
+
+            // Build B+Tree from current rows
+            let snapshot = Self::with_write_lock(self.as_mut_self(), |s| {
+                s.tables.get(&table_name).map(|t| t.rows.clone())
+            });
+            let Some(rows) = snapshot else { continue };
+            let mut index = crate::bplus_tree::BPlusTree::new();
+            for (row_id, row) in rows.iter().enumerate() {
+                if let Some(value) = row.get(pk_col_idx) {
+                    if let Some(key) = value.to_index_key() {
+                        index.insert(key, row_id as u32);
+                    }
+                }
+            }
+            // Persist + register
+            self.save_index(&table_name, &pk_col_name, &index)?;
+            if let Ok(mut indexes) = self.indexes.write() {
+                indexes.insert((table_name.clone(), pk_col_name.clone()), index);
+            }
+        }
         Ok(())
     }
 
@@ -3006,45 +3055,123 @@ mod tests {
 
 impl FileStorage {
     fn insert_direct(&self, table: &str, records: Vec<Record>) -> SqlResult<()> {
-        Self::with_write_lock(self.as_mut_self(), |s| {
-            if let Some(ref mut data) = s.tables.get_mut(table) {
-                data.rows.extend(records);
-                let table_data = data.clone();
-                s.save_table(table, &table_data)?;
-            }
-            Ok(())
-        })
+        let snap: Option<(Vec<ColumnDefinition>, u32, usize)> =
+            Self::with_write_lock(self.as_mut_self(), |s| -> Option<(Vec<ColumnDefinition>, u32, usize)> {
+                let mut start_row_id: u32 = 0;
+                let row_count = records.len();
+                let mut result: Option<(Vec<ColumnDefinition>, u32, usize)> = None;
+                if let Some(ref mut data) = s.tables.get_mut(table) {
+                    start_row_id = data.rows.len() as u32;
+                    data.rows.extend(records.iter().cloned());
+                    let table_data = data.clone();
+                    let cols = data.info.columns.clone();
+                    if s.save_table(table, &table_data).is_ok() {
+                        result = Some((cols, start_row_id, row_count));
+                    }
+                }
+                result
+            });
+        if let Some((columns, start_row_id, row_count)) = snap {
+            Self::update_pk_index(self, table, &columns, start_row_id as usize, row_count);
+        }
+        Ok(())
     }
 
     fn insert_buffered(&self, table: &str, records: Vec<Record>) -> SqlResult<()> {
-        Self::with_write_lock(self.as_mut_self(), |s| {
-            let buffered = s.insert_buffer.entry(table.to_string()).or_default();
-            buffered.extend(records);
+        let snap: Option<(usize, usize, Vec<ColumnDefinition>)> =
+            Self::with_write_lock(
+                self.as_mut_self(),
+                |s| -> Option<(usize, usize, Vec<ColumnDefinition>)> {
+                    let buffered = s.insert_buffer.entry(table.to_string()).or_default();
+                    buffered.extend(records.iter().cloned());
 
-            if buffered.len() >= s.buffer_threshold {
-                if let Some(records) = s.insert_buffer.remove(table) {
-                    if let Some(ref mut data) = s.tables.get_mut(table) {
-                        data.rows.extend(records);
-                        let table_data = data.clone();
-                        s.save_table(table, &table_data)?;
+                    let mut result: Option<(usize, usize, Vec<ColumnDefinition>)> = None;
+                    if buffered.len() >= s.buffer_threshold {
+                        if let Some(records) = s.insert_buffer.remove(table) {
+                            let row_count = records.len();
+                            if let Some(ref mut data) = s.tables.get_mut(table) {
+                                let start_row_id = data.rows.len();
+                                data.rows.extend(records.iter().cloned());
+                                let table_data = data.clone();
+                                let cols = data.info.columns.clone();
+                                if s.save_table(table, &table_data).is_ok() {
+                                    result = Some((start_row_id, row_count, cols));
+                                }
+                            }
+                        }
                     }
-                }
-            }
-            Ok(())
-        })
+                    result
+                },
+            );
+        if let Some((start_row_id, row_count, columns)) = snap {
+            Self::update_pk_index(self, table, &columns, start_row_id, row_count);
+        }
+        Ok(())
     }
 
     fn flush_buffer(&self, table: &str) -> SqlResult<()> {
-        Self::with_write_lock(self.as_mut_self(), |s| {
-            if let Some(records) = s.insert_buffer.remove(table) {
-                if let Some(ref mut data) = s.tables.get_mut(table) {
-                    data.rows.extend(records);
-                    let table_data = data.clone();
-                    s.save_table(table, &table_data)?;
+        let snap: Option<(usize, usize, Vec<ColumnDefinition>)> =
+            Self::with_write_lock(
+                self.as_mut_self(),
+                |s| -> Option<(usize, usize, Vec<ColumnDefinition>)> {
+                    let mut result: Option<(usize, usize, Vec<ColumnDefinition>)> = None;
+                    if let Some(records) = s.insert_buffer.remove(table) {
+                        let row_count = records.len();
+                        if let Some(ref mut data) = s.tables.get_mut(table) {
+                            let start_row_id = data.rows.len();
+                            data.rows.extend(records);
+                            let table_data = data.clone();
+                            let cols = data.info.columns.clone();
+                            if s.save_table(table, &table_data).is_ok() {
+                                result = Some((start_row_id, row_count, cols));
+                            }
+                        }
+                    }
+                    result
+                },
+            );
+        if let Some((start_row_id, row_count, columns)) = snap {
+            Self::update_pk_index(self, table, &columns, start_row_id, row_count);
+        }
+        Ok(())
+    }
+
+    /// V400-MVCC-PKFAST: helper to update the PK B+Tree index for the
+    /// freshly inserted/flushed rows `[start_row_id, start_row_id+count)`.
+    /// Acquires `indexes.write()` and `tables.read()` separately to
+    /// avoid lock-order issues.
+    fn update_pk_index(
+        &self,
+        table: &str,
+        columns: &[ColumnDefinition],
+        start_row_id: usize,
+        count: usize,
+    ) {
+        let pk_col_idx = columns.iter().position(|c| c.primary_key);
+        let Some(pk_idx) = pk_col_idx else { return };
+        let pk_col_name = columns[pk_idx].name.clone();
+        let rows_snapshot = Self::with_write_lock(self.as_mut_self(), |s| {
+            s.tables.get(table).map(|t| t.rows.clone())
+        });
+        let Some(rows) = rows_snapshot else { return };
+        let mut updates: Vec<(i64, u32)> = Vec::with_capacity(count);
+        for i in 0..count {
+            let row_id = start_row_id + i;
+            if row_id < rows.len() {
+                if let Some(v) = rows[row_id].get(pk_idx) {
+                    if let Some(ikey) = v.to_index_key() {
+                        updates.push((ikey, row_id as u32));
+                    }
                 }
             }
-            Ok(())
-        })
+        }
+        if let Ok(mut indexes) = self.indexes.write() {
+            if let Some(index) = indexes.get_mut(&(table.to_string(), pk_col_name.clone())) {
+                for (ikey, rid) in updates {
+                    index.insert(ikey, rid);
+                }
+            }
+        }
     }
 
     pub fn flush_all_buffers(&self) -> SqlResult<()> {
@@ -3773,10 +3900,29 @@ impl StorageEngine for FileStorage {
     fn create_table(&mut self, info: &TableInfo) -> SqlResult<()> {
         let table_data = TableData {
             info: info.clone(),
-            rows: Vec::new(),
+            rows: vec![],
         };
         self.insert_table(info.name.clone(), table_data)
             .map_err(|e| SqlError::ExecutionError(e.to_string()))?;
+        // V400-MVCC-PKFAST: pre-create the PK B+Tree index so PK
+        // lookups are O(log N) from the very first insert. Without
+        // this, every PK lookup would have to wait for an explicit
+        // `CREATE INDEX` (which production workloads never issue).
+        if let Some(pk_col) = info.columns.iter().find(|c| c.primary_key) {
+            let pk_col_name = pk_col.name.clone();
+            let pk_col_idx = info
+                .columns
+                .iter()
+                .position(|c| c.name == pk_col_name)
+                .unwrap();
+            let empty_index = crate::bplus_tree::BPlusTree::new();
+            self.save_index(&info.name, &pk_col_name, &empty_index)
+                .map_err(|e| SqlError::ExecutionError(e.to_string()))?;
+            if let Ok(mut indexes) = self.indexes.write() {
+                indexes.insert((info.name.clone(), pk_col_name.clone()), empty_index);
+            }
+            let _ = pk_col_idx; // silence unused if column moved
+        }
         Ok(())
     }
 
