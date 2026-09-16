@@ -11,7 +11,7 @@ use std::time::{Duration, Instant};
 use crate::wal::WalTruncationGate;
 
 /// Checkpoint metadata
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
 pub struct CheckpointMetadata {
     /// Checkpoint LSN
     pub lsn: u64,
@@ -26,28 +26,14 @@ pub struct CheckpointMetadata {
 }
 
 impl CheckpointMetadata {
-    /// Serialize to JSON
+    /// Serialize to JSON (uses serde_json to properly escape Windows paths)
     pub fn to_json(&self) -> String {
-        format!(
-            r#"{{"lsn":{},"timestamp":{},"tx_count":{},"dirty_pages":{},"file_path":"{}"}}"#,
-            self.lsn,
-            self.timestamp,
-            self.tx_count,
-            self.dirty_pages,
-            self.file_path.display()
-        )
+        serde_json::to_string(self).expect("checkpoint metadata is always serializable")
     }
 
     /// Deserialize from JSON
     pub fn from_json(json: &str) -> Option<Self> {
-        let json: serde_json::Value = serde_json::from_str(json).ok()?;
-        Some(Self {
-            lsn: json["lsn"].as_u64()?,
-            timestamp: json["timestamp"].as_u64()?,
-            tx_count: json["tx_count"].as_u64()?,
-            dirty_pages: json["dirty_pages"].as_u64()?,
-            file_path: PathBuf::from(json["file_path"].as_str()?),
-        })
+        serde_json::from_str(json).ok()
     }
 }
 
