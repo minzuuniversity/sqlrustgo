@@ -2,10 +2,13 @@
 
 > **版本**: v4.0.0
 > **状态**: draft (2026-09-08)
+> **最后更新**: 2026-09-17
+> **当前 HEAD**: `d81d7c65df` (feat/v4.0.0-wal-group-commit, 10 commits ahead of develop/v4.0.0)
 > **起点**: `develop/v4.0.0` @ `9febebb255` (from `develop/v3.12.0` GA)
 > **目标 GA 日期**: 待定
 > **产品目标**: 生产级 SQL + Vector + Graph + GMP 多模型数据库
 > **路线图范围**: 2026-Q4 — 2027-Q2 (6 个月)
+> **权威阶段状态**: `docs/releases/v4.0.0/STAGE.yaml`
 
 ---
 

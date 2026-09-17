@@ -6,6 +6,8 @@
 > **Branch**: `develop/v4.0.0`
 > **Tooling**: `cargo llvm-cov` (llvm-cov v0.6, rustc 1.97.0-aarch64-apple-darwin)
 > **Reference**: `docs/governance/GATE_CONDITIONS.md` v2.0 §A5
+> **Last updated**: 2026-09-17 — added worktree-local addendum
+> **Stage status (SSOT)**: `docs/releases/v4.0.0/STAGE.yaml`
 
 ---
 

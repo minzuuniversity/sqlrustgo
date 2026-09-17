@@ -1,0 +1,226 @@
+# Per-Version Stage State -- v4.0.0
+#
+# SSOT chain:
+#   1. docs/governance/STAGE_CONFIG.yaml
+#   2. docs/releases/v4.0.0/STAGE.yaml
+#   3. scripts/gate/check_stage.sh
+#
+# v4.0.0 is planned from the v3.12.0 GA state. It must not start BETA
+# promotion until V400-02 V5 (VectorStore binding) and V400-03 G5
+# (DiskGraphStore recovery wiring) are merged with execution evidence.
+
+version: "v4.0.0"
+current_stage: "DRAFT"
+last_transition:
+  from: "(none)"
+  to: "DRAFT"
+  date: "2026-09-08"
+  reason: "Initial draft entry. v4.0.0 enters draft phase on 2026-09-08 after v3.12.0 GA promotion completed (HEAD 355b5a3837 = v3.12.0 GA). develop/v4.0.0 branch cut from v3.12.0 GA HEAD = 9febebb255. Draft phase per STAGE_CONFIG DRAFT_to_ALPHA trigger criteria. PHASE_0 actions completed: LEGACY_ISSUES.md, ROADMAP.md, DEV_PLAN.md, GMP_PLATFORM_REQUIREMENTS.md, TEST_PLAN.md all published. v4.0.0 ISSUES_PLAN.md created 2026-09-12. File governance rule (FILE_GOVERNANCE.md) enforced via .gitignore + scripts/gate/check_no_log_tbl_json.sh + .github/workflows/gate-no-log-tbl-json.yml."
+
+current_state:
+  head: "d81d7c65df"
+  branch: "feat/v4.0.0-wal-group-commit"
+  last_modified: "2026-09-17"
+  source: "local git + 5 remotes (gitea250/252, github, gitcode, gitee)"
+  note: "feat/v4.0.0-wal-group-commit is ahead of develop/v4.0.0 by 10 commits (the MVCC + delta-saves + PK B+Tree work) but NOT YET MERGED. Document reflects the develop/v4.0.0 authoritative state, with worktree-local additions noted under worktree_local_additions."
+
+worktree_local_additions:
+  branch: "feat/v4.0.0-wal-group-commit"
+  head: "d81d7c65df"
+  ahead_of_develop: 10
+  note: "Worktree contains MVCC + PK B+Tree + delta-saves + scan-skip optimizations. NOT YET MERGED to develop/v4.0.0. See V400_04_20MIN_SOAK.md for 20-min benchmark results and the B+Tree overwrite bug that blocks merge."
+  commits_ahead:
+    - "f267d014b7 perf(v4.0.0): fix MVCC+PK index performance regression introduced by Round 1-4"
+    - "18d0154d82 perf(v4.0.0): append-only delta saves + scan-skip optimization"
+    - "767330ee1b perf(v4.0.0): auto-build PK B+Tree index - restore O(log N) PK lookup"
+    - "8488575a15 fix(v4.0.0): MVCC GC eviction was silently losing rows from reader-visible state"
+    - "221a1ffd27 feat(v4.0.0): MVCC single-version chain GC + BoxStorageEngine scan_pk override"
+    - "1b39f0bdc7 docs(v4.0.0): PHASE_B_MVCC_GC - record single-version chain eviction investigation"
+    - "6b215d5882 docs(v4.0.0): PHASE_B_MVCC_GC - document known limitations"
+    - "3b64dff331 docs(v4.0.0): PHASE_B_MVCC_GC.md - background GC for MVCC chains"
+    - "75987db2dc feat(v4.0.0): MVCC background GC + storage trait gc plumbing"
+    - "0019fe804c feat(v4.0.0): enable MVCC in production server (parallel + default storage)"
+
+phase_0_completion:
+  status: "COMPLETE"
+  date: "2026-09-12"
+  evidence: "docs/releases/v4.0.0/{LEGACY_ISSUES.md, ROADMAP.md, DEV_PLAN.md, GMP_PLATFORM_REQUIREMENTS.md, TEST_PLAN.md, ISSUES_PLAN.md, CHANGELOG.md, README.md, VERSION_PLAN.md} all present"
+
+phase_1_alpha_status:
+  v400_00_file_governance: "DONE (commit 9dc9ae57c8)"
+  v400_01_vector_sql_syntax: "NOT STARTED (4 weeks estimated)"
+  v400_02_wal_backed_vector_storage: "PARTIAL - V1-V4 MERGED on develop/v4.0.0 (commits 29460e2053, 4136895c75, c65d3057c9, 340fdd3571); V5_vectorstore_binding PENDING (WalStorage<MvccStorage<FileStorage, VectorStore>> not wired); evidence: docs/releases/v4.0.0/V400_02_VECTOR_WAL_ACCEPTANCE.md"
+  v400_03_graph_first_class_storage: "PARTIAL - G1-G4 MERGED on develop/v4.0.0 (commits 365acf86c2, 4815033924, 7c3c5f297e, e0642b7995); G5_acceptance IN FLIGHT (evidence doc landed in 17ee6b1db9); evidence: docs/releases/v4.0.0/V400_03_GRAPH_ACCEPTANCE.md"
+  v400_04_graph_query_surface: "NOT STARTED"
+  v400_05_cross_model_transaction: "NOT STARTED"
+  v400_06_unified_backup_restore: "NOT STARTED"
+  v400_07_unified_acl_audit: "NOT STARTED"
+  v400_08_multi_model_optimizer: "NOT STARTED"
+  v400_09_168h_multi_model_soak: "NOT STARTED"
+  v400_10_gmp_platform_consumer: "NOT STARTED"
+
+legacy_issues_status:
+  wp_a_parser: "NOT STARTED"
+  wp_b_type_function: "NOT STARTED"
+  wp_c_ddl_integrity: "NOT STARTED"
+  wp_d_join_subquery: "NOT STARTED"
+  wp_e_transaction: "NOT STARTED"
+  wp_f_schema_migration: "NOT STARTED"
+  wp_g_type_comparison: "NOT STARTED"
+  wp_h_v313_defer_reassess: "NOT STARTED"
+  source: "docs/releases/v4.0.0/ISSUES_PLAN.md, LEGACY_ISSUES.md"
+
+required_files:
+  present:
+    - "docs/releases/v4.0.0/README.md"
+    - "docs/releases/v4.0.0/CHANGELOG.md"
+    - "docs/releases/v4.0.0/VERSION_PLAN.md"
+    - "docs/releases/v4.0.0/DEV_PLAN.md"
+    - "docs/releases/v4.0.0/ROADMAP.md"
+    - "docs/releases/v4.0.0/TEST_PLAN.md"
+    - "docs/releases/v4.0.0/ISSUES_PLAN.md"
+    - "docs/releases/v4.0.0/LEGACY_ISSUES.md"
+    - "docs/releases/v4.0.0/GMP_PLATFORM_REQUIREMENTS.md"
+    - "docs/releases/v4.0.0/GMP_PLATFORM_INTEGRATION_VERIFICATION.md"
+    - "docs/releases/v4.0.0/MEMORY_LEAK_ROOT_CAUSE.md"
+    - "docs/releases/v4.0.0/PERFORMANCE_PLAN.md"
+    - "docs/releases/v4.0.0/PERFORMANCE_TASK_ANALYSIS.md"
+    - "docs/releases/v4.0.0/PERFORMANCE_OPTIMIZATION_ROADMAP.md"
+    - "docs/releases/v4.0.0/SYNC_RECONCILIATION_20260909.md"
+    - "docs/releases/v4.0.0/STAGE.yaml"
+    - "docs/releases/v4.0.0/ALPHA_GATE_REPORT.md"
+    - "docs/releases/v4.0.0/COVERAGE_ANALYSIS_REPORT.md"
+    - "docs/releases/v4.0.0/V400_02_VECTOR_WAL_ACCEPTANCE.md"
+    - "docs/releases/v4.0.0/V400_02_VECTOR_WAL_DEV_PLAN.md"
+    - "docs/releases/v4.0.0/V400_03_GRAPH_ACCEPTANCE.md"
+    - "docs/releases/v4.0.0/V400_03_GRAPH_DEV_PLAN.md"
+    - "docs/releases/v4.0.0/V400_04_20MIN_SOAK.md"
+    - "docs/releases/v4.0.0/DOC_RECTIFICATION_PLAN_2026-09-17.md"
+    - "docs/releases/v4.0.0/PHASE_B_*.md (16 files)"
+  missing:
+    - path: "docs/releases/v4.0.0/FEATURE_CHECKLIST.md"
+      required_for: "BETA stage"
+    - path: "docs/releases/v4.0.0/RELEASE_NOTES.md"
+      required_for: "RC/GA stage"
+    - path: "tests/baseline/ignore_registry.json"
+      required_for: "check_anti_ignore_gate.sh"
+
+required_gates_for_alpha:
+  - gate: "scripts/gate/check_arch_invariants.sh"
+    status: "FAIL - execution_engine.rs has 2731 lines, limit is 1600 (per V400_04_20MIN_SOAK.md §C)"
+  - gate: "scripts/gate/check_anti_fabrication.sh"
+    status: "FAIL - HEAD author email v400@local not in allowed list (per V400_04_20MIN_SOAK.md §C)"
+  - gate: "scripts/gate/check_anti_ignore_gate.sh"
+    status: "FAIL - tests/baseline/ignore_registry.json missing"
+  - gate: "scripts/gate/check_arch_sem_debt.sh"
+    status: "PASS"
+  - gate: "scripts/gate/check_arch3_no_bypass.sh"
+    status: "PASS"
+  - gate: "scripts/gate/check_int_debt.sh"
+    status: "PASS"
+  - gate: "scripts/gate/check_cross_version_debt.sh"
+    status: "PASS (4 OPEN debt warnings)"
+    evidence: "V400_04_20MIN_SOAK.md §7 Alpha to Beta Gate Status"
+
+required_gates_for_beta:
+  - gate: "All ALPHA gates PLUS:"
+  - gate: "scripts/gate/check_beta_gate.sh (universal B1-B5)"
+  - gate: "scripts/gate/check_coverage_v312.sh (>= 75%)"
+  - gate: "scripts/gate/check_sql_corpus_gate.sh"
+  - gate: "scripts/gate/check_v400_02_crash_recovery.sh (V5)"
+  - gate: "scripts/gate/check_v400_03_recovery.sh (G5)"
+  - gate: "scripts/gate/check_anti_ignore_gate.sh (must PASS)"
+
+required_gates_for_rc:
+  - gate: "All BETA gates PLUS:"
+  - gate: "scripts/gate/check_rc_ga_gate.sh"
+  - gate: "scripts/gate/check_integration_gate.sh"
+  - gate: "scripts/gate/check_full_gate_verification.sh"
+  - gate: "168h mixed SOAK report (V400-09)"
+
+required_gates_for_ga:
+  - gate: "All RC gates PLUS:"
+  - gate: "scripts/gate/check_ga_v3.12.0.sh (template)"
+  - gate: "scripts/gate/check_architecture_freeze.sh"
+  - gate: "0 P0 incidents since RC"
+
+merge_policy:
+  reviewers: 2
+  approval: codeowner + governance
+  ci_required: [lint, build, test, full-gate, anti-fab]
+  branch_protection: "develop/v4.0.0 must be protected (per user rule 2026-09-08)"
+
+doc_artifacts_required:
+  stage_DRAFT:
+    - "STAGE.yaml (this file)"
+    - "ISSUES_PLAN.md"
+    - "VERSION_PLAN.md"
+    - "DEV_PLAN.md"
+    - "ROADMAP.md"
+    - "TEST_PLAN.md"
+    - "LEGACY_ISSUES.md"
+    - "README.md"
+    - "CHANGELOG.md"
+    - "GMP_PLATFORM_REQUIREMENTS.md"
+  stage_ALPHA:
+    - "ALPHA_GATE_REPORT.md (frozen at first alpha tag cut)"
+    - "evidence/ directory (per-gate summary.json + manifest.json)"
+  stage_BETA:
+    - "FEATURE_CHECKLIST.md (frozen)"
+    - "STAGE.yaml updated to current_stage: BETA"
+  stage_RC:
+    - "RELEASE_NOTES.md (final)"
+    - "RELEASE_GATE_CHECKLIST.md"
+    - "STAGE_GOVERNANCE_BETA_TO_RC.md"
+  stage_GA:
+    - "GA_GATE_REPORT.md"
+    - "GA_RELEASE_REPORT.md"
+    - "STAGE_GOVERNANCE_RC_TO_GA.md"
+    - "CLAIM_DOWNGRADE_MANIFEST.md (if any caveats)"
+
+exit_criteria:
+  draft_to_alpha:
+    - "All DRAFT issues closed or promoted to ALPHA (per V400-00..V400-10 + WP-A..H)"
+    - "First alpha tag cut: v4.0.0-alpha1"
+  alpha_to_beta:
+    - "All ALPHA gate failures resolved (currently 3: arch_invariants / anti_fabrication / anti_ignore_gate)"
+    - "V400-02 V5 + V400-03 G5 wired with evidence"
+    - "B+Tree overwrite bug fixed (per V400_04_20MIN_SOAK.md §6)"
+    - "MVCC single-version chain eviction reviewed for safety"
+    - "Coverage >= 50% (per STAGE_CONFIG COVERAGE_MIN_ALPHA)"
+  beta_to_rc:
+    - "All B1-B5 hard checks PASS"
+    - "All B-F1..B-F7 functional checks PASS"
+    - "Coverage >= 75%"
+    - "First RC tag cut: v4.0.0-rc1"
+  rc_to_ga:
+    - "All RC{N} release-blocking bugs closed"
+    - "All 5 dimensions (D1-D5) PASS"
+    - "Tag v4.0.0-rcN cut, no P0 bugs since"
+    - "GA promotion approved by human architect"
+    - "168h multi-model SOAK PASS"
+    - "Coverage >= 80%"
+
+claims_boundaries:
+  allowed_pre_alpha: "SQLRustGo v4.0.0 is in development toward a production multi-model database."
+  allowed_pre_beta: "SQLRustGo v4.0.0-alpha1 has been cut for early testing."
+  allowed_pre_rc: "SQLRustGo v4.0.0-beta1 has feature freeze and is undergoing integration testing."
+  allowed_pre_ga: "SQLRustGo v4.0.0-rc1 is a release candidate for production multi-model workloads."
+  allowed_at_ga: "SQLRustGo v4.0.0 is a production multi-model database for controlled SQL, vector, graph, and GMP knowledge workloads."
+  prohibited_pre_beta: "Production multi-model claim (requires GA)"
+  prohibited_pre_ga: "168h multi-model SOAK result (per V400-09)"
+
+last_status_refresh:
+  date: "2026-09-17"
+  head: "d81d7c65df"
+  source: "local git + V400_04_20MIN_SOAK.md"
+  stage_result: "DRAFT_PHASE_0_COMPLETE_PHASE_1_PARTIAL"
+  open_prs: 0
+  open_issues:
+    - "V400-02 V5 (VectorStore binding) - not started"
+    - "V400-03 G5 (DiskGraphStore recovery wiring) - acceptance evidence in flight"
+    - "B+Tree overwrite bug in load_all_indexes - blocks merge from feat/v4.0.0-wal-group-commit"
+    - "MVCC single-version chain eviction safety - tracked in PHASE_B_MVCC_GC.md limitations"
+    - "Group commit server-side wiring (per PHASE_B_GROUP_COMMIT.md) - POC complete, not in server builder"
+    - "3 Alpha gates failing (per V400_04_20MIN_SOAK.md §C)"
+  next_action: "Address 3 Alpha gate failures (arch_invariants / anti_fabrication / anti_ignore_gate) + fix B+Tree overwrite bug + merge feat/v4.0.0-wal-group-commit to develop/v4.0.0 before promoting to ALPHA."

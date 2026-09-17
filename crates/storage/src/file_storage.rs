@@ -10,10 +10,9 @@ use sqlrustgo_types::{SqlError, SqlResult, Value};
 use std::any::Any;
 use std::collections::{HashMap, HashSet};
 use std::fs::{self, File};
-use std::io::{BufReader, BufWriter, Write};
+use std::io::{BufRead, BufReader, BufWriter, Write};
 use std::path::PathBuf;
-use std::sync::Arc;
-use std::sync::RwLock;
+use std::sync::{Arc, Mutex, RwLock};
 
 // C.1: parking_lot::Mutex is used as a `Mutex<()>` for the write-side
 // synchronisation of the five fields that previously relied on the outer
@@ -69,6 +68,11 @@ pub struct FileStorage {
     gap_lock_manager: Option<std::sync::Arc<crate::lock::GapLockManager>>,
     /// V311-07: Dirty table tracker - marks tables modified since last flush
     dirty_tables: HashSet<String>,
+    /// V400-PERF-DELTA: per-table count of rows that have been persisted
+    /// to disk (either in the base JSON or in the .delta file). Used
+    /// by `save_table` to decide whether to write anything, and to
+    /// limit incremental writes to only the new rows.
+    last_saved_row_count: Mutex<HashMap<String, usize>>,
     /// C.1: serialises all writes to {tables, insert_buffer, dirty_tables,
     /// current_tx_id, tx_undo_log}. Reads of these fields are lock-free
     /// when no writer holds the lock (every read site clones the
@@ -138,6 +142,7 @@ impl FileStorage {
             triggers: RwLock::new(HashMap::new()),
             gap_lock_manager: None,
             dirty_tables: HashSet::new(),
+            last_saved_row_count: Mutex::new(HashMap::new()),
             views: RwLock::new(HashMap::new()),
             write_lock: parking_lot::Mutex::new(()),
         };
@@ -177,6 +182,7 @@ impl FileStorage {
             triggers: RwLock::new(HashMap::new()),
             gap_lock_manager: None,
             dirty_tables: HashSet::new(),
+            last_saved_row_count: Mutex::new(HashMap::new()),
             views: RwLock::new(HashMap::new()),
             write_lock: parking_lot::Mutex::new(()),
         };
@@ -211,6 +217,7 @@ impl FileStorage {
             triggers: RwLock::new(HashMap::new()),
             gap_lock_manager: None,
             dirty_tables: HashSet::new(),
+            last_saved_row_count: Mutex::new(HashMap::new()),
             views: RwLock::new(HashMap::new()),
             write_lock: parking_lot::Mutex::new(()),
         };
@@ -262,6 +269,7 @@ impl FileStorage {
             triggers: RwLock::new(HashMap::new()),
             gap_lock_manager: Some(lock_manager),
             dirty_tables: HashSet::new(),
+            last_saved_row_count: Mutex::new(HashMap::new()),
             views: RwLock::new(HashMap::new()),
             write_lock: parking_lot::Mutex::new(()),
         };
@@ -576,6 +584,13 @@ impl FileStorage {
                 s.tables.insert(name, data);
             }
         });
+        // V400-MVCC-PKFAST: auto-build the PK B+Tree index for every
+        // loaded table. This ensures scan_with_index finds rows by PK
+        // even without an explicit `CREATE INDEX`, restoring O(log N)
+        // PK lookups in production (which never issues CREATE INDEX).
+        if let Err(e) = self.rebuild_pk_indexes() {
+            eprintln!("[v400] rebuild_pk_indexes after load: {}", e);
+        }
         Ok(())
     }
 
@@ -647,29 +662,107 @@ impl FileStorage {
     /// Load a single table from disk
     fn load_table(&self, table_name: &str) -> std::io::Result<TableData> {
         let path = self.table_path(table_name);
-        let file = File::open(&path)?;
-        let reader = BufReader::new(file);
-        let stored: StoredTableData = serde_json::from_reader(reader)
-            .map_err(|e| std::io::Error::new(std::io::ErrorKind::InvalidData, e))?;
+        // V400-PERF-DELTA: a missing JSON is OK if the delta file
+        // exists — that's the cold-start case where the base JSON
+        // was already compacted away.
+        let (name, columns, foreign_keys, unique_constraints, mut rows) = if path.exists() {
+            let file = File::open(&path)?;
+            let reader = BufReader::new(file);
+            let stored: StoredTableData = serde_json::from_reader(reader)
+                .map_err(|e| std::io::Error::new(std::io::ErrorKind::InvalidData, e))?;
+            (
+                stored.name,
+                stored.columns,
+                stored.foreign_keys,
+                stored.unique_constraints,
+                stored.rows,
+            )
+        } else {
+            // No base snapshot — use empty schema (caller will provide
+            // via TableInfo at insert time).
+            (
+                table_name.to_string(),
+                Vec::new(),
+                Vec::new(),
+                Vec::new(),
+                Vec::new(),
+            )
+        };
+        // Apply pending deltas on top of the base snapshot.
+        let delta_rows = self.load_table_delta(table_name)?;
+        rows.extend(delta_rows);
 
         Ok(TableData {
             info: TableInfo {
-                name: stored.name,
-                columns: stored.columns,
-                foreign_keys: stored.foreign_keys,
-                unique_constraints: stored.unique_constraints,
+                name,
+                columns,
+                foreign_keys,
+                unique_constraints,
                 check_constraints: vec![],
                 compression: None,
                 collations: HashMap::new(),
                 partition_info: None,
                 original_sql: String::new(),
             },
-            rows: stored.rows,
+            rows,
         })
     }
 
     /// Save a table to disk
+    /// Save a table to disk.
+    ///
+    /// V400-PERF-DELTA: instead of writing the entire table on every
+    /// call, append only the new rows (delta) to `<table>.delta` (a
+    /// binary length-prefixed log). The base `<table>.json` snapshot
+    /// is rewritten lazily — when (a) the table has no delta yet,
+    /// (b) the delta exceeds ~10 MB, or (c) `compact_table` is
+    /// called. This makes the common "append a few rows" path O(new
+    /// rows) instead of O(total rows).
     fn save_table(&self, table_name: &str, table_data: &TableData) -> std::io::Result<()> {
+        let total_rows = table_data.rows.len();
+        let last_saved = *self
+            .last_saved_row_count
+            .lock()
+            .unwrap()
+            .get(table_name)
+            .unwrap_or(&0);
+
+        // V400-PERF-DELTA: on the very first save (or after a delete
+        // shrunk the row count to 0), we must still emit the JSON
+        // because cold-start load relies on it for table schema.
+        if total_rows == 0 || last_saved == 0 {
+            return self.save_table_full(table_name, table_data);
+        }
+
+        if total_rows <= last_saved {
+            // Pure DELETE/UPDATE path: the row set may have shrunk.
+            // Force a full snapshot to keep on-disk consistent.
+            return self.save_table_full(table_name, table_data);
+        }
+
+        // Delta-only path: append the new rows to <table>.delta.
+        let new_rows = &table_data.rows[last_saved..];
+        self.append_table_delta(table_name, new_rows)?;
+        self.last_saved_row_count
+            .lock()
+            .unwrap()
+            .insert(table_name.to_string(), total_rows);
+
+        // Periodic compaction: when delta size exceeds threshold,
+        // rewrite the base snapshot and clear the delta file.
+        let delta_path = self.delta_path(table_name);
+        if let Ok(meta) = std::fs::metadata(&delta_path) {
+            if meta.len() > 10 * 1024 * 1024 {
+                let _ = self.save_table_full(table_name, table_data);
+            }
+        }
+        Ok(())
+    }
+
+    /// V400-PERF-DELTA: write the full table JSON snapshot. Called by
+    /// `save_table` on the first write, after a schema change, and
+    /// when the delta file grows too large.
+    fn save_table_full(&self, table_name: &str, table_data: &TableData) -> std::io::Result<()> {
         let path = self.table_path(table_name);
         let file = File::create(&path)?;
         let mut writer = BufWriter::new(file);
@@ -687,8 +780,63 @@ impl FileStorage {
 
         writer.write_all(json.as_bytes())?;
         writer.flush()?;
-
+        // Drop any pending deltas — they're now incorporated.
+        let _ = std::fs::remove_file(self.delta_path(table_name));
+        self.last_saved_row_count
+            .lock()
+            .unwrap()
+            .insert(table_name.to_string(), table_data.rows.len());
         Ok(())
+    }
+
+    /// V400-PERF-DELTA: append `rows` to `<table>.delta` in a
+    /// JSON-line format (one row per line). Lines are chosen over
+    /// bincode to keep the delta file human-inspectable and
+    /// dependency-free. Each line is `serde_json::to_string(row)`.
+    fn append_table_delta(&self, table_name: &str, rows: &[Vec<Value>]) -> std::io::Result<()> {
+        use std::io::Write;
+        let path = self.delta_path(table_name);
+        let file = std::fs::OpenOptions::new()
+            .create(true)
+            .append(true)
+            .open(&path)?;
+        let mut writer = BufWriter::new(file);
+        for row in rows {
+            let line = serde_json::to_string(row)
+                .map_err(|e| std::io::Error::new(std::io::ErrorKind::InvalidData, e))?;
+            writer.write_all(line.as_bytes())?;
+            writer.write_all(b"\n")?;
+        }
+        writer.flush()?;
+        Ok(())
+    }
+
+    /// V400-PERF-DELTA: read all delta rows from `<table>.delta`.
+    /// Returns the rows in append order.
+    fn load_table_delta(&self, table_name: &str) -> std::io::Result<Vec<Vec<Value>>> {
+        let path = self.delta_path(table_name);
+        if !path.exists() {
+            return Ok(Vec::new());
+        }
+        let file = File::open(&path)?;
+        let reader = std::io::BufReader::new(file);
+        let mut all_rows: Vec<Vec<Value>> = Vec::new();
+        use std::io::BufRead;
+        for line in reader.lines() {
+            let line = line?;
+            if line.is_empty() {
+                continue;
+            }
+            let row: Vec<Value> = serde_json::from_str(&line)
+                .map_err(|e| std::io::Error::new(std::io::ErrorKind::InvalidData, e))?;
+            all_rows.push(row);
+        }
+        Ok(all_rows)
+    }
+
+    /// V400-PERF-DELTA: get the on-disk delta path for a table.
+    fn delta_path(&self, table_name: &str) -> std::path::PathBuf {
+        self.data_dir.join(format!("{}.delta", table_name))
     }
 
     /// Get a table by name
@@ -843,6 +991,48 @@ impl FileStorage {
             indexes.insert((table_name.to_string(), column_name.to_string()), index);
         }
 
+        Ok(())
+    }
+
+    /// V400-MVCC-PKFAST: for every loaded table that has a PRIMARY KEY
+    /// column, build the B+Tree PK index from existing rows. This
+    /// eliminates the need for explicit `CREATE INDEX` on the PK and
+    /// restores O(log N) PK lookup in production workloads.
+    pub fn rebuild_pk_indexes(&self) -> std::io::Result<()> {
+        // Snapshot table info first (clone columns)
+        let tables_snapshot: Vec<(String, Vec<ColumnDefinition>)> =
+            Self::with_write_lock(self.as_mut_self(), |s| {
+                s.tables
+                    .iter()
+                    .map(|(name, t)| (name.clone(), t.info.columns.clone()))
+                    .collect()
+            });
+        for (table_name, columns) in tables_snapshot {
+            // Find PK column
+            let pk_col = columns.iter().find(|c| c.primary_key);
+            let Some(pk_col) = pk_col else { continue };
+            let pk_col_name = pk_col.name.clone();
+            let pk_col_idx = columns.iter().position(|c| c.name == pk_col_name).unwrap();
+
+            // Build B+Tree from current rows
+            let snapshot = Self::with_write_lock(self.as_mut_self(), |s| {
+                s.tables.get(&table_name).map(|t| t.rows.clone())
+            });
+            let Some(rows) = snapshot else { continue };
+            let mut index = crate::bplus_tree::BPlusTree::new();
+            for (row_id, row) in rows.iter().enumerate() {
+                if let Some(value) = row.get(pk_col_idx) {
+                    if let Some(key) = value.to_index_key() {
+                        index.insert(key, row_id as u32);
+                    }
+                }
+            }
+            // Persist + register
+            self.save_index(&table_name, &pk_col_name, &index)?;
+            if let Ok(mut indexes) = self.indexes.write() {
+                indexes.insert((table_name.clone(), pk_col_name.clone()), index);
+            }
+        }
         Ok(())
     }
 
@@ -3006,45 +3196,199 @@ mod tests {
 
 impl FileStorage {
     fn insert_direct(&self, table: &str, records: Vec<Record>) -> SqlResult<()> {
-        Self::with_write_lock(self.as_mut_self(), |s| {
-            if let Some(ref mut data) = s.tables.get_mut(table) {
-                data.rows.extend(records);
-                let table_data = data.clone();
-                s.save_table(table, &table_data)?;
-            }
-            Ok(())
-        })
+        let snap: Option<(Vec<ColumnDefinition>, u32, usize)> =
+            Self::with_write_lock(self.as_mut_self(), |s| -> Option<(Vec<ColumnDefinition>, u32, usize)> {
+                let mut start_row_id: u32 = 0;
+                let row_count = records.len();
+                let mut result: Option<(Vec<ColumnDefinition>, u32, usize)> = None;
+                if let Some(ref mut data) = s.tables.get_mut(table) {
+                    start_row_id = data.rows.len() as u32;
+                    data.rows.extend(records.iter().cloned());
+                    let table_data = data.clone();
+                    let cols = data.info.columns.clone();
+                    if s.save_table(table, &table_data).is_ok() {
+                        result = Some((cols, start_row_id, row_count));
+                    }
+                }
+                result
+            });
+        if let Some((columns, start_row_id, _row_count)) = snap {
+            // V400-PERF-FIX: pass &records directly so the index
+            // helper reads PK values from the input rather than
+            // cloning the entire `data.rows` vector. The clone
+            // was O(N) per insert and dominated write throughput.
+            Self::update_pk_index(self, table, &columns, &records, start_row_id as usize);
+        }
+        Ok(())
     }
 
     fn insert_buffered(&self, table: &str, records: Vec<Record>) -> SqlResult<()> {
-        Self::with_write_lock(self.as_mut_self(), |s| {
-            let buffered = s.insert_buffer.entry(table.to_string()).or_default();
-            buffered.extend(records);
+        let snap: Option<(usize, usize, Vec<ColumnDefinition>)> =
+            Self::with_write_lock(
+                self.as_mut_self(),
+                |s| -> Option<(usize, usize, Vec<ColumnDefinition>)> {
+                    let buffered = s.insert_buffer.entry(table.to_string()).or_default();
+                    buffered.extend(records.iter().cloned());
 
-            if buffered.len() >= s.buffer_threshold {
-                if let Some(records) = s.insert_buffer.remove(table) {
-                    if let Some(ref mut data) = s.tables.get_mut(table) {
-                        data.rows.extend(records);
-                        let table_data = data.clone();
-                        s.save_table(table, &table_data)?;
+                    let mut result: Option<(usize, usize, Vec<ColumnDefinition>)> = None;
+                    if buffered.len() >= s.buffer_threshold {
+                        if let Some(records) = s.insert_buffer.remove(table) {
+                            let row_count = records.len();
+                            if let Some(ref mut data) = s.tables.get_mut(table) {
+                                let start_row_id = data.rows.len();
+                                data.rows.extend(records.iter().cloned());
+                                let table_data = data.clone();
+                                let cols = data.info.columns.clone();
+                                if s.save_table(table, &table_data).is_ok() {
+                                    result = Some((start_row_id, row_count, cols));
+                                }
+                            }
+                        }
                     }
-                }
-            }
-            Ok(())
-        })
+                    result
+                },
+            );
+        if let Some((start_row_id, _row_count, columns)) = snap {
+            // V400-PERF-FIX: pass &records directly. The closure
+            // returns the columns/start_row_id but the records
+            // have been moved into the closure body. Since
+            // `records: Vec<Record>` is owned by this function
+            // and the closure took ownership of the move
+            // (`buffered.extend(records.iter().cloned())` does
+            // clone, then `s.insert_buffer.remove(table)` moves
+            // the buffer out — but `records` is still owned by
+            // us at this point because we cloned into the buffer),
+            // we can pass &records to read PKs directly.
+            Self::update_pk_index(self, table, &columns, &records, start_row_id);
+        }
+        Ok(())
     }
 
     fn flush_buffer(&self, table: &str) -> SqlResult<()> {
-        Self::with_write_lock(self.as_mut_self(), |s| {
-            if let Some(records) = s.insert_buffer.remove(table) {
-                if let Some(ref mut data) = s.tables.get_mut(table) {
-                    data.rows.extend(records);
-                    let table_data = data.clone();
-                    s.save_table(table, &table_data)?;
+        let snap: Option<(usize, usize, Vec<ColumnDefinition>)> =
+            Self::with_write_lock(
+                self.as_mut_self(),
+                |s| -> Option<(usize, usize, Vec<ColumnDefinition>)> {
+                    let mut result: Option<(usize, usize, Vec<ColumnDefinition>)> = None;
+                    if let Some(records) = s.insert_buffer.remove(table) {
+                        let row_count = records.len();
+                        if let Some(ref mut data) = s.tables.get_mut(table) {
+                            let start_row_id = data.rows.len();
+                            data.rows.extend(records);
+                            let table_data = data.clone();
+                            let cols = data.info.columns.clone();
+                            if s.save_table(table, &table_data).is_ok() {
+                                result = Some((start_row_id, row_count, cols));
+                            }
+                        }
+                    }
+                    result
+                },
+            );
+        if let Some((start_row_id, row_count, columns)) = snap {
+            // V400-PERF-FIX: flush_buffer has no caller-side records
+            // (they were consumed by the closure via
+            // `s.insert_buffer.remove(table)`). Use a separate
+            // helper that reads ONLY the [start_row_id, +row_count)
+            // window of data.rows — O(row_count) not O(table_size).
+            Self::update_pk_index_window(
+                self,
+                table,
+                &columns,
+                start_row_id,
+                row_count,
+            );
+        }
+        Ok(())
+    }
+
+    /// V400-MVCC-PKFAST: helper to update the PK B+Tree index for the
+    /// rows just inserted. Caller passes the `records` it inserted so
+    /// we don't have to clone the entire `data.rows` vector just to
+    /// extract PK values for `count` rows.
+    ///
+    /// Acquires `indexes.write()` to perform the B+Tree inserts.
+    fn update_pk_index(
+        &self,
+        table: &str,
+        columns: &[ColumnDefinition],
+        records: &[Vec<Value>],
+        start_row_id: usize,
+    ) {
+        let pk_col_idx = columns.iter().position(|c| c.primary_key);
+        let Some(pk_idx) = pk_col_idx else { return };
+        let pk_col_name = columns[pk_idx].name.clone();
+        let mut updates: Vec<(i64, u32)> = Vec::with_capacity(records.len());
+        for (i, row) in records.iter().enumerate() {
+            if let Some(v) = row.get(pk_idx) {
+                if let Some(ikey) = v.to_index_key() {
+                    updates.push((ikey, (start_row_id + i) as u32));
                 }
             }
-            Ok(())
-        })
+        }
+        if updates.is_empty() {
+            return;
+        }
+        if let Ok(mut indexes) = self.indexes.write() {
+            if let Some(index) = indexes.get_mut(&(table.to_string(), pk_col_name.clone())) {
+                for (ikey, rid) in updates {
+                    index.insert(ikey, rid);
+                }
+            }
+        }
+    }
+
+    /// V400-PERF-FIX: variant of `update_pk_index` for callers that
+    /// have already moved the records into `data.rows` and only know
+    /// the row-id window. Reads ONLY that window — O(row_count) not
+    /// O(table_size).
+    fn update_pk_index_window(
+        &self,
+        table: &str,
+        columns: &[ColumnDefinition],
+        start_row_id: usize,
+        count: usize,
+    ) {
+        if count == 0 {
+            return;
+        }
+        let pk_col_idx = columns.iter().position(|c| c.primary_key);
+        let Some(pk_idx) = pk_col_idx else { return };
+        let pk_col_name = columns[pk_idx].name.clone();
+        // Snapshot only the [start_row_id, start_row_id+count) window
+        // so we don't pay O(table_size) for an O(count) operation.
+        let rows_snapshot = Self::with_write_lock(self.as_mut_self(), |s| {
+            s.tables.get(table).map(|t| {
+                let end = (start_row_id + count).min(t.rows.len());
+                if start_row_id < t.rows.len() {
+                    t.rows[start_row_id..end].to_vec()
+                } else {
+                    Vec::new()
+                }
+            })
+        });
+        let Some(rows) = rows_snapshot else { return };
+        if rows.is_empty() {
+            return;
+        }
+        let mut updates: Vec<(i64, u32)> = Vec::with_capacity(rows.len());
+        for (i, row) in rows.iter().enumerate() {
+            if let Some(v) = row.get(pk_idx) {
+                if let Some(ikey) = v.to_index_key() {
+                    updates.push((ikey, (start_row_id + i) as u32));
+                }
+            }
+        }
+        if updates.is_empty() {
+            return;
+        }
+        if let Ok(mut indexes) = self.indexes.write() {
+            if let Some(index) = indexes.get_mut(&(table.to_string(), pk_col_name.clone())) {
+                for (ikey, rid) in updates {
+                    index.insert(ikey, rid);
+                }
+            }
+        }
     }
 
     pub fn flush_all_buffers(&self) -> SqlResult<()> {
@@ -3323,7 +3667,12 @@ impl StorageEngine for FileStorage {
                 if !rows.is_empty() {
                     return Ok(rows.into_iter().next());
                 }
-                return Ok(None);
+                // V400-MVCC-PKFAST: B+Tree lookup returned empty.
+                // This can mean either (a) no such PK in the table,
+                // or (b) the table has a PK column but no B+Tree
+                // index was ever created. In case (b) the row might
+                // still exist in `data.rows` — fall through to the
+                // full-scan fallback below to find it.
             }
         }
         // Fallback: full scan.
@@ -3768,10 +4117,29 @@ impl StorageEngine for FileStorage {
     fn create_table(&mut self, info: &TableInfo) -> SqlResult<()> {
         let table_data = TableData {
             info: info.clone(),
-            rows: Vec::new(),
+            rows: vec![],
         };
         self.insert_table(info.name.clone(), table_data)
             .map_err(|e| SqlError::ExecutionError(e.to_string()))?;
+        // V400-MVCC-PKFAST: pre-create the PK B+Tree index so PK
+        // lookups are O(log N) from the very first insert. Without
+        // this, every PK lookup would have to wait for an explicit
+        // `CREATE INDEX` (which production workloads never issue).
+        if let Some(pk_col) = info.columns.iter().find(|c| c.primary_key) {
+            let pk_col_name = pk_col.name.clone();
+            let pk_col_idx = info
+                .columns
+                .iter()
+                .position(|c| c.name == pk_col_name)
+                .unwrap();
+            let empty_index = crate::bplus_tree::BPlusTree::new();
+            self.save_index(&info.name, &pk_col_name, &empty_index)
+                .map_err(|e| SqlError::ExecutionError(e.to_string()))?;
+            if let Ok(mut indexes) = self.indexes.write() {
+                indexes.insert((info.name.clone(), pk_col_name.clone()), empty_index);
+            }
+            let _ = pk_col_idx; // silence unused if column moved
+        }
         Ok(())
     }
 
@@ -4189,6 +4557,11 @@ impl StorageEngine for FileStorage {
 
     fn as_any(&self) -> &dyn Any {
         self
+    }
+
+
+    fn gc(&self, _gc_lag: u64) -> usize {
+        0
     }
 
     fn as_any_mut(&mut self) -> &mut dyn Any {

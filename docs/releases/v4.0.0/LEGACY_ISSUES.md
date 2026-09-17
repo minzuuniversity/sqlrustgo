@@ -2,8 +2,10 @@
 
 > **版本**: v4.0.0 (draft phase)
 > **编制日期**: 2026-09-08
+> **最后更新**: 2026-09-17
 > **来源**: v3.12.0 GA gate evidence + open issues + RC/GA triage document
 > **目标**: 把 v3.12.0 阶段遗留的 SQL 缺陷作为 v4.0.0 必修项或可声明的边界条件
+> **权威阶段状态**: `docs/releases/v4.0.0/STAGE.yaml`
 
 ---
 

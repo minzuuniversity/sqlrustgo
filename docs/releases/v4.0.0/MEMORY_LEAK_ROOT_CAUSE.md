@@ -1,9 +1,11 @@
 # V4.0.0 24h SOAK 内存泄漏 — 根因诊断报告
 
-**日期**: 2026-09-11 (初版) / 2026-09-12 (二次泄漏修复版)
+**日期**: 2026-09-11 (初版) / 2026-09-12 (二次泄漏修复版) / 2026-09-17 (整改状态更新)
 **目标版本**: v4.0.0 (HEAD = develop/v4.0.0)
 **报告人**: openclaw + Claude (systematic-debugging skill)
 **状态**: 主要根因 (LEAK-DIAG) 已修复;**二次根因 (execute_update O(N) clones) 已修复**;验证中
+**最新 SOAK**: `V400_04_20MIN_SOAK.md` (2026-09-17, 20 分钟 RSS 329→1006 MB, GC 工作正常)
+**权威阶段状态**: `docs/releases/v4.0.0/STAGE.yaml`
 
 ---
 

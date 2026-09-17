@@ -1328,6 +1328,21 @@ pub trait StorageEngine: Send + Sync {
         Ok(())
     }
 
+    /// Reclaim stale per-row version chains or other engine-specific
+    /// background bookkeeping. Default: no-op (single-version engines
+    /// like FileStorage / MemoryStorage have nothing to reclaim).
+    ///
+    /// `gc_lag` is the number of historical versions to retain. MVCC
+    /// engines use it to decide which versions are safe to drop
+    /// without violating any active reader's snapshot. For
+    /// non-versioned engines, the parameter is ignored.
+    ///
+    /// Returns the number of stale entries reclaimed. Safe to call
+    /// concurrently with normal read/write traffic.
+    fn gc(&self, _gc_lag: u64) -> usize {
+        0
+    }
+
     /// Flush with parallel table writes (V311-09)
     /// Default implementation falls back to sequential flush
     fn flush_parallel(&mut self) -> SqlResult<()> {
@@ -1726,6 +1741,10 @@ impl StorageEngine for MemoryStorage {
             .get(&table.to_lowercase())
             .cloned()
             .unwrap_or_default())
+    }
+
+    fn gc(&self, _gc_lag: u64) -> usize {
+        0
     }
 
     /// V4.0.0 / SOAK-leak fix: iterate the cached `Vec<Record>` by reference

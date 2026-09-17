@@ -2,7 +2,10 @@
 
 > **版本**: v4.0.0
 > **创建日期**: 2026-09-12
-> **状态**: Phase 0 完成
+> **状态**: Phase 0 完成，Phase 1 部分完成
+> **最后更新**: 2026-09-17
+> **当前 HEAD**: `d81d7c65df` (feat/v4.0.0-wal-group-commit)
+> **权威阶段状态**: `docs/releases/v4.0.0/STAGE.yaml`
 
 ---
 

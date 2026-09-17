@@ -2,8 +2,11 @@
 
 > **版本**: v4.0.0
 > **状态**: draft (2026-09-08)
+> **最后更新**: 2026-09-17
+> **当前 HEAD**: `d81d7c65df` (feat/v4.0.0-wal-group-commit, 10 commits ahead of develop/v4.0.0)
 > **目标**: 落地 19 个 WP,每个 WP 都有 owner + exit evidence + 测试要求
 > **配合**: `ROADMAP.md` (阶段), `LEGACY_ISSUES.md` (issue 来源), `TEST_PLAN.md` (gate), `VERSION_PLAN.md` (产品)
+> **权威阶段状态**: `docs/releases/v4.0.0/STAGE.yaml`
 
 ---
 

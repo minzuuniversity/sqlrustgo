@@ -6,6 +6,8 @@
 > **Issue**: #3730
 > **Estimate**: 6 weeks (per issue)
 > **Owner**: storage
+> **Last updated**: 2026-09-17 — STAGE.yaml cross-reference added
+> **Stage status (SSOT)**: `docs/releases/v4.0.0/STAGE.yaml`
 > **Depends on**: V400-01 (Vector SQL syntax, ✅ closed 2026-09-16)
 
 ## Current state (2026-09-16)
