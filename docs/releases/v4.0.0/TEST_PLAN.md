@@ -1,10 +1,13 @@
 # SQLRustGo v4.0.0 测试计划
 
 > **版本**: v4.0.0
-> **状态**: 规划中
+> **状态**: DRAFT（草稿阶段）
 > **日期**: 2026-08-08
+> **最后更新**: 2026-09-17
 > **目标**: 生产级 SQL + Vector + Graph + GMP 多模型数据库
 > **本次整改**: 2026-09-11,补齐 legacy issue 与 GMP-Platform consumer contract
+> **最新 SOAK**: `V400_04_20MIN_SOAK.md` (2026-09-17, 20 分钟 SOAK + 1 字节 B+Tree overwrite bug 披露)
+> **权威阶段状态**: `docs/releases/v4.0.0/STAGE.yaml`
 
 ## 1. 测试矩阵
 

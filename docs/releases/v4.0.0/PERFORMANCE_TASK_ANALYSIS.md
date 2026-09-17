@@ -2,8 +2,10 @@
 
 > **Status**: Technical Analysis (Phase A & C 详细设计)
 > **Created**: 2026-09-12
-> **Related**: `PERFORMANCE_OPTIMIZATION_ROADMAP.md`
+> **Last updated**: 2026-09-17
+> **Related**: `PERFORMANCE_OPTIMIZATION_ROADMAP.md`, `V400_04_20MIN_SOAK.md`
 > **Author**: sqlrustgo core team
+> **Stage status (SSOT)**: `docs/releases/v4.0.0/STAGE.yaml`
 
 ---
 

@@ -2,8 +2,10 @@
 
 > **版本**: v4.0.0 draft
 > **日期**: 2026-09-11
+> **最后更新**: 2026-09-17
 > **来源**: GMP-Platform `develop/v1.5.0`, `feat/issue-187-185`, `feat/eval-408-ui`, `feat/release-v1.6.0`
 > **用途**: 将 GMP-Platform 对 SQLRustGo 的已知要求和新增要求转成 v4.0.0 可执行验收项
+> **权威阶段状态**: `docs/releases/v4.0.0/STAGE.yaml`
 
 ---
 

@@ -6,6 +6,8 @@
 > **Source commits**:
 > - V1: `29460e2053 feat(v400-02): extend WalEntryType with 6 vector variants`
 > - V2: `4136895c75 feat(v400-02 V2): WalStorage::log_vector_insert / log_vector_delete`
+> **Last updated**: 2026-09-17 — added worktree-local addendum + STAGE.yaml cross-reference
+> **Stage status (SSOT)**: `docs/releases/v4.0.0/STAGE.yaml`
 > - V3: `c65d3057c9 feat(v400-02 V3): wire log_vector_insert/delete into the row DML path`
 > - V4: `340fdd3571 feat(v400-02 V4): wire create_table into vector dispatch via mark_vector_table`
 > **Reference**: Issue #3730, `docs/releases/v4.0.0/V400_02_VECTOR_WAL_DEV_PLAN.md`

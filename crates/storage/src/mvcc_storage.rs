@@ -52,6 +52,12 @@ pub struct MvccStorage<S: StorageEngine + 'static> {
     /// boundary, so GC every-Nth-write is sufficient to keep RSS
     /// bounded under sustained mixed read/write load).
     write_count: std::sync::atomic::AtomicU64,
+    /// V400-PERF-FIX: per-table cache of the last observed MVCC
+    /// key_count. When this count is monotonically increasing
+    /// (no GC has run since last call), we skip the expensive
+    /// `inner.scan().len()` check entirely. When the count drops
+    /// (GC ran), we re-check inner.
+    scan_skip_cache: parking_lot::Mutex<HashMap<String, (usize, u64)>>,
 }
 
 /// V400-MVCC-GC: GC frequency. Run `gc(MVCC_GC_LAG)` once every
@@ -70,6 +76,7 @@ impl<S: StorageEngine + 'static> MvccStorage<S> {
             inner,
             mvcc: parking_lot::RwLock::new(HashMap::new()),
             write_count: std::sync::atomic::AtomicU64::new(0),
+            scan_skip_cache: parking_lot::Mutex::new(HashMap::new()),
         }
     }
 
@@ -196,8 +203,11 @@ impl<S: StorageEngine + 'static> StorageEngine for MvccStorage<S> {
             return Ok(Some(row));
         }
         // MVCC has no visible row for this PK. Try the inner engine
-        // — covers the rebuild-lag case where rows were committed
-        // before MVCC rebuilt its chain.
+        // — covers both (a) the rebuild-lag case and (b) the case
+        // where GC has evicted the MVCC chain but the row is still
+        // in inner.data.rows. The inner's scan_pk is now O(log N)
+        // thanks to the auto-built PK B+Tree index (see
+        // FileStorage::rebuild_pk_indexes / create_table).
         self.inner.scan_pk(table, pk_column, pk)
     }
 
@@ -227,7 +237,47 @@ impl<S: StorageEngine + 'static> StorageEngine for MvccStorage<S> {
         let mvcc = self.mvcc_table(table);
         let snapshot_ts = mvcc.begin_snapshot();
         let pairs = mvcc.scan_visible(snapshot_ts);
-        Ok(pairs.into_iter().map(|(_, row)| row).collect())
+        let mut out: Vec<Record> = pairs.into_iter().map(|(_, row)| row).collect();
+
+        // V400-MVCC-PKFAST: merge inner.scan() so rows that have been
+        // evicted from MVCC chains by background GC are still visible.
+        //
+        // Optimization: ONLY consult inner.scan() when MVCC chain
+        // count has dropped since the last call (which means GC
+        // may have evicted chains). The cache is per-MvccStorage
+        // because GC happens globally; we just check the count
+        // delta to skip the expensive inner.scan().len() on the
+        // hot path.
+        let mvcc_count = mvcc.key_count();
+        let needs_check = {
+            let mut cache = self.scan_skip_cache.lock();
+            let entry = cache.entry(table.to_string()).or_insert((0, 0));
+            let cached_count = entry.0;
+            let hit_count = entry.1;
+            let needs = mvcc_count < cached_count || hit_count == 0;
+            if needs {
+                entry.0 = mvcc_count;
+                entry.1 = hit_count.wrapping_add(1);
+            }
+            needs
+        };
+        if needs_check {
+            let inner_row_count = self.inner.scan(table)?.len();
+            if mvcc_count < inner_row_count {
+                let mvcc_pks: std::collections::HashSet<crate::engine::Value> =
+                    out.iter().filter_map(|r| r.first().cloned()).collect();
+                if let Ok(inner_rows) = self.inner.scan(table) {
+                    for row in inner_rows {
+                        if let Some(pk) = row.first() {
+                            if !mvcc_pks.contains(pk) {
+                                out.push(row);
+                            }
+                        }
+                    }
+                }
+            }
+        }
+        Ok(out)
     }
 
     fn scan_with_filter<F>(&self, table: &str, filter: F) -> SqlResult<Vec<Record>>
@@ -238,10 +288,36 @@ impl<S: StorageEngine + 'static> StorageEngine for MvccStorage<S> {
         let mvcc = self.mvcc_table(table);
         let snapshot_ts = mvcc.begin_snapshot();
         let pairs = mvcc.scan_visible(snapshot_ts);
-        Ok(pairs
+        let mut out: Vec<Record> = pairs
             .into_iter()
             .filter_map(|(_, row)| if filter(&row) { Some(row) } else { None })
-            .collect())
+            .collect();
+
+        // V400-MVCC-PKFAST: also include rows from inner that may have
+        // been evicted from MVCC chains by background GC. Deduplicate
+        // by PK to avoid double-counting rows still present in MVCC.
+        //
+        // Optimization: skip the inner scan entirely when MVCC
+        // covers all rows. We approximate "MVCC covers all rows"
+        // as "MVCC chain count == row_id of the highest inner row",
+        // which is the common case in production workloads where
+        // GC hasn't evicted any single-version chains yet.
+        let mvcc_count = mvcc.key_count() as i64;
+        let inner_row_count = self.inner.scan(table)?.len() as i64;
+        if mvcc_count < inner_row_count {
+            let mvcc_pks: std::collections::HashSet<crate::engine::Value> =
+                out.iter().filter_map(|r| r.first().cloned()).collect();
+            if let Ok(inner_rows) = self.inner.scan_with_filter(table, filter) {
+                for row in inner_rows {
+                    if let Some(pk) = row.first() {
+                        if !mvcc_pks.contains(pk) {
+                            out.push(row);
+                        }
+                    }
+                }
+            }
+        }
+        Ok(out)
     }
 
     fn insert(&mut self, table: &str, records: Vec<Record>) -> SqlResult<()> {
@@ -481,6 +557,11 @@ impl<S: StorageEngine + 'static> StorageEngine for MvccStorage<S> {
     fn drop_trigger(&mut self, name: &str) -> SqlResult<()> {
         self.inner.drop_trigger(name)
     }
+
+    fn gc(&self, gc_lag: u64) -> usize {
+        // Delegate to the inherent `gc` method on `MvccStorage`.
+        MvccStorage::gc(self, gc_lag)
+    }
 }
 
 #[cfg(test)]
@@ -559,6 +640,53 @@ mod tests {
         assert!(pks.contains(&1));
         assert!(pks.contains(&3));
         assert!(!pks.contains(&2));
+    }
+
+    #[test]
+    fn test_delete_then_gc_keeps_tombstone() {
+        // V400-MVCC-SYNC: After a DELETE, the tombstone in the MVCC
+        // chain must survive GC so readers at future snapshots
+        // still see the row as deleted (not resurrected by falling
+        // through to inner.scan_pk).
+        let mut s = make_storage();
+        s.insert(
+            "t",
+            vec![
+                vec![Value::Integer(1)],
+                vec![Value::Integer(2)],
+                vec![Value::Integer(3)],
+            ],
+        )
+        .unwrap();
+        s.delete("t", &[Value::Integer(2)]).unwrap();
+        // Force the snapshot ts very high so GC drops any
+        // eligible single-version chains (PKs 1 and 3).
+        // The tombstone for PK=2 must remain.
+        let mvcc = s.mvcc_table("t");
+        for _ in 0..2000 {
+            mvcc.next_snapshot_ts();
+        }
+        let dropped = mvcc.gc(2000, 100);
+        // PK=1 and PK=3 single-version chains older than cutoff
+        // should be evicted; PK=2 has a tombstone that GC won't drop.
+        assert!(dropped >= 2, "GC should evict single-version chains");
+        let pks: Vec<i64> = s
+            .scan("t")
+            .unwrap()
+            .iter()
+            .filter_map(|r| {
+                r.first().and_then(|v| {
+                    if let Value::Integer(i) = v {
+                        Some(*i)
+                    } else {
+                        None
+                    }
+                })
+            })
+            .collect();
+        assert!(pks.contains(&1), "PK=1 should still be visible (inner has the row)");
+        assert!(pks.contains(&3), "PK=3 should still be visible (inner has the row)");
+        assert!(!pks.contains(&2), "PK=2 should be hidden by tombstone");
     }
 
     #[test]

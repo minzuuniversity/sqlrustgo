@@ -2,8 +2,11 @@
 
 > **状态**: draft (进入 draft phase)
 > **日期**: 2026-09-08
+> **最后更新**: 2026-09-17
 > **起点**: `develop/v4.0.0` @ `9febebb255` (= v3.12.0 GA HEAD)
+> **当前 HEAD**: `d81d7c65df` (feat/v4.0.0-wal-group-commit, 10 commits ahead of develop/v4.0.0)
 > **维护者**: devops + Release Engineering
+> **权威来源**: `STAGE.yaml`（阶段状态） + 本文件（变更日志）
 
 ---
 
@@ -112,6 +115,19 @@ LEAK-DIAG instrumentation 移除后泄漏从 ~820 MB/h 降到 ~480 MB/h,但 jema
 #### V400-pool-sat — 背压超时返回 `ER_CON_COUNT_ERROR (1040)` (`dad6018299`)
 
 连接池饱和且 `get_with_timeout` 超过配置的背压截止时间时,服务端改为向客户端返回 MySQL `ER_CON_COUNT_ERROR (1040)`,而非直接断开连接。与 MySQL 8.0 在 `max_connections` 超限时的线行为匹配,客户端可据此实现 backoff/retry。
+
+#### V400-04 — 20 分钟 SOAK + B+Tree overwrite bug 披露 (2026-09-17, worktree-local)
+
+feat/v4.0.0-wal-group-commit @ d81d7c65df 上 20-min SOAK（TPS 3,284 合并 = 1,394 writes/s + 1,889 reads/s，RSS 329→1006 MB，0 错误）发现两个 P0 数据完整性 bug：
+
+1. `load_all_indexes` 覆盖 `rebuild_pk_indexes` 输出：服务器启动时 `load_all_tables → rebuild_pk_indexes` 把全表 B+Tree 重建进内存，但随后 `load_all_indexes` 从空 `_idx_*.json`（15 bytes）读出空 B+Tree 并插入 `self.indexes`，**覆盖** 刚重建的内存 B+Tree。`update_pk_index` 之后被静默丢到空 map。
+2. **未修复前不可合并**：磁盘上仍有 855k 行（重启后 `rebuild_pk_indexes` 重新扫描 `data.rows` 可恢复），但 live server 返回 `COUNT=1001`。建议先修 #1 + 评估 MVCC single-version chain GC 安全（详见 `V400_04_20MIN_SOAK.md` §6、§C）再合并到 `develop/v4.0.0`。
+
+修复性能层面已达成 SQLite + WAL 同数量级（3.3k TPS），比 baseline `v400-baseline-test` 高 +208%。详见 `V400_04_20MIN_SOAK.md`。
+
+#### V400-DOC-2026-09-17 — v4.0.0 文档整改
+
+本次整改补齐了缺失的 6 个文档（`ALPHA_GATE_REPORT.md`, `COVERAGE_ANALYSIS_REPORT.md`, `V400_02_*`, `V400_03_*`）从 develop/v4.0.0 拉取；新建 `STAGE.yaml`（缺失的阶段状态权威源）；README/CHANGELOG 添加更新日期与权威引用；详见 `DOC_RECTIFICATION_PLAN_2026-09-17.md`。
 
 ---
 

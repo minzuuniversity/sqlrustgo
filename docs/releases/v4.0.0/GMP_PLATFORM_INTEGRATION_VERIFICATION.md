@@ -1,10 +1,12 @@
 # GMP-Platform Integration Verification — sqlrustgo v4.0.0 / develop/v4.0.0
 
 > **Date:** 2026-09-09
+> **Last updated:** 2026-09-17
 > **SQLRustGo commit:** `53d0fd7e0d` (`develop/v4.0.0` draft phase)
 > **GMP-Platform commit:** `c3f479f` (`develop/v1.5.0`)
 > **Verifier:** claude-z6g4 integration sweep (manual)
 > **Related plan:** `docs/plans/2026-08-08-sqlrustgo-v312-v400-gmp-rag-graph-plan.md`
+> **Stage status (SSOT):** `docs/releases/v4.0.0/STAGE.yaml`
 
 This document records the integration test executed against the live `sqlrustgo-graph` and `sqlrustgo-rag` crates in the v4.0.0 worktree, driven by the consumer crate `GMP-Platform` after a series of adapter changes. It is a *contract verification record*, not new code — the underlying graph, rag, and storage crates shipped on `develop/v4.0.0` are unchanged; only the GMP-Platform adapter layer was modified.
 
