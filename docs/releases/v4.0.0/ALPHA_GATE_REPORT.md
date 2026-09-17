@@ -4,6 +4,8 @@
 > **Status**: 🟡 CONDITIONAL PASS (A1-A4 PASS, A5 average 77.85%, parser 73.97% borderline)
 > **Branch**: `develop/v4.0.0` HEAD = post-#3766
 > **Reference**: `docs/governance/GATE_CONDITIONS.md` v2.0
+> **Worktree-local note (feat/v4.0.0-wal-group-commit @ d81d7c65df)**: This report is from `develop/v4.0.0` baseline. As of 2026-09-17, 3 of 7 Alpha gates are FAIL in this worktree (per `V400_04_20MIN_SOAK.md` §C: `check_arch_invariants.sh`, `check_anti_fabrication.sh`, `check_anti_ignore_gate.sh`). Blocking issues include B+Tree overwrite bug and MVCC single-version chain eviction safety. See `STAGE.yaml#required_gates_for_alpha` for live status.
+> **Stage status (SSOT)**: `docs/releases/v4.0.0/STAGE.yaml`
 
 ---
 

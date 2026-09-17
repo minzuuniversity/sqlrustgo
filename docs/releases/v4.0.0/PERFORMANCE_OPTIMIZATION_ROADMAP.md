@@ -3,8 +3,10 @@
 > **Status**: 长期优化目标
 > **Target**: 商用数据库 (MySQL 8.0 / PostgreSQL 16) 1/3 ~ 1/2 性能水平
 > **Created**: 2026-09-12
+> **Last updated**: 2026-09-17 — 当前达成 SQLite + WAL 同数量级（详见 `V400_04_20MIN_SOAK.md`）
 > **Owner**: sqlrustgo core team
-> **Related SOAK**: `/docs/releases/v4.0.0/SOAK_LOCAL_1H_2026-09-12*/`
+> **Related SOAK**: `/docs/releases/v4.0.0/SOAK_LOCAL_1H_2026-09-12*/`, `V400_04_20MIN_SOAK.md`
+> **Stage status (SSOT)**: `docs/releases/v4.0.0/STAGE.yaml`
 
 ---
 
