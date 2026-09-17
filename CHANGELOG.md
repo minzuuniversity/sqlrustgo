@@ -45,6 +45,82 @@ v3.12.0 RC 期间合并的 commits（详见 [v3.12.0 CHANGELOG](docs/releases/v3
 
 ---
 
+
+## [4.0.0] - 2026-09-17 (Alpha gate reached - CONDITIONAL PASS)
+
+> **Status**: 🟡 Alpha gate **CONDITIONAL PASS** (A1-A4 PASS, A5 average 77.85%)
+> **Branch**: `develop/v4.0.0` HEAD = post-#3766, #3767
+> **Reference**: `docs/governance/GATE_CONDITIONS.md` v2.0
+> **Source reports**: `docs/releases/v4.0.0/ALPHA_GATE_REPORT.md` v3
+
+### Performance breakthrough (PR #3755 MVCC GC)
+
+- **QPS**: 27 → **218** (8x improvement)
+- **p50 latency**: 390 ms → **1.2 ms** (325x improvement)
+- **p99 latency**: 2307 ms → 192 ms (12x improvement)
+- **1h SOAK stability**: 42 min sustained, 0 panics, RSS oscillated 0.6-1.7 GB (GC healthy). Crashed via macOS jetsam OOM (1.7 GB per-process cap, not a code defect - see `SOAK_BASELINE_1H_2026-09-16.md`).
+
+### Vector WAL subsystem (V400-02, V1-V4 merged)
+
+- V1: `WalEntryType` +6 vector variants (`VectorInsert`/`Update`/`Delete`/`CreateVectorIndex`/`DropVectorIndex`/`RebuildVectorIndex`) - PR #3750, commit 29460e2053
+- V2: `WalStorage::log_vector_insert` / `log_vector_delete` helpers + dispatch heuristic (`vec_` table-name prefix) - PR #3758, commit 4136895c75
+- V3: row DML path wires `vec_` table to `VectorInsert` / `VectorDelete` WAL entries - PR #3758, commit c65d3057c9
+- V4: `StorageEngine::mark_vector_table` trait method + `execute_create_table` calls it for `vec_` prefix - PR #3763, commit 340fdd3571
+- V5: bind `WalStorage<MvccStorage<FileStorage, VectorStore>>` to real `VectorStore` recovery path - 🔴 pending
+
+### Graph first-class storage (V400-03, G1-G5 merged)
+
+- G1: `CREATE/DROP GRAPH` DDL parser + executor stub - PR #3756, commit 365acf86c2
+- G2: `MATCH` dispatch in `do_command_loop` via `sqlrustgo_graph::cypher::parse + execute(InMemoryGraphStore)` - PR #3759, commit 4815033924
+- G3: `DiskGraphStore` persistence when `data_dir` is set - PR #3760, commit 7c3c5f297e
+- G4: SQL `GRAPH MATCH` surface form (strips `GRAPH ` prefix, dispatches to cypher) - PR #3764, commit e0642b7995
+- G5: end-to-end recovery test (`g5_disk_graph_store_round_trip_persists_nodes_across_reopen`) - PR #3766, commit 800de91f99
+
+### Quality gate fixes (PR #3757)
+
+7 pre-existing test failures fixed (allowed `cargo llvm-cov test` to complete):
+- `recovery_engine::tests::bytes_to_record_tolerates_unknown_prefix_as_null` (returns `Null` instead of error for unknown prefix)
+- `test_bug2b_builtin_functions_not_null`, `test_extract_year_in_where_filter`, `test_extract_month_in_where` (executor regression tests)
+- `savepoint_undo_insert_removes_new_rows`, `savepoint_rollback_to_unknown_name_is_error_state_intact` (WP-E)
+- `read_executor_parallelism_clamps_zero_and_invalid`, `list_threads_returns_at_least_one` (mysql-server helpers)
+
+### Coverage gate A5 (per-crate re-measured post-merge)
+
+| L1 crate | Line % | ≥ 75%? |
+|---|---:|:---:|
+| `sqlrustgo-storage` | 79.94% | ✅ |
+| `sqlrustgo-executor` | 81.92% | ✅ |
+| `sqlrustgo-parser` | 73.97% | ❌ borderline |
+| `sqlrustgo-mysql-server` | 75.57% | ✅ |
+| **Average** | **77.85%** | ✅ ≥ 75% |
+
+Verdict per `GATE_CONDITIONS.md` v2.0 Alpha section: **CONDITIONAL PASS** (parser at 73.97% is within the 2-week resolution window).
+
+### Branch protection
+
+`develop/v4.0.0` `enable_push=false`, `enable_force_push=false` - all v4.0.0 work flows through PRs (12 merged: #3754, #3756-#3760, #3763, #3764, #3766, #3767).
+
+### Exit criteria for FULL PASS
+
+- Raise `parser` coverage to ≥ 75% (currently 73.97%; +1.03% needed) via sqllogictest cases for `parse_create_view`, `parse_drop_view`, `parse_upsert`, `parse_with_select`, `parse_create_function` arms
+- Update CHANGELOG to mark v4.0.0 Alpha gate reached (this entry)
+- Decide whether to ship as v4.0.0 release baseline with CONDITIONAL PASS, or block on full PASS
+
+### Open PRs at v4.0.0 Alpha gate
+
+- #3754 (WAL group commit, fsync coalescing)
+- #3755 (MVCC version chain GC, QPS 8x, p50 325x)
+- #3756 (ALPHA_GATE_REPORT v2 + B fix + V400-02/03 plans + COVERAGE)
+- #3758 (V400-02 V2 - WalStorage::log_vector_*)
+- #3759 (V400-03 G2 - Cypher MATCH dispatch)
+- #3760 (V400-03 G3 - DiskGraphStore persist)
+- #3763 (V400-02 V4 - mark_vector_table)
+- #3764 (V400-03 G4 - GRAPH MATCH SQL surface)
+- #3766 (V400-03 G5 - e2e recovery test)
+- #3767 (ALPHA_GATE_REPORT v3 - this entry)
+
+All merged into `develop/v4.0.0`.
+
 ## [3.11.0] - 2026-08-09
 
 ### 🚀 Major Release — TPC-H SF=1 22/22 PASS
