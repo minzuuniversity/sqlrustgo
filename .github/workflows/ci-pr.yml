@@ -5,6 +5,11 @@ on:
     branches:
       - develop/v2.8.0
       - develop/v2.7.0
+      - develop/v3.9.0
+      - develop/v3.10.0
+      - develop/v3.11.0
+      - develop/v3.12.0
+      - develop/v4.0.0
       - main
     paths-ignore:
       - 'docs/**'
