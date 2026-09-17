@@ -696,8 +696,9 @@ fn chrono_lite_timestamp() -> String {
     }
     let day = remaining_days + 1;
 
+    // Cross-platform: replace ':' with '-' to avoid Windows filename restriction
     format!(
-        "{:04}-{:02}-{:02}_{:02}:{:02}:{:02}",
+        "{:04}-{:02}-{:02}_{:02}-{:02}-{:02}",
         year, month, day, hours, minutes, seconds
     )
 }
