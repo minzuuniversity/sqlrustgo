@@ -43,6 +43,15 @@ pub struct MvccStorage<S: StorageEngine + 'static> {
     /// `scan_*(&self)` paths can hand a reference to background GC
     /// without holding the wrapper lock.
     mvcc: parking_lot::RwLock<HashMap<String, Arc<VersionedTable>>>,
+    /// V400-MVCC-GC: monotonically incremented on every write path
+    /// (insert/delete/update/update_if/delete_if/force_insert).
+    /// When `count % GC_INTERVAL == 0` (modulo == 0 right after the
+    /// increment), the write thread calls `self.gc(MVCC_GC_LAG)`.
+    /// Throttling avoids paying the gc scan cost on every write
+    /// (the per-write version chain is already short at the lag
+    /// boundary, so GC every-Nth-write is sufficient to keep RSS
+    /// bounded under sustained mixed read/write load).
+    write_count: std::sync::atomic::AtomicU64,
     /// V400-PERF-FIX: per-table cache of the last observed MVCC
     /// key_count. When this count is monotonically increasing
     /// (no GC has run since last call), we skip the expensive
@@ -66,7 +75,22 @@ impl<S: StorageEngine + 'static> MvccStorage<S> {
         Self {
             inner,
             mvcc: parking_lot::RwLock::new(HashMap::new()),
+            write_count: std::sync::atomic::AtomicU64::new(0),
             scan_skip_cache: parking_lot::Mutex::new(HashMap::new()),
+        }
+    }
+
+    /// V400-MVCC-GC: bump the write counter; if we've crossed a
+    /// `GC_INTERVAL` boundary, reap old versions. Caller must hold
+    /// no locks when invoking (called at the tail of write paths).
+    #[inline]
+    fn maybe_gc(&self) {
+        let count = self
+            .write_count
+            .fetch_add(1, std::sync::atomic::Ordering::Relaxed)
+            + 1;
+        if count.is_multiple_of(GC_INTERVAL) {
+            let _dropped = self.gc(MVCC_GC_LAG);
         }
     }
 
