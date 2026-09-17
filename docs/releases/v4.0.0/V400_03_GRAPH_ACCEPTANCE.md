@@ -6,6 +6,8 @@
 > **Source commits**:
 > - G1: `365acf86c2 feat(v400-03): CREATE/DROP GRAPH DDL (G1 stub)`
 > - G2: `4815033924 feat(v400-03 G2): dispatch Cypher MATCH queries to graph executor`
+> **Last updated**: 2026-09-17 — STAGE.yaml cross-reference added
+> **Stage status (SSOT)**: `docs/releases/v4.0.0/STAGE.yaml`
 > - G3: `7c3c5f297e feat(v400-03 G3): persist MATCH queries via DiskGraphStore`
 > - G4: `e0642b7995 feat(v400-03 G4): GRAPH MATCH SQL surface routes through cypher dispatch`
 > **Reference**: Issue #3731, `docs/releases/v4.0.0/V400_03_GRAPH_DEV_PLAN.md`

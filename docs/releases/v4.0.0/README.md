@@ -1,10 +1,29 @@
 # SQLRustGo v4.0.0
 
-> **状态**: 规划中
+> **状态**: DRAFT（草稿阶段）
+> **权威语言**: 中文（English appendix preserved below for historical reference; 中文正文 is the source of truth per docs/governance/FILE_GOVERNANCE.md 中文优先规则）
 > **产品目标**: 生产级 SQL + Vector + Graph + GMP 多模型数据库
 > **规划日期**: 2026-08-08
+> **最后更新**: 2026-09-17
+> **STAGE.yaml 引用**: docs/releases/v4.0.0/STAGE.yaml（single source of truth for stage status）
 
 v4.0.0 被规划为 SQLRustGo 的多模型生产版本。它把 v3.12.0 中服务于 GMP/RAG 的内部向量和图能力，提升为数据库的一等公民子系统。
+
+## 当前状态与权威来源
+
+v4.0.0 当前处于 **DRAFT 阶段**，Phase 0 完成，Phase 1 部分完成（详见 `STAGE.yaml`）。
+
+| 项目 | 状态 | 来源 |
+|---|---|---|
+| 当前阶段 | DRAFT | `STAGE.yaml#current_stage` |
+| HEAD | `d81d7c65df` | `STAGE.yaml#current_state.head` |
+| 分支 | `feat/v4.0.0-wal-group-commit` | `STAGE.yaml#current_state.branch` |
+| 距 `develop/v4.0.0` | 10 commits ahead (未合并) | `STAGE.yaml#worktree_local_additions` |
+| Alpha gates | 4/7 PASS, 3 FAIL | `STAGE.yaml#required_gates_for_alpha` |
+| 关键阻塞 | B+Tree overwrite bug (per `V400_04_20MIN_SOAK.md`) | `STAGE.yaml#last_status_refresh.open_issues` |
+| 文档整改计划 | `DOC_RECTIFICATION_PLAN_2026-09-17.md` | 2026-09-17 整改记录 |
+
+权威阶段状态请查阅 `STAGE.yaml`（如与本文档冲突，以 `STAGE.yaml` 为准）。
 
 ## 发布契约
 

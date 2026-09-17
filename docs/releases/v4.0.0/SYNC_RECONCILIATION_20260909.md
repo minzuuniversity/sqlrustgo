@@ -1,9 +1,11 @@
 # SQLRustGo Local/Remote Sync Reconciliation Report
 
 > **日期**: 2026-09-09
+> **最后更新**: 2026-09-17
 > **作者**: yinglichina
 > **范围**: sqlrustgo develop/v3.12.0, main, release/v3.12.0, develop/v4.0.0
 > **目的**: 记录 2026-09-09 sync 状态排查 + 修复 + 后续建议
+> **权威阶段状态**: `docs/releases/v4.0.0/STAGE.yaml`
 
 ---
 
