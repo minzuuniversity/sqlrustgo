@@ -5109,6 +5109,28 @@ fn do_command_loop<S: Read + Write + DrainWrites>(
                         None
                     };
                     if let Some(cypher_frag) = is_cypher_dispatch {
+                        // V400-04: parse an optional `<name>` bareword at
+                        // the start of the cypher fragment. The form is
+                        //   "GRAPH MATCH g1 MATCH (n)..." -> name="g1"
+                        //   "GRAPH MATCH MATCH (n)..." -> name=None
+                        // The graph_name is then used to pick a
+                        // per-name dgs path under `<data_dir>/graph/`.
+                        let (graph_name, cypher_body) = {
+                            let trimmed = cypher_frag.trim_start();
+                            if let Some(space_idx) = trimmed.find(|c: char| c.is_whitespace()) {
+                                let (head, tail) = trimmed.split_at(space_idx);
+                                let head = head.trim();
+                                if !head.is_empty()
+                                    && head.chars().all(|c| c.is_alphanumeric() || c == '_')
+                                {
+                                    (Some(head.to_string()), tail.trim_start().to_string())
+                                } else {
+                                    (None, cypher_frag.to_string())
+                                }
+                            } else {
+                                (None, cypher_frag.to_string())
+                            }
+                        };
                         // Build an in-memory graph store, execute the
                         // Cypher, and stream the result set back as if
                         // it were a SELECT. This is a stopgap until G3
@@ -5139,9 +5161,14 @@ fn do_command_loop<S: Read + Write + DrainWrites>(
                                     // than boxing through `dyn`.
                                     match config.data_dir.as_ref() {
                                         Some(d) => {
-                                            match sqlrustgo_graph::DiskGraphStore::open(
-                                                d.join("graph").join("default.dgs"),
-                                            ) {
+                                            // V400-04: dispatch to a per-name dgs path
+                                            // (default.dgs when no name was given;
+                                            // <name>.dgs for the named-graph case).
+                                            let graph_dir = match graph_name.as_deref() {
+                                                Some(n) => d.join("graph").join(format!("{}.dgs", n)),
+                                                None => d.join("graph").join("default.dgs"),
+                                            };
+                                            match sqlrustgo_graph::DiskGraphStore::open(graph_dir) {
                                                 Ok(store) => {
                                                     sqlrustgo_graph::cypher::execute(&store, &query)
                                                         .map_err(|e| {
