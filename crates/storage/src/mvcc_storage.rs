@@ -43,7 +43,24 @@ pub struct MvccStorage<S: StorageEngine + 'static> {
     /// `scan_*(&self)` paths can hand a reference to background GC
     /// without holding the wrapper lock.
     mvcc: parking_lot::RwLock<HashMap<String, Arc<VersionedTable>>>,
+    /// V400-MVCC-GC: monotonically incremented on every write path
+    /// (insert/delete/update/update_if/delete_if/force_insert).
+    /// When `count % GC_INTERVAL == 0` (modulo == 0 right after the
+    /// increment), the write thread calls `self.gc(MVCC_GC_LAG)`.
+    /// Throttling avoids paying the gc scan cost on every write
+    /// (the per-write version chain is already short at the lag
+    /// boundary, so GC every-Nth-write is sufficient to keep RSS
+    /// bounded under sustained mixed read/write load).
+    write_count: std::sync::atomic::AtomicU64,
 }
+
+/// V400-MVCC-GC: GC frequency. Run `gc(MVCC_GC_LAG)` once every
+/// `GC_INTERVAL` write operations. Tunable via const because this
+/// must be a `const` for the `AtomicU64::fetch_add` modulo branch.
+/// Empirical sweet spot: 128 — small enough that GC fires within a
+/// few seconds under 16-thread mixed read/write load (20% writes),
+/// large enough that GC overhead is amortized away from hot path.
+const GC_INTERVAL: u64 = 128;
 
 impl<S: StorageEngine + 'static> MvccStorage<S> {
     /// Wrap an inner storage engine. Starts with empty MVCC tables —
@@ -52,6 +69,21 @@ impl<S: StorageEngine + 'static> MvccStorage<S> {
         Self {
             inner,
             mvcc: parking_lot::RwLock::new(HashMap::new()),
+            write_count: std::sync::atomic::AtomicU64::new(0),
+        }
+    }
+
+    /// V400-MVCC-GC: bump the write counter; if we've crossed a
+    /// `GC_INTERVAL` boundary, reap old versions. Caller must hold
+    /// no locks when invoking (called at the tail of write paths).
+    #[inline]
+    fn maybe_gc(&self) {
+        let count = self
+            .write_count
+            .fetch_add(1, std::sync::atomic::Ordering::Relaxed)
+            + 1;
+        if count.is_multiple_of(GC_INTERVAL) {
+            let _dropped = self.gc(MVCC_GC_LAG);
         }
     }
 
@@ -225,6 +257,8 @@ impl<S: StorageEngine + 'static> StorageEngine for MvccStorage<S> {
             let ts = mvcc.next_snapshot_ts();
             mvcc.put(pk, row, ts, ts);
         }
+        // V400-MVCC-GC: reap old versions after every write path.
+        self.maybe_gc();
         Ok(())
     }
 
@@ -248,6 +282,8 @@ impl<S: StorageEngine + 'static> StorageEngine for MvccStorage<S> {
                     mvcc.delete(&pk, ts, ts);
                 }
             }
+            // V400-MVCC-GC: reap old versions after every write path.
+            self.maybe_gc();
             return Ok(0);
         }
         // Tombstone exactly the affected PKs.
@@ -256,6 +292,8 @@ impl<S: StorageEngine + 'static> StorageEngine for MvccStorage<S> {
         for pk in &removed_pks {
             mvcc.delete(pk, ts, ts);
         }
+        // V400-MVCC-GC: reap old versions after every write path.
+        self.maybe_gc();
         Ok(removed_pks.len())
     }
 
@@ -275,6 +313,8 @@ impl<S: StorageEngine + 'static> StorageEngine for MvccStorage<S> {
                 mvcc.delete(&pk, ts, ts);
             }
         }
+        // V400-MVCC-GC: reap old versions after every write path.
+        self.maybe_gc();
         Ok(n)
     }
 
@@ -296,6 +336,8 @@ impl<S: StorageEngine + 'static> StorageEngine for MvccStorage<S> {
                 mvcc.put(pk, row, ts, ts);
             }
         }
+        // V400-MVCC-GC: reap old versions after every write path.
+        self.maybe_gc();
         Ok(n)
     }
 
@@ -314,6 +356,8 @@ impl<S: StorageEngine + 'static> StorageEngine for MvccStorage<S> {
                 mvcc.put(pk, row, ts, ts);
             }
         }
+        // V400-MVCC-GC: reap old versions after every write path.
+        self.maybe_gc();
         Ok(n)
     }
 
@@ -325,6 +369,8 @@ impl<S: StorageEngine + 'static> StorageEngine for MvccStorage<S> {
             let ts = mvcc.next_snapshot_ts();
             mvcc.put(pk, record, ts, ts);
         }
+        // V400-MVCC-GC: reap old versions after every write path.
+        self.maybe_gc();
         Ok(())
     }
 

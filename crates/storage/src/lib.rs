@@ -61,6 +61,7 @@ pub use engine::{
 };
 pub use file_storage::FileStorage;
 pub use lock::{GapLock, GapLockManager, GapLockType, IsolationLevel};
+pub use mvcc_storage::MvccStorage;
 pub use page::Page;
 pub use parallel_wal_storage::ParallelWalStorage;
 pub use wal::{FileBackedWalManager, MemoryWalManager, WalManager};

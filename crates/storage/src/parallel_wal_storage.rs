@@ -161,9 +161,9 @@ impl<S: StorageEngine + 'static, W: WalManager + 'static> StorageEngine
                 // coordinator coalesces concurrent fsyncs and returns
                 // Ok(()) once our LSN is durable.
                 let lsn = self.next_lsn.saturating_sub(1);
-                coord
-                    .commit_lsn(lsn)
-                    .map_err(|e| SqlError::ExecutionError(format!("WAL group commit error: {}", e)))?;
+                coord.commit_lsn(lsn).map_err(|e| {
+                    SqlError::ExecutionError(format!("WAL group commit error: {}", e))
+                })?;
             } else {
                 match self.sync_mode {
                     WalSyncMode::Off => {}
