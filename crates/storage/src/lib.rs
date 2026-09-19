@@ -5,6 +5,7 @@ pub mod append_only_storage;
 pub mod backup;
 pub mod bin_compactor;
 pub mod cross_model_tracker;
+pub mod backup_coordinator;
 pub mod bin_index;
 pub mod bin_migration;
 pub mod bin_segment;
