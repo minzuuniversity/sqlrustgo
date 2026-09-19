@@ -182,6 +182,8 @@ impl VectorStore {
         })?;
 
         index.insert(id, vector)?;
+        // V400-05: register vector write for cross-model transaction
+        crate::cross_model_tracker::register_vector_write("VECTOR_INSERT");
         Ok(())
     }
 
