@@ -365,6 +365,8 @@ impl GraphStore for DiskGraphStore {
             labels,
             properties,
         })?;
+        // V400-05: register graph write for cross-model transaction
+        sqlrustgo_storage::cross_model_tracker::register_graph_write("GRAPH_CREATE_NODE");
         Ok(id)
     }
 
@@ -402,6 +404,8 @@ impl GraphStore for DiskGraphStore {
             rel_type,
             properties,
         })?;
+        // V400-05: register graph write for cross-model transaction
+        sqlrustgo_storage::cross_model_tracker::register_graph_write("GRAPH_CREATE_EDGE");
         Ok(id)
     }
 
