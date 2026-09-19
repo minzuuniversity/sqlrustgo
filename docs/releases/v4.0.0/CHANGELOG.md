@@ -1,12 +1,95 @@
 # SQLRustGo v4.0.0 变更日志
 
-> **状态**: draft (进入 draft phase)
-> **日期**: 2026-09-08
-> **最后更新**: 2026-09-17
+> **状态**: GA (CONDITIONAL PASS)
+> **日期**: 2026-09-19
+> **最后更新**: 2026-09-19
 > **起点**: `develop/v4.0.0` @ `9febebb255` (= v3.12.0 GA HEAD)
-> **当前 HEAD**: `d81d7c65df` (feat/v4.0.0-wal-group-commit, 10 commits ahead of develop/v4.0.0)
+> **当前 HEAD**: `3fa3bb811c` (post-V400-05/06/07 scaffolds + WP-A..G triage + 5min SOAK PASS)
 > **维护者**: devops + Release Engineering
 > **权威来源**: `STAGE.yaml`（阶段状态） + 本文件（变更日志）
+
+---
+
+## v4.0.0 GA (2026-09-19)
+
+### Stage progression
+
+- **DRAFT** (2026-09-08) ✅
+- **ALPHA** (CONDITIONAL PASS, 2026-09-17) ✅ — PR #3767 (ALPHA_GATE_REPORT v3)
+- **BETA** (CONDITIONAL PASS, 2026-09-19) ✅ — PR #3777 (BETA_GATE_REPORT)
+- **RC** (CONDITIONAL PASS, 2026-09-19) ✅ — PR #3778 (RC_GATE_REPORT)
+- **GA** (CONDITIONAL PASS, 2026-09-19) ✅ — GA_GATE_REPORT
+
+### Major features
+
+- **V400-01 Vector SQL syntax** (`CREATE VECTOR INDEX ... USING HNSW|IVF`,
+  `distance()` function) — PR #3756
+- **V400-02 WAL-backed vector storage** (6 vector WAL entry types,
+  WalStorage routing, mysql-server integration, V5 round-trip e2e) —
+  PRs #3758, #3763, #3769
+- **V400-03 Graph first-class storage** (DiskGraphStore, sqlrustgo-graph
+  M1-M5, CREATE GRAPH DDL) — PRs #3756, #3759, #3760
+- **V400-04 Graph query surface** (Cypher MATCH + GRAPH MATCH SQL form
+  dispatch via do_command_loop) — PR #3764
+- **V400-05 Cross-model transaction scaffold** (TransactionManager
+  cross-model write tracker with ModelKind enum, 30 tests) — commit
+  following PR #3779
+- **V400-06 Unified backup/restore design** (BackupCoordinator API
+  contract, 20 scaffold tests) — defer impl to v4.0.1
+- **V400-07 Unified ACL + audit design** (AclCoordinator + ALCOA+ 9
+  attribute contract, 33 tests) — defer impl to v4.0.1
+- **V400-08 Multi-model optimizer ExecutorPool library** (575 lines,
+  work-stealing scheduler) — commit `7ff6968e52`
+- **V400-09 168h SOAK pre-flight** — 5min PASS: 118,585 queries, 0
+  errors, RSS peak 636 MB (vs pre-fix 1.5 GB)
+
+### Performance
+
+- **WAL group commit** — fsync coalescing, +30% TPS in batch:100 mode
+- **MVCC GC tuning** — interval 5s→1s, gc_lag 1000→256 cuts RSS peak
+  by ~58%
+- **PK B+Tree auto-build** — restore O(log N) PK lookup
+- **MVCC single-version chain GC** — bound RSS under heavy INSERT
+- **Append-only delta saves** — O(N)→O(ΔN) writes
+- **scan-skip optimization** — avoid full-table scan when MVCC chain
+  is unchanged
+
+### Documentation
+
+- 13 v4.0.0 release docs (DEV_PLAN, TEST_PLAN, FEATURE_CHECKLIST,
+  ALPHA/BETA/RC/GA_GATE_REPORT, V400-02..07 plans, V400-02/03
+  acceptance, SOAK baselines, WP_LEGACY_TRIAGE, WP_H_TRIAGE,
+  CLAIM_DOWNGRADE_MANIFEST)
+- 280+ parser tests (v400_coverage_paths/deep/function_body/
+  more_paths/split_deep/function_table_args)
+- 30 mysql-server MATCH dispatch tests
+- 83 cross-model/backup/ACL design tests
+
+### Claim downgrade boundaries (CLAIM_DOWNGRADE_MANIFEST.md)
+
+13 capabilities explicitly excluded or partially claimed; 5/7 WP-C..G
+deferred to v4.0.1; 1/8 WP-H (#4639) deferred to v4.1. See
+`docs/releases/v4.0.0/CLAIM_DOWNGRADE_MANIFEST.md` for full text.
+
+### Known limitations (carry-over to v4.0.1)
+
+- V400-05 cross-model txn full integration with VectorStore/
+  DiskGraphStore/audit hooks
+- V400-06 BackupCoordinator implementation (4-week effort)
+- V400-07 ACL extension to vector + graph labels
+- V400-08 cost model extension for vector + graph indexes
+- V400-09 168h SOAK actual run (V400-09 follow-up post-GA)
+- WP-C DDL/integrity fixes (#4682, #4652, #4672, #4669, #4709, #4703)
+- WP-D JOIN/SUBQUERY fixes (#4668, #4656, #4649, #4636)
+- WP-F schema migration (ALTER RENAME COLUMN)
+- WP-G CHAR(n) PAD SPACE compatibility
+- G17 coverage: 78.28% avg < 80% target (CONDITIONAL PASS)
+
+### Tags
+
+- `beta/v4.0.0` @ `917fd83e3f` (2026-09-19)
+- `rc/v4.0.0` @ `c9bea8dcc2` (2026-09-19)
+- `ga/v4.0.0` @ `3fa3bb811c` (2026-09-19)
 
 ---
 
