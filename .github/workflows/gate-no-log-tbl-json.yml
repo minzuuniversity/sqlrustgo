@@ -1,0 +1,102 @@
+name: gate-no-log-tbl-json
+
+# v4.0.0 commit hygiene gate (user rule 2026-09-08 / 2026-09-11):
+#   No *.log, *.tbl, *.json files in commits.
+#   Single file < 100MB.
+#
+# Refs: docs/releases/v4.0.0/DEV_PLAN.md §V400-00
+#       scripts/gate/check_no_log_tbl_json.sh
+#       docs/governance/FILE_GOVERNANCE.md
+
+on:
+  pull_request:
+    branches:
+      - develop/v3.12.0
+      - develop/v4.0.0
+      - main
+      - release/v3.12.0
+  push:
+    branches:
+      - develop/v3.12.0
+      - develop/v4.0.0
+      - main
+      - release/v3.12.0
+
+jobs:
+  check-no-log-tbl-json:
+    name: Block log/tbl/json + >100MB in commits
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Check latest commit (PR single-commit gate)
+        run: |
+          chmod +x scripts/gate/check_no_log_tbl_json.sh
+          scripts/gate/check_no_log_tbl_json.sh HEAD
+
+      - name: Check all commits in PR (against merge-base)
+        if: github.event_name == 'pull_request'
+        run: |
+          # Walk every commit on the PR branch since its merge-base with the target branch
+          git fetch origin "${{ github.base_ref }}"
+          BASE=$(git merge-base "origin/${{ github.base_ref }}" HEAD)
+          echo "Walking commits from $BASE to HEAD..."
+          FAIL=0
+          for commit in $(git rev-list "$BASE..HEAD"); do
+              echo "--- commit $commit ---"
+              if ! scripts/gate/check_no_log_tbl_json.sh "$commit"; then
+                  FAIL=1
+              fi
+          done
+          if [ $FAIL -eq 1 ]; then
+              echo ""
+              echo "❌ One or more commits introduced forbidden file types."
+              echo "Refusing to merge. Run scripts/gate/check_no_log_tbl_json.sh locally to debug."
+              exit 1
+          fi
+          echo "✓ All commits in PR pass log/tbl/json gate"
+
+      - name: File-size cap (≤100MB)
+        run: |
+          # Any single tracked file must be < 100MB (GitHub compatibility).
+          # This is best-effort: only checks HEAD tree, not full history.
+          LIMIT=104857600  # 100 MB in bytes
+          FAIL=0
+          while IFS= read -r file; do
+              if [ -f "$file" ]; then
+                  SIZE=$(stat -c '%s' "$file" 2>/dev/null || stat -f '%z' "$file")
+                  if [ "$SIZE" -gt "$LIMIT" ]; then
+                      echo "❌ $file is ${SIZE} bytes (> ${LIMIT})"
+                      FAIL=1
+                  fi
+              fi
+          done < <(git ls-files)
+          if [ $FAIL -eq 1 ]; then
+              exit 1
+          fi
+          echo "✓ All tracked files under 100MB"
+
+      - name: Confirm .gitignore coverage
+        run: |
+          # Fail if .gitignore is missing the v4.0.0 forbidden-extension lines.
+          REQUIRED=(
+              '*.log'
+              '*.tbl'
+              '*.json'
+          )
+          FAIL=0
+          for pattern in "${REQUIRED[@]}"; do
+              if ! grep -Fqx "$pattern" .gitignore && ! grep -Fqx "$pattern" docs/governance/FILE_GOVERNANCE.md 2>/dev/null; then
+                  echo "❌ .gitignore is missing required pattern: $pattern"
+                  FAIL=1
+              fi
+          done
+          if [ $FAIL -eq 1 ]; then
+              exit 1
+          fi
+          echo "✓ .gitignore includes required forbidden-extension patterns"

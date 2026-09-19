@@ -11,7 +11,7 @@
 use crate::types::{EdgeId, GraphError, GraphResult, Label, NodeId, PropertyMap};
 use serde::{Deserialize, Serialize};
 use std::fs::{File, OpenOptions};
-use std::io::{BufRead, BufReader, BufWriter, Read, Write};
+use std::io::{BufReader, BufWriter, Read, Write};
 use std::path::{Path, PathBuf};
 
 /// Magic byte sequence marking the start of every WAL record (after the 4-byte length prefix).

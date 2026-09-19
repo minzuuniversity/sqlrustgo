@@ -10,6 +10,7 @@
 
 pub mod alert;
 pub mod audit;
+pub mod audit_chain;
 pub mod cancel;
 pub mod encryption;
 pub mod firewall;

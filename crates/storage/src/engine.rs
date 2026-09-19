@@ -915,7 +915,93 @@ pub type RowFilter = Box<dyn Fn(&Record) -> bool + Send + Sync>;
 /// Enables multiple storage backends (FileStorage, MemoryStorage, etc.)
 pub trait StorageEngine: Send + Sync {
     /// Scan all rows from a table
+    /// Phase B Step 4.2: O(log N) primary-key lookup. Returns the
+    /// row with primary key `pk` in `table`, or `None` if not found
+    /// or invisible. Default implementation falls back to a full
+    /// scan with a filter — engines that have a real PK index
+    /// (FileStorage via B+ Tree) override this for true O(log N).
+    ///
+    /// Phase D.1: `pk_column` is now explicit. Previously `FileStorage`
+    /// hard-coded `"id"` as the index name, which meant any table with a
+    /// different PK column name (e.g. `o_orderkey`) silently fell through
+    /// to the full-scan fallback. The caller (engine_select) now resolves
+    /// the actual PK column name from `TableInfo` and passes it through.
+    fn scan_pk(&self, table: &str, _pk_column: &str, pk: &Value) -> SqlResult<Option<Record>> {
+        // `_pk_column` is unused in the default impl: the fallback is
+        // a full table scan + linear find, which doesn't need to know
+        // the index name. Engines that override this method (e.g.
+        // FileStorage) use `_pk_column` to address the right B+Tree.
+        let pk = pk.clone();
+        Ok(self
+            .scan(table)?
+            .into_iter()
+            .find(|row| row.first() == Some(&pk)))
+    }
+    /// Phase B Step 4.3: O(log N + k) primary-key range scan. Returns
+    /// the rows whose primary key falls in `low..=high` (inclusive),
+    /// in primary-key order. Default implementation falls back to a
+    /// full scan + filter; engines that have a real PK index override
+    /// it.
+    fn scan_pk_range(&self, table: &str, low: &Value, high: &Value) -> SqlResult<Vec<Record>> {
+        let low = low.clone();
+        let high = high.clone();
+        Ok(self
+            .scan(table)?
+            .into_iter()
+            .filter(|row| {
+                row.first()
+                    .map(|pk| pk >= &low && pk <= &high)
+                    .unwrap_or(false)
+            })
+            .collect())
+    }
+    /// Phase B Step 3 follow-up #2: variant of `commit_transaction`
+    /// that ALSO flushes the inner storage engine synchronously. Use
+    /// this when the caller needs strong durability (the on-disk
+    /// snapshot matches the WAL state). The default `commit_transaction`
+    /// skips the flush and relies on WAL replay for recovery.
+    ///
+    /// Default impl: call `commit_transaction` then `flush`. Engines
+    /// that batch flushes (e.g. `WalStorage`) override to coalesce
+    /// pending writes.
+    fn commit_transaction_and_flush(&mut self) -> SqlResult<()> {
+        self.commit_transaction()?;
+        self.flush()?;
+        Ok(())
+    }
+    /// Phase B Step 3 follow-up #2: drain any deferred inner-engine
+    /// flushes. Called by the read path or a background sweeper.
+    /// Returns the number of flushes performed (0 if no work).
+    fn drain_pending_flushes(&mut self) -> SqlResult<usize> {
+        self.flush()?;
+        Ok(1)
+    }
     fn scan(&self, table: &str) -> SqlResult<Vec<Record>>;
+    /// V4.0.0 / SOAK-leak fix: scan with a row-level predicate evaluated
+    /// **inside** the storage lock, so non-matching rows are never cloned.
+    ///
+    /// The default implementation falls back to `scan + filter`, which
+    /// clones every row before filtering — this is the O(N) hot path that
+    /// drove the 30 MB/min SOAK RSS growth. Storage engines that hold
+    /// in-memory or disk-cached row data MUST override this to filter
+    /// while the borrow on the cached `Vec<Record>` is still live.
+    ///
+    /// Used by `execute_delete` (engine_dml.rs) to avoid cloning the full
+    /// table for every WHERE-DELETE.
+    ///
+    /// NOTE: `Self: Sized` keeps `dyn StorageEngine` object-safe — this
+    /// method is excluded from dyn dispatch and only available on the
+    /// concrete `FileStorage` / `MemoryStorage` types. The `execute_delete`
+    /// call site uses the concrete type via `EngineStorage` (`Storage`),
+    /// not the trait object.
+    fn scan_with_filter<F>(&self, table: &str, filter: F) -> SqlResult<Vec<Record>>
+    where
+        F: Fn(&Record) -> bool,
+        Self: Sized,
+    {
+        let _ = filter;
+        self.scan(table)
+    }
     /// V312-85 / Issue #4625: Scan using a specific index.
     /// Returns rows where the indexed column equals the given key value.
     /// Returns error if the index doesn't exist or isn't usable for equality lookups.
@@ -962,6 +1048,16 @@ pub trait StorageEngine: Send + Sync {
 
     /// Delete rows matching a filter
     fn delete(&mut self, table: &str, _filters: &[Value]) -> SqlResult<usize>;
+    /// Phase B Step 4.1: like `delete`, but returns the list of
+    /// primary keys of the deleted rows so the MVCC wrapper can
+    /// tombstone only the affected rows instead of the whole table.
+    /// The default implementation falls back to `delete` and returns
+    /// an empty PK list (callers must handle that by tombstoning all
+    /// visible rows as before).
+    fn delete_collect_pks(&mut self, table: &str, filters: &[Value]) -> SqlResult<Vec<Value>> {
+        let _ = (table, filters);
+        Ok(Vec::new())
+    }
     fn delete_if(&mut self, table: &str, filter: &RowFilter) -> SqlResult<usize>;
     fn update(
         &mut self,
@@ -992,6 +1088,15 @@ pub trait StorageEngine: Send + Sync {
 
     /// Create a table
     fn create_table(&mut self, info: &TableInfo) -> SqlResult<()>;
+
+    /// V400-02 / Issue #3730 (V4): mark a table as a vector storage
+    /// path so the WAL layer's `entry_type_for_table` heuristic can
+    /// route row DML into the vector WAL entry types. No-op by
+    /// default; the default `MemoryStorage` ignores this so unit
+    /// tests that don't care about vector WAL routing still pass.
+    /// The actual `VectorStore::register_column` binding is owned
+    /// by the recovery engine (V5) and is a follow-up commit.
+    fn mark_vector_table(&mut self, _table: &str) {}
 
     /// Drop a table
     fn drop_table(&mut self, table: &str) -> SqlResult<()>;
@@ -1161,6 +1266,42 @@ pub trait StorageEngine: Send + Sync {
         ))
     }
 
+    /// Begin a transaction via interior mutability (no `&mut self`).
+    ///
+    /// Optimization variant of `begin_transaction` that lets the engine
+    /// start a tx WITHOUT holding the global `Arc<RwLock<storage>>` write
+    /// lock. Internally the storage uses `AtomicU64` + `Mutex<HashMap>`
+    /// so concurrent BEGINs across connections don't block each other
+    /// (or readers).
+    ///
+    /// Default impl returns an error. Engines that don't implement this
+    /// fall back to the `set_current_tx_id` + `begin_transaction` pair
+    /// which require the storage write lock.
+    ///
+    /// Contract: identical to `set_current_tx_id(tx_id); begin_transaction()`,
+    /// but performs both atomically without the engine holding a write lock.
+    fn begin_transaction_lockfree(&self, _tx_id: u64) -> SqlResult<()> {
+        Err(SqlError::ExecutionError(
+            "begin_transaction_lockfree not supported".to_string(),
+        ))
+    }
+
+    /// Commit a transaction via interior mutability.
+    /// See [`begin_transaction_lockfree`] for rationale.
+    fn commit_transaction_lockfree(&self) -> SqlResult<()> {
+        Err(SqlError::ExecutionError(
+            "commit_transaction_lockfree not supported".to_string(),
+        ))
+    }
+
+    /// Rollback a transaction via interior mutability.
+    /// See [`begin_transaction_lockfree`] for rationale.
+    fn rollback_transaction_lockfree(&self) -> SqlResult<()> {
+        Err(SqlError::ExecutionError(
+            "rollback_transaction_lockfree not supported".to_string(),
+        ))
+    }
+
     /// Release all gap locks held by a transaction
     ///
     /// Called during transaction commit/rollback to release gap locks.
@@ -1185,6 +1326,21 @@ pub trait StorageEngine: Send + Sync {
     /// Flush any buffered data to durable storage
     fn flush(&mut self) -> SqlResult<()> {
         Ok(())
+    }
+
+    /// Reclaim stale per-row version chains or other engine-specific
+    /// background bookkeeping. Default: no-op (single-version engines
+    /// like FileStorage / MemoryStorage have nothing to reclaim).
+    ///
+    /// `gc_lag` is the number of historical versions to retain. MVCC
+    /// engines use it to decide which versions are safe to drop
+    /// without violating any active reader's snapshot. For
+    /// non-versioned engines, the parameter is ignored.
+    ///
+    /// Returns the number of stale entries reclaimed. Safe to call
+    /// concurrently with normal read/write traffic.
+    fn gc(&self, _gc_lag: u64) -> usize {
+        0
     }
 
     /// Flush with parallel table writes (V311-09)
@@ -1587,6 +1743,24 @@ impl StorageEngine for MemoryStorage {
             .unwrap_or_default())
     }
 
+    fn gc(&self, _gc_lag: u64) -> usize {
+        0
+    }
+
+    /// V4.0.0 / SOAK-leak fix: iterate the cached `Vec<Record>` by reference
+    /// and only clone rows that pass the predicate. Avoids the O(N) full-table
+    /// clone that drove ~30 MB/min RSS growth during SOAK.
+    fn scan_with_filter<F>(&self, table: &str, filter: F) -> SqlResult<Vec<Record>>
+    where
+        F: Fn(&Record) -> bool,
+    {
+        let key = table.to_lowercase();
+        let Some(rows) = self.tables.get(&key) else {
+            return Ok(Vec::new());
+        };
+        Ok(rows.iter().filter(|r| filter(r)).cloned().collect())
+    }
+
     fn scan_with_index(
         &self,
         table: &str,
@@ -1805,6 +1979,54 @@ impl StorageEngine for MemoryStorage {
             keep
         });
         Ok(original_len - records.len())
+    }
+
+    /// Phase B Step 4.1: collect primary keys (column 0) of deleted rows
+    /// so the MVCC wrapper can tombstone them precisely. Returns the
+    /// list of deleted PKs (empty Vec means nothing was deleted, or
+    /// the caller wants the coarse "tombstone all" fallback for full
+    /// table wipes).
+    fn delete_collect_pks(&mut self, table: &str, filters: &[Value]) -> SqlResult<Vec<Value>> {
+        let Some(records) = self.tables.get_mut(table) else {
+            return Ok(Vec::new());
+        };
+        if filters.is_empty() {
+            // Full table wipe: caller (MVCC) handles by tombstoning
+            // all visible rows. Empty Vec signals that.
+            if let Some(log) = self.tx_log.as_mut() {
+                for row in records.iter() {
+                    log.deleted.push((table.to_string(), row.clone()));
+                }
+            } else if let Some(committed) = self.committed_tables.get_mut(table) {
+                committed.clear();
+            }
+            records.clear();
+            return Ok(Vec::new());
+        }
+        // Collect PKs of rows that match the filter.
+        let pks: Vec<Value> = records
+            .iter()
+            .filter(|r| {
+                filters
+                    .iter()
+                    .enumerate()
+                    .all(|(i, f)| r.get(i).map(|v| v == f).unwrap_or(false))
+            })
+            .filter_map(|r| r.first().cloned())
+            .collect();
+        // Same retain logic as `delete`.
+        records.retain(|r| {
+            let keep = !filters.iter().enumerate().all(|(i, v)| r.get(i) == Some(v));
+            if !keep {
+                if let Some(log) = self.tx_log.as_mut() {
+                    log.deleted.push((table.to_string(), r.clone()));
+                } else if let Some(committed) = self.committed_tables.get_mut(table) {
+                    committed.retain(|c| c != r);
+                }
+            }
+            keep
+        });
+        Ok(pks)
     }
 
     fn delete_if(&mut self, table: &str, filter: &RowFilter) -> SqlResult<usize> {
