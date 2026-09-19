@@ -78,6 +78,7 @@ pub fn pitr_replay_entries(entries: &[WalEntry], target_time: u64) -> PitrResult
                     skipped += 1;
                 }
             }
+            _ => {}
         }
     }
     PitrResult {

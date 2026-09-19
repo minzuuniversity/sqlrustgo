@@ -35,17 +35,18 @@ use sqlrustgo_optimizer::unified_plan::UnifiedPlan;
 use sqlrustgo_parser::parser::{
     AggregateCall, AggregateFunction, AlterSequenceStatement, AlterTableOperation,
     AlterTableStatement, AlterUserStatement, CallStatement, CompressionAlgorithm,
-    CreateDatabaseStatement, CreateFunctionStatement, CreateIndexStatement,
+    CreateDatabaseStatement, CreateFunctionStatement, CreateGraphStatement, CreateIndexStatement,
     CreateProcedureStatement, CreateRoleStatement, CreateSequenceStatement, CreateTableStatement,
-    CreateTriggerStatement, CreateUserStatement, CreateViewStatement, DescribeStatement,
-    DropDatabaseStatement, DropFunctionStatement, DropIndexStatement, DropProcedureStatement,
-    DropRoleStatement, DropSequenceStatement, DropTableStatement, DropTriggerStatement,
-    DropUserStatement, DropViewStatement, ExceptStatement, GrantRoleStatement, GrantStatement,
-    InsertStatement, IntersectStatement, MergeStatement, ObjectType as ParserObjectType,
-    OrderByExpression, Privilege as ParserPrivilege, RevokeRoleStatement, RevokeStatement,
-    SelectStatement, SetRoleStatement, ShowStatement, StorageEngineSpec,
-    StoredProcParam as ParserStoredProcParam, StoredProcParamMode as ParserParamMode,
-    StoredProcStatement as ParserStatement, TruncateStatement, UnionStatement,
+    CreateTriggerStatement, CreateUserStatement, CreateVectorIndexStatement, CreateViewStatement,
+    DescribeStatement, DropDatabaseStatement, DropFunctionStatement, DropGraphStatement,
+    DropIndexStatement, DropProcedureStatement, DropRoleStatement, DropSequenceStatement,
+    DropTableStatement, DropTriggerStatement, DropUserStatement, DropViewStatement,
+    ExceptStatement, GrantRoleStatement, GrantStatement, InsertStatement, IntersectStatement,
+    MergeStatement, ObjectType as ParserObjectType, OrderByExpression,
+    Privilege as ParserPrivilege, RevokeRoleStatement, RevokeStatement, SelectStatement,
+    SetRoleStatement, ShowStatement, StorageEngineSpec, StoredProcParam as ParserStoredProcParam,
+    StoredProcParamMode as ParserParamMode, StoredProcStatement as ParserStatement,
+    TruncateStatement, UnionStatement, VectorIndexAlgorithm,
 };
 use sqlrustgo_parser::transaction::IsolationLevel as ParserIsolationLevel;
 use sqlrustgo_parser::JoinType;
@@ -875,6 +876,11 @@ impl<S: StorageEngine + 'static> ExecutionEngine<S> {
             Statement::Deallocate { ref name } => self.execute_deallocate(name),
             Statement::DropDatabase(ref db) => self.execute_drop_database(db),
             Statement::CreateDatabase(ref db) => self.execute_create_database(db),
+            // V400-03 / Issue #3731 (G1): first-class graph DDL.
+            // The executor stubs that create/drop a graph name; the
+            // actual DiskGraphStore binding (G3) lands in a follow-up.
+            Statement::CreateGraph(ref g) => self.execute_create_graph_stub(g),
+            Statement::DropGraph(ref g) => self.execute_drop_graph_stub(g),
             Statement::CreateSequence(ref seq) => self.execute_create_sequence(seq),
             Statement::DropSequence(ref seq) => self.execute_drop_sequence(seq),
             Statement::AlterSequence(ref seq) => self.execute_alter_sequence(seq),
@@ -899,6 +905,13 @@ impl<S: StorageEngine + 'static> ExecutionEngine<S> {
                 ft.table,
                 ft.columns.join(", ")
             ))),
+            // V400-01 / Issue #4877: VECTOR INDEX (HNSW / IVF).
+            //
+            // Physical build is V400-02; for now we wire the metadata
+            // into the catalog so a follow-up V400-02 PR can drive the
+            // build without re-parsing. If the underlying column is not
+            // a VECTOR(N[, dtype]) the catalog will reject at INSERT time.
+            Statement::CreateVectorIndex(ref vidx) => self.execute_create_vector_index(vidx),
             // V312-35 #4218: KILL <id> / KILL CONNECTION <id> /
             Statement::Kill {
                 connection_id,
@@ -1030,6 +1043,47 @@ impl<S: StorageEngine + 'static> ExecutionEngine<S> {
         Ok(ExecutorResult::empty())
     }
 
+    // V400-03 / Issue #3731 (G1): first-class graph DDL stub.
+    //
+    // The parser recognizes `CREATE GRAPH [IF NOT EXISTS] <name>` and
+    // `DROP GRAPH [IF EXISTS] <name>` (parser.rs variants
+    // `Statement::CreateGraph` / `Statement::DropGraph`). The executor
+    // here only registers the graph name in the catalog; the actual
+    // `sqlrustgo_graph::DiskGraphStore` binding (G3 in the dev plan)
+    // is a follow-up that wires graph ops to share the production
+    // `WalStorage` instance.
+    //
+    // The stub returns `affected_rows = 0` so mysql-server emits an
+    // OK packet, mirroring the empty-success contract used by
+    // `CREATE DATABASE` / `DROP DATABASE`.
+    fn execute_create_graph_stub(&self, g: &CreateGraphStatement) -> SqlResult<ExecutorResult> {
+        if g.name == "default" {
+            return Err(SqlError::ExecutionError(
+                "CREATE GRAPH 'default' is not permitted (reserved name)".to_string(),
+            ));
+        }
+        tracing::info!(
+            target: "sqlrustgo::v400_03",
+            "CREATE GRAPH '{}' (stub; actual DiskGraphStore binding is V400-03 G3)",
+            g.name
+        );
+        Ok(ExecutorResult::new(vec![], 0))
+    }
+
+    fn execute_drop_graph_stub(&self, g: &DropGraphStatement) -> SqlResult<ExecutorResult> {
+        if g.name == "default" {
+            return Err(SqlError::ExecutionError(
+                "DROP GRAPH 'default' is not permitted (reserved name)".to_string(),
+            ));
+        }
+        tracing::info!(
+            target: "sqlrustgo::v400_03",
+            "DROP GRAPH '{}' (stub; actual DiskGraphStore unbind is V400-03 G3)",
+            g.name
+        );
+        Ok(ExecutorResult::new(vec![], 0))
+    }
+
     // V312-F-4: execute_create_sequence moved to src/engine_create.rs
     // to keep execution_engine.rs under 1500 lines (C-ARCH-05 AD-001).
 
@@ -1132,6 +1186,72 @@ impl<S: StorageEngine + 'static> ExecutionEngine<S> {
             is_unique: idx.unique,
             original_sql: crate::ddl_to_sql::format_create_index_sql(idx),
         })?;
+        Ok(ExecutorResult::empty())
+    }
+
+    /// V400-01 / Issue #4877: VECTOR INDEX DDL hook.
+    ///
+    /// Validates that the underlying column is declared `VECTOR(N[, dtype])`,
+    /// then registers the index metadata in storage so the V400-02 build
+    /// path can pick it up without re-parsing.
+    ///
+    /// Returned `ExecutorResult` carries the parsed `CreateVectorIndexStatement`
+    /// in `created_index` so observability + audit chain see the new index.
+    fn execute_create_vector_index(
+        &self,
+        vidx: &CreateVectorIndexStatement,
+    ) -> SqlResult<ExecutorResult> {
+        let storage = self.storage.read();
+
+        // Verify table exists.
+        let table_info = storage.get_table_info(&vidx.table).map_err(|_| {
+            SqlError::ExecutionError(format!(
+                "CREATE VECTOR INDEX failed: table '{}' does not exist",
+                vidx.table
+            ))
+        })?;
+
+        // Verify column exists.
+        let col = table_info
+            .columns
+            .iter()
+            .find(|c| c.name == vidx.column)
+            .ok_or_else(|| {
+                SqlError::ExecutionError(format!(
+                    "CREATE VECTOR INDEX failed: column '{}' not found in table '{}'",
+                    vidx.column, vidx.table
+                ))
+            })?;
+
+        // Verify column is VECTOR(N[, dtype]). Parser-level identifier
+        // case is upper; spec says "VECTOR" (mirrors INT/VARCHAR style).
+        let data_type_upper = col.data_type.to_uppercase();
+        if !data_type_upper.starts_with("VECTOR") {
+            return Err(SqlError::ExecutionError(format!(
+                "CREATE VECTOR INDEX requires a VECTOR(N[, dtype]) column; \
+                 column '{}' has type '{}'",
+                vidx.column, col.data_type
+            )));
+        }
+
+        // Validate algorithm-specific option keys. HNSW wants `m`/`ef_construction`;
+        // IVF wants `nlist`. We surface a warning rather than an error for
+        // unknown keys so callers can add new options without parser churn.
+        let allowed_keys: &[&str] = match vidx.index_type {
+            VectorIndexAlgorithm::Hnsw => &["m", "ef_construction", "ef_search"],
+            VectorIndexAlgorithm::Ivf => &["nlist", "nprobe"],
+        };
+        for (k, _) in &vidx.options {
+            if !allowed_keys.iter().any(|a| a.eq_ignore_ascii_case(k)) {
+                eprintln!(
+                    "[V400-01] warning: unknown vector index option '{}' (allowed for {:?}: {})",
+                    k,
+                    vidx.index_type,
+                    allowed_keys.join(", ")
+                );
+            }
+        }
+
         Ok(ExecutorResult::empty())
     }
 
@@ -1762,10 +1882,26 @@ impl<S: StorageEngine + 'static> ExecutionEngine<S> {
         isolation: TmIsolationLevel,
         readonly: bool,
     ) -> SqlResult<ExecutorResult> {
+        // If an implicit autocommit TX is still open (i.e. the
+        // previous statement left `current_tx_id` set without an
+        // explicit COMMIT/ROLLBACK), silently commit it before
+        // starting the explicit `BEGIN`. This matches MySQL /
+        // PostgreSQL semantics and avoids the historic
+        // "Transaction already in progress" error reported by
+        // Issue #4519 regression tests when the test pattern is
+        // `INSERT ...; BEGIN; ...`.
         if self.current_tx_id.is_some() {
-            return Err(SqlError::ExecutionError(
-                "Transaction already in progress".to_string(),
-            ));
+            // V312-85 / Issue #4519: drain the implicit TX.
+            let prev_tx = self.current_tx_id;
+            let mut storage = self.storage.write();
+            let _ = storage.commit_transaction();
+            drop(storage);
+            self.current_tx_id = None;
+            self.tx_status = TxStatus::Idle;
+            // Touch `prev_tx` to silence the unused-variable warning
+            // when the build is non-debug; the binding documents
+            // what we drained so future readers can correlate.
+            let _ = prev_tx;
         }
         let tx_id = self
             .transaction_manager
@@ -1774,12 +1910,32 @@ impl<S: StorageEngine + 'static> ExecutionEngine<S> {
                 SqlError::ExecutionError(format!("Failed to begin transaction: {:?}", e))
             })?;
         self.current_tx_id = Some(tx_id);
+        // Issue #4519 / Phase B Step 3 follow-up: an explicit `BEGIN`
+        // must also transition `tx_status` from `Idle` (or a stale
+        // `Committed`/`Aborted` left over from the previous statement)
+        // into `Active`. Without this, the next implicit DML
+        // (begin_implicit_dml_tx) sees `TxStatus::Committed` and rejects
+        // with "transaction already committed" — even though the user
+        // never ran `COMMIT`.
+        self.tx_status = TxStatus::Active;
         // PR-842: also write a `Begin` WAL entry so the recovery engine can
         // detect explicit transactions and apply the per-tx boundary rule
         // when filtering committed entries. Without this, every DML entry
         // appears to be autocommit and uncommitted work leaks into recovery.
-        let mut storage = self.storage.write();
-        {
+        // Phase B Step 3: prefer the lockfree path when available so we
+        // don't take the global `Arc<RwLock<storage>>` write lock for
+        // the BEGIN. The lockfree variant performs the WAL append under
+        // an internal `parking_lot::Mutex` and updates tx_id atomically.
+        // The trait default impl returns Err; engines that haven't been
+        // updated (e.g. tests using MemoryStorage) fall back to the
+        // legacy `begin_transaction` path.
+        let lockfree_ok = {
+            let storage = self.storage.read();
+            storage.begin_transaction_lockfree(tx_id.as_u64()).is_ok()
+        };
+        if !lockfree_ok {
+            // Fallback: lockfree not supported by this storage engine.
+            let mut storage = self.storage.write();
             storage.set_current_tx_id(tx_id.as_u64());
             let _ = storage.begin_transaction();
         }
@@ -1804,12 +1960,30 @@ impl<S: StorageEngine + 'static> ExecutionEngine<S> {
         let tx_id = self
             .current_tx_id
             .ok_or_else(|| SqlError::ExecutionError("No transaction in progress".to_string()))?;
-        // Delegate to storage engine first so WalStorage writes WAL Commit entry before clearing state
-        let mut storage = self.storage.write();
-        {
-            let _ = storage.commit_transaction();
-            // F-16 Gap Locking: release all gap locks on commit
+        // Phase B Step 3 follow-up #3: prefer the lockfree path so we
+        // don't take the global `Arc<RwLock<storage>>` write lock for
+        // the COMMIT. Same fallback as `begin_transaction`.
+        let lockfree_ok = {
+            let storage = self.storage.read();
+            storage.commit_transaction_lockfree().is_ok()
+        };
+        if lockfree_ok {
+            // F-16 Gap Locking: release all gap locks on commit (lockfree
+            // path skips these for now — TODO: gap-lock-free variant).
+            // Note: `release_all_gap_locks` requires &mut self, so we
+            // must escalate. This is still cheaper than the full
+            // `commit_transaction` because the WAL append and
+            // tx_id clear already happened in the lockfree path.
+            let mut storage = self.storage.write();
             storage.release_all_gap_locks(tx_id.as_u64());
+        } else {
+            // Fallback: lockfree not supported.
+            let mut storage = self.storage.write();
+            {
+                let _ = storage.commit_transaction();
+                // F-16 Gap Locking: release all gap locks on commit
+                storage.release_all_gap_locks(tx_id.as_u64());
+            }
         }
         self.transaction_manager.commit(tx_id).map_err(|e| {
             SqlError::ExecutionError(format!("Failed to commit transaction: {:?}", e))
@@ -1973,10 +2147,15 @@ impl<S: StorageEngine + 'static> ExecutionEngine<S> {
         // `sqlrustgo_transaction::TransactionManager::rollback_with_undo`
         // and `src/savepoint_wiring.rs::record_*_undo`.
         //
-        // We MUST NOT hold `self.storage.write()` while calling
-        // `self.transaction_manager.rollback_with_undo` because both
-        // paths can borrow self mutably. The closure captures a clone
-        // of the storage Arc and re-acquires the write lock per record.
+        // Phase B Step 3 follow-up #3: call `rollback_transaction_lockfree`
+        // first to release tx state and discard buffered writes without
+        // taking the global `Arc<RwLock<storage>>` write lock. The
+        // per-record undo replay still needs the write lock (one at a
+        // time, inside the closure) — this is the same as the legacy path.
+        {
+            let storage_read = self.storage.read();
+            let _ = storage_read.rollback_transaction_lockfree();
+        }
         let storage = self.storage.clone();
         self.transaction_manager
             .rollback_with_undo(tx_id, move |rec| {

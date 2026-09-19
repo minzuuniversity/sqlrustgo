@@ -1,9 +1,14 @@
 # SQLRustGo v4.0.0 版本计划
 
 > **版本**: v4.0.0
-> **状态**: 规划中
+> **状态**: DRAFT（草稿阶段，Phase 0 完成，Phase 1 部分完成）
 > **日期**: 2026-08-08
+> **最后更新**: 2026-09-17
+> **当前 HEAD**: `d81d7c65df` (feat/v4.0.0-wal-group-commit)
+> **起点 HEAD**: `develop/v4.0.0` @ `9febebb255` (= v3.12.0 GA HEAD)
+> **距离起点**: 10 commits ahead (worktree-local，未合并)
 > **产品目标**: 面向 SQL + Vector + Graph + GMP knowledge workloads 的生产级多模型数据库
+> **权威阶段状态**: `docs/releases/v4.0.0/STAGE.yaml`
 
 ## 1. 版本定位
 

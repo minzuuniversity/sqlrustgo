@@ -992,6 +992,13 @@ pub struct MySqlConnection {
     stream: TcpStream,
     seq: u8,
     pub server_version: String,
+    /// True iff server's handshake advertised CLIENT_DEPRECATE_EOF
+    /// (0x01000000). Under that capability the STMT_PREPARE response
+    /// has NO terminator packets between/after param/column defs (see
+    /// `MySQL 8.0 wire protocol` WL#7766). When false the client must
+    /// still drain a 5-byte EOF packet after each section (pre-8.0
+    /// classic protocol).
+    deprecate_eof: bool,
 }
 
 impl MySqlConnection {
@@ -1011,6 +1018,9 @@ impl MySqlConnection {
             stream,
             seq: 0,
             server_version: String::new(),
+            // Conservative default: assume classic protocol until the
+            // server's handshake proves otherwise.
+            deprecate_eof: false,
         };
 
         // Read handshake from server
@@ -1019,6 +1029,7 @@ impl MySqlConnection {
 
         let handshake = parse_handshake(&hs_pkt.payload)?;
         conn.server_version = handshake.server_version.clone();
+        conn.deprecate_eof = handshake.capability_flags & capability::DEPRECATE_EOF != 0;
 
         // Compute auth response
         let auth_response = native_password_hash(password, &handshake.auth_plugin_data);
@@ -1189,15 +1200,17 @@ impl MySqlConnection {
         for _ in 0..param_count {
             let _ = Packet::read_from(&mut self.stream)?;
         }
-        if param_count > 0 {
-            // EOF/DEPR_EOF separator after params (only sent when params > 0)
+        if param_count > 0 && !self.deprecate_eof {
+            // Classic protocol (DEPRECATE_EOF=0): server sends a 5-byte
+            // EOF separator after params. DEPRECATE_EOF=1 omits the
+            // terminator entirely (MySQL 8.0 / WL#7766).
             let _ = Packet::read_from(&mut self.stream)?;
         }
         for _ in 0..column_count {
             let _ = Packet::read_from(&mut self.stream)?;
         }
-        if column_count > 0 {
-            // EOF/DEPR_EOF separator after columns (only sent when cols > 0)
+        if column_count > 0 && !self.deprecate_eof {
+            // Same as above for columns.
             let _ = Packet::read_from(&mut self.stream)?;
         }
 

@@ -14,7 +14,7 @@
 
 use super::ast::{
     BinaryOp, Clause, EdgeDirection, EdgePattern, Expr, LogicalOp, NodePattern, Pattern,
-    Projection, Query, ReturnClause,
+    Query, ReturnClause,
 };
 use super::ExecutionResult;
 use crate::store::{Edge, GraphStore, Node};
@@ -192,6 +192,7 @@ fn match_one_pattern<S: GraphStore>(
     Ok(out)
 }
 
+#[allow(clippy::only_used_in_recursion)] // row is part of the public recursive signature; future variants may use it
 fn match_rest<S: GraphStore>(
     store: &S,
     row: &Row,
@@ -321,7 +322,7 @@ fn match_node<S: GraphStore>(
     }
     // Inner partial binding (multi-hop within the same MATCH): reuse, don't re-enumerate.
     if let Some(existing) = partial.get(&pat.var) {
-        let id = match existing {
+        let _id = match existing {
             Binding::Node(id) => *id,
             _ => return Ok(Vec::new()),
         };
