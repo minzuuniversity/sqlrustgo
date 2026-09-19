@@ -62,15 +62,21 @@ reoccurring overwrite pattern**.
 
 | Remote | develop/v4.0.0 SHA | ga/v4.0.0 tag |
 |--------|-------------------|----------------|
-| gitea250 | `752dcfad95` | `7c85875140` (force-pushed) |
-| gitea252 | `e58c0abb78` | `7c85875140` (force-pushed) |
-| gitee    | `752dcfad95` | `7c85875140` (force-pushed) |
-| local    | `752dcfad95` | (synced) |
+| gitea250 | `5af4573a6d` | `5f1d5f24` (force-pushed) |
+| gitea252 | `07178c9d66` | `5f1d5f24` (force-pushed) |
+| gitee    | `07178c9d66` | `5f1d5f24` (force-pushed) |
+| local    | `07178c9d66` | (synced) |
 
-**Content equivalent**: all three remotes now have the same set of
-commits. The SHA difference between gitea250/gitee (`752dcfad95`) and
-gitea252 (`e58c0abb78`) is purely from different merge order — both
-parent chains terminate at the same `d9bd7adb1f` (BRANCH_PROTECTION doc).
+**Convergence via 3 sync PRs + 1 direct push to gitee**:
+- PR #3784 (gitea250 backfill)
+- PR #4897 (gitea252 forward sync)
+- PR #4900 (gitea252 final SYNC_AUDIT, after 252 merge endpoint recovered from 503)
+- Direct push to gitee (no branch protection)
+
+**Content equivalent**: all three remotes have the same set of
+commits. SHA differences (gitea250 `5af4573a6d` vs gitea252/gitee `07178c9d66`)
+come from different merge paths; both parent chains terminate at
+`d9bd7adb1f` (BRANCH_PROTECTION doc).
 
 ## 4. Process Improvements (v4.0.1)
 
