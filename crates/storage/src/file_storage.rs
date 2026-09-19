@@ -10,7 +10,7 @@ use sqlrustgo_types::{SqlError, SqlResult, Value};
 use std::any::Any;
 use std::collections::{HashMap, HashSet};
 use std::fs::{self, File};
-use std::io::{BufRead, BufReader, BufWriter, Write};
+use std::io::{BufReader, BufWriter, Write};
 use std::path::PathBuf;
 use std::sync::{Arc, Mutex, RwLock};
 
@@ -3198,6 +3198,7 @@ impl FileStorage {
     fn insert_direct(&self, table: &str, records: Vec<Record>) -> SqlResult<()> {
         let snap: Option<(Vec<ColumnDefinition>, u32, usize)> =
             Self::with_write_lock(self.as_mut_self(), |s| -> Option<(Vec<ColumnDefinition>, u32, usize)> {
+                #[allow(unused_assignments)] // start_row_id is set inside the if-let branch and consumed via snap
                 let mut start_row_id: u32 = 0;
                 let row_count = records.len();
                 let mut result: Option<(Vec<ColumnDefinition>, u32, usize)> = None;
