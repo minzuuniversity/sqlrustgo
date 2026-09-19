@@ -287,6 +287,10 @@ impl AuditManager {
                 eprintln!("Failed to write audit record: {}", e);
             }
         }
+
+        // V400-05: register audit write for cross-model transaction
+        let desc = format!("AUDIT:{}", record.event_type);
+        sqlrustgo_storage::cross_model_tracker::register_audit_write(&desc);
     }
 
     fn write_to_file(&self, record: &AuditRecord) -> io::Result<()> {

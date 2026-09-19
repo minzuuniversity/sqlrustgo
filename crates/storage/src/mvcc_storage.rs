@@ -58,6 +58,19 @@ pub struct MvccStorage<S: StorageEngine + 'static> {
     /// `inner.scan().len()` check entirely. When the count drops
     /// (GC ran), we re-check inner.
     scan_skip_cache: parking_lot::Mutex<HashMap<String, (usize, u64)>>,
+    /// V400-05: optional cross-model write tracker. When set, every
+    /// write path calls the tracker's closure so the V400-05 tracker
+    /// can enforce all-or-nothing semantics across SQL + vector +
+    /// graph + audit. None means "no cross-model tracking".
+    /// Boxed dyn to avoid circular dependency on the transaction crate.
+    tx_tracker: Option<Box<dyn CrossModelWriteTracker>>,
+}
+
+/// V400-05: abstraction for cross-model write tracking. Implementors
+/// live in the transaction crate; storage doesn't depend on transaction
+/// to avoid a circular dep. SQL writes register as `kind=0` (Sql).
+pub trait CrossModelWriteTracker: Send + Sync {
+    fn register_write(&self, kind: u8, description: &str);
 }
 
 /// V400-MVCC-GC: GC frequency. Run `gc(MVCC_GC_LAG)` once every
@@ -77,7 +90,30 @@ impl<S: StorageEngine + 'static> MvccStorage<S> {
             mvcc: parking_lot::RwLock::new(HashMap::new()),
             write_count: std::sync::atomic::AtomicU64::new(0),
             scan_skip_cache: parking_lot::Mutex::new(HashMap::new()),
+            tx_tracker: None,
         }
+    }
+
+    /// V400-05: attach a cross-model write tracker. Pass `None` to
+    /// disable (legacy behavior).
+    pub fn with_tx_tracker(mut self, tracker: Option<Box<dyn CrossModelWriteTracker>>) -> Self {
+        self.tx_tracker = tracker;
+        self
+    }
+
+    /// V400-05: get the current tx_tracker (if any).
+    pub fn tx_tracker(&self) -> Option<&dyn CrossModelWriteTracker> {
+        self.tx_tracker.as_deref()
+    }
+
+    /// V400-05: register an SQL write with the attached tracker
+    /// (if any). Also fires the process-global tracker if set.
+    /// kind=0 means Sql per the tracker contract.
+    fn register_sql_write(&self, description: &str) {
+        if let Some(tracker) = &self.tx_tracker {
+            tracker.register_write(0, description);
+        }
+        crate::cross_model_tracker::register_sql_write(description);
     }
 
     /// V400-MVCC-GC: bump the write counter; if we've crossed a
@@ -333,6 +369,8 @@ impl<S: StorageEngine + 'static> StorageEngine for MvccStorage<S> {
             let ts = mvcc.next_snapshot_ts();
             mvcc.put(pk, row, ts, ts);
         }
+        // V400-05: register SQL write with cross-model transaction tracker
+        self.register_sql_write("INSERT");
         // V400-MVCC-GC: reap old versions after every write path.
         self.maybe_gc();
         Ok(())
@@ -358,6 +396,7 @@ impl<S: StorageEngine + 'static> StorageEngine for MvccStorage<S> {
                     mvcc.delete(&pk, ts, ts);
                 }
             }
+            self.register_sql_write("DELETE");
             // V400-MVCC-GC: reap old versions after every write path.
             self.maybe_gc();
             return Ok(0);
@@ -368,6 +407,7 @@ impl<S: StorageEngine + 'static> StorageEngine for MvccStorage<S> {
         for pk in &removed_pks {
             mvcc.delete(pk, ts, ts);
         }
+        self.register_sql_write("DELETE");
         // V400-MVCC-GC: reap old versions after every write path.
         self.maybe_gc();
         Ok(removed_pks.len())
@@ -389,7 +429,7 @@ impl<S: StorageEngine + 'static> StorageEngine for MvccStorage<S> {
                 mvcc.delete(&pk, ts, ts);
             }
         }
-        // V400-MVCC-GC: reap old versions after every write path.
+        self.register_sql_write("DELETE");
         self.maybe_gc();
         Ok(n)
     }
@@ -412,7 +452,7 @@ impl<S: StorageEngine + 'static> StorageEngine for MvccStorage<S> {
                 mvcc.put(pk, row, ts, ts);
             }
         }
-        // V400-MVCC-GC: reap old versions after every write path.
+        self.register_sql_write("UPDATE");
         self.maybe_gc();
         Ok(n)
     }
@@ -432,7 +472,7 @@ impl<S: StorageEngine + 'static> StorageEngine for MvccStorage<S> {
                 mvcc.put(pk, row, ts, ts);
             }
         }
-        // V400-MVCC-GC: reap old versions after every write path.
+        self.register_sql_write("UPDATE");
         self.maybe_gc();
         Ok(n)
     }
@@ -445,7 +485,7 @@ impl<S: StorageEngine + 'static> StorageEngine for MvccStorage<S> {
             let ts = mvcc.next_snapshot_ts();
             mvcc.put(pk, record, ts, ts);
         }
-        // V400-MVCC-GC: reap old versions after every write path.
+        self.register_sql_write("FORCE_INSERT");
         self.maybe_gc();
         Ok(())
     }
