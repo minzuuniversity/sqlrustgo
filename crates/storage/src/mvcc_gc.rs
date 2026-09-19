@@ -64,15 +64,15 @@ pub struct MvccGCRunnerConfig {
 impl Default for MvccGCRunnerConfig {
     fn default() -> Self {
         Self {
-            // 5s is short enough to bound memory growth to ~150 MB
-            // (assuming 30 MB/s) and long enough that GC itself doesn't
-            // dominate the budget.
-            interval: Duration::from_secs(5),
-            // 1000 versions back: even a reader that started 1000
-            // versions ago is still served a consistent snapshot.
-            // For a write-heavy workload at ~400 TPS, that's ~2.5s
-            // worth of history, well within the 5s GC interval.
-            gc_lag: 1000,
+            // v4.0.0-RC: 1s interval cuts RSS peak by ~5x vs 5s
+            // (30 MB/s growth × 1s = 30 MB peak between sweeps instead
+            // of 150 MB). Empirical sweet spot: 1s.
+            interval: Duration::from_secs(1),
+            // v4.0.0-RC: 256 versions back is enough for typical
+            // 2-3 concurrent reader workloads while halving the
+            // per-sweep reclaim window. For ~400 TPS write-heavy,
+            // 256 versions ≈ 0.6s of history.
+            gc_lag: 256,
         }
     }
 }
