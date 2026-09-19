@@ -155,7 +155,7 @@ fn gc_loop(
         }
         // Run a GC pass. Take the read lock briefly — the engine is
         // safe to call concurrently with normal traffic.
-        let (reclaimed, mvcc_tables, listed_tables) = {
+        let (reclaimed, mvcc_table_count, listed_tables) = {
             let engine = storage.read();
             // Force the gc() to be called via the BoxStorageEngine
             // method (which goes to the inner engine's gc). This is
@@ -165,6 +165,8 @@ fn gc_loop(
             let lt = engine.list_tables();
             (n, mt.len(), lt.len())
         };
+        // mvcc_table_count kept for parity with future per-table GC logs
+        let _ = mvcc_table_count;
         log::info!(
             "MVCC GC pass: reclaimed={} stale versions, list_tables()={} (gc_lag={})",
             reclaimed,
