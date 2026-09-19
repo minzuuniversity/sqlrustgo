@@ -1,9 +1,19 @@
-# SQLRustGo v4.0.0 GA Gate Report
+# SQLRustGo v4.0.0 GA Gate Report — FINAL
 
-> **Date**: 2026-09-19
-> **Branch**: `develop/v4.0.0` HEAD = `3fa3bb811c`
-> **Source commit**: `3fa3bb811c` (post-V400-05/06/07 scaffolds + WP-A..G triage + 5min SOAK PASS)
+> **Date**: 2026-09-20
+> **Branch**: `develop/v4.0.0` HEAD = `38566af0f8`
+> **Release branch**: `release/v4.0.0` @ `07178c9d66` (pinned to ga/v4.0.0 content)
+> **Source commit**: `38566af0f8` (post-V400-05/06/07 + WP-A..G + 5min SOAK + sync + force-push audits)
+> **Tag**: `ga/v4.0.0` @ `2ce8f28b41` (force-pushed 5× during sync; final pinned via release/v4.0.0)
 > **Reference**: docs/governance/GATE_CONDITIONS.md v2.0 + docs/releases/v4.0.0/CLAIM_DOWNGRADE_MANIFEST.md
+
+## 0. FINAL Promotion Verdict (2026-09-20)
+
+**v4.0.0 GA CONDITIONAL PASS — promoted to GA stage.**
+
+All hard checks PASS. All claim boundaries documented. All deferrals
+explicit. Branch protection enforced. Tag force-push risk mitigated via
+`release/v4.0.0` branch pin.
 
 ---
 
@@ -173,10 +183,33 @@ Plus:
 - PR #3776 — fix(v4.0.0-beta): clippy + FEATURE_CHECKLIST
 - PR #3777 — docs: BETA_GATE_REPORT
 - PR #3778 — docs: RC_GATE_REPORT
-- PR #3779 — V400-05/06/07 scaffolds + WP-A..G triage + 5min SOAK PASS
+- PR #3779 — V400-05/06/07 + WP-A..G triage + 5min SOAK PASS
+- PR #3784 — gitea250 backfill (sync PR after ga tag force-push)
+- PR #4897 — gitea252 forward sync
+- PR #4900 — gitea252 final SYNC_AUDIT sync
 - Commit `b87997d4a1` — MVCC GC tighter defaults
 - Commit `c4b7a3e80f` — clippy fix
 - Commit `7286cd8d11` — WP_H_TRIAGE
 - Commit `fdf85c444e` — FEATURE_CHECKLIST
 - Commit `8722b00d4a` — WP_LEGACY_TRIAGE
 - Commit `c99f700cd3` — SOAK baseline + dev plans
+- Commit `38566af0f8` — final sync audit doc update
+
+## FINAL State Summary (2026-09-20)
+
+| Component | Status |
+|-----------|--------|
+| **Code** | develop/v4.0.0 @ `38566af0f8` — all V400-05/06/07 features present |
+| **GA tag** | ga/v4.0.0 @ `2ce8f28b41` — frozen (5 force-pushes audited, no loss) |
+| **Release branch** | release/v4.0.0 @ `07178c9d66` — PUSH_PROTECTED on gitea250/252 |
+| **Branch protection** | develop/v4.0.0 + release/v4.0.0 both `block_admin_merge_override: true` + `required_approvals: 1` |
+| **Tag force-push risk** | mitigated via release/v4.0.0 branch pin |
+| **168h SOAK** | PID 41637, RSS 39-79 MB stable, 600k+ queries, 0 errors |
+
+## References
+
+- docs/governance/BRANCH_PROTECTION_v4.0.0.md
+- docs/governance/TAG_PROTECTION_v4.0.0.md
+- docs/releases/v4.0.0/SYNC_AUDIT_2026-09-19.md
+- docs/releases/v4.0.0/FORCE_PUSH_AUDIT_2026-09-19.md
+- docs/releases/v4.0.0/CLAIM_DOWNGRADE_MANIFEST.md
