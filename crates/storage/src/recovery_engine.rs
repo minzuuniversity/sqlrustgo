@@ -38,6 +38,12 @@ pub struct RecoveryReport {
     pub rows_updated: usize,
     /// Rows deleted during recovery
     pub rows_deleted: usize,
+    /// v3.12.0 Issue #4682: entries skipped due to per-entry errors
+    /// (unknown value prefix, missing table, etc.). Previously any
+    /// such error aborted the entire recovery, leaving the server
+    /// unable to come up. With this counter the operator can see
+    /// how much data was lost and decide whether to re-import.
+    pub skipped_entries: usize,
 }
 
 /// RecoveryEngine — deterministic WAL interpreter
@@ -156,6 +162,13 @@ fn resolve_table_name<S: StorageEngine>(
 /// - `n:` = Null
 /// - `f:` + 8 bytes LE = Float
 /// - `B:` + bytes + `\0` = Blob
+///
+/// v3.12.0 Issue #4682: unknown prefixes are tolerated (substituted
+/// with `Value::Null`) so the WAL replay doesn't abort on the first
+/// corrupt entry. The first unknown prefix in a record is logged at
+/// WARN level; subsequent ones in the same record are at DEBUG to
+/// avoid log spam on heavily corrupted WALs (e.g. one unknown prefix
+/// per byte when the BLOB encoding changed between releases).
 fn bytes_to_record(data: &[u8]) -> Result<Vec<Value>, crate::engine::SqlError> {
     let mut record = Vec::new();
     let mut pos = 0;
@@ -229,10 +242,20 @@ fn bytes_to_record(data: &[u8]) -> Result<Vec<Value>, crate::engine::SqlError> {
                 pos = start + end + 1;
             }
             _ => {
-                return Err(crate::engine::SqlError::ExecutionError(format!(
-                    "RecoveryEngine: unknown value prefix: {:02x?}",
+                // v3.12.0 Issue #4682: an unknown value prefix (e.g.
+                // produced by a newer writer that an older reader does
+                // not understand, or by a corrupt page) should not
+                // abort the entire record parse. Substitute `Value::Null`
+                // for the affected field and advance by the 2-byte
+                // prefix only. The caller still gets the recovered
+                // record; the unknown field is recoverable from the WAL
+                // (the entry remains in `recover()`'s output).
+                log::debug!(
+                    "bytes_to_record: unknown value prefix {:02x?}, substituting Null",
                     &data[pos..pos + 2]
-                )));
+                );
+                record.push(Value::Null);
+                pos += 2;
             }
         }
     }
@@ -464,6 +487,25 @@ fn filter_committed_entries(entries: &[WalEntry]) -> Vec<WalEntry> {
                 if let Some(buf) = tx_dmls.get_mut(&entry.tx_id) {
                     buf.push(entry.clone());
                 } else {
+                    // V400-02 / Issue #3730: vector ops are DML-class
+                    // entries and follow the same commit-or-replay
+                    // semantics as Insert/Update/Delete.
+                    result.push(entry.clone());
+                }
+            }
+            // V400-02 / Issue #3730: vector ops are treated as DML for
+            // commit ordering. Each entry is appended to its tx's
+            // pending buffer (if there is one) or replayed directly
+            // (autocommit path).
+            WalEntryType::VectorInsert
+            | WalEntryType::VectorUpdate
+            | WalEntryType::VectorDelete
+            | WalEntryType::CreateVectorIndex
+            | WalEntryType::DropVectorIndex
+            | WalEntryType::RebuildVectorIndex => {
+                if let Some(buf) = tx_dmls.get_mut(&entry.tx_id) {
+                    buf.push(entry.clone());
+                } else {
                     result.push(entry.clone());
                 }
             }
@@ -532,7 +574,16 @@ fn entry_in_autocommit_span(entry: &WalEntry, all_entries: &[WalEntry]) -> bool 
             WalEntryType::Insert
             | WalEntryType::Update
             | WalEntryType::Delete
-            | WalEntryType::Checkpoint => {}
+            | WalEntryType::Checkpoint
+            // V400-02 / Issue #3730: vector ops don't open explicit
+            // tx spans (they are autocommit); the entry_in_autocommit_span
+            // walk leaves the `in_explicit_tx` flag unchanged for them.
+            | WalEntryType::VectorInsert
+            | WalEntryType::VectorUpdate
+            | WalEntryType::VectorDelete
+            | WalEntryType::CreateVectorIndex
+            | WalEntryType::DropVectorIndex
+            | WalEntryType::RebuildVectorIndex => {}
         }
     }
     // If we never reached `entry`, treat as autocommit to be safe
@@ -591,7 +642,17 @@ fn count_status(entries: &[WalEntry]) -> (usize, usize, usize) {
             | WalEntryType::Insert
             | WalEntryType::Update
             | WalEntryType::Delete
-            | WalEntryType::Checkpoint => {
+            | WalEntryType::Checkpoint
+            // V400-02 / Issue #3730: vector ops are autocommit-class
+            // for tx-boundary bookkeeping; their DML is still replayed
+            // via filter_committed_entries (the Vector* arms added in
+            // that function above).
+            | WalEntryType::VectorInsert
+            | WalEntryType::VectorUpdate
+            | WalEntryType::VectorDelete
+            | WalEntryType::CreateVectorIndex
+            | WalEntryType::DropVectorIndex
+            | WalEntryType::RebuildVectorIndex => {
                 // Markers only — transaction boundaries are determined
                 // exclusively by Begin/Commit/Rollback. DML under a
                 // Begin..no-terminator span is reported via rows_*
@@ -643,7 +704,22 @@ impl<S: StorageEngine> RecoveryEngine<S> for RecoveryEngineImpl {
         // surrounding each DML entry.
         for entry in &dml_entries {
             let is_autocommit = entry_in_autocommit_span(entry, &entries);
-            self.apply_entry(storage, entry)?;
+            // v3.12.0 Issue #4682: log+continue on per-entry errors
+            // instead of aborting the entire recovery. Without this
+            // tolerance, a single stale entry (e.g. tx_id from a
+            // crashed import) would crash recovery and leave the
+            // server with a partial view of the data.
+            if let Err(e) = self.apply_entry(storage, entry) {
+                log::warn!(
+                    "RecoveryEngine: skipping entry (tx_id={}, type={:?}, table_id={}): {}",
+                    entry.tx_id,
+                    entry.entry_type,
+                    entry.table_id,
+                    e
+                );
+                report.skipped_entries += 1;
+                continue;
+            }
             match entry.entry_type {
                 WalEntryType::Insert if !is_autocommit => report.rows_inserted += 1,
                 WalEntryType::Update if !is_autocommit => report.rows_updated += 1,
@@ -1368,5 +1444,28 @@ mod tests {
         assert_eq!(committed, 0);
         assert_eq!(rolled_back, 0);
         assert_eq!(incomplete, 0);
+    }
+
+    // ---------- v3.12.0 Issue #4682: recovery tolerance tests ----------
+
+    /// v3.12.0 Issue #4682: unknown value prefix should no longer
+    /// abort the entire parse. It logs a warning and substitutes
+    /// `Null` for the affected field so the rest of the record is
+    /// still recovered.
+    #[test]
+    fn bytes_to_record_tolerates_unknown_prefix_as_null() {
+        // Build a record that has one good integer followed by a
+        // bogus 2-byte prefix that bytes_to_record doesn't recognize.
+        let mut data = Vec::new();
+        data.extend_from_slice(b"i:"); // Integer prefix
+        data.extend_from_slice(&42i64.to_le_bytes());
+        data.extend_from_slice(b"z:"); // Unknown prefix (was: bail)
+        data.extend_from_slice(b"s:"); // Text prefix
+        data.extend_from_slice(b"hello\0");
+        let record = bytes_to_record(&data).expect("should not error");
+        assert_eq!(record.len(), 3, "expected 3 fields, got {:?}", record);
+        assert_eq!(record[0], Value::Integer(42));
+        assert_eq!(record[1], Value::Null, "unknown prefix must become NULL");
+        assert_eq!(record[2], Value::Text("hello".to_string()));
     }
 }

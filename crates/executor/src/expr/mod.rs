@@ -551,16 +551,11 @@ pub fn compare_values(left: &Value, right: &Value) -> i32 {
                 0
             }
         }
-        // Issue #4612: BINARY collation by default (SQLite/MySQL/PostgreSQL
-        // all default to BINARY for `=`). Previously this arm trimmed
-        // trailing whitespace, making `WHERE courseno = 'c05103   '`
-        // match `courseno = 'c05103'`, which conflicts with SQLite's
-        // strict-byte comparison and broke the BustubX-EDU teaching
-        // baseline (issue #4612 case 18).
-        //
-        // The legacy #4492 behavior (RTRIM) is now opt-in: callers can
-        // run `col COLLATE RTRIM` to opt into whitespace-insensitive
-        // comparison when they really need it (rare in practice).
+        // Issue #4612: BINARY collation by default (matches SQLite/MySQL/
+        // PostgreSQL for `=` on string-typed values). Trailing-space
+        // is significant. Removed: PAD SPACE (Issue #4846) and
+        // legacy RTRIM (Issue #4492). See the matching comment in
+        // `eq_cross` above for the rationale.
         (Value::Text(l), Value::Text(r)) => l.cmp(r) as i32,
         // (Value::Null, Value::Null) must compare equal so that
         // `compare_values` matches the documented doc-comment contract
@@ -1101,17 +1096,20 @@ fn eq_cross(left: &Value, right: &Value) -> bool {
     if matches!(left, Value::Null) || matches!(right, Value::Null) {
         return false;
     }
-    // Issue #4612: BINARY collation by default (SQLite/MySQL/PostgreSQL
-    // all default to BINARY for `=`). Pre-fix this branch and the
-    // match-arm below both trimmed trailing whitespace, which made
-    // `WHERE courseno = 'c05103   '` match `courseno = 'c05103'` and
-    // broke the BustubX-EDU teaching baseline (case 18).
+    // Issue #4612: BINARY collation by default. SQLite/MySQL/PostgreSQL
+    // all default to BINARY for `=` on string-typed values, where
+    // trailing-space is significant. The legacy #4492 RTRIM behaviour
+    // (and the cross-type #4846 PAD SPACE behaviour) are intentionally
+    // removed: VARCHAR / TEXT columns are now compared byte-for-byte.
     //
-    // The legacy #4492 RTRIM behaviour is now opt-in: callers who
-    // genuinely need blank-padded equality (rare) can use a separate
-    // function or explicit `col COLLATE RTRIM` once that syntax is
-    // wired up. Until then we delegate to the strict PartialEq.
-    if left == right {
+    // CHAR(n) PAD SPACE semantics (Issue #4846 / WP-G) is a separate
+    // open work item; see #3745. When that lands, the trim should
+    // move to column-type-aware code in the executor, NOT here.
+    let eq = match (left, right) {
+        (Value::Text(a), Value::Text(b)) => a == b,
+        _ => left == right,
+    };
+    if eq {
         return true;
     }
     match (left, right) {

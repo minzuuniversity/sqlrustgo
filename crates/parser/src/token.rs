@@ -133,6 +133,12 @@ pub enum Token {
     Maxvalue,
     Minvalue,
     Over,
+    // V400-01 / Issue #4877: vector SQL syntax.
+    // `VECTOR(N[, dtype])` column type and `distance(vec, vec)` function.
+    Vector,
+    Hnsw,
+    Ivf,
+    Distance,
     Between,
     Unbounded,
     Escape,
@@ -200,6 +206,11 @@ pub enum Token {
     Modify,
     Use,
     View,
+    /// V400-03 / Issue #3731: `CREATE GRAPH <name>` / `DROP GRAPH <name>`
+    /// SQL DDL for declaring a first-class property graph. The parser
+    /// recognizes the keyword; the executor layer (engine_ddl.rs) wires
+    /// it to `sqlrustgo_graph::DiskGraphStore` per `V400-03 G1` plan.
+    Graph,
     // Transaction keywords
     Transaction,
     Work,
@@ -393,6 +404,7 @@ impl fmt::Display for Token {
             Token::Conflict => write!(f, "CONFLICT"),
             Token::Nothing => write!(f, "NOTHING"),
             Token::Database => write!(f, "DATABASE"),
+            Token::Graph => write!(f, "GRAPH"),
             Token::Use => write!(f, "USE"),
             Token::View => write!(f, "VIEW"),
             Token::HighPriority => write!(f, "HIGH_PRIORITY"),
@@ -533,6 +545,11 @@ impl fmt::Display for Token {
             Token::Maxvalue => write!(f, "MAXVALUE"),
             Token::Minvalue => write!(f, "MINVALUE"),
             Token::Over => write!(f, "OVER"),
+            // V400-01 / Issue #4877
+            Token::Vector => write!(f, "VECTOR"),
+            Token::Hnsw => write!(f, "HNSW"),
+            Token::Ivf => write!(f, "IVF"),
+            Token::Distance => write!(f, "DISTANCE"),
             Token::Between => write!(f, "BETWEEN"),
             Token::Escape => write!(f, "ESCAPE"),
             Token::Nulls => write!(f, "NULLS"),
@@ -702,6 +719,7 @@ pub fn from_keyword(s: &str) -> Option<Token> {
         "CONFLICT" => Some(Token::Conflict),
         "MODIFY" => Some(Token::Modify),
         "DATABASE" => Some(Token::Database),
+        "GRAPH" => Some(Token::Graph),
         "USE" => Some(Token::Use),
         "SHOW" => Some(Token::Show),
         "DESCRIBE" => Some(Token::Describe),
@@ -1164,6 +1182,7 @@ mod tests {
     fn test_token_display_mysql_keywords() {
         assert_eq!(Token::Duplicate.to_string(), "DUPLICATE");
         assert_eq!(Token::Database.to_string(), "DATABASE");
+        assert_eq!(Token::Graph.to_string(), "GRAPH");
         assert_eq!(Token::Use.to_string(), "USE");
         assert_eq!(Token::View.to_string(), "VIEW");
         assert_eq!(Token::HighPriority.to_string(), "HIGH_PRIORITY");

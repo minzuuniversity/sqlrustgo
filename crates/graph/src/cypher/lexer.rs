@@ -449,7 +449,7 @@ pub fn lex(source: &str) -> GraphResult<Vec<Token>> {
     }
 
     tokens.push(Token {
-        kind: TokenKind::Eof(),
+        kind: TokenKind::eof(),
         line,
         col,
     });
@@ -487,7 +487,7 @@ fn keyword_or_ident(word: &str) -> TokenKind {
 
 impl TokenKind {
     /// Sentinel for end of input.
-    pub fn Eof() -> Self {
+    pub fn eof() -> Self {
         TokenKind::Ident(String::new()) // unused; lex() pushes EOF manually
     }
 }

@@ -308,6 +308,31 @@ impl StorageEngine for BinaryTableStorage {
             .unwrap_or_default())
     }
 
+    fn gc(&self, _gc_lag: u64) -> usize {
+        0
+    }
+
+    /// V4.0.0 / SOAK-hang fix: honour the filter predicate. Without this
+    /// override, the trait default at engine.rs:936-943 returns ALL rows
+    /// regardless of filter — execute_update (engine_dml.rs:780) gets the
+    /// full 10000-row table even when `WHERE id=N` is given.
+    ///
+    /// Same pattern as `MemoryStorage::scan_with_filter`
+    /// (engine.rs:1618-1627): clone only the matching rows while the
+    /// borrow on `data.rows` is still live. `BoxStorageEngine` inherits
+    /// this via Deref so no separate override is needed there.
+    fn scan_with_filter<F>(&self, table: &str, filter: F) -> SqlResult<Vec<Record>>
+    where
+        F: Fn(&Record) -> bool,
+        Self: Sized,
+    {
+        Ok(self
+            .tables
+            .get(table)
+            .map(|data| data.rows.iter().filter(|r| filter(r)).cloned().collect())
+            .unwrap_or_default())
+    }
+
     fn insert(&mut self, table: &str, records: Vec<Record>) -> SqlResult<()> {
         // BINT is a "pre-loaded snapshot" store: `new_with_data` populates
         // `self.tables` from `.bin` files on disk before any DDL runs. A
@@ -627,6 +652,13 @@ impl BoxStorageEngine {
             inner: Box::new(inner),
         }
     }
+
+    /// Run GC on the underlying engine. Forwards to the
+    /// `StorageEngine::gc` trait method. See `MvccGCRunner` for the
+    /// background runner that calls this periodically.
+    pub fn gc(&self, gc_lag: u64) -> usize {
+        self.inner.gc(gc_lag)
+    }
 }
 
 impl std::ops::Deref for BoxStorageEngine {
@@ -767,6 +799,23 @@ impl StorageEngine for BoxStorageEngine {
 
     fn as_any_mut(&mut self) -> &mut dyn Any {
         self
+    }
+
+    /// V400-MVCC-PKFAST: explicit override of the default trait impl.
+    /// The default does a full table scan + linear find; forwarding
+    /// to the inner engine's B+Tree-backed scan_pk gives O(log N)
+    /// lookup. Without this override, BoxStorageEngine's Deref to
+    /// `dyn StorageEngine` resolves to the default trait impl.
+    fn scan_pk(&self, table: &str, pk_column: &str, pk: &Value) -> SqlResult<Option<Record>> {
+        (**self).scan_pk(table, pk_column, pk)
+    }
+
+    fn gc(&self, gc_lag: u64) -> usize {
+        // Delegate to the wrapped engine via the trait method (dyn
+        // dispatch). For MvccStorage-wrapped engines this routes to
+        // the real GC implementation; for plain engines the default
+        // no-op runs.
+        (**self).gc(gc_lag)
     }
 }
 

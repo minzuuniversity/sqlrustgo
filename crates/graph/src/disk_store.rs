@@ -50,6 +50,13 @@ struct Snapshot {
 const SNAPSHOT_VERSION: u32 = 1;
 
 /// Synchronisation mode for the WAL appender.
+#[allow(clippy::derivable_impls)] // DiskGraphStore treats EveryWrite as the safety default; explicit impl documents intent
+impl Default for SyncMode {
+    fn default() -> Self {
+        SyncMode::EveryWrite
+    }
+}
+
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum SyncMode {
     /// `fsync` on every append — strongest durability, lower throughput.
@@ -57,12 +64,6 @@ pub enum SyncMode {
     /// Only flush userspace buffer on every append; no `fsync`. Faster but
     /// last few records may be lost on power loss (not on clean process exit).
     Buffered,
-}
-
-impl Default for SyncMode {
-    fn default() -> Self {
-        SyncMode::EveryWrite
-    }
 }
 
 /// Disk-backed graph store.
@@ -364,6 +365,8 @@ impl GraphStore for DiskGraphStore {
             labels,
             properties,
         })?;
+        // V400-05: register graph write for cross-model transaction
+        sqlrustgo_storage::cross_model_tracker::register_graph_write("GRAPH_CREATE_NODE");
         Ok(id)
     }
 
@@ -401,6 +404,8 @@ impl GraphStore for DiskGraphStore {
             rel_type,
             properties,
         })?;
+        // V400-05: register graph write for cross-model transaction
+        sqlrustgo_storage::cross_model_tracker::register_graph_write("GRAPH_CREATE_EDGE");
         Ok(id)
     }
 

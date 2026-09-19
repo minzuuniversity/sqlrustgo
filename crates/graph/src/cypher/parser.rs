@@ -72,6 +72,7 @@ impl Parser {
         t
     }
 
+    #[allow(dead_code)] // reserved for future EOF-driven parsing; not yet called
     fn at_eof(&self) -> bool {
         matches!(self.tokens[self.pos].kind, TokenKind::Ident(ref s) if s.is_empty())
     }

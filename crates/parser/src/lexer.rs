@@ -513,6 +513,7 @@ impl<'a> Lexer<'a> {
                     "LAST" => Token::Last,
                     "TRIGGER" => Token::Trigger,
                     "DATABASE" => Token::Database,
+                    "GRAPH" => Token::Graph,
                     "VIEW" => Token::View,
                     "BEFORE" => Token::Before,
                     "AFTER" => Token::After,
@@ -553,6 +554,11 @@ impl<'a> Lexer<'a> {
                     "LIST" => Token::List,
                     "FULLTEXT" => Token::Fulltext,
                     "OVER" => Token::Over,
+                    // V400-01 / Issue #4877: vector SQL keywords.
+                    "VECTOR" => Token::Vector,
+                    "HNSW" => Token::Hnsw,
+                    "IVF" => Token::Ivf,
+                    "DISTANCE" => Token::Distance,
                     "BETWEEN" => Token::Between,
                     "ESCAPE" => Token::Escape,
                     // F-30 CREATE SEQUENCE

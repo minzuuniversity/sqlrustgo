@@ -53,6 +53,10 @@ tikv-jemalloc-sys = { version = "0.7", optional = true }
 tikv-jemalloc-ctl = { version = "0.7", optional = true }
 libc = { version = "0.2", optional = true }
 
+
+# V400-03 / Issue #3731 (G2): Cypher dispatch in do_command_loop
+sqlrustgo-graph = { path = "../graph" }
+
 [features]
 jemalloc-prof = ["dep:tikv-jemallocator", "dep:tikv-jemalloc-sys", "dep:tikv-jemalloc-ctl", "dep:libc"]
 
@@ -64,7 +68,9 @@ path = "src/lib.rs"
 name = "sqlrustgo-mysql-server"
 path = "src/main.rs"
 
+
 [dev-dependencies]
 sqlrustgo-mysql-client = { path = "../mysql-client" }
 query-stats = { path = "../query-stats" }
 tempfile = "3"
+

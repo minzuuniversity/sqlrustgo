@@ -66,6 +66,31 @@ pub struct TransactionManager {
     ssi_detector: SsiDetectorSync,
     active_transactions: HashMap<TxId, ActiveTransaction>,
     next_tx_id: u64,
+    /// V400-05: per-transaction cross-model write tracker.
+    /// Maps tx_id -> list of (ModelKind, description) writes accumulated
+    /// during the transaction. Used to enforce all-or-nothing semantics
+    /// across SQL + vector + graph + audit. Cleared on commit/rollback.
+    cross_model: HashMap<TxId, Vec<CrossModelWrite>>,
+}
+
+/// V400-05: Models that participate in cross-model transactions.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+pub enum ModelKind {
+    /// SQL row writes
+    Sql,
+    /// Vector writes (V400-02)
+    Vector,
+    /// Graph node/edge writes (V400-03)
+    Graph,
+    /// Audit event writes (ALCOA+ chain)
+    Audit,
+}
+
+/// V400-05: a single cross-model write pending in a transaction.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct CrossModelWrite {
+    pub model: ModelKind,
+    pub description: String,
 }
 
 impl TransactionManager {
@@ -75,6 +100,7 @@ impl TransactionManager {
             ssi_detector: SsiDetectorSync::new(),
             active_transactions: HashMap::new(),
             next_tx_id: 1,
+            cross_model: HashMap::new(),
         }
     }
 
@@ -147,6 +173,9 @@ impl TransactionManager {
         self.ssi_detector.release(tx_id);
         self.active_transactions.remove(&tx_id);
 
+        // V400-05: clear cross-model write tracker on commit.
+        self.cross_model.remove(&tx_id);
+
         Ok(())
     }
 
@@ -158,7 +187,46 @@ impl TransactionManager {
         self.ssi_detector.release(tx_id);
         self.active_transactions.remove(&tx_id);
 
+        // V400-05: discard cross-model writes on rollback. Each model's
+        // own rollback hook (VectorStore::rollback_insert, DiskGraphStore
+        // abort_transaction, audit::discard_pending) is invoked by the
+        // engine after this method; we just clear the tracker.
+        let _discarded = self.cross_model.remove(&tx_id);
+
         Ok(())
+    }
+
+    /// V400-05: register a write to a non-SQL model during this transaction.
+    /// Called by VectorStore, DiskGraphStore, and audit chain when they
+    /// accept a write that should be tied to the current transaction
+    /// boundary.
+    pub fn tx_register_write(
+        &mut self,
+        tx_id: TxId,
+        model: ModelKind,
+        description: impl Into<String>,
+    ) {
+        self.cross_model
+            .entry(tx_id)
+            .or_default()
+            .push(CrossModelWrite {
+                model,
+                description: description.into(),
+            });
+    }
+
+    /// V400-05: snapshot the cross-model writes for a given transaction
+    /// (used by audit logging and recovery).
+    pub fn cross_model_writes(&self, tx_id: TxId) -> Vec<CrossModelWrite> {
+        self.cross_model.get(&tx_id).cloned().unwrap_or_default()
+    }
+
+    /// V400-05: count cross-model writes by model kind for a transaction.
+    pub fn cross_model_write_count(&self, tx_id: TxId, model: ModelKind) -> usize {
+        self.cross_model
+            .get(&tx_id)
+            .map(|v| v.iter().filter(|w| w.model == model).count())
+            .unwrap_or(0)
     }
 
     /// Issue #4581 / B-track case 35-36: top-level ROLLBACK physical

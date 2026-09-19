@@ -47,6 +47,10 @@ impl crate::engine::StorageEngine for TableLevelStorage {
         self.tables.insert(table, records)
     }
 
+    fn gc(&self, _gc_lag: u64) -> usize {
+        0
+    }
+
     fn scan(&self, table: &str) -> SqlResult<Vec<Record>> {
         self.tables.scan(table)
     }

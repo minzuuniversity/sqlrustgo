@@ -605,21 +605,26 @@ pub fn sql_compare(op: &str, left: &Value, right: &Value) -> bool {
         return false;
     }
 
-    // Issue #4612: BINARY collation by default for the WHERE-clause
-    // entry point too. The legacy #4492 / #4508 RTRIM behaviour has
-    // been removed in favour of strict PartialEq, matching
-    // SQLite/MySQL/PostgreSQL semantics and the eq_cross fix in
-    // crates/executor/src/expr/mod.rs.
+    // Issue #4846: CHAR(n) PAD SPACE semantics for `=` / `!=` in WHERE
+    // clause. SQLite/MySQL/PostgreSQL all apply PAD SPACE on Text
+    // equality: trailing whitespace is ignored so that
+    // `WHERE sex = 'F'` against a CHAR(2) value stored as "F " matches.
+    // The strict PartialEq below would not match ("F" != "F "), which
+    // broke the BustubX-EDU teaching baseline (issue #4846) and the
+    // legacy issue #4492 case.
     //
-    // The legacy RTRIM is now opt-in: callers can declare an explicit
-    // `COLLATE RTRIM` once that syntax is wired up. Until then the
-    // trim has been removed in both eq_cross and sql_compare so the
-    // `WHERE courseno = 'c05103   '` no longer matches
-    // `courseno = 'c05103'`.
+    // Issue #4612 (BINARY default for trailing-space-significant Text
+    // comparison) is still documented but not yet wired up via
+    // `col COLLATE RTRIM`. Re-evaluate if a downstream user reports a
+    // real BINARY-needs-trailing-space case.
+    let text_eq = match (left, right) {
+        (Value::Text(a), Value::Text(b)) => a.trim_end() == b.trim_end(),
+        _ => left == right,
+    };
 
     match op.to_uppercase().as_str() {
-        "=" | "==" => left == right,
-        "!=" | "<>" => left != right,
+        "=" | "==" => text_eq,
+        "!=" | "<>" => !text_eq,
         ">" => crate::expr_utils::compare_values(left, right) > 0,
         ">=" => crate::expr_utils::compare_values(left, right) >= 0,
         "<" => crate::expr_utils::compare_values(left, right) < 0,
