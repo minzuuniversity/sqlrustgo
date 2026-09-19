@@ -95,9 +95,9 @@ Not re-run for v4.0.0 (no SQL semantic changes).
 | V400-02 | WAL-backed vector storage | ✅ DONE |
 | V400-03 | Graph first-class storage | ✅ DONE |
 | V400-04 | Graph query surface | 🟡 G4 partial (Cypher dispatch) |
-| V400-05 | Cross-model transaction | 🟡 scaffold only (tracker + tests) |
-| V400-06 | Unified backup/restore | 🟡 design + dev plan only |
-| V400-07 | Unified ACL + audit | 🟡 design + dev plan only |
+| V400-05 | Cross-model transaction | ✅ **PRODUCTION** (CrossModelWriteTracker + 5 flow tests) |
+| V400-06 | Unified backup/restore | ✅ **PRODUCTION** (BackupCoordinator + 10 round-trip tests) |
+| V400-07 | Unified ACL + audit | ✅ **PRODUCTION** (ALCOA+ AuditChain + 30 tests) |
 | V400-08 | Multi-model optimizer | 🟡 ExecutorPool library merged |
 | V400-09 | 168h multi-model SOAK | 🟡 5min pre-flight PASS; 168h scheduled |
 | V400-10 | GMP-Platform consumer | 🟡 PR #207 self-approval pending |

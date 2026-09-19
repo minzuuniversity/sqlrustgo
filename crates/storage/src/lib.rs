@@ -4,6 +4,8 @@ pub mod adaptive_hash_index;
 pub mod append_only_storage;
 pub mod backup;
 pub mod bin_compactor;
+pub mod cross_model_tracker;
+pub mod backup_coordinator;
 pub mod bin_index;
 pub mod bin_migration;
 pub mod bin_segment;
@@ -63,7 +65,7 @@ pub use engine::{
 pub use file_storage::FileStorage;
 pub use lock::{GapLock, GapLockManager, GapLockType, IsolationLevel};
 pub use mvcc_gc::{MvccGCRunner, MvccGCRunnerConfig};
-pub use mvcc_storage::MvccStorage;
+pub use mvcc_storage::{CrossModelWriteTracker, MvccStorage};
 pub use page::Page;
 pub use parallel_wal_storage::ParallelWalStorage;
 pub use wal::{FileBackedWalManager, MemoryWalManager, WalManager};

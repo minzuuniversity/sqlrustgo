@@ -94,30 +94,37 @@ For each issue below:
 ### 3.8 Cross-model transaction (V400-05)
 
 **Claim boundary line**:
-> "v4.0.0 ships V400-05 cross-model transaction **scaffold**:
-> TransactionManager tracks writes per (tx_id, model_kind). All-or-nothing
-> semantics for SQL+vector+graph+audit are validated at the tracker level
-> (30 tests in `crates/transaction/tests/v400_cross_model.rs`). Full
-> integration with VectorStore/DiskGraphStore/audit chain hooks is
-> **v4.0.1 work**; v4.0.0 ships the tracking primitive only."
+> "v4.0.0 ships V400-05 cross-model transaction in **production code**:
+> `CrossModelWriteTracker` trait in storage crate; global tracker slot in
+> `cross_model_tracker` module. Every SQL write (MvccStorage), vector
+> write (VectorStorage), graph write (DiskGraphStore), and audit write
+> (`add_record`) registers a `ModelKind::*` write. TransactionManager
+> validates all-or-nothing semantics. Verified by 30 cross-model unit
+> tests + 5 integration flow tests."
 
 ### 3.9 Unified backup/restore (V400-06)
 
 **Claim boundary line**:
-> "v4.0.0 ships V400-06 **design + dev plan** only. Implementation
-> deferred to v4.0.1. Current backup mechanism: per-model `BACKUP TABLE`
-> (SQL), `BACKUP VECTOR INDEX` (vector), `BACKUP GRAPH` (graph) — see
-> subsystem docs. Unified `BACKUP DATABASE` / `RESTORE DATABASE` is
-> **v4.0.1**."
+> "v4.0.0 ships V400-06 BackupCoordinator in **production code**:
+> 4 dump-target traits (Sql/Vector/Graph/Audit) with per-model dump/restore.
+> FNV-1a checksum (v4.0.1 replaces with SHA-256) detects tampering.
+> 10 round-trip tests verify: empty DB, partial dump, full restore,
+> checksum mismatch detection, manifest JSON serialization. **Default
+> checksum algorithm**: FNV-1a (16 hex chars). Production deployments
+> requiring SHA-256 should use v4.0.1 or add a `checksum_algorithm`
+> setting."
 
 ### 3.10 Unified ACL + audit (V400-07)
 
 **Claim boundary line**:
-> "v4.0.0 ships V400-07 **design + dev plan** only. Implementation
-> deferred to v4.0.1. ACL coverage in v4.0.0: SQL tables/columns
-> (carryover v3.8.0); vector columns and graph labels are
-> **v4.0.1 work**. Audit chain: per-event JSONL append (carryover); ALCOA+
-> full compliance is **v4.0.1 work**."
+> "v4.0.0 ships V400-07 ALCOA+ AuditChain in **production code**:
+> 9 ALCOA+ attributes (Attributable, Legible, Contemporaneous, Original,
+> Accurate, Complete, Consistent, Enduring, Available) verified by
+> 30 unit tests. Hash-linked entries detect tampering (modify
+> entry/break link/modify prev_hash/single byte change all detected).
+> Bypass attempts (empty user, SQL injection in user_id) recorded
+> for auditability. **Default hash algorithm**: FNV-1a (16 hex chars).
+> v4.0.1 replaces with SHA-256 + chrono UTC timestamps."
 
 ### 3.11 Multi-model optimizer (V400-08)
 
