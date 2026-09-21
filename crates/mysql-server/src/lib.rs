@@ -7699,9 +7699,22 @@ pub mod testing {
             let mut workers = Vec::with_capacity(n);
             for worker_id in 0..n {
                 let rx = rx.clone();
-                workers.push(std::thread::spawn(move || {
-                    worker_loop(rx, worker_id);
-                }));
+                // V4.0.0: bump per-worker stack from the default 8 MB to
+                // 32 MB and name each thread. The actual root cause of
+                // the wired_insert_payload_regression_test crash was the
+                // infinite recursion in FileStorage::drop_table's trait
+                // impl (fixed at crates/storage/src/file_storage.rs); this
+                // stack bump is a defensive belt-and-braces measure so that
+                // any similar deep-walk in the future does not blow the
+                // worker. 32 MB matches the rayon parallel-executor stack
+                // size. The thread name surfaces in crash dumps and makes
+                // this pool distinguishable from other threads.
+                    std::thread::Builder::new()
+                        .name(format!("mysql-server-worker-{worker_id}"))
+                        .stack_size(32 * 1024 * 1024)
+                        .spawn(move || worker_loop(rx, worker_id))
+                        .expect("spawn worker thread"),
+                );
             }
             Self { tx, workers }
         }
