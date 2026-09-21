@@ -465,7 +465,7 @@ fn main() -> ExitCode {
             }
             ExitCode::SUCCESS
         }
-        Command::Exec { sql } => match exec_one(&sql) {
+        Command::Exec { sql } => match exec_multi(&sql) {
             Ok(()) => ExitCode::SUCCESS,
             Err(e) => {
                 eprintln!("Error: {e}");
@@ -556,6 +556,37 @@ fn make_shared_engine() -> MemoryExecutionEngine {
 fn exec_one(sql: &str) -> Result<(), String> {
     let mut engine = make_shared_engine();
     exec_with_engine_and_options(&mut engine, sql, true)
+}
+
+/// Multi-statement variant of `exec_one`: splits the input on `;` and runs
+/// each non-empty statement in order against the same shared engine. This
+/// matches REPL behavior (where `CREATE TABLE; INSERT; SELECT` all share
+/// one engine) and lets integration tests exercise CREATE/INSERT/SELECT
+/// sequences within a single spawned process. See tests/integration/dml/
+/// replace_test.rs.
+fn exec_multi(sql: &str) -> Result<(), String> {
+    let mut engine = make_shared_engine();
+    let mut count = 0usize;
+    for raw in sql.split(';') {
+        // Strip pure SQL `--` comment lines and blank lines, then skip if
+        // nothing real remains. Mirrors `replay_sql_file`.
+        let cleaned: String = raw
+            .lines()
+            .filter(|l| {
+                let t = l.trim();
+                !t.is_empty() && !t.starts_with("--")
+            })
+            .collect::<Vec<_>>()
+            .join("\n");
+        let cleaned = cleaned.trim();
+        if cleaned.is_empty() {
+            continue;
+        }
+        exec_with_engine_and_options(&mut engine, cleaned, true)
+            .map_err(|e| format!("statement {count}: {e}"))?;
+        count += 1;
+    }
+    Ok(())
 }
 
 fn run_repl(init_sql: Option<&str>, save_on_exit: Option<&str>) -> Result<(), String> {

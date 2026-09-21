@@ -4144,14 +4144,20 @@ impl StorageEngine for FileStorage {
         Ok(())
     }
 
-    // The trait impl method `drop_table` calls `self.drop_table(table)`
-    // which resolves to the inherent `&self` `drop_table` (different
-    // declaration, same name). Rust's `unconditional_recursion` lint
-    // sees `self.method()` and flags it as recursive without doing
-    // trait-vs-inherent dispatch analysis — false positive here.
+    // V4.0.0 / wired_insert_payload_regression_test fix: the trait
+    // `drop_table` previously called `self.drop_table(table)` and
+    // relied on Rust's resolver to pick the inherent `&self` method
+    // over the trait method. With these two `drop_table` methods
+    // declared on the same type (one inherent, one trait) the
+    // resolver DOES pick the trait method inside the trait impl body
+    // — causing infinite recursion. gdb backtrace of the regression
+    // shows 10,000+ self-call frames of `<impl#3>::drop_table`
+    // (line 3785) before SIGABRT. Fully-qualified path
+    // `FileStorage::drop_table(self, table)` disambiguates to the
+    // inherent `&self` implementation.
     #[allow(unconditional_recursion, clippy::only_used_in_recursion)]
     fn drop_table(&mut self, table: &str) -> SqlResult<()> {
-        self.drop_table(table)
+        FileStorage::drop_table(self, table)
             .map_err(|e| SqlError::ExecutionError(e.to_string()))?;
         Ok(())
     }
