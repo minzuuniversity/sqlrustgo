@@ -7709,6 +7709,7 @@ pub mod testing {
                 // worker. 32 MB matches the rayon parallel-executor stack
                 // size. The thread name surfaces in crash dumps and makes
                 // this pool distinguishable from other threads.
+                workers.push(
                     std::thread::Builder::new()
                         .name(format!("mysql-server-worker-{worker_id}"))
                         .stack_size(32 * 1024 * 1024)
