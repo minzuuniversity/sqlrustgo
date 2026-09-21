@@ -102,9 +102,10 @@ fn test_bug2b_builtin_functions_not_null() {
     let r = engine.execute("SELECT round(3.14159, 2)").unwrap();
     assert_eq!(r.rows[0][0], Value::Float(3.14));
 
-    // round(3.6) — 4 (Integer, d<=0).
+    // round(3.6) — 4.0 (Float, d<=0). Float input keeps REAL even when
+    // d <= 0 (Issue #4613 / #4721: ROUND result type follows input type).
     let r = engine.execute("SELECT round(3.6)").unwrap();
-    assert_eq!(r.rows[0][0], Value::Integer(4));
+    assert_eq!(r.rows[0][0], Value::Float(4.0));
 
     // rand() — Float in [0, 1).
     let r = engine.execute("SELECT rand()").unwrap();

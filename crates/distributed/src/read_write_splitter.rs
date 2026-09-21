@@ -141,6 +141,8 @@ pub fn classify_statement(statement: &Statement) -> QueryClass {
         Statement::CreateDatabase(_) => QueryClass::Write,
         Statement::DropDatabase(_) => QueryClass::Write,
         Statement::UseDatabase(_) => QueryClass::Write,
+        Statement::CreateGraph(_) => QueryClass::Write,
+        Statement::DropGraph(_) => QueryClass::Write,
         Statement::GrantRole(_) => QueryClass::Write,
         Statement::RevokeRole(_) => QueryClass::Write,
         Statement::SetRole(_) => QueryClass::Write,
