@@ -155,20 +155,49 @@ pub fn execute_insert<S: StorageEngine + 'static>(
             )
         };
 
-    // For REPLACE INTO: if insert.values has a unique/key conflict, delete old row first
+    // For REPLACE INTO: if any row in `all_records` collides on a primary key
+    // (or other UNIQUE constraint) with an existing row, delete the EXISTING
+    // row first, then let the subsequent `storage.insert` add the replacement.
+    //
+    // V4.0.0 / fix: the prior code called `storage.delete(&table_name, &[])?`,
+    // and MemoryStorage::delete interprets an empty filter slice as "delete
+    // every row in the table" (see crates/storage/src/engine.rs ~line 1935).
+    // That wiped the entire table on any REPLACE — e.g. `REPLACE INTO t (id, name)
+    // VALUES (2, 'x')` on a 3-row table removed rows for ids 1 and 3 too, so
+    // `SELECT * FROM t WHERE id = 1` afterwards returned 0 rows. See
+    // tests/integration/dml/replace_test.rs::test_replace_into_with_autoincrement.
+    //
+    // We now build a column-aligned PK filter from the incoming record's PK
+    // cells, so MemoryStorage::delete matches only that single row.
     if insert.is_replace {
-        {
-            let mut storage = engine.storage.write();
-            for record in &all_records {
-                // Find existing rows with matching unique key (primary key or unique index)
-                let existing_rows = storage.scan(&table_name)?;
-                for existing_row in existing_rows {
-                    if record_matches_unique_key(&existing_row, record, &table_info) {
-                        // Delete the existing row
-                        storage.delete(&table_name, &[])?;
-                        break;
-                    }
-                }
+        let pk_idxs: Vec<usize> = table_info
+            .columns
+            .iter()
+            .enumerate()
+            .filter(|(_, c)| c.primary_key)
+            .map(|(i, _)| i)
+            .collect();
+        let mut storage = engine.storage.write();
+        for record in &all_records {
+            // Build the filter slice ONCE per record: for each PK column of the
+            // incoming row, take its value. If no PK is declared, fall back to
+            // column 0 (matches the UPDATE no-WHERE fallback used elsewhere).
+            let filter: Vec<Value> = if pk_idxs.is_empty() {
+                vec![record.first().cloned().unwrap_or(sqlrustgo_types::Value::Null)]
+            } else {
+                pk_idxs
+                    .iter()
+                    .map(|&i| record.get(i).cloned().unwrap_or(sqlrustgo_types::Value::Null))
+                    .collect()
+            };
+            // Only delete when a row actually matches this key — for a brand
+            // new key (no existing row) REPLACE degenerates to a plain INSERT.
+            let existing_rows = storage.scan(&table_name)?;
+            let has_conflict = existing_rows.iter().any(|existing| {
+                record_matches_unique_key(existing, record, &table_info)
+            });
+            if has_conflict {
+                storage.delete(&table_name, &filter)?;
             }
         }
     }
@@ -729,13 +758,22 @@ pub fn execute_update<S: StorageEngine + 'static>(
             if need_undo_snapshot {
                 prior_rows_for_undo.push(prior_row.clone());
             }
-            for (col_idx, new_val) in &updates {
-                prior_row[*col_idx] = new_val.clone();
-            }
+            // V4.0.0 fix: capture the delete key from the ORIGINAL row, BEFORE
+            // applying the SET clauses. The prior code captured pk_val after the
+            // SET loop, so the delete targeted the post-update value instead of
+            // the row that actually existed in storage. For tables without a real
+            // PK (pk_idx falls back to column 0) this caused `UPDATE t SET v = 0`
+            // to delete nothing on the first iteration and then accumulate
+            // duplicates from each subsequent iteration instead of replacing in
+            // place. See tests/integration/dml/dml_integration_test.rs:
+            // update_all_rows_when_no_where.
             let pk_val = prior_row
                 .get(pk_idx)
                 .cloned()
                 .unwrap_or(sqlrustgo_types::Value::Null);
+            for (col_idx, new_val) in &updates {
+                prior_row[*col_idx] = new_val.clone();
+            }
             storage.delete(&table_name, std::slice::from_ref(&pk_val))?;
             if need_undo_snapshot {
                 new_rows_for_undo.push(prior_row.clone());
