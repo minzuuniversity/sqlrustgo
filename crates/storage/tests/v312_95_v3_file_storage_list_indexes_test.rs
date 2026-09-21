@@ -20,7 +20,26 @@ use sqlrustgo_storage::FileStorage;
 use std::fs;
 
 fn fresh_dir() -> std::path::PathBuf {
-    let dir = std::env::temp_dir().join(format!("v312_95_v3_list_idx_{}", std::process::id()));
+    // V4.0.0 / fix: the prior version keyed the temp dir on std::process::id(),
+    // which is identical for every test in this binary. The four tests all share
+    // that path; with the default parallel runner one test's `remove_dir_all`
+    // cleanup would wipe another test's in-flight FileStorage state, producing
+    // spurious "directory vanished" / "table not found" failures. Mix the test
+    // thread name (cargo assigns one per #[test] function) and an atomic counter
+    // so every test gets a private directory.
+    use std::sync::atomic::{AtomicU64, Ordering};
+    static COUNTER: AtomicU64 = AtomicU64::new(0);
+    let seq = COUNTER.fetch_add(1, Ordering::Relaxed);
+    let test_name = std::thread::current()
+        .name()
+        .unwrap_or("anon")
+        .replace(['/', '\\', ':'], "_");
+    let dir = std::env::temp_dir().join(format!(
+        "v312_95_v3_list_idx_{pid}_{seq}_{name}",
+        pid = std::process::id(),
+        seq = seq,
+        name = test_name,
+    ));
     let _ = fs::remove_dir_all(&dir);
     fs::create_dir_all(&dir).unwrap();
     dir
