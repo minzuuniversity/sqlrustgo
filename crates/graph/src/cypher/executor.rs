@@ -179,15 +179,7 @@ fn match_one_pattern<S: GraphStore>(
     for node_binding in candidates {
         let mut partial = HashMap::new();
         partial.insert(pattern.first.var.clone(), node_binding.clone());
-        match_rest(
-            store,
-            row,
-            &node_binding,
-            &pattern.rest,
-            0,
-            partial,
-            &mut out,
-        )?;
+        match_rest(store, &node_binding, &pattern.rest, 0, partial, &mut out)?;
     }
     Ok(out)
 }
@@ -195,7 +187,6 @@ fn match_one_pattern<S: GraphStore>(
 #[allow(clippy::only_used_in_recursion)] // row is part of the public recursive signature; future variants may use it
 fn match_rest<S: GraphStore>(
     store: &S,
-    row: &Row,
     prev_node: &Binding,
     rest: &[(EdgePattern, NodePattern)],
     idx: usize,
@@ -287,7 +278,6 @@ fn match_rest<S: GraphStore>(
         partial2.insert(node_pat.var.clone(), Binding::Node(matched_next_id));
         match_rest(
             store,
-            row,
             &Binding::Node(matched_next_id),
             rest,
             idx + 1,
@@ -322,10 +312,10 @@ fn match_node<S: GraphStore>(
     }
     // Inner partial binding (multi-hop within the same MATCH): reuse, don't re-enumerate.
     if let Some(existing) = partial.get(&pat.var) {
-        let _id = match existing {
-            Binding::Node(id) => *id,
+        match existing {
+            Binding::Node(_) => {}
             _ => return Ok(Vec::new()),
-        };
+        }
         return Ok(vec![existing.clone()]);
     }
     // Otherwise enumerate the store.

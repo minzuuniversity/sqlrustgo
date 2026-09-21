@@ -1978,3 +1978,6 @@ mod tests {
         assert!(entries.is_empty());
     }
 }
+// (vector WAL dispatch tests from 67066b8117 dropped on port — v4.1.0
+//  WalStorage has no log_vector_insert/log_vector_delete methods;
+//  corresponding tests live in crates/storage/tests/v400_vector_wal.rs)
