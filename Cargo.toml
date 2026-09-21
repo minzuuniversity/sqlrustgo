@@ -1021,6 +1021,9 @@ path = "tests/integration/dml/arch2_dml_api_test.rs"
 name = "bench_bulk_insert_records"
 path = "tests/integration/dml/bench_bulk_insert_records.rs"
 [[test]]
+name = "zzz_repro_bulk"
+path = "tests/integration/dml/zzz_repro_bulk.rs"
+[[test]]
 name = "diag_storage_insert_path"
 path = "tests/integration/dml/diag_storage_insert_path.rs"
 [[test]]
