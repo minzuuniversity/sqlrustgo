@@ -50,19 +50,14 @@ struct Snapshot {
 const SNAPSHOT_VERSION: u32 = 1;
 
 /// Synchronisation mode for the WAL appender.
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
 pub enum SyncMode {
     /// `fsync` on every append — strongest durability, lower throughput.
+    #[default]
     EveryWrite,
     /// Only flush userspace buffer on every append; no `fsync`. Faster but
     /// last few records may be lost on power loss (not on clean process exit).
     Buffered,
-}
-
-impl Default for SyncMode {
-    fn default() -> Self {
-        SyncMode::EveryWrite
-    }
 }
 
 /// Disk-backed graph store.

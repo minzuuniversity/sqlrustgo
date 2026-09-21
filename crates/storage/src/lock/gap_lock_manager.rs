@@ -274,9 +274,9 @@ impl GapLockManager {
                 // Check if the value falls within the locked range
                 // For gap locks, we check if value is in [range_start, range_end)
                 let in_range = match (&existing.range_start, &existing.range_end) {
-                    (Some(start), Some(end)) => value >= start && value < end,
-                    (Some(start), None) => value >= start,
-                    (None, Some(end)) => value < end,
+                    (Some(start), Some(end)) => value >= start.as_str() && value < end.as_str(),
+                    (Some(start), None) => value >= start.as_str(),
+                    (None, Some(end)) => value < end.as_str(),
                     (None, None) => true, // Lock on entire index
                 };
 

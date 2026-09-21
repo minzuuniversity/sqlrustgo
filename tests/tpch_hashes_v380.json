@@ -1,0 +1,26 @@
+{
+  "_comment": [
+    "BUMP WORKFLOW (read before editing):",
+    "1. Run `python3 scripts/gate/tpch_hash_compare.py --capture` against the target tree.",
+    "2. Copy the printed 64-char hex into `tpc_h_hash_sha256` below.",
+    "3. Update `captured_from` to the new commit SHA (or tag).",
+    "4. Update `captured_at` to today's date.",
+    "5. Commit the change; the PR diff must show the hash field as the only material change.",
+    "",
+    "A legitimate bump is required for any change that alters the row count, column values, or row order (after sort) of any of TPC-H Q1..Q22. The PR description must explain WHY the hash changed (e.g., 'Q5 now returns correct rows after fix for subquery flattening').",
+    "",
+    "An accidental bump (no legitimate output change) is detectable: the diff is small and the new hash has no provenance. The G1 shell gate does not auto-bump; it always requires this file to be updated by a human-reviewed PR."
+  ],
+   "version": "v3.9.0",
+   "captured_at": "2026-06-28",
+   "captured_from": "545814c3d1 (develop/v3.9.0 @ post Phase 0-2 merge)",
+   "tpc_h_hash_sha256": "b8854271b6636811c95e254791793973482036d09b1a96b4c5aefda6e8b715c1",
+   "tpc_h_queries": 22,
+   "tpc_h_test_files": [
+     "tests/tpch_hash_test.rs",
+     "tests/tpch_gate_test.rs"
+   ],
+   "scale_factor": 0.001,
+   "runner": "Mac-mini-6 (Apple Silicon M2, G1 worktree)",
+   "status": "CAPTURED \u2014 TPC-H 22/22 baseline hash via in-process start_sf001() + MySqlTestClient. All 22 queries complete in <1s (SF=0.001). Hash computed from simplified TPC-H queries (same as tpch_full_22_test)."
+ }

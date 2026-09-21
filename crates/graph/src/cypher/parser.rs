@@ -72,10 +72,6 @@ impl Parser {
         t
     }
 
-    fn at_eof(&self) -> bool {
-        matches!(self.tokens[self.pos].kind, TokenKind::Ident(ref s) if s.is_empty())
-    }
-
     fn expect(&mut self, kind: TokenKind) -> GraphResult<Token> {
         if std::mem::discriminant(&self.tokens[self.pos].kind) == std::mem::discriminant(&kind) {
             Ok(self.bump())

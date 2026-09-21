@@ -22,52 +22,97 @@ pub struct Token {
 #[derive(Debug, Clone, PartialEq)]
 pub enum TokenKind {
     // Keywords
+    /// `MATCH` — pattern-matching clause.
     Match,
+    /// `OPTIONAL` — used in `OPTIONAL MATCH`.
     Optional,
+    /// `WHERE` — filter clause.
     Where,
+    /// `RETURN` — projection clause.
     Return,
+    /// `WITH` — intermediate projection clause.
     With,
+    /// `UNION` — set combination clause.
     Union,
+    /// `ALL` — used in `UNION ALL`.
     All,
+    /// `AS` — alias keyword.
     As,
+    /// `AND` — logical conjunction.
     And,
+    /// `OR` — logical disjunction.
     Or,
+    /// `NOT` — logical negation.
     Not,
+    /// `IS` — used in `IS NULL` / `IS NOT NULL`.
     Is,
+    /// `NULL` — null literal.
     Null,
+    /// `TRUE` — boolean literal.
     True,
+    /// `FALSE` — boolean literal.
     False,
+    /// `COUNT` — aggregate function.
     Count,
+    /// `DISTINCT` — deduplication modifier.
     Distinct,
+    /// `ORDER` — used in `ORDER BY`.
     Order,
+    /// `BY` — used in `ORDER BY`.
     By,
+    /// `SKIP` — pagination offset.
     Skip,
+    /// `LIMIT` — pagination limit.
     Limit,
+    /// `-` — used in variable-length range `[*1..2]`.
     Dash,
     // Punctuation
+    /// `(`
     LParen,
+    /// `)`
     RParen,
+    /// `[`
     LBrack,
+    /// `]`
     RBrack,
+    /// `{`
     LBrace,
+    /// `}`
     RBrace,
+    /// `:`
     Colon,
+    /// `,`
     Comma,
+    /// `.`
     Dot,
+    /// `|`
     Pipe,
-    DashGt, // ->
-    LtDash, // <-
-    Eq,     // =
-    Ne,     // <>
+    /// `->` — directed edge, left to right.
+    DashGt,
+    /// `<-` — directed edge, right to left.
+    LtDash,
+    /// `=` — equality operator.
+    Eq,
+    /// `<>` — inequality operator.
+    Ne,
+    /// `<` — less-than operator.
     Lt,
+    /// `<=` — less-or-equal operator.
     Le,
+    /// `>` — greater-than operator.
     Gt,
+    /// `>=` — greater-or-equal operator.
     Ge,
+    /// `*` — wildcard / projection all.
     Star,
     // Literals / identifiers
+    /// Identifier (variable, property, label name).
     Ident(String),
+    /// Single-quoted string literal.
     String(String),
+    /// Integer literal.
     Integer(i64),
+    /// Floating-point literal.
     Float(f64),
 }
 
@@ -449,7 +494,7 @@ pub fn lex(source: &str) -> GraphResult<Vec<Token>> {
     }
 
     tokens.push(Token {
-        kind: TokenKind::Eof(),
+        kind: EOF,
         line,
         col,
     });
@@ -482,13 +527,6 @@ fn keyword_or_ident(word: &str) -> TokenKind {
         "SKIP" => TokenKind::Skip,
         "LIMIT" => TokenKind::Limit,
         _ => TokenKind::Ident(word.to_string()),
-    }
-}
-
-impl TokenKind {
-    /// Sentinel for end of input.
-    pub fn Eof() -> Self {
-        TokenKind::Ident(String::new()) // unused; lex() pushes EOF manually
     }
 }
 

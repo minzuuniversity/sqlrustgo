@@ -2192,48 +2192,55 @@ mod v400_02_vector_log_tests {
 // `VectorStore` recovery path is V4.
 // =============================================================
 
-#[test]
-fn v3_insert_into_vec_table_emits_vector_insert_wal_entries() {
-    // Direct WAL entry emission: the production insert path
-    // dispatches via `entry_type_for_table` (set in V2). A unit
-    // call to `log_vector_insert` proves the V2 dispatch is
-    // hooked up; an end-to-end `WalStorage::insert` call is not
-    // possible in the unit test because `MemoryStorage` does
-    // not expose a public create_table entry point that takes
-    // a pre-built ColumnDefinition list.
-    let mut wal =
-        WalStorage::new(MemoryStorage::new(), MemoryWalManager::new()).expect("WalStorage::new");
-    wal.log_vector_insert("vec_embeddings", 1, b"id=1".to_vec(), b"v=[1.0]".to_vec())
-        .expect("log_vector_insert should succeed");
-    let entries = wal.wal().recover().expect("recover");
-    assert_eq!(entries.len(), 1);
-    assert_eq!(entries[0].entry_type, WalEntryType::VectorInsert);
-}
+#[cfg(test)]
+mod v400_02_v3_dispatch_tests {
+    use super::*;
+    use crate::engine::MemoryStorage;
+    use crate::engine::StorageEngine;
+    use crate::wal::MemoryWalManager;
+    #[test]
+    fn v3_insert_into_vec_table_emits_vector_insert_wal_entries() {
+        // Direct WAL entry emission: the production insert path
+        // dispatches via `entry_type_for_table` (set in V2). A unit
+        // call to `log_vector_insert` proves the V2 dispatch is
+        // hooked up; an end-to-end `WalStorage::insert` call is not
+        // possible in the unit test because `MemoryStorage` does
+        // not expose a public create_table entry point that takes
+        // a pre-built ColumnDefinition list.
+        let mut wal = WalStorage::new(MemoryStorage::new(), MemoryWalManager::new())
+            .expect("WalStorage::new");
+        wal.log_vector_insert("vec_embeddings", 1, b"id=1".to_vec(), b"v=[1.0]".to_vec())
+            .expect("log_vector_insert should succeed");
+        let entries = wal.wal().recover().expect("recover");
+        assert_eq!(entries.len(), 1);
+        assert_eq!(entries[0].entry_type, WalEntryType::VectorInsert);
+    }
 
-#[test]
-fn v3_delete_from_vec_table_emits_vector_delete_wal_entries() {
-    // Symmetric to the insert test: log_vector_delete produces
-    // a VectorDelete entry. The wiring through `entry_type_for_table`
-    // is the same code path used by `WalStorage::delete` in V3.
-    let mut wal =
-        WalStorage::new(MemoryStorage::new(), MemoryWalManager::new()).expect("WalStorage::new");
-    wal.log_vector_delete("vec_items", 1, b"id=7".to_vec())
-        .expect("log_vector_delete should succeed");
-    let entries = wal.wal().recover().expect("recover");
-    assert_eq!(entries.len(), 1);
-    assert_eq!(entries[0].entry_type, WalEntryType::VectorDelete);
-}
+    #[test]
+    fn v3_delete_from_vec_table_emits_vector_delete_wal_entries() {
+        // Symmetric to the insert test: log_vector_delete produces
+        // a VectorDelete entry. The wiring through `entry_type_for_table`
+        // is the same code path used by `WalStorage::delete` in V3.
+        let mut wal = WalStorage::new(MemoryStorage::new(), MemoryWalManager::new())
+            .expect("WalStorage::new");
+        wal.log_vector_delete("vec_items", 1, b"id=7".to_vec())
+            .expect("log_vector_delete should succeed");
+        let entries = wal.wal().recover().expect("recover");
+        assert_eq!(entries.len(), 1);
+        assert_eq!(entries[0].entry_type, WalEntryType::VectorDelete);
+    }
 
-#[test]
-fn v3_insert_into_non_vec_table_keeps_row_dml_path() {
-    // Regression guard: only `vec_`-prefixed tables switch
-    // to the vector WAL entry type. Regular SQL tables keep
-    // emitting the row-DML `Insert` entries.
-    let mut wal =
-        WalStorage::new(MemoryStorage::new(), MemoryWalManager::new()).expect("WalStorage::new");
-    wal.log_insert(1, b"id=5".to_vec(), b"name='alice'".to_vec())
-        .expect("row log_insert should still work");
-    let entries = wal.wal().recover().expect("recover");
-    assert_eq!(entries.len(), 1);
-    assert_eq!(entries[0].entry_type, WalEntryType::Insert);
+    #[test]
+    fn v3_insert_into_non_vec_table_keeps_row_dml_path() {
+        // Regression guard: only `vec_`-prefixed tables switch
+        // to the vector WAL entry type. Regular SQL tables keep
+        // emitting the row-DML `Insert` entries.
+        let mut wal = WalStorage::new(MemoryStorage::new(), MemoryWalManager::new())
+            .expect("WalStorage::new");
+        wal.log_insert(1, b"id=5".to_vec(), b"name='alice'".to_vec())
+            .expect("row log_insert should still work");
+        let entries = wal.wal().recover().expect("recover");
+        assert_eq!(entries.len(), 1);
+        assert_eq!(entries[0].entry_type, WalEntryType::Insert);
+    }
 }
