@@ -60,6 +60,7 @@ pub fn cleanup_bak(data_dir: &Path, older_than_days: u32) -> SqlResult<usize> {
 #[cfg(test)]
 mod tests {
     use super::*;
+    #[cfg(unix)]
     use std::os::unix::fs::PermissionsExt;
     use tempfile::tempdir;
 
@@ -93,6 +94,7 @@ mod tests {
         // Create a .json.bak with old mtime
         let bak = dir.path().join("t1.json.bak");
         std::fs::write(&bak, b"{}").unwrap();
+        #[cfg(unix)]
         std::fs::set_permissions(&bak, std::fs::Permissions::from_mode(0o644)).unwrap();
         let _ = std::fs::File::options()
             .write(true)

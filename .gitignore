@@ -264,3 +264,7 @@ data/leak-verify-*/*
 
 # jemalloc heap dumps emitted by SIGUSR2 from sqlrustgo-mysql-server.
 jeprof.*.heap
+
+# v4.0.0 alpha gate worktree scratch
+/rustup_junction/
+/ps_run.ps1

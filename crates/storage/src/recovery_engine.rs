@@ -241,6 +241,8 @@ fn bytes_to_record(data: &[u8]) -> Result<Vec<Value>, crate::engine::SqlError> {
                 record.push(Value::Blob(data[start..start + end].to_vec()));
                 pos = start + end + 1;
             }
+            // v3.12.0 Issue #4682: skip unknown prefixes and substitute NULL
+            // so partial record recovery is still possible
             _ => {
                 // v3.12.0 Issue #4682: an unknown value prefix (e.g.
                 // produced by a newer writer that an older reader does
