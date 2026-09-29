@@ -1748,4 +1748,3 @@ path = "tests/operators/pragma_table_info.rs"
 [[test]]
 name = "operators_three_valued_logic"
 path = "tests/operators/three_valued_logic.rs"
-
