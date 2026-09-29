@@ -31,6 +31,20 @@ pub const TABLES: &[&str] = &[
 /// the `MySqlTestClient` default (5s for read, 5s for write).
 fn start_with_fixture(fixture_dir: &str, timeout_s: Option<u64>) -> MySqlTestClient {
     let data_dir = PathBuf::from(fixture_dir);
+    // The TPC-H fixtures are generated, not committed: tests/data/tpch-sf001
+    // is a symlink into /tmp, which does not survive a reboot. Without this
+    // check the ephemeral server starts against a missing directory and the
+    // TCP connection is reset, which reads like a protocol bug rather than
+    // a missing prerequisite.
+    if !data_dir.join("lineitem.tbl").exists() {
+        panic!(
+            "TPC-H data not found at {}.\n\
+             tests/data/tpch-sf001 is a symlink into /tmp and is wiped on reboot.\n\
+             Generate the dataset with `dbgen` and either restore the symlink or\n\
+             re-point the SF001_DIR / SF01_DIR constants in this file at it.",
+            data_dir.display()
+        );
+    }
     let config = EphemeralConfig {
         data_dir: Some(data_dir),
         bootstrap_tables: false,
