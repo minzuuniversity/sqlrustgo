@@ -27,6 +27,15 @@ fn entry_to_record(entry: &WalEntry, lsn: u64) -> WALRecord {
         WalEntryType::Begin => WALOperation::BeginTxn,
         WalEntryType::Checkpoint => WALOperation::Checkpoint,
         WalEntryType::Prepare => WALOperation::WriteRow,
+        // V400-02 / Issue #3730: vector ops added 2026-09-29 to
+        // close the v4.0.0->v4.1.0 test-compile drift. These map
+        // one-to-one onto the new `WALOperation` variants.
+        WalEntryType::VectorInsert => WALOperation::VectorInsert,
+        WalEntryType::VectorUpdate => WALOperation::VectorUpdate,
+        WalEntryType::VectorDelete => WALOperation::VectorDelete,
+        WalEntryType::CreateVectorIndex => WALOperation::CreateVectorIndex,
+        WalEntryType::DropVectorIndex => WALOperation::DropVectorIndex,
+        WalEntryType::RebuildVectorIndex => WALOperation::RebuildVectorIndex,
     };
     WALRecord {
         lsn,

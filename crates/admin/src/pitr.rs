@@ -121,8 +121,10 @@ pub fn parse_target_time(s: &str) -> Result<u64, BackupError> {
 mod tests {
     use super::*;
     use sqlrustgo_storage::wal::{
-        make_begin_entry, make_commit_entry, make_delete_entry, make_insert_entry,
-        make_rollback_entry, make_update_entry,
+        make_begin_entry, make_commit_entry, make_create_vector_index_entry, make_delete_entry,
+        make_drop_vector_index_entry, make_insert_entry, make_rebuild_vector_index_entry,
+        make_rollback_entry, make_update_entry, make_vector_delete_entry,
+        make_vector_insert_entry, make_vector_update_entry,
     };
     use std::io::Write;
     use tempfile::TempDir;
@@ -153,6 +155,15 @@ mod tests {
                 lsn,
                 timestamp: ts,
             },
+            // V400-02 / Issue #3730 vector WAL entries (added 2026-09-29).
+            // Test factory only — real production code uses
+            // make_vector_insert_entry / make_vector_update_entry etc.
+            WalEntryType::VectorInsert => make_vector_insert_entry(tx, 0, 0, 0, vec![0u8; 16], lsn),
+            WalEntryType::VectorUpdate => make_vector_update_entry(tx, 0, 0, 0, vec![0u8; 16], lsn),
+            WalEntryType::VectorDelete => make_vector_delete_entry(tx, 0, 0, 0, lsn),
+            WalEntryType::CreateVectorIndex => make_create_vector_index_entry(tx, 0, 0, "test_idx", lsn),
+            WalEntryType::DropVectorIndex => make_drop_vector_index_entry(tx, 0, "test_idx", lsn),
+            WalEntryType::RebuildVectorIndex => make_rebuild_vector_index_entry(tx, 0, "test_idx", lsn),
         };
         e.timestamp = ts;
         e
