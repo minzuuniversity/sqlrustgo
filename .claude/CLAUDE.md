@@ -33,22 +33,31 @@ cargo run --bin sqlrustgo
 
 ＃＃ 建筑学
 
+> 本节按当前代码结构核对过（2026-09-29）。实际布局是 `crates/` 下的
+> workspace crate + 根 `src/` 的执行引擎，不是早期文档里的单层 `src/` 分层。
+
 ```
 ┌─────────────────────────────────────┐
-│           main.rs (REPL)             │
+│      crates/cli (REPL / sqlrustgo)   │
 ├─────────────────────────────────────┤
-│           executor/                 │  ← Query execution
+│ crates/mysql-server, crates/server  │  ← MySQL 风格协议接入
 ├─────────────────────────────────────┤
-│           parser/                    │  ← SQL → AST
-│           lexer/                    │  ← SQL → Tokens
+│ src/execution_engine.rs + src/engine_*.rs │  ← Query execution
 ├─────────────────────────────────────┤
-│           storage/                   │  ← Page, BufferPool, B+ Tree
+│ crates/executor                     │  ← 表达式求值 (eval_*)
 ├─────────────────────────────────────┤
-│         transaction/                 │  ← WAL, TxManager
+│ crates/planner, crates/optimizer    │  ← 计划与优化
 ├─────────────────────────────────────┤
-│           network/                   │  ← TCP server/client
+│ crates/parser                       │  ← SQL → AST
+│   (lexer.rs, parser.rs, token.rs)   │     lexer 在此 crate 内，非独立模块
 ├─────────────────────────────────────┤
-│           types/                     │  ← Value, SqlError
+│ crates/storage                      │  ← Page, BufferPool, B+ Tree
+├─────────────────────────────────────┤
+│ crates/transaction                  │  ← WAL, TxManager
+├─────────────────────────────────────┤
+│ crates/network                      │  ← TCP server/client
+├─────────────────────────────────────┤
+│ crates/types                        │  ← Value, SqlError
 └─────────────────────────────────────┘
 ```
 
@@ -56,12 +65,11 @@ cargo run --bin sqlrustgo
 
 |模块|目的|
 |--------|---------|
-| `lexer` |对 SQL 输入进行标记|
-|__代码0__|将 token 解析为语句 AST|
-|__代码0__|页面管理、BufferPool (LRU)、B+ Tree 索引|
-|__代码0__|执行 SQL 语句|
-|__代码0__|预写日志，开始/提交/回滚|
-|__代码0__|采用 MySQL 风格协议的 TCP 服务器/客户端|
+| `crates/parser` |对 SQL 输入进行标记（`lexer.rs`）并解析为语句 AST（`parser.rs`）|
+| `crates/storage` |页面管理、BufferPool (LRU)、B+ Tree 索引|
+| `src/engine_*.rs` |执行 SQL 语句|
+| `crates/transaction` |预写日志，开始/提交/回滚|
+| `crates/mysql-server` |采用 MySQL 风格协议的 TCP 服务器/客户端|
 
 ## 铁锈版
 

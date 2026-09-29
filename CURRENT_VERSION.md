@@ -6,9 +6,21 @@
 
 ## 最近已发布
 
-**v3.11.0 GA**（6/6 GA 门通过，2026-08-09 发布；tag `v3.11.0-ga` @ `83c623835`）
+**v4.0.0 GA**（2026-09-19 发布；tag `v4.0.0-final` @ `54571eeca0`，最终 sync HEAD `07178c9d66`；PR #4902 promote 至 main）
+
+- 完整变更日志：[docs/releases/v4.0.0/CHANGELOG.md](docs/releases/v4.0.0/CHANGELOG.md)
+- GA 门禁报告：[docs/releases/v4.0.0/GA_GATE_REPORT.md](docs/releases/v4.0.0/GA_GATE_REPORT.md)
+- 阶段状态：[docs/releases/v4.0.0/STAGE.yaml](docs/releases/v4.0.0/STAGE.yaml)
+
+> ⚠️ `docs/releases/v4.0.0/STAGE.yaml` 的 `current_stage` 仍写 `DRAFT`——该文件最后更新于
+> 2026-09-18，早于 2026-09-19 的 GA tag 与 main promote，尚未回填。事实以 tag 与
+> GA_GATE_REPORT 为准。
 
 ## 当前正在开发
+
+**v4.1.0 ALPHA** — develop/v4.1.0（tag `v4.1.0-alpha1`）
+
+> ⚠️ 下方 v3.12.0 段落为历史记录，保留作追溯用。
 
 **v3.12.0 RC** — develop/v3.12.0 @ commit `cbe1f53f85`（截至 2026-08-26，PR #4493/#4495 合并后）
 
