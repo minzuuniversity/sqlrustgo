@@ -1,10 +1,13 @@
 # SQLRustGo
 
-> **当前开发线**: `develop/v3.12.0`
-> **当前开发版**: v3.12.0
-> **发布状态**: **GA promotion authorized**（2026-09-08，72/72 gate PASS）
-> **可信状态入口**: [docs/releases/v3.12.0/STAGE.yaml](docs/releases/v3.12.0/STAGE.yaml)
-> **GA 发布证据入口**: [docs/releases/v3.12.0/GA_PUBLICATION_EVIDENCE_INDEX.md](docs/releases/v3.12.0/GA_PUBLICATION_EVIDENCE_INDEX.md)
+> **当前开发线**: `develop/v4.1.0`
+> **当前开发版**: v4.1.0（ALPHA，tag `v4.1.0-alpha1`）
+> **最近发布**: **v4.0.0 GA**（2026-09-19，tag `v4.0.0-final` @ `54571eeca0`；CONDITIONAL PASS）
+> **可信状态入口**: [docs/releases/v4.0.0/GA_GATE_REPORT.md](docs/releases/v4.0.0/GA_GATE_REPORT.md)
+> **变更日志**: [docs/releases/v4.0.0/CHANGELOG.md](docs/releases/v4.0.0/CHANGELOG.md)
+>
+> 注：根 `Cargo.toml` 的 `version` 仍为 `3.12.0-fix-zombie`，三个 remote 一致，属
+> 有意保留的现状（发布口径以 tag / GA_GATE_REPORT 为准），未随文档口径一并改动。
 
 ---
 
