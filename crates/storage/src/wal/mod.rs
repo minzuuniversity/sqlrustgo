@@ -213,3 +213,151 @@ pub fn make_delete_entry(tx_id: u64, table_id: u64, key: Vec<u8>, lsn: u64) -> W
             .as_secs(),
     }
 }
+
+// =========================================================================
+// V400-02 / Issue #3730: vector WAL entry factories (added 2026-09-29 to close
+// the v4.0.0->v4.1.0 test-compile drift on the new WalEntryType variants).
+// Each factory mirrors the existing row-level make_*_entry shape: the
+// `key` field carries the (table, column, vector_id) triple and `data`
+// carries the encoded embedding bytes. The index-management variants
+// (CreateVectorIndex / DropVectorIndex / RebuildVectorIndex) use `table_id`
+// as the index id and stash the column list in `key`.
+// =========================================================================
+
+/// Helper to create a VectorInsert entry
+pub fn make_vector_insert_entry(
+    tx_id: u64,
+    table_id: u64,
+    column_id: u64,
+    vector_id: u64,
+    embedding: Vec<u8>,
+    lsn: u64,
+) -> WalEntry {
+    let key = format!("{}:{}:{}", table_id, column_id, vector_id).into_bytes();
+    WalEntry {
+        tx_id,
+        entry_type: WalEntryType::VectorInsert,
+        table_id,
+        key: Some(key),
+        data: Some(embedding),
+        lsn,
+        timestamp: std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .unwrap()
+            .as_secs(),
+    }
+}
+
+/// Helper to create a VectorUpdate entry (overwrite at existing id)
+pub fn make_vector_update_entry(
+    tx_id: u64,
+    table_id: u64,
+    column_id: u64,
+    vector_id: u64,
+    embedding: Vec<u8>,
+    lsn: u64,
+) -> WalEntry {
+    let key = format!("{}:{}:{}", table_id, column_id, vector_id).into_bytes();
+    WalEntry {
+        tx_id,
+        entry_type: WalEntryType::VectorUpdate,
+        table_id,
+        key: Some(key),
+        data: Some(embedding),
+        lsn,
+        timestamp: std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .unwrap()
+            .as_secs(),
+    }
+}
+
+/// Helper to create a VectorDelete entry (delete by id)
+pub fn make_vector_delete_entry(
+    tx_id: u64,
+    table_id: u64,
+    column_id: u64,
+    vector_id: u64,
+    lsn: u64,
+) -> WalEntry {
+    let key = format!("{}:{}:{}", table_id, column_id, vector_id).into_bytes();
+    WalEntry {
+        tx_id,
+        entry_type: WalEntryType::VectorDelete,
+        table_id,
+        key: Some(key),
+        data: None,
+        lsn,
+        timestamp: std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .unwrap()
+            .as_secs(),
+    }
+}
+
+/// Helper to create a CreateVectorIndex entry
+pub fn make_create_vector_index_entry(
+    tx_id: u64,
+    table_id: u64,
+    column_id: u64,
+    index_name: &str,
+    lsn: u64,
+) -> WalEntry {
+    let key = format!("{}:{}:{}", table_id, column_id, index_name).into_bytes();
+    WalEntry {
+        tx_id,
+        entry_type: WalEntryType::CreateVectorIndex,
+        table_id,
+        key: Some(key),
+        data: None,
+        lsn,
+        timestamp: std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .unwrap()
+            .as_secs(),
+    }
+}
+
+/// Helper to create a DropVectorIndex entry
+pub fn make_drop_vector_index_entry(
+    tx_id: u64,
+    table_id: u64,
+    index_name: &str,
+    lsn: u64,
+) -> WalEntry {
+    let key = format!("{}:{}", table_id, index_name).into_bytes();
+    WalEntry {
+        tx_id,
+        entry_type: WalEntryType::DropVectorIndex,
+        table_id,
+        key: Some(key),
+        data: None,
+        lsn,
+        timestamp: std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .unwrap()
+            .as_secs(),
+    }
+}
+
+/// Helper to create a RebuildVectorIndex entry
+pub fn make_rebuild_vector_index_entry(
+    tx_id: u64,
+    table_id: u64,
+    index_name: &str,
+    lsn: u64,
+) -> WalEntry {
+    let key = format!("{}:{}", table_id, index_name).into_bytes();
+    WalEntry {
+        tx_id,
+        entry_type: WalEntryType::RebuildVectorIndex,
+        table_id,
+        key: Some(key),
+        data: None,
+        lsn,
+        timestamp: std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .unwrap()
+            .as_secs(),
+    }
+}

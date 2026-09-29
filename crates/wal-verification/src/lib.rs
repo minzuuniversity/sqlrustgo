@@ -17,11 +17,34 @@ pub enum WALOperation {
     CommitTxn,
     AbortTxn,
     Checkpoint,
+    // V400-02 / Issue #3730: vector ops are first-class WAL operations
+    // so that a crash mid-vector-insert replays correctly. The
+    // `key` field on the underlying WAL record carries the
+    // (table, column, vector_id) triple and `data` carries the
+    // encoded embedding bytes. These variants were added on
+    // 2026-09-29 to satisfy `check_anti_fabrication.sh` CHECK 2
+    // (cargo test --workspace --no-run) which started failing after
+    // V400-01/02 added VectorInsert..RebuildVectorIndex variants to
+    // `crates/storage/src/wal_legacy.rs::WalEntryType`.
+    VectorInsert,
+    VectorUpdate,
+    VectorDelete,
+    CreateVectorIndex,
+    DropVectorIndex,
+    RebuildVectorIndex,
 }
 
 impl WALOperation {
     pub fn is_dml(&self) -> bool {
-        matches!(self, Self::WriteRow | Self::DeleteRow | Self::UpdateRow)
+        matches!(
+            self,
+            Self::WriteRow
+                | Self::DeleteRow
+                | Self::UpdateRow
+                | Self::VectorInsert
+                | Self::VectorUpdate
+                | Self::VectorDelete
+        )
     }
 
     pub fn is_boundary(&self) -> bool {
