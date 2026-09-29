@@ -14,8 +14,8 @@ use sqlrustgo_parser::parser::{
     AlterColumnOperation, AlterTableOperation, AlterTableStatement, CreateRoleStatement,
     CreateUserStatement, DescribeStatement, DropRoleStatement, DropUserStatement,
     GrantRoleStatement, GrantStatement, ObjectType as ParserObjectType,
-    Privilege as ParserPrivilege, RevokeRoleStatement, RevokeStatement, SetRoleStatement,
-    ShowStatement,
+    Privilege as ParserPrivilege, PragmaStatement, RevokeRoleStatement, RevokeStatement,
+    SetRoleStatement, ShowStatement,
 };
 use sqlrustgo_parser::Expression;
 use sqlrustgo_storage::{ColumnDefinition, StorageEngine, TableInfo, Value as StorageValue};
@@ -749,6 +749,59 @@ impl<S: StorageEngine + 'static> ExecutionEngine<S> {
         })?;
         let rows = column_metadata_rows(&info.columns);
         Ok(ExecutorResult::new(rows, info.columns.len()))
+    }
+
+    /// SQLite-style `PRAGMA` execution. Only `table_info` is implemented;
+    /// every other pragma name returns a precise "not supported" error
+    /// naming the supported set, rather than a generic parse failure.
+    pub fn execute_pragma(&self, pragma: &PragmaStatement) -> SqlResult<ExecutorResult> {
+        match pragma.name.to_lowercase().as_str() {
+            "table_info" => {
+                let table = pragma.arg.as_ref().ok_or_else(|| {
+                    SqlError::ExecutionError("PRAGMA table_info requires a table name".to_string())
+                })?;
+                let storage = self.storage.read();
+                if !storage.list_tables().iter().any(|n| n == table) {
+                    return Err(SqlError::ExecutionError(format!(
+                        "Table '{}' does not exist",
+                        table
+                    )));
+                }
+                let info = storage.get_table_info(table).map_err(|e| {
+                    SqlError::ExecutionError(format!("cannot introspect {table}: {e}"))
+                })?;
+                let rows: Vec<Vec<Value>> = info
+                    .columns
+                    .iter()
+                    .enumerate()
+                    .map(|(cid, c)| {
+                        let type_str = match c.char_max_length {
+                            Some(n) => format!("{}({})", c.data_type, n),
+                            None => c.data_type.clone(),
+                        };
+                        vec![
+                            Value::Integer(cid as i64),
+                            Value::Text(c.name.clone()),
+                            Value::Text(type_str),
+                            Value::Integer(if c.nullable { 0 } else { 1 }),
+                            match &c.default_value {
+                                Some(d) => Value::Text(d.clone()),
+                                None => Value::Null,
+                            },
+                            // pk mirrors the column-level `primary_key` flag,
+                            // which CREATE TABLE backfills from both the
+                            // column-level and the table-level PRIMARY KEY form.
+                            Value::Integer(if c.primary_key { 1 } else { 0 }),
+                        ]
+                    })
+                    .collect();
+                let count = rows.len();
+                Ok(ExecutorResult::new(rows, count))
+            }
+            other => Err(SqlError::ExecutionError(format!(
+                "PRAGMA {other} is not supported by sqlrustgo (supported: table_info)"
+            ))),
+        }
     }
 
     /// SHOW GRANTS — placeholder (v3.7.0 grant tracking is limited to roles).
