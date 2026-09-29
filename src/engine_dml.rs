@@ -32,6 +32,60 @@ use crate::expr_utils::{evaluate_expression, resolve_subqueries_in_expr};
 use crate::savepoint_wiring::{record_delete_undo, record_insert_undo, record_update_undo};
 use crate::{ExecutionEngine, SqlError, SqlResult};
 
+/// V4.1.0: cached primary-key index over a table's rows, so INSERT's
+/// duplicate-key check does not need a full `storage.scan()` per statement.
+///
+/// The index stores ONLY primary-key values, never whole rows: it exists to
+/// answer "does this key already exist?", and holding full rows made the
+/// cache drift from storage (and cost an O(N) clone per statement).
+///
+/// Staleness is decided by [`StorageEngine::table_change_stamp`], not by
+/// remembering which statements mutate a table. Any mutation — from this
+/// module or from a trigger body, a GMP helper, `LOAD DATA`, a wire
+/// endpoint, or `ROLLBACK TO SAVEPOINT` replaying an undo record — bumps the
+/// table's stamp, so a cache hit implies the index still matches storage.
+///
+/// Storing the whole set under the engine's write lock and extending it in
+/// place keeps a single-row INSERT O(1) amortised; handing out a clone per
+/// statement would make bulk loading quadratic, which is the very cost this
+/// index exists to remove.
+pub struct PkIndexCache {
+    /// Column indexes forming the primary key.
+    pub pk_idx: Vec<usize>,
+    /// The table's primary-key values, as a set.
+    pub index: std::collections::HashSet<Vec<sqlrustgo_storage::Value>>,
+    /// `StorageEngine::table_change_stamp` when this snapshot was captured.
+    /// An entry is only trusted while this still equals the live stamp.
+    pub stamp: u64,
+}
+
+impl PkIndexCache {
+    /// Whether this index still describes `table`.
+    fn is_fresh(&self, live_stamp: u64) -> bool {
+        // A stamp of 0 means the storage engine does not track changes, so
+        // nothing can vouch for this entry. Rebuilding is always correct.
+        self.stamp != 0 && self.stamp == live_stamp
+    }
+}
+
+/// Primary-key values of `row`, or `None` when a PK column is missing.
+///
+/// A short key would alias a different row, so callers treat `None` as
+/// "cannot be indexed" rather than as a match.
+fn pk_key_of(
+    row: &[sqlrustgo_storage::Value],
+    pk_idx: &[usize],
+) -> Option<Vec<sqlrustgo_storage::Value>> {
+    if pk_idx.is_empty() {
+        return None;
+    }
+    let mut key = Vec::with_capacity(pk_idx.len());
+    for &i in pk_idx {
+        key.push(row.get(i)?.clone());
+    }
+    Some(key)
+}
+
 /// V312-55D: drain pending trigger-side undo records into the active
 /// transaction's undo log. Called by `execute_insert/update/delete`
 /// AFTER the AFTER trigger has fired. The trigger's
@@ -291,19 +345,93 @@ pub fn execute_insert<S: StorageEngine + 'static>(
     // INSERT IGNORE under autocommit (no two writers can introduce a
     // duplicate against the same snapshot).
     let mut pre_scanned_rows: Vec<Vec<Value>> = Vec::new();
+    // V4.1.0: whether a cached primary-key index may be used for this
+    // statement's duplicate check. It answers "is this key taken?" with a
+    // set lookup, avoiding the O(N) scan a PRIMARY KEY used to force on
+    // every INSERT. `None` falls back to scanning whole rows, which is what
+    // UNIQUE / AUTO_INCREMENT / UPSERT still need.
+    //
+    // The index itself is NOT copied here: it stays in the engine cache and
+    // is read through a guard under the write lock below. Copying it per
+    // statement would make bulk loading quadratic, the very cost this index
+    // removes.
+    let mut pk_index_ready = false;
+    // Stamp the cached index was built from; re-checked under the write lock.
+    let mut cached_stamp: u64 = 0;
     // #4569: also scan when the table declares UNIQUE constraints —
     // duplicates on those keys must be detected like PK duplicates.
     // V312-64c / Issue #4654: also scan when the table has an AUTO_INCREMENT
     // column — we need existing rows to compute the next id
     // (= MAX(existing id) + 1).
     let has_auto_increment = table_info.columns.iter().any(|c| c.auto_increment);
+    let pk_idx: Vec<usize> = table_info
+        .columns
+        .iter()
+        .enumerate()
+        .filter(|(_, c)| c.primary_key)
+        .map(|(i, _)| i)
+        .collect();
     let needs_pk_scan = !insert.is_replace
         && (table_info.columns.iter().any(|c| c.primary_key)
             || !table_info.unique_constraints.is_empty()
             || has_auto_increment);
+    // Only a primary key drives the collision test below, so a table with no
+    // UNIQUE constraint and no AUTO_INCREMENT can use the index and skip the
+    // scan. UNIQUE / AUTO_INCREMENT still need whole rows (to test every
+    // constraint, and to compute MAX(id) + 1), so they keep scanning.
+    // UPSERT clauses need the *existing row* itself, not just the fact that
+    // the key collides, so they scan too.
+    let cacheable = !insert.is_replace
+        && !pk_idx.is_empty()
+        && table_info.unique_constraints.is_empty()
+        && !has_auto_increment
+        && insert.on_duplicate_key_update.is_none()
+        && insert.on_conflict_clause.is_none();
     if needs_pk_scan {
-        let storage = engine.storage.read();
-        pre_scanned_rows = storage.scan(&table_name)?;
+        // A cached index is only usable while the table's change stamp still
+        // matches. `stamp == 0` means this engine does not track changes,
+        // so the cache can never be trusted and the scan below runs.
+        let live_stamp = {
+            let storage = engine.storage.read();
+            storage.table_change_stamp(&table_name)
+        };
+        if cacheable && live_stamp != 0 {
+            let cached = engine
+                .pk_lookup_cache
+                .read()
+                .get(&table_name)
+                .is_some_and(|e| e.is_fresh(live_stamp) && e.pk_idx == pk_idx);
+            if cached {
+                pk_index_ready = true;
+                cached_stamp = live_stamp;
+            } else {
+                // Build the index and publish it. The write lock is not held
+                // yet, so a concurrent writer may also be scanning here; the
+                // stamp re-check under the write lock below rejects a
+                // duplicate key either way, and the worst case is two
+                // identical snapshots published.
+                let storage = engine.storage.read();
+                let index: std::collections::HashSet<_> = storage
+                    .scan(&table_name)?
+                    .iter()
+                    .filter_map(|row| pk_key_of(row, &pk_idx))
+                    .collect();
+                drop(storage);
+                engine.pk_lookup_cache.write().insert(
+                    table_name.clone(),
+                    PkIndexCache {
+                        pk_idx: pk_idx.clone(),
+                        index,
+                        stamp: live_stamp,
+                    },
+                );
+                pk_index_ready = true;
+                cached_stamp = live_stamp;
+            }
+        } else {
+            let storage = engine.storage.read();
+            pre_scanned_rows = storage.scan(&table_name)?;
+        }
     }
 
     // V312-64c / Issue #4654: AUTO_INCREMENT population. After CHAR
@@ -351,16 +479,75 @@ pub fn execute_insert<S: StorageEngine + 'static>(
         let mut storage = engine.storage.write();
         let col_names: Vec<String> = table_info.columns.iter().map(|c| c.name.clone()).collect();
 
+        // V4.1.0: take the cached index under the write lock and re-validate
+        // it. `pre_write_stamp` is compared with `cached_stamp` so a
+        // concurrent write between the scan above and this write lock
+        // invalidates the index instead of letting this statement's
+        // duplicate check miss a row another writer just added.
+        let pre_write_stamp = storage.table_change_stamp(&table_name);
+        let mut pk_cache_guard = if pk_index_ready && pre_write_stamp == cached_stamp {
+            engine.pk_lookup_cache.read()
+        } else {
+            if pk_index_ready {
+                engine.pk_lookup_cache.write().remove(&table_name);
+            }
+            pk_index_ready = false;
+            // The index is gone, so the duplicate check needs whole rows.
+            pre_scanned_rows = storage.scan(&table_name)?;
+            engine.pk_lookup_cache.read()
+        };
+        let pk_index = pk_index_ready.then(|| {
+            pk_cache_guard
+                .get(&table_name)
+                .expect("index published above and not invalidated")
+        });
+
+        // Rows actually handed to storage by this statement, used below to
+        // extend the cached primary-key index with exactly those keys.
+        let mut stored_rows: Vec<Vec<Value>> = Vec::new();
         if needs_pk_scan {
-            let existing_rows = pre_scanned_rows;
             let mut odku_handled_indices: std::collections::HashSet<usize> =
                 std::collections::HashSet::new();
+            // Keys claimed by the rows inserted earlier in THIS statement.
+            // A multi-row INSERT can carry its own duplicate, which the
+            // pre-scan (taken before any insert) cannot see.
+            let mut claimed: std::collections::HashSet<Vec<sqlrustgo_storage::Value>> =
+                std::collections::HashSet::new();
             for (new_idx, new_record) in processed_records.iter().enumerate() {
-                let mut matched = false;
-                for existing in &existing_rows {
-                    if record_matches_unique_key(existing, new_record, &table_info) {
-                        matched = true;
-                        if let Some(ref updates) = insert.on_duplicate_key_update {
+                let new_key = pk_key_of(new_record, &pk_idx);
+                let matched = match pk_index {
+                    // Fast path: the only possible conflict is an equal
+                    // primary key, so a set membership test answers it
+                    // without touching storage.
+                    Some(index) => new_key
+                        .as_ref()
+                        .is_some_and(|k| index.index.contains(k) || claimed.contains(k)),
+                    None => pre_scanned_rows.iter().any(|existing| {
+                        record_matches_unique_key(existing, new_record, &table_info)
+                    }),
+                };
+                if matched {
+                    if let Some(key) = &new_key {
+                        claimed.insert(key.clone());
+                    }
+                    // ODKU / ON CONFLICT need the existing row, so they only
+                    // reach this branch on the scan path (`cacheable` is false
+                    // for both), where `pre_scanned_rows` holds it.
+                    if insert.on_duplicate_key_update.is_some()
+                        || insert.on_conflict_clause.is_some()
+                    {
+                        let existing = pre_scanned_rows
+                            .iter()
+                            .find(|existing| {
+                                record_matches_unique_key(existing, new_record, &table_info)
+                            })
+                            .ok_or_else(|| {
+                                SqlError::ExecutionError(format!(
+                                    "Duplicate entry '{}' for key 'PRIMARY'",
+                                    key_entry_repr(&table_info, new_record, "PRIMARY")
+                                ))
+                            })?;
+                        if let Some(updates) = &insert.on_duplicate_key_update {
                             apply_odku(
                                 &mut *storage,
                                 &table_name,
@@ -370,7 +557,7 @@ pub fn execute_insert<S: StorageEngine + 'static>(
                                 updates,
                             )?;
                             odku_handled_indices.insert(new_idx);
-                        } else if let Some(ref clause) = insert.on_conflict_clause {
+                        } else if let Some(clause) = &insert.on_conflict_clause {
                             // V312-63 / Issue #4642: SQLite/Postgres UPSERT
                             // ON CONFLICT DO NOTHING skips duplicates silently;
                             // ON CONFLICT DO UPDATE SET ... applies the
@@ -398,21 +585,18 @@ pub fn execute_insert<S: StorageEngine + 'static>(
                                 }
                             }
                         }
-                        break;
+                        continue;
                     }
-                }
-                if matched
-                    && insert.on_duplicate_key_update.is_none()
-                    && insert.on_conflict_clause.is_none()
-                {
                     // V311-23: INSERT IGNORE skips duplicates instead of erroring
                     if insert.is_ignore {
                         odku_handled_indices.insert(new_idx); // Mark as "handled" to skip
                         continue;
                     }
                     // #4569: report the actually-conflicting key — PRIMARY
-                    // or the UNIQUE constraint that was violated.
-                    let (conflict_key, entry_repr) = existing_rows
+                    // or the UNIQUE constraint that was violated. The fast
+                    // path only ever collides on the PRIMARY key, so the
+                    // repr comes straight from the incoming row.
+                    let (conflict_key, entry_repr) = pre_scanned_rows
                         .iter()
                         .filter_map(|existing| {
                             find_conflicting_key(existing, new_record, &table_info).map(|k| {
@@ -421,7 +605,12 @@ pub fn execute_insert<S: StorageEngine + 'static>(
                             })
                         })
                         .next()
-                        .unwrap_or_else(|| ("PRIMARY".to_string(), "?".to_string()));
+                        .unwrap_or_else(|| {
+                            (
+                                "PRIMARY".to_string(),
+                                key_entry_repr(&table_info, new_record, "PRIMARY"),
+                            )
+                        });
                     return Err(SqlError::ExecutionError(format!(
                         "Duplicate entry '{}' for key '{}'",
                         entry_repr, conflict_key
@@ -475,7 +664,10 @@ pub fn execute_insert<S: StorageEngine + 'static>(
                     // missing column, often `Value::Null`).
                     validate_not_null(&table_info, record, &[])?;
                 }
-                storage.insert(&table_name, to_insert)?;
+                storage.insert(&table_name, to_insert.clone())?;
+                stored_rows = to_insert;
+            } else {
+                stored_rows = Vec::new();
             }
         } else {
             for record in &processed_records {
@@ -504,6 +696,32 @@ pub fn execute_insert<S: StorageEngine + 'static>(
                 validate_not_null(&table_info, record, &[])?;
             }
             storage.insert(&table_name, processed_records.clone())?;
+            stored_rows = processed_records.clone();
+        }
+
+        // V4.1.0: extend the cached index with the keys just written, so the
+        // next INSERT answers from it instead of rescanning.
+        //
+        // Safe because the index was re-validated against `pre_write_stamp`
+        // under this same write lock, and no other writer can run until this
+        // guard is dropped. The duplicate check above proved these keys were
+        // absent, so adding them leaves the index exactly equal to storage.
+        let published_keys: Vec<Vec<sqlrustgo_storage::Value>> = stored_rows
+            .iter()
+            .filter_map(|r| pk_key_of(r, &pk_idx))
+            .collect();
+        drop(pk_cache_guard);
+        if pk_index_ready {
+            let mut cache = engine.pk_lookup_cache.write();
+            let new_stamp = storage.table_change_stamp(&table_name);
+            if let Some(entry) = cache.get_mut(&table_name) {
+                entry.index.extend(published_keys);
+                entry.stamp = new_stamp;
+            } else {
+                // Dropped by a concurrent statement; do not resurrect it —
+                // it would carry a stamp without a matching scan.
+                cache.remove(&table_name);
+            }
         }
     }
 

@@ -49,6 +49,7 @@ impl ExecutionEngine<MemoryStorage> {
             stmt_cache: sqlrustgo_cache::PreparedStatementCache::new(100),
             views: HashMap::new(),
             clustered_tables: parking_lot::RwLock::new(HashMap::new()),
+            pk_lookup_cache: parking_lot::RwLock::new(HashMap::new()),
             adaptive_hash_index: AdaptiveHashIndex::new().into_shared(),
 
             instrumentation: Arc::new(sqlrustgo_executor::instrumentation::NoopInstrumentationHook),
@@ -80,6 +81,7 @@ impl ExecutionEngine<MemoryStorage> {
             stmt_cache: sqlrustgo_cache::PreparedStatementCache::new(100),
             views: HashMap::new(),
             clustered_tables: parking_lot::RwLock::new(HashMap::new()),
+            pk_lookup_cache: parking_lot::RwLock::new(HashMap::new()),
             adaptive_hash_index: AdaptiveHashIndex::new().into_shared(),
 
             instrumentation: Arc::new(sqlrustgo_executor::instrumentation::NoopInstrumentationHook),
@@ -111,6 +113,7 @@ impl ExecutionEngine<MemoryStorage> {
             stmt_cache: sqlrustgo_cache::PreparedStatementCache::new(100),
             views: HashMap::new(),
             clustered_tables: parking_lot::RwLock::new(HashMap::new()),
+            pk_lookup_cache: parking_lot::RwLock::new(HashMap::new()),
             adaptive_hash_index: AdaptiveHashIndex::new().into_shared(),
 
             instrumentation: Arc::new(sqlrustgo_executor::instrumentation::NoopInstrumentationHook),
@@ -153,6 +156,7 @@ impl ExecutionEngine<MemoryStorage> {
             stmt_cache: sqlrustgo_cache::PreparedStatementCache::new(100),
             views: HashMap::new(),
             clustered_tables: parking_lot::RwLock::new(HashMap::new()),
+            pk_lookup_cache: parking_lot::RwLock::new(HashMap::new()),
             adaptive_hash_index: AdaptiveHashIndex::new().into_shared(),
 
             instrumentation: Arc::new(sqlrustgo_executor::instrumentation::NoopInstrumentationHook),
@@ -200,6 +204,7 @@ impl ExecutionEngine<MemoryStorage> {
             stmt_cache: sqlrustgo_cache::PreparedStatementCache::new(100),
             views: HashMap::new(),
             clustered_tables: parking_lot::RwLock::new(HashMap::new()),
+            pk_lookup_cache: parking_lot::RwLock::new(HashMap::new()),
             adaptive_hash_index: AdaptiveHashIndex::new().into_shared(),
 
             instrumentation: Arc::new(sqlrustgo_executor::instrumentation::NoopInstrumentationHook),
@@ -253,6 +258,7 @@ impl ExecutionEngine<MemoryStorage> {
             stmt_cache: sqlrustgo_cache::PreparedStatementCache::new(100),
             views: HashMap::new(),
             clustered_tables: parking_lot::RwLock::new(HashMap::new()),
+            pk_lookup_cache: parking_lot::RwLock::new(HashMap::new()),
             adaptive_hash_index: AdaptiveHashIndex::new().into_shared(),
 
             instrumentation: Arc::new(sqlrustgo_executor::instrumentation::NoopInstrumentationHook),
@@ -300,6 +306,7 @@ impl ExecutionEngine<MemoryStorage> {
             stmt_cache: sqlrustgo_cache::PreparedStatementCache::new(100),
             views: HashMap::new(),
             clustered_tables: parking_lot::RwLock::new(HashMap::new()),
+            pk_lookup_cache: parking_lot::RwLock::new(HashMap::new()),
             adaptive_hash_index: AdaptiveHashIndex::new().into_shared(),
 
             instrumentation: Arc::new(sqlrustgo_executor::instrumentation::NoopInstrumentationHook),

@@ -530,6 +530,8 @@ impl<S: StorageEngine + 'static> ExecutionEngine<S> {
         &self,
         drop: &DropTableStatement,
     ) -> SqlResult<ExecutorResult> {
+        // No explicit PK-index invalidation: `drop_table` bumps the table's
+        // change stamp, so a cached index can no longer be trusted.
         let mut storage = self.storage.write();
         if drop.if_exists && !storage.has_table(&drop.name) {
             // IF EXISTS specified and table doesn't exist → no-op, success
@@ -703,6 +705,9 @@ impl<S: StorageEngine + 'static> ExecutionEngine<S> {
         // regardless (no FK reference tracking yet). RESTRICT would
         // error only if any FK pointed at the table; sqlrustgo does
         // not yet enforce FK constraints, so the behavior is the same.
+        // The delete bumps the table's change stamp, which is what
+        // invalidates any cached primary-key index — no explicit
+        // invalidation needed here.
         storage.delete(&truncate.name, &[])?;
         Ok(ExecutorResult::empty())
     }
