@@ -1653,8 +1653,17 @@ impl<S: StorageEngine + 'static> ExecutionEngine<S> {
                 // `true` (no errors thrown).
                 let mut quantified_new_rows: Vec<Vec<Value>> = Vec::with_capacity(rows.len());
                 for row in &rows {
-                    let pre = self.pre_evaluate_quantified_subquery(row, &table_info, &rewritten);
-                    let expr = pre.unwrap_or_else(|| rewritten.clone());
+                    // Correlated `col IN (SELECT ...)` is invisible to Step 1.5
+                    // (`where_expr_has_correlated_subquery` reports false for
+                    // In/NotIn), so resolve it here before the predicate runs.
+                    // Returns None when there is no correlated IN, which lets
+                    // the quantified pass and `eval_predicate` work on
+                    // `rewritten` unchanged.
+                    let with_in =
+                        self.pre_evaluate_correlated_in_subquery(&rewritten, row, &table_info);
+                    let base: &Expression = with_in.as_ref().unwrap_or(&rewritten);
+                    let pre = self.pre_evaluate_quantified_subquery(row, &table_info, base);
+                    let expr = pre.unwrap_or_else(|| base.clone());
                     if eval_predicate(&expr, row, &table_info) {
                         quantified_new_rows.push(row.clone());
                     }
@@ -7496,6 +7505,161 @@ impl<S: StorageEngine + 'static> ExecutionEngine<S> {
     /// Returns the rewritten expression. If the input had no
     /// non-correlated IN/NOT IN subqueries, the same expression is
     /// returned (caller can use `==` to skip the per-row re-filter).
+    /// Per-outer-row evaluator for a **correlated** `col IN (SELECT ...)` /
+    /// `col NOT IN (SELECT ...)`: substitutes the current outer row's
+    /// column values into the subquery, executes it, and rewrites the
+    /// node to a boolean `Literal`.
+    ///
+    /// Why this is needed. `pre_evaluate_non_correlated_in_subquery`
+    /// deliberately leaves correlated `In`/`NotIn` untouched (the
+    /// substitution depends on the outer row). Without a per-row
+    /// handler the node survives all the way to
+    /// `engine_utils::eval_predicate`, whose `In`/`NotIn` arms are
+    /// conservative stubs that return `true` — so a correlated
+    /// `IN (SELECT ...)` returned *every* row unfiltered, and its
+    /// `NOT IN` mirror likewise.
+    ///
+    /// Step 1.5 already covers this via
+    /// `pre_evaluate_correlated_exists` → `eval_in_subquery_membership`
+    /// when the WHERE also contains an EXISTS/scalar subquery, but a
+    /// WHERE whose only subquery is a correlated `IN` never enters
+    /// Step 1.5 (`where_expr_has_correlated_subquery` reports `false`
+    /// for `In`/`NotIn`). This runs in Step 1.6's per-row loop, which is
+    /// the pass that does run for that shape, so the two are
+    /// complementary rather than duplicated.
+    /// Returns `None` when nothing changed — deliberately, so the caller
+    /// can keep evaluating the original tree by reference. That matters
+    /// for the large-list fast path: `eval_predicate_with_in_sets` keys
+    /// its sets on the node address, and a defensive clone of the whole
+    /// WHERE per row would silently defeat it.
+    fn pre_evaluate_correlated_in_subquery(
+        &self,
+        expr: &Expression,
+        outer_row: &[Value],
+        outer_table_info: &TableInfo,
+    ) -> Option<Expression> {
+        use sqlrustgo_parser::Expression as E;
+        match expr {
+            E::In(left, subq) if subq_uses_outer_ref(self, subq) => {
+                let lit = self.eval_in_subquery_membership(
+                    left,
+                    subq,
+                    outer_row,
+                    outer_table_info,
+                    false,
+                );
+                Some(E::Literal(lit.to_string()))
+            }
+            E::NotIn(left, subq) if subq_uses_outer_ref(self, subq) => {
+                let lit =
+                    self.eval_in_subquery_membership(left, subq, outer_row, outer_table_info, true);
+                Some(E::Literal(lit.to_string()))
+            }
+            E::BinaryOp(l, op, r) => {
+                let nl = self.pre_evaluate_correlated_in_subquery(l, outer_row, outer_table_info);
+                let nr = self.pre_evaluate_correlated_in_subquery(r, outer_row, outer_table_info);
+                if nl.is_none() && nr.is_none() {
+                    return None;
+                }
+                Some(E::BinaryOp(
+                    Box::new(nl.unwrap_or_else(|| (**l).clone())),
+                    op.clone(),
+                    Box::new(nr.unwrap_or_else(|| (**r).clone())),
+                ))
+            }
+            E::UnaryOp(op, inner) => self
+                .pre_evaluate_correlated_in_subquery(inner, outer_row, outer_table_info)
+                .map(|n| E::UnaryOp(op.clone(), Box::new(n))),
+            E::IsNull(inner) => self
+                .pre_evaluate_correlated_in_subquery(inner, outer_row, outer_table_info)
+                .map(|n| E::IsNull(Box::new(n))),
+            E::IsNotNull(inner) => self
+                .pre_evaluate_correlated_in_subquery(inner, outer_row, outer_table_info)
+                .map(|n| E::IsNotNull(Box::new(n))),
+            E::InList(l, vs) => {
+                let nl = self.pre_evaluate_correlated_in_subquery(l, outer_row, outer_table_info);
+                let mut changed = nl.is_some();
+                let new_vs: Vec<Expression> = vs
+                    .iter()
+                    .map(|v| {
+                        match self.pre_evaluate_correlated_in_subquery(
+                            v,
+                            outer_row,
+                            outer_table_info,
+                        ) {
+                            Some(n) => {
+                                changed = true;
+                                n
+                            }
+                            None => v.clone(),
+                        }
+                    })
+                    .collect();
+                if !changed {
+                    None
+                } else {
+                    Some(E::InList(
+                        Box::new(nl.unwrap_or_else(|| (**l).clone())),
+                        new_vs,
+                    ))
+                }
+            }
+            E::NotInList(l, vs) => {
+                let nl = self.pre_evaluate_correlated_in_subquery(l, outer_row, outer_table_info);
+                let mut changed = nl.is_some();
+                let new_vs: Vec<Expression> = vs
+                    .iter()
+                    .map(|v| {
+                        match self.pre_evaluate_correlated_in_subquery(
+                            v,
+                            outer_row,
+                            outer_table_info,
+                        ) {
+                            Some(n) => {
+                                changed = true;
+                                n
+                            }
+                            None => v.clone(),
+                        }
+                    })
+                    .collect();
+                if !changed {
+                    None
+                } else {
+                    Some(E::NotInList(
+                        Box::new(nl.unwrap_or_else(|| (**l).clone())),
+                        new_vs,
+                    ))
+                }
+            }
+            E::FunctionCall(name, args) => {
+                let mut changed = false;
+                let new_args: Vec<Expression> = args
+                    .iter()
+                    .map(|a| {
+                        match self.pre_evaluate_correlated_in_subquery(
+                            a,
+                            outer_row,
+                            outer_table_info,
+                        ) {
+                            Some(n) => {
+                                changed = true;
+                                n
+                            }
+                            None => a.clone(),
+                        }
+                    })
+                    .collect();
+                if !changed {
+                    None
+                } else {
+                    Some(E::FunctionCall(name.clone(), new_args))
+                }
+            }
+            _ => None,
+        }
+    }
+
     fn pre_evaluate_non_correlated_in_subquery(
         &self,
         where_expr: &Expression,
@@ -7508,33 +7672,6 @@ impl<S: StorageEngine + 'static> ExecutionEngine<S> {
         // `Some(rewritten)` for the cases that changed and `None`
         // otherwise, so unchanged subtrees are returned by reference
         // (avoid deep clones of the full WHERE tree).
-        fn has_non_correlated_in_subq<S: sqlrustgo_storage::StorageEngine + 'static>(
-            engine: &ExecutionEngine<S>,
-            expr: &Expression,
-        ) -> bool {
-            match expr {
-                E::In(_, subq) | E::NotIn(_, subq) => {
-                    // Treat as non-correlated if the subquery does
-                    // not reference outer columns (checked against the
-                    // real inner-table schema — Issue #4568).
-                    !subq_uses_outer_ref(engine, subq)
-                }
-                E::BinaryOp(l, _, r) => {
-                    has_non_correlated_in_subq(engine, l) || has_non_correlated_in_subq(engine, r)
-                }
-                E::UnaryOp(_, inner) => has_non_correlated_in_subq(engine, inner),
-                E::IsNull(inner) | E::IsNotNull(inner) => has_non_correlated_in_subq(engine, inner),
-                E::InList(l, vs) | E::NotInList(l, vs) => {
-                    has_non_correlated_in_subq(engine, l)
-                        || vs.iter().any(|v| has_non_correlated_in_subq(engine, v))
-                }
-                E::FunctionCall(_, args) => {
-                    args.iter().any(|a| has_non_correlated_in_subq(engine, a))
-                }
-                _ => false,
-            }
-        }
-
         // Issue #4568: outer-ref detection for a subquery, now backed by
         // the *real* catalog schema instead of a character-prefix
         // heuristic. The old heuristic derived the inner-table prefix from
@@ -7547,114 +7684,6 @@ impl<S: StorageEngine + 'static> ExecutionEngine<S> {
         // degraded to the always-true `eval_predicate` fallback —
         // silently returning unfiltered results. Collecting the inner
         // table's actual column set from storage resolves this.
-        fn subq_uses_outer_ref<S: sqlrustgo_storage::StorageEngine + 'static>(
-            engine: &ExecutionEngine<S>,
-            subq: &sqlrustgo_parser::SelectStatement,
-        ) -> bool {
-            if subq.where_clause.is_none() && subq.join_clause.is_empty() {
-                return false;
-            }
-            let inner_cols = collect_inner_columns(engine, subq);
-            let mut uses = false;
-            if let Some(w) = subq.where_clause.as_ref() {
-                uses |= expr_uses_outer_ref(w, &inner_cols, engine);
-            }
-            for j in &subq.join_clause {
-                uses |= expr_uses_outer_ref(&j.on_clause, &inner_cols, engine);
-            }
-            uses
-        }
-
-        /// All identifiers that legitimately resolve inside `subq`: the
-        /// FROM table's catalog columns (bare name, `|alias` suffix
-        /// stripped), the projection names, and each JOIN right table's
-        /// columns. Matching is case-insensitive.
-        fn collect_inner_columns<S: sqlrustgo_storage::StorageEngine + 'static>(
-            engine: &ExecutionEngine<S>,
-            subq: &sqlrustgo_parser::SelectStatement,
-        ) -> std::collections::HashSet<String> {
-            let mut cols: std::collections::HashSet<String> =
-                subq.columns.iter().map(|c| c.name.to_lowercase()).collect();
-            // JOIN right tables contribute their own columns too.
-            let mut tables: Vec<String> =
-                subq.join_clause.iter().map(|j| j.table.clone()).collect();
-            if !subq.table.is_empty() {
-                tables.push(subq.table.clone());
-            }
-            let storage = engine.storage.read();
-            for t in tables {
-                let bare = t.split_once('|').map(|(b, _)| b).unwrap_or(&t);
-                if bare.is_empty() {
-                    continue;
-                }
-                if let Ok(info) = storage.get_table_info(bare) {
-                    for c in &info.columns {
-                        cols.insert(c.name.to_lowercase());
-                    }
-                }
-            }
-            cols
-        }
-
-        /// True if `expr` contains an Identifier (or nested subquery) that
-        /// does not resolve against `inner_cols`, i.e. references the
-        /// outer query row.
-        fn expr_uses_outer_ref<S: sqlrustgo_storage::StorageEngine + 'static>(
-            expr: &Expression,
-            inner_cols: &std::collections::HashSet<String>,
-            engine: &ExecutionEngine<S>,
-        ) -> bool {
-            match expr {
-                E::Identifier(name) => {
-                    // Qualified refs (`t.col` / `alias.col`) resolve via
-                    // the bare column part; bare refs resolve directly.
-                    let bare = name.rsplit('.').next().unwrap_or(name);
-                    !inner_cols.contains(&name.to_lowercase())
-                        && !inner_cols.contains(&bare.to_lowercase())
-                }
-                E::BinaryOp(l, _, r) => {
-                    expr_uses_outer_ref(l, inner_cols, engine)
-                        || expr_uses_outer_ref(r, inner_cols, engine)
-                }
-                E::UnaryOp(_, inner) => expr_uses_outer_ref(inner, inner_cols, engine),
-                E::IsNull(inner) | E::IsNotNull(inner) => {
-                    expr_uses_outer_ref(inner, inner_cols, engine)
-                }
-                E::InList(l, vs) | E::NotInList(l, vs) => {
-                    expr_uses_outer_ref(l, inner_cols, engine)
-                        || vs
-                            .iter()
-                            .any(|v| expr_uses_outer_ref(v, inner_cols, engine))
-                }
-                E::In(l, sub) | E::NotIn(l, sub) => {
-                    expr_uses_outer_ref(l, inner_cols, engine) || subq_uses_outer_ref(engine, sub)
-                }
-                E::Exists(sub) | E::NotExists(sub) => subq_uses_outer_ref(engine, sub),
-                E::Subquery(sub) => subq_uses_outer_ref(engine, sub),
-                E::Like(l, p, _) | E::NotLike(l, p, _) => {
-                    expr_uses_outer_ref(l, inner_cols, engine)
-                        || expr_uses_outer_ref(p, inner_cols, engine)
-                }
-                E::Between(l, lo, hi) | E::NotBetween(l, lo, hi) => {
-                    expr_uses_outer_ref(l, inner_cols, engine)
-                        || expr_uses_outer_ref(lo, inner_cols, engine)
-                        || expr_uses_outer_ref(hi, inner_cols, engine)
-                }
-                E::CaseWhen(whens, else_expr) => {
-                    whens.iter().any(|when| {
-                        expr_uses_outer_ref(&when.condition, inner_cols, engine)
-                            || expr_uses_outer_ref(&when.result, inner_cols, engine)
-                    }) || else_expr
-                        .as_ref()
-                        .is_some_and(|e| expr_uses_outer_ref(e, inner_cols, engine))
-                }
-                E::FunctionCall(_, args) => args
-                    .iter()
-                    .any(|a| expr_uses_outer_ref(a, inner_cols, engine)),
-                _ => false,
-            }
-        }
-
         // Recursive rewriter.
         fn rewrite<S: sqlrustgo_storage::StorageEngine + 'static>(
             engine: &ExecutionEngine<S>,
@@ -9080,3 +9109,140 @@ mod chain_builder_tests {
         );
     }
 }
+
+use sqlrustgo_parser::Expression as E;
+
+    fn has_non_correlated_in_subq<S: sqlrustgo_storage::StorageEngine + 'static>(
+        engine: &ExecutionEngine<S>,
+        expr: &Expression,
+    ) -> bool {
+        match expr {
+            E::In(_, subq) | E::NotIn(_, subq) => {
+                // Treat as non-correlated if the subquery does
+                // not reference outer columns (checked against the
+                // real inner-table schema — Issue #4568).
+                !subq_uses_outer_ref(engine, subq)
+            }
+            E::BinaryOp(l, _, r) => {
+                has_non_correlated_in_subq(engine, l) || has_non_correlated_in_subq(engine, r)
+            }
+            E::UnaryOp(_, inner) => has_non_correlated_in_subq(engine, inner),
+            E::IsNull(inner) | E::IsNotNull(inner) => has_non_correlated_in_subq(engine, inner),
+            E::InList(l, vs) | E::NotInList(l, vs) => {
+                has_non_correlated_in_subq(engine, l)
+                    || vs.iter().any(|v| has_non_correlated_in_subq(engine, v))
+            }
+            E::FunctionCall(_, args) => {
+                args.iter().any(|a| has_non_correlated_in_subq(engine, a))
+            }
+            _ => false,
+        }
+    }
+
+    fn subq_uses_outer_ref<S: sqlrustgo_storage::StorageEngine + 'static>(
+        engine: &ExecutionEngine<S>,
+        subq: &sqlrustgo_parser::SelectStatement,
+    ) -> bool {
+        if subq.where_clause.is_none() && subq.join_clause.is_empty() {
+            return false;
+        }
+        let inner_cols = collect_inner_columns(engine, subq);
+        let mut uses = false;
+        if let Some(w) = subq.where_clause.as_ref() {
+            uses |= expr_uses_outer_ref(w, &inner_cols, engine);
+        }
+        for j in &subq.join_clause {
+            uses |= expr_uses_outer_ref(&j.on_clause, &inner_cols, engine);
+        }
+        uses
+    }
+
+    /// All identifiers that legitimately resolve inside `subq`: the
+    /// FROM table's catalog columns (bare name, `|alias` suffix
+    /// stripped), the projection names, and each JOIN right table's
+    /// columns. Matching is case-insensitive.
+    fn collect_inner_columns<S: sqlrustgo_storage::StorageEngine + 'static>(
+        engine: &ExecutionEngine<S>,
+        subq: &sqlrustgo_parser::SelectStatement,
+    ) -> std::collections::HashSet<String> {
+        let mut cols: std::collections::HashSet<String> =
+            subq.columns.iter().map(|c| c.name.to_lowercase()).collect();
+        // JOIN right tables contribute their own columns too.
+        let mut tables: Vec<String> =
+            subq.join_clause.iter().map(|j| j.table.clone()).collect();
+        if !subq.table.is_empty() {
+            tables.push(subq.table.clone());
+        }
+        let storage = engine.storage.read();
+        for t in tables {
+            let bare = t.split_once('|').map(|(b, _)| b).unwrap_or(&t);
+            if bare.is_empty() {
+                continue;
+            }
+            if let Ok(info) = storage.get_table_info(bare) {
+                for c in &info.columns {
+                    cols.insert(c.name.to_lowercase());
+                }
+            }
+        }
+        cols
+    }
+
+    /// True if `expr` contains an Identifier (or nested subquery) that
+    /// does not resolve against `inner_cols`, i.e. references the
+    /// outer query row.
+    fn expr_uses_outer_ref<S: sqlrustgo_storage::StorageEngine + 'static>(
+        expr: &Expression,
+        inner_cols: &std::collections::HashSet<String>,
+        engine: &ExecutionEngine<S>,
+    ) -> bool {
+        match expr {
+            E::Identifier(name) => {
+                // Qualified refs (`t.col` / `alias.col`) resolve via
+                // the bare column part; bare refs resolve directly.
+                let bare = name.rsplit('.').next().unwrap_or(name);
+                !inner_cols.contains(&name.to_lowercase())
+                    && !inner_cols.contains(&bare.to_lowercase())
+            }
+            E::BinaryOp(l, _, r) => {
+                expr_uses_outer_ref(l, inner_cols, engine)
+                    || expr_uses_outer_ref(r, inner_cols, engine)
+            }
+            E::UnaryOp(_, inner) => expr_uses_outer_ref(inner, inner_cols, engine),
+            E::IsNull(inner) | E::IsNotNull(inner) => {
+                expr_uses_outer_ref(inner, inner_cols, engine)
+            }
+            E::InList(l, vs) | E::NotInList(l, vs) => {
+                expr_uses_outer_ref(l, inner_cols, engine)
+                    || vs
+                        .iter()
+                        .any(|v| expr_uses_outer_ref(v, inner_cols, engine))
+            }
+            E::In(l, sub) | E::NotIn(l, sub) => {
+                expr_uses_outer_ref(l, inner_cols, engine) || subq_uses_outer_ref(engine, sub)
+            }
+            E::Exists(sub) | E::NotExists(sub) => subq_uses_outer_ref(engine, sub),
+            E::Subquery(sub) => subq_uses_outer_ref(engine, sub),
+            E::Like(l, p, _) | E::NotLike(l, p, _) => {
+                expr_uses_outer_ref(l, inner_cols, engine)
+                    || expr_uses_outer_ref(p, inner_cols, engine)
+            }
+            E::Between(l, lo, hi) | E::NotBetween(l, lo, hi) => {
+                expr_uses_outer_ref(l, inner_cols, engine)
+                    || expr_uses_outer_ref(lo, inner_cols, engine)
+                    || expr_uses_outer_ref(hi, inner_cols, engine)
+            }
+            E::CaseWhen(whens, else_expr) => {
+                whens.iter().any(|when| {
+                    expr_uses_outer_ref(&when.condition, inner_cols, engine)
+                        || expr_uses_outer_ref(&when.result, inner_cols, engine)
+                }) || else_expr
+                    .as_ref()
+                    .is_some_and(|e| expr_uses_outer_ref(e, inner_cols, engine))
+            }
+            E::FunctionCall(_, args) => args
+                .iter()
+                .any(|a| expr_uses_outer_ref(a, inner_cols, engine)),
+            _ => false,
+        }
+    }
