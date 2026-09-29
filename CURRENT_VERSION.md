@@ -1,13 +1,9 @@
-# 当前版本状态
-
-> **provenance:** generated_at=2026-09-29, branch=develop/v4.1.0,
-> commit=`c1a73a5320` (tag v4.1.0-alpha1), source_repo=openclaw/sqlrustgo,
-> policy=Anti-Fabrication-Policy-v1.0
-
-## 最近已发布
-
 - **v4.1.0-alpha1**（2026-09-29；8/8 alpha quality gates PASS；tag `v4.1.0-alpha1` @ HEAD `c1a73a5320`）
 - **v4.0.0 GA CONDITIONAL PASS**（2026-09-20 self-claim；HEAD `2e1f9bd44d`；main + release/v4.0.0 已发布到 5 远端）
+> ⚠️ `docs/releases/v4.0.0/STAGE.yaml` 的 `current_stage` 仍写 `DRAFT`——该文件最后更新于
+> 2026-09-18，早于 2026-09-19 的 GA tag 与 main promote，尚未回填。事实以 tag 与
+> GA_GATE_REPORT 为准。
+
 - **v3.12.0 GA**（2026-09-08；8/8 GA gates PASS；tag `v3.12.0-ga` @ `355b5a3837`）
 - **v3.11.0 GA**（2026-08-09；6/6 GA gates PASS；tag `v3.11.0-ga` @ `83c623835`）
 
