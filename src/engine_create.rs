@@ -227,6 +227,33 @@ impl<S: StorageEngine + 'static> ExecutionEngine<S> {
                 auto_increment: c.auto_increment,
             })
             .collect();
+        // V313-#4850: propagate table-level `PRIMARY KEY (col, ...)` to
+        // column-level `primary_key = true`. Previously only the column-level
+        // `col TYPE PRIMARY KEY` form set the flag, so `PRAGMA table_info`
+        // reported `pk=0` for tables declared with a table constraint.
+        let pk_col_names: std::collections::HashSet<&str> = create
+            .constraints
+            .iter()
+            .filter_map(|c| match c {
+                sqlrustgo_parser::TableConstraint::PrimaryKey { columns, .. } => Some(
+                    columns
+                        .iter()
+                        .map(|s| s.as_str())
+                        .collect::<std::collections::HashSet<_>>(),
+                ),
+                _ => None,
+            })
+            .flatten()
+            .collect();
+        let columns: Vec<ColumnDefinition> = columns
+            .into_iter()
+            .map(|mut c| {
+                if pk_col_names.contains(c.name.as_str()) {
+                    c.primary_key = true;
+                }
+                c
+            })
+            .collect();
         // V312-26 / #4077: collect per-column collation (each column
         // carries its own `collation` field in HEAD's CreateTable AST)
         // into a name→collation map for the executor to consult during

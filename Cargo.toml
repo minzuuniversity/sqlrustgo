@@ -1738,3 +1738,14 @@ path = "tests/integration/compat/differential_corpus_test.rs"
 [[test]]
 name = "semantic_kernel_test"
 path = "tests/integration/compat/semantic_kernel_test.rs"
+
+
+# PRAGMA table_info + SQL three-valued logic suites
+[[test]]
+name = "operators_pragma_table_info"
+path = "tests/operators/pragma_table_info.rs"
+
+[[test]]
+name = "operators_three_valued_logic"
+path = "tests/operators/three_valued_logic.rs"
+

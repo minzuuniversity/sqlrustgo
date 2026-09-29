@@ -359,6 +359,8 @@ impl<S: StorageEngine + 'static> ExecutionEngine<S> {
             // real catalog/index maintenance without an AST change.
             Statement::Vacuum(_) => Ok(ExecutorResult::empty()),
             Statement::Reindex(_) => Ok(ExecutorResult::empty()),
+            // SQLite-style schema introspection (`PRAGMA table_info(...)`).
+            Statement::Pragma(pragma) => self.execute_pragma(&pragma),
             Statement::Union(ref union_stmt) => self.execute_union(union_stmt),
             Statement::Intersect(ref stmt) => self.execute_intersect(stmt),
             Statement::Except(ref stmt) => self.execute_except(stmt),
