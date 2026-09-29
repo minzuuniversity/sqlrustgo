@@ -13,8 +13,8 @@
 //! 3. Evaluate RETURN projection per row, applying DISTINCT / SKIP / LIMIT.
 
 use super::ast::{
-    BinaryOp, Clause, EdgeDirection, EdgePattern, Expr, LogicalOp, NodePattern, Pattern,
-    Query, ReturnClause,
+    BinaryOp, Clause, EdgeDirection, EdgePattern, Expr, LogicalOp, NodePattern, Pattern, Query,
+    ReturnClause,
 };
 use super::ExecutionResult;
 use crate::store::{Edge, GraphStore, Node};

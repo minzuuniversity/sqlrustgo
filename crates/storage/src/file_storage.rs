@@ -3196,9 +3196,11 @@ mod tests {
 
 impl FileStorage {
     fn insert_direct(&self, table: &str, records: Vec<Record>) -> SqlResult<()> {
-        let snap: Option<(Vec<ColumnDefinition>, u32, usize)> =
-            Self::with_write_lock(self.as_mut_self(), |s| -> Option<(Vec<ColumnDefinition>, u32, usize)> {
-                #[allow(unused_assignments)] // start_row_id is set inside the if-let branch and consumed via snap
+        let snap: Option<(Vec<ColumnDefinition>, u32, usize)> = Self::with_write_lock(
+            self.as_mut_self(),
+            |s| -> Option<(Vec<ColumnDefinition>, u32, usize)> {
+                #[allow(unused_assignments)]
+                // start_row_id is set inside the if-let branch and consumed via snap
                 let mut start_row_id: u32 = 0;
                 let row_count = records.len();
                 let mut result: Option<(Vec<ColumnDefinition>, u32, usize)> = None;
@@ -3212,7 +3214,8 @@ impl FileStorage {
                     }
                 }
                 result
-            });
+            },
+        );
         if let Some((columns, start_row_id, _row_count)) = snap {
             // V400-PERF-FIX: pass &records directly so the index
             // helper reads PK values from the input rather than
@@ -3224,31 +3227,30 @@ impl FileStorage {
     }
 
     fn insert_buffered(&self, table: &str, records: Vec<Record>) -> SqlResult<()> {
-        let snap: Option<(usize, usize, Vec<ColumnDefinition>)> =
-            Self::with_write_lock(
-                self.as_mut_self(),
-                |s| -> Option<(usize, usize, Vec<ColumnDefinition>)> {
-                    let buffered = s.insert_buffer.entry(table.to_string()).or_default();
-                    buffered.extend(records.iter().cloned());
+        let snap: Option<(usize, usize, Vec<ColumnDefinition>)> = Self::with_write_lock(
+            self.as_mut_self(),
+            |s| -> Option<(usize, usize, Vec<ColumnDefinition>)> {
+                let buffered = s.insert_buffer.entry(table.to_string()).or_default();
+                buffered.extend(records.iter().cloned());
 
-                    let mut result: Option<(usize, usize, Vec<ColumnDefinition>)> = None;
-                    if buffered.len() >= s.buffer_threshold {
-                        if let Some(records) = s.insert_buffer.remove(table) {
-                            let row_count = records.len();
-                            if let Some(ref mut data) = s.tables.get_mut(table) {
-                                let start_row_id = data.rows.len();
-                                data.rows.extend(records.iter().cloned());
-                                let table_data = data.clone();
-                                let cols = data.info.columns.clone();
-                                if s.save_table(table, &table_data).is_ok() {
-                                    result = Some((start_row_id, row_count, cols));
-                                }
+                let mut result: Option<(usize, usize, Vec<ColumnDefinition>)> = None;
+                if buffered.len() >= s.buffer_threshold {
+                    if let Some(records) = s.insert_buffer.remove(table) {
+                        let row_count = records.len();
+                        if let Some(ref mut data) = s.tables.get_mut(table) {
+                            let start_row_id = data.rows.len();
+                            data.rows.extend(records.iter().cloned());
+                            let table_data = data.clone();
+                            let cols = data.info.columns.clone();
+                            if s.save_table(table, &table_data).is_ok() {
+                                result = Some((start_row_id, row_count, cols));
                             }
                         }
                     }
-                    result
-                },
-            );
+                }
+                result
+            },
+        );
         if let Some((start_row_id, _row_count, columns)) = snap {
             // V400-PERF-FIX: pass &records directly. The closure
             // returns the columns/start_row_id but the records
@@ -3266,39 +3268,32 @@ impl FileStorage {
     }
 
     fn flush_buffer(&self, table: &str) -> SqlResult<()> {
-        let snap: Option<(usize, usize, Vec<ColumnDefinition>)> =
-            Self::with_write_lock(
-                self.as_mut_self(),
-                |s| -> Option<(usize, usize, Vec<ColumnDefinition>)> {
-                    let mut result: Option<(usize, usize, Vec<ColumnDefinition>)> = None;
-                    if let Some(records) = s.insert_buffer.remove(table) {
-                        let row_count = records.len();
-                        if let Some(ref mut data) = s.tables.get_mut(table) {
-                            let start_row_id = data.rows.len();
-                            data.rows.extend(records);
-                            let table_data = data.clone();
-                            let cols = data.info.columns.clone();
-                            if s.save_table(table, &table_data).is_ok() {
-                                result = Some((start_row_id, row_count, cols));
-                            }
+        let snap: Option<(usize, usize, Vec<ColumnDefinition>)> = Self::with_write_lock(
+            self.as_mut_self(),
+            |s| -> Option<(usize, usize, Vec<ColumnDefinition>)> {
+                let mut result: Option<(usize, usize, Vec<ColumnDefinition>)> = None;
+                if let Some(records) = s.insert_buffer.remove(table) {
+                    let row_count = records.len();
+                    if let Some(ref mut data) = s.tables.get_mut(table) {
+                        let start_row_id = data.rows.len();
+                        data.rows.extend(records);
+                        let table_data = data.clone();
+                        let cols = data.info.columns.clone();
+                        if s.save_table(table, &table_data).is_ok() {
+                            result = Some((start_row_id, row_count, cols));
                         }
                     }
-                    result
-                },
-            );
+                }
+                result
+            },
+        );
         if let Some((start_row_id, row_count, columns)) = snap {
             // V400-PERF-FIX: flush_buffer has no caller-side records
             // (they were consumed by the closure via
             // `s.insert_buffer.remove(table)`). Use a separate
             // helper that reads ONLY the [start_row_id, +row_count)
             // window of data.rows — O(row_count) not O(table_size).
-            Self::update_pk_index_window(
-                self,
-                table,
-                &columns,
-                start_row_id,
-                row_count,
-            );
+            Self::update_pk_index_window(self, table, &columns, start_row_id, row_count);
         }
         Ok(())
     }
@@ -4565,7 +4560,6 @@ impl StorageEngine for FileStorage {
     fn as_any(&self) -> &dyn Any {
         self
     }
-
 
     fn gc(&self, _gc_lag: u64) -> usize {
         0

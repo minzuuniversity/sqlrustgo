@@ -478,7 +478,6 @@ impl StorageEngine for AppendOnlyStorage {
         self
     }
 
-
     fn gc(&self, _gc_lag: u64) -> usize {
         0
     }

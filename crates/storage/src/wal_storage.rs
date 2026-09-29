@@ -1625,12 +1625,12 @@ mod tests {
             fn as_any(&self) -> &dyn std::any::Any {
                 self
             }
-        
-    fn gc(&self, _gc_lag: u64) -> usize {
-        0
-    }
 
-    fn as_any_mut(&mut self) -> &mut dyn std::any::Any {
+            fn gc(&self, _gc_lag: u64) -> usize {
+                0
+            }
+
+            fn as_any_mut(&mut self) -> &mut dyn std::any::Any {
                 self
             }
         }

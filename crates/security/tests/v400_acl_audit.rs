@@ -74,8 +74,15 @@ fn alcoa_attribute_count() {
     // ALCOA+ has 9 attributes: Attributable, Legible, Contemporaneous,
     // Original, Accurate, Complete, Consistent, Enduring, Available
     let attributes = vec![
-        "Attributable", "Legible", "Contemporaneous", "Original",
-        "Accurate", "Complete", "Consistent", "Enduring", "Available",
+        "Attributable",
+        "Legible",
+        "Contemporaneous",
+        "Original",
+        "Accurate",
+        "Complete",
+        "Consistent",
+        "Enduring",
+        "Available",
     ];
     assert_eq!(attributes.len(), 9);
 }

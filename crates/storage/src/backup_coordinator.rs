@@ -148,8 +148,7 @@ impl BackupCoordinator {
         // Write manifest last
         let manifest_json = serde_json::to_string_pretty(&manifest)
             .map_err(|e| BackupError::Format(e.to_string()))?;
-        fs::write(dest_dir.join("manifest.json"), manifest_json)
-            .map_err(BackupError::Io)?;
+        fs::write(dest_dir.join("manifest.json"), manifest_json).map_err(BackupError::Io)?;
 
         Ok(manifest)
     }
@@ -164,12 +163,7 @@ impl BackupCoordinator {
 
         // Verify per-file checksums
         let mut combined = String::new();
-        let expected_files = [
-            "sql.json",
-            "vectors.json",
-            "graph.json",
-            "audit.jsonl",
-        ];
+        let expected_files = ["sql.json", "vectors.json", "graph.json", "audit.jsonl"];
         for filename in expected_files {
             let path = src_dir.join(filename);
             if !path.exists() {
@@ -253,7 +247,11 @@ impl std::fmt::Display for BackupError {
             BackupError::Io(e) => write!(f, "io error: {}", e),
             BackupError::Format(e) => write!(f, "format error: {}", e),
             BackupError::ChecksumMismatch { expected, computed } => {
-                write!(f, "checksum mismatch: expected {}, got {}", expected, computed)
+                write!(
+                    f,
+                    "checksum mismatch: expected {}, got {}",
+                    expected, computed
+                )
             }
             BackupError::Sql(e) => write!(f, "sql dump error: {}", e),
             BackupError::Vector(e) => write!(f, "vector dump error: {}", e),
@@ -337,8 +335,7 @@ impl SqlDumpTarget for InMemorySqlTarget {
     }
     fn restore_sql(&self, json_content: &str) -> Result<(), BackupError> {
         let new_tables: HashMap<String, Vec<Vec<serde_json::Value>>> =
-            serde_json::from_str(json_content)
-                .map_err(|e| BackupError::Format(e.to_string()))?;
+            serde_json::from_str(json_content).map_err(|e| BackupError::Format(e.to_string()))?;
         *self.tables.lock() = new_tables;
         Ok(())
     }
@@ -358,8 +355,8 @@ impl VectorDumpTarget for InMemoryVectorTarget {
         Ok((records.len(), content))
     }
     fn restore_vector(&self, json_content: &str) -> Result<(), BackupError> {
-        let new_records: Vec<(String, String, Vec<f32>)> = serde_json::from_str(json_content)
-            .map_err(|e| BackupError::Format(e.to_string()))?;
+        let new_records: Vec<(String, String, Vec<f32>)> =
+            serde_json::from_str(json_content).map_err(|e| BackupError::Format(e.to_string()))?;
         *self.records.lock() = new_records;
         Ok(())
     }
@@ -380,19 +377,23 @@ impl GraphDumpTarget for InMemoryGraphTarget {
             "nodes": nodes,
             "edges": edges,
         });
-        let content = serde_json::to_string_pretty(&dump)
-            .map_err(|e| BackupError::Format(e.to_string()))?;
+        let content =
+            serde_json::to_string_pretty(&dump).map_err(|e| BackupError::Format(e.to_string()))?;
         Ok((nodes.len(), edges.len(), content))
     }
     fn restore_graph(&self, json_content: &str) -> Result<(), BackupError> {
-        let dump: serde_json::Value = serde_json::from_str(json_content)
-            .map_err(|e| BackupError::Format(e.to_string()))?;
+        let dump: serde_json::Value =
+            serde_json::from_str(json_content).map_err(|e| BackupError::Format(e.to_string()))?;
         let nodes: Vec<(String, String)> = serde_json::from_value(
-            dump.get("nodes").cloned().unwrap_or(serde_json::Value::Array(vec![])),
+            dump.get("nodes")
+                .cloned()
+                .unwrap_or(serde_json::Value::Array(vec![])),
         )
         .map_err(|e| BackupError::Format(e.to_string()))?;
         let edges: Vec<(String, String, String, String)> = serde_json::from_value(
-            dump.get("edges").cloned().unwrap_or(serde_json::Value::Array(vec![])),
+            dump.get("edges")
+                .cloned()
+                .unwrap_or(serde_json::Value::Array(vec![])),
         )
         .map_err(|e| BackupError::Format(e.to_string()))?;
         *self.nodes.lock() = nodes;
@@ -475,9 +476,15 @@ mod tests {
             "users".to_string(),
             vec![vec![serde_json::json!(1), serde_json::json!("alice")]],
         );
-        vector.records.lock().push(("users".into(), "embed".into(), vec![0.1, 0.2]));
+        vector
+            .records
+            .lock()
+            .push(("users".into(), "embed".into(), vec![0.1, 0.2]));
         graph.nodes.lock().push(("n1".into(), "Person".into()));
-        graph.edges.lock().push(("e1".into(), "n1".into(), "n2".into(), "KNOWS".into()));
+        graph
+            .edges
+            .lock()
+            .push(("e1".into(), "n1".into(), "n2".into(), "KNOWS".into()));
         audit.events.lock().push("login alice".into());
 
         let m = coord.backup(tmp.path()).unwrap();
@@ -493,8 +500,13 @@ mod tests {
     fn restore_round_trip() {
         let tmp = tempdir().unwrap();
         let (coord, sql, vector, graph, audit) = make_coordinator();
-        sql.tables.lock().insert("t".into(), vec![vec![serde_json::json!(1)]]);
-        vector.records.lock().push(("t".into(), "c".into(), vec![1.0]));
+        sql.tables
+            .lock()
+            .insert("t".into(), vec![vec![serde_json::json!(1)]]);
+        vector
+            .records
+            .lock()
+            .push(("t".into(), "c".into(), vec![1.0]));
         graph.nodes.lock().push(("n1".into(), "L".into()));
         audit.events.lock().push("e1".into());
 
@@ -521,7 +533,9 @@ mod tests {
     fn checksum_mismatch_detected() {
         let tmp = tempdir().unwrap();
         let (coord, sql, _, _, _) = make_coordinator();
-        sql.tables.lock().insert("t".into(), vec![vec![serde_json::json!(1)]]);
+        sql.tables
+            .lock()
+            .insert("t".into(), vec![vec![serde_json::json!(1)]]);
         let _m = coord.backup(tmp.path()).unwrap();
         // Tamper with sql.json
         let sql_path = tmp.path().join("sql.json");
@@ -534,7 +548,9 @@ mod tests {
     fn backup_with_only_sql() {
         let tmp = tempdir().unwrap();
         let sql = InMemorySqlTarget::default();
-        sql.tables.lock().insert("a".into(), vec![vec![serde_json::json!(1)]]);
+        sql.tables
+            .lock()
+            .insert("a".into(), vec![vec![serde_json::json!(1)]]);
         let coord = BackupCoordinator::new("partial").with_sql(Arc::new(sql));
         let m = coord.backup(tmp.path()).unwrap();
         assert_eq!(m.counts.sql_tables, 1);
@@ -549,7 +565,9 @@ mod tests {
         // manifest and report counts. (Targets are optional.)
         let tmp = tempdir().unwrap();
         let (coord_with, sql, _, _, _) = make_coordinator();
-        sql.tables.lock().insert("a".into(), vec![vec![serde_json::json!(1)]]);
+        sql.tables
+            .lock()
+            .insert("a".into(), vec![vec![serde_json::json!(1)]]);
         let _m = coord_with.backup(tmp.path()).unwrap();
 
         let coord_empty = BackupCoordinator::new("restore_only");

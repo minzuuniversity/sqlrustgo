@@ -724,8 +724,14 @@ mod tests {
                 })
             })
             .collect();
-        assert!(pks.contains(&1), "PK=1 should still be visible (inner has the row)");
-        assert!(pks.contains(&3), "PK=3 should still be visible (inner has the row)");
+        assert!(
+            pks.contains(&1),
+            "PK=1 should still be visible (inner has the row)"
+        );
+        assert!(
+            pks.contains(&3),
+            "PK=3 should still be visible (inner has the row)"
+        );
         assert!(!pks.contains(&2), "PK=2 should be hidden by tombstone");
     }
 

@@ -94,10 +94,7 @@ impl MvccGCRunner {
     /// `storage` is the server's `Arc<RwLock<BoxStorageEngine>>`. The
     /// GC thread takes the read lock briefly to call `gc()`, which is
     /// safe to do concurrently with normal read/write traffic.
-    pub fn start(
-        storage: Arc<RwLock<BoxStorageEngine>>,
-        config: MvccGCRunnerConfig,
-    ) -> Self {
+    pub fn start(storage: Arc<RwLock<BoxStorageEngine>>, config: MvccGCRunnerConfig) -> Self {
         let stop = Arc::new(AtomicBool::new(false));
         let stop_clone = stop.clone();
         let handle = thread::Builder::new()
@@ -255,7 +252,7 @@ mod tests {
             );
             std::thread::sleep(Duration::from_millis(200));
         } // _gc dropped here
-        // After drop, the thread should have exited without deadlock.
+          // After drop, the thread should have exited without deadlock.
         std::thread::sleep(Duration::from_millis(100));
     }
 

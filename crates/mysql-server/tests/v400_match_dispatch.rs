@@ -58,7 +58,9 @@ fn bare_match_uppercase() {
 
 #[test]
 fn bare_match_with_predicate() {
-    assert!(is_cypher_dispatch("MATCH (n:Person) WHERE n.age > 25 RETURN n"));
+    assert!(is_cypher_dispatch(
+        "MATCH (n:Person) WHERE n.age > 25 RETURN n"
+    ));
 }
 
 #[test]
@@ -102,12 +104,16 @@ fn graph_match_mixed_case() {
 
 #[test]
 fn graph_match_with_predicate() {
-    assert!(is_cypher_dispatch("GRAPH MATCH (n:Person) WHERE n.age > 25 RETURN n"));
+    assert!(is_cypher_dispatch(
+        "GRAPH MATCH (n:Person) WHERE n.age > 25 RETURN n"
+    ));
 }
 
 #[test]
 fn graph_match_with_edge() {
-    assert!(is_cypher_dispatch("GRAPH MATCH (n)-[r:KNOWS]->(m) RETURN n, r, m"));
+    assert!(is_cypher_dispatch(
+        "GRAPH MATCH (n)-[r:KNOWS]->(m) RETURN n, r, m"
+    ));
 }
 
 // ===========================================================================

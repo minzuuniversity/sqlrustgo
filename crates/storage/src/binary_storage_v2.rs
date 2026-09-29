@@ -563,7 +563,6 @@ impl StorageEngine for BinaryTableStorageV2 {
         self
     }
 
-
     fn gc(&self, _gc_lag: u64) -> usize {
         0
     }
