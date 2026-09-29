@@ -298,25 +298,78 @@ fn t_drop_database_rejected() {
     let _ = parse("DROP DATABASE mydb");
 }
 
-// --- Window function ROWS/RANGE clauses (not supported by parser yet — reject) ---
+// --- Window function ROWS/RANGE clauses ---
+//
+// These used to assert the parser *rejects* the clause ("not yet
+// supported"). The parser now accepts it and the executor honours it —
+// `src/expr_utils.rs::compute_window` reads `window_spec.frame` and
+// `expr_utils::compute_frame_local` turns it into the row set, so
+// `ROWS BETWEEN 1 PRECEDING AND CURRENT ROW` really is a sliding frame
+// distinct from the default cumulative one. These assert the AST shape
+// instead; the execution semantics are covered by the operator suite.
 
+// No frame clause => `frame: None`, and the executor picks the default
+// (RANGE UNBOUNDED PRECEDING .. CURRENT ROW when ORDER BY is present).
 #[test]
-fn t_window_rows_clause_rejected() {
-    let result = parse("SELECT a, SUM(b) OVER (PARTITION BY c ORDER BY d ROWS BETWEEN UNBOUNDED PRECEDING AND CURRENT ROW) FROM t");
-    assert!(result.is_err(), "Window ROWS clause not yet supported");
-}
-#[test]
-fn t_window_range_clause_rejected() {
-    let result = parse("SELECT a, SUM(b) OVER (PARTITION BY c ORDER BY d RANGE BETWEEN UNBOUNDED PRECEDING AND CURRENT ROW) FROM t");
-    assert!(result.is_err(), "Window RANGE clause not yet supported");
-}
-#[test]
-fn t_window_rows_following_rejected() {
-    let result = parse("SELECT a, SUM(b) OVER (PARTITION BY c ORDER BY d ROWS BETWEEN CURRENT ROW AND 1 FOLLOWING) FROM t");
+fn t_window_default_has_no_frame_clause() {
+    let result = parse("SELECT SUM(b) OVER (ORDER BY d) FROM t");
+    let stmt = result.expect("window call without a frame clause must parse");
+    let sqlrustgo_parser::Statement::Select(sel) = stmt else {
+        panic!("expected a SELECT");
+    };
+    let col = &sel.columns[0];
+    let Some(sqlrustgo_parser::Expression::WindowCall(wc)) = &col.expression else {
+        panic!("expected a window call, got {:?}", col.expression);
+    };
     assert!(
-        result.is_err(),
-        "Window ROWS with FOLLOWING not yet supported"
+        wc.window_spec.frame.is_none(),
+        "no frame clause in the query, so frame must be None"
     );
+}
+
+// Explicit ROWS frame => parsed into the three parts, not dropped.
+#[test]
+fn t_window_rows_frame_parsed() {
+    let result = parse(
+        "SELECT SUM(b) OVER (ORDER BY d ROWS BETWEEN UNBOUNDED PRECEDING AND CURRENT ROW) FROM t",
+    );
+    let stmt = result.expect("ROWS BETWEEN frame must parse");
+    let sqlrustgo_parser::Statement::Select(sel) = stmt else {
+        panic!("expected a SELECT");
+    };
+    let col = &sel.columns[0];
+    let Some(sqlrustgo_parser::Expression::WindowCall(wc)) = &col.expression else {
+        panic!("expected a window call, got {:?}", col.expression);
+    };
+    use sqlrustgo_parser::parser::{FrameBound, FrameMode};
+    let frame = wc
+        .window_spec
+        .frame
+        .as_ref()
+        .expect("an explicit frame clause must be recorded");
+    assert_eq!(frame.mode, FrameMode::Rows);
+    assert_eq!(frame.start, FrameBound::UnboundedPreceding);
+    assert_eq!(frame.end, FrameBound::CurrentRow);
+}
+
+// A PRECEDING offset is a distinct frame, not the same as the default.
+#[test]
+fn t_window_rows_preceding_offset_parsed() {
+    let result = parse(
+        "SELECT SUM(b) OVER (ORDER BY d ROWS BETWEEN 2 PRECEDING AND 1 FOLLOWING) FROM t",
+    );
+    let stmt = result.expect("offset frame must parse");
+    let sqlrustgo_parser::Statement::Select(sel) = stmt else {
+        panic!("expected a SELECT");
+    };
+    let col = &sel.columns[0];
+    let Some(sqlrustgo_parser::Expression::WindowCall(wc)) = &col.expression else {
+        panic!("expected a window call, got {:?}", col.expression);
+    };
+    use sqlrustgo_parser::parser::FrameBound;
+    let frame = wc.window_spec.frame.as_ref().expect("frame recorded");
+    assert_eq!(frame.start, FrameBound::Preceding(2));
+    assert_eq!(frame.end, FrameBound::Following(1));
 }
 
 // --- NULLS FIRST / NULLS LAST in ORDER BY ---
