@@ -12,7 +12,9 @@ use sqlrustgo_transaction::{IsolationLevel, ModelKind, TransactionManager};
 #[test]
 fn sql_only_write_registered() {
     let mut mgr = TransactionManager::new();
-    let tx = mgr.begin_transaction(IsolationLevel::SnapshotIsolation).unwrap();
+    let tx = mgr
+        .begin_transaction(IsolationLevel::SnapshotIsolation)
+        .unwrap();
     mgr.tx_register_write(tx, ModelKind::Sql, "INSERT INTO t VALUES (1)");
     assert_eq!(mgr.cross_model_write_count(tx, ModelKind::Sql), 1);
     mgr.commit(tx).unwrap();
@@ -21,7 +23,9 @@ fn sql_only_write_registered() {
 #[test]
 fn vector_only_write_registered() {
     let mut mgr = TransactionManager::new();
-    let tx = mgr.begin_transaction(IsolationLevel::SnapshotIsolation).unwrap();
+    let tx = mgr
+        .begin_transaction(IsolationLevel::SnapshotIsolation)
+        .unwrap();
     mgr.tx_register_write(tx, ModelKind::Vector, "INSERT INTO vectors VALUES (...)");
     assert_eq!(mgr.cross_model_write_count(tx, ModelKind::Vector), 1);
     assert_eq!(mgr.cross_model_write_count(tx, ModelKind::Sql), 0);
@@ -31,7 +35,9 @@ fn vector_only_write_registered() {
 #[test]
 fn graph_only_write_registered() {
     let mut mgr = TransactionManager::new();
-    let tx = mgr.begin_transaction(IsolationLevel::SnapshotIsolation).unwrap();
+    let tx = mgr
+        .begin_transaction(IsolationLevel::SnapshotIsolation)
+        .unwrap();
     mgr.tx_register_write(tx, ModelKind::Graph, "CREATE (n:Person {name: 'Alice'})");
     assert_eq!(mgr.cross_model_write_count(tx, ModelKind::Graph), 1);
     mgr.commit(tx).unwrap();
@@ -40,7 +46,9 @@ fn graph_only_write_registered() {
 #[test]
 fn audit_only_write_registered() {
     let mut mgr = TransactionManager::new();
-    let tx = mgr.begin_transaction(IsolationLevel::SnapshotIsolation).unwrap();
+    let tx = mgr
+        .begin_transaction(IsolationLevel::SnapshotIsolation)
+        .unwrap();
     mgr.tx_register_write(tx, ModelKind::Audit, "AUDIT_EVENT: login.user=alice");
     assert_eq!(mgr.cross_model_write_count(tx, ModelKind::Audit), 1);
     mgr.commit(tx).unwrap();
@@ -53,7 +61,9 @@ fn audit_only_write_registered() {
 #[test]
 fn sql_plus_vector_cross_model_commit() {
     let mut mgr = TransactionManager::new();
-    let tx = mgr.begin_transaction(IsolationLevel::SnapshotIsolation).unwrap();
+    let tx = mgr
+        .begin_transaction(IsolationLevel::SnapshotIsolation)
+        .unwrap();
     mgr.tx_register_write(tx, ModelKind::Sql, "INSERT INTO t VALUES (1)");
     mgr.tx_register_write(tx, ModelKind::Vector, "INSERT INTO vectors VALUES (...)");
     let writes = mgr.cross_model_writes(tx);
@@ -70,7 +80,9 @@ fn sql_plus_vector_cross_model_commit() {
 #[test]
 fn all_four_models_cross_model_commit() {
     let mut mgr = TransactionManager::new();
-    let tx = mgr.begin_transaction(IsolationLevel::SnapshotIsolation).unwrap();
+    let tx = mgr
+        .begin_transaction(IsolationLevel::SnapshotIsolation)
+        .unwrap();
     mgr.tx_register_write(tx, ModelKind::Sql, "INSERT INTO t VALUES (1)");
     mgr.tx_register_write(tx, ModelKind::Vector, "INSERT INTO vectors VALUES (...)");
     mgr.tx_register_write(tx, ModelKind::Graph, "CREATE (n:Person {name: 'Alice'})");
@@ -90,7 +102,9 @@ fn all_four_models_cross_model_commit() {
 #[test]
 fn sql_plus_vector_rollback_discards() {
     let mut mgr = TransactionManager::new();
-    let tx = mgr.begin_transaction(IsolationLevel::SnapshotIsolation).unwrap();
+    let tx = mgr
+        .begin_transaction(IsolationLevel::SnapshotIsolation)
+        .unwrap();
     mgr.tx_register_write(tx, ModelKind::Sql, "INSERT INTO t VALUES (1)");
     mgr.tx_register_write(tx, ModelKind::Vector, "INSERT INTO vectors VALUES (...)");
     assert_eq!(mgr.cross_model_writes(tx).len(), 2);
@@ -102,7 +116,9 @@ fn sql_plus_vector_rollback_discards() {
 #[test]
 fn all_four_models_rollback_discards() {
     let mut mgr = TransactionManager::new();
-    let tx = mgr.begin_transaction(IsolationLevel::SnapshotIsolation).unwrap();
+    let tx = mgr
+        .begin_transaction(IsolationLevel::SnapshotIsolation)
+        .unwrap();
     mgr.tx_register_write(tx, ModelKind::Sql, "INSERT");
     mgr.tx_register_write(tx, ModelKind::Vector, "INSERT");
     mgr.tx_register_write(tx, ModelKind::Graph, "CREATE");
@@ -118,7 +134,9 @@ fn all_four_models_rollback_discards() {
 #[test]
 fn multiple_sql_writes() {
     let mut mgr = TransactionManager::new();
-    let tx = mgr.begin_transaction(IsolationLevel::SnapshotIsolation).unwrap();
+    let tx = mgr
+        .begin_transaction(IsolationLevel::SnapshotIsolation)
+        .unwrap();
     for i in 0..5 {
         mgr.tx_register_write(tx, ModelKind::Sql, format!("INSERT {}", i));
     }
@@ -129,7 +147,9 @@ fn multiple_sql_writes() {
 #[test]
 fn multiple_vector_writes() {
     let mut mgr = TransactionManager::new();
-    let tx = mgr.begin_transaction(IsolationLevel::SnapshotIsolation).unwrap();
+    let tx = mgr
+        .begin_transaction(IsolationLevel::SnapshotIsolation)
+        .unwrap();
     for i in 0..10 {
         mgr.tx_register_write(tx, ModelKind::Vector, format!("v{}", i));
     }
@@ -140,7 +160,9 @@ fn multiple_vector_writes() {
 #[test]
 fn mixed_writes_many() {
     let mut mgr = TransactionManager::new();
-    let tx = mgr.begin_transaction(IsolationLevel::SnapshotIsolation).unwrap();
+    let tx = mgr
+        .begin_transaction(IsolationLevel::SnapshotIsolation)
+        .unwrap();
     mgr.tx_register_write(tx, ModelKind::Sql, "a");
     mgr.tx_register_write(tx, ModelKind::Vector, "b");
     mgr.tx_register_write(tx, ModelKind::Sql, "c");
@@ -170,7 +192,10 @@ fn count_for_unknown_tx_is_zero() {
     let mgr = TransactionManager::new();
     let unknown_tx = sqlrustgo_transaction::TxId::new(99999);
     assert_eq!(mgr.cross_model_write_count(unknown_tx, ModelKind::Sql), 0);
-    assert_eq!(mgr.cross_model_write_count(unknown_tx, ModelKind::Vector), 0);
+    assert_eq!(
+        mgr.cross_model_write_count(unknown_tx, ModelKind::Vector),
+        0
+    );
     assert_eq!(mgr.cross_model_write_count(unknown_tx, ModelKind::Graph), 0);
     assert_eq!(mgr.cross_model_write_count(unknown_tx, ModelKind::Audit), 0);
 }
@@ -190,11 +215,15 @@ fn writes_for_unknown_tx_is_empty() {
 fn sequential_transactions_isolated() {
     let mut mgr = TransactionManager::new();
     // Tx 1
-    let tx1 = mgr.begin_transaction(IsolationLevel::SnapshotIsolation).unwrap();
+    let tx1 = mgr
+        .begin_transaction(IsolationLevel::SnapshotIsolation)
+        .unwrap();
     mgr.tx_register_write(tx1, ModelKind::Sql, "INSERT tx1");
     mgr.commit(tx1).unwrap();
     // Tx 2: must start empty
-    let tx2 = mgr.begin_transaction(IsolationLevel::SnapshotIsolation).unwrap();
+    let tx2 = mgr
+        .begin_transaction(IsolationLevel::SnapshotIsolation)
+        .unwrap();
     assert!(mgr.cross_model_writes(tx2).is_empty());
     mgr.tx_register_write(tx2, ModelKind::Vector, "INSERT tx2");
     assert_eq!(mgr.cross_model_writes(tx2).len(), 1);
@@ -204,10 +233,14 @@ fn sequential_transactions_isolated() {
 #[test]
 fn rollback_then_begin_is_clean() {
     let mut mgr = TransactionManager::new();
-    let tx1 = mgr.begin_transaction(IsolationLevel::SnapshotIsolation).unwrap();
+    let tx1 = mgr
+        .begin_transaction(IsolationLevel::SnapshotIsolation)
+        .unwrap();
     mgr.tx_register_write(tx1, ModelKind::Sql, "x");
     mgr.rollback(tx1).unwrap();
-    let tx2 = mgr.begin_transaction(IsolationLevel::SnapshotIsolation).unwrap();
+    let tx2 = mgr
+        .begin_transaction(IsolationLevel::SnapshotIsolation)
+        .unwrap();
     assert!(mgr.cross_model_writes(tx2).is_empty());
 }
 
@@ -239,7 +272,9 @@ fn model_kind_debug() {
 #[test]
 fn commit_after_rollback_is_noop_or_err() {
     let mut mgr = TransactionManager::new();
-    let tx = mgr.begin_transaction(IsolationLevel::SnapshotIsolation).unwrap();
+    let tx = mgr
+        .begin_transaction(IsolationLevel::SnapshotIsolation)
+        .unwrap();
     mgr.tx_register_write(tx, ModelKind::Sql, "x");
     mgr.rollback(tx).unwrap();
     // After rollback, tx is gone; re-commit may fail (validate_commit
@@ -250,7 +285,9 @@ fn commit_after_rollback_is_noop_or_err() {
 #[test]
 fn rollback_after_commit_is_noop_or_err() {
     let mut mgr = TransactionManager::new();
-    let tx = mgr.begin_transaction(IsolationLevel::SnapshotIsolation).unwrap();
+    let tx = mgr
+        .begin_transaction(IsolationLevel::SnapshotIsolation)
+        .unwrap();
     mgr.tx_register_write(tx, ModelKind::Sql, "x");
     mgr.commit(tx).unwrap();
     // After commit, tx is gone; re-rollback is a no-op (no panic).
@@ -264,17 +301,28 @@ fn rollback_after_commit_is_noop_or_err() {
 #[test]
 fn write_description_preserved() {
     let mut mgr = TransactionManager::new();
-    let tx = mgr.begin_transaction(IsolationLevel::SnapshotIsolation).unwrap();
-    mgr.tx_register_write(tx, ModelKind::Sql, "INSERT INTO audit_log VALUES ('alice logged in')");
+    let tx = mgr
+        .begin_transaction(IsolationLevel::SnapshotIsolation)
+        .unwrap();
+    mgr.tx_register_write(
+        tx,
+        ModelKind::Sql,
+        "INSERT INTO audit_log VALUES ('alice logged in')",
+    );
     let writes = mgr.cross_model_writes(tx);
-    assert_eq!(writes[0].description, "INSERT INTO audit_log VALUES ('alice logged in')");
+    assert_eq!(
+        writes[0].description,
+        "INSERT INTO audit_log VALUES ('alice logged in')"
+    );
     mgr.commit(tx).unwrap();
 }
 
 #[test]
 fn large_cross_model_description() {
     let mut mgr = TransactionManager::new();
-    let tx = mgr.begin_transaction(IsolationLevel::SnapshotIsolation).unwrap();
+    let tx = mgr
+        .begin_transaction(IsolationLevel::SnapshotIsolation)
+        .unwrap();
     let desc = "X".repeat(1000);
     mgr.tx_register_write(tx, ModelKind::Vector, desc.clone());
     let writes = mgr.cross_model_writes(tx);
@@ -285,7 +333,9 @@ fn large_cross_model_description() {
 #[test]
 fn many_writes_in_one_tx() {
     let mut mgr = TransactionManager::new();
-    let tx = mgr.begin_transaction(IsolationLevel::SnapshotIsolation).unwrap();
+    let tx = mgr
+        .begin_transaction(IsolationLevel::SnapshotIsolation)
+        .unwrap();
     for _ in 0..100 {
         mgr.tx_register_write(tx, ModelKind::Sql, "x");
     }
@@ -300,7 +350,9 @@ fn many_writes_in_one_tx() {
 #[test]
 fn rollback_barrier_no_dangling_writes() {
     let mut mgr = TransactionManager::new();
-    let tx = mgr.begin_transaction(IsolationLevel::SnapshotIsolation).unwrap();
+    let tx = mgr
+        .begin_transaction(IsolationLevel::SnapshotIsolation)
+        .unwrap();
     mgr.tx_register_write(tx, ModelKind::Sql, "INSERT");
     mgr.tx_register_write(tx, ModelKind::Vector, "INSERT");
     mgr.tx_register_write(tx, ModelKind::Graph, "CREATE");
@@ -315,7 +367,9 @@ fn rollback_barrier_no_dangling_writes() {
 #[test]
 fn commit_barrier_no_dangling_writes() {
     let mut mgr = TransactionManager::new();
-    let tx = mgr.begin_transaction(IsolationLevel::SnapshotIsolation).unwrap();
+    let tx = mgr
+        .begin_transaction(IsolationLevel::SnapshotIsolation)
+        .unwrap();
     mgr.tx_register_write(tx, ModelKind::Sql, "INSERT");
     mgr.tx_register_write(tx, ModelKind::Vector, "INSERT");
     mgr.tx_register_write(tx, ModelKind::Graph, "CREATE");
@@ -331,8 +385,12 @@ fn commit_barrier_no_dangling_writes() {
 #[test]
 fn parallel_transactions_tracking_isolated() {
     let mut mgr = TransactionManager::new();
-    let tx1 = mgr.begin_transaction(IsolationLevel::SnapshotIsolation).unwrap();
-    let tx2 = mgr.begin_transaction(IsolationLevel::SnapshotIsolation).unwrap();
+    let tx1 = mgr
+        .begin_transaction(IsolationLevel::SnapshotIsolation)
+        .unwrap();
+    let tx2 = mgr
+        .begin_transaction(IsolationLevel::SnapshotIsolation)
+        .unwrap();
     mgr.tx_register_write(tx1, ModelKind::Sql, "x1");
     mgr.tx_register_write(tx2, ModelKind::Vector, "y2");
     assert_eq!(mgr.cross_model_write_count(tx1, ModelKind::Sql), 1);
@@ -346,8 +404,12 @@ fn parallel_transactions_tracking_isolated() {
 #[test]
 fn rollback_tx1_leaves_tx2_intact() {
     let mut mgr = TransactionManager::new();
-    let tx1 = mgr.begin_transaction(IsolationLevel::SnapshotIsolation).unwrap();
-    let tx2 = mgr.begin_transaction(IsolationLevel::SnapshotIsolation).unwrap();
+    let tx1 = mgr
+        .begin_transaction(IsolationLevel::SnapshotIsolation)
+        .unwrap();
+    let tx2 = mgr
+        .begin_transaction(IsolationLevel::SnapshotIsolation)
+        .unwrap();
     mgr.tx_register_write(tx1, ModelKind::Sql, "x1");
     mgr.tx_register_write(tx2, ModelKind::Vector, "y2");
     mgr.rollback(tx1).unwrap();
@@ -364,7 +426,9 @@ fn rollback_tx1_leaves_tx2_intact() {
 fn sequential_commits_tracking_clears() {
     let mut mgr = TransactionManager::new();
     for _ in 0..5 {
-        let tx = mgr.begin_transaction(IsolationLevel::SnapshotIsolation).unwrap();
+        let tx = mgr
+            .begin_transaction(IsolationLevel::SnapshotIsolation)
+            .unwrap();
         mgr.tx_register_write(tx, ModelKind::Sql, "x");
         mgr.commit(tx).unwrap();
     }

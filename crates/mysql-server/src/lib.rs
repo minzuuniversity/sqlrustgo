@@ -6397,9 +6397,7 @@ pub(crate) fn run_server_with_listener_and_shutdown_with_bootstrap_tables_and_sq
         storage.clone(),
         sqlrustgo_storage::MvccGCRunnerConfig::default(),
     );
-    tracing::info!(
-        "MVCC GC background thread started (interval=5s, gc_lag=1000)"
-    );
+    tracing::info!("MVCC GC background thread started (interval=5s, gc_lag=1000)");
     let mut user_store = UserStore::new();
     if let Some(bs) = bootstrap {
         bs(&mut user_store);

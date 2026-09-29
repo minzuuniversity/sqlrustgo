@@ -19,8 +19,7 @@ use std::time::{SystemTime, UNIX_EPOCH};
 
 /// Genesis hash (all zeros) — used as the `prev_hash` of the first
 /// entry in any chain.
-pub const GENESIS_HASH: &str =
-    "0000000000000000000000000000000000000000000000000000000000000000";
+pub const GENESIS_HASH: &str = "0000000000000000000000000000000000000000000000000000000000000000";
 
 /// A single audit event in the chain.
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
@@ -93,10 +92,7 @@ impl AuditChain {
             .last()
             .map(|e| e.this_hash.clone())
             .unwrap_or_else(|| GENESIS_HASH.to_string());
-        let canonical = format!(
-            "{}|{}|{}|{}",
-            seq, timestamp_ms, user_id, payload
-        );
+        let canonical = format!("{}|{}|{}|{}", seq, timestamp_ms, user_id, payload);
         let this_hash = AuditEntry::compute_hash(&prev_hash, &canonical);
         let entry = AuditEntry {
             seq,
@@ -119,10 +115,7 @@ impl AuditChain {
             if entry.seq != expected_seq {
                 return ChainVerification::Broken {
                     at_seq: entry.seq,
-                    reason: format!(
-                        "expected seq {}, got {}",
-                        expected_seq, entry.seq
-                    ),
+                    reason: format!("expected seq {}, got {}", expected_seq, entry.seq),
                 };
             }
             if entry.prev_hash != prev_hash {
@@ -501,7 +494,7 @@ mod tests {
         chain.append("bob", "TEST", "y");
         // Modify one character in entry 2's payload directly
         chain.entries[1].payload = "Y".to_string(); // changed from "y" to "Y"
-        // Verify Broken
+                                                    // Verify Broken
         match chain.verify() {
             ChainVerification::Broken { at_seq, .. } => assert_eq!(at_seq, 2),
             other => panic!("expected Broken, got {:?}", other),

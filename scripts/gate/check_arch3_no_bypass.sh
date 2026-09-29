@@ -29,15 +29,17 @@ fi
 echo "=== G4 Gate: ARCH-3 (#3169) VtuGuard main-path enforcement ==="
 
 # 1. ExecutionEngine DML entry points
-COUNT=$(grep -c "assert_path_for_dml" src/execution_engine.rs || true)
+# v4.1.0: impl block was extracted from src/execution_engine.rs to
+# src/execution_engine_methods.rs; the markers are in BOTH files.
+COUNT=$(grep -c "assert_path_for_dml" src/execution_engine.rs src/execution_engine_methods.rs 2>/dev/null | awk -F: '{sum += $2} END {print sum}')
 if [ "$COUNT" -lt 3 ]; then
-    echo "  ❌ FAIL: src/execution_engine.rs only has $COUNT VtuGuard marker calls (expected >= 3)"
+    echo "  ❌ FAIL: src/execution_engine.rs + src/execution_engine_methods.rs only have $COUNT VtuGuard marker calls (expected >= 3)"
     exit 1
 fi
-echo "  [1/4] ✅ PASS: $COUNT VtuGuard marker calls in src/execution_engine.rs"
+echo "  [1/4] ✅ PASS: $COUNT VtuGuard marker calls across execution_engine.{rs,methods.rs}"
 
 for FN in execute_insert execute_update execute_delete; do
-    if ! grep -A 5 "pub fn $FN" src/execution_engine.rs | grep -q "assert_path_for_dml"; then
+    if ! grep -A 5 "pub fn $FN" src/execution_engine*.rs | grep -q "assert_path_for_dml"; then
         echo "  ❌ FAIL: pub fn $FN missing assert_path_for_dml call"
         exit 1
     fi

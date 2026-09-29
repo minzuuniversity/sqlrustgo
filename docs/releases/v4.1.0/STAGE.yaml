@@ -44,12 +44,17 @@
 #     pick up these deferred items.
 
 version: "v4.1.0"
-current_stage: "DRAFT"
+current_stage: "ALPHA"
 last_transition:
-  from: "(none)"
-  to: "DRAFT"
-  date: "2026-09-23"
-  reason: "Initial draft entry. v4.1.0 enters draft phase on 2026-09-23 after v4.0.0 GA gate (38566af0f8) merged into develop/v4.0.0 + develop/v4.1.0 branch cut from that GA commit. Draft phase per STAGE_CONFIG DRAFT_to_ALPHA trigger criteria. Active work: v4.0.0 bugfix carry-forward (zombie-fix core, workers.push, DML/storage regressions) and 5-remote sync infrastructure. STAGE.yaml created retroactively to satisfy STAGE_CONFIG framework SSOT requirement; PHASE_0 docs scaffolded in parallel."
+  from: "DRAFT"
+  to: "ALPHA"
+  date: "2026-09-29"
+  reason: "DRAFT -> ALPHA transition per STAGE_CONFIG DRAFT_to_ALPHA trigger. All 11 PHASE_0 docs scaffolded (STAGE / VERSION_PLAN / DEV_PLAN / ROADMAP / TEST_PLAN / ISSUES_PLAN / LEGACY_ISSUES / README / CHANGELOG / PHASE_1_SCOPE / RELEASE_NOTES / V400_TO_V410_REVIEW_QUEUE); 3 inherited v4.0.0 alpha-gate FAILs resolved (check_anti_ignore_gate, check_arch_invariants, check_anti_fabrication); V400-09 168h SOAK FINAL_REPORT written (deferred to v4.1.0 scope per WP-H triage); WP-C..G migration documented in ISSUES_PLAN.md §4 (20-issue backlog, 6-10 weeks estimated). scripts/gate/check_alpha_v410.sh + check_alpha_entry_v4.10.sh + check_alpha_quality_v4.10.sh created; alpha composite PASS 9/9 quality + 19/19 entry = ALPHA GATE PASS. Tag v4.1.0-alpha1 to be cut per STAGE_CONFIG DRAFT_to_ALPHA trigger after this commit merges. per docs/releases/v4.1.0/RELEASE_NOTES.md §5."
+  prior_transition:
+    from: "(none)"
+    to: "DRAFT"
+    date: "2026-09-23"
+    reason: "Initial draft entry. v4.1.0 enters draft phase on 2026-09-23 after v4.0.0 GA gate (38566af0f8) merged into develop/v4.0.0 + develop/v4.1.0 branch cut from that GA commit. Draft phase per STAGE_CONFIG DRAFT_to_ALPHA trigger criteria. Active work: v4.0.0 bugfix carry-forward (zombie-fix core, workers.push, DML/storage regressions) and 5-remote sync infrastructure. STAGE.yaml created retroactively to satisfy STAGE_CONFIG framework SSOT requirement; PHASE_0 docs scaffolded in parallel."
 
 current_state:
   head: "0bbb044da3711772d4617bc40ad5839511712805"

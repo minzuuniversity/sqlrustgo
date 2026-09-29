@@ -17,8 +17,8 @@ fn test_lock() -> &'static Mutex<()> {
 
 use sqlrustgo_storage::cross_model_tracker::{self};
 use sqlrustgo_storage::engine::StorageEngine;
-use sqlrustgo_storage::{CrossModelWriteTracker, MvccStorage};
 use sqlrustgo_storage::engine::{ColumnDefinition, MemoryStorage, TableInfo, Value};
+use sqlrustgo_storage::{CrossModelWriteTracker, MvccStorage};
 
 struct CountingTracker {
     counts: parking_lot::Mutex<[u32; 4]>,
@@ -55,9 +55,7 @@ fn cross_model_global_tracker_records_sql_write() {
     };
     store.create_table(&info).unwrap();
     // Record = Vec<Value>; insert takes Vec<Record> = Vec<Vec<Value>>
-    store
-        .insert("t", vec![vec![Value::Integer(1)]])
-        .unwrap();
+    store.insert("t", vec![vec![Value::Integer(1)]]).unwrap();
 
     // Verify SQL counter incremented
     let counts = counter.counts.lock();
@@ -93,9 +91,7 @@ fn cross_model_global_tracker_records_all_three_sql_writes() {
     store.create_table(&info).unwrap();
 
     // insert + delete + update
-    store
-        .insert("t", vec![vec![Value::Integer(1)]])
-        .unwrap();
+    store.insert("t", vec![vec![Value::Integer(1)]]).unwrap();
     let _: usize = store.delete("t", &[]).unwrap_or(0);
     let _: usize = store.update("t", &[Value::Integer(1)], &[]).unwrap_or(0);
 
@@ -166,11 +162,17 @@ fn cross_model_global_tracker_replacement() {
 
     cross_model_tracker::set_global_tracker(Some(counter1.clone()));
     cross_model_tracker::register_sql_write("first");
-    assert_eq!(counter1.counts.lock()[cross_model_tracker::MODEL_SQL as usize], 1);
+    assert_eq!(
+        counter1.counts.lock()[cross_model_tracker::MODEL_SQL as usize],
+        1
+    );
 
     cross_model_tracker::set_global_tracker(Some(counter2.clone()));
     cross_model_tracker::register_sql_write("second");
-    assert_eq!(counter2.counts.lock()[cross_model_tracker::MODEL_SQL as usize], 1);
+    assert_eq!(
+        counter2.counts.lock()[cross_model_tracker::MODEL_SQL as usize],
+        1
+    );
     assert_eq!(
         counter1.counts.lock()[cross_model_tracker::MODEL_SQL as usize],
         1,

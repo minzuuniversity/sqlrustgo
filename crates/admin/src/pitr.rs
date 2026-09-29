@@ -123,8 +123,8 @@ mod tests {
     use sqlrustgo_storage::wal::{
         make_begin_entry, make_commit_entry, make_create_vector_index_entry, make_delete_entry,
         make_drop_vector_index_entry, make_insert_entry, make_rebuild_vector_index_entry,
-        make_rollback_entry, make_update_entry, make_vector_delete_entry,
-        make_vector_insert_entry, make_vector_update_entry,
+        make_rollback_entry, make_update_entry, make_vector_delete_entry, make_vector_insert_entry,
+        make_vector_update_entry,
     };
     use std::io::Write;
     use tempfile::TempDir;
@@ -161,9 +161,13 @@ mod tests {
             WalEntryType::VectorInsert => make_vector_insert_entry(tx, 0, 0, 0, vec![0u8; 16], lsn),
             WalEntryType::VectorUpdate => make_vector_update_entry(tx, 0, 0, 0, vec![0u8; 16], lsn),
             WalEntryType::VectorDelete => make_vector_delete_entry(tx, 0, 0, 0, lsn),
-            WalEntryType::CreateVectorIndex => make_create_vector_index_entry(tx, 0, 0, "test_idx", lsn),
+            WalEntryType::CreateVectorIndex => {
+                make_create_vector_index_entry(tx, 0, 0, "test_idx", lsn)
+            }
             WalEntryType::DropVectorIndex => make_drop_vector_index_entry(tx, 0, "test_idx", lsn),
-            WalEntryType::RebuildVectorIndex => make_rebuild_vector_index_entry(tx, 0, "test_idx", lsn),
+            WalEntryType::RebuildVectorIndex => {
+                make_rebuild_vector_index_entry(tx, 0, "test_idx", lsn)
+            }
         };
         e.timestamp = ts;
         e

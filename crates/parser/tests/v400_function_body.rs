@@ -54,7 +54,9 @@ fn function_returns_table_single_column() {
 
 #[test]
 fn function_returns_table_multi_columns() {
-    must_parse_function("CREATE FUNCTION f() RETURNS TABLE(x INT, y TEXT, z BOOLEAN) AS SELECT 1, 'a', true");
+    must_parse_function(
+        "CREATE FUNCTION f() RETURNS TABLE(x INT, y TEXT, z BOOLEAN) AS SELECT 1, 'a', true",
+    );
 }
 
 #[test]
@@ -100,17 +102,23 @@ fn function_returns_varchar() {
 
 #[test]
 fn function_body_2_statements() {
-    must_parse_function("CREATE FUNCTION f() RETURNS INT BEGIN DECLARE x INT; SET x = 1; RETURN x; END");
+    must_parse_function(
+        "CREATE FUNCTION f() RETURNS INT BEGIN DECLARE x INT; SET x = 1; RETURN x; END",
+    );
 }
 
 #[test]
 fn function_body_3_statements() {
-    must_parse_function("CREATE FUNCTION f() RETURNS INT BEGIN DECLARE x INT; SET x = 1; SET x = 2; RETURN x; END");
+    must_parse_function(
+        "CREATE FUNCTION f() RETURNS INT BEGIN DECLARE x INT; SET x = 1; SET x = 2; RETURN x; END",
+    );
 }
 
 #[test]
 fn function_body_with_if() {
-    must_parse_function("CREATE FUNCTION f() RETURNS INT BEGIN IF 1 > 0 THEN RETURN 1; ELSE RETURN 0; END IF; END");
+    must_parse_function(
+        "CREATE FUNCTION f() RETURNS INT BEGIN IF 1 > 0 THEN RETURN 1; ELSE RETURN 0; END IF; END",
+    );
 }
 
 #[test]

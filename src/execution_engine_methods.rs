@@ -3,6 +3,8 @@ use crate::engine_utils::{
     cartesian_product, eval_predicate, evaluate_where_clause, find_column_index, sql_compare,
     validate_foreign_keys,
 };
+use crate::execution_engine::{explain_select_plan, parse_session_value};
+use crate::execution_engine::{ExecutionEngine, ExecutionStats, TableStatistics, TxStatus};
 use crate::expr_utils::{
     compare_values, evaluate_binary_op, evaluate_expr_to_string, evaluate_expression,
     evaluate_expression_with_subq, expression_to_string, expression_to_value,
@@ -46,12 +48,7 @@ use sqlrustgo_parser::parser::{
 use sqlrustgo_parser::transaction::IsolationLevel as ParserIsolationLevel;
 use sqlrustgo_parser::JoinType;
 use sqlrustgo_parser::{
-    DeleteStatement,
-    Expression,
-    SavepointOp,
-    Statement,
-    TransactionStatement,
-    UpdateStatement,
+    DeleteStatement, Expression, SavepointOp, Statement, TransactionStatement, UpdateStatement,
 };
 use sqlrustgo_storage::checkpoint::{CheckpointManager, CheckpointMetadata};
 use sqlrustgo_storage::{
@@ -67,9 +64,6 @@ use sqlrustgo_types::Value as SqlValue;
 use std::collections::HashMap;
 use std::path::PathBuf;
 use std::sync::Arc;
-use crate::execution_engine::{ExecutionEngine, ExecutionStats, TableStatistics, TxStatus};
-use crate::execution_engine::{explain_select_plan, parse_session_value};
-
 
 // === extracted impl ExecutionEngine<S> block (line 546-2329 of original) ===
 
@@ -530,7 +524,10 @@ impl<S: StorageEngine + 'static> ExecutionEngine<S> {
     // V312-F-4: execute_create_table moved to src/engine_create.rs
     // to keep execution_engine.rs under 1500 lines (C-ARCH-05 AD-001).
 
-    pub(super) fn execute_drop_table(&self, drop: &DropTableStatement) -> SqlResult<ExecutorResult> {
+    pub(super) fn execute_drop_table(
+        &self,
+        drop: &DropTableStatement,
+    ) -> SqlResult<ExecutorResult> {
         let mut storage = self.storage.write();
         if drop.if_exists && !storage.has_table(&drop.name) {
             // IF EXISTS specified and table doesn't exist → no-op, success
@@ -540,7 +537,10 @@ impl<S: StorageEngine + 'static> ExecutionEngine<S> {
         Ok(ExecutorResult::empty())
     }
 
-    pub(super) fn execute_create_database(&self, db: &CreateDatabaseStatement) -> SqlResult<ExecutorResult> {
+    pub(super) fn execute_create_database(
+        &self,
+        db: &CreateDatabaseStatement,
+    ) -> SqlResult<ExecutorResult> {
         // v3.10.0: 多数据库支持
         // 委托给 storage 创建数据库子目录
         if db.name == "default" || db.name == "postgres" || db.name == "mysql" {
@@ -556,7 +556,10 @@ impl<S: StorageEngine + 'static> ExecutionEngine<S> {
         Ok(ExecutorResult::empty())
     }
 
-    pub(super) fn execute_drop_database(&self, db: &DropDatabaseStatement) -> SqlResult<ExecutorResult> {
+    pub(super) fn execute_drop_database(
+        &self,
+        db: &DropDatabaseStatement,
+    ) -> SqlResult<ExecutorResult> {
         // Refuse to drop the "default" database to prevent orphaned references.
         // In v3.10 multi-database mode, the current_database context will be
         // tracked in the session state instead.
@@ -586,7 +589,10 @@ impl<S: StorageEngine + 'static> ExecutionEngine<S> {
     // The stub returns `affected_rows = 0` so mysql-server emits an
     // OK packet, mirroring the empty-success contract used by
     // `CREATE DATABASE` / `DROP DATABASE`.
-    pub(super) fn execute_create_graph_stub(&self, g: &CreateGraphStatement) -> SqlResult<ExecutorResult> {
+    pub(super) fn execute_create_graph_stub(
+        &self,
+        g: &CreateGraphStatement,
+    ) -> SqlResult<ExecutorResult> {
         if g.name == "default" {
             return Err(SqlError::ExecutionError(
                 "CREATE GRAPH 'default' is not permitted (reserved name)".to_string(),
@@ -600,7 +606,10 @@ impl<S: StorageEngine + 'static> ExecutionEngine<S> {
         Ok(ExecutorResult::new(vec![], 0))
     }
 
-    pub(super) fn execute_drop_graph_stub(&self, g: &DropGraphStatement) -> SqlResult<ExecutorResult> {
+    pub(super) fn execute_drop_graph_stub(
+        &self,
+        g: &DropGraphStatement,
+    ) -> SqlResult<ExecutorResult> {
         if g.name == "default" {
             return Err(SqlError::ExecutionError(
                 "DROP GRAPH 'default' is not permitted (reserved name)".to_string(),
@@ -617,7 +626,10 @@ impl<S: StorageEngine + 'static> ExecutionEngine<S> {
     // V312-F-4: execute_create_sequence moved to src/engine_create.rs
     // to keep execution_engine.rs under 1500 lines (C-ARCH-05 AD-001).
 
-    pub(super) fn execute_drop_sequence(&self, seq_stmt: &DropSequenceStatement) -> SqlResult<ExecutorResult> {
+    pub(super) fn execute_drop_sequence(
+        &self,
+        seq_stmt: &DropSequenceStatement,
+    ) -> SqlResult<ExecutorResult> {
         let mut storage = self.storage.write();
 
         // V312-72 (perf-refactor): consult both storage AND the in-memory
@@ -673,7 +685,10 @@ impl<S: StorageEngine + 'static> ExecutionEngine<S> {
         ))
     }
 
-    pub(super) fn execute_truncate(&self, truncate: &TruncateStatement) -> SqlResult<ExecutorResult> {
+    pub(super) fn execute_truncate(
+        &self,
+        truncate: &TruncateStatement,
+    ) -> SqlResult<ExecutorResult> {
         let mut storage = self.storage.write();
         if !storage.has_table(&truncate.name) {
             return Err(SqlError::ExecutionError(format!(
@@ -690,7 +705,10 @@ impl<S: StorageEngine + 'static> ExecutionEngine<S> {
         Ok(ExecutorResult::empty())
     }
 
-    pub(super) fn execute_create_index(&self, idx: &CreateIndexStatement) -> SqlResult<ExecutorResult> {
+    pub(super) fn execute_create_index(
+        &self,
+        idx: &CreateIndexStatement,
+    ) -> SqlResult<ExecutorResult> {
         let mut storage = self.storage.write();
         let table_name = &idx.table;
         // V313-100 / Issue #4701 sub-1: a CREATE INDEX column list may
@@ -820,7 +838,10 @@ impl<S: StorageEngine + 'static> ExecutionEngine<S> {
         Ok(ExecutorResult::empty())
     }
 
-    pub(super) fn execute_create_view(&mut self, view: &CreateViewStatement) -> SqlResult<ExecutorResult> {
+    pub(super) fn execute_create_view(
+        &mut self,
+        view: &CreateViewStatement,
+    ) -> SqlResult<ExecutorResult> {
         // Issue #4567: store the full parsed statement (name + optional
         // column aliases + defining SELECT AST) so the view is resolvable.
         // The old code stored only `format!("{:?}", view)` — a Debug dump
@@ -845,7 +866,10 @@ impl<S: StorageEngine + 'static> ExecutionEngine<S> {
         storage.create_view(info)?;
         Ok(ExecutorResult::empty())
     }
-    pub(super) fn execute_drop_view(&mut self, drop_view: &DropViewStatement) -> SqlResult<ExecutorResult> {
+    pub(super) fn execute_drop_view(
+        &mut self,
+        drop_view: &DropViewStatement,
+    ) -> SqlResult<ExecutorResult> {
         // V312-95 v2 / Issue #4814: when the in-memory cache does not have
         // the view, also probe storage so a `DROP VIEW` issued after a
         // restart (when the in-memory cache is empty but FileStorage has
@@ -929,13 +953,19 @@ impl<S: StorageEngine + 'static> ExecutionEngine<S> {
         Ok(ExecutorResult::new(rows, columns.len()))
     }
 
-    pub(super) fn execute_merge_statement(&self, _merge: &MergeStatement) -> SqlResult<ExecutorResult> {
+    pub(super) fn execute_merge_statement(
+        &self,
+        _merge: &MergeStatement,
+    ) -> SqlResult<ExecutorResult> {
         Err(SqlError::ExecutionError(
             "MERGE not yet supported via execute() — use LocalExecutorDml path".to_string(),
         ))
     }
 
-    pub(super) fn execute_create_trigger(&self, stmt: &CreateTriggerStatement) -> SqlResult<ExecutorResult> {
+    pub(super) fn execute_create_trigger(
+        &self,
+        stmt: &CreateTriggerStatement,
+    ) -> SqlResult<ExecutorResult> {
         use sqlrustgo_storage::engine::{TriggerEvent, TriggerInfo, TriggerTiming};
 
         // V312-55F / Issue #4243: privilege check — non-root users need
@@ -993,7 +1023,10 @@ impl<S: StorageEngine + 'static> ExecutionEngine<S> {
     /// error surface is consistent across the DDL family. The
     /// `IF EXISTS` variant is a no-op when the trigger is missing
     /// (matches MySQL/MariaDB behaviour).
-    pub(super) fn execute_drop_trigger(&self, stmt: &DropTriggerStatement) -> SqlResult<ExecutorResult> {
+    pub(super) fn execute_drop_trigger(
+        &self,
+        stmt: &DropTriggerStatement,
+    ) -> SqlResult<ExecutorResult> {
         let mut storage = self.storage.write();
         if storage.get_trigger(&stmt.name).is_none() {
             if stmt.if_exists {
@@ -1056,7 +1089,9 @@ impl<S: StorageEngine + 'static> ExecutionEngine<S> {
     }
 
     /// Lower parser StoredProcStatement to catalog StoredProcStatement
-    pub(super) fn lower_body(stmts: &[sqlrustgo_parser::StoredProcStatement]) -> Vec<StoredProcStatement> {
+    pub(super) fn lower_body(
+        stmts: &[sqlrustgo_parser::StoredProcStatement],
+    ) -> Vec<StoredProcStatement> {
         stmts
             .iter()
             .map(|s| match s {
@@ -1241,7 +1276,10 @@ impl<S: StorageEngine + 'static> ExecutionEngine<S> {
     /// `IF EXISTS` makes the operation a no-op when the procedure does
     /// not exist (instead of returning an error). Without `IF EXISTS`
     /// we return ProcedureNotFound so callers can detect typos.
-    pub(super) fn execute_drop_procedure(&self, stmt: &DropProcedureStatement) -> SqlResult<ExecutorResult> {
+    pub(super) fn execute_drop_procedure(
+        &self,
+        stmt: &DropProcedureStatement,
+    ) -> SqlResult<ExecutorResult> {
         let catalog_guard = self.catalog.as_ref().ok_or_else(|| {
             SqlError::ExecutionError("DROP PROCEDURE requires stored procedure catalog".to_string())
         })?;
@@ -1275,7 +1313,10 @@ impl<S: StorageEngine + 'static> ExecutionEngine<S> {
     /// `DETERMINISTIC` clauses are stored as metadata but not yet
     /// enforced (no plans shipped for optimizer hints / strict-typing
     /// in v3.12 — see plan §6).
-    pub(super) fn execute_create_function(&self, stmt: &CreateFunctionStatement) -> SqlResult<ExecutorResult> {
+    pub(super) fn execute_create_function(
+        &self,
+        stmt: &CreateFunctionStatement,
+    ) -> SqlResult<ExecutorResult> {
         let param_names: Vec<String> = stmt.params.iter().map(|p| p.name.clone()).collect();
         if let Some(ref body_block) = stmt.body_block {
             // Issue #4671: multi-statement UDF
@@ -1300,7 +1341,10 @@ impl<S: StorageEngine + 'static> ExecutionEngine<S> {
     /// V312-58 / Issue #4512: drop a scalar UDF. `IF EXISTS` makes the
     /// operation a no-op when the UDF does not exist (matches the
     /// MySQL convention for IF EXISTS on function drops).
-    pub(super) fn execute_drop_function(&self, stmt: &DropFunctionStatement) -> SqlResult<ExecutorResult> {
+    pub(super) fn execute_drop_function(
+        &self,
+        stmt: &DropFunctionStatement,
+    ) -> SqlResult<ExecutorResult> {
         let removed = expr_mod::drop_udf(&stmt.name);
         if !removed && !stmt.if_exists {
             return Err(SqlError::ExecutionError(format!(
@@ -1311,7 +1355,10 @@ impl<S: StorageEngine + 'static> ExecutionEngine<S> {
         Ok(ExecutorResult::empty())
     }
 
-    pub(super) fn execute_transaction(&mut self, stmt: &TransactionStatement) -> SqlResult<ExecutorResult> {
+    pub(super) fn execute_transaction(
+        &mut self,
+        stmt: &TransactionStatement,
+    ) -> SqlResult<ExecutorResult> {
         match stmt {
             TransactionStatement::Begin {
                 work: _,
@@ -1542,7 +1589,11 @@ impl<S: StorageEngine + 'static> ExecutionEngine<S> {
     /// that referential integrity is preserved (e.g. an INSERT that
     /// depended on a row inserted later is undone first, leaving the
     /// dependency row intact).
-    pub(super) fn execute_savepoint(&mut self, name: &str, op: SavepointOp) -> SqlResult<ExecutorResult> {
+    pub(super) fn execute_savepoint(
+        &mut self,
+        name: &str,
+        op: SavepointOp,
+    ) -> SqlResult<ExecutorResult> {
         // An active transaction is required for any savepoint operation.
         let tx_id = self.current_tx_id.ok_or_else(|| {
             SqlError::ExecutionError(
@@ -1831,11 +1882,17 @@ impl<S: StorageEngine + 'static> ExecutionEngine<S> {
     // ── Set-operation handlers (V310-06 PR2 / Issue #3723 C-2) ──────
     // C-ARCH-05: bodies moved to `crate::engine_setops` (issue #3943 follow-up).
 
-    pub(super) fn execute_union(&mut self, union_stmt: &UnionStatement) -> SqlResult<ExecutorResult> {
+    pub(super) fn execute_union(
+        &mut self,
+        union_stmt: &UnionStatement,
+    ) -> SqlResult<ExecutorResult> {
         crate::engine_setops::execute_union(self, union_stmt)
     }
 
-    pub(super) fn execute_intersect(&mut self, stmt: &IntersectStatement) -> SqlResult<ExecutorResult> {
+    pub(super) fn execute_intersect(
+        &mut self,
+        stmt: &IntersectStatement,
+    ) -> SqlResult<ExecutorResult> {
         crate::engine_setops::execute_intersect(self, stmt)
     }
 

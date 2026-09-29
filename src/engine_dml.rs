@@ -183,19 +183,27 @@ pub fn execute_insert<S: StorageEngine + 'static>(
             // incoming row, take its value. If no PK is declared, fall back to
             // column 0 (matches the UPDATE no-WHERE fallback used elsewhere).
             let filter: Vec<Value> = if pk_idxs.is_empty() {
-                vec![record.first().cloned().unwrap_or(sqlrustgo_types::Value::Null)]
+                vec![record
+                    .first()
+                    .cloned()
+                    .unwrap_or(sqlrustgo_types::Value::Null)]
             } else {
                 pk_idxs
                     .iter()
-                    .map(|&i| record.get(i).cloned().unwrap_or(sqlrustgo_types::Value::Null))
+                    .map(|&i| {
+                        record
+                            .get(i)
+                            .cloned()
+                            .unwrap_or(sqlrustgo_types::Value::Null)
+                    })
                     .collect()
             };
             // Only delete when a row actually matches this key — for a brand
             // new key (no existing row) REPLACE degenerates to a plain INSERT.
             let existing_rows = storage.scan(&table_name)?;
-            let has_conflict = existing_rows.iter().any(|existing| {
-                record_matches_unique_key(existing, record, &table_info)
-            });
+            let has_conflict = existing_rows
+                .iter()
+                .any(|existing| record_matches_unique_key(existing, record, &table_info));
             if has_conflict {
                 storage.delete(&table_name, &filter)?;
             }

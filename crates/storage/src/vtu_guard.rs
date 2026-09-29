@@ -205,7 +205,6 @@ impl<S: StorageEngine + 'static> StorageEngine for VtuGuard<S> {
         self
     }
 
-
     fn gc(&self, _gc_lag: u64) -> usize {
         0
     }

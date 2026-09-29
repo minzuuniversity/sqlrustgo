@@ -3,9 +3,8 @@
 pub mod adaptive_hash_index;
 pub mod append_only_storage;
 pub mod backup;
-pub mod bin_compactor;
-pub mod cross_model_tracker;
 pub mod backup_coordinator;
+pub mod bin_compactor;
 pub mod bin_index;
 pub mod bin_migration;
 pub mod bin_segment;
@@ -17,6 +16,7 @@ pub mod buffer_pool;
 pub mod change_buffer;
 pub mod checkpoint;
 pub mod clustered_table;
+pub mod cross_model_tracker;
 pub mod double_write_buffer;
 pub mod engine;
 pub mod integrated_storage;

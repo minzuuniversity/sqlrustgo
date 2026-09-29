@@ -100,7 +100,10 @@ fn split_with_empty_between_statements() {
 
 #[test]
 fn split_create_then_insert_then_select() {
-    assert_eq!(split_count("CREATE TABLE t(a INT); INSERT INTO t VALUES (1); SELECT * FROM t"), 3);
+    assert_eq!(
+        split_count("CREATE TABLE t(a INT); INSERT INTO t VALUES (1); SELECT * FROM t"),
+        3
+    );
 }
 
 #[test]
