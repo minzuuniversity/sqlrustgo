@@ -1,0 +1,247 @@
+# Per-Version Stage State -- v4.1.0
+#
+# SSOT chain:
+#   1. docs/governance/STAGE_CONFIG.yaml
+#   2. docs/releases/v4.1.0/STAGE.yaml (this file)
+#   3. scripts/gate/check_stage.sh
+#
+# v4.1.0 is a continuation of v4.0.0 (post-v4.0.0-GA). The
+# develop/v4.1.0 branch was created from v4.0.0 GA gate commit
+# (38566af0f8) on 2026-09-19. Its primary purpose at DRAFT entry:
+#
+#   - Carry v4.0.0 forward through real bugfix work that landed
+#     after the self-claimed v4.0.0 GA promotion
+#       * V400-05/06/07 cross-model transaction + AuditChain
+#       * zombie-fix core (bulk-insert + DLM repair)
+#       * workers.push wrapper restore
+#       * DML/storage regression test fixes
+#   - Establish 5-remote sync tooling + drift detection
+#       * scripts/sync/5remotes_sync.sh
+#       * scripts/sync/5remotes_drift_check.sh
+#       * scripts/sync/README.md
+#
+# v4.1.0 does NOT replace v4.0.0: v4.0.0 stays GA per its
+# release branch, and v4.1.0 is the active dev trunk.
+#
+# KNOWN INHERITED ISSUES (from v4.0.0 self-claimed GA — see
+# docs/governance/incidents/ if any is opened):
+#   - v4.0.0 STAGE.yaml SSOT says "DRAFT" while
+#     GA_GATE_REPORT.md says "GA CONDITIONAL PASS". This is a
+#     governance gap, NOT a v4.1.0 regression. v4.1.0 inherits
+#     the gap.
+#   - 3 alpha gate scripts persistently FAIL on develop/v4.0.0
+#     HEAD (per docs/releases/v4.0.0/STAGE.yaml, 2026-09-17
+#     snapshot):
+#       * scripts/gate/check_arch_invariants.sh
+#         (execution_engine.rs 2731 lines > 1600 limit)
+#       * scripts/gate/check_anti_fabrication.sh
+#         (HEAD author email v400@local not allowed)
+#       * scripts/gate/check_anti_ignore_gate.sh
+#         (tests/baseline/ignore_registry.json missing)
+#   - 168h SOAK (V400-09) was kicked off 2026-09-19 but no
+#     FINAL_REPORT exists as of 2026-09-29.
+#   - 5/7 WP-C..G legacy issues defer-to-v4.0.1; v4.1.0 should
+#     pick up these deferred items.
+
+version: "v4.1.0"
+current_stage: "DRAFT"
+last_transition:
+  from: "(none)"
+  to: "DRAFT"
+  date: "2026-09-23"
+  reason: "Initial draft entry. v4.1.0 enters draft phase on 2026-09-23 after v4.0.0 GA gate (38566af0f8) merged into develop/v4.0.0 + develop/v4.1.0 branch cut from that GA commit. Draft phase per STAGE_CONFIG DRAFT_to_ALPHA trigger criteria. Active work: v4.0.0 bugfix carry-forward (zombie-fix core, workers.push, DML/storage regressions) and 5-remote sync infrastructure. STAGE.yaml created retroactively to satisfy STAGE_CONFIG framework SSOT requirement; PHASE_0 docs scaffolded in parallel."
+
+current_state:
+  head: "0bbb044da3711772d4617bc40ad5839511712805"
+  branch: "develop/v4.1.0"
+  last_modified: "2026-09-29"
+  source: "local git + 5 remotes (gitea250/252, github, gitcode, gitee)"
+  note: "develop/v4.1.0 carries v4.0.0 GA gate commit (38566af0f8) plus: (a) cherry-picks of the 4 review-queue commits (6603820f1e / daad2c687d / 82772919e2) and the empty merges (fca71cb525 / a65497e276 / 7e30fbc0cb) that bring 3 doc-only v4.0.0 commits into v4.1.0 graph; (b) the zombie-fix core merge (9c6767a512) carrying v4.0.0 code forward; (c) the closed review queue audit (0bbb044da3)."
+
+phase_0_completion:
+  status: "PARTIAL"
+  date: "2026-09-29"
+  evidence:
+    present:
+      - "docs/releases/v4.1.0/STAGE.yaml (this file, created 2026-09-29)"
+      - "docs/releases/v4.1.0/V400_TO_V410_REVIEW_QUEUE.md (closed 2026-09-26)"
+      - "docs/releases/v4.1.0/SYNC_AUDIT_v4.1.0_2026-09-20.md (cross-ref to docs/releases/v4.0.0/SYNC_AUDIT_v4.1.0_2026-09-20.md)"
+    missing_required_for_ALPHA:
+      - "docs/releases/v4.1.0/VERSION_PLAN.md"
+      - "docs/releases/v4.1.0/DEV_PLAN.md"
+      - "docs/releases/v4.1.0/ROADMAP.md"
+      - "docs/releases/v4.1.0/TEST_PLAN.md"
+      - "docs/releases/v4.1.0/ISSUES_PLAN.md"
+      - "docs/releases/v4.1.0/LEGACY_ISSUES.md"
+      - "docs/releases/v4.1.0/README.md"
+      - "docs/releases/v4.1.0/CHANGELOG.md"
+    rationale: "v4.1.0 is a continuation of v4.0.0, not a fresh release. The 8 v4.0.0 documents can be referenced from v4.1.0 as their parent; new v4.1.0-specific deltas should be captured in 1-page appendices instead of duplicating the full docs. See §next_action below."
+
+phase_1_alpha_status:
+  v410_00_sync_tooling: "DONE (scripts/sync/5remotes_sync.sh + 5remotes_drift_check.sh + README.md, all 5-branch × 10-pair check currently 0/0)"
+  v410_01_review_queue: "DONE (PR #3794 + 3 cherry-picks + empty-merge graph repair; review queue closed 2026-09-26, 4 v4.0.0 commits resolved)"
+  v410_02_v400_05_06_07_carryforward: "DONE on develop/v4.0.0 tip (already in v4.1.0 parent 38566af0f8)"
+  v410_03_zombie_fix_core: "DONE (cherry-pick 67b624cbd2 + merge 9c6767a512, gap_lock_manager + read_write_splitter)"
+  v410_04_workers_push: "DONE (b4d46e6e18 + 7502ee4cd4 + d2e3a3bf98 in v4.1.0 history)"
+  v410_05_dml_storage_regressions: "DONE (f3595e7361 + 40e07f7342 + 17b459969f)"
+  v410_06_main_release_v4000_sync: "DONE (2026-09-28 sync: 193 commit gap closed on main + release/v4.0.0 created on github; all 3 branches (develop/v4.0.0 / release/v4.0.0 / main) 5-remote consistent at f350eb13a5 / 07178c9d66 / a8dba8d31e respectively)"
+  v410_07_inherit_v4000_alpha_gate_fixes: "NOT STARTED (3 v4.0.0 alpha gate FAILs still open; see open_issues)"
+  v410_08_inherit_v4000_168h_soak: "NOT STARTED (V400-09 168h SOAK kicked off 2026-09-19, no FINAL_REPORT as of 2026-09-29)"
+  v410_09_inherit_v4000_deferred_legacy_issues: "NOT STARTED (5/7 WP-C..G defer-to-v4.0.1 → should migrate to v4.1.0 scope; only #4639 was deferred to v4.1 per WP-H triage)"
+
+legacy_issues_status:
+  wp_a_parser: "INHERITED from v4.0.0 (DONE)"
+  wp_b_type_function: "INHERITED from v4.0.0 (partial; v4.0.1 scope)"
+  wp_c_ddl_integrity: "INHERITED from v4.0.0 (deferred; **v4.1.0 should own**)"
+  wp_d_joins: "INHERITED from v4.0.0 (deferred; **v4.1.0 should own**)"
+  wp_e_transaction: "INHERITED from v4.0.0 (partial via V400-05)"
+  wp_f_schema: "INHERITED from v4.0.0 (deferred; **v4.1.0 should own**)"
+  wp_g_type_comparison: "INHERITED from v4.0.0 (deferred; **v4.1.0 should own**)"
+  wp_h_v313_defer: "INHERITED from v4.0.0 (DONE; #4639 was the v4.1-targeted item, no further action)"
+  source: "docs/releases/v4.0.0/ISSUES_PLAN.md, docs/releases/v4.0.0/WP_LEGACY_TRIAGE.md"
+
+inherited_documents_from_v400:
+  reuse_strategy: "link to v4.0.0 docs; do NOT duplicate"
+  shared:
+    - "docs/releases/v4.0.0/ROADMAP.md → v4.1.0 covers its post-v4.0.0 slice"
+    - "docs/releases/v4.0.0/DEV_PLAN.md → v4.1.0 inherits V400-02/03 G5 plans"
+    - "docs/releases/v4.0.0/TEST_PLAN.md → v4.1.0 inherits + adds regression-test expansion"
+    - "docs/releases/v4.0.0/ISSUES_PLAN.md → v4.1.0 inherits deferred items + adds review-queue items"
+    - "docs/releases/v4.0.0/LEGACY_ISSUES.md → unchanged from v4.0.0 scope"
+    - "docs/releases/v4.0.0/CLAIM_DOWNGRADE_MANIFEST.md → applies to v4.1.0 unless explicitly overridden"
+    - "docs/releases/v4.0.0/GA_GATE_REPORT.md → v4.0.0 GA is the inherited baseline"
+  v4_1_specific_extensions_needed:
+    - "VERSION_PLAN.md (1 page): v4.1.0 deltas only (what's NEW beyond v4.0.0)"
+    - "README.md (1 page): v4.1.0-specific notes; reference v4.0.0 README for inherited scope"
+    - "CHANGELOG.md (1 page): v4.1.0 commits only"
+    - "PHASE_1_SCOPE.md (consolidated plan for WP-C..G pickup, V400-09 carryforward, v4.0.0 alpha-gate fixes)"
+    - "INHERITED_ISSUES.md (delta from v4.0.0 ISSUES_PLAN)"
+
+required_gates_for_alpha:
+  note: "v4.1.0 inherits v4.0.0's required_gates_for_alpha list as the baseline gate set. v4.1.0-specific additions deferred to PHASE_1_SCOPE.md (see inherited_documents_from_v400). The 3 currently-FAIL v4.0.0 alpha gates are v4.1.0 alpha gates by inheritance."
+  - gate: "scripts/gate/check_arch_invariants.sh"
+    status: "FAIL (inherited from v4.0.0)"
+  - gate: "scripts/gate/check_anti_fabrication.sh"
+    status: "FAIL (inherited from v4.0.0)"
+  - gate: "scripts/gate/check_anti_ignore_gate.sh"
+    status: "FAIL (inherited from v4.0.0)"
+  - gate: "scripts/gate/check_arch_sem_debt.sh"
+    status: "PASS"
+  - gate: "scripts/gate/check_arch3_no_bypass.sh"
+    status: "PASS"
+  - gate: "scripts/gate/check_int_debt.sh"
+    status: "PASS"
+  - gate: "scripts/gate/check_cross_version_debt.sh"
+    status: "PASS (4 OPEN debt warnings)"
+
+required_gates_for_beta:
+  note: "Beta gates for v4.1.0 are the v4.0.0 beta gates, MINUS those specifically marked v4.0.0-GA-only, PLUS any new gates introduced in PHASE_1_SCOPE.md. As of 2026-09-29 PHASE_1_SCOPE.md does not exist; the v4.0.0 required_gates_for_beta apply by inheritance."
+
+required_gates_for_rc:
+  note: "Deferred until v4.1.0 reaches RC phase."
+
+required_gates_for_ga:
+  note: "Deferred until v4.1.0 reaches GA phase."
+
+merge_policy:
+  reviewers: 2
+  approval: codeowner + governance
+  ci_required: [lint, build, test, full-gate, anti-fab]
+  branch_protection: "develop/v4.1.0 push-protected per BRANCH_PROTECTION_v4.0.0 template; follow-develop/v4.0.0 governance"
+
+doc_artifacts_required:
+  stage_DRAFT:
+    status: "PARTIAL"
+    - "STAGE.yaml (this file, present 2026-09-29)"
+    - "ISSUES_PLAN.md (inherited from v4.0.0; v4.1.0-specific INHERITED_ISSUES.md pending)"
+    - "VERSION_PLAN.md (pending)"
+    - "DEV_PLAN.md (pending; link to v4.0.0 DEV_PLAN suffices until v4.1.0-specific work)"
+    - "ROADMAP.md (pending; link to v4.0.0 ROADMAP suffices)"
+    - "TEST_PLAN.md (pending; link to v4.0.0 TEST_PLAN suffices)"
+    - "LEGACY_ISSUES.md (pending; link to v4.0.0 LEGACY_ISSUES suffices)"
+    - "README.md (pending)"
+    - "CHANGELOG.md (pending; v4.1.0 commits list only)"
+    - "PHASE_1_SCOPE.md (pending; consolidates the v4.1.0 work plan)"
+  stage_ALPHA:
+    - "ALPHA_GATE_REPORT.md (frozen at first alpha tag cut)"
+    - "evidence/ directory (per-gate summary.json + manifest.json)"
+  stage_BETA:
+    - "FEATURE_CHECKLIST.md (frozen)"
+    - "STAGE.yaml updated to current_stage: BETA"
+  stage_RC:
+    - "RELEASE_NOTES.md (final)"
+    - "RELEASE_GATE_CHECKLIST.md"
+    - "STAGE_GOVERNANCE_BETA_TO_RC.md"
+  stage_GA:
+    - "GA_GATE_REPORT.md"
+    - "GA_RELEASE_REPORT.md"
+    - "STAGE_GOVERNANCE_RC_TO_GA.md"
+    - "CLAIM_DOWNGRADE_MANIFEST.md (if any caveats)"
+
+exit_criteria:
+  draft_to_alpha:
+    - "All PHASE_0 docs (VERSION_PLAN / DEV_PLAN / ROADMAP / TEST_PLAN / ISSUES_PLAN / LEGACY_ISSUES / README / CHANGELOG / PHASE_1_SCOPE) published"
+    - "First alpha tag cut: v4.1.0-alpha1"
+  alpha_to_beta:
+    - "All v4.1.0 ALPHA gate failures resolved (currently 3 inherited from v4.0.0)"
+    - "V400-09 168h SOAK FINAL_REPORT exists OR explicit deferral recorded"
+    - "WP-C/D/F/G deferred items migrated from v4.0.0 deferral into v4.1.0 scope"
+    - "Coverage >= 50% (per STAGE_CONFIG COVERAGE_MIN_ALPHA)"
+  beta_to_rc:
+    - "All B1-B5 hard checks PASS"
+    - "All B-F1..B-F7 functional checks PASS"
+    - "Coverage >= 75%"
+    - "First RC tag cut: v4.1.0-rc1"
+  rc_to_ga:
+    - "All RC{N} release-blocking bugs closed"
+    - "All 5 dimensions (D1-D5) PASS"
+    - "168h multi-model SOAK PASS"
+    - "Tag v4.1.0-rcN cut, no P0 bugs since"
+    - "GA promotion approved by human architect"
+    - "Coverage >= 80%"
+
+claims_boundaries:
+  allowed_pre_alpha: "SQLRustGo v4.1.0 is in active development toward a continuation of v4.0.0."
+  allowed_pre_beta: "SQLRustGo v4.1.0-alpha1 has been cut for early testing of v4.0.0 bugfix carry-forward."
+  allowed_pre_rc: "SQLRustGo v4.1.0-beta1 has feature freeze and is undergoing integration testing."
+  allowed_pre_ga: "SQLRustGo v4.1.0-rc1 is a release candidate for v4.0.0 GA fixups + deferred WP items."
+  allowed_at_ga: "SQLRustGo v4.1.0 is the post-v4.0.0 maintenance release carrying v4.0.0 forward with the WP-C/D/F/G deferred items closed."
+  prohibited_pre_beta: "Production multi-model claim (requires GA, and even v4.0.0 GA has 3 caveat items per CLAIM_DOWNGRADE_MANIFEST)"
+  prohibited_pre_ga: "168h multi-model SOAK result (per V400-09)"
+
+open_issues:
+  - "v4.0.0 STAGE.yaml SSOT/GA_GATE_REPORT.md contradiction (v4.0.0 says DRAFT, GA doc says GA CONDITIONAL PASS). v4.1.0 inherits this gap. Decision required: real GA upgrade vs. rollback self-claim."
+  - "3 v4.0.0 alpha gate FAILs (arch_invariants / anti_fabrication / anti_ignore_gate). v4.1.0 cannot reach ALPHA until these are resolved."
+  - "168h SOAK (V400-09) FINAL_REPORT missing. Per kickoff 2026-09-19, 168h = 7 days elapsed by 2026-09-26; status as of 2026-09-29 unknown."
+  - "v4.0.0 main落后 develop/v4.0.0 by 16902 commits (the actual v4.0.0 implementation code is not on main, only the gate-doc commits are). v4.1.0 inherits this divergence."
+  - "5/7 WP-C..G legacy issues defer-to-v4.0.1 per v4.0.0 CLAIM_DOWNGRADE_MANIFEST. They should migrate to v4.1.0 scope per §wp_h_v313_defer intent."
+  - "CURRENT_VERSION.md is stale (still describes v3.12.0 RC, last refresh 2026-08-26)."
+  - "v4.0.0 RELEASE_NOTES.md missing (RC/GA stage required per STAGE_CONFIG)."
+
+next_action:
+  - "Create v4.1.0/docs/releases/v4.1.0/VERSION_PLAN.md (1 page: deltas over v4.0.0)"
+  - "Create v4.1.0/docs/releases/v4.1.0/DEV_PLAN.md (1 page: link to v4.0.0 + v4.1.0-specific scope)"
+  - "Create v4.1.0/docs/releases/v4.1.0/ROADMAP.md (1 page: link to v4.0.0 + v4.1.0-specific milestones)"
+  - "Create v4.1.0/docs/releases/v4.1.0/TEST_PLAN.md (1 page: link to v4.0.0 + new regression scope)"
+  - "Create v4.1.0/docs/releases/v4.1.0/ISSUES_PLAN.md (or INHERITED_ISSUES.md delta-doc; recommended: delta-only)"
+  - "Create v4.1.0/docs/releases/v4.1.0/LEGACY_ISSUES.md (link to v4.0.0 + any v4.1.0-specific legacy items)"
+  - "Create v4.1.0/docs/releases/v4.1.0/README.md (1 page: link to v4.0.0 README + v4.1.0-specific notes)"
+  - "Create v4.1.0/docs/releases/v4.1.0/CHANGELOG.md (1 page: v4.1.0 commits only)"
+  - "Create v4.1.0/docs/releases/v4.1.0/PHASE_1_SCOPE.md (consolidated v4.1.0 work plan: WP-C/D/F/G pickup, V400-09 carryforward, alpha-gate fix plan)"
+  - "After docs scaffolded: tag v4.1.0-alpha1 and advance STAGE.yaml current_stage: ALPHA"
+
+last_status_refresh:
+  date: "2026-09-29"
+  head: "0bbb044da3711772d4617bc40ad5839511712805"
+  source: "local git + 5 remotes (verified via scripts/sync/5remotes_drift_check.sh)"
+  stage_result: "DRAFT_PARTIAL_PHASE_0_DOCS_SCAFFOLDED_BUT_DOCS_INCOMPLETE"
+  open_prs: 0
+  open_issues:
+    - "v4.0.0 STAGE.yaml SSOT contradiction (inherited)"
+    - "3 alpha gate FAILs (inherited from v4.0.0)"
+    - "168h SOAK FINAL_REPORT missing (V400-09)"
+    - "v4.0.0 main落后 16902 commit (inherited divergence)"
+    - "5/7 WP-C..G deferred items not migrated into v4.1.0 scope"
+    - "CURRENT_VERSION.md stale"
+    - "v4.0.0 RELEASE_NOTES.md missing"
+  next_action: "Complete PHASE_0 docs per §next_action above; then assess whether to (a) fix 3 inherited v4.0.0 alpha-gate FAILs in v4.1.0 scope, or (b) escalate v4.0.0 STAGE.yaml SSOT contradiction to governance review before proceeding to ALPHA."
