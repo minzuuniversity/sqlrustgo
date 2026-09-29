@@ -6,11 +6,29 @@
 
 ## 最近已发布
 
+**v4.0.0 GA** (CONDITIONAL PASS, 2026-09-19 发布；tag `v4.0.0-final` @ `54571eeca0`，最终 sync HEAD `07178c9d66`；PR #3787/#4902 promote 至 main)
+
+- 完整发布说明：[docs/releases/v4.0.0/RELEASE_NOTES.md](docs/releases/v4.0.0/RELEASE_NOTES.md)
+- 完整变更日志：[docs/releases/v4.0.0/CHANGELOG.md](docs/releases/v4.0.0/CHANGELOG.md)
+- 升级指南：[docs/releases/v4.0.0/UPGRADE_GUIDE.md](docs/releases/v4.0.0/UPGRADE_GUIDE.md)
+- GA 门禁报告：[docs/releases/v4.0.0/GA_GATE_REPORT.md](docs/releases/v4.0.0/GA_GATE_REPORT.md) — G1/G2/G4/G5 ✅ PASS；G3 coverage 78.28% 平均 CONDITIONAL PASS（< 80%）；168h SOAK defer 至 V400-09 follow-up
+
 **v3.11.0 GA**（6/6 GA 门通过，2026-08-09 发布；tag `v3.11.0-ga` @ `83c623835`）
 
 ## 当前正在开发
 
-**v3.12.0 RC** — develop/v3.12.0 @ commit `cbe1f53f85`（截至 2026-08-26，PR #4493/#4495 合并后）
+**v4.1.0 ALPHA** — develop/v4.1.0 @ commit `c1a73a5320`（tag `v4.1.0-alpha1`，2026-09-29 promote from DRAFT → ALPHA；ALPHA gate composite 19/19 + 8/8 PASS，详见 [docs/releases/v4.1.0/RELEASE_NOTES.md](docs/releases/v4.1.0/RELEASE_NOTES.md)）
+
+- **阶段**: **ALPHA**（2026-09-29 从 DRAFT 转入；`scripts/gate/check_alpha_v410.sh` composite PASS）
+- **当前状态**: 承接 v4.0.0 PRODUCTION 落地；V400-05/06/07 production 代码已合入 v4.0.0（PR #3781），v4.1.0 主要承接：
+  - V400-05/06/07 与 VectorStore/DiskGraphStore 的完整 hooks 接入
+  - WP-C DDL/integrity 修复（#4682/#4652/#4672/#4669/#4709/#4703）
+  - WP-D join/subquery 修复（#4668/#4656/#4649/#4636）
+  - WP-F schema migration (#4848)
+  - WP-G CHAR(n) PAD SPACE 兼容 (#4846)
+  - WP-H #4639 (v4.0.0 deferred)
+  - 168h SOAK 复跑证据
+- **v3.12.0 RC** 仍在 `develop/v3.12.0` 维护（V312-59-D GA 周期未完成；与 v4.0.0/v4.1.0 三线并行）
 
 - **CLI 批次输入修复**（2026-09-02 提交 fix/v312-61-issues-4607-4608）：
   - Issue #4607 — `sqlrustgo-cli sqlite --batch --mode csv` 对独立 `--` 注释行不再报 `Unexpected token: Eof`。
