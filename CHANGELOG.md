@@ -1,3 +1,46 @@
+## [4.0.0] - 2026-09-19 — Multi-Model Production Cut
+
+> **provenance:** generated_at=2026-09-29, branch=docs/v400-ga-rectify,
+> base_commit=`07178c9d66` (release/v4.0.0 final HEAD),
+> source_repo=openclaw/sqlrustgo, policy=Anti-Fabrication-Policy-v1.0
+
+> **状态**: GA (CONDITIONAL PASS) — 2026-09-19
+> **完整变更日志**: [docs/releases/v4.0.0/CHANGELOG.md](docs/releases/v4.0.0/CHANGELOG.md)
+> **发布说明**: [docs/releases/v4.0.0/RELEASE_NOTES.md](docs/releases/v4.0.0/RELEASE_NOTES.md)
+> **升级指南**: [docs/releases/v4.0.0/UPGRADE_GUIDE.md](docs/releases/v4.0.0/UPGRADE_GUIDE.md)
+> **GA 门禁报告**: [docs/releases/v4.0.0/GA_GATE_REPORT.md](docs/releases/v4.0.0/GA_GATE_REPORT.md)
+> **Claim Downgrade**: [docs/releases/v4.0.0/CLAIM_DOWNGRADE_MANIFEST.md](docs/releases/v4.0.0/CLAIM_DOWNGRADE_MANIFEST.md)
+
+### 关键节点
+
+- **起点**: v3.12.0 GA HEAD `9febebb255`
+- **最终 HEAD**: `07178c9d66` (release/v4.0.0)
+- **Tag 链**: `beta/v4.0.0` (`917fd83e3f`) → `rc/v4.0.0` (`c9bea8dcc2`) → `ga/v4.0.0` (`9b357658c2`) → `v4.0.0-final` (`54571eeca0`)
+- **Promote 到 main**: PR #3787 (`558aa61385`) + PR #4902 (`a8dba8d31e`)
+
+### 主要变化（详见 docs/releases/v4.0.0/CHANGELOG.md）
+
+- **多模型 PRODUCTION**: V400-05 Cross-model transaction + V400-06 BackupCoordinator + V400-07 AuditChain (ALCOA+) — PR #3781
+- **向量 PRODUCTION**: V400-01 vector SQL syntax + V400-02 WAL-backed vector storage (6 entry types) — PR #3756/#3758/#3763/#3769
+- **图 PRODUCTION**: V400-03 DiskGraphStore + V400-04 Cypher MATCH dispatch — PR #3756/#3759/#3760/#3764
+- **性能**: WAL group commit (+30% TPS batch:100), MVCC GC tuning (-58% RSS peak), PK B+Tree auto-build, MVCC single-version chain GC, append-only delta saves, scan-skip optimization — PR #3774
+- **SOAK pre-flight**: 5min baseline — 118,585 queries, 0 errors, RSS peak 636 MB — `SOAK_BASELINE_5MIN_2026-09-19.md`
+- **测试**: 280+ parser tests + 30 mysql-server MATCH dispatch tests + 83 cross-model/backup/ACL design tests
+
+### 已知边界（GA CONDITIONAL PASS 原因）
+
+- **G3 coverage**: 78.28% 平均 < 80% GA 阈值（CONDITIONAL PASS）— `sqlrustgo-parser` 74.32% / `sqlrustgo-mysql-server` 75.41% 主缺口
+- **168h SOAK**: 仅 5min pre-flight PASS，168h 实跑 defer 至 V400-09 follow-up（已 kickoff 2026-09-19）
+- **WP deferred**: 5/8 WP 推 v4.0.1（WP-C / WP-D / WP-F / WP-G / WP-B 部分）；1/8 WP-H #4639 推 v4.1
+- **V400-08 cost model / V400-10 GMP-Platform consumer**: 切出时 🟡 状态
+
+### 后续
+
+- **v4.0.1**: 承接 5/8 WP deferred items + V400-06/07/08 实现
+- **v4.1.0**: 承接 WP-H #4639 + 168h SOAK 复跑 + cross-model optimizer
+
+---
+
 # SQLRustGo v3.11.0 更新日志
 
 > **版本**: v3.11.0
