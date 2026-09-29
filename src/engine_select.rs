@@ -1650,8 +1650,22 @@ impl<S: StorageEngine + 'static> ExecutionEngine<S> {
         if !step_1_5_filtered {
             if let Some(ref where_expr) = select.where_clause {
                 let rewritten = self.pre_evaluate_non_correlated_in_subquery(where_expr);
+                // Fold every long, all-literal membership list into a
+                // pre-parsed `InValueSet`. `rewritten` is bound to this
+                // local and never moved, so the set keys stay valid for
+                // every evaluation below.
+                let mut in_sets: std::collections::HashMap<usize, crate::engine_utils::InValueSet> =
+                    std::collections::HashMap::new();
+                build_in_value_sets(&rewritten, &table_info, &mut in_sets);
                 if &rewritten != where_expr {
-                    rows.retain(|row| eval_predicate(&rewritten, row, &table_info));
+                    rows.retain(|row| {
+                        crate::engine_utils::eval_predicate_with_in_sets(
+                            &rewritten,
+                            row,
+                            &table_info,
+                            &in_sets,
+                        )
+                    });
                 }
                 // V312-66 / Issue #4641: pre-evaluate `val <OP> ANY/ALL (subq)`
                 // per outer row. Executes the subquery once per row (the
@@ -1672,8 +1686,16 @@ impl<S: StorageEngine + 'static> ExecutionEngine<S> {
                         self.pre_evaluate_correlated_in_subquery(&rewritten, row, &table_info);
                     let base: &Expression = with_in.as_ref().unwrap_or(&rewritten);
                     let pre = self.pre_evaluate_quantified_subquery(row, &table_info, base);
-                    let expr = pre.unwrap_or_else(|| base.clone());
-                    if eval_predicate(&expr, row, &table_info) {
+                    // Borrow, never clone: `eval_predicate_with_in_sets` keys
+                    // its pre-parsed sets by node address, so the tree must
+                    // stay the same allocation across every row.
+                    let expr: &Expression = pre.as_ref().unwrap_or(base);
+                    if crate::engine_utils::eval_predicate_with_in_sets(
+                        expr,
+                        row,
+                        &table_info,
+                        &in_sets,
+                    ) {
                         quantified_new_rows.push(row.clone());
                     }
                 }
@@ -8619,6 +8641,52 @@ fn find_top_level_equality_literal(where_expr: &Expression, _key_col_idx: usize)
         }
     }
     walk(where_expr)
+}
+
+/// Minimum literal-list length worth folding into an [`InValueSet`].
+///
+/// Building the set costs O(N) once; the linear scan it replaces costs
+/// O(N) *per row* with a `eval_literal_from_str` parse at every step.
+/// The break-even is therefore around a couple of rows, so the threshold
+/// is deliberately low — it exists only to avoid paying set construction
+/// for trivial lists like `x IN (1, 2, 3)`.
+const IN_LIST_SET_THRESHOLD: usize = 16;
+
+/// Collect the address of every `InList`/`NotInList` node in `expr` whose
+/// right-hand side is a long, fully-literal list, together with its
+/// pre-parsed [`InValueSet`]. See [`eval_predicate_with_in_sets`] for how
+/// the addresses are used.
+fn build_in_value_sets(
+    expr: &Expression,
+    table_info: &TableInfo,
+    out: &mut std::collections::HashMap<usize, crate::engine_utils::InValueSet>,
+) {
+    use sqlrustgo_parser::Expression as E;
+    match expr {
+        E::InList(l, vs) | E::NotInList(l, vs) => {
+            if vs.len() >= IN_LIST_SET_THRESHOLD {
+                if let Some(set) = crate::engine_utils::InValueSet::from_literals(vs, table_info) {
+                    out.insert(expr as *const Expression as usize, set);
+                }
+            }
+            build_in_value_sets(l, table_info, out);
+            for v in vs {
+                build_in_value_sets(v, table_info, out);
+            }
+        }
+        E::BinaryOp(l, _, r) => {
+            build_in_value_sets(l, table_info, out);
+            build_in_value_sets(r, table_info, out);
+        }
+        E::UnaryOp(_, inner) => build_in_value_sets(inner, table_info, out),
+        E::IsNull(inner) | E::IsNotNull(inner) => build_in_value_sets(inner, table_info, out),
+        E::FunctionCall(_, args) => {
+            for a in args {
+                build_in_value_sets(a, table_info, out);
+            }
+        }
+        _ => {}
+    }
 }
 
 /// V312-58 Sprint 4 (Issue #4374): generalize the Q17 single-key fast-path

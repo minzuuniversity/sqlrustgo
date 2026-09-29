@@ -925,6 +925,11 @@ path = "tests/operators/order_by_desc.rs"
 name = "operators_char_padding"
 path = "tests/operators/char_padding.rs"
 
+# IN-subquery operator suite + InValueSet large-list fast path
+[[test]]
+name = "operators_in_subquery"
+path = "tests/operators/in_subquery.rs"
+
 # Issue #3285 reproduction (Sprint 4)
 [[test]]
 name = "repro_3285_real_preservation"
