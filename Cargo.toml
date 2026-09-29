@@ -1517,6 +1517,14 @@ path = "tests/integration/tpch/tpch_22_queries_wire_test.rs"
 [[test]]
 name = "tpch_bug_regression_test"
 path = "tests/integration/tpch/tpch_bug_regression_test.rs"
+# Restored on v4.1.0: removed in 6603820f1e because its
+# tests/tpch_hashes_v380.json fixture "had already been removed", but that
+# fixture is present again (allowlisted in .gitignore). The test now
+# compiles; it needs a generated TPC-H dataset to run, which is not
+# committed (tests/data/tpch-sf001 is a symlink into /tmp).
+[[test]]
+name = "tpch_hash_test"
+path = "tests/integration/tpch/tpch_hash_test.rs"
 [[test]]
 name = "tpch_json_vs_bint_compare"
 path = "tests/integration/tpch/tpch_json_vs_bint_compare.rs"
