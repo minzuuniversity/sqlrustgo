@@ -27,6 +27,8 @@ ALLOWLIST_PATTERNS=(
     "docs/releases/.*/manifest\.json$"
     "docs/releases/.*/evidence/.*/summary\.json$"
     "\.claude/.*\.json$"
+    "tests/tpch_hashes_.*\.json$"
+    "tests/oracle/baselines/.*\.json$"
 )
 
 check_allowed() {

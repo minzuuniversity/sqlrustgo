@@ -102,7 +102,6 @@ fn null_not_equals_is_null() {
 
 /// 1 = NULL should be NULL (unknown), not FALSE.
 #[test]
-#[ignore = "parser rejects a column operand on the left of a comparison"]
 fn int_equals_null_is_null() {
     let mut e = null_engine();
     assert_eq!(scalar_on(&mut e, "SELECT 1 = v FROM n"), "NULL");
@@ -132,43 +131,35 @@ fn int_comparison_still_true() {
 // --------------------------------------------------------------------------
 // AND with NULL
 //
-// KNOWN PARSER GAP: sqlrustgo's parser rejects every `AND` whose operand is a
-// column reference (`SELECT v AND 1 FROM n` -> "Expected expression"), so the
-// three-valued `AND` truth table cannot be exercised through SQL today. The
-// evaluator logic in `sql_and` is therefore covered by the OR cases below,
-// which do parse, plus the direct unit tests at the end of this file.
-// Un-comment the AND rows once the parser accepts a column operand for AND.
+// Boolean AND in column position needs `Token::And` in the parser's
+// `is_operator` whitelist; without it the column loop parsed the left
+// operand and then choked on `AND`.
 
 #[test]
-#[ignore = "parser rejects a column operand on the left of AND"]
 fn false_and_null_is_false() {
     let mut e = null_engine();
     assert_eq!(scalar_on(&mut e, "SELECT 0 AND v FROM n"), "false");
 }
 
 #[test]
-#[ignore = "parser rejects a column operand on the left of AND"]
 fn true_and_null_is_null() {
     let mut e = null_engine();
     assert_eq!(scalar_on(&mut e, "SELECT 1 AND v FROM n"), "NULL");
 }
 
 #[test]
-#[ignore = "parser rejects a column operand on the left of AND"]
 fn null_and_true_is_null() {
     let mut e = null_engine();
     assert_eq!(scalar_on(&mut e, "SELECT v AND 1 FROM n"), "NULL");
 }
 
 #[test]
-#[ignore = "parser rejects a column operand on the left of AND"]
 fn null_and_false_is_false() {
     let mut e = null_engine();
     assert_eq!(scalar_on(&mut e, "SELECT v AND 0 FROM n"), "false");
 }
 
 #[test]
-#[ignore = "parser rejects a column operand on the left of AND"]
 fn null_and_null_is_null() {
     let mut e = null_engine();
     assert_eq!(scalar_on(&mut e, "SELECT v AND v FROM n"), "NULL");
@@ -194,7 +185,6 @@ fn false_or_null_is_null() {
 
 /// NULL OR TRUE = TRUE (TRUE dominates).
 #[test]
-#[ignore = "parser rejects a column operand on the left of OR"]
 fn null_or_true_is_true() {
     let mut e = null_engine();
     assert_eq!(scalar_on(&mut e, "SELECT 1 OR v FROM n"), "true");
@@ -202,7 +192,6 @@ fn null_or_true_is_true() {
 
 /// NULL OR FALSE = NULL (UNKNOWN propagates).
 #[test]
-#[ignore = "parser rejects a column operand on the left of OR"]
 fn null_or_false_is_null() {
     let mut e = null_engine();
     assert_eq!(scalar_on(&mut e, "SELECT 0 OR v FROM n"), "NULL");
