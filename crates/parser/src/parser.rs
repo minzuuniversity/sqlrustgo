@@ -5348,11 +5348,15 @@ impl Parser {
                 }
                 // Handle aggregate functions: COUNT(*), SUM(col), etc.
                 Some(Token::NumberLiteral(ref n)) => {
+                    let start_position = self.position;
                     let n_str = n.to_string();
                     self.next();
                     // If the next token is a binary operator (e.g., `1 - 2`,
                     // `1 + 2`), parse the right side and build a BinaryOp.
-                    // Otherwise treat as a bare literal column.
+                    // Arithmetic is handled inline; logical/comparison
+                    // operators (`0 AND v`, `1 = v`, `1 OR v`) fall through
+                    // to the general expression parser below so they get
+                    // full operator precedence instead of a bare BinaryOp.
                     if matches!(
                         self.current(),
                         Some(Token::Plus)
@@ -5384,6 +5388,41 @@ impl Parser {
                                 Some(a)
                             } else {
                                 None
+                            }
+                        } else {
+                            None
+                        };
+                        columns.push(SelectColumn {
+                            name: format!("{:?}", expr),
+                            alias,
+                            expression: Some(expr),
+                        });
+                    } else if matches!(
+                        self.current(),
+                        Some(Token::And)
+                            | Some(Token::Or)
+                            | Some(Token::Equal)
+                            | Some(Token::NotEqual)
+                            | Some(Token::Greater)
+                            | Some(Token::Less)
+                            | Some(Token::GreaterEqual)
+                            | Some(Token::LessEqual)
+                    ) {
+                        // Logical / comparison follows the literal, e.g.
+                        // `SELECT 0 AND v` or `SELECT 1 = v`. Rewind so the
+                        // general expression parser sees the whole operand
+                        // and applies normal precedence.
+                        self.position = start_position;
+                        let expr = self.parse_expression()?;
+                        let alias = if matches!(self.current(), Some(Token::As)) {
+                            self.next();
+                            match self.current() {
+                                Some(Token::Identifier(name)) => {
+                                    let alias_name = name.clone();
+                                    self.next();
+                                    Some(alias_name)
+                                }
+                                _ => None,
                             }
                         } else {
                             None
@@ -6037,6 +6076,10 @@ impl Parser {
                             // `||` is `Token::Or` (string concat) — operator in
                             // expression position.
                             || matches!(self.current(), Some(Token::Or))
+                            // Boolean AND in column position, e.g.
+                            // `SELECT a AND b FROM t`. Without this the
+                            // column loop parsed `a`, then choked on `AND`.
+                            || matches!(self.current(), Some(Token::And))
                             // JSON path operators (MySQL 5.7).
                             || matches!(self.current(), Some(Token::JsonArrow))
                             || matches!(self.current(), Some(Token::JsonArrowText))
@@ -6055,6 +6098,7 @@ impl Parser {
                             || matches!(self.peek(), Some(Token::LParen))
                             // `||` peek — see above.
                             || matches!(self.peek(), Some(Token::Or))
+                            || matches!(self.peek(), Some(Token::And))
                             // JSON path operators (MySQL 5.7).
                             || matches!(self.peek(), Some(Token::JsonArrow))
                             || matches!(self.peek(), Some(Token::JsonArrowText))

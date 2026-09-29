@@ -36,9 +36,11 @@ fn join_two_tables_inner_basic() {
     let r = e.execute("SELECT customers.name, orders.amount FROM customers, orders WHERE customers.id = orders.cust_id ORDER BY customers.name").unwrap();
     assert_eq!(r.rows.len(), 2);
     assert_eq!(r.rows[0][0].to_string(), "Alice");
-    assert_eq!(r.rows[0][1].to_string(), "50");
+    // `amount` is REAL, so 50.0 renders as "50.0" — SQLite (the teaching
+    // oracle) does the same. An INTEGER column would render "50".
+    assert_eq!(r.rows[0][1].to_string(), "50.0");
     assert_eq!(r.rows[1][0].to_string(), "Bob");
-    assert_eq!(r.rows[1][1].to_string(), "75");
+    assert_eq!(r.rows[1][1].to_string(), "75.0");
 }
 
 #[test]

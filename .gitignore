@@ -173,6 +173,11 @@ docs/releases/v3.12.0/perf/TPCH_SF1_CORRECTNESS_BUNDLE/
 !docs/governance/*.json
 !docs/releases/*/manifest.json
 !docs/releases/*/evidence/*/summary.json
+# TPC-H result-hash baselines required by tests/integration/tpch/tpch_hash_test.rs
+# via include_str!(); the test cannot compile without them.
+!tests/tpch_hashes_v380.json
+!tests/oracle/baselines/*.json
+!tests/oracle/baselines/perf/*.json
 # keep other tracked JSON if explicitly staged via 'git add -f'
 
 
