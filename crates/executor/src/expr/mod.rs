@@ -1040,12 +1040,32 @@ fn parse_lit(s: &str) -> Value {
 /// instead of the expected real value. The new path promotes to `Float`
 /// whenever either operand is `Float`, matching PostgreSQL/SQLite.
 pub fn eval_binary_op(left: &Value, right: &Value, op: &str) -> Value {
-    match op.to_uppercase().as_str() {
+    let op_upper = op.to_uppercase();
+    // SQL three-valued logic for scalar comparisons: `NULL = NULL`,
+    // `NULL <> 1`, `1 > NULL`, ... are all UNKNOWN (NULL), matching
+    // SQLite / MySQL / PostgreSQL. Previously the comparison arms
+    // delegated to `eq_cross` / `compare_cmp`, both of which return
+    // `Boolean(false)` for NULL operands — so a *projected* comparison
+    // (`SELECT NULL = NULL`) reported FALSE instead of NULL.
+    //
+    // This does not affect WHERE filtering: the predicate path
+    // (`eval_predicate` -> `sql_compare`) does not go through this
+    // function, and UNKNOWN is still a non-match there. Arithmetic is
+    // unaffected too — `eval_arithmetic` already returns Null.
+    if (matches!(left, Value::Null) || matches!(right, Value::Null))
+        && matches!(
+            op_upper.as_str(),
+            "=" | "==" | "!=" | "<>" | ">" | "<" | ">=" | "<="
+        )
+    {
+        return Value::Null;
+    }
+    match op_upper.as_str() {
         "=" | "==" => Value::Boolean(eq_cross(left, right)),
         "!=" | "<>" => Value::Boolean(!eq_cross(left, right)),
-        ">" | "<" | ">=" | "<=" => compare_cmp(left, right, op),
-        "AND" | "&&" => Value::Boolean(to_bool(left) && to_bool(right)),
-        "OR" | "||" => Value::Boolean(to_bool(left) || to_bool(right)),
+        ">" | "<" | ">=" | "<=" => compare_cmp(left, right, &op_upper),
+        "AND" | "&&" => sql_and(left, right),
+        "OR" | "||" => sql_or(left, right),
         // V312-22b / Issue #4036: include `%` so `i % 2` evaluates to a real
         // value. Without this arm, `i % 2` returns `Value::Null`, breaking
         // TPC-H Q4 / sqllogictest `WHERE i % 2 <> 0` filtering (NULL is
@@ -1370,9 +1390,45 @@ fn json_extract(left: &Value, right: &Value, unquote: bool) -> Value {
 
 pub fn eval_unary_op(val: &Value, op: &str) -> Value {
     match op.to_uppercase().as_str() {
-        "NOT" | "!" => Value::Boolean(!to_bool(val)),
+        // SQL three-valued logic: `NOT UNKNOWN` is UNKNOWN, not TRUE.
+        // `to_bool(Null)` is `false`, so the previous one-liner evaluated
+        // `SELECT NOT NULL` to TRUE — a silently wrong value (SQLite,
+        // MySQL and PostgreSQL all return NULL). The Boolean arm below is
+        // unchanged for every non-NULL operand.
+        "NOT" | "!" => match val {
+            Value::Null => Value::Null,
+            v => Value::Boolean(!to_bool(v)),
+        },
         _ => Value::Null,
     }
+}
+
+/// `AND` under SQL three-valued logic: FALSE dominates, otherwise UNKNOWN
+/// propagates (`FALSE AND UNKNOWN` = FALSE, `TRUE AND UNKNOWN` = UNKNOWN).
+fn sql_and(left: &Value, right: &Value) -> Value {
+    let left_unknown = matches!(left, Value::Null);
+    let right_unknown = matches!(right, Value::Null);
+    if (!left_unknown && !to_bool(left)) || (!right_unknown && !to_bool(right)) {
+        return Value::Boolean(false);
+    }
+    if left_unknown || right_unknown {
+        return Value::Null;
+    }
+    Value::Boolean(true)
+}
+
+/// `OR` under SQL three-valued logic: TRUE dominates, otherwise UNKNOWN
+/// propagates (`TRUE OR UNKNOWN` = TRUE, `FALSE OR UNKNOWN` = UNKNOWN).
+fn sql_or(left: &Value, right: &Value) -> Value {
+    let left_unknown = matches!(left, Value::Null);
+    let right_unknown = matches!(right, Value::Null);
+    if (!left_unknown && to_bool(left)) || (!right_unknown && to_bool(right)) {
+        return Value::Boolean(true);
+    }
+    if left_unknown || right_unknown {
+        return Value::Null;
+    }
+    Value::Boolean(false)
 }
 
 /// MySQL 5.7 / SQL scalar function dispatch.

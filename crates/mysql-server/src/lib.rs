@@ -4452,6 +4452,8 @@ fn statement_kind(parsed: &Result<Statement, String>) -> &'static str {
             Statement::Kill { .. } => "KILL",
             // V312-56E / Issue #4255: EXPLAIN plan-shape oracle.
             Statement::Explain(_) => "EXPLAIN",
+            // SQLite-style schema introspection.
+            Statement::Pragma(_) => "PRAGMA",
         },
     }
 }

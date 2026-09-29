@@ -106,6 +106,11 @@ pub enum Statement {
     /// V312-64 / Issue #4663: SQLite-style `REINDEX [table_name]` maintenance
     /// command. Parsed but currently a no-op at the executor layer.
     Reindex(ReindexStatement),
+    /// SQLite-style `PRAGMA <name> [(<arg>)]` / `PRAGMA <name> = <arg>`
+    /// schema introspection. The name is preserved verbatim so the
+    /// executor can answer a precise "unsupported pragma" error instead
+    /// of the generic `Unexpected token: Identifier("PRAGMA")`.
+    Pragma(PragmaStatement),
     WithSelect(WithSelect),
     /// WITH-clause followed by a DML statement (INSERT / UPDATE / DELETE).
     /// The CTE definitions are evaluated first, then the DML body is
@@ -678,6 +683,21 @@ pub struct VacuumStatement {
 #[derive(Debug, Clone, PartialEq)]
 pub struct ReindexStatement {
     pub table_name: Option<String>,
+}
+
+/// SQLite-style `PRAGMA <name> [(<arg>)]` / `PRAGMA <name> = <arg>`.
+///
+/// SQLite lexes `PRAGMA` as a keyword; sqlrustgo's lexer has no
+/// `Token::Pragma`, so the leading identifier is matched in
+/// `parse_statement` (the same approach used for `KILL`).
+///
+/// `arg` holds the parenthesised or `=`-assigned argument verbatim
+/// (e.g. `table_info(customer)` -> `name = "table_info"`,
+/// `arg = Some("customer")`).
+#[derive(Debug, Clone, PartialEq)]
+pub struct PragmaStatement {
+    pub name: String,
+    pub arg: Option<String>,
 }
 
 #[derive(Debug, Clone, PartialEq)]
@@ -2648,6 +2668,11 @@ impl Parser {
                 if matches!(ident.to_uppercase().as_str(), "KILL") =>
             {
                 self.parse_kill()
+            }
+            // SQLite-style `PRAGMA <name> [(<arg>)]`. Like KILL above,
+            // PRAGMA arrives as a bare Identifier (no Token::Pragma).
+            Some(Token::Identifier(ident)) if ident.eq_ignore_ascii_case("PRAGMA") => {
+                self.parse_pragma()
             }
             Some(t) => Err(format!("Unexpected token: {:?}", t)),
             None => Err("Empty input".to_string()),
@@ -12483,6 +12508,64 @@ impl Parser {
             connection_id,
             kill_query,
         })
+    }
+
+    /// SQLite-style `PRAGMA <name> [(<arg>)]` / `PRAGMA <name> = <arg>`.
+    ///
+    /// Only the syntax is validated here — every pragma name is accepted
+    /// and preserved in the AST so the executor can answer with a precise
+    /// "not supported" error instead of the generic
+    /// `Unexpected token: Identifier("PRAGMA")` the parser used to emit.
+    fn parse_pragma(&mut self) -> Result<Statement, String> {
+        self.next(); // consume the PRAGMA identifier
+        let name = match self.current().cloned() {
+            Some(Token::Identifier(n)) => {
+                self.next();
+                n
+            }
+            Some(other) => {
+                return Err(format!(
+                    "Expected pragma name after PRAGMA, got {:?}",
+                    other
+                ));
+            }
+            None => return Err("Expected pragma name after PRAGMA".to_string()),
+        };
+        // Argument forms: `table_info(customer)`, `table_info = customer`,
+        // or bare `database_list` (no argument).
+        let arg = match self.current().cloned() {
+            Some(Token::LParen) => {
+                self.next();
+                let value = self.parse_pragma_arg()?;
+                self.expect(Token::RParen)?;
+                Some(value)
+            }
+            Some(Token::Equal) => {
+                self.next();
+                Some(self.parse_pragma_arg()?)
+            }
+            _ => None,
+        };
+        Ok(Statement::Pragma(PragmaStatement { name, arg }))
+    }
+
+    /// Read a single pragma argument (bare identifier, quoted string,
+    /// number, or boolean).
+    fn parse_pragma_arg(&mut self) -> Result<String, String> {
+        match self.current().cloned() {
+            Some(Token::Identifier(v))
+            | Some(Token::StringLiteral(v))
+            | Some(Token::NumberLiteral(v)) => {
+                self.next();
+                Ok(v)
+            }
+            Some(Token::BooleanLiteral(b)) => {
+                self.next();
+                Ok(b.to_string())
+            }
+            Some(other) => Err(format!("Expected pragma argument, got {:?}", other)),
+            None => Err("Expected pragma argument".to_string()),
+        }
     }
 
     fn parse_show(&mut self) -> Result<Statement, String> {
