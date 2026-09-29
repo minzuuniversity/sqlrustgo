@@ -1,15 +1,45 @@
-- **v4.1.0-alpha1**（2026-09-29；8/8 alpha quality gates PASS；tag `v4.1.0-alpha1` @ HEAD `c1a73a5320`）
-- **v4.0.0 GA CONDITIONAL PASS**（2026-09-20 self-claim；HEAD `2e1f9bd44d`；main + release/v4.0.0 已发布到 5 远端）
-> ⚠️ `docs/releases/v4.0.0/STAGE.yaml` 的 `current_stage` 仍写 `DRAFT`——该文件最后更新于
-> 2026-09-18，早于 2026-09-19 的 GA tag 与 main promote，尚未回填。事实以 tag 与
-> GA_GATE_REPORT 为准。
+# 当前版本状态
 
-- **v3.12.0 GA**（2026-09-08；8/8 GA gates PASS；tag `v3.12.0-ga` @ `355b5a3837`）
-- **v3.11.0 GA**（2026-08-09；6/6 GA gates PASS；tag `v3.11.0-ga` @ `83c623835`）
+> **provenance:** generated_at=2026-09-30, branch=develop/v4.1.0,
+> commit=`bdf465b25c` (post v4.0.0 docs backport + alpha2 prep),
+> source_repo=openclaw/sqlrustgo, policy=Anti-Fabrication-Policy-v1.0
+
+## 最近已发布
+
+**v4.0.0 GA** (CONDITIONAL PASS, 2026-09-19 发布；tag `v4.0.0-final` @ `54571eeca0`，最终 sync HEAD `07178c9d66`；PR #3787/#4902 promote 至 main)
+
+- 完整发布说明：[docs/releases/v4.0.0/RELEASE_NOTES.md](docs/releases/v4.0.0/RELEASE_NOTES.md)
+- 完整变更日志：[docs/releases/v4.0.0/CHANGELOG.md](docs/releases/v4.0.0/CHANGELOG.md)
+- 升级指南：[docs/releases/v4.0.0/UPGRADE_GUIDE.md](docs/releases/v4.0.0/UPGRADE_GUIDE.md)
+- GA 门禁报告：[docs/releases/v4.0.0/GA_GATE_REPORT.md](docs/releases/v4.0.0/GA_GATE_REPORT.md) — G1/G2/G4/G5 ✅ PASS；G3 coverage 78.28% 平均 CONDITIONAL PASS（< 80%）；168h SOAK defer 至 V400-09 follow-up
+
+**v4.1.0-alpha1** (2026-09-29; 8/8 alpha quality gates PASS; tag `v4.1.0-alpha1` @ HEAD `c1a73a5320`, 后续 6 commits 推到 `0edda51d42`)
+
+**v3.12.0 GA**（2026-09-08；8/8 GA gates PASS；tag `v3.12.0-ga` @ `355b5a3837`）
+**v3.11.0 GA**（2026-08-09；6/6 GA gates PASS；tag `v3.11.0-ga` @ `83c623835`）
 
 ## 当前正在开发
 
-**v4.1.0 ALPHA** — develop/v4.1.0 @ commit `c1a73a5320` (tag v4.1.0-alpha1)
+**v4.1.0 ALPHA** — develop/v4.1.0 @ commit `bdf465b25c` (tag v4.1.0-alpha1, PRAGMA + 3VL + correlated-IN + tpch_hash_test landed + v4.0.0 docs backport)
+
+- **阶段**: **ALPHA** (2026-09-29 promote from DRAFT; `scripts/gate/check_alpha_v410.sh` composite PASS: entry 19/19 + quality 8/8; tag `v4.1.0-alpha1`)
+- **当前状态**: 继承 v4.0.0 GA production 代码 (V400-05/06/07 in PR #3781)，v4.1.0 增量包括：
+  - `b80e43842` feat(parser+executor): PRAGMA support and SQL three-valued logic
+  - `0d30f8bfb0` fix(engine): evaluate correlated IN subquery per outer row
+  - `e772ee3ff` fix(parser+tests): unblock test compilation and allow boolean AND in column position
+  - `fc329ae17` test(harness): name the missing TPC-H fixture instead of failing opaquely
+  - `af05d7e6fe` test(tpch): restore tpch_hash_test on v4.1.0
+  - `2b5c8db0c7` docs: correct architecture map and release version line
+- **v4.0.0 STAGE.yaml SSOT 治理决策**: v4.0.0 STAGE.yaml `current_stage: DRAFT` 与 GA_GATE_REPORT.md 说 `GA CONDITIONAL PASS` 矛盾已通过 `docs/v400-ga-rectify` 分支（241f98a4）补发布 RELEASE_NOTES.md + UPGRADE_GUIDE.md。SSOT 仍未 advance to GA（v4.0.0 STAGE.yaml current_stage=DRAFT 不变，是 release governance decision 而非文档 fix）。
+- **alpha→beta 标签 exit criteria** (per STAGE.yaml): WP-C/D/F/G deferred items migrated + V400-09 168h SOAK FINAL + Coverage >= 50%
+  - WP-C DDL/integrity 修复 (#4682/#4652/#4672/#4669/#4709/#4703)
+  - WP-D join/subquery 修复 (#4668/#4656/#4649/#4636)
+  - WP-F schema migration (#4848)
+  - WP-G CHAR(n) PAD SPACE 兼容 (#4846)
+  - WP-H #4639 (v4.0.0 deferred, v4.1.0 优先)
+  - 168h SOAK 复跑证据 (前置: RSS budget 调优)
+
+- **v3.12.0 RC** 仍在 `develop/v3.12.0` 维护 (V312-59-D GA 周期未完成; 与 v4.0.0/v4.1.0 三线并行)
 
 - **v4.1.0 DRAFT→ALPHA promotion**（2026-09-29 commit `c1a73a5320`）：
   - 11 PHASE_0 docs scaffolded: STAGE.yaml / VERSION_PLAN / DEV_PLAN / ROADMAP / TEST_PLAN / ISSUES_PLAN / LEGACY_ISSUES / README / CHANGELOG / PHASE_1_SCOPE / RELEASE_NOTES
