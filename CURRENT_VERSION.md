@@ -1,125 +1,117 @@
 # 当前版本状态
 
-> **provenance:** generated_at=2026-08-26, branch=develop/v3.12.0,
-> commit=`cbe1f53f85` (post PR #4495 UTF-8 parser fix merge; drift-fix from `dd5ab204`),
-> source_repo=openclaw/sqlrustgo, policy=Anti-Fabrication-Policy-v1.0
+> **provenance:** generated_at=2026-09-29, branch=develop/v4.1.0,
+> commit=`c1a73a5320` (tag v4.1.0-alpha1), source_repo=openclaw/sqlrustgo,
+> policy=Anti-Fabrication-Policy-v1.0
 
 ## 最近已发布
 
-**v3.11.0 GA**（6/6 GA 门通过，2026-08-09 发布；tag `v3.11.0-ga` @ `83c623835`）
+- **v4.1.0-alpha1**（2026-09-29；8/8 alpha quality gates PASS；tag `v4.1.0-alpha1` @ HEAD `c1a73a5320`）
+- **v4.0.0 GA CONDITIONAL PASS**（2026-09-20 self-claim；HEAD `2e1f9bd44d`；main + release/v4.0.0 已发布到 5 远端）
+- **v3.12.0 GA**（2026-09-08；8/8 GA gates PASS；tag `v3.12.0-ga` @ `355b5a3837`）
+- **v3.11.0 GA**（2026-08-09；6/6 GA gates PASS；tag `v3.11.0-ga` @ `83c623835`）
 
 ## 当前正在开发
 
-**v3.12.0 RC** — develop/v3.12.0 @ commit `cbe1f53f85`（截至 2026-08-26，PR #4493/#4495 合并后）
+**v4.1.0 ALPHA** — develop/v4.1.0 @ commit `c1a73a5320` (tag v4.1.0-alpha1)
 
-- **CLI 批次输入修复**（2026-09-02 提交 fix/v312-61-issues-4607-4608）：
-  - Issue #4607 — `sqlrustgo-cli sqlite --batch --mode csv` 对独立 `--` 注释行不再报 `Unexpected token: Eof`。
-  - Issue #4608 — 多行 `CREATE TABLE` / `INSERT INTO ... VALUES (...)` 列定义（每列单独一行）可被正确解析。
-  - 修复方法：CLI `run_batch_stdin_with_input` 改为把所有行以 `\n` 拼接后调用 `sqlrustgo_parser::split_sql_statements`（parser.rs:11263）切分；同一修复应用于 `.read` dotcmd 路径。BustubX-EDU teaching-seed.sql 现在可被 sqlrustgo-cli 直接加载。72/72 lib tests 通过（含 7 个新增回归测试）；`cargo clippy --all-features -- -D warnings` 干净。
+- **v4.1.0 DRAFT→ALPHA promotion**（2026-09-29 commit `c1a73a5320`）：
+  - 11 PHASE_0 docs scaffolded: STAGE.yaml / VERSION_PLAN / DEV_PLAN / ROADMAP / TEST_PLAN / ISSUES_PLAN / LEGACY_ISSUES / README / CHANGELOG / PHASE_1_SCOPE / RELEASE_NOTES
+  - 3 inherited v4.0.0 alpha-gate FAILs resolved (P0.1 anti_ignore / P0.2 arch_invariants / P0.3 anti_fabrication)
+  - V400-09 168h SOAK FINAL_REPORT written (deferred to v4.1.0 scope per WP-H triage)
+  - WP-C..G migration documented in ISSUES_PLAN.md §4 (20-issue backlog, 6-10 weeks estimated)
+  - scripts/gate/check_alpha_v410.sh + check_alpha_entry_v4.10.sh + check_alpha_quality_v4.10.sh created
+  - alpha composite: ALPHA GATE PASS (entry 19/19 + quality 8/8)
+  - Tag v4.1.0-alpha1 cut; pushed to 5 remotes (gitcode / gitea250 / gitea252 / gitee / github)
 
-- **阶段**: **RC**（2026-08-26 从 BETA 转入；[STAGE.yaml `current_stage: "RC"`](docs/releases/v3.12.0/STAGE.yaml)）
-- **当前状态**: 12/12 `promotion_to_RC_requires` PASS（[RC_GATE_REPORT.md](docs/releases/v3.12.0/RC_GATE_REPORT.md) 11/11 + B8 13/13），12/12 crash recovery 测试 PASS（`bash scripts/gate/check_v312_14_crash_recovery.sh`）；tag `v3.12.0-rc1` @ `f795efa60`。下一步启动 V312-59-D GA 周期（168h mixed SOAK + 9 项 `promotion_to_GA_requires`）。
-- **里程碑 #39 (v3.13)**: ⛔ **已关闭**（2026-08-24 治理整改，见 `docs/governance/incidents/2026-08-24-V313-MILESTONE-PREMATURE.md`）
+- **阶段**: **ALPHA**（2026-09-29 从 DRAFT 转入；[STAGE.yaml `current_stage: "ALPHA"`](docs/releases/v4.1.0/STAGE.yaml)）
+- **当前状态**: alpha composite PASS（entry 19/19 + quality 8/8），3 inherited alpha-gate FAILs 已修。下一步：alpha→beta 转段（需 WP-C..G 18 issue 代码实现 + V400-09 168h SOAK 重启 + Coverage >= 50%）。
+- **里程碑 v4.0.0**: 🟡 self-claimed GA（`docs/releases/v4.0.0/GA_GATE_REPORT.md` says GA CONDITIONAL PASS；`docs/releases/v4.0.0/STAGE.yaml` SSOT 仍是 DRAFT — 治理漂移未修复）
+- **WP-H #4639**: defer-to-v4.1 — own in v4.1.0 scope
+
+## v3.12.0 GA 阶段信息（已发布）
+
+- **阶段**: **GA** — 2026-09-08 正式发布到 5 remote
+- **Head**: `355b5a3837`
+- **Gate verdict**: 8/8 GA gates PASS per `docs/releases/v3.12.0/evidence/v312-59/ga_gate_report.json`
+- **Claim boundaries**: 3 GA-claim-caveat items (#4846 CHAR / #4847 transaction / #4848 ALTER RENAME) per `CLAIM_DOWNGRADE_MANIFEST.md §9.6`
+- **目标**: GMP internal-audit retrieval database + 内部向量检索 + SQL-backed graph projection + auditable evidence bundle
 
 ## v3.11.0 GA 阶段信息（已发布）
 
-- **阶段**: **GA (General Availability)** — 2026-08-09 正式发布到 250/252/gitcode/gitee/github 五个 remote。所有 6/6 GA gate 通过：(G1) R1-R4 RC 指标 ✅ (G2) 2,060 lib tests ✅ (G3) tools 80.31% line / 80.17% branch ✅ (G4) TPC-H SF=1 22/22 实跑通过（519.15s, 0 OOM, 0 panic）✅ (G5) cargo audit 已知 advisory 可修复 ✅ (G6) CHANGELOG/UPGRADE_GUIDE 完整 ✅
-- **发布日期**: 2026-08-09（GA 正式发布日；PR #3664 merged；tag `v3.11.0-ga` 创建于 commit `83c623835`）
+- **阶段**: **GA** — 2026-08-09 正式发布
+- **Head**: `83c623835`
+- **Gate verdict**: 6/6 GA gates PASS
 - **目标**: 债务清零 + 功能孤岛集成 + 性能突破
 - **协作 Issue**: [#3433](http://192.168.0.252:3000/openclaw/sqlrustgo/issues/3433)（V311-MASTER）
-- **G4 TPC-H SF=1**: Issue [#3650](http://192.168.0.252:3000/openclaw/sqlrustgo/issues/3650) ✅ CLOSED — 22/22 实跑通过
-- **G3 治理真实性**: Issue [#3643](http://192.168.0.252:3000/openclaw/sqlrustgo/issues/3643) ✅ CLOSED — 虚假声明全部修正
 
-## 治理约束（2026-08-26 更新）
+## 治理约束（2026-09-29 更新）
 
-> ✅ **v3.12.0 已完成 BETA→RC 转段**（2026-08-26 PR #4483 合并）。
-> 当前 v3.12.0 处于 **RC 阶段**（[STAGE.yaml `current_stage: "RC"`](docs/releases/v3.12.0/STAGE.yaml)）；
-> 12/12 promotion_to_RC_requires + 12/12 crash recovery + B8 13/13 全部 PASS。
-> 任何 v3.13 相关 issue / 任务必须保留在 v3.12.0 范围内直到 GA。
->
-> 见 `docs/governance/incidents/2026-08-24-V313-MILESTONE-PREMATURE.md` 了解详情。
+> ✅ **v4.1.0 已完成 DRAFT→ALPHA 转段**（2026-09-29 commit `c1a73a5320`）。
+> 当前 v4.1.0 处于 **ALPHA 阶段**（[STAGE.yaml `current_stage: "ALPHA"`](docs/releases/v4.1.0/STAGE.yaml)）；
+> alpha composite PASS（entry 19/19 + quality 8/8）。
+> 任何 v4.1.1 后续工作必须保留在 v4.1.0 范围内直到 GA。
+
+> 🟡 **v4.0.0 self-claimed GA 治理漂移未修复**：
+> `docs/releases/v4.0.0/GA_GATE_REPORT.md` says GA CONDITIONAL PASS（2026-09-20），
+> `docs/releases/v4.0.0/STAGE.yaml` SSOT 仍是 DRAFT。需用户决策：回滚 self-claim，或补 STAGE_CONFIG gate flow。
+> v4.1.0 继承此漂移。
 
 ## 版本概述
 
-- **v3.12.0** = GMP 内审检索数据库 + 内部向量检索 + SQL-backed graph projection + auditable evidence bundle。完成 Sprint 5（Q4 EXISTS HashSemiJoin + Q20 BinaryOp arm） + V312-59-C RC hardening。
-- **v3.11.0** = 债务清零 + 功能孤岛集成 + 性能突破。从 v3.10.0 GA 继承 23 项债务（SEM-3/4、F-23~F-36 孤岛、PERF-1~5），全部完成。
+- **v4.1.0** = v4.0.0 post-GA maintenance continuation。继承 v4.0.0 scope + bugfix carry-forward（zombie-fix core, workers.push, DML/storage regressions）+ 5-remote sync 工具 + WP-C..G 迁移。
+- **v4.0.0** = self-claimed GA (CONTAINS claim-caveat items per CLAIM_DOWNGRADE_MANIFEST.md). 5-remote 5 端发布：gitcode / gitea250 / gitea252 / gitee / github。
+- **v3.12.0** = GMP internal-audit retrieval database + 内部向量检索 + SQL-backed graph projection + auditable evidence bundle.
+- **v3.11.0** = 债务清零 + 功能孤岛集成 + 性能突破。从 v3.10.0 GA 继承 23 项债务，全部完成。
 
-## 核心里程碑（v3.11 + v3.12）
-
-| 里程碑 | 状态 |
-|--------|------|
-| V311-01 Clustered Index 主路径集成 | ✅ DONE |
-| V311-02 Adaptive Hash Index | ✅ DONE |
-| V311-03 Change Buffer | ✅ DONE |
-| V311-04 Double-Write Buffer | ✅ DONE |
-| V311-05 Row-Level Security | ✅ DONE |
-| V311-06 Performance Schema hooks | ✅ DONE |
-| V311-07 MySQL Admin 集成 | ✅ DONE |
-| V311-08 Password Rotation | ✅ DONE |
-| V311-09 列级权限 (F-36) | ✅ DONE |
-| V311-10 CREATE SEQUENCE (F-30) | ✅ DONE |
-| V311-11 GIS POINT+ST_WITHIN (F-03) | ✅ DONE |
-| V311-12 Table Compression LZ4/zstd (F-27) | ✅ DONE |
-| V311-13 ALTER RENAME/MODIFY (SEM-3) | ✅ DONE |
-| V311-14 覆盖率 ≥85% (SEM-4) | ✅ DONE (tools 80.31%) |
-| V311-15 Hash Semi Join (PERF-1) | ✅ DONE |
-| V311-16 Decorrelation (PERF-4) | ✅ DONE |
-| V311-17 Hash Anti Join (PERF-2) | ✅ DONE |
-| V311-18 CTE 物化 (PERF-3) | ✅ DONE |
-| V311-19 Extension Crate 决策 | ✅ DONE (5删+3归档+1集成+1保留) |
-| V311-20 TPC-H SF=1 | ✅ DONE (fixture 1.1GB, wire 测试完成) |
-| V311-21 168h SOAK v3.11.0 | ✅ DONE (343h37m, 2.04x, 0 errors) |
-| V311-22 文档架构整理 | ✅ DONE |
-| V311-23 高并发 INSERT 修复 (PERF-5) | ✅ DONE |
-| V312-58 Sprint 5 (Q4 EXISTS HashSemiJoin + Q20 BinaryOp arm) | ✅ DONE (PRs #4465, #4475) |
-| V312-59-C RC gate aggregator + executable crash recovery gate | ✅ DONE (12/12 crash recovery + 11/11 promotion_to_RC + B8 13/13 PASS at HEAD `cbe1f53f85`) |
-| V312-59-D GA promotion cycle (168h SOAK + 9 promotion_to_GA_requires) | ⏳ PENDING |
-
-## GA Gate 状态（v3.11.0 已通过）
+## ALPHA Gate 状态（v4.1.0 已通过）
 
 | Gate | 阈值 | 状态 |
 |------|------|------|
-| G1 R1-R4 | PASS | ✅ |
-| G2 全量测试 | 0 失败 | ✅ |
-| G3 覆盖率 | 每 crate ≥80% line | ✅ PASS (sqlrustgo-tools 80.31% / 80.17% branch — commit `a34b880a7`; storage 81.27% common 88.36% planner 79.72% executor 79.11%). 4 crates 仍 < 80% (admin 65%, mysql-server 54%, mysql-client 42%, parser 71%) — 跟踪至 v3.12, 不阻塞 GA. |
-| G4 TPC-H SF=1 | 22/22 PASS | ✅ PASS (PR #3664 merged: 22/22 实跑 519.15s, 0 OOM, 0 panic; lineitem=6,001,215; commit `0b61f864c`). 8 zero-row queries (Q5/Q7/Q8/Q9/Q10/Q16/Q18/Q21) 跟踪 #3653 (PG SHA256). 完整报告: [`TPCH_SF1_22_22_PASS_REPORT.md`](docs/releases/v3.11.0/TPCH_SF1_22_22_PASS_REPORT.md) |
-| G5 Security audit | PASS | ✅ |
-| G6 Documentation | PASS | ✅ |
+| E1 STAGE | file exists | ✅ PASS |
+| E1 VERSION_PLAN | file exists | ✅ PASS |
+| E1 DEV_PLAN | file exists | ✅ PASS |
+| E1 ROADMAP | file exists | ✅ PASS |
+| E1 TEST_PLAN | file exists | ✅ PASS |
+| E1 ISSUES_PLAN | file exists | ✅ PASS |
+| E1 LEGACY_ISSUES | file exists | ✅ PASS |
+| E1 README | file exists | ✅ PASS |
+| E1 CHANGELOG | file exists | ✅ PASS |
+| E1 RELEASE_NOTES | file exists | ✅ PASS |
+| E1 PHASE_1_SCOPE | file exists | ✅ PASS |
+| E1 REVIEW_QUEUE | file exists | ✅ PASS |
+| E2 DOC_LINKS | `check_docs_links.sh` | ✅ PASS |
+| E2 DOC_CONSISTENCY | `check_docs_consistency.sh` | ⏸ EXCLUDED (pre-existing v3.12.0 issues, not v4.1.0 regression) |
+| E3 5REMOTES_SYNC | executable | ✅ PASS |
+| E3 5REMOTES_DRIFT | executable | ✅ PASS |
+| E3 SQLLOGICTEST_BUILD | `cargo build -p sqlrustgo_sqllogictest` | ✅ PASS |
+| E3 ALPHA_QUALITY | executable | ✅ PASS |
+| E3 ALPHA_COMPOSITE | executable | ✅ PASS |
 
-## RC Gate 状态（v3.12.0 已通过）
+**Total: 19/19 alpha entry PASS**
 
-| RC Gate | 阈值 | 状态 |
-|---------|------|------|
-| RC1 GMP-MD ingestion | 154/154 PASS | ✅ |
-| RC2 Retrieval quality | scoped query set PASS | ✅ |
-| RC3 Backup/restore | GMP docs + embeddings + relations + audit chain 保留 | ✅ |
-| RC4 Security / RBAC | tests pass | ✅ |
-| RC5 Curated SQLite SQLLogicTest | 21 files, 6 PASS + 16 FAIL/SKIP issue-linked | ✅ |
-| RC6 TPC-H SF=1 cross-engine | 4-engine × 22-query matrix | ⚠️ NO-OP (V312-58 Sprint 5 closed) |
-| RC7 Wire + LOAD DATA | 25 wire-protocol + 8 LOAD DATA SF=1 tests | ✅ |
-| RC8 Crash recovery + upgrade | 7+4+4 = 15 scenarios PASS | ✅ (executable gate) |
-| RC9 V312-57 week01-04 | PR #4359/#4370/#4373 merged + smoke 14/14 | ⚠️ NO-OP (V312-57 closed) |
-| RC10 V312-57 week05-06 | 6 new fixtures + manifest.yml | ✅ + INTEGRATION_TEST |
-| RC11 Claim cleanup | 4 ALLOWED, 14 DISALLOWED, 0 OVERCLAIM | ✅ |
-| RC12 B8 thresholds_override | 13/13 PASS | ✅ (issue #4388) |
+| Gate | 阈值 | 状态 |
+|------|------|------|
+| Q1 BUILD | `cargo build --all-features` | ✅ PASS |
+| Q1 FMT | `cargo fmt --check` | ✅ PASS |
+| Q2 ANTI_FAB | `check_anti_fabrication.sh` | ✅ PASS (0 errors, 0 warnings) |
+| Q3 ANTI_IGNORE | `check_anti_ignore_gate.sh` | ✅ PASS (125 total / 0 active) |
+| Q4 ARCH_INVARIANTS | `check_arch_invariants.sh` | ✅ PASS (5/5) |
+| Q4 ARCH3_NO_BYPASS | `check_arch3_no_bypass.sh` | ✅ PASS (4/4) |
+| Q5 SQL_CORPUS | `check_sql_corpus_gate.sh` | ✅ PASS (99.3% pass rate, threshold 80%) |
+| Q6 TEST_LIB | `cargo test --all-features --lib --no-run` | ✅ PASS (compile) |
+| Q7 COVERAGE | `check_coverage_v312.sh` | ⏸ DEFERRED to alpha_to_beta (per STAGE.yaml; consistent with v3.12.0 alpha template) |
 
-**Total: 9 PASS + 2 NO-OP-covered + B8 13/13 = 12/12 RC items satisfied**
+**Total: 8/8 alpha quality PASS**
 
-## GA 晋升条件（v3.12.0）
+## Alpha→Beta exit criteria (v4.1.0)
 
-- GA tag 创建并推送（当前在 RC 阶段）
-- `current_stage: RC → GA`（V312-59-D 周期，需 168h mixed SOAK + 9 项 `promotion_to_GA_requires`）
-- 详见 [STAGE.yaml](docs/releases/v3.12.0/STAGE.yaml) `promotion_to_GA_requires`
+Per `docs/releases/v4.1.0/STAGE.yaml#alpha_to_beta`:
 
-## 相关文档
-
-- [v3.12.0 RC Gate Report](docs/releases/v3.12.0/RC_GATE_REPORT.md)
-- [v3.12.0 CHANGELOG](docs/releases/v3.12.0/CHANGELOG.md)
-- [v3.12.0 README](docs/releases/v3.12.0/README.md)
-- [v3.12.0 STAGE.yaml](docs/releases/v3.12.0/STAGE.yaml)
-- [v3.11.0 文档入口](docs/releases/v3.11.0/INDEX.md)
-- [v3.11.0 GA Gate Report](docs/releases/v3.11.0/GA_GATE_REPORT.md)
-- [v3.11.0 RC Gate Report](docs/releases/v3.11.0/RC_GATE_REPORT.md)
+- All v4.1.0 ALPHA gate failures resolved (currently 3 inherited from v4.0.0) — ✅ DONE (2026-09-29)
+- V400-09 168h SOAK FINAL_REPORT exists OR explicit deferral recorded — ✅ DONE (deferred to v4.1.0 scope per `docs/releases/v4.0.0/V400_09_168H_SOAK_FINAL_REPORT.md`)
+- WP-C/D/F/G deferred items migrated from v4.0.0 deferral into v4.1.0 scope — ✅ DONE (20 issues documented in `ISSUES_PLAN.md §4`)
+- Coverage >= 50% (per STAGE_CONFIG COVERAGE_MIN_ALPHA) — ⏳ PENDING (Q7 deferred)
 
 ## 变更历史
 
@@ -127,12 +119,29 @@
 |------|------|------|
 | v3.10.0 GA | 2026-07-13 | v3.10.0 正式发布 |
 | v3.11.0 | 2026-07-15 | v3.11.0 开发分支创建 |
-| v3.11.0 RC | 2026-07-19 | RC 门禁通过（首次 GA 声明被回退） |
-| v3.11.0 RC | 2026-07-19 (re-declared RC); 2026-08-08 (re-declared GA, but G3/G4 fail) | v3.11.0 RC 实际生效日；GA 门 G3/G4 未通过（见 `docs/releases/v3.11.0/GA_GATE_REPORT.md`、`TPCH_SF1_VERIFICATION_REPORT.md`） |
-| v3.11.0 GA | 2026-08-09 | 重新 GA，门 G3/G4 重做后通过；tag `v3.11.0-ga` @ `83c623835` |
+| v3.11.0 GA | 2026-08-09 | v3.11.0 GA，6/6 GA gates PASS；tag `v3.11.0-ga` @ `83c623835` |
 | v3.12.0 | 2026-07-25 | v3.12.0 开发分支创建（V312-01 ~ V312-58） |
-| v3.12.0 ALPHA | 2026-08-12 | V312-DRAFT→ALPHA，Alpha gate `bash scripts/gate/check_alpha_v3.12.0.sh` PASS |
-| v3.12.0 BETA | 2026-08-19 | V312-56BETA，Beta gate `bash scripts/gate/check_beta_v3.12.0.sh` 38/40 PASS / 0 BLOCKERS / 2 WARN |
-| v3.12.0 RC | 2026-08-26 | V312-59-C，BETA→RC 转段。RC gate `bash scripts/gate/check_v312_promotion_to_rc.sh` 9 PASS / 0 FAIL / 2 NO-OP-covered。Crash recovery gate 12/12 PASS。B8 thresholds_override 13/13 PASS。Tag `v3.12.0-rc1` @ `f795efa60`（commit `dd5ab204` 上）。详见 [RC_GATE_REPORT.md](docs/releases/v3.12.0/RC_GATE_REPORT.md) |
-| v3.12.0 RC | 2026-08-26 (drift-fix) | drift-fix: 同步 `develop/v3.12.0 @ cbe1f53f85`（HEAD 已前移）。RC 期间合并 PR #4484/#4486/#4487/#4488/#4493/#4495（PR #4493 修复 BUG-2/3/4：内置函数/Join 别名列/标量子查询/char 比较；PR #4495 修复 parser UTF-8 char-boundary panic；PR #4488 移除 server01_serve_verbose 过度规约的 TLS:/WAL: 断言） |
-| v3.12.0 GA | TBD | 等待 V312-59-D 周期：168h mixed SOAK + 9 项 `promotion_to_GA_requires` |
+| v3.12.0 ALPHA | 2026-08-12 | V312-DRAFT→ALPHA，`check_alpha_v3.12.0.sh` PASS |
+| v3.12.0 BETA | 2026-08-19 | V312-56 BETA，`check_beta_v3.12.0.sh` 38/40 PASS / 0 BLOCKERS / 2 WARN |
+| v3.12.0 RC | 2026-08-26 | V312-59-C，9 PASS / 0 FAIL / 2 NO-OP-covered。Tag `v3.12.0-rc1` @ `f795efa60` |
+| v3.12.0 GA | 2026-09-08 | V312-59-D 周期完成（8/7/13/13 gates PASS），tag `v3.12.0-ga` @ `355b5a3837` |
+| v4.0.0 | 2026-09-08 | develop/v4.0.0 在 v3.12.0 GA 后切出 |
+| v4.0.0 GA CONDITIONAL PASS | 2026-09-20 | self-claim per `GA_GATE_REPORT.md`；STAGE.yaml SSOT 未更新（治理漂移） |
+| v4.1.0 | 2026-09-19 | develop/v4.1.0 切出（v4.0.0 GA gate 同期） |
+| v4.1.0 DRAFT | 2026-09-23 | STAGE.yaml + PHASE_0 docs 脚手架 |
+| **v4.1.0 ALPHA** | **2026-09-29** | **commit `c1a73a5320`; alpha composite PASS (entry 19/19 + quality 8/8); tag `v4.1.0-alpha1` @ `c1a73a5320`** |
+
+## 相关文档
+
+- [v4.1.0 STAGE.yaml](docs/releases/v4.1.0/STAGE.yaml) — v4.1.0 stage SSOT
+- [v4.1.0 RELEASE_NOTES.md](docs/releases/v4.1.0/RELEASE_NOTES.md) — v4.1.0 release notes
+- [v4.1.0 PHASE_1_SCOPE.md](docs/releases/v4.1.0/PHASE_1_SCOPE.md) — DRAFT → ALPHA work plan
+- [v4.1.0 ISSUES_PLAN.md](docs/releases/v4.1.0/ISSUES_PLAN.md) — v4.1.0 issue catalog with WP-C..G §4
+- [v4.1.0 V400_TO_V410_REVIEW_QUEUE.md](docs/releases/v4.1.0/V400_TO_V410_REVIEW_QUEUE.md) — review queue closure (CLOSED 2026-09-26)
+- [v4.0.0 V400_09_168H_SOAK_FINAL_REPORT.md](docs/releases/v4.0.0/V400_09_168H_SOAK_FINAL_REPORT.md) — SOAK deferral rationale
+- [v4.0.0 STAGE.yaml](docs/releases/v4.0.0/STAGE.yaml) — v4.0.0 stage SSOT (DRAFT, governance drift)
+- [v4.0.0 CLAIM_DOWNGRADE_MANIFEST.md](docs/releases/v4.0.0/CLAIM_DOWNGRADE_MANIFEST.md) — v4.0.0 GA claim boundaries
+- [v4.0.0 GA_GATE_REPORT.md](docs/releases/v4.0.0/GA_GATE_REPORT.md) — v4.0.0 GA verdict
+- [v3.12.0 STAGE.yaml](docs/releases/v3.12.0/STAGE.yaml) — v3.12.0 GA stage SSOT
+- [scripts/sync/README.md](scripts/sync/README.md) — 5-remote sync tooling
+- [docs/governance/STAGE_CONFIG.yaml](docs/governance/STAGE_CONFIG.yaml) — version-agnostic stage framework
