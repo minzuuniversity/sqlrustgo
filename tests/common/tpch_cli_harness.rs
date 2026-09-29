@@ -318,8 +318,16 @@ pub fn cli_load_fixture(
 /// Start a CLI server with the SF=0.001 fixture loaded.
 pub fn start_sf001_cli() -> Result<CliServer, String> {
     let data_dir = PathBuf::from("tests/data/tpch-sf001");
-    if !data_dir.exists() {
-        return Err(format!("fixture not found: {}", data_dir.display()));
+    // `exists()` follows symlinks, so a dangling link into /tmp returns false
+    // only after the target is gone — check a file we actually need too, so
+    // the error names the real prerequisite.
+    if !data_dir.exists() || !data_dir.join("lineitem.tbl").exists() {
+        return Err(format!(
+            "fixture not found: {}\n\
+             tests/data/tpch-sf001 is a symlink into /tmp and is wiped on reboot; \
+             generate the dataset with `dbgen` and restore the symlink target.",
+            data_dir.display()
+        ));
     }
     let server = CliServer::start(&data_dir)?;
     eprintln!("[cli] server started on port {}", server.port);

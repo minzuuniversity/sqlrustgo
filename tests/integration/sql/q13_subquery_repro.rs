@@ -90,6 +90,16 @@ fn make_engine() -> ExecutionEngine<MemoryStorage> {
         .unwrap();
 
     let data = PathBuf::from(option_env!("TPCH_DATA_DIR").unwrap_or("tests/data/tpch-sf001"));
+    if !data.join("lineitem.tbl").exists() {
+        panic!(
+            "TPC-H data not found at {}.\n\
+             These tests need a generated TPC-H dataset, which is not committed \
+             (tests/data/tpch-sf001 is a symlink into /tmp, which is wiped on reboot).\n\
+             Generate it with `dbgen`, then point TPCH_DATA_DIR at the result:\n\
+             \n    TPCH_DATA_DIR=/path/to/tpch-sf001 cargo test --test q13_subquery_repro\n",
+            data.display()
+        );
+    }
     let schemas: Vec<(&str, usize)> = vec![
         ("region", 3),
         ("nation", 4),
@@ -102,7 +112,9 @@ fn make_engine() -> ExecutionEngine<MemoryStorage> {
     ];
     for (tbl, cols) in &schemas {
         let path = data.join(format!("{}.tbl", tbl));
-        let content = std::fs::read_to_string(&path).unwrap();
+        let content = std::fs::read_to_string(&path).unwrap_or_else(|e| {
+            panic!("cannot read {}: {e}", path.display());
+        });
         let mut n = 0;
         for line in content.lines() {
             if line.is_empty() {
