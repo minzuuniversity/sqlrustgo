@@ -5,7 +5,7 @@
 //! v3.10.0 Issue #3703: parallel filter is gated by:
 //!   - CBO-driven `ExecutionEngine::should_parallelize_query()` (replaces
 //!     hardcoded `PARALLEL_MIN_ROWS` threshold)
-//!   - self.parallel_degree > 1 (env SQLRUSTGO_EXECUTOR_PARALLELISM or --executor-parallelism)
+//!   - self.parallel_degree() > 1 (env SQLRUSTGO_EXECUTOR_PARALLELISM or --executor-parallelism)
 //!   - no correlated subquery in WHERE (would break parallel eval_predicate)
 //!
 //! Tracing spans (RUST_LOG=sqlrustgo=trace) reveal whether the path engages at runtime.
@@ -995,7 +995,7 @@ impl<S: StorageEngine + 'static> ExecutionEngine<S> {
         // a handful of tables. The CBO side is idempotent on overwrite,
         // so per-query refresh is safe and ensures the cost model never
         // reads stale histograms even if a previous query updated stats.
-        if self.cbo_enabled {
+        if self.cbo_enabled.load(std::sync::atomic::Ordering::Relaxed) {
             self.update_cost_model_stats();
         }
         // Sprint 1b fix (Q7/Q8/Q9): handle FROM (subquery) AS alias by
@@ -1428,7 +1428,7 @@ impl<S: StorageEngine + 'static> ExecutionEngine<S> {
         // The storage read lock is NOT held past this point, ensuring
         // that any recursive execution (e.g. correlated subqueries)
         // cannot deadlock against a held lock.
-        let _parallel_guard = if self.parallel_degree > 1
+        let _parallel_guard = if self.parallel_degree() > 1
             && {
                 // CBO-driven parallelism threshold:
                 // Extract the bare table name (strip alias suffix) and delegate
@@ -1458,7 +1458,7 @@ impl<S: StorageEngine + 'static> ExecutionEngine<S> {
         {
             let _span = tracing::info_span!(
                 "parallel_filter_engaged",
-                degree = self.parallel_degree,
+                degree = self.parallel_degree(),
                 rows_in = rows.len(),
                 has_correlated_subquery = false,
                 has_lock_clause = false,
@@ -1467,15 +1467,15 @@ impl<S: StorageEngine + 'static> ExecutionEngine<S> {
             let t_start = Instant::now();
             let n_rows_in = rows.len();
             if let Some(where_expr) = &select.where_clause {
-                let parallel = ParallelVolcanoExecutor::new(self.parallel_degree);
-                let partitions = parallel.partition_scan(rows, self.parallel_degree);
+                let parallel = ParallelVolcanoExecutor::new(self.parallel_degree());
+                let partitions = parallel.partition_scan(rows, self.parallel_degree());
                 let n_partitions = partitions.len();
                 rows = self.filter_partitions_parallel(partitions, where_expr, &table_info);
                 let n_rows_out = rows.len();
                 let elapsed_us = t_start.elapsed().as_micros();
                 tracing::info!(
                     target: "sqlrustgo.parallel",
-                    degree = self.parallel_degree,
+                    degree = self.parallel_degree(),
                     rows_in = n_rows_in,
                     rows_out = n_rows_out,
                     partitions = n_partitions,
