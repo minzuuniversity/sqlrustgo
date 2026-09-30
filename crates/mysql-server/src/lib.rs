@@ -5322,7 +5322,6 @@ fn do_command_loop<S: Read + Write + DrainWrites>(
                         }
                     } else {
                         let mut eng = engine.write();
-                        eprintln!("SERVER: eng.execute(sql={})", stmt_sql);
                         eng.execute(stmt_sql)
                     };
                     // V312-18e: time every dispatched statement; the log
@@ -6278,17 +6277,39 @@ pub(crate) fn run_server_with_listener_and_shutdown_with_bootstrap_tables_and_sq
                 "MVCC layer rebuilt: {} tables, snapshot isolation enabled for reads",
                 mvcc_inner.list_tables().len()
             );
-            let mut parallel_storage = ParallelWalStorage::new(mvcc_inner, wal_manager);
+            // #4913 / v4.1.0-perf (F-05): when group commit is requested,
+            // build the shared WAL lock FIRST and hand the same
+            // `Arc<Mutex<W>>` to both the storage and the coordinator —
+            // two independent BufWriters over one WAL file would interleave
+            // corruptly. The coordinator coalesces up to `max_batch`
+            // concurrent commits into a single fsync (InnoDB semantics)
+            // instead of one fsync per commit.
+            let mut parallel_storage = match sync_mode {
+                sqlrustgo_storage::WalSyncMode::GroupCommit {
+                    max_batch,
+                    max_wait_us,
+                } => {
+                    let shared_wal = Arc::new(std::sync::Mutex::new(wal_manager));
+                    let coord = Arc::new(
+                        sqlrustgo_storage::wal::group_commit::GroupCommitCoordinator::with_shared_inner(
+                            Arc::clone(&shared_wal),
+                            max_batch as usize,
+                            max_wait_us,
+                        ),
+                    );
+                    let mut storage =
+                        ParallelWalStorage::new_with_shared_wal(mvcc_inner, shared_wal);
+                    storage.set_group_commit(Some(coord));
+                    tracing::info!(
+                        "WAL group commit ACTIVE: max_batch={}, max_wait_us={}",
+                        max_batch,
+                        max_wait_us
+                    );
+                    storage
+                }
+                _ => ParallelWalStorage::new(mvcc_inner, wal_manager),
+            };
             parallel_storage.set_sync_mode(sync_mode);
-            // Note: the `--wal-sync group:...` CLI flag is accepted and
-            // parsed into `WalSyncMode::GroupCommit`, but the server
-            // does not yet install a `GroupCommitCoordinator` here. To
-            // use group commit, construct a `ParallelWalStorage` with
-            // a `GroupCommitCoordinator` programmatically (see
-            // `crates/storage/tests/group_commit_integration.rs` for an
-            // example). The storage layer's commit path already routes
-            // through the coordinator when one is installed; this
-            // server just hasn't been wired up to construct one yet.
             Arc::new(parking_lot::RwLock::new(BoxStorageEngine::new(
                 parallel_storage,
             )))
@@ -6360,6 +6381,28 @@ pub(crate) fn run_server_with_listener_and_shutdown_with_bootstrap_tables_and_sq
                 "MVCC layer rebuilt: {} tables, snapshot isolation enabled for reads",
                 mvcc_inner.list_tables().len()
             );
+            // #4913 / v4.1.0-perf (F-05): the default `file` engine uses
+            // `WalStorage`, whose own doc comment states that
+            // `WalSyncMode::GroupCommit` is IGNORED on this path
+            // (`crates/storage/src/wal_storage.rs:49-52`: "The fields are
+            // ignored on the `WalStorage` path ... To activate group commit,
+            // use `ParallelWalStorage::set_group_commit`"). `WalStorage`
+            // keeps its `Mutex<T>` private and has no shared-WAL
+            // constructor, so the coordinator cannot share its BufWriter
+            // without a storage-layer refactor. Warn loudly instead of
+            // silently accepting `--wal-sync group:N` and then doing one
+            // fsync per commit anyway.
+            if matches!(
+                sync_mode,
+                sqlrustgo_storage::WalSyncMode::GroupCommit { .. }
+            ) {
+                tracing::warn!(
+                    "--wal-sync group:N requested but the default `file` storage \
+                     uses WalStorage, which does not apply GroupCommit (it falls \
+                     back to per-commit fsync). Use --storage parallel for \
+                     group commit, or --wal-sync batch:N on this path."
+                );
+            }
             let wal_storage = WalStorage::new_with_sync_mode_and_checkpoint(
                 mvcc_inner,
                 wal_manager,

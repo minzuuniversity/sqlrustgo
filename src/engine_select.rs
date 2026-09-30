@@ -33,6 +33,15 @@ use std::time::Instant;
 
 type DerivedResult = (Vec<Vec<Value>>, TableInfo);
 
+/// #4913 / v4.1.0-perf: the GROUP BY debug trace used to call
+/// `std::env::var("Q7_TRACE")` on **every** grouped query, which is an
+/// environment-block lookup on a hot path. The flag is now resolved once
+/// at compile time; enable `--features q7-trace` to keep the diagnostics.
+#[cfg(feature = "q7-trace")]
+const Q7_TRACE: bool = true;
+#[cfg(not(feature = "q7-trace"))]
+const Q7_TRACE: bool = false;
+
 // Phase 3 (TPCH-01 Q15): thread-local registry of materialized
 // derived subquery results. Populated by `execute_joins` before the
 // join chain runs; consumed by `execute_single_join` when it encounters
@@ -1763,7 +1772,7 @@ impl<S: StorageEngine + 'static> ExecutionEngine<S> {
             } else {
                 let mut groups: std::collections::HashMap<String, Vec<Vec<Value>>> =
                     std::collections::HashMap::new();
-                let _q7_trace = std::env::var("Q7_TRACE").is_ok();
+                let _q7_trace = Q7_TRACE;
                 let mut _q7_keys_seen: std::collections::HashSet<String> =
                     std::collections::HashSet::new();
                 if _q7_trace {
