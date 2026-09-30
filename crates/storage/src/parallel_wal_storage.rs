@@ -288,6 +288,24 @@ impl<S: StorageEngine + 'static, W: WalManager + 'static> StorageEngine
         // returns 0 and MVCC GC never runs.
         ParallelWalStorage::gc(self, gc_lag)
     }
+
+    /// #4912 / v4.1.0-perf: route the lock-free transaction path to the
+    /// inner engine. The default trait impls return `Err`, which forces
+    /// callers onto the `set_current_tx_id` + `begin_transaction`
+    /// fallback under the global `Arc<RwLock<storage>>` write lock.
+    /// Same class of bug as the `gc` override above: without the
+    /// explicit forwarding, the trait default silently wins.
+    fn begin_transaction_lockfree(&self, tx_id: u64) -> SqlResult<()> {
+        self.inner.begin_transaction_lockfree(tx_id)
+    }
+
+    fn commit_transaction_lockfree(&self) -> SqlResult<()> {
+        self.inner.commit_transaction_lockfree()
+    }
+
+    fn rollback_transaction_lockfree(&self) -> SqlResult<()> {
+        self.inner.rollback_transaction_lockfree()
+    }
 }
 
 #[cfg(test)]

@@ -148,6 +148,7 @@ scripts/.scratch/
 # V312-48 TPC-H SF=1 correctness bundle output (~1.8GB oracle.sqlite)
 docs/releases/v3.12.0/perf/TPCH_SF1_CORRECTNESS_BUNDLE/
 
+<<<<<<< HEAD
 # v4.0.0 commit hygiene (user rule 2026-09-08):
 #   No *.log, *.tbl, *.json files in commits.
 #   Single file < 100MB (GitHub compatibility).
@@ -230,7 +231,19 @@ data/.DS_Store
 data/.sqlrustgo/
 
 # Release artifacts (local builds, not source)
-releases/
+# NOTE: anchored with a leading slash so it matches only the repo-root
+# `releases/` build-output dir. Without the anchor this pattern also
+# ignored every NEW file under docs/releases/ (1828 files there are
+# tracked, so the rule silently blocked new release documentation).
+/releases/
+
+# Runtime state from local SOAK runs (exposed once the releases/ rule
+# above was anchored to the repo root). Reports stay tracked; only
+# process/liveness artifacts are ignored.
+*.pid
+docs/releases/**/driver.stdout
+docs/releases/**/server.log
+docs/releases/**/driver.log
 
 # Evidence-binding output directory (regenerated each run)
 evidence_binding_out/
@@ -273,3 +286,85 @@ jeprof.*.heap
 # v4.0.0 alpha gate worktree scratch
 /rustup_junction/
 /ps_run.ps1
+=======
+
+# Per user rule 2026-09-11: "禁止 log, tbl, json 这类测试输出文件提交"
+# Catch-all for CI test outputs under any docs/releases/*/evidence/ path
+# (the .log/.tsv/.json/.tar.gz outputs from cargo test, sysbench, soak runs)
+docs/releases/**/evidence/**/*.log
+docs/releases/**/evidence/**/*.tsv
+docs/releases/**/evidence/**/*.tbl
+docs/releases/**/evidence/**/*.json
+docs/releases/**/evidence/**/*.tar.gz
+docs/releases/**/evidence/**/*.wal
+docs/releases/**/evidence/**/*.dat
+docs/releases/**/evidence/**/*.bin
+docs/releases/**/evidence/**/*.html
+docs/releases/**/evidence/**/*.gz
+docs/releases/**/evidence/**/data/
+docs/releases/**/evidence/**/server.log
+docs/releases/**/evidence/**/server.pid
+
+# docs/proof harness runtime traces (PROOF-001...N JSON outputs)
+docs/proof/*.json
+
+# docs/audit runtime audit dumps (regenerated on each run)
+docs/audit/status/
+docs/audit/*.json
+
+# docs/benchmarks runtime benchmark outputs
+docs/benchmarks/*.json
+
+# docs/monitoring runtime dashboard exports
+docs/monitoring/*.json
+
+# docs/proof/ — already excluded
+
+# AI collaboration / Hermes agent logs (local dev only, never push)
+docs/ai_collaboration/
+docs/AI协作开发/
+docs/tutorials/教学实践/
+docs/tutorials/教学计划/
+
+# Test/eval runtime outputs (CI artifacts)
+benchmarks/baselines/
+benchmarks/results/
+bench/oracle/reports/
+bench/oracle/tpch_sf01_snapshot_v2/
+bench/tpch-benchmark/baseline/
+
+# Coverage + governance outputs (machine-generated)
+.coverage-baseline/
+.gate/state/
+.github/branch-protection-rules.json
+
+# Local scratch / WIP (specific filenames)
+:memory:
+:memory:/
+client-strace.log
+coverage_gate_out/
+evidence_binding.log
+evidence_binding_out/
+contract/
+extensions/
+archive/v3.11/archived-crates/graph/benchmark_results/
+releases/
+renovate.json
+testdata/
+queries/expected/
+test_results_72h/
+results/
+data/
+tests/baseline/
+tests/tpch_hashes_v380.json
+
+
+# Final cleanup additions
+.claude/claude_desktop_config.json
+audit/c3-acid-rollback.log
+benchmark_results/
+docs/sprint4/
+docs/教学案/
+docs/教学实践/
+docs/教学计划/
+>>>>>>> a12e2da9f4 (chore(gitignore): catch test outputs in evidence/ + AI/local dev artifacts)

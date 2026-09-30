@@ -1,0 +1,10 @@
+=== D9: Full Gate Verification (8 Dimensions) ===
+Date: 2026-09-30T15:02:17Z
+
+--- [D1-D5 RC/GA] ---
+                  D7 (G6-G10 reliability) 是 Hermes 2026-06-12 审计新增的 GA 卡死门禁
+                  D8 (V312-19 release gates) 是 Issue #3906 strict-close 硬性条件
+                  D9 (v3.12 coverage framework) 要求覆盖率框架配置 PASS；正式 RC/GA 证据需 V312_COVERAGE_FULL=1
+  ✅ PASS (exit 0)
+
+--- [D6b Test Inventory] ---

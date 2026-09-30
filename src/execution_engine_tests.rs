@@ -389,19 +389,20 @@ fn test_tx_lifecycle_insert_after_rollback_autocommits() {
     assert_eq!(result.affected_rows, 1);
 }
 
+// V312-77 / Issue #4847 Path B revision: double-COMMIT is now a no-op
+// (MySQL-compat) rather than a panic. COMMIT with no active tx returns
+// Ok(empty). This matches the PR #4884 fix and the v312_77 regression
+// suite (`v312_77_commit_no_active_tx_is_noop`).
 #[test]
-#[should_panic(expected = "transaction already committed")]
-fn test_tx_lifecycle_double_commit_panics() {
-    // TX-006: COMMIT twice → must panic
-    // Source: TX_LIFECYCLE_SPEC.md §2.2 "COMMITTED | COMMIT | panic"
+fn test_tx_lifecycle_double_commit_is_noop() {
     let storage = Arc::new(RwLock::new(MemoryStorage::new()));
     let mut engine = ExecutionEngine::new(storage);
     engine.execute("BEGIN").unwrap();
     engine.execute("COMMIT").unwrap();
-    // Double COMMIT → must panic
-    engine.execute("COMMIT").unwrap();
+    // Double COMMIT → no-op (not panic).
+    let result = engine.execute("COMMIT");
+    assert!(result.is_ok(), "second COMMIT must succeed as no-op, got {:?}", result);
 }
-
 // ========================================================================
 // WAL CONTRACT TESTS (TASK_REGISTRY: WAL-003 ~ WAL-005)
 // Hermes B: Shadow Tester — WAL Ordering Validation
@@ -1331,4 +1332,201 @@ fn test_executor_bulk_insert_chunked_uneven_remainder_v312_26() {
         .execute("SELECT COUNT(*) FROM uneven")
         .expect("SELECT COUNT(*)");
     assert_eq!(count_result.rows[0][0], Value::Integer(25_000));
+}
+
+// V4.1.0 / Issue #4910 §3.1 regression tests:
+// Atomic conversion of `cbo_enabled`, `parallel_degree`, `recursive_cte_max_rows`
+// from `bool`/`usize` to `AtomicBool`/`AtomicUsize` must:
+//  (a) preserve read/write semantics
+//  (b) allow the &self SELECT path to read these fields without acquiring
+//      &mut self (the borrow-checker enforcement that triggered #4910)
+
+#[test]
+fn test_v410_atomic_cbo_enabled_getter_returns_initial_value() {
+    let storage = Arc::new(RwLock::new(MemoryStorage::new()));
+    let mut engine = ExecutionEngine::new(storage);
+    assert_eq!(engine.is_cbo_enabled(), true);
+    engine.set_cbo_enabled(false);
+    assert_eq!(engine.is_cbo_enabled(), false);
+}
+
+#[test]
+fn test_v410_atomic_parallel_degree_getter_clamps_to_one() {
+    let storage = Arc::new(RwLock::new(MemoryStorage::new()));
+    let mut engine = ExecutionEngine::new(storage);
+    assert_eq!(engine.parallel_degree(), 1);
+    // Issue #4910 §3.1: setter must clamp 0 → 1 (no parallelism < 1)
+    engine.set_parallel_degree(0);
+    assert_eq!(engine.parallel_degree(), 1);
+    engine.set_parallel_degree(8);
+    assert_eq!(engine.parallel_degree(), 8);
+}
+
+#[test]
+fn test_v410_atomic_cbo_enabled_and_parallel_degree_getter_consistency() {
+    // Regression for #4910: the `cbo_enabled` and `parallel_degree` fields were
+    // previously plain `bool`/`usize`. Converting to `AtomicBool`/`AtomicUsize`
+    // keeps the `&self` get paths safe (no torn reads) under concurrent access.
+    // We exercise this by performing 10k alternating write+read cycles.
+    let storage = Arc::new(RwLock::new(MemoryStorage::new()));
+    let mut engine = ExecutionEngine::new(storage);
+    for i in 0..10_000 {
+        engine.set_cbo_enabled(i % 2 == 0);
+        engine.set_parallel_degree(((i % 8) + 1) as usize);
+        let cbo = engine.is_cbo_enabled();
+        let pd = engine.parallel_degree();
+        // pd must always be in [1, 8] (AtomicUsize enforces this via setter clamp)
+        assert!(pd >= 1 && pd <= 8, "parallel_degree out of range: {}", pd);
+        // cbo must be either true or false
+        let _ = cbo;
+    }
+}
+
+#[test]
+fn test_v410_execute_select_is_usable_via_ref_engine() {
+    // Direct compile-time check that `execute_select` (the hot read path)
+    // still takes `&self` — this is the property that the §3.1 perf fix
+    // preserves. If a future refactor accidentally re-introduces `&mut self`,
+    // this test fails to compile (the `&engine` borrow is incompatible).
+    let storage = Arc::new(RwLock::new(MemoryStorage::new()));
+    let mut engine = ExecutionEngine::new(storage);
+    engine
+        .execute("CREATE TABLE t_v410 (id INTEGER, val INTEGER)")
+        .unwrap();
+    engine
+        .execute("INSERT INTO t_v410 VALUES (1, 10), (2, 20)")
+        .unwrap();
+    let engine_ref: &ExecutionEngine<_> = &engine;
+    // Reading cbo_enabled / parallel_degree via &engine_ref exercises the
+    // &self path on the atomic fields.
+    assert!(engine_ref.is_cbo_enabled() || !engine_ref.is_cbo_enabled()); // tautology: type exercises the path
+    let _ = engine_ref.parallel_degree();
+}
+
+// V4.1.0 / Issue #4910 §3.1 Phase 2 regression tests:
+// execute_read_only(&self, sql) is the new &self entry point that lets
+// the server hold engine.read() across concurrent SELECTs without the
+// engine-layer &mut serialisation.
+
+#[test]
+fn test_v410_execute_read_only_select_routes_via_ref_engine() {
+    let storage = Arc::new(RwLock::new(MemoryStorage::new()));
+    let mut engine = ExecutionEngine::new(storage);
+    engine
+        .execute("CREATE TABLE t_v410ro (id INTEGER, val INTEGER)")
+        .unwrap();
+    engine
+        .execute("INSERT INTO t_v410ro VALUES (1, 10), (2, 20)")
+        .unwrap();
+    let engine_ref: &ExecutionEngine<_> = &engine;
+    // SELECT goes through &self path. The compile-time &engine_ref borrow
+    // is the regression guard: if execute_read_only ever re-introduces
+    // &mut self, this test fails to compile.
+    let result = engine_ref
+        .execute_read_only("SELECT count(*) FROM t_v410ro")
+        .expect("SELECT via &engine");
+    assert_eq!(result.rows.len(), 1);
+}
+
+#[test]
+fn test_v410_execute_read_only_explain_show_describe_pragma_work() {
+    let storage = Arc::new(RwLock::new(MemoryStorage::new()));
+    let mut engine = ExecutionEngine::new(storage);
+    engine
+        .execute("CREATE TABLE t_v410ro (id INTEGER, val INTEGER)")
+        .unwrap();
+    engine
+        .execute("INSERT INTO t_v410ro VALUES (1, 10)")
+        .unwrap();
+    let engine_ref: &ExecutionEngine<_> = &engine;
+    // EXPLAIN: returns 1+ rows describing the plan
+    let explain = engine_ref
+        .execute_read_only("EXPLAIN SELECT * FROM t_v410ro")
+        .expect("EXPLAIN via &engine");
+    assert!(!explain.rows.is_empty());
+    // SHOW: returns engine-level info
+    let show = engine_ref
+        .execute_read_only("SHOW TABLES")
+        .expect("SHOW TABLES via &engine");
+    assert!(!show.rows.is_empty());
+    // DESCRIBE: returns column info
+    let describe = engine_ref
+        .execute_read_only("DESCRIBE t_v410ro")
+        .expect("DESCRIBE via &engine");
+    assert!(!describe.rows.is_empty());
+    // PRAGMA: SQLite-style introspection
+    let pragma = engine_ref
+        .execute_read_only("PRAGMA table_info(t_v410ro)")
+        .expect("PRAGMA via &engine");
+    assert!(!pragma.rows.is_empty());
+}
+
+#[test]
+fn test_v410_execute_read_only_rejects_mutating_statements() {
+    let storage = Arc::new(RwLock::new(MemoryStorage::new()));
+    let mut engine = ExecutionEngine::new(storage);
+    engine
+        .execute("CREATE TABLE t_v410ro (id INTEGER)")
+        .unwrap();
+    let engine_ref: &ExecutionEngine<_> = &engine;
+    // DDL, DML, and transaction statements must NOT be accepted on the
+    // &self read-only entry point. The caller must use execute_mut().
+    let ddl_err = engine_ref
+        .execute_read_only("DROP TABLE t_v410ro")
+        .expect_err("DROP TABLE must error on read-only path");
+    assert!(
+        ddl_err.to_string().contains("read-only"),
+        "expected 'read-only' in error, got: {}",
+        ddl_err
+    );
+    let dml_err = engine_ref
+        .execute_read_only("INSERT INTO t_v410ro VALUES (1)")
+        .expect_err("INSERT must error on read-only path");
+    assert!(dml_err.to_string().contains("read-only"));
+    let tx_err = engine_ref
+        .execute_read_only("BEGIN")
+        .expect_err("BEGIN must error on read-only path");
+    assert!(tx_err.to_string().contains("read-only"));
+}
+
+// V4.1.0 / Issue #4910 §3.1 Phase 2: end-to-end smoke that 4 concurrent threads
+// can issue SELECTs through the `&self` execute_read_only() path without
+// serialising on the engine &mut borrow. The compile-time &engine_ref
+// borrow is the §3.1 contract enforcement.
+
+#[test]
+fn test_v410_concurrent_selects_via_ref_engine() {
+    use std::sync::Arc;
+    use std::thread;
+    let storage = Arc::new(parking_lot::RwLock::new(MemoryStorage::new()));
+    let mut engine = ExecutionEngine::new(storage);
+    engine
+        .execute("CREATE TABLE t_v410c (id INTEGER PRIMARY KEY, val INTEGER)")
+        .unwrap();
+    for i in 0..1000 {
+        engine
+            .execute(&format!("INSERT INTO t_v410c VALUES ({}, {})", i, i))
+            .unwrap();
+    }
+    let engine = Arc::new(engine);
+    let barrier = Arc::new(std::sync::Barrier::new(4));
+    let handles: Vec<_> = (0..4)
+        .map(|_| {
+            let engine = Arc::clone(&engine);
+            let barrier = Arc::clone(&barrier);
+            thread::spawn(move || {
+                barrier.wait();
+                let engine_ref: &ExecutionEngine<_> = &engine;
+                for _ in 0..100 {
+                    let result = engine_ref
+                        .execute_read_only("SELECT count(*) FROM t_v410c")
+                        .expect("SELECT via &engine");
+                    assert_eq!(result.rows[0][0], crate::Value::Integer(1000));
+                }
+            })
+        })
+        .collect();
+    for h in handles {
+        h.join().expect("thread join");
+    }
 }

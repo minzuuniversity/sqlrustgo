@@ -44,12 +44,234 @@
 #     pick up these deferred items.
 
 version: "v4.1.0"
-current_stage: "ALPHA"
+# ============================================================================
+# 2026-09-30 人工架构师裁决：承接 v4.0.0 未完成目标
+# ----------------------------------------------------------------------------
+# v4.0.0 的 GA 晋升已作废（覆盖率 78.28% < COVERAGE_MIN_RC 80 / MIN_GA 85，
+# 且从未执行规范阶段流转）。按裁决，以下两类工作**全部转入 v4.1.0**：
+#   1) 覆盖率补测（目标：达到 GA 门槛 85%）
+#   2) 重构工作（含 C-ARCH-05 未覆盖的大文件拆分）
+# 依据：docs/releases/v4.0.0/GA_RELEASE_TIMELINE.md、
+#      docs/releases/v4.0.0/STAGE.yaml §ga_promotion_status、
+#      docs/releases/v4.1.0/ALIGNMENT_AUDIT_2026-09-30.md §7.7
+# ============================================================================
+inherited_from_v4000_revocation:
+  v4000_ga_verdict: "REVOKED 2026-09-30 — v4.0.0 never legitimately reached GA"
+  coverage_baseline_measured: "78.28% (executor 82.57 / storage 80.82 / mysql-server 75.41 / parser 74.32)"
+  coverage_target_for_ga: "85% (STAGE_CONFIG COVERAGE_MIN_GA); 80% is COVERAGE_MIN_RC"
+  work_transferred_to_v410:
+    - id: "COV-01"
+      scope: "parser coverage 74.32% -> >= 85%"
+      priority: "P0 — blocks v4.1.0 GA"
+      note: "GA_GATE_REPORT.md records internal AST conversion paths (parser.rs lines 6560-6790) as unreachable via external tests; CLAIM_DOWNGRADE_MANIFEST §4 expected these to be exercised by V400-05 cross-model hooks"
+    - id: "COV-02"
+      scope: "mysql-server coverage 75.41% -> >= 85%"
+      priority: "P0 — blocks v4.1.0 GA"
+    - id: "REF-01"
+      scope: "split crates/executor/src/expr/mod.rs (5104 lines) — the largest file, 3.2x the 1600 C-ARCH-05 limit"
+      priority: "P1 — unblocks C-ARCH-05 coverage extension (see ALIGNMENT_AUDIT §7.4.1 option B)"
+    - id: "REF-02"
+      scope: "split crates/executor/src/stored_proc.rs (4248 lines, 2.7x limit)"
+      priority: "P1"
+    - id: "REF-03"
+      scope: "split crates/executor/src/trigger.rs (2549 lines, 1.6x limit)"
+      priority: "P2"
+  gate_policy: "C-ARCH-05 currently measures only src/execution_engine.rs; REF-01..03 above are reported as WARN by C-ARCH-05-NOTE and are NOT yet blocking. Extending C-ARCH-05 coverage should happen AFTER REF-01..03 land, otherwise the gate fails immediately."
+  evidence:
+    - "docs/releases/v4.0.0/evidence/gate-backfill-2026-09-30/ — 2026-09-30 GA gate re-run"
+    - "docs/releases/v4.0.0/GA_GATE_REPORT.md §G3 — per-crate coverage measurement"
+    - "docs/releases/v4.0.0/CLAIM_DOWNGRADE_MANIFEST.md §4 — original 'Full PASS target is v4.0.1'"
+
+# ============================================================================
+# 2026-09-30 跨版本遗留考古：v3.6.0 ~ v3.11.0 传递链断裂
+# ----------------------------------------------------------------------------
+# 结论：ISSUES_PLAN.md 原本只继承 v4.0.0 → v4.1.0 这一跳的 41 条带 Gitea 号
+# 的项。实测交叉比对显示，v3.6.0~v3.11.0 的核心债务 issue（#3493~#3499、
+# #3431、#3501、#4027、#4032、#4033、#4444、#3136、#3146、#2948、#3423、
+# #3648、#3266、#3312、#3102、#3103）在 v4.x 文档中命中数为 0。
+# 完整台账见 docs/releases/v4.1.0/LEGACY_LEDGER_v3.6_to_v4.1.md
+# ============================================================================
+legacy_chain_audit_2026_09_30:
+  full_ledger: "docs/releases/v4.1.0/LEGACY_LEDGER_v3.6_to_v4.1.md"
+  scope: "v3.6.0 ~ v4.1.0, 34 documents across 9 versions"
+  method: "3 parallel read-only agents + main-agent spot verification (4/4 claims confirmed)"
+  headline_finding: "v4.1.0 currently closes only ~15% of historical legacy issues"
+  # --- P0: false DONE inherited from v4.0.0 ---
+  false_done_wp_a:
+    issues: ["#4708", "#4696", "#4710", "#4720"]
+    claimed: "v4.1.0 LEGACY_ISSUES.md:16 — 'WP-A | DONE | None (inherited DONE)'"
+    contradicting_evidence:
+      - "v4.0.0/ALPHA_GATE_REPORT.md:180 — 'fixes pending'"
+      - "v4.0.0/RC_GATE_REPORT.md:136 — 'fixes partial — full closure tracked in v4.0.1'"
+      - "crates/parser/tests/wp_a_legacy.rs:68 — '#[ignore] // TODO: 多行注释解析需要修复' (belongs to #4708)"
+      - "tests/baseline/ignore_registry.json — no wp_a entry (the ignore is unregistered)"
+      - "#4710 / #4720: 0 test files in tests/ reference them"
+    action_required: "re-add to v4.1.0 backlog; backlog 20 -> 24"
+    status: "DONE_REOPENED_2026-09-30"
+    reverification_2026_09_30:
+      evidence: "docs/releases/v4.1.0/evidence/wp-a-reverify-2026-09-30/wp_a_reverify.txt"
+      evidence_sha256: "e5f2820f22adaf24ef20a8e06dd5f86c7c607c5d1498752580c95e68cb1f0d4f"
+      method: "Gitea API (gitea252) + cargo test + source grep + block-comment probe"
+      added_to: "ISSUES_PLAN.md §4.0 (numbered 4.0 to avoid breaking §4.1/§4.2/§4.7 cross-refs)"
+      verdicts:
+        "#4708": "NOT FIXED — parser has NO block-comment support at all"
+        "#4696": "PARTIAL — parser regression passes, E2E unverified"
+        "#4710": "PARTIAL — parser regression passes (impl at parser.rs:5778-5812), E2E unverified"
+        "#4720": "PARTIAL — parser regression passes, E2E unverified"
+      probe_results:
+        "SELECT 1 /* comment */": "FAIL: Expected expression"
+        "SELECT /* c1 */ 1": "FAIL: Expected expression"
+        "/* header */ SELECT 1": "FAIL: Unexpected token: Slash"
+        "SELECT 1; /* multi-line CN */": "OK (stripped by statement splitter, not parser body)"
+      cargo_test: "cargo test -p sqlrustgo-parser --test wp_a_legacy -> ok. 27 passed; 0 failed; 1 ignored"
+      test_strength_caveat: "all 27 tests assert only parse(sql).is_ok() — AST acceptance, no binder/executor/storage; original reports were E2E via sqlrustgo-cli sqlite --batch"
+      additional_finding: "CLAIM_DOWNGRADE_MANIFEST.md:28 claims 'WP-A | DONE | Covered by 280 v400 parser tests'. Measured: v400_* files hold 336 tests, none exercise block comments, and token.rs has no block-comment token. Both the count and the DONE claim are unsupported."
+  # --- P0 NEW 2026-09-30: the gate that should have caught the above is hollow ---
+  hollow_gate_anti_ignore:
+    gate: "scripts/gate/check_anti_ignore_gate.sh"
+    evidence: "docs/releases/v4.1.0/evidence/anti-ignore-gate-hollow-2026-09-30/anti_ignore_gate_hollow.txt"
+    evidence_sha256: "fedcb27f2a80c6bb33bf9a4777383bbe30e0450d3703866f5d23787d03ef5e46"
+    defect_1: "Script never scans the source tree — it only compares ignore_registry.json's own self-declared numbers against hardcoded ceilings (ACTIVE_MAX=47 / TOTAL_ALLOWED_MAX=125)."
+    proof_1: "Created 50 fresh unregistered #[ignore] in crates/parser/tests/ -> gate still printed 'active=0 (max=47)' and exited 0. Probe deleted; git status clean."
+    defect_2: "active counts entries with status=='ACTIVE', but no registry entry has a status field (distribution {None: 124, RETIRED: 1}) => active is structurally always 0 and ACTIVE_MAX=47 can never trip."
+    defect_3: "33/125 registry entries have empty or TBD issue_link, which the registry's own note requires to be researched."
+    collateral: "docs/releases/v4.1.0/PHASE_1_SCOPE.md §2.1.1 was corrected from 'DONE / exit 0' to 'exit 0 but the gate is hollow'."
+    status: "OPEN — needs a real source-vs-registry diff gate; P16 (ADR-008) is currently unenforced"
+  # --- Lost legacy groups (no v4.1.0 ownership) ---
+  lost_groups_no_owner:
+    C1_f_xx_feature_gaps:
+      count: 13
+      items: ["F-03 GIS", "F-30 SEQUENCE", "F-36 列级权限", "F-16 GapLock", "F-23 ClusteredIdx", "F-24 AHI", "F-25 ChangeBuffer", "F-26 DoubleWrite", "F-27 TableCompression(RLE only)", "F-29 RLS", "F-31 PerfSchema", "F-32 mysqladmin", "F-35 PasswordRotation"]
+    C2_t_xx_test_gaps:
+      count: 5
+      items: ["T-19 disk_io_delay NOT IMPL", "T-20 process_kill NOT IMPL", "T-15 deadlock mock", "T-17 net loss mock", "T-18 mem fault mock"]
+    C3_int_integration_debt:
+      count: 4
+      items: ["INT-1 DML bypass WAL (open since v1.2.0)", "INT-2 ParallelVolcano 0% main-path", "INT-3 expr dual impl 1/15", "INT-4 mysql-server dual path"]
+    C4_arch_sem_debt:
+      count: 4
+      items: ["ARCH-2 dual exec path", "ARCH-3 VTU 5%", "SEM-1 ROLLBACK MVCC", "SEM-3 ALTER TABLE incomplete"]
+    C5_coverage_debt:
+      count: 4
+      items: ["SEM-4 measurement divergence (root cause still placeholder 'XYZ' at debt-registry.yaml:293)", "#3302 parser 60%", "#3943 v3.12 coverage", "V310-10 workspace 14.71%"]
+      note: "2026-09-30 re-measured: NOT a pure three-way contradiction but a MEASUREMENT-SCOPE mismatch. v3.10 figure 14.71% is 'cargo llvm-cov --lib' workspace TOTAL (summary.txt:1, COMPREHENSIVE_ASSESSMENT_REPORT.md:24); v3.12 figure 84.44% is 'L1_8 avg' across 8 named core crates (debt-registry.yaml:293). No document states which scope applies, so the 14.71%->84.44% jump is ambiguous."
+      correction_2026_09_30: "Earlier session claim that debt-registry.yaml was frozen since 2026-07-16 is WRONG. Its last commit is 76dae7465e dated 2026-08-15 'fix(coverage): close SEM-4 — L1_8 avg 84.44% >= 80%'."
+      sem4_still_unresolved: "Entry marked CLOSED 2026-08-15 but its root-cause field is still the literal placeholder 'XYZ' (debt-registry.yaml:293)."
+    C6_tpch_debt:
+      count: 6
+      items: ["#3423 SF=1.0 baseline (hw-blocked)", "#3648 mixed-load SOAK", "#2948 SF>=1 Track3", "#4432 Q17", "#4429/#4426/#4435 Q20", "#4540 oracle sha256"]
+    C7_extension_crates:
+      count: 5
+      items: ["gmp SCOPE_DEFERRED (product decision pending)", "rag SCOPE_DEFERRED", "graph ARCHIVED", "admin PARTIAL (contradicts F-32)", "vector SCOPE_INTERNAL"]
+    C8_gate_debt:
+      count: 8
+      items: ["FIX-GATE-ARCH-CARCH05 (fail-closed FIXED 2026-09-30 but ledger not closed)", "FIX-GATE-COVERAGE-THRESHOLD", "FIX-GATE-G13-STABILITY", "FIX-GATE-TEST-INVENTORY", "FIX-G1-TPCH-CLI", "B-AUTH", "B-PREP", "FIX-P3-1-DEALLOCATE"]
+    C9_storage_index_wal:
+      count: 6
+      items: ["WAL Checkpoint manual-only", "Page Checksum partial (page.rs:179 skip)", "Index Statistics no auto-collect", "Vector SQL Surface partial", "Index Rebuild NOT IMPL", "WAL Verification Tool GMP path"]
+    D_v312_unnumbered:
+      count: 35
+      note: "no Gitea issue numbers — highest handoff-loss risk. Includes TLS handshake, zlib, COM_RESET_CONNECTION, Window/GIS/JSON (V312-16 has NO Gitea mapping), Prometheus/SlowQueryLog, AuditRecord hash chain."
+  doc_contradictions_unresolved:
+    count: 19
+    samples:
+      - "F-24/F-23/F-31/F-32 marked CLOSED but audits say ISOLATED / no main-path integration"
+      - "SEM-4 marked CLOSED in yaml but header says IN_PROGRESS, closing_pr is []"
+      - "ARCH-2/3 + SEM-1: ARCHITECTURE_DEBT_ANALYSIS says OPEN, yaml says CLOSED (same version)"
+      - "v3.9.0: COMPREHENSIVE says '门禁全闭环可投产' vs GA_GATE_REPORT:129 'GA cut NOT recommended'"
+      - "v3.11.0: RC_BLOCKERS 13 OPEN vs debt-registry 'GA 6/6 PASS'"
+      - "GA-claim-caveat: triage lists 17, manifest lists 9+3 — 8 unaccounted"
+  recommended_next:
+    - "P0: re-add WP-A 4 issues to v4.1.0 backlog (20 -> 24)"
+    - "P0: give every group C/D item an explicit owner in v4.1.0 (even if the verdict is 'accept as known boundary')"
+    - "P1: adjudicate the 19 doc contradictions — supply evidence or admit unclosed"
+    - "P1: rebuild debt-registry.yaml (stale since 2026-07-16, still a v3.11.0 snapshot)"
+    - "P2: mandate internal-ID + source-line registration for unnumbered legacy items"
+  limits_of_this_audit:
+    - "document-layer only — no tests or gates were run"
+    - "Gitea issue actual status not queried"
+    - "cannot determine which items were fixed in code but not documented"
+
+
+current_stage: "DRAFT"
+# ============================================================================
+# 2026-09-30 AFP Type-B SELF-DISCOVERY: ALPHA -> DRAFT ROLLBACK
+# ----------------------------------------------------------------------------
+# The 2026-09-29 entry below declared current_stage: "ALPHA" on the stated
+# ground that "3 inherited v4.0.0 alpha-gate FAILs resolved (check_anti_ignore_gate,
+# check_arch_invariants, check_anti_fabrication)". That claim did NOT hold.
+#
+# Real gate runs performed 2026-09-30 (evidence: evidence/gate-runs-2026-09-30/):
+#   - check_anti_ignore_gate.sh  -> exit 0  PASS          (claim was true)
+#   - check_arch_invariants.sh   -> exit 0  PASS 5/5      (claim was true)
+#   - check_anti_fabrication.sh  -> exit 1  FAIL ERRORS=1 (claim was FALSE)
+#       CHECK 4: HEAD author email "claude@macmini.dev" was not in the
+#       gate allowlist (scripts/gate/check_anti_fabrication.sh:178).
+#       log_error -> ERRORS>0 -> main() -> exit 1.
+#
+# Per ANTI_FABRICATION_POLICY.md 7.1 (Type B = P0, remediation "immediately
+# roll back"), current_stage is rolled back ALPHA -> DRAFT. The 2026-09-29
+# transition entry is preserved below as an audit record, NOT as an active
+# stage. Full analysis: docs/releases/v4.1.0/ALIGNMENT_AUDIT_2026-09-30.md
+#
+# Remediation applied 2026-09-30: "claude@macmini.dev" added to the CHECK 4
+# allowlist by explicit user decision (history rewrite declined, to avoid
+# rewriting shared develop/v4.1.0 history across 5 remotes).
+# Post-remediation re-run: check_anti_fabrication.sh -> exit 0, ERRORS=0, PASS
+#   (evidence/gate-runs-2026-09-30/check_anti_fabrication_rerun.txt).
+# All 3 inherited gate blockers are therefore now cleared.
+#
+# NOTE: stage is deliberately LEFT AT DRAFT. Clearing the gate blockers does
+# NOT by itself promote the stage — DRAFT -> ALPHA is a STAGE_CONFIG
+# transition that must be executed and recorded deliberately, not inferred
+# from a green gate alone (the 2026-09-29 error was exactly that inference).
+#
+# OPEN CONTRADICTION INTRODUCED BY THIS ROLLBACK (2026-09-30):
+#   An annotated tag `v4.1.0-alpha1` ALREADY EXISTS and is reachable from
+#   develop/v4.1.0. Details:
+#     tag object : 359f00a2418417783c76a1314f6686482b50ba9f (annotated)
+#     points to : c1a73a5320a500ce2aa4e7fc16ebd59a802824af
+#     created    : 2026-09-29 15:11:41 +0800
+#     by         : liying <openheart@gaoyuanyiyao.com>  (allowlisted identity)
+#     subject    : "v4.1.0-alpha1 — DRAFT -> ALPHA promotion"
+#     ancestor of develop/v4.1.0 HEAD: YES
+#   So a released tag naming an ALPHA promotion coexists with an SSOT that
+#   now says DRAFT.
+#
+#   >>> DISPOSITION: ACCEPTED AS-IS (human decision, 2026-09-30) <<<
+#   The tag was cut by a legitimate allowlisted identity and is pushed to the
+#   5 remotes; TAG_PROTECTION_v4.0.0.md establishes tag immutability contracts.
+#   Decision: retain the tag unchanged, treat the DRAFT->ALPHA rollback as a
+#   STAGE-STATE correction only (the tag records a historical event; it does
+#   not itself assert a currently-valid gate verdict). No tag deletion, no
+#   retagging. The contradiction is therefore ACCEPTED and permanently recorded
+#   here rather than left open.
+#   Consequence accepted: any consumer checking out v4.1.0-alpha1 gets the
+#   2026-09-29 tree. Anyone consuming v4.1.0 must read THIS file (the SSOT),
+#   not the tag, for current stage state.
+#   Rationale for accepting: the tag's own subject line claims promotion, but
+#   the promotion was never gate-backed (see the incident record); leaving the
+#   tag in place preserves the audit trail of what actually happened, which
+#   deleting it would destroy.
+#   Ref: docs/governance/incidents/2026-09-30-V410-ALPHA-UNSUPPORTED-BY-GATE-EVIDENCE.md
+#        docs/releases/v4.1.0/ALIGNMENT_AUDIT_2026-09-30.md 7.5
+#
+# RE-ENTRY CONDITION for DRAFT -> ALPHA: STAGE_CONFIG DRAFT_to_ALPHA flow
+# executed deliberately; the 3 gate blockers are cleared as of 2026-09-30 and
+# re-run evidence is archived under evidence/gate-runs-*/.
+# ============================================================================
 last_transition:
-  from: "DRAFT"
-  to: "ALPHA"
-  date: "2026-09-29"
-  reason: "DRAFT -> ALPHA transition per STAGE_CONFIG DRAFT_to_ALPHA trigger. All 11 PHASE_0 docs scaffolded (STAGE / VERSION_PLAN / DEV_PLAN / ROADMAP / TEST_PLAN / ISSUES_PLAN / LEGACY_ISSUES / README / CHANGELOG / PHASE_1_SCOPE / RELEASE_NOTES / V400_TO_V410_REVIEW_QUEUE); 3 inherited v4.0.0 alpha-gate FAILs resolved (check_anti_ignore_gate, check_arch_invariants, check_anti_fabrication); V400-09 168h SOAK FINAL_REPORT written (deferred to v4.1.0 scope per WP-H triage); WP-C..G migration documented in ISSUES_PLAN.md §4 (20-issue backlog, 6-10 weeks estimated). scripts/gate/check_alpha_v410.sh + check_alpha_entry_v4.10.sh + check_alpha_quality_v4.10.sh created; alpha composite PASS 9/9 quality + 19/19 entry = ALPHA GATE PASS. Tag v4.1.0-alpha1 to be cut per STAGE_CONFIG DRAFT_to_ALPHA trigger after this commit merges. per docs/releases/v4.1.0/RELEASE_NOTES.md §5."
+  from: "ALPHA"
+  to: "DRAFT"
+  date: "2026-09-30"
+  reason: "ROLLBACK of the 2026-09-29 ALPHA declaration. AFP Type-B self-discovery: the 2026-09-29 entry claimed all 3 inherited v4.0.0 alpha-gate FAILs were resolved, but real gate runs on 2026-09-30 show check_anti_fabrication.sh FAILS (exit 1, ERRORS=1, CHECK 4 HEAD author email not in allowlist). Only 2 of 3 were actually resolved. Per ANTI_FABRICATION_POLICY.md 7.1 Type-B (P0) remediation, the unsupported stage claim is rolled back. v4.1.0-alpha1 tag is NOT cut. Re-entry requires all 3 gates to exit 0 with archived evidence. See docs/releases/v4.1.0/ALIGNMENT_AUDIT_2026-09-30.md."
+  rolled_back_transition:
+    from: "DRAFT"
+    to: "ALPHA"
+    date: "2026-09-29"
+    invalidated: true
+    invalidation_reason: "AFP Type-B: the '3 alpha-gate FAILs resolved' claim was not supported by real gate output; check_anti_fabrication.sh in fact exits 1. Retained as audit record only. Evidence: docs/releases/v4.1.0/evidence/gate-runs-2026-09-30/check_anti_fabrication.txt (sha256:371f76010b4dbead, Results: ERRORS=1, EXIT_CODE=1)."
+    original_reason: "DRAFT -> ALPHA transition per STAGE_CONFIG DRAFT_to_ALPHA trigger. All 11 PHASE_0 docs scaffolded; 3 inherited v4.0.0 alpha-gate FAILs resolved (check_anti_ignore_gate, check_arch_invariants, check_anti_fabrication); V400-09 168h SOAK FINAL_REPORT written; WP-C..G migration documented in ISSUES_PLAN.md section 4 (20-issue backlog). alpha composite PASS 9/9 quality + 19/19 entry = ALPHA GATE PASS. Tag v4.1.0-alpha1 to be cut after this commit merges."
   prior_transition:
     from: "(none)"
     to: "DRAFT"
@@ -89,10 +311,10 @@ phase_1_alpha_status:
   v410_03_zombie_fix_core: "DONE (cherry-pick 67b624cbd2 + merge 9c6767a512, gap_lock_manager + read_write_splitter)"
   v410_04_workers_push: "DONE (b4d46e6e18 + 7502ee4cd4 + d2e3a3bf98 in v4.1.0 history)"
   v410_05_dml_storage_regressions: "DONE (f3595e7361 + 40e07f7342 + 17b459969f)"
-  v410_06_main_release_v4000_sync: "DONE (2026-09-28 sync: 193 commit gap closed on main + release/v4.0.0 created on github; all 3 branches (develop/v4.0.0 / release/v4.0.0 / main) 5-remote consistent at f350eb13a5 / 07178c9d66 / a8dba8d31e respectively)"
-  v410_07_inherit_v4000_alpha_gate_fixes: "NOT STARTED (3 v4.0.0 alpha gate FAILs still open; see open_issues)"
-  v410_08_inherit_v4000_168h_soak: "NOT STARTED (V400-09 168h SOAK kicked off 2026-09-19, no FINAL_REPORT as of 2026-09-29)"
-  v410_09_inherit_v4000_deferred_legacy_issues: "NOT STARTED (5/7 WP-C..G defer-to-v4.0.1 → should migrate to v4.1.0 scope; only #4639 was deferred to v4.1 per WP-H triage)"
+  v410_06_main_release_v4000_sync: "PARTIAL (re-verified 2026-09-30: release/v4.0.0 created on github, but local main=f8a149b474 is 16905 commits behind develop/v4.0.0=ac3fa16afb and is NOT an ancestor of develop/v4.1.0=e2355c0680 — the branches have DIVERGED, not merely fallen behind. Original '193 commit gap closed / 5-remote consistent' text superseded; see ALIGNMENT_AUDIT_2026-09-30.md F-06.)"
+  v410_07_inherit_v4000_alpha_gate_fixes: "DONE 2026-09-30 (all 3 cleared by real gate runs: check_anti_ignore_gate exit 0 PASS; check_arch_invariants exit 0 PASS 5/5; check_anti_fabrication exit 1 FAIL -> remediated via CHECK 4 allowlist addition -> re-run exit 0 PASS. Evidence: docs/releases/v4.1.0/evidence/gate-runs-2026-09-30/. The earlier 'NOT STARTED (3 FAILs still open)' text is superseded.)"
+  v410_08_inherit_v4000_168h_soak: "DONE (V400-09 168h SOAK FINAL_REPORT exists at docs/releases/v4.0.0/V400_09_168H_SOAK_FINAL_REPORT.md; verified 2026-09-30)"
+  v410_09_inherit_v4000_deferred_legacy_issues: "SCOPED (WP-C 6 / WP-D 4 / WP-F 1 / WP-G 1 = 12 deferred issues migrated into v4.1.0 scope, plus WP-B 6 + WP-E #4626 1 + WP-H #4639 1 = 20-item backlog documented in ISSUES_PLAN.md §4. Implementation NOT STARTED. Original '5/7' wording superseded — there are 4 WP groups, not 5/7.)"
 
 legacy_issues_status:
   wp_a_parser: "INHERITED from v4.0.0 (DONE)"
@@ -102,7 +324,7 @@ legacy_issues_status:
   wp_e_transaction: "INHERITED from v4.0.0 (partial via V400-05)"
   wp_f_schema: "INHERITED from v4.0.0 (deferred; **v4.1.0 should own**)"
   wp_g_type_comparison: "INHERITED from v4.0.0 (deferred; **v4.1.0 should own**)"
-  wp_h_v313_defer: "INHERITED from v4.0.0 (DONE; #4639 was the v4.1-targeted item, no further action)"
+  wp_h_v313_defer: "INHERITED from v4.0.0 (DONE per CLAIM_DOWNGRADE_MANIFEST §2: 7/8 in-scope DONE; #4639 explicitly deferred to v4.1). NOTE: v4.0.0/STAGE.yaml:70 records 'wp_h_v313_defer_reassess: NOT STARTED' — conflict between v4.0.0 SSOT and its own manifest §2, unresolved and referred to governance. #4639 IS owned by v4.1.0 (ISSUES_PLAN.md §4.7 backlog item 20); the earlier 'no further action' wording was wrong."
   source: "docs/releases/v4.0.0/ISSUES_PLAN.md, docs/releases/v4.0.0/WP_LEGACY_TRIAGE.md"
 
 inherited_documents_from_v400:
@@ -123,21 +345,29 @@ inherited_documents_from_v400:
     - "INHERITED_ISSUES.md (delta from v4.0.0 ISSUES_PLAN)"
 
 required_gates_for_alpha:
-  note: "v4.1.0 inherits v4.0.0's required_gates_for_alpha list as the baseline gate set. v4.1.0-specific additions deferred to PHASE_1_SCOPE.md (see inherited_documents_from_v400). The 3 currently-FAIL v4.0.0 alpha gates are v4.1.0 alpha gates by inheritance."
-  - gate: "scripts/gate/check_arch_invariants.sh"
-    status: "FAIL (inherited from v4.0.0)"
-  - gate: "scripts/gate/check_anti_fabrication.sh"
-    status: "FAIL (inherited from v4.0.0)"
-  - gate: "scripts/gate/check_anti_ignore_gate.sh"
-    status: "FAIL (inherited from v4.0.0)"
-  - gate: "scripts/gate/check_arch_sem_debt.sh"
-    status: "PASS"
-  - gate: "scripts/gate/check_arch3_no_bypass.sh"
-    status: "PASS"
-  - gate: "scripts/gate/check_int_debt.sh"
-    status: "PASS"
-  - gate: "scripts/gate/check_cross_version_debt.sh"
-    status: "PASS (4 OPEN debt warnings)"
+  # 2026-09-30 修正：本块原先在 `note:` 映射键之后直接跟同缩进列表项
+  # (`- gate:`)，构成非法 YAML —— STAGE.yaml 作为 per-version SSOT 此前
+  # **无法被任何 YAML 解析器读取**。已重构为 `note` + `gates` 两键结构，
+  # 内容无损。依据 ALIGNMENT_AUDIT_2026-09-30.md F-12。
+  note: "v4.1.0 inherits v4.0.0's required_gates_for_alpha list as the baseline gate set. v4.1.0-specific additions deferred to PHASE_1_SCOPE.md (see inherited_documents_from_v400). The 3 v4.0.0 alpha gates previously recorded as FAIL are v4.1.0 alpha gates by inheritance; all 3 were re-run and cleared on 2026-09-30 (see ALIGNMENT_AUDIT_2026-09-30.md §7.2)."
+  gates:
+    - gate: "scripts/gate/check_arch_invariants.sh"
+      status: "PASS (re-verified 2026-09-30, exit 0, PASSED 5 / FAILED 0)"
+      evidence: "docs/releases/v4.1.0/evidence/gate-runs-2026-09-30/check_arch_invariants.txt"
+    - gate: "scripts/gate/check_anti_fabrication.sh"
+      status: "PASS (initially FAIL exit 1 / ERRORS=1 on 2026-09-30 — CHECK 4 HEAD email not in allowlist; remediated via allowlist addition; re-run exit 0 / ERRORS=0)"
+      evidence: "docs/releases/v4.1.0/evidence/gate-runs-2026-09-30/check_anti_fabrication_rerun.txt"
+    - gate: "scripts/gate/check_anti_ignore_gate.sh"
+      status: "PASS (re-verified 2026-09-30, exit 0, total_allowed=125)"
+      evidence: "docs/releases/v4.1.0/evidence/gate-runs-2026-09-30/check_anti_ignore_gate.txt"
+    - gate: "scripts/gate/check_arch_sem_debt.sh"
+      status: "PASS (not re-run this cycle — status carried from v4.0.0 baseline; UNVERIFIED in 2026-09-30 run)"
+    - gate: "scripts/gate/check_arch3_no_bypass.sh"
+      status: "PASS (not re-run this cycle — status carried from v4.0.0 baseline; UNVERIFIED in 2026-09-30 run)"
+    - gate: "scripts/gate/check_int_debt.sh"
+      status: "PASS (not re-run this cycle — status carried from v4.0.0 baseline; UNVERIFIED in 2026-09-30 run)"
+    - gate: "scripts/gate/check_cross_version_debt.sh"
+      status: "PASS (4 OPEN debt warnings; not re-run this cycle — status carried from v4.0.0 baseline; UNVERIFIED in 2026-09-30 run)"
 
 required_gates_for_beta:
   note: "Beta gates for v4.1.0 are the v4.0.0 beta gates, MINUS those specifically marked v4.0.0-GA-only, PLUS any new gates introduced in PHASE_1_SCOPE.md. As of 2026-09-29 PHASE_1_SCOPE.md does not exist; the v4.0.0 required_gates_for_beta apply by inheritance."
@@ -156,17 +386,24 @@ merge_policy:
 
 doc_artifacts_required:
   stage_DRAFT:
-    status: "PARTIAL"
-    - "STAGE.yaml (this file, present 2026-09-29)"
-    - "ISSUES_PLAN.md (inherited from v4.0.0; v4.1.0-specific INHERITED_ISSUES.md pending)"
-    - "VERSION_PLAN.md (pending)"
-    - "DEV_PLAN.md (pending; link to v4.0.0 DEV_PLAN suffices until v4.1.0-specific work)"
-    - "ROADMAP.md (pending; link to v4.0.0 ROADMAP suffices)"
-    - "TEST_PLAN.md (pending; link to v4.0.0 TEST_PLAN suffices)"
-    - "LEGACY_ISSUES.md (pending; link to v4.0.0 LEGACY_ISSUES suffices)"
-    - "README.md (pending)"
-    - "CHANGELOG.md (pending; v4.1.0 commits list only)"
-    - "PHASE_1_SCOPE.md (pending; consolidates the v4.1.0 work plan)"
+    # 2026-09-30 修正：原为 `status:` 映射键后直接跟同缩进列表项，构成非法 YAML。
+    # 已重构为 status + artifacts 两键。artifacts 内的 "pending" 标记亦已按
+    # 文件系统实测更新（10 份文档在 2026-09-29 已创建）。
+    status: "COMPLETE (2026-09-30 filesystem verification; supersedes earlier 'PARTIAL' with 'pending' markers)"
+    artifacts:
+      - "STAGE.yaml (this file, present 2026-09-29)"
+      - "ISSUES_PLAN.md (present; v4.1.0-specific delta inlined, no separate INHERITED_ISSUES.md)"
+      - "VERSION_PLAN.md (present 2026-09-29)"
+      - "DEV_PLAN.md (present 2026-09-29)"
+      - "ROADMAP.md (present 2026-09-29)"
+      - "TEST_PLAN.md (present 2026-09-29)"
+      - "LEGACY_ISSUES.md (present 2026-09-29)"
+      - "README.md (present 2026-09-29)"
+      - "CHANGELOG.md (present 2026-09-29)"
+      - "PHASE_1_SCOPE.md (present 2026-09-29)"
+      - "RELEASE_NOTES.md (present 2026-09-29)"
+      - "V400_TO_V410_REVIEW_QUEUE.md (present; CLOSED 2026-09-26)"
+      - "ALIGNMENT_AUDIT_2026-09-30.md (present; this audit cycle)"
   stage_ALPHA:
     - "ALPHA_GATE_REPORT.md (frozen at first alpha tag cut)"
     - "evidence/ directory (per-gate summary.json + manifest.json)"
@@ -216,9 +453,9 @@ claims_boundaries:
 
 open_issues:
   - "v4.0.0 STAGE.yaml SSOT/GA_GATE_REPORT.md contradiction (v4.0.0 says DRAFT, GA doc says GA CONDITIONAL PASS). v4.1.0 inherits this gap. Decision required: real GA upgrade vs. rollback self-claim."
-  - "3 v4.0.0 alpha gate FAILs (arch_invariants / anti_fabrication / anti_ignore_gate). v4.1.0 cannot reach ALPHA until these are resolved."
-  - "168h SOAK (V400-09) FINAL_REPORT missing. Per kickoff 2026-09-19, 168h = 7 days elapsed by 2026-09-26; status as of 2026-09-29 unknown."
-  - "v4.0.0 main落后 develop/v4.0.0 by 16902 commits (the actual v4.0.0 implementation code is not on main, only the gate-doc commits are). v4.1.0 inherits this divergence."
+  - "v4.0.0 alpha-gate blockers: CLEARED 2026-09-30. Real gate runs: check_anti_ignore_gate exit 0 PASS; check_arch_invariants exit 0 PASS 5/5; check_anti_fabrication initially exit 1 FAIL (CHECK 4, HEAD email not in allowlist), remediated by adding 'claude@macmini.dev' to the allowlist (explicit user decision; history rewrite declined), re-run exit 0 PASS. Evidence: docs/releases/v4.1.0/evidence/gate-runs-2026-09-30/."
+  - "168h SOAK (V400-09) FINAL_REPORT: RESOLVED — docs/releases/v4.0.0/V400_09_168H_SOAK_FINAL_REPORT.md exists (verified 2026-09-30)."
+  - "Local main has DIVERGED from develop/v4.0.0 (not merely behind): main=f8a149b474, rev-list --count main..develop/v4.0.0 = 16905, and main is NOT an ancestor of develop/v4.1.0. Resolution (converge vs record as known fork) requires governance decision."
   - "5/7 WP-C..G legacy issues defer-to-v4.0.1 per v4.0.0 CLAIM_DOWNGRADE_MANIFEST. They should migrate to v4.1.0 scope per §wp_h_v313_defer intent."
   - "CURRENT_VERSION.md is stale (still describes v3.12.0 RC, last refresh 2026-08-26)."
   - "v4.0.0 RELEASE_NOTES.md missing (RC/GA stage required per STAGE_CONFIG)."

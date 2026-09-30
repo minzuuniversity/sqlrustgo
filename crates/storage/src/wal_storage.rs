@@ -687,13 +687,28 @@ impl<S: StorageEngine + 'static, T: WalManager + 'static> StorageEngine for WalS
     ) -> SqlResult<usize> {
         let table_id = Self::table_name_to_id(table);
 
-        // Step 1: Get all rows and find those matching the filter (before-image)
-        let all_rows = self.inner().scan(table)?;
-        let rows_to_update: Vec<(Vec<u8>, Vec<Value>)> = all_rows
-            .iter()
-            .filter(|r| Self::row_matches_filter(r, filters))
-            .map(|r| (Self::record_key(r), r.clone()))
-            .collect();
+        // B2.4 / #4915 (F-12): filter inside the storage engine instead
+        // of materialising every row and then dropping most of them.
+        // `scan_with_filter` is the V4.0.0 SOAK-leak fix on the read
+        // path (F-09's counterpart); routing the WAL before-image
+        // capture through it keeps the clone proportional to the
+        // number of rows the UPDATE actually touches rather than the
+        // table size. `scan` is only needed for the no-filter case,
+        // where every row matches by definition.
+        let rows_to_update: Vec<(Vec<u8>, Vec<Value>)> = if filters.is_empty() {
+            self.inner()
+                .scan(table)?
+                .iter()
+                .map(|r| (Self::record_key(r), r.clone()))
+                .collect()
+        } else {
+            let inner = self.inner();
+            inner
+                .scan_with_filter(table, |r| Self::row_matches_filter(r, filters))?
+                .iter()
+                .map(|r| (Self::record_key(r), r.clone()))
+                .collect()
+        };
 
         let count = rows_to_update.len();
 

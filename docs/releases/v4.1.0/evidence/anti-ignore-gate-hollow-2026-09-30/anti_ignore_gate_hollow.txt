@@ -1,0 +1,43 @@
+check_anti_ignore_gate.sh hollow-gate proof
+generated: 2026-09-30T15:32:16Z
+branch/commit: develop/v4.1.0 @ ddfb1c62cd
+verifier: MCode main session, source_run=anti-ignore-gate-hollow-2026-09-30
+
+=== FINDING: the gate never scans the source tree ===
+scripts/gate/check_anti_ignore_gate.sh reads ONLY tests/baseline/ignore_registry.json
+and compares the file's own self-declared numbers to hardcoded ceilings:
+    ACTIVE_MAX=47 / TOTAL_ALLOWED_MAX=125
+There is no grep/find/walk over crates/ src/ tests/ anywhere in the script.
+
+=== PROOF 1: 50 new unregistered #[ignore] -> gate still exits 0 ===
+$ # baseline
+ignore_registry.json: total_allowed=125 (max=125), active=0 (max=47)
+exit=0
+
+$ # create crates/parser/tests/zz_ignore_probe.rs with 50 fresh #[ignore] tests
+  new unregistered ignore count: 50
+
+$ bash scripts/gate/check_anti_ignore_gate.sh
+ignore_registry.json: total_allowed=125 (max=125), active=0 (max=47)
+exit=0      <-- PROVEN: registration completeness is NOT enforced
+(probe file deleted immediately after; git status clean)
+
+=== PROOF 2: the ACTIVE_MAX=47 check is permanently vacuous ===
+gate counts:  sum(1 for e in ignored_tests if e.get('status') == 'ACTIVE')
+registry entry status distribution: {None: 124, 'RETIRED': 1}   -> active = 0
+registry entry schema fields: ['added_in','category','file','issue_link','line','reason']
+There is NO 'status' field in the schema the gate was written against.
+=> active is structurally always 0; ACTIVE_MAX=47 can never trip.
+
+=== PROOF 3: registry self-declared debt ===
+entries with empty or 'TBD' issue_link: 33 / 125
+registry's own note: "issue_link: TBD entries need manual research"
+
+=== CONSEQUENCE ===
+PHASE_1_SCOPE.md:22 records this gate as 'DONE / exit 0 / total_allowed=125'.
+That PASS is vacuous: it certifies that a number inside a JSON file is <= 125,
+not that any #[ignore] in the tree is registered.
+The real unregistered entry crates/parser/tests/wp_a_legacy.rs:68 (#4708) is
+therefore invisible to the gate that was supposed to catch it.
+This is the same class as incident 2026-09-30-V410-ALPHA-UNSUPPORTED-BY-GATE-EVIDENCE:
+green gate + unverified claim.

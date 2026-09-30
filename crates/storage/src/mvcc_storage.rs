@@ -602,6 +602,24 @@ impl<S: StorageEngine + 'static> StorageEngine for MvccStorage<S> {
         // Delegate to the inherent `gc` method on `MvccStorage`.
         MvccStorage::gc(self, gc_lag)
     }
+
+    /// #4912 / v4.1.0-perf: delegate the lock-free transaction path to the
+    /// inner engine. Without these, `MvccStorage` inherits the `Err`
+    /// defaults from the trait and any caller routing through it (e.g.
+    /// `--storage parallel`, which wraps `MvccStorage` in
+    /// `ParallelWalStorage`) falls back to the global storage write lock
+    /// on every BEGIN / COMMIT / ROLLBACK.
+    fn begin_transaction_lockfree(&self, tx_id: u64) -> SqlResult<()> {
+        self.inner.begin_transaction_lockfree(tx_id)
+    }
+
+    fn commit_transaction_lockfree(&self) -> SqlResult<()> {
+        self.inner.commit_transaction_lockfree()
+    }
+
+    fn rollback_transaction_lockfree(&self) -> SqlResult<()> {
+        self.inner.rollback_transaction_lockfree()
+    }
 }
 
 #[cfg(test)]

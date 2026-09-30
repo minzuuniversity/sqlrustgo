@@ -1,0 +1,8 @@
+check_rc_ga_gate=1
+check_arch_invariants=0
+check_arch3_no_bypass=0
+check_integration_gate=0
+check_anti_fabrication=0
+check_arch_sem_debt=0
+check_cross_version_debt=0
+check_int_debt=0

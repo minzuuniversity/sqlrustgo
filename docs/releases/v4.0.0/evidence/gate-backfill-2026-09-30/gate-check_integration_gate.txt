@@ -1,0 +1,63 @@
+============================================
+  v3.8.0 Integration Gate — 集成门禁检查
+  Branch: develop/v4.1.0
+  Commit: 47e6270789
+============================================
+
+
+=== Section 1: Architecture Static Checks ===
+
+  [C-ARCH-02] LocalExecutor write_buffer field...
+  [PASS] C-ARCH-02: No write_buffer field in LocalExecutor
+  [C-ARCH-05] execution_engine.rs line count...
+  [PASS] C-ARCH-05: execution_engine.rs has     1034 lines (within limit 1500)
+
+=== Section 2: SGL Layer-3 Semantic Gate ===
+
+  
+  === SGL-001: B4 Format — Tool Semantics Audit ===
+  
+  === SGL-002: WAL-002 — advance_checkpoint in commit path ===
+  
+  === SGL-003: WAL-003 — WAL truncation in commit path ===
+  
+  === SGL-004: WAL-004 — DELETE replay idempotency ===
+  
+  === SGL-005: TX-002 — Storage direct bypass detection ===
+  
+  ==================================================
+  ==================================================
+  
+  
+  Exit code: 2
+grep: invalid option -- P
+usage: grep [-abcdDEFGHhIiJLlMmnOopqRSsUVvwXxZz] [-A num] [-B num] [-C[num]]
+	[-e pattern] [-f file] [--binary-files=value] [--color=when]
+	[--context[=num]] [--directories=action] [--label] [--line-buffered]
+	[--null] [pattern] [file ...]
+  [PASS] SGL: No hard failures (exit 2, DRIFT=0)
+
+=== Section 3: WAL Lifecycle Validation ===
+
+  ========================================
+  ========================================
+  [1;33m=== Summary ===[0m
+    [0;32mPassed: 5[0m
+    [0;31mFailed: 0[0m
+  [0;32mResult: ALL WAL INVARIANT TESTS PASSED[0m
+  Validated invariants:
+    INV-1: Committed data survives crash
+    INV-2: Uncommitted data does NOT survive crash
+    INV-3: ROLLBACK leaves no trace
+  [PASS] WAL: All invariant tests passed
+
+============================================
+  Integration Gate Summary
+============================================
+
+  PASS: 4
+  FAIL: 0
+  SKIP: 0
+
+  Result: PASS — all checks passed
+============================================

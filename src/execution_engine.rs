@@ -15,6 +15,7 @@ use crate::expr_utils::{
 };
 use crate::{parse, SqlError, SqlResult, Value};
 use parking_lot::RwLock;
+use std::sync::atomic::{AtomicBool, AtomicUsize, Ordering};
 use sqlrustgo_catalog::stored_proc::{ParamMode, StoredProcParam, StoredProcStatement};
 use sqlrustgo_catalog::{
     auth::UserIdentity, AuthErrorCode, Catalog, ObjectRef, Privilege, StoredProcedure,
@@ -79,11 +80,12 @@ pub struct ExecutionEngine<S: StorageEngine> {
     pub(crate) storage: Arc<parking_lot::RwLock<S>>,
     pub(crate) catalog: Option<Arc<parking_lot::RwLock<Catalog>>>,
     pub(crate) stats: Arc<parking_lot::RwLock<ExecutionStats>>,
-    pub(crate) cbo_enabled: bool,
+    // V4.1.0 / Issue #4910 §3.1: convert from `bool` to `AtomicBool` so the
+    // `&self` SELECT/SHOW/EXPLAIN path doesn't need the engine write lock.
+    pub(crate) cbo_enabled: AtomicBool,
     pub(crate) transaction_manager: TransactionManager,
     pub(crate) current_tx_id: Option<TxId>,
-    /// V312-55D (Round-26, follow-up): shared buffer used by the
-    /// trigger-side undo recorder. When the trigger executor's
+    /// V312-55D (Round-26, follow-up): shared buffer used by the trigger-side undo recorder.
     /// `TriggerUndoRecorder` is invoked, it pushes a typed
     /// `sqlrustgo_transaction::savepoint::UndoRecord` here. The DML
     /// executor drains this buffer after every trigger fire and forwards
@@ -95,6 +97,12 @@ pub struct ExecutionEngine<S: StorageEngine> {
     pub(crate) trigger_undo_sink:
         Arc<parking_lot::Mutex<Vec<sqlrustgo_transaction::savepoint::UndoRecord>>>,
     pub(crate) tx_status: TxStatus,
+    /// V312-77 / Issue #4847: distinguishes an explicit BEGIN (set to true
+    /// when `begin_transaction` is called) from an implicit DML transaction
+    /// (set to false). Only explicit transactions should be tracked by
+    /// `commit_implicit_dml_tx` / `rollback_transaction` so that DML inside
+    /// an explicit BEGIN does not auto-commit and ROLLBACK can undo it.
+    pub(crate) is_explicit_transaction: bool,
     pub(crate) tx_readonly: bool,
     pub(crate) default_isolation: TmIsolationLevel,
     pub(crate) current_role: Option<String>,
@@ -114,9 +122,10 @@ pub struct ExecutionEngine<S: StorageEngine> {
     #[allow(dead_code)]
     pub(crate) checkpoint_manager: Option<Arc<parking_lot::RwLock<CheckpointManager>>>,
     /// Cost model for CBO-driven decisions (parallelism, query planning).
-    /// V312-22 / #4182: pub for integration test introspection.
     pub cost_model: parking_lot::RwLock<UnifiedCostModel>,
-    pub(crate) parallel_degree: usize,
+    // V4.1.0 / Issue #4910 §3.1: convert from `usize` to `AtomicUsize` so the
+    // `&self` SELECT path can read parallelism without the engine write lock.
+    pub(crate) parallel_degree: AtomicUsize,
     pub(crate) stmt_cache: sqlrustgo_cache::PreparedStatementCache,
     /// View definitions: view_name → parsed CREATE VIEW statement.
     /// Issue #4567: previously stored only the Debug-format SQL text, so
@@ -179,11 +188,9 @@ pub struct ExecutionEngine<S: StorageEngine> {
     /// `/tmp/perf-evidence/report.md` for the perf rationale.
     pub(crate) sequence_state: Arc<crate::sequence_state::SequenceState>,
     /// V312-64f / Issue #4699: per-engine override for the recursive CTE
-    /// row cap (`MAX_RECURSION_ROWS` in `engine_cte`). Defaults to
-    /// 1_000_000 (SQLite default). Tests use
-    /// `with_recursive_cte_max_rows` to lower the cap without spinning up
-    /// 1M-row fixtures.
-    pub recursive_cte_max_rows: usize,
+    /// row cap (`MAX_RECURSION_ROWS` in `engine_cte`). V4.1.0 / #4910 §3.1:
+    /// `AtomicUsize` so the CTE driver can read without the engine write lock.
+    pub recursive_cte_max_rows: AtomicUsize,
 }
 
 /// Transaction status for lifecycle enforcement
@@ -232,6 +239,23 @@ impl<S: StorageEngine + 'static> ExecutionEngine<S> {
     fn base_with(storage: Arc<parking_lot::RwLock<S>>, cbo_enabled: bool) -> Self {
         // v3.10.0 Issue #3703: --executor-parallelism env var (default 1 = sequential)
         #[rustfmt::skip] let parallel_degree = std::env::var("SQLRUSTGO_EXECUTOR_PARALLELISM").ok().and_then(|s| s.parse::<usize>().ok()).filter(|n| *n >= 1).unwrap_or(1);
+        // #4913 / v4.1.0-perf: do not let a parallelism request degrade
+        // silently. The intra-query parallel implementations live behind
+        // `sqlrustgo-executor/parallel-executor`, which was never enabled
+        // by any manifest in this repo, so the executor compiles its
+        // serial `cfg(not(feature = "parallel-executor"))` branches. Users
+        // setting --executor-parallelism=N used to get a rayon pool plus
+        // serial execution with no signal at all.
+        #[cfg(not(feature = "parallel-executor"))]
+        if parallel_degree > 1 {
+            tracing::warn!(
+                "executor parallelism requested ({}), but this binary was built \
+                 without the `parallel-executor` feature: intra-query \
+                 scan/join/aggregate will run sequentially. Rebuild with \
+                 `--features parallel-executor` to enable it.",
+                parallel_degree
+            );
+        }
         // DeepSeek review (2026-07-11): explicit global rayon pool init
         // ensures the global pool's num_threads matches SQLRUSTGO_EXECUTOR_PARALLELISM,
         // not the physical-CPU default. build_global() is idempotent — safe to call
@@ -254,18 +278,19 @@ impl<S: StorageEngine + 'static> ExecutionEngine<S> {
             // `with_memory_and_catalog(...)`.
             catalog: Some(Arc::new(RwLock::new(Catalog::new("default")))),
             stats: Arc::new(RwLock::new(ExecutionStats::default())),
-            cbo_enabled,
+            cbo_enabled: AtomicBool::new(cbo_enabled),
             transaction_manager: TransactionManager::new(),
             current_tx_id: None,
             trigger_undo_sink: Arc::new(parking_lot::Mutex::new(Vec::new())),
             tx_status: TxStatus::Idle,
+            is_explicit_transaction: false,
             tx_readonly: false,
             default_isolation: TmIsolationLevel::default(),
             current_role: None,
             current_user: UserIdentity::new("root", "localhost"),
             session_null_order_first: None,
             checkpoint_manager: None,
-            parallel_degree,
+            parallel_degree: AtomicUsize::new(parallel_degree),
             stmt_cache: sqlrustgo_cache::PreparedStatementCache::new(100),
             cost_model: parking_lot::RwLock::new(UnifiedCostModel::default_model(0, 0)),
             views: HashMap::new(),
@@ -275,7 +300,7 @@ impl<S: StorageEngine + 'static> ExecutionEngine<S> {
             instrumentation: Arc::new(sqlrustgo_executor::instrumentation::NoopInstrumentationHook),
             session_vars: Arc::new(RwLock::new(HashMap::new())),
             sequence_state: Arc::new(crate::sequence_state::SequenceState::new()),
-            recursive_cte_max_rows: 1_000_000,
+            recursive_cte_max_rows: AtomicUsize::new(1_000_000),
         }
     }
     /// Get a handle to the shared Adaptive Hash Index used for hot-page tracking.
@@ -301,10 +326,9 @@ impl<S: StorageEngine + 'static> ExecutionEngine<S> {
     }
 
     /// V312-64f / Issue #4699: override the recursive CTE row cap for
-    /// this engine. Production default is 1_000_000 (SQLite); tests use
     /// this builder to lower the cap without generating 1M-row fixtures.
     pub fn with_recursive_cte_max_rows(mut self, cap: usize) -> Self {
-        self.recursive_cte_max_rows = cap;
+        self.recursive_cte_max_rows.store(cap, Ordering::Relaxed);
         self
     }
 
@@ -406,22 +430,22 @@ impl<S: StorageEngine + 'static> ExecutionEngine<S> {
 
     /// Check if CBO is enabled
     pub fn is_cbo_enabled(&self) -> bool {
-        self.cbo_enabled
+        self.cbo_enabled.load(Ordering::Relaxed)
     }
     /// Enable or disable CBO
     pub fn set_cbo_enabled(&mut self, enabled: bool) {
-        self.cbo_enabled = enabled;
+        self.cbo_enabled.store(enabled, Ordering::Relaxed);
     }
     pub fn parallel_degree(&self) -> usize {
-        self.parallel_degree
+        self.parallel_degree.load(Ordering::Relaxed)
     }
     pub fn set_parallel_degree(&mut self, degree: usize) {
-        self.parallel_degree = degree.max(1);
+        self.parallel_degree.store(degree.max(1), Ordering::Relaxed);
     }
     pub fn build_parallel_executor(
         &self,
     ) -> sqlrustgo_executor::parallel_executor::ParallelVolcanoExecutor {
-        sqlrustgo_executor::parallel_executor::ParallelVolcanoExecutor::new(self.parallel_degree)
+        sqlrustgo_executor::parallel_executor::ParallelVolcanoExecutor::new(self.parallel_degree())
     }
     /// Get table statistics for CBO
     pub fn get_table_stats(&self) -> Arc<parking_lot::RwLock<ExecutionStats>> {
@@ -454,7 +478,7 @@ impl<S: StorageEngine + 'static> ExecutionEngine<S> {
         where_clause: Option<&Expression>,
         rows: usize,
     ) -> bool {
-        if !self.cbo_enabled {
+        if !self.cbo_enabled.load(Ordering::Relaxed) {
             return rows >= sqlrustgo_executor::parallel_executor::PARALLEL_MIN_ROWS;
         }
         let plan = match where_clause {

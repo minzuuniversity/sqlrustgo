@@ -1,0 +1,57 @@
+Per-item re-verification of LEGACY_LEDGER_v3.6_to_v4.1.md groups E (doc contradictions)
+ + C8 (gate debt) + C5 (coverage debt). generated: 2026-09-30T15:33:27Z
+branch/commit: develop/v4.1.0 @ ddfb1c62cd
+verifier: MCode main session, source_run=legacy-item-reverify-2026-09-30
+
+############ E-2  YAML 状态自洽性: current_state=CLOSED 但 disposition=deferred ############
+CONFIRMED. Exactly 6 entries, ALL in docs/releases/v3.12.0/historical-backlog-disposition.yml:
+  FIX-GATE-TEST-INVENTORY        current_state=CLOSED disposition=deferred
+  FIX-GATE-G13-STABILITY          current_state=CLOSED disposition=deferred
+  FIX-GATE-COVERAGE-THRESHOLD    current_state=CLOSED disposition=deferred
+  FIX-GATE-ARCH-CARCH05          current_state=CLOSED disposition=deferred
+  FIX-P3-1-DEALLOCATE            current_state=CLOSED disposition=deferred
+  FIX-G1-TPCH-CLI                current_state=CLOSED disposition=deferred
+>> CROSS-IDENTIFICATION: these 6 are the SAME 6 items as ledger group C8 (gate debt).
+   C8 and E-2 are one defect seen from two sides, not 11 independent items.
+
+############ E-3  #3909 two-doc contradiction ############
+CONFIRMED.
+  v312_issue_comments.md:436-437  -> NOT IMPLEMENTED, needs explicit deferral
+  execution-architecture-debt-report.md:250 -> 'Issue #3909 can be CLOSED at
+     origin/develop/v3.12.0. No follow-up needed.'
+  The report cites closure evidence evidence/issue-3969-3970-3971/issue_3909_closure.md
+
+############ E-4  coverage: three-way discrepancy ############
+MEASURED (refines the ledger's 'three different numbers' framing):
+  v3.10.0/COMPREHENSIVE_ASSESSMENT_REPORT.md:24 -> '~14.71% (lib baseline)'
+  v3.10.0/coverage-baseline/summary.txt TOTAL  -> 10565 stmts / 9011 hit = 14.71%
+  debt-registry.yaml:293 -> 'L1_8 avg 84.44% >= 80% ... parser 75.16% ... executor 82.80%'
+  => NOT a pure contradiction: different MEASUREMENT SCOPE.
+     v3.10 = 'cargo llvm-cov --lib' TOTAL across workspace (low).
+     v3.12 = 'L1_8 avg' across 8 named core crates.
+  The defect is that no document states which scope each number uses, so the
+  14.71% -> 84.44% jump reads as either a 5.7x improvement or a scope switch.
+
+############ E-5  v3.11.0 acceptance checkboxes never ticked ############
+CONFIRMED: 31 unchecked '- [ ]' items under docs/releases/v3.11.0/*.md
+  e.g. E2E_TESTING_GUIDE.md:182-186, 299-304 ; G4_WIRE_TEST_CLOSE_OUT_PLAN.md:149
+
+############ E-1  GA-claim-caveat inventory size ############
+MEASURED (the ledger's '17 vs 9+3' figures are NOT reproducible; correcting):
+  CLAIM_DOWNGRADE_MANIFEST.md sections 3.1-3.13 cover 22 distinct issue numbers:
+    3.1 SQL surface    10 : 4670 4674 4675 4676 4696 4708 4710 4716 ...
+    3.2 DDL surface     6 : 4652 4669 4672 4682 4703 4709
+    3.3 JOIN/SUBQUERY   4 : 4636 4649 4656 4668
+    3.4 Schema          1 : 4848
+    3.5 Type            1 : 4846
+  v4.1.0/RELEASE_NOTES.md caveat table rows: 11
+  => manifest 22 vs RELEASE_NOTES 11. Items in manifest but absent from the
+     RELEASE_NOTES caveat table have no documented disposition.
+
+############ C5  SEM-4 'XYZ' placeholder still present ############
+CONFIRMED PRESENT. docs/governance/debt/debt-registry.yaml:293 still reads:
+  '... Z440 32% issue (XYZ) recorded but does not block v3.12.0 close.'
+The root-cause field was never filled in, yet the entry was marked
+current_state CLOSED on 2026-08-15 (git log 76dae7465e).
+CORRECTION to an earlier session claim: debt-registry.yaml was NOT frozen since
+2026-07-16; its last commit is 76dae7465e dated 2026-08-15.

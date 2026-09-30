@@ -1,0 +1,22 @@
+RUN: 2026-09-30T14:15:31Z
+HEAD: e2355c068058a102ce4d12f3c11beae84962a974
+BRANCH: develop/v4.1.0
+--- branch tips ---
+main = f8a149b474
+develop/v4.0.0 = ac3fa16afb
+develop/v4.1.0 = e2355c0680
+release/v4.0.0 = 1f62d46f06
+--- main behind develop/v4.0.0 ---
+rev-list --count main..develop/v4.0.0 = 16905
+--- main is ancestor of develop/v4.1.0? ---
+NO
+--- HEAD author email vs anti_fabrication allowlist ---
+HEAD email = claude@macmini.dev
+allowlist = openheart@gaoyuanyiyao.com openclaw@gaoyuanyiyao.com hermes-z6g4@gaoyuanyiyao.com hermes-macmini@gaoyuanyiyao.com claude-macmini@gaoyuanyiyao.com claude-z6g4@gaoyuanyiyao.com claude-z440@gaoyuanyiyao.com ci@sqlrustgo.dev
+--- executor file sizes (C-ARCH-05 covers execution_engine.rs only) ---
+   36519 total
+    5104 crates/executor/src/expr/mod.rs
+    4248 crates/executor/src/stored_proc.rs
+    2549 crates/executor/src/trigger.rs
+    1597 crates/executor/src/window_executor.rs
+    1552 crates/executor/src/vectorization.rs

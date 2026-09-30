@@ -759,26 +759,82 @@ impl FileStorage {
         Ok(())
     }
 
+    /// B2.1 / #4915 (F-09): delta-aware persist that takes an explicit
+    /// `total_rows`.
+    ///
+    /// `save_table` derives the total row count from
+    /// `table_data.rows.len()`. Callers that hand it a *window*
+    /// snapshot (only the rows appended since `last_saved`) must
+    /// therefore also pass the real table size, otherwise the
+    /// "did the table grow?" decision and the `last_saved_row_count`
+    /// bookkeeping would be computed against the window length.
+    fn save_table_window(
+        &self,
+        table_name: &str,
+        window: &TableData,
+        total_rows: usize,
+    ) -> std::io::Result<()> {
+        let last_saved = *self
+            .last_saved_row_count
+            .lock()
+            .unwrap()
+            .get(table_name)
+            .unwrap_or(&0);
+
+        if total_rows == 0 || last_saved == 0 || total_rows <= last_saved {
+            // Cold start, shrink, or a DELETE/UPDATE path: the caller
+            // handed us a window, not a snapshot, so re-derive the
+            // full table under the lock. Rare relative to inserts.
+            if let Some(data) = self.tables.get(table_name) {
+                return self.save_table_full(table_name, data);
+            }
+            return Ok(());
+        }
+
+        // Delta-only path: append just the window we were given.
+        self.append_table_delta(table_name, &window.rows)?;
+        self.last_saved_row_count
+            .lock()
+            .unwrap()
+            .insert(table_name.to_string(), total_rows);
+
+        // Periodic compaction: when the delta file exceeds the
+        // threshold, rewrite the base snapshot and clear the delta.
+        let delta_path = self.delta_path(table_name);
+        if let Ok(meta) = std::fs::metadata(&delta_path) {
+            if meta.len() > 10 * 1024 * 1024 {
+                if let Some(data) = self.tables.get(table_name) {
+                    let _ = self.save_table_full(table_name, data);
+                }
+            }
+        }
+        Ok(())
+    }
+
     /// V400-PERF-DELTA: write the full table JSON snapshot. Called by
     /// `save_table` on the first write, after a schema change, and
     /// when the delta file grows too large.
     fn save_table_full(&self, table_name: &str, table_data: &TableData) -> std::io::Result<()> {
         let path = self.table_path(table_name);
         let file = File::create(&path)?;
-        let mut writer = BufWriter::new(file);
+        // B2.3 / #4915 (F-11): 1 MB buffer, and serialize straight
+        // into it. The previous code built an owned StoredTableData
+        // (another full copy of the rows) and then
+        // `to_string_pretty` into a String before writing, so a
+        // snapshot cost two extra copies of the table in memory.
+        let mut writer = BufWriter::with_capacity(1 << 20, file);
 
-        let stored = StoredTableData {
-            name: table_data.info.name.clone(),
-            columns: table_data.info.columns.clone(),
-            foreign_keys: table_data.info.foreign_keys.clone(),
-            unique_constraints: table_data.info.unique_constraints.clone(),
-            rows: table_data.rows.clone(),
+        let stored = StoredTableDataRef {
+            name: &table_data.info.name,
+            columns: &table_data.info.columns,
+            foreign_keys: &table_data.info.foreign_keys,
+            unique_constraints: &table_data.info.unique_constraints,
+            rows: &table_data.rows,
         };
 
-        let json = serde_json::to_string_pretty(&stored)
+        serde_json::to_writer_pretty(&mut writer, &stored)
             .map_err(|e| std::io::Error::new(std::io::ErrorKind::InvalidData, e))?;
 
-        writer.write_all(json.as_bytes())?;
         writer.flush()?;
         // Drop any pending deltas — they're now incorporated.
         let _ = std::fs::remove_file(self.delta_path(table_name));
@@ -888,16 +944,48 @@ impl FileStorage {
     /// Force save all dirty tables to disk
     /// V311-07: Only persist tables that have been modified since last flush
     pub fn flush(&self) -> std::io::Result<()> {
-        Self::with_write_lock(self.as_mut_self(), |s| {
-            // V311-07: Take dirty tables set, leaving empty set behind
-            let dirty: Vec<String> = std::mem::take(&mut s.dirty_tables).into_iter().collect();
-            for name in &dirty {
-                if let Some(table_data) = s.tables.get(name) {
-                    s.save_table(name, table_data)?;
-                }
-            }
-            Ok(())
-        })
+        // B2.2 / #4915 (F-10): drain the dirty set and take a *window*
+        // snapshot under one short critical section, then do the I/O
+        // with the lock released.
+        //
+        // Previously the whole loop ran inside `with_write_lock`, so a
+        // flush held the exclusive lock across serialization plus
+        // `write()` for every dirty table.
+        //
+        // An earlier version of this function snapshotted the whole
+        // `TableData` per dirty table. That removed the lock-hold but
+        // added an O(table_size) copy to every flush, and the
+        // `b2_flush_dirty_tables/5tables_*` benchmark measured it as a
+        // 0.86x regression — the copy cost more than the lock it saved.
+        // The window is what actually gets written: `save_table_window`
+        // needs only the rows appended since `last_saved` plus the true
+        // total, and it re-derives the full table itself on the rare
+        // cold-start / shrink / compaction branches.
+        let pending: Vec<(String, TableData, usize)> =
+            Self::with_write_lock(self.as_mut_self(), |s| {
+                std::mem::take(&mut s.dirty_tables)
+                    .into_iter()
+                    .filter_map(|name| {
+                        let data = s.tables.get(&name)?;
+                        let total = data.rows.len();
+                        let last_saved = *s
+                            .last_saved_row_count
+                            .lock()
+                            .unwrap()
+                            .get(&name)
+                            .unwrap_or(&0);
+                        let start = last_saved.min(total);
+                        Some((name, TableData::snapshot_from(data, start), total))
+                    })
+                    .collect()
+            });
+
+        // Lock released. `save_table_window` / `save_table_full` only
+        // touch `data_dir`, `last_saved_row_count` and the filesystem.
+        for (name, window, total) in &pending {
+            self.save_table_window(name, window, *total)?;
+        }
+        Ok(())
     }
 
     /// Check if a table exists
@@ -1152,6 +1240,27 @@ struct StoredTableData {
     foreign_keys: Vec<ForeignKeyConstraint>,
     unique_constraints: Vec<UniqueConstraint>,
     rows: Vec<Vec<Value>>,
+}
+
+/// B2.3 / #4915 (F-11): borrowed twin of [`StoredTableData`] used only for
+/// serialization.
+///
+/// `save_table_full` used to build a `StoredTableData` — a struct whose
+/// `rows` field owned a full copy of the table — and then hand it to
+/// `serde_json::to_string_pretty`, which allocates the whole JSON document
+/// as a `String` before a single byte reaches the file. On a 500 MB table
+/// that is two extra copies of the data resident at once.
+///
+/// This mirror keeps every field borrowed so the serializer can walk
+/// straight from the live `TableData` into the writer. Deserialization
+/// keeps using the owned `StoredTableData`.
+#[derive(serde::Serialize)]
+struct StoredTableDataRef<'a> {
+    name: &'a str,
+    columns: &'a [ColumnDefinition],
+    foreign_keys: &'a [ForeignKeyConstraint],
+    unique_constraints: &'a [UniqueConstraint],
+    rows: &'a [Vec<Value>],
 }
 
 #[cfg(test)]
@@ -3207,9 +3316,17 @@ impl FileStorage {
                 if let Some(ref mut data) = s.tables.get_mut(table) {
                     start_row_id = data.rows.len() as u32;
                     data.rows.extend(records.iter().cloned());
-                    let table_data = data.clone();
                     let cols = data.info.columns.clone();
-                    if s.save_table(table, &table_data).is_ok() {
+                    // B2.1 / #4915 (F-09): the original code did
+                    // `let table_data = data.clone();` — a full copy of
+                    // every row in the table, per insert. The delta
+                    // path in `save_table` only reads
+                    // `rows[last_saved..]`, so hand it a snapshot that
+                    // contains just the appended window. Same JSON on
+                    // disk, O(row_count) instead of O(table_size).
+                    let total_rows = data.rows.len();
+                    let table_data = data.snapshot_from(start_row_id as usize);
+                    if s.save_table_window(table, &table_data, total_rows).is_ok() {
                         result = Some((cols, start_row_id, row_count));
                     }
                 }
@@ -3240,9 +3357,12 @@ impl FileStorage {
                         if let Some(ref mut data) = s.tables.get_mut(table) {
                             let start_row_id = data.rows.len();
                             data.rows.extend(records.iter().cloned());
-                            let table_data = data.clone();
                             let cols = data.info.columns.clone();
-                            if s.save_table(table, &table_data).is_ok() {
+                            // B2.1 / #4915 (F-09): same windowed
+                            // snapshot as `insert_direct`.
+                            let total_rows = data.rows.len();
+                            let table_data = data.snapshot_from(start_row_id);
+                            if s.save_table_window(table, &table_data, total_rows).is_ok() {
                                 result = Some((start_row_id, row_count, cols));
                             }
                         }
@@ -3277,9 +3397,12 @@ impl FileStorage {
                     if let Some(ref mut data) = s.tables.get_mut(table) {
                         let start_row_id = data.rows.len();
                         data.rows.extend(records);
-                        let table_data = data.clone();
                         let cols = data.info.columns.clone();
-                        if s.save_table(table, &table_data).is_ok() {
+                        // B2.1 / #4915 (F-09): same windowed
+                        // snapshot as `insert_direct`.
+                        let total_rows = data.rows.len();
+                        let table_data = data.snapshot_from(start_row_id);
+                        if s.save_table_window(table, &table_data, total_rows).is_ok() {
                             result = Some((start_row_id, row_count, cols));
                         }
                     }

@@ -852,6 +852,35 @@ pub struct TableData {
     pub rows: Vec<Record>,
 }
 
+impl TableData {
+    /// B2.1 / #4915 (F-09): produce a `TableData` carrying only the rows
+    /// appended at or after `start_row_id`, plus the schema.
+    ///
+    /// `FileStorage::save_table` persists either a full snapshot
+    /// (cold start, shrink, or a delta larger than the compaction
+    /// threshold) or only `rows[last_saved..]` as a delta. The write
+    /// paths used to hand `save_table` a `data.clone()` — a full copy
+    /// of every row in the table — so a batched load was O(N^2) even
+    /// though the delta path only reads the appended window. Passing a
+    /// window-sized snapshot keeps the on-disk bytes identical while
+    /// making the clone O(row_count).
+    ///
+    /// `save_table` falls back to the full-snapshot path whenever
+    /// `last_saved_row_count` is 0, or when the total row count did not
+    /// grow, so this only affects the append case.
+    pub(crate) fn snapshot_from(&self, start_row_id: usize) -> TableData {
+        let rows = if start_row_id < self.rows.len() {
+            self.rows[start_row_id..].to_vec()
+        } else {
+            Vec::new()
+        };
+        TableData {
+            info: self.info.clone(),
+            rows,
+        }
+    }
+}
+
 /// Record type - a single row of values
 pub type Record = Vec<Value>;
 
