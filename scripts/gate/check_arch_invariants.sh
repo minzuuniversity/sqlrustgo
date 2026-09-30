@@ -117,15 +117,47 @@ echo ""
 # v3.11.0: 增至 1600 (GIS ST_WITHIN, Sequence, GIS Phase 2 等 GA 功能增加 ~123 行)
 CARCH05_LIMIT=1600
 CARCH05_AD001_TARGET=1500
-echo "[C-ARCH-05] Checking execution_engine.rs < ${CARCH05_LIMIT} lines (SSOT: CARCH05_LIMIT, AD-001 target: ${CARCH05_AD001_TARGET})..."
-EXEC_ENGINE_LINES=$(wc -l < src/execution_engine.rs 2>/dev/null || echo "0")
-if [ "$EXEC_ENGINE_LINES" -gt "$CARCH05_LIMIT" ]; then
-    echo "FAIL: C-ARCH-05 violated - execution_engine.rs has $EXEC_ENGINE_LINES lines (limit: $CARCH05_LIMIT, AD-001 target: $CARCH05_AD001_TARGET, SSOT: check_rc_ga_gate.sh)"
+CARCH05_TARGET="src/execution_engine.rs"
+echo "[C-ARCH-05] Checking ${CARCH05_TARGET} < ${CARCH05_LIMIT} lines (SSOT: CARCH05_LIMIT, AD-001 target: ${CARCH05_AD001_TARGET})..."
+
+# P16 (Gate Test Integrity) fix, 2026-09-30:
+# The previous form `wc -l < src/execution_engine.rs 2>/dev/null || echo "0"`
+# yielded 0 for a MISSING file. Because 0 is never > CARCH05_LIMIT, a renamed,
+# moved, or deleted target silently produced PASS — the gate could not fail.
+# Now fails CLOSED. Ref: docs/releases/v4.1.0/ALIGNMENT_AUDIT_2026-09-30.md F-04,
+# docs/governance/ANTI_FABRICATION_POLICY.md 7.4.
+if [ ! -f "$CARCH05_TARGET" ]; then
+    echo "FAIL: C-ARCH-05 cannot be evaluated - target file not found: ${CARCH05_TARGET}"
+    echo "      Failing closed per P16: a missing target must never be reported as PASS."
     FAIL=$((FAIL+1))
 else
-    echo "PASS: C-ARCH-05 (execution_engine.rs: $EXEC_ENGINE_LINES lines, limit $CARCH05_LIMIT, AD-001 target $CARCH05_AD001_TARGET)"
-    PASS=$((PASS+1))
+    EXEC_ENGINE_LINES=$(wc -l < "$CARCH05_TARGET" | tr -d ' ')
+    if [ "$EXEC_ENGINE_LINES" -gt "$CARCH05_LIMIT" ]; then
+        echo "FAIL: C-ARCH-05 violated - ${CARCH05_TARGET} has $EXEC_ENGINE_LINES lines (limit: $CARCH05_LIMIT, AD-001 target: $CARCH05_AD001_TARGET, SSOT: check_rc_ga_gate.sh)"
+        FAIL=$((FAIL+1))
+    else
+        echo "PASS: C-ARCH-05 (${CARCH05_TARGET}: $EXEC_ENGINE_LINES lines, limit $CARCH05_LIMIT, AD-001 target $CARCH05_AD001_TARGET)"
+        PASS=$((PASS+1))
+    fi
 fi
+
+# Visibility only (non-blocking): C-ARCH-05 measures exactly ONE file. The
+# largest sources under crates/executor/src/ are not covered by any line-count
+# gate. Reported as WARN so the debt stays visible without failing the gate;
+# extending the limit to these files is a separate decision (it would fail
+# immediately). Ref: ALIGNMENT_AUDIT_2026-09-30.md F-04 coverage gap.
+echo ""
+echo "[C-ARCH-05-NOTE] Uncovered large sources (informational, does NOT affect PASS/FAIL):"
+for _f in crates/executor/src/expr/mod.rs crates/executor/src/stored_proc.rs crates/executor/src/trigger.rs; do
+    if [ -f "$_f" ]; then
+        _n=$(wc -l < "$_f" | tr -d ' ')
+        if [ "$_n" -gt "$CARCH05_LIMIT" ]; then
+            echo "  WARN: ${_f} = ${_n} lines (> ${CARCH05_LIMIT}) — not gated by C-ARCH-05"
+        else
+            echo "  ok:   ${_f} = ${_n} lines"
+        fi
+    fi
+done
 echo ""
 
 # Summary
