@@ -15,7 +15,6 @@ use crate::expr_utils::{
 };
 use crate::{parse, SqlError, SqlResult, Value};
 use parking_lot::RwLock;
-use std::sync::atomic::{AtomicBool, AtomicUsize, Ordering};
 use sqlrustgo_catalog::stored_proc::{ParamMode, StoredProcParam, StoredProcStatement};
 use sqlrustgo_catalog::{
     auth::UserIdentity, AuthErrorCode, Catalog, ObjectRef, Privilege, StoredProcedure,
@@ -73,6 +72,7 @@ use sqlrustgo_transaction::{IsolationLevel as TmIsolationLevel, TransactionManag
 use sqlrustgo_types::Value as SqlValue;
 use std::collections::HashMap;
 use std::path::PathBuf;
+use std::sync::atomic::{AtomicBool, AtomicUsize, Ordering};
 use std::sync::Arc;
 
 /// Execution engine for SQL statements
@@ -141,6 +141,23 @@ pub struct ExecutionEngine<S: StorageEngine> {
     /// Operations on clustered tables are routed through this map.
     pub(crate) clustered_tables:
         parking_lot::RwLock<HashMap<String, Arc<parking_lot::RwLock<ClusteredTable>>>>,
+    /// V4.1.0: per-table primary-key index used by INSERT's duplicate-key
+    /// check. `execute_insert` used to call `storage.scan()` on every
+    /// statement, so N single-row INSERTs into a table with a PRIMARY KEY
+    /// cost O(N^2): measured 44s for 15000 rows. This holds the table's
+    /// primary-key values so the check is a set lookup, and a table without
+    /// a PRIMARY KEY keeps the scan (it still needs one for UNIQUE /
+    /// AUTO_INCREMENT).
+    ///
+    /// An entry is trusted only while its recorded
+    /// `StorageEngine::table_change_stamp` still matches the table's live
+    /// stamp, so any row mutation invalidates it — including mutations from
+    /// paths with no knowledge of this cache (trigger bodies, GMP helpers,
+    /// `LOAD DATA`, wire endpoints, ROLLBACK undo replay). A storage engine
+    /// that does not track change stamps reports 0, which disables the
+    /// fast path rather than risking a stale hit.
+    pub(crate) pk_lookup_cache:
+        parking_lot::RwLock<HashMap<String, crate::engine_dml::PkIndexCache>>,
     /// V311-02 F-24: shared AdaptiveHashIndex instance for hot-page caching.
     /// The AHI is shared across all queries and is the production-API
     /// landing point for V311-02 v1. v2 (deferred) will wire AHI into
@@ -278,6 +295,7 @@ impl<S: StorageEngine + 'static> ExecutionEngine<S> {
             cost_model: parking_lot::RwLock::new(UnifiedCostModel::default_model(0, 0)),
             views: HashMap::new(),
             clustered_tables: parking_lot::RwLock::new(HashMap::new()),
+            pk_lookup_cache: parking_lot::RwLock::new(HashMap::new()),
             adaptive_hash_index: AdaptiveHashIndex::new().into_shared(),
             instrumentation: Arc::new(sqlrustgo_executor::instrumentation::NoopInstrumentationHook),
             session_vars: Arc::new(RwLock::new(HashMap::new())),

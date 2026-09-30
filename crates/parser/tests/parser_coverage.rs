@@ -355,9 +355,8 @@ fn t_window_rows_frame_parsed() {
 // A PRECEDING offset is a distinct frame, not the same as the default.
 #[test]
 fn t_window_rows_preceding_offset_parsed() {
-    let result = parse(
-        "SELECT SUM(b) OVER (ORDER BY d ROWS BETWEEN 2 PRECEDING AND 1 FOLLOWING) FROM t",
-    );
+    let result =
+        parse("SELECT SUM(b) OVER (ORDER BY d ROWS BETWEEN 2 PRECEDING AND 1 FOLLOWING) FROM t");
     let stmt = result.expect("offset frame must parse");
     let sqlrustgo_parser::Statement::Select(sel) = stmt else {
         panic!("expected a SELECT");

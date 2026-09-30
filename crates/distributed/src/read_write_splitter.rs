@@ -86,6 +86,17 @@ pub fn classify_statement(statement: &Statement) -> QueryClass {
         Statement::Explain(_) => QueryClass::Read,
         Statement::Show(_) => QueryClass::Read,
         Statement::Describe(_) => QueryClass::Read,
+        // V4.1.0: PRAGMA is schema introspection (`PRAGMA table_info(t)`),
+        // served entirely from catalog metadata under a read lock, so it
+        // routes to a replica like DESCRIBE does.
+        //
+        // This is the only reason the arm can be Read today:
+        // `ExecutionEngine::execute_pragma` implements `table_info` and
+        // rejects every other pragma name, so no PRAGMA can mutate state.
+        // If a mutating pragma (e.g. `journal_mode=`) is ever implemented,
+        // this arm MUST move to QueryClass::Write — a write replayed on a
+        // replica is silently lost.
+        Statement::Pragma(_) => QueryClass::Read,
         Statement::Call(_) => QueryClass::Read,
         Statement::Union(_) => QueryClass::Read,
         // V310-06 PR2: set-op chains also read from both sides —
@@ -99,9 +110,6 @@ pub fn classify_statement(statement: &Statement) -> QueryClass {
         Statement::ShowRoles => QueryClass::Read,
         Statement::ShowGrantsFor(_) => QueryClass::Read,
         Statement::Execute { .. } => QueryClass::Read,
-        // PRAGMA is a metadata-only directive (read-only, e.g. table_info).
-        // Route to read replica in read-write-split deployments.
-        Statement::Pragma(_) => QueryClass::Read,
 
         // ---- DML writes ---------------------------------------------------
         Statement::Insert(_) => QueryClass::Write,
@@ -287,6 +295,19 @@ mod tests {
     fn classify_show_describe_as_read() {
         assert_eq!(classify_sql("SHOW TABLES"), QueryClass::Read);
         assert_eq!(classify_sql("DESCRIBE t"), QueryClass::Read);
+    }
+
+    #[test]
+    fn classify_pragma_as_read() {
+        // V4.1.0: PRAGMA is introspection-only today, so it is a Read.
+        // This test exists to make the routing decision reviewable: if a
+        // mutating pragma is implemented, this assertion must change to
+        // QueryClass::Write in the same commit that adds the pragma.
+        assert_eq!(
+            classify_sql("PRAGMA table_info(t)"),
+            QueryClass::Read,
+            "PRAGMA table_info is catalog introspection and must classify as Read"
+        );
     }
 
     #[test]

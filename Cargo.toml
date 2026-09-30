@@ -1788,3 +1788,7 @@ path = "tests/operators/pragma_table_info.rs"
 [[test]]
 name = "operators_three_valued_logic"
 path = "tests/operators/three_valued_logic.rs"
+
+[[test]]
+name = "pk_cache_regression_test"
+path = "tests/integration/sql/pk_cache_regression_test.rs"

@@ -1136,6 +1136,30 @@ pub trait StorageEngine: Send + Sync {
     /// Check if table exists
     fn has_table(&self, table: &str) -> bool;
 
+    /// V4.1.0: monotonically increasing per-table stamp that changes every
+    /// time this table's rows change shape or content.
+    ///
+    /// This exists so a caller can cache a derived view of a table (e.g. the
+    /// primary-key index `ExecutionEngine` keeps for INSERT's duplicate-key
+    /// check) and still notice when the cache went stale — including when the
+    /// mutation came from a path that has no idea the cache exists, such as a
+    /// trigger body, a GMP helper, `LOAD DATA`, or a wire-protocol endpoint
+    /// writing straight to storage.
+    ///
+    /// Contract for implementors: the returned value MUST change whenever
+    /// `insert` / `delete` / `delete_if` / `delete_collect_pks` / `update` /
+    /// `update_if` / `force_insert` would change what `scan` returns for
+    /// `table`, and MUST be stable while `scan(table)` is unchanged. Returning
+    /// a constant is always correct, just unoptimised — callers must treat the
+    /// value as opaque and only compare it for equality.
+    ///
+    /// The default returns 0, i.e. "never trust a cached copy". Callers must
+    /// honour that by rebuilding, so an engine that has not opted in stays
+    /// correct rather than fast.
+    fn table_change_stamp(&self, _table: &str) -> u64 {
+        0
+    }
+
     /// List all tables
     fn list_tables(&self) -> Vec<String>;
 
@@ -1447,6 +1471,10 @@ pub trait StorageEngine: Send + Sync {
 /// In-memory storage implementation for testing and caching
 pub struct MemoryStorage {
     tables: HashMap<String, Vec<Record>>,
+    /// V4.1.0: per-table stamp bumped by every row mutation. See
+    /// `StorageEngine::table_change_stamp`; read it to detect that a
+    /// derived cache (e.g. the engine's PK index) has gone stale.
+    change_stamps: HashMap<String, u64>,
     table_infos: HashMap<String, TableInfo>,
     triggers: HashMap<String, TriggerInfo>,
     views: HashSet<String>,
@@ -1504,6 +1532,7 @@ impl MemoryStorage {
     pub fn new() -> Self {
         Self {
             tables: HashMap::new(),
+            change_stamps: HashMap::new(),
             table_infos: HashMap::new(),
             triggers: HashMap::new(),
             views: HashSet::new(),
@@ -1518,6 +1547,13 @@ impl MemoryStorage {
             indexes: HashSet::new(),
             index_infos: HashMap::new(),
         }
+    }
+
+    /// V4.1.0: record that `table`'s rows changed. See
+    /// `StorageEngine::table_change_stamp`.
+    fn bump_change_stamp(&mut self, table: &str) {
+        let slot = self.change_stamps.entry(table.to_lowercase()).or_insert(0);
+        *slot = slot.wrapping_add(1);
     }
 
     /// V312-26 #3969: take (and clear) the most recently committed `TxLog`.
@@ -1883,6 +1919,8 @@ impl StorageEngine for MemoryStorage {
     }
 
     fn insert(&mut self, table: &str, records: Vec<Record>) -> SqlResult<()> {
+        // V4.1.0: any derived cache over this table is now stale.
+        self.bump_change_stamp(table);
         let table_key = table.to_lowercase();
         let padded: Vec<Record> = if let Some(info) = self.table_infos.get(&table_key).cloned() {
             let ncols = info.columns.len();
@@ -1977,6 +2015,8 @@ impl StorageEngine for MemoryStorage {
     }
 
     fn delete(&mut self, table: &str, filters: &[Value]) -> SqlResult<usize> {
+        // V4.1.0: any derived cache over this table is now stale.
+        self.bump_change_stamp(table);
         let Some(records) = self.tables.get_mut(table) else {
             return Ok(0);
         };
@@ -2016,6 +2056,8 @@ impl StorageEngine for MemoryStorage {
     /// the caller wants the coarse "tombstone all" fallback for full
     /// table wipes).
     fn delete_collect_pks(&mut self, table: &str, filters: &[Value]) -> SqlResult<Vec<Value>> {
+        // V4.1.0: any derived cache over this table is now stale.
+        self.bump_change_stamp(table);
         let Some(records) = self.tables.get_mut(table) else {
             return Ok(Vec::new());
         };
@@ -2059,6 +2101,8 @@ impl StorageEngine for MemoryStorage {
     }
 
     fn delete_if(&mut self, table: &str, filter: &RowFilter) -> SqlResult<usize> {
+        // V4.1.0: any derived cache over this table is now stale.
+        self.bump_change_stamp(table);
         let Some(records) = self.tables.get_mut(table) else {
             return Ok(0);
         };
@@ -2083,6 +2127,8 @@ impl StorageEngine for MemoryStorage {
         filters: &[Value],
         updates: &[(usize, Value)],
     ) -> SqlResult<usize> {
+        // V4.1.0: any derived cache over this table is now stale.
+        self.bump_change_stamp(table);
         let Some(records) = self.tables.get_mut(table) else {
             return Ok(0);
         };
@@ -2149,6 +2195,8 @@ impl StorageEngine for MemoryStorage {
         filter: &RowFilter,
         mutation: &RowMutation,
     ) -> SqlResult<usize> {
+        // V4.1.0: any derived cache over this table is now stale.
+        self.bump_change_stamp(table);
         let Some(records) = self.tables.get_mut(table) else {
             return Ok(0);
         };
@@ -2209,6 +2257,10 @@ impl StorageEngine for MemoryStorage {
         let key = table.to_lowercase();
         self.tables.remove(&key);
         self.table_infos.remove(&key);
+        // V4.1.0: a DROP must invalidate caches even though the table is
+        // gone — a CREATE of the same name may follow and must not inherit
+        // a snapshot describing the old table.
+        self.bump_change_stamp(&key);
         Ok(())
     }
 
@@ -2223,6 +2275,13 @@ impl StorageEngine for MemoryStorage {
     fn has_table(&self, table: &str) -> bool {
         // V312-19 #3972: case-insensitive table name lookup.
         self.table_infos.contains_key(&table.to_lowercase())
+    }
+
+    fn table_change_stamp(&self, table: &str) -> u64 {
+        self.change_stamps
+            .get(&table.to_lowercase())
+            .copied()
+            .unwrap_or(0)
     }
 
     fn list_tables(&self) -> Vec<String> {

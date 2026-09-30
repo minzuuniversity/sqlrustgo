@@ -425,7 +425,9 @@ pub fn materialize_recursive_cte<S: StorageEngine + 'static>(
         }
         total += new_rows.len();
 
-        let max_rows = engine.recursive_cte_max_rows.load(std::sync::atomic::Ordering::Relaxed);
+        let max_rows = engine
+            .recursive_cte_max_rows
+            .load(std::sync::atomic::Ordering::Relaxed);
         if total > max_rows {
             let mut storage = engine.storage.write();
             let _ = storage.drop_table(&t_work);

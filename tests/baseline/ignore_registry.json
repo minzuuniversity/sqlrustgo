@@ -1,0 +1,926 @@
+{
+  "schema_version": 1,
+  "purpose": "SSOT for every #[ignore] attribute in the live test tree; read by scripts/gate/check_anti_ignore_gate.sh (G19).",
+  "captured_at_commit": "bd18052c44663226b52a9263a5e3775b05a9b974",
+  "captured_at_date": "2026-09-30",
+  "total_allowed": 98,
+  "limits": {
+    "total_allowed_max": 100,
+    "active_max": 55
+  },
+  "scope": {
+    "included": [
+      "tests/**/*.rs",
+      "crates/**/*.rs"
+    ],
+    "excluded": [
+      {
+        "path": "archive/**",
+        "markers": 5,
+        "reason": "frozen historical material (archive/v3.11/archived-crates/); not a live test target and never built by CI"
+      }
+    ],
+    "counting_method": "A literal `#[ignore` was counted only when it is a real attribute, i.e. not inside a line comment and followed by a `fn` item. Of 129 literal occurrences in scope, 31 are prose in comments/strings and 98 are attributes."
+  },
+  "status_legend": {
+    "ACTIVE": "Should not be there yet: either no reason text at all, or the reason names unimplemented behaviour / a known open bug. This is the debt the ceiling bounds.",
+    "PARKED": "Reason is an external prerequisite (live server, --release, large memory, platform permission, dedicated script). Not actionable in normal development."
+  },
+  "known_deficiencies": {
+    "active": 55,
+    "parked": 43,
+    "categories": {
+      "FUNC_NOT_IMPL": 22,
+      "NO_REASON": 33,
+      "EXTERNAL_PREREQ": 43
+    },
+    "missing_reason_text": 33,
+    "detail": "33 of 98 attributes carry no #[ignore = \"...\"] reason, which ADR-008-test-claim-transparency requires. They are registered as ACTIVE so the deficit is visible in the counts rather than hidden. Remediation is tracked as an openspec change."
+  },
+  "counting_rule": "total_allowed equals the number of entries below. The gate compares it to limits.total_allowed_max and counts entries whose status is \"ACTIVE\" against limits.active_max.",
+  "note_on_line_numbers": "line_at_capture is a snapshot at captured_at_commit and is informational; file + test are the durable identity.",
+  "ignored_tests": [
+    {
+      "file": "crates/executor/tests/hash_join_left_null_test.rs",
+      "test": "test_filter_not_null_comparison",
+      "line_at_capture": 298,
+      "reason": "Parser does not support NOT (expr) syntax - NOT implementation is Phase 2",
+      "status": "ACTIVE",
+      "category": "FUNC_NOT_IMPL",
+      "status_rationale": "reason names unimplemented behaviour or a known open bug"
+    },
+    {
+      "file": "crates/parser/tests/wp_a_legacy.rs",
+      "test": "test_chinese_comment_multi_line",
+      "line_at_capture": 68,
+      "reason": "",
+      "status": "ACTIVE",
+      "category": "NO_REASON",
+      "status_rationale": "no #[ignore = \"...\"] reason text (ADR-008 requires one)"
+    },
+    {
+      "file": "crates/storage/src/mmap_vector_store.rs",
+      "test": "test_mmap_save_to_file",
+      "line_at_capture": 283,
+      "reason": "macOS mmap permission issue with tempfile",
+      "status": "PARKED",
+      "category": "EXTERNAL_PREREQ",
+      "status_rationale": "reason names an external prerequisite (live server / --release / large memory / platform permission / dedicated script)"
+    },
+    {
+      "file": "crates/tools/tests/tools_test.rs",
+      "test": "test_config_manager_listener_dispatch",
+      "line_at_capture": 406,
+      "reason": "add_listener requires ConfigListener + 'static; closure helper incompatible",
+      "status": "ACTIVE",
+      "category": "FUNC_NOT_IMPL",
+      "status_rationale": "reason names unimplemented behaviour or a known open bug"
+    },
+    {
+      "file": "crates/vector/src/hnsw.rs",
+      "test": "test_hnsw_10k_build_and_search",
+      "line_at_capture": 626,
+      "reason": "HNSW vector index test (perf baseline TBD)",
+      "status": "PARKED",
+      "category": "EXTERNAL_PREREQ",
+      "status_rationale": "reason names an external prerequisite (live server / --release / large memory / platform permission / dedicated script)"
+    },
+    {
+      "file": "crates/vector/src/hnsw.rs",
+      "test": "test_hnsw_100k_search_performance",
+      "line_at_capture": 666,
+      "reason": "HNSW vector index test (perf baseline TBD)",
+      "status": "PARKED",
+      "category": "EXTERNAL_PREREQ",
+      "status_rationale": "reason names an external prerequisite (live server / --release / large memory / platform permission / dedicated script)"
+    },
+    {
+      "file": "crates/vector/src/hnsw.rs",
+      "test": "test_hnsw_100k_batch_build",
+      "line_at_capture": 706,
+      "reason": "HNSW vector index test (perf baseline TBD)",
+      "status": "PARKED",
+      "category": "EXTERNAL_PREREQ",
+      "status_rationale": "reason names an external prerequisite (live server / --release / large memory / platform permission / dedicated script)"
+    },
+    {
+      "file": "crates/vector/src/hnsw.rs",
+      "test": "test_hnsw_1m_search_performance",
+      "line_at_capture": 744,
+      "reason": "HNSW vector index test (perf baseline TBD)",
+      "status": "PARKED",
+      "category": "EXTERNAL_PREREQ",
+      "status_rationale": "reason names an external prerequisite (live server / --release / large memory / platform permission / dedicated script)"
+    },
+    {
+      "file": "crates/vector/src/parallel_knn.rs",
+      "test": "test_parallel_knn_1m_search_performance",
+      "line_at_capture": 498,
+      "reason": "Vector parallel kNN test (perf baseline TBD)",
+      "status": "PARKED",
+      "category": "EXTERNAL_PREREQ",
+      "status_rationale": "reason names an external prerequisite (live server / --release / large memory / platform permission / dedicated script)"
+    },
+    {
+      "file": "crates/vector/src/parallel_knn.rs",
+      "test": "test_parallel_knn_scale_performance",
+      "line_at_capture": 559,
+      "reason": "Vector parallel kNN test (perf baseline TBD)",
+      "status": "PARKED",
+      "category": "EXTERNAL_PREREQ",
+      "status_rationale": "reason names an external prerequisite (live server / --release / large memory / platform permission / dedicated script)"
+    },
+    {
+      "file": "tests/benchmark/bench_v380_point_agg.rs",
+      "test": "bench_pkey_lookup",
+      "line_at_capture": 41,
+      "reason": "performance benchmark, run with --ignored --release",
+      "status": "PARKED",
+      "category": "EXTERNAL_PREREQ",
+      "status_rationale": "reason names an external prerequisite (live server / --release / large memory / platform permission / dedicated script)"
+    },
+    {
+      "file": "tests/benchmark/bench_v380_point_agg.rs",
+      "test": "bench_pkey_batch",
+      "line_at_capture": 91,
+      "reason": "performance benchmark, run with --ignored --release",
+      "status": "PARKED",
+      "category": "EXTERNAL_PREREQ",
+      "status_rationale": "reason names an external prerequisite (live server / --release / large memory / platform permission / dedicated script)"
+    },
+    {
+      "file": "tests/benchmark/bench_v380_point_agg.rs",
+      "test": "bench_pkey_range",
+      "line_at_capture": 137,
+      "reason": "performance benchmark, run with --ignored --release",
+      "status": "PARKED",
+      "category": "EXTERNAL_PREREQ",
+      "status_rationale": "reason names an external prerequisite (live server / --release / large memory / platform permission / dedicated script)"
+    },
+    {
+      "file": "tests/benchmark/bench_v380_point_agg.rs",
+      "test": "bench_aggregation_count",
+      "line_at_capture": 184,
+      "reason": "performance benchmark, run with --ignored --release",
+      "status": "PARKED",
+      "category": "EXTERNAL_PREREQ",
+      "status_rationale": "reason names an external prerequisite (live server / --release / large memory / platform permission / dedicated script)"
+    },
+    {
+      "file": "tests/benchmark/bench_v380_point_agg.rs",
+      "test": "bench_aggregation_sum_avg",
+      "line_at_capture": 232,
+      "reason": "performance benchmark, run with --ignored --release",
+      "status": "PARKED",
+      "category": "EXTERNAL_PREREQ",
+      "status_rationale": "reason names an external prerequisite (live server / --release / large memory / platform permission / dedicated script)"
+    },
+    {
+      "file": "tests/benchmark/bench_v380_point_agg.rs",
+      "test": "bench_aggregation_with_filter",
+      "line_at_capture": 275,
+      "reason": "performance benchmark, run with --ignored --release",
+      "status": "PARKED",
+      "category": "EXTERNAL_PREREQ",
+      "status_rationale": "reason names an external prerequisite (live server / --release / large memory / platform permission / dedicated script)"
+    },
+    {
+      "file": "tests/benchmark/qps_benchmark_test.rs",
+      "test": "test_qps_simple_select",
+      "line_at_capture": 71,
+      "reason": "Performance benchmark (long runtime, run with --ignored, dedicated test env)",
+      "status": "PARKED",
+      "category": "EXTERNAL_PREREQ",
+      "status_rationale": "reason names an external prerequisite (live server / --release / large memory / platform permission / dedicated script)"
+    },
+    {
+      "file": "tests/benchmark/qps_benchmark_test.rs",
+      "test": "test_qps_insert",
+      "line_at_capture": 96,
+      "reason": "Performance benchmark (long runtime, run with --ignored, dedicated test env)",
+      "status": "PARKED",
+      "category": "EXTERNAL_PREREQ",
+      "status_rationale": "reason names an external prerequisite (live server / --release / large memory / platform permission / dedicated script)"
+    },
+    {
+      "file": "tests/benchmark/qps_benchmark_test.rs",
+      "test": "test_qps_update",
+      "line_at_capture": 125,
+      "reason": "Performance benchmark (long runtime, run with --ignored, dedicated test env)",
+      "status": "PARKED",
+      "category": "EXTERNAL_PREREQ",
+      "status_rationale": "reason names an external prerequisite (live server / --release / large memory / platform permission / dedicated script)"
+    },
+    {
+      "file": "tests/benchmark/qps_benchmark_test.rs",
+      "test": "test_qps_delete",
+      "line_at_capture": 154,
+      "reason": "Performance benchmark (long runtime, run with --ignored, dedicated test env)",
+      "status": "PARKED",
+      "category": "EXTERNAL_PREREQ",
+      "status_rationale": "reason names an external prerequisite (live server / --release / large memory / platform permission / dedicated script)"
+    },
+    {
+      "file": "tests/benchmark/qps_benchmark_test.rs",
+      "test": "test_qps_join",
+      "line_at_capture": 186,
+      "reason": "Performance benchmark (long runtime, run with --ignored, dedicated test env)",
+      "status": "PARKED",
+      "category": "EXTERNAL_PREREQ",
+      "status_rationale": "reason names an external prerequisite (live server / --release / large memory / platform permission / dedicated script)"
+    },
+    {
+      "file": "tests/benchmark/qps_benchmark_test.rs",
+      "test": "test_qps_aggregation",
+      "line_at_capture": 214,
+      "reason": "Performance benchmark (long runtime, run with --ignored, dedicated test env)",
+      "status": "PARKED",
+      "category": "EXTERNAL_PREREQ",
+      "status_rationale": "reason names an external prerequisite (live server / --release / large memory / platform permission / dedicated script)"
+    },
+    {
+      "file": "tests/benchmark/qps_benchmark_test.rs",
+      "test": "test_qps_concurrent_select",
+      "line_at_capture": 239,
+      "reason": "Performance benchmark (long runtime, run with --ignored, dedicated test env)",
+      "status": "PARKED",
+      "category": "EXTERNAL_PREREQ",
+      "status_rationale": "reason names an external prerequisite (live server / --release / large memory / platform permission / dedicated script)"
+    },
+    {
+      "file": "tests/benchmark/qps_benchmark_test.rs",
+      "test": "test_qps_concurrent_mixed",
+      "line_at_capture": 286,
+      "reason": "Performance benchmark (long runtime, run with --ignored, dedicated test env)",
+      "status": "PARKED",
+      "category": "EXTERNAL_PREREQ",
+      "status_rationale": "reason names an external prerequisite (live server / --release / large memory / platform permission / dedicated script)"
+    },
+    {
+      "file": "tests/benchmark/qps_benchmark_test.rs",
+      "test": "test_qps_complex_where",
+      "line_at_capture": 350,
+      "reason": "Performance benchmark (long runtime, run with --ignored, dedicated test env)",
+      "status": "PARKED",
+      "category": "EXTERNAL_PREREQ",
+      "status_rationale": "reason names an external prerequisite (live server / --release / large memory / platform permission / dedicated script)"
+    },
+    {
+      "file": "tests/benchmark/qps_benchmark_test.rs",
+      "test": "test_qps_order_by",
+      "line_at_capture": 376,
+      "reason": "Performance benchmark (long runtime, run with --ignored, dedicated test env)",
+      "status": "PARKED",
+      "category": "EXTERNAL_PREREQ",
+      "status_rationale": "reason names an external prerequisite (live server / --release / large memory / platform permission / dedicated script)"
+    },
+    {
+      "file": "tests/e2e/e2e_beta_test.rs",
+      "test": "e2e_01_startup_connect_select_1",
+      "line_at_capture": 54,
+      "reason": "E2E scenario — needs live server, run with --ignored",
+      "status": "PARKED",
+      "category": "EXTERNAL_PREREQ",
+      "status_rationale": "reason names an external prerequisite (live server / --release / large memory / platform permission / dedicated script)"
+    },
+    {
+      "file": "tests/e2e/e2e_beta_test.rs",
+      "test": "e2e_02_tpch_sf01_22_queries",
+      "line_at_capture": 77,
+      "reason": "E2E scenario — invoked via check_tpch_sf1.sh, run with --ignored",
+      "status": "PARKED",
+      "category": "EXTERNAL_PREREQ",
+      "status_rationale": "reason names an external prerequisite (live server / --release / large memory / platform permission / dedicated script)"
+    },
+    {
+      "file": "tests/e2e/e2e_beta_test.rs",
+      "test": "e2e_04_kill9_recovery",
+      "line_at_capture": 89,
+      "reason": "E2E scenario — kills running server, run with --ignored",
+      "status": "PARKED",
+      "category": "EXTERNAL_PREREQ",
+      "status_rationale": "reason names an external prerequisite (live server / --release / large memory / platform permission / dedicated script)"
+    },
+    {
+      "file": "tests/e2e/e2e_beta_test.rs",
+      "test": "e2e_07_alter_rename",
+      "line_at_capture": 100,
+      "reason": "E2E scenario — needs live server, run with --ignored",
+      "status": "PARKED",
+      "category": "EXTERNAL_PREREQ",
+      "status_rationale": "reason names an external prerequisite (live server / --release / large memory / platform permission / dedicated script)"
+    },
+    {
+      "file": "tests/e2e/e2e_beta_test.rs",
+      "test": "e2e_08_rollback_mvcc",
+      "line_at_capture": 111,
+      "reason": "E2E scenario — needs live server with MVCC, run with --ignored",
+      "status": "PARKED",
+      "category": "EXTERNAL_PREREQ",
+      "status_rationale": "reason names an external prerequisite (live server / --release / large memory / platform permission / dedicated script)"
+    },
+    {
+      "file": "tests/e2e/e2e_beta_test.rs",
+      "test": "e2e_09_union_set_ops",
+      "line_at_capture": 122,
+      "reason": "E2E scenario — needs V310-02 INTERSECT/EXCEPT impl, run with --ignored",
+      "status": "PARKED",
+      "category": "EXTERNAL_PREREQ",
+      "status_rationale": "reason names an external prerequisite (live server / --release / large memory / platform permission / dedicated script)"
+    },
+    {
+      "file": "tests/e2e/sqlrustgo_cli_soak_e2e_test.rs",
+      "test": "test_soak_repl_select_returns_rows",
+      "line_at_capture": 102,
+      "reason": "server column_def packet bug — DML path works, SELECT broken; see #3165",
+      "status": "ACTIVE",
+      "category": "FUNC_NOT_IMPL",
+      "status_rationale": "reason names unimplemented behaviour or a known open bug"
+    },
+    {
+      "file": "tests/e2e/sqlrustgo_cli_soak_e2e_test.rs",
+      "test": "test_soak_repl_skips_comments_and_blank_lines",
+      "line_at_capture": 250,
+      "reason": "server column_def packet bug — DML path works; see #3165",
+      "status": "ACTIVE",
+      "category": "FUNC_NOT_IMPL",
+      "status_rationale": "reason names unimplemented behaviour or a known open bug"
+    },
+    {
+      "file": "tests/integration/dml/perf_eng_batched_insert_test.rs",
+      "test": "perf_1000_row_batched_insert_under_1s",
+      "line_at_capture": 55,
+      "reason": "Perf test asserts wire timing thresholds (<1s for 1000 rows, <10s for 10000 rows). In debug builds the underlying socket returns EAGAIN (os error 35) on packet read; the test docstring requires 'cargo test --release ... -- --ignored' to gate perf tests. Run explicitly with `cargo test --release --test perf_eng_batched_insert_test -- --ignored --nocapture`.",
+      "status": "PARKED",
+      "category": "EXTERNAL_PREREQ",
+      "status_rationale": "reason names an external prerequisite (live server / --release / large memory / platform permission / dedicated script)"
+    },
+    {
+      "file": "tests/integration/dml/perf_eng_batched_insert_test.rs",
+      "test": "perf_10000_row_batched_insert_correctness",
+      "line_at_capture": 95,
+      "reason": "Perf test: 10000-row batched INSERT correctness check. Run with `cargo test --release --test perf_eng_batched_insert_test -- --ignored --nocapture`.",
+      "status": "PARKED",
+      "category": "EXTERNAL_PREREQ",
+      "status_rationale": "reason names an external prerequisite (live server / --release / large memory / platform permission / dedicated script)"
+    },
+    {
+      "file": "tests/integration/mysql_tpch_test.rs",
+      "test": "test_mysql_connection",
+      "line_at_capture": 9,
+      "reason": "mysql_tpch_test: requires live MySQL server connection",
+      "status": "PARKED",
+      "category": "EXTERNAL_PREREQ",
+      "status_rationale": "reason names an external prerequisite (live server / --release / large memory / platform permission / dedicated script)"
+    },
+    {
+      "file": "tests/integration/mysql_tpch_test.rs",
+      "test": "test_mysql_tpch_q1",
+      "line_at_capture": 15,
+      "reason": "mysql_tpch_test: requires live MySQL server connection",
+      "status": "PARKED",
+      "category": "EXTERNAL_PREREQ",
+      "status_rationale": "reason names an external prerequisite (live server / --release / large memory / platform permission / dedicated script)"
+    },
+    {
+      "file": "tests/integration/mysql_tpch_test.rs",
+      "test": "test_mysql_tpch_q6_aggregation",
+      "line_at_capture": 21,
+      "reason": "mysql_tpch_test: requires live MySQL server connection",
+      "status": "PARKED",
+      "category": "EXTERNAL_PREREQ",
+      "status_rationale": "reason names an external prerequisite (live server / --release / large memory / platform permission / dedicated script)"
+    },
+    {
+      "file": "tests/integration/mysql_tpch_test.rs",
+      "test": "test_mysql_tpch_join",
+      "line_at_capture": 27,
+      "reason": "mysql_tpch_test: requires live MySQL server connection",
+      "status": "PARKED",
+      "category": "EXTERNAL_PREREQ",
+      "status_rationale": "reason names an external prerequisite (live server / --release / large memory / platform permission / dedicated script)"
+    },
+    {
+      "file": "tests/integration/oracle/diag_q12_sf001_subset.rs",
+      "test": "q12_sf001_subset_count",
+      "line_at_capture": 37,
+      "reason": "",
+      "status": "ACTIVE",
+      "category": "NO_REASON",
+      "status_rationale": "no #[ignore = \"...\"] reason text (ADR-008 requires one)"
+    },
+    {
+      "file": "tests/integration/oracle/diag_q12_sf01_subset.rs",
+      "test": "q12_sf01_subset_count",
+      "line_at_capture": 39,
+      "reason": "",
+      "status": "ACTIVE",
+      "category": "NO_REASON",
+      "status_rationale": "no #[ignore = \"...\"] reason text (ADR-008 requires one)"
+    },
+    {
+      "file": "tests/integration/oracle/diag_q12_sf1_subset.rs",
+      "test": "q12_sf1_subset_count",
+      "line_at_capture": 38,
+      "reason": "",
+      "status": "ACTIVE",
+      "category": "NO_REASON",
+      "status_rationale": "no #[ignore = \"...\"] reason text (ADR-008 requires one)"
+    },
+    {
+      "file": "tests/integration/oracle/diag_q17_100k_subset.rs",
+      "test": "diag_q17_100k_subset",
+      "line_at_capture": 41,
+      "reason": "",
+      "status": "ACTIVE",
+      "category": "NO_REASON",
+      "status_rationale": "no #[ignore = \"...\"] reason text (ADR-008 requires one)"
+    },
+    {
+      "file": "tests/integration/oracle/diag_q17_1m_subset.rs",
+      "test": "diag_q17_1m_subset",
+      "line_at_capture": 37,
+      "reason": "",
+      "status": "ACTIVE",
+      "category": "NO_REASON",
+      "status_rationale": "no #[ignore = \"...\"] reason text (ADR-008 requires one)"
+    },
+    {
+      "file": "tests/integration/oracle/diag_q17_sf001_subset.rs",
+      "test": "diag_q17_sf001_subset",
+      "line_at_capture": 47,
+      "reason": "",
+      "status": "ACTIVE",
+      "category": "NO_REASON",
+      "status_rationale": "no #[ignore = \"...\"] reason text (ADR-008 requires one)"
+    },
+    {
+      "file": "tests/integration/oracle/diag_q17_sprint3_path.rs",
+      "test": "diag_q17_100k_path",
+      "line_at_capture": 63,
+      "reason": "",
+      "status": "ACTIVE",
+      "category": "NO_REASON",
+      "status_rationale": "no #[ignore = \"...\"] reason text (ADR-008 requires one)"
+    },
+    {
+      "file": "tests/integration/oracle/diag_q17_sprint3_path.rs",
+      "test": "diag_q17_1m_path",
+      "line_at_capture": 89,
+      "reason": "",
+      "status": "ACTIVE",
+      "category": "NO_REASON",
+      "status_rationale": "no #[ignore = \"...\"] reason text (ADR-008 requires one)"
+    },
+    {
+      "file": "tests/integration/oracle/diag_q20_mini_bisect.rs",
+      "test": "diag_q20_bisect",
+      "line_at_capture": 63,
+      "reason": "",
+      "status": "ACTIVE",
+      "category": "NO_REASON",
+      "status_rationale": "no #[ignore = \"...\"] reason text (ADR-008 requires one)"
+    },
+    {
+      "file": "tests/integration/oracle/diag_q20_sprint3_path.rs",
+      "test": "diag_q20_mini_path",
+      "line_at_capture": 88,
+      "reason": "",
+      "status": "ACTIVE",
+      "category": "NO_REASON",
+      "status_rationale": "no #[ignore = \"...\"] reason text (ADR-008 requires one)"
+    },
+    {
+      "file": "tests/integration/oracle/diag_q20_sprint4_inline.rs",
+      "test": "diag_q20_l0_inline",
+      "line_at_capture": 152,
+      "reason": "",
+      "status": "ACTIVE",
+      "category": "NO_REASON",
+      "status_rationale": "no #[ignore = \"...\"] reason text (ADR-008 requires one)"
+    },
+    {
+      "file": "tests/integration/oracle/diag_q20_sprint4_inline.rs",
+      "test": "diag_q20_l4_inline",
+      "line_at_capture": 170,
+      "reason": "",
+      "status": "ACTIVE",
+      "category": "NO_REASON",
+      "status_rationale": "no #[ignore = \"...\"] reason text (ADR-008 requires one)"
+    },
+    {
+      "file": "tests/integration/oracle/diag_q20_sprint4_inline.rs",
+      "test": "diag_q20_l5_inline",
+      "line_at_capture": 184,
+      "reason": "",
+      "status": "ACTIVE",
+      "category": "NO_REASON",
+      "status_rationale": "no #[ignore = \"...\"] reason text (ADR-008 requires one)"
+    },
+    {
+      "file": "tests/integration/oracle/diag_q22_sprint3_path.rs",
+      "test": "diag_q22_mini_path",
+      "line_at_capture": 103,
+      "reason": "",
+      "status": "ACTIVE",
+      "category": "NO_REASON",
+      "status_rationale": "no #[ignore = \"...\"] reason text (ADR-008 requires one)"
+    },
+    {
+      "file": "tests/integration/oracle/diag_q22_sprint3_path.rs",
+      "test": "diag_q22_30k_path",
+      "line_at_capture": 173,
+      "reason": "",
+      "status": "ACTIVE",
+      "category": "NO_REASON",
+      "status_rationale": "no #[ignore = \"...\"] reason text (ADR-008 requires one)"
+    },
+    {
+      "file": "tests/integration/oracle/diag_q22_sprint3_path.rs",
+      "test": "diag_q22_60k_path",
+      "line_at_capture": 189,
+      "reason": "",
+      "status": "ACTIVE",
+      "category": "NO_REASON",
+      "status_rationale": "no #[ignore = \"...\"] reason text (ADR-008 requires one)"
+    },
+    {
+      "file": "tests/integration/oracle/diag_q22_sprint3_path.rs",
+      "test": "diag_q22_100k_path",
+      "line_at_capture": 205,
+      "reason": "",
+      "status": "ACTIVE",
+      "category": "NO_REASON",
+      "status_rationale": "no #[ignore = \"...\"] reason text (ADR-008 requires one)"
+    },
+    {
+      "file": "tests/integration/oracle/diag_q7_extract.rs",
+      "test": "diag_extract_year_simple_parse_only",
+      "line_at_capture": 40,
+      "reason": "",
+      "status": "ACTIVE",
+      "category": "NO_REASON",
+      "status_rationale": "no #[ignore = \"...\"] reason text (ADR-008 requires one)"
+    },
+    {
+      "file": "tests/integration/oracle/diag_q7_extract.rs",
+      "test": "diag_q7_full_count_against_oracle",
+      "line_at_capture": 60,
+      "reason": "",
+      "status": "ACTIVE",
+      "category": "NO_REASON",
+      "status_rationale": "no #[ignore = \"...\"] reason text (ADR-008 requires one)"
+    },
+    {
+      "file": "tests/integration/oracle/diag_q7_sf001_subset.rs",
+      "test": "q7_sf001_subset_count",
+      "line_at_capture": 63,
+      "reason": "",
+      "status": "ACTIVE",
+      "category": "NO_REASON",
+      "status_rationale": "no #[ignore = \"...\"] reason text (ADR-008 requires one)"
+    },
+    {
+      "file": "tests/integration/oracle/diag_q7_sf1_real_count.rs",
+      "test": "q7_sf1_real_count",
+      "line_at_capture": 19,
+      "reason": "",
+      "status": "ACTIVE",
+      "category": "NO_REASON",
+      "status_rationale": "no #[ignore = \"...\"] reason text (ADR-008 requires one)"
+    },
+    {
+      "file": "tests/integration/oracle/diag_q8_mini_subset.rs",
+      "test": "q8_mini_n2_pushdown",
+      "line_at_capture": 62,
+      "reason": "",
+      "status": "ACTIVE",
+      "category": "NO_REASON",
+      "status_rationale": "no #[ignore = \"...\"] reason text (ADR-008 requires one)"
+    },
+    {
+      "file": "tests/integration/oracle/q11_stock_filter_regression.rs",
+      "test": "q11_stock_filter_sf1",
+      "line_at_capture": 97,
+      "reason": "",
+      "status": "ACTIVE",
+      "category": "NO_REASON",
+      "status_rationale": "no #[ignore = \"...\"] reason text (ADR-008 requires one)"
+    },
+    {
+      "file": "tests/integration/oracle/q17_1m_rss_regression.rs",
+      "test": "q17_1m_rss_bounded",
+      "line_at_capture": 30,
+      "reason": "",
+      "status": "ACTIVE",
+      "category": "NO_REASON",
+      "status_rationale": "no #[ignore = \"...\"] reason text (ADR-008 requires one)"
+    },
+    {
+      "file": "tests/integration/oracle/q17_sf1_diag.rs",
+      "test": "q17_sf1_diag",
+      "line_at_capture": 41,
+      "reason": "",
+      "status": "ACTIVE",
+      "category": "NO_REASON",
+      "status_rationale": "no #[ignore = \"...\"] reason text (ADR-008 requires one)"
+    },
+    {
+      "file": "tests/integration/oracle/q17_sf1_watchdog.rs",
+      "test": "q17_sf1_watchdog",
+      "line_at_capture": 46,
+      "reason": "",
+      "status": "ACTIVE",
+      "category": "NO_REASON",
+      "status_rationale": "no #[ignore = \"...\"] reason text (ADR-008 requires one)"
+    },
+    {
+      "file": "tests/integration/oracle/q17_small_order_shortage_perf.rs",
+      "test": "q17_small_order_shortage_sf1",
+      "line_at_capture": 106,
+      "reason": "",
+      "status": "ACTIVE",
+      "category": "NO_REASON",
+      "status_rationale": "no #[ignore = \"...\"] reason text (ADR-008 requires one)"
+    },
+    {
+      "file": "tests/integration/oracle/q20_potential_part_promotion_perf.rs",
+      "test": "q20_potential_part_promotion_sf1",
+      "line_at_capture": 112,
+      "reason": "",
+      "status": "ACTIVE",
+      "category": "NO_REASON",
+      "status_rationale": "no #[ignore = \"...\"] reason text (ADR-008 requires one)"
+    },
+    {
+      "file": "tests/integration/oracle/q22_global_sales_opportunity_perf.rs",
+      "test": "q22_global_sales_opportunity_sf1",
+      "line_at_capture": 95,
+      "reason": "",
+      "status": "ACTIVE",
+      "category": "NO_REASON",
+      "status_rationale": "no #[ignore = \"...\"] reason text (ADR-008 requires one)"
+    },
+    {
+      "file": "tests/integration/oracle/q2_5way_comma_limit_regression.rs",
+      "test": "q2_canonical_5way_comma_limit",
+      "line_at_capture": 79,
+      "reason": "",
+      "status": "ACTIVE",
+      "category": "NO_REASON",
+      "status_rationale": "no #[ignore = \"...\"] reason text (ADR-008 requires one)"
+    },
+    {
+      "file": "tests/integration/oracle/q8_8way_date_range_regression.rs",
+      "test": "q8_canonical_8way_date_range",
+      "line_at_capture": 75,
+      "reason": "",
+      "status": "ACTIVE",
+      "category": "NO_REASON",
+      "status_rationale": "no #[ignore = \"...\"] reason text (ADR-008 requires one)"
+    },
+    {
+      "file": "tests/integration/oracle/sf1_bulk_load_bench.rs",
+      "test": "sf1_bulk_load_bench",
+      "line_at_capture": 17,
+      "reason": "",
+      "status": "ACTIVE",
+      "category": "NO_REASON",
+      "status_rationale": "no #[ignore = \"...\"] reason text (ADR-008 requires one)"
+    },
+    {
+      "file": "tests/integration/sql/anti_join_main_path_test.rs",
+      "test": "mixed_exists_and_not_exists_in_q21_shape",
+      "line_at_capture": 99,
+      "reason": "engine bug: test expectation incorrect (Beta has l_o=200, not l_o=2), needs separate fix; see src/engine_select.rs:2812",
+      "status": "ACTIVE",
+      "category": "FUNC_NOT_IMPL",
+      "status_rationale": "reason names unimplemented behaviour or a known open bug"
+    },
+    {
+      "file": "tests/integration/sql/long_run_stability_72h_test.rs",
+      "test": "long_run_stability_72h_smoke",
+      "line_at_capture": 8,
+      "reason": "long_run_stability_72h: 72-hour stress test stub; use --ignored for full run",
+      "status": "ACTIVE",
+      "category": "FUNC_NOT_IMPL",
+      "status_rationale": "reason names unimplemented behaviour or a known open bug"
+    },
+    {
+      "file": "tests/integration/sql/multi_statement_test.rs",
+      "test": "test_multi_statement_executes_all",
+      "line_at_capture": 136,
+      "reason": "engine bug: multi-statement batch with mid-batch error does not commit preceding INSERTs; see PR #3635",
+      "status": "ACTIVE",
+      "category": "FUNC_NOT_IMPL",
+      "status_rationale": "reason names unimplemented behaviour or a known open bug"
+    },
+    {
+      "file": "tests/integration/sql/union_set_operations_test.rs",
+      "test": "intersect_returns_common_rows",
+      "line_at_capture": 258,
+      "reason": "Parser lacks Statement::Intersect — V312-30 reconciliation",
+      "status": "ACTIVE",
+      "category": "FUNC_NOT_IMPL",
+      "status_rationale": "reason names unimplemented behaviour or a known open bug"
+    },
+    {
+      "file": "tests/integration/sql/v312_62_issue_batch_test.rs",
+      "test": "v312_62_executor_pk_conflict_in_tx_rollback_recovers",
+      "line_at_capture": 304,
+      "reason": "KNOWN FOLLOW-UP: develop HEAD (since PR #4723 / d8e4ebc71) reports  'Transaction already in progress' on the second BEGIN. Tracked as  task #22 for v3.13.0. The CLI-side #4619 fix itself is still  verified by the sqlrustgo-cli batch tests.",
+      "status": "ACTIVE",
+      "category": "FUNC_NOT_IMPL",
+      "status_rationale": "reason names unimplemented behaviour or a known open bug"
+    },
+    {
+      "file": "tests/integration/sql/v312_62_issue_batch_test.rs",
+      "test": "v312_62_group_concat_strips_no_distinct_sentinel",
+      "line_at_capture": 440,
+      "reason": "KNOWN FOLLOW-UP: assertions stale after PR #4690 (v312-64b) changed  GROUP_CONCAT from per-row to grouped evaluation. The sentinel-strip  invariant (test purpose) still holds — only the value assertion  `out == \\\"10\\\" || out == \\\"20\\\"` needs to be relaxed to accept the  new grouped form `out == \\\"10,20\\\"`. Tracked as task #21 for v3.13.0.",
+      "status": "ACTIVE",
+      "category": "FUNC_NOT_IMPL",
+      "status_rationale": "reason names unimplemented behaviour or a known open bug"
+    },
+    {
+      "file": "tests/integration/sql/v312_62_issue_batch_test.rs",
+      "test": "v312_62_group_concat_distinct_strips_sentinel",
+      "line_at_capture": 472,
+      "reason": "KNOWN FOLLOW-UP: assertions stale after PR #4690 (v312-64b) changed  GROUP_CONCAT from per-row to grouped evaluation. Same root cause as  `v312_62_group_concat_strips_no_distinct_sentinel`. Tracked as task #21.",
+      "status": "ACTIVE",
+      "category": "FUNC_NOT_IMPL",
+      "status_rationale": "reason names unimplemented behaviour or a known open bug"
+    },
+    {
+      "file": "tests/integration/stress/crash_monkey_test.rs",
+      "test": "crash_monkey_full_100k_iterations",
+      "line_at_capture": 254,
+      "reason": "Long-running; enable with --ignored for full 100k iteration sweep",
+      "status": "ACTIVE",
+      "category": "FUNC_NOT_IMPL",
+      "status_rationale": "reason names unimplemented behaviour or a known open bug"
+    },
+    {
+      "file": "tests/integration/stress/recovery_fuzzer_test.rs",
+      "test": "r2_random_fuzz_full_50k_iterations",
+      "line_at_capture": 589,
+      "reason": "Long-running; enable with --ignored for full 50k iteration sweep",
+      "status": "ACTIVE",
+      "category": "FUNC_NOT_IMPL",
+      "status_rationale": "reason names unimplemented behaviour or a known open bug"
+    },
+    {
+      "file": "tests/integration/tpch/oracle_g1_tpch_sha256.rs",
+      "test": "generate_baseline",
+      "line_at_capture": 139,
+      "reason": "Run with: cargo test --test oracle_g1_tpch_sha256 -- --ignored --generate-baseline",
+      "status": "ACTIVE",
+      "category": "FUNC_NOT_IMPL",
+      "status_rationale": "reason names unimplemented behaviour or a known open bug"
+    },
+    {
+      "file": "tests/integration/tpch/q4_sf1_real_perf_test.rs",
+      "test": "q4_sf1_real_perf_canonical_residual",
+      "line_at_capture": 75,
+      "reason": "SF=1.0 fixture required at /tmp/tpch-sf1 (6M lineitem rows; ~30-45 min LOAD DATA). Run with TPCH_SF1_DIR=/tmp/tpch-sf1 cargo test --release --test q4_sf1_real_perf_test -- --ignored --nocapture.",
+      "status": "PARKED",
+      "category": "EXTERNAL_PREREQ",
+      "status_rationale": "reason names an external prerequisite (live server / --release / large memory / platform permission / dedicated script)"
+    },
+    {
+      "file": "tests/integration/tpch/tpch_sf1_22_vs_3engines_test.rs",
+      "test": "tpch_sf1_22_in_process_regression",
+      "line_at_capture": 232,
+      "reason": "V312-26 partial closure (#3899): SF=1.0 fixture at /tmp/tpch-sf1 (dbgen -s 1 -f), BINT v2 at /tmp/tpch-sf1-bin. 8/22 SQLRustGo queries captured (Q1-Q8); Q7-Q22 blocked by multi-way join planner bug (chain_order.len() != join_tables.len()). Run with --ignored and TPCH_SKIP_PANIC=1; expect 8 queries within 20-min runner budget. See docs/releases/v3.12.0/evidence/issue-3899/3899_closeout.md.",
+      "status": "PARKED",
+      "category": "EXTERNAL_PREREQ",
+      "status_rationale": "reason names an external prerequisite (live server / --release / large memory / platform permission / dedicated script)"
+    },
+    {
+      "file": "tests/integration/tpch/tpch_sf1_6m_load_iter_test.rs",
+      "test": "tpch_sf1_6m_load_iter_assertion",
+      "line_at_capture": 145,
+      "reason": "V313.2 L5 gate: 6M row load via insert_streaming_iter.  Run with: cargo test --test tpch_sf1_6m_load_iter_test -- --ignored --nocapture.  Override budget via TPCH_SF1_ITER_LOAD_BUDGET_S (default 180s).",
+      "status": "ACTIVE",
+      "category": "FUNC_NOT_IMPL",
+      "status_rationale": "reason names unimplemented behaviour or a known open bug"
+    },
+    {
+      "file": "tests/integration/tpch/tpch_sf1_6m_load_test.rs",
+      "test": "tpch_sf1_6m_load_assertion",
+      "line_at_capture": 145,
+      "reason": "T6.4 L5 gate: 6M row load via BinaryTableStorageV2.  Run with: cargo test --test tpch_sf1_6m_load_test -- --ignored --nocapture.  Override budget via TPCH_SF1_LOAD_BUDGET_S (default 60s).",
+      "status": "ACTIVE",
+      "category": "FUNC_NOT_IMPL",
+      "status_rationale": "reason names unimplemented behaviour or a known open bug"
+    },
+    {
+      "file": "tests/integration/tpch/tpch_wire_smoke_sf.rs",
+      "test": "tpch_wire_smoke_sf001_fixture_loads_and_q1_executes",
+      "line_at_capture": 280,
+      "reason": "expected fixture Q1.json missing (V312-30; see tpch_wire_smoke_sf001_q1_value_correctness ignore for full rationale)",
+      "status": "ACTIVE",
+      "category": "FUNC_NOT_IMPL",
+      "status_rationale": "reason names unimplemented behaviour or a known open bug"
+    },
+    {
+      "file": "tests/integration/tpch/tpch_wire_smoke_sf.rs",
+      "test": "tpch_wire_smoke_sf001_q1_value_correctness",
+      "line_at_capture": 330,
+      "reason": "expected fixture Q1.json missing; generate via scripts/tpch_three_way_expected.py when MySQL+SQLite+PostgreSQL available (V312-30)",
+      "status": "ACTIVE",
+      "category": "FUNC_NOT_IMPL",
+      "status_rationale": "reason names unimplemented behaviour or a known open bug"
+    },
+    {
+      "file": "tests/integration/tpch/v313_3_profile_experiments.rs",
+      "test": "baseline_6m_no_hooks",
+      "line_at_capture": 112,
+      "reason": "6M load; run with --ignored. Captured for PROFILE_RESULTS.md baseline.",
+      "status": "PARKED",
+      "category": "EXTERNAL_PREREQ",
+      "status_rationale": "reason names an external prerequisite (live server / --release / large memory / platform permission / dedicated script)"
+    },
+    {
+      "file": "tests/integration/tpch/v313_3_profile_experiments.rs",
+      "test": "experiment_b_in_place_encoding",
+      "line_at_capture": 199,
+      "reason": "6M load with Experiment B hook. Run with --ignored.",
+      "status": "PARKED",
+      "category": "EXTERNAL_PREREQ",
+      "status_rationale": "reason names an external prerequisite (live server / --release / large memory / platform permission / dedicated script)"
+    },
+    {
+      "file": "tests/integration/tpch/v313_3_profile_experiments.rs",
+      "test": "experiment_c_tmpfs",
+      "line_at_capture": 258,
+      "reason": "6M load with Experiment C (tmpfs). Run with --ignored.",
+      "status": "PARKED",
+      "category": "EXTERNAL_PREREQ",
+      "status_rationale": "reason names an external prerequisite (live server / --release / large memory / platform permission / dedicated script)"
+    },
+    {
+      "file": "tests/integration/tpch/v313_3_profile_experiments.rs",
+      "test": "experiment_d_large_bufwriter",
+      "line_at_capture": 310,
+      "reason": "6M load with Experiment D hook (64MB BufWriter). Run with --ignored.",
+      "status": "PARKED",
+      "category": "EXTERNAL_PREREQ",
+      "status_rationale": "reason names an external prerequisite (live server / --release / large memory / platform permission / dedicated script)"
+    },
+    {
+      "file": "tests/integration/tpch_sf03_test.rs",
+      "test": "test_tpch_sf03_main",
+      "line_at_capture": 16,
+      "reason": "private storage API - bulk_load_tbl_file requires public API refactor; see SEM-3",
+      "status": "ACTIVE",
+      "category": "FUNC_NOT_IMPL",
+      "status_rationale": "reason names unimplemented behaviour or a known open bug"
+    },
+    {
+      "file": "tests/integration/tpch_sf1_test.rs",
+      "test": "test_sqlrustgo_sf1_count",
+      "line_at_capture": 40,
+      "reason": "tpch_sf1_test: SF=1 requires ~5GB memory, may OOM on 16GB systems; run with --ignored on high-memory machines",
+      "status": "PARKED",
+      "category": "EXTERNAL_PREREQ",
+      "status_rationale": "reason names an external prerequisite (live server / --release / large memory / platform permission / dedicated script)"
+    },
+    {
+      "file": "tests/integration/tpch_sf1_test.rs",
+      "test": "test_sqlrustgo_sf1_sum_filtered",
+      "line_at_capture": 64,
+      "reason": "tpch_sf1_test: SF=1 requires ~5GB memory, may OOM on 16GB systems; run with --ignored on high-memory machines",
+      "status": "PARKED",
+      "category": "EXTERNAL_PREREQ",
+      "status_rationale": "reason names an external prerequisite (live server / --release / large memory / platform permission / dedicated script)"
+    },
+    {
+      "file": "tests/operators/exists_correlated.rs",
+      "test": "correlated_exists_simple_match",
+      "line_at_capture": 30,
+      "reason": "engine bug: correlated EXISTS with extra AND conditions returns no rows; see src/engine_select.rs:2812",
+      "status": "ACTIVE",
+      "category": "FUNC_NOT_IMPL",
+      "status_rationale": "reason names unimplemented behaviour or a known open bug"
+    },
+    {
+      "file": "tests/operators/exists_correlated.rs",
+      "test": "correlated_not_exists",
+      "line_at_capture": 78,
+      "reason": "engine bug: correlated NOT EXISTS with extra AND conditions; see src/engine_select.rs:2812",
+      "status": "ACTIVE",
+      "category": "FUNC_NOT_IMPL",
+      "status_rationale": "reason names unimplemented behaviour or a known open bug"
+    },
+    {
+      "file": "tests/soak/v312_mixed_soak.rs",
+      "test": "v312_ga_mixed_workload_demo",
+      "line_at_capture": 177,
+      "reason": "runs 1h demo; nightly-only via scripts/gate/run_ga_soak.sh",
+      "status": "ACTIVE",
+      "category": "FUNC_NOT_IMPL",
+      "status_rationale": "reason names unimplemented behaviour or a known open bug"
+    }
+  ]
+}
