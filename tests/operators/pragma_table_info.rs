@@ -107,7 +107,7 @@ fn pragma_table_info_single_column() {
         row[2]
     );
     check_col(&row, 3, "1"); // notnull: 1 = NOT NULL
-    // dflt_value: absent
+                             // dflt_value: absent
     check_col(&row, 5, "0"); // pk: 0 (no PRIMARY KEY)
 }
 
