@@ -1,0 +1,5 @@
+RUN: 2026-09-30T14:44:23Z
+HEAD: 47e6270789f0a6793e9a086df7452d5b0b8f562c
+BRANCH: develop/v4.1.0
+PURPOSE: v4.0.0 GA gate backfill (STAGE_CONFIG GA required_gates, non-cargo subset)
+---

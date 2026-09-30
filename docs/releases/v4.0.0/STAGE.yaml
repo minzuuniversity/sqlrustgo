@@ -11,6 +11,40 @@
 
 version: "v4.0.0"
 current_stage: "DRAFT"
+# ============================================================================
+# 2026-09-30 人工架构师裁决：v4.0.0 GA 晋升作废，文档层面纠正
+# ----------------------------------------------------------------------------
+# 背景：GA_GATE_REPORT.md（2026-09-20）曾声明 "v4.0.0 GA CONDITIONAL PASS"，
+#       但同一报告 §G3 自述覆盖率仅 78.28%，低于 STAGE_CONFIG 的
+#       COVERAGE_MIN_RC=80 与 COVERAGE_MIN_GA=85 —— 报告自相矛盾。
+#       且 STAGE.yaml 从未执行 DRAFT→ALPHA→BETA→RC→GA 规范流转。
+# 裁决：v4.0.0 的 GA 晋升过于突然，未完成预定目标，判定作废。
+#       本文件 current_stage 保持 DRAFT（与证据一致，无需变更）。
+# 后续：所有重构与覆盖率补测工作转入 v4.1.0 完成。
+# 性质：[AFP-VIOLATION: Type-B 伪门禁]（自查发现，详见关联记录）。
+# 依据：docs/releases/v4.0.0/GA_RELEASE_TIMELINE.md
+#       docs/releases/v4.1.0/ALIGNMENT_AUDIT_2026-09-30.md §7.7
+#       docs/governance/incidents/2026-09-30-V410-ALPHA-UNSUPPORTED-BY-GATE-EVIDENCE.md
+# ============================================================================
+ga_promotion_status:
+  verdict: "REVOKED 2026-09-30"
+  original_claim: "v4.0.0 GA CONDITIONAL PASS — promoted to GA stage (GA_GATE_REPORT.md, 2026-09-20)"
+  actual_status: "DRAFT — v4.0.0 never legitimately reached GA"
+  blocking_facts:
+    coverage_measured: "78.28% average (executor 82.57 / storage 80.82 / mysql-server 75.41 / parser 74.32)"
+    coverage_required_rc: "80% (STAGE_CONFIG COVERAGE_MIN_RC)"
+    coverage_required_ga: "85% (STAGE_CONFIG COVERAGE_MIN_GA)"
+    coverage_shortfall: "v4.0.0 does not meet even the RC threshold; GA is 6.72 points away"
+    stage_flow_never_executed: "check_stage.sh-driven DRAFT->ALPHA->BETA->RC->GA never run"
+    alpha_gate_script_missing: "scripts/gate/check_alpha_v400.sh does not exist"
+    human_signoff_absent: "transitions.RC_to_GA.requires_human_approval = true; no architect sign-off on record"
+  work_reassignment: "ALL refactoring + coverage-completing test work moves to v4.1.0 (see docs/releases/v4.1.0/)"
+  evidence:
+    - "docs/releases/v4.0.0/GA_GATE_REPORT.md (corrected 2026-09-30 — original verdict revoked)"
+    - "docs/releases/v4.0.0/GA_RELEASE_TIMELINE.md (created 2026-09-30)"
+    - "docs/releases/v4.0.0/CLAIM_DOWNGRADE_MANIFEST.md §4 (original: 'Full PASS target is v4.0.1')"
+    - "docs/releases/v4.0.0/evidence/gate-backfill-2026-09-30/ (2026-09-30 GA gate re-run output)"
+
 last_transition:
   from: "(none)"
   to: "DRAFT"
