@@ -1,19 +1,55 @@
-# SQLRustGo v4.0.0 GA Gate Report — FINAL
+# SQLRustGo v4.0.0 GA Gate Report — FINAL（判定已作废，见下方更正）
 
-> **Date**: 2026-09-20
+> ## ⚠️ 2026-09-30 判定更正（本节优先级高于本文件其余全部内容）
+>
+> **原 §0 的「v4.0.0 GA CONDITIONAL PASS — promoted to GA stage」判定不成立，本版本从未达成 GA。**
+>
+> **作废理由（全部为实测证据）**：
+>
+> | 项 | 原报告陈述 | 实测事实 | 依据 |
+> |---|---|---|---|
+> | 覆盖率 | §0 称「All hard checks PASS」 | **平均 78.28%**，`COVERAGE_MIN_GA`=**85%**、`COVERAGE_MIN_RC`=**80%** —— **连 RC 门槛都未达到** | 本文件 §G3 自述数据 + `STAGE_CONFIG.yaml:285-286` |
+> | 阶段流转 | 称「promoted to GA stage」 | `STAGE.yaml` 始终 `current_stage: "DRAFT"`，从未执行 `check_stage.sh` 驱动的 DRAFT→ALPHA→BETA→RC→GA 流转 | `docs/releases/v4.0.0/STAGE.yaml:13` |
+> | ALPHA 门禁 | 隐含已完成 | `check_alpha_v400.sh` **不存在**，ALPHA 阶段门禁从未可执行 | `scripts/gate/` 实测 |
+> | 人工签字 | — | `transitions.RC_to_GA.requires_human_approval: true`，未见架构师签字 | `STAGE_CONFIG.yaml:270-272` |
+>
+> **性质**：`[AFP-VIOLATION: Type-B 伪门禁]` —— 声明门禁通过但无 policy engine
+> 输出支撑。原 §0「All hard checks PASS」与本文件 §G3 自述的 78.28% **直接自相矛盾**。
+>
+> **后果**：
+> - v4.0.0 状态回退为 **DRAFT**，**不构成 GA 发布**
+> - 原「GA CONDITIONAL PASS」实为 `GATE_CONDITIONS.md §A5` 的条件通过（2 周整改窗口），
+>   而非 clean PASS；`CLAIM_DOWNGRADE_MANIFEST.md §4` 本就写明
+>   *"Full PASS target is v4.0.1"*
+> - **所有重构与覆盖率补测工作转入 v4.1.0 完成**
+> - 本文件其余章节保留为**历史记录**，不得作为 GA 证据引用
+>
+> **更正依据**：`docs/releases/v4.0.0/GA_RELEASE_TIMELINE.md`（2026-09-30 新建）、
+> `docs/releases/v4.1.0/ALIGNMENT_AUDIT_2026-09-30.md` §7.7、
+> `docs/governance/incidents/2026-09-30-V410-ALPHA-UNSUPPORTED-BY-GATE-EVIDENCE.md`
+> **裁决人**：人工架构师决策，2026-09-30
+
+---
+
+> **Date**: 2026-09-20（原始判定日期）
 > **Branch**: `develop/v4.0.0` HEAD = `38566af0f8`
 > **Release branch**: `release/v4.0.0` @ `07178c9d66` (pinned to ga/v4.0.0 content)
 > **Source commit**: `38566af0f8` (post-V400-05/06/07 + WP-A..G + 5min SOAK + sync + force-push audits)
 > **Tag**: `ga/v4.0.0` @ `2ce8f28b41` (force-pushed 5× during sync; final pinned via release/v4.0.0)
 > **Reference**: docs/governance/GATE_CONDITIONS.md v2.0 + docs/releases/v4.0.0/CLAIM_DOWNGRADE_MANIFEST.md
 
-## 0. FINAL Promotion Verdict (2026-09-20)
+## 0. FINAL Promotion Verdict (2026-09-20) — ❌ 已作废
 
-**v4.0.0 GA CONDITIONAL PASS — promoted to GA stage.**
+> **原文本（保留供审计）**：
+> ~~**v4.0.0 GA CONDITIONAL PASS — promoted to GA stage.**~~
+> ~~All hard checks PASS. All claim boundaries documented. All deferrals
+> explicit. Branch protection enforced. Tag force-push risk mitigated via
+> `release/v4.0.0` branch pin.~~
 
-All hard checks PASS. All claim boundaries documented. All deferrals
-explicit. Branch protection enforced. Tag force-push risk mitigated via
-`release/v4.0.0` branch pin.
+**作废说明**：上述「All hard checks PASS」与本文件 §G3 自述的覆盖率 78.28%
+（低于 `COVERAGE_MIN_RC`=80% 与 `COVERAGE_MIN_GA`=85%）直接矛盾。
+经 2026-09-30 实测复核，**v4.0.0 未达成 GA**。实际状态见
+`docs/releases/v4.0.0/GA_RELEASE_TIMELINE.md`。
 
 ---
 

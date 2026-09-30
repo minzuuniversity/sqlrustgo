@@ -38,11 +38,30 @@ Decision: Either
 
 This is a governance decision; deferred to user / openclaw.
 
-### 3.2 v4.0.0 main branch落后
+### 3.2 v4.0.0 main 分支状态：已分叉（非单纯落后）
 
-`gitea252/main` = `a8dba8d31e` (v4.0.0 GA gate docs + sync audits only) is落后 `develop/v4.0.0` by 16902 commits (the V400-05/06/07 + WP-A..G + zombie-fix + workers.push + dml-regressions code).
+> **核实修正**（2026-09-30）：本节原写「落后 16902 commits」。
+> 实测结果如下，依据 `ALIGNMENT_AUDIT_2026-09-30.md` F-06 与
+> `evidence/gate-runs-2026-09-30/git-state-snapshot.txt`（sha256:05ea86ecd6002e14）：
 
-Effect on v4.1.0: minimal — v4.1.0 development branch is the active trunk. But for `main` to be a meaningful "latest release" pointer, v4.0.0 implementation commits should be merged forward.
+```
+main           = f8a149b474
+develop/v4.0.0 = ac3fa16afb
+develop/v4.1.0 = e2355c0680
+rev-list --count main..develop/v4.0.0 = 16905
+main is ancestor of develop/v4.1.0     = NO
+```
+
+即：本地 `main` 落后 `develop/v4.0.0` **16905** 个提交（非 16902），
+且 `main` **不是** `develop/v4.1.0` 的祖先分支 —— 两条线已分叉，
+不是单纯的 fast-forward 落后关系。
+
+`ISSUES_PLAN.md` §1.2 原记「16902-commit gap closed on main / DONE 2026-09-28」
+与本节矛盾，已按实测改为 PARTIAL（`release/v4.0.0` 确已在 github 创建）。
+
+Effect on v4.1.0: minimal — v4.1.0 development branch is the active trunk.
+But for `main` to be a meaningful "latest release" pointer, the divergence
+(16905 commits + fork) must be explicitly resolved or recorded.
 
 ### 3.3 5-remote sync protocol依赖 on SSH access
 

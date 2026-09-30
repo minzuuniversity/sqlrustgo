@@ -1,0 +1,192 @@
+[1m[0;34m
+╔══════════════════════════════════════════════════════════════════════╗
+║       v3.8.0 RC/GA Unified Gate — Five-Dimension Integration         ║
+║                                                                      ║
+║   D1: Alpha Gate  (A1-A5 + A6-1~5)                                  ║
+║   D2: Beta Gate   (B1-B5 + Integration)                              ║
+║   D3: SGL Gate    (SGL-001~005, semantic layer)                     ║
+║   D4: WAL Gate    (INV-1, INV-2, INV-3)                              ║
+║   D5: DeepSeek    (10 principles for RC/GA)                         ║
+╚══════════════════════════════════════════════════════════════════════╝
+[0m
+Branch: develop/v4.1.0
+Commit: 47e6270789
+Gate:   all
+
+
+[1m[0;34m═══════════════════════════════════════════════════════════[0m
+[1m[0;34m  D1: Alpha Gate — Standard Quality + Governance[0m
+[1m[0;34m═══════════════════════════════════════════════════════════[0m
+
+  [A1] Build (release, core 6 crates) ...     [0;32m✓ PASS[0m A1 Build
+  [A2] Test (lib, core 6 crates) ...     [0;31m✗ FAIL[0m A2 Test failed — see /tmp/d1_a2.log
+  [A3] Clippy (core) ...     [0;31m✗ FAIL[0m A3 Clippy failed — see /tmp/d1_a3.log
+  [A4] Format (core) ...     [0;31m✗ FAIL[0m A4 Format failed — see /tmp/d1_a4.log
+  [A5] Coverage (L1 8 crates) ...     [0;32m✓ PASS[0m A5 Coverage: 88% (min: 75%)
+
+  [1m--- A6: Governance ---[0m
+  [A6-1] Replay Graph exists ...     [0;32m✓ PASS[0m A6-1 Replay Graph
+  [A6-2] Claim Registry exists ...     [0;32m✓ PASS[0m A6-2 Claim Registry
+  [A6-3] Decision Registry exists ...     [0;32m✓ PASS[0m A6-3 Decision Registry
+  [A6-4] Freshness markers ...     [0;32m✓ PASS[0m A6-4 Freshness
+  [A6-5] ADR-001~ADR-005 exist ...     [0;32m✓ PASS[0m A6-5 ADR-001~ADR-005
+
+  D1 Result: 7/10
+
+[1m[0;34m═══════════════════════════════════════════════════════════[0m
+[1m[0;34m  D2: Beta Gate — WAL Contract + Integration Gate[0m
+[1m[0;34m═══════════════════════════════════════════════════════════[0m
+
+  [B1] Build ...     [0;32m✓ PASS[0m B1 Build
+  [B2] WAL Contract (22 tests) ...   → 0 passed, 0 failed
+    [0;31m✗ FAIL[0m B2 WAL Contract: 0/22 (need 21+)
+  [B3] Clippy ...     [0;31m✗ FAIL[0m B3 Clippy failed
+  [B4] Format ...     [0;31m✗ FAIL[0m B4 Format failed
+  [B5] Integration Gate ...   →   Result: FAIL — 1 check(s) failed
+    [1;33m⚠ WARN[0m B5 Integration Gate: review output
+  [B6] V312-24 SQLancer + test-runner artifacts ...     [0;32m✓ PASS[0m B6 V312-24: SQLancer + test-runner artifacts valid
+
+  D2 Result: 2/6
+
+[1m[0;34m═══════════════════════════════════════════════════════════[0m
+[1m[0;34m  D3: SGL Layer-3 Semantic Gate[0m
+[1m[0;34m═══════════════════════════════════════════════════════════[0m
+
+    === SGL-001: B4 Format — Tool Semantics Audit ===
+    [0;31m[FAIL][0m SGL-001: fmt check exits 1 — format violations exist on HEAD
+    === SGL-002: WAL-002 — advance_checkpoint in commit path ===
+    [0;32m[PASS][0m SGL-002: checkpoint advance triggered in WalStorage.commit_transaction
+    === SGL-003: WAL-003 — WAL truncation in commit path ===
+    [0;32m[PASS][0m SGL-003: truncate_before called in WalStorage.commit_transaction
+    === SGL-004: WAL-004 — DELETE replay idempotency ===
+    [0;32m[PASS][0m SGL-004: WAL delete replay appears idempotent
+    === SGL-005: TX-002 — Storage direct bypass detection ===
+    [0;32m[PASS][0m SGL-005: No production path storage bypasses in executor/server crates
+    ==================================================
+    SGL Beta Gate Summary
+    ==================================================
+      PASS : 4/5
+      FAIL : 1
+      DRIFT: 0
+    [0;31mSGL-FAIL[0m — Hard invariant violations
+    Exit code: 1
+
+  D3 Result: PASS=4 | FAIL=1 | DRIFT=0
+  SGL Exit code: 1 (0=PASS, 1=FAIL, 2=DRIFT)
+
+[1m[0;34m═══════════════════════════════════════════════════════════[0m
+[1m[0;34m  D4: WAL Invariant Validation[0m
+[1m[0;34m═══════════════════════════════════════════════════════════[0m
+
+    [1;33m=== Summary ===[0m
+      [0;32mPassed: 5[0m
+      [0;31mFailed: 0[0m
+    [0;32mResult: ALL WAL INVARIANT TESTS PASSED[0m
+    Validated invariants:
+      INV-1: Committed data survives crash
+      INV-2: Uncommitted data does NOT survive crash
+      INV-3: ROLLBACK leaves no trace
+
+  D4 Result: 5/5 passed
+
+[1m[0;34m═══════════════════════════════════════════════════════════[0m
+[1m[0;34m  D5: DeepSeek 10 Principles (RC/GA Gate)[0m
+[1m[0;34m═══════════════════════════════════════════════════════════[0m
+
+  \033[1mPrinciple 1: Test Results Override Documentation\033[0m
+  [D5-1] Evidence: test results > docs ...     [0;32m✓ PASS[0m D5-1: 145 tests evidence available
+  \033[1mPrinciple 2: Minimal Enforcement\033[0m
+  [D5-2] Minimal change enforcement ... recent .rs changes: 0 lines
+    [0;32m✓ PASS[0m D5-2: Minimal enforcement (recent: 0 lines)
+  \033[1mPrinciple 3: Strict Scope Control\033[0m
+  [D5-3] EEK v1 scope enforcement ... EEK v2 patterns found: 2
+    [1;33m⚠ WARN[0m D5-3: EEK v2 patterns detected (2)
+  \033[1mPrinciple 4: Version Boundary Clarity\033[0m
+  [D5-4] Version boundaries respected ...     [1;33m⚠ WARN[0m D5-4: Version boundary unclear
+  \033[1mPrinciple 5: Root Cause Provenance\033[0m
+  [D5-5] Root cause proven by experiment ... fatal: ambiguous argument 'origin/develop/v3.8.0': unknown revision or path not in the working tree.
+Use '--' to separate paths from revisions, like this:
+'git <command> [<revision>...] -- [<file>...]'
+WAL-related commits in v3.8.0: 0
+0
+scripts/gate/check_rc_ga_gate.sh: line 612: [: 0
+0: integer expression expected
+    [1;33m⚠ WARN[0m D5-5: No WAL fix evidence
+  \033[1mPrinciple 6: No False Positives\033[0m
+  [D5-6] No fake tests in gate ...     [0;32m✓ PASS[0m D5-6: No fake tests (all legacy test files removed)
+  \033[1mPrinciple 7: Audit Trail\033[0m
+  [D5-7] Audit trail exists ...     [0;32m✓ PASS[0m D5-7: Audit trail exists (      14 files)
+  \033[1mPrinciple 8: DRIFT Classification\033[0m
+  [D5-8] DRIFT classified appropriately ...     [0;32m✓ PASS[0m D5-8: No DRIFT
+  \033[1mPrinciple 9: Strict Rules with Exemption通道\033[0m
+  [D5-9] Strict rules with exemption mechanism ...     [0;32m✓ PASS[0m D5-9: DRIFT exemption mechanism present
+  \033[1mPrinciple 10: Engineering Facts Over AI Analysis\033[0m
+  [D5-10] Engineering facts prioritized ... Recent test failures: 0
+    [0;32m✓ PASS[0m D5-10: Engineering facts (0 test failures)
+
+  D5 Result: 7/10
+
+[1m[0;34m═══════════════════════════════════════════════════════════[0m
+[1m[0;34m  C-ARCH Unified Rules (D2-B5 integration)[0m
+[1m[0;34m═══════════════════════════════════════════════════════════[0m
+
+  [C-ARCH-01] txn_manager field (BY-DESIGN PR-830) ...     [0;32m✓ PASS[0m C-ARCH-01: No txn_manager
+  [C-ARCH-02] write_buffer field (forbidden) ...     [0;32m✓ PASS[0m C-ARCH-02: No write_buffer
+  [C-ARCH-05] execution_engine.rs (    1034/1500 lines) ...     [0;32m✓ PASS[0m C-ARCH-05:     1034 <= 1500
+
+  C-ARCH Result: 3/3
+
+[1m[0;34m═══════════════════════════════════════════════════════════[0m
+[1m[0;34m  D6a: Integration Test Coverage Gate (Issue #2874) — see check_full_gate_verification.sh for D6 Test Inventory[0m
+[1m[0;34m═══════════════════════════════════════════════════════════[0m
+
+    [0;34mℹ[0m D6: skip wal_integration_test (file not found)
+
+    [0;32m✓ PASS[0m D6 summary: 0/0 integration tests PASS
+
+[1m[0;34m═══════════════════════════════════════════════════════════[0m
+[1m[0;34m  D7: Reliability Gate (G6 Backup + G7 Soak + G8 Crash + G9 Upgrade + G10 Audit)[0m
+[1m[0;34m═══════════════════════════════════════════════════════════[0m
+
+  [G6] Backup/Restore/Verify/PITR ...     [0;32m✓ PASS[0m G6 Backup/Restore
+  [G7] Soak/Stability ...     [0;32m✓ PASS[0m G7 Soak
+  [G8] Crash Matrix ...     [0;32m✓ PASS[0m G8 Crash
+  [G9] Upgrade Test (v3.8→v3.9) ...     [0;32m✓ PASS[0m G9 Upgrade
+  [G10] Audit Log + Time Travel ...     [0;32m✓ PASS[0m G10 Audit/Time-Travel
+
+  D7 Result: 5/5 (blockers: 0)
+[1m[0;36m[D8] V312-19 Release Gates (Issue #3906)[0m
+    [0;31m✗ FAIL[0m D8 V312-19 release gates FAIL (see /tmp/d8_v312_19.log)
+[1m[0;36m[D9] v3.12.0 Coverage Framework and Per-Crate Baseline[0m
+    [0;32m✓ PASS[0m D9 coverage framework config
+    [1;33m⚠ WARN[0m D9 full coverage execution skipped; set V312_COVERAGE_FULL=1 for nightly/Beta/RC/GA evidence
+
+[1m[0;34m═══════════════════════════════════════════════════════════[0m
+[1m[0;34m  GATE SUMMARY[0m
+[1m[0;34m═══════════════════════════════════════════════════════════[0m
+
+  D1-Alpha:  7/10 (blockers: 3)
+  D2-Beta:   2/6 (blockers: 3)
+  D3-SGL:    PASS=4 | FAIL=1 | DRIFT=0
+  D4-WAL:    5/5
+  D5-DeepSeek: 7/10
+  D7-Reliability: 5/5 (blockers: 0)  (G6-G10: Backup/Soak/Crash/Upgrade/Audit — Hermes 2026-06-12 审计新增)
+  D8-V312-19:     0/1 (blockers: 1)  (corpus/R2/signoff freshness — V312-19 / Issue #3906)
+  D9-Coverage:    1/1 (blockers: 0)  (v3.12 L0-L5 test framework + per-crate coverage baseline)
+  [0;31m✗ GATE: FAIL[0m — 1 hard failures detected
+
+  Key metrics:
+    • WAL contract: 22 passed (wal_tx_contract_test)
+    • WAL invariants: 5 passed (INV-1~INV-3)
+    • SGL: 4/5 PASS | 0 DRIFT | 1 FAIL
+    • Coverage: 88% avg (min: 75%)
+    • v3.12 coverage framework: D9=1/1; full run via V312_COVERAGE_FULL=1
+    • execution_engine.rs:     1034 lines (limit: 1500)
+
+  Gate recommendations:
+    Alpha → Beta: PASS when D1=7/10, D3_DRIFTS=0
+    Beta → RC:    PASS when D2=2/6, D3_FAILS=0
+    RC → GA:      PASS when D5=7/10, D7=5/5, C-ARCH-05 drift tracked
+                  D7 (G6-G10 reliability) 是 Hermes 2026-06-12 审计新增的 GA 卡死门禁
+                  D8 (V312-19 release gates) 是 Issue #3906 strict-close 硬性条件
+                  D9 (v3.12 coverage framework) 要求覆盖率框架配置 PASS；正式 RC/GA 证据需 V312_COVERAGE_FULL=1

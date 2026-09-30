@@ -29,9 +29,20 @@ These have all landed on develop/v4.1.0 by 2026-09-21. See
 
 ### 1.3 Pending work (open_issues per STAGE.yaml)
 
-- 5/7 WP-C..G legacy issues deferred from v4.0.0 → migrate to v4.1.0 scope
-- V400-09 168h SOAK FINAL_REPORT — kickoff 2026-09-19, no FINAL as of 2026-09-29
-- 3 v4.0.0 alpha gate FAILs (arch_invariants / anti_fabrication / anti_ignore_gate) — must resolve before v4.1.0 ALPHA
+> **状态核实修正**（2026-09-30）：本节原列 3 项为 open。实跑复核后
+> **2 项已解决、1 项仍未解决**。依据 `ALIGNMENT_AUDIT_2026-09-30.md` §7。
+
+- ✅ **已解决** — V400-09 168h SOAK FINAL_REPORT 已存在
+  (`docs/releases/v4.0.0/V400_09_168H_SOAK_FINAL_REPORT.md`)
+- ✅ **已解决** — 3 个继承的 v4.0.0 alpha gate 阻断项全部清除并附实跑证据
+  (`docs/releases/v4.1.0/evidence/gate-runs-2026-09-30/`；
+  `check_anti_fabrication` 经 CHECK 4 白名单修复后复跑 exit 0)
+- ⏳ **待实施** — WP-A（4 条，re-opened 2026-09-30，见 ISSUES_PLAN §4.0）
+  + WP-C/D/F/G 共 4 个 WP 组 / 12 条 issue（原写「5/7」，计数不成立）
+  自 v4.0.0 迁移至 v4.1.0；连同 WP-B 6 条 + WP-E #4626 + WP-H #4639，
+  v4.1.0 backlog 合计 **24** 条，详见 `ISSUES_PLAN.md` §4.7
+- ⏸ **待治理决策** — `v4.1.0-alpha1` tag 处置、v4.0.0 阶段裁定、
+  本地 `main` 与 `develop/v4.0.0` 分叉处置
 
 ## 2. Branch topology
 
@@ -40,7 +51,7 @@ These have all landed on develop/v4.1.0 by 2026-09-21. See
 | develop/v4.1.0 | Active dev trunk | open |
 | develop/v4.0.0 | Frozen post-GA reference | PUSH_PROTECTED, read-only |
 | release/v4.0.0 | Pins ga/v4.0.0 tag | PUSH_PROTECTED |
-| main | Aggregated release line | contains v3.12.0 GA + v4.0.0 gate docs (no v4.0.0 implementation code; 16902-commit gap with develop/v4.0.0) |
+| main | Aggregated release line | **DIVERGED** from develop/v4.0.0 (verified 2026-09-30: `main=f8a149b474`, `rev-list --count main..develop/v4.0.0 = 16905`, and `main` is NOT an ancestor of develop/v4.1.0). Supersedes the earlier "16902-commit gap" wording — the branches have forked, not merely fallen behind. Disposition pending governance decision; see `ALIGNMENT_AUDIT_2026-09-30.md` §6. |
 
 ## 3. PR flow
 

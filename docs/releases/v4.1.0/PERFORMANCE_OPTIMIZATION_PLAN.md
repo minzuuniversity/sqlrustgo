@@ -426,3 +426,79 @@ fsync 运行。
 - Phase C1–C4 的 Issue 尚未创建（按 §2 回填记录，待 A/B 产出实测结论）。
 - 本次改动**尚未 commit / push**，需按
   `docs/governance/ISSUE_CLOSING_VERIFICATION.md` 走 PR 流程。
+
+### 10.8 Phase B2 逐项执行记录（2026-09-30，续 §10.7）
+
+在 §10.7 记录的"尚未动工"之后，Phase B2 的 6 个子项按
+"确定性 × 风险"排序逐个推进。已完成 4 项，2 项判定为
+**需要独立设计 PR**，不在单次机械改动范围内。
+
+| Task | 状态 | commit | 说明 |
+|---|---|---|---|
+| B2.1 写路径整表深拷贝 | ✅ 完成 | `6735c366cc` | `insert_direct` / `insert_buffered` / `flush_buffer` 三处的 `data.clone()` 换成 `TableData::snapshot_from(start)`（只带 `[start..]` 窗口）+ `save_table_window(table, window, total_rows)`。O(table_size) → O(row_count)，磁盘字节完全相同。`add_column` 的 `data.clone()` 保留——它 backfill 每一行，全量快照是正确语义，且不在 plan 列出的站点内。 |
+| B2.2 锁内文件 I/O | ✅ 完成 | `e2355c0680` | `flush()` 原来在一个 `with_write_lock` 里 drain dirty 集合**并**对每张表做序列化+`write()`，500MB 表会把排他锁按在磁盘写上。改为：一次短临界区 drain + 快照受影响表 → 释放锁 → 锁外 I/O。代价是每次 flush 多一份 `TableData` 拷贝，收益是读者不再排在 I/O 后面。plan 的验收标准是持锁时间而非峰值 RSS。 |
+| B2.3 全量快照缓冲 | ✅ 完成 | `e49a2a558f` | `save_table_full` 原先构造 owned `StoredTableData`（第二份全表拷贝）再 `to_string_pretty` 成 `String` 才落盘。新增借用的 `StoredTableDataRef`，直接序列化进 1 MB `BufWriter`；owned 版本保留给反序列化，磁盘格式逐字节不变。 |
+| B2.4 `scan_with_filter` 统一 | ✅ 完成（存储层） | `a656850636` | `WalStorage::update` 的 WAL before-image 采集改为 `scan_with_filter` 在引擎内过滤，clone 比例从"全表"降到"实际命中行"。`merge.rs` 的 `execute_merge` 两侧都要全表做 join，无谓词可下推，**按原样保留**。触发器 / 存储过程路径本次未动（见下）。 |
+| B2.5 `committed_tables` Arc 化 | ⏸ **需独立设计 PR** | — | plan 给的是 `HashMap<String, Arc<Vec<Record>>>` + `Arc::make_mut`，但真正省 copy 的前提是 `tables` 也 Arc 化（否则 `self.tables.clone()` 逐个包 `Arc::new(data.clone())`，一次全量拷贝照旧）。`tables` Arc 化在 `engine.rs` 内触及 24 处 `self.tables` + 25 处 `get_mut`/`entry` + 18 处 `committed_tables`；且 `SchemaSnapshot` 是 **pub 类型**（`pub fn snapshot_schema() -> SchemaSnapshot`），字段 `tables: HashMap<String, Vec<Record>>` 是公共 API 的组成部分——Arc 化是 **breaking change**，需要单独版本或兼容层，不能混在性能 PR 里。 |
+| B2.6 binary/columnar append | ⏸ **需独立设计 PR** | — | plan 描述的是"改 append 写入 + 独立 manifest；恢复路径加 `append_batch`"，这**不是优化而是存储格式变更**：新 `.bin` 布局 + 旧格式读取兼容 + manifest 原子写 + 恢复路径测试。`binary_storage.rs` 当前 `persist_table` 每次全量重写，且 `insert` 有 snapshot 保护分支（`new_with_data` 预载 `.bin` 快照，不能被空表覆盖）。在 B2.2 已把 flush 的锁内 I/O 移出后，binary 后端的持锁时间已同步受益，此项边际收益需要先测量再决定是否值得做格式变更。 |
+
+**已完成部分共同验证**：
+
+```
+$ cargo test -p sqlrustgo-storage
+   763 + 3 + 29 + 19 + 1 + 4 + 47 + 6 + 4 + 5 + 5 + 3 + 5 + 5 + 8 = 1182 passed; 0 failed
+$ cargo build -p sqlrustgo-storage --all-features    # clean
+$ cargo fmt -p sqlrustgo-storage --check              # clean
+```
+
+### 10.9 Phase B2 A/B 实测（2026-09-30，续 §10.8）
+
+§10.8 的 NOT-MEASURED 声明已由本节取代。完整报告见
+[`PERF_B2_4915_AB_MEASUREMENT.md`](./PERF_B2_4915_AB_MEASUREMENT.md)。
+
+**基线修正**：§6 写的 `99198a515` 早于 #4912（`e8c67639e2`），该区间同时含
+A1 与 B2 的改动，无法归因。改用 B2 动工前的 `be665d6bc1` 为基线。
+
+**结果**（3 runs 取中位，criterion `--warm-up-time 2 --measurement-time 4`）：
+
+| 基准 | baseline | HEAD | 倍数 |
+|---|---|---|---|
+| `b2_insert_into_large_table/1000` | 0.603 ms | 0.027 ms | **22.44x** |
+| `b2_insert_into_large_table/10000` | 0.615 ms | 0.026 ms | **23.91x** |
+| `b2_insert_into_large_table/50000` | 1.002 ms | 0.026 ms | **39.26x** |
+| `b2_flush_dirty_tables/5tables_1000rows` | 0.193 ms | 0.195 ms | 0.99x |
+| `b2_flush_dirty_tables/5tables_10000rows` | 0.175 ms | 0.195 ms | 0.99x |
+| `b2_snapshot_and_scan/full_snapshot/50000` | 13.703 ms | 11.605 ms | 1.18x |
+| `b2_snapshot_and_scan/filtered_scan_miss/50000` | 0.053 ms | 0.045 ms | 1.19x |
+
+**两条须如实记录的结论**：
+
+1. **B2.2 首版是回归，已修**。首版把 I/O 移出锁但快照整张 `TableData`，
+   每次 flush 付 O(table_size) 拷贝，5 表场景测到 **0.86x**。已改为取窗口
+   （`ff34478830`），复测 0.99x。**修复后是中性，不是收益。**
+2. **B2.2 的收益仍未被证明**。它的目标是缩短持锁时间，而单线程 bench 测的
+   是 flush 本身，测不出锁的收益。sysbench 8 线程 `oltp_read_write` 与
+   `sample` 的 `lock_shared_slow` 本次**未跑**，TPC-H 亦未跑。在并发数字
+   出来之前，B2.2 只支持"没有变慢"，不应记为已完成。
+
+**顺带修复的既有腐化**：`crates/storage/benches/storage_benchmark.rs`
+在本次工作前**已无法编译**（`TableInfo` / `ColumnDefinition` 长期未跟进
+字段新增，报 4 处 `E0063`），因此 §6 指定的 `bench_insert` /
+`bench_aggregate` 之外没有任何可用基准覆盖 B2 路径。已补齐字段并新增 3 组
+只针对 B2 的基准。
+
+**一处被测量证伪的"回归"**：首轮 `full_snapshot/50000` 报 0.77x，复查时
+同一二进制复跑得到相差 2 倍的结果。根因是该基准在 `b.iter()` 内复用
+同一个 `FileStorage` 且每轮再插 50000 行，磁盘 base snapshot 与 delta
+无界累积，测的是漂移中的累积状态。改为每轮重建后该项为 1.18x 且连续
+3 次稳定。**不复查就会把基准缺陷当成 B2.3 的回归写进结论。**
+
+**下一步**：
+- **sysbench 8 线程 `oltp_read_write` + `sample` 锁争用采样** — 这是
+  B2.2 唯一的证明手段。§10.9 已测的单线程数字只支持"没变慢"。
+- B1（#4914）尚未动工（F-07 GROUP BY `Vec<Value>` 键 / F-08 表达式绑定）
+- B2.5 / B2.6 需要各自的独立设计 PR
+- B2.4 的触发器 / 存储过程路径（`crates/executor/src/trigger.rs:833,932`、
+  `stored_proc.rs`）本次未动，属 B2.4 的剩余部分
+- §6 表格里的 `cargo build --release` 耗时 / 二进制大小、clippy、
+  TPC-H 三项本次未按协议逐条执行

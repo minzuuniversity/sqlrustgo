@@ -1,0 +1,32 @@
+WP-A 4-issue re-verification evidence
+generated: 2026-09-30T15:30:38Z
+host_branch: develop/v4.1.0 @ ddfb1c62cd
+verifier: MiniMax Code (MCode) main session, source_run=wp-a-reverify-2026-09-30
+
+=== [1] Gitea API issue states (gitea252 http://192.168.0.252:3000) ===
+#4708: state=closed closed_at=2026-09-03T18:46:27Z
+#4696: state=closed closed_at=2026-09-03T15:22:19Z
+#4710: state=closed closed_at=2026-09-03T14:27:32Z
+#4720: state=closed closed_at=2026-09-03T14:27:33Z
+
+=== [2] cargo test -p sqlrustgo-parser --test wp_a_legacy ===
+test result: ok. 27 passed; 0 failed; 1 ignored; 0 measured; 0 filtered out
+  (the 1 ignored = test_chinese_comment_multi_line, wp_a_legacy.rs:68)
+
+=== [3] block-comment probe (temp test, removed after run) ===
+  [FAIL] SELECT 1 /* comment */              -> Expected expression
+  [OK]   SELECT 1; /* 多行中文注释 */          (leading-after-semicolon strip, not parser body)
+  [FAIL] SELECT /* c1 */ 1                    -> Expected expression
+  [FAIL] /* 头部中文注释 */ SELECT 1            -> Unexpected token: Slash
+
+=== [4] ignore_registry.json vs source scan ===
+  registry version : v3.12.0-V312-95-v2 (timestamp 2026-09-08)
+  registry entries : 125  (total_allowed 125)
+  source real #[ignore]: 56 files / 102 occurrences (line-anchored regex, .bak excluded)
+  UNREGISTERED     : crates/parser/tests/wp_a_legacy.rs (1 ignore)
+                     archive/v3.11/archived-crates/graph_cypher_integration_test.rs (4 ignores)
+
+=== [5] conclusion ===
+  #4708 = NOT fixed.  Block comments /* */ unsupported in parser; defect hidden by an
+         #[ignore] that is absent from ignore_registry.json (ADR-008 / P16 violation).
+  #4696 / #4710 / #4720 = parser-level regression tests pass; E2E (cli sqlite) unverified.

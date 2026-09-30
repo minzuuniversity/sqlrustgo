@@ -175,7 +175,12 @@ check_head_commit_author() {
     log_info "CHECK 4: HEAD commit author must be a known AI/Human identity..."
     local head_email
     head_email=$(git log -1 --format='%ae' 2>/dev/null)
-    local allowed=("openheart@gaoyuanyiyao.com" "openclaw@gaoyuanyiyao.com" "hermes-z6g4@gaoyuanyiyao.com" "hermes-macmini@gaoyuanyiyao.com" "claude-macmini@gaoyuanyiyao.com" "claude-z6g4@gaoyuanyiyao.com" "claude-z440@gaoyuanyiyao.com" "ci@sqlrustgo.dev")
+    # 2026-09-30: "claude@macmini.dev" added to allowlist by explicit user decision
+    # (see docs/releases/v4.1.0/ALIGNMENT_AUDIT_2026-09-30.md F-01b / R-01).
+    # Rationale: local git config user.email is already openheart@gaoyuanyiyao.com;
+    # history rewrite was explicitly declined in favour of not touching shared
+    # develop/v4.1.0 history across 5 remotes.
+    local allowed=("openheart@gaoyuanyiyao.com" "openclaw@gaoyuanyiyao.com" "hermes-z6g4@gaoyuanyiyao.com" "hermes-macmini@gaoyuanyiyao.com" "claude-macmini@gaoyuanyiyao.com" "claude-z6g4@gaoyuanyiyao.com" "claude-z440@gaoyuanyiyao.com" "ci@sqlrustgo.dev" "claude@macmini.dev")
     local found=0
     for e in "${allowed[@]}"; do
         if [[ "$head_email" == "$e" ]]; then

@@ -38,6 +38,7 @@ fn setup_test_storage(
             data_type: "INTEGER".to_string(),
             nullable: false,
             primary_key: true,
+            char_max_length: None,
             collation: None,
 
             default_value: None,
@@ -45,7 +46,11 @@ fn setup_test_storage(
         }],
         foreign_keys: vec![],
         unique_constraints: vec![],
+        check_constraints: vec![],
+        compression: None,
         collations: std::collections::HashMap::new(),
+        partition_info: None,
+        original_sql: String::new(),
     };
     storage.create_table(&table_info).unwrap();
 
@@ -284,6 +289,7 @@ fn bench_multi_table_insert(c: &mut Criterion) {
                         data_type: "INTEGER".to_string(),
                         nullable: false,
                         primary_key: true,
+                        char_max_length: None,
                         collation: None,
 
                         default_value: None,
@@ -291,7 +297,11 @@ fn bench_multi_table_insert(c: &mut Criterion) {
                     }],
                     foreign_keys: vec![],
                     unique_constraints: vec![],
+                    check_constraints: vec![],
+                    compression: None,
                     collations: std::collections::HashMap::new(),
+                    partition_info: None,
+                    original_sql: String::new(),
                 };
                 let _ = storage.create_table(&table_info);
             }
@@ -309,6 +319,168 @@ fn bench_multi_table_insert(c: &mut Criterion) {
     group.finish();
 }
 
+// --- Phase B2 / #4915 A/B benchmarks -------------------------------------
+//
+// The benchmarks above all insert into a table that starts empty, so they
+// cannot see B2.1: `insert_direct` used to clone the *whole* `TableData`
+// on every call, which costs O(table_size) and grows with every insert.
+// The cost only shows up when the table is already large, so these
+// pre-fill first and then measure a single insert into the large table.
+
+/// Build a `FileStorage` with `rows` already in `test_table`.
+fn setup_prefilled(temp_dir: &PathBuf, rows: usize) -> FileStorage {
+    let _ = remove_dir_all(temp_dir);
+    let mut storage = setup_test_storage(temp_dir, 100, false);
+    storage
+        .insert("test_table", generate_records(rows))
+        .unwrap();
+    storage
+}
+
+/// B2.1: one insert into an already-large table.
+///
+/// Pre-fix this is dominated by `data.clone()` — a full copy of the
+/// `TableData` for every single row inserted. Post-fix it copies only
+/// the appended window.
+fn bench_b2_insert_into_large_table(c: &mut Criterion) {
+    let mut group = c.benchmark_group("b2_insert_into_large_table");
+
+    for preexisting in [1_000usize, 10_000, 50_000] {
+        let temp_dir = std::env::temp_dir().join(format!("b2_large_{}", preexisting));
+        let mut storage = setup_prefilled(&temp_dir, preexisting);
+
+        group.bench_with_input(
+            BenchmarkId::from_parameter(preexisting),
+            &preexisting,
+            |b, _| {
+                b.iter(|| {
+                    let records = generate_records(1);
+                    black_box(storage.insert("test_table", records).unwrap());
+                });
+            },
+        );
+
+        let _ = remove_dir_all(&temp_dir);
+    }
+
+    group.finish();
+}
+
+/// B2.2: `flush()` of several dirty tables.
+///
+/// B2.2 moved the serialize + `write()` out of the inner write lock, so
+/// this measures the flush itself, not concurrency. The lock-hold win
+/// shows up under concurrent load (sysbench), not here — this bench
+/// exists to confirm the move did not regress the I/O itself.
+fn bench_b2_flush_dirty_tables(c: &mut Criterion) {
+    let mut group = c.benchmark_group("b2_flush_dirty_tables");
+
+    for table_count in [1usize, 5] {
+        for rows_per_table in [1_000usize, 10_000] {
+            let temp_dir =
+                std::env::temp_dir().join(format!("b2_flush_{}_{}", table_count, rows_per_table));
+            let _ = remove_dir_all(&temp_dir);
+
+            let mut storage = setup_test_storage(&temp_dir, 1_000_000, true);
+            for t in 0..table_count {
+                let info = TableInfo {
+                    name: format!("t{}", t),
+                    columns: vec![ColumnDefinition {
+                        name: "id".to_string(),
+                        data_type: "INTEGER".to_string(),
+                        nullable: false,
+                        primary_key: true,
+                        char_max_length: None,
+                        collation: None,
+                        default_value: None,
+                        auto_increment: false,
+                    }],
+                    foreign_keys: vec![],
+                    unique_constraints: vec![],
+                    check_constraints: vec![],
+                    compression: None,
+                    collations: std::collections::HashMap::new(),
+                    partition_info: None,
+                    original_sql: String::new(),
+                };
+                storage.create_table(&info).unwrap();
+                storage
+                    .insert(&format!("t{}", t), generate_records(rows_per_table))
+                    .unwrap();
+            }
+
+            let id = BenchmarkId::new(format!("{}tables_{}rows", table_count, rows_per_table), 0);
+            group.bench_with_input(id, &(table_count, rows_per_table), |b, _| {
+                b.iter(|| {
+                    // Re-dirty every table each iteration, then flush.
+                    for t in 0..table_count {
+                        let _ = storage.insert(&format!("t{}", t), generate_records(1));
+                    }
+                    black_box(storage.flush().unwrap());
+                });
+            });
+
+            let _ = remove_dir_all(&temp_dir);
+        }
+    }
+
+    group.finish();
+}
+
+/// B2.3 / B2.4: full-snapshot write and filtered scan.
+///
+/// B2.3 made `save_table_full` stream instead of building an owned copy
+/// plus a full `String`; B2.4 made `scan_with_filter` filter inside the
+/// engine rather than materialising every row.
+fn bench_b2_full_snapshot_and_filtered_scan(c: &mut Criterion) {
+    let mut group = c.benchmark_group("b2_snapshot_and_scan");
+
+    for rows in [10_000usize, 50_000] {
+        let temp_dir = std::env::temp_dir().join(format!("b2_snap_{}", rows));
+        let mut storage = setup_prefilled(&temp_dir, rows);
+
+        // B2.3: full snapshot write. `save_table_full` is private and is
+        // reached through `save_table`, so drive it the way production
+        // does: dirty the table and call `flush()`.
+        //
+        // Each iteration builds a *fresh* FileStorage. Reusing one
+        // storage across iterations lets the on-disk base snapshot and
+        // the delta file grow without bound, so the measurement drifts
+        // (an earlier version of this bench reported 133ms and 340ms for
+        // the same binary on consecutive runs) and cannot be compared
+        // A/B. Setup cost is inside the timed region, which is the
+        // honest thing here: it is the same on both sides.
+        group.bench_with_input(BenchmarkId::new("full_snapshot", rows), &rows, |b, _| {
+            b.iter(|| {
+                let _ = remove_dir_all(&temp_dir);
+                let mut s = setup_test_storage(&temp_dir, 100, false);
+                s.insert("test_table", generate_records(rows)).unwrap();
+                black_box(s.flush().unwrap());
+            });
+        });
+
+        // Filtered scan: a filter that matches almost nothing is the
+        // case where pre-fix code paid to clone every row.
+        let target = sqlrustgo_types::Value::Integer(-1);
+        group.bench_with_input(
+            BenchmarkId::new("filtered_scan_miss", rows),
+            &rows,
+            |b, _| {
+                b.iter(|| {
+                    let hit = storage
+                        .scan_with_filter("test_table", |row| row.first() == Some(&target))
+                        .unwrap();
+                    black_box(hit.len());
+                });
+            },
+        );
+
+        let _ = remove_dir_all(&temp_dir);
+    }
+
+    group.finish();
+}
+
 criterion_group!(
     benches,
     bench_single_insert_direct,
@@ -319,6 +491,9 @@ criterion_group!(
     bench_buffer_vs_direct,
     bench_buffer_flush,
     bench_insert_throughput,
-    bench_multi_table_insert
+    bench_multi_table_insert,
+    bench_b2_insert_into_large_table,
+    bench_b2_flush_dirty_tables,
+    bench_b2_full_snapshot_and_filtered_scan
 );
 criterion_main!(benches);

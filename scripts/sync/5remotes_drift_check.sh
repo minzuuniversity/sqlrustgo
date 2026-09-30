@@ -6,10 +6,11 @@
 #
 # Usage:
 #   scripts/sync/5remotes_drift_check.sh [--branches b1,b2,...] [--alert-threshold N]
+#   scripts/sync/5remotes_drift_check.sh [--strict-main|--no-strict-main]
 #
 # Exit codes:
-#   0 — all 10 pairs at all branches are within threshold
-#   1 — drift exceeds threshold (alert)
+#   0 — all pairs within threshold AND main identical across remotes
+#   1 — drift exceeds threshold, OR main diverged across remotes
 #   2 — network error fetching from a remote
 #
 # Output format (tab-separated for log scraping):
@@ -17,6 +18,15 @@
 #
 # Designed to be piped into ops tools:
 #   scripts/sync/5remotes_drift_check.sh --branches develop/v4.1.0,main > /var/log/drift.tsv
+#
+# 2026-09-30: added --strict-main (default ON).
+#   Rationale: `main` is the GA release pointer (STAGE_CONFIG branches.main:
+#   { stage: GA_only, mergeable: false, protected: true }). It must be
+#   byte-identical across all remotes — unlike develop branches it carries no
+#   in-flight work, so ANY divergence there is a defect, not normal drift.
+#   On 2026-09-30 `main` was found 16657 commits behind and diverged from
+#   develop/v4.1.0 (see docs/releases/v4.1.0/MAIN_DIVERGENCE_RESOLUTION_2026-09-30.md).
+#   The old uniform threshold let that accumulate unnoticed.
 
 set -uo pipefail
 
@@ -25,6 +35,7 @@ cd "$REPO_ROOT"
 
 DEFAULT_BRANCHES="develop/v4.1.0,main,release/v4.0.0,develop/v4.0.0"
 DEFAULT_THRESHOLD=2
+STRICT_MAIN=1
 
 branches_csv="$DEFAULT_BRANCHES"
 threshold="$DEFAULT_THRESHOLD"
@@ -39,8 +50,16 @@ while [ "${1:-}" != "" ]; do
             threshold="$2"
             shift 2
             ;;
+        --strict-main)
+            STRICT_MAIN=1
+            shift
+            ;;
+        --no-strict-main)
+            STRICT_MAIN=0
+            shift
+            ;;
         -h|--help)
-            sed -n '2,20p' "$0"
+            sed -n '2,30p' "$0"
             exit 0
             ;;
         *)
@@ -70,6 +89,7 @@ tip_gitee=""
 tip_github=""
 
 EXIT_CODE=0
+MAIN_DIVERGED=0
 echo -e "branch\tpair\tpair\tahead\tbehind"
 
 for branch in "${branches[@]}"; do
@@ -96,7 +116,14 @@ for branch in "${branches[@]}"; do
             ba=$(git rev-list --count "$sb" "^$sa" 2>/dev/null)
             printf "%s\t%s\t%s\t%d\t%d\n" "$branch" "$a" "$b" "$ab" "$ba"
             total=$((ab+ba))
-            if [ "$total" -gt "$threshold" ]; then
+
+            # Strict mode: main must be byte-identical across every remote.
+            if [ "$STRICT_MAIN" -eq 1 ] && [ "$branch" = "main" ]; then
+                if [ "$total" -ne 0 ]; then
+                    MAIN_DIVERGED=1
+                    EXIT_CODE=1
+                fi
+            elif [ "$total" -gt "$threshold" ]; then
                 EXIT_CODE=1
             fi
         done
@@ -104,10 +131,32 @@ for branch in "${branches[@]}"; do
 done
 
 echo ""
+if [ "$STRICT_MAIN" -eq 1 ]; then
+    # Dedicated, unmissable report for the release pointer.
+    main_tips=""
+    for a in "${REMOTES[@]}"; do
+        var_a="tip_${a}"
+        sa=$(eval echo "\$$var_a")
+        [ -n "$sa" ] && main_tips="$main_tips ${sa:0:12}"
+    done
+    main_uniq=$(echo $main_tips | tr ' ' '\n' | grep . | sort -u | wc -l | tr -d ' ')
+    if [ "$MAIN_DIVERGED" -eq 0 ] && [ "$main_uniq" = "1" ]; then
+        echo "MAIN: OK — identical across all remotes (${main_tips# })"
+    else
+        echo "MAIN: ERROR — 'main' has DIVERGED across remotes (strict mode, zero tolerance)."
+        echo "      Distinct tips: ${main_uniq}"
+        echo "      'main' is the GA release pointer and must be byte-identical everywhere."
+        echo "      Resolve via docs/releases/v4.1.0/MAIN_DIVERGENCE_RESOLUTION_2026-09-30.md"
+        echo "      (backup branch/tag: backup/main-pre-convergence-2026-09-30,"
+        echo "       archive/main-pre-convergence-2026-09-30)"
+    fi
+    echo ""
+fi
+
 if [ "$EXIT_CODE" -eq 0 ]; then
     echo "RESULT: all branches within threshold ($threshold)"
 else
-    echo "RESULT: drift exceeds threshold ($threshold) on at least one pair"
+    echo "RESULT: drift detected (threshold=$threshold, strict_main=$STRICT_MAIN)"
 fi
 
 exit "$EXIT_CODE"

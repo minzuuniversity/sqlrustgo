@@ -1,0 +1,27 @@
+=== C-ARCH Invariant Check ===
+
+[C-ARCH-01] Checking LocalExecutor has NO txn_manager field...
+PASS: C-ARCH-01
+
+[C-ARCH-02] Checking LocalExecutor has NO write_buffer field...
+PASS: C-ARCH-02
+
+[C-ARCH-03] Checking storage.insert/update/delete only in crates/storage or crates/executor/...
+INFO (16 storage operations in business crates — business-level access to StorageEngine is allowed per AD-002 §Consequences for non-SQL paths)
+
+[C-ARCH-04] Checking no eng.execute(raw_sql) outside parser...
+PASS: C-ARCH-04
+
+[C-ARCH-05] Checking src/execution_engine.rs < 1600 lines (SSOT: CARCH05_LIMIT, AD-001 target: 1500)...
+PASS: C-ARCH-05 (src/execution_engine.rs: 1034 lines, limit 1600, AD-001 target 1500)
+
+[C-ARCH-05-NOTE] Uncovered large sources (informational, does NOT affect PASS/FAIL):
+  WARN: crates/executor/src/expr/mod.rs = 5104 lines (> 1600) — not gated by C-ARCH-05
+  WARN: crates/executor/src/stored_proc.rs = 4248 lines (> 1600) — not gated by C-ARCH-05
+  WARN: crates/executor/src/trigger.rs = 2549 lines (> 1600) — not gated by C-ARCH-05
+
+=== Summary ===
+PASSED: 5
+FAILED: 0
+
+Result: ALL PASS

@@ -20,10 +20,15 @@ active development trunk. v4.1.0 carries v4.0.0 forward through:
    - scripts/sync/5remotes_sync.sh
    - scripts/sync/5remotes_drift_check.sh
    - scripts/sync/README.md
-3. **Pending** (carried into v4.1.0 ALPHA scope):
-   - 5/7 WP-C..G legacy issues deferred from v4.0.0 (see ISSUES_PLAN.md)
-   - V400-09 168h SOAK FINAL_REPORT (kicked off 2026-09-19)
-   - 3 v4.0.0 alpha gate FAILs (inherited)
+3. **Pending** (carried into v4.1.0 scope):
+   - WP-A parser legacy #4708/#4696/#4710/#4720 (re-opened 2026-09-30, see
+     LEGACY_LEDGER §2.1 / ISSUES_PLAN §4.0) + WP-C/D/F/G legacy issues deferred
+     from v4.0.0 — 4 WP groups / 12 issues
+     (see ISSUES_PLAN.md §4; total v4.1.0 backlog = 24 issues incl. WP-A/WP-B/WP-E/WP-H)
+   - ~~V400-09 168h SOAK FINAL_REPORT~~ — **RESOLVED 2026-09-30**:
+     `docs/releases/v4.0.0/V400_09_168H_SOAK_FINAL_REPORT.md` exists
+   - ~~3 v4.0.0 alpha gate FAILs~~ — **CLEARED 2026-09-30** by real gate runs
+     (evidence: `docs/releases/v4.1.0/evidence/gate-runs-2026-09-30/`)
 
 ## 2. v4.1.0 deltas over v4.0.0
 
@@ -40,7 +45,8 @@ active development trunk. v4.1.0 carries v4.0.0 forward through:
 - **Minor bump** (.0 → .1): post-GA bugfix continuation. No new
   feature claims vs v4.0.0. Per semver, this is a PATCH-level
   change in spirit but promoted to a numbered minor because the
-  carry-forward touches 5/7 deferred WP items.
+  carry-forward touches 4 deferred WP groups (12 issues) plus WP-B/WP-E/WP-H
+  completions.
 - v4.0.0 release branch remains the canonical "v4.0.0 GA" pin.
 - v4.1.0 will be GA'd only after V400-09 168h SOAK FINAL + 3
   inherited alpha-gate FAILs resolved + WP-C/D/F/G closed.
