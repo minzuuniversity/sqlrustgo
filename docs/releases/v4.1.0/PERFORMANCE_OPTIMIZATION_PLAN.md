@@ -426,3 +426,42 @@ fsync 运行。
 - Phase C1–C4 的 Issue 尚未创建（按 §2 回填记录，待 A/B 产出实测结论）。
 - 本次改动**尚未 commit / push**，需按
   `docs/governance/ISSUE_CLOSING_VERIFICATION.md` 走 PR 流程。
+
+### 10.8 Phase B2 逐项执行记录（2026-09-30，续 §10.7）
+
+在 §10.7 记录的"尚未动工"之后，Phase B2 的 6 个子项按
+"确定性 × 风险"排序逐个推进。已完成 4 项，2 项判定为
+**需要独立设计 PR**，不在单次机械改动范围内。
+
+| Task | 状态 | commit | 说明 |
+|---|---|---|---|
+| B2.1 写路径整表深拷贝 | ✅ 完成 | `6735c366cc` | `insert_direct` / `insert_buffered` / `flush_buffer` 三处的 `data.clone()` 换成 `TableData::snapshot_from(start)`（只带 `[start..]` 窗口）+ `save_table_window(table, window, total_rows)`。O(table_size) → O(row_count)，磁盘字节完全相同。`add_column` 的 `data.clone()` 保留——它 backfill 每一行，全量快照是正确语义，且不在 plan 列出的站点内。 |
+| B2.2 锁内文件 I/O | ✅ 完成 | `e2355c0680` | `flush()` 原来在一个 `with_write_lock` 里 drain dirty 集合**并**对每张表做序列化+`write()`，500MB 表会把排他锁按在磁盘写上。改为：一次短临界区 drain + 快照受影响表 → 释放锁 → 锁外 I/O。代价是每次 flush 多一份 `TableData` 拷贝，收益是读者不再排在 I/O 后面。plan 的验收标准是持锁时间而非峰值 RSS。 |
+| B2.3 全量快照缓冲 | ✅ 完成 | `e49a2a558f` | `save_table_full` 原先构造 owned `StoredTableData`（第二份全表拷贝）再 `to_string_pretty` 成 `String` 才落盘。新增借用的 `StoredTableDataRef`，直接序列化进 1 MB `BufWriter`；owned 版本保留给反序列化，磁盘格式逐字节不变。 |
+| B2.4 `scan_with_filter` 统一 | ✅ 完成（存储层） | `a656850636` | `WalStorage::update` 的 WAL before-image 采集改为 `scan_with_filter` 在引擎内过滤，clone 比例从"全表"降到"实际命中行"。`merge.rs` 的 `execute_merge` 两侧都要全表做 join，无谓词可下推，**按原样保留**。触发器 / 存储过程路径本次未动（见下）。 |
+| B2.5 `committed_tables` Arc 化 | ⏸ **需独立设计 PR** | — | plan 给的是 `HashMap<String, Arc<Vec<Record>>>` + `Arc::make_mut`，但真正省 copy 的前提是 `tables` 也 Arc 化（否则 `self.tables.clone()` 逐个包 `Arc::new(data.clone())`，一次全量拷贝照旧）。`tables` Arc 化在 `engine.rs` 内触及 24 处 `self.tables` + 25 处 `get_mut`/`entry` + 18 处 `committed_tables`；且 `SchemaSnapshot` 是 **pub 类型**（`pub fn snapshot_schema() -> SchemaSnapshot`），字段 `tables: HashMap<String, Vec<Record>>` 是公共 API 的组成部分——Arc 化是 **breaking change**，需要单独版本或兼容层，不能混在性能 PR 里。 |
+| B2.6 binary/columnar append | ⏸ **需独立设计 PR** | — | plan 描述的是"改 append 写入 + 独立 manifest；恢复路径加 `append_batch`"，这**不是优化而是存储格式变更**：新 `.bin` 布局 + 旧格式读取兼容 + manifest 原子写 + 恢复路径测试。`binary_storage.rs` 当前 `persist_table` 每次全量重写，且 `insert` 有 snapshot 保护分支（`new_with_data` 预载 `.bin` 快照，不能被空表覆盖）。在 B2.2 已把 flush 的锁内 I/O 移出后，binary 后端的持锁时间已同步受益，此项边际收益需要先测量再决定是否值得做格式变更。 |
+
+**已完成部分共同验证**：
+
+```
+$ cargo test -p sqlrustgo-storage
+   763 + 3 + 29 + 19 + 1 + 4 + 47 + 6 + 4 + 5 + 5 + 3 + 5 + 5 + 8 = 1182 passed; 0 failed
+$ cargo build -p sqlrustgo-storage --all-features    # clean
+$ cargo fmt -p sqlrustgo-storage --check              # clean
+```
+
+**未测量声明（ADR-001 G-01）**：B2.1–B2.4 的**性能收益全部 NOT-MEASURED**。
+本节只记录已验证的**正确性**（测试全绿、字节格式不变）与**代码结构变化**
+（复杂度、拷贝次数、锁持有范围），**没有**重新跑 SOAK 或 sysbench 对照，
+因此**不声称**任何 TPS / 延迟数字。若需收益数字，应在 §6 定义的
+A/B 协议下重跑（8 conn × 150 txn × 3 runs，`--storage file --wal-sync every`），
+并与 `PERF_A1_4912_AB_MEASUREMENT.md` 的 post-#4912 基线比对。
+
+**下一步**：
+- B1（#4914）尚未动工（F-07 GROUP BY `Vec<Value>` 键 / F-08 表达式绑定）
+- B2.5 / B2.6 需要各自的独立设计 PR
+- B2.4 的触发器 / 存储过程路径（`crates/executor/src/trigger.rs:833,932`、
+  `stored_proc.rs`）本次未动，属 B2.4 的剩余部分
+- 建议：先跑一次 §6 的 A/B 拿 B2.1–B2.4 的实测数字，再决定 B2.5/B2.6
+  与 B1 的投入顺序
