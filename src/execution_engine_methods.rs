@@ -446,7 +446,43 @@ impl<S: StorageEngine + 'static> ExecutionEngine<S> {
         }
     }
 
-    /// CTE 物化: 将每个 CTE 子查询结果存入临时表，然后执行主查询
+    /// V4.1.0 / Issue #4910 §3.1 Phase 2: read-only entry point.
+    ///
+    /// Parses `sql` and dispatches to the existing `&self` SELECT /
+    /// EXPLAIN / SHOW / DESCRIBE / PRAGMA / VACUUM / REINDEX handlers.
+    /// Returns a clear error for any DDL / DML / transaction statement
+    /// so the caller knows to use the `&mut self` `execute()` path.
+    ///
+    /// This unlocks the server's `engine.read().execute_read_only(sql)`
+    /// fast path: SELECTs across concurrent connections no longer
+    /// serialise on the engine `&mut self` borrow at the routing layer,
+    /// only on the underlying storage `parking_lot::RwLock`.
+    pub fn execute_read_only(&self, sql: &str) -> SqlResult<ExecutorResult> {
+        let statement = parse(sql).map_err(|e| SqlError::ParseError(e.to_string()))?;
+        match statement {
+            Statement::Select(ref select) => self.execute_select(select),
+            Statement::Explain(ref select) => self.execute_explain(select),
+            Statement::Show(ref show) => self.execute_show(show),
+            Statement::Describe(ref desc) => self.execute_describe(desc),
+            Statement::Pragma(ref pragma) => self.execute_pragma(pragma),
+            // V312-64 / Issue #4663: SQLite-style maintenance no-ops.
+            Statement::Vacuum(_) | Statement::Reindex(_) => Ok(ExecutorResult::empty()),
+            // VALUES is not allowed as a standalone statement — same
+            // behaviour as `execute()` so we mirror the error.
+            Statement::Values(_) => Err(SqlError::ExecutionError(
+                "VALUES cannot be used as a standalone statement".to_string(),
+            )),
+            // All other arms require `&mut self` (DDL / DML / Tx).
+            // Statement doesn't impl Display, so use Debug formatting.
+            other => Err(SqlError::ExecutionError(format!(
+                "read-only entry point cannot execute statement kind `{:?}`; \
+                 use execute_mut() for DDL/DML/transaction statements",
+                other
+            ))),
+        }
+    }
+
+     /// CTE 物化: 将每个 CTE 子查询结果存入临时表，然后执行主查询
     pub fn execute_with_select(
         &mut self,
         with: &sqlrustgo_parser::parser::WithSelect,
