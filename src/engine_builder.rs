@@ -8,7 +8,7 @@ use sqlrustgo_optimizer::unified_cost::UnifiedCostModel;
 use std::collections::HashMap;
 use std::path::PathBuf;
 use std::sync::Arc;
-
+use std::sync::atomic::{AtomicBool, AtomicUsize};
 use sqlrustgo_catalog::Catalog;
 use sqlrustgo_storage::{
     adaptive_hash_index::AdaptiveHashIndex,
@@ -33,7 +33,7 @@ impl ExecutionEngine<MemoryStorage> {
             storage: Arc::new(RwLock::new(MemoryStorage::new())),
             catalog: None,
             stats: Arc::new(RwLock::new(ExecutionStats::default())),
-            cbo_enabled: true,
+            cbo_enabled: AtomicBool::new(true),
             transaction_manager: TransactionManager::new(),
             current_tx_id: None,
             trigger_undo_sink: Arc::new(parking_lot::Mutex::new(Vec::new())),
@@ -45,7 +45,7 @@ impl ExecutionEngine<MemoryStorage> {
             session_null_order_first: None,
             checkpoint_manager: None,
             cost_model: parking_lot::RwLock::new(UnifiedCostModel::default_model(0, 0)),
-            parallel_degree: 1,
+            parallel_degree: AtomicUsize::new(1),
             stmt_cache: sqlrustgo_cache::PreparedStatementCache::new(100),
             views: HashMap::new(),
             clustered_tables: parking_lot::RwLock::new(HashMap::new()),
@@ -54,7 +54,7 @@ impl ExecutionEngine<MemoryStorage> {
             instrumentation: Arc::new(sqlrustgo_executor::instrumentation::NoopInstrumentationHook),
             session_vars: Arc::new(RwLock::new(std::collections::HashMap::new())),
             sequence_state: Arc::new(crate::sequence_state::SequenceState::new()),
-            recursive_cte_max_rows: 1_000_000,
+            recursive_cte_max_rows: AtomicUsize::new(1_000_000),
         }
     }
 
@@ -64,7 +64,7 @@ impl ExecutionEngine<MemoryStorage> {
             storage: Arc::new(RwLock::new(MemoryStorage::new())),
             catalog: None,
             stats: Arc::new(RwLock::new(ExecutionStats::default())),
-            cbo_enabled,
+            cbo_enabled: AtomicBool::new(cbo_enabled),
             transaction_manager: TransactionManager::new(),
             current_tx_id: None,
             trigger_undo_sink: Arc::new(parking_lot::Mutex::new(Vec::new())),
@@ -76,7 +76,7 @@ impl ExecutionEngine<MemoryStorage> {
             session_null_order_first: None,
             checkpoint_manager: None,
             cost_model: parking_lot::RwLock::new(UnifiedCostModel::default_model(0, 0)),
-            parallel_degree: 1,
+            parallel_degree: AtomicUsize::new(1),
             stmt_cache: sqlrustgo_cache::PreparedStatementCache::new(100),
             views: HashMap::new(),
             clustered_tables: parking_lot::RwLock::new(HashMap::new()),
@@ -85,7 +85,7 @@ impl ExecutionEngine<MemoryStorage> {
             instrumentation: Arc::new(sqlrustgo_executor::instrumentation::NoopInstrumentationHook),
             session_vars: Arc::new(RwLock::new(std::collections::HashMap::new())),
             sequence_state: Arc::new(crate::sequence_state::SequenceState::new()),
-            recursive_cte_max_rows: 1_000_000,
+            recursive_cte_max_rows: AtomicUsize::new(1_000_000),
         }
     }
 
@@ -95,7 +95,7 @@ impl ExecutionEngine<MemoryStorage> {
             storage: Arc::new(RwLock::new(MemoryStorage::new())),
             catalog: Some(catalog),
             stats: Arc::new(RwLock::new(ExecutionStats::default())),
-            cbo_enabled: true,
+            cbo_enabled: AtomicBool::new(true),
             transaction_manager: TransactionManager::new(),
             current_tx_id: None,
             trigger_undo_sink: Arc::new(parking_lot::Mutex::new(Vec::new())),
@@ -107,7 +107,7 @@ impl ExecutionEngine<MemoryStorage> {
             session_null_order_first: None,
             checkpoint_manager: None,
             cost_model: parking_lot::RwLock::new(UnifiedCostModel::default_model(0, 0)),
-            parallel_degree: 1,
+            parallel_degree: AtomicUsize::new(1),
             stmt_cache: sqlrustgo_cache::PreparedStatementCache::new(100),
             views: HashMap::new(),
             clustered_tables: parking_lot::RwLock::new(HashMap::new()),
@@ -116,7 +116,7 @@ impl ExecutionEngine<MemoryStorage> {
             instrumentation: Arc::new(sqlrustgo_executor::instrumentation::NoopInstrumentationHook),
             session_vars: Arc::new(RwLock::new(std::collections::HashMap::new())),
             sequence_state: Arc::new(crate::sequence_state::SequenceState::new()),
-            recursive_cte_max_rows: 1_000_000,
+            recursive_cte_max_rows: AtomicUsize::new(1_000_000),
         }
     }
 }
@@ -137,7 +137,7 @@ impl ExecutionEngine<MemoryStorage> {
             storage: Arc::new(RwLock::new(wal_storage)),
             catalog: None,
             stats: Arc::new(RwLock::new(ExecutionStats::default())),
-            cbo_enabled: true,
+            cbo_enabled: AtomicBool::new(true),
             transaction_manager: TransactionManager::new(),
             current_tx_id: None,
             trigger_undo_sink: Arc::new(parking_lot::Mutex::new(Vec::new())),
@@ -149,7 +149,7 @@ impl ExecutionEngine<MemoryStorage> {
             session_null_order_first: None,
             cost_model: parking_lot::RwLock::new(UnifiedCostModel::default_model(0, 0)),
             checkpoint_manager: None,
-            parallel_degree: 1,
+            parallel_degree: AtomicUsize::new(1),
             stmt_cache: sqlrustgo_cache::PreparedStatementCache::new(100),
             views: HashMap::new(),
             clustered_tables: parking_lot::RwLock::new(HashMap::new()),
@@ -158,7 +158,7 @@ impl ExecutionEngine<MemoryStorage> {
             instrumentation: Arc::new(sqlrustgo_executor::instrumentation::NoopInstrumentationHook),
             session_vars: Arc::new(RwLock::new(std::collections::HashMap::new())),
             sequence_state: Arc::new(crate::sequence_state::SequenceState::new()),
-            recursive_cte_max_rows: 1_000_000,
+            recursive_cte_max_rows: AtomicUsize::new(1_000_000),
         }
     }
 }
@@ -184,7 +184,7 @@ impl ExecutionEngine<MemoryStorage> {
             storage: Arc::new(RwLock::new(wal)),
             catalog: None,
             stats: Arc::new(RwLock::new(ExecutionStats::default())),
-            cbo_enabled: true,
+            cbo_enabled: AtomicBool::new(true),
             transaction_manager: TransactionManager::new(),
             current_tx_id: None,
             trigger_undo_sink: Arc::new(parking_lot::Mutex::new(Vec::new())),
@@ -196,7 +196,7 @@ impl ExecutionEngine<MemoryStorage> {
             session_null_order_first: None,
             checkpoint_manager: None,
             cost_model: parking_lot::RwLock::new(UnifiedCostModel::default_model(0, 0)),
-            parallel_degree: 1,
+            parallel_degree: AtomicUsize::new(1),
             stmt_cache: sqlrustgo_cache::PreparedStatementCache::new(100),
             views: HashMap::new(),
             clustered_tables: parking_lot::RwLock::new(HashMap::new()),
@@ -205,7 +205,7 @@ impl ExecutionEngine<MemoryStorage> {
             instrumentation: Arc::new(sqlrustgo_executor::instrumentation::NoopInstrumentationHook),
             session_vars: Arc::new(RwLock::new(std::collections::HashMap::new())),
             sequence_state: Arc::new(crate::sequence_state::SequenceState::new()),
-            recursive_cte_max_rows: 1_000_000,
+            recursive_cte_max_rows: AtomicUsize::new(1_000_000),
         })
     }
 
@@ -237,7 +237,7 @@ impl ExecutionEngine<MemoryStorage> {
             storage: Arc::new(RwLock::new(wal_storage)),
             catalog: None,
             stats: Arc::new(RwLock::new(ExecutionStats::default())),
-            cbo_enabled: true,
+            cbo_enabled: AtomicBool::new(true),
             transaction_manager: TransactionManager::new(),
             current_tx_id: None,
             trigger_undo_sink: Arc::new(parking_lot::Mutex::new(Vec::new())),
@@ -249,7 +249,7 @@ impl ExecutionEngine<MemoryStorage> {
             session_null_order_first: None,
             checkpoint_manager: None,
             cost_model: parking_lot::RwLock::new(UnifiedCostModel::default_model(0, 0)),
-            parallel_degree: 1,
+            parallel_degree: AtomicUsize::new(1),
             stmt_cache: sqlrustgo_cache::PreparedStatementCache::new(100),
             views: HashMap::new(),
             clustered_tables: parking_lot::RwLock::new(HashMap::new()),
@@ -258,7 +258,7 @@ impl ExecutionEngine<MemoryStorage> {
             instrumentation: Arc::new(sqlrustgo_executor::instrumentation::NoopInstrumentationHook),
             session_vars: Arc::new(RwLock::new(std::collections::HashMap::new())),
             sequence_state: Arc::new(crate::sequence_state::SequenceState::new()),
-            recursive_cte_max_rows: 1_000_000,
+            recursive_cte_max_rows: AtomicUsize::new(1_000_000),
         })
     }
 
@@ -284,7 +284,7 @@ impl ExecutionEngine<MemoryStorage> {
             storage: Arc::new(RwLock::new(wal_storage)),
             catalog: None,
             stats: Arc::new(RwLock::new(ExecutionStats::default())),
-            cbo_enabled: true,
+            cbo_enabled: AtomicBool::new(true),
             transaction_manager: TransactionManager::new(),
             current_tx_id: None,
             trigger_undo_sink: Arc::new(parking_lot::Mutex::new(Vec::new())),
@@ -296,7 +296,7 @@ impl ExecutionEngine<MemoryStorage> {
             session_null_order_first: None,
             checkpoint_manager: checkpoint_manager.map(|cp| Arc::new(RwLock::new(cp))),
             cost_model: parking_lot::RwLock::new(UnifiedCostModel::default_model(0, 0)),
-            parallel_degree: 1,
+            parallel_degree: AtomicUsize::new(1),
             stmt_cache: sqlrustgo_cache::PreparedStatementCache::new(100),
             views: HashMap::new(),
             clustered_tables: parking_lot::RwLock::new(HashMap::new()),
@@ -305,7 +305,7 @@ impl ExecutionEngine<MemoryStorage> {
             instrumentation: Arc::new(sqlrustgo_executor::instrumentation::NoopInstrumentationHook),
             session_vars: Arc::new(RwLock::new(std::collections::HashMap::new())),
             sequence_state: Arc::new(crate::sequence_state::SequenceState::new()),
-            recursive_cte_max_rows: 1_000_000,
+            recursive_cte_max_rows: AtomicUsize::new(1_000_000),
         })
     }
 
