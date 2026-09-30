@@ -817,20 +817,24 @@ impl FileStorage {
     fn save_table_full(&self, table_name: &str, table_data: &TableData) -> std::io::Result<()> {
         let path = self.table_path(table_name);
         let file = File::create(&path)?;
-        let mut writer = BufWriter::new(file);
+        // B2.3 / #4915 (F-11): 1 MB buffer, and serialize straight
+        // into it. The previous code built an owned StoredTableData
+        // (another full copy of the rows) and then
+        // `to_string_pretty` into a String before writing, so a
+        // snapshot cost two extra copies of the table in memory.
+        let mut writer = BufWriter::with_capacity(1 << 20, file);
 
-        let stored = StoredTableData {
-            name: table_data.info.name.clone(),
-            columns: table_data.info.columns.clone(),
-            foreign_keys: table_data.info.foreign_keys.clone(),
-            unique_constraints: table_data.info.unique_constraints.clone(),
-            rows: table_data.rows.clone(),
+        let stored = StoredTableDataRef {
+            name: &table_data.info.name,
+            columns: &table_data.info.columns,
+            foreign_keys: &table_data.info.foreign_keys,
+            unique_constraints: &table_data.info.unique_constraints,
+            rows: &table_data.rows,
         };
 
-        let json = serde_json::to_string_pretty(&stored)
+        serde_json::to_writer_pretty(&mut writer, &stored)
             .map_err(|e| std::io::Error::new(std::io::ErrorKind::InvalidData, e))?;
 
-        writer.write_all(json.as_bytes())?;
         writer.flush()?;
         // Drop any pending deltas — they're now incorporated.
         let _ = std::fs::remove_file(self.delta_path(table_name));
@@ -1204,6 +1208,27 @@ struct StoredTableData {
     foreign_keys: Vec<ForeignKeyConstraint>,
     unique_constraints: Vec<UniqueConstraint>,
     rows: Vec<Vec<Value>>,
+}
+
+/// B2.3 / #4915 (F-11): borrowed twin of [`StoredTableData`] used only for
+/// serialization.
+///
+/// `save_table_full` used to build a `StoredTableData` — a struct whose
+/// `rows` field owned a full copy of the table — and then hand it to
+/// `serde_json::to_string_pretty`, which allocates the whole JSON document
+/// as a `String` before a single byte reaches the file. On a 500 MB table
+/// that is two extra copies of the data resident at once.
+///
+/// This mirror keeps every field borrowed so the serializer can walk
+/// straight from the live `TableData` into the writer. Deserialization
+/// keeps using the owned `StoredTableData`.
+#[derive(serde::Serialize)]
+struct StoredTableDataRef<'a> {
+    name: &'a str,
+    columns: &'a [ColumnDefinition],
+    foreign_keys: &'a [ForeignKeyConstraint],
+    unique_constraints: &'a [UniqueConstraint],
+    rows: &'a [Vec<Value>],
 }
 
 #[cfg(test)]
