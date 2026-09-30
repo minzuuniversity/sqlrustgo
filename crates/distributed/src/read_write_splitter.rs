@@ -110,9 +110,6 @@ pub fn classify_statement(statement: &Statement) -> QueryClass {
         Statement::ShowRoles => QueryClass::Read,
         Statement::ShowGrantsFor(_) => QueryClass::Read,
         Statement::Execute { .. } => QueryClass::Read,
-        // PRAGMA is a metadata-only directive (read-only, e.g. table_info).
-        // Route to read replica in read-write-split deployments.
-        Statement::Pragma(_) => QueryClass::Read,
 
         // ---- DML writes ---------------------------------------------------
         Statement::Insert(_) => QueryClass::Write,
