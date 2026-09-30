@@ -9112,137 +9112,129 @@ mod chain_builder_tests {
 
 use sqlrustgo_parser::Expression as E;
 
-    fn has_non_correlated_in_subq<S: sqlrustgo_storage::StorageEngine + 'static>(
-        engine: &ExecutionEngine<S>,
-        expr: &Expression,
-    ) -> bool {
-        match expr {
-            E::In(_, subq) | E::NotIn(_, subq) => {
-                // Treat as non-correlated if the subquery does
-                // not reference outer columns (checked against the
-                // real inner-table schema — Issue #4568).
-                !subq_uses_outer_ref(engine, subq)
-            }
-            E::BinaryOp(l, _, r) => {
-                has_non_correlated_in_subq(engine, l) || has_non_correlated_in_subq(engine, r)
-            }
-            E::UnaryOp(_, inner) => has_non_correlated_in_subq(engine, inner),
-            E::IsNull(inner) | E::IsNotNull(inner) => has_non_correlated_in_subq(engine, inner),
-            E::InList(l, vs) | E::NotInList(l, vs) => {
-                has_non_correlated_in_subq(engine, l)
-                    || vs.iter().any(|v| has_non_correlated_in_subq(engine, v))
-            }
-            E::FunctionCall(_, args) => {
-                args.iter().any(|a| has_non_correlated_in_subq(engine, a))
-            }
-            _ => false,
+fn has_non_correlated_in_subq<S: sqlrustgo_storage::StorageEngine + 'static>(
+    engine: &ExecutionEngine<S>,
+    expr: &Expression,
+) -> bool {
+    match expr {
+        E::In(_, subq) | E::NotIn(_, subq) => {
+            // Treat as non-correlated if the subquery does
+            // not reference outer columns (checked against the
+            // real inner-table schema — Issue #4568).
+            !subq_uses_outer_ref(engine, subq)
         }
+        E::BinaryOp(l, _, r) => {
+            has_non_correlated_in_subq(engine, l) || has_non_correlated_in_subq(engine, r)
+        }
+        E::UnaryOp(_, inner) => has_non_correlated_in_subq(engine, inner),
+        E::IsNull(inner) | E::IsNotNull(inner) => has_non_correlated_in_subq(engine, inner),
+        E::InList(l, vs) | E::NotInList(l, vs) => {
+            has_non_correlated_in_subq(engine, l)
+                || vs.iter().any(|v| has_non_correlated_in_subq(engine, v))
+        }
+        E::FunctionCall(_, args) => args.iter().any(|a| has_non_correlated_in_subq(engine, a)),
+        _ => false,
     }
+}
 
-    fn subq_uses_outer_ref<S: sqlrustgo_storage::StorageEngine + 'static>(
-        engine: &ExecutionEngine<S>,
-        subq: &sqlrustgo_parser::SelectStatement,
-    ) -> bool {
-        if subq.where_clause.is_none() && subq.join_clause.is_empty() {
-            return false;
-        }
-        let inner_cols = collect_inner_columns(engine, subq);
-        let mut uses = false;
-        if let Some(w) = subq.where_clause.as_ref() {
-            uses |= expr_uses_outer_ref(w, &inner_cols, engine);
-        }
-        for j in &subq.join_clause {
-            uses |= expr_uses_outer_ref(&j.on_clause, &inner_cols, engine);
-        }
-        uses
+fn subq_uses_outer_ref<S: sqlrustgo_storage::StorageEngine + 'static>(
+    engine: &ExecutionEngine<S>,
+    subq: &sqlrustgo_parser::SelectStatement,
+) -> bool {
+    if subq.where_clause.is_none() && subq.join_clause.is_empty() {
+        return false;
     }
+    let inner_cols = collect_inner_columns(engine, subq);
+    let mut uses = false;
+    if let Some(w) = subq.where_clause.as_ref() {
+        uses |= expr_uses_outer_ref(w, &inner_cols, engine);
+    }
+    for j in &subq.join_clause {
+        uses |= expr_uses_outer_ref(&j.on_clause, &inner_cols, engine);
+    }
+    uses
+}
 
-    /// All identifiers that legitimately resolve inside `subq`: the
-    /// FROM table's catalog columns (bare name, `|alias` suffix
-    /// stripped), the projection names, and each JOIN right table's
-    /// columns. Matching is case-insensitive.
-    fn collect_inner_columns<S: sqlrustgo_storage::StorageEngine + 'static>(
-        engine: &ExecutionEngine<S>,
-        subq: &sqlrustgo_parser::SelectStatement,
-    ) -> std::collections::HashSet<String> {
-        let mut cols: std::collections::HashSet<String> =
-            subq.columns.iter().map(|c| c.name.to_lowercase()).collect();
-        // JOIN right tables contribute their own columns too.
-        let mut tables: Vec<String> =
-            subq.join_clause.iter().map(|j| j.table.clone()).collect();
-        if !subq.table.is_empty() {
-            tables.push(subq.table.clone());
-        }
-        let storage = engine.storage.read();
-        for t in tables {
-            let bare = t.split_once('|').map(|(b, _)| b).unwrap_or(&t);
-            if bare.is_empty() {
-                continue;
-            }
-            if let Ok(info) = storage.get_table_info(bare) {
-                for c in &info.columns {
-                    cols.insert(c.name.to_lowercase());
-                }
-            }
-        }
-        cols
+/// All identifiers that legitimately resolve inside `subq`: the
+/// FROM table's catalog columns (bare name, `|alias` suffix
+/// stripped), the projection names, and each JOIN right table's
+/// columns. Matching is case-insensitive.
+fn collect_inner_columns<S: sqlrustgo_storage::StorageEngine + 'static>(
+    engine: &ExecutionEngine<S>,
+    subq: &sqlrustgo_parser::SelectStatement,
+) -> std::collections::HashSet<String> {
+    let mut cols: std::collections::HashSet<String> =
+        subq.columns.iter().map(|c| c.name.to_lowercase()).collect();
+    // JOIN right tables contribute their own columns too.
+    let mut tables: Vec<String> = subq.join_clause.iter().map(|j| j.table.clone()).collect();
+    if !subq.table.is_empty() {
+        tables.push(subq.table.clone());
     }
+    let storage = engine.storage.read();
+    for t in tables {
+        let bare = t.split_once('|').map(|(b, _)| b).unwrap_or(&t);
+        if bare.is_empty() {
+            continue;
+        }
+        if let Ok(info) = storage.get_table_info(bare) {
+            for c in &info.columns {
+                cols.insert(c.name.to_lowercase());
+            }
+        }
+    }
+    cols
+}
 
-    /// True if `expr` contains an Identifier (or nested subquery) that
-    /// does not resolve against `inner_cols`, i.e. references the
-    /// outer query row.
-    fn expr_uses_outer_ref<S: sqlrustgo_storage::StorageEngine + 'static>(
-        expr: &Expression,
-        inner_cols: &std::collections::HashSet<String>,
-        engine: &ExecutionEngine<S>,
-    ) -> bool {
-        match expr {
-            E::Identifier(name) => {
-                // Qualified refs (`t.col` / `alias.col`) resolve via
-                // the bare column part; bare refs resolve directly.
-                let bare = name.rsplit('.').next().unwrap_or(name);
-                !inner_cols.contains(&name.to_lowercase())
-                    && !inner_cols.contains(&bare.to_lowercase())
-            }
-            E::BinaryOp(l, _, r) => {
-                expr_uses_outer_ref(l, inner_cols, engine)
-                    || expr_uses_outer_ref(r, inner_cols, engine)
-            }
-            E::UnaryOp(_, inner) => expr_uses_outer_ref(inner, inner_cols, engine),
-            E::IsNull(inner) | E::IsNotNull(inner) => {
-                expr_uses_outer_ref(inner, inner_cols, engine)
-            }
-            E::InList(l, vs) | E::NotInList(l, vs) => {
-                expr_uses_outer_ref(l, inner_cols, engine)
-                    || vs
-                        .iter()
-                        .any(|v| expr_uses_outer_ref(v, inner_cols, engine))
-            }
-            E::In(l, sub) | E::NotIn(l, sub) => {
-                expr_uses_outer_ref(l, inner_cols, engine) || subq_uses_outer_ref(engine, sub)
-            }
-            E::Exists(sub) | E::NotExists(sub) => subq_uses_outer_ref(engine, sub),
-            E::Subquery(sub) => subq_uses_outer_ref(engine, sub),
-            E::Like(l, p, _) | E::NotLike(l, p, _) => {
-                expr_uses_outer_ref(l, inner_cols, engine)
-                    || expr_uses_outer_ref(p, inner_cols, engine)
-            }
-            E::Between(l, lo, hi) | E::NotBetween(l, lo, hi) => {
-                expr_uses_outer_ref(l, inner_cols, engine)
-                    || expr_uses_outer_ref(lo, inner_cols, engine)
-                    || expr_uses_outer_ref(hi, inner_cols, engine)
-            }
-            E::CaseWhen(whens, else_expr) => {
-                whens.iter().any(|when| {
-                    expr_uses_outer_ref(&when.condition, inner_cols, engine)
-                        || expr_uses_outer_ref(&when.result, inner_cols, engine)
-                }) || else_expr
-                    .as_ref()
-                    .is_some_and(|e| expr_uses_outer_ref(e, inner_cols, engine))
-            }
-            E::FunctionCall(_, args) => args
-                .iter()
-                .any(|a| expr_uses_outer_ref(a, inner_cols, engine)),
-            _ => false,
+/// True if `expr` contains an Identifier (or nested subquery) that
+/// does not resolve against `inner_cols`, i.e. references the
+/// outer query row.
+fn expr_uses_outer_ref<S: sqlrustgo_storage::StorageEngine + 'static>(
+    expr: &Expression,
+    inner_cols: &std::collections::HashSet<String>,
+    engine: &ExecutionEngine<S>,
+) -> bool {
+    match expr {
+        E::Identifier(name) => {
+            // Qualified refs (`t.col` / `alias.col`) resolve via
+            // the bare column part; bare refs resolve directly.
+            let bare = name.rsplit('.').next().unwrap_or(name);
+            !inner_cols.contains(&name.to_lowercase()) && !inner_cols.contains(&bare.to_lowercase())
         }
+        E::BinaryOp(l, _, r) => {
+            expr_uses_outer_ref(l, inner_cols, engine) || expr_uses_outer_ref(r, inner_cols, engine)
+        }
+        E::UnaryOp(_, inner) => expr_uses_outer_ref(inner, inner_cols, engine),
+        E::IsNull(inner) | E::IsNotNull(inner) => expr_uses_outer_ref(inner, inner_cols, engine),
+        E::InList(l, vs) | E::NotInList(l, vs) => {
+            expr_uses_outer_ref(l, inner_cols, engine)
+                || vs
+                    .iter()
+                    .any(|v| expr_uses_outer_ref(v, inner_cols, engine))
+        }
+        E::In(l, sub) | E::NotIn(l, sub) => {
+            expr_uses_outer_ref(l, inner_cols, engine) || subq_uses_outer_ref(engine, sub)
+        }
+        E::Exists(sub) | E::NotExists(sub) => subq_uses_outer_ref(engine, sub),
+        E::Subquery(sub) => subq_uses_outer_ref(engine, sub),
+        E::Like(l, p, _) | E::NotLike(l, p, _) => {
+            expr_uses_outer_ref(l, inner_cols, engine) || expr_uses_outer_ref(p, inner_cols, engine)
+        }
+        E::Between(l, lo, hi) | E::NotBetween(l, lo, hi) => {
+            expr_uses_outer_ref(l, inner_cols, engine)
+                || expr_uses_outer_ref(lo, inner_cols, engine)
+                || expr_uses_outer_ref(hi, inner_cols, engine)
+        }
+        E::CaseWhen(whens, else_expr) => {
+            whens.iter().any(|when| {
+                expr_uses_outer_ref(&when.condition, inner_cols, engine)
+                    || expr_uses_outer_ref(&when.result, inner_cols, engine)
+            }) || else_expr
+                .as_ref()
+                .is_some_and(|e| expr_uses_outer_ref(e, inner_cols, engine))
+        }
+        E::FunctionCall(_, args) => args
+            .iter()
+            .any(|a| expr_uses_outer_ref(a, inner_cols, engine)),
+        _ => false,
     }
+}
