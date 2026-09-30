@@ -817,6 +817,32 @@ impl StorageEngine for BoxStorageEngine {
         // no-op runs.
         (**self).gc(gc_lag)
     }
+
+    /// #4912 / v4.1.0-perf: explicit overrides of the default trait impls.
+    ///
+    /// The default `*_lockfree` impls in `engine.rs` return `Err`, which
+    /// forces callers onto the `set_current_tx_id` + `begin_transaction`
+    /// fallback that needs the global `Arc<RwLock<storage>>` **write**
+    /// lock. Without these overrides the type erasure through this
+    /// wrapper made the entire lock-free transaction path dead code:
+    /// `WalStorage` implements all three, but every server-created
+    /// storage is wrapped in `BoxStorageEngine`, so the `lockfree_ok`
+    /// probes in `execution_engine_methods.rs` (lines ~1513, ~1547,
+    /// ~1740) always observed `Err` and took the write-lock fallback on
+    /// every BEGIN / COMMIT / ROLLBACK — serialising all concurrent
+    /// readers. This is the same class of bug as the `scan_pk` override
+    /// above.
+    fn begin_transaction_lockfree(&self, tx_id: u64) -> SqlResult<()> {
+        (**self).begin_transaction_lockfree(tx_id)
+    }
+
+    fn commit_transaction_lockfree(&self) -> SqlResult<()> {
+        (**self).commit_transaction_lockfree()
+    }
+
+    fn rollback_transaction_lockfree(&self) -> SqlResult<()> {
+        (**self).rollback_transaction_lockfree()
+    }
 }
 
 #[cfg(test)]

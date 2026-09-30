@@ -150,6 +150,18 @@ license.workspace = true
 bin_storage_default = ["sqlrustgo-storage/bin_storage_default"]
 # V313.3 profiling experiments; mirrors sqlrustgo-storage/v313_3_profile.
 v313_3_profile = ["sqlrustgo-storage/v313_3_profile"]
+# #4913 / v4.1.0-perf: passthrough so the intra-query parallel executor can
+# actually be enabled from this crate. Without this entry the feature was
+# unreachable (`grep -rn 'parallel-executor' --include='*.toml' .` found only
+# the definition in crates/executor/Cargo.toml), so --executor-parallelism=N
+# silently degraded to serial execution: crates/executor/src/parallel_group_by.rs
+# and task_scheduler.rs compile their `cfg(not(feature = "parallel-executor"))`
+# serial branches. NOTE: `--all-features` on this crate did NOT enable it,
+# because --all-features only covers the current package's own features.
+parallel-executor = ["sqlrustgo-executor/parallel-executor"]
+# #4913 / v4.1.0-perf: GROUP BY debug trace (formerly the Q7_TRACE env var,
+# which was looked up per grouped query on the hot path).
+q7-trace = []
 
 [dependencies]
 sqlrustgo-common.workspace = true
@@ -928,6 +940,22 @@ path = "tests/integration/sql/repro_3282_orderby_desc_test.rs"
 [profile.test]
 opt-level = 0
 debug = 1
+
+# #4913 / v4.1.0-perf: this file previously defined no release profile at all,
+# so `cargo build --release` shipped with LTO disabled and the default
+# codegen-units = 16 — cross-crate hot paths (storage <-> executor <-> engine)
+# could not be inlined. `panic` is deliberately left at the default `unwind`
+# because the server relies on poisoning recovery / catch_unwind behaviour.
+[profile.release]
+lto = "fat"
+codegen-units = 1
+strip = "debuginfo"
+
+# Benches must measure an optimized build.
+[profile.bench]
+inherits = "release"
+lto = "thin"
+codegen-units = 1
 
 [[test]]
 name = "aggregate_type_test"

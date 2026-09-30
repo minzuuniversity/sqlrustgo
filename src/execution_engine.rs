@@ -215,6 +215,23 @@ impl<S: StorageEngine + 'static> ExecutionEngine<S> {
     fn base_with(storage: Arc<parking_lot::RwLock<S>>, cbo_enabled: bool) -> Self {
         // v3.10.0 Issue #3703: --executor-parallelism env var (default 1 = sequential)
         #[rustfmt::skip] let parallel_degree = std::env::var("SQLRUSTGO_EXECUTOR_PARALLELISM").ok().and_then(|s| s.parse::<usize>().ok()).filter(|n| *n >= 1).unwrap_or(1);
+        // #4913 / v4.1.0-perf: do not let a parallelism request degrade
+        // silently. The intra-query parallel implementations live behind
+        // `sqlrustgo-executor/parallel-executor`, which was never enabled
+        // by any manifest in this repo, so the executor compiles its
+        // serial `cfg(not(feature = "parallel-executor"))` branches. Users
+        // setting --executor-parallelism=N used to get a rayon pool plus
+        // serial execution with no signal at all.
+        #[cfg(not(feature = "parallel-executor"))]
+        if parallel_degree > 1 {
+            tracing::warn!(
+                "executor parallelism requested ({}), but this binary was built \
+                 without the `parallel-executor` feature: intra-query \
+                 scan/join/aggregate will run sequentially. Rebuild with \
+                 `--features parallel-executor` to enable it.",
+                parallel_degree
+            );
+        }
         // DeepSeek review (2026-07-11): explicit global rayon pool init
         // ensures the global pool's num_threads matches SQLRUSTGO_EXECUTOR_PARALLELISM,
         // not the physical-CPU default. build_global() is idempotent — safe to call

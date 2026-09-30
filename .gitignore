@@ -230,7 +230,19 @@ data/.DS_Store
 data/.sqlrustgo/
 
 # Release artifacts (local builds, not source)
-releases/
+# NOTE: anchored with a leading slash so it matches only the repo-root
+# `releases/` build-output dir. Without the anchor this pattern also
+# ignored every NEW file under docs/releases/ (1828 files there are
+# tracked, so the rule silently blocked new release documentation).
+/releases/
+
+# Runtime state from local SOAK runs (exposed once the releases/ rule
+# above was anchored to the repo root). Reports stay tracked; only
+# process/liveness artifacts are ignored.
+*.pid
+docs/releases/**/driver.stdout
+docs/releases/**/server.log
+docs/releases/**/driver.log
 
 # Evidence-binding output directory (regenerated each run)
 evidence_binding_out/

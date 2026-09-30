@@ -128,6 +128,35 @@ impl<W: WalManager + 'static> GroupCommitCoordinator<W> {
         }
     }
 
+    /// Build a coordinator around an already-shared `Arc<Mutex<W>>`.
+    ///
+    /// #4913 / v4.1.0-perf: `new` / `with_limits` take ownership of `W`
+    /// and allocate their own `Arc<Mutex<W>>`, which makes it impossible
+    /// for a storage engine to share the *same* WAL with the coordinator
+    /// (`ParallelWalStorage::new_with_shared_wal` takes the `Arc`
+    /// directly, and two independent `BufWriter`s over one WAL file would
+    /// interleave corruptly). Use this constructor when the caller
+    /// already owns the shared lock.
+    pub fn with_shared_inner(inner: Arc<Mutex<W>>, max_batch: usize, max_wait_us: u64) -> Self {
+        assert!(max_batch > 0, "max_batch must be > 0");
+        assert!(max_wait_us > 0, "max_wait_us must be > 0");
+        Self {
+            inner,
+            state: Mutex::new(CoordinatorState {
+                epoch: None,
+                started_at: None,
+            }),
+            cv: Condvar::new(),
+            max_batch,
+            max_wait_us,
+        }
+    }
+
+    /// Defaults variant of [`Self::with_shared_inner`] (32 / 1000µs).
+    pub fn new_with_shared_inner(inner: Arc<Mutex<W>>) -> Self {
+        Self::with_shared_inner(inner, 32, 1_000)
+    }
+
     /// Returns a clone of the wrapped `WalManager` lock, for callers that
     /// need exclusive access (e.g. for `append` or recovery). Note that
     /// group commit only coordinates `sync()`; `append` is still
