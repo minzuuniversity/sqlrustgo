@@ -759,6 +759,58 @@ impl FileStorage {
         Ok(())
     }
 
+    /// B2.1 / #4915 (F-09): delta-aware persist that takes an explicit
+    /// `total_rows`.
+    ///
+    /// `save_table` derives the total row count from
+    /// `table_data.rows.len()`. Callers that hand it a *window*
+    /// snapshot (only the rows appended since `last_saved`) must
+    /// therefore also pass the real table size, otherwise the
+    /// "did the table grow?" decision and the `last_saved_row_count`
+    /// bookkeeping would be computed against the window length.
+    fn save_table_window(
+        &self,
+        table_name: &str,
+        window: &TableData,
+        total_rows: usize,
+    ) -> std::io::Result<()> {
+        let last_saved = *self
+            .last_saved_row_count
+            .lock()
+            .unwrap()
+            .get(table_name)
+            .unwrap_or(&0);
+
+        if total_rows == 0 || last_saved == 0 || total_rows <= last_saved {
+            // Cold start, shrink, or a DELETE/UPDATE path: the caller
+            // handed us a window, not a snapshot, so re-derive the
+            // full table under the lock. Rare relative to inserts.
+            if let Some(data) = self.tables.get(table_name) {
+                return self.save_table_full(table_name, data);
+            }
+            return Ok(());
+        }
+
+        // Delta-only path: append just the window we were given.
+        self.append_table_delta(table_name, &window.rows)?;
+        self.last_saved_row_count
+            .lock()
+            .unwrap()
+            .insert(table_name.to_string(), total_rows);
+
+        // Periodic compaction: when the delta file exceeds the
+        // threshold, rewrite the base snapshot and clear the delta.
+        let delta_path = self.delta_path(table_name);
+        if let Ok(meta) = std::fs::metadata(&delta_path) {
+            if meta.len() > 10 * 1024 * 1024 {
+                if let Some(data) = self.tables.get(table_name) {
+                    let _ = self.save_table_full(table_name, data);
+                }
+            }
+        }
+        Ok(())
+    }
+
     /// V400-PERF-DELTA: write the full table JSON snapshot. Called by
     /// `save_table` on the first write, after a schema change, and
     /// when the delta file grows too large.
@@ -3207,9 +3259,17 @@ impl FileStorage {
                 if let Some(ref mut data) = s.tables.get_mut(table) {
                     start_row_id = data.rows.len() as u32;
                     data.rows.extend(records.iter().cloned());
-                    let table_data = data.clone();
                     let cols = data.info.columns.clone();
-                    if s.save_table(table, &table_data).is_ok() {
+                    // B2.1 / #4915 (F-09): the original code did
+                    // `let table_data = data.clone();` — a full copy of
+                    // every row in the table, per insert. The delta
+                    // path in `save_table` only reads
+                    // `rows[last_saved..]`, so hand it a snapshot that
+                    // contains just the appended window. Same JSON on
+                    // disk, O(row_count) instead of O(table_size).
+                    let total_rows = data.rows.len();
+                    let table_data = data.snapshot_from(start_row_id as usize);
+                    if s.save_table_window(table, &table_data, total_rows).is_ok() {
                         result = Some((cols, start_row_id, row_count));
                     }
                 }
@@ -3240,9 +3300,12 @@ impl FileStorage {
                         if let Some(ref mut data) = s.tables.get_mut(table) {
                             let start_row_id = data.rows.len();
                             data.rows.extend(records.iter().cloned());
-                            let table_data = data.clone();
                             let cols = data.info.columns.clone();
-                            if s.save_table(table, &table_data).is_ok() {
+                            // B2.1 / #4915 (F-09): same windowed
+                            // snapshot as `insert_direct`.
+                            let total_rows = data.rows.len();
+                            let table_data = data.snapshot_from(start_row_id);
+                            if s.save_table_window(table, &table_data, total_rows).is_ok() {
                                 result = Some((start_row_id, row_count, cols));
                             }
                         }
@@ -3277,9 +3340,12 @@ impl FileStorage {
                     if let Some(ref mut data) = s.tables.get_mut(table) {
                         let start_row_id = data.rows.len();
                         data.rows.extend(records);
-                        let table_data = data.clone();
                         let cols = data.info.columns.clone();
-                        if s.save_table(table, &table_data).is_ok() {
+                        // B2.1 / #4915 (F-09): same windowed
+                        // snapshot as `insert_direct`.
+                        let total_rows = data.rows.len();
+                        let table_data = data.snapshot_from(start_row_id);
+                        if s.save_table_window(table, &table_data, total_rows).is_ok() {
                             result = Some((start_row_id, row_count, cols));
                         }
                     }
