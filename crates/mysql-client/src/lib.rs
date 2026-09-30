@@ -618,14 +618,37 @@ pub fn parse_result_set(stream: &mut dyn Read, deprecate_eof: bool) -> MySqlResu
     let pkt = Packet::read_from(stream)?;
 
     // Check for error packet (first byte 0xff)
+    //
+    // MySQL wire-format ERR packet:
+    //   int<1>     0xff (header)
+    //   int<2>     error_code (LE)
+    //   if CLIENT_PROTOCOL_41 negotiated:
+    //     string<1> '#' (sql_state marker)
+    //     string<5> sql_state (e.g. "42000")
+    //   string<EOF> error_message (null-terminated)
+    //
+    // sqlrustgo's server emits the '#' marker (see
+    // crates/mysql-server/src/lib.rs::make_err_packet). The previous parser
+    // forgot to skip it, so sql_state ended up as "#4200" and error_message
+    // started with the trailing '0' of the sql_state ("0Execution error: ...").
+    // Issue #4847 / sub-bug: wire error message redundant "0" prefix.
     if !pkt.payload.is_empty() && pkt.payload[0] == 0xff {
         let error_code = u16::from_le_bytes([pkt.payload[1], pkt.payload[2]]);
-        let sql_state = if pkt.payload.len() > 5 {
-            String::from_utf8_lossy(&pkt.payload[3..8]).to_string()
+        let (sql_state, msg_start) = if pkt.payload.len() > 9 && pkt.payload[3] == 0x23 {
+            // CLIENT_PROTOCOL_41: 0x23 marker + 5-byte sql_state
+            (
+                String::from_utf8_lossy(&pkt.payload[4..9]).to_string(),
+                9,
+            )
+        } else if pkt.payload.len() > 8 {
+            // Legacy protocol (pre-4.1): no marker; sql_state is 5 bytes
+            (
+                String::from_utf8_lossy(&pkt.payload[3..8]).to_string(),
+                8,
+            )
         } else {
-            String::new()
+            (String::new(), 3)
         };
-        let msg_start = if pkt.payload.len() > 8 { 8 } else { 3 };
         let error_message = if msg_start < pkt.payload.len() {
             String::from_utf8_lossy(&pkt.payload[msg_start..]).to_string()
         } else {
@@ -637,7 +660,6 @@ pub fn parse_result_set(stream: &mut dyn Read, deprecate_eof: bool) -> MySqlResu
             error_message,
         });
     }
-
     // A response is OK (no result set) iff:
     //   - DEPRECATE_EOF=0: first byte is 0x00 (OK marker) and NOT a
     //     lenenc column count of 0 (0x00 is a valid lenenc int = 0 columns)
@@ -1535,12 +1557,17 @@ mod tests {
 
     #[test]
     fn test_parse_result_set_error_packet() {
-        // Error packet: 0xff + 2-byte error_code + sql_state (5 bytes) + message
+        // PROTOCOL_41 ERR packet:
+        //   0xff + 2-byte error_code + '#' (0x23) + 5-byte sql_state + message
+        //   The 0x23 marker is what the sqlrustgo server emits and what
+        //   standard MySQL 4.1+ servers emit. Skipping it is required so
+        //   the message doesn't start with the trailing '0' of the sql_state.
         use std::io::Write;
         let mut bytes = Vec::new();
         let payload = vec![
             0xff, // ERR marker
             0x04, 0x12, // error code = 0x0412 = 1042
+            0x23, // '#' sql_state marker (CLIENT_PROTOCOL_41)
             b'S', b'Q', b'L', b'S', b't', // sql_state "SQLSt"
             b'h', b'e', b'l', b'l', b'o', // message "hello"
         ];
@@ -1559,6 +1586,73 @@ mod tests {
                 assert_eq!(error_code, 0x1204); // LE bytes [0x04, 0x12] = 4612
                 assert_eq!(sql_state, "SQLSt");
                 assert_eq!(error_message, "hello");
+            }
+            other => panic!("expected Error, got {:?}", std::mem::discriminant(&other)),
+        }
+    }
+
+    #[test]
+    fn test_parse_result_set_error_packet_legacy_no_marker() {
+        // Legacy (pre-4.1) ERR packet: 0xff + 2-byte error_code + 5-byte sql_state + message.
+        // No '#' marker. Parser must accept this too.
+        use std::io::Write;
+        let mut bytes = Vec::new();
+        let payload = vec![
+            0xff, // ERR marker
+            0x04, 0x12, // error code = 0x0412 = 1042
+            b'S', b'Q', b'L', b'S', b't', // sql_state "SQLSt"
+            b'h', b'e', b'l', b'l', b'o', // message "hello"
+        ];
+        let len = payload.len() as u32;
+        bytes.write_all(&len.to_le_bytes()[0..3]).unwrap();
+        bytes.write_all(&[0x01]).unwrap();
+        bytes.write_all(&payload).unwrap();
+        let mut cur = Cursor::new(bytes);
+        let rs = parse_result_set(&mut cur, true).expect("parse error");
+        match rs {
+            ResultSet::Error {
+                error_code,
+                sql_state,
+                error_message,
+            } => {
+                assert_eq!(error_code, 0x1204);
+                assert_eq!(sql_state, "SQLSt");
+                assert_eq!(error_message, "hello");
+            }
+            other => panic!("expected Error, got {:?}", std::mem::discriminant(&other)),
+        }
+    }
+
+    #[test]
+    fn test_parse_result_set_error_packet_no_marker_with_5byte_state_starting_with_letter_0() {
+        // Regression test for Issue #4847 / wire-error "0" prefix bug:
+        // confirm a 5-byte sql_state ending in '0' followed by "Execution error: ..."
+        // parses to sql_state="42000", message="Execution error: ..." (no leading '0').
+        use std::io::Write;
+        let mut bytes = Vec::new();
+        let payload = vec![
+            0xff,
+            0x51, 0x04, // error code = 0x0451 = 1105 (ER_UNKNOWN_ERROR)
+            0x23, // '#'
+            b'4', b'2', b'0', b'0', b'0', // sql_state "42000"
+            b'E', b'x', b'e', b'c', b'u', b't', b'i', b'o', b'n',
+            b' ', b'e', b'r', b'r', b'o', b'r', b':', b' ', b'f', b'o', b'o',
+        ];
+        let len = payload.len() as u32;
+        bytes.write_all(&len.to_le_bytes()[0..3]).unwrap();
+        bytes.write_all(&[0x01]).unwrap();
+        bytes.write_all(&payload).unwrap();
+        let mut cur = Cursor::new(bytes);
+        let rs = parse_result_set(&mut cur, true).expect("parse error");
+        match rs {
+            ResultSet::Error {
+                error_code,
+                sql_state,
+                error_message,
+            } => {
+                assert_eq!(error_code, 1105);
+                assert_eq!(sql_state, "42000");
+                assert_eq!(error_message, "Execution error: foo");
             }
             other => panic!("expected Error, got {:?}", std::mem::discriminant(&other)),
         }
