@@ -944,30 +944,46 @@ impl FileStorage {
     /// Force save all dirty tables to disk
     /// V311-07: Only persist tables that have been modified since last flush
     pub fn flush(&self) -> std::io::Result<()> {
-        // B2.2 / #4915 (F-10): drain the dirty set *and* snapshot the
-        // affected tables under one short critical section, then do
-        // the I/O with the lock released.
+        // B2.2 / #4915 (F-10): drain the dirty set and take a *window*
+        // snapshot under one short critical section, then do the I/O
+        // with the lock released.
         //
         // Previously the whole loop ran inside `with_write_lock`, so a
-        // flush of a 500 MB table held the write lock across
-        // serialization plus `write()` — every concurrent reader
-        // blocked for the duration. The snapshot is a copy, so this
-        // is a deliberate trade: O(N) memory and one extra copy in
-        // exchange for not serializing all readers behind disk I/O.
-        let pending: Vec<(String, TableData)> = Self::with_write_lock(self.as_mut_self(), |s| {
-            // V311-07: Take dirty tables set, leaving empty set behind
-            std::mem::take(&mut s.dirty_tables)
-                .into_iter()
-                .filter_map(|name| s.tables.get(&name).map(|data| (name, data.clone())))
-                .collect()
-        });
+        // flush held the exclusive lock across serialization plus
+        // `write()` for every dirty table.
+        //
+        // An earlier version of this function snapshotted the whole
+        // `TableData` per dirty table. That removed the lock-hold but
+        // added an O(table_size) copy to every flush, and the
+        // `b2_flush_dirty_tables/5tables_*` benchmark measured it as a
+        // 0.86x regression — the copy cost more than the lock it saved.
+        // The window is what actually gets written: `save_table_window`
+        // needs only the rows appended since `last_saved` plus the true
+        // total, and it re-derives the full table itself on the rare
+        // cold-start / shrink / compaction branches.
+        let pending: Vec<(String, TableData, usize)> =
+            Self::with_write_lock(self.as_mut_self(), |s| {
+                std::mem::take(&mut s.dirty_tables)
+                    .into_iter()
+                    .filter_map(|name| {
+                        let data = s.tables.get(&name)?;
+                        let total = data.rows.len();
+                        let last_saved = *s
+                            .last_saved_row_count
+                            .lock()
+                            .unwrap()
+                            .get(&name)
+                            .unwrap_or(&0);
+                        let start = last_saved.min(total);
+                        Some((name, TableData::snapshot_from(data, start), total))
+                    })
+                    .collect()
+            });
 
-        // Lock released. `save_table` / `save_table_full` only touch
-        // `self.data_dir`, `self.last_saved_row_count` and the file
-        // system, none of which need the inner write lock, so the
-        // snapshot above is enough to persist.
-        for (name, data) in &pending {
-            self.save_table(name, data)?;
+        // Lock released. `save_table_window` / `save_table_full` only
+        // touch `data_dir`, `last_saved_row_count` and the filesystem.
+        for (name, window, total) in &pending {
+            self.save_table_window(name, window, *total)?;
         }
         Ok(())
     }
