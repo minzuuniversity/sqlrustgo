@@ -566,32 +566,44 @@ impl SqliteMode {
         }
     }
 
-    /// Shared per-statement dispatch: run `execute_sql`, print errors,
+    /// V312-77 / Issue #4847 Path A: strip a leading `-- comment\n` prefix
+    /// from a SQL fragment so that transaction-keyword detection works
+    /// even when a batch line comment precedes a BEGIN/COMMIT/ROLLBACK.
+    fn strip_leading_line_comment(s: &str) -> String {
+        let s = s.trim_start();
+        if let Some(rest) = s.strip_prefix("--") {
+            // Consume the rest of the line (everything up to first newline).
+            // If `--` is followed by more SQL on the same line, return that.
+            if let Some(after_newline) = rest.find('\n') {
+                rest[after_newline + 1..].to_string()
+            } else {
+                // Comment was the whole line; strip entirely.
+                String::new()
+            }
+        } else {
+            s.to_string()
+        }
+    }
+
     /// set `error_seen`. Caller decides whether to abort.
     fn dispatch_one(&mut self, sql: &str) {
-        // Issue #4847: detect BEGIN/COMMIT/ROLLBACK on **any** line of
-        // the statement, not just the first non-whitespace token. The
-        // input is a post-split logical statement which may contain a
-        // leading line comment that confuses `starts_with("BEGIN")`:
-        // e.g. `-- comment\nBEGIN;` is one logical statement but the
-        // first non-whitespace token is `--`, so the prior #4626
-        // workaround never fired and the engine's begin_transaction
-        // rejected with "Transaction already in progress".
-        //
-        // We split on `\n`, then check each line for a leading BEGIN/
-        // COMMIT/ROLLBACK token. The split keeps the first non-blank
-        // line as the "primary" line for engine dispatch; the per-line
-        // check here is purely for BEGIN/COMMIT/ROLLBACK detection.
-        let is_begin = sql.lines().any(|line| {
-            let t = line.trim_start().to_uppercase();
-            t.starts_with("BEGIN") || t.starts_with("START TRANSACTION")
-        });
-        let is_commit = sql
-            .lines()
-            .any(|line| line.trim_start().to_uppercase().starts_with("COMMIT"));
-        let is_rollback = sql
-            .lines()
-            .any(|line| line.trim_start().to_uppercase().starts_with("ROLLBACK"));
+         // V312-77 / Issue #4847 Path A: strip line comments before
+        // testing for transaction keywords. `split_sql_statements` joins
+        // all input lines and splits on `;`, but line comments are NOT
+        // stripped from the fragment — so `-- 注释行\nBEGIN` arrives here
+        // as a single fragment with leading comment text, and the
+        // `starts_with("BEGIN")` check fails. Without this, the #4626
+        // workaround (pre-COMMIT before explicit BEGIN at top-level)
+        // never fires, and a ROLLBACK in the same batch hits
+        // "transaction already aborted" (engine has no open tx) instead
+        // of undoing the INSERT. Strip the leading `--` comment so
+        // transaction keyword detection works correctly.
+        let stripped = Self::strip_leading_line_comment(sql);
+        let trimmed_upper = stripped.trim().to_uppercase();
+        let is_begin =
+            trimmed_upper.starts_with("BEGIN") || trimmed_upper.starts_with("START TRANSACTION");
+        let is_commit = trimmed_upper.starts_with("COMMIT");
+        let is_rollback = trimmed_upper.starts_with("ROLLBACK");
 
         // V312-RC-GA / Issue #4626: at top-level (tx_depth == 0), a prior
         // DML statement (INSERT/UPDATE/DELETE/SELECT-FOR-UPDATE) may have
