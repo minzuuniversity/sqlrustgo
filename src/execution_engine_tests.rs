@@ -1401,3 +1401,131 @@ fn test_v410_execute_select_is_usable_via_ref_engine() {
     assert!(engine_ref.is_cbo_enabled() || !engine_ref.is_cbo_enabled()); // tautology: type exercises the path
     let _ = engine_ref.parallel_degree();
 }
+
+// V4.1.0 / Issue #4910 §3.1 Phase 2 regression tests:
+// execute_read_only(&self, sql) is the new &self entry point that lets
+// the server hold engine.read() across concurrent SELECTs without the
+// engine-layer &mut serialisation.
+
+#[test]
+fn test_v410_execute_read_only_select_routes_via_ref_engine() {
+    let storage = Arc::new(RwLock::new(MemoryStorage::new()));
+    let mut engine = ExecutionEngine::new(storage);
+    engine
+        .execute("CREATE TABLE t_v410ro (id INTEGER, val INTEGER)")
+        .unwrap();
+    engine
+        .execute("INSERT INTO t_v410ro VALUES (1, 10), (2, 20)")
+        .unwrap();
+    let engine_ref: &ExecutionEngine<_> = &engine;
+    // SELECT goes through &self path. The compile-time &engine_ref borrow
+    // is the regression guard: if execute_read_only ever re-introduces
+    // &mut self, this test fails to compile.
+    let result = engine_ref
+        .execute_read_only("SELECT count(*) FROM t_v410ro")
+        .expect("SELECT via &engine");
+    assert_eq!(result.rows.len(), 1);
+}
+
+#[test]
+fn test_v410_execute_read_only_explain_show_describe_pragma_work() {
+    let storage = Arc::new(RwLock::new(MemoryStorage::new()));
+    let mut engine = ExecutionEngine::new(storage);
+    engine
+        .execute("CREATE TABLE t_v410ro (id INTEGER, val INTEGER)")
+        .unwrap();
+    engine
+        .execute("INSERT INTO t_v410ro VALUES (1, 10)")
+        .unwrap();
+    let engine_ref: &ExecutionEngine<_> = &engine;
+    // EXPLAIN: returns 1+ rows describing the plan
+    let explain = engine_ref
+        .execute_read_only("EXPLAIN SELECT * FROM t_v410ro")
+        .expect("EXPLAIN via &engine");
+    assert!(!explain.rows.is_empty());
+    // SHOW: returns engine-level info
+    let show = engine_ref
+        .execute_read_only("SHOW TABLES")
+        .expect("SHOW TABLES via &engine");
+    assert!(!show.rows.is_empty());
+    // DESCRIBE: returns column info
+    let describe = engine_ref
+        .execute_read_only("DESCRIBE t_v410ro")
+        .expect("DESCRIBE via &engine");
+    assert!(!describe.rows.is_empty());
+    // PRAGMA: SQLite-style introspection
+    let pragma = engine_ref
+        .execute_read_only("PRAGMA table_info(t_v410ro)")
+        .expect("PRAGMA via &engine");
+    assert!(!pragma.rows.is_empty());
+}
+
+#[test]
+fn test_v410_execute_read_only_rejects_mutating_statements() {
+    let storage = Arc::new(RwLock::new(MemoryStorage::new()));
+    let mut engine = ExecutionEngine::new(storage);
+    engine
+        .execute("CREATE TABLE t_v410ro (id INTEGER)")
+        .unwrap();
+    let engine_ref: &ExecutionEngine<_> = &engine;
+    // DDL, DML, and transaction statements must NOT be accepted on the
+    // &self read-only entry point. The caller must use execute_mut().
+    let ddl_err = engine_ref
+        .execute_read_only("DROP TABLE t_v410ro")
+        .expect_err("DROP TABLE must error on read-only path");
+    assert!(
+        ddl_err.to_string().contains("read-only"),
+        "expected 'read-only' in error, got: {}",
+        ddl_err
+    );
+    let dml_err = engine_ref
+        .execute_read_only("INSERT INTO t_v410ro VALUES (1)")
+        .expect_err("INSERT must error on read-only path");
+    assert!(dml_err.to_string().contains("read-only"));
+    let tx_err = engine_ref
+        .execute_read_only("BEGIN")
+        .expect_err("BEGIN must error on read-only path");
+    assert!(tx_err.to_string().contains("read-only"));
+}
+
+// V4.1.0 / Issue #4910 §3.1 Phase 2: end-to-end smoke that 4 concurrent threads
+// can issue SELECTs through the `&self` execute_read_only() path without
+// serialising on the engine &mut borrow. The compile-time &engine_ref
+// borrow is the §3.1 contract enforcement.
+
+#[test]
+fn test_v410_concurrent_selects_via_ref_engine() {
+    use std::sync::Arc;
+    use std::thread;
+    let storage = Arc::new(parking_lot::RwLock::new(MemoryStorage::new()));
+    let mut engine = ExecutionEngine::new(storage);
+    engine
+        .execute("CREATE TABLE t_v410c (id INTEGER PRIMARY KEY, val INTEGER)")
+        .unwrap();
+    for i in 0..1000 {
+        engine
+            .execute(&format!("INSERT INTO t_v410c VALUES ({}, {})", i, i))
+            .unwrap();
+    }
+    let engine = Arc::new(engine);
+    let barrier = Arc::new(std::sync::Barrier::new(4));
+    let handles: Vec<_> = (0..4)
+        .map(|_| {
+            let engine = Arc::clone(&engine);
+            let barrier = Arc::clone(&barrier);
+            thread::spawn(move || {
+                barrier.wait();
+                let engine_ref: &ExecutionEngine<_> = &engine;
+                for _ in 0..100 {
+                    let result = engine_ref
+                        .execute_read_only("SELECT count(*) FROM t_v410c")
+                        .expect("SELECT via &engine");
+                    assert_eq!(result.rows[0][0], crate::Value::Integer(1000));
+                }
+            })
+        })
+        .collect();
+    for h in handles {
+        h.join().expect("thread join");
+    }
+}
