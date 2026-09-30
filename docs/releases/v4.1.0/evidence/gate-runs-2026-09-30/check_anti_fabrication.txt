@@ -1,0 +1,36 @@
+RUN: 2026-09-30T14:15:21Z
+HEAD: e2355c068058a102ce4d12f3c11beae84962a974
+COMMAND: bash scripts/gate/check_anti_fabrication.sh
+---
+============================================
+Anti-Fabrication Policy Check (AFP) v4
+[INFO] CHECK 1: cargo build -p sqlrustgo-mysql-server (canonical binary)...
+[PASS] sqlrustgo-mysql-server: cargo check PASS
+
+[INFO] CHECK 1.5: V312-24 SQLancer + test-runner report artifacts...
+[PASS]   V312-24: target/sqlancer-report.json valid (iterations=1000)
+[PASS]   V312-24: target/test-runner-report.json valid (total_duration_ms=25)
+[PASS]   V312-24: both SQLancer + test-runner report artifacts present and valid
+
+[INFO] CHECK 2: cargo test --workspace --no-run (test compile only, fast)...
+[PASS] Test binaries compile PASS
+
+[INFO] CHECK 3: Gate report test counts vs actual cargo test compile output...
+[INFO] docs/releases/v3.8.0/alpha/ALPHA_GATE_REPORT.md: declares 10/10 PASS (test binaries: unknown)
+[INFO] docs/releases/v3.8.0/beta/BETA_GATE_REPORT.md: declares 15/15 PASS (test binaries: unknown)
+[INFO] docs/releases/v3.8.0/rc/RC_GA_GATE_REPORT.md: declares 5/5 PASS (test binaries: unknown)
+[INFO] docs/releases/v3.9.0/rc/RC1_GATE_REPORT.md: declares 4/4 PASS (test binaries: unknown)
+[INFO] docs/releases/v3.9.0/rc/RC2_GATE_REPORT.md: declares 4/4 PASS (test binaries: unknown)
+
+[INFO] CHECK 4: HEAD commit author must be a known AI/Human identity...
+[ERROR] HEAD author email: claude@macmini.dev (NOT in allowed list)
+
+[INFO] CHECK 5: Code examples in documentation (sanity scan)...
+[PASS] Scanned 422 markdown files in docs/releases + docs/governance
+
+============================================
+Results: ERRORS=1, WARNINGS=0
+============================================
+
+[FAIL] Anti-fabrication check (AFP v4): FAILED with 1 error(s)
+EXIT_CODE=1

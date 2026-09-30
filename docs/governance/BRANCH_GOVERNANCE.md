@@ -554,6 +554,59 @@ git push origin --delete <path1> <path2> ...
 |------|------|----------|------|
 | 2026-02-20 | v1.0 | 初始版本 | SQLRustGo 团队 |
 | 2026-06-12 | v1.1 | 新增 §12.0 2bdeleted 命名空间规范 (Sprint 5 v18 实施) | AI + Claude |
+| 2026-09-30 | v1.2 | 新增 §14 `main` 单向驱动与防分叉硬约束（依据 2026-09-30 main 分叉收敛） | AI + Claude |
+
+## 14. `main` 单向驱动与防分叉硬约束
+
+> 新增于 2026-09-30。起因：审计发现 `main` 与 `develop/v4.1.0` 严重分叉
+> （merge-base 2026-06-01；main 独有 16,657 提交、develop 独有 16,944；
+> main 缺少 develop 的全部 93 个实现文件）。成因是历史重写
+> （同 subject、不同 SHA 与 patch-id），非并行开发。
+> 详见 `docs/releases/v4.1.0/MAIN_DIVERGENCE_RESOLUTION_2026-09-30.md`。
+
+### 14.1 硬约束
+
+1. **`main` 由 `release/*` 单向驱动。** 禁止任何形式的直接向 `main` 提交
+   （commit / merge / rebase / cherry-pick 均不允许）。
+2. **`main` 必须在 5 个远端（gitea252 / gitea250 / gitee / github / gitcode）
+   保持逐字节一致。** `main` 不承载在途工作，任何跨远端差异都是缺陷。
+3. **`main` 与最新 `release/*` 分支不得双向分叉。**
+   仅"落后"可接受（由 `--max-behind` 阈值约束）；"领先"即说明有人把
+   开发线直接写进了 `main`，属违规。
+4. **收敛 `main` 必须先建双备份**：`backup/main-pre-convergence-YYYY-MM-DD`
+   分支 + `archive/main-pre-convergence-YYYY-MM-DD` annotated tag。
+5. **回退锚点**：`git push --force-with-lease <remote> \
+   archive/main-pre-convergence-YYYY-MM-DD:main`
+
+### 14.2 机器强制
+
+| 门禁 / 工具 | 强制内容 | 失败后果 |
+|---|---|---|
+| `scripts/gate/check_main_freshness.sh` | C-MAIN-01 五远端一致；C-MAIN-02 不得双向分叉；C-MAIN-03 落后不超阈值 | exit 1，阻断发布 |
+| `scripts/sync/5remotes_drift_check.sh` | `--strict-main`（默认开启）：`main` 零容忍，跨远端差异直接置 `MAIN: ERROR` 并 exit 1 | exit 1，cron 告警 |
+
+两个脚本均 **fail-closed**：无法解析目标 ref 时判 FAIL，绝不判 PASS
+（依据 `ANTI_FABRICATION_POLICY.md` §7.4 P16）。
+
+### 14.3 收敛受保护分支的操作顺序
+
+Gitea 的 `main` 与 `develop/*` 默认禁止 force-push，且 `develop/*` 往往是
+`enable_push: false` 的纯 PR 分支。已验证可行的顺序：
+
+1. 建双备份并**先把备份 tag 推到远端**（确保远端有回退点）
+2. 若可 SSH 到 Gitea 主机：优先用
+   `docker exec <container> git update-ref refs/heads/<branch> <sha>`
+   （绕过 pre-receive hook；对象需已在容器对象池内，否则先推临时 ref）
+3. 若不可 SSH：读取并保存 `branch_protections` 原配置 →
+   **临时** PATCH `enable_force_push`（以及 `enable_push`，若为纯 PR 分支）→
+   `git push --force-with-lease` → **立即 PATCH 还原原值** → 复核
+4. 清理临时 ref，重跑 `5remotes_drift_check.sh` 与
+   `check_main_freshness.sh` 确认全绿
+
+> ⚠️ 步骤 3 会短暂放宽分支保护。必须保证：① 原配置已存档；
+> ② 推送后立即还原；③ 还原后独立复核，不得假设成功。
+
+---
 
 ## 13. 结语
 

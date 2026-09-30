@@ -1,0 +1,7 @@
+RUN: 2026-09-30T14:15:28Z
+HEAD: e2355c068058a102ce4d12f3c11beae84962a974
+COMMAND: bash scripts/gate/check_anti_ignore_gate.sh
+---
+mavis-trash: moved to trash: '/tmp/anti_ignore_counts.txt'
+ignore_registry.json: total_allowed=125 (max=125), active=0 (max=47)
+EXIT_CODE=0
