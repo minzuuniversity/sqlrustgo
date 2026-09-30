@@ -636,16 +636,10 @@ pub fn parse_result_set(stream: &mut dyn Read, deprecate_eof: bool) -> MySqlResu
         let error_code = u16::from_le_bytes([pkt.payload[1], pkt.payload[2]]);
         let (sql_state, msg_start) = if pkt.payload.len() > 9 && pkt.payload[3] == 0x23 {
             // CLIENT_PROTOCOL_41: 0x23 marker + 5-byte sql_state
-            (
-                String::from_utf8_lossy(&pkt.payload[4..9]).to_string(),
-                9,
-            )
+            (String::from_utf8_lossy(&pkt.payload[4..9]).to_string(), 9)
         } else if pkt.payload.len() > 8 {
             // Legacy protocol (pre-4.1): no marker; sql_state is 5 bytes
-            (
-                String::from_utf8_lossy(&pkt.payload[3..8]).to_string(),
-                8,
-            )
+            (String::from_utf8_lossy(&pkt.payload[3..8]).to_string(), 8)
         } else {
             (String::new(), 3)
         };
@@ -1631,12 +1625,11 @@ mod tests {
         use std::io::Write;
         let mut bytes = Vec::new();
         let payload = vec![
-            0xff,
-            0x51, 0x04, // error code = 0x0451 = 1105 (ER_UNKNOWN_ERROR)
+            0xff, 0x51, 0x04, // error code = 0x0451 = 1105 (ER_UNKNOWN_ERROR)
             0x23, // '#'
             b'4', b'2', b'0', b'0', b'0', // sql_state "42000"
-            b'E', b'x', b'e', b'c', b'u', b't', b'i', b'o', b'n',
-            b' ', b'e', b'r', b'r', b'o', b'r', b':', b' ', b'f', b'o', b'o',
+            b'E', b'x', b'e', b'c', b'u', b't', b'i', b'o', b'n', b' ', b'e', b'r', b'r', b'o',
+            b'r', b':', b' ', b'f', b'o', b'o',
         ];
         let len = payload.len() as u32;
         bytes.write_all(&len.to_le_bytes()[0..3]).unwrap();
