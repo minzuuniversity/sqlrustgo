@@ -401,7 +401,11 @@ fn test_tx_lifecycle_double_commit_is_noop() {
     engine.execute("COMMIT").unwrap();
     // Double COMMIT → no-op (not panic).
     let result = engine.execute("COMMIT");
-    assert!(result.is_ok(), "second COMMIT must succeed as no-op, got {:?}", result);
+    assert!(
+        result.is_ok(),
+        "second COMMIT must succeed as no-op, got {:?}",
+        result
+    );
 }
 // ========================================================================
 // WAL CONTRACT TESTS (TASK_REGISTRY: WAL-003 ~ WAL-005)

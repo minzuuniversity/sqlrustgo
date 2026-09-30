@@ -4,12 +4,8 @@
 #![allow(unused_variables, unused_imports)]
 
 use parking_lot::RwLock;
-use sqlrustgo_optimizer::unified_cost::UnifiedCostModel;
-use std::collections::HashMap;
-use std::path::PathBuf;
-use std::sync::Arc;
-use std::sync::atomic::{AtomicBool, AtomicUsize};
 use sqlrustgo_catalog::Catalog;
+use sqlrustgo_optimizer::unified_cost::UnifiedCostModel;
 use sqlrustgo_storage::{
     adaptive_hash_index::AdaptiveHashIndex,
     mvcc_storage::MvccStorage,
@@ -18,6 +14,10 @@ use sqlrustgo_storage::{
     FileStorage, MemoryStorage, StorageEngine, WalStorage,
 };
 use sqlrustgo_transaction::{IsolationLevel as TmIsolationLevel, TransactionManager};
+use std::collections::HashMap;
+use std::path::PathBuf;
+use std::sync::atomic::{AtomicBool, AtomicUsize};
+use std::sync::Arc;
 
 use crate::execution_engine::{ExecutionEngine, ExecutionStats, TxStatus};
 use crate::{SqlError, SqlResult};

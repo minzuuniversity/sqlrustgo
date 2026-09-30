@@ -482,7 +482,7 @@ impl<S: StorageEngine + 'static> ExecutionEngine<S> {
         }
     }
 
-     /// CTE 物化: 将每个 CTE 子查询结果存入临时表，然后执行主查询
+    /// CTE 物化: 将每个 CTE 子查询结果存入临时表，然后执行主查询
     pub fn execute_with_select(
         &mut self,
         with: &sqlrustgo_parser::parser::WithSelect,

@@ -15,7 +15,6 @@ use crate::expr_utils::{
 };
 use crate::{parse, SqlError, SqlResult, Value};
 use parking_lot::RwLock;
-use std::sync::atomic::{AtomicBool, AtomicUsize, Ordering};
 use sqlrustgo_catalog::stored_proc::{ParamMode, StoredProcParam, StoredProcStatement};
 use sqlrustgo_catalog::{
     auth::UserIdentity, AuthErrorCode, Catalog, ObjectRef, Privilege, StoredProcedure,
@@ -73,6 +72,7 @@ use sqlrustgo_transaction::{IsolationLevel as TmIsolationLevel, TransactionManag
 use sqlrustgo_types::Value as SqlValue;
 use std::collections::HashMap;
 use std::path::PathBuf;
+use std::sync::atomic::{AtomicBool, AtomicUsize, Ordering};
 use std::sync::Arc;
 
 /// Execution engine for SQL statements

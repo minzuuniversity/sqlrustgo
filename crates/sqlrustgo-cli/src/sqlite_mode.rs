@@ -587,7 +587,7 @@ impl SqliteMode {
 
     /// set `error_seen`. Caller decides whether to abort.
     fn dispatch_one(&mut self, sql: &str) {
-         // V312-77 / Issue #4847 Path A: strip line comments before
+        // V312-77 / Issue #4847 Path A: strip line comments before
         // testing for transaction keywords. `split_sql_statements` joins
         // all input lines and splits on `;`, but line comments are NOT
         // stripped from the fragment — so `-- 注释行\nBEGIN` arrives here
