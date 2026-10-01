@@ -1,6 +1,8 @@
 //! Engine utilities - predicate evaluation, schema building, and constraint validation.
 //! Extracted from execution_engine.rs for modularity.
 
+use std::collections::HashSet;
+
 use sqlrustgo_parser::{AggregateCall, AggregateFunction, Expression, SelectStatement};
 use sqlrustgo_storage::{ColumnDefinition, SqlResult, StorageEngine, TableInfo, Value};
 use sqlrustgo_types::SqlError;
@@ -644,6 +646,249 @@ pub fn sql_compare(op: &str, left: &Value, right: &Value) -> bool {
             )
         }
         _ => false,
+    }
+}
+
+/// Variant bits used by [`InValueSet::variants`].
+const V_INT: u8 = 1 << 0;
+const V_FLOAT: u8 = 1 << 1;
+const V_TEXT: u8 = 1 << 2;
+const V_BOOL: u8 = 1 << 3;
+const V_BLOB: u8 = 1 << 4;
+const V_POINT: u8 = 1 << 5;
+const V_JSON: u8 = 1 << 6;
+
+/// Membership set for a large, all-literal IN-list.
+///
+/// Why this exists: `eval_predicate`'s `InList`/`NotInList` arms call
+/// `evaluate_expression` (→ `eval_literal_from_str`) on **every** list
+/// literal for **every** row, so a membership test is O(rows × N) with a
+/// string parse and allocation per step. `pre_evaluate_non_correlated_in_subquery`
+/// turns `col IN (SELECT ...)` into exactly such a list, which for
+/// TPC-H Q13-scale data means tens of thousands of literals. Measured on
+/// a 20 000-row table against a 2 500-value list: `NOT IN` cost 215 s and
+/// `IN` cost 82 s on top of a 7 s load.
+///
+/// This struct parses each literal once and answers membership in O(1).
+/// Comparison semantics mirror `compare_values` exactly — including its
+/// `_ => 0` catch-all, which makes every *incompatible* cross-type pair
+/// compare "equal":
+///
+/// - `Text` left: every non-null right value is coerced through the same
+///   `Integer/Float/Boolean → to_string()` path the `InList` arm uses, then
+///   string-compared. `Blob`/`Point`/`Json` are dropped (the arm coerces
+///   them to NULL and `continue`s).
+/// - other left: same-variant equality with `Integer`↔`Float` promoted to
+///   `f64`; and if any right value has a variant outside that compatible
+///   set, `compare_values` returns 0 for it → immediate match.
+/// - `Null` left never matches; null right values are skipped by `IN`
+///   (and are reported through [`InValueSet::has_null`] for `NOT IN`).
+#[derive(Debug, Clone, Default)]
+pub struct InValueSet {
+    /// String form of every right value the `Text`-left coercion keeps.
+    text_keys: HashSet<String>,
+    int_keys: HashSet<i64>,
+    /// `f64::to_bits()` so the set stays `Eq + Hash`.
+    float_keys: HashSet<u64>,
+    bool_keys: HashSet<bool>,
+    blob_keys: HashSet<Vec<u8>>,
+    /// `(x.to_bits(), y.to_bits())` pairs.
+    point_keys: HashSet<(u64, u64)>,
+    /// Serialised JSON.
+    json_keys: HashSet<String>,
+    /// Bitmask of the non-null right-hand variants present.
+    variants: u8,
+    /// A null right value was present. `NOT IN` must then yield FALSE.
+    has_null: bool,
+}
+
+impl InValueSet {
+    /// Fold an `IN` list's right-hand expressions into a set. Returns
+    /// `None` when any entry is not a plain `Literal` (a column
+    /// reference, function call, or nested subquery is row-dependent and
+    /// cannot be folded once), so the caller falls back to
+    /// `eval_predicate`'s linear scan.
+    pub fn from_literals(exprs: &[Expression], table_info: &TableInfo) -> Option<InValueSet> {
+        if !exprs.iter().all(|e| matches!(e, Expression::Literal(_))) {
+            return None;
+        }
+        let mut set = InValueSet::default();
+        for e in exprs {
+            // Literals never touch `row`, so an empty slice is safe.
+            let v =
+                crate::expr_utils::evaluate_expression(e, &[], table_info).unwrap_or(Value::Null);
+            set.insert(&v);
+        }
+        Some(set)
+    }
+
+    fn insert(&mut self, v: &Value) {
+        match v {
+            Value::Null => self.has_null = true,
+            Value::Integer(i) => {
+                self.variants |= V_INT;
+                self.int_keys.insert(*i);
+                self.text_keys.insert(i.to_string());
+            }
+            Value::Float(f) => {
+                self.variants |= V_FLOAT;
+                self.float_keys.insert(f.to_bits());
+                self.text_keys.insert(f.to_string());
+            }
+            Value::Text(s) => {
+                self.variants |= V_TEXT;
+                self.text_keys.insert(s.clone());
+            }
+            Value::Boolean(b) => {
+                self.variants |= V_BOOL;
+                self.bool_keys.insert(*b);
+                self.text_keys.insert(b.to_string());
+            }
+            Value::Blob(b) => {
+                self.variants |= V_BLOB;
+                self.blob_keys.insert(b.clone());
+            }
+            Value::Point(x, y) => {
+                self.variants |= V_POINT;
+                self.point_keys.insert((x.to_bits(), y.to_bits()));
+            }
+            Value::Json(j) => {
+                self.variants |= V_JSON;
+                self.json_keys.insert(j.to_string());
+            }
+        }
+    }
+
+    /// A null right value was present.
+    pub fn has_null(&self) -> bool {
+        self.has_null
+    }
+
+    /// Membership test matching the `Expression::InList` arm.
+    pub fn contains(&self, left: &Value) -> bool {
+        match left {
+            Value::Null => false,
+            Value::Text(s) => self.text_keys.contains(s),
+            Value::Integer(i) => {
+                if self.has_incompatible(V_INT) {
+                    return true;
+                }
+                if self.int_keys.contains(i) {
+                    return true;
+                }
+                let lf = *i as f64;
+                self.float_keys
+                    .iter()
+                    .any(|b| f64_cmp_zero(lf, f64::from_bits(*b)))
+            }
+            Value::Float(f) => {
+                if self.has_incompatible(V_FLOAT) {
+                    return true;
+                }
+                if self.float_keys.contains(&f.to_bits()) {
+                    return true;
+                }
+                self.int_keys.iter().any(|i| f64_cmp_zero(*f, *i as f64))
+            }
+            Value::Boolean(b) => {
+                if self.has_incompatible(V_BOOL) {
+                    return true;
+                }
+                self.bool_keys.contains(b)
+            }
+            Value::Blob(b) => {
+                if self.has_incompatible(V_BLOB) {
+                    return true;
+                }
+                self.blob_keys.contains(b)
+            }
+            Value::Point(x, y) => {
+                if self.has_incompatible(V_POINT) {
+                    return true;
+                }
+                self.point_keys.contains(&(x.to_bits(), y.to_bits()))
+            }
+            Value::Json(j) => {
+                if self.has_incompatible(V_JSON) {
+                    return true;
+                }
+                self.json_keys.contains(&j.to_string())
+            }
+        }
+    }
+
+    /// True when some right-hand value has a variant that
+    /// `compare_values` would send to its `_ => 0` catch-all against
+    /// `own` — i.e. a pair the comparator declares "equal".
+    fn has_incompatible(&self, own: u8) -> bool {
+        let compatible = match own {
+            V_INT | V_FLOAT => V_INT | V_FLOAT,
+            other => other,
+        };
+        self.variants & !compatible != 0
+    }
+}
+
+/// `true` when `compare_values`'s numeric arms would report equal.
+/// Its float arms are `if l < r { -1 } else if l > r { 1 } else { 0 }`,
+/// so an incomparable pair (NaN) also lands on "equal"; `partial_cmp`
+/// returning `None` reproduces that exactly.
+fn f64_cmp_zero(l: f64, r: f64) -> bool {
+    matches!(l.partial_cmp(&r), None | Some(std::cmp::Ordering::Equal))
+}
+
+/// Variant of [`eval_predicate`] that answers `InList`/`NotInList`
+/// membership from a pre-built [`InValueSet`] instead of re-parsing the
+/// literal list for every row.
+///
+/// `sets` is keyed by the address of the `InList`/`NotInList` node
+/// (`&Expression as *const _ as usize`) inside the tree being traversed.
+/// Callers must therefore keep the exact node alive and unmoved for the
+/// whole traversal; `engine_select`'s Step 1.6 binds the rewritten WHERE
+/// to a local and builds the map from that same binding.
+///
+/// Only `AND`/`OR` are mirrored from [`eval_predicate`] — their
+/// short-circuit semantics are identical, and they are the recursion
+/// points that lead to a rewritten membership node in practice. Every
+/// other node delegates, so behaviour is bit-for-bit unchanged wherever
+/// no set is registered (a node whose address is absent, e.g. because
+/// the tree was cloned, simply falls back to the linear scan).
+pub fn eval_predicate_with_in_sets(
+    expr: &Expression,
+    row: &[Value],
+    table_info: &TableInfo,
+    sets: &std::collections::HashMap<usize, InValueSet>,
+) -> bool {
+    use sqlrustgo_parser::Expression as E;
+    match expr {
+        E::BinaryOp(left, op, right) if op.eq_ignore_ascii_case("AND") => {
+            eval_predicate_with_in_sets(left, row, table_info, sets)
+                && eval_predicate_with_in_sets(right, row, table_info, sets)
+        }
+        E::BinaryOp(left, op, right) if op.eq_ignore_ascii_case("OR") => {
+            eval_predicate_with_in_sets(left, row, table_info, sets)
+                || eval_predicate_with_in_sets(right, row, table_info, sets)
+        }
+        E::InList(left, _) => match sets.get(&(expr as *const Expression as usize)) {
+            Some(set) => {
+                let left_val = crate::expr_utils::evaluate_expression(left, row, table_info)
+                    .unwrap_or(Value::Null);
+                set.contains(&left_val)
+            }
+            None => eval_predicate(expr, row, table_info),
+        },
+        E::NotInList(left, _) => match sets.get(&(expr as *const Expression as usize)) {
+            Some(set) => {
+                let left_val = crate::expr_utils::evaluate_expression(left, row, table_info)
+                    .unwrap_or(Value::Null);
+                if matches!(left_val, Value::Null) || set.has_null() {
+                    return false;
+                }
+                !set.contains(&left_val)
+            }
+            None => eval_predicate(expr, row, table_info),
+        },
+        _ => eval_predicate(expr, row, table_info),
     }
 }
 
