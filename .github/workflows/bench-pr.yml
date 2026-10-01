@@ -2,9 +2,9 @@ name: Benchmark PR
 
 on:
   pull_request:
-    branches: [develop/**]
+    branches: [develop/*]
   push:
-    branches: [develop/**]
+    branches: [develop/*]
 
 jobs:
   quick-benchmark:
@@ -22,33 +22,34 @@ jobs:
       - name: Cache cargo
         uses: Swatinem/rust-cache@v2
 
-      - name: Build bench-cli
+      # NOTE (2026-10-01): this job used to run
+      # `cargo build --release -p sqlrustgo-bench-cli`, but no package or binary
+      # with that name exists anywhere in the workspace. The bench crate is
+      # `sqlrustgo-bench` (crates/bench) and it is a *library* — it exposes
+      # `cli::BenchArgs` but declares no [[bin]] — so the
+      # `sqlrustgo-bench-cli tpch|oltp|custom` invocations could never have run.
+      # The real, buildable benchmarks are the criterion targets declared in the
+      # root Cargo.toml.
+      - name: Build criterion benchmarks
         run: |
           # Limit virtual memory to 8GB
           ulimit -v 8388608
-          cargo build --release -p sqlrustgo-bench-cli
+          cargo bench --no-run
 
-      - name: Create sample SQL file for custom benchmark
-        run: |
-          mkdir -p benchmarks/sql
-          echo "SELECT * FROM orders WHERE order_id = 1" > benchmarks/sql/sample.sql
-
-      - name: Run TPC-H SF=0.1
+      - name: Run criterion benchmarks
         run: |
           mkdir -p benchmarks/results/sf01
-          ./target/release/sqlrustgo-bench-cli tpch --scale 0.1 --iterations 3 --output benchmarks/results/sf01/tpch.json
+          for t in parser_bench bench_insert bench_cbo; do
+            cargo bench --bench "$t" 2>&1 | tee "benchmarks/results/sf01/${t}.txt"
+          done
 
-      - name: Run OLTP SF=0.1
-        run: |
-          ./target/release/sqlrustgo-bench-cli oltp --duration 10 --threads 1 --output benchmarks/results/sf01/oltp.json
-
-      - name: Run Custom SF=0.1
-        run: |
-          ./target/release/sqlrustgo-bench-cli custom --file benchmarks/sql/sample.sql --iterations 3 --output benchmarks/results/sf01/custom.json
-
-      - name: Compare with baseline
-        run: python scripts/compare_benchmarks.py benchmarks/baselines/sf01 benchmarks/results/sf01
-
+      # NOTE (2026-10-01): a `python scripts/compare_benchmarks.py
+      # benchmarks/baselines/sf01 benchmarks/results/sf01` step used to run
+      # here. That script loads *.json and exits 1 on a >20% regression, but
+      # `cargo bench` (criterion) emits text, so the step could only ever fail
+      # on a JSON decode error. There is no criterion-to-JSON converter in the
+      # repo. Until one exists, regressions must be read from the bench output
+      # (also captured in the artifact below) rather than gated automatically.
       - name: Upload results
         uses: actions/upload-artifact@v4
         with:
