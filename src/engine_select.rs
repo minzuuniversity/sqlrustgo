@@ -1792,7 +1792,18 @@ impl<S: StorageEngine + 'static> ExecutionEngine<S> {
                 let row_count = projected.len();
                 return Ok(ExecutorResult::new(projected, row_count));
             } else {
-                let mut groups: std::collections::HashMap<String, Vec<Vec<Value>>> =
+                // B1.1 / #4914 (F-07): group on structured `Value` keys instead
+                // of a NUL-joined string. The old shape stringified every
+                // grouping expression for every row, joined them, then
+                // re-parsed the string back into `Value` after aggregation.
+                // That cost O(grouping columns) allocations per row, cloned
+                // every row into the group, and — the correctness part —
+                // collapsed distinct types: `Value::Text("123")` and
+                // `Value::Integer(123)` produced the SAME key, and the
+                // re-parse guessed the type back with `parse::<i64>()`.
+                // `Value` already implements `Hash + Eq`
+                // (crates/types/src/value.rs). Groups now hold row INDICES.
+                let mut groups: std::collections::HashMap<Vec<Value>, Vec<usize>> =
                     std::collections::HashMap::new();
                 let _q7_trace = Q7_TRACE;
                 let mut _q7_keys_seen: std::collections::HashSet<String> =
@@ -1819,16 +1830,24 @@ impl<S: StorageEngine + 'static> ExecutionEngine<S> {
                         }
                     }
                 }
-                for row in &rows {
-                    let key = group_exprs
+                for (row_idx, row) in rows.iter().enumerate() {
+                    let key: Vec<Value> = group_exprs
                         .iter()
-                        .map(|expr| evaluate_expr_to_string(expr, row, &table_info))
-                        .collect::<Vec<_>>()
-                        .join("\x00");
-                    if _q7_trace && _q7_keys_seen.insert(key.clone()) {
-                        eprintln!("[Q7_TRACE] distinct key = {}", key);
+                        .map(|expr| {
+                            evaluate_expression(expr, row, &table_info).unwrap_or(Value::Null)
+                        })
+                        .collect();
+                    if _q7_trace {
+                        let rendered = key
+                            .iter()
+                            .map(|v| format!("{v:?}"))
+                            .collect::<Vec<_>>()
+                            .join("|");
+                        if _q7_keys_seen.insert(rendered.clone()) {
+                            eprintln!("[Q7_TRACE] distinct key = {}", rendered);
+                        }
                     }
-                    groups.entry(key).or_default().push(row.clone());
+                    groups.entry(key).or_default().push(row_idx);
                 }
                 if _q7_trace {
                     eprintln!("[Q7_TRACE] distinct groups = {}", groups.len());
@@ -1837,24 +1856,17 @@ impl<S: StorageEngine + 'static> ExecutionEngine<S> {
 
                 let mut agg_result_rows: Vec<Vec<Value>> = Vec::new();
 
-                for (key, group_rows) in groups.iter() {
-                    let key_values: Vec<Value> = key
-                        .split('\x00')
-                        .map(|s| {
-                            if s == "NULL" {
-                                Value::Null
-                            } else if let Ok(n) = s.parse::<i64>() {
-                                Value::Integer(n)
-                            } else if let Ok(f) = s.parse::<f64>() {
-                                Value::Float(f)
-                            } else {
-                                Value::Text(s.to_string())
-                            }
-                        })
-                        .collect();
+                for (key_values, group_indices) in groups.iter() {
+                    // `compute_aggregates` takes an owned slice, so this group's
+                    // rows are materialised here. Peak memory is the same as the
+                    // previous code (which kept an owned Vec per group for the
+                    // whole aggregation); what disappears is the per-row
+                    // stringify/parse round-trip and the type collapse.
+                    let group_rows: Vec<Vec<Value>> =
+                        group_indices.iter().map(|&i| rows[i].clone()).collect();
                     let agg_values =
-                        self.compute_aggregates(&select.aggregates, group_rows, &table_info)?;
-                    let mut combined = key_values;
+                        self.compute_aggregates(&select.aggregates, &group_rows, &table_info)?;
+                    let mut combined = key_values.clone();
                     combined.extend(agg_values);
                     // Issue #4491(a): append the per-table_info-column
                     // "first non-null" snapshot for this group so the
@@ -1862,14 +1874,22 @@ impl<S: StorageEngine + 'static> ExecutionEngine<S> {
                     // column is neither a GROUP BY expression nor an
                     // aggregate (e.g. `s.name` in `SELECT s.name,
                     // AVG(sc.final) FROM s JOIN sc ... GROUP BY sc.sid`).
+                    // #4914 / F-08 (partial): this used to call
+                    // `crate::engine_utils::find_column_index(&c.name, &table_info)`
+                    // for every column of every group — a linear
+                    // case-insensitive string scan that is O(columns) on top of
+                    // the O(columns) outer loop, i.e. O(columns^2) string
+                    // comparisons per group. But `c` *is*
+                    // `table_info.columns[i]`, so the index is `enumerate()`'s
+                    // `i` by construction; no lookup is needed at all.
                     let fd_per_col: Vec<Value> = table_info
                         .columns
                         .iter()
-                        .map(|c| {
-                            let idx = crate::engine_utils::find_column_index(&c.name, &table_info);
+                        .enumerate()
+                        .map(|(i, _c)| {
                             group_rows
                                 .iter()
-                                .filter_map(|row| idx.and_then(|i| row.get(i).cloned()))
+                                .filter_map(|row| row.get(i).cloned())
                                 .find(|v| !matches!(v, Value::Null))
                                 .unwrap_or(Value::Null)
                         })
