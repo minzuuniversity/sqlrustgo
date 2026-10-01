@@ -1534,3 +1534,59 @@ fn test_v410_concurrent_selects_via_ref_engine() {
         h.join().expect("thread join");
     }
 }
+
+// V4.1.0 / Issue #4910 §3.1 acceptance regression test (TPS measurement).
+//
+// Runs the 4-thread × 100-SELECTs concurrent SELECT workload via
+// `execute_read_only(&self, sql)` (the §3.1 path) and prints TPS to stdout.
+// This is the compile-time &self enforcement: if execute_read_only ever
+// re-introduces &mut self, this test fails to compile.
+//
+// To run with TPS output:
+//   cargo test --package sqlrustgo --lib test_v410_concurrent_tps -- --nocapture
+#[test]
+fn test_v410_concurrent_tps() {
+    use std::sync::Arc;
+    use std::thread;
+    use std::time::Instant;
+    const N_THREADS: usize = 4;
+    const N_PER_THREAD: usize = 100;
+
+    let storage = Arc::new(parking_lot::RwLock::new(MemoryStorage::new()));
+    let mut engine = ExecutionEngine::new(storage);
+    engine.execute("CREATE TABLE t_v410t (id INTEGER PRIMARY KEY, val INTEGER)").unwrap();
+    for i in 0..1000 {
+        engine.execute(&format!("INSERT INTO t_v410t VALUES ({}, {})", i, i)).unwrap();
+    }
+    let engine = Arc::new(engine);
+    let barrier = Arc::new(std::sync::Barrier::new(N_THREADS));
+    let start = Instant::now();
+    let handles: Vec<_> = (0..N_THREADS)
+        .map(|_| {
+            let engine = Arc::clone(&engine);
+            let barrier = Arc::clone(&barrier);
+            thread::spawn(move || {
+                barrier.wait();
+                let engine_ref: &ExecutionEngine<_> = &engine;
+                for _ in 0..N_PER_THREAD {
+                    let result = engine_ref
+                        .execute_read_only("SELECT count(*) FROM t_v410t")
+                        .expect("SELECT via &engine");
+                    assert_eq!(result.rows[0][0], crate::Value::Integer(1000));
+                }
+            })
+        })
+        .collect();
+    for h in handles {
+        h.join().expect("thread join");
+    }
+    let total = (N_THREADS * N_PER_THREAD) as f64;
+    let elapsed = start.elapsed();
+    let tps = total / elapsed.as_secs_f64();
+    println!(
+        "\n[v410 TPS] {} threads × {} SELECTs via execute_read_only(&self) in {:?} = {:.0} TPS",
+        N_THREADS, N_PER_THREAD, elapsed, tps
+    );
+    // Sanity: just verify it ran to completion (the assertions above already cover correctness).
+    assert!(tps > 0.0);
+}
