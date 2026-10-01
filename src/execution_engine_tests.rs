@@ -1554,9 +1554,13 @@ fn test_v410_concurrent_tps() {
 
     let storage = Arc::new(parking_lot::RwLock::new(MemoryStorage::new()));
     let mut engine = ExecutionEngine::new(storage);
-    engine.execute("CREATE TABLE t_v410t (id INTEGER PRIMARY KEY, val INTEGER)").unwrap();
+    engine
+        .execute("CREATE TABLE t_v410t (id INTEGER PRIMARY KEY, val INTEGER)")
+        .unwrap();
     for i in 0..1000 {
-        engine.execute(&format!("INSERT INTO t_v410t VALUES ({}, {})", i, i)).unwrap();
+        engine
+            .execute(&format!("INSERT INTO t_v410t VALUES ({}, {})", i, i))
+            .unwrap();
     }
     let engine = Arc::new(engine);
     let barrier = Arc::new(std::sync::Barrier::new(N_THREADS));
@@ -1589,4 +1593,111 @@ fn test_v410_concurrent_tps() {
     );
     // Sanity: just verify it ran to completion (the assertions above already cover correctness).
     assert!(tps > 0.0);
+}
+
+// ---------------------------------------------------------------------------
+// #4914 / B1.1 (F-07): GROUP BY group keys must be typed, not stringified.
+//
+// The previous implementation built each group key by stringifying every
+// grouping expression, joining with NUL, and re-parsing the string into
+// `Value` after aggregation (guessing the type with `parse::<i64>()`).
+// That collapsed distinct types: an INTEGER 123 and the TEXT '123' produced
+// the SAME key. These tests pin the typed behaviour.
+// ---------------------------------------------------------------------------
+
+/// Returns the GROUP BY result rows sorted by their first column's debug form,
+/// so the assertion does not depend on HashMap iteration order.
+fn sorted_group_rows(rows: &[Vec<crate::Value>]) -> Vec<String> {
+    let mut out: Vec<String> = rows
+        .iter()
+        .map(|r| {
+            r.iter()
+                .map(|v| format!("{v:?}"))
+                .collect::<Vec<_>>()
+                .join(",")
+        })
+        .collect();
+    out.sort();
+    out
+}
+
+#[test]
+fn test_v411_group_by_distinguishes_integer_and_text_key() {
+    let storage = Arc::new(RwLock::new(MemoryStorage::new()));
+    let mut engine = ExecutionEngine::new(storage);
+    engine
+        .execute("CREATE TABLE t_v411_key (k INTEGER, v INTEGER)")
+        .unwrap();
+    // Two keys that stringify identically: INTEGER 7 and TEXT '7'.
+    // (The column is declared INTEGER, but the engine is dynamically typed,
+    // so a TEXT value can live in it — which is exactly the case the old
+    // string key collapsed.)
+    engine
+        .execute("INSERT INTO t_v411_key VALUES (7, 1), ('7', 2)")
+        .unwrap();
+
+    let grouped = engine
+        .execute("SELECT k, count(*) FROM t_v411_key GROUP BY k")
+        .expect("GROUP BY k");
+
+    // Typed keys => two distinct groups. String keys => one group with 2 rows.
+    assert_eq!(
+        grouped.rows.len(),
+        2,
+        "INTEGER 7 and TEXT '7' must NOT collapse into one group; got {:?}",
+        sorted_group_rows(&grouped.rows)
+    );
+    assert_eq!(
+        sorted_group_rows(&grouped.rows),
+        vec!["Integer(7),Integer(1)", "Text(\"7\"),Integer(1)"],
+        "each group must report its own key type and its own count"
+    );
+}
+
+#[test]
+fn test_v411_group_by_key_values_keep_their_types() {
+    let storage = Arc::new(RwLock::new(MemoryStorage::new()));
+    let mut engine = ExecutionEngine::new(storage);
+    engine
+        .execute("CREATE TABLE t_v411_typ (k INTEGER, v INTEGER)")
+        .unwrap();
+    engine
+        .execute("INSERT INTO t_v411_typ VALUES (1, 10), (2, 20), (1, 30)")
+        .unwrap();
+
+    let grouped = engine
+        .execute("SELECT k, count(*) FROM t_v411_typ GROUP BY k")
+        .expect("GROUP BY k");
+
+    // The old re-parse turned every numeric-looking key into Integer, which
+    // happened to be right for integers but wrong for text and floats.
+    assert_eq!(
+        sorted_group_rows(&grouped.rows),
+        vec!["Integer(1),Integer(2)", "Integer(2),Integer(1)"],
+        "integer keys must stay Integer and be grouped by value"
+    );
+}
+
+#[test]
+fn test_v411_group_by_text_value_looking_numeric_stays_text() {
+    let storage = Arc::new(RwLock::new(MemoryStorage::new()));
+    let mut engine = ExecutionEngine::new(storage);
+    engine
+        .execute("CREATE TABLE t_v411_txt (k TEXT, v INTEGER)")
+        .unwrap();
+    engine
+        .execute("INSERT INTO t_v411_txt VALUES ('1', 100), ('01', 200)")
+        .unwrap();
+
+    let grouped = engine
+        .execute("SELECT k, count(*) FROM t_v411_txt GROUP BY k")
+        .expect("GROUP BY k");
+
+    // '1' and '01' are different text values. A stringify+parse round-trip
+    // would have turned both into Integer(1) and merged them.
+    assert_eq!(
+        sorted_group_rows(&grouped.rows),
+        vec!["Text(\"01\"),Integer(1)", "Text(\"1\"),Integer(1)"],
+        "distinct text keys must stay distinct after grouping"
+    );
 }

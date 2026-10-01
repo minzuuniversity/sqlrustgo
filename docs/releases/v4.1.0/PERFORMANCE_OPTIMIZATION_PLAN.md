@@ -494,8 +494,24 @@ A1 与 B2 的改动，无法归因。改用 B2 动工前的 `be665d6bc1` 为基�
 3 次稳定。**不复查就会把基准缺陷当成 B2.3 的回归写进结论。**
 
 **下一步**：
-- **sysbench 8 线程 `oltp_read_write` + `sample` 锁争用采样** — 这是
-  B2.2 唯一的证明手段。§10.9 已测的单线程数字只支持"没变慢"。
+- **B2.2 的并发证据已尝试补跑，结论是"拿不到"，原因是两个先于 B2 存在的
+  缺陷**（详见
+  [`PERF_B2_4915_AB_MEASUREMENT.md`](./PERF_B2_4915_AB_MEASUREMENT.md) §6）：
+  1. **无 auto-increment 分配器**——`expr/mod.rs:1466` 明确
+     "LAST_INSERT_ID() -> 0 (stateless; no AUTO_INCREMENT tracking)"，
+     id 靠扫 `MAX(id)` 推导，8 并发 INSERT 必撞主键，sysbench 所有含
+     INSERT 的负载在 HEAD 与 baseline 上同样中止；
+  2. **并发读写打死服务端**——绕开第 1 点后，两侧交替跑、每轮重启，
+     `qps=TIMEOUT state=WEDGED`，`sample` 显示全部线程卡死在
+     `WalStorage<...>::rollback_transaction_lockfree` 与
+     `RawRwLock::lock_{shared,exclusive}_slow`（#4910 系列，B2 未触碰）。
+
+  纯读（`oltp_point_select` 8 threads，各 8 次）是唯一跑得动的并发测量：
+  median 0.973x，区间大幅重叠，**与噪声不可区分**，且不经过 `flush()`，
+  对 B2.2 无诊断价值。
+
+  **因此 B2.2 维持"未证明"，不记为已完成也不记为失败。** 要拿到它的
+  并发收益，需先修上述两项，而非继续压测。
 - B1（#4914）尚未动工（F-07 GROUP BY `Vec<Value>` 键 / F-08 表达式绑定）
 - B2.5 / B2.6 需要各自的独立设计 PR
 - B2.4 的触发器 / 存储过程路径（`crates/executor/src/trigger.rs:833,932`、
@@ -533,3 +549,77 @@ A1 与 B2 的改动，无法归因。改用 B2 动工前的 `be665d6bc1` 为基�
 - 复核 `flush` 的 SQL 可达性：本次未找到从 SQL 到 `StorageEngine::flush` 的
   正常路径（`commit_transaction_lockfree` 不 flush、`commit_transaction_and_flush`
   与 `ExecutionEngine::flush` 均无调用者）
+
+### 10.11 Phase B1 (F-07) 实施记录（2026-10-01）
+
+**状态**：B1.1 + B1.2 完成；B1.3（F-08 完整绑定阶段）判定为独立设计 PR。
+
+#### B1.1 / B1.2 — GROUP BY 分组键去 String 化（完成）
+
+`src/engine_select.rs` 的 GROUP BY 从
+`HashMap<String, Vec<Vec<Value>>>`（键 = 各分组表达式 `evaluate_expr_to_string`
+后用 `\x00` join）改为 `HashMap<Vec<Value>, Vec<usize>>`（键 = 结构化 `Value`
+向量，值 = 行下标）。
+
+消除的三项代价：
+
+| 旧行为 | 新行为 |
+|---|---|
+| 每行 `O(分组列数)` 次 String 分配 + `join` 再分配一次 | 每行构造一个 `Vec<Value>`（值本身已在行里） |
+| 每组整行 `clone()` 进 `Vec<Vec<Value>>` | 只存 `usize` 行下标；聚合时按需物化该组 |
+| 聚合时 `key.split('\x00')` + `parse::<i64>/<f64>` **猜回类型** | 键就是原始类型，无需反解析 |
+
+**正确性修复（这才是重点）**：旧实现把 `Value::Text("123")` 与
+`Value::Integer(123)` 归入**同一个键**（都字符串化成 `"123"`），再用
+`parse::<i64>()` 猜回类型。同一列里混存 INTEGER 与 TEXT 时会静默合并分组。
+
+对旧实现复跑新增测试确认该缺陷真实存在：
+
+```
+$ cargo test -p sqlrustgo --all-features --lib v411_group_by   # 旧 String 键实现
+test execution_engine_tests::test_v411_group_by_distinguishes_integer_and_text_key ... FAILED
+test execution_engine_tests::test_v411_group_by_text_value_looking_numeric_stays_text ... FAILED
+assertion `left == right` failed: INTEGER 7 and TEXT '7' must NOT collapse into one group;
+  got ["Integer(7),Integer(2)"]
+test result: FAILED. 1 passed; 2 failed
+```
+
+即 `7` 与 `'7'` 确实被合并成一组（count=2）。修复后 3 个测试全通过。
+
+新增测试（`src/execution_engine_tests.rs`）：
+- `test_v411_group_by_distinguishes_integer_and_text_key`
+- `test_v411_group_by_key_values_keep_their_types`
+- `test_v411_group_by_text_value_looking_numeric_stays_text`（`'1'` vs `'01'`）
+
+#### B1.4 — GROUP BY 内 `fd_per_col` 的 O(columns²) 查找（完成）
+
+`fd_per_col` 原本对 `table_info.columns` 的每个 `c` 调用
+`find_column_index(&c.name, &table_info)` —— 一次大小写不敏感的线性字符串
+扫描，叠加在外层 O(columns) 循环上，构成**每组 O(columns²) 次字符串比较**。
+但 `c` 就是 `table_info.columns[i]`，下标即 `enumerate()` 的 `i`，查找本身
+是多余的。已改为直接用下标。
+
+#### B1.3 — F-08 完整绑定阶段（⏸ 独立设计 PR）
+
+暂不实施，理由：
+
+- `find_column_index` 在全仓有 **40 处调用点**；把 `Expression` 编译成带
+  slot 的绑定树会触及求值器、计划器与所有谓词路径，计划 §4 亦将其标为
+  「高风险（改动面大）」，要求单独 PR。
+- 缺少能保护该改动的基准：`benches/bench_aggregate.rs` 覆盖 GROUP BY 聚合，
+  但目标路径是**表达式求值**，目前没有覆盖 `find_column_index` 的基准
+  （`PERF_B2_4915_AB_MEASUREMENT.md` §2 已记录 `storage_benchmark` 曾长期
+  编译失败，说明基准面本身不完整）。
+- 在无基准保护的情况下做 40 点改动，无法证明收益也无法排除回归。
+
+**建议的下一步**：先补一个覆盖 `WHERE <col> = <lit>` 多列扫描的基准，
+再在绑定树上动刀。
+
+#### 验证
+
+```
+$ cargo test -p sqlrustgo --all-features --lib
+test result: ok. 156 passed; 0 failed     # 153 原有 + 3 新增
+$ cargo fmt --check --all                 # exit 0
+$ cargo clippy -p sqlrustgo --all-features  # 改动文件 0 告警
+```
