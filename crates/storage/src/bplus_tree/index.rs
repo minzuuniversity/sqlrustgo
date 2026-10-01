@@ -386,9 +386,149 @@ impl BTreeIndex {
             return;
         }
 
-        self.insert_into_node(self.metadata.root_page_id.unwrap(), key, value);
+        // F-15: propagate splits all the way up. `insert_rec` returns the
+        // separator key plus the freshly allocated right sibling whenever the
+        // node it descended into split.
+        let root_id = self.metadata.root_page_id.unwrap();
+        if let Some((split_key, right_id)) = self.insert_rec(root_id, key, value) {
+            // Root split: the tree grows one level. The new root holds the
+            // separator and the two halves as children.
+            let mut new_root = BTreeNode::new_internal();
+            new_root.keys.push(split_key);
+            new_root.children.push(root_id);
+            new_root.children.push(right_id);
+            new_root.num_keys = 1;
+            let new_root_id = self.allocate_node(new_root);
+            self.metadata.root_page_id = Some(new_root_id);
+            self.metadata.height += 1;
+        }
+
         self.metadata.num_entries += 1;
         self.dirty = true;
+    }
+
+    /// Recursive split-insert. Returns `Some((separator, new_right_id))` when
+    /// the node identified by `node_id` split as a result of this insert, in
+    /// which case the caller must absorb the separator and link the new node.
+    fn insert_rec(&mut self, node_id: u32, key: i64, value: u32) -> Option<(i64, u32)> {
+        let is_leaf = self.nodes[node_id as usize]
+            .as_ref()
+            .map(|n| n.is_leaf)
+            .unwrap_or(true);
+
+        if is_leaf {
+            {
+                let node = self.nodes[node_id as usize].as_mut()?;
+                let pos = match node.keys.binary_search(&key) {
+                    Ok(i) => i,
+                    Err(i) => i,
+                };
+                node.keys.insert(pos, key);
+                node.values.insert(pos, value);
+                node.num_keys = node.keys.len() as u16;
+            }
+            return self.split_if_full(node_id);
+        }
+
+        // Internal node: descend, then absorb a child split if there was one.
+        let child_idx = {
+            let node = self.nodes[node_id as usize].as_ref()?;
+            node.find_child_index(key)
+        };
+        let child_id = {
+            let node = self.nodes[node_id as usize].as_ref()?;
+            *node.children.get(child_idx)?
+        };
+
+        let child_split = self.insert_rec(child_id, key, value);
+
+        if let Some((sep, right_child)) = child_split {
+            let node = self.nodes[node_id as usize].as_mut()?;
+            let at = match node.keys.binary_search(&sep) {
+                Ok(i) => i,
+                Err(i) => i,
+            };
+            node.keys.insert(at, sep);
+            node.children.insert(at + 1, right_child);
+            node.num_keys = node.keys.len() as u16;
+        }
+        self.split_if_full(node_id)
+    }
+
+    /// Split `node` in two if it is full. Returns `Some((separator, new_right))`
+    /// when a split happened. Handles both leaf and internal nodes: an internal
+    /// split keeps `keys.len() + 1 == children.len()`.
+    fn split_if_full(&mut self, node_id: u32) -> Option<(i64, u32)> {
+        // The node STAYS in `self.nodes` for the whole split. An earlier
+        // version `take()`n it out, split the detached copy, then wrote it
+        // back — which silently discarded the `next_leaf` update that
+        // `link_after_leaf` had made on the in-place copy, breaking the leaf
+        // chain (range scans then only saw the first leaf).
+        let is_full = self.nodes[node_id as usize].as_ref()?.is_full();
+        if !is_full {
+            return None;
+        }
+        let node = self.nodes[node_id as usize].as_mut()?;
+        let total = node.keys.len();
+        let right_start = total / 2;
+
+        let was_leaf = node.is_leaf;
+        let mut right = if was_leaf {
+            BTreeNode::new_leaf()
+        } else {
+            BTreeNode::new_internal()
+        };
+
+        // The separator is lifted into the parent. For a leaf it STAYS as the
+        // first key of the right leaf (so it is stored exactly once overall and
+        // `find_key_index` / `find_all_values` / `range_query_leaf` can still
+        // see it); the left leaf does not keep it. An earlier version popped the
+        // separator off the left node *after* `split_off`, which deleted the
+        // largest left key and made it unreachable (key 30 in a 0..=62 node).
+        let separator = node.keys[right_start];
+        if was_leaf {
+            right.keys = node.keys.split_off(right_start);
+            right.values = node.values.split_off(right_start);
+        } else {
+            right.keys = node.keys.split_off(right_start + 1);
+            node.keys.truncate(right_start);
+            // children[right_start] is the separator's left child, so it stays
+            // with the left node and the right node takes children[right_start..].
+            right.children = node.children.split_off(right_start);
+        }
+
+        node.num_keys = node.keys.len() as u16;
+        right.num_keys = right.keys.len() as u16;
+        // End the mutable borrow of `self.nodes` before allocating the sibling.
+        let _ = node;
+
+        let right_id = self.allocate_node(right);
+        if was_leaf {
+            // The new right sibling goes directly after the node that split —
+            // NOT after that node's old `next_leaf`. `node_id` is threaded in
+            // from the caller: an earlier version tried to recover it with
+            // `std::ptr::eq` after the node had been `take()`n out of
+            // `self.nodes`, so the lookup always failed and the fallback
+            // (`link_after_leaf(0, ..)`) silently corrupted the leaf chain.
+            self.link_after_leaf(node_id, right_id);
+        }
+        Some((separator, right_id))
+    }
+
+    /// Splice `new_node_id` into the leaf chain immediately after `prev_id`.
+    fn link_after_leaf(&mut self, prev_id: u32, new_node_id: u32) {
+        if prev_id == new_node_id {
+            return;
+        }
+        let prev_next = self.nodes[prev_id as usize]
+            .as_ref()
+            .and_then(|p| p.next_leaf);
+        if let Some(p) = self.nodes[prev_id as usize].as_mut() {
+            p.next_leaf = Some(new_node_id);
+        }
+        if let Some(n) = self.nodes[new_node_id as usize].as_mut() {
+            n.next_leaf = prev_next;
+        }
     }
 
     /// Insert a key-value pair into a unique index
@@ -512,20 +652,6 @@ impl BTreeIndex {
         let id = self.nodes.len() as u32;
         self.nodes.push(Some(node));
         id
-    }
-
-    fn insert_into_node(&mut self, node_id: u32, key: i64, value: u32) {
-        if let Some(ref mut node) = self.nodes[node_id as usize] {
-            if node.is_leaf {
-                node.insert_key_value(key, value);
-            } else {
-                let child_idx = node.find_child_index(key);
-                if child_idx < node.children.len() {
-                    let child_id = node.children[child_idx];
-                    self.insert_into_node(child_id, key, value);
-                }
-            }
-        }
     }
 
     pub fn search(&self, key: i64) -> Option<u32> {
@@ -1285,6 +1411,85 @@ impl FullTextIndex {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    // =====================================================================
+    // F-15 / #4915 follow-up: the B+ tree used to lose keys once a node
+    // filled up. `insert_into_node` called `node.insert_key_value(key, value)`
+    // and DISCARDED the returned `Some((split_key, new_node))`, so the right
+    // half of a split node was never registered in `self.nodes` and became
+    // unreachable. `insert` also only ever created a leaf root and never an
+    // internal node, so the tree could not grow past one leaf.
+    //
+    // These tests insert well past MAX_KEYS_PER_NODE (63) and assert that
+    // every key is still findable, plus that range scans still see everything
+    // through the leaf chain.
+    // =====================================================================
+
+    #[test]
+    fn test_btree_survives_multiple_node_splits() {
+        let mut tree = BTreeIndex::new();
+        // 500 keys => 8+ leaves once splits work; a single unsplit leaf holds 63.
+        let n: i64 = 500;
+        for k in 0..n {
+            tree.insert(k, k as u32);
+        }
+
+        // Every key must be findable. Before the fix, keys past the first
+        // node's capacity silently vanished.
+        let missing: Vec<i64> = (0..n).filter(|&k| tree.search(k).is_none()).collect();
+        assert!(
+            missing.is_empty(),
+            "{} of {} keys are unreachable after splits (first missing: {:?})",
+            missing.len(),
+            n,
+            missing.first()
+        );
+        for k in 0..n {
+            assert_eq!(tree.search(k), Some(k as u32), "key {k} mapped wrong");
+        }
+
+        assert_eq!(tree.len(), n as u64, "entry count must count all inserts");
+        assert!(
+            tree.height() >= 2,
+            "after {n} inserts the tree must be taller than one leaf, got height {}",
+            tree.height()
+        );
+    }
+
+    #[test]
+    fn test_btree_range_query_sees_all_splits() {
+        let mut tree = BTreeIndex::new();
+        let n: i64 = 300;
+        for k in 0..n {
+            tree.insert(k, k as u32);
+        }
+        // `range_query(start, end)` treats `end` as EXCLUSIVE, so cover the
+        // whole key space with `n` rather than `n - 1`.
+        let mut got = tree.range_query(0, n);
+        got.sort_unstable();
+        let expected: Vec<u32> = (0..n as u32).collect();
+        assert_eq!(
+            got, expected,
+            "range scan must traverse every leaf produced by splits"
+        );
+    }
+
+    #[test]
+    fn test_btree_split_then_search_boundary_keys() {
+        let mut tree = BTreeIndex::new();
+        // Exactly around the split boundary: 63 fits, 64 forces a split.
+        for k in 0..200i64 {
+            tree.insert(k, (k * 2) as u32);
+        }
+        // Boundary neighbourhoods are where a mis-linked split shows up first.
+        for k in [0i64, 1, 30, 31, 32, 62, 63, 64, 65, 126, 127, 128, 199] {
+            assert_eq!(
+                tree.search(k),
+                Some((k * 2) as u32),
+                "boundary key {k} lost or mis-mapped across a split"
+            );
+        }
+    }
 
     #[test]
     fn test_btree_index_new() {
