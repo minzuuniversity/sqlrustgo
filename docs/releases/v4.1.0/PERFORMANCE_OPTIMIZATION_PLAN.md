@@ -502,3 +502,34 @@ A1 与 B2 的改动，无法归因。改用 B2 动工前的 `be665d6bc1` 为基�
   `stored_proc.rs`）本次未动，属 B2.4 的剩余部分
 - §6 表格里的 `cargo build --release` 耗时 / 二进制大小、clippy、
   TPC-H 三项本次未按协议逐条执行
+
+### 10.10 Phase B2.2 并发证据补测（2026-10-01，取代 §10.9 的"未跑"）
+
+§10.9 与 `PERF_B2_4915_AB_MEASUREMENT.md` §6 都把「sysbench 8 线程 + `sample`
+锁争用」列为 B2.2 的唯一证明手段。本次未跑 sysbench，而是直接对存储层做
+并发读延迟 A/B（更易归因）。完整报告见
+[`PERF_B22_CONCURRENT_MEASUREMENT.md`](./PERF_B22_CONCURRENT_MEASUREMENT.md)。
+
+**结论是机制性的，且对 B2.2 不利**：
+
+1. **B2.2 修改的方法没有生产调用者。** `FileStorage` 有两个 `flush`：
+   inherent `pub fn flush(&self)`（`:946`，**B2.2 改的就是它**）与 trait 覆写
+   `fn flush(&mut self)`（`:4293`，**实际被调用的那个**）。实测证据：在 inherent
+   入口插桩后标记一次未打印，而在 `MvccStorage::flush` 插桩打印 21 次。
+2. **活路径本来就已把 I/O 放在锁外**（trait 覆写只把 dirty 名字在锁内 drain）。
+   所以 B2.2 想消除的「持锁期间做磁盘 I/O」在可达路径上不存在。
+3. **实测与推论一致**：并发读延迟 6 次运行两侧区间重叠；flush 墙钟
+   before 7.273 ms vs after 7.146 ms（各 10 次，0.982x，中性）。
+4. **过程更正**：首轮仅 3 次采样得到 0.76x、一度看似回归；样本提到 10 次后
+   差异消失。**3 次采样不足以判定本项。**
+
+**顺带发现（未修）**：trait 覆写 `:4293` 里仍留着
+`self.tables.get(&name).cloned()` 的**整表 clone**——正是 §4 把 B2.2 首版判为
+0.86x 回归的同一模式，且在活路径上。真正的优化点在这里，不在 B2.2 改的那处。
+
+**下一步（新增）**：
+- 在 #4915 中把 B2.2 标注为「机制性 no-op（针对活路径）」而非「收益未证明」
+- 对 trait 覆写 `:4293` 应用同一套 `snapshot_from` + `save_table_window` 改造
+- 复核 `flush` 的 SQL 可达性：本次未找到从 SQL 到 `StorageEngine::flush` 的
+  正常路径（`commit_transaction_lockfree` 不 flush、`commit_transaction_and_flush`
+  与 `ExecutionEngine::flush` 均无调用者）
