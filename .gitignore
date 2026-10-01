@@ -348,7 +348,7 @@ evidence_binding_out/
 contract/
 extensions/
 archive/v3.11/archived-crates/graph/benchmark_results/
-releases/
+/releases/  # anchored duplicate of line 122; was unanchored `releases/` which silently ignored every NEW file under docs/releases/ (bug fixed 2026-10-01)
 renovate.json
 testdata/
 queries/expected/

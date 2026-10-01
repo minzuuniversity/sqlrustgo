@@ -1,13 +1,22 @@
 # SQLRustGo
 
 > **当前开发线**: `develop/v4.1.0`
-> **当前开发版**: v4.1.0（ALPHA，tag `v4.1.0-alpha1`）
-> **最近发布**: **v4.0.0 GA**（2026-09-19，tag `v4.0.0-final` @ `54571eeca0`；CONDITIONAL PASS）
-> **可信状态入口**: [docs/releases/v4.0.0/GA_GATE_REPORT.md](docs/releases/v4.0.0/GA_GATE_REPORT.md)
-> **变更日志**: [docs/releases/v4.0.0/CHANGELOG.md](docs/releases/v4.0.0/CHANGELOG.md)
+> **当前开发版**: v4.1.0（**DRAFT**，NOT YET ALPHA — per `docs/releases/v4.1.0/STAGE.yaml`）
+> **最近发布**: **v4.0.0 GA 已被撤销**（verdict: REVOKED, 2026-09-30 — 覆盖率 78.28% < GA
+> 门槛 85%；详见 `docs/releases/v4.0.0/GA_RELEASE_TIMELINE.md`）
+> **可信状态入口**:
+> - v4.0.0 GA 撤销: [docs/releases/v4.0.0/GA_RELEASE_TIMELINE.md](docs/releases/v4.0.0/GA_RELEASE_TIMELINE.md)
+> - v4.0.0 GA 原始报告（已标 REVOKED 块）: [docs/releases/v4.0.0/GA_GATE_REPORT.md](docs/releases/v4.0.0/GA_GATE_REPORT.md)
+> - v4.1.0 当前状态: [docs/releases/v4.1.0/STAGE.yaml](docs/releases/v4.1.0/STAGE.yaml)
+> - **v4.1.0 缺陷目录（新）**: [docs/releases/v4.1.0/DEFECTS_AND_ISSUES.md](docs/releases/v4.1.0/DEFECTS_AND_ISSUES.md)
+> **变更日志**: [docs/releases/v4.1.0/CHANGELOG.md](docs/releases/v4.1.0/CHANGELOG.md)
 >
-> 注：根 `Cargo.toml` 的 `version` 仍为 `3.12.0-fix-zombie`，三个 remote 一致，属
-> 有意保留的现状（发布口径以 tag / GA_GATE_REPORT 为准），未随文档口径一并改动。
+> 注：根 `Cargo.toml` 的 `version` 仍为 `3.12.0-fix-zombie`，五个 remote 一致，属
+> 有意保留的现状（发布口径以 tag / STAGE.yaml 为准），未随文档口径一并改动。
+>
+> ⚠️ **声明基线修正（2026-09-30）**：本 README §1 §8 §11 内容仍基于 v3.12.0 GA 视角，
+> v4.0.0 GA 撤销与 v4.1.0 DRAFT 状态的全面统一尚未完成。**当前最权威入口是上面 4 个
+> 链接**——以避免依赖过期的"GA 72/72 PASS"等表述。
 
 ---
 
@@ -29,9 +38,32 @@ SQLRustGo 是一个用 Rust 实现的 SQL 数据库项目，包含 MySQL 风格�
 
 ---
 
-## 1. 当前状态（2026-09-08）
+## 1. 当前状态（2026-10-01 更新）
 
-### GA 门禁状态
+### v4.0.0 GA — **已撤销**（2026-09-30）
+
+| 项 | 状态 |
+|---|---|
+| v4.0.0-final tag (`54571eeca0`) | 保留作审计轨迹；GA 判定**作废** |
+| `release/v4.0.0` 分支 | 保留 |
+| main (5 远端一致 `1f62d46f06`) | 由 `release/v4.0.0` 单向驱动 |
+| 撤销理由 | 自述覆盖率 78.28% < GA 门槛 85% (per `STAGE_CONFIG.yaml`)；CLAIM_DOWNGRADE_MANIFEST §2 WP-A "✅ DONE" 无证据；3 继承 gate 失败未实跑 |
+| 5 条阻塞事实 | 见 [v4.0.0/STAGE.yaml `ga_promotion_status`](docs/releases/v4.0.0/STAGE.yaml) |
+| 修复路径选项 | 见 [v4.0.0/GA_RELEASE_TIMELINE.md](docs/releases/v4.0.0/GA_RELEASE_TIMELINE.md) |
+
+### v4.1.0 — **DRAFT**（NOT YET ALPHA）
+
+| 项 | 状态 |
+|---|---|
+| `develop/v4.1.0` HEAD | `3d503b5ab092`（5 远端中 gitea250/gitee 领先 15 commit，github 滞后 34） |
+| `v4.1.0-alpha1` tag | 已存在（指向 `c1a73a5320`）；保留作审计轨迹，**不作 ALPHA 凭据** |
+| 缺陷目录 | **P0×6 + P1×7 + P2×7** — 见 [DEFECTS_AND_ISSUES.md](docs/releases/v4.1.0/DEFECTS_AND_ISSUES.md) |
+| Backlog | 24 条（WP-A 4 + WP-C 6 + WP-D 4 + WP-F 1 + WP-G 1 + WP-B 6 + WP-E 1 + WP-H 1） |
+| Parser 覆盖率 | 实测 **60.58%**（目标 80%，缺 19.42pp） |
+| 5-remote 漂移 | ⚠️ 详见 P0-04 |
+| 阶段推进条件 | DRAFT → ALPHA 需修完 P0 + 大部分 P1，并实跑全部 gate 出绿 + 写明 STAGE_CONFIG 流程 |
+
+### v3.12.0 GA 历史（供追溯）— **CONDITIONAL PASS**（72/72 gates）保留
 
 | Gate | 状态 |
 |------|------|
@@ -46,7 +78,7 @@ SQLRustGo 是一个用 Rust 实现的 SQL 数据库项目，包含 MySQL 风格�
 - mode: `full`
 - blockers: 0
 
-### 已知限制 — GA-claim-caveat
+### v3.12.0 GA-claim-caveat（仍适用，inherited by v4.1.0）
 
 | Issue | 区域 | 限制范围 |
 |-------|------|----------|
@@ -54,7 +86,9 @@ SQLRustGo 是一个用 Rust 实现的 SQL 数据库项目，包含 MySQL 风格�
 | #4847 | 事务语义 | 显式 `BEGIN`/`COMMIT`/`ROLLBACK` 排除 |
 | #4848 | 存储/DDL | `ALTER TABLE ... RENAME COLUMN` 排除 |
 
-详见 [CLAIM_DOWNGRADE_MANIFEST.md](docs/releases/v3.12.0/CLAIM_DOWNGRADE_MANIFEST.md)
+详见 [v3.12.0/CLAIM_DOWNGRADE_MANIFEST.md](docs/releases/v3.12.0/CLAIM_DOWNGRADE_MANIFEST.md)
+及 v4.0.0 / v4.1.0 的继承版本（`docs/releases/v4.0.0/CLAIM_DOWNGRADE_MANIFEST.md`，
+含 WP-A 已撤销的 `✅ DONE` 声明——该声明在 2026-09-30 被证伪）
 
 ---
 
@@ -220,7 +254,9 @@ Hybrid retrieval / internal vector retrieval / SQL-backed graph projection
 
 | 版本 | 阶段 | 边界 |
 |------|------|------|
-| **v3.12.0** | GA authorized | GMP 合规性内审检索系统数据库底座 |
+| **v4.1.0** | DRAFT (NOT ALPHA) | 24 条 backlog；P0×6 + P1×7 + P2×7 缺陷目录；详见 `docs/releases/v4.1.0/DEFECTS_AND_ISSUES.md` |
+| **v4.0.0** | GA **REVOKED** (2026-09-30) | 覆盖率 78.28% < 85% 门槛；tag `v4.0.0-final` 保留作审计轨迹；详见 `docs/releases/v4.0.0/GA_RELEASE_TIMELINE.md` |
+| **v3.12.0** | GA CONDITIONAL PASS | GMP 合规性内审检索系统数据库底座；72/72 gates |
 | v3.11.0 | GA | 受控/简单生产候选；非完整 MySQL 5.7 替代品 |
 | v3.10.0 及更早 | 历史 | 用于追溯功能演进，非当前版本证据 |
 
@@ -270,6 +306,31 @@ bash scripts/gate/check_ga_v3.12.0.sh --full
 ---
 
 ## 11. 关键文档
+
+### v4.1.0 DRAFT（当前开发线）
+
+| 文档 | 用途 |
+|------|------|
+| [v4.1.0 DEFECTS_AND_ISSUES](docs/releases/v4.1.0/DEFECTS_AND_ISSUES.md) | **P0×6 + P1×7 + P2×7 完整目录**（推荐入口） |
+| [v4.1.0 README](docs/releases/v4.1.0/README.md) | v4.1.0 范围、阶段定位 |
+| [v4.1.0 STAGE](docs/releases/v4.1.0/STAGE.yaml) | 阶段 SSOT |
+| [v4.1.0 RELEASE_NOTES](docs/releases/v4.1.0/RELEASE_NOTES.md) | DRAFT 阶段发布说明草稿 |
+| [v4.1.0 ISSUES_PLAN](docs/releases/v4.1.0/ISSUES_PLAN.md) | 24 条 backlog 详细 |
+| [v4.1.0 LEGACY_LEDGER](docs/releases/v4.1.0/LEGACY_LEDGER_v3.6_to_v4.1.md) | 跨版本遗留台账（v3.6-v4.1） |
+| [v4.1.0 ALIGNMENT_AUDIT](docs/releases/v4.1.0/ALIGNMENT_AUDIT_2026-09-30.md) | 12 项 F-01~F-12 发现 |
+| [v4.1.0 MAIN_DIVERGENCE_RESOLUTION](docs/releases/v4.1.0/MAIN_DIVERGENCE_RESOLUTION_2026-09-30.md) | main 分叉收敛记录 |
+| [v4.1.0 PERFORMANCE](docs/releases/v4.1.0/PERFORMANCE_OPTIMIZATION_PLAN.md) | A1/B2 性能优化 |
+| [v4.1.0 CHANGELOG](docs/releases/v4.1.0/CHANGELOG.md) | v4.1.0 提交日志 |
+
+### v4.0.0 GA 撤销（2026-09-30）
+
+| 文档 | 用途 |
+|------|------|
+| [v4.0.0 GA_RELEASE_TIMELINE](docs/releases/v4.0.0/GA_RELEASE_TIMELINE.md) | 撤销路径 + 3 条晋升选项 |
+| [v4.0.0 STAGE](docs/releases/v4.0.0/STAGE.yaml) | `ga_promotion_status: verdict: REVOKED` + 5 条阻塞事实 |
+| [v4.0.0 GA_GATE_REPORT](docs/releases/v4.0.0/GA_GATE_REPORT.md) | 原 GA 报告（顶部已加 REVOKED 块） |
+
+### v3.12.0 GA 历史（参考）
 
 | 文档 | 用途 |
 |------|------|

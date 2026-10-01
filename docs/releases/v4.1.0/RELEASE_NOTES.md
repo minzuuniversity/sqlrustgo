@@ -1,11 +1,15 @@
-# SQLRustGo v4.1.0 — Release Notes
+# SQLRustGo v4.1.0 — Release Notes (DRAFT)
 
-> **Status**: DRAFT (per `docs/releases/v4.1.0/STAGE.yaml`)
+> **Status**: DRAFT (per `docs/releases/v4.1.0/STAGE.yaml`) — **NOT YET ALPHA**
 > **Branch**: `develop/v4.1.0`
-> **Base**: v4.0.0 GA CONDITIONAL PASS (per docs/releases/v4.0.0/GA_GATE_REPORT.md)
-> **Scope change vs v4.0.0**: bugfix carry-forward + 168h SOAK FINAL + WP-C..G migration
->
-> Per `docs/releases/v4.1.0/STAGE.yaml`, v4.1.0 is in **DRAFT**. v4.0.0 is **not** replaced; v4.0.0 remains GA on its release branch.
+> **Base**: v4.0.0 GA **已被撤销** (2026-09-30, verdict: REVOKED，见
+> `docs/releases/v4.0.0/STAGE.yaml` `ga_promotion_status` + `GA_RELEASE_TIMELINE.md`)
+> **Scope change vs v4.0.0**: bugfix carry-forward + 168h SOAK FINAL + WP-A..G migration
+> **本文件是 DRAFT 阶段发布说明草稿**，未到 ALPHA 不得对外宣发。完整缺陷目录见
+> **`docs/releases/v4.1.0/DEFECTS_AND_ISSUES.md`**（P0×6 + P1×7 + P2×7）。
+
+Per `docs/releases/v4.1.0/STAGE.yaml`, v4.1.0 is in **DRAFT**. v4.0.0 is **not**
+replaced; v4.0.0 remains GA on its release branch.
 >
 > ⚠️ **2026-09-30 更正**：本文件原写 `Status: ALPHA (released 2026-09-29,
 > tag v4.1.0-alpha1)`，称 v4.1.0 已推进至 ALPHA。该 ALPHA 声明经实跑复核
@@ -127,7 +131,7 @@ Per `docs/releases/v4.1.0/ISSUES_PLAN.md` §4:
 | WP-B completion | 6 | #4721, #4674, #4716, #4676, #4675, #4670 |
 | WP-E completion | 1 | #4626 |
 | WP-H #4639 carry-forward | 1 | #4639 |
-| **Total** | **20** | 6-10 weeks estimated |
+| **Total** | **24** | 6-10 weeks estimated (含 2026-09-30 RE-OPENED 的 WP-A 4 条) |
 
 ## 5. Stage state
 

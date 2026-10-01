@@ -65,12 +65,18 @@ See `docs/releases/v4.1.0/STAGE.yaml` for full exit criteria.
 ## 4. Quick links
 
 - v4.1.0 stage state: `docs/releases/v4.1.0/STAGE.yaml`
+- **v4.1.0 defects & issues catalog (P0×6 + P1×7 + P2×7)**:
+  `docs/releases/v4.1.0/DEFECTS_AND_ISSUES.md` — **新增**，推荐入口
 - v4.1.0 deltas: `docs/releases/v4.1.0/VERSION_PLAN.md`
 - v4.1.0 dev workflow: `docs/releases/v4.1.0/DEV_PLAN.md`
 - v4.1.0 roadmap: `docs/releases/v4.1.0/ROADMAP.md`
 - v4.1.0 test plan: `docs/releases/v4.1.0/TEST_PLAN.md`
 - v4.1.0 issues: `docs/releases/v4.1.0/ISSUES_PLAN.md`
+- v4.1.0 legacy ledger (v3.6-v4.1): `docs/releases/v4.1.0/LEGACY_LEDGER_v3.6_to_v4.1.md`
+- v4.1.0 alignment audit: `docs/releases/v4.1.0/ALIGNMENT_AUDIT_2026-09-30.md`
 - v4.1.0 legacy: `docs/releases/v4.1.0/LEGACY_ISSUES.md`
 - v4.1.0 changelog: `docs/releases/v4.1.0/CHANGELOG.md`
+- v4.1.0 release notes draft: `docs/releases/v4.1.0/RELEASE_NOTES.md`
 - 5-remote sync: `scripts/sync/README.md`
-- v4.0.0 README (inherited): `docs/releases/v4.0.0/README.md`
+- v4.0.0 README (GA REVOKED 2026-09-30): `docs/releases/v4.0.0/README.md`
+- v4.0.0 GA revocation timeline: `docs/releases/v4.0.0/GA_RELEASE_TIMELINE.md`
