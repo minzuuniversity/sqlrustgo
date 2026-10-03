@@ -167,8 +167,7 @@ fn concurrent_transactions_over_shared_wal_storage_complete() {
     }
 
     for h in handles {
-        h
-            .join()
+        h.join()
             .expect("worker must not panic or deadlock (checked under a harness timeout)");
     }
 
