@@ -164,6 +164,61 @@ p99 在两侧都有一个 17–33 ms 的离群点。
   **固定小查询**而非全表 `scan`。
 - 样本量：并发 6 次、墙钟 10 次/侧。未做统计显著性检验。
 
+## 7. 阻塞缺陷修复后的复测（2026-10-04，续 §3–§4）
+
+§3 的结论（B2.2 改的 inherent `flush()` 无生产调用者）**不受 BLK-1/BLK-2 修复
+影响**——那是调用链的事实，不是并发环境的偶然。以下复测只是为了确认那两个
+缺陷确实修好了，不为 B2.2 背书。
+
+### 7.1 BLK-1（`3c64dc19ec`）— 已修
+
+真实 MySQL 协议路径，8 线程 × 60 次并发 INSERT：
+
+```
+threads        : 8 x 60 = 480 inserts
+succeeded      : 480
+errors         : 0
+duplicate ids  : 0
+```
+
+修复前同一场景稳定报 `Duplicate entry '...' for key 'PRIMARY'`，sysbench
+`oltp_read_write` / `oltp_write_only` 全部中止。
+
+### 7.2 BLK-2（`8ff90269d3`）— 已修
+
+修前 8 线程混合读写得到 `qps=TIMEOUT state=WEDGED`（HEAD 与 baseline 相同）；
+修后：
+
+| 负载 | 结果 | 服务端存活 |
+|---|---|---|
+| 8 线程 × 20s | 12,705 events / **634.1 QPS** / 0.03% errors | ✓ |
+| 8 线程 × 30s | 16,357 events / **544.9 QPS** / 0.02% errors | ✓ |
+| 8 线程 × 60s | — | ✓（修前此长度必挂死） |
+
+每次 run 后 `SELECT 1` 探测均 `exit=0`。60s run 的 39 个错误是
+`Duplicate entry '8000031xx'`，属 **BLK-3**（AUTO_INCREMENT 序列跨 autocommit
+事务重用 id，ISSUES_PLAN §4.8），不是死锁——服务端未卡住。
+
+### 7.3 对 B2.2 的最终判断（不变，且理由更硬）
+
+修复 BLK-1/BLK-2 只让负载能跑完，**不改变 §3 的结论**。B2.2 想消除的
+「持锁期间做磁盘 I/O」在活路径上本来就不存在——`StorageEngine::flush` 的
+trait 覆写（`file_storage.rs:4308`）早已是「锁内只 drain dirty 名字、
+I/O 在锁外」，而且它是服务端实际经 `MvccStorage` 调到的那一个。
+
+因此：
+
+- **B2.2 维持"未证明"，但已不是"待测"，而是"测了也不可能有该收益"。**
+- §4 的并发读者延迟 6 次运行没有显著差异，与这一判断一致。
+- §3 记录的 `self.tables.get(&name).cloned()` **整表 clone** 仍在 trait 覆写里，
+  且它在**活路径**上。这才是与 B2.1 同类、值得处理的点：改法与
+  `save_table_window` 一致（取 `[last_saved..]` 窗口 + 真实总行数），
+  但必须改在 **trait 覆写**里，不是 inherent 版本。
+
+**建议**（不擅自实施）：把 B2.2 的优化重新对准 trait 覆写，并同时修 §3 发现的
+inherent / trait 双 `flush` 重复实现问题——两者是同一段逻辑的两份拷贝，
+只改一份必然再次出现"B2.2 改了一个没人调的方法"。
+
 ## 附：原始数据
 
 - 并发 before：`/tmp/b22conc_before.txt`（6 行）
