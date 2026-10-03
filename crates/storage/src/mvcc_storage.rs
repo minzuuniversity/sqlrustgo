@@ -620,6 +620,17 @@ impl<S: StorageEngine + 'static> StorageEngine for MvccStorage<S> {
     fn rollback_transaction_lockfree(&self) -> SqlResult<()> {
         self.inner.rollback_transaction_lockfree()
     }
+
+    /// BLK-2: forward the `&self` variants so the lockfree transaction
+    /// paths reach the backend without laundering a `&mut` out of the
+    /// caller's read guard.
+    fn set_current_tx_id_shared(&self, id: u64) {
+        self.inner.set_current_tx_id_shared(id);
+    }
+
+    fn discard_all_buffers_shared(&self) {
+        self.inner.discard_all_buffers_shared();
+    }
 }
 
 #[cfg(test)]

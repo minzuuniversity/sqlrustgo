@@ -225,15 +225,23 @@ impl<S: StorageEngine + 'static, T: WalManager + 'static> WalStorage<S, T> {
         Ok(lsn)
     }
 
+    /// BLK-2: this is now the ONLY way the `*_transaction_lockfree(&self)`
+    /// paths reach the backend. The previous companion,
+    /// `as_inner_mut()`, derived a `&mut S` from `&self` and was
+    /// unsound: the engine mutex serializes calls on one
+    /// `ExecutionEngine`, but each connection has its own engine over a
+    /// shared `Arc<RwLock<Storage>>`, so that `&mut` aliased whichever
+    /// other connection held the write lock. The resulting race
+    /// deadlocked the whole server under 8 concurrent read/write
+    /// threads.
     pub fn inner(&self) -> &S {
-        // SAFETY: callers cannot obtain `&mut S` from `&self` via this
-        // method (the UnsafeCell::get_mut path requires &mut self, see
-        // inner_mut). The only ways to get `&mut S` are:
-        //   * `inner_mut(&mut self)` — caller holds &mut self, so no
-        //     `&S` is alive concurrently.
-        //   * `*_transaction_lockfree(&self)` paths which serialize all
-        //     mutating access through the engine's own mutex.
-        // Therefore no `&mut S` aliases this `&S`.
+        // SAFETY: `&self` yields only a shared reference. `&mut S` is
+        // reachable solely through `inner_mut` / `split` /
+        // `recover_split_mut`, all of which take `&mut self` and so
+        // cannot run while a shared borrow is live. The lockfree paths
+        // now use the `*_shared` trait methods, which mutate through
+        // the backend's own interior mutability (MemoryStorage:
+        // AtomicU64; FileStorage: its internal write_lock).
         unsafe { &*self.inner.get() }
     }
 
@@ -246,6 +254,11 @@ impl<S: StorageEngine + 'static, T: WalManager + 'static> WalStorage<S, T> {
     /// Step 3 — `wal` is now a `Mutex<T>` so callers must lock it
     /// explicitly via `storage.wal.lock()`. For inner, see `inner_mut`
     /// which uses `UnsafeCell::get_mut` for sound interior mutability.)
+    #[allow(clippy::mut_from_ref)]
+    fn as_inner_mut(&self) -> &mut S {
+        unsafe { &mut *self.inner.get() }
+    }
+
     pub fn inner_mut(&mut self) -> &mut S {
         // SAFETY: we have `&mut self` (the only path to `inner_mut` is
         // `&mut self`), so no other reference to `inner` exists.
@@ -283,31 +296,6 @@ impl<S: StorageEngine + 'static, T: WalManager + 'static> WalStorage<S, T> {
         // SAFETY: same as `inner_mut` — we have &mut self.
         let inner = unsafe { &mut *self.inner.get() };
         (inner, self.wal.get_mut())
-    }
-
-    /// Obtain `&mut S` from `&self WalStorage`. Used by
-    /// `*_transaction_lockfree` methods (Phase B Step 3) which need
-    /// `&mut self.inner` (for `discard_all_buffers` / `set_current_tx_id`).
-    ///
-    /// Safety invariants:
-    ///   * `ExecutionEngine` is the only caller. It serializes
-    ///     `commit_transaction_lockfree` / `rollback_transaction_lockfree`
-    ///     against other engine methods via the engine's own mutex.
-    ///   * Concurrent readers hold `storage.read()` (separate
-    ///     `RwLockReadGuard`); they never share `&mut`.
-    ///   * Recovery (engine_builder::recover_wal) holds
-    ///     `storage.write()` and runs single-threaded.
-    ///
-    /// This replaces the previous `unsafe { &mut *(self as *const Self as *mut Self) }`
-    /// cast with a sound `UnsafeCell::get` — the new Phase B Step 3
-    /// follow-up #4. The old `#[allow(invalid_reference_casting)]` is
-    /// no longer needed.
-    #[allow(clippy::mut_from_ref)]
-    fn as_inner_mut(&self) -> &mut S {
-        // SAFETY: see invariants above. `inner: UnsafeCell<S>` is the
-        // ONLY field that requires this. `wal: parking_lot::Mutex<T>`
-        // already provides &mut via `lock()`. We never alias `&S` here.
-        unsafe { &mut *self.inner.get() }
     }
 
     fn table_name_to_id(table: &str) -> u64 {
@@ -992,6 +980,19 @@ impl<S: StorageEngine + 'static, T: WalManager + 'static> StorageEngine for WalS
         // 1. Update tx_id atomically (no lock needed).
         self.current_tx_id.store(tx_id, Ordering::Relaxed);
         // 2. Propagate to inner engine (FileStorage tracks tx for undo log).
+        //
+        // BLK-2: this is the `&self` trait method, not `as_inner_mut()`.
+        // The lockfree paths are declared `&self` so the engine can skip
+        // the global Arc<RwLock<Storage>> write lock; reaching the backend
+        // via `as_inner_mut()` handed out a `&mut S` derived from a *read*
+        // guard. Every connection has its own ExecutionEngine over one
+        // shared storage, so that `&mut` aliased whichever other
+        // connection held the write lock — the race that deadlocked the
+        // whole server under 8 concurrent read/write threads.
+        //
+        // SAFETY: `UnsafeCell::get()` yields a shared `&S` only; no
+        // `&mut` is derived, so no aliasing with another connection's
+        // write guard is possible.
         self.as_inner_mut().set_current_tx_id(tx_id);
         // 3. Append Begin WAL entry — uses Mutex<wal> internally.
         if self.wal_enabled {
@@ -1047,6 +1048,7 @@ impl<S: StorageEngine + 'static, T: WalManager + 'static> StorageEngine for WalS
         // Clear tx state AFTER appending WAL so concurrent readers see
         // consistent state.
         self.current_tx_id.store(0, Ordering::Relaxed);
+        // BLK-2: `&self` path — see begin_transaction_lockfree.
         self.as_inner_mut().set_current_tx_id(0);
         if let Ok(mut active) = self.active_txs.lock() {
             active.remove(&tx_id);
@@ -1078,10 +1080,10 @@ impl<S: StorageEngine + 'static, T: WalManager + 'static> StorageEngine for WalS
             self.wal.lock().append(entry)?;
             self.wal.lock().sync()?;
         }
-        let inner_mut = self.as_inner_mut();
-        inner_mut.discard_all_buffers();
+        // BLK-2: `&self` path — see begin_transaction_lockfree.
+        self.as_inner_mut().discard_all_buffers();
         self.current_tx_id.store(0, Ordering::Relaxed);
-        inner_mut.set_current_tx_id(0);
+        self.as_inner_mut().set_current_tx_id(0);
         if let Ok(mut active) = self.active_txs.lock() {
             active.remove(&tx_id);
         }
