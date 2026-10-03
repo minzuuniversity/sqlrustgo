@@ -456,35 +456,56 @@ pub fn execute_insert<S: StorageEngine + 'static>(
     // (b) the RETURNING projection at the end sees the same ids the
     // caller will read back via SELECT.
     let mut processed_records = processed_records;
-    if has_auto_increment {
-        // Compute starting id from existing rows: filter to auto_increment
-        // columns only, take MAX, then +1 (default 1 if empty table).
-        let mut next_auto_id: i64 = 1;
-        for (col_idx, col) in table_info.columns.iter().enumerate() {
-            if col.auto_increment {
-                let max_existing = pre_scanned_rows
-                    .iter()
-                    .filter_map(|r| r.get(col_idx).and_then(|v| v.as_integer()))
-                    .max()
-                    .unwrap_or(0);
-                next_auto_id = max_existing + 1;
-                break; // Only one auto_increment column is the convention
-                       // (matches MySQL InnoDB; sqlite AUTOINCREMENT is
-                       // also single-column).
-            }
-        }
-        for record in processed_records.iter_mut() {
-            for (col_idx, col) in table_info.columns.iter().enumerate() {
-                if col.auto_increment && matches!(record.get(col_idx), Some(Value::Null) | None) {
+    // The id values themselves are assigned under the storage write
+    // lock below, so that two concurrent INSERTs cannot both read the
+    // same MAX(id) and mint the same id. What is decided here, without
+    // the lock, is only WHICH column participates.
+    let auto_increment_col: Option<usize> = if has_auto_increment {
+        table_info.columns.iter().position(|c| c.auto_increment)
+        // Only one auto_increment column is the convention
+        // (matches MySQL InnoDB; sqlite AUTOINCREMENT is also
+        // single-column).
+    } else {
+        None
+    };
+
+    {
+        let mut storage = engine.storage.write();
+
+        // BLK-1 (docs/releases/v4.1.0/ISSUES_PLAN.md §4.1): allocate
+        // AUTO_INCREMENT ids from the table's current MAX(id) while
+        // holding the write lock.
+        //
+        // Previously this ran before the lock was taken, computing
+        // `max_existing + 1` from a pre-lock scan. Two INSERTs
+        // arriving together both saw the same MAX and both started
+        // from the same value, so the second one hit
+        // "Duplicate entry '...' for key 'PRIMARY'". That is what made
+        // every insert-bearing sysbench workload abort on 8 threads,
+        // on this commit and on the baseline alike.
+        //
+        // The scan is now inside the critical section, so the read of
+        // MAX(id) and the insert that follows it are one atomic step
+        // with respect to other writers.
+        if let Some(col_idx) = auto_increment_col {
+            let mut next_auto_id: i64 = 1;
+            // An empty table scans to zero rows, which leaves the
+            // default of 1 in place — same as the previous behaviour.
+            let existing = storage.scan(&table_name)?;
+            next_auto_id = existing
+                .iter()
+                .filter_map(|r| r.get(col_idx).and_then(|v| v.as_integer()))
+                .max()
+                .unwrap_or(0)
+                + 1;
+            for record in processed_records.iter_mut() {
+                if matches!(record.get(col_idx), Some(Value::Null) | None) {
                     record[col_idx] = Value::Integer(next_auto_id);
                     next_auto_id += 1;
                 }
             }
         }
-    }
 
-    {
-        let mut storage = engine.storage.write();
         let col_names: Vec<String> = table_info.columns.iter().map(|c| c.name.clone()).collect();
 
         // V4.1.0: take the cached index under the write lock and re-validate
