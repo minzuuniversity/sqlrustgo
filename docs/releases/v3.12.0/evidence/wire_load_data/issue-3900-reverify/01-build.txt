@@ -1,0 +1,636 @@
+   Compiling cfg-if v1.0.4
+   Compiling log v0.4.34
+   Compiling libc v0.2.189
+   Compiling smallvec v1.16.1
+   Compiling memchr v2.8.3
+   Compiling scopeguard v1.2.0
+   Compiling itoa v1.0.18
+   Compiling parking_lot_core v0.9.12
+   Compiling serde_core v1.0.229
+   Compiling typenum v1.20.1
+   Compiling pin-project-lite v0.2.17
+   Compiling lock_api v0.4.14
+   Compiling core-foundation-sys v0.8.7
+   Compiling serde v1.0.229
+   Compiling bytes v1.12.1
+   Compiling generic-array v0.14.7
+   Compiling once_cell v1.21.4
+   Compiling bitflags v2.13.2
+   Compiling futures-core v0.3.34
+   Compiling zmij v1.0.23
+   Compiling zstd-sys v2.1.0+zstd.1.5.7
+   Compiling serde_json v1.0.151
+   Compiling crc32fast v1.5.2
+   Compiling simd-adler32 v0.3.10
+   Compiling adler2 v2.0.1
+   Compiling miniz_oxide v0.9.1
+   Compiling thiserror v2.0.20
+   Compiling zerofrom v0.1.8
+   Compiling num-traits v0.2.19
+   Compiling parking_lot v0.12.5
+   Compiling getrandom v0.2.17
+   Compiling errno v0.3.14
+   Compiling rand_core v0.6.4
+   Compiling signal-hook-registry v1.4.8
+   Compiling mio v1.2.3
+   Compiling socket2 v0.6.5
+   Compiling tokio v1.53.1
+   Compiling futures-sink v0.3.34
+   Compiling subtle v2.6.1
+   Compiling crypto-common v0.1.7
+   Compiling stable_deref_trait v1.2.1
+   Compiling yoke v0.8.3
+   Compiling tracing-core v0.1.36
+   Compiling aho-corasick v1.1.5
+   Compiling iana-time-zone v0.1.65
+   Compiling regex-syntax v0.8.11
+   Compiling anyhow v1.0.104
+   Compiling twox-hash v2.1.4
+   Compiling rand_core v0.10.1
+   Compiling getrandom v0.4.3
+   Compiling flate2 v1.1.10
+   Compiling lz4_flex v0.11.6
+   Compiling zerovec v0.11.8
+   Compiling tracing v0.1.44
+   Compiling cpufeatures v0.2.17
+   Compiling regex-automata v0.4.18
+   Compiling slab v0.4.12
+   Compiling hex v0.4.3
+   Compiling zeroize v1.9.0
+   Compiling tinystr v0.8.4
+   Compiling chrono v0.4.45
+   Compiling sqlrustgo-types v3.12.0-fix-zombie (/Volumes/workspace/dev/sqlrustgo/.worktrees/issue-3900-verify/crates/types)
+   Compiling block-buffer v0.10.4
+   Compiling percent-encoding v2.3.2
+   Compiling writeable v0.6.4
+   Compiling futures-task v0.3.34
+   Compiling futures-io v0.3.34
+   Compiling fnv v1.0.7
+   Compiling litemap v0.8.3
+   Compiling zerocopy v0.8.57
+   Compiling futures-util v0.3.34
+   Compiling rustix v1.1.4
+   Compiling icu_locale_core v2.3.0
+   Compiling digest v0.10.7
+   Compiling potential_utf v0.1.6
+   Compiling zerotrie v0.2.5
+   Compiling utf8_iter v1.0.4
+   Compiling equivalent v1.0.2
+   Compiling hashbrown v0.17.1
+   Compiling icu_normalizer_data v2.3.0
+   Compiling icu_properties_data v2.3.0
+   Compiling icu_collections v2.3.0
+   Compiling icu_provider v2.3.1
+   Compiling indexmap v2.14.2
+   Compiling crc32c v0.6.8
+   Compiling rustls-pki-types v1.15.1
+   Compiling http v1.5.0
+   Compiling tokio-util v0.7.19
+   Compiling adler v1.0.2
+   Compiling fastrand v2.5.0
+   Compiling httparse v1.10.1
+   Compiling regex v1.13.1
+   Compiling tempfile v3.27.0
+   Compiling miniz_oxide v0.7.4
+   Compiling base64 v0.22.1
+   Compiling crossbeam-utils v0.8.23
+   Compiling icu_normalizer v2.3.0
+   Compiling icu_properties v2.3.0
+   Compiling http-body v1.1.0
+   Compiling core-foundation v0.10.1
+   Compiling security-framework-sys v2.17.0
+   Compiling native-tls v0.2.18
+   Compiling system-configuration-sys v0.6.0
+   Compiling thiserror v1.0.69
+   Compiling security-framework v3.7.0
+   Compiling form_urlencoded v1.2.2
+   Compiling hybrid-array v0.4.15
+   Compiling try-lock v0.2.5
+   Compiling time-core v0.1.9
+   Compiling tower-service v0.3.3
+   Compiling num-conv v0.2.2
+   Compiling utf8parse v0.2.2
+   Compiling atomic-waker v1.1.2
+   Compiling anstyle-parse v1.0.0
+   Compiling time-macros v0.2.32
+   Compiling idna_adapter v1.2.2
+   Compiling h2 v0.4.19
+   Compiling want v0.3.1
+   Compiling idna v1.1.0
+   Compiling crossbeam-epoch v0.9.21
+   Compiling encoding_rs v0.8.41
+   Compiling ppv-lite86 v0.2.21
+   Compiling aws-lc-sys v0.45.0
+   Compiling rand_chacha v0.3.1
+   Compiling hmac v0.12.1
+   Compiling inout v0.1.4
+   Compiling futures-channel v0.3.34
+   Compiling rand v0.8.8
+   Compiling core-foundation v0.9.4
+   Compiling foldhash v0.2.0
+   Compiling is_terminal_polyfill v1.70.2
+   Compiling colorchoice v1.0.5
+   Compiling deranged v0.5.8
+   Compiling simdutf8 v0.1.5
+   Compiling anstyle-query v1.1.5
+   Compiling powerfmt v0.2.0
+   Compiling anstyle v1.0.14
+   Compiling alloc-no-stdlib v2.0.4
+   Compiling crossbeam-deque v0.8.8
+   Compiling system-configuration v0.7.0
+   Compiling alloc-stdlib v0.2.4
+   Compiling anstream v1.0.0
+   Compiling objc2 v0.6.4
+   Compiling cipher v0.4.4
+   Compiling pbkdf2 v0.12.2
+   Compiling url v2.5.8
+   Compiling block-buffer v0.12.1
+   Compiling crypto-common v0.2.2
+   Compiling time v0.3.55
+   Compiling sha2 v0.10.9
+   Compiling http v0.2.12
+   Compiling universal-hash v0.5.1
+   Compiling sync_wrapper v1.0.2
+   Compiling ryu v1.0.23
+   Compiling hyper v1.11.1
+   Compiling const-oid v0.10.2
+   Compiling opaque-debug v0.3.1
+   Compiling regex-lite v0.1.9
+   Compiling mime v0.3.17
+   Compiling tower-layer v0.3.3
+   Compiling ipnet v2.12.2
+   Compiling local-waker v0.1.4
+   Compiling objc2-encode v4.1.0
+   Compiling hyper-util v0.1.20
+   Compiling rayon-core v1.13.0
+   Compiling tower v0.5.3
+   Compiling bytestring v1.5.1
+   Compiling polyval v0.6.2
+   Compiling digest v0.11.3
+   Compiling serde_urlencoded v0.7.1
+   Compiling brotli-decompressor v5.0.3
+   Compiling tokio-native-tls v0.3.1
+   Compiling http-body-util v0.1.5
+   Compiling sha1 v0.10.7
+   Compiling chacha20 v0.10.2
+   Compiling bincode v1.3.3
+   Compiling cpufeatures v0.3.1
+   Compiling actix-service v2.0.3
+   Compiling jiff-core v0.1.1
+   Compiling untrusted v0.9.0
+   Compiling cookie v0.16.2
+   Compiling sha1 v0.11.0
+   Compiling brotli v8.0.4
+   Compiling rand v0.10.2
+   Compiling jiff v0.2.37
+   Compiling hyper-tls v0.6.0
+   Compiling actix-router v0.5.4
+   Compiling nix v0.31.3
+   Compiling derive_more v2.1.1
+   Compiling ghash v0.5.1
+   Compiling tower-http v0.6.11
+   Compiling actix-utils v3.0.2
+   Compiling local-channel v0.1.5
+   Compiling h2 v0.3.27
+   Compiling aes v0.8.4
+   Compiling ctr v0.9.2
+   Compiling env_filter v2.0.0
+   Compiling actix-codec v0.5.4
+   Compiling actix-rt v2.15.0
+   Compiling zstd-safe v7.3.0
+   Compiling aead v0.5.2
+   Compiling base64 v0.13.1
+   Compiling either v1.18.0
+   Compiling httpdate v1.0.3
+   Compiling lazy_static v1.5.0
+   Compiling unicode-width v0.1.14
+   Compiling language-tags v0.3.2
+   Compiling textwrap v0.11.0
+   Compiling pem v1.1.1
+   Compiling aes-gcm v0.10.3
+   Compiling actix-server v2.9.5
+   Compiling env_logger v0.11.11
+   Compiling reqwest v0.12.28
+   Compiling actix-web-codegen v4.3.0
+   Compiling libsqlite3-sys v0.37.0
+   Compiling sqlrustgo-spill v0.1.0 (/Volumes/workspace/dev/sqlrustgo/.worktrees/issue-3900-verify/crates/spill)
+   Compiling hashbrown v0.16.1
+   Compiling sqlrustgo_gis v0.1.0 (/Volumes/workspace/dev/sqlrustgo/.worktrees/issue-3900-verify/crates/gis)
+   Compiling uuid v1.26.1
+   Compiling atty v0.2.14
+   Compiling strsim v0.11.1
+   Compiling strsim v0.8.0
+   Compiling bitflags v1.3.2
+   Compiling impl-more v0.3.8
+   Compiling ansi_term v0.12.1
+   Compiling vec_map v0.8.2
+   Compiling md5 v0.8.1
+   Compiling clap_lex v1.1.1
+   Compiling clap_builder v4.6.7
+   Compiling clap v2.34.0
+   Compiling ring v0.17.14
+   Compiling hashlink v0.11.1
+   Compiling webpki-roots v1.0.9
+   Compiling fallible-iterator v0.3.0
+   Compiling fallible-streaming-iterator v0.1.9
+   Compiling linked-hash-map v0.5.6
+   Compiling lru-cache v0.1.2
+   Compiling webpki-roots v0.26.11
+   Compiling structopt v0.3.26
+   Compiling block2 v0.6.2
+   Compiling clap v4.6.7
+   Compiling sharded-slab v0.1.7
+   Compiling dispatch2 v0.3.1
+   Compiling rayon v1.12.0
+   Compiling sqlrustgo-mysql-client v3.9.0 (/Volumes/workspace/dev/sqlrustgo/.worktrees/issue-3900-verify/crates/mysql-client)
+   Compiling pem v3.0.6
+   Compiling matchers v0.2.0
+   Compiling rustls-pemfile v2.2.0
+   Compiling tracing-log v0.2.0
+   Compiling thread_local v1.1.10
+   Compiling zstd v0.13.3
+   Compiling nu-ansi-term v0.50.3
+   Compiling sqlrustgo-common v3.12.0-fix-zombie (/Volumes/workspace/dev/sqlrustgo/.worktrees/issue-3900-verify/crates/common)
+   Compiling actix-http v3.13.6
+   Compiling ctrlc v3.5.2
+   Compiling yasna v0.5.2
+   Compiling tracing-subscriber v0.3.23
+   Compiling sqlrustgo-parser v3.12.0-fix-zombie (/Volumes/workspace/dev/sqlrustgo/.worktrees/issue-3900-verify/crates/parser)
+   Compiling sqlrustgo-catalog v3.12.0-fix-zombie (/Volumes/workspace/dev/sqlrustgo/.worktrees/issue-3900-verify/crates/catalog)
+   Compiling sqlrustgo-telemetry v3.12.0-fix-zombie (/Volumes/workspace/dev/sqlrustgo/.worktrees/issue-3900-verify/crates/telemetry)
+   Compiling query-stats v0.1.0 (/Volumes/workspace/dev/sqlrustgo/.worktrees/issue-3900-verify/crates/query-stats)
+   Compiling crossbeam-channel v0.5.17
+   Compiling byteorder v1.5.0
+warning: duplicated attribute
+    --> crates/mysql-client/src/lib.rs:2133:5
+     |
+2133 |     #[test]
+     |     ^^^^^^^
+     |
+     = note: `#[warn(duplicate_macro_attributes)]` on by default
+
+warning: unused variable: `other`
+    --> crates/mysql-client/src/lib.rs:1548:13
+     |
+1548 |             other => panic!("expected Select"),
+     |             ^^^^^ help: if this is intentional, prefix it with an underscore: `_other`
+     |
+     = note: `#[warn(unused_variables)]` (part of `#[warn(unused)]`) on by default
+
+warning: variable does not need to be mutable
+    --> crates/mysql-client/src/lib.rs:1849:13
+     |
+1849 |         let mut payload = make_handshake_payload(0xff, "8.0.30", 0, 0, "");
+     |             ----^^^^^^^
+     |             |
+     |             help: remove this `mut`
+     |
+     = note: `#[warn(unused_mut)]` (part of `#[warn(unused)]`) on by default
+
+   Compiling sqlrustgo-storage v3.12.0-fix-zombie (/Volumes/workspace/dev/sqlrustgo/.worktrees/issue-3900-verify/crates/storage)
+warning: `sqlrustgo-mysql-client` (lib test) generated 3 warnings (run `cargo fix --lib -p sqlrustgo-mysql-client --tests` to apply 2 suggestions)
+   Compiling actix-web v4.15.0
+   Compiling rusqlite v0.39.0
+   Compiling information-schema v0.1.0 (/Volumes/workspace/dev/sqlrustgo/.worktrees/issue-3900-verify/crates/information-schema)
+   Compiling sqlrustgo-cache v3.12.0-fix-zombie (/Volumes/workspace/dev/sqlrustgo/.worktrees/issue-3900-verify/crates/cache)
+   Compiling rcgen v0.13.2
+   Compiling sqlrustgo-optimizer v3.12.0-fix-zombie (/Volumes/workspace/dev/sqlrustgo/.worktrees/issue-3900-verify/crates/optimizer)
+   Compiling sqlrustgo-transaction v3.12.0-fix-zombie (/Volumes/workspace/dev/sqlrustgo/.worktrees/issue-3900-verify/crates/transaction)
+   Compiling sqlrustgo-security v0.1.0 (/Volumes/workspace/dev/sqlrustgo/.worktrees/issue-3900-verify/crates/security)
+   Compiling sqlrustgo-graph v3.12.0-fix-zombie (/Volumes/workspace/dev/sqlrustgo/.worktrees/issue-3900-verify/crates/graph)
+   Compiling sqlrustgo-planner v3.12.0-fix-zombie (/Volumes/workspace/dev/sqlrustgo/.worktrees/issue-3900-verify/crates/planner)
+   Compiling sqlrustgo-executor v3.12.0-fix-zombie (/Volumes/workspace/dev/sqlrustgo/.worktrees/issue-3900-verify/crates/executor)
+   Compiling sqlrustgo-server v3.12.0-fix-zombie (/Volumes/workspace/dev/sqlrustgo/.worktrees/issue-3900-verify/crates/server)
+   Compiling aws-lc-rs v1.18.1
+   Compiling sqlrustgo v3.12.0-fix-zombie (/Volumes/workspace/dev/sqlrustgo/.worktrees/issue-3900-verify)
+warning: unused imports: `build_aggregate_schema`, `build_combined_schema`, `build_multi_table_combined_schema`, `cartesian_product`, `eval_predicate`, `evaluate_where_clause`, `find_column_index`, `sql_compare`, and `validate_foreign_keys`
+ --> src/execution_engine_methods.rs:2:5
+  |
+2 |     build_aggregate_schema, build_combined_schema, build_multi_table_combined_schema,
+  |     ^^^^^^^^^^^^^^^^^^^^^^  ^^^^^^^^^^^^^^^^^^^^^  ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+3 |     cartesian_product, eval_predicate, evaluate_where_clause, find_column_index, sql_compare,
+  |     ^^^^^^^^^^^^^^^^^  ^^^^^^^^^^^^^^  ^^^^^^^^^^^^^^^^^^^^^  ^^^^^^^^^^^^^^^^^  ^^^^^^^^^^^
+4 |     validate_foreign_keys,
+  |     ^^^^^^^^^^^^^^^^^^^^^
+  |
+  = note: `#[warn(unused_imports)]` (part of `#[warn(unused)]`) on by default
+
+warning: unused import: `ExecutionStats`
+ --> src/execution_engine_methods.rs:7:48
+  |
+7 | use crate::execution_engine::{ExecutionEngine, ExecutionStats, TableStatistics, TxStatus};
+  |                                                ^^^^^^^^^^^^^^
+
+warning: unused imports: `compare_values`, `evaluate_binary_op`, `evaluate_expr_to_string`, `evaluate_expression_with_subq`, `evaluate_expression`, `expression_to_string`, `expression_to_value`, and `resolve_subqueries_in_expr`
+  --> src/execution_engine_methods.rs:9:5
+   |
+ 9 |     compare_values, evaluate_binary_op, evaluate_expr_to_string, evaluate_expression,
+   |     ^^^^^^^^^^^^^^  ^^^^^^^^^^^^^^^^^^  ^^^^^^^^^^^^^^^^^^^^^^^  ^^^^^^^^^^^^^^^^^^^
+10 |     evaluate_expression_with_subq, expression_to_string, expression_to_value,
+   |     ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^  ^^^^^^^^^^^^^^^^^^^^  ^^^^^^^^^^^^^^^^^^^
+11 |     expression_to_value_from_string, resolve_subqueries_in_expr,
+   |                                      ^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+warning: unused import: `parking_lot::RwLock`
+  --> src/execution_engine_methods.rs:14:5
+   |
+14 | use parking_lot::RwLock;
+   |     ^^^^^^^^^^^^^^^^^^^
+
+warning: unused import: `StoredProcParam`
+  --> src/execution_engine_methods.rs:15:49
+   |
+15 | use sqlrustgo_catalog::stored_proc::{ParamMode, StoredProcParam, StoredProcStatement};
+   |                                                 ^^^^^^^^^^^^^^^
+
+warning: unused imports: `AuthErrorCode`, `Catalog`, and `auth::UserIdentity`
+  --> src/execution_engine_methods.rs:17:5
+   |
+17 |     auth::UserIdentity, AuthErrorCode, Catalog, ObjectRef, Privilege, StoredProcedure,
+   |     ^^^^^^^^^^^^^^^^^^  ^^^^^^^^^^^^^  ^^^^^^^
+
+warning: unused import: `sqlrustgo_executor::ast_adapter::AstAdapter`
+  --> src/execution_engine_methods.rs:19:5
+   |
+19 | use sqlrustgo_executor::ast_adapter::AstAdapter;
+   |     ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+warning: unused imports: `TriggerEvent as ExecTriggerEvent`, `TriggerExecutor`, and `TriggerTiming as ExecTriggerTiming`
+  --> src/execution_engine_methods.rs:23:5
+   |
+23 |     TriggerEvent as ExecTriggerEvent, TriggerExecutor, TriggerTiming as ExecTriggerTiming,
+   |     ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^  ^^^^^^^^^^^^^^^  ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+warning: unused imports: `BinaryOperator` and `Expr`
+  --> src/execution_engine_methods.rs:26:34
+   |
+26 | use sqlrustgo_optimizer::rules::{BinaryOperator, Expr};
+   |                                  ^^^^^^^^^^^^^^  ^^^^
+
+warning: unused imports: `ColumnStats as OptColumnStats`, `Histogram`, and `build_histogram_from_values`
+  --> src/execution_engine_methods.rs:28:5
+   |
+28 |     build_histogram_from_values, ColumnStats as OptColumnStats, Histogram,
+   |     ^^^^^^^^^^^^^^^^^^^^^^^^^^^  ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^  ^^^^^^^^^
+
+warning: unused import: `sqlrustgo_optimizer::unified_cost::UnifiedCostModel`
+  --> src/execution_engine_methods.rs:30:5
+   |
+30 | use sqlrustgo_optimizer::unified_cost::UnifiedCostModel;
+   |     ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+warning: unused import: `sqlrustgo_optimizer::unified_plan::UnifiedPlan`
+  --> src/execution_engine_methods.rs:31:5
+   |
+31 | use sqlrustgo_optimizer::unified_plan::UnifiedPlan;
+   |     ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+warning: unused imports: `AggregateCall`, `AggregateFunction`, `AlterSequenceStatement`, `AlterTableOperation`, `AlterTableStatement`, `AlterUserStatement`, `CompressionAlgorithm`, `CreateRoleStatement`, `CreateSequenceStatement`, `CreateTableStatement`, `CreateUserStatement`, `DescribeStatement`, `DropRoleStatement`, `DropUserStatement`, `GrantRoleStatement`, `GrantStatement`, `ObjectType as ParserObjectType`, `OrderByExpression`, `Privilege as ParserPrivilege`, `RevokeRoleStatement`, `RevokeStatement`, `SelectStatement`, `SetRoleStatement`, `ShowStatement`, `StorageEngineSpec`, and `StoredProcParam as ParserStoredProcParam`
+  --> src/execution_engine_methods.rs:33:5
+   |
+33 |     AggregateCall, AggregateFunction, AlterSequenceStatement, AlterTableOperation,
+   |     ^^^^^^^^^^^^^  ^^^^^^^^^^^^^^^^^  ^^^^^^^^^^^^^^^^^^^^^^  ^^^^^^^^^^^^^^^^^^^
+34 |     AlterTableStatement, AlterUserStatement, CallStatement, CompressionAlgorithm,
+   |     ^^^^^^^^^^^^^^^^^^^  ^^^^^^^^^^^^^^^^^^                 ^^^^^^^^^^^^^^^^^^^^
+35 |     CreateDatabaseStatement, CreateFunctionStatement, CreateGraphStatement, CreateIndexStatement,
+36 |     CreateProcedureStatement, CreateRoleStatement, CreateSequenceStatement, CreateTableStatement,
+   |                               ^^^^^^^^^^^^^^^^^^^  ^^^^^^^^^^^^^^^^^^^^^^^  ^^^^^^^^^^^^^^^^^^^^
+37 |     CreateTriggerStatement, CreateUserStatement, CreateVectorIndexStatement, CreateViewStatement,
+   |                             ^^^^^^^^^^^^^^^^^^^
+38 |     DescribeStatement, DropDatabaseStatement, DropFunctionStatement, DropGraphStatement,
+   |     ^^^^^^^^^^^^^^^^^
+39 |     DropIndexStatement, DropProcedureStatement, DropRoleStatement, DropSequenceStatement,
+   |                                                 ^^^^^^^^^^^^^^^^^
+40 |     DropTableStatement, DropTriggerStatement, DropUserStatement, DropViewStatement,
+   |                                               ^^^^^^^^^^^^^^^^^
+41 |     ExceptStatement, GrantRoleStatement, GrantStatement, InsertStatement, IntersectStatement,
+   |                      ^^^^^^^^^^^^^^^^^^  ^^^^^^^^^^^^^^
+42 |     MergeStatement, ObjectType as ParserObjectType, OrderByExpression,
+   |                     ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^  ^^^^^^^^^^^^^^^^^
+43 |     Privilege as ParserPrivilege, RevokeRoleStatement, RevokeStatement, SelectStatement,
+   |     ^^^^^^^^^^^^^^^^^^^^^^^^^^^^  ^^^^^^^^^^^^^^^^^^^  ^^^^^^^^^^^^^^^  ^^^^^^^^^^^^^^^
+44 |     SetRoleStatement, ShowStatement, StorageEngineSpec, StoredProcParam as ParserStoredProcParam,
+   |     ^^^^^^^^^^^^^^^^  ^^^^^^^^^^^^^  ^^^^^^^^^^^^^^^^^  ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+warning: unused import: `sqlrustgo_parser::JoinType`
+  --> src/execution_engine_methods.rs:49:5
+   |
+49 | use sqlrustgo_parser::JoinType;
+   |     ^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+warning: unused import: `Expression`
+  --> src/execution_engine_methods.rs:51:22
+   |
+51 |     DeleteStatement, Expression, SavepointOp, Statement, TransactionStatement, UpdateStatement,
+   |                      ^^^^^^^^^^
+
+warning: unused imports: `CheckpointManager` and `CheckpointMetadata`
+  --> src/execution_engine_methods.rs:53:37
+   |
+53 | use sqlrustgo_storage::checkpoint::{CheckpointManager, CheckpointMetadata};
+   |                                     ^^^^^^^^^^^^^^^^^  ^^^^^^^^^^^^^^^^^^
+
+warning: unused imports: `ColumnDefinition`, `FileBackedWalManager`, `FileStorage`, `MemoryStorage`, `MemoryWalManager`, `RecoveryEngineImpl`, `RecoveryEngine`, `TableInfo`, `WalStorage`, `adaptive_hash_index::AdaptiveHashIndex`, `clustered_table::ClusteredTable`, and `engine::CheckConstraint`
+  --> src/execution_engine_methods.rs:55:5
+   |
+55 |     adaptive_hash_index::AdaptiveHashIndex,
+   |     ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+56 |     clustered_table::ClusteredTable,
+   |     ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+57 |     engine::CheckConstraint,
+   |     ^^^^^^^^^^^^^^^^^^^^^^^
+58 |     recovery_engine::{RecoveryEngine, RecoveryEngineImpl},
+   |                       ^^^^^^^^^^^^^^  ^^^^^^^^^^^^^^^^^^
+59 |     wal::{FileBackedWalManager, MemoryWalManager},
+   |           ^^^^^^^^^^^^^^^^^^^^  ^^^^^^^^^^^^^^^^
+60 |     ColumnDefinition, FileStorage, MemoryStorage, StorageEngine, TableInfo, WalStorage,
+   |     ^^^^^^^^^^^^^^^^  ^^^^^^^^^^^  ^^^^^^^^^^^^^                 ^^^^^^^^^  ^^^^^^^^^^
+
+warning: unused import: `TransactionManager`
+  --> src/execution_engine_methods.rs:62:65
+   |
+62 | use sqlrustgo_transaction::{IsolationLevel as TmIsolationLevel, TransactionManager, TxId};
+   |                                                                 ^^^^^^^^^^^^^^^^^^
+
+warning: unused import: `sqlrustgo_types::Value as SqlValue`
+  --> src/execution_engine_methods.rs:63:5
+   |
+63 | use sqlrustgo_types::Value as SqlValue;
+   |     ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+warning: unused import: `std::collections::HashMap`
+  --> src/execution_engine_methods.rs:64:5
+   |
+64 | use std::collections::HashMap;
+   |     ^^^^^^^^^^^^^^^^^^^^^^^^^
+
+warning: unused import: `std::path::PathBuf`
+  --> src/execution_engine_methods.rs:65:5
+   |
+65 | use std::path::PathBuf;
+   |     ^^^^^^^^^^^^^^^^^^
+
+warning: value assigned to `stored_rows` is never read
+   --> src/engine_dml.rs:515:48
+    |
+515 |         let mut stored_rows: Vec<Vec<Value>> = Vec::new();
+    |                                                ^^^^^^^^^^ this value is reassigned later and never used
+...
+707 |             stored_rows = processed_records.clone();
+    |             ----------- `stored_rows` is overwritten here before the previous value is read
+    |
+    = note: `#[warn(unused_assignments)]` (part of `#[warn(unused)]`) on by default
+
+warning: unused variable: `procedure`
+    --> src/execution_engine_methods.rs:1110:13
+     |
+1110 |         let procedure = catalog
+     |             ^^^^^^^^^ help: if this is intentional, prefix it with an underscore: `_procedure`
+     |
+     = note: `#[warn(unused_variables)]` (part of `#[warn(unused)]`) on by default
+
+warning: field `is_explicit_transaction` is never read
+   --> src/execution_engine.rs:105:16
+    |
+ 79 | pub struct ExecutionEngine<S: StorageEngine> {
+    |            --------------- field in this struct
+...
+105 |     pub(crate) is_explicit_transaction: bool,
+    |                ^^^^^^^^^^^^^^^^^^^^^^^
+    |
+    = note: `#[warn(dead_code)]` (part of `#[warn(unused)]`) on by default
+
+warning: `sqlrustgo` (lib) generated 24 warnings (run `cargo fix --lib -p sqlrustgo` to apply 22 suggestions)
+   Compiling rustls v0.23.45
+   Compiling rustls-webpki v0.103.15
+   Compiling sqlrustgo-tools v3.12.0-fix-zombie (/Volumes/workspace/dev/sqlrustgo/.worktrees/issue-3900-verify/crates/tools)
+   Compiling sqlrustgo-mysql-server v0.1.0 (/Volumes/workspace/dev/sqlrustgo/.worktrees/issue-3900-verify/crates/mysql-server)
+warning: unused import: `sqlrustgo_parser::parse`
+    --> crates/mysql-server/src/lib.rs:1756:13
+     |
+1756 |         use sqlrustgo_parser::parse;
+     |             ^^^^^^^^^^^^^^^^^^^^^^^
+     |
+     = note: `#[warn(unused_imports)]` (part of `#[warn(unused)]`) on by default
+
+warning: unnecessary parentheses around assigned value
+    --> crates/mysql-server/src/lib.rs:6768:19
+     |
+6768 |             nr ^= (((nr & 63) ^ nr2) as u32);
+     |                   ^                        ^
+     |
+     = note: `#[warn(unused_parens)]` (part of `#[warn(unused)]`) on by default
+help: remove these parentheses
+     |
+6768 -             nr ^= (((nr & 63) ^ nr2) as u32);
+6768 +             nr ^= ((nr & 63) ^ nr2) as u32;
+     |
+
+warning: unused import: `sqlrustgo_types::Value`
+    --> crates/mysql-server/src/lib.rs:7462:13
+     |
+7462 |         use sqlrustgo_types::Value;
+     |             ^^^^^^^^^^^^^^^^^^^^^^
+
+warning: unused import: `std::error::Error`
+    --> crates/mysql-server/src/lib.rs:7503:13
+     |
+7503 |         use std::error::Error;
+     |             ^^^^^^^^^^^^^^^^^
+
+warning: unused variable: `other`
+   --> crates/mysql-server/src/lib.rs:419:13
+    |
+419 |             other => panic!("case-insensitive OFF should parse"),
+    |             ^^^^^ help: if this is intentional, prefix it with an underscore: `_other`
+    |
+    = note: `#[warn(unused_variables)]` (part of `#[warn(unused)]`) on by default
+
+warning: unused variable: `response`
+    --> crates/mysql-server/src/lib.rs:7319:13
+     |
+7319 |         let response = [0x00; 8];
+     |             ^^^^^^^^ help: if this is intentional, prefix it with an underscore: `_response`
+
+warning: unused variable: `response`
+    --> crates/mysql-server/src/lib.rs:7329:13
+     |
+7329 |         let response = [0x00; 8];
+     |             ^^^^^^^^ help: if this is intentional, prefix it with an underscore: `_response`
+
+warning: variable does not need to be mutable
+    --> crates/mysql-server/src/lib.rs:8967:13
+     |
+8967 |         let mut store =
+     |             ----^^^^^
+     |             |
+     |             help: remove this `mut`
+     |
+     = note: `#[warn(unused_mut)]` (part of `#[warn(unused)]`) on by default
+
+warning: function `decode_lenenc_int_3byte_via_0xfd` is never used
+   --> crates/mysql-server/src/lib.rs:816:8
+    |
+816 |     fn decode_lenenc_int_3byte_via_0xfd() {
+    |        ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+    |
+    = note: `#[warn(dead_code)]` (part of `#[warn(unused)]`) on by default
+
+warning: function `g4_graph_match_sql_form_strips_GRAPH_prefix` should have a snake case name
+    --> crates/mysql-server/src/lib.rs:9001:4
+     |
+9001 | fn g4_graph_match_sql_form_strips_GRAPH_prefix() {
+     |    ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^ help: convert the identifier to snake case: `g4_graph_match_sql_form_strips_graph_prefix`
+     |
+     = note: `#[warn(non_snake_case)]` (part of `#[warn(nonstandard_style)]`) on by default
+
+warning: comparison is useless due to type limits
+   --> crates/mysql-server/src/lib.rs:482:17
+    |
+482 |         assert!(tracker.idle_secs() >= 0);
+    |                 ^^^^^^^^^^^^^^^^^^^^^^^^
+    |
+    = note: `#[warn(unused_comparisons)]` on by default
+
+warning: variable does not need to be mutable
+   --> crates/mysql-server/tests/mysql_server_tests.rs:570:9
+    |
+570 |     let mut packet = Packet {
+    |         ----^^^^^^
+    |         |
+    |         help: remove this `mut`
+    |
+    = note: `#[warn(unused_mut)]` (part of `#[warn(unused)]`) on by default
+
+warning: unused import: `StmtParam`
+ --> crates/mysql-server/tests/mysql_server_helper_tests.rs:4:66
+  |
+4 |     parse_stmt_execute_params, replace_placeholders, MySqlError, StmtParam,
+  |                                                                  ^^^^^^^^^
+  |
+  = note: `#[warn(unused_imports)]` (part of `#[warn(unused)]`) on by default
+
+warning: comparison is useless due to type limits
+   --> crates/mysql-server/tests/mysql_server_helper_tests.rs:210:13
+    |
+210 |     assert!(val >= 0);
+    |             ^^^^^^^^
+    |
+    = note: `#[warn(unused_comparisons)]` on by default
+
+warning: comparison is useless due to type limits
+   --> crates/mysql-server/tests/mysql_server_helper_tests.rs:217:13
+    |
+217 |     assert!(val >= 0);
+    |             ^^^^^^^^
+
+warning: comparison is useless due to type limits
+   --> crates/mysql-server/tests/mysql_server_helper_tests.rs:224:13
+    |
+224 |     assert!(val >= 0);
+    |             ^^^^^^^^
+
+warning: `sqlrustgo-mysql-server` (test "mysql_server_helper_tests") generated 4 warnings (run `cargo fix --test "mysql_server_helper_tests" -p sqlrustgo-mysql-server` to apply 1 suggestion)
+warning: `sqlrustgo-mysql-server` (test "mysql_server_tests") generated 1 warning (run `cargo fix --test "mysql_server_tests" -p sqlrustgo-mysql-server` to apply 1 suggestion)
+warning: `sqlrustgo-mysql-server` (lib test) generated 11 warnings (run `cargo fix --lib -p sqlrustgo-mysql-server --tests` to apply 8 suggestions)
+    Finished `dev` profile [unoptimized + debuginfo] target(s) in 1m 08s

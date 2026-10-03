@@ -1,0 +1,57 @@
+ISSUE #3900 re-verification — wire_smoke_mysql_cli 连跑 3 次
+generated: 2026-10-03T16:39:16Z
+worktree: .worktrees/issue-3900-verify @ d59dbffd1d
+agent: minimax / source_run=minimax-issue-3900-verify-2026-10-04
+
+=== 背景 ===
+Issue #3900 [REOPENED by claude-code @ 2026-08-10] 记录了一条附加发现：
+  'wire_smoke_mysql_cli 测试在 fresh storage 下 11/11 PASS, 但二次跑存在
+   test pollution (Table already exists)。本轮实测 (HEAD 79e9c883f9): 3 passed; 8 failed。'
+
+=== 本次复核实测 (2026-10-04, HEAD d59dbffd1d) ===
+
+--- run #1 ---
+test test_wire_smoke_stmt_prepare_execute_varchar ... ok
+test test_wire_smoke_stmt_close_nonexistent ... ok
+test test_wire_smoke_error_packet_structure ... ok
+test test_wire_smoke_stmt_prepare_execute_int ... ok
+test test_wire_smoke_load_data_sf1 ... ok
+test test_wire_smoke_stmt_execute_after_close ... ok
+test test_wire_smoke_reset_clears_prepared_stmts ... ok
+test test_wire_smoke_stmt_close ... ok
+test test_wire_smoke_reset_connection ... ok
+test test_wire_smoke_stmt_prepare_execute_param_int ... ok
+test test_wire_smoke_stmt_prepare_invalid_sql ... ok
+test test_wire_smoke_stmt_prepare_null ... ok
+test result: ok. 12 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.21s
+
+--- run #2 ---
+test test_wire_smoke_error_packet_structure ... ok
+test test_wire_smoke_reset_connection ... ok
+test test_wire_smoke_stmt_close_nonexistent ... ok
+test test_wire_smoke_stmt_close ... ok
+test test_wire_smoke_load_data_sf1 ... ok
+test test_wire_smoke_stmt_execute_after_close ... ok
+test test_wire_smoke_stmt_prepare_execute_varchar ... ok
+test test_wire_smoke_reset_clears_prepared_stmts ... ok
+test test_wire_smoke_stmt_prepare_execute_int ... ok
+test test_wire_smoke_stmt_prepare_execute_param_int ... ok
+test test_wire_smoke_stmt_prepare_invalid_sql ... ok
+test test_wire_smoke_stmt_prepare_null ... ok
+test result: ok. 12 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.21s
+
+--- run #3 ---
+test test_wire_smoke_reset_clears_prepared_stmts ... ok
+test test_wire_smoke_stmt_close_nonexistent ... ok
+test test_wire_smoke_error_packet_structure ... ok
+test test_wire_smoke_stmt_close ... ok
+test test_wire_smoke_stmt_execute_after_close ... ok
+test test_wire_smoke_stmt_prepare_execute_int ... ok
+test test_wire_smoke_stmt_prepare_execute_param_int ... ok
+test test_wire_smoke_stmt_prepare_execute_varchar ... ok
+test test_wire_smoke_reset_connection ... ok
+test test_wire_smoke_load_data_sf1 ... ok
+test test_wire_smoke_stmt_prepare_invalid_sql ... ok
+test test_wire_smoke_stmt_prepare_null ... ok
+test result: ok. 12 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.21s
+
