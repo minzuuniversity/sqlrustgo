@@ -786,6 +786,24 @@ impl StorageEngine for BoxStorageEngine {
     fn set_current_tx_id(&mut self, id: u64) {
         (**self).set_current_tx_id(id)
     }
+    /// BLK-2: forward the `&self` tx-id setter to the boxed backend.
+    ///
+    /// Without this override the trait default (a no-op) is used,
+    /// because `BoxStorageEngine` does not derive `DerefMut` to the
+    /// concrete type in a `&self` context. That silently discarded
+    /// `WalStorage::begin_transaction_lockfree`'s tx-id write, i.e. the
+    /// same class of dead forwarding as the `*_transaction_lockfree`
+    /// overrides above: the fix existed in the concrete backends but
+    /// every server-created storage is wrapped here, so production
+    /// never saw it.
+    fn set_current_tx_id_shared(&self, id: u64) {
+        (**self).set_current_tx_id_shared(id)
+    }
+    /// BLK-2: same forwarding requirement as
+    /// [`set_current_tx_id_shared`], for the buffered-insert discard.
+    fn discard_all_buffers_shared(&self) {
+        (**self).discard_all_buffers_shared()
+    }
     fn flush(&mut self) -> SqlResult<()> {
         (**self).flush()
     }

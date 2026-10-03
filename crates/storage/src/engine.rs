@@ -1376,6 +1376,24 @@ pub trait StorageEngine: Send + Sync {
     /// Set the current transaction ID (used by WAL integration)
     fn set_current_tx_id(&mut self, _id: u64) {}
 
+    /// BLK-2: `&self` counterpart of [`set_current_tx_id`].
+    ///
+    /// `WalStorage::{begin,commit,rollback}_transaction_lockfree` are
+    /// declared `&self` so the engine can skip the global
+    /// `Arc<RwLock<Storage>>` write lock on the tx-control path. They
+    /// must reach the backend through this, NOT through
+    /// `as_inner_mut()` — laundering a `&mut` out of a read guard
+    /// aliases any other connection holding the write lock, since every
+    /// connection has its own `ExecutionEngine` over a shared storage.
+    /// That race deadlocked the whole server under 8 concurrent
+    /// read/write threads.
+    ///
+    /// Backends reachable from a shared `&self` must store the tx id in
+    /// an atomic (or behind their own lock) and implement this without a
+    /// pointer cast. `MemoryStorage` uses `AtomicU64`; `FileStorage`
+    /// routes through its internal write lock.
+    fn set_current_tx_id_shared(&self, _id: u64) {}
+
     /// Flush any buffered data to durable storage
     fn flush(&mut self) -> SqlResult<()> {
         Ok(())
@@ -1407,6 +1425,12 @@ pub trait StorageEngine: Send + Sync {
     /// rolled-back tx's writes are not visible to subsequent reads or
     /// to the next `flush()`. Default implementation is a no-op.
     fn discard_all_buffers(&mut self) {}
+
+    /// BLK-2: `&self` counterpart of [`discard_all_buffers`], same
+    /// rationale as [`set_current_tx_id_shared`]. `FileStorage` clears
+    /// its insert buffer under its internal write lock; backends with
+    /// nothing to discard inherit the no-op default.
+    fn discard_all_buffers_shared(&self) {}
 
     fn is_wal_enabled(&self) -> bool {
         false
@@ -1488,7 +1512,12 @@ pub struct MemoryStorage {
     databases: HashSet<String>,
     /// Tracks the current transaction ID for VtuGuard::assert_dml_safe.
     /// VtuGuard checks S::in_transaction() which returns `current_tx_id != 0`.
-    current_tx_id: u64,
+    ///
+    /// BLK-2: atomic so `set_current_tx_id_shared(&self)` is sound. The
+    /// lockfree transaction paths reach this through a *shared*
+    /// reference (see `StorageEngine::set_current_tx_id_shared`); a
+    /// plain `u64` would require handing out `&mut` from a read guard.
+    current_tx_id: std::sync::atomic::AtomicU64,
     next_tx_id: u64,
     /// `Some(log)` between matching `begin`/`commit` (or `begin`/`rollback`);
     /// `None` outside a transaction.
@@ -1539,7 +1568,7 @@ impl MemoryStorage {
             view_defs: HashMap::new(),
             sequences: HashMap::new(),
             databases: HashSet::new(),
-            current_tx_id: 0,
+            current_tx_id: std::sync::atomic::AtomicU64::new(0),
             next_tx_id: 1,
             tx_log: None,
             last_committed_log: parking_lot::Mutex::new(None),
@@ -1665,7 +1694,8 @@ impl MemoryStorage {
     /// still retrieve it via `take_last_committed_log()`.
     pub fn commit_transaction_with_log(&mut self) -> Option<TxLog> {
         let log = self.tx_log.take();
-        self.current_tx_id = 0;
+        self.current_tx_id
+            .store(0, std::sync::atomic::Ordering::Relaxed);
         // V312-26 #3969: refresh the post-commit row snapshot so a late-joining
         // connection can inherit committed rows without seeing this
         // connection's in-flight transaction state.
@@ -1876,14 +1906,16 @@ impl StorageEngine for MemoryStorage {
         }
         let tx_id = self.next_tx_id;
         self.next_tx_id += 1;
-        self.current_tx_id = tx_id;
+        self.current_tx_id
+            .store(tx_id, std::sync::atomic::Ordering::Relaxed);
         self.tx_log = Some(TxLog::default());
         Ok(tx_id)
     }
 
     fn commit_transaction(&mut self) -> SqlResult<()> {
         let log = self.tx_log.take();
-        self.current_tx_id = 0;
+        self.current_tx_id
+            .store(0, std::sync::atomic::Ordering::Relaxed);
         // V312-26 #3969: refresh the post-commit row snapshot so a late-joining
         // connection can inherit committed rows without seeing this
         // connection's in-flight transaction state.
@@ -1914,7 +1946,8 @@ impl StorageEngine for MemoryStorage {
                 }
             }
         }
-        self.current_tx_id = 0;
+        self.current_tx_id
+            .store(0, std::sync::atomic::Ordering::Relaxed);
         Ok(())
     }
 
@@ -2546,15 +2579,23 @@ impl StorageEngine for MemoryStorage {
     }
 
     fn in_transaction(&self) -> bool {
-        self.current_tx_id != 0
+        self.current_tx_id
+            .load(std::sync::atomic::Ordering::Relaxed)
+            != 0
     }
 
     fn current_tx_id(&self) -> u64 {
-        self.current_tx_id
+        self.current_tx_id.load(std::sync::atomic::Ordering::Relaxed)
     }
 
     fn set_current_tx_id(&mut self, id: u64) {
-        self.current_tx_id = id;
+        self.set_current_tx_id_shared(id);
+    }
+
+    /// BLK-2: sound from a shared reference thanks to the atomic.
+    fn set_current_tx_id_shared(&self, id: u64) {
+        self.current_tx_id
+            .store(id, std::sync::atomic::Ordering::Relaxed);
     }
 
     fn drop_column(&mut self, table: &str, column: &str) -> SqlResult<()> {

@@ -3605,10 +3605,29 @@ impl StorageEngine for FileStorage {
         self.current_tx_id
     }
 
-    fn set_current_tx_id(&mut self, id: u64) {
+    /// BLK-2: `&self` counterpart of the trait's `set_current_tx_id`.
+    ///
+    /// `WalStorage::begin_transaction_lockfree` / `commit_...` /
+    /// `rollback_...` reach the backend through
+    /// `StorageEngine::set_current_tx_id_shared` instead of
+    /// laundering a `&mut S` out of a *read* guard on the shared
+    /// `Arc<RwLock<Storage>>`. The engine mutex serializes calls on one
+    /// `ExecutionEngine`, but every connection has its own engine over a
+    /// shared storage, so that `&mut` aliases another connection's
+    /// `write()` guard — a data race that showed up as a full server
+    /// deadlock under 8 concurrent read/write threads.
+    ///
+    /// Goes through the same internal `write_lock` every other mutation
+    /// uses, so it is safe to call while the caller holds only a read
+    /// guard.
+    fn set_current_tx_id_shared(&self, id: u64) {
         Self::with_write_lock(self.as_mut_self(), |s| {
             s.current_tx_id = id;
         });
+    }
+
+    fn set_current_tx_id(&mut self, id: u64) {
+        self.set_current_tx_id_shared(id);
     }
 
     /// Issue #4581 / B-track case 35-36: real BEGIN/COMMIT/ROLLBACK
@@ -4315,6 +4334,14 @@ impl StorageEngine for FileStorage {
         // FileStorage we actually drop the buffered inserts. Issue
         // #3964: rollback must NOT persist. Delegate to the inherent
         // `&self` implementation which already takes the write_lock.
+        self.discard_all_buffers();
+    }
+
+    /// BLK-2: `&self` variant, so `WalStorage::rollback_transaction_lockfree`
+    /// can drop the insert buffer without laundering a `&mut` out of a
+    /// read guard (which aliased other connections and deadlocked the
+    /// server). Same work, reached without the aliasing.
+    fn discard_all_buffers_shared(&self) {
         self.discard_all_buffers();
     }
 
