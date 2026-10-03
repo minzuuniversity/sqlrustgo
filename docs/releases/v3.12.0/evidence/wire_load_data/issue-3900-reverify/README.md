@@ -128,5 +128,5 @@ cargo test --test v312_13_load_data_sf1_test -- --nocapture
 |---|---|
 | `wire-smoke-x3.txt` | wire_smoke_mysql_cli 连跑 3 次的完整输出（12/12 × 3） |
 | `gate-report-2026-10-04.md` | 本次 V312-13 gate 生成的报告（7/10 pass） |
-| `01..10-*.log` | gate 各 step 的原始命令输出 |
+| `01..10-*.txt` | gate 各 step 的原始命令输出（`.gitignore:294` 排除 `evidence/**/*.log`，故统一用 `.txt` 才能入版本控制） |
 | `sha256.txt` | 上述文件的 sha256 |

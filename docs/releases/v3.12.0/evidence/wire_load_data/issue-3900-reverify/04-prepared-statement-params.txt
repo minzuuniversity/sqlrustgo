@@ -1,0 +1,214 @@
+warning: unused imports: `build_aggregate_schema`, `build_combined_schema`, `build_multi_table_combined_schema`, `cartesian_product`, `eval_predicate`, `evaluate_where_clause`, `find_column_index`, `sql_compare`, and `validate_foreign_keys`
+ --> src/execution_engine_methods.rs:2:5
+  |
+2 |     build_aggregate_schema, build_combined_schema, build_multi_table_combined_schema,
+  |     ^^^^^^^^^^^^^^^^^^^^^^  ^^^^^^^^^^^^^^^^^^^^^  ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+3 |     cartesian_product, eval_predicate, evaluate_where_clause, find_column_index, sql_compare,
+  |     ^^^^^^^^^^^^^^^^^  ^^^^^^^^^^^^^^  ^^^^^^^^^^^^^^^^^^^^^  ^^^^^^^^^^^^^^^^^  ^^^^^^^^^^^
+4 |     validate_foreign_keys,
+  |     ^^^^^^^^^^^^^^^^^^^^^
+  |
+  = note: `#[warn(unused_imports)]` (part of `#[warn(unused)]`) on by default
+
+warning: unused import: `ExecutionStats`
+ --> src/execution_engine_methods.rs:7:48
+  |
+7 | use crate::execution_engine::{ExecutionEngine, ExecutionStats, TableStatistics, TxStatus};
+  |                                                ^^^^^^^^^^^^^^
+
+warning: unused imports: `compare_values`, `evaluate_binary_op`, `evaluate_expr_to_string`, `evaluate_expression_with_subq`, `evaluate_expression`, `expression_to_string`, `expression_to_value`, and `resolve_subqueries_in_expr`
+  --> src/execution_engine_methods.rs:9:5
+   |
+ 9 |     compare_values, evaluate_binary_op, evaluate_expr_to_string, evaluate_expression,
+   |     ^^^^^^^^^^^^^^  ^^^^^^^^^^^^^^^^^^  ^^^^^^^^^^^^^^^^^^^^^^^  ^^^^^^^^^^^^^^^^^^^
+10 |     evaluate_expression_with_subq, expression_to_string, expression_to_value,
+   |     ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^  ^^^^^^^^^^^^^^^^^^^^  ^^^^^^^^^^^^^^^^^^^
+11 |     expression_to_value_from_string, resolve_subqueries_in_expr,
+   |                                      ^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+warning: unused import: `parking_lot::RwLock`
+  --> src/execution_engine_methods.rs:14:5
+   |
+14 | use parking_lot::RwLock;
+   |     ^^^^^^^^^^^^^^^^^^^
+
+warning: unused import: `StoredProcParam`
+  --> src/execution_engine_methods.rs:15:49
+   |
+15 | use sqlrustgo_catalog::stored_proc::{ParamMode, StoredProcParam, StoredProcStatement};
+   |                                                 ^^^^^^^^^^^^^^^
+
+warning: unused imports: `AuthErrorCode`, `Catalog`, and `auth::UserIdentity`
+  --> src/execution_engine_methods.rs:17:5
+   |
+17 |     auth::UserIdentity, AuthErrorCode, Catalog, ObjectRef, Privilege, StoredProcedure,
+   |     ^^^^^^^^^^^^^^^^^^  ^^^^^^^^^^^^^  ^^^^^^^
+
+warning: unused import: `sqlrustgo_executor::ast_adapter::AstAdapter`
+  --> src/execution_engine_methods.rs:19:5
+   |
+19 | use sqlrustgo_executor::ast_adapter::AstAdapter;
+   |     ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+warning: unused imports: `TriggerEvent as ExecTriggerEvent`, `TriggerExecutor`, and `TriggerTiming as ExecTriggerTiming`
+  --> src/execution_engine_methods.rs:23:5
+   |
+23 |     TriggerEvent as ExecTriggerEvent, TriggerExecutor, TriggerTiming as ExecTriggerTiming,
+   |     ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^  ^^^^^^^^^^^^^^^  ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+warning: unused imports: `BinaryOperator` and `Expr`
+  --> src/execution_engine_methods.rs:26:34
+   |
+26 | use sqlrustgo_optimizer::rules::{BinaryOperator, Expr};
+   |                                  ^^^^^^^^^^^^^^  ^^^^
+
+warning: unused imports: `ColumnStats as OptColumnStats`, `Histogram`, and `build_histogram_from_values`
+  --> src/execution_engine_methods.rs:28:5
+   |
+28 |     build_histogram_from_values, ColumnStats as OptColumnStats, Histogram,
+   |     ^^^^^^^^^^^^^^^^^^^^^^^^^^^  ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^  ^^^^^^^^^
+
+warning: unused import: `sqlrustgo_optimizer::unified_cost::UnifiedCostModel`
+  --> src/execution_engine_methods.rs:30:5
+   |
+30 | use sqlrustgo_optimizer::unified_cost::UnifiedCostModel;
+   |     ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+warning: unused import: `sqlrustgo_optimizer::unified_plan::UnifiedPlan`
+  --> src/execution_engine_methods.rs:31:5
+   |
+31 | use sqlrustgo_optimizer::unified_plan::UnifiedPlan;
+   |     ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+warning: unused imports: `AggregateCall`, `AggregateFunction`, `AlterSequenceStatement`, `AlterTableOperation`, `AlterTableStatement`, `AlterUserStatement`, `CompressionAlgorithm`, `CreateRoleStatement`, `CreateSequenceStatement`, `CreateTableStatement`, `CreateUserStatement`, `DescribeStatement`, `DropRoleStatement`, `DropUserStatement`, `GrantRoleStatement`, `GrantStatement`, `ObjectType as ParserObjectType`, `OrderByExpression`, `Privilege as ParserPrivilege`, `RevokeRoleStatement`, `RevokeStatement`, `SelectStatement`, `SetRoleStatement`, `ShowStatement`, `StorageEngineSpec`, and `StoredProcParam as ParserStoredProcParam`
+  --> src/execution_engine_methods.rs:33:5
+   |
+33 |     AggregateCall, AggregateFunction, AlterSequenceStatement, AlterTableOperation,
+   |     ^^^^^^^^^^^^^  ^^^^^^^^^^^^^^^^^  ^^^^^^^^^^^^^^^^^^^^^^  ^^^^^^^^^^^^^^^^^^^
+34 |     AlterTableStatement, AlterUserStatement, CallStatement, CompressionAlgorithm,
+   |     ^^^^^^^^^^^^^^^^^^^  ^^^^^^^^^^^^^^^^^^                 ^^^^^^^^^^^^^^^^^^^^
+35 |     CreateDatabaseStatement, CreateFunctionStatement, CreateGraphStatement, CreateIndexStatement,
+36 |     CreateProcedureStatement, CreateRoleStatement, CreateSequenceStatement, CreateTableStatement,
+   |                               ^^^^^^^^^^^^^^^^^^^  ^^^^^^^^^^^^^^^^^^^^^^^  ^^^^^^^^^^^^^^^^^^^^
+37 |     CreateTriggerStatement, CreateUserStatement, CreateVectorIndexStatement, CreateViewStatement,
+   |                             ^^^^^^^^^^^^^^^^^^^
+38 |     DescribeStatement, DropDatabaseStatement, DropFunctionStatement, DropGraphStatement,
+   |     ^^^^^^^^^^^^^^^^^
+39 |     DropIndexStatement, DropProcedureStatement, DropRoleStatement, DropSequenceStatement,
+   |                                                 ^^^^^^^^^^^^^^^^^
+40 |     DropTableStatement, DropTriggerStatement, DropUserStatement, DropViewStatement,
+   |                                               ^^^^^^^^^^^^^^^^^
+41 |     ExceptStatement, GrantRoleStatement, GrantStatement, InsertStatement, IntersectStatement,
+   |                      ^^^^^^^^^^^^^^^^^^  ^^^^^^^^^^^^^^
+42 |     MergeStatement, ObjectType as ParserObjectType, OrderByExpression,
+   |                     ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^  ^^^^^^^^^^^^^^^^^
+43 |     Privilege as ParserPrivilege, RevokeRoleStatement, RevokeStatement, SelectStatement,
+   |     ^^^^^^^^^^^^^^^^^^^^^^^^^^^^  ^^^^^^^^^^^^^^^^^^^  ^^^^^^^^^^^^^^^  ^^^^^^^^^^^^^^^
+44 |     SetRoleStatement, ShowStatement, StorageEngineSpec, StoredProcParam as ParserStoredProcParam,
+   |     ^^^^^^^^^^^^^^^^  ^^^^^^^^^^^^^  ^^^^^^^^^^^^^^^^^  ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+warning: unused import: `sqlrustgo_parser::JoinType`
+  --> src/execution_engine_methods.rs:49:5
+   |
+49 | use sqlrustgo_parser::JoinType;
+   |     ^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+warning: unused import: `Expression`
+  --> src/execution_engine_methods.rs:51:22
+   |
+51 |     DeleteStatement, Expression, SavepointOp, Statement, TransactionStatement, UpdateStatement,
+   |                      ^^^^^^^^^^
+
+warning: unused imports: `CheckpointManager` and `CheckpointMetadata`
+  --> src/execution_engine_methods.rs:53:37
+   |
+53 | use sqlrustgo_storage::checkpoint::{CheckpointManager, CheckpointMetadata};
+   |                                     ^^^^^^^^^^^^^^^^^  ^^^^^^^^^^^^^^^^^^
+
+warning: unused imports: `ColumnDefinition`, `FileBackedWalManager`, `FileStorage`, `MemoryStorage`, `MemoryWalManager`, `RecoveryEngineImpl`, `RecoveryEngine`, `TableInfo`, `WalStorage`, `adaptive_hash_index::AdaptiveHashIndex`, `clustered_table::ClusteredTable`, and `engine::CheckConstraint`
+  --> src/execution_engine_methods.rs:55:5
+   |
+55 |     adaptive_hash_index::AdaptiveHashIndex,
+   |     ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+56 |     clustered_table::ClusteredTable,
+   |     ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+57 |     engine::CheckConstraint,
+   |     ^^^^^^^^^^^^^^^^^^^^^^^
+58 |     recovery_engine::{RecoveryEngine, RecoveryEngineImpl},
+   |                       ^^^^^^^^^^^^^^  ^^^^^^^^^^^^^^^^^^
+59 |     wal::{FileBackedWalManager, MemoryWalManager},
+   |           ^^^^^^^^^^^^^^^^^^^^  ^^^^^^^^^^^^^^^^
+60 |     ColumnDefinition, FileStorage, MemoryStorage, StorageEngine, TableInfo, WalStorage,
+   |     ^^^^^^^^^^^^^^^^  ^^^^^^^^^^^  ^^^^^^^^^^^^^                 ^^^^^^^^^  ^^^^^^^^^^
+
+warning: unused import: `TransactionManager`
+  --> src/execution_engine_methods.rs:62:65
+   |
+62 | use sqlrustgo_transaction::{IsolationLevel as TmIsolationLevel, TransactionManager, TxId};
+   |                                                                 ^^^^^^^^^^^^^^^^^^
+
+warning: unused import: `sqlrustgo_types::Value as SqlValue`
+  --> src/execution_engine_methods.rs:63:5
+   |
+63 | use sqlrustgo_types::Value as SqlValue;
+   |     ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+warning: unused import: `std::collections::HashMap`
+  --> src/execution_engine_methods.rs:64:5
+   |
+64 | use std::collections::HashMap;
+   |     ^^^^^^^^^^^^^^^^^^^^^^^^^
+
+warning: unused import: `std::path::PathBuf`
+  --> src/execution_engine_methods.rs:65:5
+   |
+65 | use std::path::PathBuf;
+   |     ^^^^^^^^^^^^^^^^^^
+
+warning: value assigned to `stored_rows` is never read
+   --> src/engine_dml.rs:515:48
+    |
+515 |         let mut stored_rows: Vec<Vec<Value>> = Vec::new();
+    |                                                ^^^^^^^^^^ this value is reassigned later and never used
+...
+707 |             stored_rows = processed_records.clone();
+    |             ----------- `stored_rows` is overwritten here before the previous value is read
+    |
+    = note: `#[warn(unused_assignments)]` (part of `#[warn(unused)]`) on by default
+
+warning: unused variable: `procedure`
+    --> src/execution_engine_methods.rs:1110:13
+     |
+1110 |         let procedure = catalog
+     |             ^^^^^^^^^ help: if this is intentional, prefix it with an underscore: `_procedure`
+     |
+     = note: `#[warn(unused_variables)]` (part of `#[warn(unused)]`) on by default
+
+warning: field `is_explicit_transaction` is never read
+   --> src/execution_engine.rs:105:16
+    |
+ 79 | pub struct ExecutionEngine<S: StorageEngine> {
+    |            --------------- field in this struct
+...
+105 |     pub(crate) is_explicit_transaction: bool,
+    |                ^^^^^^^^^^^^^^^^^^^^^^^
+    |
+    = note: `#[warn(dead_code)]` (part of `#[warn(unused)]`) on by default
+
+warning: `sqlrustgo` (lib) generated 24 warnings (run `cargo fix --lib -p sqlrustgo` to apply 22 suggestions)
+   Compiling sqlrustgo-mysql-server v0.1.0 (/Volumes/workspace/dev/sqlrustgo/.worktrees/issue-3900-verify/crates/mysql-server)
+    Finished `test` profile [unoptimized + debuginfo] target(s) in 0.60s
+     Running tests/prepared_stmt_params_test.rs (target/debug/deps/prepared_stmt_params_test-11c8179457d0d26b)
+
+running 8 tests
+test parses_no_params_correctly ... ok
+test parses_null_via_bitmap ... ok
+test parses_single_long_param ... ok
+test parses_single_string_param ... ok
+test parses_three_mixed_params ... ok
+test replace_placeholders_with_null_inserts_null_keyword ... ok
+test replace_placeholders_with_parsed_params_round_trips ... ok
+test string_with_quote_is_escaped ... ok
+
+test result: ok. 8 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
