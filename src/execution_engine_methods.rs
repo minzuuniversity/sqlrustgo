@@ -1524,7 +1524,7 @@ impl<S: StorageEngine + 'static> ExecutionEngine<S> {
             let _ = prev_tx;
         }
         let tx_id = self
-            .transaction_manager
+            .transaction_manager.lock()
             .begin_transaction(isolation)
             .map_err(|e| {
                 SqlError::ExecutionError(format!("Failed to begin transaction: {:?}", e))
@@ -1603,7 +1603,7 @@ impl<S: StorageEngine + 'static> ExecutionEngine<S> {
                 storage.release_all_gap_locks(tx_id.as_u64());
             }
         }
-        self.transaction_manager.commit(tx_id).map_err(|e| {
+        self.transaction_manager.lock().commit(tx_id).map_err(|e| {
             SqlError::ExecutionError(format!("Failed to commit transaction: {:?}", e))
         })?;
         self.tx_session.lock().current_tx_id = None;
@@ -1645,7 +1645,7 @@ impl<S: StorageEngine + 'static> ExecutionEngine<S> {
         })?;
         match op {
             SavepointOp::Save => self
-                .transaction_manager
+                .transaction_manager.lock()
                 .savepoint(tx_id, name.to_string())
                 .map_err(|e| {
                     SqlError::ExecutionError(format!("SAVEPOINT {} failed: {}", name, e))
@@ -1660,7 +1660,7 @@ impl<S: StorageEngine + 'static> ExecutionEngine<S> {
                 // storage's interior mutability via `parking_lot::RwLock`
                 // is what makes this sound.
                 let storage = self.storage.clone();
-                self.transaction_manager
+                self.transaction_manager.lock()
                     .rollback_to_savepoint_with_undo(tx_id, name, move |rec| {
                         // Re-acquire the write lock per record so we
                         // don't hold it across the whole rollback
@@ -1742,7 +1742,7 @@ impl<S: StorageEngine + 'static> ExecutionEngine<S> {
                     })?;
             }
             SavepointOp::Release => self
-                .transaction_manager
+                .transaction_manager.lock()
                 .release_savepoint(tx_id, name)
                 .map_err(|e| {
                     SqlError::ExecutionError(format!("RELEASE SAVEPOINT {} failed: {}", name, e))
@@ -1777,7 +1777,7 @@ impl<S: StorageEngine + 'static> ExecutionEngine<S> {
             let _ = storage_read.rollback_transaction_lockfree();
         }
         let storage = self.storage.clone();
-        self.transaction_manager
+        self.transaction_manager.lock()
             .rollback_with_undo(tx_id, move |rec| {
                 let mut storage = storage.write();
                 match rec {
@@ -1849,7 +1849,7 @@ impl<S: StorageEngine + 'static> ExecutionEngine<S> {
     /// Begin an implicit TX for DML. Returns `(tx_id, started_implicit)`.
     /// `started_implicit` is `true` ONLY when this call started a fresh TX.
     pub(crate) fn begin_implicit_dml_tx(
-        &mut self,
+        &self,
         op: &'static str,
         _table: &str,
     ) -> SqlResult<(Option<TxId>, bool)> {
@@ -1874,7 +1874,7 @@ impl<S: StorageEngine + 'static> ExecutionEngine<S> {
         }
         if self.tx_session.lock().current_tx_id.is_none() {
             let tx_id = self
-                .transaction_manager
+                .transaction_manager.lock()
                 .begin_transaction(self.tx_session.lock().default_isolation)
                 .map_err(|e| SqlError::ExecutionError(format!("TM.begin failed: {:?}", e)))?;
             self.tx_session.lock().current_tx_id = Some(tx_id);
@@ -1891,10 +1891,10 @@ impl<S: StorageEngine + 'static> ExecutionEngine<S> {
 
     /// Commit the implicit DML TX started by `begin_implicit_dml_tx`.
     /// Idempotent when `started_implicit` is `false` (user controls commit/rollback).
-    pub(crate) fn commit_implicit_dml_tx(&mut self, started_implicit: bool) -> SqlResult<()> {
+    pub(crate) fn commit_implicit_dml_tx(&self, started_implicit: bool) -> SqlResult<()> {
         if started_implicit {
             let tx_id = self.tx_session.lock().current_tx_id.unwrap();
-            let _ = self.transaction_manager.commit(tx_id);
+            let _ = self.transaction_manager.lock().commit(tx_id);
             // WAL checkpoint + truncation lives in StorageEngine::commit_transaction
             let mut storage = self.storage.write();
             let _ = storage.commit_transaction();

@@ -94,7 +94,7 @@ fn pk_key_of(
 /// `transaction_manager.add_undo_record` so a subsequent `ROLLBACK`
 /// (or `ROLLBACK TO SAVEPOINT`) re-plays the trigger's side-effects in
 /// reverse order along with the parent statement's undo entries.
-fn drain_trigger_undo_into_tx<S: StorageEngine + 'static>(engine: &mut ExecutionEngine<S>) {
+fn drain_trigger_undo_into_tx<S: StorageEngine + 'static>(engine: &ExecutionEngine<S>) {
     let pending = std::mem::take(&mut *engine.trigger_undo_sink.lock());
     if pending.is_empty() {
         return;
@@ -106,13 +106,13 @@ fn drain_trigger_undo_into_tx<S: StorageEngine + 'static>(engine: &mut Execution
         return;
     };
     for rec in pending {
-        let _ = engine.transaction_manager.add_undo_record(tx_id, rec);
+        let _ = engine.transaction_manager.lock().add_undo_record(tx_id, rec);
     }
 }
 /// INSERT executor body. ARCH-3 VtuGuard call lives in the `pub fn
 /// execute_insert` wrapper in `execution_engine.rs` (gate requirement).
 pub fn execute_insert<S: StorageEngine + 'static>(
-    engine: &mut ExecutionEngine<S>,
+    engine: &ExecutionEngine<S>,
     insert: &InsertStatement,
 ) -> SqlResult<ExecutorResult> {
     if engine.clustered_tables.read().contains_key(&insert.table) {
@@ -739,7 +739,7 @@ pub fn execute_insert<S: StorageEngine + 'static>(
     if let Some(undo_tx) = engine.tx_session.lock().current_tx_id {
         for record in &processed_records {
             record_insert_undo(
-                &mut engine.transaction_manager,
+                &mut *engine.transaction_manager.lock(),
                 undo_tx,
                 &table_name,
                 &table_info,
@@ -812,7 +812,7 @@ pub fn execute_insert<S: StorageEngine + 'static>(
 
 /// UPDATE executor body.
 pub fn execute_update<S: StorageEngine + 'static>(
-    engine: &mut ExecutionEngine<S>,
+    engine: &ExecutionEngine<S>,
     update: &UpdateStatement,
 ) -> SqlResult<ExecutorResult> {
     if update.tables.is_empty() {
@@ -1026,7 +1026,7 @@ pub fn execute_update<S: StorageEngine + 'static>(
         if let Some(undo_tx) = engine.tx_session.lock().current_tx_id {
             for (prior_row, new_row) in prior_rows_for_undo.iter().zip(new_rows_for_undo.iter()) {
                 record_update_undo(
-                    &mut engine.transaction_manager,
+                    &mut *engine.transaction_manager.lock(),
                     undo_tx,
                     &table_name,
                     &table_info,
@@ -1192,7 +1192,7 @@ pub fn execute_update<S: StorageEngine + 'static>(
     if let Some(undo_tx) = engine.tx_session.lock().current_tx_id {
         for (prior_row, new_row) in rows_to_update.iter().zip(trigger_modified_rows.iter()) {
             record_update_undo(
-                &mut engine.transaction_manager,
+                &mut *engine.transaction_manager.lock(),
                 undo_tx,
                 &table_name,
                 &table_info,
@@ -1225,7 +1225,7 @@ pub fn execute_update<S: StorageEngine + 'static>(
 
 /// DELETE executor body.
 pub fn execute_delete<S: StorageEngine + 'static>(
-    engine: &mut ExecutionEngine<S>,
+    engine: &ExecutionEngine<S>,
     delete: &DeleteStatement,
 ) -> SqlResult<ExecutorResult> {
     if delete.tables.is_empty() {
@@ -1299,7 +1299,7 @@ pub fn execute_delete<S: StorageEngine + 'static>(
         if let Some(undo_tx) = engine.tx_session.lock().current_tx_id {
             for prior_row in &prior_rows_for_undo {
                 record_delete_undo(
-                    &mut engine.transaction_manager,
+                    &mut *engine.transaction_manager.lock(),
                     undo_tx,
                     &table_name,
                     &table_info,
@@ -1460,7 +1460,7 @@ pub fn execute_delete<S: StorageEngine + 'static>(
     if let Some(undo_tx) = engine.tx_session.lock().current_tx_id {
         for prior_row in &rows_to_delete {
             record_delete_undo(
-                &mut engine.transaction_manager,
+                &mut *engine.transaction_manager.lock(),
                 undo_tx,
                 &table_name,
                 &table_info,
@@ -1494,7 +1494,7 @@ pub fn execute_delete<S: StorageEngine + 'static>(
 /// Multi-table UPDATE executor body (`UPDATE t1, t2 SET ... WHERE ...`).
 /// V312-84 / Issue #4685: also handles MySQL-style `UPDATE t1 JOIN t2 ON ... SET ...`.
 fn execute_update_multi_table<S: StorageEngine + 'static>(
-    engine: &mut ExecutionEngine<S>,
+    engine: &ExecutionEngine<S>,
     update: &UpdateStatement,
 ) -> SqlResult<ExecutorResult> {
     let scalar_eval = |subq: &sqlrustgo_parser::SelectStatement| -> Result<Value, String> {
@@ -1672,7 +1672,7 @@ fn execute_update_multi_table<S: StorageEngine + 'static>(
 }
 
 fn apply_multi_table_updates<S: StorageEngine + 'static>(
-    engine: &mut ExecutionEngine<S>,
+    engine: &ExecutionEngine<S>,
     table_refs: &[sqlrustgo_parser::TableRef],
     per_table_updates: Vec<Vec<(Vec<Value>, Vec<Value>)>>,
     total_count: usize,
@@ -1696,7 +1696,7 @@ fn apply_multi_table_updates<S: StorageEngine + 'static>(
 
 /// Multi-table DELETE executor body (`DELETE t1, t2 FROM t1, t2 WHERE ...`).
 fn execute_delete_multi_table<S: StorageEngine + 'static>(
-    engine: &mut ExecutionEngine<S>,
+    engine: &ExecutionEngine<S>,
     delete: &DeleteStatement,
 ) -> SqlResult<ExecutorResult> {
     let source_refs: Vec<sqlrustgo_parser::TableRef> = match &delete.using {
@@ -1819,7 +1819,7 @@ fn execute_delete_multi_table<S: StorageEngine + 'static>(
 /// itself enforces uniqueness and returns Err on collision), then inserts.
 /// Returns the number of rows inserted.
 fn execute_insert_clustered<S: StorageEngine + 'static>(
-    engine: &mut ExecutionEngine<S>,
+    engine: &ExecutionEngine<S>,
     insert: &InsertStatement,
 ) -> SqlResult<ExecutorResult> {
     if insert.is_replace {
@@ -1924,7 +1924,7 @@ fn execute_insert_clustered<S: StorageEngine + 'static>(
 /// SET clauses per row, then writes each updated row back via
 /// `update_pk` (PK stays the same).
 fn execute_update_clustered<S: StorageEngine + 'static>(
-    engine: &mut ExecutionEngine<S>,
+    engine: &ExecutionEngine<S>,
     update: &UpdateStatement,
 ) -> SqlResult<ExecutorResult> {
     let table_name = update.tables[0].name.clone();
@@ -2012,7 +2012,7 @@ fn execute_update_clustered<S: StorageEngine + 'static>(
 ///
 /// Reads all rows, filters by WHERE, deletes matching rows by PK.
 fn execute_delete_clustered<S: StorageEngine + 'static>(
-    engine: &mut ExecutionEngine<S>,
+    engine: &ExecutionEngine<S>,
     delete: &DeleteStatement,
 ) -> SqlResult<ExecutorResult> {
     let table_name = delete.tables[0].name.clone();

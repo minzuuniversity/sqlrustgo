@@ -3,7 +3,7 @@
 
 #![allow(unused_variables, unused_imports)]
 
-use parking_lot::RwLock;
+use parking_lot::{Mutex, RwLock};
 use sqlrustgo_catalog::Catalog;
 use sqlrustgo_optimizer::unified_cost::UnifiedCostModel;
 use sqlrustgo_storage::{
@@ -32,7 +32,7 @@ impl ExecutionEngine<MemoryStorage> {
             catalog: None,
             stats: Arc::new(RwLock::new(ExecutionStats::default())),
             cbo_enabled: AtomicBool::new(true),
-            transaction_manager: TransactionManager::new(),
+            transaction_manager: Arc::new(Mutex::new(TransactionManager::new())),
             tx_session: Arc::new(parking_lot::Mutex::new(TxSession {
                 current_tx_id: None,
                 tx_status: TxStatus::Idle,
@@ -67,7 +67,7 @@ impl ExecutionEngine<MemoryStorage> {
             catalog: None,
             stats: Arc::new(RwLock::new(ExecutionStats::default())),
             cbo_enabled: AtomicBool::new(cbo_enabled),
-            transaction_manager: TransactionManager::new(),
+            transaction_manager: Arc::new(Mutex::new(TransactionManager::new())),
             tx_session: Arc::new(parking_lot::Mutex::new(TxSession {
                 current_tx_id: None,
                 tx_status: TxStatus::Idle,
@@ -102,7 +102,7 @@ impl ExecutionEngine<MemoryStorage> {
             catalog: Some(catalog),
             stats: Arc::new(RwLock::new(ExecutionStats::default())),
             cbo_enabled: AtomicBool::new(true),
-            transaction_manager: TransactionManager::new(),
+            transaction_manager: Arc::new(Mutex::new(TransactionManager::new())),
             tx_session: Arc::new(parking_lot::Mutex::new(TxSession {
                 current_tx_id: None,
                 tx_status: TxStatus::Idle,
@@ -148,7 +148,7 @@ impl ExecutionEngine<MemoryStorage> {
             catalog: None,
             stats: Arc::new(RwLock::new(ExecutionStats::default())),
             cbo_enabled: AtomicBool::new(true),
-            transaction_manager: TransactionManager::new(),
+            transaction_manager: Arc::new(Mutex::new(TransactionManager::new())),
             tx_session: Arc::new(parking_lot::Mutex::new(TxSession {
                 current_tx_id: None,
                 tx_status: TxStatus::Idle,
@@ -199,7 +199,7 @@ impl ExecutionEngine<MemoryStorage> {
             catalog: None,
             stats: Arc::new(RwLock::new(ExecutionStats::default())),
             cbo_enabled: AtomicBool::new(true),
-            transaction_manager: TransactionManager::new(),
+            transaction_manager: Arc::new(Mutex::new(TransactionManager::new())),
             tx_session: Arc::new(parking_lot::Mutex::new(TxSession {
                 current_tx_id: None,
                 tx_status: TxStatus::Idle,
@@ -256,7 +256,7 @@ impl ExecutionEngine<MemoryStorage> {
             catalog: None,
             stats: Arc::new(RwLock::new(ExecutionStats::default())),
             cbo_enabled: AtomicBool::new(true),
-            transaction_manager: TransactionManager::new(),
+            transaction_manager: Arc::new(Mutex::new(TransactionManager::new())),
             tx_session: Arc::new(parking_lot::Mutex::new(TxSession {
                 current_tx_id: None,
                 tx_status: TxStatus::Idle,
@@ -307,7 +307,7 @@ impl ExecutionEngine<MemoryStorage> {
             catalog: None,
             stats: Arc::new(RwLock::new(ExecutionStats::default())),
             cbo_enabled: AtomicBool::new(true),
-            transaction_manager: TransactionManager::new(),
+            transaction_manager: Arc::new(Mutex::new(TransactionManager::new())),
             tx_session: Arc::new(parking_lot::Mutex::new(TxSession {
                 current_tx_id: None,
                 tx_status: TxStatus::Idle,

@@ -73,6 +73,7 @@ use sqlrustgo_types::Value as SqlValue;
 use std::collections::HashMap;
 use std::path::PathBuf;
 use std::sync::atomic::{AtomicBool, AtomicUsize, Ordering};
+use parking_lot::Mutex;
 use std::sync::Arc;
 
 /// Execution engine for SQL statements
@@ -83,7 +84,14 @@ pub struct ExecutionEngine<S: StorageEngine> {
     // V4.1.0 / Issue #4910 §3.1: convert from `bool` to `AtomicBool` so the
     // `&self` SELECT/SHOW/EXPLAIN path doesn't need the engine write lock.
     pub(crate) cbo_enabled: AtomicBool,
-    pub(crate) transaction_manager: TransactionManager,
+    /// V4.1.0 / Issue #4910 §3.1 Phase 3 step 2: TransactionManager
+    /// behind `Arc<parking_lot::Mutex<>>` so DDL/DML methods can call
+    /// `transaction_manager.begin_transaction()` / `.commit()` / etc. via
+    /// `&self` instead of `&mut self`. The Mutex is non-re-entrant but
+    /// `parking_lot::MutexGuard::DerefMut` lets nested calls work because
+    /// the inner method receives `&mut TransactionManager` from the same
+    /// outer guard.
+    pub(crate) transaction_manager: Arc<Mutex<TransactionManager>>,
     // V4.1.0 / Issue #4910 §3.1 Phase 3: see `TxSession` below. The
     // trigger_undo_sink remains its own `Arc<Mutex<Vec<_>>>` because the
     // trigger recorder already uses interior mutability.
@@ -302,7 +310,7 @@ impl<S: StorageEngine + 'static> ExecutionEngine<S> {
             catalog: Some(Arc::new(RwLock::new(Catalog::new("default")))),
             stats: Arc::new(RwLock::new(ExecutionStats::default())),
             cbo_enabled: AtomicBool::new(cbo_enabled),
-            transaction_manager: TransactionManager::new(),
+            transaction_manager: Arc::new(Mutex::new(TransactionManager::new())),
             tx_session: Arc::new(parking_lot::Mutex::new(TxSession {
                 current_tx_id: None,
                 tx_status: TxStatus::Idle,

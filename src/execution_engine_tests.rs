@@ -1766,6 +1766,3 @@ fn test_v410_phase3_concurrent_inserts() {
         N_ROWS
     );
 }
-
-
-
