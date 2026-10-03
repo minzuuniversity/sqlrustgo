@@ -67,7 +67,11 @@ fn box_storage_engine_shared_and_mut_setters_agree() {
 
     let mut boxed = boxed;
     boxed.set_current_tx_id(9);
-    assert_eq!(boxed.current_tx_id(), 9, "mut setter must overwrite the shared one");
+    assert_eq!(
+        boxed.current_tx_id(),
+        9,
+        "mut setter must overwrite the shared one"
+    );
 }
 
 /// `discard_all_buffers_shared` must be callable through the wrapper
@@ -165,7 +169,9 @@ fn concurrent_transactions_over_shared_storage_complete() {
     }
 
     let mut engine = ExecutionEngine::new(storage);
-    let result = engine.execute("SELECT COUNT(*) FROM t").expect("SELECT must succeed");
+    let result = engine
+        .execute("SELECT COUNT(*) FROM t")
+        .expect("SELECT must succeed");
     assert_eq!(
         result.rows.len(),
         1,

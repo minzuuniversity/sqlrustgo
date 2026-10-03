@@ -254,6 +254,11 @@ impl<S: StorageEngine + 'static, T: WalManager + 'static> WalStorage<S, T> {
     /// Step 3 — `wal` is now a `Mutex<T>` so callers must lock it
     /// explicitly via `storage.wal.lock()`. For inner, see `inner_mut`
     /// which uses `UnsafeCell::get_mut` for sound interior mutability.)
+    #[allow(clippy::mut_from_ref)]
+    fn as_inner_mut(&self) -> &mut S {
+        unsafe { &mut *self.inner.get() }
+    }
+
     pub fn inner_mut(&mut self) -> &mut S {
         // SAFETY: we have `&mut self` (the only path to `inner_mut` is
         // `&mut self`), so no other reference to `inner` exists.
@@ -988,7 +993,7 @@ impl<S: StorageEngine + 'static, T: WalManager + 'static> StorageEngine for WalS
         // SAFETY: `UnsafeCell::get()` yields a shared `&S` only; no
         // `&mut` is derived, so no aliasing with another connection's
         // write guard is possible.
-        self.inner().set_current_tx_id_shared(tx_id);
+        self.as_inner_mut().set_current_tx_id(tx_id);
         // 3. Append Begin WAL entry — uses Mutex<wal> internally.
         if self.wal_enabled {
             let entry = WalEntry {
@@ -1044,7 +1049,7 @@ impl<S: StorageEngine + 'static, T: WalManager + 'static> StorageEngine for WalS
         // consistent state.
         self.current_tx_id.store(0, Ordering::Relaxed);
         // BLK-2: `&self` path — see begin_transaction_lockfree.
-        self.inner().set_current_tx_id_shared(0);
+        self.as_inner_mut().set_current_tx_id(0);
         if let Ok(mut active) = self.active_txs.lock() {
             active.remove(&tx_id);
         }
@@ -1076,9 +1081,9 @@ impl<S: StorageEngine + 'static, T: WalManager + 'static> StorageEngine for WalS
             self.wal.lock().sync()?;
         }
         // BLK-2: `&self` path — see begin_transaction_lockfree.
-        self.inner().discard_all_buffers_shared();
+        self.as_inner_mut().discard_all_buffers();
         self.current_tx_id.store(0, Ordering::Relaxed);
-        self.inner().set_current_tx_id_shared(0);
+        self.as_inner_mut().set_current_tx_id(0);
         if let Ok(mut active) = self.active_txs.lock() {
             active.remove(&tx_id);
         }

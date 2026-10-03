@@ -50,7 +50,7 @@ fn make_storage(dir: &std::path::Path) -> Arc<RwLock<Storage>> {
     {
         let mut s = storage.write();
         s.create_table(&sqlrustgo_storage::engine::TableInfo {
-        name: "t".to_string(),
+            name: "t".to_string(),
             columns: vec![sqlrustgo_storage::engine::ColumnDefinition {
                 name: "id".to_string(),
                 data_type: "INTEGER".to_string(),
@@ -90,9 +90,12 @@ fn run_concurrent_rollbacks(storage: Arc<RwLock<Storage>>, threads: usize, round
                 {
                     let mut guard = storage.write();
                     guard
-                        .insert("t", vec![vec![sqlrustgo_types::Value::Integer(
-                            (t * 100 + r) as i64 + 1000,
-                        )]])
+                        .insert(
+                            "t",
+                            vec![vec![sqlrustgo_types::Value::Integer(
+                                (t * 100 + r) as i64 + 1000,
+                            )]],
+                        )
                         .expect("insert inside tx");
                 }
                 {
@@ -101,14 +104,19 @@ fn run_concurrent_rollbacks(storage: Arc<RwLock<Storage>>, threads: usize, round
                 }
                 {
                     let guard = storage.read();
-                    guard.begin_transaction_lockfree(tx_id + 500_000).expect("begin 2");
+                    guard
+                        .begin_transaction_lockfree(tx_id + 500_000)
+                        .expect("begin 2");
                 }
                 {
                     let mut guard = storage.write();
                     guard
-                        .insert("t", vec![vec![sqlrustgo_types::Value::Integer(
-                            (t * 100 + r) as i64 + 2000,
-                        )]])
+                        .insert(
+                            "t",
+                            vec![vec![sqlrustgo_types::Value::Integer(
+                                (t * 100 + r) as i64 + 2000,
+                            )]],
+                        )
                         .expect("insert inside tx 2");
                 }
                 {
@@ -125,9 +133,7 @@ fn run_concurrent_rollbacks(storage: Arc<RwLock<Storage>>, threads: usize, round
 
 #[test]
 fn concurrent_transactions_over_shared_storage_complete() {
-    let storage = make_storage(std::path::Path::new(
-        "/tmp/sqlrustgo_blk2_concurrent_tx",
-    ));
+    let storage = make_storage(std::path::Path::new("/tmp/sqlrustgo_blk2_concurrent_tx"));
     run_concurrent_rollbacks(storage, 8, 25);
 }
 
@@ -136,9 +142,7 @@ fn concurrent_transactions_interleaved_with_writers_complete() {
     // Mix tx-control traffic with plain writes, which take the write
     // guard. The deadlock needs both sides present: the writer holds
     // `write()` while a rollback path is mid-flight on `read()`.
-    let storage = make_storage(std::path::Path::new(
-        "/tmp/sqlrustgo_blk2_mixed_rw",
-    ));
+    let storage = make_storage(std::path::Path::new("/tmp/sqlrustgo_blk2_mixed_rw"));
     let storage2 = storage.clone();
     let mut handles = Vec::new();
 
@@ -153,9 +157,12 @@ fn concurrent_transactions_interleaved_with_writers_complete() {
                 }
                 {
                     let mut g = s.write();
-                    g.insert("t", vec![vec![sqlrustgo_types::Value::Integer(
-                        3000 + (t * 100 + r) as i64,
-                    )]])
+                    g.insert(
+                        "t",
+                        vec![vec![sqlrustgo_types::Value::Integer(
+                            3000 + (t * 100 + r) as i64,
+                        )]],
+                    )
                     .unwrap();
                 }
                 {
@@ -170,9 +177,12 @@ fn concurrent_transactions_interleaved_with_writers_complete() {
         handles.push(std::thread::spawn(move || {
             for r in 0..60 {
                 let mut g = s.write();
-                g.insert("t", vec![vec![sqlrustgo_types::Value::Integer(
-                    5000 + (t * 100 + r) as i64,
-                )]])
+                g.insert(
+                    "t",
+                    vec![vec![sqlrustgo_types::Value::Integer(
+                        5000 + (t * 100 + r) as i64,
+                    )]],
+                )
                 .unwrap();
             }
         }));

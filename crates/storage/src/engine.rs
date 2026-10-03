@@ -2585,7 +2585,8 @@ impl StorageEngine for MemoryStorage {
     }
 
     fn current_tx_id(&self) -> u64 {
-        self.current_tx_id.load(std::sync::atomic::Ordering::Relaxed)
+        self.current_tx_id
+            .load(std::sync::atomic::Ordering::Relaxed)
     }
 
     fn set_current_tx_id(&mut self, id: u64) {
