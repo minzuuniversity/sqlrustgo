@@ -84,7 +84,10 @@ pub struct ExecutionEngine<S: StorageEngine> {
     // `&self` SELECT/SHOW/EXPLAIN path doesn't need the engine write lock.
     pub(crate) cbo_enabled: AtomicBool,
     pub(crate) transaction_manager: TransactionManager,
-    pub(crate) current_tx_id: Option<TxId>,
+    // V4.1.0 / Issue #4910 §3.1 Phase 3: see `TxSession` below. The
+    // trigger_undo_sink remains its own `Arc<Mutex<Vec<_>>>` because the
+    // trigger recorder already uses interior mutability.
+    pub(crate) tx_session: Arc<parking_lot::Mutex<TxSession>>,
     /// V312-55D (Round-26, follow-up): shared buffer used by the trigger-side undo recorder.
     /// `TriggerUndoRecorder` is invoked, it pushes a typed
     /// `sqlrustgo_transaction::savepoint::UndoRecord` here. The DML
@@ -96,16 +99,16 @@ pub struct ExecutionEngine<S: StorageEngine> {
     /// parent's undo entry only captures the parent row.
     pub(crate) trigger_undo_sink:
         Arc<parking_lot::Mutex<Vec<sqlrustgo_transaction::savepoint::UndoRecord>>>,
-    pub(crate) tx_status: TxStatus,
+    
     /// V312-77 / Issue #4847: distinguishes an explicit BEGIN (set to true
     /// when `begin_transaction` is called) from an implicit DML transaction
     /// (set to false). Only explicit transactions should be tracked by
     /// `commit_implicit_dml_tx` / `rollback_transaction` so that DML inside
     /// an explicit BEGIN does not auto-commit and ROLLBACK can undo it.
-    pub(crate) is_explicit_transaction: bool,
-    pub(crate) tx_readonly: bool,
-    pub(crate) default_isolation: TmIsolationLevel,
-    pub(crate) current_role: Option<String>,
+    
+    
+    
+    
     /// V312-55F / Issue #4243: current SQL session user identity. Defaults to
     /// `root@localhost` (MySQL implicit full privilege). Use `set_current_user`
     /// to switch identity for privilege-check tests / non-root sessions.
@@ -191,6 +194,26 @@ pub struct ExecutionEngine<S: StorageEngine> {
     /// row cap (`MAX_RECURSION_ROWS` in `engine_cte`). V4.1.0 / #4910 §3.1:
     /// `AtomicUsize` so the CTE driver can read without the engine write lock.
     pub recursive_cte_max_rows: AtomicUsize,
+}
+
+/// V4.1.0 / Issue #4910 §3.1 Phase 3: per-connection transaction state
+/// grouped behind `Arc<parking_lot::Mutex<_>>` so DDL/DML can run via
+/// `&self` instead of `&mut self`. The 6 fields here are the ones
+/// `execute_insert/update/delete` (and the TX statement handlers) need
+/// to mutate during the hot path.
+///
+/// `current_user` is intentionally NOT here — it's a `Copy`-able small
+/// struct read only on the auth path (no contention). `session_vars` and
+/// `trigger_undo_sink` keep their existing `Arc<RwLock<_>>` /
+/// `Arc<Mutex<_>>` wrappers. `session_null_order_first` is read-only at
+/// runtime and stays on `ExecutionEngine` directly.
+pub(crate) struct TxSession {
+    pub(crate) current_tx_id: Option<TxId>,
+    pub(crate) tx_status: TxStatus,
+    pub(crate) tx_readonly: bool,
+    pub(crate) is_explicit_transaction: bool,
+    pub(crate) default_isolation: TmIsolationLevel,
+    pub(crate) current_role: Option<String>,
 }
 
 /// Transaction status for lifecycle enforcement
@@ -280,13 +303,15 @@ impl<S: StorageEngine + 'static> ExecutionEngine<S> {
             stats: Arc::new(RwLock::new(ExecutionStats::default())),
             cbo_enabled: AtomicBool::new(cbo_enabled),
             transaction_manager: TransactionManager::new(),
-            current_tx_id: None,
+            tx_session: Arc::new(parking_lot::Mutex::new(TxSession {
+                current_tx_id: None,
+                tx_status: TxStatus::Idle,
+                is_explicit_transaction: false,
+                tx_readonly: false,
+                default_isolation: TmIsolationLevel::default(),
+                current_role: None,
+            })),
             trigger_undo_sink: Arc::new(parking_lot::Mutex::new(Vec::new())),
-            tx_status: TxStatus::Idle,
-            is_explicit_transaction: false,
-            tx_readonly: false,
-            default_isolation: TmIsolationLevel::default(),
-            current_role: None,
             current_user: UserIdentity::new("root", "localhost"),
             session_null_order_first: None,
             checkpoint_manager: None,

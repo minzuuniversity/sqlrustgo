@@ -295,7 +295,7 @@ impl<S: StorageEngine + 'static> ExecutionEngine<S> {
             role.name.clone()
         };
 
-        self.current_role = Some(stmt.role_name.clone());
+        self.tx_session.lock().current_role = Some(stmt.role_name.clone());
 
         Ok(ExecutorResult::new(
             vec![vec![Value::Text(format!("SET ROLE to {}", role_name))]],

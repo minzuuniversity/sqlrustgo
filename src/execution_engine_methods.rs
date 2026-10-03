@@ -1420,13 +1420,13 @@ impl<S: StorageEngine + 'static> ExecutionEngine<S> {
                         }
                         ParserIsolationLevel::Serializable => TmIsolationLevel::Serializable,
                     })
-                    .unwrap_or(self.default_isolation);
+                    .unwrap_or(self.tx_session.lock().default_isolation);
                 self.begin_transaction(iso, *readonly)
             }
             TransactionStatement::Commit { work: _ } => self.commit_transaction(),
             TransactionStatement::Rollback { work: _ } => self.rollback_transaction(),
             TransactionStatement::SetTransaction { isolation_level } => {
-                self.default_isolation = match isolation_level {
+                self.tx_session.lock().default_isolation = match isolation_level {
                     ParserIsolationLevel::ReadCommitted => TmIsolationLevel::SnapshotIsolation,
                     ParserIsolationLevel::ReadUncommitted => TmIsolationLevel::SnapshotIsolation,
                     ParserIsolationLevel::SnapshotIsolation => TmIsolationLevel::SnapshotIsolation,
@@ -1447,15 +1447,15 @@ impl<S: StorageEngine + 'static> ExecutionEngine<S> {
                         }
                         ParserIsolationLevel::Serializable => TmIsolationLevel::Serializable,
                     })
-                    .unwrap_or(self.default_isolation);
+                    .unwrap_or(self.tx_session.lock().default_isolation);
                 // Idempotent START TRANSACTION: if a transaction is already in
                 // progress (e.g. after ROLLBACK or nested START from a retry),
                 // just update isolation/readonly and return OK rather than erroring.
                 // This matches MySQL behavior.
-                if self.current_tx_id.is_some() {
-                    self.tx_readonly = false;
+                if self.tx_session.lock().current_tx_id.is_some() {
+                    self.tx_session.lock().tx_readonly = false;
                     if let Some(ref il) = isolation_level {
-                        self.default_isolation = match il {
+                        self.tx_session.lock().default_isolation = match il {
                             // TmIsolationLevel only has SnapshotIsolation and Serializable
                             ParserIsolationLevel::Serializable => TmIsolationLevel::Serializable,
                             _ => TmIsolationLevel::SnapshotIsolation,
@@ -1510,14 +1510,14 @@ impl<S: StorageEngine + 'static> ExecutionEngine<S> {
         // "Transaction already in progress" error reported by
         // Issue #4519 regression tests when the test pattern is
         // `INSERT ...; BEGIN; ...`.
-        if self.current_tx_id.is_some() {
+        if self.tx_session.lock().current_tx_id.is_some() {
             // V312-85 / Issue #4519: drain the implicit TX.
-            let prev_tx = self.current_tx_id;
+            let prev_tx = self.tx_session.lock().current_tx_id;
             let mut storage = self.storage.write();
             let _ = storage.commit_transaction();
             drop(storage);
-            self.current_tx_id = None;
-            self.tx_status = TxStatus::Idle;
+            self.tx_session.lock().current_tx_id = None;
+            self.tx_session.lock().tx_status = TxStatus::Idle;
             // Touch `prev_tx` to silence the unused-variable warning
             // when the build is non-debug; the binding documents
             // what we drained so future readers can correlate.
@@ -1529,7 +1529,7 @@ impl<S: StorageEngine + 'static> ExecutionEngine<S> {
             .map_err(|e| {
                 SqlError::ExecutionError(format!("Failed to begin transaction: {:?}", e))
             })?;
-        self.current_tx_id = Some(tx_id);
+        self.tx_session.lock().current_tx_id = Some(tx_id);
         // Issue #4519 / Phase B Step 3 follow-up: an explicit `BEGIN`
         // must also transition `tx_status` from `Idle` (or a stale
         // `Committed`/`Aborted` left over from the previous statement)
@@ -1537,7 +1537,7 @@ impl<S: StorageEngine + 'static> ExecutionEngine<S> {
         // (begin_implicit_dml_tx) sees `TxStatus::Committed` and rejects
         // with "transaction already committed" — even though the user
         // never ran `COMMIT`.
-        self.tx_status = TxStatus::Active;
+        self.tx_session.lock().tx_status = TxStatus::Active;
         // PR-842: also write a `Begin` WAL entry so the recovery engine can
         // detect explicit transactions and apply the per-tx boundary rule
         // when filtering committed entries. Without this, every DML entry
@@ -1559,8 +1559,8 @@ impl<S: StorageEngine + 'static> ExecutionEngine<S> {
             storage.set_current_tx_id(tx_id.as_u64());
             let _ = storage.begin_transaction();
         }
-        self.tx_status = TxStatus::Active;
-        self.tx_readonly = readonly;
+        self.tx_session.lock().tx_status = TxStatus::Active;
+        self.tx_session.lock().tx_readonly = readonly;
         // V312-RC-GA / Issue #4818: BEGIN used to return the tx_id as a
         // single row, which leaked through the CSV formatter and broke
         // multi-statement scripts (the next statement's first output row
@@ -1572,11 +1572,11 @@ impl<S: StorageEngine + 'static> ExecutionEngine<S> {
 
     pub(super) fn commit_transaction(&mut self) -> SqlResult<ExecutorResult> {
         // V312-77 / Issue #4847 Path B: no explicit tx active → no-op (MySQL compat).
-        if self.current_tx_id.is_none() {
+        if self.tx_session.lock().current_tx_id.is_none() {
             return Ok(ExecutorResult::empty());
         }
         let tx_id = self
-            .current_tx_id
+            .tx_session.lock().current_tx_id
             .ok_or_else(|| SqlError::ExecutionError("No transaction in progress".to_string()))?;
         // Phase B Step 3 follow-up #3: prefer the lockfree path so we
         // don't take the global `Arc<RwLock<storage>>` write lock for
@@ -1606,14 +1606,14 @@ impl<S: StorageEngine + 'static> ExecutionEngine<S> {
         self.transaction_manager.commit(tx_id).map_err(|e| {
             SqlError::ExecutionError(format!("Failed to commit transaction: {:?}", e))
         })?;
-        self.current_tx_id = None;
-        self.tx_status = TxStatus::Committed;
+        self.tx_session.lock().current_tx_id = None;
+        self.tx_session.lock().tx_status = TxStatus::Committed;
         // INT-1: Reset to Idle after commit so the next statement can
         // either begin a new TX or run in autocommit mode again. Without
         // this reset, subsequent DML would reject with
         // "transaction already committed".
-        self.tx_status = TxStatus::Idle;
-        self.tx_readonly = false;
+        self.tx_session.lock().tx_status = TxStatus::Idle;
+        self.tx_session.lock().tx_readonly = false;
         Ok(ExecutorResult::empty())
     }
 
@@ -1636,7 +1636,7 @@ impl<S: StorageEngine + 'static> ExecutionEngine<S> {
         op: SavepointOp,
     ) -> SqlResult<ExecutorResult> {
         // An active transaction is required for any savepoint operation.
-        let tx_id = self.current_tx_id.ok_or_else(|| {
+        let tx_id = self.tx_session.lock().current_tx_id.ok_or_else(|| {
             SqlError::ExecutionError(
                 "SAVEPOINT / ROLLBACK TO SAVEPOINT / RELEASE SAVEPOINT \
                  requires an active transaction (BEGIN or implicit autocommit TX)"
@@ -1753,11 +1753,11 @@ impl<S: StorageEngine + 'static> ExecutionEngine<S> {
 
     pub(super) fn rollback_transaction(&mut self) -> SqlResult<ExecutorResult> {
         // V312-77 / Issue #4847 Path C: no explicit tx active → no-op.
-        if self.current_tx_id.is_none() {
+        if self.tx_session.lock().current_tx_id.is_none() {
             return Ok(ExecutorResult::empty());
         }
         let tx_id = self
-            .current_tx_id
+            .tx_session.lock().current_tx_id
             .ok_or_else(|| SqlError::ExecutionError("No transaction in progress".to_string()))?;
         // Issue #4581 / B-track case 35-36: physically undo the
         // transaction by replaying the per-tx undo log via a closure
@@ -1837,12 +1837,12 @@ impl<S: StorageEngine + 'static> ExecutionEngine<S> {
             let mut storage = self.storage.write();
             storage.release_all_gap_locks(tx_id.as_u64());
         }
-        self.current_tx_id = None;
-        self.tx_status = TxStatus::Aborted;
+        self.tx_session.lock().current_tx_id = None;
+        self.tx_session.lock().tx_status = TxStatus::Aborted;
         // INT-1: Reset to Idle so the next DML can begin a new TX or run
         // in autocommit mode. (Same reasoning as commit_transaction above.)
-        self.tx_status = TxStatus::Idle;
-        self.tx_readonly = false;
+        self.tx_session.lock().tx_status = TxStatus::Idle;
+        self.tx_session.lock().tx_readonly = false;
         Ok(ExecutorResult::empty())
     }
 
@@ -1854,12 +1854,12 @@ impl<S: StorageEngine + 'static> ExecutionEngine<S> {
         _table: &str,
     ) -> SqlResult<(Option<TxId>, bool)> {
         let _ = op;
-        if self.tx_readonly {
+        if self.tx_session.lock().tx_readonly {
             return Err(SqlError::ExecutionError(
                 "Cannot execute DML in READONLY transaction".to_string(),
             ));
         }
-        match self.tx_status {
+        match self.tx_session.lock().tx_status {
             TxStatus::Committed => {
                 return Err(SqlError::ExecutionError(
                     "transaction already committed".to_string(),
@@ -1872,20 +1872,20 @@ impl<S: StorageEngine + 'static> ExecutionEngine<S> {
             }
             TxStatus::Idle | TxStatus::Active => {}
         }
-        if self.current_tx_id.is_none() {
+        if self.tx_session.lock().current_tx_id.is_none() {
             let tx_id = self
                 .transaction_manager
-                .begin_transaction(self.default_isolation)
+                .begin_transaction(self.tx_session.lock().default_isolation)
                 .map_err(|e| SqlError::ExecutionError(format!("TM.begin failed: {:?}", e)))?;
-            self.current_tx_id = Some(tx_id);
-            self.tx_status = TxStatus::Active;
+            self.tx_session.lock().current_tx_id = Some(tx_id);
+            self.tx_session.lock().tx_status = TxStatus::Active;
             let mut storage = self.storage.write();
             {
                 storage.set_current_tx_id(tx_id.as_u64());
             }
             Ok((Some(tx_id), true))
         } else {
-            Ok((self.current_tx_id, false))
+            Ok((self.tx_session.lock().current_tx_id, false))
         }
     }
 
@@ -1893,7 +1893,7 @@ impl<S: StorageEngine + 'static> ExecutionEngine<S> {
     /// Idempotent when `started_implicit` is `false` (user controls commit/rollback).
     pub(crate) fn commit_implicit_dml_tx(&mut self, started_implicit: bool) -> SqlResult<()> {
         if started_implicit {
-            let tx_id = self.current_tx_id.unwrap();
+            let tx_id = self.tx_session.lock().current_tx_id.unwrap();
             let _ = self.transaction_manager.commit(tx_id);
             // WAL checkpoint + truncation lives in StorageEngine::commit_transaction
             let mut storage = self.storage.write();
@@ -1901,8 +1901,8 @@ impl<S: StorageEngine + 'static> ExecutionEngine<S> {
             // F-16 Gap Locking: release all gap locks on commit
             storage.release_all_gap_locks(tx_id.as_u64());
             drop(storage);
-            self.current_tx_id = None;
-            self.tx_status = TxStatus::Idle;
+            self.tx_session.lock().current_tx_id = None;
+            self.tx_session.lock().tx_status = TxStatus::Idle;
         }
         Ok(())
     }

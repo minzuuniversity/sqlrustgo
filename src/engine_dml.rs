@@ -99,7 +99,7 @@ fn drain_trigger_undo_into_tx<S: StorageEngine + 'static>(engine: &mut Execution
     if pending.is_empty() {
         return;
     }
-    let Some(tx_id) = engine.current_tx_id else {
+    let Some(tx_id) = engine.tx_session.lock().current_tx_id else {
         // No active transaction — drop the buffer. Trigger
         // side-effects inside an autocommit statement are already
         // committed to storage and stay visible.
@@ -736,7 +736,7 @@ pub fn execute_insert<S: StorageEngine + 'static>(
     // #4519: SAVEPOINT physical-undo wiring. Append one UndoRecord::Insert
     // per row actually inserted so a ROLLBACK TO SAVEPOINT can delete by
     // primary key. The helper short-circuits when no savepoint is active.
-    if let Some(undo_tx) = engine.current_tx_id {
+    if let Some(undo_tx) = engine.tx_session.lock().current_tx_id {
         for record in &processed_records {
             record_insert_undo(
                 &mut engine.transaction_manager,
@@ -979,7 +979,7 @@ pub fn execute_update<S: StorageEngine + 'static>(
         // `new_rows_for_undo` — and even that clone could be elided in the
         // future if the WAL layer accepts the post-update row directly.
         let all_rows_no_where = storage.scan(&table_name)?;
-        let need_undo_snapshot = engine.current_tx_id.is_some();
+        let need_undo_snapshot = engine.tx_session.lock().current_tx_id.is_some();
         let mut count = 0usize;
         let mut prior_rows_for_undo: Vec<Vec<Value>> = if need_undo_snapshot {
             Vec::with_capacity(all_rows_no_where.len())
@@ -1023,7 +1023,7 @@ pub fn execute_update<S: StorageEngine + 'static>(
         // #4519: SAVEPOINT physical-undo wiring. Append one UndoRecord::Update
         // per row actually updated (no-WHERE path) so a ROLLBACK TO SAVEPOINT
         // can restore the prior row. Short-circuits when no savepoint is active.
-        if let Some(undo_tx) = engine.current_tx_id {
+        if let Some(undo_tx) = engine.tx_session.lock().current_tx_id {
             for (prior_row, new_row) in prior_rows_for_undo.iter().zip(new_rows_for_undo.iter()) {
                 record_update_undo(
                     &mut engine.transaction_manager,
@@ -1189,7 +1189,7 @@ pub fn execute_update<S: StorageEngine + 'static>(
     // can restore the prior row. Short-circuits when no savepoint is active.
     // v312-60: also pass the post-update `new_row` so the undo record's
     // `new_value` fallback field is populated for empty-key tables.
-    if let Some(undo_tx) = engine.current_tx_id {
+    if let Some(undo_tx) = engine.tx_session.lock().current_tx_id {
         for (prior_row, new_row) in rows_to_update.iter().zip(trigger_modified_rows.iter()) {
             record_update_undo(
                 &mut engine.transaction_manager,
@@ -1296,7 +1296,7 @@ pub fn execute_delete<S: StorageEngine + 'static>(
         // per row actually deleted (no-WHERE path) so a ROLLBACK TO SAVEPOINT
         // can re-insert the deleted rows verbatim. Short-circuits when no
         // savepoint is active.
-        if let Some(undo_tx) = engine.current_tx_id {
+        if let Some(undo_tx) = engine.tx_session.lock().current_tx_id {
             for prior_row in &prior_rows_for_undo {
                 record_delete_undo(
                     &mut engine.transaction_manager,
@@ -1457,7 +1457,7 @@ pub fn execute_delete<S: StorageEngine + 'static>(
     // per row actually deleted (with-WHERE path) so a ROLLBACK TO SAVEPOINT
     // can re-insert the deleted rows verbatim. Short-circuits when no
     // savepoint is active.
-    if let Some(undo_tx) = engine.current_tx_id {
+    if let Some(undo_tx) = engine.tx_session.lock().current_tx_id {
         for prior_row in &rows_to_delete {
             record_delete_undo(
                 &mut engine.transaction_manager,
