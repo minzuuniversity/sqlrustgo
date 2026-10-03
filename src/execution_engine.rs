@@ -144,7 +144,11 @@ pub struct ExecutionEngine<S: StorageEngine> {
     /// Storing the full AST lets `execute_select` expand a FROM-clause
     /// view into its defining subquery (view resolution) and lets
     /// SHOW TABLES / SHOW FULL TABLES list the view by name.
-    pub(crate) views: HashMap<String, CreateViewStatement>,
+    /// V4.1.0 / Issue #4910 §3.1 Phase 3 step 4: views are behind
+    /// `Arc<parking_lot::Mutex<>>` so CREATE VIEW / DROP VIEW can run
+    /// via `&self` (after locking the map briefly). SELECT expansion
+    /// also uses `&self` with `views.lock().get(name)`.
+    pub(crate) views: Arc<parking_lot::Mutex<HashMap<String, CreateViewStatement>>>,
     /// V311-01 F-23: in-memory registry of `ClusteredTable` instances for
     /// tables opted into clustered primary key storage via
     /// `CREATE TABLE ... ENGINE=InnoDB CLUSTERED`. The base `storage`
@@ -326,7 +330,7 @@ impl<S: StorageEngine + 'static> ExecutionEngine<S> {
             parallel_degree: AtomicUsize::new(parallel_degree),
             stmt_cache: sqlrustgo_cache::PreparedStatementCache::new(100),
             cost_model: parking_lot::RwLock::new(UnifiedCostModel::default_model(0, 0)),
-            views: HashMap::new(),
+            views: Arc::new(parking_lot::Mutex::new(HashMap::new())),
             clustered_tables: parking_lot::RwLock::new(HashMap::new()),
             pk_lookup_cache: parking_lot::RwLock::new(HashMap::new()),
             adaptive_hash_index: AdaptiveHashIndex::new().into_shared(),

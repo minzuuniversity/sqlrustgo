@@ -484,7 +484,7 @@ impl<S: StorageEngine + 'static> ExecutionEngine<S> {
         where_clause: Option<&Expression>,
     ) -> SqlResult<ExecutorResult> {
         let storage = self.storage.read();
-        let views: Vec<String> = self.views.keys().cloned().collect();
+        let views: Vec<String> = self.views.lock().keys().cloned().collect();
         // Issue #4567: list views alongside base tables (MySQL semantics —
         // SHOW TABLES includes views; only SHOW FULL TABLES distinguishes
         // them via Table_type). Pre-#4567 views were acked by CREATE VIEW
@@ -557,7 +557,7 @@ impl<S: StorageEngine + 'static> ExecutionEngine<S> {
         where_clause: Option<&Expression>,
     ) -> SqlResult<ExecutorResult> {
         let storage = self.storage.read();
-        let views: Vec<String> = self.views.keys().cloned().collect();
+        let views: Vec<String> = self.views.lock().keys().cloned().collect();
         let mut names = storage.list_tables();
         names.extend(views.iter().cloned());
         let table_type = |name: &str| {
