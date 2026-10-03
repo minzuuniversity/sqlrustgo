@@ -5311,6 +5311,20 @@ fn do_command_loop<S: Read + Write + DrainWrites>(
                         continue;
                     }
                     // G13-OLTP-1: poisoning recovery in both branches.
+                    // V4.1.0 / Issue #4910 §3.1 server-side integration:
+                    //
+                    // Read-only branch (PR #4919 Phase 2 + Phase 3 step 1+2+3):
+                    //   engine.read()  +  execute_select / execute_show /
+                    //                           execute_describe  via  &self.
+                    // No engine.write() lock — the §3.1 contract is unlocked.
+                    //
+                    // Write branch (DDL/DML/Tx):
+                    //   engine.write()  +  execute(&mut self, sql).
+                    // Still needs &mut self because the public `execute()` entry
+                    // was not changed in Phase 3 step 1-3. Phase 3 step 4 (a
+                    // separate breaking-change PR) will switch this to
+                    // engine.read().execute_read_only_ins(...) once
+                    // pub fn execute(&self, sql) is added.
                     let result = if let Some(stmt) = is_read_only {
                         let rstmt = read_only_stmt(stmt);
                         let eng = engine.read();
