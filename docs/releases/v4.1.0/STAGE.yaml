@@ -452,13 +452,41 @@ claims_boundaries:
   prohibited_pre_ga: "168h multi-model SOAK result (per V400-09)"
 
 open_issues:
-  - "v4.0.0 STAGE.yaml SSOT/GA_GATE_REPORT.md contradiction (v4.0.0 says DRAFT, GA doc says GA CONDITIONAL PASS). v4.1.0 inherits this gap. Decision required: real GA upgrade vs. rollback self-claim."
-  - "v4.0.0 alpha-gate blockers: CLEARED 2026-09-30. Real gate runs: check_anti_ignore_gate exit 0 PASS; check_arch_invariants exit 0 PASS 5/5; check_anti_fabrication initially exit 1 FAIL (CHECK 4, HEAD email not in allowlist), remediated by adding 'claude@macmini.dev' to the allowlist (explicit user decision; history rewrite declined), re-run exit 0 PASS. Evidence: docs/releases/v4.1.0/evidence/gate-runs-2026-09-30/."
-  - "168h SOAK (V400-09) FINAL_REPORT: RESOLVED — docs/releases/v4.0.0/V400_09_168H_SOAK_FINAL_REPORT.md exists (verified 2026-09-30)."
-  - "Local main has DIVERGED from develop/v4.0.0 (not merely behind): main=f8a149b474, rev-list --count main..develop/v4.0.0 = 16905, and main is NOT an ancestor of develop/v4.1.0. Resolution (converge vs record as known fork) requires governance decision."
-  - "5/7 WP-C..G legacy issues defer-to-v4.0.1 per v4.0.0 CLAIM_DOWNGRADE_MANIFEST. They should migrate to v4.1.0 scope per §wp_h_v313_defer intent."
-  - "CURRENT_VERSION.md is stale (still describes v3.12.0 RC, last refresh 2026-08-26)."
-  - "v4.0.0 RELEASE_NOTES.md missing (RC/GA stage required per STAGE_CONFIG)."
+  # 2026-10-03 销账审计：原 7 条经实跑核实，6 条已解决并移入
+  # resolved_issues_2026_10_03 留档；1 条改写为仍 open（口径矛盾）。
+  # 新增 5 条来自 DEFECTS_AND_ISSUES.md 的 P0/P1 实测项。
+  - "CURRENT_VERSION.md 与 docs/releases/v4.0.0/RELEASE_NOTES.md 仍写 v4.0.0 为 'GA (CONDITIONAL PASS)'，与 v4.0.0/STAGE.yaml 的 ga_promotion_status.verdict=REVOKED 矛盾，需统一措辞。"
+  - "P0-01 check_anti_ignore_gate.sh 为空转门禁（不扫源码树），P16 实际未强制。详见 DEFECTS_AND_ISSUES.md。"
+  - "P0-02 #4708 假 DONE：parser 完全不支持块注释 /* */，被 crates/parser/tests/wp_a_legacy.rs:68 的未登记 #[ignore] 掩盖。详见 DEFECTS_AND_ISSUES.md + ISSUES_PLAN.md §4.0。"
+  - "P0-05 debt-registry.yaml SEM-4 关闭根因仍是字面占位符 'XYZ'，且其中 parser 75.16% 不可复现（实测 60.58%）。详见 DEFECTS_AND_ISSUES.md。"
+  - "P1-01 parser 行覆盖率实测 60.58%，ALPHA 门槛 80%，缺 19.42pp；check_coverage_v312.sh:30 提取失败时 fail-open 跳过。详见 DEFECTS_AND_ISSUES.md。"
+  - "P1-02 #4540 Q20 oracle 未闭环：sqlrustgo/q20.tsv 缺失，CROSS_ENGINE_HASH_CHECK.json 记 present:false，与 GA5_TPCH_SF1_REPORT.md:40 的 'Q20 PASS' 矛盾。详见 DEFECTS_AND_ISSUES.md。"
+
+resolved_issues_2026_10_03:
+  - id: "v4.0.0 STAGE.yaml / GA_GATE_REPORT.md 矛盾"
+    was: "v4.0.0 says DRAFT, GA doc says GA CONDITIONAL PASS; v4.1.0 inherits this gap"
+    resolved: "2026-09-30 v4.0.0/STAGE.yaml 新增 ga_promotion_status.verdict=REVOKED + 5 条阻塞事实；GA_GATE_REPORT.md 顶部加判定作废更正块；新建 GA_RELEASE_TIMELINE.md 记录 3 条晋升路径。实测 2026-10-03: v4.0.0 current_stage=DRAFT, ga_promotion_status=REVOKED。"
+    evidence: "docs/releases/v4.0.0/GA_RELEASE_TIMELINE.md"
+  - id: "v4.0.0 alpha-gate blockers (3 条)"
+    was: "3 inherited alpha-gate FAILs"
+    resolved: "2026-09-30 全部清除并附实跑证据：check_anti_ignore_gate exit 0（但该门禁为空转，见 open_issues P0-01）；check_arch_invariants exit 0 PASS 5/5；check_anti_fabrication 加白名单 claude@macmini.dev 后复跑 exit 0。"
+    evidence: "docs/releases/v4.1.0/evidence/gate-runs-2026-09-30/ (5 份)"
+  - id: "168h SOAK (V400-09) FINAL_REPORT missing"
+    was: "REPORT absent"
+    resolved: "docs/releases/v4.0.0/V400_09_168H_SOAK_FINAL_REPORT.md 存在（2026-09-30 核实）"
+    evidence: "docs/releases/v4.0.0/V400_09_168H_SOAK_FINAL_REPORT.md"
+  - id: "Local main DIVERGED from develop/v4.0.0 (main=f8a149b474, gap=16905)"
+    was: "main 非 develop 的祖先，且落后 16905 commits"
+    resolved: "2026-09-30 按 BRANCH_GOVERNANCE.md §14 收敛：main 由 release/v4.0.0 单向驱动。实测 2026-10-03: 5 远端 main 全部 = 1f62d46f0625 = release/v4.0.0；双备份保留 (backup/main-pre-convergence-2026-09-30 分支 + archive/main-pre-convergence-2026-09-30 tag)。新增 scripts/gate/check_main_freshness.sh (C-MAIN-01/02/03 全 fail-closed)，实测 exit 0。"
+    evidence: "docs/releases/v4.1.0/MAIN_DIVERGENCE_RESOLUTION_2026-09-30.md"
+  - id: "WP-C..G legacy issues not migrated to v4.1.0"
+    was: "5/7 WP-C..G defer-to-v4.0.1, 应迁至 v4.1.0"
+    resolved: "2026-09-30 迁移完成。实测 docs/releases/v4.1.0/ISSUES_PLAN.md §4.1-§4.4 含 WP-C 6 + WP-D 4 + WP-F 1 + WP-G 1 = 12 条；§4.7 汇总 Total=24（另含 §4.0 的 WP-A 4、WP-B 6、WP-E 1、WP-H 1）。权威源 v4.0.0/WP_LEGACY_TRIAGE.md + LEGACY_ISSUES.md §3。"
+    evidence: "docs/releases/v4.1.0/ISSUES_PLAN.md §4"
+  - id: "v4.0.0 RELEASE_NOTES.md missing"
+    was: "RC/GA stage required per STAGE_CONFIG"
+    resolved: "docs/releases/v4.0.0/RELEASE_NOTES.md 存在（10073 字节，2026-09-30 18:36）。其头部措辞需与 REVOKED 同步，已并入 open_issues 首条。"
+    evidence: "docs/releases/v4.0.0/RELEASE_NOTES.md"
 
 next_action:
   - "Create v4.1.0/docs/releases/v4.1.0/VERSION_PLAN.md (1 page: deltas over v4.0.0)"
@@ -473,17 +501,26 @@ next_action:
   - "After docs scaffolded: tag v4.1.0-alpha1 and advance STAGE.yaml current_stage: ALPHA"
 
 last_status_refresh:
-  date: "2026-09-29"
-  head: "0bbb044da3711772d4617bc40ad5839511712805"
-  source: "local git + 5 remotes (verified via scripts/sync/5remotes_drift_check.sh)"
-  stage_result: "DRAFT_PARTIAL_PHASE_0_DOCS_SCAFFOLDED_BUT_DOCS_INCOMPLETE"
-  open_prs: 0
-  open_issues:
-    - "v4.0.0 STAGE.yaml SSOT contradiction (inherited)"
-    - "3 alpha gate FAILs (inherited from v4.0.0)"
-    - "168h SOAK FINAL_REPORT missing (V400-09)"
-    - "v4.0.0 main落后 16902 commit (inherited divergence)"
-    - "5/7 WP-C..G deferred items not migrated into v4.1.0 scope"
-    - "CURRENT_VERSION.md stale"
-    - "v4.0.0 RELEASE_NOTES.md missing"
-  next_action: "Complete PHASE_0 docs per §next_action above; then assess whether to (a) fix 3 inherited v4.0.0 alpha-gate FAILs in v4.1.0 scope, or (b) escalate v4.0.0 STAGE.yaml SSOT contradiction to governance review before proceeding to ALPHA."
+  date: "2026-10-03"
+  head: "d59dbffd1d6b384eeb6ff95d6c1f6b3954ad246e"
+  source: "gitea252 API + git ls-remote (5 remotes) + real gate runs"
+  stage_result: "DRAFT (unchanged since the 2026-09-30 AFP §7.1 rollback)"
+  remote_sync: "develop/v4.1.0 5/5 remotes identical at d59dbffd; main 5/5 identical at 1f62d46f"
+  open_prs_at_refresh: 1
+  open_pr:
+    - "#4932 fix/v410-blk2-shared-tx-path (BLK-1 + BLK-2, Closes #4931) — awaiting review"
+  gate_runs_2026_10_03:
+    - "scripts/gate/check_main_freshness.sh -> exit 0 (ALL PASS)"
+    - "scripts/sync/5remotes_drift_check.sh -> exit 0 (all branches within threshold (2))"
+    - "scripts/gate/check_docs_links.sh -> exit 0 (All markdown links are valid)"
+    - "cargo test --test blk2_shared_tx_path_test -> 5 passed / 0 failed / 0 ignored"
+    - "cargo test -p sqlrustgo-storage --test blk2_lockfree_tx_concurrency_test -> 3 passed / 0 failed"
+    - "cargo check -p sqlrustgo-storage -> exit 0"
+    - "cargo fmt --check --all -> exit 0"
+  known_hollow_gate: "scripts/gate/check_anti_ignore_gate.sh exits 0 but never scans the source tree (see open_issues P0-01 / DEFECTS_AND_ISSUES.md)"
+  note: >-
+    该节点原记录 2026-09-29 快照（stage_result=DRAFT_PARTIAL_PHASE_0_DOCS_SCAFFOLDED_BUT_DOCS_INCOMPLETE，
+    列出 7 条 open_issues）。2026-10-03 复核发现：(a) 所列 9 个 PHASE_0 文档全部已存在，
+    原 next_action 自 PHASE_0 起从未刷新；(b) 原 7 条 open_issues 中 6 条已解决
+    （见 resolved_issues_2026_10_03）；(c) 5 远端已于 2026-10-03 全部收敛。
+    故整体重写，不保留原陈旧字段。
