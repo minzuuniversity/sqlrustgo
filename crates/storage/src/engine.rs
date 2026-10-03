@@ -3677,7 +3677,8 @@ mod tests {
             "t".to_string(),
             vec![vec![Value::Integer(1)], vec![Value::Integer(2)]],
         );
-        s.current_tx_id = 1;
+        s.current_tx_id
+            .store(1, std::sync::atomic::Ordering::Relaxed);
         s.tx_log = Some(TxLog::default());
         let count = s.update("t", &[], &[(0, Value::Integer(99))]).unwrap();
         assert_eq!(count, 2);
@@ -3691,7 +3692,8 @@ mod tests {
             "t".to_string(),
             vec![vec![Value::Integer(1)], vec![Value::Integer(2)]],
         );
-        s.current_tx_id = 1;
+        s.current_tx_id
+            .store(1, std::sync::atomic::Ordering::Relaxed);
         s.tx_log = Some(TxLog::default());
         let count = s
             .update("t", &[Value::Integer(1)], &[(0, Value::Integer(99))])
@@ -3721,7 +3723,8 @@ mod tests {
             "t".to_string(),
             vec![vec![Value::Integer(1)], vec![Value::Integer(2)]],
         );
-        s.current_tx_id = 1;
+        s.current_tx_id
+            .store(1, std::sync::atomic::Ordering::Relaxed);
         s.tx_log = Some(TxLog::default());
         let filter: RowFilter = Box::new(|row: &Record| row[0] == Value::Integer(2));
         let mutation = RowMutation::new(vec![(0, Value::Integer(88))], 0);
@@ -3743,7 +3746,8 @@ mod tests {
         let mut s = MemoryStorage::new();
         s.tables
             .insert("t".to_string(), vec![vec![Value::Integer(1)]]);
-        s.current_tx_id = 1;
+        s.current_tx_id
+            .store(1, std::sync::atomic::Ordering::Relaxed);
         s.tx_log = Some(TxLog::default());
         s.tables.get_mut("t").unwrap().push(vec![Value::Integer(2)]);
     }
