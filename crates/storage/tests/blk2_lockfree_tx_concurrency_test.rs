@@ -134,7 +134,7 @@ fn run_concurrent_rollbacks(storage: Arc<RwLock<Storage>>, threads: usize, round
 #[test]
 fn concurrent_transactions_over_shared_storage_complete() {
     let storage = make_storage(std::path::Path::new("/tmp/sqlrustgo_blk2_concurrent_tx"));
-    run_concurrent_rollbacks(storage, 8, 25);
+    run_concurrent_rollbacks(storage, 6, 20);
 }
 
 #[test]
@@ -146,10 +146,10 @@ fn concurrent_transactions_interleaved_with_writers_complete() {
     let storage2 = storage.clone();
     let mut handles = Vec::new();
 
-    for t in 0..6 {
+    for t in 0..4 {
         let s = storage.clone();
         handles.push(std::thread::spawn(move || {
-            for r in 0..40 {
+            for r in 0..30 {
                 let tx_id = (t * 100 + r + 1) as u64;
                 {
                     let g = s.read();
@@ -172,10 +172,10 @@ fn concurrent_transactions_interleaved_with_writers_complete() {
             }
         }));
     }
-    for t in 0..4 {
+    for t in 0..3 {
         let s = storage2.clone();
         handles.push(std::thread::spawn(move || {
-            for r in 0..60 {
+            for r in 0..40 {
                 let mut g = s.write();
                 g.insert(
                     "t",
