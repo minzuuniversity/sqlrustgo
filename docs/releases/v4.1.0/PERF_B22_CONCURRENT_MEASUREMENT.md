@@ -199,25 +199,69 @@ duplicate ids  : 0
 `Duplicate entry '8000031xx'`，属 **BLK-3**（AUTO_INCREMENT 序列跨 autocommit
 事务重用 id，ISSUES_PLAN §4.8），不是死锁——服务端未卡住。
 
-### 7.3 对 B2.2 的最终判断（不变，且理由更硬）
+### 7.3 对 B2.2 的最终判断（已由重定向落实）
 
 修复 BLK-1/BLK-2 只让负载能跑完，**不改变 §3 的结论**。B2.2 想消除的
 「持锁期间做磁盘 I/O」在活路径上本来就不存在——`StorageEngine::flush` 的
-trait 覆写（`file_storage.rs:4308`）早已是「锁内只 drain dirty 名字、
-I/O 在锁外」，而且它是服务端实际经 `MvccStorage` 调到的那一个。
+trait 覆写早已是「锁内只 drain dirty 名字、I/O 在锁外」，而且它是服务端
+实际经 `MvccStorage` 调到的那一个。
 
 因此：
 
 - **B2.2 维持"未证明"，但已不是"待测"，而是"测了也不可能有该收益"。**
 - §4 的并发读者延迟 6 次运行没有显著差异，与这一判断一致。
-- §3 记录的 `self.tables.get(&name).cloned()` **整表 clone** 仍在 trait 覆写里，
-  且它在**活路径**上。这才是与 B2.1 同类、值得处理的点：改法与
-  `save_table_window` 一致（取 `[last_saved..]` 窗口 + 真实总行数），
-  但必须改在 **trait 覆写**里，不是 inherent 版本。
 
-**建议**（不擅自实施）：把 B2.2 的优化重新对准 trait 覆写，并同时修 §3 发现的
-inherent / trait 双 `flush` 重复实现问题——两者是同一段逻辑的两份拷贝，
-只改一份必然再次出现"B2.2 改了一个没人调的方法"。
+### 7.4 重定向（`557fe61a74`，2026-10-04）
+
+§7.3 的两条建议已实施：
+
+**1. 合并 inherent / trait 两份 `flush`。** 覆写现在委托给 inherent 方法，
+两者共用同一个 `drain_dirty_windowed`：一次短临界区里 drain `dirty_tables`
+并只快照每张表自 `last_saved` 以来新增的行，锁释放后再做 I/O。**活路径上
+不再有整表 clone**，B2.1 的窗口思路落到了真正被调用的那段代码上。
+只用窗口而非整表快照是关键——整表版在 `b2_flush_dirty_tables/5tables_*`
+上实测 0.86x，拷贝比它省下的锁更贵。
+
+**2. 顺带修掉同一段代码里的三个缺陷。**
+
+| # | 缺陷 | 后果 |
+|---|---|---|
+| 1 | `flush_parallel` 的 `dirty.len() <= 2` 分支先 drain 再调 `self.flush()`，后者看到空集合 | **行被静默丢弃** |
+| 2 | 3+ 分支在 spawn 的线程里读 `self.tables.get(name)`，而该 HashMap 由 `write_lock` 保护 | **data race**（不只是陈旧读） |
+| 3 | `flush_parallel` 与 inherent `flush` 都没先 push `insert_buffer` 进 `tables` | 窗口为空，**缓冲插入从未落盘** |
+
+缺陷 3 正是两份实现漂移的证据：trait 覆写一直会做这一步，inherent 版本没有。
+
+`drain_dirty_windowed` 区分两种「无新增」：**收缩**（`last_saved > total`，
+DELETE/UPDATE 减了行数，必须整表重写）与**无变化**（`last_saved == total`，
+跳过）。不做这个区分就会踩到 §7.4 实施过程中的一个真实回归：
+`flush_all_buffers` 先跑并把 `last_saved` 推到全量，随后 drain 看到
+`total <= last_saved` 而走 `save_table_window` 的冷启动/收缩分支，
+**把刚增量写完的快照又整表重写一遍**——由
+`trait_flush_appends_a_delta_rather_than_rewriting` 捕获。
+
+回归测试 `crates/storage/tests/b22_flush_reroute_test.rs`（5 例），先红后绿：
+
+```
+$ git stash push crates/storage/src/file_storage.rs
+$ cargo test -p sqlrustgo-storage --test b22_flush_reroute_test
+test result: FAILED. 0 passed; 5 failed
+  flush_parallel_persists_one_table: left: 0, right: 2
+
+$ git stash pop
+test result: ok. 5 passed; 0 failed
+```
+
+覆盖：1 张表的 `flush_parallel`、2 张表、5 张表（并行分支）、两个 `flush`
+入口结果一致、以及"表增长后写 delta 而非重写基础快照"（同时断言内容与
+mtime，重写无法蒙混过关）。
+
+**B2.2 至此的账**：单线程 0.99x（§3 无显著差异，因为活路径本来就没有
+持锁 I/O）；并发收益 0（§4 六次运行无显著差异）；代码侧的价值在于
+**消除两份重复实现 + 修掉数据丢失与 data race**，而非性能数字。
+性能收益**仍为 NOT-MEASURED**——重定向移除了整表拷贝，但没有重新跑
+criterion 对照（基线 `be665d6bc1` 的活路径与现版本不可直接比，中间夹着
+BLK-1/BLK-2/BLK-3 三个修复）。
 
 ## 附：原始数据
 

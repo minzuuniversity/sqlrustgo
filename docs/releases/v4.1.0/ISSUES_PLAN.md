@@ -303,6 +303,31 @@ no-op 默认而非编译失败，而所有服务端创建的 storage 都被它�
 状态。二者需要分开建模。持久化缺口（`flush()` 只在启动恢复与 LOAD DATA 末尾
 调用，周期性/每事务 flush 不存在）同样独立，应单开 issue。
 
+### 4.9 B2.2 重定向时发现的两个正确性缺陷（2026-10-04）
+
+合并 inherent `FileStorage::flush(&self)` 与 `StorageEngine::flush(&mut self)`
+——同一段逻辑的两份独立拷贝——时，在 `flush_parallel` 里发现三个缺陷
+（`557fe61a74` 修复）。**前两个是正确性问题，不是性能问题**，且都发生在
+B2 动工之前。
+
+| # | 缺陷 | 后果 | 状态 |
+|---|---|---|---|
+| **BLK-4** | `flush_parallel` 的 `dirty.len() <= 2` 分支先 drain `dirty_tables`，再调 `self.flush()`——后者看到的是空集合 | **持久化的行被静默丢弃** | ✅ `557fe61a74` |
+| **BLK-5** | `flush_parallel` 的 3+ 分支在 spawn 的线程里读 `self.tables.get(name)`，而该 HashMap 由 `write_lock` 保护 | **data race**（不只是陈旧读） | ✅ `557fe61a74` |
+
+第三个缺陷（两者都未先 push `insert_buffer` 进 `tables`，导致窗口为空、
+缓冲插入从未落盘）随合并一并修复，未单独立项——它正是两份实现漂移的证据：
+trait 覆写一直会做这一步，inherent 版本没有。
+
+**为什么单独立项而不在 BLK 表里**：这两条是数据正确性与内存安全缺陷，
+量级不同于 BLK-1/2/3 的性能与稳定性问题，修复它们的动因也不是"为了测
+B2.2"——整理重复实现时顺带暴露出来的。
+
+回归测试 `crates/storage/tests/b22_flush_reroute_test.rs`（5 例），先红后绿：
+修前 5 例全红（`flush_parallel_persists_one_table: left: 0, right: 2`），
+修后全绿。其中一例断言"表增长后写 delta 而非重写基础快照"，同时校验内容与
+mtime，重写无法蒙混过关。
+
 ## 5. References
 
 

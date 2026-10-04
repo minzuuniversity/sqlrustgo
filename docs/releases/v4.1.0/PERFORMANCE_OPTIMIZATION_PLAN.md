@@ -436,7 +436,7 @@ fsync 运行。
 | Task | 状态 | commit | 说明 |
 |---|---|---|---|
 | B2.1 写路径整表深拷贝 | ✅ 完成 | `6735c366cc` | `insert_direct` / `insert_buffered` / `flush_buffer` 三处的 `data.clone()` 换成 `TableData::snapshot_from(start)`（只带 `[start..]` 窗口）+ `save_table_window(table, window, total_rows)`。O(table_size) → O(row_count)，磁盘字节完全相同。`add_column` 的 `data.clone()` 保留——它 backfill 每一行，全量快照是正确语义，且不在 plan 列出的站点内。 |
-| B2.2 锁内文件 I/O | ✅ 完成 | `e2355c0680` | `flush()` 原来在一个 `with_write_lock` 里 drain dirty 集合**并**对每张表做序列化+`write()`，500MB 表会把排他锁按在磁盘写上。改为：一次短临界区 drain + 快照受影响表 → 释放锁 → 锁外 I/O。代价是每次 flush 多一份 `TableData` 拷贝，收益是读者不再排在 I/O 后面。plan 的验收标准是持锁时间而非峰值 RSS。 |
+| B2.2 锁内文件 I/O | ⚠️ **已重定向** | `e2355c0680` → 修 `ff34478830` → **重定向 `557fe61a74`** | **原改动打在了没人调的方法上。** `FileStorage::flush(&self)`（inherent）与 `StorageEngine::flush(&mut self)`（覆写）是同一段逻辑的两份独立拷贝，而服务端经 `MvccStorage` 调的是**覆写**——活路径上一直留着整表 `.cloned()`。现合并为单一实现（覆写委托 inherent），共用 `drain_dirty_windowed`：一次短临界区 drain + 只快照 `[last_saved..]` 窗口，锁外 I/O。顺带修掉 `flush_parallel` 的三处缺陷（≤2 表分支 drain 后调 `flush()` 见到空集 → **行被静默丢弃**；3+ 分支在 spawn 线程里读受 `write_lock` 保护的 HashMap → **data race**；两者都未先 push `insert_buffer` → **缓冲插入从未落盘**）。详见 [`PERF_B22_CONCURRENT_MEASUREMENT.md`](./PERF_B22_CONCURRENT_MEASUREMENT.md) §3 / §7.4。 |
 | B2.3 全量快照缓冲 | ✅ 完成 | `e49a2a558f` | `save_table_full` 原先构造 owned `StoredTableData`（第二份全表拷贝）再 `to_string_pretty` 成 `String` 才落盘。新增借用的 `StoredTableDataRef`，直接序列化进 1 MB `BufWriter`；owned 版本保留给反序列化，磁盘格式逐字节不变。 |
 | B2.4 `scan_with_filter` 统一 | ✅ 完成（存储层） | `a656850636` | `WalStorage::update` 的 WAL before-image 采集改为 `scan_with_filter` 在引擎内过滤，clone 比例从"全表"降到"实际命中行"。`merge.rs` 的 `execute_merge` 两侧都要全表做 join，无谓词可下推，**按原样保留**。触发器 / 存储过程路径本次未动（见下）。 |
 | B2.5 `committed_tables` Arc 化 | ⏸ **需独立设计 PR** | — | plan 给的是 `HashMap<String, Arc<Vec<Record>>>` + `Arc::make_mut`，但真正省 copy 的前提是 `tables` 也 Arc 化（否则 `self.tables.clone()` 逐个包 `Arc::new(data.clone())`，一次全量拷贝照旧）。`tables` Arc 化在 `engine.rs` 内触及 24 处 `self.tables` + 25 处 `get_mut`/`entry` + 18 处 `committed_tables`；且 `SchemaSnapshot` 是 **pub 类型**（`pub fn snapshot_schema() -> SchemaSnapshot`），字段 `tables: HashMap<String, Vec<Record>>` 是公共 API 的组成部分——Arc 化是 **breaking change**，需要单独版本或兼容层，不能混在性能 PR 里。 |
@@ -623,3 +623,52 @@ test result: ok. 156 passed; 0 failed     # 153 原有 + 3 新增
 $ cargo fmt --check --all                 # exit 0
 $ cargo clippy -p sqlrustgo --all-features  # 改动文件 0 告警
 ```
+
+### 10.13 阻塞缺陷修复与 B2.2 重定向（2026-10-04）
+
+§10.9/§10.10 记录了 B2.2 的并发证据被两个既有缺陷挡住。本节记录这三个
+缺陷的处理与 B2.2 的重定向。详细证据见
+[`PERF_B22_CONCURRENT_MEASUREMENT.md`](./PERF_B22_CONCURRENT_MEASUREMENT.md) §7
+与 [`PERF_B2_4915_AB_MEASUREMENT.md`](./PERF_B2_4915_AB_MEASUREMENT.md) §6。
+
+| 缺陷 | 根因 | 状态 |
+|---|---|---|
+| **BLK-1** 无 auto-increment 分配器 | `engine_dml.rs` 用**写锁之外**的 `pre_scanned_rows` 算 `MAX(id)+1`，并发 INSERT 读到同一 MAX → 主键冲突 | ✅ `3c64dc19ec` |
+| **BLK-2** `*_transaction_lockfree(&self)` 从读守卫洗出 `&mut S` | `WalStorage::as_inner_mut()` 从 `&self` 派生 `&mut`；其前提"engine 用自身 mutex 串行化"在每连接一 engine 的服务端不成立 | ✅ `8ff90269d3` |
+| **BLK-3** AUTO_INCREMENT 序列跨 autocommit 事务重用 id | 修 BLK-1 后暴露：480 次插入只用了 id 1..99。`current_tx_id` 是存储级单字段，而计数器应按表建模 | ⏸ OPEN |
+
+BLK-1 服务端验证（真实 MySQL 协议）：8 线程 × 60 = **480 次 INSERT，0 报错、
+0 重复 id**。BLK-2 端到端验证：修前 `qps=TIMEOUT state=WEDGED`（HEAD 与
+baseline 相同），修后 20s/30s 分别 634/545 QPS，60s 跑完服务端仍存活。
+
+**BLK-2 的关键点**：新增 `&self` trait 方法
+`set_current_tx_id_shared` / `discard_all_buffers_shared`（MemoryStorage 用
+`AtomicU64`，FileStorage 走自身内部 `write_lock`），并**删除** `as_inner_mut`
+——留一个未用的 `&mut`-from-`&self` 助手就是本次事故的成因本身。
+`BoxStorageEngine` 的转发必须写：它是类型擦除包装，漏掉 override 会
+**静默回落**到 trait 的 no-op 默认而非编译失败，而所有服务端 storage 都被
+它包着。
+
+**B2.2 重定向**（`557fe61a74`）：`PERF_B22_CONCURRENT_MEASUREMENT.md` §3
+确证原改动打在了**没有生产调用者**的 inherent `flush()` 上，活路径（trait
+覆写）一直留着整表 `.cloned()`。现已合并为单一实现，共用
+`drain_dirty_windowed`。顺带修掉 `flush_parallel` 的三处缺陷——其中
+**"行被静默丢弃"**和 **data race** 两项是正确性问题，不是性能问题。
+
+**B2.2 的性能收益仍为 NOT-MEASURED**：单线程 0.99x、并发 6 次运行无显著
+差异，两者都与"活路径本来就没有持锁 I/O"一致。重定向移除了整表拷贝但未重跑
+criterion 对照——基线 `be665d6bc1` 与现版本之间夹着 BLK-1/BLK-2/BLK-3
+三个修复，不可直接比较。本节的价值在于**消除重复实现 + 修正确性问题**。
+
+**验证**：
+
+```
+$ cargo test -p sqlrustgo-storage          # 1193 passed / 0 failed（原 1188）
+$ cargo test --lib                         # 157 passed / 0 failed
+$ cargo fmt -p sqlrustgo-storage --check   # exit 0
+```
+
+**下一步**：BLK-3 需要把 AUTO_INCREMENT 计数器与 `current_tx_id` 分离建模
+（前者按表、后者按连接）；另发现持久化缺口——`flush()` 只在启动恢复与
+LOAD DATA 末尾调用，无周期性/每事务 flush，重启后行全丢（`COUNT(*)` 也只
+返回 257 而非真实行数），应单开 issue。
