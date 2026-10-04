@@ -950,8 +950,7 @@ impl FileStorage {
         // into `tables` first. The `StorageEngine::flush` override has
         // always done this; the inherent version did not, which is part of
         // why the two copies of this loop drifted apart.
-        self.flush_all_buffers()
-            .map_err(|e| std::io::Error::new(std::io::ErrorKind::Other, format!("{}", e)))?;
+        self.flush_all_buffers().map_err(Self::io_err_from_sql)?;
         let pending = self.drain_dirty_windowed();
         // Lock released. `save_table_window` / `save_table_full` only
         // touch `data_dir`, `last_saved_row_count` and the filesystem.
@@ -959,6 +958,13 @@ impl FileStorage {
             self.save_table_window(name, window, *total)?;
         }
         Ok(())
+    }
+
+    /// `flush_all_buffers` reports `SqlResult`; the two `flush` entry
+    /// points return `std::io::Result`. One place to convert, so the
+    /// two copies of the flush loop cannot drift on the error mapping.
+    fn io_err_from_sql(e: sqlrustgo_types::SqlError) -> std::io::Error {
+        std::io::Error::other(format!("{}", e))
     }
 
     /// Drain `dirty_tables` and snapshot only the rows each dirty table
@@ -4871,8 +4877,7 @@ impl FileStorage {
         //
         // Taking the window under the lock fixes all three: the pending
         // list is what gets written, on every branch.
-        self.flush_all_buffers()
-            .map_err(|e| std::io::Error::new(std::io::ErrorKind::Other, format!("{}", e)))?;
+        self.flush_all_buffers().map_err(Self::io_err_from_sql)?;
         let pending = self.drain_dirty_windowed();
 
         if pending.is_empty() {
