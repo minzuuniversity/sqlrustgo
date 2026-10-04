@@ -760,7 +760,7 @@ fn respond_to_local_infile(
     request: &Packet,
     _deprecate_eof: bool,
     infile: LocalInfileHandler<'_>,
-    mut next_seq: Option<&mut u8>,
+    next_seq: Option<&mut u8>,
 ) -> MySqlResult<ResultSet> {
     // Path runs to the end of the payload. MySQL specifies a
     // NUL-terminated string; real clients send it bare. Tolerate both by
@@ -795,7 +795,7 @@ fn respond_to_local_infile(
     .write_to(stream)?;
 
     let final_pkt = Packet::read_from(stream)?;
-    if let Some(out) = next_seq.as_deref_mut() {
+    if let Some(out) = next_seq {
         *out = final_pkt.sequence.wrapping_add(1);
     }
 
@@ -821,7 +821,10 @@ fn respond_to_local_infile(
 /// `capacity overflow` (the byte is the NULL escape inside a
 /// length-encoded int, so it used to decode to `u64::MAX` and then blow up
 /// `Vec::with_capacity`).
-pub fn parse_result_set(stream: &mut dyn WireStream, deprecate_eof: bool) -> MySqlResult<ResultSet> {
+pub fn parse_result_set(
+    stream: &mut dyn WireStream,
+    deprecate_eof: bool,
+) -> MySqlResult<ResultSet> {
     let mut refuse = |path: &str| -> MySqlResult<Vec<u8>> {
         Err(MySqlClientError::Protocol(format!(
             "server requested LOCAL INFILE {:?} but no LOCAL INFILE handler is \
@@ -1308,12 +1311,8 @@ impl MySqlConnection {
         // be borrowed at once. `next_seq` is only written on the LOCAL
         // INFILE path (see `parse_result_set_with_infile`).
         let mut next_seq = self.seq;
-        let result = parse_result_set_with_infile(
-            &mut self.stream,
-            true,
-            infile,
-            Some(&mut next_seq),
-        )?;
+        let result =
+            parse_result_set_with_infile(&mut self.stream, true, infile, Some(&mut next_seq))?;
         self.seq = next_seq;
 
         // Update seq from the last packet read (handled inside parse_result_set)

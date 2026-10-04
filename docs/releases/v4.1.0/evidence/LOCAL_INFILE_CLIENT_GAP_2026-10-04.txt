@@ -1,0 +1,189 @@
+================================================================================
+客户端 LOCAL INFILE (0xFB) 协议缺口 — 核实与修复证据
+================================================================================
+provenance (ADR-014 5 evidence fields):
+  source_agent : mcode (MCode root session)
+  source_run   : v410-client-local-infile-2026-10-04
+  timestamp    : 2026-10-04T16:50+08:00
+  evidence_hash: local-git:b7a8526890 (base = gitea252/develop/v4.1.0)
+  conflict_resolution: N/A — 本次为新发现，非对既有结论的修正
+
+政策: Anti-Fabrication-Policy-v1.0 + ADR-001 + ADR-008 + ADR-014
+状态: FIXED + 变异自证
+
+--------------------------------------------------------------------------------
+1. 缺陷一（客户端）：0xFB 被当作 NULL 标记
+--------------------------------------------------------------------------------
+根因链（实跑定位，非推断）:
+
+  crates/mysql-client/src/lib.rs:463 (修复前)
+      0xfb => Ok(u64::MAX), // NULL
+  crates/mysql-client/src/lib.rs:711 (修复前)
+      let column_count = parse_length_encoded_int(&pkt.payload, &mut off)? as usize;
+  crates/mysql-client/src/lib.rs:713 (修复前)
+      let mut columns = Vec::with_capacity(column_count);
+
+  0xFB 正是 lenenc int 的 NULL 转义码。服务端 handle_load_local_infile
+  (crates/mysql-server/src/lib.rs:4658) 发出 0xFB + 路径 后，客户端把它
+  当成列数解析 → u64::MAX → Vec::with_capacity(u64::MAX) → 客户端进程
+  直接 panic: "capacity overflow"。
+
+  后果: sqlrustgo-mysql-client 根本无法完成任何 LOAD DATA LOCAL INFILE
+  往返。协议层完全缺失，不是参数或边界问题。
+
+变异测试自证 (变异 B: 把 0xFB 派发改成 `if false`):
+
+  $ cargo test -p sqlrustgo-mysql-server --test client_local_infile_test
+  test local_infile_uploads_from_disk_and_rows_land ... FAILED
+  test load_data_local_streams_supplied_bytes_not_the_named_file ... FAILED
+  test connection_is_usable_after_the_upload ... FAILED
+  test skipped_rows_surface_as_warnings_through_the_client ... FAILED
+  test multi_chunk_payload_loads_every_row ... FAILED
+  test path_outside_the_whitelist_is_rejected_by_the_server ... FAILED
+  test missing_local_file_is_rejected_by_the_server_before_the_request ... ok
+  test result: FAILED. 1 passed; 6 failed
+
+  6 个 panic 全部落在:
+    /rustc/.../library/alloc/src/raw_vec/mod.rs:28:5: capacity overflow
+
+  即变异精确复现了修复前的原始症状，而非某种衍生失败。
+
+--------------------------------------------------------------------------------
+2. 缺陷二（服务端，此前未被发现）: 失败的 LOAD DATA 发两个响应包
+--------------------------------------------------------------------------------
+这不是本次任务的目标，是 e2e 测试顺带暴露的。属于同类协议缺陷，一并修。
+
+  crates/mysql-server/src/lib.rs:5407-5419 (修复前)
+      Err(e) => {
+          make_err_packet(seq, 1146u16, "42S02", &e.to_string())
+              .write_to(stream)?;
+          *server_last_sent_seq = seq;
+          seq = seq.wrapping_add(1);
+          LoadDataOutcome { loaded: 0, skipped: 0 }   // ← 继续往下走
+      }
+  ...
+  seq = write_ok_packets(stream, make_ok_packet(...), seq)?;   // ← 又发一个 OK
+
+  一条命令必须只产生一个响应包。该路径写完 ERR 后继续 fall through 到
+  write_ok_packets，于是发出 ERR + OK 两个包。命令循环里其他所有错误
+  路径都是写完 ERR 就 continue，只有这一条不是。
+
+  实测后果（探针输出，修复前）:
+      REJECTED LOAD -> Ok(Error { error_code: 1146, ... })     ← 正确
+      COUNT after reject: NON-SELECT: Ok { affected_rows: 0 }   ← 读到了残留 OK
+      GOOD LOAD -> Select { ... rows: [["0"]] }                ← 错位
+      ROWS: Select { rows: [["\u{3}SELECT COUNT(*) FROM t7", "seven"]] }
+                                            ^^^^^^^^^^^^^^^^^^^^^^^
+      客户端把下一条查询自己的字节当成了行值渲染出来。
+
+  触发条件: handle_load_local_infile 返回 Err，即
+    (a) 文件不在 load_infile_dir 白名单内
+    (b) 文件不存在 (canonicalize 失败)
+  注意 (b) 发生在发 0xFB 之前，所以"文件不存在"根本走不到客户端。
+
+  修复: 与其他错误路径一致，写完 ERR 即 continue，跳过 OK。
+
+变异测试自证 (变异 A: 把 `continue` 换回 fall through):
+
+  $ cargo test -p sqlrustgo-mysql-server --test client_local_infile_test
+  test path_outside_the_whitelist_is_rejected_by_the_server ... FAILED
+  test missing_local_file_is_rejected_by_the_server_before_the_request ... FAILED
+  test result: FAILED. 5 passed; 2 failed
+
+  精确命中两个覆盖被拒路径的测试。
+
+--------------------------------------------------------------------------------
+3. 修复内容
+--------------------------------------------------------------------------------
+客户端 crates/mysql-client/src/lib.rs:
+  - packet_type::LOCAL_INFILE_REQUEST = 0xFB (带"为何不能走 lenenc"的注释)
+  - pub trait WireStream: Read + Write {}  (LOCAL INFILE 必须在同一条
+    连接上回写，&mut dyn Read 不够用；TcpStream 与 Cursor 都满足 blanket impl)
+  - 抽出 parse_err_payload / parse_ok_payload，两条路径共用
+  - pub fn parse_result_set_with_infile(stream, deprecate_eof, infile, next_seq)
+      —— 在任何 lenenc 解析之前派发 0xFB
+  - respond_to_local_infile: 自 request.sequence+1 起发内容包，
+    每包 ≤ MAX_PACKET_SIZE，空 payload 包收尾，再读回 OK/ERR
+  - parse_result_set 保留为只读入口，签名放宽到 dyn WireStream；
+    无 handler 时返回明确的 Protocol 错误而非 capacity overflow
+  - MySqlConnection::execute 默认按 mysql CLI 行为从本地磁盘读文件
+    （服务端白名单才是安全边界，见 read_local_file_for_infile 的注释）
+  - 另提供 execute_with_local_infile / load_data_local（从内存供给字节）
+  - next_seq 出参只在 LOCAL INFILE 路径上被写，普通查询的序列号
+    记账完全不变（有测试锁定）
+
+服务端 crates/mysql-server/src/lib.rs:
+  - LOAD DATA 失败路径写完 ERR 即 continue（见 §2）
+
+--------------------------------------------------------------------------------
+4. 测试清单
+--------------------------------------------------------------------------------
+协议级单测 crates/mysql-client/tests/local_infile_test.rs (10 项，全绿):
+  local_infile_round_trip_returns_server_ok
+      往返 + 客户端发出的包序列 (2, body) (3, empty) 逐字节断言
+  read_only_parser_reports_protocol_error_not_capacity_overflow
+      原始缺陷的直接守卫
+  handler_error_aborts_without_writing_anything
+      handler 失败时不写任何字节
+  empty_contents_send_only_the_terminator
+      空内容 = 一个空包（"无数据"的正确编码），不是零个包
+  oversized_contents_are_split_into_multiple_packets
+      32MB+5 → 3 个内容包(MAX, MAX, 5) + 1 个终止包，序号 2/3/4/5，
+      重组后与输入逐字节相等
+  server_err_after_upload_is_surfaced_as_error
+      服务端 ERR 1146 必须变成 ResultSet::Error
+  nul_terminated_path_is_trimmed
+      规范说路径 NUL 结尾，真实客户端裸发，两种都支持
+  next_seq_is_reported_after_the_upload
+      request@7 → 内容@8 → 终止@9 → OK@10 → next_seq=11
+  next_seq_untouched_for_ordinary_result_set
+      普通结果集不动调用方的 seq
+  packet_round_trips_through_library_framing
+
+端到端测试 crates/mysql-server/tests/client_local_infile_test.rs (7 项，全绿):
+  local_infile_uploads_from_disk_and_rows_land
+      真实服务端 + 真实客户端，affected_rows=3, COUNT=3
+  connection_is_usable_after_the_upload
+      同一条连接连续 3 次 LOAD + INSERT + SELECT 全部正常
+      （同时锁定一个事实: 表以首列为行键，重复 id 是覆盖不是追加）
+  skipped_rows_surface_as_warnings_through_the_client
+      #4941 的服务端计数经客户端端到端可见: 2 行载入 / 2 行 skipped
+  load_data_local_streams_supplied_bytes_not_the_named_file
+      磁盘文件 4 行，供给 3 行不同字节 → 落库的是供给的 3 行。
+      若客户端偷偷重读服务器指定的文件，行数会变成 4。
+  path_outside_the_whitelist_is_rejected_by_the_server
+      白名单外拒绝 + 拒绝后连接仍可用 + 随后正常 LOAD 仍可用（§2 的守卫）
+  missing_local_file_is_rejected_by_the_server_before_the_request
+      锁定"文件存在性检查先于 0xFB"这一顺序
+  multi_chunk_payload_loads_every_row
+      20,000 行跨包边界，affected_rows=20000, warnings=0, COUNT=20000
+
+--------------------------------------------------------------------------------
+5. 实跑命令与结果
+--------------------------------------------------------------------------------
+$ cargo test -p sqlrustgo-mysql-client --test local_infile_test
+  test result: ok. 10 passed; 0 failed
+
+$ cargo test -p sqlrustgo-mysql-server --test client_local_infile_test
+  test result: ok. 7 passed; 0 failed
+
+变异 A (服务端 ERR+OK 回退):  2 failed / 5 passed
+变异 B (客户端 0xFB 派发禁用):  6 failed / 1 passed，6 处 capacity overflow
+两处还原后: 10 passed + 7 passed
+
+--------------------------------------------------------------------------------
+6. 本次未做 / 需他人决定
+--------------------------------------------------------------------------------
+- 客户端的请求侧序列号记账仍是旧的宽松策略（execute 每条命令 seq+1，
+  从不回 0）。服务端靠 pkt.sequence==0 才重置（lib.rs:5303），因此两侧
+  长期处于"靠不检查响应序号而巧合对齐"的状态。LOCAL INFILE 路径因为
+  客户端从 0xFB 的序号反推自己的回包序号，所以是自洽的；普通查询路径
+  没有这个自愈。本次没有改动普通路径的记账，以免在性能测量期间引入
+  行为变更。是否收敛为"每条命令 seq=0 + 校验响应序号"应单独立项。
+- handle_load_local_infile 的失败一律用 1146/42S02，
+  "文件不存在"其实是 1017/42S02。属于既有的粗粒度错误码，本次未动。
+- Clippy: 本次改动的 lib 与新测试 target 均通过 -D warnings。
+  crates/mysql-client/src/lib.rs:2368 存在一个重复的 #[test] 属性，
+  在 develop/v4.1.0 上即已存在（已用 git show 比对确认），非本次引入。
+
+================================================================================
