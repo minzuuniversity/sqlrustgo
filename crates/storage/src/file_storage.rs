@@ -3791,10 +3791,11 @@ impl StorageEngine for FileStorage {
     /// 10000, this allocated ~2.6 MB per DELETE and was the dominant source of
     /// ~30 MB/min RSS growth. We also merge `insert_buffer` so same-tx SELECT
     /// still sees unflushed inserts.
-    fn scan_with_filter<F>(&self, table: &str, filter: F) -> SqlResult<Vec<Record>>
-    where
-        F: Fn(&Record) -> bool,
-    {
+    fn scan_with_filter(
+        &self,
+        table: &str,
+        filter: &dyn Fn(&Record) -> bool,
+    ) -> SqlResult<Vec<Record>> {
         let mut rows: Vec<Record> = self
             .get_table(table)
             .map(|data| data.rows.iter().filter(|r| filter(r)).cloned().collect())

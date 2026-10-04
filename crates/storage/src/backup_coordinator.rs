@@ -342,6 +342,7 @@ impl SqlDumpTarget for InMemorySqlTarget {
 }
 
 /// In-memory VectorDumpTarget for tests.
+#[allow(clippy::type_complexity)]
 #[derive(Default, Debug, Clone)]
 pub struct InMemoryVectorTarget {
     pub records: std::sync::Arc<parking_lot::Mutex<Vec<(String, String, Vec<f32>)>>>,
@@ -363,6 +364,7 @@ impl VectorDumpTarget for InMemoryVectorTarget {
 }
 
 /// In-memory GraphDumpTarget for tests.
+#[allow(clippy::type_complexity)]
 #[derive(Default, Debug, Clone)]
 pub struct InMemoryGraphTarget {
     pub nodes: std::sync::Arc<parking_lot::Mutex<Vec<(String, String)>>>,

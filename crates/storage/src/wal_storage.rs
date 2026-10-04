@@ -558,11 +558,11 @@ impl<S: StorageEngine + 'static, T: WalManager + 'static> StorageEngine for WalS
     /// to `FileStorage::scan_with_filter` (file_storage.rs:3042-3058).
     /// When `WalStorage<MemoryStorage>` is used (REPL/CLI) it routes to
     /// `MemoryStorage::scan_with_filter` (engine.rs:1618-1627).
-    fn scan_with_filter<F>(&self, table: &str, filter: F) -> SqlResult<Vec<Record>>
-    where
-        F: Fn(&Record) -> bool,
-        Self: Sized,
-    {
+    fn scan_with_filter(
+        &self,
+        table: &str,
+        filter: &dyn Fn(&Record) -> bool,
+    ) -> SqlResult<Vec<Record>> {
         self.inner().scan_with_filter(table, filter)
     }
 
@@ -687,7 +687,7 @@ impl<S: StorageEngine + 'static, T: WalManager + 'static> StorageEngine for WalS
         } else {
             let inner = self.inner();
             inner
-                .scan_with_filter(table, |r| Self::row_matches_filter(r, filters))?
+                .scan_with_filter(table, &|r| Self::row_matches_filter(r, filters))?
                 .iter()
                 .map(|r| (Self::record_key(r), r.clone()))
                 .collect()
@@ -1555,11 +1555,11 @@ mod tests {
                 self.scan_calls.fetch_add(1, Ordering::SeqCst);
                 self.inner.scan(table)
             }
-            fn scan_with_filter<F>(&self, table: &str, filter: F) -> SqlResult<Vec<Record>>
-            where
-                F: Fn(&Record) -> bool,
-                Self: Sized,
-            {
+            fn scan_with_filter(
+                &self,
+                table: &str,
+                filter: &dyn Fn(&Record) -> bool,
+            ) -> SqlResult<Vec<Record>> {
                 self.inner.scan_with_filter(table, filter)
             }
             fn insert(&mut self, table: &str, records: Vec<Record>) -> SqlResult<()> {
