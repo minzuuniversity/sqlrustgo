@@ -484,7 +484,7 @@ impl<S: StorageEngine + 'static> ExecutionEngine<S> {
         where_clause: Option<&Expression>,
     ) -> SqlResult<ExecutorResult> {
         let storage = self.storage.read();
-        let views: Vec<String> = self.views.keys().cloned().collect();
+        let views: Vec<String> = self.views.read().keys().cloned().collect();
         // Issue #4567: list views alongside base tables (MySQL semantics —
         // SHOW TABLES includes views; only SHOW FULL TABLES distinguishes
         // them via Table_type). Pre-#4567 views were acked by CREATE VIEW
@@ -557,7 +557,7 @@ impl<S: StorageEngine + 'static> ExecutionEngine<S> {
         where_clause: Option<&Expression>,
     ) -> SqlResult<ExecutorResult> {
         let storage = self.storage.read();
-        let views: Vec<String> = self.views.keys().cloned().collect();
+        let views: Vec<String> = self.views.read().keys().cloned().collect();
         let mut names = storage.list_tables();
         names.extend(views.iter().cloned());
         let table_type = |name: &str| {
@@ -1199,7 +1199,7 @@ impl<S: StorageEngine + 'static> ExecutionEngine<S> {
     pub(crate) fn execute_prepare(&mut self, name: &str, sql: &str) -> SqlResult<ExecutorResult> {
         let parsed = sqlrustgo_parser::parse(sql)
             .map_err(|e| SqlError::ParseError(format!("PREPARE failed to parse SQL: {}", e)))?;
-        self.stmt_cache.prepare(name, sql, parsed);
+        self.stmt_cache.write().prepare(name, sql, parsed);
         Ok(ExecutorResult::empty())
     }
 
@@ -1208,12 +1208,16 @@ impl<S: StorageEngine + 'static> ExecutionEngine<S> {
         name: &str,
         params: &[sqlrustgo_parser::Expression],
     ) -> SqlResult<ExecutorResult> {
-        let sql = self.stmt_cache.execute_with_sql(name).ok_or_else(|| {
-            SqlError::ExecutionError(format!(
-                "prepared statement '{}' not found (call PREPARE first)",
-                name
-            ))
-        })?;
+        let sql = self
+            .stmt_cache
+            .read()
+            .execute_with_sql(name)
+            .ok_or_else(|| {
+                SqlError::ExecutionError(format!(
+                    "prepared statement '{}' not found (call PREPARE first)",
+                    name
+                ))
+            })?;
         // V312-58 / Issue #4511: bind each USING param to the next `?`
         // placeholder in the prepared SQL (positional). Each `params[i]`
         // is currently expected to be `Expression::ColumnRef("@name")`
@@ -1246,13 +1250,13 @@ impl<S: StorageEngine + 'static> ExecutionEngine<S> {
     }
 
     pub(crate) fn execute_deallocate(&mut self, name: &str) -> SqlResult<ExecutorResult> {
-        self.stmt_cache.deallocate(name);
+        self.stmt_cache.write().deallocate(name);
         Ok(ExecutorResult::empty())
     }
 
     /// Get prepared statement cache statistics.
     pub fn stmt_cache_stats(&self) -> sqlrustgo_cache::CacheStats {
-        self.stmt_cache.stats()
+        self.stmt_cache.read().stats()
     }
 }
 
