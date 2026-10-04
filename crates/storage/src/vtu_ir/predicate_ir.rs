@@ -35,7 +35,7 @@ impl PredicateIR {
     fn eval_expr(expr: &ExprIR, row: &[Value], table_info: &TableInfo) -> bool {
         match expr {
             ExprIR::Column(name) => {
-                if let Some(idx) = Self::find_column_index(name, table_info) {
+                if let Some(idx) = crate::engine::find_column_index(name, table_info) {
                     matches!(row.get(idx), Some(Value::Boolean(true)))
                 } else {
                     false
@@ -117,7 +117,7 @@ impl PredicateIR {
     fn eval_to_value(expr: &ExprIR, row: &[Value], table_info: &TableInfo) -> Value {
         match expr {
             ExprIR::Column(name) => {
-                if let Some(idx) = Self::find_column_index(name, table_info) {
+                if let Some(idx) = crate::engine::find_column_index(name, table_info) {
                     row.get(idx).cloned().unwrap_or(Value::Null)
                 } else {
                     Value::Null
@@ -176,17 +176,24 @@ impl PredicateIR {
         }
     }
 
-    fn find_column_index(name: &str, table_info: &TableInfo) -> Option<usize> {
-        table_info.columns.iter().position(|c| c.name == name)
-    }
-
+    /// Resolve an `ExprIR::Column` to its index in `table_info`.
+    ///
+    /// Previously used an exact `==` lookup, which silently dropped rows
+    /// when the parser-preserved identifier case (`WHERE ID = 1`) did not
+    /// match the schema case (`id INTEGER`): `evaluate` returns `false`
+    /// when the column cannot be resolved, so a case-differing identifier
+    /// was treated as a predicate that *never* matches.
+    ///
+    /// Now delegates to the canonical case-insensitive-aware resolver in
+    /// `sqlrustgo_storage::engine::find_column_index`, which is also the
+    /// resolver used by `eval_identifier` and the JOIN/SELECT planner.
     fn resolve_column_index(
         expr: &ExprIR,
         _row: &[Value],
         table_info: &TableInfo,
     ) -> Option<usize> {
         if let ExprIR::Column(name) = expr {
-            Self::find_column_index(name, table_info)
+            crate::engine::find_column_index(name, table_info)
         } else {
             None
         }
