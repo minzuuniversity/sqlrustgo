@@ -254,32 +254,56 @@ for k in ('successful_queries','failed_queries','iterations_requested'):
         log_info "  target/release/test-runner not present; building..."
         cargo build --release -p test-runner 2>/tmp/cargo-build-test-runner.log || errors=$((errors + 1))
     fi
-    if [ -x "${REPO_ROOT}/target/release/test-runner" ]; then
-        if [ ! -s "${REPO_ROOT}/target/test-runner-report.json" ]; then
-            log_info "  target/test-runner-report.json missing; running test-runner probe..."
-            "${REPO_ROOT}/target/release/test-runner" \
-                --out "${REPO_ROOT}/target/test-runner-report.json" 2>/tmp/test-runner-run.log || errors=$((errors + 1))
-        fi
+    # #4942: the manifest did not exist, so the runner was always invoked
+    # without `--manifest` and fell into its probe branch — it printed
+    # `cargo --version` and synthesised a `Crashed` entry. The gate then
+    # exited 0 having run no test at all.
+    local tr_manifest="${REPO_ROOT}/config/test-runner-manifest.toml"
+    if [ ! -s "$tr_manifest" ]; then
+        log_error "  V312-24: ${tr_manifest} missing — test-runner would fall back to probe mode"
+        errors=$((errors + 1))
+    fi
+    if [ -x "${REPO_ROOT}/target/release/test-runner" ] && [ -s "$tr_manifest" ]; then
+        # Always re-run. The previous shape guarded on
+        # `if [ ! -s .../test-runner-report.json ]`, which meant a report
+        # left by any earlier invocation — including a probe — was
+        # accepted as this run's result.
+        log_info "  running test-runner against config/test-runner-manifest.toml..."
+        "${REPO_ROOT}/target/release/test-runner" \
+            --manifest "$tr_manifest" \
+            --out "${REPO_ROOT}/target/test-runner-report.json" 2>/tmp/test-runner-run.log || errors=$((errors + 1))
         if [ -s "${REPO_ROOT}/target/test-runner-report.json" ]; then
-            if python3 -c "import json,sys
-d=json.load(open('${REPO_ROOT}/target/test-runner-report.json'))
-for k in ('started_at','finished_at','config','summary','results'):
-    if k not in d: sys.exit(1)
-" 2>/dev/null; then
-                local total_duration
+            if python3 -c "
+import json, sys
+d = json.load(open('${REPO_ROOT}/target/test-runner-report.json'))
+for k in ('started_at', 'finished_at', 'config', 'summary', 'results'):
+    if k not in d:
+        print('missing key: ' + k); sys.exit(1)
+# The previous check only verified that these keys EXIST. An empty
+# `results` satisfied it, so a run that executed nothing looked valid.
+results = d['results']
+if not isinstance(results, list) or not results:
+    print('results is empty — no test actually ran'); sys.exit(1)
+crashed = [r for r in results
+           if isinstance(r, dict) and str(r.get('status', '')).lower() == 'crashed']
+if crashed:
+    print('%d test(s) crashed: %s' % (
+        len(crashed), ', '.join(str(r.get('name', '?')) for r in crashed)))
+    sys.exit(1)
+print('%d test(s) ran, none crashed' % len(results))
+" 2>/tmp/test-runner-schema.log; then
+                local total_duration tr_count
+                tr_count=$(tail -1 /tmp/test-runner-schema.log | grep -oE '^[0-9]+' || echo 0)
                 total_duration=$(python3 -c "import json; print(json.load(open('${REPO_ROOT}/target/test-runner-report.json'))['summary']['total_duration_ms'])")
-                log_pass "  V312-24: target/test-runner-report.json valid (total_duration_ms=${total_duration})"
+                log_pass "  V312-24: test-runner report valid (${tr_count} test(s) ran, total_duration_ms=${total_duration})"
             else
-                log_error "  V312-24: target/test-runner-report.json schema INVALID"
+                log_error "  V312-24: test-runner report INVALID: $(head -1 /tmp/test-runner-schema.log)"
                 errors=$((errors + 1))
             fi
         else
-            log_error "  V312-24: target/test-runner-report.json still missing after test-runner run"
+            log_error "  V312-24: target/test-runner-report.json missing after run"
             errors=$((errors + 1))
         fi
-    else
-        log_error "  V312-24: target/release/test-runner not built; cannot produce report"
-        errors=$((errors + 1))
     fi
 
     if [[ $errors -gt 0 ]]; then
