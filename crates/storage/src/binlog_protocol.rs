@@ -77,6 +77,21 @@ pub struct BinlogProtocol {
 }
 
 impl BinlogProtocol {
+    /// The protocol version this handshake negotiated.
+    ///
+    /// `BinlogProtocol::VERSION` is the compatibility surface: a replica
+    /// talking to a master speaking a different version must refuse
+    /// rather than mis-parse the stream. The field previously had no
+    /// reader outside this module's own tests, so the compiler flagged it
+    /// as dead the moment the module entered the build graph (#4936).
+    /// An accessor is the honest fix — deleting the field would remove
+    /// the only record of what was negotiated.
+    pub fn version(&self) -> u32 {
+        self.version
+    }
+}
+
+impl BinlogProtocol {
     pub const VERSION: u32 = 1;
     pub const DEFAULT_MASTER_PORT: u16 = 3333;
     pub const HEARTBEAT_INTERVAL_MS: u64 = 1000;

@@ -5,7 +5,6 @@
 
 use std::sync::atomic::{AtomicU64, Ordering};
 use std::sync::Arc;
-use std::time::{Duration, Instant};
 
 pub struct ReplicationLagMonitor {
     master_lsn: Arc<AtomicU64>,
@@ -183,18 +182,56 @@ mod tests {
         assert_eq!(monitor.current_lag_ms(), 0);
     }
 
+    /// `current_lag_ms` returns 0 when either timestamp is unset, so a
+    /// monitor that has never seen a slave report reads as "zero lag" —
+    /// indistinguishable from a perfectly caught-up replica. That is the
+    /// exact condition lag monitoring exists to catch, so it is recorded
+    /// here as current behaviour.
+    ///
+    /// Changing it needs a tri-state (unknown / ok / behind) and a
+    /// decision about what `is_lag_exceeding_threshold` should do when
+    /// unknown; tracked in #4936 rather than fixed blindly.
+    #[test]
+    fn test_uninitialised_monitor_reads_as_zero_lag() {
+        let monitor = ReplicationLagMonitor::new(1);
+        assert_eq!(
+            monitor.current_lag_ms(),
+            0,
+            "documented current behaviour: no slave report yet reads as 0ms"
+        );
+        assert!(
+            !monitor.is_lag_exceeding_threshold(),
+            "so a 1ms threshold does not fire either — the blind spot this              test pins down"
+        );
+    }
+
     #[test]
     fn test_lag_calculation() {
         let monitor = ReplicationLagMonitor::new(1000);
 
         monitor.update_master_info(100, current_timestamp_ms());
 
-        std::thread::sleep(Duration::from_millis(10));
+        std::thread::sleep(std::time::Duration::from_millis(10));
 
         monitor.report_applied(50);
 
+        // The master is 10ms ahead of what the slave has applied, so
+        // the lag must be at least the sleep. The previous assertion
+        // was `assert!(lag >= 0)` on a u64, which is vacuously true and
+        // let this test pass even if the whole calculation returned a
+        // constant. A small upper bound keeps it from being a timing
+        // flake on a loaded machine.
         let lag = monitor.current_lag_ms();
-        assert!(lag >= 0);
+        assert!(
+            lag >= 10,
+            "lag must be at least the 10ms the slave lagged behind, got {}",
+            lag
+        );
+        assert!(
+            lag < 5_000,
+            "lag should be small for a 10ms sleep, got {}ms",
+            lag
+        );
         assert_eq!(monitor.current_lag_events(), 50);
     }
 
