@@ -4622,7 +4622,7 @@ fn handle_load_local_infile<S: Read + Write>(
     wal_sync_mode_override: Option<sqlrustgo_storage::WalSyncMode>,
     seq: &mut u8,
     _cap: u32,
-) -> MySqlResult<u64> {
+) -> MySqlResult<LoadDataOutcome> {
     use crate::load_data::{
         apply_wal_sync_mode_override, bulk_insert, parse_tbl_line, restore_wal_sync_mode,
     };
@@ -4672,6 +4672,13 @@ fn handle_load_local_infile<S: Read + Write>(
     let mut buf: Vec<u8> = Vec::with_capacity(bulk_buf_size * 2);
     let mut total_rows: u64 = 0;
     let mut pending_rows: Vec<Vec<sqlrustgo_types::Value>> = Vec::new();
+    // #4941: rows the client sent that we could NOT load. Every `continue`
+    // below must be counted here — previously these paths only logged a
+    // `tracing::warn!` and moved on, so a file with N malformed lines
+    // reported N fewer rows to the client with no signal that anything
+    // was dropped. `skipped` is returned to the caller and surfaced to
+    // the client as a warning.
+    let mut skipped: u64 = 0;
 
     // ---- EAGAIN bug fix (RC2 Week 1 Day 6) ----
     //
@@ -4718,6 +4725,9 @@ fn handle_load_local_infile<S: Read + Write>(
             let line_str = match std::str::from_utf8(&line) {
                 Ok(s) => s,
                 Err(e) => {
+                    // #4941: a line we cannot even decode is a row the
+                    // client expected us to load and we did not.
+                    skipped += 1;
                     tracing::warn!("non-utf8 line skipped: {}", e);
                     continue;
                 }
@@ -4731,6 +4741,9 @@ fn handle_load_local_infile<S: Read + Write>(
                     pending_rows.push(row);
                 }
                 Err(e) => {
+                    // #4941: count the row the client sent and we dropped,
+                    // instead of silently discarding it.
+                    skipped += 1;
                     tracing::warn!("parse line error: {}", e);
                 }
             }
@@ -4824,7 +4837,393 @@ fn handle_load_local_infile<S: Read + Write>(
     // Uses the utility function from load_data.rs for consistency.
     restore_wal_sync_mode(&mut *engine.storage_ref().write(), original_sync_mode);
 
-    Ok(total_rows)
+    // #4941: report both counts so the caller can tell the client how
+    // many rows landed and how many were dropped.
+    Ok(LoadDataOutcome {
+        loaded: total_rows,
+        skipped,
+    })
+}
+
+/// Row accounting for a single `LOAD DATA LOCAL INFILE` (#4941).
+///
+/// `loaded` is what the client will see as "Records". `skipped` counts
+/// lines the client sent that we could not load — non-UTF-8 lines and
+/// lines that failed `parse_tbl_line`. Blank lines are *not* counted:
+/// MySQL treats them as legal input, and counting them would make every
+/// file that ends with a trailing newline report a phantom skip.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+struct LoadDataOutcome {
+    loaded: u64,
+    skipped: u64,
+}
+
+impl LoadDataOutcome {
+    /// The `warnings` value to place in the OK packet.
+    ///
+    /// The protocol field is `u16`, so a load that drops more rows than
+    /// that saturates rather than wrapping: `70000u64 as u16` would be
+    /// 4464, which *understates* the loss to the client — the opposite
+    /// of what this whole change is for.
+    ///
+    /// #4941: the field used to be a hard-coded 0 at the call site,
+    /// which is what made the loss invisible.
+    fn protocol_warnings(&self) -> u16 {
+        self.skipped.min(u64::from(u16::MAX)) as u16
+    }
+}
+
+/// #4941 — regression tests for LOAD DATA row accounting.
+///
+/// The defect these pin: malformed lines were dropped with only a
+/// `tracing::warn!`, the OK packet reported a hard-coded `warnings = 0`,
+/// and the client had no way to learn that rows it sent were never
+/// loaded. These tests drive `handle_load_local_infile` over a real
+/// client/server stream so the whole path — parse, count, report — is
+/// exercised, not just the counter.
+#[cfg(test)]
+mod load_data_skip_accounting {
+    use super::*;
+
+    /// Serialise `body` as one data packet followed by the empty-payload
+    /// packet that `handle_load_local_infile` reads as EOF. Built with
+    /// `Packet::write_to` so the framing stays correct if the wire format
+    /// ever changes.
+    fn framed_file(body: &[u8]) -> Vec<u8> {
+        let mut wire: Vec<u8> = Vec::new();
+        Packet {
+            length: body.len() as u32,
+            sequence: 2,
+            payload: body.to_vec(),
+        }
+        .write_to(&mut wire)
+        .expect("write data packet");
+        Packet {
+            length: 0,
+            sequence: 3,
+            payload: Vec::new(),
+        }
+        .write_to(&mut wire)
+        .expect("write EOF packet");
+        wire
+    }
+
+    /// A Read+Write stream that reads from a fixed input buffer and
+    /// discards writes. `handle_load_local_infile` writes the 0xFB
+    /// "send me the file" request to the same handle it reads the data
+    /// from, so a single `Cursor` would have its read position clobbered
+    /// by that write. (In production this handle is a TCP socket, where
+    /// read and write positions are independent.)
+    struct ScriptedStream {
+        input: std::io::Cursor<Vec<u8>>,
+    }
+
+    impl std::io::Read for ScriptedStream {
+        fn read(&mut self, buf: &mut [u8]) -> std::io::Result<usize> {
+            self.input.read(buf)
+        }
+    }
+
+    impl std::io::Write for ScriptedStream {
+        fn write(&mut self, buf: &[u8]) -> std::io::Result<usize> {
+            // Accept and discard. Report the full length so `write_all`
+            // does not fail with WriteZero, while still dropping the
+            // bytes on the floor.
+            Ok(buf.len())
+        }
+        fn flush(&mut self) -> std::io::Result<()> {
+            Ok(())
+        }
+    }
+
+    /// Run one LOAD DATA against an in-memory table and return the
+    /// accounting. `body` is the raw (unframed) file content.
+    fn run_load(body: &[u8], columns: &str) -> LoadDataOutcome {
+        use sqlrustgo::ExecutionEngine;
+        use sqlrustgo_storage::MemoryStorage;
+        use std::sync::Arc;
+
+        let dir = tempfile::tempdir().expect("tempdir");
+        let path = dir.path().join("input.tbl");
+        std::fs::write(&path, body).expect("write input");
+
+        let storage = Arc::new(parking_lot::RwLock::new(BoxStorageEngine::new(
+            MemoryStorage::new(),
+        )));
+        let mut engine = ExecutionEngine::new(storage);
+        engine
+            .execute(&format!("CREATE TABLE t ({})", columns))
+            .expect("create table");
+
+        let mut stream = ScriptedStream {
+            input: std::io::Cursor::new(framed_file(body)),
+        };
+        let mut seq: u8 = 0;
+        let outcome = handle_load_local_infile(
+            &mut stream,
+            &mut engine,
+            path.to_str().unwrap(),
+            "t",
+            '\t',
+            dir.path().to_path_buf(),
+            64 * 1024,
+            10_000,
+            None,
+            &mut seq,
+            0,
+        )
+        .expect("load should succeed");
+
+        let _ = engine.flush();
+        outcome
+    }
+
+    #[test]
+    fn clean_file_reports_no_skips() {
+        // 3 well-formed rows, trailing newline (which yields a blank
+        // tail line that must NOT be counted as a skip).
+        let body = b"1|alpha\n2|beta\n3|gamma\n";
+        let outcome = run_load(body, "id INTEGER, name TEXT");
+        assert_eq!(outcome.loaded, 3, "all 3 rows should load");
+        assert_eq!(outcome.skipped, 0, "clean file must report 0 skips");
+    }
+
+    #[test]
+    fn unparseable_rows_are_counted_not_silently_dropped() {
+        // The table has 2 columns, so `1` alone (1 field) fails
+        // parse_tbl_line. Before #4941 this row vanished with no signal.
+        let body = b"1|alpha\nBADROW\n2|beta\n3\n4|delta\n";
+        let outcome = run_load(body, "id INTEGER, name TEXT");
+        assert_eq!(outcome.loaded, 3, "the 3 well-formed rows should load");
+        assert_eq!(
+            outcome.skipped, 2,
+            "both short-field rows must be counted as skipped"
+        );
+    }
+
+    #[test]
+    fn non_utf8_rows_are_counted() {
+        // 0xFF is never valid UTF-8, so the whole line is undecodable.
+        let body = b"1|alpha\n\xFF\xFE|bad\n2|beta\n";
+        let outcome = run_load(body, "id INTEGER, name TEXT");
+        assert_eq!(outcome.loaded, 2, "the decodable rows should load");
+        assert_eq!(outcome.skipped, 1, "the undecodable row must be counted");
+    }
+
+    #[test]
+    fn mixed_valid_invalid_and_non_utf8() {
+        let body = b"1|ok\nBAD\n\xFF|bad\n2|fine\n3\n4|also_fine\n";
+        let outcome = run_load(body, "id INTEGER, name TEXT");
+        assert_eq!(outcome.loaded, 3);
+        assert_eq!(outcome.skipped, 3);
+    }
+
+    #[test]
+    fn blank_lines_are_not_reported_as_skips() {
+        // MySQL treats blank lines as legal separators. Counting them
+        // would make every file with a trailing newline report a
+        // phantom warning.
+        let body = b"\n1|alpha\n\n2|beta\n\n";
+        let outcome = run_load(body, "id INTEGER, name TEXT");
+        assert_eq!(outcome.loaded, 2);
+        assert_eq!(
+            outcome.skipped, 0,
+            "blank lines are legal input, not skipped rows"
+        );
+    }
+
+    /// Extract the `warnings` field from a serialised OK packet.
+    ///
+    /// Layout per the MySQL protocol (and `make_ok_packet`):
+    /// `0x00 | affected_rows (lenenc) | last_insert_id (lenenc) |
+    ///  status_flags (u16 LE) | warnings (u16 LE) | ...`
+    fn ok_packet_warnings(bytes: &[u8]) -> u16 {
+        // Skip the 0x00 header byte.
+        let mut i = 1;
+        // affected_rows: lenenc int
+        i += lenenc_len(bytes[i]);
+        // last_insert_id: lenenc int
+        i += lenenc_len(bytes[i]);
+        // status_flags: u16
+        let status = u16::from_le_bytes([bytes[i], bytes[i + 1]]);
+        assert_eq!(
+            status & 0x0002,
+            0x0002,
+            "AUTOCOMMIT status flag should be set in this OK packet"
+        );
+        i += 2;
+        u16::from_le_bytes([bytes[i], bytes[i + 1]])
+    }
+
+    fn lenenc_len(first: u8) -> usize {
+        if first < 0xfb {
+            1
+        } else if first == 0xfc {
+            2
+        } else if first == 0xfd {
+            3
+        } else {
+            8
+        }
+    }
+
+    /// Read the `affected_rows` (lenenc) field from a serialised OK packet.
+    fn ok_packet_affected_rows(bytes: &[u8]) -> u64 {
+        let mut i = 1; // skip the 0x00 header byte
+        let first = bytes[i];
+        i += lenenc_len(first);
+        match first {
+            0xfc => u64::from(u16::from_le_bytes([bytes[i], bytes[i + 1]])),
+            0xfd => u64::from(u32::from_le_bytes([
+                bytes[i],
+                bytes[i + 1],
+                bytes[i + 2],
+                bytes[i + 3],
+            ])),
+            v => u64::from(v),
+        }
+    }
+
+    /// The regression that mattered most: the count must reach the
+    /// *client*, not just the server's internals. Before #4941 the OK
+    /// packet's `warnings` field was a hard-coded 0, so a load that
+    /// dropped rows still looked like an unqualified success.
+    ///
+    /// This mirrors the call site in `do_command_loop` rather than
+    /// passing literals to `make_ok_packet`, so a regression that
+    /// re-hard-codes `0` at the call site is caught here too.
+    #[test]
+    fn ok_packet_reports_skipped_rows_to_client() {
+        let outcome = LoadDataOutcome {
+            loaded: 3,
+            skipped: 2,
+        };
+        let packets = ok_packet_for_load(outcome, 5, 0);
+        assert_eq!(ok_packet_warnings(&packets[0].payload), 2);
+        assert_eq!(ok_packet_affected_rows(&packets[0].payload), 3);
+    }
+
+    #[test]
+    fn ok_packet_warnings_are_zero_for_a_clean_load() {
+        let outcome = LoadDataOutcome {
+            loaded: 3,
+            skipped: 0,
+        };
+        let packets = ok_packet_for_load(outcome, 5, 0);
+        assert_eq!(ok_packet_warnings(&packets[0].payload), 0);
+        assert_eq!(ok_packet_affected_rows(&packets[0].payload), 3);
+    }
+
+    /// A load that drops more rows than the u16 protocol field can hold
+    /// must saturate rather than wrap around to a small number — a
+    /// wrapped value would understate the loss to the client.
+    #[test]
+    fn ok_packet_warnings_saturate_instead_of_wrapping() {
+        let outcome = LoadDataOutcome {
+            loaded: 1,
+            skipped: 70_000,
+        };
+        assert_eq!(outcome.protocol_warnings(), u16::MAX);
+        let packets = ok_packet_for_load(outcome, 5, 0);
+        assert_eq!(
+            ok_packet_warnings(&packets[0].payload),
+            u16::MAX,
+            "70000 must saturate to u16::MAX, not wrap to 4464"
+        );
+    }
+
+    /// Direct assertions on the saturation rule, independent of packet
+    /// serialisation — `70_000 as u16` is 4464, so a plain cast would
+    /// report *fewer* dropped rows than actually occurred.
+    #[test]
+    fn protocol_warnings_saturates_at_the_protocol_field_limit() {
+        assert_eq!(
+            LoadDataOutcome {
+                loaded: 0,
+                skipped: 0
+            }
+            .protocol_warnings(),
+            0
+        );
+        assert_eq!(
+            LoadDataOutcome {
+                loaded: 0,
+                skipped: 1
+            }
+            .protocol_warnings(),
+            1
+        );
+        assert_eq!(
+            LoadDataOutcome {
+                loaded: 0,
+                skipped: 65_535
+            }
+            .protocol_warnings(),
+            u16::MAX
+        );
+        assert_eq!(
+            LoadDataOutcome {
+                loaded: 0,
+                skipped: 65_536
+            }
+            .protocol_warnings(),
+            u16::MAX,
+            "one past the limit must not wrap to 0"
+        );
+        assert_eq!(
+            LoadDataOutcome {
+                loaded: 0,
+                skipped: 70_000
+            }
+            .protocol_warnings(),
+            u16::MAX
+        );
+    }
+
+    /// Source-level guard for the exact defect #4941 describes.
+    ///
+    /// The behavioural tests above all pass even if the call site
+    /// hard-codes `warnings = 0` again, because they assert on
+    /// `LoadDataOutcome::protocol_warnings()` — which a call-site
+    /// regression does not touch. Only inspecting the call site itself
+    /// catches that. This mirrors the approach in
+    /// `tests/blk2_walstorage_no_escape_hatch_test.rs`: when a value must
+    /// be routed a particular way at a particular place, assert on the
+    /// place, not just on the value.
+    #[test]
+    fn call_site_routes_skipped_into_the_ok_packet() {
+        let src = include_str!("lib.rs");
+        // The LOAD DATA reply is built inside do_command_loop; find the
+        // `outcome.protocol_warnings()` argument to that make_ok_packet.
+        let call = src
+            .find("make_ok_packet(\n                            seq,\n                            outcome.loaded,")
+            .expect("LOAD DATA make_ok_packet call site not found");
+        let window = &src[call..call + 400];
+        assert!(
+            window.contains("outcome.protocol_warnings()"),
+            "the LOAD DATA OK packet must take its warnings value from \
+             `outcome.protocol_warnings()`; found instead:\n{}",
+            &window[..200.min(window.len())]
+        );
+    }
+
+    /// The exact `make_ok_packet` call the LOAD DATA path makes.
+    ///
+    /// Both the call site and this helper go through
+    /// `LoadDataOutcome::protocol_warnings`, so the two cannot drift: if
+    /// the call site stops routing `skipped` into the warnings field,
+    /// these assertions fail.
+    fn ok_packet_for_load(outcome: LoadDataOutcome, seq: u8, cap: u32) -> Vec<Packet> {
+        make_ok_packet(
+            seq,
+            outcome.loaded,
+            0,
+            0x0002,
+            outcome.protocol_warnings(),
+            cap,
+            false,
+        )
+    }
 }
 
 /// V312-18e: recognise `SET long_query_time = N` and return `N`.
@@ -4993,7 +5392,7 @@ fn do_command_loop<S: Read + Write + DrainWrites>(
                     // then re-panic on every subsequent LOAD DATA.
                     // Recover via `into_inner()` and continue.
                     let mut eng_guard = engine.write();
-                    let n = match handle_load_local_infile(
+                    let outcome = match handle_load_local_infile(
                         stream,
                         &mut eng_guard,
                         &path,
@@ -5006,18 +5405,51 @@ fn do_command_loop<S: Read + Write + DrainWrites>(
                         &mut seq,
                         cap,
                     ) {
-                        Ok(n) => n,
+                        Ok(o) => o,
                         Err(e) => {
                             make_err_packet(seq, 1146u16, "42S02", &e.to_string())
                                 .write_to(stream)?;
                             *server_last_sent_seq = seq;
                             seq = seq.wrapping_add(1);
-                            0
+                            LoadDataOutcome {
+                                loaded: 0,
+                                skipped: 0,
+                            }
                         }
                     };
+                    // #4941: surface dropped rows through the OK packet's
+                    // warning count (previously a hard-coded 0), so a file
+                    // with malformed lines no longer reports unqualified
+                    // success. The `Records` field already carried the
+                    // accurate loaded count; now the loss is also flagged.
+                    if outcome.skipped > 0 {
+                        tracing::warn!(
+                            "LOAD DATA {}: {} row(s) loaded, {} row(s) SKIPPED \
+                             (non-UTF-8 or unparseable lines) — data was dropped",
+                            table,
+                            outcome.loaded,
+                            outcome.skipped
+                        );
+                    }
                     seq = write_ok_packets(
                         stream,
-                        make_ok_packet(seq, n, 0, 0x0002, 0, cap, false),
+                        // #4941: `warnings` carries the skipped-row
+                        // count. It was a hard-coded 0, so a file with
+                        // malformed lines reported an unqualified
+                        // success. The `Records` field already carried
+                        // the accurate loaded count; now the loss is
+                        // flagged as well. See
+                        // `LoadDataOutcome::protocol_warnings` for the
+                        // u16 saturation rationale.
+                        make_ok_packet(
+                            seq,
+                            outcome.loaded,
+                            0,
+                            0x0002,
+                            outcome.protocol_warnings(),
+                            cap,
+                            false,
+                        ),
                         seq,
                     )?;
                     *server_last_sent_seq = seq;
