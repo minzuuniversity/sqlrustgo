@@ -242,6 +242,10 @@ harness = false
 name = "bench_columnar"
 harness = false
 
+[[bench]]
+name = "bench_expr_binding"
+harness = false
+
 
 [dependencies.rusqlite]
 version = "0.39"
