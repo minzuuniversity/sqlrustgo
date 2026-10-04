@@ -134,6 +134,27 @@ impl VersionedTable {
         }
     }
 
+    /// #4983: primary keys that `tx_id` has written but not committed.
+    ///
+    /// `MvccStorage::scan_in` merges the inner engine's rows so nothing
+    /// committed becomes invisible, but the inner engine buffers this
+    /// transaction's own writes in `insert_buffer` with no visibility
+    /// notion of its own. These keys let the caller drop exactly those
+    /// rows from the merged result.
+    ///
+    /// The set covers **every** transaction's uncommitted versions, not
+    /// just `tx_id`'s. The caller uses it to strip rows from the inner
+    /// engine's merged result, and that result must not contain any
+    /// uncommitted row — the caller's own pending rows are already
+    /// handled by `scan_visible`'s `reader_tx` rule.
+    pub fn pending_keys(&self, _tx_id: u64) -> std::collections::HashSet<Value> {
+        let r = self.versions.read();
+        r.iter()
+            .filter(|(_, chain)| chain.iter().any(|v| !v.committed))
+            .map(|(k, _)| k.clone())
+            .collect()
+    }
+
     /// #4974: drop every pending version written by `tx_id`. Nothing was
     /// ever visible, so the previous committed version of each key is
     /// still the newest one and simply remains in place.

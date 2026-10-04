@@ -114,6 +114,46 @@ impl<S: StorageEngine + 'static> ExecutionEngine<S> {
         }
     }
 
+    /// #4983 / #4951: this connection's transaction id, or 0 outside a
+    /// transaction.
+    ///
+    /// `TxSession` is per-`ExecutionEngine`, i.e. per connection. The
+    /// storage cannot recover this on its own — it holds one shared
+    /// `current_tx_id` that says whoever wrote last, not whoever is
+    /// reading — so every read has to carry it explicitly.
+    pub(crate) fn reader_tx(&self) -> u64 {
+        self.tx_session
+            .lock()
+            .current_tx_id
+            .map(|id| id.as_u64())
+            .unwrap_or(0)
+    }
+
+    /// #4983 / #4951: read the table on behalf of this connection.
+    ///
+    /// The single place read statements should obtain rows, so that the
+    /// `reader_tx` argument cannot be forgotten at a call site — the
+    /// failure mode would be a silently short read rather than a
+    /// compile error.
+    pub(crate) fn scan_for_reader(
+        &self,
+        table: &str,
+    ) -> SqlResult<Vec<sqlrustgo_storage::engine::Record>> {
+        let reader_tx = self.reader_tx();
+        self.storage_read().scan_in(table, reader_tx)
+    }
+
+    /// #4983: predicate variant of [`scan_for_reader`](Self::scan_for_reader).
+    pub(crate) fn scan_for_reader_filtered(
+        &self,
+        table: &str,
+        filter: &dyn Fn(&sqlrustgo_storage::engine::Record) -> bool,
+    ) -> SqlResult<Vec<sqlrustgo_storage::engine::Record>> {
+        let reader_tx = self.reader_tx();
+        self.storage_read()
+            .scan_with_filter_in(table, filter, reader_tx)
+    }
+
     /// Write-lock the storage with fair ordering.
     /// Same philosophy as `storage_read`: no busy-wait, fair FIFO to prevent writer starvation.
     pub(crate) fn storage_write(&self) -> parking_lot::RwLockWriteGuard<'_, S> {

@@ -1006,6 +1006,24 @@ pub trait StorageEngine: Send + Sync {
         Ok(1)
     }
     fn scan(&self, table: &str) -> SqlResult<Vec<Record>>;
+
+    /// #4983 / #4951: `scan` with the reading connection's transaction
+    /// id supplied explicitly.
+    ///
+    /// The default defers to [`scan`](Self::scan), correct for backends
+    /// without MVCC visibility. `MvccStorage` overrides it to pass
+    /// `reader_tx` down to `VersionedTable`, so an uncommitted version
+    /// is visible only to the transaction that wrote it.
+    ///
+    /// Why an explicit parameter rather than a stored field: the storage
+    /// is shared by every connection, so any stored "current
+    /// transaction" is whichever wrote last, not whoever is reading.
+    /// `FileStorage` keeps a single `current_tx_id` for the whole
+    /// storage (#4951) and cannot answer "who is asking".
+    fn scan_in(&self, table: &str, reader_tx: u64) -> SqlResult<Vec<Record>> {
+        let _ = reader_tx;
+        self.scan(table)
+    }
     /// V4.0.0 / SOAK-leak fix: scan with a row-level predicate evaluated
     /// **inside** the storage lock, so non-matching rows are never cloned.
     ///
@@ -1030,6 +1048,19 @@ pub trait StorageEngine: Send + Sync {
     ) -> SqlResult<Vec<Record>> {
         let _ = filter;
         self.scan(table)
+    }
+
+    /// #4983 / #4951: `scan_with_filter` with the reading connection's
+    /// transaction id. See [`scan_in`](Self::scan_in) for why the
+    /// parameter is explicit.
+    fn scan_with_filter_in(
+        &self,
+        table: &str,
+        filter: &dyn Fn(&Record) -> bool,
+        reader_tx: u64,
+    ) -> SqlResult<Vec<Record>> {
+        let _ = reader_tx;
+        self.scan_with_filter(table, filter)
     }
     /// V312-85 / Issue #4625: Scan using a specific index.
     /// Returns rows where the indexed column equals the given key value.
