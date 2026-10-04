@@ -106,7 +106,10 @@ fn drain_trigger_undo_into_tx<S: StorageEngine + 'static>(engine: &ExecutionEngi
         return;
     };
     for rec in pending {
-        let _ = engine.transaction_manager.lock().add_undo_record(tx_id, rec);
+        let _ = engine
+            .transaction_manager
+            .lock()
+            .add_undo_record(tx_id, rec);
     }
 }
 /// INSERT executor body. ARCH-3 VtuGuard call lives in the `pub fn
