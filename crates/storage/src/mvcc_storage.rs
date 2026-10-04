@@ -586,12 +586,40 @@ impl<S: StorageEngine + 'static> StorageEngine for MvccStorage<S> {
         let n = self.inner.update(table, filters, updates)?;
         if n > 0 {
             let mvcc = self.mvcc_table(table);
-            // Re-scan to get current row contents after update.
-            let tx_id = self.inner.current_tx_id();
-            let pairs = mvcc.scan_visible(mvcc.begin_snapshot(), tx_id);
             let tx_id = self.inner.current_tx_id();
             let ts = mvcc.next_snapshot_ts();
-            for (pk, row) in pairs {
+            // #4995: read the post-update row contents from the **inner
+            // engine**, not from the MVCC chain.
+            //
+            // The old body did `mvcc.scan_visible(...)` here and re-`put`
+            // whatever came back. But `self.inner.update(...)` only
+            // touches the inner engine — the MVCC chain still holds the
+            // *pre-update* versions, so the loop appended a brand-new
+            // version whose contents were the **old row**. Every reader
+            // resolves the newest version for a PK from the tail of the
+            // chain, so the freshly appended old-row version shadowed the
+            // real data and the update was invisible forever.
+            //
+            // End to end that is: `UPDATE ... SET k=222` returns
+            // success, no error, and a following `SELECT` reads the
+            // original value back. It reached production through
+            // `apply_odku` (`ON DUPLICATE KEY UPDATE`), which is why ODKU
+            // "worked" (duplicate detected, statement succeeded) while
+            // never actually changing a row.
+            //
+            // The inner engine is now the authority on current contents;
+            // the chain is the authority on *visibility*.
+            let updated_rows = self.inner.scan(table)?;
+            for row in updated_rows {
+                let Some(pk) = row.first().cloned() else {
+                    continue;
+                };
+                // `filters` carries the primary key values of the rows the
+                // update actually touched (see `apply_odku`, which passes
+                // `pk_values`). An empty filter means the whole table.
+                if !filters.is_empty() && !filters.contains(&pk) {
+                    continue;
+                }
                 mvcc.put(pk, row, ts, tx_id);
             }
         }
