@@ -14,6 +14,7 @@ use crate::expr_utils::{
     expression_to_value_from_string, resolve_subqueries_in_expr,
 };
 use crate::{parse, SqlError, SqlResult, Value};
+use parking_lot::Mutex;
 use parking_lot::RwLock;
 use sqlrustgo_catalog::stored_proc::{ParamMode, StoredProcParam, StoredProcStatement};
 use sqlrustgo_catalog::{
@@ -73,7 +74,6 @@ use sqlrustgo_types::Value as SqlValue;
 use std::collections::HashMap;
 use std::path::PathBuf;
 use std::sync::atomic::{AtomicBool, AtomicUsize, Ordering};
-use parking_lot::Mutex;
 use std::sync::Arc;
 
 /// Execution engine for SQL statements
@@ -107,16 +107,13 @@ pub struct ExecutionEngine<S: StorageEngine> {
     /// parent's undo entry only captures the parent row.
     pub(crate) trigger_undo_sink:
         Arc<parking_lot::Mutex<Vec<sqlrustgo_transaction::savepoint::UndoRecord>>>,
-    
+
     /// V312-77 / Issue #4847: distinguishes an explicit BEGIN (set to true
     /// when `begin_transaction` is called) from an implicit DML transaction
     /// (set to false). Only explicit transactions should be tracked by
     /// `commit_implicit_dml_tx` / `rollback_transaction` so that DML inside
     /// an explicit BEGIN does not auto-commit and ROLLBACK can undo it.
-    
-    
-    
-    
+
     /// V312-55F / Issue #4243: current SQL session user identity. Defaults to
     /// `root@localhost` (MySQL implicit full privilege). Use `set_current_user`
     /// to switch identity for privilege-check tests / non-root sessions.
