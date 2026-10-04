@@ -1,6 +1,7 @@
 //! Engine utilities - predicate evaluation, schema building, and constraint validation.
 //! Extracted from execution_engine.rs for modularity.
 
+use crate::execution_engine::ExecutionEngine;
 use std::collections::HashSet;
 
 use sqlrustgo_parser::{AggregateCall, AggregateFunction, Expression, SelectStatement};
@@ -144,7 +145,8 @@ fn check_expr_references<F: Fn(&str) -> bool>(expr: &Expression, exists: &F) -> 
 }
 
 /// Validate foreign key constraints for a row before insert
-pub fn validate_foreign_keys(
+pub fn validate_foreign_keys<S: StorageEngine + 'static>(
+    engine: &ExecutionEngine<S>,
     storage: &dyn StorageEngine,
     table_info: &sqlrustgo_storage::TableInfo,
     row: &[Value],
@@ -176,7 +178,10 @@ pub fn validate_foreign_keys(
         }
 
         // Scan parent table to verify referenced row exists
-        let parent_rows = storage.scan(&fk.referenced_table)?;
+        // #4983: the guard is already held by the caller, so use the
+        // `_with` variant — `scan_for_reader` would re-enter the
+        // non-reentrant RwLock and deadlock.
+        let parent_rows = engine.scan_for_reader_dyn(storage, &fk.referenced_table)?;
 
         // Find referenced column indices in parent table
         let ref_col_indices: Vec<usize> = fk

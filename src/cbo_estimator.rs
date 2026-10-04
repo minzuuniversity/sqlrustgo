@@ -165,11 +165,15 @@ pub fn optimize_join_order<'a>(
 ///
 /// V312-22b / Issue #4033: also builds an equi-height `Histogram` per column
 /// (default 100 buckets) for data-driven selectivity estimation in CBO.
-pub fn collect_table_stats<S: sqlrustgo_storage::StorageEngine>(
+pub fn collect_table_stats<S: sqlrustgo_storage::StorageEngine + 'static>(
+    exec: &crate::ExecutionEngine<S>,
     engine: &S,
     table: &str,
 ) -> SqlResult<TableStatistics> {
-    let rows = engine.scan(table)?;
+    // #4983: carry the reading connection's tx id. The optimiser reads
+    // committed state to build its cost estimates, so an uncommitted
+    // version must not skew them.
+    let rows = exec.scan_for_reader_with(engine, table)?;
     let row_count = rows.len() as u64;
 
     let table_info = engine.get_table_info(table)?;
