@@ -291,9 +291,14 @@ PYEOF
         done
         if [ "$missing" -gt 0 ]; then
             log_info "  ${missing} test binary/binaries missing; building (cargo test --no-run --release)..."
-            # shellcheck disable=SC2086
-            ( cd "$REPO_ROOT" && cargo test --no-run --release -p $tr_pkgs ) \
-                2>/tmp/cargo-build-test-bins.log || errors=$((errors + 1))
+            # `cargo test` accepts only one `-p` per invocation, so build
+            # them one at a time. Passing several positionally fails with
+            # "unexpected argument '...' found" and builds nothing.
+            for p in $tr_pkgs; do
+                ( cd "$REPO_ROOT" && cargo test --no-run --release -p "$p" ) \
+                    2>>/tmp/cargo-build-test-bins.log \
+                    || { errors=$((errors + 1)); }
+            done
         fi
     fi
 
