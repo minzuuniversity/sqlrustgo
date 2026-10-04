@@ -799,6 +799,61 @@ pub struct TableInfo {
     pub original_sql: String,
 }
 
+/// True when `haystack`'s trailing dot-separated segments equal **all** of
+/// `needle`'s segments, compared byte-exactly. F-08: replaces the
+/// `split('.').collect::<Vec<_>>()` + slice-equality idiom in the multi-join
+/// branch of column-name resolution. Both iterators walk right-to-left, so
+/// it also encodes the `col_segments.len() >= user_segments.len()` guard.
+/// Case-sensitive — matches the code it replaced exactly.
+fn trailing_segments_eq(haystack: &str, needle: &str) -> bool {
+    let mut h = haystack.rsplit('.');
+    for n in needle.rsplit('.') {
+        match h.next() {
+            Some(seg) if seg == n => {}
+            _ => return false,
+        }
+    }
+    true
+}
+
+/// Resolve a column reference against a schema slice.
+///
+/// **Single source of truth** for column-name resolution. Six drifting
+/// private copies of this logic existed across the workspace; one
+/// (`vtu_ir::predicate_ir`) was exact-only and silently dropped rows when
+/// the parser-preserved identifier case (`WHERE ID = 1`) did not match
+/// the schema case (`id INTEGER`).
+///
+/// Layer table (deliberate case-sensitivity asymmetry):
+///   1. whole stored name | sensitive
+///   2. whole stored name | insensitive
+///   3. the part after the first `.` | insensitive
+///   4. trailing dot-segments of the stored name | sensitive
+///   5. last dot-segment of the stored name (unqualified refs only) | insensitive
+pub fn find_column_index_in(col_name: &str, columns: &[ColumnDefinition]) -> Option<usize> {
+    if let Some(idx) = columns.iter().position(|c| c.name == col_name) {
+        return Some(idx);
+    }
+    if let Some(idx) = columns.iter().position(|c| c.name.eq_ignore_ascii_case(col_name)) {
+        return Some(idx);
+    }
+    if let Some((_qualifier, col)) = col_name.split_once('.') {
+        if let Some(idx) = columns.iter().position(|c| c.name.eq_ignore_ascii_case(col)) {
+            return Some(idx);
+        }
+        return columns.iter().position(|c| trailing_segments_eq(&c.name, col_name));
+    }
+    columns.iter().position(|c| match c.name.rsplit_once('.') {
+        Some((_, tail)) => tail.eq_ignore_ascii_case(col_name),
+        None => false,
+    })
+}
+
+/// [`find_column_index_in`] against a [`TableInfo`].
+pub fn find_column_index(col_name: &str, table_info: &TableInfo) -> Option<usize> {
+    find_column_index_in(col_name, &table_info.columns)
+}
+
 /// Column definition for table schema
 #[derive(Debug, Clone, Serialize, Deserialize, Default)]
 pub struct ColumnDefinition {
