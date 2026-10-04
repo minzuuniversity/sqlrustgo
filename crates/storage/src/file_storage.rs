@@ -4159,6 +4159,39 @@ impl StorageEngine for FileStorage {
                 s.dirty_tables.insert(table.to_string());
             }
 
+            // #4960: rows inserted during a transaction live in
+            // `insert_buffer` until the buffer threshold promotes them
+            // into `tables.rows`. `removed_pks` above is built solely from
+            // `tables.rows`, so for a table whose rows are all still
+            // buffered it comes back EMPTY — the delete visibly "succeeds"
+            // while reporting zero rows removed. ROLLBACK replays its undo
+            // log through this method, so a transaction's INSERTs were
+            // deleted from the buffer and then reported as not deleted,
+            // and the caller's tombstoning (driven by `removed_pks`) never
+            // ran either. That is why ROLLBACK appeared to do nothing.
+            //
+            // Count the buffered rows we are about to drop and report them
+            // too, so the caller tombstones the same set it actually
+            // removed. The deletion itself already happened just above.
+            let mut removed_pks = removed_pks;
+            if !filters.is_empty() {
+                if let Some(buffered) = s.insert_buffer.get(table) {
+                    for row in buffered {
+                        if filters
+                            .iter()
+                            .enumerate()
+                            .all(|(i, f)| row.get(i).map(|v| v == f).unwrap_or(false))
+                        {
+                            if let Some(pk) = row.first().cloned() {
+                                if !removed_pks.contains(&pk) {
+                                    removed_pks.push(pk);
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+
             // After full table delete, clear any buffered inserts.
             // For partial delete, strip matching rows from insert_buffer.
             if filters.is_empty() {
