@@ -42,3 +42,11 @@ path = "src/bin/physical_backup.rs"
 [[bin]]
 name = "repro_4564"
 path = "src/bin/repro_4564.rs"
+
+[[bin]]
+name = "ha"
+path = "src/bin/ha.rs"
+
+[[bin]]
+name = "log-rotation"
+path = "src/bin/log_rotation.rs"

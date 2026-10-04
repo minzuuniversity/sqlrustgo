@@ -69,6 +69,7 @@ pub use engine::{
     SequenceInfo, SqlResult, StorageEngine, TableData, TableInfo, TriggerEvent, TriggerInfo,
     TriggerTiming, TxLog, UniqueConstraint, Value, ViewInfo,
 };
+pub use failover_manager::{FailoverConfig, FailoverState, NodeInfo, NodeType};
 pub use file_storage::FileStorage;
 pub use lock::{GapLock, GapLockManager, GapLockType, IsolationLevel};
 pub use mvcc_gc::{MvccGCRunner, MvccGCRunnerConfig};
