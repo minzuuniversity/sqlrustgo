@@ -667,7 +667,7 @@ pub fn execute_insert<S: StorageEngine + 'static>(
                         // #4558: row is already in table column order after
                         // `materialise_default_tokens` above; pass `&[]` so the
                         // helpers index by table position, not VALUES position.
-                        validate_foreign_keys(&*storage, &table_info, record, &[])?;
+                        validate_foreign_keys(engine, &*storage, &table_info, record, &[])?;
                     }
                     if !table_info.check_constraints.is_empty() {
                         for constraint in &table_info.check_constraints {
@@ -706,7 +706,7 @@ pub fn execute_insert<S: StorageEngine + 'static>(
                 if !table_info.foreign_keys.is_empty() {
                     // #4558: see comment above — pass `&[]` to make the
                     // helpers index by table position after reordering.
-                    validate_foreign_keys(&*storage, &table_info, record, &[])?;
+                    validate_foreign_keys(engine, &*storage, &table_info, record, &[])?;
                 }
                 if !table_info.check_constraints.is_empty() {
                     for constraint in &table_info.check_constraints {

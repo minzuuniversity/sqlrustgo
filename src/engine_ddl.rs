@@ -628,7 +628,7 @@ impl<S: StorageEngine + 'static> ExecutionEngine<S> {
         let names = storage.list_tables();
         let mut rows = Vec::new();
         for name in &names {
-            let row = table_status_row(&*storage, name)?;
+            let row = table_status_row(self, &*storage, name)?;
             if let Some(pat) = like {
                 if !sql_like_match(name, pat) {
                     continue;
@@ -1310,8 +1310,17 @@ fn column_metadata_rows(columns: &[ColumnDefinition]) -> Vec<Vec<Value>> {
 /// 18-column `SHOW TABLE STATUS` row for a table. Numeric stats that
 /// sqlrustgo does not track (Data_length, Index_length, ...) are 0;
 /// timestamps and Checksum are NULL; `Rows` is the real scanned count.
-fn table_status_row<S: StorageEngine + ?Sized>(storage: &S, name: &str) -> SqlResult<Vec<Value>> {
-    let row_count = storage.scan(name).map(|r| r.len() as i64).unwrap_or(0);
+fn table_status_row<S: StorageEngine + 'static>(
+    engine: &ExecutionEngine<S>,
+    storage: &S,
+    name: &str,
+) -> SqlResult<Vec<Value>> {
+    // #4983: carry the reading connection's tx id so an uncommitted
+    // version is visible only to its author.
+    let row_count = engine
+        .scan_for_reader_with(storage, name)
+        .map(|r| r.len() as i64)
+        .unwrap_or(0);
     let column_count = storage
         .get_table_info(name)
         .map(|i| i.columns.len() as i64)

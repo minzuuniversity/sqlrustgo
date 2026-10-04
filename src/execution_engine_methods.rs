@@ -160,6 +160,19 @@ impl<S: StorageEngine + 'static> ExecutionEngine<S> {
         storage.scan_in(table, reader_tx)
     }
 
+    /// #4983: [`scan_for_reader_with`](Self::scan_for_reader_with) for
+    /// callers holding a `&dyn StorageEngine` rather than the concrete
+    /// `&S`. `scan_in` is a trait method, so it dispatches through the
+    /// object just as well.
+    pub(crate) fn scan_for_reader_dyn(
+        &self,
+        storage: &dyn sqlrustgo_storage::engine::StorageEngine,
+        table: &str,
+    ) -> SqlResult<Vec<sqlrustgo_storage::engine::Record>> {
+        let reader_tx = self.reader_tx();
+        storage.scan_in(table, reader_tx)
+    }
+
     /// #4983: predicate variant of [`scan_for_reader_with`](Self::scan_for_reader_with).
     pub(crate) fn scan_for_reader_filtered_with(
         &self,
@@ -343,7 +356,7 @@ impl<S: StorageEngine + 'static> ExecutionEngine<S> {
     // Forwarder retained for backwards-compatible call sites.
     pub(super) fn collect_table_stats(&self, table: &str) -> SqlResult<TableStatistics> {
         let storage = self.storage.read();
-        crate::cbo_estimator::collect_table_stats(&*storage, table)
+        crate::cbo_estimator::collect_table_stats(self, &*storage, table)
     }
 
     /// Execute a SQL statement and return results
