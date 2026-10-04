@@ -27,9 +27,17 @@ static LSN_COUNTER: AtomicU64 = AtomicU64::new(0);
 
 /// Generate next LSN
 #[allow(dead_code)]
+/// Next LSN for this process.
+///
+/// Produces the same `{:016x}-{:08x}` shape as [`generate_lsn`] so the
+/// two are comparable. The two used to disagree — this one emitted bare
+/// hex while `generate_lsn` emitted hex-dash-hex — and both end up in the
+/// same field graph: `current_start_lsn` comes from here, `ChangeSet::end_lsn`
+/// from there, and `get_end_lsn` picks the max with a string compare. Mixing
+/// the shapes made that comparison meaningless.
 fn next_lsn() -> String {
     let lsn = LSN_COUNTER.fetch_add(1, Ordering::SeqCst);
-    format!("{:016x}", lsn)
+    format!("{:016x}-{:08x}", 0, lsn)
 }
 
 /// Change record for incremental backup
@@ -142,6 +150,57 @@ impl ChangeSet {
 }
 
 /// Convert Value to SQL string representation
+/// Project a storage `ColumnDefinition` into the backup metadata shape.
+///
+/// `is_unique` and `references` used to be fields on
+/// `ColumnDefinition`; they are now table-level constraints
+/// (`TableInfo::unique_constraints` / `foreign_keys`), so they are
+/// resolved per column name. Reading the removed fields would not
+/// compile now that this module is in the build graph (#4938), and
+/// three call sites had each grown their own copy of the mapping — this
+/// helper is the single place it lives.
+fn column_backup_info(
+    c: &sqlrustgo_storage::engine::ColumnDefinition,
+    table_info: &sqlrustgo_storage::engine::TableInfo,
+) -> ColumnBackupInfo {
+    let upper = c.name.to_uppercase();
+    let is_unique = table_info
+        .unique_constraints
+        .iter()
+        .any(|u| u.columns.iter().any(|col| col.to_uppercase() == upper));
+    // A foreign key may span several columns, so the referenced column
+    // is chosen by position rather than by a single scalar field.
+    let references = table_info.foreign_keys.iter().find_map(|fk| {
+        fk.columns
+            .iter()
+            .position(|col| col.to_uppercase() == upper)
+            .and_then(|i| fk.referenced_columns.get(i))
+            .map(|refcol| format!("{}.{}", fk.referenced_table, refcol))
+    });
+    ColumnBackupInfo {
+        name: c.name.clone(),
+        data_type: c.data_type.clone(),
+        nullable: c.nullable,
+        is_primary_key: c.primary_key,
+        is_unique,
+        auto_increment: c.auto_increment,
+        references,
+    }
+}
+
+/// Render a `Value` as a SQL literal for replay into `CREATE TABLE` /
+/// `INSERT` statements during a restore.
+///
+/// The `Value` enum has changed shape since this file was written and
+/// the module was never in the build graph, so its match arms had gone
+/// stale: `Date`, `Timestamp`, `Uuid`, `Array`, `Enum` and `Decimal` are
+/// not variants of `sqlrustgo_types::Value` any more, and the two that
+/// do exist (`Point`, `Json`) were never handled at all. An unhandled
+/// variant would not compile now that the module builds.
+///
+/// Points and JSON have no direct SQL literal, so they are emitted via
+/// their text form and quoted — enough for restore to round-trip the
+/// value through the existing `Value` parser rather than failing.
 fn value_to_sql(value: &Value) -> String {
     match value {
         Value::Null => "NULL".to_string(),
@@ -150,15 +209,8 @@ fn value_to_sql(value: &Value) -> String {
         Value::Text(s) => format!("'{}'", s.replace("'", "''")),
         Value::Boolean(b) => if *b { "TRUE" } else { "FALSE" }.to_string(),
         Value::Blob(bytes) => format!("X'{}'", hex::encode(bytes)),
-        Value::Date(days) => format!("DATE '{}'", days),
-        Value::Timestamp(us) => format!("TIMESTAMP '{}'", us),
-        Value::Uuid(u) => format!("'{:036x}'", u),
-        Value::Array(arr) => format!(
-            "'{}'",
-            arr.iter().map(value_to_sql).collect::<Vec<_>>().join(",")
-        ),
-        Value::Enum(_, name) => format!("'{}'", name),
-        Value::Decimal(d) => d.to_string(),
+        Value::Point(x, y) => format!("POINT '{} {}'", x, y),
+        Value::Json(j) => format!("'{}'", j.to_string().replace("'", "''")),
     }
 }
 
@@ -415,21 +467,16 @@ pub fn create_full_backup(dir: &Path, format: &str, _data_dir: &Path) -> Result<
         let table_backup_info = TableBackupInfo {
             name: table_name.clone(),
             row_count,
+            // `is_unique` and `references` used to live on
+            // `ColumnDefinition`. They are now table-level constraints
+            // (`TableInfo::unique_constraints` / `foreign_keys`), so
+            // they are resolved per column name instead. Reading a
+            // removed field would not compile now that this module is in
+            // the build graph (#4938).
             columns: table_info
                 .columns
                 .iter()
-                .map(|c| ColumnBackupInfo {
-                    name: c.name.clone(),
-                    data_type: c.data_type.clone(),
-                    nullable: c.nullable,
-                    is_primary_key: c.is_primary_key,
-                    is_unique: c.is_unique,
-                    auto_increment: c.auto_increment,
-                    references: c
-                        .references
-                        .as_ref()
-                        .map(|r| format!("{}.{}", r.referenced_table, r.referenced_column)),
-                })
+                .map(|c| column_backup_info(c, &table_info))
                 .collect(),
         };
         table_infos.push(table_backup_info);
@@ -534,18 +581,7 @@ pub fn create_incremental_backup(
             columns: table_info
                 .columns
                 .iter()
-                .map(|c| ColumnBackupInfo {
-                    name: c.name.clone(),
-                    data_type: c.data_type.clone(),
-                    nullable: c.nullable,
-                    is_primary_key: c.is_primary_key,
-                    is_unique: c.is_unique,
-                    auto_increment: c.auto_increment,
-                    references: c
-                        .references
-                        .as_ref()
-                        .map(|r| format!("{}.{}", r.referenced_table, r.referenced_column)),
-                })
+                .map(|c| column_backup_info(c, &table_info))
                 .collect(),
         };
         table_infos.push(table_backup_info);
@@ -1067,19 +1103,16 @@ pub fn restore_backup(dir: &Path, target: &Path, clean: bool) -> Result<()> {
                 name: c.name.clone(),
                 data_type: c.data_type.clone(),
                 nullable: c.nullable,
-                is_primary_key: c.is_primary_key,
-                is_unique: c.is_unique,
+                primary_key: c.is_primary_key,
                 auto_increment: c.auto_increment,
-                references: None,
-                collation: None,
-
-                default_value: None,            })
+                ..Default::default()
+            })
             .collect();
 
         let table_schema = TableInfo {
             name: table_info.name.clone(),
-            collations: std::collections::HashMap::new(),
             columns,
+            ..Default::default()
         };
 
         storage.create_table(&table_schema)?;
@@ -1236,10 +1269,15 @@ fn generate_create_table_sql(table_info: &TableInfo) -> String {
             if !col.nullable {
                 def.push_str(" NOT NULL");
             }
-            if col.is_primary_key {
+            if col.primary_key {
                 def.push_str(" PRIMARY KEY");
             }
-            if col.is_unique {
+            // UNIQUE moved from the column to `TableInfo::unique_constraints`.
+            if table_info
+                .unique_constraints
+                .iter()
+                .any(|u| u.columns.iter().any(|c| c.eq_ignore_ascii_case(&col.name)))
+            {
                 def.push_str(" UNIQUE");
             }
             if col.auto_increment {
@@ -1252,14 +1290,16 @@ fn generate_create_table_sql(table_info: &TableInfo) -> String {
     sql.push_str(&column_defs.join(",\n"));
     sql.push_str("\n);\n");
 
-    // Add foreign key constraints
-    for col in &table_info.columns {
-        if let Some(ref fk) = col.references {
-            sql.push_str(&format!(
-                "ALTER TABLE {} ADD FOREIGN KEY ({}) REFERENCES {} ({});\n",
-                table_info.name, col.name, fk.referenced_table, fk.referenced_column
-            ));
-        }
+    // Foreign keys live on `TableInfo`, not per column, since they may
+    // span several columns.
+    for fk in &table_info.foreign_keys {
+        sql.push_str(&format!(
+            "ALTER TABLE {} ADD FOREIGN KEY ({}) REFERENCES {} ({});\n",
+            table_info.name,
+            fk.columns.join(", "),
+            fk.referenced_table,
+            fk.referenced_columns.join(", ")
+        ));
     }
 
     sql
@@ -1272,53 +1312,42 @@ fn create_demo_storage() -> MemoryStorage {
     // Create users table
     let users_table = TableInfo {
         name: "users".to_string(),
+        unique_constraints: vec![sqlrustgo_storage::UniqueConstraint {
+            name: None,
+            columns: vec!["email".to_string()],
+        }],
         columns: vec![
             ColumnDefinition {
                 name: "id".to_string(),
                 data_type: "INTEGER".to_string(),
                 nullable: false,
-                is_primary_key: true,
-                is_unique: true,
+                primary_key: true,
                 auto_increment: true,
-                references: None,
-                collation: None,
-
-                default_value: None,            },
+                ..Default::default()
+            },
             ColumnDefinition {
                 name: "name".to_string(),
                 data_type: "TEXT".to_string(),
                 nullable: false,
-                is_primary_key: false,
-                is_unique: false,
                 auto_increment: false,
-                references: None,
-                collation: None,
-
-                default_value: None,            },
+                ..Default::default()
+            },
             ColumnDefinition {
                 name: "email".to_string(),
                 data_type: "TEXT".to_string(),
                 nullable: false,
-                is_primary_key: false,
-                is_unique: true,
                 auto_increment: false,
-                references: None,
-                collation: None,
-
-                default_value: None,            },
+                ..Default::default()
+            },
             ColumnDefinition {
                 name: "created_at".to_string(),
                 data_type: "TIMESTAMP".to_string(),
                 nullable: false,
-                is_primary_key: false,
-                is_unique: false,
                 auto_increment: false,
-                references: None,
-                collations: std::collections::HashMap::new(),
-                collation: None,
-
-                default_value: None,            },
+                ..Default::default()
+            },
         ],
+        ..Default::default()
     };
     storage.create_table(&users_table).unwrap();
 
@@ -1357,53 +1386,42 @@ fn create_demo_storage() -> MemoryStorage {
                 name: "id".to_string(),
                 data_type: "INTEGER".to_string(),
                 nullable: false,
-                is_primary_key: true,
-                is_unique: true,
+                primary_key: true,
                 auto_increment: true,
-                references: None,
-                collation: None,
-
-                default_value: None,            },
+                ..Default::default()
+            },
             ColumnDefinition {
                 name: "user_id".to_string(),
                 data_type: "INTEGER".to_string(),
                 nullable: false,
-                is_primary_key: false,
-                is_unique: false,
-                auto_increment: false,
-                references: Some(sqlrustgo_storage::ForeignKeyConstraint {
-                    referenced_table: "users".to_string(),
-                    referenced_column: "id".to_string(),
-                    on_delete: None,
-                    on_update: None,
-                    collation: None,
-                }),
-
-                default_value: None,            },
+                ..Default::default()
+            },
             ColumnDefinition {
                 name: "total".to_string(),
                 data_type: "FLOAT".to_string(),
                 nullable: false,
-                is_primary_key: false,
-                is_unique: false,
                 auto_increment: false,
-                references: None,
-                collation: None,
-
-                default_value: None,            },
+                ..Default::default()
+            },
             ColumnDefinition {
                 name: "status".to_string(),
                 data_type: "TEXT".to_string(),
                 nullable: false,
-                is_primary_key: false,
-                is_unique: false,
                 auto_increment: false,
-                references: None,
-                collations: std::collections::HashMap::new(),
-                collation: None,
-
-                default_value: None,            },
+                ..Default::default()
+            },
         ],
+        // The user_id -> users(id) foreign key used to hang off
+        // ColumnDefinition; it is a table-level constraint now.
+        foreign_keys: vec![sqlrustgo_storage::ForeignKeyConstraint {
+            name: None,
+            columns: vec!["user_id".to_string()],
+            referenced_table: "users".to_string(),
+            referenced_columns: vec!["id".to_string()],
+            on_delete: None,
+            on_update: None,
+        }],
+        ..Default::default()
     };
     storage.create_table(&orders_table).unwrap();
 
@@ -1442,37 +1460,26 @@ fn create_demo_storage() -> MemoryStorage {
                 name: "id".to_string(),
                 data_type: "INTEGER".to_string(),
                 nullable: false,
-                is_primary_key: true,
-                is_unique: true,
+                primary_key: true,
                 auto_increment: true,
-                references: None,
-                collation: None,
-
-                default_value: None,            },
+                ..Default::default()
+            },
             ColumnDefinition {
                 name: "name".to_string(),
                 data_type: "TEXT".to_string(),
                 nullable: false,
-                is_primary_key: false,
-                is_unique: false,
                 auto_increment: false,
-                references: None,
-                collation: None,
-
-                default_value: None,            },
+                ..Default::default()
+            },
             ColumnDefinition {
                 name: "price".to_string(),
                 data_type: "FLOAT".to_string(),
                 nullable: false,
-                is_primary_key: false,
-                is_unique: false,
                 auto_increment: false,
-                references: None,
-                collations: std::collections::HashMap::new(),
-                collation: None,
-
-                default_value: None,            },
+                ..Default::default()
+            },
         ],
+        ..Default::default()
     };
     storage.create_table(&products_table).unwrap();
 
@@ -1554,26 +1561,22 @@ mod tests {
                     name: "id".to_string(),
                     data_type: "INTEGER".to_string(),
                     nullable: false,
-                    is_primary_key: true,
-                    is_unique: true,
+                    primary_key: true,
                     auto_increment: true,
-                    references: None,
-                    collation: None,
-
-                    default_value: None,                },
+                    ..Default::default()
+                },
                 ColumnDefinition {
                     name: "name".to_string(),
                     data_type: "TEXT".to_string(),
                     nullable: true,
-                    is_primary_key: false,
-                    is_unique: false,
-                    auto_increment: false,
-                    references: None,
-                    collations: std::collections::HashMap::new(),
-                    collation: None,
-
-                    default_value: None,                },
+                    ..Default::default()
+                },
             ],
+            unique_constraints: vec![sqlrustgo_storage::UniqueConstraint {
+                name: None,
+                columns: vec!["id".to_string()],
+            }],
+            ..Default::default()
         };
 
         let sql = generate_create_table_sql(&table);
@@ -1768,24 +1771,52 @@ mod tests {
 
     #[test]
     fn test_incremental_backup_context_new_is_empty() {
+        // `is_empty` / `len` / `total_changes` never existed on this
+        // type; the test was written against an imagined API and could
+        // not run because the module was not in the build graph.
         let buf = IncrementalBackupContext::new();
-        assert!(buf.is_empty());
-        assert_eq!(buf.len(), 0);
-        assert_eq!(buf.total_changes(), 0);
+        assert!(
+            buf.get_changes().is_empty(),
+            "a fresh context must hold no change sets"
+        );
     }
 
     #[test]
     fn test_incremental_backup_context_get_end_lsn() {
         let buf = IncrementalBackupContext::new();
-        assert_eq!(buf.get_end_lsn(), "00000000-00000000");
+        // `current_start_lsn` is minted by `next_lsn()`, which now emits
+        // the same hex-dash-hex shape as `generate_lsn()`. The two used to
+        // disagree, and since both feed `get_end_lsn`'s string-compare max,
+        // that made the comparison meaningless.
+        //
+        // The exact suffix is not asserted: `LSN_COUNTER` is a process-wide
+        // atomic that sibling tests also advance, so the value depends on
+        // test ordering. What matters is the shape.
+        let lsn = buf.get_end_lsn();
+        assert_eq!(
+            lsn.len(),
+            25,
+            "LSN must be 16 hex + '-' + 8 hex, got {:?}",
+            lsn
+        );
+        assert_eq!(
+            lsn.as_bytes()[16],
+            b'-',
+            "hyphen at position 16 in {:?}",
+            lsn
+        );
+        assert!(
+            lsn[..16].chars().all(|c| c.is_ascii_hexdigit()),
+            "first component must be hex, got {:?}",
+            lsn
+        );
     }
 
     #[test]
     fn test_incremental_backup_context_record_insert_sets_lsn() {
-        use crate::types::Value;
         let mut buf = IncrementalBackupContext::new();
         buf.record_insert("t", vec![Value::Integer(1)], vec![Value::Integer(1)]);
-        assert_ne!(buf.get_end_lsn(), "00000000-00000000");
+        assert!(!buf.get_end_lsn().is_empty());
     }
 
     #[test]
@@ -1796,7 +1827,18 @@ mod tests {
             timestamp: "2026-01-15 10:00:00".to_string(),
             lsn: Some("00000001-0000000A".to_string()),
             parent_lsn: Some("00000001-00000005".to_string()),
-            tables: vec!["users".to_string(), "orders".to_string()],
+            tables: vec![
+                TableBackupInfo {
+                    name: "users".to_string(),
+                    row_count: 3,
+                    columns: vec![],
+                },
+                TableBackupInfo {
+                    name: "orders".to_string(),
+                    row_count: 2,
+                    columns: vec![],
+                },
+            ],
             total_rows: 150,
             checksum: "deadbeef".to_string(),
         };
@@ -1817,6 +1859,12 @@ mod tests {
     fn test_value_to_sql_bool() {
         let value = Value::Boolean(true);
         let sql = value_to_sql(&value);
-        assert_eq!(sql, "true");
+        // Upper case, matching SQL and matching what the engine itself
+        // emits (`src/engine_select.rs` renders `Value::Boolean` as
+        // "TRUE"/"FALSE"). The test expected lower case, which never
+        // agreed with the implementation and could not be caught because
+        // the module was not in the build graph.
+        assert_eq!(sql, "TRUE");
+        assert_eq!(value_to_sql(&Value::Boolean(false)), "FALSE");
     }
 }

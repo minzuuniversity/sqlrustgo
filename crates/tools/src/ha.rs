@@ -8,7 +8,7 @@
 
 use anyhow::{Context, Result};
 use serde::{Deserialize, Serialize};
-use sqlrustgo_storage::{FailoverConfig, NodeInfo, NodeType};
+use sqlrustgo_storage::failover_manager::{FailoverConfig, NodeInfo, NodeType};
 use std::net::SocketAddr;
 use std::path::{Path, PathBuf};
 use std::time::Instant;

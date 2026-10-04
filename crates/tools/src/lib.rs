@@ -14,8 +14,11 @@
     renamed_and_removed_lints
 )]
 
+pub mod backup;
 pub mod backup_restore;
 pub mod config_hot_reload;
+pub mod ha;
+pub mod log_rotation;
 pub mod mysqldump;
 pub mod physical_backup;
 pub mod traits;

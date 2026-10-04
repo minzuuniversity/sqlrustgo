@@ -55,6 +55,7 @@ pub mod wal_storage;
 pub use adaptive_hash_index::{
     AdaptiveHashIndex, IndexKey, PageLocation, DEFAULT_PROMOTION_THRESHOLD,
 };
+pub use backup::{BackupExporter, BackupFormat, DataRestorer};
 pub use binary_format::BinaryFormat;
 pub use binary_storage::{BinaryTableStorage, BoxStorageEngine};
 pub use bplus_tree::BPlusTree;
@@ -68,6 +69,7 @@ pub use engine::{
     SequenceInfo, SqlResult, StorageEngine, TableData, TableInfo, TriggerEvent, TriggerInfo,
     TriggerTiming, TxLog, UniqueConstraint, Value, ViewInfo,
 };
+pub use failover_manager::{FailoverConfig, FailoverState, NodeInfo, NodeType};
 pub use file_storage::FileStorage;
 pub use lock::{GapLock, GapLockManager, GapLockType, IsolationLevel};
 pub use mvcc_gc::{MvccGCRunner, MvccGCRunnerConfig};

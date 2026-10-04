@@ -495,8 +495,26 @@ mod tests {
         let rotator = LogRotator::new(config).unwrap();
         let path = rotator.get_current_log_path();
 
-        assert!(path.to_str().unwrap().starts_with("app_"));
-        assert!(path.to_str().unwrap().ends_with(".log"));
+        // `generate_log_path` joins the file name onto the configured
+        // directory, so the whole path starts with that directory, not
+        // with the prefix. The old assertion compared the full path
+        // against the prefix alone and could not have passed — the
+        // module was not in the build graph (#4939).
+        let name = path
+            .file_name()
+            .and_then(|n| n.to_str())
+            .expect("log path has a file name");
+        assert_eq!(
+            path.parent(),
+            Some(dir.path()),
+            "log file must sit directly in the configured directory"
+        );
+        assert!(
+            name.starts_with("app_"),
+            "file name must start with the configured prefix, got {:?}",
+            name
+        );
+        assert!(name.ends_with(".log"), "got {:?}", name);
     }
 
     #[test]
