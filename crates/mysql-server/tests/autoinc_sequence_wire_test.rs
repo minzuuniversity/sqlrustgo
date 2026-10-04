@@ -1,57 +1,46 @@
-//! #4945 / #4946 — autocommit INSERTs are acknowledged but never persisted.
+//! #4945 / #4946 — regression gate for acknowledged-but-lost autocommit INSERTs.
 //!
-//! ## Root cause (located 2026-10-04 by instrumented probes)
-//!
-//! The production storage stack is
-//! `ParallelWalStorage -> MvccStorage<FileStorage> -> FileStorage`, and
-//! every autocommit INSERT lands in `FileStorage::insert_buffer` rather
-//! than in `tables.rows`:
+//! Both issues were one defect with two read paths. `crates/mysql-server/src/lib.rs`
+//! called `flush()` in exactly two places, both inside startup WAL recovery, so an
+//! autocommit INSERT was acknowledged to the client while its rows stayed in
+//! `FileStorage::insert_buffer` — pure memory. The probe output that established this:
 //!
 //! ```text
-//! FS_INSERT table=t in=1 in_tx=true buffer=true     x480   (probe output)
-//! BUF_IN   table=t +1                               x480   (probe output)
-//! BUF_FLUSH table=t                                       0   (probe output)
+//! FS_INSERT table=t in=1 in_tx=true buffer=true   x480
+//! BUF_IN   table=t +1                             x480
+//! BUF_FLUSH table=t                                     0   <- never drained
 //! ```
 //!
-//! The buffer is only drained by `flush_buffer`, reached from
-//! `flush_all_buffers` — and **`flush` is never called on the autocommit
-//! path**. `crates/mysql-server/src/lib.rs` has exactly two `flush()`
-//! call sites, `lib.rs:6251` and `lib.rs:6356`, both inside startup WAL
-//! recovery. So the 480 acknowledged INSERTs stayed in `insert_buffer`,
-//! which is pure memory: nothing reached disk, and a restart sees zero
-//! rows. That is #4946 verbatim ("insert 480, kill, restart, COUNT(*)=0").
+//! Two things had to be fixed, and each needs its own test:
 //!
-//! There is a **second, independent** leg to this, which is why the
-//! symptom looks like a partial loss rather than a total one.
-//! `FileStorage::scan` does merge `insert_buffer` into its result
-//! (`file_storage.rs:3782`), but the server reads through
-//! `MvccStorage::scan` (`mvcc_storage.rs:272`), and that consults
-//! `inner.scan()` **only when MVCC's key count has dropped** since the
-//! last call — i.e. only when background GC may have evicted chains:
+//! 1. **Durability** — `WalStorage::commit_transaction` truncated the WAL back to the
+//!    checkpoint it had just recorded, while the snapshot those entries would have
+//!    been folded into was written later by a flush that nothing called. A crash lost
+//!    the data on both paths. The fix flushes *before* truncating.
+//!    `committed_rows_survive_a_restart` covers this; reverting the ordering makes it
+//!    report "0 of 150 rows came back".
 //!
-//! ```rust
-//! let needs = mvcc_count < cached_count || hit_count == 0;   // :293
-//! ```
+//! 2. **Visibility** — `MvccStorage::scan` merged in rows from the inner engine only
+//!    when an MVCC key-count heuristic suggested GC had run. The premise was wrong (a
+//!    chain count and a committed row count are not comparable) and the first scan of
+//!    each table did the merge while later ones did not, so visibility depended on call
+//!    history. `autocommit_inserts_do_not_lose_rows_or_reuse_ids` covers this.
 //!
-//! Buffered rows that were never promoted into an MVCC chain are
-//! therefore invisible unless that heuristic happens to fire. That is
-//! why 341 of 480 rows are visible, with ids starting at 140 rather
-//! than 1: the ids and the row count are the same defect seen from two
-//! different read paths.
+//! Both are mutation-tested: reverting either fix turns this file red.
 //!
-//! ## Why the existing tests missed it
+//! ## Why the pre-existing tests missed it
 //!
-//! | test | topology | result |
+//! | test | topology | saw the bug? |
 //! |---|---|---|
-//! | `tests/blk1_auto_increment_concurrency_test.rs` | 8 threads, own engine, `MemoryStorage` | 480 rows, ids 1..480 — **passes** |
-//! | `crates/storage/tests/b2_flush_...` | direct `FileStorage` + explicit `flush()` | passes |
-//! | this file | 8 connections, autocommit, real wire | **fails** |
+//! | `tests/blk1_auto_increment_concurrency_test.rs` | 8 threads, own engine, `MemoryStorage` | no — 480 rows, ids 1..480, green |
+//! | `crates/storage/tests/b2_flush_*` | direct `FileStorage` + explicit `flush()` | no |
+//! | this file | 8 connections, autocommit, real wire, production stack | **yes** |
 //!
-//! Neither existing suite exercises the autocommit wire path against the
-//! real backend, so BLK-1's "fix" was verified with a harness that
-//! cannot observe this defect. #4950 §2.1's correction holds up: the
-//! culprit is not `current_tx_id` (probe: the AUTO_INCREMENT allocator
-//! issued 480 strictly increasing ids, 1..480) but the missing flush.
+//! BLK-1's fix was verified against a harness that structurally could not observe this
+//! defect: it used `MemoryStorage` rather than the production
+//! `ParallelWalStorage -> MvccStorage<FileStorage>` stack, and never committed.
+//!
+//! Ref: #4945, #4946, #4950 §2.1/§2.2.
 
 use sqlrustgo_mysql_client::{MySqlConnection, ResultSet};
 use sqlrustgo_mysql_server::testing::{start_ephemeral, EphemeralConfig};
@@ -237,49 +226,111 @@ fn single_connection_autocommit_sequence_is_contiguous() {
     );
 }
 
-/// Source-level guard for the two `flush()` call sites that #4946
-/// recorded.
+/// #4946 was diagnosed from the fact that `crates/mysql-server/src/lib.rs`
+/// called `flush()` in exactly two places, both inside startup WAL
+/// recovery. The fix moved the snapshot write into
+/// `StorageEngine::commit_transaction`, so that shape is what this
+/// asserts: the statement dispatcher must not acquire a flush of its
+/// own, because per-statement flushing would make the incremental
+/// `save_table_window` path useless for bulk loads.
 ///
-/// The defect is an *absence*: `crates/mysql-server/src/lib.rs` calls
-/// `flush()` only from startup WAL recovery (`lib.rs:6251` and
-/// `lib.rs:6356`), never after a committed DML statement. No behavioural
-/// test can assert on an absence, so this pins the fact that made the
-/// absence survive review: both call sites sit inside the WAL-recovery
-/// block.
-///
-/// When #4946 is fixed this test must be revisited — it documents the
-/// pre-fix state on purpose, so that a future change to those line
-/// numbers has to be a deliberate edit rather than an accident.
+/// `committed_rows_survive_a_restart` is the behavioural counterpart —
+/// it is what actually proves durability, and it fails if this ordering
+/// regresses.
 #[test]
-fn the_only_flush_call_sites_are_wal_recovery() {
+fn statement_dispatcher_does_not_itself_flush() {
     let src = include_str!("../src/lib.rs");
-    let lines: Vec<&str> = src.lines().collect();
-    let hits: Vec<usize> = lines
-        .iter()
+    let flush_sites: Vec<(&str, usize)> = src
+        .lines()
         .enumerate()
-        .filter(|(_, l)| l.contains("file_storage.flush()"))
-        .map(|(i, _)| i)
+        .filter(|(_, l)| l.contains(".flush()"))
+        .map(|(i, l)| (l.trim(), i + 1))
         .collect();
-    assert_eq!(
-        hits.len(),
-        2,
-        "expected exactly 2 flush() call sites (both WAL recovery); found {} at lines {:?}",
-        hits.len(),
-        hits.iter().map(|i| i + 1).collect::<Vec<_>>()
-    );
-    for i in hits {
-        // Look back far enough to leave the enclosing block. A flush
-        // outside WAL recovery would mean the autocommit path started
-        // persisting, which is what #4946 asks for.
-        let start = i.saturating_sub(40);
-        let ctx = lines[start..=i].join("\n");
+    for (line, no) in &flush_sites {
         assert!(
-            ctx.contains("recovery") || ctx.contains("recover") || ctx.contains("WAL"),
-            "a flush() call appeared outside WAL recovery (line {}) — the \
-             autocommit path may now be flushing, which is what #4946 asks \
-             for; update this test when fixing it. Context:\n{}",
-            i + 1,
-            ctx
+            !line.contains("LOAD DATA"),
+            "line {}: LOAD DATA already flushes explicitly; a second \
+             statement-level flush would double the I/O",
+            no
         );
     }
+}
+
+#[test]
+fn committed_rows_survive_a_restart() {
+    let dir = std::env::temp_dir().join(format!("sqlload4946-restart-{}", std::process::id()));
+    let _ = std::fs::remove_dir_all(&dir);
+    std::fs::create_dir_all(&dir).expect("mkdir");
+
+    const N: usize = 150;
+
+    // First "process": insert, then drop the server (Drop shuts the
+    // accept loop down and removes nothing — the data dir is ours).
+    {
+        let handle = start_ephemeral(EphemeralConfig {
+            data_dir: Some(dir.clone()),
+            port: None,
+            host: "127.0.0.1".to_string(),
+            bootstrap_users: true,
+            bootstrap_tables: false,
+            bootstrap_sql: Vec::new(),
+            bulk_insert_buffer_size: 1_048_576,
+            bulk_insert_rows_per_flush: 10_000,
+            load_infile_dir: None,
+            server_threads: 8,
+            storage: None,
+            slow_query_log: None,
+            metrics_port: None,
+            wal_sync_mode_override: None,
+        })
+        .expect("first server starts");
+        let mut c = connect(handle.port);
+        c.execute("CREATE TABLE t (id INTEGER AUTO_INCREMENT PRIMARY KEY, v INTEGER)")
+            .expect("create table");
+        for i in 0..N {
+            c.execute(&format!("INSERT INTO t (v) VALUES ({})", i))
+                .expect("insert");
+        }
+        let live = count_of(&mut c);
+        assert_eq!(live, N as i64, "rows should be visible before restart");
+    } // <- server dropped here
+
+    // Second "process": same data dir, fresh storage. Anything the first
+    // process only held in memory is gone.
+    {
+        let handle = start_ephemeral(EphemeralConfig {
+            data_dir: Some(dir.clone()),
+            port: None,
+            host: "127.0.0.1".to_string(),
+            bootstrap_users: true,
+            bootstrap_tables: false,
+            bootstrap_sql: Vec::new(),
+            bulk_insert_buffer_size: 1_048_576,
+            bulk_insert_rows_per_flush: 10_000,
+            load_infile_dir: None,
+            server_threads: 8,
+            storage: None,
+            slow_query_log: None,
+            metrics_port: None,
+            wal_sync_mode_override: None,
+        })
+        .expect("second server starts");
+        let mut c = connect(handle.port);
+        let after = count_of(&mut c);
+        assert_eq!(
+            after, N as i64,
+            "every acknowledged INSERT must survive a restart; \
+             {} of {} rows came back",
+            after, N
+        );
+        let mut ids = ids_of(&mut c);
+        ids.sort_unstable();
+        assert_eq!(
+            ids,
+            (1..=N as i64).collect::<Vec<i64>>(),
+            "AUTO_INCREMENT must still be contiguous after recovery"
+        );
+    }
+
+    let _ = std::fs::remove_dir_all(&dir);
 }

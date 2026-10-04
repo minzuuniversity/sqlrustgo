@@ -1896,8 +1896,14 @@ impl<S: StorageEngine + 'static> ExecutionEngine<S> {
             let tx_id = self.tx_session.lock().current_tx_id.unwrap();
             let _ = self.transaction_manager.lock().commit(tx_id);
             // WAL checkpoint + truncation lives in StorageEngine::commit_transaction
+            //
+            // #4946: `commit_transaction` now flushes the snapshot before
+            // truncating the WAL, so it must be allowed to fail —
+            // acknowledging a commit whose data never reached disk is the
+            // "confirmed then lost" shape this issue reports. It used to
+            // be `let _ =`, which discarded exactly that signal.
             let mut storage = self.storage.write();
-            let _ = storage.commit_transaction();
+            storage.commit_transaction()?;
             // F-16 Gap Locking: release all gap locks on commit
             storage.release_all_gap_locks(tx_id.as_u64());
             drop(storage);

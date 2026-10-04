@@ -52,12 +52,6 @@ pub struct MvccStorage<S: StorageEngine + 'static> {
     /// boundary, so GC every-Nth-write is sufficient to keep RSS
     /// bounded under sustained mixed read/write load).
     write_count: std::sync::atomic::AtomicU64,
-    /// V400-PERF-FIX: per-table cache of the last observed MVCC
-    /// key_count. When this count is monotonically increasing
-    /// (no GC has run since last call), we skip the expensive
-    /// `inner.scan().len()` check entirely. When the count drops
-    /// (GC ran), we re-check inner.
-    scan_skip_cache: parking_lot::Mutex<HashMap<String, (usize, u64)>>,
     /// V400-05: optional cross-model write tracker. When set, every
     /// write path calls the tracker's closure so the V400-05 tracker
     /// can enforce all-or-nothing semantics across SQL + vector +
@@ -89,7 +83,6 @@ impl<S: StorageEngine + 'static> MvccStorage<S> {
             inner,
             mvcc: parking_lot::RwLock::new(HashMap::new()),
             write_count: std::sync::atomic::AtomicU64::new(0),
-            scan_skip_cache: parking_lot::Mutex::new(HashMap::new()),
             tx_tracker: None,
         }
     }
@@ -275,40 +268,36 @@ impl<S: StorageEngine + 'static> StorageEngine for MvccStorage<S> {
         let pairs = mvcc.scan_visible(snapshot_ts);
         let mut out: Vec<Record> = pairs.into_iter().map(|(_, row)| row).collect();
 
-        // V400-MVCC-PKFAST: merge inner.scan() so rows that have been
-        // evicted from MVCC chains by background GC are still visible.
+        // Merge in rows the inner engine holds that MVCC has no visible
+        // version for, so nothing that was committed becomes invisible.
         //
-        // Optimization: ONLY consult inner.scan() when MVCC chain
-        // count has dropped since the last call (which means GC
-        // may have evicted chains). The cache is per-MvccStorage
-        // because GC happens globally; we just check the count
-        // delta to skip the expensive inner.scan().len() on the
-        // hot path.
-        let mvcc_count = mvcc.key_count();
-        let needs_check = {
-            let mut cache = self.scan_skip_cache.lock();
-            let entry = cache.entry(table.to_string()).or_insert((0, 0));
-            let cached_count = entry.0;
-            let hit_count = entry.1;
-            let needs = mvcc_count < cached_count || hit_count == 0;
-            if needs {
-                entry.0 = mvcc_count;
-                entry.1 = hit_count.wrapping_add(1);
-            }
-            needs
-        };
-        if needs_check {
-            let inner_row_count = self.inner.scan(table)?.len();
-            if mvcc_count < inner_row_count {
-                let mvcc_pks: std::collections::HashSet<crate::engine::Value> =
-                    out.iter().filter_map(|r| r.first().cloned()).collect();
-                if let Ok(inner_rows) = self.inner.scan(table) {
-                    for row in inner_rows {
-                        if let Some(pk) = row.first() {
-                            if !mvcc_pks.contains(pk) {
-                                out.push(row);
-                            }
-                        }
+        // #4946: this merge used to be gated on an MVCC-key-count
+        // heuristic — "only consult inner.scan() when the chain count has
+        // dropped since the last call, which means GC may have evicted
+        // chains". That premise is wrong in two ways:
+        //
+        //   1. `hit_count == 0` made the *first* scan of every table do
+        //      the full inner scan, then the count comparison suppressed
+        //      it for the next N calls. Which rows a SELECT could see
+        //      therefore depended on call history — a plain read could
+        //      return fewer rows than the table holds.
+        //   2. MVCC chain count and inner row count are not comparable.
+        //      MVCC holds one chain per key (with version history); the
+        //      inner engine holds one row per committed record. A chain
+        //      count can be lower than the row count with no GC involved.
+        //
+        // The merge is now unconditional: one inner scan per statement,
+        // which is what correctness requires. A read path that
+        // intermittently hides committed rows is not an optimisation.
+        // The PK dedup keeps the result duplicate-free.
+        let inner_rows = self.inner.scan(table)?;
+        if inner_rows.len() > out.len() {
+            let mut present: std::collections::HashSet<crate::engine::Value> =
+                out.iter().filter_map(|r| r.first().cloned()).collect();
+            for row in inner_rows {
+                if let Some(pk) = row.first() {
+                    if present.insert(pk.clone()) {
+                        out.push(row);
                     }
                 }
             }
