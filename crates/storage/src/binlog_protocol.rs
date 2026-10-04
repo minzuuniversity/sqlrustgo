@@ -46,6 +46,16 @@ pub enum ReplicationMessage {
         code: u16,
         message: String,
     },
+    /// #4936 PR-B: master confirms it recorded a replica's ACK.
+    ///
+    /// Semi-sync replication (#4937) needs the replica to know its ACK
+    /// was not merely received but *bookkept*: the whole point is that
+    /// the master will not acknowledge the source's commit until every
+    /// replica has confirmed this far. Without a distinct response the
+    /// replica cannot tell an acknowledged ACK from a dropped one.
+    AckOk {
+        lsn: u64,
+    },
     EOF,
 }
 
