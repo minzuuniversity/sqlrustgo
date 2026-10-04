@@ -55,6 +55,7 @@ pub mod wal_storage;
 pub use adaptive_hash_index::{
     AdaptiveHashIndex, IndexKey, PageLocation, DEFAULT_PROMOTION_THRESHOLD,
 };
+pub use backup::{BackupExporter, BackupFormat, DataRestorer};
 pub use binary_format::BinaryFormat;
 pub use binary_storage::{BinaryTableStorage, BoxStorageEngine};
 pub use bplus_tree::BPlusTree;
