@@ -944,48 +944,79 @@ impl FileStorage {
     /// Force save all dirty tables to disk
     /// V311-07: Only persist tables that have been modified since last flush
     pub fn flush(&self) -> std::io::Result<()> {
-        // B2.2 / #4915 (F-10): drain the dirty set and take a *window*
-        // snapshot under one short critical section, then do the I/O
-        // with the lock released.
-        //
-        // Previously the whole loop ran inside `with_write_lock`, so a
-        // flush held the exclusive lock across serialization plus
-        // `write()` for every dirty table.
-        //
-        // An earlier version of this function snapshotted the whole
-        // `TableData` per dirty table. That removed the lock-hold but
-        // added an O(table_size) copy to every flush, and the
-        // `b2_flush_dirty_tables/5tables_*` benchmark measured it as a
-        // 0.86x regression — the copy cost more than the lock it saved.
-        // The window is what actually gets written: `save_table_window`
-        // needs only the rows appended since `last_saved` plus the true
-        // total, and it re-derives the full table itself on the rare
-        // cold-start / shrink / compaction branches.
-        let pending: Vec<(String, TableData, usize)> =
-            Self::with_write_lock(self.as_mut_self(), |s| {
-                std::mem::take(&mut s.dirty_tables)
-                    .into_iter()
-                    .filter_map(|name| {
-                        let data = s.tables.get(&name)?;
-                        let total = data.rows.len();
-                        let last_saved = *s
-                            .last_saved_row_count
-                            .lock()
-                            .unwrap()
-                            .get(&name)
-                            .unwrap_or(&0);
-                        let start = last_saved.min(total);
-                        Some((name, TableData::snapshot_from(data, start), total))
-                    })
-                    .collect()
-            });
-
+        // Buffered inserts live in `insert_buffer`, not in `tables.rows`,
+        // so draining `dirty_tables` alone would snapshot an empty window
+        // and write nothing — the rows would be dropped. Push the buffers
+        // into `tables` first. The `StorageEngine::flush` override has
+        // always done this; the inherent version did not, which is part of
+        // why the two copies of this loop drifted apart.
+        self.flush_all_buffers()
+            .map_err(|e| std::io::Error::new(std::io::ErrorKind::Other, format!("{}", e)))?;
+        let pending = self.drain_dirty_windowed();
         // Lock released. `save_table_window` / `save_table_full` only
         // touch `data_dir`, `last_saved_row_count` and the filesystem.
         for (name, window, total) in &pending {
             self.save_table_window(name, window, *total)?;
         }
         Ok(())
+    }
+
+    /// Drain `dirty_tables` and snapshot only the rows each dirty table
+    /// gained since its last persist, in one short critical section.
+    ///
+    /// This is the single place that decides *what* to write. It used to
+    /// be duplicated: `FileStorage::flush` had one copy and the
+    /// `StorageEngine::flush` override another, and only the override is
+    /// reachable in production (the server calls it through
+    /// `MvccStorage`) — so B2.2 optimised the copy nobody ran while the
+    /// live copy kept its whole-`TableData` `.cloned()`. See
+    /// `PERF_B22_CONCURRENT_MEASUREMENT.md` §3.
+    ///
+    /// The window (`[last_saved..]`) rather than a whole `TableData`
+    /// copy is what makes the I/O-outside-the-lock version pay off. A
+    /// full snapshot was measured as a 0.86x regression on
+    /// `b2_flush_dirty_tables/5tables_*` — the copy cost more than the
+    /// lock it avoided.
+    ///
+    /// Returns `(table_name, window, total_rows)` per dirty table.
+    /// `save_table_window` re-derives the full table itself on the rare
+    /// cold-start / shrink / compaction branches.
+    fn drain_dirty_windowed(&self) -> Vec<(String, TableData, usize)> {
+        Self::with_write_lock(self.as_mut_self(), |s| {
+            std::mem::take(&mut s.dirty_tables)
+                .into_iter()
+                .filter_map(|name| {
+                    let data = s.tables.get(&name)?;
+                    let total = data.rows.len();
+                    let last_saved = *s
+                        .last_saved_row_count
+                        .lock()
+                        .unwrap()
+                        .get(&name)
+                        .unwrap_or(&0);
+                    // Shrink: a DELETE/UPDATE reduced the row count, so
+                    // the on-disk set no longer matches and the full
+                    // snapshot must be rewritten. `save_table_window`
+                    // would take that branch anyway, but the window we
+                    // hand it is meaningless here, so let it re-derive.
+                    if last_saved > total {
+                        return Some((name, TableData::snapshot_from(data, total), total));
+                    }
+                    // Nothing new to write. `flush_all_buffers` runs first
+                    // in both callers and persists buffered inserts via
+                    // `save_table_window`, which sets `last_saved` to the
+                    // full row count. Without this skip the drain would
+                    // see `total <= last_saved` and take
+                    // `save_table_window`'s cold-start/shrink branch,
+                    // rewriting the whole snapshot the buffer flush had
+                    // just written incrementally.
+                    if last_saved == total {
+                        return None;
+                    }
+                    Some((name, TableData::snapshot_from(data, last_saved), total))
+                })
+                .collect()
+        })
     }
 
     /// Check if a table exists
@@ -3605,29 +3636,10 @@ impl StorageEngine for FileStorage {
         self.current_tx_id
     }
 
-    /// BLK-2: `&self` counterpart of the trait's `set_current_tx_id`.
-    ///
-    /// `WalStorage::begin_transaction_lockfree` / `commit_...` /
-    /// `rollback_...` reach the backend through
-    /// `StorageEngine::set_current_tx_id_shared` instead of
-    /// laundering a `&mut S` out of a *read* guard on the shared
-    /// `Arc<RwLock<Storage>>`. The engine mutex serializes calls on one
-    /// `ExecutionEngine`, but every connection has its own engine over a
-    /// shared storage, so that `&mut` aliases another connection's
-    /// `write()` guard — a data race that showed up as a full server
-    /// deadlock under 8 concurrent read/write threads.
-    ///
-    /// Goes through the same internal `write_lock` every other mutation
-    /// uses, so it is safe to call while the caller holds only a read
-    /// guard.
-    fn set_current_tx_id_shared(&self, id: u64) {
+    fn set_current_tx_id(&mut self, id: u64) {
         Self::with_write_lock(self.as_mut_self(), |s| {
             s.current_tx_id = id;
         });
-    }
-
-    fn set_current_tx_id(&mut self, id: u64) {
-        self.set_current_tx_id_shared(id);
     }
 
     /// Issue #4581 / B-track case 35-36: real BEGIN/COMMIT/ROLLBACK
@@ -4306,22 +4318,19 @@ impl StorageEngine for FileStorage {
     }
 
     fn flush(&mut self) -> SqlResult<()> {
-        // C.1.2: drain dirty tables and flush each. The original
-        // implementation took `&mut self.dirty_tables` directly; now
-        // we take it under the write_lock. The save calls themselves
-        // only need `&self` on the in-memory table data, so we hold
-        // the lock only long enough to take the dirty set, then flush
-        // each table outside the lock (saves are slow — file I/O).
-        let dirty: Vec<String> = Self::with_write_lock(self.as_mut_self(), |s| {
-            std::mem::take(&mut s.dirty_tables).into_iter().collect()
-        });
-        self.flush_all_buffers()?;
-        for name in dirty {
-            if let Some(table_data) = self.tables.get(&name).cloned() {
-                self.save_table(&name, &table_data)?;
-            }
-        }
-        Ok(())
+        // C.1.2: this used to be a second, independent copy of the loop
+        // in `FileStorage::flush`, with its own
+        // `self.tables.get(&name).cloned()` — a whole-`TableData` copy per
+        // dirty table. It is the override the server actually reaches
+        // (through `MvccStorage`), so that copy was on the live path
+        // while the optimised inherent copy was not; B2.2 improved a
+        // method nobody called. See PERF_B22_CONCURRENT_MEASUREMENT.md §3.
+        //
+        // Both now share `drain_dirty_windowed`, which snapshots only the
+        // rows appended since `last_saved` — the whole table is never
+        // copied, and the write_lock is released before any I/O.
+        FileStorage::flush(self)
+            .map_err(|e| SqlError::ExecutionError(format!("flush storage: {}", e)))
     }
 
     // C.1.2: delegate to the inherent `&self` implementation; this is
@@ -4334,14 +4343,6 @@ impl StorageEngine for FileStorage {
         // FileStorage we actually drop the buffered inserts. Issue
         // #3964: rollback must NOT persist. Delegate to the inherent
         // `&self` implementation which already takes the write_lock.
-        self.discard_all_buffers();
-    }
-
-    /// BLK-2: `&self` variant, so `WalStorage::rollback_transaction_lockfree`
-    /// can drop the insert buffer without laundering a `&mut` out of a
-    /// read guard (which aliased other connections and deadlocked the
-    /// server). Same work, reached without the aliasing.
-    fn discard_all_buffers_shared(&self) {
         self.discard_all_buffers();
     }
 
@@ -4851,38 +4852,51 @@ impl FileStorage {
     /// Flush dirty tables in parallel using std::thread
     /// V311-09: Addresses global lock bottleneck - parallel table writes
     pub fn flush_parallel(&self) -> std::io::Result<()> {
-        // Take dirty tables set, leaving empty set behind
-        let dirty: Vec<String> = Self::with_write_lock(self.as_mut_self(), |s| {
-            std::mem::take(&mut s.dirty_tables).into_iter().collect()
-        });
+        // Snapshot the pending windows under the write lock, up front.
+        //
+        // Three defects this fixes versus the previous shape, which
+        // drained `dirty_tables` and then re-read `self.tables` per table:
+        //
+        // 1. Buffered inserts live in `insert_buffer`, not `tables.rows`,
+        //    so the dirty-set window could be empty and nothing would be
+        //    written. `flush_all_buffers` pushes them into `tables` first.
+        // 2. The `<= 2 tables` branch called `self.flush()`, but the dirty
+        //    set had already been taken, so that call saw an empty set and
+        //    persisted nothing — the rows were silently dropped.
+        // 3. The 3+ branch read `self.tables.get(name)` from spawned
+        //    threads. `tables` is a plain `HashMap` guarded by
+        //    `write_lock`; reading it from `&self` while another thread
+        //    holds that lock and mutates it is a data race, not just a
+        //    stale read.
+        //
+        // Taking the window under the lock fixes all three: the pending
+        // list is what gets written, on every branch.
+        self.flush_all_buffers()
+            .map_err(|e| std::io::Error::new(std::io::ErrorKind::Other, format!("{}", e)))?;
+        let pending = self.drain_dirty_windowed();
 
-        if dirty.is_empty() {
+        if pending.is_empty() {
             return Ok(());
         }
 
         // For 1-2 tables, sequential is faster (no thread overhead)
-        if dirty.len() <= 2 {
-            return self.flush();
+        if pending.len() <= 2 {
+            for (name, window, total) in &pending {
+                self.save_table_window(name, window, *total)?;
+            }
+            return Ok(());
         }
 
-        // For 3+ tables, flush in parallel using thread pool. Note:
-        // the spawned threads each take `&self` and read-only access
-        // to the in-memory tables map. The dirty set has already been
-        // drained (above), so no writer can race us between the
-        // take and the joins. Future inserts during the parallel
-        // flush will mark tables dirty again, which the next flush
-        // picks up.
+        // For 3+ tables, flush in parallel using thread pool. Each worker
+        // writes its own window; the dirty set has already been drained and
+        // snapshotted, so no writer can race us. Future inserts during the
+        // parallel flush will mark tables dirty again, which the next
+        // flush picks up.
         let results = std::thread::scope(|s| {
-            let handles: Vec<_> = dirty
+            let handles: Vec<_> = pending
                 .iter()
-                .map(|name| {
-                    s.spawn(|| {
-                        if let Some(table_data) = self.tables.get(name) {
-                            self.save_table(name, table_data)
-                        } else {
-                            Ok(())
-                        }
-                    })
+                .map(|(name, window, total)| {
+                    s.spawn(move || self.save_table_window(name, window, *total))
                 })
                 .collect();
 

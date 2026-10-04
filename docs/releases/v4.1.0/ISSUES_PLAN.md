@@ -264,7 +264,72 @@ executor changes that **must** preserve the v4.0.0 baseline behavior
 with new option flags (or new collation types) rather than silently
 changing default semantics.
 
+## 4.8 并发测量发现的阻塞缺陷（2026-10-04）
+
+补跑 B2.2 的并发 A/B 时发现三个缺陷。前两个**先于 Phase B2 存在**（在 baseline
+`be665d6bc1` 上同样复现），且它们是 B2.2 并发验证拿不到数字的直接原因；第三个
+在修复 BLK-1 后才暴露出来。证据见
+[`PERF_B2_4915_AB_MEASUREMENT.md`](./PERF_B2_4915_AB_MEASUREMENT.md) §6。
+
+| # | 缺陷 | 根因 | 影响 | 状态 |
+|---|---|---|---|---|
+| **BLK-1** | 无 auto-increment 分配器，并发 INSERT 撞主键 | `engine_dml.rs` 用**写锁之外**的 `pre_scanned_rows` 算 `MAX(id)+1`，两个并发 INSERT 读到同一个 MAX | `Duplicate entry '...' for key 'PRIMARY'`，sysbench `oltp_read_write` / `oltp_write_only` 全部中止 | **FIXED** `3c64dc19ec` |
+| **BLK-2** | `*_transaction_lockfree(&self)` 从读守卫洗出 `&mut S`，与别的连接的写守卫别名 | `WalStorage::as_inner_mut()` 从 `&self` 派生 `&mut S`；其文档写的前提"engine 用自己的 mutex 串行化"在服务端不成立（每连接一个 engine，共享同一 storage） | 并发读写把服务端打死；`sample` 2458 样本全在 `rollback_transaction_lockfree` 与 `RawRwLock::lock_{shared,exclusive}_slow` | **FIXED** `8ff90269d3` |
+| **BLK-3** | AUTO_INCREMENT 序列在多个 autocommit 事务间重用 id | 修复 BLK-1 后暴露：8 线程 × 60 次 INSERT 全部成功且无重复 id，但 480 行只用了 id 1..99 | id 语义错误（MySQL 要求跨事务单调递增）；同时 `COUNT(*)` 只返回 257，重启后 0 行——**另有持久化缺口** | OPEN |
+
+**BLK-1 修复**：把 id 分配移入 `engine.storage.write()` 临界区，读 `MAX(id)` 与
+后续 INSERT 对其它写者成为原子步骤。回归测试
+`tests/blk1_auto_increment_concurrency_test.rs`（5 例，先红后绿：修前
+4 线程 × 25 产生 10 个 `Duplicate entry` 错误）。服务端验证：8 线程 × 60
+共 480 次 INSERT，0 报错、0 重复 id。
+
+**BLK-2 修复**：新增 `&self` trait 方法
+`set_current_tx_id_shared` / `discard_all_buffers_shared`——
+`MemoryStorage` 用 `AtomicU64`，`FileStorage` 走自身内部 `write_lock`，
+`MvccStorage` 与 `BoxStorageEngine` 转发。**转发是关键**：
+`BoxStorageEngine` 是类型擦除包装，漏掉 override 会静默回落到 trait 的
+no-op 默认而非编译失败，而所有服务端创建的 storage 都被它包着——漏转发会让
+整个修复在生产环境失效、而所有具体后端的单测照常通过。`as_inner_mut` 已删除，
+不留未用的 `&mut`-from-`&self` 陷阱。两份测试：转发侧
+`tests/blk2_shared_tx_path_test.rs`（4 例），行为侧
+`crates/storage/tests/blk2_lockfree_tx_concurrency_test.rs`（3 例，
+**需加 `--test-threads=1`**，否则 libtest 每线程 2 MiB 栈会溢出）。
+修前的红是**挂死**而非断言失败，所以 harness 必须带外部 timeout。
+
+**BLK-3 备注**：修复 BLK-1 时为让 `set_current_tx_id_shared` 真正安全，
+把 `MemoryStorage.current_tx_id` 改成了 `AtomicU64`。这本身不解释 id 重用，
+但暴露了事务边界上 id 状态被跨连接共享的问题——`current_tx_id` 是单个存储级
+字段，而 AUTO_INCREMENT 计数器按 MySQL 语义应当是每表单调递增的会话/表级
+状态。二者需要分开建模。持久化缺口（`flush()` 只在启动恢复与 LOAD DATA 末尾
+调用，周期性/每事务 flush 不存在）同样独立，应单开 issue。
+
+### 4.9 B2.2 重定向时发现的两个正确性缺陷（2026-10-04）
+
+合并 inherent `FileStorage::flush(&self)` 与 `StorageEngine::flush(&mut self)`
+——同一段逻辑的两份独立拷贝——时，在 `flush_parallel` 里发现三个缺陷
+（`557fe61a74` 修复）。**前两个是正确性问题，不是性能问题**，且都发生在
+B2 动工之前。
+
+| # | 缺陷 | 后果 | 状态 |
+|---|---|---|---|
+| **BLK-4** | `flush_parallel` 的 `dirty.len() <= 2` 分支先 drain `dirty_tables`，再调 `self.flush()`——后者看到的是空集合 | **持久化的行被静默丢弃** | ✅ `557fe61a74` |
+| **BLK-5** | `flush_parallel` 的 3+ 分支在 spawn 的线程里读 `self.tables.get(name)`，而该 HashMap 由 `write_lock` 保护 | **data race**（不只是陈旧读） | ✅ `557fe61a74` |
+
+第三个缺陷（两者都未先 push `insert_buffer` 进 `tables`，导致窗口为空、
+缓冲插入从未落盘）随合并一并修复，未单独立项——它正是两份实现漂移的证据：
+trait 覆写一直会做这一步，inherent 版本没有。
+
+**为什么单独立项而不在 BLK 表里**：这两条是数据正确性与内存安全缺陷，
+量级不同于 BLK-1/2/3 的性能与稳定性问题，修复它们的动因也不是"为了测
+B2.2"——整理重复实现时顺带暴露出来的。
+
+回归测试 `crates/storage/tests/b22_flush_reroute_test.rs`（5 例），先红后绿：
+修前 5 例全红（`flush_parallel_persists_one_table: left: 0, right: 2`），
+修后全绿。其中一例断言"表增长后写 delta 而非重写基础快照"，同时校验内容与
+mtime，重写无法蒙混过关。
+
 ## 5. References
+
 
 - `docs/releases/v4.0.0/ISSUES_PLAN.md` — full v4.0.0 issue catalog
 - `docs/releases/v4.0.0/WP_LEGACY_TRIAGE.md` — WP-A..H triage
