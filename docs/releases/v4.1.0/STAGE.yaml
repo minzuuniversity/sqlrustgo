@@ -451,6 +451,104 @@ claims_boundaries:
   prohibited_pre_beta: "Production multi-model claim (requires GA, and even v4.0.0 GA has 3 caveat items per CLAIM_DOWNGRADE_MANIFEST)"
   prohibited_pre_ga: "168h multi-model SOAK result (per V400-09)"
 
+# ============================================================================
+# 2026-10-04 总控协调：14+1 个 open issue 的并行开发路径
+# ----------------------------------------------------------------------------
+# 总控 issue: #4950
+#
+# 本段只做两件事：(1) 记录 issue 之间的**文件所有权边界**——哪些能同时
+# 开工、哪些必须排队；(2) 记录分析过程中核实的**三处根因更正**与一项
+# 新发现。每个子项的根因/方案/验收标准在各自 issue 内，本段不重复。
+#
+# ⚠️ 下面三处更正会改变修复方向，不可按子 issue 原文实施：
+#   · #4945 原文说 current_tx_id 被误用作 AUTO_INCREMENT 计数器——**不成立**。
+#     实际是有**两个独立的 MAX-scan 分配器**（engine_dml.rs:490-508 与
+#     engine.rs:1992-2008），应合并而非改造 current_tx_id。
+#   · #4946 原文说"无周期性 flush"——成立但**不够**。WalStorage::commit_transaction
+#     （wal_storage.rs:876-916）在记 checkpoint 后**立即截断 WAL**，而对应快照
+#     尚未写出，崩溃后重放拿不到。drain_pending_flushes(:948) 零调用方。
+#   · #4947 原文说"改用 scan_with_filter"——**当前编译不过**。该方法带泛型故
+#     受 Self: Sized 约束，而 TriggerExecutor 持有 Arc<RwLock<dyn StorageEngine>>。
+#
+# 新发现 #4951：crates/storage/src/file_storage.rs:405-413 的
+#   as_mut_self(&self) -> &mut Self（25 处调用）与已修的 WalStorage::as_inner_mut
+#   是**完全相同**的逃逸口，位于生产默认后端。现有守卫测试只扫 wal_storage.rs，
+#   故未覆盖。
+# ============================================================================
+issue_coordination_2026_10_04:
+  master_issue: "#4950"
+  total_open: 15          # 原 14 + 分析中新发现的 #4951
+  basis_commit: "1ee6bcdb6"
+
+  waves:
+    wave_1_parallel:
+      - id: "#4941"
+        scope: "mysql-server/src/lib.rs — LOAD DATA 静默丢行"
+        priority: P0
+      - id: "#4938"
+        scope: "tools/src/backup.rs — 增量备份接线"
+        conflicts_with: "无（独立 crate）"
+      - id: "#4914"
+        scope: "engine_select.rs + expr/mod.rs — GROUP BY 残留 String 键 + B1.3"
+        blocks: "REF-01（拆 expr/mod.rs 必须在 B1.3 之后）"
+      - id: "#4942"
+        scope: "scripts/gate/ — test-runner probe 空转"
+        note: "前置：仓库不存在 manifest 文件，需先造"
+    wave_2_parallel:
+      - id: "#4936"
+        scope: "storage mod 声明 + 复制接线"
+        prerequisite_for: "#4937"
+        recommended_split: "PR-A 补 mod 声明 / PR-B 接线（ACK 记账）"
+      - id: "#4945"
+        scope: "AUTO_INCREMENT 分配器合并"
+        blocks: "#4946、#4948"
+      - id: "#4947"
+        scope: "trigger.rs + stored_proc.rs 读路径"
+        prerequisite: "先解 Self: Sized 阻塞"
+        blocks: "REF-03（拆 trigger.rs）"
+    wave_3_serial:
+      - id: "#4937"
+        depends: "#4936 的 ACK 记账能力（binlog_server.rs:238 当前丢弃 HeartbeatAck）"
+      - id: "#4946"
+        depends: "#4945 定位结论（缓冲回滚可能是同一根因）"
+      - id: "#4939"
+        depends: "上述存量处置完成"
+        note: "收口项，非开工项。实测孤儿 22 个（storage ~18 + tools 4），远超原估 7+1"
+    wave_4_before_ga:
+      - id: "#4943"
+        conflicts_with: "#4944（共享 GA_GATE_REPORT.md / CLAIM_DOWNGRADE_MANIFEST.md）"
+      - id: "#4944"
+        note: "STAGE.yaml 内部对 168h SOAK 是否完成存在矛盾记载，需先消解"
+      - id: "#4910"
+        scope: "Phase 3 收尾 — views / stmt_cache 两个裸可变字段"
+      - id: "#4948"
+        scope: "committed_tables Arc 化（breaking）"
+        note: "SchemaSnapshot 的实际消费方是 sqllogictest runner 而非生产栈，收益需先量化"
+      - id: "REF-01..03"
+        scope: "拆分 expr/mod.rs 5104 / stored_proc.rs 4248 / trigger.rs 2549 行"
+        gate: "C-ARCH-05 限制 1600；三文件行数 2026-10-04 复核未变"
+
+  hard_serial_edges:
+    - "#4936 -> #4937（主库丢弃 HeartbeatAck，半同步无可等待对象）"
+    - "#4939 必须最后（孤儿门禁在存量处置完成前必然红）"
+    - "#4945 -> #4946（同一 commit/insert 路径，可能同一根因）"
+    - "#4945/#4948 冲突（都改 engine.rs）"
+    - "REF-01 <-> #4914 B1.3、REF-03 <-> #4947（同一文件，功能先于拆分）"
+    - "#4943 <-> #4944（共享两份 GA 文档）"
+
+  newly_identified:
+    - id: "#4951"
+      priority: P0
+      scope: "file_storage.rs:405-413 as_mut_self — 与已修 BLK-2 同类的 &self->&mut 逃逸口，25 处调用"
+      gap: "blk2_walstorage_no_escape_hatch_test.rs 只扫 wal_storage.rs，未覆盖生产默认后端"
+
+  progress:
+    wave_1: "⬜ 未开始"
+    wave_2: "⬜ 未开始"
+    wave_3: "⬜ 未开始"
+    wave_4: "⬜ 未开始"
+    note: "每 Wave 结束时在 #4950 追加进度评论，记录合入情况与实测证据"
+
 open_issues:
   # 2026-10-03 销账审计：原 7 条经实跑核实，6 条已解决并移入
   # resolved_issues_2026_10_03 留档；1 条改写为仍 open（口径矛盾）。
