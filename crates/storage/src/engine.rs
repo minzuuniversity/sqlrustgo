@@ -2354,6 +2354,18 @@ impl StorageEngine for MemoryStorage {
         // gone — a CREATE of the same name may follow and must not inherit
         // a snapshot describing the old table.
         self.bump_change_stamp(&key);
+        // #4964 follow-up: the per-table AUTO_INCREMENT counter is keyed
+        // by table name and lives in a field that `drop_table` did not
+        // know about. MySQL semantics discard a table's AUTO_INCREMENT
+        // high-water mark on DROP, so a CREATE of the same name must
+        // start from 1 again. Without this, `DROP t; CREATE t(...);
+        // INSERT;` continued from the dropped table's last id — a
+        // behaviour change the pre-#4964 `MAX(remaining rows)+1`
+        // allocator got right for free, because it derived the next id
+        // from rows that no longer existed.
+        if let Ok(mut counters) = self.auto_inc_counters.lock() {
+            counters.remove(&key);
+        }
         Ok(())
     }
 
