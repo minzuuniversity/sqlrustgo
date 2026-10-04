@@ -5410,11 +5410,22 @@ fn do_command_loop<S: Read + Write + DrainWrites>(
                             make_err_packet(seq, 1146u16, "42S02", &e.to_string())
                                 .write_to(stream)?;
                             *server_last_sent_seq = seq;
-                            seq = seq.wrapping_add(1);
-                            LoadDataOutcome {
-                                loaded: 0,
-                                skipped: 0,
-                            }
+                            // One command produces exactly ONE response
+                            // packet. This path used to fall through to
+                            // the `write_ok_packets` call below after
+                            // writing the ERR, so a rejected load sent
+                            // ERR *and then* OK. The client dutifully
+                            // returned the ERR and left the OK in the
+                            // stream, after which every subsequent
+                            // command on that connection read the
+                            // previous command's response — a one-packet
+                            // desync that made the client render row
+                            // values out of the next query's own bytes
+                            // (observed: a "row" whose value was
+                            // "SELECT COUNT(*) FROM t"). Every other
+                            // error path in this loop already `continue`s
+                            // here; this one now matches.
+                            continue;
                         }
                     };
                     // #4941: surface dropped rows through the OK packet's
