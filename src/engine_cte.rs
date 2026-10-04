@@ -690,7 +690,7 @@ pub fn cleanup_cte_tables<S: StorageEngine + 'static>(
 
 /// CTE + SELECT body.
 pub fn execute_with_select<S: StorageEngine + 'static>(
-    engine: &mut ExecutionEngine<S>,
+    engine: &ExecutionEngine<S>,
     with: &sqlrustgo_parser::parser::WithSelect,
 ) -> SqlResult<ExecutorResult> {
     let materialized_tables = materialize_cte_tables(engine, with.with_clause.as_ref())?;
@@ -701,7 +701,7 @@ pub fn execute_with_select<S: StorageEngine + 'static>(
 
 /// CTE + DML body.
 pub fn execute_with_dml<S: StorageEngine + 'static>(
-    engine: &mut ExecutionEngine<S>,
+    engine: &ExecutionEngine<S>,
     with: &sqlrustgo_parser::parser::WithDmlStatement,
 ) -> SqlResult<ExecutorResult> {
     use sqlrustgo_parser::Statement;

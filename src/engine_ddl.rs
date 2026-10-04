@@ -21,7 +21,7 @@ use sqlrustgo_parser::Expression;
 use sqlrustgo_storage::{ColumnDefinition, StorageEngine, TableInfo, Value as StorageValue};
 
 impl<S: StorageEngine + 'static> ExecutionEngine<S> {
-    pub(crate) fn execute_grant(&mut self, grant: &GrantStatement) -> SqlResult<ExecutorResult> {
+    pub(crate) fn execute_grant(&self, grant: &GrantStatement) -> SqlResult<ExecutorResult> {
         let catalog_guard = self.catalog.as_ref().ok_or_else(|| {
             SqlError::ExecutionError("Catalog not available for GRANT".to_string())
         })?;
@@ -81,7 +81,7 @@ impl<S: StorageEngine + 'static> ExecutionEngine<S> {
         ))
     }
 
-    pub(crate) fn execute_revoke(&mut self, revoke: &RevokeStatement) -> SqlResult<ExecutorResult> {
+    pub(crate) fn execute_revoke(&self, revoke: &RevokeStatement) -> SqlResult<ExecutorResult> {
         let catalog_guard = self.catalog.as_ref().ok_or_else(|| {
             SqlError::ExecutionError("Catalog not available for REVOKE".to_string())
         })?;
@@ -126,7 +126,7 @@ impl<S: StorageEngine + 'static> ExecutionEngine<S> {
     }
 
     pub(crate) fn execute_create_role(
-        &mut self,
+        &self,
         stmt: &CreateRoleStatement,
     ) -> SqlResult<ExecutorResult> {
         let catalog = self
@@ -158,7 +158,7 @@ impl<S: StorageEngine + 'static> ExecutionEngine<S> {
     }
 
     pub(crate) fn execute_drop_role(
-        &mut self,
+        &self,
         stmt: &DropRoleStatement,
     ) -> SqlResult<ExecutorResult> {
         let catalog = self
@@ -188,7 +188,7 @@ impl<S: StorageEngine + 'static> ExecutionEngine<S> {
     }
 
     pub(crate) fn execute_grant_role(
-        &mut self,
+        &self,
         stmt: &GrantRoleStatement,
     ) -> SqlResult<ExecutorResult> {
         let catalog = self
@@ -232,7 +232,7 @@ impl<S: StorageEngine + 'static> ExecutionEngine<S> {
     }
 
     pub(crate) fn execute_revoke_role(
-        &mut self,
+        &self,
         stmt: &RevokeRoleStatement,
     ) -> SqlResult<ExecutorResult> {
         let catalog = self
@@ -276,7 +276,7 @@ impl<S: StorageEngine + 'static> ExecutionEngine<S> {
     }
 
     pub(crate) fn execute_set_role(
-        &mut self,
+        &self,
         stmt: &SetRoleStatement,
     ) -> SqlResult<ExecutorResult> {
         let catalog = self
@@ -1012,7 +1012,7 @@ impl<S: StorageEngine + 'static> ExecutionEngine<S> {
     /// clause), we pass an empty string — `AuthManager::create_user`
     /// accepts that as "no password".
     pub(crate) fn execute_create_user(
-        &mut self,
+        &self,
         stmt: &CreateUserStatement,
     ) -> SqlResult<ExecutorResult> {
         let catalog = self
@@ -1043,7 +1043,7 @@ impl<S: StorageEngine + 'static> ExecutionEngine<S> {
     /// Mirrors `DROP TRIGGER [IF EXISTS]`: with `IF EXISTS`, a missing
     /// user is a no-op; without it, we error.
     pub(crate) fn execute_drop_user(
-        &mut self,
+        &self,
         stmt: &DropUserStatement,
     ) -> SqlResult<ExecutorResult> {
         let catalog = self
@@ -1196,7 +1196,7 @@ impl<S: StorageEngine + 'static> ExecutionEngine<S> {
         Ok(ExecutorResult::empty())
     }
 
-    pub(crate) fn execute_prepare(&mut self, name: &str, sql: &str) -> SqlResult<ExecutorResult> {
+    pub(crate) fn execute_prepare(&self, name: &str, sql: &str) -> SqlResult<ExecutorResult> {
         let parsed = sqlrustgo_parser::parse(sql)
             .map_err(|e| SqlError::ParseError(format!("PREPARE failed to parse SQL: {}", e)))?;
         self.stmt_cache.prepare(name, sql, parsed);
@@ -1204,7 +1204,7 @@ impl<S: StorageEngine + 'static> ExecutionEngine<S> {
     }
 
     pub(crate) fn execute_execute(
-        &mut self,
+        &self,
         name: &str,
         params: &[sqlrustgo_parser::Expression],
     ) -> SqlResult<ExecutorResult> {
@@ -1245,7 +1245,7 @@ impl<S: StorageEngine + 'static> ExecutionEngine<S> {
         self.execute(&rewritten)
     }
 
-    pub(crate) fn execute_deallocate(&mut self, name: &str) -> SqlResult<ExecutorResult> {
+    pub(crate) fn execute_deallocate(&self, name: &str) -> SqlResult<ExecutorResult> {
         self.stmt_cache.deallocate(name);
         Ok(ExecutorResult::empty())
     }

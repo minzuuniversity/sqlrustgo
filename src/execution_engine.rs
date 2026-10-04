@@ -226,6 +226,9 @@ pub(crate) struct TxSession {
     pub(crate) is_explicit_transaction: bool,
     pub(crate) default_isolation: TmIsolationLevel,
     pub(crate) current_role: Option<String>,
+    /// V312-77 (PR #4884) / V4.1.0 Phase 3 step 4: moved here so the
+    /// `SET default_null_order` statement can run via &self.
+    pub(crate) session_null_order_first: Option<bool>,
 }
 
 /// Transaction status for lifecycle enforcement
@@ -322,10 +325,12 @@ impl<S: StorageEngine + 'static> ExecutionEngine<S> {
                 tx_readonly: false,
                 default_isolation: TmIsolationLevel::default(),
                 current_role: None,
+                session_null_order_first: None,
             })),
             trigger_undo_sink: Arc::new(parking_lot::Mutex::new(Vec::new())),
             current_user: UserIdentity::new("root", "localhost"),
             session_null_order_first: None,
+            // session_null_order_first lives inside tx_session now
             checkpoint_manager: None,
             parallel_degree: AtomicUsize::new(parallel_degree),
             stmt_cache: sqlrustgo_cache::PreparedStatementCache::new(100),

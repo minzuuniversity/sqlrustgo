@@ -278,8 +278,41 @@ impl<S: StorageEngine + 'static> ExecutionEngine<S> {
         crate::cbo_estimator::collect_table_stats(&*storage, table)
     }
 
-    /// Execute a SQL statement and return results
-    pub fn execute(&mut self, sql: &str) -> SqlResult<ExecutorResult> {
+    /// Execute a SQL statement and return results.
+    ///
+    /// V4.1.0 / Issue #4910 §3.1 Phase 3 step 4: this is the public
+    /// `&self` entry point that the §3.1 contract requires. The function
+    /// signature takes `&self` because all internal mutability now lives
+    /// behind `Arc<Mutex<>>` wrappers (TxSession + TransactionManager
+    /// from Phase 3 steps 1+2, views HashMap + session_null_order_first
+    /// from Phase 3 step 4). Concurrent threads can each hold an
+    /// `&Arc<ExecutionEngine<_>>` and dispatch any SQL statement via this
+    /// method — no engine.write() lock needed.
+    ///
+    /// The previous signature was `&mut self` (deprecated since Phase 3
+    /// step 4 landed). For callers that explicitly need the legacy
+    /// `&mut self` entry — typically server code that wants to mutate
+    /// `is_explicit_transaction` or call out to `execute_mut` for clarity
+    /// — `execute_mut(&mut self, sql)` is provided as an alias.
+    pub fn execute(&self, sql: &str) -> SqlResult<ExecutorResult> {
+        self.execute_dispatch(sql, true /* from_mut: */)
+    }
+
+    /// V4.1.0 / Issue #4910 §3.1 Phase 3 step 4: legacy alias for the
+    /// `&mut self` execution path. Functionally equivalent to
+    /// `self.execute(&self, sql).clone()` — both end up at the same
+    /// interior-mutability code path. This alias is here for source
+    /// compatibility with the 30+ pre-step-4 call sites that explicitly
+    /// borrowed the engine as `&mut`.
+    pub fn execute_mut(&mut self, sql: &str) -> SqlResult<ExecutorResult> {
+        self.execute_dispatch(sql, false /* from_mut: */)
+    }
+
+    /// Shared body for `execute` (Phase 4 step 4 `&self`) and
+    /// `execute_mut` (legacy `&mut self`). The `from_mut` flag is
+    /// informational only — both paths use the same interior-mutability
+    /// routing.
+    fn execute_dispatch(&self, sql: &str, _from_mut: bool) -> SqlResult<ExecutorResult> {
         let statement = parse(sql).map_err(|e| SqlError::ParseError(e.to_string()))?;
 
         match statement {
@@ -484,7 +517,7 @@ impl<S: StorageEngine + 'static> ExecutionEngine<S> {
 
     /// CTE 物化: 将每个 CTE 子查询结果存入临时表，然后执行主查询
     pub fn execute_with_select(
-        &mut self,
+        &self,
         with: &sqlrustgo_parser::parser::WithSelect,
     ) -> SqlResult<ExecutorResult> {
         crate::engine_cte::execute_with_select(self, with)
@@ -492,7 +525,7 @@ impl<S: StorageEngine + 'static> ExecutionEngine<S> {
 
     /// CTE + DML: 物化 CTE 后执行 DML body
     pub fn execute_with_dml(
-        &mut self,
+        &self,
         with: &sqlrustgo_parser::parser::WithDmlStatement,
     ) -> SqlResult<ExecutorResult> {
         crate::engine_cte::execute_with_dml(self, with)
@@ -524,7 +557,7 @@ impl<S: StorageEngine + 'static> ExecutionEngine<S> {
         Ok(ExecutorResult::new(rows, 0))
     }
 
-    pub fn execute_insert(&mut self, insert: &InsertStatement) -> SqlResult<ExecutorResult> {
+    pub fn execute_insert(&self, insert: &InsertStatement) -> SqlResult<ExecutorResult> {
         // ARCH-3 (#3169): VtuGuard main-path enforcement (P0-1, Blocker-3)
         // MUST be the first statement. The gate script
         // check_arch3_no_bypass.sh greps the first 5 lines after
@@ -536,7 +569,7 @@ impl<S: StorageEngine + 'static> ExecutionEngine<S> {
         crate::engine_dml::execute_insert(self, insert)
     }
 
-    pub fn execute_update(&mut self, update: &UpdateStatement) -> SqlResult<ExecutorResult> {
+    pub fn execute_update(&self, update: &UpdateStatement) -> SqlResult<ExecutorResult> {
         // ARCH-3 (#3169): VtuGuard main-path enforcement (P0-1, Blocker-3)
         // MUST be the first statement. The gate script
         // check_arch3_no_bypass.sh greps the first 5 lines after
@@ -547,7 +580,7 @@ impl<S: StorageEngine + 'static> ExecutionEngine<S> {
         );
         crate::engine_dml::execute_update(self, update)
     }
-    pub fn execute_delete(&mut self, delete: &DeleteStatement) -> SqlResult<ExecutorResult> {
+    pub fn execute_delete(&self, delete: &DeleteStatement) -> SqlResult<ExecutorResult> {
         // ARCH-3 (#3169): VtuGuard main-path enforcement (P0-1, Blocker-3)
         // MUST be the first statement. The gate script
         // check_arch3_no_bypass.sh greps the first 5 lines after
@@ -1399,7 +1432,7 @@ impl<S: StorageEngine + 'static> ExecutionEngine<S> {
     }
 
     pub(super) fn execute_transaction(
-        &mut self,
+        &self,
         stmt: &TransactionStatement,
     ) -> SqlResult<ExecutorResult> {
         match stmt {
@@ -1479,7 +1512,7 @@ impl<S: StorageEngine + 'static> ExecutionEngine<S> {
                         _ => None,
                     };
                     if let Some(first) = parsed {
-                        self.session_null_order_first = Some(first);
+                        self.tx_session.lock().session_null_order_first = Some(first);
                     }
                 }
                 // V312-58 / Issue #4511: MySQL user session variables.
@@ -1498,7 +1531,7 @@ impl<S: StorageEngine + 'static> ExecutionEngine<S> {
     }
 
     pub(super) fn begin_transaction(
-        &mut self,
+        &self,
         isolation: TmIsolationLevel,
         readonly: bool,
     ) -> SqlResult<ExecutorResult> {
@@ -1570,7 +1603,7 @@ impl<S: StorageEngine + 'static> ExecutionEngine<S> {
         Ok(ExecutorResult::empty())
     }
 
-    pub(super) fn commit_transaction(&mut self) -> SqlResult<ExecutorResult> {
+    pub(super) fn commit_transaction(&self) -> SqlResult<ExecutorResult> {
         // V312-77 / Issue #4847 Path B: no explicit tx active → no-op (MySQL compat).
         if self.tx_session.lock().current_tx_id.is_none() {
             return Ok(ExecutorResult::empty());
@@ -1631,7 +1664,7 @@ impl<S: StorageEngine + 'static> ExecutionEngine<S> {
     /// depended on a row inserted later is undone first, leaving the
     /// dependency row intact).
     pub(super) fn execute_savepoint(
-        &mut self,
+        &self,
         name: &str,
         op: SavepointOp,
     ) -> SqlResult<ExecutorResult> {
@@ -1751,7 +1784,7 @@ impl<S: StorageEngine + 'static> ExecutionEngine<S> {
         Ok(ExecutorResult::empty())
     }
 
-    pub(super) fn rollback_transaction(&mut self) -> SqlResult<ExecutorResult> {
+    pub(super) fn rollback_transaction(&self) -> SqlResult<ExecutorResult> {
         // V312-77 / Issue #4847 Path C: no explicit tx active → no-op.
         if self.tx_session.lock().current_tx_id.is_none() {
             return Ok(ExecutorResult::empty());
@@ -1922,26 +1955,26 @@ impl<S: StorageEngine + 'static> ExecutionEngine<S> {
     // C-ARCH-05: bodies moved to `crate::engine_setops` (issue #3943 follow-up).
 
     pub(super) fn execute_union(
-        &mut self,
+        &self,
         union_stmt: &UnionStatement,
     ) -> SqlResult<ExecutorResult> {
         crate::engine_setops::execute_union(self, union_stmt)
     }
 
     pub(super) fn execute_intersect(
-        &mut self,
+        &self,
         stmt: &IntersectStatement,
     ) -> SqlResult<ExecutorResult> {
         crate::engine_setops::execute_intersect(self, stmt)
     }
 
-    pub(super) fn execute_except(&mut self, stmt: &ExceptStatement) -> SqlResult<ExecutorResult> {
+    pub(super) fn execute_except(&self, stmt: &ExceptStatement) -> SqlResult<ExecutorResult> {
         crate::engine_setops::execute_except(self, stmt)
     }
 
     /// Execute any parsed statement. Used by the set-operation handlers
     /// for recursive left/right execution of nested set-ops.
-    pub(crate) fn execute_statement(&mut self, stmt: &Statement) -> SqlResult<ExecutorResult> {
+    pub(crate) fn execute_statement(&self, stmt: &Statement) -> SqlResult<ExecutorResult> {
         match stmt {
             Statement::Select(s) => self.execute_select(s),
             Statement::Union(u) => self.execute_union(u),

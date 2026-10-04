@@ -29,7 +29,7 @@ use crate::{ExecutionEngine, SqlResult};
 // ── Set-operation handlers (V310-06 PR2 / Issue #3723 C-2) ──────
 
 pub fn execute_union<S: StorageEngine + 'static>(
-    engine: &mut ExecutionEngine<S>,
+    engine: &ExecutionEngine<S>,
     union_stmt: &UnionStatement,
 ) -> SqlResult<ExecutorResult> {
     let mut left_result = engine.execute_statement(&union_stmt.left)?;
@@ -123,7 +123,7 @@ pub fn execute_union<S: StorageEngine + 'static>(
 }
 
 pub fn execute_intersect<S: StorageEngine + 'static>(
-    engine: &mut ExecutionEngine<S>,
+    engine: &ExecutionEngine<S>,
     stmt: &IntersectStatement,
 ) -> SqlResult<ExecutorResult> {
     let mut left_result = engine.execute_statement(&stmt.left)?;
@@ -180,7 +180,7 @@ pub fn execute_intersect<S: StorageEngine + 'static>(
 }
 
 pub fn execute_except<S: StorageEngine + 'static>(
-    engine: &mut ExecutionEngine<S>,
+    engine: &ExecutionEngine<S>,
     stmt: &ExceptStatement,
 ) -> SqlResult<ExecutorResult> {
     let mut left_result = engine.execute_statement(&stmt.left)?;
