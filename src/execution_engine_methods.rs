@@ -143,6 +143,34 @@ impl<S: StorageEngine + 'static> ExecutionEngine<S> {
         self.storage_read().scan_in(table, reader_tx)
     }
 
+    /// #4983: same as [`scan_for_reader`](Self::scan_for_reader) but for
+    /// call sites that already hold a read guard.
+    ///
+    /// `parking_lot::RwLock` is not reentrant, and `storage_read()` falls
+    /// back to a blocking `read()` when `try_read()` fails — which it
+    /// always does when the calling thread already holds the lock. A
+    /// variant taking the guard is therefore required: calling
+    /// `scan_for_reader` from inside such a scope deadlocks.
+    pub(crate) fn scan_for_reader_with(
+        &self,
+        storage: &S,
+        table: &str,
+    ) -> SqlResult<Vec<sqlrustgo_storage::engine::Record>> {
+        let reader_tx = self.reader_tx();
+        storage.scan_in(table, reader_tx)
+    }
+
+    /// #4983: predicate variant of [`scan_for_reader_with`](Self::scan_for_reader_with).
+    pub(crate) fn scan_for_reader_filtered_with(
+        &self,
+        storage: &S,
+        table: &str,
+        filter: &dyn Fn(&sqlrustgo_storage::engine::Record) -> bool,
+    ) -> SqlResult<Vec<sqlrustgo_storage::engine::Record>> {
+        let reader_tx = self.reader_tx();
+        storage.scan_with_filter_in(table, filter, reader_tx)
+    }
+
     /// #4983: predicate variant of [`scan_for_reader`](Self::scan_for_reader).
     pub(crate) fn scan_for_reader_filtered(
         &self,

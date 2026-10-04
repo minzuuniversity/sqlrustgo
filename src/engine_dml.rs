@@ -265,7 +265,7 @@ pub fn execute_insert<S: StorageEngine + 'static>(
             };
             // Only delete when a row actually matches this key — for a brand
             // new key (no existing row) REPLACE degenerates to a plain INSERT.
-            let existing_rows = storage.scan(&table_name)?;
+            let existing_rows = engine.scan_for_reader(&table_name)?;
             let has_conflict = existing_rows
                 .iter()
                 .any(|existing| record_matches_unique_key(existing, record, &table_info));
@@ -423,7 +423,7 @@ pub fn execute_insert<S: StorageEngine + 'static>(
                 // identical snapshots published.
                 let storage = engine.storage.read();
                 let index: std::collections::HashSet<_> = storage
-                    .scan(&table_name)?
+                    .scan(&&table_name)?
                     .iter()
                     .filter_map(|row| pk_key_of(row, &pk_idx))
                     .collect();
@@ -441,7 +441,7 @@ pub fn execute_insert<S: StorageEngine + 'static>(
             }
         } else {
             let storage = engine.storage.read();
-            pre_scanned_rows = storage.scan(&table_name)?;
+            pre_scanned_rows = engine.scan_for_reader_with(&storage, &table_name)?;
         }
     }
 
@@ -494,7 +494,7 @@ pub fn execute_insert<S: StorageEngine + 'static>(
             let mut next_auto_id: i64 = 1;
             // An empty table scans to zero rows, which leaves the
             // default of 1 in place — same as the previous behaviour.
-            let existing = storage.scan(&table_name)?;
+            let existing = engine.scan_for_reader(&table_name)?;
             next_auto_id = existing
                 .iter()
                 .filter_map(|r| r.get(col_idx).and_then(|v| v.as_integer()))
@@ -525,7 +525,7 @@ pub fn execute_insert<S: StorageEngine + 'static>(
             }
             pk_index_ready = false;
             // The index is gone, so the duplicate check needs whole rows.
-            pre_scanned_rows = storage.scan(&table_name)?;
+            pre_scanned_rows = engine.scan_for_reader_with(&storage, &table_name)?;
             engine.pk_lookup_cache.read()
         };
         let pk_index = pk_index_ready.then(|| {
@@ -992,7 +992,7 @@ pub fn execute_update<S: StorageEngine + 'static>(
             .position(|c| c.primary_key)
             .unwrap_or(0);
         // V4.0.0 / SOAK-leak fix: previous code did
-        //   `let all_rows_no_where = storage.scan(&table_name)?;`
+        //   `let all_rows_no_where = engine.scan_for_reader(&table_name)?;`
         //   `let prior_rows_for_undo = all_rows_no_where.clone();`
         // which cloned the entire table twice (O(N) × 2 = ~2.6 MB per call
         // for the sysbench 10000-row table). Heap dump showed execute_update
@@ -1002,7 +1002,7 @@ pub fn execute_update<S: StorageEngine + 'static>(
         // are dropped immediately and only one clone per row goes through
         // `new_rows_for_undo` — and even that clone could be elided in the
         // future if the WAL layer accepts the post-update row directly.
-        let all_rows_no_where = storage.scan(&table_name)?;
+        let all_rows_no_where = engine.scan_for_reader(&table_name)?;
         let need_undo_snapshot = engine.tx_session.lock().current_tx_id.is_some();
         let mut count = 0usize;
         let mut prior_rows_for_undo: Vec<Vec<Value>> = if need_undo_snapshot {
@@ -1077,8 +1077,9 @@ pub fn execute_update<S: StorageEngine + 'static>(
     // scan_with_filter yields only matching rows; we clone them once each.
     let where_clause = resolved_update.where_clause.as_ref().unwrap();
     let rows_to_update: Vec<Vec<Value>> = {
-        let storage = engine.storage.read();
-        storage.scan_with_filter(&table_name, &|row| {
+        // #4983: scan on behalf of this connection so an uncommitted
+        // version is visible only to its author.
+        engine.scan_for_reader_filtered(&table_name, &|row| {
             evaluate_where_clause(where_clause, row, &table_info)
         })?
     };
@@ -1308,10 +1309,7 @@ pub fn execute_delete<S: StorageEngine + 'static>(
             let storage = engine.storage.read();
             storage.get_table_info(&table_name)?.clone()
         };
-        let prior_rows_for_undo: Vec<Vec<Value>> = {
-            let storage = engine.storage.read();
-            storage.scan(&table_name)?
-        };
+        let prior_rows_for_undo: Vec<Vec<Value>> = engine.scan_for_reader(&table_name)?;
         let count = {
             let mut storage = engine.storage.write();
             storage.delete(&table_name, &[])?
@@ -1350,8 +1348,9 @@ pub fn execute_delete<S: StorageEngine + 'static>(
     };
 
     let rows_to_delete: Vec<Vec<Value>> = {
-        let storage = engine.storage.read();
-        storage.scan_with_filter(&table_name, &|row| {
+        // #4983: scan on behalf of this connection so an uncommitted
+        // version is visible only to its author.
+        engine.scan_for_reader_filtered(&table_name, &|row| {
             evaluate_where_clause(where_clause, row, &table_info)
         })?
     };
@@ -1448,8 +1447,7 @@ pub fn execute_delete<S: StorageEngine + 'static>(
         // row DELETE ever becomes hot, see Fix A (avoid the clone
         // via std::mem::take + rollback swap).
         let rows_to_keep: Vec<Vec<Value>> = {
-            let storage = engine.storage.read();
-            let all_rows = storage.scan(&table_name)?;
+            let all_rows = engine.scan_for_reader(&table_name)?;
             all_rows
                 .into_iter()
                 .filter(|row| !evaluate_where_clause(where_clause, row, &table_info))
@@ -1591,7 +1589,7 @@ fn execute_update_multi_table<S: StorageEngine + 'static>(
         let storage = engine.storage.read();
         for tref in table_refs {
             let info = storage.get_table_info(&tref.name)?.clone();
-            let rows = storage.scan(&tref.name)?;
+            let rows = engine.scan_for_reader_with(&storage, &tref.name)?;
             per_table_rows.push(rows);
             per_table_info.push(info);
             let prefix = tref.alias.clone().unwrap_or_else(|| tref.name.clone());
@@ -1764,7 +1762,7 @@ fn execute_delete_multi_table<S: StorageEngine + 'static>(
         let storage = engine.storage.read();
         for tref in &source_refs {
             let info = storage.get_table_info(&tref.name)?.clone();
-            let rows = storage.scan(&tref.name)?;
+            let rows = engine.scan_for_reader_with(&storage, &tref.name)?;
             per_table_rows.push(rows);
             per_table_info.push(info);
             let prefix = tref.alias.clone().unwrap_or_else(|| tref.name.clone());
