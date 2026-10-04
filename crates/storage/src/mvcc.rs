@@ -254,10 +254,23 @@ impl VersionedTable {
                 continue;
             }
             // Step 1: trim multi-version chains (existing behavior).
+            //
+            // #4986: a version is only eligible once it is **committed**.
+            // A pending version carries the `visible_from_ts` it was
+            // assigned at *write* time, so a transaction that runs longer
+            // than `gc_lag` would have its own in-flight writes reaped as
+            // if they were stale. `commit_tx` then finds nothing left to
+            // promote and the write is gone — silently, with no error.
+            //
+            // Skipping pending versions does not leak them: `commit_tx`
+            // rewrites `visible_from_ts` to the (current) commit
+            // timestamp, so the version becomes normally eligible on the
+            // next pass; `rollback_tx` deletes it outright. They are held
+            // only for the lifetime of the owning transaction.
             if chain.len() > 1 {
                 let mut i = 0;
                 while i + 1 < chain.len() {
-                    if chain[i].visible_from_ts < cutoff {
+                    if chain[i].committed && chain[i].visible_from_ts < cutoff {
                         chain.remove(i);
                         dropped += 1;
                     } else {
@@ -270,7 +283,12 @@ impl VersionedTable {
             // < cutoff, which means no reader with snapshot_ts <=
             // current snapshot_ts - gc_lag would have looked at this
             // entry anyway.)
-            if chain.len() == 1 && chain[0].visible_from_ts < cutoff {
+            //
+            // #4986: same `committed` guard as step 1 — a lone pending
+            // version is the transaction's only copy of that row, so
+            // evicting the whole chain loses the write outright rather
+            // than just aging it out of a longer history.
+            if chain.len() == 1 && chain[0].committed && chain[0].visible_from_ts < cutoff {
                 to_evict.push(pk.clone());
             }
         }
