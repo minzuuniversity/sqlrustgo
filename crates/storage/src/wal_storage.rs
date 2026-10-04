@@ -905,7 +905,29 @@ impl<S: StorageEngine + 'static, T: WalManager + 'static> StorageEngine for WalS
                 .fetch_add(1, std::sync::atomic::Ordering::Relaxed);
         }
 
-        // Truncate WAL up to checkpoint
+        // #4946: the deferred-flush design assumed "WAL is the source of
+        // truth, so replay restores the data without a snapshot". That
+        // only holds if the WAL entries survive — but the truncation
+        // below deletes every entry below the checkpoint, and the
+        // snapshot they are supposed to have been folded into is written
+        // *later* (by the caller's `flush()`). In that window a crash
+        // loses the data on both paths: no snapshot, no WAL entry.
+        //
+        // Order is therefore load-bearing: flush first, truncate second.
+        // `FileStorage::flush` is incremental (`save_table_window` only
+        // rewrites rows appended since `last_saved`), so the extra cost
+        // on the commit path is proportional to what this transaction
+        // actually wrote, not to the table size.
+        //
+        // Errors are propagated rather than swallowed: acknowledging a
+        // commit whose snapshot failed to write is the exact failure
+        // mode this issue reports.
+        if commit_lsn > 0 {
+            self.inner_mut().flush()?;
+        }
+
+        // Truncate WAL up to checkpoint — safe now, because the snapshot
+        // the retained entries would have been replayed into is on disk.
         if commit_lsn > 0 {
             if let Some(cp) = &self.checkpoint_manager {
                 if let Ok(guard) = cp.read() {
