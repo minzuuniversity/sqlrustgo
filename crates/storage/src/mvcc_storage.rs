@@ -542,6 +542,35 @@ impl<S: StorageEngine + 'static> StorageEngine for MvccStorage<S> {
         self.inner.list_all_indexes()
     }
 
+    /// #4978: forward the `&mut self` transaction methods.
+    ///
+    /// `MvccStorage` only implemented the `*_lockfree` trio, so the
+    /// plain `begin_transaction` / `commit_transaction` /
+    /// `rollback_transaction` fell through to the trait defaults, which
+    /// return `Err("Transactions not supported by this storage engine")`.
+    ///
+    /// `FileStorage` does not implement any `*_lockfree` method either,
+    /// so the lockfree path failed as well — meaning **neither** route
+    /// worked through this wrapper. Production
+    /// (`src/execution_engine_methods.rs:1586-1605`) tries lockfree and
+    /// falls back to the plain call, discarding the error with
+    /// `let _ =`, so a COMMIT here silently did nothing.
+    ///
+    /// These take `&mut self` and match the trait signature, so no
+    /// interior mutability is involved — `inner_mut` is the only way to
+    /// reach `S`, and it already requires the exclusive borrow.
+    fn begin_transaction(&mut self) -> SqlResult<u64> {
+        self.inner.begin_transaction()
+    }
+
+    fn commit_transaction(&mut self) -> SqlResult<()> {
+        self.inner.commit_transaction()
+    }
+
+    fn rollback_transaction(&mut self) -> SqlResult<()> {
+        self.inner.rollback_transaction()
+    }
+
     fn set_current_tx_id(&mut self, tx_id: u64) {
         self.inner.set_current_tx_id(tx_id)
     }
