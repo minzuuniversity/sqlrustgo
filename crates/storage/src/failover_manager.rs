@@ -258,7 +258,7 @@ impl FailoverManager {
 
     fn elect_new_master(&self, alive_nodes: &[NodeInfo]) -> std::io::Result<SocketAddr> {
         let mut candidates: Vec<_> = alive_nodes.iter().collect();
-        candidates.sort_by(|a, b| b.priority.cmp(&a.priority));
+        candidates.sort_by_key(|c| std::cmp::Reverse(c.priority));
 
         let best = candidates.first().ok_or_else(|| {
             std::io::Error::new(std::io::ErrorKind::NotFound, "No candidate nodes")
