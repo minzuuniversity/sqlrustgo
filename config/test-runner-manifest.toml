@@ -10,35 +10,39 @@
 # `target/test-runner-report.json`。
 #
 # 字段含义见 `crates/test-registry/src/lib.rs` 的 `ManagedTest`。
-# binary 相对 `target/release/` 解析。
+#
+# binary 写**包名**（`sqlrustgo-storage`）而非路径：`cargo test` 产出的
+# 测试二进制位于 `target/release/deps/<pkg>-<hash>`，没有稳定的无哈希路径。
+# 门禁用 `cargo test --no-run --message-format=json` 解析出真实可执行文件路径
+# 后再调度。
 
 [[test]]
 name = "storage-lib"
-binary = "target/release/sqlrustgo-storage"
-args = ["--lib", "--", "--test-threads=1"]
+binary = "sqlrustgo-storage"
+args = ["--test-threads=1"]
 timeout_ms = 900000
 priority = "P1"
 category = "Unit"
 
 [[test]]
 name = "tools-lib"
-binary = "target/release/sqlrustgo-tools"
-args = ["--lib", "--", "--test-threads=1"]
+binary = "sqlrustgo-tools"
+args = ["--test-threads=1"]
 timeout_ms = 300000
 priority = "P2"
 category = "Unit"
 
 [[test]]
 name = "executor"
-binary = "target/release/sqlrustgo-executor"
-args = ["--lib", "--", "--test-threads=1"]
+binary = "sqlrustgo-executor"
+args = ["--test-threads=1"]
 timeout_ms = 300000
 priority = "P2"
 category = "Unit"
 
 [[test]]
 name = "isolation-contract"
-binary = "target/release/sqlrustgo-storage"
+binary = "sqlrustgo-storage"
 args = ["--test", "tx_isolation_and_escape_hatch_test", "--test-threads=1"]
 timeout_ms = 120000
 priority = "P1"
@@ -46,7 +50,7 @@ category = "Integration"
 
 [[test]]
 name = "scan-with-filter-contract"
-binary = "target/release/sqlrustgo-storage"
+binary = "sqlrustgo-storage"
 args = ["--test", "scan_with_filter_contract_test", "--test-threads=1"]
 timeout_ms = 120000
 priority = "P1"

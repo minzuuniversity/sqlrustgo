@@ -285,9 +285,23 @@ except OSError:
 print(' '.join(sorted(pkgs)))
 PYEOF
 )
-        local missing=0 p
+        # `cargo test` links the binaries under target/release/deps/ with a
+        # content hash suffix; there is no plain `target/release/<pkg>`
+        # to run. Resolve each package to its real path via
+        # `cargo test --no-run --message-format=json`.
+        local missing=0 p binpath
         for p in $tr_pkgs; do
-            [ -x "${REPO_ROOT}/target/release/$p" ] || missing=$((missing + 1))
+            binpath="$(cd "$REPO_ROOT" && cargo test --no-run --release -p "$p" \
+                        --message-format=json 2>/dev/null \
+                        | python3 -c "
+import json, sys
+for line in sys.stdin:
+    try: m = json.loads(line)
+    except ValueError: continue
+    if m.get('profile', {}).get('test', False) and m.get('executable'):
+        print(m['executable']); break
+" 2>/dev/null | head -1)"
+            [ -n "$binpath" ] && [ -x "$binpath" ] || missing=$((missing + 1))
         done
         if [ "$missing" -gt 0 ]; then
             log_info "  ${missing} test binary/binaries missing; building (cargo test --no-run --release)..."
@@ -302,14 +316,72 @@ PYEOF
         fi
     fi
 
-    if [ -x "${REPO_ROOT}/target/release/test-runner" ] && [ -s "$tr_manifest" ]; then
+    # Materialise a runtime manifest whose `binary` fields are the real
+    # executable paths. The checked-in manifest names packages, because
+    # `cargo test` links to target/release/deps/<pkg>-<hash> and that hash
+    # changes on every rebuild. test-runner executes `binary` verbatim, so
+    # it needs a resolved path.
+    #
+    # Resolution scans target/release/deps/ rather than re-invoking
+    # `cargo test --no-run --message-format=json` per package: the latter
+    # re-enters cargo three times and can trigger a relink, which turned
+    # this gate from seconds into minutes.
+    local tr_runtime="${TR_RUNNER_MANIFEST:-/tmp/test-runner-runtime.toml}"
+    if [ -s "$tr_manifest" ]; then
+        python3 - "$tr_manifest" "$tr_runtime" "$REPO_ROOT/target/release/deps" <<'PYEOF'
+import os, re, sys
+
+src, dst, deps = sys.argv[1], sys.argv[2], sys.argv[3]
+text = open(src).read()
+pkgs = sorted({m.group(1) for m in
+               re.finditer(r'binary\s*=\s*"([A-Za-z0-9_.-]+)"', text)})
+
+def find_binary(pkg):
+    if not os.path.isdir(deps):
+        return None
+    # cargo replaces '-' with '_' in the artifact stem.
+    stem = pkg.replace('-', '_')
+    best = None
+    for name in os.listdir(deps):
+        if not name.startswith(stem + "-") or not os.access(os.path.join(deps, name), os.X_OK):
+            continue
+        # Skip the lib target (no extension) only if a .d-free executable
+        # exists; test binaries are the executable files without suffix.
+        if "." in name:
+            continue
+        p = os.path.join(deps, name)
+        if best is None or os.path.getmtime(p) > os.path.getmtime(best):
+            best = p          # newest wins: cargo leaves stale artifacts behind
+    return best
+
+resolved, missing = {}, []
+for pkg in pkgs:
+    b = find_binary(pkg)
+    if b: resolved[pkg] = b
+    else:  missing.append(pkg)
+if missing:
+    print("unresolved: %s" % missing, file=sys.stderr)
+    sys.exit(1)
+open(dst, "w").write(
+    re.sub(r'binary\s*=\s*"[A-Za-z0-9_.-]+"',
+           lambda m: 'binary = "%s"' % resolved[m.group(0).split('"')[1]],
+           text))
+PYEOF
+        if [ ! -s "$tr_runtime" ]; then
+            log_error "  V312-24: could not resolve test binaries under target/release/deps"
+            errors=$((errors + 1))
+            tr_runtime=""
+        fi
+    fi
+
+    if [ -x "${REPO_ROOT}/target/release/test-runner" ] && [ -s "$tr_runtime" ]; then
         # Always re-run. The previous shape guarded on
         # `if [ ! -s .../test-runner-report.json ]`, which meant a report
         # left by any earlier invocation — including a probe — was
         # accepted as this run's result.
-        log_info "  running test-runner against config/test-runner-manifest.toml..."
+        log_info "  running test-runner against resolved manifest..."
         "${REPO_ROOT}/target/release/test-runner" \
-            --manifest "$tr_manifest" \
+            --manifest "$tr_runtime" \
             --out "${REPO_ROOT}/target/test-runner-report.json" 2>/tmp/test-runner-run.log || errors=$((errors + 1))
         if [ -s "${REPO_ROOT}/target/test-runner-report.json" ]; then
             if python3 -c "
