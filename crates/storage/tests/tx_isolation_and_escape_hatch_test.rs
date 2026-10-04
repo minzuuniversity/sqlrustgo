@@ -118,13 +118,26 @@ fn issue_4974_uncommitted_write_is_invisible_to_other_readers() {
 
     // Connection B has its own connection, no transaction of its own.
     // It must NOT see A's uncommitted row.
+    //
+    // BLOCKED_ON_4951: this cannot pass yet, and the reason is structural
+    // rather than a missing filter. `FileStorage` holds **one**
+    // `current_tx_id` for the whole storage, so a read has no way to know
+    // which connection is asking — `read_ids` below resolves B's read to
+    // A's tx id and is therefore treated as A, which is entitled to see
+    // its own pending write.
+    //
+    // #4951 (the `&self -> &mut` escape hatch) is what stands between
+    // this and green: the tx state has to move off the shared storage
+    // field and onto a per-connection handle. The visibility rule
+    // itself is implemented and does work — see
+    // `rolled_back_rows_disappear_for_all_readers` and
+    // `committed_rows_become_visible_to_all_readers`, which both pass.
     assert_eq!(
         read_ids(&s),
         Vec::<i64>::new(),
-        "ISSUE_4974: an uncommitted write is visible to other connections. \
-         The row's `visible_from_ts` is allocated at write time by the global \
-         `next_snapshot_ts()`, so it is 'visible from now' before any commit \
-         decision exists. See #4974."
+        "BLOCKED_ON_4951: an uncommitted write is visible to other \
+         connections. The reader cannot be distinguished from the writer \
+         because both resolve to the same storage-level current_tx_id."
     );
 }
 
@@ -154,11 +167,16 @@ fn issue_4974_repeat_reads_in_one_transaction_are_stable() {
     // A reads again, having done no writes of its own.
     let second = read_ids(&s);
 
+    // BLOCKED_ON_4951: same structural cause as
+    // `issue_4974_uncommitted_write_is_invisible_to_other_readers` — B's
+    // commit is observed by A because nothing binds A's reads to the
+    // snapshot its transaction started at, and nothing distinguishes the
+    // two connections' tx state.
     assert_eq!(
         first, second,
-        "ISSUE_4974: a read-only transaction observed a concurrent commit. \
-         `begin_snapshot()` loads the global counter on every call, so the \
-         transaction is not bound to the snapshot it started with. \
+        "BLOCKED_ON_4951: a read-only transaction observed a concurrent \
+         commit. `begin_snapshot()` loads the global counter per call, so \
+         a transaction is not bound to its starting snapshot. \
          first={:?} second={:?}",
         first, second
     );

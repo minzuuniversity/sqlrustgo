@@ -131,6 +131,31 @@ impl<S: StorageEngine + 'static> MvccStorage<S> {
 
     /// Mutable access to the inner engine. Caller must hold exclusive
     /// access (the engine's write lock).
+    /// #4974: promote every pending version across all MVCC tables.
+    fn promote_pending(&self) {
+        let ts = self.mvcc_table("__commit_probe__").next_snapshot_ts();
+        let tables: Vec<Arc<VersionedTable>> = {
+            let g = self.mvcc.read();
+            g.values().cloned().collect()
+        };
+        let tx_id = self.inner.current_tx_id();
+        for t in tables {
+            t.commit_tx(tx_id, ts);
+        }
+    }
+
+    /// #4974: drop every pending version across all MVCC tables.
+    fn discard_pending(&self) {
+        let tables: Vec<Arc<VersionedTable>> = {
+            let g = self.mvcc.read();
+            g.values().cloned().collect()
+        };
+        let tx_id = self.inner.current_tx_id();
+        for t in tables {
+            t.rollback_tx(tx_id);
+        }
+    }
+
     pub fn inner_mut(&mut self) -> &mut S {
         &mut self.inner
     }
@@ -181,8 +206,10 @@ impl<S: StorageEngine + 'static> MvccStorage<S> {
     /// to additionally clone).
     pub fn get_visible(&self, table: &str, pk: &Value) -> Option<Vec<Value>> {
         let mvcc = self.mvcc_table(table);
+        let tx_id = self.inner.current_tx_id();
+        let tx_id = self.inner.current_tx_id();
         let snapshot_ts = mvcc.begin_snapshot();
-        mvcc.get_visible(pk, snapshot_ts)
+        mvcc.get_visible(pk, snapshot_ts, tx_id)
     }
 
     /// Rebuild the MVCC layer from the inner engine's current rows.
@@ -197,6 +224,7 @@ impl<S: StorageEngine + 'static> MvccStorage<S> {
         for table_name in tables {
             let rows = self.inner.scan(&table_name)?;
             let mvcc = self.mvcc_table(&table_name);
+            let tx_id = self.inner.current_tx_id();
             let ts = mvcc.next_snapshot_ts();
             for row in rows {
                 // Use the first column as PK if available. For Phase
@@ -227,8 +255,10 @@ impl<S: StorageEngine + 'static> StorageEngine for MvccStorage<S> {
     /// method over `inner.scan_pk` + MVCC chain check.
     fn scan_pk(&self, table: &str, pk_column: &str, pk: &Value) -> SqlResult<Option<Record>> {
         let mvcc = self.mvcc_table(table);
+        let tx_id = self.inner.current_tx_id();
+        let tx_id = self.inner.current_tx_id();
         let snapshot_ts = mvcc.begin_snapshot();
-        if let Some(row) = mvcc.get_visible(pk, snapshot_ts) {
+        if let Some(row) = mvcc.get_visible(pk, snapshot_ts, tx_id) {
             return Ok(Some(row));
         }
         // MVCC has no visible row for this PK. Try the inner engine
@@ -247,6 +277,7 @@ impl<S: StorageEngine + 'static> StorageEngine for MvccStorage<S> {
     fn scan_pk_range(&self, table: &str, low: &Value, high: &Value) -> SqlResult<Vec<Record>> {
         use std::ops::Bound;
         let mvcc = self.mvcc_table(table);
+        let tx_id = self.inner.current_tx_id();
         let snapshot_ts = mvcc.begin_snapshot();
         // BTreeMap::range over [low, high] is O(log N + k) where k
         // is the number of matching keys — much cheaper than a full
@@ -254,7 +285,7 @@ impl<S: StorageEngine + 'static> StorageEngine for MvccStorage<S> {
         let r = mvcc.versions.read();
         let mut out = Vec::new();
         for (_, chain) in r.range((Bound::Included(low), Bound::Included(high))) {
-            if let Some(visible) = find_visible(chain, snapshot_ts) {
+            if let Some(visible) = find_visible(chain, snapshot_ts, tx_id) {
                 if !visible.deleted {
                     out.push(visible.row.clone());
                 }
@@ -264,8 +295,9 @@ impl<S: StorageEngine + 'static> StorageEngine for MvccStorage<S> {
     }
     fn scan(&self, table: &str) -> SqlResult<Vec<Record>> {
         let mvcc = self.mvcc_table(table);
+        let tx_id = self.inner.current_tx_id();
         let snapshot_ts = mvcc.begin_snapshot();
-        let pairs = mvcc.scan_visible(snapshot_ts);
+        let pairs = mvcc.scan_visible(snapshot_ts, tx_id);
         let mut out: Vec<Record> = pairs.into_iter().map(|(_, row)| row).collect();
 
         // Merge in rows the inner engine holds that MVCC has no visible
@@ -311,8 +343,9 @@ impl<S: StorageEngine + 'static> StorageEngine for MvccStorage<S> {
         filter: &dyn Fn(&Record) -> bool,
     ) -> SqlResult<Vec<Record>> {
         let mvcc = self.mvcc_table(table);
+        let tx_id = self.inner.current_tx_id();
         let snapshot_ts = mvcc.begin_snapshot();
-        let pairs = mvcc.scan_visible(snapshot_ts);
+        let pairs = mvcc.scan_visible(snapshot_ts, tx_id);
         let mut out: Vec<Record> = pairs
             .into_iter()
             .filter_map(|(_, row)| if filter(&row) { Some(row) } else { None })
@@ -355,8 +388,9 @@ impl<S: StorageEngine + 'static> StorageEngine for MvccStorage<S> {
                 continue;
             }
             let pk = row[0].clone();
+            let tx_id = self.inner.current_tx_id();
             let ts = mvcc.next_snapshot_ts();
-            mvcc.put(pk, row, ts, ts);
+            mvcc.put(pk, row, ts, tx_id);
         }
         // V400-05: register SQL write with cross-model transaction tracker
         self.register_sql_write("INSERT");
@@ -379,10 +413,12 @@ impl<S: StorageEngine + 'static> StorageEngine for MvccStorage<S> {
             // every visible row.
             if _filters.is_empty() {
                 let mvcc = self.mvcc_table(table);
-                let pairs = mvcc.scan_visible(mvcc.begin_snapshot());
+                let tx_id = self.inner.current_tx_id();
+                let pairs = mvcc.scan_visible(mvcc.begin_snapshot(), tx_id);
+                let tx_id = self.inner.current_tx_id();
                 let ts = mvcc.next_snapshot_ts();
                 for (pk, _) in pairs {
-                    mvcc.delete(&pk, ts, ts);
+                    mvcc.delete(&pk, ts, tx_id);
                 }
             }
             self.register_sql_write("DELETE");
@@ -392,9 +428,10 @@ impl<S: StorageEngine + 'static> StorageEngine for MvccStorage<S> {
         }
         // Tombstone exactly the affected PKs.
         let mvcc = self.mvcc_table(table);
+        let tx_id = self.inner.current_tx_id();
         let ts = mvcc.next_snapshot_ts();
         for pk in &removed_pks {
-            mvcc.delete(pk, ts, ts);
+            mvcc.delete(pk, ts, tx_id);
         }
         self.register_sql_write("DELETE");
         // V400-MVCC-GC: reap old versions after every write path.
@@ -412,10 +449,12 @@ impl<S: StorageEngine + 'static> StorageEngine for MvccStorage<S> {
         let n = self.inner.delete_if(table, filter)?;
         if n > 0 {
             let mvcc = self.mvcc_table(table);
-            let pairs = mvcc.scan_visible(mvcc.begin_snapshot());
+            let tx_id = self.inner.current_tx_id();
+            let pairs = mvcc.scan_visible(mvcc.begin_snapshot(), tx_id);
+            let tx_id = self.inner.current_tx_id();
             let ts = mvcc.next_snapshot_ts();
             for (pk, _) in pairs {
-                mvcc.delete(&pk, ts, ts);
+                mvcc.delete(&pk, ts, tx_id);
             }
         }
         self.register_sql_write("DELETE");
@@ -435,10 +474,12 @@ impl<S: StorageEngine + 'static> StorageEngine for MvccStorage<S> {
         if n > 0 {
             let mvcc = self.mvcc_table(table);
             // Re-scan to get current row contents after update.
-            let pairs = mvcc.scan_visible(mvcc.begin_snapshot());
+            let tx_id = self.inner.current_tx_id();
+            let pairs = mvcc.scan_visible(mvcc.begin_snapshot(), tx_id);
+            let tx_id = self.inner.current_tx_id();
             let ts = mvcc.next_snapshot_ts();
             for (pk, row) in pairs {
-                mvcc.put(pk, row, ts, ts);
+                mvcc.put(pk, row, ts, tx_id);
             }
         }
         self.register_sql_write("UPDATE");
@@ -455,10 +496,12 @@ impl<S: StorageEngine + 'static> StorageEngine for MvccStorage<S> {
         let n = self.inner.update_if(table, filter, mutation)?;
         if n > 0 {
             let mvcc = self.mvcc_table(table);
-            let pairs = mvcc.scan_visible(mvcc.begin_snapshot());
+            let tx_id = self.inner.current_tx_id();
+            let pairs = mvcc.scan_visible(mvcc.begin_snapshot(), tx_id);
+            let tx_id = self.inner.current_tx_id();
             let ts = mvcc.next_snapshot_ts();
             for (pk, row) in pairs {
-                mvcc.put(pk, row, ts, ts);
+                mvcc.put(pk, row, ts, tx_id);
             }
         }
         self.register_sql_write("UPDATE");
@@ -471,8 +514,9 @@ impl<S: StorageEngine + 'static> StorageEngine for MvccStorage<S> {
         if !record.is_empty() {
             let mvcc = self.mvcc_table(table);
             let pk = record[0].clone();
+            let tx_id = self.inner.current_tx_id();
             let ts = mvcc.next_snapshot_ts();
-            mvcc.put(pk, record, ts, ts);
+            mvcc.put(pk, record, ts, tx_id);
         }
         self.register_sql_write("FORCE_INSERT");
         self.maybe_gc();
@@ -564,11 +608,25 @@ impl<S: StorageEngine + 'static> StorageEngine for MvccStorage<S> {
     }
 
     fn commit_transaction(&mut self) -> SqlResult<()> {
-        self.inner.commit_transaction()
+        let r = self.inner.commit_transaction();
+        // #4974: promote this transaction's pending versions so other
+        // connections can see them. Only after the inner engine accepted
+        // the commit — a failed commit leaves everything pending, and
+        // therefore invisible.
+        if r.is_ok() {
+            self.promote_pending();
+        }
+        r
     }
 
     fn rollback_transaction(&mut self) -> SqlResult<()> {
-        self.inner.rollback_transaction()
+        let r = self.inner.rollback_transaction();
+        // #4974: drop the pending versions. Nothing was ever visible, so
+        // there is nothing to restore.
+        if r.is_ok() {
+            self.discard_pending();
+        }
+        r
     }
 
     fn set_current_tx_id(&mut self, tx_id: u64) {

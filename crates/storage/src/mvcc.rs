@@ -48,6 +48,14 @@ pub struct VersionedRow {
     pub created_by_tx: u64,
     /// If true, this version is a tombstone (delete marker).
     pub deleted: bool,
+    /// #4974: whether the creating transaction has committed.
+    ///
+    /// A version is appended at write time but stays invisible until
+    /// commit promotes it, so an uncommitted write — and one a later
+    /// ROLLBACK erases — is never observable by another connection.
+    /// `visible_from_ts` is rewritten to the commit timestamp then, so
+    /// readers holding an older snapshot keep their view.
+    pub committed: bool,
 }
 
 /// In-memory row store with per-key version chains.
@@ -100,25 +108,54 @@ impl VersionedTable {
     /// `visible_from_ts` should be obtained from `next_snapshot_ts()`
     /// at commit time.
     pub fn put(&self, pk: Value, row: Vec<Value>, visible_from_ts: u64, tx_id: u64) {
+        // tx_id 0 means autocommit: no transaction to wait for.
         let version = VersionedRow {
             row,
             visible_from_ts,
             created_by_tx: tx_id,
             deleted: false,
+            committed: tx_id == 0,
         };
         let mut w = self.versions.write();
         w.entry(pk).or_default().push(version);
+    }
+
+    /// #4974: promote every pending version written by `tx_id` to
+    /// visible, stamping it with `commit_ts`.
+    pub fn commit_tx(&self, tx_id: u64, commit_ts: u64) {
+        let mut w = self.versions.write();
+        for chain in w.values_mut() {
+            for v in chain.iter_mut() {
+                if v.created_by_tx == tx_id && !v.committed {
+                    v.committed = true;
+                    v.visible_from_ts = commit_ts;
+                }
+            }
+        }
+    }
+
+    /// #4974: drop every pending version written by `tx_id`. Nothing was
+    /// ever visible, so the previous committed version of each key is
+    /// still the newest one and simply remains in place.
+    pub fn rollback_tx(&self, tx_id: u64) {
+        let mut w = self.versions.write();
+        for chain in w.values_mut() {
+            chain.retain(|v| v.created_by_tx != tx_id || v.committed);
+        }
+        w.retain(|_, chain| !chain.is_empty());
     }
 
     /// Mark a row as deleted at `visible_from_ts`. Appends a
     /// tombstone version so readers at `snapshot_ts <
     /// visible_from_ts` still see the previous live version.
     pub fn delete(&self, pk: &Value, visible_from_ts: u64, tx_id: u64) {
+        // tx_id 0 means autocommit — see `put`.
         let version = VersionedRow {
             row: Vec::new(),
             visible_from_ts,
             created_by_tx: tx_id,
             deleted: true,
+            committed: tx_id == 0,
         };
         let mut w = self.versions.write();
         w.entry(pk.clone()).or_default().push(version);
@@ -126,11 +163,11 @@ impl VersionedTable {
 
     /// Scan all visible rows at `snapshot_ts`. Tombstones are skipped.
     /// Returns `(primary_key, row)` pairs in primary-key order.
-    pub fn scan_visible(&self, snapshot_ts: u64) -> Vec<(Value, Vec<Value>)> {
+    pub fn scan_visible(&self, snapshot_ts: u64, reader_tx: u64) -> Vec<(Value, Vec<Value>)> {
         let r = self.versions.read();
         let mut out = Vec::with_capacity(r.len());
         for (key, chain) in r.iter() {
-            if let Some(visible) = find_visible(chain, snapshot_ts) {
+            if let Some(visible) = find_visible(chain, snapshot_ts, reader_tx) {
                 if !visible.deleted {
                     out.push((key.clone(), visible.row.clone()));
                 }
@@ -143,10 +180,10 @@ impl VersionedTable {
     /// Returns the visible row at `snapshot_ts` for the given `pk`,
     /// or `None` if the row is missing or tombstoned at this snapshot.
     /// Avoids the O(N) full scan that `scan_visible` performs.
-    pub fn get_visible(&self, pk: &Value, snapshot_ts: u64) -> Option<Vec<Value>> {
+    pub fn get_visible(&self, pk: &Value, snapshot_ts: u64, reader_tx: u64) -> Option<Vec<Value>> {
         let r = self.versions.read();
         let chain = r.get(pk)?;
-        let visible = find_visible(chain, snapshot_ts)?;
+        let visible = find_visible(chain, snapshot_ts, reader_tx)?;
         if visible.deleted {
             None
         } else {
@@ -238,11 +275,29 @@ impl VersionedTable {
 ///
 /// Linear scan is fine for Phase 4 because version chains are kept
 /// short by GC. If chains grow large, replace with `partition_point`.
-pub(crate) fn find_visible(chain: &[VersionedRow], snapshot_ts: u64) -> Option<&VersionedRow> {
-    chain
-        .iter()
-        .rev()
-        .find(|v| v.visible_from_ts <= snapshot_ts)
+/// Newest version of `chain` visible to a reader at `snapshot_ts`.
+///
+/// `reader_tx` is the transaction the read belongs to, or 0 for a
+/// connection outside any transaction.
+///
+/// #4974: a version written but not committed is visible **only to the
+/// transaction that wrote it**. Everybody else must not observe it,
+/// because a ROLLBACK erases it. `FileStorage` keeps one
+/// `current_tx_id` for the whole storage (#4951) and so cannot tell two
+/// connections apart; the caller's own transaction is passed
+/// explicitly for exactly that reason.
+pub(crate) fn find_visible(
+    chain: &[VersionedRow],
+    snapshot_ts: u64,
+    reader_tx: u64,
+) -> Option<&VersionedRow> {
+    chain.iter().rev().find(|v| {
+        if v.committed {
+            v.visible_from_ts <= snapshot_ts
+        } else {
+            reader_tx != 0 && v.created_by_tx == reader_tx
+        }
+    })
 }
 
 #[cfg(test)]
@@ -257,7 +312,7 @@ mod tests {
     fn test_empty_table_snapshot() {
         let t = VersionedTable::new();
         assert_eq!(t.begin_snapshot(), 0);
-        assert!(t.scan_visible(0).is_empty());
+        assert!(t.scan_visible(0, 0).is_empty());
     }
 
     #[test]
@@ -265,12 +320,13 @@ mod tests {
         let t = VersionedTable::new();
         let ts1 = t.next_snapshot_ts();
         t.put(int(1), vec![int(10), int(20)], ts1, 1);
+        t.commit_tx(1, ts1); // #4974
 
         // Reader before commit (snapshot=0) sees nothing.
-        assert!(t.scan_visible(0).is_empty());
+        assert!(t.scan_visible(0, 0).is_empty());
 
         // Reader after commit (snapshot=ts1) sees the row.
-        let rows = t.scan_visible(ts1);
+        let rows = t.scan_visible(ts1, 0);
         assert_eq!(rows.len(), 1);
         assert_eq!(rows[0].0, int(1));
         assert_eq!(rows[0].1, vec![int(10), int(20)]);
@@ -281,23 +337,25 @@ mod tests {
         let t = VersionedTable::new();
         let ts1 = t.next_snapshot_ts();
         t.put(int(1), vec![int(10)], ts1, 1);
+        t.commit_tx(1, ts1); // #4974
 
         let ts2 = t.next_snapshot_ts();
         t.put(int(1), vec![int(99)], ts2, 2);
+        t.commit_tx(2, ts2); // #4974
 
         // Reader at ts1 sees old version.
-        let r1 = t.scan_visible(ts1);
+        let r1 = t.scan_visible(ts1, 0);
         assert_eq!(r1.len(), 1);
         assert_eq!(r1[0].1, vec![int(10)]);
 
         // Reader at ts2 sees new version.
-        let r2 = t.scan_visible(ts2);
+        let r2 = t.scan_visible(ts2, 0);
         assert_eq!(r2.len(), 1);
         assert_eq!(r2[0].1, vec![int(99)]);
 
         // Reader between snapshots (impossible in practice but valid
         // for the visibility rule) sees the previous version.
-        let r_mid = t.scan_visible(ts1 + 0); // same as ts1
+        let r_mid = t.scan_visible(ts1 + 0, 0); // same as ts1
         assert_eq!(r_mid[0].1, vec![int(10)]);
     }
 
@@ -306,20 +364,22 @@ mod tests {
         let t = VersionedTable::new();
         let ts1 = t.next_snapshot_ts();
         t.put(int(1), vec![int(10)], ts1, 1);
+        t.commit_tx(1, ts1); // #4974
 
         let ts2 = t.next_snapshot_ts();
         t.delete(&int(1), ts2, 2);
+        t.commit_tx(2, ts2); // #4974
 
         // Reader at ts1 sees the row.
-        let r1 = t.scan_visible(ts1);
+        let r1 = t.scan_visible(ts1, 0);
         assert_eq!(r1.len(), 1);
 
         // Reader at ts2 sees no row (tombstone).
-        let r2 = t.scan_visible(ts2);
+        let r2 = t.scan_visible(ts2, 0);
         assert_eq!(r2.len(), 0);
 
         // Reader between ts1 and ts2 still sees the row.
-        let r_mid = t.scan_visible(ts1);
+        let r_mid = t.scan_visible(ts1, 0);
         assert_eq!(r_mid.len(), 1);
     }
 
@@ -328,20 +388,23 @@ mod tests {
         let t = VersionedTable::new();
         let ts1 = t.next_snapshot_ts();
         t.put(int(1), vec![int(10)], ts1, 1);
+        t.commit_tx(1, ts1); // #4974
 
         let ts2 = t.next_snapshot_ts();
         t.delete(&int(1), ts2, 2);
+        t.commit_tx(2, ts2); // #4974
 
         let ts3 = t.next_snapshot_ts();
         t.put(int(1), vec![int(99)], ts3, 3);
+        t.commit_tx(3, ts3); // #4974
 
         // Reader at ts3 sees the new row (newest version is not deleted).
-        let r3 = t.scan_visible(ts3);
+        let r3 = t.scan_visible(ts3, 0);
         assert_eq!(r3.len(), 1);
         assert_eq!(r3[0].1, vec![int(99)]);
 
         // Reader at ts2 sees no row (newest version <= ts2 is the tombstone).
-        let r2 = t.scan_visible(ts2);
+        let r2 = t.scan_visible(ts2, 0);
         assert_eq!(r2.len(), 0);
     }
 
@@ -365,6 +428,7 @@ mod tests {
         for i in 0..10 {
             let ts = t.next_snapshot_ts();
             t.put(int(1), vec![int(i)], ts, i as u64);
+            t.commit_tx(1, ts); // #4974
             tss.push(ts);
         }
         assert_eq!(t.version_count(), 10);
@@ -385,12 +449,16 @@ mod tests {
         let t = VersionedTable::new();
         let ts = t.next_snapshot_ts();
         t.put(int(1), vec![int(10)], ts, 1);
+        t.commit_tx(1, ts); // #4974
         t.put(int(2), vec![int(20)], ts, 1);
+        t.commit_tx(1, ts); // #4974
         t.put(int(3), vec![int(30)], ts, 1);
+        t.commit_tx(1, ts); // #4974
         assert_eq!(t.key_count(), 3);
 
         let ts2 = t.next_snapshot_ts();
         t.put(int(1), vec![int(11)], ts2, 2); // update existing key
+        t.commit_tx(2, ts2); // #4974
         assert_eq!(t.key_count(), 3); // still 3 keys
         assert_eq!(t.version_count(), 4); // 3 + 1 new version
     }
@@ -401,10 +469,13 @@ mod tests {
         let ts = t.next_snapshot_ts();
         // Insert in non-sorted order.
         t.put(int(3), vec![int(30)], ts, 1);
+        t.commit_tx(1, ts); // #4974
         t.put(int(1), vec![int(10)], ts, 1);
+        t.commit_tx(1, ts); // #4974
         t.put(int(2), vec![int(20)], ts, 1);
+        t.commit_tx(1, ts); // #4974
 
-        let rows = t.scan_visible(ts);
+        let rows = t.scan_visible(ts, 0);
         assert_eq!(rows[0].0, int(1));
         assert_eq!(rows[1].0, int(2));
         assert_eq!(rows[2].0, int(3));
@@ -414,8 +485,8 @@ mod tests {
     fn test_find_visible_at_snapshot_before_all() {
         let t = VersionedTable::new();
         // No versions yet — find_visible on empty chain.
-        assert!(find_visible(&[], 0).is_none());
-        assert!(find_visible(&[], u64::MAX).is_none());
+        assert!(find_visible(&[], 0, 0).is_none());
+        assert!(find_visible(&[], u64::MAX, 0).is_none());
     }
 
     #[test]
@@ -428,9 +499,11 @@ mod tests {
             assert!(ts > last_ts);
             last_ts = ts;
             t.put(int(i), vec![int(i * 10)], ts, i as u64);
+            t.commit_tx(i as u64, ts); // #4974
+                                       // #4974: a write is pending until its transaction commits.
         }
         // Final snapshot sees all 100 rows.
-        let final_rows = t.scan_visible(last_ts);
+        let final_rows = t.scan_visible(last_ts, 0);
         assert_eq!(final_rows.len(), 100);
     }
 
@@ -439,25 +512,30 @@ mod tests {
         // Phase B Step 4.2: PK lookup must be O(log N) and skip
         // tombstones, mirroring scan_visible semantics.
         let t = VersionedTable::new();
+        // #4974: each write is pending until committed; the snapshots
+        // below are taken afterwards so the versions are visible.
         let ts1 = t.next_snapshot_ts();
         t.put(int(1), vec![int(10), int(20)], ts1, 1);
+        t.commit_tx(1, ts1); // #4974
         let ts2 = t.next_snapshot_ts();
         t.put(int(1), vec![int(99)], ts2, 2);
+        t.commit_tx(2, ts2); // #4974
         let ts3 = t.next_snapshot_ts();
         t.delete(&int(1), ts3, 3);
+        t.commit_tx(3, ts3); // #4974
 
         // Missing PK → None.
-        assert!(t.get_visible(&int(42), ts2).is_none());
+        assert!(t.get_visible(&int(42), ts2, 0).is_none());
 
         // PK=1 at snapshot ts1 returns the first version.
-        let r1 = t.get_visible(&int(1), ts1).expect("row present");
+        let r1 = t.get_visible(&int(1), ts1, 0).expect("row present");
         assert_eq!(r1, vec![int(10), int(20)]);
 
         // PK=1 at snapshot ts2 returns the updated version.
-        let r2 = t.get_visible(&int(1), ts2).expect("row present");
+        let r2 = t.get_visible(&int(1), ts2, 0).expect("row present");
         assert_eq!(r2, vec![int(99)]);
 
         // PK=1 at snapshot ts3 is tombstoned → None.
-        assert!(t.get_visible(&int(1), ts3).is_none());
+        assert!(t.get_visible(&int(1), ts3, 0).is_none());
     }
 }
