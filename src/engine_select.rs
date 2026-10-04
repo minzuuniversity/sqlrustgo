@@ -6796,7 +6796,9 @@ impl<S: StorageEngine + 'static> ExecutionEngine<S> {
                 } else {
                     // #4974: EXISTS fast path must not see other
                     // transactions' uncommitted rows.
-                    let rows = self.scan_for_reader_with(&*storage, &real_subq_table).ok()?;
+                    let rows = self
+                        .scan_for_reader_with(&*storage, &real_subq_table)
+                        .ok()?;
                     let arc = std::sync::Arc::new(rows);
                     rc.insert(table_name.clone(), arc.clone());
                     arc

@@ -3763,7 +3763,11 @@ impl StorageEngine for FileStorage {
     /// two different "unsupported" defaults (one silent `()`, one `Err`),
     /// both of which quietly disabled a transaction-isolation guarantee.
     fn commit_transaction_lockfree(&self) -> SqlResult<()> {
-        if self.current_tx_id.load(std::sync::atomic::Ordering::Acquire) == 0 {
+        if self
+            .current_tx_id
+            .load(std::sync::atomic::Ordering::Acquire)
+            == 0
+        {
             // COMMIT outside a tx is a silent no-op (MySQL/SQLite semantics).
             return Ok(());
         }
@@ -3780,7 +3784,11 @@ impl StorageEngine for FileStorage {
     /// "capability signal would disable the caller's correctness work"
     /// argument as `commit_transaction_lockfree` above.
     fn rollback_transaction_lockfree(&self) -> SqlResult<()> {
-        if self.current_tx_id.load(std::sync::atomic::Ordering::Acquire) == 0 {
+        if self
+            .current_tx_id
+            .load(std::sync::atomic::Ordering::Acquire)
+            == 0
+        {
             return Ok(());
         }
         Self::with_write_lock(self, |s| {
