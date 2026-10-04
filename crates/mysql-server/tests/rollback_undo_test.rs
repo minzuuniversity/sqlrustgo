@@ -157,8 +157,10 @@ fn rollback_leaves_other_connections_commits_intact() {
 
     a.execute("BEGIN").expect("a begin");
     b.execute("BEGIN").expect("b begin");
-    a.execute("INSERT INTO t VALUES (10, 'a')").expect("a insert");
-    b.execute("INSERT INTO t VALUES (20, 'b')").expect("b insert");
+    a.execute("INSERT INTO t VALUES (10, 'a')")
+        .expect("a insert");
+    b.execute("INSERT INTO t VALUES (20, 'b')")
+        .expect("b insert");
     assert_eq!(count(&mut a, "t"), 2, "a sees both uncommitted rows");
 
     a.execute("ROLLBACK").expect("a rollback");
@@ -181,7 +183,8 @@ fn rollback_of_an_empty_transaction_changes_nothing() {
     let mut conn = connect(handle.port);
     conn.execute("CREATE TABLE t (id INT PRIMARY KEY, v TEXT)")
         .expect("create");
-    conn.execute("INSERT INTO t VALUES (1, 'kept')").expect("insert");
+    conn.execute("INSERT INTO t VALUES (1, 'kept')")
+        .expect("insert");
 
     conn.execute("BEGIN").expect("begin");
     conn.execute("ROLLBACK").expect("rollback");
@@ -199,10 +202,12 @@ fn rollback_restores_a_deleted_row() {
     let mut conn = connect(handle.port);
     conn.execute("CREATE TABLE t (id INT PRIMARY KEY, v TEXT)")
         .expect("create");
-    conn.execute("INSERT INTO t VALUES (1, 'keep')").expect("insert");
+    conn.execute("INSERT INTO t VALUES (1, 'keep')")
+        .expect("insert");
 
     conn.execute("BEGIN").expect("begin");
-    conn.execute("DELETE FROM t WHERE id = 1").expect("delete in tx");
+    conn.execute("DELETE FROM t WHERE id = 1")
+        .expect("delete in tx");
     assert_eq!(
         count(&mut conn, "t"),
         0,
