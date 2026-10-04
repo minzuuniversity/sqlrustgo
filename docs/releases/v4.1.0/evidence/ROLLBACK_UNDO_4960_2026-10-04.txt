@@ -1,0 +1,171 @@
+================================================================================
+#4960 ROLLBACK 在 MySQL 协议路径完全失效 — 根因与修复证据
+================================================================================
+provenance (ADR-014 5 evidence fields):
+  source_agent : mcode (MCode root session)
+  source_run   : 4960-rollback-undo-2026-10-04
+  timestamp    : 2026-10-04T20:15+08:00
+  evidence_hash: local-git:231efeadd7 (base = gitea252/develop/v4.1.0)
+  conflict_resolution: 过程中推翻了自己先前的一个假设，见 §5
+
+政策: Anti-Fabrication-Policy-v1.0 + ADR-001 + ADR-008 + ADR-014
+状态: FIXED + 变异自证
+
+--------------------------------------------------------------------------------
+1. 症状（真实 MySQL 协议路径，实跑）
+--------------------------------------------------------------------------------
+  PROBE after baseline insert: 1
+  PROBE inside tx: 2
+  PROBE after update: 2
+  PROBE after rollback: 2            ← 事务内的 INSERT 仍在
+  PROBE final rows: [["1","before"], ["2","in-tx"]]
+
+两连接场景：
+  A: BEGIN + INSERT(10); B: BEGIN + INSERT(20); A: ROLLBACK; B: COMMIT
+  → 实测 20 行全部保留（id 10 与 20 都在）
+
+失败模式不是「越界删除他人数据」，而是「回滚什么也没做」。
+
+--------------------------------------------------------------------------------
+2. 逐层探针：排除了三个错误假设
+--------------------------------------------------------------------------------
+**假设一：undo 机制没被填充** —— 否。
+
+在 TransactionManager::add_undo_record / take_undo_log 上加探针：
+  PROBE_ADD_UNDO tx=2 rec=Insert { table: "t", key: [Integer(2)], row: [Integer(2), Text("in-tx")] }
+  PROBE_ADD_UNDO tx=2 rec=Update { table: "t", key: [Integer(1)], old_value: [... "before"], new_value: [... "changed"] }
+  PROBE_ADD_UNDO tx=2 rec=Update { table: "t", key: [Integer(2)], ... }
+  PROBE_TAKE_UNDO tx=2 n=3
+
+undo log 完整（3 条），且被正确取出重放。
+
+**假设二：undo 重放的 delete 报错** —— 否。
+
+在 ExecutionEngine::rollback_transaction 的 undo 闭包里加探针：
+  PROBE_UNDO_DELETE table=t key=[Integer(2)]
+  PROBE_UNDO_DELETE_N n=0
+
+delete 被调用了，返回 0 行 —— 没有报错，只是没删到。
+
+**假设三：行不在存储里** —— 部分成立，这才是根因。
+
+在 FileStorage::delete_collect_pks 入口加探针：
+  PROBE_DCP table=t in_tx=true tables_len=Some(0) buf_len=Some(2)
+
+`tables.rows` 是**空的**（len=0），两行全在 `insert_buffer` 里（len=2）。
+
+--------------------------------------------------------------------------------
+3. 根因
+--------------------------------------------------------------------------------
+`FileStorage::delete_collect_pks`（crates/storage/src/file_storage.rs）的
+`removed_pks` **只从 `tables[table].rows` 收集**。
+
+而 `FileStorage::insert` 在 `in_transaction()` 为真时把行放进 `insert_buffer`
+（纯内存），只有 `flush_buffer` / 达到 `buffer_threshold` 才会晋升进
+`tables.rows`。一个刚 BEGIN 就 INSERT 的事务，其所有行都还在缓冲里。
+
+于是形成这条链：
+
+  undo 重放 → storage.delete(table, pk)
+           → delete_collect_pks 只扫 tables.rows（空的）
+           → removed_pks = []  ← 报告「删了 0 行」
+           → MvccStorage::delete 收到空列表 → 不做 tombstone
+           → MVCC 链仍持有这些行 → 读路径继续返回
+
+注意**删除动作其实发生了**：`delete_collect_pks` 末尾确实会过滤
+`insert_buffer`（`buffered.retain(...)`），行从缓冲里被移走了。但由于
+`removed_pks` 为空，调用方基于该返回值做的 MVCC tombstone 完全没跑。
+净效果：缓冲里的行被删了，MVCC 链却还在供应它们。
+
+这与 #4946 记录的「BUF_FLUSH 0 / 缓冲从未被消费」是同一个「缓冲未晋升」
+现象在不同方法上的表现。
+
+--------------------------------------------------------------------------------
+4. 修复
+--------------------------------------------------------------------------------
+改动仅一处（+33 行，含注释），不触碰任何架构：
+
+`crates/storage/src/file_storage.rs::delete_collect_pks`
+在原有的「标记 dirty」与「过滤 insert_buffer」之后，把**刚刚从缓冲里
+移除的那些行的 PK** 一并计入返回值 `removed_pks`（与 tables.rows 的
+来源去重合并）。
+
+这样调用方 `MvccStorage::delete` 拿到的 pk 列表就与实际删除的行一致，
+tombstone 正常执行，ROLLBACK 恢复出提交前的状态。
+
+未改动：undo 机制、事务管理、MVCC 语义、任何接口签名、任何架构。
+
+--------------------------------------------------------------------------------
+5. 过程中推翻的自己的假设（记录在案）
+--------------------------------------------------------------------------------
+最初判断根因是「MvccStorage::insert 无视事务状态直接写 MVCC 链，
+导致提交前即对外可见」，并据此实现了「按事务暂存写」方案
+（tx_writes + set_active_tx + apply_staged_writes，+473 行）。
+
+该方案实测能修好单连接回滚（2 → 1），但立刻暴露更严重的问题：暂存层
+挂在**共享的** MvccStorage 上，而存储是全局单例，多连接共用一个
+`Arc`。实测 A 回滚后把 B 已提交的行也清掉了（`a sees 0`）。
+
+进一步定位发现：即使不改架构，`FileStorage.current_tx_id` 也是
+**存储级共享单字段**（普通 `u64`，非 per-connection），所有连接读到同一个
+值，导致暂存键错配（探针实测 `writes staged under tx 1, rollback passing
+tx 2, had=false`）。
+
+**结论：整个暂存方案建立在错误前提上，已全部回退。** 真正的根因是
+§3 的返回值缺失，与「提交前可见」这个表面症状没有因果关系 —— 提交前
+可见是本项目一直以来的既有行为，ROLLBACK 的问题只是撤销时没删干净。
+
+这也说明：观察到的症状（提交前可见）不等于根因。若当时顺着症状直接改
+架构，会引入一个比原缺陷严重得多的数据丢失问题。
+
+--------------------------------------------------------------------------------
+6. 变异测试自证
+--------------------------------------------------------------------------------
+变异：回退唯一的修复（`git stash push crates/storage/src/file_storage.rs`）
+
+  test result: FAILED. 0 passed; 2 failed
+  left: 2   right: 1      （单连接：回滚后仍有 2 行）
+  left: 2   right: 1      （双连接：b 已提交的行消失）
+
+还原后：6 passed。
+
+--------------------------------------------------------------------------------
+7. 测试
+--------------------------------------------------------------------------------
+crates/mysql-server/tests/rollback_undo_test.rs（6 项，全绿）
+  rollback_undoes_the_transactions_inserts_and_updates
+      事务内可见自己的写；ROLLBACK 后 INSERT 消失、UPDATE 还原为 pre-image
+  rollback_leaves_other_connections_commits_intact
+      A 回滚不影响 B 的提交；B 的 COMMIT 仍生效
+  rollback_of_an_empty_transaction_changes_nothing
+      空事务回滚是 no-op
+  rollback_restores_a_deleted_row
+      事务内 DELETE 后 ROLLBACK，行恢复
+  commit_still_applies_the_transaction
+      COMMIT 仍应用全部暂存写（防止本次修复把提交路径变成 no-op）
+  committed_rows_are_visible_to_other_connections
+      已提交行对其他连接可见
+
+  文件头注释完整记录了 §1~§3 的探针输出，使后续任何人重新调查这个缺陷时
+  不必从零开始。
+
+--------------------------------------------------------------------------------
+8. 实跑命令与结果
+--------------------------------------------------------------------------------
+$ cargo test -p sqlrustgo-mysql-server --test rollback_undo_test
+  test result: ok. 6 passed; 0 failed
+
+变异（回退唯一修复）：
+  test result: FAILED. 0 passed; 2 failed
+
+--------------------------------------------------------------------------------
+9. 仍然存在、本次未修的问题
+--------------------------------------------------------------------------------
+**提交前的写对其他连接可见。** 本次修复让 ROLLBACK 能正确撤销，但没有改变
+「事务内的写立即对外可见」这一既有行为。严格意义上的 REPEATABLE READ /
+快照隔离仍然不成立：连接 B 可以在 A 提交前读到 A 未提交的写。
+
+这是一个独立且更大的问题（需要真正的 MVCC 快照读），本次只把它记录下来，
+不在 #4960 的范围内。已在 §5 记录，因为它与本缺陷症状相似、极易被再次误判。
+
+================================================================================
