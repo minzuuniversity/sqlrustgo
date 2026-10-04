@@ -4362,7 +4362,12 @@ mod tests {
             eval_unary_op(&Value::Integer(1), "NOT"),
             Value::Boolean(false)
         );
-        assert_eq!(eval_unary_op(&Value::Null, "!"), Value::Boolean(true));
+        // SQL three-valued logic: `NOT UNKNOWN` is UNKNOWN. Both the `NOT`
+        // and `!` spellings must agree — the assertions above were updated
+        // for this when the implementation was fixed, but the `!` variant was
+        // missed and kept asserting the old (wrong) TRUE.
+        assert_eq!(eval_unary_op(&Value::Null, "!"), Value::Null);
+        assert_eq!(eval_unary_op(&Value::Null, "NOT"), Value::Null);
         assert_eq!(
             eval_unary_op(&Value::Integer(42), "UNKNOWN_OP"),
             Value::Null
@@ -4386,13 +4391,32 @@ mod tests {
     }
 
     #[test]
-    fn test_eval_binary_op_eq_null() {
+    fn test_eval_binary_op_eq_null_is_unknown() {
+        // SQL three-valued logic: any comparison with NULL is UNKNOWN (NULL),
+        // not FALSE. `eval_binary_op` implements this explicitly and cites
+        // SQLite / MySQL / PostgreSQL. This test previously asserted
+        // `Boolean(false)` — the pre-three-valued-logic behaviour — and was
+        // left stale when the implementation was corrected.
         assert_eq!(
             eval_binary_op(&Value::Null, &Value::Integer(5), "="),
-            Value::Boolean(false)
+            Value::Null
         );
         assert_eq!(
             eval_binary_op(&Value::Null, &Value::Null, "=="),
+            Value::Null
+        );
+        // Every comparison operator behaves the same way.
+        for op in ["=", "==", "!=", "<>", ">", "<", ">=", "<="] {
+            assert_eq!(
+                eval_binary_op(&Value::Null, &Value::Integer(5), op),
+                Value::Null,
+                "NULL {op} 5 must be UNKNOWN, not FALSE/TRUE"
+            );
+        }
+        // Non-comparison operators are unaffected by the NULL short-circuit:
+        // `NULL AND FALSE` is FALSE under three-valued logic.
+        assert_eq!(
+            eval_binary_op(&Value::Null, &Value::Boolean(false), "AND"),
             Value::Boolean(false)
         );
     }
