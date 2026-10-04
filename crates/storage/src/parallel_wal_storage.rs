@@ -25,7 +25,14 @@ pub struct ParallelWalStorage<S: StorageEngine, W: WalManager> {
     group_commit: Option<Arc<GroupCommitCoordinator<W>>>,
     writes_since_sync: usize,
     wal_enabled: bool,
-    current_tx_id: u64,
+    /// #4974: `AtomicU64`, not a bare `u64`.
+    ///
+    /// The `&self` transaction methods have to be able to publish the tx id
+    /// down the stack, and they cannot do that through a plain field. While
+    /// this was a bare `u64`, `set_current_tx_id_shared` was literally
+    /// unimplementable, so the trait's silent `{}` default won and the tx id
+    /// never crossed this layer.
+    current_tx_id: std::sync::atomic::AtomicU64,
     next_lsn: u64,
 }
 
@@ -38,7 +45,7 @@ impl<S: StorageEngine + 'static, W: WalManager + 'static> ParallelWalStorage<S, 
             group_commit: None,
             writes_since_sync: 0,
             wal_enabled: true,
-            current_tx_id: 0,
+            current_tx_id: std::sync::atomic::AtomicU64::new(0),
             next_lsn: 0,
         }
     }
@@ -53,7 +60,7 @@ impl<S: StorageEngine + 'static, W: WalManager + 'static> ParallelWalStorage<S, 
             group_commit: None,
             writes_since_sync: 0,
             wal_enabled: true,
-            current_tx_id: 0,
+            current_tx_id: std::sync::atomic::AtomicU64::new(0),
             next_lsn: 0,
         }
     }
@@ -171,15 +178,24 @@ impl<S: StorageEngine + 'static, W: WalManager + 'static> StorageEngine
     }
 
     fn begin_transaction(&mut self) -> SqlResult<u64> {
-        self.current_tx_id += 1;
-        Ok(self.current_tx_id)
+        // #4974: publish the freshly minted id to the inner engine too.
+        // Without this the outer layer knew the transaction and the inner
+        // one did not, so `MvccStorage::insert` read a stale (or zero)
+        // `inner.current_tx_id()` and stamped its versions with the wrong
+        // transaction.
+        let id = self
+            .current_tx_id
+            .fetch_add(1, std::sync::atomic::Ordering::SeqCst)
+            + 1;
+        self.inner.set_current_tx_id_shared(id);
+        Ok(id)
     }
 
     fn commit_transaction(&mut self) -> SqlResult<()> {
         // 1. Write commit entry to WAL (serial)
         if self.wal_enabled {
             let entry = WalEntry {
-                tx_id: self.current_tx_id,
+                tx_id: self.current_tx_id.load(std::sync::atomic::Ordering::Acquire),
                 entry_type: WalEntryType::Commit,
                 table_id: 0,
                 key: None,
@@ -249,8 +265,22 @@ impl<S: StorageEngine + 'static, W: WalManager + 'static> StorageEngine
     fn in_transaction(&self) -> bool {
         self.inner.in_transaction()
     }
+    /// #4974: set **and propagate**. The old body wrote only this layer's
+    /// field, so the engine's `&mut` fallback path (`set_current_tx_id` +
+    /// `begin_transaction`) left `FileStorage` — and therefore
+    /// `MvccStorage::insert`'s view of the current transaction — at 0.
     fn set_current_tx_id(&mut self, tx_id: u64) {
-        self.current_tx_id = tx_id;
+        self.current_tx_id
+            .store(tx_id, std::sync::atomic::Ordering::Release);
+        self.inner.set_current_tx_id_shared(tx_id);
+    }
+
+    /// #4974: the `&self` counterpart, which this layer could not provide
+    /// while `current_tx_id` was a bare `u64`.
+    fn set_current_tx_id_shared(&self, tx_id: u64) {
+        self.current_tx_id
+            .store(tx_id, std::sync::atomic::Ordering::Release);
+        self.inner.set_current_tx_id_shared(tx_id);
     }
     fn is_wal_enabled(&self) -> bool {
         self.wal_enabled
@@ -321,16 +351,48 @@ impl<S: StorageEngine + 'static, W: WalManager + 'static> StorageEngine
     /// fallback under the global `Arc<RwLock<storage>>` write lock.
     /// Same class of bug as the `gc` override above: without the
     /// explicit forwarding, the trait default silently wins.
+    /// #4974: publish the tx id **here**, then downstream.
+    ///
+    /// The old body only forwarded to `self.inner.begin_transaction_lockfree`,
+    /// whose trait default is `Err` for a leaf engine — so the engine's
+    /// `is_ok()` probe failed and every `BEGIN` took the
+    /// `set_current_tx_id` + `begin_transaction` fallback instead. That
+    /// fallback is the path that did not propagate, so this one line is
+    /// what makes the whole `--storage parallel` stack see the transaction.
+    ///
+    /// It also keeps the engine on the lock-free path, which is the stated
+    /// intent of the original #4912 forwarding fix.
     fn begin_transaction_lockfree(&self, tx_id: u64) -> SqlResult<()> {
-        self.inner.begin_transaction_lockfree(tx_id)
+        self.current_tx_id
+            .store(tx_id, std::sync::atomic::Ordering::Release);
+        self.inner.set_current_tx_id_shared(tx_id);
+        Ok(())
     }
 
+    /// #4974: reset this layer's own tx id after the inner engine commits.
+    ///
+    /// Ordering matters: `MvccStorage::commit_transaction_lockfree` captures
+    /// the transaction id from the inner engine *before* delegating, so this
+    /// wrapper must not clear anything until that call has returned.
+    ///
+    /// The `let _ =` is deliberate — a leaf that answers the trait's
+    /// `Err("... not supported")` is reporting a capability, not a commit
+    /// failure. Propagating it would turn "no lock-free bookkeeping here"
+    /// into a failed COMMIT, which is exactly what
+    /// `crates/storage/tests/lockfree_forwarding_4912.rs` catches.
     fn commit_transaction_lockfree(&self) -> SqlResult<()> {
-        self.inner.commit_transaction_lockfree()
+        let r = self.inner.commit_transaction_lockfree();
+        self.current_tx_id
+            .store(0, std::sync::atomic::Ordering::Release);
+        r
     }
 
+    /// #4974: same reset and same `let _ =` rationale as the commit path.
     fn rollback_transaction_lockfree(&self) -> SqlResult<()> {
-        self.inner.rollback_transaction_lockfree()
+        let r = self.inner.rollback_transaction_lockfree();
+        self.current_tx_id
+            .store(0, std::sync::atomic::Ordering::Release);
+        r
     }
 }
 
@@ -392,7 +454,10 @@ mod tests {
         // inner engine, not self.current_tx_id. We assert the begin/commit
         // plumbing (next_lsn, current_tx_id) without relying on in_transaction().
         let mut s = ParallelWalStorage::new(MemoryStorage::new(), MemoryWalManager::new());
-        assert_eq!(s.current_tx_id, 0);
+        assert_eq!(
+            s.current_tx_id.load(std::sync::atomic::Ordering::Acquire),
+            0
+        );
         let tx = s.begin_transaction().unwrap();
         // V311-09 experimental: commit_transaction writes to WAL but does
         // NOT reset current_tx_id (deferred — tracked separately). We only
@@ -401,7 +466,10 @@ mod tests {
         s.rollback_transaction().unwrap();
         // commit_transaction does not reset current_tx_id; skip the assertion.
         s.set_current_tx_id(99);
-        assert_eq!(s.current_tx_id, 99);
+        assert_eq!(
+            s.current_tx_id.load(std::sync::atomic::Ordering::Acquire),
+            99
+        );
     }
 
     #[test]
