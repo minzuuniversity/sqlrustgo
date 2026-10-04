@@ -1702,7 +1702,6 @@ fn test_v411_group_by_text_value_looking_numeric_stays_text() {
     );
 }
 
-
 // V4.1.0 / Issue #4910 §3.1 Phase 3 concurrent INSERT regression test.
 //
 // Validates that 4 threads can issue INSERTs on the same engine without
@@ -1739,19 +1738,12 @@ fn test_v410_phase3_concurrent_inserts() {
 
     // The structural assertion: `tx_session` is reachable via &self.
     let engine_ref: &ExecutionEngine<_> = &engine;
-    let _ = engine_ref
-        .tx_session
-        .lock()
-        .current_tx_id
-        .is_none();
+    let _ = engine_ref.tx_session.lock().current_tx_id.is_none();
 
     // Run a real INSERT/SELECT cycle end-to-end (single-thread, via &mut).
     for i in 0..N_ROWS {
         engine
-            .execute(&format!(
-                "INSERT INTO t_v410i VALUES ({}, {})",
-                i, i
-            ))
+            .execute(&format!("INSERT INTO t_v410i VALUES ({}, {})", i, i))
             .unwrap();
     }
     let count = engine.execute("SELECT count(*) FROM t_v410i").unwrap();

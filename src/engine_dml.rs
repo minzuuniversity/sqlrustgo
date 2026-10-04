@@ -106,7 +106,10 @@ fn drain_trigger_undo_into_tx<S: StorageEngine + 'static>(engine: &ExecutionEngi
         return;
     };
     for rec in pending {
-        let _ = engine.transaction_manager.lock().add_undo_record(tx_id, rec);
+        let _ = engine
+            .transaction_manager
+            .lock()
+            .add_undo_record(tx_id, rec);
     }
 }
 /// INSERT executor body. ARCH-3 VtuGuard call lives in the `pub fn
@@ -1075,7 +1078,7 @@ pub fn execute_update<S: StorageEngine + 'static>(
     let where_clause = resolved_update.where_clause.as_ref().unwrap();
     let rows_to_update: Vec<Vec<Value>> = {
         let storage = engine.storage.read();
-        storage.scan_with_filter(&table_name, |row| {
+        storage.scan_with_filter(&table_name, &|row| {
             evaluate_where_clause(where_clause, row, &table_info)
         })?
     };
@@ -1348,7 +1351,7 @@ pub fn execute_delete<S: StorageEngine + 'static>(
 
     let rows_to_delete: Vec<Vec<Value>> = {
         let storage = engine.storage.read();
-        storage.scan_with_filter(&table_name, |row| {
+        storage.scan_with_filter(&table_name, &|row| {
             evaluate_where_clause(where_clause, row, &table_info)
         })?
     };

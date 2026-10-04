@@ -321,11 +321,11 @@ impl StorageEngine for BinaryTableStorage {
     /// (engine.rs:1618-1627): clone only the matching rows while the
     /// borrow on `data.rows` is still live. `BoxStorageEngine` inherits
     /// this via Deref so no separate override is needed there.
-    fn scan_with_filter<F>(&self, table: &str, filter: F) -> SqlResult<Vec<Record>>
-    where
-        F: Fn(&Record) -> bool,
-        Self: Sized,
-    {
+    fn scan_with_filter(
+        &self,
+        table: &str,
+        filter: &dyn Fn(&Record) -> bool,
+    ) -> SqlResult<Vec<Record>> {
         Ok(self
             .tables
             .get(table)

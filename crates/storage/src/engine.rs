@@ -1023,11 +1023,11 @@ pub trait StorageEngine: Send + Sync {
     /// concrete `FileStorage` / `MemoryStorage` types. The `execute_delete`
     /// call site uses the concrete type via `EngineStorage` (`Storage`),
     /// not the trait object.
-    fn scan_with_filter<F>(&self, table: &str, filter: F) -> SqlResult<Vec<Record>>
-    where
-        F: Fn(&Record) -> bool,
-        Self: Sized,
-    {
+    fn scan_with_filter(
+        &self,
+        table: &str,
+        filter: &dyn Fn(&Record) -> bool,
+    ) -> SqlResult<Vec<Record>> {
         let _ = filter;
         self.scan(table)
     }
@@ -1845,10 +1845,11 @@ impl StorageEngine for MemoryStorage {
     /// V4.0.0 / SOAK-leak fix: iterate the cached `Vec<Record>` by reference
     /// and only clone rows that pass the predicate. Avoids the O(N) full-table
     /// clone that drove ~30 MB/min RSS growth during SOAK.
-    fn scan_with_filter<F>(&self, table: &str, filter: F) -> SqlResult<Vec<Record>>
-    where
-        F: Fn(&Record) -> bool,
-    {
+    fn scan_with_filter(
+        &self,
+        table: &str,
+        filter: &dyn Fn(&Record) -> bool,
+    ) -> SqlResult<Vec<Record>> {
         let key = table.to_lowercase();
         let Some(rows) = self.tables.get(&key) else {
             return Ok(Vec::new());

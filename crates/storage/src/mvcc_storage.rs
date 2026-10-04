@@ -305,11 +305,11 @@ impl<S: StorageEngine + 'static> StorageEngine for MvccStorage<S> {
         Ok(out)
     }
 
-    fn scan_with_filter<F>(&self, table: &str, filter: F) -> SqlResult<Vec<Record>>
-    where
-        F: Fn(&Record) -> bool,
-        Self: Sized,
-    {
+    fn scan_with_filter(
+        &self,
+        table: &str,
+        filter: &dyn Fn(&Record) -> bool,
+    ) -> SqlResult<Vec<Record>> {
         let mvcc = self.mvcc_table(table);
         let snapshot_ts = mvcc.begin_snapshot();
         let pairs = mvcc.scan_visible(snapshot_ts);

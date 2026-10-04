@@ -1524,7 +1524,8 @@ impl<S: StorageEngine + 'static> ExecutionEngine<S> {
             let _ = prev_tx;
         }
         let tx_id = self
-            .transaction_manager.lock()
+            .transaction_manager
+            .lock()
             .begin_transaction(isolation)
             .map_err(|e| {
                 SqlError::ExecutionError(format!("Failed to begin transaction: {:?}", e))
@@ -1575,9 +1576,10 @@ impl<S: StorageEngine + 'static> ExecutionEngine<S> {
         if self.tx_session.lock().current_tx_id.is_none() {
             return Ok(ExecutorResult::empty());
         }
-        let tx_id = self
-            .tx_session.lock().current_tx_id
-            .ok_or_else(|| SqlError::ExecutionError("No transaction in progress".to_string()))?;
+        let tx_id =
+            self.tx_session.lock().current_tx_id.ok_or_else(|| {
+                SqlError::ExecutionError("No transaction in progress".to_string())
+            })?;
         // Phase B Step 3 follow-up #3: prefer the lockfree path so we
         // don't take the global `Arc<RwLock<storage>>` write lock for
         // the COMMIT. Same fallback as `begin_transaction`.
@@ -1645,7 +1647,8 @@ impl<S: StorageEngine + 'static> ExecutionEngine<S> {
         })?;
         match op {
             SavepointOp::Save => self
-                .transaction_manager.lock()
+                .transaction_manager
+                .lock()
                 .savepoint(tx_id, name.to_string())
                 .map_err(|e| {
                     SqlError::ExecutionError(format!("SAVEPOINT {} failed: {}", name, e))
@@ -1660,7 +1663,8 @@ impl<S: StorageEngine + 'static> ExecutionEngine<S> {
                 // storage's interior mutability via `parking_lot::RwLock`
                 // is what makes this sound.
                 let storage = self.storage.clone();
-                self.transaction_manager.lock()
+                self.transaction_manager
+                    .lock()
                     .rollback_to_savepoint_with_undo(tx_id, name, move |rec| {
                         // Re-acquire the write lock per record so we
                         // don't hold it across the whole rollback
@@ -1742,7 +1746,8 @@ impl<S: StorageEngine + 'static> ExecutionEngine<S> {
                     })?;
             }
             SavepointOp::Release => self
-                .transaction_manager.lock()
+                .transaction_manager
+                .lock()
                 .release_savepoint(tx_id, name)
                 .map_err(|e| {
                     SqlError::ExecutionError(format!("RELEASE SAVEPOINT {} failed: {}", name, e))
@@ -1756,9 +1761,10 @@ impl<S: StorageEngine + 'static> ExecutionEngine<S> {
         if self.tx_session.lock().current_tx_id.is_none() {
             return Ok(ExecutorResult::empty());
         }
-        let tx_id = self
-            .tx_session.lock().current_tx_id
-            .ok_or_else(|| SqlError::ExecutionError("No transaction in progress".to_string()))?;
+        let tx_id =
+            self.tx_session.lock().current_tx_id.ok_or_else(|| {
+                SqlError::ExecutionError("No transaction in progress".to_string())
+            })?;
         // Issue #4581 / B-track case 35-36: physically undo the
         // transaction by replaying the per-tx undo log via a closure
         // that calls `storage.delete` / `storage.insert`. This mirrors
@@ -1777,7 +1783,8 @@ impl<S: StorageEngine + 'static> ExecutionEngine<S> {
             let _ = storage_read.rollback_transaction_lockfree();
         }
         let storage = self.storage.clone();
-        self.transaction_manager.lock()
+        self.transaction_manager
+            .lock()
             .rollback_with_undo(tx_id, move |rec| {
                 let mut storage = storage.write();
                 match rec {
@@ -1874,7 +1881,8 @@ impl<S: StorageEngine + 'static> ExecutionEngine<S> {
         }
         if self.tx_session.lock().current_tx_id.is_none() {
             let tx_id = self
-                .transaction_manager.lock()
+                .transaction_manager
+                .lock()
                 .begin_transaction(self.tx_session.lock().default_isolation)
                 .map_err(|e| SqlError::ExecutionError(format!("TM.begin failed: {:?}", e)))?;
             self.tx_session.lock().current_tx_id = Some(tx_id);
