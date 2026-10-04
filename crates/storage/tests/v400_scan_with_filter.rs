@@ -68,7 +68,7 @@ fn file_storage_scan_with_filter_returns_only_matching_rows() {
     populate(&mut s, 100);
 
     let matched: Vec<Vec<SqlValue>> = s
-        .scan_with_filter("t", |row| match row.first() {
+        .scan_with_filter("t", &|row: &Vec<SqlValue>| match row.first() {
             Some(SqlValue::Integer(i)) => i % 7 == 0,
             _ => false,
         })
@@ -91,7 +91,7 @@ fn memory_storage_scan_with_filter_returns_only_matching_rows() {
     populate(&mut s, 100);
 
     let matched: Vec<Vec<SqlValue>> = s
-        .scan_with_filter("t", |row| match row.first() {
+        .scan_with_filter("t", &|row: &Vec<SqlValue>| match row.first() {
             Some(SqlValue::Integer(i)) => *i >= 90,
             _ => false,
         })
@@ -114,7 +114,7 @@ fn file_storage_scan_with_filter_empty_predicate_returns_all() {
     populate(&mut s, 50);
 
     let matched = s
-        .scan_with_filter("t", |_| true)
+        .scan_with_filter("t", &|_| true)
         .expect("scan_with_filter should succeed");
     assert_eq!(matched.len(), 50);
 }
@@ -125,7 +125,7 @@ fn file_storage_scan_with_filter_no_match_returns_empty() {
     populate(&mut s, 10);
 
     let matched = s
-        .scan_with_filter("t", |_| false)
+        .scan_with_filter("t", &|_| false)
         .expect("scan_with_filter should succeed");
     assert!(matched.is_empty());
 }
@@ -134,7 +134,7 @@ fn file_storage_scan_with_filter_no_match_returns_empty() {
 fn file_storage_scan_with_filter_missing_table_returns_empty() {
     let (_t, s) = make_file_storage();
     let matched = s
-        .scan_with_filter("nope", |_| true)
+        .scan_with_filter("nope", &|_| true)
         .expect("scan_with_filter on missing table should return empty");
     assert!(matched.is_empty());
 }
@@ -157,7 +157,7 @@ fn file_storage_scan_with_filter_single_match_returns_one_row() {
     populate(&mut s, 10_000);
 
     let matched = s
-        .scan_with_filter("t", |row| match row.first() {
+        .scan_with_filter("t", &|row: &Vec<SqlValue>| match row.first() {
             Some(SqlValue::Integer(i)) => *i == 4_242,
             _ => false,
         })

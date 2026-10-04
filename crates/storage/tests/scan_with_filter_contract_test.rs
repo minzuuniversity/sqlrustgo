@@ -83,7 +83,9 @@ fn filter_selects_a_strict_subset() {
 
     let even = s
         .scan_with_filter("t", &|r: &Vec<Value>| {
-            r.first().and_then(|x| x.as_integer()).is_some_and(|n| n % 2 == 0)
+            r.first()
+                .and_then(|x| x.as_integer())
+                .is_some_and(|n| n % 2 == 0)
         })
         .unwrap();
 
@@ -103,9 +105,7 @@ fn filter_that_matches_nothing_returns_empty() {
     }
     s.flush_all_buffers().unwrap();
 
-    let none = s
-        .scan_with_filter("t", &|_r: &Vec<Value>| false)
-        .unwrap();
+    let none = s.scan_with_filter("t", &|_r: &Vec<Value>| false).unwrap();
     assert!(
         none.is_empty(),
         "a filter rejecting everything must return nothing, not a full clone"
@@ -127,7 +127,9 @@ fn filter_also_sees_rows_still_in_the_insert_buffer() {
 
     let buffered = s
         .scan_with_filter("t", &|r: &Vec<Value>| {
-            r.first().and_then(|x| x.as_integer()).is_some_and(|n| n < 5)
+            r.first()
+                .and_then(|x| x.as_integer())
+                .is_some_and(|n| n < 5)
         })
         .unwrap();
     assert_eq!(
