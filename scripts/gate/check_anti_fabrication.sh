@@ -263,6 +263,40 @@ for k in ('successful_queries','failed_queries','iterations_requested'):
         log_error "  V312-24: ${tr_manifest} missing — test-runner would fall back to probe mode"
         errors=$((errors + 1))
     fi
+
+    # #4942: the manifest names test binaries that do not exist on a
+    # fresh checkout, so the runner would report every entry as
+    # `Crashed` — technically fail-closed, but the gate could then never
+    # pass without manual setup. Build what the manifest refers to
+    # before dispatching. `cargo test --no-run` links the test binaries
+    # without running them.
+    if [ -s "$tr_manifest" ]; then
+        local tr_pkgs
+        tr_pkgs=$(python3 - "$tr_manifest" <<'PYEOF' 2>/dev/null
+import re, sys
+pkgs = set()
+try:
+    for line in open(sys.argv[1]):
+        m = re.search(r'binary\s*=\s*".*?/([A-Za-z0-9_.-]+)"', line)
+        if m:
+            pkgs.add(m.group(1))
+except OSError:
+    pass
+print(' '.join(sorted(pkgs)))
+PYEOF
+)
+        local missing=0 p
+        for p in $tr_pkgs; do
+            [ -x "${REPO_ROOT}/target/release/$p" ] || missing=$((missing + 1))
+        done
+        if [ "$missing" -gt 0 ]; then
+            log_info "  ${missing} test binary/binaries missing; building (cargo test --no-run --release)..."
+            # shellcheck disable=SC2086
+            ( cd "$REPO_ROOT" && cargo test --no-run --release -p $tr_pkgs ) \
+                2>/tmp/cargo-build-test-bins.log || errors=$((errors + 1))
+        fi
+    fi
+
     if [ -x "${REPO_ROOT}/target/release/test-runner" ] && [ -s "$tr_manifest" ]; then
         # Always re-run. The previous shape guarded on
         # `if [ ! -s .../test-runner-report.json ]`, which meant a report
