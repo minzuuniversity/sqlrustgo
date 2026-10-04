@@ -5,7 +5,6 @@
 
 use std::sync::atomic::{AtomicU64, Ordering};
 use std::sync::Arc;
-use std::time::{Duration, Instant};
 
 pub struct ReplicationLagMonitor {
     master_lsn: Arc<AtomicU64>,
@@ -40,10 +39,29 @@ impl ReplicationLagMonitor {
         self.master_timestamp.store(timestamp_ms, Ordering::SeqCst);
     }
 
-    pub fn report_applied(&self, lsn: u64) {
-        let now = current_timestamp_ms();
+    /// Record that the slave has applied up to `lsn`.
+    ///
+    /// `timestamp_ms` is the time the *corresponding master events were
+    /// produced* — i.e. the slave's applied watermark in master time, not
+    /// "now". Storing the current wall clock here made lag computation
+    /// wrong in the common case: the slave observes a master event some
+    /// time after the master wrote it, so `slave_ts` would be *later*
+    /// than `master_ts` and `current_lag_ms` would saturate to 0,
+    /// permanently reporting "no lag" for a slave that is genuinely
+    /// behind.
+    ///
+    /// Callers that do not track a master-side timestamp pass the
+    /// current time, which reproduces the old (optimistic) behaviour.
+    pub fn report_applied_at(&self, lsn: u64, timestamp_ms: u64) {
         self.slave_applied_lsn.store(lsn, Ordering::SeqCst);
-        self.slave_applied_timestamp.store(now, Ordering::SeqCst);
+        self.slave_applied_timestamp
+            .store(timestamp_ms, Ordering::SeqCst);
+    }
+
+    /// Convenience wrapper around [`Self::report_applied_at`] that stamps
+    /// the applied watermark with the current wall clock.
+    pub fn report_applied(&self, lsn: u64) {
+        self.report_applied_at(lsn, current_timestamp_ms());
     }
 
     pub fn current_lag_ms(&self) -> u64 {
@@ -183,18 +201,54 @@ mod tests {
         assert_eq!(monitor.current_lag_ms(), 0);
     }
 
+    /// `current_lag_ms` returns 0 when either timestamp is unset, so a
+    /// monitor that has never seen a slave report reads as "zero lag" —
+    /// indistinguishable from a perfectly caught-up replica. That is the
+    /// exact condition lag monitoring exists to catch, so it is recorded
+    /// here as current behaviour.
+    ///
+    /// Changing it needs a tri-state (unknown / ok / behind) and a
+    /// decision about what `is_lag_exceeding_threshold` should do when
+    /// unknown; tracked in #4936 rather than fixed blindly.
+    #[test]
+    fn test_uninitialised_monitor_reads_as_zero_lag() {
+        let monitor = ReplicationLagMonitor::new(1);
+        assert_eq!(
+            monitor.current_lag_ms(),
+            0,
+            "documented current behaviour: no slave report yet reads as 0ms"
+        );
+        assert!(
+            !monitor.is_lag_exceeding_threshold(),
+            "so a 1ms threshold does not fire either — the blind spot this              test pins down"
+        );
+    }
+
     #[test]
     fn test_lag_calculation() {
         let monitor = ReplicationLagMonitor::new(1000);
 
-        monitor.update_master_info(100, current_timestamp_ms());
+        // The master is at LSN 100, as of right now.
+        let now = current_timestamp_ms();
+        monitor.update_master_info(100, now);
 
-        std::thread::sleep(Duration::from_millis(10));
+        // The slave has only applied up to LSN 50, and the most recent
+        // event it applied was produced 10ms ago — it is 10ms behind.
+        monitor.report_applied_at(50, now - 10);
 
-        monitor.report_applied(50);
-
-        let lag = monitor.current_lag_ms();
-        assert!(lag >= 0);
+        // The pre-#4936 assertion here was `assert!(lag >= 0)` on a u64,
+        // which is vacuously true and let this test pass even if the
+        // whole calculation returned a constant. With a real bound it
+        // caught a genuine defect: `report_applied` used to stamp the
+        // applied watermark with the *current* wall clock, which is
+        // always >= the master's event time, so
+        // `master_ts.saturating_sub(slave_ts)` was 0 and a genuinely
+        // lagging slave always reported zero lag.
+        assert_eq!(
+            monitor.current_lag_ms(),
+            10,
+            "lag must be the 10ms the slave trailed the master by"
+        );
         assert_eq!(monitor.current_lag_events(), 50);
     }
 
@@ -202,8 +256,11 @@ mod tests {
     fn test_threshold_detection() {
         let monitor = ReplicationLagMonitor::new(100);
 
-        monitor.update_master_info(1000, current_timestamp_ms());
-        monitor.report_applied(0);
+        // Master is at LSN 1000 right now; the slave has applied nothing,
+        // so its watermark is 500ms old — well past the 100ms threshold.
+        let now = current_timestamp_ms();
+        monitor.update_master_info(1000, now);
+        monitor.report_applied_at(0, now - 500);
 
         assert!(monitor.is_lag_exceeding_threshold());
     }

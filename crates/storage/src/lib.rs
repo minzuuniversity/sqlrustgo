@@ -34,11 +34,17 @@ pub mod table_registry;
 
 // Re-export for integration tests that import via sqlrustgo_storage::
 pub use io_delay::{IoDelayConfig, IoFaultInjector};
+pub mod binlog_client;
+pub mod binlog_protocol;
+pub mod binlog_server;
+pub mod failover_manager;
 pub mod lock;
 pub mod page;
 pub mod predicate;
 pub mod read_write_split;
 pub mod recovery_engine;
+pub mod replication;
+pub mod replication_lag;
 pub mod restore_filespace;
 pub mod vtu_guard;
 pub mod vtu_ir;

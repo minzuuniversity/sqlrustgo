@@ -5,20 +5,19 @@
 use crate::binlog_protocol::{
     BinlogEventData, BinlogProtocol, PacketReader, PacketWriter, ReplicationMessage,
 };
-use crate::replication::{BinlogEvent, BinlogEventType, BinlogWriter};
+use crate::replication::{BinlogEvent, BinlogWriter};
 use std::collections::HashMap;
-use std::io::{Read, Write};
 use std::net::{SocketAddr, TcpListener, TcpStream};
 use std::path::PathBuf;
 use std::sync::{Arc, Mutex};
 use std::thread;
 use std::time::Duration;
 
-struct SlaveSubscriber {
-    slave_id: u32,
-    stream: TcpStream,
-    binlog_file: String,
-    binlog_pos: u64,
+pub struct SlaveSubscriber {
+    pub slave_id: u32,
+    pub stream: TcpStream,
+    pub binlog_file: String,
+    pub binlog_pos: u64,
 }
 
 impl Clone for SlaveSubscriber {
