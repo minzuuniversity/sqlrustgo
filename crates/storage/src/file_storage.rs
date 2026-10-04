@@ -3648,6 +3648,45 @@ impl StorageEngine for FileStorage {
             .store(id, std::sync::atomic::Ordering::Release);
     }
 
+    /// #4974: the `&self` counterpart of [`set_current_tx_id`](Self::set_current_tx_id).
+    ///
+    /// **This override is load-bearing for transaction isolation.**
+    /// `StorageEngine`'s default is `fn set_current_tx_id_shared(&self, _id: u64) {}`
+    /// — a *silent no-op*. `WalStorage::begin_transaction_lockfree`
+    /// (the path an explicit `BEGIN` actually takes) propagates the tx id
+    /// down the stack through this method:
+    ///
+    /// ```text
+    /// BEGIN
+    ///   -> WalStorage::begin_transaction_lockfree
+    ///        self.inner().set_current_tx_id_shared(tx)   // MvccStorage
+    ///          -> FileStorage::set_current_tx_id_shared   // <-- was the no-op default
+    /// ```
+    ///
+    /// With the default in place, `FileStorage::current_tx_id()` stayed **0**
+    /// for the whole transaction, and `MvccStorage::insert` does:
+    ///
+    /// ```ignore
+    /// let tx_id = self.inner.current_tx_id();   // 0
+    /// mvcc.put(pk, row, ts, tx_id);
+    /// ```
+    ///
+    /// `VersionedTable::put` builds `committed: tx_id == 0`, so **every
+    /// uncommitted row was marked committed the instant it was written** and
+    /// became visible to every connection immediately — a textbook dirty
+    /// read, reproducible over the real MySQL protocol:
+    ///
+    /// ```text
+    /// PROBE while_A_uncommitted count=1   (expected 0)
+    /// ```
+    ///
+    /// `Ordering::Release` matches `set_current_tx_id` above; the load side
+    /// (`current_tx_id`) uses `Acquire`.
+    fn set_current_tx_id_shared(&self, id: u64) {
+        self.current_tx_id
+            .store(id, std::sync::atomic::Ordering::Release);
+    }
+
     /// Issue #4581 / B-track case 35-36: real BEGIN/COMMIT/ROLLBACK
     /// for the default FileStorage backend. The previous behaviour
     /// inherited the trait default which returned Err, making the
@@ -3702,6 +3741,56 @@ impl StorageEngine for FileStorage {
             self.current_tx_id
                 .store(0, std::sync::atomic::Ordering::Release);
         });
+        Ok(())
+    }
+
+    /// #4974: the `&self` counterpart of [`commit_transaction`](Self::commit_transaction).
+    ///
+    /// **This override is load-bearing.** Without it the trait default
+    /// (`engine.rs:1430`) returns `Err("commit_transaction_lockfree not
+    /// supported")`, and `MvccStorage::commit_transaction_lockfree` gates
+    /// its `promote_pending()` on `r.is_ok()`. The leaf engine's
+    /// *capability* signal would then silently switch off the layer
+    /// above's correctness work — the committed rows never become visible:
+    ///
+    /// ```text
+    /// PROBE while_A_uncommitted count=0   <- isolation correct
+    /// PROBE after_A_commit     count=0   <- commit invisible
+    /// PROBE VERDICT=LOST_WRITE
+    /// ```
+    ///
+    /// Same shape as the `set_current_tx_id_shared` no-op default above —
+    /// two different "unsupported" defaults (one silent `()`, one `Err`),
+    /// both of which quietly disabled a transaction-isolation guarantee.
+    fn commit_transaction_lockfree(&self) -> SqlResult<()> {
+        if self.current_tx_id.load(std::sync::atomic::Ordering::Acquire) == 0 {
+            // COMMIT outside a tx is a silent no-op (MySQL/SQLite semantics).
+            return Ok(());
+        }
+        // `with_write_lock` takes `&Self` since #4951, so the undo log can
+        // be cleared from a `&self` method without laundering a `&mut`.
+        Self::with_write_lock(self, |s| s.tx_undo_log.clear());
+        self.current_tx_id
+            .store(0, std::sync::atomic::Ordering::Release);
+        Ok(())
+    }
+
+    /// #4974: `&self` counterpart of
+    /// [`rollback_transaction`](Self::rollback_transaction). Same
+    /// "capability signal would disable the caller's correctness work"
+    /// argument as `commit_transaction_lockfree` above.
+    fn rollback_transaction_lockfree(&self) -> SqlResult<()> {
+        if self.current_tx_id.load(std::sync::atomic::Ordering::Acquire) == 0 {
+            return Ok(());
+        }
+        Self::with_write_lock(self, |s| {
+            s.tx_undo_log.clear();
+            if let Some(buf) = s.insert_buffer.get_mut(&String::new()) {
+                let _ = buf;
+            }
+        });
+        self.current_tx_id
+            .store(0, std::sync::atomic::Ordering::Release);
         Ok(())
     }
 

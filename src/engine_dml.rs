@@ -422,8 +422,11 @@ pub fn execute_insert<S: StorageEngine + 'static>(
                 // duplicate key either way, and the worst case is two
                 // identical snapshots published.
                 let storage = engine.storage.read();
-                let index: std::collections::HashSet<_> = storage
-                    .scan(&&table_name)?
+                // #4974: the PK cache must not absorb another
+                // transaction's uncommitted keys, or a later commit would
+                // report them as duplicates.
+                let index: std::collections::HashSet<_> = engine
+                    .scan_for_reader_with(&*storage, &table_name)?
                     .iter()
                     .filter_map(|row| pk_key_of(row, &pk_idx))
                     .collect();
@@ -910,8 +913,10 @@ pub fn execute_update<S: StorageEngine + 'static>(
         };
         let sample_row: Vec<sqlrustgo_types::Value> = {
             let storage = engine.storage.read();
-            storage
-                .scan(&table_name)
+            // #4974: the sample row is a read, so it must be this
+            // connection's view.
+            engine
+                .scan_for_reader_with(&*storage, &table_name)
                 .ok()
                 .and_then(|rows| rows.first().cloned())
                 .unwrap_or_else(|| {

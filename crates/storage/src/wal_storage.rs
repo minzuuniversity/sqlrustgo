@@ -566,6 +566,33 @@ impl<S: StorageEngine + 'static, T: WalManager + 'static> StorageEngine for WalS
         self.inner().scan_with_filter(table, filter)
     }
 
+    /// #4974: forward the reader-scoped scan to the inner engine.
+    ///
+    /// Without this override the trait default
+    /// (`fn scan_in(&self, ..) {{ self.scan(table) }}`, engine.rs:1078)
+    /// runs, which **throws `reader_tx` away** and lands on the plain
+    /// `scan` — i.e. the storage-wide "whoever wrote last" transaction.
+    /// For a `WalStorage<MvccStorage<_>>` stack that silently discards the
+    /// whole of #4983's isolation work: every read resolves to the wrong
+    /// snapshot and uncommitted rows become visible.
+    ///
+    /// The engine-side call sites were migrated to `scan_for_reader*` in
+    /// the same PR, which made this forwarding the missing half — with
+    /// the default in place the migration was a no-op.
+    fn scan_in(&self, table: &str, reader_tx: u64) -> SqlResult<Vec<Record>> {
+        self.inner().scan_in(table, reader_tx)
+    }
+
+    /// #4974: same forwarding obligation for the predicate variant.
+    fn scan_with_filter_in(
+        &self,
+        table: &str,
+        filter: &dyn Fn(&Record) -> bool,
+        reader_tx: u64,
+    ) -> SqlResult<Vec<Record>> {
+        self.inner().scan_with_filter_in(table, filter, reader_tx)
+    }
+
     fn flush(&mut self) -> SqlResult<()> {
         self.inner_mut().flush()
     }
@@ -1067,8 +1094,34 @@ impl<S: StorageEngine + 'static, T: WalManager + 'static> StorageEngine for WalS
             entry.lsn = lsn;
             self.wal.lock().append(entry)?;
         }
-        // Clear tx state AFTER appending WAL so concurrent readers see
-        // consistent state.
+        // #4974: let the inner engine commit **before** the tx ids are
+        // cleared.
+        //
+        // `WalStorage` handled the commit entirely on its own here — WAL
+        // append, then zero — and never delegated to the inner engine. For
+        // a `WalStorage<MvccStorage<_>>` stack that meant MVCC never learned
+        // the transaction ended: `MvccStorage::commit_transaction`'s
+        // `promote_pending()` has an `&mut` twin in the lockfree variant, but
+        // the lockfree variant was never invoked, so every version written
+        // inside a transaction stayed `committed == false` forever.
+        //
+        // The ordering is load-bearing: `promote_pending()` identifies the
+        // transaction by reading `inner.current_tx_id()`, so delegating after
+        // `set_current_tx_id_shared(0)` would promote nothing.
+        //
+        // This was masked before the read path was fixed: with every read
+        // resolving against the storage-wide "whoever wrote last" value,
+        // committed and uncommitted rows were indistinguishable.
+        //
+        // Note the deliberate `let _ =` rather than `?`: a leaf engine that
+        // answers the trait's `Err("... not supported")` default is not a
+        // *commit failure* — it simply has no lock-free bookkeeping of its
+        // own. Propagating that error would turn a capability signal into a
+        // failed COMMIT, and `crates/storage/tests/lockfree_forwarding_4912.rs`
+        // (which drives `WalStorage<MemoryStorage>`) catches exactly that.
+        let _ = self.inner().commit_transaction_lockfree();
+        // Clear tx state AFTER appending WAL and committing the inner
+        // engine, so concurrent readers see consistent state.
         self.current_tx_id.store(0, Ordering::Relaxed);
         // BLK-2: `&self` path — see begin_transaction_lockfree.
         // BLK-2: `&self` path — see begin_transaction_lockfree.
@@ -1103,6 +1156,14 @@ impl<S: StorageEngine + 'static, T: WalManager + 'static> StorageEngine for WalS
             self.wal.lock().append(entry)?;
             self.wal.lock().sync()?;
         }
+        // #4974: same delegation omission as the commit path, with the same
+        // ordering constraint. `MvccStorage::rollback_transaction_lockfree`
+        // is what calls `discard_pending()`; reaching only
+        // `discard_all_buffers_shared()` cleared the inner engine's write
+        // buffers but left the MVCC versions pending — invisible to readers,
+        // never released, and counted by `pending_keys` on every later read.
+        // Same `let _ =` rationale as the commit path above.
+        let _ = self.inner().rollback_transaction_lockfree();
         // BLK-2: `&self` path — see begin_transaction_lockfree.
         self.inner().discard_all_buffers_shared();
         self.current_tx_id.store(0, Ordering::Relaxed);
@@ -1151,6 +1212,17 @@ impl<S: StorageEngine + 'static, T: WalManager + 'static> StorageEngine for WalS
 
     fn current_tx_id(&self) -> u64 {
         self.current_tx_id.load(Ordering::Relaxed)
+    }
+
+    /// #4974: the `&self` counterpart.
+    ///
+    /// `begin_transaction_lockfree` sets `self.current_tx_id` directly, so
+    /// WalStorage itself was never the broken link — but it *is* an engine,
+    /// and the trait default is a silent no-op. If anything ever wraps this
+    /// engine and propagates through the `&self` path, the same dirty-read
+    /// bug that `FileStorage` had would come straight back.
+    fn set_current_tx_id_shared(&self, id: u64) {
+        self.current_tx_id.store(id, Ordering::Release);
     }
 
     fn set_current_tx_id(&mut self, id: u64) {
