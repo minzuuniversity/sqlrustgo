@@ -18,31 +18,30 @@ use std::sync::{Arc, Mutex, RwLock};
 // synchronisation of the five fields that previously relied on the outer
 // `Arc<RwLock<FileStorage>>`. See PHASE_C_1_INTERNAL_LOCKING.md §2.
 
-/// File-based storage manager
-pub struct FileStorage {
-    /// Base directory for database files
-    data_dir: PathBuf,
+/// #4951: the mutable state that `write_state` guards.
+///
+/// These four fields used to be plain fields on `FileStorage`, mutated
+/// through the `as_mut_self` escape hatch — an
+/// `unsafe { &mut *(self as *const Self as *mut Self) }` that derived a
+/// `&mut Self` from `&self`. Two connections both reaching `Arc<
+/// RwLock<FileStorage>>::read()` would each mint a `&mut` to the same
+/// `tables` map: simultaneous `&mut` borrows, which is UB regardless of
+/// whether they happen to touch different keys.
+///
+/// Packing them behind one `RwLock` makes the exclusivity structural
+/// instead of a comment. `current_tx_id` is deliberately **not** here —
+/// #4984 made it an `AtomicU64`, which already gives it the concurrency
+/// semantics it needs.
+///
+/// Field names match the old `FileStorage` fields on purpose: the ~20
+/// `with_write_lock` closures that only touch guarded fields compile
+/// unchanged, which keeps this refactor's diff proportional to the risk
+/// it actually carries.
+struct WriteState {
     /// In-memory cache of tables
     tables: HashMap<String, TableData>,
-    /// B+ Tree indexes protected by RwLock for concurrent access.
-    /// Keyed by (table, column) because the on-disk layout is one
-    /// file per (table, column) pair.
-    indexes: RwLock<HashMap<(String, String), BPlusTree>>,
-    /// V312-95 v3 / P3-HINT-001 follow-up: index metadata catalog.
-    /// Without this, the default `list_all_indexes()` returns empty,
-    /// so the executor's `INDEXED BY <name>` validator reports
-    /// "index does not exist" for every CLI batch-mode index.
-    index_metadata: RwLock<HashMap<String, IndexInfo>>,
     /// Insert buffer for batching writes
     insert_buffer: HashMap<String, Vec<Record>>,
-    /// Threshold to trigger buffer flush
-    buffer_threshold: usize,
-    /// Enable insert buffering
-    enable_buffer: bool,
-    /// PR-842: the active transaction id (0 == autocommit). Mirrored from
-    /// the ExecutionEngine via `set_current_tx_id` so `in_transaction()`
-    /// can answer correctly even on the bare FileStorage path.
-    current_tx_id: std::sync::atomic::AtomicU64,
     /// Issue #4581 / B-track case 35-36: per-transaction undo log for
     /// ROLLBACK support. When `current_tx_id != 0`, every UPDATE/DELETE
     /// in the storage layer records the original row here so a
@@ -56,6 +55,52 @@ pub struct FileStorage {
     /// Schema DDL (CREATE/DROP/ALTER) inside a tx is not rolled back —
     /// that requires catalog-level undo, tracked as a separate follow-up.
     tx_undo_log: Vec<UndoOp>,
+    /// V311-07: Dirty table tracker - marks tables modified since last flush
+    dirty_tables: HashSet<String>,
+}
+
+/// File-based storage manager
+pub struct FileStorage {
+    /// Base directory for database files
+    data_dir: PathBuf,
+    /// #4951: guards `WriteState`. Replaces the `as_mut_self` escape
+    /// hatch — see that type's doc comment for why deriving `&mut Self`
+    /// from `&self` was unsound here.
+    ///
+    /// C.1 (pre-#4951) had this as a bare `parking_lot::Mutex<()>` that
+    /// callers entered through `with_write_lock`. Holding the data inside
+    /// the lock rather than beside it means a `&mut` to the guarded
+    /// fields can only exist for the duration of a real guard, so the
+    /// borrow checker enforces what the old code could only assert in a
+    /// comment.
+    write_state: parking_lot::RwLock<WriteState>,
+    /// B+ Tree indexes protected by RwLock for concurrent access.
+    /// Keyed by (table, column) because the on-disk layout is one
+    /// file per (table, column) pair.
+    indexes: RwLock<HashMap<(String, String), BPlusTree>>,
+    /// V312-95 v3 / P3-HINT-001 follow-up: index metadata catalog.
+    /// Without this, the default `list_all_indexes()` returns empty,
+    /// so the executor's `INDEXED BY <name>` validator reports
+    /// "index does not exist" for every CLI batch-mode index.
+    index_metadata: RwLock<HashMap<String, IndexInfo>>,
+    /// Threshold to trigger buffer flush
+    buffer_threshold: usize,
+    /// Enable insert buffering
+    enable_buffer: bool,
+    /// PR-842: the active transaction id (0 == autocommit). Mirrored from
+    /// the ExecutionEngine via `set_current_tx_id` so `in_transaction()`
+    /// can answer correctly even on the bare FileStorage path.
+    ///
+    /// #4984: atomic, and deliberately *not* part of `WriteState` — the
+    /// escape hatch this field used to rely on (`as_mut_self`) is gone,
+    /// and `AtomicU64` is both simpler and correct for a scalar.
+    ///
+    /// Note this is a **storage-level** single value, not per-connection:
+    /// it records "the transaction that most recently set it". Two
+    /// connections still overwrite each other, which is why #4983 has to
+    /// thread a real per-connection `reader_tx` down instead of reading
+    /// this. Removing the unsoundness did not make the field correct.
+    current_tx_id: std::sync::atomic::AtomicU64,
     /// Trigger definitions keyed by trigger name, protected by RwLock for concurrent access
     triggers: RwLock<HashMap<String, TriggerInfo>>,
     /// V312-95 v2 / Issue #4814: view definitions keyed by view name,
@@ -66,19 +111,11 @@ pub struct FileStorage {
     /// Gap lock manager for REPEATABLE-READ isolation (F-16 Gap Locking)
     #[allow(dead_code)]
     gap_lock_manager: Option<std::sync::Arc<crate::lock::GapLockManager>>,
-    /// V311-07: Dirty table tracker - marks tables modified since last flush
-    dirty_tables: HashSet<String>,
     /// V400-PERF-DELTA: per-table count of rows that have been persisted
     /// to disk (either in the base JSON or in the .delta file). Used
     /// by `save_table` to decide whether to write anything, and to
     /// limit incremental writes to only the new rows.
     last_saved_row_count: Mutex<HashMap<String, usize>>,
-    /// C.1: serialises all writes to {tables, insert_buffer, dirty_tables,
-    /// current_tx_id, tx_undo_log}. Reads of these fields are lock-free
-    /// when no writer holds the lock (every read site clones the
-    /// relevant `Record` slice before returning, so torn reads are
-    /// impossible). See PHASE_C_1_INTERNAL_LOCKING.md §2.
-    write_lock: parking_lot::Mutex<()>,
 }
 
 /// Issue #4581 / B-track case 35-36: per-transaction undo log entry.
@@ -122,10 +159,14 @@ impl FileStorage {
 
         let storage = Self {
             data_dir,
-            tables: HashMap::new(),
+            write_state: parking_lot::RwLock::new(WriteState {
+                tables: HashMap::new(),
+                insert_buffer: HashMap::new(),
+                tx_undo_log: Vec::new(),
+                dirty_tables: HashSet::new(),
+            }),
             indexes: RwLock::new(HashMap::new()),
             index_metadata: RwLock::new(HashMap::new()),
-            insert_buffer: HashMap::new(),
             // v3.12.0 #4020 follow-up: raise default buffer flush threshold from
             // 100 to 10_000. Each flush goes through insert_direct, which clones
             // the full TableData and serializes it via serde_json::to_string_pretty
@@ -138,13 +179,10 @@ impl FileStorage {
             buffer_threshold: 10_000,
             enable_buffer: true,
             current_tx_id: std::sync::atomic::AtomicU64::new(0),
-            tx_undo_log: Vec::new(),
             triggers: RwLock::new(HashMap::new()),
             gap_lock_manager: None,
-            dirty_tables: HashSet::new(),
             last_saved_row_count: Mutex::new(HashMap::new()),
             views: RwLock::new(HashMap::new()),
-            write_lock: parking_lot::Mutex::new(()),
         };
 
         // Load existing tables
@@ -171,20 +209,21 @@ impl FileStorage {
 
         let storage = Self {
             data_dir,
-            tables: HashMap::new(),
+            write_state: parking_lot::RwLock::new(WriteState {
+                tables: HashMap::new(),
+                insert_buffer: HashMap::new(),
+                tx_undo_log: Vec::new(),
+                dirty_tables: HashSet::new(),
+            }),
             indexes: RwLock::new(HashMap::new()),
             index_metadata: RwLock::new(HashMap::new()),
-            insert_buffer: HashMap::new(),
             buffer_threshold,
             enable_buffer,
             current_tx_id: std::sync::atomic::AtomicU64::new(0),
-            tx_undo_log: Vec::new(),
             triggers: RwLock::new(HashMap::new()),
             gap_lock_manager: None,
-            dirty_tables: HashSet::new(),
             last_saved_row_count: Mutex::new(HashMap::new()),
             views: RwLock::new(HashMap::new()),
-            write_lock: parking_lot::Mutex::new(()),
         };
 
         storage.load_all_tables()?;
@@ -204,22 +243,23 @@ impl FileStorage {
 
         let storage = Self {
             data_dir,
-            tables: HashMap::new(),
+            write_state: parking_lot::RwLock::new(WriteState {
+                tables: HashMap::new(),
+                insert_buffer: HashMap::new(),
+                tx_undo_log: Vec::new(),
+                dirty_tables: HashSet::new(),
+            }),
             indexes: RwLock::new(HashMap::new()),
             index_metadata: RwLock::new(HashMap::new()),
-            insert_buffer: HashMap::new(),
             // v3.12.0 #4020 follow-up: see FileStorage::new — default raised to
             // 10_000 to amortise O(N) insert_direct over a much larger batch.
             buffer_threshold: 10_000,
             enable_buffer: true, // Transaction boundary handled by buffer flush on commit
             current_tx_id: std::sync::atomic::AtomicU64::new(0),
-            tx_undo_log: Vec::new(),
             triggers: RwLock::new(HashMap::new()),
             gap_lock_manager: None,
-            dirty_tables: HashSet::new(),
             last_saved_row_count: Mutex::new(HashMap::new()),
             views: RwLock::new(HashMap::new()),
-            write_lock: parking_lot::Mutex::new(()),
         };
 
         // Load existing tables
@@ -256,22 +296,23 @@ impl FileStorage {
 
         let storage = Self {
             data_dir,
-            tables: HashMap::new(),
+            write_state: parking_lot::RwLock::new(WriteState {
+                tables: HashMap::new(),
+                insert_buffer: HashMap::new(),
+                tx_undo_log: Vec::new(),
+                dirty_tables: HashSet::new(),
+            }),
             indexes: RwLock::new(HashMap::new()),
             index_metadata: RwLock::new(HashMap::new()),
-            insert_buffer: HashMap::new(),
             // v3.12.0 #4020 follow-up: see FileStorage::new — default raised to
             // 10_000 to amortise O(N) insert_direct over a much larger batch.
             buffer_threshold: 10_000,
             enable_buffer: true,
             current_tx_id: std::sync::atomic::AtomicU64::new(0),
-            tx_undo_log: Vec::new(),
             triggers: RwLock::new(HashMap::new()),
             gap_lock_manager: Some(lock_manager),
-            dirty_tables: HashSet::new(),
             last_saved_row_count: Mutex::new(HashMap::new()),
             views: RwLock::new(HashMap::new()),
-            write_lock: parking_lot::Mutex::new(()),
         };
 
         storage.load_all_tables()?;
@@ -281,135 +322,36 @@ impl FileStorage {
         Ok(storage)
     }
 
-    /// C.1: acquire `write_lock`, then run `f` while holding the lock
-    /// for the entire duration. The body of `f` mutates the protected
-    /// fields {tables, insert_buffer, dirty_tables, current_tx_id,
-    /// tx_undo_log} without holding any other borrow into `self`.
+    /// #4951: run `f` with exclusive access to the guarded state.
     ///
-    /// # Why this dance
-    ///
-    /// The naive
-    ///
-    /// ```ignore
-    /// let _g = me.write_lock.lock();
-    /// f(me);   // ERROR: cannot borrow `me` as mutable
-    /// ```
-    ///
-    /// is rejected because `MutexGuard::drop` borrows `me.write_lock`
-    /// (to release the atomic state), and that borrow extends to the
-    /// end of scope — overlapping with the `&mut me` reborrow inside
-    /// `f`. parking_lot does not provide a `MutexGuard::leak` for
-    /// `Mutex<()>` (its `leak` returns `&mut T`, useless for `()`), so
-    /// we move the guard onto the heap with `Box::new` and forget the
-    /// `Box`. Heap allocation has no borrow into `me`, so the borrow
-    /// checker is happy to see `f(me)` run with no live `&me` borrows.
-    /// After `f` returns we reconstruct the `Box` and drop it, which
-    /// runs the guard's `Drop` and releases the lock.
-    ///
-    /// # Soundness
-    ///
-    /// 1. The lock primitive is `parking_lot::Mutex<()>`. The guard's
-    ///    `Drop` is the only thing that touches the atomic state.
-    /// 2. We own the `Box<MutexGuard>` exclusively via the raw pointer;
-    ///    no other code can hold a borrow into the same Mutex because
-    ///    the caller guarantees exclusive `&mut me` for this function.
-    /// 3. The lock is held continuously from `me.write_lock.lock()`
-    ///    until the final `Box::from_raw(...).drop()` — there is no
-    ///    window where the lock is released and re-acquired.
-    fn with_write_lock<R>(me: &mut Self, f: impl FnOnce(&mut Self) -> R) -> R {
-        // See the long doc-comment above for the rationale.
-        //
-        // Implementation: park the guard on the heap, then erase its
-        // type to `*mut ()` via pointer cast. The `*mut ()` has no
-        // lifetime annotation, so the borrow checker treats it as not
-        // borrowing `me` at all. We re-cast back to the boxed type
-        // after `f` returns so the guard's Drop runs and releases
-        // the lock.
-        //
-        // SAFETY: `parking_lot::MutexGuard<()>` is `Send + Sync` (the
-        // payload is unit, which is always Send/Sync), so erasing
-        // the type to `*mut ()` and re-casting is sound as long as we
-        // hand the raw pointer back to a Box of the exact same type.
-        // This is the same trick `parking_lot` uses internally in
-        // `MutexGuard::leak` / `lock_api::MutexGuard::sref`.
-        let boxed_guard = Box::new(me.write_lock.lock());
-        let raw_typed: *mut parking_lot::MutexGuard<()> = Box::into_raw(boxed_guard);
-        // SAFETY: `raw_typed` was just produced by `Box::into_raw` and
-        // the allocation is still live. Cast to `*mut ()` to erase
-        // the lifetime annotation; we cast back below.
-        let raw_erased: *mut () = raw_typed as *mut ();
-        let result = f(me);
-        // SAFETY: re-cast and re-materialise the Box to run the
-        // guard's Drop and release the lock.
-        let raw_typed: *mut parking_lot::MutexGuard<()> =
-            raw_erased as *mut parking_lot::MutexGuard<()>;
-        let guard_box = unsafe { Box::from_raw(raw_typed) };
-        drop(guard_box);
-        result
+    /// Takes `&self`, not `&mut self`. That is the whole point: the
+    /// predecessor took `&mut Self` and every caller had to manufacture
+    /// one from a shared reference via `as_mut_self`, an
+    /// `unsafe { &mut *(self as *const Self as *mut Self) }` that was
+    /// UB the moment two connections held the storage's read guard at
+    /// once. Here the `&mut WriteState` comes from a real
+    /// `RwLockWriteGuard`, so its lifetime is tied to the guard and the
+    /// aliasing invariant holds by construction.
+    fn with_write_lock<R>(me: &Self, f: impl FnOnce(&mut WriteState) -> R) -> R {
+        let mut guard = me.write_state.write();
+        f(&mut guard)
     }
 
-    // ─────────────────────────────────────────────────────────────────────
-    // From here down, every inherent method takes `&self` instead of
-    // `&mut self`. Methods that mutate protected fields wrap their body
-    // in `self.as_mut_self().with_write_lock(|s| { ... })`. Methods that
-    // only touch already-internal-RwLock fields (indexes/index_metadata/
-    // triggers/views) or immutable fields (data_dir/buffer_threshold) are
-    // just `&self` with no lock dance.
-    //
-    // The bridge `&self → &mut self` goes through `as_mut_self` below,
-    // which carries a function-level `#[allow(invalid_reference_casting)]`
-    // because Rust 1.83+ enabled that lint as deny-by-default. The lint
-    // is correct in the abstract (a bare `&T → &mut T` cast is unsound),
-    // but here we maintain the aliasing invariant manually:
-    //   - The caller has exclusive `&self` (no other thread can hold
-    //     a `&mut` borrow because there is no outer RwLock on
-    //     FileStorage — callers come through `Arc<RwLock<FileStorage>>`
-    //     at the server layer, where the read guard prevents concurrent
-    //     `&mut` borrows).
-    //   - `with_write_lock` re-acquires the lock and re-validates the
-    //     invariant before any write touches a protected field.
-    // Once Phase C.2 removes the outer RwLock, this `#[allow]` will be
-    // deleted and replaced with proper `UnsafeCell`-based fields.
-    // ─────────────────────────────────────────────────────────────────────
-
-    /// C.1: the unsafe bridge that lets an inherent `&self` method
-    /// obtain `&mut self` long enough to call `with_write_lock`.
+    /// #4951: run `f` with shared access to the guarded state.
     ///
-    /// # Why this is safe in this codebase
-    /// The inherent `&self` methods that need to mutate protected fields
-    /// are reached via two paths:
-    ///   (a) from `Self::new*` constructors (`storage.load_all_tables()`)
-    ///       — the only `&self` live is the local `storage` binding,
-    ///       and we are in single-threaded init code.
-    ///   (b) from external callers that hold a `&FileStorage` borrowed
-    ///       via `Arc<RwLock<FileStorage>>::read()` — the read guard
-    ///       prevents any other thread from holding a `&mut` borrow
-    ///       until the guard is dropped.
-    /// Both paths uphold the aliasing invariant `&mut Self ⟹ no other
-    /// live reference into Self`.
-    ///
-    /// # Why the `#[allow(invalid_reference_casting)]`
-    /// Rust 1.83+ enabled `invalid_reference_casting` as deny-by-default.
-    /// The lint forbids `&T → &mut T` casts even through raw pointers.
-    /// We disable it for this one helper because the aliasing invariant
-    /// is upheld manually (see above). This is the same kind of localised
-    /// `#[allow]` that `parking_lot`, `once_cell`, and the standard
-    /// library use internally for their `&self → &mut self` bridges.
-    ///
-    /// # When this is removed
-    /// Phase C.2 will replace `Arc<RwLock<FileStorage>>` with
-    /// `Arc<FileStorage>` at the server layer. After C.2, the outer
-    /// RwLock is gone and these inherent methods need a different
-    /// design (likely direct `UnsafeCell<...>` fields). This helper
-    /// is then deleted.
-    #[allow(invalid_reference_casting, clippy::mut_from_ref)]
-    fn as_mut_self(&self) -> &mut Self {
-        // SAFETY: see method doc-comment. The two call-site
-        // categories enumerated there uphold the aliasing invariant.
-        // This is the same pattern `parking_lot::Mutex<T>::lock()`
-        // uses internally to produce a `MutexGuard<T>` from a
-        // `&Mutex<T>`.
-        unsafe { &mut *(self as *const Self as *mut Self) }
+    /// Prefer this over `with_write_lock` for read-only lookups: it
+    /// lets concurrent readers proceed in parallel. Note this is a real
+    /// lock, unlike the pre-#4951 code, which read `self.tables` from
+    /// `&self` methods with no synchronisation at all. An unsynchronised
+    /// `HashMap` read racing a concurrent write is a data race
+    /// regardless of whether the reader goes on to clone what it read —
+    /// the race is on obtaining the reference, not on using it. The old
+    /// comment claiming otherwise ("every read site clones the relevant
+    /// `Record` slice before returning, so torn reads are impossible")
+    /// described an invariant the code did not provide.
+    fn with_read_lock<R>(&self, f: impl FnOnce(&WriteState) -> R) -> R {
+        let guard = self.write_state.read();
+        f(&guard)
     }
 
     /// Get the path for a table file
@@ -579,7 +521,7 @@ impl FileStorage {
                 }
             }
         }
-        Self::with_write_lock(self.as_mut_self(), |s| {
+        Self::with_write_lock(self, |s| {
             for (name, data) in rows_to_insert {
                 s.tables.insert(name, data);
             }
@@ -718,7 +660,17 @@ impl FileStorage {
     /// (b) the delta exceeds ~10 MB, or (c) `compact_table` is
     /// called. This makes the common "append a few rows" path O(new
     /// rows) instead of O(total rows).
-    fn save_table(&self, table_name: &str, table_data: &TableData) -> std::io::Result<()> {
+    /// #4951: takes `st` for signature symmetry with `save_table_window`
+    /// and because it is called from inside `with_write_lock` closures —
+    /// see that method for why it must not re-acquire the lock itself.
+    /// It does not read `st` today: every caller hands it an explicit
+    /// `table_data`.
+    fn save_table(
+        &self,
+        _st: &WriteState,
+        table_name: &str,
+        table_data: &TableData,
+    ) -> std::io::Result<()> {
         let total_rows = table_data.rows.len();
         let last_saved = *self
             .last_saved_row_count
@@ -770,10 +722,16 @@ impl FileStorage {
     /// bookkeeping would be computed against the window length.
     fn save_table_window(
         &self,
+        st: &WriteState,
         table_name: &str,
         window: &TableData,
         total_rows: usize,
     ) -> std::io::Result<()> {
+        // #4951: `st` is the already-held guard state. This method must
+        // NOT re-acquire `write_state` — it is always called from inside a
+        // `with_write_lock` closure, and `parking_lot::RwLock` is not
+        // reentrant, so re-locking here would deadlock. Taking the
+        // state as a parameter makes that obligation explicit.
         let last_saved = *self
             .last_saved_row_count
             .lock()
@@ -785,7 +743,7 @@ impl FileStorage {
             // Cold start, shrink, or a DELETE/UPDATE path: the caller
             // handed us a window, not a snapshot, so re-derive the
             // full table under the lock. Rare relative to inserts.
-            if let Some(data) = self.tables.get(table_name) {
+            if let Some(data) = st.tables.get(table_name) {
                 return self.save_table_full(table_name, data);
             }
             return Ok(());
@@ -803,7 +761,7 @@ impl FileStorage {
         let delta_path = self.delta_path(table_name);
         if let Ok(meta) = std::fs::metadata(&delta_path) {
             if meta.len() > 10 * 1024 * 1024 {
-                if let Some(data) = self.tables.get(table_name) {
+                if let Some(data) = st.tables.get(table_name) {
                     let _ = self.save_table_full(table_name, data);
                 }
             }
@@ -895,40 +853,54 @@ impl FileStorage {
         self.data_dir.join(format!("{}.delta", table_name))
     }
 
-    /// Get a table by name
-    pub fn get_table(&self, name: &str) -> Option<&TableData> {
-        self.tables.get(name)
+    /// Get a table by name.
+    ///
+    /// #4951: this can no longer hand out a `&TableData` borrowed from
+    /// `self` — the tables now live behind a `RwLock` guard, and a
+    /// reference into the guard cannot outlive it. Callers that only
+    /// read should prefer `with_table`, which runs a closure inside the
+    /// guard and so pays no clone.
+    ///
+    /// This clone-returning form is kept for the callers that genuinely
+    /// want an owned `TableData` (tests, `examples/`, and the one
+    /// production site in `crates/server/src/openclaw_endpoints.rs`).
+    /// **Prefer `with_table` in new code** — a whole-table clone on the
+    /// read path is a real cost, not a convenience.
+    pub fn get_table(&self, name: &str) -> Option<TableData> {
+        self.with_table(name, |t| t.cloned())
+    }
+
+    /// #4951: run `f` with a borrowed view of `name`'s table, if present.
+    ///
+    /// The guard is held for the duration of `f`, so the `&TableData`
+    /// handed to it is valid exactly as long as `f` runs. This is the
+    /// cheap way to read a table — no clone.
+    pub fn with_table<R>(&self, name: &str, f: impl FnOnce(Option<&TableData>) -> R) -> R {
+        self.with_read_lock(|st| f(st.tables.get(name)))
     }
 
     /// Get a mutable table by name.
     ///
-    /// C.1: still takes `&mut self` because the returned `&mut TableData`
-    /// borrows from `self` for the caller's use; the closure-based
-    /// bridge through `with_write_lock` returns a reference that is
-    /// tied to the lock guard's lifetime rather than `self`'s
-    /// lifetime, which causes a borrow-checker error. The
-    /// `Arc<RwLock<FileStorage>>` outer guard pattern that callers
-    /// use at the server layer already serialises the upgrade to a
-    /// write guard, so the surface behaviour is unchanged. The
-    /// inherent `&self` methods below wrap mutations internally via
-    /// `with_write_lock` instead of going through this getter.
+    /// #4951: still `&mut self`, so `RwLock::get_mut` hands out the
+    /// `&mut WriteState` with no lock overhead — the caller already has
+    /// exclusive ownership of the whole storage.
     pub fn get_table_mut(&mut self, name: &str) -> Option<&mut TableData> {
-        self.tables.get_mut(name)
+        self.write_state.get_mut().tables.get_mut(name)
     }
 
     /// Insert a new table
     pub fn insert_table(&self, name: String, table_data: TableData) -> std::io::Result<()> {
-        Self::with_write_lock(self.as_mut_self(), |s| {
+        Self::with_write_lock(self, |s| {
             s.tables.insert(name.clone(), table_data.clone());
-            s.save_table(&name, &table_data)
+            self.save_table(s, &name, &table_data)
         })
     }
 
     /// Drop (delete) a table
     pub fn drop_table(&self, name: &str) -> std::io::Result<()> {
-        Self::with_write_lock(self.as_mut_self(), |s| {
+        Self::with_write_lock(self, |s| {
             s.tables.remove(name);
-            let path = s.table_path(name);
+            let path = self.table_path(name);
             if path.exists() {
                 std::fs::remove_file(path)?;
             }
@@ -938,7 +910,7 @@ impl FileStorage {
 
     /// Get all table names
     pub fn table_names(&self) -> Vec<String> {
-        self.tables.keys().cloned().collect()
+        self.with_read_lock(|st| st.tables.keys().cloned().collect())
     }
 
     /// Force save all dirty tables to disk
@@ -955,7 +927,11 @@ impl FileStorage {
         // Lock released. `save_table_window` / `save_table_full` only
         // touch `data_dir`, `last_saved_row_count` and the filesystem.
         for (name, window, total) in &pending {
-            self.save_table_window(name, window, *total)?;
+            // #4951: `save_table_window` needs `&WriteState` but must not
+            // re-acquire the lock itself (non-reentrant). Hold the read
+            // guard across the call. It only reads `tables` to decide
+            // whether a full re-write is needed.
+            self.with_read_lock(|st| self.save_table_window(st, name, window, *total))?;
         }
         Ok(())
     }
@@ -988,13 +964,13 @@ impl FileStorage {
     /// `save_table_window` re-derives the full table itself on the rare
     /// cold-start / shrink / compaction branches.
     fn drain_dirty_windowed(&self) -> Vec<(String, TableData, usize)> {
-        Self::with_write_lock(self.as_mut_self(), |s| {
+        Self::with_write_lock(self, |s| {
             std::mem::take(&mut s.dirty_tables)
                 .into_iter()
                 .filter_map(|name| {
                     let data = s.tables.get(&name)?;
                     let total = data.rows.len();
-                    let last_saved = *s
+                    let last_saved = *self
                         .last_saved_row_count
                         .lock()
                         .unwrap()
@@ -1027,7 +1003,7 @@ impl FileStorage {
 
     /// Check if a table exists
     pub fn contains_table(&self, name: &str) -> bool {
-        self.tables.contains_key(name)
+        self.with_read_lock(|st| st.tables.contains_key(name))
     }
 
     /// Create a new database directory under data_dir.
@@ -1060,11 +1036,10 @@ impl FileStorage {
 
     /// Save a table to disk (call after modifications)
     pub fn persist_table(&self, name: &str) -> std::io::Result<()> {
-        if let Some(table_data) = self.tables.get(name) {
-            self.save_table(name, table_data)
-        } else {
-            Ok(())
-        }
+        self.with_read_lock(|st| match st.tables.get(name) {
+            Some(table_data) => self.save_table(st, name, table_data),
+            None => Ok(()),
+        })
     }
 
     // ==================== Index Methods ====================
@@ -1093,7 +1068,11 @@ impl FileStorage {
         column_name: &str,
         column_index: usize,
     ) -> std::io::Result<()> {
+        // #4951: `&mut self` — get_mut needs no lock. The index is built
+        // entirely from the returned borrow and never outlives it.
         let table = self
+            .write_state
+            .get_mut()
             .tables
             .get(table_name)
             .ok_or_else(|| std::io::Error::new(std::io::ErrorKind::NotFound, "Table not found"))?;
@@ -1126,7 +1105,7 @@ impl FileStorage {
     pub fn rebuild_pk_indexes(&self) -> std::io::Result<()> {
         // Snapshot table info first (clone columns)
         let tables_snapshot: Vec<(String, Vec<ColumnDefinition>)> =
-            Self::with_write_lock(self.as_mut_self(), |s| {
+            Self::with_write_lock(self, |s| {
                 s.tables
                     .iter()
                     .map(|(name, t)| (name.clone(), t.info.columns.clone()))
@@ -1140,9 +1119,8 @@ impl FileStorage {
             let pk_col_idx = columns.iter().position(|c| c.name == pk_col_name).unwrap();
 
             // Build B+Tree from current rows
-            let snapshot = Self::with_write_lock(self.as_mut_self(), |s| {
-                s.tables.get(&table_name).map(|t| t.rows.clone())
-            });
+            let snapshot =
+                Self::with_write_lock(self, |s| s.tables.get(&table_name).map(|t| t.rows.clone()));
             let Some(rows) = snapshot else { continue };
             let mut index = crate::bplus_tree::BPlusTree::new();
             for (row_id, row) in rows.iter().enumerate() {
@@ -2062,8 +2040,11 @@ mod tests {
             storage.insert("test_table", vec![record]).unwrap();
         }
 
-        assert!(storage.insert_buffer.contains_key("test_table"));
-        assert_eq!(storage.insert_buffer.get("test_table").unwrap().len(), 5);
+        assert!(storage.with_read_lock(|st| st.insert_buffer.contains_key("test_table")));
+        assert_eq!(
+            storage.with_read_lock(|st| st.insert_buffer.get("test_table").map(|v| v.len())),
+            Some(5)
+        );
 
         let _ = remove_dir_all(&temp_dir);
     }
@@ -2102,8 +2083,11 @@ mod tests {
             storage.insert("test_table", vec![record]).unwrap();
         }
 
-        assert!(storage.insert_buffer.contains_key("test_table"));
-        assert_eq!(storage.insert_buffer.get("test_table").unwrap().len(), 2);
+        assert!(storage.with_read_lock(|st| st.insert_buffer.contains_key("test_table")));
+        assert_eq!(
+            storage.with_read_lock(|st| st.insert_buffer.get("test_table").map(|v| v.len())),
+            Some(2)
+        );
 
         let _ = remove_dir_all(&temp_dir);
     }
@@ -2142,11 +2126,11 @@ mod tests {
             storage.insert("test_table", vec![record]).unwrap();
         }
 
-        assert!(storage.insert_buffer.contains_key("test_table"));
+        assert!(storage.with_read_lock(|st| st.insert_buffer.contains_key("test_table")));
 
         storage.flush_all_buffers().unwrap();
 
-        assert!(!storage.insert_buffer.contains_key("test_table"));
+        assert!(!storage.with_read_lock(|st| st.insert_buffer.contains_key("test_table")));
 
         let table = storage.get_table("test_table").unwrap();
         assert_eq!(table.rows.len(), 5);
@@ -3342,9 +3326,8 @@ mod tests {
 
 impl FileStorage {
     fn insert_direct(&self, table: &str, records: Vec<Record>) -> SqlResult<()> {
-        let snap: Option<(Vec<ColumnDefinition>, u32, usize)> = Self::with_write_lock(
-            self.as_mut_self(),
-            |s| -> Option<(Vec<ColumnDefinition>, u32, usize)> {
+        let snap: Option<(Vec<ColumnDefinition>, u32, usize)> =
+            Self::with_write_lock(self, |s| -> Option<(Vec<ColumnDefinition>, u32, usize)> {
                 #[allow(unused_assignments)]
                 // start_row_id is set inside the if-let branch and consumed via snap
                 let mut start_row_id: u32 = 0;
@@ -3363,13 +3346,15 @@ impl FileStorage {
                     // disk, O(row_count) instead of O(table_size).
                     let total_rows = data.rows.len();
                     let table_data = data.snapshot_from(start_row_id as usize);
-                    if s.save_table_window(table, &table_data, total_rows).is_ok() {
+                    if self
+                        .save_table_window(s, table, &table_data, total_rows)
+                        .is_ok()
+                    {
                         result = Some((cols, start_row_id, row_count));
                     }
                 }
                 result
-            },
-        );
+            });
         if let Some((columns, start_row_id, _row_count)) = snap {
             // V400-PERF-FIX: pass &records directly so the index
             // helper reads PK values from the input rather than
@@ -3381,14 +3366,13 @@ impl FileStorage {
     }
 
     fn insert_buffered(&self, table: &str, records: Vec<Record>) -> SqlResult<()> {
-        let snap: Option<(usize, usize, Vec<ColumnDefinition>)> = Self::with_write_lock(
-            self.as_mut_self(),
-            |s| -> Option<(usize, usize, Vec<ColumnDefinition>)> {
+        let snap: Option<(usize, usize, Vec<ColumnDefinition>)> =
+            Self::with_write_lock(self, |s| -> Option<(usize, usize, Vec<ColumnDefinition>)> {
                 let buffered = s.insert_buffer.entry(table.to_string()).or_default();
                 buffered.extend(records.iter().cloned());
 
                 let mut result: Option<(usize, usize, Vec<ColumnDefinition>)> = None;
-                if buffered.len() >= s.buffer_threshold {
+                if buffered.len() >= self.buffer_threshold {
                     if let Some(records) = s.insert_buffer.remove(table) {
                         let row_count = records.len();
                         if let Some(ref mut data) = s.tables.get_mut(table) {
@@ -3399,15 +3383,17 @@ impl FileStorage {
                             // snapshot as `insert_direct`.
                             let total_rows = data.rows.len();
                             let table_data = data.snapshot_from(start_row_id);
-                            if s.save_table_window(table, &table_data, total_rows).is_ok() {
+                            if self
+                                .save_table_window(s, table, &table_data, total_rows)
+                                .is_ok()
+                            {
                                 result = Some((start_row_id, row_count, cols));
                             }
                         }
                     }
                 }
                 result
-            },
-        );
+            });
         if let Some((start_row_id, _row_count, columns)) = snap {
             // V400-PERF-FIX: pass &records directly. The closure
             // returns the columns/start_row_id but the records
@@ -3425,9 +3411,8 @@ impl FileStorage {
     }
 
     fn flush_buffer(&self, table: &str) -> SqlResult<()> {
-        let snap: Option<(usize, usize, Vec<ColumnDefinition>)> = Self::with_write_lock(
-            self.as_mut_self(),
-            |s| -> Option<(usize, usize, Vec<ColumnDefinition>)> {
+        let snap: Option<(usize, usize, Vec<ColumnDefinition>)> =
+            Self::with_write_lock(self, |s| -> Option<(usize, usize, Vec<ColumnDefinition>)> {
                 let mut result: Option<(usize, usize, Vec<ColumnDefinition>)> = None;
                 if let Some(records) = s.insert_buffer.remove(table) {
                     let row_count = records.len();
@@ -3439,14 +3424,16 @@ impl FileStorage {
                         // snapshot as `insert_direct`.
                         let total_rows = data.rows.len();
                         let table_data = data.snapshot_from(start_row_id);
-                        if s.save_table_window(table, &table_data, total_rows).is_ok() {
+                        if self
+                            .save_table_window(s, table, &table_data, total_rows)
+                            .is_ok()
+                        {
                             result = Some((start_row_id, row_count, cols));
                         }
                     }
                 }
                 result
-            },
-        );
+            });
         if let Some((start_row_id, row_count, columns)) = snap {
             // V400-PERF-FIX: flush_buffer has no caller-side records
             // (they were consumed by the closure via
@@ -3513,7 +3500,7 @@ impl FileStorage {
         let pk_col_name = columns[pk_idx].name.clone();
         // Snapshot only the [start_row_id, start_row_id+count) window
         // so we don't pay O(table_size) for an O(count) operation.
-        let rows_snapshot = Self::with_write_lock(self.as_mut_self(), |s| {
+        let rows_snapshot = Self::with_write_lock(self, |s| {
             s.tables.get(table).map(|t| {
                 let end = (start_row_id + count).min(t.rows.len());
                 if start_row_id < t.rows.len() {
@@ -3551,9 +3538,8 @@ impl FileStorage {
         // Snapshot the table list under the lock; then drop the guard
         // before re-acquiring per table (avoids holding the lock for
         // the duration of all table saves).
-        let tables: Vec<String> = Self::with_write_lock(self.as_mut_self(), |s| {
-            s.insert_buffer.keys().cloned().collect()
-        });
+        let tables: Vec<String> =
+            Self::with_write_lock(self, |s| s.insert_buffer.keys().cloned().collect());
         for table in tables {
             self.flush_buffer(&table)?;
         }
@@ -3567,7 +3553,7 @@ impl FileStorage {
     /// `inner.flush()`, which pushed the buffer to `data.rows` and then
     /// persisted the table to disk — making rolled-back rows visible.
     pub fn discard_all_buffers(&self) {
-        Self::with_write_lock(self.as_mut_self(), |s| {
+        Self::with_write_lock(self, |s| {
             s.insert_buffer.clear();
             // No dirty_tables entry to remove — the buffer was never
             // persisted, so the dirty marker for the rolled-back tx was
@@ -3591,19 +3577,16 @@ impl FileStorage {
         let Some(table_data) = self.get_table(table) else {
             return vec![Vec::new()];
         };
-        let total_rows =
-            table_data.rows.len() + self.insert_buffer.get(table).map(|b| b.len()).unwrap_or(0);
+        let buffered_rows: Vec<Record> =
+            self.with_read_lock(|st| st.insert_buffer.get(table).cloned().unwrap_or_default());
+        let total_rows = table_data.rows.len() + buffered_rows.len();
         if total_rows < PARALLEL_SCAN_MIN_ROWS || n_partitions <= 1 {
             let mut all: Vec<Record> = table_data.rows.clone();
-            if let Some(buffered) = self.insert_buffer.get(table) {
-                all.extend(buffered.iter().cloned());
-            }
+            all.extend(buffered_rows.iter().cloned());
             return vec![all];
         }
         let mut all: Vec<Record> = table_data.rows.clone();
-        if let Some(buffered) = self.insert_buffer.get(table) {
-            all.extend(buffered.iter().cloned());
-        }
+        all.extend(buffered_rows.iter().cloned());
         let total = all.len();
         let base = total / n_partitions;
         let rem = total % n_partitions;
@@ -3624,7 +3607,7 @@ impl FileStorage {
     /// of truth on startup, so we never end up with both persisted rows
     /// and replayed rows for the same entries.
     pub fn clear_all_tables(&self) {
-        Self::with_write_lock(self.as_mut_self(), |s| {
+        Self::with_write_lock(self, |s| {
             for data in s.tables.values_mut() {
                 data.rows.clear();
             }
@@ -3652,10 +3635,11 @@ impl StorageEngine for FileStorage {
     }
 
     fn set_current_tx_id(&mut self, id: u64) {
-        Self::with_write_lock(self.as_mut_self(), |s| {
-            s.current_tx_id
-                .store(id, std::sync::atomic::Ordering::Release);
-        });
+        // #4951: #4984 made this an `AtomicU64`, so the write-lock dance
+        // that used to guard it bought nothing — the closure had no
+        // `WriteState` field left to touch.
+        self.current_tx_id
+            .store(id, std::sync::atomic::Ordering::Release);
     }
 
     /// Issue #4581 / B-track case 35-36: real BEGIN/COMMIT/ROLLBACK
@@ -3680,14 +3664,14 @@ impl StorageEngine for FileStorage {
         // tx_undo_log. Compute it outside the lock so the closure
         // body only touches the write-protected fields.
         let id = self.next_tx_id();
-        Self::with_write_lock(self.as_mut_self(), |s| {
+        Self::with_write_lock(self, |s| {
             use std::sync::atomic::Ordering as O;
-            let existing = s.current_tx_id.load(O::Acquire);
+            let existing = self.current_tx_id.load(O::Acquire);
             if existing != 0 {
                 // Already in a tx — keep the existing id (MySQL-style nested BEGIN).
                 return Ok(existing);
             }
-            s.current_tx_id.store(id, O::Release);
+            self.current_tx_id.store(id, O::Release);
             s.tx_undo_log.clear();
             Ok(id)
         })
@@ -3702,14 +3686,14 @@ impl StorageEngine for FileStorage {
             // COMMIT outside a tx is a silent no-op (MySQL/SQLite semantics).
             return Ok(());
         }
-        Self::with_write_lock(self.as_mut_self(), |s| {
+        Self::with_write_lock(self, |s| {
             // Commit = drop the undo log + flush any buffered inserts that
             // accumulated during the tx. INSERTs buffered via insert_buffered
             // are NOT auto-flushed here; caller decides when to commit
             // visibility. We only need to drop undo so the next BEGIN gets a
             // fresh log.
             s.tx_undo_log.clear();
-            s.current_tx_id
+            self.current_tx_id
                 .store(0, std::sync::atomic::Ordering::Release);
         });
         Ok(())
@@ -3738,7 +3722,7 @@ impl StorageEngine for FileStorage {
         // (typical N_undo is 0–10). The original per-op lock+release
         // pattern offered no concurrency benefit because ROLLBACK is
         // already exclusive at the tx layer.
-        Self::with_write_lock(self.as_mut_self(), |s| {
+        Self::with_write_lock(self, |s| {
             while let Some(op) = s.tx_undo_log.pop() {
                 match op {
                     UndoOp::UpdateRow {
@@ -3788,23 +3772,30 @@ impl StorageEngine for FileStorage {
                     buf.retain(|_row| false);
                 }
             }
-            s.current_tx_id
+            self.current_tx_id
                 .store(0, std::sync::atomic::Ordering::Release);
         });
         Ok(())
     }
 
     fn scan(&self, table: &str) -> SqlResult<Vec<Record>> {
-        let mut rows: Vec<Record> = self
-            .get_table(table)
-            .map(|data| data.rows.clone())
-            .unwrap_or_default();
-        // F-09 fix: merge insert_buffer so same-transaction SELECT/UPDATE sees
-        // the rows that were just inserted (and not yet flushed to data.rows).
-        if let Some(buffered) = self.insert_buffer.get(table) {
-            rows.extend(buffered.iter().cloned());
-        }
-        Ok(rows)
+        // #4951: one read guard covers both collections so the table rows
+        // and the buffer cannot come from two different instants — a scan
+        // that merged a `tables` snapshot with a *newer* `insert_buffer`
+        // would report a state that never existed.
+        self.with_read_lock(|st| {
+            let mut rows: Vec<Record> = st
+                .tables
+                .get(table)
+                .map(|data| data.rows.clone())
+                .unwrap_or_default();
+            // F-09 fix: merge insert_buffer so same-transaction SELECT/UPDATE sees
+            // the rows that were just inserted (and not yet flushed to data.rows).
+            if let Some(buffered) = st.insert_buffer.get(table) {
+                rows.extend(buffered.iter().cloned());
+            }
+            Ok(rows)
+        })
     }
 
     /// V4.0.0 / SOAK-leak fix: filter inside the read lock on `self.tables`
@@ -3818,18 +3809,22 @@ impl StorageEngine for FileStorage {
         table: &str,
         filter: &dyn Fn(&Record) -> bool,
     ) -> SqlResult<Vec<Record>> {
-        let mut rows: Vec<Record> = self
-            .get_table(table)
-            .map(|data| data.rows.iter().filter(|r| filter(r)).cloned().collect())
-            .unwrap_or_default();
-        if let Some(buffered) = self.insert_buffer.get(table) {
-            for record in buffered.iter() {
-                if filter(record) {
-                    rows.push(record.clone());
+        // #4951: one read guard for both collections — see `scan`.
+        self.with_read_lock(|st| {
+            let mut rows: Vec<Record> = st
+                .tables
+                .get(table)
+                .map(|data| data.rows.iter().filter(|r| filter(r)).cloned().collect())
+                .unwrap_or_default();
+            if let Some(buffered) = st.insert_buffer.get(table) {
+                for record in buffered.iter() {
+                    if filter(record) {
+                        rows.push(record.clone());
+                    }
                 }
             }
-        }
-        Ok(rows)
+            Ok(rows)
+        })
     }
 
     /// Phase B Step 4.2: O(log N) primary-key lookup using the
@@ -3879,49 +3874,56 @@ impl StorageEngine for FileStorage {
                 // Find all row IDs with this key
                 let row_ids = index.search_all(search_key);
 
-                // Get the table data
-                if let Some(data) = self.tables.get(table) {
-                    // Collect matching rows
-                    let mut results = Vec::new();
-                    for &row_id in &row_ids {
-                        if (row_id as usize) < data.rows.len() {
-                            results.push(data.rows[row_id as usize].clone());
+                // #4951: single read guard over tables + insert_buffer
+                // so the table and the buffer are read at one instant.
+                let collected: Option<SqlResult<Vec<Record>>> = self.with_read_lock(|st| {
+                    st.tables.get(table).map(|data| {
+                        // Collect matching rows
+                        let mut results = Vec::new();
+                        for &row_id in &row_ids {
+                            if (row_id as usize) < data.rows.len() {
+                                results.push(data.rows[row_id as usize].clone());
+                            }
                         }
-                    }
-                    // Also check insert_buffer
-                    if let Some(buffered) = self.insert_buffer.get(table) {
-                        for record in buffered.iter() {
-                            // Check if this buffered row matches the key
-                            if let Some(col_idx) =
-                                data.info.columns.iter().position(|c| c.name == index_name)
-                            {
-                                if record
-                                    .get(col_idx)
-                                    .map(|v| v.to_index_key() == Some(search_key))
-                                    .unwrap_or(false)
+                        // Also check insert_buffer
+                        if let Some(buffered) = st.insert_buffer.get(table) {
+                            for record in buffered.iter() {
+                                // Check if this buffered row matches the key
+                                if let Some(col_idx) =
+                                    data.info.columns.iter().position(|c| c.name == index_name)
                                 {
-                                    results.push(record.clone());
+                                    if record
+                                        .get(col_idx)
+                                        .map(|v| v.to_index_key() == Some(search_key))
+                                        .unwrap_or(false)
+                                    {
+                                        results.push(record.clone());
+                                    }
                                 }
                             }
                         }
-                    }
-                    return Ok(results);
+                        Ok(results)
+                    })
+                });
+                if let Some(res) = collected {
+                    return res;
                 }
             }
         }
         // Index not found or not usable - fall back to full scan with filter
         let mut rows = self.scan(table)?;
         // Filter rows by the key value
-        if let Some(table_data) = self.tables.get(table) {
-            if let Some(col_idx) = table_data
-                .info
-                .columns
-                .iter()
-                .position(|c| c.name == index_name)
-            {
-                rows.retain(|row| row.get(col_idx).map(|v| v == key).unwrap_or(false));
-                return Ok(rows);
-            }
+        if let Some(col_idx) = self.with_table(table, |t| {
+            t.and_then(|table_data| {
+                table_data
+                    .info
+                    .columns
+                    .iter()
+                    .position(|c| c.name == index_name)
+            })
+        }) {
+            rows.retain(|row| row.get(col_idx).map(|v| v == key).unwrap_or(false));
+            return Ok(rows);
         }
         Err(SqlError::ExecutionError(format!(
             "Index '{}' on table '{}' not found or not usable",
@@ -3944,14 +3946,18 @@ impl StorageEngine for FileStorage {
         // rows in a length-prefixed binary format, so row-level seek is
         // possible but requires iterating from the start to find partition
         // boundaries. A future optimization can add that.
-        let mut rows: Vec<Record> = self
-            .get_table(table)
-            .map(|data| data.rows.clone())
-            .unwrap_or_default();
-        // F-09 fix: merge insert_buffer for same-tx visibility
-        if let Some(buffered) = self.insert_buffer.get(table) {
-            rows.extend(buffered.iter().cloned());
-        }
+        let rows: Vec<Record> = self.with_read_lock(|st| {
+            let mut rows: Vec<Record> = st
+                .tables
+                .get(table)
+                .map(|data| data.rows.clone())
+                .unwrap_or_default();
+            // F-09 fix: merge insert_buffer for same-tx visibility
+            if let Some(buffered) = st.insert_buffer.get(table) {
+                rows.extend(buffered.iter().cloned());
+            }
+            rows
+        });
         let total = rows.len();
         if total == 0 || num_partitions == 0 {
             return Ok(vec![]);
@@ -4003,7 +4009,7 @@ impl StorageEngine for FileStorage {
             self.insert_buffered(table, records)?
         };
         // V311-07: Mark table dirty for optimized flush
-        Self::with_write_lock(self.as_mut_self(), |s| {
+        Self::with_write_lock(self, |s| {
             s.dirty_tables.insert(table.to_string());
         });
         Ok(())
@@ -4022,8 +4028,11 @@ impl StorageEngine for FileStorage {
         // every step touches {tables, dirty_tables, tx_undo_log,
         // insert_buffer}. Splitting would mean multiple lock acquisitions
         // and risk of observing torn state between them.
-        Self::with_write_lock(self.as_mut_self(), |s| {
-            let in_tx = s.current_tx_id.load(std::sync::atomic::Ordering::Acquire) != 0;
+        Self::with_write_lock(self, |s| {
+            let in_tx = self
+                .current_tx_id
+                .load(std::sync::atomic::Ordering::Acquire)
+                != 0;
 
             // Issue #4581 / B-track case 35-36: snapshot rows for ROLLBACK
             // BEFORE the actual delete. The `data` borrow ends before the
@@ -4109,8 +4118,11 @@ impl StorageEngine for FileStorage {
         // `with_write_lock` because every step touches the protected
         // fields. Splitting would mean multiple lock acquisitions
         // and risk of torn state.
-        Self::with_write_lock(self.as_mut_self(), |s| {
-            let in_tx = s.current_tx_id.load(std::sync::atomic::Ordering::Acquire) != 0;
+        Self::with_write_lock(self, |s| {
+            let in_tx = self
+                .current_tx_id
+                .load(std::sync::atomic::Ordering::Acquire)
+                != 0;
 
             // Snapshot rows for ROLLBACK (same as `delete`).
             let removed_pks: Vec<Value> = if let Some(ref mut data) = s.tables.get_mut(table) {
@@ -4231,7 +4243,7 @@ impl StorageEngine for FileStorage {
     }
 
     fn delete_if(&mut self, table: &str, filter: &RowFilter) -> SqlResult<usize> {
-        Self::with_write_lock(self.as_mut_self(), |s| {
+        Self::with_write_lock(self, |s| {
             if let Some(ref mut data) = s.tables.get_mut(table) {
                 let original_len = data.rows.len();
                 data.rows.retain(|r| !filter(r));
@@ -4253,14 +4265,23 @@ impl StorageEngine for FileStorage {
         filters: &[Value],
         updates: &[(usize, Value)],
     ) -> SqlResult<usize> {
-        let Some(ref mut data) = self.tables.get_mut(table) else {
-            return Ok(0);
-        };
-
+        // #4951: `&mut self`, so `get_mut` yields the guarded state with
+        // no lock. `tables` and `tx_undo_log` are separate fields of the
+        // same struct, so the borrow checker can hand out both here —
+        // the old code got them through one `&mut FileStorage`.
+        let st = self.write_state.get_mut();
         let in_tx = self
             .current_tx_id
             .load(std::sync::atomic::Ordering::Acquire)
             != 0;
+        let WriteState {
+            ref mut tables,
+            ref mut tx_undo_log,
+            ..
+        } = *st;
+        let Some(ref mut data) = tables.get_mut(table) else {
+            return Ok(0);
+        };
 
         let mut count = 0;
         for (idx, record) in data.rows.iter_mut().enumerate() {
@@ -4278,7 +4299,7 @@ impl StorageEngine for FileStorage {
                 // produces the pre-tx state.
                 if in_tx {
                     let original = record.clone();
-                    self.tx_undo_log.push(UndoOp::UpdateRow {
+                    tx_undo_log.push(UndoOp::UpdateRow {
                         table: table.to_string(),
                         row_idx: idx,
                         original,
@@ -4294,7 +4315,7 @@ impl StorageEngine for FileStorage {
         }
         // V311-07: Mark dirty instead of immediate persist
         if count > 0 {
-            self.dirty_tables.insert(table.to_string());
+            st.dirty_tables.insert(table.to_string());
         }
         Ok(count)
     }
@@ -4305,7 +4326,8 @@ impl StorageEngine for FileStorage {
         filter: &RowFilter,
         mutation: &RowMutation,
     ) -> SqlResult<usize> {
-        let Some(data) = self.tables.get_mut(table) else {
+        let st = self.write_state.get_mut();
+        let Some(data) = st.tables.get_mut(table) else {
             return Ok(0);
         };
 
@@ -4324,7 +4346,7 @@ impl StorageEngine for FileStorage {
         }
         // V311-07: Mark dirty instead of immediate persist
         if count > 0 {
-            self.dirty_tables.insert(table.to_string());
+            st.dirty_tables.insert(table.to_string());
         }
         Ok(count)
     }
@@ -4412,11 +4434,11 @@ impl StorageEngine for FileStorage {
     }
 
     fn has_table(&self, table: &str) -> bool {
-        self.tables.contains_key(table)
+        self.contains_table(table)
     }
 
     fn list_tables(&self) -> Vec<String> {
-        self.tables.keys().cloned().collect()
+        self.table_names()
     }
 
     fn create_index(&mut self, info: crate::engine::IndexInfo) -> SqlResult<()> {
@@ -4424,9 +4446,7 @@ impl StorageEngine for FileStorage {
         // Get table from tables
         let table = info.table.as_str();
         let table_data = self
-            .tables
-            .get(table)
-            .cloned()
+            .with_table(table, |t| t.cloned())
             .ok_or_else(|| SqlError::TableNotFound(table.to_string()))?;
 
         // V312-95 v3 / P3-HINT-001 follow-up: register the index in
@@ -4515,7 +4535,7 @@ impl StorageEngine for FileStorage {
     }
 
     fn add_column(&mut self, table: &str, column: ColumnDefinition) -> SqlResult<()> {
-        Self::with_write_lock(self.as_mut_self(), |s| {
+        Self::with_write_lock(self, |s| {
             if let Some(data) = s.tables.get_mut(table) {
                 data.info.columns.push(column);
                 // V312-72 / Issue #4647: backfill every existing row with
@@ -4536,53 +4556,73 @@ impl StorageEngine for FileStorage {
                     row.push(fill.clone());
                 }
                 let table_data = data.clone();
-                s.save_table(table, &table_data)?;
+                self.save_table(s, table, &table_data)?;
             }
             Ok(())
         })
     }
 
     fn rename_table(&mut self, table: &str, new_name: &str) -> SqlResult<()> {
-        Self::with_write_lock(self.as_mut_self(), |s| {
-            if let Some(mut table_data) = s.tables.remove(table) {
-                table_data.info.name = new_name.to_string();
-                let old_path = s.table_path(table);
-                let new_path = s.table_path(new_name);
+        // #4951: `&mut self`, so `get_mut` gives exclusive access to
+        // both the guarded state and the index map without taking any
+        // lock. The old code went through `as_mut_self` +
+        // `with_write_lock`, which for a `&mut self` caller bought a
+        // mutex acquisition that could never be contended.
+        // Paths are derived from `data_dir` alone, so compute them before
+        // taking the `&mut` borrow — otherwise `self.table_path(..)` would
+        // be an immutable use of `self` while `st` holds a mutable one.
+        let old_path = self.table_path(table);
+        let new_path = self.table_path(new_name);
+        // Take the table out, end the `&mut` borrow, then persist it.
+        // `save_table` takes `&self` (it needs `data_dir` and
+        // `last_saved_row_count`), so holding `st` across the call would
+        // be a `&mut self` + `&self` overlap. Persisting after the
+        // removal is also the same ordering as before: the row is off the
+        // map while the JSON is written, then re-inserted under the new
+        // name.
+        let mut table_data = match self.write_state.get_mut().tables.remove(table) {
+            Some(td) => td,
+            None => return Ok(()),
+        };
+        table_data.info.name = new_name.to_string();
 
-                s.save_table(new_name, &table_data)?;
+        self.with_read_lock(|st| self.save_table(st, new_name, &table_data))?;
 
-                if old_path.exists() {
-                    std::fs::rename(&old_path, &new_path).map_err(SqlError::from)?;
-                }
-
-                s.tables.insert(new_name.to_string(), table_data);
-
-                if let Ok(mut indexes) = s.indexes.write() {
-                    let keys: Vec<_> = indexes.keys().cloned().collect();
-                    for key in keys {
-                        if key.0 == table {
-                            let new_key = (new_name.to_string(), key.1.clone());
-                            if let Some(idx) = indexes.remove(&key) {
-                                indexes.insert(new_key, idx);
-                            }
-                        }
-                    }
-                }
-
-                if let Ok(indexes) = s.indexes.read() {
-                    for key in indexes.keys() {
-                        if key.0 == new_name {
-                            let old_idx_path = s.index_path(table, &key.1);
-                            let new_idx_path = s.index_path(new_name, &key.1);
-                            if old_idx_path.exists() {
-                                std::fs::rename(&old_idx_path, &new_idx_path).ok();
-                            }
+        if old_path.exists() {
+            std::fs::rename(&old_path, &new_path).map_err(SqlError::from)?;
+        }
+        {
+            let st = self.write_state.get_mut();
+            st.tables.insert(new_name.to_string(), table_data);
+        }
+        {
+            // `indexes` is a std::sync::RwLock (poison-aware), not the
+            // parking_lot one `write_state` uses, so it is reached
+            // through write()/read() rather than get_mut().
+            if let Ok(mut indexes) = self.indexes.write() {
+                let keys: Vec<_> = indexes.keys().cloned().collect();
+                for key in keys {
+                    if key.0 == table {
+                        let new_key = (new_name.to_string(), key.1.clone());
+                        if let Some(idx) = indexes.remove(&key) {
+                            indexes.insert(new_key, idx);
                         }
                     }
                 }
             }
-            Ok(())
-        })
+            if let Ok(indexes) = self.indexes.read() {
+                for key in indexes.keys() {
+                    if key.0 == new_name {
+                        let old_idx_path = self.index_path(table, &key.1);
+                        let new_idx_path = self.index_path(new_name, &key.1);
+                        if old_idx_path.exists() {
+                            std::fs::rename(&old_idx_path, &new_idx_path).ok();
+                        }
+                    }
+                }
+            }
+        }
+        Ok(())
     }
 
     fn create_trigger(&mut self, info: TriggerInfo) -> SqlResult<()> {
@@ -4694,6 +4734,8 @@ impl StorageEngine for FileStorage {
 
     fn drop_column(&mut self, table: &str, column: &str) -> SqlResult<()> {
         let table_data = self
+            .write_state
+            .get_mut()
             .tables
             .get_mut(table)
             .ok_or_else(|| SqlError::ExecutionError(format!("Table not found: {}", table)))?;
@@ -4723,33 +4765,44 @@ impl StorageEngine for FileStorage {
     // returns "rename_column not supported" which broke the v3.12.0
     // GA CLI batch mode for `ALTER TABLE ... RENAME COLUMN`).
     fn rename_column(&mut self, table: &str, old_name: &str, new_name: &str) -> SqlResult<()> {
-        let table_data = self
-            .tables
-            .get_mut(table)
-            .ok_or_else(|| SqlError::ExecutionError(format!("Table not found: {}", table)))?;
-        let col_idx = table_data
-            .info
-            .columns
-            .iter()
-            .position(|c| c.name == old_name)
-            .ok_or_else(|| SqlError::ExecutionError(format!("Column not found: {}", old_name)))?;
-        // Reject duplicate destination name (MySQL 8.0 + SQLite parity).
-        let new_lower = new_name.to_lowercase();
-        if table_data
-            .info
-            .columns
-            .iter()
-            .enumerate()
-            .any(|(idx, c)| idx != col_idx && c.name.to_lowercase() == new_lower)
-        {
-            return Err(SqlError::ExecutionError(format!(
-                "Duplicate column name: {}",
-                new_name
-            )));
-        }
-        table_data.info.columns[col_idx].name = new_name.to_lowercase();
-        let table_data_clone = table_data.clone();
-        self.save_table(table, &table_data_clone)?;
+        // #4951: `&mut self`, so `get_mut` needs no lock. The rename and
+        // the persist happen back-to-back with no lock in between — the
+        // exclusive borrow is what guarantees no concurrent flush can
+        // observe the renamed column without it reaching disk.
+        let table_data_clone = {
+            let st = self.write_state.get_mut();
+            let table_data = st
+                .tables
+                .get_mut(table)
+                .ok_or_else(|| SqlError::ExecutionError(format!("Table not found: {}", table)))?;
+            let col_idx = table_data
+                .info
+                .columns
+                .iter()
+                .position(|c| c.name == old_name)
+                .ok_or_else(|| {
+                    SqlError::ExecutionError(format!("Column not found: {}", old_name))
+                })?;
+            // Reject duplicate destination name (MySQL 8.0 + SQLite parity).
+            let new_lower = new_name.to_lowercase();
+            if table_data
+                .info
+                .columns
+                .iter()
+                .enumerate()
+                .any(|(idx, c)| idx != col_idx && c.name.to_lowercase() == new_lower)
+            {
+                return Err(SqlError::ExecutionError(format!(
+                    "Duplicate column name: {}",
+                    new_name
+                )));
+            }
+            table_data.info.columns[col_idx].name = new_name.to_lowercase();
+            table_data.clone()
+        };
+        // `save_table` needs `&self` (for `data_dir` / `last_saved_row_count`),
+        // so it cannot run while the `&mut` borrow above is live.
+        self.with_read_lock(|st| self.save_table(st, table, &table_data_clone))?;
         Ok(())
     }
 
@@ -4760,6 +4813,8 @@ impl StorageEngine for FileStorage {
         new_def: ColumnDefinition,
     ) -> SqlResult<()> {
         let table_data = self
+            .write_state
+            .get_mut()
             .tables
             .get_mut(table)
             .ok_or_else(|| SqlError::ExecutionError(format!("Table not found: {}", table)))?;
@@ -4946,7 +5001,7 @@ impl FileStorage {
         // For 1-2 tables, sequential is faster (no thread overhead)
         if pending.len() <= 2 {
             for (name, window, total) in &pending {
-                self.save_table_window(name, window, *total)?;
+                self.with_read_lock(|st| self.save_table_window(st, name, window, *total))?;
             }
             return Ok(());
         }
@@ -4960,7 +5015,9 @@ impl FileStorage {
             let handles: Vec<_> = pending
                 .iter()
                 .map(|(name, window, total)| {
-                    s.spawn(move || self.save_table_window(name, window, *total))
+                    s.spawn(move || {
+                        self.with_read_lock(|st| self.save_table_window(st, name, window, *total))
+                    })
                 })
                 .collect();
 
@@ -4997,7 +5054,7 @@ impl FileStorage {
         // offset, then add a monotonic-time tie-breaker so two BEGINs
         // without intervening mutations still get distinct ids (not
         // required for correctness but easier to reason about in logs).
-        let max_existing: u64 = self.tx_undo_log.iter().map(|_| 1u64).sum();
+        let max_existing: u64 = self.with_read_lock(|st| st.tx_undo_log.iter().map(|_| 1u64).sum());
         let now_nanos = std::time::SystemTime::now()
             .duration_since(std::time::UNIX_EPOCH)
             .map(|d| d.as_nanos() as u64)
@@ -5016,7 +5073,7 @@ impl FileStorage {
     /// follow-up proves no caller ever needs it.
     #[allow(dead_code)]
     fn apply_undo(&self, op: UndoOp) -> SqlResult<()> {
-        Self::with_write_lock(self.as_mut_self(), |s| {
+        Self::with_write_lock(self, |s| {
             match op {
                 UndoOp::UpdateRow {
                     table,
