@@ -147,6 +147,45 @@ fn issue_4974_uncommitted_write_is_invisible_to_other_readers() {
 /// Reproduces the reported R1/R2 sequence. Connection A only ever
 /// reads; connection B commits in between.
 #[test]
+/// #4983: `scan_in` is the mechanism that lets a read know which
+/// connection it is serving. Asserted directly, independent of whether
+/// every engine call site has been migrated to it yet.
+#[test]
+fn scan_in_serves_the_requesting_transaction() {
+    use sqlrustgo_storage::engine::StorageEngine;
+    let s = storage("/tmp/txiso_scan_in");
+
+    // A writes inside tx 1, uncommitted.
+    {
+        let mut a = s.write();
+        a.set_current_tx_id(1);
+        a.insert("t", vec![vec![Value::Integer(1)]]).unwrap();
+    }
+
+    // A reads as tx 1 -> sees its own pending write.
+    let as_a = {
+        let g = s.read();
+        g.scan_in("t", 1).unwrap()
+    };
+    assert_eq!(
+        as_a.len(),
+        1,
+        "the author must see its own uncommitted write"
+    );
+
+    // A different connection (tx 0, no transaction) must not.
+    let as_other = {
+        let g = s.read();
+        g.scan_in("t", 0).unwrap()
+    };
+    assert!(
+        as_other.is_empty(),
+        "a reader with a different transaction id must not see the \
+         pending write; got {:?}",
+        as_other
+    );
+}
+
 fn issue_4974_repeat_reads_in_one_transaction_are_stable() {
     let s = storage("/tmp/txiso_repeatable");
 

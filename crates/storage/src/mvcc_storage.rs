@@ -156,6 +156,17 @@ impl<S: StorageEngine + 'static> MvccStorage<S> {
         }
     }
 
+    /// #4983: keys `tx_id` has written but not committed. The inner
+    /// engine buffers those in `insert_buffer` and `inner.scan()`
+    /// merges them back, so the caller needs to know which to drop.
+    fn pending_keys(
+        &self,
+        table: &str,
+        tx_id: u64,
+    ) -> std::collections::HashSet<crate::engine::Value> {
+        self.mvcc_table(table).pending_keys(tx_id)
+    }
+
     pub fn inner_mut(&mut self) -> &mut S {
         &mut self.inner
     }
@@ -293,6 +304,49 @@ impl<S: StorageEngine + 'static> StorageEngine for MvccStorage<S> {
         }
         Ok(out)
     }
+    /// #4983 / #4951: scan on behalf of `reader_tx`.
+    ///
+    /// `scan` cannot answer this on its own: it reads
+    /// `inner.current_tx_id()`, which is a single storage-wide value
+    /// holding whichever connection wrote last, not the one asking. Two
+    /// concurrent connections therefore both resolve to the same
+    /// transaction, and an uncommitted write becomes visible to a
+    /// connection that did not make it.
+    fn scan_in(&self, table: &str, reader_tx: u64) -> SqlResult<Vec<Record>> {
+        let mvcc = self.mvcc_table(table);
+        let snapshot_ts = mvcc.begin_snapshot();
+        let pairs = mvcc.scan_visible(snapshot_ts, reader_tx);
+        let mut out: Vec<Record> = pairs.into_iter().map(|(_, row)| row).collect();
+
+        // Merge in rows the inner engine holds that MVCC has no visible
+        // version for, so nothing that was committed becomes invisible
+        // (see `scan`'s comment for why the merge is unconditional).
+        //
+        // #4983: rows this transaction wrote but has not committed must
+        // be excluded. The inner engine buffers them in `insert_buffer`
+        // with no visibility notion of its own, so an unconditional
+        // merge hands an uncommitted write straight back to a reader
+        // that `scan_visible` had correctly filtered out.
+        let pending: std::collections::HashSet<crate::engine::Value> =
+            self.pending_keys(table, reader_tx);
+        let inner_rows = self.inner.scan(table)?;
+        if inner_rows.len() > out.len() {
+            let mut present: std::collections::HashSet<crate::engine::Value> =
+                out.iter().filter_map(|r| r.first().cloned()).collect();
+            for row in inner_rows {
+                if let Some(pk) = row.first() {
+                    if pending.contains(pk) {
+                        continue;
+                    }
+                    if present.insert(pk.clone()) {
+                        out.push(row);
+                    }
+                }
+            }
+        }
+        Ok(out)
+    }
+
     fn scan(&self, table: &str) -> SqlResult<Vec<Record>> {
         let mvcc = self.mvcc_table(table);
         let tx_id = self.inner.current_tx_id();
