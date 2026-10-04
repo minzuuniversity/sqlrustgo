@@ -574,7 +574,7 @@ pub fn execute_insert<S: StorageEngine + 'static>(
                                 record_matches_unique_key(existing, new_record, &table_info)
                             })
                             .ok_or_else(|| {
-                                SqlError::ExecutionError(format!(
+                                SqlError::DuplicateKey(format!(
                                     "Duplicate entry '{}' for key 'PRIMARY'",
                                     key_entry_repr(&table_info, new_record, "PRIMARY")
                                 ))
@@ -643,7 +643,7 @@ pub fn execute_insert<S: StorageEngine + 'static>(
                                 key_entry_repr(&table_info, new_record, "PRIMARY"),
                             )
                         });
-                    return Err(SqlError::ExecutionError(format!(
+                    return Err(SqlError::DuplicateKey(format!(
                         "Duplicate entry '{}' for key '{}'",
                         entry_repr, conflict_key
                     )));

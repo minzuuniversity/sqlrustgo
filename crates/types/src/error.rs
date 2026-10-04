@@ -36,8 +36,23 @@ pub enum SqlError {
     #[error("Column not found: {0}")]
     ColumnNotFound(String),
 
-    /// Duplicate key error
-    #[error("Duplicate key: {0}")]
+    /// Duplicate key error (ER_DUP_ENTRY / 1062).
+    ///
+    /// `{0}` is the full MySQL-formatted message, e.g.
+    /// `Duplicate entry '1011' for key 'PRIMARY'`. The variant is a
+    /// transparent passthrough rather than a `"Duplicate key: {0}"`
+    /// template: MySQL clients match on the `Duplicate entry ... for
+    /// key ...` wording, and doubling the prefix (`Duplicate key:
+    /// Duplicate entry ...`) breaks both that match and the standard
+    /// `sysbench --mysql-ignore-errors=1062` workaround that OLTP
+    /// workloads rely on to tolerate their own check-then-act race.
+    ///
+    /// Note: `sqlstate()` maps this to `23000`, but the wire actually
+    /// emits `42000`, which is what real MySQL sends for ER_DUP_ENTRY
+    /// and what clients therefore expect. The mismatch is pre-existing
+    /// and deliberately left alone here — changing the emitted
+    /// SQLSTATE is a separate compatibility decision.
+    #[error("{0}")]
     DuplicateKey(String),
 
     /// I/O error
