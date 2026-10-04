@@ -418,8 +418,12 @@ trait BTreeIndexCore {
         // the first key of the right leaf (so it is stored exactly once
         // overall and `find_key_index` / `find_all_values` / `range_query_leaf`
         // can still see it); the left leaf does not keep it.
-        let nodes = self.nodes_mut();
+        // Scope the mutable borrow of `self.nodes` so it ends before
+        // `allocate_node`. (An earlier version held the borrow in a local and
+        // called `drop(nodes)`; dropping a `&mut` is a no-op, so clippy
+        // flagged it and the borrow actually ended at the local's last use.)
         {
+            let nodes = self.nodes_mut();
             let node = nodes[node_id as usize].as_mut().unwrap();
             if was_leaf {
                 right.keys = node.keys.split_off(right_start);
@@ -427,16 +431,21 @@ trait BTreeIndexCore {
             } else {
                 right.keys = node.keys.split_off(right_start + 1);
                 node.keys.truncate(right_start);
-                // children[right_start] is the separator's left child, so it
-                // stays with the left node and the right node takes
-                // children[right_start..].
-                right.children = node.children.split_off(right_start);
+                // Invariant: an internal node has `keys.len() + 1` children.
+                // `keys[right_start]` is lifted out as the separator, so
+                // `children[right_start]` (the child just left of the
+                // separator) stays with the LEFT node and the right node
+                // takes `children[right_start + 1..]`. Taking
+                // `children[right_start..]` instead moved that child into the
+                // right node, leaving the left node one child short and
+                // orphaning the subtree between `keys[right_start - 1]` and
+                // the separator (first lost key 961 at N >= 2000; 1024 of
+                // 2000 keys unreachable).
+                right.children = node.children.split_off(right_start + 1);
             }
             node.num_keys = node.keys.len() as u16;
             right.num_keys = right.keys.len() as u16;
         }
-        // Drop the mutable borrow of `self.nodes_mut()` before allocating.
-        drop(nodes);
 
         let right_id = self.allocate_node(right);
         if was_leaf {
@@ -980,20 +989,6 @@ impl CompositeBTreeIndex {
         id
     }
 
-    fn insert_into_node(&mut self, node_id: u32, key: i64, value: u32) {
-        if let Some(ref mut node) = self.nodes[node_id as usize] {
-            if node.is_leaf {
-                node.insert_key_value(key, value);
-            } else {
-                let child_idx = node.find_child_index(key);
-                if child_idx < node.children.len() {
-                    let child_id = node.children[child_idx];
-                    self.insert_into_node(child_id, key, value);
-                }
-            }
-        }
-    }
-
     pub fn search(&self, key: &CompositeKey) -> Option<u32> {
         let encoded_key = self.encode_composite_key(key);
         if let Some(root_id) = self.metadata.root_page_id {
@@ -1005,14 +1000,22 @@ impl CompositeBTreeIndex {
 
     fn search_node(&self, node_id: u32, key: i64) -> Option<u32> {
         if let Some(ref node) = self.nodes[node_id as usize] {
-            if let Some(idx) = node.find_key_index(key) {
-                return node.values.get(idx).copied();
+            // F-15 follow-up: check `is_leaf` FIRST. This used to probe
+            // `find_key_index` on internal nodes too. A separator key that is
+            // routed through an internal node matches there (`Ok(idx)`) and
+            // short-circuits into `node.values`, which is EMPTY for internal
+            // nodes, so every separator key returned None. With 500 keys that
+            // made exactly the 16-leaf tree's 15 separators unreachable.
+            // `BTreeIndex::search_node` already branched on `is_leaf` first;
+            // this mirrors it.
+            if node.is_leaf {
+                return node
+                    .find_key_index(key)
+                    .and_then(|i| node.values.get(i).copied());
             }
-            if !node.is_leaf {
-                let child_idx = node.find_child_index(key);
-                if child_idx < node.children.len() {
-                    return self.search_node(node.children[child_idx], key);
-                }
+            let child_idx = node.find_child_index(key);
+            if child_idx < node.children.len() {
+                return self.search_node(node.children[child_idx], key);
             }
         }
         None
@@ -1555,6 +1558,28 @@ mod tests {
                 "boundary key {k} lost or mis-mapped across a split"
             );
         }
+    }
+
+    /// Companion to `test_composite_btree_internal_node_split`: `BTreeIndex`
+    /// shares `BTreeIndexCore::split_if_full` with `CompositeBTreeIndex`, so
+    /// the internal-node split defect affected it too. 500 keys only ever
+    /// split leaves, so the pre-existing F-15 trio could not see it; 2000
+    /// keys make the root reach 63 separators and split.
+    #[test]
+    fn test_btree_internal_node_split() {
+        let n: i64 = 2000;
+        let mut tree = BTreeIndex::new();
+        for k in 0..n {
+            tree.insert(k, k as u32);
+        }
+        let missing: Vec<i64> = (0..n).filter(|&k| tree.search(k).is_none()).collect();
+        assert!(
+            missing.is_empty(),
+            "{} of {} keys unreachable after an internal-node split (first: {:?})",
+            missing.len(),
+            n,
+            missing.first()
+        );
     }
 
     #[test]
@@ -2242,100 +2267,131 @@ mod composite_index_tests {
         assert_eq!(key.values[0], Value::Integer(1));
         assert_eq!(key.values[1], Value::Integer(2));
         assert_eq!(key.values[2], Value::Integer(3));
+    }
 
-        // =====================================================================
-        // F-15 / #4915 follow-up: CompositeBTreeIndex has the SAME split bug
-        // that the i64-key BTreeIndex had. Its `insert_into_node` called
-        // `node.insert_key_value(key, value)` and DISCARDED the returned
-        // `Some((split_key, new_node))`, so any split silently orphaned half
-        // the rows. The tree could not grow past one leaf.
-        //
-        // These tests mirror bplus_tree::index::tests's F-15 trio:
-        //   1) insert >> MAX_KEYS_PER_NODE, every key searchable
-        //   2) every key reachable via search (search-based surrogate for
-        //      range_query, since CompositeBTreeIndex doesn't expose a public
-        //      range_query for arbitrary keys in a clean way)
-        //   3) boundary keys around the 63/64 split
-        //
-        // After the trait-extraction refactor, `insert_rec` is shared with
-        // BTreeIndex via `BTreeIndexCore`, so these pass too.
-        // =====================================================================
+    // =====================================================================
+    // F-15 / #4915 follow-up: CompositeBTreeIndex has the SAME split bug
+    // that the i64-key BTreeIndex had. Its `insert_into_node` called
+    // `node.insert_key_value(key, value)` and DISCARDED the returned
+    // `Some((split_key, new_node))`, so any split silently orphaned half
+    // the rows. The tree could not grow past one leaf.
+    //
+    // These tests mirror bplus_tree::index::tests's F-15 trio:
+    //   1) insert >> MAX_KEYS_PER_NODE, every key searchable
+    //   2) every key reachable via search (search-based surrogate for
+    //      range_query, since CompositeBTreeIndex doesn't expose a public
+    //      range_query for arbitrary keys in a clean way)
+    //   3) boundary keys around the 63/64 split
+    //
+    // After the trait-extraction refactor, `insert_rec` is shared with
+    // BTreeIndex via `BTreeIndexCore`, so these pass too.
+    // =====================================================================
 
-        #[test]
-        fn test_composite_btree_survives_multiple_node_splits() {
-            let mut tree = CompositeBTreeIndex::new(1);
-            // 500 keys => 8+ leaves once splits work. Only the first column
-            // (Value::Integer) is used for storage; encode_composite_key
-            // routes i64-eligible single-column CompositeKeys properly.
-            let n: i64 = 500;
-            for k in 0..n {
-                tree.insert(CompositeKey::new(vec![Value::Integer(k)]), k as u32);
-            }
-
-            let missing: Vec<i64> = (0..n)
-                .filter(|&k| {
-                    tree.search(&CompositeKey::new(vec![Value::Integer(k)]))
-                        .is_none()
-                })
-                .collect();
-            assert!(
-                missing.is_empty(),
-                "{} of {} keys are unreachable after splits (first missing: {:?})",
-                missing.len(),
-                n,
-                missing.first()
-            );
-            for k in 0..n {
-                assert_eq!(
-                    tree.search(&CompositeKey::new(vec![Value::Integer(k)])),
-                    Some(k as u32),
-                    "key {k} mapped wrong"
-                );
-            }
-            assert_eq!(tree.len(), n as u64, "entry count must count all inserts");
-            // CompositeBTreeIndex does not expose height() (unlike BTreeIndex),
-            // but a 500-key single-leaf tree has num_entries==500 while the
-            // on-disk base+delta is bounded by MAX_KEYS_PER_NODE=63, so the
-            // actual in-memory tree must split; we cannot assert height
-            // directly. The split-reachability is covered by the
-            // "every key searchable" assertion above.
-            let _ = ();
+    #[test]
+    fn test_composite_btree_survives_multiple_node_splits() {
+        let mut tree = CompositeBTreeIndex::new(1);
+        // 500 keys => 8+ leaves once splits work. Only the first column
+        // (Value::Integer) is used for storage; encode_composite_key
+        // routes i64-eligible single-column CompositeKeys properly.
+        let n: i64 = 500;
+        for k in 0..n {
+            tree.insert(CompositeKey::new(vec![Value::Integer(k)]), k as u32);
         }
 
-        #[test]
-        fn test_composite_btree_range_query_sees_all_splits() {
-            let mut tree = CompositeBTreeIndex::new(1);
-            let n: i64 = 300;
-            for k in 0..n {
-                tree.insert(CompositeKey::new(vec![Value::Integer(k)]), k as u32);
-            }
-            let mut got: Vec<u32> = (0..n)
-                .map(|k| {
-                    tree.search(&CompositeKey::new(vec![Value::Integer(k)]))
-                        .expect("key reachable")
-                })
-                .collect();
-            got.sort_unstable();
-            let expected: Vec<u32> = (0..n as u32).collect();
-            assert_eq!(
-            got, expected,
-            "every key must be reachable after splits (search-based surrogate              for range_query, which CompositeBTreeIndex lacks a public helper for)"
+        let missing: Vec<i64> = (0..n)
+            .filter(|&k| {
+                tree.search(&CompositeKey::new(vec![Value::Integer(k)]))
+                    .is_none()
+            })
+            .collect();
+        assert!(
+            missing.is_empty(),
+            "{} of {} keys are unreachable after splits (first missing: {:?})",
+            missing.len(),
+            n,
+            missing.first()
         );
+        for k in 0..n {
+            assert_eq!(
+                tree.search(&CompositeKey::new(vec![Value::Integer(k)])),
+                Some(k as u32),
+                "key {k} mapped wrong"
+            );
         }
+        assert_eq!(tree.len(), n as u64, "entry count must count all inserts");
+        // CompositeBTreeIndex does not expose height() (unlike BTreeIndex),
+        // but a 500-key single-leaf tree has num_entries==500 while the
+        // on-disk base+delta is bounded by MAX_KEYS_PER_NODE=63, so the
+        // actual in-memory tree must split; we cannot assert height
+        // directly. The split-reachability is covered by the
+        // "every key searchable" assertion above.
+        let _ = ();
+    }
 
-        #[test]
-        fn test_composite_btree_split_then_search_boundary_keys() {
-            let mut tree = CompositeBTreeIndex::new(1);
-            for k in 0..200i64 {
-                tree.insert(CompositeKey::new(vec![Value::Integer(k)]), (k * 2) as u32);
-            }
-            for k in [0i64, 1, 30, 31, 32, 62, 63, 64, 65, 126, 127, 128, 199] {
-                assert_eq!(
-                    tree.search(&CompositeKey::new(vec![Value::Integer(k)])),
-                    Some((k * 2) as u32),
-                    "boundary key {k} lost or mis-mapped across a split"
-                );
-            }
+    #[test]
+    fn test_composite_btree_range_query_sees_all_splits() {
+        let mut tree = CompositeBTreeIndex::new(1);
+        let n: i64 = 300;
+        for k in 0..n {
+            tree.insert(CompositeKey::new(vec![Value::Integer(k)]), k as u32);
+        }
+        let mut got: Vec<u32> = (0..n)
+            .map(|k| {
+                tree.search(&CompositeKey::new(vec![Value::Integer(k)]))
+                    .expect("key reachable")
+            })
+            .collect();
+        got.sort_unstable();
+        let expected: Vec<u32> = (0..n as u32).collect();
+        assert_eq!(
+        got, expected,
+        "every key must be reachable after splits (search-based surrogate              for range_query, which CompositeBTreeIndex lacks a public helper for)"
+    );
+    }
+
+    /// Regression test for the internal-node split path.
+    ///
+    /// `MAX_KEYS_PER_NODE` is 63, so a 500-key tree only ever splits *leaves*
+    /// and the root never fills: the internal split in `BTreeIndexCore::
+    /// split_if_full` is never reached. At ~2000 keys the root reaches 63
+    /// separators and splits for the first time. That path used to take
+    /// `children[right_start..]` instead of `children[right_start + 1..]`,
+    /// orphaning the subtree just left of the separator: 1024 of 2000 keys
+    /// became unreachable, first at key 961.
+    #[test]
+    fn test_composite_btree_internal_node_split() {
+        let n: i64 = 2000;
+        let mut tree = CompositeBTreeIndex::new(1);
+        for k in 0..n {
+            tree.insert(CompositeKey::new(vec![Value::Integer(k)]), k as u32);
+        }
+        let missing: Vec<i64> = (0..n)
+            .filter(|&k| {
+                tree.search(&CompositeKey::new(vec![Value::Integer(k)]))
+                    .is_none()
+            })
+            .collect();
+        assert!(
+            missing.is_empty(),
+            "{} of {} keys unreachable after an internal-node split (first: {:?})",
+            missing.len(),
+            n,
+            missing.first()
+        );
+    }
+
+    #[test]
+    fn test_composite_btree_split_then_search_boundary_keys() {
+        let mut tree = CompositeBTreeIndex::new(1);
+        for k in 0..200i64 {
+            tree.insert(CompositeKey::new(vec![Value::Integer(k)]), (k * 2) as u32);
+        }
+        for k in [0i64, 1, 30, 31, 32, 62, 63, 64, 65, 126, 127, 128, 199] {
+            assert_eq!(
+                tree.search(&CompositeKey::new(vec![Value::Integer(k)])),
+                Some((k * 2) as u32),
+                "boundary key {k} lost or mis-mapped across a split"
+            );
         }
     }
 
