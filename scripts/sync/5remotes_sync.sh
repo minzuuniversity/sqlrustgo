@@ -15,8 +15,16 @@
 # `block_admin_merge_override: true`). To advance a protected branch
 # we SSH into the container that hosts the repo and run
 # `git update-ref` directly. The container ID and repo path are
-# auto-detected; the script will discover a running container whose
-# docker port mapping is 0.0.0.0:3000->3000/tcp.
+# resolved at run time by discover_gitea_target(): it finds the
+# container whose docker port mapping is 0.0.0.0:3000->3000/tcp, then
+# locates the openclaw/sqlrustgo repository inside it. Both are
+# discovered fresh on every run because a container restart changes the
+# ID, and the two hosts use different repository layouts.
+#
+# SSH is always non-interactive (`BatchMode=yes`). If authentication
+# cannot complete without a prompt the script says so and skips that
+# host rather than letting ssh cycle through every identity until the
+# server drops it with "Too many authentication failures".
 #
 # Usage:
 #   scripts/sync/5remotes_sync.sh <branch> [<source-remote>]
@@ -130,13 +138,61 @@ done
 # Step 3: SSH container update-ref for protected Gitea remotes
 echo ""
 echo "Step 3: SSH container update-ref for gitea250 / gitea252"
-GITEA_HOSTS=("192.168.0.250:fd56a3da85f0:/git/openclaw/sqlrustgo.git:z440"
-             "192.168.0.252:fff98c53f6f5:/data/git/repositories/openclaw/sqlrustgo.git:liying")
-# Format: "host:container_id:repo_path:ssh_user"
+# Format: "host:ssh_user". The container ID and repo path are NOT
+# hardcoded — see discover_gitea_target below. They used to be baked
+# into this array while the header comment claimed they were
+# "auto-detected"; nothing detected anything. A container restart
+# changes the ID, so a stale value makes `docker exec` fail against a
+# host that was merely recreated.
+ALL_FAILED=0
+GITEA_HOSTS=("192.168.0.250:liying"
+             "192.168.0.252:liying")
+
+# Print "<container_id> <repo_path>" for the container on $host that
+# serves gitea on port 3000 and holds the openclaw/sqlrustgo repo.
+# Resolved on every run: the path differs between the two hosts
+# (/git/... on 250, /data/git/repositories/... on 252) and has changed
+# before.
+discover_gitea_target() {
+    local host=$1
+    ssh -o StrictHostKeyChecking=no -o BatchMode=yes -o ConnectTimeout=10 \
+        "$host" '
+        cid=$(docker ps --format "{{.ID}}|{{.Ports}}" \
+              | grep "0.0.0.0:3000->3000/tcp" | head -1 | cut -d"|" -f1)
+        [ -n "$cid" ] || { echo "NO_CONTAINER"; exit 1; }
+        path=$(docker exec "$cid" bash -c \
+               "find / -maxdepth 6 -type d -name sqlrustgo.git 2>/dev/null | head -1")
+        [ -n "$path" ] || { echo "NO_REPO"; exit 1; }
+        echo "$cid $path"
+    ' 2>/dev/null
+}
 
 for entry in "${GITEA_HOSTS[@]}"; do
-    IFS=':' read -r host container_id repo_path ssh_user <<< "$entry"
-    echo "  [$host / $container_id]"
+    IFS=':' read -r host ssh_user <<< "$entry"
+    # BatchMode=yes: never fall back to an interactive password prompt.
+    # With BatchMode=no a wrong or missing key makes ssh try every
+    # identity in turn until the server drops it with "Too many
+    # authentication failures" — which is what happened on 250 while
+    # this script still named a user (`z440`) that does not exist
+    # there. Auth is expected to work non-interactively; if it cannot,
+    # failing fast is the correct outcome.
+    target=$(discover_gitea_target "$host")
+    if [ -z "$target" ] || [ "${target%% *}" = "NO_CONTAINER" ] \
+       || [ "${target%% *}" = "NO_REPO" ]; then
+        echo "  [$host] ERROR: cannot discover container/repo (${target:-no response})"
+        ALL_FAILED=1
+        continue
+    fi
+    container_id="${target%% *}"
+    repo_path="${target#* }"
+    echo "  [$host / $container_id / $repo_path]"
+
+    if ! ssh -o StrictHostKeyChecking=no -o BatchMode=yes -o ConnectTimeout=10 \
+            "$ssh_user@$host" true 2>/dev/null; then
+        echo "  [$host] ERROR: non-interactive SSH auth as '$ssh_user' failed. Skipping."
+        ALL_FAILED=1
+        continue
+    fi
 
     for branch in "${branches[@]}"; do
         case "$branch" in
@@ -175,9 +231,10 @@ git -c safe.directory=* update-ref refs/heads/$branch $sha
 git -c safe.directory=* update-ref -d refs/heads/$tmp_ref 2>/dev/null
 echo final: \$(cat refs/heads/$branch)
 '"
-        if ! ssh -o StrictHostKeyChecking=no -o BatchMode=no \
+        if ! ssh -o StrictHostKeyChecking=no -o BatchMode=yes -o ConnectTimeout=15 \
              "$ssh_user@$host" "$update_cmd" 2>&1 | tail -5; then
             echo "    ERROR: ssh update-ref to $host/$branch failed"
+            ALL_FAILED=1
         fi
     done
 done
@@ -207,6 +264,13 @@ for branch in "${branches[@]}"; do
     [ $ALL_OK -eq 1 ] && echo "  ✓ all 10 pairs consistent"
 done
 
+# A failed step must not be masked by a later successful one: report
+# the first thing that went wrong, in the order things can go wrong.
+if [ "${ALL_FAILED:-0}" -ne 0 ]; then
+    echo ""
+    echo "FAILED: one or more protected-branch updates did not complete (see above)"
+    exit 2
+fi
 [ $ALL_OK -eq 0 ] && exit 1
 [ $PUSH_OK -eq 0 ] && exit 2
 exit 0
