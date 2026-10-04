@@ -115,26 +115,26 @@ fn one_connections_rollback_must_not_discard_anothers_buffered_rows() {
 
     a.execute("ROLLBACK").expect("A rollback");
 
-    // OBSERVED 2026-10-04: A's rows (0..10) are STILL PRESENT after
-    // ROLLBACK. The lockfree rollback path performs no per-row undo, so
-    // an abandoned transaction stays visible to every other connection.
-    //
-    // This is the opposite of what #4957 predicted (it expected A's rows
-    // to vanish and B's to survive). Both connections' rows survive,
-    // which means the failure mode is "rollback does nothing", not
-    // "rollback over-reaches".
-    //
-    // If a future fix makes ROLLBACK actually undo its own transaction,
-    // this assertion goes red — that is intentional. It is a tripwire,
-    // not a pass condition.
+    // #4960: this assertion used to be the inverse — it asserted A's rows
+    // 0..10 SURVIVED, deliberately red, as a tripwire for "ROLLBACK does
+    // nothing". That tripwire fired on 2026-10-04: `delete_collect_pks`
+    // built its removed-pk list solely from `tables.rows`, while a
+    // transaction's rows still sit in `insert_buffer`, so the undo replay
+    // deleted from the buffer but reported zero rows and never
+    // tombstoned. Fixed in #4960; the behaviour is now the correct one,
+    // so the assertion is inverted.
     let mut remaining = ids(&mut probe);
     remaining.sort_unstable();
     assert!(
-        remaining.contains(&0),
-        "EXPECTED-FIX-BEHAVIOUR: A's ROLLBACK should have removed id 0, \
-         but the abandoned transaction's rows are still visible. If this \
-         message appears, the rollback path has been fixed and this file \
-         needs updating. Current rows: {:?}",
+        !remaining.contains(&0),
+        "A's ROLLBACK must remove A's own rows (0..10); they are still \
+         visible. Current rows: {:?}",
+        remaining
+    );
+    assert!(
+        remaining.iter().all(|id| (100..110).contains(id)),
+        "A's ROLLBACK must not touch B's pending rows (100..110); \
+         got {:?}",
         remaining
     );
 
@@ -174,8 +174,9 @@ fn rollback_after_another_connection_committed_keeps_that_work() {
     a.execute("ROLLBACK").expect("A rollback");
 
     let mut probe = connect(port);
-    // B's committed rows survive (200..204) — that part is correct.
-    // A's abandoned row (id 1) also survives, which should not happen.
+    // #4960: the `contains(&1)` assertion used to be the inverse (a
+    // deliberate tripwire). ROLLBACK now correctly removes A's abandoned
+    // row while B's committed rows are untouched.
     let mut remaining = ids(&mut probe);
     remaining.sort_unstable();
     assert!(
@@ -185,11 +186,15 @@ fn rollback_after_another_connection_committed_keeps_that_work() {
         remaining
     );
     assert!(
-        remaining.contains(&1),
-        "EXPECTED-FIX-BEHAVIOUR: A's ROLLBACK should have removed id 1, \
-         but the abandoned row is still visible. If this message \
-         appears, the rollback path has been fixed and this file needs \
-         updating. Current rows: {:?}",
+        !remaining.contains(&1),
+        "A's ROLLBACK must remove A's abandoned row (id 1); it is still \
+         visible. Current rows: {:?}",
+        remaining
+    );
+    assert_eq!(
+        remaining.len(),
+        5,
+        "exactly B's 5 committed rows must remain, got {:?}",
         remaining
     );
 }
