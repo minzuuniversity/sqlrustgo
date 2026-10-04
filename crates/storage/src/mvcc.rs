@@ -481,7 +481,22 @@ mod tests {
         for i in 0..10 {
             let ts = t.next_snapshot_ts();
             t.put(int(1), vec![int(i)], ts, i as u64);
-            t.commit_tx(1, ts); // #4974
+            // #4986 follow-up: the tx id passed to `commit_tx` must be the
+            // same one the version was written under. This test wrote
+            // 10 versions under tx 0..=9 but committed them all as tx 1,
+            // so 9 of the 10 stayed `committed == false`.
+            //
+            // That was harmless while `gc` ignored the flag, but #4986
+            // made both reclaim checks require `committed` (a pending
+            // version must not be reaped out from under its own
+            // transaction), which turned the mismatch into a real
+            // failure: only the tx-1 version was eligible, so 2 got
+            // dropped instead of 6. The production change was correct and
+            // mutation-proven; the test was the defective party.
+            //
+            // Matches the idiom already used by the sibling test below
+            // (`t.put(int(i), .., i as u64); t.commit_tx(i as u64, ts)`).
+            t.commit_tx(i as u64, ts);
             tss.push(ts);
         }
         assert_eq!(t.version_count(), 10);
