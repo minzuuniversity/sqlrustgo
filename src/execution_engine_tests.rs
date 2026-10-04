@@ -2130,3 +2130,42 @@ fn test_v4910_effective_concurrent_sql_1t_vs_8t() {
     // doesn't use that path, so we expect a lower in-process speedup.
     assert!(speedup > 1.5, "1-thread to 8-thread speedup = {:.2}x", speedup);
 }
+
+// V4.1.0 / Issue #4910 §3.1 Phase 3 step 4 contract test:
+// The borrow checker enforces that pub fn execute(&self, sql) does NOT
+// require &mut self. We verify by issuing execute via &engine_ref, which
+// would fail to compile if execute ever required &mut self again.
+#[test]
+fn test_v4910_step4_execute_through_ref_engine() {
+    use std::sync::Arc;
+
+    let storage = Arc::new(parking_lot::RwLock::new(MemoryStorage::new()));
+    let mut engine = ExecutionEngine::new(storage);
+    engine.execute("CREATE TABLE t_v410s4 (id INTEGER PRIMARY KEY, val INTEGER)").unwrap();
+    engine.execute("INSERT INTO t_v410s4 VALUES (1, 100), (2, 200), (3, 300)").unwrap();
+
+    // Wrap in Arc so multiple readers can hold &engine_ref simultaneously.
+    let engine = Arc::new(engine);
+
+    // §3.1 contract: execute(&self, sql) compiles via &engine_ref.
+    // The borrow checker would reject any change to &mut self.
+    let engine_ref: &ExecutionEngine<_> = &engine;
+    let result = engine_ref
+        .execute("SELECT count(*) FROM t_v410s4")
+        .expect("SELECT via &engine_ref");
+    assert_eq!(result.rows[0][0], crate::Value::Integer(3));
+
+    let result = engine_ref
+        .execute("SELECT val FROM t_v410s4 WHERE id = 2")
+        .expect("SELECT via &engine_ref");
+    assert_eq!(result.rows[0][0], crate::Value::Integer(200));
+
+    // Multiple readers can hold the same &engine_ref simultaneously.
+    let engine_ref2: &ExecutionEngine<_> = &engine;
+    let result2 = engine_ref2
+        .execute("SELECT sum(val) FROM t_v410s4")
+        .expect("SELECT via &engine_ref2");
+    assert_eq!(result2.rows[0][0], crate::Value::Integer(600));
+
+    println!("\n[v4910 Phase 3 step 4] execute(&self, sql) works via &engine_ref");
+}
