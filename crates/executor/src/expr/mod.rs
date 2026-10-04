@@ -617,6 +617,30 @@ pub fn eval_not_between(value: &Value, low: &Value, high: &Value) -> Value {
 /// We define a local struct that the public function uses (rather than
 /// a free function over `&[String]`) so that the multi-join logic
 /// reads naturally.
+/// True when `haystack`'s trailing dot-separated segments equal **all** of
+/// `needle`'s segments, compared byte-exactly.
+///
+/// Allocation-free replacement for the `split('.').collect::<Vec<_>>()` +
+/// slice-equality idiom F-08 flagged: the multi-join branch used to allocate
+/// two `Vec<&str>` per candidate column on every identifier evaluation. The
+/// comparison here walks both iterators right-to-left, so it also encodes the
+/// original `col_segments.len() >= user_segments.len()` guard (if
+/// `haystack` runs out of segments first, it is shorter and we return false).
+///
+/// Case-sensitivity matches the code it replaced exactly: that branch used
+/// `[&str] == [&str]`, which is **case-sensitive**, unlike the
+/// case-insensitive fallbacks earlier in `find_column_index`.
+fn trailing_segments_eq(haystack: &str, needle: &str) -> bool {
+    let mut h = haystack.rsplit('.');
+    for n in needle.rsplit('.') {
+        match h.next() {
+            Some(seg) if seg == n => {}
+            _ => return false,
+        }
+    }
+    true
+}
+
 pub fn find_column_index(
     col_name: &str,
     columns: &[sqlrustgo_storage::ColumnDefinition],
@@ -644,29 +668,18 @@ pub fn find_column_index(
         }
         // Multi-join: the accumulated column may be `a_join_b.t.col`; match
         // when the user's `qualifier.col` is the trailing two segments.
-        let user_segments: Vec<&str> = col_name.split('.').collect();
-        for (i, c) in columns.iter().enumerate() {
-            let col_segments: Vec<&str> = c.name.split('.').collect();
-            if col_segments.len() >= user_segments.len()
-                && col_segments[col_segments.len() - user_segments.len()..] == user_segments[..]
-            {
-                return Some(i);
-            }
-        }
-        None
-    } else {
-        // Unqualified: try a trailing-segment match so bare `tag` still
-        // resolves against the accumulated `a_join_b.a.tag`.
-        for (i, c) in columns.iter().enumerate() {
-            if let Some((_, tail)) = c.name.rsplit_once('.') {
-                if tail.eq_ignore_ascii_case(col_name) {
-                    return Some(i);
-                }
-            }
-        }
-        // Last fallback: no match.
-        None
+        // (F-08: no `Vec<&str>` allocation — see `trailing_segments_eq`.)
+        return columns
+            .iter()
+            .position(|c| trailing_segments_eq(&c.name, col_name));
     }
+
+    // Unqualified: try a trailing-segment match so bare `tag` still
+    // resolves against the accumulated `a_join_b.a.tag`.
+    columns.iter().position(|c| match c.name.rsplit_once('.') {
+        Some((_, tail)) => tail.eq_ignore_ascii_case(col_name),
+        None => false,
+    })
 }
 
 /// Evaluate the parser-AST `Expression::Identifier(name)` arm: looks up
@@ -4878,6 +4891,77 @@ mod tests {
         assert_eq!(find_column_index("val", &cols), Some(1));
         assert_eq!(find_column_index("t.id", &cols), Some(0));
         assert_eq!(find_column_index("nonexistent", &cols), None);
+    }
+
+    /// F-08: 锁定 `trailing_segments_eq` 重写前后的语义契约。
+    ///
+    /// 重点：多 join 的**尾段匹配是大小写敏感的**（原实现用
+    /// `[&str] == [&str]`），而同函数里其它回退是大小写不敏感的。
+    /// 重写成分配无关的迭代比较时必须保持这个不对称。
+    #[test]
+    fn test_trailing_segments_eq_contract() {
+        // 命中：haystack 更长，尾段相同。
+        assert!(trailing_segments_eq("a_join_b.t.col", "t.col"));
+        assert!(trailing_segments_eq("t.col", "t.col"));
+        assert!(trailing_segments_eq("a.b.t.col", "t.col"));
+        // 大小写敏感 —— 与 `[&str] == [&str]` 一致。
+        assert!(!trailing_segments_eq("a_join_b.T.col", "t.col"));
+        assert!(!trailing_segments_eq("a_join_b.t.COL", "t.col"));
+        // haystack 段数不足 -> false（原 `len() >=` 守卫）。
+        assert!(!trailing_segments_eq("col", "t.col"));
+        assert!(!trailing_segments_eq("", "t.col"));
+        // 尾段不同 -> false。
+        assert!(!trailing_segments_eq("a_join_b.x.col", "t.col"));
+    }
+
+    #[test]
+    fn test_find_column_index_multi_join_trailing_segments() {
+        let mk = |name: &str| sqlrustgo_storage::ColumnDefinition {
+            name: name.to_string(),
+            auto_increment: false,
+            ..Default::default()
+        };
+
+        // 累积列名 `a_join_b.tN.cM`；用户写 `tN.cM`。
+        let cols = vec![
+            mk("a_join_b.t1.c1"),
+            mk("a_join_b.t2.c2"),
+            mk("a_join_b.t3.c3"),
+        ];
+
+        // 尾段命中，取第一个匹配下标。
+        assert_eq!(find_column_index("t1.c1", &cols), Some(0));
+        assert_eq!(find_column_index("t2.c2", &cols), Some(1));
+        assert_eq!(find_column_index("t3.c3", &cols), Some(2));
+        // 未命中。
+        assert_eq!(find_column_index("t9.c9", &cols), None);
+        // 段数不足：`c1` 不是限定名，走「非限定尾段、大小写不敏感」分支，
+        // 会匹配 `a_join_b.t1.c1` 的尾段 `c1`。
+        assert_eq!(find_column_index("c1", &cols), Some(0));
+        // 多 join 尾段匹配**大小写敏感**：`T1.c1` 配不上 `a_join_b.t1.c1`。
+        // 第 3 步（`eq_ignore_ascii_case(col)`）也救不了，因为 `c1`
+        // 不等于任何一个**完整**列名。这是重构前后一致的行为。
+        assert_eq!(find_column_index("T1.c1", &cols), None);
+        // 尾段大小写不匹配且第 3 步也不成立 -> None。
+        assert_eq!(find_column_index("t1.C9", &cols), None);
+    }
+
+    #[test]
+    fn test_find_column_index_unqualified_tail_case_insensitive() {
+        let mk = |name: &str| sqlrustgo_storage::ColumnDefinition {
+            name: name.to_string(),
+            auto_increment: false,
+            ..Default::default()
+        };
+        let cols = vec![mk("a_join_b.a.tag"), mk("plain")];
+
+        // 非限定：尾段大小写不敏感匹配。
+        assert_eq!(find_column_index("tag", &cols), Some(0));
+        assert_eq!(find_column_index("TAG", &cols), Some(0));
+        // 无点号的列名只有精确/大小写不敏感两条路。
+        assert_eq!(find_column_index("plain", &cols), Some(1));
+        assert_eq!(find_column_index("PLAIN", &cols), Some(1));
+        assert_eq!(find_column_index("nope", &cols), None);
     }
 
     #[test]
