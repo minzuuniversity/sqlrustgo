@@ -24,6 +24,21 @@ mod packet_type {
     pub const COM_QUIT: u8 = 0x01;
     pub const COM_QUERY: u8 = 0x03;
     pub const COM_PING: u8 = 0x0e;
+    /// Server → client marker that opens a LOCAL INFILE round trip.
+    ///
+    /// Payload is `0xFB` followed by the NUL-terminated (in practice,
+    /// bare) path of the file the client is asked to stream back. The
+    /// client must then send one or more raw-content packets followed by
+    /// an empty-payload packet as the terminator.
+    ///
+    /// This is NOT a length-encoded value: `0xFB` is the "NULL" escape
+    /// inside a length-encoded integer (see `parse_length_encoded_int`),
+    /// so a response parser that treats an unexpected first byte as a
+    /// lenenc int turns it into `u64::MAX` and then aborts on
+    /// `Vec::with_capacity(u64::MAX)` with "capacity overflow". Any
+    /// response parser must therefore dispatch on `0xFB` *before* the
+    /// lenenc-int path.
+    pub const LOCAL_INFILE_REQUEST: u8 = 0xFB;
     #[allow(dead_code)]
     pub const COM_STMT_PREPARE: u8 = 0x16;
     #[allow(dead_code)]
@@ -170,7 +185,7 @@ impl Packet {
     }
 
     /// Write a MySQL packet to a stream.
-    pub fn write_to<W: Write>(&self, w: &mut W) -> MySqlResult<()> {
+    pub fn write_to<W: Write + ?Sized>(&self, w: &mut W) -> MySqlResult<()> {
         if self.length > MAX_PACKET_SIZE {
             return Err(MySqlClientError::Protocol(format!(
                 "Packet too large: {} > {}",
@@ -197,6 +212,42 @@ impl Packet {
             payload,
         }
     }
+}
+
+/// A duplex MySQL wire transport.
+///
+/// `Parse_result_set` used to take `&mut dyn Read`, which is enough for
+/// every response *except* LOCAL INFILE: answering a `0xFB` request means
+/// writing file bytes back on the same handle, so a read-only parser can
+/// never complete the round trip. `TcpStream` and `std::io::Cursor` both
+/// satisfy the blanket impl, so existing callers and tests are unaffected.
+pub trait WireStream: Read + Write {}
+impl<T: Read + Write + ?Sized> WireStream for T {}
+
+/// Supplies the bytes to answer a server `0xFB` LOCAL INFILE request.
+///
+/// The argument is the path the server asked for. Returning `Err` aborts
+/// the round trip: nothing is written, and the connection is left with an
+/// unread request on it, so the caller must drop the connection rather
+/// than reuse it.
+pub type LocalInfileHandler<'a> = &'a mut dyn FnMut(&str) -> MySqlResult<Vec<u8>>;
+
+/// Default LOCAL INFILE handler: read the requested path off local disk.
+///
+/// This is what the `mysql` CLI does, and it is why the *server* — not the
+/// client — is the security boundary: `handle_load_local_infile` in
+/// `crates/mysql-server/src/lib.rs` canonicalizes the path and rejects
+/// anything outside the configured `load_infile_dir`. A client that blindly
+/// read and uploaded an arbitrary path would still be stopped by that
+/// check; a client that is handed the path by a trusted server operator is
+/// in no worse position than the operator typing the path into the CLI.
+fn read_local_file_for_infile(path: &str) -> MySqlResult<Vec<u8>> {
+    std::fs::read(path).map_err(|e| {
+        MySqlClientError::Io(std::io::Error::new(
+            e.kind(),
+            format!("LOCAL INFILE: cannot read {:?}: {}", path, e),
+        ))
+    })
 }
 
 // ============================================================================
@@ -613,9 +664,200 @@ fn extract_status_flags_from_eof(payload: &[u8], deprecate_eof: bool) -> u16 {
     }
 }
 
-/// Parse a result set from the stream after sending COM_QUERY.
-pub fn parse_result_set(stream: &mut dyn Read, deprecate_eof: bool) -> MySqlResult<ResultSet> {
+/// Parse an ERR packet payload (first byte already known to be 0xFF).
+///
+/// Never fails: a truncated ERR packet still yields a `ResultSet::Error`
+/// with whatever fields were present, because surfacing the server's
+/// error is more useful than surfacing a parse failure.
+fn parse_err_payload(payload: &[u8]) -> ResultSet {
+    let error_code = if payload.len() >= 3 {
+        u16::from_le_bytes([payload[1], payload[2]])
+    } else {
+        0
+    };
+    let (sql_state, msg_start) = if payload.len() > 9 && payload[3] == 0x23 {
+        // CLIENT_PROTOCOL_41: 0x23 marker + 5-byte sql_state
+        (String::from_utf8_lossy(&payload[4..9]).to_string(), 9)
+    } else if payload.len() > 8 {
+        // Legacy protocol (pre-4.1): no marker; sql_state is 5 bytes
+        (String::from_utf8_lossy(&payload[3..8]).to_string(), 8)
+    } else {
+        (String::new(), 3)
+    };
+    let error_message = if msg_start < payload.len() {
+        String::from_utf8_lossy(&payload[msg_start..]).to_string()
+    } else {
+        String::new()
+    };
+    ResultSet::Error {
+        error_code,
+        sql_state,
+        error_message,
+    }
+}
+
+/// Parse an OK / EOF-as-OK packet payload (first byte 0x00 or 0xFE).
+///
+/// Layout after the header byte:
+///   lenenc affected_rows
+///   lenenc last_insert_id
+///   int<2>  status_flags
+///   int<2>  warnings
+///   string<EOF> info
+///
+/// `warnings` matters for LOAD DATA: the server reports rows it could not
+/// load there (#4941), so a load that silently dropped rows is visible
+/// here rather than looking like a clean success.
+fn parse_ok_payload(payload: &[u8]) -> MySqlResult<ResultSet> {
+    let mut off = 1;
+    let affected_rows = parse_length_encoded_int(payload, &mut off)?;
+    let last_insert_id = parse_length_encoded_int(payload, &mut off)?;
+    let status_flags = if off + 2 <= payload.len() {
+        u16::from_le_bytes([payload[off], payload[off + 1]])
+    } else {
+        0
+    };
+    off += 2;
+    let warnings = if off + 2 <= payload.len() {
+        u16::from_le_bytes([payload[off], payload[off + 1]])
+    } else {
+        0
+    };
+    off += 2;
+
+    let info = if off < payload.len() {
+        String::from_utf8_lossy(&payload[off..]).to_string()
+    } else {
+        String::new()
+    };
+
+    Ok(ResultSet::Ok {
+        affected_rows,
+        last_insert_id,
+        status_flags,
+        warnings,
+        info,
+    })
+}
+
+/// Answer a server LOCAL INFILE request (0xFB) and return the result the
+/// server sends once it has consumed the file.
+///
+/// Wire flow, per the MySQL protocol:
+///   server → client : 0xFB + path
+///   client → server : zero or more raw-content packets, each at most
+///                     `MAX_PACKET_SIZE` bytes
+///   client → server : one empty-payload packet (the terminator)
+///   server → client : OK or ERR
+///
+/// Sequence numbers continue from the request packet: the first data
+/// packet carries `request.sequence + 1`. The server re-derives its own
+/// counter from whatever it reads (`*seq = pkt.sequence.wrapping_add(1)`
+/// in `handle_load_local_infile`), so mirroring the request is what
+/// keeps the two ends in step.
+fn respond_to_local_infile(
+    stream: &mut dyn WireStream,
+    request: &Packet,
+    _deprecate_eof: bool,
+    infile: LocalInfileHandler<'_>,
+    mut next_seq: Option<&mut u8>,
+) -> MySqlResult<ResultSet> {
+    // Path runs to the end of the payload. MySQL specifies a
+    // NUL-terminated string; real clients send it bare. Tolerate both by
+    // trimming at the first NUL.
+    let raw_path = &request.payload[1..];
+    let path_bytes = match raw_path.iter().position(|&b| b == 0) {
+        Some(nul) => &raw_path[..nul],
+        None => raw_path,
+    };
+    let path = String::from_utf8_lossy(path_bytes).to_string();
+
+    let contents = infile(&path)?;
+
+    let mut seq = request.sequence.wrapping_add(1);
+    for chunk in contents.chunks(MAX_PACKET_SIZE as usize) {
+        Packet {
+            length: chunk.len() as u32,
+            sequence: seq,
+            payload: chunk.to_vec(),
+        }
+        .write_to(stream)?;
+        seq = seq.wrapping_add(1);
+    }
+    // Terminator: a zero-length packet. An empty `contents` produces no
+    // data packets at all, which is the correct "no data supplied"
+    // encoding and is distinct from never answering.
+    Packet {
+        length: 0,
+        sequence: seq,
+        payload: Vec::new(),
+    }
+    .write_to(stream)?;
+
+    let final_pkt = Packet::read_from(stream)?;
+    if let Some(out) = next_seq.as_deref_mut() {
+        *out = final_pkt.sequence.wrapping_add(1);
+    }
+
+    // The only two things the server may answer with are OK and ERR.
+    if final_pkt.payload.first() == Some(&0xff) {
+        return Ok(parse_err_payload(&final_pkt.payload));
+    }
+    if final_pkt.payload.is_empty() {
+        return Err(MySqlClientError::Protocol(
+            "empty response after LOCAL INFILE upload".to_string(),
+        ));
+    }
+    parse_ok_payload(&final_pkt.payload)
+}
+
+///
+/// **LOCAL INFILE is not handled here.** This is the read-only entry
+/// point kept for source compatibility; answering a `0xFB` request needs
+/// `Write` on the same handle, so use
+/// [`parse_result_set_with_infile`] when a `LOAD DATA LOCAL INFILE` can
+/// reach the stream. Reaching this function with a `0xFB` first byte
+/// yields an explicit protocol error instead of the historical
+/// `capacity overflow` (the byte is the NULL escape inside a
+/// length-encoded int, so it used to decode to `u64::MAX` and then blow up
+/// `Vec::with_capacity`).
+pub fn parse_result_set(stream: &mut dyn WireStream, deprecate_eof: bool) -> MySqlResult<ResultSet> {
+    let mut refuse = |path: &str| -> MySqlResult<Vec<u8>> {
+        Err(MySqlClientError::Protocol(format!(
+            "server requested LOCAL INFILE {:?} but no LOCAL INFILE handler is \
+             configured; use parse_result_set_with_infile or \
+             MySqlConnection::load_data_local",
+            path
+        )))
+    };
+    parse_result_set_with_infile(stream, deprecate_eof, &mut refuse, None)
+}
+
+/// Same as [`parse_result_set`], but able to answer a LOCAL INFILE request.
+///
+/// `infile` is invoked with the path the server asked for and must return
+/// the bytes to stream back. `next_seq`, when supplied, receives the
+/// sequence number the next client packet should carry. It is only
+/// written on the LOCAL INFILE path: every other response shape leaves the
+/// caller's sequence bookkeeping exactly as it was, so this does not
+/// change sequencing for ordinary queries.
+pub fn parse_result_set_with_infile(
+    stream: &mut dyn WireStream,
+    deprecate_eof: bool,
+    infile: LocalInfileHandler<'_>,
+    next_seq: Option<&mut u8>,
+) -> MySqlResult<ResultSet> {
     let pkt = Packet::read_from(stream)?;
+
+    // LOCAL INFILE request (0xFB) must be dispatched BEFORE any
+    // length-encoded-int handling. 0xFB is the NULL escape inside a
+    // lenenc int (`parse_length_encoded_int` maps it to `u64::MAX`), so
+    // letting it fall through to the column-count path produced
+    // `Vec::with_capacity(u64::MAX)` → "capacity overflow" and the
+    // client could never complete a LOAD DATA round trip.
+    if pkt.payload.first() == Some(&packet_type::LOCAL_INFILE_REQUEST) {
+        return respond_to_local_infile(stream, &pkt, deprecate_eof, infile, next_seq);
+    }
 
     // Check for error packet (first byte 0xff)
     //
@@ -633,26 +875,7 @@ pub fn parse_result_set(stream: &mut dyn Read, deprecate_eof: bool) -> MySqlResu
     // started with the trailing '0' of the sql_state ("0Execution error: ...").
     // Issue #4847 / sub-bug: wire error message redundant "0" prefix.
     if !pkt.payload.is_empty() && pkt.payload[0] == 0xff {
-        let error_code = u16::from_le_bytes([pkt.payload[1], pkt.payload[2]]);
-        let (sql_state, msg_start) = if pkt.payload.len() > 9 && pkt.payload[3] == 0x23 {
-            // CLIENT_PROTOCOL_41: 0x23 marker + 5-byte sql_state
-            (String::from_utf8_lossy(&pkt.payload[4..9]).to_string(), 9)
-        } else if pkt.payload.len() > 8 {
-            // Legacy protocol (pre-4.1): no marker; sql_state is 5 bytes
-            (String::from_utf8_lossy(&pkt.payload[3..8]).to_string(), 8)
-        } else {
-            (String::new(), 3)
-        };
-        let error_message = if msg_start < pkt.payload.len() {
-            String::from_utf8_lossy(&pkt.payload[msg_start..]).to_string()
-        } else {
-            String::new()
-        };
-        return Ok(ResultSet::Error {
-            error_code,
-            sql_state,
-            error_message,
-        });
+        return Ok(parse_err_payload(&pkt.payload));
     }
     // A response is OK (no result set) iff:
     //   - DEPRECATE_EOF=0: first byte is 0x00 (OK marker) and NOT a
@@ -675,35 +898,7 @@ pub fn parse_result_set(stream: &mut dyn Read, deprecate_eof: bool) -> MySqlResu
     let first_byte = pkt.payload.first().copied().unwrap_or(0);
     let looks_like_ok = (first_byte == 0x00 || first_byte == 0xfe) && pkt.payload.len() >= 5;
     if looks_like_ok {
-        let mut off = 1;
-        let affected_rows = parse_length_encoded_int(&pkt.payload, &mut off)?;
-        let last_insert_id = parse_length_encoded_int(&pkt.payload, &mut off)?;
-        let status_flags = if off + 2 <= pkt.payload.len() {
-            u16::from_le_bytes([pkt.payload[off], pkt.payload[off + 1]])
-        } else {
-            0
-        };
-        off += 2;
-        let warnings = if off + 2 <= pkt.payload.len() {
-            u16::from_le_bytes([pkt.payload[off], pkt.payload[off + 1]])
-        } else {
-            0
-        };
-        off += 2;
-
-        let info = if off < pkt.payload.len() {
-            String::from_utf8_lossy(&pkt.payload[off..]).to_string()
-        } else {
-            String::new()
-        };
-
-        return Ok(ResultSet::Ok {
-            affected_rows,
-            last_insert_id,
-            status_flags,
-            warnings,
-            info,
-        });
+        return parse_ok_payload(&pkt.payload);
     }
 
     // It's a result set: first packet is column count (length-encoded int)
@@ -1084,7 +1279,23 @@ impl MySqlConnection {
     }
 
     /// Execute a SQL query via COM_QUERY and return the result.
+    ///
+    /// If the server answers a `LOAD DATA LOCAL INFILE` with a 0xFB
+    /// request, the requested path is read from local disk and streamed
+    /// back — the same behaviour as the `mysql` CLI. Use
+    /// [`Self::load_data_local`] or [`Self::execute_with_local_infile`] to
+    /// supply the bytes yourself instead of reading from disk.
     pub fn execute(&mut self, sql: &str) -> MySqlResult<ResultSet> {
+        self.execute_with_local_infile(sql, &mut read_local_file_for_infile)
+    }
+
+    /// Execute a SQL query, answering any LOCAL INFILE request with
+    /// `infile` instead of reading the file off local disk.
+    pub fn execute_with_local_infile(
+        &mut self,
+        sql: &str,
+        infile: LocalInfileHandler<'_>,
+    ) -> MySqlResult<ResultSet> {
         let mut payload = Vec::with_capacity(sql.len() + 1);
         payload.push(packet_type::COM_QUERY);
         payload.extend_from_slice(sql.as_bytes());
@@ -1093,13 +1304,36 @@ impl MySqlConnection {
         self.seq = query_pkt.sequence.wrapping_add(1);
         query_pkt.write_to(&mut self.stream)?;
 
-        let result = parse_result_set(&mut self.stream, true)?;
+        // `self.stream` and `self.seq` are disjoint fields, so both can
+        // be borrowed at once. `next_seq` is only written on the LOCAL
+        // INFILE path (see `parse_result_set_with_infile`).
+        let mut next_seq = self.seq;
+        let result = parse_result_set_with_infile(
+            &mut self.stream,
+            true,
+            infile,
+            Some(&mut next_seq),
+        )?;
+        self.seq = next_seq;
 
         // Update seq from the last packet read (handled inside parse_result_set)
         // but we don't track it precisely there. For simplicity, reset seq.
         // In practice, multi-statement requires tracking; for single query OK.
 
         Ok(result)
+    }
+
+    /// `LOAD DATA LOCAL INFILE` with the file contents supplied from memory.
+    ///
+    /// The server still names a path and still enforces its
+    /// `load_infile_dir` whitelist against it; `contents` is what
+    /// actually gets streamed, so the caller controls the bytes. The path
+    /// is sent back as-is and is only used by the server for the
+    /// whitelist check.
+    pub fn load_data_local(&mut self, sql: &str, contents: &[u8]) -> MySqlResult<ResultSet> {
+        let bytes = contents.to_vec();
+        let mut handler = |_path: &str| -> MySqlResult<Vec<u8>> { Ok(bytes.clone()) };
+        self.execute_with_local_infile(sql, &mut handler)
     }
 
     /// Execute a multi-statement query via COM_QUERY.
@@ -1125,7 +1359,8 @@ impl MySqlConnection {
 
         let mut results = Vec::new();
         loop {
-            let rs = parse_result_set(&mut self.stream, true)?;
+            let mut infile = read_local_file_for_infile;
+            let rs = parse_result_set_with_infile(&mut self.stream, true, &mut infile, None)?;
             let more = matches!(&rs, ResultSet::Select { status_flags, .. } if *status_flags & SERVER_MORE_RESULTS_EXISTS != 0)
                 || matches!(&rs, ResultSet::Ok { status_flags, .. } if *status_flags & SERVER_MORE_RESULTS_EXISTS != 0);
             let is_last = !more;
@@ -1281,8 +1516,9 @@ impl MySqlConnection {
         pkt.write_to(&mut self.stream)?;
 
         // Response: text or binary result set depending on server
-        // We use parse_result_set for text protocol
-        parse_result_set(&mut self.stream, true)
+        // We use the result-set parser for the text protocol.
+        let mut infile = read_local_file_for_infile;
+        parse_result_set_with_infile(&mut self.stream, true, &mut infile, None)
     }
 
     /// COM_STMT_CLOSE — deallocate a prepared statement.
