@@ -131,6 +131,34 @@ $ ./target/release/deps/storage_benchmark-* --bench "b2_" \
 `WalStorage::update` 用上它；`merge.rs` 两侧都需全表参与 join、
 无谓词可下推，按原样保留（见 plan §10.8）。
 
+#### 补充（2026-10-04）：`scan_with_filter` 此前零测试覆盖
+
+`crates/storage/tests/scan_with_filter_contract_test.rs`（5 例）记录两点，
+都是 B2.4 与 #4947 建立其上却未被验证的前提。
+
+**一、filter 在 clone 之前。** `file_storage.rs:3800` 是
+
+```rust
+.map(|data| data.rows.iter().filter(|r| filter(r)).cloned().collect())
+```
+
+而非 `scan()` 的 `data.rows.clone()`。这正是 B2.4 收益的来源，但此前没有任何
+测试钉住它——改回整表 clone 不会有测试失败。已补测试并验证其有效性：注入
+"忽略谓词"后 2 例立即变红。
+
+**二、恒真谓词与 `scan` 等价，且成本相同。** #4962 把触发器路径切成
+`scan_with_filter(&|_| true)`（谓词恒真，因触发器的 WHERE 可能引用
+NEW/OLD 上下文）。此时每行仍执行 `cloned()`，**与 `scan()` 成本一致**。
+
+因此 **#4962 是类型修复而非性能优化**——它解决的是
+`scan_with_filter<F>` 因 `Self: Sized` 而无法从 `Arc<RwLock<dyn StorageEngine>>`
+调用的真实限制，收益不在性能。这个区分很容易被误判，测试与本节都为此存在。
+
+另有一条语义必须保住：filter 要能看到**仍在 `insert_buffer` 里**的行。
+触发器路径在事务内运行，这是常态；只扫 `tables.rows` 的实现会漏掉它们。
+`filter_also_sees_rows_still_in_the_insert_buffer` 钉住这一点。
+
+
 ---
 
 ## 5. 一处被测量本身证伪的"回归"
