@@ -594,92 +594,17 @@ pub fn eval_not_between(value: &Value, low: &Value, high: &Value) -> Value {
     Value::Boolean(!(compare_values(value, low) >= 0 && compare_values(value, high) <= 0))
 }
 
-/// Look up a column index in a `TableInfo.columns` list by name, with
-/// case-insensitive matching, qualified-name stripping, and
-/// multi-join trailing-segment handling.
+/// Resolve a column reference against a schema slice.
 ///
-/// This is the single source of truth for column-name resolution. The
-/// legacy `src/expr_utils.rs::find_column_index` is a 1-line shim that
-/// delegates to this function (P0-2 §4.10).
-///
-/// **Semantics (identical to the legacy function):**
-/// - Fast path: exact case-insensitive match on the full column name.
-/// - If `col_name` contains a `.` (qualified), strip the qualifier and
-///   try the bare column name. If the column was accumulated from a
-///   multi-join (e.g. `a_join_b.t.col`), try matching the trailing N
-///   segments of the accumulated name against the user's N segments.
-/// - If `col_name` has no `.` (unqualified), try a trailing-segment
-///   match against each accumulated column (so bare `tag` resolves
-///   against `a_join_b.a.tag`).
-/// - Returns `Some(idx)` for a match, `None` otherwise.
-///
-/// The `ColumnDefinition` type is `sqlrustgo_storage::ColumnDefinition`.
-/// We define a local struct that the public function uses (rather than
-/// a free function over `&[String]`) so that the multi-join logic
-/// reads naturally.
-/// True when `haystack`'s trailing dot-separated segments equal **all** of
-/// `needle`'s segments, compared byte-exactly.
-///
-/// Allocation-free replacement for the `split('.').collect::<Vec<_>>()` +
-/// slice-equality idiom F-08 flagged: the multi-join branch used to allocate
-/// two `Vec<&str>` per candidate column on every identifier evaluation. The
-/// comparison here walks both iterators right-to-left, so it also encodes the
-/// original `col_segments.len() >= user_segments.len()` guard (if
-/// `haystack` runs out of segments first, it is shorter and we return false).
-///
-/// Case-sensitivity matches the code it replaced exactly: that branch used
-/// `[&str] == [&str]`, which is **case-sensitive**, unlike the
-/// case-insensitive fallbacks earlier in `find_column_index`.
-fn trailing_segments_eq(haystack: &str, needle: &str) -> bool {
-    let mut h = haystack.rsplit('.');
-    for n in needle.rsplit('.') {
-        match h.next() {
-            Some(seg) if seg == n => {}
-            _ => return false,
-        }
-    }
-    true
-}
-
+/// **Thin delegate to the single source of truth** at
+/// `sqlrustgo_storage::engine::find_column_index_in` (5-layer contract,
+/// allocation-free). Kept as the public API used by `eval_identifier` and
+/// the F-08 regression tests in this module.
 pub fn find_column_index(
     col_name: &str,
     columns: &[sqlrustgo_storage::ColumnDefinition],
 ) -> Option<usize> {
-    // V313-followup-1 / Issue #4154: case-exact first, fallback
-    // case-insensitive.
-    if let Some(idx) = columns.iter().position(|c| c.name == col_name) {
-        return Some(idx);
-    }
-    if let Some(idx) = columns
-        .iter()
-        .position(|c| c.name.eq_ignore_ascii_case(col_name))
-    {
-        return Some(idx);
-    }
-
-    if let Some((_qualifier, col)) = col_name.split_once('.') {
-        // Qualified: prefer the unqualified column-name match (works for the
-        // first-JOIN case where columns are named `t.col`).
-        if let Some(idx) = columns
-            .iter()
-            .position(|c| c.name.eq_ignore_ascii_case(col))
-        {
-            return Some(idx);
-        }
-        // Multi-join: the accumulated column may be `a_join_b.t.col`; match
-        // when the user's `qualifier.col` is the trailing two segments.
-        // (F-08: no `Vec<&str>` allocation — see `trailing_segments_eq`.)
-        return columns
-            .iter()
-            .position(|c| trailing_segments_eq(&c.name, col_name));
-    }
-
-    // Unqualified: try a trailing-segment match so bare `tag` still
-    // resolves against the accumulated `a_join_b.a.tag`.
-    columns.iter().position(|c| match c.name.rsplit_once('.') {
-        Some((_, tail)) => tail.eq_ignore_ascii_case(col_name),
-        None => false,
-    })
+    sqlrustgo_storage::engine::find_column_index_in(col_name, columns)
 }
 
 /// Evaluate the parser-AST `Expression::Identifier(name)` arm: looks up
@@ -4917,27 +4842,10 @@ mod tests {
         assert_eq!(find_column_index("nonexistent", &cols), None);
     }
 
-    /// F-08: 锁定 `trailing_segments_eq` 重写前后的语义契约。
-    ///
-    /// 重点：多 join 的**尾段匹配是大小写敏感的**（原实现用
-    /// `[&str] == [&str]`），而同函数里其它回退是大小写不敏感的。
-    /// 重写成分配无关的迭代比较时必须保持这个不对称。
-    #[test]
-    fn test_trailing_segments_eq_contract() {
-        // 命中：haystack 更长，尾段相同。
-        assert!(trailing_segments_eq("a_join_b.t.col", "t.col"));
-        assert!(trailing_segments_eq("t.col", "t.col"));
-        assert!(trailing_segments_eq("a.b.t.col", "t.col"));
-        // 大小写敏感 —— 与 `[&str] == [&str]` 一致。
-        assert!(!trailing_segments_eq("a_join_b.T.col", "t.col"));
-        assert!(!trailing_segments_eq("a_join_b.t.COL", "t.col"));
-        // haystack 段数不足 -> false（原 `len() >=` 守卫）。
-        assert!(!trailing_segments_eq("col", "t.col"));
-        assert!(!trailing_segments_eq("", "t.col"));
-        // 尾段不同 -> false。
-        assert!(!trailing_segments_eq("a_join_b.x.col", "t.col"));
-    }
-
+    // Note: `trailing_segments_eq` is now private to
+    // `sqlrustgo_storage::engine` (and tested there as
+    // `trailing_segments_eq_contract`). This module's executor-`expr`
+    // tests only exercise the public `find_column_index` path.
     #[test]
     fn test_find_column_index_multi_join_trailing_segments() {
         let mk = |name: &str| sqlrustgo_storage::ColumnDefinition {

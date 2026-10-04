@@ -1,0 +1,53 @@
+# Test-runner manifest — 供 scripts/gate/check_anti_fabrication.sh 的
+# CHECK 1.5 (V312-24 test infra artifacts) 使用。
+#
+# #4942：这个文件此前**不存在**，所以门禁的 test-runner 分支永远走
+# "probe" 路径（`test-runner` 无 `--manifest` 时只打印 `cargo --version`
+# 并合成一条 `Crashed` 条目）。门禁 exit 0，却从未执行过任何测试——
+# 一个永远绿的检查等于没有检查。
+#
+# 补上本文件后，门禁会真正运行下列测试并把结果写入
+# `target/test-runner-report.json`。
+#
+# 字段含义见 `crates/test-registry/src/lib.rs` 的 `ManagedTest`。
+# binary 相对 `target/release/` 解析。
+
+[[test]]
+name = "storage-lib"
+binary = "target/release/sqlrustgo-storage"
+args = ["--lib", "--", "--test-threads=1"]
+timeout_ms = 900000
+priority = "P1"
+category = "Unit"
+
+[[test]]
+name = "tools-lib"
+binary = "target/release/sqlrustgo-tools"
+args = ["--lib", "--", "--test-threads=1"]
+timeout_ms = 300000
+priority = "P2"
+category = "Unit"
+
+[[test]]
+name = "executor"
+binary = "target/release/sqlrustgo-executor"
+args = ["--lib", "--", "--test-threads=1"]
+timeout_ms = 300000
+priority = "P2"
+category = "Unit"
+
+[[test]]
+name = "isolation-contract"
+binary = "target/release/sqlrustgo-storage"
+args = ["--test", "tx_isolation_and_escape_hatch_test", "--test-threads=1"]
+timeout_ms = 120000
+priority = "P1"
+category = "Integration"
+
+[[test]]
+name = "scan-with-filter-contract"
+binary = "target/release/sqlrustgo-storage"
+args = ["--test", "scan_with_filter_contract_test", "--test-threads=1"]
+timeout_ms = 120000
+priority = "P1"
+category = "Integration"
