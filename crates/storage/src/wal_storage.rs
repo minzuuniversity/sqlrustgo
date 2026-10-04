@@ -965,6 +965,35 @@ impl<S: StorageEngine + 'static, T: WalManager + 'static> StorageEngine for WalS
             }
         }
 
+        // #4974 follow-up: delegate the commit to the inner engine.
+        //
+        // This body only ever called `self.inner_mut().flush()` — it never
+        // called `self.inner_mut().commit_transaction()`. For a
+        // `WalStorage<MvccStorage<_>>` stack that means `MvccStorage`'s
+        // `commit_transaction` — the one carrying `promote_pending()` — was
+        // **never reached on the autocommit path**, which is exactly the
+        // path `commit_implicit_dml_tx` uses.
+        //
+        // It stayed hidden while #4974's defect 1 was live: the tx id was 0,
+        // so `VersionedTable::put` marked every version `committed` at write
+        // time and there was nothing to promote. Once defect 1 was fixed and
+        // versions became correctly pending, the missing delegation turned
+        // fatal — an autocommit `INSERT` reported success and the row was
+        // never visible:
+        //
+        // ```text
+        // [ins1]   (no error)
+        // [count]  0
+        // ```
+        //
+        // The explicit `BEGIN`/`COMMIT` probe did not catch it because that
+        // path goes through `commit_transaction_lockfree`, which #4997 did
+        // fix. Ordering matters: the inner engine must be told to commit
+        // while the transaction id is still set, because
+        // `MvccStorage::commit_transaction` identifies the transaction by
+        // reading `inner.current_tx_id()` before delegating.
+        self.inner_mut().commit_transaction()?;
+        self.current_tx_id.store(0, Ordering::Relaxed);
         // #3223 Phase 1: remove from active set on commit.
         if let Ok(mut active) = self.active_txs.lock() {
             active.remove(&tx_id);
@@ -1202,7 +1231,13 @@ impl<S: StorageEngine + 'static, T: WalManager + 'static> StorageEngine for WalS
         // data.rows and then to disk via the post-flush dirty-table
         // save path. ROLLBACK must discard in-memory writes without
         // persisting them, so we discard the buffer instead.
+        // #4974 follow-up: same missing delegation as the commit path.
+        // Without it `MvccStorage::rollback_transaction`'s
+        // `discard_pending()` is never reached from the `&mut` rollback, so
+        // an aborted transaction's versions stay pending forever.
+        self.inner_mut().rollback_transaction()?;
         self.inner_mut().discard_all_buffers();
+        self.current_tx_id.store(0, Ordering::Relaxed);
         Ok(())
     }
 
