@@ -409,9 +409,18 @@ mod tests {
     #[test]
     fn test_failover_state_variants() {
         assert_eq!(format!("{:?}", FailoverState::Normal), "Normal");
-        assert_eq!(format!("{:?}", FailoverState::MasterUnreachable), "MasterUnreachable");
-        assert_eq!(format!("{:?}", FailoverState::ElectionInProgress), "ElectionInProgress");
-        assert_eq!(format!("{:?}", FailoverState::NewMasterPromoted), "NewMasterPromoted");
+        assert_eq!(
+            format!("{:?}", FailoverState::MasterUnreachable),
+            "MasterUnreachable"
+        );
+        assert_eq!(
+            format!("{:?}", FailoverState::ElectionInProgress),
+            "ElectionInProgress"
+        );
+        assert_eq!(
+            format!("{:?}", FailoverState::NewMasterPromoted),
+            "NewMasterPromoted"
+        );
     }
 
     #[test]

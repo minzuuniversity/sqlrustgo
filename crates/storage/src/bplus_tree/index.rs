@@ -534,8 +534,6 @@ impl BTreeIndex {
         self.dirty = true;
     }
 
-
-
     /// Insert a key-value pair into a unique index
     /// Returns Ok(()) if inserted successfully, Err if key already exists
     pub fn insert_unique(&mut self, key: i64, value: u32) -> Result<(), UniqueConstraintViolation> {
@@ -871,8 +869,12 @@ impl BTreeIndexCore for BTreeIndex {
     }
     fn link_after_leaf(&mut self, prev_id: u32, new_node_id: u32) {
         // Same logic as before — splice new_node_id right after prev_id.
-        if prev_id == new_node_id { return; }
-        let prev_next = self.nodes[prev_id as usize].as_ref().and_then(|p| p.next_leaf);
+        if prev_id == new_node_id {
+            return;
+        }
+        let prev_next = self.nodes[prev_id as usize]
+            .as_ref()
+            .and_then(|p| p.next_leaf);
         if let Some(p) = self.nodes[prev_id as usize].as_mut() {
             p.next_leaf = Some(new_node_id);
         }
@@ -1070,8 +1072,12 @@ impl BTreeIndexCore for CompositeBTreeIndex {
         // splice in after their creator. With the split-insert path now
         // reaching this, keep the chain consistent so range_query_leaf
         // can walk it.
-        if prev_id == new_node_id { return; }
-        let prev_next = self.nodes[prev_id as usize].as_ref().and_then(|p| p.next_leaf);
+        if prev_id == new_node_id {
+            return;
+        }
+        let prev_next = self.nodes[prev_id as usize]
+            .as_ref()
+            .and_then(|p| p.next_leaf);
         if let Some(p) = self.nodes[prev_id as usize].as_mut() {
             p.next_leaf = Some(new_node_id);
         }
@@ -2236,103 +2242,102 @@ mod composite_index_tests {
         assert_eq!(key.values[0], Value::Integer(1));
         assert_eq!(key.values[1], Value::Integer(2));
         assert_eq!(key.values[2], Value::Integer(3));
-    
-    // =====================================================================
-    // F-15 / #4915 follow-up: CompositeBTreeIndex has the SAME split bug
-    // that the i64-key BTreeIndex had. Its `insert_into_node` called
-    // `node.insert_key_value(key, value)` and DISCARDED the returned
-    // `Some((split_key, new_node))`, so any split silently orphaned half
-    // the rows. The tree could not grow past one leaf.
-    //
-    // These tests mirror bplus_tree::index::tests's F-15 trio:
-    //   1) insert >> MAX_KEYS_PER_NODE, every key searchable
-    //   2) every key reachable via search (search-based surrogate for
-    //      range_query, since CompositeBTreeIndex doesn't expose a public
-    //      range_query for arbitrary keys in a clean way)
-    //   3) boundary keys around the 63/64 split
-    //
-    // After the trait-extraction refactor, `insert_rec` is shared with
-    // BTreeIndex via `BTreeIndexCore`, so these pass too.
-    // =====================================================================
 
-    #[test]
-    fn test_composite_btree_survives_multiple_node_splits() {
-        let mut tree = CompositeBTreeIndex::new(1);
-        // 500 keys => 8+ leaves once splits work. Only the first column
-        // (Value::Integer) is used for storage; encode_composite_key
-        // routes i64-eligible single-column CompositeKeys properly.
-        let n: i64 = 500;
-        for k in 0..n {
-            tree.insert(CompositeKey::new(vec![Value::Integer(k)]), k as u32);
-        }
+        // =====================================================================
+        // F-15 / #4915 follow-up: CompositeBTreeIndex has the SAME split bug
+        // that the i64-key BTreeIndex had. Its `insert_into_node` called
+        // `node.insert_key_value(key, value)` and DISCARDED the returned
+        // `Some((split_key, new_node))`, so any split silently orphaned half
+        // the rows. The tree could not grow past one leaf.
+        //
+        // These tests mirror bplus_tree::index::tests's F-15 trio:
+        //   1) insert >> MAX_KEYS_PER_NODE, every key searchable
+        //   2) every key reachable via search (search-based surrogate for
+        //      range_query, since CompositeBTreeIndex doesn't expose a public
+        //      range_query for arbitrary keys in a clean way)
+        //   3) boundary keys around the 63/64 split
+        //
+        // After the trait-extraction refactor, `insert_rec` is shared with
+        // BTreeIndex via `BTreeIndexCore`, so these pass too.
+        // =====================================================================
 
-        let missing: Vec<i64> = (0..n)
-            .filter(|&k| {
-                tree.search(&CompositeKey::new(vec![Value::Integer(k)]))
-                    .is_none()
-            })
-            .collect();
-        assert!(
-            missing.is_empty(),
-            "{} of {} keys are unreachable after splits (first missing: {:?})",
-            missing.len(),
-            n,
-            missing.first()
-        );
-        for k in 0..n {
-            assert_eq!(
-                tree.search(&CompositeKey::new(vec![Value::Integer(k)])),
-                Some(k as u32),
-                "key {k} mapped wrong"
+        #[test]
+        fn test_composite_btree_survives_multiple_node_splits() {
+            let mut tree = CompositeBTreeIndex::new(1);
+            // 500 keys => 8+ leaves once splits work. Only the first column
+            // (Value::Integer) is used for storage; encode_composite_key
+            // routes i64-eligible single-column CompositeKeys properly.
+            let n: i64 = 500;
+            for k in 0..n {
+                tree.insert(CompositeKey::new(vec![Value::Integer(k)]), k as u32);
+            }
+
+            let missing: Vec<i64> = (0..n)
+                .filter(|&k| {
+                    tree.search(&CompositeKey::new(vec![Value::Integer(k)]))
+                        .is_none()
+                })
+                .collect();
+            assert!(
+                missing.is_empty(),
+                "{} of {} keys are unreachable after splits (first missing: {:?})",
+                missing.len(),
+                n,
+                missing.first()
             );
+            for k in 0..n {
+                assert_eq!(
+                    tree.search(&CompositeKey::new(vec![Value::Integer(k)])),
+                    Some(k as u32),
+                    "key {k} mapped wrong"
+                );
+            }
+            assert_eq!(tree.len(), n as u64, "entry count must count all inserts");
+            // CompositeBTreeIndex does not expose height() (unlike BTreeIndex),
+            // but a 500-key single-leaf tree has num_entries==500 while the
+            // on-disk base+delta is bounded by MAX_KEYS_PER_NODE=63, so the
+            // actual in-memory tree must split; we cannot assert height
+            // directly. The split-reachability is covered by the
+            // "every key searchable" assertion above.
+            let _ = ();
         }
-        assert_eq!(tree.len(), n as u64, "entry count must count all inserts");
-        // CompositeBTreeIndex does not expose height() (unlike BTreeIndex),
-        // but a 500-key single-leaf tree has num_entries==500 while the
-        // on-disk base+delta is bounded by MAX_KEYS_PER_NODE=63, so the
-        // actual in-memory tree must split; we cannot assert height
-        // directly. The split-reachability is covered by the
-        // "every key searchable" assertion above.
-        let _ = ();
-    }
 
-    #[test]
-    fn test_composite_btree_range_query_sees_all_splits() {
-        let mut tree = CompositeBTreeIndex::new(1);
-        let n: i64 = 300;
-        for k in 0..n {
-            tree.insert(CompositeKey::new(vec![Value::Integer(k)]), k as u32);
-        }
-        let mut got: Vec<u32> = (0..n)
-            .map(|k| {
-                tree.search(&CompositeKey::new(vec![Value::Integer(k)]))
-                    .expect("key reachable")
-            })
-            .collect();
-        got.sort_unstable();
-        let expected: Vec<u32> = (0..n as u32).collect();
-        assert_eq!(
+        #[test]
+        fn test_composite_btree_range_query_sees_all_splits() {
+            let mut tree = CompositeBTreeIndex::new(1);
+            let n: i64 = 300;
+            for k in 0..n {
+                tree.insert(CompositeKey::new(vec![Value::Integer(k)]), k as u32);
+            }
+            let mut got: Vec<u32> = (0..n)
+                .map(|k| {
+                    tree.search(&CompositeKey::new(vec![Value::Integer(k)]))
+                        .expect("key reachable")
+                })
+                .collect();
+            got.sort_unstable();
+            let expected: Vec<u32> = (0..n as u32).collect();
+            assert_eq!(
             got, expected,
             "every key must be reachable after splits (search-based surrogate              for range_query, which CompositeBTreeIndex lacks a public helper for)"
         );
-    }
-
-    #[test]
-    fn test_composite_btree_split_then_search_boundary_keys() {
-        let mut tree = CompositeBTreeIndex::new(1);
-        for k in 0..200i64 {
-            tree.insert(CompositeKey::new(vec![Value::Integer(k)]), (k * 2) as u32);
         }
-        for k in [0i64, 1, 30, 31, 32, 62, 63, 64, 65, 126, 127, 128, 199] {
-            assert_eq!(
-                tree.search(&CompositeKey::new(vec![Value::Integer(k)])),
-                Some((k * 2) as u32),
-                "boundary key {k} lost or mis-mapped across a split"
-            );
+
+        #[test]
+        fn test_composite_btree_split_then_search_boundary_keys() {
+            let mut tree = CompositeBTreeIndex::new(1);
+            for k in 0..200i64 {
+                tree.insert(CompositeKey::new(vec![Value::Integer(k)]), (k * 2) as u32);
+            }
+            for k in [0i64, 1, 30, 31, 32, 62, 63, 64, 65, 126, 127, 128, 199] {
+                assert_eq!(
+                    tree.search(&CompositeKey::new(vec![Value::Integer(k)])),
+                    Some((k * 2) as u32),
+                    "boundary key {k} lost or mis-mapped across a split"
+                );
+            }
         }
     }
-
-}
 
     #[test]
     fn test_composite_key_from_slice() {
