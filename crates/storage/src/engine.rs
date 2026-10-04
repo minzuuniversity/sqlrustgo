@@ -4152,6 +4152,92 @@ mod tests {
         assert_eq!(orders_triggers.len(), 1);
     }
 
+    // =====================================================================
+    // `find_column_index_in` / `find_column_index` contract tests
+    // (single source of truth for column-name resolution).
+    // Pin the 5-layer behaviour, including the deliberate
+    // case-sensitivity asymmetry: layer 4 (multi-join trailing) is
+    // case-sensitive; the rest are case-insensitive.
+    // =====================================================================
+
+    #[test]
+    fn test_find_column_index_in_layers() {
+        let cols = vec![
+            ColumnDefinition { name: "id".to_string(), ..Default::default() },
+            ColumnDefinition { name: "val".to_string(), ..Default::default() },
+        ];
+        assert_eq!(find_column_index_in("id", &cols), Some(0));
+        assert_eq!(find_column_index_in("ID", &cols), Some(0));
+        assert_eq!(find_column_index_in("t.id", &cols), Some(0));
+        assert_eq!(find_column_index_in("nope", &cols), None);
+    }
+
+    #[test]
+    fn test_find_column_index_in_case_colliding_columns_prefers_exact() {
+        let cols = vec![
+            ColumnDefinition { name: "ID".to_string(), ..Default::default() },
+            ColumnDefinition { name: "id".to_string(), ..Default::default() },
+        ];
+        assert_eq!(find_column_index_in("id", &cols), Some(1));
+        assert_eq!(find_column_index_in("ID", &cols), Some(0));
+    }
+
+    #[test]
+    fn test_find_column_index_in_multi_join_trailing_segments() {
+        let mk = |name: &str| ColumnDefinition {
+            name: name.to_string(),
+            ..Default::default()
+        };
+        let cols = vec![mk("a_join_b.t1.c1"), mk("a_join_b.t2.c2"), mk("a_join_b.t3.c3")];
+        assert_eq!(find_column_index_in("t1.c1", &cols), Some(0));
+        assert_eq!(find_column_index_in("t2.c2", &cols), Some(1));
+        assert_eq!(find_column_index_in("t3.c3", &cols), Some(2));
+        assert_eq!(find_column_index_in("t9.c9", &cols), None);
+        assert_eq!(find_column_index_in("T1.c1", &cols), None);
+    }
+
+    #[test]
+    fn test_find_column_index_in_unqualified_trailing_segment_case_insensitive() {
+        let mk = |name: &str| ColumnDefinition {
+            name: name.to_string(),
+            ..Default::default()
+        };
+        let cols = vec![mk("a_join_b.a.tag"), mk("plain")];
+        assert_eq!(find_column_index_in("tag", &cols), Some(0));
+        assert_eq!(find_column_index_in("TAG", &cols), Some(0));
+        assert_eq!(find_column_index_in("plain", &cols), Some(1));
+        assert_eq!(find_column_index_in("PLAIN", &cols), Some(1));
+        assert_eq!(find_column_index_in("nope", &cols), None);
+    }
+
+    #[test]
+    fn test_find_column_index_against_table_info_wrapper() {
+        let cols = vec![ColumnDefinition {
+            name: "id".to_string(),
+            ..Default::default()
+        }];
+        let info = TableInfo {
+            name: "t".to_string(),
+            columns: cols,
+            ..Default::default()
+        };
+        assert_eq!(find_column_index("id", &info), Some(0));
+        assert_eq!(find_column_index("ID", &info), Some(0));
+        assert_eq!(find_column_index("nope", &info), None);
+    }
+
+    #[test]
+    fn trailing_segments_eq_contract() {
+        assert!(trailing_segments_eq("a_join_b.t.col", "t.col"));
+        assert!(trailing_segments_eq("t.col", "t.col"));
+        assert!(trailing_segments_eq("a.b.t.col", "t.col"));
+        assert!(!trailing_segments_eq("a_join_b.T.col", "t.col"));
+        assert!(!trailing_segments_eq("a_join_b.t.COL", "t.col"));
+        assert!(!trailing_segments_eq("col", "t.col"));
+        assert!(!trailing_segments_eq("", "t.col"));
+        assert!(!trailing_segments_eq("a_join_b.x.col", "t.col"));
+    }
+
     #[test]
     fn test_storage_engine_default_impl_trait_methods() {
         let mut s = MemoryStorage::new();
