@@ -42,7 +42,7 @@ pub struct FileStorage {
     /// PR-842: the active transaction id (0 == autocommit). Mirrored from
     /// the ExecutionEngine via `set_current_tx_id` so `in_transaction()`
     /// can answer correctly even on the bare FileStorage path.
-    current_tx_id: u64,
+    current_tx_id: std::sync::atomic::AtomicU64,
     /// Issue #4581 / B-track case 35-36: per-transaction undo log for
     /// ROLLBACK support. When `current_tx_id != 0`, every UPDATE/DELETE
     /// in the storage layer records the original row here so a
@@ -137,7 +137,7 @@ impl FileStorage {
             // new_with_buffer_config(dir, 100, true).
             buffer_threshold: 10_000,
             enable_buffer: true,
-            current_tx_id: 0,
+            current_tx_id: std::sync::atomic::AtomicU64::new(0),
             tx_undo_log: Vec::new(),
             triggers: RwLock::new(HashMap::new()),
             gap_lock_manager: None,
@@ -177,7 +177,7 @@ impl FileStorage {
             insert_buffer: HashMap::new(),
             buffer_threshold,
             enable_buffer,
-            current_tx_id: 0,
+            current_tx_id: std::sync::atomic::AtomicU64::new(0),
             tx_undo_log: Vec::new(),
             triggers: RwLock::new(HashMap::new()),
             gap_lock_manager: None,
@@ -212,7 +212,7 @@ impl FileStorage {
             // 10_000 to amortise O(N) insert_direct over a much larger batch.
             buffer_threshold: 10_000,
             enable_buffer: true, // Transaction boundary handled by buffer flush on commit
-            current_tx_id: 0,
+            current_tx_id: std::sync::atomic::AtomicU64::new(0),
             tx_undo_log: Vec::new(),
             triggers: RwLock::new(HashMap::new()),
             gap_lock_manager: None,
@@ -264,7 +264,7 @@ impl FileStorage {
             // 10_000 to amortise O(N) insert_direct over a much larger batch.
             buffer_threshold: 10_000,
             enable_buffer: true,
-            current_tx_id: 0,
+            current_tx_id: std::sync::atomic::AtomicU64::new(0),
             tx_undo_log: Vec::new(),
             triggers: RwLock::new(HashMap::new()),
             gap_lock_manager: Some(lock_manager),
@@ -3635,16 +3635,26 @@ impl FileStorage {
 
 impl StorageEngine for FileStorage {
     fn in_transaction(&self) -> bool {
-        self.current_tx_id != 0
+        // #4951: this used to read a plain `u64` from `&self` while
+        // `set_current_tx_id` wrote it through `as_mut_self` — an
+        // unsynchronised read/write of the same word. An atomic makes
+        // the read well-defined; it does NOT make the value
+        // per-connection, which is the remaining part of #4951.
+        self.current_tx_id
+            .load(std::sync::atomic::Ordering::Acquire)
+            != 0
     }
 
     fn current_tx_id(&self) -> u64 {
+        // #4951: see `in_transaction`.
         self.current_tx_id
+            .load(std::sync::atomic::Ordering::Acquire)
     }
 
     fn set_current_tx_id(&mut self, id: u64) {
         Self::with_write_lock(self.as_mut_self(), |s| {
-            s.current_tx_id = id;
+            s.current_tx_id
+                .store(id, std::sync::atomic::Ordering::Release);
         });
     }
 
@@ -3671,18 +3681,24 @@ impl StorageEngine for FileStorage {
         // body only touches the write-protected fields.
         let id = self.next_tx_id();
         Self::with_write_lock(self.as_mut_self(), |s| {
-            if s.current_tx_id != 0 {
+            use std::sync::atomic::Ordering as O;
+            let existing = s.current_tx_id.load(O::Acquire);
+            if existing != 0 {
                 // Already in a tx — keep the existing id (MySQL-style nested BEGIN).
-                return Ok(s.current_tx_id);
+                return Ok(existing);
             }
-            s.current_tx_id = id;
+            s.current_tx_id.store(id, O::Release);
             s.tx_undo_log.clear();
-            Ok(s.current_tx_id)
+            Ok(id)
         })
     }
 
     fn commit_transaction(&mut self) -> SqlResult<()> {
-        if self.current_tx_id == 0 {
+        if self
+            .current_tx_id
+            .load(std::sync::atomic::Ordering::Acquire)
+            == 0
+        {
             // COMMIT outside a tx is a silent no-op (MySQL/SQLite semantics).
             return Ok(());
         }
@@ -3693,13 +3709,18 @@ impl StorageEngine for FileStorage {
             // visibility. We only need to drop undo so the next BEGIN gets a
             // fresh log.
             s.tx_undo_log.clear();
-            s.current_tx_id = 0;
+            s.current_tx_id
+                .store(0, std::sync::atomic::Ordering::Release);
         });
         Ok(())
     }
 
     fn rollback_transaction(&mut self) -> SqlResult<()> {
-        if self.current_tx_id == 0 {
+        if self
+            .current_tx_id
+            .load(std::sync::atomic::Ordering::Acquire)
+            == 0
+        {
             // ROLLBACK outside a tx is a warning in MySQL but a no-op in
             // SQLite. Match SQLite to keep behavior consistent.
             return Ok(());
@@ -3767,7 +3788,8 @@ impl StorageEngine for FileStorage {
                     buf.retain(|_row| false);
                 }
             }
-            s.current_tx_id = 0;
+            s.current_tx_id
+                .store(0, std::sync::atomic::Ordering::Release);
         });
         Ok(())
     }
@@ -4001,7 +4023,7 @@ impl StorageEngine for FileStorage {
         // insert_buffer}. Splitting would mean multiple lock acquisitions
         // and risk of observing torn state between them.
         Self::with_write_lock(self.as_mut_self(), |s| {
-            let in_tx = s.current_tx_id != 0;
+            let in_tx = s.current_tx_id.load(std::sync::atomic::Ordering::Acquire) != 0;
 
             // Issue #4581 / B-track case 35-36: snapshot rows for ROLLBACK
             // BEFORE the actual delete. The `data` borrow ends before the
@@ -4088,7 +4110,7 @@ impl StorageEngine for FileStorage {
         // fields. Splitting would mean multiple lock acquisitions
         // and risk of torn state.
         Self::with_write_lock(self.as_mut_self(), |s| {
-            let in_tx = s.current_tx_id != 0;
+            let in_tx = s.current_tx_id.load(std::sync::atomic::Ordering::Acquire) != 0;
 
             // Snapshot rows for ROLLBACK (same as `delete`).
             let removed_pks: Vec<Value> = if let Some(ref mut data) = s.tables.get_mut(table) {
@@ -4235,7 +4257,10 @@ impl StorageEngine for FileStorage {
             return Ok(0);
         };
 
-        let in_tx = self.current_tx_id != 0;
+        let in_tx = self
+            .current_tx_id
+            .load(std::sync::atomic::Ordering::Acquire)
+            != 0;
 
         let mut count = 0;
         for (idx, record) in data.rows.iter_mut().enumerate() {
