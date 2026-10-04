@@ -1541,6 +1541,17 @@ pub struct MemoryStorage {
     /// The index name is auto-generated as `{table}_idx_{column}` to match
     /// `FileStorage::list_indexes`'s naming convention.
     indexes: HashSet<(String, String)>,
+    /// BLK-3 / Issue #4945: per-table monotonic AUTO_INCREMENT counter.
+    /// Previously the insert path scanned `existing_rows` to compute the
+    /// next id, which under concurrent autocommit connections both saw
+    /// an empty table and both assigned id=1. With a shared per-table
+    /// AtomicU64, allocations advance monotonically across connections.
+    /// The counter is also lifted by max(id) seen in the inserted batch.
+    auto_inc_counters: std::sync::Arc<
+        std::sync::Mutex<
+            std::collections::HashMap<String, std::sync::Arc<std::sync::atomic::AtomicU64>>,
+        >,
+    >,
     /// V312-64d / Issue #4664: index name → IndexInfo mapping that
     /// preserves the original CREATE INDEX SQL text. Queried by
     /// `list_all_indexes()` for `sqlite_master` rendering. Legacy
@@ -1575,6 +1586,9 @@ impl MemoryStorage {
             committed_tables: HashMap::new(),
             indexes: HashSet::new(),
             index_infos: HashMap::new(),
+            auto_inc_counters: std::sync::Arc::new(std::sync::Mutex::new(
+                std::collections::HashMap::new(),
+            )),
         }
     }
 
@@ -1990,8 +2004,23 @@ impl StorageEngine for MemoryStorage {
                     })
                     .collect()
             } else {
+                // BLK-3 / Issue #4945: ensure monotonic AUTO_INCREMENT across
+                // concurrent autocommit connections. The fix replaces the
+                // per-batch `next_auto = max(existing)+1` (which two writers
+                // both compute as 1 from an empty table) with a shared
+                // per-table `AtomicU64` counter that is fetched-added inside
+                // the row-allocation closure, so concurrent allocations can't
+                // pick the same id.
+                //
+                // Counter lifecycle:
+                //   1. Created lazily on first touch per table.
+                //   2. Seeded from `existing_rows` so an explicit id=500 in
+                //      the batch lifts the counter above 500 and the next
+                //      auto-assigned id is 501.
+                //   3. Each null cell takes one id via `fetch_add(1)`,
+                //      making the assignment atomic across writers.
                 let existing_rows = self.tables.get(&table_key).cloned().unwrap_or_default();
-                let mut next_auto: i64 = auto_inc_cols
+                let max_existing: Option<i64> = auto_inc_cols
                     .iter()
                     .filter_map(|&idx| {
                         existing_rows
@@ -2004,9 +2033,36 @@ impl StorageEngine for MemoryStorage {
                             })
                             .max()
                     })
-                    .max()
-                    .map(|m| m + 1)
-                    .unwrap_or(1);
+                    .max();
+                let max_explicit_in_batch: Option<i64> = records
+                    .iter()
+                    .filter_map(|row| {
+                        auto_inc_cols
+                            .iter()
+                            .filter_map(|&idx| match row.get(idx) {
+                                Some(Value::Integer(n)) => Some(*n),
+                                _ => None,
+                            })
+                            .max()
+                    })
+                    .max();
+                let counters_arc = std::sync::Arc::clone(&self.auto_inc_counters);
+                let counter_arc = {
+                    let mut map = counters_arc.lock().unwrap();
+                    let entry = map.entry(table_key.clone()).or_insert_with(|| {
+                        let seed = max_existing
+                            .map(|m| (m as u64).saturating_add(1))
+                            .unwrap_or(0);
+                        std::sync::Arc::new(std::sync::atomic::AtomicU64::new(seed))
+                    });
+                    std::sync::Arc::clone(entry)
+                };
+                if let Some(m) = max_explicit_in_batch {
+                    let cur = counter_arc.load(std::sync::atomic::Ordering::SeqCst);
+                    if (m as u64) > cur {
+                        counter_arc.store(m as u64, std::sync::atomic::Ordering::SeqCst);
+                    }
+                }
                 records
                     .into_iter()
                     .map(|mut row| {
@@ -2021,8 +2077,11 @@ impl StorageEngine for MemoryStorage {
                         }
                         for &col_idx in &auto_inc_cols {
                             if matches!(row.get(col_idx), Some(Value::Null) | None) {
-                                row[col_idx] = Value::Integer(next_auto);
-                                next_auto += 1;
+                                let id = counter_arc
+                                    .fetch_add(1, std::sync::atomic::Ordering::SeqCst)
+                                    as i64
+                                    + 1;
+                                row[col_idx] = Value::Integer(id);
                             }
                         }
                         row
