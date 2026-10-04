@@ -87,19 +87,23 @@ struct Violation {
 }
 
 /// 已知且已登记的违例。修复后应从本表移除 —— 移除前守卫会失败。
+#[derive(Debug)]
 struct KnownViolation {
     file_substr: &'static str,
     line_substr: &'static str,
     issue: &'static str,
 }
 
-const KNOWN: &[KnownViolation] = &[KnownViolation {
-    file_substr: "crates/storage/src/file_storage.rs",
-    // `as_mut_self` 函数体的实际那一行，全仓唯一。24 处调用点
-    // (`self.as_mut_self()`) 本身不含裸指针强转，不会被扫成违例。
-    line_substr: "&mut *(self as *const Self as *mut Self)",
-    issue: "#4951",
-}];
+/// #4951 修复后已清空。
+///
+/// 原先登记着 `file_storage.rs` 的 `as_mut_self`
+/// （`&mut *(self as *const Self as *mut Self)`，24 处调用点）。该函数
+/// 已被删除，条目随之移除 —— 这正是下面 `block_4951_...` 测试要驱动的
+/// 清理动作。
+///
+/// 表**保持非空语义**：将来若又发现一处确属安全的，必须连同依据一起
+/// 登记，而不是悄悄放过。空表意味着「全仓零已知违例」。
+const KNOWN: &[KnownViolation] = &[];
 
 /// 最近的 `fn` 是否以 `&self` 接收（而非 `&mut self`）。
 ///
@@ -321,21 +325,27 @@ fn f(&self) {
     assert!(found.is_empty(), "合法的 &raw mut 被误报: {found:?}");
 }
 
-/// AC2 进度追踪：#4951 修好后本测试会失败，提醒把 `as_mut_self`
-/// 从 KNOWN 表移除。
+/// #4951 已修复：`as_mut_self` 不得再出现，且 KNOWN 表必须已清空。
 ///
-/// 期望**失败**。若它哪天变绿，说明 #4951 已修且 KNOWN 表已清理 ——
-/// 那是好事，此时应把本测试改成断言「#4951 条目已不存在」。
+/// 这条测试原本**故意写成失败**（断言 `as_mut_self` 仍然存在），用来在
+/// 修复落地时提醒维护者把 KNOWN 条目一并清掉。现在 `as_mut_self` 已删，
+/// tripwire 兑现，反转为正向断言 —— 它从此是回归防线而非一次性提醒。
 #[test]
-fn block_4951_as_mut_self_removed_when_fixed() {
+fn block_4951_as_mut_self_stays_removed() {
     let root = repo_root();
     let target = root.join("crates/storage/src/file_storage.rs");
     let text = std::fs::read_to_string(&target)
         .unwrap_or_else(|e| panic!("读不到 {}: {e}", target.display()));
-    let has = text.contains("fn as_mut_self(&self) -> &mut Self");
     assert!(
-        has,
-        "#4951 已修复：`as_mut_self` 已从 file_storage.rs 消失。\n\
-         请把它从本文件 KNOWN 表移除，并把本测试改为断言其不存在。"
+        !text.contains("fn as_mut_self"),
+        "#4951 回归：`as_mut_self` 又出现在 file_storage.rs 里了。\n\
+         受保护的字段现在住在 `RwLock<WriteState>` 里，理论上不再需要任何\
+         `&self -> &mut` 逃逸口。若确有新需求，请先说明为什么 RwLock 方案\
+         不适用，并把条目登记进 KNOWN 表。"
+    );
+    assert!(
+        KNOWN.is_empty(),
+        "#4951 清理未完成：KNOWN 表里仍有条目，但全仓已无已知违例。\n\
+         条目: {KNOWN:?}"
     );
 }
