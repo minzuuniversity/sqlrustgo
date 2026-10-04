@@ -1959,16 +1959,8 @@ impl<S: StorageEngine + 'static> ExecutionEngine<S> {
                             let key = (0..prefix_len)
                                 .map(|idx| {
                                     let v = row.get(idx).cloned().unwrap_or(Value::Null);
-                                    match v {
-                                        Value::Null => "NULL".to_string(),
-                                        Value::Integer(n) => format!("I{}", n),
-                                        Value::Float(f) => format!("F{}", f),
-                                        Value::Text(s) => format!("T{}", s),
-                                        Value::Boolean(b) => format!("B{}", b as i32),
-                                        Value::Blob(b) => format!("X{}", b.len()),
-                                        Value::Point(x, y) => format!("POINT({}, {})", x, y),
-                                        Value::Json(v) => format!("J{}", v),
-                                    }
+                                    // #4914: lossless, type-tagged encoding.
+                                    encode_value_key(&v)
                                 })
                                 .collect::<Vec<_>>()
                                 .join("\x00");
@@ -2003,18 +1995,13 @@ impl<S: StorageEngine + 'static> ExecutionEngine<S> {
                             for orig_row in &rows {
                                 let prefix_match = (0..prefix_len).all(|idx| {
                                     let v = orig_row.get(idx).cloned().unwrap_or(Value::Null);
-                                    let key = match &v {
-                                        Value::Null => "NULL".to_string(),
-                                        Value::Integer(n) => format!("I{}", n),
-                                        Value::Float(f) => format!("F{}", f),
-                                        Value::Text(s) => format!("T{}", s),
-                                        Value::Boolean(b) => format!("B{}", *b as i32),
-                                        Value::Blob(b) => format!("X{}", b.len()),
-                                        Value::Point(x, y) => format!("POINT({}, {})", x, y),
-                                        Value::Json(v) => format!("J{}", v),
-                                    };
-                                    let decoded = decode_value_key(&key);
-                                    decoded == combined[idx]
+                                    // #4914: this compared by encoding `v`
+                                    // and decoding it straight back, a
+                                    // round trip that was lossy for Blob
+                                    // and Point (see encode_value_key).
+                                    // The value is already in hand; compare
+                                    // it directly.
+                                    v == combined[idx]
                                 });
                                 if prefix_match {
                                     parent_rows.push(orig_row.clone());
@@ -5650,37 +5637,204 @@ fn lookup_qualified_column(info: &TableInfo, qualifier: &str, col_name: &str) ->
 /// Decode a value key string (encoded by the inline match above in
 /// the ROLLUP / CUBE loops) back into a `Value`. Pairs with the
 /// I/F/T/B/X prefix scheme so round-trips work for the common types.
-fn decode_value_key(s: &str) -> Value {
-    if s == "NULL" {
-        return Value::Null;
+/// Encode a `Value` into a lossless, self-delimiting string key.
+///
+/// #4914: ROLLUP and CUBE were bucketing rows by a hand-rolled
+/// `format!` per value, then decoding it back with
+/// [`decode_value_key`]. That round-trip was lossy in two ways, both
+/// of which silently merged distinct rows into one bucket:
+///
+///   * `Value::Blob(b) => format!("X{}", b.len())` kept only the
+///     **length**, so `X'AA'` and `X'BB'` became the same key — every
+///     pair of equal-length blobs collapsed into a single group.
+///   * `Value::Point` had **no type prefix at all**, so a `Point` and
+///     any other value whose text happened to start with "POINT(" were
+///     indistinguishable; and `decode_value_key` had no `POINT` arm, so
+///     decoding one always produced `Value::Null`.
+///
+/// Every variant now gets a distinct prefix and a representation that
+/// survives the round trip. Text and JSON are length-prefixed so a
+/// separator inside the payload cannot forge a key boundary.
+fn encode_value_key(v: &Value) -> String {
+    match v {
+        Value::Null => "N".to_string(),
+        Value::Integer(n) => format!("I{n}"),
+        Value::Float(f) => format!("F{f}"),
+        Value::Boolean(b) => format!("B{}", *b as u8),
+        // Hex, not length: the payload is what distinguishes blobs.
+        Value::Blob(b) => format!("X{}", hex_encode(b)),
+        Value::Point(x, y) => format!("P{x}|{y}"),
+        // Length-prefixed so an embedded separator cannot split the key.
+        Value::Text(s) => format!("T{}:{}", s.len(), s),
+        Value::Json(j) => {
+            let s = j.to_string();
+            format!("J{}:{}", s.len(), s)
+        }
     }
+}
+
+fn hex_encode(bytes: &[u8]) -> String {
+    let mut out = String::with_capacity(bytes.len() * 2);
+    for b in bytes {
+        out.push(char::from_digit((b >> 4) as u32, 16).unwrap_or('0'));
+        out.push(char::from_digit((b & 0x0f) as u32, 16).unwrap_or('0'));
+    }
+    out
+}
+
+fn hex_decode(s: &str) -> Vec<u8> {
+    let chars: Vec<char> = s.chars().collect();
+    let mut out = Vec::with_capacity(chars.len() / 2);
+    for pair in chars.chunks(2) {
+        let hi = pair[0].to_digit(16);
+        let lo = if pair.len() > 1 {
+            pair[1].to_digit(16)
+        } else {
+            None
+        };
+        match (hi, lo) {
+            (Some(h), Some(l)) => out.push((h * 16 + l) as u8),
+            _ => return out,
+        }
+    }
+    out
+}
+
+/// Decode a value key string produced by [`encode_value_key`].
+fn decode_value_key(s: &str) -> Value {
     if s.is_empty() {
         return Value::Null;
     }
-    match s.as_bytes()[0] {
-        b'I' => s[1..]
+    let (tag, rest) = s.split_at(1);
+    match tag {
+        "N" => Value::Null,
+        "I" => rest
             .parse::<i64>()
             .map(Value::Integer)
             .unwrap_or(Value::Null),
-        b'F' => s[1..]
-            .parse::<f64>()
-            .map(Value::Float)
-            .unwrap_or(Value::Null),
-        b'T' => Value::Text(s[1..].to_string()),
-        b'B' => match s.as_bytes().get(1).copied() {
-            Some(b'1') => Value::Boolean(true),
-            _ => Value::Boolean(false),
-        },
-        b'X' => Value::Blob(Vec::new()),
-        b'J' => {
-            // JSON: prefix J then JSON string
-            let json_str = &s[1..];
-            serde_json::from_str(json_str)
-                .map(Value::Json)
-                .unwrap_or(Value::Null)
+        "F" => rest.parse::<f64>().map(Value::Float).unwrap_or(Value::Null),
+        "B" => Value::Boolean(rest == "1"),
+        "X" => Value::Blob(hex_decode(rest)),
+        "P" => {
+            let mut it = rest.splitn(2, '|');
+            match (
+                it.next().and_then(|x| x.parse::<f64>().ok()),
+                it.next().and_then(|x| x.parse::<f64>().ok()),
+            ) {
+                (Some(x), Some(y)) => Value::Point(x, y),
+                _ => Value::Null,
+            }
+        }
+        // Length-prefixed: trust the declared length, ignore any tail.
+        "T" | "J" => {
+            let payload = match rest.split_once(':') {
+                Some((len_s, body)) => match len_s.parse::<usize>() {
+                    Ok(n) if n <= body.len() => &body[..floor_char_boundary(body, n)],
+                    _ => body,
+                },
+                None => rest,
+            };
+            if tag == "T" {
+                Value::Text(payload.to_string())
+            } else {
+                serde_json::from_str(payload)
+                    .map(Value::Json)
+                    .unwrap_or(Value::Null)
+            }
         }
         _ => Value::Null,
     }
+}
+
+#[cfg(test)]
+mod value_key_tests {
+    use super::{decode_value_key, encode_value_key};
+    use sqlrustgo_types::Value;
+
+    /// Every variant must survive encode -> decode unchanged.
+    ///
+    /// #4914: the previous scheme dropped the Blob payload (kept only
+    /// its length) and had no representation at all for Point, so
+    /// distinct values compared equal after a round trip and ROLLUP /
+    /// CUBE merged rows that should have stayed in separate buckets.
+    #[test]
+    fn value_key_round_trips_every_variant() {
+        let nul = "\u{0}";
+        let cases = vec![
+            Value::Null,
+            Value::Integer(-42),
+            Value::Integer(0),
+            Value::Float(1.5),
+            Value::Float(-0.25),
+            Value::Boolean(true),
+            Value::Boolean(false),
+            Value::Text(String::new()),
+            Value::Text("hello".to_string()),
+            // A separator inside the payload must not forge a boundary.
+            Value::Text(format!("a{}b", nul)),
+            Value::Text("I42".to_string()),
+            // The case the old scheme got wrong: equal length,
+            // different content used to produce the same key.
+            Value::Blob(vec![0xAA, 0xBB]),
+            Value::Blob(vec![0xCC, 0xDD]),
+            Value::Blob(vec![]),
+            Value::Blob(vec![0x00, 0xFF, 0x7F, 0x80]),
+            Value::Point(1.0, 2.0),
+            Value::Point(-3.5, 0.0),
+            Value::Json(serde_json::json!({"a": 1})),
+            Value::Json(serde_json::json!([])),
+        ];
+        for v in cases {
+            let key = encode_value_key(&v);
+            let back = decode_value_key(&key);
+            assert_eq!(back, v, "round trip lost {:?} (key {:?})", v, key);
+        }
+    }
+
+    /// Distinct values must produce distinct keys — that is the whole
+    /// point, since the key is what buckets rows.
+    #[test]
+    fn equal_length_blobs_get_distinct_keys() {
+        let a = Value::Blob(vec![0xAA, 0xBB]);
+        let b = Value::Blob(vec![0xCC, 0xDD]);
+        assert_ne!(
+            encode_value_key(&a),
+            encode_value_key(&b),
+            "equal-length blobs must not collide"
+        );
+    }
+
+    /// Values of different types must never share a key, even when their
+    /// text forms would suggest they might.
+    #[test]
+    fn types_do_not_collide_with_lookalike_text() {
+        let point = Value::Point(1.0, 2.0);
+        let lookalike = Value::Text("POINT(1, 2)".to_string());
+        assert_ne!(encode_value_key(&point), encode_value_key(&lookalike));
+    }
+
+    /// An empty key used to decode as Null; keep that, and make sure a
+    /// real Null still round-trips.
+    #[test]
+    fn empty_key_and_null_both_decode_to_null() {
+        assert_eq!(decode_value_key(""), Value::Null);
+        assert_eq!(
+            decode_value_key(&encode_value_key(&Value::Null)),
+            Value::Null
+        );
+    }
+}
+
+/// Byte offset `n` snapped down to a char boundary.
+fn floor_char_boundary(s: &str, n: usize) -> usize {
+    if n >= s.len() {
+        return s.len();
+    }
+    let mut i = n;
+    while i > 0 && !s.is_char_boundary(i) {
+        i -= 1;
+    }
+    i
 }
 
 impl<S: StorageEngine + 'static> ExecutionEngine<S> {
