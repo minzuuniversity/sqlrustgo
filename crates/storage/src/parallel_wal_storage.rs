@@ -111,6 +111,32 @@ impl<S: StorageEngine + 'static, W: WalManager + 'static> StorageEngine
         self.inner.scan(table)
     }
 
+    /// #4974: forward the reader-scoped scan to the inner engine.
+    ///
+    /// Without this override the trait default
+    /// (`fn scan_in(&self, ..) { self.scan(table) }`, engine.rs:1078)
+    /// runs, which **throws `reader_tx` away** and lands on the plain
+    /// `scan` — i.e. the storage-wide "whoever wrote last" transaction.
+    /// For a `WalStorage<MvccStorage<_>>` stack that silently discards
+    /// the whole of #4983's isolation work.
+    ///
+    /// The engine-side call sites were migrated to `scan_for_reader*` in
+    /// the same PR, which made this forwarding the missing half — with
+    /// the default in place that migration was a no-op.
+    fn scan_in(&self, table: &str, reader_tx: u64) -> SqlResult<Vec<Record>> {
+        self.inner.scan_in(table, reader_tx)
+    }
+
+    /// #4974: same forwarding obligation for the predicate variant.
+    fn scan_with_filter_in(
+        &self,
+        table: &str,
+        filter: &dyn Fn(&Record) -> bool,
+        reader_tx: u64,
+    ) -> SqlResult<Vec<Record>> {
+        self.inner.scan_with_filter_in(table, filter, reader_tx)
+    }
+
     fn delete(&mut self, table: &str, filters: &[crate::engine::Value]) -> SqlResult<usize> {
         self.inner.delete(table, filters)
     }

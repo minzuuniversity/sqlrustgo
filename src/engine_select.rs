@@ -622,8 +622,9 @@ impl<S: StorageEngine + 'static> ExecutionEngine<S> {
             else {
                 continue;
             };
-            let seq = storage
-                .scan(&name)
+            // #4974: read as this connection, not as "whoever wrote last".
+            let seq = self
+                .scan_for_reader_with(&*storage, &name)
                 .ok()
                 .and_then(|recs| {
                     recs.iter()
@@ -3501,7 +3502,10 @@ impl<S: StorageEngine + 'static> ExecutionEngine<S> {
         if dominated_ignore_index {
             // IGNORE INDEX: force full table scan
             self.instrumentation.on_seq_scan_start(table);
-            let rows = storage.scan(table)?;
+            // #4974: `storage` is a read guard we already hold; go through
+            // the guard-taking helper so the rows come from this
+            // connection's snapshot, not the storage-wide `current_tx_id`.
+            let rows = self.scan_for_reader_with(&**storage, table)?;
             let mut page_id: u64 = 0xcbf29ce484222325;
             for &b in table.as_bytes() {
                 page_id ^= u64::from(b);
@@ -3556,7 +3560,8 @@ impl<S: StorageEngine + 'static> ExecutionEngine<S> {
         }
         // Default: full table scan via storage.
         self.instrumentation.on_seq_scan_start(table);
-        let rows = storage.scan(table)?;
+        // #4974: same as above — guard already held, use the guard variant.
+        let rows = self.scan_for_reader_with(&**storage, table)?;
         // V311-02 F-24: stable FNV-1a-ish hash of table name as synthetic page_id.
         let mut page_id: u64 = 0xcbf29ce484222325;
         for &b in table.as_bytes() {
@@ -4219,7 +4224,8 @@ impl<S: StorageEngine + 'static> ExecutionEngine<S> {
                 // `nation n1`). Load its rows/columns fresh from storage
                 // and seed `acc_*` from there.
                 let start_info = storage.get_table_info(start_bare).ok()?.clone();
-                let start_raw_rows = storage.scan(start_bare).ok()?;
+                // #4974: carry this connection's reader_tx into the scan.
+                let start_raw_rows = self.scan_for_reader_with(&*storage, start_bare).ok()?;
                 let start_alias_owned = start_alias.clone();
                 let start_alias_for_strip = start_alias_owned.clone();
                 // V312-58 / Issue #4376 fix: apply pushdown filters
@@ -4312,7 +4318,8 @@ impl<S: StorageEngine + 'static> ExecutionEngine<S> {
                 .columns
                 .iter()
                 .position(|c| c.name.eq_ignore_ascii_case(&right_col))?;
-            let raw_cur_rows = storage.scan(cur_bare).ok()?;
+            // #4974: reader-scoped, matching the chain-start scan above.
+            let raw_cur_rows = self.scan_for_reader_with(&*storage, cur_bare).ok()?;
             let _rows_before_filter = raw_cur_rows.len();
             // Build alias-prefixed column names so that
             // `eval_predicate` matches TPC-H-style predicates like
@@ -4647,7 +4654,8 @@ impl<S: StorageEngine + 'static> ExecutionEngine<S> {
             (rows, info)
         } else {
             (
-                storage.scan(&right_table_name)?,
+                // #4974: `storage` here is `&S`, not a guard.
+                self.scan_for_reader_with(storage, &right_table_name)?,
                 storage.get_table_info(&right_table_name)?,
             )
         };
@@ -6786,7 +6794,9 @@ impl<S: StorageEngine + 'static> ExecutionEngine<S> {
                 if let Some(c) = rc.get(&table_name) {
                     c.clone()
                 } else {
-                    let rows = storage.scan(&real_subq_table).ok()?;
+                    // #4974: EXISTS fast path must not see other
+                    // transactions' uncommitted rows.
+                    let rows = self.scan_for_reader_with(&*storage, &real_subq_table).ok()?;
                     let arc = std::sync::Arc::new(rows);
                     rc.insert(table_name.clone(), arc.clone());
                     arc
@@ -6822,7 +6832,8 @@ impl<S: StorageEngine + 'static> ExecutionEngine<S> {
         }
 
         // Direct storage scan + WHERE filter + early exit.
-        let rows = storage.scan(&subq.table).ok()?;
+        // #4974: reader-scoped, see the note at the cached path above.
+        let rows = self.scan_for_reader_with(&*storage, &subq.table).ok()?;
         for row in &rows {
             if eval_predicate(where_expr, row, &table_info) {
                 return Some(true);
@@ -6897,7 +6908,8 @@ impl<S: StorageEngine + 'static> ExecutionEngine<S> {
         if where_expr_has_uncorrelated_subquery(&static_predicate) {
             return None;
         }
-        let rows = storage.scan(real_table).ok()?;
+        // #4974: subquery index is built from this connection's view.
+        let rows = self.scan_for_reader_with(&*storage, real_table).ok()?;
         // V312-58 Sprint 3: when the residual has no outer refs (e.g.
         // Q22's `NOT EXISTS (SELECT * FROM orders WHERE o_custkey =
         // outer.c_custkey)` → static_predicate == Literal("true")),
@@ -7083,7 +7095,8 @@ impl<S: StorageEngine + 'static> ExecutionEngine<S> {
             }
         }
         DIAG_TRY_SCALAR_AGG_BUILD.fetch_add(1, Ordering::SeqCst);
-        let rows = storage.scan(real_table).ok()?;
+        // #4974: reader-scoped prewarm.
+        let rows = self.scan_for_reader_with(&*storage, real_table).ok()?;
         let residual_ref: Option<&sqlrustgo_parser::Expression> = if matches!(&residual_expr, E::Literal(s) if s == "true")
         {
             None
@@ -7295,7 +7308,8 @@ impl<S: StorageEngine + 'static> ExecutionEngine<S> {
             } else {
                 drop(cache);
                 DIAG_TRY_SCALAR_AGG_BUILD.fetch_add(1, Ordering::SeqCst);
-                let rows = storage.scan(real_table).ok()?;
+                // #4974: reader-scoped lookup.
+                let rows = self.scan_for_reader_with(&*storage, real_table).ok()?;
                 let residual_ref: Option<&sqlrustgo_parser::Expression> = if matches!(&residual_expr, E::Literal(s) if s == "true")
                 {
                     None
@@ -8322,7 +8336,8 @@ fn try_build_hash_semi_join_index_for_subq<S: StorageEngine + 'static>(
 
     let inner_rows = {
         let storage = engine.storage.read();
-        storage.scan(real_table).ok()?
+        // #4974: free function, but `engine` is in hand — same helper.
+        engine.scan_for_reader_with(&*storage, real_table).ok()?
     };
 
     // Apply the residual (if any) at build time when it does NOT

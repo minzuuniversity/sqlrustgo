@@ -132,25 +132,40 @@ impl<S: StorageEngine + 'static> MvccStorage<S> {
     /// Mutable access to the inner engine. Caller must hold exclusive
     /// access (the engine's write lock).
     /// #4974: promote every pending version across all MVCC tables.
-    fn promote_pending(&self) {
+    /// #4974: `promote_pending` with the transaction id supplied by the
+    /// caller.
+    ///
+    /// It **has** to be supplied. `FileStorage::commit_transaction` clears
+    /// its own `current_tx_id` as part of committing, so a
+    /// "delegate to inner, then promote" sequence reads back `0` and
+    /// promotes nothing — which is why the committed row stayed invisible
+    /// even after the `if r.is_ok()` gate was reached. Capture first,
+    /// delegate second.
+    fn promote_pending_for(&self, tx_id: u64) {
+        if tx_id == 0 {
+            return;
+        }
         let ts = self.mvcc_table("__commit_probe__").next_snapshot_ts();
         let tables: Vec<Arc<VersionedTable>> = {
             let g = self.mvcc.read();
             g.values().cloned().collect()
         };
-        let tx_id = self.inner.current_tx_id();
         for t in tables {
             t.commit_tx(tx_id, ts);
         }
     }
 
     /// #4974: drop every pending version across all MVCC tables.
-    fn discard_pending(&self) {
+    /// #4974: same capture-first requirement as
+    /// [`promote_pending_for`](Self::promote_pending_for).
+    fn discard_pending_for(&self, tx_id: u64) {
+        if tx_id == 0 {
+            return;
+        }
         let tables: Vec<Arc<VersionedTable>> = {
             let g = self.mvcc.read();
             g.values().cloned().collect()
         };
-        let tx_id = self.inner.current_tx_id();
         for t in tables {
             t.rollback_tx(tx_id);
         }
@@ -330,6 +345,53 @@ impl<S: StorageEngine + 'static> StorageEngine for MvccStorage<S> {
         let pending: std::collections::HashSet<crate::engine::Value> =
             self.pending_keys(table, reader_tx);
         let inner_rows = self.inner.scan(table)?;
+        eprintln!(
+        );
+        if inner_rows.len() > out.len() {
+            let mut present: std::collections::HashSet<crate::engine::Value> =
+                out.iter().filter_map(|r| r.first().cloned()).collect();
+            for row in inner_rows {
+                if let Some(pk) = row.first() {
+                    if pending.contains(pk) {
+                        continue;
+                    }
+                    if present.insert(pk.clone()) {
+                        out.push(row);
+                    }
+                }
+            }
+        }
+        Ok(out)
+    }
+
+    /// #4974: `scan_with_filter` on behalf of `reader_tx`.
+    ///
+    /// This override was **missing** while `scan_in` existed, so the
+    /// trait default (`engine.rs:1111` → `self.scan_with_filter(...)`)
+    /// silently dropped `reader_tx` and fell back to
+    /// `inner.current_tx_id()` — the storage-wide "whoever wrote last"
+    /// value. Every predicate-filtered read was therefore unisolated.
+    fn scan_with_filter_in(
+        &self,
+        table: &str,
+        filter: &dyn Fn(&Record) -> bool,
+        reader_tx: u64,
+    ) -> SqlResult<Vec<Record>> {
+        let mvcc = self.mvcc_table(table);
+        let snapshot_ts = mvcc.begin_snapshot();
+        let mut out: Vec<Record> = mvcc
+            .scan_visible(snapshot_ts, reader_tx)
+            .into_iter()
+            .map(|(_, row)| row)
+            .filter(|r| filter(r))
+            .collect();
+
+        // Same inner-merge contract as `scan_in`, and the same reason it
+        // is unconditional (see `scan`'s comment): a read path that
+        // intermittently hides committed rows is not an optimisation.
+        let pending: std::collections::HashSet<crate::engine::Value> =
+            self.pending_keys(table, reader_tx);
+        let inner_rows = self.inner.scan_with_filter(table, filter)?;
         if inner_rows.len() > out.len() {
             let mut present: std::collections::HashSet<crate::engine::Value> =
                 out.iter().filter_map(|r| r.first().cloned()).collect();
@@ -662,23 +724,27 @@ impl<S: StorageEngine + 'static> StorageEngine for MvccStorage<S> {
     }
 
     fn commit_transaction(&mut self) -> SqlResult<()> {
+        // #4974: capture the tx id **before** delegating — `FileStorage`
+        // clears it as part of its own commit.
+        let tx_id = self.inner.current_tx_id();
         let r = self.inner.commit_transaction();
-        // #4974: promote this transaction's pending versions so other
+        // Promote this transaction's pending versions so other
         // connections can see them. Only after the inner engine accepted
         // the commit — a failed commit leaves everything pending, and
         // therefore invisible.
         if r.is_ok() {
-            self.promote_pending();
+            self.promote_pending_for(tx_id);
         }
         r
     }
 
     fn rollback_transaction(&mut self) -> SqlResult<()> {
+        let tx_id = self.inner.current_tx_id();
         let r = self.inner.rollback_transaction();
         // #4974: drop the pending versions. Nothing was ever visible, so
         // there is nothing to restore.
         if r.is_ok() {
-            self.discard_pending();
+            self.discard_pending_for(tx_id);
         }
         r
     }
@@ -743,12 +809,51 @@ impl<S: StorageEngine + 'static> StorageEngine for MvccStorage<S> {
         self.inner.begin_transaction_lockfree(tx_id)
     }
 
+    /// #4974: **this override was missing the MVCC promotion entirely.**
+    ///
+    /// The `&mut` twin `commit_transaction` calls `promote_pending()`;
+    /// the lockfree variant only forwarded to the inner engine. But the
+    /// engine's `commit_transaction` prefers the lockfree path whenever
+    /// the storage supports it — which `WalStorage` does — so
+    /// `promote_pending()` was **never reached in the server**. Every
+    /// version written inside a transaction stayed `committed == false`
+    /// for the rest of its life, so:
+    ///
+    /// ```text
+    /// PROBE while_A_uncommitted count=0   <- correct isolation
+    /// PROBE after_A_commit     count=0   <- the commit is invisible too
+    /// PROBE VERDICT=LOST_WRITE
+    /// ```
+    ///
+    /// This was masked before the read path was fixed: with every read
+    /// resolving to the storage-wide "whoever wrote last" transaction,
+    /// committed and uncommitted rows looked identical, so a commit that
+    /// promoted nothing was unobservable.
     fn commit_transaction_lockfree(&self) -> SqlResult<()> {
-        self.inner.commit_transaction_lockfree()
+        // #4974: capture first, delegate second — see `promote_pending_for`.
+        let tx_id = self.inner.current_tx_id();
+        let r = self.inner.commit_transaction_lockfree();
+        // Promote only after the inner engine accepted the commit — a
+        // failed commit must leave everything pending, and therefore
+        // invisible. Same ordering as `commit_transaction` above.
+        if r.is_ok() {
+            self.promote_pending_for(tx_id);
+        }
+        r
     }
 
+    /// #4974: same omission on the rollback side — `rollback_transaction`
+    /// calls `discard_pending()`, this one did not, so an aborted
+    /// transaction's versions stayed pending (invisible to readers, but
+    /// never released, and `pending_keys` kept paying for them on every
+    /// subsequent read).
     fn rollback_transaction_lockfree(&self) -> SqlResult<()> {
-        self.inner.rollback_transaction_lockfree()
+        let tx_id = self.inner.current_tx_id();
+        let r = self.inner.rollback_transaction_lockfree();
+        if r.is_ok() {
+            self.discard_pending_for(tx_id);
+        }
+        r
     }
 
     /// BLK-2: forward the `&self` variants so the lockfree transaction

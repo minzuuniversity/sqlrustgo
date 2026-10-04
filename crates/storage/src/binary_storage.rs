@@ -799,6 +799,45 @@ impl StorageEngine for BoxStorageEngine {
     fn set_current_tx_id_shared(&self, id: u64) {
         (**self).set_current_tx_id_shared(id)
     }
+
+    /// #4974: forward the reader-scoped scan through the `Box<dyn>`.
+    ///
+    /// **This is the link that actually mattered in the server.** The
+    /// MySQL server stores its engine as
+    /// `Arc<RwLock<BoxStorageEngine>>`, and `BoxStorageEngine` is a
+    /// `Box<dyn StorageEngine>`. It forwards `scan`, `scan_pk`, `gc`
+    /// and `set_current_tx_id_shared`, but not `scan_in` — so
+    /// `engine.scan_for_reader_with(...)` landed on the trait default
+    /// (`engine.rs:1078`), which is literally
+    /// `fn scan_in(&self, ..) { self.scan(table) }`. `reader_tx` was
+    /// discarded at the very first hop, and the request went on to
+    /// resolve against the storage-wide "whoever wrote last" value.
+    ///
+    /// Verified with a backtrace captured in `MvccStorage::scan` under
+    /// `--storage parallel`:
+    ///
+    /// ```text
+    /// MvccStorage::scan
+    ///   <- FileStorage / StorageEngine / ExecutionEngine
+    ///   <- binary_storage::BoxStorageEngine
+    ///   <- ExecutionEngine
+    ///   <- binary_storage::BoxStorageEngine
+    ///   <- mysql_server::do_command_loop
+    /// ```
+    fn scan_in(&self, table: &str, reader_tx: u64) -> SqlResult<Vec<Record>> {
+        (**self).scan_in(table, reader_tx)
+    }
+
+    /// #4974: same forwarding obligation for the predicate variant.
+    fn scan_with_filter_in(
+        &self,
+        table: &str,
+        filter: &dyn Fn(&Record) -> bool,
+        reader_tx: u64,
+    ) -> SqlResult<Vec<Record>> {
+        (**self).scan_with_filter_in(table, filter, reader_tx)
+    }
+
     /// BLK-2: same forwarding requirement as
     /// [`set_current_tx_id_shared`], for the buffered-insert discard.
     fn discard_all_buffers_shared(&self) {

@@ -392,8 +392,11 @@ pub fn materialize_recursive_cte<S: StorageEngine + 'static>(
         } else {
             let acc_existing: Vec<Vec<crate::Value>> = {
                 let storage = engine.storage.read();
-                storage
-                    .scan(&t)
+                // #4974: UNION (not UNION ALL) dedup reads the existing
+                // rows; another transaction's uncommitted rows must not
+                // participate in the dedup.
+                engine
+                    .scan_for_reader_with(&*storage, &t)
                     .map_err(|e| SqlError::ExecutionError(format!("Scan {}: {}", t, e)))?
             };
             let mut deduped: Vec<Vec<crate::Value>> = Vec::new();
