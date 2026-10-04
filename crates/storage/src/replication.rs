@@ -545,6 +545,14 @@ impl SlaveNode {
         let master_lsn = self.master_lsn.clone();
         let is_running = self.is_running.clone();
 
+        // #4936 e2e: was missing the `is_running = true` flip that
+        // `start_io_thread` does. Without it the SQL thread's loop sees
+        // is_running == false on the first check and exits without
+        // replaying a single event. Calling `start_sql_thread` alone
+        // (without `start_io_thread`) is a supported configuration per
+        // the API contract — the caller may want only the replay path.
+        *is_running.lock().unwrap() = true;
+
         thread::spawn(move || {
             let mut reader = match BinlogReader::new(binlog_path) {
                 Ok(r) => r,

@@ -60,12 +60,7 @@ impl BinlogClient {
 
         let response_data = match PacketReader::read_packet(&mut stream) {
             Ok(Some(d)) => d,
-            Ok(None) => {
-                return Err(std::io::Error::new(
-                    std::io::ErrorKind::UnexpectedEof,
-                    "Connection closed",
-                ))
-            }
+            Ok(None) => return Err(std::io::Error::other("Connection closed")),
             Err(e) => return Err(e),
         };
 
@@ -85,29 +80,24 @@ impl BinlogClient {
                 }
             }
             Some(ReplicationMessage::Error { code, message }) => {
-                return Err(std::io::Error::new(
-                    std::io::ErrorKind::Other,
-                    format!("Handshake error {}: {}", code, message),
-                ));
+                return Err(std::io::Error::other(format!(
+                    "Handshake error {}: {}",
+                    code, message
+                )));
             }
             _ => {
-                return Err(std::io::Error::new(
-                    std::io::ErrorKind::InvalidData,
-                    "Invalid handshake response",
-                ));
+                return Err(std::io::Error::other("Invalid handshake response"));
             }
         };
 
-        match response {
-            ReplicationMessage::HandshakeResponse {
-                binlog_file,
-                binlog_pos,
-                ..
-            } => {
-                self.current_file = binlog_file;
-                self.current_pos = binlog_pos;
-            }
-            _ => {}
+        if let ReplicationMessage::HandshakeResponse {
+            binlog_file,
+            binlog_pos,
+            ..
+        } = response
+        {
+            self.current_file = binlog_file;
+            self.current_pos = binlog_pos;
         }
 
         let (tx, rx) = mpsc::channel();
@@ -138,23 +128,13 @@ impl BinlogClient {
 
         let response_data = match PacketReader::read_packet(&mut stream) {
             Ok(Some(d)) => d,
-            Ok(None) => {
-                return Err(std::io::Error::new(
-                    std::io::ErrorKind::UnexpectedEof,
-                    "Connection closed",
-                ))
-            }
+            Ok(None) => return Err(std::io::Error::other("Connection closed")),
             Err(e) => return Err(e),
         };
 
         let response = match ReplicationMessage::deserialize(&response_data) {
             Some(m) => m,
-            None => {
-                return Err(std::io::Error::new(
-                    std::io::ErrorKind::InvalidData,
-                    "Invalid response",
-                ))
-            }
+            None => return Err(std::io::Error::other("Invalid response")),
         };
 
         match response {
@@ -163,14 +143,11 @@ impl BinlogClient {
                 self.current_pos = pos;
                 Ok(pos)
             }
-            ReplicationMessage::Error { code, message } => Err(std::io::Error::new(
-                std::io::ErrorKind::Other,
-                format!("Error {}: {}", code, message),
-            )),
-            _ => Err(std::io::Error::new(
-                std::io::ErrorKind::InvalidData,
-                "Unexpected response",
-            )),
+            ReplicationMessage::Error { code, message } => Err(std::io::Error::other(format!(
+                "Error {}: {}",
+                code, message
+            ))),
+            _ => Err(std::io::Error::other("Unexpected response")),
         }
     }
 

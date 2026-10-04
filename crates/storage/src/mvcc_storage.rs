@@ -233,7 +233,6 @@ impl<S: StorageEngine + 'static> MvccStorage<S> {
     pub fn get_visible(&self, table: &str, pk: &Value) -> Option<Vec<Value>> {
         let mvcc = self.mvcc_table(table);
         let tx_id = self.inner.current_tx_id();
-        let tx_id = self.inner.current_tx_id();
         let snapshot_ts = mvcc.begin_snapshot();
         mvcc.get_visible(pk, snapshot_ts, tx_id)
     }
@@ -250,7 +249,7 @@ impl<S: StorageEngine + 'static> MvccStorage<S> {
         for table_name in tables {
             let rows = self.inner.scan(&table_name)?;
             let mvcc = self.mvcc_table(&table_name);
-            let tx_id = self.inner.current_tx_id();
+            let _tx_id = self.inner.current_tx_id();
             let ts = mvcc.next_snapshot_ts();
             for row in rows {
                 // Use the first column as PK if available. For Phase
@@ -281,7 +280,6 @@ impl<S: StorageEngine + 'static> StorageEngine for MvccStorage<S> {
     /// method over `inner.scan_pk` + MVCC chain check.
     fn scan_pk(&self, table: &str, pk_column: &str, pk: &Value) -> SqlResult<Option<Record>> {
         let mvcc = self.mvcc_table(table);
-        let tx_id = self.inner.current_tx_id();
         let tx_id = self.inner.current_tx_id();
         let snapshot_ts = mvcc.begin_snapshot();
         if let Some(row) = mvcc.get_visible(pk, snapshot_ts, tx_id) {
@@ -345,8 +343,7 @@ impl<S: StorageEngine + 'static> StorageEngine for MvccStorage<S> {
         let pending: std::collections::HashSet<crate::engine::Value> =
             self.pending_keys(table, reader_tx);
         let inner_rows = self.inner.scan(table)?;
-        eprintln!(
-        );
+        eprintln!();
         if inner_rows.len() > out.len() {
             let mut present: std::collections::HashSet<crate::engine::Value> =
                 out.iter().filter_map(|r| r.first().cloned()).collect();
