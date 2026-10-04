@@ -2169,3 +2169,78 @@ fn test_v4910_step4_execute_through_ref_engine() {
 
     println!("\n[v4910 Phase 3 step 4] execute(&self, sql) works via &engine_ref");
 }
+
+// V4.1.0 / Issue #4910 §3 BETA gate #1: simplified in-process oltp_read_write.
+// 8 threads x 100 ops (50/50 read/write mix).
+#[test]
+fn test_v4910_bench_oltp_read_write_8t_100() {
+    use std::sync::Arc;
+    use std::thread;
+    use std::time::Instant;
+
+    const N_THREADS: usize = 8;
+    const N_PER_THREAD: usize = 100;
+
+    let storage = Arc::new(parking_lot::RwLock::new(MemoryStorage::new()));
+    let mut engine = crate::execution_engine::ExecutionEngine::new(storage);
+    engine.execute(
+        "CREATE TABLE sb_ol (id INTEGER PRIMARY KEY, k INTEGER, val TEXT)"
+    ).expect("create");
+    for i in 0..1000 {
+        engine.execute(&format!(
+            "INSERT INTO sb_ol VALUES ({}, {}, 'row.{}')",
+            i, i % 100, i
+        )).expect("insert");
+    }
+
+    let engine = Arc::new(engine);
+    let barrier = Arc::new(std::sync::Barrier::new(N_THREADS));
+    let start = Instant::now();
+    let handles: Vec<_> = (0..N_THREADS)
+        .map(|tid| {
+            let engine = Arc::clone(&engine);
+            let barrier = Arc::clone(&barrier);
+            thread::spawn(move || {
+                barrier.wait();
+                let engine_ref: &crate::execution_engine::ExecutionEngine<_> = &engine;
+                let mut rng = tid as u64;
+                let mut reads = 0u64;
+                let mut writes = 0u64;
+                for _ in 0..N_PER_THREAD {
+                    rng = rng.wrapping_mul(0x9E3779B97F4A7C15).wrapping_add(1);
+                    let id = (rng % 1000) + 1;
+                    let is_read = rng % 2 == 0;
+                    let sql = if is_read {
+                        reads += 1;
+                        format!("SELECT * FROM sb_ol WHERE id = {}", id)
+                    } else {
+                        writes += 1;
+                        format!("UPDATE sb_ol SET k = k + 1 WHERE id = {}", id)
+                    };
+                    let _ = crate::execution_engine::ExecutionEngine::execute(
+                        &*engine_ref,
+                        &sql,
+                    );
+                }
+                (reads, writes)
+            })
+        })
+        .collect();
+    let mut total_reads = 0u64;
+    let mut total_writes = 0u64;
+    for h in handles {
+        let (r, w) = h.join().expect("join");
+        total_reads += r;
+        total_writes += w;
+    }
+    let elapsed = start.elapsed();
+    let total = total_reads + total_writes;
+    let tps = total as f64 / elapsed.as_secs_f64();
+    println!(
+        "\n[v4910 §3 gate #1 OLTP read-write 8t] {} reads + {} writes = {} ops in {:?} = {:.0} TPS",
+        total_reads, total_writes, total, elapsed, tps
+    );
+    println!("  ~50/50 read/write mix, in-process via Phase 3 step 4 &self path");
+    println!("  §3 gate #1 target: >=400 TPS (8-thread sysbench oltp_read_write 60s)");
+    let _ = total_reads;
+}
