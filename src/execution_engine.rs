@@ -134,14 +134,18 @@ pub struct ExecutionEngine<S: StorageEngine> {
     // V4.1.0 / Issue #4910 §3.1: convert from `usize` to `AtomicUsize` so the
     // `&self` SELECT path can read parallelism without the engine write lock.
     pub(crate) parallel_degree: AtomicUsize,
-    pub(crate) stmt_cache: sqlrustgo_cache::PreparedStatementCache,
+    /// #4910 Phase 3: behind a lock so `execute_*` need not take
+    /// `&mut self`. Reads (`execute_with_sql`, `stats`) dominate the
+    /// access pattern, so a `RwLock` rather than a `Mutex`.
+    pub(crate) stmt_cache: parking_lot::RwLock<sqlrustgo_cache::PreparedStatementCache>,
     /// View definitions: view_name → parsed CREATE VIEW statement.
     /// Issue #4567: previously stored only the Debug-format SQL text, so
     /// views were acked by CREATE VIEW but never resolvable by SELECT.
     /// Storing the full AST lets `execute_select` expand a FROM-clause
     /// view into its defining subquery (view resolution) and lets
     /// SHOW TABLES / SHOW FULL TABLES list the view by name.
-    pub(crate) views: HashMap<String, CreateViewStatement>,
+    /// #4910 Phase 3: see [`stmt_cache`](Self::stmt_cache).
+    pub(crate) views: parking_lot::RwLock<HashMap<String, CreateViewStatement>>,
     /// V311-01 F-23: in-memory registry of `ClusteredTable` instances for
     /// tables opted into clustered primary key storage via
     /// `CREATE TABLE ... ENGINE=InnoDB CLUSTERED`. The base `storage`
@@ -321,9 +325,9 @@ impl<S: StorageEngine + 'static> ExecutionEngine<S> {
             session_null_order_first: None,
             checkpoint_manager: None,
             parallel_degree: AtomicUsize::new(parallel_degree),
-            stmt_cache: sqlrustgo_cache::PreparedStatementCache::new(100),
+            stmt_cache: parking_lot::RwLock::new(sqlrustgo_cache::PreparedStatementCache::new(100)),
             cost_model: parking_lot::RwLock::new(UnifiedCostModel::default_model(0, 0)),
-            views: HashMap::new(),
+            views: parking_lot::RwLock::new(HashMap::new()),
             clustered_tables: parking_lot::RwLock::new(HashMap::new()),
             pk_lookup_cache: parking_lot::RwLock::new(HashMap::new()),
             adaptive_hash_index: AdaptiveHashIndex::new().into_shared(),

@@ -970,7 +970,7 @@ impl<S: StorageEngine + 'static> ExecutionEngine<S> {
         // column aliases + defining SELECT AST) so the view is resolvable.
         // The old code stored only `format!("{:?}", view)` — a Debug dump
         // no query path could consume, making every CREATE VIEW a no-op.
-        self.views.insert(view.name.clone(), view.clone());
+        self.views.write().insert(view.name.clone(), view.clone());
         // V312-64d / Issue #4664: also persist the view to storage so
         // `sqlite_master` introspection sees the row, alongside the
         // in-memory view cache used by the view-rewrite path.
@@ -999,7 +999,7 @@ impl<S: StorageEngine + 'static> ExecutionEngine<S> {
         // restart (when the in-memory cache is empty but FileStorage has
         // the row on disk) still works. If neither side knows the view:
         // honour `IF EXISTS` as a no-op, otherwise raise.
-        let in_memory_present = self.views.remove(&drop_view.name).is_some();
+        let in_memory_present = self.views.write().remove(&drop_view.name).is_some();
         let storage_present = self.storage.read().has_view(&drop_view.name);
         if in_memory_present || storage_present {
             // Persist the removal — idempotent on the storage side.

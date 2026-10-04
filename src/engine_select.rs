@@ -428,7 +428,7 @@ impl<S: StorageEngine + 'static> ExecutionEngine<S> {
             .split_once('|')
             .map(|(t, _)| t)
             .unwrap_or(&select.table);
-        let view = self.views.get(bare)?;
+        let view = self.views.read().get(bare)?.clone();
         let Statement::Select(inner) = view.query.as_ref() else {
             return None;
         };
@@ -6796,7 +6796,9 @@ impl<S: StorageEngine + 'static> ExecutionEngine<S> {
                 } else {
                     // #4974: EXISTS fast path must not see other
                     // transactions' uncommitted rows.
-                    let rows = self.scan_for_reader_with(&*storage, &real_subq_table).ok()?;
+                    let rows = self
+                        .scan_for_reader_with(&*storage, &real_subq_table)
+                        .ok()?;
                     let arc = std::sync::Arc::new(rows);
                     rc.insert(table_name.clone(), arc.clone());
                     arc
