@@ -264,11 +264,41 @@ probe_show_databases.sh（TCP 端到端探针，已入库）
 
 
 ================================================================
+CI 门禁状态（重要）
+================================================================
+
+PR #5015 **无任何 CI 背书**。
+
+  GET /commits/d5956bfab5/status  ->  {"state":"pending"}
+  无任何 status 上下文，即从未有 job 上报过该 commit。
+
+根因（文件行号可查）：
+  .gitea/workflows/ci.yml:4-25    push / pull_request 的分支列表
+                                   最高只到 develop/v3.12.0，
+                                   不含 develop/v4.0.0 / develop/v4.1.0
+  .gitea/workflows/gate.yml:3-11   只覆盖 develop / main /
+                                   develop/v3.7.0 / develop/v3.8.0
+
+actions/runs?limit=20 最近 20 条中无本 commit 的 run；
+最近 5 条 run 全部在 main 分支且 conclusion=failure
+（该 failure 的原因本轮**未调查**）。
+
+已就此单开 issue #5016 记录该治理缺口。
+
+因此本 PR 的全部验证依据是本地实跑输出，即上文「回归」一节。
+合并前建议 reviewer 复跑该节全部命令。
+
+================================================================
 未完成 / 未验证
 ================================================================
 
-- 未跑全 workspace 回归（磁盘 11Gi 可用，全量 test 产物可能耗尽）
-- 未跑 cargo clippy -D warnings 与 cargo fmt 门禁（下一步）
+- 未跑 cargo clippy --all-features 的全 workspace 形式
+  （仅跑了改动相关的 4 个 crate），未跑全 workspace test
 - 缺陷 1 的 ON CONFLICT DO UPDATE 接入点（parser.rs:8718）缺独立
   集成测试：目前只有 parser 层覆盖，无端到端用例
-- storage flaky 测试未定位到具体测试名
+- storage flaky 测试未定位到具体测试名（见「回归」一节说明）
+- issue #5009 提到的 SHOW TABLES / SHOW SCHEMAS 是否同源未验证
+  （execute_show_tables 走 storage.list_tables()，与 SHOW DATABASES
+   的硬编码是不同代码路径）
+- develop/v4.1.0 无 CI 覆盖（见上节，已立 issue #5016）
+
