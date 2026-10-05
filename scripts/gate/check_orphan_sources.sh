@@ -49,7 +49,6 @@ crates/storage/src/columnar/storage.rs
 crates/storage/src/vector_storage.rs
 crates/storage/src/mmap_vector_store.rs
 crates/storage/src/backup_storage.rs
-crates/storage/src/backup_scheduler.rs
 crates/storage/src/pitr_recovery.rs
 crates/storage/src/buffer_pool_metrics.rs
 crates/storage/src/page_guard.rs

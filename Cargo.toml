@@ -2,7 +2,9 @@
 
 [workspace]
 members = [
-    "crates/gis",
+    "crates/evidence-graph",
+"crates/graph-cli",
+"crates/gis",
     "crates/distributed",
     "crates/common",
     "crates/parser",
