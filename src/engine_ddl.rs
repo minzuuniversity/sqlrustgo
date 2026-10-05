@@ -534,12 +534,26 @@ impl<S: StorageEngine + 'static> ExecutionEngine<S> {
     }
 
     pub(crate) fn execute_show_databases(&self) -> SqlResult<ExecutorResult> {
-        // V312-58 / Issue #4516: emit the single hard-coded schema;
-        // callers asking for LIKE filter get it via `execute_show_databases_like`.
-        Ok(ExecutorResult::new(
-            vec![vec![Value::Text("default".to_string())]],
-            1,
-        ))
+        // #5009: this used to emit the single hard-coded `default` row
+        // (V312-58 / Issue #4516), so every `CREATE DATABASE` created a
+        // database that `SHOW DATABASES` could never reveal. The executor
+        // had no way to ask, because the `StorageEngine` trait exposed
+        // `create_database`/`drop_database` but no enumerator; one is now.
+        //
+        // `default` is always present (it is the implicit working
+        // database), then whatever the engine reports, de-duplicated.
+        let mut names: Vec<String> = vec!["default".to_string()];
+        {
+            let storage = self.storage.read();
+            for db in storage.list_databases()? {
+                if !names.iter().any(|n| n.eq_ignore_ascii_case(&db)) {
+                    names.push(db);
+                }
+            }
+        }
+        names.sort();
+        let rows = names.into_iter().map(|n| vec![Value::Text(n)]).collect();
+        Ok(ExecutorResult::new(rows, 1))
     }
 
     /// V312-59-A / Issue #4384 (56A-R3 anti-deferral): `SHOW [FULL]

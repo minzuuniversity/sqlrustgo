@@ -712,6 +712,13 @@ impl StorageEngine for BoxStorageEngine {
     fn drop_database(&mut self, db_name: &str) -> SqlResult<()> {
         (**self).drop_database(db_name)
     }
+    /// #5009: forward. Without this the `Box<dyn StorageEngine>` the
+    /// server actually holds would fall back to the trait default
+    /// (empty list) and `SHOW DATABASES` would again see nothing —
+    /// the same wrapper-drops-the-method shape as #4974.
+    fn list_databases(&self) -> SqlResult<Vec<String>> {
+        (**self).list_databases()
+    }
     fn create_table(&mut self, info: &TableInfo) -> SqlResult<()> {
         (**self).create_table(info)
     }

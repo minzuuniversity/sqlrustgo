@@ -1,0 +1,304 @@
+#5009 EVIDENCE — 2026-10-05
+worktree: /private/tmp/sq-5009
+branch:   fix/5009-odku-values-mcode
+base:     afcf5e3001 (develop/v4.1.0)
+
+source_agent:  MCode (MiniMax-M3.1-Flash-Preview)
+source_run:    session 1791171981887 续轮
+method:        变异测试 (mutation testing) + 端到端探针
+AFP:           ANTI_FABRICATION_POLICY.md — 每条 claim 附 file:line 或实跑输出
+
+
+================================================================
+缺陷 1 — ODKU 的 VALUES(col) 行值引用无法解析
+================================================================
+
+## 修复前症状（实测，变异版二进制 afcf5e3001 + 变异 A）
+
+    $ printf 'CREATE TABLE t (id INT PRIMARY KEY, n INT);\n
+      INSERT INTO t VALUES (1, 10);\n
+      INSERT INTO t VALUES (1, 99) ON DUPLICATE KEY UPDATE n = VALUES(n);\n
+      SELECT n FROM t WHERE id = 1;\n.exit\n' \
+      | ./target/debug/sqlrustgo-mysql-server repl
+
+    sqlrustgo> (0 rows)
+    sqlrustgo> (0 rows)
+    sqlrustgo> Error: Parse error: Expected expression
+    sqlrustgo> col_1
+    Integer(10)          <-- 存的是旧值 10，本次的 99 被丢弃
+    (1 rows)
+
+即：语句被 1064 类错误拒绝，已存行保持不变。
+
+## 根因
+
+crates/parser/src/parser.rs 在解析
+`ON DUPLICATE KEY UPDATE <col> = <rhs>` 的 rhs 时直接调用通用
+`parse_expression()`。`VALUES ( ident )` 不是合法表达式起始，
+于是报 "Expected expression"。
+
+## 修复
+
+新增 `Parser::try_parse_values_row_ref()`（crates/parser/src/parser.rs:2597），
+仅当 token 序列精确匹配 `Values LParen Identifier RParen` 时消费并降级为
+`Expression::Identifier("excluded.<col>")`；任一不匹配即 `return None`
+且不推进 token 流。
+
+接入点两处：
+  - crates/parser/src/parser.rs:8589  ODKU `ON DUPLICATE KEY UPDATE` rhs
+  - crates/parser/src/parser.rs:8718  `ON CONFLICT DO UPDATE SET` rhs
+
+## 为何复用 excluded.col 而非新增 AST 变体
+
+excluded.col 的求值路径已由 #4807 建立并验证
+（src/expr_utils.rs:300 evaluate_expression_with_excluded，
+:315 检测 `excluded.` 前缀并从 new_row 取值），
+与 MySQL `VALUES(col)` 语义完全相同。
+因此求值层与 ODKU 赋值路径零改动。
+
+## 变异结果
+
+变异 A —— helper 整体短路（等价于修复前状态）：
+
+    cargo test --test insert_odku_test
+      test test_odku_values_ref_takes_incoming_value ... FAILED
+      test test_odku_values_ref_agrees_with_excluded  ... FAILED
+      test result: FAILED. 6 passed; 2 failed
+
+    => 有效变异。2 条缺陷检测测试确实抓住了回归。
+
+修复态：
+
+    cargo test --test insert_odku_test
+      test result: ok. 9 passed; 0 failed
+
+### 无效变异（诚实标注 —— 行为等价变换，测试无法也不应区分）
+
+变异 B —— helper 额外接受逗号列表 `VALUES ( a , b )`：
+
+    cargo test --test insert_odku_test -> 9 passed; 0 failed
+
+    手工核对实际行为：
+      修复态 : "Error: Parse error: Expected expression"
+      变异 B : "Error: Parse error: Expected = after column 'b' in ON DUPLICATE KEY UPDATE"
+      两者语句均被拒绝，存储行均保持 Integer(5) / Integer(5) 未变。
+
+    => 无效变异。错误消息文本变了，但可观察行为（拒绝 + 不污染数据）
+       等价。用户级断言不绑定具体错误文案是正确的，绑定文案会脆弱。
+
+变异 C —— 每个 bail-out 分支也推进 token 流：
+
+    cargo test --test insert_odku_test -> 9 passed; 0 failed
+
+    手工核对实际行为：
+      修复态 : "Error: Parse error: Expected expression"
+      变异 C : "Error: Parse error: Expected RParen in parens, depth=0, current=Some(Comma)"
+      两者语句均被拒绝，存储行均未变。
+
+    => 无效变异，同 B。
+
+    结论：test_odku_bare_values_not_reinterpreted 与
+    test_odku_values_ref_requires_exactly_one_column 守卫的是
+    「非法输入不被静默接受、且不污染已存行」这一用户可见契约，
+    而非 token 流内部状态。它们对 B/C 不敏感是预期的正确行为。
+
+## 测试文件
+
+tests/integration/dml/insert_odku_test.rs（5 条新增，共 9 个 #[test]）
+  - test_odku_values_ref_takes_incoming_value     缺陷检测
+  - test_odku_values_ref_agrees_with_excluded     缺陷检测
+  - test_odku_literal_and_arithmetic_still_work    回归守卫
+  - test_odku_bare_values_not_reinterpreted       过度降级守卫
+  - test_odku_values_ref_requires_exactly_one_column  过度降级守卫
+
+
+================================================================
+缺陷 2 — SHOW DATABASES 不列用户创建的库
+================================================================
+
+## 修复前症状（实测）
+
+    $ printf 'CREATE DATABASE shop;\nCREATE DATABASE blog;\nSHOW DATABASES;\n.exit\n' \
+      | ./target/debug/sqlrustgo-mysql-server repl
+      (变异 E 状态)
+    sqlrustgo> Database
+    Text("default")
+    (1 rows)
+
+CREATE DATABASE 成功，DROP DATABASE 成功，SHOW DATABASES 永远只有
+`default` 一行。
+
+## 根因
+
+src/engine_ddl.rs:536 execute_show_databases 硬编码返回单行
+`default`（V312-58 / Issue #4516 引入）。
+
+而 #4516 的 scope 是**行形状（row shape）**与 wire 列名，不是**行的集合**。
+实现时把「单 schema 引擎」误等同于「只有一行」。
+
+更根本的是：执行端**无从查询**。src/execution_engine_methods.rs:661
+execute_create_database 只调 storage.create_database()（不写 catalog），
+而 StorageEngine trait（crates/storage/src/engine.rs:1199/1206）
+只暴露 create_database / drop_database，**没有任何枚举方法**。
+
+## 修复（新增 trait 方法 + 全链路实现）
+
+1. crates/storage/src/engine.rs  trait 新增
+       fn list_databases(&self) -> SqlResult<Vec<String>>  默认 Ok(vec![])
+   取 &self 而非 &mut self，使读方可在共享锁下枚举。
+   默认值是空列表而非错误：未实现 create_database 的引擎本就
+   没有库，「没有库」是合法答案不是失败。
+
+2. crates/storage/src/engine.rs:2437  MemoryStorage —— clone self.databases
+
+3. crates/storage/src/file_storage.rs:4826  FileStorage —— 枚举 data_dir
+   下的子目录（create_database 建的正是子目录；WAL 是普通文件不会命中）
+   data_dir 不存在时返回空列表而非报错。已排序。
+
+4. 包装层转发（#4974 同一形状的教训：包装器不转发就静默继承默认值）
+   - crates/storage/src/binary_storage.rs   BoxStorageEngine  <- 服务端 Box<dyn> 实际入口
+   - crates/storage/src/wal_storage.rs      WalStorage
+   - crates/storage/src/mvcc_storage.rs     MvccStorage
+
+5. src/engine_ddl.rs:536  execute_show_databases 改为
+   default + storage 列表，按名去重（eq_ignore_ascii_case），
+   整体按名排序（与 MySQL information_schema.SCHEMATA 一致）
+
+## 方法论发现：REPL 路径 ≠ 生产路径
+
+本轮再次撞上 #4974 的核心教训，且这次是**测试层面**的：
+
+  `repl` 子命令构造 MemoryExecutionEngine，直连 MemoryStorage
+  （crates/mysql-server/src/main.rs:592 run_repl）。
+  `serve` 构造 BoxStorageEngine（crates/mysql-server/src/lib.rs:6663+）。
+
+后果：仅靠 REPL 驱动的 e2e 测试对包装层缺陷**结构性不可见**。
+实测证据 —— 变异 E（删 BoxStorageEngine 转发）下：
+
+    cargo test --test show_databases_test            -> 2 passed; 0 failed
+    cargo test -p sqlrustgo-executor --test issue_5009_show_databases_test
+                                                     -> 7 passed; 0 failed
+    ./probe_show_databases.sh <binary>               -> VERDICT=DEFECTIVE
+
+两层测试全绿，端到端探针报缺陷。故必须保留 TCP 探针作为判据。
+
+## 端到端探针（真实 MySQL 协议 + mysql CLI）
+
+probe_show_databases.sh <server-binary> [port]
+起 `serve --data-dir`，用 mysql -N -B 查 SHOW DATABASES。
+
+修复态（HEAD 修复 + 全部转发）：
+
+    PROBE before_create     dbs=[default ]
+    PROBE after_create      dbs=[blog default shop ]
+    PROBE after_drop        dbs=[default shop ]
+    VERDICT=CLEAN
+
+## 变异结果（均为端到端探针判定）
+
+变异 E —— 删 BoxStorageEngine::list_databases 转发：
+    PROBE after_create  dbs=[default ]
+    VERDICT=DEFECTIVE
+    => 有效变异。证明服务端 Box<dyn> 入口确实需要该转发。
+
+变异 F —— 删 WalStorage::list_databases 转发：
+    PROBE after_create  dbs=[default ]
+    VERDICT=DEFECTIVE
+    => 有效变异。证明 serve 默认路径确实经过 WalStorage。
+
+变异 G —— 删 MvccStorage::list_databases 转发：
+    PROBE after_create  dbs=[default ]
+    VERDICT=DEFECTIVE
+    => 有效变异。证明 serve 链路也经过 MvccStorage。
+
+三处转发全部必要，且每一处都被独立验证过，不是照抄模式的推测。
+
+## 测试文件
+
+crates/executor/tests/issue_5009_show_databases_test.rs（7 项）
+  created_database_appears_in_show_databases
+  multiple_databases_are_all_listed
+  drop_database_removes_it_from_listing
+  duplicate_create_does_not_duplicate_the_row
+  default_is_always_present
+  result_is_sorted_and_default_survives_earlier_names   （捕捉「default 必在第 0 行」的错误假设）
+  empty_engine_still_lists_only_default                 （钉住 #4516 既有契约）
+
+tests/integration/ddl/show_databases_test.rs（2 项，走 REPL 真实进程）
+  show_databases_lists_created_databases_through_server
+  drop_database_is_reflected_through_server
+  —— 覆盖 CLI 进程组装路径；按上文结论，包装层判定仍以探针为准。
+
+probe_show_databases.sh（TCP 端到端探针，已入库）
+
+
+================================================================
+回归
+================================================================
+
+  cargo test -p sqlrustgo-executor --test issue_4516_show_test
+      test result: ok. 13 passed; 0 failed
+      （既有 #4516 测试未被打破：空引擎仍 1 行 default）
+
+  cargo test -p sqlrustgo-mysql-server --test issue_4516_wire_test
+      test result: ok. 22 passed; 0 failed
+
+  cargo test --test insert_odku_test
+      test result: ok. 9 passed; 0 failed
+
+  cargo test -p sqlrustgo-executor --test issue_5009_show_databases_test
+      test result: ok. 7 passed; 0 failed
+
+  cargo test --test show_databases_test
+      test result: ok. 2 passed; 0 failed
+
+  cargo test -p sqlrustgo-storage --lib   x3 连续
+      test result: ok. 821 passed; 0 failed（三次一致）
+
+注：storage --lib 首轮曾出现 1 failed（820 passed / 1 failed），
+    随后连续 3 次重跑均 821 passed / 0 failed，无法复现。
+    该失败为 flaky，非本 PR 引入 —— 本 PR 对 storage 的改动是
+    纯新增 trait 方法与两个新 impl，不触及既有读路径。
+    按 AFP，此处如实记录为「未能复现、未能定位具体测试名」，
+    不宣称已解决。
+
+
+================================================================
+CI 门禁状态（重要）
+================================================================
+
+PR #5015 **无任何 CI 背书**。
+
+  GET /commits/d5956bfab5/status  ->  {"state":"pending"}
+  无任何 status 上下文，即从未有 job 上报过该 commit。
+
+根因（文件行号可查）：
+  .gitea/workflows/ci.yml:4-25    push / pull_request 的分支列表
+                                   最高只到 develop/v3.12.0，
+                                   不含 develop/v4.0.0 / develop/v4.1.0
+  .gitea/workflows/gate.yml:3-11   只覆盖 develop / main /
+                                   develop/v3.7.0 / develop/v3.8.0
+
+actions/runs?limit=20 最近 20 条中无本 commit 的 run；
+最近 5 条 run 全部在 main 分支且 conclusion=failure
+（该 failure 的原因本轮**未调查**）。
+
+已就此单开 issue #5016 记录该治理缺口。
+
+因此本 PR 的全部验证依据是本地实跑输出，即上文「回归」一节。
+合并前建议 reviewer 复跑该节全部命令。
+
+================================================================
+未完成 / 未验证
+================================================================
+
+- 未跑 cargo clippy --all-features 的全 workspace 形式
+  （仅跑了改动相关的 4 个 crate），未跑全 workspace test
+- 缺陷 1 的 ON CONFLICT DO UPDATE 接入点（parser.rs:8718）缺独立
+  集成测试：目前只有 parser 层覆盖，无端到端用例
+- storage flaky 测试未定位到具体测试名（见「回归」一节说明）
+- issue #5009 提到的 SHOW TABLES / SHOW SCHEMAS 是否同源未验证
+  （execute_show_tables 走 storage.list_tables()，与 SHOW DATABASES
+   的硬编码是不同代码路径）
+- develop/v4.1.0 无 CI 覆盖（见上节，已立 issue #5016）
+
