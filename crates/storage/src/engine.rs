@@ -945,6 +945,24 @@ impl TableData {
 }
 
 /// Record type - a single row of values
+/// The database a connection starts in, and the one `USE` falls back to.
+///
+/// `CREATE DATABASE` rejects this name, so it is the only implicit one.
+pub const DEFAULT_DATABASE: &str = "default";
+
+/// Separator between database and table in an internal table key.
+///
+/// A control character is used rather than `.` because table names may
+/// legitimately contain dots (`t.2024`), and a `.` separator would make
+/// `db="a", table="b.t"` collide with `db="a.b", table="t"`.
+pub(crate) const DB_SEP: char = '\u{1}';
+
+/// #5025: scope a bare table name to a database.
+#[inline]
+pub(crate) fn scoped_key(db: &str, table: &str) -> String {
+    format!("{}\u{1}{}", db.to_lowercase(), table.to_lowercase())
+}
+
 pub type Record = Vec<Value>;
 
 /// Row mutation with assignments and metadata
@@ -1200,6 +1218,26 @@ pub trait StorageEngine: Send + Sync {
         Err(SqlError::ExecutionError(
             "create_database not supported by this storage engine".to_string(),
         ))
+    }
+
+    /// #5025: the database subsequent table operations resolve against.
+    ///
+    /// `USE <db>` used to be an accepted no-op, so every database shared
+    /// one table namespace. Storing the name here lets table lookup be
+    /// scoped without changing the signature of the ~19 trait methods
+    /// that take a table name.
+    ///
+    /// Implementations return the bare database name; scoping into table
+    /// keys is the implementation's business.
+    fn current_db(&self) -> String {
+        DEFAULT_DATABASE.to_string()
+    }
+
+    /// #5025: switch the active database. Returns an error when the
+    /// database is unknown, so `USE missing_db` fails loudly instead of
+    /// silently resolving against the previous database.
+    fn set_current_db(&mut self, _db_name: &str) -> SqlResult<()> {
+        Ok(())
     }
 
     /// Drop a database (directory). No-op for in-memory engines.
@@ -1622,6 +1660,11 @@ pub struct MemoryStorage {
     sequences: HashMap<String, SequenceInfo>,
     /// 内存中的数据库集合 (CREATE DATABASE 注册的, in-memory 模式)
     databases: HashSet<String>,
+    /// #5025: the active database. Table maps are keyed by `scoped_key`
+    /// so that `d1.t` and `d2.t` are distinct rows. Changing it is a
+    /// plain field write, which is why every table-keyed method routes its
+    /// argument through `tbl()` rather than indexing with the raw name.
+    current_db: String,
     /// Tracks the current transaction ID for VtuGuard::assert_dml_safe.
     /// VtuGuard checks S::in_transaction() which returns `current_tx_id != 0`.
     ///
@@ -1681,6 +1724,17 @@ pub struct TxLog {
 }
 
 impl MemoryStorage {
+    /// #5025: scope a bare table name to the active database.
+    #[inline]
+    fn tbl(&self, table: impl AsRef<str>) -> String {
+        scoped_key(&self.current_db, table.as_ref())
+    }
+
+    /// #5025: the active database, as a bare name.
+    fn db(&self) -> &str {
+        &self.current_db
+    }
+
     pub fn new() -> Self {
         Self {
             tables: HashMap::new(),
@@ -1690,7 +1744,10 @@ impl MemoryStorage {
             views: HashSet::new(),
             view_defs: HashMap::new(),
             sequences: HashMap::new(),
-            databases: HashSet::new(),
+            // #5025: the implicit database must itself be registered, or
+            //  would fail as "unknown".
+            databases: HashSet::from([DEFAULT_DATABASE.to_string()]),
+            current_db: DEFAULT_DATABASE.to_string(),
             current_tx_id: std::sync::atomic::AtomicU64::new(0),
             next_tx_id: 1,
             tx_log: None,
@@ -1707,7 +1764,8 @@ impl MemoryStorage {
     /// V4.1.0: record that `table`'s rows changed. See
     /// `StorageEngine::table_change_stamp`.
     fn bump_change_stamp(&mut self, table: &str) {
-        let slot = self.change_stamps.entry(table.to_lowercase()).or_insert(0);
+        let key = self.tbl(table);
+        let slot = self.change_stamps.entry(key).or_insert(0);
         *slot = slot.wrapping_add(1);
     }
 
@@ -1732,7 +1790,8 @@ impl MemoryStorage {
     pub fn partition_rows(&self, table: &str, num_partitions: usize) -> Vec<Vec<Record>> {
         const PARALLEL_SCAN_MIN_ROWS: usize = 500_000;
         let n_partitions = num_partitions.max(1);
-        let Some(all_rows) = self.tables.get(table) else {
+        // #5025: scope like every other table lookup.
+        let Some(all_rows) = self.tables.get(&self.tbl(table)) else {
             return vec![Vec::new()];
         };
         if all_rows.len() < PARALLEL_SCAN_MIN_ROWS || n_partitions <= 1 {
@@ -1846,17 +1905,22 @@ impl MemoryStorage {
     /// the multi-connection isolation guarantee.
     pub fn apply_committed_log(&mut self, log: &TxLog) -> SqlResult<()> {
         for (table, record) in &log.inserted {
+            // #5025: the log records the caller's bare table name, so it
+            // must be scoped to the database that is active on replay.
+            // Replaying under a different database than the one that wrote
+            // the log is prevented by #5025's `set_current_db` check.
+            let key = self.tbl(table);
             if let Some(active_log) = self.tx_log.as_mut() {
                 active_log.inserted.push((table.clone(), record.clone()));
             }
             self.tables
-                .entry(table.clone())
+                .entry(key.clone())
                 .or_default()
                 .push(record.clone());
             // V312-26 #3969: keep the post-commit snapshot in sync so a
             // later connection joining via this storage sees the broadcast.
             self.committed_tables
-                .entry(table.clone())
+                .entry(key.clone())
                 .or_default()
                 .push(record.clone());
         }
@@ -1959,7 +2023,7 @@ impl StorageEngine for MemoryStorage {
     fn scan(&self, table: &str) -> SqlResult<Vec<Record>> {
         Ok(self
             .tables
-            .get(&table.to_lowercase())
+            .get(&self.tbl(table))
             .cloned()
             .unwrap_or_default())
     }
@@ -1976,8 +2040,8 @@ impl StorageEngine for MemoryStorage {
         table: &str,
         filter: &dyn Fn(&Record) -> bool,
     ) -> SqlResult<Vec<Record>> {
-        let key = table.to_lowercase();
-        let Some(rows) = self.tables.get(&key) else {
+        let key = self.tbl(table);
+        let Some(rows) = self.tables.get(&key.clone()) else {
             return Ok(Vec::new());
         };
         Ok(rows.iter().filter(|r| filter(r)).cloned().collect())
@@ -1992,8 +2056,11 @@ impl StorageEngine for MemoryStorage {
         // V312-85 / Issue #4625: Scan using index hint.
         // MemoryStorage tracks index existence via a HashSet<(table, column)>
         // but doesn't store the actual B+ tree data. Fall back to filtered scan.
+        // #5025: `indexes` is keyed by scoped table name, and `scan`
+        // scopes its own argument — so keep the bare name here and let each
+        // consumer do its own scoping.
         let table_lower = table.to_lowercase();
-        let index_key = (table_lower.clone(), index_name.to_lowercase());
+        let index_key = (self.tbl(&table_lower), index_name.to_lowercase());
 
         // Check if index is registered
         if !self.indexes.contains(&index_key) {
@@ -2005,7 +2072,7 @@ impl StorageEngine for MemoryStorage {
 
         // Fall back to full scan with filter on the indexed column
         let rows = self.scan(&table_lower)?;
-        let col_idx = self.table_infos.get(&table_lower).and_then(|info| {
+        let col_idx = self.table_infos.get(&table_lower.clone()).and_then(|info| {
             info.columns
                 .iter()
                 .position(|c| c.name.eq_ignore_ascii_case(index_name))
@@ -2055,16 +2122,24 @@ impl StorageEngine for MemoryStorage {
 
     fn rollback_transaction(&mut self) -> SqlResult<()> {
         if let Some(log) = self.tx_log.take() {
+            // #5025: the log stores the caller's bare table names, so each
+            // one is scoped to the database that is active here. Replaying
+            // under a different database than the one that produced the log
+            // would restore rows into the wrong tables; `set_current_db`
+            // refuses an unknown database, which is what keeps this honest.
             for (table, row) in log.deleted.into_iter().rev() {
-                self.tables.entry(table).or_default().push(row);
+                let key = self.tbl(table);
+                self.tables.entry(key).or_default().push(row);
             }
             for (table, row) in log.inserted.into_iter().rev() {
-                if let Some(records) = self.tables.get_mut(&table) {
+                let key = self.tbl(table);
+                if let Some(records) = self.tables.get_mut(&key) {
                     records.retain(|r| r != &row);
                 }
             }
             for (table, prior, _new) in log.updated.into_iter().rev() {
-                if let Some(records) = self.tables.get_mut(&table) {
+                let key = self.tbl(table);
+                if let Some(records) = self.tables.get_mut(&key) {
                     for record in records.iter_mut() {
                         if *record == _new {
                             *record = prior.clone();
@@ -2081,7 +2156,9 @@ impl StorageEngine for MemoryStorage {
     fn insert(&mut self, table: &str, records: Vec<Record>) -> SqlResult<()> {
         // V4.1.0: any derived cache over this table is now stale.
         self.bump_change_stamp(table);
-        let table_key = table.to_lowercase();
+        // #5025: scoped once and reused — the key is needed in several
+        // places below, and `tbl()` allocates.
+        let table_key = self.tbl(table);
         let padded: Vec<Record> = if let Some(info) = self.table_infos.get(&table_key).cloned() {
             let ncols = info.columns.len();
             let auto_inc_cols: Vec<usize> = info
@@ -2131,7 +2208,11 @@ impl StorageEngine for MemoryStorage {
                 //      auto-assigned id is 501.
                 //   3. Each null cell takes one id via `fetch_add(1)`,
                 //      making the assignment atomic across writers.
-                let existing_rows = self.tables.get(&table_key).cloned().unwrap_or_default();
+                let existing_rows = self
+                    .tables
+                    .get(&table_key.clone())
+                    .cloned()
+                    .unwrap_or_default();
                 let max_existing: Option<i64> = auto_inc_cols
                     .iter()
                     .filter_map(|&idx| {
@@ -2222,7 +2303,7 @@ impl StorageEngine for MemoryStorage {
     fn delete(&mut self, table: &str, filters: &[Value]) -> SqlResult<usize> {
         // V4.1.0: any derived cache over this table is now stale.
         self.bump_change_stamp(table);
-        let Some(records) = self.tables.get_mut(table) else {
+        let Some(records) = self.tables.get_mut(&self.tbl(table)) else {
             return Ok(0);
         };
         if filters.is_empty() {
@@ -2263,7 +2344,7 @@ impl StorageEngine for MemoryStorage {
     fn delete_collect_pks(&mut self, table: &str, filters: &[Value]) -> SqlResult<Vec<Value>> {
         // V4.1.0: any derived cache over this table is now stale.
         self.bump_change_stamp(table);
-        let Some(records) = self.tables.get_mut(table) else {
+        let Some(records) = self.tables.get_mut(&self.tbl(table)) else {
             return Ok(Vec::new());
         };
         if filters.is_empty() {
@@ -2308,7 +2389,7 @@ impl StorageEngine for MemoryStorage {
     fn delete_if(&mut self, table: &str, filter: &RowFilter) -> SqlResult<usize> {
         // V4.1.0: any derived cache over this table is now stale.
         self.bump_change_stamp(table);
-        let Some(records) = self.tables.get_mut(table) else {
+        let Some(records) = self.tables.get_mut(&self.tbl(table)) else {
             return Ok(0);
         };
         let original_len = records.len();
@@ -2334,7 +2415,7 @@ impl StorageEngine for MemoryStorage {
     ) -> SqlResult<usize> {
         // V4.1.0: any derived cache over this table is now stale.
         self.bump_change_stamp(table);
-        let Some(records) = self.tables.get_mut(table) else {
+        let Some(records) = self.tables.get_mut(&self.tbl(table)) else {
             return Ok(0);
         };
 
@@ -2402,7 +2483,7 @@ impl StorageEngine for MemoryStorage {
     ) -> SqlResult<usize> {
         // V4.1.0: any derived cache over this table is now stale.
         self.bump_change_stamp(table);
-        let Some(records) = self.tables.get_mut(table) else {
+        let Some(records) = self.tables.get_mut(&self.tbl(table)) else {
             return Ok(0);
         };
 
@@ -2437,10 +2518,14 @@ impl StorageEngine for MemoryStorage {
         Ok(count)
     }
     fn create_table(&mut self, info: &TableInfo) -> SqlResult<()> {
-        // V312-19 #3972: store table info under lowercased key for case-insensitive lookup.
-        let key = info.name.to_lowercase();
+        // V312-19 #3972: store table info under lowercased key for
+        // case-insensitive lookup.
+        // #5025: the key is scoped to the active database so `d1.t` and
+        // `d2.t` are distinct. `info.name` keeps the bare table name —
+        // that is what `SHOW TABLES` must display.
+        let key = self.tbl(&info.name);
         let mut info = info.clone();
-        info.name = key.clone();
+        info.name = info.name.to_lowercase();
         self.table_infos.insert(key.clone(), info);
         self.tables.entry(key).or_default();
         Ok(())
@@ -2450,6 +2535,27 @@ impl StorageEngine for MemoryStorage {
         // 内存模式: 仅记录数据库名
         self.databases.insert(db_name.to_string());
         Ok(())
+    }
+
+    /// #5025: switch the active database.
+    ///
+    /// Rejects an unknown database so `USE missing_db` fails instead of
+    /// silently continuing against the previous one — the exact failure
+    /// mode this issue was filed about.
+    fn set_current_db(&mut self, db_name: &str) -> SqlResult<()> {
+        let key = db_name.to_lowercase();
+        if !self.databases.contains(&key) {
+            return Err(SqlError::ExecutionError(format!(
+                "Unknown database: {}",
+                db_name
+            )));
+        }
+        self.current_db = key;
+        Ok(())
+    }
+
+    fn current_db(&self) -> String {
+        self.current_db.clone()
     }
 
     fn drop_database(&mut self, db_name: &str) -> SqlResult<()> {
@@ -2465,9 +2571,9 @@ impl StorageEngine for MemoryStorage {
 
     fn drop_table(&mut self, table: &str) -> SqlResult<()> {
         // V312-19 #3972: case-insensitive table name lookup.
-        let key = table.to_lowercase();
-        self.tables.remove(&key);
-        self.table_infos.remove(&key);
+        let key = self.tbl(table);
+        self.tables.remove(&key.clone());
+        self.table_infos.remove(&key.clone());
         // V4.1.0: a DROP must invalidate caches even though the table is
         // gone — a CREATE of the same name may follow and must not inherit
         // a snapshot describing the old table.
@@ -2490,25 +2596,33 @@ impl StorageEngine for MemoryStorage {
     fn get_table_info(&self, table: &str) -> SqlResult<TableInfo> {
         // V312-19 #3972: case-insensitive table name lookup.
         self.table_infos
-            .get(&table.to_lowercase())
+            .get(&self.tbl(table))
             .cloned()
             .ok_or_else(|| SqlError::ExecutionError(format!("Table not found: {}", table)))
     }
 
     fn has_table(&self, table: &str) -> bool {
         // V312-19 #3972: case-insensitive table name lookup.
-        self.table_infos.contains_key(&table.to_lowercase())
+        self.table_infos.contains_key(&self.tbl(table))
     }
 
     fn table_change_stamp(&self, table: &str) -> u64 {
         self.change_stamps
-            .get(&table.to_lowercase())
+            .get(&self.tbl(table))
             .copied()
             .unwrap_or(0)
     }
 
     fn list_tables(&self) -> Vec<String> {
-        self.table_infos.keys().cloned().collect()
+        // #5025: only the current database's tables, with the internal
+        // `db\x01table` key stripped back to the bare name. Returning the
+        // raw keys would make `SHOW TABLES` display `d1\u{1}t` and list
+        // every database's tables.
+        let prefix = format!("{}\u{1}", self.current_db.to_lowercase());
+        self.table_infos
+            .iter()
+            .filter_map(|(key, info)| key.strip_prefix(&prefix).map(|_| info.name.clone()))
+            .collect()
     }
 
     fn create_index(&mut self, info: IndexInfo) -> SqlResult<()> {
@@ -2522,7 +2636,7 @@ impl StorageEngine for MemoryStorage {
         let table_lc = info.table.to_lowercase();
         for column in &info.columns {
             if let Some(name) = column.name.as_deref() {
-                self.indexes.insert((table_lc.clone(), name.to_string()));
+                self.indexes.insert((self.tbl(&table_lc), name.to_string()));
             }
         }
         self.index_infos.insert(info.name.to_lowercase(), info);
@@ -2578,13 +2692,16 @@ impl StorageEngine for MemoryStorage {
     fn add_column(&mut self, table: &str, column: ColumnDefinition) -> SqlResult<()> {
         // V313-followup-1 / Issue #4154: column name preserved as-is
         // (no lowercase) so case-exact ALTER COLUMN can disambiguate.
-        if let Some(info) = self.table_infos.get_mut(&table.to_lowercase()) {
+        // #5025: resolve the key once. `self.tbl()` borrows `self`, which
+        // would otherwise conflict with the two mutable borrows below.
+        let key = self.tbl(table);
+        if let Some(info) = self.table_infos.get_mut(&key.clone()) {
             // #4571: backfill every existing row with the new column's
             // DEFAULT (or NULL) so records stay aligned with the schema.
             // Previously only the schema was extended — old rows stayed
             // short and `SELECT *` returned short/missing cells.
             let fill = default_fill_value(&column.default_value);
-            if let Some(records) = self.tables.get_mut(&table.to_lowercase()) {
+            if let Some(records) = self.tables.get_mut(&key.clone()) {
                 for row in records.iter_mut() {
                     row.push(fill.clone());
                 }
@@ -2601,10 +2718,10 @@ impl StorageEngine for MemoryStorage {
 
     fn rename_table(&mut self, table: &str, new_name: &str) -> SqlResult<()> {
         // V312-19 #3972: case-insensitive table name lookup.
-        let key = table.to_lowercase();
-        let new_key = new_name.to_lowercase();
-        let info = self.table_infos.remove(&key);
-        let records = self.tables.remove(&key);
+        let key = self.tbl(table);
+        let new_key = self.tbl(new_name);
+        let info = self.table_infos.remove(&key.clone());
+        let records = self.tables.remove(&key.clone());
         if let (Some(info), Some(records)) = (info, records) {
             let mut new_info = info;
             new_info.name = new_key.clone();
@@ -2620,19 +2737,21 @@ impl StorageEngine for MemoryStorage {
     }
 
     fn create_trigger(&mut self, info: TriggerInfo) -> SqlResult<()> {
-        self.triggers.insert(info.name.clone(), info);
+        // #5025: a trigger fires on its table, so it is scoped the same way.
+        let key = self.tbl(&info.name);
+        self.triggers.insert(key, info);
         Ok(())
     }
 
     fn drop_trigger(&mut self, name: &str) -> SqlResult<()> {
         self.triggers
-            .remove(name)
+            .remove(&self.tbl(name))
             .map(|_| ())
             .ok_or_else(|| SqlError::ExecutionError(format!("Trigger not found: {}", name)))
     }
 
     fn get_trigger(&self, name: &str) -> Option<TriggerInfo> {
-        self.triggers.get(name).cloned()
+        self.triggers.get(&self.tbl(name)).cloned()
     }
 
     fn list_triggers(&self, table: &str) -> Vec<TriggerInfo> {
@@ -2654,14 +2773,15 @@ impl StorageEngine for MemoryStorage {
                 info.name
             )));
         }
-        let name = info.name.clone();
-        self.view_defs.insert(name.clone(), info);
-        self.views.insert(name);
+        // #5025: views are per-database objects, keyed the same way.
+        let key = self.tbl(&info.name);
+        self.view_defs.insert(key.clone(), info);
+        self.views.insert(key);
         Ok(())
     }
 
     fn get_view(&self, name: &str) -> Option<ViewInfo> {
-        self.view_defs.get(name).cloned()
+        self.view_defs.get(&self.tbl(name)).cloned()
     }
 
     fn list_views(&self) -> Vec<String> {
@@ -2675,27 +2795,29 @@ impl StorageEngine for MemoryStorage {
         // guards the IF EXISTS / not-found error path; storage just
         // evicts whatever it has. Removing from `view_defs` even if the
         // name is missing is harmless (HashMap::remove is a no-op).
-        self.view_defs.remove(name);
-        self.views.remove(name);
+        self.view_defs.remove(&self.tbl(name));
+        self.views.remove(&self.tbl(name));
         Ok(())
     }
 
     // === Sequence support (F-30) ===
 
     fn create_sequence(&mut self, seq: SequenceInfo) -> SqlResult<()> {
-        if self.sequences.contains_key(&seq.name) {
+        // #5025: sequences are per-database objects.
+        let key = self.tbl(&seq.name);
+        if self.sequences.contains_key(&key) {
             return Err(SqlError::ExecutionError(format!(
                 "Sequence '{}' already exists",
                 seq.name
             )));
         }
-        self.sequences.insert(seq.name.clone(), seq);
+        self.sequences.insert(key, seq);
         Ok(())
     }
 
     fn drop_sequence(&mut self, name: &str) -> SqlResult<()> {
         self.sequences
-            .remove(name)
+            .remove(&self.tbl(name))
             .ok_or_else(|| SqlError::ExecutionError(format!("Sequence '{}' not found", name)))?;
         Ok(())
     }
@@ -2741,7 +2863,7 @@ impl StorageEngine for MemoryStorage {
     }
 
     fn has_sequence(&self, name: &str) -> bool {
-        self.sequences.contains_key(name)
+        self.sequences.contains_key(&self.tbl(name))
     }
 
     fn list_sequences(&self) -> Vec<String> {
@@ -2749,7 +2871,7 @@ impl StorageEngine for MemoryStorage {
     }
 
     fn get_sequence(&self, name: &str) -> Option<SequenceInfo> {
-        self.sequences.get(name).cloned()
+        self.sequences.get(&self.tbl(name)).cloned()
     }
     fn list_indexes(&self, table: &str) -> Vec<(String, String)> {
         // V312-62 / Issues #4617 & #4621: return tracked indexes for this
@@ -2801,7 +2923,7 @@ impl StorageEngine for MemoryStorage {
             .position(|c| c.name.to_lowercase() == column.to_lowercase())
             .ok_or_else(|| SqlError::ExecutionError(format!("Column not found: {}", column)))?;
         info.columns.remove(col_idx);
-        if let Some(records) = self.tables.get_mut(&table_key) {
+        if let Some(records) = self.tables.get_mut(&table_key.clone()) {
             for record in records.iter_mut() {
                 if col_idx < record.len() {
                     record.remove(col_idx);
@@ -2961,6 +3083,30 @@ mod tests {
         is_zero_or_empty,
     };
     use super::*;
+
+    /// #5025: build a minimal table description for tests that used to
+    /// poke `storage.tables` directly. Going through `create_table` keeps
+    /// the key convention (scoped by database) in one place instead of
+    /// duplicating it in every test.
+    fn test_table(name: &str, cols: &[&str]) -> TableInfo {
+        let mut info = TableInfo::default();
+        info.name = name.to_string();
+        info.columns = cols
+            .iter()
+            .map(|c| crate::ColumnDefinition {
+                name: c.to_string(),
+                data_type: "INTEGER".to_string(),
+                nullable: false,
+                primary_key: false,
+                char_max_length: None,
+                collation: None,
+                default_value: None,
+                auto_increment: false,
+            })
+            .collect();
+        info
+    }
+
     use sqlrustgo_parser::Expression;
 
     /// Helper constructors for AST expressions used in unit tests
@@ -3066,7 +3212,8 @@ mod tests {
     #[test]
     fn test_memory_storage_scan_empty() {
         let mut storage = MemoryStorage::new();
-        storage.tables.insert("users".to_string(), vec![]);
+        storage.create_table(&test_table("users", &["v"])).unwrap();
+        storage.insert("users", vec![]);
         let result = storage.scan("users").unwrap();
         assert!(result.is_empty());
     }
@@ -3074,13 +3221,18 @@ mod tests {
     #[test]
     fn test_memory_storage_insert_and_scan() {
         let mut storage = MemoryStorage::new();
-        storage.tables.insert(
-            "users".to_string(),
-            vec![
-                vec![Value::Integer(1), Value::Text("Alice".to_string())],
-                vec![Value::Integer(2), Value::Text("Bob".to_string())],
-            ],
-        );
+        storage
+            .create_table(&test_table("users", &["id", "name"]))
+            .unwrap();
+        storage
+            .insert(
+                "users",
+                vec![
+                    vec![Value::Integer(1), Value::Text("Alice".to_string())],
+                    vec![Value::Integer(2), Value::Text("Bob".to_string())],
+                ],
+            )
+            .unwrap();
         let result = storage.scan("users").unwrap();
         assert_eq!(result.len(), 2);
     }
@@ -3095,7 +3247,7 @@ mod tests {
     fn test_memory_storage_insert_scan_preserves_real_type() {
         let mut storage = MemoryStorage::new();
         storage.tables.insert(
-            "lineitem".to_string(),
+            storage.tbl("lineitem"),
             vec![
                 vec![Value::Integer(10), Value::Float(100.5), Value::Float(0.05)],
                 vec![Value::Integer(20), Value::Float(200.5), Value::Float(0.10)],
@@ -3198,7 +3350,8 @@ mod tests {
     #[test]
     fn test_storage_engine_insert_records() {
         let mut storage = MemoryStorage::new();
-        storage.tables.insert("users".to_string(), vec![]);
+        storage.create_table(&test_table("users", &["v"])).unwrap();
+        storage.insert("users", vec![]);
 
         storage
             .insert("users", vec![vec![Value::Integer(1)]])
@@ -3210,10 +3363,15 @@ mod tests {
     #[test]
     fn test_storage_engine_delete_all() {
         let mut storage = MemoryStorage::new();
-        storage.tables.insert(
-            "users".to_string(),
-            vec![vec![Value::Integer(1)], vec![Value::Integer(2)]],
-        );
+        storage
+            .create_table(&test_table("users", &["id", "name"]))
+            .unwrap();
+        storage
+            .insert(
+                "users",
+                vec![vec![Value::Integer(1)], vec![Value::Integer(2)]],
+            )
+            .unwrap();
 
         let deleted = storage.delete("users", &[]).unwrap();
         assert_eq!(deleted, 2);
@@ -3223,7 +3381,7 @@ mod tests {
     fn test_storage_engine_update_values() {
         let mut storage = MemoryStorage::new();
         storage.tables.insert(
-            "users".to_string(),
+            storage.tbl("users"),
             vec![vec![Value::Integer(1), Value::Text("Alice".to_string())]],
         );
 
@@ -3426,7 +3584,7 @@ mod tests {
     fn test_partition_rows_below_threshold_returns_single_chunk() {
         let mut storage = MemoryStorage::new();
         storage.tables.insert(
-            "t".to_string(),
+            storage.tbl("t"),
             (0..100_000_i64).map(|i| vec![Value::Integer(i)]).collect(),
         );
         let parts = storage.partition_rows("t", 8);
@@ -3438,7 +3596,7 @@ mod tests {
     fn test_partition_rows_above_threshold_splits_evenly() {
         let mut storage = MemoryStorage::new();
         storage.tables.insert(
-            "t".to_string(),
+            storage.tbl("t"),
             (0..600_000_i64).map(|i| vec![Value::Integer(i)]).collect(),
         );
         let parts = storage.partition_rows("t", 4);
@@ -3454,7 +3612,7 @@ mod tests {
     fn test_partition_rows_uneven_remainder() {
         let mut storage = MemoryStorage::new();
         storage.tables.insert(
-            "t".to_string(),
+            storage.tbl("t"),
             (0..503_003_i64).map(|i| vec![Value::Integer(i)]).collect(),
         );
         let parts = storage.partition_rows("t", 4);
@@ -3819,7 +3977,7 @@ mod tests {
     fn test_partition_rows_num_partitions_zero() {
         let mut storage = MemoryStorage::new();
         storage.tables.insert(
-            "t".to_string(),
+            storage.tbl("t"),
             (0..600_000_i64).map(|i| vec![Value::Integer(i)]).collect(),
         );
         let parts = storage.partition_rows("t", 0);
@@ -3831,7 +3989,7 @@ mod tests {
     fn test_partition_rows_num_partitions_one_large() {
         let mut storage = MemoryStorage::new();
         storage.tables.insert(
-            "t".to_string(),
+            storage.tbl("t"),
             (0..600_000_i64).map(|i| vec![Value::Integer(i)]).collect(),
         );
         let parts = storage.partition_rows("t", 1);
@@ -3843,7 +4001,7 @@ mod tests {
     fn test_partition_rows_above_threshold_2_partitions() {
         let mut storage = MemoryStorage::new();
         storage.tables.insert(
-            "t".to_string(),
+            storage.tbl("t"),
             (0..500_100_i64).map(|i| vec![Value::Integer(i)]).collect(),
         );
         let parts = storage.partition_rows("t", 2);
@@ -3863,25 +4021,23 @@ mod tests {
     #[test]
     fn test_update_with_log_no_filter() {
         let mut s = MemoryStorage::new();
-        s.tables.insert(
-            "t".to_string(),
-            vec![vec![Value::Integer(1)], vec![Value::Integer(2)]],
-        );
+        s.create_table(&test_table("t", &["v"])).unwrap();
+        s.insert("t", vec![vec![Value::Integer(1)], vec![Value::Integer(2)]])
+            .unwrap();
         s.current_tx_id
             .store(1, std::sync::atomic::Ordering::Relaxed);
         s.tx_log = Some(TxLog::default());
         let count = s.update("t", &[], &[(0, Value::Integer(99))]).unwrap();
         assert_eq!(count, 2);
-        assert_eq!(s.tables["t"][0][0], Value::Integer(99));
+        assert_eq!(s.tables[&s.tbl("t")][0][0], Value::Integer(99));
     }
 
     #[test]
     fn test_update_with_log_with_filter() {
         let mut s = MemoryStorage::new();
-        s.tables.insert(
-            "t".to_string(),
-            vec![vec![Value::Integer(1)], vec![Value::Integer(2)]],
-        );
+        s.create_table(&test_table("t", &["v"])).unwrap();
+        s.insert("t", vec![vec![Value::Integer(1)], vec![Value::Integer(2)]])
+            .unwrap();
         s.current_tx_id
             .store(1, std::sync::atomic::Ordering::Relaxed);
         s.tx_log = Some(TxLog::default());
@@ -3889,8 +4045,8 @@ mod tests {
             .update("t", &[Value::Integer(1)], &[(0, Value::Integer(99))])
             .unwrap();
         assert_eq!(count, 1);
-        assert_eq!(s.tables["t"][0][0], Value::Integer(99));
-        assert_eq!(s.tables["t"][1][0], Value::Integer(2));
+        assert_eq!(s.tables[&s.tbl("t")][0][0], Value::Integer(99));
+        assert_eq!(s.tables[&s.tbl("t")][1][0], Value::Integer(2));
     }
 
     #[test]
@@ -3909,10 +4065,9 @@ mod tests {
     #[test]
     fn test_update_if_with_log() {
         let mut s = MemoryStorage::new();
-        s.tables.insert(
-            "t".to_string(),
-            vec![vec![Value::Integer(1)], vec![Value::Integer(2)]],
-        );
+        s.create_table(&test_table("t", &["v"])).unwrap();
+        s.insert("t", vec![vec![Value::Integer(1)], vec![Value::Integer(2)]])
+            .unwrap();
         s.current_tx_id
             .store(1, std::sync::atomic::Ordering::Relaxed);
         s.tx_log = Some(TxLog::default());
@@ -3957,10 +4112,9 @@ mod tests {
     #[test]
     fn test_rollback_restores_deleted_rows() {
         let mut s = MemoryStorage::new();
-        s.tables.insert(
-            "t".to_string(),
-            vec![vec![Value::Integer(1)], vec![Value::Integer(2)]],
-        );
+        s.create_table(&test_table("t", &["v"])).unwrap();
+        s.insert("t", vec![vec![Value::Integer(1)], vec![Value::Integer(2)]])
+            .unwrap();
         s.begin_transaction().unwrap();
         s.delete("t", &[Value::Integer(1)]).unwrap();
         s.rollback_transaction().unwrap();
@@ -4295,5 +4449,109 @@ mod tests {
         s.rollback_transaction().unwrap();
         s.begin_transaction().unwrap();
         s.commit_transaction().unwrap();
+    }
+
+    // --- #5025: per-database table isolation ---
+
+    /// Two databases may hold a table of the same name; each must see only
+    /// its own. Before #5025 every table lived in one flat namespace keyed
+    /// by the bare name, so `d1.t` and `d2.t` were the same table and
+    /// `USE` was a no-op.
+    #[test]
+    fn tables_are_isolated_per_database() {
+        let mut s = MemoryStorage::new();
+        s.create_database("d1").unwrap();
+        s.create_database("d2").unwrap();
+
+        s.set_current_db("d1").unwrap();
+        s.create_table(&test_table("t", &["v"])).unwrap();
+        s.insert("t", vec![vec![Value::Integer(1)]]).unwrap();
+
+        s.set_current_db("d2").unwrap();
+        s.create_table(&test_table("t", &["v"])).unwrap();
+        s.insert("t", vec![vec![Value::Integer(2)]]).unwrap();
+
+        s.set_current_db("d1").unwrap();
+        assert_eq!(
+            s.scan("t").unwrap(),
+            vec![vec![Value::Integer(1)]],
+            "d1 must not see d2's rows"
+        );
+        s.set_current_db("d2").unwrap();
+        assert_eq!(
+            s.scan("t").unwrap(),
+            vec![vec![Value::Integer(2)]],
+            "d2 must not see d1's rows"
+        );
+    }
+
+    /// `list_tables` feeds `SHOW TABLES`, which must show bare names for the
+    /// current database only — not the internal `db\x01table` keys, and not
+    /// another database's tables.
+    #[test]
+    fn list_tables_is_scoped_and_unscoped_keys() {
+        let mut s = MemoryStorage::new();
+        s.create_database("d1").unwrap();
+        s.create_database("d2").unwrap();
+
+        s.set_current_db("d1").unwrap();
+        s.create_table(&test_table("alpha", &["v"])).unwrap();
+        s.set_current_db("d2").unwrap();
+        s.create_table(&test_table("beta", &["v"])).unwrap();
+
+        s.set_current_db("d1").unwrap();
+        assert_eq!(s.list_tables(), vec!["alpha".to_string()]);
+        s.set_current_db("d2").unwrap();
+        assert_eq!(s.list_tables(), vec!["beta".to_string()]);
+    }
+
+    /// `USE missing_db` used to be accepted silently, which is how two
+    /// databases ended up sharing a namespace without anyone noticing.
+    #[test]
+    fn set_current_db_rejects_unknown_database() {
+        let mut s = MemoryStorage::new();
+        s.create_database("d1").unwrap();
+        s.set_current_db("d1").unwrap();
+        let err = s.set_current_db("nope").unwrap_err();
+        assert!(
+            err.to_string().contains("Unknown database"),
+            "error should name the problem, got: {}",
+            err
+        );
+        // The failed switch must leave the previous database active.
+        assert_eq!(s.current_db(), "d1");
+    }
+
+    /// The implicit database is registered on construction, so `USE default`
+    /// is a no-op rather than an "unknown database" error.
+    #[test]
+    fn default_database_is_always_usable() {
+        let s = MemoryStorage::new();
+        assert_eq!(s.current_db(), DEFAULT_DATABASE);
+        let mut s = s;
+        s.set_current_db(DEFAULT_DATABASE).unwrap();
+    }
+
+    /// Table names are matched case-insensitively and the database component
+    /// must not be able to collide with a dot in a table name:
+    /// `db="a", table="b.t"` and `db="a.b", table="t"` are different tables.
+    #[test]
+    fn scoping_survives_dots_in_table_names() {
+        let mut s = MemoryStorage::new();
+        s.create_database("a").unwrap();
+        s.create_database("a.b").unwrap();
+
+        s.set_current_db("a").unwrap();
+        s.create_table(&test_table("b.t", &["v"])).unwrap();
+        s.insert("b.t", vec![vec![Value::Integer(1)]]).unwrap();
+
+        s.set_current_db("a.b").unwrap();
+        s.create_table(&test_table("t", &["v"])).unwrap();
+        s.insert("t", vec![vec![Value::Integer(2)]]).unwrap();
+
+        s.set_current_db("a").unwrap();
+        assert_eq!(s.scan("b.t").unwrap(), vec![vec![Value::Integer(1)]]);
+        s.set_current_db("a.b").unwrap();
+        assert_eq!(s.scan("t").unwrap(), vec![vec![Value::Integer(2)]]);
     }
 }
