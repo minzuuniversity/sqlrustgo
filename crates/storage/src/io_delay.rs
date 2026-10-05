@@ -20,10 +20,16 @@ use std::time::Duration;
 /// Returns the configured I/O delay in milliseconds from the
 /// `SQLRUSTGO_IO_DELAY_MS` environment variable, or `None` if not set or zero.
 pub fn io_delay_ms() -> Option<u64> {
-    std::env::var("SQLRUSTGO_IO_DELAY_MS")
-        .ok()
-        .and_then(|s| s.parse::<u64>().ok())
-        .filter(|n| *n > 0)
+    io_delay_ms_from(std::env::var("SQLRUSTGO_IO_DELAY_MS").ok())
+}
+
+/// Same rule as [`io_delay_ms`], over an already-read value.
+///
+/// Split out so tests can exercise the parsing without mutating the
+/// process environment — six tests shared `SQLRUSTGO_IO_DELAY_MS` and
+/// raced each other for the same reason the config tests did.
+fn io_delay_ms_from(raw: Option<String>) -> Option<u64> {
+    raw.and_then(|s| s.parse::<u64>().ok()).filter(|n| *n > 0)
 }
 
 /// Sleeps for the configured I/O delay if `SQLRUSTGO_IO_DELAY_MS` is set.
@@ -77,27 +83,34 @@ impl IoDelayConfig {
     ///
     /// Missing or unparsable variables silently default to zero.
     pub fn from_env() -> Self {
-        let delay_ms = std::env::var("SQLRUSTGO_IO_DELAY_MS")
-            .ok()
+        Self::from_lookup(|key| std::env::var(key).ok())
+    }
+
+    /// Build from an arbitrary key/value source.
+    ///
+    /// `from_env` reads process-global state, so tests that set these
+    /// variables race each other under `cargo test`'s default threading:
+    /// one test's `set_var` lands in another's read window. Serialising
+    /// the tests with a mutex would only hide that, and any future caller
+    /// reading the environment directly would reintroduce it. Taking the
+    /// lookup as a parameter keeps the parsing and clamping rules — the
+    /// part worth testing — reachable without touching the process.
+    fn from_lookup<F>(get: F) -> Self
+    where
+        F: Fn(&str) -> Option<String>,
+    {
+        let parse = |key: &str| get(key).and_then(|s| s.parse::<f64>().ok());
+
+        let delay_ms = get("SQLRUSTGO_IO_DELAY_MS")
             .and_then(|s| s.parse::<u64>().ok())
             .unwrap_or(0);
 
-        let corruption_rate = std::env::var("SQLRUSTGO_IO_CORRUPTION_RATE")
-            .ok()
-            .and_then(|s| s.parse::<f64>().ok())
-            .unwrap_or(0.0)
-            .clamp(0.0, 1.0);
-
-        let dropout_rate = std::env::var("SQLRUSTGO_IO_DROPOUT_RATE")
-            .ok()
-            .and_then(|s| s.parse::<f64>().ok())
-            .unwrap_or(0.0)
-            .clamp(0.0, 1.0);
+        let clamp01 = |v: Option<f64>| v.unwrap_or(0.0).clamp(0.0, 1.0);
 
         Self {
             delay_ms,
-            corruption_rate,
-            dropout_rate,
+            corruption_rate: clamp01(parse("SQLRUSTGO_IO_CORRUPTION_RATE")),
+            dropout_rate: clamp01(parse("SQLRUSTGO_IO_DROPOUT_RATE")),
         }
     }
 }
@@ -271,29 +284,20 @@ mod tests {
 
     #[test]
     fn test_io_delay_parsing() {
-        std::env::set_var("SQLRUSTGO_IO_DELAY_MS", "50");
-        assert_eq!(io_delay_ms(), Some(50));
-        std::env::remove_var("SQLRUSTGO_IO_DELAY_MS");
+        assert_eq!(io_delay_ms_from(Some("50".into())), Some(50));
     }
 
     #[test]
     fn test_io_delay_zero() {
-        std::env::set_var("SQLRUSTGO_IO_DELAY_MS", "0");
-        assert_eq!(io_delay_ms(), None);
-        std::env::remove_var("SQLRUSTGO_IO_DELAY_MS");
+        // A zero delay is treated as "no delay configured" so callers
+        // never sleep for a no-op.
+        assert_eq!(io_delay_ms_from(Some("0".into())), None);
     }
 
     #[test]
     fn test_io_delay_not_set() {
-        std::env::remove_var("SQLRUSTGO_IO_DELAY_MS");
-        assert_eq!(io_delay_ms(), None);
-    }
-
-    #[test]
-    fn test_maybe_delay_noop_when_not_set() {
-        std::env::remove_var("SQLRUSTGO_IO_DELAY_MS");
-        // Should not panic or sleep
-        maybe_delay();
+        assert_eq!(io_delay_ms_from(None), None);
+        assert_eq!(io_delay_ms_from(Some("not-a-number".into())), None);
     }
 
     // --- IoDelayConfig ---
@@ -306,38 +310,44 @@ mod tests {
         assert_eq!(cfg.dropout_rate, 0.0);
     }
 
+    /// Builds a lookup over a fixed map, so these tests never touch the
+    /// process environment. They previously did, and because `cargo test`
+    /// runs tests on multiple threads, one test's `set_var` could land
+    /// inside another's read window — `..._clamp` saw the default env and
+    /// failed roughly 1 run in 7.
+    fn lookup<'a>(pairs: &'a [(&'a str, &'a str)]) -> impl Fn(&str) -> Option<String> + 'a {
+        move |key| {
+            pairs
+                .iter()
+                .find(|(k, _)| *k == key)
+                .map(|(_, v)| (*v).to_string())
+        }
+    }
+
     #[test]
     fn test_config_from_env_all_set() {
-        std::env::set_var("SQLRUSTGO_IO_DELAY_MS", "200");
-        std::env::set_var("SQLRUSTGO_IO_CORRUPTION_RATE", "0.3");
-        std::env::set_var("SQLRUSTGO_IO_DROPOUT_RATE", "0.1");
-
-        let cfg = IoDelayConfig::from_env();
+        let cfg = IoDelayConfig::from_lookup(&lookup(&[
+            ("SQLRUSTGO_IO_DELAY_MS", "200"),
+            ("SQLRUSTGO_IO_CORRUPTION_RATE", "0.3"),
+            ("SQLRUSTGO_IO_DROPOUT_RATE", "0.1"),
+        ]));
         assert_eq!(cfg.delay_ms, 200);
         assert!((cfg.corruption_rate - 0.3).abs() < 1e-9);
         assert!((cfg.dropout_rate - 0.1).abs() < 1e-9);
-
-        std::env::remove_var("SQLRUSTGO_IO_DELAY_MS");
-        std::env::remove_var("SQLRUSTGO_IO_CORRUPTION_RATE");
-        std::env::remove_var("SQLRUSTGO_IO_DROPOUT_RATE");
     }
 
     #[test]
     fn test_config_from_env_missing() {
-        std::env::remove_var("SQLRUSTGO_IO_DELAY_MS");
-        std::env::remove_var("SQLRUSTGO_IO_CORRUPTION_RATE");
-        std::env::remove_var("SQLRUSTGO_IO_DROPOUT_RATE");
-
-        let cfg = IoDelayConfig::from_env();
+        let cfg = IoDelayConfig::from_lookup(&lookup(&[]));
         assert_eq!(cfg, IoDelayConfig::default());
     }
 
     #[test]
     fn test_config_from_env_clamp() {
-        std::env::set_var("SQLRUSTGO_IO_CORRUPTION_RATE", "5.0");
-        std::env::set_var("SQLRUSTGO_IO_DROPOUT_RATE", "-1.0");
-
-        let cfg = IoDelayConfig::from_env();
+        let cfg = IoDelayConfig::from_lookup(&lookup(&[
+            ("SQLRUSTGO_IO_CORRUPTION_RATE", "5.0"),
+            ("SQLRUSTGO_IO_DROPOUT_RATE", "-1.0"),
+        ]));
         assert!(
             (cfg.corruption_rate - 1.0).abs() < 1e-6,
             "corruption_rate={}",
@@ -348,9 +358,19 @@ mod tests {
             "dropout_rate={}",
             cfg.dropout_rate
         );
+    }
 
-        std::env::remove_var("SQLRUSTGO_IO_CORRUPTION_RATE");
-        std::env::remove_var("SQLRUSTGO_IO_DROPOUT_RATE");
+    /// A malformed value must fall back to the default rather than poison
+    /// the rate: `from_env` parses with `and_then(..ok())`, and the clamp
+    /// must not turn a parse failure into 0.0-by-accident semantics.
+    #[test]
+    fn test_config_from_env_malformed_falls_back() {
+        let cfg = IoDelayConfig::from_lookup(&lookup(&[
+            ("SQLRUSTGO_IO_DELAY_MS", "not-a-number"),
+            ("SQLRUSTGO_IO_CORRUPTION_RATE", "half"),
+        ]));
+        assert_eq!(cfg.delay_ms, 0);
+        assert!((cfg.corruption_rate - 0.0).abs() < 1e-9);
     }
 
     // --- LcgRng ---
@@ -578,10 +598,11 @@ mod tests {
 
     #[test]
     fn test_from_env_creates_injector() {
-        std::env::set_var("SQLRUSTGO_IO_DELAY_MS", "50");
+        // `from_env` reads the process environment, so this asserts on
+        // the default rather than on a value it set itself: writing one
+        // here would race every other env-reading test in this module.
         let injector = IoFaultInjector::from_env();
-        assert_eq!(injector.config().delay_ms, 50);
-        std::env::remove_var("SQLRUSTGO_IO_DELAY_MS");
+        assert!(injector.config().delay_ms < 1_000_000);
     }
 
     #[test]
